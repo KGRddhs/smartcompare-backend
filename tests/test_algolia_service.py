@@ -123,10 +123,12 @@ def test_match_accepts_real_title_match():
 
 
 def test_match_real_nike_fixture_positive_gate():
-    """POSITIVE GATE (real recorded 6thStreet response): 'Nike Air Max SC'
-    matches the genuine Nike hit and yields BHD 32.000. Proves the genuine-BHD
-    path on a product 6thStreet actually carries (the fashion lever — the
-    harvested index is fashion/footwear-strong, beauty-thin)."""
+    """POSITIVE GATE (real recorded 6thStreet response): 'Nike Air Max SC' matches the genuine
+    NON-gendered Nike hit ('AIR MAX SC Runner Sneakers', BHD 31.5) — proving the genuine-BHD
+    fashion lever still works under the keystone. The keystone correctly PENDS the sibling
+    'Wmns ... Air Max Sc' (32.0) hit: a Women's SKU is a distinct product for a genderless query
+    (coverage R8 — the old loose matcher wrongly returned the women's 32.0). runner/performance
+    are padded shoe-activity descriptors so the genuine non-gendered listing is recovered."""
     import json
     from pathlib import Path
     import app.services.algolia_service as alg
@@ -134,10 +136,11 @@ def test_match_real_nike_fixture_positive_gate():
         (Path(__file__).parent / "fixtures" / "algolia_6thstreet_nike.json")
         .read_text(encoding="utf-8")
     )
-    matched = alg._match_algolia_hit(fx["hits"], "Nike Air Max SC")
+    # prod threads the resolved category (here fashion) so the variant-add guard engages.
+    matched = alg._match_algolia_hit(fx["hits"], "Nike Air Max SC", resolved_category="fashion")
     assert matched is not None
     assert matched.get("brand_name") == "Nike"
-    assert alg._parse_algolia_price(matched) == 32.0
+    assert alg._parse_algolia_price(matched) == 31.5
 
 
 def test_match_picks_best_overlap_among_candidates():
@@ -182,11 +185,14 @@ def test_overlap_score_concatenation_tolerant():
     assert (len(p_words & normalize_words(surface)) / len(p_words)) < 0.4
 
 
-def test_match_accepts_concatenated_air_force_one():
-    """The exact captured real 6thStreet Air Force 1 hit (32.0 BHD) is accepted
-    after the concatenation-tolerant overlap fix. It already passes
-    strict_title_match + numbers_match; only the redundant overlap floor dropped
-    it. No-fab held: Air Max / Winflo still fail strict_title_match."""
+def test_match_concatenated_no_model_number_pends_correctness_gate():
+    """CORRECTNESS > COVERAGE (independent + coverage R8): a concatenated, model-NUMBER-less
+    title ('AIRFORCE Color Block Lace-Up Sneakers') for an 'Air Force 1' query now PENDS under
+    the keystone variant-add guard — 'air force' != 'airforce' (concatenation) AND the '1'
+    model number is absent, so we cannot CONFIRM it is the Air Force 1 (vs Air Force Max / a
+    non-'1' Air Force). Pending a genuine price is fail-closed-SAFE; showing a wrong model's
+    price is the cardinal violation. Recovering this would require despaced-substring matching,
+    which re-opens the variant-add leak (airforce1 ⊂ airforce1classic). Documented trade-off."""
     import app.services.algolia_service as alg
     hits = [
         {"name": "AIRFORCE Color Block Lace-Up Sneakers", "brand_name": "Nike",
@@ -194,9 +200,7 @@ def test_match_accepts_concatenated_air_force_one():
          "url": "https://en-bh.6thstreet.com/buy-nike-airforce.html",
          "in_stock": True},
     ]
-    matched = alg._match_algolia_hit(hits, "Nike Air Force 1")
-    assert matched is not None
-    assert alg._parse_algolia_price(matched) == 32.0
+    assert alg._match_algolia_hit(hits, "Nike Air Force 1") is None
 
 
 def test_match_concatenation_tolerance_still_rejects_wrong_model():

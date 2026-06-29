@@ -81,7 +81,8 @@ def _a5_product(name, pros, cons=None):
     return {
         "brand": name.split()[0], "name": name, "full_name": name,
         "category": "fragrances",
-        "price": {"amount": 80.0, "currency": "BHD", "source_method": "local_bhd"},
+        "price": {"amount": 80.0, "currency": "BHD", "source_method": "local_bhd",
+                  "title": name, "url": f"https://store.bh/p/{name.split()[0].lower()}"},
         "best_price": 80.0, "retailer": "noon",
         "specs": {}, "reviews": None,
         "rating": 4.2, "rating_source": None, "review_count": 5,

@@ -458,6 +458,172 @@ def count_price_provenance(body: Dict[str, Any]) -> Dict[str, int]:
     }
 
 
+# ---------------------------------------------------------------------------
+# usable_exact_genuine KPI (genuine-price CORRECTNESS build — Wave D).
+#
+# Provenance (a genuine source_method) is necessary but NOT sufficient: the price
+# must ALSO be the EXACT requested product, in stock, on a valid PDP URL, and not
+# pended. Exactness (correct SKU/variant/size/concentration) is enforced UPSTREAM
+# by the response chokepoint's exact gate (a SHOWN price is exact by construction),
+# so this end-to-end metric measures the RATE at which a requested product yields a
+# usable, genuine, in-stock, valid-PDP price. Run against the NON-CIRCULAR truth set
+# data/usable_exact_genuine_truth.json — COLD (nocache=true) and WARMED (--read-cache)
+# SEPARATELY. Phase-2 gate: >= 0.85 for electronics/fashion/fragrances (WARMED).
+# ---------------------------------------------------------------------------
+
+def load_usable_exact_genuine_truth(
+    path: Path | str = REPO_ROOT / "data" / "usable_exact_genuine_truth.json",
+) -> List[Dict[str, Any]]:
+    """Load the NON-CIRCULAR truth set (each entry: id/query/category/region +
+    `expected` identity). Raises FileNotFoundError if absent."""
+    p = Path(path)
+    data = json.loads(p.read_text(encoding="utf-8"))
+    return list(data.get("products", []))
+
+
+def usable_exact_genuine_for_product(
+    body: Dict[str, Any], product_idx: int,
+    truth_entry: Optional[Dict[str, Any]] = None,
+) -> bool:
+    """True iff product idx's resolved price is USABLE-EXACT-GENUINE — INDEPENDENTLY
+    validated (B3: the metric must NOT trust the upstream 'shown == exact' assumption;
+    it re-checks identity itself against the truth entry):
+      (a) non-pending, positive amount,
+      (b) a genuine-BH `source_method`,
+      (c) CONFIRMED in stock (in_stock is True — unknown/None does NOT count),
+      (d) a present, valid (non-listing) PDP URL,
+      (e) when a `truth_entry` is given: the resolved price TITLE is the EXACT
+          expected product (is_exact_match against truth.query + truth.expected.brand).
+    A missing / pended / converted / estimated / out-of-stock / unknown-stock /
+    no-URL / listing-URL / WRONG-identity price is NOT usable (it counts in the KPI
+    denominator as requested-but-not-usable)."""
+    products = _products_overview(body)
+    if product_idx >= len(products):
+        return False
+    price = products[product_idx].get("price")
+    if not isinstance(price, dict):
+        return False
+    # (a) not pending, positive amount
+    if price.get("unavailable") is True or price.get("amount") in (None, 0):
+        return False
+    # (b) genuine source method
+    method = price.get("source_method")
+    if not isinstance(method, str) or method not in GENUINE_BH_SOURCE_METHODS:
+        return False
+    # (c) CONFIRMED in stock — unknown (None) / missing does NOT count as usable.
+    if price.get("in_stock") is not True:
+        return False
+    # (d) present, valid (non-listing) PDP URL — a missing URL is NOT usable.
+    url = price.get("url")
+    if not isinstance(url, str) or not url.strip():
+        return False
+    try:
+        from app.services.source_router import is_non_pdp_listing_url
+        if is_non_pdp_listing_url(url):
+            return False
+    except Exception:  # noqa: BLE001 — a URL-classifier failure must not crash the eval
+        pass
+    # (e) INDEPENDENT identity validation against the truth entry — the resolved
+    # price title must be the EXACT expected product (kills the "shown == exact"
+    # circularity: a genuine, in-stock, valid-PDP price for the WRONG product fails).
+    #
+    # FAIL-CLOSED (coverage review E) — without a truth entry the identity is UNVERIFIED,
+    # so the product is NOT usable (never auto-count). The truth-wired run-mode always
+    # supplies one; a missing truth entry means we cannot prove the SKU.
+    if truth_entry is None:
+        return False
+    expected_query = truth_entry.get("query") or ""
+    category = truth_entry.get("category")
+    expected_brand = (truth_entry.get("expected") or {}).get("brand", "")
+    title = price.get("title") or price.get("name") or ""
+    if not title:
+        return False
+    try:
+        # Use _selection_match — the gate the ORCHESTRATOR actually runs (subset-tolerant
+        # of DESCRIPTIVE retailer titles) — NOT the strict set-equality is_exact_match,
+        # which scored a 100%-correct genuine descriptive price 0/N and made the 0.85
+        # gate unreachable (coverage review E).
+        from app.services.price_service import (
+            _selection_match, _match_storage_gb, extract_size_ml_any,
+            extract_concentration,
+        )
+        if expected_query and not _selection_match(
+            expected_query, title, category, candidate_brand=expected_brand,
+        ):
+            return False
+        # INDEPENDENT structured-field validation (coverage review E) — enforce each
+        # `expected` axis the truth entry pins, so a wrong variant fails even when the
+        # truth.query string omits that axis (storage 256 vs a 128 title; EDP vs EDT;
+        # 90ml vs 50ml; colorway). The query-spelled axes are already covered by
+        # _selection_match; this closes the query-omits-but-expected-states gap.
+        expected = truth_entry.get("expected") or {}
+        # FAIL-CLOSED (external review P1) — every axis the truth pins must be PRESENT
+        # in the resolved title AND equal. A MISSING axis is UNVERIFIED, so the SKU is
+        # NOT proven usable: "iPhone 15 256GB" truth must NOT count a bare "iPhone 15"
+        # title; "Black Opium EDP 90ml" must NOT count a title omitting EDP/90ml. (The
+        # old `not in (None, X)` accepted None = a missing axis = silent over-count.)
+        exp_storage = expected.get("storage_gb")
+        if exp_storage is not None and _match_storage_gb(title) != float(exp_storage):
+            return False
+        exp_size = expected.get("size_ml")
+        if exp_size is not None and extract_size_ml_any(title) != int(exp_size):
+            return False
+        exp_conc = expected.get("concentration")
+        if exp_conc:
+            tc = extract_concentration(title)
+            if not tc or tc.lower().replace(" ", "") != str(exp_conc).lower().replace(" ", ""):
+                return False
+        exp_colorway = expected.get("colorway")
+        if exp_colorway:
+            from app.services.price_service import _fold_identity
+            if _fold_identity(str(exp_colorway)).strip() not in _fold_identity(title):
+                return False
+    except Exception:  # noqa: BLE001 — a matcher failure must not crash the eval
+        return False
+    return True
+
+
+def count_usable_exact_genuine(
+    body: Dict[str, Any], truth_entries: Optional[Sequence[Dict[str, Any]]] = None,
+) -> tuple[int, int]:
+    """(usable, requested) across the pair. requested is always 2 — a missing or
+    pended cell is requested-but-not-usable (the KPI denominator includes pends).
+
+    External review B3 — pass `truth_entries` (a per-product list aligned to indices
+    0/1) so the metric INDEPENDENTLY validates each resolved price's identity against
+    the expected product (a genuine Libre price does NOT count as exact for a Black
+    Opium request). Without it (legacy callers) the identity check is skipped — the
+    truth-wired eval run-mode always supplies it."""
+    def _t(idx: int) -> Optional[Dict[str, Any]]:
+        if isinstance(truth_entries, (list, tuple)) and idx < len(truth_entries):
+            return truth_entries[idx]
+        return None
+    usable = sum(
+        1 for idx in (0, 1)
+        if usable_exact_genuine_for_product(body, idx, _t(idx))
+    )
+    return usable, 2
+
+
+def count_guard_rejected(body: Dict[str, Any]) -> int:
+    """How many products PENDED due to the correctness gate (out_of_stock /
+    non_pdp_url / no_identity / not_exact). The no-fab measurement (1J): the gate's
+    pends are COUNTED, never a silent coverage drop.
+
+    B7 — the reasons live in metadata.guard_rejected (a list of {product_index,
+    reason}), NOT on the public price object. Falls back to the legacy per-price key
+    for any caller still emitting it (older cached payloads)."""
+    md = body.get("metadata") if isinstance(body, dict) else None
+    if isinstance(md, dict) and isinstance(md.get("guard_rejected"), list):
+        return len(md["guard_rejected"])
+    n = 0
+    for p in _products_overview(body)[:2]:
+        price = p.get("price")
+        if isinstance(price, dict) and price.get("guard_rejected"):
+            n += 1
+    return n
+
+
 def extract_specs(body: Dict[str, Any], product_idx: int) -> Dict[str, Any]:
     """specs.products[i].specs dict (falls back to overview products)."""
     specs_products = _products_specs(body)
@@ -1039,6 +1205,76 @@ async def run_eval(
     return aggregate(list(graded))
 
 
+# A single-product COLD price resolution drives the full cascade (curl/render) — allow
+# headroom over the ~25-30s compare wall.
+_KPI_HTTP_TIMEOUT = 90.0
+
+
+async def run_usable_exact_genuine_kpi(
+    *, base_url: str, read_cache: bool, concurrency: int = 1,
+    transport: Optional[httpx.BaseTransport] = None,
+) -> Dict[str, Any]:
+    """Coverage review E — the WIRED usable_exact_genuine KPI run-mode (was dead code).
+
+    Loads the NON-circular truth set, POSTs each truth.query as a single-product compare
+    (cold by default; --read-cache for the warmed measurement), maps the response body +
+    its truth entry through usable_exact_genuine_for_product (which INDEPENDENTLY validates
+    identity vs the truth), and aggregates usable/requested per category. Returns the
+    per-category + overall shares so the >=0.85/category warmer-activation gate can be
+    measured. This is a PROD-HTTP harness → run POST-deploy."""
+    truth = load_usable_exact_genuine_truth()
+    semaphore = asyncio.Semaphore(concurrency)
+    client_kwargs: Dict[str, Any] = {"base_url": base_url}
+    if transport is not None:
+        client_kwargs["transport"] = transport
+
+    async with httpx.AsyncClient(**client_kwargs) as client:
+        async def _one(entry: Dict[str, Any]) -> tuple:
+            # External review #1 — hit the dedicated SINGLE-PRODUCT endpoint
+            # (/api/v1/text/price-kpi). /compare rejects a query resolving to <2 products,
+            # so the prior single-product /compare call only ever "worked" under a mock;
+            # this path runs the REAL parser + price cascade + the is_price_showable
+            # backstop through the ASGI app. COLD = nocache=true; WARMED = --read-cache.
+            params = {
+                "q": entry["query"],
+                "region": entry.get("region", "bahrain"),
+                "nocache": "false" if read_cache else "true",
+            }
+            async with semaphore:
+                try:
+                    resp = await client.get(
+                        "/api/v1/text/price-kpi", params=params, timeout=_KPI_HTTP_TIMEOUT,
+                    )
+                    body = resp.json() if resp.status_code == 200 else {}
+                except Exception:  # noqa: BLE001 — a transport/HTTP error == not usable
+                    body = {}
+            # Single-product body -> the resolved product is index 0. Independent identity
+            # validation against THIS truth entry (not 'shown == exact').
+            usable = usable_exact_genuine_for_product(body, 0, entry)
+            return (entry.get("category", "other"), bool(usable))
+
+        rows = await asyncio.gather(*[_one(e) for e in truth])
+
+    per_cat: Dict[str, List[int]] = {}
+    for cat, usable in rows:
+        agg = per_cat.setdefault(cat, [0, 0])
+        agg[0] += 1 if usable else 0
+        agg[1] += 1
+    per_category = {
+        c: {"usable": u, "requested": r, "share": (u / r if r else 0.0)}
+        for c, (u, r) in per_cat.items()
+    }
+    total_u = sum(u for u, _ in per_cat.values())
+    total_r = sum(r for _, r in per_cat.values())
+    return {
+        "kpi": "usable_exact_genuine",
+        "cache_mode": "read-cache" if read_cache else "cold",
+        "overall": {"usable": total_u, "requested": total_r,
+                    "share": (total_u / total_r if total_r else 0.0)},
+        "per_category": per_category,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Subset selection
 # ---------------------------------------------------------------------------
@@ -1174,7 +1410,35 @@ def main(argv: Optional[List[str]] = None) -> int:
                              "the engine serves cached prices. Meaningful only "
                              "AFTER the price-cache warmer cron is activated "
                              "(ENABLE_PRICE_CACHE_WARMER) — see read_cache_note().")
+    parser.add_argument("--kpi", choices=["usable_exact_genuine"], default=None,
+                        help="Run the usable_exact_genuine CORRECTNESS KPI instead of the "
+                             "gold eval: POST each truth.query (data/usable_exact_genuine_"
+                             "truth.json), independently validate identity vs truth, and "
+                             "print per-category usable/requested. Cold by default; pair "
+                             "with --read-cache for the warmed measurement. PROD-HTTP "
+                             "(post-deploy). The >=0.85/category gate guards warmer activation.")
     args = parser.parse_args(argv)
+
+    # KPI run-mode (coverage review E) — a self-contained correctness measurement over the
+    # truth set; does NOT touch the gold pairs / cost guards above.
+    if args.kpi == "usable_exact_genuine":
+        try:
+            kpi = asyncio.run(run_usable_exact_genuine_kpi(
+                base_url=args.base_url, read_cache=args.read_cache,
+                concurrency=args.concurrency))
+        except FileNotFoundError as exc:
+            print(f"ERROR: {exc}", file=sys.stderr)
+            return 3
+        print(json.dumps(kpi, indent=2))
+        gate = 0.85
+        failing = {c: v["share"] for c, v in kpi["per_category"].items()
+                   if v["share"] < gate}
+        print(f"# usable_exact_genuine overall={kpi['overall']['share']:.3f} "
+              f"({kpi['cache_mode']}); per-category gate>={gate}")
+        if failing:
+            print(f"# BELOW GATE: {failing} — warmer activation stays PAUSED", file=sys.stderr)
+            return 1
+        return 0
 
     try:
         gold = load_gold_truth(args.gold)

@@ -1204,11 +1204,17 @@ def build_comparison_response(
     # pass through unchanged. Nulling the amount also makes _dim_price /
     # _dim_value (built below via _build_scoring_v2) take their honest
     # missing-data path, so no cross-price delta is asserted on a pending price.
+    _guard_rejected_diag = []  # B7 — gate-rejection reasons go to METADATA, not price
     try:
-        from app.services.price_service import is_price_showable, make_pending_price
-        for pd_item in product_data:
+        from app.services.price_service import (
+            is_price_showable, make_pending_price, _infer_category_from_query,
+        )
+        for _pd_idx, pd_item in enumerate(product_data):
             _name = pd_item.get("full_name") or pd_item.get("name") or ""
             _price = pd_item.get("price")
+            # Fall back to a query-inferred category when the product carries none,
+            # so the backstop's variant-qualifier axis (FE/Pro/Max) still engages.
+            _cat = pd_item.get("category") or _infer_category_from_query(_name)
             if not isinstance(_price, dict):
                 # SIB-5/G1 — a raw None / non-dict price (supplements returned
                 # NO price, a `_price_fallback_on_miss` terminal that surfaced a
@@ -1231,12 +1237,23 @@ def build_comparison_response(
             # already non-showable and correctly shaped.
             if _price.get("unavailable") is True:
                 continue
-            if not is_price_showable(_name, _price):
-                pd_item["price"] = make_pending_price(
+            if not is_price_showable(_name, _price, _cat, enforce_correctness=True):
+                _pend = make_pending_price(
                     currency=_price.get("currency") or "BHD",
                     reason="pending_genuine",
                     size=_price.get("size"),
                 )
+                # NO-FAB measurement (1J) — record the correctness-gate rejection
+                # reason (out_of_stock / non_pdp_url / no_identity / not_exact) in
+                # METADATA so the KPI/eval can MEASURE the gate's blast radius (B7:
+                # NOT on the public price object). The pend stays clean; the FE
+                # renders the generic "pricing lands soon" line (reason=pending_genuine).
+                _gr = _price.get("guard_rejected")
+                if _gr:
+                    _guard_rejected_diag.append(
+                        {"product_index": _pd_idx, "reason": _gr}
+                    )
+                pd_item["price"] = _pend
                 # Keep best_price/currency/retailer mirrors honest.
                 pd_item["best_price"] = None
                 if "retailer" in pd_item:
@@ -1361,6 +1378,11 @@ def build_comparison_response(
         def _value_context_for(idx: int) -> str:  # noqa: E306 — single-purpose helper
             return _legacy_vc
 
+    # B7 — strip internal diagnostics (guard_rejected + _-prefixed keys) from the
+    # PUBLIC price projection. Returns a fresh dict, so the orchestrator's cache-hit
+    # metadata that reads `_cached` off the pre-projection price is unaffected.
+    from app.services.price_service import public_price_view
+
     result = {
         "success": True,
         "query": query,
@@ -1385,7 +1407,7 @@ def build_comparison_response(
                     # Lane 1 L1.7 — short variant tag like '128GB · Black'.
                     # Empty string when no hooks fire (FE renders title alone).
                     "variant": _compose_variant_string(pd, category_used),
-                    "price": pd.get("price"),
+                    "price": public_price_view(pd.get("price")),
                     # A5 — never surface a derived/estimated rating as authoritative
                     # (derive_rating_from_scores OR gpt_review_aggregate set
                     # rating_derived=True). Real review_count is preserved.
@@ -1571,6 +1593,10 @@ def build_comparison_response(
             # price served from cache — the warmer-working dial). Spread so both
             # keys land directly on metadata.
             **_compute_cache_observability(product_data),
+            # B7 — correctness-gate rejections (out_of_stock / non_pdp_url /
+            # no_identity / not_exact) live in METADATA, never the public price. The
+            # KPI/eval reads this for the gate's no-fab blast radius; the FE ignores it.
+            "guard_rejected": _guard_rejected_diag,
         },
     }
 
@@ -1643,6 +1669,12 @@ def build_comparison_response(
         # the response-level category_used as the fallback when the per-product
         # category is missing, so BOTH products key the SAME schema (symmetry).
         pd["category_profile"] = _safe_category_profile(pd, category_used)
+        # B7 — the legacy BC `products` alias ships the raw pd dicts; strip the
+        # internal price diagnostics (guard_rejected + _-keys) here too, not just on
+        # the overview projection. Safe to mutate now: the cache-hit metadata that
+        # reads `_cached` was already computed when `result` was built above.
+        if isinstance(pd.get("price"), dict):
+            pd["price"] = public_price_view(pd["price"])
     result["products"] = product_data
     # WS-A review-gate fix — the BC `comparison` alias ships in the payload and
     # carried the raw winner_reason/key_tradeoff/winner_declaration (a real leak

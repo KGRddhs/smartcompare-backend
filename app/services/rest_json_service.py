@@ -37,6 +37,7 @@ from app.services.price_service import (
     numbers_match,
     parse_price_string,
     strict_title_match,
+    _selection_match,
     variant_mismatch,
 )
 
@@ -91,7 +92,7 @@ def _word_overlap(product_name: str, title: str) -> float:
     return len(p_words & t_words) / len(p_words)
 
 
-def _title_matches(product_name: str, title: str) -> bool:
+def _title_matches(product_name: str, title: str, resolved_category=None) -> bool:
     """Strict, no-fab match for a direct-API hit.
 
     Uses numbers_match + strict_title_match + word-overlap (the algolia_service
@@ -109,6 +110,9 @@ def _title_matches(product_name: str, title: str) -> bool:
         return False
     q_words = set(re.findall(r"[a-z]+", (product_name or "").lower()))
     if (q_words & _VARIANT_QUALIFIERS) and variant_mismatch(product_name, title):
+        return False
+    # Keystone variant-add guard (coverage/independent review). Flag-safe (True when off).
+    if not _selection_match(product_name, title, resolved_category):
         return False
     return _word_overlap(product_name, title) >= _MATCH_MIN_OVERLAP
 
@@ -216,7 +220,7 @@ def _ourshopee_candidates(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
     return out
 
 
-async def _fetch_ourshopee(product_name: str, currency: str) -> Optional[Dict[str, Any]]:
+async def _fetch_ourshopee(product_name: str, currency: str, resolved_category: Optional[str] = None) -> Optional[Dict[str, Any]]:
     try:
         from curl_cffi import requests as curl_requests
         resp = await asyncio.to_thread(
@@ -243,7 +247,7 @@ async def _fetch_ourshopee(product_name: str, currency: str) -> Optional[Dict[st
     best: Optional[Dict[str, Any]] = None
     best_score = -1.0
     for cand in _ourshopee_candidates(payload):
-        if not _title_matches(product_name, cand["name"]):
+        if not _title_matches(product_name, cand["name"], resolved_category):
             continue
         score = _word_overlap(product_name, cand["name"])
         if score > best_score:
@@ -274,7 +278,7 @@ async def _fetch_ourshopee(product_name: str, currency: str) -> Optional[Dict[st
 # panda — SAR → converted
 # ---------------------------------------------------------------------------
 
-async def _fetch_panda(product_name: str, currency: str) -> Optional[Dict[str, Any]]:
+async def _fetch_panda(product_name: str, currency: str, resolved_category: Optional[str] = None) -> Optional[Dict[str, Any]]:
     try:
         from curl_cffi import requests as curl_requests
         resp = await asyncio.to_thread(
@@ -309,7 +313,7 @@ async def _fetch_panda(product_name: str, currency: str) -> Optional[Dict[str, A
         if not isinstance(prod, dict):
             continue
         name = prod.get("name") or ""
-        if not _title_matches(product_name, name):
+        if not _title_matches(product_name, name, resolved_category):
             continue
         varieties = prod.get("varieties")
         if not isinstance(varieties, list) or not varieties:
@@ -355,7 +359,7 @@ async def _fetch_panda(product_name: str, currency: str) -> Optional[Dict[str, A
 # beautyboothqa — QAR → converted
 # ---------------------------------------------------------------------------
 
-async def _fetch_beautybooth(product_name: str, currency: str) -> Optional[Dict[str, Any]]:
+async def _fetch_beautybooth(product_name: str, currency: str, resolved_category: Optional[str] = None) -> Optional[Dict[str, Any]]:
     try:
         from curl_cffi import requests as curl_requests
         resp = await asyncio.to_thread(
@@ -399,7 +403,7 @@ async def _fetch_beautybooth(product_name: str, currency: str) -> Optional[Dict[
     best_score = -1.0
     for it in items:
         name = it.get("name") or ""
-        if not _title_matches(product_name, name):
+        if not _title_matches(product_name, name, resolved_category):
             continue
         price_val = parse_price_string(str(it.get("net_price") or it.get("main_price") or ""))
         if price_val is None or price_val <= 0:
@@ -448,6 +452,7 @@ _DISPATCH = {
 
 async def fetch_rest_json_price(
     domain: str, product_name: str, currency: str = "BHD",
+    resolved_category: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
     """Genuine/converted BH/GCC price from a custom-JSON storefront API.
 
@@ -461,7 +466,7 @@ async def fetch_rest_json_price(
         return None
 
     try:
-        price = await fetcher(product_name, currency)
+        price = await fetcher(product_name, currency, resolved_category)
     except Exception as exc:  # noqa: BLE001 — defense in depth; a fetcher bug is a miss
         logger.warning("[PRICE] rest_json fetch crashed for %s/%s: %s", domain, product_name, exc)
         return None

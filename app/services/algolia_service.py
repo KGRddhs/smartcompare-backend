@@ -33,6 +33,7 @@ from typing import Optional, Dict, Any, List
 from app.services.cache_service import get_cached, set_cached
 from app.services.price_service import (
     strict_title_match,
+    _selection_match,
     numbers_match,
     normalize_words,
     is_counterfeit_listing,
@@ -476,7 +477,8 @@ def _overlap_score(p_words: set, surface: str) -> float:
 
 
 def _catalog_match_hit(
-    hits: List[Dict[str, Any]], product_name: str, store: Dict[str, Any]
+    hits: List[Dict[str, Any]], product_name: str, store: Dict[str, Any],
+    resolved_category: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
     """STRICT title/brand best-match over catalog-store hits (per-store title
     fields + the pinned currency for price presence). Reuses the same gates as
@@ -500,6 +502,14 @@ def _catalog_match_hit(
             continue
         if not strict_title_match(product_name, surface):
             continue
+        # Keystone variant-add guard (independent review CRITICAL) — strict_title_match is
+        # SUBSET-based, so a token-ADD sibling (AirPods Pro->Pro 2, Aventus->Aventus Cologne)
+        # passed it; the category-aware _selection_match rejects it. Pass the hit brand so a
+        # brand word in the title ("Apple"/"Samsung") is stripped, not read as a variant-add.
+        # Flag-safe (True when off).
+        _cand_brand = str(hit.get("brand") or hit.get("brand_name") or hit.get("manufacturer") or "")
+        if not _selection_match(product_name, surface, resolved_category, candidate_brand=_cand_brand):
+            continue
         score = _overlap_score(p_words, surface)
         if score < 0.4:
             continue
@@ -522,7 +532,7 @@ def _hit_title(hit: Dict[str, Any]) -> str:
 
 
 def _match_algolia_hit(
-    hits: List[Dict[str, Any]], product_name: str
+    hits: List[Dict[str, Any]], product_name: str, resolved_category: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
     """Best STRICT title/brand match among `hits`, or None.
 
@@ -548,6 +558,12 @@ def _match_algolia_hit(
         if not numbers_match(product_name, surface):
             continue
         if not strict_title_match(product_name, surface):
+            continue
+        # Keystone variant-add guard (independent review CRITICAL) — see _catalog_match_hit.
+        # candidate_brand strips a brand word in the surface (the surface IS brand+name, so
+        # "Fenty Beauty"/"Nike" would otherwise read as variant-adds).
+        _cand_brand = str(hit.get("brand_name") or hit.get("brand") or hit.get("main_brand") or "")
+        if not _selection_match(product_name, surface, resolved_category, candidate_brand=_cand_brand):
             continue
         score = _overlap_score(p_words, surface)
         if score < 0.4:
@@ -589,7 +605,7 @@ async def fetch_algolia_price(
     # carry pinned config (no harvest) + a per-store currency + genuine flag, and
     # the GCC ones convert -> converted_usd.
     if norm_domain in ALGOLIA_EXPLICIT_STORES:
-        return await _fetch_explicit_store_price(norm_domain, product_name)
+        return await _fetch_explicit_store_price(norm_domain, product_name, resolved_category=category)
 
     cfg = await _harvest_config(domain)
     if not cfg:
@@ -604,7 +620,7 @@ async def fetch_algolia_price(
         record_failure(_ALGOLIA_PROVIDER)
         return None
 
-    hit = _match_algolia_hit(hits, product_name)
+    hit = _match_algolia_hit(hits, product_name, resolved_category=category)
     if not hit:
         return None
 
@@ -656,7 +672,7 @@ def _content_safe(surface: str) -> bool:
 
 
 async def _fetch_explicit_store_price(
-    domain: str, product_name: str
+    domain: str, product_name: str, resolved_category: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
     """R3c orchestrator for the EXPLICIT-KEY catalog stores. Queries with the
     pinned config, strict-matches, then stamps EITHER a genuine ``local_bhd``
@@ -667,7 +683,7 @@ async def _fetch_explicit_store_price(
         return None
 
     hits = await _algolia_query_explicit(store, product_name)
-    hit = _catalog_match_hit(hits, product_name, store)
+    hit = _catalog_match_hit(hits, product_name, store, resolved_category=resolved_category)
     if not hit:
         return None
 

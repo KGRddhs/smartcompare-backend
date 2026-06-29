@@ -78,7 +78,7 @@ async def test_discovery_prefetch_starts_concurrently_with_shopping():
                               "price": "$449", "link": "https://x"}],
                 "organic": [], "shopping_region": "us_fallback"}
 
-    def fake_extract(name, items, cur, shopping_region=None):
+    def fake_extract(name, items, cur, shopping_region=None, **kwargs):
         return {"amount": 168.82, "currency": "BHD", "original_currency": "USD",
                 "retailer": "Best Buy", "source_method": "converted_usd", "retailer_score": 0.5}
 
@@ -129,7 +129,7 @@ async def test_genuine_tier1_cancels_prefetch_no_orphan():
         return {"shopping": [{"title": "x", "source": "y", "price": "1", "link": "z"}],
                 "organic": [], "shopping_region": "bh"}
 
-    def fake_extract(name, items, cur, shopping_region=None):
+    def fake_extract(name, items, cur, shopping_region=None, **kwargs):
         # GENUINE local_bhd Tier-1 → short-circuits (no escalation).
         return {"amount": 99.0, "currency": "BHD", "original_currency": "BHD",
                 "retailer": "noon", "source_method": "local_bhd", "retailer_score": 0.6}
@@ -170,7 +170,7 @@ async def test_prefetch_SKIPPED_when_algolia_sources_exist():
         return {"shopping": [{"title": "x", "source": "y", "price": "1", "link": "z"}],
                 "organic": [], "shopping_region": "us_fallback"}
 
-    def fake_extract(name, items, cur, shopping_region=None):
+    def fake_extract(name, items, cur, shopping_region=None, **kwargs):
         return {"amount": 50.0, "currency": "BHD", "original_currency": "USD",
                 "retailer": "Foo", "source_method": "converted_usd", "retailer_score": 0.5}
 
@@ -235,7 +235,7 @@ async def test_prefetch_FIRES_for_shopify_category_with_lulu_discovery(category)
         return {"shopping": [{"title": "x", "source": "y", "price": "1", "link": "z"}],
                 "organic": [], "shopping_region": "us_fallback"}
 
-    def fake_extract(name, items, cur, shopping_region=None):
+    def fake_extract(name, items, cur, shopping_region=None, **kwargs):
         return {"amount": 50.0, "currency": "BHD", "original_currency": "USD",
                 "retailer": "Foo", "source_method": "converted_usd", "retailer_score": 0.5}
 
@@ -343,7 +343,7 @@ class TestInvariantsPreserved:
                                   "price": "$449", "link": "https://x/bb"}],
                     "organic": [], "shopping_region": "us_fallback"}
 
-        def fake_extract(name, items, cur, shopping_region=None):
+        def fake_extract(name, items, cur, shopping_region=None, **kwargs):
             return {"amount": 168.82, "currency": "BHD", "original_currency": "USD",
                     "retailer": "Best Buy", "source_method": "converted_usd", "retailer_score": 0.5}
 

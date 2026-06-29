@@ -35,6 +35,11 @@ def _product(name, category="fragrances", price=None):
     None / a bare float to exercise SIB-5."""
     if price is None:
         price = {"amount": 80.0, "currency": "BHD", "source_method": "local_bhd"}
+    # Real cascade prices carry a resolved title + PDP url; inject into any priced dict so
+    # the fixture is realistic (the chokepoint pends only a genuine price with NO title
+    # AND NO url — coverage review F).
+    if isinstance(price, dict) and price.get("amount") is not None:
+        price = {"title": name, "url": f"https://store.bh/p/{name.split()[0].lower()}", **price}
     return {
         "brand": name.split()[0], "name": name, "full_name": name,
         "category": category,

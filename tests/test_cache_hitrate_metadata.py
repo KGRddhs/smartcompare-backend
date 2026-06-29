@@ -83,17 +83,24 @@ class TestMetadataIntegration:
     def test_keys_present_in_built_response_metadata(self):
         """The two keys appear in a built response's metadata block."""
         from app.services.response_builder import build_comparison_response
+        # Realistic genuine cached prices carry a title + a valid PDP URL + in_stock
+        # (the correctness chokepoint pends a price that lacks them — B5), so the
+        # SHOWN-price metadata (cache_hit / genuine_from_cache) is exercised honestly.
         product_data = [
             {
                 "brand": "Apple", "name": "iPhone 15",
                 "price": {"amount": 80.0, "currency": "BHD",
-                          "source_method": "page_scrape_jsonld", "_cached": True},
+                          "source_method": "page_scrape_jsonld", "_cached": True,
+                          "title": "Apple iPhone 15", "in_stock": True,
+                          "url": "https://www.sharafdg.com/product/apple-iphone-15/"},
                 "specs": {"display": "6.1"}, "reviews": {},
             },
             {
                 "brand": "Samsung", "name": "Galaxy S24",
                 "price": {"amount": 95.0, "currency": "BHD",
-                          "source_method": "local_bhd", "_cached": True},
+                          "source_method": "local_bhd", "_cached": True,
+                          "title": "Samsung Galaxy S24", "in_stock": True,
+                          "url": "https://www.sharafdg.com/product/samsung-galaxy-s24/"},
                 "specs": {"display": "6.2"}, "reviews": {},
             },
         ]

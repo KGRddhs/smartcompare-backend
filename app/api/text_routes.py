@@ -624,12 +624,71 @@ async def get_gcc_prices(
     search_query = f"{brand} {name} {variant or ''}".strip()
     
     result = await get_regional_prices(brand, name, variant, search_query)
-    
+
     return {
         "product": product,
         "variant": variant,
         "search_query": search_query,
         **result
+    }
+
+
+@router.get("/price-kpi")
+@limiter.limit("30/minute")
+async def price_kpi(
+    request: Request,
+    q: str = Query(..., max_length=200, description="Single-product query"),
+    region: str = Query("bahrain", max_length=20),
+    nocache: bool = Query(True, description="Bypass cache (COLD KPI); false = WARMED"),
+):
+    """SINGLE-PRODUCT price resolution for the usable_exact_genuine KPI (external
+    review #1). The KPI cannot use /compare (it rejects a query resolving to <2
+    products). This runs the REAL parser (`parse_product_query`) + the full price
+    cascade (`_get_price`) + the `is_price_showable(enforce_correctness=True)`
+    display backstop, and returns a ``{products: [{price}]}`` body the KPI harness
+    reads at index 0 — so the metric is measured through the real ASGI app + parser,
+    not a fabricated mock. Internal/measurement surface; rate-limited.
+    """
+    from app.services.extraction_service import parse_product_query
+    from app.services.price_service import (
+        is_price_showable, make_pending_price, public_price_view,
+        _infer_category_from_query,
+    )
+    service = get_comparison_service()
+    try:
+        parsed, _usage = await parse_product_query(q)
+    except Exception:  # noqa: BLE001 — a parser failure falls back to a naive single product
+        parsed = {}
+    products = (parsed or {}).get("products") or []
+    p0 = products[0] if products else {}
+    brand = (p0.get("brand") or "").strip()
+    name = (p0.get("name") or q).strip()
+    variant = p0.get("variant")
+    category = (p0.get("category") or _infer_category_from_query(q) or "other")
+    search_query = (f"{brand} {name} {variant or ''}".strip()) or q
+    full_name = (f"{brand} {name}".strip()) or q
+
+    price = await service._get_price(brand, name, variant, region, search_query, nocache, category)
+
+    showable = (
+        isinstance(price, dict)
+        and price.get("unavailable") is not True
+        and is_price_showable(full_name, price, category, enforce_correctness=True)
+    )
+    if not showable:
+        price = make_pending_price(
+            currency=(price.get("currency") if isinstance(price, dict) else None) or "BHD",
+            reason="pending_genuine",
+        )
+
+    public = public_price_view(price)
+    return {
+        "success": True,
+        "query": q,
+        "category": category,
+        "products": [{"brand": brand, "name": name, "category": category, "price": public}],
+        # `overview.products[0].price` is the shape the KPI's usable_exact_genuine_for_product reads.
+        "overview": {"products": [{"price": public}]},
     }
 
 

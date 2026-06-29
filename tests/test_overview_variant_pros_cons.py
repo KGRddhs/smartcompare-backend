@@ -177,7 +177,8 @@ def test_overview_pros_cons_populated_from_product_data():
     # from product_data, not the pending-price drop — so give Alpha a showable
     # price (genuine local_bhd) so "Pricey" legitimately survives and the
     # populate assertions hold.
-    products[0]["price"] = {"amount": 100, "currency": "BHD", "source_method": "local_bhd"}
+    products[0]["price"] = {"amount": 100, "currency": "BHD", "source_method": "local_bhd",
+                            "title": products[0]["name"], "url": "https://store.bh/p/alpha"}
     resp = build_comparison_response(
         products=products,
         comparison={"winner_index": 0},

@@ -44,11 +44,14 @@ class TestNewAdapterCascadeWiring:
             lambda c: [_live("ownperfumes.com", "woo_store_json")],
         )
 
-        async def fake_woo(domain, product_name, currency="BHD"):
+        async def fake_woo(domain, product_name, currency="BHD", **kwargs):
+            # The real woo adapter (_match_woo_product) carries the matched title;
+            # the consume select_best require-title gate (B5) drops a title-less price.
             return {
                 "amount": 21.5, "currency": "BHD", "retailer": "ownperfumes.com",
                 "url": "https://ownperfumes.com/product/x", "in_stock": True,
-                "estimated": False, "source_method": "woo_store_api", "confidence": 0.9,
+                "title": "Creed Aventus", "estimated": False,
+                "source_method": "woo_store_api", "confidence": 0.9,
             }
         monkeypatch.setattr(scs, "fetch_woocommerce_store_api_price", fake_woo)
 
@@ -81,7 +84,7 @@ class TestNewAdapterCascadeWiring:
             lambda c: [_live("perfumya.com", "salla_api")],
         )
 
-        async def fake_salla_converted(domain, product_name, currency="BHD"):
+        async def fake_salla_converted(domain, product_name, currency="BHD", **kwargs):
             return {
                 "amount": 18.0, "currency": "BHD", "original_currency": "SAR",
                 "retailer": "perfumya.com", "url": "https://perfumya.com/p/x",
@@ -117,7 +120,7 @@ class TestNewAdapterCascadeWiring:
             lambda c: [_live("ownperfumes.com", "woo_store_json")],
         )
 
-        async def fake_woo_none(domain, product_name, currency="BHD"):
+        async def fake_woo_none(domain, product_name, currency="BHD", **kwargs):
             return None
         monkeypatch.setattr(scs, "fetch_woocommerce_store_api_price", fake_woo_none)
 

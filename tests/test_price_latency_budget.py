@@ -79,7 +79,7 @@ async def test_prefetched_shopify_consumed_not_refired(monkeypatch):
 
     shopify_calls = {"n": 0}
 
-    async def _fake_shopify(domain, full_name, currency):
+    async def _fake_shopify(domain, full_name, currency, **kwargs):
         shopify_calls["n"] += 1
         # Genuine BH hit on the OFFICIAL domain → short-circuits the block.
         return {

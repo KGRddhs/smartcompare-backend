@@ -1,0 +1,36 @@
+{
+  "_metadata": {
+    "schema_version": 1,
+    "authored_at": "2026-06-27",
+    "author": "genuine-price CORRECTNESS build — Wave D KPI",
+    "kpi": "usable_exact_genuine",
+    "definition": "usable_exact_genuine = (exact requested SKU/variant AND native BHD AND a current in-stock PDP price AND a valid PDP URL) / ALL requested products (including those that PEND). Provenance (source_method in GENUINE_BH_SOURCE_METHODS) is necessary but NOT sufficient — the price must also be the EXACT product and in-stock on a valid PDP.",
+    "how_measured": "scripts/eval_runner.usable_exact_genuine_for_product(body, idx, truth_entry): a product COUNTS as usable_exact_genuine iff its response price (a) is NOT pending/unavailable, (b) has a source_method in GENUINE_BH_SOURCE_METHODS, (c) in_stock is not False, (d) carries a valid PDP url (present and not a listing/search surface), and (e) is_exact_match(truth.expected_identity, price.title-or-name/the resolved query, truth.category). Measure COLD (nocache=true) and WARMED (--read-cache) SEPARATELY.",
+    "gate": "Phase 2 (warmer activation) is gated on usable_exact_genuine >= 0.85 for electronics, fashion, and fragrances on this NON-CIRCULAR truth set, measured WARMED.",
+    "non_circular": "These products are DELIBERATELY DISJOINT from data/warmer_catalog.json (Phase 2 warms that set; reading it back would measure the warm, not correctness). tests/test_kpi_set_disjoint_from_warmer.py pins the disjointness.",
+    "expansion": "SEED set (single-product, canonical exact-SKU query forms). Phase 2 expands each category to 30-50 real BH-available SKUs with a Serper-verified current genuine BHD reference band, then runs the COLD + WARMED eval. Authoring the full set is Serper-heavy and belongs in the Phase-2 session.",
+    "id_prefix": "kpi- (never collides with gold 'q-' or warmer 'warm-' ids)"
+  },
+  "products": [
+    {"id": "kpi-elec-001", "query": "iPhone 15 256GB", "category": "electronics", "region": "bahrain", "expected": {"brand": "Apple", "model": "iPhone 15", "storage_gb": 256}},
+    {"id": "kpi-elec-002", "query": "Samsung Galaxy S24 256GB", "category": "electronics", "region": "bahrain", "expected": {"brand": "Samsung", "model": "Galaxy S24", "storage_gb": 256}},
+    {"id": "kpi-elec-003", "query": "Samsung Galaxy S24 Ultra 256GB", "category": "electronics", "region": "bahrain", "expected": {"brand": "Samsung", "model": "Galaxy S24 Ultra", "storage_gb": 256}},
+    {"id": "kpi-elec-004", "query": "Apple iPad Air 11-inch M2 128GB", "category": "electronics", "region": "bahrain", "expected": {"brand": "Apple", "model": "iPad Air 11 M2", "storage_gb": 128}},
+    {"id": "kpi-elec-005", "query": "MacBook Air 13 M3 256GB", "category": "electronics", "region": "bahrain", "expected": {"brand": "Apple", "model": "MacBook Air M3", "storage_gb": 256}},
+    {"id": "kpi-elec-006", "query": "Nintendo Switch OLED", "category": "electronics", "region": "bahrain", "expected": {"brand": "Nintendo", "model": "Switch OLED"}},
+
+    {"id": "kpi-frag-001", "query": "YSL Black Opium Eau de Parfum 90ml", "category": "fragrances", "region": "bahrain", "expected": {"brand": "Yves Saint Laurent", "model": "Black Opium", "concentration": "EDP", "size_ml": 90}},
+    {"id": "kpi-frag-002", "query": "Giorgio Armani Acqua di Gio Eau de Toilette 100ml", "category": "fragrances", "region": "bahrain", "expected": {"brand": "Giorgio Armani", "model": "Acqua di Gio", "concentration": "EDT", "size_ml": 100}},
+    {"id": "kpi-frag-003", "query": "Carolina Herrera Good Girl Eau de Parfum 80ml", "category": "fragrances", "region": "bahrain", "expected": {"brand": "Carolina Herrera", "model": "Good Girl", "concentration": "EDP", "size_ml": 80}},
+    {"id": "kpi-frag-004", "query": "Lancome La Vie Est Belle Eau de Parfum 100ml", "category": "fragrances", "region": "bahrain", "expected": {"brand": "Lancome", "model": "La Vie Est Belle", "concentration": "EDP", "size_ml": 100}},
+    {"id": "kpi-frag-005", "query": "Prada Luna Rossa Carbon Eau de Toilette 100ml", "category": "fragrances", "region": "bahrain", "expected": {"brand": "Prada", "model": "Luna Rossa Carbon", "concentration": "EDT", "size_ml": 100}},
+    {"id": "kpi-frag-006", "query": "Valentino Donna Born in Roma Eau de Parfum 100ml", "category": "fragrances", "region": "bahrain", "expected": {"brand": "Valentino", "model": "Donna Born in Roma", "concentration": "EDP", "size_ml": 100}},
+
+    {"id": "kpi-fash-001", "query": "Nike Air Force 1 07 White", "category": "fashion", "region": "bahrain", "expected": {"brand": "Nike", "model": "Air Force 1 07", "colorway": "White"}},
+    {"id": "kpi-fash-002", "query": "Adidas Samba OG", "category": "fashion", "region": "bahrain", "expected": {"brand": "Adidas", "model": "Samba OG"}},
+    {"id": "kpi-fash-003", "query": "Levis 501 Original Fit Jeans", "category": "fashion", "region": "bahrain", "expected": {"brand": "Levis", "model": "501 Original"}},
+    {"id": "kpi-fash-004", "query": "Ray-Ban Aviator Classic RB3025", "category": "fashion", "region": "bahrain", "expected": {"brand": "Ray-Ban", "model": "Aviator Classic RB3025"}},
+    {"id": "kpi-fash-005", "query": "Lacoste L1212 Classic Fit Polo", "category": "fashion", "region": "bahrain", "expected": {"brand": "Lacoste", "model": "L1212 Polo"}},
+    {"id": "kpi-fash-006", "query": "Tommy Hilfiger Flag Logo T-Shirt", "category": "fashion", "region": "bahrain", "expected": {"brand": "Tommy Hilfiger", "model": "Flag Logo T-Shirt"}}
+  ]
+}

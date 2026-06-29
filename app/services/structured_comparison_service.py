@@ -717,6 +717,30 @@ def _price_cache_bust_enabled() -> bool:
     return os.environ.get("PRICE_CACHE_BUST", "false").lower() == "true"
 
 
+def _cache_price_identity_ok(cached: Any, brand: str, name: str, category: str) -> bool:
+    """Coverage review D — REVALIDATE a cache READ against the request identity before
+    serving it. A poisoned legacy entry (a wrong variant written under the request key
+    before the gate, or by a raw-write bypass) is otherwise served for the full TTL with
+    no re-check. Returns False (→ caller treats as a miss + re-resolves) when the cached
+    price carries a TITLE that does NOT match the request. A title-less cached price is
+    served (benign — nothing to verify, don't over-invalidate). No-op when the gate is OFF."""
+    try:
+        from app.services.price_service import exact_gate_enabled, _backstop_identity_ok
+    except Exception:  # noqa: BLE001
+        return True
+    if not exact_gate_enabled() or not isinstance(cached, dict):
+        return True
+    title = cached.get("title") or cached.get("name")
+    if not title:
+        return True
+    # Use the AXIS-ONLY backstop (not the full superset _selection_match): a cache READ
+    # should drop a poisoned WRONG-AXIS legacy entry (S24 vs S24 FE, EDP vs EDT, 256 vs
+    # 128 — the documented warm-cache leaks) but NOT over-invalidate a genuine DESCRIPTIVE
+    # title (which the full superset would, re-resolving every cold hit and DEFEATING the
+    # warmer — coverage review HIGH). New writes are already gated by the full should_cache.
+    return _backstop_identity_ok(f"{brand} {name}".strip(), title, category)
+
+
 async def _timed_task(label: str, coro, timings_dict):
     """Await a coroutine and record its elapsed time into timings_dict[label + '_ms'].
     Safe inside asyncio.gather — each wrapper records its OWN per-task wall (independent
@@ -743,6 +767,12 @@ from app.services.price_service import (
     is_implausible_high_value_price,
     is_implausible_low_fragrance_price,
     is_price_showable,
+    select_best,
+    should_cache_price,
+    public_price_view,
+    make_pending_price,
+    _infer_category_from_query,
+    set_resolved_price_category,
     shopping_listing_matches,
     reconcile_pair_sizes,
     reconcile_pair_fairness,
@@ -2980,7 +3010,7 @@ class StructuredComparisonService:
                     _price = make_pending_price(currency="BHD", reason="pending_genuine")
                     _best = None
                     _retailer = None
-                elif _price.get("unavailable") is not True and not is_price_showable(_name, _price):
+                elif _price.get("unavailable") is not True and not is_price_showable(_name, _price, pd.get("category") or _infer_category_from_query(_name), enforce_correctness=True):
                     # Non-showable resolved price → pending (don't clobber an
                     # already-pending upstream reason like size_mismatch).
                     _price = make_pending_price(
@@ -2991,7 +3021,9 @@ class StructuredComparisonService:
                     _retailer = None
                 prices_payload[key] = {
                     "brand": pd.get("brand"), "name": pd.get("name"),
-                    "price": _price, "best_price": _best,
+                    # B7 — strip internal diagnostics (guard_rejected + _-keys) from the
+                    # SSE price surface too (parity with the sync overview projection).
+                    "price": public_price_view(_price), "best_price": _best,
                     "currency": pd.get("currency"), "retailer": _retailer,
                 }
             yield ("prices", prices_payload)
@@ -4105,6 +4137,11 @@ class StructuredComparisonService:
         search_query: str, nocache: bool = False, category: str = "other"
     ) -> Dict[str, Any]:
         """Get price with 3-tier strategy."""
+        # Publish the orchestrator-resolved category for THIS task so every downstream
+        # extractor (incl. the un-threaded render/page-scrape chain) resolves identity on the
+        # right axes — closes the bare-compound/brand-omitted-line leak (coverage review R8 +
+        # independent review). Per-task ContextVar → no cross-product contamination.
+        set_resolved_price_category(category)
         if not validate_price_query(brand, name, region):
             return {"amount": 0, "currency": "BHD", "estimated": True, "source_method": "validation_rejected"}
 
@@ -4123,6 +4160,10 @@ class StructuredComparisonService:
         # warm — they gate on `nocache` in _fetch_product_data, not this flag).
         price_nocache = nocache or _price_cache_bust_enabled()
         cached = get_cached(cache_key) if not price_nocache else None
+        if cached and not _cache_price_identity_ok(cached, brand, name, category):
+            logger.info("[PRICE] cache-read identity revalidation dropped a poisoned "
+                        "entry for %s %s — re-resolving", brand, name)
+            cached = None
         if cached:
             cached["_cached"] = True
             return cached
@@ -4131,6 +4172,8 @@ class StructuredComparisonService:
         if not price_nocache:
             from app.services.product_data_service import get_cached_price
             db_price = await get_cached_price(cache_key, region)
+            if db_price and not _cache_price_identity_ok(db_price, brand, name, category):
+                db_price = None
             if db_price:
                 set_cached(cache_key, db_price, price_cache_ttl(db_price))
                 db_price["_cached"] = True
@@ -4206,8 +4249,12 @@ class StructuredComparisonService:
                 for _zdomain in ZYTE_STORES:
                     _zp = await fetch_zyte_price(_zdomain, full_name, currency, category, brand=brand)
                     if _zp and _zp.get("amount", 0) > 0:
-                        set_cached(cache_key, _zp, price_cache_ttl(_zp))
-                        self._save_price_to_db(cache_key, brand, name, variant, region, _zp)
+                        # Gate the off-clock Zyte write on the fail-closed identity check so an
+                        # unverified/OOS/wrong-concentration luxury render can't poison the shared
+                        # cache (coverage review D — was a raw set_cached bypass).
+                        if should_cache_price(full_name, _zp, category):
+                            set_cached(cache_key, _zp, price_cache_ttl(_zp))
+                            self._save_price_to_db(cache_key, brand, name, variant, region, _zp)
                         _zp["_cached"] = False
                         logger.info(
                             "[PRICE] Zyte render-tier genuine for %s: %.3f BHD via %s",
@@ -4418,7 +4465,7 @@ class StructuredComparisonService:
                 _prefetched_direct["shopify"] = asyncio.ensure_future(
                     asyncio.gather(
                         *(
-                            fetch_shopify_price(s.domain, full_name, currency)
+                            fetch_shopify_price(s.domain, full_name, currency, resolved_category=category)
                             for s in _shopify_sources_pf
                         ),
                         return_exceptions=True,
@@ -4498,7 +4545,11 @@ class StructuredComparisonService:
                     asyncio.gather(
                         *(
                             _timeout_none(
-                                lambda s=s, fn=_na_fn: fn(s.domain, full_name, currency),
+                                # thread the ORCHESTRATOR-RESOLVED category so the
+                                # variant-add guard engages for queries the weak
+                                # keyword inference would miss (bare "Magnesium")
+                                # (coverage/independent review).
+                                lambda s=s, fn=_na_fn: fn(s.domain, full_name, currency, resolved_category=category),
                                 _ADAPTER_TIMEOUT,
                             )
                             for s in _na_srcs
@@ -4669,9 +4720,26 @@ class StructuredComparisonService:
                     price_dicts=observed,
                 )
                 return None
-            # Lowest valid BHD among the GENUINE adapter hits (a real BH shelf
-            # price — already is_price_showable-gated inside each adapter).
-            best = min(genuine_observed, key=lambda d: d["amount"])
+            # CORRECTNESS (Tier-2 cross-adapter) — pick the MOST AUTHORITATIVE genuine
+            # adapter hit that is EXACT ∧ in-stock ∧ valid-URL, NEVER the cheapest
+            # (the old min(amount) shipped a wrong-but-cheaper genuine SKU). select_best
+            # re-applies the identity+axis gate across adapters; if NO genuine hit is
+            # exact/in-stock/valid it returns None → don't short-circuit, seed the
+            # observations and let the cascade keep looking (like the no-genuine case).
+            best = select_best(genuine_observed, full_name, category)
+            if best is None:
+                # NO-FAB (review H4) — genuine adapter hits EXISTED but every one was
+                # filtered (OOS / non-exact / listing-URL). That is a TRANSIENT gap
+                # (a sold-out exact PDP is back in hours), NOT a structural dead-end:
+                # flag guard_rejected so the downstream negative-cache uses the 24h
+                # transient TTL, never the 30-day structural freeze.
+                nonlocal _guard_rejected_this_request
+                _guard_rejected_this_request = True
+                self._seed_shortcircuit_candidates(
+                    full_name, kind="price_dicts", currency=currency,
+                    price_dicts=observed,
+                )
+                return None
             win_domain = str(best.get("retailer") or "").replace("www.", "").lower()
             self._tier15_routes[full_name] = {
                 "route": "bh_adapter_direct",
@@ -4690,8 +4758,12 @@ class StructuredComparisonService:
                 full_name, kind="price_dicts", currency=currency,
                 price_dicts=observed,
             )
-            set_cached(cache_key, best, price_cache_ttl(best))
-            self._save_price_to_db(cache_key, brand, name, variant, region, best)
+            # B6 — gate the genuine-TTL cache + DB write on the resolved identity
+            # matching the request (the converted/page-scrape `best` does not pass
+            # through select_best on every path).
+            if should_cache_price(full_name, best, category):
+                set_cached(cache_key, best, price_cache_ttl(best))
+                self._save_price_to_db(cache_key, brand, name, variant, region, best)
             best["_cached"] = False
             logger.info(
                 "[PRICE] BH adapter direct hit for %s: %.3f %s via %s "
@@ -4734,7 +4806,8 @@ class StructuredComparisonService:
         converted_fallback = None
 
         price = extract_price_from_shopping(
-            full_name, shopping_items, currency, shopping_region=shopping_region
+            full_name, shopping_items, currency, shopping_region=shopping_region,
+            category=category,
         )
         if price and price.get("amount"):
             if price.get("retailer_score", 0) >= 1.0:
@@ -4788,8 +4861,8 @@ class StructuredComparisonService:
                     self._seed_shortcircuit_candidates(
                         full_name, kind="tier1_shopping", currency=currency,
                     )
-                    set_cached(cache_key, price, price_cache_ttl(price))
-                    self._save_price_to_db(cache_key, brand, name, variant, region, price)
+                    self._persist_genuine_price(
+                        cache_key, price, brand, name, variant, region, full_name, category)
                     price["_cached"] = False
                     return price
 
@@ -4868,7 +4941,7 @@ class StructuredComparisonService:
                         shop_results = await asyncio.wait_for(
                             asyncio.gather(
                                 *(
-                                    fetch_shopify_price(s.domain, full_name, currency)
+                                    fetch_shopify_price(s.domain, full_name, currency, resolved_category=category)
                                     for s in shopify_sources
                                 ),
                                 return_exceptions=True,
@@ -4924,10 +4997,8 @@ class StructuredComparisonService:
                             full_name, kind="price_dicts", currency=currency,
                             price_dicts=shop_results,
                         )
-                        set_cached(cache_key, shop_best, price_cache_ttl(shop_best))
-                        self._save_price_to_db(
-                            cache_key, brand, name, variant, region, shop_best
-                        )
+                        self._persist_genuine_price(
+                            cache_key, shop_best, brand, name, variant, region, full_name, category)
                         shop_best["_cached"] = False
                         logger.info(
                             "[PRICE] Shopify OFFICIAL-domain hit for %s: %.3f %s "
@@ -5015,10 +5086,8 @@ class StructuredComparisonService:
                         full_name, kind="price_dicts", currency=currency,
                         price_dicts=algolia_results,
                     )
-                    set_cached(cache_key, algolia_best, price_cache_ttl(algolia_best))
-                    self._save_price_to_db(
-                        cache_key, brand, name, variant, region, algolia_best
-                    )
+                    self._persist_genuine_price(
+                        cache_key, algolia_best, brand, name, variant, region, full_name, category)
                     algolia_best["_cached"] = False
                     logger.info(
                         "[PRICE] Algolia direct hit for %s: %.3f %s via %s "
@@ -5210,8 +5279,8 @@ class StructuredComparisonService:
                             ),
                         }
                     record_tier15_hit(category, win_domain or None)
-                    set_cached(cache_key, winning_price, price_cache_ttl(winning_price))
-                    self._save_price_to_db(cache_key, brand, name, variant, region, winning_price)
+                    self._persist_genuine_price(
+                        cache_key, winning_price, brand, name, variant, region, full_name, category)
                     winning_price["_cached"] = False
                     if fan_result.get("cancelled_count", 0) > 0:
                         logger.info(
@@ -5313,10 +5382,8 @@ class StructuredComparisonService:
                 }
                 record_tier15_attempt(category)
                 record_tier15_hit(category, win_domain or None)
-                set_cached(cache_key, shopify_fallback, price_cache_ttl(shopify_fallback))
-                self._save_price_to_db(
-                    cache_key, brand, name, variant, region, shopify_fallback
-                )
+                self._persist_genuine_price(
+                    cache_key, shopify_fallback, brand, name, variant, region, full_name, category)
                 shopify_fallback["_cached"] = False
                 logger.info(
                     "[PRICE] Shopify reseller FALLBACK used for %s: %.3f %s via %s "
@@ -5393,7 +5460,10 @@ class StructuredComparisonService:
                         "title": full_name,
                     }]
                 _maybe_park_supplement(iherb_price)
-                set_cached(cache_key, iherb_price, price_cache_ttl(iherb_price))
+                # B6 — only cache under the request key when the resolved iHerb
+                # product's identity matches the request (defense-in-depth).
+                if should_cache_price(full_name, iherb_price, category):
+                    set_cached(cache_key, iherb_price, price_cache_ttl(iherb_price))
                 return iherb_price
 
             iherb_task = search_web(f"{iherb_query} iherb price", num_results=5, country=iherb_cc)
@@ -5422,7 +5492,9 @@ class StructuredComparisonService:
             if pharmacy_price:
                 pharmacy_price["_cached"] = False
                 _maybe_park_supplement(pharmacy_price)
-                set_cached(cache_key, pharmacy_price, price_cache_ttl(pharmacy_price))
+                # B6 — cache under the request key only on a resolved-identity match.
+                if should_cache_price(full_name, pharmacy_price, category):
+                    set_cached(cache_key, pharmacy_price, price_cache_ttl(pharmacy_price))
                 return pharmacy_price
 
             # --- Stage 3: page-scrape known supplement/pharmacy PDPs (bounded ~3s) ---
@@ -5472,7 +5544,12 @@ class StructuredComparisonService:
                 if page_price and page_price.get("amount"):
                     page_price["_cached"] = False
                     _maybe_park_supplement(page_price)
-                    set_cached(cache_key, page_price, price_cache_ttl(page_price))
+                    # Gate the supplement page_scrape write on the fail-closed identity check
+                    # (coverage review D — was the one genuine write that bypassed
+                    # should_cache_price, able to cache an OOS / no-url / wrong-variant price).
+                    # Still RETURN it for display so the chokepoint pends an OOS/unverifiable one.
+                    if should_cache_price(full_name, page_price, category):
+                        set_cached(cache_key, page_price, price_cache_ttl(page_price))
                     return page_price
 
             combined_organic = iherb_organic + bh_organic
@@ -5606,8 +5683,8 @@ class StructuredComparisonService:
                 # gpt_organic_extract fails is_price_showable and is NEVER parked.
                 if is_supplement:
                     _maybe_park_supplement(price)
-                set_cached(cache_key, price, price_cache_ttl(price))
-                self._save_price_to_db(cache_key, brand, name, variant, region, price)
+                self._persist_genuine_price(
+                    cache_key, price, brand, name, variant, region, full_name, category)
                 price["_cached"] = False
                 return price
 
@@ -5627,11 +5704,12 @@ class StructuredComparisonService:
                 price = extract_price_from_shopping(
                     broader_name, broader_shopping, currency,
                     shopping_region=broader_results.get("shopping_region"),
+                    category=category,
                 )
                 if price and price.get("amount"):
                     price.pop("retailer_score", None)
-                    set_cached(cache_key, price, price_cache_ttl(price))
-                    self._save_price_to_db(cache_key, brand, name, variant, region, price)
+                    self._persist_genuine_price(
+                        cache_key, price, brand, name, variant, region, full_name, category)
                     price["_cached"] = False
                     return price
 
@@ -5644,8 +5722,8 @@ class StructuredComparisonService:
                 converted_fallback["url"] = build_retailer_url(
                     converted_fallback["retailer"], full_name
                 )
-            set_cached(cache_key, converted_fallback, price_cache_ttl(converted_fallback))
-            self._save_price_to_db(cache_key, brand, name, variant, region, converted_fallback)
+            self._persist_genuine_price(
+                cache_key, converted_fallback, brand, name, variant, region, full_name, category)
             # Task 1.3 — the FULL genuine-BH cascade ran and missed; this is a
             # structural dead-end. Record it so the next call skips the cascade.
             self._record_negative_price_cache(cache_key, converted_fallback)
@@ -5845,6 +5923,18 @@ class StructuredComparisonService:
     # ============================================
     # Cost tracking
     # ============================================
+
+    def _persist_genuine_price(self, cache_key, price_obj, brand, name, variant,
+                               region, full_name, category):
+        """B6 — cache (Redis) + persist (L2 DB) a resolved genuine price under the
+        request key ONLY when its identity matches the request (should_cache_price).
+        A no-op for an already-select_best-selected price (same matcher), so it never
+        blocks a legit price; it blocks a wrong-identity price that bypassed the
+        selector from being cached under the requested product for the genuine TTL."""
+        if not should_cache_price(full_name, price_obj, category):
+            return
+        set_cached(cache_key, price_obj, price_cache_ttl(price_obj))
+        self._save_price_to_db(cache_key, brand, name, variant, region, price_obj)
 
     def _save_price_to_db(self, cache_key: str, brand: str, name: str, variant: Optional[str], region: str, price: Dict):
         """Fire-and-forget save price to L2 DB.
@@ -6227,12 +6317,27 @@ async def get_regional_prices(
     regional = {}
     best_price = None
     best_region = None
+    # CORRECTNESS — this public endpoint (GET /text/prices/{product}) is a SECOND
+    # response surface; apply the SAME fail-closed exact backstop the compare
+    # chokepoints use, so an OOS / non-PDP-url / non-exact resolved price is PENDED
+    # here too (it must never ship its amount just because it bypassed compare).
+    _category = _infer_category_from_query(search_query)
     for region, result in zip(GCC_REGIONS.keys(), results):
         if isinstance(result, Exception):
             regional[region] = None
             continue
+        if (
+            isinstance(result, dict)
+            and result.get("unavailable") is not True
+            and not is_price_showable(search_query, result, _category, enforce_correctness=True)
+        ):
+            result = make_pending_price(
+                currency=(result.get("currency") if isinstance(result, dict) else None) or "BHD",
+                reason="pending_genuine",
+                size=result.get("size") if isinstance(result, dict) else None,
+            )
         regional[region] = result
-        if result and result.get("amount"):
+        if isinstance(result, dict) and result.get("amount"):
             amount_bhd = _convert_to_bhd(result["amount"], result.get("currency", "BHD"))
             if best_price is None or amount_bhd < best_price:
                 best_price = amount_bhd

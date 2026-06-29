@@ -34,6 +34,7 @@ from typing import Any, Dict, Optional
 
 from app.services.price_service import (
     strict_title_match,
+    _selection_match,
     numbers_match,
     variant_mismatch,
     is_counterfeit_listing,
@@ -104,7 +105,7 @@ async def _resolve_store_id(domain: str) -> Optional[str]:
 
 
 def _select_candidate(
-    data: list, product_name: str
+    data: list, product_name: str, resolved_category: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
     """Pick the first hit whose ``name`` passes the strict match gates.
 
@@ -132,6 +133,12 @@ def _select_candidate(
             continue
         if variant_mismatch(product_name, title):
             continue
+        # Keystone variant-add guard (coverage/independent review) — strict_title_match
+        # is SUBSET-based + variant_mismatch covers only pro/max/ultra; the broad
+        # variant-add class (Mark II / mineral salt / sub-line) needs the category-aware
+        # _selection_match. Flag-safe: returns True when ENABLE_EXACT_PRICE_GATE is off.
+        if not _selection_match(product_name, title, resolved_category):
+            continue
         # price must be a positive number (MAJOR units).
         try:
             amount = float(item.get("price"))
@@ -145,6 +152,7 @@ def _select_candidate(
 
 async def fetch_salla_api_price(
     domain: str, product_name: str, currency: str = "BHD",
+    resolved_category: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
     """Genuine/converted price for a Salla storefront, or ``None``.
 
@@ -195,7 +203,7 @@ async def fetch_salla_api_price(
     if not isinstance(data, list) or not data:
         return None
 
-    item = _select_candidate(data, product_name)
+    item = _select_candidate(data, product_name, resolved_category=resolved_category)
     if item is None:
         return None
 

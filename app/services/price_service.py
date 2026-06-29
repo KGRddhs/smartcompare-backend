@@ -8,6 +8,7 @@ import json
 import time
 import asyncio
 import logging
+import unicodedata
 from typing import Optional, List, Dict, Any, Tuple
 from urllib.parse import urlparse, quote_plus, urljoin
 
@@ -652,6 +653,27 @@ def is_accessory(title: str) -> bool:
     return False
 
 
+# Unambiguous electronics ACCESSORY add-ons (a phone CASE, a CHARGER) — used by the
+# shared select_best + is_price_showable gates to reject a cheap accessory matched as
+# the device. DELIBERATELY EXCLUDES class-nouns that are PRODUCTS in their own right
+# (keyboard / mouse / headphone / earbuds / stylus / pen) and category-ambiguous words
+# (skin / glass / film) that appear in genuine skincare/makeup titles — `is_accessory`
+# (used by the per-adapter extractors) keeps the broad list; this narrow set is for the
+# correctness gates so a genuine standalone keyboard / Sony WH-1000XM5 / CeraVe is NOT
+# false-pended. Electronics-scoped at the call site.
+_DEVICE_ACCESSORY_TOKENS = frozenset({
+    "case", "cover", "charger", "charging", "cable", "adapter", "protector",
+    "dock", "cradle", "sleeve", "pouch", "casing", "bumper",
+})
+
+
+def _is_device_accessory(text: str) -> bool:
+    """True iff `text` names an electronics ACCESSORY (case/cover/charger/...). Plain
+    ASCII tokenize (the keywords are all ASCII) so it can be defined before _fold_identity."""
+    toks = set(re.findall(r"[a-z0-9]+", (text or "").lower()))
+    return bool(toks & _DEVICE_ACCESSORY_TOKENS)
+
+
 def _contains_token(name_lower: str, token: str) -> bool:
     """Whole-token (lookaround word-boundary) containment. Unlike `\\b`, the
     lookaround treats digits as part of the token so `d3`/`d-3`/`omega-3` match
@@ -824,6 +846,75 @@ def is_fragrance_query(product_name: str) -> bool:
     return any(kw in name_lower for kw in FRAGRANCE_PRODUCT_KEYWORDS)
 
 
+# The ORCHESTRATOR-RESOLVED pair category for the in-flight price fetch, set once at the
+# top of scs._get_price. A per-task ContextVar (asyncio sub-tasks inherit a COPY at creation,
+# and the pair's two _get_price tasks have independent contexts → no cross-contamination), so
+# the deep render/page-scrape extractor chain (firecrawl/scrapedo/_fetch_page_price →
+# extract_price_from_html/_jsonld) gets the authoritative category WITHOUT threading it through
+# 5 helper layers. The variant-add KEYSTONE was leaking on those paths because weak keyword
+# inference returned None for bare compounds (Magnesium) / brand-omitted lines (Galaxy Watch 6)
+# (coverage review round 8 CRITICAL + independent review). Resolution order in the extractors:
+# explicit category param > this ContextVar > _infer_category_from_query.
+import contextvars as _contextvars
+_resolved_category_ctx: "_contextvars.ContextVar[Optional[str]]" = _contextvars.ContextVar(
+    "qaren_resolved_price_category", default=None,
+)
+
+
+def set_resolved_price_category(category: Optional[str]) -> None:
+    """scs._get_price sets the in-flight pair category here so every downstream extractor
+    resolves identity on the right axes even on the un-threaded render/page-scrape paths."""
+    _resolved_category_ctx.set((category or "").strip().lower() or None)
+
+
+def _resolve_extractor_category(explicit: Optional[str], query_name: str) -> Optional[str]:
+    """explicit param > the orchestrator-resolved ContextVar > best-effort keyword inference.
+    "other" is treated as unresolved (re-infer) — a frequent LLM label that must not disable
+    the variant-add guard for a genuinely-categorizable product (round-8 CRITICAL)."""
+    cat = (explicit or "").strip().lower()
+    if cat and cat != "other":
+        return cat
+    ctx = (_resolved_category_ctx.get() or "").strip().lower()
+    if ctx and ctx != "other":
+        return ctx
+    return _infer_category_from_query(query_name) or (cat or ctx or None)
+
+
+def _infer_category_from_query(query_name: str) -> Optional[str]:
+    """Best-effort category for the exact-identity gate when a caller (jsonld /
+    page-scrape extractor) only has the query string, not the resolved category.
+    Reuses the existing query detectors so the category axes (electronics
+    qualifiers + colour aliasing, fragrance concentration, supplement count) engage
+    on the right axis. Returns None for fashion/grocery/makeup/other (the gate then
+    relies on identity-equality + the universal concentration/size/count checks)."""
+    if not query_name:
+        return None
+    # COSMETIC detectors FIRST (coverage review round 2) — a topical form word makes the
+    # product a cosmetic even when a supplement/fragrance token also matches: "Vitamin C
+    # Serum" is skincare (not supplements), "Dior Addict Lip Glow" is makeup (not
+    # fragrances). makeup before skincare (a NARS blush is makeup).
+    if is_makeup_query(query_name):
+        return "makeup"
+    if is_skincare_query(query_name):
+        return "skincare"
+    if is_haircare_query(query_name):
+        return "haircare"
+    if is_supplement_query(query_name):
+        return "supplements"
+    if is_fragrance_query(query_name):
+        return "fragrances"
+    if is_fashion_query(query_name):
+        return "fashion"
+    if is_grocery_query(query_name):
+        return "grocery"
+    # BROAD electronics (coverage review CRITICAL) — resolves AirPods/Canon R6/Kindle/
+    # headphones etc. so the variant-add guard engages on the scrape paths (was None ->
+    # guard skipped -> AirPods Pro -> Pro 2 shown).
+    if is_electronics_query(query_name):
+        return "electronics"
+    return None
+
+
 def _effective_fragrance_size_ml(query_name: str, title: Optional[str]) -> float:
     """The size (ml) to floor against: the smallest size token found in the
     candidate `title` first (the listing's own size is the ground truth), else
@@ -932,6 +1023,132 @@ def is_implausible_low_haircare_price(
     return amount < PREMIUM_HAIRCARE_FLOOR_BHD
 
 
+# --- skincare / makeup / fashion query detectors (coverage review F) ----------
+# Conservative keyword detectors so _infer_category_from_query resolves the right
+# category on the JSON-LD / page-scrape path (where only the query string is known),
+# engaging the per-category axes (%-strength / form / shoe-size / pack). Brand OR a
+# product class word is enough; high-value electronics short-circuit elsewhere.
+_SKINCARE_BRAND_KEYWORDS = {
+    "cerave", "the ordinary", "paula's choice", "paulas choice", "la roche-posay",
+    "la roche", "cetaphil", "drunk elephant", "the inkey list", "inkey", "cosrx",
+    "skinceuticals", "bioderma", "eucerin", "first aid beauty", "kiehl's", "kiehls",
+}
+_SKINCARE_PRODUCT_KEYWORDS = {
+    "serum", "moisturizer", "moisturiser", "cleanser", "niacinamide", "retinol",
+    "hyaluronic", "salicylic", "glycolic", "sunscreen", "spf", "toner",
+    "exfoliant", "face wash", "eye cream", "essence", "ampoule", "micellar",
+    "face cream", "facial", "suspension", "peeling solution", "moisturizing lotion",
+}
+_MAKEUP_BRAND_KEYWORDS = {
+    "nars", "charlotte tilbury", "fenty beauty", "rare beauty", "huda beauty",
+    "huda", "too faced", "urban decay", "nyx", "rimmel", "benefit cosmetics",
+    "anastasia beverly hills", "mac cosmetics", "maybelline", "estee lauder",
+    "revlon", "bobbi brown", "clinique", "fit me", "studio fix", "pro filt",
+    "double wear", "pillow talk", "ruby woo",
+}
+_MAKEUP_PRODUCT_KEYWORDS = {
+    "lipstick", "blush", "mascara", "foundation", "concealer", "eyeshadow",
+    "eyeliner", "highlighter", "bronzer", "lip gloss", "lipgloss", "lip liner",
+    "setting powder", "setting spray", "contour", "liquid lipstick",
+    "lip glow", "lip oil", "lip tint", "lip color", "lip balm", "lip stain",
+    "rouge", "kohl", "kajal", "compact powder", "blusher",
+}
+_GROCERY_BRAND_KEYWORDS = {
+    "coca-cola", "coca cola", "coke", "pepsi", "nescafe", "lipton", "lays",
+    "doritos", "pringles", "red bull", "heinz", "oreo", "kitkat", "maggi",
+    "quaker", "vimto", "rani", "almarai", "nadec", "fanta", "sprite", "7up",
+}
+_GROCERY_PRODUCT_KEYWORDS = {
+    "instant coffee", "ground coffee", "coffee beans", "green tea", "black tea",
+    "ketchup", "mayonnaise", "cereal", "cornflakes", "potato chips", "crisps",
+    "soft drink", "fizzy drink", "fruit juice", "olive oil", "basmati rice",
+    "butter", "cheese", "yogurt", "yoghurt", "bread", "biscuit", "biscuits",
+    "peanut butter", "honey", "jam", "pasta", "noodles", "diapers", "diaper",
+}
+
+
+def is_grocery_query(product_name: str) -> bool:
+    if not product_name:
+        return False
+    nl = product_name.lower()
+    # WORD-BOUNDARY brand match (coverage R8): a bare `in` substring let 'lays' match
+    # 'pLAYStation' → PlayStation misrouted to grocery (grocery is checked before electronics).
+    return (any(_contains_token(nl, b) for b in _GROCERY_BRAND_KEYWORDS)
+            or any(k in nl for k in _GROCERY_PRODUCT_KEYWORDS))
+
+
+# BROAD electronics detector for _infer_category_from_query (coverage review CRITICAL):
+# is_high_value_query is narrow (phone/laptop/console/GPU for the price floor) and returns
+# None for mainstream electronics (AirPods/Canon R6/Kindle/headphones), which DISABLED the
+# variant-add guard on the Serper-shopping + JSON-LD scrape paths (the runtime supplies the
+# category the coverage tests hard-coded). This broader detector resolves them to electronics
+# so the keystone engages end-to-end.
+_ELECTRONICS_BRAND_KEYWORDS = {
+    "apple", "samsung", "sony", "bose", "jbl", "logitech", "razer", "dyson", "canon",
+    "nikon", "fujifilm", "gopro", "dji", "anker", "belkin", "sandisk", "kindle",
+    "lg", "dell", "hp", "lenovo", "asus", "acer", "msi", "gigabyte", "huawei",
+    "xiaomi", "oppo", "vivo", "realme", "oneplus", "nintendo", "microsoft", "google",
+    "garmin", "fitbit", "sennheiser", "marshall", "beats", "nothing", "tcl", "hisense",
+}
+_ELECTRONICS_DEVICE_NOUNS = {
+    "airpods", "earbuds", "earphones", "headphones", "headset", "headphone",
+    "speaker", "soundbar", "camera", "dslr", "mirrorless", "lens", "laptop",
+    "notebook", "tablet", "console", "monitor", "keyboard", "mouse", "router",
+    "drone", "smartwatch", "powerbank", "graphics card", "gpu", "ssd", "hard drive",
+    "projector", "printer", "webcam", "microphone",
+    # self-identifying device LINES (electronics on their own, even with no model number).
+    "kindle", "ipad", "iphone", "macbook", "playstation", "xbox", "airpod",
+}
+
+
+def is_electronics_query(product_name: str) -> bool:
+    if not product_name:
+        return False
+    if is_high_value_query(product_name):
+        return True
+    nl = product_name.lower()
+    if any(_contains_token(nl, n) if " " not in n else n in nl
+           for n in _ELECTRONICS_DEVICE_NOUNS):
+        return True
+    # an electronics brand + ANY digit (a model number: R6, WH-1000XM5, V15, 4070).
+    if any(_contains_token(nl, b) for b in _ELECTRONICS_BRAND_KEYWORDS) and any(c.isdigit() for c in nl):
+        return True
+    return False
+_FASHION_BRAND_KEYWORDS = {
+    "air jordan", "jordan", "air force", "air max", "dunk", "yeezy", "samba",
+    "gazelle", "new balance", "converse", "vans", "timberland", "superstar",
+    "stan smith", "ultraboost",
+}
+_FASHION_PRODUCT_KEYWORDS = {
+    "sneakers", "sneaker", "trainers", "hoodie", "t-shirt", "tshirt", "jeans",
+    "jacket", "dress", "sweatshirt", "shorts", "leggings", "backpack", "handbag",
+}
+
+
+def is_skincare_query(product_name: str) -> bool:
+    if not product_name:
+        return False
+    nl = product_name.lower()
+    return (any(b in nl for b in _SKINCARE_BRAND_KEYWORDS)
+            or any(k in nl for k in _SKINCARE_PRODUCT_KEYWORDS))
+
+
+def is_makeup_query(product_name: str) -> bool:
+    if not product_name:
+        return False
+    nl = product_name.lower()
+    return (any(b in nl for b in _MAKEUP_BRAND_KEYWORDS)
+            or any(k in nl for k in _MAKEUP_PRODUCT_KEYWORDS))
+
+
+def is_fashion_query(product_name: str) -> bool:
+    if not product_name:
+        return False
+    nl = product_name.lower()
+    return (any(b in nl for b in _FASHION_BRAND_KEYWORDS)
+            or any(k in nl for k in _FASHION_PRODUCT_KEYWORDS))
+
+
 # ============================================
 # Task C1 — price-pending presentation (showable predicate)
 # ============================================
@@ -966,7 +1183,11 @@ def _is_sample_or_decant_listing(product_name: str, title: Optional[str], amount
     either an explicit token in the title OR a tiny fragrance size (<=10ml)
     carrying a full-bottle-grade price. Returns False for non-fragrance products
     (a small electronics SKU is not a 'decant')."""
-    text = title or ""
+    # schema.org name/title can be a LIST (or other non-str) — coerce so the regex never
+    # TypeErrors and crashes the request instead of failing closed (comprehensive review).
+    if isinstance(title, (list, tuple)):
+        title = " ".join(str(x) for x in title)
+    text = str(title) if title else ""
     if _SAMPLE_LISTING_RE.search(text):
         return True
     # Tiny-size-with-implausible-price only applies to fragrances (a 5ml phone
@@ -980,21 +1201,30 @@ def _is_sample_or_decant_listing(product_name: str, title: Optional[str], amount
     return False
 
 
-def is_price_showable(product_name: str, price: Optional[Dict[str, Any]]) -> bool:
-    """True iff a resolved `price` object is GENUINE/showable to the user.
+def is_price_showable(
+    product_name: str, price: Optional[Dict[str, Any]], category: Optional[str] = None,
+    *, enforce_correctness: bool = False,
+) -> bool:
+    """True iff a resolved `price` object is GENUINE/CORRECT/showable to the user.
 
     NOT showable (→ Phase-4 price-pending line) when:
       - no price / no positive amount, OR
       - source_method is missing or not in the showable set (e.g. ``estimated``), OR
       - it fails an accuracy guard (low-fragrance sample floor / high-value
         accessory leak), OR
-      - it is a sample/decant/tester/vial listing.
+      - it is a sample/decant/tester/vial listing, OR
+      - (correctness backstop, gated by ENABLE_EXACT_PRICE_GATE) it is explicitly
+        OUT OF STOCK, served behind a non-PDP listing/search URL, or NOT the exact
+        requested product (wrong variant/concentration/size/storage/count).
 
     `converted_usd` and the genuine-BH methods (local_bhd / page_scrape* /
-    shopify_json / firecrawl* / scrapedo_rendered / official_brand) are showable.
-    This is the single predicate the response chokepoint uses for BOTH the sync
-    and streaming paths; it never weakens the existing is_implausible_* guards —
-    it composes them.
+    shopify_json / firecrawl* / scrapedo_rendered / official_brand) are showable —
+    but converted_usd, like every method, must ALSO be the exact product. This is
+    the single predicate the response chokepoint uses for BOTH the sync and
+    streaming paths; it never weakens the existing is_implausible_* guards — it
+    composes them. The fail-closed correctness backstop is defense-in-depth behind
+    the per-extractor is_exact_match gate; when a guard rejects, it stamps
+    ``price['guard_rejected']`` so the drop is MEASURED, never silent.
     """
     if not isinstance(price, dict):
         return False
@@ -1005,6 +1235,16 @@ def is_price_showable(product_name: str, price: Optional[Dict[str, Any]]) -> boo
     if source_method not in _showable_source_methods():
         return False
     title = price.get("title")
+    # schema.org name/title can be a LIST (or other non-str) — coerce ONCE here so every
+    # downstream guard (is_counterfeit_listing/.lower(), the sample-listing regex, the
+    # backstop) never AttributeError/TypeErrors and crashes the request instead of failing
+    # closed (comprehensive review crash). Mutate the dict so the resolved title is consistent.
+    if isinstance(title, (list, tuple)):
+        title = " ".join(str(x) for x in title)
+        price["title"] = title
+    elif title is not None and not isinstance(title, str):
+        title = str(title)
+        price["title"] = title
     # Compose the shipped accuracy guards — a price that fails any is not
     # showable (the guards already encode the "no wrong scrapes" contract).
     if is_implausible_low_fragrance_price(product_name, amount, title=title):
@@ -1016,6 +1256,65 @@ def is_price_showable(product_name: str, price: Optional[Dict[str, Any]]) -> boo
         return False
     if _is_sample_or_decant_listing(product_name, title, amount):
         return False
+    # --- correctness backstop (CARDINAL RULE) — OPT-IN via enforce_correctness ---
+    # Defense-in-depth at the RESPONSE CHOKEPOINT only (response_builder + streaming
+    # pass enforce_correctness=True). It is NOT applied to the legacy adapter /
+    # reselect plausibility calls: an adapter legitimately RETURNS an out-of-stock
+    # price flagged in_stock=False (the chokepoint then pends it), and the fairness
+    # reselect DELIBERATELY re-selects to a DIFFERENT size — so an always-on backstop
+    # here would wrongly pend both. Gated by ENABLE_EXACT_PRICE_GATE (rollback).
+    if enforce_correctness and exact_gate_enabled():
+        if price.get("in_stock") is False:
+            price["guard_rejected"] = "out_of_stock"
+            return False
+        # A listing/search URL is never a PDP -> pend. A MISSING url is NOT pended
+        # HERE: the PDP-URL + identity requirement is enforced at SELECTION
+        # (select_best, where multi-candidate adapters carry title+url) + CACHE-WRITE
+        # (should_cache_price) + the usable_exact_genuine KPI — exactly the directive's
+        # "require title/name + a valid PDP URL BEFORE selection OR cache write". The
+        # display chokepoint must NOT re-pend an already-resolved genuine price merely
+        # for an absent url/title field, or it over-rejects the broad "genuine
+        # source_method + amount = showable" contract (Task C1 + ws5 + timeout-partial).
+        url = price.get("url")
+        if url and _is_listing_url(url):
+            price["guard_rejected"] = "non_pdp_url"
+            return False
+        identity = title or price.get("name")
+        # CARDINAL RULE (coverage review F) — a genuine-method price with NO identity
+        # (no title/name) AND NO url has NOTHING to verify the exact product against, so
+        # it must PEND, not be shown. A price with EITHER a title OR a url is still
+        # showable here (the full PDP-URL+identity requirement is enforced at SELECTION +
+        # cache-write, not re-pended at the display chokepoint, per the calibration that
+        # keeps the broad "genuine source_method + amount = showable" contract). Real
+        # adapter/cache prices always carry both; only a truly-unverifiable price pends.
+        if not identity and not url:
+            price["guard_rejected"] = "no_identity"
+            return False
+        # An electronics accessory matched as the device itself (narrow set + category
+        # gate so a genuine standalone keyboard / headphone / skincare title is not pended).
+        if (identity and (category or "").lower() == "electronics"
+                and _is_device_accessory(identity) and not _is_device_accessory(product_name)):
+            price["guard_rejected"] = "accessory"
+            return False
+        # Identity gate at the display chokepoint = the axis-only _backstop_identity_ok
+        # PLUS the FLAGSHIP-concentration / supplement-TYPE flanker check
+        # (_category_type_added). The full superset _selection_match was tried here and an
+        # adversarial coverage sweep CONFIRMED it over-rejects CORRECT products that reach
+        # display via a path that did not pre-run _selection_match (converted_usd /
+        # page-scrape / iHerb), because their genuine DESCRIPTIVE PDP title carries extra
+        # marketing tokens the short query omits ("Niacinamide 10%" -> the real SKU title
+        # "Niacinamide 10% + Zinc 1%"; "Omega-3" -> "...Molecularly Distilled"). So the
+        # superset stays UPSTREAM (brand-aware, where the canonical full_name is known); the
+        # backstop adds only the bounded flagship/type-ADD check, which catches the common
+        # flanker class ("Sauvage" -> "Sauvage Parfum/Extrait", "Whey" -> "Whey Isolate")
+        # with no descriptive-title over-rejection. A same-token flanker whose extra token is
+        # NOT a flagship concentration ("Sauvage Elixir") remains a documented deferred leak.
+        if identity and (
+            not _backstop_identity_ok(product_name, identity, category)
+            or _category_type_added(product_name, identity, category)
+        ):
+            price["guard_rejected"] = "not_exact"
+            return False
     return True
 
 
@@ -1210,7 +1509,20 @@ def reselect_to_target_size(
             price.setdefault("source_method", c.get("source_method") or "")
             if c.get("source_method"):
                 price["source_method"] = c.get("source_method")
-        # Use the CANONICAL showable predicate (genuine/converted source ∪ the
+        # CORRECTNESS — never re-select an explicitly OUT-OF-STOCK candidate (a
+        # costlier in-stock exact beats a cheap OOS; with no in-stock match the
+        # product pends), and never swap an EDP query onto a cheaper EDT just because
+        # both are 100ml. Checked here, NOT via the is_price_showable axis backstop:
+        # this re-selection DELIBERATELY targets a DIFFERENT SIZE for pair fairness,
+        # so the size axis must not run — only stock + concentration. Gated by
+        # exact_gate_enabled() so a rollback is byte-identical to b207bfa.
+        if exact_gate_enabled():
+            if c.get("in_stock") is False or price.get("in_stock") is False:
+                continue
+            _c_title = c.get("title") or price.get("title") or ""
+            if _concentration_mismatch(product_name, _c_title):
+                continue
+        # Use the CANONICAL plausibility predicate (genuine/converted source ∪ the
         # is_implausible_* accuracy guards ∪ the sample/decant title check) — the
         # SAME gate the response chokepoint applies downstream. This guarantees a
         # re-selected price actually survives C1 (we never claim "show" for a
@@ -2080,6 +2392,33 @@ def reselect_to_target_value(
             price.setdefault("source_method", c.get("source_method") or "")
             if c.get("source_method"):
                 price["source_method"] = c.get("source_method")
+        # CORRECTNESS (parity with reselect_to_target_size) — never re-select an
+        # OUT-OF-STOCK candidate, and never swap to a wrong model-line VARIANT
+        # (S24→S24 FE) just because the comparable-unit `target` matches. Gated by
+        # exact_gate_enabled() so a rollback restores legacy behaviour. NOTE: only the
+        # VARIANT-QUALIFIER axis is re-checked — the category's fairness unit (storage
+        # for electronics, count for supplements, weight for grocery) is the DELIBERATE
+        # re-selection target (val == target above), so its axis must NOT be enforced.
+        if exact_gate_enabled():
+            if c.get("in_stock") is False or price.get("in_stock") is False:
+                continue
+            _t = c.get("title") or price.get("title") or ""
+            _quals = _CATEGORY_VARIANT_QUALIFIERS.get((category or "").lower(), frozenset())
+            if _quals and _quals_in(product_name, _quals) != _quals_in(_t, _quals):
+                continue
+            # CORRECTNESS (coverage review F) — reselect bypassed _selection_match, so a
+            # candidate whose comparable-unit MATCHES the target but whose OTHER axes are
+            # WRONG (a different %-strength, shade, concentration, supplement type, colour)
+            # was shipped. Run the full identity+axis gate, but with the category's
+            # FAIRNESS-UNIT measure stripped from BOTH sides (the unit value IS the
+            # deliberate re-selection target — `val == target` above — so its axis must
+            # NOT be enforced here; every NON-unit axis still gates).
+            if _t:
+                _pn_nounit = _IDENTITY_MEASURE_STRIP_RE.sub(" ", product_name or "")
+                _t_nounit = _IDENTITY_MEASURE_STRIP_RE.sub(" ", _t)
+                if not _selection_match(_pn_nounit, _t_nounit, category,
+                                        candidate_brand=c.get("brand") or ""):
+                    continue
         # The canonical showable predicate — genuine/converted ∪ the
         # is_implausible_* accuracy guards. A re-selected price must survive the
         # same downstream gate.
@@ -2538,6 +2877,9 @@ _STORAGE_GB_RE = re.compile(r"(\d+(?:\.\d+)?)\s*(tb|gb)\b", re.I)
 # unit word. Used by supplements (caps/tablets/softgels) and grocery packs.
 _COUNT_RE = re.compile(
     r"(\d+)\s*(?:x\s*)?"
+    # optional "veg/vegetable/veggie/plant" qualifier before the unit so a NOW/iHerb
+    # "180 Veg Capsules" parses the count (coverage review) instead of leaking "180".
+    r"(?:(?:veg(?:etable|gie)?|plant)\s+)?"
     r"(capsules?|caps|tablets?|tabs|softgels?|gummies|gummy|count|ct|pieces?|pcs|sachets?)\b",
     re.I,
 )
@@ -2547,7 +2889,7 @@ _COUNT_RE = re.compile(
 # so a 200g jar and a 250g jar compare while a 200g vs 500ml pair stays
 # incomparable (different base → None target). Returns (value, base) where base
 # is "g" or "ml", or None when no weight/volume token is present.
-_WEIGHT_VOLUME_RE = re.compile(r"(\d+(?:\.\d+)?)\s*(kg|g|ml|l)\b", re.I)
+_WEIGHT_VOLUME_RE = re.compile(r"(\d+(?:\.\d+)?)\s*(kg|g|ml|l|lbs?|pounds?)\b", re.I)
 
 
 def extract_storage_gb(text: str) -> Optional[float]:
@@ -2668,6 +3010,2044 @@ def size_variant_token(text: Optional[str]) -> str:
     return ""
 
 
+# ============================================================================
+# GENUINE-PRICE CORRECTNESS — shared exact-identity gate + authority selector +
+# availability policy.  Spec: docs/plans/2026-06-27-genuine-price-correctness-IMPL-SPEC.md
+#
+# CARDINAL RULE: select a price ONLY when the candidate is the EXACT requested
+# product (model + concentration + size/storage + variant + count), in stock, on a
+# valid PDP URL. Provenance (a genuine source_method) is necessary, NOT sufficient.
+# The gate must also NOT over-reject legitimate alias wording (no false pends).
+#
+# ROLLBACK: this gate runs on EVERY request (high blast radius). The env flag
+# ENABLE_EXACT_PRICE_GATE (default ON) flips the whole new layer off → exact
+# b207bfa behaviour (is_exact_match→True, select_best→cheapest, no showable
+# backstop). Flip it in Railway to disable without a code revert.
+# ============================================================================
+
+def exact_gate_enabled() -> bool:
+    """True iff the exact-identity correctness gate is active (default ON)."""
+    return os.getenv("ENABLE_EXACT_PRICE_GATE", "true").strip().lower() not in (
+        "false", "0", "no", "off", "",
+    )
+
+
+def _fold_identity(s: str) -> str:
+    """Lowercase + NFKD diacritic-fold so an accented title matches a plain-ASCII
+    query and vice versa ("Acqua di Giò"→"acqua di gio", "Lancôme"→"lancome").
+    Trademark / registered / copyright marks are dropped FIRST — otherwise NFKD
+    expands ™ (U+2122) to the letters "TM" and glues it onto the word ("Shark™" →
+    "sharktm"), manufacturing a false identity token that breaks an exact match."""
+    if not s:
+        return ""
+    s = s.replace("™", "").replace("®", "").replace("©", "")
+    # "+" upgrade marker -> the WORD "plus" so the symbol form ("Galaxy S24+", "Effaclar Duo+")
+    # and the spelled form ("Galaxy S24 Plus") produce the SAME identity token (coverage R9
+    # HIGH) — a base query ("S24") still differs (no "plus" token) so the variant-add guard
+    # rejects it; only the symbol-vs-spelled SAME-SKU pair is unified.
+    s = s.replace("+", " plus ")
+    # NOTE: parenthetical content is NOT stripped here. normalize_words already strips
+    # edge-parens per token, and a blanket paren-strip is ASYMMETRIC — it drops a
+    # candidate's "(Cholecalciferol)" while a query that writes the same chemical name
+    # BARE keeps it, manufacturing a false subset-miss over-rejection (the Solgar D3
+    # iherb case). Descriptive categories have no superset guard, so a parenthetical
+    # synonym the candidate adds is already tolerated by the subset check.
+    folded = "".join(
+        c for c in unicodedata.normalize("NFKD", s.lower())
+        if not unicodedata.combining(c)
+    )
+    # Drop a trailing STORE-NAME segment after a pipe / double-colon / guillemet — a page
+    # <title>/og:title routinely appends the retailer ("... | Sharaf DG Bahrain", "... ::
+    # Noon") which is NOT product identity and would otherwise add store tokens that
+    # over-reject the superset guard (coverage review F). A pipe never appears inside a
+    # real product name, so this is safe; " - " is preserved (it is used inside brand-omitted
+    # titles like "Daisy - EDT").
+    folded = re.split(r"\s*[|»]\s*|\s*::\s*", folded, 1)[0]
+    # Slash-joined colourways/specs ("White/Black", "Cloud White/Core Black") -> each token
+    # is matched individually (coverage review over-rejection); treat '/' like a space.
+    folded = folded.replace("/", " ")
+    # British/American spelling folds so a genuine GCC-retailer spelling matches the query
+    # (coverage review: CeraVe Moisturising vs Moisturizing, Kerastase Masque vs Mask) —
+    # before tokenizing so identity sets are equal.
+    folded = re.sub(r"ising\b", "izing", folded)
+    folded = re.sub(r"iser\b", "izer", folded)
+    folded = re.sub(r"isation\b", "ization", folded)
+    folded = folded.replace("colour", "color").replace("masque", "mask")
+    # Possessive / internal apostrophe fold ("Men's"->"mens", "L'Oreal"->"loreal",
+    # "Pro Filt'r"->"profiltr") — genuine GCC fashion titles overwhelmingly use the
+    # apostrophe gender form, which otherwise survives as a non-padding token and pends
+    # EVERY gendered listing (coverage review CRITICAL). The apostrophe-before-digit (a
+    # fashion year "'07") is preserved for the year-suffix strip.
+    folded = re.sub(r"'s\b", "s", folded)
+    folded = re.sub(r"(?<=[a-z])'(?=[a-z])", "", folded)
+    # Trailing "+" glyph (Effaclar Duo+) is decided by the real tokens, not punctuation.
+    folded = re.sub(r"(\w)\+", r"\1", folded)
+    # Nth-generation ORDINAL -> bare digit ("2nd"/"9th" -> "2"/"9") so AirPods Pro 2 ==
+    # "Pro (2nd Generation)", iPad 9 == "9th Gen" (coverage review electronics over-rejection).
+    folded = re.sub(r"\b(\d+)(?:st|nd|rd|th)\b", r"\1", folded)
+    # Screen-inch: STRIP the inch-marked number entirely ("13-inch"/'13"' -> "") so a
+    # candidate that states a screen size the query OMITS does not over-reject (coverage
+    # review). A both-stated DIFFERENT inch is caught by the _inch_mismatch axis (which
+    # parses the raw string). A BARE number (no inch unit) stays as identity.
+    folded = re.sub(r"\b\d+(?:\.\d+)?\s*(?:-\s*)?(?:inch(?:es)?\b|[\"”″]+)", " ", folded)
+    # Punctuation/gluing normalization so a number-label glued vs spaced tokenizes the
+    # SAME ("No.3"=="No. 3"=="#3"; "SPF30"=="SPF 30") — otherwise normalize_words keeps
+    # "no.3"/"spf30" as one token and a genuine match false-pends (coverage review G).
+    folded = re.sub(r"\bno\.?\s*(\d)", r"no \1", folded)
+    folded = re.sub(r"#\s*(\d)", r"no \1", folded)
+    folded = re.sub(r"\bspf\s*(\d)", r"spf \1", folded)
+    # Collapse a thousands-separator inside a number ("5,000 IU" -> "5000 IU") so the dose
+    # measure-strip + the dose axis see one number (a comma otherwise leaves "5"/"000"/"iu"
+    # tokens that false-pend a genuine "5000 IU" listing — the iherb 5,000 IU case).
+    folded = re.sub(r"(\d),(\d{3})\b", r"\1\2", folded)
+    # Grocery diet variant written as two words -> one token so it is a distinctive
+    # variant the superset guard rejects ("Sugar Free" -> "sugarfree").
+    folded = re.sub(r"\bsugar\s*free\b", "sugarfree", folded)
+    return folded
+
+
+# Every measurement token that is a SEPARATE comparison axis (size/storage/count/
+# strength) — stripped from the IDENTITY token set so it is compared on its own
+# axis, never as an identity word. Superset of _SIZE_STRIP_RE + oz/fl-oz + mg/IU.
+_IDENTITY_MEASURE_STRIP_RE = re.compile(
+    r"\b\d+(?:\.\d+)?\s*"
+    # optional veg/vegetable/veggie/plant qualifier before a count unit ("180 Veg Capsules")
+    r"(?:(?:veg(?:etable|gie)?|plant)\s+)?"
+    r"(?:tb|gb|ml|fl\s*oz|oz|lbs?|pounds?|l|kg|g|mg|mcg|iu|"
+    r"capsules?|caps|tablets?|tabs|softgels?|gummies|gummy|count|ct|pieces?|pcs|sachets?)\b",
+    re.I,
+)
+
+# Form / packaging words that are NOT product identity (defense-in-depth so a lone
+# "Spray" on a normal EDP bottle, or a "Set" suffix, doesn't break identity equality).
+_FORM_NOISE_TOKENS = frozenset({
+    "set", "spray", "mist", "deodorant", "candle", "refill", "miniature",
+    "lotion", "cream", "gel", "oil", "balm", "shower", "body", "hair", "travel",
+    "pack",
+})
+
+# Colour / edition / gender tokens that are an OPEN alias class — a non-identity
+# variant for the categories where colour is cosmetic (electronics/fashion). NOT
+# stripped for fragrances (a colour word can be the product NAME: "Black Opium",
+# "Light Blue") nor makeup/skincare (shade can matter).
+_COLOR_EDITION_TOKENS = frozenset({
+    "black", "white", "blue", "red", "green", "gold", "silver", "grey", "gray",
+    "rose", "pink", "purple", "violet", "yellow", "orange", "brown", "beige",
+    "navy", "teal", "titanium", "graphite", "midnight", "starlight", "space",
+    "cream", "ivory", "bronze", "copper", "champagne", "lavender", "mint",
+    "coral", "burgundy", "edition", "limited", "special",
+    # Marketing COLOUR PREFIXES (Samsung/OEM) — a colour modifier, NOT a SKU variant,
+    # so a "Phantom Black" / "Awesome Blue" / "Cosmic Grey" descriptive title must not
+    # add a distinctive token (coverage review A over-rejection). Only for the
+    # colour-alias categories (electronics/fashion), like the rest of this set.
+    "phantom", "awesome", "cosmic", "prism", "mystic", "aura", "marble", "sierra",
+    "pacific", "alpine", "obsidian", "onyx", "platinum", "graphene",
+    "natural", "desert", "stormy",
+    # Sneaker COLOURWAY nicknames + modifiers (coverage review over-rejection) — a
+    # colourway is a cosmetic variant in real fashion titles ("Dunk Low Panda", "Cloud
+    # White/Core Black", "AJ1 Chicago"). Treated like a colour (stripped for fashion).
+    "panda", "chicago", "bred", "sail", "cloud", "core", "gum", "oreo", "university",
+    "wolf", "varsity", "bone", "sesame", "volt", "triple", "shadow", "smoke",
+})
+_COLOR_ALIAS_CATEGORIES = frozenset({"electronics", "fashion"})
+
+# Model-line variant qualifiers that MUST match (set-equality, either direction).
+# Category-gated: applied ONLY to electronics so brand words that collide with a
+# qualifier in OTHER categories ("Max" in Max Factor, "Air" in Air Jordan, "Mini"
+# in Mini) are NOT treated as qualifiers — there the identity-equality + axes carry it.
+_ELECTRONICS_QUALIFIERS = frozenset({
+    "fe", "se", "lite", "neo", "pro", "max", "plus", "ultra", "mini", "air",
+    "promax",
+    # NOTE: "5g" is deliberately NOT a qualifier — nearly all modern flagships are
+    # 5G and the query routinely omits it ("Galaxy S24" must match a genuine
+    # "Galaxy S24 ... 5G Smartphone" PDP). 5G is stripped as noise, not discriminated.
+})
+_CATEGORY_VARIANT_QUALIFIERS = {
+    "electronics": _ELECTRONICS_QUALIFIERS,
+}
+
+
+# GENERIC category nouns — words that name a product CLASS, not a specific SKU
+# ("smartphone", "headphones", "protein"). A resolved query name often carries one
+# ("Sony WH-1000XM5 Headphones") that a terse genuine PDP/shopping title omits — a
+# MISSING generic noun must NOT reject the match (the brand+model already discriminate).
+# DELIBERATELY EXCLUDED: perfume/cologne/parfum (collide with the concentration axis —
+# "Perfume" parses as the Parfum concentration); watch/buds/band (accessory CLASSES
+# that DO discriminate). Built from HIGH_VALUE_DEVICE_NOUNS + audio/wearable/apparel/
+# supplement class nouns.
+# Generic CLASS nouns are CATEGORY-SCOPED (coverage review round 6): a noun is only
+# "generic" (tolerated-when-omitted / class-swap-checked) for the category it belongs to.
+# A makeup noun ("blush") is a DISTINCTIVE token for a FRAGRANCE ("Good Girl" vs "Good Girl
+# Blush" are different perfumes) — subtracting it cross-category leaks the flanker.
+_GENERIC_BASE_NOUNS = frozenset(HIGH_VALUE_DEVICE_NOUNS) | {
+    "headphones", "headphone", "earphones", "earphone", "earbuds", "earbud",
+    "speaker", "soundbar", "protein", "supplement", "supplements",
+    "vitamin", "vitamins", "vacuum", "cleaner", "sunglasses", "eyewear",
+    # DELIBERATELY EXCLUDED: "whey"/"casein"/"plant" — a protein TYPE is distinctive.
+}
+_GENERIC_ELECTRONICS_NOUNS = frozenset({
+    "keyboard", "mouse", "controller", "headset", "monitor", "webcam", "charger",
+})
+_GENERIC_MAKEUP_NOUNS = frozenset({
+    "blush", "lipstick", "mascara", "foundation", "concealer", "eyeshadow",
+    "eyeliner", "highlighter", "bronzer", "gloss", "lipgloss", "primer", "powder",
+})
+_GENERIC_FASHION_NOUNS = frozenset({
+    "sneakers", "sneaker", "shoes", "shoe", "sandals", "sandal", "boots", "boot",
+    "loafers", "loafer", "pumps", "heels", "slides", "clogs", "mules", "espadrilles",
+    "slippers", "sliders",
+    # garment-class nouns (moved out of _FASHION_PADDING so a CLASS SWAP — Dress vs Skirt —
+    # rejects, while a one-sided class noun is tolerated) (coverage review round 6 HIGH).
+    "dress", "shirt", "tshirt", "tee", "polo", "hoodie", "jacket", "coat", "blazer",
+    "sweater", "sweatshirt", "skirt", "shorts", "pants", "pant", "jeans", "jean",
+    "cardigan", "jumper", "leggings", "top",
+})
+_GENERIC_GROCERY_NOUNS = frozenset({
+    "coffee", "tea", "juice", "milk", "cola", "soda", "water", "chocolate", "chips",
+    "crisps", "cereal", "sauce", "snack", "biscuits", "butter", "cheese", "bread",
+})
+_CATEGORY_GENERIC_NOUNS = {
+    "electronics": _GENERIC_ELECTRONICS_NOUNS,
+    "makeup": _GENERIC_MAKEUP_NOUNS,
+    "fashion": _GENERIC_FASHION_NOUNS,
+    "grocery": _GENERIC_GROCERY_NOUNS,
+}
+
+
+def _generic_for(category: Optional[str]) -> frozenset:
+    """The CLASS nouns generic for `category` (base universal + category-specific). Used
+    so a cross-category noun (makeup 'blush' for a fragrance) stays a DISTINCTIVE token."""
+    return _GENERIC_BASE_NOUNS | _CATEGORY_GENERIC_NOUNS.get((category or "").lower(), frozenset())
+
+
+# Backward-compat: the union (used by any external reference / the flag-OFF no-op path).
+GENERIC_CATEGORY_NOUNS = (_GENERIC_BASE_NOUNS | _GENERIC_ELECTRONICS_NOUNS
+                          | _GENERIC_MAKEUP_NOUNS | _GENERIC_FASHION_NOUNS
+                          | _GENERIC_GROCERY_NOUNS)
+
+
+# Fragrance/fashion brand alias groups — each set holds every token form of one
+# brand (abbreviation + spelled-out). When the resolved `brand` matches ANY token in a
+# group, all forms are stripped from the identity tokens on both sides so a query that
+# uses the abbreviation matches a candidate title that spells it out (and vice versa).
+# Only triggered when the brand IS one of these houses, so there is no cross-category
+# collateral (a phone brand never matches).
+_BRAND_ALIAS_GROUPS = (
+    frozenset({"ysl", "yves", "saint", "laurent"}),
+    frozenset({"dg", "d&g", "dolce", "gabbana"}),
+    frozenset({"jpg", "jean", "paul", "gaultier"}),
+    frozenset({"ck", "calvin", "klein"}),
+    frozenset({"ch", "carolina", "herrera"}),
+    frozenset({"mj", "marc", "jacobs"}),
+    frozenset({"tf", "tom", "ford"}),
+    frozenset({"vr", "v&r", "viktor", "rolf"}),
+    # HOUSE-name groups — a genuine title often carries the full house ("Christian
+    # Dior Sauvage", "Gianni Versace Eros", "Giorgio/Emporio Armani", "Lancome Paris",
+    # "Burberry London") while the resolved brand is the short form. Folding all forms
+    # out of BOTH sides stops the extra house word from false-pending the match
+    # (coverage review G). Each group is triggered ONLY when the brand is that house,
+    # so there is no cross-brand collateral.
+    frozenset({"dior", "christian"}),
+    frozenset({"versace", "gianni"}),
+    frozenset({"armani", "giorgio", "emporio"}),
+    frozenset({"lancome", "paris"}),
+    frozenset({"montblanc", "mont", "blanc"}),
+    # NOTE: deliberately NO {burberry, london} — "Burberry London" is itself a real
+    # fragrance line, so folding "london" would cross-match different products.
+)
+
+
+# Max input length for the identity/axis matchers — a real product name/title is well under
+# this; longer inputs are truncated to bound the numeric-axis regexes (ReDoS guard, review HIGH).
+_MATCH_INPUT_CAP = 512
+
+
+def _identity_tokens_ps(text: str, brand: str = "", category: Optional[str] = None) -> set:
+    """PRODUCT-IDENTITY token set of `text`: diacritic-folded words, minus the
+    brand words, the concentration PHRASE, every measurement token (size/storage/
+    count/strength — separate axes), the category's variant qualifiers (compared
+    separately), form-noise, and (for colour-alias categories) colour/edition
+    tokens. Sub-3-char noise is dropped EXCEPT a pure 2+-digit model number ("15",
+    "24") which stays as identity (the Zyte len>2 electronics gap). Two listings
+    are the SAME product iff their identity sets are EQUAL."""
+    cat = (category or "").lower()
+    if text and len(text) > _MATCH_INPUT_CAP:  # ReDoS guard (comprehensive review HIGH)
+        text = text[:_MATCH_INPUT_CAP]
+    folded = _fold_identity(text)
+    for pat, _label in _CONCENTRATION_PATTERNS:
+        folded = pat.sub(" ", folded)
+    folded = _IDENTITY_MEASURE_STRIP_RE.sub(" ", folded)
+    # %-strength is a SEPARATE axis for cosmetics (and never an identity word) — strip it
+    # so "Niacinamide 10%" identity == "Niacinamide" identity (the % drives _percent_mismatch).
+    folded = _PERCENT_RE.sub(" ", folded)
+    # SPF rating is a SEPARATE axis (one-sided tolerated, both-different -> _spf_mismatch) —
+    # strip "spf <n>" so a sunscreen query that omits SPF matches an SPF-stated PDP.
+    folded = _SPF_RE.sub(" ", folded)
+    # Warranty/age CONTEXT numbers ("2 Year Warranty") are not identity — strip so the
+    # kept-single-digit rule below doesn't manufacture a "2" identity token.
+    folded = re.sub(r"\b\d+\s*(?:year|years|yr|yrs|month|months)\b", " ", folded)
+    # Pack/multipack CONTEXT — a SKU axis for GROCERY (handled by _pack_mismatch), but
+    # pure noise elsewhere ("Pack of 2" on a phone bundle) — strip for non-grocery.
+    if cat != "grocery":
+        folded = re.sub(r"\bpack\s*of\s*\d+\b|\b\d+\s*[-\s]?pack\b", " ", folded)
+    # Fashion year/colourway re-release suffix ("'07") is noise, NOT the model number.
+    if cat == "fashion":
+        folded = re.sub(r"'\s*\d{2}\b", " ", folded)
+        # "Special/Limited Edition" is a distinct, pricier SKU. Collapse the spelled phrase AND
+        # the "SE" abbreviation into ONE distinctive identity token so (a) a base query rejects
+        # EITHER form (coverage re-sweep HIGH: 'special'/'edition' were stripped as colour-edition
+        # tokens, collapsing the candidate onto the base) and (b) "SE" and "Special Edition"
+        # listings of the SAME edition MATCH (alias unify, like '+'/'Plus'). "limited edition" is
+        # phrase-only (the bare "le" abbreviation collides with brands like "Le Coq Sportif").
+        folded = re.sub(r"\bspecial\s+edition\b", " specialedition ", folded)
+        folded = re.sub(r"\blimited\s+edition\b", " limitededition ", folded)
+        folded = re.sub(r"\bse\b", " specialedition ", folded)
+    # Supplement BARE dose number ("D3 5000" written without IU) — the measure strip only
+    # removes a number WITH a unit ("5000 IU"), so a unit-less dose survives as a false
+    # identity token and over-rejects a genuine "5000 IU" listing. Strip a bare 4+-digit
+    # number (the dose range; a supplement COUNT is <1000) so the dose axis governs it.
+    if cat == "supplements":
+        folded = re.sub(r"\b\d{4,}\b", " ", folded)
+    words = normalize_words(folded)
+    brand_words = normalize_words(_fold_identity(brand)) if brand else set()
+    # Also strip the HYPHEN-COLLAPSED brand form (in the brand's ORIGINAL word order) so a
+    # hyphen-joined brand-in-title ("Coca-Cola"->"cocacola") is removed for a spaced brand
+    # ("Coca Cola") and vice versa (coverage review).
+    if brand and " " in brand.strip():
+        brand_words = brand_words | {re.sub(r"\s+", "", _fold_identity(brand))}
+    # Brand-ABBREVIATION fold — when the brand matches a known alias group, drop ALL
+    # forms (abbreviation + spelled-out) from BOTH sides, so "YSL Black Opium" (query)
+    # and "Yves Saint Laurent Black Opium" (candidate title) resolve to the same
+    # identity {black, opium} instead of false-pending on the unmatched "ysl".
+    for _group in _BRAND_ALIAS_GROUPS:
+        if brand_words & _group:
+            brand_words = brand_words | _group
+    quals = _CATEGORY_VARIANT_QUALIFIERS.get(cat, frozenset())
+    drop = set(brand_words) | _FORM_NOISE_TOKENS | quals
+    if cat in _COLOR_ALIAS_CATEGORIES:
+        drop = drop | _COLOR_EDITION_TOKENS
+    if cat in _FRAGRANCE_BEAUTY_CATEGORIES:
+        # Strip gender markers from identity (the _gender_mismatch contradiction axis
+        # handles them) so a one-sided "Pour Homme" the terse query omits never breaks
+        # the subset/flanker check.
+        drop = drop | _GENDER_IDENTITY_STRIP
+    out = set()
+    for w in (words - drop):
+        # Keep a token when it carries identity:
+        #   - len>2 (ordinary words)
+        #   - ANY digit-bearing token, incl a STANDALONE single digit ("1"/"4"/"3"/"6")
+        #     — Air Jordan 1 vs 4, AirPods Pro 2 vs 3, Omega 3 vs 6, Chanel No 5 (the
+        #     len>2-or-2+digit rule dropped these = the coverage-review superset leak).
+        #     m2/m3/r6/5g (short alphanumeric models) keep here too.
+        #   - makeup: a single letter / 2-char shade code (NARS Orgasm X, MAC shade A/B).
+        #   - electronics: a 2-char alpha token (4070 Ti, Mark II roman numerals).
+        #   - fashion: a whitelisted short model qualifier (Samba OG, Dunk Hi/Lo).
+        if (len(w) > 2
+                or any(c.isdigit() for c in w)
+                or w in _ROMAN_NUMERAL_TOKENS  # Type II / Mark IV (2+-char roman = identity)
+                or (cat == "makeup" and len(w) >= 1)
+                # electronics keeps single+2-char model letters (Xbox Series S/X, iPhone
+                # XR/XS, Galaxy A/S series) — a trailing model letter is the discriminator.
+                or (cat == "electronics" and 1 <= len(w) <= 2)
+                # skincare/haircare keep only WHITELISTED 2-char line codes (CeraVe SA,
+                # Skinceuticals AM/PM, CeraVe CF) — NOT every 2-char word ("to" in "Normal
+                # to Dry" must drop, else it over-rejects).
+                or (cat in ("skincare", "haircare") and w in _SKINCARE_LINE_CODES)
+                or (cat == "fashion" and w in _FASHION_KEPT_QUALIFIERS)):
+            out.add(w)
+    return out
+
+
+# 2+-char roman numerals kept as identity tokens in EVERY category (Collagen Type II,
+# Canon Mark IV, Civilization VI) — a SKU discriminator the len>2 rule would drop.
+_ROMAN_NUMERAL_TOKENS = frozenset({
+    "ii", "iii", "iv", "vi", "vii", "viii", "ix", "xi", "xii",
+})
+
+
+def _quals_in(text: str, qualset: frozenset) -> set:
+    """The variant-qualifier tokens present in `text` (diacritic-folded), restricted
+    to `qualset`. Tokenizes on [a-z0-9]+ so "5g" is seen as one token."""
+    toks = set(re.findall(r"[a-z0-9]+", _fold_identity(text)))
+    return toks & qualset
+
+
+def _concentration_mismatch(q: str, t: str) -> bool:
+    """True iff BOTH carry an explicit fragrance concentration and they DIFFER
+    (EDP vs EDT). A side that omits concentration does not trigger a mismatch."""
+    qc, tc = extract_concentration(q), extract_concentration(t)
+    return bool(qc and tc and qc != tc)
+
+
+def _size_ml_raw(text: Optional[str]) -> Optional[float]:
+    """The smallest ml size in `text` with oz converted RAW (oz*_ML_PER_FL_OZ, with
+    NO standard-fragrance-bottle snap). The non-fragrance counterpart to
+    extract_size_ml_any: that primitive snaps an oz value to a luxury bottle size
+    (3.4oz->100) which is correct ONLY for fragrances — for a skincare/grocery
+    product it pushed e.g. 8oz (236.6ml) to 250 and falsely mismatched a genuine
+    '236 ml' listing of the SAME product. Returns None when no ml/oz token present."""
+    if not text:
+        return None
+    vals: List[float] = [float(m) for m in _SIZE_ML_RE.findall(text)]
+    for oz_str in _SIZE_OZ_RE.findall(text):
+        try:
+            vals.append(float(oz_str) * _ML_PER_FL_OZ)
+        except (ValueError, TypeError):
+            continue
+    return min(vals) if vals else None
+
+
+def _size_ml_mismatch(q: str, t: str, category: Optional[str] = None) -> bool:
+    """True iff BOTH carry an ml/oz size and they DIFFER. A side with no size token
+    does not mismatch.
+
+    Category-aware (local review #2): for FRAGRANCES an oz value is snapped to the
+    nearest standard retail bottle size (3.4oz == 100ml) and an EXACT match is
+    required — unchanged, heavily-tested behaviour. For EVERY OTHER category an oz
+    value is converted RAW (no luxury-bottle snap) and sizes within ~5% are the SAME
+    size (absorbs oz<->ml rounding: 8oz == 236.6ml ≈ a '236 ml' / '237 ml' listing),
+    so an oz-labelled skincare/grocery/supplement product is no longer over-rejected
+    against its ml-labelled listing while a real size difference (88ml vs 236ml)
+    still mismatches."""
+    if (category or "").lower() == "fragrances":
+        qs, ts = extract_size_ml_any(q), extract_size_ml_any(t)
+        if qs is None or ts is None:
+            return False
+        return qs != ts
+    qr, tr = _size_ml_raw(q), _size_ml_raw(t)
+    if qr is None or tr is None:
+        return False
+    return abs(qr - tr) > 0.05 * max(qr, tr)
+
+
+def _match_storage_gb(text: str) -> Optional[float]:
+    """The STORAGE capacity (GB) for the matcher — the LARGEST GB/TB token, since on a
+    phone/laptop title that lists BOTH RAM and storage the storage is always the larger
+    (8GB RAM + 256GB storage). extract_storage_gb() returns the MIN (a fairness-side
+    conservative basis) which grabs the RAM value and manufactured a false storage
+    mismatch (coverage review: '8GB 256GB' over-rejected a genuine '256GB')."""
+    vals: List[float] = []
+    for num, unit in _STORAGE_GB_RE.findall(text or ""):
+        try:
+            v = float(num)
+        except (TypeError, ValueError):
+            continue
+        vals.append(v * 1024.0 if unit.lower() == "tb" else v)
+    return max(vals) if vals else None
+
+
+def _storage_mismatch(q: str, t: str) -> bool:
+    """True iff BOTH carry a GB/TB storage size and they DIFFER (256 vs 128). Uses the
+    LARGEST GB token (storage, not RAM) so a query pinning both RAM+storage does not
+    false-pend a genuine storage-only listing."""
+    qg, tg = _match_storage_gb(q), _match_storage_gb(t)
+    if qg is None or tg is None:
+        return False
+    return qg != tg
+
+
+def _count_mismatch(q: str, t: str) -> bool:
+    """True iff BOTH carry a unit count and they DIFFER (120 vs 240 softgels)."""
+    qc, tc = extract_count(q), extract_count(t)
+    if qc is None or tc is None:
+        return False
+    return qc != tc
+
+
+# Supplement strength: capture (value, unit) so a wrong DOSE (5000 IU vs 1000 IU)
+# is a discriminating axis. Conservative cross-unit: only an explicit SAME-unit
+# different-value is a mismatch (mg vs g equivalence is NOT asserted → no false pend).
+_STRENGTH_RE = re.compile(r"(?<![a-z0-9])(\d+(?:[.,]\d+)?)\s*(iu|mg|mcg)(?![a-z])", re.IGNORECASE)
+
+
+def _doses(text: str) -> set:
+    out = set()
+    for val, unit in _STRENGTH_RE.findall(text or ""):
+        try:
+            # A comma in a dose is a THOUSANDS separator ("5,000 IU" = 5000), never a
+            # decimal — supplement doses are integers; treating it as a decimal point
+            # ("5,000"->5.0) manufactured a false strength mismatch (5000 IU vs 5,000 IU).
+            out.add((float(val.replace(",", "")), unit.lower()))
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
+def _strength_mismatch(q: str, t: str) -> bool:
+    """True iff BOTH carry an explicit mg/IU/mcg dose with the SAME unit but a
+    DIFFERENT value (Vitamin D3 5000 IU vs 1000 IU). Cross-unit pairs (mg vs g) are
+    NOT a mismatch — avoids false-pending an mg↔g-equivalent listing."""
+    qd, td = _doses(q), _doses(t)
+    if not qd or not td:
+        return False
+    q_units = {u for _v, u in qd}
+    t_units = {u for _v, u in td}
+    shared = q_units & t_units
+    if not shared:
+        return False  # different units only — don't assert (in)equivalence
+    for u in shared:
+        if {v for v, uu in qd if uu == u} & {v for v, uu in td if uu == u}:
+            return False  # a common (value, unit) exists → not a mismatch
+    return True
+
+
+def _weights_volumes(text: str) -> set:
+    """ALL (value, base) weight/volume tokens in `text` — base normalized to grams
+    (kg→g) or millilitres (L→ml). A SET (not min) so a SECONDARY figure (a 30g
+    per-serving, a 50g travel bonus) does not hide the headline net weight."""
+    out = set()
+    for num, unit in _WEIGHT_VOLUME_RE.findall(text or ""):
+        try:
+            v = float(num)
+        except (TypeError, ValueError):
+            continue
+        u = unit.lower()
+        if u == "kg":
+            out.add((v * 1000.0, "g"))
+        elif u == "g":
+            out.add((v, "g"))
+        elif u in ("lb", "lbs", "pound", "pounds"):
+            # Protein/grocery are nearly always lb-labelled in the GCC — a 2lb vs 5lb
+            # mismatch must fire (coverage review B). lb -> g (×453.592), same "g" base.
+            out.add((round(v * 453.592, 2), "g"))
+        elif u == "l":
+            out.add((v * 1000.0, "ml"))
+        elif u == "ml":
+            out.add((v, "ml"))
+    return out
+
+
+# lb/pound token presence — the lb->g conversion (×453.592) is the ONLY weight
+# conversion that yields a non-integer gram value, so an lb-labelled side never
+# EXACTLY equals a gram/kg-labelled listing of the same tub (5lb=2267.96g vs a
+# "2270g" / "2.27kg" label). kg->g and L->ml are exact (×1000).
+_LB_TOKEN_RE = re.compile(r"\d+(?:\.\d+)?\s*(?:lbs?|pounds?)\b", re.I)
+
+
+def _weight_or_volume_mismatch(q: str, t: str) -> bool:
+    """True iff BOTH carry a SAME-BASE weight/volume (grams or ml) and the HEADLINE
+    (net/package) size DIFFERS (CeraVe 50g vs 340g). Different bases (g vs ml) never
+    mismatch.
+
+    HEADLINE = the LARGEST value per base. A product title routinely lists a SECONDARY
+    measurement alongside the net weight — a serving/nutrition figure ("ISO100 5lb,
+    25g protein per scoop") or a per-bottle figure — that is NOT the package size. The
+    old SET-overlap rule (no mismatch if ANY value overlaps) let that secondary figure
+    MASK a different net weight: "ISO100 5lb 25g" vs "ISO100 2lb 25g" both share the 25g
+    serving and were wrongly accepted as the same SKU (external review P1). Comparing the
+    MAX per base ignores the smaller serving/nutrition figure and compares the real
+    package size (5lb=2267.96g vs 2lb=907.18g -> mismatch), while still NOT mismatching a
+    "908g + 30g per serving" listing against a plain "908g" (both headline 908).
+
+    lb->g rounding tolerance (review #2b): when EITHER side carries an lb/pound token,
+    the two HEADLINE grams values within 1% are the SAME size (5lb=2267.96g matches a
+    "2270g" / "2.27kg" listing). Native g-vs-g and ml-vs-ml stay EXACT (distinct retail
+    sizes are >>1% apart -> no spurious merge); the tolerance arms ONLY for lb."""
+    qwv, twv = _weights_volumes(q), _weights_volumes(t)
+    if not qwv or not twv:
+        return False
+    q_bases = {b for _v, b in qwv}
+    t_bases = {b for _v, b in twv}
+    shared = q_bases & t_bases
+    if not shared:
+        # CROSS-UNIT (external review #4) — BOTH state a size but in DISJOINT bases
+        # (grams vs millilitres). Weight and volume are not interchangeable (a 340g
+        # cream is not provably a 177ml lotion; density makes g<->ml conversion
+        # ambiguous), so the equivalence is UNVERIFIED -> fail-closed mismatch. (A
+        # one-sided size — the other side omits it — never reaches here: the
+        # qwv/twv-empty guard above returns False.)
+        return True
+    _lb_present = bool(_LB_TOKEN_RE.search(q or "")) or bool(_LB_TOKEN_RE.search(t or ""))
+    for b in shared:
+        qv = [v for v, bb in qwv if bb == b]
+        tv = [v for v, bb in twv if bb == b]
+        if not qv or not tv:
+            continue
+        qmax, tmax = max(qv), max(tv)
+        if qmax == tmax:
+            continue  # same headline net/package size
+        if _lb_present and b == "g" and abs(qmax - tmax) <= 0.01 * max(qmax, tmax):
+            continue  # lb-conversion rounding on the headline grams
+        return True
+    return False
+
+
+# Categories where a PRODUCT FORM (deodorant / candle / lotion / shower gel) names
+# a DIFFERENT product than the default bottle/jar, so a one-sided form must reject.
+_FRAGRANCE_BEAUTY_CATEGORIES = frozenset({
+    "fragrances", "makeup", "skincare", "haircare",
+})
+# Only fragrances get the strict flanker near-equality (sub-line names — "Intense",
+# "Elixir", "Over Red" — ARE the identity; titles carry little non-identity padding).
+_FRAGRANCE_FLANKER_CATEGORIES = frozenset({"fragrances"})
+# Non-identity padding words a genuine fragrance title carries (gender/marketing/
+# atomizer wording) — stripped from BOTH sides before the fragrance flanker
+# near-equality so a descriptive genuine title ("…Spray For Men Natural
+# Vaporisateur") is NOT over-rejected, while a real sub-line marker ("Intense",
+# "Elixir", "Over", "Red") stays distinctive and rejects the flanker. Concentration
+# words (eau/de/parfum/toilette/edp/edt) are already stripped as the concentration
+# PHRASE, so they need not appear here.
+# Gender markers are PADDING for the flanker/subset token check (so "Bleu de Chanel
+# Pour Homme" matches a genuine "Bleu de Chanel" PDP that omits the suffix — the common
+# GCC bestseller case). The gender-FLIP flanker (Eros men's vs Eros Pour Femme women's)
+# is caught SEPARATELY by the _gender_mismatch CONTRADICTION axis, which fires only when
+# BOTH sides state a gender and they DIFFER — never on a one-sided omission.
+_FRAGRANCE_PADDING_TOKENS = frozenset({
+    "for", "men", "women", "man", "woman", "mens", "womens", "ladies", "gents",
+    "unisex", "homme", "hommes", "femme", "femmes", "pour", "him", "her",
+    "natural", "spray", "sprays",
+    "vaporisateur", "vapo", "vaporizer", "atomiser", "atomizer", "new", "gift",
+    "perfume", "perfumes", "fragrance", "fragrances", "scent", "scented",
+    "the", "and", "with", "size", "full", "genuine", "original", "authentic", "brand",
+    # NOTE: "cologne" is DELIBERATELY NOT padding — bare "Cologne" (not the "Eau de
+    # Cologne" concentration phrase) is a distinct sub-line (Creed Aventus -> Aventus
+    # Cologne is a different ~$300 fragrance), so it must stay a distinctive identity
+    # token the superset guard rejects (coverage review A).
+})
+
+# Gender CONTRADICTION axis — a fragrance is the WRONG product only when the query and
+# the candidate state OPPOSITE genders (Eros Pour Homme vs Eros Pour Femme). A one-sided
+# gender (query states it, candidate omits, or vice versa) is the canonical single-gender
+# title and must NOT reject (the dominant genuine case). Markers are unambiguous gender
+# words only — "her"/"him"/"ladies"/"gents" are excluded (a brand/name like Burberry
+# "Her" must not read as a gender).
+_GENDER_MEN_TOKENS = frozenset({"homme", "hommes", "men", "man", "mens", "uomo", "herren"})
+_GENDER_WOMEN_TOKENS = frozenset({"femme", "femmes", "women", "woman", "womens", "donna", "damen"})
+# Gender markers are STRIPPED from the identity token set (like the concentration
+# phrase) for fragrance/beauty, so the subset/flanker checks ignore a one-sided
+# "Pour Homme"; the _gender_mismatch CONTRADICTION axis does the real discrimination.
+# "her"/"him" are deliberately NOT here (a name like Burberry "Her"/"Him" must stay
+# a distinctive identity token).
+_GENDER_IDENTITY_STRIP = _GENDER_MEN_TOKENS | _GENDER_WOMEN_TOKENS | frozenset({"pour"})
+
+
+def _gender_of(text: str) -> Optional[str]:
+    """'men' / 'women' / None (none or BOTH → ambiguous/unisex) for `text`."""
+    toks = set(re.findall(r"[a-z0-9]+", _fold_identity(text or "")))
+    m = bool(toks & _GENDER_MEN_TOKENS)
+    w = bool(toks & _GENDER_WOMEN_TOKENS)
+    if m and not w:
+        return "men"
+    if w and not m:
+        return "women"
+    return None
+
+
+def _gender_mismatch(query_name: str, candidate_title: str) -> bool:
+    """True iff query and candidate state CONFLICTING genders (a gender-flip flanker).
+    A one-sided gender (the canonical 'Pour Homme' the terse query omits) is NOT a
+    mismatch."""
+    gq, gt = _gender_of(query_name), _gender_of(candidate_title)
+    return bool(gq and gt and gq != gt)
+
+
+def _feminine_query_unconfirmed(query_name: str, candidate_title: str) -> bool:
+    """True iff the QUERY states a WOMEN's flanker (Eros Pour Femme) but the candidate does
+    NOT confirm it (Eros / Eros Pour Homme). The unspecified base of a designer fragrance is
+    conventionally the men's/original, so a femme query matching a gender-OMITTING candidate is
+    a WRONG product (comprehensive review MEDIUM leak). ASYMMETRIC by design: a men's/unisex
+    query still tolerates the unspecified base (preserves the 'Pour Homme'-bestseller match).
+
+    NOTE (local review #1, INTENTIONALLY NOT symmetrized): the inverse — a base/men's query
+    matching a women's CANDIDATE ("Versace Eros" -> "Eros Pour Femme") — is a real but
+    UNFIXABLE-by-tokens leak. A symmetric "reject when exactly one side states women's" rule
+    mass-over-rejects every WOMEN's-BASE fragrance whose candidate merely adds a "For Women"
+    descriptor ("Black Opium" -> "Black Opium For Women" is the SAME product), because gender
+    tokens alone cannot distinguish a flanker-of-a-men's-base from a women's-base descriptor.
+    The asymmetry deliberately trades the narrow Eros-style leak for not pending the far more
+    common women's-base case. See tests/test_correctness_review_pr9_fixes.py."""
+    return _gender_of(query_name) == "women" and _gender_of(candidate_title) != "women"
+
+# Form PHRASES that name a different product when present on only one side. Ordered
+# longest-first so "body lotion" wins over a bare "body". The default bottle/jar form
+# is None. "spray"/"mist"/"set"/"travel" alone are NOT discriminating (a perfume IS a
+# spray) — only the explicit alternate forms below discriminate.
+_PRODUCT_FORM_PATTERNS: List[Tuple[str, str]] = [
+    # A gift SET / multi-piece BUNDLE is a DIFFERENT SKU than the single bottle/jar
+    # (different contents + price) — discriminating, longest-first.
+    ("gift set", "set"), ("coffret", "set"), ("bundle", "set"),
+    ("collection set", "set"), ("travel set", "set"), ("set", "set"),
+    ("body lotion", "lotion"), ("body cream", "cream"), ("body butter", "butter"),
+    ("body mist", "bodymist"), ("body spray", "bodyspray"), ("body wash", "wash"),
+    ("shower gel", "showergel"), ("hair mist", "hairmist"), ("after shave", "aftershave"),
+    ("aftershave", "aftershave"), ("roll on", "rollon"), ("roll-on", "rollon"),
+    ("rollon", "rollon"), ("deodorant", "deodorant"), ("antiperspirant", "deodorant"),
+    ("candle", "candle"), ("soap", "soap"), ("scrub", "scrub"), ("shampoo", "shampoo"),
+    ("conditioner", "conditioner"), ("shower", "showergel"), ("lotion", "lotion"),
+    ("refill", "refill"), ("pomade", "pomade"), ("serum", "serum"),
+    # Standalone cosmetic FORMS (skincare/haircare/makeup) — cream vs gel vs oil vs balm
+    # are DIFFERENT products (coverage review C). These are also in _FORM_NOISE_TOKENS
+    # (stripped from IDENTITY) so a form word is an enforced axis, never a silent identity
+    # token. ONE-SIDED tolerance for these categories lives in _form_mismatch.
+    ("cream", "cream"), ("gel", "gel"), ("oil", "oil"), ("balm", "balm"),
+    ("butter", "butter"), ("mask", "mask"), ("toner", "toner"),
+    ("essence", "essence"), ("foam", "foam"), ("mousse", "mousse"),
+    ("ampoule", "ampoule"), ("peel", "peel"),
+    # skincare/haircare cleanser/treatment/emulsion forms — so _form_mismatch fires
+    # both-stated-different (Cleanser vs Cream/Treatment/Mask) while staying one-sided
+    # tolerant (coverage review round 5 HIGH).
+    ("cleansing", "cleanser"), ("cleanser", "cleanser"), ("face wash", "wash"),
+    ("wash", "wash"), ("treatment", "treatment"), ("emulsion", "emulsion"),
+    ("fluid", "fluid"),
+]
+
+
+def _extract_product_form(text: str, brand: str = "") -> Optional[str]:
+    """The discriminating product FORM in `text` (after removing brand words so a
+    brand like "The Body Shop" / "Old Spice" doesn't manufacture a form), or None
+    for the default bottle/jar. Phrase-matched longest-first."""
+    folded = _fold_identity(text or "")
+    if brand:
+        for bw in normalize_words(_fold_identity(brand)):
+            folded = re.sub(rf"\b{re.escape(bw)}\b", " ", folded)
+    # An explicit multi-PIECE count ("3 Piece", "2 Pcs") is a SET, even without the
+    # word "set" — a different SKU than the single bottle.
+    if re.search(r"\b\d+\s*(?:piece|pieces|pcs|pc)\b", folded):
+        return "set"
+    for phrase, canon in _PRODUCT_FORM_PATTERNS:
+        if re.search(rf"\b{re.escape(phrase)}\b", folded):
+            return canon
+    return None
+
+
+def _form_mismatch(query_name: str, candidate_title: str, category: Optional[str],
+                   brand: str = "") -> bool:
+    """True iff the query and candidate name DIFFERENT product forms. A no-op outside
+    fragrance/beauty categories (a phone has no 'form').
+
+    Strictness differs by category (coverage review C):
+      - FRAGRANCES: strict — a one-sided form (query=bottle/None, candidate=Deodorant)
+        rejects (a deodorant is a different product than the EDP).
+      - skincare/haircare/makeup: ONE-SIDED tolerant — a descriptive PDP that states a
+        form the form-omitting query lacks (Niacinamide -> "Niacinamide Serum") must NOT
+        pend; only TWO explicitly-stated DIFFERENT forms (cream vs gel) reject."""
+    cat = (category or "").lower()
+    if cat not in _FRAGRANCE_BEAUTY_CATEGORIES:
+        return False
+    qf = _extract_product_form(query_name, brand)
+    tf = _extract_product_form(candidate_title, brand)
+    # FRAGRANCES + MAKEUP: STRICT — a one-sided form is a different SKU (a deodorant vs
+    # the EDP; a Lip Glow OIL vs the Lip Glow balm — coverage review CRITICAL makeup
+    # format leak). skincare/haircare: one-sided tolerant (a "Serum" PDP for a
+    # form-omitting query is the same product; only two DIFFERENT stated forms reject).
+    if cat in ("fragrances", "makeup"):
+        return qf != tf
+    return bool(qf and tf and qf != tf)
+
+
+def _candidate_missing_query_axis(query_name: str, candidate_title: str,
+                                  category: Optional[str]) -> bool:
+    """True iff the QUERY states a discriminating axis that the CANDIDATE does NOT —
+    i.e. the candidate is UNVERIFIED on an axis the user pinned, so it must PEND
+    (fail-closed), not auto-accept. Scoped to the axes where a silent omission is a
+    real wrong-variant leak: fragrance concentration + ml size, supplement strength +
+    count. (Electronics storage is DELIBERATELY excluded — terse genuine PDP titles
+    routinely omit it; the qualifier/variant_mismatch axes carry electronics.)"""
+    cat = (category or "").lower()
+    if cat == "fragrances":
+        if extract_concentration(query_name) and not extract_concentration(candidate_title):
+            return True
+        if extract_size_ml_any(query_name) is not None and extract_size_ml_any(candidate_title) is None:
+            return True
+    if cat == "supplements":
+        if _doses(query_name) and not _doses(candidate_title):
+            return True
+        if extract_count(query_name) is not None and extract_count(candidate_title) is None:
+            return True
+    if cat == "electronics":
+        # External review — query states storage (256GB) but the candidate omits it ->
+        # UNVERIFIED -> pend (a terse "Galaxy S24" PDP is not proof it is the 256GB).
+        if extract_storage_gb(query_name) is not None and extract_storage_gb(candidate_title) is None:
+            return True
+    if cat in _SIZE_OMIT_CATEGORIES:
+        # skincare / makeup / haircare / grocery — query states a weight/volume the
+        # candidate omits -> unverified size -> pend.
+        if _weights_volumes(query_name) and not _weights_volumes(candidate_title):
+            return True
+    if cat in _PERCENT_CATEGORIES:
+        # skincare/haircare/makeup — query states a %-strength the candidate omits ->
+        # unverified active concentration -> pend (coverage review B).
+        if _percents(query_name) and not _percents(candidate_title):
+            return True
+    if cat == "fashion":
+        # query states a system shoe size the candidate omits -> unverified -> pend.
+        if _shoe_sizes(query_name) and not _shoe_sizes(candidate_title):
+            return True
+    if cat == "grocery":
+        # query states a pack count the candidate omits -> unverified -> pend.
+        if _packs(query_name) and not _packs(candidate_title):
+            return True
+    return False
+
+
+# Categories where a query-stated weight/volume the candidate omits = unverified -> pend.
+# Supplements included (coverage review): a Whey 5lb query must not match a no-size listing.
+_SIZE_OMIT_CATEGORIES = frozenset({"skincare", "makeup", "haircare", "grocery", "supplements"})
+
+# Fashion CLOTHING sizes (apparel) — a SKU axis. Standalone size tokens.
+_CLOTHING_SIZE_RE = re.compile(
+    r"(?<![a-z0-9])(xxs|xs|s|m|l|xl|xxl|xxxl|2xl|3xl|small|medium|large)(?![a-z0-9])",
+    re.I,
+)
+# A bare single-letter clothing size (S/M/L) is only a size when it follows "size".
+_SIZED_CLOTHING_RE = re.compile(r"\bsize\s+(xxs|xs|s|m|l|xl|xxl|xxxl|2xl|3xl)\b", re.I)
+_VITAMIN_LETTER_RE = re.compile(r"\bvitamin\s+([a-k])(?![a-z])", re.I)
+
+
+def _colors_in(text: str) -> set:
+    """The colour/colourway tokens present in `text` (from _COLOR_EDITION_TOKENS)."""
+    toks = set(re.findall(r"[a-z0-9]+", _fold_identity(text or "")))
+    return toks & _COLOR_EDITION_TOKENS
+
+
+def _color_mismatch(query_name: str, candidate_title: str) -> bool:
+    """Fashion colourway contradiction. The query's STATED colours must ALL appear in the
+    candidate (a "White Green" query is NOT the "White Red" colourway just because both carry
+    white — comprehensive-review HIGH dual-colourway leak). A one-sided colour (the query
+    states none, or the candidate adds an extra colour beyond the query's) is tolerated."""
+    qc, tc = _colors_in(query_name), _colors_in(candidate_title)
+    if not qc or not tc:
+        return False
+    return not qc.issubset(tc)
+
+
+def _clothing_sizes_in(text: str) -> set:
+    folded = _fold_identity(text or "")
+    out = {m.lower() for m in _SIZED_CLOTHING_RE.findall(folded)}
+    # also accept an explicit XL/XXL/small/medium/large standalone (unambiguous)
+    for m in _CLOTHING_SIZE_RE.findall(folded):
+        ml = m.lower()
+        if ml in ("xs", "xxs", "xl", "xxl", "xxxl", "2xl", "3xl", "small", "medium", "large"):
+            out.add(ml)
+    return out
+
+
+def _clothing_size_mismatch(query_name: str, candidate_title: str) -> bool:
+    """Fashion apparel size contradiction — both state a clothing size and they DIFFER."""
+    qs, ts = _clothing_sizes_in(query_name), _clothing_sizes_in(candidate_title)
+    if not qs or not ts:
+        return False
+    return not (qs & ts)
+
+
+def _vitamin_letter_mismatch(query_name: str, candidate_title: str) -> bool:
+    """Supplement vitamin-letter contradiction — Vitamin C vs Vitamin D (the single
+    letter is dropped from identity tokens, so it is checked as an explicit axis)."""
+    qv = {m.lower() for m in _VITAMIN_LETTER_RE.findall(query_name)}
+    tv = {m.lower() for m in _VITAMIN_LETTER_RE.findall(candidate_title)}
+    if not qv or not tv:
+        return False
+    return not (qv & tv)
+
+
+# Flagship fragrance concentrations — a different, more concentrated JUICE than the
+# default EDP/EDT line. A candidate that ADDS one the query never asked for ("Black
+# Opium" -> "Black Opium Le Parfum", "Sauvage" -> "Sauvage Parfum/Elixir") is a
+# DIFFERENT product. (EDP/EDT/EDC are the standard lines — adding them is just a more
+# specific title, NOT a different juice, so they are excluded here.)
+_FLAGSHIP_CONCENTRATIONS = frozenset({"Extrait", "Parfum", "Parfum Intense"})
+
+
+def _flagship_concentration_added(query_name: str, candidate_title: str) -> bool:
+    """True iff the candidate states a FLAGSHIP concentration (Parfum/Extrait/Parfum
+    Intense) that the query did not state — a different juice, fail-closed."""
+    tc = extract_concentration(candidate_title)
+    if tc not in _FLAGSHIP_CONCENTRATIONS:
+        return False
+    return extract_concentration(query_name) != tc
+
+
+# Supplement product-TYPE tokens that name a DIFFERENT formulation (Whey vs Whey
+# Isolate/Concentrate/Hydrolysate; Vitamin D3 vs D3+K2). A candidate that ADDS one
+# the query lacks is a different SKU.
+_SUPPLEMENT_TYPE_TOKENS = frozenset({
+    "isolate", "concentrate", "hydrolysate", "hydrolyzed", "hydrolysed",
+    # Combo minerals/vitamins — a candidate that ADDS one the query lacks is a different
+    # formulation ("Vitamin D3" vs "Vitamin D3 with Zinc"; "Calcium" vs "Calcium + Magnesium").
+    "k2", "zinc", "magnesium", "calcium", "iron", "copper", "selenium",
+    "b12", "b6", "folate", "folic", "biotin",
+    # Mineral SALT forms — a candidate that ADDS a salt the query lacks is a DIFFERENT
+    # SKU ("Magnesium" -> "Magnesium Glycinate/Citrate/Oxide") (coverage review A).
+    "glycinate", "citrate", "oxide", "bisglycinate", "malate", "threonate",
+    "gluconate", "chloride", "sulfate", "sulphate", "carbonate", "picolinate",
+    "aspartate", "orotate", "taurate", "ascorbate",
+    # Product SUB-LINE / potency suffixes — a different formulation/potency SKU
+    # ("Centrum" -> "Centrum Silver"; "Fish Oil" -> "Triple Strength"; "Multivitamin" ->
+    # "Advanced/Senior/Complete") (coverage review A). Tier words gold/ultimate/platinum
+    # are NOT here — the superset guard catches them (they are not padding). REMOVED:
+    # micronized (processing, same product), extra/double/mega/ultra (ambiguous flavour
+    # "Double Rich Chocolate" / marketing) (coverage review round 4).
+    "silver", "triple", "advanced", "senior", "complete",
+})
+# The bare ELEMENT / VITAMIN CONSTITUENT names within _SUPPLEMENT_TYPE_TOKENS (NOT the salt
+# forms or formulation types). For a SINGLE-constituent query these discriminate a COMBO add
+# ("Calcium" -> "Calcium Magnesium Zinc" is a different SKU). But for a MULTI-CONSTITUENT
+# product query they are the product's own declared CONTENTS, not a flanker.
+_SUPPLEMENT_CONSTITUENT_TOKENS = frozenset({
+    "zinc", "magnesium", "calcium", "iron", "copper", "selenium",
+    "b12", "b6", "folate", "folic", "biotin",
+})
+# Query words that NAME a multi-constituent product (defined BY containing several
+# elements/vitamins): a descriptive title that ENUMERATES those constituents is the SAME SKU
+# ("Now B-Complex" -> "Now B-Complex with B12 B6 Folate Biotin"; "Centrum Multivitamin" ->
+# "...with Iron Zinc"; "Prenatal" -> "...with Folic Acid and Iron"). The acronym/abbreviation
+# forms (ZMA, Cal-Mag) are NOT here — they ALSO fail the upstream selection superset (the
+# acronym is not a subset of its expansion) so they need brand-alias normalization, a
+# documented deferred residual (coverage re-sweep of the parallel review-fix commits).
+_MULTI_CONSTITUENT_QUERY = frozenset({"complex", "multivitamin", "multivitamins", "prenatal"})
+
+
+def _supplement_type_added(query_name: str, candidate_title: str) -> bool:
+    """True iff the candidate carries a supplement product-TYPE token (isolate/concentrate/
+    hydrolysate / mineral salt-form / sub-line) the query lacks — a different formulation.
+
+    EXCEPTION (coverage re-sweep): when the QUERY itself names a MULTI-CONSTITUENT product
+    (B-Complex / Multivitamin / Prenatal), a title that merely ENUMERATES the bare element/
+    vitamin CONSTITUENTS the product is defined to contain is the SAME SKU, not a flanker, so
+    the bare constituent names are excluded for such queries. A SINGLE-constituent query keeps
+    them — so a COMBO add still rejects ("Calcium" -> "Calcium Magnesium Zinc") and a
+    formulation/salt-form add ("Magnesium" -> "Magnesium Citrate", "Whey" -> "Whey Isolate")
+    stays a discriminator on BOTH (no combo leak)."""
+    qt = set(re.findall(r"[a-z0-9]+", _fold_identity(query_name)))
+    tt = set(re.findall(r"[a-z0-9]+", _fold_identity(candidate_title)))
+    added = (tt & _SUPPLEMENT_TYPE_TOKENS) - qt
+    if qt & _MULTI_CONSTITUENT_QUERY:
+        added = added - _SUPPLEMENT_CONSTITUENT_TOKENS
+    return bool(added)
+
+
+def _category_type_added(query_name: str, candidate_title: str, category: Optional[str]) -> bool:
+    """A candidate that ADDS a category-specific DISTINCTIVE variant the query never
+    asked for: a flagship fragrance concentration, or a supplement formulation type."""
+    cat = (category or "").lower()
+    if cat == "fragrances":
+        return _flagship_concentration_added(query_name, candidate_title)
+    if cat == "supplements":
+        return (_supplement_type_added(query_name, candidate_title)
+                or _supplement_form_added(query_name, candidate_title))
+    return False
+
+
+# ============================================================================
+# COVERAGE-REVIEW (2026-06-28) — the missing numeric/form axes + the generalized
+# candidate-adds-distinctive-token (superset) guard. Spec clusters A/B/C.
+# ============================================================================
+
+# --- % active-ingredient STRENGTH axis (skincare/haircare/makeup) ------------
+# A discriminating axis ONLY for cosmetics, where % = active concentration
+# (Niacinamide 10% vs 5%). NOT for supplements/grocery, where % is purity/marketing
+# ("100% Whey", "2% milk") and must NOT gate. Spaced / "percent" / "pct" spellings + a
+# single-digit / decimal value all parse.
+_PERCENT_RE = re.compile(r"(?<![a-z0-9])(\d+(?:\.\d+)?)\s*(?:%|percent|pct)(?![a-z])", re.I)
+_PERCENT_CATEGORIES = frozenset({"skincare", "haircare", "makeup"})
+
+
+def _percents(text: str) -> set:
+    out = set()
+    for v in _PERCENT_RE.findall(text or ""):
+        try:
+            out.add(float(v))
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
+def _percent_mismatch(q: str, t: str) -> bool:
+    """True iff BOTH carry a %-strength and they share NO value (10% vs 5%)."""
+    qp, tp = _percents(q), _percents(t)
+    if not qp or not tp:
+        return False
+    return not (qp & tp)
+
+
+# --- fashion SHOE-SIZE axis ---------------------------------------------------
+# A system-prefixed size (US/UK/EU 9, 10.5) is a SKU axis. A bare number is NOT
+# captured (it collides with the model number, handled as identity).
+_SHOE_SIZE_RE = re.compile(r"\b(us|uk|eu|eur)\s*(\d{1,2}(?:\.\d)?)\b", re.I)
+
+
+def _shoe_sizes(text: str) -> set:
+    out = set()
+    for sys_, val in _SHOE_SIZE_RE.findall(text or ""):
+        try:
+            out.add((sys_.lower().replace("eur", "eu"), float(val)))
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
+def _shoe_size_mismatch(q: str, t: str) -> bool:
+    """True iff BOTH state a system-prefixed shoe size and share none (US 9 vs US 10)."""
+    qs, ts = _shoe_sizes(q), _shoe_sizes(t)
+    if not qs or not ts:
+        return False
+    return not (qs & ts)
+
+
+# --- grocery PACK-COUNT axis --------------------------------------------------
+_PACK_RE = re.compile(
+    r"\bpack\s*of\s*(\d+)\b|\b(\d+)\s*[-\s]?pack\b|\b(\d+)\s*x\b|\b(\d+)\s*(?:ct|count)\b",
+    re.I,
+)
+
+
+def _packs(text: str) -> set:
+    out = set()
+    for m in _PACK_RE.finditer(text or ""):
+        for g in m.groups():
+            if g:
+                try:
+                    out.add(float(g))
+                except (TypeError, ValueError):
+                    continue
+    return out
+
+
+def _pack_mismatch(q: str, t: str) -> bool:
+    """True iff BOTH state a pack count and share none (6 Pack vs 24 Pack)."""
+    qp, tp = _packs(q), _packs(t)
+    if not qp or not tp:
+        return False
+    return not (qp & tp)
+
+
+# --- supplement delivery FORM axis -------------------------------------------
+# Default pill forms (softgel/capsule/tablet) are the standard presentation — a
+# one-sided default form is TOLERATED. Alternative forms (gummy/powder/liquid/...)
+# are a DIFFERENT SKU — a one-sided alternative form, or any two differing forms,
+# rejects. Spec cluster C.
+_SUPPLEMENT_DEFAULT_FORMS = frozenset({
+    "softgel", "softgels", "capsule", "capsules", "caplet", "caplets",
+    "tablet", "tablets", "pill", "pills", "vcap", "vcaps", "vegcap", "vegcaps",
+    # "powder" is the DEFAULT presentation for protein/creatine (whey IS a powder), so a
+    # one-sided "... Powder" must be TOLERATED, not pended — it only discriminates when the
+    # other side states an ALTERNATIVE form (powder vs gummy), via the class check below.
+    "powder",
+})
+_SUPPLEMENT_ALT_FORMS = frozenset({
+    "gummy", "gummies", "liquid", "drops", "spray", "lozenge",
+    "lozenges", "chewable", "chewables", "effervescent", "syrup",
+})
+
+
+def _supplement_form_added(query_name: str, candidate_title: str) -> bool:
+    qt = set(re.findall(r"[a-z0-9]+", _fold_identity(query_name)))
+    tt = set(re.findall(r"[a-z0-9]+", _fold_identity(candidate_title)))
+    # candidate adds an ALTERNATIVE form the query lacks -> different SKU.
+    if (tt & _SUPPLEMENT_ALT_FORMS) - (qt & _SUPPLEMENT_ALT_FORMS):
+        return True
+    # both state a form and the (default vs alternative) CLASS differs.
+    def _class(toks: set) -> set:
+        out = set()
+        for f in toks & (_SUPPLEMENT_DEFAULT_FORMS | _SUPPLEMENT_ALT_FORMS):
+            out.add("alt:" + f if f in _SUPPLEMENT_ALT_FORMS else "default")
+        return out
+    qc, tc = _class(qt), _class(tt)
+    return bool(qc and tc and qc != tc)
+
+
+# --- generalized candidate-adds-distinctive-token (SUPERSET) guard ------------
+# THE KEYSTONE (coverage review, round 2): a candidate that carries an EXTRA distinctive
+# IDENTITY token beyond the query — after subtracting a per-category PADDING allowlist —
+# is a DIFFERENT (related) SKU, not just a longer title. This is the fragrance flanker
+# pattern (t_core ⊆ q_core), GENERALIZED to EVERY category. A curated variant-marker
+# allowlist was tried and is structurally leaky — sub-line/formulation/flavour tokens are
+# UNBOUNDED (Kindle->Paperwhite, Creatine->Monohydrate, Coke->Cherry, AF1->AF1 Mid). The
+# robust shape is the inverse: reject ANY extra non-padding token. Over-rejection is
+# controlled by (a) the per-category PADDING (descriptive/marketing/connectivity/form/
+# flavour-noise + major brand words) and (b) the q_core-EMPTY skip (a generic/class query
+# legitimately matches any specific member: "Sony Headphones" -> "Sony WH-CH520").
+# Categories with NO discriminating superset would be the leak family; ALL get it now.
+
+# Base marketing/packaging/warranty noise (every category).
+_BASE_NOISE_TOKENS = frozenset({
+    "new", "genuine", "authentic", "brand", "official", "sealed", "boxed", "the",
+    "and", "with", "for", "version", "item", "warranty", "year", "years", "month",
+    "months", "yr", "yrs", "imported", "stock", "edition",
+})
+# Major MANUFACTURER words — a brand word a genuine title adds that the (brand-omitted)
+# query lacks is never a SKU discriminator. Bounded to common GCC electronics/appliance/
+# fashion houses so the superset never over-rejects a brand-in-title ("16-inch MacBook
+# Pro" -> "...Apple..."). NOT applied to grocery (where "apple"/"orange" are flavours).
+_MANUFACTURER_NOISE = frozenset({
+    "apple", "samsung", "sony", "lg", "dell", "hp", "lenovo", "asus", "acer",
+    "microsoft", "google", "huawei", "xiaomi", "oppo", "vivo", "realme", "nokia",
+    "motorola", "oneplus", "nintendo", "canon", "nikon", "bose", "jbl", "logitech",
+    "razer", "dyson", "anker", "belkin", "sandisk", "seagate", "kingston", "corsair",
+    "msi", "gigabyte", "intel", "amd", "nvidia", "garmin", "fitbit", "gopro", "dji",
+    "amazon", "philips", "panasonic", "tcl", "hisense", "honor", "nothing",
+    "nike", "adidas", "puma", "reebok", "asics", "converse", "vans", "newbalance",
+})
+_ELECTRONICS_PADDING = _MANUFACTURER_NOISE | frozenset({
+    "dual", "sim", "5g", "4g", "3g", "lte", "wifi", "gsm", "esim",
+    "unlocked", "international", "global", "factory", "android", "ios", "mobile",
+    "cellular", "smartphone", "smartphones", "phone", "phones", "gen", "generation",
+    "wireless", "advanced", "bluetooth", "portable", "rechargeable", "smart",
+    "inch", "display", "screen", "ram",
+    # high-frequency descriptive/marketing words a genuine electronics title adds
+    # (coverage review) — NOT a SKU variant for a model-number query.
+    "noise", "cancelling", "cancellation", "anc", "cordless", "illuminated",
+    # Apple-Silicon canonical-title descriptors + MagSafe accessory-name word (coverage R8):
+    # "MacBook Air with M2 chip", "AirPods Pro 2 with MagSafe" — descriptive, not a variant.
+    # ("chip" is safe — the M2/M3 tier is the discriminator, caught by _chip_tier_mismatch.)
+    "with", "chip", "magsafe",
+    # Regional / stock descriptors a GCC retailer title appends ("iPhone 15 128GB - Pink
+    # Middle East Version with FaceTime") — same SKU, not a variant (coverage R8 sharafdg).
+    "middle", "east", "version", "facetime", "region", "regional", "warranty", "years",
+    # NOTE: "detect"/"absolute" are Dyson TRIM/line words (V8 Absolute, V15 Detect are
+    # distinct SKUs) — NOT padding; they discriminate.
+    "gaming", "geforce", "radeon", "model", "joycon", "joy", "con",
+    # NOTE: "ventus"/"trio" REMOVED — MSI GPU COOLER-design LINES (RTX 4070 Ventus vs Trio
+    # are distinct SKUs), like Dyson detect/absolute. They discriminate.
+    "charger", "console", "headphones", "headphone", "earbuds",
+    "speaker", "performance", "uhd", "4k", "8k", "octa", "quad", "core",
+    # GPU factory-tune + camera/laptop spec descriptors (NOT a SKU/chip variant) —
+    # 'oc'=overclocked, mirrorless/dslr/body/lens descriptive (coverage review round 5).
+    "oc", "mirrorless", "dslr", "body", "lens", "ssd", "hdd", "ryzen", "camera",
+    "intel", "amd",
+    # NOTE: "kit" REMOVED — a camera Kit (body+lens) is a materially pricier SKU than the
+    # body; an added "Kit" must reject a body/base query (coverage review round 6).
+    # NOTE: "crystal" REMOVED — Samsung TV LINE (Crystal UHD vs QLED vs Neo QLED). It
+    # discriminates. "ventus"/"trio" already removed (MSI cooler lines).
+    "over", "ear", "overear", "onear", "inear", "vacuum", "cleaner", "keyboard", "mouse",
+    "power", "bank", "powerbank", "graphics", "card", "gpu", "mic", "microphone",
+    "adapter", "supply", "certified",
+    # NOTE: "nano"/"refurbished"/"renewed" REMOVED — nano is a product LINE (iPod Nano);
+    # refurbished/renewed is a CONDITION axis (_condition_mismatch), not padding.
+})
+_FASHION_PADDING = frozenset({
+    "mens", "womens", "men", "women", "unisex", "ladies", "gents",
+    # NOTE: kids/youth REMOVED — an age-SEGMENT is a distinct (lower-priced) SKU; a
+    # one-sided "Kids"/"Youth" add must reject (coverage review round 5).
+    "shoe", "shoes", "sneaker", "sneakers", "trainers", "footwear", "originals",
+    # "retro" is Nike's standard release-line word in genuine same-product titles.
+    # running/runner/performance = shoe-ACTIVITY descriptors (the MODEL name discriminates,
+    # not the activity) — a genuine "Air Max SC Runner Sneakers Performance" listing for an
+    # "Air Max SC" query (coverage R8 6thStreet fashion lever). A real shoe TYPE that IS a
+    # SKU axis (trail vs road) is NOT padded.
+    "retro", "running", "runner", "performance", "casual",
+    # MATERIAL descriptors a genuine apparel title adds (one-sided tolerated; a both-
+    # stated DIFFERENT material is caught by _material_mismatch): "Orangey Dress in
+    # Cotton-blend". NOTE: fit/cut words (slim/regular/relaxed) are NOT padding — they are
+    # a denim/apparel SKU axis (Levis 501 vs 501 Slim), kept as identity + _fit_mismatch.
+    "cotton", "blend", "cottonblend", "leather", "denim", "wool", "silk", "linen",
+    "polyester", "suede", "canvas", "nylon", "cashmere", "fleece", "jersey", "knit",
+    "woven", "fabric", "material", "fit", "in", "original",
+    # NOTE: garment CLASS nouns (dress/shirt/jacket/...) moved to _GENERIC_FASHION_NOUNS so
+    # a CLASS SWAP (Dress vs Skirt) rejects while a one-sided class noun is tolerated.
+}) | {b for b in _MANUFACTURER_NOISE if b in {"nike", "adidas", "puma", "reebok",
+                                              "asics", "converse", "vans", "newbalance"}}
+_GROCERY_PADDING = frozenset({
+    "jar", "bottle", "can", "bag", "packet", "box", "tin", "carton", "bottles",
+    # canonical-product descriptors (NOT variants): "Coca-Cola Original Taste",
+    # "Nescafe Gold Instant Coffee" (coverage review over-rejection).
+    "original", "instant", "taste", "drink", "soft", "fresh", "premium", "pure",
+    # descriptive (non-variant) grocery type/prep nouns (coverage review).
+    "potato", "tomato", "spread", "blend", "rolled",
+    "plain",
+    # NOTE: "hazelnut" REMOVED (it is a FLAVOUR -> _FLAVOUR_TOKENS); ground/whole/skimmed/
+    # semi/still/sparkling/salted moved to the _grocery_prep_mismatch contradiction axis.
+    # NOTE: grocery CLASS nouns (coffee/tea/juice/milk/cola/chocolate/...) moved to
+    # GENERIC_CATEGORY_NOUNS so a CLASS SWAP (Coffee vs Tea) rejects, while a one-sided
+    # class noun is still tolerated (coverage review cross-class leak).
+})
+# Cosmetic FORM words (skincare/haircare) — stripped from the superset (the form axis
+# _form_mismatch handles them, one-sided-tolerant). NOT padding for makeup, where a
+# format (liquid/oil/stick) IS a distinct SKU.
+_COSMETIC_FORM_PADDING = frozenset({
+    "serum", "toner", "essence", "cleanser", "mask", "foam", "mousse", "ampoule",
+    "peel", "scrub", "shampoo", "conditioner", "wash", "cream", "gel", "oil",
+    "balm", "lotion", "butter", "treatment", "perfector", "bond", "builder",
+    "maintenance", "moisturiser", "drops",
+    # packaging containers (not a SKU variant): "...340g Tub", "...473ml Pump".
+    "tub", "pump", "tube", "dispenser", "sachet", "pot", "jar", "bottle",
+})
+# Chemical-synonym words a supplement title restates (cholecalciferol == D3) — a no-op
+# token whether in the query (bare) or candidate (paren); padding on BOTH sides.
+_SUPPLEMENT_CHEM_SYNONYMS = frozenset({
+    "cholecalciferol", "ergocalciferol", "ascorbic", "acid", "tocopherol",
+    "pyridoxine", "thiamine", "riboflavin",
+    "pantothenic", "phylloquinone", "menaquinone", "alpha", "lipoic",
+    # NOTE: cyanocobalamin / methylcobalamin are DIFFERENT B12 molecules (synthetic vs
+    # active, different price) — NOT no-op synonyms; kept as distinctive identity tokens
+    # so a B12-form swap rejects (coverage review round 5).
+})
+# makeup PADDING is intentionally SPARSE — a shade (number OR spelled-out name) is the
+# PRIMARY SKU axis, so shade-NAME words must NOT be unconditional padding (that accepted
+# any shade — coverage review CRITICAL). Spelled shade names are dropped only when BOTH
+# sides share the shade NUMBER (handled in _selection_match). FINISH (matte/satin/dewy) is
+# a CONTRADICTION axis (_finish_mismatch), not padding. Only truly-generic descriptors here.
+# FINISH words — ONE-SIDED tolerated (Ruby Woo -> Ruby Woo Matte is the same matte
+# lipstick) so they are padding, but a both-stated DIFFERENT finish (Matte vs Dewy) is a
+# different SKU caught by _finish_mismatch.
+_MAKEUP_FINISH_TOKENS = frozenset({
+    "matte", "satin", "shimmer", "dewy", "glossy", "luminous", "radiant", "velvet",
+    "metallic", "natural", "poreless",
+    # FORMULA/finish words that distinguish foundation LINES (Pro Filt'r Hydrating vs Soft
+    # Matte; Infallible Glow vs Matte). Both-stated-different rejects via _finish_mismatch; a
+    # ONE-SIDED add is tolerated as descriptive (coverage re-sweep: "Fit Me 310 Smooth
+    # Coverage" / "Natural Beige Glow" / "Hydrating Tint" must NOT over-reject — so 'smooth' is
+    # deliberately EXCLUDED, it is a generic coverage descriptor, not a line word).
+    "glow", "glowy", "glowing", "hydrating", "illuminating", "mattifying",
+})
+_MAKEUP_PADDING = _MAKEUP_FINISH_TOKENS | frozenset({
+    "longwear", "longlasting", "buildable", "blendable", "lightweight",
+    # "soft" is a FINISH/texture descriptor in makeup (Pro Filt'r Soft Matte, Soft Glow,
+    # Soft Pinch) — padding it recovers the canonical product-line title (coverage R8). A
+    # numbered shade ("Fit Me 240 Soft Sand") is already handled by the shade-NUMBER tolerance.
+    "soft",
+    # Pure connective stopwords (local review #4). Makeup is the ONLY category that keeps
+    # these 2-char tokens as identity (the `len(w) >= 1` makeup keep-rule in
+    # _identity_tokens_ps; every other category drops them via the len>2 rule), where they
+    # over-reject the canonical "<product> IN <shade>" listing ("NARS Lipstick in Dolce Vita"
+    # vs the query "NARS Lipstick Dolce Vita"). Padding them only here keeps the blast radius
+    # to makeup and never touches another category. Deliberately EXCLUDES the article "a"/"an"
+    # — a single-letter "a" can be a makeup shade code (the keep-rule's MAC-shade-A/B case), so
+    # padding it would strip a real shade token.
+    "to", "of", "in", "on", "by",
+})
+# --- contradiction axes (coverage review round 2): one-sided tolerated, both-stated-
+# different rejected — mirrors _gender_mismatch / _color_mismatch ---------------
+_FLAVOUR_TOKENS = frozenset({
+    "vanilla", "chocolate", "strawberry", "berry", "citrus", "orange", "lemon", "mint",
+    "cookies", "mango", "banana", "caramel", "cinnamon", "coconut", "grape", "cherry",
+    "lime", "apple", "peach", "raspberry", "tropical", "unflavored", "unflavoured",
+    "hazelnut", "almond", "pistachio", "honey",
+    # 'cheese' is a generic grocery noun that is ALSO a flavour (Pringles Cheese vs Original) —
+    # adding it closes the same one-sided grocery flavour-add leak as 'chocolate' (re-sweep LOW).
+    "cheese",
+    # flavour words a candidate ADDS that the prior set missed (coverage sweep CRIT/HIGH:
+    # "Creatine Unflavored" -> "...Fruit Punch"; "...Cookies" -> "...Cream") — without
+    # these the one-sided flavour add slipped past both the contradiction axis and the
+    # padding subtraction (_SUPPLEMENT_PADDING listed 'fruit'/'punch' but they were absent
+    # here, so _flavour_mismatch saw no flavour and the superset stripped them).
+    "fruit", "punch", "cream",
+})
+# "Absence" flavour markers — a candidate ADDING one of these to a flavour-LESS query is
+# the canonical UNFLAVOURED base ("Creatine" -> "Creatine Unflavored" is the SAME SKU), so
+# it must NOT trigger the one-sided add rejection; but an UNFLAVORED query vs a real-flavour
+# candidate DOES still conflict (caught because the real flavour is the add).
+_FLAVOUR_ABSENCE = frozenset({"unflavored", "unflavoured", "plain", "natural"})
+_FLAVOUR_CATEGORIES = frozenset({"supplements", "grocery"})
+
+
+def _flavour_mismatch(query_name: str, candidate_title: str,
+                      category: Optional[str] = None) -> bool:
+    """CATEGORY-AWARE flavour discriminator (coverage sweep CRIT/HIGH).
+
+    GROCERY is ASYMMETRIC: a candidate flavour the query does not cover is a DIFFERENT
+    SKU ("Cheerios" -> "Cheerios Chocolate"; "Pepsi" -> "Pepsi Mango"). The old
+    both-stated-different rule let this one-sided ADD slip because the added flavour
+    word was also generic/padding and was subtracted before the variant-add guard.
+
+    SUPPLEMENTS keep the both-stated-different rule (one-sided tolerated) — a bare
+    protein/creatine query matching any flavour is INTENDED ("ISO100" -> "ISO100
+    Vanilla" is the same product; see the flavour padding in _SUPPLEMENT_PADDING). Only
+    a CONTRADICTION rejects: "Creatine Unflavored" -> "...Fruit Punch", "...Cookies" ->
+    "...Cream" (both sides state a flavour and they differ). This is now caught because
+    'fruit'/'punch'/'cream' were added to _FLAVOUR_TOKENS.
+
+    A candidate that OMITS the query's flavour (terse listing) is tolerated in BOTH
+    categories; a pure 'unflavored'/'plain' ADD to a flavour-less query is the canonical
+    base (no reject)."""
+    qf = set(re.findall(r"[a-z0-9]+", _fold_identity(query_name))) & _FLAVOUR_TOKENS
+    tf = set(re.findall(r"[a-z0-9]+", _fold_identity(candidate_title))) & _FLAVOUR_TOKENS
+    if not tf:
+        return False  # candidate states no flavour -> tolerate a terse listing
+    if (category or "").lower() == "grocery":
+        extra = tf - qf
+        if not extra:
+            return False  # candidate flavour subset of query -> same SKU
+        real_q = qf - _FLAVOUR_ABSENCE
+        extra_real = extra - _FLAVOUR_ABSENCE
+        if not real_q and not extra_real:
+            return False  # only 'unflavored'/'plain' added to a flavour-less query
+        return True
+    # supplements (and any other flavour category): both-stated-different only.
+    if not qf:
+        return False  # one-sided candidate flavour tolerated (ISO100 -> ISO100 Vanilla)
+    return not (qf & tf)
+
+
+def _finish_mismatch(query_name: str, candidate_title: str) -> bool:
+    """True iff BOTH sides state a makeup finish and they share none (Matte vs Dewy)."""
+    qf = set(re.findall(r"[a-z0-9]+", _fold_identity(query_name))) & _MAKEUP_FINISH_TOKENS
+    tf = set(re.findall(r"[a-z0-9]+", _fold_identity(candidate_title))) & _MAKEUP_FINISH_TOKENS
+    if not qf or not tf:
+        return False
+    return not (qf & tf)
+
+
+_MATERIAL_TOKENS = frozenset({
+    "leather", "suede", "canvas", "nylon", "denim", "mesh", "knit", "rubber",
+    "synthetic", "wool", "cotton", "silk", "satin", "velvet",
+})
+
+
+def _material_mismatch(query_name: str, candidate_title: str) -> bool:
+    """Fashion — True iff BOTH state a material and they share none (Leather vs Suede)."""
+    qm = set(re.findall(r"[a-z0-9]+", _fold_identity(query_name))) & _MATERIAL_TOKENS
+    tm = set(re.findall(r"[a-z0-9]+", _fold_identity(candidate_title))) & _MATERIAL_TOKENS
+    if not qm or not tm:
+        return False
+    return not (qm & tm)
+
+
+# CONDITION (electronics) — a refurbished/used/open-box unit is a different price TIER, so
+# if EITHER side states a non-new condition the other lacks, reject (the default is new).
+_CONDITION_TOKENS = frozenset({
+    "refurbished", "refurb", "renewed", "used", "preowned", "openbox", "secondhand",
+})
+
+
+def _condition_mismatch(query_name: str, candidate_title: str) -> bool:
+    qc = bool(set(re.findall(r"[a-z0-9]+", _fold_identity(query_name))) & _CONDITION_TOKENS)
+    tc = bool(set(re.findall(r"[a-z0-9]+", _fold_identity(candidate_title))) & _CONDITION_TOKENS)
+    return qc != tc
+
+
+_INCH_RE = re.compile(r"\b(\d+(?:\.\d+)?)\s*(?:-\s*)?(?:inch(?:es)?\b|[\"”″]+)", re.I)
+
+
+def _inch_mismatch(query_name: str, candidate_title: str) -> bool:
+    """Electronics — True iff BOTH state a screen-inch size and they differ (14 vs 16)."""
+    qi = {float(m) for m in _INCH_RE.findall(query_name or "")}
+    ti = {float(m) for m in _INCH_RE.findall(candidate_title or "")}
+    if not qi or not ti:
+        return False
+    return not (qi & ti)
+
+
+# SPF (sunscreen rating) — a SKU axis for cosmetics (SPF 30 vs SPF 50). One-sided
+# tolerated (stripped from identity), both-stated-different rejects (coverage review).
+# NOTE (coverage sweep): a one-sided SPF ADD ("Kiehl's Ultra Facial Cream" -> "...SPF 30")
+# is a real but DELIBERATELY-TOLERATED leak — making it asymmetric mass-over-rejects every
+# sunscreen whose query omits the inherent SPF (Anthelios / EltaMD / Supergoop), pinned by
+# test_R6_overrej_skincare_spf_one_sided_accepted. Tokens cannot distinguish an inherent-SPF
+# sunscreen from an SPF variant of a cream, so the tolerate-one-sided decision stands.
+_SPF_RE = re.compile(r"\bspf\s*(\d+)\b", re.I)
+
+
+def _spf_mismatch(query_name: str, candidate_title: str) -> bool:
+    qs = {int(m) for m in _SPF_RE.findall(query_name or "")}
+    ts = {int(m) for m in _SPF_RE.findall(candidate_title or "")}
+    if not qs or not ts:
+        return False
+    return not (qs & ts)
+
+# NOTE (external review #4): an SPF-ADD axis (candidate states an SPF the query omits ->
+# different SKU) was implemented and then REVERTED. A sunscreen-context carve-out cannot
+# cover the unbounded set of sunscreen names (a coverage sweep over-rejected mainstream
+# sunscreens — Vichy Capital Soleil, Bioderma Photoderm, Banana Boat, Neutrogena Ultra
+# Sheer — whose names carry no sun/UV token), while the leak it prevents is low-harm (a
+# base cream vs its SPF variant are near-identical prices). A one-sided SPF is therefore
+# TOLERATED; only a both-stated DIFFERENT SPF (_spf_mismatch) rejects. Doing better needs
+# structured variant metadata, not a token rule.
+
+
+# Electronics RAM axis — a dual-GB title ("S24 8GB 256GB") pins RAM + storage; the storage
+# axis compares only the max (storage), so the RAM tier (8 vs 16) would leak. RAM = a GB
+# value <= 32 (RAM range; storage is 64/128/256/512/1024). One-sided tolerated, both-differ
+# rejects (coverage review round 6).
+_GB_RE = re.compile(r"(\d+)\s*gb\b", re.I)
+
+
+def _ram_value(text: str) -> set:
+    return {int(m) for m in _GB_RE.findall(text or "") if int(m) <= 32}
+
+
+def _ram_mismatch(query_name: str, candidate_title: str) -> bool:
+    qr, tr = _ram_value(query_name), _ram_value(candidate_title)
+    if not qr or not tr:
+        return False
+    return not (qr & tr)
+
+
+# Apple silicon CHIP-TIER axis — "M3" (base) vs "M3 Pro" vs "M3 Max" vs "M3 Ultra" are
+# distinct chips at very different prices, but the tier word "Pro"/"Max" collapses into the
+# "MacBook Pro" qualifier set (repeated-token set-collapse), so M3 == M3 Pro leaked. Parse
+# the (chip-number, tier) and reject when the SAME chip number carries a DIFFERENT tier.
+_CHIP_TIER_RE = re.compile(r"\bm(\d)\s*(pro|max|ultra)?\b", re.I)
+
+
+def _chip_tier(text: str) -> set:
+    out = set()
+    for num, tier in _CHIP_TIER_RE.findall(_fold_identity(text or "")):
+        out.add((num, tier.lower() or "base"))
+    return out
+
+
+def _chip_tier_mismatch(query_name: str, candidate_title: str) -> bool:
+    """True iff both name an Apple M-series chip with the SAME number but a DIFFERENT tier
+    (M3 base vs M3 Pro). A different chip NUMBER is already caught by identity (m2!=m3)."""
+    qc, tc = _chip_tier(query_name), _chip_tier(candidate_title)
+    q_nums = {n for n, _ in qc}
+    t_nums = {n for n, _ in tc}
+    shared = q_nums & t_nums
+    if not shared:
+        return False
+    for n in shared:
+        if {t for nn, t in qc if nn == n} != {t for nn, t in tc if nn == n}:
+            return True
+    return False
+
+
+# Supplement bare (unit-less) dose — "D3 5000" vs "D3 1000" (the bare 4+-digit number is
+# stripped from identity so the unit-less query matches a "5000 IU" listing, but the dose
+# value must still be compared). One-sided tolerated, both-stated-different rejects.
+_BARE_DOSE_RE = re.compile(r"(?<![a-z])(\d{4,})(?![a-z])", re.I)
+
+
+def _supplement_bare_dose_mismatch(query_name: str, candidate_title: str) -> bool:
+    qd = {int(m) for m in _BARE_DOSE_RE.findall(_fold_identity(query_name))}
+    td = {int(m) for m in _BARE_DOSE_RE.findall(_fold_identity(candidate_title))}
+    if not qd or not td:
+        return False
+    return not (qd & td)
+
+
+# Trailing "+" upgrade-variant axis (category-INDEPENDENT). A word immediately followed by
+# "+" (Effaclar Duo+, Vitamin C10+, Galaxy S24+) is a DIFFERENT, upgraded SKU — but the
+# tokenizer drops the "+" separator so "Duo+" == "Duo". Compare the set of "+"-marked stems;
+# a differing set (one side carries a + the other lacks) is a different product (coverage R8).
+_PLUS_VARIANT_RE = re.compile(r"([a-z0-9]{2,})\+")
+
+
+_PLUS_SPELLED_RE = re.compile(r"([a-z0-9]{2,})\s+plus\b")
+
+
+def _plus_stems(s: str) -> set:
+    # capture BOTH the symbol form ("S24+") and the SPELLED form ("S24 Plus") into one set so
+    # they compare EQUAL (same SKU) while the base ("S24") still differs (coverage R9 HIGH).
+    s = (s or "").lower()
+    return set(_PLUS_VARIANT_RE.findall(s)) | set(_PLUS_SPELLED_RE.findall(s))
+
+
+def _plus_variant_mismatch(query_name: str, candidate_title: str) -> bool:
+    # raw .lower() (NOT _fold_identity — it strips the "+" as a non-alphanumeric).
+    return _plus_stems(query_name) != _plus_stems(candidate_title)
+
+
+# Fashion CUT/FIT — a different denim/apparel cut is a SKU (Levis 501 vs 501 Slim). Both-
+# stated-different rejects; one-sided is tolerated (the token is also fashion padding).
+_FIT_TOKENS = frozenset({
+    "slim", "skinny", "relaxed", "regular", "straight", "bootcut", "tapered",
+    "loose", "baggy", "oversized", "fitted",
+})
+
+
+def _fit_mismatch(query_name: str, candidate_title: str) -> bool:
+    qf = set(re.findall(r"[a-z0-9]+", _fold_identity(query_name))) & _FIT_TOKENS
+    tf = set(re.findall(r"[a-z0-9]+", _fold_identity(candidate_title))) & _FIT_TOKENS
+    if not qf or not tf:
+        return False
+    return not (qf & tf)
+
+
+# Grocery PREP / fat / carbonation — a real SKU axis (instant vs ground coffee, whole vs
+# skimmed milk, still vs sparkling water). Both-stated-different rejects; one-sided tolerated.
+_GROCERY_PREP_TOKENS = frozenset({
+    "instant", "ground", "whole", "skimmed", "semi", "still", "sparkling",
+    "smooth", "crunchy", "fine", "coarse", "salted", "unsalted",
+})
+
+
+def _grocery_prep_mismatch(query_name: str, candidate_title: str) -> bool:
+    qp = set(re.findall(r"[a-z0-9]+", _fold_identity(query_name))) & _GROCERY_PREP_TOKENS
+    tp = set(re.findall(r"[a-z0-9]+", _fold_identity(candidate_title))) & _GROCERY_PREP_TOKENS
+    if not qp or not tp:
+        return False
+    return not (qp & tp)
+# Skin-type / area / product-class descriptors (NEVER a SKU axis — the SKU axes %/size/
+# +active/form are enforced separately). The BENEFIT/effect words (brightening/clarifying/
+# volumizing/...) are DELIBERATELY EXCLUDED — they are the variant LINE discriminator for
+# mass-market shampoo/cleanser lines, so they must stay distinctive (coverage review:
+# padding them collapsed different SKUs). A benefit-line query that omits the line PENDS
+# (fail-closed = correct).
+_SKINCARE_PADDING = _COSMETIC_FORM_PADDING | frozenset({
+    # skin-type / area / class descriptors only (NEVER a SKU axis). The cleanser/cream-TYPE
+    # discriminators (foaming/hydrating/moisturizing/gentle/daily/oily/micellar) are
+    # DELIBERATELY EXCLUDED — they name the mass-market LINE (CeraVe Foaming vs Hydrating
+    # Cleanser are different SKUs), exactly like the benefit words (coverage review CRITICAL).
+    "face", "facial", "body", "skin", "fluid", "dermatologist", "tested", "formula",
+    "care", "normal", "dry", "oily", "combination", "sensitive", "rough", "bumpy",
+    "all", "types", "water", "h2o", "emulsion", "sunscreen", "sunblock",
+    "broad", "spectrum",
+})
+_HAIRCARE_PADDING = _SKINCARE_PADDING | frozenset({
+    "hair", "scalp", "anti", "dandruff",
+})
+_SUPPLEMENT_PADDING = _SUPPLEMENT_CHEM_SYNONYMS | frozenset({
+    "high", "absorption", "premium", "pure", "natural", "veg", "vegetarian", "veggie",
+    "vegan", "halal", "kosher", "gmo", "gluten", "free", "non", "serving",
+    "servings", "dietary", "supplement", "supplements", "formula", "foods",
+    "strength", "potency", "grade", "quality", "per", "count", "vit", "vits",
+    # multivitamin class noun + 'adult(s)' descriptor (coverage R8: Centrum Silver Adults
+    # Multivitamin / One A Day mass-over-rejected). NOTE: 'men'/'women' are DELIBERATELY NOT
+    # padding — a gendered SKU (Centrum Men vs Women) is a real variant that must reject.
+    # NOTE: bare 'multi' REMOVED (coverage sweep HIGH) — it is the distinctive TYPE word that
+    # separates single-source "Collagen Peptides" from a "Multi Collagen Peptides" blend (a
+    # different, differently-priced SKU). 'multivitamin'/'multivitamins' stay padding (the
+    # Centrum class noun); only the bare 'multi' blend-modifier now rejects when one-sided.
+    "multivitamin", "multivitamins", "adult", "adults",
+    # marketing / descriptor words a terse query omits (coverage review).
+    "extract", "chelated", "buffered", "bioflavonoids", "rosehips", "rose", "hips",
+    "billion", "cfu", "rich", "labs", "health", "naturals", "life",
+    "nutrition", "support", "micronized", "instantized",
+    # NOTE: tier/LINE words (gold/silver/ultimate/platinum/signature/standardized/max/
+    # double/mega/extra/standard) are DELIBERATELY NOT padding — they name a distinct
+    # product LINE (Centrum Gold vs Silver, ON Gold Standard, Creatine Ultimate), so an
+    # ADDED tier token must reject. A symmetric "Gold Standard Whey" query keeps gold/
+    # standard on BOTH sides and still matches (coverage review round 4).
+    # flavours — ONE-SIDED tolerated (padding) so "ISO100" matches "ISO100 Vanilla", but a
+    # both-stated DIFFERENT flavour (Vanilla vs Chocolate) is caught by _flavour_mismatch.
+    "vanilla", "chocolate", "strawberry", "berry", "citrus", "orange", "lemon", "mint",
+    "cookies", "unflavored", "unflavoured", "plain", "fruit", "punch", "mango", "banana",
+    "caramel", "cinnamon", "coconut",
+    # default pill forms (one-sided tolerated; alt forms gummy/liquid handled by the
+    # supplement FORM axis).
+    "softgel", "softgels", "capsule", "capsules", "caplet", "caplets", "tablet",
+    "tablets", "pill", "pills", "vcap", "vcaps", "vegcap", "vegcaps", "powder",
+})
+_CATEGORY_PADDING = {
+    "fragrances": _FRAGRANCE_PADDING_TOKENS,
+    "electronics": _ELECTRONICS_PADDING,
+    "fashion": _FASHION_PADDING,
+    "grocery": _GROCERY_PADDING,
+    "makeup": _MAKEUP_PADDING,
+    "skincare": _SKINCARE_PADDING,
+    "haircare": _HAIRCARE_PADDING,
+    "supplements": _SUPPLEMENT_PADDING,
+}
+# Short (<=2-char) fashion model qualifiers KEPT as identity (Samba OG, Dunk Hi/Lo).
+# Short (<=2-char) fashion model qualifiers KEPT as distinctive identity tokens (the len>2
+# rule would otherwise drop them). "og"/"hi"/"lo" are Nike/adidas line markers (Samba OG,
+# Dunk Hi/Lo). NOTE: "se" (Special Edition) is NOT kept here — it is normalized to the
+# distinctive token "specialedition" in _identity_tokens_ps so the abbreviation and the
+# spelled "Special Edition" UNIFY (coverage re-sweep); a bare kept "se" left the spelled form
+# leaking (it was stripped as a colour-edition token).
+_FASHION_KEPT_QUALIFIERS = frozenset({"og", "hi", "lo"})
+# 2-char skincare/haircare LINE codes kept as identity (CeraVe SA, Skinceuticals AM/PM).
+_SKINCARE_LINE_CODES = frozenset({"sa", "am", "pm", "cf"})
+
+
+def _category_padding(category: Optional[str]) -> frozenset:
+    """The per-category NON-identity padding (marketing/descriptive/connectivity/form/
+    flavour/brand words) stripped before the superset guard, so a genuine DESCRIPTIVE
+    title is not over-rejected while a real variant token still rejects."""
+    cat = (category or "").lower()
+    return _BASE_NOISE_TOKENS | _CATEGORY_PADDING.get(cat, frozenset())
+
+
+def _axis_mismatch(query_name: str, candidate_title: str, category: Optional[str],
+                   brand: str = "", *, strict_extras: bool = True) -> bool:
+    """True iff query and candidate disagree on an EXPLICIT discriminating axis:
+    a variant qualifier (either direction), concentration, ml/oz size, GB/TB
+    storage, unit count, supplement strength (mg/IU), weight/volume (g/ml), and —
+    when `strict_extras` (the primary brand-aware gates) — a product FORM
+    (deodorant/candle/lotion vs the bottle) OR the candidate OMITting a query-stated
+    axis (fragrance conc/size, supplement strength/count → unverified, fail-closed).
+
+    `brand` is used only to strip the brand before form detection. The shared core
+    of both the strict `is_exact_match` and the brand-tolerant chokepoint backstop;
+    the backstop passes `strict_extras=False` so it keeps its original
+    numeric-axis-only, never-false-pend-a-descriptive-title contract (the form +
+    candidate-omits enforcement lives on the brand-aware primary gates). Each numeric
+    axis is a no-op unless BOTH sides carry it (a fragrance has no storage, a phone
+    no dose)."""
+    # ReDoS guard (comprehensive review HIGH): the numeric-axis regexes are polynomial on a
+    # long digit run, so a crafted multi-KB scraped candidate title (a malicious retailer page)
+    # could stall the async worker (8 KB -> ~15 s). A real product name/title is well under
+    # 512 chars — cap before any re.findall. Truncation only affects pathological inputs.
+    if query_name and len(query_name) > _MATCH_INPUT_CAP:
+        query_name = query_name[:_MATCH_INPUT_CAP]
+    if candidate_title and len(candidate_title) > _MATCH_INPUT_CAP:
+        candidate_title = candidate_title[:_MATCH_INPUT_CAP]
+    quals = _CATEGORY_VARIANT_QUALIFIERS.get((category or "").lower(), frozenset())
+    if quals and _quals_in(query_name, quals) != _quals_in(candidate_title, quals):
+        return True
+    if (
+        _concentration_mismatch(query_name, candidate_title)
+        or _size_ml_mismatch(query_name, candidate_title, category)
+        or _storage_mismatch(query_name, candidate_title)
+        or _count_mismatch(query_name, candidate_title)
+        or _strength_mismatch(query_name, candidate_title)
+        or _weight_or_volume_mismatch(query_name, candidate_title)
+        # %-strength + SPF are CATEGORY-INDEPENDENT discriminators (a different active
+        # %-strength or SPF is always a different product) — must fire even when the
+        # category inferred None on the scrape path (Minoxidil 5% vs 2%) (coverage review R6).
+        or _percent_mismatch(query_name, candidate_title)
+        or _spf_mismatch(query_name, candidate_title)
+        or _plus_variant_mismatch(query_name, candidate_title)
+    ):
+        return True
+    _cat = (category or "").lower()
+    # Category-scoped numeric axes (also enforced by the brand-independent backstop):
+    # %-strength (cosmetics only — % is purity not strength for supplements/grocery),
+    # shoe size (fashion), pack count (grocery). (coverage review B)
+    if (
+        (_cat == "fashion" and _shoe_size_mismatch(query_name, candidate_title))
+        or (_cat == "grocery" and _pack_mismatch(query_name, candidate_title))
+        # contradiction axes (coverage review round 2) — both-stated-different rejects,
+        # one-sided is tolerated (the token is also padding).
+        or (_cat in _FLAVOUR_CATEGORIES and _flavour_mismatch(query_name, candidate_title, _cat))
+        or (_cat == "makeup" and _finish_mismatch(query_name, candidate_title))
+        or (_cat == "fashion" and _material_mismatch(query_name, candidate_title))
+        or (_cat == "fashion" and _fit_mismatch(query_name, candidate_title))
+        or (_cat == "grocery" and _grocery_prep_mismatch(query_name, candidate_title))
+        or (_cat == "electronics" and _condition_mismatch(query_name, candidate_title))
+        or (_cat == "electronics" and _inch_mismatch(query_name, candidate_title))
+        or (_cat == "electronics" and _ram_mismatch(query_name, candidate_title))
+        or (_cat == "electronics" and _chip_tier_mismatch(query_name, candidate_title))
+        or (_cat == "supplements" and _supplement_bare_dose_mismatch(query_name, candidate_title))
+    ):
+        return True
+    if strict_extras and (
+        _form_mismatch(query_name, candidate_title, category, brand)
+        or _candidate_missing_query_axis(query_name, candidate_title, category)
+        or _category_type_added(query_name, candidate_title, category)
+        or ((_cat in _FRAGRANCE_BEAUTY_CATEGORIES or _cat == "fashion")
+            and (_gender_mismatch(query_name, candidate_title)
+                 or _feminine_query_unconfirmed(query_name, candidate_title)))
+        or (_cat == "fashion"
+            and (_color_mismatch(query_name, candidate_title)
+                 or _clothing_size_mismatch(query_name, candidate_title)))
+        or (_cat == "supplements"
+            and _vitamin_letter_mismatch(query_name, candidate_title))
+    ):
+        return True
+    return False
+
+
+def is_exact_match(
+    query_name: str, candidate_title: str, category: Optional[str],
+    *, candidate_brand: str = "",
+) -> bool:
+    """True iff `candidate_title` is the SAME product as `query_name` — set-EQUALITY
+    on identity tokens (after subtracting `candidate_brand` from BOTH sides so a
+    brand-omitted sephora-style title "Daisy - EDT" matches a "Marc Jacobs Daisy"
+    query) AND no explicit mismatch on any discriminating axis (variant qualifier /
+    concentration / size / storage / count).
+
+    This is the single shared gate every selection site calls. When the rollback
+    flag is OFF it returns True (no-op). It is intentionally STRICT (equality, not
+    `strict_title_match`'s subset) to reject S24→S24 FE / EDP→EDT / 256→128 /
+    100ml→30ml / flanker leaks, and intentionally BRAND-AWARE + alias-tolerant
+    (EDT≡"eau de toilette", oz≡ml, diacritics, colour/edition for electronics) to
+    avoid false pends."""
+    if not exact_gate_enabled():
+        return True
+    if not query_name or not candidate_title:
+        return True
+    if _axis_mismatch(query_name, candidate_title, category, candidate_brand):
+        return False
+    q_ident = _identity_tokens_ps(query_name, candidate_brand, category)
+    t_ident = _identity_tokens_ps(candidate_title, candidate_brand, category)
+    return q_ident == t_ident
+
+
+def _selection_match(
+    query_name: str, candidate_title: str, category: Optional[str],
+    *, candidate_brand: str = "",
+) -> bool:
+    """The pragmatic SELECTION gate used by the extractors and select_best (real
+    retailer titles are DESCRIPTIVE — "Samsung Galaxy S24 256GB Dual SIM Phantom
+    Black" — so a pure-equality gate would over-reject genuine listings). A
+    candidate is acceptable iff:
+      - NO explicit axis mismatch (variant qualifier / concentration / ml-size /
+        GB-storage / count), AND
+      - the query's distinctive identity tokens are ALL present in the candidate
+        (query ⊆ candidate) — so a wrong/related product MISSING a query
+        discriminator (Nike Dunk Low → "Nike Air Force 1") is rejected, while a
+        descriptive longer title (extra colour/SIM/packaging words) is kept.
+    This catches every documented warm-cache leak (S24→FE, EDP→EDT, 256→128,
+    decant-size, related-product, count drift) without false pends. The strict
+    set-EQUALITY `is_exact_match` is reserved for clean brand-omitted sources
+    (sephora/Zyte) + the shared contract."""
+    if not exact_gate_enabled():
+        return True
+    if not query_name or not candidate_title:
+        return True
+    # EXPLICIT "other" is a FREQUENT real LLM output, not just the unresolved fallback (round-8
+    # CRITICAL): re-infer FIRST so every category-dependent step below (axes, identity
+    # colour/qualifier handling, generic scoping, padding) uses the right category, and the
+    # variant-add guard runs (AirPods Pro labelled "other" still rejects Pro 2). A TRULY-None
+    # category (caller passed nothing) is left as-is → subset-only below — on prod paths the
+    # orchestrator category is always threaded (param/ContextVar) so None only occurs in a
+    # direct off-path/unit call, where lenient subset matching avoids mass over-rejection.
+    if (category or "").lower() == "other":
+        category = _infer_category_from_query(query_name) or category
+    if _axis_mismatch(query_name, candidate_title, category, candidate_brand):
+        return False
+    q_ident = _identity_tokens_ps(query_name, candidate_brand, category)
+    t_ident = _identity_tokens_ps(candidate_title, candidate_brand, category)
+    # A missing GENERIC category noun (smartphone/headphones/protein the terse listing
+    # omitted) must NOT reject — the brand+model discriminate. The generic set is
+    # CATEGORY-SCOPED (a makeup 'blush' stays distinctive for a fragrance) (coverage review R6).
+    _generic = _generic_for(category)
+    q_distinct = q_ident - _generic
+    t_distinct = t_ident - _generic
+    # (1) generic CLASS SWAP — query and candidate each name a generic class noun but
+    #     share NONE ("Sony Headphones" vs "Sony Speaker"; "Dress" vs "Skirt") — is a
+    #     DIFFERENT product even though a missing generic noun is otherwise tolerated.
+    q_generic = q_ident & _generic
+    t_generic = t_ident & _generic
+    if q_generic and t_generic and not (q_generic & t_generic):
+        return False
+    # (2)+(3) THE KEYSTONE — core-identity match with per-category PADDING tolerance, in
+    #     BOTH directions:
+    #       LEAK direction (q_core ⊆ t_core): the candidate must carry every query
+    #         distinctive non-padding token (S24 vs S24 FE, WH-1000XM5 vs WF-1000XM5).
+    #       VARIANT-ADD direction (t_core ⊆ q_core): the candidate must add NO distinctive
+    #         non-padding token — a candidate that adds one is a DIFFERENT (related) SKU:
+    #           Canon R6 -> R6 Mark II / Kindle -> Paperwhite / Samba -> Samba OG /
+    #           Nescafe Gold -> Decaf / Buffet -> +Copper Peptides / Creatine -> Monohydrate.
+    #     The per-category PADDING (descriptive/marketing/connectivity/form/flavour/brand)
+    #     keeps a genuine DESCRIPTIVE/alias title from over-rejecting. A CURATED marker
+    #     allowlist was tried and is structurally leaky (variant tokens are unbounded) —
+    #     this rejects ANY extra non-padding token instead.
+    cat = (category or "").lower()  # already re-inferred at the top of _selection_match
+    padding = _category_padding(cat)
+    q_core = q_distinct - padding
+    t_core = t_distinct - padding
+    if cat == "makeup":
+        # A spelled-out shade NAME on the candidate is descriptive when BOTH sides carry
+        # the SAME shade NUMBER ("Fit Me 240" -> "Fit Me 240 Soft Sand"); accept — BUT only
+        # when the candidate adds no EXTRA shade number (a second number 220->220 320 is a
+        # different shade and must still reject). Without a shared number, shade-NAME words
+        # are NOT padding, so a differing shade name rejects via the superset below.
+        q_nums = {w for w in q_core if w.isdigit()}
+        t_nums = {w for w in t_core if w.isdigit()}
+        # Accept on a shared shade NUMBER only when (a) the candidate adds no EXTRA number
+        # (a second shade number is a different shade) AND (b) the NON-number core is
+        # subset-compatible — so a shared number does NOT bridge two different product
+        # LINES that happen to share a shade code (Fit Me 240 vs Superstay 240) (round 4).
+        # A DIFFERENT formula LINE reusing the shade code (Soft Matte 240 vs Hydrating 240;
+        # Infallible Matte 130 vs Glow 130) is rejected UPSTREAM by _finish_mismatch (both sides
+        # state a finish/formula word and they DIFFER) — the formula words were added to
+        # _MAKEUP_FINISH_TOKENS. A one-sided formula ADD ("Fit Me 310 Smooth Coverage") is
+        # descriptive and tolerated here (coverage re-sweep: avoids mass over-rejection of common
+        # Fit Me titles; the rarer one-sided line add "Fit Me -> Dewy+Smooth" is the accepted trade).
+        if (q_nums and t_nums and (q_nums & t_nums) and not (t_nums - q_nums)
+                and (q_core - q_nums).issubset(t_core - t_nums)):
+            return True
+    # LEAK direction — candidate must carry all of the query's distinctive non-padding
+    # tokens (applies to EVERY category, incl. an unresolved one).
+    if not q_core.issubset(t_core):
+        return False
+    # VARIANT-ADD direction — a candidate that adds a distinctive non-padding token is a
+    # DIFFERENT SKU. Runs for the KNOWN categories (tuned PADDING) PLUS explicit "other" (a
+    # FREQUENT real LLM output that bypassed the guard end-to-end — coverage review round 8
+    # CRITICAL; empty padding, so a token-ADD rejects). A TRULY-unresolved "" (None after the
+    # top-of-function re-inference also failed) stays SUBSET-ONLY — on prod paths the
+    # orchestrator-resolved category is always threaded (param/ContextVar) so "" only occurs in
+    # a direct off-path call where the lenient subset behaviour avoids mass over-rejection.
+    if (cat in _SUPERSET_VARIANT_CATEGORIES or cat == "other") and (t_core - q_core):
+        if q_core:
+            return False  # a SPECIFIC query + an extra candidate token = a different SKU
+        # q_core EMPTY. Only skip (accept any specific member) when the query is a true
+        # brand/class query — i.e. its distinctive set MINUS brand/manufacturer words is
+        # empty ("Sony Headphones" -> {sony}-manufacturer = {}). If a LINE word emptied a
+        # SPECIFIC query (Samsung Crystal UHD -> {crystal,uhd}, neither is a brand word), do
+        # NOT skip — it would accept a sibling line (QLED) (coverage review round 5).
+        if (q_distinct - _MANUFACTURER_NOISE) or cat not in _GENERIC_QUERY_SKIP_CATEGORIES:
+            return False
+    return True
+
+
+# The 8 KNOWN categories whose PADDING lists are tuned enough to run the variant-add guard.
+_SUPERSET_VARIANT_CATEGORIES = frozenset({
+    "electronics", "fashion", "grocery", "makeup", "skincare", "haircare",
+    "supplements", "fragrances",
+})
+# Categories where a brand/class query (no distinctive core) legitimately matches any
+# specific member ("Sony Headphones" -> "Sony WH-CH520", "Dior" -> "Dior Sauvage"). For
+# grocery/makeup/skincare/haircare/supplements a base query implies the canonical product,
+# so a candidate that ADDS a variant token is a different SKU and must pend.
+# NOTE: "fragrances" is DELIBERATELY EXCLUDED — a fragrance query emptied to a bare brand
+# + gender (Dior Homme: brand Dior + gender 'homme' stripped -> q_core empty) must NOT skip
+# the variant-add guard, or it accepts a flanker (Dior Homme Intense) (coverage review).
+# fashion EXCLUDED too — a fashion query emptied to brand+material+colour (Puma Suede:
+# suede is material-padding) must NOT skip the guard, else it matches any Puma (coverage
+# review). Only electronics (Sony Headphones -> WH-CH520) + unresolved keep the skip.
+_GENERIC_QUERY_SKIP_CATEGORIES = frozenset({"electronics", "other", ""})
+
+
+def _backstop_identity_ok(query_name: str, candidate_title: str, category: Optional[str]) -> bool:
+    """Brand-INDEPENDENT exactness check for the response chokepoint
+    (is_price_showable). The primary per-extractor/select_best gate (_selection_match,
+    which knows the brand) is the real enforcement; this backstop runs WITHOUT the
+    brand, so it relies ONLY on the explicit-axis mismatch checks (variant qualifier /
+    concentration / size / storage / count) — brand-independent and direction-free,
+    so it never false-pends a genuine brand-omitted (sephora) NOR a descriptive
+    (Dual SIM Phantom Black) listing. It catches the dominant wrong-axis leaks
+    (S24→FE, EDP→EDT, 256→128, decant-size, count drift) on any path that bypassed
+    the primary gate; the rarer same-token flanker is caught upstream where the
+    brand is known."""
+    if not candidate_title:
+        return True
+    return not _axis_mismatch(query_name, candidate_title, category, strict_extras=False)
+
+
+# --- Availability policy (schema.org-complete; never raises) ----------------
+_OOS_AVAIL_TOKENS = ("outofstock", "soldout", "discontinued")
+# PreOrder / BackOrder / PreSale / MadeToOrder = buyable-but-FUTURE → not a CURRENT
+# shelf price → pend.
+_FUTURE_AVAIL_TOKENS = ("preorder", "backorder", "presale", "madetoorder")
+_INSTOCK_AVAIL_TOKENS = ("instock", "onlineonly", "limitedavailability", "instoreonly")
+
+
+def _availability_text(raw: Any) -> str:
+    """Flatten any schema.org availability shape (str, URL form, None, list, dict)
+    to a lowercased, NON-ALPHANUMERIC-STRIPPED token blob — never raises (the literal
+    substring check upstream TypeErrors on None/list/dict). Stripping spaces/slashes
+    collapses the display form "Out of Stock" / "Sold Out" and the URL form
+    ".../OutOfStock" to the same compact token the OOS/instock sets match on."""
+    if raw is None:
+        return ""
+    if isinstance(raw, str):
+        return re.sub(r"[^a-z0-9]", "", raw.lower())
+    if isinstance(raw, (list, tuple, set)):
+        return " ".join(_availability_text(x) for x in raw)
+    if isinstance(raw, dict):
+        return " ".join(_availability_text(v) for v in raw.values())
+    return re.sub(r"[^a-z0-9]", "", str(raw).lower())
+
+
+def is_available_state(raw: Any) -> Optional[bool]:
+    """Tri-state availability: True (in stock), False (OOS/SoldOut/Discontinued/
+    PreOrder/BackOrder — not a current buyable shelf price), or None (unknown — no
+    signal; treated as showable so clean adapters that omit the field never
+    false-pend)."""
+    t = _availability_text(raw)
+    if not t:
+        return None
+    if any(tok in t for tok in _OOS_AVAIL_TOKENS):
+        return False
+    if any(tok in t for tok in _FUTURE_AVAIL_TOKENS):
+        return False
+    if any(tok in t for tok in _INSTOCK_AVAIL_TOKENS):
+        return True
+    return None
+
+
+def _is_listing_url(url: Optional[str]) -> bool:
+    """True iff `url` is a non-PDP listing/search/category surface (lazy import of
+    source_router.is_non_pdp_listing_url — same module-internal lazy pattern as
+    the SOURCE_REGISTRY use below). A missing url is NOT a listing url (benign)."""
+    if not url:
+        return False
+    try:
+        from app.services.source_router import is_non_pdp_listing_url
+        return is_non_pdp_listing_url(url)
+    except Exception:  # noqa: BLE001 — a URL-classifier failure must never pend a price
+        return False
+
+
+def _candidate_authority(cand: Dict[str, Any], category: Optional[str]) -> float:
+    """Retailer authority for select_best — registry weight (score_source, 0.5-3.0)
+    blended with the candidate's own retailer_score (0..1 → ×3 onto the same scale,
+    so a 1.0 official-domain hit reaches 3.0). Higher = more authoritative."""
+    score = 0.5
+    url = cand.get("url") or ""
+    if url:
+        try:
+            from app.services.source_router import score_source
+            score = score_source(url, category or "")
+        except Exception:  # noqa: BLE001
+            score = 0.5
+    rs = cand.get("retailer_score")
+    if isinstance(rs, (int, float)):
+        score = max(score, float(rs) * 3.0)
+    return score
+
+
+def select_best(
+    candidates: List[Dict[str, Any]], query_name: str, category: Optional[str] = None,
+    *, drop_out_of_stock: bool = True, require_url: bool = True,
+) -> Optional[Dict[str, Any]]:
+    """Pick the single best price among `candidates` by RETAILER AUTHORITY — NEVER
+    cheapest. Among candidates that have a verifiable IDENTITY (title/name), are
+    identity-matched (_selection_match), ∧ are on a valid PDP URL, rank IN-STOCK
+    first, then authority, then variant precision (closer to the stated size/
+    concentration), then amount as the LAST tiebreak.
+
+    `drop_out_of_stock` (default True — the Tier-2 cross-adapter consume's contract:
+    an out-of-stock genuine hit must NOT short-circuit the cascade, so it returns
+    None and the cascade keeps looking). Adapters / the JSON-LD extractor pass
+    False: there an explicitly out-of-stock candidate is RANKED LAST but still
+    RETURNED (flagged in_stock=False) when it is the only match, so the existing
+    "report OOS" behaviour is preserved and the response chokepoint pends it.
+
+    `require_url` (default True — fail-CLOSED on a candidate with no PDP URL, B5):
+    a price with no verifiable PDP can't be confirmed CURRENT, so it pends. The
+    JSON-LD within-page extractor passes False (its candidates are page-internal —
+    the page URL is stamped onto the result by the caller, so requiring a
+    per-candidate URL there would wrongly drop every JSON-LD match).
+
+    Returns None when no candidate qualifies. Rollback: with the gate OFF this
+    restores the legacy cheapest-pick (min amount)."""
+    cands = [
+        c for c in (candidates or [])
+        if isinstance(c, dict)
+        and isinstance(c.get("amount"), (int, float))
+        and c.get("amount", 0) > 0
+    ]
+    if not cands:
+        return None
+    if not exact_gate_enabled():
+        return min(cands, key=lambda c: c["amount"])
+    eligible: List[Dict[str, Any]] = []
+    for c in cands:
+        if drop_out_of_stock and c.get("in_stock") is False:
+            continue
+        # B5 — no IDENTITY (title/name) → can't verify the product → fail-closed.
+        title = c.get("title") or c.get("name") or ""
+        if not title:
+            continue
+        # An electronics ACCESSORY (Galaxy S24 *Case* / *Charger*) is not the device —
+        # the shared authority selector did not reject it. Narrow set + electronics gate
+        # so a genuine standalone keyboard / Sony WH-1000XM5 / earbuds is NOT pended.
+        if ((category or "").lower() == "electronics"
+                and _is_device_accessory(title) and not _is_device_accessory(query_name)):
+            continue
+        # B5 — require a valid PDP URL (fail-closed on missing url). A listing/search
+        # URL is rejected even when require_url is False (it is never a PDP).
+        url = c.get("url")
+        if require_url and not url:
+            continue
+        if url and _is_listing_url(url):
+            continue
+        brand = c.get("brand") or ""
+        if not _selection_match(query_name, title, category, candidate_brand=brand):
+            continue
+        eligible.append(c)
+    if not eligible:
+        return None
+    def _precision(c: Dict[str, Any]) -> float:
+        title = c.get("title") or c.get("name") or ""
+        cr, sr = variant_precision_rank(query_name, title)
+        return float(cr + sr)
+    eligible.sort(key=lambda c: (
+        c.get("in_stock") is False,   # in-stock (False) sorts before OOS (True)
+        -_candidate_authority(c, category),
+        -_precision(c),
+        c["amount"],
+    ))
+    return eligible[0]
+
+
+def should_cache_price(
+    request_name: str, price: Optional[Dict[str, Any]], category: Optional[str] = None,
+) -> bool:
+    """B6 — gate a cache WRITE on the RESOLVED identity matching the request, so a
+    wrong candidate (which a permissive matcher might once have let through) can NEVER
+    be cached under the requested product for the genuine TTL.
+
+    Uses the SAME matcher (`_selection_match`) the selector ran, so it NEVER blocks a
+    legitimately-selected price (defense-in-depth for the non-select_best writes:
+    iHerb / pharmacy / converted). Returns True (allow) when there is nothing to
+    verify against (no title to compare, or no request) — an estimated price has its
+    own honesty + TTL. No-op (True) when the rollback flag is OFF."""
+    if not exact_gate_enabled():
+        return True
+    if not isinstance(price, dict):
+        return False
+    # FAIL-CLOSED (external review B6): never cache a price we cannot verify — no
+    # identity, no valid PDP URL, or explicitly OUT OF STOCK. A wrong/unverifiable
+    # price cached under the request key would poison the genuine TTL.
+    title = price.get("title") or price.get("name") or ""
+    if not title:
+        return False
+    # FAIL-CLOSED — the VERIFIED positive-price cache requires a real, verifiable PDP URL
+    # for EVERY method, including converted_usd. (An earlier pass exempted converted from
+    # this gate to stop a re-burn, but external review P2 is right: a URL-less / synthesized-
+    # search converted price has no cited PDP and must NOT share the verified cache with
+    # genuine prices — that conflates provenance. A converted price WITH a real PDP link
+    # still caches; a URL-less one simply re-resolves next request, which is correct, not a
+    # leak. A dedicated short estimate cache for url-less converted is a possible future
+    # enhancement, deliberately NOT in the verified-cache gate.)
+    url = price.get("url")
+    if not url or _is_listing_url(url):
+        return False
+    if price.get("in_stock") is False:
+        return False
+    # An electronics ACCESSORY (charger/adapter/case) lives in _ELECTRONICS_PADDING, so the
+    # shared _selection_match strips it and would accept "Galaxy S24 Charger" as the phone —
+    # caching a cheap charger price under the device query poisons the genuine TTL. select_best
+    # and is_price_showable already reject it via _is_device_accessory; mirror that asymmetry
+    # here so the CACHE-WRITE gate is closed too (coverage sweep HIGH).
+    if ((category or "").lower() == "electronics"
+            and _is_device_accessory(title) and not _is_device_accessory(request_name)):
+        return False
+    if not request_name:
+        return True
+    return _selection_match(
+        request_name, title, category, candidate_brand=price.get("brand", ""),
+    )
+
+
+def public_price_view(price: Any) -> Any:
+    """B7 — the PUBLIC projection of a price object: strips the internal
+    `guard_rejected` diagnostic (it belongs in metadata, never the user-facing price)
+    and any `_`-prefixed internal key (`_cached`, `_cache_source`, …). Returns a NEW
+    dict (never mutates the input, so the orchestrator's cache-hit metadata that reads
+    `_cached` off the pre-projection price is unaffected). Non-dicts pass through."""
+    if not isinstance(price, dict):
+        return price
+    # Rollback (B8): b207bfa exposed internal `_cached`/`_cache_source` on the public
+    # price; with the gate OFF, leave the projection byte-identical (guard_rejected is
+    # never stamped flag-OFF anyway, so nothing leaks).
+    if not exact_gate_enabled():
+        return price
+    return {
+        k: v for k, v in price.items()
+        if k != "guard_rejected" and not (isinstance(k, str) and k.startswith("_"))
+    }
+
+
+def _identity_cache_token(text: str) -> str:
+    """A stable composite cache token of ALL identity-discriminating axes —
+    concentration (EDP/EDT/…) + variant qualifier (FE/Pro/Max/…) + size/storage/
+    count/weight — so distinct VARIANTS of the same product never collide on one
+    cache key (EDP 100ml vs EDT 100ml; S24 vs S24 FE) while ALIAS wording maps to
+    the SAME token (EDT ≡ "eau de toilette" via the normalized label; oz snapped to
+    ml by size_variant_token). Empty when NO discriminating axis is present → the
+    caller keeps the legacy size-agnostic key (backward-compatible, no cache-warm
+    invalidation for plain products). The qualifier set is applied category-agnostically
+    here — it only ever ADDS a discriminator, so a brand word that happens to be a
+    qualifier (Max Factor) stays consistent across the request and the resolved match."""
+    parts: List[str] = []
+    conc = extract_concentration(text)
+    if conc:
+        parts.append(conc.lower().replace(" ", ""))
+    quals = _quals_in(text, _ELECTRONICS_QUALIFIERS)
+    if quals:
+        parts.append("".join(sorted(quals)))
+    size = size_variant_token(text)
+    if size:
+        parts.append(size)
+    return ".".join(parts)
+
+
+_QUALIFIER_WORD_RE = re.compile(
+    r"\b(" + "|".join(re.escape(q) for q in sorted(_ELECTRONICS_QUALIFIERS)) + r")\b",
+    re.I,
+)
+
+
+def _strip_identity_axes(text: str) -> str:
+    """Remove the size/storage/concentration/qualifier tokens from `text` so the
+    cache-key BASE is identity-axis-agnostic — the composite _identity_cache_token
+    carries them. Mirrors that token's axes so a discriminator living in `name` vs
+    `search_query` collapses to one base (the same product → one key)."""
+    out = _IDENTITY_MEASURE_STRIP_RE.sub(" ", text or "")
+    for pat, _label in _CONCENTRATION_PATTERNS:
+        out = pat.sub(" ", out)
+    out = _QUALIFIER_WORD_RE.sub(" ", out)
+    return re.sub(r"\s+", " ", out).strip()
+
+
 def build_size_aware_price_cache_key(
     brand: str, name: str, variant: Optional[str], region: str,
     identity_text: str = "",
@@ -2686,20 +5066,32 @@ def build_size_aware_price_cache_key(
     the base components, then re-appended once — so name="iPhone 15 256GB" and
     name="iPhone 15"+identity="… 256GB" collapse to one key.
     """
-    token = size_variant_token(f"{name} {variant or ''} {identity_text or ''}")
+    # ROLLBACK — with the exact gate OFF, fall back to the LEGACY size-only token +
+    # _SIZE_STRIP_RE base so the cache namespace is byte-identical to b207bfa (a
+    # rollback must not orphan the warmed cache / re-collide EDP↔EDT only on the
+    # selection side). The concentration/qualifier axes are part of the new gate.
+    if not exact_gate_enabled():
+        token = size_variant_token(f"{name} {variant or ''} {identity_text or ''}")
+        if not token:
+            return get_price_cache_key(brand, name, variant, region)
+        base_name = re.sub(r"\s+", " ", _SIZE_STRIP_RE.sub(" ", name or "")).strip()
+        base_variant = (
+            re.sub(r"\s+", " ", _SIZE_STRIP_RE.sub(" ", variant or "")).strip()
+            if variant else variant
+        )
+        return generate_cache_key("price", brand, base_name, base_variant, region, token)
+    full_text = f"{name} {variant or ''} {identity_text or ''}"
+    token = _identity_cache_token(full_text)
     if not token:
         return get_price_cache_key(brand, name, variant, region)
-    # Strip ANY size/storage token out of name+variant so the base key is
-    # size-agnostic; the normalized token is the single size component. Without
-    # this, the same size living in `name` vs `search_query` would hash
-    # differently (name differs) — defeating cache hits.
-    base_name = _SIZE_STRIP_RE.sub(" ", name or "").strip()
-    base_name = re.sub(r"\s+", " ", base_name)
-    base_variant = _SIZE_STRIP_RE.sub(" ", variant or "").strip() if variant else variant
-    if base_variant:
-        base_variant = re.sub(r"\s+", " ", base_variant)
-    # Append the size token as an extra key component (generate_cache_key joins
-    # truthy args with "|" before hashing), keeping the "price:" prefix.
+    # Strip ANY size/storage/concentration/qualifier token out of name+variant so
+    # the base key is identity-axis-agnostic; the normalized composite token is the
+    # single discriminator. Without this, the same axis living in `name` vs
+    # `search_query` would hash differently (name differs) — defeating cache hits.
+    base_name = _strip_identity_axes(name or "")
+    base_variant = _strip_identity_axes(variant or "") if variant else variant
+    # Append the composite identity token as an extra key component (generate_cache_key
+    # joins truthy args with "|" before hashing), keeping the "price:" prefix.
     return generate_cache_key("price", brand, base_name, base_variant, region, token)
 
 
@@ -2970,8 +5362,14 @@ def extract_price_from_shopping(
     shopping_items: List[Dict],
     currency: str,
     shopping_region: Optional[str] = None,
+    category: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
     """Extract best matching price from Serper Shopping results.
+
+    `category` (coverage/independent review) — the ORCHESTRATOR-RESOLVED pair
+    category. When supplied it is authoritative so the variant-add guard engages
+    for queries the weak keyword inference would miss (bare "Magnesium" /
+    "Sony WH-1000XM5"). None → fall back to `_infer_category_from_query`.
 
     S3-reopen T2 (honest labels) — `shopping_region` is the gl region the items
     came from (`search_product_prices` returns it as `shopping_region`). When it
@@ -2999,6 +5397,7 @@ def extract_price_from_shopping(
     p_words = normalize_words(product_name)
     is_hv = is_high_value_query(product_name)
     is_lux = is_luxury_brand(product_name)
+    _category = _resolve_extractor_category(category, product_name)
     min_price = 100.0 if is_hv else 0
 
     if is_lux:
@@ -3047,6 +5446,14 @@ def extract_price_from_shopping(
         # different SKU. Genuine-or-correct: don't attribute the wrong variant's
         # price.
         if variant_mismatch(product_name, title):
+            continue
+        # CORRECTNESS — identity + axis gate for ALL queries (gap #9: strict_title_match
+        # ran only for high-value; everything else fell through to the 0.4-overlap +
+        # cheapest tie-break, leaking wrong concentration/size/variant). _selection_match
+        # rejects an EXPLICIT axis mismatch (EDP↔EDT, 256↔128, 100ml↔30ml, FE) and a
+        # related product missing a query discriminator, while tolerating a descriptive
+        # listing title. No-op when the rollback flag is OFF.
+        if not _selection_match(product_name, title, _category):
             continue
 
         t_words = normalize_words(title)
@@ -3148,8 +5555,14 @@ def extract_price_from_shopping(
     )
 
     best.pop("match_score", None)
-    best.pop("title", None)
     best.pop("variant_rank", None)
+    # KEEP `title` (IMPL-SPEC §"identity must survive to the backstop") so the
+    # response chokepoint's is_price_showable(enforce_correctness=True) can re-verify
+    # exactness on the shopping path + the KPI can read the resolved identity. The
+    # FE ignores the extra key. With the rollback flag OFF, pop it (legacy popped
+    # `title`) so flag-OFF is byte-identical (comprehensive review rollback NIT).
+    if not exact_gate_enabled():
+        best.pop("title", None)
     return best
 
 
@@ -3166,8 +5579,40 @@ def _is_product_type(item) -> bool:
     return t == "Product"
 
 
+_PRICE_VALID_UNTIL_RE = re.compile(r"^\s*(\d{4})-(\d{2})-(\d{2})")
+
+
+# Google Merchant REQUIRES priceValidUntil, and a large fraction of retailers set it
+# once (year-end) and never refresh it, so a months-old date on a CURRENT in-stock PDP
+# is normal. Only treat the offer as stale when the date is CLEARLY abandoned (> 1 year
+# past) — this still catches the 2020-dated leak without false-pending a current price
+# whose date a careless retailer let lapse a few months ago.
+_PRICE_VALID_UNTIL_GRACE_DAYS = 365
+
+
+def _offer_price_expired(offer: Dict[str, Any]) -> bool:
+    """True iff the offer's `priceValidUntil` is a parseable date more than ~1 year in
+    the past — a clearly-abandoned price (the 2020-dated offer the live PDP never
+    refreshed) is not the current shelf price (B4). Absent / unparseable / future /
+    recently-lapsed → not expired (no false pend on a careless date). Never raises."""
+    pvu = offer.get("priceValidUntil")
+    if not isinstance(pvu, str):
+        return False
+    m = _PRICE_VALID_UNTIL_RE.match(pvu)
+    if not m:
+        return False
+    try:
+        import datetime as _dt
+        valid_until = _dt.date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+        cutoff = _dt.date.today() - _dt.timedelta(days=_PRICE_VALID_UNTIL_GRACE_DAYS)
+        return valid_until < cutoff
+    except (ValueError, TypeError):
+        return False
+
+
 def extract_jsonld_price(
     html: str, brand: str, expected_currency: str, query_name: str = "",
+    category: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
     """Parse JSON-LD Product schema from HTML for price data.
 
@@ -3187,7 +5632,8 @@ def extract_jsonld_price(
         return None
 
     brand_lower = brand.lower()
-    best_price = None
+    _category = _resolve_extractor_category(category, query_name)
+    candidates: List[Dict[str, Any]] = []
 
     for script in ld_scripts:
         try:
@@ -3234,10 +5680,17 @@ def extract_jsonld_price(
                     for b in ld_brand
                 )
             brand_field_nospace = str(ld_brand or "").lower().replace(" ", "")
-            matched_in_name = brand_nospace in name_nospace
-            matched_in_brand_field = bool(
-                brand_field_nospace and brand_nospace in brand_field_nospace
-            )
+            # External review — match the brand ALIAS forms too (query brand "YSL" vs a
+            # JSON-LD brand "Yves Saint Laurent"), BEFORE this literal substring filter
+            # rejects the candidate (the alias fold in _selection_match ran too late).
+            _brand_forms = {brand_nospace}
+            _bw = set(re.findall(r"[a-z0-9&]+", brand_lower))
+            for _grp in _BRAND_ALIAS_GROUPS:
+                if _bw & _grp:
+                    _brand_forms |= {a.replace(" ", "").replace("&", "") for a in _grp}
+            matched_in_name = any(f and f in name_nospace for f in _brand_forms)
+            matched_in_brand_field = bool(brand_field_nospace and any(
+                f and f in brand_field_nospace for f in _brand_forms))
             if not matched_in_name and not matched_in_brand_field:
                 continue
 
@@ -3268,6 +5721,23 @@ def extract_jsonld_price(
                 if overlap < 0.3:
                     continue
 
+            # CORRECTNESS — identity + axis gate (the warm-cache S24->S24 FE /
+            # EDP->EDT / 256->128 / related-product leaks). variant_mismatch above
+            # is a coarse qualifier check; _selection_match adds concentration / ml /
+            # storage / count axes + a query-tokens-present check, while tolerating a
+            # DESCRIPTIVE JSON-LD name (extra colour/packaging words). Applied only
+            # when the full query is known (pre-S4 callers unaffected); a no-op when
+            # the rollback flag is OFF.
+            # candidate_brand prefers the matched Product's JSON-LD brand FIELD
+            # (e.g. "Jessie and James") over the coarse first-word `brand` arg, so a
+            # brand-FIELD-only match (name "Orangey Dress") subtracts the full brand
+            # from both sides and the residual identity ({orangey,dress}) matches.
+            _cand_brand = str(ld_brand or brand)
+            if query_name and not _selection_match(
+                query_name, product_name, _category, candidate_brand=_cand_brand,
+            ):
+                continue
+
             offers = product.get("offers", {})
             if isinstance(offers, dict):
                 offers = [offers]
@@ -3284,31 +5754,101 @@ def extract_jsonld_price(
                 currency = offer.get("priceCurrency") or ""
                 if str(currency).upper() != expected_currency.upper():
                     continue
+                # B4 — drop a STALE offer (priceValidUntil already past). No-op when
+                # absent/unparseable/future or when the rollback flag is OFF.
+                if exact_gate_enabled() and _offer_price_expired(offer):
+                    continue
                 try:
-                    # AggregateOffer carries lowPrice instead of price (I5.8)
-                    price_val = float(offer.get("price") or offer.get("lowPrice") or 0)
+                    explicit = offer.get("price")
+                    low = offer.get("lowPrice")
+                    high = offer.get("highPrice")
+                    # B4 (external review) — on the EXACTNESS path (query known), an
+                    # AggregateOffer with NO explicit per-SKU `price` (only low/high) is
+                    # the cheapest variant/seller, NOT proof of the EXACT SKU's price ->
+                    # skip (pend), whether or not a high is present. A plain Offer.price
+                    # is unchanged; the pre-S4 no-query callers keep lowPrice (I5.8).
+                    _no_explicit = explicit is None or str(explicit).strip() in ("", "0")
+                    _is_aggregate = "AggregateOffer" in str(offer.get("@type") or "")
+                    # A low==high AggregateOffer is a SINGLE price point = the exact SKU
+                    # price (a single-seller PDP modelled as AggregateOffer), NOT the
+                    # "cheapest variant/seller" ambiguity — accept it (local review #6
+                    # coverage). A genuine low<high RANGE is still skipped (not proof of
+                    # the exact SKU's price).
+                    _low_eq_high = False
+                    if low is not None and high is not None:
+                        try:
+                            _low_eq_high = float(low) == float(high)
+                        except (ValueError, TypeError):
+                            _low_eq_high = False
+                    if (
+                        exact_gate_enabled() and query_name and _is_aggregate and _no_explicit
+                        and not _low_eq_high
+                    ):
+                        continue
+                    # AggregateOffer carries lowPrice instead of price (I5.8, no-query path)
+                    price_val = float(explicit or low or 0)
                 except (ValueError, TypeError):
                     continue
                 if price_val <= 0:
                     continue
 
-                availability = offer.get("availability", "")
-                in_stock = "OutOfStock" not in availability
+                # Availability policy — COLLECT the offer with its real stock flag.
+                # An out-of-stock offer is NOT dropped here (so an only-OOS PDP still
+                # reports its price flagged in_stock=False, which the chokepoint
+                # pends) — select_best below RANKS in-stock first and only falls back
+                # to OOS when there is no in-stock alternative.
+                # B8 — the EXPANDED tri-state (SoldOut/Discontinued/PreOrder/BackOrder →
+                # False) only applies with the gate ON. With the gate OFF, replicate the
+                # b207bfa literal (only the OutOfStock token flips to False) so a
+                # rollback is byte-identical — but keep the str() coercion so the
+                # non-string availability shapes (None/list/dict) never TypeError.
+                if exact_gate_enabled():
+                    avail_state = is_available_state(offer.get("availability"))
+                    if query_name:
+                        # External review B4 — on the EXACTNESS path UNKNOWN availability
+                        # stays None (do NOT assert in_stock=True with no signal); the KPI
+                        # requires confirmed in-stock, the chokepoint shows None as unknown.
+                        in_stock = avail_state
+                    else:
+                        # Legacy no-query (I5.8) callers keep the old unknown→in_stock=True.
+                        in_stock = True if avail_state is None else avail_state
+                else:
+                    in_stock = "OutOfStock" not in str(offer.get("availability") or "")
 
-                if best_price is None or price_val < best_price["amount"]:
-                    best_price = {
-                        "amount": price_val,
-                        "currency": expected_currency,
-                        "in_stock": in_stock,
-                        # Size-capture (frag-size-capture): carry the matched
-                        # Product's NAME so the caller can parse a size (ml/oz)
-                        # the listing exposes here rather than in a shopping
-                        # title — e.g. "...Eau de Parfum 100ml". Harmless for
-                        # non-fragrance (no ml/oz token → no size set).
-                        "name": product_name,
-                    }
+                cand: Dict[str, Any] = {
+                    "amount": price_val,
+                    "currency": expected_currency,
+                    "in_stock": in_stock,
+                }
+                # The JSON-LD Product NAME is carried UNCONDITIONALLY — LEGACY (b207bfa /
+                # origin/main) always returned it and the fragrance size-capture
+                # (_stamp_listing_size, parses ml/oz from this name) depends on it, so a
+                # flag-OFF rollback MUST keep it byte-identical (comprehensive review HIGH —
+                # gating it dropped size-capture on rollback). Only `brand` is the NEW
+                # identity addition the exact gate introduced, so only it is flag-gated.
+                cand["name"] = product_name
+                if exact_gate_enabled():
+                    # Carry the matched brand so _selection_match subtracts the FULL brand
+                    # (brand-FIELD-only match, name "Orangey Dress" + ld brand "Jessie and James").
+                    cand["brand"] = _cand_brand
+                candidates.append(cand)
 
-    return best_price
+    if not candidates:
+        return None
+    # CORRECTNESS — pick by variant precision, NEVER cheapest, RANKING in-stock
+    # first; an only-OOS PDP still returns its price flagged in_stock=False (the
+    # chokepoint pends it — preserves the existing OOS-detection behaviour). When
+    # the query is unknown (pre-S4 callers) there is no identity to gate on → keep
+    # the legacy cheapest pick.
+    if query_name:
+        # require_url=False — JSON-LD candidates are page-INTERNAL (the PDP URL is
+        # the page being scraped; the caller stamps it onto the result). Requiring a
+        # per-candidate URL here would drop every JSON-LD match.
+        return select_best(
+            candidates, query_name, _category,
+            drop_out_of_stock=False, require_url=False,
+        )
+    return min(candidates, key=lambda c: c["amount"])
 
 
 def _page_size_signals(soup, jsonld_name: str = "") -> List[str]:
@@ -3355,8 +5895,42 @@ def _stamp_listing_size(
     return result
 
 
+def _page_identity_ok(product_name: str, soup, category: Optional[str]) -> bool:
+    """CORRECTNESS — gate the OG / microdata / WooCommerce-span fallback paths,
+    which carry NO per-product structured identity and otherwise grab the FIRST
+    price on the page. Verify the PAGE identity (og:title / page <title>) actually
+    matches the query before any fallback price is attributed: True iff ANY page
+    signal _selection_match's the query. Returns True when the gate is OFF, there
+    is no query, or there are NO identity signals at all (title-less page —
+    preserve legacy, don't over-reject). False (→ caller pends) when signals exist
+    and NONE match the query — kills the multi-product / wrong-SKU first-price grab."""
+    if not exact_gate_enabled() or not product_name:
+        return True
+    signals = [s for s in _page_size_signals(soup) if s and s.strip()]
+    if not signals:
+        return True
+    # CONSERVATIVE — pend when a page signal exists but NONE match the query. This
+    # is the deliberate weak-signal guard: a store-name-only title shares no tokens
+    # with the query and will pend (a rare false-pend for title-less-product pages),
+    # but that is SAFER than the alternative — "no overlap → keep" cannot distinguish
+    # a store-name title from a COMPLETELY DIFFERENT product (e.g. "Wireless Earbuds
+    # Pro" vs a phone query), which must pend. (Review L2: accepted as-is.)
+    return any(_selection_match(product_name, s, category) for s in signals)
+
+
+def _page_identity_name(soup) -> Optional[str]:
+    """The page's identity string (og:title / page <title>) — stamped as `name` on
+    the OG/microdata/Woo fallback prices so the response chokepoint's axis backstop
+    + the KPI can read the resolved identity (those paths carry no structured name)."""
+    for s in _page_size_signals(soup):
+        if s and s.strip():
+            return s.strip()
+    return None
+
+
 def extract_price_from_html(
-    html: str, product_name: str, currency: str, domain: str, url: str
+    html: str, product_name: str, currency: str, domain: str, url: str,
+    category: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
     """Extract price from HTML using structured data (JSON-LD, OG, microdata).
 
@@ -3367,6 +5941,7 @@ def extract_price_from_html(
     100ml basis (frag-size-capture). Non-fragrance scrapes are unaffected."""
     from bs4 import BeautifulSoup
     brand = product_name.split()[0] if product_name else ""
+    _category = _resolve_extractor_category(category, product_name)
     # Parse once up front — also needed by the size-capture (frag-size-capture)
     # for the JSON-LD branch, which builds its result before the OG path.
     soup = BeautifulSoup(html, 'html.parser')
@@ -3374,9 +5949,9 @@ def extract_price_from_html(
     # Priority 1: JSON-LD (S4 — pass the full query as query_name so a brand-
     # field-only match still requires name-relatedness, no cheapest-unrelated-
     # sibling grab).
-    price_data = extract_jsonld_price(html, brand, currency, query_name=product_name)
+    price_data = extract_jsonld_price(html, brand, currency, query_name=product_name, category=category)
     if not price_data:
-        price_data = extract_jsonld_price(html, brand, "USD", query_name=product_name)
+        price_data = extract_jsonld_price(html, brand, "USD", query_name=product_name, category=category)
         if price_data:
             price_data["_needs_conversion"] = True
 
@@ -3407,6 +5982,14 @@ def extract_price_from_html(
         # true sizes (fragrance-scoped; no-op otherwise).
         _stamp_listing_size(result, product_name, soup, price_data.get("name", ""))
         return result
+
+    # CORRECTNESS — the JSON-LD path gates identity per-Product; the OG / microdata
+    # / WooCommerce-span fallbacks below do NOT (they grab the first price on the
+    # page). Gate the whole fallback cascade ONCE on the page identity (og:title /
+    # page <title>): if the page is a DIFFERENT product than the query, pend (None)
+    # rather than mis-attribute a wrong-SKU / sibling first price.
+    if not _page_identity_ok(product_name, soup, _category):
+        return None
 
     # Priority 2: OpenGraph meta tags
     og_price = soup.find('meta', property='og:price:amount')
@@ -3443,6 +6026,11 @@ def extract_price_from_html(
                     result["source_method"] = "converted_usd"
                 # frag-size-capture — size from og:title / page <title>.
                 _stamp_listing_size(result, product_name, soup)
+                # M2 — stamp the page identity so the chokepoint axis backstop runs. Flag-gated:
+                # legacy never carried `name` on the OG/microdata/WC branches, so a flag-OFF
+                # rollback stays byte-identical (comprehensive review rollback NIT).
+                if exact_gate_enabled():
+                    result["name"] = _page_identity_name(soup)
                 return result
         except (ValueError, TypeError):
             pass
@@ -3459,6 +6047,8 @@ def extract_price_from_html(
         # frag-size-capture — size from og:title / page <title> (microdata
         # nodes rarely carry a volume; the name signals do).
         _stamp_listing_size(micro, product_name, soup)
+        if exact_gate_enabled():  # flag-OFF byte-identity (legacy carried no `name` here)
+            micro["name"] = _page_identity_name(soup)  # M2 — chokepoint axis backstop
         return micro
 
     # Priority 4: WooCommerce price span. S3-genuine (PDP curl Decision-F):
@@ -3472,6 +6062,8 @@ def extract_price_from_html(
     if wc:
         # frag-size-capture — size from og:title / page <title>.
         _stamp_listing_size(wc, product_name, soup)
+        if exact_gate_enabled():  # flag-OFF byte-identity (legacy carried no `name` here)
+            wc["name"] = _page_identity_name(soup)  # M2 — chokepoint axis backstop
         return wc
 
     return None
@@ -3892,6 +6484,7 @@ def _match_shopify_product(
     product_name: str,
     currency: str,
     domain: str,
+    resolved_category: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
     """Find the best title-matching product in a Shopify `/products.json`
     catalog and return its price dict, or ``None``.
@@ -3965,6 +6558,10 @@ def _match_shopify_product(
         # S3 #1 (discovery-match) — reject a different model-line variant.
         if variant_mismatch(product_name, title):
             continue
+        # Keystone variant-add guard (coverage/independent review) — category-aware
+        # superset/axes beyond variant_mismatch's pro/max set. Flag-safe (True when off).
+        if not _selection_match(product_name, title, resolved_category):
+            continue
 
         t_words = normalize_words(title)
         match_score = len(p_words & t_words) / len(p_words) if p_words else 0.0
@@ -4032,6 +6629,7 @@ def _match_shopify_product(
 
 async def fetch_shopify_price(
     domain: str, product_name: str, currency: str = "BHD",
+    resolved_category: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
     """Direct-discovery price for a Shopify-platform BH retailer.
 
@@ -4044,7 +6642,7 @@ async def fetch_shopify_price(
     catalog = await _fetch_shopify_catalog(domain)
     if not catalog:
         return None
-    price = _match_shopify_product(catalog, product_name, currency, domain)
+    price = _match_shopify_product(catalog, product_name, currency, domain, resolved_category=resolved_category)
     if not price:
         return None
 
@@ -4181,11 +6779,13 @@ def _bolo_jsonld_main_price(
                     continue
                 if amount <= 0:
                     continue
-                availability = offer.get("availability", "") or ""
+                # is_available_state (not the literal substring) — handles SoldOut/
+                # Discontinued + the URL/dict shapes; None(unknown) → in stock.
+                _avail = is_available_state(offer.get("availability"))
                 return {
                     "amount": round(amount, 3),
                     "currency": target,
-                    "in_stock": "OutOfStock" not in availability,
+                    "in_stock": True if _avail is None else _avail,
                     "name": ld_name,
                 }
             return None  # main Product found but no usable offer → no fallback need
@@ -4837,27 +7437,44 @@ async def fetch_iherb_price(
         if not brand_matches:
             brand_matches = [p for p in products if brand_lower in p["title"].lower()]
 
-        best = None
-        full_matches = []
-        for p in brand_matches:
-            title_words = normalize_words(p["title"])
-            if name_words.issubset(title_words):
-                full_matches.append(p)
-        if full_matches:
-            best = full_matches[0]
+        # CORRECTNESS (B1) — the requested SKU may be ABSENT from the iHerb results
+        # while a same-brand DIFFERENT product is present (Solgar D3 5000IU query ->
+        # only Solgar Magnesium Citrate on the page). The legacy best-overlap fallback
+        # had NO threshold, so it shipped that wrong product's price. Gate brand-matches
+        # through the shared identity gate; a miss returns None (pend), never a
+        # same-brand flanker. No-op when the rollback flag is OFF (legacy pick below).
+        if exact_gate_enabled():
+            exact = [
+                p for p in brand_matches
+                if _selection_match(full_name, p["title"], "supplements",
+                                    candidate_brand=p.get("brand", ""))
+            ]
+            if not exact:
+                return None
+            # Among identity-matched cards prefer a full name-subset match, else the
+            # first (same identity); never a cheaper NON-matching card.
+            best = next(
+                (p for p in exact if name_words.issubset(normalize_words(p["title"]))),
+                exact[0],
+            )
         else:
-            best_score = -1
-            for p in brand_matches:
-                title_words = normalize_words(p["title"])
-                overlap = len(name_words & title_words)
-                if numbers_match(full_name, p["title"]):
-                    overlap += 2
-                if overlap > best_score or (overlap == best_score and best and p["price"] < best["price"]):
-                    best_score = overlap
-                    best = p
-
-        if not best:
-            return None
+            best = None
+            full_matches = [p for p in brand_matches
+                            if name_words.issubset(normalize_words(p["title"]))]
+            if full_matches:
+                best = full_matches[0]
+            else:
+                best_score = -1
+                for p in brand_matches:
+                    title_words = normalize_words(p["title"])
+                    overlap = len(name_words & title_words)
+                    if numbers_match(full_name, p["title"]):
+                        overlap += 2
+                    if overlap > best_score or (overlap == best_score and best and p["price"] < best["price"]):
+                        best_score = overlap
+                        best = p
+            if not best:
+                return None
 
         # S3-genuine (team-lead 2026-06-14) — the regional iHerb storefront
         # ({region_code}.iherb.com) serves its data-ga-discount-price NATIVELY in
@@ -4874,6 +7491,9 @@ async def fetch_iherb_price(
             "currency": currency,
             "retailer": "iHerb",
             "url": best["url"],
+            # B1 — keep the matched product title so the chokepoint + cache-write
+            # guard can re-verify identity (it was stripped before, hiding wrong picks).
+            "title": best.get("title", ""),
             "in_stock": True,
             "confidence": 1.0,
             "estimated": False,
@@ -4907,7 +7527,7 @@ async def fetch_pharmacy_price(
                 pharmacy_urls.append((link, retailer_name))
                 break
 
-    result = await _try_pharmacy_urls(pharmacy_urls, brand, currency)
+    result = await _try_pharmacy_urls(pharmacy_urls, brand, currency, full_name)
     if result:
         return result
 
@@ -4924,7 +7544,7 @@ async def fetch_pharmacy_price(
                 if domain in link:
                     site_urls.append((link, retailer_name))
                     break
-        result = await _try_pharmacy_urls(site_urls, brand, currency)
+        result = await _try_pharmacy_urls(site_urls, brand, currency, full_name)
         if result:
             return result
     except Exception as e:
@@ -4937,8 +7557,13 @@ async def _try_pharmacy_urls(
     pharmacy_urls: List[Tuple[str, str]],
     brand: str,
     currency: str,
+    full_name: str = "",
 ) -> Optional[Dict[str, Any]]:
-    """Try fetching JSON-LD price from a list of pharmacy URLs."""
+    """Try fetching JSON-LD price from a list of pharmacy URLs.
+
+    `full_name` (B1) — the full requested product, threaded into extract_jsonld_price
+    as `query_name` so its identity gate is ARMED: a multi-Product same-brand pharmacy
+    page can NOT attribute the cheapest unrelated same-brand item to the query."""
     if not pharmacy_urls:
         return None
 
@@ -4949,12 +7574,15 @@ async def _try_pharmacy_urls(
                 if resp.status_code != 200:
                     continue
 
-                price_data = extract_jsonld_price(resp.text, brand, currency)
+                price_data = extract_jsonld_price(
+                    resp.text, brand, currency, query_name=full_name,
+                )
                 if price_data:
                     # L2 content safety — pharmacy JSON-LD entry point
                     # (Bundle B, team-lead expansion of spec sec 5.2).
                     from app.services.content_safety_service import get_content_safety_service
-                    _surface = f"{price_data.get('title', '')} {brand} {retailer_name}"
+                    _ld_title = price_data.get("name") or price_data.get("title", "")
+                    _surface = f"{_ld_title} {brand} {retailer_name}"
                     if not get_content_safety_service().is_text_safe(_surface):
                         logger.info("[content_safety] L2 dropped pharmacy candidate for %s", retailer_name)
                         continue
@@ -4964,6 +7592,9 @@ async def _try_pharmacy_urls(
                         "currency": currency,
                         "retailer": retailer_name,
                         "url": url,
+                        # B1 — carry the matched JSON-LD product name so the chokepoint
+                        # + cache-write guard can re-verify identity.
+                        "title": _ld_title,
                         "in_stock": price_data.get("in_stock", True),
                         "confidence": 1.0,
                         "estimated": False,

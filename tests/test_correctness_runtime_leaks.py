@@ -1,0 +1,512 @@
+# -*- coding: utf-8 -*-
+"""Wave 1 (FIX session 2026-06-28) — the 8 release-blocker leaks reproduced
+through the REAL RUNTIME PATH, not the helper in isolation.
+
+LOAD-BEARING LESSON (PR #9 was HELD): a green comm gate + a passing self-review
+LIED — the 110 prior tests asserted the leaks were "acceptable" (missing-URL /
+unknown-stock OK) and exercised helpers (`is_exact_match`) that the selector
+(`select_best` -> `_selection_match`) never runs. EVERY test below drives the
+function the orchestrator actually calls and asserts the CORRECT (fail-closed)
+behaviour. They are RED on the current branch and turn GREEN as the fix waves land.
+
+Blocker map:
+  B1  fetch_iherb_price best-overlap-no-threshold + strips title + hardcodes stock;
+      fetch_pharmacy_price -> extract_jsonld_price WITHOUT query_name (gate disabled).
+  B2  select_best runs permissive _selection_match: flanker + product FORM
+      (deodorant/candle) + candidate-omits-query-axis all leak through.
+  B3  usable_exact_genuine KPI never loads its truth file / counts no-URL+unknown-stock.
+  B4  extract_jsonld_price accepts AggregateOffer.lowPrice + ignores priceValidUntil.
+  B5  select_best is fail-OPEN on a no-title / no-URL candidate.
+  B6  cache write is not gated on the RESOLVED identity matching the request.
+  B7  guard_rejected leaks into the PUBLIC price payload (belongs in metadata).
+  B8  ENABLE_EXACT_PRICE_GATE=false is NOT byte-identical to b207bfa (unbxd wasPrice).
+"""
+import importlib
+
+import pytest
+
+import app.services.price_service as ps
+
+
+@pytest.fixture(autouse=True)
+def _gate_on(monkeypatch):
+    """The leak repros run with the correctness gate ON (default)."""
+    monkeypatch.setenv("ENABLE_EXACT_PRICE_GATE", "true")
+
+
+# ===========================================================================
+# B1 — supplements return + cache the WRONG product (iHerb + pharmacy bypass)
+# ===========================================================================
+
+def _iherb_html(cards):
+    rows = "".join(
+        f'<a data-ga-brand-name="{b}" data-ga-discount-price="{p}" '
+        f'title="{t}" href="{h}"></a>'
+        for (b, p, t, h) in cards
+    )
+    return f"<html><body>{rows}</body></html>"
+
+
+@pytest.mark.asyncio
+async def test_b1_iherb_no_exact_pends_not_wrong_brandmate(monkeypatch):
+    """The exact requested SKU is ABSENT from the iHerb results; only a same-brand
+    DIFFERENT product is present. fetch_iherb_price must PEND (return None), not
+    fall back to best-overlap and ship the wrong product's price.
+
+    Repro: query 'Solgar Vitamin D3 5000 IU 120 Softgels'; page only carries
+    'Solgar Magnesium Citrate 120 Tablets'. Current code: no full subset match ->
+    best-overlap fallback (no threshold) -> returns the Magnesium price."""
+    html = _iherb_html([
+        ("Solgar", "9.500", "Solgar Magnesium Citrate 120 Tablets", "/pr/magnesium-citrate/111"),
+    ])
+
+    class _Resp:
+        status_code = 200
+        text = html
+
+    import curl_cffi
+    monkeypatch.setattr(curl_cffi.requests, "get", lambda *a, **k: _Resp())
+
+    res = await ps.fetch_iherb_price(
+        query="Solgar Vitamin D3 5000 IU 120 Softgels",
+        brand="Solgar",
+        full_name="Solgar Vitamin D3 5000 IU 120 Softgels",
+        region_code="bh", currency="BHD",
+    )
+    assert res is None, (
+        "no exact D3 5000IU 120-softgel match present -> must pend, NOT return the "
+        f"same-brand Magnesium Citrate price (got {res})"
+    )
+
+
+@pytest.mark.asyncio
+async def test_b1_iherb_match_keeps_title_and_identity(monkeypatch):
+    """When fetch_iherb_price DOES match, the returned price must carry the matched
+    title/name so the downstream chokepoint + select_best can re-verify identity.
+    Current code strips the title (the dict has no title/name key)."""
+    html = _iherb_html([
+        ("Solgar", "14.200", "Solgar Vitamin D3 5000 IU 120 Softgels", "/pr/d3-5000/222"),
+    ])
+
+    class _Resp:
+        status_code = 200
+        text = html
+
+    import curl_cffi
+    monkeypatch.setattr(curl_cffi.requests, "get", lambda *a, **k: _Resp())
+
+    res = await ps.fetch_iherb_price(
+        query="Solgar Vitamin D3 5000 IU 120 Softgels",
+        brand="Solgar",
+        full_name="Solgar Vitamin D3 5000 IU 120 Softgels",
+        region_code="bh", currency="BHD",
+    )
+    assert res is not None
+    identity = (res.get("title") or res.get("name") or "")
+    assert "d3" in identity.lower() or "5000" in identity.lower(), (
+        "iHerb price must retain the matched product title/name for identity "
+        f"re-verification, got keys={sorted(res.keys())}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_b1_pharmacy_passes_query_name_to_jsonld_gate(monkeypatch):
+    """fetch_pharmacy_price must thread the full query into extract_jsonld_price so
+    the JSON-LD identity gate is ARMED — a multi-Product same-brand pharmacy page
+    must not attribute the cheapest unrelated same-brand item to the query.
+
+    Current code calls extract_jsonld_price(text, brand, currency) with NO
+    query_name (4th arg defaults to '') -> the _selection_match gate inside is
+    skipped. We record the query_name extract_jsonld_price actually receives."""
+    import httpx
+
+    captured = {}
+
+    def _spy_extract(html, brand, currency, query_name="", *a, **k):
+        captured["query_name"] = query_name
+        # Return a plausible same-brand-but-WRONG product price.
+        return {"amount": 9.5, "currency": currency, "in_stock": True,
+                "name": "Solgar Magnesium Citrate 120 Tablets"}
+
+    monkeypatch.setattr(ps, "extract_jsonld_price", _spy_extract)
+
+    class _Resp:
+        status_code = 200
+        text = "<html></html>"
+
+    class _FakeClient:
+        def __init__(self, *a, **k):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def get(self, url, **k):
+            return _Resp()
+
+    monkeypatch.setattr(httpx, "AsyncClient", _FakeClient)
+
+    # A pharmacy domain the route recognizes.
+    domain = next(iter(ps.PHARMACY_DOMAINS.keys()))
+    serper_organic = [{"link": f"https://{domain}/product/solgar-d3-5000"}]
+
+    await ps.fetch_pharmacy_price(
+        serper_organic=serper_organic, brand="Solgar",
+        full_name="Solgar Vitamin D3 5000 IU 120 Softgels", currency="BHD",
+    )
+    assert captured.get("query_name") == "Solgar Vitamin D3 5000 IU 120 Softgels", (
+        "pharmacy route must pass the full query into extract_jsonld_price so its "
+        f"identity gate is armed; got query_name={captured.get('query_name')!r}"
+    )
+
+
+# ===========================================================================
+# B2 — the selector runs the permissive matcher: flanker + FORM + omitted axis
+# ===========================================================================
+
+def _cand(amount, title, url="https://www.example-bh.com/p/x"):
+    return {"amount": amount, "currency": "BHD", "in_stock": True,
+            "url": url, "title": title, "source_method": "local_bhd"}
+
+
+def test_b2_select_best_rejects_flanker():
+    """YSL Black Opium must NOT resolve to 'Black Opium Over Red' (a flanker with
+    an extra distinctive sub-line token). select_best runs _selection_match
+    (query-subset) which accepts it; the structured matcher must reject."""
+    cands = [_cand(42.0, "YSL Black Opium Over Red Eau de Parfum 90ml")]
+    best = ps.select_best(cands, "YSL Black Opium Eau de Parfum 90ml", "fragrances")
+    assert best is None, f"flanker must pend, got {best}"
+
+
+def test_b2_select_best_rejects_deodorant_form():
+    """Dior Sauvage EDT (the bottle) must NOT resolve to 'Dior Sauvage Deodorant'.
+    The form token is STRIPPED as noise today (_FORM_NOISE_TOKENS) so the residual
+    identity matches; form must DISCRIMINATE."""
+    cands = [_cand(8.5, "Dior Sauvage Deodorant Stick 75g")]
+    best = ps.select_best(cands, "Dior Sauvage Eau de Toilette 100ml", "fragrances")
+    assert best is None, f"deodorant form must pend, got {best}"
+
+
+def test_b2_select_best_rejects_candle_form():
+    """Tom Ford Oud Wood EDP must NOT resolve to a 'Oud Wood Candle'."""
+    cands = [_cand(55.0, "Tom Ford Oud Wood Candle 200g")]
+    best = ps.select_best(cands, "Tom Ford Oud Wood Eau de Parfum 50ml", "fragrances")
+    assert best is None, f"candle form must pend, got {best}"
+
+
+def test_b2_select_best_pends_when_candidate_omits_query_stated_axes():
+    """Query states concentration AND size; the candidate states NEITHER -> the
+    candidate is UNVERIFIED on those axes -> pend (not auto-accept). Today the axes
+    are only checked when BOTH sides state them (fail-open)."""
+    cands = [_cand(30.0, "Dior Sauvage")]
+    best = ps.select_best(cands, "Dior Sauvage Eau de Toilette 100ml", "fragrances")
+    assert best is None, (
+        "candidate omits the query's stated concentration+size -> unverified -> "
+        f"must pend, got {best}"
+    )
+
+
+# ===========================================================================
+# B3 — usable_exact_genuine KPI must LOAD + VALIDATE against the truth entry
+# ===========================================================================
+
+def _kpi_body(price):
+    return {"overview": {"products": [{"price": price}, {"price": price}]}}
+
+
+def test_b3_kpi_rejects_wrong_identity_against_truth():
+    """The rebuilt KPI takes a truth_entry and INDEPENDENTLY validates the resolved
+    price's identity. A genuine, in-stock, valid-PDP price whose title is a
+    DIFFERENT product than truth.expected must NOT count as usable_exact_genuine.
+
+    Current signature is (body, product_idx) — it never loads/examines the truth,
+    so calling with a truth_entry raises TypeError (RED)."""
+    er = importlib.import_module("scripts.eval_runner")
+    truth = {"id": "kpi-frag-001", "query": "YSL Black Opium EDP 90ml",
+             "category": "fragrances",
+             "expected": {"brand": "Yves Saint Laurent", "model": "Black Opium",
+                          "concentration": "EDP", "size_ml": 90}}
+    wrong = {"amount": 30.0, "currency": "BHD", "source_method": "local_bhd",
+             "in_stock": True, "title": "YSL Libre Eau de Parfum 90ml",
+             "url": "https://example-bh.com/p/libre"}
+    assert er.usable_exact_genuine_for_product(_kpi_body(wrong), 0, truth) is False, (
+        "a wrong-identity (Libre for a Black Opium request) genuine price must NOT "
+        "count as usable_exact_genuine"
+    )
+
+
+def test_b3_kpi_rejects_missing_url_and_unknown_stock():
+    """A genuine price with NO url, or with UNKNOWN (not confirmed-True) stock, is
+    NOT usable_exact_genuine. The prior test_kpi_metric.py:47 wrongly asserted a
+    no-url price is usable; the rebuilt KPI requires a present PDP URL + confirmed
+    in-stock."""
+    er = importlib.import_module("scripts.eval_runner")
+    truth = {"id": "kpi-x", "query": "Dior Sauvage EDT 100ml", "category": "fragrances",
+             "expected": {"brand": "Dior", "model": "Sauvage",
+                          "concentration": "EDT", "size_ml": 100}}
+    no_url = {"amount": 45.0, "currency": "BHD", "source_method": "local_bhd",
+              "in_stock": True, "title": "Dior Sauvage Eau de Toilette 100ml"}
+    assert er.usable_exact_genuine_for_product(_kpi_body(no_url), 0, truth) is False, (
+        "missing PDP URL -> not usable_exact_genuine (the old 'benign' assumption)"
+    )
+
+
+# ===========================================================================
+# B4 — JSON-LD must not ship a stale / variant-minimum AggregateOffer as exact
+# ===========================================================================
+
+def test_b4_jsonld_rejects_expired_pricevaliduntil():
+    """An offer whose priceValidUntil is in the past is STALE -> must not be shown."""
+    html = '''<html><head><script type="application/ld+json">
+    {"@type":"Product","name":"Dior Sauvage Eau de Toilette 100ml","brand":"Dior",
+     "offers":{"@type":"Offer","price":"45.000","priceCurrency":"BHD",
+               "priceValidUntil":"2020-01-01","availability":"https://schema.org/InStock"}}
+    </script></head><body></body></html>'''
+    res = ps.extract_jsonld_price(html, "Dior", "BHD", "Dior Sauvage EDT 100ml")
+    assert res is None, f"expired 2020 offer must be rejected as stale, got {res}"
+
+
+def test_b4_jsonld_aggregateoffer_lowprice_not_taken_as_exact():
+    """AggregateOffer.lowPrice is the cheapest VARIANT/size, not the exact SKU's
+    price — without a per-SKU Offer it must not be attributed to the exact query."""
+    # Name states the exact 100ml EDT (so the candidate-omits-axis check does NOT
+    # reject it) — isolating the AggregateOffer-RANGE behaviour itself.
+    html = '''<html><head><script type="application/ld+json">
+    {"@type":"Product","name":"Dior Sauvage Eau de Toilette 100ml","brand":"Dior",
+     "offers":{"@type":"AggregateOffer","lowPrice":"22.000","highPrice":"60.000",
+               "priceCurrency":"BHD","availability":"https://schema.org/InStock"}}
+    </script></head><body></body></html>'''
+    res = ps.extract_jsonld_price(html, "Dior", "BHD", "Dior Sauvage EDT 100ml")
+    assert res is None, (
+        "AggregateOffer lowPrice/highPrice RANGE (cheapest variant/seller) must not be "
+        f"taken as the exact 100ml EDT price without per-SKU offer proof, got {res}"
+    )
+
+
+# ===========================================================================
+# B5 — missing identity + URL is fail-OPEN
+# ===========================================================================
+
+def test_b5_select_best_pends_no_title():
+    """A candidate with NO title/name has no verifiable identity -> fail-CLOSED.
+    Today `if title and not _selection_match(...)` short-circuits, so a titleless
+    candidate is appended to eligible (fail-open)."""
+    cand = {"amount": 400.0, "currency": "BHD", "in_stock": True,
+            "url": "https://example-bh.com/p/x", "source_method": "local_bhd"}
+    best = ps.select_best([cand], "Samsung Galaxy S24 256GB", "electronics")
+    assert best is None, f"no-title candidate must pend (no identity), got {best}"
+
+
+def test_b5_select_best_pends_no_url():
+    """A candidate with NO PDP URL cannot be verified to a current PDP -> pend.
+    Today a missing url passes (only a listing url is rejected)."""
+    cand = {"amount": 400.0, "currency": "BHD", "in_stock": True,
+            "title": "Samsung Galaxy S24 256GB", "source_method": "local_bhd"}
+    best = ps.select_best([cand], "Samsung Galaxy S24 256GB", "electronics")
+    assert best is None, f"no-url candidate must pend (no PDP proof), got {best}"
+
+
+# ===========================================================================
+# B6 — cache write must be gated on the RESOLVED identity matching the request
+# ===========================================================================
+
+def test_b6_cache_write_guard_rejects_wrong_identity():
+    """A wrong-identity resolved price must NOT be written to the request's cache
+    key for the genuine TTL. The fix adds a write guard
+    `should_cache_price(request_name, price, category)` -> False on a non-exact
+    resolved price. (RED: helper does not exist yet.)"""
+    from app.services.price_service import should_cache_price
+    wrong = {"amount": 240.0, "currency": "BHD", "source_method": "local_bhd",
+             "in_stock": True, "title": "Samsung Galaxy S24 FE 256GB",
+             "url": "https://example-bh.com/p/s24fe"}
+    assert should_cache_price("Samsung Galaxy S24 256GB", wrong, "electronics") is False
+    right = {**wrong, "title": "Samsung Galaxy S24 256GB"}
+    assert should_cache_price("Samsung Galaxy S24 256GB", right, "electronics") is True
+
+
+def test_b6_resolved_title_keys_the_variant_axis():
+    """When a request omits a variant axis the resolved title carries (request
+    'iPhone 15', resolved 'iPhone 15 256GB'), the WRITE key built from the resolved
+    title must encode the 256 axis (so a later 512GB resolution can't collide)."""
+    bare = ps.build_size_aware_price_cache_key("Apple", "iPhone 15", None, "bahrain", "")
+    resolved = ps.build_size_aware_price_cache_key(
+        "Apple", "iPhone 15", None, "bahrain", "iPhone 15 256GB")
+    assert bare != resolved, (
+        "the resolved-title write key must encode the storage axis the bare request "
+        "omitted, so distinct resolved variants never share one slot"
+    )
+
+
+# ===========================================================================
+# B7 — guard_rejected (a diagnostic) must NOT leak into the public price payload
+# ===========================================================================
+
+def test_b7_public_price_view_strips_diagnostics():
+    """The public price projection must drop the internal `guard_rejected` diagnostic
+    and any `_`-prefixed internal keys. The fix adds `public_price_view(price)`.
+    (RED: helper does not exist yet.)"""
+    from app.services.price_service import public_price_view
+    price = {"amount": None, "currency": "BHD", "unavailable": True,
+             "reason": "pending_genuine", "guard_rejected": "not_exact",
+             "_cached": True, "_cache_source": "db"}
+    pub = public_price_view(price)
+    assert "guard_rejected" not in pub, "guard_rejected is a diagnostic -> metadata only"
+    assert not any(k.startswith("_") for k in pub), "internal _-keys must be stripped"
+    assert pub.get("reason") == "pending_genuine"
+
+
+# ===========================================================================
+# B8 — ENABLE_EXACT_PRICE_GATE=false must be byte-identical to b207bfa
+# ===========================================================================
+
+def test_b8_flag_off_unbxd_keeps_waspce_fallback(monkeypatch):
+    """With the gate OFF, _parse_unbxd_amount must restore the b207bfa behaviour
+    (wasPrice as a last-resort fallback). The branch removed wasPrice
+    UNCONDITIONALLY, so flag-OFF differs from b207bfa today (RED)."""
+    monkeypatch.setenv("ENABLE_EXACT_PRICE_GATE", "false")
+    from app.services.unbxd_service import _parse_unbxd_amount
+    assert _parse_unbxd_amount({"wasPrice": 50.0}) == 50.0, (
+        "flag-OFF must be byte-identical to b207bfa: wasPrice fallback restored"
+    )
+
+
+def test_b8_flag_off_select_best_is_cheapest(monkeypatch):
+    """With the gate OFF, select_best restores the legacy cheapest-pick (min amount),
+    ignoring identity. (Pins the rollback contract.)"""
+    monkeypatch.setenv("ENABLE_EXACT_PRICE_GATE", "false")
+    cands = [_cand(300.0, "Samsung Galaxy S24 256GB"),
+             _cand(240.0, "Samsung Galaxy S24 FE 256GB")]
+    best = ps.select_best(cands, "Samsung Galaxy S24 256GB", "electronics")
+    assert best is not None and best["amount"] == 240.0, (
+        "flag-OFF rollback: select_best returns the cheapest (legacy), got "
+        f"{best and best['amount']}"
+    )
+
+
+# ===========================================================================
+# Adversarial-review fixes (2026-06-28 round 2) — leaks the first round missed.
+# ===========================================================================
+
+def _m(q, t, cat, brand=""):
+    return ps._selection_match(q, t, cat, candidate_brand=brand)
+
+
+def test_rev_gender_contradiction_rejected():
+    """A gender CONTRADICTION (both sides state a gender and they DIFFER) is a
+    different product — Eros Pour Homme (men's) != Eros Pour Femme (women's)."""
+    assert _m("Versace Eros Pour Homme EDT", "Versace Eros Pour Femme EDT",
+              "fragrances", "Versace") is False
+    assert _m("Armani Code Pour Homme EDT", "Armani Code Pour Femme EDT",
+              "fragrances", "Armani") is False
+
+
+def test_rev_gender_one_sided_accepted():
+    """A ONE-SIDED gender (the canonical 'Pour Homme' the terse query states but the
+    retailer PDP omits, or vice versa) must NOT pend — the dominant GCC genuine case
+    (Bleu de Chanel Pour Homme, Acqua di Gio Pour Homme). Round-2 calibration: gender
+    is a CONTRADICTION axis, not an omission reject."""
+    assert _m("Bleu de Chanel Pour Homme EDP 100ml",
+              "Chanel Bleu de Chanel Eau de Parfum 100ml", "fragrances", "Chanel") is True
+    assert _m("Armani Acqua di Gio Pour Homme EDT 100ml",
+              "Giorgio Armani Acqua di Gio Eau de Toilette 100ml", "fragrances",
+              "Giorgio Armani") is True
+    # candidate ADDS Pour Homme the query omitted → still accepted.
+    assert _m("Bleu de Chanel EDP 100ml",
+              "Chanel Bleu de Chanel Pour Homme Eau de Parfum 100ml", "fragrances",
+              "Chanel") is True
+    # English 'For Women' descriptor on a single-gender fragrance → accepted.
+    assert _m("YSL Black Opium EDP 90ml", "YSL Black Opium Eau de Parfum For Women 90ml",
+              "fragrances", "YSL") is True
+
+
+def test_rev_gift_set_rejected():
+    """A multi-piece gift SET is a different SKU than the single bottle."""
+    assert _m("Chanel No 5 EDP", "Chanel No 5 EDP Gift Set 3 Piece", "fragrances", "Chanel") is False
+    assert _m("Dior Sauvage EDT 100ml", "Dior Sauvage EDT 100ml 3 Piece", "fragrances", "Dior") is False
+    # a SET query matches a SET candidate (no over-rejection).
+    assert _m("Chanel No 5 Gift Set", "Chanel No 5 EDP Gift Set 3 Piece", "fragrances", "Chanel") is True
+
+
+def test_rev_flagship_concentration_added_rejected():
+    """A candidate that ADDS a flagship concentration (Le Parfum / Parfum / Extrait)
+    the query never asked for is a different juice; adding EDP/EDT is fine."""
+    assert _m("YSL Black Opium", "YSL Black Opium Le Parfum 90ml", "fragrances", "YSL") is False
+    assert _m("Dior Sauvage EDT", "Dior Sauvage Parfum", "fragrances", "Dior") is False
+    # adding the DEFAULT EDP line when the query omits concentration is accepted.
+    assert _m("YSL Black Opium", "YSL Black Opium Eau de Parfum 90ml", "fragrances", "YSL") is True
+
+
+def test_rev_accessory_rejected_by_selector_and_chokepoint():
+    """A phone ACCESSORY (case) must not be selected as the phone, nor pass the
+    is_price_showable backstop."""
+    case = {"amount": 11.9, "title": "Samsung Galaxy S24 Case",
+            "url": "https://x.com/p/case", "in_stock": True, "source_method": "local_bhd"}
+    assert ps.select_best([case], "Samsung Galaxy S24", "electronics") is None
+    # Chokepoint: use a price that PASSES the implausible-low-value guard (so the
+    # accessory backstop is the discriminator, not the price-floor guard).
+    price = {"amount": 250.0, "currency": "BHD", "source_method": "local_bhd",
+             "in_stock": True, "title": "Samsung Galaxy S24 Case",
+             "url": "https://x.com/p/case"}
+    assert ps.is_price_showable("Samsung Galaxy S24", price, "electronics",
+                                enforce_correctness=True) is False
+    assert price.get("guard_rejected") == "accessory"
+
+
+def test_rev_supplement_type_added_rejected():
+    """Whey -> Whey Isolate / D3 -> D3 K2 are different formulations."""
+    assert _m("NOW Foods Whey Protein 5lb", "NOW Foods Whey Protein Isolate 5lb",
+              "supplements", "NOW Foods") is False
+    assert _m("NOW Vitamin D3 5000 IU", "NOW Vitamin D3 K2 5000 IU", "supplements", "NOW") is False
+    # same type matches (lb weight no longer leaks into identity).
+    assert _m("NOW Whey Protein Isolate 5lb",
+              "NOW Whey Protein Isolate Unflavored 5 lb (2270 g)", "supplements", "NOW") is True
+
+
+def test_rev_accessory_narrowing_genuine_products_accepted():
+    """Round-2 calibration: the accessory guard must NOT pend a GENUINE standalone
+    keyboard / headphone / earbuds (they are products, not accessories) nor a
+    skincare/makeup title with 'glass'/'skin' — only a true electronics add-on
+    (case/charger) on a high-value device query is dropped."""
+    def _sb(title, query, cat, brand=""):
+        c = {"amount": 45.0, "title": title, "url": "https://x.com/p/1",
+             "in_stock": True, "source_method": "local_bhd", "brand": brand}
+        return ps.select_best([c], query, cat) is not None
+    # genuine products → accepted
+    assert _sb("Logitech MX Keys Advanced Wireless Keyboard", "Logitech MX Keys",
+               "electronics", "Logitech") is True
+    assert _sb("Sony WH-1000XM5 Wireless Headphone", "Sony WH-1000XM5",
+               "electronics", "Sony") is True
+    assert _sb("Anker Soundcore Liberty 4 Earbuds", "Anker Soundcore Liberty 4",
+               "electronics", "Anker") is True
+    assert _sb("Some Brand Glass Skin Serum 50ml", "Some Brand Glass Skin Serum",
+               "skincare", "Some Brand") is True
+    # true accessories on a device query → still rejected
+    assert _sb("Samsung Galaxy S24 Case", "Samsung Galaxy S24", "electronics", "Samsung") is False
+    assert _sb("Sony WH-1000XM5 Carrying Case", "Sony WH-1000XM5", "electronics", "Sony") is False
+
+
+def test_rev_brand_abbreviation_accepted():
+    """Brand abbreviation vs spelled-out must match the SAME exact product."""
+    assert _m("YSL Black Opium EDP 90ml", "Yves Saint Laurent Black Opium Eau de Parfum 90ml",
+              "fragrances", "Yves Saint Laurent") is True
+    assert _m("D&G Light Blue EDT 100ml", "Dolce & Gabbana Light Blue Eau de Toilette 100ml",
+              "fragrances", "Dolce & Gabbana") is True
+
+
+def test_rev_pricevaliduntil_grace_recent_past_shown():
+    """A genuine CURRENT price whose priceValidUntil lapsed RECENTLY (careless date)
+    must still be shown; only a clearly-abandoned (years-past) date is dropped."""
+    import datetime
+    recent_date = (datetime.date.today() - datetime.timedelta(days=30)).isoformat()
+    recent = ('<html><head><script type="application/ld+json">'
+              '{"@type":"Product","name":"Dior Sauvage Eau de Toilette 100ml","brand":"Dior",'
+              '"offers":{"@type":"Offer","price":"45.000","priceCurrency":"BHD",'
+              f'"priceValidUntil":"{recent_date}","availability":"https://schema.org/InStock"}}}}'
+              '</script></head><body></body></html>')
+    res = ps.extract_jsonld_price(recent, "Dior", "BHD", "Dior Sauvage EDT 100ml")
+    assert res is not None and abs(res["amount"] - 45.0) < 0.01, (
+        "a recently-lapsed priceValidUntil on a current PDP must NOT pend"
+    )

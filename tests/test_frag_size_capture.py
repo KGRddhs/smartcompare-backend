@@ -96,8 +96,13 @@ class TestPageScrapeSizeCapture:
     def test_size_from_og_title_when_jsonld_name_silent(self):
         """JSON-LD name carries no size, but og:title does → captured from
         og:title (OG-price branch)."""
+        # NOTE: Ombré Leather's default is the Eau de Parfum (the "Parfum" flagship is
+        # a DISTINCT pricier juice the correctness gate pends for a generic query — see
+        # test_rev_flagship_concentration_added_rejected); this size-capture test uses
+        # the realistic default concentration so it exercises size capture, not the
+        # flagship discriminator.
         html = '''<html><head>
-        <meta property="og:title" content="Tom Ford Ombré Leather Parfum 50ml">
+        <meta property="og:title" content="Tom Ford Ombré Leather Eau de Parfum 50ml">
         <meta property="og:price:amount" content="62.000">
         <meta property="og:price:currency" content="BHD">
         </head><body></body></html>'''

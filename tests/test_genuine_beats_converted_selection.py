@@ -36,7 +36,7 @@ async def test_genuine_bh_pagescrape_beats_cheaper_converted_usd():
         }
 
     # extract_price_from_shopping → a converted_usd price (parked, not returned).
-    def fake_extract_shopping(name, items, currency, shopping_region=None):
+    def fake_extract_shopping(name, items, currency, shopping_region=None, **kwargs):
         return {"amount": 127.8, "currency": "BHD", "original_currency": "USD",
                 "retailer": "Best Buy", "source_method": "converted_usd",
                 "retailer_score": 0.5}
