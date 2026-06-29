@@ -3277,6 +3277,15 @@ def _identity_tokens_ps(text: str, brand: str = "", category: Optional[str] = No
     # Fashion year/colourway re-release suffix ("'07") is noise, NOT the model number.
     if cat == "fashion":
         folded = re.sub(r"'\s*\d{2}\b", " ", folded)
+        # "Special/Limited Edition" is a distinct, pricier SKU. Collapse the spelled phrase AND
+        # the "SE" abbreviation into ONE distinctive identity token so (a) a base query rejects
+        # EITHER form (coverage re-sweep HIGH: 'special'/'edition' were stripped as colour-edition
+        # tokens, collapsing the candidate onto the base) and (b) "SE" and "Special Edition"
+        # listings of the SAME edition MATCH (alias unify, like '+'/'Plus'). "limited edition" is
+        # phrase-only (the bare "le" abbreviation collides with brands like "Le Coq Sportif").
+        folded = re.sub(r"\bspecial\s+edition\b", " specialedition ", folded)
+        folded = re.sub(r"\blimited\s+edition\b", " limitededition ", folded)
+        folded = re.sub(r"\bse\b", " specialedition ", folded)
     # Supplement BARE dose number ("D3 5000" written without IU) — the measure strip only
     # removes a number WITH a unit ("5000 IU"), so a unit-less dose survives as a false
     # identity token and over-rejects a genuine "5000 IU" listing. Strip a bare 4+-digit
@@ -4117,6 +4126,12 @@ _SUPPLEMENT_CHEM_SYNONYMS = frozenset({
 _MAKEUP_FINISH_TOKENS = frozenset({
     "matte", "satin", "shimmer", "dewy", "glossy", "luminous", "radiant", "velvet",
     "metallic", "natural", "poreless",
+    # FORMULA/finish words that distinguish foundation LINES (Pro Filt'r Hydrating vs Soft
+    # Matte; Infallible Glow vs Matte). Both-stated-different rejects via _finish_mismatch; a
+    # ONE-SIDED add is tolerated as descriptive (coverage re-sweep: "Fit Me 310 Smooth
+    # Coverage" / "Natural Beige Glow" / "Hydrating Tint" must NOT over-reject — so 'smooth' is
+    # deliberately EXCLUDED, it is a generic coverage descriptor, not a line word).
+    "glow", "glowy", "glowing", "hydrating", "illuminating", "mattifying",
 })
 _MAKEUP_PADDING = _MAKEUP_FINISH_TOKENS | frozenset({
     "longwear", "longlasting", "buildable", "blendable", "lightweight",
@@ -4134,20 +4149,6 @@ _MAKEUP_PADDING = _MAKEUP_FINISH_TOKENS | frozenset({
     # padding it would strip a real shade token.
     "to", "of", "in", "on", "by",
 })
-# Makeup FORMULA / FINISH-LINE words that, when a candidate ADDS one over a query sharing
-# the same shade NUMBER, mark a DIFFERENT product line reusing the shade code (Pro Filt'r
-# "Soft Matte" 240 vs "Hydrating" 240; Infallible "Matte" 130 vs "Glow" 130; Fit Me 128 vs
-# Fit Me "Dewy + Smooth" 128). These BLOCK the shade-number short-circuit so the variant-add
-# guard rejects the added line token (coverage sweep 3x CRIT/HIGH). Only the NON-padding
-# formula words matter (matte/dewy/satin are already stripped as finish padding); a spelled
-# shade NAME ("Soft Sand") is NOT here, so the legitimate "240 -> 240 Soft Sand" still accepts.
-_MAKEUP_LINE_DISCRIMINATORS = frozenset({
-    "glow", "glowy", "glowing", "hydrating", "hydra", "smooth", "smoothing",
-    "illuminating", "luminizing", "mattifying", "blurring", "moisturizing",
-    "moisturising", "nourishing", "longwear",
-})
-
-
 # --- contradiction axes (coverage review round 2): one-sided tolerated, both-stated-
 # different rejected — mirrors _gender_mismatch / _color_mismatch ---------------
 _FLAVOUR_TOKENS = frozenset({
@@ -4155,6 +4156,9 @@ _FLAVOUR_TOKENS = frozenset({
     "cookies", "mango", "banana", "caramel", "cinnamon", "coconut", "grape", "cherry",
     "lime", "apple", "peach", "raspberry", "tropical", "unflavored", "unflavoured",
     "hazelnut", "almond", "pistachio", "honey",
+    # 'cheese' is a generic grocery noun that is ALSO a flavour (Pringles Cheese vs Original) —
+    # adding it closes the same one-sided grocery flavour-add leak as 'chocolate' (re-sweep LOW).
+    "cheese",
     # flavour words a candidate ADDS that the prior set missed (coverage sweep CRIT/HIGH:
     # "Creatine Unflavored" -> "...Fruit Punch"; "...Cookies" -> "...Cream") — without
     # these the one-sided flavour add slipped past both the contradiction axis and the
@@ -4450,12 +4454,13 @@ _CATEGORY_PADDING = {
     "supplements": _SUPPLEMENT_PADDING,
 }
 # Short (<=2-char) fashion model qualifiers KEPT as identity (Samba OG, Dunk Hi/Lo).
-# Short (<=2-char) fashion model qualifiers KEPT as distinctive identity tokens (the
-# len>2 rule would otherwise drop them). "se" = Special Edition — a genuinely distinct,
-# typically pricier SKU (Air Max 90 SE / AF1 SE / Dunk SE); without it "se" was dropped
-# on BOTH sides and an SE listing matched the base shoe (coverage sweep HIGH, both
-# directions). "og"/"hi"/"lo" are Nike/adidas line markers (Samba OG, Dunk Hi/Lo).
-_FASHION_KEPT_QUALIFIERS = frozenset({"og", "hi", "lo", "se"})
+# Short (<=2-char) fashion model qualifiers KEPT as distinctive identity tokens (the len>2
+# rule would otherwise drop them). "og"/"hi"/"lo" are Nike/adidas line markers (Samba OG,
+# Dunk Hi/Lo). NOTE: "se" (Special Edition) is NOT kept here — it is normalized to the
+# distinctive token "specialedition" in _identity_tokens_ps so the abbreviation and the
+# spelled "Special Edition" UNIFY (coverage re-sweep); a bare kept "se" left the spelled form
+# leaking (it was stripped as a colour-edition token).
+_FASHION_KEPT_QUALIFIERS = frozenset({"og", "hi", "lo"})
 # 2-char skincare/haircare LINE codes kept as identity (CeraVe SA, Skinceuticals AM/PM).
 _SKINCARE_LINE_CODES = frozenset({"sa", "am", "pm", "cf"})
 
@@ -4651,13 +4656,14 @@ def _selection_match(
         # (a second shade number is a different shade) AND (b) the NON-number core is
         # subset-compatible — so a shared number does NOT bridge two different product
         # LINES that happen to share a shade code (Fit Me 240 vs Superstay 240) (round 4).
-        # A candidate that ADDS a FORMULA/FINISH-LINE word (Hydrating/Glow/Smooth) beyond the
-        # shared shade number names a DIFFERENT product line reusing the shade code — do NOT
-        # short-circuit; fall through to the variant-add guard, which rejects it (coverage sweep).
-        extra_nonnum = (t_core - t_nums) - (q_core - q_nums)
+        # A DIFFERENT formula LINE reusing the shade code (Soft Matte 240 vs Hydrating 240;
+        # Infallible Matte 130 vs Glow 130) is rejected UPSTREAM by _finish_mismatch (both sides
+        # state a finish/formula word and they DIFFER) — the formula words were added to
+        # _MAKEUP_FINISH_TOKENS. A one-sided formula ADD ("Fit Me 310 Smooth Coverage") is
+        # descriptive and tolerated here (coverage re-sweep: avoids mass over-rejection of common
+        # Fit Me titles; the rarer one-sided line add "Fit Me -> Dewy+Smooth" is the accepted trade).
         if (q_nums and t_nums and (q_nums & t_nums) and not (t_nums - q_nums)
-                and (q_core - q_nums).issubset(t_core - t_nums)
-                and not (extra_nonnum & _MAKEUP_LINE_DISCRIMINATORS)):
+                and (q_core - q_nums).issubset(t_core - t_nums)):
             return True
     # LEAK direction — candidate must carry all of the query's distinctive non-padding
     # tokens (applies to EVERY category, incl. an unresolved one).

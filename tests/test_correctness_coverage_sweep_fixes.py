@@ -58,10 +58,11 @@ def _price(title, **kw):
 # FIXED — leaks that must now PEND (reproduced through the runtime selector)
 # ===========================================================================
 def test_grocery_flavour_add_rejected():
-    # 'chocolate' is a generic grocery noun AND a flavour — the one-sided ADD slipped both
-    # the contradiction axis and the variant-add guard before the asymmetric fix.
+    # 'chocolate'/'cheese' are generic grocery nouns AND flavours — the one-sided ADD slipped
+    # both the contradiction axis and the variant-add guard before the asymmetric fix.
     assert _m("Cheerios", "Cheerios Chocolate", "grocery", "Cheerios") is False
     assert _m("Pepsi", "Pepsi Mango", "grocery", "Pepsi") is False
+    assert _m("Pringles Original", "Pringles Cheese", "grocery", "Pringles") is False  # re-sweep LOW
 
 
 def test_supplement_flavour_contradiction_rejected():
@@ -77,18 +78,25 @@ def test_supplement_multi_blend_rejected():
 
 
 def test_makeup_shade_line_rejected():
-    # A formula/finish LINE word added over a shared shade NUMBER = a different product line.
+    # A DIFFERENT formula line stated on BOTH sides (Soft Matte vs Hydrating; Matte vs Glow)
+    # rejects via _finish_mismatch (glow/hydrating are now finish tokens). A ONE-SIDED formula
+    # add ("Fit Me -> Dewy+Smooth") is the accepted trade — see test_held_makeup_one_sided_*.
     assert _m("Fenty Pro Filt'r Soft Matte Foundation 240",
               "Fenty Pro Filt'r Hydrating Longwear Foundation 240", "makeup", "Fenty") is False
     assert _m("L'Oreal Infallible Matte Foundation 130",
               "L'Oreal Infallible Glow Foundation 130", "makeup", "L'Oreal") is False
-    assert _m("Maybelline Fit Me Foundation 128",
-              "Maybelline Fit Me Dewy + Smooth Foundation 128", "makeup", "Maybelline") is False
 
 
 def test_fashion_se_qualifier_rejected_both_directions():
     assert _m("Nike Air Max 90", "Nike Air Max 90 SE", "fashion", "Nike") is False
     assert _m("Nike Air Max 90 SE", "Nike Air Max 90", "fashion", "Nike") is False
+
+
+def test_fashion_spelled_edition_rejected():
+    # Re-sweep HIGH: spelled "Special/Limited Edition" (the common GCC wording) leaked because
+    # 'special'/'edition' were stripped as colour-edition tokens. Now normalized to one token.
+    assert _m("Nike Air Force 1", "Nike Air Force 1 Special Edition", "fashion", "Nike") is False
+    assert _m("Nike Air Max 90", "Nike Air Max 90 Limited Edition", "fashion", "Nike") is False
 
 
 def test_electronics_accessory_not_cached():
@@ -132,6 +140,18 @@ def test_guard_accessory_query_accepts_accessory():
                               "electronics") is True
 
 
+def test_guard_makeup_one_sided_formula_descriptive_tolerated():
+    # Re-sweep: a one-sided formula word on the candidate over a shared shade number is
+    # descriptive, not a line swap -> accept (avoids mass over-rejection of common Fit Me titles).
+    assert _m("Maybelline Fit Me 310", "Maybelline Fit Me 310 Sun Beige Smooth Coverage", "makeup", "Maybelline") is True
+    assert _m("Maybelline Fit Me 220", "Maybelline Fit Me 220 Natural Beige Glow", "makeup", "Maybelline") is True
+
+
+def test_guard_fashion_se_alias_unified():
+    # "SE" and the spelled "Special Edition" are the SAME edition SKU -> must MATCH.
+    assert _m("Nike Air Force 1 SE", "Nike Air Force 1 Special Edition", "fashion", "Nike") is True
+
+
 # ===========================================================================
 # HELD — deliberate tradeoffs (PIN the accepted behaviour; a leak, but the token-only
 # fix re-breaks a worse documented case). Change only by a conscious edit.
@@ -145,6 +165,14 @@ def test_held_gender_flanker_accepted_tradeoff():
 def test_held_skincare_one_sided_spf_accepted_tradeoff():
     # Asymmetric SPF mass-over-rejects inherent-SPF sunscreens (Anthelios). See R6 pin.
     assert _m("Kiehl's Ultra Facial Cream", "Kiehl's Ultra Facial Cream SPF 30", "skincare", "Kiehl's") is True
+
+
+def test_held_makeup_one_sided_formula_line_accepted_tradeoff():
+    # "Fit Me Foundation" -> "Fit Me Dewy + Smooth" is a real line difference but a ONE-SIDED
+    # formula add; rejecting it mass-over-rejects common Fit Me descriptive titles (re-sweep).
+    # The clear both-stated-different case (Soft Matte vs Hydrating) IS still rejected above.
+    assert _m("Maybelline Fit Me Foundation 128",
+              "Maybelline Fit Me Dewy + Smooth Foundation 128", "makeup", "Maybelline") is True
 
 
 # ===========================================================================
