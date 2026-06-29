@@ -184,23 +184,30 @@ class TestLbToGramConversionRounding:
 
 
 # ---------------------------------------------------------------------------
-# #5 — converted_usd (indicative) price was un-cacheable when its only url is a
-# synthesized search link → cascade re-burns (neither pos- nor neg-cached).
+# #5 — converted-price cache PROVENANCE (external review P2). A URL-less /
+# search-url converted price must NOT enter the VERIFIED positive-price cache; a
+# converted price WITH a real cited PDP url + matching identity still caches.
 # ---------------------------------------------------------------------------
-class TestConvertedPriceCacheable:
-    def test_converted_with_search_url_is_cacheable(self):
-        # A converted (indicative) price with a synthesized search-url + matching identity
-        # must be cacheable (it is not a genuine-BHD claim; correctness is the identity match).
+class TestConvertedCacheProvenance:
+    def test_converted_with_real_pdp_url_is_cacheable(self):
+        price = {
+            "amount": 42.5, "currency": "BHD", "source_method": "converted_usd",
+            "title": "Sony WH-1000XM5 Wireless Headphones", "brand": "Sony",
+            "url": "https://www.noon.com/uae-en/sony-wh-1000xm5/p123",
+        }
+        assert should_cache_price("Sony WH-1000XM5", price, "electronics") is True
+
+    def test_converted_with_search_url_not_in_verified_cache(self):
+        # Provenance: a converted price whose only url is a synthesized search link has no
+        # cited PDP and must NOT share the verified positive cache (review P2).
         price = {
             "amount": 42.5, "currency": "BHD", "source_method": "converted_usd",
             "title": "Sony WH-1000XM5 Wireless Headphones", "brand": "Sony",
             "url": "https://www.noon.com/search?q=sony+wh-1000xm5",
         }
-        assert should_cache_price("Sony WH-1000XM5", price, "electronics") is True
+        assert should_cache_price("Sony WH-1000XM5", price, "electronics") is False
 
-    # --- GUARDS -------------------------------------------------------------
-    def test_genuine_with_search_url_still_not_cacheable(self):
-        # A GENUINE-BHD claim with a non-PDP (search) url stays fail-closed.
+    def test_genuine_with_search_url_not_cacheable(self):
         price = {
             "amount": 42.5, "currency": "BHD", "source_method": "page_scrape_jsonld",
             "title": "Sony WH-1000XM5 Wireless Headphones", "brand": "Sony",
@@ -208,15 +215,68 @@ class TestConvertedPriceCacheable:
         }
         assert should_cache_price("Sony WH-1000XM5", price, "electronics") is False
 
-    def test_converted_wrong_identity_still_not_cacheable(self):
-        # Relaxing the url gate must NOT relax the identity gate: a converted price for a
-        # DIFFERENT variant stays uncacheable.
+    def test_converted_wrong_identity_not_cacheable(self):
         price = {
             "amount": 42.5, "currency": "BHD", "source_method": "converted_usd",
             "title": "Samsung Galaxy S24 FE 256GB", "brand": "Samsung",
             "url": "https://www.noon.com/p/galaxy-s24-fe",
         }
         assert should_cache_price("Samsung Galaxy S24 256GB", price, "electronics") is False
+
+
+# ---------------------------------------------------------------------------
+# #3 — a SECONDARY measurement (serving/nutrition weight) must NOT mask a
+# different net/package size (external review P1).
+# ---------------------------------------------------------------------------
+class TestServingWeightDoesNotMaskPackage:
+    def test_shared_serving_weight_does_not_match_different_package(self):
+        # ISO100 5lb vs 2lb, both "25g protein per serving" — different package sizes that
+        # must REJECT even though the 25g serving overlaps.
+        assert _weight_or_volume_mismatch(
+            "Dymatize ISO100 5lb 25g Protein", "Dymatize ISO100 2lb 25g Protein",
+        ) is True
+        assert _selection_match(
+            "Dymatize ISO100 5lb", "Dymatize ISO100 2lb 25g Protein Per Serving",
+            "supplements", candidate_brand="Dymatize",
+        ) is False
+
+    def test_guard_serving_figure_does_not_split_same_package(self):
+        # Same headline 908g; a one-sided "30g per serving" must NOT manufacture a mismatch.
+        assert _weight_or_volume_mismatch("Whey 908g", "Whey 908g 30g Per Serving") is False
+
+
+# ---------------------------------------------------------------------------
+# #2 — the usable_exact_genuine KPI must FAIL-CLOSED on a truth-pinned axis the
+# resolved title omits (external review P1).
+# ---------------------------------------------------------------------------
+def _genuine_body(title):
+    return {"products": [{"price": {
+        "amount": 99.0, "currency": "BHD", "source_method": "local_bhd",
+        "in_stock": True, "url": "https://www.example-bh.com/p/item", "title": title,
+    }}]}
+
+
+class TestKpiAxisFailClosed:
+    def test_missing_storage_axis_not_usable(self):
+        from scripts.eval_runner import usable_exact_genuine_for_product
+        truth = {"query": "iPhone 15 256GB", "category": "electronics",
+                 "expected": {"brand": "Apple", "model": "iPhone 15", "storage_gb": 256}}
+        # title omits the 256GB the truth pins -> UNVERIFIED -> not usable.
+        assert usable_exact_genuine_for_product(
+            _genuine_body("Apple iPhone 15"), 0, truth) is False
+        # title states the exact 256GB -> usable.
+        assert usable_exact_genuine_for_product(
+            _genuine_body("Apple iPhone 15 256GB"), 0, truth) is True
+
+    def test_missing_concentration_and_size_not_usable(self):
+        from scripts.eval_runner import usable_exact_genuine_for_product
+        truth = {"query": "YSL Black Opium Eau de Parfum 90ml", "category": "fragrances",
+                 "expected": {"brand": "Yves Saint Laurent", "model": "Black Opium",
+                              "concentration": "EDP", "size_ml": 90}}
+        assert usable_exact_genuine_for_product(
+            _genuine_body("YSL Black Opium"), 0, truth) is False
+        assert usable_exact_genuine_for_product(
+            _genuine_body("YSL Black Opium Eau de Parfum 90ml"), 0, truth) is True
 
 
 # ---------------------------------------------------------------------------

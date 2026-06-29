@@ -3509,18 +3509,24 @@ _LB_TOKEN_RE = re.compile(r"\d+(?:\.\d+)?\s*(?:lbs?|pounds?)\b", re.I)
 
 
 def _weight_or_volume_mismatch(q: str, t: str) -> bool:
-    """True iff BOTH carry a SAME-BASE weight/volume (grams or ml) and they share NO
-    common value (CeraVe 50g vs 340g). SET-based (like _strength_mismatch) so a
-    genuine 908g listing that ALSO lists "30g per serving" still shares 908 and is
-    NOT a mismatch — the old min()-extractor manufactured a false 908-vs-30 inequality.
-    Different bases (g vs ml) never mismatch.
+    """True iff BOTH carry a SAME-BASE weight/volume (grams or ml) and the HEADLINE
+    (net/package) size DIFFERS (CeraVe 50g vs 340g). Different bases (g vs ml) never
+    mismatch.
 
-    lb->g rounding tolerance (local review #2, weight-axis extension): when EITHER
-    side carries an lb/pound token, two GRAMS values within 1% are treated as the
-    SAME size, so a 5lb (2267.96g) query matches a genuine "2270g" / "2.27kg" listing
-    of the same tub instead of over-rejecting on the conversion rounding. Native
-    g-vs-g and ml-vs-ml stay EXACT (distinct retail sizes are always >>1% apart, so
-    no spurious merge); the tolerance arms ONLY for the lb-conversion case."""
+    HEADLINE = the LARGEST value per base. A product title routinely lists a SECONDARY
+    measurement alongside the net weight — a serving/nutrition figure ("ISO100 5lb,
+    25g protein per scoop") or a per-bottle figure — that is NOT the package size. The
+    old SET-overlap rule (no mismatch if ANY value overlaps) let that secondary figure
+    MASK a different net weight: "ISO100 5lb 25g" vs "ISO100 2lb 25g" both share the 25g
+    serving and were wrongly accepted as the same SKU (external review P1). Comparing the
+    MAX per base ignores the smaller serving/nutrition figure and compares the real
+    package size (5lb=2267.96g vs 2lb=907.18g -> mismatch), while still NOT mismatching a
+    "908g + 30g per serving" listing against a plain "908g" (both headline 908).
+
+    lb->g rounding tolerance (review #2b): when EITHER side carries an lb/pound token,
+    the two HEADLINE grams values within 1% are the SAME size (5lb=2267.96g matches a
+    "2270g" / "2.27kg" listing). Native g-vs-g and ml-vs-ml stay EXACT (distinct retail
+    sizes are >>1% apart -> no spurious merge); the tolerance arms ONLY for lb."""
     qwv, twv = _weights_volumes(q), _weights_volumes(t)
     if not qwv or not twv:
         return False
@@ -3531,15 +3537,17 @@ def _weight_or_volume_mismatch(q: str, t: str) -> bool:
         return False  # only different bases present — not comparable
     _lb_present = bool(_LB_TOKEN_RE.search(q or "")) or bool(_LB_TOKEN_RE.search(t or ""))
     for b in shared:
-        qv = {v for v, bb in qwv if bb == b}
-        tv = {v for v, bb in twv if bb == b}
-        if qv & tv:
-            return False  # an exact common (value, base) exists → not a mismatch
-        if _lb_present and b == "g":
-            # lb-conversion rounding only — 1% tolerance on grams.
-            if any(abs(a - c) <= 0.01 * max(a, c) for a in qv for c in tv):
-                return False
-    return True
+        qv = [v for v, bb in qwv if bb == b]
+        tv = [v for v, bb in twv if bb == b]
+        if not qv or not tv:
+            continue
+        qmax, tmax = max(qv), max(tv)
+        if qmax == tmax:
+            continue  # same headline net/package size
+        if _lb_present and b == "g" and abs(qmax - tmax) <= 0.01 * max(qmax, tmax):
+            continue  # lb-conversion rounding on the headline grams
+        return True
+    return False
 
 
 # Categories where a PRODUCT FORM (deodorant / candle / lotion / shower gel) names
@@ -4893,18 +4901,16 @@ def should_cache_price(
     title = price.get("title") or price.get("name") or ""
     if not title:
         return False
-    # A genuine-BHD claim must carry a verifiable PDP URL (fail-closed). A CONVERTED
-    # USD->BHD price (converted_usd) is an INDICATIVE estimate, NOT a genuine-BHD claim:
-    # its caching correctness rests on the IDENTITY match below, not a PDP, and it was
-    # cached unconditionally pre-gate (b207bfa). Newly requiring a PDP URL for it orphaned
-    # a converted fallback whose only url is a synthesized `build_retailer_url` search link
-    # — that price is neither positive- NOR negative-cached (should_negative_cache exempts
-    # converted_usd as a live cited price), so the full scrape cascade re-burns on EVERY
-    # repeat request (local review #5). Skip the url gate for converted methods; keep it
-    # strict for the genuine-BHD methods.
-    _indicative = "converted" in (price.get("source_method") or "").lower()
+    # FAIL-CLOSED — the VERIFIED positive-price cache requires a real, verifiable PDP URL
+    # for EVERY method, including converted_usd. (An earlier pass exempted converted from
+    # this gate to stop a re-burn, but external review P2 is right: a URL-less / synthesized-
+    # search converted price has no cited PDP and must NOT share the verified cache with
+    # genuine prices — that conflates provenance. A converted price WITH a real PDP link
+    # still caches; a URL-less one simply re-resolves next request, which is correct, not a
+    # leak. A dedicated short estimate cache for url-less converted is a possible future
+    # enhancement, deliberately NOT in the verified-cache gate.)
     url = price.get("url")
-    if not _indicative and (not url or _is_listing_url(url)):
+    if not url or _is_listing_url(url):
         return False
     if price.get("in_stock") is False:
         return False

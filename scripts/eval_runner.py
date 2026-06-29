@@ -557,16 +557,21 @@ def usable_exact_genuine_for_product(
         # 90ml vs 50ml; colorway). The query-spelled axes are already covered by
         # _selection_match; this closes the query-omits-but-expected-states gap.
         expected = truth_entry.get("expected") or {}
+        # FAIL-CLOSED (external review P1) — every axis the truth pins must be PRESENT
+        # in the resolved title AND equal. A MISSING axis is UNVERIFIED, so the SKU is
+        # NOT proven usable: "iPhone 15 256GB" truth must NOT count a bare "iPhone 15"
+        # title; "Black Opium EDP 90ml" must NOT count a title omitting EDP/90ml. (The
+        # old `not in (None, X)` accepted None = a missing axis = silent over-count.)
         exp_storage = expected.get("storage_gb")
-        if exp_storage is not None and _match_storage_gb(title) not in (None, float(exp_storage)):
+        if exp_storage is not None and _match_storage_gb(title) != float(exp_storage):
             return False
         exp_size = expected.get("size_ml")
-        if exp_size is not None and extract_size_ml_any(title) not in (None, int(exp_size)):
+        if exp_size is not None and extract_size_ml_any(title) != int(exp_size):
             return False
         exp_conc = expected.get("concentration")
         if exp_conc:
             tc = extract_concentration(title)
-            if tc and tc.lower().replace(" ", "") != str(exp_conc).lower().replace(" ", ""):
+            if not tc or tc.lower().replace(" ", "") != str(exp_conc).lower().replace(" ", ""):
                 return False
         exp_colorway = expected.get("colorway")
         if exp_colorway:
