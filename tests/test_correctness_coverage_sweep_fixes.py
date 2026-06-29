@@ -220,3 +220,41 @@ def test_deferred_redos_cap_truncation():
     long = "9" * 600
     assert _m("Galaxy " + long + " 256GB", "Galaxy " + long + " 512GB",
               "electronics", "Samsung") is False
+
+
+# ===========================================================================
+# Parallel review-fix re-sweep (HEAD 562144c) — the bounded display backstop's
+# _supplement_type_added over-rejected MULTI-CONSTITUENT supplement descriptive titles
+# (B-Complex / Multivitamin / Prenatal enumerating their own contents) on the hero category.
+# Fix: a multi-constituent QUERY excludes the bare element/vitamin constituent names from the
+# type-add, recovering the descriptive titles WITHOUT leaking a single-element COMBO add.
+# ===========================================================================
+def _ips_supp(name, title, amount=5.0):
+    return is_price_showable(name, _price(title, source_method="local_bhd", amount=amount),
+                             "supplements", enforce_correctness=True)
+
+
+def test_supplement_multi_constituent_enumeration_showable():
+    # A descriptive title enumerating a multi-constituent product's own contents = SAME SKU.
+    assert _ips_supp("Now B-Complex", "Now B-Complex with B12 B6 Folate Biotin") is True
+    assert _ips_supp("Nature Made Prenatal", "Nature Made Prenatal Multi with Folic Acid and Iron") is True
+    assert _ips_supp("Centrum Multivitamin", "Centrum Multivitamin with Iron Zinc") is True
+    assert _ips_supp("One A Day Multivitamin", "One A Day Multivitamin Calcium Magnesium Zinc") is True
+
+
+def test_supplement_combo_and_form_still_pend():
+    # The fix must NOT leak: a SINGLE-constituent query + an added element = a different COMBO
+    # SKU; a salt-form / formulation add stays a discriminator on both.
+    assert _ips_supp("Calcium", "Now Calcium Magnesium Zinc") is False         # combo
+    assert _ips_supp("Vitamin D3", "Vitamin D3 with Zinc") is False            # combo
+    assert _ips_supp("Magnesium", "Magnesium Citrate") is False                # salt form
+    assert _ips_supp("Magnesium", "Magnesium Glycinate") is False              # salt form
+    assert _ips_supp("Whey Protein", "Optimum Whey Protein Isolate") is False  # formulation type
+
+
+@pytest.mark.xfail(reason="ZMA / Cal-Mag are ACRONYM products whose expansion the query is not a "
+                          "subset of (also fails the upstream selection superset) — needs brand-alias "
+                          "normalization, a documented deferred residual",
+                   strict=True)
+def test_deferred_supplement_acronym_residual():
+    assert _ips_supp("Optimum ZMA", "Optimum ZMA Zinc Magnesium Aspartate 180 Caps") is True

@@ -3879,14 +3879,41 @@ _SUPPLEMENT_TYPE_TOKENS = frozenset({
     # "Double Rich Chocolate" / marketing) (coverage review round 4).
     "silver", "triple", "advanced", "senior", "complete",
 })
+# The bare ELEMENT / VITAMIN CONSTITUENT names within _SUPPLEMENT_TYPE_TOKENS (NOT the salt
+# forms or formulation types). For a SINGLE-constituent query these discriminate a COMBO add
+# ("Calcium" -> "Calcium Magnesium Zinc" is a different SKU). But for a MULTI-CONSTITUENT
+# product query they are the product's own declared CONTENTS, not a flanker.
+_SUPPLEMENT_CONSTITUENT_TOKENS = frozenset({
+    "zinc", "magnesium", "calcium", "iron", "copper", "selenium",
+    "b12", "b6", "folate", "folic", "biotin",
+})
+# Query words that NAME a multi-constituent product (defined BY containing several
+# elements/vitamins): a descriptive title that ENUMERATES those constituents is the SAME SKU
+# ("Now B-Complex" -> "Now B-Complex with B12 B6 Folate Biotin"; "Centrum Multivitamin" ->
+# "...with Iron Zinc"; "Prenatal" -> "...with Folic Acid and Iron"). The acronym/abbreviation
+# forms (ZMA, Cal-Mag) are NOT here — they ALSO fail the upstream selection superset (the
+# acronym is not a subset of its expansion) so they need brand-alias normalization, a
+# documented deferred residual (coverage re-sweep of the parallel review-fix commits).
+_MULTI_CONSTITUENT_QUERY = frozenset({"complex", "multivitamin", "multivitamins", "prenatal"})
 
 
 def _supplement_type_added(query_name: str, candidate_title: str) -> bool:
-    """True iff the candidate carries a supplement product-TYPE token (isolate/
-    concentrate/hydrolysate/k2) that the query does not — a different formulation."""
+    """True iff the candidate carries a supplement product-TYPE token (isolate/concentrate/
+    hydrolysate / mineral salt-form / sub-line) the query lacks — a different formulation.
+
+    EXCEPTION (coverage re-sweep): when the QUERY itself names a MULTI-CONSTITUENT product
+    (B-Complex / Multivitamin / Prenatal), a title that merely ENUMERATES the bare element/
+    vitamin CONSTITUENTS the product is defined to contain is the SAME SKU, not a flanker, so
+    the bare constituent names are excluded for such queries. A SINGLE-constituent query keeps
+    them — so a COMBO add still rejects ("Calcium" -> "Calcium Magnesium Zinc") and a
+    formulation/salt-form add ("Magnesium" -> "Magnesium Citrate", "Whey" -> "Whey Isolate")
+    stays a discriminator on BOTH (no combo leak)."""
     qt = set(re.findall(r"[a-z0-9]+", _fold_identity(query_name)))
     tt = set(re.findall(r"[a-z0-9]+", _fold_identity(candidate_title)))
-    return bool((tt & _SUPPLEMENT_TYPE_TOKENS) - qt)
+    added = (tt & _SUPPLEMENT_TYPE_TOKENS) - qt
+    if qt & _MULTI_CONSTITUENT_QUERY:
+        added = added - _SUPPLEMENT_CONSTITUENT_TOKENS
+    return bool(added)
 
 
 def _category_type_added(query_name: str, candidate_title: str, category: Optional[str]) -> bool:
