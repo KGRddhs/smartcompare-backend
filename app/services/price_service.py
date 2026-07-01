@@ -5981,6 +5981,18 @@ def extract_price_from_html(
         # JSON-LD name / og:title / page <title> so the pair fairness engages on
         # true sizes (fragrance-scoped; no-op otherwise).
         _stamp_listing_size(result, product_name, soup, price_data.get("name", ""))
+        # M2 (extended) — carry the MATCHED JSON-LD Product name as the listing
+        # identity so the response chokepoint axis backstop, should_cache_price,
+        # and the usable_exact_genuine KPI can verify the exact SKU. The OG /
+        # microdata / WC branches below already stamp `name` (via _page_identity_
+        # name); the JSON-LD branch OMITTED it, so a genuine page-scrape price
+        # reached the cache-write gate with NO identity and was refused (warmer
+        # gate: 8/18 genuine PDP prices blocked on missing identity). Uses the
+        # extractor's OWN matched Product name (NOT the query), so it verifies
+        # rather than trivially self-matches. Flag-gated for flag-OFF byte-
+        # identity, matching the sibling branches.
+        if exact_gate_enabled():
+            result["name"] = price_data.get("name")
         return result
 
     # CORRECTNESS — the JSON-LD path gates identity per-Product; the OG / microdata
