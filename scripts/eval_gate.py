@@ -19,6 +19,7 @@ The caller (eval_runner.main) maps pass->exit 0, fail->exit 1.
 """
 from __future__ import annotations
 
+import uuid
 from typing import Any, Optional, Tuple
 
 from scripts.eval_persistence import fetch_eval_run
@@ -26,6 +27,13 @@ from scripts.eval_persistence import fetch_eval_run
 # Per-axis regression tolerance: a drop strictly greater than this (absolute,
 # on the 0..1 axis-average scale) fails the regression gate. 2% per plan F4.4.
 REGRESSION_TOLERANCE = 0.02
+
+# The canonical full-uuid form the warmer/regression baseline anchor MUST use.
+# A TRUNCATED id (e.g. `54b603e8`) casts to `uuid` server-side with 22P02, which
+# fetch_eval_run swallows → a silent None → an ambiguous "not found". Validating
+# the format up front turns that into a clear malformed-id error that names the
+# correct full form.
+_FULL_BASELINE_EXAMPLE = "54b603e8-4eab-41c9-a34d-a5e391446559"
 
 _AXES = ("price", "specs", "winner", "factual")
 
@@ -66,6 +74,19 @@ def _axis_value(obj: "Any", axis: str) -> float:
 def _regression_gate(report: "Any", baseline_run_id: Optional[str]) -> Tuple[bool, str]:
     if not baseline_run_id:
         return False, "GATE FAIL [regression]: no --baseline-run-id provided"
+
+    # Validate the id is a FULL uuid BEFORE the DB round-trip. A truncated id
+    # (e.g. `54b603e8`) would 22P02 server-side and fetch_eval_run would swallow
+    # it into a silent None → the ambiguous "not found" below. Fail LOUD + CLEAR
+    # here so the operator knows the id is malformed, not the row missing.
+    try:
+        uuid.UUID(str(baseline_run_id))
+    except (ValueError, AttributeError, TypeError):
+        return False, (
+            f"GATE FAIL [regression]: baseline id {baseline_run_id!r} is not a "
+            f"valid UUID. A truncated/short id silently matches NOTHING (Postgres "
+            f"22P02) — pass the FULL uuid, e.g. {_FULL_BASELINE_EXAMPLE}"
+        )
 
     baseline = fetch_eval_run(baseline_run_id)
     if baseline is None:
