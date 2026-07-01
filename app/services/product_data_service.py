@@ -29,6 +29,19 @@ GENUINE_PRICE_DB_TTL = timedelta(
 )
 
 
+def _title_persist_enabled() -> bool:
+    """Persist + rehydrate the resolved listing title on the L2 product_prices
+    cache. Default OFF -> byte-identical pre-033 behavior (no `title` in the
+    insert, no `title` in the returned dict). Flip ON only AFTER migration 033
+    lands (adds the nullable `title` column); a flag-ON write before the column
+    exists would error the fire-and-forget insert (swallowed), and a flag-ON read
+    would degrade the L2 hit to a miss (get_cached_price swallows it) — never a
+    crash, but the correct order is migration-then-flag."""
+    return _os.getenv("ENABLE_PRICE_TITLE_PERSIST", "").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
 def _price_row_fresh(source_method: Optional[str], age: timedelta) -> bool:
     """True iff a stored price row of `age` is still fresh for its source_method.
 
@@ -98,9 +111,12 @@ async def get_cached_price(product_key: str, region: str) -> Optional[Dict[str, 
     """Fetch latest price from DB if fresher than 24h."""
     try:
         client = get_admin_supabase_client()
+        cols = "amount, currency, retailer, url, source_method, estimated, fetched_at"
+        if _title_persist_enabled():
+            cols += ", title"
         response = (
             client.table("product_prices")
-            .select("amount, currency, retailer, url, source_method, estimated, fetched_at")
+            .select(cols)
             .eq("product_key", product_key)
             .eq("region", region)
             .order("fetched_at", desc=True)
@@ -116,7 +132,7 @@ async def get_cached_price(product_key: str, region: str) -> Optional[Dict[str, 
         age = datetime.now(timezone.utc) - fetched_at
         if not _price_row_fresh(row.get("source_method"), age):
             return None
-        return {
+        result = {
             "amount": float(row["amount"]) if row["amount"] is not None else None,
             "currency": row["currency"],
             "retailer": row["retailer"],
@@ -124,6 +140,11 @@ async def get_cached_price(product_key: str, region: str) -> Optional[Dict[str, 
             "source_method": row["source_method"],
             "estimated": row["estimated"] or False,
         }
+        # Rehydrate the persisted title so the L2-served price is SKU-verifiable
+        # (a None title = a legacy/flag-OFF row, treated exactly as pre-033).
+        if _title_persist_enabled() and row.get("title"):
+            result["title"] = row["title"]
+        return result
     except Exception as e:
         logger.debug(f"L2 price miss for {product_key}/{region}: {e}")
         return None
@@ -136,7 +157,7 @@ async def save_price(
     """Append a price row (keeps history)."""
     try:
         client = get_admin_supabase_client()
-        client.table("product_prices").insert({
+        row = {
             "product_key": product_key,
             "brand": brand,
             "name": name,
@@ -149,7 +170,13 @@ async def save_price(
             "source_method": price_data.get("source_method"),
             "estimated": price_data.get("estimated", False),
             "fetched_at": datetime.now(timezone.utc).isoformat(),
-        }).execute()
+        }
+        # Persist the resolved listing title so a rehydrated L2 price stays
+        # SKU-verifiable (usable_exact_genuine KPI + should_cache_price). Gated
+        # so pre-033 (no column) writes are byte-identical.
+        if _title_persist_enabled():
+            row["title"] = price_data.get("title")
+        client.table("product_prices").insert(row).execute()
     except Exception as e:
         logger.warning(f"Failed to save price for {product_key}/{region}: {e}")
 
