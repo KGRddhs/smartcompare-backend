@@ -510,8 +510,13 @@ def usable_exact_genuine_for_product(
     method = price.get("source_method")
     if not isinstance(method, str) or method not in GENUINE_BH_SOURCE_METHODS:
         return False
-    # (c) CONFIRMED in stock — unknown (None) / missing does NOT count as usable.
-    if price.get("in_stock") is not True:
+    # (c) IN STOCK — reject only an EXPLICIT out-of-stock. UNKNOWN stock
+    # (None/missing — common when a JSON-LD PDP omits `availability`) now COUNTS:
+    # the display path SHOWS such a genuine, exact, valid-PDP price, so the metric
+    # otherwise UNDER-counts what the user actually gets (deep-review HONESTY,
+    # wf_236e28bd — reverses the earlier B3 strictness, which dropped shown genuine
+    # prices). Only a confirmed in_stock=False is not usable.
+    if price.get("in_stock") is False:
         return False
     # (d) present, valid (non-listing) PDP URL — a missing URL is NOT usable.
     url = price.get("url")

@@ -33,6 +33,13 @@ def clean_service(monkeypatch):
         "app.services.product_data_service.get_cached_price",
         AsyncMock(return_value=None),
     )
+    # Neutralize the free genuine-BH direct-fetch selectors — electronics now
+    # carries a live is_algolia sharafdg + mechanism="unbxd" extra.com source that
+    # fires a REAL network fetch and returns a genuine local_bhd price BEFORE the
+    # converted-parking / render-budget fallthrough these tests pin.
+    monkeypatch.setattr(scs_mod, "get_algolia_sources_for_category", lambda cat: [])
+    monkeypatch.setattr(scs_mod, "get_unbxd_sources_for_category", lambda cat: [])
+    monkeypatch.setattr(scs_mod, "get_shopify_sources_for_category", lambda cat: [])
     service = scs_mod.get_comparison_service()
     service._save_price_to_db = MagicMock()
     return service

@@ -54,6 +54,14 @@ async def test_registry_winner_records_route(monkeypatch, clean_service):
 
     _force_escalation(monkeypatch)
     monkeypatch.setattr(scs_mod, "get_official_domain", lambda *a, **kw: None)
+    # Isolate the fan_out registry-route path: neutralize the free genuine-BH
+    # direct-fetch selectors (electronics now carries a live is_algolia sharafdg +
+    # mechanism="unbxd" extra.com source — each fires a REAL network fetch that
+    # returns a genuine local_bhd price BEFORE the mocked fan_out, shadowing the
+    # registry-winner amount this test pins).
+    monkeypatch.setattr(scs_mod, "get_algolia_sources_for_category", lambda cat: [])
+    monkeypatch.setattr(scs_mod, "get_unbxd_sources_for_category", lambda cat: [])
+    monkeypatch.setattr(scs_mod, "get_shopify_sources_for_category", lambda cat: [])
     # Bahrain discovery returns a registry electronics retailer.
     monkeypatch.setattr(
         scs_mod, "search_web",
