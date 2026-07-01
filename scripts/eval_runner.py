@@ -1214,6 +1214,16 @@ _KPI_HTTP_TIMEOUT = 90.0
 USABLE_EXACT_GENUINE_GATE = 0.85
 
 
+def _safe_num(v: Any, default: float = 0.0) -> float:
+    """Coerce to float, defaulting on non-numeric — so a corrupted aggregation
+    dict yields a FAIL-CLOSED verdict (a malformed share/requested counts as 0)
+    rather than raising and crashing the warmer-activation decision."""
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return default
+
+
 def kpi_gate_verdict(
     per_category: Dict[str, Any], threshold: float = USABLE_EXACT_GENUINE_GATE,
 ) -> Dict[str, Any]:
@@ -1221,14 +1231,15 @@ def kpi_gate_verdict(
     dict. A category with 0 `requested` is NOT counted (nothing measured), and
     an EMPTY measured set does NOT pass (the warmer must never auto-activate on
     zero data). `pass` is True iff at least one category was measured and NONE
-    is below `threshold`."""
+    is below `threshold`. Fail-closed on malformed values (non-numeric
+    share/requested → 0), so a corrupt dict PAUSES rather than crashing."""
     measured = {
         c: v for c, v in per_category.items()
-        if isinstance(v, dict) and v.get("requested", 0) > 0
+        if isinstance(v, dict) and _safe_num(v.get("requested")) > 0
     }
     failing = {
-        c: round(float(v.get("share", 0.0)), 4)
-        for c, v in measured.items() if float(v.get("share", 0.0)) < threshold
+        c: round(_safe_num(v.get("share")), 4)
+        for c, v in measured.items() if _safe_num(v.get("share")) < threshold
     }
     return {
         "threshold": threshold,

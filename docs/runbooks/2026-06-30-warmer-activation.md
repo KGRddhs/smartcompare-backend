@@ -12,15 +12,20 @@
 The warmer burns paid Serper continuously. Confirm the key is healthy + has headroom:
 
 ```bash
-# 1. Confirm the paid key is set on Railway (the 7de9c750… paid key per 2026-06-27).
-railway variables --service web | grep -i SERPER_API_KEY
+# 1. Confirm the paid key is SET on Railway (presence only — do NOT echo the value).
+railway variables --service web | grep -qi '^SERPER_API_KEY=' && echo 'SERPER_API_KEY set' || echo 'MISSING'
 
 # 2. Liveness — a bare prices endpoint (NEVER a full compare; that rides the 30s cap).
-curl "https://web-production-58776.up.railway.app/api/v1/text/prices/CeraVe%20Moisturising%20Lotion"
-#   -> a real BHD amount (not estimated) == key alive. A 400 "Not enough credits" == DEPLETED -> rotate first.
+curl "https://web-production-58776.up.railway.app/api/v1/text/prices/iPhone%2015%20128GB"
+#   -> regional_prices.bahrain.amount a real BHD number == key alive. A 400 "Not enough
+#      credits" (or all-pending) == DEPLETED -> rotate first.
 
-# 3. Headroom — the warmer's pre-run guard trims to what get_remaining('serper') affords
-#    (~30 credits/query). A smoke20 warm (~20 queries x2 products) ~= 400-600 credits.
+# 3. Headroom — the warmer's pre-run guard is a TIER-INDEPENDENT per-run credit cap
+#    (WARMER_MAX_SERPER_CREDITS_PER_RUN default 900, at ~WARMER_SERPER_CREDITS_PER_QUERY
+#    default 30 credits/query -> 900/30=30 affordable, so the default MAX_QUERIES_PER_RUN=25
+#    window is NOT trimmed). It deliberately does NOT consult api_budget_service's lifetime
+#    counter, so it can never mis-fire on a healthy paid key. A smoke20 warm (~20 queries
+#    x2 products) ~= 400-600 credits.
 ```
 
 **If depleted:** rotate per the CLAUDE.md playbook (new key → `railway variables --set` + `railway redeploy` + sync local `.env` + reset `budget:serper:<key8>:lifetime` + DEL `budget:serper:burn_alert_fired:*`) BEFORE proceeding.
@@ -95,4 +100,5 @@ railway redeploy --service web
 - One warm query ≈ 2 products × ~10–30 credits = ~20–60 credits.
 - A smoke20 warm (20 queries) ≈ 400–1,200 credits per run.
 - The cron at 12h cadence with `MAX_QUERIES_PER_RUN=25` ≈ ~500–1,500 credits / run × 2 runs/day.
-- Free Serper (~2,500 one-time) affords ~2–5 runs; **sustained warming needs the paid plan.** The pre-run budget guard trims each run to affordable, and the per-query circuit halts on exhaustion — so a low balance degrades coverage gracefully rather than blowing the budget.
+- **Spend knobs:** `MAX_QUERIES_PER_RUN` (count cap, default 25) is the hard bound; `WARMER_MAX_SERPER_CREDITS_PER_RUN` (per-run credit ceiling, default 900; `<=0` disables) trims the window to `WARMER_MAX_SERPER_CREDITS_PER_RUN / WARMER_SERPER_CREDITS_PER_QUERY` (default 900/30 = 30) queries, layered UNDER the count cap. At defaults the credit cap (30) exceeds the count cap (25) so it never trims — lower `WARMER_MAX_SERPER_CREDITS_PER_RUN` to bound a run below 25 queries.
+- Free Serper (~2,500 one-time) affords ~2–5 runs; **sustained warming needs the paid plan.** The tier-independent per-run credit cap bounds each run and a truly-depleted account simply rejects calls (handled gracefully by `_warm_one`), so a low balance degrades coverage rather than blowing the budget.

@@ -57,8 +57,32 @@ def test_budget_bounded_window_is_tier_independent_no_budget_calls():
         hb.assert_not_called()
 
 
-def test_defaults_are_sane():
+def test_defaults_are_sane(monkeypatch):
+    # Isolate from any ambient WARMER_* env so the defaults are what we assert.
+    monkeypatch.delenv("WARMER_SERPER_CREDITS_PER_QUERY", raising=False)
+    monkeypatch.delenv("WARMER_MAX_SERPER_CREDITS_PER_RUN", raising=False)
     assert warmer._serper_per_query_estimate() == 30
     assert warmer._serper_max_credits_per_run() == 900
     # Default cap affords the default MAX_QUERIES_PER_RUN(25) window (900/30=30 >= 25).
     assert warmer._serper_max_credits_per_run() // warmer._serper_per_query_estimate() >= 25
+
+
+def test_main_skips_run_when_budget_trims_window_to_empty(monkeypatch):
+    # The budget-guard early-return in main(): a trimmed-to-empty window skips the
+    # run (returns None) WITHOUT warming a single query.
+    import asyncio
+    monkeypatch.setattr(warmer, "_flag_on", lambda: True)
+    monkeypatch.setattr(warmer, "load_gold_truth", lambda *a, **k: {"queries": []})
+    monkeypatch.setattr(warmer, "select_queries", lambda *a, **k: _win(5))
+    monkeypatch.setattr(warmer, "load_warmer_catalog", lambda *a, **k: [])
+    monkeypatch.setattr(warmer, "_budget_bounded_window", lambda w, **k: [])
+    warmed = {"n": 0}
+
+    async def _no_warm(record):
+        warmed["n"] += 1
+        return {"genuine": 0, "converted": 0, "estimated": 0, "none": 0}
+
+    monkeypatch.setattr(warmer, "_warm_one", _no_warm)
+    result = asyncio.get_event_loop().run_until_complete(warmer.main())
+    assert result is None
+    assert warmed["n"] == 0  # never warmed anything

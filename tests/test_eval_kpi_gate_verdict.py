@@ -53,3 +53,21 @@ def test_threshold_is_inclusive():
 
 def test_default_threshold_is_085():
     assert USABLE_EXACT_GENUINE_GATE == 0.85
+
+
+def test_malformed_values_fail_closed_never_raise():
+    # A corrupted aggregation dict must PAUSE (pass=False), never raise.
+    for pc in (
+        {"e": {"requested": 5, "share": "oops"}},
+        {"e": {"requested": 5, "share": None}},
+        {"e": {"requested": "x", "share": 1.0}},
+    ):
+        v = kpi_gate_verdict(pc)
+        assert v["pass"] is False, pc
+
+
+def test_malformed_share_counts_as_failing_when_requested_valid():
+    v = kpi_gate_verdict({"e": {"requested": 5, "share": "bad"}})
+    # requested is valid (measured) but share coerces to 0 -> below gate -> failing.
+    assert v["measured_categories"] == ["e"]
+    assert "e" in v["failing"]
