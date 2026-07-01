@@ -2891,6 +2891,51 @@ _COUNT_RE = re.compile(
 # is "g" or "ml", or None when no weight/volume token is present.
 _WEIGHT_VOLUME_RE = re.compile(r"(\d+(?:\.\d+)?)\s*(kg|g|ml|l|lbs?|pounds?)\b", re.I)
 
+# A bare cellular-GENERATION token — "5G"/"4G"/"3G"/"2G" — is a NETWORK generation on
+# a phone/tablet/router, NOT a "5 gram" net weight. In ELECTRONICS context it must be
+# excluded from weight parsing so a phone's base query ("Galaxy S24 FE") and its genuine
+# "…5G" PDP title hash to ONE size token / price cache key (the warmer's warm-vs-live
+# parity). This is consistent with the codebase's documented stance that 5G is noise, not
+# a discriminator (see _ELECTRONICS_QUALIFIERS, which deliberately omits "5g").
+# Bounded to 2-5 (the real cellular generations); "5GB" is UNAFFECTED (the trailing B
+# blocks the \bG\b boundary). CATEGORY-SCOPED by the caller — a supplement/grocery "5G"/
+# "10G" is a genuine gram weight, so a category-blind strip would FALSE-MERGE
+# "Creatine 5G" == "Creatine 10G" (a strictly-worse wrong-SKU cache serve).
+_CELLULAR_GEN_RE = re.compile(r"\b[2-5]G\b", re.I)
+
+
+def _strip_cellular_generation(text: str, category: Optional[str]) -> str:
+    """Remove bare cellular-generation tokens (see `_CELLULAR_GEN_RE`) from `text` when
+    the resolved category is ELECTRONICS and the exact-price gate is ON.
+
+    Category resolution reuses `_resolve_extractor_category` (explicit arg > the
+    orchestrator per-task ContextVar > best-effort inference; "other" is re-inferred),
+    so an LLM-mislabelled "other" phone still collapses while a supplement/grocery text
+    resolves to its own category (the cosmetic/supplement/grocery detectors run BEFORE
+    electronics) and its gram weight is preserved. Non-electronics / unresolved text is
+    returned unchanged — the SAFE direction (never a false gram-weight merge).
+
+    CRITICAL: the INFERENCE fallback runs on the CELLULAR-STRIPPED text, never the raw
+    text. `is_electronics_query`'s brand+digit rule would otherwise be satisfied by the
+    "3" of a bare "3G" on a food that merely shares an electronics BRAND whole-token
+    ("Apple Sauce 3G", "Nothing Bundt Cake 2G") — self-promoting it to electronics and
+    false-merging its genuine gram sizes (coverage review R2). Inferring on the stripped
+    text removes that digit, so only text with a REAL device/model signal resolves to
+    electronics ("Galaxy S24 FE" stays electronics via "Galaxy"/"S24").
+
+    Gated on `exact_gate_enabled()` so with the gate OFF the strip is a no-op and the
+    legacy cache namespace stays BYTE-IDENTICAL to b207bfa (a rollback must not orphan
+    the warmed cache)."""
+    if not text or not exact_gate_enabled():
+        return text
+    stripped = _CELLULAR_GEN_RE.sub(" ", text)
+    if stripped == text:
+        return text  # no cellular token present — skip category resolution entirely
+    cat = _resolve_extractor_category(category, stripped)
+    if (cat or "").lower() == "electronics":
+        return stripped
+    return text
+
 
 def extract_storage_gb(text: str) -> Optional[float]:
     """Smallest storage size in `text`, in GB (TB→GB ×1024). None when no
@@ -2925,14 +2970,22 @@ def extract_count(text: str) -> Optional[float]:
     return max(vals) if vals else None
 
 
-def extract_weight_or_volume(text: str) -> Optional[Tuple[float, str]]:
+def extract_weight_or_volume(
+    text: str, category: Optional[str] = None
+) -> Optional[Tuple[float, str]]:
     """(value, base) net weight/volume in `text` — grams (g/kg→g) OR millilitres
     (ml/L→ml), whichever token appears. None when neither is present. Smallest
     matching token of the FIRST base seen wins (a single listing carries one
     pack size). Grams and ml are distinct bases — the caller must only compare
-    same-base values, so a weight vs a volume never trips a false match."""
+    same-base values, so a weight vs a volume never trips a false match.
+
+    `category` (optional): in ELECTRONICS context a bare cellular-generation token
+    ("5G"/"4G"/…) is a network generation, NOT a gram weight, so it is excluded
+    (see `_strip_cellular_generation`). Defaults to the orchestrator per-task
+    ContextVar when omitted; supplement/grocery gram parsing is untouched."""
     if not text:
         return None
+    text = _strip_cellular_generation(text, category)
     grams: List[float] = []
     mls: List[float] = []
     for num, unit in _WEIGHT_VOLUME_RE.findall(text):
@@ -2971,7 +3024,7 @@ _SIZE_STRIP_RE = re.compile(
 )
 
 
-def size_variant_token(text: Optional[str]) -> str:
+def size_variant_token(text: Optional[str], category: Optional[str] = None) -> str:
     """A stable normalized size/variant token for a product identity string, or
     "" when no size is present (Faithful-Results Task 1.4).
 
@@ -3003,7 +3056,9 @@ def size_variant_token(text: Optional[str]) -> str:
     count = extract_count(text)
     if count:
         return f"{_fmt(count)}ct"
-    wv = extract_weight_or_volume(text)
+    # `category` is threaded ONLY into the weight branch — it is the only axis where a
+    # cellular-generation token ("5G") could be mis-read as grams (electronics context).
+    wv = extract_weight_or_volume(text, category)
     if wv:
         value, base = wv
         return f"{_fmt(value)}{base}"
@@ -5006,7 +5061,7 @@ def public_price_view(price: Any) -> Any:
     }
 
 
-def _identity_cache_token(text: str) -> str:
+def _identity_cache_token(text: str, category: Optional[str] = None) -> str:
     """A stable composite cache token of ALL identity-discriminating axes —
     concentration (EDP/EDT/…) + variant qualifier (FE/Pro/Max/…) + size/storage/
     count/weight — so distinct VARIANTS of the same product never collide on one
@@ -5024,7 +5079,7 @@ def _identity_cache_token(text: str) -> str:
     quals = _quals_in(text, _ELECTRONICS_QUALIFIERS)
     if quals:
         parts.append("".join(sorted(quals)))
-    size = size_variant_token(text)
+    size = size_variant_token(text, category)
     if size:
         parts.append(size)
     return ".".join(parts)
@@ -5050,7 +5105,7 @@ def _strip_identity_axes(text: str) -> str:
 
 def build_size_aware_price_cache_key(
     brand: str, name: str, variant: Optional[str], region: str,
-    identity_text: str = "",
+    identity_text: str = "", category: Optional[str] = None,
 ) -> str:
     """Price cache key that folds in a normalized size/variant token so distinct
     sizes never collide (Task 1.4).
@@ -5081,8 +5136,19 @@ def build_size_aware_price_cache_key(
         )
         return generate_cache_key("price", brand, base_name, base_variant, region, token)
     full_text = f"{name} {variant or ''} {identity_text or ''}"
-    token = _identity_cache_token(full_text)
+    # `category` (the orchestrator-resolved pair category) lets the size token drop a bare
+    # cellular-generation "5G" for electronics so a base query and its "…5G" PDP collapse
+    # to ONE key. Defaults to the per-task ContextVar when the caller omits it.
+    token = _identity_cache_token(full_text, category)
     if not token:
+        # NOTE (known, pre-existing, non-regressive narrow gap): this legacy fallback
+        # hashes the RAW name, so a sizeless+qualifierless electronics model that carries
+        # "5G" ONLY in its name (e.g. "iPhone 15 5G" with no storage/qualifier anywhere)
+        # does NOT collapse onto its base. It is NOT the reported/warmer scenario (there the
+        # 5G rides search_query, or storage/qualifier makes the token non-empty → handled
+        # above). A blanket _strip_identity_axes(name) here would DOSE-MERGE supplements
+        # (1000 IU ≡ 5000 IU) since this branch has no token to carry the dose — so it is
+        # deliberately left as-is rather than "fixed" unsafely.
         return get_price_cache_key(brand, name, variant, region)
     # Strip ANY size/storage/concentration/qualifier token out of name+variant so
     # the base key is identity-axis-agnostic; the normalized composite token is the
