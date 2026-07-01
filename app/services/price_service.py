@@ -2668,7 +2668,9 @@ def _collapse_concentration(text: str) -> str:
     return out
 
 
-def strict_title_match(product_name: str, title: str) -> bool:
+def strict_title_match(
+    product_name: str, title: str, candidate_brand: str = "",
+) -> bool:
     """Key words from the product name must appear in the shopping title.
 
     Concentration-aware: a designer-fragrance PDP often spells the concentration
@@ -2679,16 +2681,33 @@ def strict_title_match(product_name: str, title: str) -> bool:
     "Dior Sauvage Edt M 100Ml" (both collapse to the "edt" token). No-fab is
     preserved: a DIFFERENT concentration ("Eau de Parfum" vs "EDT") still fails,
     because the labels differ.
-    """
+
+    `candidate_brand` (genuine-BH coverage) — a BH retailer lists a device by its
+    MODEL LINE ("iPad Air M2 128GB", no "Apple"), so requiring the query's brand
+    word literally rejected the exact-SKU PDP (MANUFACTURER_BRAND_WORDS only
+    exempts chip vendors). When the CANDIDATE's own brand matches the query brand,
+    drop ONLY that brand's tokens from the required set — so a correct model-line
+    PDP passes, while a WRONG-brand candidate keeps the query brand required and
+    still rejects. This is BACKED by _selection_match (run alongside every caller),
+    which strips candidate_brand + vets the full SKU, so the brand is never
+    unverified. Empty candidate_brand → legacy behaviour (brand required)."""
     if is_counterfeit_listing(title):
         return False
     product_name = _collapse_concentration(product_name)
     title = _collapse_concentration(title)
     title_normalized = title.lower().replace("-", "")
+    # Tokens of the candidate's OWN brand — dropped from the required query words
+    # only when the candidate actually carries that brand (so a Samsung candidate
+    # never lets an "apple" query word be skipped).
+    brand_toks = {
+        b for b in (candidate_brand or "").lower().replace("-", "").split()
+        if len(b) > 2
+    } if exact_gate_enabled() else set()
     key_words = [
         w.replace("-", "") for w in product_name.lower().split()
         if len(w.replace("-", "")) > 2
         and w.replace("-", "") not in MANUFACTURER_BRAND_WORDS
+        and w.replace("-", "") not in brand_toks
     ]
     return all(w in title_normalized for w in key_words)
 
@@ -6772,7 +6791,14 @@ def _bolo_jsonld_main_price(
                 # to honest-pending. Dormant today (bolo/boutiqaat inert until the
                 # sitemap cron); revisit with soft size/concentration tokens when the
                 # cron is activated + real fragrance recall is measured.
-                if not strict_title_match(product_name, ld_name):
+                _disc_brand = node.get("brand")
+                if isinstance(_disc_brand, dict):
+                    _disc_brand = _disc_brand.get("name", "")
+                elif isinstance(_disc_brand, list):
+                    _disc_brand = " ".join(
+                        (b.get("name", "") if isinstance(b, dict) else str(b))
+                        for b in _disc_brand)
+                if not strict_title_match(product_name, ld_name, str(_disc_brand or "")):
                     continue
                 # Word-overlap bind (the docstring's third guard, Wave-3 reviewer
                 # ISSUE 2): two products with no numbers/variant qualifiers
