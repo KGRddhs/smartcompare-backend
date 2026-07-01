@@ -2915,14 +2915,25 @@ def _strip_cellular_generation(text: str, category: Optional[str]) -> str:
     electronics) and its gram weight is preserved. Non-electronics / unresolved text is
     returned unchanged — the SAFE direction (never a false gram-weight merge).
 
+    CRITICAL: the INFERENCE fallback runs on the CELLULAR-STRIPPED text, never the raw
+    text. `is_electronics_query`'s brand+digit rule would otherwise be satisfied by the
+    "3" of a bare "3G" on a food that merely shares an electronics BRAND whole-token
+    ("Apple Sauce 3G", "Nothing Bundt Cake 2G") — self-promoting it to electronics and
+    false-merging its genuine gram sizes (coverage review R2). Inferring on the stripped
+    text removes that digit, so only text with a REAL device/model signal resolves to
+    electronics ("Galaxy S24 FE" stays electronics via "Galaxy"/"S24").
+
     Gated on `exact_gate_enabled()` so with the gate OFF the strip is a no-op and the
     legacy cache namespace stays BYTE-IDENTICAL to b207bfa (a rollback must not orphan
     the warmed cache)."""
     if not text or not exact_gate_enabled():
         return text
-    cat = _resolve_extractor_category(category, text)
+    stripped = _CELLULAR_GEN_RE.sub(" ", text)
+    if stripped == text:
+        return text  # no cellular token present — skip category resolution entirely
+    cat = _resolve_extractor_category(category, stripped)
     if (cat or "").lower() == "electronics":
-        return _CELLULAR_GEN_RE.sub(" ", text)
+        return stripped
     return text
 
 
@@ -5130,6 +5141,14 @@ def build_size_aware_price_cache_key(
     # to ONE key. Defaults to the per-task ContextVar when the caller omits it.
     token = _identity_cache_token(full_text, category)
     if not token:
+        # NOTE (known, pre-existing, non-regressive narrow gap): this legacy fallback
+        # hashes the RAW name, so a sizeless+qualifierless electronics model that carries
+        # "5G" ONLY in its name (e.g. "iPhone 15 5G" with no storage/qualifier anywhere)
+        # does NOT collapse onto its base. It is NOT the reported/warmer scenario (there the
+        # 5G rides search_query, or storage/qualifier makes the token non-empty → handled
+        # above). A blanket _strip_identity_axes(name) here would DOSE-MERGE supplements
+        # (1000 IU ≡ 5000 IU) since this branch has no token to carry the dose — so it is
+        # deliberately left as-is rather than "fixed" unsafely.
         return get_price_cache_key(brand, name, variant, region)
     # Strip ANY size/storage/concentration/qualifier token out of name+variant so
     # the base key is identity-axis-agnostic; the normalized composite token is the

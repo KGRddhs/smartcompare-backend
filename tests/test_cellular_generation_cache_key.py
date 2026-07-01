@@ -201,6 +201,48 @@ def test_other_labelled_supplement_reinfers_and_keeps_grams():
     assert k5 != k10
 
 
+# --- Brand-collision foods must NOT false-merge (coverage review R2, CRITICAL) ----
+# A non-electronics product whose title carries an electronics-BRAND whole-token
+# (apple/nothing/beats/…) PLUS a bare [2-5]G gram token must NOT be promoted to
+# electronics by the cellular digit ITSELF (the brand+digit inference rule would
+# otherwise fire on the "3" of "3G") — else the genuine gram weight is stripped and
+# two different sizes collapse to ONE cache key. Category resolution must infer on the
+# CELLULAR-STRIPPED text so the [2-5]G can never be the promoting digit.
+
+_BRAND_COLLISION_FOODS = [
+    ("Apple Sauce", "Apple Sauce 3G Jar", "Apple Sauce 5G Jar", "other"),
+    ("Caramel Apple", "Caramel Apple 2G", "Caramel Apple 4G", "other"),
+    ("Bundt Cake", "Nothing Bundt Cake 2G", "Nothing Bundt Cake 5G", "other"),
+    ("Apple Sauce", "Apple Sauce 3G Jar", "Apple Sauce 5G Jar", None),
+]
+
+
+@pytest.mark.parametrize("brand_name,ta,tb,cat", _BRAND_COLLISION_FOODS)
+def test_brand_collision_food_not_false_merged(brand_name, ta, tb, cat):
+    assert _key("X", brand_name, ta, cat) != _key("X", brand_name, tb, cat), (ta, tb, cat)
+
+
+def test_brand_collision_food_gram_preserved_extract():
+    # The gram weight must survive for a brand-collision food even at category="other"/None
+    # (the [2-5]G must NOT self-promote the text to electronics).
+    assert ps.extract_weight_or_volume("Apple Sauce 3G Jar", category="other") == (3.0, "g")
+    assert ps.extract_weight_or_volume("Nothing Bundt Cake 2G", category=None) == (2.0, "g")
+
+
+def test_brand_collision_food_fairness_gram_preserved():
+    # coverage review R2 finding #2 — the fairness extractors (no category arg) must keep
+    # the like-for-like gram basis for a brand-collision food.
+    assert ps._extract_grocery({"name": "Apple Sauce 3G"}) == 3.0
+    assert ps._extract_grocery({"name": "Apple Sauce 5G"}) == 5.0
+
+
+def test_phone_still_collapses_after_stripped_inference():
+    # The fix (infer on the cellular-stripped text) must PRESERVE the "other"-labelled
+    # phone collapse — "Galaxy S24 FE" (stripped) still infers electronics.
+    assert (_key("Samsung", "Galaxy S24 FE", "Galaxy S24 FE 5G Smartphone", "other")
+            == _key("Samsung", "Galaxy S24 FE", "Galaxy S24 FE", "other"))
+
+
 # ---------------------------------------------------------------------------
 # ROLLBACK — flag OFF is byte-identical to b207bfa (the cellular strip is a no-op)
 # ---------------------------------------------------------------------------
