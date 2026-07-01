@@ -6,14 +6,19 @@
 
 ## The 6 facets (from the 18-product gate diagnosis)
 
+**PROGRESS: warmed KPI 1/18 → 5/18** (fragrances 0→3, fashion 0→1) after the identity + listing-url + brand fixes. Remaining gap to 0.85 is the coverage/determinism/OOS/PDP-discovery facets below.
+
 | # | Facet | Count | Status |
 |---|---|---|---|
-| P1a | **JSON-LD page-scrape prices carry no identity** | ~6 | ✅ **FIXED** (`8746377`) |
-| P1b | some `local_bhd` paths return no identity | ~1-2 | ⏳ per-path audit |
-| P2 | genuine prices served with **search/listing URLs** | ~2 | ⏳ |
-| P3 | **no genuine source** found (→ `gpt_organic_extract` / `converted_usd`) | ~6 | ⏳ coverage |
+| P1a | **JSON-LD page-scrape prices carry no identity** | ~6 | ✅ **FIXED** (`8746377`) — proven 0→3 frag, 0→1 fash |
+| P1a2 | JSON-LD fix dropped the matched `brand` (brand-field-only PDPs) | ~1 | ✅ **FIXED** (brand-forwarding) — sweep MED |
+| P2 | genuine prices served with **search/listing URLs** (WP `?s=`) | ~2 | ✅ **classifier FIXED** (`eb366ad`) — now correctly rejected; PDP-discovery to RECOVER them is ⏳ |
+| P1b | one `local_bhd` DB-served path returns no identity | 1 | ⏳ = the DB round-trip (my Wave-1 fix; needs migration + flag ON) |
+| P3 | **no genuine source** found (→ `gpt_organic_extract` / `converted_usd`) | ~6 | ⏳ coverage (biggest lever) |
 | P4 | genuine PDP but **out-of-stock** | 3 | ⏳ |
-| P5 | **non-determinism** (races genuine vs converted) | pervasive | ⏳ |
+| P5 | **non-determinism** (races genuine vs converted) | ~2 | ⏳ |
+
+**Over-rejection sweep (`wf_3f7d0dbd`, coverage-driven, both directions):** the JSON-LD identity stamp introduces NO new over-rejection through the full `extract_price_from_html` path — the ONE real regression was the dropped brand (fixed). AirPods-charging-case / Centrum-50+ / Anthelios-SPF-50+ are NOT-EMITTED (filtered UPSTREAM by `extract_jsonld_price`'s own `_selection_match`) → **pre-existing PR#9-matcher token over-rejections (the Wave-2 / VariantDescriptor class)**, not introduced here. The listing-url fix: 0 over-catch / 0 under-catch across 20 real PDP + 15 real listing + 22 edge URLs.
 
 ### P1a — JSON-LD identity (DONE, proven)
 `extract_price_from_html`'s JSON-LD branch built its result with **no `name`/`title`**, while the OG/microdata/WC branches already stamp `name` (the M2 pattern). Fix (`8746377`): stamp `result["name"] = price_data.get("name")` (the matched Product name, flag-gated). **Proven live:** YSL Black Opium → `page_scrape_jsonld` + identity + `should_cache_price=True` (was False). Test `tests/test_jsonld_identity_stamp.py`.
