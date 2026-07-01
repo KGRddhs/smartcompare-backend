@@ -98,8 +98,17 @@ _LITERAL_ROWS: List[Source] = [
     # (priceCurrency lowercase "bhd" — extractor .upper()-normalizes). THE
     # electronics keystone: broad catalog (electronics+grocery+pharmacy+beauty).
     Source("gcc.luluhypermarket.com", "bahrain", (), 3.0),
-    Source("bahrain.sharafdg.com", "bahrain", ("electronics",), 3.0),
-    Source("extra.com", "bahrain", ("electronics",), 3.0),
+    # sharafdg — fully-built genuine-BHD Algolia adapter (ALGOLIA_EXPLICIT_STORES,
+    # index bahrain_products); deep-review-verified in-stock genuine BHD (iPhone 15
+    # 284.9, showable+cacheable). Was untagged so get_algolia_sources_for_category
+    # skipped it → the genuine PDP was never fetched (only the ?s= search fallback).
+    Source("bahrain.sharafdg.com", "bahrain", ("electronics",), 3.0,
+           is_algolia=True, currency="BHD"),
+    # extra.com — the unbxd_service adapter is fully built with extra's live config
+    # (deep-review-verified: iPhone 15 256GB 279.99 genuine BHD PDP) but was
+    # DEAD-WIRED (mechanism='') so _direct_fetch_sources(...,'unbxd') returned [].
+    Source("extra.com", "bahrain", ("electronics",), 3.0,
+           mechanism="unbxd", currency="BHD"),
     # bahrain.microless.com — PDP curl Decision-F (2026-06-14): MacBook Air M4
     # PDP → 439.062 BHD via JSON-LD (offer price+priceCurrency=BHD, InStock).
     # CURL-scrapeable (the first 403 was a parallel-write race, re-curl = 200).
