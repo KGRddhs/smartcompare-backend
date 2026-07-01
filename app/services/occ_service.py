@@ -127,6 +127,14 @@ def _select_product(
         name = prod.get("name") or ""
         if not name:
             continue
+        # KEYSTONE candidate_brand (fix-ladder #1/2) — SAP-Commerce OCC search under
+        # fields=FULL exposes a top-level `manufacturer` string. Thread it into BOTH
+        # gates so a genuine BH retailer PDP that lists a device by its MODEL LINE
+        # ("iPad Air M2 128GB", no "Apple") is not rejected on the missing brand word,
+        # while a WRONG-brand candidate keeps the query brand required (candidate_brand
+        # only drops the candidate's OWN brand tokens, and _selection_match runs
+        # alongside to vet the full SKU). Missing manufacturer → "" → legacy behaviour.
+        _cand_brand = str(prod.get("manufacturer") or "").strip()
         # Review gate-fix (MEDIUM, NO-FAB): drop counterfeit + (asymmetric)
         # accessory hits so a same-brand same-model ACCESSORY (case/band/strap)
         # never ships as the product's price for a non-high-value category (the
@@ -137,13 +145,14 @@ def _select_product(
             continue
         if not numbers_match(product_name, name):
             continue
-        if not strict_title_match(product_name, name):
+        if not strict_title_match(product_name, name, candidate_brand=_cand_brand):
             continue
         if variant_mismatch(product_name, name):
             continue
         # Keystone variant-add guard (coverage/independent review) — category-aware
         # superset/axes beyond variant_mismatch's pro/max set. Flag-safe (True when off).
-        if not _selection_match(product_name, name, resolved_category):
+        if not _selection_match(product_name, name, resolved_category,
+                                candidate_brand=_cand_brand):
             continue
         price = prod.get("price")
         if not isinstance(price, dict):

@@ -725,7 +725,9 @@ def _cache_price_identity_ok(cached: Any, brand: str, name: str, category: str) 
     price carries a TITLE that does NOT match the request. A title-less cached price is
     served (benign — nothing to verify, don't over-invalidate). No-op when the gate is OFF."""
     try:
-        from app.services.price_service import exact_gate_enabled, _backstop_identity_ok
+        from app.services.price_service import (
+            exact_gate_enabled, _backstop_identity_ok, _category_type_added,
+        )
     except Exception:  # noqa: BLE001
         return True
     if not exact_gate_enabled() or not isinstance(cached, dict):
@@ -738,7 +740,20 @@ def _cache_price_identity_ok(cached: Any, brand: str, name: str, category: str) 
     # 128 — the documented warm-cache leaks) but NOT over-invalidate a genuine DESCRIPTIVE
     # title (which the full superset would, re-resolving every cold hit and DEFEATING the
     # warmer — coverage review HIGH). New writes are already gated by the full should_cache.
-    return _backstop_identity_ok(f"{brand} {name}".strip(), title, category)
+    #
+    # Wave-2 hardening (KPI session) — ALSO run the bounded flagship-concentration /
+    # supplement-TYPE flanker check (_category_type_added), MATCHING the display chokepoint
+    # is_price_showable (which already pairs _backstop_identity_ok + _category_type_added and
+    # was proven over-rejection-free + comm-green). Closes the same-token flanker leak
+    # ("Sauvage" -> "Sauvage Parfum/Extrait", "Whey" -> "Whey Isolate") on the cache-READ
+    # path, which previously used only the axis-only backstop (weaker than display). A
+    # same-token flanker whose extra token is NOT a flagship concentration ("Sauvage Elixir")
+    # remains a documented deferred leak (Wave-2 VariantDescriptor).
+    query_name = f"{brand} {name}".strip()
+    return (
+        _backstop_identity_ok(query_name, title, category)
+        and not _category_type_added(query_name, title, category)
+    )
 
 
 async def _timed_task(label: str, coro, timings_dict):

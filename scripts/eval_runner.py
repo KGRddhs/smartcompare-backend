@@ -490,7 +490,9 @@ def usable_exact_genuine_for_product(
     it re-checks identity itself against the truth entry):
       (a) non-pending, positive amount,
       (b) a genuine-BH `source_method`,
-      (c) CONFIRMED in stock (in_stock is True — unknown/None does NOT count),
+      (c) NOT explicitly out of stock (in_stock is not False — True or unknown/None
+          both count; a JSON-LD PDP omitting availability is still shown, so the
+          metric must not under-count it — see the in_stock rationale at :513),
       (d) a present, valid (non-listing) PDP URL,
       (e) when a `truth_entry` is given: the resolved price TITLE is the EXACT
           expected product (is_exact_match against truth.query + truth.expected.brand).

@@ -46,18 +46,42 @@ async def _resolve(svc, q, region):
     return key
 
 
-def _usable(cached):
+def _usable(cached, truth_entry=None):
+    """Authoritative contract — reuse eval_runner.usable_exact_genuine_for_product
+    (in_stock is-not-False + independent truth-axis identity validation) instead of
+    the drifted inline check (which required in_stock is True + skipped identity).
+    Construct the single-product body shape the function expects from the cached
+    price dict."""
+    from scripts.eval_runner import usable_exact_genuine_for_product
+    if not isinstance(cached, dict):
+        return False
+    body = {"products": [{"price": cached}]}
+    return bool(usable_exact_genuine_for_product(body, 0, truth_entry))
+
+
+def _reason(cached, truth_entry=None):
+    """Human-readable reason a cached price is NOT usable (diagnosis)."""
     from scripts.eval_runner import GENUINE_BH_SOURCE_METHODS as GEN
     from app.services.price_service import _is_listing_url
     if not isinstance(cached, dict):
-        return False
+        return "not-cached"
+    if cached.get("unavailable") is True or cached.get("amount") in (None, 0):
+        return "pending/no-amount"
     m = cached.get("source_method")
-    ident = cached.get("title") or cached.get("name")
+    if not isinstance(m, str) or m not in GEN:
+        return f"non-genuine-method:{m}"
+    if cached.get("in_stock") is False:
+        return "out-of-stock"
     url = cached.get("url")
-    return bool(
-        m in GEN and cached.get("amount") and cached.get("in_stock") is True
-        and url and not _is_listing_url(url) and ident
-    )
+    if not isinstance(url, str) or not url.strip():
+        return "no-url"
+    if _is_listing_url(url):
+        return "listing-url"
+    if not (cached.get("title") or cached.get("name")):
+        return "no-identity"
+    if truth_entry is not None and not _usable(cached, truth_entry):
+        return "identity-mismatch-vs-truth"
+    return "usable"
 
 
 async def main():
@@ -71,12 +95,17 @@ async def main():
         svc = get_comparison_service()
         key = await _resolve(svc, t["query"], t.get("region", "bahrain"))
         cached = get_cached(key)
+        c = cached if isinstance(cached, dict) else {}
         rows.append({
             "query": t["query"], "category": t.get("category"),
             "cached": isinstance(cached, dict),
-            "usable": _usable(cached),
-            "source_method": (cached or {}).get("source_method") if isinstance(cached, dict) else None,
-            "ident": bool((cached or {}).get("title") or (cached or {}).get("name")) if isinstance(cached, dict) else False,
+            "usable": _usable(cached, t),
+            "reason": _reason(cached, t),
+            "source_method": c.get("source_method"),
+            "amount": c.get("amount"),
+            "in_stock": c.get("in_stock"),
+            "url": c.get("url"),
+            "title": c.get("title") or c.get("name"),
         })
     per_cat = {}
     for r in rows:
