@@ -105,6 +105,54 @@ def _int_env(name: str, default: int) -> int:
         return default
 
 
+def _serper_per_query_estimate() -> int:
+    """Estimated Serper credits ONE warm query (2 products) drives. Cold BH
+    discovery burns ~10-30 credits/query post-B.0; 30 is a safe upper estimate
+    for the pre-run headroom check. Override via WARMER_SERPER_CREDITS_PER_QUERY.
+    <=0 disables the pre-run trim (keeps the count cap only)."""
+    return _int_env("WARMER_SERPER_CREDITS_PER_QUERY", 30)
+
+
+def _budget_bounded_window(window: List[Dict[str, Any]],
+                           *, per_query: Optional[int] = None) -> List[Dict[str, Any]]:
+    """Trim `window` to what the REMAINING Serper budget can afford, so a run
+    can never drive the paid key into overage. Never GROWS the window (the
+    MAX_QUERIES_PER_RUN cap already bounded it). FAIL-OPEN: on any budget/Redis
+    error, or when the estimate is disabled (<=0), return the window unchanged —
+    the count cap is the Redis-down backstop, consistent with the codebase's
+    fail-open budget posture."""
+    per_query = _serper_per_query_estimate() if per_query is None else per_query
+    if per_query <= 0 or not window:
+        return window
+    try:
+        from app.services.api_budget_service import get_remaining
+        remaining = int(get_remaining("serper"))
+    except Exception as exc:  # noqa: BLE001 — budget check must never block the warmer
+        logger.info("[cron_warm] Serper headroom check unavailable (%s) — no trim", exc)
+        return window
+    affordable = remaining // per_query
+    if affordable >= len(window):
+        return window
+    logger.warning(
+        "[cron_warm] Serper headroom ~%d credits affords ~%d of %d queries "
+        "(@~%d/query) — trimming this run",
+        remaining, affordable, len(window), per_query,
+    )
+    return window[:max(0, affordable)]
+
+
+def _serper_exhausted() -> bool:
+    """Per-query circuit: True iff the Serper budget is exhausted right now, so
+    the warm loop can STOP early instead of burning into overage. FAIL-OPEN
+    (False) on any budget/Redis error — the count cap remains the hard bound."""
+    try:
+        from app.services.api_budget_service import has_budget
+        return not has_budget("serper")
+    except Exception as exc:  # noqa: BLE001
+        logger.info("[cron_warm] Serper budget check unavailable (%s) — not stopping", exc)
+        return False
+
+
 def load_warmer_catalog(path: Path = _WARMER_CATALOG_PATH) -> List[Dict[str, Any]]:
     """Load the structural warmer-only catalog (data/warmer_catalog.json) as a
     list of query records. Missing / malformed file -> [] (the warmer still runs
@@ -219,13 +267,30 @@ async def main() -> Optional[Dict[str, int]]:
     queries = _merge_catalog(queries, load_warmer_catalog())
 
     window = _rotation_window(queries, max_q)
+    # PRE-RUN Serper-budget guard — trim the window to what the paid key can
+    # afford so a run never drives it into overage (fail-open; the count cap is
+    # the Redis-down backstop).
+    window = _budget_bounded_window(window)
+    if not window:
+        logger.warning(
+            "[cron_warm] Serper headroom too low to warm any query — skipping run"
+        )
+        return None
     logger.info(
         "[cron_warm] warming %d/%d queries (subset=%s, PRICE_RACE_TIMEOUT=%s) off-clock",
         len(window), len(queries), subset or "full", os.environ["PRICE_RACE_TIMEOUT"],
     )
 
     totals = {"genuine": 0, "converted": 0, "estimated": 0, "none": 0}
-    for record in window:
+    for i, record in enumerate(window):
+        # PER-QUERY circuit — stop the moment Serper is exhausted rather than
+        # burning the remaining window into overage.
+        if _serper_exhausted():
+            logger.warning(
+                "[cron_warm] Serper budget exhausted mid-run — stopping early "
+                "(%d/%d queries warmed)", i, len(window),
+            )
+            break
         tally = await _warm_one(record)
         for k in totals:
             totals[k] += tally[k]
