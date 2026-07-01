@@ -5993,6 +5993,15 @@ def extract_price_from_html(
         # identity, matching the sibling branches.
         if exact_gate_enabled():
             result["name"] = price_data.get("name")
+            # Forward the matched JSON-LD `brand` field too, so should_cache_price's
+            # brand-aware _selection_match subtracts the FULL brand for a brand-
+            # FIELD-only PDP (ounass-style: brand in the JSON-LD brand field, bare
+            # name like "Libre Eau de Parfum 90ml"). Without it, the brand-unaware
+            # gate requires the brand tokens IN the bare name and over-rejects a
+            # correct genuine price (sweep MED). price_data already carries `brand`
+            # (extract_jsonld_price stamps it when the gate is on).
+            if price_data.get("brand"):
+                result["brand"] = price_data.get("brand")
         return result
 
     # CORRECTNESS — the JSON-LD path gates identity per-Product; the OG / microdata

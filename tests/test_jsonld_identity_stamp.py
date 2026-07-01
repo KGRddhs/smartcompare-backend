@@ -57,6 +57,30 @@ class TestJsonldIdentityStamp:
         assert res is not None
         assert should_cache_price("Apple iPhone 15 256GB", res, "electronics") is True
 
+    def test_jsonld_forwards_brand_for_brand_field_only_pdp(self, monkeypatch):
+        # ounass-style: brand lives in the JSON-LD brand FIELD, the name is bare
+        # ("Libre Eau de Parfum 90ml"). The fix must forward `brand` so
+        # should_cache_price's brand-aware _selection_match subtracts the full
+        # brand — else the brand-unaware gate requires 'yves/saint/laurent' IN the
+        # bare name and over-rejects a CORRECT genuine price (sweep MED).
+        monkeypatch.setenv("ENABLE_EXACT_PRICE_GATE", "true")
+        html = (
+            '<html><head><script type="application/ld+json">'
+            '{"@type":"Product","name":"Libre Eau de Parfum 90ml",'
+            '"brand":{"@type":"Brand","name":"Yves Saint Laurent"},'
+            '"offers":{"@type":"Offer","price":"42.5","priceCurrency":"BHD",'
+            '"availability":"https://schema.org/InStock"}}'
+            '</script></head><body></body></html>'
+        )
+        res = extract_price_from_html(
+            html, "Yves Saint Laurent Libre Eau de Parfum 90ml", "BHD",
+            "ounass.com", "https://bahrain.ounass.com/shop-ysl-libre-edp-90ml",
+        )
+        assert res is not None
+        assert res.get("brand") == "Yves Saint Laurent"
+        assert should_cache_price(
+            "Yves Saint Laurent Libre Eau de Parfum 90ml", res, "fragrances") is True
+
     def test_jsonld_flag_off_omits_name_byte_identical(self, monkeypatch):
         monkeypatch.setenv("ENABLE_EXACT_PRICE_GATE", "false")
         res = extract_price_from_html(
