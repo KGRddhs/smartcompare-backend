@@ -1,14 +1,13 @@
-"""Wave-1 — price-cache warmer preconditions: a Serper-budget guard.
+"""Wave-1 — price-cache warmer preconditions: a per-run Serper-credit cap.
 
 The warmer burns PAID Serper continuously (each query warms 2 products at
-~10-30 credits). Today the only spend control is the MAX_QUERIES_PER_RUN count
-cap; there is no headroom check, so a run can drive the key straight into
-overage. These pin a two-layer guard:
-  - a PRE-RUN window trim: shrink the run to what the remaining Serper budget
-    can afford (never grows it);
-  - a PER-QUERY circuit: stop the loop the moment Serper is exhausted.
-Both fail-OPEN (a Redis/budget outage must not block the warmer) — the hard
-MAX_QUERIES_PER_RUN cap remains the Redis-down backstop.
+~10-30 credits). It is bounded by the MAX_QUERIES_PER_RUN count cap plus a
+per-RUN credit ceiling (_budget_bounded_window) that is TIER-INDEPENDENT: it
+does NOT consult api_budget_service's lifetime counter, which is capped at the
+free-tier config ceiling (serper monthly_limit=2200) and would WRONGLY disable
+the warmer on a healthy paid key once lifetime burn passes 2200 (adversarial
+sweep MED). The fixed cap + count cap are the whole bound; a truly-depleted real
+account just rejects calls (handled gracefully by _warm_one).
 """
 from __future__ import annotations
 
@@ -21,46 +20,45 @@ def _win(n):
     return [{"query": f"q{i}", "region": "bahrain"} for i in range(n)]
 
 
-def test_budget_bounded_window_trims_to_affordable():
-    # remaining=60 credits, ~30/query -> affords ~2 of 5.
-    with mock.patch.object(warmer, "_serper_per_query_estimate", return_value=30), \
-         mock.patch("app.services.api_budget_service.get_remaining", return_value=60):
-        out = warmer._budget_bounded_window(_win(5))
+def test_budget_bounded_window_trims_to_per_run_credit_cap():
+    # cap=60 credits, ~30/query -> affords 2 of 5.
+    out = warmer._budget_bounded_window(_win(5), per_query=30, max_credits=60)
     assert len(out) == 2
 
 
-def test_budget_bounded_window_keeps_full_when_ample():
-    with mock.patch.object(warmer, "_serper_per_query_estimate", return_value=30), \
-         mock.patch("app.services.api_budget_service.get_remaining", return_value=10_000):
-        out = warmer._budget_bounded_window(_win(5))
+def test_budget_bounded_window_keeps_full_when_cap_ample():
+    out = warmer._budget_bounded_window(_win(5), per_query=30, max_credits=10_000)
     assert len(out) == 5
 
 
-def test_budget_bounded_window_fail_open_on_error():
-    # get_remaining raising (Redis down) must NOT trim (fail-open) — the count
-    # cap MAX_QUERIES_PER_RUN is the backstop.
-    with mock.patch.object(warmer, "_serper_per_query_estimate", return_value=30), \
-         mock.patch("app.services.api_budget_service.get_remaining",
-                    side_effect=RuntimeError("redis down")):
-        out = warmer._budget_bounded_window(_win(5))
+def test_budget_bounded_window_disabled_when_cap_zero():
+    # max_credits<=0 disables the credit trim (count cap MAX_QUERIES_PER_RUN remains).
+    out = warmer._budget_bounded_window(_win(5), per_query=30, max_credits=0)
     assert len(out) == 5
 
 
-def test_budget_bounded_window_zero_when_no_headroom():
-    with mock.patch.object(warmer, "_serper_per_query_estimate", return_value=30), \
-         mock.patch("app.services.api_budget_service.get_remaining", return_value=10):
-        out = warmer._budget_bounded_window(_win(5))
+def test_budget_bounded_window_disabled_when_per_query_zero():
+    out = warmer._budget_bounded_window(_win(5), per_query=0, max_credits=900)
+    assert len(out) == 5
+
+
+def test_budget_bounded_window_zero_when_cap_below_one_query():
+    out = warmer._budget_bounded_window(_win(5), per_query=30, max_credits=10)
     assert out == []
 
 
-def test_serper_exhausted_reflects_has_budget():
-    with mock.patch("app.services.api_budget_service.has_budget", return_value=False):
-        assert warmer._serper_exhausted() is True
-    with mock.patch("app.services.api_budget_service.has_budget", return_value=True):
-        assert warmer._serper_exhausted() is False
+def test_budget_bounded_window_is_tier_independent_no_budget_calls():
+    # It must NOT consult get_remaining/has_budget — those reflect the free-tier
+    # ceiling and would falsely disable the warmer on a healthy paid key.
+    with mock.patch("app.services.api_budget_service.get_remaining") as gr, \
+         mock.patch("app.services.api_budget_service.has_budget") as hb:
+        warmer._budget_bounded_window(_win(5), per_query=30, max_credits=900)
+        gr.assert_not_called()
+        hb.assert_not_called()
 
 
-def test_serper_exhausted_fail_open_false_on_error():
-    with mock.patch("app.services.api_budget_service.has_budget",
-                    side_effect=RuntimeError("redis down")):
-        assert warmer._serper_exhausted() is False
+def test_defaults_are_sane():
+    assert warmer._serper_per_query_estimate() == 30
+    assert warmer._serper_max_credits_per_run() == 900
+    # Default cap affords the default MAX_QUERIES_PER_RUN(25) window (900/30=30 >= 25).
+    assert warmer._serper_max_credits_per_run() // warmer._serper_per_query_estimate() >= 25

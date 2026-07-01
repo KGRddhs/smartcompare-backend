@@ -43,6 +43,19 @@ def test_truncated_baseline_id_gives_clear_malformed_error_not_not_found():
     assert _FULL_UUID in msg
 
 
+def test_noncanonical_uuid_forms_rejected_clearly_not_as_not_found():
+    # urn:uuid / braced forms pass uuid.UUID() but 22P02 at Postgres -> would be
+    # swallowed into a phantom "not found"; the canonical-form check rejects them
+    # up front with the clear malformed-id message (adversarial sweep LOW).
+    for bad in (f"urn:uuid:{_FULL_UUID}", "{" + _FULL_UUID + "}"):
+        passed, msg = eval_gate.evaluate_gate(
+            _report(), mode="regression", baseline_run_id=bad,
+        )
+        assert passed is False, bad
+        assert "not found" not in msg.lower(), bad
+        assert "uuid" in msg.lower(), bad
+
+
 def test_truncated_baseline_id_never_hits_the_db():
     # The format check short-circuits BEFORE fetch_eval_run, so a malformed id
     # never even issues the 22P02-triggering query.

@@ -107,50 +107,50 @@ def _int_env(name: str, default: int) -> int:
 
 def _serper_per_query_estimate() -> int:
     """Estimated Serper credits ONE warm query (2 products) drives. Cold BH
-    discovery burns ~10-30 credits/query post-B.0; 30 is a safe upper estimate
-    for the pre-run headroom check. Override via WARMER_SERPER_CREDITS_PER_QUERY.
-    <=0 disables the pre-run trim (keeps the count cap only)."""
+    discovery burns ~10-30 credits/query post-B.0; 30 is a safe upper estimate.
+    Override via WARMER_SERPER_CREDITS_PER_QUERY. <=0 disables the pre-run credit
+    trim (the MAX_QUERIES_PER_RUN count cap remains)."""
     return _int_env("WARMER_SERPER_CREDITS_PER_QUERY", 30)
 
 
-def _budget_bounded_window(window: List[Dict[str, Any]],
-                           *, per_query: Optional[int] = None) -> List[Dict[str, Any]]:
-    """Trim `window` to what the REMAINING Serper budget can afford, so a run
-    can never drive the paid key into overage. Never GROWS the window (the
-    MAX_QUERIES_PER_RUN cap already bounded it). FAIL-OPEN: on any budget/Redis
-    error, or when the estimate is disabled (<=0), return the window unchanged —
-    the count cap is the Redis-down backstop, consistent with the codebase's
-    fail-open budget posture."""
+def _serper_max_credits_per_run() -> int:
+    """Per-RUN Serper credit ceiling for the warmer, bounding a SINGLE run's spend.
+
+    Deliberately TIER-INDEPENDENT: it does NOT consult api_budget_service's
+    lifetime counter / has_budget('serper'). That counter is capped at the
+    hardcoded FREE-tier config ceiling (serper monthly_limit=2200); on a healthy
+    PAID key — the exact key the warmer is designed for — once lifetime burn
+    passes 2200, get_remaining('serper') returns 0 and has_budget returns False,
+    which would WRONGLY disable the warmer entirely (adversarial sweep MED). A
+    fixed per-run cap protects against a single run's blowout without ever
+    permanently disabling the warmer, and the real account simply rejects calls
+    with 'Not enough credits' (handled gracefully by _warm_one) if truly depleted.
+    Override via WARMER_MAX_SERPER_CREDITS_PER_RUN; <=0 disables the credit trim."""
+    return _int_env("WARMER_MAX_SERPER_CREDITS_PER_RUN", 900)
+
+
+def _budget_bounded_window(
+    window: List[Dict[str, Any]], *, per_query: Optional[int] = None,
+    max_credits: Optional[int] = None,
+) -> List[Dict[str, Any]]:
+    """Trim `window` so this RUN's ESTIMATED Serper spend stays within the per-run
+    credit cap, layered UNDER the MAX_QUERIES_PER_RUN count cap. Never GROWS the
+    window. Disabled (window returned unchanged) when either knob is <=0. Uses NO
+    external budget state, so it can never mis-fire on a paid key or a Redis
+    outage — the fixed cap + the count cap are the whole bound."""
     per_query = _serper_per_query_estimate() if per_query is None else per_query
-    if per_query <= 0 or not window:
+    max_credits = _serper_max_credits_per_run() if max_credits is None else max_credits
+    if per_query <= 0 or max_credits <= 0 or not window:
         return window
-    try:
-        from app.services.api_budget_service import get_remaining
-        remaining = int(get_remaining("serper"))
-    except Exception as exc:  # noqa: BLE001 — budget check must never block the warmer
-        logger.info("[cron_warm] Serper headroom check unavailable (%s) — no trim", exc)
-        return window
-    affordable = remaining // per_query
+    affordable = max_credits // per_query
     if affordable >= len(window):
         return window
     logger.warning(
-        "[cron_warm] Serper headroom ~%d credits affords ~%d of %d queries "
+        "[cron_warm] per-run Serper cap ~%d credits affords ~%d of %d queries "
         "(@~%d/query) — trimming this run",
-        remaining, affordable, len(window), per_query,
+        max_credits, affordable, len(window), per_query,
     )
     return window[:max(0, affordable)]
-
-
-def _serper_exhausted() -> bool:
-    """Per-query circuit: True iff the Serper budget is exhausted right now, so
-    the warm loop can STOP early instead of burning into overage. FAIL-OPEN
-    (False) on any budget/Redis error — the count cap remains the hard bound."""
-    try:
-        from app.services.api_budget_service import has_budget
-        return not has_budget("serper")
-    except Exception as exc:  # noqa: BLE001
-        logger.info("[cron_warm] Serper budget check unavailable (%s) — not stopping", exc)
-        return False
 
 
 def load_warmer_catalog(path: Path = _WARMER_CATALOG_PATH) -> List[Dict[str, Any]]:
@@ -267,30 +267,27 @@ async def main() -> Optional[Dict[str, int]]:
     queries = _merge_catalog(queries, load_warmer_catalog())
 
     window = _rotation_window(queries, max_q)
-    # PRE-RUN Serper-budget guard — trim the window to what the paid key can
-    # afford so a run never drives it into overage (fail-open; the count cap is
-    # the Redis-down backstop).
+    # PRE-RUN Serper-budget guard — trim the window to the per-run credit cap so a
+    # single run never blows the budget. Tier-independent (no lifetime-counter
+    # dependency), so it can never mis-fire on a healthy paid key.
     window = _budget_bounded_window(window)
     if not window:
         logger.warning(
-            "[cron_warm] Serper headroom too low to warm any query — skipping run"
+            "[cron_warm] per-run Serper credit cap too low to afford any query "
+            "(WARMER_MAX_SERPER_CREDITS_PER_RUN / WARMER_SERPER_CREDITS_PER_QUERY) "
+            "— skipping run"
         )
         return None
+    est_credits = len(window) * _serper_per_query_estimate()
     logger.info(
-        "[cron_warm] warming %d/%d queries (subset=%s, PRICE_RACE_TIMEOUT=%s) off-clock",
+        "[cron_warm] warming %d/%d queries (subset=%s, PRICE_RACE_TIMEOUT=%s, "
+        "est ~%d Serper credits) off-clock",
         len(window), len(queries), subset or "full", os.environ["PRICE_RACE_TIMEOUT"],
+        est_credits,
     )
 
     totals = {"genuine": 0, "converted": 0, "estimated": 0, "none": 0}
-    for i, record in enumerate(window):
-        # PER-QUERY circuit — stop the moment Serper is exhausted rather than
-        # burning the remaining window into overage.
-        if _serper_exhausted():
-            logger.warning(
-                "[cron_warm] Serper budget exhausted mid-run — stopping early "
-                "(%d/%d queries warmed)", i, len(window),
-            )
-            break
+    for record in window:
         tally = await _warm_one(record)
         for k in totals:
             totals[k] += tally[k]
