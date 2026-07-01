@@ -25,6 +25,12 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 GOLD_PATH = REPO_ROOT / "data" / "validation_gold_truth.json"
 SMOKE_PATH = REPO_ROOT / "data" / "eval_smoke_subset.json"
 
+# A real eval_runs baseline id is a full uuid; the regression gate now validates
+# that format before the DB round-trip (a truncated id would 22P02 + get swallowed
+# into a phantom "not found"). Use uuid-shaped ids in these tests accordingly.
+_BASE_UUID = "0e1d2c3b-4a59-4687-8765-0f1e2d3c4b5a"
+_MISSING_UUID = "ffffffff-ffff-4fff-8fff-ffffffffffff"
+
 
 def _report(*, pass_rate=0.95, price=0.9, specs=0.9, winner=0.95, factual=1.0) -> EvalReport:
     return EvalReport(
@@ -69,7 +75,7 @@ def _baseline(price=0.90, specs=0.90, winner=0.95, factual=1.0, pass_rate=0.95):
 def test_regression_pass_when_axes_flat():
     current = _report(price=0.90, specs=0.90, winner=0.95, factual=1.0)
     with patch("scripts.eval_gate.fetch_eval_run", return_value=_baseline()):
-        ok, msg = eval_gate.evaluate_gate(current, mode="regression", baseline_run_id="base-1")
+        ok, msg = eval_gate.evaluate_gate(current, mode="regression", baseline_run_id=_BASE_UUID)
     assert ok is True
     assert "PASS" in msg
 
@@ -77,7 +83,7 @@ def test_regression_pass_when_axes_flat():
 def test_regression_pass_when_axes_improve():
     current = _report(price=0.95, specs=0.93, winner=0.98, factual=1.0)
     with patch("scripts.eval_gate.fetch_eval_run", return_value=_baseline()):
-        ok, _ = eval_gate.evaluate_gate(current, mode="regression", baseline_run_id="base-1")
+        ok, _ = eval_gate.evaluate_gate(current, mode="regression", baseline_run_id=_BASE_UUID)
     assert ok is True
 
 
@@ -85,7 +91,7 @@ def test_regression_pass_within_2pct_drop():
     # winner drops 0.95 -> 0.934 = 1.6% absolute drop → within the 2% tolerance.
     current = _report(price=0.90, specs=0.90, winner=0.934, factual=1.0)
     with patch("scripts.eval_gate.fetch_eval_run", return_value=_baseline()):
-        ok, _ = eval_gate.evaluate_gate(current, mode="regression", baseline_run_id="base-1")
+        ok, _ = eval_gate.evaluate_gate(current, mode="regression", baseline_run_id=_BASE_UUID)
     assert ok is True
 
 
@@ -93,7 +99,7 @@ def test_regression_fail_when_any_axis_drops_more_than_2pct():
     # price drops 0.90 -> 0.87 = 3% absolute drop → fails.
     current = _report(price=0.87, specs=0.90, winner=0.95, factual=1.0)
     with patch("scripts.eval_gate.fetch_eval_run", return_value=_baseline()):
-        ok, msg = eval_gate.evaluate_gate(current, mode="regression", baseline_run_id="base-1")
+        ok, msg = eval_gate.evaluate_gate(current, mode="regression", baseline_run_id=_BASE_UUID)
     assert ok is False
     assert "FAIL" in msg
     assert "price" in msg
@@ -102,7 +108,7 @@ def test_regression_fail_when_any_axis_drops_more_than_2pct():
 def test_regression_fail_lists_every_dropping_axis():
     current = _report(price=0.85, specs=0.80, winner=0.95, factual=1.0)
     with patch("scripts.eval_gate.fetch_eval_run", return_value=_baseline()):
-        ok, msg = eval_gate.evaluate_gate(current, mode="regression", baseline_run_id="base-1")
+        ok, msg = eval_gate.evaluate_gate(current, mode="regression", baseline_run_id=_BASE_UUID)
     assert ok is False
     assert "price" in msg and "specs" in msg
 
@@ -115,7 +121,7 @@ def test_regression_requires_baseline_run_id():
 
 def test_regression_fail_when_baseline_row_missing():
     with patch("scripts.eval_gate.fetch_eval_run", return_value=None):
-        ok, msg = eval_gate.evaluate_gate(_report(), mode="regression", baseline_run_id="ghost")
+        ok, msg = eval_gate.evaluate_gate(_report(), mode="regression", baseline_run_id=_MISSING_UUID)
     assert ok is False
     assert "not found" in msg.lower() or "missing" in msg.lower()
 
