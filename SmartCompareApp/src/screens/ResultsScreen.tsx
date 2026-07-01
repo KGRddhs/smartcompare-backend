@@ -383,7 +383,11 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
 
   const formatPrice = (price?: Product['price']) => {
     if (!price || price.unavailable || price.amount === null) return t('results.priceNA');
-    return `${price.currency} ${price.amount.toLocaleString()}`;
+    const base = `${price.currency} ${price.amount.toLocaleString()}`;
+    // Provenance honesty (deep-review HIGH) — a converted (USD→BHD) figure is not a
+    // genuine BH shelf price; label it so it never reads as a local price.
+    if (price.source_method === 'converted_usd') return `${base} ${t('results.convertedUSD')}`;
+    return base;
   };
 
   const getScoreColor = (score: number): string => {
