@@ -6791,14 +6791,14 @@ def _bolo_jsonld_main_price(
                 # to honest-pending. Dormant today (bolo/boutiqaat inert until the
                 # sitemap cron); revisit with soft size/concentration tokens when the
                 # cron is activated + real fragrance recall is measured.
-                _disc_brand = node.get("brand")
-                if isinstance(_disc_brand, dict):
-                    _disc_brand = _disc_brand.get("name", "")
-                elif isinstance(_disc_brand, list):
-                    _disc_brand = " ".join(
-                        (b.get("name", "") if isinstance(b, dict) else str(b))
-                        for b in _disc_brand)
-                if not strict_title_match(product_name, ld_name, str(_disc_brand or "")):
+                # NB: this sitemap-discovery path has NO _selection_match after
+                # strict_title_match, so it must NOT pass candidate_brand here —
+                # dropping the brand without the _selection_match variant-add guard
+                # leaks a same-brand accessory ("Apple Watch" -> "...Sport Band")
+                # (both-directions sweep wf_e759837b MED). Keep the legacy
+                # brand-required gate; the candidate_brand relaxation is wired only at
+                # adapters that run _selection_match(candidate_brand=...) alongside.
+                if not strict_title_match(product_name, ld_name):
                     continue
                 # Word-overlap bind (the docstring's third guard, Wave-3 reviewer
                 # ISSUE 2): two products with no numbers/variant qualifiers
