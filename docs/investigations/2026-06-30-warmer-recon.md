@@ -77,3 +77,21 @@ This note is the deliverable of Wave-1 Task 1. It reshapes the plan: several leg
 **GATED terminal actions (need explicit user GO + a healthy paid Serper key):**
 - **Task 6/warm real sample + measure KPI** — writes to the SHARED prod cache + burns paid Serper. Requires isolated-cache OR accept+purge-after.
 - **Task 7/flip `ENABLE_PRICE_CACHE_WARMER`** — prod activation, iff per-category KPI ≥85% ∧ parity proven ∧ clean cache ∧ sweep+comm green.
+
+---
+
+## 7. Adversarial coverage sweep — findings + dispositions (`wf_b806ccdd-467`)
+
+5 parallel adversaries, each reproducing through the runtime. Dispatcher-gated:
+
+| Finding | Sev | Disposition |
+|---|---|---|
+| Budget guard used the free-tier-calibrated lifetime counter (`get_remaining`/`has_budget('serper')`, ceiling 2200) → would PERMANENTLY disable the warmer on a healthy paid key past 2200 lifetime burn | MED (confirmed) | **FIXED** — replaced with a tier-independent per-run credit cap (`WARMER_MAX_SERPER_CREDITS_PER_RUN`, 900); dropped the lifetime dependency + `_serper_exhausted` |
+| `urn:uuid:`/braced baseline-id forms pass `uuid.UUID()` but 22P02 → phantom "not found" | LOW (confirmed) | **FIXED** — validate the canonical hyphenated form |
+| `kpi_gate_verdict` + main() KPI refactor | — | **No findings** (correct; the only divergence vs the old inline check is empty→PAUSED, the intended fix) |
+| L2 title persistence (flag-gated) | — | **No findings** (flag-OFF byte-identical; flag-ON-but-column-absent swallowed on both save + read; list-title coerced at display) |
+| **`extract_weight_or_volume('5G')` → (5.0,'g')**: cellular "5G/4G/3G" mis-parsed as gram-weight → the same phone's base query and its "5G" PDP title hash to DIFFERENT cache keys (false-SPLIT → warmer cache MISS across electronics) | HIGH (confirmed) | **DEFERRED** — see below |
+
+### Deferred: the 5G/4G/5G weight-token false-split (HIGH, pre-existing)
+
+`extract_weight_or_volume` (ps:2928) matches bare `<digit>G` as grams, so `size_variant_token('Galaxy S24 FE 5G')` → `fe.5g` vs `fe` for the base model → different cache keys → a guaranteed warm-vs-live MISS for any electronics whose genuine PDP title carries "5G". **It is PRE-EXISTING in main `cdaf5c5` (not a Wave-1 regression)** and NOT trivially fixable, because the same extractor feeds the **correctness matcher's weight axis** (ps:1827/1839/1851 — PR #9 territory) AND the disambiguation is **category-dependent**: "5G" is cellular for a phone but "5 grams" for a supplement ("Creatine 5G"). A category-blind strip would FALSE-MERGE supplement weights ("Creatine 5G" ≡ "Creatine 10G" → wrong-SKU cache serve — strictly worse). The correct fix is **category-aware** (exclude cellular `[2-5]G` from weight ONLY for electronics/gadget context, preserving supplement gram parsing) and must be verified by the correctness COVERAGE sweep — so it belongs in a dedicated correctness session, not the warmer-gate wave. Impact until fixed: warmer coverage degradation (a miss → live pending/converted), NOT a wrong price. Tracked for the next correctness-sweep session.
