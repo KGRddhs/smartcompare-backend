@@ -13,7 +13,7 @@ mismatched Tier-1 Bahrain prices outvote a distant amazon.com listing.
 import re
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
-from urllib.parse import urlparse
+from urllib.parse import urlparse, parse_qs
 
 
 @dataclass(frozen=True)
@@ -894,10 +894,19 @@ _PDP_PATH_MARKERS = ("/product/", "/products/", "/p/", "/item/", "/dp/", "/buy/"
 _LISTING_PATH_MARKERS = (
     "/c/", "/category/", "/categories/", "/cat/",
     "/search",                           # search result pages
+    "/catalogsearch",                    # Magento search (no q= param path)
     "/collections/", "/collection/",     # Shopify collection (NOT /products/)
 )
-# Query params that mark a search/listing surface even on a PDP-looking path.
-_LISTING_QUERY_MARKERS = ("q=", "search=", "query=", "keyword=", "page=")
+# Query KEYS (exact, via parse_qs) that mark a search/listing surface even on a
+# PDP-looking path. EXACT-key — NOT a substring — because a bare "s=" substring
+# collides with real PDP params (colors=, variants=, flags=, items=). Extended
+# with the WordPress/WooCommerce search family ('s', 'post_type', 'product_cat',
+# 'product_tag') so a genuine price scraped from e.g. sharafdg
+# `?s=<q>&post_type=product` is classified a listing and never cached as a PDP.
+_LISTING_QUERY_KEYS = frozenset({
+    "q", "s", "search", "query", "keyword", "page",
+    "post_type", "product_cat", "product_tag",
+})
 
 
 def is_non_pdp_listing_url(url: str) -> bool:
@@ -919,14 +928,20 @@ def is_non_pdp_listing_url(url: str) -> bool:
     except (ValueError, TypeError):
         return False
     path = (parsed.path or "").lower()
-    query = (parsed.query or "").lower()
     # An explicit PDP marker wins — keep.
     if any(m in path for m in _PDP_PATH_MARKERS):
         return False
     # No PDP marker: an explicit listing/search marker (path or query) → drop.
     if any(m in path for m in _LISTING_PATH_MARKERS):
         return True
-    if any(m in query for m in _LISTING_QUERY_MARKERS):
+    # Query check via EXACT keys (parse_qs) — a search/listing query key present
+    # ⇒ drop. Exact-key (not substring) so a real PDP param (colors=, variants=,
+    # flags=, items=, size=, sku=) never false-catches on a bare "s=".
+    try:
+        query_keys = {k.lower() for k in parse_qs(parsed.query or "").keys()}
+    except (ValueError, TypeError):
+        query_keys = set()
+    if query_keys & _LISTING_QUERY_KEYS:
         return True
     return False
 
