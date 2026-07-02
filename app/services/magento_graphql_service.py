@@ -39,6 +39,7 @@ Returns a price dict or ``None``. NEVER raises — every network / parse error �
 $0 — no Serper, no render.
 """
 import json
+import re
 import time
 import logging
 import asyncio
@@ -278,6 +279,53 @@ async def _post_graphql(
 # Per-shape item parsing
 # ---------------------------------------------------------------------------
 
+# A5 (genuine-price KPI, 2026-07-02) — Alshaya Shape-A FASHION names omit the
+# colorway; it survives only as the urlKey tail ("...-white-white"). The KPI
+# colorway axis + strict_title_match REJECT a colourless title for a
+# colour-stated query ("Nike Air Force 1 07 White"), so the tail is humanized
+# and appended before matching. BOUNDED: only these recognized colour words are
+# ever promoted — an arbitrary slug tail (gender/fit/pack words, SKU digits)
+# never is.
+_URLKEY_COLOUR_WORDS = frozenset({
+    "black", "white", "grey", "gray", "red", "blue", "navy", "green", "olive",
+    "yellow", "gold", "silver", "beige", "brown", "tan", "cream", "pink",
+    "purple", "orange", "khaki", "maroon", "burgundy", "teal", "ivory",
+    "charcoal",
+})
+
+
+def _urlkey_colour_tail(url_key: str) -> List[str]:
+    """The TRAILING run of recognized colour words in a Shape-A urlKey slug
+    ("buy-nike-air-force-1-07-mens-shoes-white-white" -> ["white"]), slug order,
+    deduped. The walk stops at the first non-colour token from the END — a
+    colour ELSEWHERE in the slug ("...-white-gum") is not a colorway tail.
+    [] when the slug does not end in a colour word."""
+    toks = [t for t in (url_key or "").lower().split("-") if t]
+    run: List[str] = []
+    for tok in reversed(toks):
+        if tok not in _URLKEY_COLOUR_WORDS:
+            break
+        run.append(tok)
+    run.reverse()  # restore slug order
+    seen: set = set()
+    return [t for t in run if not (t in seen or seen.add(t))]
+
+
+def _with_colour_tail(name: str, url_key: str) -> str:
+    """`name` with the urlKey colour tail appended (Title-case) when the name
+    lacks it; a name already carrying the colour is returned unchanged."""
+    tail = _urlkey_colour_tail(url_key)
+    if not name or not tail:
+        return name
+    have = set(re.findall(r"[a-z]+", name.lower()))
+    if have & {"grey", "gray"}:  # spelling variants suppress each other
+        have |= {"grey", "gray"}
+    missing = [t for t in tail if t not in have]
+    if not missing:
+        return name
+    return name + " " + " ".join(t.capitalize() for t in missing)
+
+
 def _shape_a_items(payload: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
     if not isinstance(payload, dict):
         return []
@@ -451,6 +499,13 @@ async def fetch_magento_graphql_price(
     host = host.split("/")[0]
 
     store = _MAGENTO_STORES.get(host)
+    if not store and ("www." + host) in _MAGENTO_STORES:
+        # Registry rows are stored APEX (source_router._normalize_domain
+        # www-strips hosts, so a "www." row can never score/tier); the Shape-A
+        # pins are keyed by the canonical www host — re-canonicalize so config
+        # GETs / PDP urls / the retailer stamp all carry the real storefront.
+        host = "www." + host
+        store = _MAGENTO_STORES.get(host)
     if not store:
         return None
     shape = store.get("shape")
@@ -484,10 +539,25 @@ async def fetch_magento_graphql_price(
                 for it in items if isinstance(it, dict)
             ) if n
         ]
+        # A5 — fashion colorway enrichment (see _with_colour_tail), applied
+        # BEFORE matching so the colorway axis can discriminate AND the enriched
+        # title is what gets stored/cached. Fashion-scoped: a colour word can be
+        # product identity elsewhere (fragrances "Black Opium").
+        if resolved_category == "fashion":
+            nodes = [
+                dict(n, name=_with_colour_tail(n.get("name") or "", n.get("url_key") or ""))
+                for n in nodes
+            ]
         node = _best_match(nodes, product_name, resolved_category=resolved_category)
         if node:
-            base = cfg.get("base_endpoint") or f"https://{host}"
-            pdp_url = f"{base.rstrip('/')}/{node.get('url_key', '').lstrip('/')}"
+            base = (cfg.get("base_endpoint") or f"https://{host}").rstrip("/")
+            # A5 — Alshaya PDPs live ONLY under the /en/ locale: the bare
+            # {base}/{urlKey} serves a ~3.4KB SPA stub (no og:title/JSON-LD).
+            # All 6 Shape-A storefront roots 301 to /en/ (live-verified
+            # 2026-07-02; footlocker /en/ PDP = the real 200 page).
+            if not base.endswith("/en"):
+                base = f"{base}/en"
+            pdp_url = f"{base}/{node.get('url_key', '').lstrip('/')}"
 
     elif shape == "B":
         headers = {

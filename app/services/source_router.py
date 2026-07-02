@@ -249,6 +249,17 @@ _LITERAL_ROWS: List[Source] = [
         "en-bh.6thstreet.com", "bahrain", ("fashion",), 3.0,
         is_algolia=True,
     ),  # 6thStreet BH (Algolia index, BHD, fashion/footwear only)
+    # A5 (genuine-price KPI, 2026-07-02) — Foot Locker BH (Alshaya). The Shape-A
+    # magento_graphql adapter is fully built + host-pinned (_MAGENTO_STORES), but
+    # no row carried mechanism="magento_graphql" for fashion (the catalog row was
+    # false-deaded off a malformed pseudo sample_url), so
+    # get_magento_gql_sources_for_category("fashion") returned [] — built-but-dead,
+    # the same class the sharafdg/extra literals fixed for electronics. Live-verified
+    # genuine BHD in stock: AF1 '07 white 65.000, Samba OG 55.000. APEX domain —
+    # _normalize_domain www-strips hosts before matching, so a "www." row can
+    # never score/tier; the adapter re-canonicalizes apex → its pinned www host.
+    Source("footlocker.com.bh", "bahrain", ("fashion", "other"), 3.0,
+           mechanism="magento_graphql", currency="BHD"),
     Source(
         "jalilaperfumes.com", "bahrain", ("fragrances",), 3.0
     ),  # Jalila Perfumes BH (custom PHP, product pages + BHD)
