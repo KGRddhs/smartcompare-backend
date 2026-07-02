@@ -27,6 +27,13 @@ Strict title-match (price_service gates) before emitting any price — a fuzzy /
 hit is REJECTED, never shipped (the iPhone16→14 wrong-product class). NO minor-unit quirk —
 Magento returns decimal majors (48.13, 3.75); do NOT divide.
 
+candidate_brand (fix-ladder item 2 remainder, occ_service mirror): klinq/trikart expose a
+custom `brand_name: String` HUMAN label ("Dior"/"Apple"); ajmal-kwt has NO queryable brand
+field (mono-brand → pinned static "Ajmal"); Shape A carries brand generically in
+`productView.attributes`. The label threads into strict_title_match + _selection_match so
+a brand-omitting title ("Black Opium EDP") is recovered while a wrong-brand candidate
+still rejects. Missing brand → "" → byte-identical legacy behaviour (fail-safe).
+
 Returns a price dict or ``None``. NEVER raises — every network / parse error → None
 (verify-or-omit). Gated by ENABLE_PAGE_SCRAPE + is_price_showable + L2 content-safety.
 $0 — no Serper, no render.
@@ -68,9 +75,16 @@ _MAGENTO_STORES: Dict[str, Dict[str, str]] = {
     "www.newbalance.com.bh": {"shape": "A"},
     "bn.boots.com": {"shape": "A"},  # configs at the BARE host, no www
     # --- Shape B (vanilla Magento core) ---
-    "klinq.com": {"shape": "B", "store_view": "default"},          # native BHD
-    "trikart.com": {"shape": "B", "store_view": "kwt_en"},          # KWD → convert
-    "en-kwt.ajmal.com": {"shape": "B", "store_view": "default"},    # KWD → convert
+    # `brand_field` = the store's HUMAN-label brand field, spliced into the query
+    # per-store ONLY (an unknown GraphQL field is a VALIDATION error that kills
+    # the whole query — proven live on ajmal). NEVER pin the option-id fields
+    # (klinq `brand`="743", `mgs_brand`). `static_brand` = mono-brand store pin.
+    "klinq.com": {"shape": "B", "store_view": "default",
+                  "brand_field": "brand_name"},                     # native BHD
+    "trikart.com": {"shape": "B", "store_view": "kwt_en",
+                    "brand_field": "brand_name"},                   # KWD → convert
+    "en-kwt.ajmal.com": {"shape": "B", "store_view": "default",
+                         "static_brand": "Ajmal"},                  # KWD → convert
 }
 
 # Shape-A /configs.json cache — keys ROTATE, so cache the resolved config ~24h
@@ -86,6 +100,9 @@ _PAGE_SIZE = 5  # productSearch / products page size — small; strict-match the
 
 # Shape A — Alshaya Catalog Service. Request BOTH inline fragments so we can
 # branch by __typename (Simple = single SKU, Complex = variant/apparel).
+# `attributes(roles: [])` is on the ProductView INTERFACE (no per-name filter
+# exists — the arg filters by roles); the full list carries the generic
+# {name:"brand", value:"Bath & Body Works"} entry, a few KB at pageSize 5.
 _SHAPE_A_QUERY = """
 query($phrase: String!, $pageSize: Int!) {
   productSearch(phrase: $phrase, page_size: $pageSize) {
@@ -96,6 +113,7 @@ query($phrase: String!, $pageSize: Int!) {
         urlKey
         inStock
         __typename
+        attributes(roles: []) { name value }
         ... on SimpleProductView {
           price { final { amount { value currency } } regular { amount { value currency } } }
         }
@@ -113,15 +131,18 @@ query($phrase: String!, $pageSize: Int!) {
 }
 """.strip()
 
-# Shape B — vanilla Magento core search.
-_SHAPE_B_QUERY = """
+# Shape B — vanilla Magento core search. Built per-store: the pinned brand
+# field is spliced in at __BRAND_SEL__ ONLY when the store has one (an unknown
+# field is a validation error with NO data — the shared query must stay
+# brand-free for unpinned stores).
+_SHAPE_B_QUERY_TEMPLATE = """
 query($phrase: String!, $pageSize: Int!) {
   products(search: $phrase, pageSize: $pageSize) {
     items {
       name
       sku
       url_key
-      stock_status
+      stock_status__BRAND_SEL__
       price_range {
         minimum_price {
           final_price { value currency }
@@ -132,6 +153,13 @@ query($phrase: String!, $pageSize: Int!) {
   }
 }
 """.strip()
+
+
+def _build_shape_b_query(brand_field: Optional[str] = None) -> str:
+    """Shape-B products query with the per-store pinned brand field spliced into
+    the items selection. No pin → byte-identical legacy query."""
+    brand_sel = f"\n      {brand_field}" if brand_field else ""
+    return _SHAPE_B_QUERY_TEMPLATE.replace("__BRAND_SEL__", brand_sel)
 
 
 # ---------------------------------------------------------------------------
@@ -260,12 +288,21 @@ def _shape_a_items(payload: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 
 def _shape_a_price_node(pv: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    """Extract {value, currency, in_stock, name, urlKey} from a Shape-A
-    productView, branching by __typename. Returns None on any missing field."""
+    """Extract {value, currency, in_stock, name, url_key, brand} from a Shape-A
+    productView, branching by __typename. Returns None on any missing field.
+    Brand comes from the generic Catalog-Service attributes entry name=="brand";
+    absence tolerated (brand="" → legacy matching)."""
     typename = pv.get("__typename") or ""
     name = pv.get("name") or ""
     url_key = pv.get("urlKey") or ""
     in_stock = bool(pv.get("inStock", True))
+    brand = ""
+    attrs = pv.get("attributes")
+    if isinstance(attrs, list):
+        for a in attrs:
+            if isinstance(a, dict) and a.get("name") == "brand":
+                brand = str(a.get("value") or "").strip()
+                break
     amount_node = None
     if "Complex" in typename:
         pr = (pv.get("priceRange") or {}).get("minimum") or {}
@@ -289,6 +326,7 @@ def _shape_a_price_node(pv: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         "in_stock": in_stock,
         "name": name,
         "url_key": url_key,
+        "brand": brand,
     }
 
 
@@ -301,7 +339,9 @@ def _shape_b_items(payload: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return items if isinstance(items, list) else []
 
 
-def _shape_b_price_node(item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+def _shape_b_price_node(
+    item: Dict[str, Any], brand_field: Optional[str] = None, static_brand: str = "",
+) -> Optional[Dict[str, Any]]:
     name = item.get("name") or ""
     url_key = item.get("url_key") or ""
     stock_status = (item.get("stock_status") or "").upper()
@@ -316,12 +356,20 @@ def _shape_b_price_node(item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         return None
     if value <= 0 or not currency:
         return None
+    # Brand label for candidate_brand threading — ONLY the per-store pinned
+    # human-label field (klinq/trikart `brand_name`), NEVER the option-id
+    # fields (`brand`="743"/5479, `mgs_brand`). Mono-brand store → static pin.
+    if brand_field:
+        brand = str(item.get(brand_field) or "").strip()
+    else:
+        brand = static_brand
     return {
         "value": value,
         "currency": str(currency).upper(),
         "in_stock": in_stock,
         "name": name,
         "url_key": url_key,
+        "brand": brand,
     }
 
 
@@ -353,11 +401,18 @@ def _best_match(
             continue
         if not numbers_match(product_name, title):
             continue
-        if not strict_title_match(product_name, title):
+        # KEYSTONE candidate_brand (occ_service mirror) — the store's own brand
+        # label lets a brand-omitting title ("Black Opium EDP") pass, while a
+        # wrong-brand node keeps the query brand required (candidate_brand only
+        # drops the CANDIDATE's own tokens; _selection_match vets the full SKU
+        # alongside). Missing brand → "" → legacy behaviour.
+        _cand_brand = str(node.get("brand") or "").strip()
+        if not strict_title_match(product_name, title, candidate_brand=_cand_brand):
             continue
         if variant_mismatch(product_name, title):
             continue
-        if not _selection_match(product_name, title, resolved_category):
+        if not _selection_match(product_name, title, resolved_category,
+                                candidate_brand=_cand_brand):
             continue
         t_words = normalize_words(title)
         score = (len(p_words & t_words) / len(p_words)) if p_words else 0.0
@@ -441,11 +496,20 @@ async def fetch_magento_graphql_price(
             "Store": store.get("store_view", "default"),
         }
         payload = await _post_graphql(
-            f"https://{host}/graphql", _SHAPE_B_QUERY,
+            f"https://{host}/graphql", _build_shape_b_query(store.get("brand_field")),
             {"phrase": product_name, "pageSize": _PAGE_SIZE}, headers,
         )
         items = _shape_b_items(payload)
-        nodes = [n for n in (_shape_b_price_node(it) for it in items if isinstance(it, dict)) if n]
+        nodes = [
+            n for n in (
+                _shape_b_price_node(
+                    it,
+                    brand_field=store.get("brand_field"),
+                    static_brand=store.get("static_brand", ""),
+                )
+                for it in items if isinstance(it, dict)
+            ) if n
+        ]
         node = _best_match(nodes, product_name, resolved_category=resolved_category)
         if node:
             # Shape-B PDP url REQUIRES a .html suffix (klinq bare path 302s away).
