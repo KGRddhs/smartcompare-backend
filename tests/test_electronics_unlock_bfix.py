@@ -33,17 +33,51 @@ _catalog_match_hit strict hard gate still rejects at the ADAPTER level — the
 row is unlocked via extra.com (unbxd) + the organic-PDP-harvest path (JSON-LD
 stamps brand="Apple"); weakening strict's brand requirement would reopen the
 L1/L2 wrong-brand class at every strict-only gate (the PR#13 bolo lesson).
+
+Wave C C2 (re-sweep kpiE2E RS-1 HIGH + RS-4 LOW) — THE ELEC-005 SHARAFDG
+UNLOCK on the RAW live title bytes. The BF3 T_SDG_MBA pin encoded a TRUNCATED
+plain-hyphen title that does not exist at the retailer (false green); the live
+title (probe2_out.json raw bytes, permalink-confirmed) carries a U+2011
+non-breaking hyphen in "8‑core", the "&amp;" HTML entity, macOS/keyboard-
+layout descriptor segments and the Sky Blue colourway — and was rejected
+END-TO-END. Fixes pinned here:
+  1. html-unescape at title INGESTION (_catalog_hit_fields / _hit_title /
+     unbxd / magento shape nodes / extract_jsonld_price — "&amp;" was
+     tokenizing as a false "amp" identity add);
+  2. the core-count regexes cover the unicode hyphen family [- ‐ ‑ –];
+  3. "keyboard" accessory-keyword exemption when the SAME surface carries a
+     laptop-class device noun (is_accessory_for_category — mirrors the BF4
+     pharmacy-'skin' scoping; broad is_accessory + the query-side flagship-
+     floor exclusion stay unscoped);
+  4. macOS-ANCHORED OS-version strip + laptop-scoped keyboard-LAYOUT strip
+     ("English & Arabic Keyboard" is a layout attribute, not identity — a
+     bare "arabic"/"tahoe" outside its anchor stays a discriminator) + "sky"
+     joins the ELECTRONICS-only colour tokens (Apple "Sky Blue"; fashion
+     keeps "Sky" distinctive).
 """
+import html
 import pytest
 
 from app.services.price_service import (
     _core_count_mismatch,
     _selection_match,
     _storage_mismatch,
+    extract_jsonld_price,
+    is_accessory,
+    is_accessory_for_category,
+    is_high_value_query,
     should_cache_price,
     strict_title_match,
 )
-from app.services.algolia_service import ALGOLIA_EXPLICIT_STORES, _catalog_match_hit
+from app.services.algolia_service import (
+    ALGOLIA_EXPLICIT_STORES,
+    _catalog_hit_fields,
+    _catalog_match_hit,
+)
+from app.services.magento_graphql_service import (
+    _shape_a_price_node,
+    _shape_b_price_node,
+)
 from app.services.unbxd_service import _match_unbxd_product
 from scripts.eval_runner import (
     load_usable_exact_genuine_truth,
@@ -69,8 +103,15 @@ T_SDG_S25U = ("Samsung Galaxy S25 Ultra 5G 256GB 12GB RAM Titanium Black AI "
               "Smartphone Middle East Version")
 T_SDG_IPAD = ("iPad Air 11-inch M3 (2025) Wi-Fi 128GB - Space Grey Middle "
               "East Version with FaceTime")
+# C2 (kpiE2E RS-1): the RAW live sharafdg title — VERBATIM bytes incl. the
+# U+2011 non-breaking hyphen in "8‑core" and the un-decoded "&amp;" entity
+# (WordPress post_title as served by the Algolia index; probe2_out.json).
 T_SDG_MBA = ("Apple MacBook Air M5 13-inch (2026) - 10-core CPU / 16GB RAM / "
-             "512GB SSD / 8-core GPU - Midnight")
+             "512GB SSD / 8‑core GPU / macOS Tahoe / English &amp; Arabic "
+             "Keyboard / Sky Blue / Middle East Version")
+# What _catalog_hit_fields emits (ingestion HTML-unescapes) — the bytes every
+# downstream gate (selection / cache-write / KPI-usable) actually sees.
+T_SDG_MBA_INGESTED = html.unescape(T_SDG_MBA)
 T_EXTRA_S25U = "SAMSUNG Galaxy S25 Ultra, 5G, 256 GB, Titanium Black"
 T_EXTRA_IPAD = "APPLE IPAD AIR M3 GEN 2025, Wi-Fi, 11 INCH, 128GB, Space Grey"
 T_EXTRA_MBA = "APPLE MacBook Air, M5, 16GB, 512GB SSD, 13 Inch IPS, 8 Core GPU, Silver"
@@ -222,7 +263,9 @@ class TestAiMarketingToken:
 class TestInchAxis:
     def test_bare_13_query_matches_13_inch_titles(self):
         # OR-2: BOTH wired sources for kpi-elec-005 carried the class.
-        assert _sel(Q_MBA, T_SDG_MBA, brand="Apple") is True
+        # (Matcher-level pins run on the INGESTED bytes — the raw "&amp;" is
+        # decoded at _catalog_hit_fields, see TestSharafdgLiveTitleUnlockC2.)
+        assert _sel(Q_MBA, T_SDG_MBA_INGESTED, brand="Apple") is True
         assert _sel(Q_MBA, T_EXTRA_MBA, brand="Apple") is True
 
     def test_bare_13_query_rejects_a_different_inch(self):
@@ -349,7 +392,7 @@ class TestEndToEndUnlock:
          "https://bahrain.sharafdg.com/product/11-inch-ipad-air-m3-2025/"),
         ("kpi-elec-004", Q_IPAD, T_EXTRA_IPAD,
          "https://www.extra.com/en-bh/x/p/100"),
-        ("kpi-elec-005", Q_MBA, T_SDG_MBA,
+        ("kpi-elec-005", Q_MBA, T_SDG_MBA_INGESTED,
          "https://bahrain.sharafdg.com/product/apple-macbook-air-m5/"),
         ("kpi-elec-005", Q_MBA, T_EXTRA_MBA,
          "https://www.extra.com/en-bh/x/p/100"),
@@ -365,3 +408,199 @@ class TestEndToEndUnlock:
                        100.0, "https://www.extra.com/en-bh/x/p/100")
         assert should_cache_price(Q_S25U, price, "electronics") is False
         assert _usable(Q_S25U, price, "kpi-elec-003") is False
+
+
+# ---------------------------------------------------------------------------
+# 6. Wave C C2 — THE ELEC-005 SHARAFDG UNLOCK on the RAW live title
+#    (kpiE2E RS-1 HIGH + RS-4 LOW)
+# ---------------------------------------------------------------------------
+
+class TestSharafdgLiveTitleUnlockC2:
+    """The RAW live sharafdg MacBook title through the FULL chain: ingestion
+    (entity decode) -> accessory gate -> matcher -> adapter -> cache -> KPI."""
+
+    def test_catalog_hit_fields_unescape_the_html_entity(self):
+        # RS-1 trigger (ingestion): "&amp;" tokenized as a false "amp"
+        # identity add — decode at the hit surface, where the stored title
+        # is born.
+        fields = _catalog_hit_fields(_sdg_hit(T_SDG_MBA, 499.899), _SDG_STORE)
+        assert "&amp;" not in fields["title"]
+        assert "English & Arabic Keyboard" in fields["title"]
+
+    def test_laptop_layout_keyboard_is_not_an_accessory(self):
+        # RS-4: GCC laptop listings state the keyboard LAYOUT mid-title — a
+        # bare "keyboard" hit with a laptop-class device noun on the SAME
+        # surface is a layout attribute, not an accessory.
+        assert is_accessory_for_category(T_SDG_MBA_INGESTED, "electronics") is False
+        assert is_accessory_for_category(
+            "Apple MacBook Pro M4 16GB 512GB Arabic Keyboard", "electronics") is False
+        assert is_accessory_for_category(
+            "Lenovo IdeaPad 5 Laptop English-Arabic Keyboard 512GB",
+            "electronics") is False
+
+    def test_real_keyboard_and_keyboard_accessory_still_reject(self):
+        # BOTH-DIRECTIONS bound (task-mandated): a real keyboard product
+        # (head noun, no device context) still classifies accessory, and any
+        # OTHER accessory keyword still flags even in laptop context.
+        assert is_accessory_for_category("Logitech MX Keys Keyboard",
+                                         "electronics") is True
+        assert is_accessory_for_category("Keyboard Case for MacBook Air 13",
+                                         "electronics") is True
+
+    def test_broad_is_accessory_and_flagship_floor_unchanged(self):
+        # The noisy Serper-shopping/zyte/rating nets keep the UNSCOPED keyword
+        # hit, and the QUERY-side flagship-floor exclusion is untouched: a
+        # laptop-keyboard accessory QUERY must stay excluded from the floor so
+        # its genuine cheap price is never floored away.
+        assert is_accessory(T_SDG_MBA_INGESTED) is True
+        assert is_high_value_query("Keyboard for MacBook Air") is False
+
+    def test_core_count_strip_covers_the_unicode_hyphen_family(self):
+        # RS-1 trigger (identity): U+2011 defeated the ASCII-hyphen-only
+        # _CORE_COUNT_RE — "8‑core" survived as a digit-bearing identity add.
+        for hyphen in ("-", "‐", "‑", "–"):
+            title = ("Apple MacBook Air M5 13-inch (2026) 512GB SSD "
+                     f"8{hyphen}core GPU")
+            assert _sel(Q_MBA, title, brand="Apple") is True, repr(hyphen)
+
+    def test_labeled_gpu_bin_discriminates_through_the_unicode_hyphen(self):
+        # C1's RS4 label-aware core-count axis must parse the U+2011 spelling
+        # too — the 8-GPU bin under a 10-GPU query stays a contradiction.
+        q10 = "MacBook Air M5 13 10-core CPU 10-core GPU 512GB"
+        t8 = ("Apple MacBook Air M5 13-inch 10‑core CPU / "
+              "8‑core GPU / 512GB SSD")
+        assert _core_count_mismatch(q10, t8) is True
+        assert _sel(q10, t8, brand="Apple") is False
+
+    def test_selection_accepts_the_ingested_live_title(self):
+        # Brandless FIRST — the live sharafdg hit carries NO brand key, so
+        # the adapter threads candidate_brand="" ("Apple" rides padding).
+        assert _sel(Q_MBA, T_SDG_MBA_INGESTED) is True
+        assert _sel(Q_MBA, T_SDG_MBA_INGESTED, brand="Apple") is True
+
+    def test_selection_accepts_the_single_layout_live_variant(self):
+        # The live "English Keyboard" (no Arabic) sibling row — same SKU shape.
+        t = ("Apple MacBook Air M5 13-inch (2026) - 10-core CPU / 16GB RAM / "
+             "512GB SSD / 8‑core GPU / macOS Tahoe / English Keyboard / "
+             "Sky Blue / Middle East Version")
+        assert _sel(Q_MBA, t) is True
+
+    def test_macos_version_strip_is_anchored_to_macos(self):
+        # "macOS <version>" is the shipping OS, never a SKU discriminator...
+        assert _sel(Q_MBA,
+                    "Apple MacBook Air M5 13-inch (2026) 512GB SSD macOS Sequoia",
+                    brand="Apple") is True
+        # ...but a bare version word WITHOUT its "macos" anchor stays a
+        # distinctive identity token (bound: never pad a floating word).
+        assert _sel(Q_MBA, "Apple MacBook Air M5 13-inch 512GB SSD Tahoe",
+                    brand="Apple") is False
+
+    def test_keyboard_layout_strip_is_laptop_scoped(self):
+        # A KEYBOARD product's layout still discriminates — no laptop-class
+        # noun on the surface, so "Arabic" stays a variant add.
+        assert _selection_match("Logitech K120 Keyboard",
+                                "Logitech K120 Arabic Keyboard",
+                                "electronics", candidate_brand="Logitech") is False
+
+    def test_bare_arabic_outside_the_keyboard_context_stays_identity(self):
+        # An Arabic-EDITION product is a DIFFERENT sellable unit — the strip
+        # is anchored to the "<layout> keyboard" phrase, never a bare token.
+        assert _sel("Amazon Kindle Paperwhite 16GB",
+                    "Amazon Kindle Paperwhite 16GB Arabic Edition") is False
+
+    def test_sky_colourway_is_electronics_scoped(self):
+        # "sky" joins _ELECTRONICS_ONLY_COLOR_TOKENS (Apple "Sky Blue") — for
+        # FASHION a bare "Sky" stays distinctive (Sky Jordan-class lines).
+        assert _selection_match("Nike Air Force 1 07",
+                                "Nike Air Force 1 07 Sky",
+                                "fashion", candidate_brand="Nike") is False
+
+    def test_accessory_exemption_never_admits_a_keyboard_accessory(self):
+        # LEAK-direction bound: a laptop-KEYBOARD accessory listing is now
+        # EXEMPT at the accessory gate (it carries the laptop noun) — the
+        # identity gates must still reject it end-to-end, and the flagship
+        # floor pends its accessory price.
+        from app.services.price_service import is_price_showable
+        acc = "Backlit Replacement Keyboard for MacBook Air 13 M5 512GB Models"
+        assert _catalog_match_hit([_sdg_hit(acc, 12.9)], Q_MBA, _SDG_STORE,
+                                  resolved_category="electronics") is None
+        assert _match_unbxd_product([_ux(acc, 12.9)], Q_MBA,
+                                    resolved_category="electronics") is None
+        assert _selection_match(Q_MBA, acc, "electronics") is False
+        assert is_price_showable(Q_MBA, _price(
+            acc, 12.9, "https://bahrain.sharafdg.com/product/kb/")) is False
+
+    def test_layout_stated_laptop_query_trade_documented(self):
+        # ACCEPTED TRADE (documented, not a leak class): a laptop query that
+        # itself STATES a layout ("... Arabic Keyboard") strips it like the
+        # title side, so an other-layout unit of the SAME laptop accepts —
+        # GCC layout is a region-standard attribute (the live sharafdg
+        # English vs English&Arabic rows price IDENTICALLY at 499.899);
+        # keeping layout as an axis would need a new both-stated axis, out of
+        # the C2 bound. A future tighten must flip THIS pin consciously.
+        t_en = ("Apple MacBook Air M5 13-inch (2026) - 10-core CPU / "
+                "16GB RAM / 512GB SSD / 8‑core GPU / macOS Tahoe / "
+                "English Keyboard / Sky Blue / Middle East Version")
+        assert _sel(Q_MBA + " Arabic Keyboard", t_en) is True
+
+    def test_wrong_skus_still_reject_on_the_live_title_shape(self):
+        # Storage flanker through the FULL live shape (fixes must not have
+        # widened any numeric axis).
+        wrong = T_SDG_MBA.replace("512GB SSD", "256GB SSD")
+        assert _catalog_match_hit([_sdg_hit(wrong, 399.9)], Q_MBA, _SDG_STORE,
+                                  resolved_category="electronics") is None
+        # The REAL 15-inch sibling rows — the bare "13" query contradicts.
+        wrong15 = T_SDG_MBA.replace("13-inch", "15-inch")
+        assert _catalog_match_hit([_sdg_hit(wrong15, 579.9)], Q_MBA, _SDG_STORE,
+                                  resolved_category="electronics") is None
+
+
+# ---------------------------------------------------------------------------
+# 7. Wave C C2 — the "&amp;" ingestion audit at the OTHER hit/title surfaces
+#    (unbxd / magento shape nodes / JSON-LD extract; woo already decodes)
+# ---------------------------------------------------------------------------
+
+class TestEntityUnescapeIngestionAuditC2:
+    def test_unbxd_match_surface_unescapes(self):
+        # extra.com lists Arabic-keyboard variants — the raw feed can carry
+        # the entity; the match surface must see the decoded "&".
+        t = ("APPLE MacBook Air, M5, 16GB, 512GB SSD, 13 Inch IPS, 8 Core GPU, "
+             "English &amp; Arabic Keyboard, Silver")
+        got = _match_unbxd_product([_ux(t, 609.99)], Q_MBA,
+                                   resolved_category="electronics")
+        assert got is not None
+
+    def test_magento_shape_nodes_unescape(self):
+        a = _shape_a_price_node({
+            "__typename": "SimpleProductView",
+            "name": "Polo Shirt Black &amp; White",
+            "urlKey": "polo",
+            "inStock": True,
+            "price": {"final": {"amount": {"value": 10.0, "currency": "BHD"}}},
+        })
+        assert a is not None and a["name"] == "Polo Shirt Black & White"
+        b = _shape_b_price_node({
+            "name": "Polo Shirt Black &amp; White",
+            "url_key": "polo",
+            "stock_status": "IN_STOCK",
+            "price_range": {"minimum_price": {
+                "final_price": {"value": 10.0, "currency": "BHD"}}},
+        })
+        assert b is not None and b["name"] == "Polo Shirt Black & White"
+
+    def test_jsonld_name_unescapes_and_matches(self):
+        # html.parser does NOT entity-decode <script> contents, so a JSON-LD
+        # blob's "&amp;" reaches the identity gates verbatim (the same false
+        # "amp" add class) — decode at ingestion, gate ON.
+        page = (
+            '<html><head><script type="application/ld+json">'
+            '{"@type": "Product", "name": "Apple MacBook Air M5 13-inch (2026) '
+            '512GB SSD 8‑core GPU macOS Tahoe English &amp; Arabic Keyboard", '
+            '"brand": "Apple", "offers": {"@type": "Offer", "price": "499.9", '
+            '"priceCurrency": "BHD", "availability": "https://schema.org/InStock"}}'
+            "</script></head><body></body></html>"
+        )
+        r = extract_jsonld_price(page, "Apple", "BHD", query_name=Q_MBA,
+                                 category="electronics")
+        assert r is not None and abs(r["amount"] - 499.9) < 0.01
+        assert "&amp;" not in (r.get("name") or "")

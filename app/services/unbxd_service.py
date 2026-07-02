@@ -24,6 +24,9 @@ browser. If extra-BH 401s, re-scrape the 32-hex apiKey from
 """
 import logging
 import asyncio
+# Entity-decode at title ingestion (Wave C C2, kpiE2E RS-1 audit — the same
+# "&amp;" -> false-"amp"-identity-token class as the sharafdg post_title).
+from html import unescape as html_unescape
 from typing import Optional, Dict, Any, List
 from urllib.parse import quote_plus
 
@@ -117,7 +120,10 @@ def _match_unbxd_product(
     for product in products:
         if not isinstance(product, dict):
             continue
-        surface = (product.get("title") or product.get("name") or "").strip()
+        # Entity-decode (C2) — extra.com feed titles can carry "&amp;" (the
+        # Arabic-keyboard variant rows); no-op on entity-free titles.
+        surface = html_unescape(
+            product.get("title") or product.get("name") or "").strip()
         if not surface:
             continue
         # Accessory check category-scoped (BF4, sweep OR-7): a bare 'skin' hit
@@ -225,7 +231,9 @@ async def fetch_unbxd_price(
     if raw_amount is None:
         return None
 
-    title = (product.get("title") or product.get("name") or "").strip()
+    # Entity-decode (C2) — the stamped title must match the match surface.
+    title = html_unescape(
+        product.get("title") or product.get("name") or "").strip()
     url = (product.get("productUrl") or "").strip() or (
         f"https://{norm_domain}/" if norm_domain else ""
     )

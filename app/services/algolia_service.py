@@ -28,6 +28,10 @@ import json
 import re
 import logging
 import asyncio
+# NAME import (uniform with price_service) — entity-decode at title ingestion
+# (Wave C C2, kpiE2E RS-1: the sharafdg WordPress post_title serves "&amp;"
+# verbatim through the Algolia index, tokenizing as a false "amp" identity add).
+from html import unescape as html_unescape
 from typing import Optional, Dict, Any, List
 
 from app.services.cache_service import get_cached, set_cached
@@ -534,14 +538,17 @@ def _catalog_hit_fields(
     """Per-store title / url / stock extraction for the explicit-key catalog
     stores (their field names differ from the 6thStreet shape)."""
     # title: sharafdg post_title, danube full_name_en, nahdi/6thstreet name,
-    # fallbacks. SKU-digit tails stripped (match surface AND stored title).
-    title = _strip_sku_tail((
+    # fallbacks. HTML-entity-decoded FIRST (C2: sharafdg's WP post_title
+    # carries "&amp;" — "English &amp; Arabic Keyboard" on the live MacBook
+    # rows; no-op on entity-free titles), then SKU-digit tails stripped
+    # (match surface AND stored title).
+    title = _strip_sku_tail(html_unescape((
         hit.get("post_title")
         or hit.get("full_name_en")
         or hit.get("name")
         or hit.get("title")
         or ""
-    ).strip())
+    )).strip())
 
     # url: sharafdg permalink, danube url_en (RELATIVE), nahdi url.
     url = (hit.get("permalink") or hit.get("url_en") or hit.get("url") or "").strip()
@@ -661,7 +668,9 @@ def _hit_title(hit: Dict[str, Any]) -> str:
     name (Algolia returns 'TOMS' footwear for a 'Tom Ford' query — the brand
     field is what tells them apart). SKU-digit name tails are stripped (they
     trip the numeric identity axis)."""
-    name = _strip_sku_tail((hit.get("name") or hit.get("title") or "").strip())
+    # Entity-decode like _catalog_hit_fields (C2) — same "&amp;" -> "amp" class.
+    name = _strip_sku_tail(html_unescape(
+        hit.get("name") or hit.get("title") or "").strip())
     brand = (hit.get("brand_name") or hit.get("brand") or hit.get("main_brand") or "").strip()
     return f"{brand} {name}".strip()
 
@@ -788,7 +797,10 @@ async def fetch_algolia_price(
 
     domain = (domain or "").replace("www.", "").strip().lower()
     url = hit.get("url") or hit.get("product_url") or (f"https://{domain}/" if domain else "")
-    title = _strip_sku_tail((hit.get("name") or hit.get("title") or "").strip())
+    # Entity-decode (C2) — the stamped/stored title must match the _hit_title
+    # match surface byte-for-byte.
+    title = _strip_sku_tail(html_unescape(
+        hit.get("name") or hit.get("title") or "").strip())
 
     price = {
         "amount": round(amount, 2),

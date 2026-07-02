@@ -43,6 +43,10 @@ import re
 import time
 import logging
 import asyncio
+# Entity-decode at name ingestion (Wave C C2, kpiE2E RS-1 audit) — Magento
+# stores product names HTML-escaped ("Black &amp; White"), the classic false
+# "amp" identity-token class.
+from html import unescape as html_unescape
 from typing import Optional, Dict, Any, List
 
 from app.services.price_service import (
@@ -54,7 +58,7 @@ from app.services.price_service import (
     normalize_words,
     variant_mismatch,
     is_counterfeit_listing,
-    is_accessory,
+    is_accessory_for_category,
     is_price_showable,
     exact_gate_enabled,
     _convert_to_bhd,
@@ -374,7 +378,9 @@ def _shape_a_price_node(pv: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     Brand comes from the generic Catalog-Service attributes entry name=="brand";
     absence tolerated (brand="" → legacy matching)."""
     typename = pv.get("__typename") or ""
-    name = pv.get("name") or ""
+    # Entity-decode (C2) — the node name is BOTH the match surface and the
+    # stamped title; no-op on entity-free names.
+    name = html_unescape(pv.get("name") or "")
     url_key = pv.get("urlKey") or ""
     in_stock = bool(pv.get("inStock", True))
     brand = ""
@@ -423,7 +429,8 @@ def _shape_b_items(payload: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
 def _shape_b_price_node(
     item: Dict[str, Any], brand_field: Optional[str] = None, static_brand: str = "",
 ) -> Optional[Dict[str, Any]]:
-    name = item.get("name") or ""
+    # Entity-decode (C2) — see _shape_a_price_node.
+    name = html_unescape(item.get("name") or "")
     url_key = item.get("url_key") or ""
     stock_status = (item.get("stock_status") or "").upper()
     in_stock = stock_status != "OUT_OF_STOCK"  # default True when unknown
@@ -478,7 +485,13 @@ def _best_match(
         title = node.get("name") or ""
         if not title:
             continue
-        if is_counterfeit_listing(title) or is_accessory(title):
+        # Accessory check category-scoped (C2, kpiE2E RS-4) — magento was the
+        # one direct store-API chain still on the broad is_accessory (BF4
+        # scoped occ/woo/salla/algolia x2/unbxd): a godukkan-class Magento
+        # laptop row ("... English Keyboard Sky Blue") was accessory-rejected
+        # on its layout segment. Same scoping as the other five chains.
+        if is_counterfeit_listing(title) or is_accessory_for_category(
+                title, resolved_category):
             continue
         if not numbers_match(product_name, title):
             continue

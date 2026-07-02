@@ -9,6 +9,10 @@ import time
 import asyncio
 import logging
 import unicodedata
+# NOTE: imported as a NAME, not the module — extract_jsonld_price /
+# _bolo_jsonld_main_price take a parameter literally called `html` that would
+# shadow the module inside those bodies (Wave C C2 entity-decode).
+from html import unescape as html_unescape
 from typing import Optional, List, Dict, Any, Tuple
 from urllib.parse import urlparse, quote_plus, urljoin
 
@@ -663,24 +667,53 @@ def is_accessory(title: str) -> bool:
 _PHARMACY_TITLE_CATEGORIES = frozenset({"skincare", "haircare", "supplements", "makeup"})
 _PHARMACY_BENIGN_ACCESSORY_KEYWORDS = frozenset({"skin"})
 
+# GCC laptop listings state the KEYBOARD LAYOUT mid-title (Wave C C2, kpiE2E
+# re-sweep RS-1/RS-4: "English & Arabic Keyboard" on EVERY live sharafdg
+# MacBook row; "Arabic Keyboard" is standard GCC retailer phrasing) — a bare
+# "keyboard" keyword hit alone must NOT classify a LAPTOP-class listing as an
+# accessory. Scoped like the pharmacy 'skin' exemption above, but by SURFACE
+# context (a laptop-class device noun on the SAME title) rather than category:
+# a real keyboard product ("Logitech MX Keys Keyboard" — head noun, no device
+# context) still rejects, and any OTHER accessory keyword ("Keyboard Case for
+# MacBook") still flags. The broad `is_accessory` keeps the unscoped hit — the
+# noisy Serper-shopping/zyte/rating nets AND the QUERY-side flagship-floor
+# exclusion (is_high_value_query: a laptop-keyboard accessory QUERY must stay
+# excluded so its genuine cheap price is never floored away) are unchanged.
+_LAPTOP_NOUN_RE = re.compile(
+    r"\b(?:macbook|macbooks|laptop|laptops|notebook|notebooks|chromebook|"
+    r"chromebooks|ultrabook|ultrabooks)\b"
+)
+_LAPTOP_CONTEXT_BENIGN_ACCESSORY_KEYWORDS = frozenset({"keyboard"})
+
 
 def is_accessory_for_category(title: str, category: Optional[str] = None) -> bool:
-    """Category-scoped `is_accessory` for the direct store-API matcher chains
-    (BF4, sweep OR-7): when the ORCHESTRATOR-RESOLVED category is a pharmacy
-    class (skincare/haircare/supplements/makeup), a bare "skin" keyword hit
-    alone must NOT classify a genuine pharmacy title ("CeraVe ... For Dry
-    Skin", "Nivea ... All Skin Types") as an accessory — any OTHER accessory
-    keyword still flags. Every non-pharmacy category (including None/"other"
-    — fail-closed: the scoping keys off the QUERY's resolved category, never
-    the title) keeps the full broad is_accessory, so a real phone-skin decal
-    under an electronics query still rejects. The Serper-shopping extractors
+    """Scoped `is_accessory` for the direct store-API matcher chains (BF4,
+    sweep OR-7 + Wave C C2, RS-4). Two bounded exemptions, one keyword each:
+
+    - PHARMACY category scope: when the ORCHESTRATOR-RESOLVED category is a
+      pharmacy class (skincare/haircare/supplements/makeup), a bare "skin"
+      keyword hit alone must NOT classify a genuine pharmacy title ("CeraVe
+      ... For Dry Skin", "Nivea ... All Skin Types") as an accessory —
+      fail-closed on the QUERY's resolved category, never the title, so a
+      real phone-skin decal under an electronics query still rejects.
+    - LAPTOP surface scope (C2): a bare "keyboard" hit is a LAYOUT attribute,
+      not an accessory, when the SAME surface carries a laptop-class device
+      noun ("MacBook ... English & Arabic Keyboard") — any non-pharmacy
+      category, keyed off the title context itself.
+
+    In both scopes any OTHER accessory keyword still flags. Everything else
+    keeps the full broad is_accessory. The Serper-shopping extractors
     deliberately keep the unscoped is_accessory (noisy listings need the
     broad net; direct store-API names are resolved products)."""
-    if (category or "").lower() not in _PHARMACY_TITLE_CATEGORIES:
-        return is_accessory(title)
     title_lower = (title or "").lower()
+    if (category or "").lower() in _PHARMACY_TITLE_CATEGORIES:
+        benign = _PHARMACY_BENIGN_ACCESSORY_KEYWORDS
+    elif _LAPTOP_NOUN_RE.search(title_lower):
+        benign = _LAPTOP_CONTEXT_BENIGN_ACCESSORY_KEYWORDS
+    else:
+        return is_accessory(title)
     for kw in ACCESSORY_KEYWORDS:
-        if kw in _PHARMACY_BENIGN_ACCESSORY_KEYWORDS:
+        if kw in benign:
             continue
         if re.search(r'\b' + re.escape(kw) + r'\b', title_lower):
             return True
@@ -3307,7 +3340,11 @@ _COLOR_ALIAS_CATEGORIES = frozenset({"electronics", "fashion"})
 # flat removal would over-reject genuine colour-suffixed listings — the
 # electronics identity strip keeps it via this scoped extension (the
 # tighten's own over-rejection is the next blind spot).
-_ELECTRONICS_ONLY_COLOR_TOKENS = frozenset({"shadow"})
+# "sky" (Wave C C2, kpiE2E RS-1): the Apple "Sky Blue" colourway on the LIVE
+# sharafdg MacBook Air M5 rows — an OEM colour word for ELECTRONICS, but kept
+# distinctive for FASHION (Sky Jordan-class line names), exactly the "shadow"
+# precedent.
+_ELECTRONICS_ONLY_COLOR_TOKENS = frozenset({"shadow", "sky"})
 
 # Model-line variant qualifiers that MUST match (set-equality, either direction).
 # Category-gated: applied ONLY to electronics so brand words that collide with a
@@ -3438,16 +3475,51 @@ _MATCH_INPUT_CAP = 512
 # mismatches after folding; both directions pinned).
 _LUXOTTICA_ZERO_RE = re.compile(r"^0([a-z]{2}\d{3,})$")
 
-# CPU/GPU core-COUNT spec phrasing ("10-core CPU", "8 Core GPU", "10core") —
-# retailer spec-sheet detail on electronics titles (BF3, sweep OR-2: the live
-# sharafdg MacBook M5 title carries BOTH "10-core CPU" and "8-core GPU", each
-# surviving as a digit-bearing identity token that variant-add-rejected the
-# EXACT SKU). Stripped from electronics IDENTITY and compared on its own
+# The unicode hyphen family GCC retailer titles actually carry (Wave C C2,
+# kpiE2E RS-1: the live sharafdg "8‑core" uses U+2011 NON-BREAKING HYPHEN,
+# permalink-confirmed %e2%80%91) — U+2010 HYPHEN, U+2011 NON-BREAKING HYPHEN,
+# U+2013 EN DASH. NFKD (_fold_identity) folds U+2011 -> U+2010 but leaves
+# U+2010/U+2013 intact, and the raw-text axes see all of them, so every
+# hyphen-shaped spec regex must accept the whole class alongside ASCII "-".
+_UNICODE_HYPHENS = "‐‑–"
+
+# CPU/GPU core-COUNT spec phrasing ("10-core CPU", "8 Core GPU", "10core",
+# and the unicode-hyphen "8‑core") — retailer spec-sheet detail on
+# electronics titles (BF3, sweep OR-2: the live sharafdg MacBook M5 title
+# carries BOTH "10-core CPU" and "8‑core GPU", each surviving as a
+# digit-bearing identity token that variant-add-rejected the EXACT SKU).
+# Stripped from electronics IDENTITY and compared on its own
 # both-stated-different axis (_core_count_mismatch) — one-sided tolerated
 # (the chip-tier axis carries the major discrimination), a contradicting
 # count (12-core query vs 10-core title) still rejects. Word forms only:
 # "dual/octa-core" carry no digit and stay with the octa/quad/core padding.
-_CORE_COUNT_RE = re.compile(r"\b(\d+)\s*(?:-\s*)?core\b", re.I)
+_CORE_COUNT_RE = re.compile(
+    rf"\b(\d+)\s*(?:[-{_UNICODE_HYPHENS}]\s*)?core\b", re.I,
+)
+
+# macOS-ANCHORED OS-version strip (Wave C C2, kpiE2E RS-1): "macOS Tahoe" /
+# "macOS Sequoia" is the SHIPPING OS a GCC retailer states mid-title — never
+# a SKU discriminator (the chip/model axes discriminate the laptop). BOUNDED:
+# the version word is stripped ONLY when anchored to its "macos" token — a
+# bare floating "tahoe"/"sequoia" stays a distinctive identity token, so a
+# product genuinely NAMED with one of these words never gains acceptance.
+_MACOS_VERSION_RE = re.compile(
+    r"\bmacos(?:\s+(?:tahoe|sequoia|sonoma|ventura|monterey))?\b"
+)
+
+# Keyboard-LAYOUT phrase strip (Wave C C2, kpiE2E RS-1): "English & Arabic
+# Keyboard" / "Arabic Keyboard" / "English Keyboard" is the standard GCC
+# laptop layout attribute — the language words are stripped ONLY in the
+# "<layout> keyboard" phrase (collapsed onto the already-padded "keyboard"
+# token), and ONLY on a LAPTOP-class surface (_LAPTOP_NOUN_RE at the call
+# site) — so a KEYBOARD product's layout ("Logitech K120 Arabic Keyboard")
+# and a bare "arabic"/"english" edition word anywhere else stay identity.
+# Runs on _fold_identity output ("/" already folded to a space); "&amp;" is
+# tolerated defense-in-depth for a title that missed the ingestion decode.
+_KEYBOARD_LAYOUT_RE = re.compile(
+    rf"\b(?:(?:english|arabic)\s*(?:&amp;|[&+,\-{_UNICODE_HYPHENS}]|and)?\s*)"
+    rf"{{1,2}}keyboards?\b"
+)
 
 
 def _identity_tokens_ps(text: str, brand: str = "", category: Optional[str] = None) -> set:
@@ -3482,6 +3554,16 @@ def _identity_tokens_ps(text: str, brand: str = "", category: Optional[str] = No
     # identity — compared on the _core_count_mismatch axis instead (BF3, OR-2).
     if cat == "electronics":
         folded = _CORE_COUNT_RE.sub(" ", folded)
+        # C2 (kpiE2E RS-1) — the sharafdg-style slash-segment descriptors:
+        # the SHIPPING OS ("macOS Tahoe", anchored to its "macos" token) and
+        # the keyboard LAYOUT ("English & Arabic Keyboard", laptop-class
+        # surfaces only, collapsed onto the padded "keyboard" token). Bounds
+        # pinned both directions in tests/test_electronics_unlock_bfix.py:
+        # a bare "tahoe"/"arabic" outside its anchor stays identity, and a
+        # keyboard PRODUCT's layout still discriminates (no laptop noun).
+        folded = _MACOS_VERSION_RE.sub(" ", folded)
+        if _LAPTOP_NOUN_RE.search(folded):
+            folded = _KEYBOARD_LAYOUT_RE.sub(" keyboard ", folded)
     # Fashion year/colourway re-release suffix ("'07") is noise, NOT the model number.
     if cat == "fashion":
         folded = re.sub(r"'\s*\d{2}\b", " ", folded)
@@ -4584,9 +4666,12 @@ def _ram_mismatch(query_name: str, candidate_title: str) -> bool:
 # Wave C (re-sweep RS4) — LABEL-AWARE core-count parse: the count's cpu/gpu
 # label ("10-Core CPU", "8 Core GPU") is captured when it directly follows the
 # "core" word (the real sharafdg/extra spec phrasing); an unlabelled count
-# ("12-core 1TB") keeps the old set semantics.
+# ("12-core 1TB") keeps the old set semantics. Hyphen class covers the
+# unicode family (C2, RS-1): this axis parses RAW text, where the live
+# sharafdg "8‑core GPU" carries U+2011 — ASCII-only missed it, so the 8-GPU
+# vs 10-GPU bin could not discriminate on the real title.
 _CORE_COUNT_LABELED_RE = re.compile(
-    r"\b(\d+)\s*(?:-\s*)?core\b(?:\s*(cpu|gpu))?", re.I,
+    rf"\b(\d+)\s*(?:[-{_UNICODE_HYPHENS}]\s*)?core\b(?:\s*(cpu|gpu))?", re.I,
 )
 
 
@@ -6575,13 +6660,26 @@ def extract_jsonld_price(
 
         for product in products:
             product_name = product.get("name", "")
+            # C2 (kpiE2E RS-1) — html.parser does NOT entity-decode <script>
+            # contents, so a JSON-LD name's "&amp;" reaches the identity gates
+            # verbatim and tokenizes as a false "amp" add. Decode at ingestion.
+            # GATED: the name is carried unconditionally for flag-OFF
+            # byte-identity (see the name-carry note below), so the flag-OFF
+            # path must keep the legacy raw bytes.
+            if exact_gate_enabled() and product_name:
+                product_name = html_unescape(product_name)
             # S3 #34 (blocker) — REJECT an accessory PDP. A "Galaxy S24 Case"
             # JSON-LD (brand Samsung, numbers 24, no model-line qualifier) was
             # matching as the phone → 11.9 BHD GENUINE-labeled confident-wrong
             # product (the exact "wrong scrape" forbidden). is_accessory was on
             # the shopping + Shopify matchers but MISSING here (the curl-scrape /
             # backfill JSON-LD path). A real phone PDP is not an accessory.
-            if is_accessory(product_name):
+            # C2 (RS-4): scoped via is_accessory_for_category — a resolved
+            # JSON-LD PDP name is exactly the "direct store-API" class the BF4
+            # scoping exists for (the godukkan/sharafdg MacBook PDPs all carry
+            # the "English Keyboard" layout segment); a Galaxy-case PDP still
+            # rejects ("case" flags in every scope).
+            if is_accessory_for_category(product_name, _category):
                 continue
             brand_nospace = brand_lower.replace(" ", "")
             name_nospace = product_name.lower().replace(" ", "")
@@ -7665,6 +7763,11 @@ def _bolo_jsonld_main_price(
             if not (isinstance(node, dict) and _is_product_type(node)):
                 continue
             ld_name = node.get("name", "") or ""
+            # C2 — same JSON-LD entity-decode as extract_jsonld_price (an
+            # "&amp;" in the blob is the page's escaping, not identity); gated
+            # to keep the flag-OFF path byte-identical.
+            if exact_gate_enabled() and ld_name:
+                ld_name = html_unescape(ld_name)
             # Validate the resolved PDP product against the query — a discovery
             # mis-resolve must not attribute the wrong product's price.
             # FAIL-CLOSED (source-intel review 2026-06-23, no-fab): a Product node
