@@ -2717,6 +2717,30 @@ def _fold_spaced_units(text: str) -> str:
     return _SPACED_UNIT_RE.sub(lambda m: m.group(1) + m.group(2), text)
 
 
+# Wave C (re-sweep RS8) — a digit-bearing UNIT-shaped query token ("5ml",
+# "8gb", "256gb", "11inch"; the _SPACED_UNIT_RE vocabulary) must match the
+# title on a token BOUNDARY, not as a raw substring: the spaced-unit fold
+# widened strict's per-word substring acceptance ("5ml" in the folded
+# "75 ml"->"75ml", "8gb" in "128 GB"->"128gb") on strict-ONLY surfaces (the
+# sitemap JSON-LD discovery chain has no _selection_match after strict).
+_STRICT_UNIT_TOKEN_RE = re.compile(
+    r"^\d+(?:\.\d+)?(?:gb|tb|ml|oz|mm|hz|mah|inch(?:es)?)$",
+)
+
+
+def _strict_word_present(word: str, title_normalized: str) -> bool:
+    """strict_title_match per-word presence: substring for ordinary words
+    (unchanged), token-boundary equality for unit-shaped digit tokens (RS8).
+    The boundary excludes [a-z0-9.] on the left ('.' so "5ml" never matches
+    inside a decimal "13.5ml") and [a-z0-9] on the right."""
+    if not _STRICT_UNIT_TOKEN_RE.match(word):
+        return word in title_normalized
+    return re.search(
+        r"(?<![a-z0-9.])" + re.escape(word) + r"(?![a-z0-9])",
+        title_normalized,
+    ) is not None
+
+
 def normalize_words(text: str) -> set:
     """Normalize words for matching."""
     text = _APOSTROPHES_RE.sub("", text)
@@ -2805,6 +2829,11 @@ def strict_title_match(
         and w.replace("-", "") not in MANUFACTURER_BRAND_WORDS
         and w.replace("-", "") not in brand_toks
     ]
+    # RS8 — unit-shaped digit tokens need a token BOUNDARY ("5ml" must not
+    # substring-match the folded "75ml"). Gate-scoped like the fold itself so
+    # the rollback surface keeps the raw substring check byte-for-byte.
+    if exact_gate_enabled():
+        return all(_strict_word_present(w, title_normalized) for w in key_words)
     return all(w in title_normalized for w in key_words)
 
 
@@ -4552,22 +4581,68 @@ def _ram_mismatch(query_name: str, candidate_title: str) -> bool:
     return not (qr & tr)
 
 
-def _core_counts(text: str) -> set:
-    """The CPU/GPU core-count values stated in `text` ("10-core CPU / 8-core
-    GPU" -> {10, 8}). Set semantics like _ram_value — a title stating both CPU
-    and GPU counts matches a query stating either."""
-    return {int(m) for m in _CORE_COUNT_RE.findall(text or "")}
+# Wave C (re-sweep RS4) — LABEL-AWARE core-count parse: the count's cpu/gpu
+# label ("10-Core CPU", "8 Core GPU") is captured when it directly follows the
+# "core" word (the real sharafdg/extra spec phrasing); an unlabelled count
+# ("12-core 1TB") keeps the old set semantics.
+_CORE_COUNT_LABELED_RE = re.compile(
+    r"\b(\d+)\s*(?:-\s*)?core\b(?:\s*(cpu|gpu))?", re.I,
+)
+
+
+def _labeled_core_counts(text: str) -> Tuple[set, set, set]:
+    """(cpu, gpu, unlabelled) core-count value sets stated in `text`
+    ("10-core CPU / 8-core GPU" -> ({10}, {8}, set()); "12-core" ->
+    (set(), set(), {12}))."""
+    cpu: set = set()
+    gpu: set = set()
+    unlabeled: set = set()
+    for count, label in _CORE_COUNT_LABELED_RE.findall(text or ""):
+        v = int(count)
+        lab = label.lower()
+        if lab == "cpu":
+            cpu.add(v)
+        elif lab == "gpu":
+            gpu.add(v)
+        else:
+            unlabeled.add(v)
+    return cpu, gpu, unlabeled
 
 
 def _core_count_mismatch(query_name: str, candidate_title: str) -> bool:
-    """Electronics — True iff BOTH state a core count and they share none
-    (a 12-core query vs a 10-core CPU / 16-core GPU title). One-sided is
-    tolerated: the count is spec phrasing stripped from identity (BF3), and
-    the chip-tier / model axes carry the major discrimination."""
-    qc, tc = _core_counts(query_name), _core_counts(candidate_title)
-    if not qc or not tc:
-        return False
-    return not (qc & tc)
+    """Electronics — True iff both sides state core counts that CONTRADICT.
+    One-sided (either side states none at all) is tolerated: the count is spec
+    phrasing stripped from identity (BF3), and the chip-tier / model axes
+    carry the major discrimination.
+
+    LABEL-AWARE (Wave C, re-sweep RS4): the old flat set-INTERSECTION masked a
+    differing GPU bin whenever the CPU count was shared — the real M4 Air
+    10c/8g title was accepted for the 10c/10g query (a distinct, pricier
+    Apple bin). Semantics now:
+      - a label BOTH sides state (cpu-vs-cpu, gpu-vs-gpu) must share a value;
+      - an UNLABELLED value keeps the old set semantics against the other
+        side's FULL value set (which bin it refers to is unknowable — reject
+        only when it appears nowhere, the pre-RS4 pinned behaviour);
+      - both sides fully UNLABELLED compare set EQUALITY (a stated count set
+        that differs is a different bin; singletons behave exactly as the old
+        disjoint check)."""
+    q_cpu, q_gpu, q_un = _labeled_core_counts(query_name)
+    t_cpu, t_gpu, t_un = _labeled_core_counts(candidate_title)
+    q_all = q_cpu | q_gpu | q_un
+    t_all = t_cpu | t_gpu | t_un
+    if not q_all or not t_all:
+        return False  # one-sided tolerated
+    if q_cpu and t_cpu and not (q_cpu & t_cpu):
+        return True
+    if q_gpu and t_gpu and not (q_gpu & t_gpu):
+        return True
+    if not (q_cpu or q_gpu or t_cpu or t_gpu):
+        return q_un != t_un  # both fully unlabelled → set equality
+    if q_un and not (q_un & t_all):
+        return True
+    if t_un and not (t_un & q_all):
+        return True
+    return False
 
 
 # Apple silicon CHIP-TIER axis — "M3" (base) vs "M3 Pro" vs "M3 Max" vs "M3 Ultra" are
@@ -4872,9 +4947,42 @@ def selection_primary_admits(
     unaffected (both pinned in tests/test_selection_primary_acceptance.py).
     Flag OFF (or exact gate OFF) -> False -> the strict hard pre-gate,
     byte-identical pre-change behaviour.
+
+    Wave C (re-sweep RS2 + RS7): the fence logic itself is CENTRALIZED in
+    _brand_evidence_ok — this wrapper only adds the selection-primary flag
+    gate. The shared consumers (extract_price_from_shopping / select_best /
+    should_cache_price) call the helper directly, so the fence can never
+    fork/drift between the adapter fallthroughs and the no-adapter paths.
     """
     if not adapter_selection_primary_enabled():
         return False
+    return _brand_evidence_ok(
+        query_name, candidate_title,
+        candidate_brand=candidate_brand, category=category,
+    )
+
+
+def _brand_evidence_ok(
+    query_name: str, candidate_title: str, *,
+    candidate_brand: str = "", category: Optional[str] = None,
+) -> bool:
+    """THE BF1 wrong-brand fence, centralized (Wave C, re-sweep RS2 + RS7 +
+    kpiE2E RS-2). Semantics as documented on selection_primary_admits, with
+    the RS2 tightening: the candidate's stated brand is compared against the
+    QUERY's padding-BRAND token(s) ONLY — alias-expanded on BOTH sides — never
+    against the full query token set. Pre-RS2 a compound/junk brand FIELD
+    ("Vans Suede", "Classic") re-opened the L1 wrong-brand leak by
+    intersecting a NON-brand query word ('suede'/'classic'), the exact chains
+    BF1 closed.
+
+    Bounded exactly like BF1: only queries whose brand token is
+    padding-strippable (_MANUFACTURER_NOISE ∩ category padding) are fenced;
+    path (b) — no candidate-brand signal — requires the brand folded in the
+    TITLE for FASHION only (electronics keeps the B4 brand-omitted unlock).
+    exact gate OFF → True (no-op; the callers are themselves gate-scoped, and
+    the selection-primary wrapper hard-requires the gate already)."""
+    if not exact_gate_enabled():
+        return True
     cat = (category or "").lower()
     if cat == "other":
         # Mirror _selection_match's explicit-"other" re-inference so the fence
@@ -4887,6 +4995,11 @@ def selection_primary_admits(
     q_brand = q_toks & padding_brands
     if not q_brand:
         return True
+    # RS2 — the evidence target is the query's BRAND token(s), alias-expanded.
+    q_brand_exp = set(q_brand)
+    for _group in _BRAND_ALIAS_GROUPS:
+        if q_brand_exp & _group:
+            q_brand_exp = q_brand_exp | _group
     cand_toks = {
         w for w in normalize_words(_fold_identity(candidate_brand or ""))
         if len(w) > 2 and not w.isdigit()
@@ -4895,11 +5008,11 @@ def selection_primary_admits(
         for _group in _BRAND_ALIAS_GROUPS:
             if cand_toks & _group:
                 cand_toks = cand_toks | _group
-        return bool(cand_toks & q_toks)
+        return bool(cand_toks & q_brand_exp)
     if cat != "fashion":
         return True
     t_toks = normalize_words(_fold_identity(candidate_title or ""))
-    return bool(q_brand & t_toks)
+    return bool(q_brand_exp & t_toks)
 
 
 def _ladder_fold_token(tok: str) -> str:
@@ -5144,6 +5257,45 @@ def is_exact_match(
 _MODEL_YEAR_RE = re.compile(r"^202[0-9]$")
 _MODEL_YEAR_CATEGORIES = frozenset({"electronics", "fashion"})
 
+# Wave C (re-sweep RS1 + kpiE2E RS-3) — the year tolerance is RE-BOUND to the
+# retailer RELEASE-TAG ANNOTATION shapes on the RAW title: "(2025)" and
+# "GEN 2025" (the two live sharafdg/extra forms the BF3 unlock needed). A bare
+# mid-title year is a MODEL / SEASON / GENERATION name (Air Max 2021, jersey
+# 2024 seasons, Watch SE (2020)-class re-releases sell at 2-3x spreads) and
+# stays identity.
+_ANNOTATION_YEAR_RE = re.compile(
+    r"\(\s*(202[0-9])\s*\)|\bgen[\s\-]+(202[0-9])\b", re.I,
+)
+# A digit-run followed by a pure-letter unit tail ("128gb", "44mm", "13inch",
+# "2xl") is a MEASURE-shaped token — never a generation discriminator.
+_MEASURE_SHAPE_TOKEN_RE = re.compile(r"\d+(?:\.\d+)?[a-z]+")
+
+
+def _annotation_year_tokens(title: str) -> set:
+    """The 2020s year tokens that appear in ANNOTATION form in raw `title`
+    ("iPad Air (2025) M3" -> {"2025"}; a bare "Air Max 2021" -> set())."""
+    out = set()
+    for m in _ANNOTATION_YEAR_RE.finditer(title or ""):
+        out.add(m.group(1) or m.group(2))
+    return out
+
+
+def _year_generation_discriminators(q_core: set) -> set:
+    """The query-core tokens that pin a product GENERATION independently of a
+    year: digit-bearing model/chip tokens (m3 / m5 / s25 / wh1000xm5 / a bare
+    model number "15"/"9"-post-ordinal-fold) — NEVER a 202x year itself and
+    NEVER a measure-shaped token (128gb / 44mm / 13inch / 2xl). Only when the
+    title carries one of these too is a title-side annotation year redundant
+    release-tag padding (re-sweep RS1/RS-3: the year-ONLY-discriminated
+    families — iPhone SE / Watch SE / jersey seasons — must keep the year as
+    identity)."""
+    return {
+        w for w in q_core
+        if any(c.isdigit() for c in w)
+        and not _MODEL_YEAR_RE.match(w)
+        and not _MEASURE_SHAPE_TOKEN_RE.fullmatch(w)
+    }
+
 # Marketing tokens tolerated on the TITLE side only (the 2025+ Samsung
 # "AI Smartphone" class killing kpi-elec-002/003) — NEVER dropped from the
 # query side: a hypothetical product line named "AI" ("Nothing AI Phone")
@@ -5165,10 +5317,35 @@ _ELECTRONICS_TITLE_SIDE_TOLERATED = frozenset({"ai"})
 # collapsed by normalize_words, hence the glued "vneck" form. The class axis
 # is untouched: polo-vs-t-shirt still class-swap-rejects (the garment nouns
 # live in _GENERIC_FASHION_NOUNS, consulted BEFORE this tolerance).
+#
+# Wave C (re-sweep RS5): bare "crew"/"neck" are NO LONGER in the static set —
+# a bare 'crew' is a BRAND word ("J Crew", made brand-invisible by the
+# tolerance after 'j' fell to the len rule) and a bare 'neck' asserts nothing
+# about construction. They are tolerated ONLY when the RAW title carries a
+# garment NECKLINE BIGRAM ("crew neck" / "v neck" / "round neck", hyphen or
+# space) — see _fashion_construction_tolerated_for. The glued single tokens
+# ("crewneck"/"vneck") stay, as do embroidery/embroidered/stitch/stitched
+# (the BF4 pin battery; the Disney-'Stitch' residual is documented in the
+# re-sweep and deliberately out of the RS5 bound).
 _FASHION_CONSTRUCTION_TOLERATED = frozenset({
-    "crew", "neck", "crewneck", "vneck", "embroidery", "embroidered",
+    "crewneck", "vneck", "embroidery", "embroidered",
     "stitch", "stitched",
 })
+_FASHION_NECKLINE_BIGRAM_RE = re.compile(r"\b(crew|v|round)[\s\-]+neck\b", re.I)
+
+
+def _fashion_construction_tolerated_for(candidate_title: str) -> frozenset:
+    """The title-CONDITIONAL construction-descriptor token set (RS5): the
+    neckline words 'crew'/'v'/'round' + 'neck' join the tolerated set only
+    when the raw title spells the garment bigram — so the bigram's own tokens
+    are droppable while a bare 'crew'/'neck' elsewhere stays distinctive."""
+    extra = set()
+    for m in _FASHION_NECKLINE_BIGRAM_RE.finditer(candidate_title or ""):
+        extra.add(m.group(1).lower())
+        extra.add("neck")
+    if extra:
+        return _FASHION_CONSTRUCTION_TOLERATED | frozenset(extra)
+    return _FASHION_CONSTRUCTION_TOLERATED
 
 
 def _inch_digit_tokens(text: str) -> set:
@@ -5254,12 +5431,24 @@ def _selection_match(
     # BF3 (sweep OR-1..OR-4) — bounded, query-CONDITIONAL title-side
     # tolerances. See the helper block above _selection_match.
     if cat in _MODEL_YEAR_CATEGORIES:
-        # ONE-SIDED model-year: a title-side bare 2020s year ("(2025)",
-        # "GEN 2025") is release-tag padding IFF the query states NO year;
-        # a query-stated year keeps the full axis (a 2022 query neither
-        # matches a (2020) title nor a year-omitting one).
+        # ONE-SIDED model-year, RE-BOUND (Wave C, re-sweep RS1 + kpiE2E RS-3).
+        # A title-side 2020s year is release-tag padding ONLY when ALL of:
+        #   (a) it appears in an ANNOTATION form on the RAW title — "(2025)" /
+        #       "GEN 2025" — a bare mid-title year is a MODEL/SEASON name
+        #       (Air Max 2021, jersey 2024) and stays identity;
+        #   (b) the query carries a NON-YEAR generation discriminator
+        #       (M3/M5/S25-class digit-bearing token, never a measure like
+        #       128GB/44mm) that the title ALSO carries — the year is then
+        #       redundant annotation on an already-pinned generation. The
+        #       year-ONLY-discriminated families (iPhone SE / Watch SE) keep
+        #       the year required and fail closed;
+        #   (c) the query states NO year (a query-stated year keeps the full
+        #       axis: a 2022 query neither matches a (2020) title nor a
+        #       year-omitting one — unchanged).
         if not any(_MODEL_YEAR_RE.match(w) for w in q_core):
-            t_core = {w for w in t_core if not _MODEL_YEAR_RE.match(w)}
+            _annot_years = _annotation_year_tokens(candidate_title)
+            if _annot_years and (_year_generation_discriminators(q_core) & t_core):
+                t_core = t_core - _annot_years
     if cat == "electronics":
         # TITLE-side-only marketing tokens ("... AI Smartphone ..."): a title
         # ADD the query never stated is tolerated — but a token the QUERY
@@ -5285,8 +5474,9 @@ def _selection_match(
         # non-empty bound keeps the emptied fashion brand/class-query fence
         # ("Nike T-Shirt" matches no specific member) unchanged: the
         # tolerance must never blank a construction-only distinctive core
-        # into an accept.
-        t_core = t_core - (_FASHION_CONSTRUCTION_TOLERATED - q_core)
+        # into an accept. RS5: the neckline words are title-BIGRAM-conditional
+        # (see _fashion_construction_tolerated_for).
+        t_core = t_core - (_fashion_construction_tolerated_for(candidate_title) - q_core)
     if cat == "makeup":
         # A spelled-out shade NAME on the candidate is descriptive when BOTH sides carry
         # the SAME shade NUMBER ("Fit Me 240" -> "Fit Me 240 Soft Sand"); accept — BUT only
@@ -5498,6 +5688,15 @@ def select_best(
         brand = c.get("brand") or ""
         if not _selection_match(query_name, title, category, candidate_brand=brand):
             continue
+        # Wave C (kpiE2E re-sweep RS-2) — the BF1 wrong-brand fence on the
+        # shared selector: the organic-harvest → JSON-LD route reaches
+        # select_best with NO adapter fence in the path, so a wrong-brand /
+        # brandless same-model-word fashion row was picked (then shown +
+        # cached). Same centralized helper as the adapter fallthroughs.
+        if not _brand_evidence_ok(
+            query_name, title, candidate_brand=str(brand), category=category,
+        ):
+            continue
         eligible.append(c)
     if not eligible:
         return None
@@ -5564,6 +5763,11 @@ def query_confirmed_structured_code(code: Any, query_words: set) -> str:
 # _selection_match gates accept.
 _STRUCTURED_OVERRIDE_BLOCK_TOKENS = frozenset({
     "kids", "kid", "gs", "gift", "set", "tester", "decant",
+    # Wave C (re-sweep RS3) — the sibling kid-SEGMENT and bundle wordings GCC
+    # stores actually use ("Boys"/"Girls"/"Junior" on 6thstreet, "with Cap
+    # Bundle"): each is a differently-priced sellable unit sharing the model's
+    # style code, so the confirmed code must not waive the variant fence.
+    "boys", "girls", "junior", "youth", "toddler", "bundle", "combo",
 })
 
 
@@ -5673,7 +5877,16 @@ def should_cache_price(
     if _selection_match(
         request_name, title, category, candidate_brand=price.get("brand", ""),
     ):
-        return True
+        # Wave C (re-sweep RS7 / kpiE2E RS-2) — the BF1 wrong-brand fence on
+        # the WRITE gate: a keystone pass alone still cached the wrong-brand /
+        # brandless same-model-word fashion row under the genuine TTL on the
+        # no-adapter paths (shopping / harvest JSON-LD). Same centralized
+        # helper; the structured-code override below keeps its own brand
+        # protection (strict_title_match keeps the query brand required).
+        return _brand_evidence_ok(
+            request_name, title,
+            candidate_brand=str(price.get("brand") or ""), category=category,
+        )
     # Wave-B parity — the bounded structured-identity override the algolia
     # matcher already ran (A3): a query-confirmed model code relaxes ONLY the
     # variant-add direction; leak direction + axes stay enforced. Without this
@@ -6149,6 +6362,17 @@ def extract_price_from_shopping(
         # related product missing a query discriminator, while tolerating a descriptive
         # listing title. No-op when the rollback flag is OFF.
         if not _selection_match(product_name, title, _category):
+            continue
+        # Wave C (re-sweep RS7) — the BF1 wrong-brand fence at the SHARED
+        # shopping tier: a fashion padding-brand query stripped its brand from
+        # the keystone, so a brandless same-model-word row ("Superstar White
+        # Sneakers" — could be Golden Goose) served + cached with no adapter
+        # fence in the path. Shopping items carry no brand field → path (b):
+        # the query's brand must appear folded in the title (fashion only).
+        if not _brand_evidence_ok(
+            product_name, title,
+            candidate_brand=str(item.get("brand") or ""), category=_category,
+        ):
             continue
 
         t_words = normalize_words(title)

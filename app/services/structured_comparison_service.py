@@ -1699,6 +1699,54 @@ def _organic_pdp_harvest_enabled() -> bool:
 # occurrence never matches; /saudi-en, /uae-ar, ... never gain BH status.
 _BH_LOCALE_PATH_RE = re.compile(r"^/(?:bahrain|bh)-(?:en|ar)(?:/|$)")
 
+# Wave C (re-sweep RS6) — the BH-locale PATH rung additionally requires the
+# host to be a REGISTRY-KNOWN retail domain: any row of the consolidated
+# BH/GCC catalog file regardless of status (a "dead" catalog row — namshi —
+# still names a REAL retailer whose BH storefront the path marks) plus the
+# runtime SOURCE_REGISTRY literals. A URL path is controllable by ANY site
+# operator, so pre-RS6 an SEO fake ("best-bahrain-prices.com/bahrain-en/…")
+# entered the fan_out pool where it previously failed closed. Lazy-loaded
+# once; a missing/unreadable catalog fails CLOSED (empty set → the path rung
+# never grants).
+_BH_LOCALE_KNOWN_DOMAINS: Optional[frozenset] = None
+
+
+def _bh_locale_known_retail_domains() -> frozenset:
+    global _BH_LOCALE_KNOWN_DOMAINS
+    if _BH_LOCALE_KNOWN_DOMAINS is None:
+        domains: set = set()
+        try:
+            from app.services.source_router import (
+                SOURCE_REGISTRY,
+                _CATALOG_DATA_PATH,
+            )
+            for s in SOURCE_REGISTRY:
+                domains.add(s.domain.replace("www.", "").lower())
+            if _CATALOG_DATA_PATH.exists():
+                rows = json.loads(_CATALOG_DATA_PATH.read_text(encoding="utf-8"))
+                for row in rows if isinstance(rows, list) else []:
+                    if isinstance(row, dict):
+                        d = str(row.get("domain") or "").strip().lower()
+                        if d.startswith("www."):
+                            d = d[4:]
+                        if d:
+                            domains.add(d)
+        except Exception as exc:  # noqa: BLE001 — fail-closed on any load error
+            logger.warning(
+                "[PRICE] BH-locale known-domain load failed (%s) — "
+                "path evidence disabled", exc,
+            )
+        _BH_LOCALE_KNOWN_DOMAINS = frozenset(domains)
+    return _BH_LOCALE_KNOWN_DOMAINS
+
+
+def _bh_locale_host_registry_known(host: str) -> bool:
+    """True iff `host` (lowered, www-stripped) suffix-matches a catalog/literal
+    retail domain — the source_router suffix semantics (a regional subdomain
+    counts under its apex)."""
+    known = _bh_locale_known_retail_domains()
+    return any(host == d or host.endswith("." + d) for d in known)
+
 
 def _organic_host_bh_gcc_retail(host: str, path: str = "") -> Tuple[bool, bool]:
     """(eligible, registry_known) for `host` (lowered, www-stripped) as a
@@ -1711,7 +1759,9 @@ def _organic_host_bh_gcc_retail(host: str, path: str = "") -> Tuple[bool, bool]:
     (off-registry rung, registry_known=False). It sits BELOW the global-tier
     rejection, so amazon.com/bahrain-en stays excluded; en-sa.ounass.com keeps
     its gcc REGISTRY eligibility exactly as before (the path is irrelevant
-    there)."""
+    there). Wave C (RS6): the path rung fires only for a registry-KNOWN retail
+    domain (catalog row of ANY status — namshi's dead row qualifies; an
+    arbitrary off-registry .com with a crafted /bahrain-en/ path does not)."""
     if not host:
         return False, False
     tier = registry_tier(host)
@@ -1720,10 +1770,12 @@ def _organic_host_bh_gcc_retail(host: str, path: str = "") -> Tuple[bool, bool]:
     if tier == "global":
         return False, False
     # Off-registry: explicitly-BH hosts, or a BH-locale path on an https host
-    # (the caller passes path="" for non-https).
+    # (the caller passes path="" for non-https) belonging to a catalog-known
+    # retailer (RS6).
     if host.endswith(".bh") or host.startswith("bahrain."):
         return True, False
-    if path and _BH_LOCALE_PATH_RE.match(path.lower()):
+    if (path and _BH_LOCALE_PATH_RE.match(path.lower())
+            and _bh_locale_host_registry_known(host)):
         return True, False
     return False, False
 

@@ -159,9 +159,19 @@ class TestModelYearTolerance:
                     "Apple iPhone SE 128GB", brand="Apple") is False
 
     def test_fashion_release_year_tolerated_one_sided_only(self):
+        # UPDATED by Wave C (re-sweep RS1 + kpiE2E RS-3): the year tolerance
+        # now additionally requires a query-side NON-YEAR generation
+        # discriminator (M3/S25-class digit token) that the title matches —
+        # for fashion the year IS the season/generation SKU (jersey 2024,
+        # Air Max 2021, re-release years), so "Adidas Samba OG" (no
+        # discriminator) no longer tolerates the "(2024)" annotation. The
+        # REAL footlocker kpi-fash-002 title ("adidas Samba OG - Unisex
+        # Shoes", test_footlocker_fashion_wiring) carries NO year — the KPI
+        # row is unaffected; this synthetic variant pinned the exact leak
+        # class the re-sweep confirmed (fail-closed direction accepted).
         assert _selection_match("Adidas Samba OG",
                                 "adidas Samba OG (2024) - Unisex Shoes",
-                                "fashion", candidate_brand="adidas") is True
+                                "fashion", candidate_brand="adidas") is False
         assert _selection_match("Air Jordan 4 Retro 2020",
                                 "Air Jordan 4 Retro (2024)",
                                 "fashion", candidate_brand="Nike") is False
