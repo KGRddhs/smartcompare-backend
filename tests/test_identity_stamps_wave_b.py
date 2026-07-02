@@ -28,8 +28,13 @@ adversarial (a wrong-brand stamp is not a bypass; an unqueried structured_code
 relaxes nothing; an axis-contradicting candidate still refuses; a pure-digit
 code never bridges models; flag-OFF carries no stamps).
 
-kpi-fash-005 (polo) KPI is xfail-pinned: the KPI identity contract reads only
-the resolved TITLE — Wave-2 VariantDescriptor scope (task 3b ruling).
+Wave B-FIX BF5 (sweep OR-5) — EVAL-CONTRACT PARITY: the KPI contract
+(usable_exact_genuine_for_product) now mirrors the SAME bounded structured-code
+override the write gate runs (_structured_code_cache_override, post-BF2
+bounds), so the L1212 dict the runtime caches finally also COUNTS usable
+against the real truth entry (the polo xfail was promoted). A wrong-brand,
+unqueried-code, or variant-add (gift-set) dict still refuses at the KPI end —
+pinned in the eval-contract-bounds section below.
 """
 import json
 import os
@@ -273,20 +278,51 @@ async def test_polo_write_gate_passes_via_structured_code():
 
 
 @pytest.mark.asyncio
-@pytest.mark.xfail(
-    strict=True,
-    reason="kpi-fash-005 KPI — Wave-2 VariantDescriptor scope (task 3b ruling): "
-           "the KPI identity contract (usable_exact_genuine_for_product) reads "
-           "only the resolved TITLE; the 6thstreet display name omits the model "
-           "code and its descriptive words read as variant-adds, so "
-           "_selection_match refuses even the brand+code-enriched surface. "
-           "Carrying structured_code into the KPI check would loosen the leak "
-           "gate for every consumer — deferred to the structured "
-           "VariantDescriptor.",
-)
-async def test_polo_kpi_contract_wave2_scope():
+async def test_polo_kpi_contract_counts_via_structured_code():
+    """kpi-fash-005 KPI — PROMOTED from the Wave-B xfail (BF5, sweep OR-5):
+    the eval contract mirrors the write gate's bounded structured-code
+    override (_structured_code_cache_override — query-confirmed code +
+    strict leak-direction + numbers + axis checks, post-BF2 tightening), so
+    the cached L1212 dict now COUNTS usable against the REAL truth entry.
+    The KPI definition is "exact requested SKU" — a query-confirmed retailer
+    style code IS exactness evidence, but ONLY under the full BF2 bounds."""
     out = await _fetch_6thstreet(FASH_005["query"], {"hits": [_POLO_HIT]})
+    assert out is not None
+    assert should_cache_price(FASH_005["query"], out, "fashion") is True
     assert measure_usable(out, FASH_005) is True
+
+
+# ---------------------------------------------------------------------------
+# (2b) BF5 eval-contract BOUNDS — the KPI-side override is the SAME bounded
+# override as the write gate; it must never become a bypass either.
+# ---------------------------------------------------------------------------
+
+def test_kpi_contract_wrong_brand_dict_still_refuses():
+    """BF5 bound: the KPI-side override keeps strict's leak direction — a
+    wrong-brand stamp leaves the query's own 'lacoste' token missing from the
+    brand+title+code surface, so the dict never counts usable."""
+    assert measure_usable(_polo_price_dict(brand="Fred Perry"), FASH_005) is False
+
+
+def test_kpi_contract_unqueried_code_still_refuses():
+    """BF5 bound: a code the truth query never stated relaxes NOTHING at the
+    KPI end (query_confirmed_structured_code returns ''), and a dict with no
+    code at all keeps the plain _selection_match verdict (refuses on the
+    descriptive variant-adds)."""
+    assert measure_usable(
+        _polo_price_dict(structured_code="PH4012"), FASH_005) is False
+    bare = {k: v for k, v in _polo_price_dict().items()
+            if k != "structured_code"}
+    assert measure_usable(bare, FASH_005) is False
+
+
+def test_kpi_contract_variant_add_through_code_still_refuses():
+    """BF5 bound: the BF2 sellable-unit fence holds at the KPI end too — a
+    gift-set add riding the confirmed model code is a DIFFERENT purchasable
+    unit and never counts usable."""
+    p = _polo_price_dict(
+        title="Logo Detail Short Sleeves Polo T-Shirt Gift Set with Cap")
+    assert measure_usable(p, FASH_005) is False
 
 
 # ---------------------------------------------------------------------------

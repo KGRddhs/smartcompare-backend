@@ -33,6 +33,7 @@ from app.services.structured_comparison_service import (
     _ORGANIC_PDP_HARVEST_CAP,
     _harvest_organic_pdp_candidates,
     _merge_organic_pdp_harvest,
+    _organic_host_bh_gcc_retail,
 )
 
 FIXTURE_PATH = Path(__file__).parent / "fixtures" / "serper_oudwood_organic.json"
@@ -210,6 +211,174 @@ class TestHarvestFlag:
     def test_flag_default_on(self, serper_fixture, monkeypatch):
         monkeypatch.delenv("ENABLE_ORGANIC_PDP_HARVEST", raising=False)
         assert _harvest(serper_fixture)
+
+
+# ---------------------------------------------------------------------------
+# BF5 (sweep OR-8) — BH-locale PATH evidence for off-registry hosts
+# ---------------------------------------------------------------------------
+
+def _org(link, title="", snippet="", currency=None, price=None):
+    return {"link": link, "title": title, "snippet": snippet,
+            "currency": currency, "price": price, "position": 1}
+
+
+def _harvest_custom(items, query_name, category="fashion"):
+    return _harvest_organic_pdp_candidates(
+        {"bahrain": {"organic": items}}, category,
+        existing_urls=set(), query_name=query_name,
+    )
+
+
+NAMSHI_RB3025_PDP = (
+    "https://www.namshi.com/bahrain-en/buy-ray-ban-0rb3025-aviator-sunglasses/"
+    "ZED28E4F81949E4666601Z/p/"
+)
+
+
+class TestBhLocalePathEvidence:
+    """Wave B-FIX BF5 (sweep OR-8): the harvest registry gate dropped
+    namshi.com/bahrain-en PDPs — registry tier None (catalog row dead), host
+    neither .bh nor bahrain.-prefixed, and the /bahrain-en locale PATH marker
+    was never consulted. A path starting with /bahrain-en, /bahrain-ar,
+    /bh-en, /bh-ar on an https host is now BH-retail evidence at the SAME
+    trust level as the bahrain. host prefix (off-registry rung — below the
+    registry tiers and the global-tier fail-closed check)."""
+
+    def test_namshi_bahrain_en_pdp_harvests(self):
+        """The real recon-verified RB3025 PDP (the only genuine-BHD source
+        for kpi-fash-004) now enters the fan_out pool."""
+        rows = _harvest_custom(
+            [_org(NAMSHI_RB3025_PDP,
+                  "Ray-Ban 0Rb3025 Aviator Sunglasses", "82.52 BHD")],
+            "Ray-Ban Aviator RB3025")
+        assert [r[0] for r in rows] == [NAMSHI_RB3025_PDP]
+        assert rows[0][1] == "namshi.com"
+        assert rows[0][2] == "organic_harvest"
+
+    def test_bh_locale_path_variants_harvest(self):
+        """All four locale-path spellings count (namshi serves /bahrain-ar
+        too; boutiqaat-style hosts use /bh-en, /bh-ar)."""
+        for prefix in ("/bahrain-en", "/bahrain-ar", "/bh-en", "/bh-ar"):
+            link = (f"https://www.namshi.com{prefix}/buy-tommy-hilfiger-"
+                    "essential-flag-tee/Z405D183BA1857F58C53FZ/p/")
+            rows = _harvest_custom(
+                [_org(link, "Tommy Hilfiger Essential Flag T-Shirt",
+                      "9.22 BHD")],
+                "Tommy Hilfiger Essential Flag T-Shirt")
+            assert [r[0] for r in rows] == [link], prefix
+
+    def test_saudi_locale_path_gains_no_bh_status(self):
+        """/saudi-en/ (or any non-BH locale path) must NOT gain BH status —
+        the helper refuses the path evidence AND the wrong-locale gate
+        independently drops the URL."""
+        assert _organic_host_bh_gcc_retail(
+            "namshi.com", path="/saudi-en/buy-x/Z1/p/") == (False, False)
+        rows = _harvest_custom(
+            [_org("https://www.namshi.com/saudi-en/buy-tommy-hilfiger-"
+                  "essential-flag-tee/Z405D183BA1857F58C53FZ/p/",
+                  "Tommy Hilfiger Essential Flag T-Shirt", "SAR 99")],
+            "Tommy Hilfiger Essential Flag T-Shirt")
+        assert rows == []
+
+    def test_en_sa_ounass_keeps_gcc_tier_eligibility(self):
+        """PIN THE DISTINCTION (task ruling): the Saudi-locale SUBDOMAIN
+        en-sa.ounass.com keeps its registry gcc-tier eligibility exactly as
+        today (converted-by-design; registry_known=True) — it is admitted by
+        the gcc REGISTRY rung, never by the BH-locale path evidence."""
+        assert _organic_host_bh_gcc_retail("en-sa.ounass.com") == (True, True)
+        # A Saudi path on the same host changes nothing — still the gcc rung.
+        assert _organic_host_bh_gcc_retail(
+            "en-sa.ounass.com", path="/saudi-en/x") == (True, True)
+
+    def test_http_scheme_path_evidence_refused(self):
+        """BH-locale PATH evidence requires an https host — an http:// URL
+        gains no BH status from its path (off-registry host stays excluded)."""
+        rows = _harvest_custom(
+            [_org("http://www.namshi.com/bahrain-en/buy-ray-ban-0rb3025-"
+                  "aviator-sunglasses/ZED28E4F81949E4666601Z/p/",
+                  "Ray-Ban 0Rb3025 Aviator Sunglasses", "82.52 BHD")],
+            "Ray-Ban Aviator RB3025")
+        assert rows == []
+
+    def test_global_tier_never_gains_bh_path_status(self):
+        """A registry-'global' host (amazon.com) stays fail-closed even with
+        a /bahrain-en path — the path evidence sits BELOW the global-tier
+        rejection, exactly like the bahrain. host prefix."""
+        assert _organic_host_bh_gcc_retail(
+            "amazon.com", path="/bahrain-en/dp/B0CHX2ZLPX") == (False, False)
+        rows = _harvest_custom(
+            [_org("https://www.amazon.com/bahrain-en/dp/B0CHX2ZLPX",
+                  "Ray-Ban RB3025 Aviator", "BHD 30")],
+            "Ray-Ban Aviator RB3025")
+        assert rows == []
+
+
+# ---------------------------------------------------------------------------
+# BF5 (sweep OR-8 side-note) — HARVEST-side PDP-shape check
+# ---------------------------------------------------------------------------
+
+OUNASS_BROWSE = "https://bahrain.ounass.com/women/beauty/fragrance/"
+
+
+class TestHarvestPdpShape:
+    """Wave B-FIX BF5: the ounass category-browse URL (trailing-slash section
+    page, no product slug) passes BOTH listing classifiers and wasted a cap
+    slot. The HARVEST-side check now requires a product-y last path segment —
+    a digit, or >=3 hyphens, or a /p/ marker (derived from the real PDP shapes
+    below). The GLOBAL is_non_pdp_listing_url used by the fan_out/display
+    gates is deliberately UNTOUCHED."""
+
+    def test_ounass_category_browse_not_harvested(self, serper_fixture):
+        serper_fixture["organic"].append(_org(
+            OUNASS_BROWSE, "Fragrance | Ounass Bahrain",
+            "Shop luxury fragrance online. Prices in BHD."))
+        harvested = _harvest(serper_fixture)
+        links = _links(harvested)
+        assert OUNASS_BROWSE not in links
+        # The real shop-* PDP on the SAME host still harvests (first slot).
+        assert links[0] == OUNASS_PDP
+
+    def test_global_listing_classifier_untouched(self):
+        """HARVEST-side tightening only: the browse page still clears the
+        global classifiers other gates consume (pin the scope of the fix)."""
+        from app.services.source_router import is_non_pdp_listing_url
+        from app.services.price_service import _is_listing_url
+        assert is_non_pdp_listing_url(OUNASS_BROWSE) is False
+        assert _is_listing_url(OUNASS_BROWSE) is False
+
+    @pytest.mark.parametrize("link,query,category", [
+        # digit-bearing slug, trailing slash (sharafdg WP PDP)
+        ("https://bahrain.sharafdg.com/product/apple-iphone-15-256gb-pink-"
+         "with-facetime-middle-east-version/",
+         "Apple iPhone 15 256GB", "electronics"),
+        # /p/<digits> tail (extra.com PDP)
+        ("https://www.extra.com/en-bh/mobiles-tablets/mobiles/smartphone/"
+         "apple-iphone-15-5g-256gb-6-1-inch-pink/p/100350333",
+         "Apple iPhone 15 256GB", "electronics"),
+        # trailing /p/ marker (noon PDP)
+        ("https://www.noon.com/bahrain-en/acqua-di-gio-edt-100ml/"
+         "N70115213V/p/",
+         "Acqua di Gio Eau de Toilette 100ml", "fragrances"),
+        # digit-less slug with >=3 hyphens (footlocker .bh PDP)
+        ("https://www.footlocker.com.bh/en/buy-adidas-samba-og-mens-shoes-"
+         "white", "Adidas Samba OG", "fashion"),
+    ])
+    def test_real_pdp_shapes_still_harvest(self, link, query, category):
+        rows = _harvest_custom(
+            [_org(link, query, "Genuine product. 99.000 BHD.")],
+            query, category=category)
+        assert [r[0] for r in rows] == [link]
+
+    def test_amazon_ae_gcc_pdp_keeps_harvesting(self):
+        """amazon.ae is registry gcc-tier and keeps harvesting AS TODAY —
+        CONVERTED-BY-DESIGN (task ruling): the gcc tier feeds AED pages whose
+        prices the fan_out gates stamp `converted_usd` honestly; the PDP-shape
+        check (/dp/<asin> carries digits) must not disturb it."""
+        link = "https://www.amazon.ae/Tom-Ford-Oud-Wood-Parfum/dp/B00PJGVKPO"
+        rows = _harvest_custom(
+            [_org(link, "Tom Ford Oud Wood Eau de Parfum 100ml", "AED 560")],
+            "Tom Ford Oud Wood", category="fragrances")
+        assert [r[0] for r in rows] == [link]
 
 
 # ---------------------------------------------------------------------------

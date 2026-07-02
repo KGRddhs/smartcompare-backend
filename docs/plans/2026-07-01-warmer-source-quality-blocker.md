@@ -129,3 +129,26 @@ DID resolve genuine (iPhone 15, S24 Ultra) came from **sharafdg** — a Serper-F
    2/6) + modernize the 4 stale truth SKUs (iPad Air M3 / current MacBook Air / Switch).
 5. Fashion: wire ounass/level-shoes/6thstreet (NO genuine BH fashion source today → 0/6).
 6. Implement + live-tune Item 1 (determinism) and consider Item 6b behind the sweep.
+
+## 2026-07-02 (Wave B-FIX BF5) — ladder residual-EXPOSURE note (sweep F1, WARMER-ACTIVATION consideration)
+
+The Wave-B adapter retrieval-term ladder (`build_adapter_search_terms`, flag
+`ENABLE_ADAPTER_QUERY_LADDER`) widens practical EXPOSURE of the ~9
+token-indistinguishable residuals held for Wave-2 VariantDescriptor: the core
+term deliberately strips exactly the axes (gender/concentration/padding) those
+residuals fail to discriminate, so a store carrying ONLY the flanker now
+retrieves it on the core-term retry where the full-name search returned zero
+rows. Reproduced through the real runtime selector (regression-flag sweep F1,
+`waveb_regressionFlags.json`): `build_adapter_search_terms('Versace Eros Eau de
+Toilette 100ml','fragrances')` → core `'Eros'`; a store carrying only "Eros
+Pour Femme" returns it on the retry and `_match_woo_product` ACCEPTS it (the
+acceptance leak itself is the PRE-EXISTING, documented `_selection_match`
+gender-flanker residual — the ladder does not widen per-candidate ACCEPTANCE,
+only which candidates real stores surface). Not a pin regression.
+
+**Ruling:** listed as a WARMER-ACTIVATION consideration ALONGSIDE the existing
+Wave-2 VariantDescriptor precondition — before flipping
+`ENABLE_PRICE_CACHE_WARMER`, either the VariantDescriptor closes the residual
+set or the ladder's exposure of it is re-assessed against the warm subset.
+**Rollback:** `ENABLE_ADAPTER_QUERY_LADDER=false` removes the exposure widening
+(single-term retrieval, pre-B3 behavior).

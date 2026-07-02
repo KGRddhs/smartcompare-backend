@@ -498,7 +498,15 @@ def usable_exact_genuine_for_product(
           expected product (is_exact_match against truth.query + truth.expected.brand).
     A missing / pended / converted / estimated / out-of-stock / unknown-stock /
     no-URL / listing-URL / WRONG-identity price is NOT usable (it counts in the KPI
-    denominator as requested-but-not-usable)."""
+    denominator as requested-but-not-usable).
+
+    BF5 (sweep OR-5) — identity check (e) mirrors the write gate's bounded
+    structured-code override (price_service._structured_code_cache_override):
+    a query-confirmed retailer style code on the price dict relaxes ONLY the
+    superset/variant-add rejection, under the SAME strict leak-direction +
+    numbers + axis bounds — so a dict the runtime caches (L1212 polo) also
+    COUNTS, and the two ends never drift. The truth-pinned `expected` axes
+    below stay enforced regardless."""
     products = _products_overview(body)
     if product_idx >= len(products):
         return False
@@ -557,7 +565,25 @@ def usable_exact_genuine_for_product(
         if expected_query and not _selection_match(
             expected_query, title, category, candidate_brand=expected_brand,
         ):
-            return False
+            # BF5 (sweep OR-5) — EVAL-CONTRACT PARITY with the write gate:
+            # mirror the SAME bounded structured-code override should_cache_price
+            # runs (_structured_code_cache_override, post-BF2 tightening). A
+            # QUERY-CONFIRMED retailer style code carried on the price dict IS
+            # exactness evidence for "exact requested SKU" (the retailer's own
+            # model assertion), but ONLY under the full BF2 bounds: strict
+            # leak-direction on the brand+title+code surface, numbers, axis
+            # contradictions, and the kids/gs/gift-set/tester sellable-unit
+            # fence. Without this the runtime caches the correct L1212 polo
+            # (write gate accepts) while the KPI can never COUNT it — the
+            # metric under-counts exactly the SKU class the waves unlocked. A
+            # wrong-brand or unqueried-code dict still refuses (pinned).
+            from app.services.price_service import (
+                _structured_code_cache_override,
+            )
+            if not _structured_code_cache_override(
+                expected_query, price, title, category,
+            ):
+                return False
         # INDEPENDENT structured-field validation (coverage review E) — enforce each
         # `expected` axis the truth entry pins, so a wrong variant fails even when the
         # truth.query string omits that axis (storage 256 vs a 128 title; EDP vs EDT;

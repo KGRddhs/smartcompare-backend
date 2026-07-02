@@ -1646,12 +1646,25 @@ def _harvest_candidate_urls(
 #
 # Harvest rules (bounded + fail-closed):
 #   (a) NOT a listing/search URL (is_non_pdp_listing_url AND the
-#       price_service._is_listing_url wrapper must BOTH be False);
+#       price_service._is_listing_url wrapper must BOTH be False), AND
+#       PDP-SHAPED (BF5, sweep OR-8 side-note): the last path segment must be
+#       product-y — a digit, >=3 hyphens, or a /p/ marker (derived from the
+#       real ounass/sharafdg/extra/noon/namshi/footlocker PDP shapes). A
+#       trailing-slash category-browse page (bahrain.ounass.com/women/beauty/
+#       fragrance/) clears BOTH global listing classifiers but has no product
+#       slug — it wasted a cap slot. HARVEST-side check ONLY; the global
+#       is_non_pdp_listing_url consumed by the fan_out/display gates is
+#       deliberately untouched;
 #   (b) on a BH/GCC RETAIL domain: registry tier "bahrain"/"gcc"
 #       (source_router lookup — the registry IS the derived GCC allowlist),
-#       OR a .bh TLD, OR a bahrain.-prefixed host. A "global"-tier domain
-#       (amazon.com / sephora.com / fragrantica.com) NEVER harvests, and an
-#       off-registry .com (reddit / youtube / tomfordbeauty.com) fails closed;
+#       OR a .bh TLD, OR a bahrain.-prefixed host, OR (BF5, sweep OR-8) a
+#       BH-locale PATH (/bahrain-en, /bahrain-ar, /bh-en, /bh-ar) on an https
+#       host — namshi.com serves BH exclusively under /bahrain-en/ with an
+#       off-registry host (catalog row dead → tier None), same trust level as
+#       the bahrain. prefix. A "global"-tier domain (amazon.com / sephora.com
+#       / fragrantica.com) NEVER harvests — the path evidence sits BELOW the
+#       global-tier rejection — and an off-registry .com without BH evidence
+#       (reddit / youtube / tomfordbeauty.com) fails closed;
 #   (c) prioritized: structured extras currency==BHD with a price FIRST, then
 #       BHD-in-snippet, then registry-domain, then the remaining BH-marked.
 #
@@ -1680,10 +1693,25 @@ def _organic_pdp_harvest_enabled() -> bool:
     )
 
 
-def _organic_host_bh_gcc_retail(host: str) -> Tuple[bool, bool]:
+# BF5 (sweep OR-8) — BH-locale URL-path prefixes that mark a page as the
+# retailer's BAHRAIN storefront (namshi.com/bahrain-en, boutiqaat-style
+# /bh-en). Anchored + segment-bounded: "/bahrain-english-deals" or a mid-path
+# occurrence never matches; /saudi-en, /uae-ar, ... never gain BH status.
+_BH_LOCALE_PATH_RE = re.compile(r"^/(?:bahrain|bh)-(?:en|ar)(?:/|$)")
+
+
+def _organic_host_bh_gcc_retail(host: str, path: str = "") -> Tuple[bool, bool]:
     """(eligible, registry_known) for `host` (lowered, www-stripped) as a
     BH/GCC RETAIL domain. Fail-closed: a registry "global" tier (amazon.com /
-    sephora.com) and any unmarked off-registry .com are NOT eligible."""
+    sephora.com) and any unmarked off-registry .com are NOT eligible.
+
+    `path` (BF5, sweep OR-8) — the URL path, passed by the harvester ONLY for
+    https links: a BH-locale prefix (/bahrain-en, /bahrain-ar, /bh-en, /bh-ar)
+    is BH-retail evidence at the SAME trust level as the bahrain. host prefix
+    (off-registry rung, registry_known=False). It sits BELOW the global-tier
+    rejection, so amazon.com/bahrain-en stays excluded; en-sa.ounass.com keeps
+    its gcc REGISTRY eligibility exactly as before (the path is irrelevant
+    there)."""
     if not host:
         return False, False
     tier = registry_tier(host)
@@ -1691,10 +1719,34 @@ def _organic_host_bh_gcc_retail(host: str) -> Tuple[bool, bool]:
         return True, True
     if tier == "global":
         return False, False
-    # Off-registry: only explicitly-BH hosts.
+    # Off-registry: explicitly-BH hosts, or a BH-locale path on an https host
+    # (the caller passes path="" for non-https).
     if host.endswith(".bh") or host.startswith("bahrain."):
         return True, False
+    if path and _BH_LOCALE_PATH_RE.match(path.lower()):
+        return True, False
     return False, False
+
+
+def _harvest_pdp_shaped(path: str) -> bool:
+    """BF5 (sweep OR-8 side-note) — HARVEST-side PDP-shape check: the last
+    path segment must look like a product slug. Derived from the real PDP
+    shapes the harvest serves (all pinned in test_organic_pdp_harvest):
+      - a /p/ marker anywhere (extra /p/100350333, noon .../N70115213V/p/,
+        namshi .../ZED...Z/p/, boutiqaat /bh-en/p/...), OR
+      - a digit in the last segment (ounass shop-...-207578119_242.html,
+        sharafdg /product/apple-iphone-15-.../), OR
+      - >=3 hyphens in the last segment (footlocker
+        /en/buy-adidas-samba-og-mens-shoes-white — digit-less slugs).
+    A category-browse page (/women/beauty/fragrance/) has none of these.
+    Deliberately NOT part of the global is_non_pdp_listing_url — this bounds
+    only which organic results spend harvest cap slots (fail direction =
+    over-exclusion, which the fail-closed harvest already accepts)."""
+    p = (path or "").lower()
+    if "/p/" in p or p.rstrip("/").endswith("/p"):
+        return True
+    seg = p.rstrip("/").rsplit("/", 1)[-1]
+    return any(ch.isdigit() for ch in seg) or seg.count("-") >= 3
 
 
 def _harvest_organic_pdp_candidates(
@@ -1734,13 +1786,23 @@ def _harvest_organic_pdp_candidates(
         if is_wrong_locale_url(link):
             return
         try:
-            host = (urlparse(link).netloc or "").lower()
+            parsed = urlparse(link)
         except (ValueError, TypeError):
             return
+        host = (parsed.netloc or "").lower()
         if host.startswith("www."):
             host = host[4:]
-        # (b) BH/GCC retail domain gate (fail-closed).
-        eligible, registry_known = _organic_host_bh_gcc_retail(host)
+        path = parsed.path or ""
+        # (a, BF5) PDP-shaped: a category-browse page clears both listing
+        # classifiers but has no product slug — never spend a cap slot on it.
+        if not _harvest_pdp_shaped(path):
+            return
+        # (b) BH/GCC retail domain gate (fail-closed). BH-locale PATH evidence
+        # (namshi.com/bahrain-en) counts only on https links (BF5, OR-8).
+        eligible, registry_known = _organic_host_bh_gcc_retail(
+            host,
+            path=path if (parsed.scheme or "").lower() == "https" else "",
+        )
         if not eligible:
             return
         # S2 I2.5 — review-only registry domains carry no prices.
