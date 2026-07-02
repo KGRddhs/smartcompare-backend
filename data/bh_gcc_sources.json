@@ -1170,7 +1170,8 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.dubizzle.com.bh/en/mobile-phones-accessories/mobile-phones/",
   "priority_rank": 25,
-  "status": "live"
+  "status": "dead",
+  "note": "non-retail: user classifieds (OLX family) - never a genuine retail shelf price. Demoted Wave D CV3 2026-07-02; generator skip added (_NON_RETAIL_DOMAINS). Do not re-promote."
  },
  {
   "domain": "petshomebh.com",
@@ -1340,7 +1341,8 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://comparebh.com/product/apple-airpods-pro-3/",
   "priority_rank": 30,
-  "status": "live"
+  "status": "dead",
+  "note": "non-retail: price-comparison aggregator - the F6 pricena/kanbkam class. Demoted Wave D CV3 2026-07-02; generator skip added (_NON_RETAIL_DOMAINS). Do not re-promote."
  },
  {
   "domain": "nexcelbahrain.com",
@@ -1376,7 +1378,8 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://bh.labeb.com/en/pc/oneplus-9r-5g-dual-sim-ram-12gb-rom-256gb-chinese-version-383898",
   "priority_rank": 31,
-  "status": "live"
+  "status": "dead",
+  "note": "non-retail: price-comparison aggregator (cross-store min, not a retailer PDP) - the F6 pricena/kanbkam class. Demoted Wave D CV3 2026-07-02; generator skip added (_NON_RETAIL_DOMAINS). Do not re-promote."
  },
  {
   "domain": "advancedpcbahrain.com",
@@ -1449,7 +1452,8 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://bh.opensooq.com/en/mobile-phones-tablets/mobile-phones",
   "priority_rank": 33,
-  "status": "live"
+  "status": "dead",
+  "note": "non-retail: user classifieds (used-goods/private listings, self-asserted Product JSON-LD) - never a genuine retail shelf price. Demoted Wave D CV3 2026-07-02; generator skip added (_NON_RETAIL_DOMAINS). Do not re-promote."
  },
  {
   "domain": "alkhabeershop.com",

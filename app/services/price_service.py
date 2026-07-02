@@ -685,6 +685,44 @@ _LAPTOP_NOUN_RE = re.compile(
 )
 _LAPTOP_CONTEXT_BENIGN_ACCESSORY_KEYWORDS = frozenset({"keyboard"})
 
+# Wave D (convergence CV2) — BOUND the laptop-surface keyboard exemption: a
+# FULL-SPEC keyboard PART listing ("Arabic Keyboard for Apple MacBook Air 13
+# M5 512GB" @ 59.9 BHD) carried the laptop noun, rode the bare-keyword
+# exemption past the accessory gate, and — carrying the laptop's complete
+# spec set — cleared every identity axis above the 50-BHD flagship floor.
+# The exemption is a LAYOUT-attribute reading, so it applies ONLY when the
+# phrasing is a layout attribute OF the laptop:
+#   - part/compat phrasing ("Keyboard for ..." / "Keyboard compatible ...")
+#     ALWAYS keeps the accessory flag, wherever it sits in the title;
+#   - the laptop device noun must appear BEFORE the (first) keyboard token —
+#     GCC retailer laptop rows head with the device and state the layout
+#     mid/late-title (the live sharafdg/extra/IdeaPad shapes, all pinned),
+#     while a part listing heads with the part.
+# Rejected alternatives: requiring a storage/RAM spec token FAILS (the CV2
+# part title carries 512GB — that is exactly what made it leak); exempting
+# only inside _KEYBOARD_LAYOUT_RE FAILS too ("Arabic Keyboard" IS a layout
+# phrase and the leak title heads with it). Fail direction of any residual is
+# over-flagging -> the broad is_accessory -> fail-closed (over-rejection,
+# never a wrong price).
+_KEYBOARD_TOKEN_RE = re.compile(r"\bkeyboards?\b")
+_KEYBOARD_PART_PHRASE_RE = re.compile(r"\bkeyboards?\s+(?:for|compatible)\b")
+
+
+def _laptop_layout_keyboard_exempt(title_lower: str) -> bool:
+    """True iff the lowered surface reads as a LAPTOP listing whose keyboard
+    mention is a layout attribute (CV2 bound): a laptop-class device noun is
+    present, it PRECEDES the first keyboard token, and no part/compat
+    "keyboard for/compatible" phrasing appears."""
+    m_laptop = _LAPTOP_NOUN_RE.search(title_lower)
+    if not m_laptop:
+        return False
+    if _KEYBOARD_PART_PHRASE_RE.search(title_lower):
+        return False
+    m_kb = _KEYBOARD_TOKEN_RE.search(title_lower)
+    if m_kb and m_kb.start() < m_laptop.start():
+        return False
+    return True
+
 
 def is_accessory_for_category(title: str, category: Optional[str] = None) -> bool:
     """Scoped `is_accessory` for the direct store-API matcher chains (BF4,
@@ -696,10 +734,14 @@ def is_accessory_for_category(title: str, category: Optional[str] = None) -> boo
       ... For Dry Skin", "Nivea ... All Skin Types") as an accessory —
       fail-closed on the QUERY's resolved category, never the title, so a
       real phone-skin decal under an electronics query still rejects.
-    - LAPTOP surface scope (C2): a bare "keyboard" hit is a LAYOUT attribute,
-      not an accessory, when the SAME surface carries a laptop-class device
-      noun ("MacBook ... English & Arabic Keyboard") — any non-pharmacy
-      category, keyed off the title context itself.
+    - LAPTOP surface scope (C2, bounded by Wave D CV2): a bare "keyboard" hit
+      is a LAYOUT attribute, not an accessory, when the SAME surface carries
+      a laptop-class device noun ("MacBook ... English & Arabic Keyboard") —
+      any non-pharmacy category, keyed off the title context itself. CV2
+      bound: the device noun must PRECEDE the keyboard token and part/compat
+      phrasing ("Keyboard for/compatible ...") never exempts — a full-spec
+      keyboard PART listing must keep its accessory flag (see
+      _laptop_layout_keyboard_exempt).
 
     In both scopes any OTHER accessory keyword still flags. Everything else
     keeps the full broad is_accessory. The Serper-shopping extractors
@@ -708,7 +750,7 @@ def is_accessory_for_category(title: str, category: Optional[str] = None) -> boo
     title_lower = (title or "").lower()
     if (category or "").lower() in _PHARMACY_TITLE_CATEGORIES:
         benign = _PHARMACY_BENIGN_ACCESSORY_KEYWORDS
-    elif _LAPTOP_NOUN_RE.search(title_lower):
+    elif _laptop_layout_keyboard_exempt(title_lower):
         benign = _LAPTOP_CONTEXT_BENIGN_ACCESSORY_KEYWORDS
     else:
         return is_accessory(title)
@@ -4673,24 +4715,48 @@ def _ram_mismatch(query_name: str, candidate_title: str) -> bool:
 _CORE_COUNT_LABELED_RE = re.compile(
     rf"\b(\d+)\s*(?:[-{_UNICODE_HYPHENS}]\s*)?core\b(?:\s*(cpu|gpu))?", re.I,
 )
+# Wave D (convergence CV4) — an immediately-PRECEDING cpu/gpu label ("CPU
+# 10-core"): anchored to the END of the gap before the count so only the word
+# directly in front of it binds.
+_CORE_COUNT_PRE_LABEL_RE = re.compile(
+    rf"\b(cpu|gpu)\s*[:\-{_UNICODE_HYPHENS}]?\s*$", re.I,
+)
 
 
 def _labeled_core_counts(text: str) -> Tuple[set, set, set]:
     """(cpu, gpu, unlabelled) core-count value sets stated in `text`
     ("10-core CPU / 8-core GPU" -> ({10}, {8}, set()); "12-core" ->
-    (set(), set(), {12}))."""
+    (set(), set(), {12})).
+
+    Label-BEFORE aware (Wave D, convergence CV4): "CPU 10-core GPU 8-core"
+    used to bind the FOLLOWING word, labeling 10 as GPU — the EXACT bin then
+    over-rejected against the label-after retailer form. A cpu/gpu word
+    immediately PRECEDING the count binds too, PREFERRED over the trailing
+    word when both are present. The pre-label is searched ONLY in the gap
+    since the previous match's end, so one label word can never bind twice:
+    in "10-core CPU 10-core GPU" the "CPU" consumed as count-1's trailing
+    label is outside count-2's gap, and count 2 keeps its own "GPU"
+    (({10},{10},set()) — the pinned RS4 parse). A count whose trailing label
+    was consumed by the preceding preference stays UNLABELLED and keeps the
+    tolerant set semantics (fail direction: same bin accepts, a disjoint
+    value still rejects)."""
     cpu: set = set()
     gpu: set = set()
     unlabeled: set = set()
-    for count, label in _CORE_COUNT_LABELED_RE.findall(text or ""):
-        v = int(count)
-        lab = label.lower()
+    t = text or ""
+    prev_end = 0
+    for m in _CORE_COUNT_LABELED_RE.finditer(t):
+        v = int(m.group(1))
+        post = (m.group(2) or "").lower()
+        pre_m = _CORE_COUNT_PRE_LABEL_RE.search(t[prev_end:m.start()])
+        lab = (pre_m.group(1).lower() if pre_m else "") or post
         if lab == "cpu":
             cpu.add(v)
         elif lab == "gpu":
             gpu.add(v)
         else:
             unlabeled.add(v)
+        prev_end = m.end()
     return cpu, gpu, unlabeled
 
 
@@ -5416,18 +5482,36 @@ _FASHION_CONSTRUCTION_TOLERATED = frozenset({
     "crewneck", "vneck", "embroidery", "embroidered",
     "stitch", "stitched",
 })
-_FASHION_NECKLINE_BIGRAM_RE = re.compile(r"\b(crew|v|round)[\s\-]+neck\b", re.I)
+# Separator accepts the C2 _UNICODE_HYPHENS canon (Wave D, convergence CV5):
+# a U+2011 "Crew‑Neck" title is the same GCC-retailer bigram — ASCII-only left
+# it a distinctive add and a genuine enriched title over-rejected.
+_FASHION_NECKLINE_BIGRAM_RE = re.compile(
+    rf"\b(crew|v|round)[\s\-{_UNICODE_HYPHENS}]+neck\b", re.I,
+)
 
 
 def _fashion_construction_tolerated_for(candidate_title: str) -> frozenset:
     """The title-CONDITIONAL construction-descriptor token set (RS5): the
     neckline words 'crew'/'v'/'round' + 'neck' join the tolerated set only
     when the raw title spells the garment bigram — so the bigram's own tokens
-    are droppable while a bare 'crew'/'neck' elsewhere stays distinctive."""
+    are droppable while a bare 'crew'/'neck' elsewhere stays distinctive.
+
+    Wave D (convergence CV5): a UNICODE-hyphen bigram ("Crew‑Neck", U+2011)
+    survives tokenization GLUED — normalize_words strips only the ASCII
+    hyphen, so the identity token is the folded "crew‐neck", not the pair.
+    Tolerate that glued form too, derived from the ACTUAL matched text via
+    the same _fold_identity the tokenizer path runs (U+2011 NFKD-folds to
+    U+2010; U+2010/U+2013 pass through), so the tolerance and the tokenizer
+    can never drift. ASCII/spaced forms fold to the static "crewneck"-style
+    token and add nothing new."""
     extra = set()
     for m in _FASHION_NECKLINE_BIGRAM_RE.finditer(candidate_title or ""):
-        extra.add(m.group(1).lower())
+        g = m.group(1).lower()
+        extra.add(g)
         extra.add("neck")
+        glued = re.sub(r"\s+", "", _fold_identity(m.group(0))).replace("-", "")
+        if glued != f"{g}neck":
+            extra.add(glued)
     if extra:
         return _FASHION_CONSTRUCTION_TOLERATED | frozenset(extra)
     return _FASHION_CONSTRUCTION_TOLERATED
@@ -5853,6 +5937,18 @@ _STRUCTURED_OVERRIDE_BLOCK_TOKENS = frozenset({
     # Bundle"): each is a differently-priced sellable unit sharing the model's
     # style code, so the confirmed code must not waive the variant fence.
     "boys", "girls", "junior", "youth", "toddler", "bundle", "combo",
+    # Wave D (convergence CV1) — the RS3 fix's own blind spot: baby/infant
+    # (listed in the original RS3 fix-direction, dropped by C1) and the
+    # MULTIPACK sellable-unit wordings ("Twin Pack" / "2-Pack" / "Multipack"
+    # — common GCC polo/tee listings). normalize_words FOLDS hyphens
+    # ("twin-pack" -> "twinpack") and SPLITS spaced forms ("twin pack" ->
+    # {"twin","pack"}), so both the glued and the bare tokens are listed;
+    # the bare "pack" covers every spaced "<n>/Value/Multi Pack" form (an
+    # added "pack" is always a different sellable unit — same asymmetry:
+    # a query stating it is unaffected, and candidates the normal
+    # _selection_match accepts never consult this set).
+    "baby", "infant", "twin", "pack", "multipack",
+    "twinpack", "twopack", "2pack", "3pack", "4pack", "5pack", "6pack",
 })
 
 

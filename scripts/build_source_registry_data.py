@@ -80,10 +80,24 @@ _CATEGORY_MAP: Dict[str, tuple] = {
 _BH_CURRENCY = {"BHD"}
 _GCC_COUNTRIES = {"KSA", "SA", "UAE", "AE", "KW", "QA", "OM"}
 _GCC_CURRENCIES = {"SAR", "AED", "KWD", "QAR", "OMR", "USD"}
-# Verification F6 — price AGGREGATORS (not single-retailer PDPs): a multi-currency
-# meta-search whose "price" is a cross-store min, not a genuine shelf price. Skip
-# them entirely (they would mis-rank + never yield a clean genuine BH price).
-_AGGREGATOR_DOMAINS = {"pricena.com", "kanbkam.com"}
+# Verification F6 + Wave D CV3 — NON-RETAIL sources, skipped entirely
+# (suffix-aware: bh.opensooq.com falls under the opensooq.com apex):
+#   - price AGGREGATORS (pricena/kanbkam — the original F6 pair — plus
+#     labeb/comparebh, the same class the F6 sweep missed): a multi-currency
+#     meta-search whose "price" is a cross-store min, not a genuine shelf
+#     price — they would mis-rank + never yield a clean genuine BH price;
+#   - user CLASSIFIEDS (opensooq/dubizzle/olx): used-goods/private listings
+#     with self-asserted Product JSON-LD — never a retailer PDP.
+# The live rows that shipped before CV3 were demoted to status="dead" in
+# data/bh_gcc_sources.json (the canonical liveness-gate write, the A7
+# ourshopee precedent — the idempotent merge preserves the verdict + note);
+# this skip keeps a re-consolidation from ever re-emitting the class. The
+# tripwire lives in tests/test_wave_d_cv_polish.py.
+_NON_RETAIL_DOMAINS = {
+    "pricena.com", "kanbkam.com",                    # F6 aggregators
+    "labeb.com", "comparebh.com",                    # CV3 aggregators
+    "opensooq.com", "dubizzle.com", "dubizzle.com.bh", "olx.com",  # classifieds
+}
 
 
 def _adapter_token(integration_adapter: str) -> str:
@@ -228,8 +242,10 @@ def consolidate() -> List[dict]:
             domain = _norm_domain(row.get("domain", ""))
             if not domain:
                 continue
-            # F6 — skip price aggregators (not retailer PDPs).
-            if domain in _AGGREGATOR_DOMAINS:
+            # F6 + CV3 — skip non-retail sources (aggregators / classifieds),
+            # suffix-aware so regional subdomains fall under their apex.
+            if any(domain == nd or domain.endswith("." + nd)
+                   for nd in _NON_RETAIL_DOMAINS):
                 continue
             # Dedup against literals (suffix-aware) + across rounds (first wins).
             if any(domain == ld or domain.endswith("." + ld) for ld in literal_domains):
@@ -281,7 +297,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     rows = consolidate()
 
-    # IDEMPOTENT MERGE — preserve any liveness status already written.
+    # IDEMPOTENT MERGE — preserve any liveness status already written, plus
+    # the demotion rationale (Wave D CV3: a "note" documents WHY a row is
+    # dead — a regeneration must never silently strip it).
     if _OUT.exists():
         try:
             prior = {r["domain"]: r for r in json.loads(_OUT.read_text(encoding="utf-8"))}
@@ -291,6 +309,8 @@ def main(argv: Optional[List[str]] = None) -> int:
             p = prior.get(r["domain"])
             if p and p.get("status") in ("live", "render-only", "dead"):
                 r["status"] = p["status"]
+                if p.get("note"):
+                    r["note"] = p["note"]
 
     if "--stats" in argv:
         import collections
