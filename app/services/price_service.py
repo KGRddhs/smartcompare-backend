@@ -4991,6 +4991,74 @@ def select_best(
     return eligible[0]
 
 
+def query_confirmed_structured_code(code: Any, query_words: set) -> str:
+    """Normalize + validate a structured MODEL code (a retailer's style_code /
+    SKU stem) against the QUERY's normalized words. The code is a match ENABLER
+    only when:
+      - letter+digit shaped (a pure-digit code — "00501-0660" — is catalog
+        plumbing, not a model assertion; it would inject numeric noise / bridge
+        different models), AND
+      - present as a query token (hyphen-folded, as normalize_words folds) —
+        an UNQUERIED code appended to a surface would read as a variant-add
+        and over-reject / a relaxation it never earned.
+    Returns the stripped code on success, "" otherwise. Shared by the algolia
+    matcher override (Wave A3, _confirmed_style_code) and the
+    should_cache_price parity override (Wave B0) so the two ends never drift."""
+    if not isinstance(code, str):
+        return ""
+    tok = code.strip()
+    if not tok:
+        return ""
+    if not (any(c.isalpha() for c in tok) and any(c.isdigit() for c in tok)):
+        return ""
+    if tok.lower().replace("-", "") not in query_words:
+        return ""
+    return tok
+
+
+def _structured_code_cache_override(
+    request_name: str, price: Dict[str, Any], title: str, category: Optional[str],
+) -> bool:
+    """Wave-B cache-gate PARITY with the adapter-side structured-identity
+    override (Wave A3, algolia _catalog_match_hit/_match_algolia_hit): a
+    QUERY-CONFIRMED structured model code carried on the price dict
+    (`structured_code`, stamped by the adapter whose matcher accepted the hit)
+    is the retailer's own exact-model assertion — descriptive title words
+    around a confirmed code are noise, not a variant-add ("Logo Detail Short
+    Sleeves Polo T-Shirt" + style_code L1212 IS the queried Lacoste L1212).
+    ONLY the superset/variant-add rejection is relaxed; the SAME bounds the
+    adapter override enforces stay enforced here, fail-closed:
+      - the code must be letter+digit shaped AND appear as a token in the
+        QUERY (query_confirmed_structured_code — an unqueried code relaxes
+        NOTHING);
+      - LEAK direction: every query discriminator must appear in the
+        brand+title+code surface (strict_title_match, candidate_brand-aware —
+        a WRONG-brand stamp keeps the query's own brand token required and
+        still rejects);
+      - significant query numbers must match (numbers_match);
+      - the contradiction/numeric axes stay enforced (_axis_mismatch, with
+        _selection_match's explicit-"other" re-inference mirrored).
+    Everything else in should_cache_price (identity/URL/OOS/accessory checks)
+    ran BEFORE this override. Flag-OFF never reaches here (should_cache_price
+    early-returns True)."""
+    code = query_confirmed_structured_code(
+        price.get("structured_code"), normalize_words(request_name),
+    )
+    if not code:
+        return False
+    brand = price.get("brand")
+    brand = brand.strip() if isinstance(brand, str) else ""
+    surface = " ".join(part for part in (brand, title, code) if part)
+    if not numbers_match(request_name, surface):
+        return False
+    if not strict_title_match(request_name, surface, candidate_brand=brand):
+        return False
+    cat = category
+    if (cat or "").lower() == "other":
+        cat = _infer_category_from_query(request_name) or cat
+    return not _axis_mismatch(request_name, surface, cat, brand)
+
+
 def should_cache_price(
     request_name: str, price: Optional[Dict[str, Any]], category: Optional[str] = None,
 ) -> bool:
@@ -5036,9 +5104,16 @@ def should_cache_price(
         return False
     if not request_name:
         return True
-    return _selection_match(
+    if _selection_match(
         request_name, title, category, candidate_brand=price.get("brand", ""),
-    )
+    ):
+        return True
+    # Wave-B parity — the bounded structured-identity override the algolia
+    # matcher already ran (A3): a query-confirmed model code relaxes ONLY the
+    # variant-add direction; leak direction + axes stay enforced. Without this
+    # the write gate re-rejects exactly the descriptive-title hit the adapter
+    # accepted, so the correct product resolves+displays but NEVER caches.
+    return _structured_code_cache_override(request_name, price, title, category)
 
 
 def public_price_view(price: Any) -> Any:

@@ -54,6 +54,7 @@ from app.services.price_service import (
     is_counterfeit_listing,
     is_accessory,
     is_price_showable,
+    exact_gate_enabled,
     _convert_to_bhd,
     ENABLE_PAGE_SCRAPE,
 )
@@ -633,6 +634,17 @@ async def fetch_magento_graphql_price(
     }
     if original_currency:
         price["original_currency"] = original_currency
+
+    # Wave-B identity stamp (review HIGH; PR#13 JSON-LD precedent) — carry the
+    # matched node's brand (A4 put it on the node for both shapes) onto the
+    # price dict, so select_best / should_cache_price can replay the same
+    # candidate_brand-aware match that accepted a brand-omitting title
+    # ("Black Opium Eau De Parfum 90ml" @ klinq). Empty -> omitted (legacy
+    # shape). Flag-gated for flag-OFF byte-identity, matching the precedent.
+    if exact_gate_enabled():
+        node_brand = node.get("brand")
+        if isinstance(node_brand, str) and node_brand.strip():
+            price["brand"] = node_brand.strip()
 
     # Plausibility guard (accessory leaks / sample floors / high-value ceiling).
     if not is_price_showable(product_name, price):

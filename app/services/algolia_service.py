@@ -40,6 +40,8 @@ from app.services.price_service import (
     is_counterfeit_listing,
     is_accessory,
     is_price_showable,
+    query_confirmed_structured_code,
+    exact_gate_enabled,
     _convert_to_bhd,
     ENABLE_PAGE_SCRAPE,
     PAGE_SCRAPE_TIMEOUT,
@@ -466,18 +468,54 @@ def _confirmed_style_code(hit: Dict[str, Any], p_words: set) -> str:
     tokens). Query-confirmed inclusion is a pure match ENABLER: an unqueried
     code appended to the surface would read as a variant-add and over-reject.
     Letter+digit codes only — a pure-digit style code ("00501-0660") would
-    inject numeric noise into the identity axes."""
+    inject numeric noise into the identity axes. Validation is the SHARED
+    price_service.query_confirmed_structured_code (also the cache-gate parity
+    override's rule — Wave B0), so the two ends never drift; this wrapper only
+    owns the hit-shape extraction."""
     for raw in (hit.get("style_code"), hit.get("sku")):
         if not isinstance(raw, str):
             continue
-        tok = raw.strip().split("_", 1)[0]
-        if not tok:
-            continue
-        if not (any(c.isalpha() for c in tok) and any(c.isdigit() for c in tok)):
-            continue
-        if tok.lower().replace("-", "") in p_words:
+        tok = query_confirmed_structured_code(raw.strip().split("_", 1)[0], p_words)
+        if tok:
             return tok
     return ""
+
+
+def _hit_brand_label(hit: Dict[str, Any], keys: tuple) -> str:
+    """The hit's HUMAN brand label — STRING fields only (an option-id int / a
+    nested dict is NOT a label; stamping one would hand the downstream gates a
+    bogus candidate_brand). `keys` mirrors the field order the matcher's own
+    candidate_brand used, so the stamp replays exactly the brand that matched.
+    Missing / non-string -> "" (the caller omits the stamp -> legacy shape)."""
+    for key in keys:
+        val = hit.get(key)
+        if isinstance(val, str) and val.strip():
+            return val.strip()
+    return ""
+
+
+def _stamp_matched_identity(
+    price: Dict[str, Any], hit: Dict[str, Any], product_name: str,
+    brand_keys: tuple,
+) -> None:
+    """Wave-B identity stamp (review HIGH; the PR#13 JSON-LD identity-stamp
+    precedent in price_service.extract_price_from_html): carry the MATCHED
+    hit's brand + query-confirmed style code onto the returned price dict.
+    Without them the fail-closed downstream gates re-reject exactly what the
+    matcher here accepted — select_best reads c["brand"] and
+    should_cache_price replays _selection_match with candidate_brand — so a
+    brand-omitting title resolves+displays live but NEVER caches (the warmed
+    KPI stays RED for the SKUs the matcher unlocked). Missing -> omitted
+    (legacy dict shape). Flag-gated for flag-OFF byte-identity, matching the
+    precedent."""
+    if not exact_gate_enabled():
+        return
+    brand_label = _hit_brand_label(hit, brand_keys)
+    if brand_label:
+        price["brand"] = brand_label
+    style = _confirmed_style_code(hit, normalize_words(product_name))
+    if style:
+        price["structured_code"] = style
 
 
 def _catalog_hit_fields(
@@ -721,6 +759,8 @@ async def fetch_algolia_price(
         "title": title,
         "confidence": 0.9,  # genuine fetched BHD from the store's own index
     }
+    # Brand-key order mirrors _hit_title / _match_algolia_hit's candidate_brand.
+    _stamp_matched_identity(price, hit, product_name, ("brand_name", "brand", "main_brand"))
 
     # L2 content safety — drop a candidate whose surface trips the blocklist.
     try:
@@ -807,6 +847,8 @@ async def _fetch_explicit_store_price(
     }
     if original_currency:
         price["original_currency"] = original_currency
+    # Brand-key order mirrors _catalog_match_hit's candidate_brand.
+    _stamp_matched_identity(price, hit, product_name, ("brand", "brand_name", "manufacturer"))
 
     # Plausibility guard (low-fragrance/high-value/accessory/sample leaks).
     if not is_price_showable(product_name, price):
