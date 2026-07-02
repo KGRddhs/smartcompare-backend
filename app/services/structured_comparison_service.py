@@ -1631,6 +1631,211 @@ def _harvest_candidate_urls(
     return filtered
 
 
+# ============================================================================
+# B5 (genuine-price KPI Wave B) — ORGANIC PDP HARVEST.
+#
+# The curl fan_out candidate_urls came EXCLUSIVELY from the Serper `site:`
+# discovery on registry rows above. But those SAME already-fetched discovery
+# responses carry ORGANIC results with PDP-shaped URLs on BH/GCC retail
+# domains that the per-tier windows drop — live capture (Tom Ford Oud Wood,
+# gl=bh): a bahrain.ounass.com organic result with STRUCTURED
+# {"currency": "BHD", "price": 119.75} extras and an alhajisbahrain.com PDP
+# with BHD in the snippet, while shopping gl=bh returned 0 items.
+# (serper_service.search_web returns the RAW Serper JSON — the rich-result
+# extras are NOT stripped, so they're already threaded into results_by_tier.)
+#
+# Harvest rules (bounded + fail-closed):
+#   (a) NOT a listing/search URL (is_non_pdp_listing_url AND the
+#       price_service._is_listing_url wrapper must BOTH be False);
+#   (b) on a BH/GCC RETAIL domain: registry tier "bahrain"/"gcc"
+#       (source_router lookup — the registry IS the derived GCC allowlist),
+#       OR a .bh TLD, OR a bahrain.-prefixed host. A "global"-tier domain
+#       (amazon.com / sephora.com / fragrantica.com) NEVER harvests, and an
+#       off-registry .com (reddit / youtube / tomfordbeauty.com) fails closed;
+#   (c) prioritized: structured extras currency==BHD with a price FIRST, then
+#       BHD-in-snippet, then registry-domain, then the remaining BH-marked.
+#
+# Cap _ORGANIC_PDP_HARVEST_CAP BEFORE merging; dedupe (fragment-stripped) vs
+# the site:-discovery URLs; the merged pool feeds the UNCHANGED fan_out
+# gates — the PDP JSON-LD + exact-identity + availability checks verify the
+# price on the real PDP. The structured snippet price is a PRIORITY signal
+# ONLY — never served, never cached (the fan_out plausibility guards in
+# _finalize_fan_winner already sanity-band the extracted price; threading a
+# per-URL band into the fan_out result shape was judged not cheap → skipped).
+# Zero extra Serper calls: the harvest only READS results_by_tier.
+#
+# Flag ENABLE_ORGANIC_PDP_HARVEST (default ON). OFF → no harvest,
+# candidate_urls byte-identical to the pre-B5 pool.
+# ============================================================================
+
+_ORGANIC_PDP_HARVEST_CAP = 4
+
+
+def _organic_pdp_harvest_enabled() -> bool:
+    """True iff the organic PDP harvest is active (default ON). Read per-call
+    (not cached) so an env flip / monkeypatch takes effect immediately —
+    mirrors price_service.exact_gate_enabled."""
+    return os.getenv("ENABLE_ORGANIC_PDP_HARVEST", "true").strip().lower() not in (
+        "false", "0", "no", "off", "",
+    )
+
+
+def _organic_host_bh_gcc_retail(host: str) -> Tuple[bool, bool]:
+    """(eligible, registry_known) for `host` (lowered, www-stripped) as a
+    BH/GCC RETAIL domain. Fail-closed: a registry "global" tier (amazon.com /
+    sephora.com) and any unmarked off-registry .com are NOT eligible."""
+    if not host:
+        return False, False
+    tier = registry_tier(host)
+    if tier in ("bahrain", "gcc"):
+        return True, True
+    if tier == "global":
+        return False, False
+    # Off-registry: only explicitly-BH hosts.
+    if host.endswith(".bh") or host.startswith("bahrain."):
+        return True, False
+    return False, False
+
+
+def _harvest_organic_pdp_candidates(
+    results_by_tier: Dict[str, Any],
+    category: str,
+    existing_urls: Optional[set] = None,
+    query_name: str = "",
+    cap: int = _ORGANIC_PDP_HARVEST_CAP,
+) -> List[Tuple[str, str, str, float]]:
+    """Mine the already-fetched discovery organic results for BH/GCC retail
+    PDPs. Returns `(link, domain_label, "organic_harvest", weight)` rows in
+    priority order (structured-BHD → BHD-snippet → registry → BH-marked),
+    capped at `cap`, deduped (fragment-stripped) against `existing_urls` and
+    within itself. Flag-OFF or empty input → []. Never raises."""
+    if not _organic_pdp_harvest_enabled():
+        return []
+    from app.services.price_service import _is_listing_url
+
+    seen: set = set(existing_urls or ())
+    # (priority, insertion_order, link, host, weight)
+    rows: List[Tuple[int, int, str, str, float]] = []
+    order = 0
+
+    def _consider(raw_link: str, title: str, snippet: str,
+                  extras_currency: Any, extras_price: Any) -> None:
+        nonlocal order
+        link = (raw_link or "").split("#", 1)[0]
+        if not link or link in seen:
+            return
+        if not validate_scrape_url(link):
+            return
+        # (a) PDP-shaped: BOTH listing classifiers must clear it.
+        if is_non_pdp_listing_url(link) or _is_listing_url(link):
+            return
+        # Same locale safety the site:-discovery pool gets (wrong-GCC-locale
+        # pages carry SAR/AED/... — never BH shelf prices).
+        if is_wrong_locale_url(link):
+            return
+        try:
+            host = (urlparse(link).netloc or "").lower()
+        except (ValueError, TypeError):
+            return
+        if host.startswith("www."):
+            host = host[4:]
+        # (b) BH/GCC retail domain gate (fail-closed).
+        eligible, registry_known = _organic_host_bh_gcc_retail(host)
+        if not eligible:
+            return
+        # S2 I2.5 — review-only registry domains carry no prices.
+        if source_usage(link, category) == "review":
+            return
+        # Wrong model-line variant PDP (an "iPhone 15" query never harvests
+        # the "iPhone 15 Pro Max" PDP) — same gate as the site: harvest.
+        if query_name and title and variant_mismatch(query_name, title):
+            return
+        # (c) priority buckets.
+        if extras_currency == "BHD" and isinstance(extras_price, (int, float)) \
+                and extras_price > 0:
+            priority = 0  # structured BHD extras
+        elif "bhd" in (snippet or "").lower():
+            priority = 1  # BHD in the snippet
+        elif registry_known:
+            priority = 2  # registry bahrain/gcc domain
+        else:
+            priority = 3  # BH-marked off-registry (.bh / bahrain.-prefix)
+        seen.add(link)
+        rows.append((priority, order, link, host, score_source(link, category)))
+        order += 1
+
+    try:
+        tier_results = [
+            r for r in (results_by_tier or {}).values() if isinstance(r, dict)
+        ]
+        # Pass 1 — top-level organic links (they carry the extras + snippet).
+        for result in tier_results:
+            for item in (result.get("organic") or []):
+                if not isinstance(item, dict):
+                    continue
+                _consider(
+                    item.get("link", ""), item.get("title", ""),
+                    item.get("snippet", ""), item.get("currency"),
+                    item.get("price"),
+                )
+        # Pass 2 — PDP-shaped sitelinks (a genuine PDP often ranks only as a
+        # nested sitelink; no extras/snippet inheritance from the parent).
+        for result in tier_results:
+            for item in (result.get("organic") or []):
+                if not isinstance(item, dict):
+                    continue
+                for sl in (item.get("sitelinks") or []):
+                    if not isinstance(sl, dict):
+                        continue
+                    sl_link = (sl.get("link") or "").split("#", 1)[0]
+                    if not _is_pdp_link(sl_link):
+                        continue
+                    _consider(sl_link, sl.get("title", ""), "", None, None)
+    except Exception as e:  # noqa: BLE001 — harvest is additive, never fatal
+        logger.warning(f"[PRICE] organic PDP harvest failed: {e}")
+        return []
+
+    rows.sort(key=lambda r: (r[0], r[1]))
+    return [
+        (link, host, "organic_harvest", weight)
+        for _p, _o, link, host, weight in rows[:cap]
+    ]
+
+
+def _merge_organic_pdp_harvest(
+    candidate_urls: List[Tuple[str, str]],
+    harvested: List[Tuple[str, str, str, float]],
+    results_by_tier: Dict[str, Any],
+    category: str,
+    query_name: str,
+) -> Tuple[List[Tuple[str, str]], List[Tuple[str, str, str, float]]]:
+    """Append the bounded organic PDP harvest to the fan_out pool. The
+    site:-discovery rows keep their order and LEAD the pool; the harvest rows
+    are appended (deduped) so the existing fan_out waves/budget caps are
+    unchanged. `harvested` grows in lockstep so _finalize_fan_winner can
+    route-stamp an organic winner "organic_harvest". Flag-OFF or empty
+    harvest → the EXACT input objects are returned (byte-identical pool)."""
+    if not _organic_pdp_harvest_enabled():
+        return candidate_urls, harvested
+    organic = _harvest_organic_pdp_candidates(
+        results_by_tier,
+        category,
+        existing_urls={u for u, _label in candidate_urls},
+        query_name=query_name,
+    )
+    if not organic:
+        return candidate_urls, harvested
+    logger.info(
+        "[PRICE] organic PDP harvest added %d candidate(s) for %s: %s",
+        len(organic), query_name,
+        ", ".join(label for _l, label, _r, _w in organic),
+    )
+    return (
+        candidate_urls + [(link, label) for link, label, _r, _w in organic],
+        list(harvested) + organic,
+    )
+
+
 # S3 electronics-authority (prong b, piece 2) — the genuine-BH electronics
 # retailers whose base PDP the combined discovery often misses (sharafdg's PDP
 # ranks only as a sitelink; both are crowded out by SA/OM noise). The lazy
@@ -5271,6 +5476,20 @@ class StructuredComparisonService:
                         [(link, label) for link, label, _r, _w in _backfill]
                         + candidate_urls
                     )
+
+            # B5 (organic PDP harvest, Ahmed-requested widening) — mine the
+            # ALREADY-FETCHED discovery organic results for BH/GCC retail PDPs
+            # the per-tier windows dropped (live capture: bahrain.ounass.com
+            # organic carries structured BHD extras while shopping gl=bh is 0
+            # items) and APPEND them (deduped, capped at 4) to the pool. Runs
+            # AFTER the electronics backfill so the backfill's zero-genuine-PDP
+            # trigger is unchanged; purely additive — the fan_out gates (JSON-LD
+            # + exact-identity + availability) verify each on the real PDP.
+            # Zero extra Serper calls. Flag ENABLE_ORGANIC_PDP_HARVEST (default
+            # ON); OFF → candidate_urls byte-identical to the pool above.
+            candidate_urls, harvested = _merge_organic_pdp_harvest(
+                candidate_urls, harvested, results_by_tier, category, full_name
+            )
 
             # S3-genuine — the curl-SEARCH-URL injector (build_direct_bh_candidates)
             # was REMOVED 2026-06-14. Team-lead live probe (WRINKLE 2) + our own
