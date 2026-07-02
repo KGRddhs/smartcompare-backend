@@ -1029,6 +1029,75 @@ def _fan_out_budget_seconds() -> float:
     except (TypeError, ValueError):
         return 12.0
 
+
+def _genuine_priority_enabled() -> bool:
+    """ENABLE_GENUINE_PRICE_PRIORITY (fix-ladder item 1, default OFF — ships
+    DORMANT; do NOT flip anywhere without the live-tuning measurement pass).
+
+    Deadline-aware upstream clamping + genuine-over-parked-converted preference
+    in the price race: every upstream wait inside _get_price (Tier-1 shopping,
+    shopify/algolia/adapter consumes, discovery gather, electronics backfill)
+    is clamped so GENUINE_MIN_BUDGET_SECONDS remains for the genuine fan_out,
+    select_best gets a stable lexicographic final tiebreak, and a race miss
+    recovers a COMPLETED showable genuine candidate over the parked converted.
+    Flag-OFF = byte-identical behavior at every touched site.
+
+    Read FRESH per call (the _price_cache_bust_enabled pattern, NOT process-
+    cached) so live-tuning / the warmer can flip without a redeploy.
+
+    RISKS (recon_determinism §11 — MEASURE BEFORE flipping in Railway):
+      (1) flag-ON pushes the average price wall toward the full 15s on cold
+          queries (the race no longer ends early on parked converted) → watch
+          metadata.partial + 503 TIMEOUT rates vs STREAM_HARD_CAP;
+      (2) a clamped Tier-1 shopping call drops the parked converted AND empties
+          self._shopping_items_cache (ratings Tier-1 degrades) — if genuine
+          ALSO misses, coverage degrades past converted to Tier-2/3 (a
+          deliberate priority trade; the clamp INFO log makes fire-rate
+          measurable — if >~5% of compares, raise the cap or lower the reserve);
+      (3) the 0.5s clamp floors mean 4+ sequential floors can still eat ~2-3s
+          pathologically — the reserve is best-effort (violation INFO at the
+          fan_out budget site);
+      (4) stable_tiebreak can change the cross-run winner identity for TRUE
+          ties (different retailer vs pre-fix runs) — expected: that IS the
+          determinism;
+      (5) the supplement branch is untouched (its stages have their own
+          4/5/3s caps and no converted-park race)."""
+    return os.getenv("ENABLE_GENUINE_PRICE_PRIORITY", "").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
+def _genuine_min_budget_seconds() -> float:
+    """GENUINE_MIN_BUDGET_SECONDS (default 6.0) — the fan_out reserve the
+    upstream clamps protect when ENABLE_GENUINE_PRICE_PRIORITY is on. 6.0 =
+    half the 12s FAN_OUT_BUDGET_SECONDS: enough for the curl wave's early-exit
+    (2-source-confirm / rank>=85) on BH PDPs; live-tuning adjusts. Same
+    live-read try/except-float pattern as _fan_out_budget_seconds."""
+    try:
+        return float(os.getenv("GENUINE_MIN_BUDGET_SECONDS", "6.0"))
+    except (TypeError, ValueError):
+        return 6.0
+
+
+def _pre_reserve_remaining(cap: float, race_deadline: Optional[float]) -> float:
+    """Clamp an upstream wait inside _get_price so GENUINE_MIN_BUDGET_SECONDS
+    remains for the genuine fan_out before the _PRICE_RACE_TIMEOUT deadline.
+
+    Flag-OFF (`race_deadline is None`) returns `cap` UNCHANGED — byte-identical
+    legacy timeouts at every call site. Flag-ON returns
+    max(0.5, min(cap, remaining_to_deadline - reserve)): the 0.5s floor keeps a
+    degenerate/tiny deadline from producing a zero/negative wait (with a
+    sub-second monkeypatched cap the floor can EXCEED the remaining budget —
+    acceptable: the caller's outer wait_for still cancels at the real cap).
+
+    Module-level (an explicit race_deadline param, not a _get_price closure) so
+    the flag-OFF cap passthrough is directly pinned by tests."""
+    if race_deadline is None:
+        return cap
+    rem = (race_deadline - time.monotonic()) - _genuine_min_budget_seconds()
+    return max(0.5, min(cap, rem))
+
+
 # I5.6 lever-3 — per-race cap on the Phase-2 verified-rating fetch. The rating
 # cascade (Serper Tier 1→2→3 + GPT fallback) was the one UNCAPPED Phase-2 race;
 # 4s matches the measured warm rating floor with headroom while keeping a slow
@@ -4015,10 +4084,10 @@ class StructuredComparisonService:
                     "[L2.6] Phase 1 race timeout for %s (limit %.1fs)",
                     key, _PHASE1_TIMEOUTS.get(key, 0.0),
                 )
-                result[key] = self._price_fallback_on_miss(key, full_name)
+                result[key] = self._price_fallback_on_miss(key, full_name, category)
             elif isinstance(phase1_results[i], Exception):
                 logger.error(f"Error fetching {key}: {phase1_results[i]}")
-                result[key] = self._price_fallback_on_miss(key, full_name)
+                result[key] = self._price_fallback_on_miss(key, full_name, category)
             else:
                 result[key] = phase1_results[i]
 
@@ -4442,7 +4511,8 @@ class StructuredComparisonService:
                 return {"retailer": retailer_name, "url": link}
         return None
 
-    def _price_fallback_on_miss(self, key: str, full_name: str):
+    def _price_fallback_on_miss(self, key: str, full_name: str,
+                                category: Optional[str] = None):
         """S3-genuine prod-hardening (Fix A) — when a Phase-1 race for `key`
         timed out / errored, surface a graceful fallback instead of bare None.
 
@@ -4451,8 +4521,58 @@ class StructuredComparisonService:
         timeout that CANCELS _get_price still yields the real cited gl=us price,
         never None (the prod regression). For every other key: None as before
         (specs/reviews/image degrade to missing-data, unchanged).
+
+        ENABLE_GENUINE_PRICE_PRIORITY (determinism item 1) — BEFORE the parked
+        lookup, a COMPLETED showable GENUINE candidate retained in
+        self._price_candidates (fan-wave retention + short-circuit seeds, both
+        is_price_showable-gated at seed time) beats the parked converted:
+        "never return converted when a genuine result was actually obtained".
+        `category` (default None — legacy 2-arg callers unchanged) threads the
+        orchestrator-resolved category into select_best's identity gate.
         """
         if key == "price":
+            if _genuine_priority_enabled():
+                # Race-miss genuine recovery. DISPLAY-ONLY: no set_cached /
+                # _save_price_to_db here (the cache_key is not reconstructible
+                # in this scope, and a cancel-path write is exactly the
+                # poisoning class PR#9 closed). select_best re-gates identity/
+                # OOS/PDP-URL AND requires amount>0 — a sharafdg-style price=0
+                # + in_stock=True hit can never count as a recoverable genuine
+                # signal. RESIDUAL (documented, not fixed): candidates from a
+                # fan wave cancelled MID-wave are lost inside
+                # fan_out_price_lookup; the upstream reserve makes that rare.
+                try:
+                    cands = [
+                        c.get("raw_data")
+                        for c in self._price_candidates.get(full_name, [])
+                        if isinstance(c, dict)
+                        and isinstance(c.get("raw_data"), dict)
+                    ]
+                    genuine = [
+                        c for c in cands
+                        if (c.get("source_method") or "").lower()
+                        in _GENUINE_BH_SOURCE_METHODS
+                        and "converted" not in (c.get("source_method") or "")
+                        and "estimate" not in (c.get("source_method") or "")
+                    ]
+                    best = (
+                        select_best(genuine, full_name, category,
+                                    stable_tiebreak=True)
+                        if genuine else None
+                    )
+                    if best is not None:
+                        best = dict(best)
+                        best["_cached"] = False
+                        logger.info(
+                            "[PRICE] race miss for %s -> recovered COMPLETED "
+                            "genuine %s (beats parked %s)",
+                            full_name, best.get("source_method"),
+                            (self._parked_price.get(full_name) or {}).get(
+                                "source_method"),
+                        )
+                        return best
+                except Exception:  # noqa: BLE001 — recovery must never break the miss path
+                    pass
             parked = self._parked_price.get(full_name)
             if parked and parked.get("amount"):
                 logger.info(
@@ -4484,6 +4604,19 @@ class StructuredComparisonService:
         # right axes — closes the bare-compound/brand-omitted-line leak (coverage review R8 +
         # independent review). Per-task ContextVar → no cross-product contamination.
         set_resolved_price_category(category)
+        # ENABLE_GENUINE_PRICE_PRIORITY (fix-ladder item 1) — per-call race
+        # deadline. Computed from the SAME module constant the caller's Phase-1
+        # wait_for uses (_PRICE_RACE_TIMEOUT: tests monkeypatch the attr; the
+        # warmer raises it to 60 via the PRICE_RACE_TIMEOUT env at import), so
+        # every _pre_reserve_remaining clamp below subtracts REAL elapsed time
+        # from the REAL cancel deadline. The <1ms skew between the caller's
+        # ensure_future kickoff and this coroutine's first run is absorbed by
+        # the 0.5s clamp floor. Flag OFF → None → every clamp returns its
+        # legacy cap unchanged (byte-identical).
+        _race_deadline = (
+            (time.monotonic() + _PRICE_RACE_TIMEOUT)
+            if _genuine_priority_enabled() else None
+        )
         if not validate_price_query(brand, name, region):
             return {"amount": 0, "currency": "BHD", "estimated": True, "source_method": "validation_rejected"}
 
@@ -4946,12 +5079,21 @@ class StructuredComparisonService:
             # bounding is the PER-SOURCE `_timeout_none` wrap, so this outer bound
             # never collapses a fast source: each per-source timeout fires first
             # and yields its None, letting the gather complete with the fast hit.
-            _outer_bound = _ADAPTER_TIMEOUT + 2.0
+            # Genuine-priority clamp (site C) — the family consumes below run
+            # SEQUENTIALLY (sitemap → jsonapi → the _new_adapter_specs families
+            # incl. Wave-C noon), so a bound computed ONCE cannot respect the
+            # race deadline across up to 9 sequential waits (worst-case 9×12s).
+            # A FRESH per-await closure re-derives the remaining budget each
+            # time; flag-OFF it returns the legacy 12.0 at every site
+            # (byte-identical). Per-source _timeout_none wraps are untouched.
+            def _consume_bound() -> float:
+                return _pre_reserve_remaining(
+                    _ADAPTER_TIMEOUT + 2.0, _race_deadline)
             # sitemap adapters (bolo + boutiqaat) — genuine page_scrape_jsonld.
             try:
                 if "sitemap" in _prefetched_direct:
                     _sm = await asyncio.wait_for(
-                        _prefetched_direct.pop("sitemap"), timeout=_outer_bound
+                        _prefetched_direct.pop("sitemap"), timeout=_consume_bound()
                     )
                 elif _sitemap_sources_pf and ENABLE_PAGE_SCRAPE:
                     # Per-source timeout wrap (Codex HIGH-4) — slow source → None,
@@ -4973,7 +5115,7 @@ class StructuredComparisonService:
                     ]
                     _sm = await asyncio.wait_for(
                         asyncio.gather(*_sm_coros, return_exceptions=True),
-                        timeout=_outer_bound,
+                        timeout=_consume_bound(),
                     ) if _sm_coros else []
                 else:
                     _sm = []
@@ -4986,7 +5128,7 @@ class StructuredComparisonService:
             try:
                 if "jsonapi" in _prefetched_direct:
                     _ja = await asyncio.wait_for(
-                        _prefetched_direct.pop("jsonapi"), timeout=_outer_bound
+                        _prefetched_direct.pop("jsonapi"), timeout=_consume_bound()
                     )
                 elif _jsonapi_sources_pf and ENABLE_PAGE_SCRAPE:
                     # Per-source timeout wrap (Codex HIGH-4). Codex MEDIUM
@@ -5002,7 +5144,7 @@ class StructuredComparisonService:
                             ),
                             return_exceptions=True,
                         ),
-                        timeout=_outer_bound,
+                        timeout=_consume_bound(),
                     )
                 else:
                     _ja = []
@@ -5022,7 +5164,7 @@ class StructuredComparisonService:
                 try:
                     if _na_key in _prefetched_direct:
                         _na_res = await asyncio.wait_for(
-                            _prefetched_direct.pop(_na_key), timeout=_outer_bound
+                            _prefetched_direct.pop(_na_key), timeout=_consume_bound()
                         )
                     elif ENABLE_PAGE_SCRAPE and _na_srcs:
                         _na_res = await asyncio.wait_for(
@@ -5036,7 +5178,7 @@ class StructuredComparisonService:
                                 ),
                                 return_exceptions=True,
                             ),
-                            timeout=_outer_bound,
+                            timeout=_consume_bound(),
                         )
                     else:
                         _na_res = []
@@ -5109,7 +5251,13 @@ class StructuredComparisonService:
             # re-applies the identity+axis gate across adapters; if NO genuine hit is
             # exact/in-stock/valid it returns None → don't short-circuit, seed the
             # observations and let the cascade keep looking (like the no-genuine case).
-            best = select_best(genuine_observed, full_name, category)
+            best = select_best(
+                genuine_observed, full_name, category,
+                # Determinism item 1 — flag-ON, equal-authority cross-adapter
+                # ties resolve lexicographically instead of by arrival order.
+                # Flag-OFF passes False → the sort key is byte-identical.
+                stable_tiebreak=_genuine_priority_enabled(),
+            )
             if best is None:
                 # NO-FAB (review H4) — genuine adapter hits EXISTED but every one was
                 # filtered (OOS / non-exact / listing-URL). That is a TRANSIENT gap
@@ -5163,7 +5311,33 @@ class StructuredComparisonService:
             shopping_items = []
             self._shopping_items_cache[full_name] = []
         else:
-            search_results = await search_product_prices(search_query, region_info["code"])
+            if _race_deadline is not None:
+                # Genuine-priority clamp (site A) — never let the Tier-1
+                # shopping wall (serper's own httpx client caps at 15s;
+                # gl=bh/gl=us concurrent = ONE wall) eat the fan_out reserve;
+                # the 15.0 cap below equals that httpx ceiling, so the clamp
+                # only bites when the reserve would be blown.
+                # CONSEQUENCE (deliberate priority trade): a clamped call means
+                # NO parked converted + an empty shopping_items_cache (ratings
+                # Tier-1 degrades) — the INFO makes fire-rate measurable at
+                # live-tuning. Cost accounting (_track_serper_cost + the
+                # GL_FALLBACK_TRACE) stays OUTSIDE the try, unchanged.
+                try:
+                    search_results = await asyncio.wait_for(
+                        search_product_prices(search_query, region_info["code"]),
+                        timeout=_pre_reserve_remaining(15.0, _race_deadline),
+                    )
+                except asyncio.TimeoutError:
+                    logger.info(
+                        "[PRICE] genuine-priority: Tier-1 shopping clamped for %s",
+                        full_name,
+                    )
+                    search_results = {
+                        "shopping": [], "organic": [],
+                        "shopping_region": "clamp_timeout",
+                    }
+            else:
+                search_results = await search_product_prices(search_query, region_info["code"])
             self._track_serper_cost()
             _ps_mark("serper_shopping")  # WS2 — includes gl=bh + (often) gl=us fallback
             shopping_items = search_results.get("shopping", [])
@@ -5316,9 +5490,12 @@ class StructuredComparisonService:
                 # mostly overlapped). Fall back to firing inline if the prefetch
                 # was skipped (ENABLE_PAGE_SCRAPE off / no sources at kickoff).
                 try:
+                    # Genuine-priority clamp (site B) — flag-OFF
+                    # _pre_reserve_remaining returns the legacy 3.0 unchanged.
                     if "shopify" in _prefetched_direct:
                         shop_results = await asyncio.wait_for(
-                            _prefetched_direct.pop("shopify"), timeout=3.0
+                            _prefetched_direct.pop("shopify"),
+                            timeout=_pre_reserve_remaining(3.0, _race_deadline),
                         )
                     else:
                         shop_results = await asyncio.wait_for(
@@ -5329,7 +5506,7 @@ class StructuredComparisonService:
                                 ),
                                 return_exceptions=True,
                             ),
-                            timeout=3.0,
+                            timeout=_pre_reserve_remaining(3.0, _race_deadline),
                         )
                 except asyncio.TimeoutError:
                     shop_results = []
@@ -5414,10 +5591,13 @@ class StructuredComparisonService:
                 # serper_shopping wait (same as the Shopify path above). Inline
                 # fallback when the prefetch was skipped.
                 try:
+                    # Genuine-priority clamp (site B) — flag-OFF the helper
+                    # returns _ALGOLIA_TIER2_TIMEOUT (5.0) unchanged.
                     if "algolia" in _prefetched_direct:
                         algolia_results = await asyncio.wait_for(
                             _prefetched_direct.pop("algolia"),
-                            timeout=_ALGOLIA_TIER2_TIMEOUT,
+                            timeout=_pre_reserve_remaining(
+                                _ALGOLIA_TIER2_TIMEOUT, _race_deadline),
                         )
                     else:
                         algolia_results = await asyncio.wait_for(
@@ -5428,7 +5608,8 @@ class StructuredComparisonService:
                                 ),
                                 return_exceptions=True,
                             ),
-                            timeout=_ALGOLIA_TIER2_TIMEOUT,
+                            timeout=_pre_reserve_remaining(
+                                _ALGOLIA_TIER2_TIMEOUT, _race_deadline),
                         )
                 except asyncio.TimeoutError:
                     algolia_results = []
@@ -5545,10 +5726,42 @@ class StructuredComparisonService:
             _disc_results = 0
             _disc_errored = 0
             try:
-                gathered = await asyncio.gather(
-                    *(coro for _, coro in discovery_tasks),
-                    return_exceptions=True,
-                )
+                if _race_deadline is not None:
+                    # Genuine-priority clamp (site D) — harvest via
+                    # asyncio.wait, NOT a wait_for on the gather (that would
+                    # cancel-and-lose COMPLETED tiers): a slow discovery tier
+                    # is dropped while finished tiers are KEPT. The prefetched
+                    # path stores FUTURES, the inline path raw COROUTINES —
+                    # hence the iscoroutine wrap. _dtasks is order-aligned with
+                    # discovery_tasks so the zip below pairs unchanged.
+                    _dtasks = [
+                        asyncio.ensure_future(c) if asyncio.iscoroutine(c) else c
+                        for _, c in discovery_tasks
+                    ]
+                    _done, _pending = await asyncio.wait(
+                        _dtasks,
+                        timeout=_pre_reserve_remaining(8.0, _race_deadline),
+                    )
+                    for _p in _pending:
+                        _p.cancel()
+                    gathered = []
+                    for _t in _dtasks:
+                        if _t in _done:
+                            try:
+                                _exc = _t.exception()
+                            except asyncio.CancelledError:
+                                _exc = asyncio.TimeoutError()
+                            gathered.append(
+                                _exc if _exc is not None else _t.result())
+                        else:
+                            # Clamped tier — same degraded shape a gather
+                            # exception takes (counted by the loop below).
+                            gathered.append(asyncio.TimeoutError())
+                else:
+                    gathered = await asyncio.gather(
+                        *(coro for _, coro in discovery_tasks),
+                        return_exceptions=True,
+                    )
                 for (tier_name, _), result in zip(discovery_tasks, gathered):
                     _disc_results += 1
                     if isinstance(result, Exception):
@@ -5591,7 +5804,18 @@ class StructuredComparisonService:
             # noise (prod-verify: iPhone 15 sharafdg 244.99 unreachable otherwise).
             # Electronics-scoped — that's the category with the genuine-BH-PDP miss.
             if category == "electronics":
-                _backfill = await _lazy_bh_pdp_backfill(harvested, full_name, category)
+                if _race_deadline is not None:
+                    # Genuine-priority clamp (site D) — the lazy backfill adds
+                    # up to 2 more serper calls; never let it eat the reserve.
+                    try:
+                        _backfill = await asyncio.wait_for(
+                            _lazy_bh_pdp_backfill(harvested, full_name, category),
+                            timeout=_pre_reserve_remaining(4.0, _race_deadline),
+                        )
+                    except asyncio.TimeoutError:
+                        _backfill = []
+                else:
+                    _backfill = await _lazy_bh_pdp_backfill(harvested, full_name, category)
                 if _backfill:
                     self.api_calls += len(_LAZY_BACKFILL_DOMAINS)
                     self._track_cost_amount(0.001 * len(_LAZY_BACKFILL_DOMAINS))
@@ -5720,6 +5944,27 @@ class StructuredComparisonService:
                 # Firecrawl/Scrape.do finish luxury SPAs. LIVE STAYS 12s (the 15s
                 # price clock is sacred); only the warmer's process sets the env.
                 _FAN_OUT_BUDGET = _fan_out_budget_seconds()
+                if _race_deadline is not None:
+                    _dl_rem = _race_deadline - time.monotonic()
+                    if _dl_rem < _genuine_min_budget_seconds():
+                        # Reserve violated DESPITE the upstream clamps (4+
+                        # sequential 0.5s floors can still eat ~2-3s in a
+                        # pathological run) — best-effort by design; the INFO
+                        # makes the violation rate measurable at live-tuning.
+                        logger.info(
+                            "[PRICE] genuine-priority: fan_out reserve violated "
+                            "for %s (%.2fs left < %.1fs reserve)",
+                            full_name, _dl_rem, _genuine_min_budget_seconds(),
+                        )
+                    # Deadline-aware budget: never run the waves past the outer
+                    # cancel pointlessly. Deliberately NOT floored at the
+                    # reserve — if upstream ate through the clamp floors,
+                    # extending past the deadline is useless (the outer
+                    # wait_for cancels anyway). Flag-OFF this whole block is
+                    # skipped: _FAN_OUT_BUDGET stays the bare
+                    # _fan_out_budget_seconds() value (byte-identical).
+                    _FAN_OUT_BUDGET = min(
+                        _FAN_OUT_BUDGET, max(0.5, _dl_rem))
                 _ps_mark("pre_fan_out")  # WS2 — discovery+ranking done, entering scrape waves
                 _t15_start = time.monotonic()
                 for _wave in ("curl", "render"):

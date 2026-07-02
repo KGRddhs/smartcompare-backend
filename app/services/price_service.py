@@ -5801,6 +5801,7 @@ def _candidate_authority(cand: Dict[str, Any], category: Optional[str]) -> float
 def select_best(
     candidates: List[Dict[str, Any]], query_name: str, category: Optional[str] = None,
     *, drop_out_of_stock: bool = True, require_url: bool = True,
+    stable_tiebreak: bool = False,
 ) -> Optional[Dict[str, Any]]:
     """Pick the single best price among `candidates` by RETAILER AUTHORITY — NEVER
     cheapest. Among candidates that have a verifiable IDENTITY (title/name), are
@@ -5820,6 +5821,13 @@ def select_best(
     JSON-LD within-page extractor passes False (its candidates are page-internal —
     the page URL is stamped onto the result by the caller, so requiring a
     per-candidate URL there would wrongly drop every JSON-LD match).
+
+    `stable_tiebreak` (default False — byte-identical for ALL existing callers,
+    ENABLE_GENUINE_PRICE_PRIORITY determinism item 1): when True, ties past
+    `amount` resolve lexicographically on (retailer, url) instead of Python
+    stable-sort insertion order, so equal-authority/precision/amount candidates
+    pick the SAME winner regardless of arrival order across runs. It is the
+    LAST tiebreak — authority/precision/amount ordering is unchanged.
 
     Returns None when no candidate qualifies. Rollback: with the gate OFF this
     restores the legacy cheapest-pick (min amount)."""
@@ -5873,12 +5881,19 @@ def select_best(
         title = c.get("title") or c.get("name") or ""
         cr, sr = variant_precision_rank(query_name, title)
         return float(cr + sr)
-    eligible.sort(key=lambda c: (
-        c.get("in_stock") is False,   # in-stock (False) sorts before OOS (True)
-        -_candidate_authority(c, category),
-        -_precision(c),
-        c["amount"],
-    ))
+    def _sort_key(c: Dict[str, Any]):
+        key = (
+            c.get("in_stock") is False,   # in-stock (False) sorts before OOS (True)
+            -_candidate_authority(c, category),
+            -_precision(c),
+            c["amount"],
+        )
+        if stable_tiebreak:
+            # Lexicographic FINAL tiebreak (determinism) — only extends the
+            # tuple; default False keeps the key byte-identical.
+            key = key + (str(c.get("retailer") or ""), str(c.get("url") or ""))
+        return key
+    eligible.sort(key=_sort_key)
     return eligible[0]
 
 
