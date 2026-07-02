@@ -2712,9 +2712,14 @@ def strict_title_match(
     title_normalized = title.lower().replace("-", "")
     # Tokens of the candidate's OWN brand — dropped from the required query words
     # only when the candidate actually carries that brand (so a Samsung candidate
-    # never lets an "apple" query word be skipped).
+    # never lets an "apple" query word be skipped). Apostrophe-folded like BOTH
+    # text sides above (Wave B review MED): a retailer brand label spelled
+    # "Levi's"/"L'Oreal" must equal the folded query token ("levis"/"loreal") to
+    # release it — unfolded, the brand-omitting titles the candidate_brand path
+    # exists to recover kept rejecting.
     brand_toks = {
-        b for b in (candidate_brand or "").lower().replace("-", "").split()
+        b for b in _APOSTROPHES_RE.sub("", candidate_brand or "")
+        .lower().replace("-", "").split()
         if len(b) > 2
     } if exact_gate_enabled() else set()
     key_words = [

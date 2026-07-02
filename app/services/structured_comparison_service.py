@@ -782,6 +782,7 @@ from app.services.price_service import (
     is_implausible_high_value_price,
     is_implausible_low_fragrance_price,
     is_price_showable,
+    exact_gate_enabled,
     select_best,
     should_cache_price,
     public_price_view,
@@ -4748,9 +4749,15 @@ class StructuredComparisonService:
                 # Tier-1 converted park (also a real cited price, and the Tier-2
                 # wrong-SKU anchor) is not displaced. Provenance stays the honest
                 # literal converted_usd the adapters stamped; SF-1 keeps it out of
-                # the negcache at the terminal.
+                # the negcache at the terminal. ROLLBACK GATING (Wave B review
+                # MED): the park runs ONLY under exact_gate_enabled() — flag-OFF,
+                # select_best degrades to min(amount) with zero identity/OOS/URL
+                # gating, so an unconditional park would serve+cache a wrong-SKU
+                # cheapest converted hit (a serving+write path the flag-OFF
+                # b207bfa baseline never had). ENABLE_EXACT_PRICE_GATE=false
+                # restores the legacy terminal exactly: seed + return None.
                 nonlocal converted_fallback
-                if converted_fallback is None:
+                if exact_gate_enabled() and converted_fallback is None:
                     _conv_best = select_best(
                         [r for r in observed
                          if "converted" in (r.get("source_method") or "")],

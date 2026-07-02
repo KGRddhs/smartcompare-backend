@@ -59,9 +59,19 @@ _FLANKER_TELLS = {"fe", "ultra", "plus", "pro", "max", "mini", "lite", "edge"}
 
 def _loose_match(query, title):
     """>=60% of query tokens present — freshness heuristic, NOT _selection_match.
-    The two tell-sets only reject the recon-proven false certifiers."""
+    The two tell-sets only reject the recon-proven false certifiers. Every
+    DIGIT-BEARING query token (s25 / m3 / 128gb / 11) is a HARD requirement
+    (Wave-B review MED): a successor-generation title ("Galaxy S26 5G 256GB",
+    "iPad Air M4") shares enough marketing tokens to clear the 0.6 overlap and
+    would false-certify the PREVIOUS entry — the exact staleness class this
+    probe exists to catch. Title-side digit ADDS ("(2025)") stay loose: only
+    the query's own digits must appear."""
     q, t = _tokens(query), _tokens(title)
-    if not q or len(q & t) / len(q) < 0.6:
+    if not q:
+        return False
+    if {w for w in q if any(c.isdigit() for c in w)} - t:
+        return False
+    if len(q & t) / len(q) < 0.6:
         return False
     if t & _ACCESSORY_TELLS or (t - q) & _FLANKER_TELLS:
         return False

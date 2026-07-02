@@ -221,32 +221,45 @@ def test_should_negative_cache_exempts_converted_usd():
     assert should_negative_cache(_converted_kwd_hit()) is False
 
 
+async def _run_converted_only_scenario(monkeypatch):
+    """ONE woo source whose adapter yields ONLY a KWD→BHD converted hit; the
+    rest of the cascade misses everywhere. Returns (svc, price, captured) —
+    shared by the flag-ON park pins and the flag-OFF rollback pin."""
+    import app.services.structured_comparison_service as scs
+    svc = scs.get_comparison_service()
+    captured = {}
+    _stub_cascade(scs, svc, monkeypatch, negcache_captured=captured)
+    monkeypatch.setattr(
+        scs, "search_web", _search_web_returning(_CLEAN_EMPTY_DISCOVERY),
+    )
+    monkeypatch.setattr(
+        scs, "get_woo_sources_for_category",
+        lambda c: [SimpleNamespace(domain="perfumeskuwait.com")],
+    )
+
+    async def fake_woo(domain, product_name, currency="BHD", resolved_category=None):
+        return _converted_kwd_hit()
+    monkeypatch.setattr(scs, "fetch_woocommerce_store_api_price", fake_woo)
+
+    price = await svc._get_price(
+        brand="Dior", name="Sauvage", variant="EDT 100ml",
+        region="bahrain", search_query="Dior Sauvage EDT 100ml",
+        nocache=True, category="fragrances",
+    )
+    return svc, price, captured
+
+
 @pytest.mark.asyncio
 class TestConvertedTerminalFallback:
+    """Flag-ON pins (ENABLE_EXACT_PRICE_GATE=true — explicit, so the park
+    behaviour is pinned independent of the ambient env)."""
+
+    @pytest.fixture(autouse=True)
+    def _gate_on(self, monkeypatch):
+        monkeypatch.setenv("ENABLE_EXACT_PRICE_GATE", "true")
+
     async def _run_converted_only(self, monkeypatch):
-        """ONE woo source whose adapter yields ONLY a KWD→BHD converted hit; the
-        rest of the cascade misses everywhere."""
-        import app.services.structured_comparison_service as scs
-        svc = scs.get_comparison_service()
-        captured = {}
-        _stub_cascade(scs, svc, monkeypatch, negcache_captured=captured)
-        monkeypatch.setattr(
-            scs, "search_web", _search_web_returning(_CLEAN_EMPTY_DISCOVERY),
-        )
-        monkeypatch.setattr(
-            scs, "get_woo_sources_for_category",
-            lambda c: [SimpleNamespace(domain="perfumeskuwait.com")],
-        )
-
-        async def fake_woo(domain, product_name, currency="BHD", resolved_category=None):
-            return _converted_kwd_hit()
-        monkeypatch.setattr(scs, "fetch_woocommerce_store_api_price", fake_woo)
-
-        price = await svc._get_price(
-            brand="Dior", name="Sauvage", variant="EDT 100ml",
-            region="bahrain", search_query="Dior Sauvage EDT 100ml",
-            nocache=True, category="fragrances",
-        )
+        _, price, captured = await _run_converted_only_scenario(monkeypatch)
         return price, captured
 
     async def test_converted_only_adapter_hit_served_not_estimated(self, monkeypatch):
@@ -301,3 +314,29 @@ class TestConvertedTerminalFallback:
         assert price["source_method"] == "woo_store_api"
         assert price["retailer"] == "theperfumesclub.com"
         assert price["amount"] == pytest.approx(42.0)
+
+
+# --------------------------------- R5: rollback gating (Wave B review MED) ---
+
+
+@pytest.mark.asyncio
+class TestConvertedTerminalFallbackRollbackGating:
+    """With ENABLE_EXACT_PRICE_GATE=false, select_best degrades to min(amount)
+    with ZERO identity/OOS/URL gating and should_cache_price is a no-op — an
+    unconditional R5 park would serve+cache a wrong-SKU cheapest converted hit,
+    a serving+write path the flag-OFF baseline (b207bfa) never had. The park
+    must be gated on exact_gate_enabled(): flag-OFF restores the legacy
+    terminal exactly (seed the observations, NO park, Tier-3 estimate)."""
+
+    async def test_flag_off_converted_only_no_park_falls_to_estimate(self, monkeypatch):
+        monkeypatch.setenv("ENABLE_EXACT_PRICE_GATE", "false")
+        svc, price, _ = await _run_converted_only_scenario(monkeypatch)
+        assert price.get("source_method") != "converted_usd", (
+            "flag-OFF still parked/served the R5 converted terminal fallback — "
+            "the park must be gated on exact_gate_enabled()"
+        )
+        # legacy terminal: the cascade falls through to the Tier-3 estimate
+        assert price.get("estimated") is True
+        assert not svc._parked_price, (
+            f"flag-OFF wrote the _parked_price mirror: {svc._parked_price!r}"
+        )

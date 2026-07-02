@@ -151,3 +151,52 @@ def test_polo_tshirt_compound_is_a_polo_not_a_tee():
     # leaked through the shared "tshirt" token).
     assert _sel("Tommy Hilfiger Essential Flag T-Shirt",
                 "Tommy Hilfiger Essential Flag Polo T-Shirt") is False
+
+
+# ---------------------------------------------------------------------------
+# Fold 1b (Wave B review MED, price_service.py strict_title_match) —
+# candidate_brand APOSTROPHE fold. A2 folded apostrophes on both TEXT sides
+# but brand_toks was built from the RAW candidate_brand, so an
+# apostrophe-spelled retailer brand label ("Levi's" / "L'Oreal") never
+# equalled the folded query brand token and failed to RELEASE it — the
+# brand-omitting titles the A4 magento candidate_brand path exists to recover
+# kept rejecting (magento Shape-B: title NOT brand-prepended).
+# ---------------------------------------------------------------------------
+
+def test_candidate_brand_apostrophe_releases_levis_token():
+    # brand-omitting stored title + the retailer's own "Levi's" brand label:
+    # the folded label must release the query's "levis" token.
+    assert strict_title_match(
+        "Levis 501 Original Fit Jeans", "501 Original Fit Jeans - Black",
+        candidate_brand="Levi's",
+    ) is True
+
+
+def test_candidate_brand_typographic_apostrophe_releases():
+    # U+2019 — the quote form retailer CMSes actually emit.
+    assert strict_title_match(
+        "Levis 501 Original Fit Jeans", "501 Original Fit Jeans - Black",
+        candidate_brand="Levi’s",
+    ) is True
+
+
+def test_candidate_brand_loreal_apostrophe_releases():
+    assert strict_title_match(
+        "Loreal Elvive Hyaluron Pure Shampoo 400ml",
+        "Elvive Hyaluron Pure Shampoo 400ml",
+        candidate_brand="L'Oreal",
+    ) is True
+
+
+def test_wrong_candidate_brand_still_requires_query_brand():
+    # ADVERSARIAL: a WRONG-brand candidate ("Levi's" label for a Wrangler
+    # query) releases only ITS OWN tokens — the query brand stays required
+    # and the brand-omitting title still rejects. The fold must not leak.
+    assert strict_title_match(
+        "Wrangler 501 Original Fit Jeans", "501 Original Fit Jeans - Black",
+        candidate_brand="Levi's",
+    ) is False
+    assert _sel(
+        "Wrangler 501 Original Fit Jeans", "501 Original Fit Jeans - Black",
+        candidate_brand="Levi's",
+    ) is False
