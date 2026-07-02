@@ -141,6 +141,31 @@ def test_carbon_cache_key_parity(seed_mod):
     assert entry_key == k("PRADA", "Luna Rossa Carbon", None, "bahrain", CARBON_QUERY)
 
 
+def test_carbon_parser_axis_presence_gap_documented(seed_mod):
+    """DOCUMENTED RESIDUAL (live-observed 2026-07-02, C4 seed verification): the
+    REAL GPT parse of the truth query dropped the concentration ENTIRELY
+    (brand='Prada', name='Luna Rossa Carbon', variant='100ml' — 'Eau de Toilette'
+    retained NOWHERE, and _get_price's search_query is REBUILT from those fields)
+    — so the live-derived key carries no concentration token and CANNOT equal the
+    axis-complete entry key. The builder is NOT the bug (it collapses EDT ≡
+    'eau de toilette' whenever the axis is PRESENT — pinned above); this is the
+    Wave-1-documented PARSER axis-presence gap, durably fixable only by
+    parser/resolved-identity work (Wave-2 VariantDescriptor). Pinned as an
+    INEQUALITY so any change to this behavior surfaces for review. Consequence
+    observed live: the parse-shaped key held a jalilaperfumes EDP-titled price
+    the KPI truth-check correctly refuses, while the correct 58.5 EDT seed lives
+    at the axis-complete key."""
+    from app.services.price_service import build_size_aware_price_cache_key as k
+    e = [x for x in seed_mod.TRUTH_CRITICAL_SEEDS if x["name"] == "Luna Rossa Carbon"][0]
+    entry_key = k(e["brand"], e["name"], e.get("variant"), "bahrain", seed_mod._truth_label(e))
+    live_parse_key = k("Prada", "Luna Rossa Carbon", "100ml", "bahrain",
+                       "Prada Luna Rossa Carbon 100ml")
+    assert live_parse_key != entry_key, (
+        "the parser axis-presence gap appears CLOSED — re-verify which key the "
+        "live path now derives and re-point the truth-critical seed if needed"
+    )
+
+
 def test_select_targets_only_scoping(seed_mod):
     pairs = list(seed_mod.LUXURY_PAIRS)
     truth = list(seed_mod.TRUTH_CRITICAL_SEEDS)
