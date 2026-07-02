@@ -382,6 +382,70 @@ class TestHarvestPdpShape:
 
 
 # ---------------------------------------------------------------------------
+# Wave D polish (review W1) — NON-RETAIL hosts never harvest, on ANY rung
+# ---------------------------------------------------------------------------
+
+DUBIZZLE_AD = "https://dubizzle.com.bh/en/ad/apple-iphone-15-256gb-pink-12345/"
+
+
+class TestNonRetailNeverHarvests:
+    """Wave D polish (review W1): dubizzle.com.bh (user classifieds) stayed
+    organic-harvest-eligible via the pre-existing .bh-TLD trust rung — a
+    used-goods listing with self-asserted Product JSON-LD could serve+cache
+    as genuine page_scrape_jsonld. And the four CV3-demoted rows remain in
+    the deliberately ANY-status locale-path anchor, so a /bh-en path on those
+    hosts would grant the RS6 rung. The non-retail blocklist (mirroring the
+    generator's _NON_RETAIL_DOMAINS, parity-pinned in test_wave_d_cv_polish)
+    now OVERRIDES every trust rung: classifieds/aggregators never harvest."""
+
+    def test_dubizzle_bh_tld_rung_overridden(self):
+        # the exact W1 repro: pre-fix (True, False) via host.endswith(".bh")
+        assert _organic_host_bh_gcc_retail(
+            "dubizzle.com.bh",
+            path="/en/ad/apple-iphone-15-256gb-pink-12345/") == (False, False)
+
+    def test_dubizzle_pdp_shaped_ad_not_harvested(self):
+        # e2e through the harvest: PDP-shaped path + BHD snippet — the only
+        # gate standing between a classifieds ad and the fan_out pool is the
+        # host rung, so the blocklist must catch it here
+        rows = _harvest_custom(
+            [_org(DUBIZZLE_AD, "Apple iPhone 15 256GB Pink", "120.000 BHD")],
+            "Apple iPhone 15 256GB", category="electronics")
+        assert rows == []
+
+    @pytest.mark.parametrize("host", [
+        "bh.opensooq.com", "bh.labeb.com", "comparebh.com", "dubizzle.com.bh",
+    ])
+    def test_locale_path_rung_overridden_for_demoted_rows(self, host):
+        # the CV3-demoted rows stay in the ANY-status locale-path anchor
+        # (that is deliberate — namshi's dead row must keep qualifying), so
+        # the blocklist must sit ABOVE the RS6 rung too
+        assert _organic_host_bh_gcc_retail(
+            host, path="/bh-en/ad/iphone-15-256gb-4321/") == (False, False)
+
+    def test_blocklist_is_suffix_aware(self):
+        # a regional subdomain of a blocked apex is equally non-retail
+        assert _organic_host_bh_gcc_retail(
+            "bahrain.dubizzle.com",
+            path="/en/ad/iphone-15-256gb-999/") == (False, False)
+
+    def test_real_bh_retailers_unchanged(self):
+        # control, both rungs: the registry-known .bh-locale retailer and a
+        # genuine .bh-TLD host keep their eligibility exactly as before
+        assert _organic_host_bh_gcc_retail(
+            "alhajisbahrain.com",
+            "/products/tom-ford-oud-wood-edp-100ml") == (True, True)
+        assert _organic_host_bh_gcc_retail(
+            "footlocker.com.bh",
+            "/en/buy-adidas-samba-og-mens-shoes-white")[0] is True
+
+    def test_fixture_harvest_composition_unchanged(self, serper_fixture):
+        # the real captured fixture still yields exactly the two BH PDPs
+        assert _hosts(_harvest(serper_fixture)) == {
+            "bahrain.ounass.com", "alhajisbahrain.com"}
+
+
+# ---------------------------------------------------------------------------
 # scs-level merge — candidate_urls composition
 # ---------------------------------------------------------------------------
 

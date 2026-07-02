@@ -57,6 +57,26 @@ CV5 (LOW, over-rejection) _FASHION_NECKLINE_BIGRAM_RE was ASCII-hyphen/space
      canonized as _UNICODE_HYPHENS) stayed distinctive and a genuine enriched
      title over-rejected. The bigram separator now accepts the whole family.
 
+Wave D polish (review findings W1 + W2, 2026-07-02):
+
+W1  (LOW, wrong-price ingress) dubizzle.com.bh stayed organic-harvest-eligible
+    via the pre-existing .bh-TLD rung in scs._organic_host_bh_gcc_retail, and
+    the four CV3-demoted rows remain in the ANY-status locale-path anchor. A
+    non-retail blocklist (scs._ORGANIC_NON_RETAIL_DOMAINS, mirroring the
+    generator's _NON_RETAIL_DOMAINS — duplicated so the deployed service
+    never imports scripts/; the parity pin below keeps them in sync) now
+    OVERRIDES every trust rung. Runtime pins live in test_organic_pdp_harvest.
+
+W2  (LOW, over-rejection — the CV1 fix's own blind spot) bare "twin" is
+    DROPPED from _STRUCTURED_OVERRIDE_BLOCK_TOKENS: it over-rejected Fred
+    Perry "Twin Tipped" mainline polos and is REDUNDANT for the multipack
+    class (bare "pack" covers every spaced "<x> Pack" form; the glued tokens
+    cover "Twin-Pack"/"Twinpack"). And "baby" is BOUNDED: the "Baby Blue" /
+    "Baby Pink" COLORWAY bigram is a shade name on an adult mainline SKU —
+    "baby" no longer blocks when every surface occurrence is part of the
+    colorway bigram; the sibling-SEGMENT sense ("Polo Baby - 6-12 months")
+    keeps blocking, and a surface carrying BOTH senses stays blocked.
+
 Run: python -m pytest tests/test_wave_d_cv_polish.py -q
 """
 import json
@@ -202,6 +222,75 @@ class TestCV1StructuredOverrideInfantMultipack:
 
 
 # ===========================================================================
+# W2 (Wave D polish) — block-token collisions: bare 'twin' dropped, 'baby'
+# bounded to the sibling-segment sense (the colorway bigram never blocks)
+# ===========================================================================
+
+class TestW2BlockTokenCollisions:
+    def test_twin_tipped_mainline_not_blocked_helper(self):
+        # bare 'twin' dropped: 'Twin Tipped' is Fred Perry's flagship LINE
+        # name, not a sellable-unit add (both real title shapes)
+        assert _structured_override_variant_blocked(
+            "Fred Perry M3600 Polo",
+            "Fred Perry Twin Tipped Polo M3600") is False
+        assert _structured_override_variant_blocked(
+            "Fred Perry M3600 Polo",
+            "Fred Perry Twin Tipped Fred Perry Shirt - Black M3600") is False
+
+    def test_twin_tipped_polo_caches_with_confirmed_code(self):
+        # the W2 repro, e2e through the cache gate: the exact correct SKU's
+        # descriptive title rides the query-confirmed style code again
+        p = _pdp_price("Fred Perry Twin Tipped Polo M3600",
+                       brand="Fred Perry", structured_code="M3600")
+        assert should_cache_price("Fred Perry M3600 Polo", p, "fashion") is True
+
+    @pytest.mark.parametrize("marker", ["Twin Pack", "Twin-Pack", "Twinpack"])
+    def test_twin_pack_forms_still_block(self, marker):
+        # zero leak cost: bare 'pack' covers the spaced form, the enumerated
+        # glued tokens cover the hyphen/glued forms — dropping 'twin' loses
+        # no multipack coverage
+        assert _structured_override_variant_blocked(
+            "Lacoste L1212 Polo",
+            f"L1212 Polo Shirt {marker} - White") is True
+
+    @pytest.mark.parametrize("shade", ["Baby Blue", "Baby Pink"])
+    def test_baby_colorway_not_blocked_helper(self, shade):
+        # 'Baby Blue'/'Baby Pink' is a SHADE name on an adult mainline SKU —
+        # the colorway bigram consumes 'baby'
+        assert _structured_override_variant_blocked(
+            "Lacoste L1212 Polo",
+            f"Lacoste Logo Detail Polo Shirt {shade} - White L1212") is False
+
+    def test_baby_colorway_caches_with_confirmed_code(self):
+        p = _pdp_price("Logo Detail Polo Shirt Baby Blue - White",
+                       brand="Lacoste", structured_code="L1212")
+        assert should_cache_price("Lacoste L1212 Polo", p, "fashion") is True
+
+    def test_baby_segment_still_blocks(self):
+        # the sibling-SEGMENT sense (infant garment) keeps the fence up
+        assert _structured_override_variant_blocked(
+            "Lacoste L1212 Polo",
+            "Lacoste L1212 Polo Baby - 6-12 months") is True
+        p = _pdp_price("L1212 Polo Baby - 6-12 months",
+                       brand="Lacoste", structured_code="L1212")
+        assert should_cache_price("Lacoste L1212 Polo", p, "fashion") is False
+
+    def test_both_baby_senses_stay_blocked(self):
+        # fail-closed: a surface carrying the colorway AND a bare segment
+        # 'baby' still blocks (only when EVERY occurrence is colorway-bound
+        # does the token drop)
+        assert _structured_override_variant_blocked(
+            "Lacoste L1212 Polo",
+            "L1212 Polo Baby Blue - Baby 6-12 months") is True
+
+    def test_query_stated_baby_asymmetry_unchanged(self):
+        # a query that itself states the segment marker is unaffected
+        assert _structured_override_variant_blocked(
+            "Lacoste L1212 Polo Baby",
+            "L1212 Polo Shirt Baby - 6-12 months") is False
+
+
+# ===========================================================================
 # CV2 — the laptop keyboard exemption is bounded to layout-attribute phrasing
 # ===========================================================================
 
@@ -315,6 +404,16 @@ class TestCV3NonRetailCatalogRows:
             curl = {s.domain
                     for s in sr.get_curl_pagescrape_sources_for_category(cat)}
             assert not {d for d in curl if _blocklisted(d)}, cat
+
+    def test_scs_harvest_blocklist_parity_with_generator(self):
+        # W1 — the scs organic-harvest blocklist MIRRORS the generator's
+        # skip set. Duplicated (not imported: the deployed service must not
+        # depend on scripts/) — this pin is what keeps the two from drifting.
+        from app.services.structured_comparison_service import (
+            _ORGANIC_NON_RETAIL_DOMAINS,
+        )
+        assert _ORGANIC_NON_RETAIL_DOMAINS == frozenset(
+            build._NON_RETAIL_DOMAINS)
 
     def test_generator_skip_set_covers_the_class(self):
         # a re-consolidation must never re-emit the class (the F6 skip,

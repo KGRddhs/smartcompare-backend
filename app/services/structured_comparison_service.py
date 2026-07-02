@@ -1775,6 +1775,24 @@ def _organic_pdp_harvest_enabled() -> bool:
 # occurrence never matches; /saudi-en, /uae-ar, ... never gain BH status.
 _BH_LOCALE_PATH_RE = re.compile(r"^/(?:bahrain|bh)-(?:en|ar)(?:/|$)")
 
+# Wave D polish (review W1) — NON-RETAIL ORGANIC-HARVEST BLOCKLIST. A user-
+# classifieds host (used-goods/private listings with self-asserted Product
+# JSON-LD — never a retailer shelf price) or a price-comparison aggregator
+# (a cross-store min) must NEVER harvest: dubizzle.com.bh stayed eligible
+# via the pre-existing .bh-TLD trust rung, and the four CV3-demoted catalog
+# rows remain in the deliberately ANY-status locale-path anchor below. This
+# set OVERRIDES every trust rung in _organic_host_bh_gcc_retail (registry
+# tier, .bh TLD, bahrain. prefix, BH-locale path), suffix-aware. MIRRORS
+# scripts/build_source_registry_data._NON_RETAIL_DOMAINS (the F6+CV3
+# generator skip set) — duplicated rather than imported so the deployed
+# service never depends on the scripts/ package; the parity pin in
+# tests/test_wave_d_cv_polish.py keeps the two sets from drifting.
+_ORGANIC_NON_RETAIL_DOMAINS = frozenset({
+    "pricena.com", "kanbkam.com",                    # F6 aggregators
+    "labeb.com", "comparebh.com",                    # CV3 aggregators
+    "opensooq.com", "dubizzle.com", "dubizzle.com.bh", "olx.com",  # classifieds
+})
+
 # Wave C (re-sweep RS6) — the BH-locale PATH rung additionally requires the
 # host to be a REGISTRY-KNOWN retail domain: any row of the consolidated
 # BH/GCC catalog file regardless of status (a "dead" catalog row — namshi —
@@ -1837,8 +1855,16 @@ def _organic_host_bh_gcc_retail(host: str, path: str = "") -> Tuple[bool, bool]:
     its gcc REGISTRY eligibility exactly as before (the path is irrelevant
     there). Wave C (RS6): the path rung fires only for a registry-KNOWN retail
     domain (catalog row of ANY status — namshi's dead row qualifies; an
-    arbitrary off-registry .com with a crafted /bahrain-en/ path does not)."""
+    arbitrary off-registry .com with a crafted /bahrain-en/ path does not).
+
+    Wave D polish (review W1): a NON-RETAIL host (classifieds/aggregator,
+    _ORGANIC_NON_RETAIL_DOMAINS) is refused BEFORE any trust rung — a
+    dubizzle.com.bh listing must never harvest, regardless of its .bh TLD,
+    a BH-locale path, or a (re-promoted) catalog row."""
     if not host:
+        return False, False
+    if any(host == d or host.endswith("." + d)
+           for d in _ORGANIC_NON_RETAIL_DOMAINS):
         return False, False
     tier = registry_tier(host)
     if tier in ("bahrain", "gcc"):

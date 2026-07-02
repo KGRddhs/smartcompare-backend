@@ -5957,22 +5957,45 @@ _STRUCTURED_OVERRIDE_BLOCK_TOKENS = frozenset({
     # MULTIPACK sellable-unit wordings ("Twin Pack" / "2-Pack" / "Multipack"
     # — common GCC polo/tee listings). normalize_words FOLDS hyphens
     # ("twin-pack" -> "twinpack") and SPLITS spaced forms ("twin pack" ->
-    # {"twin","pack"}), so both the glued and the bare tokens are listed;
-    # the bare "pack" covers every spaced "<n>/Value/Multi Pack" form (an
-    # added "pack" is always a different sellable unit — same asymmetry:
-    # a query stating it is unaffected, and candidates the normal
-    # _selection_match accepts never consult this set).
-    "baby", "infant", "twin", "pack", "multipack",
+    # {"twin","pack"}); the bare "pack" covers every spaced
+    # "<n>/Twin/Value/Multi Pack" form (an added "pack" is always a
+    # different sellable unit — same asymmetry: a query stating it is
+    # unaffected, and candidates the normal _selection_match accepts never
+    # consult this set).
+    # Wave D polish (review W2) — bare "twin" is deliberately NOT listed:
+    # it over-rejected Fred Perry "Twin Tipped" MAINLINE polos and is
+    # redundant for the multipack class ("pack" catches the spaced form,
+    # the glued tokens catch "twin-pack"/"twinpack"). "baby" IS listed but
+    # bounded in _structured_override_variant_blocked: the "Baby Blue" /
+    # "Baby Pink" COLORWAY bigram is a shade name, not the infant segment.
+    "baby", "infant", "pack", "multipack",
     "twinpack", "twopack", "2pack", "3pack", "4pack", "5pack", "6pack",
 })
+
+# Wave D polish (review W2) — the COLORWAY sense of "baby": "Baby Blue" /
+# "Baby Pink" name a SHADE on an adult mainline SKU (Lacoste "L1212 Polo
+# Baby Blue"), not the infant garment segment. Hyphen family included for
+# symmetry with the C2 _UNICODE_HYPHENS canon (normalize_words glues
+# hyphenated bigrams anyway, so only the spaced form ever surfaces "baby").
+_BABY_COLORWAY_BIGRAM_RE = re.compile(
+    rf"\bbaby[\s\-{_UNICODE_HYPHENS}]+(?:blue|pink)\b", re.I,
+)
 
 
 def _structured_override_variant_blocked(query_name: str, surface: str) -> bool:
     """True when the candidate surface ADDS a kids/gs/gift-set/tester/decant
     marker the query never stated — the structured-code override must keep the
     variant-add fence UP for those (sweep L3: 'L1212 Polo Gift Set with Cap'
-    rode the confirmed code). Shared by both override ends."""
+    rode the confirmed code). Shared by both override ends.
+
+    Wave D polish (review W2): "baby" is exempt when EVERY surface occurrence
+    is part of the "Baby Blue"/"Baby Pink" COLORWAY bigram (a shade name, not
+    the infant segment); any bare occurrence — "Polo Baby - 6-12 months", or
+    a surface carrying BOTH senses — keeps blocking (fail-closed)."""
     added = normalize_words(surface) & _STRUCTURED_OVERRIDE_BLOCK_TOKENS
+    if "baby" in added and not re.search(
+            r"\bbaby\b", _BABY_COLORWAY_BIGRAM_RE.sub(" ", surface.lower())):
+        added = added - {"baby"}
     if not added:
         return False
     return bool(added - normalize_words(query_name))
