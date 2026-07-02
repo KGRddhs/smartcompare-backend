@@ -35,6 +35,7 @@ from typing import Any, Dict, Optional
 from app.services.price_service import (
     strict_title_match,
     _selection_match,
+    adapter_selection_primary_enabled,
     build_adapter_search_terms,
     numbers_match,
     variant_mismatch,
@@ -128,7 +129,14 @@ def _select_candidate(
         # ("AirPods Pro case", "Apple Watch band") can still match its product.
         if is_accessory(title) and not is_accessory(product_name):
             continue
-        if not strict_title_match(product_name, title):
+        # SELECTION-PRIMARY acceptance (recon_cascade R2, Wave B4): strict's
+        # RAW tokenization rejects correct rows on spacing/alias variance
+        # ("90ml" vs "90 ml") the keystone _selection_match below collapses —
+        # a strict FAIL falls through to the remaining chain instead of
+        # hard-rejecting. Flag OFF (or exact gate OFF, where _selection_match
+        # is a no-op True) restores the exact pre-change hard gate.
+        if (not strict_title_match(product_name, title)
+                and not adapter_selection_primary_enabled()):
             continue
         if not numbers_match(product_name, title):
             continue

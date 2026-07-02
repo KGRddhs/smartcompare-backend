@@ -33,6 +33,7 @@ from app.services.price_service import (
     ENABLE_PAGE_SCRAPE,
     _VARIANT_QUALIFIERS,
     _convert_to_bhd,
+    adapter_selection_primary_enabled,
     is_price_showable,
     normalize_words,
     numbers_match,
@@ -118,7 +119,13 @@ def _title_matches(product_name: str, title: str, resolved_category=None) -> boo
         return False
     if not numbers_match(product_name, title):
         return False
-    if not strict_title_match(product_name, title):
+    # SELECTION-PRIMARY acceptance (recon_cascade R2, Wave B4): a strict FAIL
+    # falls through to the conditional-variant / _selection_match / overlap
+    # gates below instead of hard-rejecting (strict's RAW tokenization rejects
+    # correct rows on spacing/alias variance the keystone collapses). Flag OFF
+    # (or exact gate OFF) restores the exact pre-change hard gate.
+    if (not strict_title_match(product_name, title)
+            and not adapter_selection_primary_enabled()):
         return False
     q_words = set(re.findall(r"[a-z]+", (product_name or "").lower()))
     if (q_words & _VARIANT_QUALIFIERS) and variant_mismatch(product_name, title):

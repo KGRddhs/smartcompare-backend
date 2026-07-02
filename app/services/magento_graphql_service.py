@@ -48,6 +48,7 @@ from typing import Optional, Dict, Any, List
 from app.services.price_service import (
     strict_title_match,
     _selection_match,
+    adapter_selection_primary_enabled,
     build_adapter_search_terms,
     numbers_match,
     normalize_words,
@@ -487,7 +488,15 @@ def _best_match(
         # drops the CANDIDATE's own tokens; _selection_match vets the full SKU
         # alongside). Missing brand → "" → legacy behaviour.
         _cand_brand = str(node.get("brand") or "").strip()
-        if not strict_title_match(product_name, title, candidate_brand=_cand_brand):
+        # SELECTION-PRIMARY acceptance (recon_cascade R2, Wave B4): a strict
+        # FAIL no longer hard-rejects — the klinq class ("Black Opium Eau De
+        # Parfum 90 ml" under a spelled-brand node) fails strict on the raw
+        # "90ml"/brand-alias tokens while _selection_match(candidate_brand=)
+        # below vets the full SKU via the alias-folding identity sets. The
+        # variant / selection / word-overlap gates still run. Flag OFF (or
+        # exact gate OFF) restores the exact pre-change hard gate.
+        if (not strict_title_match(product_name, title, candidate_brand=_cand_brand)
+                and not adapter_selection_primary_enabled()):
             continue
         if variant_mismatch(product_name, title):
             continue

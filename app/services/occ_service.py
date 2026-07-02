@@ -35,6 +35,7 @@ from curl_cffi import requests as _curl
 from app.services.price_service import (
     ENABLE_PAGE_SCRAPE,
     _convert_to_bhd,
+    adapter_selection_primary_enabled,
     is_accessory,
     is_counterfeit_listing,
     is_price_showable,
@@ -145,7 +146,16 @@ def _select_product(
             continue
         if not numbers_match(product_name, name):
             continue
-        if not strict_title_match(product_name, name, candidate_brand=_cand_brand):
+        # SELECTION-PRIMARY acceptance (recon_cascade R2, Wave B4): a strict
+        # FAIL no longer hard-rejects — a brand-omitting OCC node under a
+        # spelled `manufacturer` fails strict on the raw brand-alias/spacing
+        # tokens ("YSL" query vs released "Yves Saint Laurent", "90ml" vs
+        # "90 ml") while _selection_match(candidate_brand=) below vets the
+        # full SKU via the alias-folding identity sets. The variant /
+        # selection / stock / word-overlap gates still run. Flag OFF (or
+        # exact gate OFF) restores the exact pre-change hard gate.
+        if (not strict_title_match(product_name, name, candidate_brand=_cand_brand)
+                and not adapter_selection_primary_enabled()):
             continue
         if variant_mismatch(product_name, name):
             continue

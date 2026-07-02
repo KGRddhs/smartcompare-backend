@@ -53,9 +53,34 @@ def test_occ_wrong_brand_generic_model_rejected():
     assert _select_product(payload, "Apple iPad Air M2 128GB", "electronics") is None
 
 
-def test_occ_missing_manufacturer_reverts_to_legacy_brand_required():
-    """No manufacturer field -> candidate_brand="" -> legacy brand-required
-    behaviour (a brand-omitted title is rejected). No regression from the wiring."""
+def test_occ_missing_manufacturer_selection_primary_recovers_model_line():
+    """UPDATED for Wave B4 (selection-primary acceptance, recon_cascade R2).
+
+    ORIGINAL pin (item-2 candidate_brand wiring): no manufacturer field ->
+    candidate_brand="" -> the strict hard gate rejected the brand-omitted
+    title. That reject was an artefact of strict being a HARD pre-gate, not a
+    correctness requirement: the title IS the exact SKU (the BH model-line
+    listing class the candidate_brand keystone exists to recover), and the
+    keystone _selection_match accepts it (a one-sided MANUFACTURER word is
+    padding) while every adversarial direction still rejects (wrong brand /
+    knockoff-generic / accessory / renewed / successor chip / wrong storage /
+    Pro flanker — probed 2026-07-02, all None through _select_product; see
+    tests/test_selection_primary_acceptance.py).
+
+    NEW pins: flag-ON (default) the exact-SKU model-line PDP is selected even
+    without the manufacturer field; flag-OFF the original legacy
+    brand-required reject is byte-identical (next test)."""
+    from app.services.occ_service import _select_product
+    payload = {"products": [_occ_node("iPad Air M2 11-inch 128GB Blue", None)]}
+    r = _select_product(payload, "Apple iPad Air M2 128GB", "electronics")
+    assert r is not None and r.get("name") == "iPad Air M2 11-inch 128GB Blue"
+
+
+def test_occ_missing_manufacturer_flag_off_restores_legacy_brand_required(monkeypatch):
+    """The ORIGINAL item-2 pin, preserved under ENABLE_ADAPTER_SELECTION_PRIMARY
+    =false: no manufacturer -> candidate_brand="" -> legacy brand-required
+    behaviour (the brand-omitted title is rejected by the strict hard gate)."""
+    monkeypatch.setenv("ENABLE_ADAPTER_SELECTION_PRIMARY", "false")
     from app.services.occ_service import _select_product
     payload = {"products": [_occ_node("iPad Air M2 11-inch 128GB Blue", None)]}
     assert _select_product(payload, "Apple iPad Air M2 128GB", "electronics") is None

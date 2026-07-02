@@ -4650,6 +4650,37 @@ def adapter_query_ladder_enabled() -> bool:
     )
 
 
+def adapter_selection_primary_enabled() -> bool:
+    """True iff the direct store-API adapter chains accept on the keystone
+    _selection_match with strict_title_match DEMOTED to a fast-accept surface
+    check (recon_cascade R2; sibling of ENABLE_ADAPTER_QUERY_LADDER, default
+    ON, read FRESH per call so a Railway flip needs no redeploy).
+
+    Scope: ONLY the 5 chains that run _selection_match ALONGSIDE strict
+    (woo _match_woo_product / magento _best_match / salla _select_candidate /
+    rest_json _title_matches / occ _select_product). A strict PASS keeps the
+    pre-change fast path; a strict FAIL falls through to the remaining chain
+    (numbers_match / variant_mismatch / counterfeit / accessory /
+    _selection_match + each chain's overlap/stock gates) instead of
+    hard-rejecting — strict's RAW tokenization otherwise throws away correct
+    rows on pure alias/spacing variance ("90ml" vs "90 ml", "YSL" vs the
+    spelled brand via candidate_brand) that _identity_tokens_ps collapses.
+    The bolo-sitemap strict gate has NO _selection_match alongside and keeps
+    strict as its only protection (the PR#13 lesson) — NOT in scope.
+
+    HARD-REQUIRES the exact gate: _selection_match returns True (no-op) when
+    ENABLE_EXACT_PRICE_GATE is off, so demoting strict then would leave the
+    chains gated only by numbers/variant/counterfeit/accessory — a wrong-SKU
+    leak class the documented rollback state must never gain. Exact gate OFF
+    -> False -> every chain keeps the strict hard pre-gate (byte-identical
+    pre-change behaviour)."""
+    if not exact_gate_enabled():
+        return False
+    return os.getenv("ENABLE_ADAPTER_SELECTION_PRIMARY", "true").strip().lower() not in (
+        "false", "0", "no", "off", "",
+    )
+
+
 def _ladder_fold_token(tok: str) -> str:
     """Folded MEMBERSHIP form of one whitespace token (lowercase, NFKD
     diacritic-fold, apostrophe fold, edge-punctuation + hyphen strip — the
