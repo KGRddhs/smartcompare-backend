@@ -43,6 +43,7 @@ from app.services.price_service import (
     is_accessory,
     is_price_showable,
     query_confirmed_structured_code,
+    _structured_override_variant_blocked,
     exact_gate_enabled,
     _convert_to_bhd,
     ENABLE_PAGE_SCRAPE,
@@ -634,8 +635,11 @@ def _catalog_match_hit(
             # not a variant-add. ONLY the superset direction is relaxed: the
             # leak direction stays with strict_title_match above (every query
             # discriminator must appear) and the contradiction/numeric axes
-            # stay enforced here.
-            if not style or _axis_mismatch(product_name, surface, resolved_category, _cand_brand):
+            # stay enforced here. A kids/gs/gift-set/tester/decant ADD is a
+            # different sellable UNIT the code never asserts (BF2, sweep L3).
+            if (not style
+                    or _structured_override_variant_blocked(product_name, surface)
+                    or _axis_mismatch(product_name, surface, resolved_category, _cand_brand)):
                 continue
         score = _overlap_score(p_words, surface)
         if score < 0.4:
@@ -700,8 +704,11 @@ def _match_algolia_hit(
         _cand_brand = str(hit.get("brand_name") or hit.get("brand") or hit.get("main_brand") or "")
         if not _selection_match(product_name, surface, resolved_category, candidate_brand=_cand_brand):
             # Structured-identity override — see _catalog_match_hit (superset
-            # direction only; leak gate + axes stay enforced).
-            if not style or _axis_mismatch(product_name, surface, resolved_category, _cand_brand):
+            # direction only; leak gate + axes + the sellable-unit block stay
+            # enforced).
+            if (not style
+                    or _structured_override_variant_blocked(product_name, surface)
+                    or _axis_mismatch(product_name, surface, resolved_category, _cand_brand)):
                 continue
         score = _overlap_score(p_words, surface)
         if score < 0.4:

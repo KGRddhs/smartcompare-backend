@@ -3185,9 +3185,19 @@ _COLOR_EDITION_TOKENS = frozenset({
     # colourway is a cosmetic variant in real fashion titles ("Dunk Low Panda", "Cloud
     # White/Core Black", "AJ1 Chicago"). Treated like a colour (stripped for fashion).
     "panda", "chicago", "bred", "sail", "cloud", "core", "gum", "oreo", "university",
-    "wolf", "varsity", "bone", "sesame", "volt", "triple", "shadow", "smoke",
+    "wolf", "varsity", "bone", "sesame", "volt", "triple", "smoke",
 })
 _COLOR_ALIAS_CATEGORIES = frozenset({"electronics", "fashion"})
+# "shadow" is DELIBERATELY NOT in the shared colour set (Wave B-FIX BF2, sweep
+# L4): Nike AF1 "Shadow" is a distinct, pricier fashion SILHOUETTE — like
+# Fontanka/Twist, which were never colour words — so for FASHION it must
+# discriminate BOTH ways (colour-stripping it removed the only discriminating
+# token and leaked the flanker end-to-end). For ELECTRONICS it IS a real OEM
+# colour word ("HP Victus ... Shadow Black", "Realme ... Shadow Black"), so a
+# flat removal would over-reject genuine colour-suffixed listings — the
+# electronics identity strip keeps it via this scoped extension (the
+# tighten's own over-rejection is the next blind spot).
+_ELECTRONICS_ONLY_COLOR_TOKENS = frozenset({"shadow"})
 
 # Model-line variant qualifiers that MUST match (set-equality, either direction).
 # Category-gated: applied ONLY to electronics so brand words that collide with a
@@ -3385,6 +3395,10 @@ def _identity_tokens_ps(text: str, brand: str = "", category: Optional[str] = No
     drop = set(brand_words) | _FORM_NOISE_TOKENS | quals
     if cat in _COLOR_ALIAS_CATEGORIES:
         drop = drop | _COLOR_EDITION_TOKENS
+        if cat == "electronics":
+            # OEM colour words that are a fashion SILHOUETTE ("shadow") stay
+            # strippable ONLY for electronics (BF2, sweep L4).
+            drop = drop | _ELECTRONICS_ONLY_COLOR_TOKENS
     if cat in _FRAGRANCE_BEAUTY_CATEGORIES:
         # Strip gender markers from identity (the _gender_mismatch contradiction axis
         # handles them) so a one-sided "Pour Homme" the terse query omits never breaks
@@ -5285,7 +5299,17 @@ def query_confirmed_structured_code(code: Any, query_words: set) -> str:
         and over-reject / a relaxation it never earned.
     Returns the stripped code on success, "" otherwise. Shared by the algolia
     matcher override (Wave A3, _confirmed_style_code) and the
-    should_cache_price parity override (Wave B0) so the two ends never drift."""
+    should_cache_price parity override (Wave B0) so the two ends never drift.
+
+    Tightened (Wave B-FIX BF2, sweep L3): letter+digit SHAPE alone admitted
+    tokens that assert nothing about the exact SKU —
+      - a pure MEASURE ("100ML"/"2LB"/"1TB", _IDENTITY_MEASURE_STRIP_RE) or a
+        CLOTHING SIZE ("2XL", _CLOTHING_SIZE_RE) is a size, not a model; it
+        waived the ONLY gate rejecting the Elixir flanker / wrong-variant;
+      - a short FAMILY stem without a >=2-digit run ("AF1") names a LINE the
+        base/Kids/GS/LV8 variants all share, not an exact SKU.
+    Real model codes (L1212, NKCW4554-001) carry a multi-digit run and keep
+    confirming."""
     if not isinstance(code, str):
         return ""
     tok = code.strip()
@@ -5293,9 +5317,38 @@ def query_confirmed_structured_code(code: Any, query_words: set) -> str:
         return ""
     if not (any(c.isalpha() for c in tok) and any(c.isdigit() for c in tok)):
         return ""
-    if tok.lower().replace("-", "") not in query_words:
+    low = tok.lower()
+    if (_IDENTITY_MEASURE_STRIP_RE.fullmatch(low)
+            or _CLOTHING_SIZE_RE.fullmatch(low)):
+        return ""
+    if not re.search(r"\d{2}", low):
+        return ""
+    if low.replace("-", "") not in query_words:
         return ""
     return tok
+
+
+# Wave B-FIX BF2 (sweep L3) — sellable-UNIT markers that flip a title to a
+# DIFFERENT purchasable SKU even under a retailer-confirmed MODEL code (a
+# style code asserts the model, never the unit): kids / grade-school sizing,
+# gift sets, testers, decants. BOUNDED list, asymmetric (a query that itself
+# states the marker is unaffected), and consulted ONLY inside the structured
+# -code override — it can never over-reject a candidate the normal
+# _selection_match gates accept.
+_STRUCTURED_OVERRIDE_BLOCK_TOKENS = frozenset({
+    "kids", "kid", "gs", "gift", "set", "tester", "decant",
+})
+
+
+def _structured_override_variant_blocked(query_name: str, surface: str) -> bool:
+    """True when the candidate surface ADDS a kids/gs/gift-set/tester/decant
+    marker the query never stated — the structured-code override must keep the
+    variant-add fence UP for those (sweep L3: 'L1212 Polo Gift Set with Cap'
+    rode the confirmed code). Shared by both override ends."""
+    added = normalize_words(surface) & _STRUCTURED_OVERRIDE_BLOCK_TOKENS
+    if not added:
+        return False
+    return bool(added - normalize_words(query_name))
 
 
 def _structured_code_cache_override(
@@ -5331,6 +5384,10 @@ def _structured_code_cache_override(
     brand = price.get("brand")
     brand = brand.strip() if isinstance(brand, str) else ""
     surface = " ".join(part for part in (brand, title, code) if part)
+    # BF2 (sweep L3): a kids/gs/gift-set/tester/decant ADD is a different
+    # sellable unit — the confirmed code never waives that fence.
+    if _structured_override_variant_blocked(request_name, surface):
+        return False
     if not numbers_match(request_name, surface):
         return False
     if not strict_title_match(request_name, surface, candidate_brand=brand):
