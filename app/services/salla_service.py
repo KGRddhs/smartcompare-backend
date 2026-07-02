@@ -35,6 +35,7 @@ from typing import Any, Dict, Optional
 from app.services.price_service import (
     strict_title_match,
     _selection_match,
+    build_adapter_search_terms,
     numbers_match,
     variant_mismatch,
     is_counterfeit_listing,
@@ -168,38 +169,48 @@ async def fetch_salla_api_price(
     if not store_id:
         return None
 
-    try:
-        from curl_cffi import requests as curl_requests
-        resp = await asyncio.to_thread(
-            lambda: curl_requests.get(
-                _SALLA_API_URL,
-                params={"per_page": _PER_PAGE, "keyword": product_name},
-                headers={
-                    "Store-Identifier": store_id,
-                    "Accept": "application/json",
-                },
-                impersonate="chrome",
-                timeout=_HTTP_TIMEOUT,
-                allow_redirects=True,
+    data = None
+    # R1 retrieval-term ladder: the full name first; ONLY an empty data[]
+    # retries ONCE with the model-core term (rows returned — matched or not —
+    # never trigger a second request; non-200/error keeps the legacy
+    # immediate-None). Matching below runs against the ORIGINAL product_name,
+    # so wider retrieval cannot widen acceptance.
+    for term in build_adapter_search_terms(product_name, resolved_category):
+        try:
+            from curl_cffi import requests as curl_requests
+            resp = await asyncio.to_thread(
+                lambda t=term: curl_requests.get(
+                    _SALLA_API_URL,
+                    params={"per_page": _PER_PAGE, "keyword": t},
+                    headers={
+                        "Store-Identifier": store_id,
+                        "Accept": "application/json",
+                    },
+                    impersonate="chrome",
+                    timeout=_HTTP_TIMEOUT,
+                    allow_redirects=True,
+                )
             )
-        )
-    except Exception as exc:  # noqa: BLE001 — a fetch error is a miss, never a crash
-        logger.warning("[PRICE] salla fetch failed for %s: %s", domain, exc)
-        return None
+        except Exception as exc:  # noqa: BLE001 — a fetch error is a miss, never a crash
+            logger.warning("[PRICE] salla fetch failed for %s: %s", domain, exc)
+            return None
 
-    if getattr(resp, "status_code", 0) != 200:
-        logger.info("[PRICE] salla HTTP %s for '%s' @ %s",
-                    getattr(resp, "status_code", "?"), product_name, domain)
-        return None
+        if getattr(resp, "status_code", 0) != 200:
+            logger.info("[PRICE] salla HTTP %s for '%s' @ %s",
+                        getattr(resp, "status_code", "?"), product_name, domain)
+            return None
 
-    try:
-        payload = resp.json()
-    except Exception:  # noqa: BLE001 — non-JSON body -> miss
-        return None
+        try:
+            payload = resp.json()
+        except Exception:  # noqa: BLE001 — non-JSON body -> miss
+            return None
 
-    if not isinstance(payload, dict):
-        return None
-    data = payload.get("data")
+        if not isinstance(payload, dict):
+            return None
+        data = payload.get("data")
+        if not (isinstance(data, list) and not data):
+            break  # rows returned (even unmatched) — never a second request
+
     if not isinstance(data, list) or not data:
         return None
 

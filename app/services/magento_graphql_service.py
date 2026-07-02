@@ -48,6 +48,7 @@ from typing import Optional, Dict, Any, List
 from app.services.price_service import (
     strict_title_match,
     _selection_match,
+    build_adapter_search_terms,
     numbers_match,
     normalize_words,
     variant_mismatch,
@@ -545,6 +546,14 @@ async def fetch_magento_graphql_price(
     node: Optional[Dict[str, Any]] = None
     pdp_url = ""
 
+    # R1 retrieval-term ladder: the full phrase first; ONLY a zero-item
+    # response retries ONCE with the model-core term (klinq resolves "Black
+    # Opium" where the full canonical name returns 0 items). Rows returned —
+    # matched or not — never trigger a second search term. Matching below runs
+    # against the ORIGINAL product_name, so wider retrieval cannot widen
+    # acceptance.
+    terms = build_adapter_search_terms(product_name, resolved_category)
+
     if shape == "A":
         cfg = await _harvest_shape_a_config(host)
         if not cfg:
@@ -559,22 +568,28 @@ async def fetch_magento_graphql_price(
             "Magento-Store-Code": cfg["store_code"],
             "Magento-Customer-Group": cfg["customer_group"],
         }
-        payload = await _post_graphql(
-            cfg["endpoint"], _SHAPE_A_QUERY,
-            {"phrase": product_name, "pageSize": _PAGE_SIZE}, headers,
-        )
-        # Wave B2 — attributes-rejecting tenant: re-POST ONCE without the
-        # attributes selection (brand="" legacy matching), so a Catalog-Service
-        # schema drift can never silently kill the whole store again.
-        if _shape_a_attrs_rejected(payload):
-            logger.info(
-                "[MAGENTO] %s rejected attributes selection — retrying attrs-free",
-                host,
-            )
+        payload = None
+        for term in terms:
             payload = await _post_graphql(
-                cfg["endpoint"], _SHAPE_A_QUERY_NO_ATTRS,
-                {"phrase": product_name, "pageSize": _PAGE_SIZE}, headers,
+                cfg["endpoint"], _SHAPE_A_QUERY,
+                {"phrase": term, "pageSize": _PAGE_SIZE}, headers,
             )
+            # Wave B2 — attributes-rejecting tenant: re-POST ONCE (same term)
+            # without the attributes selection (brand="" legacy matching), so a
+            # Catalog-Service schema drift can never silently kill the whole
+            # store again. Orthogonal to the ladder (a schema retry, not a
+            # search-term retry).
+            if _shape_a_attrs_rejected(payload):
+                logger.info(
+                    "[MAGENTO] %s rejected attributes selection — retrying attrs-free",
+                    host,
+                )
+                payload = await _post_graphql(
+                    cfg["endpoint"], _SHAPE_A_QUERY_NO_ATTRS,
+                    {"phrase": term, "pageSize": _PAGE_SIZE}, headers,
+                )
+            if _shape_a_items(payload):
+                break  # rows returned (even unmatched) — never a second term
         items = _shape_a_items(payload)
         nodes = [
             n for n in (
@@ -608,10 +623,14 @@ async def fetch_magento_graphql_price(
             "Accept": "application/json",
             "Store": store.get("store_view", "default"),
         }
-        payload = await _post_graphql(
-            f"https://{host}/graphql", _build_shape_b_query(store.get("brand_field")),
-            {"phrase": product_name, "pageSize": _PAGE_SIZE}, headers,
-        )
+        payload = None
+        for term in terms:
+            payload = await _post_graphql(
+                f"https://{host}/graphql", _build_shape_b_query(store.get("brand_field")),
+                {"phrase": term, "pageSize": _PAGE_SIZE}, headers,
+            )
+            if _shape_b_items(payload):
+                break  # rows returned (even unmatched) — never a second term
         items = _shape_b_items(payload)
         nodes = [
             n for n in (

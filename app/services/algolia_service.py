@@ -36,6 +36,7 @@ from app.services.price_service import (
     _selection_match,
     _axis_mismatch,
     _infer_category_from_query,
+    build_adapter_search_terms,
     numbers_match,
     normalize_words,
     is_counterfeit_listing,
@@ -744,10 +745,18 @@ async def fetch_algolia_price(
     if not cfg:
         return None
 
+    hits: List[Dict[str, Any]] = []
     try:
-        hits = await _algolia_query(
-            cfg["app_id"], cfg["api_key"], cfg["index"], product_name
-        )
+        # R1 retrieval-term ladder: the full name first; ONLY an empty hits
+        # list retries ONCE with the model-core term. Hits returned — matched
+        # or not — never trigger a second query; matching below runs against
+        # the ORIGINAL product_name (acceptance unchanged).
+        for term in build_adapter_search_terms(product_name, category):
+            hits = await _algolia_query(
+                cfg["app_id"], cfg["api_key"], cfg["index"], term
+            )
+            if hits:
+                break
     except Exception as e:  # noqa: BLE001 — best-effort; any failure → None
         logger.info("[ALGOLIA] query error for %s: %s", domain, e)
         record_failure(_ALGOLIA_PROVIDER)
@@ -817,7 +826,14 @@ async def _fetch_explicit_store_price(
     if not store:
         return None
 
-    hits = await _algolia_query_explicit(store, product_name)
+    hits: List[Dict[str, Any]] = []
+    # R1 retrieval-term ladder (mirrors the harvest path; _algolia_query_explicit
+    # never raises — graceful empty). Empty hits -> ONE core-term retry; hits
+    # returned — matched or not — never trigger a second query.
+    for term in build_adapter_search_terms(product_name, resolved_category):
+        hits = await _algolia_query_explicit(store, term)
+        if hits:
+            break
     hit = _catalog_match_hit(hits, product_name, store, resolved_category=resolved_category)
     if not hit:
         return None

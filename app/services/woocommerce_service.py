@@ -40,6 +40,7 @@ from app.services.price_service import (
     _convert_to_bhd,
     _infer_category_from_query,
     _selection_match,
+    build_adapter_search_terms,
     is_accessory,
     is_counterfeit_listing,
     is_price_showable,
@@ -244,30 +245,41 @@ async def fetch_woocommerce_store_api_price(
     else:
         headers["Referer"] = apex.rstrip("/") + "/"
 
-    params = {"search": product_name, "per_page": 20}
-
     payload = None
-    try:
-        resp = await asyncio.to_thread(
-            _do_get, _store_api_url(domain, product_name, versioned=False),
-            params, headers,
-        )
-        if getattr(resp, "status_code", None) == 404:
-            # Unversioned path missing → retry the /v1/ alias.
+    # R1 retrieval-term ladder (build_adapter_search_terms): the full name
+    # first; ONLY a ZERO-ROW 200 retries ONCE with the model-core term (the
+    # store search is AND-restrictive — the canonical "Yves Saint Laurent
+    # Black Opium Eau de Parfum 90ml" returns 0 rows where "Black Opium"
+    # returns the exact SKU). A response WITH rows — matched or not — never
+    # triggers a second search (latency pin); non-200/exception keeps the
+    # legacy immediate-None (no retry against an erroring/WAF store).
+    # Matching below runs against the ORIGINAL product_name, so wider
+    # retrieval cannot widen acceptance.
+    for term in build_adapter_search_terms(product_name, resolved_category):
+        params = {"search": term, "per_page": 20}
+        try:
             resp = await asyncio.to_thread(
-                _do_get, _store_api_url(domain, product_name, versioned=True),
+                _do_get, _store_api_url(domain, term, versioned=False),
                 params, headers,
             )
-        if getattr(resp, "status_code", None) != 200:
-            logger.info(
-                "[PRICE] woo HTTP %s for '%s' (%s)",
-                getattr(resp, "status_code", "?"), product_name, domain,
-            )
+            if getattr(resp, "status_code", None) == 404:
+                # Unversioned path missing → retry the /v1/ alias.
+                resp = await asyncio.to_thread(
+                    _do_get, _store_api_url(domain, term, versioned=True),
+                    params, headers,
+                )
+            if getattr(resp, "status_code", None) != 200:
+                logger.info(
+                    "[PRICE] woo HTTP %s for '%s' (%s)",
+                    getattr(resp, "status_code", "?"), product_name, domain,
+                )
+                return None
+            payload = resp.json()
+        except Exception as exc:  # noqa: BLE001 — a fetch/parse error is a miss, not a crash
+            logger.warning("[PRICE] woo fetch failed for %s (%s): %s", product_name, domain, exc)
             return None
-        payload = resp.json()
-    except Exception as exc:  # noqa: BLE001 — a fetch/parse error is a miss, not a crash
-        logger.warning("[PRICE] woo fetch failed for %s (%s): %s", product_name, domain, exc)
-        return None
+        if not (isinstance(payload, list) and not payload):
+            break  # rows returned (even unmatched) — never a second search
 
     price = _match_woo_product(payload, product_name, currency, resolved_category=resolved_category)
     if not price:

@@ -4598,6 +4598,179 @@ def _category_padding(category: Optional[str]) -> frozenset:
     return _BASE_NOISE_TOKENS | _CATEGORY_PADDING.get(cat, frozenset())
 
 
+# ============================================================================
+# R1 (genuine-price KPI Wave B3) — adapter RETRIEVAL-TERM LADDER.
+#
+# Store search APIs (Woo Store API / Magento GraphQL / Salla / Algolia) are
+# AND-restrictive: the full canonical name ("Yves Saint Laurent Black Opium
+# Eau de Parfum 90ml") returns 0 rows on every live-probed store while the
+# model-core term ("Black Opium") returns the EXACT SKU (recon_cascade R1,
+# 2026-07-02: theperfumesclub 48.000 BHD in-stock via the Woo Store API;
+# klinq 39.38 via magento_graphql_bhd). The ladder tries the FULL name first
+# and — ONLY when the response carries ZERO rows — retries ONCE with the core
+# term. A response WITH rows (matched or not) never triggers the second
+# request (latency pin: +1 HTTP round-trip only on the empty-first-response
+# path, still bounded by the cascade's per-source _ADAPTER_TIMEOUT).
+#
+# The core term strips EXACTLY the axes the acceptance gates re-verify per
+# candidate (strict_title_match / _selection_match / select_best):
+#   * a LEADING known-brand token run   (candidate_brand / brand-alias folds)
+#   * the concentration PHRASE          (the concentration axis)
+#   * size/measure tokens               (the ml/oz/GB/count axes) — NOT for
+#     electronics/fashion (see the digit pin below)
+#   * per-category PADDING + gender     (non-identity by definition)
+# so widening RETRIEVAL cannot widen ACCEPTANCE — every retrieved candidate
+# is still matched against the ORIGINAL full name by the fail-closed chain.
+#
+# PINNED (numeric-axis categories electronics/fashion): the core drops ONLY
+# brand + padding and NEVER a digit-bearing token ("256GB", "S25", "'07" —
+# even a digit-bearing padding word like "5G" is kept), so the core term can
+# never blur a numeric SKU axis at retrieval time.
+#
+# Rollback: ENABLE_ADAPTER_QUERY_LADDER (default ON, read fresh per call).
+# OFF -> [full_name] only = byte-identical single-request adapter behaviour.
+# ============================================================================
+
+_LADDER_DIGIT_PRESERVING_CATEGORIES = frozenset({"electronics", "fashion"})
+# A brand name is at most ~3 words (Yves Saint Laurent / Maison Francis
+# Kurkdjian / Parfums de Marly); capping the leading run keeps a brand-vocab
+# collision from eating into the product name (Jean Paul Gaultier "Le Male":
+# "le" is a brand token via Le Labo, but the run is already 3 deep at "le").
+_LADDER_BRAND_RUN_CAP = 3
+_ADAPTER_BRAND_TOKEN_VOCAB: Optional[frozenset] = None
+
+
+def adapter_query_ladder_enabled() -> bool:
+    """True iff the adapter retrieval-term ladder is active (default ON). Read
+    FRESH per call (the scs._price_cache_bust_enabled read-fresh pattern, with
+    exact_gate_enabled's default-ON polarity/parse) so a Railway flip needs no
+    redeploy coordination."""
+    return os.getenv("ENABLE_ADAPTER_QUERY_LADDER", "true").strip().lower() not in (
+        "false", "0", "no", "off", "",
+    )
+
+
+def _ladder_fold_token(tok: str) -> str:
+    """Folded MEMBERSHIP form of one whitespace token (lowercase, NFKD
+    diacritic-fold, apostrophe fold, edge-punctuation + hyphen strip — the
+    normalize_words treatment applied token-wise) so the ORIGINAL token can be
+    emitted verbatim in the core term while set-membership checks use the fold."""
+    t = _APOSTROPHES_RE.sub("", tok or "").lower()
+    t = "".join(
+        c for c in unicodedata.normalize("NFKD", t) if not unicodedata.combining(c)
+    )
+    return t.strip(",.()&:;'\"!?").replace("-", "")
+
+
+def _adapter_brand_token_vocab() -> frozenset:
+    """Folded brand-WORD vocabulary for the ladder's leading-run strip, built
+    lazily ONCE from the existing brand tables (LUXURY_BRAND_KEYWORDS,
+    FRAGRANCE_BRAND_KEYWORDS, _MANUFACTURER_NOISE, _BRAND_ALIAS_GROUPS) so the
+    ladder can never drift from the matcher's own brand knowledge. Leading-run
+    ONLY at the call site — a mid-name collision ("Mon Paris", "Burberry
+    London") is never stripped."""
+    global _ADAPTER_BRAND_TOKEN_VOCAB
+    if _ADAPTER_BRAND_TOKEN_VOCAB is None:
+        toks: set = set()
+        for phrase in set(LUXURY_BRAND_KEYWORDS) | set(FRAGRANCE_BRAND_KEYWORDS):
+            for w in str(phrase).split():
+                f = _ladder_fold_token(w)
+                if f:
+                    toks.add(f)
+        toks.update(_MANUFACTURER_NOISE)
+        for group in _BRAND_ALIAS_GROUPS:
+            toks.update(group)
+        _ADAPTER_BRAND_TOKEN_VOCAB = frozenset(toks)
+    return _ADAPTER_BRAND_TOKEN_VOCAB
+
+
+def build_adapter_search_terms(
+    full_name: str, category: Optional[str] = None,
+) -> List[str]:
+    """The retrieval-term ladder for the direct store-API adapters:
+    ``[full_name]`` or ``[full_name, core_term]``.
+
+    Semantics (pinned by tests/test_adapter_query_ladder.py):
+      * terms[0] is ALWAYS the untouched ``full_name`` (flag-OFF byte-identity).
+      * core = full_name minus a LEADING known-brand run, minus the
+        concentration phrase + size/measure tokens (EXCEPT electronics/fashion,
+        where a digit-bearing token is NEVER dropped), minus per-category
+        padding/gender words — exactly the axes the acceptance gates re-verify
+        per candidate, so widening retrieval cannot widen acceptance.
+      * deduped (``[full_name]`` when the core equals the full name); an empty
+        or single-char core is never emitted.
+      * flag OFF (ENABLE_ADAPTER_QUERY_LADDER) -> ``[full_name]`` only.
+
+    Adapter contract: try terms[0]; ONLY a ZERO-ROW response tries terms[1]; a
+    response WITH rows — matched or not — never triggers the second request.
+    """
+    if not adapter_query_ladder_enabled():
+        return [full_name]
+    if not full_name or not isinstance(full_name, str):
+        return [full_name]
+
+    cat = (category or "").lower()
+    if cat in ("", "other"):
+        # Mirror _selection_match's explicit-"other" re-inference so the
+        # category-scoped strips below run on the right axes.
+        cat = _infer_category_from_query(full_name) or cat
+    digit_preserving = cat in _LADDER_DIGIT_PRESERVING_CATEGORIES
+
+    src = full_name[:_MATCH_INPUT_CAP]  # ReDoS bound, mirrors the matchers
+    if not digit_preserving:
+        for pat, _label in _CONCENTRATION_PATTERNS:
+            src = pat.sub(" ", src)
+        src = _IDENTITY_MEASURE_STRIP_RE.sub(" ", src)
+
+    drop = _category_padding(cat)
+    if cat in _FRAGRANCE_BEAUTY_CATEGORIES:
+        # The matcher strips gender markers from identity for these categories
+        # (_GENDER_IDENTITY_STRIP); fragrances already carry them in padding.
+        drop = drop | _GENDER_IDENTITY_STRIP
+
+    tokens = src.split()
+    folded = [_ladder_fold_token(t) for t in tokens]
+
+    # Leading known-BRAND run (capped; punctuation-only tokens like "&" inside
+    # the run don't count toward the cap). Leading-run only — a brand-vocab
+    # word later in the name is product identity ("Mon Paris") and stays.
+    vocab = _adapter_brand_token_vocab()
+    idx = 0
+    brand_words = 0
+    while idx < len(tokens) and brand_words < _LADDER_BRAND_RUN_CAP:
+        f = folded[idx]
+        if not f:
+            idx += 1  # punctuation-only token inside a brand run ("&")
+            continue
+        if f in vocab:
+            idx += 1
+            brand_words += 1
+            continue
+        break
+    if brand_words == 0:
+        idx = 0  # no brand found — keep any leading punctuation-only tokens
+
+    core_tokens: List[str] = []
+    for tok, f in zip(tokens[idx:], folded[idx:]):
+        if not f:
+            continue
+        if digit_preserving and any(c.isdigit() for c in f):
+            # PINNED: electronics/fashion NEVER drop a digit-bearing token —
+            # not even a digit-bearing padding word ("5G").
+            core_tokens.append(tok)
+            continue
+        if f in drop:
+            continue
+        core_tokens.append(tok)
+
+    core = " ".join(core_tokens).strip()
+    if len(core) < 2:
+        return [full_name]  # never emit an empty / single-char core
+    if core.lower() == " ".join(full_name.split()).lower():
+        return [full_name]  # dedupe — the core adds nothing
+    return [full_name, core]
+
+
 def _axis_mismatch(query_name: str, candidate_title: str, category: Optional[str],
                    brand: str = "", *, strict_extras: bool = True) -> bool:
     """True iff query and candidate disagree on an EXPLICIT discriminating axis:
@@ -6536,6 +6709,12 @@ async def fetch_page_price(
 # catalog with real BHD prices. Hitting it directly gives a real BH price with
 # ZERO Serper + ZERO render credits — the cleanest real-price lever for the
 # winner axis. Match the catalog client-side with the existing title helpers.
+#
+# NOTE (R1 retrieval-term ladder, Wave B3): the shopify path is deliberately
+# NOT laddered — it has NO search side (a full-catalog /products.json fetch;
+# matching happens client-side over the whole page), so there is no
+# AND-restrictive search term to widen. build_adapter_search_terms is wired
+# only into the search-side adapters (woo / magento / salla / algolia).
 
 # Shopify caps /products.json at 250/page; one page is plenty for the small BH
 # storefronts (≈30 products) and keeps the call cheap. Cache the catalog so a
