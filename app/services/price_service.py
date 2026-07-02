@@ -5533,6 +5533,86 @@ def _inch_digit_tokens(text: str) -> set:
     return out
 
 
+# ---------------------------------------------------------------------------
+# Wave E (kpi-fash-004) — Luxottica MODEL-CODE-CONFIRMED eyewear tolerance.
+# The live noon-BH RB3025 bisect (2026-07-02): every upstream gate passed
+# (counterfeit/accessory/numbers/strict/variant/axis) and the ONLY killing
+# gate was the variant-add direction — the GCC eyewear listing style decorates
+# the exact frame with the Luxottica NNN/NN colorway code ("RB3025 002/58"),
+# a lens-size annotation ("Lens Size: 58 mm", the trailing bare "58" run) and
+# stock descriptors (Unisex/Polarized), each surviving as a distinctive
+# title-side ADD. When the QUERY carries a Luxottica-family model code
+# ((rb|rx|oo|po|ar|pr|ve|dg)\d{3,}, the same family the 0-prefix fold covers)
+# AND the title carries the SAME code (0-prefix-folded), the code is
+# query-confirmed exact-model evidence — the established structured-code-
+# override principle, here TITLE-derived — and ONLY those annotation shapes
+# become title-side padding. Query-CONDITIONAL like every BF3 tolerance
+# (`tolerated - q_core`): a query-stated colorway/size token stays required,
+# so 'RB3025 901/58' still rejects an '002/58' title via the leak direction.
+# numbers_match is untouched globally; a non-eyewear query (no code) gains
+# nothing; a DIFFERENT-code title never triggers (leak direction rejects).
+# Shared-matcher placement so namshi/optica/6thstreet eyewear benefit too.
+_LUXOTTICA_MODEL_CODE_RE = re.compile(
+    r"(?<![a-z0-9])0?((?:rb|rx|oo|po|ar|pr|ve|dg)\d{3,})(?![a-z0-9])"
+)
+# The NNN/NN(alnum) colorway ADJACENT to the model code ("RB3025 002/58",
+# "0Rb3025-003/3F"), plus the trailing bare lens-digit run ("002/58 58").
+_LUXOTTICA_COLORWAY_ADJ_RE = re.compile(
+    rf"(?<![a-z0-9])0?(?:rb|rx|oo|po|ar|pr|ve|dg)\d{{3,}}"
+    rf"[\s\-{_UNICODE_HYPHENS}]+(\d{{2,3}}/[a-z0-9]{{1,3}})\b(?:\s+(\d{{2}})\b)?"
+)
+# Lens-size annotation forms: "Lens Size: 58 mm" / bare "58 mm" (the spaced-
+# unit fold turns these into the '58mm' token; the bare '58' also appears).
+_EYEWEAR_LENS_MM_RE = re.compile(r"(?<![a-z0-9.])(\d{2})\s*mm(?![a-z0-9])")
+_EYEWEAR_LENS_PHRASE_RE = re.compile(r"\blens\s*size\b")
+# Stock eyewear listing descriptors — never SKU discriminators on a
+# code-confirmed frame (the frame's own code + colorway discriminate).
+_EYEWEAR_DESCRIPTOR_TOKENS = frozenset({
+    "unisex", "polarized", "gradient", "mirrored",
+})
+
+
+def _luxottica_model_codes(text: str) -> set:
+    """The Luxottica-family model-code tokens present in `text`, lowercased and
+    0-prefix-FOLDED ("0Rb3025" -> "rb3025") so the catalog list form and the
+    consumer code compare equal. Empty set on no code / empty input."""
+    if not text:
+        return set()
+    if len(text) > _MATCH_INPUT_CAP:  # ReDoS guard, matching the other matchers
+        text = text[:_MATCH_INPUT_CAP]
+    return {m.group(1) for m in _LUXOTTICA_MODEL_CODE_RE.finditer(text.lower())}
+
+
+def _eyewear_code_tolerated_for(query_name: str, candidate_title: str) -> frozenset:
+    """The title-side tolerated token set for a QUERY-CONFIRMED Luxottica model
+    code (empty unless query and title share a code, 0-prefix-folded): the
+    colorway sub-tokens adjacent to the code, the lens-size annotation tokens,
+    and the stock eyewear descriptors. Derived from the RAW title so only the
+    exact annotation values present are tolerated — never arbitrary digits."""
+    q_codes = _luxottica_model_codes(query_name)
+    if not q_codes or not (q_codes & _luxottica_model_codes(candidate_title)):
+        return frozenset()
+    low = (candidate_title or "").lower()
+    if len(low) > _MATCH_INPUT_CAP:
+        low = low[:_MATCH_INPUT_CAP]
+    out = set(_EYEWEAR_DESCRIPTOR_TOKENS)
+    for m in _LUXOTTICA_COLORWAY_ADJ_RE.finditer(low):
+        # "002/58" folds to the tokens {'002','58'} ('/' -> space in
+        # _fold_identity); the optional trailing bare digit run ("002/58 58")
+        # is the lens size restated.
+        for part in m.group(1).split("/"):
+            if part:
+                out.add(part)
+        if m.group(2):
+            out.add(m.group(2))
+    for n in _EYEWEAR_LENS_MM_RE.findall(low):
+        out.add(n)
+        out.add(f"{n}mm")  # the _fold_spaced_units token form
+    if _EYEWEAR_LENS_PHRASE_RE.search(low):
+        out.update(("lens", "size"))
+    return frozenset(out)
+
+
 def _selection_match(
     query_name: str, candidate_title: str, category: Optional[str],
     *, candidate_brand: str = "",
@@ -5646,6 +5726,14 @@ def _selection_match(
         # into an accept. RS5: the neckline words are title-BIGRAM-conditional
         # (see _fashion_construction_tolerated_for).
         t_core = t_core - (_fashion_construction_tolerated_for(candidate_title) - q_core)
+        # Wave E (kpi-fash-004) — Luxottica model-code-CONFIRMED eyewear
+        # tolerance (see the helper block above): colorway/lens-size/stock-
+        # descriptor annotations on a title that carries the QUERY's own
+        # model code are listing decoration, not a variant-add. Same
+        # query-conditional asymmetry; leak direction untouched.
+        _eyewear_tol = _eyewear_code_tolerated_for(query_name, candidate_title)
+        if _eyewear_tol:
+            t_core = t_core - (_eyewear_tol - q_core)
     if cat == "makeup":
         # A spelled-out shade NAME on the candidate is descriptive when BOTH sides carry
         # the SAME shade NUMBER ("Fit Me 240" -> "Fit Me 240 Soft Sand"); accept — BUT only
