@@ -114,14 +114,11 @@ def test_s25_accepts_descriptive_bh_title():
                 "Samsung Galaxy S25 5G 256GB 12GB RAM") is True
 
 
-@pytest.mark.xfail(
-    reason="matcher over-rejection (Wave B): the live sharafdg title fails on "
-    "the concatenated colourway 'Icyblue' + marketing token 'AI' (bisect-"
-    "proven: '... 5G 256GB 12GB RAM' passes; '... Icyblue' or '... AI "
-    "Smartphone' alone fail) — neither is in the electronics padding vocab.",
-    strict=True,
-)
 def test_s25_accepts_live_sharafdg_title():
+    """PROMOTED from xfail by Wave B-FIX BF3 (sweep OR-4): 'Icyblue' joined
+    the colour-alias set (the glued Samsung 2025 colourway) and 'AI' is
+    title-side-only tolerated — both bisected triggers closed; the adversarial
+    directions are pinned in tests/test_electronics_unlock_bfix.py."""
     # live sharafdg title, 359.99 BHD in_stock=1
     assert _sel(
         "Samsung Galaxy S25 256GB",
@@ -139,13 +136,11 @@ def test_ipad_m3_accepts_brand_omitted_descriptive_title():
                 candidate_brand="Apple") is True
 
 
-@pytest.mark.xfail(
-    reason="matcher over-rejection (Wave B): the live sharafdg title fails on "
-    "the model-year token '(2025)' — an added numeric the query does not "
-    "state (bisect-proven: identical title without '(2025)' passes).",
-    strict=True,
-)
 def test_ipad_m3_accepts_live_sharafdg_title():
+    """PROMOTED from xfail by Wave B-FIX BF3 (sweep OR-3): a title-side bare
+    2020s model-year ('(2025)', 'GEN 2025') is release-tag padding IFF the
+    query states no year; a query-stated year keeps the full numeric axis
+    (both directions pinned in tests/test_electronics_unlock_bfix.py)."""
     # live sharafdg title, 240.99 BHD in_stock=1
     assert _sel(
         "Apple iPad Air 11-inch M3 128GB",
@@ -170,14 +165,12 @@ def test_ipad_m3_rejects_the_m2_predecessor():
 # (d) MacBook Air M5 — chip-tier discrimination
 # ---------------------------------------------------------------------------
 
-@pytest.mark.xfail(
-    reason="matcher over-rejection (Wave B): the live extra.com title fails on "
-    "the spelled screen unit 'Inch' — the query's bare '13' parses no inch "
-    "axis, so '13 Inch' reads as an added axis (bisect-proven: 'APPLE MacBook "
-    "Air M5 512GB 13' passes, '... 13 Inch' fails).",
-    strict=True,
-)
 def test_mba_m5_accepts_live_extra_title():
+    """PROMOTED from xfail by Wave B-FIX BF3 (sweep OR-2): a title-side
+    inch-annotation of a bare query digit ('13' vs '13 Inch') is the SAME axis
+    value on digit equality (13 vs 15-inch still rejects); 'IPS' joined the
+    spec-noun padding and the '8 Core' count is spec noise off identity —
+    each bounded + both-directions pinned in tests/test_electronics_unlock_bfix.py."""
     # live extra.com title, 609.99 BHD inStockFlag=true
     assert _sel(
         "MacBook Air 13 M5 512GB",

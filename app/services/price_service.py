@@ -2649,10 +2649,45 @@ def detect_currency(price_str: str) -> Optional[str]:
 # strict_title_match (which tokenizes raw, without normalize_words).
 _APOSTROPHES_RE = re.compile("['‘’]")
 
+# SPACED-UNIT fold (Wave B-FIX BF3, over-rejection sweep OR-1..OR-3) — join a
+# digit token with an immediately-following bare unit token so the spaced
+# retailer spelling tokenizes IDENTICALLY to the glued query form
+# ("256 GB"=="256GB", "11 INCH"=="11-inch"->"11inch", "90 ml"=="90ml",
+# "12 GB RAM"). Real extra.com/unbxd titles space every unit and were rejected
+# by strict_title_match's raw substring check on the EXACT in-stock SKU.
+# The unit vocabulary is BOUNDED to the units the existing size/storage/inch
+# regexes already parse in BOTH spellings (their patterns all use \s*):
+# gb|tb (_STORAGE_GB_RE), ml (_SIZE_ML_RE), oz (_SIZE_OZ_RE), inch(es)
+# (_INCH_RE), + the electronics spec units mm/hz/mah — so the fold can never
+# weaken an axis: a folded "512 GB" hits _storage_mismatch exactly like
+# "512GB". DELIBERATELY EXCLUDED: "w" ("AF1 '07 W" is the Nike women's
+# suffix), "l" (clothing size / jeans length), and the supplement/grocery
+# weight-strength units g/kg/lb/mg/mcg/iu — their axes (_STRENGTH_RE /
+# _WEIGHT_VOLUME_RE) already parse both spellings, folding buys nothing at
+# strict for those categories, and the legacy iHerb overlap matcher pins
+# {"1000", "iu"} as SEPARATE tokens (folding rewrote that contract).
+# GATED on exact_gate_enabled() at the call sites (the Wave-B1
+# candidate_brand-fold precedent) so the ENABLE_EXACT_PRICE_GATE rollback
+# surface keeps the raw pre-fold tokenization byte-for-byte.
+_SPACED_UNIT_RE = re.compile(
+    r"\b(\d+(?:\.\d+)?)[ \t]+(gb|tb|ml|oz|mm|hz|mah|inch(?:es)?)\b",
+    re.I,
+)
+
+
+def _fold_spaced_units(text: str) -> str:
+    """Join '<digits> <unit>' into one token (see the vocabulary note above).
+    Case is preserved — callers lowercase downstream. No-op on empty input."""
+    if not text:
+        return text or ""
+    return _SPACED_UNIT_RE.sub(lambda m: m.group(1) + m.group(2), text)
+
 
 def normalize_words(text: str) -> set:
     """Normalize words for matching."""
     text = _APOSTROPHES_RE.sub("", text)
+    if exact_gate_enabled():
+        text = _fold_spaced_units(text)
     return set(w.replace("-", "").strip(",.()&:;'\"") for w in text.lower().split() if w.strip(",.()&:;'\""))
 
 
@@ -2709,6 +2744,14 @@ def strict_title_match(
     # "Levi's 501" title however the retailer typed the quote.
     product_name = _APOSTROPHES_RE.sub("", _collapse_concentration(product_name))
     title = _APOSTROPHES_RE.sub("", _collapse_concentration(title))
+    # Spaced-unit fold on BOTH sides (BF3, sweep OR-1/OR-3): the query's glued
+    # "256GB"/"11inch"/"90ml" must substring-match the spaced retailer spelling
+    # ("256 GB", "11 INCH", "90 ml"). Pure alias — a DIFFERENT unit value still
+    # fails the substring check, and the numeric axes parse both spellings.
+    # Gate-OFF keeps the raw pre-fold tokenization (rollback surface).
+    if exact_gate_enabled():
+        product_name = _fold_spaced_units(product_name)
+        title = _fold_spaced_units(title)
     title_normalized = title.lower().replace("-", "")
     # Tokens of the candidate's OWN brand — dropped from the required query words
     # only when the candidate actually carries that brand (so a Samsung candidate
@@ -3181,6 +3224,10 @@ _COLOR_EDITION_TOKENS = frozenset({
     "phantom", "awesome", "cosmic", "prism", "mystic", "aura", "marble", "sierra",
     "pacific", "alpine", "obsidian", "onyx", "platinum", "graphene",
     "natural", "desert", "stormy",
+    # Samsung 2025 colourway names, incl. the GLUED one-token form sharafdg
+    # lists ("Icyblue" on the live S25 PDP — BF3, sweep OR-4: it was the second
+    # bisected trigger blocking kpi-elec-002). Same class as phantom/awesome.
+    "icy", "icyblue", "silvershadow", "titaniumsilverblue",
     # Sneaker COLOURWAY nicknames + modifiers (coverage review over-rejection) — a
     # colourway is a cosmetic variant in real fashion titles ("Dunk Low Panda", "Cloud
     # White/Core Black", "AJ1 Chicago"). Treated like a colour (stripped for fashion).
@@ -3315,6 +3362,17 @@ _MATCH_INPUT_CAP = 512
 # (a "501"/"0801"-style token must stay untouched).
 _LUXOTTICA_ZERO_RE = re.compile(r"^0((?:rb|rx)\d{3,})$")
 
+# CPU/GPU core-COUNT spec phrasing ("10-core CPU", "8 Core GPU", "10core") —
+# retailer spec-sheet detail on electronics titles (BF3, sweep OR-2: the live
+# sharafdg MacBook M5 title carries BOTH "10-core CPU" and "8-core GPU", each
+# surviving as a digit-bearing identity token that variant-add-rejected the
+# EXACT SKU). Stripped from electronics IDENTITY and compared on its own
+# both-stated-different axis (_core_count_mismatch) — one-sided tolerated
+# (the chip-tier axis carries the major discrimination), a contradicting
+# count (12-core query vs 10-core title) still rejects. Word forms only:
+# "dual/octa-core" carry no digit and stay with the octa/quad/core padding.
+_CORE_COUNT_RE = re.compile(r"\b(\d+)\s*(?:-\s*)?core\b", re.I)
+
 
 def _identity_tokens_ps(text: str, brand: str = "", category: Optional[str] = None) -> set:
     """PRODUCT-IDENTITY token set of `text`: diacritic-folded words, minus the
@@ -3344,6 +3402,10 @@ def _identity_tokens_ps(text: str, brand: str = "", category: Optional[str] = No
     # pure noise elsewhere ("Pack of 2" on a phone bundle) — strip for non-grocery.
     if cat != "grocery":
         folded = re.sub(r"\bpack\s*of\s*\d+\b|\b\d+\s*[-\s]?pack\b", " ", folded)
+    # Electronics CPU/GPU core-count spec ("10-core CPU / 8-core GPU") is not
+    # identity — compared on the _core_count_mismatch axis instead (BF3, OR-2).
+    if cat == "electronics":
+        folded = _CORE_COUNT_RE.sub(" ", folded)
     # Fashion year/colourway re-release suffix ("'07") is noise, NOT the model number.
     if cat == "fashion":
         folded = re.sub(r"'\s*\d{2}\b", " ", folded)
@@ -4178,6 +4240,13 @@ _ELECTRONICS_PADDING = _MANUFACTURER_NOISE | frozenset({
     # 'oc'=overclocked, mirrorless/dslr/body/lens descriptive (coverage review round 5).
     "oc", "mirrorless", "dslr", "body", "lens", "ssd", "hdd", "ryzen", "camera",
     "intel", "amd",
+    # spec NOUNS a BH retailer title appends alongside the already-padded
+    # gpu/ram/ssd (BF3, sweep OR-2: sharafdg "10-core CPU", extra "13 Inch
+    # IPS") — "cpu" is the exact sibling of "gpu" above; "ips" is a display
+    # PANEL tech like the padded "uhd"/"4k" (the model number discriminates a
+    # monitor/laptop SKU, never the panel word). NOTE: "oled" is DELIBERATELY
+    # NOT padding — it names a distinct SKU (Switch OLED vs base Switch).
+    "cpu", "ips",
     # NOTE: "kit" REMOVED — a camera Kit (body+lens) is a materially pricier SKU than the
     # body; an added "Kit" must reject a body/base query (coverage review round 6).
     # NOTE: "crystal" REMOVED — Samsung TV LINE (Crystal UHD vs QLED vs Neo QLED). It
@@ -4434,6 +4503,24 @@ def _ram_mismatch(query_name: str, candidate_title: str) -> bool:
     if not qr or not tr:
         return False
     return not (qr & tr)
+
+
+def _core_counts(text: str) -> set:
+    """The CPU/GPU core-count values stated in `text` ("10-core CPU / 8-core
+    GPU" -> {10, 8}). Set semantics like _ram_value — a title stating both CPU
+    and GPU counts matches a query stating either."""
+    return {int(m) for m in _CORE_COUNT_RE.findall(text or "")}
+
+
+def _core_count_mismatch(query_name: str, candidate_title: str) -> bool:
+    """Electronics — True iff BOTH state a core count and they share none
+    (a 12-core query vs a 10-core CPU / 16-core GPU title). One-sided is
+    tolerated: the count is spec phrasing stripped from identity (BF3), and
+    the chip-tier / model axes carry the major discrimination."""
+    qc, tc = _core_counts(query_name), _core_counts(candidate_title)
+    if not qc or not tc:
+        return False
+    return not (qc & tc)
 
 
 # Apple silicon CHIP-TIER axis — "M3" (base) vs "M3 Pro" vs "M3 Max" vs "M3 Ultra" are
@@ -4948,6 +5035,7 @@ def _axis_mismatch(query_name: str, candidate_title: str, category: Optional[str
         or (_cat == "electronics" and _condition_mismatch(query_name, candidate_title))
         or (_cat == "electronics" and _inch_mismatch(query_name, candidate_title))
         or (_cat == "electronics" and _ram_mismatch(query_name, candidate_title))
+        or (_cat == "electronics" and _core_count_mismatch(query_name, candidate_title))
         or (_cat == "electronics" and _chip_tier_mismatch(query_name, candidate_title))
         or (_cat == "supplements" and _supplement_bare_dose_mismatch(query_name, candidate_title))
     ):
@@ -4994,6 +5082,43 @@ def is_exact_match(
     q_ident = _identity_tokens_ps(query_name, candidate_brand, category)
     t_ident = _identity_tokens_ps(candidate_title, candidate_brand, category)
     return q_ident == t_ident
+
+
+# ---------------------------------------------------------------------------
+# BF3 (Wave B-FIX, over-rejection sweep OR-1..OR-4) — bounded TITLE-SIDE
+# tolerances applied inside _selection_match AFTER the padding subtraction.
+# Each is query-CONDITIONAL (never a static both-sides padding), so the
+# numeric/identity axis is untouched whenever the QUERY states the token.
+# ---------------------------------------------------------------------------
+
+# Bare model-year token 2020-2029 (forms: "2025", "(2025)" — parens are
+# normalize_words-stripped — and "GEN 2025", "gen" being electronics padding).
+# BOUNDED to the 2020s so RTX-2080-class model numbers stay identity.
+_MODEL_YEAR_RE = re.compile(r"^202[0-9]$")
+_MODEL_YEAR_CATEGORIES = frozenset({"electronics", "fashion"})
+
+# Marketing tokens tolerated on the TITLE side only (the 2025+ Samsung
+# "AI Smartphone" class killing kpi-elec-002/003) — NEVER dropped from the
+# query side: a hypothetical product line named "AI" ("Nothing AI Phone")
+# keeps its token required. This asymmetry is why the token is NOT in
+# _ELECTRONICS_PADDING (padding strips BOTH sides).
+_ELECTRONICS_TITLE_SIDE_TOLERATED = frozenset({"ai"})
+
+
+def _inch_digit_tokens(text: str) -> set:
+    """The BARE-digit token forms of the inch-annotated screen sizes stated in
+    raw `text` ('13-inch' / '13 Inch' / '13"' -> {'13'}; '13.6-inch' ->
+    {'13.6'}). Used for the inch-axis EQUALITY tolerance (BF3, OR-2): a
+    title-side inch-annotation of a bare query digit is the SAME axis value,
+    not an added axis — but only on EXACT digit equality, so 13 vs 15-inch
+    still contradicts via the ordinary subset/variant-add checks."""
+    out = set()
+    for m in _INCH_RE.findall(text or ""):
+        tok = str(m)
+        if "." in tok:
+            tok = tok.rstrip("0").rstrip(".")
+        out.add(tok)
+    return out
 
 
 def _selection_match(
@@ -5060,6 +5185,32 @@ def _selection_match(
     padding = _category_padding(cat)
     q_core = q_distinct - padding
     t_core = t_distinct - padding
+    # BF3 (sweep OR-1..OR-4) — bounded, query-CONDITIONAL title-side
+    # tolerances. See the helper block above _selection_match.
+    if cat in _MODEL_YEAR_CATEGORIES:
+        # ONE-SIDED model-year: a title-side bare 2020s year ("(2025)",
+        # "GEN 2025") is release-tag padding IFF the query states NO year;
+        # a query-stated year keeps the full axis (a 2022 query neither
+        # matches a (2020) title nor a year-omitting one).
+        if not any(_MODEL_YEAR_RE.match(w) for w in q_core):
+            t_core = {w for w in t_core if not _MODEL_YEAR_RE.match(w)}
+    if cat == "electronics":
+        # TITLE-side-only marketing tokens ("... AI Smartphone ..."): a title
+        # ADD the query never stated is tolerated — but a token the QUERY
+        # carries stays on BOTH sides (else the identical-title "Nothing AI
+        # Phone" case would strip the title's copy and fail its own subset).
+        t_core = t_core - (_ELECTRONICS_TITLE_SIDE_TOLERATED - q_core)
+        # INCH-axis equality: the title inch-annotates a bare query digit
+        # ("13" vs "13-inch"/"13 Inch") -> same axis value, remove the
+        # covered bare digit; a DIFFERENT value removes nothing and the
+        # subset/variant-add checks reject as before. Mirrored for the
+        # reverse spelling (query annotated, title bare).
+        t_inch = _inch_digit_tokens(candidate_title)
+        if t_inch:
+            q_core = q_core - t_inch
+        q_inch = _inch_digit_tokens(query_name)
+        if q_inch:
+            t_core = t_core - q_inch
     if cat == "makeup":
         # A spelled-out shade NAME on the candidate is descriptive when BOTH sides carry
         # the SAME shade NUMBER ("Fit Me 240" -> "Fit Me 240 Soft Sand"); accept — BUT only

@@ -171,11 +171,36 @@ def test_woo_counterfeit_rejected():
     assert res is None
 
 
-def test_woo_sibling_flag_off_restores_strict_hard_gate(monkeypatch):
+# The original sibling-flag-off fixture (Q_KPI vs the spaced "90 ml" row)
+# failed strict PURELY on unit spacing — Wave B-FIX BF3 fixed that at the
+# strict tokenization layer itself (_fold_spaced_units), so the row is now
+# accepted by the RESTORED hard gate too. The flag contract ("OFF -> strict
+# is the hard pre-gate") is re-proven below with a fixture strict still
+# genuinely rejects post-fold: an oz-labelled query vs the ml-labelled title
+# of the SAME bottle (3.4oz == 100ml only inside _selection_match's size
+# axis; strict's substring check cannot equate them).
+Q_OZ = "YSL Black Opium EDP 3.4oz"
+T_100ML = "YSL Black Opium (W) EDP 100 ml"
+
+
+def test_woo_spaced_unit_row_now_passes_strict_itself(monkeypatch):
+    """BF3 regression pin: the live spaced-"90 ml" row is accepted even with
+    selection-primary OFF — the strict tokenization fold unlocked it."""
     monkeypatch.setenv("ENABLE_ADAPTER_SELECTION_PRIMARY", "false")
     res = woo._match_woo_product(WOO_ROWS, Q_KPI, "BHD",
                                  resolved_category="fragrances")
-    assert res is None
+    assert res is not None
+    assert res["title"] == T_EXACT
+
+
+def test_woo_sibling_flag_off_restores_strict_hard_gate(monkeypatch):
+    res = woo._match_woo_product([_woo_row(T_100ML, "edp-100")], Q_OZ, "BHD",
+                                 resolved_category="fragrances")
+    assert res is not None  # flag ON: selection equates 3.4oz == 100 ml
+    monkeypatch.setenv("ENABLE_ADAPTER_SELECTION_PRIMARY", "false")
+    res = woo._match_woo_product([_woo_row(T_100ML, "edp-100")], Q_OZ, "BHD",
+                                 resolved_category="fragrances")
+    assert res is None  # flag OFF: strict is the hard pre-gate again
 
 
 def test_woo_exact_gate_off_alias_row_stays_rejected(monkeypatch):
@@ -284,11 +309,23 @@ def test_magento_rejects_flanker():
     assert mg._best_match([node], Q_KPI, "fragrances") is None
 
 
-def test_magento_sibling_flag_off_restores_strict_hard_gate(monkeypatch):
+def test_magento_spaced_unit_row_now_passes_strict_itself(monkeypatch):
+    """BF3: the '100 ML' spacing fixture now passes the restored strict gate
+    (the fold fixed strict's tokenization, not the flag semantics)."""
     monkeypatch.setenv("ENABLE_ADAPTER_SELECTION_PRIMARY", "false")
     node = _mg_node("Lancome La Vie Est Belle EDP 100 ML")
     assert mg._best_match([node], "Lancome La Vie Est Belle Eau de Parfum 100ml",
-                          "fragrances") is None
+                          "fragrances") is not None
+
+
+def test_magento_sibling_flag_off_restores_strict_hard_gate(monkeypatch):
+    """Flag contract re-proven with the brand-omitting klinq class — the
+    ysl<->spelled alias folds ONLY inside _selection_match(candidate_brand=),
+    so strict genuinely still rejects it post-BF3 (see the flag-ON accept pin
+    test_magento_accepts_brand_omitting_title_via_candidate_brand)."""
+    monkeypatch.setenv("ENABLE_ADAPTER_SELECTION_PRIMARY", "false")
+    node = _mg_node("Black Opium Eau De Parfum 90 ml", brand="Yves Saint Laurent")
+    assert mg._best_match([node], Q_KPI, "fragrances") is None
 
 
 # ---------------------------------------------------------------------------
@@ -308,9 +345,16 @@ def test_salla_flanker_only_rejected():
 
 
 def test_salla_sibling_flag_off_restores_strict_hard_gate(monkeypatch):
+    # BF3 reconcile: T_EXACT's spaced "90 ml" now passes strict itself (the
+    # tokenization fold), so the flag contract is re-proven with the oz/ml
+    # class strict still rejects (see the woo note above Q_OZ).
+    assert salla._select_candidate([{"name": T_100ML, "price": 48.0}],
+                                   Q_OZ, "fragrances") is not None
     monkeypatch.setenv("ENABLE_ADAPTER_SELECTION_PRIMARY", "false")
+    assert salla._select_candidate([{"name": T_100ML, "price": 48.0}],
+                                   Q_OZ, "fragrances") is None
     assert salla._select_candidate([{"name": T_EXACT, "price": 48.0}],
-                                   Q_KPI, "fragrances") is None
+                                   Q_KPI, "fragrances") is not None  # BF3 strict unlock
 
 
 # ---------------------------------------------------------------------------
@@ -326,8 +370,12 @@ def test_rest_json_rejects_flanker():
 
 
 def test_rest_json_sibling_flag_off_restores_strict_hard_gate(monkeypatch):
+    # BF3 reconcile: same oz/ml re-proof as woo/salla (T_EXACT now passes the
+    # restored strict gate via the spaced-unit fold).
+    assert rj._title_matches(Q_OZ, T_100ML, "fragrances") is True
     monkeypatch.setenv("ENABLE_ADAPTER_SELECTION_PRIMARY", "false")
-    assert rj._title_matches(Q_KPI, T_EXACT, "fragrances") is False
+    assert rj._title_matches(Q_OZ, T_100ML, "fragrances") is False
+    assert rj._title_matches(Q_KPI, T_EXACT, "fragrances") is True  # BF3 strict unlock
 
 
 # ---------------------------------------------------------------------------
@@ -399,18 +447,23 @@ def test_occ_sibling_flag_off_restores_strict_hard_gate(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# The 4 truth-modernization titles — selection-primary must NOT unlock them.
-# They fail _selection_match ITSELF (strict=True, selection=False: variant-add
-# on 'Light' / 'Icyblue'+'AI' / '(2025)' / '13 Inch') — the exact class the
-# strict=True xfails in tests/test_kpi_truth_modernization.py pin at matcher
-# level. Adapter-chain REJECT pinned here so the strict demotion is proven not
-# to widen the variant-add direction; when the matcher work lands, flip these
-# WITH the xfails.
+# The truth-modernization titles at the adapter chain. Wave B-FIX BF3 (the
+# electronics unlock, sweep OR-1..OR-4) closed the 'Icyblue'+'AI' / '(2025)' /
+# '13 Inch' matcher classes — those three flipped to ACCEPT here, WITH the
+# xfail promotions in tests/test_kpi_truth_modernization.py (as this block's
+# original note mandated). 'Light' (Switch-Lite collision) stays REJECTED —
+# fixing it would weaken the variant-add guard that rejects games/bundles.
 # ---------------------------------------------------------------------------
 
+def test_selection_level_rejection_switch_light_stays_rejected():
+    got = occ._select_product(
+        {"products": [_occ_node("Nintendo Switch 2, Light Blue and Light Red",
+                                "", 199.9)]},
+        "Nintendo Switch 2", "electronics")
+    assert got is None
+
+
 @pytest.mark.parametrize("query,title,manufacturer", [
-    ("Nintendo Switch 2",
-     "Nintendo Switch 2, Light Blue and Light Red", ""),
     ("Samsung Galaxy S25 256GB",
      "Samsung Galaxy S25 5G 256GB 12GB RAM Icyblue AI Smartphone Middle East Version",
      ""),
@@ -421,11 +474,14 @@ def test_occ_sibling_flag_off_restores_strict_hard_gate(monkeypatch):
      "APPLE MacBook Air, M5, 16GB, 512GB SSD, 13 Inch IPS, 8 Core GPU, Silver",
      "Apple"),
 ])
-def test_selection_level_rejections_stay_rejected(query, title, manufacturer):
+def test_selection_level_unlocks_now_accept(query, title, manufacturer):
+    """FLIPPED by BF3 with the truth-modernization xfails (this block's note).
+    Both-directions bounds for each fold live in
+    tests/test_electronics_unlock_bfix.py."""
     got = occ._select_product(
         {"products": [_occ_node(title, manufacturer, 199.9)]},
         query, "electronics")
-    assert got is None
+    assert got is not None
 
 
 # ===========================================================================
@@ -621,22 +677,40 @@ def test_unbxd_selection_primary_wrong_skus_still_reject(title):
     assert got is None
 
 
-def test_unbxd_macbook_added_inch_axis_stays_rejected():
-    """OR-2's class: '13 Inch' added-axis rejects at _selection_match ITSELF —
-    wiring selection-primary must NOT unlock it (flip with the
-    test_kpi_truth_modernization xfails when the matcher work lands)."""
+def test_unbxd_macbook_inch_axis_now_accepted():
+    """OR-2's class, FLIPPED by BF3 with the truth-modernization xfails (as
+    this pin's original note mandated): a title-side inch-annotation of the
+    bare query digit is the SAME axis value ('13' vs '13 Inch'); 13 vs
+    15-inch still rejects (pinned in tests/test_electronics_unlock_bfix.py)."""
     got = ub._match_unbxd_product(
         [_ub_product("APPLE MacBook Air, M5, 16GB, 512GB SSD, 13 Inch IPS, 8 Core GPU, Silver",
                      price=499.9)],
         "MacBook Air 13 M5 512GB", resolved_category="electronics")
-    assert got is None
+    assert got is not None
 
 
-def test_unbxd_sibling_flag_off_restores_strict_hard_gate(monkeypatch):
+def test_unbxd_spaced_unit_row_now_passes_strict_itself(monkeypatch):
+    """BF3: the spaced-'256 GB' extra.com row is accepted even with
+    selection-primary OFF — the strict tokenization fold unlocked it."""
     monkeypatch.setenv("ENABLE_ADAPTER_SELECTION_PRIMARY", "false")
     got = ub._match_unbxd_product([_ub_product(EXTRA_TITLE)], EXTRA_Q,
                                   resolved_category="electronics")
-    assert got is None
+    assert got is not None
+
+
+def test_unbxd_sibling_flag_off_restores_strict_hard_gate(monkeypatch):
+    """Flag contract re-proven with the brand-omitted BH-listing class (the
+    B4-documented electronics unlock): 'samsung' is required by strict but is
+    _MANUFACTURER_NOISE padding inside _selection_match — strict genuinely
+    still rejects it post-BF3."""
+    nobrand = "Galaxy S25 Ultra, 5G, 256 GB, Titanium Black"
+    got = ub._match_unbxd_product([_ub_product(nobrand)], EXTRA_Q,
+                                  resolved_category="electronics")
+    assert got is not None  # flag ON: brand-omitted title accepted
+    monkeypatch.setenv("ENABLE_ADAPTER_SELECTION_PRIMARY", "false")
+    got = ub._match_unbxd_product([_ub_product(nobrand)], EXTRA_Q,
+                                  resolved_category="electronics")
+    assert got is None  # flag OFF: strict is the hard pre-gate again
 
 
 def test_unbxd_exact_gate_off_restores_strict_hard_gate(monkeypatch):
