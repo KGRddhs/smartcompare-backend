@@ -9,15 +9,16 @@
     "gate": "Phase 2 (warmer activation) is gated on usable_exact_genuine >= 0.85 for electronics, fashion, and fragrances on this NON-CIRCULAR truth set, measured WARMED.",
     "non_circular": "These products are DELIBERATELY DISJOINT from data/warmer_catalog.json (Phase 2 warms that set; reading it back would measure the warm, not correctness). tests/test_kpi_set_disjoint_from_warmer.py pins the disjointness.",
     "expansion": "SEED set (single-product, canonical exact-SKU query forms). Phase 2 expands each category to 30-50 real BH-available SKUs with a Serper-verified current genuine BHD reference band, then runs the COLD + WARMED eval. Authoring the full set is Serper-heavy and belongs in the Phase-2 session.",
-    "id_prefix": "kpi- (never collides with gold 'q-' or warmer 'warm-' ids)"
+    "id_prefix": "kpi- (never collides with gold 'q-' or warmer 'warm-' ids)",
+    "revised": "2026-07-02 — electronics modernized to current BH retail (S25/S25U/iPadAir-M3/MBA-M5/Switch-2, live-probed sharafdg Algolia + extra Unbxd + noon; the 2026-06-27 SKUs were 4/6 discontinued or zero in-stock+priced at BH retail), fashion queries aligned to GCC listing names (GCC titles never carry US marketing names: RB3025 drops 'Classic', L1212 drops 'Classic Fit', Tommy family is 'Essential Flag'). MBA-M5 note: the M5 line's base SSD is 512GB (no 256GB config at BH retail; M4 256GB is OOS at both stores). Switch-2 note: the truth query must NOT contain 'Console' — extra.com's genuine title ('Nintendo Switch 2, Light Blue and Light Red') has no console token and would fail the query-subset gate. Freshness: run scripts/probe_truth_freshness.py before every KPI gate so a RED gate is never blamed on retired SKUs."
   },
   "products": [
     {"id": "kpi-elec-001", "query": "iPhone 15 256GB", "category": "electronics", "region": "bahrain", "expected": {"brand": "Apple", "model": "iPhone 15", "storage_gb": 256}},
-    {"id": "kpi-elec-002", "query": "Samsung Galaxy S24 256GB", "category": "electronics", "region": "bahrain", "expected": {"brand": "Samsung", "model": "Galaxy S24", "storage_gb": 256}},
-    {"id": "kpi-elec-003", "query": "Samsung Galaxy S24 Ultra 256GB", "category": "electronics", "region": "bahrain", "expected": {"brand": "Samsung", "model": "Galaxy S24 Ultra", "storage_gb": 256}},
-    {"id": "kpi-elec-004", "query": "Apple iPad Air 11-inch M2 128GB", "category": "electronics", "region": "bahrain", "expected": {"brand": "Apple", "model": "iPad Air 11 M2", "storage_gb": 128}},
-    {"id": "kpi-elec-005", "query": "MacBook Air 13 M3 256GB", "category": "electronics", "region": "bahrain", "expected": {"brand": "Apple", "model": "MacBook Air M3", "storage_gb": 256}},
-    {"id": "kpi-elec-006", "query": "Nintendo Switch OLED", "category": "electronics", "region": "bahrain", "expected": {"brand": "Nintendo", "model": "Switch OLED"}},
+    {"id": "kpi-elec-002", "query": "Samsung Galaxy S25 256GB", "category": "electronics", "region": "bahrain", "expected": {"brand": "Samsung", "model": "Galaxy S25", "storage_gb": 256}},
+    {"id": "kpi-elec-003", "query": "Samsung Galaxy S25 Ultra 256GB", "category": "electronics", "region": "bahrain", "expected": {"brand": "Samsung", "model": "Galaxy S25 Ultra", "storage_gb": 256}},
+    {"id": "kpi-elec-004", "query": "Apple iPad Air 11-inch M3 128GB", "category": "electronics", "region": "bahrain", "expected": {"brand": "Apple", "model": "iPad Air 11 M3", "storage_gb": 128}},
+    {"id": "kpi-elec-005", "query": "MacBook Air 13 M5 512GB", "category": "electronics", "region": "bahrain", "expected": {"brand": "Apple", "model": "MacBook Air M5", "storage_gb": 512}},
+    {"id": "kpi-elec-006", "query": "Nintendo Switch 2", "category": "electronics", "region": "bahrain", "expected": {"brand": "Nintendo", "model": "Switch 2"}},
 
     {"id": "kpi-frag-001", "query": "YSL Black Opium Eau de Parfum 90ml", "category": "fragrances", "region": "bahrain", "expected": {"brand": "Yves Saint Laurent", "model": "Black Opium", "concentration": "EDP", "size_ml": 90}},
     {"id": "kpi-frag-002", "query": "Giorgio Armani Acqua di Gio Eau de Toilette 100ml", "category": "fragrances", "region": "bahrain", "expected": {"brand": "Giorgio Armani", "model": "Acqua di Gio", "concentration": "EDT", "size_ml": 100}},
@@ -29,8 +30,8 @@
     {"id": "kpi-fash-001", "query": "Nike Air Force 1 07 White", "category": "fashion", "region": "bahrain", "expected": {"brand": "Nike", "model": "Air Force 1 07", "colorway": "White"}},
     {"id": "kpi-fash-002", "query": "Adidas Samba OG", "category": "fashion", "region": "bahrain", "expected": {"brand": "Adidas", "model": "Samba OG"}},
     {"id": "kpi-fash-003", "query": "Levis 501 Original Fit Jeans", "category": "fashion", "region": "bahrain", "expected": {"brand": "Levis", "model": "501 Original"}},
-    {"id": "kpi-fash-004", "query": "Ray-Ban Aviator Classic RB3025", "category": "fashion", "region": "bahrain", "expected": {"brand": "Ray-Ban", "model": "Aviator Classic RB3025"}},
-    {"id": "kpi-fash-005", "query": "Lacoste L1212 Classic Fit Polo", "category": "fashion", "region": "bahrain", "expected": {"brand": "Lacoste", "model": "L1212 Polo"}},
-    {"id": "kpi-fash-006", "query": "Tommy Hilfiger Flag Logo T-Shirt", "category": "fashion", "region": "bahrain", "expected": {"brand": "Tommy Hilfiger", "model": "Flag Logo T-Shirt"}}
+    {"id": "kpi-fash-004", "query": "Ray-Ban Aviator RB3025", "category": "fashion", "region": "bahrain", "expected": {"brand": "Ray-Ban", "model": "Aviator RB3025"}},
+    {"id": "kpi-fash-005", "query": "Lacoste L1212 Polo", "category": "fashion", "region": "bahrain", "expected": {"brand": "Lacoste", "model": "L1212 Polo"}},
+    {"id": "kpi-fash-006", "query": "Tommy Hilfiger Essential Flag T-Shirt", "category": "fashion", "region": "bahrain", "expected": {"brand": "Tommy Hilfiger", "model": "Essential Flag T-Shirt"}}
   ]
 }
