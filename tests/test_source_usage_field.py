@@ -67,11 +67,16 @@ def test_registry_price_source_count():
     the source_router A5 note: _normalize_domain www-strips hosts, so a "www."
     row can never score/tier; the magento adapter re-canonicalizes to its
     pinned www host) (Alshaya Shape-A magento_graphql, genuine BHD,
-    fashion/other — the built-but-dead recovery), 39→40. Guard the
+    fashion/other — the built-but-dead recovery), 39→40. Wave C C3
+    (genuine-price KPI, 2026-07-02) ADDED the SECOND noon.com row — the
+    bahrain-tier mechanism="noon_catalog" direct-adapter literal (x-locale
+    en-bh search door + /bahrain-en PDP JSON-LD; placed AFTER the gcc
+    is_render_only noon row so registry_tier/score_source keep resolving
+    noon at gcc/1.5 — never promoted to authoritative), 40→41. Guard the
     floor so a future accidental mass-deletion of price rows is caught.
     """
     price_rows = [s for s in SOURCE_REGISTRY if s.usage in ("price", "both")]
-    assert len(price_rows) == 40
+    assert len(price_rows) == 41
 
 
 # ---------------------------------------------------------------------------

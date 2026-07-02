@@ -51,6 +51,7 @@ _ADAPTER_SELECTOR_NAMES = (
     "get_magento_gql_sources_for_category",
     "get_unbxd_sources_for_category",
     "get_restjson_sources_for_category",
+    "get_noon_sources_for_category",  # Wave C C3 — noon-BH literal (flag-independent)
 )
 
 

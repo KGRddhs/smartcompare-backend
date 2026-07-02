@@ -96,6 +96,7 @@ async def test_discovery_prefetch_starts_concurrently_with_shopping():
          patch(f"{ssc}.fan_out_price_lookup", new=AsyncMock(side_effect=fake_fan)), \
          patch(f"{ssc}.get_shopify_sources_for_category", return_value=[]), \
          patch(f"{ssc}.get_algolia_sources_for_category", return_value=[]), \
+         patch(f"{ssc}.get_noon_sources_for_category", return_value=[]), \
          patch(f"{ssc}.get_cached", return_value=None), \
          patch(f"{ssc}.set_cached", return_value=True), \
          patch("app.services.product_data_service.get_cached_price", new=AsyncMock(return_value=None)), \
@@ -365,6 +366,7 @@ class TestInvariantsPreserved:
              patch(f"{ssc}.get_shopify_sources_for_category", return_value=[]), \
              patch(f"{ssc}.get_algolia_sources_for_category", return_value=[]), \
              patch(f"{ssc}.get_unbxd_sources_for_category", return_value=[]), \
+             patch(f"{ssc}.get_noon_sources_for_category", return_value=[]), \
              patch(f"{ssc}.get_cached", return_value=None), \
              patch(f"{ssc}.set_cached", return_value=True), \
              patch("app.services.product_data_service.get_cached_price", new=AsyncMock(return_value=None)), \

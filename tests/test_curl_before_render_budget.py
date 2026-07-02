@@ -214,6 +214,8 @@ class TestRenderNotBuiltOnCurlHit:
         # short-circuiting the escalation this budget invariant is meant to pin.
         monkeypatch.setattr(scs_mod, "get_algolia_sources_for_category", lambda cat: [])
         monkeypatch.setattr(scs_mod, "get_unbxd_sources_for_category", lambda cat: [])
+        # Wave C C3 — the noon-BH literal fires a REAL fetch too; neutralize alike.
+        monkeypatch.setattr(scs_mod, "get_noon_sources_for_category", lambda cat: [])
         monkeypatch.setattr(
             scs_mod, "search_web",
             AsyncMock(return_value={"organic": [

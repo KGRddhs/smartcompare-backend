@@ -62,7 +62,7 @@ class Source:
     subdomain_patterns: Tuple[str, ...] = ()    # bh., bahrain., en-bh.
     currency: str = ""                          # expected currency, e.g. "BHD"
     discovery_query_templates: Tuple[str, ...] = ()  # site:{domain}{locale} "{product}" BHD
-    mechanism: str = ""                         # "" | curl | json_api | sitemap | algolia | shopify | render | provider | woo_store_json | salla_api | occ_rest | magento_graphql | unbxd | rest_json
+    mechanism: str = ""                         # "" | curl | json_api | sitemap | algolia | shopify | render | provider | woo_store_json | salla_api | occ_rest | magento_graphql | unbxd | rest_json | noon_catalog
     pdp_url_pattern: str = ""                   # e.g. /bh-en/p/{slug}/{product_id}
     sample_url: str = ""                        # one live-verified PDP (liveness anchor)
     status: str = ""                            # "" | live | provider-test-candidate | render-only
@@ -286,6 +286,31 @@ _LITERAL_ROWS: List[Source] = [
     # gcc-tier (SECONDARY breadth, gray-import) — never authoritative for Apple/
     # Samsung; sharafdg/microless are the authoritative BH electronics sources.
     Source("noon.com", "gcc", (), 1.5, is_render_only=True),
+    # C3 (genuine-price KPI Wave C, 2026-07-02) — the noon-BH DIRECT adapter row
+    # (mechanism="noon_catalog" → noon_service.fetch_noon_price: the x-locale
+    # en-bh search door + /bahrain-en PDP JSON-LD, live-proven BHD — falsifies
+    # the round-3/4 "search walled / SAR-only" claim). bahrain-TIER (the PDPs
+    # are genuine native-BHD Bahrain shelf prices) but placed AFTER the gcc row
+    # above DELIBERATELY: registry_tier/score_source/source_usage resolve
+    # noon.com at the FIRST matching row, so noon's AUTHORITY stays gcc/1.5 —
+    # never promoted over sharafdg/extra (3.0) for Apple/Samsung (recon failure
+    # mode 5: gray-import marketplace sellers; the pinned
+    # test_noon_stays_gcc_tier_not_promoted invariant holds). Only the
+    # mechanism selector (get_noon_sources_for_category → _direct_fetch_sources
+    # scans ALL rows) and the bahrain-tier discovery pool read this row; the
+    # weight mirrors the effective gcc 1.5 so no consumer can ever see a higher
+    # noon authority however the rows are matched. The gcc is_render_only row
+    # above is UNTOUCHED (failure mode 7) — the render tier + curl-wave skip
+    # behaviour for generic noon URLs is unchanged; ONLY the new adapter fetches
+    # noon directly ($0, curl_cffi impersonate=chrome, politeness-spaced).
+    # LITERAL-ROW RECONCILE NOTE: a literal row loads flag-independently — the
+    # cascade tests neutralize get_noon_sources_for_category like the other
+    # selectors (the PR#13 footlocker/sharafdg lesson).
+    Source("noon.com", "bahrain", ("electronics", "fragrances", "fashion", "other"),
+           1.5, mechanism="noon_catalog", currency="BHD",
+           pdp_url_pattern="/bahrain-en/{slug}/{sku}/p/",
+           sample_url="https://www.noon.com/bahrain-en/iphone-15-256gb-blue-5g-with-facetime-middle-east-version/N53432838A/p/",
+           status="live"),
     Source("amazon.ae", "gcc", (), 1.5),
     Source("sharafdg.com", "gcc", ("electronics",), 1.5),
     Source("ounass.com", "gcc", ("fashion", "fragrances", "makeup"), 1.5),
@@ -778,6 +803,13 @@ def get_unbxd_sources_for_category(category: str) -> List[Source]:
 def get_restjson_sources_for_category(category: str) -> List[Source]:
     """Custom REST-JSON sources — panda/ourshopee/beautybooth (fetch_rest_json_price)."""
     return _direct_fetch_sources(category, "rest_json")
+
+
+def get_noon_sources_for_category(category: str) -> List[Source]:
+    """noon-BH direct catalog+PDP sources (noon_service.fetch_noon_price) —
+    Wave C C3. ONE bounded literal row (electronics/fragrances/fashion/other),
+    K-capped like every direct-fetch selector."""
+    return _direct_fetch_sources(category, "noon_catalog")
 
 
 def source_usage(url: str, category: str) -> str:

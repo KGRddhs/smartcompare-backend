@@ -922,6 +922,8 @@ from app.services.source_router import (
     get_magento_gql_sources_for_category,
     get_unbxd_sources_for_category,
     get_restjson_sources_for_category,
+    # Wave C C3 — the noon-BH direct catalog+PDP adapter selector.
+    get_noon_sources_for_category,
     registry_tier,
 )
 # BH/GCC source-build (2026-06-25) — the 6 new genuine/converted price adapters
@@ -935,6 +937,9 @@ from app.services.occ_service import fetch_occ_rest_price
 from app.services.magento_graphql_service import fetch_magento_graphql_price
 from app.services.unbxd_service import fetch_unbxd_price
 from app.services.rest_json_service import fetch_rest_json_price
+# Wave C C3 — noon-BH: x-locale en-bh search door + /bahrain-en PDP JSON-LD
+# confirm (buy-box offers[0], never min). Genuine page_scrape_jsonld BHD.
+from app.services.noon_service import fetch_noon_price
 from app.services.sitemap_discovery_service import (
     sitemap_discovery_is_cold,
     sitemap_domains_now_built,
@@ -953,6 +958,8 @@ _DIRECT_ADAPTER_MECHANISMS = frozenset({
     "shopify", "algolia", "sitemap", "curl", "json_api",
     "woo_store_json", "salla_api", "occ_rest", "magento_graphql",
     "unbxd", "rest_json",
+    # Wave C C3 — noon-BH direct adapter (never a discovery-only source).
+    "noon_catalog",
 })
 
 
@@ -4795,6 +4802,10 @@ class StructuredComparisonService:
                 ("magento_gql", get_magento_gql_sources_for_category(category), fetch_magento_graphql_price),
                 ("unbxd", get_unbxd_sources_for_category(category), fetch_unbxd_price),
                 ("rest_json", get_restjson_sources_for_category(category), fetch_rest_json_price),
+                # Wave C C3 — noon-BH ($0 search+PDP-confirm, genuine
+                # page_scrape_jsonld BHD; ONE bounded K-capped literal source,
+                # per-source _timeout_none like every sibling).
+                ("noon", get_noon_sources_for_category(category), fetch_noon_price),
             )
             if srcs
         ]

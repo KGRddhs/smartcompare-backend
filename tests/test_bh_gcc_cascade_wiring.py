@@ -26,6 +26,7 @@ def _quiet_other_selectors(scs, monkeypatch, keep):
         "get_woo_sources_for_category", "get_salla_sources_for_category",
         "get_occ_sources_for_category", "get_magento_gql_sources_for_category",
         "get_unbxd_sources_for_category", "get_restjson_sources_for_category",
+        "get_noon_sources_for_category",  # Wave C C3 — noon-BH literal
     ):
         if name != keep:
             monkeypatch.setattr(scs, name, lambda c: [])
