@@ -4287,6 +4287,14 @@ class StructuredComparisonService:
         # later-correct PDP isn't suppressed for 30 days. _finalize_fan_winner (a
         # nested closure) flips it via `nonlocal`.
         _guard_rejected_this_request = False
+        # R4 (KPI Wave A, recon_cascade) — Serper-OUTAGE signal. True when EVERY
+        # Tier-1.5 discovery result errored (a depleted/dead key makes search_web
+        # return {"organic": [], "error": ...} on every tier), so "no genuine
+        # found" this request is evidence of the OUTAGE, not of a structural gap
+        # — the Tier-3 estimate's negcache TTL is capped to 24h like
+        # guard_rejected, never the 30d freeze. A legitimately-empty discovery
+        # WITHOUT error keys stays structural (30d).
+        _discovery_degraded = False
 
         # WS-2 F1 (genuine-bh bundle) — ROUTING half of the supplement-misroute
         # fix. Trust a CONCRETE non-supplement LLM/catfix category; only consult
@@ -4730,6 +4738,29 @@ class StructuredComparisonService:
                 and "estimate" not in (r.get("source_method") or "")
             ]
             if not genuine_observed:
+                # R5 (KPI Wave A, recon_cascade) — converted TERMINAL fallback. A
+                # converted-only yield must not short-circuit (a genuine price
+                # downstream still wins), but it IS a real cited GCC PDP price:
+                # park the best exact ∧ in-stock ∧ valid-PDP one (select_best —
+                # authority, never cheapest) into the existing converted_fallback/
+                # _parked_price plumbing so the §5 tier-7 fallback serves it
+                # instead of a Tier-3 estimate. Only fills an EMPTY park — a
+                # Tier-1 converted park (also a real cited price, and the Tier-2
+                # wrong-SKU anchor) is not displaced. Provenance stays the honest
+                # literal converted_usd the adapters stamped; SF-1 keeps it out of
+                # the negcache at the terminal.
+                nonlocal converted_fallback
+                if converted_fallback is None:
+                    _conv_best = select_best(
+                        [r for r in observed
+                         if "converted" in (r.get("source_method") or "")],
+                        full_name, category,
+                    )
+                    if _conv_best is not None:
+                        converted_fallback = dict(_conv_best)
+                        # Fix-A mirror — survives an outer wait_for cancel via
+                        # _price_fallback_on_miss, like the Tier-1 park.
+                        self._parked_price[full_name] = dict(_conv_best)
                 self._seed_shortcircuit_candidates(
                     full_name, kind="price_dicts", currency=currency,
                     price_dicts=observed,
@@ -5174,21 +5205,37 @@ class StructuredComparisonService:
                 discovery_tasks.append(("gcc", search_web(gcc_query)))
 
             results_by_tier = {}
+            _disc_results = 0
+            _disc_errored = 0
             try:
                 gathered = await asyncio.gather(
                     *(coro for _, coro in discovery_tasks),
                     return_exceptions=True,
                 )
                 for (tier_name, _), result in zip(discovery_tasks, gathered):
+                    _disc_results += 1
                     if isinstance(result, Exception):
+                        _disc_errored += 1
                         logger.warning(f"[PRICE] Tier 1.5 {tier_name}-discovery failed: {result}")
                         continue
+                    # R4 — serper_service surfaces its own failure (HTTP non-200 /
+                    # depleted key / no key) as an "error" key on an otherwise-empty
+                    # result; count it so an outage is distinguishable from a
+                    # legitimately-empty discovery.
+                    if isinstance(result, dict) and result.get("error"):
+                        _disc_errored += 1
                     self.api_calls += 1
                     self._track_cost_amount(0.001)
                     results_by_tier[tier_name] = result
             except Exception as e:
                 # gather itself failed (very unlikely with return_exceptions=True)
+                # — discovery produced NOTHING this request; treat as degraded.
                 logger.warning(f"[PRICE] Tier 1.5 parallel discovery failed: {e}")
+                _discovery_degraded = True
+            # R4 — ALL discovery tiers errored ⇒ the cascade below runs BLIND this
+            # request; its Tier-3 estimate must not 30d-freeze the outage.
+            if _disc_results and _disc_errored == _disc_results:
+                _discovery_degraded = True
 
             # Build candidate_urls in priority order:
             # bahrain (registry) → official → authorized → gcc.
@@ -5787,6 +5834,10 @@ class StructuredComparisonService:
                 cache_key, price,
                 guard_rejected=_guard_rejected_this_request,
                 transient_discovery=sitemap_discovery_is_cold(category),
+                # R4 — a Serper-outage estimate is TRANSIENT too: the discovery
+                # tiers all errored, so the cascade ran blind; cap to 24h so the
+                # outage never freezes the estimate for 30 days.
+                discovery_degraded=_discovery_degraded,
                 # Codex re-review HIGH-3 — stamp the RAW cold sitemap domains
                 # (NOT cron-gated) so a 30d-negcached estimate written while the
                 # cron was OFF gets read-side-invalidated the moment the index warms.
@@ -6122,7 +6173,8 @@ class StructuredComparisonService:
 
     def _record_negative_price_cache(
         self, cache_key: str, price: Dict, guard_rejected: bool = False,
-        transient_discovery: bool = False, category: Optional[str] = None,
+        transient_discovery: bool = False, discovery_degraded: bool = False,
+        category: Optional[str] = None,
     ) -> None:
         """Task 1.3 — record a structural genuine-BH dead-end so the next call
         skips the expensive Tier-1.5 scrape cascade.
@@ -6166,13 +6218,21 @@ class StructuredComparisonService:
         READ then invalidates the sentinel the moment any stamped domain's index
         becomes built (`sitemap_domains_now_built`), re-resolving to genuine. The 30d
         TTL is otherwise preserved (no scrape burn while the cron is off).
+
+        R4 (KPI Wave A, recon_cascade) — `discovery_degraded`: when EVERY Tier-1.5
+        Serper discovery result errored this request (depleted/dead key — the
+        cascade ran BLIND, so "no genuine found" is evidence of the OUTAGE, not of
+        a structural gap), the estimate is TRANSIENT exactly like the two flags
+        above: TTL capped to 24h so a Serper recovery re-resolves genuine instead
+        of the outage estimate staying frozen for 30 days. A legitimately-empty
+        discovery WITHOUT error keys never sets it (stays structural, 30d).
         """
         try:
             if not should_negative_cache(price):
                 return
             ttl = (
                 PRICE_CACHE_TTL
-                if (guard_rejected or transient_discovery)
+                if (guard_rejected or transient_discovery or discovery_degraded)
                 else NEGATIVE_PRICE_CACHE_TTL
             )
             neg_value = price
