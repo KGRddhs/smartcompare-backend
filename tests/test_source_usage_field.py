@@ -63,8 +63,11 @@ def test_registry_price_source_count():
     PROMOTED boutiqaat.com off render-only/super to mechanism="sitemap" (live
     re-verify cracked it to a $0 curl JSON-LD adapter) — it STAYS a price row
     (usage='price'), so the count is unchanged at 39. A5 (genuine-price KPI,
-    2026-07-02) ADDED www.footlocker.com.bh (Alshaya Shape-A magento_graphql,
-    genuine BHD, fashion/other — the built-but-dead recovery), 39→40. Guard the
+    2026-07-02) ADDED footlocker.com.bh (APEX, deliberately NOT "www." — see
+    the source_router A5 note: _normalize_domain www-strips hosts, so a "www."
+    row can never score/tier; the magento adapter re-canonicalizes to its
+    pinned www host) (Alshaya Shape-A magento_graphql, genuine BHD,
+    fashion/other — the built-but-dead recovery), 39→40. Guard the
     floor so a future accidental mass-deletion of price rows is caught.
     """
     price_rows = [s for s in SOURCE_REGISTRY if s.usage in ("price", "both")]

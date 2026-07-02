@@ -105,7 +105,14 @@ _PAGE_SIZE = 5  # productSearch / products page size — small; strict-match the
 # `attributes(roles: [])` is on the ProductView INTERFACE (no per-name filter
 # exists — the arg filters by roles); the full list carries the generic
 # {name:"brand", value:"Bath & Body Works"} entry, a few KB at pageSize 5.
-_SHAPE_A_QUERY = """
+# Built from a template (Shape-B __BRAND_SEL__ mirror) so the attrs-free
+# FALLBACK query stays byte-identical modulo the attributes selection: the
+# field is live-proven on www.footlocker.com.bh (2026-07-02 probe: HTTP 200, no
+# errors[], 5 nodes, brand="Nike", genuine BHD) but NOT schema-guaranteed
+# across all 6 Alshaya tenants — an older Catalog Service rejects it with a
+# VALIDATION error (errors[] + no data) that kills the whole query, silently
+# reverting the store to built-but-dead. See _shape_a_attrs_rejected.
+_SHAPE_A_QUERY_TEMPLATE = """
 query($phrase: String!, $pageSize: Int!) {
   productSearch(phrase: $phrase, page_size: $pageSize) {
     items {
@@ -114,8 +121,7 @@ query($phrase: String!, $pageSize: Int!) {
         sku
         urlKey
         inStock
-        __typename
-        attributes(roles: []) { name value }
+        __typename__ATTRS_SEL__
         ... on SimpleProductView {
           price { final { amount { value currency } } regular { amount { value currency } } }
         }
@@ -132,6 +138,11 @@ query($phrase: String!, $pageSize: Int!) {
   }
 }
 """.strip()
+
+_SHAPE_A_QUERY = _SHAPE_A_QUERY_TEMPLATE.replace(
+    "__ATTRS_SEL__", "\n        attributes(roles: []) { name value }"
+)
+_SHAPE_A_QUERY_NO_ATTRS = _SHAPE_A_QUERY_TEMPLATE.replace("__ATTRS_SEL__", "")
 
 # Shape B — vanilla Magento core search. Built per-store: the pinned brand
 # field is spliced in at __BRAND_SEL__ ONLY when the store has one (an unknown
@@ -336,6 +347,25 @@ def _shape_a_items(payload: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return items if isinstance(items, list) else []
 
 
+def _shape_a_attrs_rejected(payload: Any) -> bool:
+    """True iff the GraphQL response carries a validation errors[] entry that
+    mentions the `attributes` field — the class where an older Catalog-Service
+    tenant rejects `attributes(roles: [])` and the WHOLE query dies (no data
+    comes back with a validation error). The caller re-POSTs ONCE with
+    _SHAPE_A_QUERY_NO_ATTRS (brand="" legacy path). Deliberately NARROW: an
+    unrelated error / clean response / non-dict never triggers the re-POST."""
+    if not isinstance(payload, dict):
+        return False
+    errors = payload.get("errors")
+    if not isinstance(errors, list):
+        return False
+    for e in errors:
+        msg = e.get("message") if isinstance(e, dict) else e
+        if isinstance(msg, str) and "attributes" in msg.lower():
+            return True
+    return False
+
+
 def _shape_a_price_node(pv: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """Extract {value, currency, in_stock, name, url_key, brand} from a Shape-A
     productView, branching by __typename. Returns None on any missing field.
@@ -533,6 +563,18 @@ async def fetch_magento_graphql_price(
             cfg["endpoint"], _SHAPE_A_QUERY,
             {"phrase": product_name, "pageSize": _PAGE_SIZE}, headers,
         )
+        # Wave B2 — attributes-rejecting tenant: re-POST ONCE without the
+        # attributes selection (brand="" legacy matching), so a Catalog-Service
+        # schema drift can never silently kill the whole store again.
+        if _shape_a_attrs_rejected(payload):
+            logger.info(
+                "[MAGENTO] %s rejected attributes selection — retrying attrs-free",
+                host,
+            )
+            payload = await _post_graphql(
+                cfg["endpoint"], _SHAPE_A_QUERY_NO_ATTRS,
+                {"phrase": product_name, "pageSize": _PAGE_SIZE}, headers,
+            )
         items = _shape_a_items(payload)
         nodes = [
             n for n in (

@@ -304,3 +304,136 @@ async def test_unpinned_store_legacy_query_and_brand_required(monkeypatch):
     )
     assert captured["query"] == _LEGACY_SHAPE_B_QUERY
     assert price is None
+
+
+# ---------------------------------------------------------------------------
+# (f) Wave B2 — Shape-A `attributes` validation-error fallback
+# ---------------------------------------------------------------------------
+# The attributes(roles: []) selection is live-proven on www.footlocker.com.bh
+# (2026-07-02 probe: HTTP 200, no errors[], 5 nodes, brand="Nike", BHD) but is
+# NOT schema-guaranteed across every Alshaya tenant: an older Catalog Service
+# rejects the field with a GraphQL VALIDATION error (errors[] + no data) that
+# kills the WHOLE query — the store would silently revert to built-but-dead
+# with no test signal (fixtures mock the response, not the schema). On that
+# error class the adapter re-POSTs ONCE without the attributes selection
+# (brand="" legacy matching path).
+
+_ATTRS_ERROR_PAYLOAD = {
+    "errors": [
+        {"message": 'Cannot query field "attributes" on type "ProductView".'}
+    ],
+    "data": None,
+}
+
+
+def _fake_shape_a_cfg():
+    return {
+        "endpoint": "https://www.bathandbodyworks.com.bh/graphql",
+        "base_endpoint": "https://www.bathandbodyworks.com.bh",
+        "env_id": "env-1", "api_key": "key-1", "store_view": "sv",
+        "website": "w", "store_code": "sc", "customer_group": "0",
+    }
+
+
+def test_shape_a_attrs_rejected_detector():
+    assert mg._shape_a_attrs_rejected(_ATTRS_ERROR_PAYLOAD) is True
+    # string-shaped errors entries tolerated
+    assert mg._shape_a_attrs_rejected(
+        {"errors": ['Unknown field "attributes" on ProductView']}) is True
+    # unrelated error / clean response / non-dict → NO fallback
+    assert mg._shape_a_attrs_rejected(
+        {"errors": [{"message": "Internal server error"}], "data": None}) is False
+    assert mg._shape_a_attrs_rejected(
+        {"data": {"productSearch": {"items": []}}}) is False
+    assert mg._shape_a_attrs_rejected(None) is False
+
+
+def test_shape_a_no_attrs_query_drops_only_the_attributes_selection():
+    assert "attributes(roles: [])" in mg._SHAPE_A_QUERY
+    assert "attributes" not in mg._SHAPE_A_QUERY_NO_ATTRS
+    # everything else identical (same query modulo the attributes line)
+    assert mg._SHAPE_A_QUERY.replace(
+        "\n        attributes(roles: []) { name value }", ""
+    ) == mg._SHAPE_A_QUERY_NO_ATTRS
+
+
+@pytest.mark.asyncio
+async def test_shape_a_attrs_error_falls_back_once_without_attributes(monkeypatch):
+    """errors[] mentioning attributes → ONE re-POST with the attrs-free query;
+    the node resolves with brand='' (legacy) and the price ships."""
+    from curl_cffi import requests as curl_requests
+
+    async def fake_cfg(host):
+        return _fake_shape_a_cfg()
+
+    monkeypatch.setattr(mg, "_harvest_shape_a_config", fake_cfg)
+
+    good_payload = {"data": {"productSearch": {"items": [
+        {"productView": _shape_a_pv("Eucalyptus Body Cream")}
+    ]}}}
+    queries = []
+
+    def fake_post(url, *a, **k):
+        queries.append(json.loads(k["data"])["query"])
+        if len(queries) == 1:
+            return _FakeResp(json.dumps(_ATTRS_ERROR_PAYLOAD))
+        return _FakeResp(json.dumps(good_payload))
+
+    monkeypatch.setattr(curl_requests, "post", fake_post)
+    price = await mg.fetch_magento_graphql_price(
+        "bathandbodyworks.com.bh", "Eucalyptus Body Cream")
+    assert len(queries) == 2
+    assert "attributes" in queries[0]
+    assert "attributes" not in queries[1]
+    assert queries[1] == mg._SHAPE_A_QUERY_NO_ATTRS
+    assert price is not None
+    assert price["amount"] == pytest.approx(3.25)
+    assert price["source_method"] == "magento_graphql_bhd"
+
+
+@pytest.mark.asyncio
+async def test_shape_a_clean_response_never_reposts(monkeypatch):
+    """No errors[] → exactly ONE POST (the fallback is error-gated, not a retry)."""
+    from curl_cffi import requests as curl_requests
+
+    async def fake_cfg(host):
+        return _fake_shape_a_cfg()
+
+    monkeypatch.setattr(mg, "_harvest_shape_a_config", fake_cfg)
+
+    good_payload = {"data": {"productSearch": {"items": [
+        {"productView": _shape_a_pv("Eucalyptus Body Cream")}
+    ]}}}
+    calls = []
+
+    def fake_post(url, *a, **k):
+        calls.append(1)
+        return _FakeResp(json.dumps(good_payload))
+
+    monkeypatch.setattr(curl_requests, "post", fake_post)
+    price = await mg.fetch_magento_graphql_price(
+        "bathandbodyworks.com.bh", "Eucalyptus Body Cream")
+    assert len(calls) == 1
+    assert price is not None
+
+
+@pytest.mark.asyncio
+async def test_shape_a_attrs_error_falls_back_exactly_once(monkeypatch):
+    """Second response ALSO erroring → None, and never a third POST."""
+    from curl_cffi import requests as curl_requests
+
+    async def fake_cfg(host):
+        return _fake_shape_a_cfg()
+
+    monkeypatch.setattr(mg, "_harvest_shape_a_config", fake_cfg)
+    calls = []
+
+    def fake_post(url, *a, **k):
+        calls.append(1)
+        return _FakeResp(json.dumps(_ATTRS_ERROR_PAYLOAD))
+
+    monkeypatch.setattr(curl_requests, "post", fake_post)
+    price = await mg.fetch_magento_graphql_price(
+        "bathandbodyworks.com.bh", "Eucalyptus Body Cream")
+    assert len(calls) == 2
+    assert price is None

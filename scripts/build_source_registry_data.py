@@ -188,6 +188,21 @@ def _norm_domain(domain: str) -> str:
         .replace("www.", "").strip().lower()
 
 
+def _clean_sample_url(raw) -> str:
+    """A fetchable URL or "". Round-3 magento/rest_json catalog rows carry
+    pseudo-annotated sample_pdp_urls ("https://host/en/ (price via GraphQL by
+    phrase/sku)") the liveness probe (scripts/verify_bh_gcc_sources.py) can
+    NEVER fetch — the row false-deads forever (the footlocker built-but-dead
+    class; Wave B2, recon_fashion rank-5). The catalogs are IMMUTABLE
+    provenance, so sanitize here: keep ONLY the leading http(s) token; a
+    non-URL pseudo string becomes "" (the probe reports "no sample_url"
+    instead of burning a fetch on garbage)."""
+    s = str(raw or "").strip()
+    if not s.lower().startswith(("http://", "https://")):
+        return ""
+    return s.split()[0]
+
+
 def _literal_domains() -> set:
     """Apex domains of the registry literals (so the consolidation excludes
     overlap up front — the loader dedups again as a backstop)."""
@@ -253,7 +268,9 @@ def consolidate() -> List[dict]:
                 "currency": (row.get("currency") or "").upper().strip(),
                 "country": (row.get("country") or "BH").upper().strip(),
                 "genuine_method": mf["genuine_method"],
-                "sample_url": row.get("sample_pdp_url") or row.get("sample_url") or "",
+                "sample_url": _clean_sample_url(
+                    row.get("sample_pdp_url") or row.get("sample_url") or ""
+                ),
                 "priority_rank": prank,
                 "status": status,
             }

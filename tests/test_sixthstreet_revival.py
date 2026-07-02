@@ -227,6 +227,29 @@ def test_strip_sku_tail_conservative():
     assert strip("Galaxy Tab S9 - 2023") == "Galaxy Tab S9 - 2023"
     assert strip("Air Force 1") == "Air Force 1"
     assert strip("") == ""
+    # keeps: SEASON/YEAR-RANGE tails (Wave B2, review LOW) — "- 2023-24" on a
+    # sports jersey is the season, i.e. product IDENTITY, not catalog plumbing.
+    # Stripping it broke numbers_match against a season-stated query AND lost
+    # the discriminator from the stored title. Only a leading-zero or 5+-digit
+    # first run is SKU-shaped for the dash form ("00501-0660" still strips).
+    assert strip("Real Madrid Home Jersey - 2023-24") == \
+        "Real Madrid Home Jersey - 2023-24"
+    assert strip("Nike Dunk Low - 2024-25") == "Nike Dunk Low - 2024-25"
+    # still strips: SKU-shaped dash runs (leading zero / 5+-digit first run)
+    assert strip("Jersey - 12345-678") == "Jersey"
+    assert strip("Thing - 0123-456") == "Thing"
+
+
+def test_season_range_survives_in_match_surface_and_stored_title():
+    """Wave B2 — the season tail must survive BOTH the match surface
+    (_hit_title strips via _strip_sku_tail) and the stored title (the fetch
+    path strips with the same function), so numbers_match keeps working for a
+    season-stated query and the cached title keeps its discriminator."""
+    import app.services.algolia_service as alg
+    hit = {"name": "Real Madrid Home Jersey - 2023-24", "brand_name": "Adidas"}
+    assert alg._hit_title(hit) == "Adidas Real Madrid Home Jersey - 2023-24"
+    assert alg._strip_sku_tail("Real Madrid Home Jersey - 2023-24") == \
+        "Real Madrid Home Jersey - 2023-24"
 
 
 # ---------------------------------------------------------------------------
@@ -315,3 +338,48 @@ async def test_polo_end_to_end_genuine_local_bhd():
     assert out["amount"] == pytest.approx(40.0)
     assert out["source_method"] == "local_bhd"
     assert out["in_stock"] is True
+
+
+# ---------------------------------------------------------------------------
+# Wave B2 (review LOW) — explicit-"other" re-inference in the override path
+# ---------------------------------------------------------------------------
+# _selection_match re-infers an explicit "other" category before its axes
+# (price_service.py explicit-other re-inference), so it rejects a both-stated
+# fashion contradiction — but the structured-identity override then called
+# _axis_mismatch with the RAW "other" (category-blind: fashion clothing-size /
+# colour / material / fit axes skipped) and re-ACCEPTED the hit the selector
+# had just rejected. Both matchers must mirror the re-inference.
+
+_XXL_POLO_HIT = dict(_POLO_HIT, name="Logo Detail Short Sleeves Polo T-Shirt XXL")
+
+# "t-shirt" makes _infer_category_from_query resolve fashion; XL vs the hit's
+# XXL is a BOTH-STATED clothing-size contradiction (a fashion-scoped axis).
+_OTHER_CAT_QUERY = "Lacoste L1212 Polo T-Shirt XL"
+
+
+def test_catalog_override_reinfers_explicit_other():
+    """Catalog path: an "other"-category query with a both-stated clothing-size
+    contradiction must reject THROUGH the structured-identity override too."""
+    import app.services.algolia_service as alg
+    assert alg._catalog_match_hit(
+        [_XXL_POLO_HIT], _OTHER_CAT_QUERY, _store(),
+        resolved_category="other") is None
+
+
+def test_algolia_override_reinfers_explicit_other():
+    """Harvest path (_match_algolia_hit): same re-inference parity."""
+    import app.services.algolia_service as alg
+    assert alg._match_algolia_hit(
+        [_XXL_POLO_HIT], _OTHER_CAT_QUERY, resolved_category="other") is None
+
+
+def test_override_under_other_still_accepts_without_contradiction():
+    """Over-rejection guard for the fix: the SAME query shape WITHOUT the size
+    contradiction keeps matching under explicit "other" — the override still
+    accepts descriptive-word supersets around a query-confirmed style code."""
+    import app.services.algolia_service as alg
+    q = "Lacoste L1212 Polo T-Shirt"
+    assert alg._catalog_match_hit(
+        [_POLO_HIT], q, _store(), resolved_category="other") is not None
+    assert alg._match_algolia_hit(
+        [_POLO_HIT], q, resolved_category="other") is not None

@@ -567,7 +567,7 @@
   "currency": "BHD",
   "country": "BH",
   "genuine_method": "magento_graphql_bhd",
-  "sample_url": "https://www.bathandbodyworks.com.bh/en/ (price via GraphQL by phrase/sku)",
+  "sample_url": "https://www.bathandbodyworks.com.bh/en/",
   "priority_rank": 11,
   "status": "dead"
  },
@@ -643,7 +643,7 @@
   "currency": "BHD",
   "country": "BH",
   "genuine_method": "magento_graphql_bhd",
-  "sample_url": "https://www.footlocker.com.bh/en/ (price via GraphQL by phrase/sku)",
+  "sample_url": "https://www.footlocker.com.bh/en/",
   "priority_rank": 12,
   "status": "dead"
  },
@@ -680,7 +680,7 @@
   "currency": "BHD",
   "country": "BH",
   "genuine_method": "magento_graphql_bhd",
-  "sample_url": "https://www.americaneagle.com.bh/en/ (price via GraphQL by phrase/sku)",
+  "sample_url": "https://www.americaneagle.com.bh/en/",
   "priority_rank": 13,
   "status": "dead"
  },
@@ -756,7 +756,7 @@
   "currency": "BHD",
   "country": "BH",
   "genuine_method": "magento_graphql_bhd",
-  "sample_url": "https://www.muji.bh/en/ (price via GraphQL by phrase/sku)",
+  "sample_url": "https://www.muji.bh/en/",
   "priority_rank": 14,
   "status": "dead"
  },
@@ -814,7 +814,7 @@
   "currency": "BHD",
   "country": "BH",
   "genuine_method": "magento_graphql_bhd",
-  "sample_url": "https://www.newbalance.com.bh/en/ (price via GraphQL by phrase/sku)",
+  "sample_url": "https://www.newbalance.com.bh/en/",
   "priority_rank": 15,
   "status": "dead"
  },
@@ -2493,7 +2493,7 @@
   "currency": "SAR",
   "country": "KSA",
   "genuine_method": "rest_json_bhd",
-  "sample_url": "https://www.panda.sa/en (product via API id/sku)",
+  "sample_url": "https://www.panda.sa/en",
   "priority_rank": 6,
   "status": "dead"
  },

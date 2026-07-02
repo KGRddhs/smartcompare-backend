@@ -35,6 +35,7 @@ from app.services.price_service import (
     strict_title_match,
     _selection_match,
     _axis_mismatch,
+    _infer_category_from_query,
     numbers_match,
     normalize_words,
     is_counterfeit_listing,
@@ -451,10 +452,13 @@ def _parse_algolia_price_multishape(
 # Trailing "- {SKU-digits}" segment on 6thStreet names ("501 Original Fit
 # Jeans - Black - 00501-0660"): catalog plumbing, not identity — the digit run
 # trips the numeric identity axis in _selection_match. Strip ONLY a trailing
-# digits-and-dashes segment that is SKU-shaped (contains a dash, or is 5+
-# digits); the colour segment before it stays (a legit axis), and short/year
-# numbers ("- 501", "- 2023") are never touched.
-_SKU_TAIL_RE = re.compile(r"\s*-\s*(?:\d[\d]*-[\d-]*\d|\d{5,})$")
+# digits-and-dashes segment that is SKU-shaped: for the DASH form the first
+# digit run must carry a leading zero OR be 5+ digits ("00501-0660"/"12345-678"
+# strip), so a SEASON/YEAR-RANGE tail ("- 2023-24" on a sports jersey — product
+# identity, needed by numbers_match + the stored title) SURVIVES (Wave B2,
+# review LOW). The colour segment before it stays (a legit axis), and
+# short/year numbers ("- 501", "- 2023") are never touched.
+_SKU_TAIL_RE = re.compile(r"\s*-\s*(?:0\d+-[\d-]*\d|\d{5,}(?:-[\d-]*\d)?)$")
 
 
 def _strip_sku_tail(title: str) -> str:
@@ -584,6 +588,15 @@ def _catalog_match_hit(
     display name omits."""
     if not hits:
         return None
+    # Explicit-"other" re-inference (Wave B2, review LOW) — mirror of
+    # _selection_match's own re-inference: the selector re-infers and enforces
+    # the category axes before rejecting, so the structured-identity override's
+    # _axis_mismatch below must run with the SAME re-inferred category (raw
+    # "other" skipped the fashion/category-scoped contradiction axes and
+    # re-accepted the hit the selector had just rejected). A truly-None
+    # category stays None (subset-only contract, prod always threads >= "other").
+    if (resolved_category or "").lower() == "other":
+        resolved_category = _infer_category_from_query(product_name) or resolved_category
     p_words = normalize_words(product_name)
     currency = store.get("currency", "BHD")
     best: Optional[Dict[str, Any]] = None
@@ -653,6 +666,10 @@ def _match_algolia_hit(
     'Tom Ford Black Orchid' query."""
     if not hits:
         return None
+    # Explicit-"other" re-inference — see _catalog_match_hit (same override
+    # parity: the structured-identity _axis_mismatch must not run category-blind).
+    if (resolved_category or "").lower() == "other":
+        resolved_category = _infer_category_from_query(product_name) or resolved_category
     p_words = normalize_words(product_name)
     best: Optional[Dict[str, Any]] = None
     best_score = 0.0
