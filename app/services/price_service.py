@@ -2640,8 +2640,19 @@ def detect_currency(price_str: str) -> Optional[str]:
     return None
 
 
+# Apostrophes INSIDE words (ASCII ' + the typographic U+2018/U+2019 retailers emit)
+# fold away before tokenizing so the possessive/elision spelling a retailer title
+# carries compares equal to the bare query form ("Levi's"=="Levis", "'07"=="07",
+# "Men's"=="Mens") — the edge-strip in normalize_words never reached an internal
+# apostrophe, which survived as a token mismatch rejecting the EXACT product
+# (KPI fash-001/003 gate repro 2026-07-02). Shared by normalize_words AND
+# strict_title_match (which tokenizes raw, without normalize_words).
+_APOSTROPHES_RE = re.compile("['‘’]")
+
+
 def normalize_words(text: str) -> set:
     """Normalize words for matching."""
+    text = _APOSTROPHES_RE.sub("", text)
     return set(w.replace("-", "").strip(",.()&:;'\"") for w in text.lower().split() if w.strip(",.()&:;'\""))
 
 
@@ -2693,8 +2704,11 @@ def strict_title_match(
     unverified. Empty candidate_brand → legacy behaviour (brand required)."""
     if is_counterfeit_listing(title):
         return False
-    product_name = _collapse_concentration(product_name)
-    title = _collapse_concentration(title)
+    # Apostrophe fold on BOTH sides (this matcher tokenizes raw, so the shared
+    # normalize_words fold never reaches it): "levis" must substring-match a
+    # "Levi's 501" title however the retailer typed the quote.
+    product_name = _APOSTROPHES_RE.sub("", _collapse_concentration(product_name))
+    title = _APOSTROPHES_RE.sub("", _collapse_concentration(title))
     title_normalized = title.lower().replace("-", "")
     # Tokens of the candidate's OWN brand — dropped from the required query words
     # only when the candidate actually carries that brand (so a Samsung candidate
@@ -3280,6 +3294,12 @@ _BRAND_ALIAS_GROUPS = (
 # this; longer inputs are truncated to bound the numeric-axis regexes (ReDoS guard, review HIGH).
 _MATCH_INPUT_CAP = 512
 
+# Luxottica catalog 0-prefix — namshi/Luxottica feeds list frames as "0RB3025"/
+# "0RX5154" where the consumer model code is RB3025/RX5154. NARROW by design
+# (0 + rb/rx + 3+ digits, full-token): leading zeros are NEVER stripped generally
+# (a "501"/"0801"-style token must stay untouched).
+_LUXOTTICA_ZERO_RE = re.compile(r"^0((?:rb|rx)\d{3,})$")
+
 
 def _identity_tokens_ps(text: str, brand: str = "", category: Optional[str] = None) -> set:
     """PRODUCT-IDENTITY token set of `text`: diacritic-folded words, minus the
@@ -3312,6 +3332,18 @@ def _identity_tokens_ps(text: str, brand: str = "", category: Optional[str] = No
     # Fashion year/colourway re-release suffix ("'07") is noise, NOT the model number.
     if cat == "fashion":
         folded = re.sub(r"'\s*\d{2}\b", " ", folded)
+        # The SAME suffix written bare or with a typographic quote ("Air Force 1 07",
+        # "’07"): a LEADING-ZERO 2-digit is always the year form — a model number never
+        # carries one (Air Max 95/90 stay identity) — so strip it too; the apostrophe
+        # strip above is otherwise ONE-SIDED (query "07" kept vs candidate "'07"
+        # dropped = a false identity miss on the exact SKU).
+        folded = re.sub(r"\b0\d\b", " ", folded)
+        # "Polo T-Shirt"/"Polo T Shirt" is retail phrasing for a POLO, not a tee
+        # (6thstreet lists Lacoste L1212 that way) — collapse the compound so the
+        # listing reads as class "polo": a polo query matches it, and a plain t-shirt
+        # query now class-swap-rejects it. A BARE "t-shirt" (no polo) is untouched,
+        # so polo-vs-t-shirt stays a contradiction in both directions.
+        folded = re.sub(r"\bpolo\s+t[\s-]?shirts?\b", " polo ", folded)
         # "Special/Limited Edition" is a distinct, pricier SKU. Collapse the spelled phrase AND
         # the "SE" abbreviation into ONE distinctive identity token so (a) a base query rejects
         # EITHER form (coverage re-sweep HIGH: 'special'/'edition' were stripped as colour-edition
@@ -3328,6 +3360,9 @@ def _identity_tokens_ps(text: str, brand: str = "", category: Optional[str] = No
     if cat == "supplements":
         folded = re.sub(r"\b\d{4,}\b", " ", folded)
     words = normalize_words(folded)
+    # Luxottica 0-prefix alias: "0rb3025" -> "rb3025" so the catalog list form and
+    # the consumer model code are the SAME identity token (namshi KPI fash-004).
+    words = {_LUXOTTICA_ZERO_RE.sub(r"\1", w) for w in words}
     brand_words = normalize_words(_fold_identity(brand)) if brand else set()
     # Also strip the HYPHEN-COLLAPSED brand form (in the brand's ORIGINAL word order) so a
     # hyphen-joined brand-in-title ("Coca-Cola"->"cocacola") is removed for a spaced brand
