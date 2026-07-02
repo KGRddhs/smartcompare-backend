@@ -40,7 +40,7 @@ from app.services.price_service import (
     numbers_match,
     variant_mismatch,
     is_counterfeit_listing,
-    is_accessory,
+    is_accessory_for_category,
     is_price_showable,
     _convert_to_bhd,
     ENABLE_PAGE_SCRAPE,
@@ -127,7 +127,10 @@ def _select_candidate(
         # Asymmetric accessory guard (review gate-fix): only drop an accessory
         # hit when the QUERY is not itself accessory-intent, so an accessory query
         # ("AirPods Pro case", "Apple Watch band") can still match its product.
-        if is_accessory(title) and not is_accessory(product_name):
+        # Category-scoped (BF4, sweep OR-7): a bare 'skin' hit on a pharmacy-class
+        # resolved category is descriptive, not a phone-decal signal.
+        if (is_accessory_for_category(title, resolved_category)
+                and not is_accessory_for_category(product_name, resolved_category)):
             continue
         # SELECTION-PRIMARY acceptance (recon_cascade R2, Wave B4): strict's
         # RAW tokenization rejects correct rows on spacing/alias variance

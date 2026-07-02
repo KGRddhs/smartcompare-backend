@@ -40,7 +40,7 @@ from app.services.price_service import (
     numbers_match,
     normalize_words,
     is_counterfeit_listing,
-    is_accessory,
+    is_accessory_for_category,
     is_price_showable,
     query_confirmed_structured_code,
     _structured_override_variant_blocked,
@@ -617,7 +617,10 @@ def _catalog_match_hit(
         _cand_brand = str(hit.get("brand") or hit.get("brand_name") or hit.get("manufacturer") or "")
         style = _confirmed_style_code(hit, p_words)
         surface = " ".join(p for p in (_cand_brand.strip(), title, style) if p)
-        if is_counterfeit_listing(surface) or is_accessory(surface):
+        # Accessory check category-scoped (BF4, sweep OR-7): a bare 'skin' hit
+        # on a pharmacy-class resolved category is descriptive, not a decal.
+        if (is_counterfeit_listing(surface)
+                or is_accessory_for_category(surface, resolved_category)):
             continue
         if not numbers_match(product_name, surface):
             continue
@@ -692,7 +695,9 @@ def _match_algolia_hit(
         style = _confirmed_style_code(hit, p_words)
         if style:
             surface = f"{surface} {style}"
-        if is_counterfeit_listing(surface) or is_accessory(surface):
+        # Accessory check category-scoped (BF4, sweep OR-7) — see _catalog_match_hit.
+        if (is_counterfeit_listing(surface)
+                or is_accessory_for_category(surface, resolved_category)):
             continue
         if not numbers_match(product_name, surface):
             continue

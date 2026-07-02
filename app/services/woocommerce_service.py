@@ -41,7 +41,7 @@ from app.services.price_service import (
     _infer_category_from_query,
     _selection_match,
     build_adapter_search_terms,
-    is_accessory,
+    is_accessory_for_category,
     is_counterfeit_listing,
     is_price_showable,
     numbers_match,
@@ -163,7 +163,12 @@ def _match_woo_product(
             continue
         if variant_mismatch(product_name, title):
             continue
-        if is_accessory(title) and not is_accessory(product_name):
+        # Category-scoped (BF4, sweep OR-7): the bare 'skin' accessory keyword
+        # must not reject genuine pharmacy titles ("...For Dry Skin", "All
+        # Skin Types") when the resolved category is a pharmacy class; any
+        # other accessory keyword still flags, non-pharmacy keeps the broad set.
+        if (is_accessory_for_category(title, _category)
+                and not is_accessory_for_category(product_name, _category)):
             continue
         # CORRECTNESS — identity + axis gate (S24->FE / EDP->EDT / 256->128 /
         # related-product leaks). No-op when the rollback flag is OFF.

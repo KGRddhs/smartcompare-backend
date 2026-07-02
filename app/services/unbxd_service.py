@@ -35,7 +35,7 @@ from app.services.price_service import (
     variant_mismatch,
     normalize_words,
     is_counterfeit_listing,
-    is_accessory,
+    is_accessory_for_category,
     is_price_showable,
     _convert_to_bhd,
     ENABLE_PAGE_SCRAPE,
@@ -120,7 +120,10 @@ def _match_unbxd_product(
         surface = (product.get("title") or product.get("name") or "").strip()
         if not surface:
             continue
-        if is_counterfeit_listing(surface) or is_accessory(surface):
+        # Accessory check category-scoped (BF4, sweep OR-7): a bare 'skin' hit
+        # on a pharmacy-class resolved category is descriptive, not a decal.
+        if (is_counterfeit_listing(surface)
+                or is_accessory_for_category(surface, resolved_category)):
             continue
         if not numbers_match(product_name, surface):
             continue

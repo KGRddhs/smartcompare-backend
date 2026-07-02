@@ -653,6 +653,40 @@ def is_accessory(title: str) -> bool:
     return False
 
 
+# Pharmacy-class categories where the category-ambiguous ACCESSORY keyword
+# "skin" is ordinary descriptive vocabulary ("...For Normal To Oily SKIN",
+# "All SKIN Types") rather than a phone-decal signal (Wave B-FIX BF4, coverage
+# sweep OR-7). The nasser pharmacy matcher (see the NOTE at its accessory
+# pre-filter omission, ~:7813) already documents + exempts this exact
+# false-positive; the six direct store-API chains (occ/woo/salla/algolia x2/
+# unbxd) keep the filter but SCOPE it via is_accessory_for_category.
+_PHARMACY_TITLE_CATEGORIES = frozenset({"skincare", "haircare", "supplements", "makeup"})
+_PHARMACY_BENIGN_ACCESSORY_KEYWORDS = frozenset({"skin"})
+
+
+def is_accessory_for_category(title: str, category: Optional[str] = None) -> bool:
+    """Category-scoped `is_accessory` for the direct store-API matcher chains
+    (BF4, sweep OR-7): when the ORCHESTRATOR-RESOLVED category is a pharmacy
+    class (skincare/haircare/supplements/makeup), a bare "skin" keyword hit
+    alone must NOT classify a genuine pharmacy title ("CeraVe ... For Dry
+    Skin", "Nivea ... All Skin Types") as an accessory — any OTHER accessory
+    keyword still flags. Every non-pharmacy category (including None/"other"
+    — fail-closed: the scoping keys off the QUERY's resolved category, never
+    the title) keeps the full broad is_accessory, so a real phone-skin decal
+    under an electronics query still rejects. The Serper-shopping extractors
+    deliberately keep the unscoped is_accessory (noisy listings need the
+    broad net; direct store-API names are resolved products)."""
+    if (category or "").lower() not in _PHARMACY_TITLE_CATEGORIES:
+        return is_accessory(title)
+    title_lower = (title or "").lower()
+    for kw in ACCESSORY_KEYWORDS:
+        if kw in _PHARMACY_BENIGN_ACCESSORY_KEYWORDS:
+            continue
+        if re.search(r'\b' + re.escape(kw) + r'\b', title_lower):
+            return True
+    return False
+
+
 # Unambiguous electronics ACCESSORY add-ons (a phone CASE, a CHARGER) — used by the
 # shared select_best + is_price_showable gates to reject a cheap accessory matched as
 # the device. DELIBERATELY EXCLUDES class-nouns that are PRODUCTS in their own right
@@ -3278,6 +3312,14 @@ _GENERIC_BASE_NOUNS = frozenset(HIGH_VALUE_DEVICE_NOUNS) | {
     "headphones", "headphone", "earphones", "earphone", "earbuds", "earbud",
     "speaker", "soundbar", "protein", "supplement", "supplements",
     "vitamin", "vitamins", "vacuum", "cleaner", "sunglasses", "eyewear",
+    # "eyeglasses" — the optical-frame listing noun (namshi/eyewa/optica list
+    # RX frames as "... Clubmaster Eyeglasses") beside "sunglasses" (BF4, sweep
+    # OR-10). A sunglasses-vs-eyeglasses PAIR still class-swap-rejects (sun vs
+    # optical Clubmaster are different products). NOTE: "optical frame" cannot
+    # join — these are single-TOKEN sets (normalize_words tokens; a phrase can
+    # never match) and the bare "optical"/"frame" tokens are collision-prone
+    # cross-category (digital photo Frame), so they are deliberately omitted.
+    "eyeglasses",
     # DELIBERATELY EXCLUDED: "whey"/"casein"/"plant" — a protein TYPE is distinctive.
 }
 _GENERIC_ELECTRONICS_NOUNS = frozenset({
@@ -3357,10 +3399,15 @@ _BRAND_ALIAS_GROUPS = (
 _MATCH_INPUT_CAP = 512
 
 # Luxottica catalog 0-prefix — namshi/Luxottica feeds list frames as "0RB3025"/
-# "0RX5154" where the consumer model code is RB3025/RX5154. NARROW by design
-# (0 + rb/rx + 3+ digits, full-token): leading zeros are NEVER stripped generally
-# (a "501"/"0801"-style token must stay untouched).
-_LUXOTTICA_ZERO_RE = re.compile(r"^0((?:rb|rx)\d{3,})$")
+# "0RX5154"/"0Oo9102"/"0Po0714" where the consumer model code is RB3025/OO9102/
+# PO0714. Generalized from (rb|rx) to ANY two-letter house code (Wave B-FIX BF4,
+# sweep OR-9: namshi lists ALL Luxottica-house brands — Oakley 0Oo/Persol 0Po/
+# Armani 0Ar/Versace 0Ve/D&G 0Dg — with the same 0-prefix convention). STILL
+# narrow by design (full-token: 0 + exactly two letters + 3+ digits): a
+# pure-numeric leading-zero token ("501"/"0801") or a short code ("0ab12") is
+# NEVER stripped — the fold is an alias, not a wildcard (a DIFFERENT code still
+# mismatches after folding; both directions pinned).
+_LUXOTTICA_ZERO_RE = re.compile(r"^0([a-z]{2}\d{3,})$")
 
 # CPU/GPU core-COUNT spec phrasing ("10-core CPU", "8 Core GPU", "10core") —
 # retailer spec-sheet detail on electronics titles (BF3, sweep OR-2: the live
@@ -5104,6 +5151,25 @@ _MODEL_YEAR_CATEGORIES = frozenset({"electronics", "fashion"})
 # _ELECTRONICS_PADDING (padding strips BOTH sides).
 _ELECTRONICS_TITLE_SIDE_TOLERATED = frozenset({"ai"})
 
+# Apparel CONSTRUCTION/NECKLINE descriptors tolerated on the TITLE side only
+# (Wave B-FIX BF4, sweep OR-6): namshi lists the kpi-fash-006 exact SKU as
+# "Essential Flag EMBROIDERY CREW NECK T-Shirt" — 'Embroidery'/'Crew'/'Neck'
+# each individually variant-add-rejected it, and the same phrasing is
+# ubiquitous GCC apparel listing style (6thstreet Heritage/Essential tees).
+# The _ELECTRONICS_TITLE_SIDE_TOLERATED asymmetry: NEVER dropped from the
+# query side — a query-stated neckline ("V-Neck") keeps its token required,
+# so a both-stated-DIFFERENT neckline still rejects via the LEAK-direction
+# subset (there is NO dedicated neckline axis; the query-side token IS the
+# contradiction guard — pinned both directions in
+# tests/test_fashion_skincare_unlock_bfix.py). "v-neck"/"t-shirt" hyphens are
+# collapsed by normalize_words, hence the glued "vneck" form. The class axis
+# is untouched: polo-vs-t-shirt still class-swap-rejects (the garment nouns
+# live in _GENERIC_FASHION_NOUNS, consulted BEFORE this tolerance).
+_FASHION_CONSTRUCTION_TOLERATED = frozenset({
+    "crew", "neck", "crewneck", "vneck", "embroidery", "embroidered",
+    "stitch", "stitched",
+})
+
 
 def _inch_digit_tokens(text: str) -> set:
     """The BARE-digit token forms of the inch-annotated screen sizes stated in
@@ -5211,6 +5277,16 @@ def _selection_match(
         q_inch = _inch_digit_tokens(query_name)
         if q_inch:
             t_core = t_core - q_inch
+    if cat == "fashion" and q_core:
+        # TITLE-side construction/neckline descriptors (BF4, sweep OR-6):
+        # tolerated as title ADDS only when the query does not carry the
+        # token — a query-stated neckline stays required, so both-stated-
+        # different rejects via the leak-direction subset below. The q_core-
+        # non-empty bound keeps the emptied fashion brand/class-query fence
+        # ("Nike T-Shirt" matches no specific member) unchanged: the
+        # tolerance must never blank a construction-only distinctive core
+        # into an accept.
+        t_core = t_core - (_FASHION_CONSTRUCTION_TOLERATED - q_core)
     if cat == "makeup":
         # A spelled-out shade NAME on the candidate is descriptive when BOTH sides carry
         # the SAME shade NUMBER ("Fit Me 240" -> "Fit Me 240 Soft Sand"); accept — BUT only

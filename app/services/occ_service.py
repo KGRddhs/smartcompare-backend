@@ -36,7 +36,7 @@ from app.services.price_service import (
     ENABLE_PAGE_SCRAPE,
     _convert_to_bhd,
     selection_primary_admits,
-    is_accessory,
+    is_accessory_for_category,
     is_counterfeit_listing,
     is_price_showable,
     normalize_words,
@@ -142,7 +142,13 @@ def _select_product(
         # is_price_showable ceiling only catches phone/laptop/console leaks).
         if is_counterfeit_listing(name):
             continue
-        if is_accessory(name) and not is_accessory(product_name):
+        # Category-scoped (BF4, sweep OR-7): occ's BH stores are pharmacies —
+        # the bare 'skin' accessory keyword false-positives on genuine
+        # "...For Normal To Oily Skin" titles; the scoped wrapper exempts it
+        # for pharmacy-class resolved categories only (any other accessory
+        # keyword still flags; electronics keeps the full broad filter).
+        if (is_accessory_for_category(name, resolved_category)
+                and not is_accessory_for_category(product_name, resolved_category)):
             continue
         if not numbers_match(product_name, name):
             continue
