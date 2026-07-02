@@ -319,11 +319,15 @@ async def _algolia_query(
 
 async def _algolia_query_explicit(
     store: Dict[str, Any], query: str
-) -> List[Dict[str, Any]]:
+) -> Optional[List[Dict[str, Any]]]:
     """POST ONE read-only search using a store's PINNED explicit config (no
     harvest). `store` carries app_id/api_key/index and an optional
     `extra_params` request-body `params` string (danube's tenant_id filter).
-    Returns the hits list (possibly empty). NEVER raises — graceful empty."""
+    Returns the hits list — possibly empty — or ``None`` on a TRANSPORT
+    failure (non-200 / exception). NEVER raises. The None sentinel exists for
+    the retrieval-term ladder's F2 politeness contract (Wave B-FIX): only a
+    GENUINE zero-hit 200 may retry the core term; an erroring store must not
+    get a second request."""
     try:
         from curl_cffi import requests as curl_requests
 
@@ -352,15 +356,15 @@ async def _algolia_query_explicit(
                 record_failure(_ALGOLIA_PROVIDER)
             logger.info("[ALGOLIA] explicit query HTTP %s for index=%s",
                         resp.status_code, index)
-            return []
+            return None
         record_success(_ALGOLIA_PROVIDER)
         data = resp.json()
         hits = data.get("hits")
         return hits if isinstance(hits, list) else []
-    except Exception as e:  # noqa: BLE001 — best-effort; any failure → empty
+    except Exception as e:  # noqa: BLE001 — best-effort; any failure → None sentinel
         logger.info("[ALGOLIA] explicit query error: %s", e)
         record_failure(_ALGOLIA_PROVIDER)
-        return []
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -828,10 +832,15 @@ async def _fetch_explicit_store_price(
 
     hits: List[Dict[str, Any]] = []
     # R1 retrieval-term ladder (mirrors the harvest path; _algolia_query_explicit
-    # never raises — graceful empty). Empty hits -> ONE core-term retry; hits
-    # returned — matched or not — never trigger a second query.
+    # never raises). Empty hits -> ONE core-term retry; hits returned — matched
+    # or not — never trigger a second query. F2 politeness (Wave B-FIX): the
+    # None sentinel = TRANSPORT failure -> stop, never a core-term retry
+    # against an erroring store (woo/salla semantics).
     for term in build_adapter_search_terms(product_name, resolved_category):
-        hits = await _algolia_query_explicit(store, term)
+        got = await _algolia_query_explicit(store, term)
+        if got is None:
+            break
+        hits = got
         if hits:
             break
     hit = _catalog_match_hit(hits, product_name, store, resolved_category=resolved_category)

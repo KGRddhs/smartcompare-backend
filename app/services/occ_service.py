@@ -35,7 +35,7 @@ from curl_cffi import requests as _curl
 from app.services.price_service import (
     ENABLE_PAGE_SCRAPE,
     _convert_to_bhd,
-    adapter_selection_primary_enabled,
+    selection_primary_admits,
     is_accessory,
     is_counterfeit_listing,
     is_price_showable,
@@ -152,10 +152,15 @@ def _select_product(
         # tokens ("YSL" query vs released "Yves Saint Laurent", "90ml" vs
         # "90 ml") while _selection_match(candidate_brand=) below vets the
         # full SKU via the alias-folding identity sets. The variant /
-        # selection / stock / word-overlap gates still run. Flag OFF (or
-        # exact gate OFF) restores the exact pre-change hard gate.
+        # selection / stock / word-overlap gates still run — the fallthrough
+        # GATED by selection_primary_admits (Wave B-FIX wrong-brand fence: a
+        # node whose manufacturer contradicts a padding-brand query
+        # hard-rejects). Flag OFF (or exact gate OFF) restores the exact
+        # pre-change hard gate.
         if (not strict_title_match(product_name, name, candidate_brand=_cand_brand)
-                and not adapter_selection_primary_enabled()):
+                and not selection_primary_admits(
+                    product_name, name, candidate_brand=_cand_brand,
+                    category=resolved_category)):
             continue
         if variant_mismatch(product_name, name):
             continue

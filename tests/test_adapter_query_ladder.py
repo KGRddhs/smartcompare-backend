@@ -442,3 +442,91 @@ def test_algolia_explicit_no_retry_when_hits_returned(monkeypatch):
         ))
     assert res is None
     assert calls == [AF1_QUERY]
+
+
+# ---------------------------------------------------------------------------
+# (g) Wave B-FIX F2 — error-retry POLITENESS. The pinned ladder contract says
+# ONLY a genuine ZERO-ROW response retries the core term; a TRANSPORT failure
+# (non-200 / exception / non-JSON) keeps the legacy immediate-None with NO
+# second request against an erroring store (woo/salla semantics). Magento
+# `_post_graphql -> None` and the algolia explicit path previously flattened
+# errors into [] and laddered anyway (waveb_regressionFlags.json F2).
+# ---------------------------------------------------------------------------
+
+def test_magento_shape_b_transport_error_never_ladders_core_term(monkeypatch):
+    calls = []
+
+    async def fake_post(url, query, variables, headers):
+        calls.append(variables.get("phrase"))
+        return None  # transport failure / non-200 / non-JSON
+
+    monkeypatch.setattr(mg, "_post_graphql", fake_post)
+    res = _run(mg.fetch_magento_graphql_price(
+        "klinq.com", MG_QUERY, resolved_category="fragrances",
+    ))
+    assert res is None
+    assert calls == [MG_QUERY]
+
+
+def test_magento_shape_a_transport_error_never_ladders_core_term(monkeypatch):
+    async def fake_cfg(host):
+        return {
+            "endpoint": "https://catalog-service.example/graphql",
+            "api_key": "k", "env_id": "e", "store_view": "v",
+            "website": "w", "store_code": "s", "customer_group": "g",
+            "base_endpoint": "https://www.bathandbodyworks.com.bh",
+        }
+
+    monkeypatch.setattr(mg, "_harvest_shape_a_config", fake_cfg)
+    calls = []
+
+    async def fake_post(url, query, variables, headers):
+        calls.append(variables.get("phrase"))
+        return None
+
+    monkeypatch.setattr(mg, "_post_graphql", fake_post)
+    res = _run(mg.fetch_magento_graphql_price(
+        "bathandbodyworks.com.bh", MG_QUERY, resolved_category="fragrances",
+    ))
+    assert res is None
+    assert calls == [MG_QUERY]
+
+
+def test_magento_zero_row_response_still_ladders(monkeypatch):
+    """The intended ladder path is untouched: a genuine zero-row 200 payload
+    (dict, no items) retries the core term ONCE."""
+    calls = _patch_magento_router(monkeypatch, {
+        MG_QUERY: [],
+        MG_CORE: [KLINQ_ITEM],
+    })
+    res = _run(mg.fetch_magento_graphql_price(
+        "klinq.com", MG_QUERY, resolved_category="fragrances",
+    ))
+    assert calls == [MG_QUERY, MG_CORE]
+    assert res is not None
+
+
+def test_algolia_explicit_transport_error_never_ladders_core_term(monkeypatch):
+    calls = []
+
+    async def fake_explicit(store, query):
+        calls.append(query)
+        return None  # the F2 transport-error sentinel
+
+    monkeypatch.setattr(alg, "_algolia_query_explicit", fake_explicit)
+    with patch("app.services.algolia_service.is_circuit_closed", return_value=True), \
+         patch("app.services.algolia_service.get_cached", return_value=None), \
+         patch("app.services.algolia_service.set_cached", return_value=True):
+        res = _run(alg.fetch_algolia_price(
+            "en-bh.6thstreet.com", AF1_QUERY, "fashion",
+        ))
+    assert res is None
+    assert calls == [AF1_QUERY]
+
+
+def test_algolia_query_explicit_error_returns_none_sentinel(monkeypatch):
+    """The transport seam itself: an in-function failure (store config missing
+    -> KeyError inside the try) returns the None sentinel, NOT [] — [] is
+    reserved for a genuine zero-hit 200."""
+    monkeypatch.setattr(alg, "record_failure", lambda *_a, **_k: None)
+    assert _run(alg._algolia_query_explicit({}, "q")) is None

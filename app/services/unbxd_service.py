@@ -9,8 +9,13 @@ credits.
 Discipline mirrors the Algolia + Shopify adapters: STRICT title/brand match
 (reuses ``price_service.strict_title_match`` / ``numbers_match`` /
 ``normalize_words``) so a fuzzy cross-brand hit is REJECTED, never shipped as a
-wrong-brand price. ``is_price_showable`` plausibility gate + L2 content-safety
-gate before returning. NEVER raises — best-effort, never critical-path.
+wrong-brand price. Wave B-FIX (OR-1): strict is DEMOTED to a fast-accept like
+the other selection-primary chains — a strict FAIL falls through to the
+variant/_selection_match gates via ``selection_primary_admits`` (flag +
+wrong-brand fence), recovering the real extra.com spaced-unit titles
+("256 GB" vs the query's "256GB"). ``is_price_showable`` plausibility gate +
+L2 content-safety gate before returning. NEVER raises — best-effort, never
+critical-path.
 
 Per-store config (apiKey + siteKey + currency + genuine) is pinned in
 ``UNBXD_STORES``; the apiKey is a PUBLIC site-search key shipped to every
@@ -25,6 +30,7 @@ from urllib.parse import quote_plus
 from app.services.price_service import (
     strict_title_match,
     _selection_match,
+    selection_primary_admits,
     numbers_match,
     variant_mismatch,
     normalize_words,
@@ -118,7 +124,17 @@ def _match_unbxd_product(
             continue
         if not numbers_match(product_name, surface):
             continue
-        if not strict_title_match(product_name, surface):
+        # SELECTION-PRIMARY acceptance (Wave B-FIX, over-rejection sweep OR-1):
+        # unbxd runs _selection_match ALONGSIDE strict like the other 5 demoted
+        # chains, but kept strict as a hard pre-gate — rejecting the REAL
+        # extra.com spaced-unit titles ("... 256 GB ..." vs the query's
+        # "256GB") the demotion exists for. Same flag
+        # (ENABLE_ADAPTER_SELECTION_PRIMARY) + the same wrong-brand fence
+        # (selection_primary_admits; unbxd rows carry no brand signal). Flag
+        # OFF (or exact gate OFF) restores the exact pre-change hard gate.
+        if (not strict_title_match(product_name, surface)
+                and not selection_primary_admits(
+                    product_name, surface, category=resolved_category)):
             continue
         # Verification F1 (HIGH no-fab fix): reject a different model-line variant.
         # Without this, a base-model query ("iPhone 17 Pro 256GB") matched the

@@ -48,7 +48,7 @@ from typing import Optional, Dict, Any, List
 from app.services.price_service import (
     strict_title_match,
     _selection_match,
-    adapter_selection_primary_enabled,
+    selection_primary_admits,
     build_adapter_search_terms,
     numbers_match,
     normalize_words,
@@ -493,10 +493,15 @@ def _best_match(
         # Parfum 90 ml" under a spelled-brand node) fails strict on the raw
         # "90ml"/brand-alias tokens while _selection_match(candidate_brand=)
         # below vets the full SKU via the alias-folding identity sets. The
-        # variant / selection / word-overlap gates still run. Flag OFF (or
-        # exact gate OFF) restores the exact pre-change hard gate.
+        # variant / selection / word-overlap gates still run — the fallthrough
+        # GATED by selection_primary_admits (Wave B-FIX wrong-brand fence: a
+        # node whose OWN brand contradicts a padding-brand query — Golden
+        # Goose "Superstar" under an "Adidas Superstar" query — hard-rejects).
+        # Flag OFF (or exact gate OFF) restores the exact pre-change hard gate.
         if (not strict_title_match(product_name, title, candidate_brand=_cand_brand)
-                and not adapter_selection_primary_enabled()):
+                and not selection_primary_admits(
+                    product_name, title, candidate_brand=_cand_brand,
+                    category=resolved_category)):
             continue
         if variant_mismatch(product_name, title):
             continue
@@ -597,6 +602,12 @@ async def fetch_magento_graphql_price(
                     cfg["endpoint"], _SHAPE_A_QUERY_NO_ATTRS,
                     {"phrase": term, "pageSize": _PAGE_SIZE}, headers,
                 )
+            # F2 politeness (Wave B-FIX): a TRANSPORT failure (_post_graphql
+            # -> None on non-200/exception/non-JSON) must NOT ladder — only a
+            # genuine ZERO-ROW response retries the core term (woo/salla
+            # semantics: no second request against an erroring store).
+            if payload is None:
+                break
             if _shape_a_items(payload):
                 break  # rows returned (even unmatched) — never a second term
         items = _shape_a_items(payload)
@@ -638,6 +649,10 @@ async def fetch_magento_graphql_price(
                 f"https://{host}/graphql", _build_shape_b_query(store.get("brand_field")),
                 {"phrase": term, "pageSize": _PAGE_SIZE}, headers,
             )
+            # F2 politeness (Wave B-FIX): transport failure (None) never
+            # ladders — only a genuine zero-row response retries the core term.
+            if payload is None:
+                break
             if _shape_b_items(payload):
                 break  # rows returned (even unmatched) — never a second term
         items = _shape_b_items(payload)

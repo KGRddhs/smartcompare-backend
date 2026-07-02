@@ -35,7 +35,7 @@ from typing import Any, Dict, Optional
 from app.services.price_service import (
     strict_title_match,
     _selection_match,
-    adapter_selection_primary_enabled,
+    selection_primary_admits,
     build_adapter_search_terms,
     numbers_match,
     variant_mismatch,
@@ -133,10 +133,14 @@ def _select_candidate(
         # RAW tokenization rejects correct rows on spacing/alias variance
         # ("90ml" vs "90 ml") the keystone _selection_match below collapses —
         # a strict FAIL falls through to the remaining chain instead of
-        # hard-rejecting. Flag OFF (or exact gate OFF, where _selection_match
-        # is a no-op True) restores the exact pre-change hard gate.
+        # hard-rejecting, GATED by selection_primary_admits (Wave B-FIX
+        # wrong-brand fence: salla rows carry no brand field, so a FASHION
+        # padding-brand query requires its brand token in the title). Flag
+        # OFF (or exact gate OFF, where _selection_match is a no-op True)
+        # restores the exact pre-change hard gate.
         if (not strict_title_match(product_name, title)
-                and not adapter_selection_primary_enabled()):
+                and not selection_primary_admits(
+                    product_name, title, category=resolved_category)):
             continue
         if not numbers_match(product_name, title):
             continue

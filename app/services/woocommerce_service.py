@@ -40,13 +40,13 @@ from app.services.price_service import (
     _convert_to_bhd,
     _infer_category_from_query,
     _selection_match,
-    adapter_selection_primary_enabled,
     build_adapter_search_terms,
     is_accessory,
     is_counterfeit_listing,
     is_price_showable,
     numbers_match,
     select_best,
+    selection_primary_admits,
     strict_title_match,
     variant_mismatch,
 )
@@ -149,11 +149,15 @@ def _match_woo_product(
         # perfumesclub "90 ml") that _selection_match below already collapses.
         # A strict PASS keeps the pre-change fast path; a strict FAIL now falls
         # through to the remaining chain (numbers / variant / accessory /
-        # _selection_match) instead of hard-rejecting. Flag OFF — or the exact
-        # gate OFF, which makes _selection_match a no-op True — restores the
-        # exact pre-change hard gate (see adapter_selection_primary_enabled).
+        # _selection_match) instead of hard-rejecting — GATED by
+        # selection_primary_admits (Wave B-FIX): flag + the wrong-brand fence
+        # (a padding-brand query needs brand evidence; Woo rows carry no brand
+        # field, so a FASHION query's brand must appear in the title). Flag
+        # OFF — or the exact gate OFF, which makes _selection_match a no-op
+        # True — restores the exact pre-change hard gate.
         if (not strict_title_match(product_name, title)
-                and not adapter_selection_primary_enabled()):
+                and not selection_primary_admits(
+                    product_name, title, category=_category)):
             continue
         if not numbers_match(product_name, title):
             continue

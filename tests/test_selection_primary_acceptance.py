@@ -426,3 +426,222 @@ def test_selection_level_rejections_stay_rejected(query, title, manufacturer):
         {"products": [_occ_node(title, manufacturer, 199.9)]},
         query, "electronics")
     assert got is None
+
+
+# ===========================================================================
+# Wave B-FIX BF1 — the WRONG-BRAND FENCE on the strict-FAIL fallthrough
+# (coverage leak sweep L1 CRITICAL + L2 HIGH, waveb_leak.json) and the unbxd
+# selection-primary wiring (over-rejection sweep OR-1 partial).
+#
+# The B4 strict demotion dropped strict's brand requirement, and for a
+# PADDING-BRAND query ("Adidas"/"Puma" are _FASHION_PADDING; manufacturers
+# are _ELECTRONICS_PADDING) _selection_match strips the query's brand from
+# q_core — so a same-model-word CROSS-BRAND row sailed through the
+# fallthrough on every demoted chain. selection_primary_admits now requires
+# BRAND EVIDENCE on the fallthrough:
+#   (a) a non-empty candidate_brand must alias-equal a query token
+#       (a stated CONTRADICTING brand hard-rejects);
+#   (b) with NO candidate-brand signal, a FASHION padding-brand query
+#       requires its brand token folded in the title (electronics keeps the
+#       B4 brand-omitted unlock — model-line tokens are brand-unique, the
+#       leak sweep probed that space rejected).
+# Both directions pinned per [[feedback-coverage-driven-review]].
+# ===========================================================================
+
+import app.services.unbxd_service as ub
+from app.services.price_service import selection_primary_admits
+
+
+# --- L1 (CRITICAL): brand-stamped chains reject the cross-brand row ---------
+
+_L1_CASES = [
+    # the two sweep repros (probe_wrong_brand_class.py, reproduced 2026-07-02)
+    ("Adidas Superstar White", "Golden Goose Superstar White Sneakers", "Golden Goose"),
+    ("Puma Suede Classic", "Vans Suede Classic Sneakers", "Vans"),
+]
+
+
+@pytest.mark.parametrize("query,title,brand", _L1_CASES)
+def test_fence_magento_rejects_wrong_brand_stamped_fashion_row(query, title, brand):
+    node = _mg_node(title, brand=brand, value=45.0)
+    assert mg._best_match([node], query, "fashion") is None
+
+
+@pytest.mark.parametrize("query,title,brand", _L1_CASES)
+def test_fence_occ_rejects_wrong_brand_stamped_fashion_row(query, title, brand):
+    got = occ._select_product(
+        {"products": [_occ_node(title, brand, 45.0)]}, query, "fashion")
+    assert got is None
+
+
+def test_fence_wrong_brand_stamp_rejects_at_admits_level_electronics():
+    """(a) generalizes to electronics: a stated CONTRADICTING brand is
+    definitive wrong-brand evidence (the chain also rejects via residual
+    model tokens — this pins the fence as defense-in-depth)."""
+    assert selection_primary_admits(
+        "Apple Watch Ultra 2", "Galaxy Watch Ultra LTE",
+        candidate_brand="Samsung", category="electronics") is False
+
+
+# --- L2 (HIGH): brandless chains reject the brand-omitted cross-brand row ---
+
+L2_Q = "Adidas Superstar White"
+L2_T = "Superstar White Sneakers"  # a Golden Goose row listed brand-omitted
+
+
+def test_fence_woo_brandless_wrong_brand_fashion_row_rejected():
+    rows = [_woo_row(L2_T, "superstar", price="45000")]
+    assert woo._match_woo_product(rows, L2_Q, "BHD",
+                                  resolved_category="fashion") is None
+
+
+def test_fence_salla_brandless_wrong_brand_fashion_row_rejected():
+    assert salla._select_candidate([{"name": L2_T, "price": 45.0}],
+                                   L2_Q, "fashion") is None
+
+
+def test_fence_rest_json_brandless_wrong_brand_fashion_row_rejected():
+    assert rj._title_matches(L2_Q, L2_T, "fashion") is False
+
+
+# --- BOTH sanctioned unlocks still pass (the fence's own over-rejection is
+#     the next blind spot — pinned) ------------------------------------------
+
+def test_fence_correct_brand_stamp_brand_omitted_fashion_row_still_accepted():
+    """A brand-OMITTED fashion title whose node carries the MATCHING brand
+    (the klinq-class stamp, fashion edition) keeps the B4 unlock."""
+    node = _mg_node("Superstar White Sneakers", brand="Adidas", value=45.0)
+    best = mg._best_match([node], "Adidas Superstar White", "fashion")
+    assert best is not None
+    assert best["name"] == "Superstar White Sneakers"
+
+
+def test_fence_admits_fashion_brandless_title_carrying_the_brand():
+    """(b) sanctioned unlock: a brandless-chain fashion row whose TITLE carries
+    the query's brand keeps the fallthrough (spaced-unit/alias titles that
+    strict alone rejects)."""
+    assert selection_primary_admits(
+        "Adidas Superstar White", "adidas Superstar Cloud White Sneakers EU 42",
+        category="fashion") is True
+
+
+def test_fence_admits_electronics_brand_omitted_brandless_row():
+    """(b) electronics keeps the B4 brand-omitted unlock (BH model-line
+    listings: 'iPad Air M2 128GB', no 'Apple') — the sweep probed the
+    cross-brand electronics space naturally rejected by model tokens."""
+    assert selection_primary_admits(
+        "Apple iPad Air M2 128GB", "iPad Air M2 11-inch 128GB Blue",
+        category="electronics") is True
+
+
+def test_fence_admits_klinq_alias_stamp_unaffected():
+    """The klinq unlock (brand-omitted title + spelled-brand stamp) is
+    untouched: fragrance brand words are NOT padding, so the fence is inert
+    ('YSL' query vs 'Yves Saint Laurent' stamp still admitted)."""
+    assert selection_primary_admits(
+        Q_KPI, "Black Opium Eau De Parfum 90 ml",
+        candidate_brand="Yves Saint Laurent", category="fragrances") is True
+
+
+def test_fence_admits_non_padding_brand_query_untouched():
+    """A query whose brand is NOT padding-strippable passes the fence — the
+    keystone's own subset check keeps that brand required downstream."""
+    assert selection_primary_admits(
+        "Lattafa Khamrah Eau de Parfum 100ml", "Khamrah EDP 100 ml",
+        category="fragrances") is True
+
+
+def test_fence_pure_digit_brand_label_is_no_signal_not_contradiction():
+    """A numeric option-id leaking into the brand field ('743') asserts no
+    brand — it must fall to the brandless path (electronics admit), never
+    hard-reject as a contradiction."""
+    assert selection_primary_admits(
+        "Apple iPad Air M2 128GB", "iPad Air M2 11-inch 128GB Blue",
+        candidate_brand="743", category="electronics") is True
+
+
+def test_fence_flag_off_admits_nothing(monkeypatch):
+    monkeypatch.setenv("ENABLE_ADAPTER_SELECTION_PRIMARY", "false")
+    assert selection_primary_admits(
+        "Adidas Superstar White", "adidas Superstar Cloud White Sneakers",
+        category="fashion") is False
+
+
+# --- OR-1 (partial): unbxd wired into the SAME selection-primary + fence ----
+
+EXTRA_Q = "Samsung Galaxy S25 Ultra 256GB"
+EXTRA_TITLE = "SAMSUNG Galaxy S25 Ultra, 5G, 256 GB, Titanium Black"  # real extra.com row
+
+
+def _ub_product(title, price=358.0, in_stock="true", url="https://www.extra.com/en-bh/p/123"):
+    return {"title": title, "sellingPrice": price, "inStockFlag": in_stock,
+            "productUrl": url}
+
+
+def test_unbxd_selection_primary_accepts_extra_spaced_unit_title():
+    """The real extra.com S25 Ultra title fails strict ONLY on the spaced
+    '256 GB' (query '256GB' not a raw substring) while _selection_match
+    accepts — the exact class the B4 demotion exists for (OR-1)."""
+    got = ub._match_unbxd_product([_ub_product(EXTRA_TITLE)], EXTRA_Q,
+                                  resolved_category="electronics")
+    assert got is not None
+    assert got["title"] == EXTRA_TITLE
+
+
+def test_unbxd_e2e_ships_local_bhd_for_spaced_unit_title(monkeypatch):
+    async def fake_search(store, query):
+        return [_ub_product(EXTRA_TITLE)]
+
+    monkeypatch.setattr(ub, "_unbxd_search", fake_search)
+    monkeypatch.setattr(ub, "is_circuit_closed", lambda *_a, **_k: True)
+    res = _run(ub.fetch_unbxd_price("extra.com", EXTRA_Q,
+                                    resolved_category="electronics"))
+    assert res is not None
+    assert res["amount"] == pytest.approx(358.0)
+    assert res["source_method"] == "local_bhd"
+    assert res["title"] == EXTRA_TITLE
+    assert res["in_stock"] is True
+
+
+@pytest.mark.parametrize("title", [
+    # variant flanker: base query must not take the Ultra's sibling
+    "SAMSUNG Galaxy S25 Plus, 5G, 256 GB, Navy",
+    # wrong storage (axis)
+    "SAMSUNG Galaxy S25 Ultra, 5G, 512 GB, Titanium Black",
+    # wrong brand+model (electronics natural fence via model tokens)
+    "APPLE iPhone 17 Pro, 256 GB, Silver",
+    # accessory
+    "SAMSUNG Galaxy S25 Ultra Clear Case",
+    # the pinned truth-modernization xfail class stays REJECTED at unbxd too
+    # (selection-level '13 Inch' added-axis — flip with the matcher xfails)
+    ])
+def test_unbxd_selection_primary_wrong_skus_still_reject(title):
+    got = ub._match_unbxd_product([_ub_product(title)], EXTRA_Q,
+                                  resolved_category="electronics")
+    assert got is None
+
+
+def test_unbxd_macbook_added_inch_axis_stays_rejected():
+    """OR-2's class: '13 Inch' added-axis rejects at _selection_match ITSELF —
+    wiring selection-primary must NOT unlock it (flip with the
+    test_kpi_truth_modernization xfails when the matcher work lands)."""
+    got = ub._match_unbxd_product(
+        [_ub_product("APPLE MacBook Air, M5, 16GB, 512GB SSD, 13 Inch IPS, 8 Core GPU, Silver",
+                     price=499.9)],
+        "MacBook Air 13 M5 512GB", resolved_category="electronics")
+    assert got is None
+
+
+def test_unbxd_sibling_flag_off_restores_strict_hard_gate(monkeypatch):
+    monkeypatch.setenv("ENABLE_ADAPTER_SELECTION_PRIMARY", "false")
+    got = ub._match_unbxd_product([_ub_product(EXTRA_TITLE)], EXTRA_Q,
+                                  resolved_category="electronics")
+    assert got is None
+
+
+def test_unbxd_exact_gate_off_restores_strict_hard_gate(monkeypatch):
+    monkeypatch.setenv("ENABLE_EXACT_PRICE_GATE", "false")
+    monkeypatch.setenv("ENABLE_ADAPTER_SELECTION_PRIMARY", "true")
+    got = ub._match_unbxd_product([_ub_product(EXTRA_TITLE)], EXTRA_Q,
+                                  resolved_category="electronics")
+    assert got is None

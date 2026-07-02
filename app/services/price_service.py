@@ -4656,17 +4656,21 @@ def adapter_selection_primary_enabled() -> bool:
     check (recon_cascade R2; sibling of ENABLE_ADAPTER_QUERY_LADDER, default
     ON, read FRESH per call so a Railway flip needs no redeploy).
 
-    Scope: ONLY the 5 chains that run _selection_match ALONGSIDE strict
+    Scope: ONLY the 6 chains that run _selection_match ALONGSIDE strict
     (woo _match_woo_product / magento _best_match / salla _select_candidate /
-    rest_json _title_matches / occ _select_product). A strict PASS keeps the
-    pre-change fast path; a strict FAIL falls through to the remaining chain
-    (numbers_match / variant_mismatch / counterfeit / accessory /
-    _selection_match + each chain's overlap/stock gates) instead of
-    hard-rejecting — strict's RAW tokenization otherwise throws away correct
-    rows on pure alias/spacing variance ("90ml" vs "90 ml", "YSL" vs the
-    spelled brand via candidate_brand) that _identity_tokens_ps collapses.
-    The bolo-sitemap strict gate has NO _selection_match alongside and keeps
-    strict as its only protection (the PR#13 lesson) — NOT in scope.
+    rest_json _title_matches / occ _select_product / unbxd
+    _match_unbxd_product — the last wired in Wave B-FIX, over-rejection sweep
+    OR-1). A strict PASS keeps the pre-change fast path; a strict FAIL falls
+    through to the remaining chain (numbers_match / variant_mismatch /
+    counterfeit / accessory / _selection_match + each chain's overlap/stock
+    gates) instead of hard-rejecting — strict's RAW tokenization otherwise
+    throws away correct rows on pure alias/spacing variance ("90ml" vs
+    "90 ml", "YSL" vs the spelled brand via candidate_brand) that
+    _identity_tokens_ps collapses. Call sites gate the fallthrough through
+    selection_primary_admits (flag + the wrong-brand fence below), NEVER this
+    raw flag read alone. The bolo-sitemap strict gate has NO _selection_match
+    alongside and keeps strict as its only protection (the PR#13 lesson) —
+    NOT in scope.
 
     HARD-REQUIRES the exact gate: _selection_match returns True (no-op) when
     ENABLE_EXACT_PRICE_GATE is off, so demoting strict then would leave the
@@ -4679,6 +4683,75 @@ def adapter_selection_primary_enabled() -> bool:
     return os.getenv("ENABLE_ADAPTER_SELECTION_PRIMARY", "true").strip().lower() not in (
         "false", "0", "no", "off", "",
     )
+
+
+def selection_primary_admits(
+    query_name: str, candidate_title: str, *,
+    candidate_brand: str = "", category: Optional[str] = None,
+) -> bool:
+    """True iff a strict_title_match FAILURE may fall through to the
+    selection-primary chain (the Wave B4 demotion) for THIS candidate — the
+    flag gate + the WRONG-BRAND FENCE (Wave B-FIX; coverage leak sweep L1
+    CRITICAL + L2 HIGH).
+
+    strict's brand requirement was the ONLY gate that kept the QUERY's brand
+    word required when that word is _category_padding-STRIPPABLE ("adidas"/
+    "puma"/"vans" are fashion padding; manufacturers are electronics padding):
+    _selection_match drops it from q_core, so after the demotion a
+    same-model-word CROSS-BRAND row ("Golden Goose Superstar White Sneakers"
+    under an "Adidas Superstar White" query) sailed through every demoted
+    chain and cached 7d-genuine. On the fallthrough, require BRAND EVIDENCE:
+
+      (a) candidate_brand NON-EMPTY -> it must alias-equal a query token
+          (folded via _fold_identity/normalize_words, _BRAND_ALIAS_GROUPS-
+          expanded so a spelled house label still releases an abbreviated
+          query). A stated CONTRADICTING brand is definitive wrong-brand
+          evidence -> reject. A pure-digit label (a magento option-id leak)
+          asserts no brand -> treated as NO signal, falls to (b).
+      (b) NO candidate-brand signal (woo/salla/rest_json/unbxd rows) -> for
+          FASHION the query's padding-strippable brand token must appear
+          folded in the title (the L2 brandless class: with the brand absent
+          from BOTH the title and the row, correct and cross-brand rows are
+          indistinguishable — keep strict's brand requirement). Electronics
+          keeps the B4 brand-omitted unlock ("iPad Air M2 128GB", no
+          "Apple"): model-line tokens are brand-unique, and the leak sweep
+          probed that cross-brand space naturally rejected.
+
+    Queries with NO padding-strippable brand token pass untouched — for every
+    other brand word the keystone's own subset check keeps it required
+    (candidate_brand only ever releases the candidate's OWN brand), so the
+    klinq brand-omitted fragrance unlock and the spaced-unit unlocks are
+    unaffected (both pinned in tests/test_selection_primary_acceptance.py).
+    Flag OFF (or exact gate OFF) -> False -> the strict hard pre-gate,
+    byte-identical pre-change behaviour.
+    """
+    if not adapter_selection_primary_enabled():
+        return False
+    cat = (category or "").lower()
+    if cat == "other":
+        # Mirror _selection_match's explicit-"other" re-inference so the fence
+        # uses the same padding the keystone will.
+        cat = (_infer_category_from_query(query_name) or cat).lower()
+    padding_brands = _MANUFACTURER_NOISE & _category_padding(cat)
+    if not padding_brands:
+        return True
+    q_toks = normalize_words(_fold_identity(query_name or ""))
+    q_brand = q_toks & padding_brands
+    if not q_brand:
+        return True
+    cand_toks = {
+        w for w in normalize_words(_fold_identity(candidate_brand or ""))
+        if len(w) > 2 and not w.isdigit()
+    }
+    if cand_toks:
+        for _group in _BRAND_ALIAS_GROUPS:
+            if cand_toks & _group:
+                cand_toks = cand_toks | _group
+        return bool(cand_toks & q_toks)
+    if cat != "fashion":
+        return True
+    t_toks = normalize_words(_fold_identity(candidate_title or ""))
+    return bool(q_brand & t_toks)
 
 
 def _ladder_fold_token(tok: str) -> str:
