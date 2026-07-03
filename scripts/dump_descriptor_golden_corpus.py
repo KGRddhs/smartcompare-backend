@@ -57,6 +57,41 @@ REDOS_QUERY = "Samsung Galaxy " + ("Ultra " * 110) + "256GB"
 REDOS_TITLE = "Samsung Galaxy " + ("Ultra " * 110) + "512GB"
 REDOS_TITLE_2 = "Samsung Galaxy S24 " + ("Phantom " * 100) + "512GB"
 
+# ---------------------------------------------------------------------------
+# PHASE-A-CLOSURE (B1.0) >512-char CAPPED-PARSE SEMANTICS inputs — the exact
+# drift-reviewer shapes. These pin the ACCEPTED ruling: axis extractors see the
+# _MATCH_INPUT_CAP(512)-capped text (with the partial-token-safe strip), so an
+# axis token entirely PAST the cap is invisible, and a token SLICED AT the cap
+# contributes nothing (never a phantom "Parfum" out of "Parfumerie").
+# ---------------------------------------------------------------------------
+
+# 531-char title where "Parfumerie" starts at index 506 — the plain slice at
+# byte 512 used to leave a trailing "Parfum" (a MANUFACTURED flagship
+# concentration). The partial-token-safe cap strips the fragment.
+CAP_PARFUMERIE_TITLE = ("Dior Sauvage 100 ml " + ("Amber " * 81)
+                        + "Parfumerie de Paris Store")
+assert len(CAP_PARFUMERIE_TITLE) == 531, len(CAP_PARFUMERIE_TITLE)
+assert CAP_PARFUMERIE_TITLE[506:512] == "Parfum", CAP_PARFUMERIE_TITLE[506:512]
+assert CAP_PARFUMERIE_TITLE[512] == "e"
+
+# Fragrance flagship "Parfum" ENTIRELY past byte 512 — invisible to the capped
+# parse (legacy uncapped _category_type_added would have fired).
+CAP_FLAGSHIP_PAST_TITLE = "Chanel Bleu de Chanel " + ("Amber " * 84) + "Parfum"
+assert len(CAP_FLAGSHIP_PAST_TITLE) == 532
+assert CAP_FLAGSHIP_PAST_TITLE.index("Parfum") > 512
+
+# Supplement TYPE token ("Isolate") entirely past the cap.
+CAP_SUPPLEMENT_PAST_TITLE = ("Optimum Nutrition Gold Standard Whey "
+                             + ("Premium " * 60) + "Isolate")
+assert len(CAP_SUPPLEMENT_PAST_TITLE) == 524
+assert CAP_SUPPLEMENT_PAST_TITLE.index("Isolate") > 512
+
+# Trailing "Eau de Toilette" entirely past the cap — the candidate's
+# concentration is invisible to the capped parse.
+CAP_EDT_PAST_TITLE = "Dior Sauvage " + ("Amber " * 84) + "Eau de Toilette"
+assert len(CAP_EDT_PAST_TITLE) == 532
+assert CAP_EDT_PAST_TITLE.index("Eau de Toilette") > 512
+
 
 # ---------------------------------------------------------------------------
 # Case enumeration
@@ -650,7 +685,57 @@ def _tolerance_param_probes():
         ["inch", "overrej_descriptive"])
 
 
+def _capped_semantics_rows():
+    """PHASE-A-CLOSURE (B1.0) — the >512-char capped-parse semantics rows,
+    returned FULLY FORMED and appended AFTER the padded/swap passes in
+    build_cases so every pre-existing case id stays stable (ids are positional).
+    They deliberately skip the padded/swap passes: the padded pass excludes
+    >400-char titles anyway, and each direction of interest is pinned
+    explicitly here."""
+    rows = [
+        {
+            "category": "fragrances", "brand": "Dior",
+            "query": "Dior Sauvage", "title": CAP_PARFUMERIE_TITLE,
+            "axes": sorted({"capped_semantics", "redos_cap",
+                            "flagship_concentration_add"}),
+            "note": ("531-char title: 'Parfumerie' sliced at byte 512 used to "
+                     "manufacture a phantom flagship 'Parfum' — the "
+                     "partial-token-safe cap strips the fragment"),
+        },
+        {
+            "category": "fragrances", "brand": "Chanel",
+            "query": "Chanel Bleu de Chanel", "title": CAP_FLAGSHIP_PAST_TITLE,
+            "axes": sorted({"capped_semantics", "redos_cap",
+                            "flagship_concentration_add"}),
+            "note": ("flagship 'Parfum' entirely past byte 512 — invisible to "
+                     "the capped parse (ACCEPTED ruling: supersedes legacy "
+                     "uncapped _category_type_added at the chokepoints)"),
+        },
+        {
+            "category": "supplements", "brand": "Optimum Nutrition",
+            "query": "Optimum Nutrition Gold Standard Whey",
+            "title": CAP_SUPPLEMENT_PAST_TITLE,
+            "axes": sorted({"capped_semantics", "redos_cap",
+                            "supplement_type_add"}),
+            "note": ("supplement TYPE token 'Isolate' entirely past byte 512 — "
+                     "invisible to the capped parse (ACCEPTED ruling)"),
+        },
+        {
+            "category": "fragrances", "brand": "Dior",
+            "query": "Dior Sauvage Eau de Parfum", "title": CAP_EDT_PAST_TITLE,
+            "axes": sorted({"capped_semantics", "redos_cap", "concentration",
+                            "candidate_missing_query_axis"}),
+            "note": ("trailing 'Eau de Toilette' entirely past byte 512 — the "
+                     "candidate's concentration is invisible to the capped "
+                     "parse (query-stated axis rules decide)"),
+        },
+    ]
+    return rows
+
+
 REQUIRED_AXES = [
+    # PHASE-A-CLOSURE (B1.0) capped-parse semantics rows
+    "capped_semantics",
     # numeric/contradiction axes (F1)
     "concentration", "size_ml", "size_oz", "storage", "storage_max_not_ram", "ram",
     "count", "strength", "bare_dose", "weight_volume", "cross_base_g_ml", "percent",
@@ -759,6 +844,10 @@ def build_cases():
             "note": ("swap of: " + case["note"]) if case["note"] else "swap",
         })
     cases = cases + swapped
+
+    # PHASE-A-CLOSURE (B1.0): >512-char capped-semantics rows appended LAST so
+    # pre-existing case ids (positional) are untouched by the extension.
+    cases = cases + _capped_semantics_rows()
 
     for i, case in enumerate(cases):
         case["id"] = "vd-{:04d}".format(i)

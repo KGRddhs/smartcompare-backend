@@ -5257,6 +5257,30 @@ def build_adapter_search_terms(
 # Phase-A scope note: the NEW Phase-B fields (flanker_markers,
 # generation_ints) are deliberately ABSENT — this phase formalizes, it does
 # not change any verdict.
+#
+# CAPPED-PARSE SEMANTICS (Phase-A closure ruling, ACCEPTED): the descriptor
+# parses the _MATCH_INPUT_CAP(512)-capped text for EVERY axis. The >512-char
+# DIRECT-CALL surfaces that legacy code parsed UNCAPPED — the
+# _category_type_added helper pair at the display/cache-read chokepoints
+# (is_price_showable :1425 / scs._cache_price_identity_ok) and
+# _concentration_mismatch (:1634) — now deliberately see capped text too.
+# This UNIFIES the ReDoS envelope across the whole matcher chain and
+# SUPERSEDES the legacy uncapped parsing on pathological (>512-char) inputs.
+# The cap is PARTIAL-TOKEN-SAFE (a mid-token boundary slice strips the
+# trailing fragment instead of manufacturing a phantom token — see
+# _build_variant_descriptor). Pinned by the >512 `capped_semantics` corpus
+# rows in tests/data/variant_descriptor_golden_corpus.json.
+#
+# MEMO-KEY FAN-OUT (deliberate): the standalone wrappers
+# (_concentration_mismatch, _flagship_concentration_added,
+# _supplement_type_added, _supplement_form_added) call
+# extract_variant_descriptor with category=None while the gate chain passes
+# the RESOLVED category — so the same text can occupy TWO lru slots (one per
+# category key). Benchmarked cheaper than the legacy per-call re-parse (the
+# extra slot is one small frozen dataclass; unifying the key would force
+# threading category through wrapper signatures frozen by their callers).
+# Tests must never rely on memo persistence across tests —
+# tests/conftest.py clears the lru per-test (B1.0 memo-staleness fixture).
 # ============================================================================
 
 
@@ -5386,9 +5410,27 @@ def _build_variant_descriptor(text: str, category: Optional[str],
       - the SELECTION tolerance helpers (_annotation_year_tokens,
         _inch_digit_tokens, _fashion_construction_tolerated_for) get the raw
         UNCAPPED text — _selection_match always called them uncapped.
-    None input is treated as "" (the extractors' own `text or ""` idiom)."""
+    None input is treated as "" (the extractors' own `text or ""` idiom).
+
+    PARTIAL-TOKEN-SAFE CAP (Phase-A closure, B1.0): when the 512-byte boundary
+    slices MID-TOKEN, a plain slice can MANUFACTURE a token the text never
+    contained (drift-reviewer repro: a 531-char title whose "Parfumerie"
+    sliced at byte 512 left a trailing "Parfum" — a phantom flagship
+    concentration). If the char AT the boundary and the last capped char are
+    both non-whitespace, the trailing partial fragment is stripped so a sliced
+    token contributes NOTHING instead of a phantom axis value.
+    _identity_tokens_ps / _luxottica_model_codes keep their own plain
+    self-caps untouched (identity tokens are subset/equality-compared — a
+    trailing partial token cannot manufacture an AXIS there)."""
     text = text or ""
-    capped = text[:_MATCH_INPUT_CAP] if len(text) > _MATCH_INPUT_CAP else text
+    if len(text) > _MATCH_INPUT_CAP:
+        capped = text[:_MATCH_INPUT_CAP]
+        if not text[_MATCH_INPUT_CAP].isspace() and not capped[-1].isspace():
+            _parts = capped.rsplit(None, 1)
+            if len(_parts) == 2:  # only when a whitespace boundary exists to cut at
+                capped = _parts[0]
+    else:
+        capped = text
     fold_full = _fold_identity(capped)
     fold_tokens = frozenset(re.findall(r"[a-z0-9]+", fold_full))
     cat = (category or "").lower()

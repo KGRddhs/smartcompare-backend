@@ -89,6 +89,29 @@ def _reset_verdict_exemplar_cache():
     yield
 
 
+# Wave-2 B1.0 — VariantDescriptor memo-staleness guard.
+# price_service._extract_variant_descriptor_cached is an lru_cache keyed
+# (text, category, brand, gate). Phase-B tests monkeypatch the module-level
+# token sets (_SUPPLEMENT_TYPE_TOKENS, _MAKEUP_FINISH_TOKENS, ...) that the
+# builder reads — a descriptor memoized BEFORE the patch would serve stale
+# axis fields to a test that patched them (and vice versa on teardown).
+# Clear the memo before every test. Import-guarded so it no-ops on any
+# branch/worktree where the descriptor is absent.
+@pytest.fixture(autouse=True)
+def _reset_variant_descriptor_memo():
+    """Clear the VariantDescriptor lru before each test so monkeypatched
+    token sets never see a stale memoized descriptor."""
+    try:
+        from app.services.price_service import (
+            _extract_variant_descriptor_cached,
+        )
+    except Exception:  # pragma: no cover — defensive import
+        yield
+        return
+    _extract_variant_descriptor_cached.cache_clear()
+    yield
+
+
 # B3 (test-infra hygiene) — event-loop pollution guard.
 # Several sync tests still drive coroutines via the deprecated
 # `asyncio.get_event_loop().run_until_complete(...)` (e.g.

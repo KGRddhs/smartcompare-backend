@@ -1,0 +1,103 @@
+Per-axis coverage tally (1153 cases total)
+Required axes: 77 (min 4 rows each)
+
+apostrophe_fold                            40
+bare_dose                                   8
+bare_generation_int                        14
+brand_class_query_skip                     16
+british_spelling_fold                       8
+candidate_missing_query_axis               33
+capped_semantics                            4
+census_acronym                              8  (extra)
+census_apparel_bare_size_letter             8  (extra)
+census_bare_generation_int                  3  (extra)
+census_candidate_omits_query_axis           8  (extra)
+census_conc_flanker_flagship                4  (extra)
+census_conc_flanker_same_token              8  (extra)
+census_cross_unit_g_ml                      4  (extra)
+census_design_accept                        8  (extra)
+census_disney_stitch                        4  (extra)
+census_femme_query_unconfirmed              4  (extra)
+census_gender_both_stated                   4  (extra)
+census_gender_flanker                       4  (extra)
+census_hyphen_vs_space                      4  (extra)
+census_ladder_exposure                      8  (extra)
+census_makeup_formula                       4  (extra)
+census_redos_cap                            4  (extra)
+census_related_model                        4  (extra)
+census_spf_one_sided                        4  (extra)
+census_switch_light_colourway               4  (extra)
+census_titleless                            2  (extra)
+census_year_only_generation                 8  (extra)
+chip_tier                                   8
+clothing_size                              20
+color_fashion                              16
+conc_flanker_same_token                    24
+concentration                              13
+condition                                  12
+core_count                                 16
+count                                      28
+cross_base_g_ml                            16
+electronics_ai_tolerance                   12
+electronics_qualifiers                     12
+empty_query                                12
+empty_title                                20
+eyewear_colorway                            8
+eyewear_lens_mm                             8
+eyewear_model_code                         16
+fashion_construction_bigram                20
+feminine_query_unconfirmed                 16
+finish_makeup                              24
+fit_fashion                                12
+flagship_concentration_add                 14
+flavour_grocery_add                        16
+flavour_supplement                         12
+form_both_stated                           20
+form_fragrance_one_sided                    8
+form_makeup                                12
+gender_contradiction                        8
+gender_flanker                             12
+generic_class_swap                          8
+grocery_prep                               16
+html_entity_amp                             8
+inch                                       16
+makeup_shade_number                        48
+material_fashion                           12
+multi_constituent                          16
+nfkd_diacritics                            12
+omega_hyphen_space                         28
+ordinal_fold                               20
+overrej_descriptive                       128
+pack                                       20
+padded_title                              564  (extra)
+percent                                    28
+plus_symbol_fold                           20
+plus_variant                               20
+polo_compound                               8
+ram                                         8
+redos_cap                                   8
+related_model                               8
+se_specialedition_unify                    20
+shoe_size                                  12
+size_ml                                    32
+size_oz                                    16
+spaced_units                               48  (extra)
+spf_both_stated                            12
+spf_one_sided                               8
+storage                                    24
+storage_max_not_ram                         8
+strength                                   24
+sugar_free_glue                            16
+supplement_form_added                       8
+supplement_salt_form                        8
+supplement_type_add                        25
+tm_strip                                   12
+u2011_hyphen                                8
+variant_add                               172
+vitamin_letter                              8
+weight_volume                              40
+wh1000xm5_spellings                        16
+wrong_brand_fence                           4
+year_annotation                            28
+zero_prefix_code                            8
+zma_acronym                                12

@@ -6,7 +6,8 @@
    "bare_generation_int": 14,
    "brand_class_query_skip": 16,
    "british_spelling_fold": 8,
-   "candidate_missing_query_axis": 32,
+   "candidate_missing_query_axis": 33,
+   "capped_semantics": 4,
    "census_acronym": 8,
    "census_apparel_bare_size_letter": 8,
    "census_bare_generation_int": 3,
@@ -32,7 +33,7 @@
    "clothing_size": 20,
    "color_fashion": 16,
    "conc_flanker_same_token": 24,
-   "concentration": 12,
+   "concentration": 13,
    "condition": 12,
    "core_count": 16,
    "count": 28,
@@ -48,7 +49,7 @@
    "feminine_query_unconfirmed": 16,
    "finish_makeup": 24,
    "fit_fashion": 12,
-   "flagship_concentration_add": 12,
+   "flagship_concentration_add": 14,
    "flavour_grocery_add": 16,
    "flavour_supplement": 12,
    "form_both_stated": 20,
@@ -74,7 +75,7 @@
    "plus_variant": 20,
    "polo_compound": 8,
    "ram": 8,
-   "redos_cap": 4,
+   "redos_cap": 8,
    "related_model": 8,
    "se_specialedition_unify": 20,
    "shoe_size": 12,
@@ -89,7 +90,7 @@
    "sugar_free_glue": 16,
    "supplement_form_added": 8,
    "supplement_salt_form": 8,
-   "supplement_type_add": 24,
+   "supplement_type_add": 25,
    "tm_strip": 12,
    "u2011_hyphen": 8,
    "variant_add": 172,
@@ -105,7 +106,7 @@
    "ENABLE_EXACT_PRICE_GATE": "true"
   },
   "generated_by": "scripts/dump_descriptor_golden_corpus.py",
-  "n_cases": 1149,
+  "n_cases": 1153,
   "purpose": "Golden equivalence corpus for the Wave-2 VariantDescriptor Phase-A refactor - pinned CURRENT verdicts of _axis_mismatch/_selection_match/is_exact_match/_backstop_identity_ok/_category_type_added",
   "wrong_brand": "Golden Goose"
  },
@@ -36776,6 +36777,139 @@
      "brand=wrong|cat=none": false,
      "brand=wrong|cat=other": true,
      "brand=wrong|cat=real": true
+    }
+   }
+  },
+  {
+   "axes": [
+    "capped_semantics",
+    "flagship_concentration_add",
+    "redos_cap"
+   ],
+   "brand": "Dior",
+   "category": "fragrances",
+   "id": "vd-1149",
+   "note": "531-char title: 'Parfumerie' sliced at byte 512 used to manufacture a phantom flagship 'Parfum' \u2014 the partial-token-safe cap strips the fragment",
+   "query": "Dior Sauvage",
+   "title": "Dior Sauvage 100 ml Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Parfumerie de Paris Store",
+   "verdicts": {
+    "axis_mismatch_loose": false,
+    "axis_mismatch_strict": false,
+    "axis_mismatch_strict_brand": false,
+    "backstop_ok": true,
+    "category_type_added": false,
+    "exact_match": false,
+    "exact_match_brand": false,
+    "selection_match": {
+     "brand=brand|cat=none": true,
+     "brand=brand|cat=other": false,
+     "brand=brand|cat=real": false,
+     "brand=none|cat=none": true,
+     "brand=none|cat=other": false,
+     "brand=none|cat=real": false,
+     "brand=wrong|cat=none": true,
+     "brand=wrong|cat=other": false,
+     "brand=wrong|cat=real": false
+    }
+   }
+  },
+  {
+   "axes": [
+    "capped_semantics",
+    "flagship_concentration_add",
+    "redos_cap"
+   ],
+   "brand": "Chanel",
+   "category": "fragrances",
+   "id": "vd-1150",
+   "note": "flagship 'Parfum' entirely past byte 512 \u2014 invisible to the capped parse (ACCEPTED ruling: supersedes legacy uncapped _category_type_added at the chokepoints)",
+   "query": "Chanel Bleu de Chanel",
+   "title": "Chanel Bleu de Chanel Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Parfum",
+   "verdicts": {
+    "axis_mismatch_loose": false,
+    "axis_mismatch_strict": false,
+    "axis_mismatch_strict_brand": false,
+    "backstop_ok": true,
+    "category_type_added": false,
+    "exact_match": false,
+    "exact_match_brand": false,
+    "selection_match": {
+     "brand=brand|cat=none": true,
+     "brand=brand|cat=other": false,
+     "brand=brand|cat=real": false,
+     "brand=none|cat=none": true,
+     "brand=none|cat=other": false,
+     "brand=none|cat=real": false,
+     "brand=wrong|cat=none": true,
+     "brand=wrong|cat=other": false,
+     "brand=wrong|cat=real": false
+    }
+   }
+  },
+  {
+   "axes": [
+    "capped_semantics",
+    "redos_cap",
+    "supplement_type_add"
+   ],
+   "brand": "Optimum Nutrition",
+   "category": "supplements",
+   "id": "vd-1151",
+   "note": "supplement TYPE token 'Isolate' entirely past byte 512 \u2014 invisible to the capped parse (ACCEPTED ruling)",
+   "query": "Optimum Nutrition Gold Standard Whey",
+   "title": "Optimum Nutrition Gold Standard Whey Premium Premium Premium Premium Premium Premium Premium Premium Premium Premium Premium Premium Premium Premium Premium Premium Premium Premium Premium Premium Premium Premium Premium Premium Premium Premium Premium Premium Premium Premium Premium Premium Premium Premium Premium Premium Premium Premium Premium Premium Premium Premium Premium Premium Premium Premium Premium Premium Premium Premium Premium Premium Premium Premium Premium Premium Premium Premium Premium Premium Isolate",
+   "verdicts": {
+    "axis_mismatch_loose": false,
+    "axis_mismatch_strict": false,
+    "axis_mismatch_strict_brand": false,
+    "backstop_ok": true,
+    "category_type_added": false,
+    "exact_match": false,
+    "exact_match_brand": false,
+    "selection_match": {
+     "brand=brand|cat=none": true,
+     "brand=brand|cat=other": false,
+     "brand=brand|cat=real": false,
+     "brand=none|cat=none": true,
+     "brand=none|cat=other": false,
+     "brand=none|cat=real": false,
+     "brand=wrong|cat=none": true,
+     "brand=wrong|cat=other": false,
+     "brand=wrong|cat=real": false
+    }
+   }
+  },
+  {
+   "axes": [
+    "candidate_missing_query_axis",
+    "capped_semantics",
+    "concentration",
+    "redos_cap"
+   ],
+   "brand": "Dior",
+   "category": "fragrances",
+   "id": "vd-1152",
+   "note": "trailing 'Eau de Toilette' entirely past byte 512 \u2014 the candidate's concentration is invisible to the capped parse (query-stated axis rules decide)",
+   "query": "Dior Sauvage Eau de Parfum",
+   "title": "Dior Sauvage Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Amber Eau de Toilette",
+   "verdicts": {
+    "axis_mismatch_loose": false,
+    "axis_mismatch_strict": true,
+    "axis_mismatch_strict_brand": true,
+    "backstop_ok": true,
+    "category_type_added": false,
+    "exact_match": false,
+    "exact_match_brand": false,
+    "selection_match": {
+     "brand=brand|cat=none": true,
+     "brand=brand|cat=other": false,
+     "brand=brand|cat=real": false,
+     "brand=none|cat=none": true,
+     "brand=none|cat=other": false,
+     "brand=none|cat=real": false,
+     "brand=wrong|cat=none": true,
+     "brand=wrong|cat=other": false,
+     "brand=wrong|cat=real": false
     }
    }
   }
