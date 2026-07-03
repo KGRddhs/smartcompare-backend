@@ -5343,6 +5343,24 @@ _GENERATION_MODEL_NOUNS = frozenset({
 _GENERATION_ORDINAL_RE = re.compile(
     r"\b([1-4])(?:st|nd|rd|th)\s+gen(?:eration)?\b", re.I,
 )
+# PARENTHETICAL ordinal-generation annotation ("(4th generation)"/"(2nd Gen)").
+# This is RELEASE PADDING (exactly like a "(2025)" year annotation), NOT a
+# discriminator, so the backstop ADD-check ignores it (B1-FIX ruling A1). Only
+# an INLINE bare model-noun-adjacent int counts as a generation discriminator.
+_GENERATION_ANNOTATED_RE = re.compile(
+    r"\(\s*([1-4])(?:st|nd|rd|th)\s+gen(?:eration)?\s*\)", re.I,
+)
+# B1-FIX ruling A2: a bare inline digit 1-4 that is IMMEDIATELY FOLLOWED by a
+# quantity/spec/measurement noun is a quantity, not a generation ("3 Quart",
+# "4 Ah", "2 Meter", "2 Pack"). Curated; extend as sweeps reveal.
+_GENERATION_QUANTITY_NOUNS = frozenset({
+    "pack", "piece", "pieces", "pcs", "count", "ct", "meter", "metre", "m",
+    "strap", "straps", "port", "ports", "player", "filter", "filters", "year",
+    "years", "quart", "qt", "qts", "litre", "liter", "l", "ah", "mah", "atm",
+    "bar", "camera", "cameras", "lens", "lenses", "ply", "mm", "cm", "inch",
+    "in", "watt", "w", "kw", "gb", "tb", "hz", "khz", "ghz", "seat", "seats",
+    "door", "doors",
+})
 
 
 def _flanker_markers_of(fold_tokens: FrozenSet[str]) -> FrozenSet[str]:
@@ -5352,21 +5370,43 @@ def _flanker_markers_of(fold_tokens: FrozenSet[str]) -> FrozenSet[str]:
 
 
 def _generation_ints_of(text: str) -> FrozenSet[int]:
-    """Bare generation ints 1-4 in `text` (electronics-scoped; the CONSUMER
-    checks the category). A bare digit 1-4 counts ONLY when the PRECEDING
-    identity token is a model-noun; ordinal "2nd gen" forms also count. The
+    """INLINE bare generation ints 1-4 in `text` — the DISCRIMINATOR set the
+    backstop ADD-check enforces (electronics-scoped; the CONSUMER checks the
+    category).
+
+    A bare digit 1-4 counts ONLY when (a) the PRECEDING identity token is a
+    model-noun AND (b) the FOLLOWING token is NOT a quantity/spec noun
+    (B1-FIX A2 — "Apple Watch 2 Pack"/"Series 2 Meter" are quantities, not
+    generations). Inline ordinal "2nd gen" forms count; the PARENTHETICAL
+    "(2nd generation)" annotation form does NOT (B1-FIX A1 — that is release
+    padding, captured by _generation_ints_annotated_of instead). The
     _MATCH_INPUT_CAP cap is applied by the descriptor builder before calling
     this (text is already capped)."""
     low = (text or "").lower()
     out = set()
-    for m in _GENERATION_ORDINAL_RE.finditer(low):
+    # Inline ordinal ("Nth gen"), but NOT the parenthetical "(Nth gen)" form —
+    # strip the annotated occurrences before scanning so they don't leak in.
+    inline_ord = _GENERATION_ANNOTATED_RE.sub(" ", low)
+    for m in _GENERATION_ORDINAL_RE.finditer(inline_ord):
         out.add(int(m.group(1)))
     words = re.findall(r"[a-z0-9]+", low)
     for i in range(1, len(words)):
         w = words[i]
         if w in ("1", "2", "3", "4") and words[i - 1] in _GENERATION_MODEL_NOUNS:
+            nxt = words[i + 1] if i + 1 < len(words) else None
+            if nxt in _GENERATION_QUANTITY_NOUNS:
+                continue  # a quantity/spec noun, not a generation
             out.add(int(w))
     return frozenset(out)
+
+
+def _generation_ints_annotated_of(text: str) -> FrozenSet[int]:
+    """The PARENTHETICAL "(Nth generation)"/"(Nth gen)" annotation ints —
+    informational release padding, IGNORED by the backstop ADD-check (B1-FIX
+    A1). Extracted so the descriptor keeps the axis visible for diagnostics/
+    future structured-code work without letting it discriminate."""
+    low = (text or "").lower()
+    return frozenset(int(m.group(1)) for m in _GENERATION_ANNOTATED_RE.finditer(low))
 
 
 @dataclass(frozen=True)
@@ -5440,7 +5480,8 @@ class VariantDescriptor:
     eyewear_annotations: FrozenSet[str]  # title-derived colorway/lens tokens (code-gated at verdict)
     # --- Phase-B1 NEW axes (extraction always-on; ENFORCEMENT flag-gated at backstops) ---
     flanker_markers: FrozenSet[str]      # _flanker_markers_of (fragrances curated flanker words)
-    generation_ints: FrozenSet[int]      # _generation_ints_of (electronics model-noun-adjacent 1-4)
+    generation_ints: FrozenSet[int]      # _generation_ints_of (electronics INLINE model-noun-adjacent 1-4; the ADD-check discriminator)
+    generation_ints_annotated: FrozenSet[int]  # _generation_ints_annotated_of (parenthetical "(Nth gen)" release padding; IGNORED by ADD-check)
     # --- normalized token blob (whole-set subtractions: supplement type-add) ---
     fold_tokens: FrozenSet[str]          # re.findall([a-z0-9]+, _fold_identity(capped))
 
@@ -5581,6 +5622,7 @@ def _build_variant_descriptor(text: str, category: Optional[str],
         eyewear_annotations=frozenset(_eyewear_annotation_tokens(text)),
         flanker_markers=_flanker_markers_of(fold_tokens),
         generation_ints=_generation_ints_of(capped),
+        generation_ints_annotated=_generation_ints_annotated_of(capped),
         fold_tokens=fold_tokens,
     )
 
@@ -6462,7 +6504,9 @@ def _descriptor_backstop_axes_verdict(
       - model-year both-stated mismatch (both sides state a year, disjoint)
       - flanker_markers symmetric set-inequality (fragrances; Sauvage->Elixir)
       - generation_ints ADD direction only (candidate adds a model-noun-adjacent
-        generation int absent from the query; the reverse stays selection-only)
+        INLINE generation int absent from the query; parenthetical "(Nth gen)"
+        annotations + quantity-noun-suffixed ints excluded, B1-FIX ruling A;
+        the reverse stays selection-only)
     """
     cat = (category or "").lower()
     # Gender (fragrance/beauty + fashion): both-stated contradiction + the

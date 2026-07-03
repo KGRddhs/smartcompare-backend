@@ -222,3 +222,53 @@ def test_year_one_sided_tolerated(monkeypatch):
     _axes_on(monkeypatch)
     assert _display("Apple iPad Air M3 128GB", "Apple iPad Air (2025) M3 128GB",
                     "electronics") is True
+
+
+# ---------------------------------------------------------------------------
+# B1-FIX RULING A — GENERATION AXIS over-rejection bounds
+# ---------------------------------------------------------------------------
+# A1: a "(Nth generation)"/"(Nth gen)" PARENTHETICAL annotation is release
+# padding (like "(2025)"), NOT a discriminator -> the ADD check ignores it.
+_GEN_A1_TOLERATE = [
+    ("Apple iPad Air M3", "Apple iPad Air M3 (4th generation)"),
+    ("Apple Watch SE", "Apple Watch SE (2nd generation) GPS"),
+    ("Google Nest Mini", "Google Nest Mini (2nd Generation)"),
+    ("Amazon Fire TV Stick", "Amazon Fire TV Stick 4K (2nd Gen)"),
+]
+
+
+@pytest.mark.parametrize("q,t", _GEN_A1_TOLERATE)
+def test_gen_A1_parenthetical_ordinal_is_padding(monkeypatch, q, t):
+    _axes_on(monkeypatch)
+    assert _display(q, t, "electronics") is True
+    assert _cacheread(q, t, "electronics") is True
+
+
+# A2: a bare inline digit 1-4 FOLLOWED by a quantity/spec/measurement noun is
+# NOT a generation -> tolerate.
+_GEN_A2_TOLERATE = [
+    ("Instant Pot Mini", "Instant Pot Mini 3 Quart"),
+    ("Garmin Watch", "Garmin Watch 3 ATM"),
+    ("Apple iPad Pro", "Apple iPad Pro 4 Cameras"),
+    ("DeWalt Max", "DeWalt Max 4 Ah"),
+    ("Belkin Series Cable", "Belkin Series 2 Meter Cable"),
+    ("Apple Watch", "Apple Watch 2 Pack"),
+    ("Apple Pencil", "Apple Pencil 2 Pack"),
+]
+
+
+@pytest.mark.parametrize("q,t", _GEN_A2_TOLERATE)
+def test_gen_A2_quantity_noun_not_generation(monkeypatch, q, t):
+    _axes_on(monkeypatch)
+    assert _display(q, t, "electronics") is True
+    assert _cacheread(q, t, "electronics") is True
+
+
+def test_gen_inline_add_still_rejects(monkeypatch):
+    # The leak the axis exists for: an INLINE bare generation int the candidate
+    # adds (title-terminal or followed by a non-quantity token) STILL rejects.
+    _axes_on(monkeypatch)
+    assert _display("Apple AirPods Pro", "Apple AirPods Pro 2", "electronics") is False
+    assert _cacheread("Apple AirPods Pro", "Apple AirPods Pro 2", "electronics") is False
+    # inline int followed by a NON-quantity token also fires.
+    assert _display("Apple iPad Air", "Apple iPad Air 4 Wi-Fi", "electronics") is False
