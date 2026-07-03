@@ -717,16 +717,31 @@ def _price_cache_bust_enabled() -> bool:
     return os.environ.get("PRICE_CACHE_BUST", "false").lower() == "true"
 
 
+# Wave-2 B1.1b (chokepoint R8b) — a module-level counter of cache-read identity
+# rejections so the read-chokepoint blast radius is MEASURABLE (the display side
+# already stamps guard_rejected -> a response_builder metadata diag; the cache
+# read has no response object, so we count + log here). Never resets; read for
+# diagnostics only.
+_CACHE_READ_REJECTED_COUNT = 0
+
+
 def _cache_price_identity_ok(cached: Any, brand: str, name: str, category: str) -> bool:
     """Coverage review D — REVALIDATE a cache READ against the request identity before
     serving it. A poisoned legacy entry (a wrong variant written under the request key
     before the gate, or by a raw-write bypass) is otherwise served for the full TTL with
     no re-check. Returns False (→ caller treats as a miss + re-resolves) when the cached
     price carries a TITLE that does NOT match the request. A title-less cached price is
-    served (benign — nothing to verify, don't over-invalidate). No-op when the gate is OFF."""
+    served (benign — nothing to verify, don't over-invalidate). No-op when the gate is OFF.
+
+    Wave-2 B1.1b: delegates to the SHARED backstop_identity_verdict — the SAME
+    decision the display chokepoint is_price_showable runs, so read==display parity
+    is structural (one helper, never two drifting pairs). Flag-OFF that helper is the
+    exact legacy pair (_backstop_identity_ok and not _category_type_added), so this
+    stays byte-identical until ENABLE_VARIANT_DESCRIPTOR_AXES is flipped."""
+    global _CACHE_READ_REJECTED_COUNT
     try:
         from app.services.price_service import (
-            exact_gate_enabled, _backstop_identity_ok, _category_type_added,
+            exact_gate_enabled, backstop_identity_verdict,
         )
     except Exception:  # noqa: BLE001
         return True
@@ -735,25 +750,13 @@ def _cache_price_identity_ok(cached: Any, brand: str, name: str, category: str) 
     title = cached.get("title") or cached.get("name")
     if not title:
         return True
-    # Use the AXIS-ONLY backstop (not the full superset _selection_match): a cache READ
-    # should drop a poisoned WRONG-AXIS legacy entry (S24 vs S24 FE, EDP vs EDT, 256 vs
-    # 128 — the documented warm-cache leaks) but NOT over-invalidate a genuine DESCRIPTIVE
-    # title (which the full superset would, re-resolving every cold hit and DEFEATING the
-    # warmer — coverage review HIGH). New writes are already gated by the full should_cache.
-    #
-    # Wave-2 hardening (KPI session) — ALSO run the bounded flagship-concentration /
-    # supplement-TYPE flanker check (_category_type_added), MATCHING the display chokepoint
-    # is_price_showable (which already pairs _backstop_identity_ok + _category_type_added and
-    # was proven over-rejection-free + comm-green). Closes the same-token flanker leak
-    # ("Sauvage" -> "Sauvage Parfum/Extrait", "Whey" -> "Whey Isolate") on the cache-READ
-    # path, which previously used only the axis-only backstop (weaker than display). A
-    # same-token flanker whose extra token is NOT a flagship concentration ("Sauvage Elixir")
-    # remains a documented deferred leak (Wave-2 VariantDescriptor).
     query_name = f"{brand} {name}".strip()
-    return (
-        _backstop_identity_ok(query_name, title, category)
-        and not _category_type_added(query_name, title, category)
-    )
+    ok, reason = backstop_identity_verdict(query_name, title, category)
+    if not ok:
+        _CACHE_READ_REJECTED_COUNT += 1
+        logger.info("[PRICE] cache_read_rejected (%s): query=%r title=%r cat=%s",
+                    reason or "not_exact", query_name, title, category)
+    return ok
 
 
 async def _timed_task(label: str, coro, timings_dict):

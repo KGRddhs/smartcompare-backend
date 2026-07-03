@@ -1420,12 +1420,11 @@ def is_price_showable(
         # flanker class ("Sauvage" -> "Sauvage Parfum/Extrait", "Whey" -> "Whey Isolate")
         # with no descriptive-title over-rejection. A same-token flanker whose extra token is
         # NOT a flagship concentration ("Sauvage Elixir") remains a documented deferred leak.
-        if identity and (
-            not _backstop_identity_ok(product_name, identity, category)
-            or _category_type_added(product_name, identity, category)
-        ):
-            price["guard_rejected"] = "not_exact"
-            return False
+        if identity:
+            _ok, _reason = backstop_identity_verdict(product_name, identity, category)
+            if not _ok:
+                price["guard_rejected"] = _reason or "not_exact"
+                return False
     return True
 
 
@@ -6406,6 +6405,117 @@ def _backstop_identity_ok(query_name: str, candidate_title: str, category: Optio
     q_vd = extract_variant_descriptor(query_name, category, "")
     c_vd = extract_variant_descriptor(candidate_title, category, "")
     return descriptor_verdict(q_vd, c_vd, category, DESCRIPTOR_MODE_BACKSTOP).match
+
+
+def _descriptor_backstop_axes_verdict(
+    q: VariantDescriptor, c: VariantDescriptor, category: Optional[str],
+) -> Optional[str]:
+    """The Phase-B1 EXTRA backstop-mode checks (flag-gated), each firing ONLY
+    when the axis was EXTRACTED on the relevant side(s) so a descriptive title
+    is never false-pended. Returns the granular failing-axis reason suffix
+    (appended to "not_exact:") or None. NEVER the identity-token superset (the
+    proven-reverted over-rejection, comment ps:1408-1420) and NOT the
+    candidate-omits-query-axis check (dispatcher ruling: over-rejection risk on
+    converted/iHerb display paths).
+
+    Decides ONLY the token-decidable weak-chokepoint leak classes the recon
+    census flagged as BACKSTOP-ONLY:
+      - gender both-stated contradiction (Homme vs Femme)
+      - feminine-query-unconfirmed asymmetry (query women + candidate unstated)
+      - prefixed clothing-size both-stated mismatch (Size M vs Size XL)
+      - model-year both-stated mismatch (both sides state a year, disjoint)
+      - flanker_markers symmetric set-inequality (fragrances; Sauvage->Elixir)
+      - generation_ints ADD direction only (candidate adds a model-noun-adjacent
+        generation int absent from the query; the reverse stays selection-only)
+    """
+    cat = (category or "").lower()
+    # Gender (fragrance/beauty + fashion): both-stated contradiction + the
+    # documented feminine-query-unconfirmed asymmetry (mirrors the selection-side
+    # strict rule). q.gender/c.gender are None when unstated -> UNKNOWN tolerated.
+    if cat in _FRAGRANCE_BEAUTY_CATEGORIES or cat == "fashion":
+        if _vd_gender_mismatch(q, c) or _vd_feminine_query_unconfirmed(q, c):
+            return "gender"
+    # Prefixed clothing-size (fashion): both state a "Size L"-form letter and
+    # share none. Bare letters stay ambiguous (not extracted) as at selection.
+    if cat == "fashion" and _vd_disjoint(q.clothing_sizes, c.clothing_sizes):
+        return "clothing_size"
+    # Model-year both-stated (electronics/fashion): a year stated on BOTH sides
+    # (annotation "(2022)"/"gen 2022" OR a bare 2020s model-year token) that is
+    # disjoint = a different generation. One-sided stays tolerated (the selection
+    # side owns the latest-generation-default direction).
+    if cat in _MODEL_YEAR_CATEGORIES:
+        q_years = _vd_model_years(q)
+        c_years = _vd_model_years(c)
+        if q_years and c_years and not (q_years & c_years):
+            return "model_year"
+    # Flanker markers (fragrances): a curated concentration-flanker word on ONE
+    # side only = a distinct SKU (Sauvage vs Sauvage Elixir). SYMMETRIC set
+    # inequality; the curated set never contains a base-name word so a correct
+    # base ("Oud Wood") carries none and matches its own PDP.
+    if cat == "fragrances" and q.flanker_markers != c.flanker_markers:
+        return "flanker"
+    # Generation ints (electronics): candidate ADDS a model-noun-adjacent
+    # generation int the query never asked for (AirPods Pro -> Pro 2). ADD
+    # direction only — the reverse (query pins a generation, candidate omits it)
+    # stays a selection-side concern (a bare-int omission is not backstop-safe).
+    if cat == "electronics" and (c.generation_ints - q.generation_ints):
+        return "generation"
+    return None
+
+
+def _vd_model_years(d: VariantDescriptor) -> FrozenSet[str]:
+    """The model-year tokens on one side for the backstop both-stated check:
+    the annotation-form years (year_annotations) UNION the bare 2020s
+    model-year tokens present in the identity (a "SE 2020" bare year, which
+    _annotation_year_tokens deliberately does NOT capture). Non-2020s numbers
+    (RTX 2080-class model numbers) are excluded by _MODEL_YEAR_RE's 202[0-9]
+    bound."""
+    bare = frozenset(w for w in d.fold_tokens if _MODEL_YEAR_RE.match(w))
+    return d.year_annotations | bare
+
+
+def backstop_identity_verdict(
+    query_name: str, candidate_title: str, category: Optional[str], *,
+    brand: str = "",
+) -> Tuple[bool, Optional[str]]:
+    """THE shared weak-chokepoint identity decision — one implementation for BOTH
+    the display enforce block (is_price_showable) and the cache-read
+    _cache_price_identity_ok, so read==display parity is STRUCTURAL.
+
+    Returns (ok, reason): ok=True passes; ok=False pends/drops with `reason` the
+    guard_rejected value ("not_exact" flag-OFF; "not_exact:<axis>" flag-ON).
+
+    FLAG-OFF (variant_descriptor_axes_enabled False -> default, and whenever the
+    exact gate is off) returns EXACTLY the legacy pair
+      (_backstop_identity_ok(...) and not _category_type_added(...))
+    with reason "not_exact" on failure -> byte-identical pre-change behaviour
+    (pinned by the golden corpus + a flag-OFF unit pin).
+
+    FLAG-ON adds the Phase-B1 bounded extra axes
+    (_descriptor_backstop_axes_verdict), each firing only when the axis was
+    extracted, with a granular "not_exact:<axis>" reason. `brand` is accepted for
+    signature parity with the primary gates but the backstop stays
+    brand-INDEPENDENT (the extractors subtract nothing extra), so a genuine
+    brand-omitted sephora title is never false-pended."""
+    if not exact_gate_enabled():
+        # Gate off -> the legacy backstop is itself a no-op contract; reproduce it.
+        legacy_ok = (_backstop_identity_ok(query_name, candidate_title, category)
+                     and not _category_type_added(query_name, candidate_title, category))
+        return (legacy_ok, None if legacy_ok else "not_exact")
+    legacy_ok = (_backstop_identity_ok(query_name, candidate_title, category)
+                 and not _category_type_added(query_name, candidate_title, category))
+    if not legacy_ok:
+        return (False, "not_exact")
+    if not variant_descriptor_axes_enabled():
+        return (True, None)
+    if not candidate_title:
+        return (True, None)
+    q_vd = extract_variant_descriptor(query_name, category, brand)
+    c_vd = extract_variant_descriptor(candidate_title, category, brand)
+    axis = _descriptor_backstop_axes_verdict(q_vd, c_vd, category)
+    if axis is not None:
+        return (False, "not_exact:" + axis)
+    return (True, None)
 
 
 # --- Availability policy (schema.org-complete; never raises) ----------------

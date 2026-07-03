@@ -193,15 +193,22 @@ def test_display_backstop_flagship_flanker_pended():
                              enforce_correctness=True) is False
 
 
-@pytest.mark.xfail(reason="a same-token flanker whose extra token is NOT a flagship "
-                          "concentration ('Sauvage Elixir') needs the full superset at the "
-                          "backstop, which over-rejects correct descriptive titles (coverage "
-                          "sweep); deferred to structured variant metadata",
-                   strict=True)
-def test_deferred_display_backstop_same_token_flanker():
+def test_display_backstop_same_token_flanker(monkeypatch):
+    # Wave-2 B1.1b: the same-token concentration flanker ('Sauvage Elixir') is now
+    # closed at the display backstop by the BOUNDED curated flanker_markers axis
+    # (NOT the full superset, which over-rejected descriptive titles) — gated ON by
+    # ENABLE_VARIANT_DESCRIPTOR_AXES. Flag OFF stays the documented leak (byte-identical
+    # rollback); flag ON pends it. Was xfail-strict pre-Wave-2.
+    monkeypatch.setenv("ENABLE_VARIANT_DESCRIPTOR_AXES", "true")
     assert is_price_showable("Dior Sauvage",
                              _price("Dior Sauvage Elixir", amount=40.0), "fragrances",
                              enforce_correctness=True) is False
+    # And the flag-OFF rollback still leaks (the accepted pre-Wave-2 behaviour) —
+    # proving the closure is entirely behind the flag.
+    monkeypatch.setenv("ENABLE_VARIANT_DESCRIPTOR_AXES", "false")
+    assert is_price_showable("Dior Sauvage",
+                             _price("Dior Sauvage Elixir", amount=40.0), "fragrances",
+                             enforce_correctness=True) is True
 
 
 def test_cross_unit_size_pended():
