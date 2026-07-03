@@ -7140,6 +7140,19 @@ def _vh_longest_base_match(folded: str, keys) -> Optional[str]:
     return best
 
 
+def _strip_trailing_spf_token(folded: str) -> str:
+    """Remove a TRAILING standalone 'spf' / 'spf <n>' token from a folded string
+    (B3-FIX). Only strips at the end so a genuine sunscreen name that carries
+    'spf' as a NON-suffix part ('...spf 50 tinted') keeps its 'spf' for the
+    inherent match. Used only when a non_sunscreen base already matched, to stop
+    the candidate's own added 'spf' suffix from self-shadowing that stem into a
+    phantom inherent line."""
+    if not folded:
+        return folded
+    stripped = re.sub(r"\s+spf(?:\s+\d+)?\s*$", "", folded).strip()
+    return stripped or folded
+
+
 def _variant_hint_lookup(category: Optional[str], query_name: str,
                          candidate_title: str, axis: str) -> str:
     """Deterministic $0 reader over data/variant_hint_reference.json.
@@ -7169,10 +7182,24 @@ def _variant_hint_lookup(category: Optional[str], query_name: str,
         spf_section = ref.get("inherent_spf_lines") or {}
         inherent = spf_section.get("lines") or []
         non_sun = spf_section.get("non_sunscreen_lines") or []
-        # An inherent-SPF line: the SPF add is descriptive of the base -> SAME.
-        inh = _vh_longest_base_match(qf, inherent) or _vh_longest_base_match(cf, inherent)
         # A KNOWN non-sunscreen line: the SPF add is a distinct variant -> DISTINCT.
         non = _vh_longest_base_match(qf, non_sun) or _vh_longest_base_match(cf, non_sun)
+        # SELF-SHADOW HARDENING (B3-FIX): the candidate's OWN "spf"/"spf NN"
+        # suffix must not extend a non_sunscreen stem into a phantom inherent
+        # match (e.g. "hydro boost water gel" + the added " spf 25" matching an
+        # inherent "hydro boost water gel spf" line, out-lengthing the
+        # non_sunscreen stem). When the base already matched a non_sunscreen
+        # line, strip a trailing standalone "spf"/"spf <n>" token from the text
+        # used to match the INHERENT lines, so an inherent win must come from a
+        # genuine sunscreen name that carries "spf" as a NON-suffix part
+        # (anthelios / capital soleil / uv daily etc. are unaffected).
+        qf_inh, cf_inh = qf, cf
+        if non:
+            qf_inh = _strip_trailing_spf_token(qf)
+            cf_inh = _strip_trailing_spf_token(cf)
+        # An inherent-SPF line: the SPF add is descriptive of the base -> SAME.
+        inh = (_vh_longest_base_match(qf_inh, inherent)
+               or _vh_longest_base_match(cf_inh, inherent))
         # When BOTH match (a longer non-sunscreen key vs a shorter inherent key or
         # vice versa) prefer the LONGER, more-specific base line.
         if inh and (not non or len(inh) >= len(non)):

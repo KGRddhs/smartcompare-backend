@@ -78,6 +78,19 @@ class TestVariantHintLookup:
             "skincare", "Weird Unknown Cream",
             "Weird Unknown Cream SPF 30", "spf") == "unknown"
 
+    def test_spf_hydro_boost_water_gel_is_distinct_b3fix(self):
+        # B3-FIX: Hydro Boost Water Gel is a NON-sunscreen base whose SPF variant
+        # is a DISTINCT SKU. The self-shadow bug ("hydro boost water gel spf" in
+        # inherent lines out-lengthed the non_sunscreen stem) must NOT win.
+        assert ps._variant_hint_lookup(
+            "skincare", "Neutrogena Hydro Boost Water Gel",
+            "Neutrogena Hydro Boost Water Gel SPF 25", "spf") == "distinct"
+
+    def test_spf_neutrogena_hydro_boost_is_distinct_b3fix(self):
+        assert ps._variant_hint_lookup(
+            "skincare", "Neutrogena Hydro Boost",
+            "Neutrogena Hydro Boost SPF 25", "spf") == "distinct"
+
     def test_formula_distinct_sub_lines(self):
         assert ps._variant_hint_lookup(
             "makeup", "Maybelline Fit Me Matte",
@@ -122,6 +135,15 @@ class TestWarmerWriteVetoWarmContext:
             "La Roche-Posay Anthelios",
             _price("La Roche-Posay Anthelios SPF 50"), "skincare")
         assert allow is True
+
+    def test_hydro_boost_water_gel_plus_spf_vetoed_b3fix(self, gate_axes_on, monkeypatch):
+        # B3-FIX pin: the SPF-add veto MUST fire for Hydro Boost Water Gel.
+        monkeypatch.setenv("WARMER_CONTEXT", "1")
+        allow, reason = ps.warmer_write_veto(
+            "Neutrogena Hydro Boost Water Gel",
+            _price("Neutrogena Hydro Boost Water Gel SPF 25"), "skincare")
+        assert allow is False
+        assert "spf" in (reason or "").lower()
 
     def test_fit_me_matte_to_dewy_vetoed(self, gate_axes_on, monkeypatch):
         monkeypatch.setenv("WARMER_CONTEXT", "1")
