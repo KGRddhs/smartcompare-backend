@@ -7,6 +7,7 @@ import re
 import json
 import time
 import asyncio
+import hashlib
 import functools
 import logging
 import unicodedata
@@ -7211,12 +7212,239 @@ def _warm_context_active(warm_context: bool = False) -> bool:
     )
 
 
+def _detect_ambiguous_variant_axes(
+    request_name: str, title: str, category: Optional[str],
+) -> List[str]:
+    """The ordered list of Class-B AMBIGUOUS axes the candidate ADDS that the
+    query lacks: any subset of ["gender", "spf", "formula"] in warmer_write_veto's
+    original branch order. The SHARED axis detector for both the sync curated veto
+    and the async LLM-hint path so the two never drift. Returning ALL applicable
+    axes (not just the first) preserves B3a's fall-through semantics: a 'same'
+    gender verdict then still checks spf, exactly as the original sequential
+    branches did."""
+    cat = (category or "").lower()
+    qd = extract_variant_descriptor(request_name, category)
+    cd = extract_variant_descriptor(title, category)
+    axes: List[str] = []
+    # --- gender flanker base->femme (fragrance/beauty + fashion) ---
+    if (cat in _FRAGRANCE_BEAUTY_CATEGORIES or cat == "fashion") \
+            and cd.gender and not qd.gender:
+        axes.append("gender")
+    # --- one-sided SPF add (skincare/makeup/haircare — category-independent) ---
+    if cd.spfs and not qd.spfs:
+        axes.append("spf")
+    # --- makeup one-sided formula add ---
+    if cat == "makeup" and (cd.finishes - qd.finishes):
+        axes.append("formula")
+    return axes
+
+
+# ---------------------------------------------------------------------------
+# Wave-2 B3b — the NARROW OFF-CLOCK LLM variant-hint (curated-miss fallback).
+#
+# When the curated reference (_variant_hint_lookup) returns "unknown" on a
+# Class-B ambiguous axis, B3a fail-closes (vetoes the write). B3b recovers the
+# CORRECT-product misses whose family is not yet in the curated reference, by
+# consulting a NARROW disambiguator — but ONLY when EVERY hard invariant holds:
+#   (1) variant_descriptor_axes_enabled()  (hard-requires the exact gate)
+#   (2) ENABLE_VARIANT_LLM_HINT            (default OFF)
+#   (3) the OFF-CLOCK warm signal          (WARMER_CONTEXT env / warm_context arg
+#                                           / allow_llm_hint arg)
+#   (4) _variant_hint_lookup returned "unknown".
+# The LLM is NEVER constructed on the live 15s path (no warm signal -> the
+# machinery is never reached). Consulted at cache-WRITE time only.
+#
+# CACHE: a Redis verdict cache varhint:<sha12(normalized_family, axis)> TTL 90d
+# (product-line facts are stable). A HIT short-circuits ($0) — and the LIVE path
+# MAY read this $0 cache (a filled verdict costs nothing) but must NEVER call the
+# LLM. On a MISS: the async path calls gpt-4o-mini (temperature=0, json_object),
+# caches the verdict, optionally appends to data/variant_hint_learned.json for
+# convergence. FAIL-CLOSED default (flag off / low confidence / client error /
+# per-run cap exceeded / "unknown" response) = VETO the write (never cache an
+# unverified identity). Only a HIGH-confidence answer acts:
+#   distinct + high -> veto ; same + high -> allow ; else -> fail-closed veto.
+#
+# PER-RUN CAP: VARHINT_MAX_CALLS_PER_RUN (default 40, mirrors
+# WARMER_MAX_SERPER_CREDITS_PER_RUN). Beyond the cap -> fail-closed veto WITHOUT
+# calling the LLM. The counter is a process-local module global (a warm run is a
+# single process; reset at import / via _reset_varhint_run_state for tests).
+# ---------------------------------------------------------------------------
+_VARHINT_VERDICT_TTL_SECONDS = 90 * 24 * 3600  # 90d — product-line facts are stable
+_VARHINT_LEARNED_PATH = os.path.join(
+    os.path.dirname(__file__), "..", "..", "data", "variant_hint_learned.json",
+)
+# Process-local per-run LLM-call counter (a warm run = one process).
+_varhint_calls_this_run = 0
+
+
+def variant_llm_hint_enabled() -> bool:
+    """True iff the B3b LLM-hint machinery is active. Default OFF, read FRESH per
+    call (the adapter_selection_primary_enabled :5027 idiom). HARD-REQUIRES the
+    variant-descriptor axes (which in turn hard-require the exact gate), so the
+    hint never exists in a rollback state and flag-OFF is byte-identical."""
+    if not variant_descriptor_axes_enabled():
+        return False
+    return os.getenv("ENABLE_VARIANT_LLM_HINT", "false").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
+def _varhint_max_calls_per_run() -> int:
+    """Per-run LLM-call cap (mirrors WARMER_MAX_SERPER_CREDITS_PER_RUN). Beyond
+    the cap the hint fail-closes WITHOUT calling. Default 40; non-numeric -> 40."""
+    try:
+        return max(0, int(os.getenv("VARHINT_MAX_CALLS_PER_RUN", "40")))
+    except (TypeError, ValueError):
+        return 40
+
+
+def _reset_varhint_run_state() -> None:
+    """Reset the process-local per-run LLM-call counter. Called at warm-run start
+    (and by tests). No-op-safe."""
+    global _varhint_calls_this_run
+    _varhint_calls_this_run = 0
+
+
+def _varhint_normalized_family(query_name: str, candidate_title: str, axis: str) -> str:
+    """The stable normalized-family string the verdict cache is keyed on. Uses the
+    SAME curated base-line match as _variant_hint_lookup so a cached verdict is
+    reused across the many candidate titles that share one product line; falls
+    back to the folded query when no curated line matches (the exact curated-miss
+    case B3b exists to resolve). The axis is folded in by the caller's sha12."""
+    ref = _load_variant_hint_reference()
+    qf = _fold_identity(query_name or "")
+    cf = _fold_identity(candidate_title or "")
+    table_keys: List[str] = []
+    if axis == "gender":
+        table_keys = list((ref.get("fragrance_base_gender") or {}).keys())
+    elif axis == "spf":
+        spf = ref.get("inherent_spf_lines") or {}
+        table_keys = list(spf.get("lines") or []) + list(spf.get("non_sunscreen_lines") or [])
+    elif axis == "formula":
+        table_keys = list((ref.get("makeup_formula_lines") or {}).keys())
+    base = _vh_longest_base_match(qf, table_keys) or _vh_longest_base_match(cf, table_keys)
+    return base or qf
+
+
+def _varhint_verdict_key(query_name: str, candidate_title: str, axis: str) -> str:
+    """varhint:<sha12(normalized_family + '|' + axis)> — the Redis verdict-cache
+    key. Product-line facts are family-stable, so the family (not the raw title)
+    is the cache axis."""
+    family = _varhint_normalized_family(query_name, candidate_title, axis)
+    digest = hashlib.sha256(f"{family}|{axis}".encode("utf-8")).hexdigest()[:12]
+    return f"varhint:{digest}"
+
+
+def _varhint_read_verdict_cache(key: str) -> Optional[str]:
+    """Read a cached LLM verdict ("distinct"|"same") from Redis, or None on miss /
+    Redis-down / malformed. $0 — the LIVE path may call this (never the LLM)."""
+    try:
+        from app.services.cache_service import _redis_get
+        raw = _redis_get(key)
+    except Exception:  # noqa: BLE001 — Redis is a soft dependency (fail-open read)
+        return None
+    if raw in ("distinct", "same"):
+        return raw
+    return None
+
+
+def _varhint_write_verdict_cache(key: str, verdict: str) -> None:
+    """Persist a resolved HIGH-confidence LLM verdict to Redis (90d TTL). Only
+    'distinct'/'same' are cached (never 'unknown' — an unknown must re-resolve)."""
+    if verdict not in ("distinct", "same"):
+        return
+    try:
+        from app.services.cache_service import _redis_set
+        _redis_set(key, verdict, ex=_VARHINT_VERDICT_TTL_SECONDS)
+    except Exception:  # noqa: BLE001 — cache write is best-effort
+        pass
+
+
+def _varhint_append_learned(family: str, axis: str, verdict: str) -> None:
+    """Append a resolved verdict to data/variant_hint_learned.json for convergence
+    (the committed-data precedent). Best-effort; never raises. Keyed 'family|axis'."""
+    if verdict not in ("distinct", "same"):
+        return
+    try:
+        doc: Dict[str, Any] = {}
+        if os.path.exists(_VARHINT_LEARNED_PATH):
+            with open(_VARHINT_LEARNED_PATH, "r", encoding="utf-8") as fh:
+                loaded = json.load(fh)
+                if isinstance(loaded, dict):
+                    doc = loaded
+        doc[f"{family}|{axis}"] = verdict
+        with open(_VARHINT_LEARNED_PATH, "w", encoding="utf-8") as fh:
+            json.dump(doc, fh, ensure_ascii=True, indent=2, sort_keys=True)
+    except Exception:  # noqa: BLE001 — learned-file is additive, never fatal
+        pass
+
+
+async def _consult_variant_llm_hint(
+    category: Optional[str], query_name: str, candidate_title: str, axis: str,
+) -> str:
+    """The async curated-miss fallback. Returns "distinct" | "same" | "unknown".
+
+    ORDER: (a) Redis verdict cache HIT -> return it ($0, NO client construction).
+    (b) MISS: enforce the per-run cap (beyond it -> "unknown" WITHOUT calling),
+    else call disambiguate_variant_line; only a HIGH-confidence answer resolves
+    to distinct/same (cached + learned); anything else -> "unknown" (the caller
+    fail-closes). NEVER raises."""
+    global _varhint_calls_this_run
+    key = _varhint_verdict_key(query_name, candidate_title, axis)
+    cached = _varhint_read_verdict_cache(key)
+    if cached is not None:
+        return cached
+    # Cache miss -> the LLM would be called. Enforce the per-run cap FIRST so the
+    # (N+1)th consult fails-closed WITHOUT constructing a client.
+    if _varhint_calls_this_run >= _varhint_max_calls_per_run():
+        return "unknown"
+    _varhint_calls_this_run += 1
+    from app.services import openai_service
+    result = await openai_service.disambiguate_variant_line(
+        category, query_name, candidate_title, axis,
+    )
+    distinct = result.get("distinct_product")
+    conf = str(result.get("confidence") or "").lower()
+    if conf != "high":
+        return "unknown"
+    if distinct is True:
+        verdict = "distinct"
+    elif distinct is False:
+        verdict = "same"
+    else:
+        return "unknown"
+    _varhint_write_verdict_cache(key, verdict)
+    _varhint_append_learned(
+        _varhint_normalized_family(query_name, candidate_title, axis), axis, verdict,
+    )
+    return verdict
+
+
+def _apply_variant_verdict(axis: str, verdict: str) -> Optional[Tuple[bool, str]]:
+    """Map a per-axis verdict to a (allow, reason) veto decision, or None when the
+    verdict is 'same' (allow — let the caller continue to the next axis / final
+    allow). Shared by the sync + async vetoes so the reason strings never drift.
+      distinct -> (False, "<axis>_..._distinct")
+      unknown  -> (False, "<axis>_..._unknown_failclosed")
+      same     -> None (allow)."""
+    reason_stem = {
+        "gender": "gender_flanker", "spf": "spf_add", "formula": "formula_add",
+    }.get(axis, axis)
+    if verdict == "distinct":
+        return False, f"{reason_stem}_distinct"
+    if verdict == "unknown":
+        return False, f"{reason_stem}_unknown_failclosed"
+    return None  # "same" -> allow
+
+
 def warmer_write_veto(
     request_name: str, price: Optional[Dict[str, Any]], category: Optional[str] = None,
     *, warm_context: bool = False,
 ) -> Tuple[bool, Optional[str]]:
     """The WARM-CONTEXT cache-write veto for the 2+1 warmer-writable poison
-    classes. Returns (allow, reason).
+    classes. Returns (allow, reason). SYNCHRONOUS — the deterministic curated
+    path, plus a $0 read of the B3b Redis verdict cache when the hint is enabled
+    (NEVER an LLM call — that lives only in warmer_write_veto_async).
 
     NO-OP (returns (True, None)) unless BOTH: the warm signal is present
     (_warm_context_active) AND variant_descriptor_axes_enabled(). So the live
@@ -7226,8 +7454,9 @@ def warmer_write_veto(
     query lacks (gender / spf / makeup formula), consults _variant_hint_lookup:
       "distinct" -> veto (do NOT cache — a different SKU);
       "same"     -> allow (descriptive of the same product);
-      "unknown"  -> FAIL-CLOSED veto (never write an unverified identity to the
-                    shared genuine TTL — the price still resolves + DISPLAYS).
+      "unknown"  -> (B3b) when variant_llm_hint_enabled(), first try the $0 Redis
+                    verdict cache; a cached distinct/same acts, else FAIL-CLOSED
+                    veto (the LLM is only consulted in the async variant).
     is_price_showable is deliberately NOT touched — display stays as today."""
     if not _warm_context_active(warm_context) or not variant_descriptor_axes_enabled():
         return True, None
@@ -7236,40 +7465,55 @@ def warmer_write_veto(
     title = price.get("title") or price.get("name") or ""
     if not title:
         return True, None
-    cat = (category or "").lower()
-    qd = extract_variant_descriptor(request_name, category)
-    cd = extract_variant_descriptor(title, category)
+    for axis in _detect_ambiguous_variant_axes(request_name, title, category):
+        verdict = _variant_hint_lookup(category, request_name, title, axis)
+        if verdict == "unknown" and variant_llm_hint_enabled():
+            # B3b sync path: consult ONLY the $0 Redis verdict cache — NEVER the
+            # LLM (a live request may benefit from an already-resolved verdict at
+            # $0, but a network call belongs to the async off-clock variant).
+            cached = _varhint_read_verdict_cache(
+                _varhint_verdict_key(request_name, title, axis)
+            )
+            if cached is not None:
+                verdict = cached
+        decision = _apply_variant_verdict(axis, verdict)
+        if decision is not None:
+            return decision
+    return True, None
 
-    # --- gender flanker base->femme (fragrance/beauty + fashion) ---
-    if cat in _FRAGRANCE_BEAUTY_CATEGORIES or cat == "fashion":
-        # Candidate ADDS a gender token the query lacks (the base->femme add that
-        # _gender_mismatch [both-stated] and _feminine_query_unconfirmed
-        # [women's-query] both miss).
-        if cd.gender and not qd.gender:
-            verdict = _variant_hint_lookup(category, request_name, title, "gender")
-            if verdict == "distinct":
-                return False, "gender_flanker_distinct"
-            if verdict == "unknown":
-                return False, "gender_flanker_unknown_failclosed"
 
-    # --- one-sided SPF add (skincare/makeup/haircare — category-independent) ---
-    if cd.spfs and not qd.spfs:
-        verdict = _variant_hint_lookup(category, request_name, title, "spf")
-        if verdict == "distinct":
-            return False, "spf_add_distinct"
-        if verdict == "unknown":
-            return False, "spf_add_unknown_failclosed"
-
-    # --- makeup one-sided formula add ---
-    if cat == "makeup":
-        added_forms = cd.finishes - qd.finishes
-        if added_forms:
-            verdict = _variant_hint_lookup(category, request_name, title, "formula")
-            if verdict == "distinct":
-                return False, "formula_add_distinct"
-            if verdict == "unknown":
-                return False, "formula_add_unknown_failclosed"
-
+async def warmer_write_veto_async(
+    request_name: str, price: Optional[Dict[str, Any]], category: Optional[str] = None,
+    *, warm_context: bool = False, allow_llm_hint: bool = False,
+) -> Tuple[bool, Optional[str]]:
+    """OFF-CLOCK async variant of warmer_write_veto. Identical to the sync veto,
+    EXCEPT that on a curated "unknown" it consults the B3b LLM hint
+    (Redis-verdict-cache first, then a capped gpt-4o-mini call). The LLM is
+    constructed/called ONLY when ALL hold:
+      variant_llm_hint_enabled()  (axes + ENABLE_VARIANT_LLM_HINT + exact gate)
+      AND the warm signal          (warm_context / WARMER_CONTEXT / allow_llm_hint)
+      AND _variant_hint_lookup == "unknown".
+    A live request never passes warm_context/allow_llm_hint and never sets
+    WARMER_CONTEXT, so this coroutine's LLM branch is unreachable from the 15s
+    path. Fail-closed on every uncertainty (low confidence / cap / error /
+    'unknown' response) -> veto the write."""
+    warm = _warm_context_active(warm_context) or bool(allow_llm_hint)
+    if not warm or not variant_descriptor_axes_enabled():
+        return True, None
+    if not isinstance(price, dict):
+        return True, None
+    title = price.get("title") or price.get("name") or ""
+    if not title:
+        return True, None
+    for axis in _detect_ambiguous_variant_axes(request_name, title, category):
+        verdict = _variant_hint_lookup(category, request_name, title, axis)
+        if verdict == "unknown" and variant_llm_hint_enabled():
+            verdict = await _consult_variant_llm_hint(
+                category, request_name, title, axis,
+            )
+        decision = _apply_variant_verdict(axis, verdict)
+        if decision is not None:
+            return decision
     return True, None
 
 
