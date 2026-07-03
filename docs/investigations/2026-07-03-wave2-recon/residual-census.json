@@ -1,0 +1,352 @@
+{
+ "summary": "LANE 1 residual-class census (branch feature/genuine-price-kpi @ 7af40eb, worktree C:/Users/SynAckITPC/Documents/AI/smartcompare-kpi). 21 residual classes enumerated and every one REPRODUCED through the real runtime gates with ENABLE_EXACT_PRICE_GATE=true (default ON): _selection_match (price_service.py:5616), select_best (:5889), should_cache_price (:6139), the cache-read _cache_price_identity_ok (structured_comparison_service.py:720), and the display chokepoint is_price_showable(enforce_correctness=True) (:1313). Raw probe JSON in the session scratchpad (residual_census_results.json, census_batch2.json, se_year_reprobe.json). Structural shape of the results: the 5 decision points collapse into TWO enforcement strengths — (A) the brand-aware full _selection_match at selection/select_best/cache-write (airtight for token-DISTINGUISHABLE classes), and (B) the axis-only _backstop_identity_ok (:5800) + _category_type_added (:4254) at cache-read/display, which leaks EVERY class whose discriminator is not an explicit numeric/qualifier axis. Census outcome: 5 FULL leaks passing all 5 points (gender flanker base->femme, one-sided SPF, makeup one-sided formula, apparel bare size-letter, Disney-Stitch construction — the last two were previously undocumented at full-leak severity), 9 BACKSTOP-ONLY leaks (Sauvage->Elixir, GoodGirl->Supreme, AF1->Air Max 1, AirPods Pro->Pro 2 both directions, iPhone-SE year-both-stated, gender both-stated Homme<->Femme, femme-query-unconfirmed, Size-M-vs-Size-XL, candidate-omits-query-axis, titleless-price), 6 OVER-REJECTIONS of correct products (ZMA/Cal-Mag acronym — rejected at ALL 5 points including display; hyphen-vs-space Omega-3 both directions; SE-year-add fail-closed; Switch-Light colourway; cross-unit g<->ml both directions — now ENFORCED fail-closed at all 5 points, upgraded from the old xfail; ReDoS-cap), plus the ladder-exposure F1 amplifier (verified: build_adapter_search_terms('Versace Eros Eau de Toilette 100ml','fragrances') -> ['...','Eros'], flag default ON). One prior-session confound corrected: the SE-year/AirPods display probes at 25 BHD were being pended by is_implausible_high_value_price, NOT the identity backstop — at realistic amounts (95-180 BHD) they LEAK at display+cache-read. Fixed-baseline verified: flagship Sauvage->Parfum, both-stated SPF/finish, combo-add Calcium->Cal-Mag-Zinc all reject at all 5 points (the 6a cache-read hardening holds).",
+ "findings": [
+  {
+   "class": "gender_flanker_base_to_femme",
+   "example_query": "Versace Eros",
+   "example_wrong_candidate": "Versace Eros Pour Femme Eau de Parfum 100ml",
+   "decision_point_behavior": {
+    "selection": "ACCEPT (leak) — gender tokens are fragrance identity-padding; _gender_mismatch (price_service.py:3971) needs BOTH sides stated; _feminine_query_unconfirmed (:3979) is deliberately asymmetric (women's-query only)",
+    "select_best": "ACCEPT",
+    "cache_write": "ACCEPT",
+    "cache_read": "ACCEPT",
+    "display": "ACCEPT"
+   },
+   "leak_or_overreject": "LEAK at ALL 5 points (runtime-verified, also with full EDP+100ml axes present). HELD tradeoff — symmetrizing mass-over-rejects women's-base fragrances (Black Opium -> 'Black Opium For Women'). Pinned test_held_gender_flanker_accepted_tradeoff (tests/test_correctness_coverage_sweep_fixes.py:159). Ladder F1 amplifies retrieval exposure (core term 'Eros' retrieves the flanker at stores carrying only it).",
+   "what_structured_field_would_decide_it": "VariantDescriptor.gender (enum men/women/unisex/unstated) + a curated base-line-vs-flanker reference (is the UNSTATED base of this line men's or women's?) — the asymmetry needs product-line knowledge, the design doc's 'small curated reference + narrow LLM hint' case",
+   "retailer_data_availability": "NO wired adapter stamps gender. noon stamps brand only (noon_service.py:205/465); Algolia fashion indexes (6thstreet/namshi) carry gender facets UPSTREAM but the hits' gender field is not read; Zyte product schema has no gender; fragrance PDPs carry it in breadcrumbs/title only"
+  },
+  {
+   "class": "gender_both_stated_conflict_backstop",
+   "example_query": "Versace Eros Pour Homme",
+   "example_wrong_candidate": "Versace Eros Pour Femme",
+   "decision_point_behavior": {
+    "selection": "REJECT (_gender_mismatch fires — strict_extras block, price_service.py:5354-5360)",
+    "select_best": "REJECT",
+    "cache_write": "REJECT",
+    "cache_read": "ACCEPT (leak — gender is strict_extras-gated, absent from the axis-only backstop)",
+    "display": "ACCEPT (leak)"
+   },
+   "leak_or_overreject": "BACKSTOP-ONLY LEAK (previously undocumented as a distinct class): even the EXPLICIT both-stated gender conflict passes cache-read + display because _backstop_identity_ok passes strict_extras=False (:5813). Live-path risk on non-selection paths (converted_usd/page-scrape/iHerb reach display without _selection_match).",
+   "what_structured_field_would_decide_it": "Same VariantDescriptor.gender — trivially decidable (both stated); just needs the gender axis present at the backstop comparison",
+   "retailer_data_availability": "Title-derivable on both sides (both state it) — extractor _gender_of already exists; no adapter field needed"
+  },
+  {
+   "class": "femme_query_unconfirmed_backstop",
+   "example_query": "Versace Eros Pour Femme",
+   "example_wrong_candidate": "Versace Eros Eau de Parfum 100ml",
+   "decision_point_behavior": {
+    "selection": "REJECT (fail-closed via _feminine_query_unconfirmed + leak-direction subset)",
+    "select_best": "REJECT",
+    "cache_write": "REJECT",
+    "cache_read": "ACCEPT (leak)",
+    "display": "ACCEPT (leak)"
+   },
+   "leak_or_overreject": "BACKSTOP-ONLY LEAK — the femme-query direction is correctly fail-closed at the strong gates but leaks at display/cache-read (gender checks strict_extras-only).",
+   "what_structured_field_would_decide_it": "VariantDescriptor.gender at the backstop (query states women, candidate unstated -> pend per the existing asymmetry rule)",
+   "retailer_data_availability": "Query-side stated; candidate title-derivable"
+  },
+  {
+   "class": "spf_one_sided_add",
+   "example_query": "Kiehl's Ultra Facial Cream",
+   "example_wrong_candidate": "Kiehl's Ultra Facial Cream SPF 30",
+   "decision_point_behavior": {
+    "selection": "ACCEPT (leak) — SPF stripped from identity (:3587), _spf_mismatch (:4673) requires both sides; the SPF-ADD axis was implemented and REVERTED (note :4680-4687)",
+    "select_best": "ACCEPT",
+    "cache_write": "ACCEPT",
+    "cache_read": "ACCEPT",
+    "display": "ACCEPT"
+   },
+   "leak_or_overreject": "LEAK at ALL 5 points. HELD — a sunscreen carve-out cannot cover the unbounded set of sunscreen names (coverage sweep over-rejected Vichy Capital Soleil / Bioderma Photoderm / Banana Boat); leak is low-harm (base cream vs SPF variant near-identical prices). Pinned test_held_skincare_one_sided_spf_accepted_tradeoff (:165) + test_R6_overrej_skincare_spf_*. Both-stated-different SPF (30 vs 50) verified REJECTED at ALL 5 points (always-on axis).",
+   "what_structured_field_would_decide_it": "VariantDescriptor.spf (typed int) + a product-class flag is_sun_product (does the BASE product inherently carry SPF?) — the one-sided asymmetry decision is exactly the narrow-LLM-hint case",
+   "retailer_data_availability": "No adapter exposes SPF as a field; JSON-LD carries it in name only. _SPF_RE extractor already exists — the missing piece is the base-product classification, not extraction"
+  },
+  {
+   "class": "conc_flanker_flagship (FIXED baseline)",
+   "example_query": "Dior Sauvage",
+   "example_wrong_candidate": "Dior Sauvage Parfum",
+   "decision_point_behavior": {
+    "selection": "REJECT",
+    "select_best": "REJECT",
+    "cache_write": "REJECT",
+    "cache_read": "REJECT (6a hardening — _category_type_added now runs at scs.py:755)",
+    "display": "REJECT (guard_rejected=not_exact)"
+   },
+   "leak_or_overreject": "CLOSED at all 5 points (runtime-verified). _FLAGSHIP_CONCENTRATIONS={Extrait, Parfum, Parfum Intense} (:4183). Serves as the census baseline proving the 6a cache-read hardening works.",
+   "what_structured_field_would_decide_it": "n/a — already decided by the bounded flagship-add check",
+   "retailer_data_availability": "n/a"
+  },
+  {
+   "class": "conc_flanker_same_token_nonflagship",
+   "example_query": "Dior Sauvage (also: Carolina Herrera Good Girl)",
+   "example_wrong_candidate": "Dior Sauvage Elixir (also: Good Girl Supreme)",
+   "decision_point_behavior": {
+    "selection": "REJECT (variant-add direction)",
+    "select_best": "REJECT",
+    "cache_write": "REJECT",
+    "cache_read": "ACCEPT (leak — 'Elixir'/'Supreme' are not concentrations: extract_concentration('Sauvage Elixir')=None, verified; not in _FLAGSHIP_CONCENTRATIONS)",
+    "display": "ACCEPT (leak)"
+   },
+   "leak_or_overreject": "BACKSTOP-ONLY LEAK, xfail-pinned strict (test_deferred_display_backstop_same_token_flanker, tests/test_correctness_coverage_sweep_fixes.py:196). Item 6b design HELD in the plan doc: a symmetric flanker-word axis must contain ONLY unambiguous flanker words (elixir/supreme/absolu/intense/extreme) and NEVER base-name words (private/oud/noir/nuit — 'Tom Ford Private Blend Oud Wood' IS 'Oud Wood'); land only behind a big both-directions sweep.",
+   "what_structured_field_would_decide_it": "VariantDescriptor.concentration_line extended with the bounded flanker-name enum (the item-6b list) — extractor _CONCENTRATION_PATTERNS (:2992) exists but lacks flanker labels; the curated-reference boundary IS the hard part",
+   "retailer_data_availability": "Title-only everywhere; Zyte metadata.probability is a concentration TIEBREAK, not a field; sephora PDP names carry the flanker word"
+  },
+  {
+   "class": "related_model_same_family",
+   "example_query": "Nike Air Force 1",
+   "example_wrong_candidate": "Nike Air Max 1",
+   "decision_point_behavior": {
+    "selection": "REJECT (leak-direction subset — 'force' missing)",
+    "select_best": "REJECT",
+    "cache_write": "REJECT",
+    "cache_read": "ACCEPT (leak)",
+    "display": "ACCEPT (leak)"
+   },
+   "leak_or_overreject": "BACKSTOP-ONLY LEAK (documented 'live-path risk' in the test-file HELD-DEFERRED header :25). No axis distinguishes Force from Max — pure token identity, which the backstop doesn't check.",
+   "what_structured_field_would_decide_it": "VariantDescriptor.model_line / structured style code compared at the backstop; OR run the leak-direction (query-subset) check ONLY at the backstop (it is direction-safe for descriptive titles — the over-rejection risk was the VARIANT-ADD direction, not leak-direction)",
+   "retailer_data_availability": "Nike style codes exist on footlocker (magento) / 6thstreet (algolia structured_code, algolia_service.py:532) — but query_confirmed_structured_code (:5988) only uses a code the QUERY carries, which consumer queries never do"
+  },
+  {
+   "class": "bare_generation_int",
+   "example_query": "Apple AirPods Pro (and reverse: Apple AirPods Pro 2)",
+   "example_wrong_candidate": "Apple AirPods Pro 2 (reverse: Apple AirPods Pro)",
+   "decision_point_behavior": {
+    "selection": "REJECT both directions (variant-add / leak-direction on the bare '2')",
+    "select_best": "REJECT",
+    "cache_write": "REJECT",
+    "cache_read": "ACCEPT (leak, both directions — a bare int is not a backstop axis)",
+    "display": "ACCEPT at realistic amounts (95 BHD verified; the earlier 25-BHD probe was pended by is_implausible_high_value_price — a CONFOUND, not the identity gate)"
+   },
+   "leak_or_overreject": "BACKSTOP-ONLY LEAK both directions. Token-indistinguishable at the backstop; the strong gates hold.",
+   "what_structured_field_would_decide_it": "VariantDescriptor.generation (int) — extractable from titles ('Pro 2', '2nd generation'), plus candidate-side retailer model codes compared against a small model registry (Pro=MWP22, Pro 2=MTJV3-class) rather than the query-confirmed constraint",
+   "retailer_data_availability": "noon exposes a structured sku per hit (noon_service.py:206) that is NOT stamped onto the price dict; algolia stamps structured_code (sharafdg/extra style codes); both unusable today because the override requires the code to appear IN THE QUERY"
+  },
+  {
+   "class": "year_only_generation_both_stated",
+   "example_query": "Apple iPhone SE 2020",
+   "example_wrong_candidate": "Apple iPhone SE (2022)",
+   "decision_point_behavior": {
+    "selection": "REJECT (year stays identity — the Wave-C year-annotation tolerance (:5682-5700) requires a NON-YEAR generation discriminator in the query; 'SE' has no digits, so year-only families keep the year required — C1 bound VERIFIED working)",
+    "select_best": "REJECT",
+    "cache_write": "REJECT",
+    "cache_read": "ACCEPT (leak — years are not a backstop axis; verified at 180 BHD)",
+    "display": "ACCEPT (leak, verified at 180 BHD)"
+   },
+   "leak_or_overreject": "BACKSTOP-ONLY LEAK for both-stated years. PLUS a fail-closed OVER-REJECTION: query 'Apple iPhone SE' (no year) vs title 'iPhone SE (2022)' REJECTS at selection (verified) — the deliberate C1 bound; the newest SE can only match a year-omitting title.",
+   "what_structured_field_would_decide_it": "VariantDescriptor.model_year (typed) present at the backstop; the over-rejection side needs a 'latest-generation default' rule (query-no-year matches the newest year) = curated reference or LLM hint",
+   "retailer_data_availability": "Title-derivable ((2022) annotation forms, _ANNOTATION_YEAR_RE :5417); no adapter field"
+  },
+  {
+   "class": "makeup_one_sided_formula_add",
+   "example_query": "Maybelline Fit Me Foundation 128",
+   "example_wrong_candidate": "Maybelline Fit Me Dewy + Smooth Foundation 128",
+   "decision_point_behavior": {
+    "selection": "ACCEPT (leak — the shared-shade-number makeup acceptance :5737-5757 tolerates a one-sided formula add)",
+    "select_best": "ACCEPT",
+    "cache_write": "ACCEPT",
+    "cache_read": "ACCEPT",
+    "display": "ACCEPT"
+   },
+   "leak_or_overreject": "LEAK at ALL 5 points. HELD (test_held_makeup_one_sided_formula_line_accepted_tradeoff :175) — rejecting it mass-over-rejects common descriptive Fit Me titles ('Fit Me 310 Sun Beige Smooth Coverage' is the SAME product). Both-stated-different (Soft Matte vs Hydrating) verified REJECTED at ALL 5 points via _finish_mismatch (:4614, always-on makeup axis).",
+   "what_structured_field_would_decide_it": "VariantDescriptor.formula_line (matte/dewy/hydrating/glow enum) with the one-sided-add decision keyed on whether the QUERY's product line HAS formula sub-lines (Fit Me does: Matte+Poreless vs Dewy+Smooth) — curated line reference or LLM hint",
+   "retailer_data_availability": "Title-only; no wired adapter exposes a makeup line/finish field"
+  },
+  {
+   "class": "acronym_blend_expansion",
+   "example_query": "Optimum ZMA (also NOW Cal-Mag)",
+   "example_wrong_candidate": "Optimum ZMA Zinc Magnesium Aspartate 180 Caps (the CORRECT product, descriptively titled)",
+   "decision_point_behavior": {
+    "selection": "REJECT (over-rejection — expansion tokens fail the superset; acronym not a subset of its expansion)",
+    "select_best": "REJECT",
+    "cache_write": "REJECT",
+    "cache_read": "REJECT (_supplement_type_added fires: zinc/magnesium/aspartate in _SUPPLEMENT_TYPE_TOKENS :4198, 'zma' not in _MULTI_CONSTITUENT_QUERY :4232)",
+    "display": "REJECT (guard_rejected=not_exact)"
+   },
+   "leak_or_overreject": "OVER-REJECTION at ALL 5 points (runtime-verified) — the correct product can NEVER display or cache. xfail-pinned (test_deferred_supplement_acronym_residual :255). A KPI/coverage blocker for acronym-named supplements, not a leak. Guard verified intact: the combo-add leak direction (Calcium -> Calcium Magnesium Zinc) still rejects everywhere.",
+   "what_structured_field_would_decide_it": "VariantDescriptor.constituents (set) built through an acronym/alias expansion table (zma={zinc,magnesium,aspartate}, calmag={calcium,magnesium}, b-complex={b-vitamins}) — set-equality then decides; purely deterministic, no LLM needed",
+   "retailer_data_availability": "Title-derivable both sides once the alias table exists; no adapter field needed"
+  },
+  {
+   "class": "hyphen_vs_space_token_split",
+   "example_query": "Nordic Naturals Omega-3 (and reverse)",
+   "example_wrong_candidate": "Nordic Naturals Omega 3 (the SAME product)",
+   "decision_point_behavior": {
+    "selection": "REJECT BOTH directions (over-rejection — normalize_words glues 'omega-3'->'omega3' while spaced yields {omega,3}: token sets disjoint in both subset directions)",
+    "select_best": "REJECT",
+    "cache_write": "REJECT",
+    "cache_read": "ACCEPT (axis-only backstop doesn't tokenize identity)",
+    "display": "ACCEPT"
+   },
+   "leak_or_overreject": "OVER-REJECTION at the 3 strong gates, both directions (runtime-verified). Blocks correct-product resolution + caching whenever query and retailer disagree on hyphenation — common for Omega-3/Co-Q10/B-12 style names. Also a cache-key parity hazard (hyphen form changes identity tokens).",
+   "what_structured_field_would_decide_it": "NOT a descriptor field — a tokenizer fold: emit BOTH the glued and split forms for digit-adjacent hyphens (or fold 'word-digit' to the split form) in _identity_tokens_ps/normalize_words. Low-risk, high-frequency fix; needs a both-directions sweep (folding could bridge 'B-12' vs 'B12' vs 'B 12' — desirable — but must not bridge genuinely different tokens)",
+   "retailer_data_availability": "n/a (tokenizer-internal)"
+  },
+  {
+   "class": "apparel_bare_size_letter",
+   "example_query": "Uniqlo Oxford Shirt M",
+   "example_wrong_candidate": "Uniqlo Oxford Shirt XL",
+   "decision_point_behavior": {
+    "selection": "ACCEPT (leak — bare 'm' is not a size token (_SIZED_CLOTHING_RE :4128 requires 'size' prefix; only unambiguous xs/xl/xxl/small/medium/large count standalone in _clothing_sizes_in :4149), and the counted 'xl' is evidently stripped from identity, so no variant-add fires)",
+    "select_best": "ACCEPT",
+    "cache_write": "ACCEPT",
+    "cache_read": "ACCEPT",
+    "display": "ACCEPT"
+   },
+   "leak_or_overreject": "LEAK at ALL 5 points for the bare-letter form (runtime-verified — a FULL-leak class, more severe than previously documented). The 'Size M' vs 'Size XL' prefixed form rejects at the 3 strong gates but STILL leaks at cache-read+display (_clothing_size_mismatch is strict_extras-gated :5361-5363).",
+   "what_structured_field_would_decide_it": "VariantDescriptor.size_letter from a RETAILER structured size field — bare-letter title tokens are inherently ambiguous ('M' could be colourway/model); only structured data decides",
+   "retailer_data_availability": "6thstreet/namshi Algolia hits carry sizes arrays (facets) — NOT read; Woo Store API responses carry attributes/variations — woocommerce_service.py parses none of it (verified zero matches for 'attributes'); noon PDP JSON-LD offers sometimes carry size"
+  },
+  {
+   "class": "disney_stitch_construction_tolerance",
+   "example_query": "Adidas Trefoil T-Shirt (any fashion query)",
+   "example_wrong_candidate": "Adidas Trefoil Stitch T-Shirt (a Disney-Stitch character graphic tee — DIFFERENT product)",
+   "decision_point_behavior": {
+    "selection": "ACCEPT (leak — 'stitch'/'stitched' are STATIC members of _FASHION_CONSTRUCTION_TOLERATED :5481, stripped as title-side construction adds)",
+    "select_best": "ACCEPT",
+    "cache_write": "ACCEPT",
+    "cache_read": "ACCEPT",
+    "display": "ACCEPT"
+   },
+   "leak_or_overreject": "LEAK at ALL 5 points (runtime-verified, both 'Stitch' and 'Stitched' forms) — a SELECTION-LEVEL leak, the most severe census class alongside the gender flanker. Documented in the RS5 re-sweep as deliberately out of bound. Unlike crew/neck (which RS5 made bigram-conditional), stitch/stitched remain unconditional.",
+   "what_structured_field_would_decide_it": "Cheapest fix is the RS5 pattern, not a descriptor: make 'stitch'/'stitched' conditional on a sewing-context bigram ('stitch detail', 'stitched logo', 'contrast stitch') so a standalone/leading 'Stitch' (character name) stays distinctive. A VariantDescriptor.graphic_license field is overkill",
+   "retailer_data_availability": "6thstreet/namshi carry character/license in the title and category breadcrumbs only; style codes (structured_code) would discriminate when query-confirmed (rare)"
+  },
+  {
+   "class": "cross_unit_g_ml",
+   "example_query": "CeraVe Moisturizing Cream 340g (and reverse)",
+   "example_wrong_candidate": "CeraVe Moisturizing Cream 177ml",
+   "decision_point_behavior": {
+    "selection": "REJECT both directions (cross-unit disjoint-bases fail-closed, _weight_or_volume_mismatch :3862-3893)",
+    "select_best": "REJECT",
+    "cache_write": "REJECT",
+    "cache_read": "REJECT (the axis is in the always-on block :5323)",
+    "display": "REJECT (guard_rejected=not_exact)"
+   },
+   "leak_or_overreject": "STATUS CHANGE vs the tasking memory: NO LONGER an xfail-deferred leak — ENFORCED fail-closed at ALL 5 points both directions (runtime-verified; test_cross_unit_size_pended :207 is a plain assert, though the file's HEADER comment :26 still stale-lists it as HELD-xfail). Residual = the OVER-REJECTION direction: the same product cross-listed (retailer lists ml where query says g) permanently pends. NOTE: oz->g is NOT parsed (_weights_volumes handles g/kg/lb/ml/l only), so a '12 oz' title vs '340g' query is ONE-SIDED (no mismatch, subset decides) — the oz-weight hole is untested territory.",
+   "what_structured_field_would_decide_it": "VariantDescriptor.net_content {value, unit_class} (per the design doc §4) — a typed field allows a curated per-product-form density tolerance (cream g<->ml ~1.0) to be re-evaluated deliberately",
+   "retailer_data_availability": "JSON-LD Product sometimes carries weight/size (not extracted); Woo attributes unparsed; otherwise title-only"
+  },
+  {
+   "class": "candidate_omits_query_axis_backstop",
+   "example_query": "Dior Sauvage Eau de Parfum (also CeraVe ... 340g)",
+   "example_wrong_candidate": "Dior Sauvage (concentration-omitting; also sizeless CeraVe)",
+   "decision_point_behavior": {
+    "selection": "REJECT (fail-closed, _candidate_missing_query_axis :4073)",
+    "select_best": "REJECT",
+    "cache_write": "REJECT",
+    "cache_read": "ACCEPT (leak — the omission check is strict_extras-gated)",
+    "display": "ACCEPT (leak)"
+   },
+   "leak_or_overreject": "BACKSTOP-ONLY LEAK — an axis-UNVERIFIED price (could be the EDT or the 30ml) shows at display when it arrives via a non-selection path, and a poisoned/legacy cache entry with an axis-omitting title serves.",
+   "what_structured_field_would_decide_it": "The descriptor comparison at the backstop with the same asymmetric rule (query-stated axis + candidate-unstated -> pend) — fields already extractable",
+   "retailer_data_availability": "n/a (title-side omission is the very problem; PDP structured size fields where available would fill the axis)"
+  },
+  {
+   "class": "titleless_price_defense_gap",
+   "example_query": "Dior Sauvage",
+   "example_wrong_candidate": "(price dict with url but NO title/name)",
+   "decision_point_behavior": {
+    "selection": "n/a (nothing to match)",
+    "select_best": "REJECT (B5 no-identity fail-closed)",
+    "cache_write": "REJECT (no title)",
+    "cache_read": "ACCEPT (titleless cached price is served — 'benign, don't over-invalidate', scs.py:725-726)",
+    "display": "ACCEPT (identity-less but URL-present is showable by the Task-C1/ws5 calibration, price_service.py:1391-1401)"
+   },
+   "leak_or_overreject": "DEFENSE GAP (deliberate calibration, runtime-verified): a titleless price displays and, if ever cached by a bypass/legacy write, serves unverifiable for the full TTL. The design doc folded-in item #4 offers the two closures: warmer guarantees titles (ENABLE_PRICE_TITLE_PERSIST + migration 033, built on PR #12, flag OFF) or display pends titleless.",
+   "what_structured_field_would_decide_it": "Not a descriptor field — the L2-DB title persistence (already built, dormant) + a decision on the display calibration",
+   "retailer_data_availability": "The Wave-B identity stamps + P1a/P1b JSON-LD fixes mean genuine paths now stamp title/name; the residual origin is the DB round-trip (title column) and legacy entries"
+  },
+  {
+   "class": "switch_light_colourway_overreject",
+   "example_query": "Nintendo Switch 2",
+   "example_wrong_candidate": "Nintendo Switch 2, Light Blue and Light Red (the CORRECT console, extra.com live title)",
+   "decision_point_behavior": {
+    "selection": "REJECT (over-rejection — 'Light' reads as the Switch-Lite-class variant qualifier instead of a colour modifier; bisect-proven in the xfail reason)",
+    "select_best": "REJECT",
+    "cache_write": "REJECT",
+    "cache_read": "ACCEPT",
+    "display": "ACCEPT"
+   },
+   "leak_or_overreject": "OVER-REJECTION at the 3 strong gates (runtime-verified; xfail-pinned strict at tests/test_kpi_truth_modernization.py:73 with an explicit do-NOT-weaken-the-variant-add-guard warning — it is what rejects games/bundles).",
+   "what_structured_field_would_decide_it": "VariantDescriptor.colorway from the retailer's structured color attribute — 'Light Blue' as a typed colour disambiguates from the 'Lite' model qualifier without touching the guard",
+   "retailer_data_availability": "extra.com Unbxd responses carry color fields (unbxd wired for extra.com; field not read); sharafdg Algolia hits carry colour attributes (not read)"
+  },
+  {
+   "class": "ladder_exposure_amplification_F1",
+   "example_query": "Versace Eros Eau de Toilette 100ml -> adapter retry term 'Eros'; Dior Sauvage Eau de Parfum -> 'Sauvage'",
+   "example_wrong_candidate": "a store carrying ONLY 'Eros Pour Femme' / ONLY 'Sauvage Elixir' now RETRIEVES it on the core-term retry where the full-name search returned zero rows",
+   "decision_point_behavior": {
+    "selection": "per-candidate acceptance UNCHANGED (the ladder never widens acceptance — build_adapter_search_terms :5203 strips exactly the axes the gates re-verify); the retrieved flanker is then judged by the per-class rows above",
+    "select_best": "unchanged",
+    "cache_write": "unchanged",
+    "cache_read": "unchanged",
+    "display": "unchanged"
+   },
+   "leak_or_overreject": "EXPOSURE AMPLIFIER, not a gate defect (runtime-verified core terms; ENABLE_ADAPTER_QUERY_LADDER default ON). It multiplies the PRACTICAL hit-rate of the full-leak classes (gender flanker, one-sided SPF/formula) because the core term deliberately strips gender/concentration/padding. Documented as a warmer-activation consideration (plan doc §2026-07-02 F1). Rollback: flag OFF restores single-term retrieval.",
+   "what_structured_field_would_decide_it": "Closing the underlying classes (gender/concentration flanker) in the descriptor removes the amplification concern — no ladder change needed",
+   "retailer_data_availability": "n/a"
+  },
+  {
+   "class": "redos_cap_truncation",
+   "example_query": "Galaxy <600-char-run> 256GB",
+   "example_wrong_candidate": "Galaxy <600-char-run> 512GB",
+   "decision_point_behavior": {
+    "selection": "ACCEPT (leak — the 512-char _MATCH_INPUT_CAP truncates before the trailing storage axis)",
+    "select_best": "ACCEPT",
+    "cache_write": "ACCEPT",
+    "cache_read": "ACCEPT",
+    "display": "ACCEPT"
+   },
+   "leak_or_overreject": "LEAK, xfail-pinned strict (:216), near-zero reach (real titles <200 chars). Not a Wave-2 target.",
+   "what_structured_field_would_decide_it": "n/a (accepted)",
+   "retailer_data_availability": "n/a"
+  },
+  {
+   "class": "design_accepts_baseline (NOT residuals — census control rows)",
+   "example_query": "Dymatize ISO100 -> ISO100 Vanilla 5lb (one-sided flavour = same product, sub-choice); 'Sony Headphones' -> any specific member (electronics generic-query skip :5797)",
+   "example_wrong_candidate": "n/a",
+   "decision_point_behavior": {
+    "selection": "ACCEPT by design (verified)",
+    "select_best": "ACCEPT",
+    "cache_write": "ACCEPT",
+    "cache_read": "ACCEPT",
+    "display": "ACCEPT"
+   },
+   "leak_or_overreject": "DESIGN ACCEPT — but note the warmer implication: a flavour-agnostic warmed price ('ISO100' cached from the Vanilla listing) is correct product-wise yet the VariantDescriptor.flavour field would let cache keys distinguish flavours if flavour-specific pricing ever matters.",
+   "what_structured_field_would_decide_it": "VariantDescriptor.flavour (already an extractor: _flavour_mismatch :4576)",
+   "retailer_data_availability": "Title-derivable"
+  }
+ ],
+ "recommendations": [
+  {
+   "priority": 1,
+   "title": "Make the backstop compare the VariantDescriptor, not run more token rules",
+   "detail": "9 of the 21 census classes are BACKSTOP-ONLY leaks (Elixir/Supreme, AF1->AirMax1, AirPods Pro->Pro 2, SE-year-both-stated, gender-both-stated, femme-query, Size-M-vs-XL prefixed, candidate-omits-axis, titleless) — every one is already correctly decided by machinery that exists at the STRONG gates but is strict_extras-gated or token-identity-based and therefore absent from _backstop_identity_ok (price_service.py:5800) + _category_type_added (:4254). Wave-2's highest-leverage move: extract a VariantDescriptor {gender, concentration_line(+flanker enum), spf, model_year, generation, size_letter, net_content{value,unit_class}, formula_line, constituents, colorway, flavour} per side ONCE, and have the display chokepoint (is_price_showable :1421-1424) and cache-read (scs.py:753-756) compare DESCRIPTOR FIELDS. This is structurally different from the failed full-superset attempt (which over-rejected descriptive titles): field comparison only fires when a field is EXTRACTED on the relevant side(s), preserving each rule's existing asymmetry (one-sided-tolerated vs both-stated-reject vs add-reject). The gender-both-stated, prefixed-size, omitted-axis and year classes are decidable TODAY with existing extractors — zero new reference data needed."
+  },
+  {
+   "priority": 2,
+   "title": "The 5 FULL-leak classes need reference data or bounded conditionality, not axes",
+   "detail": "gender flanker base->femme, one-sided SPF, makeup one-sided formula are the documented HELD tradeoffs — each needs the design doc's curated-reference + narrow-LLM-hint (is the base of this line men's? is this base product a sunscreen? does this line have formula sub-lines?). The census ADDS two full-leak classes not previously ranked at this severity: (a) apparel BARE size-letter (Shirt M vs XL) leaks at ALL 5 points — only a retailer structured size field decides it (6thstreet/namshi Algolia sizes facets and Woo Store-API attributes are RECEIVED but unparsed today); (b) Disney-Stitch/Stitched leaks at ALL 5 points via the unconditional _FASHION_CONSTRUCTION_TOLERATED tokens (:5481) — the cheap fix is the proven RS5 bigram-conditional pattern (tolerate stitch/stitched only inside a sewing-context bigram), NOT a descriptor field; do it early, it is selection-level."
+  },
+  {
+   "priority": 3,
+   "title": "Over-rejections are the KPI/coverage movers: acronym table + hyphen fold first",
+   "detail": "ZMA/Cal-Mag: rejected at ALL 5 points (verified — the correct product can never display or cache); a deterministic acronym->constituents alias table feeding VariantDescriptor.constituents closes it with no LLM. Hyphen-vs-space (Omega-3 vs Omega 3): rejected BOTH directions at the 3 strong gates — a tokenizer-level digit-hyphen fold (emit both glued+split forms) in _identity_tokens_ps/normalize_words; high frequency (Omega-3/B-12/Co-Q10 class), also a cache-key-parity hazard; needs a both-directions sweep before landing. Switch-Light colourway: read the color attribute the wired extra-Unbxd/sharafdg-Algolia responses already carry -> VariantDescriptor.colorway (the xfail explicitly forbids weakening the variant-add guard instead). SE-year-add ('iPhone SE' vs '(2022)') is deliberately fail-closed — reopening it needs a latest-generation-default reference, defer."
+  },
+  {
+   "priority": 4,
+   "title": "Unlock candidate-side structured codes (drop the query-confirmed-only constraint via a registry, and stamp noon sku)",
+   "detail": "The generation/related-model classes (AirPods Pro->Pro 2, AF1->AirMax1) are token-indistinguishable at the backstop but retailers EXPOSE discriminating codes: algolia stamps structured_code (algolia_service.py:532), noon has hit.sku (noon_service.py:206, NOT stamped onto the price dict — a 1-line win), magento/footlocker carry style codes. query_confirmed_structured_code (:5988) deliberately ignores codes absent from the query (consumer queries never carry MTJV3) — a Wave-2 descriptor can instead compare CANDIDATE codes across the pair of candidates or against a small curated model registry (Pro vs Pro 2 code stems), which is exactness evidence the query-confirmed rule structurally cannot use."
+  },
+  {
+   "priority": 5,
+   "title": "Warmer-activation framing: which leaks actually gate the flip",
+   "detail": "New warmed writes go through should_cache_price (strong gate — verified rejecting all backstop-leak classes), so the cache-read backstop leaks fire only on POISONED/legacy/bypass entries; the fresh-purge precondition plus descriptor-hardened cache-read covers that. The DISPLAY leaks are the live risk with or without the warmer: converted_usd/page-scrape/iHerb/cached-Zyte paths reach is_price_showable without ever running _selection_match. The ladder-F1 amplifier (verified: core term 'Eros'/'Sauvage', flag default ON) raises the retrieval frequency of the full-leak classes — closing gender/concentration-flanker in the descriptor retires the F1 consideration; the interim rollback is ENABLE_ADAPTER_QUERY_LADDER=false. Also decide design-doc folded-item #4: titleless display (currently shows URL-only prices) — either flip ENABLE_PRICE_TITLE_PERSIST (migration 033, built on PR #12) or fail-close the display calibration."
+  },
+  {
+   "priority": 6,
+   "title": "Corrections to carry back into the tracking docs",
+   "detail": "(a) cross-unit g<->ml is NO LONGER a deferred xfail — it is ENFORCED fail-closed at all 5 points both directions (test_cross_unit_size_pended :207 is a plain assert); the header comment of tests/test_correctness_coverage_sweep_fixes.py (:26) stale-lists it as HELD — update it. The remaining residual there is the over-rejection of cross-listed identical products, plus an untested oz-weight hole (_weights_volumes parses g/kg/lb/ml/l but NOT oz-as-weight, so '12 oz' vs '340g' is one-sided). (b) When probing display behavior for electronics, use realistic amounts — is_implausible_high_value_price pends cheap probe prices and mimics an identity rejection (guard_rejected stays null in both cases; the SE-year 25-BHD probe was a confound). (c) The census probe scripts + raw JSON are in the session scratchpad (residual_census.py, residual_census_results.json, census_batch2.json, se_year_reprobe.json) — reusable as the Wave-2 sweep seed."
+  }
+ ]
+}
