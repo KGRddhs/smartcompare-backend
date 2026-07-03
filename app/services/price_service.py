@@ -6504,7 +6504,8 @@ def _descriptor_backstop_axes_verdict(
         write).
       - prefixed clothing-size both-stated mismatch (Size M vs Size XL)
       - model-year both-stated mismatch (both sides state a year, disjoint)
-      - flanker_markers symmetric set-inequality (fragrances; Sauvage->Elixir)
+      - flanker_markers ADD direction only (fragrances; candidate ADDS a flanker,
+        Sauvage->Elixir; the query-omits reverse tolerates, B1-FIX ruling C)
       - generation_ints ADD direction only (candidate adds a model-noun-adjacent
         INLINE generation int absent from the query; parenthetical "(Nth gen)"
         annotations + quantity-noun-suffixed ints excluded, B1-FIX ruling A;
@@ -6535,11 +6536,15 @@ def _descriptor_backstop_axes_verdict(
         c_years = _vd_model_years(c)
         if q_years and c_years and not (q_years & c_years):
             return "model_year"
-    # Flanker markers (fragrances): a curated concentration-flanker word on ONE
-    # side only = a distinct SKU (Sauvage vs Sauvage Elixir). SYMMETRIC set
-    # inequality; the curated set never contains a base-name word so a correct
-    # base ("Oud Wood") carries none and matches its own PDP.
-    if cat == "fragrances" and q.flanker_markers != c.flanker_markers:
+    # Flanker markers (fragrances): the CANDIDATE ADDS a curated concentration-
+    # flanker word the query never asked for (Sauvage -> Sauvage Elixir) = a
+    # distinct pricier SKU. ADD-DIRECTION ONLY (B1-FIX ruling C, consistent with
+    # the B1.1 "no candidate-omits-query-axis at backstop" rule): a query that
+    # carries a flanker the candidate omits ("Dior Homme Intense" -> "Dior
+    # Homme") TOLERATES here — the flanker word is part of a canonical base-line
+    # name and the omission stays a selection-side concern. The curated set never
+    # contains a base-name word so a correct base ("Oud Wood") carries none.
+    if cat == "fragrances" and (c.flanker_markers - q.flanker_markers):
         return "flanker"
     # Generation ints (electronics): candidate ADDS a model-noun-adjacent
     # generation int the query never asked for (AirPods Pro -> Pro 2). ADD

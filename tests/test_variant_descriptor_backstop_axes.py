@@ -306,3 +306,31 @@ def test_gender_contradiction_still_rejects(monkeypatch):
                     "fragrances") is False
     assert _cacheread("Versace Eros Pour Homme", "Versace Eros Pour Femme",
                       "fragrances") is False
+
+
+# ---------------------------------------------------------------------------
+# B1-FIX RULING C — FLANKER ADD-direction-only at the backstop
+# ---------------------------------------------------------------------------
+def test_flanker_omit_now_tolerated(monkeypatch):
+    # RULING C: query carries a flanker word the candidate omits (a canonical
+    # base-line name, "Dior Homme Intense" -> "Dior Homme") -> tolerate at the
+    # backstop (OMIT direction).
+    _axes_on(monkeypatch)
+    assert _display("Dior Homme Intense", "Dior Homme", "fragrances") is True
+    assert _cacheread("Dior Homme Intense", "Dior Homme", "fragrances") is True
+
+
+def test_flanker_add_still_rejects(monkeypatch):
+    # ADD direction (candidate adds a flanker) STILL rejects.
+    _axes_on(monkeypatch)
+    assert _display("Dior Sauvage", "Dior Sauvage Elixir", "fragrances") is False
+    assert _cacheread("Dior Sauvage", "Dior Sauvage Elixir", "fragrances") is False
+    assert _display("Carolina Herrera Good Girl", "Carolina Herrera Good Girl Supreme",
+                    "fragrances") is False
+
+
+def test_flanker_both_present_matches(monkeypatch):
+    # Both sides carry the same flanker -> matches.
+    _axes_on(monkeypatch)
+    assert _display("Carolina Herrera Good Girl Supreme",
+                    "Carolina Herrera Good Girl Supreme", "fragrances") is True
