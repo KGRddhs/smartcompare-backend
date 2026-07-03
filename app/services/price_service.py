@@ -3567,15 +3567,28 @@ _KEYBOARD_LAYOUT_RE = re.compile(
 # Wave-2 B2b (C2): the curated nutrient-name prefixes whose SPACED digit form must fold to
 # the glued form (Omega 3 -> omega3, B 12 -> b12, Co Q10 -> coq10, D 3 -> d3, K 2 -> k2,
 # Q 10 -> q10). Bounded to real vitamin/nutrient prefixes so no unrelated "word <digit>" pair
-# bridges. The digit run is 1-2 (vitamin numbers) so a 3+-digit dose never glues. The
-# separator is whitespace ONLY (hyphens are already removed by normalize_words downstream);
-# a "co q10"-style two-word prefix collapses to "coq10" via the optional internal fold.
+# bridges. The digit run is 1-2 (vitamin numbers) so a 3+-digit dose never glues.
 # Separator is space OR hyphen ("Omega 3" / "Omega-3" / "B-12" / "B 12") — both glue to the
 # same token. Electronics model codes (WH-1000XM5) are NEVER reached: both fold sites are
 # supplement-category-scoped, and the curated prefix set has no overlap with model codes.
+#
+# B2fix — two convergence bugs the B2 sweep found (both flag-ON-only, supplement-scoped):
+#   DEFECT 1 (vitamin-alt glued the WORD "vitamin"): the dedicated
+#     "vitamin[sep][letter]" alternative captured "vitamin b" into group(1), so
+#     "Vitamin B-6" folded to "vitaminb6" while "Vitamin B6" stayed {vitamin, b6}
+#     (the letter+digit were already adjacent, no separator for the alt to consume)
+#     => disjoint identity => flag-ON REJECT of the same SKU. FIX: DROP the vitamin
+#     alternative and let the bare-letter alt ([abcdek]) normalize ONLY the
+#     "<letter><digit>" part, leaving "vitamin" as its own token, so B-6/B6/B 6 all
+#     -> {vitamin, b6}.
+#   DEFECT 2 (spaced "Co Q10" did not fold): the digit-separator run was `+`
+#     (>=1), so "Co Q10" (q immediately followed by "10") did not match — only
+#     "Coq 10" did. FIX: make the separator run `*` (>=0) so "Co Q10" == "CoQ10"
+#     == "Coq 10" == "co-q10" all -> "coq10". `*` is idempotent (an already-glued
+#     "b12"/"coq10" folds to itself), so the output is stable for every spelling.
 _NUTRIENT_DIGIT_FOLD_RE = re.compile(
-    rf"\b(omega|coq|co[\s\-{_UNICODE_HYPHENS}]*q|vitamin[\s\-{_UNICODE_HYPHENS}]+[abcdek]|[abcdek])"
-    rf"[\s\-{_UNICODE_HYPHENS}]+(\d{{1,2}})\b", re.I,
+    rf"\b(omega|coq|co[\s\-{_UNICODE_HYPHENS}]*q|[abcdek])"
+    rf"[\s\-{_UNICODE_HYPHENS}]*(\d{{1,2}})\b", re.I,
 )
 
 

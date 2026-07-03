@@ -323,3 +323,59 @@ def test_wh1000xm5_hyphen_guard_still_matches_both_flags(monkeypatch):
         assert _m("Sony WH-1000XM5", "Sony WH1000XM5", "electronics", "Sony") is True
         assert _m("Sony WH1000XM5", "Sony WH-1000XM5", "electronics", "Sony") is True
         assert _m("Sony WH-1000-XM5", "Sony WH1000XM5", "electronics", "Sony") is True
+
+
+# ===========================================================================
+# Wave-2 B2fix — the two nutrient-fold over-rejections the B2 sweep found (both
+# flag-ON-only, supplement-scoped, introduced by B2b). Goal: ALL spellings of a
+# nutrient name produce IDENTICAL identity tokens.
+#   DEFECT 1 (HIGH): "Vitamin B-6" == "Vitamin B6" == "Vitamin B 6" — the
+#     vitamin-alt used to glue the WORD "vitamin" into the token for the
+#     separated forms while "B6" stayed {vitamin, b6} => disjoint => flag-ON
+#     REJECT of the same SKU (flag-OFF matched).
+#   DEFECT 2 (MED): "Co Q10" == "CoQ10" == "Coq 10" == "co-q10" — the co-q
+#     prefix used to require a separator BEFORE the digit, so "Co Q10" (q
+#     immediately followed by "10") did NOT fold.
+# ===========================================================================
+def test_vitamin_letterdigit_spellings_all_match_flag_on(monkeypatch):
+    monkeypatch.setenv("ENABLE_VARIANT_DESCRIPTOR_AXES", "true")
+    # DEFECT 1: all three spellings of the same SKU must match, both directions.
+    assert _m("Now Vitamin B-6", "Now Vitamin B6", "supplements") is True
+    assert _m("Now Vitamin B6", "Now Vitamin B 6", "supplements") is True
+    assert _m("Now Vitamin B 6", "Now Vitamin B-6", "supplements") is True
+    # Same for the two-digit member of the class.
+    assert _m("Now Vitamin B-12", "Now Vitamin B12", "supplements") is True
+    assert _m("Now Vitamin B12", "Now Vitamin B 12", "supplements") is True
+
+
+def test_coq10_spaced_spellings_all_match_flag_on(monkeypatch):
+    monkeypatch.setenv("ENABLE_VARIANT_DESCRIPTOR_AXES", "true")
+    # DEFECT 2: spaced "Co Q10" (digit immediately after q) must fold like the rest.
+    assert _m("Doctor's Best Co Q10", "Doctor's Best CoQ10", "supplements") is True
+    assert _m("Doctor's Best CoQ10", "Doctor's Best Coq 10", "supplements") is True
+    assert _m("Doctor's Best Co Q10", "Doctor's Best co-q10", "supplements") is True
+
+
+def test_vitamin_coq10_flag_off_residual(monkeypatch):
+    # Flag OFF stays the documented over-rejection (byte-identical rollback).
+    monkeypatch.setenv("ENABLE_VARIANT_DESCRIPTOR_AXES", "false")
+    assert _m("Now Vitamin B-6", "Now Vitamin B6", "supplements") is False
+    assert _m("Doctor's Best Co Q10", "Doctor's Best CoQ10", "supplements") is False
+
+
+def test_nutrient_fold_overfold_rejects_hold_flag_on(monkeypatch):
+    # The fold must NOT bridge DIFFERENT nutrient numbers.
+    monkeypatch.setenv("ENABLE_VARIANT_DESCRIPTOR_AXES", "true")
+    assert _m("Now Vitamin B-6", "Now Vitamin B-12", "supplements") is False
+    assert _m("Now B12", "Now B6", "supplements") is False
+    assert _m("Nordic Naturals Omega-3", "Nordic Naturals Omega-6", "supplements") is False
+    assert _m("Now Vitamin D-3", "Now Vitamin D-2", "supplements") is False
+    assert _m("Doctor's Best Co Q10", "Doctor's Best Co Q9", "supplements") is False
+
+
+def test_nutrient_fold_does_not_touch_electronics_flag_on(monkeypatch):
+    # The fold is supplement-scoped: model codes never reach it and still discriminate.
+    monkeypatch.setenv("ENABLE_VARIANT_DESCRIPTOR_AXES", "true")
+    assert _m("Sony WH-1000XM5", "Sony WH1000XM5", "electronics", "Sony") is True
+    assert _m("Sony WH-1000XM5", "Sony WH-1000XM4", "electronics", "Sony") is False
+    assert _m("Nvidia RTX-3080", "Nvidia RTX-3070", "electronics", "Nvidia") is False
