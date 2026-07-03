@@ -280,6 +280,44 @@ def test_gen_inline_add_still_rejects(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# B1-FIX2 — GENERATION count-noun exclusion (colors/sensors/tips/...)
+# A bare digit that COUNTS the following marketing/spec noun ("AirPods Max
+# 2 Colors" = 2 colorways, "... 2 Sensors" = 2 sensors) is a QUANTITY, not a
+# generation -> tolerate. Convergence of the B1-fix re-sweep blind spot.
+# ---------------------------------------------------------------------------
+_GEN_B1FIX2_TOLERATE = [
+    ("Apple AirPods Max", "Apple AirPods Max 2 Colors"),
+    ("Apple AirPods Max", "Apple AirPods Max 2 Colours"),
+    ("Apple AirPods Max", "Apple AirPods Max 2 Sensors"),
+    ("Apple AirPods Pro", "Apple AirPods Pro 2 Tips"),
+    ("Apple AirPods Pro", "Apple AirPods Pro 2 Ear Tips"),
+    ("Sonos Max", "Sonos Max 2 Speakers"),
+    ("Apple Watch", "Apple Watch 2 Bands"),
+    ("Google Pixel", "Google Pixel 2 Options"),
+]
+
+
+@pytest.mark.parametrize("q,t", _GEN_B1FIX2_TOLERATE)
+def test_gen_B1fix2_count_noun_not_generation(monkeypatch, q, t):
+    _axes_on(monkeypatch)
+    assert _display(q, t, "electronics") is True
+    assert _cacheread(q, t, "electronics") is True
+
+
+def test_gen_B1fix2_terminal_inline_int_still_rejects(monkeypatch):
+    # The closure pins from B1fix-A must STILL fire: a title-terminal bare int,
+    # or one followed by a NON-count token, is a real generation.
+    _axes_on(monkeypatch)
+    assert _display("Apple AirPods Pro", "Apple AirPods Pro 2", "electronics") is False
+    assert _cacheread("Apple AirPods Pro", "Apple AirPods Pro 2", "electronics") is False
+    assert _display("Amazon Echo Dot", "Amazon Echo Dot 3", "electronics") is False
+    assert _display("Apple Pencil", "Apple Pencil 2", "electronics") is False
+    assert _display("Samsung Galaxy Watch", "Samsung Galaxy Watch 4 Classic",
+                    "electronics") is False
+    assert _display("Apple iPad Air", "Apple iPad Air 4 Wi-Fi", "electronics") is False
+
+
+# ---------------------------------------------------------------------------
 # B1-FIX RULING B — GENDER contradiction-only at the backstop
 # ---------------------------------------------------------------------------
 _GENDER_B_TOLERATE = [

@@ -5360,6 +5360,23 @@ _GENERATION_QUANTITY_NOUNS = frozenset({
     "bar", "camera", "cameras", "lens", "lenses", "ply", "mm", "cm", "inch",
     "in", "watt", "w", "kw", "gb", "tb", "hz", "khz", "ghz", "seat", "seats",
     "door", "doors",
+    # B1-FIX2: descriptive count/marketing nouns a bare digit QUANTIFIES in real
+    # titles ("... 2 Colors", "... 2 Sensors", "... 2 Ear Tips"). Extending this
+    # set can ONLY make the generation axis fire LESS (more tolerance), so it can
+    # never create a NEW over-rejection. NONE of these is a model-variant / spec /
+    # color-name token (classic/plus/max/pro/mini/wifi/cellular/charcoal/... stay
+    # OUT) so no real generation leak reopens (the canonical leaks are
+    # title-terminal or non-count-suffixed: Pro 2 / Dot 3 / Pencil 2 / Watch 4
+    # Classic / Air 4 Wi-Fi).
+    "colors", "colours", "color", "colour", "sensors", "sensor", "tips", "tip",
+    "options", "option", "bands", "band", "sizes", "remotes", "remote",
+    "speakers", "speaker", "cores", "core", "buttons", "button", "modes", "mode",
+    "blades", "blade", "heads", "head", "nibs", "nib", "refills", "refill",
+    "cartridges", "cartridge", "pods", "pod", "cups", "cup", "bulbs", "bulb",
+    "keys", "key", "zones", "zone", "pairs", "pair", "sets", "set", "ear",
+    "buds", "bud", "chargers", "charger", "cables", "adapters", "adapter",
+    "stands", "stand", "mounts", "mount", "brushes", "brush", "rolls", "roll",
+    "sheets", "sheet", "packs",
 })
 
 
