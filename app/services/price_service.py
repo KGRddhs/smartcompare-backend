@@ -7071,8 +7071,211 @@ def _structured_code_cache_override(
     return not _axis_mismatch(request_name, surface, cat, brand)
 
 
+# ============================================================================
+# WAVE-2 B3a — CURATED VARIANT-HINT REFERENCE + WARM-CONTEXT CACHE-WRITE VETO
+# ============================================================================
+# The 2+1 warmer-writable POISON classes (residual-census.json) —
+#   gender_flanker_base_to_femme (Versace Eros -> Eros Pour Femme),
+#   spf_one_sided_add            (CeraVe Lotion -> +SPF 30),
+#   makeup_one_sided_formula_add (Fit Me Matte -> Fit Me Dewy)
+# — PASS should_cache_price today: they pass _selection_match (they are the HELD
+# DISPLAY tradeoffs — symmetrizing them mass-over-rejects correct products, the
+# proven revert). A live-origin flanker is the already-accepted low-frequency
+# display trade; the AMPLIFIED harm is the CRON WARMER writing such a row
+# CONTINUOUSLY under the genuine 7d TTL, served to everyone. So the veto fires
+# ONLY off-clock/warm — the live 15s path + is_price_showable display stay
+# BYTE-IDENTICAL. A vetoed price still RESOLVES + DISPLAYS; the warmer merely
+# skips caching that row.
+#
+# WARM-CONTEXT DISCRIMINATOR (belt-and-braces per descriptor-design.json R3):
+#   (a) the WARMER_CONTEXT env the off-clock scripts export
+#       (cron_warm_price_cache / warm_kpi_truth / measure_warmed_kpi /
+#        seed_zyte_luxury), AND
+#   (b) an explicit warm_context=True kwarg a caller may force.
+# The veto activates when EITHER warm signal is present (an env alone can leak
+# into a dev server, so a caller can also force it; a script that forgets the
+# env can still pass the kwarg — either path arms it, neither is required to be
+# both). The LIVE web request never sets the env nor passes the kwarg, so
+# should_cache_price on the live path is byte-identical.
+#
+# The whole thing is gated behind variant_descriptor_axes_enabled() (which
+# hard-requires the exact gate): flag-OFF -> byte-identical, curated ref is
+# deterministic/$0 but stays flag-gated to keep the merge clean.
+
+_VARIANT_HINT_REFERENCE_PATH = os.path.join(
+    os.path.dirname(__file__), "..", "..", "data", "variant_hint_reference.json",
+)
+
+
+@functools.lru_cache(maxsize=1)
+def _load_variant_hint_reference() -> Dict[str, Any]:
+    """Load data/variant_hint_reference.json ONCE (module-level memo, the
+    bh_gcc_sources.json committed-data precedent). Missing/malformed -> empty
+    sections (every lookup then returns 'unknown' -> fail-closed veto). Never
+    raises."""
+    try:
+        with open(_VARIANT_HINT_REFERENCE_PATH, "r", encoding="utf-8") as fh:
+            doc = json.load(fh)
+        if not isinstance(doc, dict):
+            return {}
+        return doc
+    except Exception as exc:  # noqa: BLE001 — reference is additive, never fatal
+        logger.warning("[variant_hint] reference load failed: %s", exc)
+        return {}
+
+
+def _vh_longest_base_match(folded: str, keys) -> Optional[str]:
+    """The LONGEST curated base-line key contained (whitespace-boundary) in
+    `folded`, or None. Longest-key wins so 'sauvage elixir' beats 'sauvage'
+    when both are present."""
+    best = None
+    for k in keys:
+        if not k or k.startswith("_"):
+            continue
+        # containment on a padded string so 'si' does not match inside 'basil'.
+        if f" {k} " in f" {folded} ":
+            if best is None or len(k) > len(best):
+                best = k
+    return best
+
+
+def _variant_hint_lookup(category: Optional[str], query_name: str,
+                         candidate_title: str, axis: str) -> str:
+    """Deterministic $0 reader over data/variant_hint_reference.json.
+
+    Returns "distinct" | "same" | "unknown" for the given `axis` in
+    {"gender", "spf", "formula"}. The base line is matched by LONGEST-key
+    CONTAINMENT in the folded query (falls back to the candidate when the query
+    is terse and omits the line word). A base-line MISS -> "unknown" (the
+    caller fail-closes)."""
+    ref = _load_variant_hint_reference()
+    qf = _fold_identity(query_name or "")
+    cf = _fold_identity(candidate_title or "")
+
+    if axis == "gender":
+        table = ref.get("fragrance_base_gender") or {}
+        base = _vh_longest_base_match(qf, table.keys()) or _vh_longest_base_match(cf, table.keys())
+        if base is None:
+            return "unknown"
+        base_gender = table.get(base)
+        # The gender the CANDIDATE adds (candidate stated, query did not).
+        cand_gender = _gender_of(candidate_title)
+        if cand_gender is None or base_gender is None:
+            return "unknown"
+        return "same" if cand_gender == base_gender else "distinct"
+
+    if axis == "spf":
+        spf_section = ref.get("inherent_spf_lines") or {}
+        inherent = spf_section.get("lines") or []
+        non_sun = spf_section.get("non_sunscreen_lines") or []
+        # An inherent-SPF line: the SPF add is descriptive of the base -> SAME.
+        inh = _vh_longest_base_match(qf, inherent) or _vh_longest_base_match(cf, inherent)
+        # A KNOWN non-sunscreen line: the SPF add is a distinct variant -> DISTINCT.
+        non = _vh_longest_base_match(qf, non_sun) or _vh_longest_base_match(cf, non_sun)
+        # When BOTH match (a longer non-sunscreen key vs a shorter inherent key or
+        # vice versa) prefer the LONGER, more-specific base line.
+        if inh and (not non or len(inh) >= len(non)):
+            return "same"
+        if non:
+            return "distinct"
+        # Base in NEITHER list. We CANNOT prove it is a distinct SKU from tokens
+        # alone (the exact reason the display axis is HELD), so a MISS is UNKNOWN
+        # -> fail-closed veto (never a wrong cache).
+        return "unknown"
+
+    if axis == "formula":
+        table = ref.get("makeup_formula_lines") or {}
+        base = _vh_longest_base_match(qf, table.keys()) or _vh_longest_base_match(cf, table.keys())
+        if base is None:
+            return "unknown"
+        distinct_tokens = set(table.get(base) or [])
+        cand_forms = extract_variant_descriptor(candidate_title, "makeup").finishes
+        query_forms = extract_variant_descriptor(query_name, "makeup").finishes
+        added = (cand_forms - query_forms) & distinct_tokens
+        # The candidate ADDS a distinct formula sub-line token the query lacks
+        # AND that token is a DISTINCT sub-line of this base -> DISTINCT.
+        return "distinct" if added else "same"
+
+    return "unknown"
+
+
+def _warm_context_active(warm_context: bool = False) -> bool:
+    """True iff the OFF-CLOCK warm signal is present: the explicit
+    warm_context kwarg OR the WARMER_CONTEXT env the warm/seed/measure scripts
+    export (belt-and-braces, R3). Read FRESH so a script's os.environ set before
+    import is honored and a live request (neither set) is never armed."""
+    if warm_context:
+        return True
+    return os.getenv("WARMER_CONTEXT", "").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
+def warmer_write_veto(
+    request_name: str, price: Optional[Dict[str, Any]], category: Optional[str] = None,
+    *, warm_context: bool = False,
+) -> Tuple[bool, Optional[str]]:
+    """The WARM-CONTEXT cache-write veto for the 2+1 warmer-writable poison
+    classes. Returns (allow, reason).
+
+    NO-OP (returns (True, None)) unless BOTH: the warm signal is present
+    (_warm_context_active) AND variant_descriptor_axes_enabled(). So the live
+    15s path is byte-identical (no warm signal) and flag-OFF is byte-identical.
+
+    When armed, detects a Class-B AMBIGUOUS axis the candidate ADDS that the
+    query lacks (gender / spf / makeup formula), consults _variant_hint_lookup:
+      "distinct" -> veto (do NOT cache — a different SKU);
+      "same"     -> allow (descriptive of the same product);
+      "unknown"  -> FAIL-CLOSED veto (never write an unverified identity to the
+                    shared genuine TTL — the price still resolves + DISPLAYS).
+    is_price_showable is deliberately NOT touched — display stays as today."""
+    if not _warm_context_active(warm_context) or not variant_descriptor_axes_enabled():
+        return True, None
+    if not isinstance(price, dict):
+        return True, None
+    title = price.get("title") or price.get("name") or ""
+    if not title:
+        return True, None
+    cat = (category or "").lower()
+    qd = extract_variant_descriptor(request_name, category)
+    cd = extract_variant_descriptor(title, category)
+
+    # --- gender flanker base->femme (fragrance/beauty + fashion) ---
+    if cat in _FRAGRANCE_BEAUTY_CATEGORIES or cat == "fashion":
+        # Candidate ADDS a gender token the query lacks (the base->femme add that
+        # _gender_mismatch [both-stated] and _feminine_query_unconfirmed
+        # [women's-query] both miss).
+        if cd.gender and not qd.gender:
+            verdict = _variant_hint_lookup(category, request_name, title, "gender")
+            if verdict == "distinct":
+                return False, "gender_flanker_distinct"
+            if verdict == "unknown":
+                return False, "gender_flanker_unknown_failclosed"
+
+    # --- one-sided SPF add (skincare/makeup/haircare — category-independent) ---
+    if cd.spfs and not qd.spfs:
+        verdict = _variant_hint_lookup(category, request_name, title, "spf")
+        if verdict == "distinct":
+            return False, "spf_add_distinct"
+        if verdict == "unknown":
+            return False, "spf_add_unknown_failclosed"
+
+    # --- makeup one-sided formula add ---
+    if cat == "makeup":
+        added_forms = cd.finishes - qd.finishes
+        if added_forms:
+            verdict = _variant_hint_lookup(category, request_name, title, "formula")
+            if verdict == "distinct":
+                return False, "formula_add_distinct"
+            if verdict == "unknown":
+                return False, "formula_add_unknown_failclosed"
+
+    return True, None
+
+
 def should_cache_price(
     request_name: str, price: Optional[Dict[str, Any]], category: Optional[str] = None,
+    *, warm_context: bool = False,
 ) -> bool:
     """B6 — gate a cache WRITE on the RESOLVED identity matching the request, so a
     wrong candidate (which a permissive matcher might once have let through) can NEVER
@@ -7082,7 +7285,13 @@ def should_cache_price(
     legitimately-selected price (defense-in-depth for the non-select_best writes:
     iHerb / pharmacy / converted). Returns True (allow) when there is nothing to
     verify against (no title to compare, or no request) — an estimated price has its
-    own honesty + TTL. No-op (True) when the rollback flag is OFF."""
+    own honesty + TTL. No-op (True) when the rollback flag is OFF.
+
+    WAVE-2 B3a — when the OFF-CLOCK warm signal is present (WARMER_CONTEXT env or
+    warm_context=True) AND the axes flag is on, the base decision is additionally
+    subject to warmer_write_veto (gender-flanker / one-sided SPF / makeup one-sided
+    formula ADD closed via the curated variant-hint reference). The veto can ONLY
+    turn an ALLOW into a REFUSE — a live request (no warm signal) is byte-identical."""
     if not exact_gate_enabled():
         return True
     if not isinstance(price, dict):
@@ -7125,16 +7334,26 @@ def should_cache_price(
         # no-adapter paths (shopping / harvest JSON-LD). Same centralized
         # helper; the structured-code override below keeps its own brand
         # protection (strict_title_match keeps the query brand required).
-        return _brand_evidence_ok(
+        base_ok = _brand_evidence_ok(
             request_name, title,
             candidate_brand=str(price.get("brand") or ""), category=category,
         )
-    # Wave-B parity — the bounded structured-identity override the algolia
-    # matcher already ran (A3): a query-confirmed model code relaxes ONLY the
-    # variant-add direction; leak direction + axes stay enforced. Without this
-    # the write gate re-rejects exactly the descriptive-title hit the adapter
-    # accepted, so the correct product resolves+displays but NEVER caches.
-    return _structured_code_cache_override(request_name, price, title, category)
+    else:
+        # Wave-B parity — the bounded structured-identity override the algolia
+        # matcher already ran (A3): a query-confirmed model code relaxes ONLY the
+        # variant-add direction; leak direction + axes stay enforced. Without this
+        # the write gate re-rejects exactly the descriptive-title hit the adapter
+        # accepted, so the correct product resolves+displays but NEVER caches.
+        base_ok = _structured_code_cache_override(request_name, price, title, category)
+    if not base_ok:
+        return False
+    # Wave-2 B3a — OFF-CLOCK ONLY: apply the curated variant-hint veto on TOP of
+    # an allowed base decision. No-op (returns (True, ...)) on the live path and
+    # flag-OFF, so byte-identity holds; it can only turn an ALLOW into a REFUSE.
+    allow, _reason = warmer_write_veto(
+        request_name, price, category, warm_context=warm_context,
+    )
+    return allow
 
 
 def public_price_view(price: Any) -> Any:

@@ -24,6 +24,9 @@ os.environ["ENABLE_ZYTE_RENDER"] = "true"
 # Off-clock: raise the request-time price clock so the slow Zyte render finishes.
 os.environ["PRICE_RACE_TIMEOUT"] = os.getenv("SEED_PRICE_RACE_TIMEOUT", "120")
 os.environ.setdefault("ZYTE_TIMEOUT", "100")
+# Wave-2 B3a — OFF-CLOCK warm signal (arms warmer_write_veto at cache-write; the
+# live 15s path is untouched). See scripts/cron_warm_price_cache.py.
+os.environ.setdefault("WARMER_CONTEXT", "1")
 
 try:
     from dotenv import load_dotenv
