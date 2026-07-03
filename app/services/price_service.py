@@ -3711,9 +3711,12 @@ def _quals_in(text: str, qualset: frozenset) -> set:
 
 def _concentration_mismatch(q: str, t: str) -> bool:
     """True iff BOTH carry an explicit fragrance concentration and they DIFFER
-    (EDP vs EDT). A side that omits concentration does not trigger a mismatch."""
-    qc, tc = extract_concentration(q), extract_concentration(t)
-    return bool(qc and tc and qc != tc)
+    (EDP vs EDT). A side that omits concentration does not trigger a mismatch.
+    (Wave-2 A1: delegates to the VariantDescriptor — one implementation.)"""
+    return _vd_scalar_differs(
+        extract_variant_descriptor(q, None).concentration,
+        extract_variant_descriptor(t, None).concentration,
+    )
 
 
 def _size_ml_raw(text: Optional[str]) -> Optional[float]:
@@ -3745,16 +3748,13 @@ def _size_ml_mismatch(q: str, t: str, category: Optional[str] = None) -> bool:
     size (absorbs oz<->ml rounding: 8oz == 236.6ml ≈ a '236 ml' / '237 ml' listing),
     so an oz-labelled skincare/grocery/supplement product is no longer over-rejected
     against its ml-labelled listing while a real size difference (88ml vs 236ml)
-    still mismatches."""
-    if (category or "").lower() == "fragrances":
-        qs, ts = extract_size_ml_any(q), extract_size_ml_any(t)
-        if qs is None or ts is None:
-            return False
-        return qs != ts
-    qr, tr = _size_ml_raw(q), _size_ml_raw(t)
-    if qr is None or tr is None:
-        return False
-    return abs(qr - tr) > 0.05 * max(qr, tr)
+    still mismatches.
+    (Wave-2 A1: delegates to the VariantDescriptor — one implementation.)"""
+    return _vd_size_ml_mismatch(
+        extract_variant_descriptor(q, category),
+        extract_variant_descriptor(t, category),
+        (category or "").lower(),
+    )
 
 
 def _match_storage_gb(text: str) -> Optional[float]:
@@ -3776,19 +3776,21 @@ def _match_storage_gb(text: str) -> Optional[float]:
 def _storage_mismatch(q: str, t: str) -> bool:
     """True iff BOTH carry a GB/TB storage size and they DIFFER (256 vs 128). Uses the
     LARGEST GB token (storage, not RAM) so a query pinning both RAM+storage does not
-    false-pend a genuine storage-only listing."""
-    qg, tg = _match_storage_gb(q), _match_storage_gb(t)
-    if qg is None or tg is None:
-        return False
-    return qg != tg
+    false-pend a genuine storage-only listing.
+    (Wave-2 A1: delegates to the VariantDescriptor — one implementation.)"""
+    return _vd_scalar_differs(
+        extract_variant_descriptor(q, None).storage_gb,
+        extract_variant_descriptor(t, None).storage_gb,
+    )
 
 
 def _count_mismatch(q: str, t: str) -> bool:
-    """True iff BOTH carry a unit count and they DIFFER (120 vs 240 softgels)."""
-    qc, tc = extract_count(q), extract_count(t)
-    if qc is None or tc is None:
-        return False
-    return qc != tc
+    """True iff BOTH carry a unit count and they DIFFER (120 vs 240 softgels).
+    (Wave-2 A1: delegates to the VariantDescriptor — one implementation.)"""
+    return _vd_scalar_differs(
+        extract_variant_descriptor(q, None).count,
+        extract_variant_descriptor(t, None).count,
+    )
 
 
 # Supplement strength: capture (value, unit) so a wrong DOSE (5000 IU vs 1000 IU)
@@ -3813,19 +3815,12 @@ def _doses(text: str) -> set:
 def _strength_mismatch(q: str, t: str) -> bool:
     """True iff BOTH carry an explicit mg/IU/mcg dose with the SAME unit but a
     DIFFERENT value (Vitamin D3 5000 IU vs 1000 IU). Cross-unit pairs (mg vs g) are
-    NOT a mismatch — avoids false-pending an mg↔g-equivalent listing."""
-    qd, td = _doses(q), _doses(t)
-    if not qd or not td:
-        return False
-    q_units = {u for _v, u in qd}
-    t_units = {u for _v, u in td}
-    shared = q_units & t_units
-    if not shared:
-        return False  # different units only — don't assert (in)equivalence
-    for u in shared:
-        if {v for v, uu in qd if uu == u} & {v for v, uu in td if uu == u}:
-            return False  # a common (value, unit) exists → not a mismatch
-    return True
+    NOT a mismatch — avoids false-pending an mg↔g-equivalent listing.
+    (Wave-2 A1: delegates to the VariantDescriptor — one implementation.)"""
+    return _vd_strength_mismatch(
+        extract_variant_descriptor(q, None).doses,
+        extract_variant_descriptor(t, None).doses,
+    )
 
 
 def _weights_volumes(text: str) -> set:
@@ -3879,34 +3874,12 @@ def _weight_or_volume_mismatch(q: str, t: str) -> bool:
     lb->g rounding tolerance (review #2b): when EITHER side carries an lb/pound token,
     the two HEADLINE grams values within 1% are the SAME size (5lb=2267.96g matches a
     "2270g" / "2.27kg" listing). Native g-vs-g and ml-vs-ml stay EXACT (distinct retail
-    sizes are >>1% apart -> no spurious merge); the tolerance arms ONLY for lb."""
-    qwv, twv = _weights_volumes(q), _weights_volumes(t)
-    if not qwv or not twv:
-        return False
-    q_bases = {b for _v, b in qwv}
-    t_bases = {b for _v, b in twv}
-    shared = q_bases & t_bases
-    if not shared:
-        # CROSS-UNIT (external review #4) — BOTH state a size but in DISJOINT bases
-        # (grams vs millilitres). Weight and volume are not interchangeable (a 340g
-        # cream is not provably a 177ml lotion; density makes g<->ml conversion
-        # ambiguous), so the equivalence is UNVERIFIED -> fail-closed mismatch. (A
-        # one-sided size — the other side omits it — never reaches here: the
-        # qwv/twv-empty guard above returns False.)
-        return True
-    _lb_present = bool(_LB_TOKEN_RE.search(q or "")) or bool(_LB_TOKEN_RE.search(t or ""))
-    for b in shared:
-        qv = [v for v, bb in qwv if bb == b]
-        tv = [v for v, bb in twv if bb == b]
-        if not qv or not tv:
-            continue
-        qmax, tmax = max(qv), max(tv)
-        if qmax == tmax:
-            continue  # same headline net/package size
-        if _lb_present and b == "g" and abs(qmax - tmax) <= 0.01 * max(qmax, tmax):
-            continue  # lb-conversion rounding on the headline grams
-        return True
-    return False
+    sizes are >>1% apart -> no spurious merge); the tolerance arms ONLY for lb.
+    (Wave-2 A1: delegates to the VariantDescriptor — one implementation.)"""
+    return _vd_weight_or_volume_mismatch(
+        extract_variant_descriptor(q, None),
+        extract_variant_descriptor(t, None),
+    )
 
 
 # Categories where a PRODUCT FORM (deodorant / candle / lotion / shower gel) names
@@ -3973,9 +3946,11 @@ def _gender_of(text: str) -> Optional[str]:
 def _gender_mismatch(query_name: str, candidate_title: str) -> bool:
     """True iff query and candidate state CONFLICTING genders (a gender-flip flanker).
     A one-sided gender (the canonical 'Pour Homme' the terse query omits) is NOT a
-    mismatch."""
-    gq, gt = _gender_of(query_name), _gender_of(candidate_title)
-    return bool(gq and gt and gq != gt)
+    mismatch. (Wave-2 A1: delegates to the VariantDescriptor.)"""
+    return _vd_gender_mismatch(
+        extract_variant_descriptor(query_name, None),
+        extract_variant_descriptor(candidate_title, None),
+    )
 
 
 def _feminine_query_unconfirmed(query_name: str, candidate_title: str) -> bool:
@@ -3992,8 +3967,12 @@ def _feminine_query_unconfirmed(query_name: str, candidate_title: str) -> bool:
     descriptor ("Black Opium" -> "Black Opium For Women" is the SAME product), because gender
     tokens alone cannot distinguish a flanker-of-a-men's-base from a women's-base descriptor.
     The asymmetry deliberately trades the narrow Eros-style leak for not pending the far more
-    common women's-base case. See tests/test_correctness_review_pr9_fixes.py."""
-    return _gender_of(query_name) == "women" and _gender_of(candidate_title) != "women"
+    common women's-base case. See tests/test_correctness_review_pr9_fixes.py.
+    (Wave-2 A1: delegates to the VariantDescriptor.)"""
+    return _vd_feminine_query_unconfirmed(
+        extract_variant_descriptor(query_name, None),
+        extract_variant_descriptor(candidate_title, None),
+    )
 
 # Form PHRASES that name a different product when present on only one side. Ordered
 # longest-first so "body lotion" wins over a bare "body". The default bottle/jar form
@@ -4057,19 +4036,15 @@ def _form_mismatch(query_name: str, candidate_title: str, category: Optional[str
         rejects (a deodorant is a different product than the EDP).
       - skincare/haircare/makeup: ONE-SIDED tolerant — a descriptive PDP that states a
         form the form-omitting query lacks (Niacinamide -> "Niacinamide Serum") must NOT
-        pend; only TWO explicitly-stated DIFFERENT forms (cream vs gel) reject."""
-    cat = (category or "").lower()
-    if cat not in _FRAGRANCE_BEAUTY_CATEGORIES:
-        return False
-    qf = _extract_product_form(query_name, brand)
-    tf = _extract_product_form(candidate_title, brand)
-    # FRAGRANCES + MAKEUP: STRICT — a one-sided form is a different SKU (a deodorant vs
-    # the EDP; a Lip Glow OIL vs the Lip Glow balm — coverage review CRITICAL makeup
-    # format leak). skincare/haircare: one-sided tolerant (a "Serum" PDP for a
-    # form-omitting query is the same product; only two DIFFERENT stated forms reject).
-    if cat in ("fragrances", "makeup"):
-        return qf != tf
-    return bool(qf and tf and qf != tf)
+        pend; only TWO explicitly-stated DIFFERENT forms (cream vs gel) reject.
+    (Wave-2 A1: delegates to the VariantDescriptor — the FRAGRANCES+MAKEUP
+    strict-one-sided vs skincare/haircare both-stated split lives in
+    _vd_form_mismatch.)"""
+    return _vd_form_mismatch(
+        extract_variant_descriptor(query_name, category, brand),
+        extract_variant_descriptor(candidate_title, category, brand),
+        (category or "").lower(),
+    )
 
 
 def _candidate_missing_query_axis(query_name: str, candidate_title: str,
@@ -4079,42 +4054,14 @@ def _candidate_missing_query_axis(query_name: str, candidate_title: str,
     (fail-closed), not auto-accept. Scoped to the axes where a silent omission is a
     real wrong-variant leak: fragrance concentration + ml size, supplement strength +
     count. (Electronics storage is DELIBERATELY excluded — terse genuine PDP titles
-    routinely omit it; the qualifier/variant_mismatch axes carry electronics.)"""
-    cat = (category or "").lower()
-    if cat == "fragrances":
-        if extract_concentration(query_name) and not extract_concentration(candidate_title):
-            return True
-        if extract_size_ml_any(query_name) is not None and extract_size_ml_any(candidate_title) is None:
-            return True
-    if cat == "supplements":
-        if _doses(query_name) and not _doses(candidate_title):
-            return True
-        if extract_count(query_name) is not None and extract_count(candidate_title) is None:
-            return True
-    if cat == "electronics":
-        # External review — query states storage (256GB) but the candidate omits it ->
-        # UNVERIFIED -> pend (a terse "Galaxy S24" PDP is not proof it is the 256GB).
-        if extract_storage_gb(query_name) is not None and extract_storage_gb(candidate_title) is None:
-            return True
-    if cat in _SIZE_OMIT_CATEGORIES:
-        # skincare / makeup / haircare / grocery — query states a weight/volume the
-        # candidate omits -> unverified size -> pend.
-        if _weights_volumes(query_name) and not _weights_volumes(candidate_title):
-            return True
-    if cat in _PERCENT_CATEGORIES:
-        # skincare/haircare/makeup — query states a %-strength the candidate omits ->
-        # unverified active concentration -> pend (coverage review B).
-        if _percents(query_name) and not _percents(candidate_title):
-            return True
-    if cat == "fashion":
-        # query states a system shoe size the candidate omits -> unverified -> pend.
-        if _shoe_sizes(query_name) and not _shoe_sizes(candidate_title):
-            return True
-    if cat == "grocery":
-        # query states a pack count the candidate omits -> unverified -> pend.
-        if _packs(query_name) and not _packs(candidate_title):
-            return True
-    return False
+    routinely omit it; the qualifier/variant_mismatch axes carry electronics.)
+    (Wave-2 A1: delegates to the VariantDescriptor — the per-category axis set
+    lives in _vd_candidate_missing_query_axis, comment-for-comment.)"""
+    return _vd_candidate_missing_query_axis(
+        extract_variant_descriptor(query_name, category),
+        extract_variant_descriptor(candidate_title, category),
+        (category or "").lower(),
+    )
 
 
 # Categories where a query-stated weight/volume the candidate omits = unverified -> pend.
@@ -4141,11 +4088,12 @@ def _color_mismatch(query_name: str, candidate_title: str) -> bool:
     """Fashion colourway contradiction. The query's STATED colours must ALL appear in the
     candidate (a "White Green" query is NOT the "White Red" colourway just because both carry
     white — comprehensive-review HIGH dual-colourway leak). A one-sided colour (the query
-    states none, or the candidate adds an extra colour beyond the query's) is tolerated."""
-    qc, tc = _colors_in(query_name), _colors_in(candidate_title)
-    if not qc or not tc:
-        return False
-    return not qc.issubset(tc)
+    states none, or the candidate adds an extra colour beyond the query's) is tolerated.
+    (Wave-2 A1: delegates to the VariantDescriptor.)"""
+    return _vd_color_mismatch(
+        extract_variant_descriptor(query_name, None),
+        extract_variant_descriptor(candidate_title, None),
+    )
 
 
 def _clothing_sizes_in(text: str) -> set:
@@ -4160,21 +4108,22 @@ def _clothing_sizes_in(text: str) -> set:
 
 
 def _clothing_size_mismatch(query_name: str, candidate_title: str) -> bool:
-    """Fashion apparel size contradiction — both state a clothing size and they DIFFER."""
-    qs, ts = _clothing_sizes_in(query_name), _clothing_sizes_in(candidate_title)
-    if not qs or not ts:
-        return False
-    return not (qs & ts)
+    """Fashion apparel size contradiction — both state a clothing size and they DIFFER.
+    (Wave-2 A1: delegates to the VariantDescriptor.)"""
+    return _vd_disjoint(
+        extract_variant_descriptor(query_name, None).clothing_sizes,
+        extract_variant_descriptor(candidate_title, None).clothing_sizes,
+    )
 
 
 def _vitamin_letter_mismatch(query_name: str, candidate_title: str) -> bool:
     """Supplement vitamin-letter contradiction — Vitamin C vs Vitamin D (the single
-    letter is dropped from identity tokens, so it is checked as an explicit axis)."""
-    qv = {m.lower() for m in _VITAMIN_LETTER_RE.findall(query_name)}
-    tv = {m.lower() for m in _VITAMIN_LETTER_RE.findall(candidate_title)}
-    if not qv or not tv:
-        return False
-    return not (qv & tv)
+    letter is dropped from identity tokens, so it is checked as an explicit axis).
+    (Wave-2 A1: delegates to the VariantDescriptor.)"""
+    return _vd_disjoint(
+        extract_variant_descriptor(query_name, None).vitamin_letters,
+        extract_variant_descriptor(candidate_title, None).vitamin_letters,
+    )
 
 
 # Flagship fragrance concentrations — a different, more concentrated JUICE than the
@@ -4187,11 +4136,13 @@ _FLAGSHIP_CONCENTRATIONS = frozenset({"Extrait", "Parfum", "Parfum Intense"})
 
 def _flagship_concentration_added(query_name: str, candidate_title: str) -> bool:
     """True iff the candidate states a FLAGSHIP concentration (Parfum/Extrait/Parfum
-    Intense) that the query did not state — a different juice, fail-closed."""
-    tc = extract_concentration(candidate_title)
-    if tc not in _FLAGSHIP_CONCENTRATIONS:
-        return False
-    return extract_concentration(query_name) != tc
+    Intense) that the query did not state — a different juice, fail-closed.
+    (Wave-2 A1: delegates to the VariantDescriptor — _category_type_added, the
+    untouched chokepoint pair check, inherits through this helper.)"""
+    return _vd_flagship_concentration_added(
+        extract_variant_descriptor(query_name, None),
+        extract_variant_descriptor(candidate_title, None),
+    )
 
 
 # Supplement product-TYPE tokens that name a DIFFERENT formulation (Whey vs Whey
@@ -4244,13 +4195,13 @@ def _supplement_type_added(query_name: str, candidate_title: str) -> bool:
     the bare constituent names are excluded for such queries. A SINGLE-constituent query keeps
     them — so a COMBO add still rejects ("Calcium" -> "Calcium Magnesium Zinc") and a
     formulation/salt-form add ("Magnesium" -> "Magnesium Citrate", "Whey" -> "Whey Isolate")
-    stays a discriminator on BOTH (no combo leak)."""
-    qt = set(re.findall(r"[a-z0-9]+", _fold_identity(query_name)))
-    tt = set(re.findall(r"[a-z0-9]+", _fold_identity(candidate_title)))
-    added = (tt & _SUPPLEMENT_TYPE_TOKENS) - qt
-    if qt & _MULTI_CONSTITUENT_QUERY:
-        added = added - _SUPPLEMENT_CONSTITUENT_TOKENS
-    return bool(added)
+    stays a discriminator on BOTH (no combo leak).
+    (Wave-2 A1: delegates to the VariantDescriptor — _category_type_added, the
+    untouched chokepoint pair check, inherits through this helper.)"""
+    return _vd_supplement_type_added(
+        extract_variant_descriptor(query_name, None),
+        extract_variant_descriptor(candidate_title, None),
+    )
 
 
 def _category_type_added(query_name: str, candidate_title: str, category: Optional[str]) -> bool:
@@ -4290,11 +4241,12 @@ def _percents(text: str) -> set:
 
 
 def _percent_mismatch(q: str, t: str) -> bool:
-    """True iff BOTH carry a %-strength and they share NO value (10% vs 5%)."""
-    qp, tp = _percents(q), _percents(t)
-    if not qp or not tp:
-        return False
-    return not (qp & tp)
+    """True iff BOTH carry a %-strength and they share NO value (10% vs 5%).
+    (Wave-2 A1: delegates to the VariantDescriptor.)"""
+    return _vd_disjoint(
+        extract_variant_descriptor(q, None).percents,
+        extract_variant_descriptor(t, None).percents,
+    )
 
 
 # --- fashion SHOE-SIZE axis ---------------------------------------------------
@@ -4314,11 +4266,12 @@ def _shoe_sizes(text: str) -> set:
 
 
 def _shoe_size_mismatch(q: str, t: str) -> bool:
-    """True iff BOTH state a system-prefixed shoe size and share none (US 9 vs US 10)."""
-    qs, ts = _shoe_sizes(q), _shoe_sizes(t)
-    if not qs or not ts:
-        return False
-    return not (qs & ts)
+    """True iff BOTH state a system-prefixed shoe size and share none (US 9 vs US 10).
+    (Wave-2 A1: delegates to the VariantDescriptor.)"""
+    return _vd_disjoint(
+        extract_variant_descriptor(q, None).shoe_sizes,
+        extract_variant_descriptor(t, None).shoe_sizes,
+    )
 
 
 # --- grocery PACK-COUNT axis --------------------------------------------------
@@ -4341,11 +4294,12 @@ def _packs(text: str) -> set:
 
 
 def _pack_mismatch(q: str, t: str) -> bool:
-    """True iff BOTH state a pack count and share none (6 Pack vs 24 Pack)."""
-    qp, tp = _packs(q), _packs(t)
-    if not qp or not tp:
-        return False
-    return not (qp & tp)
+    """True iff BOTH state a pack count and share none (6 Pack vs 24 Pack).
+    (Wave-2 A1: delegates to the VariantDescriptor.)"""
+    return _vd_disjoint(
+        extract_variant_descriptor(q, None).packs,
+        extract_variant_descriptor(t, None).packs,
+    )
 
 
 # --- supplement delivery FORM axis -------------------------------------------
@@ -4368,19 +4322,14 @@ _SUPPLEMENT_ALT_FORMS = frozenset({
 
 
 def _supplement_form_added(query_name: str, candidate_title: str) -> bool:
-    qt = set(re.findall(r"[a-z0-9]+", _fold_identity(query_name)))
-    tt = set(re.findall(r"[a-z0-9]+", _fold_identity(candidate_title)))
-    # candidate adds an ALTERNATIVE form the query lacks -> different SKU.
-    if (tt & _SUPPLEMENT_ALT_FORMS) - (qt & _SUPPLEMENT_ALT_FORMS):
-        return True
-    # both state a form and the (default vs alternative) CLASS differs.
-    def _class(toks: set) -> set:
-        out = set()
-        for f in toks & (_SUPPLEMENT_DEFAULT_FORMS | _SUPPLEMENT_ALT_FORMS):
-            out.add("alt:" + f if f in _SUPPLEMENT_ALT_FORMS else "default")
-        return out
-    qc, tc = _class(qt), _class(tt)
-    return bool(qc and tc and qc != tc)
+    """Candidate adds an ALTERNATIVE delivery form (gummy/liquid/...) the query
+    lacks, or the stated (default vs alternative) form CLASSES differ.
+    (Wave-2 A1: delegates to the VariantDescriptor — _category_type_added, the
+    untouched chokepoint pair check, inherits through this helper.)"""
+    return _vd_supplement_form_added(
+        extract_variant_descriptor(query_name, None),
+        extract_variant_descriptor(candidate_title, None),
+    )
 
 
 # --- generalized candidate-adds-distinctive-token (SUPERSET) guard ------------
@@ -4593,33 +4542,23 @@ def _flavour_mismatch(query_name: str, candidate_title: str,
 
     A candidate that OMITS the query's flavour (terse listing) is tolerated in BOTH
     categories; a pure 'unflavored'/'plain' ADD to a flavour-less query is the canonical
-    base (no reject)."""
-    qf = set(re.findall(r"[a-z0-9]+", _fold_identity(query_name))) & _FLAVOUR_TOKENS
-    tf = set(re.findall(r"[a-z0-9]+", _fold_identity(candidate_title))) & _FLAVOUR_TOKENS
-    if not tf:
-        return False  # candidate states no flavour -> tolerate a terse listing
-    if (category or "").lower() == "grocery":
-        extra = tf - qf
-        if not extra:
-            return False  # candidate flavour subset of query -> same SKU
-        real_q = qf - _FLAVOUR_ABSENCE
-        extra_real = extra - _FLAVOUR_ABSENCE
-        if not real_q and not extra_real:
-            return False  # only 'unflavored'/'plain' added to a flavour-less query
-        return True
-    # supplements (and any other flavour category): both-stated-different only.
-    if not qf:
-        return False  # one-sided candidate flavour tolerated (ISO100 -> ISO100 Vanilla)
-    return not (qf & tf)
+    base (no reject).
+    (Wave-2 A1: delegates to the VariantDescriptor — the grocery-asymmetric vs
+    supplements-contradiction split lives in _vd_flavour_mismatch.)"""
+    return _vd_flavour_mismatch(
+        extract_variant_descriptor(query_name, category),
+        extract_variant_descriptor(candidate_title, category),
+        (category or "").lower(),
+    )
 
 
 def _finish_mismatch(query_name: str, candidate_title: str) -> bool:
-    """True iff BOTH sides state a makeup finish and they share none (Matte vs Dewy)."""
-    qf = set(re.findall(r"[a-z0-9]+", _fold_identity(query_name))) & _MAKEUP_FINISH_TOKENS
-    tf = set(re.findall(r"[a-z0-9]+", _fold_identity(candidate_title))) & _MAKEUP_FINISH_TOKENS
-    if not qf or not tf:
-        return False
-    return not (qf & tf)
+    """True iff BOTH sides state a makeup finish and they share none (Matte vs Dewy).
+    (Wave-2 A1: delegates to the VariantDescriptor.)"""
+    return _vd_disjoint(
+        extract_variant_descriptor(query_name, None).finishes,
+        extract_variant_descriptor(candidate_title, None).finishes,
+    )
 
 
 _MATERIAL_TOKENS = frozenset({
@@ -4629,12 +4568,12 @@ _MATERIAL_TOKENS = frozenset({
 
 
 def _material_mismatch(query_name: str, candidate_title: str) -> bool:
-    """Fashion — True iff BOTH state a material and they share none (Leather vs Suede)."""
-    qm = set(re.findall(r"[a-z0-9]+", _fold_identity(query_name))) & _MATERIAL_TOKENS
-    tm = set(re.findall(r"[a-z0-9]+", _fold_identity(candidate_title))) & _MATERIAL_TOKENS
-    if not qm or not tm:
-        return False
-    return not (qm & tm)
+    """Fashion — True iff BOTH state a material and they share none (Leather vs Suede).
+    (Wave-2 A1: delegates to the VariantDescriptor.)"""
+    return _vd_disjoint(
+        extract_variant_descriptor(query_name, None).materials,
+        extract_variant_descriptor(candidate_title, None).materials,
+    )
 
 
 # CONDITION (electronics) — a refurbished/used/open-box unit is a different price TIER, so
@@ -4645,21 +4584,23 @@ _CONDITION_TOKENS = frozenset({
 
 
 def _condition_mismatch(query_name: str, candidate_title: str) -> bool:
-    qc = bool(set(re.findall(r"[a-z0-9]+", _fold_identity(query_name))) & _CONDITION_TOKENS)
-    tc = bool(set(re.findall(r"[a-z0-9]+", _fold_identity(candidate_title))) & _CONDITION_TOKENS)
-    return qc != tc
+    """EITHER-direction one-sided reject (the only such axis): a non-new
+    condition stated on exactly one side is a different price tier.
+    (Wave-2 A1: delegates to the VariantDescriptor.)"""
+    return (extract_variant_descriptor(query_name, None).condition
+            != extract_variant_descriptor(candidate_title, None).condition)
 
 
 _INCH_RE = re.compile(r"\b(\d+(?:\.\d+)?)\s*(?:-\s*)?(?:inch(?:es)?\b|[\"”″]+)", re.I)
 
 
 def _inch_mismatch(query_name: str, candidate_title: str) -> bool:
-    """Electronics — True iff BOTH state a screen-inch size and they differ (14 vs 16)."""
-    qi = {float(m) for m in _INCH_RE.findall(query_name or "")}
-    ti = {float(m) for m in _INCH_RE.findall(candidate_title or "")}
-    if not qi or not ti:
-        return False
-    return not (qi & ti)
+    """Electronics — True iff BOTH state a screen-inch size and they differ (14 vs 16).
+    (Wave-2 A1: delegates to the VariantDescriptor.)"""
+    return _vd_disjoint(
+        extract_variant_descriptor(query_name, None).inches,
+        extract_variant_descriptor(candidate_title, None).inches,
+    )
 
 
 # SPF (sunscreen rating) — a SKU axis for cosmetics (SPF 30 vs SPF 50). One-sided
@@ -4673,11 +4614,12 @@ _SPF_RE = re.compile(r"\bspf\s*(\d+)\b", re.I)
 
 
 def _spf_mismatch(query_name: str, candidate_title: str) -> bool:
-    qs = {int(m) for m in _SPF_RE.findall(query_name or "")}
-    ts = {int(m) for m in _SPF_RE.findall(candidate_title or "")}
-    if not qs or not ts:
-        return False
-    return not (qs & ts)
+    """Both-stated-different SPF rating (SPF 30 vs SPF 50); one-sided tolerated
+    (see the revert note below). (Wave-2 A1: delegates to the VariantDescriptor.)"""
+    return _vd_disjoint(
+        extract_variant_descriptor(query_name, None).spfs,
+        extract_variant_descriptor(candidate_title, None).spfs,
+    )
 
 # NOTE (external review #4): an SPF-ADD axis (candidate states an SPF the query omits ->
 # different SKU) was implemented and then REVERTED. A sunscreen-context carve-out cannot
@@ -4701,10 +4643,12 @@ def _ram_value(text: str) -> set:
 
 
 def _ram_mismatch(query_name: str, candidate_title: str) -> bool:
-    qr, tr = _ram_value(query_name), _ram_value(candidate_title)
-    if not qr or not tr:
-        return False
-    return not (qr & tr)
+    """Both-stated-different RAM tier (8GB vs 16GB, GB values <= 32); one-sided
+    tolerated. (Wave-2 A1: delegates to the VariantDescriptor.)"""
+    return _vd_disjoint(
+        extract_variant_descriptor(query_name, None).ram_gb,
+        extract_variant_descriptor(candidate_title, None).ram_gb,
+    )
 
 
 # Wave C (re-sweep RS4) — LABEL-AWARE core-count parse: the count's cpu/gpu
@@ -4778,24 +4722,13 @@ def _core_count_mismatch(query_name: str, candidate_title: str) -> bool:
         only when it appears nowhere, the pre-RS4 pinned behaviour);
       - both sides fully UNLABELLED compare set EQUALITY (a stated count set
         that differs is a different bin; singletons behave exactly as the old
-        disjoint check)."""
-    q_cpu, q_gpu, q_un = _labeled_core_counts(query_name)
-    t_cpu, t_gpu, t_un = _labeled_core_counts(candidate_title)
-    q_all = q_cpu | q_gpu | q_un
-    t_all = t_cpu | t_gpu | t_un
-    if not q_all or not t_all:
-        return False  # one-sided tolerated
-    if q_cpu and t_cpu and not (q_cpu & t_cpu):
-        return True
-    if q_gpu and t_gpu and not (q_gpu & t_gpu):
-        return True
-    if not (q_cpu or q_gpu or t_cpu or t_gpu):
-        return q_un != t_un  # both fully unlabelled → set equality
-    if q_un and not (q_un & t_all):
-        return True
-    if t_un and not (t_un & q_all):
-        return True
-    return False
+        disjoint check).
+    (Wave-2 A1: delegates to the VariantDescriptor — the label-aware logic
+    lives in _vd_core_count_mismatch, line-for-line.)"""
+    return _vd_core_count_mismatch(
+        extract_variant_descriptor(query_name, None).core_counts,
+        extract_variant_descriptor(candidate_title, None).core_counts,
+    )
 
 
 # Apple silicon CHIP-TIER axis — "M3" (base) vs "M3 Pro" vs "M3 Max" vs "M3 Ultra" are
@@ -4814,17 +4747,12 @@ def _chip_tier(text: str) -> set:
 
 def _chip_tier_mismatch(query_name: str, candidate_title: str) -> bool:
     """True iff both name an Apple M-series chip with the SAME number but a DIFFERENT tier
-    (M3 base vs M3 Pro). A different chip NUMBER is already caught by identity (m2!=m3)."""
-    qc, tc = _chip_tier(query_name), _chip_tier(candidate_title)
-    q_nums = {n for n, _ in qc}
-    t_nums = {n for n, _ in tc}
-    shared = q_nums & t_nums
-    if not shared:
-        return False
-    for n in shared:
-        if {t for nn, t in qc if nn == n} != {t for nn, t in tc if nn == n}:
-            return True
-    return False
+    (M3 base vs M3 Pro). A different chip NUMBER is already caught by identity (m2!=m3).
+    (Wave-2 A1: delegates to the VariantDescriptor.)"""
+    return _vd_chip_tier_mismatch(
+        extract_variant_descriptor(query_name, None).chip_tiers,
+        extract_variant_descriptor(candidate_title, None).chip_tiers,
+    )
 
 
 # Supplement bare (unit-less) dose — "D3 5000" vs "D3 1000" (the bare 4+-digit number is
@@ -4834,11 +4762,12 @@ _BARE_DOSE_RE = re.compile(r"(?<![a-z])(\d{4,})(?![a-z])", re.I)
 
 
 def _supplement_bare_dose_mismatch(query_name: str, candidate_title: str) -> bool:
-    qd = {int(m) for m in _BARE_DOSE_RE.findall(_fold_identity(query_name))}
-    td = {int(m) for m in _BARE_DOSE_RE.findall(_fold_identity(candidate_title))}
-    if not qd or not td:
-        return False
-    return not (qd & td)
+    """Both-stated-different bare (unit-less) dose number (D3 5000 vs D3 1000);
+    one-sided tolerated. (Wave-2 A1: delegates to the VariantDescriptor.)"""
+    return _vd_disjoint(
+        extract_variant_descriptor(query_name, None).bare_doses,
+        extract_variant_descriptor(candidate_title, None).bare_doses,
+    )
 
 
 # Trailing "+" upgrade-variant axis (category-INDEPENDENT). A word immediately followed by
@@ -4859,8 +4788,12 @@ def _plus_stems(s: str) -> set:
 
 
 def _plus_variant_mismatch(query_name: str, candidate_title: str) -> bool:
-    # raw .lower() (NOT _fold_identity — it strips the "+" as a non-alphanumeric).
-    return _plus_stems(query_name) != _plus_stems(candidate_title)
+    """SET-EQUALITY of '+'-marked stems (symbol + spelled forms unified) — a
+    one-sided '+' is a different, upgraded SKU (S24 vs S24+).
+    (Wave-2 A1: delegates to the VariantDescriptor; _plus_stems parses the raw
+    .lower() text, NOT _fold_identity — the fold strips the '+'.)"""
+    return (extract_variant_descriptor(query_name, None).plus_stems
+            != extract_variant_descriptor(candidate_title, None).plus_stems)
 
 
 # Fashion CUT/FIT — a different denim/apparel cut is a SKU (Levis 501 vs 501 Slim). Both-
@@ -4872,11 +4805,12 @@ _FIT_TOKENS = frozenset({
 
 
 def _fit_mismatch(query_name: str, candidate_title: str) -> bool:
-    qf = set(re.findall(r"[a-z0-9]+", _fold_identity(query_name))) & _FIT_TOKENS
-    tf = set(re.findall(r"[a-z0-9]+", _fold_identity(candidate_title))) & _FIT_TOKENS
-    if not qf or not tf:
-        return False
-    return not (qf & tf)
+    """Both-stated-different apparel cut/fit (501 Slim vs 501 Regular); one-sided
+    tolerated. (Wave-2 A1: delegates to the VariantDescriptor.)"""
+    return _vd_disjoint(
+        extract_variant_descriptor(query_name, None).fits,
+        extract_variant_descriptor(candidate_title, None).fits,
+    )
 
 
 # Grocery PREP / fat / carbonation — a real SKU axis (instant vs ground coffee, whole vs
@@ -4888,11 +4822,12 @@ _GROCERY_PREP_TOKENS = frozenset({
 
 
 def _grocery_prep_mismatch(query_name: str, candidate_title: str) -> bool:
-    qp = set(re.findall(r"[a-z0-9]+", _fold_identity(query_name))) & _GROCERY_PREP_TOKENS
-    tp = set(re.findall(r"[a-z0-9]+", _fold_identity(candidate_title))) & _GROCERY_PREP_TOKENS
-    if not qp or not tp:
-        return False
-    return not (qp & tp)
+    """Both-stated-different grocery prep/fat/carbonation (instant vs ground);
+    one-sided tolerated. (Wave-2 A1: delegates to the VariantDescriptor.)"""
+    return _vd_disjoint(
+        extract_variant_descriptor(query_name, None).preps,
+        extract_variant_descriptor(candidate_title, None).preps,
+    )
 # Skin-type / area / product-class descriptors (NEVER a SKU axis — the SKU axes %/size/
 # +active/form are enforced separately). The BENEFIT/effect words (brightening/clarifying/
 # volumizing/...) are DELIBERATELY EXCLUDED — they are the variant LINE discriminator for
@@ -6013,70 +5948,16 @@ def _axis_mismatch(query_name: str, candidate_title: str, category: Optional[str
     numeric-axis-only, never-false-pend-a-descriptive-title contract (the form +
     candidate-omits enforcement lives on the brand-aware primary gates). Each numeric
     axis is a no-op unless BOTH sides carry it (a fragrance has no storage, a phone
-    no dose)."""
-    # ReDoS guard (comprehensive review HIGH): the numeric-axis regexes are polynomial on a
-    # long digit run, so a crafted multi-KB scraped candidate title (a malicious retailer page)
-    # could stall the async worker (8 KB -> ~15 s). A real product name/title is well under
-    # 512 chars — cap before any re.findall. Truncation only affects pathological inputs.
-    if query_name and len(query_name) > _MATCH_INPUT_CAP:
-        query_name = query_name[:_MATCH_INPUT_CAP]
-    if candidate_title and len(candidate_title) > _MATCH_INPUT_CAP:
-        candidate_title = candidate_title[:_MATCH_INPUT_CAP]
-    quals = _CATEGORY_VARIANT_QUALIFIERS.get((category or "").lower(), frozenset())
-    if quals and _quals_in(query_name, quals) != _quals_in(candidate_title, quals):
-        return True
-    if (
-        _concentration_mismatch(query_name, candidate_title)
-        or _size_ml_mismatch(query_name, candidate_title, category)
-        or _storage_mismatch(query_name, candidate_title)
-        or _count_mismatch(query_name, candidate_title)
-        or _strength_mismatch(query_name, candidate_title)
-        or _weight_or_volume_mismatch(query_name, candidate_title)
-        # %-strength + SPF are CATEGORY-INDEPENDENT discriminators (a different active
-        # %-strength or SPF is always a different product) — must fire even when the
-        # category inferred None on the scrape path (Minoxidil 5% vs 2%) (coverage review R6).
-        or _percent_mismatch(query_name, candidate_title)
-        or _spf_mismatch(query_name, candidate_title)
-        or _plus_variant_mismatch(query_name, candidate_title)
-    ):
-        return True
-    _cat = (category or "").lower()
-    # Category-scoped numeric axes (also enforced by the brand-independent backstop):
-    # %-strength (cosmetics only — % is purity not strength for supplements/grocery),
-    # shoe size (fashion), pack count (grocery). (coverage review B)
-    if (
-        (_cat == "fashion" and _shoe_size_mismatch(query_name, candidate_title))
-        or (_cat == "grocery" and _pack_mismatch(query_name, candidate_title))
-        # contradiction axes (coverage review round 2) — both-stated-different rejects,
-        # one-sided is tolerated (the token is also padding).
-        or (_cat in _FLAVOUR_CATEGORIES and _flavour_mismatch(query_name, candidate_title, _cat))
-        or (_cat == "makeup" and _finish_mismatch(query_name, candidate_title))
-        or (_cat == "fashion" and _material_mismatch(query_name, candidate_title))
-        or (_cat == "fashion" and _fit_mismatch(query_name, candidate_title))
-        or (_cat == "grocery" and _grocery_prep_mismatch(query_name, candidate_title))
-        or (_cat == "electronics" and _condition_mismatch(query_name, candidate_title))
-        or (_cat == "electronics" and _inch_mismatch(query_name, candidate_title))
-        or (_cat == "electronics" and _ram_mismatch(query_name, candidate_title))
-        or (_cat == "electronics" and _core_count_mismatch(query_name, candidate_title))
-        or (_cat == "electronics" and _chip_tier_mismatch(query_name, candidate_title))
-        or (_cat == "supplements" and _supplement_bare_dose_mismatch(query_name, candidate_title))
-    ):
-        return True
-    if strict_extras and (
-        _form_mismatch(query_name, candidate_title, category, brand)
-        or _candidate_missing_query_axis(query_name, candidate_title, category)
-        or _category_type_added(query_name, candidate_title, category)
-        or ((_cat in _FRAGRANCE_BEAUTY_CATEGORIES or _cat == "fashion")
-            and (_gender_mismatch(query_name, candidate_title)
-                 or _feminine_query_unconfirmed(query_name, candidate_title)))
-        or (_cat == "fashion"
-            and (_color_mismatch(query_name, candidate_title)
-                 or _clothing_size_mismatch(query_name, candidate_title)))
-        or (_cat == "supplements"
-            and _vitamin_letter_mismatch(query_name, candidate_title))
-    ):
-        return True
-    return False
+    no dose).
+
+    Wave-2 A1: thin wrapper over the extract-once VariantDescriptor — the
+    per-axis checks (and the _MATCH_INPUT_CAP ReDoS cap) live in
+    extract_variant_descriptor + _descriptor_axis_mismatch, check-for-check
+    identical (golden-corpus pinned)."""
+    q_vd = extract_variant_descriptor(query_name, category, brand)
+    c_vd = extract_variant_descriptor(candidate_title, category, brand)
+    return _descriptor_axis_mismatch(
+        q_vd, c_vd, category, strict_extras=strict_extras) is not None
 
 
 def is_exact_match(
@@ -6094,16 +5975,18 @@ def is_exact_match(
     `strict_title_match`'s subset) to reject S24→S24 FE / EDP→EDT / 256→128 /
     100ml→30ml / flanker leaks, and intentionally BRAND-AWARE + alias-tolerant
     (EDT≡"eau de toilette", oz≡ml, diacritics, colour/edition for electronics) to
-    avoid false pends."""
+    avoid false pends.
+
+    Wave-2 A1: thin wrapper over the extract-once VariantDescriptor (EXACT
+    mode = strict axes + identity-token set-EQUALITY, golden-corpus pinned).
+    The gate no-op + empty-input early-returns stay here, byte-identical."""
     if not exact_gate_enabled():
         return True
     if not query_name or not candidate_title:
         return True
-    if _axis_mismatch(query_name, candidate_title, category, candidate_brand):
-        return False
-    q_ident = _identity_tokens_ps(query_name, candidate_brand, category)
-    t_ident = _identity_tokens_ps(candidate_title, candidate_brand, category)
-    return q_ident == t_ident
+    q_vd = extract_variant_descriptor(query_name, category, candidate_brand)
+    c_vd = extract_variant_descriptor(candidate_title, category, candidate_brand)
+    return descriptor_verdict(q_vd, c_vd, category, DESCRIPTOR_MODE_EXACT).match
 
 
 # ---------------------------------------------------------------------------
@@ -6326,7 +6209,14 @@ def _selection_match(
     This catches every documented warm-cache leak (S24→FE, EDP→EDT, 256→128,
     decant-size, related-product, count drift) without false pends. The strict
     set-EQUALITY `is_exact_match` is reserved for clean brand-omitted sources
-    (sephora/Zyte) + the shared contract."""
+    (sephora/Zyte) + the shared contract.
+
+    Wave-2 A1: thin wrapper over the extract-once VariantDescriptor — the
+    identity/superset keystone, per-category padding and the title-side
+    tolerances live step-for-step in _descriptor_selection_verdict (see the
+    comment blocks there; golden-corpus pinned). The gate no-op, the empty-
+    input early-returns and the "other" re-inference stay HERE (re-inference
+    must run BEFORE extraction — the category is an extraction parameter)."""
     if not exact_gate_enabled():
         return True
     if not query_name or not candidate_title:
@@ -6340,139 +6230,9 @@ def _selection_match(
     # direct off-path/unit call, where lenient subset matching avoids mass over-rejection.
     if (category or "").lower() == "other":
         category = _infer_category_from_query(query_name) or category
-    if _axis_mismatch(query_name, candidate_title, category, candidate_brand):
-        return False
-    q_ident = _identity_tokens_ps(query_name, candidate_brand, category)
-    t_ident = _identity_tokens_ps(candidate_title, candidate_brand, category)
-    # A missing GENERIC category noun (smartphone/headphones/protein the terse listing
-    # omitted) must NOT reject — the brand+model discriminate. The generic set is
-    # CATEGORY-SCOPED (a makeup 'blush' stays distinctive for a fragrance) (coverage review R6).
-    _generic = _generic_for(category)
-    q_distinct = q_ident - _generic
-    t_distinct = t_ident - _generic
-    # (1) generic CLASS SWAP — query and candidate each name a generic class noun but
-    #     share NONE ("Sony Headphones" vs "Sony Speaker"; "Dress" vs "Skirt") — is a
-    #     DIFFERENT product even though a missing generic noun is otherwise tolerated.
-    q_generic = q_ident & _generic
-    t_generic = t_ident & _generic
-    if q_generic and t_generic and not (q_generic & t_generic):
-        return False
-    # (2)+(3) THE KEYSTONE — core-identity match with per-category PADDING tolerance, in
-    #     BOTH directions:
-    #       LEAK direction (q_core ⊆ t_core): the candidate must carry every query
-    #         distinctive non-padding token (S24 vs S24 FE, WH-1000XM5 vs WF-1000XM5).
-    #       VARIANT-ADD direction (t_core ⊆ q_core): the candidate must add NO distinctive
-    #         non-padding token — a candidate that adds one is a DIFFERENT (related) SKU:
-    #           Canon R6 -> R6 Mark II / Kindle -> Paperwhite / Samba -> Samba OG /
-    #           Nescafe Gold -> Decaf / Buffet -> +Copper Peptides / Creatine -> Monohydrate.
-    #     The per-category PADDING (descriptive/marketing/connectivity/form/flavour/brand)
-    #     keeps a genuine DESCRIPTIVE/alias title from over-rejecting. A CURATED marker
-    #     allowlist was tried and is structurally leaky (variant tokens are unbounded) —
-    #     this rejects ANY extra non-padding token instead.
-    cat = (category or "").lower()  # already re-inferred at the top of _selection_match
-    padding = _category_padding(cat)
-    q_core = q_distinct - padding
-    t_core = t_distinct - padding
-    # BF3 (sweep OR-1..OR-4) — bounded, query-CONDITIONAL title-side
-    # tolerances. See the helper block above _selection_match.
-    if cat in _MODEL_YEAR_CATEGORIES:
-        # ONE-SIDED model-year, RE-BOUND (Wave C, re-sweep RS1 + kpiE2E RS-3).
-        # A title-side 2020s year is release-tag padding ONLY when ALL of:
-        #   (a) it appears in an ANNOTATION form on the RAW title — "(2025)" /
-        #       "GEN 2025" — a bare mid-title year is a MODEL/SEASON name
-        #       (Air Max 2021, jersey 2024) and stays identity;
-        #   (b) the query carries a NON-YEAR generation discriminator
-        #       (M3/M5/S25-class digit-bearing token, never a measure like
-        #       128GB/44mm) that the title ALSO carries — the year is then
-        #       redundant annotation on an already-pinned generation. The
-        #       year-ONLY-discriminated families (iPhone SE / Watch SE) keep
-        #       the year required and fail closed;
-        #   (c) the query states NO year (a query-stated year keeps the full
-        #       axis: a 2022 query neither matches a (2020) title nor a
-        #       year-omitting one — unchanged).
-        if not any(_MODEL_YEAR_RE.match(w) for w in q_core):
-            _annot_years = _annotation_year_tokens(candidate_title)
-            if _annot_years and (_year_generation_discriminators(q_core) & t_core):
-                t_core = t_core - _annot_years
-    if cat == "electronics":
-        # TITLE-side-only marketing tokens ("... AI Smartphone ..."): a title
-        # ADD the query never stated is tolerated — but a token the QUERY
-        # carries stays on BOTH sides (else the identical-title "Nothing AI
-        # Phone" case would strip the title's copy and fail its own subset).
-        t_core = t_core - (_ELECTRONICS_TITLE_SIDE_TOLERATED - q_core)
-        # INCH-axis equality: the title inch-annotates a bare query digit
-        # ("13" vs "13-inch"/"13 Inch") -> same axis value, remove the
-        # covered bare digit; a DIFFERENT value removes nothing and the
-        # subset/variant-add checks reject as before. Mirrored for the
-        # reverse spelling (query annotated, title bare).
-        t_inch = _inch_digit_tokens(candidate_title)
-        if t_inch:
-            q_core = q_core - t_inch
-        q_inch = _inch_digit_tokens(query_name)
-        if q_inch:
-            t_core = t_core - q_inch
-    if cat == "fashion" and q_core:
-        # TITLE-side construction/neckline descriptors (BF4, sweep OR-6):
-        # tolerated as title ADDS only when the query does not carry the
-        # token — a query-stated neckline stays required, so both-stated-
-        # different rejects via the leak-direction subset below. The q_core-
-        # non-empty bound keeps the emptied fashion brand/class-query fence
-        # ("Nike T-Shirt" matches no specific member) unchanged: the
-        # tolerance must never blank a construction-only distinctive core
-        # into an accept. RS5: the neckline words are title-BIGRAM-conditional
-        # (see _fashion_construction_tolerated_for).
-        t_core = t_core - (_fashion_construction_tolerated_for(candidate_title) - q_core)
-        # Wave E (kpi-fash-004) — Luxottica model-code-CONFIRMED eyewear
-        # tolerance (see the helper block above): colorway/lens-size/stock-
-        # descriptor annotations on a title that carries the QUERY's own
-        # model code are listing decoration, not a variant-add. Same
-        # query-conditional asymmetry; leak direction untouched.
-        _eyewear_tol = _eyewear_code_tolerated_for(query_name, candidate_title)
-        if _eyewear_tol:
-            t_core = t_core - (_eyewear_tol - q_core)
-    if cat == "makeup":
-        # A spelled-out shade NAME on the candidate is descriptive when BOTH sides carry
-        # the SAME shade NUMBER ("Fit Me 240" -> "Fit Me 240 Soft Sand"); accept — BUT only
-        # when the candidate adds no EXTRA shade number (a second number 220->220 320 is a
-        # different shade and must still reject). Without a shared number, shade-NAME words
-        # are NOT padding, so a differing shade name rejects via the superset below.
-        q_nums = {w for w in q_core if w.isdigit()}
-        t_nums = {w for w in t_core if w.isdigit()}
-        # Accept on a shared shade NUMBER only when (a) the candidate adds no EXTRA number
-        # (a second shade number is a different shade) AND (b) the NON-number core is
-        # subset-compatible — so a shared number does NOT bridge two different product
-        # LINES that happen to share a shade code (Fit Me 240 vs Superstay 240) (round 4).
-        # A DIFFERENT formula LINE reusing the shade code (Soft Matte 240 vs Hydrating 240;
-        # Infallible Matte 130 vs Glow 130) is rejected UPSTREAM by _finish_mismatch (both sides
-        # state a finish/formula word and they DIFFER) — the formula words were added to
-        # _MAKEUP_FINISH_TOKENS. A one-sided formula ADD ("Fit Me 310 Smooth Coverage") is
-        # descriptive and tolerated here (coverage re-sweep: avoids mass over-rejection of common
-        # Fit Me titles; the rarer one-sided line add "Fit Me -> Dewy+Smooth" is the accepted trade).
-        if (q_nums and t_nums and (q_nums & t_nums) and not (t_nums - q_nums)
-                and (q_core - q_nums).issubset(t_core - t_nums)):
-            return True
-    # LEAK direction — candidate must carry all of the query's distinctive non-padding
-    # tokens (applies to EVERY category, incl. an unresolved one).
-    if not q_core.issubset(t_core):
-        return False
-    # VARIANT-ADD direction — a candidate that adds a distinctive non-padding token is a
-    # DIFFERENT SKU. Runs for the KNOWN categories (tuned PADDING) PLUS explicit "other" (a
-    # FREQUENT real LLM output that bypassed the guard end-to-end — coverage review round 8
-    # CRITICAL; empty padding, so a token-ADD rejects). A TRULY-unresolved "" (None after the
-    # top-of-function re-inference also failed) stays SUBSET-ONLY — on prod paths the
-    # orchestrator-resolved category is always threaded (param/ContextVar) so "" only occurs in
-    # a direct off-path call where the lenient subset behaviour avoids mass over-rejection.
-    if (cat in _SUPERSET_VARIANT_CATEGORIES or cat == "other") and (t_core - q_core):
-        if q_core:
-            return False  # a SPECIFIC query + an extra candidate token = a different SKU
-        # q_core EMPTY. Only skip (accept any specific member) when the query is a true
-        # brand/class query — i.e. its distinctive set MINUS brand/manufacturer words is
-        # empty ("Sony Headphones" -> {sony}-manufacturer = {}). If a LINE word emptied a
-        # SPECIFIC query (Samsung Crystal UHD -> {crystal,uhd}, neither is a brand word), do
-        # NOT skip — it would accept a sibling line (QLED) (coverage review round 5).
-        if (q_distinct - _MANUFACTURER_NOISE) or cat not in _GENERIC_QUERY_SKIP_CATEGORIES:
-            return False
-    return True
+    q_vd = extract_variant_descriptor(query_name, category, candidate_brand)
+    c_vd = extract_variant_descriptor(candidate_title, category, candidate_brand)
+    return descriptor_verdict(q_vd, c_vd, category, DESCRIPTOR_MODE_SELECTION).match
 
 
 # The 8 KNOWN categories whose PADDING lists are tuned enough to run the variant-add guard.
@@ -6503,10 +6263,16 @@ def _backstop_identity_ok(query_name: str, candidate_title: str, category: Optio
     (Dual SIM Phantom Black) listing. It catches the dominant wrong-axis leaks
     (S24→FE, EDP→EDT, 256→128, decant-size, count drift) on any path that bypassed
     the primary gate; the rarer same-token flanker is caught upstream where the
-    brand is known."""
+    brand is known.
+
+    Wave-2 A1: thin wrapper over the extract-once VariantDescriptor (BACKSTOP
+    mode = loose axes only, strict_extras=False — never the superset, per the
+    is_price_showable revert proof). The empty-title early-return stays here."""
     if not candidate_title:
         return True
-    return not _axis_mismatch(query_name, candidate_title, category, strict_extras=False)
+    q_vd = extract_variant_descriptor(query_name, category, "")
+    c_vd = extract_variant_descriptor(candidate_title, category, "")
+    return descriptor_verdict(q_vd, c_vd, category, DESCRIPTOR_MODE_BACKSTOP).match
 
 
 # --- Availability policy (schema.org-complete; never raises) ----------------
