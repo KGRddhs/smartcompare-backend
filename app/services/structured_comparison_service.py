@@ -4674,12 +4674,47 @@ class StructuredComparisonService:
 
         # L2: Check DB before tier cascade
         if not price_nocache:
-            from app.services.product_data_service import get_cached_price
+            from app.services.product_data_service import (
+                get_cached_price,
+                _title_persist_enabled,
+            )
             db_price = await get_cached_price(cache_key, region)
             if db_price and not _cache_price_identity_ok(db_price, brand, name, category):
                 db_price = None
             if db_price:
-                set_cached(cache_key, db_price, price_cache_ttl(db_price))
+                # Wave-2 B1.2 (chokepoint R8c) — an L2-DB hit is promoted into L1
+                # Redis for the price TTL. Previously that promotion was gated ONLY
+                # by the weak cache-read check (_cache_price_identity_ok). Now that
+                # title/brand/in_stock round-trip (flag ON), re-run the STRONG
+                # write gate should_cache_price before promoting a title-carrying
+                # row — refuse the L1 promotion (but STILL SERVE this request, the
+                # current behavior) when it fails. A title-LESS legacy row is
+                # served but NOT promoted (nothing to re-verify). Flag OFF ->
+                # byte-identical (unconditional promotion, as before).
+                _promote = True
+                if _title_persist_enabled():
+                    _request_name = f"{brand} {name} {variant or ''}".strip()
+                    if db_price.get("title"):
+                        _promote = should_cache_price(
+                            _request_name, db_price, category
+                        )
+                        if not _promote:
+                            logger.info(
+                                "[PRICE] L2->L1 promotion refused (should_cache_price "
+                                "failed) for %s %s — serving without promoting",
+                                brand, name,
+                            )
+                    else:
+                        # Title-less legacy row: serve but do not promote an
+                        # unverifiable identity into the shared L1 cache.
+                        _promote = False
+                        logger.info(
+                            "[PRICE] L2->L1 promotion skipped (title-less legacy "
+                            "row) for %s %s — serving without promoting",
+                            brand, name,
+                        )
+                if _promote:
+                    set_cached(cache_key, db_price, price_cache_ttl(db_price))
                 db_price["_cached"] = True
                 db_price["_cache_source"] = "db"
                 return db_price
