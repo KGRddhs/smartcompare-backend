@@ -5539,6 +5539,465 @@ def extract_variant_descriptor(text: Optional[str], category: Optional[str],
     )
 
 
+# ----------------------------------------------------------------------------
+# The COMPARATOR TABLE (design lane R2) — ONE decision function, three modes,
+# encoding TODAY'S semantics per axis:
+#   EXACT_BOTH_STATED  one-sided tolerated; both-stated-different rejects
+#                      (concentration, ml-size, storage, count, dose, weight/
+#                      volume headline, percent, SPF, RAM, inch, chip-tier,
+#                      core-count, supplement flavour, finish, material, fit,
+#                      prep, vitamin-letter, shoe-size, pack, clothing-size,
+#                      bare-dose, gender-contradiction)
+#   SET_EQUALITY       electronics variant qualifiers, plus-stems, both-
+#                      unlabelled core-counts
+#   ASYMMETRIC_ADD     candidate-adds rejects (flagship concentration,
+#                      supplement type/alt-form, grocery flavour); colors is
+#                      the query-subset variant
+#   EITHER_SIDED       condition — the ONLY either-direction one-sided reject
+#   QUERY_STATED_REQUIRES_CANDIDATE  the _candidate_missing_query_axis set
+#                      (fail-closed omission of a query-pinned axis)
+#   CROSS_CLASS_FAIL_CLOSED  weight-vs-volume disjoint bases
+# plus the mode-scoped SELECTION tolerances (year-annotation, electronics
+# 'ai', fashion construction bigram, eyewear code-confirmed, inch equality,
+# makeup shade-number).
+# ----------------------------------------------------------------------------
+
+DESCRIPTOR_MODE_SELECTION = "selection"
+DESCRIPTOR_MODE_EXACT = "exact"
+DESCRIPTOR_MODE_BACKSTOP = "backstop"
+_DESCRIPTOR_MODES = frozenset({
+    DESCRIPTOR_MODE_SELECTION, DESCRIPTOR_MODE_EXACT, DESCRIPTOR_MODE_BACKSTOP,
+})
+
+
+@dataclass(frozen=True)
+class DescriptorVerdict:
+    """descriptor_verdict result: `match` is the decision; `axis` names the
+    failing comparator when match is False (diagnostics only — no consumer
+    branches on it in Phase A)."""
+    match: bool
+    axis: Optional[str] = None
+
+
+def _vd_scalar_differs(a, b) -> bool:
+    """EXACT_BOTH_STATED scalar: both stated and different (None = UNKNOWN)."""
+    return a is not None and b is not None and a != b
+
+
+def _vd_disjoint(a: frozenset, b: frozenset) -> bool:
+    """EXACT_BOTH_STATED set: both stated and sharing NO value."""
+    return bool(a and b and not (a & b))
+
+
+def _vd_size_ml_mismatch(q: VariantDescriptor, c: VariantDescriptor, cat: str) -> bool:
+    """ml/oz size axis (_size_ml_mismatch): fragrances compare the
+    standard-bottle SNAPPED sizes exactly; every other category compares the
+    RAW oz->ml conversion with a ~5% tolerance (oz<->ml rounding)."""
+    if cat == "fragrances":
+        return _vd_scalar_differs(q.size_ml_snapped, c.size_ml_snapped)
+    if q.size_ml_raw is None or c.size_ml_raw is None:
+        return False
+    return abs(q.size_ml_raw - c.size_ml_raw) > 0.05 * max(q.size_ml_raw, c.size_ml_raw)
+
+
+def _vd_strength_mismatch(qd: frozenset, td: frozenset) -> bool:
+    """Dose axis (_strength_mismatch): same-unit-only — mismatch iff EVERY
+    shared unit has disjoint values (cross-unit pairs never assert)."""
+    if not qd or not td:
+        return False
+    q_units = {u for _v, u in qd}
+    t_units = {u for _v, u in td}
+    shared = q_units & t_units
+    if not shared:
+        return False
+    for u in shared:
+        if {v for v, uu in qd if uu == u} & {v for v, uu in td if uu == u}:
+            return False
+    return True
+
+
+def _vd_weight_or_volume_mismatch(q: VariantDescriptor, c: VariantDescriptor) -> bool:
+    """Weight/volume axis (_weight_or_volume_mismatch): HEADLINE = max per
+    base; disjoint bases (g vs ml) = CROSS_CLASS_FAIL_CLOSED mismatch; the lb
+    1% tolerance arms only when either side carried an lb token."""
+    qwv, twv = q.weights_volumes, c.weights_volumes
+    if not qwv or not twv:
+        return False
+    q_bases = {b for _v, b in qwv}
+    t_bases = {b for _v, b in twv}
+    shared = q_bases & t_bases
+    if not shared:
+        return True  # cross-class fail-closed (340g vs 177ml unverifiable)
+    _lb_present = q.lb_present or c.lb_present
+    for b in shared:
+        qv = [v for v, bb in qwv if bb == b]
+        tv = [v for v, bb in twv if bb == b]
+        if not qv or not tv:
+            continue
+        qmax, tmax = max(qv), max(tv)
+        if qmax == tmax:
+            continue
+        if _lb_present and b == "g" and abs(qmax - tmax) <= 0.01 * max(qmax, tmax):
+            continue
+        return True
+    return False
+
+
+def _vd_flavour_mismatch(q: VariantDescriptor, c: VariantDescriptor, cat: str) -> bool:
+    """Flavour axis (_flavour_mismatch): grocery is ASYMMETRIC-ADD (a candidate
+    flavour the query does not cover is a different SKU, 'unflavored'-add to a
+    flavour-less query excepted); supplements are contradiction-only."""
+    qf, tf = q.flavours, c.flavours
+    if not tf:
+        return False
+    if cat == "grocery":
+        extra = tf - qf
+        if not extra:
+            return False
+        real_q = qf - _FLAVOUR_ABSENCE
+        extra_real = extra - _FLAVOUR_ABSENCE
+        if not real_q and not extra_real:
+            return False
+        return True
+    if not qf:
+        return False
+    return not (qf & tf)
+
+
+def _vd_core_count_mismatch(q_counts, t_counts) -> bool:
+    """Core-count axis (_core_count_mismatch): label-aware — same-label bins
+    must share a value; unlabelled values compare against the other side's
+    full set; both fully unlabelled = SET_EQUALITY."""
+    q_cpu, q_gpu, q_un = q_counts
+    t_cpu, t_gpu, t_un = t_counts
+    q_all = q_cpu | q_gpu | q_un
+    t_all = t_cpu | t_gpu | t_un
+    if not q_all or not t_all:
+        return False
+    if q_cpu and t_cpu and not (q_cpu & t_cpu):
+        return True
+    if q_gpu and t_gpu and not (q_gpu & t_gpu):
+        return True
+    if not (q_cpu or q_gpu or t_cpu or t_gpu):
+        return q_un != t_un
+    if q_un and not (q_un & t_all):
+        return True
+    if t_un and not (t_un & q_all):
+        return True
+    return False
+
+
+def _vd_chip_tier_mismatch(qc: frozenset, tc: frozenset) -> bool:
+    """Chip-tier axis (_chip_tier_mismatch): same chip NUMBER must carry the
+    same tier set (M3 base vs M3 Pro)."""
+    q_nums = {n for n, _ in qc}
+    t_nums = {n for n, _ in tc}
+    shared = q_nums & t_nums
+    if not shared:
+        return False
+    for n in shared:
+        if {t for nn, t in qc if nn == n} != {t for nn, t in tc if nn == n}:
+            return True
+    return False
+
+
+def _vd_form_mismatch(q: VariantDescriptor, c: VariantDescriptor, cat: str) -> bool:
+    """Form axis (_form_mismatch): fragrances+makeup STRICT one-sided (a
+    deodorant/oil is a different SKU than the bottle/balm); skincare/haircare
+    both-stated-only; a no-op outside fragrance/beauty."""
+    if cat not in _FRAGRANCE_BEAUTY_CATEGORIES:
+        return False
+    if cat in ("fragrances", "makeup"):
+        return q.form != c.form
+    return bool(q.form and c.form and q.form != c.form)
+
+
+def _vd_candidate_missing_query_axis(q: VariantDescriptor, c: VariantDescriptor,
+                                     cat: str) -> bool:
+    """QUERY_STATED_REQUIRES_CANDIDATE (_candidate_missing_query_axis): the
+    candidate omitting a query-pinned axis is UNVERIFIED -> fail-closed."""
+    if cat == "fragrances":
+        if q.concentration and not c.concentration:
+            return True
+        if q.size_ml_snapped is not None and c.size_ml_snapped is None:
+            return True
+    if cat == "supplements":
+        if q.doses and not c.doses:
+            return True
+        if q.count is not None and c.count is None:
+            return True
+    if cat == "electronics":
+        if q.storage_gb is not None and c.storage_gb is None:
+            return True
+    if cat in _SIZE_OMIT_CATEGORIES:
+        if q.weights_volumes and not c.weights_volumes:
+            return True
+    if cat in _PERCENT_CATEGORIES:
+        if q.percents and not c.percents:
+            return True
+    if cat == "fashion":
+        if q.shoe_sizes and not c.shoe_sizes:
+            return True
+    if cat == "grocery":
+        if q.packs and not c.packs:
+            return True
+    return False
+
+
+def _vd_flagship_concentration_added(q: VariantDescriptor, c: VariantDescriptor) -> bool:
+    """ASYMMETRIC_ADD (_flagship_concentration_added): the candidate states a
+    FLAGSHIP concentration (Parfum/Extrait/Parfum Intense) the query did not."""
+    if c.concentration not in _FLAGSHIP_CONCENTRATIONS:
+        return False
+    return q.concentration != c.concentration
+
+
+def _vd_supplement_type_added(q: VariantDescriptor, c: VariantDescriptor) -> bool:
+    """ASYMMETRIC_ADD (_supplement_type_added): candidate adds a formulation
+    type/salt-form/sub-line token the query lacks; a MULTI-CONSTITUENT query
+    (B-Complex/Multivitamin/Prenatal) excludes the bare constituent names."""
+    added = c.supplement_types - q.fold_tokens
+    if q.fold_tokens & _MULTI_CONSTITUENT_QUERY:
+        added = added - _SUPPLEMENT_CONSTITUENT_TOKENS
+    return bool(added)
+
+
+def _vd_supplement_form_class(d: VariantDescriptor) -> set:
+    """The (default vs alternative) delivery-form class set of one side —
+    _supplement_form_added's `_class` on descriptor fields."""
+    out = {"alt:" + f for f in d.supplement_alt_forms}
+    if d.supplement_default_forms:
+        out.add("default")
+    return out
+
+
+def _vd_supplement_form_added(q: VariantDescriptor, c: VariantDescriptor) -> bool:
+    """ASYMMETRIC_ADD (_supplement_form_added): candidate adds an ALTERNATIVE
+    delivery form (gummy/liquid/...) the query lacks, or the stated form
+    CLASSES differ (default pill vs alternative)."""
+    if c.supplement_alt_forms - q.supplement_alt_forms:
+        return True
+    q_cls = _vd_supplement_form_class(q)
+    t_cls = _vd_supplement_form_class(c)
+    return bool(q_cls and t_cls and q_cls != t_cls)
+
+
+def _vd_category_type_added(q: VariantDescriptor, c: VariantDescriptor, cat: str) -> bool:
+    """_category_type_added on descriptor fields (fragrances flagship
+    concentration + supplements type/alt-form ONLY; False elsewhere). The
+    string-signature _category_type_added (the chokepoints' bounded pair
+    check) delegates its helpers here — one implementation."""
+    if cat == "fragrances":
+        return _vd_flagship_concentration_added(q, c)
+    if cat == "supplements":
+        return (_vd_supplement_type_added(q, c)
+                or _vd_supplement_form_added(q, c))
+    return False
+
+
+def _vd_gender_mismatch(q: VariantDescriptor, c: VariantDescriptor) -> bool:
+    """Gender CONTRADICTION (_gender_mismatch): both stated and conflicting."""
+    return bool(q.gender and c.gender and q.gender != c.gender)
+
+
+def _vd_feminine_query_unconfirmed(q: VariantDescriptor, c: VariantDescriptor) -> bool:
+    """ASYMMETRIC (_feminine_query_unconfirmed): a WOMEN's-flanker query must
+    be confirmed by the candidate; a men's/unisex query tolerates the
+    unspecified base (the deliberate one-way trade — see the legacy docstring)."""
+    return q.gender == "women" and c.gender != "women"
+
+
+def _vd_color_mismatch(q: VariantDescriptor, c: VariantDescriptor) -> bool:
+    """Fashion colourway (_color_mismatch): the query's stated colours must
+    ALL appear in the candidate (query-subset); one-sided tolerated."""
+    if not q.colors or not c.colors:
+        return False
+    return not q.colors.issubset(c.colors)
+
+
+def _descriptor_axis_mismatch(q: VariantDescriptor, c: VariantDescriptor,
+                              category: Optional[str], *,
+                              strict_extras: bool = True) -> Optional[str]:
+    """The axis core of the comparator table — the descriptor form of the
+    legacy _axis_mismatch body, check-for-check in the same order. Returns the
+    FAILING AXIS name, or None when no explicit axis discriminates.
+    `strict_extras=False` is the BACKSTOP contract (numeric-axis-only — no
+    form / candidate-omits / category-type-add / gender / color / clothing /
+    vitamin enforcement)."""
+    cat = (category or "").lower()
+    # SET_EQUALITY — category variant qualifiers (electronics fe/se/pro/...).
+    # Extraction already scoped the field to the category's qualifier set, so
+    # non-electronics sides carry frozenset() and compare equal (the legacy
+    # `if quals` guard).
+    if q.qualifiers != c.qualifiers:
+        return "variant_qualifier"
+    # Universal numeric axes (any category, both-stated-different).
+    if _vd_scalar_differs(q.concentration, c.concentration):
+        return "concentration"
+    if _vd_size_ml_mismatch(q, c, cat):
+        return "size_ml"
+    if _vd_scalar_differs(q.storage_gb, c.storage_gb):
+        return "storage"
+    if _vd_scalar_differs(q.count, c.count):
+        return "count"
+    if _vd_strength_mismatch(q.doses, c.doses):
+        return "strength"
+    if _vd_weight_or_volume_mismatch(q, c):
+        return "weight_volume"
+    # %-strength + SPF are CATEGORY-INDEPENDENT discriminators (legacy note:
+    # must fire even when the category inferred None on the scrape path).
+    if _vd_disjoint(q.percents, c.percents):
+        return "percent"
+    if _vd_disjoint(q.spfs, c.spfs):
+        return "spf"
+    if q.plus_stems != c.plus_stems:  # SET_EQUALITY (symbol+spelled unified)
+        return "plus_variant"
+    # Category-scoped axes (also enforced by the brand-independent backstop).
+    if cat == "fashion" and _vd_disjoint(q.shoe_sizes, c.shoe_sizes):
+        return "shoe_size"
+    if cat == "grocery" and _vd_disjoint(q.packs, c.packs):
+        return "pack"
+    if cat in _FLAVOUR_CATEGORIES and _vd_flavour_mismatch(q, c, cat):
+        return "flavour"
+    if cat == "makeup" and _vd_disjoint(q.finishes, c.finishes):
+        return "finish"
+    if cat == "fashion" and _vd_disjoint(q.materials, c.materials):
+        return "material"
+    if cat == "fashion" and _vd_disjoint(q.fits, c.fits):
+        return "fit"
+    if cat == "grocery" and _vd_disjoint(q.preps, c.preps):
+        return "grocery_prep"
+    # EITHER_SIDED — condition is the ONLY either-direction one-sided reject
+    # (a stated non-new condition on EITHER side alone is a different tier).
+    if cat == "electronics" and q.condition != c.condition:
+        return "condition"
+    if cat == "electronics" and _vd_disjoint(q.inches, c.inches):
+        return "inch"
+    if cat == "electronics" and _vd_disjoint(q.ram_gb, c.ram_gb):
+        return "ram"
+    if cat == "electronics" and _vd_core_count_mismatch(q.core_counts, c.core_counts):
+        return "core_count"
+    if cat == "electronics" and _vd_chip_tier_mismatch(q.chip_tiers, c.chip_tiers):
+        return "chip_tier"
+    if cat == "supplements" and _vd_disjoint(q.bare_doses, c.bare_doses):
+        return "bare_dose"
+    if strict_extras:
+        if _vd_form_mismatch(q, c, cat):
+            return "form"
+        if _vd_candidate_missing_query_axis(q, c, cat):
+            return "candidate_missing_query_axis"
+        if _vd_category_type_added(q, c, cat):
+            return "category_type_added"
+        if (cat in _FRAGRANCE_BEAUTY_CATEGORIES or cat == "fashion") and (
+                _vd_gender_mismatch(q, c) or _vd_feminine_query_unconfirmed(q, c)):
+            return "gender"
+        if cat == "fashion" and _vd_color_mismatch(q, c):
+            return "color"
+        if cat == "fashion" and _vd_disjoint(q.clothing_sizes, c.clothing_sizes):
+            return "clothing_size"
+        if cat == "supplements" and _vd_disjoint(q.vitamin_letters, c.vitamin_letters):
+            return "vitamin_letter"
+    return None
+
+
+def _descriptor_selection_verdict(q: VariantDescriptor, c: VariantDescriptor,
+                                  category: Optional[str]) -> DescriptorVerdict:
+    """The SELECTION-mode identity/superset steps — the descriptor form of the
+    legacy _selection_match keystone, step-for-step: generic class-swap, the
+    per-category PADDING subtraction, the mode-scoped title-side tolerances
+    (year-annotation / electronics 'ai' / inch equality / fashion construction
+    bigram / eyewear code-confirmed / makeup shade-number), the LEAK-direction
+    subset, and the VARIANT-ADD superset with the generic-query skip. Axis
+    checks have already passed by the time this runs."""
+    cat = (category or "").lower()
+    q_ident, t_ident = q.identity_core, c.identity_core
+    _generic = _generic_for(category)
+    q_distinct = q_ident - _generic
+    t_distinct = t_ident - _generic
+    # (1) generic CLASS SWAP — each names a generic class noun, sharing none.
+    q_generic = q_ident & _generic
+    t_generic = t_ident & _generic
+    if q_generic and t_generic and not (q_generic & t_generic):
+        return DescriptorVerdict(False, "generic_class_swap")
+    # (2)+(3) THE KEYSTONE — per-category padding, both directions.
+    padding = _category_padding(cat)
+    q_core = q_distinct - padding
+    t_core = t_distinct - padding
+    if cat in _MODEL_YEAR_CATEGORIES:
+        # ONE-SIDED model-year tolerance (annotation-form title year, query
+        # generation pinned by a non-year discriminator the title shares,
+        # query states no year) — see the legacy comment block.
+        if not any(_MODEL_YEAR_RE.match(w) for w in q_core):
+            if c.year_annotations and (_year_generation_discriminators(q_core) & t_core):
+                t_core = t_core - c.year_annotations
+    if cat == "electronics":
+        # TITLE-side-only marketing tokens ("AI Smartphone") — query-stated
+        # copies stay on both sides.
+        t_core = t_core - (_ELECTRONICS_TITLE_SIDE_TOLERATED - q_core)
+        # INCH-axis equality tolerance, both spellings (bare vs annotated).
+        if c.inch_tokens:
+            q_core = q_core - c.inch_tokens
+        if q.inch_tokens:
+            t_core = t_core - q.inch_tokens
+    if cat == "fashion" and q_core:
+        # Construction/neckline descriptors (query-conditional) + the
+        # Luxottica model-code-CONFIRMED eyewear annotation tolerance.
+        t_core = t_core - (c.construction_tolerated - q_core)
+        if q.model_codes and (q.model_codes & c.model_codes):
+            _eyewear_tol = frozenset(_EYEWEAR_DESCRIPTOR_TOKENS) | c.eyewear_annotations
+            t_core = t_core - (_eyewear_tol - q_core)
+    if cat == "makeup":
+        # Shared shade-NUMBER acceptance (no extra number, non-number core
+        # subset-compatible) — different formula LINES already rejected by the
+        # finish axis upstream.
+        q_nums = {w for w in q_core if w.isdigit()}
+        t_nums = {w for w in t_core if w.isdigit()}
+        if (q_nums and t_nums and (q_nums & t_nums) and not (t_nums - q_nums)
+                and (q_core - q_nums).issubset(t_core - t_nums)):
+            return DescriptorVerdict(True)
+    # LEAK direction — candidate must carry every query distinctive token.
+    if not q_core.issubset(t_core):
+        return DescriptorVerdict(False, "identity_subset")
+    # VARIANT-ADD direction — an extra distinctive candidate token is a
+    # DIFFERENT SKU (known categories + explicit "other"; truly-unresolved
+    # stays subset-only).
+    if (cat in _SUPERSET_VARIANT_CATEGORIES or cat == "other") and (t_core - q_core):
+        if q_core:
+            return DescriptorVerdict(False, "variant_add")
+        if (q_distinct - _MANUFACTURER_NOISE) or cat not in _GENERIC_QUERY_SKIP_CATEGORIES:
+            return DescriptorVerdict(False, "variant_add")
+    return DescriptorVerdict(True)
+
+
+def descriptor_verdict(q: VariantDescriptor, c: VariantDescriptor,
+                       category: Optional[str], mode: str) -> DescriptorVerdict:
+    """THE decision function (R2): compare two VariantDescriptors under
+    `category` in one of the three modes. `category` MUST be the category the
+    descriptors were extracted with (the wrappers guarantee it; the
+    _selection_match "other" re-inference happens BEFORE extraction).
+
+      SELECTION — strict axes + the keystone subset/superset with padding and
+                  tolerances (the _selection_match contract)
+      EXACT     — strict axes + identity-token set-EQUALITY (is_exact_match)
+      BACKSTOP  — loose axes only (strict_extras=False, the
+                  _backstop_identity_ok contract; the chokepoints pair it with
+                  the separate bounded _category_type_added)
+    """
+    if mode not in _DESCRIPTOR_MODES:
+        raise ValueError(f"unknown descriptor mode: {mode!r}")
+    axis = _descriptor_axis_mismatch(
+        q, c, category, strict_extras=(mode != DESCRIPTOR_MODE_BACKSTOP))
+    if axis is not None:
+        return DescriptorVerdict(False, axis)
+    if mode == DESCRIPTOR_MODE_BACKSTOP:
+        return DescriptorVerdict(True)
+    if mode == DESCRIPTOR_MODE_EXACT:
+        if q.identity_core == c.identity_core:
+            return DescriptorVerdict(True)
+        return DescriptorVerdict(False, "identity_equality")
+    return _descriptor_selection_verdict(q, c, category)
+
+
 def _axis_mismatch(query_name: str, candidate_title: str, category: Optional[str],
                    brand: str = "", *, strict_extras: bool = True) -> bool:
     """True iff query and candidate disagree on an EXPLICIT discriminating axis:
