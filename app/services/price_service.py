@@ -3564,6 +3564,30 @@ _KEYBOARD_LAYOUT_RE = re.compile(
     rf"{{1,2}}keyboards?\b"
 )
 
+# Wave-2 B2b (C2): the curated nutrient-name prefixes whose SPACED digit form must fold to
+# the glued form (Omega 3 -> omega3, B 12 -> b12, Co Q10 -> coq10, D 3 -> d3, K 2 -> k2,
+# Q 10 -> q10). Bounded to real vitamin/nutrient prefixes so no unrelated "word <digit>" pair
+# bridges. The digit run is 1-2 (vitamin numbers) so a 3+-digit dose never glues. The
+# separator is whitespace ONLY (hyphens are already removed by normalize_words downstream);
+# a "co q10"-style two-word prefix collapses to "coq10" via the optional internal fold.
+# Separator is space OR hyphen ("Omega 3" / "Omega-3" / "B-12" / "B 12") — both glue to the
+# same token. Electronics model codes (WH-1000XM5) are NEVER reached: both fold sites are
+# supplement-category-scoped, and the curated prefix set has no overlap with model codes.
+_NUTRIENT_DIGIT_FOLD_RE = re.compile(
+    rf"\b(omega|coq|co[\s\-{_UNICODE_HYPHENS}]*q|vitamin[\s\-{_UNICODE_HYPHENS}]+[abcdek]|[abcdek])"
+    rf"[\s\-{_UNICODE_HYPHENS}]+(\d{{1,2}})\b", re.I,
+)
+
+
+def _apply_nutrient_digit_fold(folded: str) -> str:
+    """Glue a curated nutrient-name prefix to a 1-2 digit run so the SPACED spelling
+    produces the SAME token as the glued/hyphen form ("omega 3"->"omega3", "b 12"->"b12",
+    "co q10"->"coq10"). Wave-2 B2b (C2). Callers gate this behind
+    variant_descriptor_axes_enabled() and scope it to supplements; runs on _fold_identity
+    output AFTER the 4+-digit dose strip so a 3+-digit dose never glues."""
+    return _NUTRIENT_DIGIT_FOLD_RE.sub(
+        lambda m: re.sub(r"\s+", "", m.group(1)) + m.group(2), folded)
+
 
 def _identity_tokens_ps(text: str, brand: str = "", category: Optional[str] = None) -> set:
     """PRODUCT-IDENTITY token set of `text`: diacritic-folded words, minus the
@@ -3637,6 +3661,17 @@ def _identity_tokens_ps(text: str, brand: str = "", category: Optional[str] = No
     # number (the dose range; a supplement COUNT is <1000) so the dose axis governs it.
     if cat == "supplements":
         folded = re.sub(r"\b\d{4,}\b", " ", folded)
+        # Wave-2 B2b (C2, flag-gated): fold a digit-adjacent nutrient-name so the spaced
+        # form matches the glued/hyphen form ("Omega 3" == "Omega-3" == "Omega3";
+        # "B 12" == "B-12" == "B12"; "Co Q10" == "CoQ10"). normalize_words already REMOVES
+        # hyphens (so "omega-3"->"omega3"), leaving ONLY the SPACED form disjoint; this glues
+        # the space so any spelling produces the same identity token. Runs AFTER the 4+-digit
+        # dose strip and is bounded to a 1-2 digit run (vitamin numbers) so a 3+-digit dose
+        # ("Vitamin D 250") never glues. Curated nutrient prefixes only, so no unrelated
+        # alnum tokens bridge (WH-1000XM5 is electronics, untouched by this cat-scoped fold).
+        # Flag-OFF stays byte-identical.
+        if variant_descriptor_axes_enabled():
+            folded = _apply_nutrient_digit_fold(folded)
     words = normalize_words(folded)
     # Luxottica 0-prefix alias: "0rb3025" -> "rb3025" so the catalog list form and
     # the consumer model code are the SAME identity token (namshi KPI fash-004).
@@ -5627,8 +5662,17 @@ def _build_variant_descriptor(text: str, category: Optional[str],
     else:
         capped = text
     fold_full = _fold_identity(capped)
-    fold_tokens = frozenset(re.findall(r"[a-z0-9]+", fold_full))
     cat = (category or "").lower()
+    # Wave-2 B2b (C2, flag-gated): fold a supplement nutrient-name's SPACED digit form to the
+    # glued form on fold_full too, so the fold_tokens-derived axes (supplement_types /
+    # supplement constituents) see "b 12" as "b12" — matching the identity-token fold in
+    # _identity_tokens_ps. Kept CONSISTENT with that site (same helper, same supplement scope,
+    # same 1-2-digit bound) so identity_core and fold_tokens never disagree. Flag-OFF stays
+    # byte-identical; the axes flag is in the lru memo key so a flip never serves a stale
+    # descriptor.
+    if cat == "supplements" and variant_descriptor_axes_enabled():
+        fold_full = _apply_nutrient_digit_fold(fold_full)
+    fold_tokens = frozenset(re.findall(r"[a-z0-9]+", fold_full))
 
     # Brand token set — the same computation _identity_tokens_ps runs
     # internally (plain words + hyphen-collapsed multiword form + alias-group
@@ -5696,10 +5740,16 @@ def _build_variant_descriptor(text: str, category: Optional[str],
 @functools.lru_cache(maxsize=2048)
 def _extract_variant_descriptor_cached(
     text: str, category: Optional[str], brand: str, _gate_on: bool,
+    _axes_on: bool = False,
 ) -> VariantDescriptor:
     """Memoized builder. `_gate_on` is part of the key because identity
     tokenization (normalize_words' spaced-unit fold) branches on
-    ENABLE_EXACT_PRICE_GATE — a flag flip must never serve a stale descriptor."""
+    ENABLE_EXACT_PRICE_GATE — a flag flip must never serve a stale descriptor.
+    `_axes_on` (Wave-2 B2b) is likewise in the key because the supplement
+    nutrient-digit fold (_apply_nutrient_digit_fold) branches identity_core AND
+    fold_tokens on ENABLE_VARIANT_DESCRIPTOR_AXES — a flip must not serve a stale
+    (unfolded) descriptor. Flag-OFF -> _axes_on False -> the fold no-ops so the
+    key/behaviour is byte-identical to the pre-B2b default."""
     return _build_variant_descriptor(text, category, brand)
 
 
@@ -5711,6 +5761,7 @@ def extract_variant_descriptor(text: Optional[str], category: Optional[str],
     an unhashable input raises TypeError loudly (never silently coerced)."""
     return _extract_variant_descriptor_cached(
         text or "", category, brand or "", exact_gate_enabled(),
+        variant_descriptor_axes_enabled(),
     )
 
 
