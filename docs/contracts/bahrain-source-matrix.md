@@ -56,7 +56,7 @@ the recorded structural gap.
 | **haircare** | gcc.lulu, bahrainpharmacy.com *(JSON-LD reach for haircare SKUs unproven)*, nasserpharmacy.com, boutiqaat.com | — | — | bn.boots.com | — | converted_usd → estimated → pending | nasser JSON-API + boutiqaat (sitemap+curl, Wave-3c) added genuine reach; premium→converted |
 | **fragrances** | gcc.lulu, jalilaperfumes.com, bahrain.ounass.com, nasserpharmacy.com, boutiqaat.com | bh.asgharali.com, en-bh.ajmal.com, alhajisbahrain.com | — | — | sephora.me | converted_usd → estimated → pending | Western luxury (Tom Ford/Creed/Chanel)→converted/estimated; Eastern/local genuine via the Shopify stores + nasser JSON-API + boutiqaat (sitemap+curl, Wave-3c) |
 | **fashion** | gcc.lulu, bahrain.ounass.com | — | en-bh.6thstreet.com | — | — | converted_usd → estimated → pending | THIN (2 curl + 1 Algolia); namshi BH un-wired (F6/WS-G, §5) |
-| **other** | gcc.lulu (the ONLY source — all-category row) | — | — | — | — | converted_usd → estimated → pending | THINNEST — lulu-only (STRICT gap); mitigation is upstream category resolution (F1), not a dedicated `other` retailer |
+| **other** | gcc.lulu (all-category row) + noon.com (`noon_catalog` bahrain-tier literal, 2026-07-02 Wave C) | — | — | — | — | converted_usd → estimated → pending | Was lulu-only (STRICT gap) until 2026-07-02; the noon row closes the strict gap. Upstream category resolution (F1) remains the primary mitigation |
 
 **Matrix notes (corrections vs the design draft):**
 1. `bahrainpharmacy.com` is registered for **supplements + skincare + makeup +
@@ -109,10 +109,10 @@ render-only) MUST add an entry **with a reason** — the test fails otherwise.
 
 | Category | Strict gap reason |
 |---|---|
-| **other** | lulu-only (all-category row) — `other` is the catch-all fallback bucket, not a real shopping category; the mitigation is upstream category resolution (F1), not a category-specific BH source. No dedicated `other` retailer exists or is wanted. |
+| ~~other~~ | CLOSED 2026-07-02 (Wave C): the noon.com `noon_catalog` bahrain-tier row covers `other` — the strict gap entry was removed from `STRICT_KNOWN_SOURCE_GAPS`. `other` remains the catch-all bucket; upstream category resolution (F1) is still preferred. |
 
 The strict guard EXCLUDES lulu's all-category row to surface lulu-only reliance.
-Today only `other` is lulu-only. The **source-intel recon (2026-06-23)** eased
+As of 2026-07-02 no category is in the strict gap ledger (`other` closed by the Wave C noon row). The **source-intel recon (2026-06-23)** eased
 the beauty/pharmacy thinness: `bolo.bh` (now a plain-curl genuine row) +
 `nasserpharmacy.com` (now a JSON-API genuine row) add category-specific genuine
 reach to `supplements` / `skincare` / `makeup` / `haircare` beyond

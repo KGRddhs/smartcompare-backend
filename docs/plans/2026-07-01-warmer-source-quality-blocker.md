@@ -152,3 +152,16 @@ Wave-2 VariantDescriptor precondition — before flipping
 set or the ladder's exposure of it is re-assessed against the warm subset.
 **Rollback:** `ENABLE_ADAPTER_QUERY_LADDER=false` removes the exposure widening
 (single-term retrieval, pre-B3 behavior).
+
+## 2026-07-02/03 (session 3) — ✅ KPI 18/18, per-category 1.000; the warmer KPI gate is MET
+
+**Branch `feature/genuine-price-kpi` @ `a11dbb3`** (29 commits this session, waves A/B/B-fix/C/D + polish + eyewear + reconcile, all coverage-swept + dispatcher-gated).
+
+- **Unblocked:** new healthy Serper key (`f47c159b…`) synced to all 4 `.env` copies. Baseline (run 1): **6/18**.
+- **Recon disproved the Serper-gate premise:** no code gate stops the $0 catalog adapters when Serper dies. Real blockers: full-canonical-name store-API retrieval (0 rows), the strict pre-gate alias over-rejections, dead configs (6thstreet index token in the JS chunk; ourshopee 404), and 4/6 electronics truth SKUs discontinued at BH retail. Only true Serper dependency: fan_out `candidate_urls` (site: discovery only).
+- **Landed:** truth-set modernization (S25/S25U/iPad-M3/MBA-M5-512/Switch-2, live-proven; fashion GCC naming) + freshness probe; matcher folds; 6thstreet revival; footlocker wiring (built-but-dead); magento `brand_name` wiring; noon-BH direct adapter (`noon_service.py`, `x-locale: en-bh` header cracks the BHD catalog — falsifies round-3/4 docs; buy-box `offers[0]` authority); retrieval-term ladder (`ENABLE_ADAPTER_QUERY_LADDER` ON); selection-primary acceptance (`ENABLE_ADAPTER_SELECTION_PRIMARY`, exact-gate-scoped, brand-evidence-fenced at adapters AND shared consumers); organic PDP harvest (`ENABLE_ORGANIC_PDP_HARVEST` ON — Serper organics carry structured BHD price extras); identity stamps + cache/eval structured-code parity; negcache outage guard; converted-terminal fallback; eyewear model-code tolerance (Luxottica colorway/lens numerics); 4 non-retail catalog rows demoted (opensooq/labeb/dubizzle/comparebh); `ENABLE_GENUINE_PRICE_PRIORITY` determinism landed DORMANT (default OFF, byte-identity verified; needs a live-tuning session before any flip).
+- **Sweep discipline paid again:** 3 rings of coverage-driven leak/over-rejection sweeps found+closed a CRITICAL wrong-brand fence drop, the identity-stamp gap, a year-tolerance leak ring, and a false-green truncated-title pin.
+- **Measured (warmed, `measure_warmed_kpi`):** runs 2/3/4 = **17/18 identical ×3** (wobble eliminated); run 5 after the eyewear fix = **18/18 — electronics 1.000, fragrances 1.000, fashion 1.000**. Every row genuine BHD, in-stock, real PDP.
+- **Comm gate: PASS** — base `25adbdd` 46 failed / branch 49→46 after reconciling 3 fixture-isolation UPDATE_TESTs (`a11dbb3`; live sharafdg/noon adapters were preempting mocked scenarios — the PR#13 class); branch-only-NEW = []; +~630 net-new tests.
+- **Warmer activation (runbook `docs/runbooks/2026-06-30-warmer-activation.md`) remaining preconditions:** fresh cache purge; Wave-2 VariantDescriptor for the cache-read/display axis-only backstop residuals + the ~9 token-indistinguishable classes; the ladder-exposure consideration (§F1 note above); determinism live-tuning is optional for the warmer (60s off-clock) but required before flipping `ENABLE_GENUINE_PRICE_PRIORITY` on the live path.
+- Session state/handoff: `memory/project_genuine_price_kpi_session3.md`.
