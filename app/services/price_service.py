@@ -7141,15 +7141,30 @@ def _vh_longest_base_match(folded: str, keys) -> Optional[str]:
 
 
 def _strip_trailing_spf_token(folded: str) -> str:
-    """Remove a TRAILING standalone 'spf' / 'spf <n>' token from a folded string
-    (B3-FIX). Only strips at the end so a genuine sunscreen name that carries
-    'spf' as a NON-suffix part ('...spf 50 tinted') keeps its 'spf' for the
-    inherent match. Used only when a non_sunscreen base already matched, to stop
-    the candidate's own added 'spf' suffix from self-shadowing that stem into a
-    phantom inherent line."""
+    """Remove a TRAILING standalone 'spf'/'spf <n>' AND a trailing standalone
+    'sunscreen' token (repeatedly, in either interleaved order) from a folded
+    string.
+
+    B3-FIX (spf) + Wave-2 FINALIZE (sunscreen): a candidate can self-shadow a
+    non_sunscreen base into a phantom inherent match by appending EITHER its own
+    'spf'/'spf NN' suffix OR the standalone word 'sunscreen' (or BOTH, e.g.
+    'cetaphil moisturizing' -> '...moisturizing sunscreen spf 30', where the
+    surviving 'moisturizing sunscreen' out-lengths the non_sunscreen stem). We
+    strip ONLY at the END, and this is called ONLY when a non_sunscreen base has
+    already matched -- so a genuine sunscreen name that carries 'sunscreen'/'spf'
+    as a NON-trailing part (anthelios/capital soleil never reach here; coppertone
+    sport 'sunscreen lotion spf 50' keeps its inner 'sunscreen') is unaffected,
+    and its inherent line still wins. Iterates so any trailing mix of the two
+    tokens is peeled off."""
     if not folded:
         return folded
-    stripped = re.sub(r"\s+spf(?:\s+\d+)?\s*$", "", folded).strip()
+    stripped = folded
+    _trailing = re.compile(r"\s+(?:spf(?:\s+\d+)?|sunscreen)\s*$")
+    while True:
+        nxt = _trailing.sub("", stripped).strip()
+        if nxt == stripped:
+            break
+        stripped = nxt
     return stripped or folded
 
 
@@ -7184,15 +7199,19 @@ def _variant_hint_lookup(category: Optional[str], query_name: str,
         non_sun = spf_section.get("non_sunscreen_lines") or []
         # A KNOWN non-sunscreen line: the SPF add is a distinct variant -> DISTINCT.
         non = _vh_longest_base_match(qf, non_sun) or _vh_longest_base_match(cf, non_sun)
-        # SELF-SHADOW HARDENING (B3-FIX): the candidate's OWN "spf"/"spf NN"
-        # suffix must not extend a non_sunscreen stem into a phantom inherent
-        # match (e.g. "hydro boost water gel" + the added " spf 25" matching an
-        # inherent "hydro boost water gel spf" line, out-lengthing the
-        # non_sunscreen stem). When the base already matched a non_sunscreen
-        # line, strip a trailing standalone "spf"/"spf <n>" token from the text
-        # used to match the INHERENT lines, so an inherent win must come from a
-        # genuine sunscreen name that carries "spf" as a NON-suffix part
-        # (anthelios / capital soleil / uv daily etc. are unaffected).
+        # SELF-SHADOW HARDENING (B3-FIX + Wave-2 FINALIZE): the candidate's OWN
+        # trailing "spf"/"spf NN" AND/OR standalone "sunscreen" suffix must not
+        # extend a non_sunscreen stem into a phantom inherent match (e.g.
+        # "hydro boost water gel" + " spf 25" matching an inherent line; or
+        # "cetaphil moisturizing" + " sunscreen spf 30" where the surviving
+        # "moisturizing sunscreen" out-lengths the non_sunscreen stem). When the
+        # base already matched a non_sunscreen line, strip trailing standalone
+        # "spf"/"spf <n>"/"sunscreen" tokens from the text used to match the
+        # INHERENT lines, so an inherent win must come from a genuine sunscreen
+        # name that carries "spf"/"sunscreen" as a NON-trailing part
+        # (anthelios / capital soleil / coppertone sport 'sunscreen lotion spf'
+        # are unaffected -- their base is not a non_sunscreen line so the strip
+        # never engages).
         qf_inh, cf_inh = qf, cf
         if non:
             qf_inh = _strip_trailing_spf_token(qf)

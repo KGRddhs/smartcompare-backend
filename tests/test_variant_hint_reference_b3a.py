@@ -91,6 +91,37 @@ class TestVariantHintLookup:
             "skincare", "Neutrogena Hydro Boost",
             "Neutrogena Hydro Boost SPF 25", "spf") == "distinct"
 
+    def test_spf_cetaphil_moisturizing_compound_sunscreen_is_distinct_finalize(self):
+        # Wave-2 FINALIZE: the residual self-shadow CLASS. The candidate adds BOTH
+        # the standalone word "sunscreen" AND "spf 30". After the old SPF-only
+        # strip, cf still read "cetaphil moisturizing sunscreen" which matched the
+        # inherent "moisturizing sunscreen" line (len22 >= non_sunscreen
+        # "cetaphil moisturizing" len21) -> phantom "same". Generalizing the strip
+        # to also drop a trailing standalone "sunscreen" token restores DISTINCT.
+        assert ps._variant_hint_lookup(
+            "skincare", "Cetaphil Moisturizing",
+            "Cetaphil Moisturizing Sunscreen SPF 30", "spf") == "distinct"
+
+    def test_spf_inherent_sunscreen_carrying_sunscreen_word_still_same(self):
+        # GUARD: a genuine sunscreen line that carries "sunscreen" as a
+        # NON-trailing part (base IS a sunscreen) is unaffected by the trailing
+        # strip -> "same". Coppertone/Nivea Sun are inherent SPF lines.
+        assert ps._variant_hint_lookup(
+            "skincare", "Coppertone Sport",
+            "Coppertone Sport Sunscreen Lotion SPF 50", "spf") == "same"
+
+    def test_spf_nivea_sun_still_same(self):
+        assert ps._variant_hint_lookup(
+            "skincare", "Nivea Sun",
+            "Nivea Sun Protect Sunscreen SPF 50", "spf") == "same"
+
+    def test_spf_anthelios_trailing_sunscreen_still_same(self):
+        # Anthelios base is NOT a non_sunscreen line -> the strip never engages
+        # (only-when-non_sunscreen-matched) -> inherent "anthelios" wins -> "same".
+        assert ps._variant_hint_lookup(
+            "skincare", "La Roche-Posay Anthelios",
+            "La Roche-Posay Anthelios Sunscreen SPF 50", "spf") == "same"
+
     def test_formula_distinct_sub_lines(self):
         assert ps._variant_hint_lookup(
             "makeup", "Maybelline Fit Me Matte",
@@ -144,6 +175,25 @@ class TestWarmerWriteVetoWarmContext:
             _price("Neutrogena Hydro Boost Water Gel SPF 25"), "skincare")
         assert allow is False
         assert "spf" in (reason or "").lower()
+
+    def test_cetaphil_moisturizing_compound_sunscreen_vetoed_finalize(self, gate_axes_on, monkeypatch):
+        # Wave-2 FINALIZE pin: "Cetaphil Moisturizing" -> compound
+        # "Cetaphil Moisturizing Sunscreen SPF 30" must VETO the warm write.
+        monkeypatch.setenv("WARMER_CONTEXT", "1")
+        allow, reason = ps.warmer_write_veto(
+            "Cetaphil Moisturizing",
+            _price("Cetaphil Moisturizing Sunscreen SPF 30"), "skincare")
+        assert allow is False
+        assert "spf" in (reason or "").lower()
+
+    def test_coppertone_sport_sunscreen_allowed(self, gate_axes_on, monkeypatch):
+        # GUARD: an inherent sunscreen line carrying the word "sunscreen" resolves
+        # SAME -> the warm write is ALLOWED.
+        monkeypatch.setenv("WARMER_CONTEXT", "1")
+        allow, _ = ps.warmer_write_veto(
+            "Coppertone Sport",
+            _price("Coppertone Sport Sunscreen Lotion SPF 50"), "skincare")
+        assert allow is True
 
     def test_fit_me_matte_to_dewy_vetoed(self, gate_axes_on, monkeypatch):
         monkeypatch.setenv("WARMER_CONTEXT", "1")
