@@ -23,8 +23,14 @@ worse case; pinned so the accepted trade can only change by a conscious edit):
 HELD — DEFERRED real leaks (xfail: the DESIRED reject, not yet implemented because the safe
 fix needs more than a token rule):
   - display backstop axis-only Sauvage -> Sauvage Elixir / AF1 -> Air Max 1  (live-path risk)
-  - cross-unit size            340g -> 177ml             (g<->ml is density-ambiguous)
   - ReDoS-cap truncation       >512-char title drops the trailing storage axis (near-zero reach)
+
+NOTE (census P6a, no longer HELD): cross-unit size (340g -> 177ml, g<->ml density-ambiguous)
+is now ENFORCED fail-closed (see test_cross_unit_size_pended below) — it was moved off the
+deferred-xfail list. Wave-2 B2 additionally closes the two SUPPLEMENT over-rejection census
+classes (flag-gated behind ENABLE_VARIANT_DESCRIPTOR_AXES; flag-OFF byte-identical):
+  - C1 acronym-constituent  Optimum ZMA -> ...ZMA Zinc Magnesium Aspartate  (curated table)
+  - C2 hyphen-vs-space      Nordic Naturals Omega-3 <-> Omega 3            (digit-hyphen fold)
 """
 import pytest
 
@@ -259,9 +265,61 @@ def test_supplement_combo_and_form_still_pend():
     assert _ips_supp("Whey Protein", "Optimum Whey Protein Isolate") is False  # formulation type
 
 
-@pytest.mark.xfail(reason="ZMA / Cal-Mag are ACRONYM products whose expansion the query is not a "
-                          "subset of (also fails the upstream selection superset) — needs brand-alias "
-                          "normalization, a documented deferred residual",
-                   strict=True)
-def test_deferred_supplement_acronym_residual():
+def test_supplement_acronym_constituent_flag_conditional(monkeypatch):
+    # Wave-2 B2a (C1): a curated acronym->constituents table folds a descriptively-titled
+    # correct product (Optimum ZMA -> "...ZMA Zinc Magnesium Aspartate") so it DISPLAYS —
+    # gated ON by ENABLE_VARIANT_DESCRIPTOR_AXES. Flag OFF stays the documented over-rejection
+    # (byte-identical rollback); flag ON accepts the correct product.
+    monkeypatch.setenv("ENABLE_VARIANT_DESCRIPTOR_AXES", "true")
     assert _ips_supp("Optimum ZMA", "Optimum ZMA Zinc Magnesium Aspartate 180 Caps") is True
+    # And the flag-OFF default still over-rejects (the accepted pre-Wave-2 residual) —
+    # proving the fold is entirely behind the flag.
+    monkeypatch.setenv("ENABLE_VARIANT_DESCRIPTOR_AXES", "false")
+    assert _ips_supp("Optimum ZMA", "Optimum ZMA Zinc Magnesium Aspartate 180 Caps") is False
+
+
+def test_supplement_acronym_calmag_flag_on(monkeypatch):
+    # Same class — Cal-Mag / CalMag acronym query vs a title enumerating calcium+magnesium.
+    monkeypatch.setenv("ENABLE_VARIANT_DESCRIPTOR_AXES", "true")
+    assert _ips_supp("Now CalMag", "Now CalMag Calcium Magnesium 240 Caps") is True
+    assert _ips_supp("Now Cal-Mag", "Now Cal-Mag Calcium Magnesium 240 Caps") is True
+
+
+def test_supplement_acronym_combo_leak_still_rejects_both_flags(monkeypatch):
+    # The C1 fold must NOT reopen the combo-add leak: a SINGLE-ELEMENT query (Calcium is NOT
+    # an acronym in the table) + an added element = a different COMBO SKU, both flags.
+    for val in ("true", "false"):
+        monkeypatch.setenv("ENABLE_VARIANT_DESCRIPTOR_AXES", val)
+        assert _ips_supp("Calcium", "Now Calcium Magnesium Zinc") is False
+        assert _ips_supp("Magnesium", "Magnesium Citrate") is False
+
+
+# ===========================================================================
+# Wave-2 B2b (C2) — hyphen-vs-space digit-adjacent fold. "Omega-3" == "Omega 3" == "Omega3"
+# (and the same class B-12/B12/B 12, Co-Q10/CoQ10, D-3/D3). Flag-gated; the WH-1000XM5
+# electronics guard must STILL collapse equal (hyphen-removal glue, unrelated to the fold).
+# ===========================================================================
+def test_omega3_hyphen_space_match_flag_on(monkeypatch):
+    monkeypatch.setenv("ENABLE_VARIANT_DESCRIPTOR_AXES", "true")
+    assert _m("Nordic Naturals Omega-3", "Nordic Naturals Omega 3", "supplements") is True
+    assert _m("Nordic Naturals Omega 3", "Nordic Naturals Omega-3", "supplements") is True
+    assert _m("Nordic Naturals Omega3", "Nordic Naturals Omega 3", "supplements") is True
+    # B-12 / B 12 / B12 same class
+    assert _m("Now B-12", "Now B 12", "supplements") is True
+    assert _m("Now B 12", "Now B12", "supplements") is True
+
+
+def test_omega3_hyphen_space_flag_off_residual(monkeypatch):
+    # Flag OFF stays the documented over-rejection (byte-identical rollback).
+    monkeypatch.setenv("ENABLE_VARIANT_DESCRIPTOR_AXES", "false")
+    assert _m("Nordic Naturals Omega-3", "Nordic Naturals Omega 3", "supplements") is False
+
+
+def test_wh1000xm5_hyphen_guard_still_matches_both_flags(monkeypatch):
+    # CRITICAL GUARD: the digit-hyphen fold must NOT break the model-code hyphen-removal
+    # collapse (WH-1000XM5 == WH1000XM5 == WH-1000-XM5) and must NOT bridge unrelated tokens.
+    for val in ("true", "false"):
+        monkeypatch.setenv("ENABLE_VARIANT_DESCRIPTOR_AXES", val)
+        assert _m("Sony WH-1000XM5", "Sony WH1000XM5", "electronics", "Sony") is True
+        assert _m("Sony WH1000XM5", "Sony WH-1000XM5", "electronics", "Sony") is True
+        assert _m("Sony WH-1000-XM5", "Sony WH1000XM5", "electronics", "Sony") is True

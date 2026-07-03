@@ -4183,6 +4183,55 @@ _SUPPLEMENT_CONSTITUENT_TOKENS = frozenset({
 # documented deferred residual (coverage re-sweep of the parallel review-fix commits).
 _MULTI_CONSTITUENT_QUERY = frozenset({"complex", "multivitamin", "multivitamins", "prenatal"})
 
+# --- Wave-2 B2a (C1): ACRONYM -> CONSTITUENTS fold (flag-gated) ---------------
+# A supplement named by an ACRONYM (ZMA, Cal-Mag, B-Complex) is the SAME SKU as its
+# descriptively-titled form that ENUMERATES the very constituents the acronym stands for
+# ("Optimum ZMA" == "Optimum ZMA Zinc Magnesium Aspartate"). The acronym is not a subset of
+# its expansion, so the superset/type-add guards over-reject the correct product at ALL
+# decision points (census C1, runtime-verified). This curated table maps each acronym token
+# to the constituent set it expands to; when the QUERY carries a table acronym, the
+# candidate's EXTRA supplement-constituent tokens that fall INSIDE that expansion are folded
+# (not counted as a variant-add). The fold is BOUNDED — it fires ONLY when the query token IS
+# a table acronym, so the combo-leak boundary is untouched: "Calcium" (NOT an acronym) ->
+# "Calcium Magnesium Zinc" still rejects, and any candidate constituent OUTSIDE the acronym's
+# expansion still discriminates. Gated behind ENABLE_VARIANT_DESCRIPTOR_AXES (the exact-gate-
+# scoped Wave-2 axes flag) so flag-OFF stays byte-identical.
+#
+# Keys are matched against the query's fold_tokens. Cal-Mag tokenizes to {cal, mag} (the
+# hyphen splits it) while CalMag glues to {calmag}; both are handled via the split-form rule
+# in _query_acronym_constituents. B-Complex ({b, complex}) / B Complex are ALSO already
+# covered by the existing _MULTI_CONSTITUENT_QUERY "complex" path; the explicit "bcomplex"
+# glued key here catches the glued spelling for parity.
+_SUPPLEMENT_ACRONYM_CONSTITUENTS = {
+    "zma": frozenset({"zinc", "magnesium", "aspartate"}),
+    "calmag": frozenset({"calcium", "magnesium"}),
+    "calmagnesium": frozenset({"calcium", "magnesium"}),
+    "bcomplex": frozenset({
+        "b12", "b6", "b1", "b2", "b3", "b5", "folate", "folic", "biotin",
+        "thiamine", "riboflavin", "niacin", "pantothenic", "pyridoxine", "cobalamin",
+    }),
+}
+# Multi-token acronym spellings the tokenizer splits (Cal-Mag -> {cal, mag}): the required
+# token SET maps to the same constituent expansion as the glued key.
+_SUPPLEMENT_ACRONYM_SPLIT_FORMS = (
+    (frozenset({"cal", "mag"}), frozenset({"calcium", "magnesium"})),
+)
+
+
+def _query_acronym_constituents(q_fold: FrozenSet[str]) -> FrozenSet[str]:
+    """The union of constituent expansions for every table acronym the QUERY fold carries —
+    the token set the candidate is allowed to enumerate WITHOUT it counting as a variant-add
+    (Wave-2 B2a / census C1). Empty when the query carries no table acronym (so a
+    single-element query keeps the full combo-add discrimination)."""
+    out: set = set()
+    for acronym, constituents in _SUPPLEMENT_ACRONYM_CONSTITUENTS.items():
+        if acronym in q_fold:
+            out |= constituents
+    for req_tokens, constituents in _SUPPLEMENT_ACRONYM_SPLIT_FORMS:
+        if req_tokens <= q_fold:
+            out |= constituents
+    return frozenset(out)
+
 
 def _supplement_type_added(query_name: str, candidate_title: str) -> bool:
     """True iff the candidate carries a supplement product-TYPE token (isolate/concentrate/
@@ -5885,6 +5934,14 @@ def _vd_supplement_type_added(q: VariantDescriptor, c: VariantDescriptor) -> boo
     added = c.supplement_types - q.fold_tokens
     if q.fold_tokens & _MULTI_CONSTITUENT_QUERY:
         added = added - _SUPPLEMENT_CONSTITUENT_TOKENS
+    # Wave-2 B2a (C1, flag-gated): when the QUERY is an ACRONYM product, its declared
+    # constituents that a descriptive candidate enumerates are the SAME SKU, not a flanker —
+    # subtract that acronym's expansion. Bounded (only fires for a table acronym) so the
+    # single-element combo-add leak is untouched. Flag-OFF stays byte-identical.
+    if variant_descriptor_axes_enabled():
+        acronym_expansion = _query_acronym_constituents(q.fold_tokens)
+        if acronym_expansion:
+            added = added - acronym_expansion
     return bool(added)
 
 
