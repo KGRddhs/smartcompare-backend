@@ -4996,6 +4996,28 @@ def adapter_selection_primary_enabled() -> bool:
     )
 
 
+def variant_descriptor_axes_enabled() -> bool:
+    """True iff the Wave-2 VariantDescriptor BACKSTOP-mode NEW axes are active
+    (flanker_markers / generation_ints / gender / model-year / prefixed
+    clothing-size enforcement at the two weak chokepoints — cache-read
+    _cache_price_identity_ok + display is_price_showable). Default OFF, read
+    FRESH per call so a Railway flip needs no redeploy (the
+    adapter_selection_primary_enabled :5027 idiom).
+
+    HARD-REQUIRES the exact gate: the whole descriptor comparison chain is a
+    no-op when ENABLE_EXACT_PRICE_GATE is off (is_exact_match / _selection_match
+    / _backstop_identity_ok all early-return True), so enabling the new backstop
+    axes then would either do nothing or, worse, gain a gate the documented
+    rollback state must never have. Exact gate OFF -> False -> backstop_identity_verdict
+    returns the EXACT legacy pair (_backstop_identity_ok and not
+    _category_type_added), byte-identical pre-change behaviour."""
+    if not exact_gate_enabled():
+        return False
+    return os.getenv("ENABLE_VARIANT_DESCRIPTOR_AXES", "false").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
 def selection_primary_admits(
     query_name: str, candidate_title: str, *,
     candidate_brand: str = "", category: Optional[str] = None,
@@ -5281,7 +5303,71 @@ def build_adapter_search_terms(
 # threading category through wrapper signatures frozen by their callers).
 # Tests must never rely on memo persistence across tests —
 # tests/conftest.py clears the lru per-test (B1.0 memo-staleness fixture).
+#
+# PHASE-B1 NEW FIELDS (extraction ALWAYS ON — harmless pure fields; the
+# ENFORCEMENT is flag-gated behind variant_descriptor_axes_enabled at the
+# BACKSTOP consumers only):
+#   flanker_markers  FRAGRANCES-SCOPED curated symmetric concentration-flanker
+#                    words (Sauvage Elixir / Good Girl Supreme). CURATED and
+#                    BOUNDED on purpose: only unambiguous flanker labels, NEVER
+#                    a base-name word (private/oud/noir/nuit/sport) — "Tom Ford
+#                    Private Blend Oud Wood" IS "Oud Wood".
+#   generation_ints  ELECTRONICS-SCOPED bare generation ints 1-4 that FOLLOW a
+#                    model-noun token (AirPods Pro 2 / iPad Pro 4). The
+#                    adjacency bound keeps it off "Dual SIM 2 Nano" / "2 Year
+#                    Warranty" / "USB 3" / "Type 2 cable".
 # ============================================================================
+
+# --- flanker_markers (fragrances) -------------------------------------------
+# The BOUNDED, curated set of unambiguous concentration-flanker words. These
+# create a DISTINCT SKU/price ("Dior Sauvage" vs "Dior Sauvage Elixir",
+# "Good Girl" vs "Good Girl Supreme") yet are NOT extract_concentration values
+# (so the concentration axis + the flagship-add check never see them). Diacritic
+# folding is inherited from _fold_identity (NFKD) so "Supreme" catches
+# "Supreme"/"Supreme" alike; extracted from fold_tokens. Membership is STRICT:
+# adding a base-name word here would over-reject correct base products
+# (Oud Wood / Bleu de Chanel Noir), so this list is intentionally minimal.
+_FLANKER_MARKER_TOKENS = frozenset({
+    "elixir", "supreme", "absolu", "intense", "extreme",
+})
+
+# --- generation_ints (electronics) ------------------------------------------
+# A bare standalone digit 1-4 is a GENERATION marker ONLY when it immediately
+# follows a model-noun token in the identity stream (AirPods Pro *2*, iPad Air
+# *4*, Echo Dot *3*). The adjacency condition is the ReDoS-free bound that keeps
+# it OFF "Dual SIM 2 Nano" / "2 Year Warranty" / "USB 3" / "Type 2 cable".
+_GENERATION_MODEL_NOUNS = frozenset({
+    "pro", "max", "air", "mini", "series", "gen", "generation",
+    "watch", "pixel", "echo", "dot", "pencil", "airpods",
+})
+# Ordinal generation forms ("2nd generation", "3rd gen") folded to the bare int.
+_GENERATION_ORDINAL_RE = re.compile(
+    r"\b([1-4])(?:st|nd|rd|th)\s+gen(?:eration)?\b", re.I,
+)
+
+
+def _flanker_markers_of(fold_tokens: FrozenSet[str]) -> FrozenSet[str]:
+    """The curated concentration-flanker words present in `fold_tokens`
+    (fragrances-scoped; the CONSUMER checks the category)."""
+    return frozenset(fold_tokens & _FLANKER_MARKER_TOKENS)
+
+
+def _generation_ints_of(text: str) -> FrozenSet[int]:
+    """Bare generation ints 1-4 in `text` (electronics-scoped; the CONSUMER
+    checks the category). A bare digit 1-4 counts ONLY when the PRECEDING
+    identity token is a model-noun; ordinal "2nd gen" forms also count. The
+    _MATCH_INPUT_CAP cap is applied by the descriptor builder before calling
+    this (text is already capped)."""
+    low = (text or "").lower()
+    out = set()
+    for m in _GENERATION_ORDINAL_RE.finditer(low):
+        out.add(int(m.group(1)))
+    words = re.findall(r"[a-z0-9]+", low)
+    for i in range(1, len(words)):
+        w = words[i]
+        if w in ("1", "2", "3", "4") and words[i - 1] in _GENERATION_MODEL_NOUNS:
+            out.add(int(w))
+    return frozenset(out)
 
 
 @dataclass(frozen=True)
@@ -5353,6 +5439,9 @@ class VariantDescriptor:
     # --- tolerance-family fields (SELECTION-mode title-side tolerances) ---
     construction_tolerated: FrozenSet[str]  # _fashion_construction_tolerated_for (UNCAPPED)
     eyewear_annotations: FrozenSet[str]  # title-derived colorway/lens tokens (code-gated at verdict)
+    # --- Phase-B1 NEW axes (extraction always-on; ENFORCEMENT flag-gated at backstops) ---
+    flanker_markers: FrozenSet[str]      # _flanker_markers_of (fragrances curated flanker words)
+    generation_ints: FrozenSet[int]      # _generation_ints_of (electronics model-noun-adjacent 1-4)
     # --- normalized token blob (whole-set subtractions: supplement type-add) ---
     fold_tokens: FrozenSet[str]          # re.findall([a-z0-9]+, _fold_identity(capped))
 
@@ -5491,6 +5580,8 @@ def _build_variant_descriptor(text: str, category: Optional[str],
         condition=bool(fold_tokens & _CONDITION_TOKENS),
         construction_tolerated=frozenset(_fashion_construction_tolerated_for(text)),
         eyewear_annotations=frozenset(_eyewear_annotation_tokens(text)),
+        flanker_markers=_flanker_markers_of(fold_tokens),
+        generation_ints=_generation_ints_of(capped),
         fold_tokens=fold_tokens,
     )
 
