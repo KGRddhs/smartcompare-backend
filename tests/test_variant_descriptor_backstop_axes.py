@@ -140,12 +140,17 @@ def test_gender_both_stated_rejected_both_chokepoints(monkeypatch):
                       "fragrances") is False
 
 
-def test_femme_query_unconfirmed_rejected_both_chokepoints(monkeypatch):
+def test_femme_query_unconfirmed_now_tolerated_at_backstop(monkeypatch):
+    # B1-FIX ruling B REVERSES the prior B1.1 behaviour: the axis-only backstop
+    # no longer rejects a feminine-query-unconfirmed pair (over-rejected correct
+    # women's bases). The selection gate + should_cache_price still enforce it,
+    # so the warmer write path is unaffected. See
+    # test_gender_femme_query_unconfirmed_now_tolerated for the broader set.
     _axes_on(monkeypatch)
     assert _display("Versace Eros Pour Femme", "Versace Eros Eau de Parfum 100ml",
-                    "fragrances") is False
+                    "fragrances") is True
     assert _cacheread("Versace Eros Pour Femme", "Versace Eros Eau de Parfum 100ml",
-                      "fragrances") is False
+                      "fragrances") is True
 
 
 def test_generation_add_rejected_both_chokepoints(monkeypatch):
@@ -272,3 +277,32 @@ def test_gen_inline_add_still_rejects(monkeypatch):
     assert _cacheread("Apple AirPods Pro", "Apple AirPods Pro 2", "electronics") is False
     # inline int followed by a NON-quantity token also fires.
     assert _display("Apple iPad Air", "Apple iPad Air 4 Wi-Fi", "electronics") is False
+
+
+# ---------------------------------------------------------------------------
+# B1-FIX RULING B — GENDER contradiction-only at the backstop
+# ---------------------------------------------------------------------------
+_GENDER_B_TOLERATE = [
+    ("YSL Black Opium Pour Femme", "YSL Black Opium Eau de Parfum 90ml"),
+    ("Chanel Coco Mademoiselle For Women", "Chanel Coco Mademoiselle EDP"),
+    ("Lancome La Vie Est Belle Pour Femme", "Lancome La Vie Est Belle EDP 100ml"),
+]
+
+
+@pytest.mark.parametrize("q,t", _GENDER_B_TOLERATE)
+def test_gender_femme_query_unconfirmed_now_tolerated(monkeypatch, q, t):
+    # RULING B: the axis-only backstop drops the feminine-query-unconfirmed
+    # asymmetry (over-rejected correct women's bases). The selection-side check
+    # still owns the warmer write path.
+    _axes_on(monkeypatch)
+    assert _display(q, t, "fragrances") is True
+    assert _cacheread(q, t, "fragrances") is True
+
+
+def test_gender_contradiction_still_rejects(monkeypatch):
+    # Both-stated gender CONTRADICTION stays enforced at the backstop.
+    _axes_on(monkeypatch)
+    assert _display("Versace Eros Pour Homme", "Versace Eros Pour Femme",
+                    "fragrances") is False
+    assert _cacheread("Versace Eros Pour Homme", "Versace Eros Pour Femme",
+                      "fragrances") is False

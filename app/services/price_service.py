@@ -6498,8 +6498,10 @@ def _descriptor_backstop_axes_verdict(
 
     Decides ONLY the token-decidable weak-chokepoint leak classes the recon
     census flagged as BACKSTOP-ONLY:
-      - gender both-stated contradiction (Homme vs Femme)
-      - feminine-query-unconfirmed asymmetry (query women + candidate unstated)
+      - gender both-stated CONTRADICTION only (Homme vs Femme). The
+        feminine-query-unconfirmed asymmetry was DROPPED here (B1-FIX ruling B —
+        over-rejected correct women's bases; still enforced at selection/cache-
+        write).
       - prefixed clothing-size both-stated mismatch (Size M vs Size XL)
       - model-year both-stated mismatch (both sides state a year, disjoint)
       - flanker_markers symmetric set-inequality (fragrances; Sauvage->Elixir)
@@ -6509,11 +6511,16 @@ def _descriptor_backstop_axes_verdict(
         the reverse stays selection-only)
     """
     cat = (category or "").lower()
-    # Gender (fragrance/beauty + fashion): both-stated contradiction + the
-    # documented feminine-query-unconfirmed asymmetry (mirrors the selection-side
-    # strict rule). q.gender/c.gender are None when unstated -> UNKNOWN tolerated.
+    # Gender (fragrance/beauty + fashion): both-stated CONTRADICTION only
+    # (B1-FIX ruling B). The feminine-query-unconfirmed asymmetry was DROPPED at
+    # this axis-only backstop because it over-rejected correct women's bases
+    # (Black Opium / Coco Mademoiselle / La Vie Est Belle vs a gender-omitting
+    # genuine PDP) across all four beauty categories; the leak it closed (femme
+    # query -> men's base) is backstop-only and STILL caught by the selection
+    # gate + should_cache_price (which keep _feminine_query_unconfirmed), so the
+    # warmer write path is unaffected. q.gender/c.gender are None when unstated.
     if cat in _FRAGRANCE_BEAUTY_CATEGORIES or cat == "fashion":
-        if _vd_gender_mismatch(q, c) or _vd_feminine_query_unconfirmed(q, c):
+        if _vd_gender_mismatch(q, c):
             return "gender"
     # Prefixed clothing-size (fashion): both state a "Size L"-form letter and
     # share none. Bare letters stay ambiguous (not extracted) as at selection.
