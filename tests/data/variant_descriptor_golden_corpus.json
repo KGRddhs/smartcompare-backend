@@ -679,14 +679,14 @@
     "exact_match_brand": false,
     "selection_match": {
      "brand=brand|cat=none": true,
-     "brand=brand|cat=other": true,
-     "brand=brand|cat=real": true,
+     "brand=brand|cat=other": false,
+     "brand=brand|cat=real": false,
      "brand=none|cat=none": true,
-     "brand=none|cat=other": true,
-     "brand=none|cat=real": true,
+     "brand=none|cat=other": false,
+     "brand=none|cat=real": false,
      "brand=wrong|cat=none": true,
-     "brand=wrong|cat=other": true,
-     "brand=wrong|cat=real": true
+     "brand=wrong|cat=other": false,
+     "brand=wrong|cat=real": false
     }
    }
   },
@@ -3688,14 +3688,14 @@
     "exact_match_brand": false,
     "selection_match": {
      "brand=brand|cat=none": true,
-     "brand=brand|cat=other": false,
-     "brand=brand|cat=real": false,
+     "brand=brand|cat=other": true,
+     "brand=brand|cat=real": true,
      "brand=none|cat=none": true,
-     "brand=none|cat=other": false,
-     "brand=none|cat=real": false,
+     "brand=none|cat=other": true,
+     "brand=none|cat=real": true,
      "brand=wrong|cat=none": true,
-     "brand=wrong|cat=other": false,
-     "brand=wrong|cat=real": false
+     "brand=wrong|cat=other": true,
+     "brand=wrong|cat=real": true
     }
    }
   },
@@ -3750,14 +3750,14 @@
     "exact_match_brand": false,
     "selection_match": {
      "brand=brand|cat=none": true,
-     "brand=brand|cat=other": false,
-     "brand=brand|cat=real": false,
+     "brand=brand|cat=other": true,
+     "brand=brand|cat=real": true,
      "brand=none|cat=none": true,
-     "brand=none|cat=other": false,
-     "brand=none|cat=real": false,
+     "brand=none|cat=other": true,
+     "brand=none|cat=real": true,
      "brand=wrong|cat=none": true,
-     "brand=wrong|cat=other": false,
-     "brand=wrong|cat=real": false
+     "brand=wrong|cat=other": true,
+     "brand=wrong|cat=real": true
     }
    }
   },

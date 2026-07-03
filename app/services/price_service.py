@@ -6204,10 +6204,34 @@ _ELECTRONICS_TITLE_SIDE_TOLERATED = frozenset({"ai"})
 # ("crewneck"/"vneck") stay, as do embroidery/embroidered/stitch/stitched
 # (the BF4 pin battery; the Disney-'Stitch' residual is documented in the
 # re-sweep and deliberately out of the RS5 bound).
+# Wave-2 B1.1c (gate-scoped UN-flagged, same class as the RS5 bigram-conditional
+# neckline change): bare "stitch"/"stitched" are NO LONGER static members. A
+# standalone/leading "Stitch" is the Disney character (a DISTINCT graphic-print
+# SKU — census FULL-leak); a sewing-context "stitch" ("contrast stitch",
+# "stitched logo", "stitch detail", "topstitch") is genuine construction padding.
+# So stitch/stitched join the tolerated set ONLY when the raw title spells a
+# sewing-context bigram (mirrors _FASHION_NECKLINE_BIGRAM_RE).
 _FASHION_CONSTRUCTION_TOLERATED = frozenset({
     "crewneck", "vneck", "embroidery", "embroidered",
-    "stitch", "stitched",
 })
+# Sewing-context words that, adjacent to stitch/stitched (either order, hyphen or
+# space) OR glued ("topstitch"), mark it as construction rather than the
+# character name. Kept deliberately broad on the sewing vocabulary so a genuine
+# GCC-retailer descriptive title ("Twin Tipped stitched collar", "contrast
+# stitch trim") still tolerates, while a bare/leading "Stitch" stays distinctive.
+_STITCH_CONTEXT_WORDS = (
+    "contrast", "detail", "details", "logo", "trim", "top", "double", "triple",
+    "chain", "seam", "seams", "collar", "hem", "pattern", "decorative",
+    "embroidered", "flat", "over", "cross", "saddle", "blanket", "running",
+    "visible", "tonal",
+)
+_STITCH_CTX = "|".join(_STITCH_CONTEXT_WORDS)
+_FASHION_STITCH_BIGRAM_RE = re.compile(
+    rf"\b(?:(?:{_STITCH_CTX})[\s\-{_UNICODE_HYPHENS}]+stitch(?:ed|ing)?"
+    rf"|stitch(?:ed|ing)?[\s\-{_UNICODE_HYPHENS}]+(?:{_STITCH_CTX})"
+    rf"|topstitch(?:ed|ing)?)\b",
+    re.I,
+)
 # Separator accepts the C2 _UNICODE_HYPHENS canon (Wave D, convergence CV5):
 # a U+2011 "Crew‑Neck" title is the same GCC-retailer bigram — ASCII-only left
 # it a distinctive add and a genuine enriched title over-rejected.
@@ -6238,6 +6262,18 @@ def _fashion_construction_tolerated_for(candidate_title: str) -> frozenset:
         glued = re.sub(r"\s+", "", _fold_identity(m.group(0))).replace("-", "")
         if glued != f"{g}neck":
             extra.add(glued)
+    # Wave-2 B1.1c: 'stitch'/'stitched'/'stitching'/'topstitch' tolerated ONLY in
+    # a sewing-context bigram (a bare/leading "Stitch" = the Disney character stays
+    # distinctive). Tolerate the WHOLE matched bigram (the stitch token AND its
+    # sewing-context word, mirroring the neckline bigram that tolerates both 'crew'
+    # and 'neck') so a genuine "contrast stitch"/"stitched collar" descriptive title
+    # is not rejected on the context word instead. Add the ACTUAL folded tokens the
+    # tokenizer emits from the matched span so the tolerance and the tokenizer can
+    # never drift. NOTE: a bare 'collar'/'contrast' elsewhere (no adjacent stitch)
+    # is untouched and stays distinctive.
+    for m in _FASHION_STITCH_BIGRAM_RE.finditer(candidate_title or ""):
+        for tok in re.findall(r"[a-z0-9]+", _fold_identity(m.group(0))):
+            extra.add(tok)
     if extra:
         return _FASHION_CONSTRUCTION_TOLERATED | frozenset(extra)
     return _FASHION_CONSTRUCTION_TOLERATED

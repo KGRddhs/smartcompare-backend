@@ -7,8 +7,9 @@ over-acceptance is the next blind spot):
   OR-6  FASHION CONSTRUCTION/NECKLINE title-side tolerance — namshi lists the
         kpi-fash-006 exact SKU as "Essential Flag Embroidery Crew Neck
         T-Shirt"; 'Embroidery'/'Crew'/'Neck' each variant-add-rejected it.
-        The token set {crew, neck, crewneck, vneck, embroidery, embroidered,
-        stitch, stitched} is tolerated as a TITLE add for fashion ONLY when
+        The token set {crew, neck, crewneck, vneck, embroidery, embroidered}
+        (+ stitch/stitched ONLY inside a sewing-context bigram, B1.1c) is
+        tolerated as a TITLE add for fashion ONLY when
         the query does not carry the token (the _ELECTRONICS_TITLE_SIDE_
         TOLERATED "AI" asymmetry) AND q_core is non-empty (the emptied
         brand/class-query fence is unchanged). NOTE: there is NO dedicated
@@ -98,12 +99,24 @@ class TestFashionConstructionTolerance:
         # the only recon-verified kpi-fash-006 source (namshi 9.22 InStock).
         assert _sel(Q_TOMMY, T_NAMSHI_TEE, brand="Tommy Hilfiger") is True
 
-    # NOTE: "Stitch Logo"-style adds stay rejected — "logo" is outside the
-    # bounded construction set (the fash-005 "Logo Detail" class is unlocked
-    # by the structured-code override, not by padding).
     @pytest.mark.parametrize("added", ["Embroidery", "Crew Neck", "Crewneck",
-                                       "V-Neck", "Stitched", "Stitch"])
+                                       "V-Neck"])
     def test_each_construction_add_tolerated_alone(self, added):
+        assert _sel(Q_TOMMY, f"Essential Flag {added} T-Shirt",
+                    brand="Tommy Hilfiger") is True
+
+    # Wave-2 B1.1c (gate-scoped, un-flagged): a BARE 'stitch'/'stitched' is NO
+    # LONGER tolerated alone — a standalone "Stitch" is the Disney character (a
+    # distinct graphic-print SKU, census FULL-leak). It tolerates ONLY inside a
+    # sewing-context bigram ("stitched logo"/"contrast stitch"/"topstitch").
+    @pytest.mark.parametrize("added", ["Stitch", "Stitched"])
+    def test_bare_stitch_now_distinctive(self, added):
+        assert _sel(Q_TOMMY, f"Essential Flag {added} T-Shirt",
+                    brand="Tommy Hilfiger") is False
+
+    @pytest.mark.parametrize("added", ["stitched logo", "contrast stitch",
+                                       "stitch detail", "topstitch"])
+    def test_stitch_in_sewing_bigram_still_tolerated(self, added):
         assert _sel(Q_TOMMY, f"Essential Flag {added} T-Shirt",
                     brand="Tommy Hilfiger") is True
 
