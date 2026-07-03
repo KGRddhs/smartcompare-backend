@@ -286,11 +286,15 @@ Full bundle narrative (Session 44 onwards, including Bundle B/C/D ships + hot-fi
 ultracode. Genuine-price WARMER ACTIVATION session. The warmed KPI gate is MET (18/18, 1.000/cat, branch
 feature/genuine-price-kpi @ 7af40eb, comm-green, pushed). Execute in order: (1) PR sequencing — open the PR for
 feature/genuine-price-kpi (stacks on #13 which stacks on #12; decide merge order with Ahmed; CI is RED-by-design → gate
-on the comm-diff). (2) Wave-2 VariantDescriptor (docs/plans/2026-06-30-...-design.md option C): STRUCTURED-field
-comparison closing the ~9 token-indistinguishable residuals (gender flanker, one-sided SPF, Sauvage→Elixir, g↔ml,
-ZMA/Cal-Mag, AirPods Pro→Pro 2) + replace the axis-only _backstop_identity_ok at the cache-read/display chokepoints —
-the last warmer precondition. Method: coverage-driven recon → TDD → BOTH-directions sweep → dispatcher gates → re-sweep
-until convergence (3 rings this session, each caught the prior fix's blind spot). (3) Fresh purge + flip
+on the comm-diff). (2) Wave-2 VariantDescriptor BUILD — the RECON IS DONE (2026-07-03, on the branch:
+docs/plans/2026-07-03-wave2-variantdescriptor-recon.md + docs/investigations/2026-07-03-wave2-recon/*.json — 21-class
+census reproduced at all 5 decision points; option C confirmed as a refactor-not-new-parsing). Build the PHASES as spec'd:
+A refactor-with-pins (extract-once descriptor, golden-corpus equivalence) → B1 backstop axes + THE DB-LEG FIX (L2 round-trip
+drops title+in_stock on this branch → both weak chokepoints VACUOUS for DB-served prices; overlaps PR#12 migration 033 —
+reconcile) + the verdict-scrub enforce_correctness parity fix → B2 over-rejection folds (ZMA/Omega-3) → B3 curated
+reference + narrow LLM hint (cache-WRITE time, off-clock only, NEVER the 15s live path). Each phase: TDD → BOTH-directions
+sweep → dispatcher gates → re-sweep to convergence. Warmer-risk line for the runbook: exactly 2 warmer-writable poison
+classes today (gender flanker + one-sided SPF). (3) Fresh purge + flip
 ENABLE_PRICE_CACHE_WARMER per docs/runbooks/2026-06-30-warmer-activation.md; re-measure 3× warmed + spot-check live
 compares. (4) OPTIONAL: determinism live-tuning (ENABLE_GENUINE_PRICE_PRIORITY is DORMANT; tune
 GENUINE_MIN_BUDGET_SECONDS on cold-live compares per the spec §11 measurement list). (5) FE honesty leg (converted-USD
