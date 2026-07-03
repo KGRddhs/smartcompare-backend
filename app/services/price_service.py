@@ -7,13 +7,15 @@ import re
 import json
 import time
 import asyncio
+import functools
 import logging
 import unicodedata
+from dataclasses import dataclass
 # NOTE: imported as a NAME, not the module — extract_jsonld_price /
 # _bolo_jsonld_main_price take a parameter literally called `html` that would
 # shadow the module inside those bodies (Wave C C2 entity-decode).
 from html import unescape as html_unescape
-from typing import Optional, List, Dict, Any, Tuple
+from typing import Optional, List, Dict, Any, FrozenSet, Tuple
 from urllib.parse import urlparse, quote_plus, urljoin
 
 import httpx
@@ -5287,6 +5289,256 @@ def build_adapter_search_terms(
     return [full_name, core]
 
 
+# ============================================================================
+# === VARIANT DESCRIPTOR (Wave-2) ===
+#
+# Phase-A EXTRACT-ONCE formalization (design lane R1/R2/R5 STEP 1,
+# docs/investigations/2026-07-03-wave2-recon/descriptor-design.json).
+#
+# Every axis the matcher discriminates on already existed as a pure extractor
+# primitive that was re-parsed up to ~5x per candidate across
+# strict_title_match / _axis_mismatch / _selection_match / should_cache_price /
+# is_price_showable. This section extracts each axis ONCE per
+# (text, category, brand, gate) into a frozen VariantDescriptor (memoized), and
+# encodes TODAY'S comparison semantics in ONE decision function
+# (descriptor_verdict) with three modes:
+#
+#   SELECTION — the _selection_match contract (axes + leak-direction subset +
+#               variant-add superset + per-category padding + tolerances)
+#   EXACT     — the is_exact_match contract (axes + identity set-EQUALITY)
+#   BACKSTOP  — the _backstop_identity_ok contract (axis-only,
+#               strict_extras=False — brand-independent, never false-pends a
+#               descriptive title; the chokepoints pair it with the SEPARATE
+#               _category_type_added bounded check)
+#
+# BEHAVIOR-IDENTICAL BY CONSTRUCTION: extraction calls the EXISTING extractor
+# primitives verbatim with the exact input form (capped/uncapped/folded) each
+# legacy call site used; the comparator table replicates each per-axis
+# predicate field-for-field. The golden corpus
+# (tests/test_variant_descriptor_golden.py, 1149 pinned verdicts) is the
+# equivalence gate. NO new flag: every consumer already no-ops when
+# ENABLE_EXACT_PRICE_GATE is off, so flag-OFF byte-identity is inherited.
+#
+# Phase-A scope note: the NEW Phase-B fields (flanker_markers,
+# generation_ints) are deliberately ABSENT — this phase formalizes, it does
+# not change any verdict.
+# ============================================================================
+
+
+@dataclass(frozen=True)
+class VariantDescriptor:
+    """The extract-once product-variant identity of ONE side (query or
+    candidate title), per descriptor-design.json R1.
+
+    Every field None/empty == UNKNOWN (the axis is unstated on this side) —
+    the comparator table decides per axis whether UNKNOWN is tolerated
+    (one-sided axes), required (fail-closed query-stated axes) or compared
+    (set-equality axes).
+
+    R1's single `size` field is SPLIT into the three representations today's
+    comparators actually consume (behavior-identity beats a single typed
+    scalar): `size_ml_snapped` (extract_size_ml_any — the fragrance
+    standard-bottle snap basis), `size_ml_raw` (_size_ml_raw — the
+    non-fragrance raw+5%-tolerance basis) and `weights_volumes`
+    (_weights_volumes — the g/ml typed set with cross-base fail-closed
+    semantics). A convenience `size` property exposes the R1 typed view.
+
+    `structured_code` is "" in Phase A: structured codes are STAMPED by
+    adapters onto the price dict (algolia_service.py:532), never parsed from
+    title text. TODO(Wave-2 Phase B, R1 provenance): structured-first stamping
+    — a retailer-structured brand/code/size field wins over the title parse
+    for that axis and marks provenance='structured'.
+    """
+    # --- identity ---
+    identity_core: FrozenSet[str]        # _identity_tokens_ps(text, brand, category)
+    brand_tokens: FrozenSet[str]         # brand words + hyphen-collapsed + alias groups
+    structured_code: str                 # "" (adapter-stamped, not text-derived)
+    model_codes: FrozenSet[str]          # _luxottica_model_codes (0-prefix-folded)
+    # --- numeric / typed axes ---
+    concentration: Optional[str]         # extract_concentration (EDP/EDT/Parfum/...)
+    size_ml_snapped: Optional[int]       # extract_size_ml_any (fragrance snap basis)
+    size_ml_raw: Optional[float]         # _size_ml_raw (raw oz->ml, non-fragrance basis)
+    weights_volumes: FrozenSet[Tuple[float, str]]  # _weights_volumes {(value,'g'|'ml')}
+    lb_present: bool                     # _LB_TOKEN_RE (arms the lb 1% headline tolerance)
+    storage_gb: Optional[float]          # _match_storage_gb (MAX = storage-not-RAM)
+    ram_gb: FrozenSet[int]               # _ram_value (GB values <= 32)
+    count: Optional[float]               # extract_count (caps/tablets/... headline max)
+    doses: FrozenSet[Tuple[float, str]]  # _doses {(value, 'mg'|'mcg'|'iu')}, comma=thousands
+    bare_doses: FrozenSet[int]           # _BARE_DOSE_RE over the folded text (4+ digits)
+    percents: FrozenSet[float]           # _percents (% active strength)
+    spfs: FrozenSet[int]                 # _SPF_RE values
+    packs: FrozenSet[float]              # _packs (grocery pack counts)
+    shoe_sizes: FrozenSet[Tuple[str, float]]  # _shoe_sizes {(system, value)}
+    clothing_sizes: FrozenSet[str]       # _clothing_sizes_in (apparel S/M/L/XL...)
+    inches: FrozenSet[float]             # _INCH_RE values (the both-stated axis)
+    inch_tokens: FrozenSet[str]          # _inch_digit_tokens on the UNCAPPED text
+    chip_tiers: FrozenSet[Tuple[str, str]]    # _chip_tier {(chip_number, tier)}
+    core_counts: Tuple[FrozenSet[int], FrozenSet[int], FrozenSet[int]]  # (cpu, gpu, unlabelled)
+    qualifiers: FrozenSet[str]           # _quals_in vs the category's variant qualifiers
+    plus_stems: FrozenSet[str]           # _plus_stems (symbol + spelled '+' variants)
+    # --- categorical axes ---
+    gender: Optional[str]                # _gender_of ('men'/'women'/None=unisex-or-unstated)
+    form: Optional[str]                  # _extract_product_form (brand-stripped)
+    flavours: FrozenSet[str]             # fold tokens & _FLAVOUR_TOKENS
+    finishes: FrozenSet[str]             # fold tokens & _MAKEUP_FINISH_TOKENS
+    materials: FrozenSet[str]            # fold tokens & _MATERIAL_TOKENS
+    fits: FrozenSet[str]                 # fold tokens & _FIT_TOKENS
+    preps: FrozenSet[str]                # fold tokens & _GROCERY_PREP_TOKENS
+    vitamin_letters: FrozenSet[str]      # _VITAMIN_LETTER_RE on the capped raw text
+    supplement_types: FrozenSet[str]     # fold tokens & _SUPPLEMENT_TYPE_TOKENS
+    supplement_alt_forms: FrozenSet[str]      # fold tokens & _SUPPLEMENT_ALT_FORMS
+    supplement_default_forms: FrozenSet[str]  # fold tokens & _SUPPLEMENT_DEFAULT_FORMS
+    colors: FrozenSet[str]               # fold tokens & _COLOR_EDITION_TOKENS
+    year_annotations: FrozenSet[str]     # _annotation_year_tokens on the UNCAPPED text
+    condition: bool                      # fold tokens & _CONDITION_TOKENS (non-new stated)
+    # --- tolerance-family fields (SELECTION-mode title-side tolerances) ---
+    construction_tolerated: FrozenSet[str]  # _fashion_construction_tolerated_for (UNCAPPED)
+    eyewear_annotations: FrozenSet[str]  # title-derived colorway/lens tokens (code-gated at verdict)
+    # --- normalized token blob (whole-set subtractions: supplement type-add) ---
+    fold_tokens: FrozenSet[str]          # re.findall([a-z0-9]+, _fold_identity(capped))
+
+    @property
+    def size(self) -> Optional[Tuple[float, str]]:
+        """R1's typed (value, unit_class) convenience view, size_variant_token
+        precedence (storage > ml > count > weight/volume). INFORMATIONAL ONLY —
+        the comparators consume the split fields above."""
+        if self.storage_gb:
+            return (self.storage_gb, "gb")
+        if self.size_ml_raw is not None:
+            return (float(self.size_ml_raw), "ml")
+        if self.count:
+            return (self.count, "ct")
+        if self.weights_volumes:
+            value, base = max(self.weights_volumes)
+            return (value, base)
+        return None
+
+
+def _eyewear_annotation_tokens(text: str) -> set:
+    """The TITLE-DERIVED eyewear annotation tokens of `text` (colorway
+    sub-tokens adjacent to a Luxottica model code, lens-size annotations, the
+    'lens size' phrase words) — the dynamic part of _eyewear_code_tolerated_for,
+    split out so the descriptor extracts it once per side and the legacy helper
+    delegates (single implementation, no drift). The static
+    _EYEWEAR_DESCRIPTOR_TOKENS and the query-code gate stay at the CONSUMER
+    (they are pair-conditional)."""
+    low = (text or "").lower()
+    if len(low) > _MATCH_INPUT_CAP:
+        low = low[:_MATCH_INPUT_CAP]
+    out: set = set()
+    for m in _LUXOTTICA_COLORWAY_ADJ_RE.finditer(low):
+        for part in m.group(1).split("/"):
+            if part:
+                out.add(part)
+        if m.group(2):
+            out.add(m.group(2))
+    for n in _EYEWEAR_LENS_MM_RE.findall(low):
+        out.add(n)
+        out.add(f"{n}mm")
+    if _EYEWEAR_LENS_PHRASE_RE.search(low):
+        out.update(("lens", "size"))
+    return out
+
+
+def _build_variant_descriptor(text: str, category: Optional[str],
+                              brand: str) -> VariantDescriptor:
+    """Run every existing extractor primitive ONCE over `text` and freeze the
+    result. Input forms replicate the legacy call sites exactly:
+      - axis extractors get the _MATCH_INPUT_CAP-capped text (the cap
+        _axis_mismatch applied before every per-axis predicate, ReDoS guard);
+      - _identity_tokens_ps / _luxottica_model_codes get the raw text (they
+        self-cap at the same 512);
+      - the SELECTION tolerance helpers (_annotation_year_tokens,
+        _inch_digit_tokens, _fashion_construction_tolerated_for) get the raw
+        UNCAPPED text — _selection_match always called them uncapped.
+    None input is treated as "" (the extractors' own `text or ""` idiom)."""
+    text = text or ""
+    capped = text[:_MATCH_INPUT_CAP] if len(text) > _MATCH_INPUT_CAP else text
+    fold_full = _fold_identity(capped)
+    fold_tokens = frozenset(re.findall(r"[a-z0-9]+", fold_full))
+    cat = (category or "").lower()
+
+    # Brand token set — the same computation _identity_tokens_ps runs
+    # internally (plain words + hyphen-collapsed multiword form + alias-group
+    # expansion). Informational on the descriptor: identity_core already had
+    # the brand subtracted by _identity_tokens_ps itself.
+    brand_words = set(normalize_words(_fold_identity(brand))) if brand else set()
+    if brand and " " in brand.strip():
+        brand_words |= {re.sub(r"\s+", "", _fold_identity(brand))}
+    for _group in _BRAND_ALIAS_GROUPS:
+        if brand_words & _group:
+            brand_words |= set(_group)
+
+    quals_set = _CATEGORY_VARIANT_QUALIFIERS.get(cat, frozenset())
+    cpu, gpu, unlabeled = _labeled_core_counts(capped)
+
+    return VariantDescriptor(
+        identity_core=frozenset(_identity_tokens_ps(text, brand, category)),
+        brand_tokens=frozenset(brand_words),
+        structured_code="",  # Phase A: adapter-stamped only (see class docstring TODO)
+        model_codes=frozenset(_luxottica_model_codes(text)),
+        concentration=extract_concentration(capped),
+        size_ml_snapped=extract_size_ml_any(capped),
+        size_ml_raw=_size_ml_raw(capped),
+        weights_volumes=frozenset(_weights_volumes(capped)),
+        lb_present=bool(_LB_TOKEN_RE.search(capped)),
+        storage_gb=_match_storage_gb(capped),
+        ram_gb=frozenset(_ram_value(capped)),
+        count=extract_count(capped),
+        doses=frozenset(_doses(capped)),
+        bare_doses=frozenset(int(m) for m in _BARE_DOSE_RE.findall(fold_full)),
+        percents=frozenset(_percents(capped)),
+        spfs=frozenset(int(m) for m in _SPF_RE.findall(capped)),
+        packs=frozenset(_packs(capped)),
+        shoe_sizes=frozenset(_shoe_sizes(capped)),
+        clothing_sizes=frozenset(_clothing_sizes_in(capped)),
+        inches=frozenset(float(m) for m in _INCH_RE.findall(capped)),
+        inch_tokens=frozenset(_inch_digit_tokens(text)),
+        chip_tiers=frozenset(_chip_tier(capped)),
+        core_counts=(frozenset(cpu), frozenset(gpu), frozenset(unlabeled)),
+        qualifiers=frozenset(_quals_in(capped, quals_set)) if quals_set else frozenset(),
+        plus_stems=frozenset(_plus_stems(capped)),
+        gender=_gender_of(capped),
+        form=_extract_product_form(capped, brand),
+        flavours=fold_tokens & _FLAVOUR_TOKENS,
+        finishes=fold_tokens & _MAKEUP_FINISH_TOKENS,
+        materials=fold_tokens & _MATERIAL_TOKENS,
+        fits=fold_tokens & _FIT_TOKENS,
+        preps=fold_tokens & _GROCERY_PREP_TOKENS,
+        vitamin_letters=frozenset(m.lower() for m in _VITAMIN_LETTER_RE.findall(capped)),
+        supplement_types=fold_tokens & _SUPPLEMENT_TYPE_TOKENS,
+        supplement_alt_forms=fold_tokens & _SUPPLEMENT_ALT_FORMS,
+        supplement_default_forms=fold_tokens & _SUPPLEMENT_DEFAULT_FORMS,
+        colors=fold_tokens & _COLOR_EDITION_TOKENS,
+        year_annotations=frozenset(_annotation_year_tokens(text)),
+        condition=bool(fold_tokens & _CONDITION_TOKENS),
+        construction_tolerated=frozenset(_fashion_construction_tolerated_for(text)),
+        eyewear_annotations=frozenset(_eyewear_annotation_tokens(text)),
+        fold_tokens=fold_tokens,
+    )
+
+
+@functools.lru_cache(maxsize=2048)
+def _extract_variant_descriptor_cached(
+    text: str, category: Optional[str], brand: str, _gate_on: bool,
+) -> VariantDescriptor:
+    """Memoized builder. `_gate_on` is part of the key because identity
+    tokenization (normalize_words' spaced-unit fold) branches on
+    ENABLE_EXACT_PRICE_GATE — a flag flip must never serve a stale descriptor."""
+    return _build_variant_descriptor(text, category, brand)
+
+
+def extract_variant_descriptor(text: Optional[str], category: Optional[str],
+                               brand: str = "") -> VariantDescriptor:
+    """The extract-once entry point: the VariantDescriptor of `text` under
+    (`category`, `brand`), LRU-memoized (pure function; kills the ~5x re-parse
+    per candidate across the matcher chain). Arguments must be hashable —
+    an unhashable input raises TypeError loudly (never silently coerced)."""
+    return _extract_variant_descriptor_cached(
+        text or "", category, brand or "", exact_gate_enabled(),
+    )
+
+
 def _axis_mismatch(query_name: str, candidate_title: str, category: Optional[str],
                    brand: str = "", *, strict_extras: bool = True) -> bool:
     """True iff query and candidate disagree on an EXPLICIT discriminating axis:
@@ -5592,25 +5844,10 @@ def _eyewear_code_tolerated_for(query_name: str, candidate_title: str) -> frozen
     q_codes = _luxottica_model_codes(query_name)
     if not q_codes or not (q_codes & _luxottica_model_codes(candidate_title)):
         return frozenset()
-    low = (candidate_title or "").lower()
-    if len(low) > _MATCH_INPUT_CAP:
-        low = low[:_MATCH_INPUT_CAP]
-    out = set(_EYEWEAR_DESCRIPTOR_TOKENS)
-    for m in _LUXOTTICA_COLORWAY_ADJ_RE.finditer(low):
-        # "002/58" folds to the tokens {'002','58'} ('/' -> space in
-        # _fold_identity); the optional trailing bare digit run ("002/58 58")
-        # is the lens size restated.
-        for part in m.group(1).split("/"):
-            if part:
-                out.add(part)
-        if m.group(2):
-            out.add(m.group(2))
-    for n in _EYEWEAR_LENS_MM_RE.findall(low):
-        out.add(n)
-        out.add(f"{n}mm")  # the _fold_spaced_units token form
-    if _EYEWEAR_LENS_PHRASE_RE.search(low):
-        out.update(("lens", "size"))
-    return frozenset(out)
+    # Wave-2 A1: the title scan ("002/58" -> {'002','58'}, lens-mm forms,
+    # the 'lens size' phrase words) lives in _eyewear_annotation_tokens so the
+    # VariantDescriptor and this legacy helper share ONE implementation.
+    return frozenset(_EYEWEAR_DESCRIPTOR_TOKENS | _eyewear_annotation_tokens(candidate_title))
 
 
 def _selection_match(
