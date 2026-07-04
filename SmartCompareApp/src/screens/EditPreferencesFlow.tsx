@@ -12,6 +12,7 @@ import {
   StyleSheet,
   SafeAreaView,
   ActivityIndicator,
+  ScrollView,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { ChevronLeft, X } from 'lucide-react-native';
@@ -138,7 +139,12 @@ export default function EditPreferencesFlow({ navigation }: Props) {
         <View style={styles.headerBtn} />
       </View>
 
-      <View style={styles.body}>
+      <ScrollView
+        style={styles.body}
+        contentContainerStyle={styles.bodyContent}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
         <Text style={styles.pageTitle}>{t(`preferences.${pageKey}.title`)}</Text>
 
         {pageKey === 'priorities' && (
@@ -165,7 +171,7 @@ export default function EditPreferencesFlow({ navigation }: Props) {
             onChange={(v) => update({ brand_attitude: v })}
           />
         )}
-      </View>
+      </ScrollView>
 
       {errorKey ? <Text style={styles.errorText}>{t(errorKey)}</Text> : null}
 
@@ -221,7 +227,10 @@ const styles = StyleSheet.create({
   },
   body: {
     flex: 1,
+  },
+  bodyContent: {
     padding: spacing.lg,
+    paddingBottom: spacing.md,
   },
   pageTitle: {
     ...typography.display,
