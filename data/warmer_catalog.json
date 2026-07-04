@@ -1,18 +1,37 @@
 {
   "_metadata": {
-    "schema_version": 1,
-    "authored_at": "2026-06-15",
-    "author": "be-sourcing (Genuine-BH latency+warmer bundle WS4/D6)",
-    "purpose": "STRUCTURAL warmer-only catalog. These are high-traffic / latency-heavy product pairs whose genuine BH (BHD) price is reachable but SLOW to scrape (luxury fragrance, premium haircare, gadgets) — they blow the 15s live request clock so live falls to converted_usd. The off-clock warmer (cron_warm_price_cache) scrapes them with the raised PRICE_RACE_TIMEOUT + FAN_OUT_BUDGET_SECONDS=35 and writes the genuine price into the shared 24h cache, so a live re-compare reads it INSTANT + GENUINE. This file is MERGED into the warmer's query set; it is deliberately SEPARATE from data/validation_gold_truth.json so it never shifts the eval baseline (run 4aee8e88).",
-    "notes": "id prefix 'warm-' to never collide with gold ids. region=bahrain for all. category is advisory only (the backend AI makes the final category call). Keep this list TIGHT — every entry costs ~10-30 Serper credits per warm run against the finite free key; add only pairs with a confirmed structural genuine-but-slow gap. The Tom Ford Ombre Leather + Tobacco Vanille pair is the bundle's repro and is included first."
+    "schema_version": 2,
+    "authored_at": "2026-07-04",
+    "author": "genuine-price warmer effectiveness — catalog population (recon wf_09d336f0)",
+    "purpose": "Cron-warmed warmer-only catalog, MERGED into the warmer's query set (cron_warm_price_cache._merge_catalog). Two sections: (1) KPI-SEED (ids warm-kpi-*) — the 18 usable_exact_genuine_truth SKUs as SINGLE-product warm queries, so the recurring cron warms EXACTLY the products the --read-cache KPI gate measures (single queries avoid the pair-fairness reconcile pend). These are INTENTIONALLY the KPI truth products: the KPI is a WARMED-correctness gate and usable_exact_genuine_for_product independently re-validates the resolved SKU against the truth entry, so it measures warmed CORRECTNESS, not mere presence. (2) STRUCTURAL (ids warm-frag/hair/gadget/grocery-*) — high-traffic latency-heavy genuine-but-slow pairs (unchanged from 2026-06-15). Deliberately SEPARATE from data/validation_gold_truth.json so it never shifts the eval baseline.",
+    "notes": "id prefix 'warm-' to never collide with gold (q-) or KPI-truth (kpi-) ids. region=bahrain all; category advisory (backend AI decides). KPI-seed queries MUST stay byte-identical to data/usable_exact_genuine_truth.json query strings (the cache key is size-aware — build_size_aware_price_cache_key — so the warmed key must match the gate's read key); run scripts/probe_truth_freshness.py if the truth set changes. Rotation: cron _rotation_window windows MAX_QUERIES_PER_RUN across gold-smoke20 + this catalog, so full KPI-seed coverage may take ~2 cron runs; measure the accumulated read-cache KPI after a couple passes. tests/test_kpi_set_disjoint_from_warmer.py exempts the warm-kpi-* seed from the disjointness assertion (it is intentionally the truth set) and asserts the seed COVERS all 18 truth queries."
   },
   "queries": [
+    {"id": "warm-kpi-elec-001", "query": "iPhone 15 256GB", "category": "electronics", "region": "bahrain", "note": "KPI seed. sharafdg Algolia / extra Unbxd -> local_bhd (session-3 warmed 18/18)."},
+    {"id": "warm-kpi-elec-002", "query": "Samsung Galaxy S25 256GB", "category": "electronics", "region": "bahrain", "note": "KPI seed. sharafdg Algolia / extra Unbxd / noon_catalog -> local_bhd."},
+    {"id": "warm-kpi-elec-003", "query": "Samsung Galaxy S25 Ultra 256GB", "category": "electronics", "region": "bahrain", "note": "KPI seed. sharafdg Algolia / extra Unbxd -> local_bhd."},
+    {"id": "warm-kpi-elec-004", "query": "Apple iPad Air 11-inch M3 128GB", "category": "electronics", "region": "bahrain", "note": "KPI seed. sharafdg Algolia / extra Unbxd -> local_bhd."},
+    {"id": "warm-kpi-elec-005", "query": "MacBook Air 13 M5 512GB", "category": "electronics", "region": "bahrain", "note": "KPI seed. sharafdg Algolia / extra Unbxd -> local_bhd."},
+    {"id": "warm-kpi-elec-006", "query": "Nintendo Switch 2", "category": "electronics", "region": "bahrain", "note": "KPI seed. extra Unbxd / sharafdg -> local_bhd."},
+    {"id": "warm-kpi-frag-001", "query": "YSL Black Opium Eau de Parfum 90ml", "category": "fragrances", "region": "bahrain", "note": "KPI seed. theperfumesclub woo_store_api / noon_catalog -> genuine BHD."},
+    {"id": "warm-kpi-frag-002", "query": "Giorgio Armani Acqua di Gio Eau de Toilette 100ml", "category": "fragrances", "region": "bahrain", "note": "KPI seed. theperfumesclub woo / noon -> genuine BHD."},
+    {"id": "warm-kpi-frag-003", "query": "Carolina Herrera Good Girl Eau de Parfum 80ml", "category": "fragrances", "region": "bahrain", "note": "KPI seed. theperfumesclub woo / noon -> genuine BHD."},
+    {"id": "warm-kpi-frag-004", "query": "Lancome La Vie Est Belle Eau de Parfum 100ml", "category": "fragrances", "region": "bahrain", "note": "KPI seed. theperfumesclub woo / noon -> genuine BHD."},
+    {"id": "warm-kpi-frag-005", "query": "Prada Luna Rossa Carbon Eau de Toilette 100ml", "category": "fragrances", "region": "bahrain", "note": "KPI seed. theperfumesclub woo / noon -> genuine BHD."},
+    {"id": "warm-kpi-frag-006", "query": "Valentino Donna Born in Roma Eau de Parfum 100ml", "category": "fragrances", "region": "bahrain", "note": "KPI seed. theperfumesclub woo / noon -> genuine BHD."},
+    {"id": "warm-kpi-fash-001", "query": "Nike Air Force 1 07 White", "category": "fashion", "region": "bahrain", "note": "KPI seed. footlocker.com.bh magento_graphql_bhd / 6thstreet / noon."},
+    {"id": "warm-kpi-fash-002", "query": "Adidas Samba OG", "category": "fashion", "region": "bahrain", "note": "KPI seed. footlocker.com.bh magento / 6thstreet / noon."},
+    {"id": "warm-kpi-fash-003", "query": "Levis 501 Original Fit Jeans", "category": "fashion", "region": "bahrain", "note": "KPI seed. 6thstreet / noon."},
+    {"id": "warm-kpi-fash-004", "query": "Ray-Ban Aviator RB3025", "category": "fashion", "region": "bahrain", "note": "KPI seed. noon (Luxottica model-code tolerance) / 6thstreet."},
+    {"id": "warm-kpi-fash-005", "query": "Lacoste L1212 Polo", "category": "fashion", "region": "bahrain", "note": "KPI seed. 6thstreet / noon (structured-code override L1212)."},
+    {"id": "warm-kpi-fash-006", "query": "Tommy Hilfiger Essential Flag T-Shirt", "category": "fashion", "region": "bahrain", "note": "KPI seed. 6thstreet / noon."},
+
     {
       "id": "warm-frag-001",
       "query": "Tom Ford Ombre Leather vs Tom Ford Tobacco Vanille",
       "category": "fragrances",
       "region": "bahrain",
-      "note": "Bundle repro pair. Genuine BH reachable (Al Hajis ~80 / Ounass BH ~118 BHD via curl JSON-LD) but ~37.5s cold > 30s cap → warmer-only genuine."
+      "note": "Bundle repro pair. Genuine BH reachable (Al Hajis ~80 / Ounass BH ~118 BHD via curl JSON-LD) but ~37.5s cold > 30s cap -> warmer-only genuine."
     },
     {
       "id": "warm-frag-002",
@@ -96,14 +115,14 @@
       "query": "Sony PlayStation 5 Pro vs Microsoft Xbox Series X",
       "category": "electronics",
       "region": "bahrain",
-      "note": "A2 (2026-06-15). High-traffic console compare. Genuine BH reachable: sharafdg/microless/extra electronics rows (BHD), but a console PDP discovery + scrape blows the 15s live clock → warmer-only genuine."
+      "note": "A2 (2026-06-15). High-traffic console compare. Genuine BH reachable: sharafdg/microless/extra electronics rows (BHD), but a console PDP discovery + scrape blows the 15s live clock -> warmer-only genuine."
     },
     {
       "id": "warm-frag-005",
       "query": "Versace Eros vs Paco Rabanne 1 Million",
       "category": "fragrances",
       "region": "bahrain",
-      "note": "A2 (2026-06-15). Mainstream-designer crossover — very common compare. Genuine BH reachable via the registry designer route (Al Hajis / bahrain.ounass.com curl JSON-LD, BHD — same path that lands Tom Ford 80/118 BHD); slow > 30s cold → warmer-only genuine."
+      "note": "A2 (2026-06-15). Mainstream-designer crossover — very common compare. Genuine BH reachable via the registry designer route (Al Hajis / bahrain.ounass.com curl JSON-LD, BHD — same path that lands Tom Ford 80/118 BHD); slow > 30s cold -> warmer-only genuine."
     },
     {
       "id": "warm-frag-006",
