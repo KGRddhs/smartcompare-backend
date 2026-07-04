@@ -134,6 +134,7 @@ jest.mock('../../src/components/results/ResultsAccordion', () => ({
 }));
 jest.mock('../../src/services/sourceMethod', () => ({
   anyEstimated: jest.fn(() => false),
+  isConvertedUsd: jest.fn((p: any) => p?.source_method === 'converted_usd'),
 }));
 
 import { ResultsContent } from '../../src/components/results/ResultsContent';
@@ -497,5 +498,26 @@ describe('ResultsContent — render coverage', () => {
       <ResultsContent {...baseProps} result={result} />
     );
     expect(queryByTestId('results-content-runner-up-wins')).toBeNull();
+  });
+});
+
+describe('ResultsContent — converted-USD honesty caption', () => {
+  it('renders the caption below a converted_usd price', () => {
+    const products = [
+      { ...mockProducts[0], price: { ...mockProducts[0].price, source_method: 'converted_usd' } },
+      mockProducts[1],
+    ];
+    const { getByTestId } = render(<ResultsContent {...baseProps} products={products} />);
+    expect(getByTestId('results-product-converted-0')).toBeTruthy();
+  });
+
+  it('does NOT render the caption for genuine local prices', () => {
+    const products = [
+      { ...mockProducts[0], price: { ...mockProducts[0].price, source_method: 'local_bhd' } },
+      { ...mockProducts[1], price: { ...mockProducts[1].price, source_method: 'page_scrape' } },
+    ];
+    const { queryByTestId } = render(<ResultsContent {...baseProps} products={products} />);
+    expect(queryByTestId('results-product-converted-0')).toBeNull();
+    expect(queryByTestId('results-product-converted-1')).toBeNull();
   });
 });

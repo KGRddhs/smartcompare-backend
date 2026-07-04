@@ -111,4 +111,46 @@ describe('StreamingProductCard', () => {
     expect(getByTestId('card-price')).toBeTruthy();
     expect(getByTestId('card-rating')).toBeTruthy();
   });
+
+  it('shows the converted-from-USD caption for a converted_usd price', () => {
+    const { getByTestId } = render(
+      <StreamingProductCard
+        testID="card"
+        stage="prices"
+        product={{
+          name: 'Sauvage',
+          price: { amount: 45, currency: 'BHD', source_method: 'converted_usd' },
+        }}
+      />
+    );
+    expect(getByTestId('card-converted')).toBeTruthy();
+  });
+
+  it('hides the converted caption for a genuine local price', () => {
+    const { queryByTestId } = render(
+      <StreamingProductCard
+        testID="card"
+        stage="prices"
+        product={{
+          name: 'Sauvage',
+          price: { amount: 45, currency: 'BHD', source_method: 'local_bhd' },
+        }}
+      />
+    );
+    expect(queryByTestId('card-converted')).toBeNull();
+  });
+
+  it('hides the converted caption before the price stage is reached', () => {
+    const { queryByTestId } = render(
+      <StreamingProductCard
+        testID="card"
+        stage="specs"
+        product={{
+          name: 'Sauvage',
+          price: { amount: 45, currency: 'BHD', source_method: 'converted_usd' },
+        }}
+      />
+    );
+    expect(queryByTestId('card-converted')).toBeNull();
+  });
 });

@@ -21,9 +21,12 @@
 
 import React from 'react';
 import { View, Text, StyleSheet, I18nManager, Pressable } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { addScreenshotListener } from 'expo-screen-capture';
 import { CounterTicker } from './CounterTicker';
 import { colors, spacing, typography, radii } from '../theme';
+import { isConvertedUsd } from '../services/sourceMethod';
+import type { SourceMethod } from '../types';
 
 /**
  * Pain-workflow signals the card can emit (B.1 F3.5). The parent threads
@@ -50,6 +53,7 @@ export interface StreamingProductLike {
     amount?: number;
     currency?: string;
     retailer?: string;
+    source_method?: SourceMethod;
   };
   rating?: number;
   reviewCount?: number;
@@ -86,6 +90,7 @@ function reached(current: StreamingStage, target: StreamingStage): boolean {
 
 export function StreamingProductCard({ stage, product, testID, onSignal }: Props) {
   const tid = (suffix: string) => (testID ? `${testID}-${suffix}` : undefined);
+  const { t } = useTranslation();
 
   const showTitle = !!product?.name;
   const showSpecs = reached(stage, 'specs') && !!product?.specs;
@@ -177,19 +182,32 @@ export function StreamingProductCard({ stage, product, testID, onSignal }: Props
 
       {/* Price slot — counter ticker for the BHD value. */}
       {showPrice ? (
-        <View testID={tid('price')} style={styles.priceRow}>
-          <CounterTicker
-            target={Math.round(product!.price!.amount!)}
-            duration={800}
-            suffix={` ${product!.price!.currency ?? 'BHD'}`}
-            style={styles.priceText}
-          />
-          {product!.price!.retailer ? (
-            <Text style={styles.retailerText} numberOfLines={1}>
-              {product!.price!.retailer}
+        <>
+          <View testID={tid('price')} style={styles.priceRow}>
+            <CounterTicker
+              target={Math.round(product!.price!.amount!)}
+              duration={800}
+              suffix={` ${product!.price!.currency ?? 'BHD'}`}
+              style={styles.priceText}
+            />
+            {product!.price!.retailer ? (
+              <Text style={styles.retailerText} numberOfLines={1}>
+                {product!.price!.retailer}
+              </Text>
+            ) : null}
+          </View>
+          {/* Display-honesty: mark a converted-from-USD price so it is not
+              read as a genuine local BHD listing. */}
+          {isConvertedUsd(product?.price) ? (
+            <Text
+              testID={tid('converted')}
+              style={styles.convertedText}
+              numberOfLines={1}
+            >
+              {t('results.convertedUSD')}
             </Text>
           ) : null}
-        </View>
+        </>
       ) : null}
 
       {/* Rating slot — star + numeric value. */}
@@ -270,6 +288,11 @@ const styles = StyleSheet.create({
   retailerText: {
     ...typography.caption,
     color: colors.text.secondary,
+  },
+  convertedText: {
+    ...typography.caption,
+    color: colors.text.secondary,
+    marginTop: spacing.xs,
   },
   ratingRow: {
     flexDirection: 'row',

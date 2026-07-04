@@ -54,7 +54,7 @@ jest.mock('../src/components/results/ResultsAccordion', () => ({ ResultsAccordio
 
 // anyEstimated factory — overridden per fixture so fragrances suppresses
 // the Price pill while other categories keep all 3.
-jest.mock('../src/services/sourceMethod', () => ({ anyEstimated: jest.fn(() => false) }));
+jest.mock('../src/services/sourceMethod', () => ({ anyEstimated: jest.fn(() => false), isConvertedUsd: jest.fn((p: any) => p?.source_method === 'converted_usd') }));
 
 import { ResultsContent } from '../src/components/results/ResultsContent';
 import { anyEstimated } from '../src/services/sourceMethod';
