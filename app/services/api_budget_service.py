@@ -136,9 +136,15 @@ def _serper_key_prefix() -> str:
     keys = _serper_env_keys()
     if not keys:
         return _SERPER_NO_KEY_PREFIX
-    # Prefer the first key NOT flagged exhausted; if all are flagged (or Redis is
-    # down / no flags), fall back to the first key so the counter stays a stable,
-    # deterministic target.
+    # SINGLE-KEY INERT: with 0 or 1 resolved keys (the common prod case: only
+    # SERPER_API_KEY set, no SERPER_API_KEYS) there is NO exhaustion machinery —
+    # the prefix is that key's first 8 chars with NO Redis exhaustion read.
+    # Byte-identical to the pre-multikey scoping.
+    if len(keys) == 1:
+        return keys[0][:8]
+    # MULTI-KEY (>=2): prefer the first key NOT flagged exhausted; if all are
+    # flagged (or Redis is down / no flags), fall back to the first key so the
+    # counter stays a stable, deterministic target.
     for key in keys:
         prefix = key[:8]
         try:

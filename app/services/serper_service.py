@@ -124,10 +124,22 @@ def _mark_serper_key_exhausted(key: str) -> None:
 
 
 def _active_serper_key() -> Optional[str]:
-    """The first key in priority order that is NOT currently marked exhausted.
-    Returns None when there are no keys OR every key is exhausted (caller then
-    degrades exactly as the legacy 'SERPER_API_KEY not set' path)."""
-    for key in _resolve_serper_keys():
+    """The active Serper key.
+
+    SINGLE-KEY INERT (the common prod case: only SERPER_API_KEY set, no
+    SERPER_API_KEYS): with 0 or 1 resolved keys there is NO exhaustion machinery
+    — return the single key (or None) directly with NO Redis exhaustion read.
+    This is byte-identical to the pre-multikey behaviour AND prevents a
+    single-key prod from ever self-skipping its own (only) key on a stale flag.
+
+    MULTI-KEY (>=2 resolved keys): return the first key in priority order that
+    is NOT currently marked exhausted (Redis-checked). Returns None when every
+    key is exhausted (caller then degrades exactly as the legacy 'SERPER_API_KEY
+    not set' path)."""
+    keys = _resolve_serper_keys()
+    if len(keys) <= 1:
+        return keys[0] if keys else None
+    for key in keys:
         if not _is_serper_key_exhausted(key):
             return key
     return None
@@ -136,13 +148,23 @@ def _active_serper_key() -> Optional[str]:
 def _response_signals_exhaustion(status_code: Optional[int], body_text: str) -> bool:
     """Detect credit depletion from a Serper response. Two independent signals:
       1. HTTP status in {402, 403} (payment/forbidden — credit-related), OR
-      2. body/message contains 'credit' (case-insensitive) — a depleted free
-         key returns {"message":"Not enough credits"} (observed with HTTP 400).
-    A transient 500 / non-credit 4xx does NOT match (no 'credit' substring,
-    status not in the set) so it never marks a key exhausted."""
+      2. an ERROR response (status >= 400) whose body contains 'credit'
+         (case-insensitive) — a depleted free key returns
+         {"message":"Not enough credits"} (observed with HTTP 400).
+
+    The 'credit' substring is STATUS-GATED to status >= 400: a legit HTTP 200
+    result body containing 'credit'/'accredited'/'credited' (e.g. a product
+    named "credit card") must NOT false-positive as depletion. A transient 500
+    / non-credit 4xx still does NOT match (no 'credit' substring)."""
     if status_code in (402, 403):
         return True
-    if isinstance(body_text, str) and body_text and "credit" in body_text.lower():
+    if (
+        status_code is not None
+        and status_code >= 400
+        and isinstance(body_text, str)
+        and body_text
+        and "credit" in body_text.lower()
+    ):
         return True
     return False
 
@@ -166,6 +188,23 @@ async def _serper_post(client, path: str, payload: Dict[str, Any]):
     keys are exhausted and this helper is not reached.
     """
     keys = _resolve_serper_keys()
+
+    # SINGLE-KEY INERT: 0 or 1 resolved keys (the common prod case) engage NO
+    # exhaustion machinery — one direct POST with the single key, NO
+    # _is_serper_key_exhausted read and NO _mark_serper_key_exhausted write and
+    # NO rotation. Byte-identical to the pre-multikey single-POST path. The
+    # exhaustion/rotation loop below runs ONLY when there are >=2 keys.
+    if len(keys) <= 1:
+        key = keys[0] if keys else None
+        return await client.post(
+            f"{SERPER_BASE_URL}{path}",
+            headers={
+                "X-API-KEY": key,
+                "Content-Type": "application/json",
+            },
+            json=payload,
+        )
+
     attempts = 0
     max_attempts = max(1, len(keys))
     last_response = None

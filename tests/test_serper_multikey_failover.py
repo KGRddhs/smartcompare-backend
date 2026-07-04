@@ -288,7 +288,12 @@ def test_response_signals_exhaustion_predicate():
     assert f(402, "") is True
     assert f(403, "") is True
     assert f(400, '{"message":"Not enough credits"}') is True
-    assert f(200, "plenty of CREDIT left") is True  # case-insensitive substring
+    # STATUS-GATED: a legit HTTP 200 body containing 'credit'/'accredited'/
+    # 'credited' (e.g. a product named "credit card") must NOT false-positive.
+    assert f(200, "plenty of CREDIT left") is False
+    assert f(200, "the best credit card in Bahrain") is False
+    # A real depletion is a >=400 error whose body carries the credit message.
+    assert f(400, "Not enough credits") is True
     assert f(500, "Internal Server Error") is False
     assert f(429, "rate limited") is False
     assert f(200, "") is False
