@@ -1,0 +1,7 @@
+{
+  "_metadata": {
+    "purpose": "genuine-price Wave-2 B3b convergence store. Auto-appended by _varhint_append_learned (price_service) whenever the off-clock LLM variant-hint resolves a curated-MISS family with HIGH confidence. Keyed 'normalized_family|axis' -> 'distinct' | 'same'. Follows the data/bh_gcc_sources.json committed-data precedent. As families accumulate here they can be promoted into the deterministic data/variant_hint_reference.json so the LLM converges toward zero calls (steady-state $0). A MISS here is fail-closed (a skipped warm, never a wrong cache), so under-coverage is safe.",
+    "wave": "Wave-2 B3b (2026-07-03)",
+    "consumed_by": "app/services/price_service.py::_consult_variant_llm_hint (Redis varhint:<sha12> is the hot path; this file is the durable convergence log)"
+  }
+}

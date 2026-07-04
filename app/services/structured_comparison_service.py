@@ -717,15 +717,32 @@ def _price_cache_bust_enabled() -> bool:
     return os.environ.get("PRICE_CACHE_BUST", "false").lower() == "true"
 
 
+# Wave-2 B1.1b (chokepoint R8b) — a module-level counter of cache-read identity
+# rejections so the read-chokepoint blast radius is MEASURABLE (the display side
+# already stamps guard_rejected -> a response_builder metadata diag; the cache
+# read has no response object, so we count + log here). Never resets; read for
+# diagnostics only.
+_CACHE_READ_REJECTED_COUNT = 0
+
+
 def _cache_price_identity_ok(cached: Any, brand: str, name: str, category: str) -> bool:
     """Coverage review D — REVALIDATE a cache READ against the request identity before
     serving it. A poisoned legacy entry (a wrong variant written under the request key
     before the gate, or by a raw-write bypass) is otherwise served for the full TTL with
     no re-check. Returns False (→ caller treats as a miss + re-resolves) when the cached
     price carries a TITLE that does NOT match the request. A title-less cached price is
-    served (benign — nothing to verify, don't over-invalidate). No-op when the gate is OFF."""
+    served (benign — nothing to verify, don't over-invalidate). No-op when the gate is OFF.
+
+    Wave-2 B1.1b: delegates to the SHARED backstop_identity_verdict — the SAME
+    decision the display chokepoint is_price_showable runs, so read==display parity
+    is structural (one helper, never two drifting pairs). Flag-OFF that helper is the
+    exact legacy pair (_backstop_identity_ok and not _category_type_added), so this
+    stays byte-identical until ENABLE_VARIANT_DESCRIPTOR_AXES is flipped."""
+    global _CACHE_READ_REJECTED_COUNT
     try:
-        from app.services.price_service import exact_gate_enabled, _backstop_identity_ok
+        from app.services.price_service import (
+            exact_gate_enabled, backstop_identity_verdict,
+        )
     except Exception:  # noqa: BLE001
         return True
     if not exact_gate_enabled() or not isinstance(cached, dict):
@@ -733,12 +750,13 @@ def _cache_price_identity_ok(cached: Any, brand: str, name: str, category: str) 
     title = cached.get("title") or cached.get("name")
     if not title:
         return True
-    # Use the AXIS-ONLY backstop (not the full superset _selection_match): a cache READ
-    # should drop a poisoned WRONG-AXIS legacy entry (S24 vs S24 FE, EDP vs EDT, 256 vs
-    # 128 — the documented warm-cache leaks) but NOT over-invalidate a genuine DESCRIPTIVE
-    # title (which the full superset would, re-resolving every cold hit and DEFEATING the
-    # warmer — coverage review HIGH). New writes are already gated by the full should_cache.
-    return _backstop_identity_ok(f"{brand} {name}".strip(), title, category)
+    query_name = f"{brand} {name}".strip()
+    ok, reason = backstop_identity_verdict(query_name, title, category)
+    if not ok:
+        _CACHE_READ_REJECTED_COUNT += 1
+        logger.info("[PRICE] cache_read_rejected (%s): query=%r title=%r cat=%s",
+                    reason or "not_exact", query_name, title, category)
+    return ok
 
 
 async def _timed_task(label: str, coro, timings_dict):
@@ -767,6 +785,7 @@ from app.services.price_service import (
     is_implausible_high_value_price,
     is_implausible_low_fragrance_price,
     is_price_showable,
+    exact_gate_enabled,
     select_best,
     should_cache_price,
     public_price_view,
@@ -906,6 +925,8 @@ from app.services.source_router import (
     get_magento_gql_sources_for_category,
     get_unbxd_sources_for_category,
     get_restjson_sources_for_category,
+    # Wave C C3 — the noon-BH direct catalog+PDP adapter selector.
+    get_noon_sources_for_category,
     registry_tier,
 )
 # BH/GCC source-build (2026-06-25) — the 6 new genuine/converted price adapters
@@ -919,6 +940,9 @@ from app.services.occ_service import fetch_occ_rest_price
 from app.services.magento_graphql_service import fetch_magento_graphql_price
 from app.services.unbxd_service import fetch_unbxd_price
 from app.services.rest_json_service import fetch_rest_json_price
+# Wave C C3 — noon-BH: x-locale en-bh search door + /bahrain-en PDP JSON-LD
+# confirm (buy-box offers[0], never min). Genuine page_scrape_jsonld BHD.
+from app.services.noon_service import fetch_noon_price
 from app.services.sitemap_discovery_service import (
     sitemap_discovery_is_cold,
     sitemap_domains_now_built,
@@ -937,6 +961,8 @@ _DIRECT_ADAPTER_MECHANISMS = frozenset({
     "shopify", "algolia", "sitemap", "curl", "json_api",
     "woo_store_json", "salla_api", "occ_rest", "magento_graphql",
     "unbxd", "rest_json",
+    # Wave C C3 — noon-BH direct adapter (never a discovery-only source).
+    "noon_catalog",
 })
 
 
@@ -1005,6 +1031,75 @@ def _fan_out_budget_seconds() -> float:
         return float(os.getenv("FAN_OUT_BUDGET_SECONDS", "12.0"))
     except (TypeError, ValueError):
         return 12.0
+
+
+def _genuine_priority_enabled() -> bool:
+    """ENABLE_GENUINE_PRICE_PRIORITY (fix-ladder item 1, default OFF — ships
+    DORMANT; do NOT flip anywhere without the live-tuning measurement pass).
+
+    Deadline-aware upstream clamping + genuine-over-parked-converted preference
+    in the price race: every upstream wait inside _get_price (Tier-1 shopping,
+    shopify/algolia/adapter consumes, discovery gather, electronics backfill)
+    is clamped so GENUINE_MIN_BUDGET_SECONDS remains for the genuine fan_out,
+    select_best gets a stable lexicographic final tiebreak, and a race miss
+    recovers a COMPLETED showable genuine candidate over the parked converted.
+    Flag-OFF = byte-identical behavior at every touched site.
+
+    Read FRESH per call (the _price_cache_bust_enabled pattern, NOT process-
+    cached) so live-tuning / the warmer can flip without a redeploy.
+
+    RISKS (recon_determinism §11 — MEASURE BEFORE flipping in Railway):
+      (1) flag-ON pushes the average price wall toward the full 15s on cold
+          queries (the race no longer ends early on parked converted) → watch
+          metadata.partial + 503 TIMEOUT rates vs STREAM_HARD_CAP;
+      (2) a clamped Tier-1 shopping call drops the parked converted AND empties
+          self._shopping_items_cache (ratings Tier-1 degrades) — if genuine
+          ALSO misses, coverage degrades past converted to Tier-2/3 (a
+          deliberate priority trade; the clamp INFO log makes fire-rate
+          measurable — if >~5% of compares, raise the cap or lower the reserve);
+      (3) the 0.5s clamp floors mean 4+ sequential floors can still eat ~2-3s
+          pathologically — the reserve is best-effort (violation INFO at the
+          fan_out budget site);
+      (4) stable_tiebreak can change the cross-run winner identity for TRUE
+          ties (different retailer vs pre-fix runs) — expected: that IS the
+          determinism;
+      (5) the supplement branch is untouched (its stages have their own
+          4/5/3s caps and no converted-park race)."""
+    return os.getenv("ENABLE_GENUINE_PRICE_PRIORITY", "").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
+def _genuine_min_budget_seconds() -> float:
+    """GENUINE_MIN_BUDGET_SECONDS (default 6.0) — the fan_out reserve the
+    upstream clamps protect when ENABLE_GENUINE_PRICE_PRIORITY is on. 6.0 =
+    half the 12s FAN_OUT_BUDGET_SECONDS: enough for the curl wave's early-exit
+    (2-source-confirm / rank>=85) on BH PDPs; live-tuning adjusts. Same
+    live-read try/except-float pattern as _fan_out_budget_seconds."""
+    try:
+        return float(os.getenv("GENUINE_MIN_BUDGET_SECONDS", "6.0"))
+    except (TypeError, ValueError):
+        return 6.0
+
+
+def _pre_reserve_remaining(cap: float, race_deadline: Optional[float]) -> float:
+    """Clamp an upstream wait inside _get_price so GENUINE_MIN_BUDGET_SECONDS
+    remains for the genuine fan_out before the _PRICE_RACE_TIMEOUT deadline.
+
+    Flag-OFF (`race_deadline is None`) returns `cap` UNCHANGED — byte-identical
+    legacy timeouts at every call site. Flag-ON returns
+    max(0.5, min(cap, remaining_to_deadline - reserve)): the 0.5s floor keeps a
+    degenerate/tiny deadline from producing a zero/negative wait (with a
+    sub-second monkeypatched cap the floor can EXCEED the remaining budget —
+    acceptable: the caller's outer wait_for still cancels at the real cap).
+
+    Module-level (an explicit race_deadline param, not a _get_price closure) so
+    the flag-OFF cap passthrough is directly pinned by tests."""
+    if race_deadline is None:
+        return cap
+    rem = (race_deadline - time.monotonic()) - _genuine_min_budget_seconds()
+    return max(0.5, min(cap, rem))
+
 
 # I5.6 lever-3 — per-race cap on the Phase-2 verified-rating fetch. The rating
 # cascade (Serper Tier 1→2→3 + GPT fallback) was the one UNCAPPED Phase-2 race;
@@ -1613,6 +1708,351 @@ def _harvest_candidate_urls(
             _dropped, _dropped_listing, _rewritten,
         )
     return filtered
+
+
+# ============================================================================
+# B5 (genuine-price KPI Wave B) — ORGANIC PDP HARVEST.
+#
+# The curl fan_out candidate_urls came EXCLUSIVELY from the Serper `site:`
+# discovery on registry rows above. But those SAME already-fetched discovery
+# responses carry ORGANIC results with PDP-shaped URLs on BH/GCC retail
+# domains that the per-tier windows drop — live capture (Tom Ford Oud Wood,
+# gl=bh): a bahrain.ounass.com organic result with STRUCTURED
+# {"currency": "BHD", "price": 119.75} extras and an alhajisbahrain.com PDP
+# with BHD in the snippet, while shopping gl=bh returned 0 items.
+# (serper_service.search_web returns the RAW Serper JSON — the rich-result
+# extras are NOT stripped, so they're already threaded into results_by_tier.)
+#
+# Harvest rules (bounded + fail-closed):
+#   (a) NOT a listing/search URL (is_non_pdp_listing_url AND the
+#       price_service._is_listing_url wrapper must BOTH be False), AND
+#       PDP-SHAPED (BF5, sweep OR-8 side-note): the last path segment must be
+#       product-y — a digit, >=3 hyphens, or a /p/ marker (derived from the
+#       real ounass/sharafdg/extra/noon/namshi/footlocker PDP shapes). A
+#       trailing-slash category-browse page (bahrain.ounass.com/women/beauty/
+#       fragrance/) clears BOTH global listing classifiers but has no product
+#       slug — it wasted a cap slot. HARVEST-side check ONLY; the global
+#       is_non_pdp_listing_url consumed by the fan_out/display gates is
+#       deliberately untouched;
+#   (b) on a BH/GCC RETAIL domain: registry tier "bahrain"/"gcc"
+#       (source_router lookup — the registry IS the derived GCC allowlist),
+#       OR a .bh TLD, OR a bahrain.-prefixed host, OR (BF5, sweep OR-8) a
+#       BH-locale PATH (/bahrain-en, /bahrain-ar, /bh-en, /bh-ar) on an https
+#       host — namshi.com serves BH exclusively under /bahrain-en/ with an
+#       off-registry host (catalog row dead → tier None), same trust level as
+#       the bahrain. prefix. A "global"-tier domain (amazon.com / sephora.com
+#       / fragrantica.com) NEVER harvests — the path evidence sits BELOW the
+#       global-tier rejection — and an off-registry .com without BH evidence
+#       (reddit / youtube / tomfordbeauty.com) fails closed;
+#   (c) prioritized: structured extras currency==BHD with a price FIRST, then
+#       BHD-in-snippet, then registry-domain, then the remaining BH-marked.
+#
+# Cap _ORGANIC_PDP_HARVEST_CAP BEFORE merging; dedupe (fragment-stripped) vs
+# the site:-discovery URLs; the merged pool feeds the UNCHANGED fan_out
+# gates — the PDP JSON-LD + exact-identity + availability checks verify the
+# price on the real PDP. The structured snippet price is a PRIORITY signal
+# ONLY — never served, never cached (the fan_out plausibility guards in
+# _finalize_fan_winner already sanity-band the extracted price; threading a
+# per-URL band into the fan_out result shape was judged not cheap → skipped).
+# Zero extra Serper calls: the harvest only READS results_by_tier.
+#
+# Flag ENABLE_ORGANIC_PDP_HARVEST (default ON). OFF → no harvest,
+# candidate_urls byte-identical to the pre-B5 pool.
+# ============================================================================
+
+_ORGANIC_PDP_HARVEST_CAP = 4
+
+
+def _organic_pdp_harvest_enabled() -> bool:
+    """True iff the organic PDP harvest is active (default ON). Read per-call
+    (not cached) so an env flip / monkeypatch takes effect immediately —
+    mirrors price_service.exact_gate_enabled."""
+    return os.getenv("ENABLE_ORGANIC_PDP_HARVEST", "true").strip().lower() not in (
+        "false", "0", "no", "off", "",
+    )
+
+
+# BF5 (sweep OR-8) — BH-locale URL-path prefixes that mark a page as the
+# retailer's BAHRAIN storefront (namshi.com/bahrain-en, boutiqaat-style
+# /bh-en). Anchored + segment-bounded: "/bahrain-english-deals" or a mid-path
+# occurrence never matches; /saudi-en, /uae-ar, ... never gain BH status.
+_BH_LOCALE_PATH_RE = re.compile(r"^/(?:bahrain|bh)-(?:en|ar)(?:/|$)")
+
+# Wave D polish (review W1) — NON-RETAIL ORGANIC-HARVEST BLOCKLIST. A user-
+# classifieds host (used-goods/private listings with self-asserted Product
+# JSON-LD — never a retailer shelf price) or a price-comparison aggregator
+# (a cross-store min) must NEVER harvest: dubizzle.com.bh stayed eligible
+# via the pre-existing .bh-TLD trust rung, and the four CV3-demoted catalog
+# rows remain in the deliberately ANY-status locale-path anchor below. This
+# set OVERRIDES every trust rung in _organic_host_bh_gcc_retail (registry
+# tier, .bh TLD, bahrain. prefix, BH-locale path), suffix-aware. MIRRORS
+# scripts/build_source_registry_data._NON_RETAIL_DOMAINS (the F6+CV3
+# generator skip set) — duplicated rather than imported so the deployed
+# service never depends on the scripts/ package; the parity pin in
+# tests/test_wave_d_cv_polish.py keeps the two sets from drifting.
+_ORGANIC_NON_RETAIL_DOMAINS = frozenset({
+    "pricena.com", "kanbkam.com",                    # F6 aggregators
+    "labeb.com", "comparebh.com",                    # CV3 aggregators
+    "opensooq.com", "dubizzle.com", "dubizzle.com.bh", "olx.com",  # classifieds
+})
+
+# Wave C (re-sweep RS6) — the BH-locale PATH rung additionally requires the
+# host to be a REGISTRY-KNOWN retail domain: any row of the consolidated
+# BH/GCC catalog file regardless of status (a "dead" catalog row — namshi —
+# still names a REAL retailer whose BH storefront the path marks) plus the
+# runtime SOURCE_REGISTRY literals. A URL path is controllable by ANY site
+# operator, so pre-RS6 an SEO fake ("best-bahrain-prices.com/bahrain-en/…")
+# entered the fan_out pool where it previously failed closed. Lazy-loaded
+# once; a missing/unreadable catalog fails CLOSED (empty set → the path rung
+# never grants).
+_BH_LOCALE_KNOWN_DOMAINS: Optional[frozenset] = None
+
+
+def _bh_locale_known_retail_domains() -> frozenset:
+    global _BH_LOCALE_KNOWN_DOMAINS
+    if _BH_LOCALE_KNOWN_DOMAINS is None:
+        domains: set = set()
+        try:
+            from app.services.source_router import (
+                SOURCE_REGISTRY,
+                _CATALOG_DATA_PATH,
+            )
+            for s in SOURCE_REGISTRY:
+                domains.add(s.domain.replace("www.", "").lower())
+            if _CATALOG_DATA_PATH.exists():
+                rows = json.loads(_CATALOG_DATA_PATH.read_text(encoding="utf-8"))
+                for row in rows if isinstance(rows, list) else []:
+                    if isinstance(row, dict):
+                        d = str(row.get("domain") or "").strip().lower()
+                        if d.startswith("www."):
+                            d = d[4:]
+                        if d:
+                            domains.add(d)
+        except Exception as exc:  # noqa: BLE001 — fail-closed on any load error
+            logger.warning(
+                "[PRICE] BH-locale known-domain load failed (%s) — "
+                "path evidence disabled", exc,
+            )
+        _BH_LOCALE_KNOWN_DOMAINS = frozenset(domains)
+    return _BH_LOCALE_KNOWN_DOMAINS
+
+
+def _bh_locale_host_registry_known(host: str) -> bool:
+    """True iff `host` (lowered, www-stripped) suffix-matches a catalog/literal
+    retail domain — the source_router suffix semantics (a regional subdomain
+    counts under its apex)."""
+    known = _bh_locale_known_retail_domains()
+    return any(host == d or host.endswith("." + d) for d in known)
+
+
+def _organic_host_bh_gcc_retail(host: str, path: str = "") -> Tuple[bool, bool]:
+    """(eligible, registry_known) for `host` (lowered, www-stripped) as a
+    BH/GCC RETAIL domain. Fail-closed: a registry "global" tier (amazon.com /
+    sephora.com) and any unmarked off-registry .com are NOT eligible.
+
+    `path` (BF5, sweep OR-8) — the URL path, passed by the harvester ONLY for
+    https links: a BH-locale prefix (/bahrain-en, /bahrain-ar, /bh-en, /bh-ar)
+    is BH-retail evidence at the SAME trust level as the bahrain. host prefix
+    (off-registry rung, registry_known=False). It sits BELOW the global-tier
+    rejection, so amazon.com/bahrain-en stays excluded; en-sa.ounass.com keeps
+    its gcc REGISTRY eligibility exactly as before (the path is irrelevant
+    there). Wave C (RS6): the path rung fires only for a registry-KNOWN retail
+    domain (catalog row of ANY status — namshi's dead row qualifies; an
+    arbitrary off-registry .com with a crafted /bahrain-en/ path does not).
+
+    Wave D polish (review W1): a NON-RETAIL host (classifieds/aggregator,
+    _ORGANIC_NON_RETAIL_DOMAINS) is refused BEFORE any trust rung — a
+    dubizzle.com.bh listing must never harvest, regardless of its .bh TLD,
+    a BH-locale path, or a (re-promoted) catalog row."""
+    if not host:
+        return False, False
+    if any(host == d or host.endswith("." + d)
+           for d in _ORGANIC_NON_RETAIL_DOMAINS):
+        return False, False
+    tier = registry_tier(host)
+    if tier in ("bahrain", "gcc"):
+        return True, True
+    if tier == "global":
+        return False, False
+    # Off-registry: explicitly-BH hosts, or a BH-locale path on an https host
+    # (the caller passes path="" for non-https) belonging to a catalog-known
+    # retailer (RS6).
+    if host.endswith(".bh") or host.startswith("bahrain."):
+        return True, False
+    if (path and _BH_LOCALE_PATH_RE.match(path.lower())
+            and _bh_locale_host_registry_known(host)):
+        return True, False
+    return False, False
+
+
+def _harvest_pdp_shaped(path: str) -> bool:
+    """BF5 (sweep OR-8 side-note) — HARVEST-side PDP-shape check: the last
+    path segment must look like a product slug. Derived from the real PDP
+    shapes the harvest serves (all pinned in test_organic_pdp_harvest):
+      - a /p/ marker anywhere (extra /p/100350333, noon .../N70115213V/p/,
+        namshi .../ZED...Z/p/, boutiqaat /bh-en/p/...), OR
+      - a digit in the last segment (ounass shop-...-207578119_242.html,
+        sharafdg /product/apple-iphone-15-.../), OR
+      - >=3 hyphens in the last segment (footlocker
+        /en/buy-adidas-samba-og-mens-shoes-white — digit-less slugs).
+    A category-browse page (/women/beauty/fragrance/) has none of these.
+    Deliberately NOT part of the global is_non_pdp_listing_url — this bounds
+    only which organic results spend harvest cap slots (fail direction =
+    over-exclusion, which the fail-closed harvest already accepts)."""
+    p = (path or "").lower()
+    if "/p/" in p or p.rstrip("/").endswith("/p"):
+        return True
+    seg = p.rstrip("/").rsplit("/", 1)[-1]
+    return any(ch.isdigit() for ch in seg) or seg.count("-") >= 3
+
+
+def _harvest_organic_pdp_candidates(
+    results_by_tier: Dict[str, Any],
+    category: str,
+    existing_urls: Optional[set] = None,
+    query_name: str = "",
+    cap: int = _ORGANIC_PDP_HARVEST_CAP,
+) -> List[Tuple[str, str, str, float]]:
+    """Mine the already-fetched discovery organic results for BH/GCC retail
+    PDPs. Returns `(link, domain_label, "organic_harvest", weight)` rows in
+    priority order (structured-BHD → BHD-snippet → registry → BH-marked),
+    capped at `cap`, deduped (fragment-stripped) against `existing_urls` and
+    within itself. Flag-OFF or empty input → []. Never raises."""
+    if not _organic_pdp_harvest_enabled():
+        return []
+    from app.services.price_service import _is_listing_url
+
+    seen: set = set(existing_urls or ())
+    # (priority, insertion_order, link, host, weight)
+    rows: List[Tuple[int, int, str, str, float]] = []
+    order = 0
+
+    def _consider(raw_link: str, title: str, snippet: str,
+                  extras_currency: Any, extras_price: Any) -> None:
+        nonlocal order
+        link = (raw_link or "").split("#", 1)[0]
+        if not link or link in seen:
+            return
+        if not validate_scrape_url(link):
+            return
+        # (a) PDP-shaped: BOTH listing classifiers must clear it.
+        if is_non_pdp_listing_url(link) or _is_listing_url(link):
+            return
+        # Same locale safety the site:-discovery pool gets (wrong-GCC-locale
+        # pages carry SAR/AED/... — never BH shelf prices).
+        if is_wrong_locale_url(link):
+            return
+        try:
+            parsed = urlparse(link)
+        except (ValueError, TypeError):
+            return
+        host = (parsed.netloc or "").lower()
+        if host.startswith("www."):
+            host = host[4:]
+        path = parsed.path or ""
+        # (a, BF5) PDP-shaped: a category-browse page clears both listing
+        # classifiers but has no product slug — never spend a cap slot on it.
+        if not _harvest_pdp_shaped(path):
+            return
+        # (b) BH/GCC retail domain gate (fail-closed). BH-locale PATH evidence
+        # (namshi.com/bahrain-en) counts only on https links (BF5, OR-8).
+        eligible, registry_known = _organic_host_bh_gcc_retail(
+            host,
+            path=path if (parsed.scheme or "").lower() == "https" else "",
+        )
+        if not eligible:
+            return
+        # S2 I2.5 — review-only registry domains carry no prices.
+        if source_usage(link, category) == "review":
+            return
+        # Wrong model-line variant PDP (an "iPhone 15" query never harvests
+        # the "iPhone 15 Pro Max" PDP) — same gate as the site: harvest.
+        if query_name and title and variant_mismatch(query_name, title):
+            return
+        # (c) priority buckets.
+        if extras_currency == "BHD" and isinstance(extras_price, (int, float)) \
+                and extras_price > 0:
+            priority = 0  # structured BHD extras
+        elif "bhd" in (snippet or "").lower():
+            priority = 1  # BHD in the snippet
+        elif registry_known:
+            priority = 2  # registry bahrain/gcc domain
+        else:
+            priority = 3  # BH-marked off-registry (.bh / bahrain.-prefix)
+        seen.add(link)
+        rows.append((priority, order, link, host, score_source(link, category)))
+        order += 1
+
+    try:
+        tier_results = [
+            r for r in (results_by_tier or {}).values() if isinstance(r, dict)
+        ]
+        # Pass 1 — top-level organic links (they carry the extras + snippet).
+        for result in tier_results:
+            for item in (result.get("organic") or []):
+                if not isinstance(item, dict):
+                    continue
+                _consider(
+                    item.get("link", ""), item.get("title", ""),
+                    item.get("snippet", ""), item.get("currency"),
+                    item.get("price"),
+                )
+        # Pass 2 — PDP-shaped sitelinks (a genuine PDP often ranks only as a
+        # nested sitelink; no extras/snippet inheritance from the parent).
+        for result in tier_results:
+            for item in (result.get("organic") or []):
+                if not isinstance(item, dict):
+                    continue
+                for sl in (item.get("sitelinks") or []):
+                    if not isinstance(sl, dict):
+                        continue
+                    sl_link = (sl.get("link") or "").split("#", 1)[0]
+                    if not _is_pdp_link(sl_link):
+                        continue
+                    _consider(sl_link, sl.get("title", ""), "", None, None)
+    except Exception as e:  # noqa: BLE001 — harvest is additive, never fatal
+        logger.warning(f"[PRICE] organic PDP harvest failed: {e}")
+        return []
+
+    rows.sort(key=lambda r: (r[0], r[1]))
+    return [
+        (link, host, "organic_harvest", weight)
+        for _p, _o, link, host, weight in rows[:cap]
+    ]
+
+
+def _merge_organic_pdp_harvest(
+    candidate_urls: List[Tuple[str, str]],
+    harvested: List[Tuple[str, str, str, float]],
+    results_by_tier: Dict[str, Any],
+    category: str,
+    query_name: str,
+) -> Tuple[List[Tuple[str, str]], List[Tuple[str, str, str, float]]]:
+    """Append the bounded organic PDP harvest to the fan_out pool. The
+    site:-discovery rows keep their order and LEAD the pool; the harvest rows
+    are appended (deduped) so the existing fan_out waves/budget caps are
+    unchanged. `harvested` grows in lockstep so _finalize_fan_winner can
+    route-stamp an organic winner "organic_harvest". Flag-OFF or empty
+    harvest → the EXACT input objects are returned (byte-identical pool)."""
+    if not _organic_pdp_harvest_enabled():
+        return candidate_urls, harvested
+    organic = _harvest_organic_pdp_candidates(
+        results_by_tier,
+        category,
+        existing_urls={u for u, _label in candidate_urls},
+        query_name=query_name,
+    )
+    if not organic:
+        return candidate_urls, harvested
+    logger.info(
+        "[PRICE] organic PDP harvest added %d candidate(s) for %s: %s",
+        len(organic), query_name,
+        ", ".join(label for _l, label, _r, _w in organic),
+    )
+    return (
+        candidate_urls + [(link, label) for link, label, _r, _w in organic],
+        list(harvested) + organic,
+    )
 
 
 # S3 electronics-authority (prong b, piece 2) — the genuine-BH electronics
@@ -3673,10 +4113,10 @@ class StructuredComparisonService:
                     "[L2.6] Phase 1 race timeout for %s (limit %.1fs)",
                     key, _PHASE1_TIMEOUTS.get(key, 0.0),
                 )
-                result[key] = self._price_fallback_on_miss(key, full_name)
+                result[key] = self._price_fallback_on_miss(key, full_name, category)
             elif isinstance(phase1_results[i], Exception):
                 logger.error(f"Error fetching {key}: {phase1_results[i]}")
-                result[key] = self._price_fallback_on_miss(key, full_name)
+                result[key] = self._price_fallback_on_miss(key, full_name, category)
             else:
                 result[key] = phase1_results[i]
 
@@ -4100,7 +4540,8 @@ class StructuredComparisonService:
                 return {"retailer": retailer_name, "url": link}
         return None
 
-    def _price_fallback_on_miss(self, key: str, full_name: str):
+    def _price_fallback_on_miss(self, key: str, full_name: str,
+                                category: Optional[str] = None):
         """S3-genuine prod-hardening (Fix A) — when a Phase-1 race for `key`
         timed out / errored, surface a graceful fallback instead of bare None.
 
@@ -4109,8 +4550,58 @@ class StructuredComparisonService:
         timeout that CANCELS _get_price still yields the real cited gl=us price,
         never None (the prod regression). For every other key: None as before
         (specs/reviews/image degrade to missing-data, unchanged).
+
+        ENABLE_GENUINE_PRICE_PRIORITY (determinism item 1) — BEFORE the parked
+        lookup, a COMPLETED showable GENUINE candidate retained in
+        self._price_candidates (fan-wave retention + short-circuit seeds, both
+        is_price_showable-gated at seed time) beats the parked converted:
+        "never return converted when a genuine result was actually obtained".
+        `category` (default None — legacy 2-arg callers unchanged) threads the
+        orchestrator-resolved category into select_best's identity gate.
         """
         if key == "price":
+            if _genuine_priority_enabled():
+                # Race-miss genuine recovery. DISPLAY-ONLY: no set_cached /
+                # _save_price_to_db here (the cache_key is not reconstructible
+                # in this scope, and a cancel-path write is exactly the
+                # poisoning class PR#9 closed). select_best re-gates identity/
+                # OOS/PDP-URL AND requires amount>0 — a sharafdg-style price=0
+                # + in_stock=True hit can never count as a recoverable genuine
+                # signal. RESIDUAL (documented, not fixed): candidates from a
+                # fan wave cancelled MID-wave are lost inside
+                # fan_out_price_lookup; the upstream reserve makes that rare.
+                try:
+                    cands = [
+                        c.get("raw_data")
+                        for c in self._price_candidates.get(full_name, [])
+                        if isinstance(c, dict)
+                        and isinstance(c.get("raw_data"), dict)
+                    ]
+                    genuine = [
+                        c for c in cands
+                        if (c.get("source_method") or "").lower()
+                        in _GENUINE_BH_SOURCE_METHODS
+                        and "converted" not in (c.get("source_method") or "")
+                        and "estimate" not in (c.get("source_method") or "")
+                    ]
+                    best = (
+                        select_best(genuine, full_name, category,
+                                    stable_tiebreak=True)
+                        if genuine else None
+                    )
+                    if best is not None:
+                        best = dict(best)
+                        best["_cached"] = False
+                        logger.info(
+                            "[PRICE] race miss for %s -> recovered COMPLETED "
+                            "genuine %s (beats parked %s)",
+                            full_name, best.get("source_method"),
+                            (self._parked_price.get(full_name) or {}).get(
+                                "source_method"),
+                        )
+                        return best
+                except Exception:  # noqa: BLE001 — recovery must never break the miss path
+                    pass
             parked = self._parked_price.get(full_name)
             if parked and parked.get("amount"):
                 logger.info(
@@ -4142,6 +4633,19 @@ class StructuredComparisonService:
         # right axes — closes the bare-compound/brand-omitted-line leak (coverage review R8 +
         # independent review). Per-task ContextVar → no cross-product contamination.
         set_resolved_price_category(category)
+        # ENABLE_GENUINE_PRICE_PRIORITY (fix-ladder item 1) — per-call race
+        # deadline. Computed from the SAME module constant the caller's Phase-1
+        # wait_for uses (_PRICE_RACE_TIMEOUT: tests monkeypatch the attr; the
+        # warmer raises it to 60 via the PRICE_RACE_TIMEOUT env at import), so
+        # every _pre_reserve_remaining clamp below subtracts REAL elapsed time
+        # from the REAL cancel deadline. The <1ms skew between the caller's
+        # ensure_future kickoff and this coroutine's first run is absorbed by
+        # the 0.5s clamp floor. Flag OFF → None → every clamp returns its
+        # legacy cap unchanged (byte-identical).
+        _race_deadline = (
+            (time.monotonic() + _PRICE_RACE_TIMEOUT)
+            if _genuine_priority_enabled() else None
+        )
         if not validate_price_query(brand, name, region):
             return {"amount": 0, "currency": "BHD", "estimated": True, "source_method": "validation_rejected"}
 
@@ -4170,12 +4674,47 @@ class StructuredComparisonService:
 
         # L2: Check DB before tier cascade
         if not price_nocache:
-            from app.services.product_data_service import get_cached_price
+            from app.services.product_data_service import (
+                get_cached_price,
+                _title_persist_enabled,
+            )
             db_price = await get_cached_price(cache_key, region)
             if db_price and not _cache_price_identity_ok(db_price, brand, name, category):
                 db_price = None
             if db_price:
-                set_cached(cache_key, db_price, price_cache_ttl(db_price))
+                # Wave-2 B1.2 (chokepoint R8c) — an L2-DB hit is promoted into L1
+                # Redis for the price TTL. Previously that promotion was gated ONLY
+                # by the weak cache-read check (_cache_price_identity_ok). Now that
+                # title/brand/in_stock round-trip (flag ON), re-run the STRONG
+                # write gate should_cache_price before promoting a title-carrying
+                # row — refuse the L1 promotion (but STILL SERVE this request, the
+                # current behavior) when it fails. A title-LESS legacy row is
+                # served but NOT promoted (nothing to re-verify). Flag OFF ->
+                # byte-identical (unconditional promotion, as before).
+                _promote = True
+                if _title_persist_enabled():
+                    _request_name = f"{brand} {name} {variant or ''}".strip()
+                    if db_price.get("title"):
+                        _promote = should_cache_price(
+                            _request_name, db_price, category
+                        )
+                        if not _promote:
+                            logger.info(
+                                "[PRICE] L2->L1 promotion refused (should_cache_price "
+                                "failed) for %s %s — serving without promoting",
+                                brand, name,
+                            )
+                    else:
+                        # Title-less legacy row: serve but do not promote an
+                        # unverifiable identity into the shared L1 cache.
+                        _promote = False
+                        logger.info(
+                            "[PRICE] L2->L1 promotion skipped (title-less legacy "
+                            "row) for %s %s — serving without promoting",
+                            brand, name,
+                        )
+                if _promote:
+                    set_cached(cache_key, db_price, price_cache_ttl(db_price))
                 db_price["_cached"] = True
                 db_price["_cache_source"] = "db"
                 return db_price
@@ -4272,6 +4811,14 @@ class StructuredComparisonService:
         # later-correct PDP isn't suppressed for 30 days. _finalize_fan_winner (a
         # nested closure) flips it via `nonlocal`.
         _guard_rejected_this_request = False
+        # R4 (KPI Wave A, recon_cascade) — Serper-OUTAGE signal. True when EVERY
+        # Tier-1.5 discovery result errored (a depleted/dead key makes search_web
+        # return {"organic": [], "error": ...} on every tier), so "no genuine
+        # found" this request is evidence of the OUTAGE, not of a structural gap
+        # — the Tier-3 estimate's negcache TTL is capped to 24h like
+        # guard_rejected, never the 30d freeze. A legitimately-empty discovery
+        # WITHOUT error keys stays structural (30d).
+        _discovery_degraded = False
 
         # WS-2 F1 (genuine-bh bundle) — ROUTING half of the supplement-misroute
         # fix. Trust a CONCRETE non-supplement LLM/catfix category; only consult
@@ -4452,6 +4999,10 @@ class StructuredComparisonService:
                 ("magento_gql", get_magento_gql_sources_for_category(category), fetch_magento_graphql_price),
                 ("unbxd", get_unbxd_sources_for_category(category), fetch_unbxd_price),
                 ("rest_json", get_restjson_sources_for_category(category), fetch_rest_json_price),
+                # Wave C C3 — noon-BH ($0 search+PDP-confirm, genuine
+                # page_scrape_jsonld BHD; ONE bounded K-capped literal source,
+                # per-source _timeout_none like every sibling).
+                ("noon", get_noon_sources_for_category(category), fetch_noon_price),
             )
             if srcs
         ]
@@ -4592,12 +5143,21 @@ class StructuredComparisonService:
             # bounding is the PER-SOURCE `_timeout_none` wrap, so this outer bound
             # never collapses a fast source: each per-source timeout fires first
             # and yields its None, letting the gather complete with the fast hit.
-            _outer_bound = _ADAPTER_TIMEOUT + 2.0
+            # Genuine-priority clamp (site C) — the family consumes below run
+            # SEQUENTIALLY (sitemap → jsonapi → the _new_adapter_specs families
+            # incl. Wave-C noon), so a bound computed ONCE cannot respect the
+            # race deadline across up to 9 sequential waits (worst-case 9×12s).
+            # A FRESH per-await closure re-derives the remaining budget each
+            # time; flag-OFF it returns the legacy 12.0 at every site
+            # (byte-identical). Per-source _timeout_none wraps are untouched.
+            def _consume_bound() -> float:
+                return _pre_reserve_remaining(
+                    _ADAPTER_TIMEOUT + 2.0, _race_deadline)
             # sitemap adapters (bolo + boutiqaat) — genuine page_scrape_jsonld.
             try:
                 if "sitemap" in _prefetched_direct:
                     _sm = await asyncio.wait_for(
-                        _prefetched_direct.pop("sitemap"), timeout=_outer_bound
+                        _prefetched_direct.pop("sitemap"), timeout=_consume_bound()
                     )
                 elif _sitemap_sources_pf and ENABLE_PAGE_SCRAPE:
                     # Per-source timeout wrap (Codex HIGH-4) — slow source → None,
@@ -4619,7 +5179,7 @@ class StructuredComparisonService:
                     ]
                     _sm = await asyncio.wait_for(
                         asyncio.gather(*_sm_coros, return_exceptions=True),
-                        timeout=_outer_bound,
+                        timeout=_consume_bound(),
                     ) if _sm_coros else []
                 else:
                     _sm = []
@@ -4632,7 +5192,7 @@ class StructuredComparisonService:
             try:
                 if "jsonapi" in _prefetched_direct:
                     _ja = await asyncio.wait_for(
-                        _prefetched_direct.pop("jsonapi"), timeout=_outer_bound
+                        _prefetched_direct.pop("jsonapi"), timeout=_consume_bound()
                     )
                 elif _jsonapi_sources_pf and ENABLE_PAGE_SCRAPE:
                     # Per-source timeout wrap (Codex HIGH-4). Codex MEDIUM
@@ -4648,7 +5208,7 @@ class StructuredComparisonService:
                             ),
                             return_exceptions=True,
                         ),
-                        timeout=_outer_bound,
+                        timeout=_consume_bound(),
                     )
                 else:
                     _ja = []
@@ -4668,7 +5228,7 @@ class StructuredComparisonService:
                 try:
                     if _na_key in _prefetched_direct:
                         _na_res = await asyncio.wait_for(
-                            _prefetched_direct.pop(_na_key), timeout=_outer_bound
+                            _prefetched_direct.pop(_na_key), timeout=_consume_bound()
                         )
                     elif ENABLE_PAGE_SCRAPE and _na_srcs:
                         _na_res = await asyncio.wait_for(
@@ -4682,7 +5242,7 @@ class StructuredComparisonService:
                                 ),
                                 return_exceptions=True,
                             ),
-                            timeout=_outer_bound,
+                            timeout=_consume_bound(),
                         )
                     else:
                         _na_res = []
@@ -4715,6 +5275,35 @@ class StructuredComparisonService:
                 and "estimate" not in (r.get("source_method") or "")
             ]
             if not genuine_observed:
+                # R5 (KPI Wave A, recon_cascade) — converted TERMINAL fallback. A
+                # converted-only yield must not short-circuit (a genuine price
+                # downstream still wins), but it IS a real cited GCC PDP price:
+                # park the best exact ∧ in-stock ∧ valid-PDP one (select_best —
+                # authority, never cheapest) into the existing converted_fallback/
+                # _parked_price plumbing so the §5 tier-7 fallback serves it
+                # instead of a Tier-3 estimate. Only fills an EMPTY park — a
+                # Tier-1 converted park (also a real cited price, and the Tier-2
+                # wrong-SKU anchor) is not displaced. Provenance stays the honest
+                # literal converted_usd the adapters stamped; SF-1 keeps it out of
+                # the negcache at the terminal. ROLLBACK GATING (Wave B review
+                # MED): the park runs ONLY under exact_gate_enabled() — flag-OFF,
+                # select_best degrades to min(amount) with zero identity/OOS/URL
+                # gating, so an unconditional park would serve+cache a wrong-SKU
+                # cheapest converted hit (a serving+write path the flag-OFF
+                # b207bfa baseline never had). ENABLE_EXACT_PRICE_GATE=false
+                # restores the legacy terminal exactly: seed + return None.
+                nonlocal converted_fallback
+                if exact_gate_enabled() and converted_fallback is None:
+                    _conv_best = select_best(
+                        [r for r in observed
+                         if "converted" in (r.get("source_method") or "")],
+                        full_name, category,
+                    )
+                    if _conv_best is not None:
+                        converted_fallback = dict(_conv_best)
+                        # Fix-A mirror — survives an outer wait_for cancel via
+                        # _price_fallback_on_miss, like the Tier-1 park.
+                        self._parked_price[full_name] = dict(_conv_best)
                 self._seed_shortcircuit_candidates(
                     full_name, kind="price_dicts", currency=currency,
                     price_dicts=observed,
@@ -4726,7 +5315,13 @@ class StructuredComparisonService:
             # re-applies the identity+axis gate across adapters; if NO genuine hit is
             # exact/in-stock/valid it returns None → don't short-circuit, seed the
             # observations and let the cascade keep looking (like the no-genuine case).
-            best = select_best(genuine_observed, full_name, category)
+            best = select_best(
+                genuine_observed, full_name, category,
+                # Determinism item 1 — flag-ON, equal-authority cross-adapter
+                # ties resolve lexicographically instead of by arrival order.
+                # Flag-OFF passes False → the sort key is byte-identical.
+                stable_tiebreak=_genuine_priority_enabled(),
+            )
             if best is None:
                 # NO-FAB (review H4) — genuine adapter hits EXISTED but every one was
                 # filtered (OOS / non-exact / listing-URL). That is a TRANSIENT gap
@@ -4780,7 +5375,33 @@ class StructuredComparisonService:
             shopping_items = []
             self._shopping_items_cache[full_name] = []
         else:
-            search_results = await search_product_prices(search_query, region_info["code"])
+            if _race_deadline is not None:
+                # Genuine-priority clamp (site A) — never let the Tier-1
+                # shopping wall (serper's own httpx client caps at 15s;
+                # gl=bh/gl=us concurrent = ONE wall) eat the fan_out reserve;
+                # the 15.0 cap below equals that httpx ceiling, so the clamp
+                # only bites when the reserve would be blown.
+                # CONSEQUENCE (deliberate priority trade): a clamped call means
+                # NO parked converted + an empty shopping_items_cache (ratings
+                # Tier-1 degrades) — the INFO makes fire-rate measurable at
+                # live-tuning. Cost accounting (_track_serper_cost + the
+                # GL_FALLBACK_TRACE) stays OUTSIDE the try, unchanged.
+                try:
+                    search_results = await asyncio.wait_for(
+                        search_product_prices(search_query, region_info["code"]),
+                        timeout=_pre_reserve_remaining(15.0, _race_deadline),
+                    )
+                except asyncio.TimeoutError:
+                    logger.info(
+                        "[PRICE] genuine-priority: Tier-1 shopping clamped for %s",
+                        full_name,
+                    )
+                    search_results = {
+                        "shopping": [], "organic": [],
+                        "shopping_region": "clamp_timeout",
+                    }
+            else:
+                search_results = await search_product_prices(search_query, region_info["code"])
             self._track_serper_cost()
             _ps_mark("serper_shopping")  # WS2 — includes gl=bh + (often) gl=us fallback
             shopping_items = search_results.get("shopping", [])
@@ -4933,9 +5554,12 @@ class StructuredComparisonService:
                 # mostly overlapped). Fall back to firing inline if the prefetch
                 # was skipped (ENABLE_PAGE_SCRAPE off / no sources at kickoff).
                 try:
+                    # Genuine-priority clamp (site B) — flag-OFF
+                    # _pre_reserve_remaining returns the legacy 3.0 unchanged.
                     if "shopify" in _prefetched_direct:
                         shop_results = await asyncio.wait_for(
-                            _prefetched_direct.pop("shopify"), timeout=3.0
+                            _prefetched_direct.pop("shopify"),
+                            timeout=_pre_reserve_remaining(3.0, _race_deadline),
                         )
                     else:
                         shop_results = await asyncio.wait_for(
@@ -4946,7 +5570,7 @@ class StructuredComparisonService:
                                 ),
                                 return_exceptions=True,
                             ),
-                            timeout=3.0,
+                            timeout=_pre_reserve_remaining(3.0, _race_deadline),
                         )
                 except asyncio.TimeoutError:
                     shop_results = []
@@ -5031,10 +5655,13 @@ class StructuredComparisonService:
                 # serper_shopping wait (same as the Shopify path above). Inline
                 # fallback when the prefetch was skipped.
                 try:
+                    # Genuine-priority clamp (site B) — flag-OFF the helper
+                    # returns _ALGOLIA_TIER2_TIMEOUT (5.0) unchanged.
                     if "algolia" in _prefetched_direct:
                         algolia_results = await asyncio.wait_for(
                             _prefetched_direct.pop("algolia"),
-                            timeout=_ALGOLIA_TIER2_TIMEOUT,
+                            timeout=_pre_reserve_remaining(
+                                _ALGOLIA_TIER2_TIMEOUT, _race_deadline),
                         )
                     else:
                         algolia_results = await asyncio.wait_for(
@@ -5045,7 +5672,8 @@ class StructuredComparisonService:
                                 ),
                                 return_exceptions=True,
                             ),
-                            timeout=_ALGOLIA_TIER2_TIMEOUT,
+                            timeout=_pre_reserve_remaining(
+                                _ALGOLIA_TIER2_TIMEOUT, _race_deadline),
                         )
                 except asyncio.TimeoutError:
                     algolia_results = []
@@ -5159,21 +5787,69 @@ class StructuredComparisonService:
                 discovery_tasks.append(("gcc", search_web(gcc_query)))
 
             results_by_tier = {}
+            _disc_results = 0
+            _disc_errored = 0
             try:
-                gathered = await asyncio.gather(
-                    *(coro for _, coro in discovery_tasks),
-                    return_exceptions=True,
-                )
+                if _race_deadline is not None:
+                    # Genuine-priority clamp (site D) — harvest via
+                    # asyncio.wait, NOT a wait_for on the gather (that would
+                    # cancel-and-lose COMPLETED tiers): a slow discovery tier
+                    # is dropped while finished tiers are KEPT. The prefetched
+                    # path stores FUTURES, the inline path raw COROUTINES —
+                    # hence the iscoroutine wrap. _dtasks is order-aligned with
+                    # discovery_tasks so the zip below pairs unchanged.
+                    _dtasks = [
+                        asyncio.ensure_future(c) if asyncio.iscoroutine(c) else c
+                        for _, c in discovery_tasks
+                    ]
+                    _done, _pending = await asyncio.wait(
+                        _dtasks,
+                        timeout=_pre_reserve_remaining(8.0, _race_deadline),
+                    )
+                    for _p in _pending:
+                        _p.cancel()
+                    gathered = []
+                    for _t in _dtasks:
+                        if _t in _done:
+                            try:
+                                _exc = _t.exception()
+                            except asyncio.CancelledError:
+                                _exc = asyncio.TimeoutError()
+                            gathered.append(
+                                _exc if _exc is not None else _t.result())
+                        else:
+                            # Clamped tier — same degraded shape a gather
+                            # exception takes (counted by the loop below).
+                            gathered.append(asyncio.TimeoutError())
+                else:
+                    gathered = await asyncio.gather(
+                        *(coro for _, coro in discovery_tasks),
+                        return_exceptions=True,
+                    )
                 for (tier_name, _), result in zip(discovery_tasks, gathered):
+                    _disc_results += 1
                     if isinstance(result, Exception):
+                        _disc_errored += 1
                         logger.warning(f"[PRICE] Tier 1.5 {tier_name}-discovery failed: {result}")
                         continue
+                    # R4 — serper_service surfaces its own failure (HTTP non-200 /
+                    # depleted key / no key) as an "error" key on an otherwise-empty
+                    # result; count it so an outage is distinguishable from a
+                    # legitimately-empty discovery.
+                    if isinstance(result, dict) and result.get("error"):
+                        _disc_errored += 1
                     self.api_calls += 1
                     self._track_cost_amount(0.001)
                     results_by_tier[tier_name] = result
             except Exception as e:
                 # gather itself failed (very unlikely with return_exceptions=True)
+                # — discovery produced NOTHING this request; treat as degraded.
                 logger.warning(f"[PRICE] Tier 1.5 parallel discovery failed: {e}")
+                _discovery_degraded = True
+            # R4 — ALL discovery tiers errored ⇒ the cascade below runs BLIND this
+            # request; its Tier-3 estimate must not 30d-freeze the outage.
+            if _disc_results and _disc_errored == _disc_results:
+                _discovery_degraded = True
 
             # Build candidate_urls in priority order:
             # bahrain (registry) → official → authorized → gcc.
@@ -5192,7 +5868,18 @@ class StructuredComparisonService:
             # noise (prod-verify: iPhone 15 sharafdg 244.99 unreachable otherwise).
             # Electronics-scoped — that's the category with the genuine-BH-PDP miss.
             if category == "electronics":
-                _backfill = await _lazy_bh_pdp_backfill(harvested, full_name, category)
+                if _race_deadline is not None:
+                    # Genuine-priority clamp (site D) — the lazy backfill adds
+                    # up to 2 more serper calls; never let it eat the reserve.
+                    try:
+                        _backfill = await asyncio.wait_for(
+                            _lazy_bh_pdp_backfill(harvested, full_name, category),
+                            timeout=_pre_reserve_remaining(4.0, _race_deadline),
+                        )
+                    except asyncio.TimeoutError:
+                        _backfill = []
+                else:
+                    _backfill = await _lazy_bh_pdp_backfill(harvested, full_name, category)
                 if _backfill:
                     self.api_calls += len(_LAZY_BACKFILL_DOMAINS)
                     self._track_cost_amount(0.001 * len(_LAZY_BACKFILL_DOMAINS))
@@ -5202,6 +5889,20 @@ class StructuredComparisonService:
                         [(link, label) for link, label, _r, _w in _backfill]
                         + candidate_urls
                     )
+
+            # B5 (organic PDP harvest, Ahmed-requested widening) — mine the
+            # ALREADY-FETCHED discovery organic results for BH/GCC retail PDPs
+            # the per-tier windows dropped (live capture: bahrain.ounass.com
+            # organic carries structured BHD extras while shopping gl=bh is 0
+            # items) and APPEND them (deduped, capped at 4) to the pool. Runs
+            # AFTER the electronics backfill so the backfill's zero-genuine-PDP
+            # trigger is unchanged; purely additive — the fan_out gates (JSON-LD
+            # + exact-identity + availability) verify each on the real PDP.
+            # Zero extra Serper calls. Flag ENABLE_ORGANIC_PDP_HARVEST (default
+            # ON); OFF → candidate_urls byte-identical to the pool above.
+            candidate_urls, harvested = _merge_organic_pdp_harvest(
+                candidate_urls, harvested, results_by_tier, category, full_name
+            )
 
             # S3-genuine — the curl-SEARCH-URL injector (build_direct_bh_candidates)
             # was REMOVED 2026-06-14. Team-lead live probe (WRINKLE 2) + our own
@@ -5307,6 +6008,27 @@ class StructuredComparisonService:
                 # Firecrawl/Scrape.do finish luxury SPAs. LIVE STAYS 12s (the 15s
                 # price clock is sacred); only the warmer's process sets the env.
                 _FAN_OUT_BUDGET = _fan_out_budget_seconds()
+                if _race_deadline is not None:
+                    _dl_rem = _race_deadline - time.monotonic()
+                    if _dl_rem < _genuine_min_budget_seconds():
+                        # Reserve violated DESPITE the upstream clamps (4+
+                        # sequential 0.5s floors can still eat ~2-3s in a
+                        # pathological run) — best-effort by design; the INFO
+                        # makes the violation rate measurable at live-tuning.
+                        logger.info(
+                            "[PRICE] genuine-priority: fan_out reserve violated "
+                            "for %s (%.2fs left < %.1fs reserve)",
+                            full_name, _dl_rem, _genuine_min_budget_seconds(),
+                        )
+                    # Deadline-aware budget: never run the waves past the outer
+                    # cancel pointlessly. Deliberately NOT floored at the
+                    # reserve — if upstream ate through the clamp floors,
+                    # extending past the deadline is useless (the outer
+                    # wait_for cancels anyway). Flag-OFF this whole block is
+                    # skipped: _FAN_OUT_BUDGET stays the bare
+                    # _fan_out_budget_seconds() value (byte-identical).
+                    _FAN_OUT_BUDGET = min(
+                        _FAN_OUT_BUDGET, max(0.5, _dl_rem))
                 _ps_mark("pre_fan_out")  # WS2 — discovery+ranking done, entering scrape waves
                 _t15_start = time.monotonic()
                 for _wave in ("curl", "render"):
@@ -5772,6 +6494,10 @@ class StructuredComparisonService:
                 cache_key, price,
                 guard_rejected=_guard_rejected_this_request,
                 transient_discovery=sitemap_discovery_is_cold(category),
+                # R4 — a Serper-outage estimate is TRANSIENT too: the discovery
+                # tiers all errored, so the cascade ran blind; cap to 24h so the
+                # outage never freezes the estimate for 30 days.
+                discovery_degraded=_discovery_degraded,
                 # Codex re-review HIGH-3 — stamp the RAW cold sitemap domains
                 # (NOT cron-gated) so a 30d-negcached estimate written while the
                 # cron was OFF gets read-side-invalidated the moment the index warms.
@@ -6107,7 +6833,8 @@ class StructuredComparisonService:
 
     def _record_negative_price_cache(
         self, cache_key: str, price: Dict, guard_rejected: bool = False,
-        transient_discovery: bool = False, category: Optional[str] = None,
+        transient_discovery: bool = False, discovery_degraded: bool = False,
+        category: Optional[str] = None,
     ) -> None:
         """Task 1.3 — record a structural genuine-BH dead-end so the next call
         skips the expensive Tier-1.5 scrape cascade.
@@ -6151,13 +6878,21 @@ class StructuredComparisonService:
         READ then invalidates the sentinel the moment any stamped domain's index
         becomes built (`sitemap_domains_now_built`), re-resolving to genuine. The 30d
         TTL is otherwise preserved (no scrape burn while the cron is off).
+
+        R4 (KPI Wave A, recon_cascade) — `discovery_degraded`: when EVERY Tier-1.5
+        Serper discovery result errored this request (depleted/dead key — the
+        cascade ran BLIND, so "no genuine found" is evidence of the OUTAGE, not of
+        a structural gap), the estimate is TRANSIENT exactly like the two flags
+        above: TTL capped to 24h so a Serper recovery re-resolves genuine instead
+        of the outage estimate staying frozen for 30 days. A legitimately-empty
+        discovery WITHOUT error keys never sets it (stays structural, 30d).
         """
         try:
             if not should_negative_cache(price):
                 return
             ttl = (
                 PRICE_CACHE_TTL
-                if (guard_rejected or transient_discovery)
+                if (guard_rejected or transient_discovery or discovery_degraded)
                 else NEGATIVE_PRICE_CACHE_TTL
             )
             neg_value = price

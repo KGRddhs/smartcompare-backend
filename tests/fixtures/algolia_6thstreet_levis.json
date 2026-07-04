@@ -1,0 +1,54 @@
+{
+  "hits": [
+    {
+      "objectID": "864825",
+      "name": "501 Original Fit Jeans - Black - 00501-0660",
+      "alternate_name": "501 Original Fit Jeans",
+      "brand_name": "Levi's",
+      "main_brand": "Levi's",
+      "sku": "00501-0660_BLACK",
+      "style_code": "00501-0660",
+      "color": "Black",
+      "gender": "Men",
+      "url": "https://en-bh.6thstreet.com/501-original-fit-jeans-black-00501-0660.html",
+      "in_stock": 1,
+      "stock_qty": 14,
+      "product_type_6s": "Jeans",
+      "price": [
+        {
+          "BHD": {
+            "default": 24,
+            "default_formated": "BHD 24.000"
+          }
+        }
+      ]
+    },
+    {
+      "objectID": "864911",
+      "name": "501 Original Jeans - Mid Blue - 00501-3339",
+      "alternate_name": "501 Original Jeans",
+      "brand_name": "Levi's",
+      "main_brand": "Levi's",
+      "sku": "00501-3339_MIDBLUE",
+      "style_code": "00501-3339",
+      "color": "Mid Blue",
+      "gender": "Men",
+      "url": "https://en-bh.6thstreet.com/501-original-jeans-mid-blue-00501-3339.html",
+      "in_stock": 1,
+      "stock_qty": 6,
+      "product_type_6s": "Jeans",
+      "price": [
+        {
+          "BHD": {
+            "default": 26,
+            "default_formated": "BHD 26.000"
+          }
+        }
+      ]
+    }
+  ],
+  "nbHits": 2,
+  "page": 0,
+  "hitsPerPage": 20,
+  "query": "Levis 501"
+}

@@ -22,6 +22,18 @@ import pytest
 
 @pytest.fixture
 def clean_service(monkeypatch):
+    """2026-07-02 Wave C reconcile — neutralize every direct-adapter mechanism
+    selector EXCEPT the Shopify one (Shopify IS the mechanism under test in
+    this file; its tests keep the real get_shopify_sources_for_category and
+    mock fetch_shopify_price directly). Same idiom as
+    test_bh_gcc_cascade_wiring's _quiet_other_selectors / the C3 noon
+    reconcile: the LITERAL registry rows (the Wave C noon_catalog row covers
+    fragrances+electronics; bahrain.sharafdg.com algolia; extra.com unbxd)
+    load flag-independently and fire LIVE network fetches inside _get_price —
+    a live genuine hit (e.g. Tom Ford Black Orchid ~59.38 BHD via noon)
+    preempts the mocked reseller(40)-vs-official(95) authority scenario and
+    leaks real network into the free-unit suite. Applied file-wide at the
+    fixture so every mocked scenario here races ONLY the mocks."""
     from app.services import structured_comparison_service as scs_mod
 
     monkeypatch.setattr(scs_mod, "get_cached", lambda *a, **kw: None)
@@ -30,6 +42,15 @@ def clean_service(monkeypatch):
         "app.services.product_data_service.get_cached_price",
         AsyncMock(return_value=None),
     )
+    for name in (
+        "get_algolia_sources_for_category",
+        "get_sitemap_sources_for_category", "get_jsonapi_sources_for_category",
+        "get_woo_sources_for_category", "get_salla_sources_for_category",
+        "get_occ_sources_for_category", "get_magento_gql_sources_for_category",
+        "get_unbxd_sources_for_category", "get_restjson_sources_for_category",
+        "get_noon_sources_for_category",
+    ):
+        monkeypatch.setattr(scs_mod, name, lambda c: [])
     service = scs_mod.get_comparison_service()
     service._save_price_to_db = MagicMock()
     return service

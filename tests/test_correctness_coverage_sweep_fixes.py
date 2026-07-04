@@ -23,8 +23,14 @@ worse case; pinned so the accepted trade can only change by a conscious edit):
 HELD — DEFERRED real leaks (xfail: the DESIRED reject, not yet implemented because the safe
 fix needs more than a token rule):
   - display backstop axis-only Sauvage -> Sauvage Elixir / AF1 -> Air Max 1  (live-path risk)
-  - cross-unit size            340g -> 177ml             (g<->ml is density-ambiguous)
   - ReDoS-cap truncation       >512-char title drops the trailing storage axis (near-zero reach)
+
+NOTE (census P6a, no longer HELD): cross-unit size (340g -> 177ml, g<->ml density-ambiguous)
+is now ENFORCED fail-closed (see test_cross_unit_size_pended below) — it was moved off the
+deferred-xfail list. Wave-2 B2 additionally closes the two SUPPLEMENT over-rejection census
+classes (flag-gated behind ENABLE_VARIANT_DESCRIPTOR_AXES; flag-OFF byte-identical):
+  - C1 acronym-constituent  Optimum ZMA -> ...ZMA Zinc Magnesium Aspartate  (curated table)
+  - C2 hyphen-vs-space      Nordic Naturals Omega-3 <-> Omega 3            (digit-hyphen fold)
 """
 import pytest
 
@@ -193,15 +199,22 @@ def test_display_backstop_flagship_flanker_pended():
                              enforce_correctness=True) is False
 
 
-@pytest.mark.xfail(reason="a same-token flanker whose extra token is NOT a flagship "
-                          "concentration ('Sauvage Elixir') needs the full superset at the "
-                          "backstop, which over-rejects correct descriptive titles (coverage "
-                          "sweep); deferred to structured variant metadata",
-                   strict=True)
-def test_deferred_display_backstop_same_token_flanker():
+def test_display_backstop_same_token_flanker(monkeypatch):
+    # Wave-2 B1.1b: the same-token concentration flanker ('Sauvage Elixir') is now
+    # closed at the display backstop by the BOUNDED curated flanker_markers axis
+    # (NOT the full superset, which over-rejected descriptive titles) — gated ON by
+    # ENABLE_VARIANT_DESCRIPTOR_AXES. Flag OFF stays the documented leak (byte-identical
+    # rollback); flag ON pends it. Was xfail-strict pre-Wave-2.
+    monkeypatch.setenv("ENABLE_VARIANT_DESCRIPTOR_AXES", "true")
     assert is_price_showable("Dior Sauvage",
                              _price("Dior Sauvage Elixir", amount=40.0), "fragrances",
                              enforce_correctness=True) is False
+    # And the flag-OFF rollback still leaks (the accepted pre-Wave-2 behaviour) —
+    # proving the closure is entirely behind the flag.
+    monkeypatch.setenv("ENABLE_VARIANT_DESCRIPTOR_AXES", "false")
+    assert is_price_showable("Dior Sauvage",
+                             _price("Dior Sauvage Elixir", amount=40.0), "fragrances",
+                             enforce_correctness=True) is True
 
 
 def test_cross_unit_size_pended():
@@ -252,9 +265,117 @@ def test_supplement_combo_and_form_still_pend():
     assert _ips_supp("Whey Protein", "Optimum Whey Protein Isolate") is False  # formulation type
 
 
-@pytest.mark.xfail(reason="ZMA / Cal-Mag are ACRONYM products whose expansion the query is not a "
-                          "subset of (also fails the upstream selection superset) — needs brand-alias "
-                          "normalization, a documented deferred residual",
-                   strict=True)
-def test_deferred_supplement_acronym_residual():
+def test_supplement_acronym_constituent_flag_conditional(monkeypatch):
+    # Wave-2 B2a (C1): a curated acronym->constituents table folds a descriptively-titled
+    # correct product (Optimum ZMA -> "...ZMA Zinc Magnesium Aspartate") so it DISPLAYS —
+    # gated ON by ENABLE_VARIANT_DESCRIPTOR_AXES. Flag OFF stays the documented over-rejection
+    # (byte-identical rollback); flag ON accepts the correct product.
+    monkeypatch.setenv("ENABLE_VARIANT_DESCRIPTOR_AXES", "true")
     assert _ips_supp("Optimum ZMA", "Optimum ZMA Zinc Magnesium Aspartate 180 Caps") is True
+    # And the flag-OFF default still over-rejects (the accepted pre-Wave-2 residual) —
+    # proving the fold is entirely behind the flag.
+    monkeypatch.setenv("ENABLE_VARIANT_DESCRIPTOR_AXES", "false")
+    assert _ips_supp("Optimum ZMA", "Optimum ZMA Zinc Magnesium Aspartate 180 Caps") is False
+
+
+def test_supplement_acronym_calmag_flag_on(monkeypatch):
+    # Same class — Cal-Mag / CalMag acronym query vs a title enumerating calcium+magnesium.
+    monkeypatch.setenv("ENABLE_VARIANT_DESCRIPTOR_AXES", "true")
+    assert _ips_supp("Now CalMag", "Now CalMag Calcium Magnesium 240 Caps") is True
+    assert _ips_supp("Now Cal-Mag", "Now Cal-Mag Calcium Magnesium 240 Caps") is True
+
+
+def test_supplement_acronym_combo_leak_still_rejects_both_flags(monkeypatch):
+    # The C1 fold must NOT reopen the combo-add leak: a SINGLE-ELEMENT query (Calcium is NOT
+    # an acronym in the table) + an added element = a different COMBO SKU, both flags.
+    for val in ("true", "false"):
+        monkeypatch.setenv("ENABLE_VARIANT_DESCRIPTOR_AXES", val)
+        assert _ips_supp("Calcium", "Now Calcium Magnesium Zinc") is False
+        assert _ips_supp("Magnesium", "Magnesium Citrate") is False
+
+
+# ===========================================================================
+# Wave-2 B2b (C2) — hyphen-vs-space digit-adjacent fold. "Omega-3" == "Omega 3" == "Omega3"
+# (and the same class B-12/B12/B 12, Co-Q10/CoQ10, D-3/D3). Flag-gated; the WH-1000XM5
+# electronics guard must STILL collapse equal (hyphen-removal glue, unrelated to the fold).
+# ===========================================================================
+def test_omega3_hyphen_space_match_flag_on(monkeypatch):
+    monkeypatch.setenv("ENABLE_VARIANT_DESCRIPTOR_AXES", "true")
+    assert _m("Nordic Naturals Omega-3", "Nordic Naturals Omega 3", "supplements") is True
+    assert _m("Nordic Naturals Omega 3", "Nordic Naturals Omega-3", "supplements") is True
+    assert _m("Nordic Naturals Omega3", "Nordic Naturals Omega 3", "supplements") is True
+    # B-12 / B 12 / B12 same class
+    assert _m("Now B-12", "Now B 12", "supplements") is True
+    assert _m("Now B 12", "Now B12", "supplements") is True
+
+
+def test_omega3_hyphen_space_flag_off_residual(monkeypatch):
+    # Flag OFF stays the documented over-rejection (byte-identical rollback).
+    monkeypatch.setenv("ENABLE_VARIANT_DESCRIPTOR_AXES", "false")
+    assert _m("Nordic Naturals Omega-3", "Nordic Naturals Omega 3", "supplements") is False
+
+
+def test_wh1000xm5_hyphen_guard_still_matches_both_flags(monkeypatch):
+    # CRITICAL GUARD: the digit-hyphen fold must NOT break the model-code hyphen-removal
+    # collapse (WH-1000XM5 == WH1000XM5 == WH-1000-XM5) and must NOT bridge unrelated tokens.
+    for val in ("true", "false"):
+        monkeypatch.setenv("ENABLE_VARIANT_DESCRIPTOR_AXES", val)
+        assert _m("Sony WH-1000XM5", "Sony WH1000XM5", "electronics", "Sony") is True
+        assert _m("Sony WH1000XM5", "Sony WH-1000XM5", "electronics", "Sony") is True
+        assert _m("Sony WH-1000-XM5", "Sony WH1000XM5", "electronics", "Sony") is True
+
+
+# ===========================================================================
+# Wave-2 B2fix — the two nutrient-fold over-rejections the B2 sweep found (both
+# flag-ON-only, supplement-scoped, introduced by B2b). Goal: ALL spellings of a
+# nutrient name produce IDENTICAL identity tokens.
+#   DEFECT 1 (HIGH): "Vitamin B-6" == "Vitamin B6" == "Vitamin B 6" — the
+#     vitamin-alt used to glue the WORD "vitamin" into the token for the
+#     separated forms while "B6" stayed {vitamin, b6} => disjoint => flag-ON
+#     REJECT of the same SKU (flag-OFF matched).
+#   DEFECT 2 (MED): "Co Q10" == "CoQ10" == "Coq 10" == "co-q10" — the co-q
+#     prefix used to require a separator BEFORE the digit, so "Co Q10" (q
+#     immediately followed by "10") did NOT fold.
+# ===========================================================================
+def test_vitamin_letterdigit_spellings_all_match_flag_on(monkeypatch):
+    monkeypatch.setenv("ENABLE_VARIANT_DESCRIPTOR_AXES", "true")
+    # DEFECT 1: all three spellings of the same SKU must match, both directions.
+    assert _m("Now Vitamin B-6", "Now Vitamin B6", "supplements") is True
+    assert _m("Now Vitamin B6", "Now Vitamin B 6", "supplements") is True
+    assert _m("Now Vitamin B 6", "Now Vitamin B-6", "supplements") is True
+    # Same for the two-digit member of the class.
+    assert _m("Now Vitamin B-12", "Now Vitamin B12", "supplements") is True
+    assert _m("Now Vitamin B12", "Now Vitamin B 12", "supplements") is True
+
+
+def test_coq10_spaced_spellings_all_match_flag_on(monkeypatch):
+    monkeypatch.setenv("ENABLE_VARIANT_DESCRIPTOR_AXES", "true")
+    # DEFECT 2: spaced "Co Q10" (digit immediately after q) must fold like the rest.
+    assert _m("Doctor's Best Co Q10", "Doctor's Best CoQ10", "supplements") is True
+    assert _m("Doctor's Best CoQ10", "Doctor's Best Coq 10", "supplements") is True
+    assert _m("Doctor's Best Co Q10", "Doctor's Best co-q10", "supplements") is True
+
+
+def test_vitamin_coq10_flag_off_residual(monkeypatch):
+    # Flag OFF stays the documented over-rejection (byte-identical rollback).
+    monkeypatch.setenv("ENABLE_VARIANT_DESCRIPTOR_AXES", "false")
+    assert _m("Now Vitamin B-6", "Now Vitamin B6", "supplements") is False
+    assert _m("Doctor's Best Co Q10", "Doctor's Best CoQ10", "supplements") is False
+
+
+def test_nutrient_fold_overfold_rejects_hold_flag_on(monkeypatch):
+    # The fold must NOT bridge DIFFERENT nutrient numbers.
+    monkeypatch.setenv("ENABLE_VARIANT_DESCRIPTOR_AXES", "true")
+    assert _m("Now Vitamin B-6", "Now Vitamin B-12", "supplements") is False
+    assert _m("Now B12", "Now B6", "supplements") is False
+    assert _m("Nordic Naturals Omega-3", "Nordic Naturals Omega-6", "supplements") is False
+    assert _m("Now Vitamin D-3", "Now Vitamin D-2", "supplements") is False
+    assert _m("Doctor's Best Co Q10", "Doctor's Best Co Q9", "supplements") is False
+
+
+def test_nutrient_fold_does_not_touch_electronics_flag_on(monkeypatch):
+    # The fold is supplement-scoped: model codes never reach it and still discriminate.
+    monkeypatch.setenv("ENABLE_VARIANT_DESCRIPTOR_AXES", "true")
+    assert _m("Sony WH-1000XM5", "Sony WH1000XM5", "electronics", "Sony") is True
+    assert _m("Sony WH-1000XM5", "Sony WH-1000XM4", "electronics", "Sony") is False
+    assert _m("Nvidia RTX-3080", "Nvidia RTX-3070", "electronics", "Nvidia") is False

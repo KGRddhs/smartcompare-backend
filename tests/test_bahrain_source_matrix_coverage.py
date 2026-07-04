@@ -15,9 +15,12 @@ Two guards ship (DISPATCHER-GATE Q5):
     so it proves "a genuine-BH path EXISTS" for every category. KNOWN_SOURCE_GAPS
     is EMPTY today (lulu covers everything). No false reds.
   * STRICT — documents thinness. EXCLUDES the empty-`categories` all-category
-    rows (lulu) so it surfaces the lulu-only category (`other`) and the thin
-    single-source categories as documented gaps via STRICT_KNOWN_SOURCE_GAPS
-    reasons. Not a merge gate — a thinness ledger.
+    rows (lulu) so any lulu-only category and the thin single-source
+    categories surface as documented gaps via STRICT_KNOWN_SOURCE_GAPS
+    reasons. EMPTY since 2026-07-02: Wave C's noon.com bahrain-tier
+    noon_catalog literal row covers ('electronics', 'fragrances', 'fashion',
+    'other'), closing the former `other` lulu-only gap. Not a merge gate — a
+    thinness ledger.
 
 Contract doc: docs/contracts/bahrain-source-matrix.md (mirror these gaps).
 
@@ -44,18 +47,15 @@ KNOWN_SOURCE_GAPS: dict[str, str] = {}
 # --- STRICT gap set (thinness ledger) ------------------------------------
 # A category with NO category-SPECIFIC genuine-BH source — i.e. its only
 # live-reachable genuine path is lulu's all-category row. Excluding lulu
-# surfaces the structurally thin spots. `other` is lulu-only by design
-# (mitigation is upstream category resolution, F1 — `other` is a fallback
-# bucket, not a real shopping category). Each entry MUST carry a reason and
-# MUST be a genuine strict-gap (test_strict_known_source_gaps_are_real_gaps).
-STRICT_KNOWN_SOURCE_GAPS: dict[str, str] = {
-    "other": (
-        "lulu-only (all-category row) — `other` is the catch-all fallback "
-        "bucket, not a real shopping category; mitigation is upstream category "
-        "resolution (F1), not a category-specific BH source. No dedicated "
-        "`other` retailer exists or is wanted."
-    ),
-}
+# surfaces the structurally thin spots. EMPTY today: the former `other` entry
+# ("lulu-only by design") was removed 2026-07-02 as instructed by
+# test_strict_known_source_gaps_are_real_gaps — the Wave C noon_catalog
+# literal row (Source("noon.com", "bahrain", ("electronics", "fragrances",
+# "fashion", "other"), ..., mechanism="noon_catalog", status="live")) is a
+# category-SPECIFIC, non-render, bahrain-tier genuine-BH source for `other`.
+# Each future entry MUST carry a reason and MUST be a genuine strict-gap
+# (test_strict_known_source_gaps_are_real_gaps).
+STRICT_KNOWN_SOURCE_GAPS: dict[str, str] = {}
 
 
 def _genuine_bh_capable(category: str, *, strict: bool = False) -> bool:

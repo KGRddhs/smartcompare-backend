@@ -4,6 +4,7 @@
 one of three small custom-JSON clients, each a public unauthenticated GET:
 
   - ourshopee (apios.ourshopee.com)  — BHD GENUINE  → source_method="rest_json_bhd"
+    (catalog row DEMOTED to status="dead" 2026-07-02 — see _OURSHOPEE_SEARCH_URL)
   - panda     (api.panda.sa)          — SAR          → converted_usd
   - beautyboothqa (admin.beautybooth.qa) — QAR        → converted_usd
 
@@ -32,6 +33,7 @@ from app.services.price_service import (
     ENABLE_PAGE_SCRAPE,
     _VARIANT_QUALIFIERS,
     _convert_to_bhd,
+    selection_primary_admits,
     is_price_showable,
     normalize_words,
     numbers_match,
@@ -54,6 +56,17 @@ _MATCH_MIN_OVERLAP = 0.4  # word-overlap floor (mirrors _match_nasser_product)
 # domain the registry row carries). The dispatch key is the NORMALIZED apex
 # (strip www., lowercase) so a registry domain like "ourshopee.com" /
 # "www.panda.sa" routes correctly.
+# DEAD ROUTE (probed 2026-07-02): apios has NO search-by-name route — /api/search
+# and 5 plausible variants (get_search_products/getSearchProducts/search_product/
+# searchProduct/getSearch) all 404 while the API family is alive
+# (api/product_detail?sku= and api/getTopSelling → 200, BHD). The round-4 crack
+# documented only getTopSelling/getallcategoryItems/product_detail (none
+# search-by-name), and the Next.js App Router storefront fetches server-side, so
+# no client chunk exposes a search path. Catalog row → status="dead"; the adapter
+# stays (panda precedent) for a future re-crack via browser XHR capture. NOTE:
+# verify_bh_gcc_sources.py would RE-PROMOTE this row off a storefront-200
+# (api-backed rows are reachability-checked only) — do not re-promote without a
+# working search route (tests/test_ourshopee_demotion.py is the tripwire).
 _OURSHOPEE_SEARCH_URL = "https://apios.ourshopee.com/api/search"
 _OURSHOPEE_HEADERS = {
     "x-language": "en",
@@ -106,7 +119,17 @@ def _title_matches(product_name: str, title: str, resolved_category=None) -> boo
         return False
     if not numbers_match(product_name, title):
         return False
-    if not strict_title_match(product_name, title):
+    # SELECTION-PRIMARY acceptance (recon_cascade R2, Wave B4): a strict FAIL
+    # falls through to the conditional-variant / _selection_match / overlap
+    # gates below instead of hard-rejecting (strict's RAW tokenization rejects
+    # correct rows on spacing/alias variance the keystone collapses) — GATED
+    # by selection_primary_admits (Wave B-FIX wrong-brand fence: rest_json
+    # rows carry no brand signal, so a FASHION padding-brand query requires
+    # its brand token in the title). Flag OFF (or exact gate OFF) restores
+    # the exact pre-change hard gate.
+    if (not strict_title_match(product_name, title)
+            and not selection_primary_admits(
+                product_name, title, category=resolved_category)):
         return False
     q_words = set(re.findall(r"[a-z]+", (product_name or "").lower()))
     if (q_words & _VARIANT_QUALIFIERS) and variant_mismatch(product_name, title):

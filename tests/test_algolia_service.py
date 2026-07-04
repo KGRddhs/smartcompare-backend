@@ -230,14 +230,18 @@ def _no_live_cache():
 @pytest.mark.asyncio
 async def test_fetch_price_happy_path_genuine_bhd():
     """End-to-end with mocked HTTP: config harvested → Algolia query → strict
-    match → genuine BHD dict with source_method=local_bhd, estimated=False."""
+    match → genuine BHD dict with source_method=local_bhd, estimated=False.
+
+    Wave A3: en-bh.6thstreet.com now routes via ALGOLIA_EXPLICIT_STORES (pinned
+    config), so this GENERIC-harvest orchestrator pin uses a neutral non-pinned
+    domain; 6thstreet end-to-end lives in test_sixthstreet_revival.py."""
     import app.services.algolia_service as alg
 
     fenty_hit = {
         "name": "Pro Filt'r Soft Matte Longwear Foundation",
         "brand_name": "Fenty Beauty",
         "price": [{"BHD": {"default": 18.5, "default_formated": "BHD 18.500"}}],
-        "url": "https://en-bh.6thstreet.com/buy-fenty-pro-filtr-230.html",
+        "url": "https://algolia-harvest.example/buy-fenty-pro-filtr-230.html",
         "in_stock": True,
     }
 
@@ -250,7 +254,7 @@ async def test_fetch_price_happy_path_genuine_bhd():
          patch("app.services.algolia_service._algolia_query",
                new=AsyncMock(return_value=[fenty_hit])):
         out = await alg.fetch_algolia_price(
-            "en-bh.6thstreet.com", "Fenty Pro Filt'r Foundation", "makeup",
+            "algolia-harvest.example", "Fenty Pro Filt'r Foundation", "makeup",
         )
 
     assert out is not None
@@ -258,14 +262,17 @@ async def test_fetch_price_happy_path_genuine_bhd():
     assert out["amount"] == 18.5
     assert out["source_method"] == "local_bhd"
     assert out["estimated"] is False
-    assert out["retailer"] == "en-bh.6thstreet.com"
-    assert out["url"].startswith("https://en-bh.6thstreet.com/")
+    assert out["retailer"] == "algolia-harvest.example"
+    assert out["url"].startswith("https://algolia-harvest.example/")
 
 
 @pytest.mark.asyncio
 async def test_fetch_price_wrong_brand_returns_none():
     """The real TOMS-shoes fixture for a Tom Ford query → None (no wrong-brand
-    price shipped), even though Algolia returned 1492 fuzzy hits."""
+    price shipped), even though Algolia returned 1492 fuzzy hits.
+
+    Wave A3: neutral non-pinned domain so the GENERIC harvest path (the mocks
+    below) actually runs — en-bh.6thstreet.com routes explicit now."""
     import app.services.algolia_service as alg
     hits = _load_fixture()["hits"]
 
@@ -276,7 +283,7 @@ async def test_fetch_price_wrong_brand_returns_none():
          patch("app.services.algolia_service._algolia_query",
                new=AsyncMock(return_value=hits)):
         out = await alg.fetch_algolia_price(
-            "en-bh.6thstreet.com", "Tom Ford Black Orchid", "fragrances",
+            "algolia-harvest.example", "Tom Ford Black Orchid", "fragrances",
         )
     assert out is None
 

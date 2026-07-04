@@ -35,10 +35,12 @@ from typing import Any, Dict, Optional
 from app.services.price_service import (
     strict_title_match,
     _selection_match,
+    selection_primary_admits,
+    build_adapter_search_terms,
     numbers_match,
     variant_mismatch,
     is_counterfeit_listing,
-    is_accessory,
+    is_accessory_for_category,
     is_price_showable,
     _convert_to_bhd,
     ENABLE_PAGE_SCRAPE,
@@ -125,9 +127,23 @@ def _select_candidate(
         # Asymmetric accessory guard (review gate-fix): only drop an accessory
         # hit when the QUERY is not itself accessory-intent, so an accessory query
         # ("AirPods Pro case", "Apple Watch band") can still match its product.
-        if is_accessory(title) and not is_accessory(product_name):
+        # Category-scoped (BF4, sweep OR-7): a bare 'skin' hit on a pharmacy-class
+        # resolved category is descriptive, not a phone-decal signal.
+        if (is_accessory_for_category(title, resolved_category)
+                and not is_accessory_for_category(product_name, resolved_category)):
             continue
-        if not strict_title_match(product_name, title):
+        # SELECTION-PRIMARY acceptance (recon_cascade R2, Wave B4): strict's
+        # RAW tokenization rejects correct rows on spacing/alias variance
+        # ("90ml" vs "90 ml") the keystone _selection_match below collapses —
+        # a strict FAIL falls through to the remaining chain instead of
+        # hard-rejecting, GATED by selection_primary_admits (Wave B-FIX
+        # wrong-brand fence: salla rows carry no brand field, so a FASHION
+        # padding-brand query requires its brand token in the title). Flag
+        # OFF (or exact gate OFF, where _selection_match is a no-op True)
+        # restores the exact pre-change hard gate.
+        if (not strict_title_match(product_name, title)
+                and not selection_primary_admits(
+                    product_name, title, category=resolved_category)):
             continue
         if not numbers_match(product_name, title):
             continue
@@ -168,38 +184,48 @@ async def fetch_salla_api_price(
     if not store_id:
         return None
 
-    try:
-        from curl_cffi import requests as curl_requests
-        resp = await asyncio.to_thread(
-            lambda: curl_requests.get(
-                _SALLA_API_URL,
-                params={"per_page": _PER_PAGE, "keyword": product_name},
-                headers={
-                    "Store-Identifier": store_id,
-                    "Accept": "application/json",
-                },
-                impersonate="chrome",
-                timeout=_HTTP_TIMEOUT,
-                allow_redirects=True,
+    data = None
+    # R1 retrieval-term ladder: the full name first; ONLY an empty data[]
+    # retries ONCE with the model-core term (rows returned — matched or not —
+    # never trigger a second request; non-200/error keeps the legacy
+    # immediate-None). Matching below runs against the ORIGINAL product_name,
+    # so wider retrieval cannot widen acceptance.
+    for term in build_adapter_search_terms(product_name, resolved_category):
+        try:
+            from curl_cffi import requests as curl_requests
+            resp = await asyncio.to_thread(
+                lambda t=term: curl_requests.get(
+                    _SALLA_API_URL,
+                    params={"per_page": _PER_PAGE, "keyword": t},
+                    headers={
+                        "Store-Identifier": store_id,
+                        "Accept": "application/json",
+                    },
+                    impersonate="chrome",
+                    timeout=_HTTP_TIMEOUT,
+                    allow_redirects=True,
+                )
             )
-        )
-    except Exception as exc:  # noqa: BLE001 — a fetch error is a miss, never a crash
-        logger.warning("[PRICE] salla fetch failed for %s: %s", domain, exc)
-        return None
+        except Exception as exc:  # noqa: BLE001 — a fetch error is a miss, never a crash
+            logger.warning("[PRICE] salla fetch failed for %s: %s", domain, exc)
+            return None
 
-    if getattr(resp, "status_code", 0) != 200:
-        logger.info("[PRICE] salla HTTP %s for '%s' @ %s",
-                    getattr(resp, "status_code", "?"), product_name, domain)
-        return None
+        if getattr(resp, "status_code", 0) != 200:
+            logger.info("[PRICE] salla HTTP %s for '%s' @ %s",
+                        getattr(resp, "status_code", "?"), product_name, domain)
+            return None
 
-    try:
-        payload = resp.json()
-    except Exception:  # noqa: BLE001 — non-JSON body -> miss
-        return None
+        try:
+            payload = resp.json()
+        except Exception:  # noqa: BLE001 — non-JSON body -> miss
+            return None
 
-    if not isinstance(payload, dict):
-        return None
-    data = payload.get("data")
+        if not isinstance(payload, dict):
+            return None
+        data = payload.get("data")
+        if not (isinstance(data, list) and not data):
+            break  # rows returned (even unmatched) — never a second request
+
     if not isinstance(data, list) or not data:
         return None
 

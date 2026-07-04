@@ -28,17 +28,27 @@ import json
 import re
 import logging
 import asyncio
+# NAME import (uniform with price_service) — entity-decode at title ingestion
+# (Wave C C2, kpiE2E RS-1: the sharafdg WordPress post_title serves "&amp;"
+# verbatim through the Algolia index, tokenizing as a false "amp" identity add).
+from html import unescape as html_unescape
 from typing import Optional, Dict, Any, List
 
 from app.services.cache_service import get_cached, set_cached
 from app.services.price_service import (
     strict_title_match,
     _selection_match,
+    _axis_mismatch,
+    _infer_category_from_query,
+    build_adapter_search_terms,
     numbers_match,
     normalize_words,
     is_counterfeit_listing,
-    is_accessory,
+    is_accessory_for_category,
     is_price_showable,
+    query_confirmed_structured_code,
+    _structured_override_variant_blocked,
+    exact_gate_enabled,
     _convert_to_bhd,
     ENABLE_PAGE_SCRAPE,
     PAGE_SCRAPE_TIMEOUT,
@@ -76,6 +86,17 @@ ALGOLIA_STORES: Dict[str, Dict[str, str]] = {
 #   extra_params           — Algolia request-body `params` string (danube needs
 #                            the tenant_id filter or it returns the wrong tenant).
 ALGOLIA_EXPLICIT_STORES: Dict[str, Dict[str, Any]] = {
+    # A3 revival — the harvest path broke when 6thstreet moved the index token
+    # out of the landing HTML into its JS chunk; pin the live public config so
+    # a harvest drift can never zero the store again. The en_bh index — the
+    # english_products index returns AED (wrong for BH).
+    "en-bh.6thstreet.com": {
+        "app_id": "02X7U6O3SI",
+        "api_key": "6e9a600dc69be19481363bddd793e2f2",
+        "index": "enterprise_magento_en_bh_products",
+        "currency": "BHD",
+        "genuine": True,
+    },
     "bahrain.sharafdg.com": {
         "app_id": "9KHJLG93J1",
         "api_key": "e81d5b30a712bb28f0f1d2a52fc92dd0",
@@ -148,16 +169,20 @@ _KEY_AFTER_APPID_RE = re.compile(
 
 
 def extract_algolia_config(
-    page_html: str, chunk_js: Optional[str]
+    page_html: str, chunk_js: Optional[str], pinned_index: Optional[str] = None
 ) -> Optional[Dict[str, str]]:
     """Extract `{app_id, api_key, index}` from a storefront's page HTML + main
     JS chunk. Returns None if any field is missing (a partial config would 400
     the Algolia call — better to skip and let the cascade continue).
 
     GENERIC: app-id from the DSN preconnect host; index from an
-    `enterprise_magento_*_products` / `idx=` token in the HTML; search-key from
-    the chunk's minified init default near adminKey/apiKey (or right after the
-    app-id default). No hard-coded credentials — works for any Algolia store.
+    `enterprise_magento_*_products` / `idx=` token in the HTML, falling back to
+    the JS chunk (6thstreet moved the token there); search-key from the chunk's
+    minified init default near adminKey/apiKey (or right after the app-id
+    default). `pinned_index` (the store row's pin) takes precedence over ANY
+    harvested token AND completes an otherwise index-less config — a pinned
+    store must never fail the completeness check on a drifted/absent HTML
+    token. No hard-coded credentials — works for any Algolia store.
     """
     page_html = page_html or ""
 
@@ -165,11 +190,16 @@ def extract_algolia_config(
     m_app = _APPID_DSN_RE.search(page_html)
     app_id = m_app.group(1) if m_app else None
 
-    # index — prefer an explicit enterprise_magento_*_products token, else idx=.
-    m_idx = re.search(r"(enterprise_magento_[a-z0-9_]*products)", page_html, re.IGNORECASE)
-    if not m_idx:
-        m_idx = re.search(r"idx=([a-z0-9_]+products)", page_html, re.IGNORECASE)
-    index = m_idx.group(1) if m_idx else None
+    # index — the pin wins; else an explicit enterprise_magento_*_products
+    # token, else idx=, else the same explicit token in the JS chunk.
+    index = pinned_index
+    if not index:
+        m_idx = re.search(r"(enterprise_magento_[a-z0-9_]*products)", page_html, re.IGNORECASE)
+        if not m_idx:
+            m_idx = re.search(r"idx=([a-z0-9_]+products)", page_html, re.IGNORECASE)
+        if not m_idx and chunk_js:
+            m_idx = re.search(r"(enterprise_magento_[a-z0-9_]*products)", chunk_js, re.IGNORECASE)
+        index = m_idx.group(1) if m_idx else None
 
     # search-key from the chunk.
     api_key = None
@@ -239,10 +269,11 @@ async def _harvest_config(domain: str) -> Optional[Dict[str, str]]:
         _negcache()
         return None
 
-    cfg = extract_algolia_config(html, chunk_js)
-    # If the store row pins an index, prefer it (HTML token can drift).
-    if cfg and store.get("index"):
-        cfg["index"] = store["index"]
+    # The store row's pinned index is applied INSIDE the extraction — BEFORE
+    # the completeness decision — so a pinned store can never fail on a
+    # missing/drifted HTML token (the post-hoc override here used to run only
+    # after cfg had already collapsed to None).
+    cfg = extract_algolia_config(html, chunk_js, pinned_index=store.get("index"))
     if not cfg:
         _negcache()
         return None
@@ -293,11 +324,15 @@ async def _algolia_query(
 
 async def _algolia_query_explicit(
     store: Dict[str, Any], query: str
-) -> List[Dict[str, Any]]:
+) -> Optional[List[Dict[str, Any]]]:
     """POST ONE read-only search using a store's PINNED explicit config (no
     harvest). `store` carries app_id/api_key/index and an optional
     `extra_params` request-body `params` string (danube's tenant_id filter).
-    Returns the hits list (possibly empty). NEVER raises — graceful empty."""
+    Returns the hits list — possibly empty — or ``None`` on a TRANSPORT
+    failure (non-200 / exception). NEVER raises. The None sentinel exists for
+    the retrieval-term ladder's F2 politeness contract (Wave B-FIX): only a
+    GENUINE zero-hit 200 may retry the core term; an erroring store must not
+    get a second request."""
     try:
         from curl_cffi import requests as curl_requests
 
@@ -326,15 +361,15 @@ async def _algolia_query_explicit(
                 record_failure(_ALGOLIA_PROVIDER)
             logger.info("[ALGOLIA] explicit query HTTP %s for index=%s",
                         resp.status_code, index)
-            return []
+            return None
         record_success(_ALGOLIA_PROVIDER)
         data = resp.json()
         hits = data.get("hits")
         return hits if isinstance(hits, list) else []
-    except Exception as e:  # noqa: BLE001 — best-effort; any failure → empty
+    except Exception as e:  # noqa: BLE001 — best-effort; any failure → None sentinel
         logger.info("[ALGOLIA] explicit query error: %s", e)
         record_failure(_ALGOLIA_PROVIDER)
-        return []
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -424,19 +459,96 @@ def _parse_algolia_price_multishape(
     return amount if amount > 0 else None
 
 
+# Trailing "- {SKU-digits}" segment on 6thStreet names ("501 Original Fit
+# Jeans - Black - 00501-0660"): catalog plumbing, not identity — the digit run
+# trips the numeric identity axis in _selection_match. Strip ONLY a trailing
+# digits-and-dashes segment that is SKU-shaped: for the DASH form the first
+# digit run must carry a leading zero OR be 5+ digits ("00501-0660"/"12345-678"
+# strip), so a SEASON/YEAR-RANGE tail ("- 2023-24" on a sports jersey — product
+# identity, needed by numbers_match + the stored title) SURVIVES (Wave B2,
+# review LOW). The colour segment before it stays (a legit axis), and
+# short/year numbers ("- 501", "- 2023") are never touched.
+_SKU_TAIL_RE = re.compile(r"\s*-\s*(?:0\d+-[\d-]*\d|\d{5,}(?:-[\d-]*\d)?)$")
+
+
+def _strip_sku_tail(title: str) -> str:
+    return _SKU_TAIL_RE.sub("", title or "").strip()
+
+
+def _confirmed_style_code(hit: Dict[str, Any], p_words: set) -> str:
+    """The hit's structured MODEL code (style_code, else the sku's
+    pre-underscore segment: "L1212_White" -> "L1212") — but ONLY when the QUERY
+    itself carries the code (hyphen-folded, as normalize_words folds query
+    tokens). Query-confirmed inclusion is a pure match ENABLER: an unqueried
+    code appended to the surface would read as a variant-add and over-reject.
+    Letter+digit codes only — a pure-digit style code ("00501-0660") would
+    inject numeric noise into the identity axes. Validation is the SHARED
+    price_service.query_confirmed_structured_code (also the cache-gate parity
+    override's rule — Wave B0), so the two ends never drift; this wrapper only
+    owns the hit-shape extraction."""
+    for raw in (hit.get("style_code"), hit.get("sku")):
+        if not isinstance(raw, str):
+            continue
+        tok = query_confirmed_structured_code(raw.strip().split("_", 1)[0], p_words)
+        if tok:
+            return tok
+    return ""
+
+
+def _hit_brand_label(hit: Dict[str, Any], keys: tuple) -> str:
+    """The hit's HUMAN brand label — STRING fields only (an option-id int / a
+    nested dict is NOT a label; stamping one would hand the downstream gates a
+    bogus candidate_brand). `keys` mirrors the field order the matcher's own
+    candidate_brand used, so the stamp replays exactly the brand that matched.
+    Missing / non-string -> "" (the caller omits the stamp -> legacy shape)."""
+    for key in keys:
+        val = hit.get(key)
+        if isinstance(val, str) and val.strip():
+            return val.strip()
+    return ""
+
+
+def _stamp_matched_identity(
+    price: Dict[str, Any], hit: Dict[str, Any], product_name: str,
+    brand_keys: tuple,
+) -> None:
+    """Wave-B identity stamp (review HIGH; the PR#13 JSON-LD identity-stamp
+    precedent in price_service.extract_price_from_html): carry the MATCHED
+    hit's brand + query-confirmed style code onto the returned price dict.
+    Without them the fail-closed downstream gates re-reject exactly what the
+    matcher here accepted — select_best reads c["brand"] and
+    should_cache_price replays _selection_match with candidate_brand — so a
+    brand-omitting title resolves+displays live but NEVER caches (the warmed
+    KPI stays RED for the SKUs the matcher unlocked). Missing -> omitted
+    (legacy dict shape). Flag-gated for flag-OFF byte-identity, matching the
+    precedent."""
+    if not exact_gate_enabled():
+        return
+    brand_label = _hit_brand_label(hit, brand_keys)
+    if brand_label:
+        price["brand"] = brand_label
+    style = _confirmed_style_code(hit, normalize_words(product_name))
+    if style:
+        price["structured_code"] = style
+
+
 def _catalog_hit_fields(
     hit: Dict[str, Any], store: Dict[str, Any]
 ) -> Dict[str, Any]:
     """Per-store title / url / stock extraction for the explicit-key catalog
     stores (their field names differ from the 6thStreet shape)."""
-    # title: sharafdg post_title, danube full_name_en, nahdi name, fallbacks.
-    title = (
+    # title: sharafdg post_title, danube full_name_en, nahdi/6thstreet name,
+    # fallbacks. HTML-entity-decoded FIRST (C2: sharafdg's WP post_title
+    # carries "&amp;" — "English &amp; Arabic Keyboard" on the live MacBook
+    # rows; no-op on entity-free titles), then SKU-digit tails stripped
+    # (match surface AND stored title).
+    title = _strip_sku_tail(html_unescape((
         hit.get("post_title")
         or hit.get("full_name_en")
         or hit.get("name")
         or hit.get("title")
         or ""
-    ).strip()
+    )).strip())
 
     # url: sharafdg permalink, danube url_en (RELATIVE), nahdi url.
     url = (hit.get("permalink") or hit.get("url_en") or hit.get("url") or "").strip()
@@ -482,9 +594,22 @@ def _catalog_match_hit(
 ) -> Optional[Dict[str, Any]]:
     """STRICT title/brand best-match over catalog-store hits (per-store title
     fields + the pinned currency for price presence). Reuses the same gates as
-    the 6thStreet path so a fuzzy cross-brand hit is REJECTED."""
+    the 6thStreet path so a fuzzy cross-brand hit is REJECTED. The match
+    surface is brand + title + query-confirmed style_code — brand
+    disambiguates a brand-omitted name (6thstreet lists "501 Original Fit
+    Jeans" without "Levi's"), the structured code carries the model the
+    display name omits."""
     if not hits:
         return None
+    # Explicit-"other" re-inference (Wave B2, review LOW) — mirror of
+    # _selection_match's own re-inference: the selector re-infers and enforces
+    # the category axes before rejecting, so the structured-identity override's
+    # _axis_mismatch below must run with the SAME re-inferred category (raw
+    # "other" skipped the fashion/category-scoped contradiction axes and
+    # re-accepted the hit the selector had just rejected). A truly-None
+    # category stays None (subset-only contract, prod always threads >= "other").
+    if (resolved_category or "").lower() == "other":
+        resolved_category = _infer_category_from_query(product_name) or resolved_category
     p_words = normalize_words(product_name)
     currency = store.get("currency", "BHD")
     best: Optional[Dict[str, Any]] = None
@@ -493,10 +618,16 @@ def _catalog_match_hit(
     for hit in hits:
         if not isinstance(hit, dict):
             continue
-        surface = _catalog_hit_fields(hit, store)["title"]
-        if not surface:
+        title = _catalog_hit_fields(hit, store)["title"]
+        if not title:
             continue
-        if is_counterfeit_listing(surface) or is_accessory(surface):
+        _cand_brand = str(hit.get("brand") or hit.get("brand_name") or hit.get("manufacturer") or "")
+        style = _confirmed_style_code(hit, p_words)
+        surface = " ".join(p for p in (_cand_brand.strip(), title, style) if p)
+        # Accessory check category-scoped (BF4, sweep OR-7): a bare 'skin' hit
+        # on a pharmacy-class resolved category is descriptive, not a decal.
+        if (is_counterfeit_listing(surface)
+                or is_accessory_for_category(surface, resolved_category)):
             continue
         if not numbers_match(product_name, surface):
             continue
@@ -507,9 +638,19 @@ def _catalog_match_hit(
         # passed it; the category-aware _selection_match rejects it. Pass the hit brand so a
         # brand word in the title ("Apple"/"Samsung") is stripped, not read as a variant-add.
         # Flag-safe (True when off).
-        _cand_brand = str(hit.get("brand") or hit.get("brand_name") or hit.get("manufacturer") or "")
         if not _selection_match(product_name, surface, resolved_category, candidate_brand=_cand_brand):
-            continue
+            # Structured-identity override: a QUERY-CONFIRMED style_code is the
+            # retailer's own exact model assertion — descriptive name words
+            # ("Logo Detail Short Sleeves") around a confirmed code are noise,
+            # not a variant-add. ONLY the superset direction is relaxed: the
+            # leak direction stays with strict_title_match above (every query
+            # discriminator must appear) and the contradiction/numeric axes
+            # stay enforced here. A kids/gs/gift-set/tester/decant ADD is a
+            # different sellable UNIT the code never asserts (BF2, sweep L3).
+            if (not style
+                    or _structured_override_variant_blocked(product_name, surface)
+                    or _axis_mismatch(product_name, surface, resolved_category, _cand_brand)):
+                continue
         score = _overlap_score(p_words, surface)
         if score < 0.4:
             continue
@@ -525,8 +666,11 @@ def _catalog_match_hit(
 def _hit_title(hit: Dict[str, Any]) -> str:
     """Build a match surface from name + brand so brand disambiguates a fuzzy
     name (Algolia returns 'TOMS' footwear for a 'Tom Ford' query — the brand
-    field is what tells them apart)."""
-    name = (hit.get("name") or hit.get("title") or "").strip()
+    field is what tells them apart). SKU-digit name tails are stripped (they
+    trip the numeric identity axis)."""
+    # Entity-decode like _catalog_hit_fields (C2) — same "&amp;" -> "amp" class.
+    name = _strip_sku_tail(html_unescape(
+        hit.get("name") or hit.get("title") or "").strip())
     brand = (hit.get("brand_name") or hit.get("brand") or hit.get("main_brand") or "").strip()
     return f"{brand} {name}".strip()
 
@@ -543,6 +687,10 @@ def _match_algolia_hit(
     'Tom Ford Black Orchid' query."""
     if not hits:
         return None
+    # Explicit-"other" re-inference — see _catalog_match_hit (same override
+    # parity: the structured-identity _axis_mismatch must not run category-blind).
+    if (resolved_category or "").lower() == "other":
+        resolved_category = _infer_category_from_query(product_name) or resolved_category
     p_words = normalize_words(product_name)
     best: Optional[Dict[str, Any]] = None
     best_score = 0.0
@@ -553,7 +701,12 @@ def _match_algolia_hit(
         surface = _hit_title(hit)
         if not surface:
             continue
-        if is_counterfeit_listing(surface) or is_accessory(surface):
+        style = _confirmed_style_code(hit, p_words)
+        if style:
+            surface = f"{surface} {style}"
+        # Accessory check category-scoped (BF4, sweep OR-7) — see _catalog_match_hit.
+        if (is_counterfeit_listing(surface)
+                or is_accessory_for_category(surface, resolved_category)):
             continue
         if not numbers_match(product_name, surface):
             continue
@@ -564,7 +717,13 @@ def _match_algolia_hit(
         # "Fenty Beauty"/"Nike" would otherwise read as variant-adds).
         _cand_brand = str(hit.get("brand_name") or hit.get("brand") or hit.get("main_brand") or "")
         if not _selection_match(product_name, surface, resolved_category, candidate_brand=_cand_brand):
-            continue
+            # Structured-identity override — see _catalog_match_hit (superset
+            # direction only; leak gate + axes + the sellable-unit block stay
+            # enforced).
+            if (not style
+                    or _structured_override_variant_blocked(product_name, surface)
+                    or _axis_mismatch(product_name, surface, resolved_category, _cand_brand)):
+                continue
         score = _overlap_score(p_words, surface)
         if score < 0.4:
             continue
@@ -611,10 +770,18 @@ async def fetch_algolia_price(
     if not cfg:
         return None
 
+    hits: List[Dict[str, Any]] = []
     try:
-        hits = await _algolia_query(
-            cfg["app_id"], cfg["api_key"], cfg["index"], product_name
-        )
+        # R1 retrieval-term ladder: the full name first; ONLY an empty hits
+        # list retries ONCE with the model-core term. Hits returned — matched
+        # or not — never trigger a second query; matching below runs against
+        # the ORIGINAL product_name (acceptance unchanged).
+        for term in build_adapter_search_terms(product_name, category):
+            hits = await _algolia_query(
+                cfg["app_id"], cfg["api_key"], cfg["index"], term
+            )
+            if hits:
+                break
     except Exception as e:  # noqa: BLE001 — best-effort; any failure → None
         logger.info("[ALGOLIA] query error for %s: %s", domain, e)
         record_failure(_ALGOLIA_PROVIDER)
@@ -630,7 +797,10 @@ async def fetch_algolia_price(
 
     domain = (domain or "").replace("www.", "").strip().lower()
     url = hit.get("url") or hit.get("product_url") or (f"https://{domain}/" if domain else "")
-    title = (hit.get("name") or hit.get("title") or "").strip()
+    # Entity-decode (C2) — the stamped/stored title must match the _hit_title
+    # match surface byte-for-byte.
+    title = _strip_sku_tail(html_unescape(
+        hit.get("name") or hit.get("title") or "").strip())
 
     price = {
         "amount": round(amount, 2),
@@ -643,6 +813,8 @@ async def fetch_algolia_price(
         "title": title,
         "confidence": 0.9,  # genuine fetched BHD from the store's own index
     }
+    # Brand-key order mirrors _hit_title / _match_algolia_hit's candidate_brand.
+    _stamp_matched_identity(price, hit, product_name, ("brand_name", "brand", "main_brand"))
 
     # L2 content safety — drop a candidate whose surface trips the blocklist.
     try:
@@ -682,7 +854,19 @@ async def _fetch_explicit_store_price(
     if not store:
         return None
 
-    hits = await _algolia_query_explicit(store, product_name)
+    hits: List[Dict[str, Any]] = []
+    # R1 retrieval-term ladder (mirrors the harvest path; _algolia_query_explicit
+    # never raises). Empty hits -> ONE core-term retry; hits returned — matched
+    # or not — never trigger a second query. F2 politeness (Wave B-FIX): the
+    # None sentinel = TRANSPORT failure -> stop, never a core-term retry
+    # against an erroring store (woo/salla semantics).
+    for term in build_adapter_search_terms(product_name, resolved_category):
+        got = await _algolia_query_explicit(store, term)
+        if got is None:
+            break
+        hits = got
+        if hits:
+            break
     hit = _catalog_match_hit(hits, product_name, store, resolved_category=resolved_category)
     if not hit:
         return None
@@ -729,6 +913,8 @@ async def _fetch_explicit_store_price(
     }
     if original_currency:
         price["original_currency"] = original_currency
+    # Brand-key order mirrors _catalog_match_hit's candidate_brand.
+    _stamp_matched_identity(price, hit, product_name, ("brand", "brand_name", "manufacturer"))
 
     # Plausibility guard (low-fragrance/high-value/accessory/sample leaks).
     if not is_price_showable(product_name, price):

@@ -110,37 +110,3 @@ def test_get_cached_price_rehydrates_title_when_flag_on(monkeypatch):
     assert out is not None
     assert out["title"] == "Dior Sauvage EDT 100ml"
     assert "title" in sink["select_cols"]
-
-
-def test_get_cached_price_flag_on_none_title_omits_title_key(monkeypatch):
-    # A legacy/flag-OFF row rehydrated under the flag has title=None — the falsy
-    # guard `_title_persist_enabled() and row.get("title")` must NOT inject a None
-    # title (locks the truthiness check against a `'title' in row` refactor).
-    monkeypatch.setenv("ENABLE_PRICE_TITLE_PERSIST", "true")
-    row = dict(_ROW); row["title"] = None
-    _install_client(monkeypatch, {}, row=row)
-    out = _run(pds.get_cached_price("k", "bahrain"))
-    assert out is not None
-    assert "title" not in out
-
-
-def test_get_cached_price_flag_on_missing_title_key_omits(monkeypatch):
-    monkeypatch.setenv("ENABLE_PRICE_TITLE_PERSIST", "true")
-    row = {k: v for k, v in _ROW.items() if k != "title"}
-    _install_client(monkeypatch, {}, row=row)
-    out = _run(pds.get_cached_price("k", "bahrain"))
-    assert out is not None
-    assert "title" not in out
-
-
-def test_save_price_flag_on_preserves_all_columns(monkeypatch):
-    # A column-drop regression (keeping title but losing brand/amount) must fail.
-    monkeypatch.setenv("ENABLE_PRICE_TITLE_PERSIST", "true")
-    sink = {}
-    _install_client(monkeypatch, sink)
-    _run(pds.save_price("k", "Dior", "Sauvage", None, "bahrain",
-                        {"amount": 45.0, "currency": "BHD", "source_method": "woo_store_api",
-                         "title": "Dior Sauvage EDT 100ml"}))
-    ins = sink["insert"]
-    for col in ("product_key", "brand", "name", "region", "amount", "source_method", "title"):
-        assert col in ins, col

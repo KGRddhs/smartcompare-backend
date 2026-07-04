@@ -188,3 +188,21 @@ All 18 NEW sources map onto adapters that ALREADY exist or were already proposed
 2. **A ONE-TIME headless / render-budget XHR-capture pass** over the 5–6 walled giants (sephora.me, Carrefour-BH, xcite, tamimi, spinneys) to read their injected keys → convert each render-tier residual into a $0 json_api/algolia adapter. (One Firecrawl/Scrape.do-super session, not a recurring cost.)
 
 **Verdict: 400 domains across 4 rounds. The $0-discoverable space is SATURATED. The catalog is the deliverable; the next dollar of value is in Salla enumeration (paid data) and a single render-budget key-capture pass — not a Round 5.**
+
+---
+
+## CORRECTION (2026-07-02, genuine-price KPI recon) — the noon search door is NOT walled
+
+The "noon.com /bahrain-en search — Akamai TLS wall" residual above (and §"stale-claim"
+table row "the search door is Akamai-walled") is **FALSIFIED**: the `x-locale: en-bh`
+**HEADER** flips `GET https://www.noon.com/_svc/catalog/api/v3/search?q=…` to the
+Bahrain/**BHD** catalog over plain `curl_cffi impersonate=chrome` — no render budget
+needed (live-verified 2026-07-02: iPhone 15 256GB 447.29 / sale 294.23 BHD; ~10
+requests at ~1s spacing all HTTP 200). A cookie (`nloc=en-bh`) does NOT work; only the
+header does. GOTCHA: without the header the response is the KSA/SAR catalog with an
+IDENTICAL shape and NO currency field anywhere in the hit — the silent wrong-currency
+failure mode. Full request/response contract (paths, `sale_price` fallback, buy-box
+`offers[0]` authority rule, variant/condition handling, failure modes): the 2026-07-02
+recon `noon_contract` (recon_electronics), referenced from
+`docs/plans/2026-07-01-warmer-source-quality-blocker.md` fix-ladder item 4 (the noon-BH
+adapter). The same correction is appended to round-3 §3.1.

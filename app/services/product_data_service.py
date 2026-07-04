@@ -30,13 +30,16 @@ GENUINE_PRICE_DB_TTL = timedelta(
 
 
 def _title_persist_enabled() -> bool:
-    """Persist + rehydrate the resolved listing title on the L2 product_prices
-    cache. Default OFF -> byte-identical pre-033 behavior (no `title` in the
-    insert, no `title` in the returned dict). Flip ON only AFTER migration 033
-    lands (adds the nullable `title` column); a flag-ON write before the column
-    exists would error the fire-and-forget insert (swallowed), and a flag-ON read
-    would degrade the L2 hit to a miss (get_cached_price swallows it) — never a
-    crash, but the correct order is migration-then-flag."""
+    """Persist + rehydrate the resolved listing identity (title + in_stock, and
+    the ALREADY-persisted brand) on the L2 product_prices cache. Default OFF ->
+    byte-identical pre-033/pre-034 behavior (no `title`/`in_stock` in the insert,
+    no `title`/`brand`/`in_stock` in the returned dict). Flip ON only AFTER
+    migrations 033 (adds nullable `title`) AND 034 (adds nullable `in_stock`)
+    land; a flag-ON write before the columns exist would error the fire-and-forget
+    insert (swallowed), and a flag-ON read would degrade the L2 hit to a miss
+    (get_cached_price swallows it) — never a crash, but the correct order is
+    migrations-then-flag. One flag governs the whole title+brand+in_stock
+    identity round-trip (Wave-2 B1.2 DB-leg fix)."""
     return _os.getenv("ENABLE_PRICE_TITLE_PERSIST", "").strip().lower() in (
         "true", "1", "yes", "on",
     )
@@ -114,6 +117,11 @@ async def get_cached_price(product_key: str, region: str) -> Optional[Dict[str, 
         cols = "amount, currency, retailer, url, source_method, estimated, fetched_at"
         if _title_persist_enabled():
             cols += ", title"
+            # Wave-2 B1.2 — also rehydrate brand (column exists since migration
+            # 012; save_price has always written it) + in_stock (migration 034)
+            # so a DB-served price is SKU- AND stock-verifiable. Gated by the SAME
+            # flag as title so flag-OFF is byte-identical (no extra SELECT cols).
+            cols += ", brand, in_stock"
         response = (
             client.table("product_prices")
             .select(cols)
@@ -144,6 +152,16 @@ async def get_cached_price(product_key: str, region: str) -> Optional[Dict[str, 
         # (a None title = a legacy/flag-OFF row, treated exactly as pre-033).
         if _title_persist_enabled() and row.get("title"):
             result["title"] = row["title"]
+        # Wave-2 B1.2 — rehydrate brand + in_stock under the SAME flag. A None
+        # brand or a None in_stock = a legacy/flag-OFF row, so omit it (treated
+        # exactly as the pre-034 title-less/stock-less row). Only an explicit
+        # bool in_stock is rehydrated, so False correctly re-fires the display
+        # OOS pend on the DB-served path.
+        if _title_persist_enabled():
+            if row.get("brand"):
+                result["brand"] = row["brand"]
+            if isinstance(row.get("in_stock"), bool):
+                result["in_stock"] = row["in_stock"]
         return result
     except Exception as e:
         logger.debug(f"L2 price miss for {product_key}/{region}: {e}")
@@ -176,6 +194,13 @@ async def save_price(
         # so pre-033 (no column) writes are byte-identical.
         if _title_persist_enabled():
             row["title"] = price_data.get("title")
+            # Wave-2 B1.2 — persist in_stock too (migration 034), ONLY when it is
+            # an explicit bool. A None/absent in_stock is left off the row so the
+            # column stays NULL (= unknown), matching the pre-034 semantics. brand
+            # is already persisted unconditionally above (function param).
+            _in_stock = price_data.get("in_stock")
+            if isinstance(_in_stock, bool):
+                row["in_stock"] = _in_stock
         client.table("product_prices").insert(row).execute()
     except Exception as e:
         logger.warning(f"Failed to save price for {product_key}/{region}: {e}")

@@ -1,0 +1,127 @@
+{
+ "summary": "LANE 3 chokepoint parity map (worktree C:/Users/SynAckITPC/Documents/AI/smartcompare-kpi @ 7af40eb). Two weak chokepoints confirmed: (A) cache-READ `_cache_price_identity_ok` (structured_comparison_service.py:720-756, called at scs:4664 L1-Redis + scs:4676 L2-DB) and (B) display `is_price_showable(enforce_correctness=True)` (price_service.py:1313-1427, enforce sites response_builder.py:1240, scs:3450 SSE, scs:7029 /prices, text_routes.py:676 /price-kpi, zyte_service.py:672 seed). Both run only the axis-only `_backstop_identity_ok` (price_service.py:5800-5813, = `_axis_mismatch(strict_extras=False)`) + the bounded `_category_type_added` (price_service.py:4254-4263, fragrances-flagship + supplements-type ONLY) — strictly weaker than the write/selection gates (`should_cache_price` price_service.py:6139 + `select_best`/`_selection_match`). Runtime re-verification (offline, real functions, gate ON): 5 residual classes LEAK through BOTH weak chokepoints (gender flanker Eros→Pour Femme; non-flagship flanker Sauvage→Elixir; one-sided SPF; AirPods Pro→Pro 2 bare-generation; makeup one-sided finish-add), of which only 2 (gender flanker + one-sided SPF) ALSO pass the write gate = the warmer-writable poison classes today; ZMA→Cal-Mag leak direction is now CLOSED by 6a. Controls confirmed caught (S24→FE, EDP→EDT, Sauvage→Parfum, Whey→Isolate). Load-bearing new finding: on THIS branch the L2-DB round-trip drops title AND in_stock (product_data_service.py:103/119-126, save_price:139-152 — PR#12's migration-033 title persistence is NOT here), so every DB-served price re-enters identity-less → both weak chokepoints are VACUOUS for the entire DB leg, and scs:4679 re-promotes such rows into Redis under only the weak check. Secondary parity gap: the GPT-verdict scrub (extraction_service.py:1782) calls is_price_showable WITHOUT enforce_correctness/category, so a display-pended not_exact/OOS price's amount still reaches the verdict prompt. VariantDescriptor replacement plan, fail-closed directions, flag strategy, latency budget, and the runbook risk-quantification line are in recommendations.",
+ "findings": [
+  {
+   "id": "F1",
+   "area": "chokepoint-map/cache-read",
+   "file": "C:/Users/SynAckITPC/Documents/AI/smartcompare-kpi/app/services/structured_comparison_service.py",
+   "lines": "720-756 (def), callers 4664 (L1 Redis read) + 4676 (L2 DB read), both inside _get_price",
+   "claim": "_cache_price_identity_ok is the ONLY revalidation on served cached prices. Post-6a it runs `_backstop_identity_ok(query_name,title,category) and not _category_type_added(...)` (scs:753-756). Title-less cached entry -> True at scs:735-737 ('served (benign — nothing to verify)'). Gate-OFF or import failure -> True (scs:731-734). Fail direction: False -> caller treats as MISS (scs:4664-4667 'cache-read identity revalidation dropped a poisoned entry ... re-resolving'; scs:4676-4677 db_price=None) -> falls through L1->L2->live cascade.",
+   "evidence": "Read directly; verified at runtime: titleless_cache_read_ok=True (lane3_chokepoint_results.json extra)."
+  },
+  {
+   "id": "F2",
+   "area": "chokepoint-map/display",
+   "file": "C:/Users/SynAckITPC/Documents/AI/smartcompare-kpi/app/services/price_service.py",
+   "lines": "1313-1427; enforce block 1375-1426",
+   "claim": "is_price_showable's correctness backstop is OPT-IN (enforce_correctness=True AND exact_gate_enabled()). Order: in_stock is False -> guard_rejected='out_of_stock' (1376-1378); listing/search URL -> 'non_pdp_url' (1387-1390); no identity AND no url -> 'no_identity' (1399-1401); electronics accessory asymmetry (1404-1407); identity gate = `not _backstop_identity_ok(...) or _category_type_added(...)` -> 'not_exact' (1421-1426). CRITICAL calibration: identity=None with a url present SKIPS the identity gate entirely (verified: titleless+url fragrance at 55 BHD -> showable=True). Full _selection_match was TRIED here and reverted for over-rejecting descriptive PDP titles (comment 1408-1420).",
+   "evidence": "Read + runtime-verified both directions."
+  },
+  {
+   "id": "F3",
+   "area": "chokepoint-map/enforce-callers",
+   "file": "multiple",
+   "lines": "response_builder.py:1240 (single sync+streaming-complete chokepoint; pends via make_pending_price 1241-1256, guard_rejected -> metadata diag 1251-1255); structured_comparison_service.py:3450 (SSE mid-stream prices event, copy-per-product); structured_comparison_service.py:7029 (get_regional_prices = GET /text/prices/{product}); text_routes.py:676 (/price-kpi measurement surface); zyte_service.py:672 (off-clock seed, chokepoint-grade at seed time)",
+   "claim": "These 5 are the ONLY enforce_correctness=True sites. All other is_price_showable callers are deliberate plausibility-only (8 adapters: woocommerce:310, salla:296, occ:315, magento_graphql:748, noon:527, rest_json:500, unbxd:276, algolia:920, zyte:502; price_service internal 1640/2534/8181/8279/8561; scs:6116/6780; extraction_service:1782). The fairness reselect + OOS-returning adapters are the documented reasons the backstop is opt-in (comment price_service.py:1368-1374).",
+   "evidence": "Grep-complete over app/."
+  },
+  {
+   "id": "F4",
+   "area": "chokepoint-map/axis-only backstop",
+   "file": "C:/Users/SynAckITPC/Documents/AI/smartcompare-kpi/app/services/price_service.py",
+   "lines": "5800-5813 (_backstop_identity_ok), 5290-5368 (_axis_mismatch), 4254-4263 (_category_type_added), 4186-4251 (flagship-conc + supplement-type helpers)",
+   "claim": "_backstop_identity_ok = `not _axis_mismatch(query,title,category,strict_extras=False)`; empty title -> True (5811-5812). strict_extras=False EXCLUDES the form/candidate-omits/gender/_feminine_query_unconfirmed/color/clothing-size/vitamin-letter checks (those live only in the 5354-5367 strict block used by the brand-aware primary gates). _category_type_added covers ONLY fragrances (_flagship_concentration_added: {Extrait, Parfum, Parfum Intense} 4183) + supplements (_supplement_type_added + _supplement_form_added); returns False for all other categories (4263). extract_concentration('Dior Sauvage Elixir') = None (runtime) -> Elixir is invisible to both the concentration axis and the flagship check.",
+   "evidence": "Read + runtime probe."
+  },
+  {
+   "id": "F5",
+   "area": "residual-leak re-verification (item 2)",
+   "file": "scratchpad lane3_chokepoint_verify.py -> lane3_chokepoint_results.json",
+   "lines": "n/a (runtime, real functions, ENABLE_EXACT_PRICE_GATE default ON confirmed)",
+   "claim": "6 residual cases + 4 controls reproduced through the REAL functions. LEAK through display AND cache-read: R1 gender flanker ('Versace Eros EDT 100ml' -> 'Versace Eros Pour Femme EDT 100ml', fragrances): backstop OK, showable=True, cache_read_ok=True, AND _selection_match=True AND should_cache_price=True (the only fully-open class besides SPF). R2 non-flagship flanker ('Dior Sauvage' -> 'Dior Sauvage Elixir'): showable=True + cache_read_ok=True but selection=False + should_cache=False (write gates airtight -> latent, needs a poisoned/legacy entry). R3 one-sided SPF ('CeraVe Moisturizing Lotion' -> '... SPF 30', skincare): leaks EVERYTHING incl. should_cache=True (pinned deliberate tradeoff). R4 bare-generation ('Apple AirPods Pro' -> '... Pro 2', electronics, plausible 89.9 BHD): showable=True + cache_read_ok=True, write gates catch. R5 makeup one-sided finish ('Fit Me Foundation' -> 'Fit Me Matte + Poreless'): same shape as R4 (write gates catch; _category_type_added has NO makeup arm). CLOSED by 6a: R6 ZMA->Cal-Mag leak direction ('NOW ZMA' -> 'NOW Calcium Magnesium') is now REJECTED at both weak chokepoints via _supplement_type_added constituent tokens (guard_rejected='not_exact') — the remaining ZMA residual is the OVER-REJECTION direction (a correct descriptive title enumerating ZMA's own constituents) + acronym-expansion matching upstream. CONTROLS caught as designed: S24->FE ('not_exact' at 250 BHD), EDP->EDT, Sauvage->Parfum + Whey->Isolate (6a works at BOTH weak chokepoints).",
+   "evidence": "lane3_chokepoint_results.json + lane3_fix.txt; note the first run's C1/titleless display verdicts were contaminated by the implausible-low plausibility guards (30/12.5 BHD) — re-run at plausible amounts isolated the identity verdicts."
+  },
+  {
+   "id": "F6",
+   "area": "WARMER interplay — the DB leg is identity-blind (load-bearing, item 4)",
+   "file": "C:/Users/SynAckITPC/Documents/AI/smartcompare-kpi/app/services/product_data_service.py",
+   "lines": "get_cached_price 97-129 (SELECT amount,currency,retailer,url,source_method,estimated,fetched_at — NO title, NO in_stock, NO brand); save_price 132-154 (INSERT without title/in_stock)",
+   "claim": "On THIS branch (feature/genuine-price-kpi off PR#13) the PR#12 title-persistence (migration 033 + ENABLE_PRICE_TITLE_PERSIST) is ABSENT. Every L2-DB-served price re-enters with title=None AND in_stock=None -> _cache_price_identity_ok returns True unverified (scs:735-737), the display identity gate SKIPS (identity None + url present, verified showable=True), and the OOS pend can never re-fire. scs:4679 then set_cached()s this identity-less object into L1 Redis for the full price_cache_ttl — gated ONLY by the weak read check, NOT should_cache_price. product_prices rows are append-history and outlive Redis TTL (7d genuine / 24h converted freshness via _price_row_fresh:117). Consequence: Wave-2's descriptor comparison is VACUOUS for the entire DB leg unless the title (or a persisted descriptor) round-trips — merging/extending PR#12's migration 033 is a hard Wave-2 dependency, not an optional nicety.",
+   "evidence": "Read directly; runtime titleless verdicts above."
+  },
+  {
+   "id": "F7",
+   "area": "WARMER interplay — write-path audit (item 4)",
+   "file": "C:/Users/SynAckITPC/Documents/AI/smartcompare-kpi/app/services/structured_comparison_service.py + price_service.py",
+   "lines": "all positive-price cache writes: scs:4756-4757 (zyte), 5321-5322 (select_best winner), 6149-6150 (iherb), 6180-6181 (pharmacy), 6235-6236 (page scrape), 6622-6625 (_persist_genuine_price -> Redis+DB, used by the parked-converted tier at 6409); ungated write scs:6440 = Tier-3 GPT estimate ONLY (source_method 'estimated'/gpt_* is never in _showable_source_methods -> can never display; benign). should_cache_price (price_service.py:6139-6202) enforces title-required (6158-6160), real-PDP-URL-required (6169-6171), in_stock-False refused (6172-6173), accessory asymmetry (6179-6181), _selection_match + _brand_evidence_ok (6184-6196), structured-code override (6202).",
+   "claim": "No raw-write bypass exists for showable prices; the write gate is airtight for every runtime-verified class EXCEPT the two _selection_match itself accepts: R1 gender flanker and R3 one-sided SPF (both verified should_cache_price=True). Residual risk if ENABLE_PRICE_CACHE_WARMER flipped TODAY (pre-Wave-2): (a) WRITABLE poison — gender-flanker + one-sided-SPF wrong prices cached for the 7d genuine TTL and passing display; exposure is WIDENED by ENABLE_ADAPTER_QUERY_LADDER=ON (core-term 'Eros' retrieves flanker-only inventory — plan §F1 2026-07-02 note, reproduced there through _match_woo_product); (b) READ-SIDE latent — R2/R4/R5-shaped entries serve full-TTL if present, creatable only via (a), a pre-purge legacy row (fresh-purge precondition), or the identity-blind DB leg (F6); (c) TTL-staleness — a genuinely in-stock warmed price can go OOS mid-TTL and neither chokepoint can detect it DB-side (in_stock not persisted). This is the runbook justification line item: warmer-before-Wave-2 carries 2 writable classes + an unverifiable DB leg + purge-dependence.",
+   "evidence": "Grep-complete write-site audit + runtime should_cache_price verdicts."
+  },
+  {
+   "id": "F8",
+   "area": "parity gap — GPT-verdict payload scrub is NOT chokepoint-grade",
+   "file": "C:/Users/SynAckITPC/Documents/AI/smartcompare-kpi/app/services/extraction_service.py",
+   "lines": "1780-1791 (`if is_price_showable(name, price):` — no category, no enforce_correctness)",
+   "claim": "_verdict_safe_product (the PP-1 fix) hides estimated/sample/implausible amounts from the GPT verdict but NOT the enforce-only classes: a price display will pend as not_exact/out_of_stock/non_pdp_url passes this non-enforced call, so its raw amount is dumped into the verdict prompt while the card renders 'Pricing lands soon' — GPT can write a price-referencing pro/con beside a pending card. Cheap Wave-2 slot-in: thread category + enforce_correctness=True here (same predicate, ~1-line).",
+   "evidence": "Static read; enforce defaults False (price_service.py:1315); generate_comparison runs BEFORE response_builder's pending normalization (comment 1758-1760)."
+  },
+  {
+   "id": "F9",
+   "area": "prior-session reproduction counts",
+   "file": "docs/plans/2026-07-01-warmer-source-quality-blocker.md + CLAUDE.md 2026-07-01 entry",
+   "lines": "plan §session-2 (item 6a) + §F1 ladder-exposure note; CLAUDE.md '20/20+22/51 reproduced' claim",
+   "claim": "The prior 20/20 + 22/51 reproductions targeted these same two chokepoints pre-6a. Post-6a state re-verified here: the flagship-concentration + supplement-type/form + supplement-constituent subclasses are CLOSED at both weak chokepoints (C3/C4/R6); the surviving weak-chokepoint leak set is the gender flanker, non-flagship flanker (Elixir/Suprême-class), one-sided SPF, bare-generation add, makeup finish-add, plus the g<->ml cross-unit and hyphen/size-letter items which are OVER-REJECTION-direction residuals (not leaks) per the design doc.",
+   "evidence": "Runtime sample F5 + docs cross-read."
+  }
+ ],
+ "recommendations": [
+  {
+   "id": "R1",
+   "priority": "P0",
+   "title": "VariantDescriptor slot-in points (the replacement plan, item 3)",
+   "details": "Build `app/services/variant_descriptor.py`: `extract_variant_descriptor(text, category, brand='') -> VariantDescriptor` (frozen dataclass) FORMALIZING the existing pure-regex extractors already in price_service (extract_concentration:3008, _quals_in/_CATEGORY_VARIANT_QUALIFIERS, size/storage/count/strength/weight-volume, _percents:4280, SPF, _supplement forms/types:4354+, flavour/finish/material/fit, gender tokens, plus NEW fields: bare-generation int (electronics line), flanker-word from a curated table (elixir/supreme/absolu/intense/extreme — NEVER base-name words private/oud/noir/nuit), constituent-set (ZMA<->zinc-magnesium-aspartate expansion table), typed size {value, unit_class}). `descriptors_compatible(q, c, category) -> (bool, failing_field)` encodes per-field ASYMMETRY explicitly (one-sided tolerate vs fail-closed per field+category), replacing the blanket both-stated rule. Slot-ins: (1) display — replace price_service.py:1421-1424's `_backstop_identity_ok + _category_type_added` pair inside the enforce block; stamp guard_rejected='not_exact:<field>' for measurable blast radius (response_builder:1251-1255 diag already carries it); (2) cache-read — replace scs.py:753-756 with the SAME call so read==display parity is structural (one shared helper, not two parallel pairs); (3) verdict scrub — extraction_service.py:1782 gains category+enforce (F8); (4) OPTIONAL third consumer: the strict_extras branch of _axis_mismatch can delegate field-by-field later, but do NOT touch _selection_match in Wave-2 (write gates are airtight; churn there risks the KPI 18/18)."
+  },
+  {
+   "id": "R2",
+   "priority": "P0",
+   "title": "Fail-closed directions + user-facing consequences (item 3)",
+   "details": "Cache-READ rejection = treated as MISS -> L1 reject falls to L2, L2 reject falls to the live cascade (scs:4664-4682). User consequence: correct-or-pending price after a slower resolve; on the 30s-capped cold path this can mean converted/pend. Cost consequence: re-resolution burns scrape/Serper budget — descriptor OVER-rejection at the read chokepoint structurally DEFEATS the warmer (every warmed entry re-resolves), which is exactly why the full superset was reverted there; the descriptor must be calibrated leak-closing WITHOUT widening rejection of descriptive PDP titles ('Niacinamide 10% + Zinc 1%', 'Tom Ford Private Blend Oud Wood'). Display rejection = make_pending_price -> FE 'Pricing lands in a future update' line, scoring takes the missing-data path, reason recorded in metadata (never on the public price; public_price_view strips guard_rejected + _-keys, price_service.py:6205-6221). Over-rejection at display = coverage loss only, never incorrectness — so when in doubt, bias display fail-closed and cache-read tolerate."
+  },
+  {
+   "id": "R3",
+   "priority": "P0",
+   "title": "Flag-OFF byte-identity strategy (item 3)",
+   "details": "New flag ENABLE_VARIANT_DESCRIPTOR, nested UNDER exact_gate_enabled() (both must be on), default OFF at land -> flip after the both-directions coverage sweep + comm gate, mirroring the ENABLE_EXACT_PRICE_GATE discipline. Flag-OFF path must execute the EXACT current pair (_backstop_identity_ok + _category_type_added) at both chokepoints — pin with a golden byte-identity test like PR#9's. Keep the existing pinned xfails in tests/test_correctness_coverage_sweep_fixes.py as the flip ledger: each residual the descriptor closes flips xfail->pass (design doc §5)."
+  },
+  {
+   "id": "R4",
+   "priority": "P0",
+   "title": "Latency budget (item 3)",
+   "details": "Live-path descriptor build+compare must be pure regex + frozenset/table lookup — NO LLM, NO I/O. Inputs are already capped at _MATCH_INPUT_CAP=512 chars (price_service.py:5310-5313) -> O(microseconds-to-low-ms) per price; called ~2-6x per compare at the chokepoints. Compute ONCE per price and stamp `price['_variant_desc']` at resolution — Redis serializes it free, public_price_view auto-strips it (underscore prefix), the chokepoints reuse instead of re-extracting; only the QUERY-side descriptor is recomputed per request. Option C's 'narrow LLM hint' runs OFF-CLOCK ONLY (warmer/seed enrichment persisting a hint field into the cached object); the live path reads the persisted hint or decides on regex fields alone. Verify with DEBUG_STAGE_TIMINGS before/after."
+  },
+  {
+   "id": "R5",
+   "priority": "P0",
+   "title": "WARMER runbook justification line (item 4 quantification)",
+   "details": "If ENABLE_PRICE_CACHE_WARMER were flipped TODAY (KPI 18/18, write gates airtight) the residual poisoning surface by code-reading is: (1) TWO warmer-WRITABLE wrong-SKU classes pass should_cache_price and then display for the 7d genuine TTL — gender flanker (Eros->Eros Pour Femme; runtime-verified selection=True AND should_cache=True) and one-sided SPF (CeraVe->+SPF 30; same) — with exposure WIDENED by ENABLE_ADAPTER_QUERY_LADDER=ON (core-term retrieval surfaces flanker-only inventory, plan §F1); (2) the L2-DB leg is identity-BLIND on this branch (no title/in_stock round-trip, F6) — any historic wrong DB row within its freshness window serves unverified and gets re-promoted into Redis at scs:4679 past the weak gate; (3) purge-missed legacy Redis/DB entries of the latent classes (Elixir-flanker, bare-generation, finish-add) serve full-TTL through the weak read/display backstops (runtime-verified cache_read_ok=True + showable=True). Wave-2 descriptor + title/descriptor persistence (merge/extend PR#12 migration 033) + the fresh purge close (2)(3) and the gender/flanker fields close most of (1); one-sided SPF remains a documented pinned tradeoff unless the descriptor's inherent-SPF product-class exception decides it."
+  },
+  {
+   "id": "R6",
+   "priority": "P1",
+   "title": "Wave-2 hard dependency: identity persistence for the DB leg",
+   "details": "Before or with the descriptor: persist title (PR#12 migration 033 + ENABLE_PRICE_TITLE_PERSIST — currently on the warmer branch, NOT on feature/genuine-price-kpi) and preferably the serialized descriptor + in_stock on product_prices, and SELECT them back in get_cached_price (product_data_service.py:103). Without this, cache-read/display descriptor checks are vacuous for every DB-served price and the warmer's 7-day genuine TTL rides on an unverifiable leg. PR sequencing note: #12 -> #13 -> kpi branch merge order already planned; make migration 033 part of the Wave-2 preconditions checklist."
+  },
+  {
+   "id": "R7",
+   "priority": "P1",
+   "title": "Coverage-sweep verifier for Wave-2 (both directions)",
+   "details": "The descriptor's own over-rejection is the next blind spot. The sweep MUST include the known false-pend traps: femme-base fragrances (women's base lines where 'pour femme' IS the base — the current asymmetric tolerance at price_service.py gender helpers), inherent-SPF sunscreens (Anthelios SPF 50+ one-sided, pinned test_R6_overrej_skincare_spf_*), descriptive constituent-enumerating supplement titles (a correct 'NOW ZMA Zinc Magnesium Aspartate' PDP title must NOT be rejected by the constituent field — note 6a already rejects it today at the weak chokepoints per the _supplement_type_added token logic, an EXISTING over-rejection the descriptor's expansion table should FIX, not inherit), base-name flanker words ('Tom Ford Private Blend Oud Wood' IS 'Oud Wood'), and brand-omitted sephora-style titles. Reproduce through the runtime selectors (is_price_showable enforce=True, _cache_price_identity_ok, should_cache_price) exactly as this lane's harness does (scratchpad lane3_chokepoint_verify.py is reusable)."
+  },
+  {
+   "id": "R8",
+   "priority": "P2",
+   "title": "Small parity fixes to fold into Wave-2",
+   "details": "(a) extraction_service.py:1782 verdict scrub -> enforce_correctness=True + category (F8). (b) Consider stamping guard_rejected on the in_stock-False display path uniformly (already done) and adding a metadata counter for cache-read drops (scs:4665 logs but nothing measures — a `cache_read_rejected` diag would make Wave-2's read-chokepoint blast radius measurable the same way B7 did for display). (c) The scs:4679 DB->L1 promotion should re-run should_cache_price (not just the weak read check) once titles round-trip — cheap defense-in-depth closing the promotion hole."
+  }
+ ]
+}

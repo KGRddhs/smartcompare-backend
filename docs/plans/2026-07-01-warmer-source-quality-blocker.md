@@ -62,3 +62,106 @@ Per-category warmed `usable_exact_genuine` KPI ≥ 0.85 (the same gate PR #12 bu
 - Adding identity is a CORE-PATH change (not warmer-inert) → coverage-sweep for over-rejection before merge; flag-gate (`exact_gate_enabled()`) for flag-OFF byte-identity.
 - `nocache=True` local warm/resolve STILL WRITES the shared prod cache (bypasses the READ, not the WRITE).
 - Run the heavy coverage sweeps in a FRESH session (rate-limit throttle worsens with session length).
+
+## 2026-07-01 (session 2) — KPI recon + offline-safe landings + the Serper blocker
+
+Branch `feature/genuine-price-kpi` (off PR #13 `25adbdd`), commit `884c879`.
+
+### THE BLOCKER (load-bearing): the local `.env` Serper key is DEPLETED
+The baseline warm (`scripts/measure_warmed_kpi.py`, prod-matching flags) came back **2/18**
+(electronics **2/6**, fragrances **0/6**, fashion **0/6**) — NOT the remembered 8/18. Cause:
+the local `.env` Serper key (`9dfc22…`) returns **`{"message":"Not enough credits"}`** on every
+`/search` + `/shopping` (both `gl=us` and `gl=bh`). That starves Serper discovery/shopping →
+the genuine fragrance/fashion cascade produces nothing → everything falls to `estimated`. The
+memory's 8/18 was measured with the **healthy paid Railway key `7de9c750…`**, which is NOT in the
+local `.env` (the classic "local `.env` rotations-stale" gotcha). Railway MCP **and** CLI are both
+unauthenticated this session (OAuth expired) → I could not pull the healthy key. **The KPI cannot
+move without a healthy Serper key** — fragrances/fashion resolve 0 genuine, and the determinism
+race is moot (nothing resolves *converted* either; it's all `estimated`). The 2 electronics that
+DID resolve genuine (iPhone 15, S24 Ultra) came from **sharafdg** — a Serper-FREE direct source.
+
+### Landed (offline-safe, comm-gated, flag-gated ENABLE_EXACT_PRICE_GATE byte-identical OFF)
+- **Item 2 — occ `candidate_brand`** (`occ_service.py:140/146`): thread `prod.get("manufacturer")`
+  (SAP-Commerce OCC `fields=FULL`) into BOTH `strict_title_match` + `_selection_match`. Recon
+  (`wf_393f8790`) proved **magento is NOT wireable** (no brand in its GraphQL nodes / query →
+  deferred to a live-probe investigation of the Adobe Catalog-Service brand attribute); shopping
+  (Serper, no brand field), bolo-sitemap (no `_selection_match` alongside), and rating_service are
+  correctly EXCLUDED. **KPI impact: NONE for the truth set** — the only OCC *electronics* source is
+  `virginmegastore.qa` (Qatar → `converted`, not genuine BHD); the fix is a correctness win for
+  converted-path matching + any BH-OCC source in other categories.
+- **Item 6a — cache-read hardening** (`_cache_price_identity_ok`, scs.py:741): now also runs
+  `_category_type_added`, MATCHING the display chokepoint `is_price_showable` (already proven
+  over-rejection-free + comm-green). Closes the flagship-concentration flanker leak
+  (Sauvage→Parfum, Whey→Whey Isolate) on the cache-READ path (previously axis-only = weaker than
+  display). Defense-in-depth; a warmer-activation precondition; does NOT move the KPI.
+- Tooling: `measure_warmed_kpi.py` aligned to the AUTHORITATIVE contract
+  (`usable_exact_genuine_for_product`: `in_stock is not False` + truth-axis identity) + per-row
+  diagnostics (`reason`/`source_method`/`in_stock`/`url`/`title`); `eval_runner:493` stale docstring.
+- Pinned: `tests/test_kpi_session_fixes.py` (12, both directions + flag-OFF).
+
+### Recon-derived designs READY for the live session (not yet built)
+- **Item 1 — determinism** (`_get_price`/`_consume_adapter_prefetch`): the genuine tiers run
+  SEQUENTIALLY under ONE 15s `_PRICE_RACE_TIMEOUT`; upstream stages (serper 6 + shopify 3 + algolia
+  5 + consume 12 = 26s) can exceed the cap before the genuine fan_out runs → outer `wait_for`
+  cancels → parked `converted` returned (`_price_fallback_on_miss` 4113 / fall-through 5720). Fix
+  (flag `ENABLE_GENUINE_PRICE_PRIORITY`, default OFF byte-identical): reserve
+  `GENUINE_MIN_BUDGET_SECONDS` for the fan_out (clamp shopify/algolia/consume sub-timeouts), compute
+  the fan_out window vs the OUTER deadline, prefer a genuine hit over parked converted. **DEFERRED**
+  — needs live tuning of `GENUINE_MIN_BUDGET_SECONDS`; the warmed KPI at 60s doesn't exercise the
+  15s live starvation, so this is a COLD-LIVE-path fix, not a warmed-KPI mover.
+- **Item 6b — fragrance-flanker axis**: a SYMMETRIC set-equality axis in `_axis_mismatch`'s always-on
+  block would close `Sauvage→Sauvage Elixir` / `Good Girl→Suprême` at the backstop. **HELD** — must
+  contain ONLY unambiguous flanker words (elixir/supreme/absolu/intense/extreme) and MUST NOT contain
+  base-name/descriptive words (`private`/`oud`/`noir`/`nuit` — "Tom Ford Private Blend Oud Wood" IS
+  "Oud Wood" → would over-reject). Item 6a already covers the flagship-concentration subclass;
+  land 6b only behind a large both-directions over-rejection sweep.
+- **Token-indistinguishable → Wave-2 VariantDescriptor**: AirPods Pro→Pro 2 (added bare generation
+  int), ZMA→Cal-Mag (blend swap), Eros→Eros Pour Femme (base→women's-flanker; note `_selection_match`
+  ALSO accepts this one — a genuinely open tradeoff, not just a backstop gap).
+
+### NEXT SESSION (with a healthy Serper key)
+1. Provide a healthy Serper key (paste / `railway login` so it can be pulled / rotate a fresh one) +
+   `ENABLE_BH_GCC_CATALOG_SOURCES=true`.
+2. Re-measure the baseline (`measure_warmed_kpi.py`) 3× to establish the TRUE warmed KPI + confirm
+   fragrances recover toward 5-6/6.
+3. Fragrances OOS audit (Acqua di Gio) → 6/6.
+4. Electronics: build the noon-BH direct adapter (LARGE — the durable coverage; sharafdg only covers
+   2/6) + modernize the 4 stale truth SKUs (iPad Air M3 / current MacBook Air / Switch).
+5. Fashion: wire ounass/level-shoes/6thstreet (NO genuine BH fashion source today → 0/6).
+6. Implement + live-tune Item 1 (determinism) and consider Item 6b behind the sweep.
+
+## 2026-07-02 (Wave B-FIX BF5) — ladder residual-EXPOSURE note (sweep F1, WARMER-ACTIVATION consideration)
+
+The Wave-B adapter retrieval-term ladder (`build_adapter_search_terms`, flag
+`ENABLE_ADAPTER_QUERY_LADDER`) widens practical EXPOSURE of the ~9
+token-indistinguishable residuals held for Wave-2 VariantDescriptor: the core
+term deliberately strips exactly the axes (gender/concentration/padding) those
+residuals fail to discriminate, so a store carrying ONLY the flanker now
+retrieves it on the core-term retry where the full-name search returned zero
+rows. Reproduced through the real runtime selector (regression-flag sweep F1,
+`waveb_regressionFlags.json`): `build_adapter_search_terms('Versace Eros Eau de
+Toilette 100ml','fragrances')` → core `'Eros'`; a store carrying only "Eros
+Pour Femme" returns it on the retry and `_match_woo_product` ACCEPTS it (the
+acceptance leak itself is the PRE-EXISTING, documented `_selection_match`
+gender-flanker residual — the ladder does not widen per-candidate ACCEPTANCE,
+only which candidates real stores surface). Not a pin regression.
+
+**Ruling:** listed as a WARMER-ACTIVATION consideration ALONGSIDE the existing
+Wave-2 VariantDescriptor precondition — before flipping
+`ENABLE_PRICE_CACHE_WARMER`, either the VariantDescriptor closes the residual
+set or the ladder's exposure of it is re-assessed against the warm subset.
+**Rollback:** `ENABLE_ADAPTER_QUERY_LADDER=false` removes the exposure widening
+(single-term retrieval, pre-B3 behavior).
+
+## 2026-07-02/03 (session 3) — ✅ KPI 18/18, per-category 1.000; the warmer KPI gate is MET
+
+**Branch `feature/genuine-price-kpi` @ `a11dbb3`** (29 commits this session, waves A/B/B-fix/C/D + polish + eyewear + reconcile, all coverage-swept + dispatcher-gated).
+
+- **Unblocked:** new healthy Serper key (`f47c159b…`) synced to all 4 `.env` copies. Baseline (run 1): **6/18**.
+- **Recon disproved the Serper-gate premise:** no code gate stops the $0 catalog adapters when Serper dies. Real blockers: full-canonical-name store-API retrieval (0 rows), the strict pre-gate alias over-rejections, dead configs (6thstreet index token in the JS chunk; ourshopee 404), and 4/6 electronics truth SKUs discontinued at BH retail. Only true Serper dependency: fan_out `candidate_urls` (site: discovery only).
+- **Landed:** truth-set modernization (S25/S25U/iPad-M3/MBA-M5-512/Switch-2, live-proven; fashion GCC naming) + freshness probe; matcher folds; 6thstreet revival; footlocker wiring (built-but-dead); magento `brand_name` wiring; noon-BH direct adapter (`noon_service.py`, `x-locale: en-bh` header cracks the BHD catalog — falsifies round-3/4 docs; buy-box `offers[0]` authority); retrieval-term ladder (`ENABLE_ADAPTER_QUERY_LADDER` ON); selection-primary acceptance (`ENABLE_ADAPTER_SELECTION_PRIMARY`, exact-gate-scoped, brand-evidence-fenced at adapters AND shared consumers); organic PDP harvest (`ENABLE_ORGANIC_PDP_HARVEST` ON — Serper organics carry structured BHD price extras); identity stamps + cache/eval structured-code parity; negcache outage guard; converted-terminal fallback; eyewear model-code tolerance (Luxottica colorway/lens numerics); 4 non-retail catalog rows demoted (opensooq/labeb/dubizzle/comparebh); `ENABLE_GENUINE_PRICE_PRIORITY` determinism landed DORMANT (default OFF, byte-identity verified; needs a live-tuning session before any flip).
+- **Sweep discipline paid again:** 3 rings of coverage-driven leak/over-rejection sweeps found+closed a CRITICAL wrong-brand fence drop, the identity-stamp gap, a year-tolerance leak ring, and a false-green truncated-title pin.
+- **Measured (warmed, `measure_warmed_kpi`):** runs 2/3/4 = **17/18 identical ×3** (wobble eliminated); run 5 after the eyewear fix = **18/18 — electronics 1.000, fragrances 1.000, fashion 1.000**. Every row genuine BHD, in-stock, real PDP.
+- **Comm gate: PASS** — base `25adbdd` 46 failed / branch 49→46 after reconciling 3 fixture-isolation UPDATE_TESTs (`a11dbb3`; live sharafdg/noon adapters were preempting mocked scenarios — the PR#13 class); branch-only-NEW = []; +~630 net-new tests.
+- **Warmer activation (runbook `docs/runbooks/2026-06-30-warmer-activation.md`) remaining preconditions:** fresh cache purge; Wave-2 VariantDescriptor for the cache-read/display axis-only backstop residuals + the ~9 token-indistinguishable classes; the ladder-exposure consideration (§F1 note above); determinism live-tuning is optional for the warmer (60s off-clock) but required before flipping `ENABLE_GENUINE_PRICE_PRIORITY` on the live path.
+- Session state/handoff: `memory/project_genuine_price_kpi_session3.md`.

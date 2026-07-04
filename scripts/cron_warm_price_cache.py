@@ -56,6 +56,10 @@ os.environ["STREAM_HARD_CAP_SECONDS"] = os.getenv("WARMER_STREAM_HARD_CAP", "150
 os.environ["FAN_OUT_BUDGET_SECONDS"] = os.getenv("WARMER_FAN_OUT_BUDGET", "35")
 os.environ.setdefault("FIRECRAWL_TIMEOUT", os.getenv("WARMER_FIRECRAWL_TIMEOUT", "45"))
 os.environ.setdefault("SCRAPEDO_TIMEOUT", os.getenv("WARMER_SCRAPEDO_TIMEOUT", "35"))
+# Wave-2 B3a — OFF-CLOCK warm signal. Arms warmer_write_veto (price_service) so a
+# gender-flanker / one-sided-SPF / makeup-formula ADD is REFUSED at cache-write
+# (the 3 warmer-writable poison classes) while the live 15s path stays untouched.
+os.environ.setdefault("WARMER_CONTEXT", "1")
 
 # Load .env for LOCAL/manual runs (Railway injects env directly — load_dotenv
 # no-ops in the container since there is no .env file). override=False preserves

@@ -191,7 +191,7 @@
   "genuine_method": "rest_json_bhd",
   "sample_url": "https://ourshopee.com/bahrain/dell-latitude-7420-laptop-14inch-intel-core-i7-11th-gen-16-g/PN1497/",
   "priority_rank": 3,
-  "status": "live"
+  "status": "dead"
  },
  {
   "domain": "bh.taifalemarat.com",
@@ -567,7 +567,7 @@
   "currency": "BHD",
   "country": "BH",
   "genuine_method": "magento_graphql_bhd",
-  "sample_url": "https://www.bathandbodyworks.com.bh/en/ (price via GraphQL by phrase/sku)",
+  "sample_url": "https://www.bathandbodyworks.com.bh/en/",
   "priority_rank": 11,
   "status": "dead"
  },
@@ -643,7 +643,7 @@
   "currency": "BHD",
   "country": "BH",
   "genuine_method": "magento_graphql_bhd",
-  "sample_url": "https://www.footlocker.com.bh/en/ (price via GraphQL by phrase/sku)",
+  "sample_url": "https://www.footlocker.com.bh/en/",
   "priority_rank": 12,
   "status": "dead"
  },
@@ -680,7 +680,7 @@
   "currency": "BHD",
   "country": "BH",
   "genuine_method": "magento_graphql_bhd",
-  "sample_url": "https://www.americaneagle.com.bh/en/ (price via GraphQL by phrase/sku)",
+  "sample_url": "https://www.americaneagle.com.bh/en/",
   "priority_rank": 13,
   "status": "dead"
  },
@@ -756,7 +756,7 @@
   "currency": "BHD",
   "country": "BH",
   "genuine_method": "magento_graphql_bhd",
-  "sample_url": "https://www.muji.bh/en/ (price via GraphQL by phrase/sku)",
+  "sample_url": "https://www.muji.bh/en/",
   "priority_rank": 14,
   "status": "dead"
  },
@@ -814,7 +814,7 @@
   "currency": "BHD",
   "country": "BH",
   "genuine_method": "magento_graphql_bhd",
-  "sample_url": "https://www.newbalance.com.bh/en/ (price via GraphQL by phrase/sku)",
+  "sample_url": "https://www.newbalance.com.bh/en/",
   "priority_rank": 15,
   "status": "dead"
  },
@@ -1170,7 +1170,8 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.dubizzle.com.bh/en/mobile-phones-accessories/mobile-phones/",
   "priority_rank": 25,
-  "status": "live"
+  "status": "dead",
+  "note": "non-retail: user classifieds (OLX family) - never a genuine retail shelf price. Demoted Wave D CV3 2026-07-02; generator skip added (_NON_RETAIL_DOMAINS). Do not re-promote."
  },
  {
   "domain": "petshomebh.com",
@@ -1340,7 +1341,8 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://comparebh.com/product/apple-airpods-pro-3/",
   "priority_rank": 30,
-  "status": "live"
+  "status": "dead",
+  "note": "non-retail: price-comparison aggregator - the F6 pricena/kanbkam class. Demoted Wave D CV3 2026-07-02; generator skip added (_NON_RETAIL_DOMAINS). Do not re-promote."
  },
  {
   "domain": "nexcelbahrain.com",
@@ -1376,7 +1378,8 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://bh.labeb.com/en/pc/oneplus-9r-5g-dual-sim-ram-12gb-rom-256gb-chinese-version-383898",
   "priority_rank": 31,
-  "status": "live"
+  "status": "dead",
+  "note": "non-retail: price-comparison aggregator (cross-store min, not a retailer PDP) - the F6 pricena/kanbkam class. Demoted Wave D CV3 2026-07-02; generator skip added (_NON_RETAIL_DOMAINS). Do not re-promote."
  },
  {
   "domain": "advancedpcbahrain.com",
@@ -1449,7 +1452,8 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://bh.opensooq.com/en/mobile-phones-tablets/mobile-phones",
   "priority_rank": 33,
-  "status": "live"
+  "status": "dead",
+  "note": "non-retail: user classifieds (used-goods/private listings, self-asserted Product JSON-LD) - never a genuine retail shelf price. Demoted Wave D CV3 2026-07-02; generator skip added (_NON_RETAIL_DOMAINS). Do not re-promote."
  },
  {
   "domain": "alkhabeershop.com",
@@ -2493,7 +2497,7 @@
   "currency": "SAR",
   "country": "KSA",
   "genuine_method": "rest_json_bhd",
-  "sample_url": "https://www.panda.sa/en (product via API id/sku)",
+  "sample_url": "https://www.panda.sa/en",
   "priority_rank": 6,
   "status": "dead"
  },

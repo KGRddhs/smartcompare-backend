@@ -1751,7 +1751,9 @@ def _scrub_youtube_signal_if_off(product: Optional[Dict]) -> Optional[Dict]:
     return product
 
 
-def _verdict_safe_product(product: Optional[Dict]) -> Optional[Dict]:
+def _verdict_safe_product(
+    product: Optional[Dict], category: Optional[str] = None
+) -> Optional[Dict]:
     """WS-C C1 — copy-on-write projection that hides a NON-showable price's raw
     amount from the GPT verdict payload (the `json.dumps(product)` below).
 
@@ -1762,6 +1764,18 @@ def _verdict_safe_product(product: Optional[Dict]) -> Optional[Dict]:
     decides showability (estimated / sample / wrong-cheap / wrong-SKU → not
     showable); when not showable we swap in the `make_pending_price` shape
     (amount=None) so the dumped payload cannot expose any amount.
+
+    Wave-2 B1.3 — chokepoint parity (recon F8/R8a): the display chokepoint
+    calls `is_price_showable(..., category=..., enforce_correctness=True)`, so a
+    price the card will PEND as not_exact / out_of_stock / non_pdp_url is hidden
+    from the user — but this scrub previously called `is_price_showable` with
+    neither `category` nor `enforce_correctness`, so that same amount still
+    reached the verdict prompt and GPT could write a price-referencing pro/con
+    beside a "Pricing lands soon" card. We now thread the orchestrator-resolved
+    `category` and pass `enforce_correctness=True` so the verdict payload sees
+    exactly what the card shows. This is gate-scoped un-flagged: the enforce
+    block inside `is_price_showable` no-ops when `ENABLE_EXACT_PRICE_GATE` is
+    off, so flag-OFF behaviour is byte-identical.
 
     Returns the SAME object when the price is showable / absent (no copy);
     returns a shallow copy with a replaced `price` otherwise — the original
@@ -1779,7 +1793,12 @@ def _verdict_safe_product(product: Optional[Dict]) -> Optional[Dict]:
     # top-level import here would be circular (matches the line ~784 pattern).
     from app.services.price_service import is_price_showable, make_pending_price
     name = product.get("full_name") or product.get("name") or ""
-    if is_price_showable(name, price):
+    # Canonical category = the orchestrator-resolved category threaded from
+    # generate_comparison; fall back to the product dict's own hint.
+    resolved_category = category or product.get("category")
+    if is_price_showable(
+        name, price, resolved_category, enforce_correctness=True
+    ):
         return product
     # Not showable → swap in the pending shape (amount=None), preserving the
     # known currency/size so the FE keeps its bottle-size context.
@@ -1872,8 +1891,8 @@ If this is a cross-tier comparison, frame it as "different products for differen
         # a NON-showable (estimated/sample/wrong-cheap) price's raw amount never
         # reaches the json.dumps payload below — GPT cannot then write a price
         # claim about a product whose card renders "Pricing lands…".
-        _p1 = _verdict_safe_product(_scrub_youtube_signal_if_off(_scrub_consult_quotes_if_off(product1)))
-        _p2 = _verdict_safe_product(_scrub_youtube_signal_if_off(_scrub_consult_quotes_if_off(product2)))
+        _p1 = _verdict_safe_product(_scrub_youtube_signal_if_off(_scrub_consult_quotes_if_off(product1)), category)
+        _p2 = _verdict_safe_product(_scrub_youtube_signal_if_off(_scrub_consult_quotes_if_off(product2)), category)
         user_msg = f"""<USER_INPUT>
 PRODUCT 1:
 {json.dumps(_p1, indent=2)}

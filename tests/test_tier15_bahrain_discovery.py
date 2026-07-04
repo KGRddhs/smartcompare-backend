@@ -223,7 +223,18 @@ from unittest.mock import AsyncMock, MagicMock
 
 @pytest.fixture
 def clean_service(monkeypatch):
-    """Fresh service with cache + DB writes neutralized (fan_out pattern)."""
+    """Fresh service with cache + DB writes neutralized (fan_out pattern).
+
+    2026-07-02 Wave C reconcile — ALSO neutralize every direct-adapter
+    mechanism selector (same idiom as test_bh_gcc_cascade_wiring's
+    _quiet_other_selectors / the C3 noon reconcile). The LITERAL registry rows
+    (bahrain.sharafdg.com algolia, extra.com unbxd, the Wave C noon_catalog
+    row, shopalmoayyed shopify, ...) load flag-independently, so inside
+    _get_price they fire LIVE network fetches from this free-unit test and can
+    resolve a genuine price BEFORE the Serper site: discovery under test ever
+    dispatches (search_web never called). The scenario under test is the
+    ESCALATION DISCOVERY dispatch order — not the direct tier — so the direct
+    tier is forced empty."""
     from app.services import structured_comparison_service as scs_mod
 
     monkeypatch.setattr(scs_mod, "get_cached", lambda *a, **kw: None)
@@ -232,6 +243,15 @@ def clean_service(monkeypatch):
         "app.services.product_data_service.get_cached_price",
         AsyncMock(return_value=None),
     )
+    for name in (
+        "get_shopify_sources_for_category", "get_algolia_sources_for_category",
+        "get_sitemap_sources_for_category", "get_jsonapi_sources_for_category",
+        "get_woo_sources_for_category", "get_salla_sources_for_category",
+        "get_occ_sources_for_category", "get_magento_gql_sources_for_category",
+        "get_unbxd_sources_for_category", "get_restjson_sources_for_category",
+        "get_noon_sources_for_category",
+    ):
+        monkeypatch.setattr(scs_mod, name, lambda c: [])
     service = scs_mod.get_comparison_service()
     service._save_price_to_db = MagicMock()
     return service

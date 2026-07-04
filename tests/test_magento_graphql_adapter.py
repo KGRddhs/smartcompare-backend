@@ -100,9 +100,11 @@ async def test_shape_a_simple_product_genuine_bhd(monkeypatch):
     assert price["amount"] == 3.25  # final.amount.value
     assert price["in_stock"] is True
     assert "original_currency" not in price  # native BHD → no conversion marker
-    # url built from commerce-base-endpoint + "/" + urlKey (no .html)
+    # url built from commerce-base-endpoint + "/en/" + urlKey (no .html) — A5:
+    # Alshaya PDPs live ONLY under the /en/ locale (the bare path serves a
+    # ~3.4KB SPA stub; all 6 Shape-A roots 301 to /en/, live-verified 2026-07-02).
     assert price["url"] == (
-        "https://www.bathandbodyworks.com.bh/buy-eucalyptus-body-lotion"
+        "https://www.bathandbodyworks.com.bh/en/buy-eucalyptus-body-lotion"
     )
     assert "Eucalyptus Body Lotion" in price["title"]
 

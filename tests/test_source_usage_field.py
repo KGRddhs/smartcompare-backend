@@ -62,11 +62,21 @@ def test_registry_price_source_count():
     SCRAPEDO_SUPER is on; default usage='price'), 37→39. Wave-3c (2026-06-23)
     PROMOTED boutiqaat.com off render-only/super to mechanism="sitemap" (live
     re-verify cracked it to a $0 curl JSON-LD adapter) — it STAYS a price row
-    (usage='price'), so the count is unchanged at 39. Guard the floor so a future
-    accidental mass-deletion of price rows is caught.
+    (usage='price'), so the count is unchanged at 39. A5 (genuine-price KPI,
+    2026-07-02) ADDED footlocker.com.bh (APEX, deliberately NOT "www." — see
+    the source_router A5 note: _normalize_domain www-strips hosts, so a "www."
+    row can never score/tier; the magento adapter re-canonicalizes to its
+    pinned www host) (Alshaya Shape-A magento_graphql, genuine BHD,
+    fashion/other — the built-but-dead recovery), 39→40. Wave C C3
+    (genuine-price KPI, 2026-07-02) ADDED the SECOND noon.com row — the
+    bahrain-tier mechanism="noon_catalog" direct-adapter literal (x-locale
+    en-bh search door + /bahrain-en PDP JSON-LD; placed AFTER the gcc
+    is_render_only noon row so registry_tier/score_source keep resolving
+    noon at gcc/1.5 — never promoted to authoritative), 40→41. Guard the
+    floor so a future accidental mass-deletion of price rows is caught.
     """
     price_rows = [s for s in SOURCE_REGISTRY if s.usage in ("price", "both")]
-    assert len(price_rows) == 39
+    assert len(price_rows) == 41
 
 
 # ---------------------------------------------------------------------------

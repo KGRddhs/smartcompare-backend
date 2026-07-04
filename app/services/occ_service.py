@@ -35,7 +35,8 @@ from curl_cffi import requests as _curl
 from app.services.price_service import (
     ENABLE_PAGE_SCRAPE,
     _convert_to_bhd,
-    is_accessory,
+    selection_primary_admits,
+    is_accessory_for_category,
     is_counterfeit_listing,
     is_price_showable,
     normalize_words,
@@ -127,23 +128,52 @@ def _select_product(
         name = prod.get("name") or ""
         if not name:
             continue
+        # KEYSTONE candidate_brand (fix-ladder #1/2) — SAP-Commerce OCC search under
+        # fields=FULL exposes a top-level `manufacturer` string. Thread it into BOTH
+        # gates so a genuine BH retailer PDP that lists a device by its MODEL LINE
+        # ("iPad Air M2 128GB", no "Apple") is not rejected on the missing brand word,
+        # while a WRONG-brand candidate keeps the query brand required (candidate_brand
+        # only drops the candidate's OWN brand tokens, and _selection_match runs
+        # alongside to vet the full SKU). Missing manufacturer → "" → legacy behaviour.
+        _cand_brand = str(prod.get("manufacturer") or "").strip()
         # Review gate-fix (MEDIUM, NO-FAB): drop counterfeit + (asymmetric)
         # accessory hits so a same-brand same-model ACCESSORY (case/band/strap)
         # never ships as the product's price for a non-high-value category (the
         # is_price_showable ceiling only catches phone/laptop/console leaks).
         if is_counterfeit_listing(name):
             continue
-        if is_accessory(name) and not is_accessory(product_name):
+        # Category-scoped (BF4, sweep OR-7): occ's BH stores are pharmacies —
+        # the bare 'skin' accessory keyword false-positives on genuine
+        # "...For Normal To Oily Skin" titles; the scoped wrapper exempts it
+        # for pharmacy-class resolved categories only (any other accessory
+        # keyword still flags; electronics keeps the full broad filter).
+        if (is_accessory_for_category(name, resolved_category)
+                and not is_accessory_for_category(product_name, resolved_category)):
             continue
         if not numbers_match(product_name, name):
             continue
-        if not strict_title_match(product_name, name):
+        # SELECTION-PRIMARY acceptance (recon_cascade R2, Wave B4): a strict
+        # FAIL no longer hard-rejects — a brand-omitting OCC node under a
+        # spelled `manufacturer` fails strict on the raw brand-alias/spacing
+        # tokens ("YSL" query vs released "Yves Saint Laurent", "90ml" vs
+        # "90 ml") while _selection_match(candidate_brand=) below vets the
+        # full SKU via the alias-folding identity sets. The variant /
+        # selection / stock / word-overlap gates still run — the fallthrough
+        # GATED by selection_primary_admits (Wave B-FIX wrong-brand fence: a
+        # node whose manufacturer contradicts a padding-brand query
+        # hard-rejects). Flag OFF (or exact gate OFF) restores the exact
+        # pre-change hard gate.
+        if (not strict_title_match(product_name, name, candidate_brand=_cand_brand)
+                and not selection_primary_admits(
+                    product_name, name, candidate_brand=_cand_brand,
+                    category=resolved_category)):
             continue
         if variant_mismatch(product_name, name):
             continue
         # Keystone variant-add guard (coverage/independent review) — category-aware
         # superset/axes beyond variant_mismatch's pro/max set. Flag-safe (True when off).
-        if not _selection_match(product_name, name, resolved_category):
+        if not _selection_match(product_name, name, resolved_category,
+                                candidate_brand=_cand_brand):
             continue
         price = prod.get("price")
         if not isinstance(price, dict):

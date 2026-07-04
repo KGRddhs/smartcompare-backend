@@ -240,7 +240,12 @@ def test_verdict_safe_product_strips_pending_amount_without_mutating():
 
 
 def test_verdict_safe_product_preserves_showable_price():
-    """A genuine `local_bhd` price IS showable → amount preserved unchanged."""
+    """A genuine `local_bhd` price IS showable → amount preserved unchanged.
+
+    B1.3 parity: the scrub now runs the enforce_correctness backstop (matching
+    the display chokepoint), so the price carries the title + PDP url that a real
+    genuine adapter/cache price always has and that the card verifies against.
+    """
     p = {
         "name": "Sauvage",
         "full_name": "Dior Sauvage 100ml",
@@ -249,13 +254,116 @@ def test_verdict_safe_product_preserves_showable_price():
             "currency": "BHD",
             "source_method": "local_bhd",
             "retailer": "noon",
+            "title": "Dior Sauvage 100ml",
+            "url": "https://noon.com/p/dior-sauvage-100ml",
+            "in_stock": True,
         },
     }
-    out = _verdict_safe_product(p)
+    out = _verdict_safe_product(p, "fragrances")
     assert out["price"].get("amount") == 32.5
     assert out["price"].get("source_method") == "local_bhd"
     # Original intact regardless.
     assert p["price"]["amount"] == 32.5
+
+
+# WS-2 B1.3 — verdict-scrub / display-chokepoint PARITY (recon F8/R8a). The
+# display card calls is_price_showable(..., category, enforce_correctness=True),
+# so a price it PENDS (not_exact wrong-SKU / out_of_stock / non_pdp_url) must
+# ALSO be hidden from the GPT verdict payload — otherwise GPT writes a
+# price-referencing pro/con beside a "Pricing lands soon" card. These pin that
+# the verdict scrub now threads the resolved category + enforce_correctness so
+# read==display. Gate-scoped un-flagged: enforce no-ops when the exact gate is
+# off (see the flag-OFF-parity test below).
+def _genuine_price(**over):
+    base = {
+        "amount": 45.0,
+        "currency": "BHD",
+        "source_method": "local_bhd",
+        "url": "https://noon.com/p/dior-sauvage-100ml",
+        "in_stock": True,
+    }
+    base.update(over)
+    return base
+
+
+def test_verdict_scrub_hides_not_exact_wrong_sku_price():
+    """A wrong-SKU flanker (query 'Dior Sauvage' -> candidate 'Sauvage Parfum')
+    that the display chokepoint PENDS as not_exact must never reach the verdict
+    prompt: the scrub swaps in the pending (amount=None) shape."""
+    p = {
+        "name": "Dior Sauvage",
+        "full_name": "Dior Sauvage 100ml",
+        "price": _genuine_price(
+            title="Dior Sauvage Parfum 100ml",
+            url="https://noon.com/p/dior-sauvage-parfum-100ml",
+        ),
+    }
+    out = _verdict_safe_product(p, "fragrances")
+    assert out["price"].get("amount") is None, out["price"]
+    assert out["price"].get("unavailable") is True, out["price"]
+    # Original dict untouched (copy, not in-place).
+    assert p["price"]["amount"] == 45.0
+    assert out["price"] is not p["price"]
+
+
+def test_verdict_scrub_hides_out_of_stock_price():
+    """An in_stock=False price the card pends as out_of_stock must not reach the
+    verdict prompt."""
+    p = {
+        "full_name": "Dior Sauvage 100ml",
+        "price": _genuine_price(title="Dior Sauvage 100ml", in_stock=False),
+    }
+    out = _verdict_safe_product(p, "fragrances")
+    assert out["price"].get("amount") is None, out["price"]
+    assert out["price"].get("unavailable") is True, out["price"]
+    assert p["price"]["amount"] == 45.0
+
+
+def test_verdict_scrub_still_passes_showable_genuine_price():
+    """A genuine, exact, in-stock PDP price must STILL reach the verdict prompt
+    unchanged (parity fix must not over-pend correct prices)."""
+    p = {
+        "full_name": "Dior Sauvage 100ml",
+        "price": _genuine_price(title="Dior Sauvage 100ml"),
+    }
+    out = _verdict_safe_product(p, "fragrances")
+    assert out["price"].get("amount") == 45.0
+    assert out["price"] is p["price"] or out is p
+
+
+def test_verdict_scrub_category_from_product_dict_fallback():
+    """When the caller passes no category, the product dict's own category hint
+    is used so the enforce path still pends a wrong-SKU price."""
+    p = {
+        "full_name": "Dior Sauvage 100ml",
+        "category": "fragrances",
+        "price": _genuine_price(
+            title="Dior Sauvage Parfum 100ml",
+            url="https://noon.com/p/dior-sauvage-parfum-100ml",
+        ),
+    }
+    out = _verdict_safe_product(p)  # category omitted -> read from dict
+    assert out["price"].get("amount") is None, out["price"]
+
+
+def test_verdict_scrub_flag_off_byte_identical_wrong_sku():
+    """Gate-scoped un-flagged: with ENABLE_EXACT_PRICE_GATE OFF the enforce block
+    no-ops, so a wrong-SKU genuine price is UNCHANGED (byte-identical to the
+    pre-B1.3 behaviour) — it still reaches the verdict prompt."""
+    import app.services.price_service as ps
+    monkey = _genuine_price(
+        title="Dior Sauvage Parfum 100ml",
+        url="https://noon.com/p/dior-sauvage-parfum-100ml",
+    )
+    p = {"full_name": "Dior Sauvage 100ml", "price": monkey}
+    orig = ps.exact_gate_enabled
+    ps.exact_gate_enabled = lambda: False
+    try:
+        out = _verdict_safe_product(p, "fragrances")
+        # gate OFF -> enforce no-ops -> genuine local_bhd price stays showable.
+        assert out["price"].get("amount") == 45.0, out["price"]
+    finally:
+        ps.exact_gate_enabled = orig
 
 
 # WS-C — Task C2: COMPARISON_SYSTEM must forbid price/value claims about a

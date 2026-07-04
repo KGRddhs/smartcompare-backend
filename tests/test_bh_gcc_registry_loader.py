@@ -227,3 +227,38 @@ def test_category_filter(monkeypatch):
             _mk("b.com", "salla_api", cats=("fragrances",))]
     monkeypatch.setattr(sr, "SOURCE_REGISTRY", rows)
     assert [s.domain for s in sr.get_salla_sources_for_category("fragrances")] == ["b.com"]
+
+
+# ---------------------------------------------------------------------------
+# Wave B2 (recon_fashion rank-5) — sample_url must be liveness-probe fetchable
+# ---------------------------------------------------------------------------
+# Round-3 magento/rest_json catalog rows carried pseudo-annotated sample_pdp_urls
+# ("https://host/en/ (price via GraphQL by phrase/sku)") that verify_bh_gcc_sources
+# can NEVER fetch — the rows false-dead forever (the footlocker built-but-dead
+# class). The generator sanitizes to the leading http(s) token; the real data
+# file must carry only fetchable-shaped URLs (or "").
+
+def test_clean_sample_url_strips_pseudo_annotation():
+    clean = build._clean_sample_url
+    assert clean(
+        "https://www.footlocker.com.bh/en/ (price via GraphQL by phrase/sku)"
+    ) == "https://www.footlocker.com.bh/en/"
+    assert clean("https://www.panda.sa/en (product via API id/sku)") == \
+        "https://www.panda.sa/en"
+    # untouched: already-clean URLs
+    assert clean("https://x.bh/p/1") == "https://x.bh/p/1"
+    # non-URL pseudo strings / empties → "" (probe reports "no sample_url",
+    # never burns a fetch on garbage)
+    assert clean("price via GraphQL by phrase/sku") == ""
+    assert clean("") == ""
+    assert clean(None) == ""
+
+
+def test_real_file_sample_urls_are_fetchable_shaped():
+    rows = json.loads(sr._CATALOG_DATA_PATH.read_text(encoding="utf-8"))
+    bad = [
+        r["domain"] for r in rows
+        if r.get("sample_url")
+        and (" " in r["sample_url"] or not r["sample_url"].startswith("http"))
+    ]
+    assert bad == [], f"unfetchable pseudo sample_urls: {bad}"

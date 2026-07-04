@@ -62,6 +62,8 @@ async def test_registry_winner_records_route(monkeypatch, clean_service):
     monkeypatch.setattr(scs_mod, "get_algolia_sources_for_category", lambda cat: [])
     monkeypatch.setattr(scs_mod, "get_unbxd_sources_for_category", lambda cat: [])
     monkeypatch.setattr(scs_mod, "get_shopify_sources_for_category", lambda cat: [])
+    # Wave C C3 — the noon-BH literal fires a REAL fetch too; neutralize alike.
+    monkeypatch.setattr(scs_mod, "get_noon_sources_for_category", lambda cat: [])
     # Bahrain discovery returns a registry electronics retailer.
     monkeypatch.setattr(
         scs_mod, "search_web",

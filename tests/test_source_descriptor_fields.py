@@ -14,10 +14,13 @@ _VALID_MECHANISMS = {
     "", "curl", "json_api", "sitemap", "algolia", "shopify", "render", "provider",
     # BH/GCC source-build (2026-06-25) — the 6 new $0 direct-fetch mechanisms.
     "woo_store_json", "salla_api", "occ_rest", "magento_graphql", "unbxd", "rest_json",
+    # Wave C C3 (2026-07-02) — noon-BH direct catalog+PDP adapter.
+    "noon_catalog",
 }
 _DIRECT_MECHANISMS = {
     "curl", "json_api", "sitemap", "algolia", "shopify",
     "woo_store_json", "salla_api", "occ_rest", "magento_graphql", "unbxd", "rest_json",
+    "noon_catalog",  # direct $0 curl_cffi fetch — must never be render-only/super
 }
 _PROVIDER_MECHANISMS = {"render", "provider"}
 

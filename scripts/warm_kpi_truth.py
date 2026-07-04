@@ -23,6 +23,9 @@ os.environ["STREAM_HARD_CAP_SECONDS"] = os.getenv("WARMER_STREAM_HARD_CAP", "150
 os.environ["FAN_OUT_BUDGET_SECONDS"] = os.getenv("WARMER_FAN_OUT_BUDGET", "35")
 os.environ.setdefault("FIRECRAWL_TIMEOUT", "45")
 os.environ.setdefault("SCRAPEDO_TIMEOUT", "35")
+# Wave-2 B3a — OFF-CLOCK warm signal (arms warmer_write_veto at cache-write; the
+# live 15s path is untouched). See scripts/cron_warm_price_cache.py.
+os.environ.setdefault("WARMER_CONTEXT", "1")
 
 from pathlib import Path
 try:

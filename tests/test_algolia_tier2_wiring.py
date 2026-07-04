@@ -96,6 +96,9 @@ class TestAlgoliaTier2CallSite:
         svc = scs.get_comparison_service()
         monkeypatch.setattr(scs, "_should_escalate_price_scrape", lambda *a, **k: True)
         monkeypatch.setattr(scs, "get_shopify_sources_for_category", lambda c: [])
+        # Wave C C3 — the noon-BH literal covers fashion and fires a REAL fetch
+        # that can short-circuit BEFORE discovery; neutralize like shopify.
+        monkeypatch.setattr(scs, "get_noon_sources_for_category", lambda c: [])
 
         async def fake_algolia_none(domain, product_name, category="other"):
             return None

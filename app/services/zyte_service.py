@@ -40,8 +40,10 @@ from app.services.price_service import (
     is_counterfeit_listing,
     is_accessory,
     is_price_showable,
+    is_available_state,
     normalize_words,
     extract_concentration,
+    extract_size_ml_any,
     _CONCENTRATION_PATTERNS,
 )
 
@@ -142,6 +144,25 @@ def _fold(s: str) -> str:
     )
 
 
+def _brand_token_set(brand: str) -> set:
+    """The brand's identity tokens, ALIAS-EXPANDED via the shared
+    price_service._BRAND_ALIAS_GROUPS (same intersect-trigger the keystone matcher
+    uses), so "YSL" and "Yves Saint Laurent" subtract the same token family from
+    both sides — a query built with the abbreviation still matches a title carrying
+    the spelled-out house (and vice versa)."""
+    toks = normalize_words(_fold(brand))
+    if not toks:
+        return toks
+    try:
+        from app.services.price_service import _BRAND_ALIAS_GROUPS
+        for _group in _BRAND_ALIAS_GROUPS:
+            if toks & _group:
+                toks = toks | set(_group)
+    except Exception:  # noqa: BLE001 — alias fold is best-effort; literal tokens still apply
+        pass
+    return toks
+
+
 def _identity_tokens(text: str, brand: str = "") -> set:
     """PRODUCT-IDENTITY tokens of `text`: its words (DIACRITIC-FOLDED) minus the
     brand, the concentration PHRASE (so "eau de parfum"/"parfum intense" go but a
@@ -160,8 +181,40 @@ def _identity_tokens(text: str, brand: str = "") -> set:
         stripped = pat.sub(" ", stripped)
     stripped = _SIZE_TOKEN_RE.sub(" ", stripped)
     words = normalize_words(stripped)
-    brand_words = normalize_words(_fold(brand))
+    brand_words = _brand_token_set(brand)
     return {w for w in (words - brand_words - _FORM_TOKENS) if len(w) > 2}
+
+
+def _name_is_brand_string(name: str, brand: str) -> bool:
+    """True iff a productList tile NAME is just the BRAND string (the recon
+    'YVES SAINT LAURENT' wobble: sephora sometimes returns the brand as the tile
+    name). Alias-aware (a tile named the spelled-out house matches an abbreviated
+    `brand` param). A name carrying ANY non-brand product word is NOT a brand
+    string — the fallback below never fires for a real title."""
+    if not name or not brand:
+        return False
+    n_toks = normalize_words(_fold(name))
+    if not n_toks:
+        return False
+    return n_toks <= _brand_token_set(brand)
+
+
+def _slug_text(url: str) -> str:
+    """The product IDENTITY text carried by a PDP URL slug — the LONGEST
+    hyphenated path segment, hyphens→spaces ("/bh-en/p/black-opium-eau-de-parfum/
+    P1920022" → "black opium eau de parfum"). Empty when the URL has no hyphenated
+    segment. Used ONLY as the brand-as-name wobble fallback token source — the
+    identity EQUALITY gate is unchanged (a flanker slug still mismatches)."""
+    if not url:
+        return ""
+    try:
+        path = urllib.parse.urlsplit(url).path
+    except Exception:  # noqa: BLE001 — a garbage URL is just "no slug"
+        return ""
+    segs = [s for s in path.split("/") if "-" in s]
+    if not segs:
+        return ""
+    return max(segs, key=len).replace("-", " ").strip()
 
 
 def _concentration_bonus(q_conc: Optional[str], t_conc: Optional[str]) -> float:
@@ -329,10 +382,28 @@ def _match_product(
             continue
         # (2) HARD identity equality — same product or pend. No partial-overlap,
         # no extra-token flanker, no missing-token base.
-        if _identity_tokens(name, brand) != q_ident:
+        t_ident = _identity_tokens(name, brand)
+        conc_source = name
+        if t_ident != q_ident and _name_is_brand_string(name, brand):
+            # Brand-as-name wobble (recon 2026-07-02): the tile name is JUST the
+            # brand string ("YVES SAINT LAURENT" for the Black Opium tile) — the
+            # PDP URL slug carries the real identity. Fall back to slug-derived
+            # tokens BEFORE rejecting; the equality gate itself is unchanged (a
+            # flanker slug "black-opium-over-red" still mismatches) and the FORM
+            # gate re-runs on the slug (a "…-set" slug is a different sellable
+            # unit the brand-only tile name could not reveal).
+            slug = _slug_text(product.get("url") or "")
+            if slug:
+                s_words = normalize_words(slug)
+                if not _is_wrong_form(query_lc, slug.lower(), p_words, s_words):
+                    t_ident = _identity_tokens(slug, brand)
+                    conc_source = slug
+        if t_ident != q_ident:
             continue
         # (3) concentration: reject an EXPLICIT mismatch; rank by preference.
-        t_conc = extract_concentration(name)
+        # (conc_source is the slug when the wobble fallback fired — the brand-only
+        # tile name carries no concentration signal.)
+        t_conc = extract_concentration(conc_source)
         if q_conc and t_conc and t_conc != q_conc:
             continue
         prob = 0.0
@@ -408,6 +479,13 @@ async def fetch_zyte_price(
 
     domain = (domain or "").replace("www.", "").strip().lower()
     title = (hit.get("name") or "").strip()
+    if _name_is_brand_string(title, brand):
+        # Brand-as-name wobble hit (matched via the slug fallback) — a bare brand
+        # string is NOT a usable product identity for the downstream write/display
+        # gates, so surface the slug's identity as the title instead.
+        slug = _slug_text(hit.get("url") or "")
+        if slug:
+            title = slug.title()
     price = {
         "amount": amount,
         "currency": "BHD",
@@ -433,4 +511,175 @@ async def fetch_zyte_price(
         pass
 
     logger.info("[ZYTE] genuine BHD: %.3f for '%s' @ %s", amount, product_name, domain)
+    return price
+
+
+async def fetch_zyte_pdp_price(
+    domain: str, pdp_url: str, product_name: str, currency: str = "BHD",
+    category: str = "fragrances", brand: str = "",
+) -> Optional[Dict[str, Any]]:
+    """VARIANT-AWARE genuine BHD price from ONE pinned PDP via Zyte product-DETAIL
+    extraction, or None. The truth-critical seed path (Wave C C4).
+
+    Unlike the productList search (`fetch_zyte_price`), the ``product`` extraction
+    returns the PDP's SIZE and AVAILABILITY — so the seeded dict pins the EXACT
+    variant (`pdp_url` should carry the productVariantId; recon caveat: a
+    productList match for Acqua di Gio landed the 50ml DEFAULT variant under a
+    100ml query) and a REAL tri-state ``in_stock`` instead of the productList
+    path's unconditional True stamp. Fail-closed both ways:
+      * query states a size the detail CONTRADICTS -> None (wrong variant);
+      * query states a size the detail cannot CONFIRM -> None (unverified variant
+        — a truth-critical seed must prove the SKU, never assume it);
+      * explicit OutOfStock -> None (pends at the showable gate);
+      * unknown availability stays None on the dict (tri-state, never True).
+    All the productList no-fab gates (counterfeit / accessory / numbers / variant /
+    form / HARD identity equality with the brand-as-name slug fallback /
+    concentration) run against the detail too. OFF-CLOCK only (ENABLE_ZYTE_RENDER
+    fail-closed + the per-run account kill-switch). HTTP 520 website-bans retry
+    once via _zyte_extract's transient handling (recon: they alternate with 200s).
+    NEVER raises."""
+    if not _enabled():
+        return None
+    if _ACCOUNT_DEAD:
+        logger.info("[ZYTE] account disabled this run (prior terminal 4xx) — skipping %s", product_name)
+        return None
+    if not pdp_url or not product_name:
+        return None
+    q_ident = _identity_tokens(product_name, brand)
+    if not q_ident:
+        return None
+
+    # Retry an EMPTY (200-but-no-product) extraction — transient on sephora, same
+    # class as the productList empties. A None from _zyte_extract is terminal.
+    empty_retries = max(1, int(os.getenv("ZYTE_EMPTY_RETRIES", "2")))
+    backoff = float(os.getenv("ZYTE_RETRY_BACKOFF", "2.0"))
+    prod: Dict[str, Any] = {}
+    for attempt in range(1, empty_retries + 1):
+        data = await _zyte_extract(pdp_url, {"product": True})
+        if data is None:
+            return None
+        prod = data.get("product") or {}
+        if isinstance(prod, dict) and prod.get("name"):
+            break
+        logger.info("[ZYTE] empty product detail for %s (attempt %d/%d)",
+                    pdp_url, attempt, empty_retries)
+        if attempt < empty_retries and backoff > 0:
+            await asyncio.sleep(backoff)
+    if not isinstance(prod, dict) or not prod.get("name"):
+        return None
+
+    name = (prod.get("name") or "").strip()
+    if is_counterfeit_listing(name) or is_accessory(name):
+        return None
+    if not numbers_match(product_name, name):
+        return None
+    if variant_mismatch(product_name, name):
+        return None
+    q_words = normalize_words(product_name)
+    query_lc = product_name.lower()
+    if _is_wrong_form(query_lc, name.lower(), q_words, normalize_words(name)):
+        return None
+
+    # HARD identity equality (same gate as the productList path), with the
+    # brand-as-name slug fallback — the pinned PDP's slug carries the identity
+    # when the extracted name is just the brand string.
+    t_ident = _identity_tokens(name, brand)
+    conc_source = name
+    if t_ident != q_ident and _name_is_brand_string(name, brand):
+        slug = _slug_text(prod.get("url") or pdp_url)
+        if slug and not _is_wrong_form(query_lc, slug.lower(), q_words, normalize_words(slug)):
+            t_ident = _identity_tokens(slug, brand)
+            conc_source = slug
+    if t_ident != q_ident:
+        logger.info("[ZYTE] detail identity mismatch for '%s' @ %s (name=%r)",
+                    product_name, pdp_url, name[:60])
+        return None
+
+    # Concentration — reject an EXPLICIT mismatch (the size string often carries
+    # the concentration when the name omits it: size='Eau de Toilette 100ml').
+    size_str = (prod.get("size") or "").strip()
+    q_conc = extract_concentration(product_name)
+    t_conc = extract_concentration(f"{conc_source} {size_str}".strip())
+    if q_conc and t_conc and t_conc != q_conc:
+        logger.info("[ZYTE] detail concentration mismatch for '%s' (%s vs %s)",
+                    product_name, q_conc, t_conc)
+        return None
+
+    # SIZE / variant-awareness (the C4 core). t_size mines the detail's size field
+    # + name; extract_size_ml_any snaps oz forms to standard bottle sizes.
+    t_size = extract_size_ml_any(f"{name} {size_str}".strip())
+    q_size = extract_size_ml_any(product_name)
+    if q_size is not None:
+        if t_size is None:
+            logger.info("[ZYTE] detail size UNCONFIRMED for '%s' @ %s — fail-closed",
+                        product_name, pdp_url)
+            return None
+        if t_size != q_size:
+            logger.info("[ZYTE] detail size mismatch for '%s' (%sml vs %sml) — wrong variant",
+                        product_name, q_size, t_size)
+            return None
+
+    amount = normalize_bhd_amount(prod.get("price"))
+    if amount is None:
+        return None
+
+    # Availability — REAL tri-state from the PDP (replaces the productList path's
+    # unconditional in_stock=True stamp for truth-critical seeds).
+    in_stock = is_available_state(prod.get("availability"))
+
+    # Display title: the detail name, wobble-fallback to the slug, enriched with
+    # the CONFIRMED concentration/size so the downstream write/display/KPI gates
+    # (which verify axes on the TITLE) see the proven variant.
+    title = name
+    if _name_is_brand_string(title, brand):
+        slug = _slug_text(prod.get("url") or pdp_url)
+        if slug:
+            title = slug.title()
+    if size_str and extract_concentration(size_str) and not extract_concentration(title):
+        title = f"{title} {size_str}".strip()
+    if t_size is not None and extract_size_ml_any(title) is None:
+        title = f"{title} {t_size}ml".strip()
+
+    b = prod.get("brand")
+    if isinstance(b, dict):
+        b = b.get("name")
+    resolved_brand = (str(b).strip() if b else "") or (brand or "").strip()
+
+    domain_norm = (domain or "").replace("www.", "").strip().lower()
+    price: Dict[str, Any] = {
+        "amount": amount,
+        "currency": "BHD",
+        "retailer": domain_norm,
+        # The citation stays the PINNED variant-exact PDP (it carries the
+        # productVariantId the recon confirmed), not Zyte's canonical URL.
+        "url": pdp_url,
+        "in_stock": in_stock,
+        "estimated": False,
+        "source_method": _GENUINE_METHOD,
+        "title": title,
+        "confidence": 0.9,
+        "image_url": (prod.get("mainImage") or {}).get("url") if isinstance(prod.get("mainImage"), dict) else None,
+    }
+    if resolved_brand:
+        price["brand"] = resolved_brand
+    if t_size is not None:
+        price["size"] = f"{t_size}ml"
+
+    # CHOKEPOINT-grade gate (enforce_correctness=True) — a truth-critical seed
+    # must clear the SAME fail-closed backstop the live display runs (explicit
+    # OOS pends, non-PDP listing URL pends, exact-identity backstop), so a
+    # seeded price can never be display-pended later.
+    if not is_price_showable(product_name, price, category, enforce_correctness=True):
+        return None
+    try:
+        from app.services.content_safety_service import get_content_safety_service
+        svc = get_content_safety_service()
+        if svc and not svc.is_text_safe(f"{title} {domain_norm} {product_name}"):
+            logger.info("[ZYTE] detail candidate dropped by content safety: %s", domain_norm)
+            return None
+    except Exception:  # noqa: BLE001 — safety best-effort; never block a clean price
+        pass
+
+    logger.info("[ZYTE] genuine BHD (pdp detail): %.3f for '%s' @ %s (size=%s in_stock=%s)",
+                amount, product_name, domain_norm, size_str or "?", in_stock)
     return price

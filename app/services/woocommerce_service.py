@@ -40,11 +40,13 @@ from app.services.price_service import (
     _convert_to_bhd,
     _infer_category_from_query,
     _selection_match,
-    is_accessory,
+    build_adapter_search_terms,
+    is_accessory_for_category,
     is_counterfeit_listing,
     is_price_showable,
     numbers_match,
     select_best,
+    selection_primary_admits,
     strict_title_match,
     variant_mismatch,
 )
@@ -141,13 +143,32 @@ def _match_woo_product(
         # / counterfeit hit is rejected, never shipped as a price.
         if is_counterfeit_listing(title):
             continue
-        if not strict_title_match(product_name, title):
+        # SELECTION-PRIMARY acceptance (recon_cascade R2, Wave B4 — flag
+        # ENABLE_ADAPTER_SELECTION_PRIMARY): strict tokenizes RAW, so a CORRECT
+        # row is rejected on pure spacing/alias variance ("90ml" vs the live
+        # perfumesclub "90 ml") that _selection_match below already collapses.
+        # A strict PASS keeps the pre-change fast path; a strict FAIL now falls
+        # through to the remaining chain (numbers / variant / accessory /
+        # _selection_match) instead of hard-rejecting — GATED by
+        # selection_primary_admits (Wave B-FIX): flag + the wrong-brand fence
+        # (a padding-brand query needs brand evidence; Woo rows carry no brand
+        # field, so a FASHION query's brand must appear in the title). Flag
+        # OFF — or the exact gate OFF, which makes _selection_match a no-op
+        # True — restores the exact pre-change hard gate.
+        if (not strict_title_match(product_name, title)
+                and not selection_primary_admits(
+                    product_name, title, category=_category)):
             continue
         if not numbers_match(product_name, title):
             continue
         if variant_mismatch(product_name, title):
             continue
-        if is_accessory(title) and not is_accessory(product_name):
+        # Category-scoped (BF4, sweep OR-7): the bare 'skin' accessory keyword
+        # must not reject genuine pharmacy titles ("...For Dry Skin", "All
+        # Skin Types") when the resolved category is a pharmacy class; any
+        # other accessory keyword still flags, non-pharmacy keeps the broad set.
+        if (is_accessory_for_category(title, _category)
+                and not is_accessory_for_category(product_name, _category)):
             continue
         # CORRECTNESS — identity + axis gate (S24->FE / EDP->EDT / 256->128 /
         # related-product leaks). No-op when the rollback flag is OFF.
@@ -244,30 +265,41 @@ async def fetch_woocommerce_store_api_price(
     else:
         headers["Referer"] = apex.rstrip("/") + "/"
 
-    params = {"search": product_name, "per_page": 20}
-
     payload = None
-    try:
-        resp = await asyncio.to_thread(
-            _do_get, _store_api_url(domain, product_name, versioned=False),
-            params, headers,
-        )
-        if getattr(resp, "status_code", None) == 404:
-            # Unversioned path missing → retry the /v1/ alias.
+    # R1 retrieval-term ladder (build_adapter_search_terms): the full name
+    # first; ONLY a ZERO-ROW 200 retries ONCE with the model-core term (the
+    # store search is AND-restrictive — the canonical "Yves Saint Laurent
+    # Black Opium Eau de Parfum 90ml" returns 0 rows where "Black Opium"
+    # returns the exact SKU). A response WITH rows — matched or not — never
+    # triggers a second search (latency pin); non-200/exception keeps the
+    # legacy immediate-None (no retry against an erroring/WAF store).
+    # Matching below runs against the ORIGINAL product_name, so wider
+    # retrieval cannot widen acceptance.
+    for term in build_adapter_search_terms(product_name, resolved_category):
+        params = {"search": term, "per_page": 20}
+        try:
             resp = await asyncio.to_thread(
-                _do_get, _store_api_url(domain, product_name, versioned=True),
+                _do_get, _store_api_url(domain, term, versioned=False),
                 params, headers,
             )
-        if getattr(resp, "status_code", None) != 200:
-            logger.info(
-                "[PRICE] woo HTTP %s for '%s' (%s)",
-                getattr(resp, "status_code", "?"), product_name, domain,
-            )
+            if getattr(resp, "status_code", None) == 404:
+                # Unversioned path missing → retry the /v1/ alias.
+                resp = await asyncio.to_thread(
+                    _do_get, _store_api_url(domain, term, versioned=True),
+                    params, headers,
+                )
+            if getattr(resp, "status_code", None) != 200:
+                logger.info(
+                    "[PRICE] woo HTTP %s for '%s' (%s)",
+                    getattr(resp, "status_code", "?"), product_name, domain,
+                )
+                return None
+            payload = resp.json()
+        except Exception as exc:  # noqa: BLE001 — a fetch/parse error is a miss, not a crash
+            logger.warning("[PRICE] woo fetch failed for %s (%s): %s", product_name, domain, exc)
             return None
-        payload = resp.json()
-    except Exception as exc:  # noqa: BLE001 — a fetch/parse error is a miss, not a crash
-        logger.warning("[PRICE] woo fetch failed for %s (%s): %s", product_name, domain, exc)
-        return None
+        if not (isinstance(payload, list) and not payload):
+            break  # rows returned (even unmatched) — never a second search
 
     price = _match_woo_product(payload, product_name, currency, resolved_category=resolved_category)
     if not price:

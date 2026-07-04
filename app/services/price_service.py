@@ -7,9 +7,16 @@ import re
 import json
 import time
 import asyncio
+import hashlib
+import functools
 import logging
 import unicodedata
-from typing import Optional, List, Dict, Any, Tuple
+from dataclasses import dataclass
+# NOTE: imported as a NAME, not the module — extract_jsonld_price /
+# _bolo_jsonld_main_price take a parameter literally called `html` that would
+# shadow the module inside those bodies (Wave C C2 entity-decode).
+from html import unescape as html_unescape
+from typing import Optional, List, Dict, Any, FrozenSet, Tuple
 from urllib.parse import urlparse, quote_plus, urljoin
 
 import httpx
@@ -648,6 +655,111 @@ def is_accessory(title: str) -> bool:
     """Check if a shopping result title is an accessory, not the actual product."""
     title_lower = title.lower()
     for kw in ACCESSORY_KEYWORDS:
+        if re.search(r'\b' + re.escape(kw) + r'\b', title_lower):
+            return True
+    return False
+
+
+# Pharmacy-class categories where the category-ambiguous ACCESSORY keyword
+# "skin" is ordinary descriptive vocabulary ("...For Normal To Oily SKIN",
+# "All SKIN Types") rather than a phone-decal signal (Wave B-FIX BF4, coverage
+# sweep OR-7). The nasser pharmacy matcher (see the NOTE at its accessory
+# pre-filter omission, ~:7813) already documents + exempts this exact
+# false-positive; the six direct store-API chains (occ/woo/salla/algolia x2/
+# unbxd) keep the filter but SCOPE it via is_accessory_for_category.
+_PHARMACY_TITLE_CATEGORIES = frozenset({"skincare", "haircare", "supplements", "makeup"})
+_PHARMACY_BENIGN_ACCESSORY_KEYWORDS = frozenset({"skin"})
+
+# GCC laptop listings state the KEYBOARD LAYOUT mid-title (Wave C C2, kpiE2E
+# re-sweep RS-1/RS-4: "English & Arabic Keyboard" on EVERY live sharafdg
+# MacBook row; "Arabic Keyboard" is standard GCC retailer phrasing) — a bare
+# "keyboard" keyword hit alone must NOT classify a LAPTOP-class listing as an
+# accessory. Scoped like the pharmacy 'skin' exemption above, but by SURFACE
+# context (a laptop-class device noun on the SAME title) rather than category:
+# a real keyboard product ("Logitech MX Keys Keyboard" — head noun, no device
+# context) still rejects, and any OTHER accessory keyword ("Keyboard Case for
+# MacBook") still flags. The broad `is_accessory` keeps the unscoped hit — the
+# noisy Serper-shopping/zyte/rating nets AND the QUERY-side flagship-floor
+# exclusion (is_high_value_query: a laptop-keyboard accessory QUERY must stay
+# excluded so its genuine cheap price is never floored away) are unchanged.
+_LAPTOP_NOUN_RE = re.compile(
+    r"\b(?:macbook|macbooks|laptop|laptops|notebook|notebooks|chromebook|"
+    r"chromebooks|ultrabook|ultrabooks)\b"
+)
+_LAPTOP_CONTEXT_BENIGN_ACCESSORY_KEYWORDS = frozenset({"keyboard"})
+
+# Wave D (convergence CV2) — BOUND the laptop-surface keyboard exemption: a
+# FULL-SPEC keyboard PART listing ("Arabic Keyboard for Apple MacBook Air 13
+# M5 512GB" @ 59.9 BHD) carried the laptop noun, rode the bare-keyword
+# exemption past the accessory gate, and — carrying the laptop's complete
+# spec set — cleared every identity axis above the 50-BHD flagship floor.
+# The exemption is a LAYOUT-attribute reading, so it applies ONLY when the
+# phrasing is a layout attribute OF the laptop:
+#   - part/compat phrasing ("Keyboard for ..." / "Keyboard compatible ...")
+#     ALWAYS keeps the accessory flag, wherever it sits in the title;
+#   - the laptop device noun must appear BEFORE the (first) keyboard token —
+#     GCC retailer laptop rows head with the device and state the layout
+#     mid/late-title (the live sharafdg/extra/IdeaPad shapes, all pinned),
+#     while a part listing heads with the part.
+# Rejected alternatives: requiring a storage/RAM spec token FAILS (the CV2
+# part title carries 512GB — that is exactly what made it leak); exempting
+# only inside _KEYBOARD_LAYOUT_RE FAILS too ("Arabic Keyboard" IS a layout
+# phrase and the leak title heads with it). Fail direction of any residual is
+# over-flagging -> the broad is_accessory -> fail-closed (over-rejection,
+# never a wrong price).
+_KEYBOARD_TOKEN_RE = re.compile(r"\bkeyboards?\b")
+_KEYBOARD_PART_PHRASE_RE = re.compile(r"\bkeyboards?\s+(?:for|compatible)\b")
+
+
+def _laptop_layout_keyboard_exempt(title_lower: str) -> bool:
+    """True iff the lowered surface reads as a LAPTOP listing whose keyboard
+    mention is a layout attribute (CV2 bound): a laptop-class device noun is
+    present, it PRECEDES the first keyboard token, and no part/compat
+    "keyboard for/compatible" phrasing appears."""
+    m_laptop = _LAPTOP_NOUN_RE.search(title_lower)
+    if not m_laptop:
+        return False
+    if _KEYBOARD_PART_PHRASE_RE.search(title_lower):
+        return False
+    m_kb = _KEYBOARD_TOKEN_RE.search(title_lower)
+    if m_kb and m_kb.start() < m_laptop.start():
+        return False
+    return True
+
+
+def is_accessory_for_category(title: str, category: Optional[str] = None) -> bool:
+    """Scoped `is_accessory` for the direct store-API matcher chains (BF4,
+    sweep OR-7 + Wave C C2, RS-4). Two bounded exemptions, one keyword each:
+
+    - PHARMACY category scope: when the ORCHESTRATOR-RESOLVED category is a
+      pharmacy class (skincare/haircare/supplements/makeup), a bare "skin"
+      keyword hit alone must NOT classify a genuine pharmacy title ("CeraVe
+      ... For Dry Skin", "Nivea ... All Skin Types") as an accessory —
+      fail-closed on the QUERY's resolved category, never the title, so a
+      real phone-skin decal under an electronics query still rejects.
+    - LAPTOP surface scope (C2, bounded by Wave D CV2): a bare "keyboard" hit
+      is a LAYOUT attribute, not an accessory, when the SAME surface carries
+      a laptop-class device noun ("MacBook ... English & Arabic Keyboard") —
+      any non-pharmacy category, keyed off the title context itself. CV2
+      bound: the device noun must PRECEDE the keyboard token and part/compat
+      phrasing ("Keyboard for/compatible ...") never exempts — a full-spec
+      keyboard PART listing must keep its accessory flag (see
+      _laptop_layout_keyboard_exempt).
+
+    In both scopes any OTHER accessory keyword still flags. Everything else
+    keeps the full broad is_accessory. The Serper-shopping extractors
+    deliberately keep the unscoped is_accessory (noisy listings need the
+    broad net; direct store-API names are resolved products)."""
+    title_lower = (title or "").lower()
+    if (category or "").lower() in _PHARMACY_TITLE_CATEGORIES:
+        benign = _PHARMACY_BENIGN_ACCESSORY_KEYWORDS
+    elif _laptop_layout_keyboard_exempt(title_lower):
+        benign = _LAPTOP_CONTEXT_BENIGN_ACCESSORY_KEYWORDS
+    else:
+        return is_accessory(title)
+    for kw in ACCESSORY_KEYWORDS:
+        if kw in benign:
+            continue
         if re.search(r'\b' + re.escape(kw) + r'\b', title_lower):
             return True
     return False
@@ -1309,12 +1421,11 @@ def is_price_showable(
         # flanker class ("Sauvage" -> "Sauvage Parfum/Extrait", "Whey" -> "Whey Isolate")
         # with no descriptive-title over-rejection. A same-token flanker whose extra token is
         # NOT a flagship concentration ("Sauvage Elixir") remains a documented deferred leak.
-        if identity and (
-            not _backstop_identity_ok(product_name, identity, category)
-            or _category_type_added(product_name, identity, category)
-        ):
-            price["guard_rejected"] = "not_exact"
-            return False
+        if identity:
+            _ok, _reason = backstop_identity_verdict(product_name, identity, category)
+            if not _ok:
+                price["guard_rejected"] = _reason or "not_exact"
+                return False
     return True
 
 
@@ -2640,8 +2751,78 @@ def detect_currency(price_str: str) -> Optional[str]:
     return None
 
 
+# Apostrophes INSIDE words (ASCII ' + the typographic U+2018/U+2019 retailers emit)
+# fold away before tokenizing so the possessive/elision spelling a retailer title
+# carries compares equal to the bare query form ("Levi's"=="Levis", "'07"=="07",
+# "Men's"=="Mens") — the edge-strip in normalize_words never reached an internal
+# apostrophe, which survived as a token mismatch rejecting the EXACT product
+# (KPI fash-001/003 gate repro 2026-07-02). Shared by normalize_words AND
+# strict_title_match (which tokenizes raw, without normalize_words).
+_APOSTROPHES_RE = re.compile("['‘’]")
+
+# SPACED-UNIT fold (Wave B-FIX BF3, over-rejection sweep OR-1..OR-3) — join a
+# digit token with an immediately-following bare unit token so the spaced
+# retailer spelling tokenizes IDENTICALLY to the glued query form
+# ("256 GB"=="256GB", "11 INCH"=="11-inch"->"11inch", "90 ml"=="90ml",
+# "12 GB RAM"). Real extra.com/unbxd titles space every unit and were rejected
+# by strict_title_match's raw substring check on the EXACT in-stock SKU.
+# The unit vocabulary is BOUNDED to the units the existing size/storage/inch
+# regexes already parse in BOTH spellings (their patterns all use \s*):
+# gb|tb (_STORAGE_GB_RE), ml (_SIZE_ML_RE), oz (_SIZE_OZ_RE), inch(es)
+# (_INCH_RE), + the electronics spec units mm/hz/mah — so the fold can never
+# weaken an axis: a folded "512 GB" hits _storage_mismatch exactly like
+# "512GB". DELIBERATELY EXCLUDED: "w" ("AF1 '07 W" is the Nike women's
+# suffix), "l" (clothing size / jeans length), and the supplement/grocery
+# weight-strength units g/kg/lb/mg/mcg/iu — their axes (_STRENGTH_RE /
+# _WEIGHT_VOLUME_RE) already parse both spellings, folding buys nothing at
+# strict for those categories, and the legacy iHerb overlap matcher pins
+# {"1000", "iu"} as SEPARATE tokens (folding rewrote that contract).
+# GATED on exact_gate_enabled() at the call sites (the Wave-B1
+# candidate_brand-fold precedent) so the ENABLE_EXACT_PRICE_GATE rollback
+# surface keeps the raw pre-fold tokenization byte-for-byte.
+_SPACED_UNIT_RE = re.compile(
+    r"\b(\d+(?:\.\d+)?)[ \t]+(gb|tb|ml|oz|mm|hz|mah|inch(?:es)?)\b",
+    re.I,
+)
+
+
+def _fold_spaced_units(text: str) -> str:
+    """Join '<digits> <unit>' into one token (see the vocabulary note above).
+    Case is preserved — callers lowercase downstream. No-op on empty input."""
+    if not text:
+        return text or ""
+    return _SPACED_UNIT_RE.sub(lambda m: m.group(1) + m.group(2), text)
+
+
+# Wave C (re-sweep RS8) — a digit-bearing UNIT-shaped query token ("5ml",
+# "8gb", "256gb", "11inch"; the _SPACED_UNIT_RE vocabulary) must match the
+# title on a token BOUNDARY, not as a raw substring: the spaced-unit fold
+# widened strict's per-word substring acceptance ("5ml" in the folded
+# "75 ml"->"75ml", "8gb" in "128 GB"->"128gb") on strict-ONLY surfaces (the
+# sitemap JSON-LD discovery chain has no _selection_match after strict).
+_STRICT_UNIT_TOKEN_RE = re.compile(
+    r"^\d+(?:\.\d+)?(?:gb|tb|ml|oz|mm|hz|mah|inch(?:es)?)$",
+)
+
+
+def _strict_word_present(word: str, title_normalized: str) -> bool:
+    """strict_title_match per-word presence: substring for ordinary words
+    (unchanged), token-boundary equality for unit-shaped digit tokens (RS8).
+    The boundary excludes [a-z0-9.] on the left ('.' so "5ml" never matches
+    inside a decimal "13.5ml") and [a-z0-9] on the right."""
+    if not _STRICT_UNIT_TOKEN_RE.match(word):
+        return word in title_normalized
+    return re.search(
+        r"(?<![a-z0-9.])" + re.escape(word) + r"(?![a-z0-9])",
+        title_normalized,
+    ) is not None
+
+
 def normalize_words(text: str) -> set:
     """Normalize words for matching."""
+    text = _APOSTROPHES_RE.sub("", text)
+    if exact_gate_enabled():
+        text = _fold_spaced_units(text)
     return set(w.replace("-", "").strip(",.()&:;'\"") for w in text.lower().split() if w.strip(",.()&:;'\""))
 
 
@@ -2693,14 +2874,30 @@ def strict_title_match(
     unverified. Empty candidate_brand → legacy behaviour (brand required)."""
     if is_counterfeit_listing(title):
         return False
-    product_name = _collapse_concentration(product_name)
-    title = _collapse_concentration(title)
+    # Apostrophe fold on BOTH sides (this matcher tokenizes raw, so the shared
+    # normalize_words fold never reaches it): "levis" must substring-match a
+    # "Levi's 501" title however the retailer typed the quote.
+    product_name = _APOSTROPHES_RE.sub("", _collapse_concentration(product_name))
+    title = _APOSTROPHES_RE.sub("", _collapse_concentration(title))
+    # Spaced-unit fold on BOTH sides (BF3, sweep OR-1/OR-3): the query's glued
+    # "256GB"/"11inch"/"90ml" must substring-match the spaced retailer spelling
+    # ("256 GB", "11 INCH", "90 ml"). Pure alias — a DIFFERENT unit value still
+    # fails the substring check, and the numeric axes parse both spellings.
+    # Gate-OFF keeps the raw pre-fold tokenization (rollback surface).
+    if exact_gate_enabled():
+        product_name = _fold_spaced_units(product_name)
+        title = _fold_spaced_units(title)
     title_normalized = title.lower().replace("-", "")
     # Tokens of the candidate's OWN brand — dropped from the required query words
     # only when the candidate actually carries that brand (so a Samsung candidate
-    # never lets an "apple" query word be skipped).
+    # never lets an "apple" query word be skipped). Apostrophe-folded like BOTH
+    # text sides above (Wave B review MED): a retailer brand label spelled
+    # "Levi's"/"L'Oreal" must equal the folded query token ("levis"/"loreal") to
+    # release it — unfolded, the brand-omitting titles the candidate_brand path
+    # exists to recover kept rejecting.
     brand_toks = {
-        b for b in (candidate_brand or "").lower().replace("-", "").split()
+        b for b in _APOSTROPHES_RE.sub("", candidate_brand or "")
+        .lower().replace("-", "").split()
         if len(b) > 2
     } if exact_gate_enabled() else set()
     key_words = [
@@ -2709,6 +2906,11 @@ def strict_title_match(
         and w.replace("-", "") not in MANUFACTURER_BRAND_WORDS
         and w.replace("-", "") not in brand_toks
     ]
+    # RS8 — unit-shaped digit tokens need a token BOUNDARY ("5ml" must not
+    # substring-match the folded "75ml"). Gate-scoped like the fold itself so
+    # the rollback surface keeps the raw substring check byte-for-byte.
+    if exact_gate_enabled():
+        return all(_strict_word_present(w, title_normalized) for w in key_words)
     return all(w in title_normalized for w in key_words)
 
 
@@ -3217,13 +3419,31 @@ _COLOR_EDITION_TOKENS = frozenset({
     "phantom", "awesome", "cosmic", "prism", "mystic", "aura", "marble", "sierra",
     "pacific", "alpine", "obsidian", "onyx", "platinum", "graphene",
     "natural", "desert", "stormy",
+    # Samsung 2025 colourway names, incl. the GLUED one-token form sharafdg
+    # lists ("Icyblue" on the live S25 PDP — BF3, sweep OR-4: it was the second
+    # bisected trigger blocking kpi-elec-002). Same class as phantom/awesome.
+    "icy", "icyblue", "silvershadow", "titaniumsilverblue",
     # Sneaker COLOURWAY nicknames + modifiers (coverage review over-rejection) — a
     # colourway is a cosmetic variant in real fashion titles ("Dunk Low Panda", "Cloud
     # White/Core Black", "AJ1 Chicago"). Treated like a colour (stripped for fashion).
     "panda", "chicago", "bred", "sail", "cloud", "core", "gum", "oreo", "university",
-    "wolf", "varsity", "bone", "sesame", "volt", "triple", "shadow", "smoke",
+    "wolf", "varsity", "bone", "sesame", "volt", "triple", "smoke",
 })
 _COLOR_ALIAS_CATEGORIES = frozenset({"electronics", "fashion"})
+# "shadow" is DELIBERATELY NOT in the shared colour set (Wave B-FIX BF2, sweep
+# L4): Nike AF1 "Shadow" is a distinct, pricier fashion SILHOUETTE — like
+# Fontanka/Twist, which were never colour words — so for FASHION it must
+# discriminate BOTH ways (colour-stripping it removed the only discriminating
+# token and leaked the flanker end-to-end). For ELECTRONICS it IS a real OEM
+# colour word ("HP Victus ... Shadow Black", "Realme ... Shadow Black"), so a
+# flat removal would over-reject genuine colour-suffixed listings — the
+# electronics identity strip keeps it via this scoped extension (the
+# tighten's own over-rejection is the next blind spot).
+# "sky" (Wave C C2, kpiE2E RS-1): the Apple "Sky Blue" colourway on the LIVE
+# sharafdg MacBook Air M5 rows — an OEM colour word for ELECTRONICS, but kept
+# distinctive for FASHION (Sky Jordan-class line names), exactly the "shadow"
+# precedent.
+_ELECTRONICS_ONLY_COLOR_TOKENS = frozenset({"shadow", "sky"})
 
 # Model-line variant qualifiers that MUST match (set-equality, either direction).
 # Category-gated: applied ONLY to electronics so brand words that collide with a
@@ -3257,6 +3477,14 @@ _GENERIC_BASE_NOUNS = frozenset(HIGH_VALUE_DEVICE_NOUNS) | {
     "headphones", "headphone", "earphones", "earphone", "earbuds", "earbud",
     "speaker", "soundbar", "protein", "supplement", "supplements",
     "vitamin", "vitamins", "vacuum", "cleaner", "sunglasses", "eyewear",
+    # "eyeglasses" — the optical-frame listing noun (namshi/eyewa/optica list
+    # RX frames as "... Clubmaster Eyeglasses") beside "sunglasses" (BF4, sweep
+    # OR-10). A sunglasses-vs-eyeglasses PAIR still class-swap-rejects (sun vs
+    # optical Clubmaster are different products). NOTE: "optical frame" cannot
+    # join — these are single-TOKEN sets (normalize_words tokens; a phrase can
+    # never match) and the bare "optical"/"frame" tokens are collision-prone
+    # cross-category (digital photo Frame), so they are deliberately omitted.
+    "eyeglasses",
     # DELIBERATELY EXCLUDED: "whey"/"casein"/"plant" — a protein TYPE is distinctive.
 }
 _GENERIC_ELECTRONICS_NOUNS = frozenset({
@@ -3335,6 +3563,100 @@ _BRAND_ALIAS_GROUPS = (
 # this; longer inputs are truncated to bound the numeric-axis regexes (ReDoS guard, review HIGH).
 _MATCH_INPUT_CAP = 512
 
+# Luxottica catalog 0-prefix — namshi/Luxottica feeds list frames as "0RB3025"/
+# "0RX5154"/"0Oo9102"/"0Po0714" where the consumer model code is RB3025/OO9102/
+# PO0714. Generalized from (rb|rx) to ANY two-letter house code (Wave B-FIX BF4,
+# sweep OR-9: namshi lists ALL Luxottica-house brands — Oakley 0Oo/Persol 0Po/
+# Armani 0Ar/Versace 0Ve/D&G 0Dg — with the same 0-prefix convention). STILL
+# narrow by design (full-token: 0 + exactly two letters + 3+ digits): a
+# pure-numeric leading-zero token ("501"/"0801") or a short code ("0ab12") is
+# NEVER stripped — the fold is an alias, not a wildcard (a DIFFERENT code still
+# mismatches after folding; both directions pinned).
+_LUXOTTICA_ZERO_RE = re.compile(r"^0([a-z]{2}\d{3,})$")
+
+# The unicode hyphen family GCC retailer titles actually carry (Wave C C2,
+# kpiE2E RS-1: the live sharafdg "8‑core" uses U+2011 NON-BREAKING HYPHEN,
+# permalink-confirmed %e2%80%91) — U+2010 HYPHEN, U+2011 NON-BREAKING HYPHEN,
+# U+2013 EN DASH. NFKD (_fold_identity) folds U+2011 -> U+2010 but leaves
+# U+2010/U+2013 intact, and the raw-text axes see all of them, so every
+# hyphen-shaped spec regex must accept the whole class alongside ASCII "-".
+_UNICODE_HYPHENS = "‐‑–"
+
+# CPU/GPU core-COUNT spec phrasing ("10-core CPU", "8 Core GPU", "10core",
+# and the unicode-hyphen "8‑core") — retailer spec-sheet detail on
+# electronics titles (BF3, sweep OR-2: the live sharafdg MacBook M5 title
+# carries BOTH "10-core CPU" and "8‑core GPU", each surviving as a
+# digit-bearing identity token that variant-add-rejected the EXACT SKU).
+# Stripped from electronics IDENTITY and compared on its own
+# both-stated-different axis (_core_count_mismatch) — one-sided tolerated
+# (the chip-tier axis carries the major discrimination), a contradicting
+# count (12-core query vs 10-core title) still rejects. Word forms only:
+# "dual/octa-core" carry no digit and stay with the octa/quad/core padding.
+_CORE_COUNT_RE = re.compile(
+    rf"\b(\d+)\s*(?:[-{_UNICODE_HYPHENS}]\s*)?core\b", re.I,
+)
+
+# macOS-ANCHORED OS-version strip (Wave C C2, kpiE2E RS-1): "macOS Tahoe" /
+# "macOS Sequoia" is the SHIPPING OS a GCC retailer states mid-title — never
+# a SKU discriminator (the chip/model axes discriminate the laptop). BOUNDED:
+# the version word is stripped ONLY when anchored to its "macos" token — a
+# bare floating "tahoe"/"sequoia" stays a distinctive identity token, so a
+# product genuinely NAMED with one of these words never gains acceptance.
+_MACOS_VERSION_RE = re.compile(
+    r"\bmacos(?:\s+(?:tahoe|sequoia|sonoma|ventura|monterey))?\b"
+)
+
+# Keyboard-LAYOUT phrase strip (Wave C C2, kpiE2E RS-1): "English & Arabic
+# Keyboard" / "Arabic Keyboard" / "English Keyboard" is the standard GCC
+# laptop layout attribute — the language words are stripped ONLY in the
+# "<layout> keyboard" phrase (collapsed onto the already-padded "keyboard"
+# token), and ONLY on a LAPTOP-class surface (_LAPTOP_NOUN_RE at the call
+# site) — so a KEYBOARD product's layout ("Logitech K120 Arabic Keyboard")
+# and a bare "arabic"/"english" edition word anywhere else stay identity.
+# Runs on _fold_identity output ("/" already folded to a space); "&amp;" is
+# tolerated defense-in-depth for a title that missed the ingestion decode.
+_KEYBOARD_LAYOUT_RE = re.compile(
+    rf"\b(?:(?:english|arabic)\s*(?:&amp;|[&+,\-{_UNICODE_HYPHENS}]|and)?\s*)"
+    rf"{{1,2}}keyboards?\b"
+)
+
+# Wave-2 B2b (C2): the curated nutrient-name prefixes whose SPACED digit form must fold to
+# the glued form (Omega 3 -> omega3, B 12 -> b12, Co Q10 -> coq10, D 3 -> d3, K 2 -> k2,
+# Q 10 -> q10). Bounded to real vitamin/nutrient prefixes so no unrelated "word <digit>" pair
+# bridges. The digit run is 1-2 (vitamin numbers) so a 3+-digit dose never glues.
+# Separator is space OR hyphen ("Omega 3" / "Omega-3" / "B-12" / "B 12") — both glue to the
+# same token. Electronics model codes (WH-1000XM5) are NEVER reached: both fold sites are
+# supplement-category-scoped, and the curated prefix set has no overlap with model codes.
+#
+# B2fix — two convergence bugs the B2 sweep found (both flag-ON-only, supplement-scoped):
+#   DEFECT 1 (vitamin-alt glued the WORD "vitamin"): the dedicated
+#     "vitamin[sep][letter]" alternative captured "vitamin b" into group(1), so
+#     "Vitamin B-6" folded to "vitaminb6" while "Vitamin B6" stayed {vitamin, b6}
+#     (the letter+digit were already adjacent, no separator for the alt to consume)
+#     => disjoint identity => flag-ON REJECT of the same SKU. FIX: DROP the vitamin
+#     alternative and let the bare-letter alt ([abcdek]) normalize ONLY the
+#     "<letter><digit>" part, leaving "vitamin" as its own token, so B-6/B6/B 6 all
+#     -> {vitamin, b6}.
+#   DEFECT 2 (spaced "Co Q10" did not fold): the digit-separator run was `+`
+#     (>=1), so "Co Q10" (q immediately followed by "10") did not match — only
+#     "Coq 10" did. FIX: make the separator run `*` (>=0) so "Co Q10" == "CoQ10"
+#     == "Coq 10" == "co-q10" all -> "coq10". `*` is idempotent (an already-glued
+#     "b12"/"coq10" folds to itself), so the output is stable for every spelling.
+_NUTRIENT_DIGIT_FOLD_RE = re.compile(
+    rf"\b(omega|coq|co[\s\-{_UNICODE_HYPHENS}]*q|[abcdek])"
+    rf"[\s\-{_UNICODE_HYPHENS}]*(\d{{1,2}})\b", re.I,
+)
+
+
+def _apply_nutrient_digit_fold(folded: str) -> str:
+    """Glue a curated nutrient-name prefix to a 1-2 digit run so the SPACED spelling
+    produces the SAME token as the glued/hyphen form ("omega 3"->"omega3", "b 12"->"b12",
+    "co q10"->"coq10"). Wave-2 B2b (C2). Callers gate this behind
+    variant_descriptor_axes_enabled() and scope it to supplements; runs on _fold_identity
+    output AFTER the 4+-digit dose strip so a 3+-digit dose never glues."""
+    return _NUTRIENT_DIGIT_FOLD_RE.sub(
+        lambda m: re.sub(r"\s+", "", m.group(1)) + m.group(2), folded)
+
 
 def _identity_tokens_ps(text: str, brand: str = "", category: Optional[str] = None) -> set:
     """PRODUCT-IDENTITY token set of `text`: diacritic-folded words, minus the
@@ -3364,9 +3686,35 @@ def _identity_tokens_ps(text: str, brand: str = "", category: Optional[str] = No
     # pure noise elsewhere ("Pack of 2" on a phone bundle) — strip for non-grocery.
     if cat != "grocery":
         folded = re.sub(r"\bpack\s*of\s*\d+\b|\b\d+\s*[-\s]?pack\b", " ", folded)
+    # Electronics CPU/GPU core-count spec ("10-core CPU / 8-core GPU") is not
+    # identity — compared on the _core_count_mismatch axis instead (BF3, OR-2).
+    if cat == "electronics":
+        folded = _CORE_COUNT_RE.sub(" ", folded)
+        # C2 (kpiE2E RS-1) — the sharafdg-style slash-segment descriptors:
+        # the SHIPPING OS ("macOS Tahoe", anchored to its "macos" token) and
+        # the keyboard LAYOUT ("English & Arabic Keyboard", laptop-class
+        # surfaces only, collapsed onto the padded "keyboard" token). Bounds
+        # pinned both directions in tests/test_electronics_unlock_bfix.py:
+        # a bare "tahoe"/"arabic" outside its anchor stays identity, and a
+        # keyboard PRODUCT's layout still discriminates (no laptop noun).
+        folded = _MACOS_VERSION_RE.sub(" ", folded)
+        if _LAPTOP_NOUN_RE.search(folded):
+            folded = _KEYBOARD_LAYOUT_RE.sub(" keyboard ", folded)
     # Fashion year/colourway re-release suffix ("'07") is noise, NOT the model number.
     if cat == "fashion":
         folded = re.sub(r"'\s*\d{2}\b", " ", folded)
+        # The SAME suffix written bare or with a typographic quote ("Air Force 1 07",
+        # "’07"): a LEADING-ZERO 2-digit is always the year form — a model number never
+        # carries one (Air Max 95/90 stay identity) — so strip it too; the apostrophe
+        # strip above is otherwise ONE-SIDED (query "07" kept vs candidate "'07"
+        # dropped = a false identity miss on the exact SKU).
+        folded = re.sub(r"\b0\d\b", " ", folded)
+        # "Polo T-Shirt"/"Polo T Shirt" is retail phrasing for a POLO, not a tee
+        # (6thstreet lists Lacoste L1212 that way) — collapse the compound so the
+        # listing reads as class "polo": a polo query matches it, and a plain t-shirt
+        # query now class-swap-rejects it. A BARE "t-shirt" (no polo) is untouched,
+        # so polo-vs-t-shirt stays a contradiction in both directions.
+        folded = re.sub(r"\bpolo\s+t[\s-]?shirts?\b", " polo ", folded)
         # "Special/Limited Edition" is a distinct, pricier SKU. Collapse the spelled phrase AND
         # the "SE" abbreviation into ONE distinctive identity token so (a) a base query rejects
         # EITHER form (coverage re-sweep HIGH: 'special'/'edition' were stripped as colour-edition
@@ -3382,7 +3730,21 @@ def _identity_tokens_ps(text: str, brand: str = "", category: Optional[str] = No
     # number (the dose range; a supplement COUNT is <1000) so the dose axis governs it.
     if cat == "supplements":
         folded = re.sub(r"\b\d{4,}\b", " ", folded)
+        # Wave-2 B2b (C2, flag-gated): fold a digit-adjacent nutrient-name so the spaced
+        # form matches the glued/hyphen form ("Omega 3" == "Omega-3" == "Omega3";
+        # "B 12" == "B-12" == "B12"; "Co Q10" == "CoQ10"). normalize_words already REMOVES
+        # hyphens (so "omega-3"->"omega3"), leaving ONLY the SPACED form disjoint; this glues
+        # the space so any spelling produces the same identity token. Runs AFTER the 4+-digit
+        # dose strip and is bounded to a 1-2 digit run (vitamin numbers) so a 3+-digit dose
+        # ("Vitamin D 250") never glues. Curated nutrient prefixes only, so no unrelated
+        # alnum tokens bridge (WH-1000XM5 is electronics, untouched by this cat-scoped fold).
+        # Flag-OFF stays byte-identical.
+        if variant_descriptor_axes_enabled():
+            folded = _apply_nutrient_digit_fold(folded)
     words = normalize_words(folded)
+    # Luxottica 0-prefix alias: "0rb3025" -> "rb3025" so the catalog list form and
+    # the consumer model code are the SAME identity token (namshi KPI fash-004).
+    words = {_LUXOTTICA_ZERO_RE.sub(r"\1", w) for w in words}
     brand_words = normalize_words(_fold_identity(brand)) if brand else set()
     # Also strip the HYPHEN-COLLAPSED brand form (in the brand's ORIGINAL word order) so a
     # hyphen-joined brand-in-title ("Coca-Cola"->"cocacola") is removed for a spaced brand
@@ -3400,6 +3762,10 @@ def _identity_tokens_ps(text: str, brand: str = "", category: Optional[str] = No
     drop = set(brand_words) | _FORM_NOISE_TOKENS | quals
     if cat in _COLOR_ALIAS_CATEGORIES:
         drop = drop | _COLOR_EDITION_TOKENS
+        if cat == "electronics":
+            # OEM colour words that are a fashion SILHOUETTE ("shadow") stay
+            # strippable ONLY for electronics (BF2, sweep L4).
+            drop = drop | _ELECTRONICS_ONLY_COLOR_TOKENS
     if cat in _FRAGRANCE_BEAUTY_CATEGORIES:
         # Strip gender markers from identity (the _gender_mismatch contradiction axis
         # handles them) so a one-sided "Pour Homme" the terse query omits never breaks
@@ -3448,9 +3814,12 @@ def _quals_in(text: str, qualset: frozenset) -> set:
 
 def _concentration_mismatch(q: str, t: str) -> bool:
     """True iff BOTH carry an explicit fragrance concentration and they DIFFER
-    (EDP vs EDT). A side that omits concentration does not trigger a mismatch."""
-    qc, tc = extract_concentration(q), extract_concentration(t)
-    return bool(qc and tc and qc != tc)
+    (EDP vs EDT). A side that omits concentration does not trigger a mismatch.
+    (Wave-2 A1: delegates to the VariantDescriptor — one implementation.)"""
+    return _vd_scalar_differs(
+        extract_variant_descriptor(q, None).concentration,
+        extract_variant_descriptor(t, None).concentration,
+    )
 
 
 def _size_ml_raw(text: Optional[str]) -> Optional[float]:
@@ -3482,16 +3851,13 @@ def _size_ml_mismatch(q: str, t: str, category: Optional[str] = None) -> bool:
     size (absorbs oz<->ml rounding: 8oz == 236.6ml ≈ a '236 ml' / '237 ml' listing),
     so an oz-labelled skincare/grocery/supplement product is no longer over-rejected
     against its ml-labelled listing while a real size difference (88ml vs 236ml)
-    still mismatches."""
-    if (category or "").lower() == "fragrances":
-        qs, ts = extract_size_ml_any(q), extract_size_ml_any(t)
-        if qs is None or ts is None:
-            return False
-        return qs != ts
-    qr, tr = _size_ml_raw(q), _size_ml_raw(t)
-    if qr is None or tr is None:
-        return False
-    return abs(qr - tr) > 0.05 * max(qr, tr)
+    still mismatches.
+    (Wave-2 A1: delegates to the VariantDescriptor — one implementation.)"""
+    return _vd_size_ml_mismatch(
+        extract_variant_descriptor(q, category),
+        extract_variant_descriptor(t, category),
+        (category or "").lower(),
+    )
 
 
 def _match_storage_gb(text: str) -> Optional[float]:
@@ -3513,19 +3879,21 @@ def _match_storage_gb(text: str) -> Optional[float]:
 def _storage_mismatch(q: str, t: str) -> bool:
     """True iff BOTH carry a GB/TB storage size and they DIFFER (256 vs 128). Uses the
     LARGEST GB token (storage, not RAM) so a query pinning both RAM+storage does not
-    false-pend a genuine storage-only listing."""
-    qg, tg = _match_storage_gb(q), _match_storage_gb(t)
-    if qg is None or tg is None:
-        return False
-    return qg != tg
+    false-pend a genuine storage-only listing.
+    (Wave-2 A1: delegates to the VariantDescriptor — one implementation.)"""
+    return _vd_scalar_differs(
+        extract_variant_descriptor(q, None).storage_gb,
+        extract_variant_descriptor(t, None).storage_gb,
+    )
 
 
 def _count_mismatch(q: str, t: str) -> bool:
-    """True iff BOTH carry a unit count and they DIFFER (120 vs 240 softgels)."""
-    qc, tc = extract_count(q), extract_count(t)
-    if qc is None or tc is None:
-        return False
-    return qc != tc
+    """True iff BOTH carry a unit count and they DIFFER (120 vs 240 softgels).
+    (Wave-2 A1: delegates to the VariantDescriptor — one implementation.)"""
+    return _vd_scalar_differs(
+        extract_variant_descriptor(q, None).count,
+        extract_variant_descriptor(t, None).count,
+    )
 
 
 # Supplement strength: capture (value, unit) so a wrong DOSE (5000 IU vs 1000 IU)
@@ -3550,19 +3918,12 @@ def _doses(text: str) -> set:
 def _strength_mismatch(q: str, t: str) -> bool:
     """True iff BOTH carry an explicit mg/IU/mcg dose with the SAME unit but a
     DIFFERENT value (Vitamin D3 5000 IU vs 1000 IU). Cross-unit pairs (mg vs g) are
-    NOT a mismatch — avoids false-pending an mg↔g-equivalent listing."""
-    qd, td = _doses(q), _doses(t)
-    if not qd or not td:
-        return False
-    q_units = {u for _v, u in qd}
-    t_units = {u for _v, u in td}
-    shared = q_units & t_units
-    if not shared:
-        return False  # different units only — don't assert (in)equivalence
-    for u in shared:
-        if {v for v, uu in qd if uu == u} & {v for v, uu in td if uu == u}:
-            return False  # a common (value, unit) exists → not a mismatch
-    return True
+    NOT a mismatch — avoids false-pending an mg↔g-equivalent listing.
+    (Wave-2 A1: delegates to the VariantDescriptor — one implementation.)"""
+    return _vd_strength_mismatch(
+        extract_variant_descriptor(q, None).doses,
+        extract_variant_descriptor(t, None).doses,
+    )
 
 
 def _weights_volumes(text: str) -> set:
@@ -3616,34 +3977,12 @@ def _weight_or_volume_mismatch(q: str, t: str) -> bool:
     lb->g rounding tolerance (review #2b): when EITHER side carries an lb/pound token,
     the two HEADLINE grams values within 1% are the SAME size (5lb=2267.96g matches a
     "2270g" / "2.27kg" listing). Native g-vs-g and ml-vs-ml stay EXACT (distinct retail
-    sizes are >>1% apart -> no spurious merge); the tolerance arms ONLY for lb."""
-    qwv, twv = _weights_volumes(q), _weights_volumes(t)
-    if not qwv or not twv:
-        return False
-    q_bases = {b for _v, b in qwv}
-    t_bases = {b for _v, b in twv}
-    shared = q_bases & t_bases
-    if not shared:
-        # CROSS-UNIT (external review #4) — BOTH state a size but in DISJOINT bases
-        # (grams vs millilitres). Weight and volume are not interchangeable (a 340g
-        # cream is not provably a 177ml lotion; density makes g<->ml conversion
-        # ambiguous), so the equivalence is UNVERIFIED -> fail-closed mismatch. (A
-        # one-sided size — the other side omits it — never reaches here: the
-        # qwv/twv-empty guard above returns False.)
-        return True
-    _lb_present = bool(_LB_TOKEN_RE.search(q or "")) or bool(_LB_TOKEN_RE.search(t or ""))
-    for b in shared:
-        qv = [v for v, bb in qwv if bb == b]
-        tv = [v for v, bb in twv if bb == b]
-        if not qv or not tv:
-            continue
-        qmax, tmax = max(qv), max(tv)
-        if qmax == tmax:
-            continue  # same headline net/package size
-        if _lb_present and b == "g" and abs(qmax - tmax) <= 0.01 * max(qmax, tmax):
-            continue  # lb-conversion rounding on the headline grams
-        return True
-    return False
+    sizes are >>1% apart -> no spurious merge); the tolerance arms ONLY for lb.
+    (Wave-2 A1: delegates to the VariantDescriptor — one implementation.)"""
+    return _vd_weight_or_volume_mismatch(
+        extract_variant_descriptor(q, None),
+        extract_variant_descriptor(t, None),
+    )
 
 
 # Categories where a PRODUCT FORM (deodorant / candle / lotion / shower gel) names
@@ -3710,9 +4049,11 @@ def _gender_of(text: str) -> Optional[str]:
 def _gender_mismatch(query_name: str, candidate_title: str) -> bool:
     """True iff query and candidate state CONFLICTING genders (a gender-flip flanker).
     A one-sided gender (the canonical 'Pour Homme' the terse query omits) is NOT a
-    mismatch."""
-    gq, gt = _gender_of(query_name), _gender_of(candidate_title)
-    return bool(gq and gt and gq != gt)
+    mismatch. (Wave-2 A1: delegates to the VariantDescriptor.)"""
+    return _vd_gender_mismatch(
+        extract_variant_descriptor(query_name, None),
+        extract_variant_descriptor(candidate_title, None),
+    )
 
 
 def _feminine_query_unconfirmed(query_name: str, candidate_title: str) -> bool:
@@ -3729,8 +4070,12 @@ def _feminine_query_unconfirmed(query_name: str, candidate_title: str) -> bool:
     descriptor ("Black Opium" -> "Black Opium For Women" is the SAME product), because gender
     tokens alone cannot distinguish a flanker-of-a-men's-base from a women's-base descriptor.
     The asymmetry deliberately trades the narrow Eros-style leak for not pending the far more
-    common women's-base case. See tests/test_correctness_review_pr9_fixes.py."""
-    return _gender_of(query_name) == "women" and _gender_of(candidate_title) != "women"
+    common women's-base case. See tests/test_correctness_review_pr9_fixes.py.
+    (Wave-2 A1: delegates to the VariantDescriptor.)"""
+    return _vd_feminine_query_unconfirmed(
+        extract_variant_descriptor(query_name, None),
+        extract_variant_descriptor(candidate_title, None),
+    )
 
 # Form PHRASES that name a different product when present on only one side. Ordered
 # longest-first so "body lotion" wins over a bare "body". The default bottle/jar form
@@ -3794,19 +4139,15 @@ def _form_mismatch(query_name: str, candidate_title: str, category: Optional[str
         rejects (a deodorant is a different product than the EDP).
       - skincare/haircare/makeup: ONE-SIDED tolerant — a descriptive PDP that states a
         form the form-omitting query lacks (Niacinamide -> "Niacinamide Serum") must NOT
-        pend; only TWO explicitly-stated DIFFERENT forms (cream vs gel) reject."""
-    cat = (category or "").lower()
-    if cat not in _FRAGRANCE_BEAUTY_CATEGORIES:
-        return False
-    qf = _extract_product_form(query_name, brand)
-    tf = _extract_product_form(candidate_title, brand)
-    # FRAGRANCES + MAKEUP: STRICT — a one-sided form is a different SKU (a deodorant vs
-    # the EDP; a Lip Glow OIL vs the Lip Glow balm — coverage review CRITICAL makeup
-    # format leak). skincare/haircare: one-sided tolerant (a "Serum" PDP for a
-    # form-omitting query is the same product; only two DIFFERENT stated forms reject).
-    if cat in ("fragrances", "makeup"):
-        return qf != tf
-    return bool(qf and tf and qf != tf)
+        pend; only TWO explicitly-stated DIFFERENT forms (cream vs gel) reject.
+    (Wave-2 A1: delegates to the VariantDescriptor — the FRAGRANCES+MAKEUP
+    strict-one-sided vs skincare/haircare both-stated split lives in
+    _vd_form_mismatch.)"""
+    return _vd_form_mismatch(
+        extract_variant_descriptor(query_name, category, brand),
+        extract_variant_descriptor(candidate_title, category, brand),
+        (category or "").lower(),
+    )
 
 
 def _candidate_missing_query_axis(query_name: str, candidate_title: str,
@@ -3816,42 +4157,14 @@ def _candidate_missing_query_axis(query_name: str, candidate_title: str,
     (fail-closed), not auto-accept. Scoped to the axes where a silent omission is a
     real wrong-variant leak: fragrance concentration + ml size, supplement strength +
     count. (Electronics storage is DELIBERATELY excluded — terse genuine PDP titles
-    routinely omit it; the qualifier/variant_mismatch axes carry electronics.)"""
-    cat = (category or "").lower()
-    if cat == "fragrances":
-        if extract_concentration(query_name) and not extract_concentration(candidate_title):
-            return True
-        if extract_size_ml_any(query_name) is not None and extract_size_ml_any(candidate_title) is None:
-            return True
-    if cat == "supplements":
-        if _doses(query_name) and not _doses(candidate_title):
-            return True
-        if extract_count(query_name) is not None and extract_count(candidate_title) is None:
-            return True
-    if cat == "electronics":
-        # External review — query states storage (256GB) but the candidate omits it ->
-        # UNVERIFIED -> pend (a terse "Galaxy S24" PDP is not proof it is the 256GB).
-        if extract_storage_gb(query_name) is not None and extract_storage_gb(candidate_title) is None:
-            return True
-    if cat in _SIZE_OMIT_CATEGORIES:
-        # skincare / makeup / haircare / grocery — query states a weight/volume the
-        # candidate omits -> unverified size -> pend.
-        if _weights_volumes(query_name) and not _weights_volumes(candidate_title):
-            return True
-    if cat in _PERCENT_CATEGORIES:
-        # skincare/haircare/makeup — query states a %-strength the candidate omits ->
-        # unverified active concentration -> pend (coverage review B).
-        if _percents(query_name) and not _percents(candidate_title):
-            return True
-    if cat == "fashion":
-        # query states a system shoe size the candidate omits -> unverified -> pend.
-        if _shoe_sizes(query_name) and not _shoe_sizes(candidate_title):
-            return True
-    if cat == "grocery":
-        # query states a pack count the candidate omits -> unverified -> pend.
-        if _packs(query_name) and not _packs(candidate_title):
-            return True
-    return False
+    routinely omit it; the qualifier/variant_mismatch axes carry electronics.)
+    (Wave-2 A1: delegates to the VariantDescriptor — the per-category axis set
+    lives in _vd_candidate_missing_query_axis, comment-for-comment.)"""
+    return _vd_candidate_missing_query_axis(
+        extract_variant_descriptor(query_name, category),
+        extract_variant_descriptor(candidate_title, category),
+        (category or "").lower(),
+    )
 
 
 # Categories where a query-stated weight/volume the candidate omits = unverified -> pend.
@@ -3878,11 +4191,12 @@ def _color_mismatch(query_name: str, candidate_title: str) -> bool:
     """Fashion colourway contradiction. The query's STATED colours must ALL appear in the
     candidate (a "White Green" query is NOT the "White Red" colourway just because both carry
     white — comprehensive-review HIGH dual-colourway leak). A one-sided colour (the query
-    states none, or the candidate adds an extra colour beyond the query's) is tolerated."""
-    qc, tc = _colors_in(query_name), _colors_in(candidate_title)
-    if not qc or not tc:
-        return False
-    return not qc.issubset(tc)
+    states none, or the candidate adds an extra colour beyond the query's) is tolerated.
+    (Wave-2 A1: delegates to the VariantDescriptor.)"""
+    return _vd_color_mismatch(
+        extract_variant_descriptor(query_name, None),
+        extract_variant_descriptor(candidate_title, None),
+    )
 
 
 def _clothing_sizes_in(text: str) -> set:
@@ -3897,21 +4211,22 @@ def _clothing_sizes_in(text: str) -> set:
 
 
 def _clothing_size_mismatch(query_name: str, candidate_title: str) -> bool:
-    """Fashion apparel size contradiction — both state a clothing size and they DIFFER."""
-    qs, ts = _clothing_sizes_in(query_name), _clothing_sizes_in(candidate_title)
-    if not qs or not ts:
-        return False
-    return not (qs & ts)
+    """Fashion apparel size contradiction — both state a clothing size and they DIFFER.
+    (Wave-2 A1: delegates to the VariantDescriptor.)"""
+    return _vd_disjoint(
+        extract_variant_descriptor(query_name, None).clothing_sizes,
+        extract_variant_descriptor(candidate_title, None).clothing_sizes,
+    )
 
 
 def _vitamin_letter_mismatch(query_name: str, candidate_title: str) -> bool:
     """Supplement vitamin-letter contradiction — Vitamin C vs Vitamin D (the single
-    letter is dropped from identity tokens, so it is checked as an explicit axis)."""
-    qv = {m.lower() for m in _VITAMIN_LETTER_RE.findall(query_name)}
-    tv = {m.lower() for m in _VITAMIN_LETTER_RE.findall(candidate_title)}
-    if not qv or not tv:
-        return False
-    return not (qv & tv)
+    letter is dropped from identity tokens, so it is checked as an explicit axis).
+    (Wave-2 A1: delegates to the VariantDescriptor.)"""
+    return _vd_disjoint(
+        extract_variant_descriptor(query_name, None).vitamin_letters,
+        extract_variant_descriptor(candidate_title, None).vitamin_letters,
+    )
 
 
 # Flagship fragrance concentrations — a different, more concentrated JUICE than the
@@ -3924,11 +4239,13 @@ _FLAGSHIP_CONCENTRATIONS = frozenset({"Extrait", "Parfum", "Parfum Intense"})
 
 def _flagship_concentration_added(query_name: str, candidate_title: str) -> bool:
     """True iff the candidate states a FLAGSHIP concentration (Parfum/Extrait/Parfum
-    Intense) that the query did not state — a different juice, fail-closed."""
-    tc = extract_concentration(candidate_title)
-    if tc not in _FLAGSHIP_CONCENTRATIONS:
-        return False
-    return extract_concentration(query_name) != tc
+    Intense) that the query did not state — a different juice, fail-closed.
+    (Wave-2 A1: delegates to the VariantDescriptor — _category_type_added, the
+    untouched chokepoint pair check, inherits through this helper.)"""
+    return _vd_flagship_concentration_added(
+        extract_variant_descriptor(query_name, None),
+        extract_variant_descriptor(candidate_title, None),
+    )
 
 
 # Supplement product-TYPE tokens that name a DIFFERENT formulation (Whey vs Whey
@@ -3970,6 +4287,55 @@ _SUPPLEMENT_CONSTITUENT_TOKENS = frozenset({
 # documented deferred residual (coverage re-sweep of the parallel review-fix commits).
 _MULTI_CONSTITUENT_QUERY = frozenset({"complex", "multivitamin", "multivitamins", "prenatal"})
 
+# --- Wave-2 B2a (C1): ACRONYM -> CONSTITUENTS fold (flag-gated) ---------------
+# A supplement named by an ACRONYM (ZMA, Cal-Mag, B-Complex) is the SAME SKU as its
+# descriptively-titled form that ENUMERATES the very constituents the acronym stands for
+# ("Optimum ZMA" == "Optimum ZMA Zinc Magnesium Aspartate"). The acronym is not a subset of
+# its expansion, so the superset/type-add guards over-reject the correct product at ALL
+# decision points (census C1, runtime-verified). This curated table maps each acronym token
+# to the constituent set it expands to; when the QUERY carries a table acronym, the
+# candidate's EXTRA supplement-constituent tokens that fall INSIDE that expansion are folded
+# (not counted as a variant-add). The fold is BOUNDED — it fires ONLY when the query token IS
+# a table acronym, so the combo-leak boundary is untouched: "Calcium" (NOT an acronym) ->
+# "Calcium Magnesium Zinc" still rejects, and any candidate constituent OUTSIDE the acronym's
+# expansion still discriminates. Gated behind ENABLE_VARIANT_DESCRIPTOR_AXES (the exact-gate-
+# scoped Wave-2 axes flag) so flag-OFF stays byte-identical.
+#
+# Keys are matched against the query's fold_tokens. Cal-Mag tokenizes to {cal, mag} (the
+# hyphen splits it) while CalMag glues to {calmag}; both are handled via the split-form rule
+# in _query_acronym_constituents. B-Complex ({b, complex}) / B Complex are ALSO already
+# covered by the existing _MULTI_CONSTITUENT_QUERY "complex" path; the explicit "bcomplex"
+# glued key here catches the glued spelling for parity.
+_SUPPLEMENT_ACRONYM_CONSTITUENTS = {
+    "zma": frozenset({"zinc", "magnesium", "aspartate"}),
+    "calmag": frozenset({"calcium", "magnesium"}),
+    "calmagnesium": frozenset({"calcium", "magnesium"}),
+    "bcomplex": frozenset({
+        "b12", "b6", "b1", "b2", "b3", "b5", "folate", "folic", "biotin",
+        "thiamine", "riboflavin", "niacin", "pantothenic", "pyridoxine", "cobalamin",
+    }),
+}
+# Multi-token acronym spellings the tokenizer splits (Cal-Mag -> {cal, mag}): the required
+# token SET maps to the same constituent expansion as the glued key.
+_SUPPLEMENT_ACRONYM_SPLIT_FORMS = (
+    (frozenset({"cal", "mag"}), frozenset({"calcium", "magnesium"})),
+)
+
+
+def _query_acronym_constituents(q_fold: FrozenSet[str]) -> FrozenSet[str]:
+    """The union of constituent expansions for every table acronym the QUERY fold carries —
+    the token set the candidate is allowed to enumerate WITHOUT it counting as a variant-add
+    (Wave-2 B2a / census C1). Empty when the query carries no table acronym (so a
+    single-element query keeps the full combo-add discrimination)."""
+    out: set = set()
+    for acronym, constituents in _SUPPLEMENT_ACRONYM_CONSTITUENTS.items():
+        if acronym in q_fold:
+            out |= constituents
+    for req_tokens, constituents in _SUPPLEMENT_ACRONYM_SPLIT_FORMS:
+        if req_tokens <= q_fold:
+            out |= constituents
+    return frozenset(out)
+
 
 def _supplement_type_added(query_name: str, candidate_title: str) -> bool:
     """True iff the candidate carries a supplement product-TYPE token (isolate/concentrate/
@@ -3981,13 +4347,13 @@ def _supplement_type_added(query_name: str, candidate_title: str) -> bool:
     the bare constituent names are excluded for such queries. A SINGLE-constituent query keeps
     them — so a COMBO add still rejects ("Calcium" -> "Calcium Magnesium Zinc") and a
     formulation/salt-form add ("Magnesium" -> "Magnesium Citrate", "Whey" -> "Whey Isolate")
-    stays a discriminator on BOTH (no combo leak)."""
-    qt = set(re.findall(r"[a-z0-9]+", _fold_identity(query_name)))
-    tt = set(re.findall(r"[a-z0-9]+", _fold_identity(candidate_title)))
-    added = (tt & _SUPPLEMENT_TYPE_TOKENS) - qt
-    if qt & _MULTI_CONSTITUENT_QUERY:
-        added = added - _SUPPLEMENT_CONSTITUENT_TOKENS
-    return bool(added)
+    stays a discriminator on BOTH (no combo leak).
+    (Wave-2 A1: delegates to the VariantDescriptor — _category_type_added, the
+    untouched chokepoint pair check, inherits through this helper.)"""
+    return _vd_supplement_type_added(
+        extract_variant_descriptor(query_name, None),
+        extract_variant_descriptor(candidate_title, None),
+    )
 
 
 def _category_type_added(query_name: str, candidate_title: str, category: Optional[str]) -> bool:
@@ -4027,11 +4393,12 @@ def _percents(text: str) -> set:
 
 
 def _percent_mismatch(q: str, t: str) -> bool:
-    """True iff BOTH carry a %-strength and they share NO value (10% vs 5%)."""
-    qp, tp = _percents(q), _percents(t)
-    if not qp or not tp:
-        return False
-    return not (qp & tp)
+    """True iff BOTH carry a %-strength and they share NO value (10% vs 5%).
+    (Wave-2 A1: delegates to the VariantDescriptor.)"""
+    return _vd_disjoint(
+        extract_variant_descriptor(q, None).percents,
+        extract_variant_descriptor(t, None).percents,
+    )
 
 
 # --- fashion SHOE-SIZE axis ---------------------------------------------------
@@ -4051,11 +4418,12 @@ def _shoe_sizes(text: str) -> set:
 
 
 def _shoe_size_mismatch(q: str, t: str) -> bool:
-    """True iff BOTH state a system-prefixed shoe size and share none (US 9 vs US 10)."""
-    qs, ts = _shoe_sizes(q), _shoe_sizes(t)
-    if not qs or not ts:
-        return False
-    return not (qs & ts)
+    """True iff BOTH state a system-prefixed shoe size and share none (US 9 vs US 10).
+    (Wave-2 A1: delegates to the VariantDescriptor.)"""
+    return _vd_disjoint(
+        extract_variant_descriptor(q, None).shoe_sizes,
+        extract_variant_descriptor(t, None).shoe_sizes,
+    )
 
 
 # --- grocery PACK-COUNT axis --------------------------------------------------
@@ -4078,11 +4446,12 @@ def _packs(text: str) -> set:
 
 
 def _pack_mismatch(q: str, t: str) -> bool:
-    """True iff BOTH state a pack count and share none (6 Pack vs 24 Pack)."""
-    qp, tp = _packs(q), _packs(t)
-    if not qp or not tp:
-        return False
-    return not (qp & tp)
+    """True iff BOTH state a pack count and share none (6 Pack vs 24 Pack).
+    (Wave-2 A1: delegates to the VariantDescriptor.)"""
+    return _vd_disjoint(
+        extract_variant_descriptor(q, None).packs,
+        extract_variant_descriptor(t, None).packs,
+    )
 
 
 # --- supplement delivery FORM axis -------------------------------------------
@@ -4105,19 +4474,14 @@ _SUPPLEMENT_ALT_FORMS = frozenset({
 
 
 def _supplement_form_added(query_name: str, candidate_title: str) -> bool:
-    qt = set(re.findall(r"[a-z0-9]+", _fold_identity(query_name)))
-    tt = set(re.findall(r"[a-z0-9]+", _fold_identity(candidate_title)))
-    # candidate adds an ALTERNATIVE form the query lacks -> different SKU.
-    if (tt & _SUPPLEMENT_ALT_FORMS) - (qt & _SUPPLEMENT_ALT_FORMS):
-        return True
-    # both state a form and the (default vs alternative) CLASS differs.
-    def _class(toks: set) -> set:
-        out = set()
-        for f in toks & (_SUPPLEMENT_DEFAULT_FORMS | _SUPPLEMENT_ALT_FORMS):
-            out.add("alt:" + f if f in _SUPPLEMENT_ALT_FORMS else "default")
-        return out
-    qc, tc = _class(qt), _class(tt)
-    return bool(qc and tc and qc != tc)
+    """Candidate adds an ALTERNATIVE delivery form (gummy/liquid/...) the query
+    lacks, or the stated (default vs alternative) form CLASSES differ.
+    (Wave-2 A1: delegates to the VariantDescriptor — _category_type_added, the
+    untouched chokepoint pair check, inherits through this helper.)"""
+    return _vd_supplement_form_added(
+        extract_variant_descriptor(query_name, None),
+        extract_variant_descriptor(candidate_title, None),
+    )
 
 
 # --- generalized candidate-adds-distinctive-token (SUPERSET) guard ------------
@@ -4179,6 +4543,13 @@ _ELECTRONICS_PADDING = _MANUFACTURER_NOISE | frozenset({
     # 'oc'=overclocked, mirrorless/dslr/body/lens descriptive (coverage review round 5).
     "oc", "mirrorless", "dslr", "body", "lens", "ssd", "hdd", "ryzen", "camera",
     "intel", "amd",
+    # spec NOUNS a BH retailer title appends alongside the already-padded
+    # gpu/ram/ssd (BF3, sweep OR-2: sharafdg "10-core CPU", extra "13 Inch
+    # IPS") — "cpu" is the exact sibling of "gpu" above; "ips" is a display
+    # PANEL tech like the padded "uhd"/"4k" (the model number discriminates a
+    # monitor/laptop SKU, never the panel word). NOTE: "oled" is DELIBERATELY
+    # NOT padding — it names a distinct SKU (Switch OLED vs base Switch).
+    "cpu", "ips",
     # NOTE: "kit" REMOVED — a camera Kit (body+lens) is a materially pricier SKU than the
     # body; an added "Kit" must reject a body/base query (coverage review round 6).
     # NOTE: "crystal" REMOVED — Samsung TV LINE (Crystal UHD vs QLED vs Neo QLED). It
@@ -4323,33 +4694,23 @@ def _flavour_mismatch(query_name: str, candidate_title: str,
 
     A candidate that OMITS the query's flavour (terse listing) is tolerated in BOTH
     categories; a pure 'unflavored'/'plain' ADD to a flavour-less query is the canonical
-    base (no reject)."""
-    qf = set(re.findall(r"[a-z0-9]+", _fold_identity(query_name))) & _FLAVOUR_TOKENS
-    tf = set(re.findall(r"[a-z0-9]+", _fold_identity(candidate_title))) & _FLAVOUR_TOKENS
-    if not tf:
-        return False  # candidate states no flavour -> tolerate a terse listing
-    if (category or "").lower() == "grocery":
-        extra = tf - qf
-        if not extra:
-            return False  # candidate flavour subset of query -> same SKU
-        real_q = qf - _FLAVOUR_ABSENCE
-        extra_real = extra - _FLAVOUR_ABSENCE
-        if not real_q and not extra_real:
-            return False  # only 'unflavored'/'plain' added to a flavour-less query
-        return True
-    # supplements (and any other flavour category): both-stated-different only.
-    if not qf:
-        return False  # one-sided candidate flavour tolerated (ISO100 -> ISO100 Vanilla)
-    return not (qf & tf)
+    base (no reject).
+    (Wave-2 A1: delegates to the VariantDescriptor — the grocery-asymmetric vs
+    supplements-contradiction split lives in _vd_flavour_mismatch.)"""
+    return _vd_flavour_mismatch(
+        extract_variant_descriptor(query_name, category),
+        extract_variant_descriptor(candidate_title, category),
+        (category or "").lower(),
+    )
 
 
 def _finish_mismatch(query_name: str, candidate_title: str) -> bool:
-    """True iff BOTH sides state a makeup finish and they share none (Matte vs Dewy)."""
-    qf = set(re.findall(r"[a-z0-9]+", _fold_identity(query_name))) & _MAKEUP_FINISH_TOKENS
-    tf = set(re.findall(r"[a-z0-9]+", _fold_identity(candidate_title))) & _MAKEUP_FINISH_TOKENS
-    if not qf or not tf:
-        return False
-    return not (qf & tf)
+    """True iff BOTH sides state a makeup finish and they share none (Matte vs Dewy).
+    (Wave-2 A1: delegates to the VariantDescriptor.)"""
+    return _vd_disjoint(
+        extract_variant_descriptor(query_name, None).finishes,
+        extract_variant_descriptor(candidate_title, None).finishes,
+    )
 
 
 _MATERIAL_TOKENS = frozenset({
@@ -4359,12 +4720,12 @@ _MATERIAL_TOKENS = frozenset({
 
 
 def _material_mismatch(query_name: str, candidate_title: str) -> bool:
-    """Fashion — True iff BOTH state a material and they share none (Leather vs Suede)."""
-    qm = set(re.findall(r"[a-z0-9]+", _fold_identity(query_name))) & _MATERIAL_TOKENS
-    tm = set(re.findall(r"[a-z0-9]+", _fold_identity(candidate_title))) & _MATERIAL_TOKENS
-    if not qm or not tm:
-        return False
-    return not (qm & tm)
+    """Fashion — True iff BOTH state a material and they share none (Leather vs Suede).
+    (Wave-2 A1: delegates to the VariantDescriptor.)"""
+    return _vd_disjoint(
+        extract_variant_descriptor(query_name, None).materials,
+        extract_variant_descriptor(candidate_title, None).materials,
+    )
 
 
 # CONDITION (electronics) — a refurbished/used/open-box unit is a different price TIER, so
@@ -4375,21 +4736,23 @@ _CONDITION_TOKENS = frozenset({
 
 
 def _condition_mismatch(query_name: str, candidate_title: str) -> bool:
-    qc = bool(set(re.findall(r"[a-z0-9]+", _fold_identity(query_name))) & _CONDITION_TOKENS)
-    tc = bool(set(re.findall(r"[a-z0-9]+", _fold_identity(candidate_title))) & _CONDITION_TOKENS)
-    return qc != tc
+    """EITHER-direction one-sided reject (the only such axis): a non-new
+    condition stated on exactly one side is a different price tier.
+    (Wave-2 A1: delegates to the VariantDescriptor.)"""
+    return (extract_variant_descriptor(query_name, None).condition
+            != extract_variant_descriptor(candidate_title, None).condition)
 
 
 _INCH_RE = re.compile(r"\b(\d+(?:\.\d+)?)\s*(?:-\s*)?(?:inch(?:es)?\b|[\"”″]+)", re.I)
 
 
 def _inch_mismatch(query_name: str, candidate_title: str) -> bool:
-    """Electronics — True iff BOTH state a screen-inch size and they differ (14 vs 16)."""
-    qi = {float(m) for m in _INCH_RE.findall(query_name or "")}
-    ti = {float(m) for m in _INCH_RE.findall(candidate_title or "")}
-    if not qi or not ti:
-        return False
-    return not (qi & ti)
+    """Electronics — True iff BOTH state a screen-inch size and they differ (14 vs 16).
+    (Wave-2 A1: delegates to the VariantDescriptor.)"""
+    return _vd_disjoint(
+        extract_variant_descriptor(query_name, None).inches,
+        extract_variant_descriptor(candidate_title, None).inches,
+    )
 
 
 # SPF (sunscreen rating) — a SKU axis for cosmetics (SPF 30 vs SPF 50). One-sided
@@ -4403,11 +4766,12 @@ _SPF_RE = re.compile(r"\bspf\s*(\d+)\b", re.I)
 
 
 def _spf_mismatch(query_name: str, candidate_title: str) -> bool:
-    qs = {int(m) for m in _SPF_RE.findall(query_name or "")}
-    ts = {int(m) for m in _SPF_RE.findall(candidate_title or "")}
-    if not qs or not ts:
-        return False
-    return not (qs & ts)
+    """Both-stated-different SPF rating (SPF 30 vs SPF 50); one-sided tolerated
+    (see the revert note below). (Wave-2 A1: delegates to the VariantDescriptor.)"""
+    return _vd_disjoint(
+        extract_variant_descriptor(query_name, None).spfs,
+        extract_variant_descriptor(candidate_title, None).spfs,
+    )
 
 # NOTE (external review #4): an SPF-ADD axis (candidate states an SPF the query omits ->
 # different SKU) was implemented and then REVERTED. A sunscreen-context carve-out cannot
@@ -4431,10 +4795,92 @@ def _ram_value(text: str) -> set:
 
 
 def _ram_mismatch(query_name: str, candidate_title: str) -> bool:
-    qr, tr = _ram_value(query_name), _ram_value(candidate_title)
-    if not qr or not tr:
-        return False
-    return not (qr & tr)
+    """Both-stated-different RAM tier (8GB vs 16GB, GB values <= 32); one-sided
+    tolerated. (Wave-2 A1: delegates to the VariantDescriptor.)"""
+    return _vd_disjoint(
+        extract_variant_descriptor(query_name, None).ram_gb,
+        extract_variant_descriptor(candidate_title, None).ram_gb,
+    )
+
+
+# Wave C (re-sweep RS4) — LABEL-AWARE core-count parse: the count's cpu/gpu
+# label ("10-Core CPU", "8 Core GPU") is captured when it directly follows the
+# "core" word (the real sharafdg/extra spec phrasing); an unlabelled count
+# ("12-core 1TB") keeps the old set semantics. Hyphen class covers the
+# unicode family (C2, RS-1): this axis parses RAW text, where the live
+# sharafdg "8‑core GPU" carries U+2011 — ASCII-only missed it, so the 8-GPU
+# vs 10-GPU bin could not discriminate on the real title.
+_CORE_COUNT_LABELED_RE = re.compile(
+    rf"\b(\d+)\s*(?:[-{_UNICODE_HYPHENS}]\s*)?core\b(?:\s*(cpu|gpu))?", re.I,
+)
+# Wave D (convergence CV4) — an immediately-PRECEDING cpu/gpu label ("CPU
+# 10-core"): anchored to the END of the gap before the count so only the word
+# directly in front of it binds.
+_CORE_COUNT_PRE_LABEL_RE = re.compile(
+    rf"\b(cpu|gpu)\s*[:\-{_UNICODE_HYPHENS}]?\s*$", re.I,
+)
+
+
+def _labeled_core_counts(text: str) -> Tuple[set, set, set]:
+    """(cpu, gpu, unlabelled) core-count value sets stated in `text`
+    ("10-core CPU / 8-core GPU" -> ({10}, {8}, set()); "12-core" ->
+    (set(), set(), {12})).
+
+    Label-BEFORE aware (Wave D, convergence CV4): "CPU 10-core GPU 8-core"
+    used to bind the FOLLOWING word, labeling 10 as GPU — the EXACT bin then
+    over-rejected against the label-after retailer form. A cpu/gpu word
+    immediately PRECEDING the count binds too, PREFERRED over the trailing
+    word when both are present. The pre-label is searched ONLY in the gap
+    since the previous match's end, so one label word can never bind twice:
+    in "10-core CPU 10-core GPU" the "CPU" consumed as count-1's trailing
+    label is outside count-2's gap, and count 2 keeps its own "GPU"
+    (({10},{10},set()) — the pinned RS4 parse). A count whose trailing label
+    was consumed by the preceding preference stays UNLABELLED and keeps the
+    tolerant set semantics (fail direction: same bin accepts, a disjoint
+    value still rejects)."""
+    cpu: set = set()
+    gpu: set = set()
+    unlabeled: set = set()
+    t = text or ""
+    prev_end = 0
+    for m in _CORE_COUNT_LABELED_RE.finditer(t):
+        v = int(m.group(1))
+        post = (m.group(2) or "").lower()
+        pre_m = _CORE_COUNT_PRE_LABEL_RE.search(t[prev_end:m.start()])
+        lab = (pre_m.group(1).lower() if pre_m else "") or post
+        if lab == "cpu":
+            cpu.add(v)
+        elif lab == "gpu":
+            gpu.add(v)
+        else:
+            unlabeled.add(v)
+        prev_end = m.end()
+    return cpu, gpu, unlabeled
+
+
+def _core_count_mismatch(query_name: str, candidate_title: str) -> bool:
+    """Electronics — True iff both sides state core counts that CONTRADICT.
+    One-sided (either side states none at all) is tolerated: the count is spec
+    phrasing stripped from identity (BF3), and the chip-tier / model axes
+    carry the major discrimination.
+
+    LABEL-AWARE (Wave C, re-sweep RS4): the old flat set-INTERSECTION masked a
+    differing GPU bin whenever the CPU count was shared — the real M4 Air
+    10c/8g title was accepted for the 10c/10g query (a distinct, pricier
+    Apple bin). Semantics now:
+      - a label BOTH sides state (cpu-vs-cpu, gpu-vs-gpu) must share a value;
+      - an UNLABELLED value keeps the old set semantics against the other
+        side's FULL value set (which bin it refers to is unknowable — reject
+        only when it appears nowhere, the pre-RS4 pinned behaviour);
+      - both sides fully UNLABELLED compare set EQUALITY (a stated count set
+        that differs is a different bin; singletons behave exactly as the old
+        disjoint check).
+    (Wave-2 A1: delegates to the VariantDescriptor — the label-aware logic
+    lives in _vd_core_count_mismatch, line-for-line.)"""
+    return _vd_core_count_mismatch(
+        extract_variant_descriptor(query_name, None).core_counts,
+        extract_variant_descriptor(candidate_title, None).core_counts,
+    )
 
 
 # Apple silicon CHIP-TIER axis — "M3" (base) vs "M3 Pro" vs "M3 Max" vs "M3 Ultra" are
@@ -4453,17 +4899,12 @@ def _chip_tier(text: str) -> set:
 
 def _chip_tier_mismatch(query_name: str, candidate_title: str) -> bool:
     """True iff both name an Apple M-series chip with the SAME number but a DIFFERENT tier
-    (M3 base vs M3 Pro). A different chip NUMBER is already caught by identity (m2!=m3)."""
-    qc, tc = _chip_tier(query_name), _chip_tier(candidate_title)
-    q_nums = {n for n, _ in qc}
-    t_nums = {n for n, _ in tc}
-    shared = q_nums & t_nums
-    if not shared:
-        return False
-    for n in shared:
-        if {t for nn, t in qc if nn == n} != {t for nn, t in tc if nn == n}:
-            return True
-    return False
+    (M3 base vs M3 Pro). A different chip NUMBER is already caught by identity (m2!=m3).
+    (Wave-2 A1: delegates to the VariantDescriptor.)"""
+    return _vd_chip_tier_mismatch(
+        extract_variant_descriptor(query_name, None).chip_tiers,
+        extract_variant_descriptor(candidate_title, None).chip_tiers,
+    )
 
 
 # Supplement bare (unit-less) dose — "D3 5000" vs "D3 1000" (the bare 4+-digit number is
@@ -4473,11 +4914,12 @@ _BARE_DOSE_RE = re.compile(r"(?<![a-z])(\d{4,})(?![a-z])", re.I)
 
 
 def _supplement_bare_dose_mismatch(query_name: str, candidate_title: str) -> bool:
-    qd = {int(m) for m in _BARE_DOSE_RE.findall(_fold_identity(query_name))}
-    td = {int(m) for m in _BARE_DOSE_RE.findall(_fold_identity(candidate_title))}
-    if not qd or not td:
-        return False
-    return not (qd & td)
+    """Both-stated-different bare (unit-less) dose number (D3 5000 vs D3 1000);
+    one-sided tolerated. (Wave-2 A1: delegates to the VariantDescriptor.)"""
+    return _vd_disjoint(
+        extract_variant_descriptor(query_name, None).bare_doses,
+        extract_variant_descriptor(candidate_title, None).bare_doses,
+    )
 
 
 # Trailing "+" upgrade-variant axis (category-INDEPENDENT). A word immediately followed by
@@ -4498,8 +4940,12 @@ def _plus_stems(s: str) -> set:
 
 
 def _plus_variant_mismatch(query_name: str, candidate_title: str) -> bool:
-    # raw .lower() (NOT _fold_identity — it strips the "+" as a non-alphanumeric).
-    return _plus_stems(query_name) != _plus_stems(candidate_title)
+    """SET-EQUALITY of '+'-marked stems (symbol + spelled forms unified) — a
+    one-sided '+' is a different, upgraded SKU (S24 vs S24+).
+    (Wave-2 A1: delegates to the VariantDescriptor; _plus_stems parses the raw
+    .lower() text, NOT _fold_identity — the fold strips the '+'.)"""
+    return (extract_variant_descriptor(query_name, None).plus_stems
+            != extract_variant_descriptor(candidate_title, None).plus_stems)
 
 
 # Fashion CUT/FIT — a different denim/apparel cut is a SKU (Levis 501 vs 501 Slim). Both-
@@ -4511,11 +4957,12 @@ _FIT_TOKENS = frozenset({
 
 
 def _fit_mismatch(query_name: str, candidate_title: str) -> bool:
-    qf = set(re.findall(r"[a-z0-9]+", _fold_identity(query_name))) & _FIT_TOKENS
-    tf = set(re.findall(r"[a-z0-9]+", _fold_identity(candidate_title))) & _FIT_TOKENS
-    if not qf or not tf:
-        return False
-    return not (qf & tf)
+    """Both-stated-different apparel cut/fit (501 Slim vs 501 Regular); one-sided
+    tolerated. (Wave-2 A1: delegates to the VariantDescriptor.)"""
+    return _vd_disjoint(
+        extract_variant_descriptor(query_name, None).fits,
+        extract_variant_descriptor(candidate_title, None).fits,
+    )
 
 
 # Grocery PREP / fat / carbonation — a real SKU axis (instant vs ground coffee, whole vs
@@ -4527,11 +4974,12 @@ _GROCERY_PREP_TOKENS = frozenset({
 
 
 def _grocery_prep_mismatch(query_name: str, candidate_title: str) -> bool:
-    qp = set(re.findall(r"[a-z0-9]+", _fold_identity(query_name))) & _GROCERY_PREP_TOKENS
-    tp = set(re.findall(r"[a-z0-9]+", _fold_identity(candidate_title))) & _GROCERY_PREP_TOKENS
-    if not qp or not tp:
-        return False
-    return not (qp & tp)
+    """Both-stated-different grocery prep/fat/carbonation (instant vs ground);
+    one-sided tolerated. (Wave-2 A1: delegates to the VariantDescriptor.)"""
+    return _vd_disjoint(
+        extract_variant_descriptor(query_name, None).preps,
+        extract_variant_descriptor(candidate_title, None).preps,
+    )
 # Skin-type / area / product-class descriptors (NEVER a SKU axis — the SKU axes %/size/
 # +active/form are enforced separately). The BENEFIT/effect words (brightening/clarifying/
 # volumizing/...) are DELIBERATELY EXCLUDED — they are the variant LINE discriminator for
@@ -4613,6 +5061,1246 @@ def _category_padding(category: Optional[str]) -> frozenset:
     return _BASE_NOISE_TOKENS | _CATEGORY_PADDING.get(cat, frozenset())
 
 
+# ============================================================================
+# R1 (genuine-price KPI Wave B3) — adapter RETRIEVAL-TERM LADDER.
+#
+# Store search APIs (Woo Store API / Magento GraphQL / Salla / Algolia) are
+# AND-restrictive: the full canonical name ("Yves Saint Laurent Black Opium
+# Eau de Parfum 90ml") returns 0 rows on every live-probed store while the
+# model-core term ("Black Opium") returns the EXACT SKU (recon_cascade R1,
+# 2026-07-02: theperfumesclub 48.000 BHD in-stock via the Woo Store API;
+# klinq 39.38 via magento_graphql_bhd). The ladder tries the FULL name first
+# and — ONLY when the response carries ZERO rows — retries ONCE with the core
+# term. A response WITH rows (matched or not) never triggers the second
+# request (latency pin: +1 HTTP round-trip only on the empty-first-response
+# path, still bounded by the cascade's per-source _ADAPTER_TIMEOUT).
+#
+# The core term strips EXACTLY the axes the acceptance gates re-verify per
+# candidate (strict_title_match / _selection_match / select_best):
+#   * a LEADING known-brand token run   (candidate_brand / brand-alias folds)
+#   * the concentration PHRASE          (the concentration axis)
+#   * size/measure tokens               (the ml/oz/GB/count axes) — NOT for
+#     electronics/fashion (see the digit pin below)
+#   * per-category PADDING + gender     (non-identity by definition)
+# so widening RETRIEVAL cannot widen ACCEPTANCE — every retrieved candidate
+# is still matched against the ORIGINAL full name by the fail-closed chain.
+#
+# PINNED (numeric-axis categories electronics/fashion): the core drops ONLY
+# brand + padding and NEVER a digit-bearing token ("256GB", "S25", "'07" —
+# even a digit-bearing padding word like "5G" is kept), so the core term can
+# never blur a numeric SKU axis at retrieval time.
+#
+# Rollback: ENABLE_ADAPTER_QUERY_LADDER (default ON, read fresh per call).
+# OFF -> [full_name] only = byte-identical single-request adapter behaviour.
+# ============================================================================
+
+_LADDER_DIGIT_PRESERVING_CATEGORIES = frozenset({"electronics", "fashion"})
+# A brand name is at most ~3 words (Yves Saint Laurent / Maison Francis
+# Kurkdjian / Parfums de Marly); capping the leading run keeps a brand-vocab
+# collision from eating into the product name (Jean Paul Gaultier "Le Male":
+# "le" is a brand token via Le Labo, but the run is already 3 deep at "le").
+_LADDER_BRAND_RUN_CAP = 3
+_ADAPTER_BRAND_TOKEN_VOCAB: Optional[frozenset] = None
+
+
+def adapter_query_ladder_enabled() -> bool:
+    """True iff the adapter retrieval-term ladder is active (default ON). Read
+    FRESH per call (the scs._price_cache_bust_enabled read-fresh pattern, with
+    exact_gate_enabled's default-ON polarity/parse) so a Railway flip needs no
+    redeploy coordination."""
+    return os.getenv("ENABLE_ADAPTER_QUERY_LADDER", "true").strip().lower() not in (
+        "false", "0", "no", "off", "",
+    )
+
+
+def adapter_selection_primary_enabled() -> bool:
+    """True iff the direct store-API adapter chains accept on the keystone
+    _selection_match with strict_title_match DEMOTED to a fast-accept surface
+    check (recon_cascade R2; sibling of ENABLE_ADAPTER_QUERY_LADDER, default
+    ON, read FRESH per call so a Railway flip needs no redeploy).
+
+    Scope: ONLY the 6 chains that run _selection_match ALONGSIDE strict
+    (woo _match_woo_product / magento _best_match / salla _select_candidate /
+    rest_json _title_matches / occ _select_product / unbxd
+    _match_unbxd_product — the last wired in Wave B-FIX, over-rejection sweep
+    OR-1). A strict PASS keeps the pre-change fast path; a strict FAIL falls
+    through to the remaining chain (numbers_match / variant_mismatch /
+    counterfeit / accessory / _selection_match + each chain's overlap/stock
+    gates) instead of hard-rejecting — strict's RAW tokenization otherwise
+    throws away correct rows on pure alias/spacing variance ("90ml" vs
+    "90 ml", "YSL" vs the spelled brand via candidate_brand) that
+    _identity_tokens_ps collapses. Call sites gate the fallthrough through
+    selection_primary_admits (flag + the wrong-brand fence below), NEVER this
+    raw flag read alone. The bolo-sitemap strict gate has NO _selection_match
+    alongside and keeps strict as its only protection (the PR#13 lesson) —
+    NOT in scope.
+
+    HARD-REQUIRES the exact gate: _selection_match returns True (no-op) when
+    ENABLE_EXACT_PRICE_GATE is off, so demoting strict then would leave the
+    chains gated only by numbers/variant/counterfeit/accessory — a wrong-SKU
+    leak class the documented rollback state must never gain. Exact gate OFF
+    -> False -> every chain keeps the strict hard pre-gate (byte-identical
+    pre-change behaviour)."""
+    if not exact_gate_enabled():
+        return False
+    return os.getenv("ENABLE_ADAPTER_SELECTION_PRIMARY", "true").strip().lower() not in (
+        "false", "0", "no", "off", "",
+    )
+
+
+def variant_descriptor_axes_enabled() -> bool:
+    """True iff the Wave-2 VariantDescriptor BACKSTOP-mode NEW axes are active
+    (flanker_markers / generation_ints / gender / model-year / prefixed
+    clothing-size enforcement at the two weak chokepoints — cache-read
+    _cache_price_identity_ok + display is_price_showable). Default OFF, read
+    FRESH per call so a Railway flip needs no redeploy (the
+    adapter_selection_primary_enabled :5027 idiom).
+
+    HARD-REQUIRES the exact gate: the whole descriptor comparison chain is a
+    no-op when ENABLE_EXACT_PRICE_GATE is off (is_exact_match / _selection_match
+    / _backstop_identity_ok all early-return True), so enabling the new backstop
+    axes then would either do nothing or, worse, gain a gate the documented
+    rollback state must never have. Exact gate OFF -> False -> backstop_identity_verdict
+    returns the EXACT legacy pair (_backstop_identity_ok and not
+    _category_type_added), byte-identical pre-change behaviour."""
+    if not exact_gate_enabled():
+        return False
+    return os.getenv("ENABLE_VARIANT_DESCRIPTOR_AXES", "false").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
+def selection_primary_admits(
+    query_name: str, candidate_title: str, *,
+    candidate_brand: str = "", category: Optional[str] = None,
+) -> bool:
+    """True iff a strict_title_match FAILURE may fall through to the
+    selection-primary chain (the Wave B4 demotion) for THIS candidate — the
+    flag gate + the WRONG-BRAND FENCE (Wave B-FIX; coverage leak sweep L1
+    CRITICAL + L2 HIGH).
+
+    strict's brand requirement was the ONLY gate that kept the QUERY's brand
+    word required when that word is _category_padding-STRIPPABLE ("adidas"/
+    "puma"/"vans" are fashion padding; manufacturers are electronics padding):
+    _selection_match drops it from q_core, so after the demotion a
+    same-model-word CROSS-BRAND row ("Golden Goose Superstar White Sneakers"
+    under an "Adidas Superstar White" query) sailed through every demoted
+    chain and cached 7d-genuine. On the fallthrough, require BRAND EVIDENCE:
+
+      (a) candidate_brand NON-EMPTY -> it must alias-equal a query token
+          (folded via _fold_identity/normalize_words, _BRAND_ALIAS_GROUPS-
+          expanded so a spelled house label still releases an abbreviated
+          query). A stated CONTRADICTING brand is definitive wrong-brand
+          evidence -> reject. A pure-digit label (a magento option-id leak)
+          asserts no brand -> treated as NO signal, falls to (b).
+      (b) NO candidate-brand signal (woo/salla/rest_json/unbxd rows) -> for
+          FASHION the query's padding-strippable brand token must appear
+          folded in the title (the L2 brandless class: with the brand absent
+          from BOTH the title and the row, correct and cross-brand rows are
+          indistinguishable — keep strict's brand requirement). Electronics
+          keeps the B4 brand-omitted unlock ("iPad Air M2 128GB", no
+          "Apple"): model-line tokens are brand-unique, and the leak sweep
+          probed that cross-brand space naturally rejected.
+
+    Queries with NO padding-strippable brand token pass untouched — for every
+    other brand word the keystone's own subset check keeps it required
+    (candidate_brand only ever releases the candidate's OWN brand), so the
+    klinq brand-omitted fragrance unlock and the spaced-unit unlocks are
+    unaffected (both pinned in tests/test_selection_primary_acceptance.py).
+    Flag OFF (or exact gate OFF) -> False -> the strict hard pre-gate,
+    byte-identical pre-change behaviour.
+
+    Wave C (re-sweep RS2 + RS7): the fence logic itself is CENTRALIZED in
+    _brand_evidence_ok — this wrapper only adds the selection-primary flag
+    gate. The shared consumers (extract_price_from_shopping / select_best /
+    should_cache_price) call the helper directly, so the fence can never
+    fork/drift between the adapter fallthroughs and the no-adapter paths.
+    """
+    if not adapter_selection_primary_enabled():
+        return False
+    return _brand_evidence_ok(
+        query_name, candidate_title,
+        candidate_brand=candidate_brand, category=category,
+    )
+
+
+def _brand_evidence_ok(
+    query_name: str, candidate_title: str, *,
+    candidate_brand: str = "", category: Optional[str] = None,
+) -> bool:
+    """THE BF1 wrong-brand fence, centralized (Wave C, re-sweep RS2 + RS7 +
+    kpiE2E RS-2). Semantics as documented on selection_primary_admits, with
+    the RS2 tightening: the candidate's stated brand is compared against the
+    QUERY's padding-BRAND token(s) ONLY — alias-expanded on BOTH sides — never
+    against the full query token set. Pre-RS2 a compound/junk brand FIELD
+    ("Vans Suede", "Classic") re-opened the L1 wrong-brand leak by
+    intersecting a NON-brand query word ('suede'/'classic'), the exact chains
+    BF1 closed.
+
+    Bounded exactly like BF1: only queries whose brand token is
+    padding-strippable (_MANUFACTURER_NOISE ∩ category padding) are fenced;
+    path (b) — no candidate-brand signal — requires the brand folded in the
+    TITLE for FASHION only (electronics keeps the B4 brand-omitted unlock).
+    exact gate OFF → True (no-op; the callers are themselves gate-scoped, and
+    the selection-primary wrapper hard-requires the gate already)."""
+    if not exact_gate_enabled():
+        return True
+    cat = (category or "").lower()
+    if cat == "other":
+        # Mirror _selection_match's explicit-"other" re-inference so the fence
+        # uses the same padding the keystone will.
+        cat = (_infer_category_from_query(query_name) or cat).lower()
+    padding_brands = _MANUFACTURER_NOISE & _category_padding(cat)
+    if not padding_brands:
+        return True
+    q_toks = normalize_words(_fold_identity(query_name or ""))
+    q_brand = q_toks & padding_brands
+    if not q_brand:
+        return True
+    # RS2 — the evidence target is the query's BRAND token(s), alias-expanded.
+    q_brand_exp = set(q_brand)
+    for _group in _BRAND_ALIAS_GROUPS:
+        if q_brand_exp & _group:
+            q_brand_exp = q_brand_exp | _group
+    cand_toks = {
+        w for w in normalize_words(_fold_identity(candidate_brand or ""))
+        if len(w) > 2 and not w.isdigit()
+    }
+    if cand_toks:
+        for _group in _BRAND_ALIAS_GROUPS:
+            if cand_toks & _group:
+                cand_toks = cand_toks | _group
+        return bool(cand_toks & q_brand_exp)
+    if cat != "fashion":
+        return True
+    t_toks = normalize_words(_fold_identity(candidate_title or ""))
+    return bool(q_brand_exp & t_toks)
+
+
+def _ladder_fold_token(tok: str) -> str:
+    """Folded MEMBERSHIP form of one whitespace token (lowercase, NFKD
+    diacritic-fold, apostrophe fold, edge-punctuation + hyphen strip — the
+    normalize_words treatment applied token-wise) so the ORIGINAL token can be
+    emitted verbatim in the core term while set-membership checks use the fold."""
+    t = _APOSTROPHES_RE.sub("", tok or "").lower()
+    t = "".join(
+        c for c in unicodedata.normalize("NFKD", t) if not unicodedata.combining(c)
+    )
+    return t.strip(",.()&:;'\"!?").replace("-", "")
+
+
+def _adapter_brand_token_vocab() -> frozenset:
+    """Folded brand-WORD vocabulary for the ladder's leading-run strip, built
+    lazily ONCE from the existing brand tables (LUXURY_BRAND_KEYWORDS,
+    FRAGRANCE_BRAND_KEYWORDS, _MANUFACTURER_NOISE, _BRAND_ALIAS_GROUPS) so the
+    ladder can never drift from the matcher's own brand knowledge. Leading-run
+    ONLY at the call site — a mid-name collision ("Mon Paris", "Burberry
+    London") is never stripped."""
+    global _ADAPTER_BRAND_TOKEN_VOCAB
+    if _ADAPTER_BRAND_TOKEN_VOCAB is None:
+        toks: set = set()
+        for phrase in set(LUXURY_BRAND_KEYWORDS) | set(FRAGRANCE_BRAND_KEYWORDS):
+            for w in str(phrase).split():
+                f = _ladder_fold_token(w)
+                if f:
+                    toks.add(f)
+        toks.update(_MANUFACTURER_NOISE)
+        for group in _BRAND_ALIAS_GROUPS:
+            toks.update(group)
+        _ADAPTER_BRAND_TOKEN_VOCAB = frozenset(toks)
+    return _ADAPTER_BRAND_TOKEN_VOCAB
+
+
+def build_adapter_search_terms(
+    full_name: str, category: Optional[str] = None,
+) -> List[str]:
+    """The retrieval-term ladder for the direct store-API adapters:
+    ``[full_name]`` or ``[full_name, core_term]``.
+
+    Semantics (pinned by tests/test_adapter_query_ladder.py):
+      * terms[0] is ALWAYS the untouched ``full_name`` (flag-OFF byte-identity).
+      * core = full_name minus a LEADING known-brand run, minus the
+        concentration phrase + size/measure tokens (EXCEPT electronics/fashion,
+        where a digit-bearing token is NEVER dropped), minus per-category
+        padding/gender words — exactly the axes the acceptance gates re-verify
+        per candidate, so widening retrieval cannot widen acceptance.
+      * deduped (``[full_name]`` when the core equals the full name); an empty
+        or single-char core is never emitted.
+      * flag OFF (ENABLE_ADAPTER_QUERY_LADDER) -> ``[full_name]`` only.
+
+    Adapter contract: try terms[0]; ONLY a ZERO-ROW response tries terms[1]; a
+    response WITH rows — matched or not — never triggers the second request.
+    """
+    if not adapter_query_ladder_enabled():
+        return [full_name]
+    if not full_name or not isinstance(full_name, str):
+        return [full_name]
+
+    cat = (category or "").lower()
+    if cat in ("", "other"):
+        # Mirror _selection_match's explicit-"other" re-inference so the
+        # category-scoped strips below run on the right axes.
+        cat = _infer_category_from_query(full_name) or cat
+    digit_preserving = cat in _LADDER_DIGIT_PRESERVING_CATEGORIES
+
+    src = full_name[:_MATCH_INPUT_CAP]  # ReDoS bound, mirrors the matchers
+    if not digit_preserving:
+        for pat, _label in _CONCENTRATION_PATTERNS:
+            src = pat.sub(" ", src)
+        src = _IDENTITY_MEASURE_STRIP_RE.sub(" ", src)
+
+    drop = _category_padding(cat)
+    if cat in _FRAGRANCE_BEAUTY_CATEGORIES:
+        # The matcher strips gender markers from identity for these categories
+        # (_GENDER_IDENTITY_STRIP); fragrances already carry them in padding.
+        drop = drop | _GENDER_IDENTITY_STRIP
+
+    tokens = src.split()
+    folded = [_ladder_fold_token(t) for t in tokens]
+
+    # Leading known-BRAND run (capped; punctuation-only tokens like "&" inside
+    # the run don't count toward the cap). Leading-run only — a brand-vocab
+    # word later in the name is product identity ("Mon Paris") and stays.
+    vocab = _adapter_brand_token_vocab()
+    idx = 0
+    brand_words = 0
+    while idx < len(tokens) and brand_words < _LADDER_BRAND_RUN_CAP:
+        f = folded[idx]
+        if not f:
+            idx += 1  # punctuation-only token inside a brand run ("&")
+            continue
+        if f in vocab:
+            idx += 1
+            brand_words += 1
+            continue
+        break
+    if brand_words == 0:
+        idx = 0  # no brand found — keep any leading punctuation-only tokens
+
+    core_tokens: List[str] = []
+    for tok, f in zip(tokens[idx:], folded[idx:]):
+        if not f:
+            continue
+        if digit_preserving and any(c.isdigit() for c in f):
+            # PINNED: electronics/fashion NEVER drop a digit-bearing token —
+            # not even a digit-bearing padding word ("5G").
+            core_tokens.append(tok)
+            continue
+        if f in drop:
+            continue
+        core_tokens.append(tok)
+
+    core = " ".join(core_tokens).strip()
+    if len(core) < 2:
+        return [full_name]  # never emit an empty / single-char core
+    if core.lower() == " ".join(full_name.split()).lower():
+        return [full_name]  # dedupe — the core adds nothing
+    return [full_name, core]
+
+
+# ============================================================================
+# === VARIANT DESCRIPTOR (Wave-2) ===
+#
+# Phase-A EXTRACT-ONCE formalization (design lane R1/R2/R5 STEP 1,
+# docs/investigations/2026-07-03-wave2-recon/descriptor-design.json).
+#
+# Every axis the matcher discriminates on already existed as a pure extractor
+# primitive that was re-parsed up to ~5x per candidate across
+# strict_title_match / _axis_mismatch / _selection_match / should_cache_price /
+# is_price_showable. This section extracts each axis ONCE per
+# (text, category, brand, gate) into a frozen VariantDescriptor (memoized), and
+# encodes TODAY'S comparison semantics in ONE decision function
+# (descriptor_verdict) with three modes:
+#
+#   SELECTION — the _selection_match contract (axes + leak-direction subset +
+#               variant-add superset + per-category padding + tolerances)
+#   EXACT     — the is_exact_match contract (axes + identity set-EQUALITY)
+#   BACKSTOP  — the _backstop_identity_ok contract (axis-only,
+#               strict_extras=False — brand-independent, never false-pends a
+#               descriptive title; the chokepoints pair it with the SEPARATE
+#               _category_type_added bounded check)
+#
+# BEHAVIOR-IDENTICAL BY CONSTRUCTION: extraction calls the EXISTING extractor
+# primitives verbatim with the exact input form (capped/uncapped/folded) each
+# legacy call site used; the comparator table replicates each per-axis
+# predicate field-for-field. The golden corpus
+# (tests/test_variant_descriptor_golden.py, 1149 pinned verdicts) is the
+# equivalence gate. NO new flag: every consumer already no-ops when
+# ENABLE_EXACT_PRICE_GATE is off, so flag-OFF byte-identity is inherited.
+#
+# Phase-A scope note: the NEW Phase-B fields (flanker_markers,
+# generation_ints) are deliberately ABSENT — this phase formalizes, it does
+# not change any verdict.
+#
+# CAPPED-PARSE SEMANTICS (Phase-A closure ruling, ACCEPTED): the descriptor
+# parses the _MATCH_INPUT_CAP(512)-capped text for EVERY axis. The >512-char
+# DIRECT-CALL surfaces that legacy code parsed UNCAPPED — the
+# _category_type_added helper pair at the display/cache-read chokepoints
+# (is_price_showable :1425 / scs._cache_price_identity_ok) and
+# _concentration_mismatch (:1634) — now deliberately see capped text too.
+# This UNIFIES the ReDoS envelope across the whole matcher chain and
+# SUPERSEDES the legacy uncapped parsing on pathological (>512-char) inputs.
+# The cap is PARTIAL-TOKEN-SAFE (a mid-token boundary slice strips the
+# trailing fragment instead of manufacturing a phantom token — see
+# _build_variant_descriptor). Pinned by the >512 `capped_semantics` corpus
+# rows in tests/data/variant_descriptor_golden_corpus.json.
+#
+# MEMO-KEY FAN-OUT (deliberate): the standalone wrappers
+# (_concentration_mismatch, _flagship_concentration_added,
+# _supplement_type_added, _supplement_form_added) call
+# extract_variant_descriptor with category=None while the gate chain passes
+# the RESOLVED category — so the same text can occupy TWO lru slots (one per
+# category key). Benchmarked cheaper than the legacy per-call re-parse (the
+# extra slot is one small frozen dataclass; unifying the key would force
+# threading category through wrapper signatures frozen by their callers).
+# Tests must never rely on memo persistence across tests —
+# tests/conftest.py clears the lru per-test (B1.0 memo-staleness fixture).
+#
+# PHASE-B1 NEW FIELDS (extraction ALWAYS ON — harmless pure fields; the
+# ENFORCEMENT is flag-gated behind variant_descriptor_axes_enabled at the
+# BACKSTOP consumers only):
+#   flanker_markers  FRAGRANCES-SCOPED curated symmetric concentration-flanker
+#                    words (Sauvage Elixir / Good Girl Supreme). CURATED and
+#                    BOUNDED on purpose: only unambiguous flanker labels, NEVER
+#                    a base-name word (private/oud/noir/nuit/sport) — "Tom Ford
+#                    Private Blend Oud Wood" IS "Oud Wood".
+#   generation_ints  ELECTRONICS-SCOPED bare generation ints 1-4 that FOLLOW a
+#                    model-noun token (AirPods Pro 2 / iPad Pro 4). The
+#                    adjacency bound keeps it off "Dual SIM 2 Nano" / "2 Year
+#                    Warranty" / "USB 3" / "Type 2 cable".
+# ============================================================================
+
+# --- flanker_markers (fragrances) -------------------------------------------
+# The BOUNDED, curated set of unambiguous concentration-flanker words. These
+# create a DISTINCT SKU/price ("Dior Sauvage" vs "Dior Sauvage Elixir",
+# "Good Girl" vs "Good Girl Supreme") yet are NOT extract_concentration values
+# (so the concentration axis + the flagship-add check never see them). Diacritic
+# folding is inherited from _fold_identity (NFKD) so "Supreme" catches
+# "Supreme"/"Supreme" alike; extracted from fold_tokens. Membership is STRICT:
+# adding a base-name word here would over-reject correct base products
+# (Oud Wood / Bleu de Chanel Noir), so this list is intentionally minimal.
+_FLANKER_MARKER_TOKENS = frozenset({
+    "elixir", "supreme", "absolu", "intense", "extreme",
+})
+
+# --- generation_ints (electronics) ------------------------------------------
+# A bare standalone digit 1-4 is a GENERATION marker ONLY when it immediately
+# follows a model-noun token in the identity stream (AirPods Pro *2*, iPad Air
+# *4*, Echo Dot *3*). The adjacency condition is the ReDoS-free bound that keeps
+# it OFF "Dual SIM 2 Nano" / "2 Year Warranty" / "USB 3" / "Type 2 cable".
+_GENERATION_MODEL_NOUNS = frozenset({
+    "pro", "max", "air", "mini", "series", "gen", "generation",
+    "watch", "pixel", "echo", "dot", "pencil", "airpods",
+})
+# Ordinal generation forms ("2nd generation", "3rd gen") folded to the bare int.
+_GENERATION_ORDINAL_RE = re.compile(
+    r"\b([1-4])(?:st|nd|rd|th)\s+gen(?:eration)?\b", re.I,
+)
+# PARENTHETICAL ordinal-generation annotation ("(4th generation)"/"(2nd Gen)").
+# This is RELEASE PADDING (exactly like a "(2025)" year annotation), NOT a
+# discriminator, so the backstop ADD-check ignores it (B1-FIX ruling A1). Only
+# an INLINE bare model-noun-adjacent int counts as a generation discriminator.
+_GENERATION_ANNOTATED_RE = re.compile(
+    r"\(\s*([1-4])(?:st|nd|rd|th)\s+gen(?:eration)?\s*\)", re.I,
+)
+# B1-FIX ruling A2: a bare inline digit 1-4 that is IMMEDIATELY FOLLOWED by a
+# quantity/spec/measurement noun is a quantity, not a generation ("3 Quart",
+# "4 Ah", "2 Meter", "2 Pack"). Curated; extend as sweeps reveal.
+_GENERATION_QUANTITY_NOUNS = frozenset({
+    "pack", "piece", "pieces", "pcs", "count", "ct", "meter", "metre", "m",
+    "strap", "straps", "port", "ports", "player", "filter", "filters", "year",
+    "years", "quart", "qt", "qts", "litre", "liter", "l", "ah", "mah", "atm",
+    "bar", "camera", "cameras", "lens", "lenses", "ply", "mm", "cm", "inch",
+    "in", "watt", "w", "kw", "gb", "tb", "hz", "khz", "ghz", "seat", "seats",
+    "door", "doors",
+    # B1-FIX2: descriptive count/marketing nouns a bare digit QUANTIFIES in real
+    # titles ("... 2 Colors", "... 2 Sensors", "... 2 Ear Tips"). Extending this
+    # set can ONLY make the generation axis fire LESS (more tolerance), so it can
+    # never create a NEW over-rejection. NONE of these is a model-variant / spec /
+    # color-name token (classic/plus/max/pro/mini/wifi/cellular/charcoal/... stay
+    # OUT) so no real generation leak reopens (the canonical leaks are
+    # title-terminal or non-count-suffixed: Pro 2 / Dot 3 / Pencil 2 / Watch 4
+    # Classic / Air 4 Wi-Fi).
+    "colors", "colours", "color", "colour", "sensors", "sensor", "tips", "tip",
+    "options", "option", "bands", "band", "sizes", "remotes", "remote",
+    "speakers", "speaker", "cores", "core", "buttons", "button", "modes", "mode",
+    "blades", "blade", "heads", "head", "nibs", "nib", "refills", "refill",
+    "cartridges", "cartridge", "pods", "pod", "cups", "cup", "bulbs", "bulb",
+    "keys", "key", "zones", "zone", "pairs", "pair", "sets", "set", "ear",
+    "buds", "bud", "chargers", "charger", "cables", "adapters", "adapter",
+    "stands", "stand", "mounts", "mount", "brushes", "brush", "rolls", "roll",
+    "sheets", "sheet", "packs",
+})
+
+
+def _flanker_markers_of(fold_tokens: FrozenSet[str]) -> FrozenSet[str]:
+    """The curated concentration-flanker words present in `fold_tokens`
+    (fragrances-scoped; the CONSUMER checks the category)."""
+    return frozenset(fold_tokens & _FLANKER_MARKER_TOKENS)
+
+
+def _generation_ints_of(text: str) -> FrozenSet[int]:
+    """INLINE bare generation ints 1-4 in `text` — the DISCRIMINATOR set the
+    backstop ADD-check enforces (electronics-scoped; the CONSUMER checks the
+    category).
+
+    A bare digit 1-4 counts ONLY when (a) the PRECEDING identity token is a
+    model-noun AND (b) the FOLLOWING token is NOT a quantity/spec noun
+    (B1-FIX A2 — "Apple Watch 2 Pack"/"Series 2 Meter" are quantities, not
+    generations). Inline ordinal "2nd gen" forms count; the PARENTHETICAL
+    "(2nd generation)" annotation form does NOT (B1-FIX A1 — that is release
+    padding, captured by _generation_ints_annotated_of instead). The
+    _MATCH_INPUT_CAP cap is applied by the descriptor builder before calling
+    this (text is already capped)."""
+    low = (text or "").lower()
+    out = set()
+    # Inline ordinal ("Nth gen"), but NOT the parenthetical "(Nth gen)" form —
+    # strip the annotated occurrences before scanning so they don't leak in.
+    inline_ord = _GENERATION_ANNOTATED_RE.sub(" ", low)
+    for m in _GENERATION_ORDINAL_RE.finditer(inline_ord):
+        out.add(int(m.group(1)))
+    words = re.findall(r"[a-z0-9]+", low)
+    for i in range(1, len(words)):
+        w = words[i]
+        if w in ("1", "2", "3", "4") and words[i - 1] in _GENERATION_MODEL_NOUNS:
+            nxt = words[i + 1] if i + 1 < len(words) else None
+            if nxt in _GENERATION_QUANTITY_NOUNS:
+                continue  # a quantity/spec noun, not a generation
+            out.add(int(w))
+    return frozenset(out)
+
+
+def _generation_ints_annotated_of(text: str) -> FrozenSet[int]:
+    """The PARENTHETICAL "(Nth generation)"/"(Nth gen)" annotation ints —
+    informational release padding, IGNORED by the backstop ADD-check (B1-FIX
+    A1). Extracted so the descriptor keeps the axis visible for diagnostics/
+    future structured-code work without letting it discriminate."""
+    low = (text or "").lower()
+    return frozenset(int(m.group(1)) for m in _GENERATION_ANNOTATED_RE.finditer(low))
+
+
+@dataclass(frozen=True)
+class VariantDescriptor:
+    """The extract-once product-variant identity of ONE side (query or
+    candidate title), per descriptor-design.json R1.
+
+    Every field None/empty == UNKNOWN (the axis is unstated on this side) —
+    the comparator table decides per axis whether UNKNOWN is tolerated
+    (one-sided axes), required (fail-closed query-stated axes) or compared
+    (set-equality axes).
+
+    R1's single `size` field is SPLIT into the three representations today's
+    comparators actually consume (behavior-identity beats a single typed
+    scalar): `size_ml_snapped` (extract_size_ml_any — the fragrance
+    standard-bottle snap basis), `size_ml_raw` (_size_ml_raw — the
+    non-fragrance raw+5%-tolerance basis) and `weights_volumes`
+    (_weights_volumes — the g/ml typed set with cross-base fail-closed
+    semantics). A convenience `size` property exposes the R1 typed view.
+
+    `structured_code` is "" in Phase A: structured codes are STAMPED by
+    adapters onto the price dict (algolia_service.py:532), never parsed from
+    title text. TODO(Wave-2 Phase B, R1 provenance): structured-first stamping
+    — a retailer-structured brand/code/size field wins over the title parse
+    for that axis and marks provenance='structured'.
+    """
+    # --- identity ---
+    identity_core: FrozenSet[str]        # _identity_tokens_ps(text, brand, category)
+    brand_tokens: FrozenSet[str]         # brand words + hyphen-collapsed + alias groups
+    structured_code: str                 # "" (adapter-stamped, not text-derived)
+    model_codes: FrozenSet[str]          # _luxottica_model_codes (0-prefix-folded)
+    # --- numeric / typed axes ---
+    concentration: Optional[str]         # extract_concentration (EDP/EDT/Parfum/...)
+    size_ml_snapped: Optional[int]       # extract_size_ml_any (fragrance snap basis)
+    size_ml_raw: Optional[float]         # _size_ml_raw (raw oz->ml, non-fragrance basis)
+    weights_volumes: FrozenSet[Tuple[float, str]]  # _weights_volumes {(value,'g'|'ml')}
+    lb_present: bool                     # _LB_TOKEN_RE (arms the lb 1% headline tolerance)
+    storage_gb: Optional[float]          # _match_storage_gb (MAX = storage-not-RAM)
+    ram_gb: FrozenSet[int]               # _ram_value (GB values <= 32)
+    count: Optional[float]               # extract_count (caps/tablets/... headline max)
+    doses: FrozenSet[Tuple[float, str]]  # _doses {(value, 'mg'|'mcg'|'iu')}, comma=thousands
+    bare_doses: FrozenSet[int]           # _BARE_DOSE_RE over the folded text (4+ digits)
+    percents: FrozenSet[float]           # _percents (% active strength)
+    spfs: FrozenSet[int]                 # _SPF_RE values
+    packs: FrozenSet[float]              # _packs (grocery pack counts)
+    shoe_sizes: FrozenSet[Tuple[str, float]]  # _shoe_sizes {(system, value)}
+    clothing_sizes: FrozenSet[str]       # _clothing_sizes_in (apparel S/M/L/XL...)
+    inches: FrozenSet[float]             # _INCH_RE values (the both-stated axis)
+    inch_tokens: FrozenSet[str]          # _inch_digit_tokens on the UNCAPPED text
+    chip_tiers: FrozenSet[Tuple[str, str]]    # _chip_tier {(chip_number, tier)}
+    core_counts: Tuple[FrozenSet[int], FrozenSet[int], FrozenSet[int]]  # (cpu, gpu, unlabelled)
+    qualifiers: FrozenSet[str]           # _quals_in vs the category's variant qualifiers
+    plus_stems: FrozenSet[str]           # _plus_stems (symbol + spelled '+' variants)
+    # --- categorical axes ---
+    gender: Optional[str]                # _gender_of ('men'/'women'/None=unisex-or-unstated)
+    form: Optional[str]                  # _extract_product_form (brand-stripped)
+    flavours: FrozenSet[str]             # fold tokens & _FLAVOUR_TOKENS
+    finishes: FrozenSet[str]             # fold tokens & _MAKEUP_FINISH_TOKENS
+    materials: FrozenSet[str]            # fold tokens & _MATERIAL_TOKENS
+    fits: FrozenSet[str]                 # fold tokens & _FIT_TOKENS
+    preps: FrozenSet[str]                # fold tokens & _GROCERY_PREP_TOKENS
+    vitamin_letters: FrozenSet[str]      # _VITAMIN_LETTER_RE on the capped raw text
+    supplement_types: FrozenSet[str]     # fold tokens & _SUPPLEMENT_TYPE_TOKENS
+    supplement_alt_forms: FrozenSet[str]      # fold tokens & _SUPPLEMENT_ALT_FORMS
+    supplement_default_forms: FrozenSet[str]  # fold tokens & _SUPPLEMENT_DEFAULT_FORMS
+    colors: FrozenSet[str]               # fold tokens & _COLOR_EDITION_TOKENS
+    year_annotations: FrozenSet[str]     # _annotation_year_tokens on the UNCAPPED text
+    condition: bool                      # fold tokens & _CONDITION_TOKENS (non-new stated)
+    # --- tolerance-family fields (SELECTION-mode title-side tolerances) ---
+    construction_tolerated: FrozenSet[str]  # _fashion_construction_tolerated_for (UNCAPPED)
+    eyewear_annotations: FrozenSet[str]  # title-derived colorway/lens tokens (code-gated at verdict)
+    # --- Phase-B1 NEW axes (extraction always-on; ENFORCEMENT flag-gated at backstops) ---
+    flanker_markers: FrozenSet[str]      # _flanker_markers_of (fragrances curated flanker words)
+    generation_ints: FrozenSet[int]      # _generation_ints_of (electronics INLINE model-noun-adjacent 1-4; the ADD-check discriminator)
+    generation_ints_annotated: FrozenSet[int]  # _generation_ints_annotated_of (parenthetical "(Nth gen)" release padding; IGNORED by ADD-check)
+    # --- normalized token blob (whole-set subtractions: supplement type-add) ---
+    fold_tokens: FrozenSet[str]          # re.findall([a-z0-9]+, _fold_identity(capped))
+
+    @property
+    def size(self) -> Optional[Tuple[float, str]]:
+        """R1's typed (value, unit_class) convenience view, size_variant_token
+        precedence (storage > ml > count > weight/volume). INFORMATIONAL ONLY —
+        the comparators consume the split fields above."""
+        if self.storage_gb:
+            return (self.storage_gb, "gb")
+        if self.size_ml_raw is not None:
+            return (float(self.size_ml_raw), "ml")
+        if self.count:
+            return (self.count, "ct")
+        if self.weights_volumes:
+            value, base = max(self.weights_volumes)
+            return (value, base)
+        return None
+
+
+def _eyewear_annotation_tokens(text: str) -> set:
+    """The TITLE-DERIVED eyewear annotation tokens of `text` (colorway
+    sub-tokens adjacent to a Luxottica model code, lens-size annotations, the
+    'lens size' phrase words) — the dynamic part of _eyewear_code_tolerated_for,
+    split out so the descriptor extracts it once per side and the legacy helper
+    delegates (single implementation, no drift). The static
+    _EYEWEAR_DESCRIPTOR_TOKENS and the query-code gate stay at the CONSUMER
+    (they are pair-conditional)."""
+    low = (text or "").lower()
+    if len(low) > _MATCH_INPUT_CAP:
+        low = low[:_MATCH_INPUT_CAP]
+    out: set = set()
+    for m in _LUXOTTICA_COLORWAY_ADJ_RE.finditer(low):
+        for part in m.group(1).split("/"):
+            if part:
+                out.add(part)
+        if m.group(2):
+            out.add(m.group(2))
+    for n in _EYEWEAR_LENS_MM_RE.findall(low):
+        out.add(n)
+        out.add(f"{n}mm")
+    if _EYEWEAR_LENS_PHRASE_RE.search(low):
+        out.update(("lens", "size"))
+    return out
+
+
+def _build_variant_descriptor(text: str, category: Optional[str],
+                              brand: str) -> VariantDescriptor:
+    """Run every existing extractor primitive ONCE over `text` and freeze the
+    result. Input forms replicate the legacy call sites exactly:
+      - axis extractors get the _MATCH_INPUT_CAP-capped text (the cap
+        _axis_mismatch applied before every per-axis predicate, ReDoS guard);
+      - _identity_tokens_ps / _luxottica_model_codes get the raw text (they
+        self-cap at the same 512);
+      - the SELECTION tolerance helpers (_annotation_year_tokens,
+        _inch_digit_tokens, _fashion_construction_tolerated_for) get the raw
+        UNCAPPED text — _selection_match always called them uncapped.
+    None input is treated as "" (the extractors' own `text or ""` idiom).
+
+    PARTIAL-TOKEN-SAFE CAP (Phase-A closure, B1.0): when the 512-byte boundary
+    slices MID-TOKEN, a plain slice can MANUFACTURE a token the text never
+    contained (drift-reviewer repro: a 531-char title whose "Parfumerie"
+    sliced at byte 512 left a trailing "Parfum" — a phantom flagship
+    concentration). If the char AT the boundary and the last capped char are
+    both non-whitespace, the trailing partial fragment is stripped so a sliced
+    token contributes NOTHING instead of a phantom axis value.
+    _identity_tokens_ps / _luxottica_model_codes keep their own plain
+    self-caps untouched (identity tokens are subset/equality-compared — a
+    trailing partial token cannot manufacture an AXIS there)."""
+    text = text or ""
+    if len(text) > _MATCH_INPUT_CAP:
+        capped = text[:_MATCH_INPUT_CAP]
+        if not text[_MATCH_INPUT_CAP].isspace() and not capped[-1].isspace():
+            _parts = capped.rsplit(None, 1)
+            if len(_parts) == 2:  # only when a whitespace boundary exists to cut at
+                capped = _parts[0]
+    else:
+        capped = text
+    fold_full = _fold_identity(capped)
+    cat = (category or "").lower()
+    # Wave-2 B2b (C2, flag-gated): fold a supplement nutrient-name's SPACED digit form to the
+    # glued form on fold_full too, so the fold_tokens-derived axes (supplement_types /
+    # supplement constituents) see "b 12" as "b12" — matching the identity-token fold in
+    # _identity_tokens_ps. Kept CONSISTENT with that site (same helper, same supplement scope,
+    # same 1-2-digit bound) so identity_core and fold_tokens never disagree. Flag-OFF stays
+    # byte-identical; the axes flag is in the lru memo key so a flip never serves a stale
+    # descriptor.
+    if cat == "supplements" and variant_descriptor_axes_enabled():
+        fold_full = _apply_nutrient_digit_fold(fold_full)
+    fold_tokens = frozenset(re.findall(r"[a-z0-9]+", fold_full))
+
+    # Brand token set — the same computation _identity_tokens_ps runs
+    # internally (plain words + hyphen-collapsed multiword form + alias-group
+    # expansion). Informational on the descriptor: identity_core already had
+    # the brand subtracted by _identity_tokens_ps itself.
+    brand_words = set(normalize_words(_fold_identity(brand))) if brand else set()
+    if brand and " " in brand.strip():
+        brand_words |= {re.sub(r"\s+", "", _fold_identity(brand))}
+    for _group in _BRAND_ALIAS_GROUPS:
+        if brand_words & _group:
+            brand_words |= set(_group)
+
+    quals_set = _CATEGORY_VARIANT_QUALIFIERS.get(cat, frozenset())
+    cpu, gpu, unlabeled = _labeled_core_counts(capped)
+
+    return VariantDescriptor(
+        identity_core=frozenset(_identity_tokens_ps(text, brand, category)),
+        brand_tokens=frozenset(brand_words),
+        structured_code="",  # Phase A: adapter-stamped only (see class docstring TODO)
+        model_codes=frozenset(_luxottica_model_codes(text)),
+        concentration=extract_concentration(capped),
+        size_ml_snapped=extract_size_ml_any(capped),
+        size_ml_raw=_size_ml_raw(capped),
+        weights_volumes=frozenset(_weights_volumes(capped)),
+        lb_present=bool(_LB_TOKEN_RE.search(capped)),
+        storage_gb=_match_storage_gb(capped),
+        ram_gb=frozenset(_ram_value(capped)),
+        count=extract_count(capped),
+        doses=frozenset(_doses(capped)),
+        bare_doses=frozenset(int(m) for m in _BARE_DOSE_RE.findall(fold_full)),
+        percents=frozenset(_percents(capped)),
+        spfs=frozenset(int(m) for m in _SPF_RE.findall(capped)),
+        packs=frozenset(_packs(capped)),
+        shoe_sizes=frozenset(_shoe_sizes(capped)),
+        clothing_sizes=frozenset(_clothing_sizes_in(capped)),
+        inches=frozenset(float(m) for m in _INCH_RE.findall(capped)),
+        inch_tokens=frozenset(_inch_digit_tokens(text)),
+        chip_tiers=frozenset(_chip_tier(capped)),
+        core_counts=(frozenset(cpu), frozenset(gpu), frozenset(unlabeled)),
+        qualifiers=frozenset(_quals_in(capped, quals_set)) if quals_set else frozenset(),
+        plus_stems=frozenset(_plus_stems(capped)),
+        gender=_gender_of(capped),
+        form=_extract_product_form(capped, brand),
+        flavours=fold_tokens & _FLAVOUR_TOKENS,
+        finishes=fold_tokens & _MAKEUP_FINISH_TOKENS,
+        materials=fold_tokens & _MATERIAL_TOKENS,
+        fits=fold_tokens & _FIT_TOKENS,
+        preps=fold_tokens & _GROCERY_PREP_TOKENS,
+        vitamin_letters=frozenset(m.lower() for m in _VITAMIN_LETTER_RE.findall(capped)),
+        supplement_types=fold_tokens & _SUPPLEMENT_TYPE_TOKENS,
+        supplement_alt_forms=fold_tokens & _SUPPLEMENT_ALT_FORMS,
+        supplement_default_forms=fold_tokens & _SUPPLEMENT_DEFAULT_FORMS,
+        colors=fold_tokens & _COLOR_EDITION_TOKENS,
+        year_annotations=frozenset(_annotation_year_tokens(text)),
+        condition=bool(fold_tokens & _CONDITION_TOKENS),
+        construction_tolerated=frozenset(_fashion_construction_tolerated_for(text)),
+        eyewear_annotations=frozenset(_eyewear_annotation_tokens(text)),
+        flanker_markers=_flanker_markers_of(fold_tokens),
+        generation_ints=_generation_ints_of(capped),
+        generation_ints_annotated=_generation_ints_annotated_of(capped),
+        fold_tokens=fold_tokens,
+    )
+
+
+@functools.lru_cache(maxsize=2048)
+def _extract_variant_descriptor_cached(
+    text: str, category: Optional[str], brand: str, _gate_on: bool,
+    _axes_on: bool = False,
+) -> VariantDescriptor:
+    """Memoized builder. `_gate_on` is part of the key because identity
+    tokenization (normalize_words' spaced-unit fold) branches on
+    ENABLE_EXACT_PRICE_GATE — a flag flip must never serve a stale descriptor.
+    `_axes_on` (Wave-2 B2b) is likewise in the key because the supplement
+    nutrient-digit fold (_apply_nutrient_digit_fold) branches identity_core AND
+    fold_tokens on ENABLE_VARIANT_DESCRIPTOR_AXES — a flip must not serve a stale
+    (unfolded) descriptor. Flag-OFF -> _axes_on False -> the fold no-ops so the
+    key/behaviour is byte-identical to the pre-B2b default."""
+    return _build_variant_descriptor(text, category, brand)
+
+
+def extract_variant_descriptor(text: Optional[str], category: Optional[str],
+                               brand: str = "") -> VariantDescriptor:
+    """The extract-once entry point: the VariantDescriptor of `text` under
+    (`category`, `brand`), LRU-memoized (pure function; kills the ~5x re-parse
+    per candidate across the matcher chain). Arguments must be hashable —
+    an unhashable input raises TypeError loudly (never silently coerced)."""
+    return _extract_variant_descriptor_cached(
+        text or "", category, brand or "", exact_gate_enabled(),
+        variant_descriptor_axes_enabled(),
+    )
+
+
+# ----------------------------------------------------------------------------
+# The COMPARATOR TABLE (design lane R2) — ONE decision function, three modes,
+# encoding TODAY'S semantics per axis:
+#   EXACT_BOTH_STATED  one-sided tolerated; both-stated-different rejects
+#                      (concentration, ml-size, storage, count, dose, weight/
+#                      volume headline, percent, SPF, RAM, inch, chip-tier,
+#                      core-count, supplement flavour, finish, material, fit,
+#                      prep, vitamin-letter, shoe-size, pack, clothing-size,
+#                      bare-dose, gender-contradiction)
+#   SET_EQUALITY       electronics variant qualifiers, plus-stems, both-
+#                      unlabelled core-counts
+#   ASYMMETRIC_ADD     candidate-adds rejects (flagship concentration,
+#                      supplement type/alt-form, grocery flavour); colors is
+#                      the query-subset variant
+#   EITHER_SIDED       condition — the ONLY either-direction one-sided reject
+#   QUERY_STATED_REQUIRES_CANDIDATE  the _candidate_missing_query_axis set
+#                      (fail-closed omission of a query-pinned axis)
+#   CROSS_CLASS_FAIL_CLOSED  weight-vs-volume disjoint bases
+# plus the mode-scoped SELECTION tolerances (year-annotation, electronics
+# 'ai', fashion construction bigram, eyewear code-confirmed, inch equality,
+# makeup shade-number).
+# ----------------------------------------------------------------------------
+
+DESCRIPTOR_MODE_SELECTION = "selection"
+DESCRIPTOR_MODE_EXACT = "exact"
+DESCRIPTOR_MODE_BACKSTOP = "backstop"
+_DESCRIPTOR_MODES = frozenset({
+    DESCRIPTOR_MODE_SELECTION, DESCRIPTOR_MODE_EXACT, DESCRIPTOR_MODE_BACKSTOP,
+})
+
+
+@dataclass(frozen=True)
+class DescriptorVerdict:
+    """descriptor_verdict result: `match` is the decision; `axis` names the
+    failing comparator when match is False (diagnostics only — no consumer
+    branches on it in Phase A)."""
+    match: bool
+    axis: Optional[str] = None
+
+
+def _vd_scalar_differs(a, b) -> bool:
+    """EXACT_BOTH_STATED scalar: both stated and different (None = UNKNOWN)."""
+    return a is not None and b is not None and a != b
+
+
+def _vd_disjoint(a: frozenset, b: frozenset) -> bool:
+    """EXACT_BOTH_STATED set: both stated and sharing NO value."""
+    return bool(a and b and not (a & b))
+
+
+def _vd_size_ml_mismatch(q: VariantDescriptor, c: VariantDescriptor, cat: str) -> bool:
+    """ml/oz size axis (_size_ml_mismatch): fragrances compare the
+    standard-bottle SNAPPED sizes exactly; every other category compares the
+    RAW oz->ml conversion with a ~5% tolerance (oz<->ml rounding)."""
+    if cat == "fragrances":
+        return _vd_scalar_differs(q.size_ml_snapped, c.size_ml_snapped)
+    if q.size_ml_raw is None or c.size_ml_raw is None:
+        return False
+    return abs(q.size_ml_raw - c.size_ml_raw) > 0.05 * max(q.size_ml_raw, c.size_ml_raw)
+
+
+def _vd_strength_mismatch(qd: frozenset, td: frozenset) -> bool:
+    """Dose axis (_strength_mismatch): same-unit-only — mismatch iff EVERY
+    shared unit has disjoint values (cross-unit pairs never assert)."""
+    if not qd or not td:
+        return False
+    q_units = {u for _v, u in qd}
+    t_units = {u for _v, u in td}
+    shared = q_units & t_units
+    if not shared:
+        return False
+    for u in shared:
+        if {v for v, uu in qd if uu == u} & {v for v, uu in td if uu == u}:
+            return False
+    return True
+
+
+def _vd_weight_or_volume_mismatch(q: VariantDescriptor, c: VariantDescriptor) -> bool:
+    """Weight/volume axis (_weight_or_volume_mismatch): HEADLINE = max per
+    base; disjoint bases (g vs ml) = CROSS_CLASS_FAIL_CLOSED mismatch; the lb
+    1% tolerance arms only when either side carried an lb token."""
+    qwv, twv = q.weights_volumes, c.weights_volumes
+    if not qwv or not twv:
+        return False
+    q_bases = {b for _v, b in qwv}
+    t_bases = {b for _v, b in twv}
+    shared = q_bases & t_bases
+    if not shared:
+        return True  # cross-class fail-closed (340g vs 177ml unverifiable)
+    _lb_present = q.lb_present or c.lb_present
+    for b in shared:
+        qv = [v for v, bb in qwv if bb == b]
+        tv = [v for v, bb in twv if bb == b]
+        if not qv or not tv:
+            continue
+        qmax, tmax = max(qv), max(tv)
+        if qmax == tmax:
+            continue
+        if _lb_present and b == "g" and abs(qmax - tmax) <= 0.01 * max(qmax, tmax):
+            continue
+        return True
+    return False
+
+
+def _vd_flavour_mismatch(q: VariantDescriptor, c: VariantDescriptor, cat: str) -> bool:
+    """Flavour axis (_flavour_mismatch): grocery is ASYMMETRIC-ADD (a candidate
+    flavour the query does not cover is a different SKU, 'unflavored'-add to a
+    flavour-less query excepted); supplements are contradiction-only."""
+    qf, tf = q.flavours, c.flavours
+    if not tf:
+        return False
+    if cat == "grocery":
+        extra = tf - qf
+        if not extra:
+            return False
+        real_q = qf - _FLAVOUR_ABSENCE
+        extra_real = extra - _FLAVOUR_ABSENCE
+        if not real_q and not extra_real:
+            return False
+        return True
+    if not qf:
+        return False
+    return not (qf & tf)
+
+
+def _vd_core_count_mismatch(q_counts, t_counts) -> bool:
+    """Core-count axis (_core_count_mismatch): label-aware — same-label bins
+    must share a value; unlabelled values compare against the other side's
+    full set; both fully unlabelled = SET_EQUALITY."""
+    q_cpu, q_gpu, q_un = q_counts
+    t_cpu, t_gpu, t_un = t_counts
+    q_all = q_cpu | q_gpu | q_un
+    t_all = t_cpu | t_gpu | t_un
+    if not q_all or not t_all:
+        return False
+    if q_cpu and t_cpu and not (q_cpu & t_cpu):
+        return True
+    if q_gpu and t_gpu and not (q_gpu & t_gpu):
+        return True
+    if not (q_cpu or q_gpu or t_cpu or t_gpu):
+        return q_un != t_un
+    if q_un and not (q_un & t_all):
+        return True
+    if t_un and not (t_un & q_all):
+        return True
+    return False
+
+
+def _vd_chip_tier_mismatch(qc: frozenset, tc: frozenset) -> bool:
+    """Chip-tier axis (_chip_tier_mismatch): same chip NUMBER must carry the
+    same tier set (M3 base vs M3 Pro)."""
+    q_nums = {n for n, _ in qc}
+    t_nums = {n for n, _ in tc}
+    shared = q_nums & t_nums
+    if not shared:
+        return False
+    for n in shared:
+        if {t for nn, t in qc if nn == n} != {t for nn, t in tc if nn == n}:
+            return True
+    return False
+
+
+def _vd_form_mismatch(q: VariantDescriptor, c: VariantDescriptor, cat: str) -> bool:
+    """Form axis (_form_mismatch): fragrances+makeup STRICT one-sided (a
+    deodorant/oil is a different SKU than the bottle/balm); skincare/haircare
+    both-stated-only; a no-op outside fragrance/beauty."""
+    if cat not in _FRAGRANCE_BEAUTY_CATEGORIES:
+        return False
+    if cat in ("fragrances", "makeup"):
+        return q.form != c.form
+    return bool(q.form and c.form and q.form != c.form)
+
+
+def _vd_candidate_missing_query_axis(q: VariantDescriptor, c: VariantDescriptor,
+                                     cat: str) -> bool:
+    """QUERY_STATED_REQUIRES_CANDIDATE (_candidate_missing_query_axis): the
+    candidate omitting a query-pinned axis is UNVERIFIED -> fail-closed."""
+    if cat == "fragrances":
+        if q.concentration and not c.concentration:
+            return True
+        if q.size_ml_snapped is not None and c.size_ml_snapped is None:
+            return True
+    if cat == "supplements":
+        if q.doses and not c.doses:
+            return True
+        if q.count is not None and c.count is None:
+            return True
+    if cat == "electronics":
+        if q.storage_gb is not None and c.storage_gb is None:
+            return True
+    if cat in _SIZE_OMIT_CATEGORIES:
+        if q.weights_volumes and not c.weights_volumes:
+            return True
+    if cat in _PERCENT_CATEGORIES:
+        if q.percents and not c.percents:
+            return True
+    if cat == "fashion":
+        if q.shoe_sizes and not c.shoe_sizes:
+            return True
+    if cat == "grocery":
+        if q.packs and not c.packs:
+            return True
+    return False
+
+
+def _vd_flagship_concentration_added(q: VariantDescriptor, c: VariantDescriptor) -> bool:
+    """ASYMMETRIC_ADD (_flagship_concentration_added): the candidate states a
+    FLAGSHIP concentration (Parfum/Extrait/Parfum Intense) the query did not."""
+    if c.concentration not in _FLAGSHIP_CONCENTRATIONS:
+        return False
+    return q.concentration != c.concentration
+
+
+def _vd_supplement_type_added(q: VariantDescriptor, c: VariantDescriptor) -> bool:
+    """ASYMMETRIC_ADD (_supplement_type_added): candidate adds a formulation
+    type/salt-form/sub-line token the query lacks; a MULTI-CONSTITUENT query
+    (B-Complex/Multivitamin/Prenatal) excludes the bare constituent names."""
+    added = c.supplement_types - q.fold_tokens
+    if q.fold_tokens & _MULTI_CONSTITUENT_QUERY:
+        added = added - _SUPPLEMENT_CONSTITUENT_TOKENS
+    # Wave-2 B2a (C1, flag-gated): when the QUERY is an ACRONYM product, its declared
+    # constituents that a descriptive candidate enumerates are the SAME SKU, not a flanker —
+    # subtract that acronym's expansion. Bounded (only fires for a table acronym) so the
+    # single-element combo-add leak is untouched. Flag-OFF stays byte-identical.
+    if variant_descriptor_axes_enabled():
+        acronym_expansion = _query_acronym_constituents(q.fold_tokens)
+        if acronym_expansion:
+            added = added - acronym_expansion
+    return bool(added)
+
+
+def _vd_supplement_form_class(d: VariantDescriptor) -> set:
+    """The (default vs alternative) delivery-form class set of one side —
+    _supplement_form_added's `_class` on descriptor fields."""
+    out = {"alt:" + f for f in d.supplement_alt_forms}
+    if d.supplement_default_forms:
+        out.add("default")
+    return out
+
+
+def _vd_supplement_form_added(q: VariantDescriptor, c: VariantDescriptor) -> bool:
+    """ASYMMETRIC_ADD (_supplement_form_added): candidate adds an ALTERNATIVE
+    delivery form (gummy/liquid/...) the query lacks, or the stated form
+    CLASSES differ (default pill vs alternative)."""
+    if c.supplement_alt_forms - q.supplement_alt_forms:
+        return True
+    q_cls = _vd_supplement_form_class(q)
+    t_cls = _vd_supplement_form_class(c)
+    return bool(q_cls and t_cls and q_cls != t_cls)
+
+
+def _vd_category_type_added(q: VariantDescriptor, c: VariantDescriptor, cat: str) -> bool:
+    """_category_type_added on descriptor fields (fragrances flagship
+    concentration + supplements type/alt-form ONLY; False elsewhere). The
+    string-signature _category_type_added (the chokepoints' bounded pair
+    check) delegates its helpers here — one implementation."""
+    if cat == "fragrances":
+        return _vd_flagship_concentration_added(q, c)
+    if cat == "supplements":
+        return (_vd_supplement_type_added(q, c)
+                or _vd_supplement_form_added(q, c))
+    return False
+
+
+def _vd_gender_mismatch(q: VariantDescriptor, c: VariantDescriptor) -> bool:
+    """Gender CONTRADICTION (_gender_mismatch): both stated and conflicting."""
+    return bool(q.gender and c.gender and q.gender != c.gender)
+
+
+def _vd_feminine_query_unconfirmed(q: VariantDescriptor, c: VariantDescriptor) -> bool:
+    """ASYMMETRIC (_feminine_query_unconfirmed): a WOMEN's-flanker query must
+    be confirmed by the candidate; a men's/unisex query tolerates the
+    unspecified base (the deliberate one-way trade — see the legacy docstring)."""
+    return q.gender == "women" and c.gender != "women"
+
+
+def _vd_color_mismatch(q: VariantDescriptor, c: VariantDescriptor) -> bool:
+    """Fashion colourway (_color_mismatch): the query's stated colours must
+    ALL appear in the candidate (query-subset); one-sided tolerated."""
+    if not q.colors or not c.colors:
+        return False
+    return not q.colors.issubset(c.colors)
+
+
+def _descriptor_axis_mismatch(q: VariantDescriptor, c: VariantDescriptor,
+                              category: Optional[str], *,
+                              strict_extras: bool = True) -> Optional[str]:
+    """The axis core of the comparator table — the descriptor form of the
+    legacy _axis_mismatch body, check-for-check in the same order. Returns the
+    FAILING AXIS name, or None when no explicit axis discriminates.
+    `strict_extras=False` is the BACKSTOP contract (numeric-axis-only — no
+    form / candidate-omits / category-type-add / gender / color / clothing /
+    vitamin enforcement)."""
+    cat = (category or "").lower()
+    # SET_EQUALITY — category variant qualifiers (electronics fe/se/pro/...).
+    # Extraction already scoped the field to the category's qualifier set, so
+    # non-electronics sides carry frozenset() and compare equal (the legacy
+    # `if quals` guard).
+    if q.qualifiers != c.qualifiers:
+        return "variant_qualifier"
+    # Universal numeric axes (any category, both-stated-different).
+    if _vd_scalar_differs(q.concentration, c.concentration):
+        return "concentration"
+    if _vd_size_ml_mismatch(q, c, cat):
+        return "size_ml"
+    if _vd_scalar_differs(q.storage_gb, c.storage_gb):
+        return "storage"
+    if _vd_scalar_differs(q.count, c.count):
+        return "count"
+    if _vd_strength_mismatch(q.doses, c.doses):
+        return "strength"
+    if _vd_weight_or_volume_mismatch(q, c):
+        return "weight_volume"
+    # %-strength + SPF are CATEGORY-INDEPENDENT discriminators (legacy note:
+    # must fire even when the category inferred None on the scrape path).
+    if _vd_disjoint(q.percents, c.percents):
+        return "percent"
+    if _vd_disjoint(q.spfs, c.spfs):
+        return "spf"
+    if q.plus_stems != c.plus_stems:  # SET_EQUALITY (symbol+spelled unified)
+        return "plus_variant"
+    # Category-scoped axes (also enforced by the brand-independent backstop).
+    if cat == "fashion" and _vd_disjoint(q.shoe_sizes, c.shoe_sizes):
+        return "shoe_size"
+    if cat == "grocery" and _vd_disjoint(q.packs, c.packs):
+        return "pack"
+    if cat in _FLAVOUR_CATEGORIES and _vd_flavour_mismatch(q, c, cat):
+        return "flavour"
+    if cat == "makeup" and _vd_disjoint(q.finishes, c.finishes):
+        return "finish"
+    if cat == "fashion" and _vd_disjoint(q.materials, c.materials):
+        return "material"
+    if cat == "fashion" and _vd_disjoint(q.fits, c.fits):
+        return "fit"
+    if cat == "grocery" and _vd_disjoint(q.preps, c.preps):
+        return "grocery_prep"
+    # EITHER_SIDED — condition is the ONLY either-direction one-sided reject
+    # (a stated non-new condition on EITHER side alone is a different tier).
+    if cat == "electronics" and q.condition != c.condition:
+        return "condition"
+    if cat == "electronics" and _vd_disjoint(q.inches, c.inches):
+        return "inch"
+    if cat == "electronics" and _vd_disjoint(q.ram_gb, c.ram_gb):
+        return "ram"
+    if cat == "electronics" and _vd_core_count_mismatch(q.core_counts, c.core_counts):
+        return "core_count"
+    if cat == "electronics" and _vd_chip_tier_mismatch(q.chip_tiers, c.chip_tiers):
+        return "chip_tier"
+    if cat == "supplements" and _vd_disjoint(q.bare_doses, c.bare_doses):
+        return "bare_dose"
+    if strict_extras:
+        if _vd_form_mismatch(q, c, cat):
+            return "form"
+        if _vd_candidate_missing_query_axis(q, c, cat):
+            return "candidate_missing_query_axis"
+        if _vd_category_type_added(q, c, cat):
+            return "category_type_added"
+        if (cat in _FRAGRANCE_BEAUTY_CATEGORIES or cat == "fashion") and (
+                _vd_gender_mismatch(q, c) or _vd_feminine_query_unconfirmed(q, c)):
+            return "gender"
+        if cat == "fashion" and _vd_color_mismatch(q, c):
+            return "color"
+        if cat == "fashion" and _vd_disjoint(q.clothing_sizes, c.clothing_sizes):
+            return "clothing_size"
+        if cat == "supplements" and _vd_disjoint(q.vitamin_letters, c.vitamin_letters):
+            return "vitamin_letter"
+    return None
+
+
+def _descriptor_selection_verdict(q: VariantDescriptor, c: VariantDescriptor,
+                                  category: Optional[str]) -> DescriptorVerdict:
+    """The SELECTION-mode identity/superset steps — the descriptor form of the
+    legacy _selection_match keystone, step-for-step: generic class-swap, the
+    per-category PADDING subtraction, the mode-scoped title-side tolerances
+    (year-annotation / electronics 'ai' / inch equality / fashion construction
+    bigram / eyewear code-confirmed / makeup shade-number), the LEAK-direction
+    subset, and the VARIANT-ADD superset with the generic-query skip. Axis
+    checks have already passed by the time this runs."""
+    cat = (category or "").lower()
+    q_ident, t_ident = q.identity_core, c.identity_core
+    _generic = _generic_for(category)
+    q_distinct = q_ident - _generic
+    t_distinct = t_ident - _generic
+    # (1) generic CLASS SWAP — each names a generic class noun, sharing none.
+    q_generic = q_ident & _generic
+    t_generic = t_ident & _generic
+    if q_generic and t_generic and not (q_generic & t_generic):
+        return DescriptorVerdict(False, "generic_class_swap")
+    # (2)+(3) THE KEYSTONE — per-category padding, both directions.
+    padding = _category_padding(cat)
+    q_core = q_distinct - padding
+    t_core = t_distinct - padding
+    if cat in _MODEL_YEAR_CATEGORIES:
+        # ONE-SIDED model-year tolerance (annotation-form title year, query
+        # generation pinned by a non-year discriminator the title shares,
+        # query states no year) — see the legacy comment block.
+        if not any(_MODEL_YEAR_RE.match(w) for w in q_core):
+            if c.year_annotations and (_year_generation_discriminators(q_core) & t_core):
+                t_core = t_core - c.year_annotations
+    if cat == "electronics":
+        # TITLE-side-only marketing tokens ("AI Smartphone") — query-stated
+        # copies stay on both sides.
+        t_core = t_core - (_ELECTRONICS_TITLE_SIDE_TOLERATED - q_core)
+        # INCH-axis equality tolerance, both spellings (bare vs annotated).
+        if c.inch_tokens:
+            q_core = q_core - c.inch_tokens
+        if q.inch_tokens:
+            t_core = t_core - q.inch_tokens
+    if cat == "fashion" and q_core:
+        # Construction/neckline descriptors (query-conditional) + the
+        # Luxottica model-code-CONFIRMED eyewear annotation tolerance.
+        t_core = t_core - (c.construction_tolerated - q_core)
+        if q.model_codes and (q.model_codes & c.model_codes):
+            _eyewear_tol = frozenset(_EYEWEAR_DESCRIPTOR_TOKENS) | c.eyewear_annotations
+            t_core = t_core - (_eyewear_tol - q_core)
+    if cat == "makeup":
+        # Shared shade-NUMBER acceptance (no extra number, non-number core
+        # subset-compatible) — different formula LINES already rejected by the
+        # finish axis upstream.
+        q_nums = {w for w in q_core if w.isdigit()}
+        t_nums = {w for w in t_core if w.isdigit()}
+        if (q_nums and t_nums and (q_nums & t_nums) and not (t_nums - q_nums)
+                and (q_core - q_nums).issubset(t_core - t_nums)):
+            return DescriptorVerdict(True)
+    # LEAK direction — candidate must carry every query distinctive token.
+    if not q_core.issubset(t_core):
+        return DescriptorVerdict(False, "identity_subset")
+    # VARIANT-ADD direction — an extra distinctive candidate token is a
+    # DIFFERENT SKU (known categories + explicit "other"; truly-unresolved
+    # stays subset-only).
+    if (cat in _SUPERSET_VARIANT_CATEGORIES or cat == "other") and (t_core - q_core):
+        if q_core:
+            return DescriptorVerdict(False, "variant_add")
+        if (q_distinct - _MANUFACTURER_NOISE) or cat not in _GENERIC_QUERY_SKIP_CATEGORIES:
+            return DescriptorVerdict(False, "variant_add")
+    return DescriptorVerdict(True)
+
+
+def descriptor_verdict(q: VariantDescriptor, c: VariantDescriptor,
+                       category: Optional[str], mode: str) -> DescriptorVerdict:
+    """THE decision function (R2): compare two VariantDescriptors under
+    `category` in one of the three modes. `category` MUST be the category the
+    descriptors were extracted with (the wrappers guarantee it; the
+    _selection_match "other" re-inference happens BEFORE extraction).
+
+      SELECTION — strict axes + the keystone subset/superset with padding and
+                  tolerances (the _selection_match contract)
+      EXACT     — strict axes + identity-token set-EQUALITY (is_exact_match)
+      BACKSTOP  — loose axes only (strict_extras=False, the
+                  _backstop_identity_ok contract; the chokepoints pair it with
+                  the separate bounded _category_type_added)
+    """
+    if mode not in _DESCRIPTOR_MODES:
+        raise ValueError(f"unknown descriptor mode: {mode!r}")
+    axis = _descriptor_axis_mismatch(
+        q, c, category, strict_extras=(mode != DESCRIPTOR_MODE_BACKSTOP))
+    if axis is not None:
+        return DescriptorVerdict(False, axis)
+    if mode == DESCRIPTOR_MODE_BACKSTOP:
+        return DescriptorVerdict(True)
+    if mode == DESCRIPTOR_MODE_EXACT:
+        if q.identity_core == c.identity_core:
+            return DescriptorVerdict(True)
+        return DescriptorVerdict(False, "identity_equality")
+    return _descriptor_selection_verdict(q, c, category)
+
+
 def _axis_mismatch(query_name: str, candidate_title: str, category: Optional[str],
                    brand: str = "", *, strict_extras: bool = True) -> bool:
     """True iff query and candidate disagree on an EXPLICIT discriminating axis:
@@ -4628,69 +6316,16 @@ def _axis_mismatch(query_name: str, candidate_title: str, category: Optional[str
     numeric-axis-only, never-false-pend-a-descriptive-title contract (the form +
     candidate-omits enforcement lives on the brand-aware primary gates). Each numeric
     axis is a no-op unless BOTH sides carry it (a fragrance has no storage, a phone
-    no dose)."""
-    # ReDoS guard (comprehensive review HIGH): the numeric-axis regexes are polynomial on a
-    # long digit run, so a crafted multi-KB scraped candidate title (a malicious retailer page)
-    # could stall the async worker (8 KB -> ~15 s). A real product name/title is well under
-    # 512 chars — cap before any re.findall. Truncation only affects pathological inputs.
-    if query_name and len(query_name) > _MATCH_INPUT_CAP:
-        query_name = query_name[:_MATCH_INPUT_CAP]
-    if candidate_title and len(candidate_title) > _MATCH_INPUT_CAP:
-        candidate_title = candidate_title[:_MATCH_INPUT_CAP]
-    quals = _CATEGORY_VARIANT_QUALIFIERS.get((category or "").lower(), frozenset())
-    if quals and _quals_in(query_name, quals) != _quals_in(candidate_title, quals):
-        return True
-    if (
-        _concentration_mismatch(query_name, candidate_title)
-        or _size_ml_mismatch(query_name, candidate_title, category)
-        or _storage_mismatch(query_name, candidate_title)
-        or _count_mismatch(query_name, candidate_title)
-        or _strength_mismatch(query_name, candidate_title)
-        or _weight_or_volume_mismatch(query_name, candidate_title)
-        # %-strength + SPF are CATEGORY-INDEPENDENT discriminators (a different active
-        # %-strength or SPF is always a different product) — must fire even when the
-        # category inferred None on the scrape path (Minoxidil 5% vs 2%) (coverage review R6).
-        or _percent_mismatch(query_name, candidate_title)
-        or _spf_mismatch(query_name, candidate_title)
-        or _plus_variant_mismatch(query_name, candidate_title)
-    ):
-        return True
-    _cat = (category or "").lower()
-    # Category-scoped numeric axes (also enforced by the brand-independent backstop):
-    # %-strength (cosmetics only — % is purity not strength for supplements/grocery),
-    # shoe size (fashion), pack count (grocery). (coverage review B)
-    if (
-        (_cat == "fashion" and _shoe_size_mismatch(query_name, candidate_title))
-        or (_cat == "grocery" and _pack_mismatch(query_name, candidate_title))
-        # contradiction axes (coverage review round 2) — both-stated-different rejects,
-        # one-sided is tolerated (the token is also padding).
-        or (_cat in _FLAVOUR_CATEGORIES and _flavour_mismatch(query_name, candidate_title, _cat))
-        or (_cat == "makeup" and _finish_mismatch(query_name, candidate_title))
-        or (_cat == "fashion" and _material_mismatch(query_name, candidate_title))
-        or (_cat == "fashion" and _fit_mismatch(query_name, candidate_title))
-        or (_cat == "grocery" and _grocery_prep_mismatch(query_name, candidate_title))
-        or (_cat == "electronics" and _condition_mismatch(query_name, candidate_title))
-        or (_cat == "electronics" and _inch_mismatch(query_name, candidate_title))
-        or (_cat == "electronics" and _ram_mismatch(query_name, candidate_title))
-        or (_cat == "electronics" and _chip_tier_mismatch(query_name, candidate_title))
-        or (_cat == "supplements" and _supplement_bare_dose_mismatch(query_name, candidate_title))
-    ):
-        return True
-    if strict_extras and (
-        _form_mismatch(query_name, candidate_title, category, brand)
-        or _candidate_missing_query_axis(query_name, candidate_title, category)
-        or _category_type_added(query_name, candidate_title, category)
-        or ((_cat in _FRAGRANCE_BEAUTY_CATEGORIES or _cat == "fashion")
-            and (_gender_mismatch(query_name, candidate_title)
-                 or _feminine_query_unconfirmed(query_name, candidate_title)))
-        or (_cat == "fashion"
-            and (_color_mismatch(query_name, candidate_title)
-                 or _clothing_size_mismatch(query_name, candidate_title)))
-        or (_cat == "supplements"
-            and _vitamin_letter_mismatch(query_name, candidate_title))
-    ):
-        return True
-    return False
+    no dose).
+
+    Wave-2 A1: thin wrapper over the extract-once VariantDescriptor — the
+    per-axis checks (and the _MATCH_INPUT_CAP ReDoS cap) live in
+    extract_variant_descriptor + _descriptor_axis_mismatch, check-for-check
+    identical (golden-corpus pinned)."""
+    q_vd = extract_variant_descriptor(query_name, category, brand)
+    c_vd = extract_variant_descriptor(candidate_title, category, brand)
+    return _descriptor_axis_mismatch(
+        q_vd, c_vd, category, strict_extras=strict_extras) is not None
 
 
 def is_exact_match(
@@ -4708,16 +6343,257 @@ def is_exact_match(
     `strict_title_match`'s subset) to reject S24→S24 FE / EDP→EDT / 256→128 /
     100ml→30ml / flanker leaks, and intentionally BRAND-AWARE + alias-tolerant
     (EDT≡"eau de toilette", oz≡ml, diacritics, colour/edition for electronics) to
-    avoid false pends."""
+    avoid false pends.
+
+    Wave-2 A1: thin wrapper over the extract-once VariantDescriptor (EXACT
+    mode = strict axes + identity-token set-EQUALITY, golden-corpus pinned).
+    The gate no-op + empty-input early-returns stay here, byte-identical."""
     if not exact_gate_enabled():
         return True
     if not query_name or not candidate_title:
         return True
-    if _axis_mismatch(query_name, candidate_title, category, candidate_brand):
-        return False
-    q_ident = _identity_tokens_ps(query_name, candidate_brand, category)
-    t_ident = _identity_tokens_ps(candidate_title, candidate_brand, category)
-    return q_ident == t_ident
+    q_vd = extract_variant_descriptor(query_name, category, candidate_brand)
+    c_vd = extract_variant_descriptor(candidate_title, category, candidate_brand)
+    return descriptor_verdict(q_vd, c_vd, category, DESCRIPTOR_MODE_EXACT).match
+
+
+# ---------------------------------------------------------------------------
+# BF3 (Wave B-FIX, over-rejection sweep OR-1..OR-4) — bounded TITLE-SIDE
+# tolerances applied inside _selection_match AFTER the padding subtraction.
+# Each is query-CONDITIONAL (never a static both-sides padding), so the
+# numeric/identity axis is untouched whenever the QUERY states the token.
+# ---------------------------------------------------------------------------
+
+# Bare model-year token 2020-2029 (forms: "2025", "(2025)" — parens are
+# normalize_words-stripped — and "GEN 2025", "gen" being electronics padding).
+# BOUNDED to the 2020s so RTX-2080-class model numbers stay identity.
+_MODEL_YEAR_RE = re.compile(r"^202[0-9]$")
+_MODEL_YEAR_CATEGORIES = frozenset({"electronics", "fashion"})
+
+# Wave C (re-sweep RS1 + kpiE2E RS-3) — the year tolerance is RE-BOUND to the
+# retailer RELEASE-TAG ANNOTATION shapes on the RAW title: "(2025)" and
+# "GEN 2025" (the two live sharafdg/extra forms the BF3 unlock needed). A bare
+# mid-title year is a MODEL / SEASON / GENERATION name (Air Max 2021, jersey
+# 2024 seasons, Watch SE (2020)-class re-releases sell at 2-3x spreads) and
+# stays identity.
+_ANNOTATION_YEAR_RE = re.compile(
+    r"\(\s*(202[0-9])\s*\)|\bgen[\s\-]+(202[0-9])\b", re.I,
+)
+# A digit-run followed by a pure-letter unit tail ("128gb", "44mm", "13inch",
+# "2xl") is a MEASURE-shaped token — never a generation discriminator.
+_MEASURE_SHAPE_TOKEN_RE = re.compile(r"\d+(?:\.\d+)?[a-z]+")
+
+
+def _annotation_year_tokens(title: str) -> set:
+    """The 2020s year tokens that appear in ANNOTATION form in raw `title`
+    ("iPad Air (2025) M3" -> {"2025"}; a bare "Air Max 2021" -> set())."""
+    out = set()
+    for m in _ANNOTATION_YEAR_RE.finditer(title or ""):
+        out.add(m.group(1) or m.group(2))
+    return out
+
+
+def _year_generation_discriminators(q_core: set) -> set:
+    """The query-core tokens that pin a product GENERATION independently of a
+    year: digit-bearing model/chip tokens (m3 / m5 / s25 / wh1000xm5 / a bare
+    model number "15"/"9"-post-ordinal-fold) — NEVER a 202x year itself and
+    NEVER a measure-shaped token (128gb / 44mm / 13inch / 2xl). Only when the
+    title carries one of these too is a title-side annotation year redundant
+    release-tag padding (re-sweep RS1/RS-3: the year-ONLY-discriminated
+    families — iPhone SE / Watch SE / jersey seasons — must keep the year as
+    identity)."""
+    return {
+        w for w in q_core
+        if any(c.isdigit() for c in w)
+        and not _MODEL_YEAR_RE.match(w)
+        and not _MEASURE_SHAPE_TOKEN_RE.fullmatch(w)
+    }
+
+# Marketing tokens tolerated on the TITLE side only (the 2025+ Samsung
+# "AI Smartphone" class killing kpi-elec-002/003) — NEVER dropped from the
+# query side: a hypothetical product line named "AI" ("Nothing AI Phone")
+# keeps its token required. This asymmetry is why the token is NOT in
+# _ELECTRONICS_PADDING (padding strips BOTH sides).
+_ELECTRONICS_TITLE_SIDE_TOLERATED = frozenset({"ai"})
+
+# Apparel CONSTRUCTION/NECKLINE descriptors tolerated on the TITLE side only
+# (Wave B-FIX BF4, sweep OR-6): namshi lists the kpi-fash-006 exact SKU as
+# "Essential Flag EMBROIDERY CREW NECK T-Shirt" — 'Embroidery'/'Crew'/'Neck'
+# each individually variant-add-rejected it, and the same phrasing is
+# ubiquitous GCC apparel listing style (6thstreet Heritage/Essential tees).
+# The _ELECTRONICS_TITLE_SIDE_TOLERATED asymmetry: NEVER dropped from the
+# query side — a query-stated neckline ("V-Neck") keeps its token required,
+# so a both-stated-DIFFERENT neckline still rejects via the LEAK-direction
+# subset (there is NO dedicated neckline axis; the query-side token IS the
+# contradiction guard — pinned both directions in
+# tests/test_fashion_skincare_unlock_bfix.py). "v-neck"/"t-shirt" hyphens are
+# collapsed by normalize_words, hence the glued "vneck" form. The class axis
+# is untouched: polo-vs-t-shirt still class-swap-rejects (the garment nouns
+# live in _GENERIC_FASHION_NOUNS, consulted BEFORE this tolerance).
+#
+# Wave C (re-sweep RS5): bare "crew"/"neck" are NO LONGER in the static set —
+# a bare 'crew' is a BRAND word ("J Crew", made brand-invisible by the
+# tolerance after 'j' fell to the len rule) and a bare 'neck' asserts nothing
+# about construction. They are tolerated ONLY when the RAW title carries a
+# garment NECKLINE BIGRAM ("crew neck" / "v neck" / "round neck", hyphen or
+# space) — see _fashion_construction_tolerated_for. The glued single tokens
+# ("crewneck"/"vneck") stay, as do embroidery/embroidered/stitch/stitched
+# (the BF4 pin battery; the Disney-'Stitch' residual is documented in the
+# re-sweep and deliberately out of the RS5 bound).
+# Wave-2 B1.1c (gate-scoped UN-flagged, same class as the RS5 bigram-conditional
+# neckline change): bare "stitch"/"stitched" are NO LONGER static members. A
+# standalone/leading "Stitch" is the Disney character (a DISTINCT graphic-print
+# SKU — census FULL-leak); a sewing-context "stitch" ("contrast stitch",
+# "stitched logo", "stitch detail", "topstitch") is genuine construction padding.
+# So stitch/stitched join the tolerated set ONLY when the raw title spells a
+# sewing-context bigram (mirrors _FASHION_NECKLINE_BIGRAM_RE).
+_FASHION_CONSTRUCTION_TOLERATED = frozenset({
+    "crewneck", "vneck", "embroidery", "embroidered",
+})
+# Sewing-context words that, adjacent to stitch/stitched (either order, hyphen or
+# space) OR glued ("topstitch"), mark it as construction rather than the
+# character name. Kept deliberately broad on the sewing vocabulary so a genuine
+# GCC-retailer descriptive title ("Twin Tipped stitched collar", "contrast
+# stitch trim") still tolerates, while a bare/leading "Stitch" stays distinctive.
+_STITCH_CONTEXT_WORDS = (
+    "contrast", "detail", "details", "logo", "trim", "top", "double", "triple",
+    "chain", "seam", "seams", "collar", "hem", "pattern", "decorative",
+    "embroidered", "flat", "over", "cross", "saddle", "blanket", "running",
+    "visible", "tonal",
+)
+_STITCH_CTX = "|".join(_STITCH_CONTEXT_WORDS)
+_FASHION_STITCH_BIGRAM_RE = re.compile(
+    rf"\b(?:(?:{_STITCH_CTX})[\s\-{_UNICODE_HYPHENS}]+stitch(?:ed|ing)?"
+    rf"|stitch(?:ed|ing)?[\s\-{_UNICODE_HYPHENS}]+(?:{_STITCH_CTX})"
+    rf"|topstitch(?:ed|ing)?)\b",
+    re.I,
+)
+# Separator accepts the C2 _UNICODE_HYPHENS canon (Wave D, convergence CV5):
+# a U+2011 "Crew‑Neck" title is the same GCC-retailer bigram — ASCII-only left
+# it a distinctive add and a genuine enriched title over-rejected.
+_FASHION_NECKLINE_BIGRAM_RE = re.compile(
+    rf"\b(crew|v|round)[\s\-{_UNICODE_HYPHENS}]+neck\b", re.I,
+)
+
+
+def _fashion_construction_tolerated_for(candidate_title: str) -> frozenset:
+    """The title-CONDITIONAL construction-descriptor token set (RS5): the
+    neckline words 'crew'/'v'/'round' + 'neck' join the tolerated set only
+    when the raw title spells the garment bigram — so the bigram's own tokens
+    are droppable while a bare 'crew'/'neck' elsewhere stays distinctive.
+
+    Wave D (convergence CV5): a UNICODE-hyphen bigram ("Crew‑Neck", U+2011)
+    survives tokenization GLUED — normalize_words strips only the ASCII
+    hyphen, so the identity token is the folded "crew‐neck", not the pair.
+    Tolerate that glued form too, derived from the ACTUAL matched text via
+    the same _fold_identity the tokenizer path runs (U+2011 NFKD-folds to
+    U+2010; U+2010/U+2013 pass through), so the tolerance and the tokenizer
+    can never drift. ASCII/spaced forms fold to the static "crewneck"-style
+    token and add nothing new."""
+    extra = set()
+    for m in _FASHION_NECKLINE_BIGRAM_RE.finditer(candidate_title or ""):
+        g = m.group(1).lower()
+        extra.add(g)
+        extra.add("neck")
+        glued = re.sub(r"\s+", "", _fold_identity(m.group(0))).replace("-", "")
+        if glued != f"{g}neck":
+            extra.add(glued)
+    # Wave-2 B1.1c: 'stitch'/'stitched'/'stitching'/'topstitch' tolerated ONLY in
+    # a sewing-context bigram (a bare/leading "Stitch" = the Disney character stays
+    # distinctive). Tolerate the WHOLE matched bigram (the stitch token AND its
+    # sewing-context word, mirroring the neckline bigram that tolerates both 'crew'
+    # and 'neck') so a genuine "contrast stitch"/"stitched collar" descriptive title
+    # is not rejected on the context word instead. Add the ACTUAL folded tokens the
+    # tokenizer emits from the matched span so the tolerance and the tokenizer can
+    # never drift. NOTE: a bare 'collar'/'contrast' elsewhere (no adjacent stitch)
+    # is untouched and stays distinctive.
+    for m in _FASHION_STITCH_BIGRAM_RE.finditer(candidate_title or ""):
+        for tok in re.findall(r"[a-z0-9]+", _fold_identity(m.group(0))):
+            extra.add(tok)
+    if extra:
+        return _FASHION_CONSTRUCTION_TOLERATED | frozenset(extra)
+    return _FASHION_CONSTRUCTION_TOLERATED
+
+
+def _inch_digit_tokens(text: str) -> set:
+    """The BARE-digit token forms of the inch-annotated screen sizes stated in
+    raw `text` ('13-inch' / '13 Inch' / '13"' -> {'13'}; '13.6-inch' ->
+    {'13.6'}). Used for the inch-axis EQUALITY tolerance (BF3, OR-2): a
+    title-side inch-annotation of a bare query digit is the SAME axis value,
+    not an added axis — but only on EXACT digit equality, so 13 vs 15-inch
+    still contradicts via the ordinary subset/variant-add checks."""
+    out = set()
+    for m in _INCH_RE.findall(text or ""):
+        tok = str(m)
+        if "." in tok:
+            tok = tok.rstrip("0").rstrip(".")
+        out.add(tok)
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Wave E (kpi-fash-004) — Luxottica MODEL-CODE-CONFIRMED eyewear tolerance.
+# The live noon-BH RB3025 bisect (2026-07-02): every upstream gate passed
+# (counterfeit/accessory/numbers/strict/variant/axis) and the ONLY killing
+# gate was the variant-add direction — the GCC eyewear listing style decorates
+# the exact frame with the Luxottica NNN/NN colorway code ("RB3025 002/58"),
+# a lens-size annotation ("Lens Size: 58 mm", the trailing bare "58" run) and
+# stock descriptors (Unisex/Polarized), each surviving as a distinctive
+# title-side ADD. When the QUERY carries a Luxottica-family model code
+# ((rb|rx|oo|po|ar|pr|ve|dg)\d{3,}, the same family the 0-prefix fold covers)
+# AND the title carries the SAME code (0-prefix-folded), the code is
+# query-confirmed exact-model evidence — the established structured-code-
+# override principle, here TITLE-derived — and ONLY those annotation shapes
+# become title-side padding. Query-CONDITIONAL like every BF3 tolerance
+# (`tolerated - q_core`): a query-stated colorway/size token stays required,
+# so 'RB3025 901/58' still rejects an '002/58' title via the leak direction.
+# numbers_match is untouched globally; a non-eyewear query (no code) gains
+# nothing; a DIFFERENT-code title never triggers (leak direction rejects).
+# Shared-matcher placement so namshi/optica/6thstreet eyewear benefit too.
+_LUXOTTICA_MODEL_CODE_RE = re.compile(
+    r"(?<![a-z0-9])0?((?:rb|rx|oo|po|ar|pr|ve|dg)\d{3,})(?![a-z0-9])"
+)
+# The NNN/NN(alnum) colorway ADJACENT to the model code ("RB3025 002/58",
+# "0Rb3025-003/3F"), plus the trailing bare lens-digit run ("002/58 58").
+_LUXOTTICA_COLORWAY_ADJ_RE = re.compile(
+    rf"(?<![a-z0-9])0?(?:rb|rx|oo|po|ar|pr|ve|dg)\d{{3,}}"
+    rf"[\s\-{_UNICODE_HYPHENS}]+(\d{{2,3}}/[a-z0-9]{{1,3}})\b(?:\s+(\d{{2}})\b)?"
+)
+# Lens-size annotation forms: "Lens Size: 58 mm" / bare "58 mm" (the spaced-
+# unit fold turns these into the '58mm' token; the bare '58' also appears).
+_EYEWEAR_LENS_MM_RE = re.compile(r"(?<![a-z0-9.])(\d{2})\s*mm(?![a-z0-9])")
+_EYEWEAR_LENS_PHRASE_RE = re.compile(r"\blens\s*size\b")
+# Stock eyewear listing descriptors — never SKU discriminators on a
+# code-confirmed frame (the frame's own code + colorway discriminate).
+_EYEWEAR_DESCRIPTOR_TOKENS = frozenset({
+    "unisex", "polarized", "gradient", "mirrored",
+})
+
+
+def _luxottica_model_codes(text: str) -> set:
+    """The Luxottica-family model-code tokens present in `text`, lowercased and
+    0-prefix-FOLDED ("0Rb3025" -> "rb3025") so the catalog list form and the
+    consumer code compare equal. Empty set on no code / empty input."""
+    if not text:
+        return set()
+    if len(text) > _MATCH_INPUT_CAP:  # ReDoS guard, matching the other matchers
+        text = text[:_MATCH_INPUT_CAP]
+    return {m.group(1) for m in _LUXOTTICA_MODEL_CODE_RE.finditer(text.lower())}
+
+
+def _eyewear_code_tolerated_for(query_name: str, candidate_title: str) -> frozenset:
+    """The title-side tolerated token set for a QUERY-CONFIRMED Luxottica model
+    code (empty unless query and title share a code, 0-prefix-folded): the
+    colorway sub-tokens adjacent to the code, the lens-size annotation tokens,
+    and the stock eyewear descriptors. Derived from the RAW title so only the
+    exact annotation values present are tolerated — never arbitrary digits."""
+    q_codes = _luxottica_model_codes(query_name)
+    if not q_codes or not (q_codes & _luxottica_model_codes(candidate_title)):
+        return frozenset()
+    # Wave-2 A1: the title scan ("002/58" -> {'002','58'}, lens-mm forms,
+    # the 'lens size' phrase words) lives in _eyewear_annotation_tokens so the
+    # VariantDescriptor and this legacy helper share ONE implementation.
+    return frozenset(_EYEWEAR_DESCRIPTOR_TOKENS | _eyewear_annotation_tokens(candidate_title))
 
 
 def _selection_match(
@@ -4737,7 +6613,14 @@ def _selection_match(
     This catches every documented warm-cache leak (S24→FE, EDP→EDT, 256→128,
     decant-size, related-product, count drift) without false pends. The strict
     set-EQUALITY `is_exact_match` is reserved for clean brand-omitted sources
-    (sephora/Zyte) + the shared contract."""
+    (sephora/Zyte) + the shared contract.
+
+    Wave-2 A1: thin wrapper over the extract-once VariantDescriptor — the
+    identity/superset keystone, per-category padding and the title-side
+    tolerances live step-for-step in _descriptor_selection_verdict (see the
+    comment blocks there; golden-corpus pinned). The gate no-op, the empty-
+    input early-returns and the "other" re-inference stay HERE (re-inference
+    must run BEFORE extraction — the category is an extraction parameter)."""
     if not exact_gate_enabled():
         return True
     if not query_name or not candidate_title:
@@ -4751,82 +6634,9 @@ def _selection_match(
     # direct off-path/unit call, where lenient subset matching avoids mass over-rejection.
     if (category or "").lower() == "other":
         category = _infer_category_from_query(query_name) or category
-    if _axis_mismatch(query_name, candidate_title, category, candidate_brand):
-        return False
-    q_ident = _identity_tokens_ps(query_name, candidate_brand, category)
-    t_ident = _identity_tokens_ps(candidate_title, candidate_brand, category)
-    # A missing GENERIC category noun (smartphone/headphones/protein the terse listing
-    # omitted) must NOT reject — the brand+model discriminate. The generic set is
-    # CATEGORY-SCOPED (a makeup 'blush' stays distinctive for a fragrance) (coverage review R6).
-    _generic = _generic_for(category)
-    q_distinct = q_ident - _generic
-    t_distinct = t_ident - _generic
-    # (1) generic CLASS SWAP — query and candidate each name a generic class noun but
-    #     share NONE ("Sony Headphones" vs "Sony Speaker"; "Dress" vs "Skirt") — is a
-    #     DIFFERENT product even though a missing generic noun is otherwise tolerated.
-    q_generic = q_ident & _generic
-    t_generic = t_ident & _generic
-    if q_generic and t_generic and not (q_generic & t_generic):
-        return False
-    # (2)+(3) THE KEYSTONE — core-identity match with per-category PADDING tolerance, in
-    #     BOTH directions:
-    #       LEAK direction (q_core ⊆ t_core): the candidate must carry every query
-    #         distinctive non-padding token (S24 vs S24 FE, WH-1000XM5 vs WF-1000XM5).
-    #       VARIANT-ADD direction (t_core ⊆ q_core): the candidate must add NO distinctive
-    #         non-padding token — a candidate that adds one is a DIFFERENT (related) SKU:
-    #           Canon R6 -> R6 Mark II / Kindle -> Paperwhite / Samba -> Samba OG /
-    #           Nescafe Gold -> Decaf / Buffet -> +Copper Peptides / Creatine -> Monohydrate.
-    #     The per-category PADDING (descriptive/marketing/connectivity/form/flavour/brand)
-    #     keeps a genuine DESCRIPTIVE/alias title from over-rejecting. A CURATED marker
-    #     allowlist was tried and is structurally leaky (variant tokens are unbounded) —
-    #     this rejects ANY extra non-padding token instead.
-    cat = (category or "").lower()  # already re-inferred at the top of _selection_match
-    padding = _category_padding(cat)
-    q_core = q_distinct - padding
-    t_core = t_distinct - padding
-    if cat == "makeup":
-        # A spelled-out shade NAME on the candidate is descriptive when BOTH sides carry
-        # the SAME shade NUMBER ("Fit Me 240" -> "Fit Me 240 Soft Sand"); accept — BUT only
-        # when the candidate adds no EXTRA shade number (a second number 220->220 320 is a
-        # different shade and must still reject). Without a shared number, shade-NAME words
-        # are NOT padding, so a differing shade name rejects via the superset below.
-        q_nums = {w for w in q_core if w.isdigit()}
-        t_nums = {w for w in t_core if w.isdigit()}
-        # Accept on a shared shade NUMBER only when (a) the candidate adds no EXTRA number
-        # (a second shade number is a different shade) AND (b) the NON-number core is
-        # subset-compatible — so a shared number does NOT bridge two different product
-        # LINES that happen to share a shade code (Fit Me 240 vs Superstay 240) (round 4).
-        # A DIFFERENT formula LINE reusing the shade code (Soft Matte 240 vs Hydrating 240;
-        # Infallible Matte 130 vs Glow 130) is rejected UPSTREAM by _finish_mismatch (both sides
-        # state a finish/formula word and they DIFFER) — the formula words were added to
-        # _MAKEUP_FINISH_TOKENS. A one-sided formula ADD ("Fit Me 310 Smooth Coverage") is
-        # descriptive and tolerated here (coverage re-sweep: avoids mass over-rejection of common
-        # Fit Me titles; the rarer one-sided line add "Fit Me -> Dewy+Smooth" is the accepted trade).
-        if (q_nums and t_nums and (q_nums & t_nums) and not (t_nums - q_nums)
-                and (q_core - q_nums).issubset(t_core - t_nums)):
-            return True
-    # LEAK direction — candidate must carry all of the query's distinctive non-padding
-    # tokens (applies to EVERY category, incl. an unresolved one).
-    if not q_core.issubset(t_core):
-        return False
-    # VARIANT-ADD direction — a candidate that adds a distinctive non-padding token is a
-    # DIFFERENT SKU. Runs for the KNOWN categories (tuned PADDING) PLUS explicit "other" (a
-    # FREQUENT real LLM output that bypassed the guard end-to-end — coverage review round 8
-    # CRITICAL; empty padding, so a token-ADD rejects). A TRULY-unresolved "" (None after the
-    # top-of-function re-inference also failed) stays SUBSET-ONLY — on prod paths the
-    # orchestrator-resolved category is always threaded (param/ContextVar) so "" only occurs in
-    # a direct off-path call where the lenient subset behaviour avoids mass over-rejection.
-    if (cat in _SUPERSET_VARIANT_CATEGORIES or cat == "other") and (t_core - q_core):
-        if q_core:
-            return False  # a SPECIFIC query + an extra candidate token = a different SKU
-        # q_core EMPTY. Only skip (accept any specific member) when the query is a true
-        # brand/class query — i.e. its distinctive set MINUS brand/manufacturer words is
-        # empty ("Sony Headphones" -> {sony}-manufacturer = {}). If a LINE word emptied a
-        # SPECIFIC query (Samsung Crystal UHD -> {crystal,uhd}, neither is a brand word), do
-        # NOT skip — it would accept a sibling line (QLED) (coverage review round 5).
-        if (q_distinct - _MANUFACTURER_NOISE) or cat not in _GENERIC_QUERY_SKIP_CATEGORIES:
-            return False
-    return True
+    q_vd = extract_variant_descriptor(query_name, category, candidate_brand)
+    c_vd = extract_variant_descriptor(candidate_title, category, candidate_brand)
+    return descriptor_verdict(q_vd, c_vd, category, DESCRIPTOR_MODE_SELECTION).match
 
 
 # The 8 KNOWN categories whose PADDING lists are tuned enough to run the variant-add guard.
@@ -4857,10 +6667,141 @@ def _backstop_identity_ok(query_name: str, candidate_title: str, category: Optio
     (Dual SIM Phantom Black) listing. It catches the dominant wrong-axis leaks
     (S24→FE, EDP→EDT, 256→128, decant-size, count drift) on any path that bypassed
     the primary gate; the rarer same-token flanker is caught upstream where the
-    brand is known."""
+    brand is known.
+
+    Wave-2 A1: thin wrapper over the extract-once VariantDescriptor (BACKSTOP
+    mode = loose axes only, strict_extras=False — never the superset, per the
+    is_price_showable revert proof). The empty-title early-return stays here."""
     if not candidate_title:
         return True
-    return not _axis_mismatch(query_name, candidate_title, category, strict_extras=False)
+    q_vd = extract_variant_descriptor(query_name, category, "")
+    c_vd = extract_variant_descriptor(candidate_title, category, "")
+    return descriptor_verdict(q_vd, c_vd, category, DESCRIPTOR_MODE_BACKSTOP).match
+
+
+def _descriptor_backstop_axes_verdict(
+    q: VariantDescriptor, c: VariantDescriptor, category: Optional[str],
+) -> Optional[str]:
+    """The Phase-B1 EXTRA backstop-mode checks (flag-gated), each firing ONLY
+    when the axis was EXTRACTED on the relevant side(s) so a descriptive title
+    is never false-pended. Returns the granular failing-axis reason suffix
+    (appended to "not_exact:") or None. NEVER the identity-token superset (the
+    proven-reverted over-rejection, comment ps:1408-1420) and NOT the
+    candidate-omits-query-axis check (dispatcher ruling: over-rejection risk on
+    converted/iHerb display paths).
+
+    Decides ONLY the token-decidable weak-chokepoint leak classes the recon
+    census flagged as BACKSTOP-ONLY:
+      - gender both-stated CONTRADICTION only (Homme vs Femme). The
+        feminine-query-unconfirmed asymmetry was DROPPED here (B1-FIX ruling B —
+        over-rejected correct women's bases; still enforced at selection/cache-
+        write).
+      - prefixed clothing-size both-stated mismatch (Size M vs Size XL)
+      - model-year both-stated mismatch (both sides state a year, disjoint)
+      - flanker_markers ADD direction only (fragrances; candidate ADDS a flanker,
+        Sauvage->Elixir; the query-omits reverse tolerates, B1-FIX ruling C)
+      - generation_ints ADD direction only (candidate adds a model-noun-adjacent
+        INLINE generation int absent from the query; parenthetical "(Nth gen)"
+        annotations + quantity-noun-suffixed ints excluded, B1-FIX ruling A;
+        the reverse stays selection-only)
+    """
+    cat = (category or "").lower()
+    # Gender (fragrance/beauty + fashion): both-stated CONTRADICTION only
+    # (B1-FIX ruling B). The feminine-query-unconfirmed asymmetry was DROPPED at
+    # this axis-only backstop because it over-rejected correct women's bases
+    # (Black Opium / Coco Mademoiselle / La Vie Est Belle vs a gender-omitting
+    # genuine PDP) across all four beauty categories; the leak it closed (femme
+    # query -> men's base) is backstop-only and STILL caught by the selection
+    # gate + should_cache_price (which keep _feminine_query_unconfirmed), so the
+    # warmer write path is unaffected. q.gender/c.gender are None when unstated.
+    if cat in _FRAGRANCE_BEAUTY_CATEGORIES or cat == "fashion":
+        if _vd_gender_mismatch(q, c):
+            return "gender"
+    # Prefixed clothing-size (fashion): both state a "Size L"-form letter and
+    # share none. Bare letters stay ambiguous (not extracted) as at selection.
+    if cat == "fashion" and _vd_disjoint(q.clothing_sizes, c.clothing_sizes):
+        return "clothing_size"
+    # Model-year both-stated (electronics/fashion): a year stated on BOTH sides
+    # (annotation "(2022)"/"gen 2022" OR a bare 2020s model-year token) that is
+    # disjoint = a different generation. One-sided stays tolerated (the selection
+    # side owns the latest-generation-default direction).
+    if cat in _MODEL_YEAR_CATEGORIES:
+        q_years = _vd_model_years(q)
+        c_years = _vd_model_years(c)
+        if q_years and c_years and not (q_years & c_years):
+            return "model_year"
+    # Flanker markers (fragrances): the CANDIDATE ADDS a curated concentration-
+    # flanker word the query never asked for (Sauvage -> Sauvage Elixir) = a
+    # distinct pricier SKU. ADD-DIRECTION ONLY (B1-FIX ruling C, consistent with
+    # the B1.1 "no candidate-omits-query-axis at backstop" rule): a query that
+    # carries a flanker the candidate omits ("Dior Homme Intense" -> "Dior
+    # Homme") TOLERATES here — the flanker word is part of a canonical base-line
+    # name and the omission stays a selection-side concern. The curated set never
+    # contains a base-name word so a correct base ("Oud Wood") carries none.
+    if cat == "fragrances" and (c.flanker_markers - q.flanker_markers):
+        return "flanker"
+    # Generation ints (electronics): candidate ADDS a model-noun-adjacent
+    # generation int the query never asked for (AirPods Pro -> Pro 2). ADD
+    # direction only — the reverse (query pins a generation, candidate omits it)
+    # stays a selection-side concern (a bare-int omission is not backstop-safe).
+    if cat == "electronics" and (c.generation_ints - q.generation_ints):
+        return "generation"
+    return None
+
+
+def _vd_model_years(d: VariantDescriptor) -> FrozenSet[str]:
+    """The model-year tokens on one side for the backstop both-stated check:
+    the annotation-form years (year_annotations) UNION the bare 2020s
+    model-year tokens present in the identity (a "SE 2020" bare year, which
+    _annotation_year_tokens deliberately does NOT capture). Non-2020s numbers
+    (RTX 2080-class model numbers) are excluded by _MODEL_YEAR_RE's 202[0-9]
+    bound."""
+    bare = frozenset(w for w in d.fold_tokens if _MODEL_YEAR_RE.match(w))
+    return d.year_annotations | bare
+
+
+def backstop_identity_verdict(
+    query_name: str, candidate_title: str, category: Optional[str], *,
+    brand: str = "",
+) -> Tuple[bool, Optional[str]]:
+    """THE shared weak-chokepoint identity decision — one implementation for BOTH
+    the display enforce block (is_price_showable) and the cache-read
+    _cache_price_identity_ok, so read==display parity is STRUCTURAL.
+
+    Returns (ok, reason): ok=True passes; ok=False pends/drops with `reason` the
+    guard_rejected value ("not_exact" flag-OFF; "not_exact:<axis>" flag-ON).
+
+    FLAG-OFF (variant_descriptor_axes_enabled False -> default, and whenever the
+    exact gate is off) returns EXACTLY the legacy pair
+      (_backstop_identity_ok(...) and not _category_type_added(...))
+    with reason "not_exact" on failure -> byte-identical pre-change behaviour
+    (pinned by the golden corpus + a flag-OFF unit pin).
+
+    FLAG-ON adds the Phase-B1 bounded extra axes
+    (_descriptor_backstop_axes_verdict), each firing only when the axis was
+    extracted, with a granular "not_exact:<axis>" reason. `brand` is accepted for
+    signature parity with the primary gates but the backstop stays
+    brand-INDEPENDENT (the extractors subtract nothing extra), so a genuine
+    brand-omitted sephora title is never false-pended."""
+    if not exact_gate_enabled():
+        # Gate off -> the legacy backstop is itself a no-op contract; reproduce it.
+        legacy_ok = (_backstop_identity_ok(query_name, candidate_title, category)
+                     and not _category_type_added(query_name, candidate_title, category))
+        return (legacy_ok, None if legacy_ok else "not_exact")
+    legacy_ok = (_backstop_identity_ok(query_name, candidate_title, category)
+                 and not _category_type_added(query_name, candidate_title, category))
+    if not legacy_ok:
+        return (False, "not_exact")
+    if not variant_descriptor_axes_enabled():
+        return (True, None)
+    if not candidate_title:
+        return (True, None)
+    q_vd = extract_variant_descriptor(query_name, category, brand)
+    c_vd = extract_variant_descriptor(candidate_title, category, brand)
+    axis = _descriptor_backstop_axes_verdict(q_vd, c_vd, category)
+    if axis is not None:
+        return (False, "not_exact:" + axis)
+    return (True, None)
 
 
 # --- Availability policy (schema.org-complete; never raises) ----------------
@@ -4939,6 +6880,7 @@ def _candidate_authority(cand: Dict[str, Any], category: Optional[str]) -> float
 def select_best(
     candidates: List[Dict[str, Any]], query_name: str, category: Optional[str] = None,
     *, drop_out_of_stock: bool = True, require_url: bool = True,
+    stable_tiebreak: bool = False,
 ) -> Optional[Dict[str, Any]]:
     """Pick the single best price among `candidates` by RETAILER AUTHORITY — NEVER
     cheapest. Among candidates that have a verifiable IDENTITY (title/name), are
@@ -4958,6 +6900,13 @@ def select_best(
     JSON-LD within-page extractor passes False (its candidates are page-internal —
     the page URL is stamped onto the result by the caller, so requiring a
     per-candidate URL there would wrongly drop every JSON-LD match).
+
+    `stable_tiebreak` (default False — byte-identical for ALL existing callers,
+    ENABLE_GENUINE_PRICE_PRIORITY determinism item 1): when True, ties past
+    `amount` resolve lexicographically on (retailer, url) instead of Python
+    stable-sort insertion order, so equal-authority/precision/amount candidates
+    pick the SAME winner regardless of arrival order across runs. It is the
+    LAST tiebreak — authority/precision/amount ordering is unchanged.
 
     Returns None when no candidate qualifies. Rollback: with the gate OFF this
     restores the legacy cheapest-pick (min amount)."""
@@ -4995,6 +6944,15 @@ def select_best(
         brand = c.get("brand") or ""
         if not _selection_match(query_name, title, category, candidate_brand=brand):
             continue
+        # Wave C (kpiE2E re-sweep RS-2) — the BF1 wrong-brand fence on the
+        # shared selector: the organic-harvest → JSON-LD route reaches
+        # select_best with NO adapter fence in the path, so a wrong-brand /
+        # brandless same-model-word fashion row was picked (then shown +
+        # cached). Same centralized helper as the adapter fallthroughs.
+        if not _brand_evidence_ok(
+            query_name, title, candidate_brand=str(brand), category=category,
+        ):
+            continue
         eligible.append(c)
     if not eligible:
         return None
@@ -5002,17 +6960,667 @@ def select_best(
         title = c.get("title") or c.get("name") or ""
         cr, sr = variant_precision_rank(query_name, title)
         return float(cr + sr)
-    eligible.sort(key=lambda c: (
-        c.get("in_stock") is False,   # in-stock (False) sorts before OOS (True)
-        -_candidate_authority(c, category),
-        -_precision(c),
-        c["amount"],
-    ))
+    def _sort_key(c: Dict[str, Any]):
+        key = (
+            c.get("in_stock") is False,   # in-stock (False) sorts before OOS (True)
+            -_candidate_authority(c, category),
+            -_precision(c),
+            c["amount"],
+        )
+        if stable_tiebreak:
+            # Lexicographic FINAL tiebreak (determinism) — only extends the
+            # tuple; default False keeps the key byte-identical.
+            key = key + (str(c.get("retailer") or ""), str(c.get("url") or ""))
+        return key
+    eligible.sort(key=_sort_key)
     return eligible[0]
+
+
+def query_confirmed_structured_code(code: Any, query_words: set) -> str:
+    """Normalize + validate a structured MODEL code (a retailer's style_code /
+    SKU stem) against the QUERY's normalized words. The code is a match ENABLER
+    only when:
+      - letter+digit shaped (a pure-digit code — "00501-0660" — is catalog
+        plumbing, not a model assertion; it would inject numeric noise / bridge
+        different models), AND
+      - present as a query token (hyphen-folded, as normalize_words folds) —
+        an UNQUERIED code appended to a surface would read as a variant-add
+        and over-reject / a relaxation it never earned.
+    Returns the stripped code on success, "" otherwise. Shared by the algolia
+    matcher override (Wave A3, _confirmed_style_code) and the
+    should_cache_price parity override (Wave B0) so the two ends never drift.
+
+    Tightened (Wave B-FIX BF2, sweep L3): letter+digit SHAPE alone admitted
+    tokens that assert nothing about the exact SKU —
+      - a pure MEASURE ("100ML"/"2LB"/"1TB", _IDENTITY_MEASURE_STRIP_RE) or a
+        CLOTHING SIZE ("2XL", _CLOTHING_SIZE_RE) is a size, not a model; it
+        waived the ONLY gate rejecting the Elixir flanker / wrong-variant;
+      - a short FAMILY stem without a >=2-digit run ("AF1") names a LINE the
+        base/Kids/GS/LV8 variants all share, not an exact SKU.
+    Real model codes (L1212, NKCW4554-001) carry a multi-digit run and keep
+    confirming."""
+    if not isinstance(code, str):
+        return ""
+    tok = code.strip()
+    if not tok:
+        return ""
+    if not (any(c.isalpha() for c in tok) and any(c.isdigit() for c in tok)):
+        return ""
+    low = tok.lower()
+    if (_IDENTITY_MEASURE_STRIP_RE.fullmatch(low)
+            or _CLOTHING_SIZE_RE.fullmatch(low)):
+        return ""
+    if not re.search(r"\d{2}", low):
+        return ""
+    if low.replace("-", "") not in query_words:
+        return ""
+    return tok
+
+
+# Wave B-FIX BF2 (sweep L3) — sellable-UNIT markers that flip a title to a
+# DIFFERENT purchasable SKU even under a retailer-confirmed MODEL code (a
+# style code asserts the model, never the unit): kids / grade-school sizing,
+# gift sets, testers, decants. BOUNDED list, asymmetric (a query that itself
+# states the marker is unaffected), and consulted ONLY inside the structured
+# -code override — it can never over-reject a candidate the normal
+# _selection_match gates accept.
+_STRUCTURED_OVERRIDE_BLOCK_TOKENS = frozenset({
+    "kids", "kid", "gs", "gift", "set", "tester", "decant",
+    # Wave C (re-sweep RS3) — the sibling kid-SEGMENT and bundle wordings GCC
+    # stores actually use ("Boys"/"Girls"/"Junior" on 6thstreet, "with Cap
+    # Bundle"): each is a differently-priced sellable unit sharing the model's
+    # style code, so the confirmed code must not waive the variant fence.
+    "boys", "girls", "junior", "youth", "toddler", "bundle", "combo",
+    # Wave D (convergence CV1) — the RS3 fix's own blind spot: baby/infant
+    # (listed in the original RS3 fix-direction, dropped by C1) and the
+    # MULTIPACK sellable-unit wordings ("Twin Pack" / "2-Pack" / "Multipack"
+    # — common GCC polo/tee listings). normalize_words FOLDS hyphens
+    # ("twin-pack" -> "twinpack") and SPLITS spaced forms ("twin pack" ->
+    # {"twin","pack"}); the bare "pack" covers every spaced
+    # "<n>/Twin/Value/Multi Pack" form (an added "pack" is always a
+    # different sellable unit — same asymmetry: a query stating it is
+    # unaffected, and candidates the normal _selection_match accepts never
+    # consult this set).
+    # Wave D polish (review W2) — bare "twin" is deliberately NOT listed:
+    # it over-rejected Fred Perry "Twin Tipped" MAINLINE polos and is
+    # redundant for the multipack class ("pack" catches the spaced form,
+    # the glued tokens catch "twin-pack"/"twinpack"). "baby" IS listed but
+    # bounded in _structured_override_variant_blocked: the "Baby Blue" /
+    # "Baby Pink" COLORWAY bigram is a shade name, not the infant segment.
+    "baby", "infant", "pack", "multipack",
+    "twinpack", "twopack", "2pack", "3pack", "4pack", "5pack", "6pack",
+})
+
+# Wave D polish (review W2) — the COLORWAY sense of "baby": "Baby Blue" /
+# "Baby Pink" name a SHADE on an adult mainline SKU (Lacoste "L1212 Polo
+# Baby Blue"), not the infant garment segment. Hyphen family included for
+# symmetry with the C2 _UNICODE_HYPHENS canon (normalize_words glues
+# hyphenated bigrams anyway, so only the spaced form ever surfaces "baby").
+_BABY_COLORWAY_BIGRAM_RE = re.compile(
+    rf"\bbaby[\s\-{_UNICODE_HYPHENS}]+(?:blue|pink)\b", re.I,
+)
+
+
+def _structured_override_variant_blocked(query_name: str, surface: str) -> bool:
+    """True when the candidate surface ADDS a kids/gs/gift-set/tester/decant
+    marker the query never stated — the structured-code override must keep the
+    variant-add fence UP for those (sweep L3: 'L1212 Polo Gift Set with Cap'
+    rode the confirmed code). Shared by both override ends.
+
+    Wave D polish (review W2): "baby" is exempt when EVERY surface occurrence
+    is part of the "Baby Blue"/"Baby Pink" COLORWAY bigram (a shade name, not
+    the infant segment); any bare occurrence — "Polo Baby - 6-12 months", or
+    a surface carrying BOTH senses — keeps blocking (fail-closed)."""
+    added = normalize_words(surface) & _STRUCTURED_OVERRIDE_BLOCK_TOKENS
+    if "baby" in added and not re.search(
+            r"\bbaby\b", _BABY_COLORWAY_BIGRAM_RE.sub(" ", surface.lower())):
+        added = added - {"baby"}
+    if not added:
+        return False
+    return bool(added - normalize_words(query_name))
+
+
+def _structured_code_cache_override(
+    request_name: str, price: Dict[str, Any], title: str, category: Optional[str],
+) -> bool:
+    """Wave-B cache-gate PARITY with the adapter-side structured-identity
+    override (Wave A3, algolia _catalog_match_hit/_match_algolia_hit): a
+    QUERY-CONFIRMED structured model code carried on the price dict
+    (`structured_code`, stamped by the adapter whose matcher accepted the hit)
+    is the retailer's own exact-model assertion — descriptive title words
+    around a confirmed code are noise, not a variant-add ("Logo Detail Short
+    Sleeves Polo T-Shirt" + style_code L1212 IS the queried Lacoste L1212).
+    ONLY the superset/variant-add rejection is relaxed; the SAME bounds the
+    adapter override enforces stay enforced here, fail-closed:
+      - the code must be letter+digit shaped AND appear as a token in the
+        QUERY (query_confirmed_structured_code — an unqueried code relaxes
+        NOTHING);
+      - LEAK direction: every query discriminator must appear in the
+        brand+title+code surface (strict_title_match, candidate_brand-aware —
+        a WRONG-brand stamp keeps the query's own brand token required and
+        still rejects);
+      - significant query numbers must match (numbers_match);
+      - the contradiction/numeric axes stay enforced (_axis_mismatch, with
+        _selection_match's explicit-"other" re-inference mirrored).
+    Everything else in should_cache_price (identity/URL/OOS/accessory checks)
+    ran BEFORE this override. Flag-OFF never reaches here (should_cache_price
+    early-returns True)."""
+    code = query_confirmed_structured_code(
+        price.get("structured_code"), normalize_words(request_name),
+    )
+    if not code:
+        return False
+    brand = price.get("brand")
+    brand = brand.strip() if isinstance(brand, str) else ""
+    surface = " ".join(part for part in (brand, title, code) if part)
+    # BF2 (sweep L3): a kids/gs/gift-set/tester/decant ADD is a different
+    # sellable unit — the confirmed code never waives that fence.
+    if _structured_override_variant_blocked(request_name, surface):
+        return False
+    if not numbers_match(request_name, surface):
+        return False
+    if not strict_title_match(request_name, surface, candidate_brand=brand):
+        return False
+    cat = category
+    if (cat or "").lower() == "other":
+        cat = _infer_category_from_query(request_name) or cat
+    return not _axis_mismatch(request_name, surface, cat, brand)
+
+
+# ============================================================================
+# WAVE-2 B3a — CURATED VARIANT-HINT REFERENCE + WARM-CONTEXT CACHE-WRITE VETO
+# ============================================================================
+# The 2+1 warmer-writable POISON classes (residual-census.json) —
+#   gender_flanker_base_to_femme (Versace Eros -> Eros Pour Femme),
+#   spf_one_sided_add            (CeraVe Lotion -> +SPF 30),
+#   makeup_one_sided_formula_add (Fit Me Matte -> Fit Me Dewy)
+# — PASS should_cache_price today: they pass _selection_match (they are the HELD
+# DISPLAY tradeoffs — symmetrizing them mass-over-rejects correct products, the
+# proven revert). A live-origin flanker is the already-accepted low-frequency
+# display trade; the AMPLIFIED harm is the CRON WARMER writing such a row
+# CONTINUOUSLY under the genuine 7d TTL, served to everyone. So the veto fires
+# ONLY off-clock/warm — the live 15s path + is_price_showable display stay
+# BYTE-IDENTICAL. A vetoed price still RESOLVES + DISPLAYS; the warmer merely
+# skips caching that row.
+#
+# WARM-CONTEXT DISCRIMINATOR (belt-and-braces per descriptor-design.json R3):
+#   (a) the WARMER_CONTEXT env the off-clock scripts export
+#       (cron_warm_price_cache / warm_kpi_truth / measure_warmed_kpi /
+#        seed_zyte_luxury), AND
+#   (b) an explicit warm_context=True kwarg a caller may force.
+# The veto activates when EITHER warm signal is present (an env alone can leak
+# into a dev server, so a caller can also force it; a script that forgets the
+# env can still pass the kwarg — either path arms it, neither is required to be
+# both). The LIVE web request never sets the env nor passes the kwarg, so
+# should_cache_price on the live path is byte-identical.
+#
+# The whole thing is gated behind variant_descriptor_axes_enabled() (which
+# hard-requires the exact gate): flag-OFF -> byte-identical, curated ref is
+# deterministic/$0 but stays flag-gated to keep the merge clean.
+
+_VARIANT_HINT_REFERENCE_PATH = os.path.join(
+    os.path.dirname(__file__), "..", "..", "data", "variant_hint_reference.json",
+)
+
+
+@functools.lru_cache(maxsize=1)
+def _load_variant_hint_reference() -> Dict[str, Any]:
+    """Load data/variant_hint_reference.json ONCE (module-level memo, the
+    bh_gcc_sources.json committed-data precedent). Missing/malformed -> empty
+    sections (every lookup then returns 'unknown' -> fail-closed veto). Never
+    raises."""
+    try:
+        with open(_VARIANT_HINT_REFERENCE_PATH, "r", encoding="utf-8") as fh:
+            doc = json.load(fh)
+        if not isinstance(doc, dict):
+            return {}
+        return doc
+    except Exception as exc:  # noqa: BLE001 — reference is additive, never fatal
+        logger.warning("[variant_hint] reference load failed: %s", exc)
+        return {}
+
+
+def _vh_longest_base_match(folded: str, keys) -> Optional[str]:
+    """The LONGEST curated base-line key contained (whitespace-boundary) in
+    `folded`, or None. Longest-key wins so 'sauvage elixir' beats 'sauvage'
+    when both are present."""
+    best = None
+    for k in keys:
+        if not k or k.startswith("_"):
+            continue
+        # containment on a padded string so 'si' does not match inside 'basil'.
+        if f" {k} " in f" {folded} ":
+            if best is None or len(k) > len(best):
+                best = k
+    return best
+
+
+def _strip_trailing_spf_token(folded: str) -> str:
+    """Remove a TRAILING standalone 'spf'/'spf <n>' AND a trailing standalone
+    'sunscreen' token (repeatedly, in either interleaved order) from a folded
+    string.
+
+    B3-FIX (spf) + Wave-2 FINALIZE (sunscreen): a candidate can self-shadow a
+    non_sunscreen base into a phantom inherent match by appending EITHER its own
+    'spf'/'spf NN' suffix OR the standalone word 'sunscreen' (or BOTH, e.g.
+    'cetaphil moisturizing' -> '...moisturizing sunscreen spf 30', where the
+    surviving 'moisturizing sunscreen' out-lengths the non_sunscreen stem). We
+    strip ONLY at the END, and this is called ONLY when a non_sunscreen base has
+    already matched -- so a genuine sunscreen name that carries 'sunscreen'/'spf'
+    as a NON-trailing part (anthelios/capital soleil never reach here; coppertone
+    sport 'sunscreen lotion spf 50' keeps its inner 'sunscreen') is unaffected,
+    and its inherent line still wins. Iterates so any trailing mix of the two
+    tokens is peeled off."""
+    if not folded:
+        return folded
+    stripped = folded
+    _trailing = re.compile(r"\s+(?:spf(?:\s+\d+)?|sunscreen)\s*$")
+    while True:
+        nxt = _trailing.sub("", stripped).strip()
+        if nxt == stripped:
+            break
+        stripped = nxt
+    return stripped or folded
+
+
+def _variant_hint_lookup(category: Optional[str], query_name: str,
+                         candidate_title: str, axis: str) -> str:
+    """Deterministic $0 reader over data/variant_hint_reference.json.
+
+    Returns "distinct" | "same" | "unknown" for the given `axis` in
+    {"gender", "spf", "formula"}. The base line is matched by LONGEST-key
+    CONTAINMENT in the folded query (falls back to the candidate when the query
+    is terse and omits the line word). A base-line MISS -> "unknown" (the
+    caller fail-closes)."""
+    ref = _load_variant_hint_reference()
+    qf = _fold_identity(query_name or "")
+    cf = _fold_identity(candidate_title or "")
+
+    if axis == "gender":
+        table = ref.get("fragrance_base_gender") or {}
+        base = _vh_longest_base_match(qf, table.keys()) or _vh_longest_base_match(cf, table.keys())
+        if base is None:
+            return "unknown"
+        base_gender = table.get(base)
+        # The gender the CANDIDATE adds (candidate stated, query did not).
+        cand_gender = _gender_of(candidate_title)
+        if cand_gender is None or base_gender is None:
+            return "unknown"
+        return "same" if cand_gender == base_gender else "distinct"
+
+    if axis == "spf":
+        spf_section = ref.get("inherent_spf_lines") or {}
+        inherent = spf_section.get("lines") or []
+        non_sun = spf_section.get("non_sunscreen_lines") or []
+        # A KNOWN non-sunscreen line: the SPF add is a distinct variant -> DISTINCT.
+        non = _vh_longest_base_match(qf, non_sun) or _vh_longest_base_match(cf, non_sun)
+        # SELF-SHADOW HARDENING (B3-FIX + Wave-2 FINALIZE): the candidate's OWN
+        # trailing "spf"/"spf NN" AND/OR standalone "sunscreen" suffix must not
+        # extend a non_sunscreen stem into a phantom inherent match (e.g.
+        # "hydro boost water gel" + " spf 25" matching an inherent line; or
+        # "cetaphil moisturizing" + " sunscreen spf 30" where the surviving
+        # "moisturizing sunscreen" out-lengths the non_sunscreen stem). When the
+        # base already matched a non_sunscreen line, strip trailing standalone
+        # "spf"/"spf <n>"/"sunscreen" tokens from the text used to match the
+        # INHERENT lines, so an inherent win must come from a genuine sunscreen
+        # name that carries "spf"/"sunscreen" as a NON-trailing part
+        # (anthelios / capital soleil / coppertone sport 'sunscreen lotion spf'
+        # are unaffected -- their base is not a non_sunscreen line so the strip
+        # never engages).
+        qf_inh, cf_inh = qf, cf
+        if non:
+            qf_inh = _strip_trailing_spf_token(qf)
+            cf_inh = _strip_trailing_spf_token(cf)
+        # An inherent-SPF line: the SPF add is descriptive of the base -> SAME.
+        inh = (_vh_longest_base_match(qf_inh, inherent)
+               or _vh_longest_base_match(cf_inh, inherent))
+        # When BOTH match (a longer non-sunscreen key vs a shorter inherent key or
+        # vice versa) prefer the LONGER, more-specific base line.
+        if inh and (not non or len(inh) >= len(non)):
+            return "same"
+        if non:
+            return "distinct"
+        # Base in NEITHER list. We CANNOT prove it is a distinct SKU from tokens
+        # alone (the exact reason the display axis is HELD), so a MISS is UNKNOWN
+        # -> fail-closed veto (never a wrong cache).
+        return "unknown"
+
+    if axis == "formula":
+        table = ref.get("makeup_formula_lines") or {}
+        base = _vh_longest_base_match(qf, table.keys()) or _vh_longest_base_match(cf, table.keys())
+        if base is None:
+            return "unknown"
+        distinct_tokens = set(table.get(base) or [])
+        cand_forms = extract_variant_descriptor(candidate_title, "makeup").finishes
+        query_forms = extract_variant_descriptor(query_name, "makeup").finishes
+        added = (cand_forms - query_forms) & distinct_tokens
+        # The candidate ADDS a distinct formula sub-line token the query lacks
+        # AND that token is a DISTINCT sub-line of this base -> DISTINCT.
+        return "distinct" if added else "same"
+
+    return "unknown"
+
+
+def _warm_context_active(warm_context: bool = False) -> bool:
+    """True iff the OFF-CLOCK warm signal is present: the explicit
+    warm_context kwarg OR the WARMER_CONTEXT env the warm/seed/measure scripts
+    export (belt-and-braces, R3). Read FRESH so a script's os.environ set before
+    import is honored and a live request (neither set) is never armed."""
+    if warm_context:
+        return True
+    return os.getenv("WARMER_CONTEXT", "").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
+def _detect_ambiguous_variant_axes(
+    request_name: str, title: str, category: Optional[str],
+) -> List[str]:
+    """The ordered list of Class-B AMBIGUOUS axes the candidate ADDS that the
+    query lacks: any subset of ["gender", "spf", "formula"] in warmer_write_veto's
+    original branch order. The SHARED axis detector for both the sync curated veto
+    and the async LLM-hint path so the two never drift. Returning ALL applicable
+    axes (not just the first) preserves B3a's fall-through semantics: a 'same'
+    gender verdict then still checks spf, exactly as the original sequential
+    branches did."""
+    cat = (category or "").lower()
+    qd = extract_variant_descriptor(request_name, category)
+    cd = extract_variant_descriptor(title, category)
+    axes: List[str] = []
+    # --- gender flanker base->femme (fragrance/beauty + fashion) ---
+    if (cat in _FRAGRANCE_BEAUTY_CATEGORIES or cat == "fashion") \
+            and cd.gender and not qd.gender:
+        axes.append("gender")
+    # --- one-sided SPF add (skincare/makeup/haircare — category-independent) ---
+    if cd.spfs and not qd.spfs:
+        axes.append("spf")
+    # --- makeup one-sided formula add ---
+    if cat == "makeup" and (cd.finishes - qd.finishes):
+        axes.append("formula")
+    return axes
+
+
+# ---------------------------------------------------------------------------
+# Wave-2 B3b — the NARROW OFF-CLOCK LLM variant-hint (curated-miss fallback).
+#
+# When the curated reference (_variant_hint_lookup) returns "unknown" on a
+# Class-B ambiguous axis, B3a fail-closes (vetoes the write). B3b recovers the
+# CORRECT-product misses whose family is not yet in the curated reference, by
+# consulting a NARROW disambiguator — but ONLY when EVERY hard invariant holds:
+#   (1) variant_descriptor_axes_enabled()  (hard-requires the exact gate)
+#   (2) ENABLE_VARIANT_LLM_HINT            (default OFF)
+#   (3) the OFF-CLOCK warm signal          (WARMER_CONTEXT env / warm_context arg
+#                                           / allow_llm_hint arg)
+#   (4) _variant_hint_lookup returned "unknown".
+# The LLM is NEVER constructed on the live 15s path (no warm signal -> the
+# machinery is never reached). Consulted at cache-WRITE time only.
+#
+# CACHE: a Redis verdict cache varhint:<sha12(normalized_family, axis)> TTL 90d
+# (product-line facts are stable). A HIT short-circuits ($0) — and the LIVE path
+# MAY read this $0 cache (a filled verdict costs nothing) but must NEVER call the
+# LLM. On a MISS: the async path calls gpt-4o-mini (temperature=0, json_object),
+# caches the verdict, optionally appends to data/variant_hint_learned.json for
+# convergence. FAIL-CLOSED default (flag off / low confidence / client error /
+# per-run cap exceeded / "unknown" response) = VETO the write (never cache an
+# unverified identity). Only a HIGH-confidence answer acts:
+#   distinct + high -> veto ; same + high -> allow ; else -> fail-closed veto.
+#
+# PER-RUN CAP: VARHINT_MAX_CALLS_PER_RUN (default 40, mirrors
+# WARMER_MAX_SERPER_CREDITS_PER_RUN). Beyond the cap -> fail-closed veto WITHOUT
+# calling the LLM. The counter is a process-local module global (a warm run is a
+# single process; reset at import / via _reset_varhint_run_state for tests).
+# ---------------------------------------------------------------------------
+_VARHINT_VERDICT_TTL_SECONDS = 90 * 24 * 3600  # 90d — product-line facts are stable
+_VARHINT_LEARNED_PATH = os.path.join(
+    os.path.dirname(__file__), "..", "..", "data", "variant_hint_learned.json",
+)
+# Process-local per-run LLM-call counter (a warm run = one process).
+_varhint_calls_this_run = 0
+
+
+def variant_llm_hint_enabled() -> bool:
+    """True iff the B3b LLM-hint machinery is active. Default OFF, read FRESH per
+    call (the adapter_selection_primary_enabled :5027 idiom). HARD-REQUIRES the
+    variant-descriptor axes (which in turn hard-require the exact gate), so the
+    hint never exists in a rollback state and flag-OFF is byte-identical."""
+    if not variant_descriptor_axes_enabled():
+        return False
+    return os.getenv("ENABLE_VARIANT_LLM_HINT", "false").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
+def _varhint_max_calls_per_run() -> int:
+    """Per-run LLM-call cap (mirrors WARMER_MAX_SERPER_CREDITS_PER_RUN). Beyond
+    the cap the hint fail-closes WITHOUT calling. Default 40; non-numeric -> 40."""
+    try:
+        return max(0, int(os.getenv("VARHINT_MAX_CALLS_PER_RUN", "40")))
+    except (TypeError, ValueError):
+        return 40
+
+
+def _reset_varhint_run_state() -> None:
+    """Reset the process-local per-run LLM-call counter. Called at warm-run start
+    (and by tests). No-op-safe."""
+    global _varhint_calls_this_run
+    _varhint_calls_this_run = 0
+
+
+def _varhint_normalized_family(query_name: str, candidate_title: str, axis: str) -> str:
+    """The stable normalized-family string the verdict cache is keyed on. Uses the
+    SAME curated base-line match as _variant_hint_lookup so a cached verdict is
+    reused across the many candidate titles that share one product line; falls
+    back to the folded query when no curated line matches (the exact curated-miss
+    case B3b exists to resolve). The axis is folded in by the caller's sha12."""
+    ref = _load_variant_hint_reference()
+    qf = _fold_identity(query_name or "")
+    cf = _fold_identity(candidate_title or "")
+    table_keys: List[str] = []
+    if axis == "gender":
+        table_keys = list((ref.get("fragrance_base_gender") or {}).keys())
+    elif axis == "spf":
+        spf = ref.get("inherent_spf_lines") or {}
+        table_keys = list(spf.get("lines") or []) + list(spf.get("non_sunscreen_lines") or [])
+    elif axis == "formula":
+        table_keys = list((ref.get("makeup_formula_lines") or {}).keys())
+    base = _vh_longest_base_match(qf, table_keys) or _vh_longest_base_match(cf, table_keys)
+    return base or qf
+
+
+def _varhint_verdict_key(query_name: str, candidate_title: str, axis: str) -> str:
+    """varhint:<sha12(normalized_family + '|' + axis)> — the Redis verdict-cache
+    key. Product-line facts are family-stable, so the family (not the raw title)
+    is the cache axis."""
+    family = _varhint_normalized_family(query_name, candidate_title, axis)
+    digest = hashlib.sha256(f"{family}|{axis}".encode("utf-8")).hexdigest()[:12]
+    return f"varhint:{digest}"
+
+
+def _varhint_read_verdict_cache(key: str) -> Optional[str]:
+    """Read a cached LLM verdict ("distinct"|"same") from Redis, or None on miss /
+    Redis-down / malformed. $0 — the LIVE path may call this (never the LLM)."""
+    try:
+        from app.services.cache_service import _redis_get
+        raw = _redis_get(key)
+    except Exception:  # noqa: BLE001 — Redis is a soft dependency (fail-open read)
+        return None
+    if raw in ("distinct", "same"):
+        return raw
+    return None
+
+
+def _varhint_write_verdict_cache(key: str, verdict: str) -> None:
+    """Persist a resolved HIGH-confidence LLM verdict to Redis (90d TTL). Only
+    'distinct'/'same' are cached (never 'unknown' — an unknown must re-resolve)."""
+    if verdict not in ("distinct", "same"):
+        return
+    try:
+        from app.services.cache_service import _redis_set
+        _redis_set(key, verdict, ex=_VARHINT_VERDICT_TTL_SECONDS)
+    except Exception:  # noqa: BLE001 — cache write is best-effort
+        pass
+
+
+def _varhint_append_learned(family: str, axis: str, verdict: str) -> None:
+    """Append a resolved verdict to data/variant_hint_learned.json for convergence
+    (the committed-data precedent). Best-effort; never raises. Keyed 'family|axis'."""
+    if verdict not in ("distinct", "same"):
+        return
+    try:
+        doc: Dict[str, Any] = {}
+        if os.path.exists(_VARHINT_LEARNED_PATH):
+            with open(_VARHINT_LEARNED_PATH, "r", encoding="utf-8") as fh:
+                loaded = json.load(fh)
+                if isinstance(loaded, dict):
+                    doc = loaded
+        doc[f"{family}|{axis}"] = verdict
+        with open(_VARHINT_LEARNED_PATH, "w", encoding="utf-8") as fh:
+            json.dump(doc, fh, ensure_ascii=True, indent=2, sort_keys=True)
+    except Exception:  # noqa: BLE001 — learned-file is additive, never fatal
+        pass
+
+
+async def _consult_variant_llm_hint(
+    category: Optional[str], query_name: str, candidate_title: str, axis: str,
+) -> str:
+    """The async curated-miss fallback. Returns "distinct" | "same" | "unknown".
+
+    ORDER: (a) Redis verdict cache HIT -> return it ($0, NO client construction).
+    (b) MISS: enforce the per-run cap (beyond it -> "unknown" WITHOUT calling),
+    else call disambiguate_variant_line; only a HIGH-confidence answer resolves
+    to distinct/same (cached + learned); anything else -> "unknown" (the caller
+    fail-closes). NEVER raises."""
+    global _varhint_calls_this_run
+    key = _varhint_verdict_key(query_name, candidate_title, axis)
+    cached = _varhint_read_verdict_cache(key)
+    if cached is not None:
+        return cached
+    # Cache miss -> the LLM would be called. Enforce the per-run cap FIRST so the
+    # (N+1)th consult fails-closed WITHOUT constructing a client.
+    if _varhint_calls_this_run >= _varhint_max_calls_per_run():
+        return "unknown"
+    _varhint_calls_this_run += 1
+    from app.services import openai_service
+    result = await openai_service.disambiguate_variant_line(
+        category, query_name, candidate_title, axis,
+    )
+    distinct = result.get("distinct_product")
+    conf = str(result.get("confidence") or "").lower()
+    if conf != "high":
+        return "unknown"
+    if distinct is True:
+        verdict = "distinct"
+    elif distinct is False:
+        verdict = "same"
+    else:
+        return "unknown"
+    _varhint_write_verdict_cache(key, verdict)
+    _varhint_append_learned(
+        _varhint_normalized_family(query_name, candidate_title, axis), axis, verdict,
+    )
+    return verdict
+
+
+def _apply_variant_verdict(axis: str, verdict: str) -> Optional[Tuple[bool, str]]:
+    """Map a per-axis verdict to a (allow, reason) veto decision, or None when the
+    verdict is 'same' (allow — let the caller continue to the next axis / final
+    allow). Shared by the sync + async vetoes so the reason strings never drift.
+      distinct -> (False, "<axis>_..._distinct")
+      unknown  -> (False, "<axis>_..._unknown_failclosed")
+      same     -> None (allow)."""
+    reason_stem = {
+        "gender": "gender_flanker", "spf": "spf_add", "formula": "formula_add",
+    }.get(axis, axis)
+    if verdict == "distinct":
+        return False, f"{reason_stem}_distinct"
+    if verdict == "unknown":
+        return False, f"{reason_stem}_unknown_failclosed"
+    return None  # "same" -> allow
+
+
+def warmer_write_veto(
+    request_name: str, price: Optional[Dict[str, Any]], category: Optional[str] = None,
+    *, warm_context: bool = False,
+) -> Tuple[bool, Optional[str]]:
+    """The WARM-CONTEXT cache-write veto for the 2+1 warmer-writable poison
+    classes. Returns (allow, reason). SYNCHRONOUS — the deterministic curated
+    path, plus a $0 read of the B3b Redis verdict cache when the hint is enabled
+    (NEVER an LLM call — that lives only in warmer_write_veto_async).
+
+    NO-OP (returns (True, None)) unless BOTH: the warm signal is present
+    (_warm_context_active) AND variant_descriptor_axes_enabled(). So the live
+    15s path is byte-identical (no warm signal) and flag-OFF is byte-identical.
+
+    When armed, detects a Class-B AMBIGUOUS axis the candidate ADDS that the
+    query lacks (gender / spf / makeup formula), consults _variant_hint_lookup:
+      "distinct" -> veto (do NOT cache — a different SKU);
+      "same"     -> allow (descriptive of the same product);
+      "unknown"  -> (B3b) when variant_llm_hint_enabled(), first try the $0 Redis
+                    verdict cache; a cached distinct/same acts, else FAIL-CLOSED
+                    veto (the LLM is only consulted in the async variant).
+    is_price_showable is deliberately NOT touched — display stays as today."""
+    if not _warm_context_active(warm_context) or not variant_descriptor_axes_enabled():
+        return True, None
+    if not isinstance(price, dict):
+        return True, None
+    title = price.get("title") or price.get("name") or ""
+    if not title:
+        return True, None
+    for axis in _detect_ambiguous_variant_axes(request_name, title, category):
+        verdict = _variant_hint_lookup(category, request_name, title, axis)
+        if verdict == "unknown" and variant_llm_hint_enabled():
+            # B3b sync path: consult ONLY the $0 Redis verdict cache — NEVER the
+            # LLM (a live request may benefit from an already-resolved verdict at
+            # $0, but a network call belongs to the async off-clock variant).
+            cached = _varhint_read_verdict_cache(
+                _varhint_verdict_key(request_name, title, axis)
+            )
+            if cached is not None:
+                verdict = cached
+        decision = _apply_variant_verdict(axis, verdict)
+        if decision is not None:
+            return decision
+    return True, None
+
+
+async def warmer_write_veto_async(
+    request_name: str, price: Optional[Dict[str, Any]], category: Optional[str] = None,
+    *, warm_context: bool = False, allow_llm_hint: bool = False,
+) -> Tuple[bool, Optional[str]]:
+    """OFF-CLOCK async variant of warmer_write_veto. Identical to the sync veto,
+    EXCEPT that on a curated "unknown" it consults the B3b LLM hint
+    (Redis-verdict-cache first, then a capped gpt-4o-mini call). The LLM is
+    constructed/called ONLY when ALL hold:
+      variant_llm_hint_enabled()  (axes + ENABLE_VARIANT_LLM_HINT + exact gate)
+      AND the warm signal          (warm_context / WARMER_CONTEXT / allow_llm_hint)
+      AND _variant_hint_lookup == "unknown".
+    A live request never passes warm_context/allow_llm_hint and never sets
+    WARMER_CONTEXT, so this coroutine's LLM branch is unreachable from the 15s
+    path. Fail-closed on every uncertainty (low confidence / cap / error /
+    'unknown' response) -> veto the write."""
+    warm = _warm_context_active(warm_context) or bool(allow_llm_hint)
+    if not warm or not variant_descriptor_axes_enabled():
+        return True, None
+    if not isinstance(price, dict):
+        return True, None
+    title = price.get("title") or price.get("name") or ""
+    if not title:
+        return True, None
+    for axis in _detect_ambiguous_variant_axes(request_name, title, category):
+        verdict = _variant_hint_lookup(category, request_name, title, axis)
+        if verdict == "unknown" and variant_llm_hint_enabled():
+            verdict = await _consult_variant_llm_hint(
+                category, request_name, title, axis,
+            )
+        decision = _apply_variant_verdict(axis, verdict)
+        if decision is not None:
+            return decision
+    return True, None
 
 
 def should_cache_price(
     request_name: str, price: Optional[Dict[str, Any]], category: Optional[str] = None,
+    *, warm_context: bool = False,
 ) -> bool:
     """B6 — gate a cache WRITE on the RESOLVED identity matching the request, so a
     wrong candidate (which a permissive matcher might once have let through) can NEVER
@@ -5022,7 +7630,13 @@ def should_cache_price(
     legitimately-selected price (defense-in-depth for the non-select_best writes:
     iHerb / pharmacy / converted). Returns True (allow) when there is nothing to
     verify against (no title to compare, or no request) — an estimated price has its
-    own honesty + TTL. No-op (True) when the rollback flag is OFF."""
+    own honesty + TTL. No-op (True) when the rollback flag is OFF.
+
+    WAVE-2 B3a — when the OFF-CLOCK warm signal is present (WARMER_CONTEXT env or
+    warm_context=True) AND the axes flag is on, the base decision is additionally
+    subject to warmer_write_veto (gender-flanker / one-sided SPF / makeup one-sided
+    formula ADD closed via the curated variant-hint reference). The veto can ONLY
+    turn an ALLOW into a REFUSE — a live request (no warm signal) is byte-identical."""
     if not exact_gate_enabled():
         return True
     if not isinstance(price, dict):
@@ -5056,9 +7670,35 @@ def should_cache_price(
         return False
     if not request_name:
         return True
-    return _selection_match(
+    if _selection_match(
         request_name, title, category, candidate_brand=price.get("brand", ""),
+    ):
+        # Wave C (re-sweep RS7 / kpiE2E RS-2) — the BF1 wrong-brand fence on
+        # the WRITE gate: a keystone pass alone still cached the wrong-brand /
+        # brandless same-model-word fashion row under the genuine TTL on the
+        # no-adapter paths (shopping / harvest JSON-LD). Same centralized
+        # helper; the structured-code override below keeps its own brand
+        # protection (strict_title_match keeps the query brand required).
+        base_ok = _brand_evidence_ok(
+            request_name, title,
+            candidate_brand=str(price.get("brand") or ""), category=category,
+        )
+    else:
+        # Wave-B parity — the bounded structured-identity override the algolia
+        # matcher already ran (A3): a query-confirmed model code relaxes ONLY the
+        # variant-add direction; leak direction + axes stay enforced. Without this
+        # the write gate re-rejects exactly the descriptive-title hit the adapter
+        # accepted, so the correct product resolves+displays but NEVER caches.
+        base_ok = _structured_code_cache_override(request_name, price, title, category)
+    if not base_ok:
+        return False
+    # Wave-2 B3a — OFF-CLOCK ONLY: apply the curated variant-hint veto on TOP of
+    # an allowed base decision. No-op (returns (True, ...)) on the live path and
+    # flag-OFF, so byte-identity holds; it can only turn an ALLOW into a REFUSE.
+    allow, _reason = warmer_write_veto(
+        request_name, price, category, warm_context=warm_context,
     )
+    return allow
 
 
 def public_price_view(price: Any) -> Any:
@@ -5540,6 +8180,17 @@ def extract_price_from_shopping(
         # listing title. No-op when the rollback flag is OFF.
         if not _selection_match(product_name, title, _category):
             continue
+        # Wave C (re-sweep RS7) — the BF1 wrong-brand fence at the SHARED
+        # shopping tier: a fashion padding-brand query stripped its brand from
+        # the keystone, so a brandless same-model-word row ("Superstar White
+        # Sneakers" — could be Golden Goose) served + cached with no adapter
+        # fence in the path. Shopping items carry no brand field → path (b):
+        # the query's brand must appear folded in the title (fashion only).
+        if not _brand_evidence_ok(
+            product_name, title,
+            candidate_brand=str(item.get("brand") or ""), category=_category,
+        ):
+            continue
 
         t_words = normalize_words(title)
         match_score = len(p_words & t_words) / len(p_words) if p_words else 0
@@ -5741,13 +8392,26 @@ def extract_jsonld_price(
 
         for product in products:
             product_name = product.get("name", "")
+            # C2 (kpiE2E RS-1) — html.parser does NOT entity-decode <script>
+            # contents, so a JSON-LD name's "&amp;" reaches the identity gates
+            # verbatim and tokenizes as a false "amp" add. Decode at ingestion.
+            # GATED: the name is carried unconditionally for flag-OFF
+            # byte-identity (see the name-carry note below), so the flag-OFF
+            # path must keep the legacy raw bytes.
+            if exact_gate_enabled() and product_name:
+                product_name = html_unescape(product_name)
             # S3 #34 (blocker) — REJECT an accessory PDP. A "Galaxy S24 Case"
             # JSON-LD (brand Samsung, numbers 24, no model-line qualifier) was
             # matching as the phone → 11.9 BHD GENUINE-labeled confident-wrong
             # product (the exact "wrong scrape" forbidden). is_accessory was on
             # the shopping + Shopify matchers but MISSING here (the curl-scrape /
             # backfill JSON-LD path). A real phone PDP is not an accessory.
-            if is_accessory(product_name):
+            # C2 (RS-4): scoped via is_accessory_for_category — a resolved
+            # JSON-LD PDP name is exactly the "direct store-API" class the BF4
+            # scoping exists for (the godukkan/sharafdg MacBook PDPs all carry
+            # the "English Keyboard" layout segment); a Galaxy-case PDP still
+            # rejects ("case" flags in every scope).
+            if is_accessory_for_category(product_name, _category):
                 continue
             brand_nospace = brand_lower.replace(" ", "")
             name_nospace = product_name.lower().replace(" ", "")
@@ -6487,6 +9151,12 @@ async def fetch_page_price(
 # catalog with real BHD prices. Hitting it directly gives a real BH price with
 # ZERO Serper + ZERO render credits — the cleanest real-price lever for the
 # winner axis. Match the catalog client-side with the existing title helpers.
+#
+# NOTE (R1 retrieval-term ladder, Wave B3): the shopify path is deliberately
+# NOT laddered — it has NO search side (a full-catalog /products.json fetch;
+# matching happens client-side over the whole page), so there is no
+# AND-restrictive search term to widen. build_adapter_search_terms is wired
+# only into the search-side adapters (woo / magento / salla / algolia).
 
 # Shopify caps /products.json at 250/page; one page is plenty for the small BH
 # storefronts (≈30 products) and keeps the call cheap. Cache the catalog so a
@@ -6825,6 +9495,11 @@ def _bolo_jsonld_main_price(
             if not (isinstance(node, dict) and _is_product_type(node)):
                 continue
             ld_name = node.get("name", "") or ""
+            # C2 — same JSON-LD entity-decode as extract_jsonld_price (an
+            # "&amp;" in the blob is the page's escaping, not identity); gated
+            # to keep the flag-OFF path byte-identical.
+            if exact_gate_enabled() and ld_name:
+                ld_name = html_unescape(ld_name)
             # Validate the resolved PDP product against the query — a discovery
             # mis-resolve must not attribute the wrong product's price.
             # FAIL-CLOSED (source-intel review 2026-06-23, no-fab): a Product node

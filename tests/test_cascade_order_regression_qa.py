@@ -513,6 +513,9 @@ def _liveness_patches(svc, *, shopping_items, organic_extract, training_estimate
         # shadows the specific mocked fallback amount this test pins).
         patch(f"{ssc}.get_algolia_sources_for_category", return_value=[]),
         patch(f"{ssc}.get_unbxd_sources_for_category", return_value=[]),
+        # Wave C C3 — the noon-BH literal (flag-independent) fires a REAL
+        # network fetch too; neutralize like sharafdg/extra above.
+        patch(f"{ssc}.get_noon_sources_for_category", return_value=[]),
         patch(f"{ssc}.get_shopify_sources_for_category", return_value=[]),
         patch(f"{ssc}.get_cached", return_value=None),
         patch(f"{ssc}.set_cached", return_value=True),

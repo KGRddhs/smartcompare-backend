@@ -362,3 +362,89 @@ Rules:
     except Exception as e:
         logger.warning(f"[EXTRACT_SYNTH] Failed: {e}")
         return {}
+
+
+async def disambiguate_variant_line(
+    category: Optional[str],
+    query: str,
+    candidate_title: str,
+    axis: str,
+) -> Dict[str, Any]:
+    """genuine-price Wave-2 B3b — the NARROW off-clock product-line disambiguator.
+
+    Answers, for a single ambiguous variant axis (gender / spf / formula), whether
+    `candidate_title` is a DISTINCT product line from `query` (a different SKU at a
+    different price) or the SAME product with a descriptive suffix. Used ONLY by the
+    off-clock warmer cache-write veto, and ONLY after the deterministic curated
+    reference (data/variant_hint_reference.json) missed. NEVER on the live 15s path
+    (the caller gates on the warm signal + ENABLE_VARIANT_LLM_HINT before ever
+    constructing the client).
+
+    gpt-4o-mini, temperature=0, response_format json_object (house shape). Returns:
+        {"distinct_product": True|False|"unknown",
+         "confidence": "high"|"low",
+         "cost": float}
+    Any client/parse error -> {"distinct_product": "unknown", "confidence": "low",
+    "cost": 0.0} so the caller fail-closes (vetoes the write). No exception escapes."""
+    system = "Product-catalog disambiguator. STRICT JSON only."
+    user = json.dumps({
+        "category": category,
+        "query": query,
+        "candidate_title": candidate_title,
+        "axis": axis,
+        "question": (
+            "is the candidate a DISTINCT product line from the query "
+            "(different SKU/price), or the same product with a descriptive suffix?"
+        ),
+        "respond_with": {
+            "distinct_product": "true|false|unknown",
+            "confidence": "high|low",
+        },
+    })
+    try:
+        client_local = get_client()
+        response = await client_local.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            response_format={"type": "json_object"},
+            temperature=0,
+            max_tokens=60,
+        )
+        _log_cache_telemetry(response, "disambiguate_variant_line")
+        content = response.choices[0].message.content
+        parsed = json.loads(content) if content else {}
+        if not isinstance(parsed, dict):
+            return {"distinct_product": "unknown", "confidence": "low", "cost": 0.0}
+
+        raw_distinct = parsed.get("distinct_product")
+        if isinstance(raw_distinct, bool):
+            distinct: Any = raw_distinct
+        elif isinstance(raw_distinct, str):
+            low = raw_distinct.strip().lower()
+            if low == "true":
+                distinct = True
+            elif low == "false":
+                distinct = False
+            else:
+                distinct = "unknown"
+        else:
+            distinct = "unknown"
+
+        conf = str(parsed.get("confidence") or "").strip().lower()
+        if conf not in ("high", "low"):
+            conf = "low"
+
+        cost = 0.0
+        usage = getattr(response, "usage", None)
+        if usage is not None:
+            input_cost = (getattr(usage, "prompt_tokens", 0) * 0.15) / 1_000_000
+            output_cost = (getattr(usage, "completion_tokens", 0) * 0.60) / 1_000_000
+            cost = round(input_cost + output_cost, 6)
+
+        return {"distinct_product": distinct, "confidence": conf, "cost": cost}
+    except Exception as e:  # noqa: BLE001 — hint is additive; fail-closed on any error
+        logger.warning(f"[VARHINT] disambiguate_variant_line failed: {e}")
+        return {"distinct_product": "unknown", "confidence": "low", "cost": 0.0}
