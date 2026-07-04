@@ -141,7 +141,20 @@ VALID_PRIORITIES = [
     "design_aesthetics", "value_for_money",
 ]
 VALID_BUDGET = ["budget", "mid", "premium", "luxury", "top_tier"]
-VALID_LIFESTYLE = ["gamer", "photographer", "fitness_enthusiast", "vegan", "sensitive_skin", "parent", "student", "professional", "outdoor_adventurer", "minimalist", "tech_enthusiast"]
+VALID_LIFESTYLE = [
+    # Original backend tags — kept for backwards-compat with any prior-seeded rows.
+    "gamer", "photographer", "fitness_enthusiast", "vegan", "sensitive_skin",
+    "parent", "student", "professional", "outdoor_adventurer",
+    # Shared with the FE LifestylePicker.
+    "minimalist", "tech_enthusiast",
+    # FE LifestylePicker (Bundle E S2.X3) vocabulary — the tags the app actually
+    # emits. These were NOT in the enum, so any lifestyle pick other than
+    # minimalist/tech_enthusiast 422'd on save ("Save didn't land" — device bug
+    # 2026-07-04). Lifestyle is soft free-text context for the GPT prompt +
+    # a personalization label, so accepting the FE vocabulary is safe.
+    "fitness", "budget_conscious", "eco_conscious", "luxury_lover",
+    "family_focused", "frequent_traveler", "home_cook", "outdoors", "creative",
+]
 VALID_BRAND_ATTITUDE = [
     "brand_loyal", "function_first", "best_of_both",
     # Cohort-derived value (Session 41)

@@ -1049,11 +1049,19 @@ class TestValidOptionConstants:
                         "warranty_support", "design_aesthetics", "value_for_money"}
         assert cohort_added.issubset(set(VALID_PRIORITIES))
 
-    def test_valid_lifestyle_has_eleven_options(self):
-        """VALID_LIFESTYLE should have exactly 11 options per design doc."""
+    def test_valid_lifestyle_accepts_fe_picker_vocabulary(self):
+        """VALID_LIFESTYLE must accept the FE LifestylePicker vocabulary so
+        Edit Preferences can save (device bug 2026-07-04 — picks other than
+        minimalist/tech_enthusiast 422'd). It stays a SUPERSET of the original
+        backend tags for backwards-compat with any prior-seeded rows."""
         from app.api.auth_routes import VALID_LIFESTYLE
-        assert len(VALID_LIFESTYLE) == 11
-        expected = {"gamer", "photographer", "fitness_enthusiast", "vegan",
+        original = {"gamer", "photographer", "fitness_enthusiast", "vegan",
                     "sensitive_skin", "parent", "student", "professional",
                     "outdoor_adventurer", "minimalist", "tech_enthusiast"}
-        assert set(VALID_LIFESTYLE) == expected
+        fe_picker = {"fitness", "budget_conscious", "tech_enthusiast",
+                     "eco_conscious", "luxury_lover", "minimalist",
+                     "family_focused", "frequent_traveler", "home_cook",
+                     "outdoors", "creative"}
+        valid = set(VALID_LIFESTYLE)
+        assert original.issubset(valid), "lost backwards-compat lifestyle tags"
+        assert fe_picker.issubset(valid), "FE LifestylePicker vocab must validate"

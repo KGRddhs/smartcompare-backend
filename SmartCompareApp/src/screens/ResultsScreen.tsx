@@ -253,7 +253,17 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
             setLoadError('need_more_photos');
             setLoadingResult(false);
           }
+        } else if (data?.action === 'comparison_failed') {
+          // Both products WERE identified but the comparison itself didn't
+          // finish (usually the cold-compare hard-cap timeout). Show the
+          // retryable "taking longer" state — NOT the "snap each product"
+          // vision-failed copy, which wrongly implies the photos were bad.
+          if (!cancelled) {
+            setLoadError('timeout');
+            setLoadingResult(false);
+          }
         } else {
+          // action === 'error' — vision couldn't identify the products.
           if (!cancelled) {
             setLoadError('vision_failed');
             setLoadingResult(false);
