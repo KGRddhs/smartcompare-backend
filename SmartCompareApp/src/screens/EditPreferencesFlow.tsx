@@ -23,6 +23,7 @@ import BudgetPicker, { type BudgetValue } from '../components/BudgetPicker';
 import LifestylePicker from '../components/LifestylePicker';
 import BrandAttitudePicker, { type BrandAttitudeValue } from '../components/BrandAttitudePicker';
 import { getPreferences, savePreferences } from '../services/api';
+import { toCanonicalPriorities } from '../utils/priorities';
 import type { RootStackParamList, UserPreferences } from '../types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'EditPreferences'>;
@@ -49,7 +50,11 @@ export default function EditPreferencesFlow({ navigation }: Props) {
     (async () => {
       try {
         const p = await getPreferences();
-        setPrefs(p ?? DEFAULT_PREFS);
+        const base = p ?? DEFAULT_PREFS;
+        // Map any cohort-seeded priorities to canonical display keys so the
+        // picker shows them as selected (otherwise they're invisible yet
+        // still fill the 3-cap, blocking selection — device bug 2026-07-04).
+        setPrefs({ ...base, priorities: toCanonicalPriorities(base.priorities) });
       } catch {
         setPrefs(DEFAULT_PREFS);
       } finally {

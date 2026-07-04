@@ -63,4 +63,36 @@ describe('PrioritiesPicker (S2.X3 OptionRow rewrite)', () => {
     fireEvent.press(getByTestId('priority-latest_features'));
     expect(onChange).not.toHaveBeenCalled();
   });
+
+  it('renders cohort-seeded priorities as selected canonical rows (device bug 2026-07-04)', () => {
+    // A demographics-seeded user's priorities are stored as cohort-derived
+    // enums (best_price / quality_reliability). Before the fix these were
+    // INVISIBLE in the picker yet still consumed the 3-cap, so no priority
+    // could be chosen. They must now render as selected canonical rows.
+    const { getByTestId } = render(
+      <PrioritiesPicker
+        value={['best_price', 'quality_reliability']}
+        onChange={jest.fn()}
+      />
+    );
+    expect(
+      getByTestId('priority-price').props.accessibilityState?.selected
+    ).toBe(true);
+    expect(
+      getByTestId('priority-quality').props.accessibilityState?.selected
+    ).toBe(true);
+  });
+
+  it('still allows adding a visible priority when cohort-seeded (cap not silently full)', () => {
+    const onChange = jest.fn();
+    const { getByTestId } = render(
+      <PrioritiesPicker
+        value={['best_price', 'quality_reliability']}
+        onChange={onChange}
+      />
+    );
+    // 2 cohort priorities map to [price, quality]; a 3rd visible pick works.
+    fireEvent.press(getByTestId('priority-durability'));
+    expect(onChange).toHaveBeenCalledWith(['price', 'quality', 'durability']);
+  });
 });
