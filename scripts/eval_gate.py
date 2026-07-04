@@ -19,6 +19,7 @@ The caller (eval_runner.main) maps pass->exit 0, fail->exit 1.
 """
 from __future__ import annotations
 
+import re
 from typing import Any, Optional, Tuple
 
 from scripts.eval_persistence import fetch_eval_run
@@ -26,6 +27,18 @@ from scripts.eval_persistence import fetch_eval_run
 # Per-axis regression tolerance: a drop strictly greater than this (absolute,
 # on the 0..1 axis-average scale) fails the regression gate. 2% per plan F4.4.
 REGRESSION_TOLERANCE = 0.02
+
+# The canonical full-uuid form an eval_runs.id ALWAYS takes (Postgres uuid output).
+# We validate this exact shape rather than uuid.UUID(): uuid.UUID also accepts
+# `urn:uuid:...`, braced `{...}`, and 32-hex-no-hyphen forms, some of which
+# Postgres 22P02-rejects → fetch_eval_run swallows into a silent None → the
+# ambiguous "not found" the check is meant to prevent (adversarial sweep LOW).
+# The canonical regex accepts every real baseline id and rejects the truncated
+# footgun (`54b603e8`) + the odd forms up front.
+_CANONICAL_UUID_RE = re.compile(
+    r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
+)
+_FULL_BASELINE_EXAMPLE = "54b603e8-4eab-41c9-a34d-a5e391446559"
 
 _AXES = ("price", "specs", "winner", "factual")
 
@@ -66,6 +79,19 @@ def _axis_value(obj: "Any", axis: str) -> float:
 def _regression_gate(report: "Any", baseline_run_id: Optional[str]) -> Tuple[bool, str]:
     if not baseline_run_id:
         return False, "GATE FAIL [regression]: no --baseline-run-id provided"
+
+    # Validate the id is a canonical FULL uuid BEFORE the DB round-trip. A
+    # truncated id (e.g. `54b603e8`) — or an odd urn:uuid/braced form — would
+    # 22P02 server-side and fetch_eval_run would swallow it into a silent None →
+    # the ambiguous "not found" below. Fail LOUD + CLEAR here instead.
+    if not (isinstance(baseline_run_id, str)
+            and _CANONICAL_UUID_RE.fullmatch(baseline_run_id.strip())):
+        return False, (
+            f"GATE FAIL [regression]: baseline id {baseline_run_id!r} is not a "
+            f"canonical UUID. A truncated/short or oddly-formatted id silently "
+            f"matches NOTHING (Postgres 22P02) — pass the FULL uuid, "
+            f"e.g. {_FULL_BASELINE_EXAMPLE}"
+        )
 
     baseline = fetch_eval_run(baseline_run_id)
     if baseline is None:

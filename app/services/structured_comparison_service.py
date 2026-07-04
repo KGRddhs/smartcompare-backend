@@ -4657,7 +4657,7 @@ class StructuredComparisonService:
         # the parser left it out of name/variant (electronics fixture: storage in
         # specs, variant=None).
         cache_key = build_size_aware_price_cache_key(
-            brand, name, variant, region, search_query
+            brand, name, variant, region, search_query, category=category
         )
         # I5.1 — price-only cache-bust probe forces the price reads to miss so
         # the routing escalation re-runs deterministically (specs/reviews stay
