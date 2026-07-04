@@ -41,3 +41,21 @@ export function parseSourceMethod(method: SourceMethod | undefined): string | nu
 export function anyEstimated(products: Array<Pick<Product, 'price'>>): boolean {
   return products.some((p) => p?.price?.source_method === 'estimated');
 }
+
+/**
+ * A `converted_usd` price is a REAL retailer listing that was priced in USD
+ * (or another non-BHD currency) and converted to BHD by the backend — it is
+ * NOT a genuine local BHD listing. Any surface that shows a converted price
+ * MUST render the `results.convertedUSD` caption ("(converted from USD)")
+ * beside the amount, so a converted price is never presented as identical to
+ * a genuine local price (the display-honesty gap this closes).
+ *
+ * Accepts any object carrying an optional `source_method`, so it works for
+ * both the full `ProductPrice` (Results screen) and the narrow streaming
+ * price shape (StreamingProductCard).
+ */
+export function isConvertedUsd(
+  price: { source_method?: SourceMethod } | null | undefined,
+): boolean {
+  return price?.source_method === 'converted_usd';
+}

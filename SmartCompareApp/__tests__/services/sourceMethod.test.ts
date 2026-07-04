@@ -8,7 +8,7 @@
  * Critical rule #3 — NO "estimated" / "reference price" / "indicative"
  * (EN) or "تقدير" / "مُقدَّر" (AR) in any returned phrase.
  */
-import { parseSourceMethod, anyEstimated } from '../../src/services/sourceMethod';
+import { parseSourceMethod, anyEstimated, isConvertedUsd } from '../../src/services/sourceMethod';
 
 test.each([
   ['local_bhd', 'Direct local listing'],
@@ -75,4 +75,21 @@ test('parseSourceMethod NEVER returns forbidden words across all approved method
     expect(phrase!).not.toMatch(forbidden);
     expect(phrase!).not.toMatch(forbiddenAr);
   }
+});
+
+// Display-honesty: converted-from-USD prices must be distinguishable from
+// genuine local prices. `isConvertedUsd` gates the caption on those surfaces.
+test('isConvertedUsd is true only for a converted_usd price', () => {
+  expect(isConvertedUsd({ source_method: 'converted_usd' })).toBe(true);
+});
+
+test('isConvertedUsd is false for genuine, estimated, and missing methods', () => {
+  expect(isConvertedUsd({ source_method: 'local_bhd' })).toBe(false);
+  expect(isConvertedUsd({ source_method: 'shopify_json' })).toBe(false);
+  expect(isConvertedUsd({ source_method: 'page_scrape' })).toBe(false);
+  expect(isConvertedUsd({ source_method: 'firecrawl' })).toBe(false);
+  expect(isConvertedUsd({ source_method: 'estimated' })).toBe(false);
+  expect(isConvertedUsd({})).toBe(false);
+  expect(isConvertedUsd(undefined)).toBe(false);
+  expect(isConvertedUsd(null)).toBe(false);
 });

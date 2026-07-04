@@ -81,7 +81,7 @@ jest.mock('../../src/components/FeedbackCard', () => ({ __esModule: true, defaul
 jest.mock('../../src/components/results/ResultsAccordion', () => ({
   ResultsAccordion: () => null,
 }));
-jest.mock('../../src/services/sourceMethod', () => ({ anyEstimated: jest.fn(() => false) }));
+jest.mock('../../src/services/sourceMethod', () => ({ anyEstimated: jest.fn(() => false), isConvertedUsd: jest.fn((p: any) => p?.source_method === 'converted_usd') }));
 
 import { ResultsContent } from '../../src/components/results/ResultsContent';
 

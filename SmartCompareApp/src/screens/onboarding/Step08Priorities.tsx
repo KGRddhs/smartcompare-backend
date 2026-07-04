@@ -62,6 +62,7 @@ import {
 } from 'lucide-react-native';
 import { OptionRow } from '../../components/primitives/OptionRow';
 import { colors, spacing, typography } from '../../theme';
+import { toCanonicalPriorities } from '../../utils/priorities';
 
 const PRIORITIES = [
   'price',
@@ -112,18 +113,22 @@ interface Props {
 export function Step08Priorities({ value, onChange }: Props) {
   const { t } = useTranslation();
 
+  // Normalize any cohort-seeded priorities to canonical display keys so
+  // they render as selected rows instead of invisibly consuming the cap.
+  const selected = toCanonicalPriorities(value);
+
   const toggle = (key: string) => {
-    if (value.includes(key)) {
-      onChange(value.filter((k) => k !== key));
+    if (selected.includes(key)) {
+      onChange(selected.filter((k) => k !== key));
       return;
     }
-    if (value.length >= MAX_SELECTIONS) {
+    if (selected.length >= MAX_SELECTIONS) {
       // Silent cap per Build Principle #4: engaging, never scary. No
       // tooltip, no shake, no haptic on overflow. Selecting another
       // simply does nothing.
       return;
     }
-    onChange([...value, key]);
+    onChange([...selected, key]);
   };
 
   return (
@@ -135,7 +140,7 @@ export function Step08Priorities({ value, onChange }: Props) {
 
       <View style={styles.list}>
         {PRIORITIES.map((p) => {
-          const active = value.includes(p);
+          const active = selected.includes(p);
           // Active row's circle bg flips to accentLight; icon glyph
           // adopts accentDark to maintain stroke contrast. Inactive
           // rows use text.primary on bg.secondary per OptionRow's

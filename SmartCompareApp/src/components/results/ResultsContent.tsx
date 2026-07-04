@@ -67,7 +67,7 @@ import { RevealBurst } from '../hero/RevealBurst';
 // accordion (ResultsAccordion), not as a standalone block here.
 import { ResultsAccordion } from './ResultsAccordion';
 import { SCORE_INTERNALS_RE } from './_deltaText';
-import { anyEstimated } from '../../services/sourceMethod';
+import { anyEstimated, isConvertedUsd } from '../../services/sourceMethod';
 import { ProductImage } from '../primitives/ProductImage';
 
 type SheetLeg = 'price' | 'reviews' | 'specs' | null;
@@ -286,6 +286,19 @@ export function ResultsContent({
                   >
                     {formatPrice(product.price)}
                   </Text>
+                  {/* Display-honesty: a converted-from-USD price is a real
+                      listing priced in USD then converted to BHD — flag it so
+                      it isn't read as a genuine local BHD price. Suppressed
+                      when the price is pending (no number is shown). */}
+                  {isConvertedUsd(product.price) && !product.price?.unavailable ? (
+                    <Text
+                      testID={`results-product-converted-${idx}`}
+                      style={styles.convertedCaption}
+                      numberOfLines={1}
+                    >
+                      {t('results.convertedUSD')}
+                    </Text>
+                  ) : null}
                 </View>
               </Animated.View>
             );
@@ -637,6 +650,13 @@ const styles = StyleSheet.create({
   productPriceUnavailable: {
     color: colors.text.secondary,
     fontSize: 14,
+  },
+  // Display-honesty caption under a converted-from-USD price.
+  convertedCaption: {
+    fontSize: 11,
+    color: colors.text.secondary,
+    lineHeight: 11 * 1.4,
+    marginTop: 2,
   },
 
   vsPillAbs: {

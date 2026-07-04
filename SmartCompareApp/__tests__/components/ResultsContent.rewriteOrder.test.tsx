@@ -147,6 +147,7 @@ jest.mock('../../src/components/results/ResultsAccordion', () => {
 });
 jest.mock('../../src/services/sourceMethod', () => ({
   anyEstimated: jest.fn(() => false),
+  isConvertedUsd: jest.fn((p: any) => p?.source_method === 'converted_usd'),
 }));
 
 import { ResultsContent } from '../../src/components/results/ResultsContent';

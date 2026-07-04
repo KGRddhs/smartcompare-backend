@@ -101,12 +101,13 @@ describe('EditPreferencesFlow', () => {
     mockSavePreferences.mockResolvedValue({ success: true });
   });
 
-  it('pre-fills priorities page with values from getPreferences()', async () => {
+  it('pre-fills priorities, mapping cohort-seeded values to canonical display keys', async () => {
     const { findByTestId } = renderScreen();
     const page = await findByTestId('page-priorities');
-    expect(JSON.parse(page.props.value)).toEqual(
-      FIXTURE_PREFS.priorities,
-    );
+    // FIXTURE has cohort-derived priorities (quality_reliability, best_price)
+    // which EditPreferencesFlow canonicalizes on load so the picker can show
+    // and edit them instead of leaving them invisible (device bug 2026-07-04).
+    expect(JSON.parse(page.props.value)).toEqual(['quality', 'price']);
   });
 
   it('Continue advances through all 4 pages and last page shows Save', async () => {
@@ -160,8 +161,9 @@ describe('EditPreferencesFlow', () => {
     await act(async () => { fireEvent.press(saveBtn); });
 
     await waitFor(() => expect(mockSavePreferences).toHaveBeenCalledTimes(1));
+    // priorities are saved as their canonicalized form (see load-time mapping).
     expect(mockSavePreferences).toHaveBeenCalledWith(
-      expect.objectContaining(FIXTURE_PREFS),
+      expect.objectContaining({ ...FIXTURE_PREFS, priorities: ['quality', 'price'] }),
     );
     expect(mockNavigation.goBack).toHaveBeenCalled();
   });

@@ -35,6 +35,7 @@ import {
 } from 'lucide-react-native';
 import { OptionRow } from './primitives/OptionRow';
 import { colors, spacing, typography } from '../theme';
+import { toCanonicalPriorities } from '../utils/priorities';
 
 const PRIORITIES = [
   'price',
@@ -87,15 +88,21 @@ export default function PrioritiesPicker({
 }: Props) {
   const { t } = useTranslation();
 
+  // Normalize cohort-seeded priorities to canonical display keys so they
+  // render as selected rows here instead of sitting INVISIBLE while still
+  // consuming the 3-selection cap (which made priorities un-choosable for
+  // demographics-seeded users — device bug 2026-07-04).
+  const selected = toCanonicalPriorities(value);
+
   const toggle = (key: string) => {
-    if (value.includes(key)) {
-      onChange(value.filter((k) => k !== key));
+    if (selected.includes(key)) {
+      onChange(selected.filter((k) => k !== key));
       return;
     }
     // Silent cap per Build Principle #4: engaging, never scary. No
     // shake / haptic / toast on overflow — extra taps are simply no-ops.
-    if (value.length >= MAX_SELECTIONS) return;
-    onChange([...value, key]);
+    if (selected.length >= MAX_SELECTIONS) return;
+    onChange([...selected, key]);
   };
 
   return (
@@ -105,7 +112,7 @@ export default function PrioritiesPicker({
       </Text>
       <View style={styles.list}>
         {PRIORITIES.map((p) => {
-          const active = value.includes(p);
+          const active = selected.includes(p);
           const iconColor = active ? colors.accentDark : colors.text.primary;
           return (
             <OptionRow
