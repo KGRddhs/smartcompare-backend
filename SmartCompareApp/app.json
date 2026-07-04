@@ -118,7 +118,11 @@
         "expo-build-properties",
         {
           "ios": {
-            "networkInspector": false
+            "networkInspector": false,
+            "extraPods": [
+              { "name": "GoogleUtilities", "modular_headers": true },
+              { "name": "RecaptchaInterop", "modular_headers": true }
+            ]
           }
         }
       ],
