@@ -364,6 +364,7 @@ class TestInvariantsPreserved:
                   "title": "Apple iPhone 15 128GB Black"}]})), \
              patch(f"{ssc}.get_shopify_sources_for_category", return_value=[]), \
              patch(f"{ssc}.get_algolia_sources_for_category", return_value=[]), \
+             patch(f"{ssc}.get_unbxd_sources_for_category", return_value=[]), \
              patch(f"{ssc}.get_cached", return_value=None), \
              patch(f"{ssc}.set_cached", return_value=True), \
              patch("app.services.product_data_service.get_cached_price", new=AsyncMock(return_value=None)), \

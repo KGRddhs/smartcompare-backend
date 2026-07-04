@@ -126,7 +126,12 @@ export function ResultsContent({
     // No "estimated", no scary copy.
     if (price?.unavailable) return t('results.price.pending');
     if (!price || price.amount === null) return t('results.priceNA');
-    return `${price.currency} ${price.amount.toLocaleString()}`;
+    const base = `${price.currency} ${price.amount.toLocaleString()}`;
+    // Provenance honesty (deep-review HIGH) — a converted (USD→BHD) figure is NOT
+    // a genuine Bahrain shelf price; label it so it is never read as a local price
+    // (the backend contract at price_service.py: "the UI says indicative/reference").
+    if (price.source_method === 'converted_usd') return `${base} ${t('results.convertedUSD')}`;
+    return base;
   };
 
   // Phase 4.3 — when ANY product's price is pending we suppress the price

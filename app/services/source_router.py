@@ -13,7 +13,7 @@ mismatched Tier-1 Bahrain prices outvote a distant amazon.com listing.
 import re
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
-from urllib.parse import urlparse
+from urllib.parse import urlparse, parse_qs
 
 
 @dataclass(frozen=True)
@@ -98,8 +98,17 @@ _LITERAL_ROWS: List[Source] = [
     # (priceCurrency lowercase "bhd" — extractor .upper()-normalizes). THE
     # electronics keystone: broad catalog (electronics+grocery+pharmacy+beauty).
     Source("gcc.luluhypermarket.com", "bahrain", (), 3.0),
-    Source("bahrain.sharafdg.com", "bahrain", ("electronics",), 3.0),
-    Source("extra.com", "bahrain", ("electronics",), 3.0),
+    # sharafdg — fully-built genuine-BHD Algolia adapter (ALGOLIA_EXPLICIT_STORES,
+    # index bahrain_products); deep-review-verified in-stock genuine BHD (iPhone 15
+    # 284.9, showable+cacheable). Was untagged so get_algolia_sources_for_category
+    # skipped it → the genuine PDP was never fetched (only the ?s= search fallback).
+    Source("bahrain.sharafdg.com", "bahrain", ("electronics",), 3.0,
+           is_algolia=True, currency="BHD"),
+    # extra.com — the unbxd_service adapter is fully built with extra's live config
+    # (deep-review-verified: iPhone 15 256GB 279.99 genuine BHD PDP) but was
+    # DEAD-WIRED (mechanism='') so _direct_fetch_sources(...,'unbxd') returned [].
+    Source("extra.com", "bahrain", ("electronics",), 3.0,
+           mechanism="unbxd", currency="BHD"),
     # bahrain.microless.com — PDP curl Decision-F (2026-06-14): MacBook Air M4
     # PDP → 439.062 BHD via JSON-LD (offer price+priceCurrency=BHD, InStock).
     # CURL-scrapeable (the first 403 was a parallel-write race, re-curl = 200).
@@ -894,10 +903,19 @@ _PDP_PATH_MARKERS = ("/product/", "/products/", "/p/", "/item/", "/dp/", "/buy/"
 _LISTING_PATH_MARKERS = (
     "/c/", "/category/", "/categories/", "/cat/",
     "/search",                           # search result pages
+    "/catalogsearch",                    # Magento search (no q= param path)
     "/collections/", "/collection/",     # Shopify collection (NOT /products/)
 )
-# Query params that mark a search/listing surface even on a PDP-looking path.
-_LISTING_QUERY_MARKERS = ("q=", "search=", "query=", "keyword=", "page=")
+# Query KEYS (exact, via parse_qs) that mark a search/listing surface even on a
+# PDP-looking path. EXACT-key — NOT a substring — because a bare "s=" substring
+# collides with real PDP params (colors=, variants=, flags=, items=). Extended
+# with the WordPress/WooCommerce search family ('s', 'post_type', 'product_cat',
+# 'product_tag') so a genuine price scraped from e.g. sharafdg
+# `?s=<q>&post_type=product` is classified a listing and never cached as a PDP.
+_LISTING_QUERY_KEYS = frozenset({
+    "q", "s", "search", "query", "keyword", "page",
+    "post_type", "product_cat", "product_tag",
+})
 
 
 def is_non_pdp_listing_url(url: str) -> bool:
@@ -919,14 +937,20 @@ def is_non_pdp_listing_url(url: str) -> bool:
     except (ValueError, TypeError):
         return False
     path = (parsed.path or "").lower()
-    query = (parsed.query or "").lower()
     # An explicit PDP marker wins — keep.
     if any(m in path for m in _PDP_PATH_MARKERS):
         return False
     # No PDP marker: an explicit listing/search marker (path or query) → drop.
     if any(m in path for m in _LISTING_PATH_MARKERS):
         return True
-    if any(m in query for m in _LISTING_QUERY_MARKERS):
+    # Query check via EXACT keys (parse_qs) — a search/listing query key present
+    # ⇒ drop. Exact-key (not substring) so a real PDP param (colors=, variants=,
+    # flags=, items=, size=, sku=) never false-catches on a bare "s=".
+    try:
+        query_keys = {k.lower() for k in parse_qs(parsed.query or "").keys()}
+    except (ValueError, TypeError):
+        query_keys = set()
+    if query_keys & _LISTING_QUERY_KEYS:
         return True
     return False
 

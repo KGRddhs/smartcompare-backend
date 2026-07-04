@@ -39,12 +39,18 @@ class TestSpeculativeDirectGate:
         # speculative direct prefetch eligible for fragrances.
         assert len(get_shopify_sources_for_category("fragrances")) >= 1
 
-    def test_electronics_not_driven_by_speculative_direct(self):
-        # Electronics has no bahrain-tier Algolia source; its genuine path is the
-        # Serper discovery prefetch, not the free-direct prefetch. (It may have a
-        # Shopify row — almoayyed — but the point is the gate is registry-driven,
-        # not hard-coded.)
-        assert get_algolia_sources_for_category("electronics") == []
+    def test_electronics_algolia_source_is_bounded_not_unbounded(self):
+        # Electronics NOW carries a genuine-BHD bahrain-tier Algolia source
+        # (bahrain.sharafdg.com — wired 2026-06 so the genuine BHD PDP is fetched
+        # via the FREE direct prefetch instead of only the Serper `?s=` fallback).
+        # The latency invariant is not "no source" — it's that the free-direct
+        # prefetch stays BOUNDED (a fixed, K-capped registry set), never an
+        # unbounded fan-out. There is exactly ONE bahrain Algolia electronics row
+        # and it is the tagged sharafdg source.
+        srcs = get_algolia_sources_for_category("electronics")
+        assert len(srcs) == 1
+        assert srcs[0].domain == "bahrain.sharafdg.com"
+        assert srcs[0].tier == "bahrain"
 
     def test_unknown_category_returns_empty(self):
         assert get_shopify_sources_for_category("nonexistent_cat") == []

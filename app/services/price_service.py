@@ -2668,7 +2668,9 @@ def _collapse_concentration(text: str) -> str:
     return out
 
 
-def strict_title_match(product_name: str, title: str) -> bool:
+def strict_title_match(
+    product_name: str, title: str, candidate_brand: str = "",
+) -> bool:
     """Key words from the product name must appear in the shopping title.
 
     Concentration-aware: a designer-fragrance PDP often spells the concentration
@@ -2679,16 +2681,33 @@ def strict_title_match(product_name: str, title: str) -> bool:
     "Dior Sauvage Edt M 100Ml" (both collapse to the "edt" token). No-fab is
     preserved: a DIFFERENT concentration ("Eau de Parfum" vs "EDT") still fails,
     because the labels differ.
-    """
+
+    `candidate_brand` (genuine-BH coverage) — a BH retailer lists a device by its
+    MODEL LINE ("iPad Air M2 128GB", no "Apple"), so requiring the query's brand
+    word literally rejected the exact-SKU PDP (MANUFACTURER_BRAND_WORDS only
+    exempts chip vendors). When the CANDIDATE's own brand matches the query brand,
+    drop ONLY that brand's tokens from the required set — so a correct model-line
+    PDP passes, while a WRONG-brand candidate keeps the query brand required and
+    still rejects. This is BACKED by _selection_match (run alongside every caller),
+    which strips candidate_brand + vets the full SKU, so the brand is never
+    unverified. Empty candidate_brand → legacy behaviour (brand required)."""
     if is_counterfeit_listing(title):
         return False
     product_name = _collapse_concentration(product_name)
     title = _collapse_concentration(title)
     title_normalized = title.lower().replace("-", "")
+    # Tokens of the candidate's OWN brand — dropped from the required query words
+    # only when the candidate actually carries that brand (so a Samsung candidate
+    # never lets an "apple" query word be skipped).
+    brand_toks = {
+        b for b in (candidate_brand or "").lower().replace("-", "").split()
+        if len(b) > 2
+    } if exact_gate_enabled() else set()
     key_words = [
         w.replace("-", "") for w in product_name.lower().split()
         if len(w.replace("-", "")) > 2
         and w.replace("-", "") not in MANUFACTURER_BRAND_WORDS
+        and w.replace("-", "") not in brand_toks
     ]
     return all(w in title_normalized for w in key_words)
 
@@ -6047,6 +6066,27 @@ def extract_price_from_html(
         # JSON-LD name / og:title / page <title> so the pair fairness engages on
         # true sizes (fragrance-scoped; no-op otherwise).
         _stamp_listing_size(result, product_name, soup, price_data.get("name", ""))
+        # M2 (extended) — carry the MATCHED JSON-LD Product name as the listing
+        # identity so the response chokepoint axis backstop, should_cache_price,
+        # and the usable_exact_genuine KPI can verify the exact SKU. The OG /
+        # microdata / WC branches below already stamp `name` (via _page_identity_
+        # name); the JSON-LD branch OMITTED it, so a genuine page-scrape price
+        # reached the cache-write gate with NO identity and was refused (warmer
+        # gate: 8/18 genuine PDP prices blocked on missing identity). Uses the
+        # extractor's OWN matched Product name (NOT the query), so it verifies
+        # rather than trivially self-matches. Flag-gated for flag-OFF byte-
+        # identity, matching the sibling branches.
+        if exact_gate_enabled():
+            result["name"] = price_data.get("name")
+            # Forward the matched JSON-LD `brand` field too, so should_cache_price's
+            # brand-aware _selection_match subtracts the FULL brand for a brand-
+            # FIELD-only PDP (ounass-style: brand in the JSON-LD brand field, bare
+            # name like "Libre Eau de Parfum 90ml"). Without it, the brand-unaware
+            # gate requires the brand tokens IN the bare name and over-rejects a
+            # correct genuine price (sweep MED). price_data already carries `brand`
+            # (extract_jsonld_price stamps it when the gate is on).
+            if price_data.get("brand"):
+                result["brand"] = price_data.get("brand")
         return result
 
     # CORRECTNESS — the JSON-LD path gates identity per-Product; the OG / microdata
@@ -6817,6 +6857,13 @@ def _bolo_jsonld_main_price(
                 # to honest-pending. Dormant today (bolo/boutiqaat inert until the
                 # sitemap cron); revisit with soft size/concentration tokens when the
                 # cron is activated + real fragrance recall is measured.
+                # NB: this sitemap-discovery path has NO _selection_match after
+                # strict_title_match, so it must NOT pass candidate_brand here —
+                # dropping the brand without the _selection_match variant-add guard
+                # leaks a same-brand accessory ("Apple Watch" -> "...Sport Band")
+                # (both-directions sweep wf_e759837b MED). Keep the legacy
+                # brand-required gate; the candidate_brand relaxation is wired only at
+                # adapters that run _selection_match(candidate_brand=...) alongside.
                 if not strict_title_match(product_name, ld_name):
                     continue
                 # Word-overlap bind (the docstring's third guard, Wave-3 reviewer

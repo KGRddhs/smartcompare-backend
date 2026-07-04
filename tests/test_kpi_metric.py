@@ -64,13 +64,15 @@ def test_not_usable_when_no_url_present():
     assert er.usable_exact_genuine_for_product(_body(no_url, GENUINE), 0, TRUTH) is False
 
 
-def test_not_usable_when_stock_unknown():
-    # B3 FIX — UNKNOWN stock (in_stock missing/None) does NOT count as usable; the KPI
-    # requires CONFIRMED in-stock.
+def test_usable_when_stock_unknown():
+    # HONESTY FIX (wf_236e28bd) — UNKNOWN stock (in_stock missing/None, common when a
+    # JSON-LD PDP omits `availability`) now COUNTS as usable: the display path SHOWS
+    # such a genuine, exact, valid-PDP price, so the KPI must not UNDER-count it.
+    # Only a CONFIRMED in_stock=False is rejected (see test_not_usable_when_out_of_stock).
     unknown = {"amount": 13.3, "currency": "BHD", "source_method": "local_bhd",
                "title": "Dior Sauvage Eau de Toilette 100ml",
                "url": "https://sharafdg.com/p/x"}
-    assert er.usable_exact_genuine_for_product(_body(unknown, GENUINE), 0, TRUTH) is False
+    assert er.usable_exact_genuine_for_product(_body(unknown, GENUINE), 0, TRUTH) is True
 
 
 def test_kpi_rejects_wrong_identity_with_truth_entry():

@@ -505,6 +505,15 @@ def _liveness_patches(svc, *, shopping_items, organic_extract, training_estimate
         patch(f"{ssc}._should_escalate_price_scrape", return_value=True),
         # Sabotage the fan_out: time out or raise (the regression trigger).
         patch(f"{ssc}.fan_out_price_lookup", new=AsyncMock(side_effect=fan_out_effect)),
+        # Isolate the escalation→fallthrough control path: mock OUT the free
+        # genuine-BH direct-fetch selectors (electronics now carries live
+        # is_algolia sharafdg + mechanism="unbxd" extra.com sources — those fire
+        # a REAL network fetch and return a genuine local_bhd price BEFORE the
+        # sabotaged fan_out, which is the correct never-None behaviour but
+        # shadows the specific mocked fallback amount this test pins).
+        patch(f"{ssc}.get_algolia_sources_for_category", return_value=[]),
+        patch(f"{ssc}.get_unbxd_sources_for_category", return_value=[]),
+        patch(f"{ssc}.get_shopify_sources_for_category", return_value=[]),
         patch(f"{ssc}.get_cached", return_value=None),
         patch(f"{ssc}.set_cached", return_value=True),
         patch("app.services.product_data_service.get_cached_price", new=AsyncMock(return_value=None)),
@@ -536,7 +545,7 @@ async def test_escalation_timeout_falls_back_to_a_price_never_none():
             svc, shopping_items=[], organic_extract=organic, training_estimate=None,
             fan_out_effect=time_out,
         )
-        with p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7], p[8], p[9]:
+        with p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7], p[8], p[9], p[10], p[11], p[12]:
             price = await _run_electronics_price(svc)
 
     assert price is not None
@@ -562,7 +571,7 @@ async def test_escalation_timeout_falls_back_to_estimate_when_only_estimate_left
             svc, shopping_items=[], organic_extract=None, training_estimate=estimate,
             fan_out_effect=time_out,
         )
-        with p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7], p[8], p[9]:
+        with p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7], p[8], p[9], p[10], p[11], p[12]:
             price = await _run_electronics_price(svc)
 
     assert price is not None
@@ -589,7 +598,7 @@ async def test_escalation_raise_falls_back_to_a_price_never_none():
             svc, shopping_items=[], organic_extract=organic, training_estimate=None,
             fan_out_effect=boom,
         )
-        with p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7], p[8], p[9]:
+        with p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7], p[8], p[9], p[10], p[11], p[12]:
             price = await _run_electronics_price(svc)
 
     assert price is not None

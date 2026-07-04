@@ -208,6 +208,12 @@ class TestRenderNotBuiltOnCurlHit:
         monkeypatch.setattr(scs_mod, "extract_price_from_shopping", lambda *a, **kw: None)
         monkeypatch.setattr(scs_mod, "get_official_domain", lambda *a, **kw: None)
         monkeypatch.setattr(scs_mod, "fetch_shopify_price", AsyncMock(return_value=None))
+        # Neutralize the free genuine-BH direct-fetch selectors: electronics now
+        # carries a live is_algolia sharafdg + mechanism="unbxd" extra.com source
+        # that returns a genuine local_bhd price BEFORE the curl/render fan_out,
+        # short-circuiting the escalation this budget invariant is meant to pin.
+        monkeypatch.setattr(scs_mod, "get_algolia_sources_for_category", lambda cat: [])
+        monkeypatch.setattr(scs_mod, "get_unbxd_sources_for_category", lambda cat: [])
         monkeypatch.setattr(
             scs_mod, "search_web",
             AsyncMock(return_value={"organic": [
