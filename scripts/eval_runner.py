@@ -1209,6 +1209,45 @@ async def run_eval(
 # headroom over the ~25-30s compare wall.
 _KPI_HTTP_TIMEOUT = 90.0
 
+# The per-category warmer-activation gate: a category's usable_exact_genuine
+# share must be >= this (WARMED) to unlock ENABLE_PRICE_CACHE_WARMER for it.
+USABLE_EXACT_GENUINE_GATE = 0.85
+
+
+def _safe_num(v: Any, default: float = 0.0) -> float:
+    """Coerce to float, defaulting on non-numeric — so a corrupted aggregation
+    dict yields a FAIL-CLOSED verdict (a malformed share/requested counts as 0)
+    rather than raising and crashing the warmer-activation decision."""
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return default
+
+
+def kpi_gate_verdict(
+    per_category: Dict[str, Any], threshold: float = USABLE_EXACT_GENUINE_GATE,
+) -> Dict[str, Any]:
+    """Machine-readable warmer-activation verdict from the KPI's per-category
+    dict. A category with 0 `requested` is NOT counted (nothing measured), and
+    an EMPTY measured set does NOT pass (the warmer must never auto-activate on
+    zero data). `pass` is True iff at least one category was measured and NONE
+    is below `threshold`. Fail-closed on malformed values (non-numeric
+    share/requested → 0), so a corrupt dict PAUSES rather than crashing."""
+    measured = {
+        c: v for c, v in per_category.items()
+        if isinstance(v, dict) and _safe_num(v.get("requested")) > 0
+    }
+    failing = {
+        c: round(_safe_num(v.get("share")), 4)
+        for c, v in measured.items() if _safe_num(v.get("share")) < threshold
+    }
+    return {
+        "threshold": threshold,
+        "pass": bool(measured) and not failing,
+        "failing": failing,
+        "measured_categories": sorted(measured.keys()),
+    }
+
 
 async def run_usable_exact_genuine_kpi(
     *, base_url: str, read_cache: bool, concurrency: int = 1,
@@ -1272,6 +1311,7 @@ async def run_usable_exact_genuine_kpi(
         "overall": {"usable": total_u, "requested": total_r,
                     "share": (total_u / total_r if total_r else 0.0)},
         "per_category": per_category,
+        "gate": kpi_gate_verdict(per_category),
     }
 
 
@@ -1430,13 +1470,14 @@ def main(argv: Optional[List[str]] = None) -> int:
             print(f"ERROR: {exc}", file=sys.stderr)
             return 3
         print(json.dumps(kpi, indent=2))
-        gate = 0.85
-        failing = {c: v["share"] for c, v in kpi["per_category"].items()
-                   if v["share"] < gate}
+        gate = kpi["gate"]
         print(f"# usable_exact_genuine overall={kpi['overall']['share']:.3f} "
-              f"({kpi['cache_mode']}); per-category gate>={gate}")
-        if failing:
-            print(f"# BELOW GATE: {failing} — warmer activation stays PAUSED", file=sys.stderr)
+              f"({kpi['cache_mode']}); per-category gate>={gate['threshold']} "
+              f"pass={gate['pass']} measured={gate['measured_categories']}")
+        if not gate["pass"]:
+            reason = (f"BELOW GATE: {gate['failing']}" if gate["failing"]
+                      else "NO CATEGORY MEASURED (zero usable data)")
+            print(f"# {reason} — warmer activation stays PAUSED", file=sys.stderr)
             return 1
         return 0
 
