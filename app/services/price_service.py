@@ -1472,7 +1472,10 @@ def _product_size_text_fields(product: Dict[str, Any]) -> List[str]:
     return fields
 
 
-def effective_pair_size_ml(product: Dict[str, Any]) -> Optional[float]:
+def effective_pair_size_ml(
+    product: Dict[str, Any],
+    treat_unsized_as_flagship: bool = False,
+) -> Optional[float]:
     """ITEM 2 — the SIZE (ml) a product is effectively being compared at, derived
     from ALL available signals — product NAME first (the listing the user named
     is ground truth), then price listing title, then price.size, then the spec
@@ -1486,6 +1489,15 @@ def effective_pair_size_ml(product: Dict[str, Any]) -> Optional[float]:
         two unsized designer fragrances converge on the same 100ml basis), ELSE
       - None for any non-fragrance / non-designer product with no size signal (so
         two unsized phones stay None==None and never trip a false mismatch).
+
+    `treat_unsized_as_flagship` (frag-reconcile fix, flag-gated by the caller):
+    when True, a SIZE-UNSPECIFIED product defaults to the flagship 100ml basis
+    even when the NAME is not _is_designer_fragrance_name-recognized. The caller
+    passes True ONLY on the canon=="fragrances" reconcile path, where the
+    orchestrator already confirmed the pair is a fragrance — so the too-narrow
+    brand-keyword heuristic must not be the gate for the flagship default. It
+    NEVER overrides an explicit size token (any `\\d+ml` above still wins), so a
+    genuine 30ml/50ml still resolves to its real size.
     """
     if not isinstance(product, dict):
         return None
@@ -1501,6 +1513,11 @@ def effective_pair_size_ml(product: Dict[str, Any]) -> Optional[float]:
     # bias), so two unsized designer fragrances are treated as the SAME basis.
     name = product.get("full_name") or product.get("name") or ""
     if _is_designer_fragrance_name(name):
+        return _FRAGRANCE_FLAGSHIP_SIZE_ML
+    # frag-reconcile fix — the caller has already established (via the resolved
+    # category) that this is a fragrance; default an unsized fragrance to the
+    # flagship basis even when the name is not brand-keyword-recognized.
+    if treat_unsized_as_flagship:
         return _FRAGRANCE_FLAGSHIP_SIZE_ML
     return None
 
@@ -1525,6 +1542,7 @@ def target_pair_size_ml(
     user_query: Optional[str],
     p0: Dict[str, Any],
     p1: Dict[str, Any],
+    treat_unsized_as_flagship: bool = False,
 ) -> Optional[float]:
     """The size (ml) the PAIR should be compared at — the FAIRNESS target.
 
@@ -1547,6 +1565,13 @@ def target_pair_size_ml(
     n0 = (p0.get("full_name") or p0.get("name") or "") if isinstance(p0, dict) else ""
     n1 = (p1.get("full_name") or p1.get("name") or "") if isinstance(p1, dict) else ""
     if _is_designer_fragrance_name(n0) and _is_designer_fragrance_name(n1):
+        return _FRAGRANCE_FLAGSHIP_SIZE_ML
+    # frag-reconcile fix — on the canon=="fragrances" path the pair is already
+    # known to be fragrances; a size-SILENT designer/retail pair shares the same
+    # flagship 100ml basis even when neither name is brand-keyword-recognized.
+    # An explicit user size above still wins; a per-product explicit size is
+    # honored later in reconcile (effective size != target -> re-select / pend).
+    if treat_unsized_as_flagship:
         return _FRAGRANCE_FLAGSHIP_SIZE_ML
     return None
 
@@ -1662,6 +1687,7 @@ def reconcile_pair_sizes(
     product_data: List[Dict[str, Any]],
     user_query: Optional[str] = None,
     candidates_by_name: Optional[Dict[str, List[Dict[str, Any]]]] = None,
+    treat_unsized_as_flagship: bool = False,
 ) -> bool:
     """Task C2 + ITEM 2 + same-size GENUINE re-selection — pair-level size-basis
     reconciliation (FAIRNESS).
@@ -1724,19 +1750,19 @@ def reconcile_pair_sizes(
     # flagship-target derivation so a SHARED explicit size the user didn't type is
     # never overridden up to 100ml. (When the user DID type a size, the target is
     # authoritative — the re-selection path below resolves to it.)
-    eff0 = effective_pair_size_ml(p0)
-    eff1 = effective_pair_size_ml(p1)
+    eff0 = effective_pair_size_ml(p0, treat_unsized_as_flagship)
+    eff1 = effective_pair_size_ml(p1, treat_unsized_as_flagship)
     if user_size is None and eff0 is not None and eff0 == eff1:
         return False
 
-    target = target_pair_size_ml(user_query, p0, p1)
+    target = target_pair_size_ml(user_query, p0, p1, treat_unsized_as_flagship)
 
     # No shared target (non-fragrance / mixed pair, no user size) → legacy
     # effective-size comparison. Equal/both-unknown → no-op; genuine divergence →
     # both pending. Electronics stays exactly as before.
     if target is None:
-        size0 = effective_pair_size_ml(p0)
-        size1 = effective_pair_size_ml(p1)
+        size0 = effective_pair_size_ml(p0, treat_unsized_as_flagship)
+        size1 = effective_pair_size_ml(p1, treat_unsized_as_flagship)
         if size0 == size1:
             return False
         _mark_size_pending(p0, p1)
@@ -1750,7 +1776,7 @@ def reconcile_pair_sizes(
         retained candidates when the current price is off-target; on a successful
         swap mutates p['price'] (+ best_price/retailer) in place."""
         nonlocal changed
-        if effective_pair_size_ml(p) == target:
+        if effective_pair_size_ml(p, treat_unsized_as_flagship) == target:
             return True
         name = p.get("full_name") or p.get("name") or ""
         cands = candidates_by_name.get(name) or candidates_by_name.get(p.get("name") or "")
@@ -2610,11 +2636,16 @@ def reconcile_pair_fairness(
         return False
 
     canon = _canonical_fairness_key(category)
-    # FRAGRANCES — delegate to the shipped reconcile verbatim (behavior frozen).
+    # FRAGRANCES — delegate to the shipped reconcile. The orchestrator has already
+    # resolved the pair category to fragrances, so an UNSIZED product here IS a
+    # fragrance — pass the frag-reconcile fix flag so a size-silent genuine pair
+    # defaults to the flagship 100ml basis even when its house is not in the
+    # brand-keyword list (flag OFF -> byte-identical to the frozen behavior).
     if canon == "fragrances":
         return reconcile_pair_sizes(
             product_data, user_query=user_query,
             candidates_by_name=candidates_by_name,
+            treat_unsized_as_flagship=frag_reconcile_fix_enabled(),
         )
 
     spec = fairness_for_category(category)
@@ -3305,6 +3336,27 @@ def exact_gate_enabled() -> bool:
     """True iff the exact-identity correctness gate is active (default ON)."""
     return os.getenv("ENABLE_EXACT_PRICE_GATE", "true").strip().lower() not in (
         "false", "0", "no", "off", "",
+    )
+
+
+def frag_reconcile_fix_enabled() -> bool:
+    """True iff the fragrance-pair size-reconcile broadening is active (default
+    OFF -> byte-identical to today).
+
+    Read FRESH per call (env, not module-level) so a flag flip takes effect
+    without a restart. When ON, a SIZE-UNSPECIFIED fragrance on the
+    canon=="fragrances" reconcile path defaults to the flagship 100ml basis even
+    when its NAME is not caught by the (too-narrow) _is_designer_fragrance_name
+    brand-keyword heuristic — because the ORCHESTRATOR already resolved the pair
+    category to fragrances, so an unsized product on that path IS a fragrance. It
+    ONLY broadens the unsized case: any explicit `\\d+ml` token on either side is
+    still used verbatim (a genuine 30ml/50ml still resolves + still pends vs a
+    100ml partner). Fixes genuine adapter prices (woo/magento/noon carry no
+    price.size + no ml token in the title) being wrongly NULLED when only one side
+    was brand-keyword-recognized.
+    """
+    return os.getenv("ENABLE_FRAGRANCE_SIZE_RECONCILE_FIX", "false").strip().lower() in (
+        "true", "1", "yes", "on",
     )
 
 
