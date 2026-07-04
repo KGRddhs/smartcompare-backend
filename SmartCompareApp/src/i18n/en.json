@@ -726,7 +726,7 @@
   "results.emptyState.cta": "Back to history",
   "results.emptyState.notFound": "Comparison not found",
   "results.emptyState.needMorePhotos": "We spotted one product. Bring both items into the frame for a side-by-side.",
-  "results.emptyState.visionFailed": "Snap one more in better light and we'll line them up.",
+  "results.emptyState.visionFailed": "Snap each product in its own photo and we'll line them up side by side.",
   "results.loading.fromHistory": "Loading your comparison",
   "results.loading.fromCamera": "Identifying your products",
 
