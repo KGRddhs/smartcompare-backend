@@ -21,6 +21,186 @@ SERPER_BASE_URL = "https://google.serper.dev"
 
 
 # ============================================
+# MULTI-KEY SERPER FAILOVER (genuine-price serper-multikey)
+# ============================================
+# A single free Serper key holds a finite lifetime credit pool; when it
+# depletes mid-run the warmer cron (and live compares) silently degrade to
+# `estimated`. This layer reads an ORDERED key list from SERPER_API_KEYS
+# (comma-separated, priority order) and rotates to the next non-exhausted key
+# when a response signals credit depletion.
+#
+# Backward compatibility (critical): when only SERPER_API_KEY is set (no
+# SERPER_API_KEYS) and that key is NOT exhausted, behaviour is byte-identical
+# to before — the active key IS SERPER_API_KEY, exactly ONE POST fires on the
+# happy path (no rotation), only a single cheap Redis exhaustion-check read is
+# added. The module attr SERPER_API_KEY is preserved (tests patch it) and is
+# consulted as the single-key fallback so `monkeypatch.setattr(serper_service,
+# "SERPER_API_KEY", ...)` continues to work.
+#
+# Exhaustion is DISTINCT from the api_budget_service circuit breaker: a
+# credit-depletion failover marks the KEY exhausted (Redis flag serper:
+# exhausted:<key8>) and rotates — it does NOT trip the 3-failure CB cooldown.
+# A transient 500/timeout is neither: it neither marks the key exhausted nor
+# rotates (the caller's existing except/raise handling deals with it).
+
+# Redis prefix for the per-key exhaustion flag. Keyed by the same 8-char
+# prefix api_budget_service uses to scope the lifetime counter.
+_SERPER_EXHAUSTED_PREFIX = "serper:exhausted:"
+
+# TTL for the exhaustion flag. MODERATE (6h): long enough that a truly-depleted
+# free key is skipped for the rest of a warmer run / session, short enough that
+# a transiently-misclassified key (or a key whose free quota resets) is retried
+# later instead of being permanently blacklisted.
+_SERPER_EXHAUSTED_TTL = 6 * 3600
+
+# In-process de-dupe so the "key exhausted" WARNING logs once per key per
+# process (Redis carries the cross-process authoritative state).
+_serper_exhausted_logged: set = set()
+
+
+def _serper_key_prefix8(key: Optional[str]) -> str:
+    """First 8 chars of a key (for the Redis exhaustion flag + logs). Mirrors
+    api_budget_service._serper_key_prefix scoping."""
+    raw = (key or "").strip()
+    return raw[:8] if raw else "nokey"
+
+
+def _resolve_serper_keys() -> List[str]:
+    """Resolve the ORDERED Serper key list, fresh per call (so a Railway env
+    update takes effect without a restart).
+
+    Priority: SERPER_API_KEYS (comma-separated, order = priority; trimmed,
+    blanks skipped, de-duplicated preserving order). Falls back to the single
+    module-level SERPER_API_KEY when SERPER_API_KEYS is unset/empty — this is
+    what preserves backward compatibility AND test monkeypatching of the
+    SERPER_API_KEY module attr.
+    """
+    raw_multi = (os.environ.get("SERPER_API_KEYS") or "").strip()
+    keys: List[str] = []
+    if raw_multi:
+        for part in raw_multi.split(","):
+            k = part.strip()
+            if k and k not in keys:
+                keys.append(k)
+    if keys:
+        return keys
+    # Single-key fallback — read the MODULE attr (not os.getenv) so tests that
+    # monkeypatch serper_service.SERPER_API_KEY keep working and a runtime
+    # override is honoured.
+    single = (SERPER_API_KEY or "")
+    single = single.strip() if isinstance(single, str) else ""
+    return [single] if single else []
+
+
+def _is_serper_key_exhausted(key: str) -> bool:
+    """True if the per-key exhaustion flag is set in Redis. Fail-open: on Redis
+    error / unavailability the key is treated as NOT exhausted (do not block a
+    healthy key just because Redis is down)."""
+    try:
+        from app.services.cache_service import _redis_get
+        return bool(_redis_get(_SERPER_EXHAUSTED_PREFIX + _serper_key_prefix8(key)))
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _mark_serper_key_exhausted(key: str) -> None:
+    """Set the per-key exhaustion flag in Redis with a MODERATE TTL and log a
+    WARNING once per key per process. Best-effort — a Redis failure just means
+    the flag is not persisted (the failover for THIS call still rotated)."""
+    prefix = _serper_key_prefix8(key)
+    try:
+        from app.services.cache_service import _redis_set
+        _redis_set(_SERPER_EXHAUSTED_PREFIX + prefix, "1", ex=_SERPER_EXHAUSTED_TTL)
+    except Exception:  # noqa: BLE001
+        pass
+    if prefix not in _serper_exhausted_logged:
+        _serper_exhausted_logged.add(prefix)
+        logger.warning(
+            "SERPER_KEY_EXHAUSTED key=%s… marked exhausted (ttl=%ss); "
+            "rotating to next key",
+            prefix,
+            _SERPER_EXHAUSTED_TTL,
+        )
+
+
+def _active_serper_key() -> Optional[str]:
+    """The first key in priority order that is NOT currently marked exhausted.
+    Returns None when there are no keys OR every key is exhausted (caller then
+    degrades exactly as the legacy 'SERPER_API_KEY not set' path)."""
+    for key in _resolve_serper_keys():
+        if not _is_serper_key_exhausted(key):
+            return key
+    return None
+
+
+def _response_signals_exhaustion(status_code: Optional[int], body_text: str) -> bool:
+    """Detect credit depletion from a Serper response. Two independent signals:
+      1. HTTP status in {402, 403} (payment/forbidden — credit-related), OR
+      2. body/message contains 'credit' (case-insensitive) — a depleted free
+         key returns {"message":"Not enough credits"} (observed with HTTP 400).
+    A transient 500 / non-credit 4xx does NOT match (no 'credit' substring,
+    status not in the set) so it never marks a key exhausted."""
+    if status_code in (402, 403):
+        return True
+    if isinstance(body_text, str) and body_text and "credit" in body_text.lower():
+        return True
+    return False
+
+
+async def _serper_post(client, path: str, payload: Dict[str, Any]):
+    """Shared Serper POST with credit-exhaustion failover.
+
+    Picks the active (first non-exhausted) key, POSTs to
+    `{SERPER_BASE_URL}{path}` with the standard headers, and — if the response
+    signals credit depletion — marks that key exhausted and retries with the
+    NEXT non-exhausted key (bounded to len(keys) attempts). Returns the httpx
+    Response of the FIRST non-exhaustion result (which the caller inspects /
+    raise_for_status()es exactly as before), so response handling is unchanged.
+
+    On the happy path (single healthy key) this fires exactly ONE POST and adds
+    only one cheap Redis exhaustion-check read — byte-identical behaviour.
+
+    The caller is responsible for the `if not <key>` guard BEFORE calling this
+    (preserving the legacy short-circuit + no-record_usage semantics). Callers
+    pass the active key implicitly via this helper; a None active key means all
+    keys are exhausted and this helper is not reached.
+    """
+    keys = _resolve_serper_keys()
+    attempts = 0
+    max_attempts = max(1, len(keys))
+    last_response = None
+    while attempts < max_attempts:
+        key = _active_serper_key()
+        if not key:
+            # All keys exhausted mid-loop — return the last response (if any) so
+            # the caller's existing handling degrades gracefully.
+            break
+        attempts += 1
+        response = await client.post(
+            f"{SERPER_BASE_URL}{path}",
+            headers={
+                "X-API-KEY": key,
+                "Content-Type": "application/json",
+            },
+            json=payload,
+        )
+        last_response = response
+        # Inspect for credit exhaustion. Reading .text on a MagicMock is cheap;
+        # on a real httpx.Response it is the already-buffered body.
+        try:
+            status = getattr(response, "status_code", None)
+            body_text = getattr(response, "text", "") or ""
+        except Exception:  # noqa: BLE001
+            status = None
+            body_text = ""
+        if _response_signals_exhaustion(status, body_text):
+            _mark_serper_key_exhausted(key)
+            continue  # rotate to the next non-exhausted key
+        return response
+    return last_response
+
+
+# ============================================
 # ORIGINAL FUNCTIONS (backward compatibility)
 # ============================================
 
@@ -72,19 +252,16 @@ async def search_web(
     Returns:
         Search results with organic, featured snippets, etc.
     """
-    if not SERPER_API_KEY:
+    if not _active_serper_key():
         logger.warning("SERPER_API_KEY not set")
         return {"organic": [], "error": "Search not configured"}
-    
+
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
-            response = await client.post(
-                f"{SERPER_BASE_URL}/search",
-                headers={
-                    "X-API-KEY": SERPER_API_KEY,
-                    "Content-Type": "application/json"
-                },
-                json={
+            response = await _serper_post(
+                client,
+                "/search",
+                {
                     "q": query,
                     "num": num_results,
                     "gl": country,
@@ -153,13 +330,10 @@ async def _do_serper_shopping(product: str, gl: str) -> Dict[str, Any]:
     lives in the caller (search_product_prices)."""
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
-            shopping_response = await client.post(
-                f"{SERPER_BASE_URL}/shopping",
-                headers={
-                    "X-API-KEY": SERPER_API_KEY,
-                    "Content-Type": "application/json"
-                },
-                json={
+            shopping_response = await _serper_post(
+                client,
+                "/shopping",
+                {
                     "q": product,
                     "gl": gl,
                     "hl": "en",
@@ -226,7 +400,7 @@ async def search_product_prices(
     called if both shopping calls return empty (Saudi-only items like
     Almarai laban — pipeline naturally falls through to Tier 1.5).
     """
-    if not SERPER_API_KEY:
+    if not _active_serper_key():
         return {"shopping": [], "organic": [], "error": "Search not configured"}
 
     # HOTFIX-2 round 2 — drop GPT-emitted " price"/"buy"/etc. tails.
@@ -309,7 +483,7 @@ async def search_price_organic(
     Organic search for price context — only called when Tier 1 shopping fails.
     Returns organic results for GPT Tier 2 price extraction.
     """
-    if not SERPER_API_KEY:
+    if not _active_serper_key():
         return {"organic": [], "error": "Search not configured"}
 
     country_terms = {
@@ -325,13 +499,10 @@ async def search_price_organic(
 
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
-            response = await client.post(
-                f"{SERPER_BASE_URL}/search",
-                headers={
-                    "X-API-KEY": SERPER_API_KEY,
-                    "Content-Type": "application/json"
-                },
-                json={
+            response = await _serper_post(
+                client,
+                "/search",
+                {
                     "q": search_query,
                     "gl": country,
                     "hl": "en",
@@ -408,18 +579,15 @@ async def search_videos(
     num_results: int = 5
 ) -> Dict[str, Any]:
     """Search for videos (reviews, tutorials, etc.)."""
-    if not SERPER_API_KEY:
+    if not _active_serper_key():
         return {"videos": [], "error": "Search not configured"}
-    
+
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
-            response = await client.post(
-                f"{SERPER_BASE_URL}/videos",
-                headers={
-                    "X-API-KEY": SERPER_API_KEY,
-                    "Content-Type": "application/json"
-                },
-                json={
+            response = await _serper_post(
+                client,
+                "/videos",
+                {
                     "q": query,
                     "num": num_results
                 }
@@ -438,18 +606,15 @@ async def search_images(
     num_results: int = 5
 ) -> Dict[str, Any]:
     """Search for product images."""
-    if not SERPER_API_KEY:
+    if not _active_serper_key():
         return {"images": [], "error": "Search not configured"}
-    
+
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
-            response = await client.post(
-                f"{SERPER_BASE_URL}/images",
-                headers={
-                    "X-API-KEY": SERPER_API_KEY,
-                    "Content-Type": "application/json"
-                },
-                json={
+            response = await _serper_post(
+                client,
+                "/images",
+                {
                     "q": query,
                     "num": num_results
                 }
@@ -477,18 +642,15 @@ async def search_news(
     num_results: int = 5
 ) -> Dict[str, Any]:
     """Search for recent news about a product."""
-    if not SERPER_API_KEY:
+    if not _active_serper_key():
         return {"news": [], "error": "Search not configured"}
-    
+
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
-            response = await client.post(
-                f"{SERPER_BASE_URL}/news",
-                headers={
-                    "X-API-KEY": SERPER_API_KEY,
-                    "Content-Type": "application/json"
-                },
-                json={
+            response = await _serper_post(
+                client,
+                "/news",
+                {
                     "q": query,
                     "num": num_results
                 }
@@ -496,7 +658,7 @@ async def search_news(
             response.raise_for_status()
             record_usage("serper")
             return response.json()
-    
+
     except Exception as e:
         logger.error(f"News search error: {e}")
         return {"news": [], "error": str(e)}

@@ -91,18 +91,62 @@ _MONTHLY_TTL = 35 * 24 * 3600
 _SERPER_NO_KEY_PREFIX = "nokey"
 
 
+# genuine-price serper-multikey — Redis prefix for the per-key exhaustion flag.
+# Kept in sync with serper_service._SERPER_EXHAUSTED_PREFIX so the counter-scoping
+# here and the failover there agree on which key is "active". Read directly via
+# cache_service (no serper_service import → no circular dependency).
+_SERPER_EXHAUSTED_PREFIX = "serper:exhausted:"
+
+
+def _serper_env_keys() -> list:
+    """Ordered Serper key list from env, read FRESH each call (Railway env update
+    / rotation takes effect without a restart). Priority: SERPER_API_KEYS
+    (comma-separated) then the single SERPER_API_KEY. Trimmed, blanks skipped,
+    order-preserving de-dupe. Self-contained (no serper_service import) to avoid
+    a serper_service ↔ api_budget_service cycle."""
+    raw_multi = (os.environ.get("SERPER_API_KEYS") or "").strip()
+    keys: list = []
+    if raw_multi:
+        for part in raw_multi.split(","):
+            k = part.strip()
+            if k and k not in keys:
+                keys.append(k)
+        if keys:
+            return keys
+    single = (os.environ.get("SERPER_API_KEY") or "").strip()
+    return [single] if single else []
+
+
 def _serper_key_prefix() -> str:
-    """First 8 chars of the live SERPER_API_KEY (read fresh each call so a
-    Railway env update / key rotation takes effect without a restart, mirroring
+    """First 8 chars of the ACTIVE Serper key (read fresh each call so a Railway
+    env update / key rotation takes effect without a restart, mirroring
     _serper_image_daily_budget).
 
     This scopes the Serper lifetime counter to the key that burned the credits:
     a rotation starts a fresh honest counter instead of inheriting the previous
     account's burn (the 5136-across-4-accounts false-trip, S2 G6). Falls back to
-    a stable 'nokey' sentinel when the env var is unset/empty so the key stays
-    deterministic."""
-    raw = (os.environ.get("SERPER_API_KEY") or "").strip()
-    return raw[:8] if raw else _SERPER_NO_KEY_PREFIX
+    a stable 'nokey' sentinel when no key is configured so the key stays
+    deterministic.
+
+    genuine-price serper-multikey: with SERPER_API_KEYS (comma-separated) set,
+    the counter tracks whichever key is CURRENTLY active (first NON-exhausted)
+    so each rotated-to key gets its own honest lifetime counter. With only the
+    single SERPER_API_KEY set (no SERPER_API_KEYS), this is byte-identical to
+    the pre-multikey scoping (first 8 chars of that key, or 'nokey')."""
+    keys = _serper_env_keys()
+    if not keys:
+        return _SERPER_NO_KEY_PREFIX
+    # Prefer the first key NOT flagged exhausted; if all are flagged (or Redis is
+    # down / no flags), fall back to the first key so the counter stays a stable,
+    # deterministic target.
+    for key in keys:
+        prefix = key[:8]
+        try:
+            if not _redis_get(_SERPER_EXHAUSTED_PREFIX + prefix):
+                return prefix
+        except Exception:  # noqa: BLE001
+            return prefix
+    return keys[0][:8]
 
 
 def _budget_key(provider: str) -> str:
