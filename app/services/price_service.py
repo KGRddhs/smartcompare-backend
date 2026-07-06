@@ -2880,6 +2880,30 @@ def _collapse_concentration(text: str) -> str:
     return out
 
 
+def normalize_candidate_brand(raw) -> str:
+    """Best-effort brand STRING from a heterogeneous adapter brand field.
+
+    The price adapters carry the product's own brand in different shapes: a scalar
+    string (unbxd brandEn, beautybooth brand), a ``{"name": ...}`` dict (salla,
+    panda, woo brands[]/pa_brand terms), a list of either, or JSON null. This
+    normalizes all of them to a plain trimmed string ("" when unknown/absent).
+
+    Robustness contract (brand-implied review 2026-07-07): NEVER raises and never
+    stringifies a container into junk tokens — a bare-string `brand` (salla can
+    return `"Ajmal"`, not `{"name": ...}`) no longer AttributeErrors, and a dict/
+    list slipped into a scalar field yields its name/first-element instead of
+    ``"{'id': 1, ...}"``. Unknown shapes → "" → legacy brand-required behaviour."""
+    if raw is None:
+        return ""
+    if isinstance(raw, str):
+        return raw.strip()
+    if isinstance(raw, dict):
+        return str(raw.get("name") or "").strip()
+    if isinstance(raw, (list, tuple)):
+        return normalize_candidate_brand(raw[0]) if raw else ""
+    return ""
+
+
 def strict_title_match(
     product_name: str, title: str, candidate_brand: str = "",
 ) -> bool:
@@ -9381,14 +9405,25 @@ def _match_shopify_product(
             continue
         if not numbers_match(product_name, title):
             continue
-        if not strict_title_match(product_name, title):
+        # Brand-implied match (2026-07-07) — a brand's OWN Shopify store OMITS its
+        # brand from product titles (en-bh.ajmal.com lists "ARISTOCRAT CORAL EDP",
+        # vendor="Ajmal", NOT "Ajmal Aristocrat"), so requiring the query brand token
+        # rejected the exact SKU and threw away a genuine BHD price. Thread the
+        # Shopify `vendor` (the product's own brand) as candidate_brand so a
+        # brand-omitted title of the QUERY's brand resolves, while a WRONG-brand
+        # candidate keeps the query brand required and is still rejected (no
+        # wrong-match). Mirrors the proven magento_graphql/occ/noon/algolia pattern;
+        # candidate_brand is gated by exact_gate_enabled() inside the matchers, so
+        # flag-OFF (ENABLE_EXACT_PRICE_GATE=false) is byte-identical.
+        _cand_brand = normalize_candidate_brand(product.get("vendor"))
+        if not strict_title_match(product_name, title, candidate_brand=_cand_brand):
             continue
         # S3 #1 (discovery-match) — reject a different model-line variant.
         if variant_mismatch(product_name, title):
             continue
         # Keystone variant-add guard (coverage/independent review) — category-aware
         # superset/axes beyond variant_mismatch's pro/max set. Flag-safe (True when off).
-        if not _selection_match(product_name, title, resolved_category):
+        if not _selection_match(product_name, title, resolved_category, candidate_brand=_cand_brand):
             continue
 
         t_words = normalize_words(title)

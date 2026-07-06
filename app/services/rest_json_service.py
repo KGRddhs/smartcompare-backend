@@ -30,6 +30,7 @@ import re
 from typing import Any, Dict, List, Optional
 
 from app.services.price_service import (
+    normalize_candidate_brand,
     ENABLE_PAGE_SCRAPE,
     _VARIANT_QUALIFIERS,
     _convert_to_bhd,
@@ -105,8 +106,17 @@ def _word_overlap(product_name: str, title: str) -> float:
     return len(p_words & t_words) / len(p_words)
 
 
-def _title_matches(product_name: str, title: str, resolved_category=None) -> bool:
+def _title_matches(product_name: str, title: str, resolved_category=None,
+                   candidate_brand: str = "") -> bool:
     """Strict, no-fab match for a direct-API hit.
+
+    candidate_brand (brand-implied match, 2026-07-07): the candidate's OWN brand
+    (per-store field, derived by the caller). An own-brand store OMITS its brand
+    from titles; threading candidate_brand into strict_title_match /
+    selection_primary_admits / _selection_match lets a brand-omitted title of the
+    query's brand pass, while a WRONG-brand hit keeps the query brand required.
+    Empty (the default, e.g. the brandless ourshopee search path) → legacy
+    behaviour; inert flag-OFF (byte-identical). Mirrors magento/occ.
 
     Uses numbers_match + strict_title_match + word-overlap (the algolia_service
     precedent for a direct-API adapter). variant_mismatch is applied ONLY when
@@ -127,15 +137,17 @@ def _title_matches(product_name: str, title: str, resolved_category=None) -> boo
     # rows carry no brand signal, so a FASHION padding-brand query requires
     # its brand token in the title). Flag OFF (or exact gate OFF) restores
     # the exact pre-change hard gate.
-    if (not strict_title_match(product_name, title)
+    if (not strict_title_match(product_name, title, candidate_brand=candidate_brand)
             and not selection_primary_admits(
-                product_name, title, category=resolved_category)):
+                product_name, title, candidate_brand=candidate_brand,
+                category=resolved_category)):
         return False
     q_words = set(re.findall(r"[a-z]+", (product_name or "").lower()))
     if (q_words & _VARIANT_QUALIFIERS) and variant_mismatch(product_name, title):
         return False
     # Keystone variant-add guard (coverage/independent review). Flag-safe (True when off).
-    if not _selection_match(product_name, title, resolved_category):
+    if not _selection_match(product_name, title, resolved_category,
+                            candidate_brand=candidate_brand):
         return False
     return _word_overlap(product_name, title) >= _MATCH_MIN_OVERLAP
 
@@ -336,7 +348,11 @@ async def _fetch_panda(product_name: str, currency: str, resolved_category: Opti
         if not isinstance(prod, dict):
             continue
         name = prod.get("name") or ""
-        if not _title_matches(product_name, name, resolved_category):
+        # Brand-implied match (2026-07-07) — panda carries brand as a NESTED
+        # object prod["brand"]["name"]; normalize_candidate_brand handles the
+        # dict / null / string shapes safely.
+        _cand_brand = normalize_candidate_brand(prod.get("brand"))
+        if not _title_matches(product_name, name, resolved_category, candidate_brand=_cand_brand):
             continue
         varieties = prod.get("varieties")
         if not isinstance(varieties, list) or not varieties:
@@ -426,7 +442,10 @@ async def _fetch_beautybooth(product_name: str, currency: str, resolved_category
     best_score = -1.0
     for it in items:
         name = it.get("name") or ""
-        if not _title_matches(product_name, name, resolved_category):
+        # Brand-implied match (2026-07-07) — beautybooth carries brand as a FLAT
+        # top-level string it["brand"] ("The Ordinary").
+        _cand_brand = normalize_candidate_brand(it.get("brand"))
+        if not _title_matches(product_name, name, resolved_category, candidate_brand=_cand_brand):
             continue
         price_val = parse_price_string(str(it.get("net_price") or it.get("main_price") or ""))
         if price_val is None or price_val <= 0:

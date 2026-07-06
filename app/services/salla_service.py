@@ -33,6 +33,7 @@ import re
 from typing import Any, Dict, Optional
 
 from app.services.price_service import (
+    normalize_candidate_brand,
     strict_title_match,
     _selection_match,
     selection_primary_admits,
@@ -122,6 +123,12 @@ def _select_candidate(
         title = item.get("name") or ""
         if not title:
             continue
+        # Brand-implied match (2026-07-07) — the Salla product carries brand as a
+        # NESTED dict `{"id","url","name"}` (item["brand"] can itself be null).
+        # An own-brand store (Ajmal/Asghar Ali) OMITS its brand from titles;
+        # brand.name lets that pass while a WRONG-brand hit keeps the query brand
+        # required. Null-safe read; inert flag-OFF (byte-identical). Mirrors magento/occ.
+        _cand_brand = normalize_candidate_brand(item.get("brand"))
         if is_counterfeit_listing(title):
             continue
         # Asymmetric accessory guard (review gate-fix): only drop an accessory
@@ -141,9 +148,10 @@ def _select_candidate(
         # padding-brand query requires its brand token in the title). Flag
         # OFF (or exact gate OFF, where _selection_match is a no-op True)
         # restores the exact pre-change hard gate.
-        if (not strict_title_match(product_name, title)
+        if (not strict_title_match(product_name, title, candidate_brand=_cand_brand)
                 and not selection_primary_admits(
-                    product_name, title, category=resolved_category)):
+                    product_name, title, candidate_brand=_cand_brand,
+                    category=resolved_category)):
             continue
         if not numbers_match(product_name, title):
             continue
@@ -153,7 +161,8 @@ def _select_candidate(
         # is SUBSET-based + variant_mismatch covers only pro/max/ultra; the broad
         # variant-add class (Mark II / mineral salt / sub-line) needs the category-aware
         # _selection_match. Flag-safe: returns True when ENABLE_EXACT_PRICE_GATE is off.
-        if not _selection_match(product_name, title, resolved_category):
+        if not _selection_match(product_name, title, resolved_category,
+                                candidate_brand=_cand_brand):
             continue
         # price must be a positive number (MAJOR units).
         try:

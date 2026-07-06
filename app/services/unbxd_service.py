@@ -31,6 +31,7 @@ from typing import Optional, Dict, Any, List
 from urllib.parse import quote_plus
 
 from app.services.price_service import (
+    normalize_candidate_brand,
     strict_title_match,
     _selection_match,
     selection_primary_admits,
@@ -141,9 +142,18 @@ def _match_unbxd_product(
         # (ENABLE_ADAPTER_SELECTION_PRIMARY) + the same wrong-brand fence
         # (selection_primary_admits; unbxd rows carry no brand signal). Flag
         # OFF (or exact gate OFF) restores the exact pre-change hard gate.
-        if (not strict_title_match(product_name, surface)
+        # Brand-implied match (2026-07-07) — Unbxd carries the product's OWN brand
+        # as a scalar `brandEn` ("APPLE") (list `brand` fallback). Thread it as
+        # candidate_brand so a brand-OMITTING title of the query's brand passes on
+        # the model line, while a WRONG-brand node keeps the query brand required
+        # (candidate_brand drops only the candidate's own tokens; _selection_match
+        # vets the SKU). Mirrors magento/occ; inert flag-OFF (byte-identical).
+        _cand_brand = normalize_candidate_brand(
+            product.get("brandEn") or product.get("brand"))
+        if (not strict_title_match(product_name, surface, candidate_brand=_cand_brand)
                 and not selection_primary_admits(
-                    product_name, surface, category=resolved_category)):
+                    product_name, surface, candidate_brand=_cand_brand,
+                    category=resolved_category)):
             continue
         # Verification F1 (HIGH no-fab fix): reject a different model-line variant.
         # Without this, a base-model query ("iPhone 17 Pro 256GB") matched the
@@ -154,7 +164,8 @@ def _match_unbxd_product(
         # applies this gate; unbxd omitted it.
         if variant_mismatch(product_name, surface):
             continue
-        if not _selection_match(product_name, surface, resolved_category):
+        if not _selection_match(product_name, surface, resolved_category,
+                                candidate_brand=_cand_brand):
             continue
         t_words = normalize_words(surface)
         score = (len(p_words & t_words) / len(p_words)) if p_words else 0.0
