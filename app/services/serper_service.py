@@ -291,7 +291,16 @@ async def search_web(
     Returns:
         Search results with organic, featured snippets, etc.
     """
+    # Bright Data fallback (2026-07-07) — when the Serper key is exhausted/absent,
+    # fall back to the Bright Data SERP API (same {organic} shape). Inert unless
+    # ENABLE_BRIGHTDATA_FALLBACK + the credentials are set → byte-identical to
+    # Serper-only when off. Local import avoids any import-time coupling.
+    from app.services.brightdata_service import _brightdata_enabled, bd_search_web
+
     if not _active_serper_key():
+        if _brightdata_enabled():
+            logger.info("[brightdata] Serper key unavailable — search_web fallback")
+            return await bd_search_web(query, num_results, country)
         logger.warning("SERPER_API_KEY not set")
         return {"organic": [], "error": "Search not configured"}
 
@@ -313,6 +322,9 @@ async def search_web(
 
     except Exception as e:
         logger.error(f"Search error: {e}")
+        if _brightdata_enabled():
+            logger.info("[brightdata] Serper /search failed (%s) — fallback", str(e)[:60])
+            return await bd_search_web(query, num_results, country)
         return {"organic": [], "error": str(e)}
 
 
@@ -522,7 +534,13 @@ async def search_price_organic(
     Organic search for price context — only called when Tier 1 shopping fails.
     Returns organic results for GPT Tier 2 price extraction.
     """
+    # Bright Data fallback (2026-07-07) — inert unless ENABLE_BRIGHTDATA_FALLBACK
+    # + creds are set (byte-identical Serper-only when off).
+    from app.services.brightdata_service import _brightdata_enabled, bd_search_web
+
     if not _active_serper_key():
+        if _brightdata_enabled():
+            return {**(await bd_search_web(product, 10, country)), "query": product}
         return {"organic": [], "error": "Search not configured"}
 
     country_terms = {
@@ -553,6 +571,10 @@ async def search_price_organic(
             if response.status_code == 200:
                 results = response.json()
                 record_usage("serper")
+            elif _brightdata_enabled():
+                # Serper non-200 (depletion/error) — fall back to Bright Data.
+                logger.info("[brightdata] Serper price-organic HTTP %s — fallback", response.status_code)
+                return {**(await bd_search_web(search_query, 10, country)), "query": search_query}
 
             return {
                 "organic": results.get("organic", []),
@@ -562,6 +584,9 @@ async def search_price_organic(
 
     except Exception as e:
         logger.error(f"Price organic search error: {e}")
+        if _brightdata_enabled():
+            logger.info("[brightdata] Serper price-organic failed (%s) — fallback", str(e)[:60])
+            return {**(await bd_search_web(search_query, 10, country)), "query": search_query}
         return {"organic": [], "error": str(e)}
 
 
