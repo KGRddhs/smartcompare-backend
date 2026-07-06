@@ -812,6 +812,51 @@ def get_noon_sources_for_category(category: str) -> List[Source]:
     return _direct_fetch_sources(category, "noon_catalog")
 
 
+def get_gcc_shopify_pagescrape_sources_for_category(category: str) -> List[Source]:
+    """Launch coverage fix (2026-07-06) — the orphaned Shopify-shaped catalog rows.
+
+    ~40 catalog rows (rasasistore.com / sa.ajmal.com / swissarabian.com / … — the
+    local GCC perfume houses) are Shopify stores the build classifier left with a
+    BLANK mechanism (genuine_method "page_scrape_jsonld", is_shopify=False, because
+    the demotion path flattened every gcc-Shopify store). They therefore matched
+    NONE of the mechanism-keyed direct-fetch selectors and NONE of the
+    is_shopify/is_algolia selectors, so their ONLY consumer was the slow Serper
+    `site:` discovery cascade — which overruns the 15s price race for local-brand
+    pairs and dead-ends the compare.
+
+    Their liveness anchor (`sample_url`) IS the store's `/products.json` catalog
+    endpoint (the exact door `fetch_shopify_price` opens), so selecting on that
+    signal reaches precisely the rows already live-verified for the Shopify
+    mechanism — no re-probe, no data-file change, no reclassification. Routed
+    through `fetch_shopify_price` they resolve $0 / Serper-FREE; every one is
+    gcc-tier + non-BHD today, so `_match_shopify_product` stamps `converted_usd`
+    (never a mis-claimed genuine BHD — the currency is read from the store's own
+    /meta.json). The converted hit is PARKED (never short-circuits a genuine) by
+    `_consume_adapter_prefetch` and surfaces at the §5 tier-7 terminal.
+
+    Predicate: blank mechanism, NOT is_shopify/is_algolia (those have their own
+    bahrain-tier selectors), tier in ("bahrain","gcc") (future-proof; all matches
+    are gcc today), and a `/products.json` liveness anchor. Ordered
+    (bahrain→gcc, priority_rank, registry order) and TOP-K capped (_fanout_k),
+    exactly like `_direct_fetch_sources`. Returns [] flag-OFF: with
+    ENABLE_BH_GCC_CATALOG_SOURCES off SOURCE_REGISTRY == the literals, and NO
+    literal row carries a `/products.json` sample_url — so this whole path is
+    byte-identical to today until the catalog loads. Never raises.
+    """
+    matched = [
+        (idx, s)
+        for idx, s in enumerate(SOURCE_REGISTRY)
+        if (s.mechanism or "") == ""
+        and not s.is_shopify
+        and not s.is_algolia
+        and s.tier in ("bahrain", "gcc")
+        and "/products.json" in (s.sample_url or "")
+        and (not s.categories or category in s.categories)
+    ]
+    matched.sort(key=lambda t: (_TIER_ORDER.index(t[1].tier), t[1].priority_rank, t[0]))
+    return [s for _idx, s in matched[: _fanout_k()]]
+
+
 def source_usage(url: str, category: str) -> str:
     """Return the registry usage ("price"|"review"|"both") for `url` under
     `category`, or "price" for unknown / mis-categorized domains.

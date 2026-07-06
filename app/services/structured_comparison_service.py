@@ -918,6 +918,9 @@ from app.services.source_router import (
     get_sitemap_sources_for_category,
     get_jsonapi_sources_for_category,
     get_curl_pagescrape_sources_for_category,
+    # Launch coverage fix (2026-07-06) — orphaned Shopify-shaped catalog rows
+    # (local GCC perfume houses) routed through fetch_shopify_price.
+    get_gcc_shopify_pagescrape_sources_for_category,
     # BH/GCC source-build (2026-06-25) — the 6 new $0 direct-fetch selectors.
     get_woo_sources_for_category,
     get_salla_sources_for_category,
@@ -1772,6 +1775,24 @@ def _organic_pdp_harvest_enabled() -> bool:
     )
 
 
+def _early_specs_stash_enabled() -> bool:
+    """Launch degradation fix (2026-07-06) — True iff the early identity+specs
+    stash is active (default ON). Read per-call (not cached) so an env flip /
+    monkeypatch takes effect immediately — mirrors _organic_pdp_harvest_enabled.
+
+    When ON, `_fetch_product_data` registers each product's `result` dict into a
+    per-request buffer the instant it is built and writes `result['specs']` from a
+    specs-task done-callback the moment specs land — so a hard-cap cancel DURING
+    the Phase-1 gather (both local-brand prices hanging) can still salvage the
+    completed specs into a best-available PARTIAL instead of a bare 503/TIMEOUT.
+    When OFF the buffer is never populated, the partial paths fall back to an empty
+    list, and BOTH the sync and streaming timeout handlers return their exact
+    pre-fix bodies (byte-identical rollback lever)."""
+    return os.getenv("ENABLE_EARLY_SPECS_STASH", "true").strip().lower() not in (
+        "false", "0", "no", "off", "",
+    )
+
+
 # BF5 (sweep OR-8) — BH-locale URL-path prefixes that mark a page as the
 # retailer's BAHRAIN storefront (namshi.com/bahrain-en, boutiqaat-style
 # /bh-en). Anchored + segment-bounded: "/bahrain-english-deals" or a mid-path
@@ -2233,6 +2254,16 @@ class StructuredComparisonService:
         self._partial_scoring_result: Optional[Dict[str, Any]] = None
         self._partial_product_names: Optional[List[str]] = None
         self._partial_comparison: Optional[Dict[str, Any]] = None
+        # Launch degradation fix (2026-07-06) — the EARLY identity+specs buffer.
+        # Holds each product's `result` dict BY REFERENCE the instant
+        # _fetch_product_data builds it (indexed by product position 0/1), so a
+        # hard-cap cancel that fires DURING the Phase-1 gather (before
+        # _partial_product_data is set at the post-gather stash) still exposes the
+        # landed identity + specs. `_partial_has_usable_data`/`_build_partial_response`
+        # fall back to this buffer when the post-gather stash is still None. Reset
+        # per-request on BOTH the sync and streaming paths; only populated when
+        # _early_specs_stash_enabled() (default ON) — empty ⇒ byte-identical.
+        self._early_specs_buffer: Optional[List[Optional[Dict[str, Any]]]] = None
 
     # ============================================
     # Static method wrappers for backward compat
@@ -2467,14 +2498,27 @@ class StructuredComparisonService:
     # Main entry points
     # ============================================
 
+    def _early_specs_buffer_list(self) -> List[Dict[str, Any]]:
+        """Launch degradation fix (2026-07-06) — the compacted early buffer: the
+        per-product `result` dicts registered by _fetch_product_data, dropping any
+        slot never filled (None). Empty when the buffer was never populated (flag
+        OFF or no _fetch_product_data ran), so it is a safe FALLBACK source that
+        the partial paths consult only when the post-gather stash is still None."""
+        return [pd for pd in (self._early_specs_buffer or []) if isinstance(pd, dict)]
+
     def _partial_has_usable_data(self) -> bool:
         """WS1 (D1) — True when at least one product has usable Phase-1 data
         (specs OR a price) stashed. Mirrors the inverse of
         `_phase1_completely_failed`: a product is usable if EITHER specs or
         price landed. When neither product has anything, the timeout handler
         falls through to the existing INSUFFICIENT_DATA error instead of
-        shipping an empty 'partial'."""
-        pd_list = self._partial_product_data
+        shipping an empty 'partial'.
+
+        Launch degradation fix (2026-07-06) — falls back to the EARLY buffer
+        (identity+specs stashed the instant each product started) when the
+        post-gather stash (_partial_product_data, set only AFTER the pair gather
+        completes) is still None — i.e. a cancel DURING the gather."""
+        pd_list = self._partial_product_data or self._early_specs_buffer_list()
         if not pd_list:
             return False
         for pd in pd_list:
@@ -2505,7 +2549,9 @@ class StructuredComparisonService:
         DATA path via the try/except in `compare_from_text`.
         """
         ctx = self._partial_build_ctx or {}
-        product_data = self._partial_product_data or []
+        # Launch degradation fix (2026-07-06) — fall back to the EARLY buffer when
+        # the post-gather stash is still None (cancel DURING the Phase-1 gather).
+        product_data = self._partial_product_data or self._early_specs_buffer_list() or []
         scoring_result = self._partial_scoring_result or {}
         comparison = self._partial_comparison or {}
         product_names = self._partial_product_names or [
@@ -2656,7 +2702,12 @@ class StructuredComparisonService:
                 "— no usable partial; returning graceful timeout",
                 STREAM_HARD_CAP_SECONDS, query,
             )
-            if self._partial_product_data:
+            # BLOCKER 3 (2026-07-06) — products RESOLVED (identity stashed in the
+            # early buffer or the post-gather stash) but neither carried usable
+            # specs/price ⇒ INSUFFICIENT_DATA (not the bare TIMEOUT). Consult the
+            # early buffer too so a both-price-hang mid-gather cancel (which never
+            # reaches the post-gather stash) is still classified as resolved-but-empty.
+            if self._partial_product_data or self._early_specs_buffer_list():
                 return {
                     "success": False,
                     "error": "Comparison data was incomplete — choose different products.",
@@ -2748,6 +2799,10 @@ class StructuredComparisonService:
         self._partial_scoring_result = None
         self._partial_product_names = None
         self._partial_comparison = None
+        # Launch degradation fix (2026-07-06) — reset the early identity+specs
+        # buffer to two empty slots so a reused per-request instance never leaks a
+        # prior run's stashed products.
+        self._early_specs_buffer = [None, None]
 
         # L1 content safety pre-filter (spec sec 5.2). Runs on the canonical query
         # string — for explicit_pair shape, this is the concatenated "A vs B"
@@ -2868,8 +2923,8 @@ class StructuredComparisonService:
 
             # Step 2: Fetch data for each product (parallel)
             product_data = await asyncio.gather(
-                self._fetch_product_data(products[0], region, include_specs, include_reviews, nocache),
-                self._fetch_product_data(products[1], region, include_specs, include_reviews, nocache)
+                self._fetch_product_data(products[0], region, include_specs, include_reviews, nocache, partial_slot=0),
+                self._fetch_product_data(products[1], region, include_specs, include_reviews, nocache, partial_slot=1)
             )
 
             # WS1 (D1) — stash the assembled product data the moment Phase 1
@@ -3225,6 +3280,21 @@ class StructuredComparisonService:
         # the sync path; published on the module ContextVar). Always-on, $0.
         self._init_provider_attempts()
 
+        # Launch degradation fix (2026-07-06) — the streaming path previously had
+        # NO partial stash at all, so a hard-cap on the data-fetch yielded a
+        # zero-product STREAM_TIMEOUT that DISCARDED completed specs. Reset the same
+        # best-available partial stash the sync path uses (+ the early buffer) so
+        # the streaming TimeoutError handler can assemble a specs-carrying PARTIAL.
+        # _partial_build_ctx is seeded below once the pair category resolves. Inert
+        # (buffer empty) until the new TimeoutError branch reads it, and byte-
+        # identical when _early_specs_stash_enabled() is OFF.
+        self._partial_build_ctx = None
+        self._partial_product_data = None
+        self._partial_scoring_result = None
+        self._partial_product_names = None
+        self._partial_comparison = None
+        self._early_specs_buffer = [None, None]
+
         # L1 content safety pre-filter (spec sec 5.2). Same gate as sync path —
         # blocked queries terminate the stream with an error event before any
         # parse/scrape work runs.
@@ -3312,6 +3382,23 @@ class StructuredComparisonService:
             for _p in products:
                 _p["category"] = category_used
 
+            # Launch degradation fix (2026-07-06) — seed the partial build ctx now
+            # that the pair category is resolved, so a hard-cap on the data fetch
+            # below assembles a correctly-categorized PARTIAL (mirrors the sync
+            # path's ctx). Minimal shape (_build_partial_response defaults the rest);
+            # demographics_profile is intentionally absent — the _profile_task is
+            # cancelled in the timeout handler before any partial build, so the
+            # cohort badge simply hides on a stream partial.
+            self._partial_build_ctx = {
+                "query": query,
+                "region": region,
+                "from_cache": not nocache,
+                "user_preferences": user_preferences,
+                "category_used": category_used,
+                "category_switched": category_switched,
+                "original_category": original_category,
+            }
+
             # Step 2: Fetch product data
             yield ("status", {"message": "Fetching specs and prices...", "progress": 20})
 
@@ -3335,8 +3422,8 @@ class StructuredComparisonService:
             try:
                 product_data = await asyncio.wait_for(
                     asyncio.gather(
-                        self._fetch_product_data(products[0], region, include_specs, include_reviews, nocache),
-                        self._fetch_product_data(products[1], region, include_specs, include_reviews, nocache),
+                        self._fetch_product_data(products[0], region, include_specs, include_reviews, nocache, partial_slot=0),
+                        self._fetch_product_data(products[1], region, include_specs, include_reviews, nocache, partial_slot=1),
                     ),
                     timeout=STREAM_HARD_CAP_SECONDS,
                 )
@@ -3347,6 +3434,35 @@ class StructuredComparisonService:
                     STREAM_HARD_CAP_SECONDS, query,
                 )
                 await _cancel_profile_task(_profile_task)
+                # Launch degradation fix (2026-07-06) — SALVAGE the specs the LLM
+                # already produced. If any product landed usable Phase-1 data
+                # (identity+specs via the early buffer, or a price), assemble a
+                # best-available success:true PARTIAL (mirrors the sync hard-cap
+                # path) rather than the zero-product STREAM_TIMEOUT that discarded
+                # completed specs — this is what stops the "This one's not loading"
+                # dead-end for local-brand pairs. Guarded: any build failure (and
+                # the flag-OFF / empty-buffer / both-hang paths, where
+                # _partial_has_usable_data() is False) falls through to the EXISTING
+                # STREAM_TIMEOUT body below verbatim → byte-identical when no specs
+                # landed.
+                if self._partial_has_usable_data():
+                    try:
+                        _partial = self._build_partial_response(
+                            elapsed_seconds=(datetime.now() - start_time).total_seconds()
+                        )
+                        logger.warning(
+                            "[stream] hard cap %.1fs hit for %r — returning "
+                            "best-available PARTIAL (success:true)",
+                            STREAM_HARD_CAP_SECONDS, query,
+                        )
+                        yield ("settle_complete", _partial)
+                        yield ("complete", _partial)
+                        return
+                    except Exception as _pe:  # noqa: BLE001 — fall through to STREAM_TIMEOUT
+                        logger.error(
+                            "[stream] partial build failed after hard-cap for %r: %s",
+                            query, _pe, exc_info=True,
+                        )
                 # WS1 (D2) — STREAM_TIMEOUT keeps its distinct code (the FE SSE
                 # error branch handles both TIMEOUT and STREAM_TIMEOUT), but the
                 # copy now obeys the no-scary-copy contract (was "Comparison
@@ -3896,9 +4012,18 @@ class StructuredComparisonService:
             logger.warning(f"Failed to update behavior profile: {e}")
 
     async def _fetch_product_data(
-        self, product_info: Dict, region: str, include_specs: bool, include_reviews: bool, nocache: bool = False
+        self, product_info: Dict, region: str, include_specs: bool, include_reviews: bool, nocache: bool = False,
+        partial_slot: Optional[int] = None,
     ) -> Dict[str, Any]:
-        """Fetch all data for a single product."""
+        """Fetch all data for a single product.
+
+        partial_slot (launch degradation fix, 2026-07-06): when 0/1 AND
+        _early_specs_stash_enabled(), this product's `result` dict is registered
+        into self._early_specs_buffer[partial_slot] the instant it is built and its
+        specs are written back from a specs-task done-callback the moment they land
+        — so a hard-cap cancel during the Phase-1 gather can still salvage them.
+        None (the default, and every non-orchestrator caller) → no stash, exact
+        pre-fix behaviour."""
         brand = product_info.get("brand", "")
         name = product_info.get("name", "")
         variant = product_info.get("variant")
@@ -3920,6 +4045,24 @@ class StructuredComparisonService:
             "brand": brand, "name": display_name, "full_name": full_name,
             "variant": variant, "category": category, "query": search_query,
         }
+
+        # Launch degradation fix (2026-07-06) — register this product's `result`
+        # dict into the per-request early buffer BY REFERENCE the instant it is
+        # built (identity only; specs/price land later). The specs-task
+        # done-callback (attached below) writes result['specs'] the moment specs
+        # resolve, and the Phase-1 gather loop writes result['specs']/['price']
+        # with the identical values on the happy path — so on a hard-cap cancel
+        # DURING the gather the timeout handler can salvage whatever landed. Gated
+        # by the flag + an explicit slot so every other caller (partial_slot None)
+        # is byte-identical.
+        _stash_early = (
+            _early_specs_stash_enabled()
+            and partial_slot is not None
+            and isinstance(self._early_specs_buffer, list)
+            and 0 <= partial_slot < len(self._early_specs_buffer)
+        )
+        if _stash_early:
+            self._early_specs_buffer[partial_slot] = result
 
         # Phase 2A.1 — per-product stage timings (only allocated when flag is on)
         stage_timings = {} if _debug_timings_enabled() else None
@@ -3965,6 +4108,22 @@ class StructuredComparisonService:
             timeout=_PHASE1_TIMEOUTS["price"],
         ))
 
+        # Launch degradation fix (2026-07-06) — MIRROR the specs done-callback for
+        # price, so the OPPOSITE salvage direction (price lands, specs hang) also
+        # works: a mid-gather cancel that fires after the price resolved but before
+        # the Phase-1 loop assigned result['price'] still exposes the landed price
+        # (and a genuine BH price is exactly what the local-brand pairs resolve via
+        # the new shopify_gcc adapter). Guarded identically: on a price
+        # timeout/cancel _t.result() raises -> write nothing (same as today), and on
+        # the happy path the Phase-1 loop overwrites with the identical value.
+        if _stash_early:
+            def _stash_price_cb(_t, _res=result):
+                try:
+                    _res["price"] = _t.result()
+                except (asyncio.TimeoutError, asyncio.CancelledError, Exception):  # noqa: BLE001
+                    pass
+            _price_task.add_done_callback(_stash_price_cb)
+
         async def _cleanup_orphan_price_task() -> None:
             """L5.3 (S3) — cancel + drain the speculative lever-1 price task if it
             never made it into (or through) the Phase-1 gather. Between the
@@ -3987,6 +4146,10 @@ class StructuredComparisonService:
         # the speculative price task. On the happy path _price_task is done by the
         # time the gather returns, so the cleanup is a no-op and the result/timing
         # path below is unchanged.
+        # Launch degradation fix (2026-07-06) — bound to None so the except-drain
+        # below can reference it even when include_specs is False / a raise fires
+        # before the hoist.
+        _specs_task = None
         try:
             # === Unified web search === (runs CONCURRENTLY with the price task
             # started above — I5.6: the price Serper round-trip is already in flight
@@ -4034,10 +4197,31 @@ class StructuredComparisonService:
             # post-D2 floor is 4-5s, per memory/feedback_measure_before_optimize.md.)
 
             if include_specs:
-                phase1_tasks.append(asyncio.wait_for(
+                # Launch degradation fix (2026-07-06) — HOIST the specs task into a
+                # named ensure_future (mirrors _price_task) so a done-callback can
+                # write result['specs'] into the early buffer the instant specs land.
+                # Kept in the SAME phase1_tasks position / wrapping / result-key
+                # order, and the gather awaits it identically, so this is a pure
+                # refactor: flag-OFF (or partial_slot None) no callback is attached
+                # and the 4105-loop writes result['specs'] with the identical value.
+                _specs_task = asyncio.ensure_future(asyncio.wait_for(
                     _timed_task("specs", self._get_specs(brand, name, variant, category, search_query, nocache, search_results=unified_search, drug_context=drug_context), stage_timings),
                     timeout=_PHASE1_TIMEOUTS["specs"],
                 ))
+                if _stash_early:
+                    def _stash_specs_cb(_t, _res=result):
+                        # Write the resolved specs into the SAME dict the buffer
+                        # holds, the instant they land. Guarded: on timeout/cancel/
+                        # error _t.result() raises → write nothing (specs stays None)
+                        # so the both-hang case still degrades to INSUFFICIENT_DATA.
+                        # On the happy path the gather loop overwrites with the
+                        # identical value (deterministic — no observable divergence).
+                        try:
+                            _res["specs"] = _t.result()
+                        except (asyncio.TimeoutError, asyncio.CancelledError, Exception):  # noqa: BLE001
+                            pass
+                    _specs_task.add_done_callback(_stash_specs_cb)
+                phase1_tasks.append(_specs_task)
                 phase1_keys.append("specs")
 
             # I5.6 — price already started above (concurrent with the unified
@@ -4094,6 +4278,15 @@ class StructuredComparisonService:
             # drain it, then re-raise so the caller's error/cancel semantics
             # are unchanged.
             await _cleanup_orphan_price_task()
+            # Launch degradation fix (2026-07-06) — the hoisted specs task gets the
+            # same orphan drain so a pre-gather raise never strands an in-flight GPT
+            # specs call. No-op on the happy path / when include_specs is False.
+            if _specs_task is not None and not _specs_task.done():
+                _specs_task.cancel()
+                try:
+                    await _specs_task
+                except (asyncio.CancelledError, Exception):  # noqa: BLE001
+                    pass
             raise
         if stage_timings is not None:
             # phase1_wall_ms = gather wall (max of parallel tasks);
@@ -5003,6 +5196,16 @@ class StructuredComparisonService:
                 # page_scrape_jsonld BHD; ONE bounded K-capped literal source,
                 # per-source _timeout_none like every sibling).
                 ("noon", get_noon_sources_for_category(category), fetch_noon_price),
+                # Launch coverage fix (2026-07-06) — the orphaned Shopify-shaped
+                # gcc perfume-house rows (rasasistore/sa.ajmal/swissarabian/…)
+                # routed through fetch_shopify_price ($0/Serper-FREE). Same
+                # (domain, product_name, currency, resolved_category) call shape as
+                # every other adapter below, so the shared prefetch+consume machinery
+                # handles it with no special-casing: a gcc store yields converted_usd
+                # → parked (never a genuine short-circuit) → surfaces at tier-7.
+                # Empty (→ dropped by the `if srcs` filter) until the catalog loads
+                # under ENABLE_BH_GCC_CATALOG_SOURCES → byte-identical flag-OFF.
+                ("shopify_gcc", get_gcc_shopify_pagescrape_sources_for_category(category), fetch_shopify_price),
             )
             if srcs
         ]
