@@ -26,6 +26,9 @@ import { initializeSslPinning } from 'react-native-ssl-public-key-pinning';
 const LE_E7_INTERMEDIATE = 'y7xVm0TVJNahMr2sZydE2jQH8SquXV9yLF9seROHHHU=';
 const LE_E8_INTERMEDIATE = 'iFvwVyJSxnQdyaUvUERIf+8qk7gRze3612JMwoO3zdU=';
 const LE_E5_INTERMEDIATE = 'NYbU7PBwV4y9J67c4guWTki8FJ+uudrXL0a4V4aRcrg=';
+// 2026-07-06: Railway rotated to LE intermediate YE1 (E5/E7/E8 no longer in chain) -> app bricked with Network Error; added YE1 + ISRG Root X2 (stable root, survives future intermediate rotations)
+const LE_YE1_INTERMEDIATE = 'brzvtCELCIZUo4sD/qPX0ccRtPsd3DY6RfmxpOU9oB4=';
+const ISRG_ROOT_X2 = 'diGVwiVYbubAI3RW4hB9xU8e/CH2GnkuvVFZE8zmgzI=';
 
 let pinningInitialized = false;
 
@@ -37,9 +40,11 @@ export async function setupCertificatePinning(): Promise<void> {
       'web-production-58776.up.railway.app': {
         includeSubdomains: true,
         publicKeyHashes: [
-          LE_E7_INTERMEDIATE,  // Primary: Let's Encrypt E7 (current active issuer)
+          ISRG_ROOT_X2,        // Stable root: ISRG Root X2 (survives future LE intermediate rotations)
+          LE_YE1_INTERMEDIATE, // Primary: Let's Encrypt YE1 (current active issuer, issued by ISRG Root YE)
+          LE_E7_INTERMEDIATE,  // Backup: Let's Encrypt E7 (legacy — no longer in chain 2026-07-06)
           LE_E8_INTERMEDIATE,  // Backup: Let's Encrypt E8 (legacy / cross-signed)
-          LE_E5_INTERMEDIATE,  // Backup: Let's Encrypt E5
+          LE_E5_INTERMEDIATE,  // Backup: Let's Encrypt E5 (legacy — no longer in chain 2026-07-06)
         ],
       },
     });
