@@ -36,6 +36,7 @@ from typing import Any, Dict, List, Optional
 from curl_cffi import requests as curl_requests
 
 from app.services.price_service import (
+    normalize_candidate_brand,
     ENABLE_PAGE_SCRAPE,
     _convert_to_bhd,
     _infer_category_from_query,
@@ -155,9 +156,32 @@ def _match_woo_product(
         # field, so a FASHION query's brand must appear in the title). Flag
         # OFF — or the exact gate OFF, which makes _selection_match a no-op
         # True — restores the exact pre-change hard gate.
-        if (not strict_title_match(product_name, title)
+        # Brand-implied match (2026-07-07) — the WooCommerce Store API carries the
+        # product's OWN brand in the top-level `brands` array (brands[0].name) or,
+        # when that taxonomy is unused, in the `pa_brand` product attribute
+        # (terms[0].name). An own-brand store OMITS its brand from titles, so
+        # requiring the query brand word rejected the exact SKU; this lets the
+        # brand-omitted title pass while a WRONG-brand row keeps the query brand
+        # required (candidate_brand drops only the candidate's own tokens;
+        # _selection_match vets the SKU). Mirrors magento/occ; inert flag-OFF.
+        _cand_brand = ""
+        _brands = prod.get("brands")
+        if isinstance(_brands, list) and _brands:
+            _cand_brand = normalize_candidate_brand(_brands[0])
+        if not _cand_brand:
+            for _attr in (prod.get("attributes") or []):
+                if not isinstance(_attr, dict):
+                    continue
+                if (str(_attr.get("taxonomy") or "").strip().lower() == "pa_brand"
+                        or str(_attr.get("name") or "").strip().lower() == "brand"):
+                    _terms = _attr.get("terms")
+                    if isinstance(_terms, list) and _terms:
+                        _cand_brand = normalize_candidate_brand(_terms[0])
+                    break
+        if (not strict_title_match(product_name, title, candidate_brand=_cand_brand)
                 and not selection_primary_admits(
-                    product_name, title, category=_category)):
+                    product_name, title, candidate_brand=_cand_brand,
+                    category=_category)):
             continue
         if not numbers_match(product_name, title):
             continue
@@ -172,7 +196,8 @@ def _match_woo_product(
             continue
         # CORRECTNESS — identity + axis gate (S24->FE / EDP->EDT / 256->128 /
         # related-product leaks). No-op when the rollback flag is OFF.
-        if not _selection_match(product_name, title, _category):
+        if not _selection_match(product_name, title, _category,
+                                candidate_brand=_cand_brand):
             continue
 
         prices = prod.get("prices") or {}
