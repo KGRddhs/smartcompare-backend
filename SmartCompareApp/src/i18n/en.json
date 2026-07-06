@@ -807,6 +807,7 @@
   "editProfile.dangerZone": "Account actions",
   "editProfile.deleteAccount": "Delete account",
   "editProfile.error.deleteTitle": "Something didn't go through",
+  "editProfile.error.saveFailed": "Save didn't land. Tap to send it again.",
   "editprofile.email.appleLabel": "Apple ID",
   "editprofile.email.applePrivate": "Email kept private by Apple",
 

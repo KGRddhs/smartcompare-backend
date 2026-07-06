@@ -804,6 +804,7 @@
   "editProfile.dangerZone": "إجراءات الحساب",
   "editProfile.deleteAccount": "حذف الحساب",
   "editProfile.error.deleteTitle": "شيء لم يكتمل",
+  "editProfile.error.saveFailed": "لم يُحفظ بعد. اضغط لإعادة الإرسال.",
   "editprofile.email.appleLabel": "معرّف Apple",
   "editprofile.email.applePrivate": "البريد محمي بواسطة Apple",
 
