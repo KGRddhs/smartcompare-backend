@@ -104,10 +104,10 @@ def _run_compare(spy_holder):
     Returns (response, captured_scoring_result)."""
     svc = get_comparison_service()
 
-    async def fake_fetch(product_info, region, include_specs, include_reviews, nocache=False):
+    async def fake_fetch(product_info, region, include_specs, include_reviews, nocache=False, **kwargs):
         # Echo the category the orchestrator wrote onto the input dict — the
         # whole point of the fix. Pre-fix this is None/"other"; post-fix
-        # "fragrances".
+        # "fragrances". (**kwargs swallows the early-specs-stash partial_slot arg.)
         cat = product_info.get("category") or "other"
         brand = product_info.get("brand") or "Tom Ford"
         name = product_info.get("name") or product_info.get("search_query") or "Fragrance"
@@ -254,7 +254,7 @@ def test_explicit_pair_category_switched_surfaces_on_response_e2e():
     overrides a conflicting electronics chip."""
     svc = get_comparison_service()
 
-    async def fake_fetch(product_info, region, include_specs, include_reviews, nocache=False):
+    async def fake_fetch(product_info, region, include_specs, include_reviews, nocache=False, **kwargs):
         cat = product_info.get("category") or "other"
         name = product_info.get("name") or product_info.get("search_query") or "Fragrance"
         amount = 78.0 if "Sauvage" in str(name) else 64.0
