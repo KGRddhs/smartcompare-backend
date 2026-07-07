@@ -939,6 +939,42 @@ PREMIUM_FRAGRANCE_FULL_SIZE_FLOOR_BHD = 50.0
 # any labelled size is a scrape artifact, not a real perfume).
 _FRAGRANCE_MIN_FLOOR_BHD = 5.0
 
+# Budget Arabic/Gulf fragrance houses (Lattafa, Rasasi, Al Haramain, Ajmal,
+# Armaf, Swiss Arabian, ...). Their genuine full 100ml EDP retails for ~8-25 BHD
+# in Bahrain (alhajisbahrain/alibaksh/fragrancebh list Lattafa Khamrah 11-12,
+# Asad 8-9, Armaf Club de Nuit 14-15, Rasasi Hawas 14-17, Al Haramain Amber Oud
+# 22 — all in BHD). The 25/100ml DESIGNER floor (is_implausible_low_fragrance_
+# price) is calibrated for Western designer houses and WRONGLY pends these houses'
+# genuine cheap price — but ONLY on the display chokepoint for a TRUSTWORTHY
+# direct-adapter exact-PDP price (see _budget_house_trusted_price). The floor
+# STILL applies on the loose Serper-shopping path (where a wrong-cheap mislabel is
+# common), so this never lowers protection there. Tokens are unambiguous multi-
+# char house names (no generic/collision-prone token — e.g. NOT "my perfumes",
+# which substring-pollutes a "Chanel my perfumes" query).
+BUDGET_FRAGRANCE_BRAND_KEYWORDS = {
+    "lattafa", "rasasi", "al haramain", "ajmal", "asghar ali", "asgharali",
+    "armaf", "swiss arabian", "ard al zaafaran", "ardalzaafaran",
+    "maison alhambra", "afnan", "al wataniah", "khadlaj", "lattafa pride",
+    "paris corner", "fragrance world", "zimaya",
+}
+# The SAME budget houses ALSO sell genuinely-expensive concentrated lines (pure
+# dehn-al-oud / mukhallat / perfume-oil / attar, 40-150+ BHD). A wrong-cheap price
+# for one of THOSE must stay floored even from a direct adapter, so a title/name
+# carrying one of these line tokens is EXCLUDED from the budget-house trust (it
+# keeps the designer floor). Deliberately specific to the concentrated-OIL lines —
+# NOT bare "oud" (an "Amber Oud" EDP is a cheap mainstream spray, still trusted).
+_BUDGET_HOUSE_PREMIUM_LINE_TOKENS = {
+    # canonical + the common alternate transliterations these houses actually list
+    # (dahn/dehn/dhan; mukhallat/muhallat/mukhalat; attar/ittar). Deliberately NOT
+    # a bare "oud"/"oudh" token — that would over-floor the cheap mainstream "Amber
+    # Oud" EDP sprays (a hero SKU), and NOT a bare "itr" (collides with "citrus").
+    "dahn al", "dehn al", "dhan al", "dhen al", "dahn oud", "dehn oud", "dhan oud",
+    "dahnal", "dehnal", "dhanal", "dahn al oudh", "dehn al oudh", "dhan al oudh",
+    "mukhallat", "mukhallad", "mukhalat", "muhallat", "muhalat",
+    "oud oil", "oudh oil", "oud perfume oil", "perfume oil", "oil perfume",
+    "concentrated perfume", "concentrated oud", "attar", "ittar", "cpo",
+}
+
 
 def is_fragrance_query(product_name: str) -> bool:
     """True iff `product_name` is (almost certainly) a perfume — either a
@@ -1359,7 +1395,15 @@ def is_price_showable(
         price["title"] = title
     # Compose the shipped accuracy guards — a price that fails any is not
     # showable (the guards already encode the "no wrong scrapes" contract).
-    if is_implausible_low_fragrance_price(product_name, amount, title=title):
+    # EXCEPTION (budget Arabic-house coverage) — a genuine direct-adapter exact-PDP
+    # price for a budget house (Lattafa/Rasasi/Al Haramain/...) bypasses the
+    # designer low-price FLOOR: it is the store's authoritative listed price for the
+    # exact SKU, so the 25/100ml floor is a false positive there. The floor still
+    # runs on the loose Serper-shopping path (unaffected). Flag OFF / non-genuine /
+    # listing-URL / expensive-oil-line -> the floor applies unchanged.
+    if is_implausible_low_fragrance_price(product_name, amount, title=title) and not (
+        _budget_house_trusted_price(product_name, price, category)
+    ):
         return False
     # F1.2b — premium haircare wrong-cheap leak (K18 4.51 BHD).
     if is_implausible_low_haircare_price(product_name, amount):
@@ -3381,6 +3425,73 @@ def exact_gate_enabled() -> bool:
     return os.getenv("ENABLE_EXACT_PRICE_GATE", "true").strip().lower() not in (
         "false", "0", "no", "off", "",
     )
+
+
+def _budget_fragrance_floor_enabled() -> bool:
+    """True iff the BUDGET Arabic/Gulf-house fragrance floor is active (default ON).
+
+    When ON, is_implausible_low_fragrance_price applies a much lower price floor to
+    known budget houses (Lattafa/Rasasi/Al Haramain/Ajmal/Armaf/... — see
+    BUDGET_FRAGRANCE_BRAND_KEYWORDS) so their genuine cheap 8-25 BHD full bottles
+    are NOT suppressed as "implausibly low" by the 25/100ml designer floor. Read
+    FRESH per call so a flag flip takes effect without a restart. OFF -> the legacy
+    25/100ml designer floor applies to these houses too (byte-identical to before).
+    """
+    return os.getenv("ENABLE_BUDGET_FRAGRANCE_FLOOR", "true").strip().lower() not in (
+        "false", "0", "no", "off", "",
+    )
+
+
+def _budget_house_trusted_price(
+    product_name: str, price: Optional[Dict[str, Any]], category: Optional[str] = None
+) -> bool:
+    """True iff `price` is a TRUSTWORTHY genuine budget-Arabic-house price for which
+    the fragrance low-price FLOOR is a false positive (so the display chokepoint may
+    bypass it).
+
+    The low-price floor (is_implausible_low_fragrance_price) is a heuristic for the
+    LOOSE Serper-shopping path — it drops a wrong-cheap mislabel that slipped past
+    matching. But a budget house (Lattafa/Rasasi/Al Haramain/Ajmal/...) genuinely
+    retails a full 100ml EDP for 8-25 BHD, and when the price comes from a DIRECT
+    store adapter (woo/shopify/…) that already exact-matched the SKU and carries a
+    real PDP URL, the store's listed price IS authoritative — the 25/100ml designer
+    floor then WRONGLY pends it (Lattafa Khamrah 12 BHD, even from the wired
+    alhajisbahrain source). This bypass is applied ONLY at the display chokepoint;
+    the floor STILL runs on the loose Serper-shopping extract, so wrong-cheap
+    mislabels there are unaffected.
+
+    Guards keep it tight: flag-gated (OFF -> always False -> the floor applies,
+    byte-identical); requires a GENUINE native-BHD source_method (never estimated/
+    converted) AND a real non-listing PDP URL AND a budget-house brand token; and
+    EXCLUDES the houses' genuinely-expensive concentrated dehn-al-oud/mukhallat/
+    attar OIL lines (_BUDGET_HOUSE_PREMIUM_LINE_TOKENS keep the floor, so a wrong-
+    cheap oil scrape is still caught)."""
+    if not _budget_fragrance_floor_enabled():
+        return False
+    if not isinstance(price, dict):
+        return False
+    # ABSOLUTE artifact floor — the bypass lowers the fragrance floor from the 25/
+    # 100ml designer floor to this sanity bound, NEVER to 0. A trusted budget price
+    # must still clear _FRAGRANCE_MIN_FLOOR_BHD (5 BHD): a budget house genuinely
+    # retails 8+ BHD, so a sub-5 amount is a scrape/parse artifact (a mis-parsed
+    # fils/decimal — the exact-gate validates IDENTITY, not the amount), which must
+    # stay pended even for a correctly-titled exact SKU.
+    amount = price.get("amount")
+    if not isinstance(amount, (int, float)) or amount < _FRAGRANCE_MIN_FLOOR_BHD:
+        return False
+    name_lower = (product_name or "").lower()
+    if not any(b in name_lower for b in BUDGET_FRAGRANCE_BRAND_KEYWORDS):
+        return False
+    # An expensive concentrated-oil line keeps the floor (belt-and-suspenders).
+    hay = name_lower + " " + str(price.get("title") or price.get("name") or "").lower()
+    if any(tok in hay for tok in _BUDGET_HOUSE_PREMIUM_LINE_TOKENS):
+        return False
+    if (price.get("source_method") or "") not in _GENUINE_BH_SOURCE_METHODS:
+        return False
+    url = price.get("url")
+    if not (isinstance(url, str) and url.strip()) or _is_listing_url(url):
+        return False
+    return True
 
 
 def frag_reconcile_fix_enabled() -> bool:
