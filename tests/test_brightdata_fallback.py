@@ -115,6 +115,18 @@ class TestBdSearchWeb:
         out = await bd.bd_search_web("iphone 15")
         assert out["organic"] == []
 
+    async def test_non_json_response_self_diagnoses_returns_empty(self, monkeypatch):
+        """A 200 with a NON-JSON body (e.g. raw HTML if brd_json is off) must not
+        crash — resp.json() raises, _bd_post logs + returns None, fallback is empty."""
+        resp = MagicMock(); resp.status_code = 200
+        resp.json = MagicMock(side_effect=ValueError("no json")); resp.text = "<html>...</html>"
+        client = MagicMock(); client.post = AsyncMock(return_value=resp)
+        cm = MagicMock(); cm.__aenter__ = AsyncMock(return_value=client); cm.__aexit__ = AsyncMock(return_value=False)
+        monkeypatch.setattr(bd.httpx, "AsyncClient", lambda *a, **k: cm)
+        monkeypatch.setenv("BRIGHTDATA_API_KEY", "tok"); monkeypatch.setenv("BRIGHTDATA_ZONE", "serp_api1")
+        out = await bd.bd_search_web("iphone 15")
+        assert out["organic"] == []
+
     async def test_no_creds_returns_none_shape(self, monkeypatch):
         monkeypatch.delenv("BRIGHTDATA_API_KEY", raising=False)
         monkeypatch.delenv("BRIGHTDATA_ZONE", raising=False)
