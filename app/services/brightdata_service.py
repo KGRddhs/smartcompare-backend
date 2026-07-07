@@ -83,10 +83,36 @@ async def _bd_post(query: str, *, country: str, num: int, shopping: bool) -> Opt
                 json=payload,
             )
         if resp.status_code != 200:
-            logger.warning("[brightdata] HTTP %s for %r", resp.status_code, query[:60])
+            logger.warning(
+                "[brightdata] HTTP %s for %r: %s", resp.status_code, query[:60],
+                (resp.text or "")[:200],
+            )
             return None
-        # format:raw returns the brd_json body directly as JSON text.
-        return resp.json()
+        # format:raw + brd_json=1 returns the PARSED Google SERP as JSON text.
+        try:
+            parsed = resp.json()
+        except Exception:  # noqa: BLE001 — non-JSON (e.g. raw HTML) — self-diagnose
+            # SELF-VALIDATION (2026-07-07) — I could not live-test the response from
+            # the build machine (api.brightdata.com is TLS-blocked there). If brd_json
+            # did NOT yield JSON, log the first 300 chars so the FIRST prod call reveals
+            # whether the zone returns HTML (→ needs data_format:json) instead of a
+            # silent empty fallback.
+            logger.warning(
+                "[brightdata] non-JSON response for %r (brd_json may be off / zone "
+                "returns HTML) — first 300 chars: %s", query[:60], (resp.text or "")[:300],
+            )
+            return None
+        # First-call schema visibility — log the parsed top-level shape at INFO so the
+        # mapper can be validated/tightened from prod logs without a debug flag.
+        if isinstance(parsed, dict):
+            _org = parsed.get("organic")
+            logger.info(
+                "[brightdata] parsed OK for %r: top-keys=%s organic=%s org0_keys=%s",
+                query[:40], list(parsed.keys())[:12],
+                (len(_org) if isinstance(_org, list) else type(_org).__name__),
+                (list(_org[0].keys()) if isinstance(_org, list) and _org and isinstance(_org[0], dict) else None),
+            )
+        return parsed
     except Exception as e:  # noqa: BLE001 — fallback must never break the compare
         logger.warning("[brightdata] request failed for %r: %s", query[:60], e)
         return None
