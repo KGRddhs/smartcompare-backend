@@ -123,8 +123,13 @@ def _mark_serper_key_exhausted(key: str) -> None:
         )
 
 
-def _active_serper_key() -> Optional[str]:
+def _active_serper_key(exclude: Optional[set] = None) -> Optional[str]:
     """The active Serper key.
+
+    (exclude: keys to skip for THIS selection — used by the fail-fast rotation
+    loop to advance past a key that just timed out WITHOUT persistently marking it
+    credit-exhausted. Defaults None -> byte-identical to the pre-fail-fast
+    selection.)
 
     SINGLE-KEY INERT (the common prod case: only SERPER_API_KEY set, no
     SERPER_API_KEYS): with 0 or 1 resolved keys there is NO exhaustion machinery
@@ -140,6 +145,8 @@ def _active_serper_key() -> Optional[str]:
     if len(keys) <= 1:
         return keys[0] if keys else None
     for key in keys:
+        if exclude and key in exclude:
+            continue
         if not _is_serper_key_exhausted(key):
             return key
     return None
@@ -167,6 +174,58 @@ def _response_signals_exhaustion(status_code: Optional[int], body_text: str) -> 
     ):
         return True
     return False
+
+
+# ============================================
+# FAIL-FAST SERPER TIMEOUT (ENABLE_SERPER_FAIL_FAST — opt-in, default OFF)
+# ============================================
+# The multi-key rotation loop below can stack N x the per-call timeout (3 keys x
+# 15s = 45s) when free keys respond SLOWLY (throttled depletion-400s), starving
+# the Serper-free genuine-BH adapter fan-out inside the price race. Opt-in
+# fail-fast: a tighter connect/read budget + an overall rotation deadline +
+# rotate-on-timeout so a slow key fails fast. Flag OFF -> the timeout stays 15.0
+# and the loop is byte-identical (no deadline, no timeout-catch, no clock read).
+import time as _time
+
+
+def _serper_fail_fast_enabled() -> bool:
+    """Fail-closed flag mirror (same truthy set as the other crons/flags)."""
+    return os.getenv("ENABLE_SERPER_FAIL_FAST", "").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
+def _serper_float_env(name: str, default: float) -> float:
+    try:
+        return float(os.getenv(name, str(default)))
+    except (TypeError, ValueError):
+        return default
+
+
+def _serper_timeout():
+    """httpx timeout for Serper calls. Flag OFF -> 15.0 (byte-identical to the
+    pre-fail-fast literal). Flag ON -> a split connect/read budget (conservative
+    canary defaults 3s connect / 10s read, env-tunable via SERPER_CONNECT_TIMEOUT
+    / SERPER_READ_TIMEOUT) so a throttled key aborts fast instead of burning the
+    full 15s. Keep SERPER_ROTATION_DEADLINE > SERPER_READ_TIMEOUT so a multi-key
+    run still gets >=2 attempts."""
+    if not _serper_fail_fast_enabled():
+        return 15.0
+    read = _serper_float_env("SERPER_READ_TIMEOUT", 10.0)
+    connect = _serper_float_env("SERPER_CONNECT_TIMEOUT", 3.0)
+    return httpx.Timeout(read, connect=connect)
+
+
+def _serper_rotation_deadline() -> float:
+    """Overall wall-clock budget (seconds) for the whole multi-key rotation loop,
+    so N slow keys cannot stack to N x the per-call timeout. Conservative canary
+    default 14s (> the 10s read default -> multi-key gets >=2 attempts). Env-tunable."""
+    return _serper_float_env("SERPER_ROTATION_DEADLINE", 14.0)
+
+
+def _serper_now() -> float:
+    """Monotonic clock read (indirected so the rotation deadline is testable)."""
+    return _time.monotonic()
 
 
 async def _serper_post(client, path: str, payload: Dict[str, Any]):
@@ -208,21 +267,49 @@ async def _serper_post(client, path: str, payload: Dict[str, Any]):
     attempts = 0
     max_attempts = max(1, len(keys))
     last_response = None
+    # Fail-fast (opt-in) — bound the loop's wall-clock + rotate on a per-call
+    # timeout. Flag OFF: fail_fast=False makes every branch below inert, so the
+    # loop is byte-identical to the pre-fail-fast version (deadline never checked,
+    # a timeout re-raises exactly as an un-caught one would, clock never read).
+    fail_fast = _serper_fail_fast_enabled()
+    deadline = _serper_rotation_deadline() if fail_fast else 0.0
+    start = _serper_now() if fail_fast else 0.0
+    last_timeout_exc: Optional[Exception] = None
+    timed_out: set = set()  # keys that timed out THIS call (fail-fast local skip)
     while attempts < max_attempts:
-        key = _active_serper_key()
+        # Overall deadline — stop rotating once the wall-clock budget is spent so
+        # N slow keys can't stack to N x the per-call timeout.
+        if fail_fast and (_serper_now() - start) >= deadline:
+            break
+        # exclude=timed_out advances past a key that timed out earlier in THIS
+        # call; the set stays empty when the flag is off (byte-identical).
+        key = _active_serper_key(exclude=timed_out)
         if not key:
             # All keys exhausted mid-loop — return the last response (if any) so
             # the caller's existing handling degrades gracefully.
             break
         attempts += 1
-        response = await client.post(
-            f"{SERPER_BASE_URL}{path}",
-            headers={
-                "X-API-KEY": key,
-                "Content-Type": "application/json",
-            },
-            json=payload,
-        )
+        try:
+            response = await client.post(
+                f"{SERPER_BASE_URL}{path}",
+                headers={
+                    "X-API-KEY": key,
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+            )
+        except httpx.TimeoutException as exc:
+            # Flag OFF -> re-raise immediately (byte-identical: the timeout
+            # propagates to the caller exactly as before). Flag ON -> a per-call
+            # timeout ROTATES to the next key (a timeout is NOT a depletion
+            # signal, so the key is NOT marked exhausted — a transiently-slow key
+            # may be healthy). If every attempt times out, the last one is
+            # re-raised below so the caller's except-path fires as before.
+            if not fail_fast:
+                raise
+            last_timeout_exc = exc
+            timed_out.add(key)  # skip this key for the rest of THIS call
+            continue
         last_response = response
         # Inspect for credit exhaustion. Reading .text on a MagicMock is cheap;
         # on a real httpx.Response it is the already-buffered body.
@@ -236,6 +323,11 @@ async def _serper_post(client, path: str, payload: Dict[str, Any]):
             _mark_serper_key_exhausted(key)
             continue  # rotate to the next non-exhausted key
         return response
+    # Fail-fast: every attempt timed out (no non-timeout response landed) —
+    # re-raise the last timeout so the caller degrades / falls back to Bright
+    # Data exactly as the pre-fail-fast timeout-propagation did.
+    if fail_fast and last_response is None and last_timeout_exc is not None:
+        raise last_timeout_exc
     return last_response
 
 
@@ -305,7 +397,7 @@ async def search_web(
         return {"organic": [], "error": "Search not configured"}
 
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
+        async with httpx.AsyncClient(timeout=_serper_timeout()) as client:
             response = await _serper_post(
                 client,
                 "/search",
@@ -380,7 +472,7 @@ async def _do_serper_shopping(product: str, gl: str) -> Dict[str, Any]:
     parsed JSON or {} on error. No retry, no fallback — fallback logic
     lives in the caller (search_product_prices)."""
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
+        async with httpx.AsyncClient(timeout=_serper_timeout()) as client:
             shopping_response = await _serper_post(
                 client,
                 "/shopping",
@@ -555,7 +647,7 @@ async def search_price_organic(
     search_query = f"{product} {location_term}"
 
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
+        async with httpx.AsyncClient(timeout=_serper_timeout()) as client:
             response = await _serper_post(
                 client,
                 "/search",
@@ -647,7 +739,7 @@ async def search_videos(
         return {"videos": [], "error": "Search not configured"}
 
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
+        async with httpx.AsyncClient(timeout=_serper_timeout()) as client:
             response = await _serper_post(
                 client,
                 "/videos",
@@ -674,7 +766,7 @@ async def search_images(
         return {"images": [], "error": "Search not configured"}
 
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
+        async with httpx.AsyncClient(timeout=_serper_timeout()) as client:
             response = await _serper_post(
                 client,
                 "/images",
@@ -710,7 +802,7 @@ async def search_news(
         return {"news": [], "error": "Search not configured"}
 
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
+        async with httpx.AsyncClient(timeout=_serper_timeout()) as client:
             response = await _serper_post(
                 client,
                 "/news",
