@@ -72,6 +72,53 @@ def test_warm_one_never_raises(monkeypatch):
     assert out == {"genuine": 0, "converted": 0, "estimated": 0, "none": 0}
 
 
+def test_warm_one_logs_guard_rejected(monkeypatch, caplog):
+    """Observability (warmer-only): when the response pends prices, `_warm_one`
+    surfaces the correctness-gate reasons (metadata.guard_rejected) in the log so
+    a `none`-heavy run is diagnosable — WITHOUT changing the tally return contract."""
+    import logging
+
+    class _Svc:
+        async def compare_from_text(self, query, region="bahrain", nocache=True):
+            return {
+                "products": [
+                    {"name": "A", "price": {"amount": 21.5, "source_method": "page_scrape_jsonld"}},
+                    {"name": "B", "price": {"amount": None, "source_method": None}},
+                ],
+                "metadata": {"guard_rejected": [
+                    {"product_index": 1, "reason": "not_exact:concentration"},
+                    {"product_index": 1, "reason": "out_of_stock"},
+                ]},
+            }
+
+    import app.services.structured_comparison_service as scs
+    monkeypatch.setattr(scs, "get_comparison_service", lambda: _Svc())
+    caplog.set_level(logging.INFO)
+    out = asyncio.run(warmer._warm_one({"query": "A vs B"}))
+    # return contract preserved (tests + main() depend on the exact 4-key dict)
+    assert out == {"genuine": 1, "converted": 0, "estimated": 0, "none": 1}
+    # the guard reasons are surfaced for diagnosis
+    msgs = [r.getMessage() for r in caplog.records]
+    assert any("guard_rejected" in m and "not_exact:concentration" in m for m in msgs), msgs
+
+
+def test_warm_one_no_guard_log_when_none_rejected(monkeypatch, caplog):
+    """No metadata.guard_rejected -> no guard log line (clean runs stay quiet)."""
+    import logging
+
+    class _Svc:
+        async def compare_from_text(self, query, region="bahrain", nocache=True):
+            return {"products": [
+                {"name": "A", "price": {"amount": 21.5, "source_method": "page_scrape_jsonld"}},
+            ]}
+
+    import app.services.structured_comparison_service as scs
+    monkeypatch.setattr(scs, "get_comparison_service", lambda: _Svc())
+    caplog.set_level(logging.INFO)
+    asyncio.run(warmer._warm_one({"query": "A vs B"}))
+    assert not any("guard_rejected" in r.getMessage() for r in caplog.records)
+
+
 def test_rotation_window_bounds_and_wraps(monkeypatch):
     monkeypatch.setattr("app.services.cache_service.redis_client", None, raising=False)
     queries = [{"id": str(i), "query": str(i)} for i in range(5)]

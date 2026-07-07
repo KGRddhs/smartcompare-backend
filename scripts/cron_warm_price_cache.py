@@ -239,6 +239,19 @@ async def _warm_one(record: Dict[str, Any]) -> Dict[str, int]:
                 tally["estimated"] += 1
             else:
                 tally["none"] += 1
+        # Observability (warmer-only) — surface WHY prices pended so a `none`-heavy
+        # run is diagnosable (not_exact / out_of_stock / non_pdp_url / accessory)
+        # without a code dive. Reads the response's metadata.guard_rejected diag
+        # (response_builder B7). Never affects the tally or the price path.
+        guards = (r.get("metadata") or {}).get("guard_rejected") or []
+        if guards:
+            # guard_rejected is a list of {product_index, reason} dicts
+            # (response_builder B7); log the reason strings (defensive vs a bare
+            # string shape) so the WHY of each pend is grep-able in the run log.
+            reasons = [g.get("reason") if isinstance(g, dict) else g for g in guards]
+            logger.info(
+                "[cron_warm] %r guard_rejected=%s", record.get("query"), reasons
+            )
     except Exception as exc:  # noqa: BLE001 — one bad query must not kill the run
         logger.warning("[cron_warm] warm failed for %r: %s", record.get("query"), exc)
     return tally
