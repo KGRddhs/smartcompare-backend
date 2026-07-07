@@ -1735,6 +1735,18 @@ def reconcile_pair_sizes(
     if not (isinstance(amt1, (int, float)) and amt1 > 0):
         return False
 
+    # Fairness fix (2026-07-07) — an ESTIMATE is not a comparable DISPLAYED price
+    # (the chokepoint suppresses it) and has no real size basis, so the flagship
+    # 100ml default wrongly made a sizeless estimate 'reach the target' and PEND
+    # the pair's genuine, showable price (Ajmal Aristocrat 21.5 pended because
+    # Rasasi only estimated). Treat an estimate side as non-comparable → no-op → the
+    # genuine price stays; the estimate suppresses to pending at display. Flag-gated
+    # (default ON) → flag-OFF byte-identical (the prior pend-the-genuine behavior).
+    if _fairness_ignore_estimate_enabled() and (
+        _is_estimate_price(price0) or _is_estimate_price(price1)
+    ):
+        return False
+
     # An EXPLICIT user size is authoritative; otherwise the only shared target is
     # the designer-fragrance flagship default.
     user_size = None
@@ -2663,6 +2675,14 @@ def reconcile_pair_fairness(
     if not (isinstance(amt1, (int, float)) and amt1 > 0):
         return False
 
+    # Fairness fix (2026-07-07) — mirror of the reconcile_pair_sizes guard for the
+    # NON-fragrance categories: an estimate side is not a comparable displayed price,
+    # so it must not pend the pair's genuine, showable price. Flag-OFF byte-identical.
+    if _fairness_ignore_estimate_enabled() and (
+        _is_estimate_price(price0) or _is_estimate_price(price1)
+    ):
+        return False
+
     extract = spec["extract"]
     candidates_by_name = candidates_by_name or {}
 
@@ -3382,6 +3402,31 @@ def frag_reconcile_fix_enabled() -> bool:
     return os.getenv("ENABLE_FRAGRANCE_SIZE_RECONCILE_FIX", "false").strip().lower() in (
         "true", "1", "yes", "on",
     )
+
+
+def _fairness_ignore_estimate_enabled() -> bool:
+    """True iff pair-fairness ignores an ESTIMATE side (default ON).
+
+    An estimate is not a comparable DISPLAYED price (the chokepoint suppresses it)
+    and carries no real size/unit basis, so it must not participate in the
+    fairness reconcile — otherwise a sizeless estimate assigned the flagship-100ml
+    default wrongly 'reaches the target' and PENDS the pair's genuine, showable
+    price (observed: Ajmal Aristocrat 21.5 genuine pended because Rasasi only
+    estimated). Read FRESH per call. Flag-OFF -> the prior pend-the-genuine
+    behavior (byte-identical rollback)."""
+    return os.getenv("ENABLE_FAIRNESS_IGNORE_ESTIMATE", "true").strip().lower() not in (
+        "false", "0", "no", "off", "",
+    )
+
+
+def _is_estimate_price(price: Any) -> bool:
+    """True iff `price` is a GPT training-data ESTIMATE (not a cited/scraped
+    price). Estimates are suppressed at the display chokepoint, so for the
+    DISPLAYED pair-comparison they are effectively absent. Converted_usd is a real
+    cited price (shown with the honesty caption) → NOT an estimate."""
+    if not isinstance(price, dict):
+        return False
+    return bool(price.get("estimated")) or (price.get("source_method") == "estimated")
 
 
 def _fold_identity(s: str) -> str:
