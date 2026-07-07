@@ -4142,24 +4142,57 @@ _FRAGRANCE_PADDING_TOKENS = frozenset({
 # Gender CONTRADICTION axis — a fragrance is the WRONG product only when the query and
 # the candidate state OPPOSITE genders (Eros Pour Homme vs Eros Pour Femme). A one-sided
 # gender (query states it, candidate omits, or vice versa) is the canonical single-gender
-# title and must NOT reject (the dominant genuine case). Markers are unambiguous gender
-# words only — "her"/"him"/"ladies"/"gents" are excluded (a brand/name like Burberry
-# "Her" must not read as a gender).
+# title and must NOT reject (the dominant genuine case). These base sets hold the
+# unambiguous STRICT gender words — they feed BOTH the contradiction axis AND the
+# femme-asymmetry / identity logic, so the flanker pronouns "him"/"her" are NOT added here
+# (that would extend the asymmetry to a "For Her" query and collapse "Woman" vs "Her").
+# him/her feed ONLY the contradiction axis, via _pronoun_gender_of + _vd_gender_mismatch.
+# "ladies"/"gents" remain excluded.
 _GENDER_MEN_TOKENS = frozenset({"homme", "hommes", "men", "man", "mens", "uomo", "herren"})
 _GENDER_WOMEN_TOKENS = frozenset({"femme", "femmes", "women", "woman", "womens", "donna", "damen"})
 # Gender markers are STRIPPED from the identity token set (like the concentration
 # phrase) for fragrance/beauty, so the subset/flanker checks ignore a one-sided
 # "Pour Homme"; the _gender_mismatch CONTRADICTION axis does the real discrimination.
-# "her"/"him" are deliberately NOT here (a name like Burberry "Her"/"Him" must stay
-# a distinctive identity token).
+# "him"/"her" are NOT in the strict gender sets and NOT stripped from identity here — they
+# feed ONLY the contradiction axis via _pronoun_gender_of (flag-gated), so a name like
+# Burberry "Her"/"Him" keeps its distinctive-token behaviour AND the femme-asymmetry is
+# unchanged (no "For Her"-query over-rejection, no "Woman" vs "Her" collapse).
 _GENDER_IDENTITY_STRIP = _GENDER_MEN_TOKENS | _GENDER_WOMEN_TOKENS | frozenset({"pour"})
 
 
 def _gender_of(text: str) -> Optional[str]:
-    """'men' / 'women' / None (none or BOTH → ambiguous/unisex) for `text`."""
+    """'men' / 'women' / None (none or BOTH → ambiguous/unisex) for `text`, from the
+    STRICT gender words only. This is the general gender axis — it feeds the
+    femme-asymmetry (_vd_feminine_query_unconfirmed) and the empty-core/identity logic, so
+    it must NOT include the flanker pronouns him/her: doing so would over-reject a "For Her"
+    query vs its gender-omitting base AND collapse "Woman" vs "Her". Pronoun contradiction
+    is handled SEPARATELY by _pronoun_gender_of + _vd_gender_mismatch."""
     toks = set(re.findall(r"[a-z0-9]+", _fold_identity(text or "")))
     m = bool(toks & _GENDER_MEN_TOKENS)
     w = bool(toks & _GENDER_WOMEN_TOKENS)
+    if m and not w:
+        return "men"
+    if w and not m:
+        return "women"
+    return None
+
+
+def _pronoun_gender_of(text: str) -> Optional[str]:
+    """Flanker-pronoun gender for the CONTRADICTION axis ONLY: 'men' for a bare "him",
+    'women' for a bare "her" (both/neither → None). Gated behind
+    variant_descriptor_axes_enabled() so it is inert (None) flag-OFF → byte-identical.
+
+    DECOUPLED from _gender_of on purpose: him/her feed ONLY _vd_gender_mismatch (so
+    "Burberry Her" vs "Burberry Him" is rejected as a gender contradiction), NOT the
+    femme-asymmetry nor the identity/empty-core collapse — so a one-sided "X For Her" query
+    still tolerates its gender-omitting base and "X Woman" vs "X Her" stays rejected by the
+    STRICT asymmetry (no new over-rejection, no new empty-core leak). Tokenized on WORD
+    boundaries (_fold_identity + [a-z0-9]+), so "Cher"/"Hermes"/"his"/"hers" never trigger."""
+    if not variant_descriptor_axes_enabled():
+        return None
+    toks = set(re.findall(r"[a-z0-9]+", _fold_identity(text or "")))
+    m = "him" in toks
+    w = "her" in toks
     if m and not w:
         return "men"
     if w and not m:
@@ -5752,7 +5785,8 @@ class VariantDescriptor:
     qualifiers: FrozenSet[str]           # _quals_in vs the category's variant qualifiers
     plus_stems: FrozenSet[str]           # _plus_stems (symbol + spelled '+' variants)
     # --- categorical axes ---
-    gender: Optional[str]                # _gender_of ('men'/'women'/None=unisex-or-unstated)
+    gender: Optional[str]                # _gender_of ('men'/'women'/None) STRICT — asymmetry + identity
+    gender_pronoun: Optional[str]        # _pronoun_gender_of (him/her; contradiction axis ONLY; flag-gated, None flag-OFF)
     form: Optional[str]                  # _extract_product_form (brand-stripped)
     flavours: FrozenSet[str]             # fold tokens & _FLAVOUR_TOKENS
     finishes: FrozenSet[str]             # fold tokens & _MAKEUP_FINISH_TOKENS
@@ -5905,6 +5939,7 @@ def _build_variant_descriptor(text: str, category: Optional[str],
         qualifiers=frozenset(_quals_in(capped, quals_set)) if quals_set else frozenset(),
         plus_stems=frozenset(_plus_stems(capped)),
         gender=_gender_of(capped),
+        gender_pronoun=_pronoun_gender_of(capped),
         form=_extract_product_form(capped, brand),
         flavours=fold_tokens & _FLAVOUR_TOKENS,
         finishes=fold_tokens & _MAKEUP_FINISH_TOKENS,
@@ -6220,8 +6255,20 @@ def _vd_category_type_added(q: VariantDescriptor, c: VariantDescriptor, cat: str
 
 
 def _vd_gender_mismatch(q: VariantDescriptor, c: VariantDescriptor) -> bool:
-    """Gender CONTRADICTION (_gender_mismatch): both stated and conflicting."""
-    return bool(q.gender and c.gender and q.gender != c.gender)
+    """Gender CONTRADICTION (_gender_mismatch): both stated and conflicting. Combines the
+    STRICT gender with the flag-gated flanker-pronoun gender (him/her) so "Her" vs "Him"
+    rejects — WITHOUT the pronoun leaking into the femme-asymmetry, which reads q.gender/
+    c.gender STRICT. gender_pronoun is None flag-OFF → byte-identical to the strict check."""
+    def _combined(d: VariantDescriptor) -> Optional[str]:
+        men = d.gender == "men" or d.gender_pronoun == "men"
+        women = d.gender == "women" or d.gender_pronoun == "women"
+        if men and not women:
+            return "men"
+        if women and not men:
+            return "women"
+        return None
+    qg, cg = _combined(q), _combined(c)
+    return bool(qg and cg and qg != cg)
 
 
 def _vd_feminine_query_unconfirmed(q: VariantDescriptor, c: VariantDescriptor) -> bool:
