@@ -9423,7 +9423,11 @@ async def fetch_page_price(
         return None
 
     domain = urlparse(url).netloc.replace("www.", "")
-    html = await curl_fetch_html(url)
+    # SSRF hardening (scraping audit 2026-07-08) — a Serper-discovered storefront
+    # URL is externally-influenced, so validate the initial URL AND every redirect
+    # hop (block private/loopback/link-local/metadata) and pin to the source host
+    # via the same-site helper, instead of the unvalidated curl_fetch_html.
+    html = await curl_fetch_html_same_site(url, domain)
     if html:
         price = extract_price_from_html(html, product_name, currency, domain, url)
         if price:
