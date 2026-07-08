@@ -263,10 +263,13 @@ class TestRS7SharedConsumerFence:
 
     def test_cache_gate_electronics_brand_omitted_unaffected(self):
         # (b) applies to FASHION only — the B4 electronics brand-omitted
-        # unlock is untouched at the shared consumers too
+        # unlock is untouched at the shared consumers too. amount clears the high-value
+        # plausibility floor: should_cache_price now enforces the SAME accuracy guards as
+        # is_price_showable (audit 2026-07-08), so the placeholder 45-BHD iPad would be
+        # (correctly) refused as an implausibly-low mis-scrape. Use a real price.
         assert should_cache_price(
             "Apple iPad Air 11-inch M3 128GB",
-            _pdp_price("iPad Air 11-inch M3 Wi-Fi 128GB Space Grey"),
+            _pdp_price("iPad Air 11-inch M3 Wi-Fi 128GB Space Grey", amount=250),
             "electronics") is True
 
 
