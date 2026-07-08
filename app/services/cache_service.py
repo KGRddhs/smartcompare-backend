@@ -536,6 +536,21 @@ def set_cached(key: str, value: Dict[str, Any], ttl: int = 86400) -> bool:
         return False
 
 
+def _redis_offload_enabled() -> bool:
+    """Scraping audit 2026-07-08 — gate offloading the SYNC Upstash REST round-trip off the
+    asyncio event loop. The module-level `redis_client` is a BLOCKING (httpx.Client) client,
+    so every get_cached from an async orchestrator method stalls the single worker loop for the
+    full Upstash RTT (~6-8 guaranteed per warm compare, ~12-20 cold). Read per-call (env flip,
+    no restart). Default OFF -> the caller's dispatch runs the sync call INLINE -> byte-identical.
+
+    Shared flag helper only; the offload DISPATCH lives in the calling module (scs._cache_get_async)
+    so a test that patches the CALLER's imported `get_cached` still intercepts both branches — a
+    wrapper here would call cache_service.get_cached directly and silently bypass those patches."""
+    return os.getenv("ENABLE_ASYNC_REDIS_OFFLOAD", "").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
 def delete_cached(key: str) -> bool:
     """Delete a key from cache."""
     if not redis_client:

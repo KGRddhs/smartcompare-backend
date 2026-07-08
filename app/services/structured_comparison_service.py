@@ -41,6 +41,7 @@ from app.services.database_service import get_user_demographics
 from app.services.serper_service import search_product_prices, search_price_organic, search_web
 from app.services.cache_service import (
     get_cached,
+    _redis_offload_enabled,
     set_cached,
     record_tier15_attempt,
     record_tier15_hit,
@@ -715,6 +716,23 @@ def _price_cache_bust_enabled() -> bool:
     (unset/false) in normal operation — this is evidence-gathering, not runtime.
     """
     return os.environ.get("PRICE_CACHE_BUST", "false").lower() == "true"
+
+
+async def _cache_get_async(key: str):
+    """Scraping audit 2026-07-08 (PR1) — offload the BLOCKING Upstash REST GET off the
+    single asyncio event loop when ENABLE_ASYNC_REDIS_OFFLOAD is on, so a warm compare's
+    ~6-8 guaranteed cache reads don't head-of-line-stall every other concurrent request.
+
+    Dispatch lives HERE (not in cache_service) and references the module-level `get_cached`
+    in BOTH branches, so a test that patches `structured_comparison_service.get_cached` still
+    intercepts it. Flag OFF -> `return get_cached(key)` runs synchronously to completion with
+    NO scheduler yield -> byte-identical to the pre-change direct call (same value, ordering,
+    fail-open). Flag ON -> asyncio.to_thread runs the identical sync command in the default
+    executor (the same idiom the scraper adapters already use); the sync `redis_client`
+    (pooled httpx.Client) is thread-safe and each Upstash command is a stateless POST."""
+    if _redis_offload_enabled():
+        return await asyncio.to_thread(get_cached, key)
+    return get_cached(key)
 
 
 # Wave-2 B1.1b (chokepoint R8b) — a module-level counter of cache-read identity
@@ -4179,8 +4197,8 @@ class StructuredComparisonService:
             if include_specs or include_reviews:
                 specs_key = get_specs_cache_key(brand, name, variant)
                 reviews_key = get_reviews_cache_key(brand, name, variant)
-                specs_hit = get_cached(specs_key) if not nocache else None
-                reviews_hit = get_cached(reviews_key) if not nocache else None
+                specs_hit = (await _cache_get_async(specs_key)) if not nocache else None
+                reviews_hit = (await _cache_get_async(reviews_key)) if not nocache else None
                 if (include_specs and not specs_hit) or (include_reviews and not reviews_hit):
                     t0 = time.perf_counter() if stage_timings is not None else None
                     unified_search = await search_web(
@@ -4658,7 +4676,7 @@ class StructuredComparisonService:
     ) -> Dict[str, Any]:
         """Get specs with caching (L1: Redis, L2: DB)."""
         cache_key = get_specs_cache_key(brand, name, variant)
-        cached = get_cached(cache_key) if not nocache else None
+        cached = (await _cache_get_async(cache_key)) if not nocache else None
         if cached:
             cached["_cached"] = True
             return cached
@@ -4875,7 +4893,7 @@ class StructuredComparisonService:
         # the routing escalation re-runs deterministically (specs/reviews stay
         # warm — they gate on `nocache` in _fetch_product_data, not this flag).
         price_nocache = nocache or _price_cache_bust_enabled()
-        cached = get_cached(cache_key) if not price_nocache else None
+        cached = (await _cache_get_async(cache_key)) if not price_nocache else None
         if cached and not _cache_price_identity_ok(cached, brand, name, category):
             logger.info("[PRICE] cache-read identity revalidation dropped a poisoned "
                         "entry for %s %s — re-resolving", brand, name)
