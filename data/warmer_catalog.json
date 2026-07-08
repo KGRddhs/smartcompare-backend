@@ -137,6 +137,63 @@
       "category": "grocery",
       "region": "bahrain",
       "note": "A2 (2026-06-15). Premium dates/gourmet — genuine BH reachable via bateel.bh (registry, BHD product pages) but a multi-candidate gourmet scrape is slow; warmer-only genuine. Real GCC gifting-season traffic."
+    },
+
+    {
+      "id": "warm-frag-lh-001",
+      "query": "Lattafa Khamrah vs Armaf Club de Nuit Intense Man",
+      "category": "fragrances",
+      "region": "bahrain",
+      "note": "Local-house coverage (2026-07-08). Genuine BHD reachable: Lattafa Khamrah 11-12 (alhajisbahrain shopify_json / alibaksh+fragrancebh woo_store_api; Lattafa IS designer-floored -> needs the budget-fragrance-floor bypass to SHOW), Armaf Club de Nuit Intense Man 14-25 (alhajisbahrain / alibaksh; Armaf is NOT designer-floored -> already shows). Both slow on the 15s cold race -> warmer-only genuine."
+    },
+    {
+      "id": "warm-frag-lh-002",
+      "query": "Rasasi Hawas For Him vs Lattafa Asad",
+      "category": "fragrances",
+      "region": "bahrain",
+      "note": "Local-house coverage (2026-07-08). Rasasi Hawas 14-17 (alibaksh/fragrancebh woo_store_api, candidate_brand match), Lattafa Asad 8-9 (fragrancebh Dynasty / alibaksh Asad Bourbon). Budget houses -> budget-floor fix + warmer."
+    },
+    {
+      "id": "warm-frag-lh-003",
+      "query": "Swiss Arabian Shaghaf Oud vs Al Haramain Amber Oud Gold Edition",
+      "category": "fragrances",
+      "region": "bahrain",
+      "note": "Local-house coverage (2026-07-08). Al Haramain Amber Oud Gold 22-25 (alibaksh/fragrancebh woo_store_api; Al Haramain IS designer-floored -> needs the budget-fragrance-floor bypass), Swiss Arabian Shaghaf (alibaksh carries Swiss Arabian in BHD; NOT designer-floored -> already shows). Warmer-only genuine (slow cold race)."
+    },
+    {
+      "id": "warm-frag-lh-004",
+      "query": "Lattafa Yara vs Rasasi Hawas Viper",
+      "category": "fragrances",
+      "region": "bahrain",
+      "note": "Local-house coverage (2026-07-08). High-traffic Arabic-house compare; both genuine BHD via alhajisbahrain / alibaksh / fragrancebh."
+    },
+    {
+      "id": "warm-frag-lh-005",
+      "query": "Lattafa Khamrah",
+      "category": "fragrances",
+      "region": "bahrain",
+      "note": "Local-house single-SKU seed (2026-07-08). alhajisbahrain shopify_json 12.000 BHD (wired) + alibaksh/fragrancebh woo_store_api. Single-product warm caches the genuine BHD at its own key for a live cache-read."
+    },
+    {
+      "id": "warm-frag-lh-006",
+      "query": "Armaf Club de Nuit Intense Man",
+      "category": "fragrances",
+      "region": "bahrain",
+      "note": "Local-house single-SKU seed (2026-07-08). Genuine BHD via alhajisbahrain / alibaksh (Armaf not designer-floored)."
+    },
+    {
+      "id": "warm-frag-lh-007",
+      "query": "Al Haramain Amber Oud Gold Edition",
+      "category": "fragrances",
+      "region": "bahrain",
+      "note": "Local-house single-SKU seed (2026-07-08). alibaksh/fragrancebh woo_store_api 22-25 BHD (budget-floored). alhajisbahrain does NOT stock Al Haramain -> the new woo rows are the genuine path."
+    },
+    {
+      "id": "warm-frag-lh-008",
+      "query": "Rasasi Hawas For Him",
+      "category": "fragrances",
+      "region": "bahrain",
+      "note": "Local-house single-SKU seed (2026-07-08). alibaksh/fragrancebh woo_store_api Rasasi Hawas 14-17 BHD (candidate_brand match on the brand-omitting title). alhajisbahrain stocks only 1 Rasasi SKU -> the new woo rows are the genuine path."
     }
   ]
 }

@@ -1059,7 +1059,7 @@
   "genuine_method": "woo_store_api",
   "sample_url": "https://fragrancebh.com/wp-json/wc/store/products?per_page=2",
   "priority_rank": 21,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "iworld.bh",
@@ -1113,7 +1113,7 @@
   "genuine_method": "woo_store_api",
   "sample_url": "https://alibaksh.com/product/carolina-herrera-good-girl-edp-80ml/",
   "priority_rank": 23,
-  "status": "provider-test-candidate"
+  "status": "live"
  },
  {
   "domain": "miniso-bh.com",

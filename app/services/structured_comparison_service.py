@@ -1793,6 +1793,25 @@ def _early_specs_stash_enabled() -> bool:
     )
 
 
+def _park_listing_url_tier1_enabled() -> bool:
+    """Local-house coverage (2026-07-08) — True iff a GENUINE Tier-1 Serper-shopping
+    price whose URL is a LISTING/search URL (Google-Shopping "local" ibp=oshop /
+    prds=localA, never a merchant PDP) is PARKED as a fallback instead of short-
+    circuiting the cascade (default ON). Read per-call so a flip/monkeypatch is
+    immediate (mirrors _early_specs_stash_enabled).
+
+    Such a price is NON-showable at the display chokepoint (is_price_showable pends
+    a listing URL), so short-circuiting on it GUARANTEES a price-pending AND blocks
+    the real-PDP direct adapters (woo/shopify/algolia — e.g. the alibaksh/
+    fragrancebh BHD price for the local Arabic houses) that could serve a SHOWABLE
+    genuine price. Parking it lets the cascade reach those adapters; if they miss,
+    the parked price still returns (pends, same as before). OFF -> the legacy
+    genuine short-circuit fires for a listing URL too (byte-identical)."""
+    return os.getenv("ENABLE_PARK_LISTING_URL_TIER1", "true").strip().lower() not in (
+        "false", "0", "no", "off", "",
+    )
+
+
 # BF5 (sweep OR-8) — BH-locale URL-path prefixes that mark a page as the
 # retailer's BAHRAIN storefront (namshi.com/bahrain-en, boutiqaat-style
 # /bh-en). Anchored + segment-bounded: "/bahrain-english-deals" or a mid-path
@@ -5667,12 +5686,35 @@ class StructuredComparisonService:
                 # Approach A — PARK a CONVERTED_USD Tier-1 price; defer to the
                 # genuine-BH Tier-1.5 curl tier below. A genuine Tier-1 price
                 # (local_bhd / page_scrape / any non-converted) short-circuits now.
+                _tier1_is_listing_url = False
+                if _park_listing_url_tier1_enabled():
+                    try:
+                        from app.services.price_service import _is_listing_url
+                        _t1_url = price.get("url") or ""
+                        _tier1_is_listing_url = bool(_t1_url) and _is_listing_url(_t1_url)
+                    except Exception:  # noqa: BLE001 — never break the cascade on a guard
+                        _tier1_is_listing_url = False
                 if price.get("source_method") == "converted_usd":
                     converted_fallback = dict(price)
                     # Fix A — ALSO stash on self (survives an outer 15s wait_for
                     # cancel of this coroutine, unlike the local above). This is
                     # the EARLY stash, before the Tier-1.5 render wave that could
                     # time out — so the Phase-1 handler can return it, never None.
+                    self._parked_price[full_name] = dict(price)
+                elif _tier1_is_listing_url:
+                    # Local-house coverage (2026-07-08) — a GENUINE Tier-1 price on
+                    # a Google-Shopping "local" LISTING url (ibp=oshop / prds=localA)
+                    # is NON-showable at the display chokepoint, so short-circuiting
+                    # on it GUARANTEES a price-pending AND blocks the real-PDP direct
+                    # adapters (woo/shopify/algolia) that could serve a SHOWABLE
+                    # genuine BHD price (the alibaksh/fragrancebh Lattafa/Rasasi/Al
+                    # Haramain price was being hidden by a Google-Shopping local hit
+                    # winning the race). Park it as the last-resort fallback (like a
+                    # converted price) and let the cascade run; a direct-adapter PDP
+                    # hit wins, else this parked price returns (still pends at
+                    # display, same as the legacy path). Flag-gated (byte-identical
+                    # when OFF — the genuine short-circuit below fires unchanged).
+                    converted_fallback = dict(price)
                     self._parked_price[full_name] = dict(price)
                 else:
                     # Genuine Tier-1 short-circuit — the speculative discovery
@@ -6653,9 +6695,14 @@ class StructuredComparisonService:
             # structural dead-end. Record it so the next call skips the cascade.
             self._record_negative_price_cache(cache_key, converted_fallback)
             converted_fallback["_cached"] = False
+            # The parked slot now also carries a genuine local_bhd price on a
+            # listing URL (ENABLE_PARK_LISTING_URL_TIER1) — log the ACTUAL
+            # source_method so ops reading genuine-share from Railway logs aren't
+            # told a native-BHD shelf price is converted_usd.
             logger.info(
-                "[PRICE] parked converted_usd fallback used for %s (BH curl+render "
-                "missed; beats GPT estimate)", full_name,
+                "[PRICE] parked %s fallback used for %s (BH curl+render "
+                "missed; beats GPT estimate)",
+                converted_fallback.get("source_method") or "converted_usd", full_name,
             )
             return converted_fallback
 
