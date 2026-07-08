@@ -85,11 +85,31 @@ async def fetch_page(url: str) -> Optional[str]:
         "Upgrade-Insecure-Requests": "1",
     }
     
+    # SSRF hardening (scraping audit 2026-07-08) — the public /url/* routes validate
+    # only the initial user URL, so a 30x redirect to a private/loopback/link-local/
+    # cloud-metadata (169.254.169.254) address would otherwise be followed blindly.
+    # Follow redirects MANUALLY, bounded, re-validating EVERY hop with the SSRF guard.
+    from app.utils.url_validator import validate_external_url
+
+    if not validate_external_url(url):
+        logger.warning(f"[SSRF] Blocked initial URL: {url}")
+        return None
     try:
-        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
-            response = await client.get(url, headers=headers)
-            response.raise_for_status()
-            return response.text
+        async with httpx.AsyncClient(timeout=30.0, follow_redirects=False) as client:
+            current = url
+            for _ in range(5):  # bounded redirect chain
+                response = await client.get(current, headers=headers)
+                if response.is_redirect and response.next_request is not None:
+                    nxt = str(response.next_request.url)
+                    if not validate_external_url(nxt):
+                        logger.warning(f"[SSRF] Blocked redirect to {nxt}")
+                        return None
+                    current = nxt
+                    continue
+                response.raise_for_status()
+                return response.text
+            logger.warning(f"[SSRF] Too many redirects for {url}")
+            return None
     except Exception as e:
         logger.error(f"Failed to fetch URL {url}: {e}")
         return None
