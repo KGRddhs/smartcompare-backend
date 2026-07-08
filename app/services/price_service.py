@@ -4310,22 +4310,31 @@ def _gender_of(text: str) -> Optional[str]:
     return None
 
 
+# Flanker "pronoun" gender words that feed the CONTRADICTION axis ONLY (NOT the strict
+# _GENDER_*_TOKENS sets, NOT the femme-asymmetry). "him"/"gents" → men, "her"/"ladies" →
+# women. They are ALSO _FRAGRANCE_PADDING_TOKENS (so a one-sided occurrence is ignored by
+# the subset check); the contradiction fires only when BOTH sides state opposite genders.
+_PRONOUN_MEN_TOKENS = frozenset({"him", "gents"})
+_PRONOUN_WOMEN_TOKENS = frozenset({"her", "ladies"})
+
+
 def _pronoun_gender_of(text: str) -> Optional[str]:
-    """Flanker-pronoun gender for the CONTRADICTION axis ONLY: 'men' for a bare "him",
-    'women' for a bare "her" (both/neither → None). Gated behind
+    """Flanker-pronoun gender for the CONTRADICTION axis ONLY: 'men' for a bare "him"/"gents",
+    'women' for a bare "her"/"ladies" (both/neither → None). Gated behind
     variant_descriptor_axes_enabled() so it is inert (None) flag-OFF → byte-identical.
 
-    DECOUPLED from _gender_of on purpose: him/her feed ONLY _vd_gender_mismatch (so
-    "Burberry Her" vs "Burberry Him" is rejected as a gender contradiction), NOT the
-    femme-asymmetry nor the identity/empty-core collapse — so a one-sided "X For Her" query
-    still tolerates its gender-omitting base and "X Woman" vs "X Her" stays rejected by the
-    STRICT asymmetry (no new over-rejection, no new empty-core leak). Tokenized on WORD
-    boundaries (_fold_identity + [a-z0-9]+), so "Cher"/"Hermes"/"his"/"hers" never trigger."""
+    DECOUPLED from _gender_of on purpose: these flanker words feed ONLY _vd_gender_mismatch
+    (so "Burberry Her" vs "Burberry Him" AND "Aristocrat Gents" vs "Aristocrat Ladies" are
+    rejected as gender contradictions), NOT the femme-asymmetry nor the identity/empty-core
+    collapse — so a one-sided "X For Her"/"X Ladies" query still tolerates its gender-omitting
+    base and "X Woman" vs "X Her" stays rejected by the STRICT asymmetry (no new over-rejection,
+    no new empty-core leak). Tokenized on WORD boundaries (_fold_identity + [a-z0-9]+), so
+    "Cher"/"Hermes"/"his"/"hers"/"Gentleman"/"Gentlemen"/"Gladiator" never trigger."""
     if not variant_descriptor_axes_enabled():
         return None
     toks = set(re.findall(r"[a-z0-9]+", _fold_identity(text or "")))
-    m = "him" in toks
-    w = "her" in toks
+    m = bool(toks & _PRONOUN_MEN_TOKENS)
+    w = bool(toks & _PRONOUN_WOMEN_TOKENS)
     if m and not w:
         return "men"
     if w and not m:
