@@ -41,6 +41,16 @@ PROVIDER_CONFIGS = {
         "warn_at": 800,
         "is_lifetime": False,       # Monthly reset
     },
+    # Scraping audit 2026-07-08 — Bright Data SERP fallback. Free tier is
+    # ~5,000 requests/MONTH (not lifetime). Bounds the fallback-of-last-resort
+    # under Serper depletion; INERT until ENABLE_BRIGHTDATA_BUDGET_GATE is ON —
+    # only the gated path in brightdata_service reads this entry, so its mere
+    # presence is behaviour-neutral (nothing else references "brightdata").
+    "brightdata": {
+        "monthly_limit": 4500,      # ~5,000/mo free, save 500 buffer
+        "warn_at": 4000,
+        "is_lifetime": False,       # Monthly reset (budget:brightdata:<YYYY-MM>)
+    },
     "serper": {
         "monthly_limit": 2200,      # 2,500 credits, save 300 buffer
         "warn_at": 2000,

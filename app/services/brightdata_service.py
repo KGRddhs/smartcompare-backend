@@ -53,6 +53,46 @@ def _brightdata_enabled() -> bool:
     return flag and bool(os.getenv("BRIGHTDATA_API_KEY")) and bool(os.getenv("BRIGHTDATA_ZONE"))
 
 
+def _brightdata_budget_gate_enabled() -> bool:
+    """Scraping audit 2026-07-08 — gate the monthly budget cap + circuit breaker +
+    per-request metering around each Bright Data SERP call. Read per-call (env flip,
+    no restart). Default OFF → the gate block is an inert `if False:` branch so the
+    fallback path is BYTE-IDENTICAL to current main (unbounded, exactly as today)."""
+    return os.getenv("ENABLE_BRIGHTDATA_BUDGET_GATE", "").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
+def _bd_budget_precheck() -> bool:
+    """When the gate is ON, allow a Bright Data dispatch only if the circuit is
+    closed AND the monthly budget has headroom. Fail-OPEN on Redis outage (mirrors
+    every other provider — has_budget returns True when Upstash is down). Gate OFF →
+    always True (no api_budget_service call → byte-identical)."""
+    if not _brightdata_budget_gate_enabled():
+        return True
+    try:
+        from app.services import api_budget_service
+        return api_budget_service.is_circuit_closed("brightdata") and api_budget_service.has_budget("brightdata")
+    except Exception:  # noqa: BLE001 — a metering fault must never harden into a compare break
+        return True
+
+
+def _bd_record(success: bool) -> None:
+    """Meter every DISPATCHED Bright Data request (it bills per request regardless of
+    hit) and feed the circuit breaker. No-op when the gate is OFF → byte-identical."""
+    if not _brightdata_budget_gate_enabled():
+        return
+    try:
+        from app.services import api_budget_service
+        api_budget_service.record_usage("brightdata")
+        if success:
+            api_budget_service.record_success("brightdata")
+        else:
+            api_budget_service.record_failure("brightdata")
+    except Exception:  # noqa: BLE001 — metering must never break the fallback
+        pass
+
+
 def _google_url(query: str, *, country: str, num: int, shopping: bool) -> str:
     params = {"q": query, "brd_json": "1", "gl": country, "hl": "en", "num": num}
     if shopping:
@@ -180,7 +220,12 @@ async def bd_search_web(query: str, num_results: int = 10, country: str = "bh") 
     """Serper-shaped web (organic) search via Bright Data. Returns
     {"organic": [...], "shopping": []} or {"organic": []} on miss. Never raises.
     Caller should gate on _brightdata_enabled()."""
+    if not _bd_budget_precheck():
+        # Gate ON + (budget exhausted or breaker open) → skip the dispatch and
+        # degrade to Serper-only. Empty shape callers already treat as a miss.
+        return {"organic": [], "error": "brightdata_budget"}
     parsed = await _bd_post(query, country=country, num=num_results, shopping=False)
+    _bd_record(parsed is not None)
     if parsed is None:
         return {"organic": [], "error": "brightdata_unavailable"}
     return {"organic": _map_bd_organic(parsed), "shopping": []}
@@ -189,7 +234,10 @@ async def bd_search_web(query: str, num_results: int = 10, country: str = "bh") 
 async def bd_search_shopping(query: str, country: str = "bh") -> Dict[str, Any]:
     """Serper-shaped shopping search via Bright Data (tbm=shop). Returns
     {"shopping": [...], "organic": []} or {"shopping": []} on miss. Never raises."""
+    if not _bd_budget_precheck():
+        return {"shopping": [], "error": "brightdata_budget"}
     parsed = await _bd_post(query, country=country, num=10, shopping=True)
+    _bd_record(parsed is not None)
     if parsed is None:
         return {"shopping": [], "error": "brightdata_unavailable"}
     return {"shopping": _map_bd_shopping(parsed), "organic": _map_bd_organic(parsed)}
