@@ -3437,6 +3437,19 @@ def exact_gate_enabled() -> bool:
     )
 
 
+def variant_min_guard_enabled() -> bool:
+    """Scraping audit 2026-07-08 — gate the variable-product MIN-variation decant guard
+    (a woo/shopify variable product served its cheapest 30ml variation as the full bottle).
+    Default OFF (ships DORMANT); HARD-REQUIRES exact_gate_enabled() so a master rollback also
+    disables it (mirrors the localhouse floor-bypass precedent). Read per-call (env flip, no
+    restart). Flag OFF -> every adapter takes its exact current path -> byte-identical."""
+    if not exact_gate_enabled():
+        return False
+    return os.getenv("ENABLE_VARIANT_MIN_PRICE_GUARD", "").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
 def _budget_fragrance_floor_enabled() -> bool:
     """True iff the BUDGET Arabic/Gulf-house fragrance floor is active (default ON).
 
@@ -9560,6 +9573,56 @@ async def _fetch_shopify_currency(domain: str) -> Optional[str]:
         return None
 
 
+def _select_shopify_variant(
+    variants: List[Any], product_name: str, product_title: str,
+    category: Optional[str], is_lux: bool,
+) -> Optional[Dict[str, Any]]:
+    """Bind the queried size to a specific Shopify variant instead of blindly pricing
+    variants[0] (usually the smallest/cheapest → a decant leak). Returns the chosen
+    variant, or None to PEND the product when the query STATES a size no variant offers,
+    or a size-unspecified query hits an unbindable price SPREAD on a non-fragrance.
+    Fragrances/luxury default to the flagship 100ml (else the LARGEST bottle) — never the
+    decant. Called only under variant_min_guard_enabled(); the caller keeps variants[0]
+    flag-OFF (byte-identical)."""
+    valid: List[Tuple[Dict[str, Any], Optional[int], float]] = []
+    for v in variants:
+        if not isinstance(v, dict):
+            continue
+        amt = parse_price_string(str(v.get("price", "")))
+        if amt is None or amt <= 0:
+            continue
+        # The variant's OWN title carries the authoritative per-variant size; fall back to the
+        # product-title context only when the variant title has no ml/oz token — so a product
+        # TITLE that lists a marketing size can't pollute a differently-sized variant's size
+        # (coverage review: extract_size_ml_any returns min(...), so a "…100ml" title would
+        # otherwise cap a "30ml" variant and could defeat the flagship pick).
+        vt = v.get("title") or ""
+        size = extract_size_ml_any(vt) or extract_size_ml_any(f"{product_title} {vt}")
+        valid.append((v, size, round(amt, 3)))
+    if not valid:
+        return None
+    q_size = extract_size_ml_any(product_name)
+    if q_size:
+        for v, size, _amt in valid:
+            if size == q_size:
+                return v
+        return None  # the stated size is not offered → pend, never serve a different size
+    # size-unspecified query
+    prices = {amt for _v, _s, amt in valid}
+    if len(prices) == 1:
+        return valid[0][0]  # all variants same price → unambiguous, no decant risk
+    cat = (category or "").lower()
+    if cat == "fragrances" or is_lux:
+        flagship = [v for v, size, _a in valid if size == 100]
+        if flagship:
+            return flagship[0]                                   # 100ml flagship convention
+        sized = [(size, v) for v, size, _a in valid if size]
+        if sized:
+            return max(sized, key=lambda t: t[0])[1]             # largest bottle, never the decant
+        return valid[0][0]                                       # no parseable sizes → no worse than today
+    return None  # non-fragrance size-unspecified spread → ambiguous → pend
+
+
 def _match_shopify_product(
     catalog: Optional[Dict[str, Any]],
     product_name: str,
@@ -9663,7 +9726,17 @@ def _match_shopify_product(
         variants = product.get("variants")
         if not isinstance(variants, list) or not variants:
             continue
-        variant = variants[0] if isinstance(variants[0], dict) else {}
+        # Variant-min decant guard (audit 2026-07-08): bind the queried size to a specific
+        # variant instead of blindly pricing variants[0] (usually the smallest = a decant
+        # served as the full bottle). Flag OFF → variants[0] (byte-identical).
+        if variant_min_guard_enabled():
+            variant = _select_shopify_variant(
+                variants, product_name, title, resolved_category, _is_lux,
+            )
+            if variant is None:
+                continue  # unbindable size/spread → pend this product (don't serve a decant)
+        else:
+            variant = variants[0] if isinstance(variants[0], dict) else {}
         amount = parse_price_string(str(variant.get("price", "")))
         if amount is None or amount <= 0:
             continue
