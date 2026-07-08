@@ -6695,9 +6695,14 @@ class StructuredComparisonService:
             # structural dead-end. Record it so the next call skips the cascade.
             self._record_negative_price_cache(cache_key, converted_fallback)
             converted_fallback["_cached"] = False
+            # The parked slot now also carries a genuine local_bhd price on a
+            # listing URL (ENABLE_PARK_LISTING_URL_TIER1) — log the ACTUAL
+            # source_method so ops reading genuine-share from Railway logs aren't
+            # told a native-BHD shelf price is converted_usd.
             logger.info(
-                "[PRICE] parked converted_usd fallback used for %s (BH curl+render "
-                "missed; beats GPT estimate)", full_name,
+                "[PRICE] parked %s fallback used for %s (BH curl+render "
+                "missed; beats GPT estimate)",
+                converted_fallback.get("source_method") or "converted_usd", full_name,
             )
             return converted_fallback
 

@@ -951,11 +951,15 @@ _FRAGRANCE_MIN_FLOOR_BHD = 5.0
 # common), so this never lowers protection there. Tokens are unambiguous multi-
 # char house names (no generic/collision-prone token — e.g. NOT "my perfumes",
 # which substring-pollutes a "Chanel my perfumes" query).
+# ONLY the houses that are ALSO in FRAGRANCE_BRAND_KEYWORDS (so
+# is_implausible_low_fragrance_price actually floors them and the bypass is
+# load-bearing). Other budget houses (Armaf, Swiss Arabian, Maison Alhambra,
+# Afnan, ...) are NOT in the designer set -> never floored -> their genuine cheap
+# price already shows without this bypass, so listing them here would be dead
+# config that weakens no guard but misleads. Keep this set == the Arabic houses in
+# FRAGRANCE_BRAND_KEYWORDS.
 BUDGET_FRAGRANCE_BRAND_KEYWORDS = {
     "lattafa", "rasasi", "al haramain", "ajmal", "asghar ali", "asgharali",
-    "armaf", "swiss arabian", "ard al zaafaran", "ardalzaafaran",
-    "maison alhambra", "afnan", "al wataniah", "khadlaj", "lattafa pride",
-    "paris corner", "fragrance world", "zimaya",
 }
 # The SAME budget houses ALSO sell genuinely-expensive concentrated lines (pure
 # dehn-al-oud / mukhallat / perfume-oil / attar, 40-150+ BHD). A wrong-cheap price
@@ -974,6 +978,12 @@ _BUDGET_HOUSE_PREMIUM_LINE_TOKENS = {
     "oud oil", "oudh oil", "oud perfume oil", "perfume oil", "oil perfume",
     "concentrated perfume", "concentrated oud", "attar", "ittar", "cpo",
 }
+# WORD-BOUNDARY match (not bare substring) so a short token can't collide with a
+# name fragment — e.g. "attar" must NOT hit "muattar"/"moattar" (معطر = "scented",
+# a cheap EDP name), "cpo" must not hit a larger word. \b around each phrase.
+_BUDGET_HOUSE_PREMIUM_LINE_RE = re.compile(
+    r"\b(?:" + "|".join(re.escape(t) for t in sorted(_BUDGET_HOUSE_PREMIUM_LINE_TOKENS, key=len, reverse=True)) + r")\b"
+)
 
 
 def is_fragrance_query(product_name: str) -> bool:
@@ -1402,7 +1412,7 @@ def is_price_showable(
     # runs on the loose Serper-shopping path (unaffected). Flag OFF / non-genuine /
     # listing-URL / expensive-oil-line -> the floor applies unchanged.
     if is_implausible_low_fragrance_price(product_name, amount, title=title) and not (
-        _budget_house_trusted_price(product_name, price, category)
+        _budget_house_trusted_price(product_name, price)
     ):
         return False
     # F1.2b — premium haircare wrong-cheap leak (K18 4.51 BHD).
@@ -3443,7 +3453,7 @@ def _budget_fragrance_floor_enabled() -> bool:
 
 
 def _budget_house_trusted_price(
-    product_name: str, price: Optional[Dict[str, Any]], category: Optional[str] = None
+    product_name: str, price: Optional[Dict[str, Any]]
 ) -> bool:
     """True iff `price` is a TRUSTWORTHY genuine budget-Arabic-house price for which
     the fragrance low-price FLOOR is a false positive (so the display chokepoint may
@@ -3457,18 +3467,29 @@ def _budget_house_trusted_price(
     real PDP URL, the store's listed price IS authoritative — the 25/100ml designer
     floor then WRONGLY pends it (Lattafa Khamrah 12 BHD, even from the wired
     alhajisbahrain source). This bypass is applied ONLY at the display chokepoint;
-    the floor STILL runs on the loose Serper-shopping extract, so wrong-cheap
-    mislabels there are unaffected.
+    the floor STILL runs on the loose Serper-shopping extract AND on the pre-
+    selection internal floor sites (noon `_select_offer`, scs fan-out/Tier-2
+    winners), so wrong-cheap mislabels there are unaffected (a documented coverage
+    limit — a genuine budget price resolved ONLY via those looser paths is dropped
+    before display; the exact-gated direct-adapter path surfaces it).
 
-    Guards keep it tight: flag-gated (OFF -> always False -> the floor applies,
-    byte-identical); requires a GENUINE native-BHD source_method (never estimated/
-    converted) AND a real non-listing PDP URL AND a budget-house brand token; and
-    EXCLUDES the houses' genuinely-expensive concentrated dehn-al-oud/mukhallat/
-    attar OIL lines (_BUDGET_HOUSE_PREMIUM_LINE_TOKENS keep the floor, so a wrong-
-    cheap oil scrape is still caught)."""
-    if not _budget_fragrance_floor_enabled():
+    Guards keep it tight: gated on BOTH _budget_fragrance_floor_enabled() AND
+    exact_gate_enabled() — the trust is PREMISED on the exact-gate's identity
+    guarantee, so a full ENABLE_EXACT_PRICE_GATE=false rollback (which disables the
+    identity/PDP backstops) also disables this bypass, keeping the rollback
+    byte-identical to pre-PR. Requires a GENUINE native-BHD source_method (never
+    estimated/converted), a real non-listing PDP URL, an IN-STOCK price (an OOS
+    below-floor price stays floored), an amount >= the 5 BHD artifact floor (a
+    fils/decimal glitch never trusted), a budget-house brand token, and NOT one of
+    the houses' genuinely-expensive concentrated dehn-al-oud/mukhallat/attar OIL
+    lines (word-boundary matched so "attar" can't hit "muattar")."""
+    if not (_budget_fragrance_floor_enabled() and exact_gate_enabled()):
         return False
     if not isinstance(price, dict):
+        return False
+    # OUT-OF-STOCK — never trust an OOS below-floor price (the legacy floor dropped
+    # it at the adapter; keep that defense so the bypass can't re-admit it).
+    if price.get("in_stock") is False:
         return False
     # ABSOLUTE artifact floor — the bypass lowers the fragrance floor from the 25/
     # 100ml designer floor to this sanity bound, NEVER to 0. A trusted budget price
@@ -3482,9 +3503,10 @@ def _budget_house_trusted_price(
     name_lower = (product_name or "").lower()
     if not any(b in name_lower for b in BUDGET_FRAGRANCE_BRAND_KEYWORDS):
         return False
-    # An expensive concentrated-oil line keeps the floor (belt-and-suspenders).
+    # An expensive concentrated-oil line keeps the floor (belt-and-suspenders,
+    # word-boundary matched so a short token can't collide with a name fragment).
     hay = name_lower + " " + str(price.get("title") or price.get("name") or "").lower()
-    if any(tok in hay for tok in _BUDGET_HOUSE_PREMIUM_LINE_TOKENS):
+    if _BUDGET_HOUSE_PREMIUM_LINE_RE.search(hay):
         return False
     if (price.get("source_method") or "") not in _GENUINE_BH_SOURCE_METHODS:
         return False

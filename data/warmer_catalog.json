@@ -144,7 +144,7 @@
       "query": "Lattafa Khamrah vs Armaf Club de Nuit Intense Man",
       "category": "fragrances",
       "region": "bahrain",
-      "note": "Local-house coverage (2026-07-08). Genuine BHD reachable: Lattafa Khamrah 11-12 (alhajisbahrain shopify_json / alibaksh+fragrancebh woo_store_api), Armaf Club de Nuit Intense Man 14-25 (alhajisbahrain / alibaksh). Both < 25/100ml designer floor -> needs the budget-fragrance-floor fix to SHOW; both slow on the 15s cold race -> warmer-only genuine."
+      "note": "Local-house coverage (2026-07-08). Genuine BHD reachable: Lattafa Khamrah 11-12 (alhajisbahrain shopify_json / alibaksh+fragrancebh woo_store_api; Lattafa IS designer-floored -> needs the budget-fragrance-floor bypass to SHOW), Armaf Club de Nuit Intense Man 14-25 (alhajisbahrain / alibaksh; Armaf is NOT designer-floored -> already shows). Both slow on the 15s cold race -> warmer-only genuine."
     },
     {
       "id": "warm-frag-lh-002",
@@ -158,7 +158,7 @@
       "query": "Swiss Arabian Shaghaf Oud vs Al Haramain Amber Oud Gold Edition",
       "category": "fragrances",
       "region": "bahrain",
-      "note": "Local-house coverage (2026-07-08). Al Haramain Amber Oud Gold 22-25 (alibaksh/fragrancebh woo_store_api, budget-floored), Swiss Arabian Shaghaf (alibaksh carries Swiss Arabian in BHD). Warmer-only genuine (slow cold race)."
+      "note": "Local-house coverage (2026-07-08). Al Haramain Amber Oud Gold 22-25 (alibaksh/fragrancebh woo_store_api; Al Haramain IS designer-floored -> needs the budget-fragrance-floor bypass), Swiss Arabian Shaghaf (alibaksh carries Swiss Arabian in BHD; NOT designer-floored -> already shows). Warmer-only genuine (slow cold race)."
     },
     {
       "id": "warm-frag-lh-004",

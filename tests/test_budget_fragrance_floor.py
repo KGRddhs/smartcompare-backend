@@ -141,3 +141,38 @@ def test_trusted_helper_requires_all_conditions():
     assert ps._budget_house_trusted_price("Lattafa Khamrah", _price(12.0, "woo_store_api", None, "Lattafa Khamrah")) is False
     # non-budget brand -> not trusted
     assert ps._budget_house_trusted_price("Dior Sauvage", _price(12.0, "woo_store_api", _PDP, "Dior Sauvage")) is False
+
+
+# --- review round-3 hardening --------------------------------------------
+def test_bypass_coupled_to_exact_gate_for_rollback(monkeypatch):
+    # #1 — the bypass is PREMISED on the exact-gate; a full ENABLE_EXACT_PRICE_GATE
+    # rollback must ALSO disable the bypass (else the rollback isn't byte-identical).
+    p = _price(6.0, "local_bhd", _PDP, "Lattafa Khamrah")
+    monkeypatch.setenv("ENABLE_EXACT_PRICE_GATE", "false")
+    assert ps._budget_house_trusted_price("Lattafa Khamrah", p) is False
+    monkeypatch.setenv("ENABLE_EXACT_PRICE_GATE", "true")
+    assert ps._budget_house_trusted_price("Lattafa Khamrah", p) is True
+
+
+def test_out_of_stock_budget_price_not_trusted():
+    # #8 — an OOS below-floor budget price stays floored (defense-in-depth).
+    assert ps._budget_house_trusted_price(
+        "Lattafa Khamrah", _price(12.0, "woo_store_api", _PDP, "Lattafa Khamrah 100ml", in_stock=False)
+    ) is False
+    assert _show("Lattafa Khamrah", _price(12.0, "woo_store_api", _PDP, "Lattafa Khamrah 100ml", in_stock=False)) is False
+
+
+@pytest.mark.parametrize("query,title", [
+    ("Al Haramain Musk Muattar", "Al Haramain Musk Muattar EDP 100ml"),   # "attar" must NOT hit "mu-attar"
+    ("Rasasi Moattar Al Aqmisha", "Rasasi Moattar Al Aqmisha EDP 100ml"),
+])
+def test_muattar_not_caught_by_attar_token(query, title):
+    # #3 — word-boundary matching: a cheap EDP whose name merely CONTAINS "attar"
+    # ("Muattar"/"Moattar" = scented) must still SHOW, not be floored as an oil line.
+    assert _show(query, _price(15.0, "woo_store_api", _PDP, title)) is True
+
+
+def test_dead_budget_tokens_removed():
+    # #4 — non-designer-floored houses must NOT be listed (dead config).
+    for dead in ("armaf", "swiss arabian", "maison alhambra", "afnan", "paris corner"):
+        assert dead not in ps.BUDGET_FRAGRANCE_BRAND_KEYWORDS
