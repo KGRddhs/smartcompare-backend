@@ -404,6 +404,35 @@ _ADMITTED_STATUSES = frozenset({"live"})
 _VALID_TIERS = frozenset({"bahrain", "gcc"})
 
 
+def _owned_discovery_promotion_enabled() -> bool:
+    """Phase-1 owned-discovery promotion (2026-08-17), fail-CLOSED default OFF.
+
+    A 2026-08-17 sweep of every live catalog row that carries NO adapter probed
+    each domain's platform JSON API directly. 103 of 195 answered — 99 Shopify
+    ``/products.json`` + 4 WooCommerce ``/wp-json/wc/store/products`` — and the
+    production adapter resolved a real, correctly-denominated price on 24 of 24
+    sampled (``shopify_json``, AED/QAR/KWD/SAR/OMR, Serper-FREE and OpenAI-FREE).
+
+    39 of those 103 were ALREADY reachable through
+    ``get_gcc_shopify_pagescrape_sources_for_category``. The other 64 were not —
+    and the ONLY reason is the selector's liveness ANCHOR: it admits a row when
+    ``"/products.json" in sample_url``, but these rows recorded a PDP or a
+    collection URL as their anchor instead. Their catalog endpoint works fine;
+    the proxy predicate just under-selects. Likewise 4 bahrain WooCommerce rows
+    shipped with a blank mechanism despite a live Store API.
+
+    So the promotion is DATA, not new machinery: each affected row carries a
+    ``promoted_sample_url`` / ``promoted_mechanism``, and this flag decides
+    whether the loader HONORS them. OFF (the default) → the promotion fields are
+    ignored entirely and SOURCE_REGISTRY is byte-identical to pre-promotion, so
+    the change is a prod no-op until it is flipped on Railway.
+    """
+    import os
+    return os.getenv("ENABLE_OWNED_DISCOVERY_PROMOTION", "").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
 def _row_to_source(row: dict) -> Optional[Source]:
     """Construct a Source from one consolidated catalog row, or None if the row
     is malformed / not admitted. Never raises."""
@@ -430,6 +459,18 @@ def _row_to_source(row: dict) -> Optional[Source]:
             prank = int(row.get("priority_rank", 100))
         except (TypeError, ValueError):
             prank = 100
+        mechanism = str(row.get("mechanism") or "")
+        sample_url = str(row.get("sample_url") or "")
+        # Phase-1 owned-discovery promotion — flag-gated, and applied ONLY to a
+        # row that carries no adapter today, so a promotion can never override an
+        # already-verified mechanism.
+        if not mechanism and _owned_discovery_promotion_enabled():
+            promoted_mechanism = str(row.get("promoted_mechanism") or "")
+            promoted_sample_url = str(row.get("promoted_sample_url") or "")
+            if promoted_mechanism:
+                mechanism = promoted_mechanism
+            if promoted_sample_url:
+                sample_url = promoted_sample_url
         return Source(
             domain=domain,
             tier=tier,
@@ -439,8 +480,8 @@ def _row_to_source(row: dict) -> Optional[Source]:
             is_algolia=bool(row.get("is_algolia", False)),
             is_render_only=bool(row.get("is_render_only", False)),
             currency=str(row.get("currency") or ""),
-            mechanism=str(row.get("mechanism") or ""),
-            sample_url=str(row.get("sample_url") or ""),
+            mechanism=mechanism,
+            sample_url=sample_url,
             status=status,
             priority_rank=prank,
         )
