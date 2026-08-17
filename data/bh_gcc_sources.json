@@ -3315,7 +3315,11 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://store974.com/",
   "priority_rank": 54,
-  "status": "live"
+  "status": "live",
+  "promoted_sample_url": "https://store974.com/products.json",
+  "promoted_genuine_method": "shopify_json",
+  "promoted_verified_amount": "4149.0 QAR",
+  "promoted_verified_at": "2026-08-17"
  },
  {
   "domain": "pcbuilderqatar.com",
@@ -4010,7 +4014,11 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.watsons.sa/products/gosh-eyedentity-eyeshadow-palette",
   "priority_rank": 71,
-  "status": "live"
+  "status": "live",
+  "promoted_sample_url": "https://watsons.sa/products.json",
+  "promoted_genuine_method": "shopify_json",
+  "promoted_verified_amount": "385.0 SAR",
+  "promoted_verified_at": "2026-08-17"
  },
  {
   "domain": "alqamarshop.com",
@@ -4028,7 +4036,11 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://alqamarshop.com/products/12v-4a-48w-ac-adapter-charger-hp-led-lcd-monitor",
   "priority_rank": 72,
-  "status": "live"
+  "status": "live",
+  "promoted_sample_url": "https://alqamarshop.com/products.json",
+  "promoted_genuine_method": "shopify_json",
+  "promoted_verified_amount": "50.0 KWD",
+  "promoted_verified_at": "2026-08-17"
  },
  {
   "domain": "mummy-and-me.store",
@@ -4174,7 +4186,11 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://bronzeom.com/products/foc-huda-beauty",
   "priority_rank": 74,
-  "status": "live"
+  "status": "live",
+  "promoted_sample_url": "https://bronzeom.com/products.json",
+  "promoted_genuine_method": "shopify_json",
+  "promoted_verified_amount": "18.0 OMR",
+  "promoted_verified_at": "2026-08-17"
  },
  {
   "domain": "decathlon.com.kw",
@@ -4360,7 +4376,11 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://kuwaitcavarat.com/products/playx-sundi-wireless-controller-ps4-blue",
   "priority_rank": 78,
-  "status": "live"
+  "status": "live",
+  "promoted_sample_url": "https://kuwaitcavarat.com/products.json",
+  "promoted_genuine_method": "shopify_json",
+  "promoted_verified_amount": "7.5 KWD",
+  "promoted_verified_at": "2026-08-17"
  },
  {
   "domain": "markeetex.com",
@@ -4398,7 +4418,11 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://level-up.gg/products/vinyl-soda-heroes-dc-martian-manhunter",
   "priority_rank": 79,
-  "status": "live"
+  "status": "live",
+  "promoted_sample_url": "https://level-up.gg/products.json",
+  "promoted_genuine_method": "shopify_json",
+  "promoted_verified_amount": "350.9 KWD",
+  "promoted_verified_at": "2026-08-17"
  },
  {
   "domain": "om.swissarabian.com",
@@ -5195,7 +5219,11 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://crescitebeauty.com/collections/korean-beauty",
   "priority_rank": 111,
-  "status": "live"
+  "status": "live",
+  "promoted_sample_url": "https://crescitebeauty.com/products.json",
+  "promoted_genuine_method": "shopify_json",
+  "promoted_verified_amount": "59.0 AED",
+  "promoted_verified_at": "2026-08-17"
  },
  {
   "domain": "dubaioptical.com",
@@ -5447,7 +5475,11 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://medicinaonline.ae/products/bepanthene-cream-30gm",
   "priority_rank": 124,
-  "status": "live"
+  "status": "live",
+  "promoted_sample_url": "https://medicinaonline.ae/products.json",
+  "promoted_genuine_method": "shopify_json",
+  "promoted_verified_amount": "44.25 AED",
+  "promoted_verified_at": "2026-08-17"
  },
  {
   "domain": "mestore.ae",
@@ -5604,7 +5636,11 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.refab.me/collections/android-mobile-phones-uae",
   "priority_rank": 132,
-  "status": "live"
+  "status": "live",
+  "promoted_sample_url": "https://refab.me/products.json",
+  "promoted_genuine_method": "shopify_json",
+  "promoted_verified_amount": "795.0 AED",
+  "promoted_verified_at": "2026-08-17"
  },
  {
   "domain": "revent.store",
