@@ -49,6 +49,7 @@ from app.services.price_service import (
     select_best,
     selection_primary_admits,
     strict_title_match,
+    variant_min_guard_enabled,
     variant_mismatch,
 )
 
@@ -116,6 +117,29 @@ def _amount_from_prices(prices: Dict[str, Any]) -> Optional[float]:
         return int(str(raw)) / (10 ** minor)
     except (TypeError, ValueError):
         return None
+
+
+def _woo_variable_spread(prices: Dict[str, Any]) -> bool:
+    """True iff this is a VARIABLE product priced from a price_range with a real
+    min != max spread (prices.price is null). Audit 2026-07-08: the Store API list
+    response carries NO per-variation sizes, so _amount_from_prices returns the
+    price_range MIN — a decant/cheapest variation that cannot be bound to the queried
+    size. Serving it leaks a decant as the full bottle. A min == max range (apparel
+    S/M/L all one price) or a simple product (single price) is NOT a spread."""
+    if not isinstance(prices, dict):
+        return False
+    if prices.get("price") not in (None, "", "null"):
+        return False  # simple product (single price) → never a spread
+    pr = prices.get("price_range")
+    if not isinstance(pr, dict):
+        return False
+    lo, hi = pr.get("min_amount"), pr.get("max_amount")
+    if lo in (None, "", "null") or hi in (None, "", "null"):
+        return False
+    try:
+        return int(str(lo)) != int(str(hi))
+    except (TypeError, ValueError):
+        return False
 
 
 def _match_woo_product(
@@ -203,6 +227,12 @@ def _match_woo_product(
         prices = prod.get("prices") or {}
         amount = _amount_from_prices(prices)
         if amount is None or amount <= 0:
+            continue
+        # Variant-min decant guard (audit 2026-07-08): a variable product whose price came
+        # from a price_range with min != max — the min is the cheapest variation (a decant),
+        # and the list response has no per-variation sizes to bind the queried size. PEND
+        # (skip) rather than leak the decant as the bottle. Flag OFF → served as today.
+        if variant_min_guard_enabled() and _woo_variable_spread(prices):
             continue
 
         currency_code = (prices.get("currency_code") or "").upper()
