@@ -10,12 +10,14 @@ from typing import Any, Dict, List, Optional
 import httpx
 from openai import AsyncOpenAI
 
+from app.services.llm_provider import provider_base_url
+
 logger = logging.getLogger(__name__)
 
 # Initialize async client (reads OPENAI_API_KEY from env at request time).
 # Explicit timeout: 30s connect (Railway networking can be slow), 120s total.
 # This module-level singleton is kept for back-compat with existing call sites.
-client = AsyncOpenAI(timeout=httpx.Timeout(120.0, connect=30.0))
+client = AsyncOpenAI(base_url=provider_base_url(), timeout=httpx.Timeout(120.0, connect=30.0))
 
 # Memoised per-project clients for the dual-project routing in
 # select_client_for_user. Filled lazily by get_client(); resolved against
@@ -40,13 +42,16 @@ def get_client(use_shared_project: bool = True) -> AsyncOpenAI:
 
     if use_shared_project:
         # Shared (default). Existing OPENAI_API_KEY env handles this.
-        new_client = AsyncOpenAI(timeout=httpx.Timeout(120.0, connect=30.0))
+        new_client = AsyncOpenAI(
+            base_url=provider_base_url(), timeout=httpx.Timeout(120.0, connect=30.0)
+        )
     else:
         # Private. Fall back to default key if a separate one isn't set —
         # acceptable on day 1; the routing API stays correct.
         private_key = os.getenv("OPENAI_API_KEY_PRIVATE") or os.getenv("OPENAI_API_KEY")
         new_client = AsyncOpenAI(
             api_key=private_key,
+            base_url=provider_base_url(),
             timeout=httpx.Timeout(120.0, connect=30.0),
         )
     _client_cache[use_shared_project] = new_client

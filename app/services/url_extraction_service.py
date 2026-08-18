@@ -15,6 +15,8 @@ from urllib.parse import urlparse, parse_qs
 from bs4 import BeautifulSoup
 from openai import AsyncOpenAI
 
+from app.services.llm_provider import provider_base_url
+
 from app.services.extraction_service import canonicalize_category
 
 logger = logging.getLogger(__name__)
@@ -25,7 +27,11 @@ _client = None
 def get_client() -> AsyncOpenAI:
     global _client
     if _client is None:
-        _client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"), timeout=httpx.Timeout(120.0, connect=30.0))
+        _client = AsyncOpenAI(
+            api_key=os.getenv("OPENAI_API_KEY"),
+            base_url=provider_base_url(),
+            timeout=httpx.Timeout(120.0, connect=30.0),
+        )
     return _client
 
 
