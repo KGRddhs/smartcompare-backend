@@ -262,9 +262,12 @@ def test_D_should_cache_rejects_form_leak_supplement():
 
 
 def test_D_should_cache_accepts_exact_descriptive():
+    # amount must clear the high-value plausibility floor: should_cache_price now enforces
+    # the SAME accuracy guards is_price_showable applies (audit 2026-07-08), so a placeholder
+    # 30-BHD S24 would (correctly) be refused as an implausibly-low mis-scrape. Use a real price.
     assert ps.should_cache_price(
         "Samsung Galaxy S24 256GB",
-        _cache_price("Samsung Galaxy S24 256GB Dual SIM Phantom Black 5G Smartphone"),
+        _cache_price("Samsung Galaxy S24 256GB Dual SIM Phantom Black 5G Smartphone", amount=299),
         "electronics") is True
 
 

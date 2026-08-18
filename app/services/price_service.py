@@ -1359,6 +1359,33 @@ def _is_sample_or_decant_listing(product_name: str, title: Optional[str], amount
     return False
 
 
+def _fails_accuracy_guards(
+    product_name: str, price: Dict[str, Any], amount: Optional[float], title: Optional[str],
+) -> Optional[str]:
+    """The shipped plausibility/decant accuracy guards, in is_price_showable's EXACT
+    order and INCLUDING the budget-Arabic-house floor bypass (_budget_house_trusted_price).
+    Returns the failing-guard reason (for guard_rejected), or None when all pass.
+
+    Extracted (scraping audit 2026-07-08) so BOTH chokepoints enforce the identical set:
+    is_price_showable (display) AND should_cache_price (the 7d cache WRITE) — which
+    previously omitted these, so a below-floor decant / sample / high-value-accessory
+    mis-scrape carrying a title + real PDP URL could be WRITTEN to the genuine cache and
+    poison that slot for the whole TTL (every later cache-hit pends at display, masking a
+    genuine price a fresh resolve could have found). All four guards internally no-op on a
+    None/<=0 amount, so the helper is safe for any amount."""
+    if is_implausible_low_fragrance_price(product_name, amount, title=title) and not (
+        _budget_house_trusted_price(product_name, price)
+    ):
+        return "low_fragrance"
+    if is_implausible_low_haircare_price(product_name, amount):
+        return "low_haircare"
+    if is_implausible_high_value_price(product_name, amount):
+        return "high_value"
+    if _is_sample_or_decant_listing(product_name, title, amount):
+        return "sample_decant"
+    return None
+
+
 def is_price_showable(
     product_name: str, price: Optional[Dict[str, Any]], category: Optional[str] = None,
     *, enforce_correctness: bool = False,
@@ -1403,24 +1430,12 @@ def is_price_showable(
     elif title is not None and not isinstance(title, str):
         title = str(title)
         price["title"] = title
-    # Compose the shipped accuracy guards — a price that fails any is not
-    # showable (the guards already encode the "no wrong scrapes" contract).
-    # EXCEPTION (budget Arabic-house coverage) — a genuine direct-adapter exact-PDP
-    # price for a budget house (Lattafa/Rasasi/Al Haramain/...) bypasses the
-    # designer low-price FLOOR: it is the store's authoritative listed price for the
-    # exact SKU, so the 25/100ml floor is a false positive there. The floor still
-    # runs on the loose Serper-shopping path (unaffected). Flag OFF / non-genuine /
-    # listing-URL / expensive-oil-line -> the floor applies unchanged.
-    if is_implausible_low_fragrance_price(product_name, amount, title=title) and not (
-        _budget_house_trusted_price(product_name, price)
-    ):
-        return False
-    # F1.2b — premium haircare wrong-cheap leak (K18 4.51 BHD).
-    if is_implausible_low_haircare_price(product_name, amount):
-        return False
-    if is_implausible_high_value_price(product_name, amount):
-        return False
-    if _is_sample_or_decant_listing(product_name, title, amount):
+    # Compose the shipped accuracy guards — a price that fails any is not showable
+    # (the guards encode the "no wrong scrapes" contract, and their budget-Arabic-house
+    # floor bypass). Extracted to _fails_accuracy_guards so should_cache_price enforces
+    # the IDENTICAL set at the cache-write gate — byte-identical here (same guards, order,
+    # and _budget_house_trusted_price bypass).
+    if _fails_accuracy_guards(product_name, price, amount, title):
         return False
     # --- correctness backstop (CARDINAL RULE) — OPT-IN via enforce_correctness ---
     # Defense-in-depth at the RESPONSE CHOKEPOINT only (response_builder + streaming
@@ -7982,6 +7997,15 @@ def should_cache_price(
     if ((category or "").lower() == "electronics"
             and _is_device_accessory(title) and not _is_device_accessory(request_name)):
         return False
+    # Scraping audit 2026-07-08 — enforce the SAME plausibility/decant accuracy guards
+    # is_price_showable applies at DISPLAY, so a below-floor decant / sample / high-value-
+    # accessory mis-scrape (it carries a title + real PDP URL + in_stock, so it passed the
+    # checks above) is NOT written to the genuine 7d cache and cannot poison the slot for
+    # the TTL. Includes the budget-Arabic-house floor bypass, so a genuine Lattafa/Rasasi
+    # 12 BHD full bottle still caches (mirrors is_price_showable — no budget-house
+    # double-rejection). Inside the gate-ON body -> flag-OFF byte-identical.
+    if _fails_accuracy_guards(request_name, price, price.get("amount"), title):
+        return False
     if not request_name:
         return True
     if _selection_match(
@@ -8034,14 +8058,45 @@ def public_price_view(price: Any) -> Any:
     }
 
 
+def _dose_token(text: str, category: Optional[str] = None) -> str:
+    """A stable normalized supplement DOSE token (mg/IU/mcg) for the cache key, or ""
+    when there is no dose / it is not a supplement.
+
+    Scraping audit 2026-07-08 — the gate-ON base strip (_strip_identity_axes ->
+    _IDENTITY_MEASURE_STRIP_RE) REMOVES mg/mcg/iu from the cache-key base, but no token
+    re-carried the dose, so "Vitamin C 1000mg" and "Vitamin C 500mg" collided onto ONE
+    cross-user key (the 500mg price served for a 1000mg query). This re-adds the dose as
+    the discriminator. Reuses _doses() — the SAME axis the matcher's _vd_strength_mismatch
+    uses for correctness — so the cache key and the matcher agree. Category-gated to
+    SUPPLEMENTS via _resolve_extractor_category (explicit > ContextVar > inference; 'other'
+    re-inferred) so a stray 'mg' in a non-supplement name never forks its key. Gated on
+    exact_gate_enabled() so it is "" flag-OFF (there the legacy _SIZE_STRIP_RE base keeps
+    the dose anyway -> byte-identical, no collision to fix and no key change)."""
+    if not text or not exact_gate_enabled():
+        return ""
+    doses = _doses(text)
+    if not doses:
+        return ""
+    cat = _resolve_extractor_category(category, text)
+    if (cat or "").lower() != "supplements":
+        return ""
+
+    def _fmt(v: float) -> str:
+        return str(int(v)) if float(v).is_integer() else str(v)
+
+    # SET (sorted) not a single value, so a multi-dose B-complex stays distinct.
+    return "-".join(sorted(f"{_fmt(v)}{u}" for v, u in doses))
+
+
 def _identity_cache_token(text: str, category: Optional[str] = None) -> str:
     """A stable composite cache token of ALL identity-discriminating axes —
     concentration (EDP/EDT/…) + variant qualifier (FE/Pro/Max/…) + size/storage/
-    count/weight — so distinct VARIANTS of the same product never collide on one
-    cache key (EDP 100ml vs EDT 100ml; S24 vs S24 FE) while ALIAS wording maps to
-    the SAME token (EDT ≡ "eau de toilette" via the normalized label; oz snapped to
-    ml by size_variant_token). Empty when NO discriminating axis is present → the
-    caller keeps the legacy size-agnostic key (backward-compatible, no cache-warm
+    count/weight + supplement dose (mg/IU/mcg) — so distinct VARIANTS of the same
+    product never collide on one cache key (EDP 100ml vs EDT 100ml; S24 vs S24 FE;
+    1000mg vs 500mg) while ALIAS wording maps to the SAME token (EDT ≡ "eau de toilette"
+    via the normalized label; oz snapped to ml by size_variant_token). Empty when NO
+    discriminating axis is present → the caller keeps the legacy size-agnostic key
+    (backward-compatible, no cache-warm
     invalidation for plain products). The qualifier set is applied category-agnostically
     here — it only ever ADDS a discriminator, so a brand word that happens to be a
     qualifier (Max Factor) stays consistent across the request and the resolved match."""
@@ -8055,6 +8110,9 @@ def _identity_cache_token(text: str, category: Optional[str] = None) -> str:
     size = size_variant_token(text, category)
     if size:
         parts.append(size)
+    dose = _dose_token(text, category)
+    if dose:
+        parts.append(dose)
     return ".".join(parts)
 
 
