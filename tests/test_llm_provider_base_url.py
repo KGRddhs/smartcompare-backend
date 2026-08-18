@@ -8,21 +8,28 @@ import os
 
 import pytest
 
-from app.services.llm_provider import provider_base_url, describe_provider
+from app.services.llm_provider import (
+    provider_base_url,
+    describe_provider,
+    is_custom_provider,
+    STOCK_OPENAI_BASE_URL,
+)
 
 
 # ------------------------------------------------------------ default no-op
 
-def test_unset_is_none(monkeypatch):
+def test_unset_is_stock_openai(monkeypatch):
     monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
-    assert provider_base_url() is None
+    assert provider_base_url() == STOCK_OPENAI_BASE_URL
+    assert is_custom_provider() is False
     assert describe_provider() == "openai"
 
 
 @pytest.mark.parametrize("blank", ["", "   ", "\t", "\n"])
-def test_blank_is_none(monkeypatch, blank):
+def test_blank_is_stock_openai(monkeypatch, blank):
     monkeypatch.setenv("OPENAI_BASE_URL", blank)
-    assert provider_base_url() is None
+    assert provider_base_url() == STOCK_OPENAI_BASE_URL
+    assert is_custom_provider() is False
 
 
 # --------------------------------------------------------------- happy path
@@ -55,7 +62,8 @@ def test_surrounding_whitespace_is_stripped(monkeypatch):
 def test_malformed_falls_back_to_stock_openai(monkeypatch, bad, caplog):
     """A malformed value must NOT silently point the app at a bogus host."""
     monkeypatch.setenv("OPENAI_BASE_URL", bad)
-    assert provider_base_url() is None
+    assert provider_base_url() == STOCK_OPENAI_BASE_URL
+    assert is_custom_provider() is False
     assert describe_provider() == "openai"
 
 
@@ -63,7 +71,7 @@ def test_read_fresh_every_call(monkeypatch):
     """No module-level cache — a Railway change takes effect on the next client
     construction, with no redeploy."""
     monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
-    assert provider_base_url() is None
+    assert provider_base_url() == STOCK_OPENAI_BASE_URL
     monkeypatch.setenv("OPENAI_BASE_URL", "https://a.test/v1")
     assert provider_base_url() == "https://a.test/v1"
     monkeypatch.setenv("OPENAI_BASE_URL", "https://b.test/v1")
@@ -108,8 +116,9 @@ def test_all_client_factories_pass_base_url(monkeypatch):
     assert all(v == "https://spy.test/v1" for v in seen), seen
 
 
-def test_factories_pass_none_when_unset(monkeypatch):
-    """Default path — base_url=None is exactly what the SDK gets today."""
+def test_factories_pass_explicit_stock_url_when_unset(monkeypatch):
+    """Default path — an EXPLICIT stock url, so a later malformed env value
+    can never be re-read by the SDK behind our back."""
     import app.services.extraction_service as esvc
     seen = []
 
@@ -121,4 +130,43 @@ def test_factories_pass_none_when_unset(monkeypatch):
     monkeypatch.setattr(esvc, "AsyncOpenAI", _Spy)
     monkeypatch.setattr(esvc, "_client", None, raising=False)
     esvc.get_client()
-    assert seen == [None]
+    # explicit stock url, NOT None — None would let the SDK re-read the env var
+    assert seen == [STOCK_OPENAI_BASE_URL]
+
+
+# ---------------------------------------------------------------------------
+# REGRESSION (2026-08-17): the fail-safe did not actually fail safe.
+#
+# openai-python resolves base_url itself when it is passed None:
+#     if base_url is None: base_url = os.environ.get("OPENAI_BASE_URL")
+#     if base_url is None: base_url = "https://api.openai.com/v1"
+#
+# So returning None for a MALFORMED value handed the SDK the same bad env var,
+# and the client was built against it — the exact outcome the guard existed to
+# prevent. The guard must therefore return an EXPLICIT stock URL, never None.
+# ---------------------------------------------------------------------------
+
+STOCK = "https://api.openai.com/v1"
+
+
+@pytest.mark.parametrize("bad", ["not-a-url", "ftp://x", "//protocol-relative", "junk value"])
+def test_malformed_value_cannot_reach_the_sdk(monkeypatch, bad):
+    """The SDK must end up on stock OpenAI, not on the malformed value."""
+    from openai import AsyncOpenAI
+    monkeypatch.setenv("OPENAI_BASE_URL", bad)
+    client = AsyncOpenAI(api_key="test", base_url=provider_base_url())
+    assert str(client.base_url).rstrip("/") == STOCK, str(client.base_url)
+
+
+def test_unset_resolves_to_stock_openai_through_the_sdk(monkeypatch):
+    from openai import AsyncOpenAI
+    monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
+    client = AsyncOpenAI(api_key="test", base_url=provider_base_url())
+    assert str(client.base_url).rstrip("/") == STOCK
+
+
+def test_valid_value_reaches_the_sdk(monkeypatch):
+    from openai import AsyncOpenAI
+    monkeypatch.setenv("OPENAI_BASE_URL", "https://gateway.test/v1")
+    client = AsyncOpenAI(api_key="test", base_url=provider_base_url())
+    assert str(client.base_url).rstrip("/") == "https://gateway.test/v1"
