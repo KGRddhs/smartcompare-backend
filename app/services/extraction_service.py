@@ -14,6 +14,8 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime
 import httpx
 from openai import AsyncOpenAI
+
+from app.services.llm_provider import provider_base_url
 from app.utils.prompt_sanitizer import sanitize_prompt_input, check_injection_patterns
 
 logger = logging.getLogger(__name__)
@@ -40,7 +42,11 @@ def get_client() -> AsyncOpenAI:
     if _client is None:
         api_key = os.getenv("OPENAI_API_KEY")
         logger.info(f"Initializing OpenAI client with key ending in: ...{api_key[-10:] if api_key else 'NONE'}")
-        _client = AsyncOpenAI(api_key=api_key, timeout=httpx.Timeout(120.0, connect=30.0))
+        _client = AsyncOpenAI(
+            api_key=api_key,
+            base_url=provider_base_url(),
+            timeout=httpx.Timeout(120.0, connect=30.0),
+        )
     return _client
 
 # GCC Region mappings
