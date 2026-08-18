@@ -2917,6 +2917,14 @@ All 12 D.6 criteria satisfied (see qa-cohort broadcast at gate-completion time).
 
 ---
 
+## 2026-07-08 — Local-house genuine-BHD coverage (PR #33 merged) + deep scraping audit (PR #34 open)
+
+**Local Arabic perfume houses** (Lattafa/Rasasi/Armaf/Swiss Arabian/Al Haramain) pended despite genuine BHD prices — a CHAIN: the designer 25-BHD fragrance floor suppressing the cheap Arabic houses + a Google-Shopping-localA listing-url short-circuiting the real-PDP woo adapters + an exhausted Serper budget. **PR #33 (squash `81b81a8`, MERGED + DEPLOYED):** source-aware floor bypass (`_budget_house_trusted_price` at the display chokepoint — genuine direct-adapter exact-PDP budget price trusted; loose Serper path keeps the floor; guarded by exact-gate coupling + 5-BHD artifact floor + in_stock + oud-oil word-boundary carve-out), park-listing-url-Tier-1 (the warmer unlock), 2 live BH WooCommerce sources (alibaksh all-5 / fragrancebh 4-of-5), 8 warmer entries. All flag-gated, flag-OFF byte-identical, comm branch-only-NEW==[]. TWO coverage-driven reviews + `/code-review ultra 33` (8 confirmed → 6 fixed incl. the rollback exact-gate coupling, 2 deferred). Two follow-up task chips (internal-floor-site generalization; pre-existing premium-only-brand floor gap).
+
+**Deep scraping-system audit** (12-lens/48-agent, runtime-reproduced, whole price pipeline): **31 faults.** Shipped the SSRF class — 2 redirect-SSRF (`fetch_page` public /url/*, `fetch_page_price` Tier-1.5) followed 30x redirects to internal/cloud-metadata unvalidated → **PR #34 (open, comm-green)** per-hop `validate_external_url` + route through the existing `curl_fetch_html_same_site`. 6 HIGH findings queued as task chips: variable-product decant leak, cache-write-skips-accuracy-guards + dose cache-key collision, microdata USD-default + max-across-nodes, Bright Data no-budget-gate, sync-Redis-blocks-the-loop. Durable: most audit adapter-crash faults are CONTAINED by scs `_timeout_none` → a silent KPI-invisible source-drop, not a prod 500. Handoffs: `memory/project_localhouse_genuine_coverage.md`, `memory/project_scraping_system_audit.md`.
+
+---
+
 **END OF KNOWLEDGE TRANSFER**
 
 *Keep this document updated as the project evolves.*
