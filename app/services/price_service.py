@@ -9126,7 +9126,7 @@ def extract_price_from_html(
     # ("BHD 48.332/month"); the old find-first grabbed THAT (wrong). The helper
     # skips installment-context elements + reads the currency paired in the SAME
     # Offer itemscope (not a page-global find), and normalizes lowercase "bhd".
-    micro = _extract_microdata_price(soup, currency, domain, url)
+    micro = _extract_microdata_price(soup, currency, domain, url, product_name, _category)
     if micro:
         # frag-size-capture — size from og:title / page <title> (microdata
         # nodes rarely carry a volume; the name signals do).
@@ -9212,7 +9212,8 @@ _INSTALLMENT_RE = re.compile(
 
 
 def _extract_microdata_price(
-    soup, currency: str, domain: str, url: str
+    soup, currency: str, domain: str, url: str,
+    product_name: str = "", category: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
     """Extract a product price from Schema.org microdata, skipping EPP
     installment nodes and pairing priceCurrency within the same Offer scope.
@@ -9220,12 +9221,26 @@ def _extract_microdata_price(
     Returns a ``page_scrape_microdata`` dict or ``None``. Prefers an
     ``itemprop=price`` inside an ``schema.org/Offer`` (or Product) itemscope;
     a bare/installment one is skipped.
+
+    Under exact_gate_enabled() (ENABLE_EXACT_PRICE_GATE, default ON) three
+    scraping-audit-2026-07-08 correctness fixes engage (flag-OFF byte-identical):
+    (a) a MISSING priceCurrency defaults to the REGION currency, not 'USD' (a BHD
+        page that omits its currency tag was converted DOWN ~2.6x); a genuinely
+        converted foreign price is relabelled source_method='converted_usd';
+        currency is also read from an enclosing Product ancestor, not only the
+        first Offer/Product's descendants.
+    (b) each price is bound to the enclosing Product itemscope's name and matched
+        against the query (_selection_match), so a query-matched node OUTRANKS a
+        pricier related-products/upsell Product node (the max-across-nodes hijack).
+        Demote-only: when no node name matches, the legacy max-in-offer pick stands
+        (single-product / nameless-scope pages are never over-rejected).
     """
     candidates = soup.find_all(attrs={"itemprop": "price"})
     if not candidates:
         return None
 
-    best = None  # (in_offer_scope: bool, amount, currency)
+    gate = exact_gate_enabled()
+    best = None  # legacy: (in_offer, amount, currency); gate: (matched, in_offer, amount, currency)
     for el in candidates:
         raw = el.get("content") or el.get_text(" ", strip=True)
         if not raw:
@@ -9241,22 +9256,34 @@ def _extract_microdata_price(
             continue
 
         # Is this price inside an Offer/Product itemscope? Walk up; also grab the
-        # currency paired within that SAME scope (not a page-global find).
+        # currency paired within that SAME scope (not a page-global find). Under the
+        # gate, keep walking past the first Offer to also capture the enclosing
+        # Product scope (its itemprop=name binds the price to the queried product,
+        # and its priceCurrency covers a currency declared on the Product ancestor).
         in_offer = False
         cur = None
         offer_scope = None
+        product_scope = None
         s = el
-        for _ in range(5):
+        for _ in range(8 if gate else 5):
             if s is None or not hasattr(s, "get"):
                 break
             itemtype = s.get("itemtype") or ""
-            if "Offer" in itemtype or "Product" in itemtype:
+            is_scope = "Offer" in itemtype or "Product" in itemtype
+            if "Product" in itemtype and product_scope is None:
+                product_scope = s
+            if is_scope and not in_offer:
                 in_offer = True
                 offer_scope = s
-                break
+                if not gate:
+                    break
             s = s.parent
         if offer_scope is not None:
             cur_el = offer_scope.find(attrs={"itemprop": "priceCurrency"})
+            if cur_el is not None:
+                cur = cur_el.get("content") or cur_el.get_text(strip=True)
+        if gate and not cur and product_scope is not None and product_scope is not offer_scope:
+            cur_el = product_scope.find(attrs={"itemprop": "priceCurrency"})
             if cur_el is not None:
                 cur = cur_el.get("content") or cur_el.get_text(strip=True)
 
@@ -9273,18 +9300,39 @@ def _extract_microdata_price(
 
         if not cur:
             cur_el = soup.find(attrs={"itemprop": "priceCurrency"})
-            cur = (cur_el.get("content") or cur_el.get_text(strip=True)) if cur_el else "USD"
+            if cur_el is not None:
+                cur = cur_el.get("content") or cur_el.get_text(strip=True)
+            else:
+                # BUG a (gate): a currency-less microdata price is a LOCAL shelf price
+                # on a region-scoped scrape domain, not USD — default to the region
+                # currency so a BHD page is not converted down ~2.6x. Flag-OFF: 'USD'.
+                cur = currency if gate else "USD"
         cur = str(cur).strip().upper()  # lulu lowercase "bhd" -> "BHD"
 
-        # Prefer an Offer-scoped price; among equals, the larger plausible value.
-        key = (in_offer, amount)
-        if best is None or key > (best[0], best[1]):
-            best = (in_offer, amount, cur)
+        # BUG b (gate): bind the price to the enclosing Product node's name and match
+        # it to the query, so a query-matched node outranks a pricier unmatched upsell.
+        matched = False
+        if gate and product_name and product_scope is not None:
+            nm = product_scope.find(attrs={"itemprop": "name"})
+            node_name = (nm.get("content") or nm.get_text(" ", strip=True)) if nm is not None else ""
+            if node_name:
+                matched = _selection_match(product_name, node_name, category)
+
+        # Prefer a query-matched node, then an Offer-scoped price, then the larger value.
+        if gate:
+            if best is None or (matched, in_offer, amount) > (best[0], best[1], best[2]):
+                best = (matched, in_offer, amount, cur)
+        else:
+            if best is None or (in_offer, amount) > (best[0], best[1]):
+                best = (in_offer, amount, cur)
 
     if best is None:
         return None
 
-    _in_offer, amount, cur = best
+    if gate:
+        _matched, _in_offer, amount, cur = best
+    else:
+        _in_offer, amount, cur = best
     result = {
         "amount": amount, "original_currency": cur, "currency": cur,
         "retailer": domain, "url": url, "in_stock": True,
@@ -9297,6 +9345,11 @@ def _extract_microdata_price(
     }
     if cur.upper() != currency.upper():
         _convert_gpt_price_currency(result, currency)
+        # A converted FOREIGN price is not a genuine local shelf price — label its
+        # provenance honestly (mirrors the JSON-LD / OG branches) so it stays out of
+        # the genuine-BH KPI and the UI reads "indicative", never a genuine BH price.
+        if gate:
+            result["source_method"] = "converted_usd"
     return result
 
 
