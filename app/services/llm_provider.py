@@ -39,29 +39,49 @@ logger = logging.getLogger(__name__)
 
 _ENV = "OPENAI_BASE_URL"
 
+# Stock OpenAI, spelled out. This MUST be returned explicitly rather than None —
+# see the note on provider_base_url().
+STOCK_OPENAI_BASE_URL = "https://api.openai.com/v1"
 
-def provider_base_url() -> Optional[str]:
-    """The configured OpenAI-compatible base URL, or ``None`` for stock OpenAI.
 
-    Read FRESH per call (no module-level cache) so a Railway change takes effect
-    on the next client construction without a code deploy. Whitespace-only or
-    unset → ``None``, which the SDK treats exactly as "no base_url given".
+def provider_base_url() -> str:
+    """The OpenAI-compatible base URL to build clients with. NEVER ``None``.
+
+    🔒 WHY NEVER None (regression 2026-08-17): openai-python resolves the value
+    ITSELF when handed ``None`` — ``AsyncOpenAI.__init__`` does
+
+        if base_url is None: base_url = os.environ.get("OPENAI_BASE_URL")
+        if base_url is None: base_url = "https://api.openai.com/v1"
+
+    so returning ``None`` for a MALFORMED setting handed the SDK the very value
+    the guard had just rejected, and the client was built against it. Returning
+    an EXPLICIT url is what makes the validation real.
+
+    (The corollary: the SDK already supported ``OPENAI_BASE_URL`` natively. What
+    this module adds is validation + a diagnostic label, NOT the capability.)
+
+    Read FRESH per call (no module cache) so a Railway change applies on the next
+    client construction with no redeploy.
     """
     raw = (os.getenv(_ENV) or "").strip()
     if not raw:
-        return None
+        return STOCK_OPENAI_BASE_URL
     if not raw.startswith(("http://", "https://")):
-        # Fail SAFE: a malformed value must not silently point the app at a
-        # bogus host — fall back to stock OpenAI and say so loudly.
+        # Fail SAFE: a typo must not point the app at a bogus host.
         logger.warning(
             "[llm_provider] %s=%r is not an http(s) URL — ignoring, using stock OpenAI",
             _ENV, raw,
         )
-        return None
+        return STOCK_OPENAI_BASE_URL
     return raw
+
+
+def is_custom_provider() -> bool:
+    """True iff a VALID non-stock endpoint is configured."""
+    return provider_base_url() != STOCK_OPENAI_BASE_URL
 
 
 def describe_provider() -> str:
     """Short human label for logs/diagnostics. Never includes credentials."""
     base = provider_base_url()
-    return f"openai-compatible@{base}" if base else "openai"
+    return f"openai-compatible@{base}" if is_custom_provider() else "openai"
