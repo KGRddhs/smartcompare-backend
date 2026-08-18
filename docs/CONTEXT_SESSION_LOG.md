@@ -2917,6 +2917,105 @@ All 12 D.6 criteria satisfied (see qa-cohort broadcast at gate-completion time).
 
 ---
 
+## 2026-08-17 — Owned-discovery Phase 1, 4 audit PRs merged, and the OpenAI outage
+
+Opened on a prod that had been dormant since 2026-07-08. First act was a **live-state probe rather
+than a memory read**, which paid for itself immediately.
+
+**Everything is up except the LLM.** Railway `web` + `price-warmer` healthy; Supabase attached and
+writing (18 users / 27 comparisons / 3,925 product_prices / 15,567 search_logs / 655 drugs); Upstash
+up; **all three prod Serper keys HTTP 200**; Firecrawl 2,291 credits; Scrape.do 995/1000; Bright Data
+live. **Zyte is suspended** (403, off-clock seed only). And `OPENAI_API_KEY` returns 429
+`credit_balance_exhausted` on prod *and* local — product identification is a GPT call, so every
+`/text/compare` returns `BAD_REQUEST "Could not identify two products"`. **The scrapers were never
+the problem.** `search_logs` showed no real traffic since 2026-07-08.
+
+A trap worth remembering: the **local `.env` Serper key is depleted while prod's three are live**,
+and local Firecrawl differs from prod's. Diagnosing a prod scraper issue from a local probe would
+have produced exactly the wrong conclusion.
+
+### Owned-discovery Phase 1 → PR #42 (open, comm-clean)
+
+Swept all 195 live catalog rows carrying no adapter and probed each domain's own platform JSON API.
+103 answered (99 Shopify `/products.json`, 4 Woo Store API). 39 were already reachable via
+`get_gcc_shopify_pagescrape_sources_for_category`; the other 64 were not — and the reason was
+narrow. That selector admits a row when `"/products.json" in sample_url`, but those rows had
+recorded a **PDP or collection URL** as their liveness anchor. The catalog endpoints work fine; the
+anchor proxy under-selects. **A data fix, not new machinery.**
+
+Every candidate was gated through the **production adapter**, not an endpoint ping. First pass
+verified 53 of 64 on a single sampled product each; re-checking the 11 exclusions with **5 samples
+spread across each catalog recovered 9** (level-up.gg matched 1/5, store974 only 3/5). Final: **62
+promoted** (59 `shopify_json`, 3 `woo_store_api`; 7 bahrain genuine-BHD, 55 GCC converted-by-design),
+2 excluded. Gated `ENABLE_OWNED_DISCOVERY_PROMOTION` (default OFF, flag-OFF byte-identical), 22
+tests.
+
+Rollout nuance: the selectors are **top-K capped** (`BH_GCC_FANOUT_K`=6/mechanism/category), so 62
+rows is not 62 extra fetches. Measured effect is **27 domains newly entering the fan-out**, with the
+real win in starved categories — `fashion` gcc_shopify went **0 → 3** (it had none at all),
+electronics 2 → 6, other 1 → 6, grocery 1 → 3.
+
+### Merged and deployed (4)
+
+`#37` `b562360` Bright Data budget + breaker (closed a **live unbounded** paid path under Serper
+depletion) → `#41` `320b3f6` async-Redis offload → `#40` `efed37f` variant-min decant guard →
+`#43` `c630436` `OPENAI_BASE_URL`. One at a time, each deploy verified SUCCESS on both services.
+
+### The merge-readiness finding — "flag-OFF byte-identical" ≠ dormant
+
+The #36–#41 handoff called all six dormant. **Three are not:** #36 is gated by
+`ENABLE_VARIANT_DESCRIPTOR_AXES` (=true on Railway) and #38/#39 by `exact_gate_enabled()` =
+`os.getenv("ENABLE_EXACT_PRICE_GATE","true")` (absent from Railway → default ON). Those go live the
+moment Railway deploys, and rolling one back means disabling a core correctness gate wholesale. #39
+also changes `should_cache_price`, so a bad merge poisons the 7d cache rather than one response.
+**Held** until compares work. Conflicts were a non-issue (6/6 pairwise clean; all six merge
+sequentially with zero conflicts).
+
+### Two dead ends, measured and recorded
+
+**Sitemap channel dropped** — 7 of 47 domains viable (3 bahrain), and that is a *ceiling* (the
+extractor was handed each page's own product name). It also isn't a data change:
+`_sitemap_price_fetchers()` is a hardcoded `{bolo.bh, boutiqaat.com}` map and the prefetch
+pre-filters to it, so extending the index builds indexes nothing consumes.
+
+**45 no-channel sources** — only 6 answer any of 9 probed platform fingerprints (all Magento
+GraphQL), and all 6 still miss through the adapter because `magento_graphql_service.py:560` returns
+`None` for a host absent from `_MAGENTO_STORES`. Each needs bespoke config.
+
+### #43 shipped a guard that did not guard → PR #44
+
+`openai-python` resolves `base_url` itself when handed `None`, so returning `None` for a malformed
+value handed the SDK the very env var the guard had just rejected — `OPENAI_BASE_URL=not-a-url`
+produced SDK `base_url=not-a-url/` **while logging "ignoring, using stock OpenAI"**. Worse than no
+guard. Fixed by returning an explicit URL, never `None`. Corollary: **the SDK already supported
+`OPENAI_BASE_URL` natively**, so #43 added validation, not the capability. No prod impact (the var
+is unset), but **merge #44 before ever setting it**.
+
+### Durable lessons
+
+- **Verify through the runtime adapter, never the endpoint probe** — 11 of 64 domains returned 200 +
+  products yet produced no price through `fetch_shopify_price`.
+- **Multi-sample before excluding a source** — one unlucky sample condemned 9 working stores.
+- `fetch_shopify_price` is `(domain, product_name, currency, category)`; passing the title first
+  fails as `curl: (3) URL rejected: Bad hostname`, which reads exactly like a coverage miss. Cost
+  two bogus "0% hit rate" measurements.
+- **`importlib.reload` rebinds a module's classes** → `isinstance(x, Source)` fails in modules that
+  imported `Source` at collection time (passes isolated, fails whole-suite — the comm gate caught
+  it). Also, holding two module refs across a reload **aliases** them, which produced a false
+  "0 new domains" measurement. Rebuild state with `monkeypatch.setattr`.
+- **A guard must return an explicit value, not `None`** — `None` can hand control back to the
+  library default you were overriding. Assert on the *constructed client*, not the helper's return.
+- `test_prices_endpoint_rate_limited` is network-dependent: times out (`exit=124`) identically on
+  branch and unmodified main, and now sits in main's own baseline. Ignore it in the comm gate.
+
+### Next session
+
+OpenAI credits (paused to 2026-08-18) → `/code-review ultra 44` → merge → `/code-review ultra 42` →
+merge → flip `ENABLE_OWNED_DISCOVERY_PROMOTION=true` → then #36/#38/#39 one at a time with a warmed
+cache-read verification between each. Zyte needs rotating or dropping.
+
+---
+
 **END OF KNOWLEDGE TRANSFER**
 
 *Keep this document updated as the project evolves.*
