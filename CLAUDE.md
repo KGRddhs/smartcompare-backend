@@ -67,7 +67,13 @@ IDE/LSP TS diagnostics on Windows are unreliable (`typescript-lsp` plugin bug, s
 **Two-lever launch model:** Backend deploys (Railway via `git push origin main`, ~90s) and mobile JS bundle deploys (EAS via `eas update`/`eas build`) are **independent**. Merging to main does NOT push frontend code to phones — phones run their last-bundled JS until an EAS update/build reaches them. New mobile features need BOTH levers fired.
 
 ### Dependencies
-- Backend: `pip install -r requirements.txt` (Railway uses this, NOT pyproject.toml)
+- Backend: **`requirements.txt` is a GENERATED lock — never hand-edit it.** Declare deps in `requirements.in` (runtime) or `requirements-dev.in` (test/lint tooling), then recompile:
+  ```bash
+  uv pip compile requirements.in     -o requirements.txt     --universal --python-version 3.12
+  uv pip compile requirements-dev.in -o requirements-dev.txt -c requirements.txt --universal --python-version 3.12
+  ```
+  The dev lock is compiled with `-c requirements.txt` so the two locks can never disagree on a shared transitive.
+  `--universal` is required: it emits platform markers (e.g. `uvloop ; sys_platform != 'win32'`) so a lock compiled on Windows still installs correctly on Railway's Linux. Install with `pip install -r requirements.txt -r requirements-dev.txt`. Railway/Nixpacks installs `requirements.txt` (NOT pyproject.toml). CI's **Lock is current** step recompiles and diffs, so a `.in` edit without a recompile fails the build.
 - Frontend: `npm install` in `SmartCompareApp/`
 - **Expo native deps:** use `npx expo install <pkg>` (not `npm install`). JS/native version mismatch causes cryptic `NativeWorklets` / `HostFunction` crashes in Expo Go.
 
