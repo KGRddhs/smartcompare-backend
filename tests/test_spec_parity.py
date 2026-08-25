@@ -42,7 +42,10 @@ def test_baseline_s25_has_minimum_keys(baseline):
     assert len(keys) >= 6, f"S25 baseline too thin: {keys}"
 
 
+# live_prod (#49): GETs the PRODUCTION deployment, which writes the resolved price to the
+# production cache + L2 DB (`nocache=true` bypasses the READ only).
 @pytest.mark.live_unit
+@pytest.mark.live_prod
 def test_post_fix_iphone_vs_s25_has_critical_specs():
     """Post-Bucket-A live bench: both products should have front_camera AND
     water_resistance populated (the bug-3 fix). Skipped unless RUN_LIVE_BENCH=1.

@@ -41,6 +41,7 @@ markers = [
     "integration: tests calling live Railway production API",
     "live_unit: unit tests that call live external services (iHerb, Serper, OpenAI)",
     "bench: latency/throughput benchmarks against live Railway (gated by BENCH=1 env)",
+    "live_prod: live tests whose HTTP target is the PRODUCTION deployment (web-production-58776) or the production Supabase L2 — they make the prod server write to the production price cache and L2 price rows, so the scheduled .github/workflows/live-suite.yml run excludes them via -m \"live_unit and not live_prod\" (#49)",
 ]
 
 [tool.poetry]

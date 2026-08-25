@@ -33,7 +33,11 @@ def run_async(coro):
 # That's a REAL network call, so they belong behind the live_unit mark like the
 # cost-tracking class below — keeps them out of the free-unit filter where the
 # Supabase round-trip flakes / errors under sandbox network restrictions.
+# live_prod (#49): as the note above says, these reach the un-mocked L2 DB
+# (product_data_service.get_cached_specs/save_specs -> the PRODUCTION Supabase), so they
+# both read and write production rows. Excluded from the scheduled live suite.
 @pytest.mark.live_unit
+@pytest.mark.live_prod
 class TestUnifiedSearchSharing:
     def test_specs_skips_own_search_when_results_provided(self, service):
         """_get_specs() should NOT call search_web when search_results is provided."""
@@ -80,7 +84,10 @@ class TestUnifiedSearchSharing:
 
 # --- Live cost tracking test ---
 
+# live_prod (#49): GETs the PRODUCTION deployment and bills the production vendor budget;
+# the prod server writes the resolved price to the production cache + L2 DB.
 @pytest.mark.live_unit
+@pytest.mark.live_prod
 class TestCostTrackingLive:
     def test_comparison_within_budget(self, service):
         """A full comparison should cost <= $0.020 and use <= 20 API calls."""

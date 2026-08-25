@@ -440,6 +440,12 @@ class TestContentSafetyInterception:
 # ============================================
 
 
+# live_prod (#49): these POST the PRODUCTION deployment. `?nocache=true` bypasses the
+# cache READ only — the prod server still runs should_cache_price -> set_cached +
+# _save_price_to_db (structured_comparison_service.py:5600, :6930), so every run seeds
+# the production price cache and inserts production L2 rows. Excluded from the
+# scheduled live suite by `-m "live_unit and not live_prod"`.
+@pytest.mark.live_prod
 class TestLiveRailwaySmoke:
     """Marked live_unit; not run in default CI. ~$0.05 total per run."""
 

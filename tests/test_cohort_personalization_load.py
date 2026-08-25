@@ -62,7 +62,10 @@ LOAD_QUERIES: list[str] = [
 P50_WALL_BUDGET_SECONDS = 8.0
 
 
+# live_prod (#49): 5 back-to-back compares against the PRODUCTION deployment; each one
+# makes the prod server write to the production price cache + L2 DB.
 @pytest.mark.live_unit
+@pytest.mark.live_prod
 @pytest.mark.skipif(
     os.environ.get("RUN_LOAD") != "1",
     reason="opt-in load smoke — set RUN_LOAD=1 to fire (~$0.05 credit burn)",

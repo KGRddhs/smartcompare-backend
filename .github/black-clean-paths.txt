@@ -22,6 +22,15 @@
 # added without the test suite catching it first.
 #
 # Baseline recorded 2026-08-25 at main c630436: 16 clean / 619 total.
+#
+# HONEST SIZE OF THE GATE. Do not read "16 files" as "16 files of code":
+# 10 of the 16 entries are 0-byte `__init__.py` files (measured with `wc -c`),
+# which are black-clean vacuously. The gate therefore covers SIX substantive
+# files, five of them pre-existing plus tests/test_ci_gates.py which #49 wrote.
+# That is ~1% of the tree: a change to app/services/price_service.py still
+# passes lint untouched. The issue's "PRs are gated on formatting" is NOT yet
+# achieved — this is a ratchet pointed the right way, not the finished gate.
+# The whole-tree drift report in ci.yml keeps the remaining ~603 visible.
 
 app/__init__.py
 app/api/__init__.py

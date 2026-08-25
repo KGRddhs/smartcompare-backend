@@ -42,6 +42,24 @@ import pytest
 # Scope note: this is a blanket module mark, so do NOT add a test to this file
 # that is expected to PASS today; it would be silently masked. New value-math
 # tests for shipped behaviour belong in their own module.
+#
+# WHY THERE IS NO `raises=` NARROWING (#49 review follow-up). Narrowing to the
+# not-yet-implemented exception shapes was proposed, to stop a *buggy* A.6.x
+# implementation reporting xfail forever. Measured with
+# `pytest tests/test_value_math.py --runxfail --tb=line` on 2026-08-25, the 35
+# nodes fail in three shapes, not one:
+#     23 x ImportError      (build_value_delta_text, build_value_match_caption,
+#                            _classify_value_match, _classify_budget_mismatch)
+#      1 x TypeError        (budget_mismatch kwarg on _build_preferences_prompt)
+#     11 x AssertionError   (VALUE_FORMULA_BY_PRIORITY ALREADY EXISTS in
+#                            app/services/scoring_service.py with pre-v1.1
+#                            coefficients — 0.45 where spec §4a says 0.40, etc.)
+# So `raises=(AttributeError, ImportError, NameError, TypeError)` would turn
+# those 11 back into hard failures and put the build straight back to red, which
+# is the exact outcome #49 exists to end. The amnesty is bounded a different way
+# instead: tests/test_ci_gates.py::test_value_math_xfail_expires_when_a6x_ships
+# goes RED the moment every A.6.x symbol exists, forcing this pytestmark to be
+# removed in the PR that ships the implementation.
 pytestmark = pytest.mark.xfail(
     reason=(
         "RED-by-design: Bundle C v1.1 value-math (A.6.x) is not implemented yet "
