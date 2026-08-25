@@ -35,6 +35,30 @@ from pathlib import Path
 
 import pytest
 
+from tests._env_safety import live_mode_enabled
+
+# --- run-mode guards -------------------------------------------------------
+#
+# Most of this file asserts what a DEFAULT (non-LIVE) test process sees. That
+# contract deliberately does not hold under the LIVE=1 opt-in, so those tests
+# SKIP there rather than fail — otherwise the whole-suite command this very
+# commit documents (`LIVE=1 python -m pytest tests/`) could never pass, and a
+# doc that prescribes an impossible command is worse than no doc.
+_DEFAULT_TIER_ONLY = pytest.mark.skipif(
+    live_mode_enabled(),
+    reason="asserts the default (non-LIVE) credential contract; LIVE=1 opts out of it",
+)
+
+# The two marker probes below exist only to be collected by a subprocess in
+# this file. They must never execute in an ordinary run: one raises by design,
+# and the other asserts an environment only its own subprocess arranges. The
+# subprocesses set this variable; nothing else does.
+_PROBE_ENV = "QAREN_ENV_SAFETY_PROBE"
+_PROBE_ONLY = pytest.mark.skipif(
+    os.getenv(_PROBE_ENV) != "1",
+    reason="probe fixture — only meaningful inside its own subprocess",
+)
+
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 
 # Every credential / production-endpoint variable that must NOT be visible to
@@ -71,6 +95,7 @@ _CONTRACT_SENTINEL = (
 )
 
 
+@_DEFAULT_TIER_ONLY
 def test_production_credentials_are_absent_by_default():
     """No credential-bearing env var still holds its production value.
 
@@ -116,6 +141,7 @@ def test_production_credentials_are_absent_by_default():
     )
 
 
+@_DEFAULT_TIER_ONLY
 def test_no_dotenv_value_is_live_in_the_process():
     """Sharper oracle: no var still holds the literal value from the real `.env`.
 
@@ -141,6 +167,7 @@ def test_no_dotenv_value_is_live_in_the_process():
     )
 
 
+@_DEFAULT_TIER_ONLY
 @pytest.mark.parametrize("name", _CONTRACT_SENTINEL)
 def test_present_but_unusable_vars_hold_the_sentinel(name):
     """The vars that must stay PRESENT resolve to the fake, not the real value.
@@ -226,6 +253,7 @@ def test_sentinel_hosts_really_do_not_resolve_here():
     )
 
 
+@_DEFAULT_TIER_ONLY
 def test_later_load_dotenv_cannot_reinject_credentials():
     """`load_dotenv(override=True)` from app modules must not undo the fix.
 
@@ -508,11 +536,17 @@ def test_live_tier_markers_are_skipped_without_the_opt_in():
         capture_output=True,
         text=True,
         timeout=300,
+        # The probe is _PROBE_ONLY-gated so it can never fire in an ordinary
+        # run; this subprocess is the one caller allowed to reach it. LIVE is
+        # cleared explicitly so the assertion holds even when the PARENT run
+        # was invoked with LIVE=1.
+        env={**os.environ, _PROBE_ENV: "1", "LIVE": ""},
     )
     assert "1 skipped" in result.stdout, result.stdout[-3000:]
     assert "LIVE=1" in result.stdout, result.stdout[-3000:]
 
 
+@_PROBE_ONLY
 @pytest.mark.live_db
 def test_marker_tier_probe():
     """Probe used by `test_live_tier_markers_are_skipped_without_the_opt_in`.
@@ -557,6 +591,7 @@ def test_live_opt_in_restores_the_environment_end_to_end(tmp_path):
         timeout=300,
         env={
             **os.environ,
+            _PROBE_ENV: "1",
             "LIVE": "1",
             "SENTRY_DSN": probe_dsn,
             "PYTHONPATH": str(_REPO_ROOT),
@@ -565,6 +600,7 @@ def test_live_opt_in_restores_the_environment_end_to_end(tmp_path):
     assert "1 passed" in result.stdout, result.stdout[-3000:]
 
 
+@_PROBE_ONLY
 @pytest.mark.live_unit
 def test_live_opt_in_probe():
     """Probe for `test_live_opt_in_restores_the_environment_end_to_end`.
