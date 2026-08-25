@@ -426,7 +426,35 @@ ToS/Privacy fact base, code-side blockers (delete cascade, expo-notifications pl
 
 **Canary phasing:** With <10 testers pre-launch, set new-feature canary % to 100 — lower % statistically hash-buckets a small tester set out of the feature being tested. Drop to 10 only at App Store soft-launch, then ramp 10→50→100 per `docs/runbooks/qaren-canary-onboarding.md`.
 
-## Active runtime (full-repo audit + first three fixes, 2026-08-24)
+## Active runtime (full-repo audit — 7 PRs MERGED, CI 176 -> 15 failures, 2026-08-25)
+
+**STATUS 2026-08-25 — merged to main `b83bf7b` and deployed.** Seven PRs landed: #82 (#46 dep lock),
+#88 (#48 credential neutralisation), #86 (#49 CI gates), #85 (docs), #84 (#59 subtype specs),
+#83 (#58 model config *Step 1 only*), #87 (#60 Serper gate). **`backend-tests` went from 176 failed /
+9,359 passed to 15 failed / 9,653 passed**, and `backend-lint` / `dependency-audit` /
+`frontend-typecheck` are all green. The remaining 15 are tracked in **#89** with root causes already
+diagnosed — read it before touching them. Full handoff:
+`docs/investigations/2026-08-25-audit-wave1-handoff.md`.
+
+**NOTHING MERGED IS ACTIVE UNTIL ENV VARS ARE SET — all three ship deliberately inert:**
+`SERPER_LIFETIME_LIMIT` arms the Serper budget gate (unset = no-op);
+`OPENAI_MODEL_VERDICT` / `OPENAI_MODEL_VISION` flip the models (**smoke-test first** — GPT-5 rejects
+`temperature=0`, needs `max_completion_tokens`, and bills invisible reasoning tokens against that
+budget, so a naive flip can return empty verdicts); `--cov-fail-under` is deliberately 60 vs a
+measured 78 — raise it to the number CI now reports.
+
+**TWO LIVE BLOCKERS (observed directly 2026-08-25):** Serper returns **403 Unauthorized** on every
+`/search`; OpenAI returns **429**. Nothing in the product works properly until both are restored.
+
+**SCRAPER TOOLING — evaluated and rejected 2026-08-25.** `Socialcrawl.dev` **resells Firecrawl**
+(its own status page says so) and is ~96% a social-media API. `crawl4ai`'s "undetected browser" IS
+patchright + playwright-stealth, and the one independent benchmark scores **curl_cffi 26 OK vs
+patchright 25 OK — the tool this repo already uses ranks higher**; its non-browser path is `aiohttp`
+(stock TLS), strictly worse than curl_cffi impersonation. Self-hosting the Akamai residual saves
+~$10/month in cash and costs $100-400/month in maintenance. **One idea worth stealing: Common Crawl
+as a discovery channel** (prototype natively, ~1 day). The win is DELETING Firecrawl/Scrape.do —
+Firecrawl's proxies are NL/US-only so it structurally cannot render a Bahrain-localised page.
+
 
 A full audit of `main c630436` produced **GitHub issues #46–#81** (12 P1, 23 P2, 1 P3), each self-contained with verified `file:line`. Three are implemented and pushed, **no PRs opened, nothing merged, nothing deployed**: `fix/46-dependency-lock` (`d6c52ab`), `fix/58-model-config` (`b9e962e`), `fix/59-subtype-specs` (`48daac6`). Each passed the repo comm gate against `origin/main` with **branch-only-NEW == []**.
 
