@@ -3458,6 +3458,43 @@ def sale_price_first_enabled() -> bool:
     )
 
 
+def og_branch_fixes_enabled() -> bool:
+    """True iff the three OpenGraph-branch correctness fixes are active (default ON).
+
+    Fragrance sweep 2026-08-25, running the 92 cached PDPs through the production
+    extractor. All three defects live in `extract_price_from_html`'s OG fallback:
+
+    (a) `in_stock` was the LITERAL ``True`` — stock asserted with zero page
+        signal (3 of the 4 live Shopify targets have zero available variants
+        while production reported them in stock). The OG namespace carries
+        ``product:availability`` on 20 of the 92 cached pages and
+        ``og:availability`` on 1 more; the branch now reads it through the same
+        tri-state ``is_available_state`` the JSON-LD path uses and emits None
+        (unknown) when there is no tag. Never True by default.
+    (b) ``float(og_price['content'])`` RAISED on a comma decimal, so the OG price
+        of leperfumeqa ("279,00"), fyzara ("195,00") and mhgboutique ("403,75")
+        was unparseable and thrown away. ``_parse_og_price_number`` below parses
+        it (and must NOT be ``parse_price_string``, which strips commas
+        unconditionally and reads "24,00" as 2400.0).
+    (c) The OG branch ran at Priority 2, ahead of microdata and the WooCommerce
+        span. OG is the least trustworthy structured source on these pages (it
+        is the Salla LIST price; alhajisoman ships an OG amount 10x low), so it
+        now runs LAST: JSON-LD -> microdata -> WooCommerce -> OG. 72 cached pages
+        carry an OG price, of which 10 also carry microdata and 4 a Woo span —
+        those 14 are the only pages whose winner can change.
+
+    Default ON because all three are correctness fixes, not new capability. Read
+    per call so Railway can flip it without a restart; with the flag OFF the OG
+    branch takes its exact pre-change path — the hardcoded True, the bare
+    float(), and Priority 2 — so the rollback is byte-identical. Deliberately
+    INDEPENDENT of exact_gate_enabled() and of sale_price_first_enabled(): these
+    are OG tag-reading defects, not part of the exact-identity layer or of the
+    sale-vs-list precedence fix, and must survive either one's rollback."""
+    return os.getenv("ENABLE_OG_BRANCH_FIXES", "true").strip().lower() not in (
+        "false", "0", "no", "off", "",
+    )
+
+
 def variant_min_guard_enabled() -> bool:
     """Scraping audit 2026-07-08 — gate the variable-product MIN-variation decant guard
     (a woo/shopify variable product served its cheapest 30ml variation as the full bottle).
@@ -9012,6 +9049,219 @@ def _page_identity_name(soup) -> Optional[str]:
     return None
 
 
+def _parse_og_price_number(raw: Any) -> Optional[float]:
+    """Parse an OpenGraph price meta ``content`` into a float, telling a comma
+    DECIMAL separator apart from a comma THOUSANDS separator. Returns None when
+    there is no number to read (never raises).
+
+    LOCAL ON PURPOSE — do NOT swap in ``parse_price_string``: it strips commas
+    unconditionally (see line ~2835) and turns the shelf price "24,00" into
+    2400.0. Measured: leperfumeqa "279,00", fyzara "195,00" and mhgboutique
+    "403,75" are real cached PDPs whose OG price the old bare ``float()`` could
+    not parse at all.
+
+    Resolution table (pinned by tests/test_og_branch_fixes.py):
+
+      both separators  -> the RIGHTMOST one is the decimal point
+                          "1.234,56" -> 1234.56   "1,234.56" -> 1234.56
+      comma only, ONE comma with a 3-digit tail -> thousands group
+                          "1,234"    -> 1234.0
+      comma only, more than one comma           -> thousands groups
+                          "1,234,567"-> 1234567.0
+      comma only, any other tail length         -> decimal separator
+                          "279,00"   -> 279.0    "22,902" ... see below
+      dot only / no separator -> AS-IS, a lone dot is ALWAYS a decimal point
+                          "3.000"    -> 3.0      "244.990" -> 244.99
+
+    THE "3.000" RULING. It is genuinely ambiguous — 3.000 BHD (the 3-decimal GCC
+    currencies) or three thousand. It resolves as a DECIMAL POINT because
+    (1) og:price:amount is specified as a plain decimal number and BHD/OMR/KWD
+    storefronts legitimately publish "244.990"/"3.000" (the cached corpus is full
+    of them), and (2) ``float("3.000")`` is 3.0 — i.e. EXACTLY what the
+    pre-change code produced, so this helper only ever changes the outcome for
+    input the old code could not parse at all. Never treat a lone dot as a
+    thousands separator.
+
+    KNOWN LIMIT of the 3-digit-tail rule: a lone comma with exactly 3 digits
+    after it cannot be told from a thousands group by shape alone, so a
+    hypothetical 3-decimal BHD price written "22,902" reads as 22902.0. The
+    corpus settles the tie-break — all three real comma-decimal pages are
+    2-decimal (279,00 / 195,00 / 403,75) and no cached page writes a 3-decimal
+    price with a comma, while "1,234"-style thousands are common. Pinned by
+    test_a_three_digit_comma_tail_is_thousands_even_on_a_3_decimal_currency.
+    """
+    if raw is None:
+        return None
+    text = str(raw).strip()
+    if not text:
+        return None
+    negative = text.lstrip().startswith("-")
+    # Drop currency codes/symbols, NBSP, thin spaces — keep only the numeric body.
+    text = re.sub(r"[^0-9.,]", "", text)
+    if not any(ch.isdigit() for ch in text):
+        return None
+
+    last_comma = text.rfind(",")
+    last_dot = text.rfind(".")
+    if last_comma >= 0 and last_dot >= 0:
+        if last_comma > last_dot:      # "1.234,56" — comma is the decimal point
+            text = text.replace(".", "").replace(",", ".")
+        else:                          # "1,234.56" — comma groups the thousands
+            text = text.replace(",", "")
+    elif last_comma >= 0:
+        tail = text[last_comma + 1:]
+        if text.count(",") > 1 or len(tail) == 3:
+            text = text.replace(",", "")   # "1,234,567" / "1,234" — thousands
+        else:
+            text = text.replace(",", ".")  # "279,00" — decimal separator
+    # dot-only / separator-less falls through UNCHANGED (the "3.000" ruling).
+
+    try:
+        value = float(text)
+    except (ValueError, TypeError):
+        return None
+    return -value if negative else value
+
+
+# OG/product-namespace availability meta, in the order we trust them. Measured
+# across the 92 cached PDPs: product:availability on 20 pages ("in stock" x14,
+# "instock" x5, "out of stock" x1), og:availability on 1 ("instock").
+_OG_AVAILABILITY_PROPS = ("og:availability", "product:availability")
+
+
+def _og_availability(soup) -> Optional[bool]:
+    """Tri-state stock for the OG branch: True / False / None (unknown).
+
+    The OG branch used to hardcode ``"in_stock": True`` — an assertion with no
+    page signal behind it. Reads the OG availability meta through the SAME
+    ``is_available_state`` tri-state the JSON-LD path uses (so "in stock",
+    "instock", "https://schema.org/InStock" and "Out of Stock" all classify
+    identically on both paths) and returns None when nothing on the page says.
+    NEVER defaults to True."""
+    for prop in _OG_AVAILABILITY_PROPS:
+        tag = soup.find("meta", property=prop)
+        raw = tag.get("content") if tag else None
+        if not raw:
+            continue
+        state = is_available_state(raw)
+        if state is not None:
+            return state
+    return None
+
+
+def _extract_og_price(
+    soup, product_name: str, currency: str, domain: str, url: str,
+) -> Optional[Dict[str, Any]]:
+    """The OpenGraph meta-tag price fallback.
+
+    Lifted out of ``extract_price_from_html`` VERBATIM so the cascade can place
+    it either at Priority 2 (legacy, ENABLE_OG_BRANCH_FIXES OFF) or LAST, after
+    microdata and the WooCommerce span (flag ON) — the (c) reorder — without
+    duplicating the body. Returns a price dict or None.
+    """
+    og_price = soup.find('meta', property='og:price:amount')
+    og_currency = soup.find('meta', property='og:price:currency')
+    # P0 (fragrance sweep 2026-08-25) — SALE price BEFORE list price. On Salla
+    # `product:price:amount` is the CROSSED-OUT list price; the shelf price is
+    # `product:sale_price:amount`. Measured over the 86 mappable cached PDPs the
+    # sale tag appears on 14 pages, ALL 14 Salla, 10 diverging 1.13x-4.57x (3saf
+    # 799 vs 175, sa.abdulsamadalqurashi 990 vs 495, kw.oudelite 14 vs 7 ...) —
+    # production shipped the LIST price on every one. The JSON-LD branch cannot
+    # save these: extract_jsonld_price hard-continues on a currency mismatch and
+    # only retries "USD", so a SAR/AED/KWD/QAR/OMR page always lands HERE.
+    # Precedence is og:price:amount -> product:sale_price:amount ->
+    # product:price:amount. Flag-gated (ENABLE_SALE_PRICE_FIRST, default ON):
+    # with the flag OFF the sale tag is never looked up and the two statements
+    # below are the exact pre-change bytes.
+    if not og_price and sale_price_first_enabled():
+        _sale_price = soup.find('meta', property='product:sale_price:amount')
+        _sale_raw = _sale_price.get('content') if _sale_price else None
+        if _sale_raw:
+            # Only PREFER a sale tag we can actually turn into a positive
+            # amount — otherwise a junk/zero sale tag ("on request", "0") would
+            # blow up the shared float() below and cost us the perfectly good
+            # list price, making flag-ON strictly worse than flag-OFF.
+            try:
+                # (b) — with ENABLE_OG_BRANCH_FIXES ON the usability probe uses
+                # the SAME parser as the consumer below, so a comma-decimal sale
+                # tag ("79,99") is no longer misjudged as junk and silently
+                # replaced by the list price. Flag OFF keeps the bare float().
+                if og_branch_fixes_enabled():
+                    _sale_val = _parse_og_price_number(_sale_raw)
+                    _sale_usable = _sale_val is not None and _sale_val > 0
+                else:
+                    _sale_usable = float(_sale_raw) > 0
+            except (ValueError, TypeError):
+                _sale_usable = False
+            if _sale_usable:
+                og_price = _sale_price
+                # Salla ships a matching product:sale_price:currency on all 14
+                # cached pages, but do NOT depend on it: fall back to the LIST
+                # price's currency tag (same page, same money) so a currency-less
+                # sale tag never silently re-labels the amount.
+                og_currency = (
+                    soup.find('meta', property='product:sale_price:currency')
+                    or soup.find('meta', property='product:price:currency')
+                )
+    if not og_price:
+        og_price = soup.find('meta', property='product:price:amount')
+        og_currency = soup.find('meta', property='product:price:currency')
+
+    if og_price and og_price.get('content'):
+        try:
+            # (b) COMMA DECIMALS — the old bare `float()` RAISED on "279,00"
+            # (leperfumeqa), "195,00" (fyzara), "403,75" (mhgboutique), so those
+            # OG prices were dropped entirely. `_parse_og_price_number` tells a
+            # comma decimal from a comma thousands group; a None (nothing
+            # numeric) re-enters the legacy except-branch below unchanged.
+            if og_branch_fixes_enabled():
+                amount = _parse_og_price_number(og_price['content'])
+                if amount is None:
+                    raise ValueError(og_price['content'])
+            else:
+                amount = float(og_price['content'])
+            if amount > 0:
+                # S3-genuine (PDP curl Decision-F): a currency-LESS OG price
+                # defaults to the EXPECTED currency arg, NOT hardcoded "USD".
+                # bahrain.sharafdg.com ships product:price:amount=244.990 with NO
+                # currency tag on a BHD page — the old "USD" default converted a
+                # genuine 244.990 BHD price down to 92.12 BHD. An unlabeled price
+                # on a BH retailer page is in BHD (the region/expected currency).
+                detected_currency = (
+                    og_currency['content']
+                    if og_currency and og_currency.get('content')
+                    else currency
+                )
+                # (a) STOCK — the literal True here asserted availability with no
+                # page signal behind it (3 of 4 live Shopify targets have zero
+                # available variants while production called them in stock). Read
+                # the real og:availability / product:availability tag; None when
+                # the page is silent. Flag OFF restores the hardcoded True.
+                _in_stock = _og_availability(soup) if og_branch_fixes_enabled() else True
+                result = {
+                    "amount": amount, "original_currency": detected_currency,
+                    "currency": detected_currency, "retailer": domain, "url": url,
+                    "in_stock": _in_stock, "confidence": 0.9, "estimated": False,
+                    "source_method": "page_scrape",
+                }
+                if detected_currency.upper() != currency.upper():
+                    _convert_gpt_price_currency(result, currency)
+                    # S3 coverage #2 — a converted OG price is converted_usd, not
+                    # a genuine local page_scrape (provenance honesty).
+                    result["source_method"] = "converted_usd"
+                # frag-size-capture — size from og:title / page <title>.
+                _stamp_listing_size(result, product_name, soup)
+                # M2 — stamp the page identity so the chokepoint axis backstop runs. Flag-gated:
+                # legacy never carried `name` on the OG/microdata/WC branches, so a flag-OFF
+                # rollback stays byte-identical (comprehensive review rollback NIT).
+                if exact_gate_enabled():
+                    result["name"] = _page_identity_name(soup)
+                return result
+        except (ValueError, TypeError):
+            pass
+    return None
+
+
 def extract_price_from_html(
     html: str, product_name: str, currency: str, domain: str, url: str,
     category: Optional[str] = None,
@@ -9096,83 +9346,20 @@ def extract_price_from_html(
     if not _page_identity_ok(product_name, soup, _category):
         return None
 
-    # Priority 2: OpenGraph meta tags
-    og_price = soup.find('meta', property='og:price:amount')
-    og_currency = soup.find('meta', property='og:price:currency')
-    # P0 (fragrance sweep 2026-08-25) — SALE price BEFORE list price. On Salla
-    # `product:price:amount` is the CROSSED-OUT list price; the shelf price is
-    # `product:sale_price:amount`. Measured over the 86 mappable cached PDPs the
-    # sale tag appears on 14 pages, ALL 14 Salla, 10 diverging 1.13x-4.57x (3saf
-    # 799 vs 175, sa.abdulsamadalqurashi 990 vs 495, kw.oudelite 14 vs 7 ...) —
-    # production shipped the LIST price on every one. The JSON-LD branch cannot
-    # save these: extract_jsonld_price hard-continues on a currency mismatch and
-    # only retries "USD", so a SAR/AED/KWD/QAR/OMR page always lands HERE.
-    # Precedence is og:price:amount -> product:sale_price:amount ->
-    # product:price:amount. Flag-gated (ENABLE_SALE_PRICE_FIRST, default ON):
-    # with the flag OFF the sale tag is never looked up and the two statements
-    # below are the exact pre-change bytes.
-    if not og_price and sale_price_first_enabled():
-        _sale_price = soup.find('meta', property='product:sale_price:amount')
-        _sale_raw = _sale_price.get('content') if _sale_price else None
-        if _sale_raw:
-            # Only PREFER a sale tag we can actually turn into a positive
-            # amount — otherwise a junk/zero sale tag ("on request", "0") would
-            # blow up the shared float() below and cost us the perfectly good
-            # list price, making flag-ON strictly worse than flag-OFF.
-            try:
-                _sale_usable = float(_sale_raw) > 0
-            except (ValueError, TypeError):
-                _sale_usable = False
-            if _sale_usable:
-                og_price = _sale_price
-                # Salla ships a matching product:sale_price:currency on all 14
-                # cached pages, but do NOT depend on it: fall back to the LIST
-                # price's currency tag (same page, same money) so a currency-less
-                # sale tag never silently re-labels the amount.
-                og_currency = (
-                    soup.find('meta', property='product:sale_price:currency')
-                    or soup.find('meta', property='product:price:currency')
-                )
-    if not og_price:
-        og_price = soup.find('meta', property='product:price:amount')
-        og_currency = soup.find('meta', property='product:price:currency')
-
-    if og_price and og_price.get('content'):
-        try:
-            amount = float(og_price['content'])
-            if amount > 0:
-                # S3-genuine (PDP curl Decision-F): a currency-LESS OG price
-                # defaults to the EXPECTED currency arg, NOT hardcoded "USD".
-                # bahrain.sharafdg.com ships product:price:amount=244.990 with NO
-                # currency tag on a BHD page — the old "USD" default converted a
-                # genuine 244.990 BHD price down to 92.12 BHD. An unlabeled price
-                # on a BH retailer page is in BHD (the region/expected currency).
-                detected_currency = (
-                    og_currency['content']
-                    if og_currency and og_currency.get('content')
-                    else currency
-                )
-                result = {
-                    "amount": amount, "original_currency": detected_currency,
-                    "currency": detected_currency, "retailer": domain, "url": url,
-                    "in_stock": True, "confidence": 0.9, "estimated": False,
-                    "source_method": "page_scrape",
-                }
-                if detected_currency.upper() != currency.upper():
-                    _convert_gpt_price_currency(result, currency)
-                    # S3 coverage #2 — a converted OG price is converted_usd, not
-                    # a genuine local page_scrape (provenance honesty).
-                    result["source_method"] = "converted_usd"
-                # frag-size-capture — size from og:title / page <title>.
-                _stamp_listing_size(result, product_name, soup)
-                # M2 — stamp the page identity so the chokepoint axis backstop runs. Flag-gated:
-                # legacy never carried `name` on the OG/microdata/WC branches, so a flag-OFF
-                # rollback stays byte-identical (comprehensive review rollback NIT).
-                if exact_gate_enabled():
-                    result["name"] = _page_identity_name(soup)
-                return result
-        except (ValueError, TypeError):
-            pass
+    # Priority 2: OpenGraph meta tags — LEGACY POSITION. `_extract_og_price`
+    # holds the body verbatim; ENABLE_OG_BRANCH_FIXES (default ON) moves the
+    # call to LAST in the cascade, below microdata and the WooCommerce span
+    # (defect (c)). OG is the least trustworthy structured source on these pages
+    # — on Salla it is the crossed-out LIST price, and alhajisoman ships an OG
+    # amount 10x below the real one — so a page that ALSO carries microdata or a
+    # Woo span should be read from those instead. Measured over the cached
+    # corpus: 72 pages carry an OG price, 10 of them also carry microdata and 4
+    # also carry a Woo span, so exactly 14 pages can change winner. With the
+    # flag OFF this call fires HERE, in the exact pre-change position.
+    if not og_branch_fixes_enabled():
+        og_result = _extract_og_price(soup, product_name, currency, domain, url)
+        if og_result is not None:
+            return og_result
 
     # Priority 3: Schema.org MICRODATA (itemprop=price + itemprop=priceCurrency).
     # S3-genuine (gap-fill): bahrain.sharafdg.com PDPs are microdata-only (no
@@ -9204,6 +9391,17 @@ def extract_price_from_html(
         if exact_gate_enabled():  # flag-OFF byte-identity (legacy carried no `name` here)
             wc["name"] = _page_identity_name(soup)  # M2 — chokepoint axis backstop
         return wc
+
+    # Priority 5: OpenGraph meta tags — THE NEW LAST RESORT (defect (c),
+    # ENABLE_OG_BRANCH_FIXES ON). Everything above reads a price the page
+    # committed to for THIS product; OG is a social-sharing tag that on Salla
+    # carries the crossed-out LIST price and on alhajisoman is 10x low, so it
+    # only gets to speak when nothing better did. With the flag OFF this call
+    # already fired at Priority 2 above and this block is unreachable.
+    if og_branch_fixes_enabled():
+        og_result = _extract_og_price(soup, product_name, currency, domain, url)
+        if og_result is not None:
+            return og_result
 
     return None
 
@@ -9331,10 +9529,26 @@ def _extract_microdata_price(
             cur = (cur_el.get("content") or cur_el.get_text(strip=True)) if cur_el else "USD"
         cur = str(cur).strip().upper()  # lulu lowercase "bhd" -> "BHD"
 
-        # Prefer an Offer-scoped price; among equals, the larger plausible value.
-        key = (in_offer, amount)
-        if best is None or key > (best[0], best[1]):
-            best = (in_offer, amount, cur)
+        if og_branch_fixes_enabled():
+            # DOCUMENT ORDER, not max — a REORDER PRECONDITION (defect (c)).
+            # The legacy `key > best` below takes the LARGEST Offer-scoped price
+            # on the page, and on a PDP with a related-products rail that is a
+            # DIFFERENT product: nazih.qa carries its real price (10 QAR, agreed
+            # by OG, JSON-LD and the first microdata node) plus related items at
+            # 15/5/28/45/20/38/39/41.6, and the max-rule shipped 45. Harmless
+            # while microdata only ran on pages with no OG price; the moment the
+            # (c) reorder lets microdata outrank OG it becomes a WRONG PRICE, so
+            # it is fixed under the same flag. First-wins matches the sibling
+            # WooCommerce branch's established rule (the first span is the
+            # product, later ones are related products). An Offer-scoped price
+            # still outranks a bare one wherever it appears in the document.
+            if best is None or (in_offer and not best[0]):
+                best = (in_offer, amount, cur)
+        else:
+            # Prefer an Offer-scoped price; among equals, the larger plausible value.
+            key = (in_offer, amount)
+            if best is None or key > (best[0], best[1]):
+                best = (in_offer, amount, cur)
 
     if best is None:
         return None
@@ -9352,6 +9566,17 @@ def _extract_microdata_price(
     }
     if cur.upper() != currency.upper():
         _convert_gpt_price_currency(result, currency)
+        # PROVENANCE HONESTY — the other two structured branches (JSON-LD at the
+        # top of extract_price_from_html, and _extract_og_price) both relabel a
+        # CONVERTED price `converted_usd`; microdata alone kept claiming
+        # `page_scrape`, i.e. a genuine LOCAL shelf price. Also a (c) reorder
+        # precondition: klinq.com is a KWD page read on a BHD scrape, and the
+        # moment microdata outranks OG there the honest `converted_usd` the OG
+        # branch used to emit silently became a fake-genuine `page_scrape` that
+        # the genuine-BH-share KPI would count. Same flag, so flag OFF is
+        # byte-identical.
+        if og_branch_fixes_enabled():
+            result["source_method"] = "converted_usd"
     return result
 
 
