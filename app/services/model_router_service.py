@@ -19,6 +19,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from app.services.cache_service import _redis_expire, _redis_get
+from app.services.model_config import standard_model, verdict_model
 
 logger = logging.getLogger(__name__)
 
@@ -43,29 +44,36 @@ class ModelRouterService:
     _COUNTER_TTL: int = 36 * 3600
 
     async def get_model(self, priority: str = "standard") -> str:
-        """Choose ``gpt-4o`` vs ``gpt-4o-mini`` for the next call.
+        """Choose the verdict model vs the standard model for the next call.
+
+        Ids come from ``model_config`` (env-overridable); by default they are
+        ``gpt-4o`` and ``gpt-4o-mini`` respectively.
 
         priority:
-          - ``standard`` (default) — always returns ``gpt-4o-mini``.
-          - ``high`` — returns ``gpt-4o`` while daily usage is below
-            ``SWITCH_THRESHOLD`` of ``DAILY_4O_CAP``; returns
-            ``gpt-4o-mini`` once usage hits or exceeds the threshold.
+          - ``standard`` (default) — always returns the standard model.
+          - ``high`` — returns the verdict model while daily usage is below
+            ``SWITCH_THRESHOLD`` of ``DAILY_4O_CAP``; returns the standard
+            model once usage hits or exceeds the threshold.
         """
         if priority != "high":
-            return "gpt-4o-mini"
+            return standard_model()
 
         used = await self._get_4o_usage_today()
         if used / self.DAILY_4O_CAP >= self.SWITCH_THRESHOLD:
-            return "gpt-4o-mini"
-        return "gpt-4o"
+            return standard_model()
+        return verdict_model()
 
     async def record_usage(self, model: str, tokens_used: int) -> None:
-        """Record token usage. Only the 4o counter is tracked — mini and
-        unknown models are silently ignored (mini has its own free tier
-        with separate caps; we treat unknown models as no-op for safety)."""
-        if model == "gpt-4o":
+        """Record token usage. Only the verdict-model counter is tracked — the
+        standard and unknown models are silently ignored (the standard model has
+        its own free tier with separate caps; unknown models no-op for safety).
+
+        Compares against the configured verdict id so the counter keeps tracking
+        the expensive model after an env-driven model change.
+        """
+        if model == verdict_model():
             await self._increment_4o_usage(tokens_used)
-        # mini + unknown: no-op
+        # standard + unknown: no-op
 
     # ---------- internals (patched by tests) ----------
 

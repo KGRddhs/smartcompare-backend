@@ -34,6 +34,7 @@ import os
 from typing import Any, Dict, List, Optional
 
 from app.services.database_service import get_admin_supabase_client
+from app.services.model_config import critic_model, token_limit_kwargs
 from app.services.openai_service import get_client
 
 logger = logging.getLogger(__name__)
@@ -52,10 +53,10 @@ CRITIQUE_AXES: tuple[str, ...] = (
 # enforced hard cap). 7/10 is acceptable; 6 is not.
 CRITIQUE_THRESHOLD = 7
 
-# gpt-4o-mini — the critique is a cheap scoring pass, never the verdict's
-# own high-priority model. Pinned (NOT model_router) so the critic stays a
-# fixed, bounded cost regardless of the daily 4o budget.
-CRITIC_MODEL = "gpt-4o-mini"
+# The critique is a cheap scoring pass, never the verdict's own high-priority
+# model. Resolved from model_config (NOT model_router) so the critic stays a
+# fixed, bounded cost regardless of the daily 4o budget, while still being
+# env-overridable via OPENAI_MODEL_CRITIC. Defaults to gpt-4o-mini.
 
 _CRITIQUE_SYSTEM = """You are a strict quality auditor for product-comparison verdicts written for buyers in Bahrain / the GCC. Score the verdict below on 5 axes from 0 to 10 (10 = best). Be a harsh grader — a competent-but-generic verdict should score 6-7, not 9.
 
@@ -162,13 +163,14 @@ async def critique_verdict(
         user_msg = _build_critique_user_message(
             comparison, product_names, pain_workflow_context
         )
+        _model = critic_model()
         response = await client.chat.completions.create(
-            model=CRITIC_MODEL,
+            model=_model,
             messages=[
                 {"role": "system", "content": _CRITIQUE_SYSTEM},
                 {"role": "user", "content": user_msg},
             ],
-            max_tokens=150,
+            **token_limit_kwargs(_model, 150),
             temperature=0.0,  # deterministic grading
             response_format={"type": "json_object"},
         )
@@ -213,7 +215,7 @@ async def critique_verdict(
             needs_regen=needs_regen,
             low_axes=low_axes,
             regen_reason=regen_reason,
-            critic_model=CRITIC_MODEL,
+            critic_model=_model,
             usage=usage,
         )
 

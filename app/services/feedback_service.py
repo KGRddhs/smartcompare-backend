@@ -5,6 +5,7 @@ import logging
 from typing import Dict, List, Optional
 
 from app.services.database_service import get_supabase_client, save_comparison
+from app.services.model_config import critic_model
 
 logger = logging.getLogger(__name__)
 
@@ -82,7 +83,7 @@ async def _persist_verdict_critique(comparison_id: str, crit_meta: Dict) -> None
             needs_regen=bool(crit_meta.get("needs_regen", False)),
             low_axes=list(crit_meta.get("low_axes") or []),
             regen_reason=crit_meta.get("regen_reason"),
-            critic_model=crit_meta.get("critic_model") or "gpt-4o-mini",
+            critic_model=crit_meta.get("critic_model") or critic_model(),
             # tokens_used is a computed property; split back into prompt-only
             # (the exact split isn't persisted — total is what the row stores).
             usage={"prompt_tokens": tokens, "completion_tokens": 0},

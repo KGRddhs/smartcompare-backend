@@ -16,6 +16,7 @@ from bs4 import BeautifulSoup
 from openai import AsyncOpenAI
 
 from app.services.llm_provider import provider_base_url
+from app.services.model_config import standard_model, token_limit_kwargs
 
 from app.services.extraction_service import canonicalize_category
 
@@ -382,8 +383,9 @@ async def extract_with_ai(url: str, html: str, retailer: Dict) -> Dict[str, Any]
     
     try:
         client = get_client()
+        _model = standard_model()
         response = await client.chat.completions.create(
-            model="gpt-4o-mini",
+            model=_model,
             messages=[{
                 "role": "user",
                 "content": URL_EXTRACTION_PROMPT.format(
@@ -392,7 +394,7 @@ async def extract_with_ai(url: str, html: str, retailer: Dict) -> Dict[str, Any]
                     content=text_content
                 )
             }],
-            max_tokens=800,
+            **token_limit_kwargs(_model, 800),
             temperature=0.1,
         )
         

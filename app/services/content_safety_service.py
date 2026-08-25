@@ -146,9 +146,10 @@ class ContentSafetyService:
             return SafetyResult(allowed=False, reason=_SENTINEL_REASON, blocklist_match=_TEST_SENTINEL)
         try:
             # Inline import — keeps module importable without OPENAI_API_KEY at process boot.
+            from app.services.model_config import moderation_model
             from app.services.openai_service import get_client
             client = get_client()
-            resp = await client.moderations.create(model="omni-moderation-latest", input=text)
+            resp = await client.moderations.create(model=moderation_model(), input=text)
             r = resp.results[0]
             if r.flagged:
                 scores = r.category_scores.model_dump() if hasattr(r.category_scores, "model_dump") else dict(r.category_scores)

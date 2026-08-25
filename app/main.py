@@ -41,6 +41,17 @@ from slowapi.errors import RateLimitExceeded
 from app.services.sentry_service import init_sentry
 init_sentry()
 
+# Announce the resolved OpenAI model ids once, so a running deployment is
+# self-identifying: which model served a request is otherwise only knowable by
+# reading the code at that commit. Ids come from model_config and are
+# env-overridable (OPENAI_MODEL_VERDICT / _STANDARD / _VISION / _CRITIC /
+# _MODERATION); see #58.
+import logging as _logging
+from app.services.model_config import resolved_models as _resolved_models
+_logging.getLogger(__name__).info(
+    "[models] " + " ".join(f"{role}={mid}" for role, mid in sorted(_resolved_models().items()))
+)
+
 # Create FastAPI app
 app = FastAPI(
     title="SmartCompare API",
