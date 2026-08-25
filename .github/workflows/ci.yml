@@ -60,6 +60,12 @@ jobs:
       # every run log; --cov-fail-under makes it a real floor, so a coverage collapse
       # cannot merge green.
       #
+      # RATCHETED 2026-08-25: the first green CI run on main measured 84.85%
+      # (20,032 statements / 3,035 missed), so the placeholder 60 was raised to 83.
+      # One point of margin is deliberate — coverage moves slightly run to run, and a
+      # floor that reddens the build on noise is the exact failure mode #49 exists to
+      # end. Raise it again when the 15 failures in #89 are fixed and the number moves.
+      #
       # HOW THE FLOOR WAS SET, and why it sits deliberately below the measurement.
       # MEASURED 2026-08-25: 78% (19,825 statements, 4,363 missed) over this exact
       # marker selection, run locally as 12 chunks of tests/test_*.py with the
@@ -86,7 +92,7 @@ jobs:
             -rxX \
             --cov=app \
             --cov-report=term-missing \
-            --cov-fail-under=60 \
+            --cov-fail-under=83 \
             --tb=short
 
   # NOT AUTOMATICALLY REQUIRED. Adding a job to this file does not make it a
