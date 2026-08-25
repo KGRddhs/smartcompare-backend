@@ -1,5 +1,14 @@
 # Pre-impl free-unit failure baseline — Faithful-Results bundle
 
+> **UPDATE 2026-08-25 (issue #49 — CI gates):** the 35 `test_value_math.py` nodes in the
+> table below now report as **xfail, not FAILED**. They carry a module-level
+> `pytest.mark.xfail(strict=False)` so `.github/workflows/ci.yml` stops going red for a
+> documented non-regression. The gate is a SUBSET check (`current ⊆ baseline`), so the
+> 35 stale entries in `tests/.pre_impl_failures.txt` are harmless and deliberately left
+> in place rather than forked from QA's canonical file. Effective FAILED denominator on
+> a clean tree is therefore **13**, not 48. When Bundle C v1.1 (A.6.x) ships, those nodes
+> turn XPASS, the pytestmark comes off in that PR, and both files can be re-synced with QA.
+
 > **CANONICAL SOURCE OF TRUTH = QA's `.qa-discovery/BASELINE_FAILURES.txt`** — dispatcher
 > LOCKED at **48 nodes** (QA's FULL-credential capture). A branch is GREEN iff its FAILED
 > set ⊆ those 48 (minus the network-flaky exclude). `scripts/regression_gate_diff.py`
