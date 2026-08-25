@@ -3459,10 +3459,11 @@ def sale_price_first_enabled() -> bool:
 
 
 def og_branch_fixes_enabled() -> bool:
-    """True iff the three OpenGraph-branch correctness fixes are active (default ON).
+    """True iff the two OpenGraph-branch correctness fixes are active (default ON).
 
     Fragrance sweep 2026-08-25, running the 92 cached PDPs through the production
-    extractor. All three defects live in `extract_price_from_html`'s OG fallback:
+    extractor. Both defects live in `_extract_og_price`, the OG fallback that
+    `extract_price_from_html` calls at Priority 2:
 
     (a) `in_stock` was the LITERAL ``True`` — stock asserted with zero page
         signal (3 of the 4 live Shopify targets have zero available variants
@@ -3476,17 +3477,23 @@ def og_branch_fixes_enabled() -> bool:
         was unparseable and thrown away. ``_parse_og_price_number`` below parses
         it (and must NOT be ``parse_price_string``, which strips commas
         unconditionally and reads "24,00" as 2400.0).
-    (c) The OG branch ran at Priority 2, ahead of microdata and the WooCommerce
-        span. OG is the least trustworthy structured source on these pages (it
-        is the Salla LIST price; alhajisoman ships an OG amount 10x low), so it
-        now runs LAST: JSON-LD -> microdata -> WooCommerce -> OG. 72 cached pages
-        carry an OG price, of which 10 also carry microdata and 4 a Woo span —
-        those 14 are the only pages whose winner can change.
+    REVERTED — a third change, "(c)", once rode this flag: it moved the OG
+    branch from Priority 2 down BELOW microdata and the WooCommerce span. Over
+    the same 92 cached pages with ENABLE_EXACT_PRICE_GATE=false that reorder
+    produced ZERO improvements and four regressions (oudworlds 19.54 -> 3.00
+    BHD, a 6.5x under-price; perfumeskuwait 10.95 -> 8.90; faces.ae 569.64 ->
+    238.76; perfumeqatar's provenance relabelled fake-genuine), so it is gone.
+    The OG call in `extract_price_from_html` is now UNCONDITIONAL at Priority 2
+    and this flag no longer touches cascade order at all — pinned by
+    tests/test_og_cascade_position.py. The two microdata changes that rode this
+    flag as stated preconditions of (c) (document-order instead of max, and the
+    converted_usd relabel) went with it; each is defensible on its own but must
+    be measured on its own, not as a rider.
 
-    Default ON because all three are correctness fixes, not new capability. Read
-    per call so Railway can flip it without a restart; with the flag OFF the OG
-    branch takes its exact pre-change path — the hardcoded True, the bare
-    float(), and Priority 2 — so the rollback is byte-identical. Deliberately
+    Default ON because both remaining changes are correctness fixes, not new
+    capability. Read per call so Railway can flip it without a restart; with the
+    flag OFF the OG branch takes its exact pre-change path — the hardcoded True
+    and the bare float() — so the rollback is byte-identical. Deliberately
     INDEPENDENT of exact_gate_enabled() and of sale_price_first_enabled(): these
     are OG tag-reading defects, not part of the exact-identity layer or of the
     sale-vs-list precedence fix, and must survive either one's rollback."""
@@ -9448,10 +9455,13 @@ def _extract_og_price(
 ) -> Optional[Dict[str, Any]]:
     """The OpenGraph meta-tag price fallback.
 
-    Lifted out of ``extract_price_from_html`` VERBATIM so the cascade can place
-    it either at Priority 2 (legacy, ENABLE_OG_BRANCH_FIXES OFF) or LAST, after
-    microdata and the WooCommerce span (flag ON) — the (c) reorder — without
-    duplicating the body. Returns a price dict or None.
+    Lifted out of ``extract_price_from_html`` VERBATIM, originally so the
+    cascade could place it at two different priorities. That reorder (the "(c)"
+    change on ENABLE_OG_BRANCH_FIXES) is REVERTED — this runs at Priority 2, the
+    single unconditional call site, and the extraction here is what the flag
+    still gates: (a) tri-state in_stock, (b) the comma-decimal parse. The helper
+    stays split out because it keeps the cascade readable. Returns a price dict
+    or None.
     """
     og_price = soup.find('meta', property='og:price:amount')
     og_currency = soup.find('meta', property='og:price:currency')
@@ -9640,20 +9650,34 @@ def extract_price_from_html(
     if not _page_identity_ok(product_name, soup, _category):
         return None
 
-    # Priority 2: OpenGraph meta tags — LEGACY POSITION. `_extract_og_price`
-    # holds the body verbatim; ENABLE_OG_BRANCH_FIXES (default ON) moves the
-    # call to LAST in the cascade, below microdata and the WooCommerce span
-    # (defect (c)). OG is the least trustworthy structured source on these pages
-    # — on Salla it is the crossed-out LIST price, and alhajisoman ships an OG
-    # amount 10x below the real one — so a page that ALSO carries microdata or a
-    # Woo span should be read from those instead. Measured over the cached
-    # corpus: 72 pages carry an OG price, 10 of them also carry microdata and 4
-    # also carry a Woo span, so exactly 14 pages can change winner. With the
-    # flag OFF this call fires HERE, in the exact pre-change position.
-    if not og_branch_fixes_enabled():
-        og_result = _extract_og_price(soup, product_name, currency, domain, url)
-        if og_result is not None:
-            return og_result
+    # Priority 2: OpenGraph meta tags. `_extract_og_price` holds the body.
+    #
+    # THIS POSITION IS FROZEN — pinned by tests/test_og_cascade_position.py, and
+    # deliberately NOT flag-gated. ENABLE_OG_BRANCH_FIXES once carried a "(c)"
+    # change that moved this call BELOW microdata and the WooCommerce span on
+    # the theory that OG is the least trustworthy structured source. Measured
+    # over the 92 cached fragrance PDPs with ENABLE_EXACT_PRICE_GATE=false, that
+    # reorder produced ZERO improvements and four regressions, so it is
+    # REVERTED:
+    #   oudworlds.com      19.54 BHD (OMR, converted_usd) -> 3.00 (page_scrape).
+    #                      A 6.5x UNDER-price: the Woo "first span not in <del>"
+    #                      rule lands on a different product on a page whose
+    #                      spans run 4.000 / 3.000 / 2.500 / 4.000 / 20.000, the
+    #                      real one being 20.000.
+    #   perfumeskuwait.com 10.95 BHD (KWD, converted_usd) -> 8.90 ("KD",
+    #                      page_scrape).
+    #   perfumeqatar.com   same amount, provenance relabelled page_scrape.
+    # The provenance half is the general defect: the branches below OG take the
+    # currency string the page happens to print — "KD", or an Arabic-script
+    # symbol — which no rate table maps, so the conversion silently no-ops and
+    # an unconverted foreign amount ships labelled as a genuine local shelf
+    # price that the genuine-BH-share KPI counts. The OG branch converts and
+    # relabels converted_usd honestly. What DOES remain under
+    # ENABLE_OG_BRANCH_FIXES is (a) the tri-state in_stock and (b) the
+    # comma-decimal parse, both inside _extract_og_price.
+    og_result = _extract_og_price(soup, product_name, currency, domain, url)
+    if og_result is not None:
+        return og_result
 
     # Priority 3: Schema.org MICRODATA (itemprop=price + itemprop=priceCurrency).
     # S3-genuine (gap-fill): bahrain.sharafdg.com PDPs are microdata-only (no
@@ -9685,17 +9709,6 @@ def extract_price_from_html(
         if exact_gate_enabled():  # flag-OFF byte-identity (legacy carried no `name` here)
             wc["name"] = _page_identity_name(soup)  # M2 — chokepoint axis backstop
         return wc
-
-    # Priority 5: OpenGraph meta tags — THE NEW LAST RESORT (defect (c),
-    # ENABLE_OG_BRANCH_FIXES ON). Everything above reads a price the page
-    # committed to for THIS product; OG is a social-sharing tag that on Salla
-    # carries the crossed-out LIST price and on alhajisoman is 10x low, so it
-    # only gets to speak when nothing better did. With the flag OFF this call
-    # already fired at Priority 2 above and this block is unreachable.
-    if og_branch_fixes_enabled():
-        og_result = _extract_og_price(soup, product_name, currency, domain, url)
-        if og_result is not None:
-            return og_result
 
     return None
 
@@ -9823,26 +9836,20 @@ def _extract_microdata_price(
             cur = (cur_el.get("content") or cur_el.get_text(strip=True)) if cur_el else "USD"
         cur = str(cur).strip().upper()  # lulu lowercase "bhd" -> "BHD"
 
-        if og_branch_fixes_enabled():
-            # DOCUMENT ORDER, not max — a REORDER PRECONDITION (defect (c)).
-            # The legacy `key > best` below takes the LARGEST Offer-scoped price
-            # on the page, and on a PDP with a related-products rail that is a
-            # DIFFERENT product: nazih.qa carries its real price (10 QAR, agreed
-            # by OG, JSON-LD and the first microdata node) plus related items at
-            # 15/5/28/45/20/38/39/41.6, and the max-rule shipped 45. Harmless
-            # while microdata only ran on pages with no OG price; the moment the
-            # (c) reorder lets microdata outrank OG it becomes a WRONG PRICE, so
-            # it is fixed under the same flag. First-wins matches the sibling
-            # WooCommerce branch's established rule (the first span is the
-            # product, later ones are related products). An Offer-scoped price
-            # still outranks a bare one wherever it appears in the document.
-            if best is None or (in_offer and not best[0]):
-                best = (in_offer, amount, cur)
-        else:
-            # Prefer an Offer-scoped price; among equals, the larger plausible value.
-            key = (in_offer, amount)
-            if best is None or key > (best[0], best[1]):
-                best = (in_offer, amount, cur)
+        # Prefer an Offer-scoped price; among equals, the larger plausible value.
+        #
+        # NOT flag-gated. A "document order, not max" variant rode
+        # ENABLE_OG_BRANCH_FIXES as a stated precondition of the reverted (c)
+        # cascade reorder. With (c) gone the precondition is gone too, and the
+        # variant is not free: faces.ae is a cached page where microdata ALREADY
+        # wins at Priority 3, and first-wins moved it 569.64 BHD -> 238.76 BHD.
+        # The max-rule's own weakness (a related-products rail can outbid the
+        # real Offer — nazih.qa carries 10 QAR plus rail items up to 45) is real
+        # but latent: OG runs first and covers it there. Fixing it is its own
+        # change, measured on its own, not a rider on an OG flag.
+        key = (in_offer, amount)
+        if best is None or key > (best[0], best[1]):
+            best = (in_offer, amount, cur)
 
     if best is None:
         return None
@@ -9859,18 +9866,14 @@ def _extract_microdata_price(
         "source_method": "page_scrape",
     }
     if cur.upper() != currency.upper():
+        # NOTE microdata does NOT relabel a converted price `converted_usd` the
+        # way JSON-LD and _extract_og_price do. That relabel rode
+        # ENABLE_OG_BRANCH_FIXES as a precondition of the reverted (c) cascade
+        # reorder and went with it — on the cached corpus it moved faces.ae from
+        # page_scrape to converted_usd, which is a KPI-visible change nobody
+        # measured on its own. The honesty argument still stands; make it its
+        # own flagged change against a measured before/after.
         _convert_gpt_price_currency(result, currency)
-        # PROVENANCE HONESTY — the other two structured branches (JSON-LD at the
-        # top of extract_price_from_html, and _extract_og_price) both relabel a
-        # CONVERTED price `converted_usd`; microdata alone kept claiming
-        # `page_scrape`, i.e. a genuine LOCAL shelf price. Also a (c) reorder
-        # precondition: klinq.com is a KWD page read on a BHD scrape, and the
-        # moment microdata outranks OG there the honest `converted_usd` the OG
-        # branch used to emit silently became a fake-genuine `page_scrape` that
-        # the genuine-BH-share KPI would count. Same flag, so flag OFF is
-        # byte-identical.
-        if og_branch_fixes_enabled():
-            result["source_method"] = "converted_usd"
     return result
 
 

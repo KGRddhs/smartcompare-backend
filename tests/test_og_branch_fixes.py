@@ -1,7 +1,7 @@
-"""Three OpenGraph-branch correctness defects - `ENABLE_OG_BRANCH_FIXES`.
+"""Two OpenGraph-branch correctness defects - `ENABLE_OG_BRANCH_FIXES`.
 
 `extract_price_from_html`'s OpenGraph fallback (price_service.py, Priority 2)
-shipped three defects, all found by running the 92 cached fragrance PDPs in
+shipped two defects, both found by running the 92 cached fragrance PDPs in
 ``_proof/html/`` through the production extractor:
 
 (a) **`in_stock` was hardcoded `True`.** The dict literal asserted stock with
@@ -22,17 +22,18 @@ shipped three defects, all found by running the 92 cached fragrance PDPs in
     ``_parse_og_price_number`` distinguishes a comma DECIMAL separator from a
     comma THOUSANDS separator instead.
 
-(c) **The OG branch ran ahead of microdata and the WooCommerce span.** OG is the
-    least trustworthy structured source on these pages (it carries the Salla
-    LIST price, and ``alhajisoman`` ships an OG amount 10x below the truth), so
-    it now runs LAST in the cascade: JSON-LD -> microdata -> WooCommerce -> OG.
-    Measured overlap in the cached corpus: 72 pages carry an OG price, 10 of
-    them also carry microdata and 4 also carry a WooCommerce span - those 14 are
-    the pages whose winner changes.
+A third change, "(c)", once rode this flag: it moved the OG branch from Priority
+2 down below microdata and the WooCommerce span. It is REVERTED - measured over
+the same 92 cached pages it produced zero improvements and four regressions (see
+``tests/test_og_cascade_position.py``, which now pins the OG branch's position
+and owns every cascade-order assertion). The two microdata changes that rode
+this flag as declared preconditions of (c) went with it. This file is therefore
+about ``_extract_og_price``'s TAG READING only; nothing here may assert cascade
+order.
 
-All three sit behind ONE flag, ``ENABLE_OG_BRANCH_FIXES``, default ON, read per
-call from ``os.getenv``. Every behaviour below is asserted in BOTH flag states:
-flag OFF must reproduce the exact legacy result.
+Both remaining defects sit behind ONE flag, ``ENABLE_OG_BRANCH_FIXES``, default
+ON, read per call from ``os.getenv``. Every behaviour below is asserted in BOTH
+flag states: flag OFF must reproduce the exact legacy result.
 
 No network, no fixtures on disk - synthetic meta-tag fragments only.
 """
@@ -324,64 +325,29 @@ class TestOgAvailability:
 
 
 # ---------------------------------------------------------------------------
-# (c) cascade order - OG runs LAST
+# The OG branch's cascade POSITION is not this flag's business any more.
+#
+# The reverted "(c)" change gated it on this flag; the position is now
+# unconditional at Priority 2 and every order assertion lives in
+# tests/test_og_cascade_position.py. The two tests kept here are the ones that
+# were always about the OG branch itself: it must behave identically in both
+# flag states on a page where nothing else competes, and it must never outrank
+# JSON-LD.
 # ---------------------------------------------------------------------------
 
-_OG_PLUS_MICRODATA = """<html><head>
-  <meta property="og:price:amount" content="99.000">
-  <meta property="og:price:currency" content="BHD">
-</head><body>
-  <div itemscope itemtype="https://schema.org/Product">
-    <span itemprop="name">Oud Elite So Black Eau de Parfum 100ml</span>
-    <div itemprop="offers" itemscope itemtype="https://schema.org/Offer">
-      <span itemprop="price" content="12.500">12.500</span>
-      <meta itemprop="priceCurrency" content="BHD" />
-    </div>
-  </div>
-</body></html>"""
 
-_OG_PLUS_WOO = """<html><head>
-  <meta property="og:price:amount" content="99.000">
-  <meta property="og:price:currency" content="BHD">
-</head><body>
-  <p class="price"><span class="woocommerce-Price-amount amount"><bdi>2.110&nbsp;<span class="woocommerce-Price-currencySymbol">BHD&nbsp;</span></bdi></span></p>
-</body></html>"""
-
-
-class TestCascadeOrder:
-    def test_microdata_beats_og_when_on(self, flag_on):
-        res = _extract(_OG_PLUS_MICRODATA)
-        assert res is not None
-        assert res["amount"] == pytest.approx(12.500)
-
-    def test_og_beats_microdata_when_off(self, flag_off):
-        res = _extract(_OG_PLUS_MICRODATA)
-        assert res is not None
-        assert res["amount"] == pytest.approx(99.000)
-
-    def test_woocommerce_beats_og_when_on(self, flag_on):
-        res = _extract(_OG_PLUS_WOO, "BHD", "fragrancebh.com")
-        assert res is not None
-        assert res["amount"] == pytest.approx(2.110)
-
-    def test_og_beats_woocommerce_when_off(self, flag_off):
-        res = _extract(_OG_PLUS_WOO, "BHD", "fragrancebh.com")
-        assert res is not None
-        assert res["amount"] == pytest.approx(99.000)
-
+class TestOgBranchPositionIsFlagInvariant:
     @pytest.mark.parametrize("flag", ["true", "false"])
-    def test_og_only_page_is_unaffected_by_the_reorder(self, monkeypatch, flag):
-        """72 of the 92 cached pages carry an OG price; only the 14 that ALSO
-        carry microdata or a Woo span can change winner. The rest must not."""
+    def test_og_only_page_is_unaffected_by_the_flag(self, monkeypatch, flag):
+        """72 of the 92 cached pages carry an OG price. On a page where OG is
+        the only structured source the flag must not move the amount at all."""
         monkeypatch.setenv("ENABLE_OG_BRANCH_FIXES", flag)
         res = _extract(_og_html("23"))
         assert res is not None
         assert res["amount"] == pytest.approx(23.0)
 
     @pytest.mark.parametrize("flag", ["true", "false"])
-    def test_jsonld_still_wins_over_everything(self, monkeypatch, flag):
-        """The reorder moves OG DOWN; it must never move anything above
-        JSON-LD."""
+    def test_jsonld_still_wins_over_og(self, monkeypatch, flag):
         monkeypatch.setenv("ENABLE_OG_BRANCH_FIXES", flag)
         html = """<html><head>
           <meta property="og:price:amount" content="99.000">
@@ -398,30 +364,25 @@ class TestCascadeOrder:
 
 
 # ---------------------------------------------------------------------------
-# (c) reorder PRECONDITIONS in the microdata branch
+# The microdata branch is NOT gated by this flag.
 #
-# Both were harmless while microdata only ran on pages with NO OG price. The
-# moment the reorder lets microdata outrank OG they become live defects, so they
-# ride the same flag. Found by diffing all 92 cached PDPs flag-ON vs flag-OFF.
+# Two microdata changes rode this flag as declared preconditions of the reverted
+# (c) reorder - document-order-instead-of-max, and the converted_usd relabel.
+# Both went with it. Each may well be a real fix, but each has to be measured on
+# its own rather than as a rider on an OG-tag flag: on the cached corpus they
+# moved faces.ae, a page where microdata ALREADY wins at Priority 3, from 569.64
+# BHD page_scrape to 238.76 BHD converted_usd. These tests pin that the flag no
+# longer reaches into microdata at all.
 # ---------------------------------------------------------------------------
 
-# The real nazih.qa shape: the product's own Offer price (10 QAR — agreed by OG,
-# by JSON-LD and by the FIRST microdata node) plus a related-products rail whose
-# items are ALSO Offer-scoped. The legacy max-rule shipped the 45.
-_NAZIH_SHAPE = """<html><head>
-  <meta property="product:price:amount" content="10"/>
-  <meta property="product:price:currency" content="QAR"/>
-</head><body>
+_TWO_OFFER_SCOPES = """<html><body>
   <div itemscope itemtype="https://schema.org/Product">
-    <span itemprop="name">Diva Car Freshener Musky Scent</span>
     <div itemprop="offers" itemscope itemtype="https://schema.org/Offer">
       <span itemprop="price" content="10">10</span>
       <meta itemprop="priceCurrency" content="QAR" />
     </div>
   </div>
-  <!-- related products rail — MUST NOT win -->
   <div itemscope itemtype="https://schema.org/Product">
-    <span itemprop="name">Some Other Freshener</span>
     <div itemprop="offers" itemscope itemtype="https://schema.org/Offer">
       <span itemprop="price" content="45">45</span>
       <meta itemprop="priceCurrency" content="QAR" />
@@ -430,43 +391,39 @@ _NAZIH_SHAPE = """<html><head>
 </body></html>"""
 
 
-class TestMicrodataReorderPreconditions:
-    def test_first_offer_price_wins_not_the_largest(self, flag_on):
-        """THE regression the reorder would otherwise ship: 10 QAR, never the
-        45 QAR related product."""
+class TestMicrodataIsUntouchedByThisFlag:
+    @pytest.mark.parametrize("flag", ["true", "false"])
+    def test_offer_scope_selection_is_flag_invariant(self, monkeypatch, flag):
+        monkeypatch.setenv("ENABLE_OG_BRANCH_FIXES", flag)
         res = extract_price_from_html(
-            _NAZIH_SHAPE, "Diva Car Freshener Musky Scent", "QAR", "nazih.qa",
-            "https://nazih.qa/diva-car-freshener-musky-scent-8ml.html",
+            _TWO_OFFER_SCOPES, "Diva Car Freshener Musky Scent", "QAR",
+            "nazih.qa", "https://nazih.qa/p",
         )
         assert res is not None
-        assert res["amount"] == pytest.approx(10.0)
-        assert res["amount"] != pytest.approx(45.0)
+        assert res["amount"] == pytest.approx(45.0)
 
-    def test_flag_off_reproduces_the_legacy_max_rule(self, flag_off):
-        """Byte-identity: legacy took the LARGEST Offer-scoped price... but OG
-        ran first back then, so the 10 still shipped. Assert the legacy OG win
-        rather than the latent microdata bug."""
+    @pytest.mark.parametrize("flag", ["true", "false"])
+    def test_converted_microdata_provenance_is_flag_invariant(
+        self, monkeypatch, flag,
+    ):
+        html = """<html><body>
+          <div itemscope itemtype="https://schema.org/Product">
+            <div itemprop="offers" itemscope itemtype="https://schema.org/Offer">
+              <span itemprop="price" content="15.000">15.000</span>
+              <meta itemprop="priceCurrency" content="KWD" />
+            </div>
+          </div>
+        </body></html>"""
         res = extract_price_from_html(
-            _NAZIH_SHAPE, "Diva Car Freshener Musky Scent", "QAR", "nazih.qa",
-            "https://nazih.qa/diva-car-freshener-musky-scent-8ml.html",
+            html, "Miss Dior EDP", "BHD", "klinq.com", "https://klinq.com/p",
         )
         assert res is not None
-        assert res["amount"] == pytest.approx(10.0)
+        assert res["source_method"] == "page_scrape"
+        assert res["currency"].upper() == "BHD"
 
-    def test_legacy_max_rule_is_what_the_flag_replaces(self, flag_off):
-        """Pin the latent defect directly, with no OG tag to mask it — this is
-        what the reorder would have exposed."""
-        no_og = _NAZIH_SHAPE.split("</head>")[1]
-        res = extract_price_from_html(
-            "<html><head></head>" + no_og, "Diva Car Freshener Musky Scent",
-            "QAR", "nazih.qa", "https://nazih.qa/p",
-        )
-        assert res is not None
-        assert res["amount"] == pytest.approx(45.0)  # the bug, flag OFF
-
-    def test_offer_scoped_still_outranks_a_bare_price(self, flag_on):
-        """First-wins must not demote an Offer-scoped price below a bare one
-        that happens to appear earlier in the document."""
+    @pytest.mark.parametrize("flag", ["true", "false"])
+    def test_offer_scoped_still_outranks_a_bare_price(self, monkeypatch, flag):
+        monkeypatch.setenv("ENABLE_OG_BRANCH_FIXES", flag)
         html = """<html><body>
           <span itemprop="price" content="3.500">3.500</span>
           <div itemscope itemtype="https://schema.org/Product">
@@ -481,42 +438,6 @@ class TestMicrodataReorderPreconditions:
         )
         assert res is not None
         assert res["amount"] == pytest.approx(19.900)
-
-    def test_converted_microdata_price_is_labelled_converted_usd(self, flag_on):
-        """PROVENANCE: a KWD page read on a BHD scrape is a CONVERTED figure, not
-        a genuine local shelf price. JSON-LD and OG both relabel; microdata used
-        to keep claiming `page_scrape`, which the genuine-BH-share KPI counts."""
-        html = """<html><body>
-          <div itemscope itemtype="https://schema.org/Product">
-            <div itemprop="offers" itemscope itemtype="https://schema.org/Offer">
-              <span itemprop="price" content="15.000">15.000</span>
-              <meta itemprop="priceCurrency" content="KWD" />
-            </div>
-          </div>
-        </body></html>"""
-        res = extract_price_from_html(
-            html, "Miss Dior EDP", "BHD", "klinq.com", "https://klinq.com/p",
-        )
-        assert res is not None
-        assert res["source_method"] == "converted_usd"
-        assert res["currency"].upper() == "BHD"
-
-    def test_same_currency_microdata_price_stays_page_scrape(self, flag_on):
-        """The relabel must fire ONLY on a conversion — a genuine local BHD
-        microdata price is still a genuine page_scrape."""
-        html = """<html><body>
-          <div itemscope itemtype="https://schema.org/Product">
-            <div itemprop="offers" itemscope itemtype="https://schema.org/Offer">
-              <span itemprop="price" content="19.900">19.900</span>
-              <meta itemprop="priceCurrency" content="BHD" />
-            </div>
-          </div>
-        </body></html>"""
-        res = extract_price_from_html(
-            html, "Some Product", "BHD", "shop.bh", "https://shop.bh/p",
-        )
-        assert res is not None
-        assert res["source_method"] == "page_scrape"
 
 
 # ---------------------------------------------------------------------------
