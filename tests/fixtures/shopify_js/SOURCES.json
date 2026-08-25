@@ -1,0 +1,27 @@
+{
+  "_note": "Real `GET {pdp_url}.js` payloads captured 2026-08-26 with curl_cffi impersonate=chrome, spaced >=1.6s per request. Saved verbatim (no edits) so the parser is tested against production bytes. Re-capture only if a rule changes; each is < 17KB.",
+  "bh_taifalemarat_com.json": {
+    "url": "https://bh.taifalemarat.com/products/oud-nights.js",
+    "covers": "3-decimal BHD - 6066 minor units divided by 100 is 60.66 BHD (NOT /1000), and a zero-available-variant product",
+    "http_status": 200,
+    "bytes": 4599
+  },
+  "alhajisoman_com.json": {
+    "url": "https://alhajisoman.com/products/ch-212-vip-party-fever-edt-ladies-80ml.js",
+    "covers": "compare_at_price discount - price 3000 -> 30.00 OMR, compare_at_price 4500 -> list 45.00; also 3-decimal OMR and zero-available",
+    "http_status": 200,
+    "bytes": 2615
+  },
+  "www_watsons_sa.json": {
+    "url": "https://www.watsons.sa/products/gosh-eyedentity-eyeshadow-palette.js",
+    "covers": "zero available variants across a 5-variant PRICE RANGE (2010..7000) - proves we never present a cheapest-overall as an in-stock price",
+    "http_status": 200,
+    "bytes": 16318
+  },
+  "bh_mubkhar_com.json": {
+    "url": "https://bh.mubkhar.com/products/california-gold-home-perfume-oil-15ml.js",
+    "covers": "the in-stock happy path - 620 -> 6.20 BHD, and compare_at_price 0 which must NOT become a list price",
+    "http_status": 200,
+    "bytes": 4766
+  }
+}
