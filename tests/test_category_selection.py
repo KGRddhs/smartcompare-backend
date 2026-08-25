@@ -11,8 +11,12 @@ Covers:
 - Live GPT extraction for new categories (live_unit marker)
 
 Run free tests:   pytest tests/test_category_selection.py -v -m "not live_unit"
-Run live tests:   pytest tests/test_category_selection.py -v -m live_unit  (~$0.02)
-Run all:          pytest tests/test_category_selection.py -v
+Run live tests:   LIVE=1 pytest tests/test_category_selection.py -v -m live_unit  (~$0.02)
+Run all:          LIVE=1 pytest tests/test_category_selection.py -v
+
+`LIVE=1` is required for the live_unit tier: without it the credential
+sanitizer in tests/_env_safety.py is active and the collection hook skips
+every live_unit item, so the bare command reports `skipped`.
 """
 import pytest
 from unittest.mock import patch, AsyncMock

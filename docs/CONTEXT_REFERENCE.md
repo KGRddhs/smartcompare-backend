@@ -143,19 +143,26 @@ LOG_LEVEL=INFO                            # Structured logging level (DEBUG/INFO
 python -m pytest tests/ -v -m "not (live_unit or live_db or integration)" --ignore=tests/test_integration.py
 
 # Include live unit tests (iHerb scraping, Serper, GPT vision) — adds ~$0.03
-python -m pytest tests/ -v -m "not (live_db or integration)"
+LIVE=1 python -m pytest tests/ -v -m "not (live_db or integration)"
 
 # Live database tests (needs Supabase credentials in .env)
-python -m pytest tests/test_drug_database_service.py -v -m live_db
+LIVE=1 python -m pytest tests/test_drug_database_service.py -v -m live_db
 
 # Integration tests — hits live Railway, costs ~$0.06, takes ~4 min
-python -m pytest tests/test_integration.py -v -m integration
+LIVE=1 python -m pytest tests/test_integration.py -v -m integration
 
 # All tests
-python -m pytest tests/ -v --timeout=180
+LIVE=1 python -m pytest tests/ -v --timeout=180
 ```
 
-**Note:** `tests/conftest.py` auto-loads `.env` via `python-dotenv`, so Supabase credentials are available for all tests.
+**Note:** `tests/conftest.py` auto-loads `.env` via `python-dotenv` and then
+NEUTRALISES every credential-bearing name in it (issue #48), so the default
+tier runs with the same credential-free environment CI does. `LIVE=1` is the
+only thing that restores the real values — **without it the marker alone is a
+no-op**: a `pytest -m live_db` run reports the live tests as `skipped`, not as
+passed. Omit `LIVE=1` and Supabase credentials are NOT available to a test.
+The `LIVE=1 ...` prefix above is bash; in PowerShell use
+`$env:LIVE=1; python -m pytest ...` (and `Remove-Item Env:LIVE` afterwards).
 
 ### Test Files
 | File | Tests | Type | Notes |
@@ -193,11 +200,18 @@ python -m pytest tests/ -v --timeout=180
 | **Total** | **809** | | **793 free unit + 14 live_unit + 6 live_db + 10 integration** |
 
 ### Pytest Markers
+Selecting a marker is **not** an opt-in on its own. Since issue #48 the
+`pytest_collection_modifyitems` hook in `tests/conftest.py` skips every
+`live_unit` / `live_db` / `integration` item unless `LIVE=1` is set, because
+the default tier no longer holds the credentials those tests need. Run them
+with the `LIVE=1` prefix in the last column or they silently report `skipped`.
+
 | Marker | Purpose | Run command |
 |--------|---------|-------------|
-| `live_unit` | Tests calling live external services (iHerb, Serper, OpenAI) | `-m live_unit` |
-| `live_db` | Tests requiring live Supabase `bahrain_approved_drugs` table | `-m live_db` |
-| `integration` | End-to-end tests against live Railway production | `-m integration` |
+| `live_unit` | Tests calling live external services (iHerb, Serper, OpenAI) | `LIVE=1 pytest -m live_unit` |
+| `live_db` | Tests requiring live Supabase `bahrain_approved_drugs` table | `LIVE=1 pytest -m live_db` |
+| `integration` | End-to-end tests against live Railway production | `LIVE=1 pytest -m integration` |
+| `bench` | Latency/throughput benchmarks against live Railway | `BENCH=1 pytest -m bench` (own gate, not `LIVE`) |
 
 ## Local Backend Testing
 

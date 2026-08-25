@@ -10,7 +10,9 @@ Two test classes:
 2. `TestMigration023LiveSchema` (`@pytest.mark.live_db`) — connects to Supabase
    via `get_admin_supabase_client()` and asserts the live schema matches.
    Skipped from the free unit suite via the live_db marker. Run with:
-       pytest tests/test_migration_023.py -v -m live_db
+       LIVE=1 pytest tests/test_migration_023.py -v -m live_db
+   (`LIVE=1` is required — without it the credential sanitizer in
+   tests/_env_safety.py is active and the collection hook skips the tier.)
 
 Reference:
 - docs/plans/2026-05-12-bundle-bcd-consolidated-design.md § 4.5

@@ -10,7 +10,9 @@ Cost: ~$0.01 per test (real OpenAI + Serper). ~$0.04 for the full Bundle E
 integration suite. Mark `@pytest.mark.integration` so the default suite
 (`pytest -m "not integration"`) skips these.
 
-Run: `python -m pytest tests/test_bundle_e_integration.py -v --timeout=180 -m integration`
+Run: `LIVE=1 python -m pytest tests/test_bundle_e_integration.py -v --timeout=180 -m integration`
+(`LIVE=1` is required — the marker alone no longer opts in, see
+tests/_env_safety.py.)
 """
 from __future__ import annotations
 

@@ -388,17 +388,23 @@ Railway MCP server is configured at project root (`.mcp.json`, stdio via `railwa
 python -m pytest tests/ -v -m "not (live_unit or live_db or integration)" --ignore=tests/test_integration.py
 
 # Live unit tests (iHerb, Serper, GPT — ~$0.03)
-python -m pytest tests/ -v -m "not (live_db or integration)"
+LIVE=1 python -m pytest tests/ -v -m "not (live_db or integration)"
 
 # Integration tests (live Railway — ~$0.06)
-python -m pytest tests/test_integration.py -v -m integration
+LIVE=1 python -m pytest tests/test_integration.py -v -m integration
 
 # Full suite
-python -m pytest tests/ -v --timeout=180
+LIVE=1 python -m pytest tests/ -v --timeout=180
 ```
 
 - `python -m py_compile <file>` for syntax checks; `npx tsc --noEmit` for frontend types.
-- `conftest.py` auto-loads `.env` via python-dotenv.
+- `conftest.py` auto-loads `.env` via python-dotenv, then STRIPS the
+  credential-bearing names from it (issue #48) so the default tier runs
+  credential-free, same as CI. **`LIVE=1` is what restores them** — the
+  `live_unit` / `live_db` / `integration` markers no longer opt in on their
+  own, so `-m live_db` without `LIVE=1` skips every selected test instead of
+  running it. PowerShell: `$env:LIVE=1; python -m pytest ...`. See
+  `tests/_env_safety.py`.
 - ~100 test files (`test_<feature>.py`, one per service). 80%+ coverage target for new features.
 - No regressions: all existing tests must pass before merging.
 - **Eval gate (Bundle B B.6):** pre-merge `python -m scripts.eval_runner --subset smoke20 --mode regression --baseline-run-id 4aee8e88-da97-41b3-974b-3e75c2c9c10e` (S1 baseline = 21.0%). Measurement runs ALWAYS `--concurrency 1` (walls are load-sensitive); full-200 needs `--allow-full` + dispatcher GO (~600-1,000 Serper credits). Runbooks: `docs/runbooks/qaren-eval.md` + `qaren-gold-set.md`.

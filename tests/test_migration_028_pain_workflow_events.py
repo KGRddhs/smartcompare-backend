@@ -270,7 +270,10 @@ def test_rollback_028_wraps_in_transaction():
 # idx_pwe_workflow_time replaced idx_pwe_recent (volatile predicate) + the
 # redundant idx_pwe_workflow_name. These assertions verify the LIVE prod
 # schema matches the corrected names, and that the removed indexes are gone.
-# Run with: pytest tests/test_migration_028_pain_workflow_events.py -m live_db
+# Run with:
+#   LIVE=1 pytest tests/test_migration_028_pain_workflow_events.py -m live_db
+# `LIVE=1` is required: without it the credential sanitizer is active and the
+# collection hook skips every live_db item (see tests/_env_safety.py).
 # ---------------------------------------------------------------------------
 
 import os  # noqa: E402 — kept local to the live_db section
@@ -297,7 +300,7 @@ REMOVED_INDEXES = {"idx_pwe_recent", "idx_pwe_workflow_name"}
 
 @pytest.mark.live_db
 class TestMigration028LiveSchema:
-    """Live Supabase assertions — run post-apply with `-m live_db`.
+    """Live Supabase assertions — run post-apply with `LIVE=1 ... -m live_db`.
 
     NOTE on index verification: the supabase-py / PostgREST client cannot read
     pg_indexes (no generic SQL surface), so index NAMES are verified out-of-band

@@ -8,7 +8,12 @@ the user-scoped Supabase client. RLS quietly filters the row → empty result.
 
 Skipped automatically in the free unit test suite via the live_db marker.
 Run explicitly with:
-    pytest tests/test_demographics_rls.py -v -m live_db
+    LIVE=1 pytest tests/test_demographics_rls.py -v -m live_db
+
+`LIVE=1` is required, not optional: without it the credential sanitizer in
+`tests/_env_safety.py` has replaced SUPABASE_* with unusable sentinels and the
+collection hook skips every live_db item, so the bare `-m live_db` command
+reports `skipped` rather than running anything.
 """
 from __future__ import annotations
 
