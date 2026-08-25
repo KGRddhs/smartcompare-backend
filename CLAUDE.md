@@ -413,6 +413,18 @@ ToS/Privacy fact base, code-side blockers (delete cascade, expo-notifications pl
 
 **Canary phasing:** With <10 testers pre-launch, set new-feature canary % to 100 — lower % statistically hash-buckets a small tester set out of the feature being tested. Drop to 10 only at App Store soft-launch, then ramp 10→50→100 per `docs/runbooks/qaren-canary-onboarding.md`.
 
+## Active runtime (full-repo audit + first three fixes, 2026-08-24)
+
+A full audit of `main c630436` produced **GitHub issues #46–#81** (12 P1, 23 P2, 1 P3), each self-contained with verified `file:line`. Three are implemented and pushed, **no PRs opened, nothing merged, nothing deployed**: `fix/46-dependency-lock` (`d6c52ab`), `fix/58-model-config` (`b9e962e`), `fix/59-subtype-specs` (`48daac6`). Each passed the repo comm gate against `origin/main` with **branch-only-NEW == []**.
+
+**Three findings that change how you work in this repo — full detail in `docs/investigations/2026-08-24-audit-implementation-handoff.md`:**
+
+1. **CI has been RED on main since at least 2026-07-07** (176 failed / 9,359 passed on `c630436`). Causes: a missing `pillow` dev dependency (fixed on `fix/46`) and the RED-by-design `tests/test_value_math.py` stubs that CI never excluded (still open — **#49**). "Tests green" has not been a real merge gate; do not treat a green local run as proof until #49 lands.
+2. **`pytest tests/` hangs — the default suite makes LIVE network calls.** `magento_graphql_service.py:275` and `noon_service.py:170` fetch real retailer sites in executor threads that the pytest timeout cannot kill (this is **#70** reproducing in-suite), and with `.env` present Serper 403s and OpenAI 429s stall the retries (**#48**). Run targeted file sets, excluding adapter/network-heavy files.
+3. **`app/config.py` is a trap, not merely dead.** It declares seven REQUIRED pydantic fields and instantiates `Settings()` at import (`:55`), so importing it raises `ValidationError` wherever those env vars are absent. Never put new config there — `app/services/model_config.py` is the pattern to copy (env reads, safe defaults, zero required credentials). Related: `openai_service.py:20` builds `AsyncOpenAI` at module import, and every current openai release rejects keyless construction, so `import app.main` fails without `OPENAI_API_KEY` (verified across 2.54.0/3.2.0/3.3.1 — pre-existing, not a pinning artifact).
+
+**Model ids are now config, not code** (#58): `OPENAI_MODEL_{VERDICT,STANDARD,VISION,CRITIC,MODERATION}`, resolved per call, logged once at startup as `[models] …`. Defaults are unchanged (`gpt-4o` / `gpt-4o-mini`). **Do NOT flip to a GPT-5 id without a live smoke test** — GPT-5 rejects `temperature=0` outright (the verdict's determinism A/B depends on it), requires `max_completion_tokens`, and counts invisible reasoning tokens against that same budget so a straight `1000` carry-over can return empty content. The shims (`sampling_kwargs`, `token_limit_kwargs`) prevent the 400s; they cannot restore determinism.
+
 ## Known Remaining Bugs (deferred)
 - **✅ KEYS ROTATED 2026-06-27 (prod un-degraded):** `SERPER_API_KEY` PAID `7de9c750…`, `SCRAPEDO_API_TOKEN` `963772…`, new Zyte acct `e3374b…` — all set on Railway + local `.env`, prod verified live. (Was: all 3 dead 2026-06-26.) Full keys ONLY in gitignored `.env`. See the 2026-06-27 Active-runtime entry.
 - **Scrape.do timing out** on GCC luxury retailers (Ounass, Bloomingdales). Firecrawl is primary; Scrape.do is Tier 1.5d fallback only. Investigation `docs/investigations/2026-05-16-scrapedo-timeout-analysis.md` — recommendation: **accept current behavior** (graceful Tier 2 fallback).
