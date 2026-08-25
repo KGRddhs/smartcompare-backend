@@ -3524,6 +3524,52 @@ def wide_candidate_enabled() -> bool:
     )
 
 
+def wide_signal_text_enabled() -> bool:
+    """True iff the Shopify adapter derives size/concentration from the WIDENED
+    signal text — title + variant title + product_type + tags + body_html —
+    instead of title + variant title alone (default OFF).
+
+    Fragrance sweep 2026-08-25 — `_match_shopify_product` builds
+    ``_signal_text = f"{title} {_variant_title}"`` and reads the two fragrance
+    axes off it. The SAME `/products.json` row already carries `product_type`,
+    `tags` and `body_html`, so folding them in costs nothing (no extra fetch, no
+    extra parse). Measured over 999 live Shopify fragrance products: size capture
+    25.6% -> 62.7%, concentration 7.6% -> 24.1%.
+
+    DEFAULT OFF — it ships DORMANT for a canary. Unlike the other Step-2..5
+    flags this is not a pure-capture change with a provably inert blast radius:
+    ``price.size`` is consumed downstream (extraction_service, response_builder,
+    structured_comparison_service), so filling a size that used to be None can
+    move a like-for-like comparison. The default therefore uses the repo's
+    explicit truthy ALLOW-LIST idiom (per `_shopify_pdp_json_enabled` /
+    `variant_min_guard_enabled`) rather than the default-ON
+    ``not in ("false","0","no","off","")`` form, so an unset, empty or misspelt
+    value leaves the widening OFF.
+
+    Read PER CALL so Railway can flip it without a restart. With the flag OFF
+    `_wide_signal_capture_text` is never invoked — `body_html` is not even
+    looked at — and the annotations come from exactly the pre-change narrow text
+    via exactly the pre-change functions, so the rollback is byte-identical.
+
+    Deliberately INDEPENDENT of exact_gate_enabled(), sale_price_first_enabled(),
+    og_branch_fixes_enabled(), wide_candidate_enabled() and
+    shopify_pdp_json_enabled(): this is the Shopify catalog adapter's CAPTURE
+    text, not part of the exact-identity layer, the OG tag fixes, the JSON-LD
+    candidate dict or the {pdp}.js data source, so none of their rollbacks (or
+    rollouts) should move it.
+
+    SELECTION SAFETY — the widened text feeds ONLY `extract_sizes_ml` /
+    `extract_concentration`. `variant_precision_rank` and `flagship_basis_bonus`
+    keep reading the NARROW text, so no variant and no price can move; pinned in
+    tests/test_wide_signal_text.py (`test_wide_ranking_would_have_flipped_the_
+    winner` builds the catalog where a wide-ranked implementation ships a 3x
+    dearer product, and `test_the_winner_does_not_flip` proves this one does
+    not)."""
+    return os.getenv("ENABLE_WIDE_SIGNAL_TEXT", "").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
 def variant_min_guard_enabled() -> bool:
     """Scraping audit 2026-07-08 — gate the variable-product MIN-variation decant guard
     (a woo/shopify variable product served its cheapest 30ml variation as the full bottle).
@@ -10151,6 +10197,81 @@ def _select_shopify_variant(
     return None  # non-fragrance size-unspecified spread → ambiguous → pend
 
 
+# ============================================================================
+# Step 6 (fragrance hybrid capture, 2026-08-25) — the WIDE Shopify signal text.
+# ============================================================================
+# `_match_shopify_product` reads the two fragrance axes off
+# `f"{title} {variant_title}"`. The same /products.json row already carries
+# `product_type`, `tags` and `body_html`; folding them into a SECOND, capture-only
+# string lifts size capture 25.6% -> 62.7% and concentration 7.6% -> 24.1% over
+# 999 live Shopify fragrance products. Gated by wide_signal_text_enabled().
+#
+# WHY CAPS. `body_html` is unbounded free HTML — tens of KB is routine, and this
+# runs once per candidate product on a catalog that can hold 250+ rows. Each
+# supplementary segment gets its OWN budget so one long field cannot starve the
+# others, and the body's plain-text budget is the repo's existing
+# `_MATCH_INPUT_CAP` (512) — the same ReDoS bound the descriptor/axis matchers
+# apply — rather than a fresh magic number. The raw-HTML pre-cut is 8x that:
+# PDP copy runs roughly 4-8 markup chars per text char, so 4096 raw is enough to
+# still fill the 512-char text budget on a typical body while bounding the strip.
+_WIDE_SIGNAL_TYPE_CAP = 64        # product_type is a short taxonomy label
+_WIDE_SIGNAL_TAGS_CAP = 256       # tags are short tokens; 256 holds ~20 of them
+_WIDE_SIGNAL_BODY_CAP = _MATCH_INPUT_CAP   # 512 — the repo's matcher/ReDoS bound
+_WIDE_SIGNAL_BODY_RAW_CAP = 8 * _MATCH_INPUT_CAP  # 4096 chars of raw HTML in
+
+# `<[^<>]*>` and NOT `<[^>]*>`: excluding "<" from the class makes a failed
+# tag-open abort at the very next angle bracket, so a pathological run of "<"
+# cannot go quadratic. Truncation can only DROP a match that straddles the cut,
+# never invent one (we always cut the tail).
+_WIDE_SIGNAL_TAG_RE = re.compile(r"<[^<>]*>")
+_WIDE_SIGNAL_WS_RE = re.compile(r"\s+")
+
+
+def _wide_signal_capture_text(narrow: str, product: Dict[str, Any]) -> str:
+    """`narrow` widened with the product row's `product_type`, `tags` and
+    plain-texted `body_html`, each capped (see the block comment above).
+
+    CAPTURE ONLY. The result is fed to `extract_sizes_ml` /
+    `extract_concentration` and to nothing else — never to
+    `variant_precision_rank` or `flagship_basis_bonus`, which must keep seeing
+    the narrow text so no variant and no price can move.
+
+    Accepts both field spellings: `/products.json` says body_html/product_type,
+    the `{pdp}.js` envelope says description/type."""
+    parts: List[str] = []
+    if narrow:
+        parts.append(narrow)
+
+    ptype = product.get("product_type")
+    if ptype is None:
+        ptype = product.get("type")
+    ptype = str(ptype or "").strip()
+    if ptype:
+        parts.append(ptype[:_WIDE_SIGNAL_TYPE_CAP])
+
+    tags = product.get("tags")
+    if isinstance(tags, (list, tuple, set)):
+        tag_text = " ".join(str(t) for t in tags if t)
+    else:
+        tag_text = str(tags or "")
+    tag_text = tag_text.strip()
+    if tag_text:
+        parts.append(tag_text[:_WIDE_SIGNAL_TAGS_CAP])
+
+    body = product.get("body_html")
+    if body is None:
+        body = product.get("description")
+    body = str(body or "")[:_WIDE_SIGNAL_BODY_RAW_CAP]
+    if body:
+        body = _WIDE_SIGNAL_TAG_RE.sub(" ", body)
+        body = html_unescape(body)
+        body = _WIDE_SIGNAL_WS_RE.sub(" ", body).strip()
+        if body:
+            parts.append(body[:_WIDE_SIGNAL_BODY_CAP])
+
+    return " ".join(parts).strip()
+
+
 def _match_shopify_product(
     catalog: Optional[Dict[str, Any]],
     product_name: str,
@@ -10290,7 +10411,32 @@ def _match_shopify_product(
                 f"https://{domain}/products/{handle}" if handle and domain
                 else f"https://{domain}/" if domain else ""
             )
+            # ---- capture axes -------------------------------------------
+            # Flag OFF: exactly the pre-change expressions, on exactly the
+            # pre-change input (`_signal_text`) — byte-identical.
             _sizes = extract_sizes_ml(_signal_text)
+            _size = (sorted(_sizes)[0] + "ml") if _sizes else None
+            _conc = extract_concentration(_signal_text)
+            if wide_signal_text_enabled() and (_size is None or _conc is None):
+                # NARROW-FIRST. The title/variant title is authoritative: the
+                # widened text is a FALLBACK that may only fill a None, never
+                # rewrite a value the narrow text already produced (a body that
+                # says "also available in 100 ml" must not overwrite a "50ml"
+                # title). Additive-only, so the flag can only widen capture.
+                _wide = _wide_signal_capture_text(_signal_text, product)
+                if _conc is None:
+                    _conc = extract_concentration(_wide)
+                if _size is None:
+                    _wide_sizes = extract_sizes_ml(_wide)
+                    # AMBIGUITY -> ABSTAIN. body_html is marketing copy: it names
+                    # flankers, related items and bundle contents. The real
+                    # om.swissarabian "MUSK 07 EDP + BODY LOTION GIFT SET" body
+                    # lists a 50ml perfume AND a 300ml BODY LOTION; the legacy
+                    # `sorted(...)[0]` is a STRING sort, so a naive union would
+                    # ship "300ml" — the lotion — as the fragrance size. Take a
+                    # widened size ONLY when the whole widened text agrees on one.
+                    if len(_wide_sizes) == 1:
+                        _size = next(iter(_wide_sizes)) + "ml"
             best = {
                 "amount": round(amount, 2),
                 "currency": target_currency,
@@ -10310,8 +10456,8 @@ def _match_shopify_product(
                 # exist in the registry, would bank a converted AED/SAR price as a
                 # genuine BH price for a week and inflate the headline metric.
                 "source_method": ("converted_usd" if needs_conversion else "shopify_json"),
-                "concentration": extract_concentration(_signal_text),
-                "size": (sorted(_sizes)[0] + "ml") if _sizes else None,
+                "concentration": _conc,
+                "size": _size,
                 "title": title,
                 "match_score": round(match_score, 3),
             }

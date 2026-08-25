@@ -1,0 +1,38 @@
+{
+ "_what": "Shopify /products.json catalog fixtures for tests/test_wide_signal_text.py. NO network was used to build these. Each product object was lifted verbatim from the embedded <script type=\"application/json\" id=\"ProductJson-...\"> blob of the corresponding CACHED PDP under _proof/html/ (filename = sha1('curl_cffi|' + url).hexdigest() + '.html'), which Shopify themes render with the SAME product object the {pdp}.js endpoint returns.",
+ "_transform": [
+  "description -> body_html and type -> product_type (the /products.json envelope uses those names; the embedded/.js envelope uses the former). Values byte-identical.",
+  "variant price: the embedded/.js envelope is INTEGER MINOR UNITS, /products.json is a DECIMAL STRING. Divided by 10**minor_unit for the store's currency and rendered as a fixed-point string (BHD/OMR 3dp, AED 2dp). No other numeric change.",
+  "images/media/featured_image/selling_plan_groups/quantity_rule dropped (bulk, unused by _match_shopify_product) so the fixture stays a few KB. Every field the code under test reads (title/handle/vendor/product_type/tags/body_html/variants[].title|price|available) is unmodified real data.",
+  "_store_currency added: the envelope key _fetch_shopify_catalog stamps on the catalog. Value = the registry_currency recorded for that domain in _proof/sweep2_curl_cffi.jsonl."
+ ],
+ "products": [
+  {
+   "fixture": "perfumistaaloud_com.json",
+   "url": "https://perfumistaaloud.com/products/perfumusk",
+   "domain": "perfumistaaloud.com",
+   "cached_html": "_proof/html/1622c7b9ae7ce600e15ae8872d8d267766c1840f.html",
+   "store_currency": "BHD",
+   "title": "Perfumusk",
+   "why": "GAIN/size. Product title 'Perfumusk' carries NO ml token and the single variant is 'Default Title', so the NARROW signal text yields no size. The real body_html carries '<p>100 ml</p>'. Widened capture recovers size=100ml."
+  },
+  {
+   "fixture": "armaf_ae.json",
+   "url": "https://www.armaf.ae/products/odyssey-tyrant-special-edition",
+   "domain": "armaf.ae",
+   "cached_html": "_proof/html/afe46c4718a5a3a69e4ef9bfcf78071da5ca060f.html",
+   "store_currency": "AED",
+   "title": "ODYSSEY TYRANT SPECIAL EDITION",
+   "why": "GAIN/concentration+size. Title 'ODYSSEY TYRANT SPECIAL EDITION' carries neither axis; the real tags carry 'edp for her' and the real body_html opens 'Eau De Parfum 100ml'. Widened capture recovers concentration=EDP and size=100ml."
+  },
+  {
+   "fixture": "om_swissarabian_com.json",
+   "url": "https://om.swissarabian.com/products/musk-07-edp-body-lotion-gift-set",
+   "domain": "om.swissarabian.com",
+   "cached_html": "_proof/html/ace8a7d60b296c84271c13443cec9cea3b2a3e09.html",
+   "store_currency": "OMR",
+   "title": "MUSK 07 EDP + BODY LOTION GIFT SET",
+   "why": "ADVERSARIAL/cross-contamination. A GIFT SET whose real body_html lists TWO different items at TWO different sizes - 'Musk 07 Extrait de Parfum - 50ml' and 'Musk 07 Body Lotion - 300ml'. A naive widened capture takes sorted({'50','300'})[0] = '300' (STRING sort) and would ship the BODY LOTION's 300ml as the fragrance size. Pins the ambiguity-abstention rule."
+  }
+ ]
+}

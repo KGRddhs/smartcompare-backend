@@ -1,0 +1,34 @@
+{
+ "_store_currency": "BHD",
+ "products": [
+  {
+   "id": 15471535521903,
+   "title": "Perfumusk",
+   "handle": "perfumusk",
+   "body_html": "<p>Musky • Oriental • Woody | مسكي • شرقي • خشبي</p>\n<p>100 ml</p>\n<p class=\"isSelectedEnd\"><strong><span>Perfumusk Perfume</span></strong><span> is a rich musky woody fragrance with a warm fruity opening and a deep leathery character. It opens with saffron, dry fruits, galbanum, peach, blackcurrant, mandarin, bergamot and artemisia, creating a bright, aromatic and slightly sweet first impression.</span></p>\n<p class=\"isSelectedEnd\"><span>At the heart, rose and osmanthus bring a soft floral elegance, while musk, cedar, patchouli, vetiver, green notes and leather add depth, freshness and a refined bold edge. The fragrance feels warm, smooth and confidently sophisticated.</span></p>\n<p><span>The base settles into musk, amber, white woods, leather, sandalwood, moss, spicy notes and woody notes, creating a long-lasting trail that feels rich, elegant and powerful.</span></p>",
+   "published_at": "2026-08-22T16:10:57+03:00",
+   "created_at": "2026-08-22T15:57:34+03:00",
+   "vendor": "Perfumista Aloud",
+   "product_type": "",
+   "tags": [],
+   "variants": [
+    {
+     "id": 54092374114415,
+     "title": "Default Title",
+     "option1": "Default Title",
+     "option2": null,
+     "option3": null,
+     "sku": null,
+     "requires_shipping": true,
+     "taxable": true,
+     "available": true,
+     "price": "2.500",
+     "compare_at_price": null
+    }
+   ],
+   "options": [
+    "Title"
+   ]
+  }
+ ]
+}

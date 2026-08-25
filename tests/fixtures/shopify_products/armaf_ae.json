@@ -1,0 +1,39 @@
+{
+ "_store_currency": "AED",
+ "products": [
+  {
+   "id": 7922401968375,
+   "title": "ODYSSEY TYRANT SPECIAL EDITION",
+   "handle": "odyssey-tyrant-special-edition",
+   "body_html": "Eau De Parfum 100ml<br><br>The citrusy scent blasts with grapefruit with a hint of lavender basing down to woody notes.<br><span style=\"font-size: 0.875rem;\"> </span>\n<p data-mce-fragment=\"1\"><strong data-mce-fragment=\"1\"><u data-mce-fragment=\"1\">Notes Detail:</u></strong></p>\n<ul data-mce-fragment=\"1\">\n<li data-mce-fragment=\"1\">Top Notes: Grape Fruit, Citrus Notes<br data-mce-fragment=\"1\">\n</li>\n<li data-mce-fragment=\"1\">Middle Notes: Pepper, Lavender, Geranium, Elemi<br data-mce-fragment=\"1\">\n</li>\n<li data-mce-fragment=\"1\">Base Notes: Vetiver, Cedar, Woody Notes/ Ambroxan<br>\n</li>\n</ul>",
+   "published_at": "2023-05-04T12:57:00+04:00",
+   "created_at": "2023-05-04T12:57:00+04:00",
+   "vendor": "Armaf Store",
+   "product_type": "",
+   "tags": [
+    "edp for her",
+    "NEW ARRIVALS",
+    "ODYSSEY NEW ARRIVAL",
+    "ODYSSEY PERFUME"
+   ],
+   "variants": [
+    {
+     "id": 43836049654007,
+     "title": "Default Title",
+     "option1": "Default Title",
+     "option2": null,
+     "option3": null,
+     "sku": "ARF32108861",
+     "requires_shipping": true,
+     "taxable": true,
+     "available": true,
+     "price": "140.00",
+     "compare_at_price": null
+    }
+   ],
+   "options": [
+    "Title"
+   ]
+  }
+ ]
+}
