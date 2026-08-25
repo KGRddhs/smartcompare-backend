@@ -3495,6 +3495,35 @@ def og_branch_fixes_enabled() -> bool:
     )
 
 
+def wide_candidate_enabled() -> bool:
+    """True iff extract_jsonld_price carries the WIDE candidate dict (default ON).
+
+    Fragrance sweep 2026-08-25 — the extractor already json.loads() and walks the
+    ENTIRE schema.org Product node to reach ``offers[].price``, then reduces it to
+    five keys and discards the rest. Everything else on that SAME node is
+    therefore free: zero extra fetches, zero extra parses, zero extra latency.
+    Measured availability on the Product node across the 86 cached PDPs that map
+    to a target row: description 73.3%, image 79.1%, sku 68.6%, brand 55.8%,
+    gtin-or-mpn 36.0%, category 22.1%, aggregateRating 14.0%, reviewBody 9.3%.
+
+    Default ON because it is additive capture on an already-parsed node, not a
+    new network or CPU cost. Read per call so Railway can flip it without a
+    restart; with the flag OFF the candidate dict has EXACTLY the five keys it
+    had before (amount/currency/in_stock/name, plus brand iff
+    exact_gate_enabled()), so the rollback is byte-identical. Deliberately
+    INDEPENDENT of exact_gate_enabled(), sale_price_first_enabled() and
+    og_branch_fixes_enabled(): this is data CAPTURE, not price selection, and
+    none of those rollbacks should silently narrow it.
+
+    NOTE the widened keys are consumed by NOTHING in the selection path —
+    select_best reads only amount/in_stock/title/name/url/brand/retailer/
+    retailer_score and _selection_match takes plain strings — so turning this on
+    cannot move a winner (pinned in tests/test_wide_candidate_dict.py)."""
+    return os.getenv("ENABLE_WIDE_CANDIDATE", "true").strip().lower() not in (
+        "false", "0", "no", "off", "",
+    )
+
+
 def variant_min_guard_enabled() -> bool:
     """Scraping audit 2026-07-08 — gate the variable-product MIN-variation decant guard
     (a woo/shopify variable product served its cheapest 30ml variation as the full bottle).
@@ -8718,6 +8747,210 @@ def _offer_price_expired(offer: Dict[str, Any]) -> bool:
         return False
 
 
+# ============================================================================
+# WIDE CANDIDATE DICT (ENABLE_WIDE_CANDIDATE, default ON)
+# ----------------------------------------------------------------------------
+# extract_jsonld_price parses the whole schema.org Product node to reach
+# offers[].price and then keeps five keys. These helpers carry the REST of the
+# SAME node — no extra fetch, no extra parse.
+#
+# THE CONVENTION (pinned by tests/test_wide_candidate_dict.py): a field that is
+# absent / empty / whitespace-only / unparseable is OMITTED from the candidate
+# dict entirely. A key is NEVER present carrying None, "" or [], so a downstream
+# `if "sku" in cand` stays honest and never has to also test the value. Every
+# helper below therefore returns a FALSY value ("" / [] / None) that the caller
+# tests before assigning, rather than assigning unconditionally.
+# ============================================================================
+
+# review[] is the only UNBOUNDED-cardinality field on the node (a PDP can carry
+# hundreds of embedded reviews, each an arbitrarily long body), so it is the one
+# field that gets a hard cap in both dimensions. `description` is a single field
+# and is carried WHOLE — truncating it would invent a lossy semantic no consumer
+# asked for, and the parsed node is already in memory either way.
+_WIDE_CANDIDATE_MAX_REVIEWS = 20
+_WIDE_CANDIDATE_MAX_REVIEW_CHARS = 500
+
+# The gtin flavours schema.org defines, in the precedence the widened dict folds
+# them into ONE "gtin" key. mpn is deliberately NOT in this list — a
+# manufacturer part number is not a global trade item number, so it stays a
+# separate key (a consumer matching on GTIN must not be handed an MPN).
+_WIDE_CANDIDATE_GTIN_FIELDS = ("gtin13", "gtin12", "gtin8", "gtin")
+
+# A rating attached to one of these node types is the STORE's, not the product's
+# — fyzara.com ships Organization/4.9-from-1100 and capitalstoreoman.com ships
+# Organization/4.6-from-10 in the same document as the Product. Kept as an
+# explicit deny-list belt to the structural brace: only @type=="Product" nodes
+# ever reach the widening, so a store node cannot get here in the first place.
+_WIDE_CANDIDATE_NON_PRODUCT_RATING_TYPES = frozenset({
+    "organization", "localbusiness", "store", "onlinestore", "website",
+    "webpage", "corporation", "brand",
+})
+
+
+def _jsonld_scalar_text(value: Any) -> str:
+    """A schema.org Text-ish field -> ONE stripped string, or "" when there is
+    nothing usable. Tolerates every shape the spec (and real retailers) allow:
+    a bare string, a number (sku 100234), a list (first usable member wins), or
+    a Thing node carrying the text in `name` / `@value`. Never raises."""
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, bool):          # a bool is an int in Python — not text
+        return ""
+    if isinstance(value, (int, float)):
+        return str(value)
+    if isinstance(value, list):
+        for item in value:
+            text = _jsonld_scalar_text(item)
+            if text:
+                return text
+        return ""
+    if isinstance(value, dict):
+        for key in ("name", "@value", "value"):
+            text = _jsonld_scalar_text(value.get(key))
+            if text:
+                return text
+    return ""
+
+
+def _jsonld_image_urls(value: Any) -> List[str]:
+    """schema.org `image` -> a flat list of url STRINGS, de-duplicated with
+    order preserved. The spec allows a bare url string, a list, or an
+    ImageObject node (url / contentUrl) — and real pages mix all three in one
+    list. A member with no usable url is dropped, so an all-junk image field
+    yields [] and the caller omits the key. Never raises."""
+    urls: List[str] = []
+
+    def _push(item: Any) -> None:
+        if isinstance(item, str):
+            text = item.strip()
+            if text:
+                urls.append(text)
+            return
+        if isinstance(item, dict):
+            for key in ("url", "contentUrl", "@id"):
+                text = _jsonld_scalar_text(item.get(key))
+                if text:
+                    urls.append(text)
+                    return
+            return
+        if isinstance(item, list):
+            for sub in item:
+                _push(sub)
+
+    _push(value)
+    seen = set()
+    deduped = []
+    for u in urls:
+        if u not in seen:
+            seen.add(u)
+            deduped.append(u)
+    return deduped
+
+
+def _jsonld_product_rating(node: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """The Product node's OWN aggregateRating -> {"rating_value": float
+    [, "review_count": int]}, or None.
+
+    THE TRAP this exists for: fyzara.com and capitalstoreoman.com each attach an
+    aggregateRating to an @type Organization node sitting in the SAME document
+    as the Product — a STORE rating (4.9 from 1100 / 4.6 from 10) that would
+    ship as a product rating if anything scanned the document instead of the
+    node. This reads ONLY the node handed to it, and refuses outright unless
+    that node is a Product (and unless the rating node itself is not a
+    store/organization shape).
+
+    A missing / non-numeric / non-positive ratingValue means NO rating: the key
+    is omitted rather than carried as None. `reviewCount` is preferred over
+    `ratingCount` (a review count is the stronger claim); when neither parses,
+    the value is carried alone rather than with a fabricated zero."""
+    if not isinstance(node, dict) or not _is_product_type(node):
+        return None
+    agg = node.get("aggregateRating")
+    if not isinstance(agg, dict):
+        return None
+    agg_type = _jsonld_scalar_text(agg.get("@type")).lower()
+    if agg_type in _WIDE_CANDIDATE_NON_PRODUCT_RATING_TYPES:
+        return None
+    try:
+        rating_value = float(_jsonld_scalar_text(agg.get("ratingValue")))
+    except (TypeError, ValueError):
+        return None
+    if not rating_value > 0:
+        return None
+    rating: Dict[str, Any] = {"rating_value": rating_value}
+    for count_field in ("reviewCount", "ratingCount"):
+        try:
+            count = int(float(_jsonld_scalar_text(agg.get(count_field))))
+        except (TypeError, ValueError):
+            continue
+        if count > 0:
+            rating["review_count"] = count
+            break
+    return rating
+
+
+def _jsonld_review_bodies(value: Any) -> List[str]:
+    """schema.org `review` (a node or a list of nodes) -> the review BODIES as
+    stripped strings. Bounded in BOTH dimensions — at most
+    _WIDE_CANDIDATE_MAX_REVIEWS bodies, each truncated to
+    _WIDE_CANDIDATE_MAX_REVIEW_CHARS — so a PDP with hundreds of long embedded
+    reviews cannot bloat the candidate dict. A member with no usable body is
+    skipped (it does not consume a slot). Never raises."""
+    nodes = value if isinstance(value, list) else [value]
+    bodies: List[str] = []
+    for node in nodes:
+        if not isinstance(node, dict):
+            continue
+        body = _jsonld_scalar_text(node.get("reviewBody"))
+        if not body:
+            continue
+        bodies.append(body[:_WIDE_CANDIDATE_MAX_REVIEW_CHARS])
+        if len(bodies) >= _WIDE_CANDIDATE_MAX_REVIEWS:
+            break
+    return bodies
+
+
+def _widen_jsonld_candidate(cand: Dict[str, Any], product: Dict[str, Any]) -> None:
+    """Carry the rest of the ALREADY-PARSED Product node onto `cand`, in place.
+
+    Every key is assigned only when it has real content (see THE CONVENTION
+    above). Callers must gate on wide_candidate_enabled() — this function does
+    not, so the flag is read exactly once per candidate at the call site."""
+    description = _jsonld_scalar_text(product.get("description"))
+    if description:
+        cand["description"] = description
+
+    images = _jsonld_image_urls(product.get("image"))
+    if images:
+        cand["image"] = images
+
+    sku = _jsonld_scalar_text(product.get("sku"))
+    if sku:
+        cand["sku"] = sku
+
+    for field in _WIDE_CANDIDATE_GTIN_FIELDS:
+        gtin = _jsonld_scalar_text(product.get(field))
+        if gtin:
+            cand["gtin"] = gtin
+            break
+
+    mpn = _jsonld_scalar_text(product.get("mpn"))
+    if mpn:
+        cand["mpn"] = mpn
+
+    ld_category = _jsonld_scalar_text(product.get("category"))
+    if ld_category:
+        cand["category"] = ld_category
+
+    rating = _jsonld_product_rating(product)
+    if rating:
+        cand["aggregate_rating"] = rating
+
+    reviews = _jsonld_review_bodies(product.get("review"))
+    if reviews:
+        cand["reviews"] = reviews
+
+
 def extract_jsonld_price(
     html: str, brand: str, expected_currency: str, query_name: str = "",
     category: Optional[str] = None,
@@ -8948,10 +9181,25 @@ def extract_jsonld_price(
                 # gating it dropped size-capture on rollback). Only `brand` is the NEW
                 # identity addition the exact gate introduced, so only it is flag-gated.
                 cand["name"] = product_name
-                if exact_gate_enabled():
+                # `brand` is UNGATED by the wide flag (carried like `name`): it is a
+                # plain field off the same node and the exact-gate coupling was only
+                # ever about who CONSUMED it, not about who could capture it. Under
+                # ENABLE_WIDE_CANDIDATE it is carried unconditionally; with that flag
+                # OFF it stays exactly as gated as before, so the rollback is
+                # byte-identical. (No behaviour rides on the ungating today: with the
+                # exact gate OFF select_best short-circuits to min(amount) without
+                # reading `brand`, and the caller reads price_data["brand"] only
+                # inside its own exact_gate_enabled() branch.)
+                if exact_gate_enabled() or wide_candidate_enabled():
                     # Carry the matched brand so _selection_match subtracts the FULL brand
                     # (brand-FIELD-only match, name "Orangey Dress" + ld brand "Jessie and James").
                     cand["brand"] = _cand_brand
+                if wide_candidate_enabled():
+                    # Everything else on the SAME already-parsed node — description,
+                    # image, sku, gtin/mpn, category, the PRODUCT's aggregateRating
+                    # (never a store's) and the embedded review bodies. Absent fields
+                    # stay ABSENT; nothing here is read by the selection path.
+                    _widen_jsonld_candidate(cand, product)
                 candidates.append(cand)
 
     if not candidates:
