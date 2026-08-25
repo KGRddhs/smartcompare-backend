@@ -72,26 +72,44 @@ _CONTRACT_SENTINEL = (
 
 
 def test_production_credentials_are_absent_by_default():
-    """No credential-bearing env var survives collection without LIVE=1.
+    """No credential-bearing env var still holds its production value.
 
-    Asserted against the snapshot the sanitizer took at conftest import, which
-    is the moment that matters: `app.main` (init_sentry) and `cache_service`
-    (module-level Upstash client) are imported during collection. Live
-    `os.environ` is the wrong oracle here -- individual tests legitimately
-    install fakes of their own (e.g. `test_analytics.py:245` assigns
-    `ADMIN_API_KEY = "test-admin-key-123"` with no teardown), which would make
-    this assertion order-dependent.
+    The oracle is a COMPARISON between two things, and both halves are load
+    bearing:
 
-    Fails loudly on a developer machine with a populated `.env` until the
-    conftest sanitizer lands. Names only in the message -- never values.
+      * LIVE `os.environ` -- what a test would actually read right now.
+      * the fingerprint the sanitizer took of that same name BEFORE it acted
+        (`tests/_env_safety.PRE_SANITIZE_FINGERPRINTS`), i.e. the real `.env`
+        value as it stood at conftest import.
+
+    Neither alone works. A plain "must be falsy" assertion on `os.environ` is
+    order-dependent: tests legitimately install fakes with no teardown (e.g.
+    `test_analytics.py:245` assigns `ADMIN_API_KEY = "test-admin-key-123"`).
+    The pre-sanitize record alone is worse than useless -- an earlier revision
+    of this test read a record captured AFTER the pop loop, so every watched
+    name was `None` by construction and the test could not fail even with a
+    real credential re-injected into the running process.
+
+    Comparing them is red exactly when it should be: the name is set AND holds
+    the production value the sanitizer saw. A test's own fake fingerprints
+    differently and does not trip it.
+
+    Names only in the message -- never values, and never digests.
     """
-    from tests._env_safety import COLLECTION_SNAPSHOT
+    from tests._env_safety import PRE_SANITIZE_FINGERPRINTS, fingerprint
 
     assert os.getenv("LIVE") is None, (
         "This test asserts the DEFAULT tier; re-run without LIVE set."
     )
-    assert COLLECTION_SNAPSHOT, "sanitizer never ran against the real environment"
-    leaked = [name for name in _CONTRACT_UNSET if COLLECTION_SNAPSHOT.get(name)]
+    assert PRE_SANITIZE_FINGERPRINTS, (
+        "sanitizer never ran against the real environment"
+    )
+    leaked = [
+        name
+        for name in _CONTRACT_UNSET
+        if PRE_SANITIZE_FINGERPRINTS.get(name)
+        and fingerprint(os.getenv(name)) == PRE_SANITIZE_FINGERPRINTS[name]
+    ]
     assert not leaked, (
         "production credentials leaked into the test process: "
         + ", ".join(leaked)
@@ -146,20 +164,66 @@ def test_present_but_unusable_vars_hold_the_sentinel(name):
     )
 
 
-def test_sentinel_hosts_can_never_resolve():
+def _sentinel_hosts():
+    """(name, host) for every placeholder that is a URL."""
+    from tests._env_safety import CREDENTIAL_PLACEHOLDERS
+
+    return [
+        (name, value.split("://", 1)[1].split("/")[0])
+        for name, value in CREDENTIAL_PLACEHOLDERS.items()
+        if "://" in value
+    ]
+
+
+def test_sentinel_hosts_are_reserved_names():
     """Any unmocked call against a sentinel fails locally, never in production.
 
     `.invalid` is reserved by RFC 2606 and is guaranteed not to resolve, so a
-    query that slips past its mock errors instantly instead of reaching a real
-    Supabase project.
+    query that slips past its mock errors instead of reaching a real Supabase
+    project. Measured on Windows: a `supabase-py` query against the sentinel
+    fails in 0.002-0.20s.
     """
-    from tests._env_safety import CREDENTIAL_PLACEHOLDERS
+    hosts = _sentinel_hosts()
+    assert hosts, "no URL sentinel to check -- did the placeholder list change?"
+    for name, host in hosts:
+        assert host.split(":")[0].endswith(".invalid"), (
+            f"{name} sentinel must point at a reserved .invalid host"
+        )
 
-    for name, value in CREDENTIAL_PLACEHOLDERS.items():
-        if "://" in value:
-            assert value.split("://", 1)[1].split("/")[0].endswith(".invalid"), (
-                f"{name} sentinel must point at a reserved .invalid host"
-            )
+
+def test_sentinel_hosts_really_do_not_resolve_here():
+    """The reserved name must also be un-resolvable ON THIS MACHINE.
+
+    The suffix check above is a statement about the RFC; this one is a
+    statement about the resolver actually in front of the developer. Resolvers
+    that hijack NXDOMAIN (some consumer ISPs, some corporate DNS) answer with
+    an A record for a name that does not exist -- and then a query that slips
+    past its mock does not fail fast, it hangs to timeout, in a repo whose
+    stated problem is a suite that hangs on network calls.
+
+    A machine with no DNS at all raises `gaierror` too and passes, which is
+    correct: nothing can be reached from there either.
+    """
+    import socket
+
+    resolvable = []
+    for name, host in _sentinel_hosts():
+        hostname = host.split(":")[0]
+        try:
+            socket.getaddrinfo(hostname, None)
+        except socket.gaierror:
+            continue
+        except OSError:
+            continue
+        resolvable.append(f"{name} ({hostname})")
+
+    assert not resolvable, (
+        "this machine's resolver ANSWERS for a reserved .invalid name, which "
+        "defeats the fail-fast property of the credential sentinel -- an "
+        "unmocked query will hang to timeout instead of erroring. Point the "
+        "resolver at one that returns NXDOMAIN (e.g. 1.1.1.1 / 8.8.8.8) or "
+        "disable NXDOMAIN redirection. Affected: " + ", ".join(resolvable)
+    )
 
 
 def test_later_load_dotenv_cannot_reinject_credentials():
@@ -169,15 +233,29 @@ def test_later_load_dotenv_cannot_reinject_credentials():
     `app.services.extraction_service` restores every real credential before
     `cache_service` reads `UPSTASH_REDIS_URL` at ITS import -- and the
     module-level Upstash client points at production again.
+
+    This has to run against the REAL process environment (that is the thing
+    under test), so it restores `os.environ` exactly afterwards: `override=True`
+    also re-applies the NON-credential half of `.env` -- ENVIRONMENT, DEBUG,
+    LOG_LEVEL, FREE_TIER_DAILY_LIMIT, MAX_MONTHLY_COST, CACHE_DURATION -- over
+    whatever the suite currently holds, which would be an order-dependent flake
+    for any later test that set one of those at module scope.
     """
     import dotenv
 
-    dotenv.load_dotenv(override=True)
+    before = dict(os.environ)
+    try:
+        dotenv.load_dotenv(override=True)
 
-    leaked = [name for name in _CONTRACT_UNSET if os.getenv(name)]
-    assert not leaked, (
-        "load_dotenv re-injected production credentials: " + ", ".join(leaked)
-    )
+        leaked = [name for name in _CONTRACT_UNSET if os.getenv(name)]
+        assert not leaked, (
+            "load_dotenv re-injected production credentials: "
+            + ", ".join(leaked)
+        )
+    finally:
+        for name in [n for n in os.environ if n not in before]:
+            del os.environ[name]
+        os.environ.update(before)
 
 
 def test_helper_covers_the_whole_contract():
@@ -275,35 +353,133 @@ def test_the_two_lists_are_disjoint():
     assert not overlap, f"var is in both lists: {overlap}"
 
 
+# The five modules whose own `os.getenv("SUPABASE_URL") -> pytest.skip(...)`
+# guard the SUPABASE_* sentinel defeats: with a sentinel present that guard
+# sees a truthy value and lets the body run, so what actually keeps them off a
+# real project is the live-tier marker plus the collection hook. Listed as
+# exact node ids and asserted against a REAL pytest collection rather than a
+# substring scan of the file text -- `pytest.mark.live_db` appears in the
+# DOCSTRING of four of these modules, so a text scan stays green even when the
+# decorator itself is deleted.
+_SUPABASE_GUARDED_FILES = (
+    "tests/test_demographics_rls.py",
+    "tests/test_migration_023.py",
+    "tests/test_migration_028_pain_workflow_events.py",
+    "tests/test_migration_032_b1_pre_hardening.py",
+    "tests/test_drug_database_service.py",
+)
+
+_SUPABASE_GUARDED_NODEIDS = frozenset({
+    "tests/test_demographics_rls.py::test_demographics_profile_column_exists",
+    "tests/test_demographics_rls.py::test_user_b_cannot_read_user_a_demographics_via_rls",
+    "tests/test_demographics_rls.py::test_demographics_dismissed_columns_exist",
+    "tests/test_migration_023.py::TestMigration023LiveSchema::test_lifetime_invites_consumed_column_exists",
+    "tests/test_migration_023.py::TestMigration023LiveSchema::test_weekly_invites_used_column_dropped",
+    "tests/test_migration_028_pain_workflow_events.py::TestMigration028LiveSchema::test_pain_workflow_events_table_selectable",
+    "tests/test_migration_028_pain_workflow_events.py::TestMigration028LiveSchema::test_workflow_name_check_rejects_unknown_value",
+    "tests/test_migration_032_b1_pre_hardening.py::TestMigration032LiveSchema::test_comparisons_cache_dropped",
+    "tests/test_migration_032_b1_pre_hardening.py::TestMigration032LiveSchema::test_products_still_writable_via_service_role",
+    "tests/test_drug_database_service.py::TestFindMatchingDrugs::test_exact_trade_name_match",
+    "tests/test_drug_database_service.py::TestFindMatchingDrugs::test_partial_ingredient_match",
+    "tests/test_drug_database_service.py::TestFindMatchingDrugs::test_vitamin_d_search",
+    "tests/test_drug_database_service.py::TestFindMatchingDrugs::test_no_match_returns_empty",
+    "tests/test_drug_database_service.py::TestFindMatchingDrugs::test_limit_parameter",
+    "tests/test_drug_database_service.py::TestFindMatchingDrugs::test_result_fields",
+})
+
+_LIVE_TIER_SELECTION = "live_unit or live_db or integration"
+
+
+def _collect_nodeids(marker_expression):
+    """Node ids pytest really selects for `-m <marker_expression>`.
+
+    Runs `--collect-only` in a subprocess so the assertion goes through the
+    same collection path `pytest_collection_modifyitems` runs in -- the honest
+    oracle for "is this item in the live tier?", and one that a docstring
+    mentioning a marker name cannot satisfy.
+    """
+    result = subprocess.run(
+        [
+            sys.executable, "-m", "pytest",
+            *_SUPABASE_GUARDED_FILES,
+            "--collect-only", "-q",
+            "-m", marker_expression,
+            "-p", "no:cacheprovider",
+            "--timeout=45",
+        ],
+        cwd=str(_REPO_ROOT),
+        capture_output=True,
+        text=True,
+        timeout=300,
+    )
+    assert result.returncode == 0, (
+        "collection failed for -m %r\n%s\n%s"
+        % (marker_expression, result.stdout[-3000:], result.stderr[-2000:])
+    )
+    collected = {
+        line.strip().replace("\\", "/")
+        for line in result.stdout.splitlines()
+        if "::" in line and line.strip().startswith("tests")
+    }
+    assert collected, (
+        "collected nothing for -m %r -- the oracle is not looking at anything"
+        % (marker_expression,)
+    )
+    return collected
+
+
 def test_supabase_live_db_guards_are_superseded_by_the_marker_hook():
     """The sentinel is safe only because the marker hook fires first.
 
-    `test_demographics_rls.py`, `test_migration_023.py`,
-    `test_migration_028_pain_workflow_events.py` and
-    `test_migration_032_b1_pre_hardening.py` gate on
-    `os.getenv("SUPABASE_URL") and ...` then `pytest.skip(...)` when absent.
-    A sentinel would defeat that guard on its own -- turning a clean skip into
-    a connection error -- so those suites must all carry a live-tier marker,
-    which the collection hook skips before their body can read the sentinel.
-    Under LIVE=1 both the hook and the sanitizer stand down and the guards see
-    the real values again.
-    """
-    from tests._env_safety import LIVE_TIER_MARKERS
+    Those modules gate on `os.getenv("SUPABASE_URL") and ...` then
+    `pytest.skip(...)` when it is absent. The sentinel makes that guard see a
+    truthy value, so a clean skip would become a live connection attempt --
+    unless the item carries a live-tier marker and the collection hook skips it
+    before the body runs. Under LIVE=1 both stand down and the guards see the
+    real values again.
 
-    guarded = (
-        "test_demographics_rls.py",
-        "test_migration_023.py",
-        "test_migration_028_pain_workflow_events.py",
-        "test_migration_032_b1_pre_hardening.py",
-        "test_drug_database_service.py",
+    Asserted by COLLECTING the five files under the live-tier marker expression
+    and checking every Supabase-touching node id is in that selection. `-m X`
+    and `-m "not X"` partition the same collection, so membership here is also
+    proof of absence from the default tier.
+    """
+    live_tier = _collect_nodeids(_LIVE_TIER_SELECTION)
+
+    unprotected = sorted(_SUPABASE_GUARDED_NODEIDS - live_tier)
+    assert not unprotected, (
+        "these Supabase-touching tests are NOT in the live tier, so the "
+        "collection hook cannot protect them from the sentinel and a default "
+        "`pytest tests/` would run them against a real project: "
+        + ", ".join(unprotected)
     )
-    marker_decorators = tuple(f"pytest.mark.{m}" for m in LIVE_TIER_MARKERS)
-    for file_name in guarded:
-        source = (_REPO_ROOT / "tests" / file_name).read_text(encoding="utf-8")
-        assert any(dec in source for dec in marker_decorators), (
-            f"{file_name} reads SUPABASE_* but carries no live-tier marker, so "
-            "the collection hook cannot protect it from the sentinel"
-        )
+
+
+def test_no_supabase_guarded_test_is_reachable_from_the_default_tier():
+    """The same claim from the other side, and it catches new-test drift.
+
+    `tests/test_demographics_rls.py` marks the WHOLE module
+    (`pytestmark = pytest.mark.live_db`), so a test added there without a
+    marker cannot exist: assert the default tier collects nothing at all from
+    it. For the mixed modules, assert none of the known Supabase node ids has
+    slipped into the default selection.
+    """
+    default_tier = _collect_nodeids("not (%s)" % _LIVE_TIER_SELECTION)
+
+    leaked = sorted(_SUPABASE_GUARDED_NODEIDS & default_tier)
+    assert not leaked, (
+        "Supabase-touching tests are selected by the DEFAULT tier: "
+        + ", ".join(leaked)
+    )
+
+    escaped = sorted(
+        node
+        for node in default_tier
+        if node.startswith("tests/test_demographics_rls.py::")
+    )
+    assert not escaped, (
+        "tests/test_demographics_rls.py is live_db at module scope; these "
+        "items escaped that marker: " + ", ".join(escaped)
+    )
 
 
 def test_live_tier_markers_are_skipped_without_the_opt_in():
@@ -348,29 +524,43 @@ def test_marker_tier_probe():
     raise AssertionError("must never execute without the LIVE opt-in")
 
 
-def test_live_opt_in_restores_the_environment_end_to_end():
-    """LIVE=1 through the REAL conftest: the tier runs and the values survive.
+def test_live_opt_in_restores_the_environment_end_to_end(tmp_path):
+    """LIVE=1 through the REAL conftest: the tier runs and the value survives.
 
     The pure-function test above covers the predicate; this one covers the
     wiring, which is where a sanitizer usually breaks a marker tier. Probes
     `SENTRY_DSN` because it is the cheapest var to prove: stripped by default,
     and never touched by any network call in the probe body.
+
+    Deliberately HERMETIC. `LIVE=1` means "give this process real credentials",
+    and this test is part of the DEFAULT suite -- spawning a fully credentialled
+    child from a plain `pytest tests/` would mean any future import side effect
+    in `conftest.py` runs against production. So the child runs with `cwd` on a
+    scratch dir (no `.env` for `load_dotenv` to find), inherits only this
+    process's already-sanitized environment, and gets one injected sentinel DSN.
+    That is also the sharper assertion: the DSN it sees can only have survived
+    because `LIVE=1` stood the sanitizer down.
     """
     probe_dsn = "https://opt-in-probe@example.invalid/1"
     result = subprocess.run(
         [
             sys.executable, "-m", "pytest",
-            "tests/test_conftest_env_safety.py::test_live_opt_in_probe",
+            str(Path(__file__).resolve()) + "::test_live_opt_in_probe",
             "-m", "live_unit",
             "-p", "no:cacheprovider",
             "--timeout=45",
             "-rs", "-q",
         ],
-        cwd=str(_REPO_ROOT),
+        cwd=str(tmp_path),
         capture_output=True,
         text=True,
         timeout=300,
-        env={**os.environ, "LIVE": "1", "SENTRY_DSN": probe_dsn},
+        env={
+            **os.environ,
+            "LIVE": "1",
+            "SENTRY_DSN": probe_dsn,
+            "PYTHONPATH": str(_REPO_ROOT),
+        },
     )
     assert "1 passed" in result.stdout, result.stdout[-3000:]
 

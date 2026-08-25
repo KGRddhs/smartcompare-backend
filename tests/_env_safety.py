@@ -64,9 +64,30 @@ on its own. They are protected instead by :data:`LIVE_TIER_MARKERS` and the
 live-tier item before its body runs unless `LIVE=1` is set. Under `LIVE=1`
 both the hook and this sanitizer stand down and the guards see real values
 again.
+
+`tests/test_drug_database_service.py` carries `live_db` on its Supabase tests
+too, but note the hook skips test BODIES, not module-import side effects:
+that file evaluates `live_db_available = _can_connect_to_drug_table()` at
+module scope, i.e. during COLLECTION, before the hook can act. What keeps
+that call off production is the SENTINEL (it builds a client against a
+non-resolving host and its bare `except Exception` swallows the failure), not
+the marker. Any new module-scope probe needs the same reasoning applied.
+
+SCOPE OF THE GUARANTEE
+----------------------
+This module sanitizes `os.environ` and nothing else. `app/config.py:40` sets
+`env_file = ".env"` on a pydantic-settings `BaseSettings`, which reads the
+file FROM DISK independently of `os.environ` — so `app.config.settings` would
+carry the real credentials straight past everything here. Nothing imports
+`app.config` today (a grep of `app/`, `tests/` and `scripts/` finds no
+`from app.config` / `import app.config`), so this is latent rather than an
+active leak, but REVIVING `app/config.py` REOPENS THE HOLE and needs its own
+fix (its `Settings()` `ValidationError` also renders the offending secret
+VALUES in full).
 """
 from __future__ import annotations
 
+import hashlib
 import os
 from typing import Dict, MutableMapping, Optional
 
@@ -145,12 +166,30 @@ CREDENTIAL_PLACEHOLDERS: Dict[str, str] = {
     "YOUTUBE_API_KEY": "test-yt-key",
 }
 
-#: What the credential vars actually resolved to the first time the sanitizer
-#: ran against the real process environment (i.e. at conftest import, before
-#: any test could touch them). Tests assert the SESSION-START guarantee against
-#: this rather than against live `os.environ`, which individual tests are free
-#: to mutate with fakes of their own.
-COLLECTION_SNAPSHOT: Dict[str, Optional[str]] = {}
+#: SHA-256 fingerprints of what each watched var held the first time the
+#: sanitizer ran against the real process environment -- captured BEFORE the
+#: pop/placeholder loops, so it records what the sanitizer SAW, not what it
+#: left behind. `None` for a name that was already absent.
+#:
+#: Fingerprints, not values: a test asserts "the live value is still the one
+#: the sanitizer found" without this module ever retaining a production secret
+#: that a pytest assertion-rewrite dump, a traceback or a `-l` local-variable
+#: listing could splash into a console or a CI log.
+#:
+#: Every watched name is recorded (mapping to `None` when it was unset), so a
+#: non-empty dict means "the sanitizer ran" even on a credential-free machine.
+PRE_SANITIZE_FINGERPRINTS: Dict[str, Optional[str]] = {}
+
+
+def fingerprint(value: Optional[str]) -> Optional[str]:
+    """One-way digest of an env value. `None` for absent/empty.
+
+    Used so the pre-sanitize record can be compared for equality without
+    holding the plaintext credential anywhere a dump could reach it.
+    """
+    if not value:
+        return None
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
 def live_mode_enabled(environ: Optional[MutableMapping[str, str]] = None) -> bool:
@@ -178,6 +217,15 @@ def neutralize_credentials(
     if live_mode_enabled(env):
         return {}
 
+    # Record what we are ABOUT to sanitize, before either loop runs. Capturing
+    # after the loops made the record `None`-by-construction for every popped
+    # name, which turned the leak assertion into a tautology.
+    if env is os.environ and not PRE_SANITIZE_FINGERPRINTS:
+        PRE_SANITIZE_FINGERPRINTS.update(
+            (name, fingerprint(env.get(name)))
+            for name in (*CREDENTIALS_UNSET, *CREDENTIAL_PLACEHOLDERS)
+        )
+
     changed: Dict[str, Optional[str]] = {}
     for name in CREDENTIALS_UNSET:
         if env.pop(name, None) is not None:
@@ -187,11 +235,6 @@ def neutralize_credentials(
             env[name] = placeholder
             changed[name] = placeholder
 
-    if env is os.environ and not COLLECTION_SNAPSHOT:
-        COLLECTION_SNAPSHOT.update(
-            (name, env.get(name))
-            for name in (*CREDENTIALS_UNSET, *CREDENTIAL_PLACEHOLDERS)
-        )
     return changed
 
 

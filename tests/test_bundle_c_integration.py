@@ -4,8 +4,9 @@ Runs against live Railway backend with ?nocache=true. Marked
 `@pytest.mark.integration` so the free suite excludes them; promote to ship
 evidence per Section D.6 post-deploy verification.
 
-Run:
-    python -m pytest tests/test_bundle_c_integration.py -v -m integration --timeout=180
+Run (LIVE=1 required — the marker alone no longer opts in, see
+tests/_env_safety.py):
+    LIVE=1 python -m pytest tests/test_bundle_c_integration.py -v -m integration --timeout=180
 
 Covers spec §1c + §8d + edges flagged by qa-bundle-c (absorbed from
 qa's `tests/test_bundle_c_edge_stubs.py` proposal — kept on this file

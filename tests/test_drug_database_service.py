@@ -6,7 +6,10 @@ Tests the Bahrain approved drugs lookup and GPT context formatting.
 Tests marked @pytest.mark.live_db require:
 - SUPABASE_URL and SUPABASE_SERVICE_KEY env vars pointing to a project
   with the bahrain_approved_drugs table populated.
-- Run with: pytest tests/test_drug_database_service.py -v -m live_db
+- LIVE=1. Without it the sanitizer in tests/_env_safety.py replaces SUPABASE_*
+  with unusable sentinels and the collection hook skips every live_db item, so
+  a bare `-m live_db` run reports `skipped` instead of testing anything.
+- Run with: LIVE=1 pytest tests/test_drug_database_service.py -v -m live_db
 - Skip live_db tests: pytest tests/test_drug_database_service.py -v -m "not live_db"
 """
 import pytest
