@@ -152,6 +152,38 @@ def _reset_variant_descriptor_memo():
     yield
 
 
+# #60 — serper budget-gate memo reset.
+# serper_service._serper_budget_ok() memoises its answer for ~60s so the six
+# entry points don't each pay a BLOCKING Upstash round trip on the event loop.
+# That memo is a module global and would otherwise leak ACROSS tests: a suite
+# that pins the gate closed would be served a stale "open" from whatever ran
+# before it (and vice versa), turning every gate assertion into a
+# collection-order coin flip. Clear it before each test.
+#
+# This also covers the suites that merely CALL a serper entry point
+# (test_cascade_parallel.py, test_tier2_spec_fallback.py,
+# test_review_source_consult.py): with the gate default-INERT they never reach
+# Redis at all, and with the memo cleared they can never inherit a decision.
+@pytest.fixture(autouse=True)
+def _reset_serper_budget_gate_memo(monkeypatch):
+    """Clear serper_service's memoised budget-gate decision before each test, and
+    make sure no test inherits an ARMED gate from the operator's real .env.
+
+    conftest does `load_dotenv(override=True)` and .env carries live Upstash
+    credentials, so a `SERPER_LIFETIME_LIMIT` that happened to be set there
+    would make every serper-touching suite consult the LIVE lifetime counter —
+    the whole suite would go green or red depending on today's Serper burn.
+    Tests that want the gate armed declare a ceiling themselves."""
+    monkeypatch.delenv("SERPER_LIFETIME_LIMIT", raising=False)
+    try:
+        from app.services import serper_service
+    except Exception:  # pragma: no cover — defensive import
+        yield
+        return
+    serper_service.reset_serper_budget_cache()
+    yield
+
+
 # B3 (test-infra hygiene) — event-loop pollution guard.
 # Several sync tests still drive coroutines via the deprecated
 # `asyncio.get_event_loop().run_until_complete(...)` (e.g.

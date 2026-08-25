@@ -12,7 +12,13 @@ from typing import Optional, Dict, Any, List
 # successful Serper call (HTTP 200) bumps the Redis counter so the
 # admin/costs Serper figure reflects actual usage. Missing-API-key and
 # exception paths skip the bump (we don't bill non-events).
-from app.services.api_budget_service import record_usage
+#
+# #60 — the meter was WRITE-ONLY: this module recorded usage but never read it
+# back, so nothing in the price/discovery path ever slowed live spend. A cold
+# 2-product compare burns ~10-30 credits against a 2,500-credit ONE-TIME free
+# pool (~180 cold compares), which is why the key has depleted repeatedly.
+# `serper_gate_allows` is the read side; see _serper_budget_ok below.
+from app.services.api_budget_service import record_usage, serper_gate_allows
 
 logger = logging.getLogger(__name__)
 
@@ -177,6 +183,83 @@ def _response_signals_exhaustion(status_code: Optional[int], body_text: str) -> 
 
 
 # ============================================
+# BUDGET GATE (#60)
+# ============================================
+# Every entry point below consults this BEFORE dispatching a live call, so a
+# depleted account stops spending instead of discovering depletion one 400 at a
+# time. A closed gate returns the SAME benign empty shape the missing-key
+# branches already return, which the price cascade already knows how to handle
+# (it falls through to Tier 1.5 / 2 / 3) — a budget-out must DEGRADE, never
+# raise, and never relax a price. Fails OPEN on any error.
+#
+# OPT-IN, not default-on (#60 review, blocking 4). The gate is INERT until an
+# operator declares the live key's real ceiling in SERPER_LIFETIME_LIMIT. The
+# packaged 2200 is a FREE-tier number and prod runs a PAID key: arming a gate at
+# it would take all six entry points — and the price-cache warmer — dark the
+# moment the lifetime counter crossed it, which is the failure mode
+# cron_warm_price_cache.py:118-131 refuses to reproduce. Metering (the counter,
+# get_remaining, the 80%-burn alert) is unconditional; BLOCKING is declared.
+# See api_budget_service._serper_gate_engaged. SERPER_LIFETIME_LIMIT=0 is the
+# explicit off switch, and each process logs its effective config once.
+
+
+# MEMOISED, and that is load-bearing (#60 review, blocking 3).
+# serper_gate_allows() -> has_budget() -> cache_service._redis_get() is a
+# BLOCKING Upstash REST round trip (measured 163ms in this worktree) executed on
+# the single asyncio event loop. Called raw at six entry points it would add
+# ~10-12 such stalls per compare INSIDE the 15s _PRICE_RACE_TIMEOUT, and it
+# would serialise the discovery fan-out — each `asyncio.ensure_future(search_web
+# (...))` waiting on its own blocking read. That is the exact hazard
+# structured_comparison_service._cache_get_async / ENABLE_ASYNC_REDIS_OFFLOAD
+# exist to remove (#71); fixing one audit finding by re-introducing another is
+# not a fix.
+#
+# A cached boolean is functionally identical here: the lifetime counter moves by
+# at most 1 per call, so the answer cannot flip within a TTL window except by
+# one credit. Cost of the memo is bounded overshoot — at most one TTL window of
+# calls past the ceiling — against removing every round trip but one per window.
+_SERPER_GATE_CACHE_TTL_ENV = "SERPER_GATE_CACHE_TTL"
+_DEFAULT_SERPER_GATE_CACHE_TTL = 60.0
+_serper_gate_cache: Optional[tuple] = None  # (expires_at_monotonic, allowed)
+
+
+def _serper_gate_cache_ttl() -> float:
+    """Seconds a gate decision is reused. <=0 disables memoisation entirely
+    (every call re-reads Redis) — the escape hatch if a decision ever needs to
+    be instant."""
+    return _serper_float_env(
+        _SERPER_GATE_CACHE_TTL_ENV, _DEFAULT_SERPER_GATE_CACHE_TTL
+    )
+
+
+def reset_serper_budget_cache() -> None:
+    """Drop the memoised gate decision so the next call re-reads. Used by tests
+    and by anything that just changed SERPER_LIFETIME_LIMIT in-process."""
+    global _serper_gate_cache
+    _serper_gate_cache = None
+
+
+def _serper_budget_ok() -> bool:
+    """True when a live Serper call is within budget. FAIL-OPEN: any error here
+    (Redis outage included) admits the call — a monitoring failure must never
+    become an availability failure on the price path. Memoised for
+    _serper_gate_cache_ttl() seconds; see the block comment above."""
+    global _serper_gate_cache
+    now = _time.monotonic()
+    cached = _serper_gate_cache
+    if cached is not None and now < cached[0]:
+        return cached[1]
+    try:
+        allowed = serper_gate_allows()
+    except Exception as e:  # noqa: BLE001 — never let the gate break the call
+        logger.warning("[BUDGET] serper gate unavailable (%s) — failing open", e)
+        allowed = True
+    ttl = _serper_gate_cache_ttl()
+    _serper_gate_cache = (now + ttl, allowed) if ttl > 0 else None
+    return allowed
+
+
+# ============================================
 # FAIL-FAST SERPER TIMEOUT (ENABLE_SERPER_FAIL_FAST — opt-in, default OFF)
 # ============================================
 # The multi-key rotation loop below can stack N x the per-call timeout (3 keys x
@@ -219,7 +302,23 @@ def _serper_timeout():
 def _serper_rotation_deadline() -> float:
     """Overall wall-clock budget (seconds) for the whole multi-key rotation loop,
     so N slow keys cannot stack to N x the per-call timeout. Conservative canary
-    default 14s (> the 10s read default -> multi-key gets >=2 attempts). Env-tunable."""
+    default 14s (> the 10s read default -> multi-key gets >=2 attempts). Env-tunable.
+
+    #60 — this deadline is now UNCONDITIONAL (it used to apply only when
+    ENABLE_SERPER_FAIL_FAST was on, and that flag defaults OFF). The hazard it
+    bounds does NOT need the flag: with the flag off a throttled key answers
+    SLOWLY with a depletion-400 rather than timing out, so the loop rotates and
+    3 keys stacked ~45s inside structured_comparison_service's 15s
+    _PRICE_RACE_TIMEOUT. The default MUST stay strictly under that race budget
+    (pinned by tests/test_serper_fail_fast.py).
+
+    The check is evaluated at the top of each loop iteration, so the bound is
+    "deadline + at most one per-call timeout", not N x per-call timeout — the
+    N-way stacking is what this removes.
+
+    A value <=0 DISABLES the deadline (full rotation, no wall-clock bound),
+    matching this repo's `<=0 disables the check` convention. It must never mean
+    "make zero calls" — see the guard at the loop-top check."""
     return _serper_float_env("SERPER_ROTATION_DEADLINE", 14.0)
 
 
@@ -267,19 +366,35 @@ async def _serper_post(client, path: str, payload: Dict[str, Any]):
     attempts = 0
     max_attempts = max(1, len(keys))
     last_response = None
-    # Fail-fast (opt-in) — bound the loop's wall-clock + rotate on a per-call
-    # timeout. Flag OFF: fail_fast=False makes every branch below inert, so the
-    # loop is byte-identical to the pre-fail-fast version (deadline never checked,
-    # a timeout re-raises exactly as an un-caught one would, clock never read).
+    # #60 — the overall rotation DEADLINE is UNCONDITIONAL; only the per-call
+    # timeout + rotate-on-timeout stay behind ENABLE_SERPER_FAIL_FAST (so that
+    # flag's existing semantics are preserved). Flag OFF still means: the
+    # per-call timeout is 15.0 and a timeout re-raises exactly as an un-caught
+    # one would — the ONLY flag-OFF difference is that N slow keys can no longer
+    # stack past the wall-clock budget. The single-key path above short-circuits
+    # before here, so it remains byte-identical (no clock read, no Redis read).
     fail_fast = _serper_fail_fast_enabled()
-    deadline = _serper_rotation_deadline() if fail_fast else 0.0
-    start = _serper_now() if fail_fast else 0.0
+    deadline = _serper_rotation_deadline()
+    start = _serper_now()
     last_timeout_exc: Optional[Exception] = None
     timed_out: set = set()  # keys that timed out THIS call (fail-fast local skip)
     while attempts < max_attempts:
         # Overall deadline — stop rotating once the wall-clock budget is spent so
         # N slow keys can't stack to N x the per-call timeout.
-        if fail_fast and (_serper_now() - start) >= deadline:
+        #
+        # `deadline > 0` is NOT decoration (#60 review, blocking 1). Making the
+        # check unconditional turned SERPER_ROTATION_DEADLINE=0 into a silent
+        # TOTAL Serper blackout for any multi-key config: deadline 0.0 makes the
+        # very first loop-top comparison true, the loop breaks before any POST,
+        # _serper_post returns None, and the caller's response.raise_for_status()
+        # on None raises AttributeError straight into the broad `except` — a
+        # benign empty result and zero calls, forever. That inverts this repo's
+        # own `<=0 disables the check` convention (cron_warm_price_cache.py's
+        # _serper_per_query_estimate / _serper_max_credits_per_run) on a value
+        # that was completely INERT before #60, i.e. it is a brand-new footgun
+        # sitting on the obvious rollback flip. <=0 now means "no deadline",
+        # never "no calls".
+        if deadline > 0 and (_serper_now() - start) >= deadline:
             break
         # exclude=timed_out advances past a key that timed out earlier in THIS
         # call; the set stays empty when the flag is off (byte-identical).
@@ -396,6 +511,16 @@ async def search_web(
         logger.warning("SERPER_API_KEY not set")
         return {"organic": [], "error": "Search not configured"}
 
+    # #60 — budget gate. Degrades exactly like the key-unavailable branch above
+    # (Bright Data when enabled, benign empty otherwise) so a budget-out is a
+    # cheap degrade, not a dead end. Bright Data wiring itself is unchanged (#61).
+    if not _serper_budget_ok():
+        if _brightdata_enabled():
+            logger.info("[brightdata] Serper budget exhausted — search_web fallback")
+            return await bd_search_web(query, num_results, country)
+        logger.warning("[BUDGET] serper budget exhausted — search_web degraded")
+        return {"organic": [], "error": "Search budget exhausted"}
+
     try:
         async with httpx.AsyncClient(timeout=_serper_timeout()) as client:
             response = await _serper_post(
@@ -429,6 +554,58 @@ async def search_web(
 # 'converted_usd'. OPERATIONAL STOPGAP until Google Shopping's Bahrain
 # merchant feed catches up.
 _GCC_COUNTRIES = frozenset({"bh", "sa", "ae", "kw", "qa", "om"})
+
+
+# #60 — per-country allow-list for the gl=<gcc> SHOPPING PRIMARY leg.
+#
+# The diagnostic this module is built on (Session 52, restated in
+# tests/test_serper_gcc_fallback.py) found Serper Shopping returns an empty
+# `shopping[]` for gl=bh|sa|ae|kw|qa|om SYSTEM-WIDE — Google has no GCC merchant
+# feed. The primary leg was fired unconditionally anyway, so every GCC shopping
+# search bought a known-empty result: one credit per product per compare against
+# a 2,500-credit one-time pool.
+#
+# DEFAULT: empty -> the primary leg is not purchased for any GCC country, and
+# the single gl=us call (the leg that actually returns data) runs alone. The
+# response keeps `shopping_region="us_fallback"`, which is exactly what the
+# empty-primary path already returned in production, so downstream selection,
+# the USD->BHD conversion, and the admin fallback-rate dashboards are unchanged.
+#
+# ROLLBACK / FUTURE FEED: set SERPER_SHOPPING_PRIMARY_COUNTRIES="bh,sa,..." to
+# restore the concurrent two-leg behaviour for those countries — an env flip, no
+# redeploy. Selection is identical when it fires: a non-empty primary still wins
+# and still tags `shopping_region=<country>`.
+_SHOPPING_PRIMARY_COUNTRIES_ENV = "SERPER_SHOPPING_PRIMARY_COUNTRIES"
+
+
+# #60 review (observability) — with the allow-list empty the gl=<gcc> primary is
+# never purchased, so `shopping_region` reads "us_fallback" BY CONSTRUCTION and
+# the admin fallback-rate dashboard becomes structurally 100%: it can no longer
+# show a GCC merchant feed appearing. The evidence for dropping the leg is a
+# Session-52 diagnostic that was not re-probed, and ae/sa are the codes most
+# likely to grow a real Google Shopping feed — so count the skips (module-level,
+# never resets, diagnostics only; same idiom as
+# structured_comparison_service._CACHE_READ_REJECTED_COUNT) rather than letting
+# the decision become invisible. A non-zero counter with a 100% us_fallback rate
+# says "we chose not to look", not "there is nothing there".
+_SHOPPING_PRIMARY_SKIPPED_COUNT = 0
+
+
+def shopping_primary_skipped_count() -> int:
+    """How many times a GCC gl=<country> shopping primary was skipped because the
+    country is not on SERPER_SHOPPING_PRIMARY_COUNTRIES. Diagnostics only."""
+    return _SHOPPING_PRIMARY_SKIPPED_COUNT
+
+
+def _shopping_primary_countries() -> frozenset:
+    """Country codes whose gl=<country> shopping primary is still worth buying.
+    Read fresh each call so a Railway env update takes effect without a restart."""
+    raw = (os.environ.get(_SHOPPING_PRIMARY_COUNTRIES_ENV) or "").strip()
+    if not raw:
+        return frozenset()
+    return frozenset(
+        part.strip().lower() for part in raw.split(",") if part.strip()
+    )
 
 
 # Bundle C HOTFIX-2 round 2 — GPT-emitted product_info["search_query"]
@@ -546,6 +723,14 @@ async def search_product_prices(
     if not _active_serper_key():
         return {"shopping": [], "organic": [], "error": "Search not configured"}
 
+    # #60 — budget gate. Same benign empty shape as the no-key branch above: the
+    # cascade reads `shopping`/`organic`, finds nothing, and drops to Tier 1.5 /
+    # 2 / 3. A budget-out therefore yields a PEND or an estimate — never a
+    # relaxed price (the correctness gates downstream are untouched).
+    if not _serper_budget_ok():
+        logger.warning("[BUDGET] serper budget exhausted — shopping search degraded")
+        return {"shopping": [], "organic": [], "error": "Search budget exhausted"}
+
     # HOTFIX-2 round 2 — drop GPT-emitted " price"/"buy"/etc. tails.
     # Both primary GCC and us_fallback share the cleaned string so
     # behaviour is consistent. Log when we actually changed something
@@ -570,10 +755,28 @@ async def search_product_prices(
     # second call fires changes (concurrent, not serial). Non-GCC countries keep the
     # single-call, no-fallback behaviour byte-for-byte.
     if country in _GCC_COUNTRIES:
-        primary, fallback = await asyncio.gather(
-            _do_serper_shopping(product, gl=country),
-            _do_serper_shopping(product, gl="us"),
-        )
+        # #60 — the gl=<country> primary is only purchased for allow-listed
+        # countries (default: none). Google has no GCC shopping feed, so the
+        # primary returned 0 essentially every time and the gl=us fallback was
+        # ALWAYS the leg that produced items. Skipping the dead leg halves the
+        # credits this call costs; the empty-primary result shape below is
+        # byte-identical to what production already returned.
+        if country in _shopping_primary_countries():
+            primary, fallback = await asyncio.gather(
+                _do_serper_shopping(product, gl=country),
+                _do_serper_shopping(product, gl="us"),
+            )
+        else:
+            global _SHOPPING_PRIMARY_SKIPPED_COUNT
+            _SHOPPING_PRIMARY_SKIPPED_COUNT += 1
+            logger.debug(
+                "[SHOPPING] gl=%s primary skipped (not on %s) — shopping_region "
+                "will read us_fallback by construction; skips so far: %s",
+                country, _SHOPPING_PRIMARY_COUNTRIES_ENV,
+                _SHOPPING_PRIMARY_SKIPPED_COUNT,
+            )
+            primary = {}
+            fallback = await _do_serper_shopping(product, gl="us")
         primary_shopping = primary.get("shopping", []) or []
         if primary_shopping:
             return {
@@ -634,6 +837,14 @@ async def search_price_organic(
         if _brightdata_enabled():
             return {**(await bd_search_web(product, 10, country)), "query": product}
         return {"organic": [], "error": "Search not configured"}
+
+    # #60 — budget gate, degrading exactly like the key-unavailable branch above.
+    if not _serper_budget_ok():
+        if _brightdata_enabled():
+            logger.info("[brightdata] Serper budget exhausted — price-organic fallback")
+            return {**(await bd_search_web(product, 10, country)), "query": product}
+        logger.warning("[BUDGET] serper budget exhausted — price-organic degraded")
+        return {"organic": [], "error": "Search budget exhausted"}
 
     country_terms = {
         "bh": "Bahrain price BHD buy",
@@ -738,6 +949,11 @@ async def search_videos(
     if not _active_serper_key():
         return {"videos": [], "error": "Search not configured"}
 
+    # #60 — budget gate; same benign empty shape as the no-key branch.
+    if not _serper_budget_ok():
+        logger.warning("[BUDGET] serper budget exhausted — video search skipped")
+        return {"videos": [], "error": "Search budget exhausted"}
+
     try:
         async with httpx.AsyncClient(timeout=_serper_timeout()) as client:
             response = await _serper_post(
@@ -764,6 +980,15 @@ async def search_images(
     """Search for product images."""
     if not _active_serper_key():
         return {"images": [], "error": "Search not configured"}
+
+    # #60 — budget gate. The image pipeline already has its OWN daily counter
+    # (api_budget_service.try_consume_serper_image_credit); this is the
+    # LIFETIME ceiling on top of it, so images cannot spend a depleted account
+    # down. Non-critical path: the 4-state ProductImage fallback renders a
+    # placeholder, so a skip never breaks a comparison.
+    if not _serper_budget_ok():
+        logger.warning("[BUDGET] serper budget exhausted — image search skipped")
+        return {"images": [], "error": "Search budget exhausted"}
 
     try:
         async with httpx.AsyncClient(timeout=_serper_timeout()) as client:
@@ -800,6 +1025,11 @@ async def search_news(
     """Search for recent news about a product."""
     if not _active_serper_key():
         return {"news": [], "error": "Search not configured"}
+
+    # #60 — budget gate; same benign empty shape as the no-key branch.
+    if not _serper_budget_ok():
+        logger.warning("[BUDGET] serper budget exhausted — news search skipped")
+        return {"news": [], "error": "Search budget exhausted"}
 
     try:
         async with httpx.AsyncClient(timeout=_serper_timeout()) as client:

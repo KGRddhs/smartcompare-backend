@@ -25,6 +25,22 @@ from app.services.serper_service import (
 )
 
 
+# #60 — this module asserts QUERY-CLEANING behaviour, not budget behaviour.
+# Stub the Redis counter read so the serper budget gate is deterministically
+# OPEN and no assertion here depends on the live Upstash lifetime counter.
+@pytest.fixture(autouse=True)
+def _budget_gate_open():
+    from app.services import api_budget_service
+
+    with patch.object(api_budget_service, "_redis_get", return_value=None):
+        yield
+
+
+@pytest.fixture(autouse=True)
+def _clean_shopping_primary_allowlist(monkeypatch):
+    monkeypatch.delenv("SERPER_SHOPPING_PRIMARY_COUNTRIES", raising=False)
+
+
 class TestCleanShoppingQuery:
     """Pure-function regression for the defensive cleaner."""
 
@@ -105,13 +121,12 @@ class TestSearchProductPricesIntegration:
             "Apple iPhone 16 price", country="bh"
         )
 
-        # Cleaned query must hit Serper, not the dirty one. (As of the 2026-06-27
-        # genuine-BH starvation fix the gl=bh + gl=us calls fire CONCURRENTLY for a
-        # GCC country, so order is non-deterministic and gl=us may also fire — assert
-        # the cleaned product string reached EVERY Serper call and gl=bh was made.)
+        # Cleaned query must hit Serper, not the dirty one. (#60 drops the
+        # always-empty gl=<gcc> primary by default, so gl=us is the leg that
+        # fires; the CLEANING contract under test is per-call and unchanged.)
         assert observed_queries, "no Serper shopping call fired"
         assert all(p == "Apple iPhone 16" for p, _gl in observed_queries)
-        assert ("Apple iPhone 16", "bh") in observed_queries
+        assert ("Apple iPhone 16", "us") in observed_queries
         # Output query field also reflects cleaned form (helpful for
         # downstream cache keys).
         assert result["query"] == "Apple iPhone 16"
@@ -135,17 +150,21 @@ class TestSearchProductPricesIntegration:
             "iPhone 16 Pro Max", country="bh"
         )
 
-        # No mutation — Pro/Max preserved. (Concurrent gl=bh + gl=us as of the
-        # 2026-06-27 starvation fix: assert no mutation on every fired call.)
+        # No mutation — Pro/Max preserved on every fired call. (#60: gl=us is
+        # the single default leg for a GCC country.)
         assert observed_queries, "no Serper shopping call fired"
         assert all(p == "iPhone 16 Pro Max" for p, _gl in observed_queries)
-        assert ("iPhone 16 Pro Max", "bh") in observed_queries
+        assert ("iPhone 16 Pro Max", "us") in observed_queries
 
     @pytest.mark.asyncio
     async def test_us_fallback_uses_cleaned_query(self, monkeypatch):
         """When GCC primary is empty + us_fallback fires, the fallback
-        call must ALSO get the cleaned string (not the dirty GPT one)."""
+        call must ALSO get the cleaned string (not the dirty GPT one).
+
+        #60 made the gl=<gcc> primary opt-in, so this two-leg scenario is
+        reached via the SERPER_SHOPPING_PRIMARY_COUNTRIES rollback flip."""
         monkeypatch.setenv("SERPER_API_KEY", "test-key")
+        monkeypatch.setenv("SERPER_SHOPPING_PRIMARY_COUNTRIES", "bh")
         import importlib
         from app.services import serper_service
         importlib.reload(serper_service)

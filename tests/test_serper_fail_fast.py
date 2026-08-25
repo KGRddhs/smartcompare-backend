@@ -151,15 +151,58 @@ async def test_post_flag_off_timeout_propagates(monkeypatch, fake_redis):
 
 
 @pytest.mark.asyncio
-async def test_post_flag_off_does_not_read_clock(monkeypatch, fake_redis):
-    """Byte-identical: with the flag off, the rotation-deadline clock is never
-    consulted (no added overhead / behavior)."""
+async def test_post_flag_off_happy_path_still_one_attempt(monkeypatch, fake_redis):
+    """Flag OFF multi-key happy path is unchanged by the #60 unconditional
+    deadline: one POST, the response returned, no rotation."""
     monkeypatch.setenv("SERPER_API_KEYS", "k1,k2")
-    now = MagicMock(side_effect=AssertionError("clock must not be read flag-off"))
+    client = _FakeClient([_mock_response(200, {"organic": [{"ok": 1}]})])
+    resp = await serper_service._serper_post(client, "/search", {"q": "x"})
+    assert resp.status_code == 200
+    assert client.keys == ["k1"]
+
+
+# --------------------------------------------------------------------------- #
+# #60 — the rotation deadline is UNCONDITIONAL (was gated behind the flag)     #
+# --------------------------------------------------------------------------- #
+def test_rotation_deadline_default_is_under_the_price_race_budget():
+    """3 throttled keys x the 15s flag-OFF per-call timeout could consume ~45s
+    inside structured_comparison_service's 15s _PRICE_RACE_TIMEOUT. The default
+    rotation deadline must be strictly under that race budget."""
+    from app.services.structured_comparison_service import _PRICE_RACE_TIMEOUT
+
+    assert serper_service._serper_rotation_deadline() < _PRICE_RACE_TIMEOUT
+
+
+@pytest.mark.asyncio
+async def test_post_flag_off_deadline_stops_rotation(monkeypatch, fake_redis):
+    """THE #60 BUG: with ENABLE_SERPER_FAIL_FAST unset, 3 keys answering slowly
+    with depletion-400s each burned a full per-call budget and STACKED. The
+    wall-clock deadline must now stop the loop even with the flag off."""
+    monkeypatch.setenv("SERPER_API_KEYS", "k1,k2,k3")
+    # start=0, iter1-top=0 (proceed), iter2-top=999 (deadline spent -> break)
+    clock = iter([0.0, 0.0, 999.0])
+    monkeypatch.setattr(serper_service, "_serper_now", lambda: next(clock))
+    depleted = _mock_response(402, {}, text=_NOT_ENOUGH)
+    healthy = _mock_response(200, {"organic": [{"ok": 1}]})
+    client = _FakeClient([depleted, healthy, healthy])
+    resp = await serper_service._serper_post(client, "/search", {"q": "x"})
+    assert client.keys == ["k1"], "flag-OFF deadline must stop the loop after k1"
+    assert resp is depleted  # last_response returned after the deadline break
+    assert serper_service._is_serper_key_exhausted("k1")
+
+
+@pytest.mark.asyncio
+async def test_single_key_post_never_reads_the_clock(monkeypatch, fake_redis):
+    """SINGLE-KEY INERT stays byte-identical: the short-circuit returns before
+    the rotation loop, so no clock read and no Redis exhaustion read."""
+    monkeypatch.delenv("SERPER_API_KEYS", raising=False)
+    monkeypatch.setattr(serper_service, "SERPER_API_KEY", "only-key")
+    now = MagicMock(side_effect=AssertionError("single-key path must not read the clock"))
     monkeypatch.setattr(serper_service, "_serper_now", now)
     client = _FakeClient([_mock_response(200, {"organic": [{"ok": 1}]})])
     resp = await serper_service._serper_post(client, "/search", {"q": "x"})
     assert resp.status_code == 200
+    assert client.keys == ["only-key"]
     now.assert_not_called()
 
 
@@ -225,17 +268,69 @@ async def test_post_flag_on_timeout_then_depletion_returns_depletion(monkeypatch
     assert serper_service._is_serper_key_exhausted("k2")      # 402 = depletion
 
 
+# --------------------------------------------------------------------------- #
+# SERPER_ROTATION_DEADLINE <= 0 means "NO DEADLINE", never "no calls"          #
+#                                                                              #
+# #60 review, blocking 1. Making the deadline check unconditional turned        #
+# SERPER_ROTATION_DEADLINE=0 into a silent TOTAL Serper blackout for any        #
+# multi-key config: 0.0 makes the very first loop-top comparison true, the loop #
+# breaks before any POST, _serper_post returns None, and the caller's           #
+# `response.raise_for_status()` on None raises AttributeError straight into the #
+# broad `except` — a benign empty result and ZERO calls, forever. That inverts  #
+# this repo's own `<=0 disables the check` convention                           #
+# (cron_warm_price_cache._serper_per_query_estimate /                           #
+# _serper_max_credits_per_run) on a value that was completely INERT before #60, #
+# and it sits on the obvious rollback flip for part 3 of this very commit.      #
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize("deadline", ["0", "0.0", "-1"])
 @pytest.mark.asyncio
-async def test_post_flag_on_deadline_zero_breaks_before_any_post(monkeypatch, fake_redis):
-    """SERPER_ROTATION_DEADLINE<=0 (operator misconfig) breaks before any POST and
-    degrades gracefully (returns None, no crash) — the documented nit."""
+async def test_deadline_zero_disables_the_deadline_flag_off(
+    monkeypatch, fake_redis, deadline
+):
+    """Flag OFF (the default). A non-positive deadline must mean the FULL
+    rotation still happens — every key is tried — not that Serper goes dark."""
+    monkeypatch.setenv("SERPER_ROTATION_DEADLINE", deadline)
+    monkeypatch.setenv("SERPER_API_KEYS", "k1,k2")
+    depleted = _mock_response(402, {}, text=_NOT_ENOUGH)
+    healthy = _mock_response(200, {"organic": [{"ok": 1}]})
+    client = _FakeClient([depleted, healthy])
+    resp = await serper_service._serper_post(client, "/search", {"q": "x"})
+    assert client.keys == ["k1", "k2"], (
+        "a non-positive deadline must DISABLE the deadline, not the rotation"
+    )
+    assert resp is healthy
+
+
+@pytest.mark.asyncio
+async def test_deadline_zero_disables_the_deadline_flag_on(monkeypatch, fake_redis):
+    """Same with ENABLE_SERPER_FAIL_FAST on — the flag changes the per-call
+    timeout and rotate-on-timeout, never whether calls happen at all."""
     monkeypatch.setenv("ENABLE_SERPER_FAIL_FAST", "true")
     monkeypatch.setenv("SERPER_ROTATION_DEADLINE", "0")
     monkeypatch.setenv("SERPER_API_KEYS", "k1,k2")
-    client = _FakeClient([_mock_response(200, {"organic": []})])
+    depleted = _mock_response(402, {}, text=_NOT_ENOUGH)
+    healthy = _mock_response(200, {"organic": [{"ok": 1}]})
+    client = _FakeClient([depleted, healthy])
     resp = await serper_service._serper_post(client, "/search", {"q": "x"})
-    assert resp is None
-    assert client.keys == [], "no POST fires when the rotation deadline is already spent"
+    assert client.keys == ["k1", "k2"]
+    assert resp is healthy
+
+
+@pytest.mark.asyncio
+async def test_search_web_still_calls_serper_with_a_zero_deadline(
+    monkeypatch, fake_redis
+):
+    """End to end, the shape the outage actually took: with the deadline flipped
+    to 0 on a multi-key config, search_web returned a benign empty result having
+    fired ZERO POSTs — indistinguishable from depletion, app-wide."""
+    monkeypatch.setenv("SERPER_ROTATION_DEADLINE", "0")
+    monkeypatch.setenv("SERPER_API_KEYS", "k1,k2")
+    ctx, holder = _patch_httpx_seq([_mock_response(200, {"organic": [{"ok": 1}]})])
+    with ctx:
+        result = await serper_service.search_web("q")
+    assert holder["client"].keys == ["k1"], "a zero deadline must not silence Serper"
+    assert result.get("organic") == [{"ok": 1}]
+    assert not result.get("error")
 
 
 # --------------------------------------------------------------------------- #

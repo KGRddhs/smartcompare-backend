@@ -268,13 +268,20 @@ async def test_prefetch_FIRES_for_shopify_category_with_lulu_discovery(category)
 
 
 @pytest.mark.asyncio
-async def test_serper_gcc_shopping_calls_fire_concurrently():
+async def test_serper_gcc_shopping_calls_fire_concurrently(monkeypatch):
     """Genuine-BH starvation regression: serper_service.search_product_prices runs
     the gl=bh primary and gl=us fallback CONCURRENTLY for a GCC country (reclaiming
     the ~3s the old serial fallback stole from the genuine-BH curl fan_out). With
     each shopping call taking 1s, the total must be ~1s (parallel), not ~2s (serial).
     Selection still prefers gl=bh — here gl=bh is empty so gl=us wins."""
     from app.services import serper_service
+
+    # #60 dropped the always-fired gl=<gcc> primary behind an allow-list that is
+    # EMPTY by default. Without opting back in, only the gl=us leg would run and
+    # this test would pass on one 1.0s call — vacuous, and the parallel-fetch
+    # invariant it exists to protect (the 2026-06-27 genuine-BH starvation fix)
+    # would no longer be exercised anywhere in the suite.
+    monkeypatch.setenv("SERPER_SHOPPING_PRIMARY_COUNTRIES", "bh")
 
     async def slow_shopping(product, gl="bh"):
         await asyncio.sleep(1.0)
