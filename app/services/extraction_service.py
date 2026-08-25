@@ -16,6 +16,7 @@ import httpx
 from openai import AsyncOpenAI
 
 from app.services.llm_provider import provider_base_url
+from app.services.model_config import sampling_kwargs, standard_model, token_limit_kwargs
 from app.utils.prompt_sanitizer import sanitize_prompt_input, check_injection_patterns
 
 logger = logging.getLogger(__name__)
@@ -960,7 +961,7 @@ async def classify_category_llm(texts: list) -> str:
         client = get_client()
         response = await asyncio.wait_for(
             client.chat.completions.create(
-                model="gpt-4o-mini",
+                model=standard_model(),
                 messages=[
                     {"role": "system", "content": _CLASSIFY_CATEGORY_LLM_PROMPT},
                     {"role": "user", "content": f"<PRODUCTS>{user_content}</PRODUCTS>"},
@@ -1100,7 +1101,7 @@ async def parse_product_query(query: str) -> Dict[str, Any]:
         if check_injection_patterns(query):
             logger.warning(f"Injection pattern detected in query: {query[:100]}")
         response = await client.chat.completions.create(
-            model="gpt-4o-mini",
+            model=standard_model(),
             messages=[
                 {"role": "system", "content": PRODUCT_PARSER_PROMPT},
                 {"role": "user", "content": f"<USER_INPUT>{sanitized_query}</USER_INPUT>"}
@@ -1148,7 +1149,7 @@ async def extract_specs(
         )
 
         response = await client.chat.completions.create(
-            model="gpt-4o-mini",
+            model=standard_model(),
             messages=[
                 {"role": "system", "content": prompt_parts["system"]},
                 {"role": "user", "content": prompt_parts["user"]}
@@ -1262,7 +1263,7 @@ SEARCH CONTEXT:
 {search_context[:2000]}"""
 
         response = await client.chat.completions.create(
-            model="gpt-4o-mini",
+            model=standard_model(),
             messages=[
                 {"role": "system", "content": PRICE_EXTRACTION_SYSTEM},
                 {"role": "user", "content": user_msg}
@@ -1308,7 +1309,7 @@ Product: {s_brand} {s_name} {s_variant}
 Region: {region} ({region_info["currency"]})
 </USER_INPUT>"""
         response = await client.chat.completions.create(
-            model="gpt-4o-mini",
+            model=standard_model(),
             messages=[
                 {"role": "system", "content": PRICE_FALLBACK_SYSTEM},
                 {"role": "user", "content": user_msg}
@@ -1355,7 +1356,7 @@ SEARCH CONTEXT:
 {search_context[:2500]}"""
 
         response = await client.chat.completions.create(
-            model="gpt-4o-mini",
+            model=standard_model(),
             messages=[
                 {"role": "system", "content": REVIEWS_EXTRACTION_SYSTEM},
                 {"role": "user", "content": user_msg}
@@ -2066,31 +2067,42 @@ Primary concern: {concern}
                     {"role": "system", "content": system_msg},
                     {"role": "user", "content": user_msg}
                 ],
-                max_tokens=1000,
+                **token_limit_kwargs(verdict_model, 1000),
                 # S2 Decision D — temperature=0 on the VERDICT call. I4 A/B
                 # (docs/plans/2026-06-12-s2-shadow-results.md, temp0 arm) proved
                 # it recovers the entire winner-variance bucket (18/18 on
                 # bias45) at zero cost/latency. VERDICT ONLY — specs/price/
                 # reviews/parser temperatures are unchanged.
-                temperature=0,
+                # Routed through sampling_kwargs because GPT-5-family ids reject
+                # a non-default temperature outright; on the default gpt-4o this
+                # is an exact passthrough of temperature=0.
+                **sampling_kwargs(verdict_model, 0),
                 response_format={"type": "json_object"},
             )
         except Exception as primary_err:  # noqa: BLE001
-            # Hard-cap retry: 429 / cap-exceeded mid-call falls back to mini once.
+            # Hard-cap retry: 429 / cap-exceeded mid-call falls back to the
+            # standard model once. Compares against the CONFIGURED verdict id so
+            # the fallback still fires after an env-driven model change.
             err_msg = str(primary_err).lower()
-            if verdict_model == "gpt-4o" and ("429" in err_msg or "rate" in err_msg or "quota" in err_msg):
+            _fallback_model = standard_model()
+            if (
+                verdict_model != _fallback_model
+                and ("429" in err_msg or "rate" in err_msg or "quota" in err_msg)
+            ):
                 logger.warning(
-                    "[model_router] gpt-4o rate-limited mid-call; falling back to gpt-4o-mini"
+                    "[model_router] %s rate-limited mid-call; falling back to %s",
+                    verdict_model,
+                    _fallback_model,
                 )
-                verdict_model = "gpt-4o-mini"
+                verdict_model = _fallback_model
                 response = await client.chat.completions.create(
                     model=verdict_model,
                     messages=[
                         {"role": "system", "content": system_msg},
                         {"role": "user", "content": user_msg}
                     ],
-                    max_tokens=1000,
-                    temperature=0,  # S2 Decision D — verdict call (fallback path)
+                    **token_limit_kwargs(verdict_model, 1000),
+                    **sampling_kwargs(verdict_model, 0),  # S2 Decision D — verdict call (fallback path)
                     response_format={"type": "json_object"},
                 )
             else:

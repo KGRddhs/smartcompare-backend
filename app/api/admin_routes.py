@@ -16,6 +16,7 @@ from app.services.cache_service import (
     get_cache_observability,
 )
 from app.services.database_service import get_supabase_client, get_admin_supabase_client
+from app.services.model_config import standard_model, verdict_model
 from app.middleware.rate_limiter import limiter
 from app.services.analytics_service import (
     get_daily_stats,
@@ -778,16 +779,20 @@ async def costs_api(
     }
 
 
-_FUNCTION_MAP = [
+def _function_map():
+    """Cost-panel rows. Built per call so the OpenAI rows name the models the
+    deployment is ACTUALLY configured with (#58) — the ids are env-overridable,
+    so a hardcoded label would silently misreport after a model change."""
+    return [
     {
-        "service": "OpenAI gpt-4o-mini",
+        "service": f"OpenAI {standard_model()}",
         "purpose": "Spec / price / review extraction + product parsing",
         "fires_when": "Every comparison; cached 7d for specs+reviews, 24h for prices",
     },
     {
-        "service": "OpenAI gpt-4o",
+        "service": f"OpenAI {verdict_model()}",
         "purpose": "Verdict generation only (highest-impact subjective prose)",
-        "fires_when": "Every signed-in comparison while daily 4o cap < 80%; falls back to mini above threshold",
+        "fires_when": "Every signed-in comparison while daily 4o cap < 80%; falls back to the standard model above threshold",
     },
     {
         "service": "Serper",
@@ -825,8 +830,8 @@ _FUNCTION_MAP = [
 @router.get("/costs/function_map")
 @limiter.limit("30/minute")
 async def costs_function_map(request: Request, _=Depends(verify_admin_key)):
-    """Static service-to-function map shown on /admin/costs.html."""
-    return {"items": _FUNCTION_MAP}
+    """Service-to-function map shown on /admin/costs.html."""
+    return {"items": _function_map()}
 
 
 @router.get("/costs/gauges")

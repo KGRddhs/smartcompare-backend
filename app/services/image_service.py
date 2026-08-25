@@ -37,6 +37,7 @@ import logging
 from typing import Any, Dict, List, Optional
 
 from app.services.api_budget_service import try_consume_serper_image_credit
+from app.services.model_config import standard_model, token_limit_kwargs
 from app.services.openai_service import get_client
 from app.services.serper_service import search_images
 
@@ -168,10 +169,11 @@ async def extract_image_via_gpt(
 
     try:
         client = get_client()
+        _model = standard_model()
         completion = await client.chat.completions.create(
-            model="gpt-4o-mini",
+            model=_model,
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=120,
+            **token_limit_kwargs(_model, 120),
             temperature=0.1,
         )
         content = (completion.choices[0].message.content or "").strip()

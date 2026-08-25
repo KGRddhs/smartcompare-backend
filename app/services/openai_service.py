@@ -11,6 +11,13 @@ import httpx
 from openai import AsyncOpenAI
 
 from app.services.llm_provider import provider_base_url
+from app.services.model_config import (
+    sampling_kwargs,
+    standard_model,
+    token_limit_kwargs,
+    verdict_model,
+    vision_model,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -192,11 +199,14 @@ EXAMPLES:
         })
     
     # Call OpenAI Vision API
+    _vision_model = vision_model()
     response = await client.chat.completions.create(
-        model="gpt-4o-mini",
+        model=_vision_model,
         messages=[{"role": "user", "content": content}],
-        max_tokens=500,
-        temperature=0  # Deterministic output
+        **token_limit_kwargs(_vision_model, 500),
+        # Deterministic output. Omitted automatically for GPT-5-family ids,
+        # which reject a non-default temperature.
+        **sampling_kwargs(_vision_model, 0),
     )
     _log_cache_telemetry(response, "identify_products")
 
@@ -276,15 +286,16 @@ Rules:
 
     try:
         client_local = get_client()
+        _model = standard_model()
         response = await client_local.chat.completions.create(
-            model="gpt-4o-mini",
+            model=_model,
             messages=[
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
             ],
             response_format={"type": "json_object"},
             temperature=0.1,
-            max_tokens=200,
+            **token_limit_kwargs(_model, 200),
         )
         _log_cache_telemetry(response, "extract_specs_targeted")
         content = response.choices[0].message.content
@@ -306,7 +317,7 @@ async def extract_specs_synthesized(
     variant: Optional[str],
     category: str,
     fields: List[str],
-    model: str = "gpt-4o",
+    model: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Bundle D A.4.8 — Tier 3 batched synthesis (NO context).
 
@@ -347,15 +358,19 @@ Rules:
 
     try:
         client_local = get_client()
+        # None means "the configured verdict model" — callers that pass an
+        # explicit id (structured_comparison_service routes one in from
+        # model_router) are unaffected.
+        _model = model or verdict_model()
         response = await client_local.chat.completions.create(
-            model=model,
+            model=_model,
             messages=[
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
             ],
             response_format={"type": "json_object"},
             temperature=0.1,
-            max_tokens=300,
+            **token_limit_kwargs(_model, 300),
         )
         _log_cache_telemetry(response, "extract_specs_synthesized")
         content = response.choices[0].message.content
@@ -408,15 +423,16 @@ async def disambiguate_variant_line(
     })
     try:
         client_local = get_client()
+        _model = standard_model()
         response = await client_local.chat.completions.create(
-            model="gpt-4o-mini",
+            model=_model,
             messages=[
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
             ],
             response_format={"type": "json_object"},
             temperature=0,
-            max_tokens=60,
+            **token_limit_kwargs(_model, 60),
         )
         _log_cache_telemetry(response, "disambiguate_variant_line")
         content = response.choices[0].message.content
