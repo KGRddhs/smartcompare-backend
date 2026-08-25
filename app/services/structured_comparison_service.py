@@ -413,6 +413,22 @@ _TIER2_WALL_SECONDS = 4.0
 _TIER2_PER_FIELD_SECONDS = 3.5  # near-full wall; gather lets fields share
 
 
+def _detect_subtype(brand: str, name: str, category: str):
+    """Resolve the product subtype id (e.g. ``electronics.tv``) for a product.
+
+    Mirrors what ``_build_specs_prompt`` does when choosing the prompt's field
+    list, so the fill tiers filter non-negotiables by the SAME subtype the
+    prompt was written against (#59). Returns ``None`` on any failure, which
+    makes ``non_negotiable_fields_for`` fall back to the plain category list.
+    """
+    try:
+        from app.services.product_type_router import detect_product_type
+
+        return detect_product_type(f"{brand} {name}".strip(), category)
+    except Exception:  # noqa: BLE001 — never let subtype detection break a fill tier
+        return None
+
+
 async def tier2_fill_non_negotiables(
     *,
     brand: str,
@@ -434,11 +450,12 @@ async def tier2_fill_non_negotiables(
       - Fires ONLY when at least one non-negotiable is blank — common
         happy-path comparisons skip Tier 2 entirely (zero added wall).
     """
-    from app.services.extraction_service import (
-        CRITICAL_SCHEMA_FIELDS_NON_NEGOTIABLE,
-    )
+    from app.services.extraction_service import non_negotiable_fields_for
 
-    non_negotiable = CRITICAL_SCHEMA_FIELDS_NON_NEGOTIABLE.get(category, [])
+    # #59 — resolve the subtype so fields this product cannot physically have
+    # (a TV's battery / rear_camera) are not chased. Each such field would cost
+    # one Serper search plus one GPT call here, on every comparison, forever.
+    non_negotiable = non_negotiable_fields_for(category, _detect_subtype(brand, name, category))
     if not non_negotiable:
         return {}  # 'other' category + unknown categories have no non-negotiables
 
@@ -548,12 +565,13 @@ async def tier3_synthesize_non_negotiables(
       - Marks each filled field as confidence='tier3_synthesis' so trust
         validation can treat it as inferred rather than retrieved.
     """
-    from app.services.extraction_service import (
-        CRITICAL_SCHEMA_FIELDS_NON_NEGOTIABLE,
-    )
+    from app.services.extraction_service import non_negotiable_fields_for
     from app.services.model_router_service import model_router
 
-    non_negotiable = CRITICAL_SCHEMA_FIELDS_NON_NEGOTIABLE.get(category, [])
+    # #59 — same subtype filter as Tier 2. This tier costs a gpt-4o call, so
+    # chasing an impossible field is the single most expensive no-op in the
+    # spec cascade.
+    non_negotiable = non_negotiable_fields_for(category, _detect_subtype(brand, name, category))
     if not non_negotiable:
         return {}
 
@@ -4528,6 +4546,10 @@ class StructuredComparisonService:
         # literal "N/A" - GPT sometimes echoes the placeholder back instead
         # of returning null, which would noop-overwrite and stamp the wrong
         # _field_confidence marker. Treat "N/A" as no-knowledge from fallback.
+        # #59 — tracks whether any fill stage actually changed the specs dict, so
+        # the enriched result can be written back to the cache once at the end.
+        _specs_enriched_by_fallback = False
+
         if fallback_added:
             fb_idx = phase2_keys.index("_smart_fallback")
             fb_result = phase2_results[fb_idx]
@@ -4541,6 +4563,7 @@ class StructuredComparisonService:
                     if existing in (None, "", "N/A"):
                         result_specs[field] = value
                         fc[field] = "smart_fallback"
+                        _specs_enriched_by_fallback = True
                 result["specs"] = result_specs
 
         # Bundle C § 2f A.4.7 — Tier 2 fallback. Fires ONLY when Tier 1 +
@@ -4566,6 +4589,7 @@ class StructuredComparisonService:
                 if existing in (None, "", "N/A"):
                     result_specs_now[field] = value
                     fc[field] = "tier2_fallback"
+                    _specs_enriched_by_fallback = True
             result["specs"] = result_specs_now
 
         # Bundle D A.4.8 — Tier 3 batched GPT-4o synthesis. Fires ONLY when
@@ -4589,7 +4613,40 @@ class StructuredComparisonService:
                 if existing in (None, "", "N/A"):
                     result_specs_now[field] = value
                     fc[field] = "tier3_synthesis"
+                    _specs_enriched_by_fallback = True
             result["specs"] = result_specs_now
+
+        # #59 Half 2 — re-cache the ENRICHED specs.
+        #
+        # _get_specs writes the cache BEFORE returning, i.e. before any of the
+        # three fill stages above run, and none of them wrote back. So the
+        # degraded dict was what got cached, and the whole paid refill cascade
+        # (smart-fallback + one Serper+GPT per Tier-2 field + a gpt-4o Tier-3
+        # call) re-fired on EVERY warm comparison of that product for the full
+        # 7-day specs TTL. Writing the filled dict here makes the refill a
+        # once-per-TTL cost instead of a per-request one.
+        #
+        # Mirrors the _get_specs write exactly, including the L2 save, and
+        # strips the transient keys that must never be persisted.
+        if _specs_enriched_by_fallback:
+            try:
+                _enriched = {
+                    k: v for k, v in (result.get("specs") or {}).items()
+                    if k not in ("_search_snippets", "_cached", "_cache_source")
+                }
+                if _enriched and not _enriched.get("error"):
+                    _specs_key = get_specs_cache_key(brand, name, variant)
+                    set_cached(_specs_key, _enriched, SPECS_CACHE_TTL)
+                    from app.services.product_data_service import save_specs
+                    _fire_and_forget(
+                        save_specs(_specs_key, brand, name, variant, category, _enriched),
+                        label="save_specs.enriched",
+                    )
+            except Exception as _enrich_err:  # noqa: BLE001 — caching is best-effort
+                logger.warning(
+                    "[specs] enriched re-cache failed for %s %s: %r",
+                    brand, name, _enrich_err,
+                )
 
         rating_data = {"rating": None, "review_count": None, "rating_verified": False, "rating_source": None}
         for i, key in enumerate(phase2_keys):
