@@ -446,14 +446,30 @@ measured 78 — raise it to the number CI now reports.
 **TWO LIVE BLOCKERS (observed directly 2026-08-25):** Serper returns **403 Unauthorized** on every
 `/search`; OpenAI returns **429**. Nothing in the product works properly until both are restored.
 
-**SCRAPER TOOLING — evaluated and rejected 2026-08-25.** `Socialcrawl.dev` **resells Firecrawl**
-(its own status page says so) and is ~96% a social-media API. `crawl4ai`'s "undetected browser" IS
-patchright + playwright-stealth, and the one independent benchmark scores **curl_cffi 26 OK vs
-patchright 25 OK — the tool this repo already uses ranks higher**; its non-browser path is `aiohttp`
-(stock TLS), strictly worse than curl_cffi impersonation. Self-hosting the Akamai residual saves
-~$10/month in cash and costs $100-400/month in maintenance. **One idea worth stealing: Common Crawl
-as a discovery channel** (prototype natively, ~1 day). The win is DELETING Firecrawl/Scrape.do —
-Firecrawl's proxies are NL/US-only so it structurally cannot render a Bahrain-localised page.
+**SCRAPER TOOLING — MEASURED bake-off 2026-08-25 (not desk research).** 9 real registry targets, every
+contender judged by the repo's OWN `extract_price_from_html`. Scoreboard (priced/9): **curl_cffi 4,
+Scrape.do 4, crawl4ai default 4, crawl4ai+patchright 4, Firecrawl 0, Zyte 0 (account suspended).**
+Full write-up: `docs/investigations/2026-08-25-scraper-bakeoff.md`.
+- **`curl_cffi` READ sephora.me** — 200, zero `_abck`, JSON-LD **77.000 BHD**, 1.39s, free: the exact
+  price Zyte was procured for, while plain Playwright AND crawl4ai AND crawl4ai+patchright all got 403.
+  **ONE sample — not actionable.** #93 specifies 20+ samples over 24h from Railway egress before
+  retiring the Zyte tier. Do not rewire sephora on the strength of one lucky fetch.
+- **Firecrawl's 0/9 is OUR bug (#92, P1):** `firecrawl_service.py` hardcodes `formats:["html"]` =
+  Firecrawl's CLEANED html, which returns **0 script tags / 0 ld+json**. The extractor reads ld+json,
+  so the integration **cannot return a price on any page, ever**, while billing 1 credit each. With
+  `formats:["rawHtml"]` the same URL yields 1.400 BHD and is 5.4x faster. Firecrawl also 500s on both
+  controls curl cracks free, and returns **HTTP 200 + bills on a real 404**.
+- **crawl4ai — rejected on measurement.** Its patchright "undetected" mode was **byte-identical to
+  default on all 9 targets** and contributed zero, including both walled ones. It beat plain
+  Playwright on 1 of 9, purely via its default User-Agent — and crawl4ai under-rendered that page
+  into a confident-wrong "6.02 BHD" where bare Playwright returned the correct 16.0.
+- **Scrape.do — narrow keeper**, behind a "curl returned a WAF block" trigger only. Its single real
+  win was eros.ae (Link11 491, blocks curl+Playwright+crawl4ai). The other 3 duplicated free curl
+  results at 9-50x latency, two of them EXCEEDING the 15s live clock.
+- **Registry is wrong on 4 of 9 rows (#94):** `matalanme` + `xcite` are flagged `render-only` but
+  plain curl reads them in <1s, so they have been escalating to PAID render for free pages; `bfab`'s
+  sample_url is a category page; `letoile`'s is a 404. The registry needs a cleanup pass more than
+  the stack needs a vendor.
 
 
 A full audit of `main c630436` produced **GitHub issues #46–#81** (12 P1, 23 P2, 1 P3), each self-contained with verified `file:line`. Three are implemented and pushed, **no PRs opened, nothing merged, nothing deployed**: `fix/46-dependency-lock` (`d6c52ab`), `fix/58-model-config` (`b9e962e`), `fix/59-subtype-specs` (`48daac6`). Each passed the repo comm gate against `origin/main` with **branch-only-NEW == []**.
