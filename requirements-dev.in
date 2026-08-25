@@ -1,0 +1,17 @@
+﻿# Dev/test tooling SOURCE. Edit this file, never requirements-dev.txt.
+# Recompile after any change (-c pins it against the runtime lock so the two
+# can never disagree on a shared transitive):
+#   uv pip compile requirements-dev.in -o requirements-dev.txt -c requirements.txt --universal --python-version 3.12
+pytest>=9.0.2
+pytest-asyncio>=1.3.0
+pytest-timeout>=2.3.0
+black>=26.1.0
+pip-audit>=2.7.0
+
+# Imported by tests/test_security_regression.py; was declared only in the
+# non-deployed backend/pyproject.toml, so CI failed with ModuleNotFoundError: PIL.
+pillow>=11.0.0
+
+# Coverage reporting for the CI backend-tests job (#49). Pinned via the lock so a
+# point release cannot move the measured floor without a reviewable diff.
+pytest-cov>=6.0.0

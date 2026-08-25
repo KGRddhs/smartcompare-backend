@@ -264,6 +264,29 @@ def test_black_is_pinned_to_an_exact_version_in_ci():
     ), f"black is not pinned to an exact `black==X.Y.Z` version: {installs}"
 
 
+def test_ci_black_pin_matches_the_dependency_lock():
+    """The lint job pins black inline for speed; the lock pins it too. If those
+    two ever disagree, the version the allowlist was measured against stops
+    being the version that gates the build — silently. #46 owns the lock, #49
+    owns the allowlist, so this is the seam between them.
+    """
+    lock = REPO_ROOT / "requirements-dev.txt"
+    assert (
+        lock.exists()
+    ), "requirements-dev.txt missing — #46's dev lock should be on main"
+    locked = re.findall(r"^black==([\d.]+)", lock.read_text(encoding="utf-8"), re.M)
+    assert locked, "requirements-dev.txt does not pin black"
+
+    jobs = _load(CI_YML)["jobs"]
+    run = chr(10).join(_run_text(job) for job in jobs.values())
+    inline = re.findall(r"black==([\d.]+)", run)
+    assert inline, "ci.yml never installs a pinned black"
+    assert set(inline) == set(locked), (
+        f"ci.yml pins black=={set(inline)} but the lock pins black=={set(locked)}; "
+        "bump both together or install black from the lock"
+    )
+
+
 def test_black_allowlist_exists_and_every_entry_is_a_real_file():
     assert BLACK_ALLOWLIST.exists(), f"missing {BLACK_ALLOWLIST}"
     entries = _allowlist_entries()
@@ -347,7 +370,17 @@ def test_backend_tests_measure_and_floor_coverage():
     backend = jobs["backend-tests"]
     run = _run_text(backend)
 
-    assert "pytest-cov" in run, "backend-tests never installs pytest-cov"
+    # pytest-cov arrives through requirements-dev.txt (#46's dev lock) rather
+    # than an inline install, so accept either — what matters is that the job
+    # can measure coverage at all.
+    dev_lock = REPO_ROOT / "requirements-dev.txt"
+    from_lock = dev_lock.exists() and "pytest-cov==" in dev_lock.read_text(
+        encoding="utf-8"
+    )
+    assert "pytest-cov" in run or from_lock, (
+        "backend-tests can never measure coverage: pytest-cov is neither installed "
+        "inline nor pinned in requirements-dev.txt"
+    )
     assert "--cov=app" in run, "backend-tests does not measure coverage of app/"
     assert (
         "--cov-report=term-missing" in run

@@ -22,7 +22,11 @@ This test is double-gated so it does NOT run on default CI:
      spend the credit budget.
 
 Run explicitly:
-    RUN_LOAD=1 python -m pytest tests/test_cohort_personalization_load.py -v --timeout=180 -m live_unit
+    LIVE=1 RUN_LOAD=1 python -m pytest tests/test_cohort_personalization_load.py -v --timeout=180 -m live_unit
+
+`LIVE=1` is a third gate on top of the two above: without it the credential
+sanitizer in tests/_env_safety.py is active and the collection hook skips
+every live_unit item.
 
 Cost: ~$0.05. Wall: ~40-60s end-to-end (5 queries x cold-cache average).
 """

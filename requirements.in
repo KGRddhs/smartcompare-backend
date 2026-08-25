@@ -1,0 +1,27 @@
+﻿# Runtime dependency SOURCE. Edit this file, never requirements.txt.
+# Recompile after any change:
+#   uv pip compile requirements.in -o requirements.txt --universal --python-version 3.12
+# --universal emits platform markers so a lock built on Windows installs on Railway's Linux.
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+# NOTE (2026-08-24): app/services/openai_service.py:20 builds AsyncOpenAI at module
+# import, and every current openai release raises OpenAIError when no API key is in
+# the environment — so `import app.main` fails anywhere OPENAI_API_KEY is unset.
+# That is pre-existing and version-independent (verified against 2.54.0, 3.2.0, 3.3.1);
+# making the client lazy is tracked separately, not fixed by pinning.
+openai>=1.12.0
+tiktoken>=0.5.0
+httpx>=0.26.0
+supabase>=2.3.0
+redis>=5.0.0
+pydantic>=2.5.0
+pydantic-settings>=2.1.0
+python-dotenv>=1.0.0
+python-multipart>=0.0.6
+email-validator>=2.0.0
+upstash-redis>=1.0.0
+beautifulsoup4>=4.12.0
+lxml>=5.0.0
+curl_cffi>=0.7.0
+slowapi>=0.1.9
+sentry-sdk[fastapi]>=1.40.0

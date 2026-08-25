@@ -6,7 +6,9 @@ confidence-low) against live Railway and asserts:
 - Wall time stays under STREAM_HARD_CAP_SECONDS=25s
 - Confidence-driven escalation works for non-luxury categories
 
-Gated by `pytest -m integration`. Requires the deploy at
+Gated by `LIVE=1 pytest -m integration` (the marker alone no longer opts in --
+without `LIVE=1` the collection hook skips the tier, see tests/_env_safety.py).
+Requires the deploy at
 https://web-production-58776.up.railway.app/ to have:
 - ENABLE_FIRECRAWL=true
 - ENABLE_SCRAPEDO=true

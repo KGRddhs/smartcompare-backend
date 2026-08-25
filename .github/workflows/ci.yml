@@ -24,9 +24,26 @@ jobs:
       # pytest-cov: see the coverage flags on the `Run unit tests` step below.
       - name: Install dependencies
         run: |
-          pip install -r requirements.txt
-          pip install pytest pytest-asyncio pytest-timeout pytest-cov
-          pip install "black==26.5.1"
+          pip install -r requirements.txt -r requirements-dev.txt
+
+      # Seed each check from the committed lock first: uv preserves already-pinned
+      # versions unless requirements*.in demands otherwise, so this fails only when
+      # someone edits a .in without recompiling — NOT every time a dep publishes.
+      - name: Lock is current
+        run: |
+          pip install uv
+          cp requirements.txt /tmp/requirements.check.txt
+          cp requirements-dev.txt /tmp/requirements-dev.check.txt
+          uv pip compile requirements.in -o /tmp/requirements.check.txt \
+            --universal --python-version 3.12 --quiet
+          uv pip compile requirements-dev.in -o /tmp/requirements-dev.check.txt \
+            -c requirements.txt --universal --python-version 3.12 --quiet
+          # Compare package lines only — uv's header records the output path, which
+          # differs between the committed file and the /tmp check copy.
+          diff -u <(grep -v '^#' requirements.txt) <(grep -v '^#' /tmp/requirements.check.txt) \
+            || { echo "::error::requirements.txt is stale — run: uv pip compile requirements.in -o requirements.txt --universal --python-version 3.12"; exit 1; }
+          diff -u <(grep -v '^#' requirements-dev.txt) <(grep -v '^#' /tmp/requirements-dev.check.txt) \
+            || { echo "::error::requirements-dev.txt is stale — run: uv pip compile requirements-dev.in -o requirements-dev.txt --universal --python-version 3.12"; exit 1; }
 
       - name: Syntax check all Python files
         run: |

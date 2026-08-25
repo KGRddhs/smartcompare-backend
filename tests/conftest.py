@@ -5,7 +5,28 @@ import os
 import pytest
 from dotenv import load_dotenv
 
+from tests._env_safety import (
+    LIVE_TIER_MARKERS,
+    install_dotenv_guard,
+    live_mode_enabled,
+    live_tier_skip_reason,
+    neutralize_credentials,
+)
+
 load_dotenv(override=True)
+
+# Issue #48 — the default tier must not carry production credentials.
+# `.env` is still loaded (feature flags and tuning knobs come from it), but the
+# credential and production-endpoint names are stripped immediately afterwards
+# unless the caller opted in with LIVE=1. This has to happen at MODULE scope,
+# not in a fixture: `app.main` (init_sentry) and `cache_service` (module-level
+# Upstash client) are imported during collection, long before any fixture runs.
+# The dotenv guard re-applies it after the `load_dotenv(override=True)` calls
+# that app/main.py:11, extraction_service.py:5 and url_extraction_service.py:6
+# make at their own import time. See tests/_env_safety.py for the full rationale
+# and tests/test_conftest_env_safety.py for the guarantee.
+neutralize_credentials()
+install_dotenv_guard()
 
 # Enable cohort personalization for unit tests so the extraction prompt-block
 # tests exercise the injection path. Tests that need the default-off behaviour
@@ -28,6 +49,25 @@ _RATE_LIMITER_BYPASS_TEST_FILES = (
     "test_auth_demographics.py",
     "test_attribution_endpoint.py",
 )
+
+
+# Issue #48 — keep the marker tiers honest under the credential sanitizer.
+# live_unit / live_db / integration tests exist to exercise REAL services. With
+# the credentials stripped they would either fail with a confusing 401 or — the
+# dangerous case — pass without touching anything live. Skipping them with a
+# reason that names the opt-in is the same posture the live_db suites already
+# take for themselves (`pytest.skip("Supabase env vars not configured ...")`),
+# just applied uniformly. Under LIVE=1 this is a no-op and every tier runs.
+# `bench` is intentionally excluded: it has its own BENCH=1 / RUN_LIVE_BENCH=1
+# gate and targets a hardcoded URL rather than credentials.
+def pytest_collection_modifyitems(config, items):
+    """Skip live-tier tests when the LIVE opt-in restoring credentials is off."""
+    if live_mode_enabled():
+        return
+    skip_marker = pytest.mark.skip(reason=live_tier_skip_reason())
+    for item in items:
+        if any(item.get_closest_marker(name) for name in LIVE_TIER_MARKERS):
+            item.add_marker(skip_marker)
 
 
 @pytest.fixture(autouse=True)

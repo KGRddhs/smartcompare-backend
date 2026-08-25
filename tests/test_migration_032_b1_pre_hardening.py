@@ -240,7 +240,11 @@ def _supabase_available() -> bool:
 
 @pytest.mark.live_db
 class TestMigration032LiveSchema:
-    """Live Supabase assertions — run post-apply with `-m live_db`."""
+    """Live Supabase assertions — run post-apply with `LIVE=1 ... -m live_db`.
+
+    `LIVE=1` is required: without it the credential sanitizer in
+    tests/_env_safety.py is active and the collection hook skips this tier.
+    """
 
     @pytest.fixture
     def admin_client(self):
