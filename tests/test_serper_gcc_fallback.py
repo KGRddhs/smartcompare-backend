@@ -330,3 +330,52 @@ async def test_fallback_records_usage_for_both_calls(monkeypatch):
     assert mock_record.call_count == 2
     for call in mock_record.call_args_list:
         assert call.args == ("serper",)
+
+
+# --------------------------------------------------------------------------- #
+# Observability: the skipped primary is COUNTED, not invisible                 #
+#                                                                              #
+# #60 review (non-blocking). With the allow-list empty, `shopping_region` reads #
+# "us_fallback" by construction, so the admin fallback-rate dashboard is        #
+# structurally 100% and can never again show a GCC merchant feed appearing. The #
+# counter keeps the decision revisitable: a non-zero skip count next to a 100%  #
+# fallback rate says "we chose not to look", not "there is nothing there".      #
+# --------------------------------------------------------------------------- #
+_OK = {"shopping": [{"title": "x", "price": "$10"}]}
+
+
+@pytest.mark.asyncio
+async def test_skipped_gcc_primary_is_counted(monkeypatch):
+    monkeypatch.setattr(serper_service, "SERPER_API_KEY", "test-key")
+    before = serper_service.shopping_primary_skipped_count()
+    ctx, state = _patch_httpx_capture([_mock_response(200, _OK)])
+    with ctx:
+        await serper_service.search_product_prices("iPhone 16", country="bh")
+    assert state["gl"] == ["us"]
+    assert serper_service.shopping_primary_skipped_count() == before + 1
+
+
+@pytest.mark.asyncio
+async def test_allow_listed_gcc_primary_is_not_counted_as_skipped(monkeypatch):
+    monkeypatch.setattr(serper_service, "SERPER_API_KEY", "test-key")
+    monkeypatch.setenv(_ALLOWLIST_ENV, "bh")
+    before = serper_service.shopping_primary_skipped_count()
+    ctx, state = _patch_httpx_capture(
+        [_mock_response(200, _OK), _mock_response(200, _OK)]
+    )
+    with ctx:
+        await serper_service.search_product_prices("iPhone 16", country="bh")
+    assert sorted(state["gl"]) == ["bh", "us"], "the allow-listed primary fired"
+    assert serper_service.shopping_primary_skipped_count() == before
+
+
+@pytest.mark.asyncio
+async def test_non_gcc_country_is_not_counted_as_skipped(monkeypatch):
+    """A non-GCC country never had a fallback leg, so nothing is being skipped
+    there and the counter must stay put."""
+    monkeypatch.setattr(serper_service, "SERPER_API_KEY", "test-key")
+    before = serper_service.shopping_primary_skipped_count()
+    ctx, state = _patch_httpx_capture([_mock_response(200, _OK)])
+    with ctx:
+        await serper_service.search_product_prices("iPhone 16", country="us")
+    assert serper_service.shopping_primary_skipped_count() == before

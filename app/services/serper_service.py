@@ -192,19 +192,71 @@ def _response_signals_exhaustion(status_code: Optional[int], body_text: str) -> 
 # (it falls through to Tier 1.5 / 2 / 3) — a budget-out must DEGRADE, never
 # raise, and never relax a price. Fails OPEN on any error.
 #
-# Rollback is an env flip, not a redeploy: SERPER_LIFETIME_LIMIT=0 disables the
-# gate entirely (see api_budget_service.serper_gate_allows).
+# OPT-IN, not default-on (#60 review, blocking 4). The gate is INERT until an
+# operator declares the live key's real ceiling in SERPER_LIFETIME_LIMIT. The
+# packaged 2200 is a FREE-tier number and prod runs a PAID key: arming a gate at
+# it would take all six entry points — and the price-cache warmer — dark the
+# moment the lifetime counter crossed it, which is the failure mode
+# cron_warm_price_cache.py:118-131 refuses to reproduce. Metering (the counter,
+# get_remaining, the 80%-burn alert) is unconditional; BLOCKING is declared.
+# See api_budget_service._serper_gate_engaged. SERPER_LIFETIME_LIMIT=0 is the
+# explicit off switch, and each process logs its effective config once.
+
+
+# MEMOISED, and that is load-bearing (#60 review, blocking 3).
+# serper_gate_allows() -> has_budget() -> cache_service._redis_get() is a
+# BLOCKING Upstash REST round trip (measured 163ms in this worktree) executed on
+# the single asyncio event loop. Called raw at six entry points it would add
+# ~10-12 such stalls per compare INSIDE the 15s _PRICE_RACE_TIMEOUT, and it
+# would serialise the discovery fan-out — each `asyncio.ensure_future(search_web
+# (...))` waiting on its own blocking read. That is the exact hazard
+# structured_comparison_service._cache_get_async / ENABLE_ASYNC_REDIS_OFFLOAD
+# exist to remove (#71); fixing one audit finding by re-introducing another is
+# not a fix.
+#
+# A cached boolean is functionally identical here: the lifetime counter moves by
+# at most 1 per call, so the answer cannot flip within a TTL window except by
+# one credit. Cost of the memo is bounded overshoot — at most one TTL window of
+# calls past the ceiling — against removing every round trip but one per window.
+_SERPER_GATE_CACHE_TTL_ENV = "SERPER_GATE_CACHE_TTL"
+_DEFAULT_SERPER_GATE_CACHE_TTL = 60.0
+_serper_gate_cache: Optional[tuple] = None  # (expires_at_monotonic, allowed)
+
+
+def _serper_gate_cache_ttl() -> float:
+    """Seconds a gate decision is reused. <=0 disables memoisation entirely
+    (every call re-reads Redis) — the escape hatch if a decision ever needs to
+    be instant."""
+    return _serper_float_env(
+        _SERPER_GATE_CACHE_TTL_ENV, _DEFAULT_SERPER_GATE_CACHE_TTL
+    )
+
+
+def reset_serper_budget_cache() -> None:
+    """Drop the memoised gate decision so the next call re-reads. Used by tests
+    and by anything that just changed SERPER_LIFETIME_LIMIT in-process."""
+    global _serper_gate_cache
+    _serper_gate_cache = None
 
 
 def _serper_budget_ok() -> bool:
     """True when a live Serper call is within budget. FAIL-OPEN: any error here
     (Redis outage included) admits the call — a monitoring failure must never
-    become an availability failure on the price path."""
+    become an availability failure on the price path. Memoised for
+    _serper_gate_cache_ttl() seconds; see the block comment above."""
+    global _serper_gate_cache
+    now = _time.monotonic()
+    cached = _serper_gate_cache
+    if cached is not None and now < cached[0]:
+        return cached[1]
     try:
-        return serper_gate_allows()
+        allowed = serper_gate_allows()
     except Exception as e:  # noqa: BLE001 — never let the gate break the call
         logger.warning("[BUDGET] serper gate unavailable (%s) — failing open", e)
-        return True
+        allowed = True
+    ttl = _serper_gate_cache_ttl()
+    _serper_gate_cache = (now + ttl, allowed) if ttl > 0 else None
+    return allowed
 
 
 # ============================================
@@ -262,7 +314,11 @@ def _serper_rotation_deadline() -> float:
 
     The check is evaluated at the top of each loop iteration, so the bound is
     "deadline + at most one per-call timeout", not N x per-call timeout — the
-    N-way stacking is what this removes."""
+    N-way stacking is what this removes.
+
+    A value <=0 DISABLES the deadline (full rotation, no wall-clock bound),
+    matching this repo's `<=0 disables the check` convention. It must never mean
+    "make zero calls" — see the guard at the loop-top check."""
     return _serper_float_env("SERPER_ROTATION_DEADLINE", 14.0)
 
 
@@ -325,7 +381,20 @@ async def _serper_post(client, path: str, payload: Dict[str, Any]):
     while attempts < max_attempts:
         # Overall deadline — stop rotating once the wall-clock budget is spent so
         # N slow keys can't stack to N x the per-call timeout.
-        if (_serper_now() - start) >= deadline:
+        #
+        # `deadline > 0` is NOT decoration (#60 review, blocking 1). Making the
+        # check unconditional turned SERPER_ROTATION_DEADLINE=0 into a silent
+        # TOTAL Serper blackout for any multi-key config: deadline 0.0 makes the
+        # very first loop-top comparison true, the loop breaks before any POST,
+        # _serper_post returns None, and the caller's response.raise_for_status()
+        # on None raises AttributeError straight into the broad `except` — a
+        # benign empty result and zero calls, forever. That inverts this repo's
+        # own `<=0 disables the check` convention (cron_warm_price_cache.py's
+        # _serper_per_query_estimate / _serper_max_credits_per_run) on a value
+        # that was completely INERT before #60, i.e. it is a brand-new footgun
+        # sitting on the obvious rollback flip. <=0 now means "no deadline",
+        # never "no calls".
+        if deadline > 0 and (_serper_now() - start) >= deadline:
             break
         # exclude=timed_out advances past a key that timed out earlier in THIS
         # call; the set stays empty when the flag is off (byte-identical).
@@ -509,6 +578,25 @@ _GCC_COUNTRIES = frozenset({"bh", "sa", "ae", "kw", "qa", "om"})
 _SHOPPING_PRIMARY_COUNTRIES_ENV = "SERPER_SHOPPING_PRIMARY_COUNTRIES"
 
 
+# #60 review (observability) — with the allow-list empty the gl=<gcc> primary is
+# never purchased, so `shopping_region` reads "us_fallback" BY CONSTRUCTION and
+# the admin fallback-rate dashboard becomes structurally 100%: it can no longer
+# show a GCC merchant feed appearing. The evidence for dropping the leg is a
+# Session-52 diagnostic that was not re-probed, and ae/sa are the codes most
+# likely to grow a real Google Shopping feed — so count the skips (module-level,
+# never resets, diagnostics only; same idiom as
+# structured_comparison_service._CACHE_READ_REJECTED_COUNT) rather than letting
+# the decision become invisible. A non-zero counter with a 100% us_fallback rate
+# says "we chose not to look", not "there is nothing there".
+_SHOPPING_PRIMARY_SKIPPED_COUNT = 0
+
+
+def shopping_primary_skipped_count() -> int:
+    """How many times a GCC gl=<country> shopping primary was skipped because the
+    country is not on SERPER_SHOPPING_PRIMARY_COUNTRIES. Diagnostics only."""
+    return _SHOPPING_PRIMARY_SKIPPED_COUNT
+
+
 def _shopping_primary_countries() -> frozenset:
     """Country codes whose gl=<country> shopping primary is still worth buying.
     Read fresh each call so a Railway env update takes effect without a restart."""
@@ -679,6 +767,14 @@ async def search_product_prices(
                 _do_serper_shopping(product, gl="us"),
             )
         else:
+            global _SHOPPING_PRIMARY_SKIPPED_COUNT
+            _SHOPPING_PRIMARY_SKIPPED_COUNT += 1
+            logger.debug(
+                "[SHOPPING] gl=%s primary skipped (not on %s) — shopping_region "
+                "will read us_fallback by construction; skips so far: %s",
+                country, _SHOPPING_PRIMARY_COUNTRIES_ENV,
+                _SHOPPING_PRIMARY_SKIPPED_COUNT,
+            )
             primary = {}
             fallback = await _do_serper_shopping(product, gl="us")
         primary_shopping = primary.get("shopping", []) or []

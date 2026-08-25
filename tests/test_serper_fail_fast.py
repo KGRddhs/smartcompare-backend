@@ -268,17 +268,69 @@ async def test_post_flag_on_timeout_then_depletion_returns_depletion(monkeypatch
     assert serper_service._is_serper_key_exhausted("k2")      # 402 = depletion
 
 
+# --------------------------------------------------------------------------- #
+# SERPER_ROTATION_DEADLINE <= 0 means "NO DEADLINE", never "no calls"          #
+#                                                                              #
+# #60 review, blocking 1. Making the deadline check unconditional turned        #
+# SERPER_ROTATION_DEADLINE=0 into a silent TOTAL Serper blackout for any        #
+# multi-key config: 0.0 makes the very first loop-top comparison true, the loop #
+# breaks before any POST, _serper_post returns None, and the caller's           #
+# `response.raise_for_status()` on None raises AttributeError straight into the #
+# broad `except` — a benign empty result and ZERO calls, forever. That inverts  #
+# this repo's own `<=0 disables the check` convention                           #
+# (cron_warm_price_cache._serper_per_query_estimate /                           #
+# _serper_max_credits_per_run) on a value that was completely INERT before #60, #
+# and it sits on the obvious rollback flip for part 3 of this very commit.      #
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize("deadline", ["0", "0.0", "-1"])
 @pytest.mark.asyncio
-async def test_post_flag_on_deadline_zero_breaks_before_any_post(monkeypatch, fake_redis):
-    """SERPER_ROTATION_DEADLINE<=0 (operator misconfig) breaks before any POST and
-    degrades gracefully (returns None, no crash) — the documented nit."""
+async def test_deadline_zero_disables_the_deadline_flag_off(
+    monkeypatch, fake_redis, deadline
+):
+    """Flag OFF (the default). A non-positive deadline must mean the FULL
+    rotation still happens — every key is tried — not that Serper goes dark."""
+    monkeypatch.setenv("SERPER_ROTATION_DEADLINE", deadline)
+    monkeypatch.setenv("SERPER_API_KEYS", "k1,k2")
+    depleted = _mock_response(402, {}, text=_NOT_ENOUGH)
+    healthy = _mock_response(200, {"organic": [{"ok": 1}]})
+    client = _FakeClient([depleted, healthy])
+    resp = await serper_service._serper_post(client, "/search", {"q": "x"})
+    assert client.keys == ["k1", "k2"], (
+        "a non-positive deadline must DISABLE the deadline, not the rotation"
+    )
+    assert resp is healthy
+
+
+@pytest.mark.asyncio
+async def test_deadline_zero_disables_the_deadline_flag_on(monkeypatch, fake_redis):
+    """Same with ENABLE_SERPER_FAIL_FAST on — the flag changes the per-call
+    timeout and rotate-on-timeout, never whether calls happen at all."""
     monkeypatch.setenv("ENABLE_SERPER_FAIL_FAST", "true")
     monkeypatch.setenv("SERPER_ROTATION_DEADLINE", "0")
     monkeypatch.setenv("SERPER_API_KEYS", "k1,k2")
-    client = _FakeClient([_mock_response(200, {"organic": []})])
+    depleted = _mock_response(402, {}, text=_NOT_ENOUGH)
+    healthy = _mock_response(200, {"organic": [{"ok": 1}]})
+    client = _FakeClient([depleted, healthy])
     resp = await serper_service._serper_post(client, "/search", {"q": "x"})
-    assert resp is None
-    assert client.keys == [], "no POST fires when the rotation deadline is already spent"
+    assert client.keys == ["k1", "k2"]
+    assert resp is healthy
+
+
+@pytest.mark.asyncio
+async def test_search_web_still_calls_serper_with_a_zero_deadline(
+    monkeypatch, fake_redis
+):
+    """End to end, the shape the outage actually took: with the deadline flipped
+    to 0 on a multi-key config, search_web returned a benign empty result having
+    fired ZERO POSTs — indistinguishable from depletion, app-wide."""
+    monkeypatch.setenv("SERPER_ROTATION_DEADLINE", "0")
+    monkeypatch.setenv("SERPER_API_KEYS", "k1,k2")
+    ctx, holder = _patch_httpx_seq([_mock_response(200, {"organic": [{"ok": 1}]})])
+    with ctx:
+        result = await serper_service.search_web("q")
+    assert holder["client"].keys == ["k1"], "a zero deadline must not silence Serper"
+    assert result.get("organic") == [{"ok": 1}]
+    assert not result.get("error")
 
 
 # --------------------------------------------------------------------------- #
