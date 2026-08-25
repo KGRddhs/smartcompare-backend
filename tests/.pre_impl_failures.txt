@@ -1,3 +1,19 @@
+# Pre-implementation free-unit failure baseline. Consumed by
+# scripts/regression_gate_diff.py, which reads only the lines carrying a pytest
+# node id; these '#' lines are ignored by parse_failure_ids.
+#
+# STALENESS NOTE (issue #49, 2026-08-25). 35 of the 48 ids below are
+# tests/test_value_math.py nodes. Since #49 that module carries a module-level
+# xfail, so those 35 can no longer be reported as FAILED by pytest and can
+# never appear in a 'current' set again. They are KEPT here on purpose: the
+# file is a snapshot of the pre-implementation baseline and the gate is a
+# SUBSET check (current minus baseline must be empty), so extra baseline ids
+# are inert - they can only ever forgive, never hide a new failure.
+# What they DO distort is the denominator when a human reads this file as 'how
+# red are we': the EFFECTIVE baseline is 13 nodes, not 48. Do not re-derive a
+# pass-rate from the raw line count.
+# When Bundle C v1.1 A.6.x ships and the xfail comes off, re-capture this file
+# rather than editing it by hand.
 tests/test_auth_interceptor.py::test_sign_in_with_social_exception
 tests/test_auth_interceptor.py::test_social_login_user_insert_fails_gracefully
 tests/test_backend_cleanup.py::TestDeadFunctionsRemoved::test_unused_imports_cleaned

@@ -70,7 +70,10 @@ def test_baseline_has_critical_fields(category):
         )
 
 
+# live_prod (#49): GETs the PRODUCTION deployment; the prod server writes the resulting
+# price to the production cache + L2 DB regardless of `nocache=true` (read-only bypass).
 @pytest.mark.live_unit
+@pytest.mark.live_prod
 @pytest.mark.parametrize("category", CATEGORIES)
 def test_post_d2_per_category_critical_fields_intact(category):
     """Live bench: post-D2 deploy must not regress critical-fields presence
@@ -150,7 +153,9 @@ WALL_TIME_CEILINGS = {
 }
 
 
+# live_prod (#49): same production write path as the critical-fields bench above.
 @pytest.mark.live_unit
+@pytest.mark.live_prod
 @pytest.mark.parametrize("category", CATEGORIES)
 def test_post_d2_per_category_wall_time_under_ceiling(category):
     """Live bench wall-time: each category's cold compare must complete

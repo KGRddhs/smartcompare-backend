@@ -11,3 +11,7 @@ pip-audit>=2.7.0
 # Imported by tests/test_security_regression.py; was declared only in the
 # non-deployed backend/pyproject.toml, so CI failed with ModuleNotFoundError: PIL.
 pillow>=11.0.0
+
+# Coverage reporting for the CI backend-tests job (#49). Pinned via the lock so a
+# point release cannot move the measured floor without a reviewable diff.
+pytest-cov>=6.0.0

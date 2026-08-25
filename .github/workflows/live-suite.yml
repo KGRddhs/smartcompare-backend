@@ -1,0 +1,244 @@
+# ============================================================================
+# SCHEDULED LIVE ADAPTER SUITE — issue #49
+#
+# !! THIS WORKFLOW SPENDS REAL MONEY !!
+#
+# Every run makes live calls to real retailer sites and to paid vendors:
+# Serper credits (the free tier is a finite ~2,500 one-time grant that has been
+# depleted twice already), OpenAI tokens, and Firecrawl / Scrape.do / Zyte /
+# Bright Data credits wherever the cascade escalates. Budget roughly one
+# fan-out per `live_unit` test.
+#
+# Consequences of that, all enforced below:
+#   * NO `pull_request` trigger and NO `push` trigger. A PR must never be able
+#     to bill this. The only entry points are the weekly cron and an explicit
+#     manual `workflow_dispatch`.
+#   * WEEKLY, not nightly. Cost-bound per #49.
+#   * The eval runner (`scripts/eval_runner`, ~600-1,000 Serper credits per full
+#     run) and the `BENCH=1` perf suite are deliberately NOT wired here.
+#
+# WHY IT EXISTS: 17 test files actually carry the `live_unit` marker (55 nodes,
+# measured 2026-08-25 with --collect-only; the issue's "21 files" counted files
+# that only MENTION the marker in a comment) and the PR gate excludes all of
+# them, so today a retailer changing its markup is detected by a user, not by
+# us. This is the only automated channel that exercises the runtime adapter path
+# against real storefronts.
+#
+# WHEN IT GOES RED: that is scraper drift to fix in the adapter. Never relax an
+# assertion, and never weaken `should_cache_price`, `is_price_showable`, or the
+# exact-identity gate to make it green (#49, Constraints). Multi-sample before
+# concluding a source is dead — one unlucky sample is not a failure.
+#
+# ----------------------------------------------------------------------------
+# PRODUCTION-CACHE AUDIT (#49 acceptance criterion: "the scheduled live run does
+# not write to the production price cache … note per-file which applies").
+# Audited 2026-08-25 against the current `live_unit` set. Two independent layers.
+#
+# LAYER 1 — the prod-API nodes are DESELECTED, not merely uncached.
+# `?nocache=true` bypasses only the cache READ. The write is unconditional on
+# the server: app/services/structured_comparison_service.py:5600
+# (`if should_cache_price(...): set_cached(...); self._save_price_to_db(...)`)
+# and `_persist_genuine_price` at :6930-6931. So any test that makes an HTTP
+# call to the production deployment MAKES PRODUCTION WRITE, whatever query
+# string it sends — and spends the production vendor budget server-side, where
+# this workflow's own secrets are irrelevant. Those nodes now carry
+# `@pytest.mark.live_prod` (registered in pyproject.toml) and the run below
+# selects `-m "live_unit and not live_prod"`.
+#
+#   EXCLUDED (live_prod — hits the production deployment / production Supabase):
+#     tests/test_two_input_shape.py::TestLiveRailwaySmoke ......... 2 nodes, POST prod /api/v1/text/compare
+#     tests/test_d2_spec_parity_per_category.py .................. 10 nodes, GET prod /api/v1/text/compare
+#     tests/test_spec_parity.py::test_post_fix_iphone_vs_s25_… ..... 1 node,  GET prod /api/v1/text/compare
+#     tests/test_unified_search.py::TestCostTrackingLive ........... 1 node,  GET prod /api/v1/text/compare
+#     tests/test_unified_search.py::TestUnifiedSearchSharing ....... 3 nodes, un-mocked L2 read+write on prod Supabase
+#     tests/test_cohort_personalization_load.py ................... 1 node,  5x GET prod /api/v1/text/compare
+#
+#   Measured: `-m live_unit` collects 55 nodes; `-m "live_unit and not live_prod"`
+#   collects 37. The 18 removed are exactly the six entries above.
+#
+#   RUN (37 nodes), and read-only with respect to the production price cache —
+#   every one executes IN-PROCESS on the runner and never posts to the prod API:
+#     tests/test_sse_settle_window.py ............. 8 nodes, in-process SSE settle window
+#     tests/test_product_parser_category.py ....... 8 nodes, in-process parser
+#     tests/test_iherb_scraping.py ................ 5 nodes, direct iHerb fetch, no price cache
+#     tests/test_category_selection.py ............ 4 nodes, extract_specs() only, no price path
+#     tests/test_tier15_timing.py ................. 2 nodes, in-process tier-1.5 timing
+#     tests/test_smart_fallback.py ................ 2 nodes, in-process smart fallback
+#     tests/test_price_fallback.py ................ 2 nodes, in-process price fallback
+#     tests/test_phase1_per_race_timeouts.py ...... 2 nodes, in-process race timing
+#     tests/test_registry_liveness_gate.py ........ 1 node,  adapter liveness probes
+#     tests/test_rating_tiers.py .................. 1 node,  in-process rating tiers
+#     tests/test_phase1_includes_reviews.py ....... 1 node,  in-process phase-1 fan-out
+#     tests/test_camera_vision.py ................. 1 node,  OpenAI vision only, no price path
+#
+# LAYER 2 — the runner cannot reach the production cache even if a future test
+# does walk the price path. The `env:` block below deliberately supplies INERT
+# Supabase/Upstash values instead of the real secrets:
+#   * `UPSTASH_REDIS_TOKEN: ''` makes app/services/cache_service.py:21 leave
+#     `redis_client = None`, so `set_cached` is a hard no-op — zero requests.
+#   * `SUPABASE_SERVICE_KEY: ''` makes
+#     app/services/database_service.py:40 raise before `create_client`, so
+#     `_save_price_to_db` -> `product_data_service.save_price` fails inside its
+#     own try/except with no network at all.
+#   * The `.invalid` URLs satisfy the 7 required fields of app/config.py (which
+#     instantiates `Settings()` at import) without naming a reachable host.
+# Vendor keys (OpenAI / Serper / render cascade) ARE real — exercising the
+# adapters is the entire point — but they bill this workflow's own budget, not
+# a production request.
+#
+# Re-run this audit when a file gains the `live_unit` marker.
+# `tests/test_ci_gates.py::test_every_production_host_live_test_is_marked_live_prod`
+# fails the PR if a prod-host test is added without `live_prod`.
+# ============================================================================
+name: Live adapter suite (scheduled)
+
+on:
+  schedule:
+    # Mondays 04:00 UTC — weekly, off-peak, and before the working week so a
+    # drift report is waiting rather than landing mid-deploy.
+    # Pinned minute AND hour: a `*` or `*/n` in either field would multiply the
+    # credit burn by 60x/24x. Enforced by
+    # tests/test_ci_gates.py::test_live_suite_cron_is_weekly_not_nightly.
+    - cron: '0 4 * * 1'
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: 'Why this manual run (it spends real vendor credits)'
+        required: false
+        default: 'manual drift check'
+
+# One live run at a time. Two concurrent runs would double the credit burn and
+# hammer the same storefronts from the same egress IPs.
+concurrency:
+  group: live-suite
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write # the failure reporter below opens an issue
+
+jobs:
+  live-unit:
+    runs-on: ubuntu-latest
+    # BACKSTOP ONLY. The real cap is the step-level `timeout-minutes: 35` on the
+    # pytest step below. A JOB-level timeout *cancels* the job, and `failure()`
+    # is false in a cancelled job — which is why the reporter is gated on
+    # `failure() || cancelled()` and why the step cap must fire first. Keep this
+    # value strictly greater than the step cap; test_ci_gates.py asserts it.
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pytest pytest-asyncio pytest-timeout
+
+      # LIVE=1 is the opt-in switch owned by #48. Setting it here is
+      # forward-compatible: harmless before #48 lands, load-bearing after.
+      # No secret is echoed — GitHub masks them, and nothing prints os.environ.
+      #
+      # Marker selection: `live_unit and not live_prod`. See the PRODUCTION-CACHE
+      # AUDIT in the header — `live_prod` nodes make the PRODUCTION server write
+      # to the production price cache and L2 price rows, so they must never run
+      # unattended on a cron.
+      #
+      # Step-level timeout so an overrun is a STEP FAILURE inside a still-running
+      # job (which `failure()` sees and reports) rather than a job cancellation
+      # that silently opens no issue.
+      - name: Run the live_unit adapter suite
+        timeout-minutes: 35
+        env:
+          LIVE: '1'
+          # Real vendor keys — billed to this workflow, which is the point.
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          SERPER_API_KEY: ${{ secrets.SERPER_API_KEY }}
+          FIRECRAWL_API_KEY: ${{ secrets.FIRECRAWL_API_KEY }}
+          SCRAPEDO_API_TOKEN: ${{ secrets.SCRAPEDO_API_TOKEN }}
+          ZYTE_API_KEY: ${{ secrets.ZYTE_API_KEY }}
+          BRIGHTDATA_API_KEY: ${{ secrets.BRIGHTDATA_API_KEY }}
+          # DELIBERATELY INERT — not secrets. Layer 2 of the production-cache
+          # audit in the header: these satisfy app/config.py's 7 required fields
+          # so the app imports, while making set_cached a no-op and
+          # _save_price_to_db raise-and-swallow before any network call. Do NOT
+          # replace these with the real Supabase/Upstash secrets: that would let
+          # a scheduled run write to the production cache and L2 DB.
+          SUPABASE_URL: 'https://ci-live-suite.invalid'
+          SUPABASE_ANON_KEY: ''
+          SUPABASE_SERVICE_KEY: ''
+          UPSTASH_REDIS_URL: 'https://ci-live-suite.invalid'
+          UPSTASH_REDIS_TOKEN: ''
+        run: |
+          python -m pytest tests/ -v \
+            -m "live_unit and not live_prod" \
+            --timeout=180 \
+            --tb=short
+
+      # A silently red scheduled run is the same as no run at all: nobody looks
+      # at the Actions tab on a Monday. Turn it into an issue that has to be
+      # closed by a human. No new alerting secrets — GITHUB_TOKEN only.
+      #
+      # `cancelled()` is load-bearing, not defensive noise: a job-level timeout
+      # or a manual cancel produces a red run in which `failure()` is FALSE. The
+      # most likely real-world red — the suite degrading against slow storefronts
+      # until it blows the cap — is exactly that shape.
+      - name: Open an issue on failure
+        if: ${{ failure() || cancelled() }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const title = 'Live adapter suite failed — likely scraper drift';
+            const body = [
+              'The scheduled `live_unit` adapter suite failed or was cancelled (a job-level',
+              'timeout cancels rather than fails — treat a cancel as red).',
+              '',
+              `Run: ${runUrl}`,
+              `Trigger: ${context.eventName}`,
+              `Commit: ${context.sha}`,
+              '',
+              'This suite hits real retailer storefronts, so a failure usually means a',
+              'storefront changed its markup and an adapter needs fixing — not that a',
+              'test is wrong.',
+              '',
+              'Triage:',
+              '1. Re-sample before concluding a source is dead. One unlucky sample is not a failure.',
+              '2. Verify through the runtime adapter, not the endpoint probe alone.',
+              '3. Fix the adapter. Do NOT relax an assertion, and never weaken',
+              '   `should_cache_price`, `is_price_showable`, or the exact-identity gate.',
+              '4. A red run can also mean an expired or depleted vendor key — check the',
+              '   Serper lifetime budget counter before assuming markup drift.',
+              '5. If the run was CANCELLED, it hit the timeout cap — treat a hang against a',
+              '   slow storefront as drift too, not as infrastructure flake.',
+            ].join('\n');
+
+            // listForRepo returns pull requests as well as issues, and a PR that
+            // happens to carry the label would swallow the drift comment.
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'live-suite-failure',
+            });
+            const openIssue = existing.data.find((i) => !i.pull_request);
+            if (openIssue) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: openIssue.number,
+                body,
+              });
+              return;
+            }
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title,
+              body,
+              labels: ['live-suite-failure'],
+            });

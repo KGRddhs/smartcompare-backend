@@ -17,6 +17,11 @@ jobs:
           python-version: '3.12'
           cache: 'pip'
 
+      # black is installed here too, pinned to the SAME version as backend-lint:
+      # tests/test_ci_gates.py::test_black_allowlist_entries_are_actually_clean is
+      # `pytest.importorskip("black")`, so without this the guard that stops a dirty
+      # path being added to the ratchet silently SKIPPED in CI.
+      # pytest-cov: see the coverage flags on the `Run unit tests` step below.
       - name: Install dependencies
         run: |
           pip install -r requirements.txt -r requirements-dev.txt
@@ -45,13 +50,123 @@ jobs:
           find app -name "*.py" -exec python -m py_compile {} +
           echo "All Python files pass syntax check"
 
+      # -rxX surfaces the xfail/xpass summary. tests/test_value_math.py carries a
+      # module-level xfail for its 35 RED-by-design Bundle C v1.1 stubs; -rX makes
+      # it loud the day they start XPASSing (i.e. the implementation landed and the
+      # marker should come off). Marker selection is deliberately unchanged — #49
+      # keeps live_unit/live_db/integration out of the PR gate.
+      #
+      # COVERAGE (issue #49 section C). --cov-report=term-missing puts the number in
+      # every run log; --cov-fail-under makes it a real floor, so a coverage collapse
+      # cannot merge green.
+      #
+      # HOW THE FLOOR WAS SET, and why it sits deliberately below the measurement.
+      # MEASURED 2026-08-25: 78% (19,825 statements, 4,363 missed) over this exact
+      # marker selection, run locally as 12 chunks of tests/test_*.py with the
+      # network-hanging adapter files excluded and the results `coverage combine`d
+      # (8,505 passed / 20 failed — the documented pre-existing set).
+      # GitHub Actions cannot be executed from the dev machine, and the runner is
+      # NOT the same environment: it has no .env, so credential-gated branches take
+      # different paths and roughly 150 more tests error there than here. The CI
+      # percentage will therefore be lower than 78 by an amount that cannot be known
+      # until CI runs. Setting the floor at the local measurement would turn the
+      # BLOCKING backend-tests job red on day one, which is exactly the failure mode
+      # issue #49 exists to end.
+      # So: 60 — about 18 points of margin below the measurement. It can only fire
+      # on a real collapse, never on that environment delta.
+      # RATCHET IT UP to the observed CI percentage (rounded down) after the first
+      # green run on main — that number is the one the acceptance criterion asks
+      # for, and it can only be read off CI itself.
       - name: Run unit tests
         run: |
           python -m pytest tests/ -v \
             -m "not (live_unit or live_db or integration)" \
             --ignore=tests/test_integration.py \
             --timeout=60 \
+            -rxX \
+            --cov=app \
+            --cov-report=term-missing \
+            --cov-fail-under=60 \
             --tb=short
+
+  # NOT AUTOMATICALLY REQUIRED. Adding a job to this file does not make it a
+  # required status check: until branch protection on `main` lists
+  # `backend-lint` (and `backend-tests`) under "Require status checks to pass",
+  # the BLOCKING black step below only fails its own job and a PR can still be
+  # merged red. Flipping that setting is a repo-admin action, not a code change
+  # — it is called out in the #49 PR description.
+  backend-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      # Pinned EXACTLY, not to the pyproject range: `black>=26.1.0,<27.0.0` resolves to
+      # whatever 26.x shipped that morning, so a point release that changes formatting
+      # would turn this BLOCKING step red on a day with no code change. 26.5.1 is the
+      # version .github/black-clean-paths.txt was measured against.
+      # TODO(#46): move the pin into the compiled dev lock when requirements-dev.txt
+      # lands, so it is maintained in one place instead of three.
+      - name: Install black
+        run: pip install "black==26.5.1"
+
+      # BLOCKING. Scoped to .github/black-clean-paths.txt — the ratchet of files
+      # that are black-clean today. See that file for why the gate is not repo-wide.
+      - name: black --check (clean-paths allowlist)
+        run: |
+          grep -v -e '^[[:space:]]*#' -e '^[[:space:]]*$' .github/black-clean-paths.txt \
+            | tr -d '\r' \
+            | xargs -r python -m black --check --diff
+
+      # REPORTING ONLY. 603 of 619 files under app/ tests/ scripts/ drift from black
+      # at c630436, so this cannot gate a PR without a ~600-file reformat commit that
+      # #49 puts out of scope. It stays here so the number is measured on every run
+      # and visibly shrinks as files graduate onto the allowlist above.
+      - name: black --check (whole repo, drift report)
+        continue-on-error: true
+        run: |
+          echo "Baseline at main c630436: 603 of 619 files would be reformatted."
+          echo "This step never blocks a PR — see .github/black-clean-paths.txt."
+          python -m black --check app/ tests/ scripts/
+
+  dependency-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: SmartCompareApp/package-lock.json
+
+      # NON-BLOCKING on purpose, twice over:
+      #  1. requirements.txt is a floating `>=` list, not a lock, so pip-audit here
+      #     scans whatever resolved today — a red run would not be reproducible.
+      #     TODO(#46): point this at the compiled lock and drop continue-on-error,
+      #     which is the only version of this gate that actually means something.
+      #  2. #49 installs the gate and records the current state; triaging advisories
+      #     is separate work (issue #49, Out of scope).
+      - name: pip-audit (Python dependencies)
+        continue-on-error: true
+        run: |
+          pip install pip-audit
+          pip-audit -r requirements.txt --strict
+
+      # NON-BLOCKING until the current high/critical advisory count is recorded and
+      # triaged; flip to blocking (or to a "no new advisories" baseline) after that.
+      - name: npm audit (SmartCompareApp)
+        continue-on-error: true
+        run: cd SmartCompareApp && npm audit --audit-level=high
 
   frontend-typecheck:
     runs-on: ubuntu-latest

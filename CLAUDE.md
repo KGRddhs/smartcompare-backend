@@ -408,7 +408,7 @@ LIVE=1 python -m pytest tests/ -v --timeout=180
 - ~100 test files (`test_<feature>.py`, one per service). 80%+ coverage target for new features.
 - No regressions: all existing tests must pass before merging.
 - **Eval gate (Bundle B B.6):** pre-merge `python -m scripts.eval_runner --subset smoke20 --mode regression --baseline-run-id 4aee8e88-da97-41b3-974b-3e75c2c9c10e` (S1 baseline = 21.0%). Measurement runs ALWAYS `--concurrency 1` (walls are load-sensitive); full-200 needs `--allow-full` + dispatcher GO (~600-1,000 Serper credits). Runbooks: `docs/runbooks/qaren-eval.md` + `qaren-gold-set.md`.
-- **Known RED-by-design:** `tests/test_value_math.py` (24 TDD stubs for unimplemented Bundle C v1.1 fns) — not a regression. Gate batches must exclude network-dependent "free" tests (e.g. `test_rate_limiting_complete.py` does a real GET).
+- **Known RED-by-design:** `tests/test_value_math.py` (**35** TDD stubs for unimplemented Bundle C v1.1 value-math A.6.x fns — recounted 2026-08-25, the old "24" was stale) — not a regression. Contained by a module-level `pytest.mark.xfail(strict=False)` since #49, so they no longer redden the build; `ci.yml` runs with `-rxX` so the day they XPASS the marker gets removed. Gate batches must exclude network-dependent "free" tests (e.g. `test_rate_limiting_complete.py` does a real GET).
 - **Windows codec trap:** always pass `encoding='utf-8'` to `subprocess.run`/`open`/`read_text` — `text=True` alone decodes cp1252 and manufactures mojibake from clean UTF-8 (bit 3 independent tools on 2026-06-10). Byte-compare BOTH sides before reporting any non-ASCII diff.
 
 ### Dependency Scanning (pre-deploy)
