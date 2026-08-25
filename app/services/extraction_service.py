@@ -219,6 +219,104 @@ FRAGRANCE_SUBTYPE_SPEC_ALIASES: Dict[str, str] = {
 }
 
 
+# #59 — SA-1 generalised. The subtype prompt asks GPT for PRODUCT_TYPE_SCHEMAS
+# field names while extract_specs cleans against CATEGORY_SPEC_SCHEMAS, so any
+# subtype-named answer was dropped and its canonical home stamped "N/A" — which
+# then fired the PAID smart-fallback / Tier-2 / Tier-3 refill for a value the
+# model had already produced.
+#
+# Keyed by the subtype id detect_product_type returns. Only maps a subtype field
+# onto an EXISTING canonical field of the same category — no schema is extended.
+# Fragrance entries are the original SA-1 pair, unchanged.
+SUBTYPE_SPEC_ALIASES: Dict[str, Dict[str, str]] = {
+    # --- electronics ---
+    "electronics.tv":            {"screen_size": "display", "smart_os": "os"},
+    "electronics.laptop":        {"cpu": "processor", "battery_hrs": "battery", "ports": "connectivity"},
+    "electronics.smartwatch":    {"battery_days": "battery"},
+    "electronics.headphones":    {"battery_hrs": "battery", "bt_version": "connectivity"},
+    "electronics.speaker":       {"battery_hrs": "battery"},
+    "electronics.ac":            {"wifi": "connectivity"},
+    "electronics.vacuum":        {"battery_min": "battery"},
+    "electronics.washer":        {"dimensions": "weight"},
+    # --- supplements ---
+    "supplements.vitamin":       {"dose_iu_mcg": "dosage", "third_party_tested": "certifications"},
+    "supplements.mineral":       {"dose_mg": "dosage"},
+    "supplements.protein":       {"container_size": "count"},
+    "supplements.preworkout":    {"caffeine_mg": "dosage", "servings": "count"},
+    "supplements.fish_oil":      {"epa_mg": "dosage", "third_party_tested": "certifications"},
+    # supplements.multivitamin has no subtype key that maps onto a canonical
+    # field — its prompt fields (vitamins_count/minerals_count/iron_included)
+    # have no canonical home, and form/serving_size/count are already canonical.
+    # --- fragrances (original SA-1 pair; behavior unchanged) ---
+    "fragrances.edp":            dict(FRAGRANCE_SUBTYPE_SPEC_ALIASES),
+    "fragrances.edt":            dict(FRAGRANCE_SUBTYPE_SPEC_ALIASES),
+    "fragrances.niche":          dict(FRAGRANCE_SUBTYPE_SPEC_ALIASES),
+    # --- makeup ---
+    "makeup.foundation":         {"shade_range_count": "shade_range", "vol_ml": "volume"},
+    "makeup.lipstick":           {"vol_g": "volume", "longevity_hrs": "long_lasting", "color": "shade_range"},
+    "makeup.mascara":            {"color": "shade_range", "water_proof": "waterproof"},
+    # --- skincare ---
+    "skincare.serum":            {"hero_active": "active_ingredient", "secondary_actives": "ingredients",
+                                  "vol_ml": "volume", "ph": "ph_level"},
+    "skincare.sunscreen":        {"filter_type": "active_ingredient"},
+    "skincare.cleanser":         {"actives": "active_ingredient", "vol_ml": "volume", "ph": "ph_level"},
+    # --- haircare ---
+    "haircare.shampoo":          {"target_concern": "hair_concern", "vol_ml": "volume", "scent": "scent"},
+    # --- fashion ---
+    "fashion.bag":               {"lining": "material", "closure": "closure_type"},
+    "fashion.shoe":              {"upper_material": "material", "sizing_run": "size_options",
+                                  "closure": "closure_type"},
+    "fashion.watch":             {"case_material": "material", "strap": "design_details"},
+    # --- grocery ---
+    "grocery.oil":               {"volume_ml": "size", "variety": "ingredients"},
+    "grocery.tea":               {"bags_count": "count", "type": "ingredients"},
+    "grocery.chocolate":         {"weight_g": "size", "cacao_pct": "ingredients"},
+}
+
+
+# #59 — some category non-negotiables cannot exist for a given subtype: a TV has
+# no battery, processor, RAM or rear camera. Without this, missing_critical lists
+# them on every compare and the paid Tier-2 (one Serper + one GPT per field) and
+# Tier-3 (a gpt-4o call) cascade chases a spec that can never be filled.
+#
+# An entry may only REMOVE fields from the category list, never add — a field
+# removed here follows the existing A.4.9 rule: the dependent scoring dimension
+# is omitted, never faked.
+SUBTYPE_NON_NEGOTIABLE_DROPS: Dict[str, tuple] = {
+    "electronics.tv":             ("battery", "processor", "ram", "rear_camera"),
+    "electronics.ac":             ("battery", "processor", "ram", "rear_camera"),
+    "electronics.washer":         ("battery", "processor", "ram", "rear_camera"),
+    "electronics.refrigerator":   ("battery", "processor", "ram", "rear_camera"),
+    "electronics.speaker":        ("processor", "ram", "rear_camera"),
+    "electronics.headphones":     ("processor", "ram", "rear_camera"),
+    "electronics.smartwatch":     ("processor", "ram", "rear_camera"),
+    "electronics.vacuum":         ("processor", "ram", "rear_camera"),
+    "electronics.gaming_console": ("battery", "rear_camera"),
+    "electronics.laptop":         ("rear_camera",),
+}
+
+
+def subtype_spec_aliases(type_key: Optional[str]) -> Dict[str, str]:
+    """Alias map for a subtype id, or empty when it has none."""
+    if not type_key:
+        return {}
+    return SUBTYPE_SPEC_ALIASES.get(type_key, {})
+
+
+def non_negotiable_fields_for(category: str, type_key: Optional[str] = None) -> List[str]:
+    """Non-negotiable schema fields for ``category``, minus any the subtype
+    cannot physically have.
+
+    Falls back to the plain category list for an unknown or absent subtype, so
+    behavior is unchanged everywhere an override is not declared.
+    """
+    base = CRITICAL_SCHEMA_FIELDS_NON_NEGOTIABLE.get(canonicalize_category(category), [])
+    drops = SUBTYPE_NON_NEGOTIABLE_DROPS.get(type_key or "", ())
+    if not drops:
+        return list(base)
+    return [f for f in base if f not in drops]
+
+
 # Bundle C § 2f Step 1 — split critical schema fields into two layers:
 #   - NON_NEGOTIABLE: A.4.7 Tier 2 + A.4.8 Tier 3 fallbacks chase these
 #     hard. If still missing after 3-tier fallback, the dependent dim is
@@ -451,6 +549,7 @@ def _build_specs_prompt(brand: str, name: str, variant: str, category: str, sear
     variant_note = f" ({s_variant})" if s_variant else ""
 
     # L2.12 — try product-type-specific schema first.
+    type_key = None
     try:
         from app.services.product_type_router import (
             detect_product_type,
@@ -461,6 +560,7 @@ def _build_specs_prompt(brand: str, name: str, variant: str, category: str, sear
         type_key = detect_product_type(full_name_for_detection, category)
         type_fields = get_schema_for_type(type_key)
     except Exception:
+        type_key = None
         type_fields = []
 
     if type_fields:
@@ -508,7 +608,10 @@ SEARCH CONTEXT:
 
 Return ONLY valid JSON (no markdown) matching the schema above."""
 
-    return {"system": system_prompt, "user": user_prompt}
+    # `type_key` rides along so extract_specs can reconcile the subtype-named
+    # keys this prompt just asked for back onto their canonical homes (#59).
+    # Additive — existing callers read only "system"/"user".
+    return {"system": system_prompt, "user": user_prompt, "type_key": type_key}
 
 
 PRICE_EXTRACTION_SYSTEM = """You are a price extraction expert for GCC markets. Your goal is to find the MOST AUTHORITATIVE retail price, not the cheapest one.
@@ -1072,17 +1175,28 @@ async def extract_specs(
         allowed_fields = set(CATEGORY_SPEC_SCHEMAS[schema_key])
         meta_keys = {"brand", "model", "variant", "category"}
 
-        # SA-1 (fragrance-scoped) — reconcile subtype-named keys onto their
-        # canonical homes BEFORE the filter, so the fragrance subtype prompt's
-        # `longevity_hrs`/`volume_ml` values are not silently dropped. Canonical
-        # value (if GPT also emitted one) stays authoritative; the alias only
-        # fills a canonical key that is absent/empty.
-        if schema_key == "fragrances":
-            for alias_key, canonical_key in FRAGRANCE_SUBTYPE_SPEC_ALIASES.items():
-                alias_val = raw.get(alias_key)
+        # #59 (generalised from the fragrance-only SA-1) — reconcile
+        # subtype-named keys onto their canonical homes BEFORE the filter.
+        # `_build_specs_prompt` asked GPT for the SUBTYPE field list, but the
+        # filter below keeps only CATEGORY fields, so without this every
+        # subtype-named answer is dropped and its canonical home stamped "N/A" —
+        # which then fires the PAID smart-fallback / Tier-2 / Tier-3 refill for a
+        # value the model already returned.
+        #
+        # Semantics preserved from SA-1: a canonical value GPT also emitted stays
+        # authoritative; the alias only fills a canonical key that is
+        # absent/empty/"null". `_source` citations are reconciled the same way so
+        # fact-checking still attributes the value it kept.
+        _aliases = subtype_spec_aliases(prompt_parts.get("type_key"))
+        for alias_key, canonical_key in _aliases.items():
+            if canonical_key not in allowed_fields:
+                continue  # defensive: never invent a non-schema field
+            for src, dst in ((alias_key, canonical_key),
+                             (f"{alias_key}_source", f"{canonical_key}_source")):
+                alias_val = raw.get(src)
                 if alias_val is None or (isinstance(alias_val, str) and not alias_val.strip()):
                     continue
-                canon_val = raw.get(canonical_key)
+                canon_val = raw.get(dst)
                 canon_empty = (
                     canon_val is None
                     or canon_val == ""
@@ -1090,7 +1204,7 @@ async def extract_specs(
                     or (isinstance(canon_val, str) and (not canon_val.strip() or "or null" in canon_val.lower()))
                 )
                 if canon_empty:
-                    raw[canonical_key] = alias_val
+                    raw[dst] = alias_val
 
         cleaned = {}
         for key in list(meta_keys) + CATEGORY_SPEC_SCHEMAS[schema_key]:
