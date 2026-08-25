@@ -72,6 +72,86 @@ PROVIDER_CONFIGS = {
     },
 }
 
+
+# ============================================================================
+# #60 — env-tunable Serper ceiling + the gate serper_service consults.
+#
+# WHY this is not just `has_budget("serper")`: the 2200 above is a FREE-tier
+# ceiling (2,500 one-time credits minus a 300 buffer). Production runs a PAID
+# key, and `scripts/cron_warm_price_cache.py:118-131` documents deliberately
+# NOT consulting has_budget for exactly that reason — once lifetime burn passes
+# 2200 the counter would wrongly report "exhausted" and darken a healthy paid
+# key. Hardcoding the free-tier number and then gating live traffic on it would
+# reproduce that failure mode on the price path.
+#
+# So the ceiling becomes a knob:
+#   SERPER_LIFETIME_LIMIT unset  -> 2200 (byte-identical to the packaged value:
+#                                   get_remaining("serper") == 2200 as before)
+#   SERPER_LIFETIME_LIMIT=250000 -> the paid key's real ceiling; the gate admits
+#                                   calls far past 2200
+#   SERPER_LIFETIME_LIMIT=0      -> gate DISABLED entirely. This is the rollback
+#                                   env flip for #60: one Railway variable
+#                                   restores the pre-gate behaviour with no
+#                                   redeploy.
+# Read fresh on every call (mirrors _serper_image_daily_budget) so a Railway env
+# update takes effect without a restart.
+# ============================================================================
+_SERPER_LIFETIME_LIMIT_ENV = "SERPER_LIFETIME_LIMIT"
+
+
+def _serper_lifetime_limit() -> int:
+    """Effective serper lifetime ceiling. Falls back to the packaged
+    PROVIDER_CONFIGS value when the env var is absent, unparseable, or
+    non-positive (a non-positive value means "gate disabled" — see
+    _serper_gate_disabled — NOT "ceiling of zero")."""
+    default = PROVIDER_CONFIGS["serper"]["monthly_limit"]
+    try:
+        value = int(os.environ.get(_SERPER_LIFETIME_LIMIT_ENV, default))
+    except (TypeError, ValueError):
+        return default
+    return value if value > 0 else default
+
+
+def _provider_limit(provider: str) -> int:
+    """The effective ceiling for `provider` — the env-resolved one for serper,
+    the packaged PROVIDER_CONFIGS value for everyone else. 0 for unknown
+    providers (callers already treat unknown as "no budget")."""
+    config = PROVIDER_CONFIGS.get(provider)
+    if not config:
+        return 0
+    if provider == "serper":
+        return _serper_lifetime_limit()
+    return config["monthly_limit"]
+
+
+def _serper_gate_disabled() -> bool:
+    """True when the operator explicitly set SERPER_LIFETIME_LIMIT to a
+    non-positive value — the documented kill switch for the #60 gate. An
+    ABSENT var is NOT "disabled" (that is the default-on 2200 ceiling)."""
+    raw = (os.environ.get(_SERPER_LIFETIME_LIMIT_ENV) or "").strip()
+    if not raw:
+        return False
+    try:
+        return int(raw) <= 0
+    except (TypeError, ValueError):
+        return False
+
+
+def serper_gate_allows() -> bool:
+    """Should a LIVE Serper call be dispatched?
+
+    The single gate `serper_service` consults before spending a credit. Fails
+    OPEN on any error (a dead Upstash must never disable Serper), matching
+    has_budget's own convention."""
+    try:
+        if _serper_gate_disabled():
+            return True
+        return has_budget("serper")
+    except Exception as e:  # noqa: BLE001 — a gate failure must never block spend
+        logger.warning(f"[BUDGET] serper gate check failed: {e} — failing open")
+        return True
+
+
 # Circuit breaker config
 CB_FAILURE_THRESHOLD = 3           # consecutive failures to trip
 CB_RECOVERY_TIMEOUT = 600          # 10 min cooldown
@@ -192,16 +272,20 @@ def has_budget(provider: str) -> bool:
     if not config:
         return False
     try:
+        # #60 — serper's ceiling is env-resolved (SERPER_LIFETIME_LIMIT); every
+        # other provider resolves to its packaged PROVIDER_CONFIGS value, so this
+        # is byte-identical for them and for an unset serper env.
+        limit = _provider_limit(provider)
         raw = _redis_get(_budget_key(provider))
         if raw is None:
             return True  # No usage yet or Redis down
         used = int(raw)
-        remaining = config["monthly_limit"] - used
+        remaining = limit - used
         if remaining <= 0:
-            logger.warning(f"[BUDGET] {provider} budget exhausted ({used}/{config['monthly_limit']})")
+            logger.warning(f"[BUDGET] {provider} budget exhausted ({used}/{limit})")
             return False
         if used >= config.get("warn_at", float("inf")):
-            logger.warning(f"[BUDGET] {provider} budget warning ({used}/{config['monthly_limit']})")
+            logger.warning(f"[BUDGET] {provider} budget warning ({used}/{limit})")
         return True
     except Exception as e:
         logger.warning(f"[BUDGET] Error checking {provider}: {e}")
@@ -209,11 +293,10 @@ def has_budget(provider: str) -> bool:
 
 
 def _burn_threshold(provider: str) -> int:
-    """80%-of-ceiling credit count for `provider` (0 for unknown providers)."""
-    config = PROVIDER_CONFIGS.get(provider)
-    if not config:
-        return 0
-    return int(config["monthly_limit"] * WARN_BURN_FRACTION)
+    """80%-of-ceiling credit count for `provider` (0 for unknown providers).
+    #60 — tracks the EFFECTIVE (env-resolved) ceiling so raising the serper
+    limit moves the burn tripwire with it instead of alerting forever."""
+    return int(_provider_limit(provider) * WARN_BURN_FRACTION)
 
 
 def _burn_sentinel_key(provider: str) -> str:
@@ -249,7 +332,7 @@ def _maybe_fire_burn_alert(provider: str, used: int) -> None:
             return
 
         config = PROVIDER_CONFIGS.get(provider, {})
-        limit = config.get("monthly_limit", 0)
+        limit = _provider_limit(provider)  # #60 — effective (env-resolved) ceiling
         pct = round(100 * used / limit, 1) if limit else 0.0
         msg = (
             f"[BUDGET] {provider} burn alert: {used}/{limit} credits "
@@ -388,7 +471,7 @@ def get_remaining(provider: str) -> int:
             used = int(raw)
     except Exception:
         pass
-    return max(0, config["monthly_limit"] - used)
+    return max(0, _provider_limit(provider) - used)
 
 
 def get_burn_status(provider: str) -> Dict[str, Any]:
@@ -400,7 +483,7 @@ def get_burn_status(provider: str) -> Dict[str, Any]:
     the alert drill.
     """
     config = PROVIDER_CONFIGS.get(provider)
-    limit = config["monthly_limit"] if config else 0
+    limit = _provider_limit(provider) if config else 0
     threshold = _burn_threshold(provider)
     used = 0
     try:
@@ -444,8 +527,8 @@ def get_usage_summary() -> Dict[str, Any]:
             pass
         result[provider] = {
             "used": used,
-            "limit": config["monthly_limit"],
-            "remaining": max(0, config["monthly_limit"] - used),
+            "limit": _provider_limit(provider),
+            "remaining": max(0, _provider_limit(provider) - used),
             "is_lifetime": config.get("is_lifetime", False),
         }
         if config.get("is_lifetime"):

@@ -43,6 +43,17 @@ def _patch_httpx(response: MagicMock):
     return patch("app.services.serper_service.httpx.AsyncClient", _AsyncClient)
 
 
+# #60 — this module asserts METER behaviour, not budget behaviour. Stub the
+# Redis counter read so the new serper budget gate is deterministically OPEN
+# and no assertion here depends on the live Upstash lifetime counter.
+@pytest.fixture(autouse=True)
+def _budget_gate_open():
+    from app.services import api_budget_service
+
+    with patch.object(api_budget_service, "_redis_get", return_value=None):
+        yield
+
+
 # ---------------------------------------------------------------------------
 # Successful calls record usage
 # ---------------------------------------------------------------------------
@@ -66,6 +77,20 @@ async def test_search_product_prices_records_usage_on_200(monkeypatch):
         with patch.object(serper_service, "record_usage") as mock_record:
             await serper_service.search_product_prices("iPhone 16")
     mock_record.assert_called_with("serper")
+
+
+@pytest.mark.asyncio
+async def test_gcc_search_product_prices_records_usage_exactly_once(monkeypatch):
+    """#60 — the always-empty gl=<gcc> primary leg is no longer purchased, so a
+    GCC shopping search is ONE billable Serper credit, not two."""
+    monkeypatch.delenv("SERPER_SHOPPING_PRIMARY_COUNTRIES", raising=False)
+    monkeypatch.setattr(serper_service, "SERPER_API_KEY", "test-key")
+    resp = _mock_response(200, {"shopping": [{"title": "x"}]})
+    with _patch_httpx(resp):
+        with patch.object(serper_service, "record_usage") as mock_record:
+            await serper_service.search_product_prices("iPhone 16", country="bh")
+    assert mock_record.call_count == 1
+    assert mock_record.call_args_list[0].args == ("serper",)
 
 
 @pytest.mark.asyncio
