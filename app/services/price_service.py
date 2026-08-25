@@ -3437,6 +3437,27 @@ def exact_gate_enabled() -> bool:
     )
 
 
+def sale_price_first_enabled() -> bool:
+    """True iff the OpenGraph fallback prefers the SALE price over the LIST price
+    (default ON).
+
+    Fragrance sweep 2026-08-25 — on a Salla storefront ``product:price:amount`` is
+    the crossed-out LIST price and the real shelf price is ``product:sale_price:
+    amount``. Measured over the 86 mappable cached fragrance PDPs: the sale tag
+    appears on 14 pages, ALL 14 Salla, and 10 of them diverge 1.13x-4.57x — so
+    production shipped the LIST price on every one (P0 correctness).
+
+    Default ON because it is a correctness fix, NOT a new capability. Read per
+    call so Railway can flip it without a restart; with the flag OFF the OG
+    branch takes its exact pre-change path (the sale tag is never even looked
+    up), so the rollback is byte-identical. Deliberately INDEPENDENT of
+    exact_gate_enabled(): this is a tag-precedence defect, not part of the
+    exact-identity layer, and must survive that layer's master rollback."""
+    return os.getenv("ENABLE_SALE_PRICE_FIRST", "true").strip().lower() not in (
+        "false", "0", "no", "off", "",
+    )
+
+
 def variant_min_guard_enabled() -> bool:
     """Scraping audit 2026-07-08 — gate the variable-product MIN-variation decant guard
     (a woo/shopify variable product served its cheapest 30ml variation as the full bottle).
@@ -9078,6 +9099,40 @@ def extract_price_from_html(
     # Priority 2: OpenGraph meta tags
     og_price = soup.find('meta', property='og:price:amount')
     og_currency = soup.find('meta', property='og:price:currency')
+    # P0 (fragrance sweep 2026-08-25) — SALE price BEFORE list price. On Salla
+    # `product:price:amount` is the CROSSED-OUT list price; the shelf price is
+    # `product:sale_price:amount`. Measured over the 86 mappable cached PDPs the
+    # sale tag appears on 14 pages, ALL 14 Salla, 10 diverging 1.13x-4.57x (3saf
+    # 799 vs 175, sa.abdulsamadalqurashi 990 vs 495, kw.oudelite 14 vs 7 ...) —
+    # production shipped the LIST price on every one. The JSON-LD branch cannot
+    # save these: extract_jsonld_price hard-continues on a currency mismatch and
+    # only retries "USD", so a SAR/AED/KWD/QAR/OMR page always lands HERE.
+    # Precedence is og:price:amount -> product:sale_price:amount ->
+    # product:price:amount. Flag-gated (ENABLE_SALE_PRICE_FIRST, default ON):
+    # with the flag OFF the sale tag is never looked up and the two statements
+    # below are the exact pre-change bytes.
+    if not og_price and sale_price_first_enabled():
+        _sale_price = soup.find('meta', property='product:sale_price:amount')
+        _sale_raw = _sale_price.get('content') if _sale_price else None
+        if _sale_raw:
+            # Only PREFER a sale tag we can actually turn into a positive
+            # amount — otherwise a junk/zero sale tag ("on request", "0") would
+            # blow up the shared float() below and cost us the perfectly good
+            # list price, making flag-ON strictly worse than flag-OFF.
+            try:
+                _sale_usable = float(_sale_raw) > 0
+            except (ValueError, TypeError):
+                _sale_usable = False
+            if _sale_usable:
+                og_price = _sale_price
+                # Salla ships a matching product:sale_price:currency on all 14
+                # cached pages, but do NOT depend on it: fall back to the LIST
+                # price's currency tag (same page, same money) so a currency-less
+                # sale tag never silently re-labels the amount.
+                og_currency = (
+                    soup.find('meta', property='product:sale_price:currency')
+                    or soup.find('meta', property='product:price:currency')
+                )
     if not og_price:
         og_price = soup.find('meta', property='product:price:amount')
         og_currency = soup.find('meta', property='product:price:currency')
