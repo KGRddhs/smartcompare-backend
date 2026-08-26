@@ -4,6 +4,171 @@
 
 ---
 
+## Session 60: Fragrance data-provenance audit + global scrape validation — 2026-08-25/26
+
+Branch `feature/fragrance-hybrid-capture` (base 8adaefb). Three artifacts published: Fragrance Data
+Provenance Audit / The Hybrid Scrape Plan / What Broke Outside Bahrain. Harness, corpora and raw
+per-agent output live in the git-excluded `_proof/` of the worktree `AI/sc-scraper-proof`
+(92 Gulf pages + 328 global rows across 163 hosts + 429 cached global pages).
+
+### THE HEADLINE: only PRICE is scraped
+
+`extract_specs` (extraction_service.py:1147) and `extract_reviews` (:1356) are OpenAI calls whose ONLY
+substantive input is `search_context` — Serper `organic[:5]` title+snippet, truncated to 3000/2500
+chars (structured_comparison_service.py:6945). Proof by exhaustion: all 13 adapter and renderer
+modules contain `specs` ZERO times and `aggregateRating|reviewCount|ratingValue` ZERO times;
+`reviewBody` appears ZERO times in all of `app/`. The prompt LICENSES invention —
+extraction_service.py:515 "you MUST attempt to provide a value" + :516 "fall back to your training
+data (you know specs for ... fragrances)" — and the result is cached 7 days.
+
+Asymmetry worth knowing: the REVIEWS prompt is properly guarded ("ONLY the search results ... if you
+cannot cite a snippet, do NOT include the claim"), so reviews go EMPTY when Serper is down while SPECS
+get fabricated. Do not say "both are invented".
+
+A rating still ships with zero reviews: `derive_rating_from_scores` (response_builder.py:160-163) emits
+`2.5 + overall/100*2.3`; with `scores=={}` the MISSING_SCORE=50 sentinel yields a CONSTANT **3.6** on
+`products[i].rating` with `rating_derived: true`.
+
+### THE P0 (fixed on the branch — 6 pages corrected, 0 regressions)
+
+Production passes the USER region currency (structured_comparison_service.py:5053).
+`extract_jsonld_price` hard-`continue`s a currency mismatch at **price_service.py:8818** and only
+retries `"USD"`, so on any SAR/AED/KWD/QAR/OMR page the correct JSON-LD SALE price is dropped. Control
+lands on the OpenGraph branch (price_service.py:9078-9083) which reads `product:price:amount` — the
+struck-through LIST price — and NEVER reads `product:sale_price:amount` (grep: only `noon_service.py`
+handles it). Measured: 21 of 92 pages lose their price purely from the BHD ask; 6 shipped an inflated
+list price (3saf 80.14 vs a true 17.55 = **4.57x**, sa.oudelite 2.0x, om.oudelite 2.19x, kw.oudelite
+2.0x, rend-bahrain 1.61x, vanilla.sa 1.13x). ZERO BHD-tier pages affected — which is why it stayed
+invisible.
+
+### GLOBAL VALIDATION — 328 pages / 163 hosts / 26 countries killed three assumptions
+
+1. **The currency rule is catastrophically wrong outside the Gulf.** "dot=decimal, comma=thousands"
+   scores 244/372 = 65.6% corpus-wide and **1% in EU-South**, 56% in DACH. Every failure is a silent
+   100x-1000x, never a crash. A structural LAST-SEPARATOR rule scores 98.9%; adding the ISO-4217
+   MINOR UNIT (3 for BHD/KWD/OMR/JOD/TND/IQD/LYD) reaches **371/371 = 100%**, all six regions.
+   **Locale does NOT work** — douglas.ch prints the product price with a DOT and the shipping banner
+   with a COMMA in one document; matas.dk mixes `1.454 kr.` and `314,95 kr` on one PDP. Country is
+   worse — Amouage prices its OMAN store in USD. Predicted-and-wrong: U+202F and U+2009 appear **ZERO**
+   times in 328 pages; U+00A0 appears 299.
+   **The real answer: take the price from JSON-LD, always** — 353 of 360 JSON-LD values match
+   `^\d+(\.\d+)?$` with zero comma-decimals. OG is 11% deviant and must never be `float()`ed directly.
+2. **PARSING WAS NEVER THE HARD PART — SELECTION IS.** Even at 100% parse accuracy, the first
+   price-shaped number on the page is right on only **41%** of PDPs (UK **13%**, Gulf 30%, DACH 45%,
+   EU-South 51%, US 65%). Median price-shaped tokens per page: Gulf 2, UK 6, DACH 6, US 8, max 17. The
+   decoys are legally mandated and growing (German Grundpreis, UK/CZ per-litre unit price, EU Omnibus
+   30-day-lowest, BNPL instalments, free-shipping thresholds). Sharpest case: **notino.co.uk renders
+   the per-litre unit price under the SAME `data-testid` as the product price, 8 characters apart, at
+   exactly 10x.**
+3. **`product:sale_price:amount` is a GULF-ONLY convention** — 7 occurrences in 328 pages, ALL 7 Gulf
+   (Salla + Zid), ZERO across 206 usable non-Gulf pages in five regions. Scope the rule to those
+   platforms; elsewhere derive sale state from a second Offer/priceSpecification with
+   `priceType=StrikethroughPrice`.
+
+Also measured: `detect_platform` returns **"unknown" on 106 of 247** usable pages (43%, the modal
+verdict) and `nextjs` is NOT a platform — it fires across five unrelated commerce backends including
+sephora.me, which is SFCC underneath. **Zid is invisible** to the six regexes. The extractor returns
+**NO price on 14 of 28** large international retailers (9 `ProductGroup`+`hasVariant`, 4
+`@graph`-wrapped, 1 empty `offers`), and 29% of pages with `Offer.price` carry more than one distinct
+value with nothing marking the default.
+
+Reviews: aggregateRating roughly DOUBLES outside Bahrain (38% corpus vs 16% Bahrain; UK 55%, DACH 56%)
+but review BODIES barely move (12% vs 8.7%) — 50% of pages load a third-party widget and 85% of those
+ship ZERO bodies in server HTML. Widget APIs ARE reachable with credentials the page publishes, but the
+merchant id must be read from the page, so it is a per-host adapter. Bodies are contaminated:
+pacoperfumerias.co.uk inlines 264 Reviews that are all MERCHANT service reviews with no `itemReviewed`;
+jomalone.co.uk publishes a FAMILY-level 4.8/263 while its SKU-level rating is 3.0/1. And the markup
+lies about zero — superdrug emits `ratingValue 0`, macys emits `'nu'`/`'null'`, cloud10beauty emits
+`ratingValue` as an error OBJECT, so a presence test inflates coverage then crashes `float()`.
+
+Non-issues confirmed: **GDPR/CMP walls gate 0 of 247** pages on the raw-HTTP channel, and
+`valueAddedTaxIncluded` appears on 2 of 247 — do NOT build a VAT branch, and blacklist "incl. VAT" as
+a price-locating cue because the only ones present attach to the per-litre DECOY.
+
+### ⛔ THE ENCYCLOPAEDIA SPEC SPINE IS CANCELLED — READ THIS BEFORE PROPOSING IT AGAIN
+
+A design to source notes/accords/longevity/sillage/perfumer from Parfumo and Fragrantica was built,
+then killed by two independent facts:
+
+- **Both robots.txt disallow Claude agents BY NAME.** Fragrantica carries `ClaudeBot`,
+  `Claude-SearchBot` AND **`Claude-User`** (user-initiated fetches) each `Disallow: /`; Parfumo lists
+  `ClaudeBot` in a `Disallow: /` group. An earlier read of only the `User-agent: *` group saw
+  `ai-input=yes` and wrongly concluded it was permitted. **Read the NAMED groups, not just `*`.**
+- **Both then actively defended, mid-session, against our own crawling.** Fragrantica went 12/12 to
+  `403 cf-mitigated: challenge` (8/8 HTTP 200 the day before). **Parfumo began serving DECOY pages**:
+  correct `<title>`/`<h1>`, but the canonical, notes, accords, year, longevity, sillage and perfumer of
+  a DIFFERENT perfume (`Sauvage`->`Deja_Vu_2`, `Khamrah`->`lemon-pie`, `Amber Oud`->`Splendida Jasmin
+  Noir`), with invented note names (`Flixzampuron`, `Grothzenvixol`). 35/35 mismatched, re-randomised
+  per request, every client poisoned. Verified from cached bytes with ZERO new requests.
+  **Any Parfumo-derived figure after 2026-08-25 23:07 is fiction**, including a 29-page census an
+  earlier agent scored as clean data.
+
+If a fragrance spec database is ever needed: a licensing conversation or a commercial provider. Not
+scraping.
+
+### MATCHING is a FLANKER problem, not a Gulf problem
+
+Western titles match BETTER than Gulf ones (57% vs 39% title-only; 83% vs 68% with a structured brand
+field). But base fragrances resolve **8/9 correct with 0% silently wrong** while flankers resolve
+**3/10 with a 20% silent-wrong rate** — and **every silent-wrong scored a PERFECT 1.00 similarity**,
+because "Sauvage" is a perfect substring of "Sauvage Parfum". No confidence threshold can separate
+them. Second failure class: `Elixir`, `Baccarat`, `vanilla` and `Al_Raheeb` are all REAL brands in the
+index, so a title can enter the wrong house entirely.
+
+### SCRAPER ROSTER — 20 channels tested, every paid one rejected on measurement
+
+Free `curl_cffi impersonate=chrome` prices **84%** of the 94 live Gulf fragrance sources with ZERO
+genuine WAF walls, and remains the majority channel globally (75% of rows, 66% of hosts).
+Rejected with numbers: playwright 7/12 vs free curl 11/12 (its 403s are self-inflicted by the
+HeadlessChrome UA); **patchright byte-for-byte identical to plain playwright on 12/12**; primp zero
+adds on 12/12; **Firecrawl `json`/LLM mode FABRICATES** (returned 2 Fragrantica review bodies occurring
+0 times in the page; `launch_year "2026"` = the current year); vendor geo worthless (our egress IS
+Bahrain, `super&geoCode=bh` = 10 credits for byte-identical output); markdown output drops JSON-LD to 0
+on every vendor; Common Crawl 1/12; Bing returns dell/fedex/imdb for GCC product queries; DDG
+202-challenges 12/12; Wikidata 0/8 for notes (Dior Sauvage has no item); basenotes 403 to all 20
+channels; **Woo `average_rating` is ZERO on 199/200 sampled** (6 reviews across 2003 products, one by
+'admin'); judge.me API 401 (the token is per-MERCHANT, unbuyable); YouTube `search.list` = 100 units ->
+~49 comparisons/day; Salla `api.salla.dev` search params return byte-identical bodies; **size-aware
+Shopify variants DEAD — 0 of 999 fragrance products have two distinct ml variants** (size lives in tags
+and body_html). **No account was created for any vendor. No new key is needed.**
+
+Firecrawl's own integration bug (#92) confirmed at production parity: `firecrawl_service.py:88` and
+`:139` hardcode `formats:["html"]`, which carries **script=0, meta=0, ld+json=0** — the same 8 PDPs
+priced 6/8 on `rawHtml` and **0/8** on the production format. It also never reads
+`data.metadata.statusCode`, so an upstream 404 returns `(html, 200)`.
+
+### METHOD LESSONS THAT COST REAL TIME (all reproduced, all durable)
+
+- **An empty `product_name` makes the JSON-LD branch structurally unreachable.** `brand=""` -> every
+  Product dropped at price_service.py:8757. A sweep that passes `""` manufactures a fake
+  LOST_TO_EXTRACTOR cohort (12 rows, 1 real) and understated free-curl capture as 72% when it is 84%.
+- **`ENABLE_EXACT_PRICE_GATE=true` MASKS extraction bugs** — the identity gate rejects most cached
+  pages so everything returns None. Use `false` to isolate EXTRACTION, `true` to measure SHIPPED
+  behaviour, and always state which. This alone produced one wrong "the reviewer is mistaken" call.
+- **Substring block-detection is worthless.** `<script id="captcha-bootstrap">` ships on every Shopify
+  page and `cdnjs.cloudflare.com` on most themes — the heuristic fired on 80 of 94 pages with ZERO
+  correct fires. Order a verdict ladder capture-FIRST, never block-signal-first.
+- **A zero-regression gate selected by FILENAME KEYWORD ships regressions green.** The 54 name-matched
+  files gave an EMPTY branch-only set while a real deterministic regression sat in the 93 files that
+  merely grep-REFERENCE the changed modules. Select gate files by MODULE REFERENCE.
+- **Ratio tests cannot distinguish a sale price from a list price after currency conversion** — both
+  land in the same band. Pin against exact expected values (`175 SAR x 0.1003 = 17.55`).
+- **Consolidating agents must re-score from raw bytes.** The global lead caught TWO regional agents
+  publishing wrong headlines, one of which (a claimed comma-decimal inside JSON-LD that was actually
+  the OG tag) would have sent the currency fix in the wrong direction entirely.
+- Define capture success as "a validated price of the right currency was extracted", never a status
+  code: 13% of usable PDPs are HTTP 200 with no price in any structured shape, and 11 non-walled 2xx
+  responses are sub-30KB shells a `status==200 and bytes>0` test scores as a clean capture.
+
+### THE LIMITATION ON EVERY NUMBER ABOVE
+
+All fetches came from ONE Bahrain residential IP (Batelco). Railway egress is a datacenter ASN
+elsewhere. Re-measure host reachability and the Shopify-Markets currency behaviour (it 302'd `/en-om`
+and `/en-ae` to `/en-bh` for us) FROM RAILWAY before trusting any capacity number or retiring any paid
+fallback. Corollary: the Bahrain egress is a real asset Railway does not have.
+
+---
+
 ## Session 53: Bahrain Lead-Gen Skill Bundle for claude.ai web — COMPLETE 2026-05-22
 
 **Design:** `docs/plans/2026-05-22-bahrain-lead-gen-skills-design.md`

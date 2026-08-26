@@ -482,6 +482,97 @@ A full audit of `main c630436` produced **GitHub issues #46–#81** (12 P1, 23 P
 
 **Model ids are now config, not code** (#58): `OPENAI_MODEL_{VERDICT,STANDARD,VISION,CRITIC,MODERATION}`, resolved per call, logged once at startup as `[models] …`. Defaults are unchanged (`gpt-4o` / `gpt-4o-mini`). **Do NOT flip to a GPT-5 id without a live smoke test** — GPT-5 rejects `temperature=0` outright (the verdict's determinism A/B depends on it), requires `max_completion_tokens`, and counts invisible reasoning tokens against that same budget so a straight `1000` carry-over can return empty content. The shims (`sampling_kwargs`, `token_limit_kwargs`) prevent the 400s; they cannot restore determinism.
 
+## Active runtime (fragrance data-provenance + global scrape validation, 2026-08-25/26)
+
+Branch `feature/fragrance-hybrid-capture` off `8adaefb`. **NOT MERGED.** 10+ commits, every behaviour
+change flag-gated, **flag-OFF byte-identity proven empirically** (368 extraction records across both
+corpora, 0 diffs, matching sha256 vs a pristine `8adaefb` worktree, sockets patched to prove
+`net_attempts=0`).
+
+**THE FINDING THAT REFRAMES THE PRODUCT: only PRICE is scraped.** `extract_specs`
+(`extraction_service.py:1147`) and `extract_reviews` (`:1356`) are OpenAI calls whose only substantive
+input is a Serper snippet digest (`organic[:5]`, truncated to 3000/2500 chars,
+`structured_comparison_service.py:6945`). All 13 adapter/renderer modules contain `specs` ZERO times and
+`aggregateRating|reviewCount|ratingValue` ZERO times; `reviewBody` appears ZERO times in `app/`. The
+prompt at `extraction_service.py:515-516` **orders** the model to fall back to training data, and the
+output is cached 7 days. Reviews are properly guarded and go EMPTY instead; only SPECS are fabricated.
+`derive_rating_from_scores` (`response_builder.py:160-163`) ships a **constant 3.6** rating when there
+is no data at all.
+
+**P0 FIXED ON THE BRANCH.** Production passes the USER region currency
+(`structured_comparison_service.py:5053`); `extract_jsonld_price` hard-`continue`s a currency mismatch at
+**`price_service.py:8818`** and only retries `"USD"`, so every SAR/AED/KWD/QAR/OMR page loses its correct
+JSON-LD SALE price and falls to the OG branch, which reads the struck-through LIST price and never reads
+`product:sale_price:amount`. 21 of 92 Gulf pages lost their price to this; 6 shipped an inflated list
+price (3saf **4.57x**, om.oudelite 2.19x, sa/kw.oudelite 2.0x, rend-bahrain 1.61x, vanilla.sa 1.13x).
+Zero BHD-tier pages were affected, which is why it stayed invisible.
+
+**GLOBAL VALIDATION (328 pages / 163 hosts / 26 countries) KILLED THREE ASSUMPTIONS:**
+1. The GCC currency rule ("dot=decimal, comma=thousands") scores **1% in EU-South**, 56% in DACH,
+   65.6% corpus-wide, and every failure is a silent 100x-1000x. **Locale does not fix it** (douglas.ch
+   prints the product price with a dot and the shipping banner with a comma in one document). The rule
+   that works is structural last-separator **+ the ISO-4217 minor unit**: 371/371 = **100%**, all six
+   regions. But the real answer is architectural: **take the price from JSON-LD, always** — 353 of 360
+   JSON-LD values are already machine-normalised with zero comma-decimals, while OG is 11% deviant and
+   must never be `float()`ed directly.
+2. **Parsing was never the hard part — SELECTION is.** Even at 100% parse accuracy the first
+   price-shaped number on a page is right only **41%** of the time (UK **13%**). Median price-shaped
+   tokens per PDP: Gulf 2, UK 6, US 8, max 17. The decoys are legally mandated (Grundpreis, per-litre
+   unit price, EU Omnibus 30-day-lowest, BNPL). `notino.co.uk` renders the per-litre price under the
+   **same `data-testid`** as the product price, 8 characters apart, at exactly 10x.
+3. **`product:sale_price:amount` is GULF-ONLY** — 7 occurrences in 328 pages, all 7 Salla/Zid, ZERO
+   across 206 non-Gulf pages. The rule must be scoped to those platforms, not left generic.
+
+Also: `detect_platform` returns **"unknown" on 43%** of usable pages and `nextjs` is not a platform (it
+fires across five backends; `sephora.me` is SFCC underneath). The extractor returns **no price on 14 of
+28** large international retailers (`ProductGroup`+`hasVariant` 9, `@graph`-wrapped 4, empty `offers` 1).
+Ratings double outside Bahrain (38% vs 16%) but review **bodies do not** (12% vs 8.7%) because 50% of
+pages load a widget and 85% of those ship zero text server-side. **GDPR/CMP walls gate 0 of 247 pages**
+on raw HTTP, and `valueAddedTaxIncluded` appears on 2 of 247 — do not build a VAT branch.
+
+**⛔ DO NOT PROPOSE SCRAPING FRAGRANTICA OR PARFUMO.** Both `robots.txt` disallow Claude agents by name —
+Fragrantica names `ClaudeBot`, `Claude-SearchBot` **and `Claude-User`** (user-initiated fetches), each
+`Disallow: /`. Reading only the `User-agent: *` group sees `ai-input=yes` and reaches the wrong
+conclusion. Both then actively defended against our crawling mid-session: Fragrantica went 12/12 to
+`403 cf-mitigated`, and **Parfumo began serving decoy pages** — correct `<title>`, but the notes,
+accords, year, longevity and perfumer of a different perfume, with invented note names. 35/35
+mismatched. **Any Parfumo-derived figure after 2026-08-25 23:07 is fiction.** A fragrance spec database
+needs a licensing conversation or a commercial provider.
+
+**SCRAPER ROSTER — no new vendor key is needed.** Free `curl_cffi impersonate=chrome` prices **84%** of
+the 94 live Gulf fragrance sources with ZERO genuine WAF walls, and 75% of rows globally. Rejected on
+measurement: playwright (7/12 vs free curl's 11/12; its 403s are self-inflicted by the HeadlessChrome
+UA), **patchright (byte-for-byte identical to plain playwright on 12/12)**, primp (zero adds on 12/12),
+**Firecrawl `json`/LLM mode (FABRICATES — returned review bodies occurring 0 times in the page and
+`launch_year "2026"`)**, vendor geo (our egress IS Bahrain; `geoCode=bh` costs 10 credits for identical
+bytes), markdown output (drops JSON-LD to 0 on every vendor), Common Crawl (1/12), Bing/DDG, Wikidata
+(0/8 for notes), judge.me API (per-merchant token, unbuyable), YouTube (`search.list` = 100 units ->
+~49 comparisons/day). **Size-aware Shopify variants are dead: 0 of 999 fragrance products have two
+distinct ml variants** — size lives in `tags` and `body_html`, which the adapter already receives.
+
+**MEASUREMENT TRAPS — these produced wrong conclusions in this very session:**
+- **An empty `product_name` makes the JSON-LD branch unreachable** (`brand=""` -> every Product dropped
+  at `price_service.py:8757`). A sweep passing `""` manufactures a fake failure cohort and understates
+  free-curl capture as 72% when it is 84%.
+- **`ENABLE_EXACT_PRICE_GATE=true` masks extraction bugs** — the gate rejects most cached pages so
+  everything returns `None`. Use `false` to isolate extraction, `true` for shipped behaviour, and always
+  say which.
+- **Substring block-detection is worthless**: `<script id="captcha-bootstrap">` ships on every Shopify
+  page. It fired on 80 of 94 pages with ZERO correct fires. Order any verdict ladder capture-FIRST.
+- **A zero-regression `comm` gate selected by FILENAME KEYWORD ships regressions green.** The 54
+  name-matched files gave an empty branch-only set while a real deterministic regression sat in the 93
+  files that merely grep-REFERENCE the changed modules. **Select gate files by module reference.**
+- Ratio tests cannot tell a sale price from a list price after conversion — pin exact expected values.
+
+**Zero-network corpora for any future work** (git-excluded, in the `sc-scraper-proof` worktree):
+`_proof/html/` 92 Gulf PDPs + `_proof/sweep2_curl_cffi.jsonl`; `_proof/global/corpus.json` +
+`_proof/global/html/` 429 global pages. Re-running the whole Gulf scorecard is
+`python _proof/sweep2.py curl_cffi 6 BHD`, ~100s, no network.
+
+**EVERY NUMBER ABOVE CAME FROM ONE BAHRAIN RESIDENTIAL IP.** Railway egress is a datacenter ASN
+elsewhere. Re-measure host reachability and Shopify-Markets currency behaviour (it 302'd `/en-om` and
+`/en-ae` to `/en-bh` for us) FROM RAILWAY before trusting a capacity number or retiring a paid fallback.
+
 ## Known Remaining Bugs (deferred)
 - **✅ KEYS ROTATED 2026-06-27 (prod un-degraded):** `SERPER_API_KEY` PAID `7de9c750…`, `SCRAPEDO_API_TOKEN` `963772…`, new Zyte acct `e3374b…` — all set on Railway + local `.env`, prod verified live. (Was: all 3 dead 2026-06-26.) Full keys ONLY in gitignored `.env`. See the 2026-06-27 Active-runtime entry.
 - **Scrape.do timing out** on GCC luxury retailers (Ounass, Bloomingdales). Firecrawl is primary; Scrape.do is Tier 1.5d fallback only. Investigation `docs/investigations/2026-05-16-scrapedo-timeout-analysis.md` — recommendation: **accept current behavior** (graceful Tier 2 fallback).
