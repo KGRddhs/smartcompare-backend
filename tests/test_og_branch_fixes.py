@@ -179,17 +179,290 @@ class TestOgNumericParser:
         for raw in ("3.000", "244.990", "62.000", "0.610", "799", "2.110", "20.10"):
             assert _parse_og_price_number(raw) == pytest.approx(float(raw))
 
-    def test_a_three_digit_comma_tail_is_thousands_even_on_a_3_decimal_currency(self):
-        """The cost of the spec's "1,234 is comma-thousands" rule, pinned so it
-        is a KNOWN limit and not a surprise: a hypothetical 3-decimal BHD price
-        written with a comma ("22,902") reads as 22902.0, not 22.902. A lone
-        comma with a 3-digit tail cannot be told from a thousands group by shape
-        alone, and the corpus settles the tie-break: all three real comma-decimal
-        pages are 2-decimal (279,00 / 195,00 / 403,75), while "1,234"-style
-        thousands are common. No cached page anywhere in _proof/html/ writes a
-        3-decimal price with a comma."""
+    def test_a_three_digit_comma_tail_is_thousands_when_the_CURRENCY_IS_UNKNOWN(self):
+        """The shape-only fallback, kept as the default for a currency-LESS call.
+
+        A lone comma with a 3-digit tail cannot be told from a thousands group by
+        shape alone, so with no currency to consult the parser keeps the legacy
+        reading: "22,902" -> 22902.0. That default is safe ONLY because the
+        production call sites always pass a currency (see
+        ``TestCurrencyMinorUnitTieBreak`` below, and the end-to-end tests); it is
+        the tie-break of last resort, not the tie-break we ship."""
         assert _parse_og_price_number("22,902") == pytest.approx(22902.0)
+        assert _parse_og_price_number("22,902", None) == pytest.approx(22902.0)
+        assert _parse_og_price_number("22,902", "") == pytest.approx(22902.0)
+        assert _parse_og_price_number("22,902", "ZZZ") == pytest.approx(22902.0)
+        # A dot tail is never in doubt, with or without a currency.
         assert _parse_og_price_number("22.902") == pytest.approx(22.902)
+        assert _parse_og_price_number("22.902", "BHD") == pytest.approx(22.902)
+
+
+# ---------------------------------------------------------------------------
+# (b2) BLOCKER 2 - the comma tie-break is settled by the CURRENCY MINOR UNIT
+# ---------------------------------------------------------------------------
+#
+# The shape-only rule above ("a 3-digit tail is a thousands group") is WRONG for
+# the 3-decimal currencies, and it shipped. Reproduced through the real
+# `extract_price_from_html` on a minimal OG-only page:
+#
+#     og:price:amount="0,500"  BHD -> 500.0    (should be 0.500)   1000x
+#     og:price:amount="22,902" BHD -> 22902.0  (should be 22.902)  1000x
+#     og:price:amount="60,660" OMR -> 60660.0  (should be 60.660)  1000x
+#     og:price:amount="279,00" QAR -> 279.0    (correct - 2 decimals)
+#
+# The only downstream guard is `amount > 0`, so a 1000x over-price ships.
+# Blast radius measured on _proof/sweep2_curl_cffi.jsonl: 27 of the 92 cached
+# domains declare a page_currency of BHD/OMR/KWD outright (BHD 15, OMR 9, KWD 3)
+# and 5 more of the 15 currency-less rows are GCC 3-decimal hosts by name
+# (en-kwt.ajmal.com, bawwaba.om, capitalstoreoman.com, kwt.nazih.com,
+# bloomingdales.com.kw) - so 27 certain, 32 upper bound, roughly a third of the
+# corpus. Both amounts above are REAL: reefperfumes.com ships
+# `product:sale_price:amount` = "22.902" BHD and bh.taifalemarat.com is a BHD
+# storefront - today they happen to write the decimal with a DOT, which is why
+# the corpus has no live victim yet. The moment either locale-formats with a
+# comma, the price ships 1000x high with nothing downstream to catch it.
+#
+# THE RULE. Settle the ambiguity with the currency's ISO 4217 minor unit, not
+# with the tail length:
+#   1. A head that is "0" or carries a leading zero can NEVER be a thousands
+#      group - "0,500" is unambiguous. Checked FIRST, before any currency.
+#   2. More than one comma -> thousands groups ("1,234,567"); a string with two
+#      commas has no single-decimal reading at all.
+#   3. A tail that is not 3 digits long -> decimal ("279,00", "1,5").
+#   4. A 3-digit tail -> DECIMAL for a 3-decimal currency, THOUSANDS otherwise.
+# Rules 1-3 are currency-independent; only rule 4 consults the minor unit.
+
+# ISO 4217 minor unit 3. All seven are in the extractor's constant.
+THREE_DECIMAL = ["BHD", "OMR", "KWD", "JOD", "TND", "LYD", "IQD"]
+
+# (currency, raw content, expected float, why - one line per cell)
+MINOR_UNIT_MATRIX = [
+    # --- BHD (minor unit 3) ---
+    ("BHD", "0,500",    0.500,   "leading-zero head is never a thousands group - unambiguous 0.500 BHD"),
+    ("BHD", "22,902",   22.902,  "the real reefperfumes.com BHD amount, comma-formatted - minor unit 3 -> decimal"),
+    ("BHD", "60,660",   60.660,  "3-digit tail on a 3-decimal currency -> decimal"),
+    ("BHD", "1,234",    1.234,   "UNDECIDABLE by shape (1.234 vs 1234 BHD); minor unit 3 pins the decimal, same as 22,902"),
+    ("BHD", "1,234.56", 1234.56, "two separators - the RIGHTMOST is the decimal; currency never consulted"),
+    ("BHD", "1.234,56", 1234.56, "two separators - the RIGHTMOST is the decimal; currency never consulted"),
+    ("BHD", "279,00",   279.00,  "a 2-digit tail is a decimal on every currency - a thousands group is always 3 digits"),
+    ("BHD", "3.000",    3.0,     "dot-only is ALWAYS a decimal point (unchanged ruling) and already right for 3.000 BHD"),
+    ("BHD", "1,5",      1.5,     "a 1-digit tail cannot be a thousands group"),
+    # --- OMR (minor unit 3) ---
+    ("OMR", "0,500",    0.500,   "leading-zero head is never a thousands group - 0.500 OMR"),
+    ("OMR", "22,902",   22.902,  "3-digit tail on a 3-decimal currency -> decimal"),
+    ("OMR", "60,660",   60.660,  "the real bh.taifalemarat/OMR-shaped shelf price, comma-formatted -> 60.660"),
+    ("OMR", "1,234",    1.234,   "UNDECIDABLE by shape; minor unit 3 pins the decimal"),
+    ("OMR", "1,234.56", 1234.56, "two separators - rightmost wins, currency-independent"),
+    ("OMR", "1.234,56", 1234.56, "two separators - rightmost wins, currency-independent"),
+    ("OMR", "279,00",   279.00,  "2-digit tail -> decimal on every currency"),
+    ("OMR", "3.000",    3.0,     "dot-only -> decimal point, 3.000 OMR"),
+    ("OMR", "1,5",      1.5,     "1-digit tail -> decimal"),
+    # --- KWD (minor unit 3) ---
+    ("KWD", "0,500",    0.500,   "leading-zero head is never a thousands group - 0.500 KWD"),
+    ("KWD", "22,902",   22.902,  "3-digit tail on a 3-decimal currency -> decimal"),
+    ("KWD", "60,660",   60.660,  "3-digit tail on a 3-decimal currency -> decimal"),
+    ("KWD", "1,234",    1.234,   "UNDECIDABLE by shape; minor unit 3 pins the decimal"),
+    ("KWD", "1,234.56", 1234.56, "two separators - rightmost wins, currency-independent"),
+    ("KWD", "1.234,56", 1234.56, "two separators - rightmost wins, currency-independent"),
+    ("KWD", "279,00",   279.00,  "2-digit tail -> decimal on every currency"),
+    ("KWD", "3.000",    3.0,     "dot-only -> decimal point, 3.000 KWD"),
+    ("KWD", "1,5",      1.5,     "1-digit tail -> decimal"),
+    # --- SAR (minor unit 2) ---
+    ("SAR", "0,500",    0.500,   "leading-zero head is never a thousands group - 0.5 SAR, NOT 500, even at minor unit 2"),
+    ("SAR", "22,902",   22902.0, "3-digit tail on a 2-decimal currency -> thousands group (legacy reading, still right)"),
+    ("SAR", "60,660",   60660.0, "3-digit tail on a 2-decimal currency -> thousands group"),
+    ("SAR", "1,234",    1234.0,  "the canonical thousands group - minor unit 2 keeps it"),
+    ("SAR", "1,234.56", 1234.56, "two separators - rightmost wins, currency-independent"),
+    ("SAR", "1.234,56", 1234.56, "two separators - rightmost wins, currency-independent"),
+    ("SAR", "279,00",   279.00,  "2-digit tail -> decimal (a real Salla/QAR-style shape)"),
+    ("SAR", "3.000",    3.0,     "dot-only -> decimal point; matches legacy float('3.000')"),
+    ("SAR", "1,5",      1.5,     "1-digit tail -> decimal"),
+    # --- AED (minor unit 2) ---
+    ("AED", "0,500",    0.500,   "leading-zero head is never a thousands group - 0.5 AED"),
+    ("AED", "22,902",   22902.0, "3-digit tail, minor unit 2 -> thousands group"),
+    ("AED", "60,660",   60660.0, "3-digit tail, minor unit 2 -> thousands group"),
+    ("AED", "1,234",    1234.0,  "canonical thousands group; beautiquefragrances/touchofoud really do ship 1,082.00 AED"),
+    ("AED", "1,234.56", 1234.56, "two separators - rightmost wins, currency-independent"),
+    ("AED", "1.234,56", 1234.56, "two separators - rightmost wins, currency-independent"),
+    ("AED", "279,00",   279.00,  "2-digit tail -> decimal; mhgboutique.com ships 403,75 on an AED page"),
+    ("AED", "3.000",    3.0,     "dot-only -> decimal point"),
+    ("AED", "1,5",      1.5,     "1-digit tail -> decimal"),
+    # --- QAR (minor unit 2) ---
+    ("QAR", "0,500",    0.500,   "leading-zero head is never a thousands group - 0.5 QAR"),
+    ("QAR", "22,902",   22902.0, "3-digit tail, minor unit 2 -> thousands group"),
+    ("QAR", "60,660",   60660.0, "3-digit tail, minor unit 2 -> thousands group"),
+    ("QAR", "1,234",    1234.0,  "canonical thousands group"),
+    ("QAR", "1,234.56", 1234.56, "two separators - rightmost wins, currency-independent"),
+    ("QAR", "1.234,56", 1234.56, "two separators - rightmost wins, currency-independent"),
+    ("QAR", "279,00",   279.00,  "the real leperfumeqa.com QAR shelf price - the cell the lead confirmed correct"),
+    ("QAR", "3.000",    3.0,     "dot-only -> decimal point"),
+    ("QAR", "1,5",      1.5,     "1-digit tail -> decimal"),
+    # --- USD (minor unit 2) ---
+    ("USD", "0,500",    0.500,   "leading-zero head is never a thousands group - $0.50"),
+    ("USD", "22,902",   22902.0, "3-digit tail, minor unit 2 -> thousands group"),
+    ("USD", "60,660",   60660.0, "3-digit tail, minor unit 2 -> thousands group"),
+    ("USD", "1,234",    1234.0,  "canonical en-US thousands group"),
+    ("USD", "1,234.56", 1234.56, "the en-US shape - comma groups, dot decimates"),
+    ("USD", "1.234,56", 1234.56, "the de-DE shape on a USD page - rightmost separator still wins"),
+    ("USD", "279,00",   279.00,  "2-digit tail -> decimal even on USD; a thousands group is always 3 digits"),
+    ("USD", "3.000",    3.0,     "dot-only -> decimal point; matches legacy float('3.000')"),
+    ("USD", "1,5",      1.5,     "1-digit tail -> decimal"),
+    # --- EUR (minor unit 2) ---
+    ("EUR", "0,500",    0.500,   "leading-zero head is never a thousands group - 0.50 EUR"),
+    ("EUR", "22,902",   22902.0, "3-digit tail, minor unit 2 -> thousands group"),
+    ("EUR", "60,660",   60660.0, "3-digit tail, minor unit 2 -> thousands group"),
+    ("EUR", "1,234",    1234.0,  "UNDECIDABLE in a de-DE locale (1.234 EUR is legal there); minor unit 2 pins thousands, the legacy reading"),
+    ("EUR", "1,234.56", 1234.56, "two separators - rightmost wins, currency-independent"),
+    ("EUR", "1.234,56", 1234.56, "the canonical de-DE shape"),
+    ("EUR", "279,00",   279.00,  "the canonical de-DE decimal comma"),
+    ("EUR", "3.000",    3.0,     "UNDECIDABLE in de-DE (3.000 EUR means three thousand there); pinned to the safe legacy float('3.000') = 3.0"),
+    ("EUR", "1,5",      1.5,     "1-digit tail -> decimal"),
+]
+
+
+class TestCurrencyMinorUnitTieBreak:
+    """Every cell of {BHD,OMR,KWD,SAR,AED,QAR,USD,EUR} x nine comma/dot shapes."""
+
+    @pytest.mark.parametrize(
+        "code,raw,expected,why",
+        MINOR_UNIT_MATRIX,
+        ids=[f"{c}-{r}" for c, r, _e, _w in MINOR_UNIT_MATRIX],
+    )
+    def test_cell(self, code, raw, expected, why):
+        assert _parse_og_price_number(raw, code) == pytest.approx(expected), why
+
+    @pytest.mark.parametrize("code", THREE_DECIMAL)
+    def test_all_seven_iso_minor_unit_3_currencies(self, code):
+        """JOD/TND/LYD/IQD are 3-decimal too, not just the three GCC ones the
+        corpus happens to contain - the constant must carry all seven."""
+        assert _parse_og_price_number("22,902", code) == pytest.approx(22.902)
+        assert _parse_og_price_number("1,234", code) == pytest.approx(1.234)
+
+    @pytest.mark.parametrize("code", ["bhd", "  BHD  ", "Bhd", "\tomr\n"])
+    def test_currency_code_is_case_and_whitespace_insensitive(self, code):
+        """og:price:currency is page-authored - never trust its casing."""
+        assert _parse_og_price_number("22,902", code) == pytest.approx(22.902)
+
+    @pytest.mark.parametrize("code", [None, "", "   ", "ZZZ", "BH", "BHDD", 0])
+    def test_unknown_currency_falls_back_to_the_2_decimal_reading(self, code):
+        """No currency, or one we cannot recognise -> keep the legacy shape-only
+        answer. Never guess 3-decimal: guessing wrong there under-prices 1000x,
+        which the `amount > 0` guard would not catch either."""
+        assert _parse_og_price_number("22,902", code) == pytest.approx(22902.0)
+
+    def test_rule_1_beats_the_currency_on_a_2_decimal_page(self):
+        """The leading-zero rule is checked FIRST and is currency-independent -
+        "0,500" can never be five hundred, whatever the minor unit."""
+        for code in ("SAR", "AED", "QAR", "USD", "EUR", "BHD", None):
+            assert _parse_og_price_number("0,500", code) == pytest.approx(0.5)
+        assert _parse_og_price_number("00,500", "USD") == pytest.approx(0.5)
+
+    def test_a_multi_comma_string_is_always_thousands_groups(self):
+        """Two commas have no single-decimal reading - rule 2, currency and
+        leading zero alike are irrelevant."""
+        for code in ("BHD", "OMR", "USD", None):
+            assert _parse_og_price_number("1,234,567", code) == pytest.approx(1234567.0)
+
+    def test_the_currency_argument_is_optional_and_defaults_to_legacy(self):
+        """Every pre-existing caller and test calls with one argument."""
+        for raw, expected in (("279,00", 279.0), ("1,234", 1234.0), ("3.000", 3.0)):
+            assert _parse_og_price_number(raw) == pytest.approx(expected)
+            assert _parse_og_price_number(raw) == _parse_og_price_number(raw, None)
+
+    def test_dot_only_shapes_are_never_touched_by_the_currency(self):
+        """Blast-radius proof: adding the currency argument moves NOTHING that
+        the old code could already parse - a lone dot stays a decimal point and
+        keeps matching legacy float()."""
+        for raw in ("3.000", "244.990", "62.000", "0.610", "799", "2.110", "20.10"):
+            for code in (None, "BHD", "OMR", "KWD", "SAR", "AED", "USD"):
+                assert _parse_og_price_number(raw, code) == pytest.approx(float(raw))
+
+
+class TestMinorUnitTieBreakEndToEnd:
+    """The lead's four reproductions, through the REAL extract_price_from_html."""
+
+    @pytest.mark.parametrize(
+        "raw,code,expected,why",
+        [
+            ("0,500", "BHD", 0.500, "was 500.0 - 1000x"),
+            ("22,902", "BHD", 22.902, "was 22902.0 - the real reefperfumes amount"),
+            ("60,660", "OMR", 60.660, "was 60660.0 - a real taifalemarat-shaped amount"),
+            ("279,00", "QAR", 279.00, "was already correct - must stay correct"),
+        ],
+    )
+    def test_repro(self, flag_on, raw, code, expected, why):
+        res = _extract(_og_html(raw, code), code, DOMAIN)
+        assert res is not None
+        assert res["amount"] == pytest.approx(expected), why
+        assert res["currency"] == code
+
+    @pytest.mark.parametrize("raw", ["0,500", "22,902", "60,660", "279,00"])
+    def test_flag_off_drops_every_one_of_them(self, flag_off, raw):
+        """Rollback is byte-identical: legacy float() raises on all four, the OG
+        branch is skipped, and an OG-only page extracts to None."""
+        assert _extract(_og_html(raw, "BHD"), "BHD", DOMAIN) is None
+
+    def test_a_currencyless_og_price_uses_the_EXPECTED_currency_minor_unit(self):
+        """bahrain.sharafdg.com ships product:price:amount with NO currency tag on
+        a BHD page. The branch already falls back to the expected currency for the
+        LABEL; the tie-break must read that same fallback, not default to 2."""
+        html = (
+            "<html><head>"
+            '<meta property="og:price:amount" content="22,902">'
+            "</head><body></body></html>"
+        )
+        res = _extract(html, "BHD", "bahrain.sharafdg.com")
+        assert res is not None
+        assert res["amount"] == pytest.approx(22.902)
+        assert res["currency"] == "BHD"
+
+    def test_the_PAGE_currency_wins_over_the_expected_currency(self):
+        """A SAR-tagged price on a BHD-expected page is 22902 SAR (then converted),
+        NOT 22.902 - the tie-break must use the DECLARED currency, the same one
+        the amount is labelled with."""
+        res = _extract(_og_html("22,902", "SAR"), "BHD", DOMAIN)
+        assert res is not None
+        assert res["original_currency"] == "SAR"
+        # converted out of SAR, so compare against the pre-conversion magnitude
+        assert res["amount"] > 1000, "22902 SAR must not have been read as 22.902"
+
+    def test_the_sale_tag_probe_uses_the_sale_tags_own_currency(self):
+        """reefperfumes.com ships the shelf price on `product:sale_price:amount`.
+        The ENABLE_SALE_PRICE_FIRST usability probe parses that tag too, so it must
+        parse it under the same currency the consumer will."""
+        html = (
+            "<html><head>"
+            '<meta property="product:sale_price:amount" content="22,902">'
+            '<meta property="product:sale_price:currency" content="BHD">'
+            '<meta property="product:price:amount" content="45.000">'
+            '<meta property="product:price:currency" content="BHD">'
+            "</head><body></body></html>"
+        )
+        res = _extract(html, "BHD", "reefperfumes.com")
+        assert res is not None
+        assert res["amount"] == pytest.approx(22.902)
+        assert res["currency"] == "BHD"
+
+    def test_a_currencyless_sale_tag_inherits_the_list_prices_currency(self):
+        """No product:sale_price:currency -> the branch already falls back to the
+        LIST price's currency tag for the label; the tie-break must follow it."""
+        html = (
+            "<html><head>"
+            '<meta property="product:sale_price:amount" content="22,902">'
+            '<meta property="product:price:amount" content="45.000">'
+            '<meta property="product:price:currency" content="BHD">'
+            "</head><body></body></html>"
+        )
+        res = _extract(html, "BHD", "reefperfumes.com")
+        assert res is not None
+        assert res["amount"] == pytest.approx(22.902)
+
+    def test_a_2_decimal_thousands_price_is_still_not_divided(self, flag_on):
+        """The failure mode the fix must NOT introduce in the other direction:
+        a genuine 1,082 AED must stay 1082.0, never 1.082."""
+        res = _extract(_og_html("1,082", "AED"), "AED", "touchofoud.com")
+        assert res is not None
+        assert res["amount"] == pytest.approx(1082.0)
 
 
 class TestCommaDecimalEndToEnd:

@@ -9350,10 +9350,47 @@ def _page_identity_name(soup) -> Optional[str]:
     return None
 
 
-def _parse_og_price_number(raw: Any) -> Optional[float]:
+# ISO 4217 currencies whose minor unit is 3, i.e. three decimal places. The
+# comma tie-break below needs the MINOR UNIT, not the tail length, to tell
+# "22,902" on a BHD page (22.902) from "22,902" on a SAR page (22902).
+# Deliberately the full ISO set, not just the three the corpus contains.
+_THREE_DECIMAL_CURRENCIES = frozenset({
+    "BHD",  # Bahraini dinar    - 15 of the 92 cached fragrance domains
+    "OMR",  # Omani rial        -  9
+    "KWD",  # Kuwaiti dinar     -  3
+    "JOD",  # Jordanian dinar
+    "TND",  # Tunisian dinar
+    "LYD",  # Libyan dinar
+    "IQD",  # Iraqi dinar
+})
+
+
+def _currency_minor_unit(currency: Any) -> int:
+    """Decimal places for an ISO 4217 code: 3 for the dinar-family currencies
+    above, 2 for everything else.
+
+    Returns 2 for a missing, non-string or unrecognised code ON PURPOSE. The two
+    wrong answers are NOT symmetric: guessing 2 where the truth is 3 reads
+    "22,902" BHD as 22902 (1000x HIGH, an obviously-wrong price a human notices),
+    while guessing 3 where the truth is 2 reads "1,234" SAR as 1.234 (1000x LOW,
+    which sails through the ``amount > 0`` guard AND wins every cheapest-price
+    comparison downstream). So the unknown case keeps the legacy shape-only
+    reading rather than speculating."""
+    if not isinstance(currency, str):
+        return 2
+    return 3 if currency.strip().upper() in _THREE_DECIMAL_CURRENCIES else 2
+
+
+def _parse_og_price_number(raw: Any, currency: Any = None) -> Optional[float]:
     """Parse an OpenGraph price meta ``content`` into a float, telling a comma
     DECIMAL separator apart from a comma THOUSANDS separator. Returns None when
     there is no number to read (never raises).
+
+    ``currency`` is the ISO code the amount is LABELLED with — the page's own
+    ``og:price:currency`` / ``product:*:currency`` tag when it has one, else the
+    expected currency the branch falls back to. It settles the one shape that is
+    otherwise undecidable (a single comma with a 3-digit tail). Optional, and
+    omitting it keeps the pre-BLOCKER-2 shape-only reading.
 
     LOCAL ON PURPOSE — do NOT swap in ``parse_price_string``: it strips commas
     unconditionally (see line ~2835) and turns the shelf price "24,00" into
@@ -9361,18 +9398,41 @@ def _parse_og_price_number(raw: Any) -> Optional[float]:
     "403,75" are real cached PDPs whose OG price the old bare ``float()`` could
     not parse at all.
 
-    Resolution table (pinned by tests/test_og_branch_fixes.py):
+    Resolution table (pinned cell by cell by tests/test_og_branch_fixes.py):
 
       both separators  -> the RIGHTMOST one is the decimal point
                           "1.234,56" -> 1234.56   "1,234.56" -> 1234.56
-      comma only, ONE comma with a 3-digit tail -> thousands group
-                          "1,234"    -> 1234.0
-      comma only, more than one comma           -> thousands groups
+      comma only, ONE comma, head "0" or leading-zero -> DECIMAL (rule 1)
+                          "0,500"    -> 0.5       "00,500"   -> 0.5
+      comma only, more than one comma                 -> thousands groups
                           "1,234,567"-> 1234567.0
-      comma only, any other tail length         -> decimal separator
-                          "279,00"   -> 279.0    "22,902" ... see below
+      comma only, tail length != 3                    -> decimal separator
+                          "279,00"   -> 279.0     "1,5"      -> 1.5
+      comma only, 3-digit tail, minor unit 3          -> DECIMAL
+                          "22,902" BHD -> 22.902  "1,234" OMR -> 1.234
+      comma only, 3-digit tail, minor unit 2/unknown  -> thousands group
+                          "22,902" SAR -> 22902.0 "1,234" USD -> 1234.0
       dot only / no separator -> AS-IS, a lone dot is ALWAYS a decimal point
                           "3.000"    -> 3.0      "244.990" -> 244.99
+
+    BLOCKER 2 — the 3-digit tail used to be an unconditional THOUSANDS group,
+    and that shipped. Reproduced through the real ``extract_price_from_html`` on
+    a minimal OG-only page (ENABLE_OG_BRANCH_FIXES=true,
+    ENABLE_EXACT_PRICE_GATE=false, so the identity gate cannot mask it):
+    "0,500" BHD -> 500.0, "22,902" BHD -> 22902.0, "60,660" OMR -> 60660.0 —
+    each 1000x high, with ``amount > 0`` the only downstream guard. ("279,00"
+    QAR -> 279.0 was and stays correct.) Blast radius on
+    _proof/sweep2_curl_cffi.jsonl: 27 of the 92 cached domains declare a
+    BHD/OMR/KWD page_currency outright and 5 of the 15 currency-less rows are
+    GCC 3-decimal hosts by name — roughly a third of the corpus. Both amounts
+    are REAL money: reefperfumes.com ships product:sale_price:amount "22.902"
+    BHD and bh.taifalemarat.com is a BHD storefront; today they write the
+    decimal with a DOT, which is the only reason the corpus has no live victim.
+    A single locale-formatter change on either page ships a 1000x over-price.
+
+    Rules 1-3 never consult the currency; only the 3-digit-tail rule does.
+    Rule 1 first, because "0,500" is not undecidable at all — a thousands group
+    can never have a zero or leading-zero head, on any currency.
 
     THE "3.000" RULING. It is genuinely ambiguous — 3.000 BHD (the 3-decimal GCC
     currencies) or three thousand. It resolves as a DECIMAL POINT because
@@ -9383,13 +9443,12 @@ def _parse_og_price_number(raw: Any) -> Optional[float]:
     input the old code could not parse at all. Never treat a lone dot as a
     thousands separator.
 
-    KNOWN LIMIT of the 3-digit-tail rule: a lone comma with exactly 3 digits
-    after it cannot be told from a thousands group by shape alone, so a
-    hypothetical 3-decimal BHD price written "22,902" reads as 22902.0. The
-    corpus settles the tie-break — all three real comma-decimal pages are
-    2-decimal (279,00 / 195,00 / 403,75) and no cached page writes a 3-decimal
-    price with a comma, while "1,234"-style thousands are common. Pinned by
-    test_a_three_digit_comma_tail_is_thousands_even_on_a_3_decimal_currency.
+    RESIDUAL AMBIGUITY, stated honestly. "1,234" on a BHD page is genuinely
+    undecidable — 1.234 BHD and 1234 BHD are both legal. The minor unit rules it
+    a decimal, for consistency with "22,902" on the same page: one currency must
+    not read two ways. Likewise "1,234" and "3.000" on a EUR page are undecidable
+    in a de-DE locale; both keep the legacy reading (1234.0 and 3.0). Every such
+    cell is pinned with its reasoning in tests/test_og_branch_fixes.py.
     """
     if raw is None:
         return None
@@ -9410,11 +9469,23 @@ def _parse_og_price_number(raw: Any) -> Optional[float]:
         else:                          # "1,234.56" — comma groups the thousands
             text = text.replace(",", "")
     elif last_comma >= 0:
-        tail = text[last_comma + 1:]
-        if text.count(",") > 1 or len(tail) == 3:
-            text = text.replace(",", "")   # "1,234,567" / "1,234" — thousands
+        head, tail = text[:last_comma], text[last_comma + 1:]
+        if text.count(",") == 1 and (not head or head.startswith("0")):
+            # Rule 1, checked FIRST and currency-independent: a thousands group
+            # can never have an empty, "0" or leading-zero head. "0,500" is not
+            # ambiguous on any currency — it is 0.5, never 500.
+            text = text.replace(",", ".")
+        elif text.count(",") > 1:
+            text = text.replace(",", "")   # "1,234,567" — thousands groups
+        elif len(tail) != 3:
+            text = text.replace(",", ".")  # "279,00" / "1,5" — decimal separator
+        elif _currency_minor_unit(currency) == 3:
+            # Rule 4 (BLOCKER 2) — the ONLY shape the currency decides. On a
+            # 3-decimal currency a 3-digit tail is the minor unit: "22,902" BHD
+            # is 22.902, not 22902.
+            text = text.replace(",", ".")
         else:
-            text = text.replace(",", ".")  # "279,00" — decimal separator
+            text = text.replace(",", "")   # "1,234" USD/SAR — thousands group
     # dot-only / separator-less falls through UNCHANGED (the "3.000" ruling).
 
     try:
@@ -9491,7 +9562,24 @@ def _extract_og_price(
                 # tag ("79,99") is no longer misjudged as junk and silently
                 # replaced by the list price. Flag OFF keeps the bare float().
                 if og_branch_fixes_enabled():
-                    _sale_val = _parse_og_price_number(_sale_raw)
+                    # BLOCKER 2 — the comma tie-break is currency-aware, so the
+                    # probe must parse under the SAME currency the consumer
+                    # below will: the sale tag's own currency, else the list
+                    # price's (same page, same money), else the expected
+                    # currency. Resolved exactly as the `og_currency` reassign-
+                    # ment a few lines down resolves it. The verdict here is
+                    # only `> 0`, which no minor-unit choice can flip, but
+                    # probe and consumer must never read one tag two ways.
+                    _sale_cur_tag = (
+                        soup.find('meta', property='product:sale_price:currency')
+                        or soup.find('meta', property='product:price:currency')
+                    )
+                    _sale_cur = (
+                        _sale_cur_tag['content']
+                        if _sale_cur_tag and _sale_cur_tag.get('content')
+                        else currency
+                    )
+                    _sale_val = _parse_og_price_number(_sale_raw, _sale_cur)
                     _sale_usable = _sale_val is not None and _sale_val > 0
                 else:
                     _sale_usable = float(_sale_raw) > 0
@@ -9519,7 +9607,18 @@ def _extract_og_price(
             # comma decimal from a comma thousands group; a None (nothing
             # numeric) re-enters the legacy except-branch below unchanged.
             if og_branch_fixes_enabled():
-                amount = _parse_og_price_number(og_price['content'])
+                # BLOCKER 2 — resolve the LABEL currency BEFORE parsing the
+                # amount, because the comma tie-break needs its minor unit
+                # ("22,902" is 22.902 on BHD and 22902 on SAR). Same expression
+                # as `detected_currency` below; duplicated rather than hoisted
+                # so the flag-OFF path keeps its exact pre-change bytes — that
+                # path must not evaluate anything new before its bare float().
+                _label_currency = (
+                    og_currency['content']
+                    if og_currency and og_currency.get('content')
+                    else currency
+                )
+                amount = _parse_og_price_number(og_price['content'], _label_currency)
                 if amount is None:
                     raise ValueError(og_price['content'])
             else:
