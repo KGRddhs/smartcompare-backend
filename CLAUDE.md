@@ -550,6 +550,24 @@ bytes), markdown output (drops JSON-LD to 0 on every vendor), Common Crawl (1/12
 ~49 comparisons/day). **Size-aware Shopify variants are dead: 0 of 999 fragrance products have two
 distinct ml variants** — size lives in `tags` and `body_html`, which the adapter already receives.
 
+### ⛔ THE ZERO-REGRESSION GATE IS MODULE-REFERENCE-BASED. NEVER FILENAME-KEYWORD-BASED.
+
+**Selecting the gate's test files by FILENAME KEYWORD would have shipped this wave green with a
+deterministic regression in it.** Matching test filenames against the changed modules' names yielded
+**54 files and an EMPTY branch-only failure set**. The real regression —
+`tests/test_correctness_coverage_review_findings.py::test_H_jsonld_flag_off_carries_name_not_brand`,
+which passes at `8adaefb` and fails at `02d5d33` in the SHIPPED default configuration, 2/2
+deterministic — sat in a file whose NAME references nothing that changed. It was only reachable via the
+**93 files that grep-REFERENCE the changed modules** (`price_service`, `shopify_pdp_service`,
+`platform_router`).
+
+So: **build the gate's file set by grepping the test tree for imports/references to every module the
+branch touches, then run that set at BASE and at HEAD and `comm` the failures.** A filename-keyword
+set is not a subset shortcut — it is a different, much smaller, and systematically wrong set. This is
+now a standing rule, not a one-off observation: the miss is confirmed, and the test it missed is the
+one this wave had to adjudicate (see the `H — THE JSON-LD CANDIDATE DICT UNDER ROLLBACK` block in that
+file).
+
 **MEASUREMENT TRAPS — these produced wrong conclusions in this very session:**
 - **An empty `product_name` makes the JSON-LD branch unreachable** (`brand=""` -> every Product dropped
   at `price_service.py:8757`). A sweep passing `""` manufactures a fake failure cohort and understates
@@ -559,9 +577,6 @@ distinct ml variants** — size lives in `tags` and `body_html`, which the adapt
   say which.
 - **Substring block-detection is worthless**: `<script id="captcha-bootstrap">` ships on every Shopify
   page. It fired on 80 of 94 pages with ZERO correct fires. Order any verdict ladder capture-FIRST.
-- **A zero-regression `comm` gate selected by FILENAME KEYWORD ships regressions green.** The 54
-  name-matched files gave an empty branch-only set while a real deterministic regression sat in the 93
-  files that merely grep-REFERENCE the changed modules. **Select gate files by module reference.**
 - Ratio tests cannot tell a sale price from a list price after conversion — pin exact expected values.
 
 **Zero-network corpora for any future work** (git-excluded, in the `sc-scraper-proof` worktree):

@@ -3062,9 +3062,15 @@ priced 6/8 on `rawHtml` and **0/8** on the production format. It also never read
 - **Substring block-detection is worthless.** `<script id="captcha-bootstrap">` ships on every Shopify
   page and `cdnjs.cloudflare.com` on most themes — the heuristic fired on 80 of 94 pages with ZERO
   correct fires. Order a verdict ladder capture-FIRST, never block-signal-first.
-- **A zero-regression gate selected by FILENAME KEYWORD ships regressions green.** The 54 name-matched
-  files gave an EMPTY branch-only set while a real deterministic regression sat in the 93 files that
-  merely grep-REFERENCE the changed modules. Select gate files by MODULE REFERENCE.
+- **A zero-regression gate selected by FILENAME KEYWORD ships regressions green — CONFIRMED, not
+  hypothetical.** The 54 name-matched files gave an EMPTY branch-only set. The regression it missed has
+  a name: `tests/test_correctness_coverage_review_findings.py::test_H_jsonld_flag_off_carries_name_not_brand`,
+  green at `8adaefb`, red at `02d5d33` in the SHIPPED default configuration, 2/2 deterministic, in a
+  file whose NAME references nothing this branch touched. It was reachable only through the 93 files
+  that grep-REFERENCE the changed modules. **Select gate files by MODULE REFERENCE — a filename-keyword
+  set is not a smaller version of the right set, it is a different and systematically wrong one.**
+  (Adjudicated 2026-08-26: the assertion was RETIRED, not made green — see the `H — THE JSON-LD
+  CANDIDATE DICT UNDER ROLLBACK` block in that file.)
 - **Ratio tests cannot distinguish a sale price from a list price after currency conversion** — both
   land in the same band. Pin against exact expected values (`175 SAR x 0.1003 = 17.55`).
 - **Consolidating agents must re-score from raw bytes.** The global lead caught TWO regional agents

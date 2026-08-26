@@ -9999,6 +9999,33 @@ def extract_jsonld_price(
                 # exact gate OFF select_best short-circuits to min(amount) without
                 # reading `brand`, and the caller reads price_data["brand"] only
                 # inside its own exact_gate_enabled() branch.)
+                #
+                # ADJUDICATED 2026-08-26 (do not re-gate without reading this).
+                # This line is what broke test_H_jsonld_flag_off_carries_name_not_brand,
+                # which pinned "with ENABLE_EXACT_PRICE_GATE=false the dict is the
+                # LEGACY dict". That whole-shape invariant was RETIRED, and `brand` is
+                # not what retired it: _widen_jsonld_candidate below already returns
+                # description/image/sku/mpn/category/aggregate_rating in that same
+                # gate-OFF mode, so the legacy shape was gone the moment the wide dict
+                # shipped. Withholding this ONE key while carrying sku/gtin/mpn/rating
+                # would be incoherent. PROVEN over the 92 cached Gulf PDPs across all
+                # four (gate x wide) modes: 0 select_best winner differences, 0
+                # _selection_match verdict differences, and end-to-end
+                # extract_price_from_html byte-identical with the gate OFF. The concern
+                # that assertion actually protected -- a brand-FIELD-only match must not
+                # leak an unrelated same-brand sibling into selection -- lives at the S4
+                # guard ~130 lines above (numbers_match + 0.3 word-overlap floor), runs
+                # BEFORE this dict is built, and is ungated. All four claims are pinned
+                # in tests/test_correctness_coverage_review_findings.py, block
+                # "H -- THE JSON-LD CANDIDATE DICT UNDER ROLLBACK".
+                #
+                # KNOWN CAVEAT for any consumer treating this as a page-asserted fact:
+                # `_cand_brand` falls back to the QUERY's first word when the node
+                # declares no brand. Measured on those same 92 pages, 31 of the 94
+                # brand-carrying candidates (33%) are that fallback ("Blossom",
+                # "Roberto", "Etat", "So"). It is inert for selection and it predates
+                # this branch, so it was left alone here rather than changed under a
+                # regression fix -- but it is NOT scraped provenance.
                 if exact_gate_enabled() or wide_candidate_enabled():
                     # Carry the matched brand so _selection_match subtracts the FULL brand
                     # (brand-FIELD-only match, name "Orangey Dress" + ld brand "Jessie and James").

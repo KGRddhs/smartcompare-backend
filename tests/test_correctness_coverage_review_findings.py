@@ -936,15 +936,149 @@ def test_R7_overrej_supplement_rose_hips_accepted():
               "supplements", "NOW") is True
 
 
-def test_H_jsonld_flag_off_carries_name_not_brand(monkeypatch):
+# ===========================================================================
+# H - THE JSON-LD CANDIDATE DICT UNDER ROLLBACK
+# ---------------------------------------------------------------------------
+# RETIRED 2026-08-26: `test_H_jsonld_flag_off_carries_name_not_brand`.
+#
+# It asserted that with ENABLE_EXACT_PRICE_GATE=false, extract_jsonld_price
+# returns the LEGACY (b207bfa/origin/main) dict - `name` yes, `brand` no. That
+# whole-shape invariant no longer exists, and `brand` is NOT what retired it:
+# ENABLE_WIDE_CANDIDATE (default ON) deliberately carries the REST of the same
+# already-parsed Product node, so in the SHIPPED default configuration the
+# exact-gate-OFF dict already returns `description`, `image`, `sku`, `mpn`,
+# `category` and `aggregate_rating` on top of legacy. The old assertion named
+# `brand` only because it was written before the wide dict existed; keeping that
+# one key out while carrying sku/gtin/mpn/rating would be an incoherent dict
+# that withholds the single strongest identity field for no reason.
+#
+# The exact gate is a SELECTION contract, not a dict-shape contract, and
+# selection is provably untouched by the extra key:
+#   * gate OFF - select_best short-circuits to min(amount) (price_service.py
+#     :7919) BEFORE it ever reads c.get("brand");
+#   * gate ON  - `brand` was already carried at 8adaefb by the pre-existing
+#     `if exact_gate_enabled():`, so nothing changed there at all;
+#   * no caller can see the extra key: all three callers of extract_jsonld_price
+#     project onto an explicit fixed key set, and the only one that reads
+#     price_data["brand"] (price_service.py:10557) does so inside its own
+#     exact_gate_enabled() branch.
+# Measured over the 92 cached Gulf PDPs (_proof/html), across all four
+# (gate x wide) modes: 88-94 candidates, 66-72 select_best calls, ZERO winner
+# differences and ZERO _selection_match verdict differences between brand
+# present and brand absent; and end-to-end extract_price_from_html over the
+# same 92 pages (87 return a price) is byte-identical with gate OFF.
+#
+# WHAT STILL PROTECTS THE ORIGINAL CONCERN. The concern behind the retired
+# assertion was never the dict shape - it was that a brand-FIELD-only match (the
+# query brand appears ONLY in the JSON-LD `brand` field, never in the product
+# name) must not let an unrelated same-brand item's price be attributed to the
+# query. That is enforced UPSTREAM of the dict, at price_service.py:9866-9875
+# (S4): when `not matched_in_name`, the candidate must pass numbers_match AND
+# clear a 0.3 query/name word-overlap floor or it is `continue`d - before any
+# candidate dict is built, and ungated by every flag on this branch. It is
+# pinned below so retiring the shape assertion does not retire the protection.
+#
+# The four tests that replace it pin: (1) the surviving half of the old
+# assertion, (2) the branch's REAL rollback contract, (3) the new intended
+# invariant, (4) the protection above.
+# ===========================================================================
+
+_H_LD = {"@type": "Product", "name": "Dior Sauvage EDT 100ml", "brand": "Dior",
+         "offers": {"@type": "Offer", "price": "45.000", "priceCurrency": "BHD",
+                    "availability": "https://schema.org/InStock"}}
+
+
+@pytest.mark.parametrize("wide", ["true", "false"])
+def test_H_jsonld_flag_off_carries_name_unconditionally(monkeypatch, wide):
+    """The SURVIVING half of the retired assertion. `name` is carried in every
+    flag combination - LEGACY always returned it and the fragrance size-capture
+    (_stamp_listing_size parses ml/oz out of it) depends on it, so gating it
+    would silently drop size-capture on rollback (comprehensive review HIGH)."""
     monkeypatch.setenv("ENABLE_EXACT_PRICE_GATE", "false")
-    html = _jsonld({"@type": "Product", "name": "Dior Sauvage EDT 100ml", "brand": "Dior",
-                    "offers": {"@type": "Offer", "price": "45.000", "priceCurrency": "BHD",
-                               "availability": "https://schema.org/InStock"}})
-    res = ps.extract_jsonld_price(html, "Dior", "BHD", "Dior Sauvage EDT 100ml")
+    monkeypatch.setenv("ENABLE_WIDE_CANDIDATE", wide)
+    res = ps.extract_jsonld_price(_jsonld(_H_LD), "Dior", "BHD", "Dior Sauvage EDT 100ml")
     assert res is not None
-    # Flag-OFF must be byte-identical to LEGACY (b207bfa/origin/main), which DID carry the
-    # JSON-LD `name` (the fragrance size-capture depends on it) but NOT `brand` (the NEW
-    # identity addition the exact gate introduced) — comprehensive review HIGH rollback fix.
     assert res.get("name") == "Dior Sauvage EDT 100ml"
-    assert "brand" not in res
+
+
+def test_H_wide_candidate_off_restores_the_exact_legacy_dict(monkeypatch):
+    """The rollback contract that DID survive, and the one this branch owns: with
+    ENABLE_WIDE_CANDIDATE off, the exact-gate-OFF dict is the legacy four keys,
+    byte-for-byte - no brand, no sku, no rating. This is the assertion the
+    retired test was reaching for; it just named the wrong flag."""
+    monkeypatch.setenv("ENABLE_EXACT_PRICE_GATE", "false")
+    monkeypatch.setenv("ENABLE_WIDE_CANDIDATE", "false")
+    res = ps.extract_jsonld_price(_jsonld(_H_LD), "Dior", "BHD", "Dior Sauvage EDT 100ml")
+    assert res is not None
+    assert set(res) == {"amount", "currency", "in_stock", "name"}
+
+
+@pytest.mark.parametrize("gate", ["true", "false"])
+def test_H_wide_candidate_on_carries_brand_in_both_gate_modes(monkeypatch, gate):
+    """THE NEW INTENDED INVARIANT. `brand` is a plain field off the same parsed
+    node; under the wide dict it is carried like every other one, in BOTH gate
+    modes. The exact-gate coupling was only ever about who CONSUMED it, never
+    about who could capture it."""
+    monkeypatch.setenv("ENABLE_EXACT_PRICE_GATE", gate)
+    monkeypatch.setenv("ENABLE_WIDE_CANDIDATE", "true")
+    res = ps.extract_jsonld_price(_jsonld(_H_LD), "Dior", "BHD", "Dior Sauvage EDT 100ml")
+    assert res is not None
+    assert res.get("brand") == "Dior"
+
+
+@pytest.mark.parametrize("gate", ["true", "false"])
+@pytest.mark.parametrize("wide", ["true", "false"])
+def test_H_brand_field_only_match_cannot_leak_an_unrelated_sibling(monkeypatch, gate, wide):
+    """WHAT STILL PROTECTS THE RETIRED TEST'S CONCERN (price_service.py:9866).
+
+    Both Products carry brand="Jessie and James" ONLY in the `brand` field - the
+    query brand is nowhere in either NAME, so `matched_in_name` is False for both
+    and the S4 guard is the only thing standing between the query and the cheap
+    unrelated sibling. The unrelated one must be dropped for word-overlap in
+    EVERY flag combination, including the one where `brand` is now
+    unconditionally present on the candidate dict."""
+    monkeypatch.setenv("ENABLE_EXACT_PRICE_GATE", gate)
+    monkeypatch.setenv("ENABLE_WIDE_CANDIDATE", wide)
+
+    def _offer(p):
+        return {"@type": "Offer", "price": p, "priceCurrency": "BHD",
+                "availability": "https://schema.org/InStock"}
+
+    html = _jsonld([
+        {"@type": "Product", "name": "Cast Iron Skillet Cleaning Brush",
+         "brand": {"@type": "Brand", "name": "Jessie and James"}, "offers": _offer("3.000")},
+        {"@type": "Product", "name": "Orangey Dress",
+         "brand": {"@type": "Brand", "name": "Jessie and James"}, "offers": _offer("29.000")},
+    ])
+    res = ps.extract_jsonld_price(
+        html, "Jessie and James", "BHD", "Jessie and James Orangey Dress")
+    # The 3.000 skillet brush shares no identity with the query and MUST NOT be
+    # attributed to it - not even as the cheapest candidate on the gate-OFF
+    # min(amount) path, which is exactly where an unguarded leak would surface.
+    assert res is None or res["amount"] != 3.0
+    if res is not None:
+        assert res.get("name") == "Orangey Dress"
+
+
+def test_H_carried_brand_can_be_the_QUERY_fallback_not_a_page_claim(monkeypatch):
+    """CAVEAT, pinned so no consumer mistakes it for a page-asserted fact.
+
+    cand["brand"] is `_cand_brand = str(ld_brand or brand)` (price_service.py
+    :9889), and `brand` there is the QUERY's first word. So when the node
+    declares no brand, the carried value is query-derived, not scraped. Measured
+    over the 92 cached Gulf PDPs: 31 of the 94 brand-carrying candidates (33%)
+    are this fallback, producing values like "Blossom", "Roberto", "Etat", "So".
+    Selection is unaffected (that fallback predates this branch and is what
+    _selection_match has always subtracted), but an encyclopaedia/entity consumer
+    reading cand["brand"] as the page's claim would be wrong a third of the time.
+    Changing it is deliberately OUT of scope here: it would alter the gate-ON
+    contract that shipped at 8adaefb."""
+    monkeypatch.setenv("ENABLE_EXACT_PRICE_GATE", "false")
+    monkeypatch.setenv("ENABLE_WIDE_CANDIDATE", "true")
+    html = _jsonld({"@type": "Product", "name": "Arabella 100 ml",
+                    "offers": {"@type": "Offer", "price": "12.000", "priceCurrency": "BHD",
+                               "availability": "https://schema.org/InStock"}})
+    res = ps.extract_jsonld_price(html, "Arabella", "BHD", "Arabella 100 ml")
+    assert res is not None
+    # The node declares NO brand; the value below came from the query, not the page.
+    assert res.get("brand") == "Arabella"
