@@ -45,11 +45,15 @@ import pytest
 from app.services import shopify_pdp_service
 from app.services.price_service import (
     _jsonld_product_rating,
+    _jsonld_str,
     _parse_og_price_number,
     _wide_signal_capture_text,
     extract_jsonld_price,
     extract_price_from_html,
     hostile_numeric_guard_enabled,
+    is_accessory,
+    is_accessory_for_category,
+    is_counterfeit_listing,
 )
 
 QUERY = "Oud Elite So Black Eau de Parfum 100ml"
@@ -500,3 +504,333 @@ def test_flag_off_cannot_resurrect_the_reviewer_overflow(monkeypatch):
         BRAND, CURRENCY, query_name=QUERY, category=CATEGORY,
     )
     assert cand is not None and cand["aggregate_rating"] == {"rating_value": 4.5}
+
+
+# ===========================================================================
+# 9. BLOCKER 5 - hostile STRING fields
+# ===========================================================================
+# BLOCKER 3 hardened every NUMERIC conversion. It did not touch the STRING
+# ones, and those are the larger surface: schema.org types every one of
+# `name` / `brand` / `sku` / `description` / `category` / `availability` /
+# `priceCurrency` as Text, but JSON has no Text type - a blob can put null, a
+# bool, a number, an array or an object in any of them and json.loads hands
+# that shape straight through.
+#
+# THE VERIFIED REPRO. A Product node with "name": null and a perfectly valid
+# Offer:
+#
+#     price_service.py:951   return is_accessory(title)      # title is None
+#     price_service.py:848   title_lower = title.lower()     # AttributeError
+#
+# :945 already guards with (title or "") - but only for the two SCOPED
+# exemption branches; the unscoped fall-through at :951 hands the RAW value on.
+# And even a `name` that survives is_accessory dies two lines later at
+# product_name.lower().replace(" ", ""), or - with the exact gate on - earlier
+# still, inside html.unescape(True).
+#
+# PRE-EXISTING, NOT WAVE-INTRODUCED. The 8adaefb tree fails these too (it fails
+# MORE of them; see the base-vs-branch count in the wave report), and no flag in
+# this wave - ENABLE_HOSTILE_NUMERIC_GUARD included - moves the number. That is
+# why the coercion is UNCONDITIONAL: there is no non-crashing legacy behaviour
+# to roll back to, so a flag-OFF rollback that restored the raise would be
+# restoring a defect, not a decision. What flag OFF still pins is byte-identity
+# for every REAL page - proven by
+# test_the_string_coercion_is_a_no_op_for_every_real_string below.
+
+HOSTILE_STRING_VALUES = [
+    ("null", None),                       # THE repro
+    ("empty_list", []),
+    ("empty_dict", {}),
+    ("true", True),
+    ("false", False),
+    ("zero", 0),
+    ("minus_one", -1),
+    ("float", 1.5),
+    ("huge_int", 10 ** 40),               # str() is fine; .lower() is not
+    ("digits_5000", "9" * 5000),          # a >4300-digit NUMBER, as Text
+    ("thing_null_name", {"@type": "Thing", "name": [None]}),
+    ("thing_dict_value", {"@value": {}}),
+    ("nested_dict", {"@type": "Thing", "value": {"deep": ["x"]}}),
+    ("nested_list", [[{"name": None}], {"name": []}]),
+    ("list_of_nulls", [None, None]),      # kills a naive " ".join(...)
+    ("long_10k", "L" * 10000),
+    ("control_chars", "a\x00b\x01c\x1fd\x7fe"),
+    ("blank", "   "),
+]
+
+# (where, field) - schema.org types every one of these as Text.
+STRING_FIELDS = [
+    ("product", "name"),
+    ("product", "brand"),
+    ("product", "sku"),
+    ("product", "description"),
+    ("product", "category"),
+    ("offer", "availability"),
+    ("offer", "priceCurrency"),
+]
+
+# NB a >4300-digit integer LITERAL is deliberately NOT in this table: it is
+# unreachable as a parsed value, because json.loads itself raises ValueError on
+# it (that is BLOCKER 3's second gated site, which turns the raise into "skip
+# this block"), so it can never arrive in a string field.
+
+# The same hostile value has to survive every SHAPE the document can take -
+# a bare node, an @graph wrapper, a top-level array - crossed with every shape
+# the offers field can take, because each one reaches the string fields down a
+# different branch of the parser.
+DOC_SHAPES = ["bare", "graph", "array"]
+OFFER_SHAPES = ["offer", "offer_list", "aggregate"]
+FLAG_COMBOS = [
+    (gate, guard)
+    for gate in ("false", "true")
+    for guard in ("false", "true")
+]
+
+
+def _hostile_product(where, field, value, offer_shape="offer"):
+    """A COMPLETE, otherwise-valid Product node with exactly one hostile field."""
+    if offer_shape == "aggregate":
+        offer = {
+            "@type": "AggregateOffer", "price": "79.99",
+            "lowPrice": "79.99", "highPrice": "79.99",
+            "priceCurrency": CURRENCY,
+            "availability": "https://schema.org/InStock",
+        }
+    else:
+        offer = {
+            "@type": "Offer", "price": "79.99", "priceCurrency": CURRENCY,
+            "availability": "https://schema.org/InStock",
+        }
+    if where == "offer":
+        offer[field] = value
+    node = {
+        "@type": "Product",
+        "name": QUERY,
+        "brand": {"@type": "Brand", "name": BRAND},
+        "sku": "OE-SO-BLACK-100",
+        "description": "So Black eau de parfum, 100ml.",
+        "category": "Fragrance",
+        "offers": [offer] if offer_shape == "offer_list" else offer,
+    }
+    if where == "product":
+        node[field] = value
+    return node
+
+
+def _shaped_doc(node, doc_shape):
+    if doc_shape == "graph":
+        return {"@context": "https://schema.org", "@graph": [node]}
+    if doc_shape == "array":
+        return [node]
+    return node
+
+
+def _titled_ld_html(blob):
+    """A JSON-LD page that also carries a <title>, so the OG / microdata
+    fallback cascade's page-identity gate has a real signal to read when the
+    JSON-LD branch declines - the hostile value must survive that path too."""
+    return (
+        "<html><head><title>%s</title>"
+        '<script type="application/ld+json">%s</script>'
+        "</head><body></body></html>" % (QUERY, json.dumps(blob))
+    )
+
+
+def _string_field_flags(monkeypatch, gate, guard):
+    monkeypatch.setenv("ENABLE_EXACT_PRICE_GATE", gate)
+    monkeypatch.setenv("ENABLE_HOSTILE_NUMERIC_GUARD", guard)
+    monkeypatch.setenv("ENABLE_WIDE_CANDIDATE", "true")
+    monkeypatch.setenv("ENABLE_OG_BRANCH_FIXES", "true")
+    monkeypatch.setenv("ENABLE_SALE_PRICE_FIRST", "true")
+    monkeypatch.setenv("ENABLE_WIDE_SIGNAL_TEXT", "true")
+    monkeypatch.setenv("ENABLE_STRICT_CURRENCY_LABEL", "true")
+    monkeypatch.setenv("ENABLE_SHOPIFY_PDP_JSON", "true")
+
+
+def _check_total(html):
+    """Return a failure string, or None. The three properties the extractor owes
+    a hostile page: it must not raise, it must return dict-or-None, and whatever
+    dict it returns must be STRICTLY JSON-serialisable."""
+    try:
+        result = extract_price_from_html(
+            html, QUERY, CURRENCY, DOMAIN, URL, category=CATEGORY,
+        )
+    except Exception as exc:                  # noqa: BLE001 - that IS the point
+        return "raised %s: %s" % (type(exc).__name__, exc)
+    if result is not None and not isinstance(result, dict):
+        return "returned %s, not dict-or-None" % (type(result).__name__,)
+    if result is not None:
+        try:
+            json.dumps(result, allow_nan=False)
+        except (ValueError, TypeError) as exc:
+            return "result is not strict JSON: %s" % (exc,)
+    return None
+
+
+# --- 9a. the repro, named and isolated ------------------------------------
+
+@pytest.mark.parametrize("hostile", [v for _, v in HOSTILE_STRING_VALUES],
+                         ids=[i for i, _ in HOSTILE_STRING_VALUES])
+def test_hostile_jsonld_name_never_crashes_the_extractor(gate_mode, hostile):
+    """THE repro: a Product `name` that is not a string, plus a valid offer."""
+    assert_total(_extract, _titled_ld_html(
+        _hostile_product("product", "name", hostile)))
+
+
+@pytest.mark.parametrize("hostile", [v for _, v in HOSTILE_STRING_VALUES],
+                         ids=[i for i, _ in HOSTILE_STRING_VALUES])
+def test_hostile_jsonld_name_never_crashes_is_accessory_directly(hostile):
+    """:951 handed the RAW value to is_accessory, whose :848 does
+    title.lower(). Both entry points must be total on their own."""
+    assert is_accessory(hostile) in (True, False)
+    assert is_accessory_for_category(hostile, CATEGORY) in (True, False)
+    assert is_counterfeit_listing(hostile) in (True, False)
+
+
+@pytest.mark.parametrize(
+    "brand_shape",
+    [
+        [{"name": None}],                       # list-of-dicts -> " ".join(None)
+        [{"@type": "Brand"}, {"name": []}],
+        [None, {"name": "Oud Elite"}],
+        {"name": None},
+        {"name": {"@value": None}},
+        True,
+        -1,
+    ],
+    ids=["list_null_name", "list_missing_and_list", "list_with_null_member",
+         "dict_null_name", "dict_nested_null", "bool", "int"],
+)
+def test_hostile_jsonld_brand_shapes_never_crash(gate_mode, brand_shape):
+    """The `brand` reader already isinstance-checks dict and list, but its list
+    arm builds " ".join(b.get("name", "") ...) - a member whose `name` is an
+    explicit JSON null puts None into the join and TypeErrors."""
+    assert_total(_extract, _titled_ld_html(
+        _hostile_product("product", "brand", brand_shape)))
+
+
+# --- 9b. the 3000+ case grid ----------------------------------------------
+
+def test_the_full_hostile_string_grid_is_total(monkeypatch):
+    """Every string-typed JSON-LD field x every hostile value x every document
+    shape x every offers shape x BOTH gate modes x BOTH guard-flag states.
+
+    One test rather than 3780 parametrize nodes on purpose: the grid is a
+    MEASUREMENT (the wave report quotes its failure count on base vs branch),
+    and a single loop reports the count directly instead of making the reader
+    add up node ids."""
+    failures = []
+    cases = 0
+    for gate, guard in FLAG_COMBOS:
+        _string_field_flags(monkeypatch, gate, guard)
+        for doc_shape in DOC_SHAPES:
+            for offer_shape in OFFER_SHAPES:
+                for where, field in STRING_FIELDS:
+                    for value_id, value in HOSTILE_STRING_VALUES:
+                        cases += 1
+                        node = _hostile_product(where, field, value, offer_shape)
+                        html = _titled_ld_html(_shaped_doc(node, doc_shape))
+                        problem = _check_total(html)
+                        if problem:
+                            failures.append(
+                                "gate=%s guard=%s %s/%s %s.%s=%s -> %s" % (
+                                    gate, guard, doc_shape, offer_shape,
+                                    where, field, value_id, problem,
+                                )
+                            )
+    assert cases >= 3000, "grid shrank to %d cases" % cases
+    assert not failures, "%d/%d hostile string cases failed:\n%s" % (
+        len(failures), cases, "\n".join(failures[:25]),
+    )
+
+
+def test_the_grid_also_holds_when_every_string_field_is_hostile_at_once(
+    monkeypatch,
+):
+    """A real hostile blob does not corrupt ONE field politely. Set them all."""
+    for gate, guard in FLAG_COMBOS:
+        _string_field_flags(monkeypatch, gate, guard)
+        for _, value in HOSTILE_STRING_VALUES:
+            node = {
+                "@type": "Product",
+                "name": value, "brand": value, "sku": value,
+                "description": value, "category": value,
+                "offers": {
+                    "@type": "Offer", "price": "79.99",
+                    "priceCurrency": value, "availability": value,
+                },
+            }
+            problem = _check_total(_titled_ld_html(node))
+            assert not problem, "all-hostile node (%r): %s" % (value, problem)
+            # ... and with a VALID currency, so the offer is actually accepted
+            # and the hostile name reaches the candidate dict + the caller.
+            node["offers"]["priceCurrency"] = CURRENCY
+            problem = _check_total(_titled_ld_html(node))
+            assert not problem, "all-hostile node, real currency (%r): %s" % (
+                value, problem,
+            )
+
+
+# --- 9c. the coercion helper itself ---------------------------------------
+
+@pytest.mark.parametrize("hostile", [v for _, v in HOSTILE_STRING_VALUES],
+                         ids=[i for i, _ in HOSTILE_STRING_VALUES])
+def test_jsonld_str_always_returns_a_str(hostile):
+    assert isinstance(_jsonld_str(hostile), str)
+
+
+def test_jsonld_str_is_identity_on_a_real_string():
+    """The no-op guarantee the byte-identity argument rests on: a value that is
+    ALREADY a str comes back unchanged - not stripped, not normalised - so no
+    real page can see a different byte through this helper."""
+    for text in ("  Oud Elite So Black  ", "", "   ", "A" * 10000,
+                 "Nuit d Issey - 100ml", "a\x00b"):
+        assert _jsonld_str(text) is text
+
+
+def test_jsonld_str_digs_a_thing_node_out_but_never_a_bool():
+    assert _jsonld_str({"@type": "Thing", "name": "Oud Elite"}) == "Oud Elite"
+    assert _jsonld_str({"@value": "Oud Elite"}) == "Oud Elite"
+    assert _jsonld_str(["", None, "Oud Elite"]) == "Oud Elite"
+    assert _jsonld_str(123) == "123"
+    # a bool is an int in Python - it must NOT read as the text "True"/"1"
+    assert _jsonld_str(True) == ""
+    assert _jsonld_str(False) == ""
+    assert _jsonld_str(float("inf")) == ""
+    assert _jsonld_str(float("nan")) == ""
+
+
+# --- 9d. byte-identity: the coercion changes nothing for a real page -------
+
+def _real_page():
+    return _titled_ld_html(_hostile_product("product", "sku", "OE-SO-BLACK-100"))
+
+
+def test_the_string_coercion_is_a_no_op_for_every_real_string(monkeypatch):
+    """Why BLOCKER 5's coercion can be unconditional without breaking the
+    flag-OFF rollback contract: on a page whose string fields are actually
+    STRINGS - i.e. every real page - the guard flag makes no difference at all,
+    in either gate mode. The only inputs the coercion changes are the ones on
+    which 8adaefb raised an uncaught AttributeError/TypeError."""
+    for gate in ("false", "true"):
+        _string_field_flags(monkeypatch, gate, "true")
+        with_guard = _extract(_real_page())
+        _string_field_flags(monkeypatch, gate, "false")
+        without_guard = _extract(_real_page())
+        assert with_guard == without_guard
+        assert with_guard is not None
+        assert with_guard["amount"] == 79.99
+
+
+def test_the_guard_flag_still_flips_the_two_blocker_3_legacy_sites(monkeypatch):
+    """The flag is still a live lever - BLOCKER 5 did not neuter it. Guarded:
+    an inf price is dropped. Unguarded: 8adaefb's bytes, the inf is returned."""
+    node = _product(offers={
+        "@type": "Offer", "price": "1e400", "priceCurrency": CURRENCY,
+        "availability": "https://schema.org/InStock",
+    })
+    _string_field_flags(monkeypatch, "false", "true")
+    assert _extract(_ld_html(node)) is None
+    _string_field_flags(monkeypatch, "false", "false")
+    legacy = _extract(_ld_html(node))
+    assert legacy is not None and legacy["amount"] == float("inf")

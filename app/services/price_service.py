@@ -837,15 +837,27 @@ def validate_scrape_url(url: str) -> bool:
 # Detection helpers
 # ============================================
 
-def is_counterfeit_listing(title: str) -> bool:
-    """Check if a shopping listing title indicates counterfeit/replica/used product."""
-    title_lower = title.lower()
+def is_counterfeit_listing(title: Any) -> bool:
+    """Check if a shopping listing title indicates counterfeit/replica/used product.
+
+    BLOCKER 5 — `title` is typed `str` but reaches here straight off a parsed
+    JSON-LD Product `name`, which a hostile/broken blob can make null, a bool, a
+    number, a list or an object. `_jsonld_str` is identity on a real string, so
+    this is byte-identical for every input the bare `.lower()` did not crash on."""
+    title_lower = _jsonld_str(title).lower()
     return any(kw in title_lower for kw in COUNTERFEIT_KEYWORDS)
 
 
-def is_accessory(title: str) -> bool:
-    """Check if a shopping result title is an accessory, not the actual product."""
-    title_lower = title.lower()
+def is_accessory(title: Any) -> bool:
+    """Check if a shopping result title is an accessory, not the actual product.
+
+    BLOCKER 5 — THE verified repro landed on this line: `extract_jsonld_price`
+    hands the RAW JSON-LD `name` to `is_accessory_for_category`, whose unscoped
+    fall-through calls THIS function, and `None.lower()` is an uncaught
+    AttributeError that aborts the whole extractor (base 8adaefb:656 — the same
+    crash, so this is PRE-EXISTING, not wave-introduced). `_jsonld_str` is
+    identity on a real string: byte-identical for every non-crashing input."""
+    title_lower = _jsonld_str(title).lower()
     for kw in ACCESSORY_KEYWORDS:
         if re.search(r'\b' + re.escape(kw) + r'\b', title_lower):
             return True
@@ -919,7 +931,7 @@ def _laptop_layout_keyboard_exempt(title_lower: str) -> bool:
     return True
 
 
-def is_accessory_for_category(title: str, category: Optional[str] = None) -> bool:
+def is_accessory_for_category(title: Any, category: Optional[str] = None) -> bool:
     """Scoped `is_accessory` for the direct store-API matcher chains (BF4,
     sweep OR-7 + Wave C C2, RS-4). Two bounded exemptions, one keyword each:
 
@@ -941,8 +953,15 @@ def is_accessory_for_category(title: str, category: Optional[str] = None) -> boo
     In both scopes any OTHER accessory keyword still flags. Everything else
     keeps the full broad is_accessory. The Serper-shopping extractors
     deliberately keep the unscoped is_accessory (noisy listings need the
-    broad net; direct store-API names are resolved products)."""
-    title_lower = (title or "").lower()
+    broad net; direct store-API names are resolved products).
+
+    BLOCKER 5 — the `(title or "")` guard below only ever covered the two SCOPED
+    branches; the unscoped `return is_accessory(title)` handed the RAW value on,
+    and `(title or "")` itself still breaks on a TRUTHY non-string (True, -1, a
+    nested dict). Both now read through `_jsonld_str`, which is identity on a
+    real string."""
+    title = _jsonld_str(title)
+    title_lower = title.lower()
     if (category or "").lower() in _PHARMACY_TITLE_CATEGORIES:
         benign = _PHARMACY_BENIGN_ACCESSORY_KEYWORDS
     elif _laptop_layout_keyboard_exempt(title_lower):
@@ -3788,8 +3807,12 @@ def wide_signal_text_enabled() -> bool:
 
 
 def hostile_numeric_guard_enabled() -> bool:
-    """True iff the hostile-numeric guards on PRE-EXISTING conversion sites are
-    active (default ON). BLOCKER 3.
+    """True iff the hostile-INPUT guards on PRE-EXISTING conversion sites are
+    active (default ON). BLOCKER 3 (numeric) + BLOCKER 5 (string).
+
+    The env name stays ENABLE_HOSTILE_NUMERIC_GUARD — renaming it would strand
+    anyone who has already set it — but the family it names is now hostile INPUT,
+    not hostile numerics alone.
 
     SCOPE — this flag gates ONLY the two places the hostile-numeric hardening
     had to touch lines that already existed on 8adaefb:
@@ -3812,6 +3835,37 @@ def hostile_numeric_guard_enabled() -> bool:
     flag does not touch them. Turning THIS flag off cannot resurrect the reviewer's
     OverflowError; it only restores the two legacy expressions above verbatim,
     so a flag-OFF rollback is byte-identical to 8adaefb.
+
+    BLOCKER 5 — THE STRING HALF, and why it is NOT gated. BLOCKER 3 hardened
+    every NUMERIC conversion; the STRING ones were untouched, and they are the
+    larger surface. schema.org types `name` / `brand` / `sku` / `description` /
+    `category` / `availability` / `priceCurrency` as Text, but JSON has no Text
+    type, so a blob can put null / a bool / a number / an array / an object in
+    any of them. The verified repro: a Product with ``"name": null`` plus a valid
+    offer reached ``is_accessory``'s ``title.lower()`` and raised AttributeError
+    out of the extractor. The fix is a boundary coercion — ``_jsonld_str``,
+    applied wherever a JSON-LD value flows into .lower()/.strip()/.split()/re.
+
+    That coercion is UNCONDITIONAL, unlike the two gated sites above, and the
+    reason is measured, not stylistic. Over the 3780-case fuzz grid in
+    tests/test_hostile_jsonld.py (every string field x every hostile value x
+    every document shape x every offers shape x both gate modes x both states of
+    THIS flag), 8adaefb fails 468 and this branch pre-fix fails the SAME 468, at
+    the same four sites — so the defect is PRE-EXISTING and no flag ever moved
+    it. On every one of those 468 inputs the legacy code RAISED; on every input
+    it did not raise the value was already a ``str``, and ``_jsonld_str`` is
+    identity on a ``str``. So there is no non-crashing legacy behaviour for a
+    flag-OFF rollback to restore — gating it would only let the rollback
+    reinstate an uncaught exception. (The single non-crashing input whose
+    behaviour DOES change is a JSON-LD ``brand`` that is a bare bool, which now
+    reads as "" instead of the literal text "True" — see the comment at that
+    line; it cannot alter a real page's price, and a 414-page / 822-extraction
+    zero-network corpus differential over the GULF + GLOBAL caches returned 0
+    differing results in either gate mode.) Flag-OFF byte-identity for every
+    REAL page is pinned directly by
+    ``test_the_string_coercion_is_a_no_op_for_every_real_string``, and this flag
+    is still a live lever for the two numeric sites (pinned by
+    ``test_the_guard_flag_still_flips_the_two_blocker_3_legacy_sites``).
 
     Default ON because it is a crash/corruption fix, not a capability. Read PER
     CALL from os.getenv so Railway can flip it without a restart. Deliberately
@@ -9199,6 +9253,42 @@ def _jsonld_scalar_text(value: Any) -> str:
     return ""
 
 
+def _jsonld_str(value: Any) -> str:
+    """BLOCKER 5 — ANY value parsed out of a JSON-LD blob -> a safe ``str``.
+
+    THE BOUNDARY COERCION. schema.org types ``name`` / ``brand`` / ``sku`` /
+    ``description`` / ``category`` / ``availability`` / ``priceCurrency`` as
+    Text, but JSON has no Text type: a blob may put ``null``, a bool, a number,
+    an array or an object in any of them, and ``json.loads`` hands that shape
+    straight through to code that does ``.lower()`` / ``.strip()`` / ``.split()``
+    / ``re.search`` on it. ``None.lower()`` is an ``AttributeError`` that escapes
+    ``extract_jsonld_price`` -> ``extract_price_from_html`` into the two scraper
+    call sites that do not wrap it (``structured_comparison_service``
+    :1312 / :1391), where a broad ``except Exception`` silently drops the whole
+    retailer. One hostile blob = one retailer missing from a comparison.
+
+    IDENTITY ON A REAL STRING. When ``value`` is ALREADY a ``str`` it is returned
+    **unchanged** — not stripped, not normalised, the same object. That is the
+    whole byte-identity argument for making this coercion UNCONDITIONAL (see
+    ``hostile_numeric_guard_enabled``): every real page's string fields are
+    strings, so no real page can observe a different byte through this helper.
+    The only inputs whose behaviour changes are the ones on which 8adaefb raised
+    an uncaught ``AttributeError`` / ``TypeError`` — and an uncaught crash is a
+    defect, not a decision worth preserving behind a rollback lever.
+
+    Every non-``str`` shape is delegated to ``_jsonld_scalar_text``, which is the
+    module's existing total Text-ish reader: it digs a Thing node's
+    ``name``/``@value``/``value`` out, takes the first usable member of a list,
+    renders a finite number, and returns ``""`` for a bool (a bool is an int in
+    Python — "True" is not a product name), a non-finite float, an empty/absent
+    field, or anything else it cannot read. It never raises, including on the
+    >4300-digit int whose ``str()`` raises ``ValueError`` on Python 3.11+.
+    """
+    if isinstance(value, str):
+        return value
+    return _jsonld_scalar_text(value)
+
+
 def _jsonld_image_urls(value: Any) -> List[str]:
     """schema.org `image` -> a flat list of url STRINGS, de-duplicated with
     order preserved. The spec allows a bare url string, a list, or an
@@ -9430,7 +9520,14 @@ def extract_jsonld_price(
                     products.append(item)
 
         for product in products:
-            product_name = product.get("name", "")
+            # BLOCKER 5 — COERCE AT THE BOUNDARY. schema.org types `name` as
+            # Text, but JSON has no Text type: a blob may serve null / a bool /
+            # a number / an array / an object here and json.loads hands that
+            # shape straight through to html_unescape(), .lower(), .replace(),
+            # normalize_words() and re. `_jsonld_str` is identity on a real
+            # string, so every real page is byte-identical; the only inputs
+            # whose behaviour changes are the ones 8adaefb crashed on.
+            product_name = _jsonld_str(product.get("name"))
             # C2 (kpiE2E RS-1) — html.parser does NOT entity-decode <script>
             # contents, so a JSON-LD name's "&amp;" reaches the identity gates
             # verbatim and tokenizes as a false "amp" add. Decode at ingestion.
@@ -9460,13 +9557,33 @@ def extract_jsonld_price(
             # "name":"Jessie and James"} or a bare string) while the name is just
             # "Orangey Dress" — pre-fix that valid BHD price was wrongly rejected.
             ld_brand = product.get("brand")
+            # BLOCKER 5 — the dict/list arms below read a NESTED value that is
+            # itself untyped: {"brand": [{"name": null}]} put None into the join
+            # and TypeError'd (base 8adaefb:8741). Every member now reads through
+            # `_jsonld_str`, which is identity on a real string, so the
+            # ounass-style shapes this code exists for are untouched.
+            #
+            # ONE DELIBERATE DIVERGENCE, and it is this site only. The legacy
+            # `str(ld_brand or "")` below did not crash on a bare JSON bool, it
+            # read {"brand": true} as the literal text "True". `_jsonld_str`
+            # returns "" for a bool instead — a bool is an int in Python and
+            # "True" is not a brand name — which is the SAME call the module's
+            # existing `_jsonld_scalar_text` already makes for every other
+            # Text-ish field. It cannot change a real page: it only ever affects
+            # `matched_in_brand_field` (no query brand is literally "true") and
+            # `_cand_brand`, which then falls back to the query brand instead of
+            # the string "True". The `else` arm also makes the bare-scalar path
+            # total, which `str()` alone is not: on Python 3.11+ `str()` of an
+            # int with >4300 digits raises ValueError.
             if isinstance(ld_brand, dict):
-                ld_brand = ld_brand.get("name", "")
+                ld_brand = _jsonld_str(ld_brand.get("name"))
             elif isinstance(ld_brand, list):
                 ld_brand = " ".join(
-                    (b.get("name", "") if isinstance(b, dict) else str(b))
+                    _jsonld_str(b.get("name") if isinstance(b, dict) else b)
                     for b in ld_brand
                 )
+            else:
+                ld_brand = _jsonld_str(ld_brand)
             brand_field_nospace = str(ld_brand or "").lower().replace(" ", "")
             # External review — match the brand ALIAS forms too (query brand "YSL" vs a
             # JSON-LD brand "Yves Saint Laurent"), BEFORE this literal substring filter
@@ -11083,7 +11200,11 @@ def _bolo_jsonld_main_price(
         for node in nodes:
             if not (isinstance(node, dict) and _is_product_type(node)):
                 continue
-            ld_name = node.get("name", "") or ""
+            # BLOCKER 5 — the same untyped-Text coercion as
+            # extract_jsonld_price: `or ""` catches a FALSY non-string but a
+            # TRUTHY one (True, -1, a nested dict) still reached html_unescape /
+            # numbers_match / variant_mismatch. Identity on a real string.
+            ld_name = _jsonld_str(node.get("name"))
             # C2 — same JSON-LD entity-decode as extract_jsonld_price (an
             # "&amp;" in the blob is the page's escaping, not identity); gated
             # to keep the flag-OFF path byte-identical.
