@@ -9756,11 +9756,323 @@ def _widen_jsonld_candidate(cand: Dict[str, Any], product: Dict[str, Any]) -> No
         cand["reviews"] = reviews
 
 
+# ============================================================================
+# THE JSON-LD SHAPE LADDER (ENABLE_JSONLD_SHAPE_LADDER, default ON)
+# ----------------------------------------------------------------------------
+# WHAT IT FIXES, re-measured over the 328-row / 163-host global corpus by
+# running THIS function against the cached bytes with the exact gate OFF
+# (extraction isolated). 322 pages resolve to a cached file; 124 yielded a
+# price. Of the 198 that did not:
+#
+#   150  carry no usable JSON-LD product shape at all (bot wall / client-side
+#        price). No ladder reaches those; they are a rendering problem.
+#    32  carry a ProductGroup whose Products live in `hasVariant`, which a
+#        `@type == "Product"` test never matches. THE dominant real cause, and
+#        3.5x the brief's estimate of 9. kicks.se 3, matas.dk 3, escentual 3,
+#        parfumdreams 2, lookfantastic 2, spacenk 2, microperfumes 2,
+#        scentsplit 2, luckyscent 2, sephora.com 2, marionnaud.fr 2,
+#        iciparisxl 2, arenal 1, fenwick 1, jomalone 1, olfactif 1.
+#     2  (marksandspencer.com) put BOTH the price and the priceCurrency in
+#        `offers.priceSpecification` and neither on the Offer.
+#
+# WHAT THE BRIEF ASKED FOR THAT IS ALREADY SHIPPED, and is therefore pinned as
+# a regression test instead of rebuilt (tests/test_jsonld_shape_ladder.py::E):
+#   * "@graph is never unwrapped" — base 8adaefb unwraps a top-level dict's
+#     @graph; superdrug and the non-variant marionnaud pages resolve without
+#     this flag. ZERO of the 322 pages nest an @graph inside a top-level LIST,
+#     the one @graph shape that genuinely was not walked (it is walked now, at
+#     no cost, because the walker is uniform).
+#   * "accept @type as a LIST" — `_is_product_type` has done so since 8adaefb.
+#   * "accept og:price:amount" — `_extract_og_price` reads it FIRST, before
+#     product:price:amount, since 8adaefb.
+#   * "notino.co.uk Sauvage EDT has an EMPTY offers array" — that page is not in
+#     the corpus and no cached page carries an empty offers array. Covered as a
+#     constructed totality case, labelled as such.
+# ============================================================================
+
+#: Depth bound for the ladder's walk. Real documents nest ProductGroup ->
+#: hasVariant -> Product, i.e. depth 2 counting the @graph unwrap; the bound
+#: exists only so a hostile self-referential document cannot turn the walk into
+#: a RecursionError or a hang.
+_SHAPE_LADDER_MAX_DEPTH: int = 6
+
+#: Fields a ProductGroup member inherits from its group when it declares none.
+#: `brand` is not optional politeness: on sephora.com every hasVariant member is
+#: named bare "Sauvage Elixir" and declares NO brand, so without inheritance the
+#: brand gate drops all three variants and the whole descent buys nothing.
+#: `name` follows the same logic for a group whose variants are unnamed.
+_SHAPE_LADDER_INHERITED_FIELDS: Tuple[str, ...] = ("brand", "name")
+
+
+def jsonld_shape_ladder_enabled() -> bool:
+    """True iff ``extract_jsonld_price`` walks the JSON-LD SHAPE LADDER instead
+    of the single `@type == "Product"` -> `offers` lookup (default ON).
+
+    Flag OFF restores the pre-wave node collection and the pre-wave offer
+    lookup VERBATIM, and disarms the multiplicity adjudication, so a rollback
+    is byte-identical on every cached page (pinned in both exact-gate modes by
+    tests/test_jsonld_shape_ladder.py block D against values captured from HEAD
+    before a line of this was written).
+
+    Default ON because it is a coverage fix on top of a correctness fix: 34 of
+    the 198 no-price pages in the global corpus fail for a SHAPE reason this
+    resolves, and the multiplicity rule it carries replaces a silent
+    cheapest-pick that was measurably wrong on 15 of the 124 pages that did
+    return a price.
+
+    Read PER CALL from os.getenv (copying ``exact_gate_enabled``) so Railway can
+    flip it without a restart, and NEVER cached at import.
+    """
+    return os.getenv("ENABLE_JSONLD_SHAPE_LADDER", "true").strip().lower() not in (
+        "false", "0", "no", "off", "",
+    )
+
+
+def _shape_ladder_product_nodes(data: Any) -> List[Dict[str, Any]]:
+    """Every Product node reachable from ONE parsed JSON-LD block, in document
+    order. Rungs 1-3 of the ladder:
+
+      1. walk the WHOLE container — a dict, a list, and an ``@graph`` under
+         either, at any depth up to ``_SHAPE_LADDER_MAX_DEPTH``;
+      2. ``@type`` may be a string OR a list (``_is_product_type``, unchanged);
+      3. descend ``ProductGroup.hasVariant``, returning each member with the
+         group's ``brand``/``name`` filled in where the member declares none.
+
+    A returned variant is a SHALLOW COPY — the parsed document is never
+    mutated, so a second pass (the caller's USD retry) sees the same bytes.
+
+    TOTAL by construction: ``hasVariant`` may be any object, members may be any
+    object, and a self-referential document terminates at the depth bound. A
+    shape we cannot read is simply not a Product.
+    """
+    found: List[Dict[str, Any]] = []
+    seen: set = set()
+
+    def walk(node: Any, depth: int, inherited: Dict[str, Any]) -> None:
+        if depth > _SHAPE_LADDER_MAX_DEPTH:
+            return
+        if isinstance(node, list):
+            for item in node:
+                walk(item, depth + 1, inherited)
+            return
+        if not isinstance(node, dict):
+            return
+        if id(node) in seen:
+            return
+        seen.add(id(node))
+
+        graph = node.get("@graph")
+        if isinstance(graph, (list, dict)):
+            walk(graph, depth + 1, inherited)
+
+        variants = node.get("hasVariant")
+        if variants is not None:
+            # The group's own identity, handed down to members that lack it.
+            child = dict(inherited)
+            for field in _SHAPE_LADDER_INHERITED_FIELDS:
+                if node.get(field) is not None:
+                    child[field] = node[field]
+            walk(variants, depth + 1, child)
+
+        if _is_product_type(node):
+            if any(node.get(f) is None for f in _SHAPE_LADDER_INHERITED_FIELDS) and inherited:
+                node = dict(node)
+                for field, value in inherited.items():
+                    if node.get(field) is None:
+                        node[field] = value
+            found.append(node)
+
+    walk(data, 0, {})
+    return found
+
+
+def _shape_ladder_price_specs(offer: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """The ``priceSpecification`` nodes on an Offer, as a list. schema.org
+    permits one or many; marksandspencer.com ships exactly one
+    (UnitPriceSpecification). Anything unreadable yields nothing."""
+    spec = offer.get("priceSpecification")
+    nodes = spec if isinstance(spec, list) else [spec]
+    return [n for n in nodes if isinstance(n, dict)]
+
+
+def _shape_ladder_offer_money(offer: Dict[str, Any]) -> Tuple[Any, Any]:
+    """Rung 4 — ``(raw_price, raw_currency)`` for one Offer.
+
+    ``Offer.price`` FIRST, then ``priceSpecification.price``. A spec marked
+    ``priceType = StrikethroughPrice`` is SKIPPED for the same reason the Offer
+    loop already skips such an Offer (``_offer_is_strikethrough``): a
+    struck-through was-price is not an offer anybody can accept, and the EU
+    Omnibus "lowest price in the last 30 days" figure is by definition at or
+    below the current one, so it would win a cheapest tiebreak.
+
+    The currency follows the price it belongs to. This is not tidiness:
+    marksandspencer.com puts ``priceCurrency`` ONLY on the priceSpecification,
+    so reading the price from there while gating on the Offer's absent currency
+    would still drop the page.
+    """
+    price = offer.get("price")
+    if price is not None:
+        return price, offer.get("priceCurrency")
+    for spec in _shape_ladder_price_specs(offer):
+        if _offer_is_strikethrough(spec):
+            continue
+        spec_price = spec.get("price")
+        if spec_price is not None:
+            return spec_price, spec.get("priceCurrency") or offer.get("priceCurrency")
+    return None, offer.get("priceCurrency")
+
+
+def _shape_ladder_price_value(raw: Any, currency: Any) -> Optional[float]:
+    """Rung 5 — one raw JSON-LD price to a float, or None.
+
+    ``float()`` FIRST, ``parse_money`` only as the FALLBACK, and that order is
+    load-bearing rather than stylistic:
+
+      * every value ``float()`` already read keeps its EXACT legacy value, so
+        this rung is strictly additive. That includes the two hostile shapes
+        the wave's own rollback pins depend on — ``"1e400"`` must still become
+        ``inf`` so ``ENABLE_HOSTILE_NUMERIC_GUARD`` stays a live lever over it
+        (tests/test_hostile_jsonld.py). Routing it through ``parse_money``
+        FIRST read it as ``1.0``: the parser strips the exponent as
+        non-numeric, which is right for shelf TEXT and wrong for a JSON number
+        literal. A parser is only canonical inside its own domain.
+      * ``parse_money`` — the ONE canonical parser BLOCKER 6 established, in
+        MACHINE mode (a JSON-LD `price` writes the decimal point as ".", like
+        og:price:amount and a Shopify variant price) — then rescues exactly the
+        strings ``float()`` REJECTS: "320,00", "1.234,56", "1,234.56". Those
+        are the 100x family, and today ``float()`` raises on all of them so the
+        offer is dropped entirely; nothing that currently produces a number can
+        change value.
+
+    No cached page carries such a string on the JSON-LD path today (10 of the
+    28 surveyed PDPs write a plain "199.00"-shaped string, which both readings
+    agree on), so this moves no measured number. It is here so the first one we
+    meet is not a silent 100x.
+    """
+    if raw is None:
+        return None
+    try:
+        return float(raw)
+    except (ValueError, TypeError):
+        pass
+    if isinstance(raw, str):
+        return parse_money(raw, currency, display_text=False)
+    return None
+
+
+def _shape_ladder_candidate_size_text(cand: Dict[str, Any]) -> str:
+    """Every free-text field a candidate's size can hide in. The JSON-LD ``size``
+    field is authoritative where present (marionnaud "30ML", spacenk "100ML",
+    matas "50 ml"); many groups put it only in the name (escentual
+    "... - 90ml", luckyscent "L'Eau Papier - 100ml", kicks "... 90 ml")."""
+    return " ".join(
+        str(cand.get(key) or "") for key in ("size", "name", "title")
+    )
+
+
+def _adjudicate_jsonld_multiplicity(
+    candidates: List[Dict[str, Any]], query_name: str,
+) -> Optional[List[Dict[str, Any]]]:
+    """MULTIPLICITY AS AN EXPLICIT OUTCOME. Returns the candidate list selection
+    may choose from, or None meaning PEND.
+
+    THE RULE, and why each rung is where it is:
+
+      1. ONE distinct identity-matched amount -> return the list unchanged.
+         There is no ambiguity, so the overwhelming majority of pages — 109 of
+         the 124 that currently price — are not touched at all.
+
+      2. the query NAMES A SIZE -> narrow to the candidates carrying it. This is
+         the documented fragrance rule: a size-qualified query selects the
+         matching size. It is what makes luckyscent's 100ml return 195.0 with a
+         145.0 first member and a 5.0 1ml decant in the same list. It fails
+         CLOSED: a size the page does not stock (a 100ml query against
+         marionnaud's 30/50/75ML) narrows to NOTHING and pends rather than
+         substituting the nearest.
+
+      3. still several amounts -> narrow to CONFIRMED in-stock. Availability is
+         a discriminator the page ASSERTS, so using it is not guessing: an
+         OutOfStock offer at 25 beside an InStock offer at 40 is not an
+         ambiguity, it is one purchasable price and one that is not. This is
+         the same stance ``select_best`` already takes (``in_stock is False``
+         sorts last) and the same one the usable_exact_genuine KPI takes
+         (confirmed in-stock, not merely not-refuted). It runs AFTER the size
+         rung deliberately: narrowing by stock first would answer a 100ml query
+         with the in-stock 50ml, which is the wrong product, not a cheaper one.
+
+      4. exactly one distinct amount left -> return that subset. Anything else
+         -> PEND.
+
+    Rung 4 is the whole point, so here is its evidence. 29% of the surveyed
+    PDPs that carry Offer.price carry more than one distinct value with nothing
+    marking a default, and on all 15 such pages in the corpus HEAD returned the
+    CHEAPEST: perfume.com 2.81 out of {2.81 ... 24.91} for a full bottle of
+    Pink Sugar, fragrancex 19.99 out of {19.99 ... 130.43} for Sauvage,
+    notino.co.uk 51.42 when the page's own survey recorded 74.88. That is the
+    documented authority-not-cheapest failure, shipped as a GENUINE-labelled
+    price. "First" is no better a rule: document order asserts nothing, and
+    sephora.com's first variant is the 199 while lookfantastic's is the 80 —
+    neither page marks a default anywhere in its markup. When the page does not
+    say, the honest answer is that we do not know.
+
+    A size that still leaves several amounts standing (lookfantastic's four
+    byte-identical "...75ml" variants at 80 / 59.2 / 20 / 55, all InStock)
+    survives every rung and pends too.
+
+    Deliberately NOT applied when ``query_name`` is empty: that is the pre-S4
+    contract (``structured_comparison_service``), which has no identity to
+    adjudicate against and is documented in ``extract_jsonld_price`` as the
+    legacy cheapest-pick. Pending every multi-offer page in a caller that never
+    supplied a query would be a change nothing in this measurement supports.
+    """
+    def amounts_of(cands: List[Dict[str, Any]]) -> set:
+        return {round(float(c["amount"]), 4) for c in cands}
+
+    if len(amounts_of(candidates)) <= 1:
+        return candidates
+
+    # Rung 2 — the size the query asked for.
+    query_sizes = extract_sizes_ml(query_name)
+    if query_sizes:
+        candidates = [
+            c for c in candidates
+            if extract_sizes_ml(_shape_ladder_candidate_size_text(c)) & query_sizes
+        ]
+        if not candidates:
+            return None
+        if len(amounts_of(candidates)) == 1:
+            return candidates
+
+    # Rung 3 — confirmed in-stock, when that is actually a discriminator.
+    in_stock = [c for c in candidates if c.get("in_stock") is True]
+    if in_stock and len(in_stock) < len(candidates):
+        candidates = in_stock
+
+    # Rung 4.
+    return candidates if len(amounts_of(candidates)) == 1 else None
+
+
 def extract_jsonld_price(
     html: str, brand: str, expected_currency: str, query_name: str = "",
-    category: Optional[str] = None,
+    category: Optional[str] = None, pending_out: Optional[List[Any]] = None,
 ) -> Optional[Dict[str, Any]]:
     """Parse JSON-LD Product schema from HTML for price data.
+
+    `pending_out` (ENABLE_JSONLD_SHAPE_LADDER, optional) — the MULTIPLICITY
+    channel. When the page carries several distinct identity-matched prices and
+    nothing on it resolves which one the query means, this function returns
+    None (a pend) and, if a list was supplied, APPENDS the candidate list to it
+    so the caller can report the ambiguity instead of guessing. See
+    `_adjudicate_jsonld_multiplicity` for the rule and the measurement behind
+    it.
+
+    It is an OPT-IN out-parameter rather than a richer return value on purpose.
+    This function has three call sites and one of them does
+    `price_data["amount"]` immediately after `if price_data:` — an amount-less
+    dict would KeyError there. Returning None means every existing caller pends
+    exactly as it already does when no price is found, at zero blast radius,
+    while a caller that wants the candidates asks for them. Anything that is
+    not a list is ignored: the channel is a courtesy, never a dependency.
 
     `query_name` (S4 gate, optional) — the full query string. When a Product
     matches only via the JSON-LD `brand` field (not its name), this is used to
@@ -9802,18 +10114,27 @@ def extract_jsonld_price(
                 raise
             continue
 
-        products = []
-        if isinstance(data, dict):
-            if _is_product_type(data):
-                products.append(data)
-            elif "@graph" in data:
-                for item in data["@graph"]:
+        # THE SHAPE LADDER, rungs 1-3 (ENABLE_JSONLD_SHAPE_LADDER, default ON).
+        # The legacy collection below reached a Product only at the top of a
+        # dict, or one level into a top-level dict's @graph, or one level into a
+        # top-level list — so a ProductGroup's `hasVariant` Products (32 cached
+        # pages, the dominant real cause of a no-price PDP) were invisible.
+        # Flag OFF is the legacy `else` arm, verbatim.
+        if jsonld_shape_ladder_enabled():
+            products = _shape_ladder_product_nodes(data)
+        else:
+            products = []
+            if isinstance(data, dict):
+                if _is_product_type(data):
+                    products.append(data)
+                elif "@graph" in data:
+                    for item in data["@graph"]:
+                        if isinstance(item, dict) and _is_product_type(item):
+                            products.append(item)
+            elif isinstance(data, list):
+                for item in data:
                     if isinstance(item, dict) and _is_product_type(item):
                         products.append(item)
-        elif isinstance(data, list):
-            for item in data:
-                if isinstance(item, dict) and _is_product_type(item):
-                    products.append(item)
 
         for product in products:
             # BLOCKER 5 — COERCE AT THE BOUNDARY. schema.org types `name` as
@@ -9952,7 +10273,19 @@ def extract_jsonld_price(
                 # None) — e.g. bahrainpharmacy's empty WooCommerce Offer node.
                 # Coerce to str so a malformed Offer is SKIPPED, not a crash that
                 # aborts the whole extractor before the WC/microdata fallbacks.
-                currency = offer.get("priceCurrency") or ""
+                # THE SHAPE LADDER, rung 4. `_ladder_price` is resolved BEFORE
+                # the currency gate because on marksandspencer.com the Offer
+                # carries NEITHER `price` NOR `priceCurrency` — both live on
+                # `offers.priceSpecification`, so reading one from there while
+                # gating on the other's absence would still drop the page. Flag
+                # OFF: the currency is the Offer's own key, exactly as before.
+                _ladder = jsonld_shape_ladder_enabled()
+                if _ladder:
+                    _ladder_price, _ladder_currency = _shape_ladder_offer_money(offer)
+                    currency = _ladder_currency or ""
+                else:
+                    _ladder_price = None
+                    currency = offer.get("priceCurrency") or ""
                 if str(currency).upper() != expected_currency.upper():
                     continue
                 # A struck-through WAS-price is not an offer anybody can accept.
@@ -9971,7 +10304,7 @@ def extract_jsonld_price(
                 if exact_gate_enabled() and _offer_price_expired(offer):
                     continue
                 try:
-                    explicit = offer.get("price")
+                    explicit = _ladder_price if _ladder else offer.get("price")
                     low = offer.get("lowPrice")
                     high = offer.get("highPrice")
                     # B4 (external review) — on the EXACTNESS path (query known), an
@@ -9998,7 +10331,31 @@ def extract_jsonld_price(
                     ):
                         continue
                     # AggregateOffer carries lowPrice instead of price (I5.8, no-query path)
-                    price_val = float(explicit or low or 0)
+                    #
+                    # THE SHAPE LADDER, rung 5. A STRING price goes through
+                    # `parse_money` — the ONE canonical parser BLOCKER 6
+                    # established — in MACHINE mode, because a JSON-LD `price`
+                    # is specified to write the decimal point as ".", exactly
+                    # like og:price:amount and a Shopify variant price. It
+                    # moves no measured number (no cached page carries a
+                    # comma-decimal or symbol-bearing JSON-LD price; 10 of the
+                    # 28 surveyed PDPs write a plain "199.00"-shaped string,
+                    # which both readings agree on); it is here so the FIRST
+                    # comma-decimal one we meet is not the qatarperfumeshop
+                    # 100x on a different branch. An unparseable string is None
+                    # -> `price_val <= 0` -> skipped, the same outcome the bare
+                    # `float()` reached by raising into the except below. Flag
+                    # OFF is that bare float(), verbatim.
+                    if _ladder:
+                        # `explicit if explicit else low` reproduces the legacy
+                        # `explicit or low` EXACTLY, so a falsy explicit (0, "",
+                        # None, False) still falls through to lowPrice.
+                        _parsed = _shape_ladder_price_value(
+                            explicit if explicit else low, currency,
+                        )
+                        price_val = _parsed if _parsed is not None else 0.0
+                    else:
+                        price_val = float(explicit or low or 0)
                 except (ValueError, TypeError):
                     continue
                 if price_val <= 0:
@@ -10104,6 +10461,20 @@ def extract_jsonld_price(
     # the query is unknown (pre-S4 callers) there is no identity to gate on → keep
     # the legacy cheapest pick.
     if query_name:
+        # MULTIPLICITY IS AN EXPLICIT OUTCOME (ENABLE_JSONLD_SHAPE_LADDER).
+        # Runs BEFORE select_best, not after, because select_best does not
+        # expose which candidates survived its own identity filter — and its
+        # last tiebreak is `amount`, i.e. the cheapest, which with the exact
+        # gate OFF is its ONLY rule. Adjudicating first is what makes "we
+        # cannot tell" a reportable answer instead of a silent pick. Flag OFF:
+        # never called, and `pending_out` is never written.
+        if jsonld_shape_ladder_enabled():
+            resolved = _adjudicate_jsonld_multiplicity(candidates, query_name)
+            if resolved is None:
+                if isinstance(pending_out, list):
+                    pending_out.append(candidates)
+                return None
+            candidates = resolved
         # require_url=False — JSON-LD candidates are page-INTERNAL (the PDP URL is
         # the page being scraped; the caller stamps it onto the result). Requiring a
         # per-candidate URL here would drop every JSON-LD match.
@@ -10603,11 +10974,34 @@ def extract_price_from_html(
     # Priority 1: JSON-LD (S4 — pass the full query as query_name so a brand-
     # field-only match still requires name-relatedness, no cheapest-unrelated-
     # sibling grab).
-    price_data = extract_jsonld_price(html, brand, currency, query_name=product_name, category=category)
+    # `_ld_pending` is the MULTIPLICITY channel (ENABLE_JSONLD_SHAPE_LADDER).
+    # It changes nothing about what this function returns — an unresolved
+    # multiplicity is a None from the extractor, which falls through to the OG /
+    # microdata / WooCommerce cascade exactly as "no JSON-LD price" always has.
+    # It exists so the outcome is OBSERVABLE rather than indistinguishable from
+    # a page with no markup: "we found 4 prices and none of them is provably the
+    # one you asked for" is a different fact from "we found nothing", and the
+    # difference is what tells a future reader whether the page needs a
+    # discriminator or a renderer.
+    _ld_pending: List[Any] = []
+    price_data = extract_jsonld_price(
+        html, brand, currency, query_name=product_name, category=category,
+        pending_out=_ld_pending,
+    )
     if not price_data:
-        price_data = extract_jsonld_price(html, brand, "USD", query_name=product_name, category=category)
+        price_data = extract_jsonld_price(
+            html, brand, "USD", query_name=product_name, category=category,
+            pending_out=_ld_pending,
+        )
         if price_data:
             price_data["_needs_conversion"] = True
+    if not price_data and _ld_pending:
+        logger.info(
+            "[PRICE] jsonld multiplicity unresolved on %s — %d candidates %s "
+            "(pending, never a silent pick)",
+            domain, len(_ld_pending[0]),
+            sorted({c.get("amount") for c in _ld_pending[0]}),
+        )
 
     if price_data and price_data.get("amount"):
         result = {

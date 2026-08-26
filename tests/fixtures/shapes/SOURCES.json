@@ -1,0 +1,110 @@
+{
+ "_note": "Fixtures cut from the REAL cached pages under _proof/global/html/. Nothing was hand-authored: each file is the page's own JSON-LD blocks plus its own price meta tags.",
+ "corpus": "_proof/global/corpus.json + _proof/global/_corpus_cachemap.json",
+ "files": {
+  "gb_shopify_escentual_com_productgroup_single_variant.html": {
+   "url": "https://escentual.com/products/initio-wild-rush-eau-de-parfum?country=GB",
+   "host": "escentual.com",
+   "country": "GB",
+   "cached_bytes": "4b92d980da308535f2b98fae396f659eb3274d5d.html",
+   "cached_sha1_of_page": "cf4d0aa23229eba8f40f84f012af1efb7d1b1ea5",
+   "kept": "every application/ld+json block whose raw text contains 'hasVariant', verbatim (re-serialised by json.dumps, values untouched), plus the og/product price meta tags and <title> from the same cached bytes"
+  },
+  "fr_hybris_marionnaud_fr_graph_productgroup_3_sizes.html": {
+   "url": "https://www.marionnaud.fr/parfum/parfum-femme/eau-de-parfum/chloe-nomade-eau-de-parfum-chloe/p/BP_101380911",
+   "host": "www.marionnaud.fr",
+   "country": "FR",
+   "cached_bytes": "af5375da45f16a97889d106944472d6ab9cd0362.html",
+   "cached_sha1_of_page": "4ed94d8912bb35bbb4223d59f9370b752977a766",
+   "kept": "every application/ld+json block whose raw text contains 'hasVariant', verbatim (re-serialised by json.dumps, values untouched), plus the og/product price meta tags and <title> from the same cached bytes"
+  },
+  "ch_hybris_marionnaud_ch_graph_productgroup_3_sizes.html": {
+   "url": "https://www.marionnaud.ch/de/lancome/la-vie-est-belle-lelixir-very-cherry/eau-de-parfum/p/BP_1459396",
+   "host": "marionnaud.ch",
+   "country": "CH",
+   "cached_bytes": "3f66e85c0f41f25d5d47b92be1b007e82f82048c.html",
+   "cached_sha1_of_page": "d05cebc72b6cb0542d7081e161656afcf0349123",
+   "kept": "every application/ld+json block whose raw text contains 'hasVariant', verbatim (re-serialised by json.dumps, values untouched), plus the og/product price meta tags and <title> from the same cached bytes"
+  },
+  "us_sephora_com_productgroup_sizeless_variants.html": {
+   "url": "https://www.sephora.com/product/dior-sauvage-elixir-P475526",
+   "host": "www.sephora.com",
+   "country": "US",
+   "cached_bytes": "eb0c552f45a3373c43ba40a28dd3281ecf5b0bc1.html",
+   "cached_sha1_of_page": "dfa38cf69ab9846a5ecd464f9dd9f64aef05c838",
+   "kept": "every application/ld+json block whose raw text contains 'hasVariant', verbatim (re-serialised by json.dumps, values untouched), plus the og/product price meta tags and <title> from the same cached bytes"
+  },
+  "gb_thg_lookfantastic_com_productgroup_duplicate_names.html": {
+   "url": "https://www.lookfantastic.com/p/jean-paul-gaultier-le-male-eau-de-toilette-75ml/10021723/",
+   "host": "www.lookfantastic.com",
+   "country": "GB",
+   "cached_bytes": "88e6275864cd734fb6eaa88f8cbcd7a4fb59bfb4.html",
+   "cached_sha1_of_page": "a00f4de08e44ffe4e36238065a4fb385085ec76b",
+   "kept": "every application/ld+json block whose raw text contains 'hasVariant', verbatim (re-serialised by json.dumps, values untouched), plus the og/product price meta tags and <title> from the same cached bytes"
+  },
+  "gb_mands_com_pricespecification_only_offer.html": {
+   "url": "https://www.marksandspencer.com/rose-de-mai-eau-de-toilette-100ml/p/hbp22186722",
+   "host": "www.marksandspencer.com",
+   "country": "GB",
+   "cached_bytes": "c3d7dc12293e7efbf5224f4eadeb7fd995e1b7c7.html",
+   "cached_sha1_of_page": "7ba1f7816da53fcba58ad6514b124be57afc1bf5",
+   "kept": "every application/ld+json block whose raw text contains 'priceSpecification', verbatim (re-serialised by json.dumps, values untouched), plus the og/product price meta tags and <title> from the same cached bytes"
+  },
+  "se_kicks_se_productgroup_size_in_name.html": {
+   "url": "https://www.kicks.se/armani-my-way-edp-50-ml",
+   "host": "kicks.se",
+   "country": "SE",
+   "cached_bytes": "8888e03eedc12f48ccde79c46f585a6ea462ab00.html",
+   "cached_sha1_of_page": "69ee869aa4ec2c58158565e1234a1d1424f064cd",
+   "kept": "every application/ld+json block whose raw text contains 'hasVariant', verbatim (re-serialised by json.dumps, values untouched), plus the og/product price meta tags and <title> from the same cached bytes"
+  },
+  "gb_spacenk_com_productgroup_size_field.html": {
+   "url": "https://www.spacenk.com/uk/young-rose-eau-de-parfum-UK200033403.html",
+   "host": "www.spacenk.com",
+   "country": "GB",
+   "cached_bytes": "d650e7dba5817b1a6025e33c7102b473a017efd9.html",
+   "cached_sha1_of_page": "c228b9a783174f549aa2b294baa091150f7b044d",
+   "kept": "every application/ld+json block whose raw text contains 'hasVariant', verbatim (re-serialised by json.dumps, values untouched), plus the og/product price meta tags and <title> from the same cached bytes"
+  },
+  "us_luckyscent_com_productgroup_decant_decoy.html": {
+   "url": "https://www.luckyscent.com/products/leau-papier-by-diptyque",
+   "host": "www.luckyscent.com",
+   "country": "US",
+   "cached_bytes": "7fd0cdfcaaf2e97d0b3caa979fa9da6eb6789f62.html",
+   "cached_sha1_of_page": "a1c51b506ffa0c41786f3e8721493520962de802",
+   "kept": "every application/ld+json block whose raw text contains 'hasVariant', verbatim (re-serialised by json.dumps, values untouched), plus the og/product price meta tags and <title> from the same cached bytes"
+  },
+  "gb_notino_co_uk_offers_array_four_prices.html": {
+   "url": "https://www.notino.co.uk/acqua-dell-elba/arcipelago-women-eau-de-parfum-for-women/",
+   "host": "www.notino.co.uk",
+   "country": "GB",
+   "cached_bytes": "d7f5f429f22637d7621df16893c114cc12e1a23d.html",
+   "cached_sha1_of_page": "fa8b6e727468beab813e59b039056e5f89f07a44",
+   "kept": "every application/ld+json block whose raw text contains '\"offers\"', verbatim (re-serialised by json.dumps, values untouched), plus the og/product price meta tags and <title> from the same cached bytes"
+  },
+  "gb_hybris_superdrug_com_graph_product_single_offer.html": {
+   "url": "https://www.superdrug.com/fragrance/perfume-for-women/womens-perfume/paco-rabanne-lady-million-eau-my-gold-edt-80ml/p/228302",
+   "host": "www.superdrug.com",
+   "country": "GB",
+   "cached_bytes": "0620f38ecb5758452a8c0be758516e1bf0459549.html",
+   "cached_sha1_of_page": "e330151fb236c5e85f1401a5af76bfbf90e6a049",
+   "kept": "every application/ld+json block whose raw text contains '\"offers\"', verbatim (re-serialised by json.dumps, values untouched), plus the og/product price meta tags and <title> from the same cached bytes"
+  },
+  "dk_matas_dk_productgroup_two_sizes.html": {
+   "url": "https://www.matas.dk/burberry-hero-eau-de-parfum-100-ml",
+   "host": "matas.dk",
+   "country": "DK",
+   "cached_bytes": "31f8cc2c411429358bdc0fdc1b1039c6fe4acdfc.html",
+   "cached_sha1_of_page": "9ffd4bb11fbe041edf0e5cc22bbe8e50bffd90a7",
+   "kept": "every application/ld+json block whose raw text contains 'hasVariant', verbatim (re-serialised by json.dumps, values untouched), plus the og/product price meta tags and <title> from the same cached bytes"
+  },
+  "gb_hybris_theperfumeshop_com_graph_nested_list.html": {
+   "url": "https://www.theperfumeshop.com/dkny/be-delicious/eau-de-parfum-spray/p/10160EDPJU",
+   "host": "www.theperfumeshop.com",
+   "country": "GB",
+   "cached_bytes": "ef74aad3e4d8c95f8f39b9456933d05b08a81a7b.html",
+   "cached_sha1_of_page": "c4f6bd9f7323c2ff0367c1ac38c12a07f85eb741",
+   "kept": "every application/ld+json block whose raw text contains 'hasVariant', verbatim (re-serialised by json.dumps, values untouched), plus the og/product price meta tags and <title> from the same cached bytes"
+  }
+ }
+}

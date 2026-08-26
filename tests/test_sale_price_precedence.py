@@ -613,9 +613,25 @@ def test_a_second_offer_strikethrough_above_the_shelf_price_is_a_noop(
     assert result["amount"] == pytest.approx(29.99)
 
 
-def test_flag_off_restores_the_legacy_strikethrough_behaviour(flag_off, gate_off):
+def test_flag_off_restores_the_legacy_strikethrough_behaviour(
+    flag_off, gate_off, monkeypatch,
+):
     """Rollback honesty: with ENABLE_SALE_PRICE_FIRST off the guard is gone and
-    the cheapest member wins again, exactly as it does at 8adaefb."""
+    the cheapest member wins again, exactly as it does at 8adaefb.
+
+    ENABLE_JSONLD_SHAPE_LADDER is pinned OFF here so this stays a ONE-flag
+    rollback pin. The later wave item added a second, independent flag that
+    reaches the same decision: with the sale guard off, the was-price becomes a
+    candidate again and the page then carries TWO distinct in-stock prices for
+    one 90ML product with nothing marking a default, which is exactly the
+    multiplicity the ladder refuses to resolve silently — so with BOTH flags at
+    play the composite outcome is a pend, not 24.99. That composite is pinned in
+    tests/test_jsonld_shape_ladder.py rather than here, because measuring one
+    flag's rollback while a second flag is also moving measures neither. The
+    shipped configuration is unaffected: with ENABLE_SALE_PRICE_FIRST ON (its
+    default) the was-price is never a candidate and 29.99 wins, which the three
+    tests above assert in both gate modes."""
+    monkeypatch.setenv("ENABLE_JSONLD_SHAPE_LADDER", "false")
     result = _strike_extract("uk_theperfumeshop_com_second_offer_omnibus_low.html")
     assert result is not None
     assert result["amount"] == pytest.approx(24.99)
