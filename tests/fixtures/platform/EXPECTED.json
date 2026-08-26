@@ -1,36 +1,252 @@
 {
-  "_source": "fragments of _proof/html cached PDPs (Gulf 92) and _proof/global/html (the two zid_store rows) ; domain -> expected detect_platform() result",
+  "_source": "Verbatim fragments of real cached PDPs: the Gulf-92 sweep (_proof/html/, filename = sha1('curl_cffi|'+url)) and the 328-row global corpus (_proof/global/html/). Provenance for every fixture added on 2026-08-26 - source host, source URL, cache file, HTTP status, source byte count and the corpus's own platform_truth - is recorded in SOURCES.json.",
+  "_schema": "fixtures: name -> [legacy, commerce_platform, render_stack]. `legacy` is what detect_platform() returned before the two-field verdict landed, and is what it still returns with ENABLE_PLATFORM_VERDICT=false. `commerce_platform` and `render_stack` are the two independent fields of detect_platform_verdict(); either may be 'unknown' on its own.",
   "fixtures": {
-    "3saf_com.html": "salla",
-    "alhajisoman_com.html": "shopify",
-    "alibaksh_com.html": "woocommerce",
-    "ashrafsbahrain_com.html": "magento",
-    "bahrain_naseem_com.html": "shopify",
-    "bdutyfree_com.html": "magento",
-    "bh_cosmostore_org.html": "unknown",
-    "bh_mubkhar_com.html": "shopify",
-    "bh_oudelite_com.html": "salla",
-    "bh_taifalemarat_com.html": "shopify",
-    "bloomingdales_com_kw.html": "sfcc",
-    "caretobeauty_com.html": "unknown",
-    "en-bh_rituals_com.html": "magento",
-    "en-kwt_ajmal_com.html": "nextjs",
-    "faces_ae.html": "sfcc",
-    "faces_sa.html": "sfcc",
-    "fragrancebh_com.html": "woocommerce",
-    "goldenscent_com.html": "nextjs",
-    "h3jssz_zid_store.html": "zid",
-    "klinq_com.html": "magento",
-    "laverne_com.html": "salla",
-    "mazeed_sa.html": "zid",
-    "numberc_com.html": "shopify",
-    "ouddubai_ae.html": "woocommerce",
-    "ounass_ae.html": "unknown",
-    "qatarperfumeshop_com.html": "woocommerce",
-    "reefperfumes_com.html": "salla",
-    "saudi_jazp_com.html": "unknown",
-    "vanilla_sa.html": "salla",
-    "vperfumes_com.html": "nextjs",
-    "watsons_sa.html": "shopify"
+    "3saf_com.html": [
+      "salla",
+      "salla",
+      "unknown"
+    ],
+    "ae_noon_com.html": [
+      "unknown",
+      "unknown",
+      "react"
+    ],
+    "ae_sephora_me_akamai_403.html": [
+      "unknown",
+      "unknown",
+      "unknown"
+    ],
+    "alhajisoman_com.html": [
+      "shopify",
+      "shopify",
+      "unknown"
+    ],
+    "alibaksh_com.html": [
+      "woocommerce",
+      "woocommerce",
+      "unknown"
+    ],
+    "ashrafsbahrain_com.html": [
+      "magento",
+      "magento",
+      "unknown"
+    ],
+    "at_douglas_at.html": [
+      "unknown",
+      "sap_hybris",
+      "unknown"
+    ],
+    "bahrain_naseem_com.html": [
+      "shopify",
+      "shopify",
+      "unknown"
+    ],
+    "bdutyfree_com.html": [
+      "magento",
+      "magento",
+      "classic"
+    ],
+    "be_iciparisxl_be.html": [
+      "unknown",
+      "sap_hybris",
+      "angular"
+    ],
+    "bh_cosmostore_org.html": [
+      "unknown",
+      "unknown",
+      "unknown"
+    ],
+    "bh_mubkhar_com.html": [
+      "shopify",
+      "shopify",
+      "unknown"
+    ],
+    "bh_oudelite_com.html": [
+      "salla",
+      "salla",
+      "unknown"
+    ],
+    "bh_taifalemarat_com.html": [
+      "shopify",
+      "shopify",
+      "unknown"
+    ],
+    "bloomingdales_com_kw.html": [
+      "sfcc",
+      "sfcc",
+      "unknown"
+    ],
+    "caretobeauty_com.html": [
+      "unknown",
+      "unknown",
+      "unknown"
+    ],
+    "de_duftzwilling_de.html": [
+      "unknown",
+      "shopware",
+      "unknown"
+    ],
+    "de_pieper_de.html": [
+      "unknown",
+      "shopware",
+      "unknown"
+    ],
+    "en-bh_rituals_com.html": [
+      "magento",
+      "magento",
+      "unknown"
+    ],
+    "en-kwt_ajmal_com.html": [
+      "nextjs",
+      "unknown",
+      "nextjs"
+    ],
+    "es_druni_es.html": [
+      "unknown",
+      "magento",
+      "unknown"
+    ],
+    "faces_ae.html": [
+      "sfcc",
+      "sfcc",
+      "unknown"
+    ],
+    "faces_sa.html": [
+      "sfcc",
+      "sfcc",
+      "unknown"
+    ],
+    "fr_parfumerie_burdin_com.html": [
+      "unknown",
+      "prestashop",
+      "unknown"
+    ],
+    "fragrancebh_com.html": [
+      "woocommerce",
+      "woocommerce",
+      "unknown"
+    ],
+    "gb_superdrug_com.html": [
+      "unknown",
+      "sap_hybris",
+      "unknown"
+    ],
+    "goldenscent_com.html": [
+      "nextjs",
+      "unknown",
+      "nextjs"
+    ],
+    "h3jssz_zid_store.html": [
+      "zid",
+      "zid",
+      "unknown"
+    ],
+    "iq_miswag_com.html": [
+      "unknown",
+      "unknown",
+      "nuxt"
+    ],
+    "it_ideabellezza_it.html": [
+      "nextjs",
+      "bigcommerce",
+      "nextjs"
+    ],
+    "klinq_com.html": [
+      "magento",
+      "magento",
+      "unknown"
+    ],
+    "kw_boutiqaat_com.html": [
+      "nextjs",
+      "unknown",
+      "nextjs"
+    ],
+    "laverne_com.html": [
+      "salla",
+      "salla",
+      "unknown"
+    ],
+    "mazeed_sa.html": [
+      "zid",
+      "zid",
+      "unknown"
+    ],
+    "nl_parfumcenter_nl.html": [
+      "unknown",
+      "magento",
+      "unknown"
+    ],
+    "numberc_com.html": [
+      "shopify",
+      "shopify",
+      "unknown"
+    ],
+    "ouddubai_ae.html": [
+      "woocommerce",
+      "woocommerce",
+      "unknown"
+    ],
+    "ounass_ae.html": [
+      "unknown",
+      "magento",
+      "unknown"
+    ],
+    "pl_eperfumy_pl.html": [
+      "unknown",
+      "prestashop",
+      "unknown"
+    ],
+    "qatarperfumeshop_com.html": [
+      "woocommerce",
+      "woocommerce",
+      "classic"
+    ],
+    "reefperfumes_com.html": [
+      "salla",
+      "salla",
+      "unknown"
+    ],
+    "saudi_jazp_com.html": [
+      "unknown",
+      "unknown",
+      "unknown"
+    ],
+    "tr_sephora_com_tr.html": [
+      "sfcc",
+      "sfcc",
+      "nextjs"
+    ],
+    "tr_watsons_com_tr.html": [
+      "unknown",
+      "sap_hybris",
+      "angular"
+    ],
+    "uk_theperfumeshop_com.html": [
+      "unknown",
+      "sap_hybris",
+      "angular"
+    ],
+    "vanilla_sa.html": [
+      "salla",
+      "salla",
+      "unknown"
+    ],
+    "vperfumes_com.html": [
+      "nextjs",
+      "unknown",
+      "nextjs"
+    ],
+    "watsons_sa.html": [
+      "shopify",
+      "shopify",
+      "unknown"
+    ]
+  },
+  "robots_fixtures": {
+    "_note": "robots.txt is the THIRD and weakest evidence channel: it is consulted only when the markup and the URL are both silent, and it has its OWN signature table because a robots file has different tells from a PDP. hudabeauty.com is the reason order matters - its robots names Shopify in line 1 and still carries a stale Disallow: /on/demandware.store/ from the platform it migrated off.",
+    "ae_sephora_me_robots.txt": "sfcc",
+    "ae_tryano_com_robots.txt": "sfcc",
+    "com_hudabeauty_com_robots.txt": "shopify"
   }
 }

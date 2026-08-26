@@ -1,0 +1,6 @@
+User-agent: *
+# Account
+# Order and Checkout
+Disallow: /on/demandware.store/*
+# Search
+# Search refinement URL parameters

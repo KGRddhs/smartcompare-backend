@@ -1,0 +1,176 @@
+{
+  "_what": "Provenance for every fixture added to tests/fixtures/platform/ on 2026-08-26. Each HTML fixture is a VERBATIM cut of the named cache file: the first ~260 characters of the document plus one window around each platform/framework signature, joined by '<!-- ...fragment elided... -->'. Nothing is rewritten, reformatted or invented. The .txt fixtures are verbatim lines of the named cached robots.txt, filtered to the platform-bearing ones. The pre-existing Gulf-92 fixtures are documented in EXPECTED.json._source.",
+  "_corpus_truth_is_not_ground_truth": "`corpus_platform_truth` below is what _proof/global/corpus.json records for that host. It is reproduced for traceability, NOT as the expected value, because on three of these hosts it disagrees with the very bytes it was derived from and the bytes win: (1) douglas.at and douglas.ch are filed `magento` and carry no Magento token whatsoever - no `Magento_`, no `/pub/static/`, no `data-mage-init`, no `/media/catalog/product/`, no `/static/versionN` - while carrying SAP's `.smartEditComponent` CSS class; (2) www.watsons.com.tr is filed `unknown` while shipping the complete SAP Spartacus set (`/medias/sys_master/`, `cx-page-slot`, `<app-root ng-version=...>`); (3) www.sephora.com.tr is filed `unknown` while serving `/dw/image/v2/.../on/demandware.static/` under a Next.js shell. The same check across the whole corpus found five more DACH hosts (flaconi.de, notino.de, breuninger.com, dm.de, parfumdreams.de) filed `magento` whose cached bytes carry no Magento token either - several are 6KB 403 bodies - so they are left `unknown` rather than labelled on faith.",
+  "_sephora_me": "ae_sephora_me_akamai_403.html is the COMPLETE cached body, not a fragment. All five sephora.me PDP fetches in the corpus returned this ~624-byte Akamai 'Access Denied' page. It is the reason the sephora.me assertions in the test file are (a) 'never nextjs' plus unknown/unknown from the markup, and (b) sfcc once its own cached robots.txt is offered as evidence. The corpus's `nextjs` label for this host came from a '/_next/static/media/ITC' string observed on a DIFFERENT fetch, which these bytes do not contain.",
+  "fixtures": {
+    "ae_noon_com.html": {
+      "bytes_of_source": 506818,
+      "cache": "_proof/global/html/0cacfc6c43c38c5fe38a694369adcb4d1ac39e1a.html",
+      "corpus_platform_truth": "unknown",
+      "fragment_bytes": 1192,
+      "host": "www.noon.com",
+      "http_status": 200,
+      "url": "https://www.noon.com/uae-ar/yara-edp-for-women-100ml/N52261837A/p/"
+    },
+    "ae_sephora_me_akamai_403.html": {
+      "bytes_of_source": 634,
+      "cache": "_proof/global/html/85897aa768e9eed2a14beff122c0cb73853c54f0.html",
+      "corpus_platform_truth": "nextjs",
+      "fragment_bytes": 624,
+      "host": "www.sephora.me",
+      "http_status": 403,
+      "note": "VERBATIM AND COMPLETE. Every sephora.me PDP fetch in the corpus came back as this 624-byte Akamai 'Access Denied' body. It carries no commerce signal and no framework signal either.",
+      "url": "https://www.sephora.me/ae-en/p/coco-mademoiselle-crush-absolu-eau-de-parfum/P10064615"
+    },
+    "ae_sephora_me_robots.txt": {
+      "cache": "_proof/global/robots/www.sephora.me.txt",
+      "fragment_bytes": 201,
+      "note": "verbatim lines, filtered to the platform-bearing ones"
+    },
+    "ae_tryano_com_robots.txt": {
+      "cache": "_proof/global/robots/www.tryano.com.txt",
+      "fragment_bytes": 121,
+      "note": "verbatim lines, filtered to the platform-bearing ones"
+    },
+    "at_douglas_at.html": {
+      "bytes_of_source": 1506390,
+      "cache": "_proof/global/html/8d1d5ef2489ea81d9b675ea3dd3b65485f82439d.html",
+      "corpus_platform_truth": "magento",
+      "fragment_bytes": 1192,
+      "host": "douglas.at",
+      "http_status": 200,
+      "url": "https://www.douglas.at/de/p/3001037119"
+    },
+    "be_iciparisxl_be.html": {
+      "bytes_of_source": 1579980,
+      "cache": "_proof/global/html/2d0bf8a37d6cd681c4bc38471ad74c7738903c6f.html",
+      "corpus_platform_truth": "sap_hybris",
+      "fragment_bytes": 2124,
+      "host": "www.iciparisxl.be",
+      "http_status": 200,
+      "url": "https://www.iciparisxl.be/fr/prada/infusion-de-rose/eau-de-parfum/p/BP_984260"
+    },
+    "com_hudabeauty_com_robots.txt": {
+      "cache": "_proof/global/robots/hudabeauty.com.txt",
+      "fragment_bytes": 344,
+      "note": "verbatim lines, filtered to the platform-bearing ones"
+    },
+    "de_duftzwilling_de.html": {
+      "bytes_of_source": 217430,
+      "cache": "_proof/global/html/ff0845963a75dd5a7dcda0b628f7b4925c243994.html",
+      "corpus_platform_truth": "shopware6",
+      "fragment_bytes": 1192,
+      "host": "duftzwilling.de",
+      "http_status": 200,
+      "url": "https://duftzwilling.de/produkt/parfum/blue-elegance-eau-de-parfum-fuer-herren/"
+    },
+    "de_pieper_de.html": {
+      "bytes_of_source": 345252,
+      "cache": "_proof/global/html/404a292b5e633e5d32b86d128e5ff23e27bd66fa.html",
+      "corpus_platform_truth": "shopware6",
+      "fragment_bytes": 1192,
+      "host": "pieper.de",
+      "http_status": 200,
+      "url": "https://www.pieper.de/carolina-herrera-la-bomba-eau-de-parfum-1124448.html"
+    },
+    "es_druni_es.html": {
+      "bytes_of_source": 1245255,
+      "cache": "_proof/global/html/82239289a9fcd7608b6d4bbb7a8c86494ddc9579.html",
+      "corpus_platform_truth": "magento",
+      "fragment_bytes": 2124,
+      "host": "www.druni.es",
+      "http_status": 200,
+      "url": "https://www.druni.es/one-million-estuche-paco-rabanne-eau-toilette-vaporizador"
+    },
+    "fr_parfumerie_burdin_com.html": {
+      "bytes_of_source": 256732,
+      "cache": "_proof/global/html/6bb5dbcbdfdf82f3796a4cdc659eb3ec310076cf.html",
+      "corpus_platform_truth": "prestashop",
+      "fragment_bytes": 1192,
+      "host": "www.parfumerie-burdin.com",
+      "http_status": 200,
+      "url": "https://www.parfumerie-burdin.com/7639-prada-paradigme-parfum.html"
+    },
+    "gb_superdrug_com.html": {
+      "bytes_of_source": 1580709,
+      "cache": "_proof/global/html/2967583a49407ce3bbeb494bed568f79acb4dc69.html",
+      "corpus_platform_truth": "sap_hybris",
+      "fragment_bytes": 1192,
+      "host": "www.superdrug.com",
+      "http_status": 200,
+      "url": "https://www.superdrug.com/fragrance/perfume-for-women/womens-perfume/boss-the-scent-private-accord-for-her-eau-de-parfum-50ml/p/768365"
+    },
+    "iq_miswag_com.html": {
+      "bytes_of_source": 45231,
+      "cache": "_proof/global/html/cc40deda231f50e8cb293598dcd54d0d37163f68.html",
+      "corpus_platform_truth": "unknown",
+      "fragment_bytes": 2127,
+      "host": "miswag.com",
+      "http_status": 200,
+      "url": "https://miswag.com/en"
+    },
+    "it_ideabellezza_it.html": {
+      "bytes_of_source": 528861,
+      "cache": "_proof/global/html/1ec2d244e56eab3697f49ab8c133b353b3d7d313.html",
+      "corpus_platform_truth": "bigcommerce",
+      "fragment_bytes": 1192,
+      "host": "www.ideabellezza.it",
+      "http_status": 200,
+      "url": "https://www.ideabellezza.it/good-girl-eau-de-parfum/"
+    },
+    "kw_boutiqaat_com.html": {
+      "bytes_of_source": 4009918,
+      "cache": "_proof/global/html/cd8f0f84faed241efb9811cecaf112744c7a4426.html",
+      "corpus_platform_truth": "nextjs",
+      "fragment_bytes": 1192,
+      "host": "www.boutiqaat.com",
+      "http_status": 200,
+      "url": "https://www.boutiqaat.com/ar-kw/women/bonbon-eau-de-parfum-50-ml-1/p/"
+    },
+    "nl_parfumcenter_nl.html": {
+      "bytes_of_source": 303370,
+      "cache": "_proof/global/html/c20504c490c73ebcb0b73edcd08830773d1ae527.html",
+      "corpus_platform_truth": "magento",
+      "fragment_bytes": 2124,
+      "host": "www.parfumcenter.nl",
+      "http_status": 200,
+      "url": "https://www.parfumcenter.nl/lattafa-yara-moi-100ml-eau-de-parfum-spray.html"
+    },
+    "pl_eperfumy_pl.html": {
+      "bytes_of_source": 108846,
+      "cache": "_proof/global/html/24721576a5b226a5c7cd14b3fbf0c598e5ac7c60.html",
+      "corpus_platform_truth": "prestashop",
+      "fragment_bytes": 1192,
+      "host": "eperfumy.pl",
+      "http_status": 200,
+      "url": "https://eperfumy.pl/pl/wody-toaletowe-meskie/44-paco-rabanne-invictus-woda-toaletowa-100ml.html"
+    },
+    "tr_sephora_com_tr.html": {
+      "bytes_of_source": 805640,
+      "cache": "_proof/global/html/326d0a2cfd77c39bd308f2e6ce1ec5054d8b13f4.html",
+      "corpus_platform_truth": "unknown",
+      "fragment_bytes": 1192,
+      "host": "www.sephora.com.tr",
+      "http_status": 200,
+      "url": "https://www.sephora.com.tr/p/armani-si-edp-100-ml-P1547001.html"
+    },
+    "tr_watsons_com_tr.html": {
+      "bytes_of_source": 3084514,
+      "cache": "_proof/global/html/a4f9589f64c6ad0a2d717a4af744c80eb6129107.html",
+      "corpus_platform_truth": "unknown",
+      "fragment_bytes": 3067,
+      "host": "www.watsons.com.tr",
+      "http_status": 200,
+      "url": "https://www.watsons.com.tr/christian-dior-sauvage-elixir-erkek-edp-100-ml/p/BP_1430408"
+    },
+    "uk_theperfumeshop_com.html": {
+      "bytes_of_source": 1395309,
+      "cache": "_proof/global/html/27b837371a358b0aa60e4f3402365d6d8710d070.html",
+      "corpus_platform_truth": "sap_hybris",
+      "fragment_bytes": 3056,
+      "host": "www.theperfumeshop.com",
+      "http_status": 200,
+      "url": "https://www.theperfumeshop.com/jean-paul-gaultier/scandal-intense/eau-de-parfum-intense-spray/p/13870EDPJU?varSel=1309539"
+    }
+  }
+}

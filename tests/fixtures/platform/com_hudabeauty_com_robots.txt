@@ -1,0 +1,12 @@
+# we use Shopify as our ecommerce platform
+User-agent: *
+Disallow: /.well-known/shopify/monorail
+Disallow: /on/demandware.store/
+User-agent: adsbot-google
+User-agent: Nutch
+User-agent: AhrefsBot
+Disallow: /.well-known/shopify/monorail
+User-agent: AhrefsSiteAudit
+Disallow: /.well-known/shopify/monorail
+User-agent: MJ12bot
+User-agent: Pinterest

@@ -1,0 +1,8 @@
+User-Agent: *
+Allow: /on/demandware.store/*/Home-GetFooter
+Disallow: /on/demandware.store/*
+User-Agent: MJ12bot
+User-Agent: EtaoSpider
+User-Agent: CazoodleBot
+User-Agent: dotbot/1.0
+User-Agent: Gigabot
