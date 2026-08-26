@@ -1,5 +1,5 @@
 {
-  "_source": "fragments of _proof/html cached PDPs; domain -> expected detect_platform() result",
+  "_source": "fragments of _proof/html cached PDPs (Gulf 92) and _proof/global/html (the two zid_store rows) ; domain -> expected detect_platform() result",
   "fixtures": {
     "3saf_com.html": "salla",
     "alhajisoman_com.html": "shopify",
@@ -19,8 +19,10 @@
     "faces_sa.html": "sfcc",
     "fragrancebh_com.html": "woocommerce",
     "goldenscent_com.html": "nextjs",
+    "h3jssz_zid_store.html": "zid",
     "klinq_com.html": "magento",
     "laverne_com.html": "salla",
+    "mazeed_sa.html": "zid",
     "numberc_com.html": "shopify",
     "ouddubai_ae.html": "woocommerce",
     "ounass_ae.html": "unknown",

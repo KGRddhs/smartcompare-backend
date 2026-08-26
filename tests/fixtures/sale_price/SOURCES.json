@@ -1,0 +1,87 @@
+{
+  "_what": "Minimal fragments of REAL cached PDPs, for tests/test_sale_price_precedence.py. Every amount, currency and platform signature below is copied out of the cached bytes; anything added or restructured is called out per file and repeated in a comment at the top of the file itself.",
+  "_corpora": {
+    "gulf": "_proof/html/ (92 Gulf PDPs) + _proof/sweep2_curl_cffi.jsonl - filename sha1('curl_cffi|'+url)",
+    "global": "_proof/global/html/ + _proof/global/_dach_html/ (429 files, 328 rows) - filename sha1(url); index _proof/global/corpus.json"
+  },
+  "_measured_2026_08_26": {
+    "product_sale_price_amount_pages": 21,
+    "gulf_92_corpus": "14, ALL 14 detect_platform -> salla",
+    "global_328_corpus": "7, ALL 7 Gulf: 4x h3jssz.zid.store (zid), 1x mazeed.sa (zid), 2x ae.abdulsamadalqurashi.com (salla)",
+    "non_gulf_pages_with_the_tag": 0,
+    "strikethrough_pages": "5 real JSON-LD priceSpecification (3x noon.com AE/EG, dermokozmetika.com.tr, theperfumeshop.com GB). walmart.com x2 grep-hit on the config key enableStrikethroughPricesDisclaimer, NOT JSON-LD. superdrug.com: ZERO - the assignment's 'superdrug.com, 2 pages' does not reproduce against the cached bytes."
+  },
+  "files": {
+    "gulf_salla_bh_oudelite_com.html": {
+      "url": "https://bh.oudelite.com/en/-/p1866281610",
+      "corpus": "gulf",
+      "platform": "salla",
+      "fidelity": "verbatim (salla preconnect link + the four price meta tags)",
+      "amounts": "list product:price:amount 23 BHD, sale product:sale_price:amount 11 BHD"
+    },
+    "gulf_zid_h3jssz_zid_store.html": {
+      "url": "https://h3jssz.zid.store/products/%D8%A7%D9%84%D8%AB%D8%A7%D8%A6%D8%B1-%D8%AF%D9%8A-%D9%85%D8%A7%D8%B1%D9%84%D9%8A",
+      "corpus": "global",
+      "platform": "zid",
+      "fidelity": "verbatim (zid.store hreflang link + the four price meta tags)",
+      "amounts": "list 190.0 SAR, sale 99.0 SAR"
+    },
+    "gulf_zid_mazeed_sa_behind_nuxt.html": {
+      "url": "https://mazeed.sa/en/products/1e8e06d5-cc7b-4acd-8d2e-b6edfcbaddb9",
+      "corpus": "global",
+      "platform": "zid",
+      "fidelity": "platform signals verbatim (media.zid.store preconnect + the /_nuxt/entry stylesheet); price meta INJECTED - this Nuxt-rendered PDP publishes none",
+      "amounts": "injected, mirroring h3jssz: list 190.0 SAR, sale 99.0 SAR"
+    },
+    "de_shopify_parfumgroup_de.html": {
+      "url": "https://parfumgroup.de/products/carolina-herrera-good-girl-eau-de-parfum",
+      "corpus": "global",
+      "country": "DE",
+      "platform": "shopify",
+      "fidelity": "verbatim (cdn.shopify.com preconnect + og:type + product:price:amount/currency); product:sale_price tag INJECTED",
+      "amounts": "list product:price:amount '51,89' EUR (comma decimal, verbatim); injected sale 9.99 EUR"
+    },
+    "uk_magento_pacoperfumerias_co_uk.html": {
+      "url": "https://www.pacoperfumerias.co.uk/calvin-klein-eternity-eau-de-parfum-100ml-spray.html",
+      "corpus": "global",
+      "country": "GB",
+      "platform": "magento",
+      "fidelity": "meta tags verbatim; the Magento signature reduced to one data-mage-init node lifted from the real page (char 166279); product:sale_price tag INJECTED",
+      "amounts": "list 42.5 GBP; injected sale 9.99 GBP"
+    },
+    "us_shopify_olfactif_com.html": {
+      "url": "https://www.olfactif.com/products/12-month-prepaid-subscription",
+      "corpus": "global",
+      "country": "US",
+      "platform": "shopify",
+      "fidelity": "meta tags + the /cdn/shop/ favicon link verbatim; product:sale_price tag INJECTED",
+      "amounts": "list 250.00 USD; injected sale 9.99 USD"
+    },
+    "uk_hybris_theperfumeshop_com_strikethrough.html": {
+      "url": "https://www.theperfumeshop.com/lacoste/touch-of-pink/eau-de-toilette-spray/p/30820EDTJU",
+      "corpus": "global",
+      "country": "GB",
+      "platform_truth": "sap_hybris",
+      "fidelity": "verbatim JSON-LD Product node; shippingDetails/returns/the enclosing @graph+ProductGroup dropped, the brand node lifted from that ProductGroup (the real variant reaches it via isVariantOf)",
+      "amounts": "offers.price 29.99 GBP; nested UnitPriceSpecification priceType StrikethroughPrice price 50 GBP"
+    },
+    "ae_noon_com_strikethrough.html": {
+      "url": "https://www.noon.com/uae-en/khamrah-unisex-eau-de-parfum-by-lattafa-100ml/ZF23DE5EC51560ADE2D7EZ/p/",
+      "corpus": "global",
+      "country": "AE",
+      "fidelity": "verbatim JSON-LD Product node; reviews/aggregateRating/shipping/returns/additionalProperty dropped, nothing edited",
+      "amounts": "offers.price 79.95 AED; nested StrikethroughPrice 129 AED",
+      "note": "priceValidUntil 2026-08-25 is already past - with ENABLE_EXACT_PRICE_GATE on, _offer_price_expired drops this offer"
+    },
+    "uk_theperfumeshop_com_second_offer_strikethrough.html": {
+      "based_on": "uk_hybris_theperfumeshop_com_strikethrough.html",
+      "fidelity": "RESTRUCTURED - the real 29.99/50 GBP amounts re-expressed as a two-member offers ARRAY with priceType on the Offer itself. No corpus page ships this shape.",
+      "role": "the was-price is ABOVE the shelf price, so it can never win selection - pins that the guard is a no-op here"
+    },
+    "uk_theperfumeshop_com_second_offer_omnibus_low.html": {
+      "based_on": "uk_hybris_theperfumeshop_com_strikethrough.html",
+      "fidelity": "CONSTRUCTED - real identity + real 29.99 GBP shelf price; the 24.99 strikethrough member stands for the EU Omnibus 30-day-lowest figure (by definition <= the shelf price) that the global validation named as a legally mandated decoy.",
+      "role": "the RED case - a strikethrough member BELOW the shelf price wins selection today in BOTH gate modes"
+    }
+  }
+}

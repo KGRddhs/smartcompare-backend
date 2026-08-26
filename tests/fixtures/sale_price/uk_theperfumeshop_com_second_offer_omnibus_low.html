@@ -1,0 +1,43 @@
+<!--
+CONSTRUCTED adversarial shape - NOT a byte copy of any cached page.
+     Identity and shelf price are www.theperfumeshop.com's real ones (Lacoste Touch
+     Of Pink 90ML, offers.price 29.99 GBP). The 24.99 is the EU Omnibus
+     30-day-lowest figure the global validation named as a legally mandated price
+     decoy, published here in the OTHER schema.org-legal strikethrough shape: a
+     second Offer carrying priceType https://schema.org/StrikethroughPrice on the
+     Offer itself rather than in a nested priceSpecification.
+     It is BELOW the shelf price, which is what makes it selectable: `offers` is a
+     list, every member becomes a candidate, and amount is select_best's last
+     tiebreak on an identity tie (and its ONLY rule when ENABLE_EXACT_PRICE_GATE
+     is off, where the selector is min(amount)). A was-price ABOVE the shelf price
+     - the only shape the 328-row corpus actually carries - can never win, which
+     is why this defect is invisible in the corpus.
+-->
+<html><head>
+<script type="application/ld+json">
+{
+ "@context": "https://schema.org",
+ "@type": "Product",
+ "name": "Lacoste Touch Of Pink Eau de Toilette Spray 90ML",
+ "brand": {
+  "@type": "Brand",
+  "name": "Lacoste"
+ },
+ "offers": [
+  {
+   "@type": "Offer",
+   "priceType": "https://schema.org/StrikethroughPrice",
+   "price": 24.99,
+   "priceCurrency": "GBP",
+   "availability": "http://schema.org/InStock"
+  },
+  {
+   "@type": "Offer",
+   "price": 29.99,
+   "priceCurrency": "GBP",
+   "availability": "http://schema.org/InStock"
+  }
+ ]
+}
+</script>
+</head><body></body></html>

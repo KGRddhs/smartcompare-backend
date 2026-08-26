@@ -36,6 +36,7 @@ from app.services.api_budget_service import (
     is_circuit_closed,
 )
 from app.services import firecrawl_service, scrapedo_service
+from app.services.platform_router import detect_platform
 
 ENABLE_PAGE_SCRAPE = os.environ.get("ENABLE_PAGE_SCRAPE", "true").lower() != "false"
 
@@ -9328,6 +9329,52 @@ _PRICE_VALID_UNTIL_RE = re.compile(r"^\s*(\d{4})-(\d{2})-(\d{2})")
 _PRICE_VALID_UNTIL_GRACE_DAYS = 365
 
 
+#: schema.org's marker for a WAS-price: the struck-through number a sale is
+#: displayed against. It is not what anybody pays.
+_STRIKETHROUGH_PRICE_TYPE: str = "strikethroughprice"
+
+
+def _offer_is_strikethrough(offer: Dict[str, Any]) -> bool:
+    """True iff this Offer node IS a struck-through was-price.
+
+    THE NON-GULF HALF OF THE SALE-PRICE RULE. Scoping the OpenGraph tag to
+    Salla and Zid leaves every other platform needing its own sale signal, and
+    on schema.org that signal is
+    `priceType: https://schema.org/StrikethroughPrice`. Measured over the
+    328-row global corpus it appears on 5 pages: noon.com (AE 79.95 AED vs 129;
+    EG 1918.17 EGP vs 2200, en+ar), dermokozmetika.com.tr (TR 769.94 vs
+    1399.90) and theperfumeshop.com (GB 29.99 vs 50). The two walmart.com grep
+    hits are the Next.js config key `enableStrikethroughPricesDisclaimer`, not
+    JSON-LD; superdrug.com, named in the brief as the source, contains the
+    string zero times.
+
+    All five real pages nest it in `offers.priceSpecification`, and that shape
+    is ALREADY safe: this extractor reads `offer["price"]` and never descends
+    into a priceSpecification, so it resolves the non-strikethrough offer on
+    every one of them (pinned, not changed). What this guards is the OTHER
+    schema.org-legal shape, the was-price as a sibling Offer in the `offers`
+    LIST with `priceType` on the Offer itself. There every member becomes a
+    candidate and `select_best` falls through to amount as its last tiebreak
+    (and with ENABLE_EXACT_PRICE_GATE off uses `min(amount)` as its ONLY rule),
+    so a strikethrough member priced BELOW the shelf price wins. That is real
+    money, not a thought experiment: the EU Omnibus "lowest price in the last
+    30 days" figure, which the global validation named as a legally mandated
+    price decoy, is by definition at or below the current price.
+
+    A was-price ABOVE the shelf price, the only variant the corpus carries,
+    could never have won selection anyway; this is a no-op there.
+
+    Substring, not equality, because the value is a URL whose scheme and host
+    vary (`https://schema.org/...`, `http://schema.org/...`, the bare token).
+    Read through `_jsonld_str` for the same reason every other Text-typed
+    JSON-LD field in this module is (BLOCKER 5): `priceType` is untyped in the
+    wild, and a bare `str()` is not total - on Python 3.11+ it raises
+    ValueError on an int of more than 4300 digits. A shape we cannot read is
+    simply not a strikethrough marker.
+    """
+    return _STRIKETHROUGH_PRICE_TYPE in _jsonld_str(offer.get("priceType")).lower()
+
+
 def _offer_price_expired(offer: Dict[str, Any]) -> bool:
     """True iff the offer's `priceValidUntil` is a parseable date more than ~1 year in
     the past — a clearly-abandoned price (the 2020-dated offer the live PDP never
@@ -9908,6 +9955,17 @@ def extract_jsonld_price(
                 currency = offer.get("priceCurrency") or ""
                 if str(currency).upper() != expected_currency.upper():
                     continue
+                # A struck-through WAS-price is not an offer anybody can accept.
+                # Same flag as the Gulf half of the sale-price rule
+                # (ENABLE_SALE_PRICE_FIRST, default ON) because it is the same
+                # rule on a different platform family: prefer the price actually
+                # being charged, never the crossed-out one. Flag OFF restores the
+                # legacy behaviour, where such a member is a selectable candidate.
+                # The cheap pure predicate is evaluated FIRST so the env read
+                # (still per call, never cached) costs nothing on the overwhelming
+                # majority of offers, which carry no priceType at all.
+                if _offer_is_strikethrough(offer) and sale_price_first_enabled():
+                    continue
                 # B4 — drop a STALE offer (priceValidUntil already past). No-op when
                 # absent/unparseable/future or when the rollback flag is OFF.
                 if exact_gate_enabled() and _offer_price_expired(offer):
@@ -10298,6 +10356,42 @@ def _parse_og_price_number(raw: Any, currency: Any = None) -> Optional[float]:
     return -value if negative else value
 
 
+#: The ONLY two storefront platforms that publish `product:sale_price:amount`.
+#:
+#: Counted over the cached bytes of both corpora on 2026-08-26: the tag appears
+#: on 21 pages out of 420 and every single one is Gulf - 14 of the 92 Gulf PDPs
+#: (`_proof/html/`), all 14 Salla; 7 of the 328 global rows
+#: (`_proof/global/corpus.json`), 5 Zid (h3jssz.zid.store x4, mazeed.sa) and
+#: 2 Salla (ae.abdulsamadalqurashi.com). Across 206 usable non-Gulf PDPs in
+#: five regions it appears ZERO times.
+#:
+#: So this is a GULF PLATFORM CONVENTION, not the generic OpenGraph rule the
+#: original fix assumed. Scoping it here is a no-op on every real page we hold:
+#: it cannot move any of the 21, and the other 399 never reached the branch.
+#: What it removes is the misfire on a platform where nobody has established
+#: what the tag means. Facebook's catalogue spec does define
+#: `product:sale_price:amount`, so a European or US storefront CAN start
+#: emitting it, and there the old rule would have swapped a verified list price
+#: for an unverified one.
+_OG_SALE_PRICE_PLATFORMS: frozenset = frozenset({"salla", "zid"})
+
+
+def _og_sale_price_platform(html: str, url: str) -> bool:
+    """True iff this document is a Salla or Zid storefront.
+
+    Deliberately called LAZILY, only once a `product:sale_price:amount` tag
+    with content has actually been found. `detect_platform` scans up to 400KB
+    (53ms worst case on the 2.6MB goldenscent page), and only 21 of the 420
+    cached pages carry the tag, so paying that on every extraction would be
+    ~95% waste. The call order in `_extract_og_price` is what enforces this, and
+    `tests/test_sale_price_precedence.py` pins it by counting calls.
+
+    `detect_platform` is pure, offline and total: it never raises and always
+    returns a member of `PLATFORMS`, so there is nothing here to guard.
+    """
+    return detect_platform(html, url) in _OG_SALE_PRICE_PLATFORMS
+
+
 # OG/product-namespace availability meta, in the order we trust them. Measured
 # across the 92 cached PDPs: product:availability on 20 pages ("in stock" x14,
 # "instock" x5, "out of stock" x1), og:availability on 1 ("instock").
@@ -10326,6 +10420,7 @@ def _og_availability(soup) -> Optional[bool]:
 
 def _extract_og_price(
     soup, product_name: str, currency: str, domain: str, url: str,
+    html: str = "",
 ) -> Optional[Dict[str, Any]]:
     """The OpenGraph meta-tag price fallback.
 
@@ -10336,6 +10431,13 @@ def _extract_og_price(
     still gates: (a) tri-state in_stock, (b) the comma-decimal parse. The helper
     stays split out because it keeps the cascade readable. Returns a price dict
     or None.
+
+    `html` is the RAW document the caller already parsed into `soup`. It exists
+    only so the sale-price rule can ask `detect_platform` which storefront
+    platform produced the page; it is never re-parsed. Defaulting it to "" keeps
+    the signature backward-compatible for a direct caller: with no markup to
+    read, `detect_platform` falls back to the URL and then to "unknown", which
+    declines the sale-price rule rather than mis-applying it.
     """
     og_price = soup.find('meta', property='og:price:amount')
     og_currency = soup.find('meta', property='og:price:currency')
@@ -10349,12 +10451,19 @@ def _extract_og_price(
     # only retries "USD", so a SAR/AED/KWD/QAR/OMR page always lands HERE.
     # Precedence is og:price:amount -> product:sale_price:amount ->
     # product:price:amount. Flag-gated (ENABLE_SALE_PRICE_FIRST, default ON):
-    # with the flag OFF the sale tag is never looked up and the two statements
-    # below are the exact pre-change bytes.
+    # with the flag OFF the sale tag is never looked up, `detect_platform` is
+    # never called, and the two statements below are the exact pre-change bytes.
+    #
+    # SCOPED TO PLATFORM (2026-08-26). The 328-page global validation measured
+    # this tag as a GULF convention, not a generic OpenGraph one: 21 pages carry
+    # it across both corpora and all 21 are Salla or Zid, against ZERO of 206
+    # usable non-Gulf PDPs. See `_OG_SALE_PRICE_PLATFORMS`. The platform is
+    # resolved only AFTER a tag with content is in hand, so the ~95% of pages
+    # that carry no sale tag pay nothing for the 400KB scan.
     if not og_price and sale_price_first_enabled():
         _sale_price = soup.find('meta', property='product:sale_price:amount')
         _sale_raw = _sale_price.get('content') if _sale_price else None
-        if _sale_raw:
+        if _sale_raw and _og_sale_price_platform(html, url):
             # Only PREFER a sale tag we can actually turn into a positive
             # amount — otherwise a junk/zero sale tag ("on request", "0") would
             # blow up the shared float() below and cost us the perfectly good
@@ -10591,7 +10700,9 @@ def extract_price_from_html(
     # relabels converted_usd honestly. What DOES remain under
     # ENABLE_OG_BRANCH_FIXES is (a) the tri-state in_stock and (b) the
     # comma-decimal parse, both inside _extract_og_price.
-    og_result = _extract_og_price(soup, product_name, currency, domain, url)
+    og_result = _extract_og_price(
+        soup, product_name, currency, domain, url, html,
+    )
     if og_result is not None:
         return og_result
 

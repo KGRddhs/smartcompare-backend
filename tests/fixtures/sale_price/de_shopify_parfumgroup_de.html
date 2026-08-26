@@ -1,0 +1,16 @@
+<!--
+VERBATIM head fragment of parfumgroup.de DE (cached https://parfumgroup.de/products/carolina-herrera-good-girl-eau-de-parfum).
+     detect_platform -> "shopify". product:price:amount "51,89" EUR, NO og:price:amount.
+     The product:sale_price tag at the bottom is INJECTED - no non-Gulf page in the
+     328-row global corpus ships one. It is the adversarial case: a Shopify DE
+     storefront that DID publish the Gulf tag must NOT get the Gulf rule.
+-->
+<html><head>
+<link rel="preconnect" href="https://cdn.shopify.com">
+<meta property="og:type" content="product">
+<meta property="product:price:amount" content="51,89" >
+<meta property="product:price:currency" content="EUR">
+<!-- INJECTED, not present on the real page: the adversarial Gulf sale tag. -->
+<meta property="product:sale_price:amount" content="9.99">
+<meta property="product:sale_price:currency" content="EUR">
+</head><body></body></html>

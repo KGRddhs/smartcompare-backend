@@ -1,0 +1,39 @@
+<!--
+RESTRUCTURED, not a byte copy. The two amounts and the product identity are
+     www.theperfumeshop.com's real ones (29.99 GBP shelf / 50 GBP was, Lacoste
+     Touch Of Pink 90ML); they are re-expressed as the OTHER schema.org-legal
+     shape - a two-member offers ARRAY whose first member carries priceType
+     https://schema.org/StrikethroughPrice on the Offer itself. No page in the
+     328-row global corpus ships this shape (all 5 real StrikethroughPrice pages
+     nest it in a priceSpecification), but `offers` IS a list in the extractor
+     and a strikethrough member would otherwise be a selectable candidate.
+-->
+<html><head>
+<script type="application/ld+json">
+{
+ "@context": "https://schema.org",
+ "@type": "Product",
+ "name": "Lacoste Touch Of Pink Eau de Toilette Spray 90ML",
+ "brand": {
+  "@type": "Brand",
+  "name": "Lacoste"
+ },
+ "offers": [
+  {
+   "@type": "Offer",
+   "priceType": "https://schema.org/StrikethroughPrice",
+   "price": 50,
+   "priceCurrency": "GBP",
+   "availability": "http://schema.org/InStock"
+  },
+  {
+   "@type": "Offer",
+   "price": 29.99,
+   "priceCurrency": "GBP",
+   "availability": "http://schema.org/InStock"
+  }
+ ]
+}
+</script>
+
+</head><body></body></html>

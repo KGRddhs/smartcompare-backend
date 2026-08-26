@@ -1,0 +1,16 @@
+<!--
+Head fragment of www.olfactif.com US (cached https://www.olfactif.com/products/12-month-prepaid-subscription).
+     Meta tags VERBATIM: product:price:amount "250.00" USD, NO og:price:amount.
+     The favicon link is VERBATIM and carries /cdn/shop/, the Shopify token
+     detect_platform reads.
+     The product:sale_price tag is INJECTED - the adversarial non-Gulf case.
+-->
+<html><head>
+<link rel="shortcut icon" href="//www.olfactif.com/cdn/shop/files/favicon.jpg?v=1613162441&width=96">
+<meta property="og:type" content="product">
+<meta property="product:price:amount" content="250.00">
+<meta property="product:price:currency" content="USD">
+<!-- INJECTED, not present on the real page: the adversarial Gulf sale tag. -->
+<meta property="product:sale_price:amount" content="9.99">
+<meta property="product:sale_price:currency" content="USD">
+</head><body></body></html>

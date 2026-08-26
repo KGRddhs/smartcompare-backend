@@ -442,6 +442,11 @@ class TestMinorUnitTieBreakEndToEnd:
         parse it under the same currency the consumer will."""
         html = (
             "<html><head>"
+            # The sale-price rule is scoped to detect_platform in {salla, zid}
+            # (2026-08-26). reefperfumes.com IS Salla and the cached page ships
+            # this preconnect verbatim; without it the fragment would be
+            # "unknown" and the rule would rightly decline.
+            '<link rel="preconnect" href="https://cdn.salla.network" crossorigin>'
             '<meta property="product:sale_price:amount" content="22,902">'
             '<meta property="product:sale_price:currency" content="BHD">'
             '<meta property="product:price:amount" content="45.000">'
@@ -458,6 +463,8 @@ class TestMinorUnitTieBreakEndToEnd:
         LIST price's currency tag for the label; the tie-break must follow it."""
         html = (
             "<html><head>"
+            # Salla signature - see the note in the test above.
+            '<link rel="preconnect" href="https://cdn.salla.network" crossorigin>'
             '<meta property="product:sale_price:amount" content="22,902">'
             '<meta property="product:price:amount" content="45.000">'
             '<meta property="product:price:currency" content="BHD">'
@@ -512,6 +519,9 @@ class TestCommaDecimalEndToEnd:
         monkeypatch.setenv("ENABLE_SALE_PRICE_FIRST", "true")
         html = (
             "<html><head>"
+            # Salla signature - rend-bahrain.com is a Salla storefront and the
+            # rule is platform-scoped as of 2026-08-26.
+            '<link rel="preconnect" href="https://cdn.salla.network" crossorigin>'
             '<meta property="product:sale_price:amount" content="79,99">'
             '<meta property="product:sale_price:currency" content="SAR">'
             '<meta property="product:price:amount" content="129">'
@@ -526,6 +536,10 @@ class TestCommaDecimalEndToEnd:
         monkeypatch.setenv("ENABLE_SALE_PRICE_FIRST", "true")
         html = (
             "<html><head>"
+            # Salla signature, so the platform-scoped rule ADMITS the page and
+            # the fall-through under test is the junk-tag rejection - not the
+            # platform gate declining it for an unrelated reason.
+            '<link rel="preconnect" href="https://cdn.salla.network" crossorigin>'
             '<meta property="product:sale_price:amount" content="on request">'
             '<meta property="product:price:amount" content="129">'
             '<meta property="product:price:currency" content="SAR">'

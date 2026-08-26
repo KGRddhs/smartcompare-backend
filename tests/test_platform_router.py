@@ -7,9 +7,14 @@ of a real cached page in `_proof/html/` (filename =
 sha1("curl_cffi|" + url) + ".html"), so the assertions below are anchored to
 real markup rather than hand-written markup that flatters the regexes.
 
+Two fixtures come from the 328-row GLOBAL corpus instead (`_proof/global/html/`,
+filename = sha1(url) + ".html"): the Zid storefronts, a platform the Gulf-92
+corpus does not contain at all.
+
 `EXPECTED.json` maps fixture filename -> expected platform and is the single
 source of truth for the corpus assertions; the census it encodes is
-shopify 6, salla 5, woocommerce 4, magento 4, sfcc 3, nextjs 3, unknown 4.
+shopify 6, salla 5, woocommerce 4, magento 4, sfcc 3, nextjs 3, zid 2,
+unknown 4.
 
 No network, no credentials, no imports from price_service.
 """
@@ -29,6 +34,7 @@ EXPECTED = json.loads(
 ALL_PLATFORMS = {
     "shopify",
     "salla",
+    "zid",
     "woocommerce",
     "magento",
     "sfcc",
@@ -41,7 +47,7 @@ def _read(name: str) -> str:
     return (FIXTURE_DIR / name).read_text(encoding="utf-8")
 
 
-def test_corpus_spans_all_seven_classes_and_twenty_plus_domains():
+def test_corpus_spans_all_eight_classes_and_twenty_plus_domains():
     """Guard the guard: the fixture set must stay broad enough to be evidence."""
     assert len(EXPECTED) >= 20, f"only {len(EXPECTED)} fixtures"
     assert set(EXPECTED.values()) == ALL_PLATFORMS
@@ -92,6 +98,7 @@ def test_shopify_wins_over_nextjs_regardless_of_document_order():
 def test_ecommerce_platforms_beat_generic_frameworks():
     for token, expected in [
         ("cdn.salla.network", "salla"),
+        ("media.zid.store", "zid"),
         ("wp-content/plugins/woocommerce", "woocommerce"),
         ("data-mage-init", "magento"),
         ("demandware", "sfcc"),
@@ -112,6 +119,9 @@ def test_ecommerce_platforms_beat_generic_frameworks():
         ("shopify-section", "shopify"),
         ("salla.sa", "salla"),
         ("cdn.salla.network", "salla"),
+        ("h3jssz.zid.store", "zid"),
+        ("assets.zid.store", "zid"),
+        ("media.zid.store", "zid"),
         ("woocommerce-Price-amount", "woocommerce"),
         ("wp-content/plugins/woocommerce", "woocommerce"),
         ("Magento_", "magento"),
@@ -127,7 +137,7 @@ def test_each_verified_signature_is_recognised(token, expected):
 
 
 # Every verified signature, paired with the platform it proves. Kept as a flat
-# table so the pairwise priority test below covers all 14x14 combinations.
+# table so the pairwise priority test below covers all 17x17 combinations.
 SIGNATURE_TOKENS = [
     ("cdn.shopify.com", "shopify"),
     ("/cdn/shop/files/a.jpg", "shopify"),
@@ -135,6 +145,9 @@ SIGNATURE_TOKENS = [
     ("shopify-section", "shopify"),
     ("salla.sa", "salla"),
     ("cdn.salla.network", "salla"),
+    ("h3jssz.zid.store", "zid"),
+    ("assets.zid.store", "zid"),
+    ("media.zid.store", "zid"),
     ("woocommerce-Price-amount", "woocommerce"),
     ("wp-content/plugins/woocommerce", "woocommerce"),
     ("Magento_", "magento"),
@@ -145,7 +158,9 @@ SIGNATURE_TOKENS = [
     ("/_next/static", "nextjs"),
 ]
 
-PRIORITY = ["shopify", "salla", "woocommerce", "magento", "sfcc", "nextjs"]
+PRIORITY = [
+    "shopify", "salla", "zid", "woocommerce", "magento", "sfcc", "nextjs",
+]
 
 
 def test_priority_is_total_over_every_pair_of_signatures():
@@ -171,6 +186,56 @@ def test_dots_in_host_signatures_are_literal():
     """`salla.sa` must not be an unescaped regex that matches `sallaxsa`."""
     assert detect_platform("<div>sallaxsa</div>") == "unknown"
     assert detect_platform("<div>cdnxshopifyxcom</div>") == "unknown"
+    assert detect_platform("<div>zidxstore</div>") == "unknown"
+
+
+# --- zid (added 2026-08-26) ------------------------------------------------
+#
+# Zid is invisible to the original six regexes: on all 8 cached Zid rows in the
+# 328-row global corpus `detect_platform` returned "unknown" and NO other
+# signature matched either. It matters because Zid is one of the only two
+# platforms on earth that publish `product:sale_price:amount` (measured: 21
+# pages carry that tag across both corpora, 14 Salla + 7 Gulf, of which 5 are
+# Zid), so the OG sale-price rule cannot be scoped to platform without it.
+
+
+def test_zid_is_a_first_class_platform_label():
+    from app.services.platform_router import PLATFORMS
+
+    assert "zid" in PLATFORMS
+
+
+def test_the_zid_host_signature_needs_a_leading_word_boundary():
+    """Every real Zid signal is a HOST label - `zid.store`, `assets.zid.store`,
+    `media.zid.store` - so `zid` always follows a dot or a delimiter. A LEADING
+    \b keeps the signature off an unrelated domain that merely ends in the same
+    letters. There is deliberately no TRAILING boundary: none of the other six
+    signatures has one either, and adding one would make the label depend on
+    what happens to follow it in the byte stream."""
+    assert detect_platform("<div>media.zid.store</div>") == "zid"
+    assert detect_platform("<div>https://zid.store/x</div>") == "zid"
+    assert detect_platform("<div>rapidzid.store</div>") == "unknown"
+    assert detect_platform("<div>myzid.storefront</div>") == "unknown"
+    assert detect_platform("<div>zidxstore</div>") == "unknown"
+
+
+def test_zid_beats_a_framework_signal():
+    """mazeed.sa runs Zid behind a Nuxt front end and h3jssz ships no framework
+    bundle at all; a framework is never a platform, so the Zid signal wins in
+    either document order."""
+    for framework in ('<link href="/_nuxt/entry.CkDq1cNn.css">',
+                      '<script id="__NEXT_DATA__"></script>',
+                      '<link href="/_next/static/x.css">'):
+        zid = '<link rel="preconnect" href="https://media.zid.store">'
+        assert detect_platform(framework + zid) == "zid", framework
+        assert detect_platform(zid + framework) == "zid", framework
+
+
+def test_the_two_cached_zid_storefronts_are_detected():
+    """Both real shapes: the zid.store host itself, and a custom domain whose
+    only signal is the media.zid.store asset preconnect."""
+    assert detect_platform(_read("h3jssz_zid_store.html")) == "zid"
+    assert detect_platform(_read("mazeed_sa.html")) == "zid"
 
 
 # --- cost guard ------------------------------------------------------------
