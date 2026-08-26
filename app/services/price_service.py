@@ -3036,26 +3036,268 @@ def extract_domain(url: str) -> str:
         return ""
 
 
-def parse_price_string(price_str: str) -> Optional[float]:
+# ============================================
+# BLOCKER 6 — the canonical money parser
+# ============================================
+
+# ISO 4217 currencies whose minor unit is ZERO — no fractional sub-unit exists,
+# so a separator with a 3-digit tail on one of these can only be a GROUPING run.
+# ``_currency_minor_unit`` (the OG helper) can only answer 3 or 2; it is left
+# exactly as it is, because changing its answers would move the OG branch's
+# shipped table. This is the parser's own table and it answers 0/2/3.
+_ZERO_DECIMAL_CURRENCIES = frozenset({
+    "JPY",  # Japanese yen
+    "KRW",  # South Korean won
+    "CLP",  # Chilean peso
+    "ISK",  # Icelandic krona   — "1.454 kr." is 1454, on ISK *and* on DKK
+    "VND",  # Vietnamese dong
+    "PYG", "RWF", "UGX", "VUV", "XAF", "XOF", "XPF",
+    "BIF", "DJF", "GNF", "KMF",
+})
+
+
+def _money_minor_unit(currency: Any) -> int:
+    """ISO 4217 minor unit for a currency token: 3, 2 or 0. Never raises.
+
+    Accepts a DISPLAY token as well as an ISO code — the WooCommerce branch
+    hands us the ``.woocommerce-Price-currencySymbol`` text, so ".د.ب" has to
+    resolve to BHD's minor unit of 3 or a Bahraini shop's "12,500" reads as
+    twelve and a half THOUSAND dinar. Falls back to 2 for anything
+    unrecognisable, for the reason ``_currency_minor_unit`` documents at length:
+    guessing 2 where the truth is 3 is an obviously-wrong HIGH price a human
+    spots, guessing 3 where the truth is 2 is a 1000x-LOW price that wins every
+    cheapest-price comparison downstream.
+    """
+    if not isinstance(currency, str):
+        return 2
+    code = _normalize_currency_code(currency) or currency.strip().upper()
+    if code in _THREE_DECIMAL_CURRENCIES:
+        return 3
+    if code in _ZERO_DECIMAL_CURRENCIES:
+        return 0
+    return 2
+
+
+# Arabic-Indic (U+0660-0669) and Extended Arabic-Indic / Persian (U+06F0-06F9)
+# digits fold to ASCII; the Arabic decimal separator U+066B and thousands
+# separator U+066C fold to "." and ","; the bidi marks GCC pages wrap an RTL
+# price in are dropped. Census over all 328 global pages: U+066B appears 3
+# times, U+066C 0 — both are folded because the cost is a dict entry.
+_MONEY_CHAR_FOLD = {0x066B: ord("."), 0x066C: ord(",")}
+for _cp in range(10):
+    _MONEY_CHAR_FOLD[0x0660 + _cp] = ord("0") + _cp
+    _MONEY_CHAR_FOLD[0x06F0 + _cp] = ord("0") + _cp
+for _ctl in _BIDI_CONTROLS:
+    _MONEY_CHAR_FOLD[ord(_ctl)] = None
+del _cp, _ctl
+
+# Space characters used as a GROUPING separator. Census over the 328 global
+# pages: U+00A0 appears 299 times, U+202F and U+2009 appear ZERO times — so the
+# NBSP is real work and the narrow/thin spaces are one-character insurance. The
+# ASCII space is folded too, but ONLY inside the strict grouping shape below:
+# the legacy OG parser stripped every space unconditionally and a bare
+# ``str.replace(" ", "")`` would glue two prices in a range into one number.
+_MONEY_GROUP_SPACES = "    "
+
+# The money TOKEN. First alternative: a space-GROUPED number, which must be
+# 1-3 digits followed by one or more space+exactly-3-digit runs (the shape no
+# two adjacent prices can accidentally form), optionally with a decimal tail.
+# Second: an ordinary run of digits with "." / "," separators. Leftmost match
+# wins, so "SAR 100.00 (was 200.00)" reads 100.00 — the same first-number
+# behaviour ``parse_price_string``'s legacy fallback regex had.
+_MONEY_TOKEN_RE = re.compile(
+    r"\d{1,3}(?:[     ]\d{3})+(?:[.,]\d*)?"
+    r"|\d+(?:[.,]\d*)*"
+)
+
+
+def parse_money(
+    raw: Any, currency: Any = None, *, display_text: bool = False,
+) -> Optional[float]:
+    """THE canonical money parser: (text, currency) -> Optional[float]. Total.
+
+    BLOCKER 6. Replaces two incompatible readings of the same money —
+    ``parse_price_string``'s unconditional ``replace(",", "")`` (every comma is
+    a thousands group, so the WooCommerce shelf price "320,00" on
+    qatarperfumeshop.com reads as 32000 — a 100x that survived the BLOCKER 4
+    currency fix as 3305.6 BHD) and ``_parse_og_price_number``'s narrower
+    comma/dot table.
+
+    THE RULE, and the measurement behind every clause of it. Scores are over the
+    328-page / 163-host / 26-country global corpus (372 price strings):
+
+      * the legacy rule "dot is decimal, comma is thousands" ..... 244/372 = 65.6%
+        and it collapses REGIONALLY — 1/88 = 1% in EU-South, 39/70 = 56% in DACH;
+      * LAST-SEPARATOR (the rightmost "." or "," whose tail is 1-2 digits is the
+        decimal point, everything left of it is grouping) ........ 368/372 = 98.9%
+      * LAST-SEPARATOR + ONE FACT (a 3-digit tail is the DECIMAL FRACTION when
+        the declared currency's ISO 4217 minor unit is 3, else it is a grouping
+        run) .................................................... 371/371 = 100%
+        in all six regions, given Arabic-Indic digit folding and NBSP folding.
+
+    Resolution order — the first clause that applies wins:
+
+      1. MIXED separators — the RIGHTMOST is the decimal point, whatever its
+         tail length. "1.234,56" -> 1234.56, "1,234.56" -> 1234.56, and the
+         hardest string in the corpus, smartbuy-me.com's "1,799.000" JOD
+         -> 1799.0 (comma grouping AND a 3-decimal fraction in one number; a
+         naive single-separator rule fails on exactly this string).
+      2. the SAME separator more than once — a grouping run, on any currency.
+         "1,234,567" -> 1234567, "1.234.567" -> 1234567.
+      3. an EMPTY or LEADING-ZERO head — a decimal point, on any currency: a
+         grouping run can never start "0". "0,500" -> 0.5, "00,500" -> 0.5.
+      4. a tail that is not 3 digits — a decimal point. "320,00" -> 320.0
+         (BLOCKER 6), "73,39" -> 73.39, "1,5" -> 1.5, "1,2345" -> 1.2345.
+      5. a 3-digit tail — the CURRENCY decides, and this is the only clause it
+         touches:
+             minor unit 3 (BHD KWD OMR JOD TND LYD IQD) -> the fraction.
+                 "22,902" BHD -> 22.902, "12,500" BHD -> 12.5
+             minor unit 0 (JPY KRW CLP ISK VND ...)     -> grouping, always.
+             minor unit 2 -> grouping, EXCEPT a lone DOT in a machine field
+                 (see ``display_text`` below).
+
+    ``display_text`` — ONE cell, and the honest reason it exists. False (the
+    default) means a MACHINE field whose format is specified to write the
+    decimal point as ".": ``og:price:amount``, a Shopify variant ``price``, a
+    JSON API's price field. True means human-visible shelf text. They differ on
+    exactly one shape — a lone DOT with a 3-digit tail on a minor-unit-2
+    currency:
+
+        display text : "2.019 TL" -> 2019.0, "1.454 kr." -> 1454.0   (measured
+                       failures; the legacy rule read 2.019 and 1.454)
+        machine field: "3.000" -> 3.0, "244.990" -> 244.99           (the ruling
+                       ``_parse_og_price_number`` already ships, and the reading
+                       that keeps this flag's blast radius at ZERO for every
+                       caller that does not opt in)
+
+    Pinned as an assertion, not a claim, by
+    ``tests/test_money_parser_v2.py::test_the_two_modes_differ_on_exactly_one_shape_family``.
+
+    TOTAL by construction — any object may be passed for either argument and
+    nothing raises. The magnitude guard is ``_finite_float``, so "9"*400 (inf
+    with no exponent character anywhere in it) returns None instead of shipping
+    ``Infinity`` into json.dumps and invalidating the whole payload.
+    """
+    if raw is None or isinstance(raw, bool):
+        return None
+    if isinstance(raw, (int, float)):
+        return _finite_float(raw)          # a JSON number needs no parsing
+    if not isinstance(raw, str):
+        return None
+
+    text = raw.translate(_MONEY_CHAR_FOLD)
+    negative = text.lstrip().startswith("-")
+    match = _MONEY_TOKEN_RE.search(text)
+    if match is None:
+        return None
+    token = match.group(0)
+    for space in _MONEY_GROUP_SPACES + " ":
+        token = token.replace(space, "")
+
+    last_comma = token.rfind(",")
+    last_dot = token.rfind(".")
+    if last_comma >= 0 and last_dot >= 0:
+        # (1) mixed — the rightmost separator is the decimal point.
+        if last_comma > last_dot:
+            token = token.replace(".", "").replace(",", ".")
+        else:
+            token = token.replace(",", "")
+    elif last_comma >= 0 or last_dot >= 0:
+        sep = "," if last_comma >= 0 else "."
+        cut = last_comma if last_comma >= 0 else last_dot
+        head, tail = token[:cut], token[cut + 1:]
+        if token.count(sep) > 1:
+            token = token.replace(sep, "")           # (2) grouping run
+        elif not head or head.startswith("0"):
+            token = token.replace(sep, ".")          # (3) leading-zero head
+        elif len(tail) != 3:
+            token = token.replace(sep, ".")          # (4) not a group's width
+        else:                                        # (5) the currency decides
+            minor = _money_minor_unit(currency)
+            if minor == 3 or (minor == 2 and sep == "." and not display_text):
+                token = token.replace(sep, ".")
+            else:
+                token = token.replace(sep, "")
+
+    value = _finite_float(token)
+    if value is None:
+        return None
+    return -value if negative else value
+
+
+def money_parser_v2_enabled() -> bool:
+    """True iff ``parse_price_string`` and ``_parse_og_price_number`` route
+    through ``parse_money`` (default ON). BLOCKER 6.
+
+    Flag OFF restores BOTH legacy bodies verbatim — including the 32000.0 that
+    "320,00" produces on qatarperfumeshop.com and the 3305.6 BHD it ships after
+    conversion. That is the rollback contract, and it is pinned end-to-end on
+    the real cached bytes by tests/test_money_parser_v2.py.
+
+    Default ON because it is a correctness fix, not a new capability: the rule
+    it replaces is right 65.6% of the time corpus-wide and 1% of the time in
+    EU-South. Read PER CALL from os.getenv (copying ``exact_gate_enabled``) so
+    Railway can flip it without a restart, and NEVER cached at import.
+
+    Deliberately INDEPENDENT of every other flag in this wave — a mis-read
+    decimal separator is wrong on every cascade branch and in both gate modes.
+    """
+    return os.getenv("ENABLE_MONEY_PARSER_V2", "true").strip().lower() not in (
+        "false", "0", "no", "off", "",
+    )
+
+
+def parse_price_string(
+    price_str: Any, currency: Any = None, *, display_text: bool = False,
+) -> Optional[float]:
     """Parse price strings like '$699.99', 'BHD 339.000', 'SAR 2,499'.
 
-    FOLLOW-UP, DELIBERATELY NOT FIXED HERE (BLOCKER 4 part c). The
-    ``.replace(",", "")`` below reads EVERY comma as a thousands separator, so a
-    comma-DECIMAL locale is over-priced 100x: qatarperfumeshop.com prints
-    "320,00" for 320.00 QAR and this returns 32000.0 — that is where the "32,000
-    BHD bottle of perfume" number came from, and it SURVIVES the strict-currency
-    fix (the fix corrects the label and the rate, never the magnitude).
+    BLOCKER 6, FIXED HERE. Behind ``ENABLE_MONEY_PARSER_V2`` (default ON) this
+    is a thin adapter over ``parse_money`` — the ONE canonical parser this
+    service and the OpenGraph branch now share. Flag OFF restores the legacy
+    body below verbatim.
 
-    It is out of scope on purpose, not by oversight. The comma behaviour is
-    depended on elsewhere — "SAR 2,499" is a real thousands group — and this
-    function is called from every price path in the service, so a shape-only
-    change here silently re-prices unrelated retailers. Disambiguating it needs
-    the same reasoning ``_parse_og_price_number`` already applies on the OG
-    branch (a 3-digit tail is a DECIMAL when the currency's ISO 4217 minor unit
-    is 3, a leading-zero head is never a thousands group), threaded down to
-    every caller together with the currency each one resolved — a wider change
-    that deserves its own flag and its own measured before/after.
+    WHAT THE LEGACY BODY DID, and why it had to go. ``cleaned.replace(",", "")``
+    read EVERY comma as a thousands separator, so a comma-DECIMAL locale was
+    over-priced 100x: qatarperfumeshop.com prints "320,00" for 320.00 QAR and
+    this returned 32000.0 — the origin of the "32,000 BHD bottle of perfume",
+    which SURVIVED the strict-currency fix as 3305.6 BHD (that fix corrected the
+    label and the rate, never the magnitude). The previous wave declared it out
+    of scope because "the comma behaviour is depended on elsewhere". It is not:
+    "SAR 2,499" is a 3-digit tail on a minor-unit-2 currency and reads as 2499
+    under the new rule too. Every legacy pin is re-asserted in
+    tests/test_money_parser_v2.py::test_existing_callers_do_not_move.
+
+    THE TWO NEW ARGUMENTS, both optional and both defaulting to the reading the
+    legacy code produced:
+
+      ``currency`` — the ISO code (or the display glyph) the amount is LABELLED
+        with. It settles exactly one shape, a 3-digit tail: "12,500" is 12.5 on
+        a BHD page and 12500 on a SAR one. Omitting it assumes a minor unit of
+        2, which is the legacy reading.
+      ``display_text`` — True only for HUMAN-VISIBLE shelf text (the WooCommerce
+        price span, a Serper shopping string), where "2.019 TL" means 2019. The
+        default False is a MACHINE field (a JSON price, an OG meta) whose format
+        writes the decimal point as "." — so a lone dot stays a decimal point,
+        exactly as the legacy ``float()`` read it.
+
+    CALLER SURVEY (12 sites, all enumerated before this change):
+      price_service — the Serper shopping loop and the WooCommerce span BOTH
+        opt in to ``display_text=True`` and thread the currency they already
+        resolved; the Shopify variant and pharmacy-API adapters keep the
+        machine-field default, whose only changed readings are comma ones.
+      rest_json_service (3 sites) and structured_comparison_service (2 sites)
+        keep the default. Their fields are JSON numbers-as-strings, so a lone
+        dot must stay a decimal point there — an ourshopee BHD "12.500" is
+        12.5, and reading it as 12500 would be this bug's mirror image.
+
+    Total: any object may be passed and nothing raises (the legacy body raises
+    TypeError on a non-string, which is pinned as the flag-OFF behaviour).
     """
+    if money_parser_v2_enabled():
+        return parse_money(price_str, currency, display_text=display_text)
+
+    # --- LEGACY (flag OFF) — byte-identical to 8adaefb, comma bug included ---
     if not price_str:
         return None
     cleaned = re.sub(r'[A-Z]{2,3}\s*', '', price_str)
@@ -3704,8 +3946,10 @@ def og_branch_fixes_enabled() -> bool:
     (b) ``float(og_price['content'])`` RAISED on a comma decimal, so the OG price
         of leperfumeqa ("279,00"), fyzara ("195,00") and mhgboutique ("403,75")
         was unparseable and thrown away. ``_parse_og_price_number`` below parses
-        it (and must NOT be ``parse_price_string``, which strips commas
-        unconditionally and reads "24,00" as 2400.0).
+        it. (It must not have been ``parse_price_string``, which stripped commas
+        unconditionally and read "24,00" as 2400.0 — that was BLOCKER 6, fixed
+        in a later wave behind ENABLE_MONEY_PARSER_V2, and the two now share one
+        canonical parser.)
     REVERTED — a third change, "(c)", once rode this flag: it moved the OG
     branch from Priority 2 down BELOW microdata and the WooCommerce span. Over
     the same 92 cached pages with ENABLE_EXACT_PRICE_GATE=false that reorder
@@ -8888,11 +9132,16 @@ def extract_price_from_shopping(
         if not price_str:
             continue
 
-        amount = parse_price_string(price_str)
+        # BLOCKER 6 — a Serper shopping `price` is HUMAN-VISIBLE text ("SAR
+        # 2,499", "73,39 EUR"), so it is parsed in display mode with the
+        # currency the string itself declares. ``detect_currency`` is pure and
+        # was already called three lines below; hoisting it changes nothing when
+        # ENABLE_MONEY_PARSER_V2 is off, where both arguments are ignored.
+        detected_cur = detect_currency(price_str)
+        amount = parse_price_string(price_str, detected_cur, display_text=True)
         if amount is None or amount <= 0:
             continue
 
-        detected_cur = detect_currency(price_str)
         # T2 — a candidate is "converted" if its price string was a non-target
         # currency (so we converted it), OR the items came from the gl=us
         # fallback region (their prices are US even when the string is bare).
@@ -9899,11 +10148,15 @@ def _parse_og_price_number(raw: Any, currency: Any = None) -> Optional[float]:
     otherwise undecidable (a single comma with a 3-digit tail). Optional, and
     omitting it keeps the pre-BLOCKER-2 shape-only reading.
 
-    LOCAL ON PURPOSE — do NOT swap in ``parse_price_string``: it strips commas
-    unconditionally (see line ~2835) and turns the shelf price "24,00" into
-    2400.0. Measured: leperfumeqa "279,00", fyzara "195,00" and mhgboutique
-    "403,75" are real cached PDPs whose OG price the old bare ``float()`` could
-    not parse at all.
+    NO LONGER LOCAL. This used to be a private copy because ``parse_price_string``
+    stripped commas unconditionally and turned the shelf price "24,00" into
+    2400.0. That was BLOCKER 6; behind ENABLE_MONEY_PARSER_V2 (default ON) both
+    functions now delegate to the single canonical ``parse_money``, which
+    reproduces every cell of the table below and adds Arabic-Indic digit,
+    NBSP-grouping and zero-decimal-currency handling this copy never had. The
+    legacy body below is what the flag rolls back to. Measured: leperfumeqa
+    "279,00", fyzara "195,00" and mhgboutique "403,75" are real cached PDPs whose
+    OG price the old bare ``float()`` could not parse at all.
 
     Resolution table (pinned cell by cell by tests/test_og_branch_fixes.py):
 
@@ -9957,6 +10210,16 @@ def _parse_og_price_number(raw: Any, currency: Any = None) -> Optional[float]:
     in a de-DE locale; both keep the legacy reading (1234.0 and 3.0). Every such
     cell is pinned with its reasoning in tests/test_og_branch_fixes.py.
     """
+    # BLOCKER 6 — ONE canonical parser. ``parse_money`` reproduces every cell of
+    # the table above (pinned in BOTH flag states by
+    # tests/test_money_parser_v2.py::test_og_table_is_flag_invariant) and ADDS
+    # the Arabic-Indic / NBSP / zero-decimal handling this local copy never had.
+    # ``display_text=False`` because og:price:amount is a MACHINE field: that is
+    # what keeps the "3.000" ruling below intact.
+    if money_parser_v2_enabled():
+        return parse_money(raw, currency, display_text=False)
+
+    # --- LEGACY (flag OFF) — byte-identical to the shipped OG parser ---
     if raw is None:
         return None
     text = str(raw).strip()
@@ -10371,7 +10634,15 @@ def _extract_woocommerce_price(
     detected_currency = detected_currency.strip().upper()
     if sym:
         sym.extract()  # remove so it doesn't pollute the numeric parse
-    amount = parse_price_string(span.get_text(" ", strip=True))
+    # BLOCKER 6 — this span is HUMAN-VISIBLE shelf text and it is the site of the
+    # measured 100x: qatarperfumeshop.com prints "320,00" for 320.00 QAR. Both
+    # arguments are ignored when ENABLE_MONEY_PARSER_V2 is off (byte-identical
+    # rollback). ``detected_currency`` may be the SYMBOL child's glyph rather
+    # than an ISO code — ``_money_minor_unit`` folds it, which is what stops a
+    # Bahraini Woo store's "12,500" reading as 12500 instead of 12.5.
+    amount = parse_price_string(
+        span.get_text(" ", strip=True), detected_currency, display_text=True,
+    )
     if amount is None or amount <= 0:
         return None
     result = {

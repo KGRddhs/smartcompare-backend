@@ -22,10 +22,13 @@ THE FIX, behind ENABLE_STRICT_CURRENCY_LABEL (default ON):
       of pages that carry the Arabic riyal/dirham/dinar glyphs (or "KD" / "SR")
       converts properly instead of falling into (a) at all.
 
-NOT in scope, recorded as a follow-up: ``parse_price_string``'s comma strip
-(price_service.py:2844) reads the COMMA-DECIMAL "320,00" on this very page as
-"32000". That is why the corpus amount is 32000 and not 320 - a second,
-independent bug whose blast radius reaches every caller of parse_price_string.
+NOT in scope HERE, recorded as a follow-up and FIXED IN THE NEXT WAVE (BLOCKER
+6, ENABLE_MONEY_PARSER_V2): ``parse_price_string``'s comma strip read the
+COMMA-DECIMAL "320,00" on this very page as "32000". That is why the corpus
+amount below is 32000 and not 320 - a second, independent bug whose blast
+radius reaches every caller of parse_price_string. The tests in this file that
+name a magnitude now pin the money-parser flag explicitly, so the two fixes
+stay independently rollback-able.
 """
 import hashlib
 import io
@@ -434,6 +437,11 @@ class TestQatarPerfumeShopCorpus:
 
     def test_flag_off_reproduces_todays_behaviour_byte_identically(self, monkeypatch):
         monkeypatch.setenv("ENABLE_STRICT_CURRENCY_LABEL", "false")
+        # BLOCKER 6 (a LATER wave) fixed the MAGNITUDE: the page's "320,00" is
+        # 320.00 QAR, not 32000. This test pins the 8adaefb baseline, so it
+        # needs BOTH rollback flags off - the 32000.0 below is the legacy
+        # comma-strip, not the strict-currency behaviour this file is about.
+        monkeypatch.setenv("ENABLE_MONEY_PARSER_V2", "false")
         assert self._run() == {
             "amount": 32000.0,
             "original_currency": QAR_SYMBOL,
@@ -455,13 +463,21 @@ class TestQatarPerfumeShopCorpus:
                 "the QAR symbol was relabelled, not converted"
             )
 
-    def test_flag_on_converts_at_the_qar_rate(self, monkeypatch):
+    @pytest.mark.parametrize("money_v2,riyals", [
+        ("false", 32000.0),   # the legacy comma-strip reading of "320,00"
+        ("true", 320.0),      # BLOCKER 6 - what the page actually prints
+    ], ids=["money_parser_v1", "money_parser_v2"])
+    def test_flag_on_converts_at_the_qar_rate(self, monkeypatch, money_v2, riyals):
+        """The RATE is this file's subject and it is right in both states; the
+        MAGNITUDE was BLOCKER 6's, fixed by ENABLE_MONEY_PARSER_V2. Pinning both
+        rows keeps the two fixes independently rollback-able."""
         from app.services.exchange_rate_service import FALLBACK_RATES
         monkeypatch.setenv("ENABLE_STRICT_CURRENCY_LABEL", "true")
+        monkeypatch.setenv("ENABLE_MONEY_PARSER_V2", money_v2)
         r = self._run()
         assert r is not None, "the QAR symbol is resolvable -> convert, do not pend"
         assert r["currency"] == "BHD"
-        assert r["amount"] == pytest.approx(round(32000.0 * FALLBACK_RATES["QAR"], 2))
+        assert r["amount"] == pytest.approx(round(riyals * FALLBACK_RATES["QAR"], 2))
         assert r["original_currency"] == QAR_SYMBOL
 
 
@@ -537,18 +553,31 @@ class TestShippedMode:
 # ---------------------------------------------------------------------------
 
 class TestCommaDecimalFollowUp:
-    """parse_price_string's comma strip is NOT fixed here - pinned as-is.
+    """The follow-up this file recorded - now FIXED as BLOCKER 6.
 
     "320,00" is a comma-DECIMAL (320.00 QAR) on qatarperfumeshop.com, and the
-    unconditional ``cleaned.replace(",", "")`` reads it as 32000 - a 100x
-    over-price that survives this fix. It is deliberately untouched: the comma
-    behaviour is depended on elsewhere ("SAR 2,499" is a real thousands group)
-    and disambiguating it needs the same currency-minor-unit reasoning BLOCKER 2
-    applied to the OG parser, applied to EVERY caller of parse_price_string.
+    unconditional ``cleaned.replace(",", "")`` read it as 32000 - a 100x
+    over-price that survived the strict-currency fix as 3305.6 BHD. It was
+    deliberately untouched HERE (its blast radius reaches every caller of
+    parse_price_string, so it needed its own flag and its own measured
+    before/after) and is fixed in the NEXT wave behind ENABLE_MONEY_PARSER_V2,
+    using exactly the currency-minor-unit reasoning BLOCKER 2 applied to the OG
+    parser. Both readings stay pinned here so this file keeps documenting which
+    flag owns which number; the full table lives in
+    tests/test_money_parser_v2.py.
     """
 
-    def test_comma_decimal_is_still_read_as_thousands(self):
+    def test_the_comma_decimal_is_fixed(self, monkeypatch):
+        monkeypatch.setenv("ENABLE_MONEY_PARSER_V2", "true")
+        assert ps.parse_price_string("320,00") == pytest.approx(320.0)
+
+    def test_the_rollback_still_reads_it_as_thousands(self, monkeypatch):
+        monkeypatch.setenv("ENABLE_MONEY_PARSER_V2", "false")
         assert ps.parse_price_string("320,00") == 32000.0
 
-    def test_comma_thousands_still_works(self):
+    @pytest.mark.parametrize("flag", ["true", "false"])
+    def test_comma_thousands_still_works(self, monkeypatch, flag):
+        """A REAL thousands group reads the same in both flag states - that is
+        the whole reason the "depended on elsewhere" objection did not hold."""
+        monkeypatch.setenv("ENABLE_MONEY_PARSER_V2", flag)
         assert ps.parse_price_string("SAR 2,499") == 2499.0

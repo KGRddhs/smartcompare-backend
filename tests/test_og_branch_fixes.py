@@ -152,10 +152,20 @@ class TestOgNumericParser:
     def test_unparseable_returns_none(self, raw):
         assert _parse_og_price_number(raw) is None
 
-    def test_parse_price_string_is_the_trap_we_avoid(self):
-        """WHY the helper is local: the shared parser strips commas
-        unconditionally and turns a 24,00 shelf price into 2400.0."""
+    def test_parse_price_string_is_the_trap_we_avoid(self, monkeypatch):
+        """WHY the helper was local: the shared parser stripped commas
+        unconditionally and turned a 24,00 shelf price into 2400.0.
+
+        That trap is GONE as of BLOCKER 6 - ``parse_price_string`` now routes
+        through the same canonical parser, so the two agree. The legacy reading
+        survives only as the ENABLE_MONEY_PARSER_V2 rollback, pinned here so the
+        rollback contract stays visible from this file too."""
+        monkeypatch.setenv("ENABLE_MONEY_PARSER_V2", "false")
         assert parse_price_string("24,00") == pytest.approx(2400.0)
+        assert _parse_og_price_number("24,00") == pytest.approx(24.0)
+
+        monkeypatch.setenv("ENABLE_MONEY_PARSER_V2", "true")
+        assert parse_price_string("24,00") == pytest.approx(24.0)
         assert _parse_og_price_number("24,00") == pytest.approx(24.0)
 
     def test_three_thousand_resolves_as_three_point_zero(self):
