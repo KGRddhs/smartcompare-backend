@@ -548,6 +548,87 @@ CURRENCY_CODES = {
     "QAR": "QAR", "OMR": "OMR", "INR": "INR",
 }
 
+# ---------------------------------------------------------------------------
+# BLOCKER 4 — GCC DISPLAY SYMBOL -> ISO 4217.
+#
+# ``CURRENCY_SYMBOLS`` above holds four WESTERN glyphs and not one GCC entry,
+# which is the wrong way round for a Bahrain-first product: every GCC storefront
+# renders its price with a native glyph, and none of those glyphs is in
+# ``FALLBACK_RATES``. Before this table, ``_convert_to_bhd`` gave up on every one
+# of them and ``_convert_gpt_price_currency`` then stamped the untouched foreign
+# number "BHD" — the qatarperfumeshop.com "32,000 BHD bottle of perfume".
+#
+# Keys are matched EXACTLY against a folded form of the raw token (bidi controls
+# and whitespace removed, ASCII upper-cased), NEVER as substrings: the Arabic
+# glyphs share prefixes (U+0631 U+002E starts both the Qatari and the Saudi
+# riyal) and a substring match would resolve one as the other. Both the
+# dot-suffixed and bare Arabic spellings are listed because retailers emit both.
+#
+# A wrong entry here is a silently mis-CONVERTED price, so the table stays
+# conservative: only unambiguous, in-use GCC tokens, and every value must be a
+# key of exchange_rate_service.FALLBACK_RATES (pinned by a test).
+# ---------------------------------------------------------------------------
+GCC_CURRENCY_SYMBOLS = {
+    # Bahraini dinar — ".د.ب" / "د.ب" / "BD"
+    ".د.ب": "BHD", "د.ب": "BHD", "د.ب.": "BHD", "BD": "BHD",
+    # Kuwaiti dinar — "د.ك" / "KD"
+    "د.ك": "KWD", "د.ك.": "KWD", "KD": "KWD",
+    # Omani rial — "ر.ع." / "ر.ع"
+    "ر.ع.": "OMR", "ر.ع": "OMR",
+    # Qatari riyal — "ر.ق" / "QR"
+    "ر.ق": "QAR", "ر.ق.": "QAR", "QR": "QAR",
+    # Saudi riyal — "ر.س" / "SR" / "SAR"
+    "ر.س": "SAR", "ر.س.": "SAR", "SR": "SAR",
+    # UAE dirham — "د.إ" / "AED" / "DHS"
+    "د.إ": "AED", "د.إ.": "AED", "DHS": "AED",
+}
+# DELIBERATELY ABSENT, and each for a reason:
+#   "DH"  — the Moroccan dirham prints "DH" too, and MAD is ~2.7x away from AED.
+#   "RO"  — not a spelling Omani stores actually emit (they use the glyph or
+#           "OMR"), so it buys nothing and only widens the collision surface.
+#   "R"/"D"/"RS" and other bare initials — too short to be unambiguous.
+# The rule this table follows: an entry must be a real, in-use GCC token that
+# maps to exactly ONE currency. A wrong entry is a silently mis-converted price,
+# which is the failure mode this whole fix exists to remove.
+
+# Bidi control characters GCC pages wrap a currency glyph in (RLM/LRM/ALM and
+# the embedding/override/isolate family). They carry no currency meaning and
+# would otherwise defeat an exact-match lookup.
+_BIDI_CONTROLS = "‎‏؜‪‫‬‭‮⁦⁧⁨⁩"
+_CURRENCY_FOLD_STRIP = str.maketrans("", "", _BIDI_CONTROLS + "   ")
+
+
+def _normalize_currency_code(raw: Any) -> Optional[str]:
+    """Fold a raw currency token to an ISO 4217 code, or None if unresolvable.
+
+    BLOCKER 4 (b). Resolution order, and the order matters:
+
+      1. an ISO code already known to ``FALLBACK_RATES`` wins outright — the
+         symbol table can never override a real code;
+      2. otherwise the GCC display-symbol table above;
+      3. otherwise None, which the caller must treat as "do not label this".
+
+    Total by construction: any object may be passed and nothing raises. A
+    non-string, an empty token and an unknown glyph all return None, because the
+    two wrong answers are not symmetric — returning None pends a price, while
+    guessing a code mis-converts one and ships it as a real number.
+    """
+    if not isinstance(raw, str):
+        return None
+    folded = raw.translate(_CURRENCY_FOLD_STRIP).strip()
+    if not folded:
+        return None
+    from app.services.exchange_rate_service import FALLBACK_RATES
+    upper = folded.upper()
+    if upper in FALLBACK_RATES:
+        return upper
+    # The Arabic glyphs are caseless, so try the raw fold too.
+    for key in (upper, folded):
+        iso = GCC_CURRENCY_SYMBOLS.get(key)
+        if iso:
+            return iso
+    return None
+
 PAGE_SCRAPE_TIMEOUT = 5
 # S3-genuine (team-lead live probe 2026-06-14, WRINKLE 1): gcc.luluhypermarket.com
 # is ~3.4s warm but the 5s cap clipped it COLD (curl(28) timeout) — the keystone
@@ -562,18 +643,73 @@ TIER_15_BUDGET_TIMEOUT = 20
 # Currency conversion
 # ============================================
 
+def strict_currency_label_enabled() -> bool:
+    """True iff an UNRESOLVABLE source currency pends instead of being relabelled
+    (default ON). BLOCKER 4.
+
+    THE DEFECT this gates, pre-existing on 8adaefb and reproduced on the cached
+    corpus with ENABLE_EXACT_PRICE_GATE=false (EXTRACTION isolation):
+    qatarperfumeshop.com yields ``amount 32000.0``, ``original_currency`` the
+    Qatari-riyal glyph, ``currency "BHD"``, ``source_method page_scrape``. The
+    page's own price is 320,00 QAR. ``_convert_to_bhd`` could not resolve the
+    glyph, warned, and returned the number untouched; ``_convert_gpt_price_
+    currency`` then executed ``price["currency"] = target_currency`` regardless.
+    32,000 Bahraini dinar for a bottle of perfume, on BOTH exact-gate settings.
+
+    WHAT THE FLAG CHANGES, and nothing else:
+      (a) ``_convert_gpt_price_currency`` returns False and mutates NOTHING when
+          either currency is unresolvable, and the four page-extraction branches
+          that call it PEND (return None) on a False;
+      (b) ``_convert_to_bhd`` and ``_convert_gpt_price_currency`` resolve GCC
+          display symbols through ``_normalize_currency_code`` before giving up.
+
+    Default ON because it is a correctness fix, not a new capability. Read per
+    call from os.getenv (copying ``exact_gate_enabled``) so Railway can flip it
+    without a restart, and NEVER cached at import. With the flag OFF every one
+    of these sites takes its exact pre-change path, including the 32000.0 case,
+    so the rollback is byte-identical.
+
+    Deliberately INDEPENDENT of ``exact_gate_enabled()``: a currency label is
+    not part of the exact-identity layer and must survive that layer's master
+    rollback.
+    """
+    return os.getenv("ENABLE_STRICT_CURRENCY_LABEL", "true").strip().lower() not in (
+        "false", "0", "no", "off", "",
+    )
+
+
 def _convert_to_bhd(amount: float, currency: str) -> float:
     """Convert amount to BHD using the central FALLBACK_RATES table.
 
     Logs a warning if the currency is not in the rate table — this prevents
     the silent-failure mode where unknown currencies were multiplied by 1.0
     and labelled BHD (e.g. SGD values displayed as BHD on luxury queries).
+
+    BLOCKER 4 (b) — that claim was only ever half true. This function's
+    give-up path really does leave the amount alone, but it never stopped its
+    CALLER relabelling the untouched number (see ``_convert_gpt_price_currency``
+    below), and it gave up on every GCC display glyph because ``FALLBACK_RATES``
+    is keyed by ISO code alone. With ``strict_currency_label_enabled()`` the
+    token is first folded through ``_normalize_currency_code``, so the Arabic
+    riyal/dirham/dinar glyphs and "KD"/"SR"/"QR"/"BD" convert at their real rate.
+
+    The RETURN CONTRACT is unchanged on purpose: an unresolvable currency still
+    returns the amount UNCHANGED rather than None. Eight adapter modules
+    (woocommerce/salla/occ/magento_graphql/rest_json/algolia/unbxd and the
+    Shopify catalog path) call this directly and each re-checks the result
+    before stamping a currency; switching this to None would be a cross-module
+    contract break outside this fix's blast radius. The label decision belongs
+    to the caller, and that is where BLOCKER 4 (a) puts it.
     """
     if not currency:
         return amount
     from app.services.exchange_rate_service import FALLBACK_RATES
     currency_upper = currency.upper()
     if currency_upper not in FALLBACK_RATES:
+        if strict_currency_label_enabled():
+            resolved = _normalize_currency_code(currency)
+            if resolved is not None:
+                return amount * FALLBACK_RATES[resolved]
         logger.warning(
             f"[CURRENCY] No rate for {currency_upper}->BHD, returning amount unchanged. "
             f"Add {currency_upper} to FALLBACK_RATES to enable conversion."
@@ -582,13 +718,67 @@ def _convert_to_bhd(amount: float, currency: str) -> float:
     return amount * FALLBACK_RATES[currency_upper]
 
 
-def _convert_gpt_price_currency(price: Optional[Dict], target_currency: str) -> None:
-    """Convert GPT-returned price from original_currency to target currency."""
+def _convert_gpt_price_currency(price: Optional[Dict], target_currency: str) -> bool:
+    """Convert GPT-returned price from original_currency to target currency.
+
+    Returns True iff ``price`` now genuinely carries ``target_currency``.
+
+    BLOCKER 4 (a) — THE LABEL DECISION. The old body ended in an unconditional
+    ``price["currency"] = target_currency``, which is the whole bug: when
+    ``_convert_to_bhd`` cannot resolve the source currency it hands back the
+    foreign number untouched, and this line then declared that untouched foreign
+    number to be Bahraini dinar. Every guard downstream is a magnitude guard
+    (``amount > 0``, plausibility bands) and none of them can see a LABEL error,
+    so the wrong price sails through and — being a number in the same field as
+    everyone else's — competes in every cheapest-price comparison.
+
+    With ``strict_currency_label_enabled()`` an unresolvable currency on EITHER
+    side makes this a total no-op: nothing is converted, nothing is relabelled,
+    ``price`` is returned exactly as it arrived and the answer is False. The four
+    page-extraction branches that call this then PEND the price.
+
+    WHY PEND RATHER THAN KEEP THE ORIGINAL LABEL. Keeping the foreign label
+    looks more informative but is the worse of the two: ``price["amount"]`` is
+    consumed as a bare number by scoring, by the pair-fairness re-select, by the
+    cheapest-price comparison and by the frontend's ``product.price.amount`` —
+    none of which re-read the currency field — so a 32,000-QAR amount wearing a
+    "QAR" label still loses or wins the comparison as if it were 32,000 BHD, and
+    still renders on the card. Pending removes it from all of them. This is the
+    house's existing Decision-F, already written into
+    ``_extract_shopify_catalog_price``: never fabricate a currency, a wrong-price
+    stamp is worse than an honest pend. A pended price falls through to the rest
+    of the cascade, which can still produce a real figure; a mislabelled one
+    poisons the comparison and cannot be detected later.
+
+    The bool return is additive — the previous signature returned None, and the
+    ``structured_comparison_service`` wrapper at scs:2389 discards the result —
+    so no existing caller changes behaviour.
+    """
     if not price or not price.get("amount"):
-        return
+        return False
     original = price.get("original_currency", "").upper()
     if not original or original == target_currency:
-        return
+        return False
+    strict = strict_currency_label_enabled()
+    if strict:
+        # Resolve BOTH sides before touching anything. An unresolvable target is
+        # just as unsafe as an unresolvable source — the divide below would
+        # silently fall back to a 1.0 rate.
+        src_iso = _normalize_currency_code(price.get("original_currency"))
+        tgt_iso = _normalize_currency_code(target_currency)
+        if src_iso is None or tgt_iso is None:
+            logger.warning(
+                "[CURRENCY] Unresolvable currency "
+                f"({price.get('original_currency')!r} -> {target_currency!r}) — "
+                "leaving the price unlabelled rather than stamping it "
+                f"{target_currency}. The caller should pend it."
+            )
+            return False
+        if src_iso == tgt_iso:
+            # Same currency, different spelling (the Arabic dinar glyph on a BH
+            # page). Canonicalise the LABEL to ISO; never rate-convert it.
+            price["currency"] = target_currency
+            return True
     amount = price["amount"]
     amount_bhd = _convert_to_bhd(amount, original)
     if target_currency == "BHD":
@@ -601,6 +791,7 @@ def _convert_gpt_price_currency(price: Optional[Dict], target_currency: str) -> 
     )
     price["amount"] = round(converted, 2)
     price["currency"] = target_currency
+    return True
 
 
 # ============================================
@@ -2827,7 +3018,25 @@ def extract_domain(url: str) -> str:
 
 
 def parse_price_string(price_str: str) -> Optional[float]:
-    """Parse price strings like '$699.99', 'BHD 339.000', 'SAR 2,499'."""
+    """Parse price strings like '$699.99', 'BHD 339.000', 'SAR 2,499'.
+
+    FOLLOW-UP, DELIBERATELY NOT FIXED HERE (BLOCKER 4 part c). The
+    ``.replace(",", "")`` below reads EVERY comma as a thousands separator, so a
+    comma-DECIMAL locale is over-priced 100x: qatarperfumeshop.com prints
+    "320,00" for 320.00 QAR and this returns 32000.0 — that is where the "32,000
+    BHD bottle of perfume" number came from, and it SURVIVES the strict-currency
+    fix (the fix corrects the label and the rate, never the magnitude).
+
+    It is out of scope on purpose, not by oversight. The comma behaviour is
+    depended on elsewhere — "SAR 2,499" is a real thousands group — and this
+    function is called from every price path in the service, so a shape-only
+    change here silently re-prices unrelated retailers. Disambiguating it needs
+    the same reasoning ``_parse_og_price_number`` already applies on the OG
+    branch (a 3-digit tail is a DECIMAL when the currency's ISO 4217 minor unit
+    is 3, a leading-zero head is never a thousands group), threaded down to
+    every caller together with the currency each one resolved — a wider change
+    that deserves its own flag and its own measured before/after.
+    """
     if not price_str:
         return None
     cleaned = re.sub(r'[A-Z]{2,3}\s*', '', price_str)
@@ -9835,7 +10044,12 @@ def _extract_og_price(
                     "source_method": "page_scrape",
                 }
                 if detected_currency.upper() != currency.upper():
-                    _convert_gpt_price_currency(result, currency)
+                    _ok = _convert_gpt_price_currency(result, currency)
+                    # BLOCKER 4 (a) — an unresolvable currency PENDS. Serving it
+                    # would stamp a foreign number "BHD" at an implicit 1.0 rate.
+                    # Flag OFF: `_ok` is ignored entirely, exact 8adaefb path.
+                    if strict_currency_label_enabled() and not _ok:
+                        return None
                     # S3 coverage #2 — a converted OG price is converted_usd, not
                     # a genuine local page_scrape (provenance honesty).
                     result["source_method"] = "converted_usd"
@@ -9891,8 +10105,16 @@ def extract_price_from_html(
             "estimated": False,
             "source_method": "page_scrape",
         }
+        # BLOCKER 4 (a) — set False when the currency cannot be resolved. This
+        # branch then declines the hit and the OG / microdata / WooCommerce
+        # cascade below still gets its turn (a pend HERE must not abort the
+        # whole extractor — another branch may read a currency this one could
+        # not). Flag OFF: always True, exact 8adaefb path.
+        _label_ok = True
         if price_data.get("_needs_conversion") or result["currency"].upper() != currency.upper():
-            _convert_gpt_price_currency(result, currency)
+            _label_ok = _convert_gpt_price_currency(result, currency)
+            if not strict_currency_label_enabled():
+                _label_ok = True
             # S3 coverage #2 (apple.com-198.9 wrong-scrape) — a JSON-LD price in
             # a FOREIGN currency that we converted to the target is NOT a genuine
             # local shelf price; it's a converted figure. Label its provenance
@@ -9901,32 +10123,33 @@ def extract_price_from_html(
             # keeps it out of the genuine-BH-share KPI + the UI says
             # "indicative/reference", never a genuine BH price.
             result["source_method"] = "converted_usd"
-        # frag-size-capture — stamp the REAL listing size (ml/oz) from the
-        # JSON-LD name / og:title / page <title> so the pair fairness engages on
-        # true sizes (fragrance-scoped; no-op otherwise).
-        _stamp_listing_size(result, product_name, soup, price_data.get("name", ""))
-        # M2 (extended) — carry the MATCHED JSON-LD Product name as the listing
-        # identity so the response chokepoint axis backstop, should_cache_price,
-        # and the usable_exact_genuine KPI can verify the exact SKU. The OG /
-        # microdata / WC branches below already stamp `name` (via _page_identity_
-        # name); the JSON-LD branch OMITTED it, so a genuine page-scrape price
-        # reached the cache-write gate with NO identity and was refused (warmer
-        # gate: 8/18 genuine PDP prices blocked on missing identity). Uses the
-        # extractor's OWN matched Product name (NOT the query), so it verifies
-        # rather than trivially self-matches. Flag-gated for flag-OFF byte-
-        # identity, matching the sibling branches.
-        if exact_gate_enabled():
-            result["name"] = price_data.get("name")
-            # Forward the matched JSON-LD `brand` field too, so should_cache_price's
-            # brand-aware _selection_match subtracts the FULL brand for a brand-
-            # FIELD-only PDP (ounass-style: brand in the JSON-LD brand field, bare
-            # name like "Libre Eau de Parfum 90ml"). Without it, the brand-unaware
-            # gate requires the brand tokens IN the bare name and over-rejects a
-            # correct genuine price (sweep MED). price_data already carries `brand`
-            # (extract_jsonld_price stamps it when the gate is on).
-            if price_data.get("brand"):
-                result["brand"] = price_data.get("brand")
-        return result
+        if _label_ok:
+            # frag-size-capture — stamp the REAL listing size (ml/oz) from the
+            # JSON-LD name / og:title / page <title> so the pair fairness engages on
+            # true sizes (fragrance-scoped; no-op otherwise).
+            _stamp_listing_size(result, product_name, soup, price_data.get("name", ""))
+            # M2 (extended) — carry the MATCHED JSON-LD Product name as the listing
+            # identity so the response chokepoint axis backstop, should_cache_price,
+            # and the usable_exact_genuine KPI can verify the exact SKU. The OG /
+            # microdata / WC branches below already stamp `name` (via _page_identity_
+            # name); the JSON-LD branch OMITTED it, so a genuine page-scrape price
+            # reached the cache-write gate with NO identity and was refused (warmer
+            # gate: 8/18 genuine PDP prices blocked on missing identity). Uses the
+            # extractor's OWN matched Product name (NOT the query), so it verifies
+            # rather than trivially self-matches. Flag-gated for flag-OFF byte-
+            # identity, matching the sibling branches.
+            if exact_gate_enabled():
+                result["name"] = price_data.get("name")
+                # Forward the matched JSON-LD `brand` field too, so should_cache_price's
+                # brand-aware _selection_match subtracts the FULL brand for a brand-
+                # FIELD-only PDP (ounass-style: brand in the JSON-LD brand field, bare
+                # name like "Libre Eau de Parfum 90ml"). Without it, the brand-unaware
+                # gate requires the brand tokens IN the bare name and over-rejects a
+                # correct genuine price (sweep MED). price_data already carries `brand`
+                # (extract_jsonld_price stamps it when the gate is on).
+                if price_data.get("brand"):
+                    result["brand"] = price_data.get("brand")
+            return result
 
     # CORRECTNESS — the JSON-LD path gates identity per-Product; the OG / microdata
     # / WooCommerce-span fallbacks below do NOT (they grab the first price on the
@@ -10046,7 +10269,16 @@ def _extract_woocommerce_price(
         "source_method": "page_scrape",
     }
     if detected_currency != currency.upper():
-        _convert_gpt_price_currency(result, currency)
+        _ok = _convert_gpt_price_currency(result, currency)
+        # BLOCKER 4 (a) — this is the branch that produced the corpus case.
+        # WooCommerce puts the currency in a `.woocommerce-Price-currencySymbol`
+        # child, so `detected_currency` is a DISPLAY GLYPH, not an ISO code:
+        # qatarperfumeshop.com prints the Qatari-riyal glyph and the old code
+        # stamped the unconverted number "BHD". With the flag on, a glyph the
+        # table resolves converts; one it cannot resolve PENDS.
+        # Flag OFF: `_ok` is ignored entirely, exact 8adaefb path.
+        if strict_currency_label_enabled() and not _ok:
+            return None
     return result
 
 
@@ -10159,7 +10391,12 @@ def _extract_microdata_price(
         # page_scrape to converted_usd, which is a KPI-visible change nobody
         # measured on its own. The honesty argument still stands; make it its
         # own flagged change against a measured before/after.
-        _convert_gpt_price_currency(result, currency)
+        _ok = _convert_gpt_price_currency(result, currency)
+        # BLOCKER 4 (a) — an unresolvable priceCurrency PENDS rather than being
+        # stamped BHD at an implicit 1.0 rate. Flag OFF: `_ok` is ignored
+        # entirely, exact 8adaefb path.
+        if strict_currency_label_enabled() and not _ok:
+            return None
     return result
 
 

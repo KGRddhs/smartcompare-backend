@@ -1,0 +1,554 @@
+# -*- coding: utf-8 -*-
+"""BLOCKER 4 - an UNRESOLVABLE source currency must never be stamped "BHD".
+
+THE DEFECT (pre-existing on 8adaefb, not introduced by this wave).
+``_convert_to_bhd`` (price_service.py:565) logs a warning and returns the amount
+UNCHANGED when the currency token is not in ``FALLBACK_RATES`` - and then
+``_convert_gpt_price_currency`` (:585) unconditionally executes
+``price["currency"] = target_currency``. A foreign-currency number is therefore
+relabelled as a Bahraini price at an implicit 1.0 rate. The docstring of that
+very guard claims it "prevents the silent-failure mode where unknown currencies
+were multiplied by 1.0 and labelled BHD"; it does exactly that.
+
+Measured live on the cached corpus (ENABLE_EXACT_PRICE_GATE=false, EXTRACTION
+isolation): ``qatarperfumeshop.com`` -> ``amount 32000.0``,
+``original_currency U+0631 U+002E U+0642``, ``currency "BHD"``,
+``source_method page_scrape``.
+
+THE FIX, behind ENABLE_STRICT_CURRENCY_LABEL (default ON):
+  (a) an unresolvable source currency PENDS the price (the branch returns None)
+      instead of relabelling it; and
+  (b) the common GCC display symbols normalise to ISO first, so the large class
+      of pages that carry the Arabic riyal/dirham/dinar glyphs (or "KD" / "SR")
+      converts properly instead of falling into (a) at all.
+
+NOT in scope, recorded as a follow-up: ``parse_price_string``'s comma strip
+(price_service.py:2844) reads the COMMA-DECIMAL "320,00" on this very page as
+"32000". That is why the corpus amount is 32000 and not 320 - a second,
+independent bug whose blast radius reaches every caller of parse_price_string.
+"""
+import hashlib
+import io
+from pathlib import Path
+
+import pytest
+from bs4 import BeautifulSoup
+
+import app.services.price_service as ps
+
+
+REPO = Path(__file__).resolve().parents[1]
+CORPUS = REPO / "_proof" / "html"
+
+QPS_URL = "https://qatarperfumeshop.com/product/reef-perfume/"
+
+QAR_SYMBOL = "ر.ق"          # rial qatari
+SAR_SYMBOL = "ر.س"          # rial saudi
+AED_SYMBOL = "د.إ"          # dirham
+OMR_SYMBOL = "ر.ع."         # rial omani
+BHD_SYMBOL = ".د.ب"         # dinar bahraini (leading-dot form)
+TUGRIK = "₮"                     # a genuinely unresolvable symbol
+
+
+def _corpus_page(url: str) -> str:
+    name = hashlib.sha1(("curl_cffi|" + url).encode()).hexdigest() + ".html"
+    path = CORPUS / name
+    if not path.exists():
+        pytest.skip("cached corpus page missing: " + name)
+    return io.open(path, encoding="utf-8", errors="replace").read()
+
+
+@pytest.fixture(autouse=True)
+def _extraction_isolation(monkeypatch):
+    """EXTRACTION-isolation mode.
+
+    With ENABLE_EXACT_PRICE_GATE=true the identity gate rejects most cached
+    pages and everything returns None, which MASKS extraction bugs. Every
+    number in this file is therefore measured with the exact gate OFF; the
+    behaviour under test is the currency LABEL, which the exact gate does not
+    participate in.
+    """
+    monkeypatch.setenv("ENABLE_EXACT_PRICE_GATE", "false")
+
+
+def _woo_html(symbol: str, amount_text: str) -> str:
+    """A minimal WooCommerce PDP carrying one price span."""
+    return (
+        "<html><body><p class='price'>"
+        "<span class='woocommerce-Price-amount amount'>"
+        "<span class='woocommerce-Price-currencySymbol'>" + symbol + "</span>"
+        + amount_text +
+        "</span></p></body></html>"
+    )
+
+
+def _woo_price(symbol, amount_text="350.00", target="BHD"):
+    soup = BeautifulSoup(_woo_html(symbol, amount_text), "html.parser")
+    return ps._extract_woocommerce_price(
+        soup, target, "example.com", "https://example.com/p"
+    )
+
+
+# ---------------------------------------------------------------------------
+# 1. The flag itself
+# ---------------------------------------------------------------------------
+
+class TestFlag:
+    def test_default_is_on(self, monkeypatch):
+        monkeypatch.delenv("ENABLE_STRICT_CURRENCY_LABEL", raising=False)
+        assert ps.strict_currency_label_enabled() is True
+
+    @pytest.mark.parametrize("raw", ["false", "0", "no", "off", "", "FALSE", " Off "])
+    def test_off_values(self, monkeypatch, raw):
+        monkeypatch.setenv("ENABLE_STRICT_CURRENCY_LABEL", raw)
+        assert ps.strict_currency_label_enabled() is False
+
+    def test_read_per_call_never_cached_at_import(self, monkeypatch):
+        monkeypatch.setenv("ENABLE_STRICT_CURRENCY_LABEL", "false")
+        assert ps.strict_currency_label_enabled() is False
+        monkeypatch.setenv("ENABLE_STRICT_CURRENCY_LABEL", "true")
+        assert ps.strict_currency_label_enabled() is True
+
+
+# ---------------------------------------------------------------------------
+# 2. (b) the GCC display-symbol -> ISO table
+# ---------------------------------------------------------------------------
+
+SYMBOL_CASES = [
+    ("KD", "KWD"), ("KWD", "KWD"),
+    (OMR_SYMBOL, "OMR"), ("OMR", "OMR"),
+    (QAR_SYMBOL, "QAR"), ("QR", "QAR"), ("QAR", "QAR"),
+    (SAR_SYMBOL, "SAR"), ("SR", "SAR"), ("SAR", "SAR"),
+    (AED_SYMBOL, "AED"), ("AED", "AED"), ("DHS", "AED"),
+    (BHD_SYMBOL, "BHD"), ("BD", "BHD"), ("BHD", "BHD"),
+]
+
+
+class TestSymbolNormalisation:
+    """Every symbol the assignment names, plus the Latin variants."""
+
+    @pytest.mark.parametrize("raw,iso", SYMBOL_CASES)
+    def test_normalises_to_iso(self, raw, iso):
+        assert ps._normalize_currency_code(raw) == iso
+
+    @pytest.mark.parametrize("raw,iso", SYMBOL_CASES)
+    def test_table_entries_are_in_the_rate_table(self, raw, iso):
+        from app.services.exchange_rate_service import FALLBACK_RATES
+        assert iso in FALLBACK_RATES, raw + " normalises to a rate-less code"
+
+    def test_bidi_marks_and_nbsp_do_not_defeat_the_lookup(self):
+        # Real GCC pages wrap the symbol in RLM/LRM and NBSP.
+        assert ps._normalize_currency_code("‏" + QAR_SYMBOL + " ") == "QAR"
+
+    def test_iso_code_is_never_overridden_by_the_symbol_table(self):
+        assert ps._normalize_currency_code("usd") == "USD"
+        assert ps._normalize_currency_code("EUR") == "EUR"
+
+    @pytest.mark.parametrize(
+        "raw", ["", None, "  ", TUGRIK, "ZZZ", "XYZ", 5, [], "$$$"]
+    )
+    def test_unresolvable_returns_none(self, raw):
+        assert ps._normalize_currency_code(raw) is None
+
+    @pytest.mark.parametrize("raw", ["DH", "RO", "R", "D", "RS"])
+    def test_ambiguous_tokens_are_deliberately_absent(self, raw):
+        """A wrong entry is a silently mis-CONVERTED price.
+
+        "DH" is the Moroccan dirham as well as the Emirati one and MAD is ~2.7x
+        from AED; "RO" is not a spelling Omani stores emit; bare initials are
+        too short to be unambiguous. All of them must pend, not guess.
+        """
+        assert ps._normalize_currency_code(raw) is None
+
+
+class TestConvertToBhdUsesTheTable:
+    @pytest.mark.parametrize("symbol,iso", [
+        (QAR_SYMBOL, "QAR"), (SAR_SYMBOL, "SAR"), (AED_SYMBOL, "AED"),
+        (OMR_SYMBOL, "OMR"), (BHD_SYMBOL, "BHD"),
+        ("KD", "KWD"), ("SR", "SAR"), ("QR", "QAR"), ("BD", "BHD"),
+    ])
+    def test_flag_on_converts_at_the_iso_rate(self, monkeypatch, symbol, iso):
+        from app.services.exchange_rate_service import FALLBACK_RATES
+        monkeypatch.setenv("ENABLE_STRICT_CURRENCY_LABEL", "true")
+        assert ps._convert_to_bhd(100.0, symbol) == pytest.approx(
+            100.0 * FALLBACK_RATES[iso]
+        )
+
+    @pytest.mark.parametrize("symbol", [
+        QAR_SYMBOL, SAR_SYMBOL, AED_SYMBOL, OMR_SYMBOL, BHD_SYMBOL,
+        "KD", "SR", "QR", "BD",
+    ])
+    def test_flag_off_is_the_8adaefb_passthrough(self, monkeypatch, symbol):
+        monkeypatch.setenv("ENABLE_STRICT_CURRENCY_LABEL", "false")
+        assert ps._convert_to_bhd(100.0, symbol) == 100.0
+
+    def test_flag_on_still_gives_up_on_a_genuinely_unknown_token(self, monkeypatch):
+        monkeypatch.setenv("ENABLE_STRICT_CURRENCY_LABEL", "true")
+        # Contract preserved for the 8 adapter modules that call this directly:
+        # unresolvable -> amount UNCHANGED (they each re-check before stamping).
+        assert ps._convert_to_bhd(100.0, "ZZZ") == 100.0
+
+    def test_iso_rates_are_untouched_by_the_flag(self, monkeypatch):
+        from app.services.exchange_rate_service import FALLBACK_RATES
+        for flag in ("true", "false"):
+            monkeypatch.setenv("ENABLE_STRICT_CURRENCY_LABEL", flag)
+            assert ps._convert_to_bhd(100.0, "USD") == pytest.approx(
+                100.0 * FALLBACK_RATES["USD"]
+            )
+
+
+# ---------------------------------------------------------------------------
+# 3. (a) an unresolvable currency is NEVER stamped BHD
+# ---------------------------------------------------------------------------
+
+class TestConvertGptPriceCurrency:
+    def _price(self, original):
+        return {
+            "amount": 320.0, "original_currency": original, "currency": original,
+            "retailer": "example.com", "url": "https://example.com/p",
+            "in_stock": True, "confidence": 0.9, "estimated": False,
+            "source_method": "page_scrape",
+        }
+
+    def test_flag_on_unresolvable_does_not_relabel_and_reports_failure(self, monkeypatch):
+        monkeypatch.setenv("ENABLE_STRICT_CURRENCY_LABEL", "true")
+        p = self._price("ZZZ")
+        ok = ps._convert_gpt_price_currency(p, "BHD")
+        assert ok is False
+        assert p["currency"] == "ZZZ", "an unresolvable currency was relabelled"
+        assert p["amount"] == 320.0, "an unresolvable amount was silently mutated"
+
+    def test_flag_off_reproduces_the_8adaefb_relabel(self, monkeypatch):
+        monkeypatch.setenv("ENABLE_STRICT_CURRENCY_LABEL", "false")
+        p = self._price("ZZZ")
+        ps._convert_gpt_price_currency(p, "BHD")
+        assert p["currency"] == "BHD"
+        assert p["amount"] == 320.0
+
+    def test_flag_on_resolvable_symbol_converts_and_labels_bhd(self, monkeypatch):
+        from app.services.exchange_rate_service import FALLBACK_RATES
+        monkeypatch.setenv("ENABLE_STRICT_CURRENCY_LABEL", "true")
+        p = self._price(QAR_SYMBOL)
+        ok = ps._convert_gpt_price_currency(p, "BHD")
+        assert ok is True
+        assert p["currency"] == "BHD"
+        assert p["amount"] == pytest.approx(round(320.0 * FALLBACK_RATES["QAR"], 2))
+        assert p["original_currency"] == QAR_SYMBOL
+
+    def test_flag_on_arabic_bhd_symbol_is_not_converted_away(self, monkeypatch):
+        """The dotted dinar glyph IS BHD - relabel it, never rate-convert it."""
+        monkeypatch.setenv("ENABLE_STRICT_CURRENCY_LABEL", "true")
+        p = self._price(BHD_SYMBOL)
+        ok = ps._convert_gpt_price_currency(p, "BHD")
+        assert ok is True
+        assert p["currency"] == "BHD"
+        assert p["amount"] == 320.0
+
+    def test_return_value_is_true_on_the_ordinary_iso_path(self, monkeypatch):
+        monkeypatch.setenv("ENABLE_STRICT_CURRENCY_LABEL", "true")
+        p = self._price("USD")
+        assert ps._convert_gpt_price_currency(p, "BHD") is True
+        assert p["currency"] == "BHD"
+
+    def test_no_amount_is_still_a_no_op(self, monkeypatch):
+        monkeypatch.setenv("ENABLE_STRICT_CURRENCY_LABEL", "true")
+        p = self._price("ZZZ")
+        p["amount"] = 0
+        assert ps._convert_gpt_price_currency(p, "BHD") is False
+        assert p["currency"] == "ZZZ"
+
+    def test_unresolvable_target_currency_also_fails_closed(self, monkeypatch):
+        monkeypatch.setenv("ENABLE_STRICT_CURRENCY_LABEL", "true")
+        p = self._price("USD")
+        assert ps._convert_gpt_price_currency(p, "ZZZ") is False
+        assert p["currency"] == "USD"
+        assert p["amount"] == 320.0
+
+
+# ---------------------------------------------------------------------------
+# 4. the extractor branches PEND rather than serve a mislabelled price
+# ---------------------------------------------------------------------------
+
+class TestWooCommerceBranch:
+    def test_flag_on_unresolvable_symbol_pends(self, monkeypatch):
+        monkeypatch.setenv("ENABLE_STRICT_CURRENCY_LABEL", "true")
+        assert _woo_price(TUGRIK) is None, "a Tugrik price was served as a BH price"
+
+    def test_flag_off_serves_it_stamped_bhd(self, monkeypatch):
+        monkeypatch.setenv("ENABLE_STRICT_CURRENCY_LABEL", "false")
+        r = _woo_price(TUGRIK)
+        assert r is not None
+        assert r["currency"] == "BHD"
+        assert r["amount"] == 350.0
+
+    def test_flag_on_gcc_symbol_converts_instead_of_pending(self, monkeypatch):
+        from app.services.exchange_rate_service import FALLBACK_RATES
+        monkeypatch.setenv("ENABLE_STRICT_CURRENCY_LABEL", "true")
+        r = _woo_price(SAR_SYMBOL)
+        assert r is not None
+        assert r["currency"] == "BHD"
+        assert r["amount"] == pytest.approx(round(350.0 * FALLBACK_RATES["SAR"], 2))
+
+    def test_flag_on_native_bhd_page_is_untouched(self, monkeypatch):
+        monkeypatch.setenv("ENABLE_STRICT_CURRENCY_LABEL", "true")
+        r = _woo_price("BHD", "45.500")
+        assert r is not None
+        assert r["currency"] == "BHD"
+        assert r["amount"] == 45.5
+
+
+class TestOgBranch:
+    def _og(self, code):
+        return (
+            "<html><head>"
+            "<meta property='product:price:amount' content='350.00'>"
+            "<meta property='product:price:currency' content='" + code + "'>"
+            "</head><body></body></html>"
+        )
+
+    def test_flag_on_unresolvable_pends(self, monkeypatch):
+        monkeypatch.setenv("ENABLE_STRICT_CURRENCY_LABEL", "true")
+        soup = BeautifulSoup(self._og(TUGRIK), "html.parser")
+        assert ps._extract_og_price(
+            soup, "Reef", "BHD", "example.com", "https://example.com/p"
+        ) is None
+
+    def test_flag_off_serves_it_stamped_bhd(self, monkeypatch):
+        monkeypatch.setenv("ENABLE_STRICT_CURRENCY_LABEL", "false")
+        soup = BeautifulSoup(self._og(TUGRIK), "html.parser")
+        r = ps._extract_og_price(
+            soup, "Reef", "BHD", "example.com", "https://example.com/p"
+        )
+        assert r is not None
+        assert r["currency"] == "BHD"
+        assert r["amount"] == 350.0
+
+    def test_flag_on_gcc_symbol_converts(self, monkeypatch):
+        from app.services.exchange_rate_service import FALLBACK_RATES
+        monkeypatch.setenv("ENABLE_STRICT_CURRENCY_LABEL", "true")
+        soup = BeautifulSoup(self._og(AED_SYMBOL), "html.parser")
+        r = ps._extract_og_price(
+            soup, "Reef", "BHD", "example.com", "https://example.com/p"
+        )
+        assert r is not None
+        assert r["currency"] == "BHD"
+        assert r["amount"] == pytest.approx(round(350.0 * FALLBACK_RATES["AED"], 2))
+
+
+class TestMicrodataBranch:
+    def _micro(self, code):
+        return (
+            "<html><body><div itemscope itemtype='http://schema.org/Offer'>"
+            "<meta itemprop='priceCurrency' content='" + code + "'>"
+            "<meta itemprop='price' content='350.00'>"
+            "</div></body></html>"
+        )
+
+    def test_flag_on_unresolvable_pends(self, monkeypatch):
+        monkeypatch.setenv("ENABLE_STRICT_CURRENCY_LABEL", "true")
+        soup = BeautifulSoup(self._micro(TUGRIK), "html.parser")
+        assert ps._extract_microdata_price(
+            soup, "BHD", "example.com", "https://example.com/p"
+        ) is None
+
+    def test_flag_off_serves_it_stamped_bhd(self, monkeypatch):
+        monkeypatch.setenv("ENABLE_STRICT_CURRENCY_LABEL", "false")
+        soup = BeautifulSoup(self._micro(TUGRIK), "html.parser")
+        r = ps._extract_microdata_price(
+            soup, "BHD", "example.com", "https://example.com/p"
+        )
+        assert r is not None
+        assert r["currency"] == "BHD"
+        assert r["amount"] == 350.0
+
+
+class TestJsonLdBranch:
+    def _jsonld(self, code):
+        return (
+            "<html><head><script type='application/ld+json'>"
+            '{"@context":"https://schema.org","@type":"Product",'
+            '"name":"Reef 33 Black","brand":{"@type":"Brand","name":"Reef"},'
+            '"offers":{"@type":"Offer","price":"350.00","priceCurrency":"' + code + '",'
+            '"availability":"https://schema.org/InStock"}}'
+            "</script></head><body></body></html>"
+        )
+
+    def _run(self, code):
+        return ps.extract_price_from_html(
+            self._jsonld(code), "Reef 33 Black", "BHD",
+            "example.com", "https://example.com/p", category="fragrances",
+        )
+
+    @pytest.mark.parametrize("flag", ["true", "false"])
+    def test_an_unresolvable_currency_never_reaches_the_label_step(self, monkeypatch, flag):
+        """MEASURED, and the reason the JSON-LD guard is belt-and-braces.
+
+        ``extract_jsonld_price`` filters on ``str(priceCurrency).upper() !=
+        expected_currency.upper(): continue`` (price_service.py:9516), and
+        ``extract_price_from_html`` only ever asks it for the target currency
+        and then USD. So the JSON-LD branch can only ever hand
+        ``_convert_gpt_price_currency`` a code that is already BHD (a no-op) or
+        USD (resolvable) — an unresolvable one is dropped one layer earlier, on
+        BOTH flag settings, and the price pends with no label written at all.
+        The ``_label_ok`` guard on that branch is therefore defensive: it exists
+        so a future loosening of the currency filter cannot reintroduce
+        BLOCKER 4 there. Pinned in both directions so the claim stays true.
+        """
+        monkeypatch.setenv("ENABLE_STRICT_CURRENCY_LABEL", flag)
+        assert self._run(TUGRIK) is None
+
+    @pytest.mark.parametrize("flag", ["true", "false"])
+    def test_the_usd_needs_conversion_path_is_unchanged_by_the_flag(self, monkeypatch, flag):
+        """The one currency this branch really does convert: the USD fallback."""
+        from app.services.exchange_rate_service import FALLBACK_RATES
+        monkeypatch.setenv("ENABLE_STRICT_CURRENCY_LABEL", flag)
+        r = self._run("USD")
+        assert r is not None
+        assert r["currency"] == "BHD"
+        assert r["amount"] == pytest.approx(round(350.0 * FALLBACK_RATES["USD"], 2))
+        assert r["source_method"] == "converted_usd"
+
+    @pytest.mark.parametrize("flag", ["true", "false"])
+    def test_a_native_bhd_offer_is_unchanged_by_the_flag(self, monkeypatch, flag):
+        monkeypatch.setenv("ENABLE_STRICT_CURRENCY_LABEL", flag)
+        r = self._run("BHD")
+        assert r is not None
+        assert r["currency"] == "BHD"
+        assert r["amount"] == 350.0
+        assert r["source_method"] == "page_scrape"
+
+
+# ---------------------------------------------------------------------------
+# 5. the CORPUS case the lead measured
+# ---------------------------------------------------------------------------
+
+class TestQatarPerfumeShopCorpus:
+    """qatarperfumeshop.com -> 32,000 Bahraini dinar for a bottle of perfume."""
+
+    def _run(self):
+        html = _corpus_page(QPS_URL)
+        return ps.extract_price_from_html(
+            html, "Reef 33 Black for Men amp; Women", "BHD",
+            "qatarperfumeshop.com", QPS_URL, category="fragrances",
+        )
+
+    def test_flag_off_reproduces_todays_behaviour_byte_identically(self, monkeypatch):
+        monkeypatch.setenv("ENABLE_STRICT_CURRENCY_LABEL", "false")
+        assert self._run() == {
+            "amount": 32000.0,
+            "original_currency": QAR_SYMBOL,
+            "currency": "BHD",
+            "retailer": "qatarperfumeshop.com",
+            "url": QPS_URL,
+            "in_stock": True,
+            "confidence": 0.9,
+            "estimated": False,
+            "source_method": "page_scrape",
+        }
+
+    def test_flag_on_is_no_longer_a_bhd_price_at_a_1_to_1_rate(self, monkeypatch):
+        monkeypatch.setenv("ENABLE_STRICT_CURRENCY_LABEL", "true")
+        r = self._run()
+        if r is not None and r["currency"] == "BHD":
+            assert r["amount"] != 32000.0, (
+                "32,000 BHD for a bottle of perfume: "
+                "the QAR symbol was relabelled, not converted"
+            )
+
+    def test_flag_on_converts_at_the_qar_rate(self, monkeypatch):
+        from app.services.exchange_rate_service import FALLBACK_RATES
+        monkeypatch.setenv("ENABLE_STRICT_CURRENCY_LABEL", "true")
+        r = self._run()
+        assert r is not None, "the QAR symbol is resolvable -> convert, do not pend"
+        assert r["currency"] == "BHD"
+        assert r["amount"] == pytest.approx(round(32000.0 * FALLBACK_RATES["QAR"], 2))
+        assert r["original_currency"] == QAR_SYMBOL
+
+
+class TestShippedMode:
+    """The defect measured with ENABLE_EXACT_PRICE_GATE=**true** (SHIPPED).
+
+    The corpus page ALONE is not proof of production impact, and this is the
+    trap the repro note warns about, sprung in the other direction: with the
+    exact gate ON the identity gate rejects qatarperfumeshop.com's cached PDP
+    outright, so that page pends on both strict settings and its 32000.0 never
+    reaches a user. What makes the defect real in production is that NOTHING in
+    the exact-identity layer inspects a currency - so a page whose identity DOES
+    match still gets its glyph relabelled.
+
+    This class builds exactly that page: a WooCommerce PDP whose og:title
+    matches the query (so ``_page_identity_ok`` passes) priced at 350 in the
+    Qatari-riyal glyph. Measured, exact gate ON:
+
+        before -> 350.0 BHD   (a 350 QAR bottle sold as 350 Bahraini dinar,
+                               9.7x over, and - unlike the corpus page's
+                               32000 - entirely PLAUSIBLE, so every downstream
+                               magnitude guard passes it through)
+        after  -> 36.16 BHD   (350 * 0.1033, correct)
+    """
+
+    QAR_PDP = (
+        "<html><head><title>Reef 33 Black Eau de Parfum 100ml</title>"
+        "<meta property='og:title' content='Reef 33 Black Eau de Parfum 100ml'>"
+        "</head><body><p class='price'>"
+        "<span class='woocommerce-Price-amount amount'>"
+        "<span class='woocommerce-Price-currencySymbol'>" + QAR_SYMBOL + "</span>350.00"
+        "</span></p></body></html>"
+    )
+
+    def _run(self, html, monkeypatch):
+        monkeypatch.setenv("ENABLE_EXACT_PRICE_GATE", "true")   # SHIPPED mode
+        return ps.extract_price_from_html(
+            html, "Reef 33 Black Eau de Parfum 100ml", "BHD",
+            "qatarperfumeshop.com", "https://qatarperfumeshop.com/product/reef/",
+            category="fragrances",
+        )
+
+    def test_flag_off_sells_a_350_qar_bottle_as_350_bhd(self, monkeypatch):
+        monkeypatch.setenv("ENABLE_STRICT_CURRENCY_LABEL", "false")
+        r = self._run(self.QAR_PDP, monkeypatch)
+        assert r is not None
+        assert r["currency"] == "BHD"
+        assert r["amount"] == 350.0
+
+    def test_flag_on_converts_at_the_qar_rate(self, monkeypatch):
+        from app.services.exchange_rate_service import FALLBACK_RATES
+        monkeypatch.setenv("ENABLE_STRICT_CURRENCY_LABEL", "true")
+        r = self._run(self.QAR_PDP, monkeypatch)
+        assert r is not None
+        assert r["currency"] == "BHD"
+        assert r["amount"] == pytest.approx(round(350.0 * FALLBACK_RATES["QAR"], 2))
+
+    def test_flag_on_pends_a_currency_the_table_cannot_resolve(self, monkeypatch):
+        monkeypatch.setenv("ENABLE_STRICT_CURRENCY_LABEL", "true")
+        r = self._run(self.QAR_PDP.replace(QAR_SYMBOL, TUGRIK), monkeypatch)
+        assert r is None
+
+    def test_flag_off_stamps_that_same_unresolvable_price_bhd(self, monkeypatch):
+        monkeypatch.setenv("ENABLE_STRICT_CURRENCY_LABEL", "false")
+        r = self._run(self.QAR_PDP.replace(QAR_SYMBOL, TUGRIK), monkeypatch)
+        assert r is not None
+        assert r["currency"] == "BHD"
+        assert r["amount"] == 350.0
+
+
+# ---------------------------------------------------------------------------
+# 6. FOLLOW-UP (out of scope, pinned so it cannot be forgotten)
+# ---------------------------------------------------------------------------
+
+class TestCommaDecimalFollowUp:
+    """parse_price_string's comma strip is NOT fixed here - pinned as-is.
+
+    "320,00" is a comma-DECIMAL (320.00 QAR) on qatarperfumeshop.com, and the
+    unconditional ``cleaned.replace(",", "")`` reads it as 32000 - a 100x
+    over-price that survives this fix. It is deliberately untouched: the comma
+    behaviour is depended on elsewhere ("SAR 2,499" is a real thousands group)
+    and disambiguating it needs the same currency-minor-unit reasoning BLOCKER 2
+    applied to the OG parser, applied to EVERY caller of parse_price_string.
+    """
+
+    def test_comma_decimal_is_still_read_as_thousands(self):
+        assert ps.parse_price_string("320,00") == 32000.0
+
+    def test_comma_thousands_still_works(self):
+        assert ps.parse_price_string("SAR 2,499") == 2499.0
