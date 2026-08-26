@@ -5,6 +5,7 @@ Functions are standalone (no self) — pass shopping_items_cache dict where need
 import os
 import re
 import json
+import math
 import time
 import asyncio
 import hashlib
@@ -3574,6 +3575,41 @@ def wide_signal_text_enabled() -> bool:
     not)."""
     return os.getenv("ENABLE_WIDE_SIGNAL_TEXT", "").strip().lower() in (
         "true", "1", "yes", "on",
+    )
+
+
+def hostile_numeric_guard_enabled() -> bool:
+    """True iff the hostile-numeric guards on PRE-EXISTING conversion sites are
+    active (default ON). BLOCKER 3.
+
+    SCOPE — this flag gates ONLY the two places the hostile-numeric hardening
+    had to touch lines that already existed on 8adaefb:
+
+      1. ``extract_jsonld_price`` — ``price_val = float(explicit or low or 0)``
+         accepts ``"1e400"`` as ``inf``; ``price_val <= 0`` waves it through and
+         an ``inf`` amount reaches the returned dict, where json.dumps writes
+         the bare token ``Infinity`` (not valid JSON — a strict consumer rejects
+         the WHOLE payload, not one field).
+      2. the JSON-LD ``json.loads`` guard, ``except (json.JSONDecodeError,
+         TypeError)``. On Python 3.11+ a bare number LITERAL longer than
+         ``sys.get_int_max_str_digits()`` (4300) makes json.loads raise a PLAIN
+         ``ValueError``, which is NOT a JSONDecodeError, so it escaped the loop
+         and crashed the extractor.
+
+    Everything else BLOCKER 3 hardened lives in functions this wave ADDED
+    (``_jsonld_product_rating``, ``_parse_og_price_number``, and the Shopify
+    ``{pdp}.js`` adapter's ``_to_minor`` / ``_to_major``), which are unreachable
+    when their own flags are off — so those guards are unconditional and this
+    flag does not touch them. Turning THIS flag off cannot resurrect the reviewer's
+    OverflowError; it only restores the two legacy expressions above verbatim,
+    so a flag-OFF rollback is byte-identical to 8adaefb.
+
+    Default ON because it is a crash/corruption fix, not a capability. Read PER
+    CALL from os.getenv so Railway can flip it without a restart. Deliberately
+    INDEPENDENT of every other flag in this wave: a hostile page is hostile in
+    every flag combination."""
+    return os.getenv("ENABLE_HOSTILE_NUMERIC_GUARD", "true").strip().lower() not in (
+        "false", "0", "no", "off", "",
     )
 
 
@@ -8839,6 +8875,82 @@ _WIDE_CANDIDATE_NON_PRODUCT_RATING_TYPES = frozenset({
     "webpage", "corporation", "brand",
 })
 
+# schema.org's own documented default for AggregateRating.bestRating is 5, so a
+# node that declares no scale IS on a 5-point scale. A "ratingValue" above the
+# ceiling is a scraped percentage, a review COUNT written into the wrong field,
+# or an attack — never a rating (BLOCKER 3).
+_WIDE_CANDIDATE_DEFAULT_BEST_RATING = 5.0
+
+
+# ----------------------------------------------------------------------------
+# TOTAL NUMERIC CONVERSION (BLOCKER 3)
+# ----------------------------------------------------------------------------
+# THE TRAP, in one line: `float("1e400")` does NOT raise. It returns `inf`.
+#
+# So every `except (TypeError, ValueError)` in this file is blind to the whole
+# overflow family — and the exception only shows up LATER, at the `int()`, as an
+# **OverflowError**, which none of those handlers catch either. The reviewer's
+# instance was `int(float(...))` on a reviewCount; the same shape reaches
+# `_firecrawl_scraper` (structured_comparison_service.py:1312) and
+# `_scrapedo_scraper` (:1391), NEITHER of which wraps extract_price_from_html,
+# so the only guard out there is a broad `except Exception` that silently drops
+# the retailer's price.
+#
+# The quieter half needs no exception at all: an `inf` that never meets an int()
+# just gets STORED. `amount > 0` and `rating_value > 0` are both True for inf,
+# and json.dumps then writes the bare token `Infinity` — which is not valid JSON
+# (RFC 8259 has no non-finite literals), so a strict consumer rejects the ENTIRE
+# payload rather than one field. `allow_nan=False` is how our tests see it.
+#
+# Hence: one helper, used everywhere, that is TOTAL — it accepts any object at
+# all and returns either a finite float or None, and can never raise.
+_HOSTILE_NUMERIC_EXC = (TypeError, ValueError, OverflowError, ArithmeticError)
+
+
+def _finite_float(value: Any) -> Optional[float]:
+    """Any object -> a FINITE float, or None. Never raises.
+
+    Rejects, deliberately:
+      * ``bool`` — a bool IS an int in Python, and a page's ``true`` is not a 1;
+      * every non-finite result (``inf`` / ``-inf`` / ``nan``), whether it came
+        from an overflowing literal ("1e400", "9"*400 — note the second has no
+        exponent character to spot), from the spellings float() accepts outright
+        ("inf", "-Infinity", "nan", "NaN"), or from a JSON blob's bare
+        ``Infinity`` / ``NaN`` token (Python's json module parses those into real
+        floats by default, so an inf can arrive without ever being a string);
+      * a string containing "_" — ``float("1_000")`` is 1000.0 because Python
+        allows underscores in numeric LITERALS, but no price format on earth
+        writes them, so accepting it would silently invent a number;
+      * an int too large to convert (``float(10**400)`` raises OverflowError).
+    """
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, str):
+        text = value.strip()
+        if not text or "_" in text:
+            return None
+    elif isinstance(value, (int, float)):
+        text = value
+    else:
+        return None
+    try:
+        result = float(text)
+    except _HOSTILE_NUMERIC_EXC:
+        return None
+    return result if math.isfinite(result) else None
+
+
+def _finite_count(value: Any) -> Optional[int]:
+    """Any object -> a FINITE, NON-NEGATIVE int, or None. Never raises.
+
+    ``int()`` on a finite float cannot overflow, so routing every count through
+    ``_finite_float`` first is what makes this total — the OverflowError the
+    reviewer found was ``int()`` applied to a float that was already ``inf``."""
+    number = _finite_float(value)
+    if number is None or number < 0:
+        return None
+    return int(number)
+
 
 def _jsonld_scalar_text(value: Any) -> str:
     """A schema.org Text-ish field -> ONE stripped string, or "" when there is
@@ -8850,7 +8962,20 @@ def _jsonld_scalar_text(value: Any) -> str:
     if isinstance(value, bool):          # a bool is an int in Python — not text
         return ""
     if isinstance(value, (int, float)):
-        return str(value)
+        # BLOCKER 3, both halves of "never raises":
+        # (1) a non-finite float is NOT text — "inf" as a sku/gtin is junk, and
+        #     handing that string on would let it be re-float()ed back into inf
+        #     downstream (json.loads turns a blob's bare `Infinity`/`NaN` token
+        #     into a real float, so this arrives without ever being a string);
+        # (2) str() of an int with more than sys.get_int_max_str_digits() (4300)
+        #     digits RAISES ValueError on Python 3.11+ — the one place this
+        #     "never raises" helper could have.
+        if isinstance(value, float) and not math.isfinite(value):
+            return ""
+        try:
+            return str(value)
+        except _HOSTILE_NUMERIC_EXC:
+            return ""
     if isinstance(value, list):
         for item in value:
             text = _jsonld_scalar_text(item)
@@ -8915,7 +9040,36 @@ def _jsonld_product_rating(node: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     A missing / non-numeric / non-positive ratingValue means NO rating: the key
     is omitted rather than carried as None. `reviewCount` is preferred over
     `ratingCount` (a review count is the stronger claim); when neither parses,
-    the value is carried alone rather than with a fabricated zero."""
+    the value is carried alone rather than with a fabricated zero.
+
+    BLOCKER 3 — this function shipped TWO hostile-input defects, both reached
+    whenever ENABLE_WIDE_CANDIDATE is on (the DEFAULT):
+
+      count = int(float(_jsonld_scalar_text(agg.get(count_field))))
+
+    ``float("1e400")`` is ``inf`` — it does not raise — and ``int(inf)`` raises
+    **OverflowError**, which ``except (TypeError, ValueError)`` does not catch.
+    The exception escaped extract_jsonld_price -> extract_price_from_html into
+    _firecrawl_scraper (structured_comparison_service.py:1312) and
+    _scrapedo_scraper (:1391), NEITHER of which wraps the call, so the broad
+    ``except Exception`` out there silently DROPPED that retailer's price. Its
+    twin needed no exception at all: a ratingValue of "1e400" parsed to inf,
+    ``inf > 0`` was True, and the inf was stored — after which json.dumps writes
+    the bare token ``Infinity``, invalidating the WHOLE payload, not one field.
+
+    Both conversions now go through ``_finite_float`` / ``_finite_count``, which
+    are total. On top of totality the rating must also be SANE, because a number
+    that merely parses is not a rating:
+      * ``rating_value`` must be > 0 (unchanged) AND <= its declared
+        ``bestRating``, or <= 5 when the node declares none. schema.org's own
+        default for bestRating is 5, so an undeclared scale is a 5-point scale;
+        a "rating" of 100 on it is a scraped percentage or an attack, not a
+        rating, and it would render as 100 stars.
+      * a hostile ``bestRating`` cannot be used to raise the ceiling: it is
+        parsed with the same total helper, so inf/nan/garbage falls back to the
+        5 default rather than admitting anything.
+      * ``review_count`` must be a finite, non-negative int (and, as before, is
+        only CARRIED when > 0 — a fabricated zero is worse than no key)."""
     if not isinstance(node, dict) or not _is_product_type(node):
         return None
     agg = node.get("aggregateRating")
@@ -8924,17 +9078,20 @@ def _jsonld_product_rating(node: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     agg_type = _jsonld_scalar_text(agg.get("@type")).lower()
     if agg_type in _WIDE_CANDIDATE_NON_PRODUCT_RATING_TYPES:
         return None
-    try:
-        rating_value = float(_jsonld_scalar_text(agg.get("ratingValue")))
-    except (TypeError, ValueError):
+    rating_value = _finite_float(_jsonld_scalar_text(agg.get("ratingValue")))
+    if rating_value is None or not rating_value > 0:
         return None
-    if not rating_value > 0:
+    best_rating = _finite_float(_jsonld_scalar_text(agg.get("bestRating")))
+    ceiling = (
+        best_rating if best_rating is not None and best_rating > 0
+        else _WIDE_CANDIDATE_DEFAULT_BEST_RATING
+    )
+    if rating_value > ceiling:
         return None
     rating: Dict[str, Any] = {"rating_value": rating_value}
     for count_field in ("reviewCount", "ratingCount"):
-        try:
-            count = int(float(_jsonld_scalar_text(agg.get(count_field))))
-        except (TypeError, ValueError):
+        count = _finite_count(_jsonld_scalar_text(agg.get(count_field)))
+        if count is None:
             continue
         if count > 0:
             rating["review_count"] = count
@@ -9033,6 +9190,21 @@ def extract_jsonld_price(
         try:
             data = json.loads(script.string or "")
         except (json.JSONDecodeError, TypeError):
+            continue
+        except ValueError:
+            # BLOCKER 3 — json.loads does NOT only raise JSONDecodeError. On
+            # Python 3.11+ a bare number LITERAL with more than
+            # sys.get_int_max_str_digits() (4300) digits raises a PLAIN
+            # ValueError from the underlying int conversion ("Exceeds the limit
+            # ... for integer string conversion"). That is not a
+            # JSONDecodeError, so it escaped this loop and crashed
+            # extract_price_from_html — into the two scraper call sites that do
+            # not wrap it. Skipping an unreadable block is exactly what the
+            # JSONDecodeError arm already does. Gated because this except-tuple
+            # predates the wave (see hostile_numeric_guard_enabled); flag OFF
+            # re-raises, i.e. the legacy bytes.
+            if not hostile_numeric_guard_enabled():
+                raise
             continue
 
         products = []
@@ -9197,6 +9369,15 @@ def extract_jsonld_price(
                 except (ValueError, TypeError):
                     continue
                 if price_val <= 0:
+                    continue
+                # BLOCKER 3 — `float("1e400")` is inf, NOT an exception, so the
+                # except above never sees it and `price_val <= 0` waves it
+                # through. An inf `amount` then reaches the returned dict, where
+                # json.dumps writes the bare token `Infinity` — not valid JSON,
+                # so a strict consumer rejects the ENTIRE payload rather than
+                # one field. Gated because this line predates the wave (see
+                # hostile_numeric_guard_enabled); flag OFF is the legacy bytes.
+                if hostile_numeric_guard_enabled() and not math.isfinite(price_val):
                     continue
 
                 # Availability policy — COLLECT the offer with its real stock flag.
@@ -9488,9 +9669,15 @@ def _parse_og_price_number(raw: Any, currency: Any = None) -> Optional[float]:
             text = text.replace(",", "")   # "1,234" USD/SAR — thousands group
     # dot-only / separator-less falls through UNCHANGED (the "3.000" ruling).
 
-    try:
-        value = float(text)
-    except (ValueError, TypeError):
+    # BLOCKER 3 — the character-class strip above removes "e", so the exponent
+    # spellings ("1e400") and the word spellings ("inf"/"nan") cannot reach this
+    # float(). A run of DIGITS still can: `float("9" * 400)` is inf, with nothing
+    # about the input that "looks" hostile and no exception on the way in. The
+    # caller's only downstream guard is `amount > 0`, which inf passes — so an
+    # inf price would ship with a currency label on it and then invalidate the
+    # whole JSON payload. `_finite_float` makes the conversion total instead.
+    value = _finite_float(text)
+    if value is None:
         return None
     return -value if negative else value
 

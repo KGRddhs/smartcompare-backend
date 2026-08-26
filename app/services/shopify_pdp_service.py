@@ -75,6 +75,7 @@ separately-reviewable change with its own flag decision.
 import asyncio
 import json
 import logging
+import math
 import os
 import time
 from typing import Any, Dict, List, Optional, Tuple
@@ -282,33 +283,81 @@ async def _fetch_once(js_url: str, domain: str) -> Tuple[Optional[int], Optional
 # ---------------------------------------------------------------------- parse
 
 
+# BLOCKER 3 — the ceiling that makes both helpers below TOTAL.
+#
+# ``_to_major`` divides by 100.0, and ``int / float`` raises **OverflowError**
+# ("int too large to convert to float") for any int past ~1e308 — so an
+# unbounded ``_to_minor`` hands ``_to_major`` a live grenade. A cap is also the
+# only way to reject a huge-but-finite int, which no isfinite() check can see:
+# Python ints are arbitrary precision, so ``{"price": 10**400}`` is a perfectly
+# well-formed JSON number.
+#
+# 10**12 minor units is 10,000,000,000 major units. No storefront on any Shopify
+# plan sells anything at ten billion of any currency, so this can only ever
+# reject corrupt or hostile data — while sitting ~296 orders of magnitude below
+# the float conversion limit.
+_MAX_MINOR_UNITS = 10 ** 12
+
+
 def _to_minor(value: Any) -> Optional[int]:
-    """Shopify minor units (integer cents) or ``None``.
+    """Shopify minor units (integer cents) or ``None``. Never raises.
 
     Accepts the int the feed actually ships and the numeric string a proxy
     occasionally substitutes; rejects everything else, and rejects negatives
-    (a negative price is corrupt data, not a discount)."""
-    if isinstance(value, bool) or value is None:
+    (a negative price is corrupt data, not a discount).
+
+    BLOCKER 3 — three hostile inputs crashed the previous shape, none of which
+    ``except (TypeError, ValueError)`` could see:
+      * ``"1e400"`` -> ``float()`` returns ``inf`` WITHOUT raising, then
+        ``int(inf)`` raises **OverflowError**;
+      * a real ``float('inf')`` — which arrives without ever being a string,
+        because Python's json module parses a blob's bare ``Infinity`` token
+        into an actual inf — took the float branch, where ``inf >= 0`` is True,
+        into the same ``int(inf)`` OverflowError;
+      * ``10**400`` as a bare int passed straight through, and detonated one
+        call later inside ``_to_major``'s division.
+    ``float('nan')`` was the only one that happened to be safe, and only by
+    accident: ``nan >= 0`` is False. All four are now rejected on purpose."""
+    if value is None or isinstance(value, bool):
         return None
     if isinstance(value, int):
-        return value if value >= 0 else None
-    if isinstance(value, float):
-        return int(value) if value >= 0 else None
-    if isinstance(value, str):
-        try:
-            n = int(float(value.strip()))
-        except (TypeError, ValueError):
+        n = value
+    elif isinstance(value, float):
+        if not math.isfinite(value):
             return None
-        return n if n >= 0 else None
-    return None
+        n = int(value)
+    elif isinstance(value, str):
+        text = value.strip()
+        # "_" — float("1_000") is 1000.0 because Python allows underscores in
+        # numeric LITERALS. No price feed writes them; accepting it would invent
+        # a number out of a malformed field.
+        if not text or "_" in text:
+            return None
+        try:
+            parsed = float(text)
+        except (TypeError, ValueError, OverflowError):
+            return None
+        if not math.isfinite(parsed):
+            return None
+        n = int(parsed)
+    else:
+        return None
+    return n if 0 <= n <= _MAX_MINOR_UNITS else None
 
 
 def _to_major(minor: Optional[int]) -> Optional[float]:
     """Minor units -> major units. ALWAYS /100 (see rule 1 in the module docstring).
 
     ``round(..., 2)`` only removes binary-float dust: dividing an integer by 100
-    can never legitimately produce a third decimal."""
-    if minor is None:
+    can never legitimately produce a third decimal.
+
+    The range re-check is deliberate belt-and-braces, not redundancy: every
+    caller today feeds this a ``_to_minor`` result, but ``int / float`` raises
+    OverflowError past ~1e308, so a future caller passing a raw feed integer
+    would crash here rather than get None (BLOCKER 3)."""
+    if minor is None or not isinstance(minor, int) or isinstance(minor, bool):
+        return None
+    if not 0 <= minor <= _MAX_MINOR_UNITS:
         return None
     return round(minor / 100.0, 2)
 
