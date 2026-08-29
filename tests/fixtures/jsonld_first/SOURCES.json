@@ -1,0 +1,113 @@
+{
+  "_what": "Minimal fragments of REAL cached PDPs, for tests/test_jsonld_first_precedence.py. Every amount, currency code and marker below is copied out of the cached bytes; anything added or restructured is called out per file.",
+  "_corpora": {
+    "gulf": "_proof/html/ (92 Gulf PDPs) + _proof/sweep2_curl_cffi.jsonl - filename sha1('curl_cffi|'+url)",
+    "global": "_proof/global/html/ + _proof/global/_dach_html/ (429 files, 328 rows) - index _proof/global/_corpus_cachemap.json"
+  },
+  "files": {
+    "gb_notino_co_uk_unit_price_10x_decoy.html": {
+      "url": "https://www.notino.co.uk/amouage/honour-eau-de-parfum-for-men/",
+      "host": "www.notino.co.uk",
+      "corpus": "global",
+      "cached_bytes": "7e6916bec834215b2c92a2567cdf1dab40e7f1a9.html",
+      "cached_sha1_of_page": "4c2066b6444e3c27bdd00ea13f75e12d699227c5",
+      "kept": "the page's own Product JSON-LD block, its og:title/og:url/og:type, and the two price DIVs verbatim: <div id='pd-price' data-testid='pd-price-wrapper'> carrying 320.00 and, 483 bytes later, a SECOND data-testid='pd-price-wrapper' carrying 3,200.00 followed by '/ 1 l, incl. VAT'",
+      "country": "GB",
+      "amounts": "JSON-LD 320 GBP; visible 320.00 and the 3,200.00 / 1 l unit price (exactly 10x)"
+    },
+    "ae_lulu_lowercase_jsonld_pricecurrency.html": {
+      "url": "https://gcc.luluhypermarket.com/en-ae/ahmed-al-maghribi-edp-perfume-marj-60-ml/p/2257851/",
+      "host": "gcc.luluhypermarket.com",
+      "corpus": "global",
+      "cached_bytes": "44393a9e78612c1213af712b4688e923d9d5cf89.html",
+      "cached_sha1_of_page": "da36009dc9aff51b0a32cd148e6fcee7d00ab4bd",
+      "kept": "the page's own Product JSON-LD, verbatim, including the lowercase priceCurrency 'aed'",
+      "country": "AE",
+      "amounts": "175.000 aed"
+    },
+    "tr_flormar_com_tr_lowercase_og_currency.html": {
+      "url": "https://www.flormar.com.tr/extreme-tattoo-yumusak-dokulu-pudra-bitisli-uzun-sure-kalici-fircali-kas-kalemi-kahverengi-8682536118958/",
+      "host": "www.flormar.com.tr",
+      "corpus": "global",
+      "cached_bytes": "b608c1617f02d7908c2512c6cfea8cab1336c5ce.html",
+      "cached_sha1_of_page": "a5ebfc1423da978a6e24417adb077254a9b0e644",
+      "kept": "the page's own og:price:amount / og:price:currency / og:title, verbatim - the currency tag reads 'try'",
+      "country": "TR",
+      "amounts": "799.99 'try'"
+    },
+    "om_alhajisoman_com_og_vs_jsonld_10x.html": {
+      "url": "https://alhajisoman.com/products/ch-212-vip-party-fever-edt-ladies-80ml",
+      "host": "alhajisoman.com",
+      "corpus": "gulf",
+      "cached_bytes": "c8504fd169bfac6dc0e2901caeff3236f6fc877b.html",
+      "cached_sha1_of_page": "51bdbdbdfe8189adb4e3273101f87a82f7ddae5c",
+      "kept": "the page's own Product JSON-LD block plus its og:price:amount / og:price:currency / og:title, verbatim",
+      "country": "OM",
+      "amounts": "JSON-LD 30.000 OMR vs og:price:amount 3.0 OMR"
+    },
+    "de_niche_beauty_com_microdata_no_pricecurrency.html": {
+      "url": "https://www.niche-beauty.com/de-de/produkte/borntostandout-cola-addict/752-052",
+      "host": "niche-beauty.com",
+      "corpus": "global",
+      "cached_bytes": "befd9a0f9d59df47c5fb2d9844c335b2edaf8a6b.html",
+      "cached_sha1_of_page": "a55bed71c3606068ce7ab9fc508ce69f2750e79a",
+      "kept": "the page's own itemprop=offers block (itemprop=price content='195.00', visible text '195,-') and its og:price:amount 195.00 / og:price:currency EUR, verbatim; the page publishes no itemprop=priceCurrency at all",
+      "country": "DE",
+      "amounts": "microdata 195.00 (currency-less), og 195.00 EUR"
+    },
+    "pl_eperfumy_pl_microdata_comma_decimal.html": {
+      "url": "https://eperfumy.pl/pl/wody-toaletowe-meskie/31-paco-rabanne-1-million-men-woda-toaletowa-200ml.html",
+      "host": "eperfumy.pl",
+      "corpus": "global",
+      "cached_bytes": "7163e7139fd74c895c4597e5d5c80ba2abc7d384.html",
+      "cached_sha1_of_page": "32d5fecfe6a06c434e77b22f210d63c2937adcf9",
+      "kept": "verbatim byte windows around five of the page's own <span itemprop=\"price\" class=\"price\"> nodes, plus its og:title",
+      "country": "PL",
+      "amounts": "the nodes print the comma decimals 179,00 / 256,00 / 264,00 / 308,00 zl"
+    },
+    "pl_eperfumy_pl_microdata_offer_scope.html": {
+      "url": "https://eperfumy.pl/pl/wody-toaletowe-meskie/31-paco-rabanne-1-million-men-woda-toaletowa-200ml.html",
+      "host": "eperfumy.pl",
+      "corpus": "global",
+      "cached_bytes": "7163e7139fd74c895c4597e5d5c80ba2abc7d384.html",
+      "cached_sha1_of_page": "32d5fecfe6a06c434e77b22f210d63c2937adcf9",
+      "kept": "a verbatim byte window over the page's Offer itemscope (priceCurrency PLN + <span itemprop=price content=\"310\">310,00 zl</span>) plus three of its related-rail comma-decimal price nodes, and its og:title",
+      "country": "PL",
+      "amounts": "Offer-scoped 310 PLN beside related-rail 179,00 / 256,00 / 264,00 zl"
+    },
+    "kw_klinq_com_kwd_price_converted_to_bhd.html": {
+      "url": "https://klinq.com/en/dior-miss-dior-edp.html",
+      "host": "klinq.com",
+      "corpus": "gulf",
+      "cached_bytes": "aa2a60ae1e4e46368fdfaaf893b9102b6c3355ea.html",
+      "cached_sha1_of_page": "80a62c2d883114c7d8a3d696935898e00468e38b",
+      "kept": "the page's own og:/product: meta tags plus a verbatim byte window over its microdata Offer and the visible price span around it",
+      "country": "KW",
+      "amounts": "product:price:amount 38.5 KWD; itemprop=price content=38.5 + priceCurrency KWD; visible text 'KWD 38.500'. Asked for in BHD it converts to 47.35, which appears NOWHERE on the page."
+    },
+    "de_dm_de_empty_shell_2xx.html": {
+      "url": "https://www.dm.de/p/d/1709880/christina-aguilera-xtina-eau-de-parfum",
+      "host": "dm.de",
+      "corpus": "global",
+      "cached_bytes": "740501b2f1f28653f1ea9c2f1a70fbec21f4c1ec.html",
+      "cached_sha1_of_page": "7e064abb8b09a5a2d08bd6237a00fae617b7869c",
+      "kept": "the WHOLE cached response, byte for byte - it is only 11KB",
+      "country": "DE",
+      "http_status": 200,
+      "bytes": 11200,
+      "amounts": "none - the page is a client-rendered shell"
+    },
+    "iq_miswag_com_no_structured_price_200.html": {
+      "url": "https://miswag.com/en",
+      "host": "miswag.com",
+      "corpus": "global",
+      "cached_bytes": "cc40deda231f50e8cb293598dcd54d0d37163f68.html",
+      "cached_sha1_of_page": "576a87e5e024fae9f2c5ca6912deb0cffa1de2e0",
+      "kept": "the WHOLE cached response, byte for byte",
+      "country": "IQ",
+      "http_status": 200,
+      "bytes": 45163,
+      "amounts": "none - the document contains no JSON-LD price, no og/product price meta, no itemprop=price and no WooCommerce price span"
+    }
+  }
+}

@@ -10789,6 +10789,560 @@ def _og_availability(soup) -> Optional[bool]:
     return None
 
 
+# ===========================================================================
+# JSON-LD FIRST — precedence, the visible-text CROSS-CHECK, and what a capture
+# actually means (ENABLE_JSONLD_FIRST, default ON)
+# ===========================================================================
+#
+# THE HEADLINE MEASUREMENT, over the cached bytes of both corpora (92 Gulf PDPs
+# in _proof/html/ plus 322 resolvable global pages, 414 in all) and over the
+# 328-row global validation:
+#
+#   * 353 of the 360 JSON-LD price values in the global corpus match
+#     ^\d+(\.\d+)?$ with ZERO comma-decimals — a JSON-LD price is already
+#     machine-normalised, which is why it is the authoritative source here.
+#   * OpenGraph price values are NOT. 19 of the 173 OG price metas across the
+#     two corpora (11.0%) are values a bare float() cannot read at all, and the
+#     spelling varies WITHIN a single host.
+#   * The visible text is unusable as a SOURCE: taking the first price-shaped
+#     number on the page is correct on 75 of 181 PDPs (41%), and the decoys are
+#     legally mandated and growing (German Grundpreis, UK/CZ per-litre unit
+#     price, the EU Omnibus 30-day-lowest disclosure). The sharpest case is
+#     notino.co.uk, which renders the per-litre unit price under the SAME
+#     data-testid as the product price, 483 bytes apart, at exactly 10x.
+#
+# So text is a CHECK, never a source; JSON-LD outranks everything; and OG —
+# the only structured source with a measured 11% malformation rate — ranks
+# below schema.org microdata.
+
+
+def jsonld_first_enabled() -> bool:
+    """True iff JSON-LD is the authoritative price source, microdata outranks
+    OpenGraph, every non-JSON-LD price is cross-checked against the page's own
+    visible text, and a capture reports WHY it produced no price (default ON).
+
+    WHAT THE FLAG GATES, and nothing else — each site restores its legacy body
+    verbatim when it is off:
+
+      (1) CASCADE ORDER in ``extract_price_from_html``: JSON-LD -> microdata ->
+          OpenGraph -> WooCommerce span. Legacy is JSON-LD -> OpenGraph ->
+          microdata -> WooCommerce.
+      (2) ``_extract_microdata_price``: the amount goes through ``parse_money``
+          instead of ``float(text.replace(",", ""))``; a currency-less Offer
+          defaults to the EXPECTED currency instead of the literal "USD"; the
+          code is uppercased and ISO-4217-validated; a converted price is
+          relabelled ``converted_usd``; ``in_stock`` reads the page's own
+          availability instead of asserting True.
+      (3) ``_extract_og_price`` and ``_extract_woocommerce_price``: the currency
+          label is uppercased and ISO-4217-validated before it is stamped.
+      (4) every non-JSON-LD branch is cross-checked against the page text: a
+          unit-price DECOY is rejected outright, and a price no visible token
+          supports is marked ``price_confirmed_in_text: False`` and scored down.
+      (5) the capture OUTCOME (ok / walled / empty_shell / no_structured_price)
+          is stamped on the returned price and appended to ``outcome_out``.
+
+    WHY IT IS ONE FLAG AND NOT FIVE. (1) is not safe without (2) and (3):
+    measured over the 414 cached pages, promoting microdata over OpenGraph as
+    it stood would have shipped one wrong amount (niche-beauty.com 195.00 EUR
+    read as 178.83 because a currency-less Offer defaulted to USD), five
+    converted prices relabelled from ``converted_usd`` to a genuine local
+    ``page_scrape``, and one sold-out product (pacoperfumerias.co.uk, whose
+    og:availability says OutOfStock and whose microdata Offer says nothing)
+    flipped to in-stock. They roll back together or the rollback is not a
+    rollback.
+
+    Default ON because it is a correctness fix, not a new capability. Read PER
+    CALL from os.getenv (copying ``exact_gate_enabled``) so Railway can flip it
+    without a restart, and NEVER cached at import.
+
+    Deliberately INDEPENDENT of every other flag: precedence between structured
+    sources is not part of the exact-identity layer, the money-parser layer or
+    the sale-price layer, and must survive each of their rollbacks.
+    """
+    return os.getenv("ENABLE_JSONLD_FIRST", "true").strip().lower() not in (
+        "false", "0", "no", "off", "",
+    )
+
+
+# ---------------------------------------------------------------------------
+# ISO 4217 — the alphabetic codes, and ONLY the alphabetic codes
+# ---------------------------------------------------------------------------
+#: Active ISO 4217 alphabetic currency codes, plus a short tail of codes
+#: WITHDRAWN but still emitted by live storefronts (HRK, SLL, VEF, STD, MRO,
+#: BYR, ZWL, LTL, LVL). The point of this table is to REJECT the junk the two
+#: corpora actually publish in a currency slot — "N/A" (brownthomas.com),
+#: "0.00" (orisdi.com's itemprop=priceCurrency), "null" (gcc.luluhypermarket),
+#: "US" and "data" (fragrancenet.com, walmart.com) — so it is deliberately
+#: generous about real codes and strict about everything else.
+#:
+#: XXX ("no currency") and XTS ("reserved for testing") are DELIBERATELY
+#: ABSENT: both are ISO 4217 codes whose meaning is "this is not money", so
+#: accepting either would stamp a price with a label that asserts it has no
+#: price. The metal codes XAU/XAG/XPT/XPD are absent for the same reason — a
+#: shelf price is not denominated in troy ounces of gold.
+_ISO_4217_ALPHA: frozenset = frozenset((
+    "AED AFN ALL AMD ANG AOA ARS AUD AWG AZN BAM BBD BDT BGN BHD BIF BMD BND "
+    "BOB BOV BRL BSD BTN BWP BYN BZD CAD CDF CHE CHF CHW CLF CLP CNY COP COU "
+    "CRC CUP CVE CZK DJF DKK DOP DZD EGP ERN ETB EUR FJD FKP GBP GEL GHS GIP "
+    "GMD GNF GTQ GYD HKD HNL HTG HUF IDR ILS INR IQD IRR ISK JMD JOD JPY KES "
+    "KGS KHR KMF KPW KRW KWD KYD KZT LAK LBP LKR LRD LSL LYD MAD MDL MGA MKD "
+    "MMK MNT MOP MRU MUR MVR MWK MXN MXV MYR MZN NAD NGN NIO NOK NPR NZD OMR "
+    "PAB PEN PGK PHP PKR PLN PYG QAR RON RSD RUB RWF SAR SBD SCR SDG SEK SGD "
+    "SHP SLE SOS SRD SSP STN SVC SYP SZL THB TJS TMT TND TOP TRY TTD TWD TZS "
+    "UAH UGX USD USN UYI UYU UYW UZS VED VES VND VUV WST XAF XCD XCG XDR XOF "
+    "XPF YER ZAR ZMW ZWG "
+    "HRK SLL VEF STD MRO BYR ZWL LTL LVL"
+).split())
+
+
+def iso_currency_label(raw: Any) -> Optional[str]:
+    """Uppercase and ISO-4217-validate a currency token, or None.
+
+    TOTAL by construction: any object may be passed and nothing raises. A
+    non-string, an empty token, a display symbol and a non-ISO word all return
+    None, because the two wrong answers are not symmetric — returning None lets
+    the caller fall back to the currency it already knows, while stamping the
+    token labels a real number with something that is not a currency.
+
+    Bidi controls and the space family are folded out first (the same table
+    ``_normalize_currency_code`` uses), so an RTL page's wrapped code resolves.
+    This is a pure ISO check and is NOT the same question as
+    ``_normalize_currency_code``, which answers "can this be CONVERTED" and so
+    returns None for perfectly real codes that are absent from FALLBACK_RATES
+    (TRY, PLN, SEK, DKK, CAD, EGP, JOD all appear in the corpora).
+    """
+    if not isinstance(raw, str):
+        return None
+    token = raw.translate(_CURRENCY_FOLD_STRIP).strip().upper()
+    return token if token in _ISO_4217_ALPHA else None
+
+
+def _currency_label_for(raw: Any, expected: Any) -> str:
+    """The code a price should be LABELLED with: the page's own token when it
+    is (or resolves to) an ISO 4217 code, else the expected currency, else the
+    raw token unchanged.
+
+    A GCC display glyph is resolved through ``_normalize_currency_code`` first,
+    so a WooCommerce ``.woocommerce-Price-currencySymbol`` of ".د.ب" is labelled
+    BHD rather than shipping the glyph into the payload and the cache key.
+
+    A token that is NOT an ISO code carries no information, so it is treated as
+    the same epistemic state as a MISSING tag — which every branch here already
+    resolves to the expected currency, with the reasoning spelled out in
+    ``_extract_og_price`` (bahrain.sharafdg.com publishes product:price:amount
+    244.990 with no currency tag on a BHD page). What must never happen is the
+    junk token being stamped: brownthomas.com publishes
+    ``og:price:currency content="N/A"``.
+    """
+    return (
+        iso_currency_label(raw)
+        or iso_currency_label(_normalize_currency_code(raw))
+        or iso_currency_label(expected)
+        or (raw if isinstance(raw, str) and raw.strip() else str(expected or ""))
+    )
+
+
+# ---------------------------------------------------------------------------
+# CAPTURE OUTCOMES — success is a validated price, never a status code
+# ---------------------------------------------------------------------------
+#: A capture that produced a usable price of the right currency.
+CAPTURE_OK = "ok"
+#: A bot wall / challenge / geo-block. There is no page behind this response.
+CAPTURE_WALLED = "walled"
+#: A 2xx whose body is too small to be a product page — a client-rendered
+#: shell. 20 of the 414 cached responses; a "status == 200 and bytes > 0" test
+#: scores every one of them as a clean capture.
+CAPTURE_EMPTY_SHELL = "empty_shell"
+#: A real, full-size page that carries no price this query can claim in ANY
+#: structured shape (JSON-LD, OpenGraph, microdata, WooCommerce span). 103 of
+#: the 414 cached responses, 56 of them HTTP 200, unblocked and over 30KB.
+#: This class ALSO covers a page whose structured price belongs to a different
+#: product than the one asked for — the page-identity gate declined it, so
+#: there is no structured price this query may take.
+CAPTURE_NO_STRUCTURED_PRICE = "no_structured_price"
+
+CAPTURE_OUTCOMES: Tuple[str, ...] = (
+    CAPTURE_OK, CAPTURE_WALLED, CAPTURE_EMPTY_SHELL, CAPTURE_NO_STRUCTURED_PRICE,
+)
+
+#: HTTP statuses that ARE the wall, whatever the body says. 30 of the 34 walled
+#: pages in the two corpora answer 403 with a body that carries no wall phrase
+#: at all (perfumesclub.com 568 bytes, neimanmarcus.com 779, saksfifthavenue.com
+#: 782), so when the caller knows the status it is decisive. The 52x block is
+#: Cloudflare's origin-unreachable family, which the corpora carry on
+#: tajmall.com (525), thebodyshop.com.eg (522), aromel.com.tr and mesuma.com
+#: (530).
+_WALL_HTTP_STATUS: frozenset = frozenset(
+    {401, 403, 407, 429, 451, 511} | set(range(520, 531))
+)
+
+#: Wall phrases, deliberately NARROW. Every alternative below is an unambiguous
+#: interstitial string. Two families were MEASURED and REMOVED because they
+#: fire on ordinary served pages:
+#:   * the bare word "forbidden" — it is ordinary JSON payload on
+#:     marionnaud.ch/.fr ("forbiddenNotesFamilyBrands"), iciparisxl.be
+#:     ("forbiddenCountries"), sephora.com/.ca ("forbiddenBinRanges") and
+#:     notino.co.uk ("pd.forbidden.product.description"), 11 pages in all;
+#:   * "/cdn-cgi/challenge" — that is Cloudflare's PASSIVE jsd script, injected
+#:     into perfectly normal 200 responses; it appears on 16 cached pages that
+#:     serve a real price, gcc.luluhypermarket.com among them.
+#: With those two gone this table has ZERO false positives against the corpora's
+#: own recorded http_status/blocked flags across all 414 pages.
+_WALL_SIGNATURES = re.compile(
+    r"access denied"
+    r"|attention required!\s*\|\s*cloudflare"
+    r"|cf-browser-verification|cf_chl_opt|__cf_chl_"
+    r"|<title>\s*just a moment"
+    r"|you (?:have been|are) blocked"
+    r"|px-captcha|perimeterx|distil_r_captcha|_incapsula_|incap_ses"
+    r"|are you a (?:human|robot)|unusual traffic (?:from|has)"
+    r"|request unsuccessful\.?\s*incapsula"
+    r"|verify you are (?:a )?human"
+    r"|enable javascript and cookies to continue",
+    re.I,
+)
+
+#: Below this a 2xx body is a shell, not a page. Chosen from the corpora: the
+#: smallest cached response that actually yields a price is 26KB above it, and
+#: the largest genuine shell (bathandbodyworks.ae) is 26,290 bytes.
+_EMPTY_SHELL_MAX_BYTES = 30000
+
+#: Only the head of the document is scanned for a wall phrase. A wall is an
+#: interstitial — it says so immediately — and the cap bounds the cost on the
+#: 4MB pages in the corpus.
+_WALL_SCAN_CHARS = 200000
+
+
+def classify_capture(
+    html: Any, price: Any = None, http_status: Any = None,
+) -> str:
+    """Name the OUTCOME of a page capture. Total — never raises, always returns
+    one of ``CAPTURE_OUTCOMES``.
+
+    THE DEFECT THIS EXISTS FOR. The pipeline's notion of a successful capture
+    was "we got a 2xx with a non-empty body". Measured over the 414 cached
+    responses that scores 20 client-rendered shells and, among the 247 usable
+    PDPs the global validation identified, 33 pages that are HTTP 200 with no
+    price in any structured shape, as clean captures. Success has to mean a
+    validated price of the right currency came out, and a failure has to say
+    which KIND of failure it was, because the three kinds need three different
+    responses: a wall needs a different fetch channel, a shell needs a
+    renderer, and a real page with no structured price needs a new extractor.
+
+    ``price`` is the extractor's own answer: a dict with a positive numeric
+    amount is the ONLY thing that makes this ``ok``.
+
+    ``http_status`` is optional and, when it names a wall, decisive — see
+    ``_WALL_HTTP_STATUS``. Callers that do not have it (``extract_price_from_html``
+    is handed bytes, not a response) still get an honest answer from the body.
+    """
+    if isinstance(price, dict):
+        amount = price.get("amount")
+        if isinstance(amount, (int, float)) and not isinstance(amount, bool):
+            if math.isfinite(amount) and amount > 0:
+                return CAPTURE_OK
+    if isinstance(http_status, int) and not isinstance(http_status, bool):
+        if http_status in _WALL_HTTP_STATUS:
+            return CAPTURE_WALLED
+    text = html if isinstance(html, str) else ""
+    if _WALL_SIGNATURES.search(text[:_WALL_SCAN_CHARS]):
+        return CAPTURE_WALLED
+    if len(text) < _EMPTY_SHELL_MAX_BYTES:
+        return CAPTURE_EMPTY_SHELL
+    return CAPTURE_NO_STRUCTURED_PRICE
+
+
+# ---------------------------------------------------------------------------
+# THE VISIBLE-TEXT CROSS-CHECK, AND THE UNIT-PRICE DECOY GUARD
+# ---------------------------------------------------------------------------
+#: Tags whose text is not visible to a shopper. Deliberately NOT removed from
+#: the soup — the cascade shares one parsed document across four branches and
+#: the WooCommerce branch already mutates it, so this walk filters instead of
+#: decomposing.
+_NON_VISIBLE_TAGS: frozenset = frozenset({
+    "script", "style", "noscript", "template", "head", "title", "meta", "link",
+})
+
+#: A currency CUE. A number is a PRICE candidate only when one of these sits
+#: within `_MONEY_CUE_WINDOW` characters of it — that is what keeps "100 ml"
+#: and "4.8 stars" out of the candidate set. Measured effect: the median count
+#: of distinct candidates per cached PDP falls from 16 to 4.
+_MONEY_CUE_RE = re.compile(
+    r"[$€£¥₺₽₪₹]"
+    r"|\bzł|\bKč|\bTL\b|\bkr\b|\bR\$"
+    r"|\b(?:USD|EUR|GBP|CHF|SEK|DKK|NOK|PLN|CZK|HUF|RON|BGN|TRY|RUB|UAH"
+    r"|AED|SAR|BHD|KWD|OMR|QAR|JOD|EGP|LBP|IQD|ILS|MAD|TND"
+    r"|CAD|AUD|NZD|INR|PKR|BDT|LKR|SGD|MYR|THB|IDR|PHP|VND|CNY|JPY|KRW|HKD"
+    r"|ZAR|NGN|KES|BRL|MXN|ARS|CLP|COP)\b"
+    r"|د\.إ|ر\.س|د\.ب|د\.ك"
+    r"|ر\.ق|ر\.ع",
+    re.I,
+)
+
+#: A PER-UNIT DENOMINATOR. Every alternative names a quantity the price is
+#: divided BY, which is what makes the number a unit price rather than the
+#: price. Sourced from the cached bytes: notino.co.uk "/ 1 l", superdrug.com
+#: "per 1l", douglas.at/.ch "/ 100 ml", parfum-zentrum.de "Grundpreis: 224,90
+#: EUR/l", mueller.de "2.965,00 EUR / 1 l", breuninger.com "(2.800 EUR / 1 l)",
+#: ideabellezza.it "EUR 209,33 / 100 ml", parfumdreams.de "(1.242,00 EUR / 1 l)".
+#:
+#: MEASURED CORRECTION to the brief that opened this item, which lists
+#: "incl. VAT" among the markers. On the cached bytes "incl. VAT" / "inkl.
+#: MwSt." sits next to the REAL price on pieper.de ("EUR 73,39 inkl. MwSt."),
+#: breuninger.com and douglas.at, so treating it as a decoy marker on its own
+#: would reject real shelf prices. It only ever appears as a TAIL of a genuine
+#: unit-price phrase ("GBP 3,200.00 / 1 l, incl. VAT"), where the denominator
+#: has already fired. It is therefore NOT in this table, and that is a
+#: deliberate deviation, pinned by a test.
+_PER_UNIT_MARKER_RE = re.compile(
+    r"/\s*\d*\s*(?:ml|cl|l|lt|ltr|litre|liter|g|gr|kg|oz|stk|stück|pc)\b"
+    r"|per\s*\d*\s*(?:ml|cl|l|lt|litre|liter|g|gr|kg|oz)\b"
+    r"|pro\s*\d*\s*(?:ml|cl|l|liter|g|kg)\b"
+    r"|je\s*\d*\s*(?:ml|cl|l|liter|g|kg)\b"
+    r"|grundpreis|basispreis"
+    r"|prezzo al (?:litro|kg|chilo)|precio por (?:litro|kilo)"
+    r"|prijs per (?:liter|kilo)|cena za (?:litr|kg)|pris per (?:liter|kg)",
+    re.I,
+)
+
+#: A price-shaped run. Grouping SPACES are deliberately excluded (only NBSP and
+#: the narrow no-break space join digits here) so that two adjacent prices can
+#: never be glued into one token; `parse_money` re-tokenises anyway.
+_TEXT_MONEY_RE = re.compile(r"\d[\d.,  ]*\d|\d")
+
+#: How far a currency cue may sit from a number for the number to be a price.
+_MONEY_CUE_WINDOW = 24
+#: How far a per-unit denominator may sit from a number for the number to be a
+#: unit price. Much tighter than the cue window, and measured: at 24 characters
+#: douglas.at's real 44,99 EUR is wrongly marked because the NEXT variant's
+#: "/ 100 ml" falls inside the window; at 14 it is not, while notino's
+#: "GBP 3,200.00 / 1 l" and superdrug's "GBP 250.00 per 1l" still fire.
+_UNIT_MARKER_AFTER = 14
+#: A named unit price puts its marker BEFORE the number ("Grundpreis: 224,90").
+_UNIT_MARKER_BEFORE = 18
+#: The factors a legally-mandated unit price actually takes against a fragrance
+#: shelf price: per-litre against a 100ml bottle is 10x, per-litre against a
+#: 10ml is 100x. Nothing else is a decoy under this rule.
+_DECOY_FACTORS = (10.0, 100.0)
+#: Confidence multiplier for a non-JSON-LD price the page's own text does not
+#: support. It lowers a score; it never rejects a price and never gates one.
+_UNCONFIRMED_CONFIDENCE_FACTOR = 0.75
+#: Absolute tolerance when matching a chosen amount against a text token.
+_CONFIRM_TOLERANCE = 0.005
+#: Cap on the visible text scanned, so a 4MB PDP cannot turn a cross-check into
+#: a latency problem. Measured worst case on the corpus at this cap: 30ms.
+_CROSS_CHECK_MAX_CHARS = 400000
+
+
+class PageMoneyEvidence:
+    """What the page's own VISIBLE TEXT says about money. Evidence, never a
+    source.
+
+    ``amounts`` maps a rounded amount to True iff at least one occurrence of it
+    on the page sits against a per-unit denominator.
+    """
+
+    __slots__ = ("amounts", "n_tokens")
+
+    def __init__(self, amounts: Dict[float, bool], n_tokens: int) -> None:
+        self.amounts = amounts
+        self.n_tokens = n_tokens
+
+    def _key(self, amount: Any) -> Optional[float]:
+        if not isinstance(amount, (int, float)) or isinstance(amount, bool):
+            return None
+        if not math.isfinite(amount):
+            return None
+        return round(float(amount), 4)
+
+    def confirms(self, amount: Any) -> bool:
+        """True iff this amount appears as a price-shaped token on the page.
+        Says nothing about whether it is the PRODUCT price."""
+        key = self._key(amount)
+        if key is None:
+            return False
+        if key in self.amounts:
+            return True
+        return any(abs(v - key) < _CONFIRM_TOLERANCE for v in self.amounts)
+
+    def is_unit_priced(self, amount: Any) -> bool:
+        """True iff some occurrence of this amount is written as a unit price."""
+        key = self._key(amount)
+        if key is None:
+            return False
+        for v, unit in self.amounts.items():
+            if unit and abs(v - key) < _CONFIRM_TOLERANCE:
+                return True
+        return False
+
+    def is_decoy(self, amount: Any) -> bool:
+        """THE DECOY GUARD. True iff this amount is written as a unit price AND
+        is exactly 10x or 100x another price candidate on the same page.
+
+        Both halves are required. "Written as a unit price" alone is not enough
+        — a page can legitimately print only a per-litre figure — and "10x
+        another candidate" alone is not enough either, because a 10ml decant
+        beside a 100ml bottle is a real 10x that must NOT be rejected."""
+        key = self._key(amount)
+        if key is None or not self.is_unit_priced(key):
+            return False
+        for factor in _DECOY_FACTORS:
+            base = round(key / factor, 4)
+            if any(abs(v - base) < _CONFIRM_TOLERANCE for v in self.amounts):
+                return True
+        return False
+
+    def confirms_as_product_price(self, amount: Any) -> bool:
+        """The cross-check proper: the page shows this number AND does not show
+        it as a unit price."""
+        return self.confirms(amount) and not self.is_unit_priced(amount)
+
+
+def _visible_text(soup) -> str:
+    """The page's shopper-visible text, WITHOUT mutating the shared soup.
+
+    ``soup.get_text()`` would include <script> payloads — which on a Shopify or
+    Magento PDP carry every variant price in the catalogue — so the walk skips
+    the non-visible tags and comments explicitly. Bounded by
+    ``_CROSS_CHECK_MAX_CHARS``.
+    """
+    from bs4 import Comment, NavigableString
+
+    parts: List[str] = []
+    total = 0
+    try:
+        nodes = soup.find_all(string=True)
+    except Exception:  # noqa: BLE001 - a torn soup must never break extraction
+        return ""
+    for node in nodes:
+        if isinstance(node, Comment) or not isinstance(node, NavigableString):
+            continue
+        parent = getattr(node, "parent", None)
+        if getattr(parent, "name", "") in _NON_VISIBLE_TAGS:
+            continue
+        chunk = str(node).strip()
+        if not chunk:
+            continue
+        parts.append(chunk)
+        total += len(chunk) + 1
+        if total >= _CROSS_CHECK_MAX_CHARS:
+            break
+    return " ".join(parts)
+
+
+def page_money_evidence(soup, currency: Any = None) -> PageMoneyEvidence:
+    """Read every currency-anchored price token out of the page's visible text.
+
+    ``currency`` is the code the amounts are LABELLED with on this page — it
+    settles the comma/dot reading, so a Bahraini shop's "12,500" is 12.5 and a
+    Saudi one's is 12500. Total: any object may be passed.
+    """
+    text = _visible_text(soup)
+    amounts: Dict[float, bool] = {}
+    n = 0
+    for match in _TEXT_MONEY_RE.finditer(text):
+        start, end = match.start(), match.end()
+        near = text[max(0, start - _MONEY_CUE_WINDOW):min(len(text), end + _MONEY_CUE_WINDOW)]
+        if not _MONEY_CUE_RE.search(near):
+            continue
+        value = parse_money(match.group(0), currency, display_text=True)
+        if value is None or not math.isfinite(value) or value <= 0:
+            continue
+        n += 1
+        key = round(value, 4)
+        unit = bool(
+            _PER_UNIT_MARKER_RE.search(text[end:min(len(text), end + _UNIT_MARKER_AFTER)])
+            or _PER_UNIT_MARKER_RE.search(text[max(0, start - _UNIT_MARKER_BEFORE):start])
+        )
+        amounts[key] = amounts.get(key, False) or unit
+    return PageMoneyEvidence(amounts, n)
+
+
+def _cross_check_price(
+    result: Dict[str, Any], amount: float, currency: Any, soup,
+) -> bool:
+    """Cross-check a NON-JSON-LD price against the page's own visible text.
+
+    Returns False when the candidate must be REJECTED — it is a per-unit decoy.
+    Otherwise stamps ``price_confirmed_in_text`` and, when the page does not
+    show the number, lowers ``confidence``.
+
+    CALLED BEFORE CONVERSION, deliberately. klinq.com's price is 38.5 KWD and
+    the page prints "KWD 38.500"; asked for in BHD that becomes 47.35, which
+    appears nowhere on the page. Confirming the converted figure would mark
+    every converted price unconfirmed and teach the signal to mean nothing.
+    """
+    try:
+        evidence = page_money_evidence(soup, currency)
+    except Exception:  # noqa: BLE001 - a check must never cost us a real price
+        return True
+    if evidence.is_decoy(amount):
+        logger.info(
+            "[PRICE] rejecting %s %s - it is a per-unit decoy, exactly 10x/100x "
+            "another candidate on the same page",
+            amount, currency,
+        )
+        return False
+    confirmed = evidence.confirms_as_product_price(amount)
+    result["price_confirmed_in_text"] = confirmed
+    if not confirmed:
+        base = result.get("confidence")
+        if isinstance(base, (int, float)) and not isinstance(base, bool):
+            result["confidence"] = round(base * _UNCONFIRMED_CONFIDENCE_FACTOR, 3)
+    return True
+
+
+def _microdata_availability(soup, offer_scope) -> Optional[bool]:
+    """The page's own availability for a microdata Offer: the Offer scope's own
+    ``itemprop=availability`` first, then a page-global one, then the OpenGraph
+    availability tag, then None (unknown).
+
+    THIS IS A PRECONDITION OF THE CASCADE REORDER, not a nicety. The branch used
+    to hardcode ``in_stock=True``. www.pacoperfumerias.co.uk is a cached page
+    whose ``og:availability`` says OutOfStock and whose microdata Offer carries
+    no availability at all — promoting microdata above OpenGraph with a
+    hardcoded True would have flipped a sold-out product to in-stock. Falling
+    through to the page-level OG tag is what makes the reorder neutral: on all
+    20 cached pages where both branches fire, this returns exactly what
+    ``_extract_og_price`` returns.
+    """
+    for scope in (offer_scope, soup):
+        if scope is None:
+            continue
+        try:
+            node = scope.find(attrs={"itemprop": "availability"})
+        except Exception:  # noqa: BLE001
+            node = None
+        if node is None:
+            continue
+        raw = node.get("href") or node.get("content") or node.get_text(" ", strip=True)
+        state = is_available_state(raw)
+        if state is not None:
+            return state
+    return _og_availability(soup)
+
+
+def _microdata_offer_scope(el) -> Tuple[bool, Any]:
+    """Walk up to the enclosing schema.org Offer/Product itemscope.
+
+    Lifted VERBATIM out of ``_extract_microdata_price``'s loop so both flag
+    states run the identical walk. It is pure — it only reads ancestors — so
+    hoisting it above the amount parse (which the flag-ON path needs, because
+    the Offer's own currency settles the comma/dot reading) cannot change any
+    outcome; it can only do the walk on a node the legacy body would have
+    skipped first.
+    """
+    scope = el
+    for _ in range(5):
+        if scope is None or not hasattr(scope, "get"):
+            break
+        itemtype = scope.get("itemtype") or ""
+        if "Offer" in itemtype or "Product" in itemtype:
+            return True, scope
+        scope = scope.parent
+    return False, None
+
+
 def _extract_og_price(
     soup, product_name: str, currency: str, domain: str, url: str,
     html: str = "",
@@ -10918,6 +11472,18 @@ def _extract_og_price(
                     if og_currency and og_currency.get('content')
                     else currency
                 )
+                # ENABLE_JSONLD_FIRST — UPPERCASE AND ISO-VALIDATE THE LABEL.
+                # Reproduced end to end on the cached bytes: www.flormar.com.tr
+                # publishes `og:price:currency content="try"` and this function
+                # returned `{"currency": "try", "original_currency": "try"}` —
+                # lowercase, into the payload, the cache key and every
+                # downstream comparison. `_currency_label_for` uppercases it,
+                # resolves a GCC display glyph, and falls back to the EXPECTED
+                # currency for a token that is not a currency at all
+                # (brownthomas.com publishes `content="N/A"`). Flag OFF: the
+                # page's raw token, exactly as before.
+                if jsonld_first_enabled():
+                    detected_currency = _currency_label_for(detected_currency, currency)
                 # (a) STOCK — the literal True here asserted availability with no
                 # page signal behind it (3 of 4 live Shopify targets have zero
                 # available variants while production called them in stock). Read
@@ -10930,6 +11496,15 @@ def _extract_og_price(
                     "in_stock": _in_stock, "confidence": 0.9, "estimated": False,
                     "source_method": "page_scrape",
                 }
+                # ENABLE_JSONLD_FIRST — CROSS-CHECK, BEFORE CONVERSION. The
+                # page's own visible text either shows this number or it does
+                # not; a per-unit DECOY (exactly 10x/100x another candidate,
+                # written against a per-unit denominator) is refused outright.
+                # Flag OFF: never runs, no new key, confidence untouched.
+                if jsonld_first_enabled() and not _cross_check_price(
+                    result, amount, detected_currency, soup,
+                ):
+                    return None
                 if detected_currency.upper() != currency.upper():
                     _ok = _convert_gpt_price_currency(result, currency)
                     # BLOCKER 4 (a) — an unresolvable currency PENDS. Serving it
@@ -10955,7 +11530,7 @@ def _extract_og_price(
 
 def extract_price_from_html(
     html: str, product_name: str, currency: str, domain: str, url: str,
-    category: Optional[str] = None,
+    category: Optional[str] = None, outcome_out: Optional[List[str]] = None,
 ) -> Optional[Dict[str, Any]]:
     """Extract price from HTML using structured data (JSON-LD, OG, microdata).
 
@@ -10963,10 +11538,37 @@ def extract_price_from_html(
     captured from the listing's real size signals (JSON-LD product name /
     og:title / page <title>, ml or oz) when present — so the pair-level size
     fairness engages on TRUE sizes instead of silently assuming the flagship
-    100ml basis (frag-size-capture). Non-fragrance scrapes are unaffected."""
+    100ml basis (frag-size-capture). Non-fragrance scrapes are unaffected.
+
+    ``outcome_out`` (ENABLE_JSONLD_FIRST, optional) — the CAPTURE-OUTCOME
+    channel. Exactly one of ``CAPTURE_OUTCOMES`` is appended when a list is
+    supplied, so "we got nothing" stops being indistinguishable from "we got a
+    bot wall" and "we got a 12KB client-rendered shell". It is an opt-in
+    out-parameter rather than a richer return value for the same reason
+    ``pending_out`` is: three call sites index this function's result directly,
+    and a caller that wants the reason asks for it. Anything that is not a list
+    is ignored. With the flag ON the successful case ALSO carries
+    ``capture_outcome`` on the returned price dict."""
     from bs4 import BeautifulSoup
     brand = product_name.split()[0] if product_name else ""
     _category = _resolve_extractor_category(category, product_name)
+    # ONE env read for this call (the reader itself is per call and never
+    # cached at import — see `jsonld_first_enabled`). Every branch below and
+    # `_finish` share this call's verdict so a flag flipped mid-extraction
+    # cannot produce a half-old, half-new cascade.
+    _first = jsonld_first_enabled()
+
+    def _finish(price: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        """Name the outcome of this capture. Flag OFF: identity, no new key,
+        and `outcome_out` is never written to."""
+        if not _first:
+            return price
+        outcome = classify_capture(html, price)
+        if isinstance(price, dict):
+            price["capture_outcome"] = outcome
+        if isinstance(outcome_out, list):
+            outcome_out.append(outcome)
+        return price
     # Parse once up front — also needed by the size-capture (frag-size-capture)
     # for the JSON-LD branch, which builds its result before the OG path.
     soup = BeautifulSoup(html, 'html.parser')
@@ -11059,7 +11661,7 @@ def extract_price_from_html(
                 # (extract_jsonld_price stamps it when the gate is on).
                 if price_data.get("brand"):
                     result["brand"] = price_data.get("brand")
-            return result
+            return _finish(result)
 
     # CORRECTNESS — the JSON-LD path gates identity per-Product; the OG / microdata
     # / WooCommerce-span fallbacks below do NOT (they grab the first price on the
@@ -11067,9 +11669,43 @@ def extract_price_from_html(
     # page <title>): if the page is a DIFFERENT product than the query, pend (None)
     # rather than mis-attribute a wrong-SKU / sibling first price.
     if not _page_identity_ok(product_name, soup, _category):
-        return None
+        # The reason reported here is NO_STRUCTURED_PRICE, and it is honest as
+        # written: the class means "no structured price THIS QUERY may claim".
+        # The page may well carry one - it belongs to a different product.
+        return _finish(None)
 
-    # Priority 2: OpenGraph meta tags. `_extract_og_price` holds the body.
+    # Priority 2 (ENABLE_JSONLD_FIRST): schema.org MICRODATA, ABOVE OpenGraph.
+    #
+    # WHY THE REORDER, and what the corpus actually says. The global validation
+    # measured OpenGraph as the one structured source whose values are not
+    # machine-normalised - 19 of 173 OG price metas (11%) are strings a bare
+    # float() cannot read, and the spelling varies WITHIN a single host - while
+    # 353 of 360 JSON-LD prices are already normalised. Microdata also carries
+    # a structural advantage OpenGraph cannot: an `itemprop=price` is scoped to
+    # an Offer inside a Product itemscope, so it is per-product evidence, where
+    # `og:price:amount` is page-global and on a hub or listing page can belong
+    # to something else entirely.
+    #
+    # AND WHAT IT DOES NOT SAY, stated because it matters for the rollback. On
+    # the 414 cached pages this reorder buys almost nothing by itself: OG and
+    # microdata both fire on 20 pages and AGREE on the amount on 19 of them,
+    # and the single disagreement (niche-beauty.com) was microdata being wrong.
+    # It is admissible only because `_extract_microdata_price` was brought up
+    # to OpenGraph's evidence quality in the same commit - parser, currency
+    # default, ISO label, converted_usd relabel and real availability, all five
+    # under this same flag. See that function's docstring.
+    #
+    # Flag OFF: this block never runs and the legacy microdata call below OG
+    # does, so the cascade order rolls back with everything else.
+    if _first:
+        micro = _extract_microdata_price(soup, currency, domain, url)
+        if micro:
+            _stamp_listing_size(micro, product_name, soup)
+            if exact_gate_enabled():  # flag-OFF byte-identity (legacy carried no `name` here)
+                micro["name"] = _page_identity_name(soup)  # M2 — chokepoint axis backstop
+            return _finish(micro)
+
+    # Priority 3: OpenGraph meta tags. `_extract_og_price` holds the body.
     #
     # THIS POSITION IS FROZEN — pinned by tests/test_og_cascade_position.py, and
     # deliberately NOT flag-gated. ENABLE_OG_BRANCH_FIXES once carried a "(c)"
@@ -11098,23 +11734,29 @@ def extract_price_from_html(
         soup, product_name, currency, domain, url, html,
     )
     if og_result is not None:
-        return og_result
+        return _finish(og_result)
 
-    # Priority 3: Schema.org MICRODATA (itemprop=price + itemprop=priceCurrency).
+    # LEGACY Priority 3: Schema.org MICRODATA (itemprop=price + itemprop=priceCurrency).
     # S3-genuine (gap-fill): bahrain.sharafdg.com PDPs are microdata-only (no
     # JSON-LD), so this is the path that produces a genuine BH electronics price.
     # CRITICAL — the page also carries an EPP INSTALLMENT itemprop=price
     # ("BHD 48.332/month"); the old find-first grabbed THAT (wrong). The helper
     # skips installment-context elements + reads the currency paired in the SAME
     # Offer itemscope (not a page-global find), and normalizes lowercase "bhd".
-    micro = _extract_microdata_price(soup, currency, domain, url)
-    if micro:
-        # frag-size-capture — size from og:title / page <title> (microdata
-        # nodes rarely carry a volume; the name signals do).
-        _stamp_listing_size(micro, product_name, soup)
-        if exact_gate_enabled():  # flag-OFF byte-identity (legacy carried no `name` here)
-            micro["name"] = _page_identity_name(soup)  # M2 — chokepoint axis backstop
-        return micro
+    #
+    # With ENABLE_JSONLD_FIRST ON this call already ran ABOVE the OG branch, so
+    # this arm is the flag-OFF cascade order and nothing else. The block is
+    # duplicated rather than hoisted into a variable precisely so the rollback
+    # is a position, readable as a position.
+    if not _first:
+        micro = _extract_microdata_price(soup, currency, domain, url)
+        if micro:
+            # frag-size-capture — size from og:title / page <title> (microdata
+            # nodes rarely carry a volume; the name signals do).
+            _stamp_listing_size(micro, product_name, soup)
+            if exact_gate_enabled():  # flag-OFF byte-identity (legacy carried no `name` here)
+                micro["name"] = _page_identity_name(soup)  # M2 — chokepoint axis backstop
+            return micro
 
     # Priority 4: WooCommerce price span. S3-genuine (PDP curl Decision-F):
     # bahrainpharmacy.com/store PDPs are WooCommerce with an EMPTY JSON-LD Offer
@@ -11129,9 +11771,9 @@ def extract_price_from_html(
         _stamp_listing_size(wc, product_name, soup)
         if exact_gate_enabled():  # flag-OFF byte-identity (legacy carried no `name` here)
             wc["name"] = _page_identity_name(soup)  # M2 — chokepoint axis backstop
-        return wc
+        return _finish(wc)
 
-    return None
+    return _finish(None)
 
 
 def _extract_woocommerce_price(
@@ -11164,6 +11806,17 @@ def _extract_woocommerce_price(
     sym = span.find(class_="woocommerce-Price-currencySymbol")
     detected_currency = (sym.get_text(" ", strip=True) if sym else "") or currency
     detected_currency = detected_currency.strip().upper()
+    # ENABLE_JSONLD_FIRST — the symbol child is a DISPLAY GLYPH, so the label
+    # this branch stamps has always been a glyph rather than an ISO code (the
+    # qatarperfumeshop.com Qatari-riyal glyph is the origin of the whole
+    # BLOCKER-4 story). `_currency_label_for` resolves the glyph through the
+    # GCC table and ISO-validates the result; the numeric parse below keeps the
+    # ORIGINAL token, because `_money_minor_unit` folds a glyph itself and the
+    # two must not disagree. Flag OFF: the raw glyph, exactly as before.
+    _wc_label = (
+        _currency_label_for(detected_currency, currency)
+        if jsonld_first_enabled() else detected_currency
+    )
     if sym:
         sym.extract()  # remove so it doesn't pollute the numeric parse
     # BLOCKER 6 — this span is HUMAN-VISIBLE shelf text and it is the site of the
@@ -11179,8 +11832,8 @@ def _extract_woocommerce_price(
         return None
     result = {
         "amount": amount,
-        "original_currency": detected_currency,
-        "currency": detected_currency,
+        "original_currency": _wc_label,
+        "currency": _wc_label,
         "retailer": domain,
         "url": url,
         "in_stock": True,
@@ -11188,7 +11841,15 @@ def _extract_woocommerce_price(
         "estimated": False,
         "source_method": "page_scrape",
     }
-    if detected_currency != currency.upper():
+    # ENABLE_JSONLD_FIRST — CROSS-CHECK. This branch reads the shelf span, so
+    # the number is visible text BY CONSTRUCTION and confirms trivially; what
+    # the check is here for is the decoy half — a WooCommerce theme that renders
+    # a Grundpreis in the same span class.
+    if jsonld_first_enabled() and not _cross_check_price(
+        result, amount, _wc_label, soup,
+    ):
+        return None
+    if _wc_label != currency.upper():
         _ok = _convert_gpt_price_currency(result, currency)
         # BLOCKER 4 (a) — this is the branch that produced the corpus case.
         # WooCommerce puts the currency in a `.woocommerce-Price-currencySymbol`
@@ -11218,45 +11879,85 @@ def _extract_microdata_price(
     Returns a ``page_scrape_microdata`` dict or ``None``. Prefers an
     ``itemprop=price`` inside an ``schema.org/Offer`` (or Product) itemscope;
     a bare/installment one is skipped.
+
+    ENABLE_JSONLD_FIRST (default ON) changes five things here, and this branch
+    is the one the cascade reorder PROMOTES above OpenGraph, so all five are
+    preconditions of that reorder rather than independent niceties:
+
+      (a) THE AMOUNT goes through ``parse_money``. The legacy body did
+          ``str(raw).replace(",", "")`` and then ``float()`` — BLOCKER 6's
+          100x, still live on this branch: eperfumy.pl publishes
+          ``<span itemprop="price" class="price">310,00 zl</span>`` and that
+          read 31000.0. 12 nodes on that host misread. It is LATENT today only
+          because the in-Offer-first rule happens to pick a different node.
+      (b) A CURRENCY-LESS Offer defaults to the EXPECTED currency, not the
+          literal "USD". niche-beauty.com carries ``itemprop=price
+          content="195.00"`` and NO ``itemprop=priceCurrency`` anywhere on the
+          page; the USD default converted a genuine 195,00 EUR shelf price to
+          178.83 EUR. The OG branch fixed exactly this for itself long ago and
+          documents why (bahrain.sharafdg.com 244.990).
+      (c) THE LABEL is uppercased and ISO-4217-validated (orisdi.com publishes
+          an ``itemprop=priceCurrency`` of "0.00").
+      (d) A CONVERTED price is relabelled ``converted_usd``, as JSON-LD and OG
+          already do. Without this the reorder would silently move five cached
+          converted prices into the genuine-local-shelf-price KPI.
+      (e) ``in_stock`` reads the page's own availability instead of asserting
+          True — see ``_microdata_availability`` for the pacoperfumerias.co.uk
+          sold-out case this exists for.
+
+    Flag OFF restores every one of them, including the 100x.
     """
     candidates = soup.find_all(attrs={"itemprop": "price"})
     if not candidates:
         return None
 
+    _first = jsonld_first_enabled()
     best = None  # (in_offer_scope: bool, amount, currency)
+    best_scope = None
     for el in candidates:
         raw = el.get("content") or el.get_text(" ", strip=True)
         if not raw:
             continue
-        m = re.search(r"(\d[\d,]*(?:\.\d+)?)", str(raw).replace(",", ""))
-        if not m:
-            continue
-        try:
-            amount = float(m.group(1))
-        except (ValueError, TypeError):
-            continue
-        if amount <= 0:
-            continue
 
         # Is this price inside an Offer/Product itemscope? Walk up; also grab the
         # currency paired within that SAME scope (not a page-global find).
-        in_offer = False
+        #
+        # HOISTED above the amount parse (it used to sit below). The walk is
+        # PURE — it only reads ancestors — so the only difference this makes to
+        # the flag-OFF path is that an unparseable node is walked before being
+        # skipped. The flag-ON parse needs the scope's currency first, because
+        # the currency is what settles a comma with a 3-digit tail ("12,500" is
+        # 12.5 on BHD and 12500 on SAR).
+        in_offer, offer_scope = _microdata_offer_scope(el)
         cur = None
-        offer_scope = None
-        s = el
-        for _ in range(5):
-            if s is None or not hasattr(s, "get"):
-                break
-            itemtype = s.get("itemtype") or ""
-            if "Offer" in itemtype or "Product" in itemtype:
-                in_offer = True
-                offer_scope = s
-                break
-            s = s.parent
         if offer_scope is not None:
             cur_el = offer_scope.find(attrs={"itemprop": "priceCurrency"})
             if cur_el is not None:
                 cur = cur_el.get("content") or cur_el.get_text(strip=True)
+
+        if _first:
+            if not cur:
+                cur_el = soup.find(attrs={"itemprop": "priceCurrency"})
+                cur = (cur_el.get("content") or cur_el.get_text(strip=True)) if cur_el else None
+            # (b) + (c) — expected currency for a silent page, ISO-validated.
+            cur = _currency_label_for(cur, currency)
+            # (a) — ONE canonical parser. ``display_text`` is False for a
+            # ``content`` attribute, which schema.org specifies as the
+            # MACHINE-readable value, and True for the node's visible text.
+            amount = parse_money(raw, cur, display_text=el.get("content") is None)
+            if amount is None or not math.isfinite(amount) or amount <= 0:
+                continue
+        else:
+            # --- LEGACY (flag OFF) — byte-identical, comma bug included ---
+            m = re.search(r"(\d[\d,]*(?:\.\d+)?)", str(raw).replace(",", ""))
+            if not m:
+                continue
+            try:
+                amount = float(m.group(1))
+            except (ValueError, TypeError):
+                continue
+            if amount <= 0:
+                continue
 
         # Installment skip — ONLY for a price NOT inside an Offer/Product scope
         # (a genuine Offer price is the product price even if an installment
@@ -11269,10 +11970,11 @@ def _extract_microdata_price(
             if _INSTALLMENT_RE.search(ctx):
                 continue
 
-        if not cur:
-            cur_el = soup.find(attrs={"itemprop": "priceCurrency"})
-            cur = (cur_el.get("content") or cur_el.get_text(strip=True)) if cur_el else "USD"
-        cur = str(cur).strip().upper()  # lulu lowercase "bhd" -> "BHD"
+        if not _first:
+            if not cur:
+                cur_el = soup.find(attrs={"itemprop": "priceCurrency"})
+                cur = (cur_el.get("content") or cur_el.get_text(strip=True)) if cur_el else "USD"
+            cur = str(cur).strip().upper()  # lulu lowercase "bhd" -> "BHD"
 
         # Prefer an Offer-scoped price; among equals, the larger plausible value.
         #
@@ -11288,14 +11990,17 @@ def _extract_microdata_price(
         key = (in_offer, amount)
         if best is None or key > (best[0], best[1]):
             best = (in_offer, amount, cur)
+            best_scope = offer_scope
 
     if best is None:
         return None
 
     _in_offer, amount, cur = best
+    # (e) — the page's own availability, not an assertion. Flag OFF: True.
+    _in_stock = _microdata_availability(soup, best_scope) if _first else True
     result = {
         "amount": amount, "original_currency": cur, "currency": cur,
-        "retailer": domain, "url": url, "in_stock": True,
+        "retailer": domain, "url": url, "in_stock": _in_stock,
         "confidence": 0.8, "estimated": False,
         # Use the existing "page_scrape" method (microdata is structured-data
         # from the page, same tier as JSON-LD/OG) so it's recognized as a real
@@ -11303,20 +12008,32 @@ def _extract_microdata_price(
         # cross-lane source_method-enum change.
         "source_method": "page_scrape",
     }
+    # ENABLE_JSONLD_FIRST — CROSS-CHECK, before conversion (see
+    # `_cross_check_price` for why the order matters).
+    if _first and not _cross_check_price(result, amount, cur, soup):
+        return None
     if cur.upper() != currency.upper():
-        # NOTE microdata does NOT relabel a converted price `converted_usd` the
-        # way JSON-LD and _extract_og_price do. That relabel rode
-        # ENABLE_OG_BRANCH_FIXES as a precondition of the reverted (c) cascade
-        # reorder and went with it — on the cached corpus it moved faces.ae from
-        # page_scrape to converted_usd, which is a KPI-visible change nobody
-        # measured on its own. The honesty argument still stands; make it its
-        # own flagged change against a measured before/after.
+        # THE RELABEL, (d). Until ENABLE_JSONLD_FIRST this branch did NOT
+        # relabel a converted price `converted_usd` the way JSON-LD and
+        # _extract_og_price do; the relabel rode ENABLE_OG_BRANCH_FIXES as a
+        # precondition of the reverted (c) cascade reorder and went with it,
+        # and the note left here said to make it its own flagged change against
+        # a measured before/after. This is that change: it is a PRECONDITION of
+        # promoting microdata above OpenGraph, because five cached pages
+        # (klinq.com, ardalzaafaranshop.com, bawwaba.om, armaf.ae,
+        # spinneyslebanon.com) hand OG a converted price it labels honestly and
+        # would hand microdata the same number labelled as a genuine local
+        # shelf price. Measured before/after over the 414 cached pages: 5 pages
+        # move page_scrape -> converted_usd, 0 amounts change, and faces.ae —
+        # the page the old note names — is one of them.
         _ok = _convert_gpt_price_currency(result, currency)
         # BLOCKER 4 (a) — an unresolvable priceCurrency PENDS rather than being
         # stamped BHD at an implicit 1.0 rate. Flag OFF: `_ok` is ignored
         # entirely, exact 8adaefb path.
         if strict_currency_label_enabled() and not _ok:
             return None
+        if _first:
+            result["source_method"] = "converted_usd"
     return result
 
 
