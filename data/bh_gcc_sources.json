@@ -1247,7 +1247,12 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://ymhonlinepharmacy.com.bh/product/bioderma-cicabio-arnica/",
   "priority_rank": 27,
-  "status": "live"
+  "status": "live",
+  "promoted_mechanism": "woo_store_json",
+  "promoted_sample_url": "https://ymhonlinepharmacy.com.bh/wp-json/wc/store/products",
+  "promoted_genuine_method": "woo_store_api",
+  "promoted_verified_amount": 7.775,
+  "promoted_verified_at": "2026-08-17"
  },
  {
   "domain": "healbahrain.com",
@@ -1397,7 +1402,12 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.advancedpcbahrain.com/product/adata-su650-512gb-sata-ssd/",
   "priority_rank": 32,
-  "status": "live"
+  "status": "live",
+  "promoted_mechanism": "woo_store_json",
+  "promoted_sample_url": "https://advancedpcbahrain.com/wp-json/wc/store/products",
+  "promoted_genuine_method": "woo_store_api",
+  "promoted_verified_amount": 149.9,
+  "promoted_verified_at": "2026-08-17"
  },
  {
   "domain": "mobile57.com",
@@ -1806,7 +1816,12 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://ishopbahrain.com/shop/mobiles/apple-iphone-17/",
   "priority_rank": 45,
-  "status": "live"
+  "status": "live",
+  "promoted_mechanism": "woo_store_json",
+  "promoted_sample_url": "https://ishopbahrain.com/wp-json/wc/store/products",
+  "promoted_genuine_method": "woo_store_api",
+  "promoted_verified_amount": 19.0,
+  "promoted_verified_at": "2026-08-17"
  },
  {
   "domain": "bheshop.com",
@@ -3019,7 +3034,11 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.vitaminshop.ae/products/natures-bounty-immune-24",
   "priority_rank": 39,
-  "status": "live"
+  "status": "live",
+  "promoted_sample_url": "https://vitaminshop.ae/products.json",
+  "promoted_genuine_method": "shopify_json",
+  "promoted_verified_amount": 96.6,
+  "promoted_verified_at": "2026-08-17"
  },
  {
   "domain": "fitaminat.com",
@@ -3038,7 +3057,11 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://fitaminat.com/products/bioglan-collagen-powder-5000mg-151gm-offer",
   "priority_rank": 40,
-  "status": "live"
+  "status": "live",
+  "promoted_sample_url": "https://fitaminat.com/products.json",
+  "promoted_genuine_method": "shopify_json",
+  "promoted_verified_amount": 112.61,
+  "promoted_verified_at": "2026-08-17"
  },
  {
   "domain": "shopkees.com",
@@ -3057,7 +3080,11 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.shopkees.com/products/brother-mfc-j2340dw.json",
   "priority_rank": 41,
-  "status": "live"
+  "status": "live",
+  "promoted_sample_url": "https://shopkees.com/products.json",
+  "promoted_genuine_method": "shopify_json",
+  "promoted_verified_amount": 814.0,
+  "promoted_verified_at": "2026-08-17"
  },
  {
   "domain": "soukare.com",
@@ -3113,7 +3140,11 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://healthland.com.kw/en/collections/protein-powders",
   "priority_rank": 45,
-  "status": "live"
+  "status": "live",
+  "promoted_sample_url": "https://healthland.com.kw/products.json",
+  "promoted_genuine_method": "shopify_json",
+  "promoted_verified_amount": 19.95,
+  "promoted_verified_at": "2026-08-17"
  },
  {
   "domain": "en-qa.6thstreet.com",
@@ -3262,7 +3293,11 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://leperfumeqa.com/",
   "priority_rank": 53,
-  "status": "live"
+  "status": "live",
+  "promoted_sample_url": "https://leperfumeqa.com/products.json",
+  "promoted_genuine_method": "shopify_json",
+  "promoted_verified_amount": 115.0,
+  "promoted_verified_at": "2026-08-17"
  },
  {
   "domain": "store974.com",
@@ -3280,7 +3315,11 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://store974.com/",
   "priority_rank": 54,
-  "status": "live"
+  "status": "live",
+  "promoted_sample_url": "https://store974.com/products.json",
+  "promoted_genuine_method": "shopify_json",
+  "promoted_verified_amount": "4149.0 QAR",
+  "promoted_verified_at": "2026-08-17"
  },
  {
   "domain": "pcbuilderqatar.com",
@@ -3298,7 +3337,11 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://pcbuilderqatar.com/",
   "priority_rank": 55,
-  "status": "live"
+  "status": "live",
+  "promoted_sample_url": "https://pcbuilderqatar.com/products.json",
+  "promoted_genuine_method": "shopify_json",
+  "promoted_verified_amount": 379.0,
+  "promoted_verified_at": "2026-08-17"
  },
  {
   "domain": "princesscosmeticsqa.com",
@@ -3317,7 +3360,11 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://princesscosmeticsqa.com/",
   "priority_rank": 56,
-  "status": "live"
+  "status": "live",
+  "promoted_sample_url": "https://princesscosmeticsqa.com/products.json",
+  "promoted_genuine_method": "shopify_json",
+  "promoted_verified_amount": 130.0,
+  "promoted_verified_at": "2026-08-17"
  },
  {
   "domain": "addoony.com",
@@ -3336,7 +3383,11 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://addoony.com/",
   "priority_rank": 57,
-  "status": "live"
+  "status": "live",
+  "promoted_sample_url": "https://addoony.com/products.json",
+  "promoted_genuine_method": "shopify_json",
+  "promoted_verified_amount": 45.0,
+  "promoted_verified_at": "2026-08-17"
  },
  {
   "domain": "fyzara.com",
@@ -3355,7 +3406,11 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://fyzara.com/",
   "priority_rank": 58,
-  "status": "live"
+  "status": "live",
+  "promoted_sample_url": "https://fyzara.com/products.json",
+  "promoted_genuine_method": "shopify_json",
+  "promoted_verified_amount": 135.0,
+  "promoted_verified_at": "2026-08-17"
  },
  {
   "domain": "qsales.qa",
@@ -3374,7 +3429,11 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://qsales.qa/",
   "priority_rank": 59,
-  "status": "live"
+  "status": "live",
+  "promoted_sample_url": "https://qsales.qa/products.json",
+  "promoted_genuine_method": "shopify_json",
+  "promoted_verified_amount": 49.0,
+  "promoted_verified_at": "2026-08-17"
  },
  {
   "domain": "beautytribe.com",
@@ -3394,7 +3453,11 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://beautytribe.com/collections/kerastase",
   "priority_rank": 61,
-  "status": "live"
+  "status": "live",
+  "promoted_sample_url": "https://beautytribe.com/products.json",
+  "promoted_genuine_method": "shopify_json",
+  "promoted_verified_amount": 139.0,
+  "promoted_verified_at": "2026-08-17"
  },
  {
   "domain": "futureit.om",
@@ -3598,7 +3661,11 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://elitegames.om/products/lego-batman-legacy-of-the-dark-knight",
   "priority_rank": 66,
-  "status": "live"
+  "status": "live",
+  "promoted_sample_url": "https://elitegames.om/products.json",
+  "promoted_genuine_method": "shopify_json",
+  "promoted_verified_amount": 3.0,
+  "promoted_verified_at": "2026-08-17"
  },
  {
   "domain": "ksa.swissarabian.com",
@@ -3634,7 +3701,11 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://parisgallery.ae/collections/designer-perfumes",
   "priority_rank": 66,
-  "status": "live"
+  "status": "live",
+  "promoted_sample_url": "https://parisgallery.ae/products.json",
+  "promoted_genuine_method": "shopify_json",
+  "promoted_verified_amount": 22999.0,
+  "promoted_verified_at": "2026-08-17"
  },
  {
   "domain": "albayanperfumes.com",
@@ -3652,7 +3723,11 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://albayanperfumes.com/en",
   "priority_rank": 67,
-  "status": "live"
+  "status": "live",
+  "promoted_sample_url": "https://albayanperfumes.com/products.json",
+  "promoted_genuine_method": "shopify_json",
+  "promoted_verified_amount": 65.0,
+  "promoted_verified_at": "2026-08-17"
  },
  {
   "domain": "mls.om",
@@ -3707,7 +3782,11 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://kuludonline.com/collections/centrum",
   "priority_rank": 68,
-  "status": "live"
+  "status": "live",
+  "promoted_sample_url": "https://kuludonline.com/products.json",
+  "promoted_genuine_method": "shopify_json",
+  "promoted_verified_amount": 70.5,
+  "promoted_verified_at": "2026-08-17"
  },
  {
   "domain": "maryamspet.com",
@@ -3726,7 +3805,11 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://maryamspet.com/products/wanpy-soft-chicken-jerky-strips-100g",
   "priority_rank": 68,
-  "status": "live"
+  "status": "live",
+  "promoted_sample_url": "https://maryamspet.com/products.json",
+  "promoted_genuine_method": "shopify_json",
+  "promoted_verified_amount": 3.4,
+  "promoted_verified_at": "2026-08-17"
  },
  {
   "domain": "sa.ghawali.com",
@@ -3801,7 +3884,11 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://sa.mubkhar.com/products/nordic-frost-eau-de-parfum-150-ml",
   "priority_rank": 69,
-  "status": "live"
+  "status": "live",
+  "promoted_sample_url": "https://sa.mubkhar.com/products.json",
+  "promoted_genuine_method": "shopify_json",
+  "promoted_verified_amount": 62.0,
+  "promoted_verified_at": "2026-08-17"
  },
  {
   "domain": "darbeauty.com",
@@ -3820,7 +3907,11 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://darbeauty.com/products/eqqualberry-serum-minis-discovery-kit",
   "priority_rank": 70,
-  "status": "live"
+  "status": "live",
+  "promoted_sample_url": "https://darbeauty.com/products.json",
+  "promoted_genuine_method": "shopify_json",
+  "promoted_verified_amount": 14.7,
+  "promoted_verified_at": "2026-08-17"
  },
  {
   "domain": "niceonesa.com",
@@ -3878,7 +3969,11 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://glamorous-beauty.com/products/dr-melaxin-cemenrete-calcium-volume-eye-patch",
   "priority_rank": 71,
-  "status": "live"
+  "status": "live",
+  "promoted_sample_url": "https://glamorous-beauty.com/products.json",
+  "promoted_genuine_method": "shopify_json",
+  "promoted_verified_amount": 3.15,
+  "promoted_verified_at": "2026-08-17"
  },
  {
   "domain": "lifepharmacy.com",
@@ -3919,7 +4014,11 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.watsons.sa/products/gosh-eyedentity-eyeshadow-palette",
   "priority_rank": 71,
-  "status": "live"
+  "status": "live",
+  "promoted_sample_url": "https://watsons.sa/products.json",
+  "promoted_genuine_method": "shopify_json",
+  "promoted_verified_amount": "385.0 SAR",
+  "promoted_verified_at": "2026-08-17"
  },
  {
   "domain": "alqamarshop.com",
@@ -3937,7 +4036,11 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://alqamarshop.com/products/12v-4a-48w-ac-adapter-charger-hp-led-lcd-monitor",
   "priority_rank": 72,
-  "status": "live"
+  "status": "live",
+  "promoted_sample_url": "https://alqamarshop.com/products.json",
+  "promoted_genuine_method": "shopify_json",
+  "promoted_verified_amount": "50.0 KWD",
+  "promoted_verified_at": "2026-08-17"
  },
  {
   "domain": "mummy-and-me.store",
@@ -3956,7 +4059,11 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://mummy-and-me.store/products/mustela-travel-kit",
   "priority_rank": 72,
-  "status": "live"
+  "status": "live",
+  "promoted_sample_url": "https://mummy-and-me.store/products.json",
+  "promoted_genuine_method": "shopify_json",
+  "promoted_verified_amount": 24.8,
+  "promoted_verified_at": "2026-08-17"
  },
  {
   "domain": "alsultanpharmacy.com",
@@ -3975,7 +4082,11 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.alsultanpharmacy.com/products/panthophil-moisturizer-for-skin-care-lotion-200ml",
   "priority_rank": 73,
-  "status": "live"
+  "status": "live",
+  "promoted_sample_url": "https://alsultanpharmacy.com/products.json",
+  "promoted_genuine_method": "shopify_json",
+  "promoted_verified_amount": 4.4,
+  "promoted_verified_at": "2026-08-17"
  },
  {
   "domain": "caretobeauty.com",
@@ -4014,7 +4125,11 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://thebubblewrap.com/products/white-uv-led-sterilizer",
   "priority_rank": 73,
-  "status": "live"
+  "status": "live",
+  "promoted_sample_url": "https://thebubblewrap.com/products.json",
+  "promoted_genuine_method": "shopify_json",
+  "promoted_verified_amount": 35.59,
+  "promoted_verified_at": "2026-08-17"
  },
  {
   "domain": "bh.cosmostore.org",
@@ -4071,7 +4186,11 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://bronzeom.com/products/foc-huda-beauty",
   "priority_rank": 74,
-  "status": "live"
+  "status": "live",
+  "promoted_sample_url": "https://bronzeom.com/products.json",
+  "promoted_genuine_method": "shopify_json",
+  "promoted_verified_amount": "18.0 OMR",
+  "promoted_verified_at": "2026-08-17"
  },
  {
   "domain": "decathlon.com.kw",
@@ -4091,7 +4210,11 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://decathlon.com.kw/products/self-powered-e-connected-kinomap-cross-trainer-el540",
   "priority_rank": 75,
-  "status": "live"
+  "status": "live",
+  "promoted_sample_url": "https://decathlon.com.kw/products.json",
+  "promoted_genuine_method": "shopify_json",
+  "promoted_verified_amount": 11.5,
+  "promoted_verified_at": "2026-08-17"
  },
  {
   "domain": "musclehouse.com",
@@ -4109,7 +4232,11 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://musclehouse.com/products/2-challenger-nutrition-glutamine-unflavoured-5000mg-60-servings",
   "priority_rank": 75,
-  "status": "live"
+  "status": "live",
+  "promoted_sample_url": "https://musclehouse.com/products.json",
+  "promoted_genuine_method": "shopify_json",
+  "promoted_verified_amount": 7.0,
+  "promoted_verified_at": "2026-08-17"
  },
  {
   "domain": "ounass.ae",
@@ -4249,7 +4376,11 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://kuwaitcavarat.com/products/playx-sundi-wireless-controller-ps4-blue",
   "priority_rank": 78,
-  "status": "live"
+  "status": "live",
+  "promoted_sample_url": "https://kuwaitcavarat.com/products.json",
+  "promoted_genuine_method": "shopify_json",
+  "promoted_verified_amount": "7.5 KWD",
+  "promoted_verified_at": "2026-08-17"
  },
  {
   "domain": "markeetex.com",
@@ -4287,7 +4418,11 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://level-up.gg/products/vinyl-soda-heroes-dc-martian-manhunter",
   "priority_rank": 79,
-  "status": "live"
+  "status": "live",
+  "promoted_sample_url": "https://level-up.gg/products.json",
+  "promoted_genuine_method": "shopify_json",
+  "promoted_verified_amount": "350.9 KWD",
+  "promoted_verified_at": "2026-08-17"
  },
  {
   "domain": "om.swissarabian.com",
@@ -4305,7 +4440,11 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://om.swissarabian.com/products/musk-07-edp-body-lotion-gift-set",
   "priority_rank": 79,
-  "status": "live"
+  "status": "live",
+  "promoted_sample_url": "https://om.swissarabian.com/products.json",
+  "promoted_genuine_method": "shopify_json",
+  "promoted_verified_amount": 37.0,
+  "promoted_verified_at": "2026-08-17"
  },
  {
   "domain": "mamasfirst.com",
@@ -4361,7 +4500,11 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.numberc.com/products/hourglass-ambient-soft-glow-foundation-for-her",
   "priority_rank": 81,
-  "status": "live"
+  "status": "live",
+  "promoted_sample_url": "https://numberc.com/products.json",
+  "promoted_genuine_method": "shopify_json",
+  "promoted_verified_amount": 12.0,
+  "promoted_verified_at": "2026-08-17"
  },
  {
   "domain": "om.asgharali.com",
@@ -4453,7 +4596,11 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://pharmazone.com/collections/vitamins",
   "priority_rank": 83,
-  "status": "live"
+  "status": "live",
+  "promoted_sample_url": "https://pharmazone.com/products.json",
+  "promoted_genuine_method": "shopify_json",
+  "promoted_verified_amount": 14.0,
+  "promoted_verified_at": "2026-08-17"
  },
  {
   "domain": "alhajisoman.com",
@@ -4516,7 +4663,11 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.avicenonline.com/products/brufen-600-mg-ibuprofen-granules-20-sachets",
   "priority_rank": 85,
-  "status": "live"
+  "status": "live",
+  "promoted_sample_url": "https://avicenonline.com/products.json",
+  "promoted_genuine_method": "shopify_json",
+  "promoted_verified_amount": 8.14,
+  "promoted_verified_at": "2026-08-17"
  },
  {
   "domain": "carrefouruae.com",
@@ -4578,7 +4729,11 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.ghawyoman.com/products/milk_shake-energizing-blend-trio",
   "priority_rank": 87,
-  "status": "live"
+  "status": "live",
+  "promoted_sample_url": "https://ghawyoman.com/products.json",
+  "promoted_genuine_method": "shopify_json",
+  "promoted_verified_amount": 14.0,
+  "promoted_verified_at": "2026-08-17"
  },
  {
   "domain": "glowupom.com",
@@ -4615,7 +4770,11 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://omanluxury.store/en/products/hommage-1744",
   "priority_rank": 89,
-  "status": "live"
+  "status": "live",
+  "promoted_sample_url": "https://omanluxury.store/products.json",
+  "promoted_genuine_method": "shopify_json",
+  "promoted_verified_amount": 48.0,
+  "promoted_verified_at": "2026-08-17"
  },
  {
   "domain": "allaboutskindoha.com",
@@ -4654,7 +4813,11 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.carencurepharmacy.com/collections/supplements",
   "priority_rank": 91,
-  "status": "live"
+  "status": "live",
+  "promoted_sample_url": "https://carencurepharmacy.com/products.json",
+  "promoted_genuine_method": "shopify_json",
+  "promoted_verified_amount": 172.0,
+  "promoted_verified_at": "2026-08-17"
  },
  {
   "domain": "digitalzone.qa",
@@ -4727,7 +4890,11 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://oqba.qa/products/discovery-set-for-women",
   "priority_rank": 95,
-  "status": "live"
+  "status": "live",
+  "promoted_sample_url": "https://oqba.qa/products.json",
+  "promoted_genuine_method": "shopify_json",
+  "promoted_verified_amount": 29.0,
+  "promoted_verified_at": "2026-08-17"
  },
  {
   "domain": "parfum.qa",
@@ -4765,7 +4932,11 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://parigallery.com/collections/perfumes",
   "priority_rank": 97,
-  "status": "live"
+  "status": "live",
+  "promoted_sample_url": "https://parigallery.com/products.json",
+  "promoted_genuine_method": "shopify_json",
+  "promoted_verified_amount": 95.0,
+  "promoted_verified_at": "2026-08-17"
  },
  {
   "domain": "rptech.qa",
@@ -4783,7 +4954,11 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://rptech.qa/collections/apple-mobiles",
   "priority_rank": 98,
-  "status": "live"
+  "status": "live",
+  "promoted_sample_url": "https://rptech.qa/products.json",
+  "promoted_genuine_method": "shopify_json",
+  "promoted_verified_amount": 3199.0,
+  "promoted_verified_at": "2026-08-17"
  },
  {
   "domain": "souqscent.com",
@@ -4840,7 +5015,11 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://tuzzut.com/products/sceptre-malachite-maison-alhambra-100ml",
   "priority_rank": 101,
-  "status": "live"
+  "status": "live",
+  "promoted_sample_url": "https://tuzzut.com/products.json",
+  "promoted_genuine_method": "shopify_json",
+  "promoted_verified_amount": 39.0,
+  "promoted_verified_at": "2026-08-17"
  },
  {
   "domain": "vitaminqatar.com",
@@ -4915,7 +5094,11 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://adasat.com/collections/new-arrivals/products/la-gente-madrid-zafir-clear",
   "priority_rank": 105,
-  "status": "live"
+  "status": "live",
+  "promoted_sample_url": "https://adasat.com/products.json",
+  "promoted_genuine_method": "shopify_json",
+  "promoted_verified_amount": 199.0,
+  "promoted_verified_at": "2026-08-17"
  },
  {
   "domain": "armaf.ae",
@@ -4933,7 +5116,11 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.armaf.ae/collections/new-arrivals-2/products/odyssey-soda-pop",
   "priority_rank": 106,
-  "status": "live"
+  "status": "live",
+  "promoted_sample_url": "https://armaf.ae/products.json",
+  "promoted_genuine_method": "shopify_json",
+  "promoted_verified_amount": 49.0,
+  "promoted_verified_at": "2026-08-17"
  },
  {
   "domain": "atelierdeglow.ae",
@@ -4987,7 +5174,11 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.coralperfumes.com/products/dark-night-for-men-edp-100ml",
   "priority_rank": 109,
-  "status": "live"
+  "status": "live",
+  "promoted_sample_url": "https://coralperfumes.com/products.json",
+  "promoted_genuine_method": "shopify_json",
+  "promoted_verified_amount": 45.0,
+  "promoted_verified_at": "2026-08-17"
  },
  {
   "domain": "cozmada.com",
@@ -5006,7 +5197,11 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.cozmada.com/collections/hair-care",
   "priority_rank": 110,
-  "status": "live"
+  "status": "live",
+  "promoted_sample_url": "https://cozmada.com/products.json",
+  "promoted_genuine_method": "shopify_json",
+  "promoted_verified_amount": 136.0,
+  "promoted_verified_at": "2026-08-17"
  },
  {
   "domain": "crescitebeauty.com",
@@ -5024,7 +5219,11 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://crescitebeauty.com/collections/korean-beauty",
   "priority_rank": 111,
-  "status": "live"
+  "status": "live",
+  "promoted_sample_url": "https://crescitebeauty.com/products.json",
+  "promoted_genuine_method": "shopify_json",
+  "promoted_verified_amount": "59.0 AED",
+  "promoted_verified_at": "2026-08-17"
  },
  {
   "domain": "dubaioptical.com",
@@ -5061,7 +5260,11 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://ecityuae.ae/products/apple-iphone-17-pro-max-256gb-storage-silver-uae-version",
   "priority_rank": 113,
-  "status": "live"
+  "status": "live",
+  "promoted_sample_url": "https://ecityuae.ae/products.json",
+  "promoted_genuine_method": "shopify_json",
+  "promoted_verified_amount": 2640.0,
+  "promoted_verified_at": "2026-08-17"
  },
  {
   "domain": "eideal.com",
@@ -5098,7 +5301,11 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://ae.ghawali.com/products/9pm-in-saudi-parfum",
   "priority_rank": 115,
-  "status": "live"
+  "status": "live",
+  "promoted_sample_url": "https://ghawali.com/products.json",
+  "promoted_genuine_method": "shopify_json",
+  "promoted_verified_amount": 120.0,
+  "promoted_verified_at": "2026-08-17"
  },
  {
   "domain": "houseofperfumes.com",
@@ -5208,7 +5415,11 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://larovie.ae/products/centellian24-madeca-cream",
   "priority_rank": 121,
-  "status": "live"
+  "status": "live",
+  "promoted_sample_url": "https://larovie.ae/products.json",
+  "promoted_genuine_method": "shopify_json",
+  "promoted_verified_amount": 115.0,
+  "promoted_verified_at": "2026-08-17"
  },
  {
   "domain": "mamlakataloud.ae",
@@ -5264,7 +5475,11 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://medicinaonline.ae/products/bepanthene-cream-30gm",
   "priority_rank": 124,
-  "status": "live"
+  "status": "live",
+  "promoted_sample_url": "https://medicinaonline.ae/products.json",
+  "promoted_genuine_method": "shopify_json",
+  "promoted_verified_amount": "44.25 AED",
+  "promoted_verified_at": "2026-08-17"
  },
  {
   "domain": "mestore.ae",
@@ -5323,7 +5538,11 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.myeasypharmacy.ae/collections/vitamins-minerals",
   "priority_rank": 127,
-  "status": "live"
+  "status": "live",
+  "promoted_sample_url": "https://myeasypharmacy.ae/products.json",
+  "promoted_genuine_method": "shopify_json",
+  "promoted_verified_amount": 19.0,
+  "promoted_verified_at": "2026-08-17"
  },
  {
   "domain": "myperfumes.ae",
@@ -5341,7 +5560,11 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://myperfumes.ae/products/arabiyat-prestige-marwa-edp-unisex",
   "priority_rank": 128,
-  "status": "live"
+  "status": "live",
+  "promoted_sample_url": "https://myperfumes.ae/products.json",
+  "promoted_genuine_method": "shopify_json",
+  "promoted_verified_amount": 75.0,
+  "promoted_verified_at": "2026-08-17"
  },
  {
   "domain": "nutristore.ae",
@@ -5413,7 +5636,11 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.refab.me/collections/android-mobile-phones-uae",
   "priority_rank": 132,
-  "status": "live"
+  "status": "live",
+  "promoted_sample_url": "https://refab.me/products.json",
+  "promoted_genuine_method": "shopify_json",
+  "promoted_verified_amount": "795.0 AED",
+  "promoted_verified_at": "2026-08-17"
  },
  {
   "domain": "revent.store",
@@ -5449,7 +5676,11 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://samawa.ae/collections/oud-perfume",
   "priority_rank": 134,
-  "status": "live"
+  "status": "live",
+  "promoted_sample_url": "https://samawa.ae/products.json",
+  "promoted_genuine_method": "shopify_json",
+  "promoted_verified_amount": 10.0,
+  "promoted_verified_at": "2026-08-17"
  },
  {
   "domain": "scentlibraryofficial.com",
@@ -5485,7 +5716,11 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://usbs-uae.com/products/apple-iphone-12",
   "priority_rank": 136,
-  "status": "live"
+  "status": "live",
+  "promoted_sample_url": "https://usbs-uae.com/products.json",
+  "promoted_genuine_method": "shopify_json",
+  "promoted_verified_amount": 1800.0,
+  "promoted_verified_at": "2026-08-17"
  },
  {
   "domain": "watches.ae",
@@ -5504,7 +5739,11 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://watches.ae/collections/top-trending-picks/products/80120-3nm-buidn",
   "priority_rank": 137,
-  "status": "live"
+  "status": "live",
+  "promoted_sample_url": "https://watches.ae/products.json",
+  "promoted_genuine_method": "shopify_json",
+  "promoted_verified_amount": 3050.0,
+  "promoted_verified_at": "2026-08-17"
  },
  {
   "domain": "yusufbhaifragrances.com",
@@ -5522,7 +5761,11 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://yusufbhaifragrances.com/products/dior-sauvage",
   "priority_rank": 138,
-  "status": "live"
+  "status": "live",
+  "promoted_sample_url": "https://yusufbhaifragrances.com/products.json",
+  "promoted_genuine_method": "shopify_json",
+  "promoted_verified_amount": 120.0,
+  "promoted_verified_at": "2026-08-17"
  },
  {
   "domain": "sa.getkuwa.com",
@@ -6632,7 +6875,11 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.atelierperfumery.com/essential-parfums-ambre-latte-edp-100ml",
   "priority_rank": 199,
-  "status": "live"
+  "status": "live",
+  "promoted_sample_url": "https://atelierperfumery.com/products.json",
+  "promoted_genuine_method": "shopify_json",
+  "promoted_verified_amount": 1024.0,
+  "promoted_verified_at": "2026-08-17"
  },
  {
   "domain": "nrtcfresh.com",
@@ -6668,7 +6915,11 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.touchofoud.com/rajwan-2",
   "priority_rank": 201,
-  "status": "live"
+  "status": "live",
+  "promoted_sample_url": "https://touchofoud.com/products.json",
+  "promoted_genuine_method": "shopify_json",
+  "promoted_verified_amount": 1280.0,
+  "promoted_verified_at": "2026-08-17"
  },
  {
   "domain": "nahdionline.com",
