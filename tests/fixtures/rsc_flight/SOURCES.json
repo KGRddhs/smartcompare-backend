@@ -1,0 +1,42 @@
+{
+  "_what": "Minimal RSC-flight fragments of REAL cached sephora.com.tr PDPs, for tests/test_rsc_flight_price.py (UNIT B1, ENABLE_RSC_FLIGHT_PRICE). sephora.com.tr is a Next.js App Router in front of SFCC; the price is NOT in JSON-LD/microdata/OG — it is carried in the React Server Component flight stream (self.__next_f) as an escaped \\\"price\\\":<int>,\\\"currency\\\":\\\"TRY\\\" adjacency. Every title, og:title, og:url, amount, currency and variant fragment below is copied VERBATIM out of the cached bytes; only the <head> boilerplate and the choice to keep the top-level price adjacency plus three real variant decoys are authored.",
+  "_corpus": "_proof/global/html/ + _proof/global/_corpus_cachemap.json (429 files). Rows for these three PDPs live in _proof/global/middle_east_non_gulf.jsonl (host www.sephora.com.tr).",
+  "_minor_unit_convention_PINNED": "The flight price is denominated in MAJOR currency units (whole TRY), NOT minor units. B4's open question, resolved against the visible shelf price in each cached row's price_text_raw: armani flight price=5050 vs visible '5.050,00 TL'; bleu 8400 vs '8.400,00 TL'; kayali 2090 vs '2.090,00 TL'. So the flight integer is used as-is with NO division by 100.",
+  "files": {
+    "sephora_com_tr_armani_si_flight_try.html": {
+      "url": "https://www.sephora.com.tr/p/armani-si-edp-100-ml-P1547001.html",
+      "host": "www.sephora.com.tr",
+      "corpus": "global",
+      "cached_bytes": "326d0a2cfd77c39bd308f2e6ce1ec5054d8b13f4.html",
+      "country": "TR",
+      "measured": "flight top-level price 5050 TRY (B4, 3/3); visible '5.050,00 TL'",
+      "kept": "the page <title>/og:title/og:url verbatim, plus ONE self.__next_f flight chunk holding the verbatim top-level \\\"price\\\":5050,\\\"currency\\\":\\\"TRY\\\" adjacency followed by three real variant decoys (2050, 5050, 8650 TRY) so first-occurrence selection is genuinely tested against later variant prices"
+    },
+    "sephora_com_tr_bleu_de_chanel_flight_try.html": {
+      "url": "https://www.sephora.com.tr/p/bleu-de-chanel-P1922003.html",
+      "host": "www.sephora.com.tr",
+      "corpus": "global",
+      "cached_bytes": "a59ddd4e342c73ebbd8283f0cb3d5295b21aab80.html",
+      "country": "TR",
+      "measured": "flight top-level price 8400 TRY (B4, 3/3); visible '8.400,00 TL'",
+      "kept": "as above; top-level \\\"price\\\":8400,\\\"currency\\\":\\\"TRY\\\" plus variant decoys 5900, 8400, 7400 TRY"
+    },
+    "sephora_com_tr_kayali_vanilla28_flight_try.html": {
+      "url": "https://www.sephora.com.tr/p/kayali-vanilla28---eau-de-parfum-P3551017.html",
+      "host": "www.sephora.com.tr",
+      "corpus": "global",
+      "cached_bytes": "ec6c154cb46bb6b96fcf3ec6fdc69acece24e73a.html",
+      "country": "TR",
+      "measured": "flight top-level price 2090 TRY (B4, 3/3); visible '2.090,00 TL'",
+      "kept": "as above; top-level \\\"price\\\":2090,\\\"currency\\\":\\\"TRY\\\" plus variant decoys 2090, 5590, 7290 TRY"
+    },
+    "no_flight_no_structured_price.html": {
+      "url": "(authored control — no cached counterpart)",
+      "host": "(none)",
+      "corpus": "authored",
+      "country": "TR",
+      "measured": "n/a",
+      "kept": "AUTHORED control: a title/og:title-only page carrying NO JSON-LD/microdata/OG/Woo price and NO self.__next_f flight stream, so the RSC rung returns None and the whole cascade returns None unchanged (pins the flag-ON no-flight path == the flag-OFF path)."
+    }
+  }
+}

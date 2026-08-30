@@ -3930,6 +3930,29 @@ def sale_price_first_enabled() -> bool:
     )
 
 
+def rsc_flight_price_enabled() -> bool:
+    """True iff the RSC-flight price reader is active (UNIT B1, default OFF).
+
+    sephora.com.tr is a Next.js App Router in front of SFCC: the price is not in
+    JSON-LD / microdata / OG / Woo — it is carried in the React Server Component
+    flight stream ``self.__next_f`` as an escaped
+    ``\\"price\\":<int>,\\"currency\\":\\"<ISO>\\"`` adjacency. B4 measured the
+    top-level product price 3/3 on cached bytes (armani-si 5050 TRY,
+    bleu-de-chanel 8400 TRY, kayali 2090 TRY). ``_extract_rsc_flight_price``
+    reads it as the LAST fallback rung in ``extract_price_from_html``.
+
+    DEFAULT OFF because this is a NEW capture capability, not a repair of a
+    measured-0%-success path — so it ships dark and is flipped on Railway during
+    canary (contrast ENABLE_FIRECRAWL_RAW_HTML, which repaired a 0/9 path and so
+    justified default-ON). Read per call from ``os.getenv`` (copying
+    ``exact_gate_enabled``) so the flag can be flipped without a restart. With
+    the flag OFF the rung never runs and ``extract_price_from_html`` returns its
+    exact pre-B1 value, so the rollback is byte-identical."""
+    return os.getenv("ENABLE_RSC_FLIGHT_PRICE", "false").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
 def og_branch_fixes_enabled() -> bool:
     """True iff the two OpenGraph-branch correctness fixes are active (default ON).
 
@@ -11963,6 +11986,26 @@ def extract_price_from_html(
             wc["name"] = _page_identity_name(soup)  # M2 — chokepoint axis backstop
         return _finish(wc)
 
+    # Priority 5 (ENABLE_RSC_FLIGHT_PRICE, UNIT B1): the React Server Component
+    # flight stream. LAST rung, below every structured shape, because it is the
+    # capture of last resort for a Next.js App Router PDP (sephora.com.tr) whose
+    # price is in NONE of JSON-LD / microdata / OG / Woo — it is serialized into
+    # ``self.__next_f`` as an escaped ``"price":<int>,"currency":"<ISO>"``
+    # adjacency. The page identity was already gated above (this rung is reached
+    # only past ``_page_identity_ok``), and the size / name stamps below thread
+    # it through the SAME machinery every fallback rung uses.
+    #
+    # Flag OFF (default — a NEW capability, not a repair): this block never runs
+    # and the function falls straight through to ``_finish(None)`` exactly as it
+    # did pre-B1, so the rollback is byte-identical.
+    if rsc_flight_price_enabled():
+        rsc = _extract_rsc_flight_price(html, currency, domain, url)
+        if rsc:
+            _stamp_listing_size(rsc, product_name, soup)
+            if exact_gate_enabled():  # match the sibling rungs' identity stamp
+                rsc["name"] = _page_identity_name(soup)  # M2 — chokepoint axis backstop
+            return _finish(rsc)
+
     return _finish(None)
 
 
@@ -12429,6 +12472,105 @@ def _extract_microdata_price(
             return None
         if _first:
             result["source_method"] = "converted_usd"
+    return result
+
+
+# The RSC flight carries the price as an escaped JSON adjacency inside a
+# ``self.__next_f.push([...])`` string literal: ``\"price\":<int>,\"currency\":
+# \"<ISO>\"``. Written here in RAW form (single backslash-quote) — the bytes the
+# unescape below turns back into ``"price":<int>,"currency":"<ISO>"``.
+_RSC_FLIGHT_PRICE_RE = re.compile(
+    r'"price":(\d+(?:\.\d+)?),"currency":"([A-Za-z]{3})"'
+)
+
+
+def _extract_rsc_flight_price(
+    html: str, currency: str, domain: str, url: str
+) -> Optional[Dict[str, Any]]:
+    """Read the price out of a Next.js React Server Component flight stream.
+
+    UNIT B1 (ENABLE_RSC_FLIGHT_PRICE). sephora.com.tr is a Next.js App Router in
+    front of SFCC; the price is in NONE of the structured shapes the cascade
+    reads above — it is serialized into ``self.__next_f`` flight chunks as an
+    escaped ``\\"price\\":<int>,\\"currency\\":\\"<ISO>\\"`` adjacency. B4
+    measured the FIRST (top-level product) such adjacency 3/3 on cached bytes:
+    armani-si 5050 TRY, bleu-de-chanel 8400 TRY, kayali 2090 TRY.
+
+    Returns a ``page_scrape`` dict threaded through the SAME currency-label +
+    conversion machinery as the microdata / OG / Woo rungs, or ``None`` when the
+    page carries no flight stream, no price adjacency, or an un-ISO currency.
+
+    MINOR-UNIT CONVENTION (B4's open question, PINNED): the flight integer is in
+    MAJOR currency units (whole TRY), confirmed against each cached row's visible
+    shelf price — flight 5050 renders as ``5.050,00 TL``, 8400 as ``8.400,00
+    TL``, 2090 as ``2.090,00 TL``. So the number is used AS-IS: no /100, no
+    minor-unit rescale.
+
+    SELECTION: the flight also serializes every size variant as its own
+    ``price``/``currency`` adjacency AFTER the top-level one (armani: 5050 then
+    variants 2050 / 5050 / 8650). The product price is the FIRST adjacency, so
+    this reads first-occurrence — never a min/max over the variant decoys, the
+    same authority-not-cheapest discipline the rest of the extractor keeps.
+
+    The identity gate is applied by the CALLER (``extract_price_from_html`` runs
+    ``_page_identity_ok`` before reaching any fallback rung, this one included),
+    and the caller stamps ``name`` / ``size`` — so this helper stays a pure
+    price+currency reader, exactly like ``_extract_woocommerce_price``.
+    """
+    if "__next_f" not in html:
+        return None
+    # Gather only the flight chunks, then unescape the JS string escaping
+    # (\" -> ") so the adjacency below is plain JSON text. Scoping to the flight
+    # scripts keeps a stray structured-data ``"currency"`` elsewhere on the page
+    # out of the match.
+    from bs4 import BeautifulSoup
+    soup = BeautifulSoup(html, "html.parser")
+    chunks = []
+    for script in soup.find_all("script"):
+        text = script.string or script.get_text()
+        if text and "__next_f" in text:
+            chunks.append(text)
+    if not chunks:
+        return None
+    blob = "".join(chunks).replace('\\"', '"')
+
+    m = _RSC_FLIGHT_PRICE_RE.search(blob)
+    if not m:
+        return None
+    try:
+        amount = float(m.group(1))
+    except (ValueError, TypeError):
+        return None
+    if not math.isfinite(amount) or amount <= 0:
+        return None
+    # ISO-4217-validate the flight's OWN currency token; a non-ISO token pends
+    # rather than mislabels a real number (iso_currency_label uppercases first).
+    cur = iso_currency_label(m.group(2))
+    if not cur:
+        return None
+
+    result = {
+        "amount": amount,
+        "original_currency": cur,
+        "currency": cur,
+        "retailer": domain,
+        "url": url,
+        "in_stock": True,
+        "confidence": 0.8,
+        "estimated": False,
+        # Structured data read off the page — same tier / source_method as the
+        # JSON-LD / microdata / OG / Woo rungs, so scoring + the L1.5 metric see
+        # a genuine page_scrape price with no cross-lane enum change.
+        "source_method": "page_scrape",
+    }
+    if cur.upper() != currency.upper():
+        # Convert + relabel converted_usd honestly, exactly as microdata / OG do
+        # for a foreign price; an unresolvable currency PENDS under the strict
+        # label flag rather than shipping an implicit-rate BHD number.
+        _ok = _convert_gpt_price_currency(result, currency)
+        if strict_currency_label_enabled() and not _ok:
+            return None
+        result["source_method"] = "converted_usd"
     return result
 
 
