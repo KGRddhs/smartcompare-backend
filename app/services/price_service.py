@@ -11187,11 +11187,157 @@ def _resolve_iso_currency(raw: Any) -> Optional[str]:
     return iso_currency_label(raw) or iso_currency_label(_normalize_currency_code(raw))
 
 
+def visible_text_currency_enabled() -> bool:
+    """True iff the ADJACENCY-ANCHORED visible-text currency rung is active
+    (M10 UNIT A1, default OFF).
+
+    Its own flag rather than a fold into ``ENABLE_JSONLD_FIRST`` (default ON) for
+    three reasons. It reads FREE TEXT, where every other rung in
+    ``_page_currency_evidence`` reads a machine-readable field — a different risk
+    class deserves its own switch. It changes the LABEL on money, and a wrong
+    label is a wrong price, so the wave that shipped the currency hierarchy
+    (6610623) established that a label change gets its own rollback. And the
+    repair is 1 measured page in 414, which cannot justify riding on a
+    default-ON flag's blast radius.
+
+    Read PER CALL from ``os.getenv`` (copying ``exact_gate_enabled``) so Railway
+    flips it without a restart. With the flag OFF ``_page_currency_evidence``
+    executes exactly its two pre-unit rungs and never looks at the document
+    text, so the rollback is byte-identical."""
+    return os.getenv("ENABLE_VISIBLE_TEXT_CURRENCY", "false").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
+#: ISO codes that are also ordinary English words, so a page can print one with
+#: no monetary intent whatsoever. Measured over the 414 cached pages: a rung that
+#: accepts any ISO code appearing in the visible text fires on 19 of the 118
+#: no-evidence pages and is WRONG on the ``ALL``/``TRY`` ones —
+#: ``brownthomas.com`` scores both against a EUR truth and ``solsticescents.com``
+#: scores ALL against USD. Requiring ADJACENCY to a price-shaped number removes
+#: those two, and one collision still survives it: ``www.spacenk.com`` matches
+#: TOP (Tongan pa'anga) in "384 Reviews | TOP 100".
+#:
+#: These three are not banned outright — they are admitted only on a SECOND,
+#: machine-readable corroborating signal (see ``_microdata_currency_tokens``),
+#: because the honest statement is "this token is not evidence BY ITSELF", not
+#: "the Tongan pa'anga does not exist". The last real use of any of them on a
+#: fragrance PDP is hypothetical; the false fire is measured.
+_TEXT_CURRENCY_DENYLIST: frozenset = frozenset(("TOP", "ALL", "TRY"))
+
+#: A three-letter uppercase token IMMEDIATELY beside a price-shaped number, in
+#: either order. Both arms forbid an adjoining letter so a code cannot be cut out
+#: of a longer word ("SAREE" must not yield SAR). Zero separators are tolerated
+#: because ``_CURRENCY_FOLD_STRIP`` removes the space family first, so a page
+#: that wrote "1515<NBSP>AED" arrives here as "1515AED"; the ordinary space and
+#: tab are the only separators that survive the fold.
+_ADJACENT_CURRENCY_RE = re.compile(
+    r"(?<![A-Za-z])([A-Z]{3})(?![A-Za-z])[ \t]{0,3}\d"
+    r"|"
+    r"\d[\d.,]*[ \t]{0,3}(?<![A-Za-z])([A-Z]{3})(?![A-Za-z])"
+)
+
+#: Hard bound on the text scanned. The regex is linear and un-nested so this is
+#: not a ReDoS guard; it is a promise that a pathological document cannot make a
+#: currency LABEL lookup dominate a capture's cost.
+_VISIBLE_TEXT_CURRENCY_CAP = 4_000_000
+
+
+def _microdata_currency_tokens(soup) -> set:
+    """Every ISO code the document declares through a schema.org microdata
+    ``priceCurrency``, which NEITHER existing rung reads.
+
+    This exists only to corroborate a denylisted code. It is deliberately not a
+    rung of its own: promoting it would be a separate behaviour change with its
+    own blast radius, and this unit is scoped to the visible-text defect.
+    TOTAL — any object may be passed and nothing raises."""
+    out = set()
+    try:
+        tags = soup.find_all(attrs={"itemprop": "priceCurrency"})
+    except Exception:  # noqa: BLE001 — evidence must never break a capture
+        return out
+    for tag in tags or ():
+        for raw in (tag.get("content"), tag.get("value"), tag.get_text(" ")):
+            code = _resolve_iso_currency(raw)
+            if code:
+                out.add(code)
+                break
+    return out
+
+
+def _visible_text_currency_evidence(soup) -> Optional[str]:
+    """The currency the document's own VISIBLE TEXT declares beside a price, or
+    None. TOTAL — any object may be passed and nothing raises.
+
+    THE MEASURED PROBLEM (414 cached pages, zero network, 2026-08-31).
+    ``faces.ae`` prints ``&#x2066;1515&#x2069; AED`` beside every price, carries
+    no price/currency meta, and its single JSON-LD block is an ItemList with no
+    ``priceCurrency`` — so ``_page_currency_evidence`` returns None and
+    ``_currency_label_for`` falls to rung 3 and stamps the price with the ASK.
+    A bare-brand query "Tom Ford" passes ``_page_identity_ok`` on that brand
+    LISTING page, so production serves 1515 AED as 1515 "BHD" — a 9.8x
+    over-price, the exact BLOCKER-4 shape.
+
+    THE FOUR RULES, each measured rather than assumed:
+
+      1. ADJACENCY IS MANDATORY. A code counts only when it sits immediately
+         before or after a price-shaped number. A rung that accepts any ISO code
+         in the text fires on 19 of the 118 no-evidence pages and gets the
+         ``ALL``/``TRY`` ones WRONG, because those are ordinary English words.
+         Adjacency collapses that to 7 pages and 6 single-code pages that ALL
+         agree with the corpus-recorded currency (en-kwt.ajmal KWD, faces.ae AED,
+         ouddubai.ae AED, bloomingdales.com.kw KWD, salams.com QAR,
+         gcc.luluhypermarket KWD).
+      2. ABSTAIN ON MULTIPLICITY. ``www.spinneyslebanon.com`` prints an
+         exchange-rate line, "1.00 USD = 89,700 LBP". Two distinct adjacent codes
+         is not a currency, it is a conversion table; returning None keeps rung 4
+         (raw junk token, strict pends) available rather than guessing.
+      3. FOLD THE BIDI CONTROLS AND THE SPACE FAMILY FIRST, reusing
+         ``_CURRENCY_FOLD_STRIP`` — the table ``iso_currency_label`` already
+         uses. faces.ae's price is wrapped in U+2066/U+2069 isolates, so without
+         the fold the code is not adjacent to anything.
+      4. DENY THE ENGLISH-WORD CODES unless a machine signal corroborates them
+         (see ``_TEXT_CURRENCY_DENYLIST``). A denied token is dropped BEFORE the
+         multiplicity count, never counted toward it: spacenk's "| TOP 100" must
+         not be able to veto a real code elsewhere on the same page.
+
+    Reads the EXTRACTED TEXT, never the raw HTML, and that distinction is the
+    whole argument: on faces.ae "AED" occurs 252 times in the raw bytes, 41 times
+    in the rendered text, and 39 of those are adjacent to a number. Raw HTML
+    would be scoring script payloads and attributes."""
+    if soup is None:
+        return None
+    try:
+        text = soup.get_text(" ")
+    except Exception:  # noqa: BLE001 — evidence must never break a capture
+        return None
+    if not isinstance(text, str) or not text:
+        return None
+    text = text[:_VISIBLE_TEXT_CURRENCY_CAP].translate(_CURRENCY_FOLD_STRIP)
+
+    found, denied = set(), set()
+    for match in _ADJACENT_CURRENCY_RE.finditer(text):
+        code = iso_currency_label(match.group(1) or match.group(2))
+        if not code:
+            continue
+        if code in _TEXT_CURRENCY_DENYLIST:
+            denied.add(code)
+            continue
+        found.add(code)
+    if denied and not found:
+        # Rule 4's escape hatch: an English-word code counts once a second,
+        # machine-readable signal on the SAME document says the same thing.
+        found = denied & _microdata_currency_tokens(soup)
+    if len(found) != 1:
+        return None
+    return next(iter(found))
+
+
 def _page_currency_evidence(soup) -> Optional[str]:
     """The currency this DOCUMENT declares somewhere else, ISO-validated, or None.
 
-    Consulted only when the branch's own currency token is unreadable. Two
-    sources, in order, both machine-readable and both cheap:
+    Consulted only when the branch's own currency token is unreadable. Three
+    sources, in order — the first two machine-readable, the third gated:
 
       1. the OpenGraph / product price-currency metas — the tags a storefront
          template emits for Facebook, which survive on pages whose microdata is
@@ -11207,6 +11353,19 @@ def _page_currency_evidence(soup) -> Optional[str]:
          its own template writes the code into a SECOND
          ``product:price:amount`` tag. The number and the code are the same
          money; only the tag naming is broken.
+      3. behind ``ENABLE_VISIBLE_TEXT_CURRENCY`` (default OFF), the code the
+         page's own VISIBLE TEXT prints beside a price —
+         ``_visible_text_currency_evidence``. ``faces.ae`` is the measured case:
+         no metas, an ItemList JSON-LD with no ``priceCurrency``, and
+         ``&#x2066;1515&#x2069; AED`` beside every price.
+
+    RUNG ORDER IS LOAD-BEARING and the text rung must stay LAST. Measured over
+    the 414 cached pages: 95 carry BOTH machine evidence and exactly one adjacent
+    text code, and on 2 of them the text CONTRADICTS the machine —
+    ``www.bathandbodyworks.com.eg`` (og EGP, adjacent AED from a cross-market
+    "3 for AED 125" banner, truth EGP) and ``www.spacenk.com`` (JSON-LD GBP,
+    adjacent TOP, truth GBP). In both the existing evidence is right, so
+    promoting the text rung would ship two new mislabels to buy one repair.
 
     A page whose ONLY currency token is the unreadable one returns None, which
     is what keeps the two epistemic states below distinguishable.
@@ -11239,6 +11398,8 @@ def _page_currency_evidence(soup) -> Optional[str]:
         code = _jsonld_price_currency(data)
         if code:
             return code
+    if visible_text_currency_enabled():
+        return _visible_text_currency_evidence(soup)
     return None
 
 

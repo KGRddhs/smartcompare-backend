@@ -1,0 +1,192 @@
+{
+ "_note": "Fixtures cut from the REAL cached corpus pages by DOM pruning. Nothing is hand-authored: each file is the page's own <title>, its own og:title / price / currency meta tags, its own application/ld+json blocks, and the verbatim subtrees containing every rendered text node that carries an ISO-4217 code. Each cut is GATED: the adjacency rung, a naive any-code-in-text scan, _page_currency_evidence and (faces.ae) extract_price_from_html return the SAME values on the cut as on the full cached page.",
+ "corpus": "_proof/sweep2_curl_cffi.jsonl + _proof/html/ (sha1 of 'curl_cffi|'+url); _proof/global/corpus.json + _proof/global/html/ (sha1 of url) -- both read-only, git-excluded",
+ "measured": "2026-08-31, zero network",
+ "files": {
+  "ae_faces_ae_brand_listing_adjacent_aed.html": {
+   "url": "https://www.faces.ae/en/brands/tom-ford",
+   "host": "faces.ae",
+   "corpus": "gulf",
+   "cached_bytes": "9b2d8db66a4d9a1bf9fc03852e802085724b39a8.html",
+   "cached_sha1_of_page": "5442df2ae48174af7ac5b1949226ef21e3a26bd3",
+   "recorded_page_currency": "AED",
+   "kept": "the page's own <title>, its og:title / og:price:currency / product:price:currency / product:sale_price:currency / itemprop=priceCurrency meta tags, every application/ld+json block, and the verbatim subtree 6 ancestors above each rendered text node carrying an ISO-4217 code (first 60 non-overlapping subtrees)",
+   "gate": {
+    "rung": [
+     "AED"
+    ],
+    "naive": [
+     "AED"
+    ],
+    "ev": null,
+    "extract": [
+     1515.0,
+     "BHD"
+    ]
+   }
+  },
+  "kw_ajmal_en_kwt_adjacent_kwd.html": {
+   "url": "https://en-kwt.ajmal.com/violet-musc-hair-mist-100-ml",
+   "host": "en-kwt.ajmal.com",
+   "corpus": "gulf",
+   "cached_bytes": "135f715bfc2ee532363d3efcc17d197d4a19461b.html",
+   "cached_sha1_of_page": "fba57698bd49212cfb251c02ab69df46c436ab7b",
+   "recorded_page_currency": "KWD",
+   "kept": "the page's own <title>, its og:title / og:price:currency / product:price:currency / product:sale_price:currency / itemprop=priceCurrency meta tags, every application/ld+json block, and the verbatim subtree 2 ancestors above each rendered text node carrying an ISO-4217 code (first 60 non-overlapping subtrees)",
+   "gate": {
+    "rung": [
+     "KWD"
+    ],
+    "naive": [
+     "KWD"
+    ],
+    "ev": null
+   }
+  },
+  "kw_bloomingdales_com_kw_adjacent_kwd.html": {
+   "url": "https://en.bloomingdales.com.kw/beauty-makeup/",
+   "host": "bloomingdales.com.kw",
+   "corpus": "gulf",
+   "cached_bytes": "d47f7fcda78147ccfec039e90b44bf053ad2de08.html",
+   "cached_sha1_of_page": "f7a379c40826314f1010cb69df26a0dfaaf56a11",
+   "recorded_page_currency": "KWD",
+   "kept": "the page's own <title>, its og:title / og:price:currency / product:price:currency / product:sale_price:currency / itemprop=priceCurrency meta tags, every application/ld+json block, and the verbatim subtree 2 ancestors above each rendered text node carrying an ISO-4217 code (first 90 non-overlapping subtrees)",
+   "gate": {
+    "rung": [
+     "KWD"
+    ],
+    "naive": [
+     "ALL",
+     "KWD"
+    ],
+    "ev": null
+   }
+  },
+  "qa_salams_com_adjacent_qar.html": {
+   "url": "https://salams.com/beauty/men-perfume",
+   "host": "salams.com",
+   "corpus": "gulf",
+   "cached_bytes": "cc9018a2623efc9d55c8036c2e88db73fc3d973a.html",
+   "cached_sha1_of_page": "4007140d50d87be8a1c4eb919132becb794e72e3",
+   "recorded_page_currency": "QAR",
+   "kept": "the page's own <title>, its og:title / og:price:currency / product:price:currency / product:sale_price:currency / itemprop=priceCurrency meta tags, every application/ld+json block, and the verbatim subtree 2 ancestors above each rendered text node carrying an ISO-4217 code (first 90 non-overlapping subtrees)",
+   "gate": {
+    "rung": [
+     "QAR"
+    ],
+    "naive": [
+     "QAR"
+    ],
+    "ev": null
+   }
+  },
+  "kw_gcc_luluhypermarket_com_adjacent_kwd.html": {
+   "url": "https://gcc.luluhypermarket.com/en-kw/ahmed-al-maghribi-edp-perfume-marj-60-ml/p/2257851/",
+   "host": "gcc.luluhypermarket.com",
+   "corpus": "global",
+   "cached_bytes": "f9ef6a3927d64e3d5bcf9024e8208eec34acd5f5.html",
+   "cached_sha1_of_page": "691468776afcd62bcb99b01bcfbfab0944ab9453",
+   "recorded_page_currency": null,
+   "kept": "the page's own <title>, its og:title / og:price:currency / product:price:currency / product:sale_price:currency / itemprop=priceCurrency meta tags, every application/ld+json block, and the verbatim subtree 2 ancestors above each rendered text node carrying an ISO-4217 code (first 60 non-overlapping subtrees)",
+   "gate": {
+    "rung": [
+     "KWD"
+    ],
+    "naive": [
+     "KWD"
+    ],
+    "ev": null
+   }
+  },
+  "lb_spinneyslebanon_com_two_codes_abstain.html": {
+   "url": "https://www.spinneyslebanon.com/default/spinneys-fresh-orange-juice-1l.html",
+   "host": "www.spinneyslebanon.com",
+   "corpus": "global",
+   "cached_bytes": "e183836da8f601eb9563302554492dd49adc7dbf.html",
+   "cached_sha1_of_page": "5e6240f3c0f0c4c4429640c5f89745785223c499",
+   "recorded_page_currency": null,
+   "kept": "the page's own <title>, its og:title / og:price:currency / product:price:currency / product:sale_price:currency / itemprop=priceCurrency meta tags, every application/ld+json block, and the verbatim subtree 2 ancestors above each rendered text node carrying an ISO-4217 code (first 60 non-overlapping subtrees)",
+   "gate": {
+    "rung": [
+     "LBP",
+     "USD"
+    ],
+    "naive": [
+     "LBP",
+     "USD"
+    ],
+    "ev": null
+   }
+  },
+  "ie_brownthomas_com_all_try_decoy.html": {
+   "url": "https://www.brownthomas.com/beauty/fragrance/baccarat-rouge-540-eau-de-parfum/2001178707.html",
+   "host": "www.brownthomas.com",
+   "corpus": "global",
+   "cached_bytes": "09cbb811ce0f604b408646d046382c3bb77c0ba0.html",
+   "cached_sha1_of_page": "a9910febc36b06ad943ca751c6fd743f543362ca",
+   "recorded_page_currency": null,
+   "kept": "the page's own <title>, its og:title / og:price:currency / product:price:currency / product:sale_price:currency / itemprop=priceCurrency meta tags, every application/ld+json block, and the verbatim subtree 2 ancestors above each rendered text node carrying an ISO-4217 code (first 60 non-overlapping subtrees)",
+   "gate": {
+    "rung": [],
+    "naive": [
+     "ALL",
+     "TRY"
+    ],
+    "ev": null
+   }
+  },
+  "us_solsticescents_com_all_decoy.html": {
+   "url": "https://www.solsticescents.com/TRAVELERS-EAU-DE-PARFUM-EDP-60-ml-Perfume-Spray--Amber-Clove-and-Frankincense_p_807.html",
+   "host": "www.solsticescents.com",
+   "corpus": "global",
+   "cached_bytes": "72c1d37de5eefd1068102060b6244e09b9649605.html",
+   "cached_sha1_of_page": "0c1e51b03eafd6d9361bccedd7c084517a1e7f58",
+   "recorded_page_currency": null,
+   "kept": "the page's own <title>, its og:title / og:price:currency / product:price:currency / product:sale_price:currency / itemprop=priceCurrency meta tags, every application/ld+json block, and the verbatim subtree 2 ancestors above each rendered text node carrying an ISO-4217 code (first 60 non-overlapping subtrees)",
+   "gate": {
+    "rung": [],
+    "naive": [
+     "ALL"
+    ],
+    "ev": null
+   }
+  },
+  "uk_spacenk_com_jsonld_gbp_adjacent_top.html": {
+   "url": "https://www.spacenk.com/uk/rose-goldea-blossom-delight-eau-de-parfum-UK200037029.html",
+   "host": "www.spacenk.com",
+   "corpus": "global",
+   "cached_bytes": "80d79f3517da2ea75909a7446393e7b6481aba6b.html",
+   "cached_sha1_of_page": "7eb3ef397f0aa20465384765a7f915712c934277",
+   "recorded_page_currency": null,
+   "kept": "the page's own <title>, its og:title / og:price:currency / product:price:currency / product:sale_price:currency / itemprop=priceCurrency meta tags, every application/ld+json block, and the verbatim subtree 2 ancestors above each rendered text node carrying an ISO-4217 code (first 60 non-overlapping subtrees)",
+   "gate": {
+    "rung": [
+     "TOP"
+    ],
+    "naive": [
+     "GBP",
+     "TOP"
+    ],
+    "ev": "GBP"
+   }
+  },
+  "eg_bathandbodyworks_com_eg_og_egp_adjacent_aed.html": {
+   "url": "https://www.bathandbodyworks.com.eg/en/buy-dark-kiss-fine-fragrance-mist",
+   "host": "www.bathandbodyworks.com.eg",
+   "corpus": "global",
+   "cached_bytes": "10f9d4939cb9c2708ba92d6ace64b696a411f680.html",
+   "cached_sha1_of_page": "5d632e5b0c5aadd72bc9d983791d82393ecda2cd",
+   "recorded_page_currency": null,
+   "kept": "the page's own <title>, its og:title / og:price:currency / product:price:currency / product:sale_price:currency / itemprop=priceCurrency meta tags, every application/ld+json block, and the verbatim subtree 2 ancestors above each rendered text node carrying an ISO-4217 code (first 60 non-overlapping subtrees)",
+   "gate": {
+    "rung": [
+     "AED"
+    ],
+    "naive": [
+     "AED"
+    ],
+    "ev": "EGP"
+   }
+  }
+ }
+}
