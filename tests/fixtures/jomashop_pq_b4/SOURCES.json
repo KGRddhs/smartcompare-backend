@@ -1,0 +1,31 @@
+{
+  "_what": "Measured jomashop Apollo persisted-query (APQ) GraphQL response bodies for tests/test_jomashop_persisted_query.py (UNIT B4, ENABLE_MAGENTO_GQL_ADAPTER). Each file is (or faithfully mirrors) the JSON body a GET https://www.jomashop.com/graphql?operationName=productDetail&variables=...&extensions=... with the pinned persisted-query sha256 hash returned.",
+  "_mechanism": "jomashop runs Magento PWA Studio behind an Apollo client that fetches /graphql via GET with an Automatic-Persisted-Query hash (NOT a POST query body). variables={\"urlKey\":\"<slug>\",\"onServer\":true}; extensions={\"clientLibrary\":{\"name\":\"@apollo/client\",\"version\":\"4.2.6\"},\"persistedQuery\":{\"version\":1,\"sha256Hash\":\"4b1607d031c771c04d8b98be14fccefe6cf2fc28e4a3552e41010d78ea739b8d\"}}. Price at data.productDetail.items[].price_range.minimum_price.{final_price,regular_price}.{value,currency} (the SAME shape B3's Shape-C reads). url_key = last URL path segment minus '.html'.",
+  "_measurement": "B9 (scratchpad research/B9): the exact browser GET replays byte-for-byte under plain curl_cffi (9,461 bytes) returning value 69.99 USD for url_key lelas-unisex-oud-edp-spray-2-87-oz-fragrances-8681124608130; swapping ONLY the urlKey (persisted hash untouched) returns 46.99 USD for a different product. ONE capture serves the whole host. jomashop robots.txt allows /graphql. The persisted hash + operationName are a BUILD ARTIFACT of jomashop's deployed bundle and WILL rotate; on a rotation the server answers PersistedQueryNotFound or stops returning a productDetail price key -> the adapter logs + returns None (re-capture trigger), NEVER a stale wrong price.",
+  "files": {
+    "jomashop_pq_lelas_oud_usd.json": {
+      "host": "www.jomashop.com",
+      "url_key": "lelas-unisex-oud-edp-spray-2-87-oz-fragrances-8681124608130",
+      "currency": "USD",
+      "measured": "final_price 69.99 USD (regular == final), stock_status OUT_OF_STOCK. VERBATIM price-path subset of the B9 9,461-byte capture (jomashop_graphql_capture.json entry 1 / jomashop_graphql_replay.json) — the huge description/media_gallery/moredetails blocks are trimmed, the identity + price nodes are copied exactly. Adapter converts to BHD via FALLBACK_RATES['USD'] -> source_method converted_usd, original_currency USD.",
+      "provenance": "verbatim (price-path subset)"
+    },
+    "jomashop_pq_gade_icon_roses_usd.json": {
+      "host": "www.jomashop.com",
+      "url_key": "gade-ladies-icon-roses-edp-spray-1-69-oz-fragrances-7290106294011",
+      "currency": "USD",
+      "measured": "The urlKey-swap result: B9 measured 46.99 USD for the swapped urlKey (same persisted hash). This is the Ga-De Ladies Icon Roses product (sku Y-A459H, 46.99 USD, in stock) whose value is measured; the productDetail envelope MIRRORS the verbatim Lelas capture shape (B9 saved only the Lelas full bytes). Pins the 'swap only the urlKey' contract: one capture, keyed on urlKey.",
+      "provenance": "value measured (B9 replay 46.99) + shape mirrored from the verbatim Lelas envelope"
+    },
+    "jomashop_pq_persisted_query_not_found.json": {
+      "host": "www.jomashop.com",
+      "measured": "The Apollo APQ rotation shape: a 200 carrying errors[] {message PersistedQueryNotFound, extensions.code PERSISTED_QUERY_NOT_FOUND} and no data. Pins that a rotated hash -> None + a re-capture log line, NEVER a stale price. Authored to the documented Apollo APQ error contract (the live rotation was not force-triggered against jomashop; robots-throttle discipline).",
+      "provenance": "authored to the Apollo APQ PersistedQueryNotFound contract"
+    },
+    "jomashop_pq_no_price_key_control.json": {
+      "host": "www.jomashop.com",
+      "measured": "A 200 whose productDetail item carries identity but NO price_range (a plausible schema-drift / partial-rotation shape). Pins that a 200-with-no-price-key -> None NOT a crash. Authored.",
+      "provenance": "authored control"
+    }
+  }
+}

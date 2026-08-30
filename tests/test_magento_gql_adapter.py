@@ -243,6 +243,15 @@ def test_fetch_page_price_walled_host_recovers_flag_on(monkeypatch):
         return None
 
     monkeypatch.setattr(ps, "curl_fetch_html_same_site", fake_walled)
+    # UNIT B4 — jomashop now PREFERS the Apollo persisted-query GET side-door
+    # (_try_magento_gql_url_fallback tries it first). Stub that transport seam to
+    # a miss so this B3 pin deterministically exercises the POST url_key fallback
+    # (and stays OFFLINE — an unpatched seam would issue a live GET). The B4 GET
+    # path is covered in tests/test_jomashop_persisted_query.py.
+    async def fake_pq_get(endpoint, params, headers):
+        return None
+
+    monkeypatch.setattr(mg, "_get_persisted_query", fake_pq_get)
     name = "Ga-De Ladies Icon Roses EDP Spray 1.69 oz Fragrances 7290106294011"
     url = "https://www.jomashop.com/" + JOMASHOP_KEY + ".html"
     res = _run(ps.fetch_page_price(url, name, "BHD"))

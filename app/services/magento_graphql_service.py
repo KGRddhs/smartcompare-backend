@@ -348,6 +348,48 @@ async def _harvest_shape_a_config(host: str) -> Optional[Dict[str, str]]:
 # GraphQL POST helpers
 # ---------------------------------------------------------------------------
 
+async def _get_persisted_query(
+    endpoint: str, params: Dict[str, str], headers: Dict[str, str]
+) -> Optional[Any]:
+    """GET a persisted-query (APQ) GraphQL request, return the parsed JSON or
+    None. Never raises. UNIT B4 — jomashop's Apollo client fetches /graphql via
+    GET with an operationName + JSON-encoded ``variables`` + ``extensions``
+    (carrying the persistedQuery sha256 hash) as query params, NOT a POST body.
+
+    A non-200 returns None (the caller treats it as a wall / rotation signal — a
+    re-capture TRIGGER, never a stale price). A network error / non-JSON body →
+    None too."""
+    body = None  # documented: this is a GET; params carry the whole request
+    del body
+    try:
+        from curl_cffi import requests as curl_requests
+        resp = await asyncio.to_thread(
+            lambda: curl_requests.get(
+                endpoint,
+                params=params,
+                headers=headers,
+                impersonate="chrome",
+                timeout=_HTTP_TIMEOUT,
+                allow_redirects=True,
+            )
+        )
+    except Exception as exc:  # noqa: BLE001 — fetch error is a miss, never a crash
+        logger.info("[MAGENTO] jomashop persisted-query GET failed: %s", exc)
+        return None
+    if resp.status_code != 200:
+        # A non-200 (403 wall, or a 4xx once the persisted hash rotates
+        # server-side) is a re-capture trigger — never fabricate a price.
+        logger.info(
+            "[MAGENTO] jomashop persisted-query HTTP %s (hash may have rotated)",
+            resp.status_code,
+        )
+        return None
+    try:
+        return resp.json()
+    except Exception:  # noqa: BLE001 — non-JSON body → miss
+        return None
+
+
 async def _post_graphql(
     url: str, query: str, variables: Dict[str, Any], headers: Dict[str, str]
 ) -> Optional[Dict[str, Any]]:
@@ -913,6 +955,166 @@ async def fetch_magento_graphql_url_price(
     ]
     node = _best_match(nodes, product_name, resolved_category=resolved_category)
     if not node:
+        return None
+
+    return _finalize_magento_price(node, host, url, product_name, currency)
+
+
+# ---------------------------------------------------------------------------
+# UNIT B4 — jomashop Apollo persisted-query price (ENABLE_MAGENTO_GQL_ADAPTER)
+# ---------------------------------------------------------------------------
+# jomashop runs Magento PWA Studio (Venia/Apollo). Its client fetches the PDP
+# price from /graphql via a GET carrying an Automatic-Persisted-Query (APQ)
+# sha256 hash — NOT a POST query body. B9 measured the exact browser request
+# replays byte-for-byte under plain curl_cffi (9,461 bytes), and that swapping
+# ONLY the urlKey (the persisted hash untouched) returns a DIFFERENT product's
+# price — so ONE capture serves the whole host, keyed on urlKey.
+#
+# WHY ITS OWN FUNCTION, SAME FLAG: this is the SAME platform (Magento), the SAME
+# url_key key, and the SAME price_range.minimum_price shape B3's Shape-C reads —
+# so it rides the SAME gate (ENABLE_MAGENTO_GQL_ADAPTER, per the assignment). But
+# the TRANSPORT differs materially (a GET with an operationName + persisted hash
+# vs a POST query body), which is why it is a distinct function with its own
+# _get_persisted_query seam rather than folded into fetch_magento_graphql_url_price.
+# The response also nests under ``data.productDetail`` (not ``data.products``).
+#
+# ROTATION: the persisted hash + operationName are a BUILD ARTIFACT of jomashop's
+# deployed Apollo bundle and WILL rotate on a deploy. On a rotation the server
+# answers a non-200, or a 200 carrying an APQ ``PersistedQueryNotFound`` error,
+# or a 200 whose productDetail item drops the price key. ALL of these resolve to
+# None + a one-line re-capture log, NEVER a stale wrong price (verify-or-omit).
+# Re-capture is then a one-line edit of _JOMASHOP_PQ_SHA256 below.
+
+_JOMASHOP_HOST = "www.jomashop.com"
+_JOMASHOP_APEX = "jomashop.com"
+_JOMASHOP_PQ_OPERATION = "productDetail"
+# Captured 2026-08-30 (B9) from jomashop's Apollo bundle. See the ROTATION note.
+_JOMASHOP_PQ_SHA256 = (
+    "4b1607d031c771c04d8b98be14fccefe6cf2fc28e4a3552e41010d78ea739b8d"
+)
+# The Apollo client library identity jomashop's bundle sends in ``extensions``.
+# Cosmetic to the server, but kept faithful to the measured request so the replay
+# matches the captured bytes.
+_JOMASHOP_PQ_CLIENT = {"name": "@apollo/client", "version": "4.2.6"}
+
+
+def _jomashop_pq_items(payload: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """The ``data.productDetail.items`` list (B4 persisted-query shape). [] when
+    the envelope is absent/malformed — distinct from Shape-B's ``data.products``."""
+    if not isinstance(payload, dict):
+        return []
+    data = payload.get("data") or {}
+    pd = data.get("productDetail") or {}
+    items = pd.get("items")
+    return items if isinstance(items, list) else []
+
+
+def _jomashop_pq_rotated(payload: Any) -> bool:
+    """True iff a 200 response signals the persisted query no longer resolves
+    server-side — an Apollo APQ ``PersistedQueryNotFound`` errors[] entry, or a
+    payload carrying no productDetail items at all. Used ONLY to decide whether to
+    emit the re-capture log line (the price outcome is None either way). A genuine
+    no-match that still returns a productDetail item is NOT a rotation."""
+    if not isinstance(payload, dict):
+        return True
+    errors = payload.get("errors")
+    if isinstance(errors, list):
+        for e in errors:
+            if isinstance(e, dict):
+                msg = str(e.get("message") or "")
+                ext = e.get("extensions") if isinstance(e.get("extensions"), dict) else {}
+                code = str(ext.get("code") or "")
+            else:
+                msg, code = str(e), ""
+            blob = f"{msg} {code}".lower().replace("_", "")
+            if "persistedquery" in blob:
+                return True
+    # A 200 with no productDetail items is also a rotation/shape-drift tell.
+    return not _jomashop_pq_items(payload)
+
+
+async def fetch_jomashop_persisted_query_price(
+    url: str, product_name: str, currency: str = "BHD",
+    resolved_category: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    """UNIT B4 — jomashop price via the Apollo persisted-query GET side-door.
+
+    Given a jomashop PDP ``url``, derive the ``url_key`` (last path segment minus
+    ``.html``) and GET
+    ``/graphql?operationName=productDetail&variables={urlKey,onServer}&extensions={
+    persistedQuery:{sha256Hash}}`` → the matching product's final_price +
+    regular_price + currency in ONE call, walking past the Cloudflare wall that
+    403s the HTML PDP route.
+
+    Fires ONLY when ``magento_gql_adapter_enabled()`` (ENABLE_MAGENTO_GQL_ADAPTER,
+    default OFF) AND the host is jomashop. Returns a price dict or ``None`` on
+    miss / wrong-brand-only / non-jomashop host / flag-OFF / rotation / error.
+    NEVER raises."""
+    if not (ENABLE_PAGE_SCRAPE and magento_gql_adapter_enabled()):
+        return None
+
+    host = (url or "").strip()
+    if host.startswith("http://"):
+        host = host[7:]
+    elif host.startswith("https://"):
+        host = host[8:]
+    host = host.split("/")[0].split("?")[0].lower()
+    apex = host[4:] if host.startswith("www.") else host
+    if apex != _JOMASHOP_APEX:
+        return None
+
+    url_key = _url_key_from_url(url)
+    if not url_key:
+        return None
+
+    # Build the exact persisted-query request the Apollo client sends. Compact
+    # JSON separators match the captured bytes; curl_cffi URL-encodes the params.
+    params = {
+        "operationName": _JOMASHOP_PQ_OPERATION,
+        "variables": json.dumps(
+            {"urlKey": url_key, "onServer": True}, separators=(",", ":")
+        ),
+        "extensions": json.dumps(
+            {
+                "clientLibrary": _JOMASHOP_PQ_CLIENT,
+                "persistedQuery": {"version": 1, "sha256Hash": _JOMASHOP_PQ_SHA256},
+            },
+            separators=(",", ":"),
+        ),
+    }
+    headers = {
+        "Accept": "application/graphql-response+json,application/json;q=0.9",
+        "Content-Type": "application/json",
+        "Referer": f"https://{_JOMASHOP_HOST}/{url_key}.html",
+    }
+
+    payload = await _get_persisted_query(
+        f"https://{_JOMASHOP_HOST}/graphql", params, headers
+    )
+    if payload is None:
+        # non-200 / transport / non-JSON — already logged inside the seam.
+        return None
+
+    # Reuse the Shape-B price node parser — the price_range.minimum_price shape is
+    # identical. No brand_field (jomashop is a multi-brand storefront), so
+    # brand="" → legacy strict matching.
+    nodes = [
+        n for n in (
+            _shape_b_price_node(it)
+            for it in _jomashop_pq_items(payload) if isinstance(it, dict)
+        ) if n
+    ]
+    node = _best_match(nodes, product_name, resolved_category=resolved_category)
+    if not node:
+        # 200 but no usable price node. If the envelope itself is empty / APQ-
+        # rotated, log the re-capture trigger; a strict-match DROP (item present,
+        # title mismatch) is a normal no-match and stays quiet. Either way: None.
+        if _jomashop_pq_rotated(payload):
+            logger.info(
+                "[MAGENTO] jomashop persisted-query returned no productDetail price "
+                "for url_key=%s — operation %s / hash %s may have rotated (re-capture)",
+                url_key, _JOMASHOP_PQ_OPERATION, _JOMASHOP_PQ_SHA256[:12],
+            )
         return None
 
     return _finalize_magento_price(node, host, url, product_name, currency)

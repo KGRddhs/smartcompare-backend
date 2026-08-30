@@ -12877,9 +12877,18 @@ async def _try_magento_gql_url_fallback(
         from app.services.magento_graphql_service import (
             magento_gql_adapter_enabled,
             fetch_magento_graphql_url_price,
+            fetch_jomashop_persisted_query_price,
         )
         if not magento_gql_adapter_enabled():
             return None
+        # UNIT B4 — jomashop's genuine mechanism is the Apollo persisted-query GET
+        # (B9-measured: replays byte-for-byte under curl_cffi, one capture serves
+        # the host, keyed on urlKey). Prefer it; on a miss / hash-rotation it
+        # returns None and the B3 POST url_key side-door recovers (two independent
+        # jomashop doors). Same gate (ENABLE_MAGENTO_GQL_ADAPTER) for both.
+        jp = await fetch_jomashop_persisted_query_price(url, product_name, currency)
+        if jp:
+            return jp
         return await fetch_magento_graphql_url_price(url, product_name, currency)
     except Exception:  # noqa: BLE001 — fallback is best-effort; never crash the cascade
         return None
