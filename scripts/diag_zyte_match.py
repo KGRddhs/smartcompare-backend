@@ -20,6 +20,12 @@ import os
 os.environ["ENABLE_ZYTE_RENDER"] = "true"
 os.environ.setdefault("ZYTE_TIMEOUT", "100")
 
+# Same startup snapshot as scripts/seed_zyte_luxury.py: the load_dotenv below
+# is override=False, which still SETS ZYTE_API_KEY when it is ABSENT from the
+# process env, so a live os.getenv in the guard would pass with the key never
+# exported and burn ~16 paid Zyte productList extracts. Snapshot ABOVE the load.
+_STARTUP_ZYTE_KEY = (os.environ.get("ZYTE_API_KEY") or "").strip()
+
 try:
     from dotenv import load_dotenv
     load_dotenv(override=False)
@@ -108,7 +114,9 @@ async def diag_one(brand: str, name: str, variant):
 
 
 async def main():
-    if not os.getenv("ZYTE_API_KEY"):
+    # From the STARTUP snapshot, never a live getenv — the module-top
+    # load_dotenv(override=False) refills the key from .env (see the snapshot).
+    if not _STARTUP_ZYTE_KEY:
         print("ZYTE_API_KEY not set — aborting")
         return
     import sys

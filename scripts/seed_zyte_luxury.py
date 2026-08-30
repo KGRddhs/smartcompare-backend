@@ -28,6 +28,17 @@ os.environ.setdefault("ZYTE_TIMEOUT", "100")
 # live 15s path is untouched). See scripts/cron_warm_price_cache.py.
 os.environ.setdefault("WARMER_CONTEXT", "1")
 
+# House rule ("no key -> no paid call"): the intended-run decision is made from
+# whether ZYTE_API_KEY was in the PROCESS ENVIRONMENT AT STARTUP, snapshotted
+# HERE, ABOVE the load_dotenv() call below. That call is override=False, which
+# still SETS a name that is ABSENT from the process env - so it REFILLS
+# ZYTE_API_KEY from the repo .env, and a guard reading a live ``os.getenv``
+# afterwards would be a no-op even when the operator never exported the key,
+# leaking live calls to Zyte (a PAID vendor). The snapshot is taken before any
+# dotenv load can run, so it reflects the environment the operator launched
+# with. Overridable in-process for tests.
+_STARTUP_ZYTE_KEY = (os.environ.get("ZYTE_API_KEY") or "").strip()
+
 try:
     from dotenv import load_dotenv
     load_dotenv(override=False)  # never clobber the overrides above / Railway env
@@ -206,7 +217,11 @@ async def _seed_one(svc, pair: str) -> Dict[str, int]:
 
 async def main() -> Dict[str, int]:
     logging.basicConfig(level=logging.INFO, format="%(message)s")
-    if not os.getenv("ZYTE_API_KEY"):
+    # Decided from the STARTUP snapshot, never a live getenv: the module-top
+    # load_dotenv(override=False) above REFILLS ZYTE_API_KEY from the repo .env
+    # when it is absent from the process env, so a live check here would pass
+    # with the operator's key unexported and leak a real (paid) Zyte call.
+    if not _STARTUP_ZYTE_KEY:
         logger.warning("[seed_zyte] ZYTE_API_KEY not set — nothing to seed")
         return {"genuine": 0, "pending": 0}
     import sys
