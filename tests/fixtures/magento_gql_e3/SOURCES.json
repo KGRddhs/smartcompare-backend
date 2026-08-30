@@ -1,0 +1,93 @@
+{
+  "_what": "VERBATIM measured Magento /graphql responses for tests/test_magento_gql_e3_hardening.py (UNIT M9 F2, flag ENABLE_MAGENTO_GQL_ADAPTER). Each file is one recorded probe: the HTTP status, the response Content-Type header, the byte count, the latency, and the body. Nothing here is authored - every value is copied out of the E3 probe record.",
+  "_measurement": "UNIT E3, 2026-08-30. scratchpad m8/E3/{probe_magento_gql.py,results.json,summary.json}. 12 candidate Magento fragrance hosts, one Bahrain residential IP, robots.txt fetched + parsed live for every host (no host disallowed /graphql for UA *), >=2.5s per-host throttle, 12 GraphQL probes against a cap of 15. Guest request, no auth header, curl_cffi impersonate=chrome, Content-Type: application/json. Query: {products(filter:{url_key:{eq:\"<KEY>\"}}){total_count items{name sku price_range{minimum_price{final_price{value currency} regular_price{value currency}}}}}}. Measured hit-rate 6/12 = 50%.",
+  "_body_fields": "body_json = the complete JSON body, parsed, verbatim. body_text_head = the first 1500 characters of an HTML body the probe truncated; body_complete records whether the stored text is the whole response. The four HTML/empty records are used ONLY for the status + Content-Type gate, which needs no body.",
+  "_not_measured": "en-kwt.ajmal.com's CORRECT store-view code. E3 measured only that the store-view header was ABSENT and the response came back AED (the default store) on a Kuwait subdomain. No probe established which Store: value forces the KW store, so no store-view header is pinned for that host and the currency reconciliation is what stops the wrong-currency ship. klinq's 'default' is pinned because it is the value the Shape-B store row already sends and the headerless probe returned BHD.",
+  "_total_count_zero": "No E3 host returned total_count 0. The mapping-miss class is fixtured by tests/fixtures/magento_gql_b3/no_match_empty_control.json (measured on pacoperfumerias.co.uk for an unmapped url_key, B4 sidedoor_probes.json) and is reused by the F2 tests rather than authored again here.",
+  "files": {
+    "arenal_com_200_json_hit_eur.json": {
+      "host": "www.arenal.com",
+      "class": "full hit",
+      "country": "ES",
+      "measured": "HTTP 200, application/json, 226 bytes, 761ms. total_count 1, final_price 51.45 EUR, regular_price 105 EUR (on sale). B4 control - reproduced exactly.",
+      "quirk": "plain slug url_key, PDP path carries no suffix."
+    },
+    "druni_es_200_json_hit_eur.json": {
+      "host": "www.druni.es",
+      "class": "full hit",
+      "country": "ES",
+      "measured": "HTTP 200, application/json, 222 bytes, 757ms. total_count 1, final_price 72.95 EUR, regular_price 125 EUR (on sale).",
+      "quirk": "plain slug url_key, no suffix."
+    },
+    "beautysuccess_fr_200_json_hit_eur.json": {
+      "host": "www.beautysuccess.fr",
+      "class": "full hit",
+      "country": "FR",
+      "measured": "HTTP 200, application/json, 253 bytes, 836ms. total_count 1, final_price 59.5 EUR, regular_price 85 EUR (on sale).",
+      "quirk": "the url_key is the full slug INCLUDING a numeric tail (0911867205) - a numeric TAIL inside a slug is a legitimate url_key, unlike a wholly-numeric last segment. Pins that the numeric-id rejection must not over-reject."
+    },
+    "parfumcenter_nl_200_json_hit_eur.json": {
+      "host": "www.parfumcenter.nl",
+      "class": "full hit",
+      "country": "NL",
+      "measured": "HTTP 200, application/json, 248 bytes, 610ms. total_count 1, final_price 27.95 EUR == regular_price (not on sale).",
+      "quirk": "PDP path ends .html; the url_key is the segment MINUS .html."
+    },
+    "klinq_com_200_json_hit_bhd.json": {
+      "host": "klinq.com",
+      "class": "full hit - genuine BHD",
+      "country": "BH",
+      "measured": "HTTP 200, application/json, 231 bytes, 744ms. total_count 1, final_price 48.13 BHD, regular_price 53.44 BHD (on sale). No store-view header was sent and the response was still BHD.",
+      "quirk": "Gulf/Bahrain; PDP path /en/<key>.html, strip .html. The registry currency for klinq.com is BHD, so the response reconciles and the price ships as the genuine magento_graphql_bhd method. The corpus native price was 47.35 BHD - a store-price drift, not a parse difference."
+    },
+    "ajmal_kwt_200_json_aed_default_store_leak.json": {
+      "host": "en-kwt.ajmal.com",
+      "class": "full hit - WRONG CURRENCY (default store leaked)",
+      "country": "KW",
+      "measured": "HTTP 200, application/json, 234 bytes, 739ms. total_count 1, final_price 105.000001 AED == regular_price. The registry currency for en-kwt.ajmal.com is KWD.",
+      "quirk": "THE GCC MISLABEL CLASS. A Kuwait subdomain answered in AED because no store-view header was sent and the DEFAULT store answered. Converting 105 AED to BHD would ship a number roughly 12x below the real KWD price, correctly labelled, and nothing downstream could tell. The adapter must reconcile the response currency against the registry currency and PEND on a mismatch. Also carries the float artefact 105.000001."
+    },
+    "parfum_zentrum_de_400_json_schema_divergence.json": {
+      "host": "parfum-zentrum.de",
+      "class": "schema divergence",
+      "country": "DE",
+      "measured": "HTTP 400, application/json, 690 bytes, 495ms. Five GraphQL validation errors: url_key is not defined by ProductsFilterInput; total_count / name / sku / price_range cannot be queried on ProductPublicCollection / ProductPublic ('Did you mean seo?').",
+      "quirk": "The endpoint is LIVE and speaks GraphQL - it runs a custom/newer ProductPublic schema with no url_key filter. A 400 is therefore a schema miss, not a transport failure: log it and decline, and never re-issue the same query against the same host."
+    },
+    "douglas_at_404_json_framework.json": {
+      "host": "douglas.at",
+      "class": "no GraphQL endpoint (JSON 404)",
+      "country": "AT",
+      "measured": "HTTP 404, application/json; charset=utf-8, 60 bytes, 264ms. Body {\"statusCode\":404,\"error\":\"Not Found\",\"message\":\"Not Found\"} - a generic framework 404, not a GraphQL envelope.",
+      "quirk": "PROVES the Content-Type gate is not sufficient on its own: this response IS application/json. The data.products shape gate is what rejects it. Also the numeric-id class - douglas PDP paths are /de/p/<numeric-id>, so the last path segment (3001037119) is a product id, not a url_key."
+    },
+    "flaconi_de_404_html_spa_catchall.json": {
+      "host": "flaconi.de",
+      "class": "no GraphQL endpoint (HTML 404)",
+      "country": "DE",
+      "measured": "HTTP 404, text/html; charset=UTF-8, 2,084,007 bytes, 2143ms. The SPA catch-all page - /graphql is not a GraphQL route. Stored body is the first 1500 characters only (body_complete false); the gate needs status + Content-Type, not the body.",
+      "quirk": "2MB of HTML billed as a GraphQL answer. platform=magento was true for this host and the endpoint still does not exist."
+    },
+    "breuninger_com_404_html_oups.json": {
+      "host": "breuninger.com",
+      "class": "no GraphQL endpoint (HTML 404)",
+      "country": "DE",
+      "measured": "HTTP 404, text/html;charset=UTF-8, 663,202 bytes, 1595ms. The 'Oups | Breuninger Online Shop' SPA error page. Stored body is the first 1500 characters only.",
+      "quirk": "Note the Content-Type has NO space after the semicolon - the gate must split on ';' rather than match a literal string. Also the second numeric-id class: breuninger PDP paths are /de/marken/<brand>/<slug>/<id>/p/, so the last segment is the route marker 'p' and the segment before it is a numeric id - neither is a url_key."
+    },
+    "notino_de_403_html_cloudflare.json": {
+      "host": "notino.de",
+      "class": "WAF wall",
+      "country": "DE",
+      "measured": "HTTP 403, text/html; charset=UTF-8, 6,214 bytes, 39ms. The Cloudflare 'Just a moment...' interstitial - served on robots.txt AND on /graphql. curl_cffi impersonate=chrome was not sufficient. Stored body is the first 1500 characters only.",
+      "quirk": "Distinct from a missing endpoint: the host may well run Magento GraphQL behind the wall. Logged as walled so a retry-with-render decision stays possible, and declined all the same."
+    },
+    "dm_de_405_empty_no_ctype.json": {
+      "host": "dm.de",
+      "class": "no GraphQL endpoint (405)",
+      "country": "DE",
+      "measured": "HTTP 405 Method Not Allowed, EMPTY Content-Type, 0 bytes, 390ms.",
+      "quirk": "The /graphql route exists but rejects POST - it is not Magento GraphQL. An empty Content-Type must not be treated as JSON."
+    }
+  }
+}

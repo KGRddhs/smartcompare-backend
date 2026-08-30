@@ -1,0 +1,36 @@
+{
+ "_provenance": "UNIT E3 live probe 2026-08-30 (scratchpad m8/E3/results.json), one Bahrain residential IP, robots-checked, >=2.5s/host throttle.",
+ "host": "klinq.com",
+ "graphql_url": "https://klinq.com/graphql",
+ "url_key_probed": "dior-miss-dior-edp",
+ "status": 200,
+ "content_type": "application/json",
+ "response_bytes": 231,
+ "latency_ms": 744,
+ "body_json": {
+  "data": {
+   "products": {
+    "total_count": 1,
+    "items": [
+     {
+      "name": "Miss Dior EDP",
+      "sku": "dior-miss-dior-edp",
+      "price_range": {
+       "minimum_price": {
+        "final_price": {
+         "value": 48.13,
+         "currency": "BHD"
+        },
+        "regular_price": {
+         "value": 53.44,
+         "currency": "BHD"
+        }
+       }
+      }
+     }
+    ]
+   }
+  }
+ },
+ "body_complete": true
+}

@@ -1,0 +1,12 @@
+{
+ "_provenance": "UNIT E3 live probe 2026-08-30 (scratchpad m8/E3/results.json), one Bahrain residential IP, robots-checked, >=2.5s/host throttle.",
+ "host": "flaconi.de",
+ "graphql_url": "https://www.flaconi.de/graphql",
+ "url_key_probed": "chanel-bleu-de-chanel-eau-de-parfum",
+ "status": 404,
+ "content_type": "text/html; charset=UTF-8",
+ "response_bytes": 2084007,
+ "latency_ms": 2143,
+ "body_text_head": "\n\n\n<!doctype html>\n<html lang=\"de-DE\">\n    <head>\n        <meta charset=\"utf-8\">\n        <meta name=\"viewport\" content=\"width=device-width, initial-scale=1, shrink-to-fit=no, maximum-scale=1, minimum-scale=1.0\">\n\n        <meta data-react-helmet=\"true\" name=\"robots\" content=\"NOINDEX, FOLLOW\"/>\n\n<script data-react-helmet=\"true\" >window.DY = window.DY || {}; DY.recommendationContext = {\"data\":null,\"type\":\"OTHER\",\"lng\":\"de_DE\"}</script>\n<style data-styled=\"true\" data-styled-version=\"6.2.0\">.eZrfya{text-align:center;text-align:left;margin-left:1rem;}/*!sc*/\n@media (min-width:768px){.eZrfya{display:none;}}/*!sc*/\ndata-styled.g27[id=\"Common__MobileContainer-sc-1x1a1bl-4\"]{content:\"eZrfya,\"}/*!sc*/\n@media (min-width:1020px){.ceZwmM{display:none;}}/*!sc*/\ndata-styled.g28[id=\"Common__MobileTabletContainer-sc-1x1a1bl-5\"]{content:\"ceZwmM,\"}/*!sc*/\n.hWIoXb{display:none;}/*!sc*/\n@media (min-width:768px){.hWIoXb{display:block;}}/*!sc*/\ndata-styled.g29[id=\"Common__DesktopContainer-sc-1x1a1bl-6\"]{content:\"hWIoXb,\"}/*!sc*/\n.mb-4{margin-bottom:0.25rem;}/*!sc*/\n.mb-8{margin-bottom:0.5rem;}/*!sc*/\n.mb-12{margin-bottom:0.75rem;}/*!sc*/\n.mb-16{margin-bottom:1rem;}/*!sc*/\n.mb-24{margin-bottom:1.5rem;}/*!sc*/\n.mb-32{margin-bottom:2rem;}/*!sc*/\n.mb-40{margin-bottom:2.5rem;}/*!sc*/\n.mb-48{margin-bottom:3rem;}/*!sc*/\n.mb-64{margin-bottom:4rem;}/*!sc*/\n.mb-80{margin-bottom:5rem;}/*!sc*/\n.mb-120{margin-bottom:7.5rem;}/*!sc*/\n.mt-4{margin-top:0.25rem;}/*!sc*/\n.mt-8{margin-top:0.5rem;}/*!sc*/\n.mt-12{margin-",
+ "body_complete": false
+}

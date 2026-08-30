@@ -71,17 +71,39 @@ def _bypass_plausibility(monkeypatch):
 
 
 def _patch_router(monkeypatch, routes=ROUTES):
-    """Monkeypatch the _post_graphql transport seam. Records every (url, url_key)
-    call and answers from the fixture keyed by the ``urlKey`` variable."""
+    """Monkeypatch the Shape-C transport seam. Records every (url, url_key) call
+    and answers from the fixture keyed by the ``urlKey`` variable.
+
+    UNIT M9 F2 moved the Shape-C seam one layer down — from ``_post_graphql``
+    (which collapses every non-200 into None) to ``_raw_post_json``, which hands
+    back the status + Content-Type the E3 response-trust ladder needs. The stub
+    therefore answers with a raw record (200 / application/json / body text) so
+    the REAL ladder runs over these fixtures; a missing route stays a transport
+    failure (None), exactly as before. ``_post_graphql`` is still stubbed so the
+    Shape-A/B seam can never reach the network from this file either. Every
+    assertion below is unchanged."""
     calls = []
 
     async def fake_post(url, query, variables, headers):
         calls.append((url, variables.get("urlKey")))
-        # Pin the query shape: it must be the url_key filter, variable-driven.
         assert "url_key" in query and "$urlKey" in query
         return routes.get(variables.get("urlKey"))
 
+    async def fake_raw_post(url, body, headers):
+        parsed = json.loads(body)
+        url_key = (parsed.get("variables") or {}).get("urlKey")
+        calls.append((url, url_key))
+        # Pin the query shape: it must be the url_key filter, variable-driven.
+        query = parsed.get("query") or ""
+        assert "url_key" in query and "$urlKey" in query
+        payload = routes.get(url_key)
+        if payload is None:
+            return None  # transport failure
+        return {"status": 200, "ctype": "application/json",
+                "text": json.dumps(payload)}
+
     monkeypatch.setattr(mg, "_post_graphql", fake_post)
+    monkeypatch.setattr(mg, "_raw_post_json", fake_raw_post)
     return calls
 
 

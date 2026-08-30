@@ -1,0 +1,12 @@
+{
+ "_provenance": "UNIT E3 live probe 2026-08-30 (scratchpad m8/E3/results.json), one Bahrain residential IP, robots-checked, >=2.5s/host throttle.",
+ "host": "dm.de",
+ "graphql_url": "https://www.dm.de/graphql",
+ "url_key_probed": "christina-aguilera-xtina-eau-de-parfum",
+ "status": 405,
+ "content_type": "",
+ "response_bytes": 0,
+ "latency_ms": 390,
+ "body_text_head": "",
+ "body_complete": true
+}

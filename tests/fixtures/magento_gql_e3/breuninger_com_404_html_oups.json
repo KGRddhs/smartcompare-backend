@@ -1,0 +1,12 @@
+{
+ "_provenance": "UNIT E3 live probe 2026-08-30 (scratchpad m8/E3/results.json), one Bahrain residential IP, robots-checked, >=2.5s/host throttle.",
+ "host": "breuninger.com",
+ "graphql_url": "https://www.breuninger.com/graphql",
+ "url_key_probed": "alto-astral",
+ "status": 404,
+ "content_type": "text/html;charset=UTF-8",
+ "response_bytes": 663202,
+ "latency_ms": 1595,
+ "body_text_head": "<!DOCTYPE html><html class=\"shop-html suchen-html\" lang=\"de-DE\"><head><meta charset=\"utf-8\"><meta name=viewport content=\"width=device-width,initial-scale=1\"><title>Oups | Breuninger Online Shop</title><script>window.Modernizr = { picture: true };</script><script>window.dataLayer = window.dataLayer || [];</script><script>window.CubeDataLayer = window.CubeDataLayer || [];</script><style>@layer base, layout, component, override;@layer base{*,:after,:before{-webkit-box-sizing:border-box;box-sizing:border-box;margin:0;padding:0;border:0}html{line-height:1.5;-webkit-text-size-adjust:100%;-moz-tab-size:4;-o-tab-size:4;tab-size:4;font-family:Helvetica,Arial,sans-serif;-webkit-font-feature-settings:normal;font-feature-settings:normal;font-variation-settings:normal}body{margin:0;line-height:inherit}hr{height:0;color:inherit;border-top-width:1px}abbr:where([title]){-webkit-text-decoration:underline dotted;text-decoration:underline;text-decoration:underline dotted;border-bottom:none}h1,h2,h3,h4,h5,h6{font-size:inherit;font-weight:inherit}a{color:inherit;text-decoration:inherit}b,strong{font-weight:500}code,kbd,pre,samp{font-family:monospace;font-size:1em}small{font-size:80%}sub,sup{font-size:75%;line-height:0;position:relative;vertical-align:baseline;vertical-align:initial}sub{bottom:-.25em}sup{top:-.5em}table{text-indent:0;border-color:inherit;border-collapse:collapse}button,input,optgroup,select,textarea{font-family:inherit;font-size:100%;font-weight:inherit;line-height:inherit;color:i",
+ "body_complete": false
+}

@@ -1,0 +1,36 @@
+{
+ "_provenance": "UNIT E3 live probe 2026-08-30 (scratchpad m8/E3/results.json), one Bahrain residential IP, robots-checked, >=2.5s/host throttle.",
+ "host": "www.beautysuccess.fr",
+ "graphql_url": "https://www.beautysuccess.fr/graphql",
+ "url_key_probed": "parfum-geoffrey-beene-grey-flannel-eau-de-toilette-homme-0911867205",
+ "status": 200,
+ "content_type": "application/json",
+ "response_bytes": 253,
+ "latency_ms": 836,
+ "body_json": {
+  "data": {
+   "products": {
+    "total_count": 1,
+    "items": [
+     {
+      "name": "Grey flannel Eau de Toilette Vaporisateur 120ml",
+      "sku": "0911867205",
+      "price_range": {
+       "minimum_price": {
+        "final_price": {
+         "value": 59.5,
+         "currency": "EUR"
+        },
+        "regular_price": {
+         "value": 85,
+         "currency": "EUR"
+        }
+       }
+      }
+     }
+    ]
+   }
+  }
+ },
+ "body_complete": true
+}

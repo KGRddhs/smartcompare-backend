@@ -1,0 +1,60 @@
+{
+ "_provenance": "UNIT E3 live probe 2026-08-30 (scratchpad m8/E3/results.json), one Bahrain residential IP, robots-checked, >=2.5s/host throttle.",
+ "host": "parfum-zentrum.de",
+ "graphql_url": "https://www.parfum-zentrum.de/graphql",
+ "url_key_probed": "calvin-klein-contradiction-for-women-eau-de-parfum-100-ml-woman_z24",
+ "status": 400,
+ "content_type": "application/json",
+ "response_bytes": 690,
+ "latency_ms": 495,
+ "body_json": {
+  "errors": [
+   {
+    "message": "Field \"url_key\" is not defined by type \"ProductsFilterInput\".",
+    "locations": [
+     {
+      "line": 1,
+      "column": 19
+     }
+    ]
+   },
+   {
+    "message": "Cannot query field \"total_count\" on type \"ProductPublicCollection\".",
+    "locations": [
+     {
+      "line": 1,
+      "column": 104
+     }
+    ]
+   },
+   {
+    "message": "Cannot query field \"name\" on type \"ProductPublic\".",
+    "locations": [
+     {
+      "line": 1,
+      "column": 122
+     }
+    ]
+   },
+   {
+    "message": "Cannot query field \"sku\" on type \"ProductPublic\". Did you mean \"seo\"?",
+    "locations": [
+     {
+      "line": 1,
+      "column": 127
+     }
+    ]
+   },
+   {
+    "message": "Cannot query field \"price_range\" on type \"ProductPublic\".",
+    "locations": [
+     {
+      "line": 1,
+      "column": 131
+     }
+    ]
+   }
+  ]
+ },
+ "body_complete": true
+}

@@ -1,0 +1,36 @@
+{
+ "_provenance": "UNIT E3 live probe 2026-08-30 (scratchpad m8/E3/results.json), one Bahrain residential IP, robots-checked, >=2.5s/host throttle.",
+ "host": "www.arenal.com",
+ "graphql_url": "https://www.arenal.com/graphql",
+ "url_key_probed": "gentleman-society-ambree-givenchy-eau-parfum-hombre",
+ "status": 200,
+ "content_type": "application/json",
+ "response_bytes": 226,
+ "latency_ms": 761,
+ "body_json": {
+  "data": {
+   "products": {
+    "total_count": 1,
+    "items": [
+     {
+      "name": "Gentleman Society Ambree",
+      "sku": "9411",
+      "price_range": {
+       "minimum_price": {
+        "final_price": {
+         "value": 51.45,
+         "currency": "EUR"
+        },
+        "regular_price": {
+         "value": 105,
+         "currency": "EUR"
+        }
+       }
+      }
+     }
+    ]
+   }
+  }
+ },
+ "body_complete": true
+}

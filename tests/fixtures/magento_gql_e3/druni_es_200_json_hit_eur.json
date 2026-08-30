@@ -1,0 +1,36 @@
+{
+ "_provenance": "UNIT E3 live probe 2026-08-30 (scratchpad m8/E3/results.json), one Bahrain residential IP, robots-checked, >=2.5s/host throttle.",
+ "host": "www.druni.es",
+ "graphql_url": "https://www.druni.es/graphql",
+ "url_key_probed": "one-million-estuche-paco-rabanne-eau-toilette-vaporizador",
+ "status": 200,
+ "content_type": "application/json",
+ "response_bytes": 222,
+ "latency_ms": 757,
+ "body_json": {
+  "data": {
+   "products": {
+    "total_count": 1,
+    "items": [
+     {
+      "name": "Cofre One Million",
+      "sku": "1612029",
+      "price_range": {
+       "minimum_price": {
+        "final_price": {
+         "value": 72.95,
+         "currency": "EUR"
+        },
+        "regular_price": {
+         "value": 125,
+         "currency": "EUR"
+        }
+       }
+      }
+     }
+    ]
+   }
+  }
+ },
+ "body_complete": true
+}

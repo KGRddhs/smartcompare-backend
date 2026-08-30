@@ -1,0 +1,36 @@
+{
+ "_provenance": "UNIT E3 live probe 2026-08-30 (scratchpad m8/E3/results.json), one Bahrain residential IP, robots-checked, >=2.5s/host throttle.",
+ "host": "www.parfumcenter.nl",
+ "graphql_url": "https://www.parfumcenter.nl/graphql",
+ "url_key_probed": "lattafa-yara-moi-100ml-eau-de-parfum-spray",
+ "status": 200,
+ "content_type": "application/json",
+ "response_bytes": 248,
+ "latency_ms": 610,
+ "body_json": {
+  "data": {
+   "products": {
+    "total_count": 1,
+    "items": [
+     {
+      "name": "Lattafa Yara Moi 100ml eau de parfum spray",
+      "sku": "lym100",
+      "price_range": {
+       "minimum_price": {
+        "final_price": {
+         "value": 27.95,
+         "currency": "EUR"
+        },
+        "regular_price": {
+         "value": 27.95,
+         "currency": "EUR"
+        }
+       }
+      }
+     }
+    ]
+   }
+  }
+ },
+ "body_complete": true
+}

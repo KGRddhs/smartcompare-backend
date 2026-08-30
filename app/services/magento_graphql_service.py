@@ -216,13 +216,91 @@ def magento_gql_adapter_enabled() -> bool:
 
 # Hosts (www-stripped apex) known to answer the url_key filter shape. Pinned so
 # the fallback never blind-POSTs ``/graphql`` at an arbitrary Serper-discovered
-# host — the exact same host-pin discipline as _MAGENTO_STORES. All three were
-# measured live 3/3 by B4.
+# host — the exact same host-pin discipline as _MAGENTO_STORES. The first three
+# were measured live 3/3 by B4; the rest were measured live by UNIT E3
+# (2026-08-30, 12 hosts, one Bahrain residential IP, robots-checked, >=2.5s/host
+# throttle, guest request with no auth header) — each answered HTTP 200 with an
+# ``application/json`` Content-Type and ``total_count: 1``.
+#
+# E3 also proves the pin is load-bearing rather than decorative: 6 of the 12
+# candidates run Magento by every other tell and STILL have no GraphQL route
+# (flaconi.de + breuninger.com serve a multi-MB HTML SPA 404, douglas.at a
+# framework JSON 404, dm.de a 405), one runs a divergent schema
+# (parfum-zentrum.de, HTTP 400), and one sits behind a Cloudflare wall
+# (notino.de, 403). None of those is pinned, and the response-trust ladder below
+# would decline them even if a future row added one by mistake.
 _MAGENTO_GQL_URLKEY_HOSTS: frozenset = frozenset({
     "arenal.com",
     "jomashop.com",
     "pacoperfumerias.co.uk",
+    # --- UNIT E3, measured live 2026-08-30 ---
+    "druni.es",              # 200 json, 72.95/125 EUR, plain slug url_key
+    "beautysuccess.fr",      # 200 json, 59.5/85 EUR, slug ENDS IN DIGITS
+    "parfumcenter.nl",       # 200 json, 27.95 EUR, PDP path ends .html
+    "klinq.com",             # 200 json, 48.13/53.44 BHD — genuine BHD
+    "en-kwt.ajmal.com",      # 200 json, but AED on a KW subdomain (see meta)
 })
+
+# Per-host Shape-C metadata. Populated ONLY with measured values — a guessed
+# store code is a wrong-currency ship, which is the exact failure this table
+# exists to stop.
+#
+#   ``store_view``  the ``Store:`` header value to send. Magento multi-store
+#                   answers from its DEFAULT store view when the header is
+#                   absent, and a GCC storefront's default is frequently NOT the
+#                   country the subdomain advertises.
+#   ``currency``    the currency the registry says this storefront trades in.
+#                   The response currency is reconciled against it and a
+#                   mismatch PENDs (see _expected_currency_for).
+#
+# klinq: E3 sent NO store-view header and still got BHD, and ``default`` is the
+# value the Shape-B store row has been sending all along — so it is measured-safe
+# to send. en-kwt.ajmal.com: E3 sent no header and the DEFAULT store answered in
+# AED on a Kuwait subdomain (105.000001 AED). Which ``Store:`` value forces the
+# KW store was NOT established by any probe, so NO header is pinned here — the
+# Shape-B row's ``default`` is precisely the leaking one. The currency
+# reconciliation is what stops that response, not a guessed header.
+_MAGENTO_GQL_HOST_META: Dict[str, Dict[str, str]] = {
+    "klinq.com": {"store_view": "default", "currency": "BHD"},
+    "en-kwt.ajmal.com": {"currency": "KWD"},
+}
+
+
+def _magento_gql_store_view_for(apex: str) -> str:
+    """The measured ``Store:`` header value for a pinned Shape-C host, or "" when
+    none is known (→ no header is sent; never a guessed store code)."""
+    meta = _MAGENTO_GQL_HOST_META.get(apex) or {}
+    return str(meta.get("store_view") or "").strip()
+
+
+def _expected_currency_for(apex: str) -> str:
+    """The currency this storefront is EXPECTED to answer in, upper-cased, or ""
+    when no expectation is recorded.
+
+    Pinned meta first, then the source registry's own ``Source.currency`` field.
+    The registry lookup is EXACT-match on the www-stripped domain — deliberately
+    NOT the suffix match ``registry_tier``/``score_source`` use, because currency
+    is exactly the attribute a regional subdomain does not inherit from its apex
+    (``en-kwt.ajmal.com`` is KWD while ``en-bh.ajmal.com`` is BHD).
+
+    "" means no reconciliation runs, so a host the registry does not describe
+    behaves exactly as it does today rather than being blanket-rejected."""
+    meta = _MAGENTO_GQL_HOST_META.get(apex) or {}
+    pinned = str(meta.get("currency") or "").strip()
+    if pinned:
+        return pinned.upper()
+    try:
+        from app.services.source_router import SOURCE_REGISTRY
+        for src in SOURCE_REGISTRY:
+            domain = (getattr(src, "domain", "") or "").lower()
+            if domain.startswith("www."):
+                domain = domain[4:]
+            if domain and domain == apex:
+                cur = (getattr(src, "currency", "") or "").strip()
+                return cur.upper()
+    except Exception:  # noqa: BLE001 — registry is advisory; never crash a fetch
+        pass
+    return ""
 
 # Shape C — url_key filter. The price_range shape is IDENTICAL to Shape B's
 # minimum_price.final_price/regular_price, so _shape_b_items / _shape_b_price_node
@@ -262,6 +340,46 @@ def _url_key_from_url(url: str) -> str:
     seg = unquote(segs[-1])
     if seg.lower().endswith(".html"):
         seg = seg[: -len(".html")]
+    return seg
+
+
+# UNIT E3 measured that url_key derivation is per-host FRAGILE, and that the two
+# ways it goes wrong are both structural, not textual:
+#
+#   douglas.at     PDP path /de/p/<numeric-id>  → the last segment (3001037119)
+#                  is a product id, not a slug.
+#   breuninger.com PDP path /de/marken/<brand>/<slug>/<id>/p/ → the last segment
+#                  is the route marker "p" and the one before it is a numeric id.
+#
+# Sending either as a ``url_key`` filter buys a guaranteed total_count 0 that
+# then looks like a mapping miss and pollutes the channel's own diagnostics. So
+# the Shape-C path declines BEFORE the POST.
+#
+# The rejection is deliberately narrow — beautysuccess.fr's REAL, working
+# url_key is ``parfum-geoffrey-beene-grey-flannel-eau-de-toilette-homme-0911867205``,
+# a slug that ENDS in ten digits. Only a WHOLLY numeric segment is an id.
+_URL_KEY_NUMERIC_ID_RE = re.compile(r"^\d{3,}$")
+# Route markers measured as a PDP path tail. Kept to what E3 actually saw rather
+# than a speculative list — an unknown marker simply falls through and, at worst,
+# costs one url_key miss that logs as a mapping miss.
+_URL_KEY_ROUTE_MARKERS: frozenset = frozenset({"p"})
+
+
+def _url_key_from_url_strict(url: str) -> str:
+    """``_url_key_from_url`` plus the E3 not-a-url_key rejections. Returns "" when
+    the path does not end in something that can be a Magento ``url_key`` — a
+    wholly-numeric product id, or a route-marker tail. The caller emits no POST
+    on "".
+
+    Shape-C only. ``_url_key_from_url`` itself is left byte-unchanged because the
+    B4 jomashop persisted-query path and its pins depend on its exact behaviour."""
+    seg = _url_key_from_url(url)
+    if not seg:
+        return ""
+    if seg.lower() in _URL_KEY_ROUTE_MARKERS:
+        return ""
+    if _URL_KEY_NUMERIC_ID_RE.match(seg):
+        return ""
     return seg
 
 
@@ -417,6 +535,201 @@ async def _post_graphql(
         return resp.json()
     except Exception:  # noqa: BLE001 — non-JSON body → miss
         return None
+
+
+# ---------------------------------------------------------------------------
+# UNIT M9 F2 — the Shape-C response-trust ladder (ENABLE_MAGENTO_GQL_ADAPTER)
+# ---------------------------------------------------------------------------
+# ``_post_graphql`` above collapses every non-200 into a bare ``None``, which is
+# enough for Shape A/B (both are phrase searches against hosts whose endpoint is
+# already proven) but throws away exactly the information UNIT E3 showed the
+# URL-driven Shape-C path needs. E3's six misses are six DIFFERENT things:
+#
+#   404 text/html   flaconi.de (2,084,007 bytes) / breuninger.com (663,202) —
+#                   the SPA catch-all. /graphql is not a route at all.
+#   404 application/json  douglas.at, 60 bytes: {"statusCode":404,...}. A generic
+#                   framework 404 that IS valid JSON — which is why a
+#                   Content-Type check alone cannot be the gate.
+#   405 (no ctype)  dm.de, 0 bytes. The route exists and rejects POST.
+#   403 text/html   notino.de. A Cloudflare interstitial — the endpoint may well
+#                   exist behind the wall, so this is not "no endpoint".
+#   400 application/json  parfum-zentrum.de, five GraphQL validation errors. The
+#                   endpoint is LIVE and speaks GraphQL under a custom
+#                   ProductPublic schema with no url_key filter. Re-issuing the
+#                   same query can only produce the same 400.
+#   200 + total_count 0   a live endpoint that does not carry THIS key. The
+#                   channel is healthy; the mapping is not.
+#
+# So the rule E3 specifies: trust a response only when it is BOTH a JSON
+# Content-Type AND a ``data.products`` envelope, and keep every rejection reason
+# distinguishable in the log so a mapping miss is never read as a dead channel.
+_GQL_OK = "ok"
+_GQL_MAPPING_MISS = "mapping_miss"
+_GQL_TRANSPORT = "transport_error"
+_GQL_SCHEMA_MISS = "schema_miss"
+_GQL_WALLED = "walled"
+_GQL_NO_ENDPOINT = "no_endpoint"
+_GQL_NOT_JSON = "not_json_ctype"
+_GQL_BAD_SHAPE = "not_products_shape"
+
+# Content-Types that count as a GraphQL JSON answer. Compared on the media type
+# only — breuninger sends ``text/html;charset=UTF-8`` with NO space after the
+# semicolon and douglas sends ``application/json; charset=utf-8`` with one, so
+# the split is mandatory and a literal comparison is not safe.
+_GQL_JSON_CTYPES: frozenset = frozenset({
+    "application/json",
+    "application/graphql-response+json",
+    "application/graphql+json",
+})
+
+# 403 measured on notino.de (Cloudflare interstitial served on robots.txt AND on
+# /graphql; curl_cffi impersonate=chrome was not enough). 429 is grouped with it
+# as the same "the host is refusing us, not missing the route" class — not
+# separately measured here, and the only consequence is which log line prints.
+_GQL_WALLED_STATUSES: frozenset = frozenset({403, 429})
+
+
+def _is_gql_json_ctype(ctype: Optional[str]) -> bool:
+    """True iff the Content-Type header names a GraphQL/JSON media type."""
+    if not ctype:
+        return False
+    return str(ctype).split(";")[0].strip().lower() in _GQL_JSON_CTYPES
+
+
+def _has_products_shape(payload: Any) -> bool:
+    """True iff the parsed body is a ``{"data": {"products": {...}}}`` envelope —
+    the shape the url_key query asks for. douglas.at's ``{"statusCode":404,...}``
+    is valid JSON and fails here, which is the point."""
+    if not isinstance(payload, dict):
+        return False
+    data = payload.get("data")
+    if not isinstance(data, dict):
+        return False
+    return isinstance(data.get("products"), dict)
+
+
+def _classify_gql_response(
+    status: Optional[int], ctype: Optional[str], payload: Any,
+) -> str:
+    """Classify one Shape-C response into exactly one outcome. Pure; no I/O.
+
+    Ordered so the cheapest and most specific rung fires first: a 400 is a schema
+    miss regardless of body, a wall is distinguished from a missing route, and
+    only a 200 that is BOTH JSON-typed and products-shaped can reach ``ok``."""
+    if status is None or not isinstance(status, int) or status < 0:
+        return _GQL_TRANSPORT
+    if status == 400:
+        return _GQL_SCHEMA_MISS
+    if status in _GQL_WALLED_STATUSES:
+        return _GQL_WALLED
+    if status != 200:
+        return _GQL_NO_ENDPOINT
+    if not _is_gql_json_ctype(ctype):
+        return _GQL_NOT_JSON
+    if not _has_products_shape(payload):
+        return _GQL_BAD_SHAPE
+    total = payload["data"]["products"].get("total_count")
+    if isinstance(total, int) and not isinstance(total, bool) and total == 0:
+        # The channel answered correctly; this key is simply not mapped here.
+        return _GQL_MAPPING_MISS
+    return _GQL_OK
+
+
+async def _raw_post_json(
+    url: str, body: str, headers: Dict[str, str],
+) -> Optional[Dict[str, Any]]:
+    """The ONE network seam of the hardened Shape-C path. POST ``body`` and return
+    ``{"status", "ctype", "text"}``, or ``None`` on a transport failure. Never
+    raises. Kept separate from ``_post_graphql`` so the status + Content-Type the
+    ladder needs survive, and so the tests have a single offline seam."""
+    try:
+        from curl_cffi import requests as curl_requests
+        resp = await asyncio.to_thread(
+            lambda: curl_requests.post(
+                url,
+                data=body,
+                headers=headers,
+                impersonate="chrome",
+                timeout=_HTTP_TIMEOUT,
+                allow_redirects=True,
+            )
+        )
+    except Exception as exc:  # noqa: BLE001 — fetch error is a miss, never a crash
+        logger.info("[MAGENTO] graphql POST failed for %s: %s", url, exc)
+        return None
+    try:
+        text = resp.text
+    except Exception:  # noqa: BLE001 — undecodable body → treat as empty
+        text = ""
+    try:
+        ctype = resp.headers.get("content-type", "") or ""
+    except Exception:  # noqa: BLE001
+        ctype = ""
+    return {"status": resp.status_code, "ctype": ctype, "text": text}
+
+
+async def _post_graphql_typed(
+    url: str, query: str, variables: Dict[str, Any], headers: Dict[str, str],
+) -> "tuple[Optional[Dict[str, Any]], str]":
+    """POST a GraphQL query and return ``(payload_or_None, outcome)`` where
+    ``outcome`` is one of the ``_GQL_*`` constants. The payload is handed back
+    ONLY when the response cleared the whole trust ladder. Never raises."""
+    raw = await _raw_post_json(
+        url, json.dumps({"query": query, "variables": variables}), headers,
+    )
+    if raw is None:
+        return None, _GQL_TRANSPORT
+    ctype = raw.get("ctype") or ""
+    payload: Any = None
+    if _is_gql_json_ctype(ctype):
+        try:
+            payload = json.loads(raw.get("text") or "")
+        except Exception:  # noqa: BLE001 — JSON-typed but unparseable → bad shape
+            payload = None
+    outcome = _classify_gql_response(raw.get("status"), ctype, payload)
+    if outcome == _GQL_OK:
+        return payload, outcome
+    return None, outcome
+
+
+def _log_shape_c_outcome(apex: str, url_key: str, outcome: str) -> None:
+    """One distinguishable line per declined outcome. A MAPPING miss must never
+    read like a dead channel — that distinction is what tells a future sweep
+    whether to re-derive the url_key or drop the host from the pin set."""
+    if outcome == _GQL_MAPPING_MISS:
+        logger.info(
+            "[MAGENTO] %s url_key MAPPING miss (total_count 0) for url_key=%s — "
+            "channel live, key unmapped", apex, url_key,
+        )
+    elif outcome == _GQL_SCHEMA_MISS:
+        logger.info(
+            "[MAGENTO] %s HTTP 400 schema miss for url_key=%s — store runs a "
+            "divergent GraphQL schema; declining WITHOUT retry", apex, url_key,
+        )
+    elif outcome == _GQL_WALLED:
+        logger.info(
+            "[MAGENTO] %s graphql walled (WAF challenge) for url_key=%s — the "
+            "endpoint may exist behind the wall", apex, url_key,
+        )
+    elif outcome == _GQL_NOT_JSON:
+        logger.info(
+            "[MAGENTO] %s graphql answered a non-JSON content-type for "
+            "url_key=%s — not a GraphQL endpoint", apex, url_key,
+        )
+    elif outcome == _GQL_BAD_SHAPE:
+        logger.info(
+            "[MAGENTO] %s graphql answered JSON with no data.products envelope "
+            "for url_key=%s — not Magento GraphQL", apex, url_key,
+        )
+    elif outcome == _GQL_TRANSPORT:
+        logger.info(
+            "[MAGENTO] %s graphql transport failure for url_key=%s", apex, url_key,
+        )
+    else:
+        logger.info(
+            "[MAGENTO] %s no GraphQL endpoint (non-200) for url_key=%s",
+            apex, url_key,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -922,7 +1235,27 @@ async def fetch_magento_graphql_url_price(
     ``magento_gql_adapter_enabled()`` (ENABLE_MAGENTO_GQL_ADAPTER, default OFF)
     AND the host is one of ``_MAGENTO_GQL_URLKEY_HOSTS``. Returns a price dict or
     ``None`` on miss / wrong-brand-only / non-pinned host / flag-OFF / error.
-    NEVER raises."""
+    NEVER raises.
+
+    UNIT M9 F2 hardened the path against the failure classes UNIT E3 measured at
+    scale (real hit-rate 6/12; the misses are structured, not random):
+
+      * the url_key is derived STRICTLY — a wholly-numeric product id
+        (douglas.at ``/de/p/<id>``) or a route-marker tail
+        (breuninger.com ``/<id>/p/``) declines before any POST is spent;
+      * the response must clear the whole trust ladder — a JSON Content-Type AND
+        a ``data.products`` envelope — because douglas.at's framework 404 is
+        valid JSON and flaconi/breuninger's SPA 404s are megabytes of HTML;
+      * an HTTP 400 is a SCHEMA miss (parfum-zentrum.de runs a custom
+        ProductPublic schema with no url_key filter): logged and declined, and
+        the same query is never re-issued at that host;
+      * ``total_count: 0`` logs as a MAPPING miss — the channel is alive and the
+        key is unmapped — never as a dead channel;
+      * the store-view header is sent where a measured value exists, and the
+        response currency is RECONCILED against the registry currency. A
+        mismatch (en-kwt.ajmal.com answered AED on a Kuwait subdomain because
+        the default store leaked) PENDS instead of shipping a correctly-labelled
+        wrong number."""
     if not (ENABLE_PAGE_SCRAPE and magento_gql_adapter_enabled()):
         return None
 
@@ -936,14 +1269,34 @@ async def fetch_magento_graphql_url_price(
     if apex not in _MAGENTO_GQL_URLKEY_HOSTS:
         return None
 
-    url_key = _url_key_from_url(url)
+    # M9 F2 — reject a path that cannot end in a url_key (numeric product id /
+    # route-marker tail) BEFORE spending the POST. See _url_key_from_url_strict.
+    url_key = _url_key_from_url_strict(url)
     if not url_key:
+        logger.info(
+            "[MAGENTO] %s path does not end in a url_key (numeric id / route "
+            "marker) — no POST for %s", apex, url,
+        )
         return None
 
     headers = {"Content-Type": "application/json", "Accept": "application/json"}
-    payload = await _post_graphql(
+    # M9 F2 — send the store-view header ONLY where a measured-correct value
+    # exists. Magento answers from its DEFAULT store view without one, which is
+    # how a Kuwait subdomain came back in AED.
+    store_view = _magento_gql_store_view_for(apex)
+    if store_view:
+        headers["Store"] = store_view
+
+    payload, outcome = await _post_graphql_typed(
         f"https://{host}/graphql", _SHAPE_C_URLKEY_QUERY, {"urlKey": url_key}, headers,
     )
+    if outcome != _GQL_OK:
+        # Every non-ok outcome declines here, and each logs distinguishably. In
+        # particular a 400 is a SCHEMA miss: the same query cannot succeed at
+        # this host, so it is never re-issued.
+        _log_shape_c_outcome(apex, url_key, outcome)
+        return None
+
     # Reuse the Shape-B parser — the price_range.minimum_price shape is identical.
     # No brand_field (these are multi-brand storefronts, not own-brand stores), so
     # brand="" → legacy strict matching.
@@ -955,6 +1308,24 @@ async def fetch_magento_graphql_url_price(
     ]
     node = _best_match(nodes, product_name, resolved_category=resolved_category)
     if not node:
+        return None
+
+    # M9 F2 — CURRENCY RECONCILIATION. E3 measured en-kwt.ajmal.com answering
+    # 105.000001 AED for a Kuwait storefront the registry records as KWD: the
+    # default store leaked. Nothing downstream can catch that — the amount is
+    # real, the label is real, and _finalize_magento_price would convert it into
+    # a perfectly-formatted BHD figure roughly 12x below the true price. So when
+    # the registry states an expectation and the response disagrees, the price
+    # PENDS (None) and the cascade continues, exactly as a strict-label failure
+    # does. No expectation recorded → no reconciliation → today's behaviour.
+    expected = _expected_currency_for(apex)
+    got = str(node.get("currency") or "").upper()
+    if expected and got and got != expected:
+        logger.info(
+            "[MAGENTO] %s currency reconciliation FAILED for url_key=%s: response "
+            "%s vs registry %s (default store view leaked) — PENDING, not shipping",
+            apex, url_key, got, expected,
+        )
         return None
 
     return _finalize_magento_price(node, host, url, product_name, currency)
