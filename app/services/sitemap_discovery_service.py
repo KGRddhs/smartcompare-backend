@@ -98,6 +98,83 @@ _MAX_BUCKET_PROBES = 3
 _PDP_PATH_MARKERS = ("/products/", "/p/")
 _NON_PDP_MARKERS = ("/collections/", "/categories/", "/brands/", "/category/")
 
+# --- ENABLE_SITEMAP_PDP_MARKERS_V2 recognizer (M6 C2) ----------------------
+# The shipped markers see only Shopify /products/ and the bolo/boutiqaat /p/, so
+# WooCommerce /product/ (singular), Magento <slug>.html, and the Salla
+# /{slug}/p{id} shape index ZERO real PDPs (M5: 5/12 hosts), while reef's
+# /p/{static-page} CONTENT pages get indexed as false PDPs. V2 generalizes
+# recognition. Default OFF — it changes what the OFF-CLOCK builder indexes (a new
+# capability), and the whole sitemap channel is already gated by
+# ENABLE_SITEMAP_INDEX; flag-OFF is byte-identical to the shipped recognition.
+
+# WooCommerce singular product marker. Distinct from the Shopify /products/
+# marker: "/products/" contains the substring "/product" but NOT "/product/"
+# (the char after "product" is "s", not "/"), so the two never collide.
+_WOO_PDP_MARKER = "/product/"
+
+# Salla PDP shape: /{slug}/p{numeric-id} — the FINAL path segment is p<digits>
+# (reef: /en/reef-33/p1243364177). The shipped /p/ marker does not match it (no
+# slash after the p), and reef's /p/{static} content pages wrongly do.
+_SALLA_PDP_RE = re.compile(r"/p\d+/?$")
+
+# Magento PDP heuristic: a .html (or .htm) leaf that is NOT a known non-PDP path
+# (klinq: /en/dior-miss-dior-edp.html). Deliberately permissive per M5 — the
+# whole channel is gated OFF and a few category .html over-inclusions add only
+# bucket noise the matcher never resolves to a real product query.
+_HTML_LEAF_RE = re.compile(r"\.html?$")
+
+# Curated content-page stoplist for the /p/{static-page} class. Salla and similar
+# platforms serve CMS pages under /p/{about|locations|...}; these match the broad
+# /p/ marker but are NOT products. A curated list (NOT a general "/p/ + non-digit"
+# rule) so genuine /p/ PDPs (bolo/boutiqaat, where p is the TRAILING segment) are
+# never over-excluded.
+_P_CONTENT_STOPWORDS = frozenset(
+    {
+        "about",
+        "about-us",
+        "aboutus",
+        "contact",
+        "contact-us",
+        "contactus",
+        "locations",
+        "location",
+        "stores",
+        "store",
+        "branches",
+        "terms",
+        "terms-and-conditions",
+        "terms-conditions",
+        "privacy",
+        "privacy-policy",
+        "policy",
+        "policies",
+        "faq",
+        "faqs",
+        "shipping",
+        "shipping-policy",
+        "returns",
+        "return-policy",
+        "refund",
+        "refund-policy",
+        "delivery",
+        "blog",
+        "news",
+        "careers",
+        "jobs",
+        "sitemap",
+        "help",
+        "support",
+        "wholesale",
+        "franchise",
+        "sales-wholesale-franchise",
+        "warranty",
+        "loyalty",
+        "rewards",
+        "gift-card",
+        "gift-cards",
+    }
+)
+
 # Sitemaps namespace the elements: {http://www.sitemaps.org/schemas/sitemap/0.9}.
 # Strip any namespace so the tag-name checks are robust to the xmlns.
 _NS_RE = re.compile(r"\{[^}]*\}")
@@ -151,10 +228,69 @@ def _iter_locs(xml_text: str):
                 yield text
 
 
+def pdp_markers_v2_enabled() -> bool:
+    """True iff the generalized builder PDP-URL recognizer is active (default OFF).
+
+    Read PER CALL from ``os.getenv`` (copying ``price_service.exact_gate_enabled``);
+    flag-OFF ``_is_pdp_url`` is byte-identical to the shipped Shopify + ``/p/``
+    recognition. Scoped to the OFF-CLOCK builder path — it only changes what
+    ``build_sitemap_index`` indexes; the whole sitemap channel is separately gated
+    by ``ENABLE_SITEMAP_INDEX``."""
+    return os.getenv("ENABLE_SITEMAP_PDP_MARKERS_V2", "").strip().lower() in (
+        "true",
+        "1",
+        "yes",
+        "on",
+    )
+
+
+def _is_p_content_page(segments: List[str]) -> bool:
+    """True iff a path is a ``/p/{static-page}`` CMS page (a ``p`` segment followed
+    by a curated stoplist word — reef ``/en/p/about``). A genuine ``/p/`` PDP keeps
+    ``p`` as the TRAILING segment (boutiqaat ``…/{slug}/p/``), so it is never here
+    (``p`` is not in ``segments[:-1]``) and is not over-excluded."""
+    for i, seg in enumerate(segments[:-1]):
+        if seg == "p" and segments[i + 1] in _P_CONTENT_STOPWORDS:
+            return True
+    return False
+
+
+def _is_pdp_url_v2(low_url: str) -> bool:
+    """Generalized PDP recognition (``ENABLE_SITEMAP_PDP_MARKERS_V2``). ``low_url``
+    is already lowercased and already passed the ``_NON_PDP_MARKERS`` exclusion.
+
+    Recognizes Shopify ``/products/`` + boutiqaat trailing ``/p/`` (shipped),
+    WooCommerce ``/product/`` (singular), the Salla ``/{slug}/p{id}`` shape, and a
+    Magento ``.html`` leaf. EXCLUDES the ``/p/{static-page}`` content class."""
+    path = urlparse(low_url).path
+    segments = [s for s in path.split("/") if s]
+    if not segments:
+        return False
+    # EXCLUDE the /p/{static-page} content class first — it would otherwise match
+    # the broad /p/ marker (the measured reef false-PDP bug).
+    if _is_p_content_page(segments):
+        return False
+    # Shipped markers: Shopify /products/ and boutiqaat trailing /p/.
+    if any(m in low_url for m in _PDP_PATH_MARKERS):
+        return True
+    # WooCommerce singular /product/.
+    if _WOO_PDP_MARKER in low_url:
+        return True
+    # Salla /{slug}/p{numeric-id}.
+    if _SALLA_PDP_RE.search(path):
+        return True
+    # Magento <slug>.html leaf (heuristic — non-PDP paths already excluded above).
+    if _HTML_LEAF_RE.search(path):
+        return True
+    return False
+
+
 def _is_pdp_url(url: str) -> bool:
     low = url.lower()
     if any(m in low for m in _NON_PDP_MARKERS):
         return False
+    if pdp_markers_v2_enabled():
+        return _is_pdp_url_v2(low)
     return any(m in low for m in _PDP_PATH_MARKERS)
 
 
