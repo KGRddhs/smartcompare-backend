@@ -107,6 +107,17 @@
       "bytes": 11200,
       "amounts": "none - the page is a client-rendered shell"
     },
+    "qa_nazih_qa_microdata_rail_outbids_og.html": {
+      "url": "https://nazih.qa/diva-car-freshener-musky-scent-8ml.html",
+      "host": "nazih.qa",
+      "corpus": "gulf",
+      "cached_bytes": "69ad413094a40f605349015258c3d01a898bb872.html",
+      "cached_sha1_of_page": "89771a526bac73fab46cd5e2102d3644e89362f7",
+      "kept": "four verbatim byte windows out of the 847KB cached page: (1) its og:title / og:url / og:type and its product:price:amount 10 + product:price:currency QAR metas, (2) its whole Product JSON-LD block, (3) the PDP's own price block - <div class='price-container'> down to the close of the <div class='final-price' itemprop='offers' itemscope itemtype='https://schema.org/Offer'> that carries <meta itemprop=price content='10'> + priceCurrency QAR and the visible <span class='price'>QAR 10.00</span>, and (4) ONE node of the related-products rail - the hidden <div class='hidden' itemtype='https://schema.org/Product'> for 'DISP SLIPPERS TOWELLING OPEN' carrying <meta itemprop=price content='45'> + priceCurrency QAR, plus that rail item's own visible <span class='price'>QAR 45.00</span>. A single </div> was added to close the price-container the cut opened; nothing else was restructured and no amount, code or marker was altered.",
+      "country": "QA",
+      "amounts": "JSON-LD Offer 10 QAR; product:price:amount 10 QAR; microdata Offers 10 QAR (the PDP) and 45 QAR (the rail item). The full cached page carries TEN itemprop=price nodes - 5 / 10 / 10 / 15 / 20 / 28 / 38 / 39 / 41.6 / 45 - every one of them inside a schema.org/Offer itemscope, because the rail emits a hidden Product+Offer per card. The fixture keeps the two that decide the branch: the real 10 and the rail maximum 45.",
+      "reproduces": "extract_price_from_html(..., 'BHD') returns amount 4.65 / original_currency QAR / confidence 0.8 / price_confirmed_in_text True / source_method converted_usd on BOTH the fixture and the full 847KB cached page with ENABLE_JSONLD_FIRST on and ENABLE_EXACT_PRICE_GATE=false - i.e. the cut is faithful to the regression, not a smaller version of it"
+    },
     "iq_miswag_com_no_structured_price_200.html": {
       "url": "https://miswag.com/en",
       "host": "miswag.com",

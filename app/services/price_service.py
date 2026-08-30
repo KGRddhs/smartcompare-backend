@@ -11822,8 +11822,12 @@ def extract_price_from_html(
     #
     # Flag OFF: this block never runs and the legacy microdata call below OG
     # does, so the cascade order rolls back with everything else.
+    # `html` is threaded ONLY here, for the OG-agreement guard inside the branch
+    # ((f) in its docstring) — the guard's mirror of the OG branch has to ask
+    # `detect_platform` about the Salla/Zid sale-price rule the same way that
+    # branch does. The legacy call site below is left byte-for-byte alone.
     if _first:
-        micro = _extract_microdata_price(soup, currency, domain, url)
+        micro = _extract_microdata_price(soup, currency, domain, url, html)
         if micro:
             _stamp_listing_size(micro, product_name, soup)
             if exact_gate_enabled():  # flag-OFF byte-identity (legacy carried no `name` here)
@@ -11999,8 +12003,167 @@ _INSTALLMENT_RE = re.compile(
 )
 
 
+# ---------------------------------------------------------------------------
+# ENABLE_JSONLD_FIRST — THE OG-AGREEMENT GUARD ON THE PROMOTED MICRODATA PATH.
+#
+# THE MEASUREMENT THAT JUSTIFIES IT. Over BOTH cached corpora (414 pages,
+# ENABLE_EXACT_PRICE_GATE=false, every other flag at its shipped default)
+# `_extract_microdata_price` and `_extract_og_price` BOTH return a price on 28
+# pages. On 27 of them the two amounts are identical — relative difference
+# exactly 0.0, not merely close. The single divergence is nazih.qa, at 4.51x,
+# and there the MICRODATA pick is the wrong one: the page emits a hidden
+# Product+Offer per related-products card, so all ten of its `itemprop=price`
+# nodes are Offer-scoped and the branch's "among equals, the larger" rule takes
+# a 45 QAR rail item over the PDP's own 10 QAR. (niche-beauty.com was the second
+# divergence when this was scoped; UNIT F1's page-level currency evidence closed
+# it, so the corpus count is now 1 of 28 — and the direction is unchanged: 2 for
+# 2, disagreement has always meant microdata was wrong.)
+#
+# So on this corpus agreement is the rule and a disagreement is EVIDENCE AGAINST
+# MICRODATA. The guard refuses the microdata winner when the page's own OG price
+# contradicts it and lets the cascade fall through to the OG branch — which is
+# exactly where the correct number came from before the promotion.
+#
+# THE 2% BAND is deliberately loose. Nothing measured sits between 0% and 4.51%,
+# so no cached page is anywhere near the line; the band exists only to absorb
+# representation noise a promotion must not be brittle about — a two-decimal
+# `content` attribute against a three-decimal GCC display value ("10.00" vs
+# "10.000"), or one document writing the same money once with and once without a
+# rounded fils tail. Tighter buys nothing measurable and starts refusing
+# microdata over half a fils; looser starts admitting real divergences.
+_MICRODATA_OG_TOLERANCE = 0.02
+
+
+def _amounts_agree(a: Any, b: Any, tol: float = _MICRODATA_OG_TOLERANCE) -> bool:
+    """True iff ``a`` and ``b`` are the same money to within ``tol`` RELATIVE.
+
+    Symmetric (the denominator is the larger magnitude) and INCLUSIVE at the
+    boundary. FAIL-OPEN on anything that cannot support a ratio — a non-number,
+    a NaN/inf, a zero or a negative returns True, because a guard must never be
+    the thing that costs a real price.
+    """
+    for v in (a, b):
+        if isinstance(v, bool) or not isinstance(v, (int, float)):
+            return True
+        if not math.isfinite(v) or v <= 0:
+            return True
+    scale = max(abs(float(a)), abs(float(b)))
+    if scale <= 0:
+        return True
+    return abs(float(a) - float(b)) / scale <= tol
+
+
+def _og_price_for_agreement(
+    soup, currency: str, html: str = "", url: str = "",
+) -> Optional[Tuple[float, str]]:
+    """The (amount, ISO label) the OpenGraph branch WOULD read off this page, or
+    None when it would read nothing.
+
+    A READ-ONLY MIRROR of `_extract_og_price`'s tag precedence — `og:price:amount`
+    first, then the platform-scoped `product:sale_price:amount`, then
+    `product:price:amount` — deliberately duplicated rather than hoisted out of
+    that function. `_extract_og_price` documents its flag-OFF path as "the exact
+    pre-change bytes" and refuses to evaluate anything new before its bare
+    `float()`; refactoring a shared helper out of it would put new code on that
+    path for no benefit, since this mirror only ever runs with
+    ENABLE_JSONLD_FIRST ON.
+
+    THE SALE TAG IS IN THE MIRROR ON PURPOSE. On a Salla/Zid page
+    `product:price:amount` is the CROSSED-OUT list price and the OG branch ships
+    `product:sale_price:amount`. Comparing microdata against the list price
+    there would find false agreement on exactly the pages where OG is about to
+    ship a different (correct) number, leaving an inflated list price in place —
+    the P0 this branch just fixed, re-entering through the guard. Every other
+    flag this mirror reads (`sale_price_first_enabled`, `og_branch_fixes_enabled`)
+    is read the same way the branch reads it, so the guard can never compare
+    against a number the branch would not produce.
+
+    Stops BEFORE the cross-check, the availability read and the conversion: the
+    guard only needs the amount in the page's own denomination.
+    """
+    og_price = soup.find('meta', property='og:price:amount')
+    og_currency = soup.find('meta', property='og:price:currency')
+    if not og_price and sale_price_first_enabled():
+        _sale_price = soup.find('meta', property='product:sale_price:amount')
+        _sale_raw = _sale_price.get('content') if _sale_price else None
+        if _sale_raw and _og_sale_price_platform(html, url):
+            _sale_cur_tag = (
+                soup.find('meta', property='product:sale_price:currency')
+                or soup.find('meta', property='product:price:currency')
+            )
+            _sale_cur = (
+                _sale_cur_tag['content']
+                if _sale_cur_tag and _sale_cur_tag.get('content')
+                else currency
+            )
+            _sale_val = _parse_og_price_number(_sale_raw, _sale_cur)
+            if _sale_val is not None and _sale_val > 0:
+                og_price = _sale_price
+                og_currency = _sale_cur_tag
+    if not og_price:
+        og_price = soup.find('meta', property='product:price:amount')
+        og_currency = soup.find('meta', property='product:price:currency')
+    if not og_price or not og_price.get('content'):
+        return None
+
+    _raw_og_currency = (
+        og_currency['content']
+        if og_currency and og_currency.get('content')
+        else None
+    )
+    _label_currency = (
+        _raw_og_currency if _raw_og_currency is not None else currency
+    )
+    if og_branch_fixes_enabled():
+        amount = _parse_og_price_number(og_price['content'], _label_currency)
+    else:
+        # Mirror the branch's own rollback: with ENABLE_OG_BRANCH_FIXES off the
+        # OG branch parses with a bare float() and DROPS a comma decimal it
+        # cannot read. The guard must drop it too, or it would refuse microdata
+        # on the strength of a number OG is about to fail to produce.
+        try:
+            amount = float(og_price['content'])
+        except (ValueError, TypeError):
+            return None
+    if amount is None or not math.isfinite(amount) or amount <= 0:
+        return None
+    return amount, _currency_label_for(_raw_og_currency, currency, soup)
+
+
+def _microdata_og_agreement_ok(
+    amount: float, cur: Any, soup, currency: str, html: str, url: str,
+) -> bool:
+    """False iff the page's own OpenGraph price CONTRADICTS this microdata
+    winner — the one condition under which the promoted branch stands down.
+
+    FAIL-OPEN in four places, each of them a case where a disagreement is not
+    evidence: no OG price tag, an OG price that does not parse, an OG price
+    denominated in a DIFFERENT currency than the microdata winner (two amounts
+    in different money are not disagreeing about an amount), and any exception
+    at all. The promotion has to survive on the pages where OG is silent — which
+    is most of them: OG co-fires with microdata on 28 of 414 cached pages.
+    """
+    try:
+        og = _og_price_for_agreement(soup, currency, html, url)
+    except Exception:  # noqa: BLE001 — a guard must never break a capture
+        return True
+    if og is None:
+        return True
+    og_amount, og_label = og
+    if str(cur).strip().upper() != str(og_label).strip().upper():
+        return True
+    if _amounts_agree(amount, og_amount):
+        return True
+    logger.info(
+        "[PRICE] microdata %s %s contradicts the page's own OpenGraph price "
+        "%s %s - standing down to the OpenGraph branch",
+        amount, cur, og_amount, og_label,
+    )
+    return False
+
+
 def _extract_microdata_price(
-    soup, currency: str, domain: str, url: str
+    soup, currency: str, domain: str, url: str, html: str = ""
 ) -> Optional[Dict[str, Any]]:
     """Extract a product price from Schema.org microdata, skipping EPP
     installment nodes and pairing priceCurrency within the same Offer scope.
@@ -12034,7 +12197,27 @@ def _extract_microdata_price(
           True — see ``_microdata_availability`` for the pacoperfumerias.co.uk
           sold-out case this exists for.
 
-    Flag OFF restores every one of them, including the 100x.
+    and (f) THE OG-AGREEMENT GUARD, added after the promotion shipped and the
+    verification gates caught what it cost: nazih.qa emits a hidden
+    Product+Offer per related-products card, so its rail prices are all
+    Offer-scoped and the selection rule below took a 45 QAR rail item over the
+    PDP's own 10 QAR. Promoted above OpenGraph that shipped 4.65 BHD where the
+    base shipped 1.03. When the page's own OG price contradicts the winner
+    chosen here, this branch stands down (returns None) and the cascade falls
+    through to OpenGraph. See ``_microdata_og_agreement_ok`` for the corpus
+    measurement and the fail-open cases.
+
+    Flag OFF restores every one of them, including the 100x, and the guard is
+    unreachable — flag OFF this function runs BELOW OpenGraph, where a
+    disagreement is not evidence of anything because OG already had its turn.
+
+    ``html`` is the raw document the caller already parsed into ``soup``, and it
+    is used by (f) alone, so that the guard's mirror of the OG branch can ask
+    ``detect_platform`` about the Salla/Zid sale-price rule exactly as that
+    branch does. Defaulted to "" so every existing caller — including the
+    flag-OFF call site, whose bytes are deliberately left untouched — keeps
+    working; with no markup ``detect_platform`` falls back to the URL and then
+    to "unknown", which simply declines the sale-price rung.
     """
     candidates = soup.find_all(attrs={"itemprop": "price"})
     if not candidates:
@@ -12119,6 +12302,13 @@ def _extract_microdata_price(
         # real Offer — nazih.qa carries 10 QAR plus rail items up to 45) is real
         # but latent: OG runs first and covers it there. Fixing it is its own
         # change, measured on its own, not a rider on an OG flag.
+        #
+        # THAT IS NOW DONE, and NOT by changing this rule. ENABLE_JSONLD_FIRST
+        # promotes this branch above OG, which is what made the weakness live,
+        # so the fix rides that same flag and sits AFTER the loop: the OG-
+        # AGREEMENT GUARD ((f) in this function's docstring). The rule below is
+        # unchanged in both flag states, so faces.ae still wins at 569.64.
+
         key = (in_offer, amount)
         if best is None or key > (best[0], best[1]):
             best = (in_offer, amount, cur)
@@ -12128,6 +12318,18 @@ def _extract_microdata_price(
         return None
 
     _in_offer, amount, cur = best
+    # (f) — THE OG-AGREEMENT GUARD, here and not in the caller for two reasons.
+    # FIRST, this is the only point where both numbers are still in the page's
+    # OWN denomination: below, a foreign price is converted, and the nazih
+    # comparison would become 4.65 BHD against a 10 QAR tag, which needs a
+    # second rate lookup to mean anything. SECOND, the caller has TWO call sites
+    # — the promoted one and the legacy one below OpenGraph — and gating on
+    # ``_first`` HERE makes it impossible for the guard to fire on the legacy
+    # one by construction, rather than by remembering not to add it there.
+    if _first and not _microdata_og_agreement_ok(
+        amount, cur, soup, currency, html, url,
+    ):
+        return None
     # (e) — the page's own availability, not an assertion. Flag OFF: True.
     _in_stock = _microdata_availability(soup, best_scope) if _first else True
     result = {
