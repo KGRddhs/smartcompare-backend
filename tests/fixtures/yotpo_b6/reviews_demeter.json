@@ -1,0 +1,54 @@
+{
+  "status": {"code": 200, "message": "OK"},
+  "response": {
+    "pagination": {"page": 1, "per_page": 150, "total": 3},
+    "bottomline": {
+      "total_review": 3,
+      "average_score": 4.67,
+      "total_organic_reviews": 3,
+      "organic_average_score": 4.67,
+      "star_distribution": {"1": 0, "2": 0, "3": 0, "4": 1, "5": 2}
+    },
+    "reviews": [
+      {
+        "id": 501,
+        "title": "Smells exactly like the real thing",
+        "content": "Warm, gourmand and comforting. Lasts a solid six hours on my skin and the sillage is lovely without being overwhelming.",
+        "score": 5,
+        "sentiment": 0.97,
+        "language": "en",
+        "verified_buyer": true,
+        "created_at": "2026-07-14T09:12:00.000Z",
+        "votes_up": 8,
+        "votes_down": 0,
+        "user": {"display_name": "Amira K.", "user_type": "verified_buyer"}
+      },
+      {
+        "id": 502,
+        "title": "Good but a little fleeting",
+        "content": "Beautiful opening, but the projection drops off after a couple of hours. Still worth it for the price.",
+        "score": 4,
+        "sentiment": 0.42,
+        "language": "en",
+        "verified_buyer": true,
+        "created_at": "2026-06-30T18:40:00.000Z",
+        "votes_up": 2,
+        "votes_down": 1,
+        "user": {"display_name": "J. Fischer", "user_type": "verified_buyer"}
+      },
+      {
+        "id": 503,
+        "title": "رائحة رائعة",
+        "content": "عطر دافئ وجميل ويدوم طويلا على البشرة.",
+        "score": 5,
+        "sentiment": 0.9,
+        "language": "ar",
+        "verified_buyer": false,
+        "created_at": "2026-06-02T07:05:00.000Z",
+        "votes_up": 1,
+        "votes_down": 0,
+        "user": {"display_name": "Sara", "user_type": "reviewer"}
+      }
+    ]
+  }
+}

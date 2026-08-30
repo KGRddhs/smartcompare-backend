@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <title>Scent Library — no real Yotpo install</title>
+  <meta property="og:type" content="product">
+  <!-- The 32-hex string e51a4e2686c9072bb405bf25837fe8f7 is copy-pasted theme
+       boilerplate that appears inline on unrelated shops and returns HTTP 404
+       'Account not found'. It is NOT a 40-char key -> MUST be rejected. -->
+  <script>var yotpoAppKey = "e51a4e2686c9072bb405bf25837fe8f7";</script>
+  <div class="yotpo" data-appkey="e51a4e2686c9072bb405bf25837fe8f7" data-product-id="123456"></div>
+  <!-- Plus the stock Shopify theme snippet: the bare 'yotpo' substring must NOT
+       be treated as an install signal. -->
+  <script>var MetafieldYotpoRating = null; var MetafieldYotpoCount = null;</script>
+</head>
+<body>
+  <h1>Some Product</h1>
+</body>
+</html>

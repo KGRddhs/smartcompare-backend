@@ -1,0 +1,60 @@
+{
+  "_unit": "B6 — Yotpo review + ratings adapter (ENABLE_YOTPO_REVIEWS, default OFF)",
+  "_spec": "research/B6/adapter_yotpo.json — Yotpo's PUBLIC read endpoint GET https://api-cdn.yotpo.com/v1/widget/{app_key}/products/{product_id}/reviews.json?per_page=150 returns full review text + score + title + verified_buyer + PRE-COMPUTED sentiment + language in ONE unauthenticated call. Yotpo robots ALLOWS exactly this path.",
+  "_robots_grant": "api-cdn.yotpo.com/robots.txt (fetched 2026-08-30): User-Agent: * / Disallow: / with an explicit per-path Allow list (reviews/bottomline/questions/qna_bottomline + /v1/widget/* + /v1/star_distribution/* + /v3/rich_snippets/* + /v3/storefront/store/*). The review-read paths are affirmatively opted in for anonymous crawlers.",
+  "_hard_rules": [
+    "app_key MUST be exactly 40 chars [A-Za-z0-9] — the 32-hex boilerplate key (e51a4e2686c9072bb405bf25837fe8f7) is a decoy that 404s.",
+    "REJECT the bare substring 'yotpo' as an install signal (stock Shopify theme snippet var MetafieldYotpoRating = null).",
+    "enforce a hard ALLOWLIST of the robots-allowed Yotpo paths, never a denylist.",
+    "on total_review==0 do one yotpo_site_reviews liveness call to classify bad-key vs empty-product.",
+    "the pre-computed sentiment/language REPLACE the paid LLM sentiment pass for Yotpo-sourced reviews."
+  ],
+  "files": {
+    "shopify_demeter_yotpo_pdp.html": {
+      "origin": "SYNTHETIC — models the measured demeterfragrance Shopify case: a real Yotpo install whose 40-char app_key is carried by the cdn-widgetsrepository.yotpo.com/v1/loader/<40> loader; product_id is the numeric Shopify product id 8096434946323 on the yotpo main-widget div. Also carries the stock MetafieldYotpoRating snippet to prove the bare-'yotpo' decoy is ignored.",
+      "app_key": "abcdefghijklmnopqrstuvwxyzABCDEFGHIJ0123",
+      "product_id": "8096434946323",
+      "expect": "valid install extracted; reviews.json resolves 3 reviews + 4.67 aggregate"
+    },
+    "non_shopify_brownthomas_yotpo_pdp.html": {
+      "origin": "SYNTHETIC — models the measured brownthomas (Salesforce Commerce) case: the 40-char app_key is a data-appkey attribute; product_id is data-product-id on id=yotpo-reviews-top-div.",
+      "app_key": "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghij0123",
+      "product_id": "2000055407",
+      "expect": "valid install extracted via the data-appkey pattern"
+    },
+    "staticw2_widgetjs_yotpo_pdp.html": {
+      "origin": "SYNTHETIC — models the legacy staticw2.yotpo.com/<40>/widget.js loader (measured beautyhabit). Exercises the third extraction pattern.",
+      "app_key": "0123456789abcdefghijklmnopqrstuvwxyzABCD",
+      "product_id": "7712349981",
+      "expect": "valid install extracted via the staticw2 widget.js pattern"
+    },
+    "decoy_32hex_key_stock_snippet.html": {
+      "origin": "SYNTHETIC — control: the 32-hex decoy key e51a4e2686c9072bb405bf25837fe8f7 (measured 404 'Account not found' on two unrelated shops) in both a var and a data-appkey, PLUS the stock MetafieldYotpoRating snippet.",
+      "expect": "NO valid install (key is not 40 chars; bare 'yotpo' ignored) -> None"
+    },
+    "no_yotpo_install_control.html": {
+      "origin": "SYNTHETIC — control: a plain PDP with no Yotpo markers at all.",
+      "expect": "NO install -> None; no fetch issued"
+    },
+    "reviews_demeter.json": {
+      "origin": "SYNTHETIC — models GET /v1/widget/<app_key>/products/8096434946323/reviews.json?per_page=150. response.bottomline (total_review 3, average_score 4.67, star_distribution) + response.reviews[] with content/title/score + PRE-COMPUTED sentiment + language + verified_buyer.",
+      "endpoint": "api-cdn.yotpo.com/v1/widget/<app_key>/products/<product_id>/reviews.json"
+    },
+    "reviews_zero.json": {
+      "origin": "SYNTHETIC — models a live-key product with total_review 0 (empty reviews[]). Triggers the yotpo_site_reviews liveness call.",
+      "endpoint": "api-cdn.yotpo.com/v1/widget/<app_key>/products/<product_id>/reviews.json"
+    },
+    "site_reviews_live.json": {
+      "origin": "SYNTHETIC — models GET /v1/widget/<app_key>/products/yotpo_site_reviews/reviews.json for a LIVE account (bottomline.total_review 412 > 0). Classifies a total_review==0 product as empty-product, not bad-key.",
+      "endpoint": "api-cdn.yotpo.com/v1/widget/<app_key>/products/yotpo_site_reviews/reviews.json"
+    },
+    "site_reviews_dead.json": {
+      "origin": "SYNTHETIC — models the yotpo_site_reviews liveness call for a BAD key (404 / total_review 0). Classifies the key as dead.",
+      "endpoint": "api-cdn.yotpo.com/v1/widget/<app_key>/products/yotpo_site_reviews/reviews.json"
+    },
+    "bottomline_demeter.json": {
+      "origin": "SYNTHETIC — models GET /products/<app_key>/<product_id>/bottomline (ratings-only, cheaper than the full reviews call; fills the ratings gap).",
+      "endpoint": "api-cdn.yotpo.com/products/<app_key>/<product_id>/bottomline"
+    }
+  }
+}

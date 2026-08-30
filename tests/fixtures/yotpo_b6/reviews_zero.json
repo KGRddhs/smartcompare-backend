@@ -1,0 +1,14 @@
+{
+  "status": {"code": 200, "message": "OK"},
+  "response": {
+    "pagination": {"page": 1, "per_page": 150, "total": 0},
+    "bottomline": {
+      "total_review": 0,
+      "average_score": 0.0,
+      "total_organic_reviews": 0,
+      "organic_average_score": 0.0,
+      "star_distribution": {"1": 0, "2": 0, "3": 0, "4": 0, "5": 0}
+    },
+    "reviews": []
+  }
+}

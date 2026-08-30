@@ -1,0 +1,13 @@
+{
+  "status": {"code": 200, "message": "OK"},
+  "response": {
+    "bottomline": {
+      "total_review": 3,
+      "average_score": 4.67,
+      "total_organic_reviews": 3,
+      "organic_average_score": 4.67,
+      "star_distribution": {"1": 0, "2": 0, "3": 0, "4": 1, "5": 2},
+      "custom_fields_bottomline": null
+    }
+  }
+}

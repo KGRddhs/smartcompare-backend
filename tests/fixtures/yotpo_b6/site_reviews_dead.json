@@ -1,0 +1,10 @@
+{
+  "status": {"code": 404, "message": "Account not found"},
+  "response": {
+    "bottomline": {
+      "total_review": 0,
+      "average_score": 0.0
+    },
+    "reviews": []
+  }
+}
