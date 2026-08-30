@@ -5182,6 +5182,17 @@ class StructuredComparisonService:
 
         region_info = GCC_REGIONS.get(region, GCC_REGIONS["bahrain"])
         currency = region_info["currency"]
+        # M10 UNIT A3 — `full_name` IS THE SIZE-DISCRIMINATOR CARRIER. `variant`
+        # is the parser's `size_or_count`, and folding it in here is the ONLY
+        # way a compare-request size reaches rung 2 of
+        # price_service._MULTIPLICITY_POLICY: this string becomes `product_name`
+        # in fetch_page_price -> extract_price_from_html and then `query_name`
+        # in extract_jsonld_price, which is what `extract_sizes_ml` reads to
+        # pick the 50ml offer off a 30/50/75ml PDP. Dropping `variant` from
+        # either branch is therefore a BEHAVIOUR change, not a tidy-up — every
+        # multi-size page silently reverts to pending (CAPTURE_AMBIGUOUS_PRICE).
+        # Pinned by tests/test_multiplicity_discriminator_policy.py block B,
+        # which reproduces this assembly verbatim.
         if variant and variant.lower() in name.lower():
             full_name = f"{brand} {name}".strip()
         else:

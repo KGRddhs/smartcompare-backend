@@ -10168,13 +10168,69 @@ def _shape_ladder_candidate_size_text(cand: Dict[str, Any]) -> str:
     )
 
 
+#: M10 UNIT A3 — THE MULTIPLICITY CONTRACT, IN PRECEDENCE ORDER, IN ONE PLACE.
+#:
+#: The rung numbering used to be restated in prose in three places (this
+#: function's docstring, ``extract_jsonld_price``'s ``pending_out`` paragraph,
+#: and ``CAPTURE_AMBIGUOUS_PRICE``'s comment block). This constant is the copy
+#: they defer to, so an edit changes the contract once instead of drifting
+#: three times. It is appended to the adjudicator's own docstring below, and
+#: pinned by tests/test_multiplicity_discriminator_policy.py block G.
+_MULTIPLICITY_POLICY = """\
+THE POLICY, in precedence order:
+
+  0. The page DECLARES a default variant                 -> take it.
+     NOT IMPLEMENTED, deliberately: no page in the 414-page corpus declares
+     one in schema.org terms, so this would be code with no measured consumer.
+     It would need its own flag (ENABLE_DECLARED_DEFAULT_VARIANT, default OFF)
+     the day one appears. `productGroupID` is NOT such a declaration — it is
+     the group's OWN identifier, and on lookfantastic it happens to equal a
+     member's sku on the very page whose four variants are byte-identically
+     named and unresolvable.
+
+  1. ONE distinct identity-matched amount                -> take it.
+
+  2. The query NAMES A SIZE                              -> narrow to that size.
+     The query's size has exactly TWO sources and no third:
+       (a) the size in the user's own words, and
+       (b) the size the compare request carried, which
+           structured_comparison_service._get_price folds into `full_name` at
+           :5185-5188 — and `full_name` IS this function's `query_name`, via
+           fetch_page_price -> extract_price_from_html -> extract_jsonld_price.
+           A refactor there deletes rung 2's second source silently.
+     Fails CLOSED: a size the page does not stock narrows to NOTHING and pends
+     rather than substituting the nearest.
+
+  3. Still several amounts                               -> narrow to confirmed
+     in-stock. Availability is a discriminator the page ASSERTS, so using it is
+     not guessing. It runs AFTER the size rung deliberately.
+
+  4. Exactly one distinct amount left                    -> take it. Else PEND.
+
+  5. NEVER smallest-wins. NEVER first-in-document. NEVER nearest-size.
+     Not under any framing, including "just for fragrances" or "only when the
+     spread is narrow": amouage.com pends [429.0, 429.14], a 0.03% spread, and
+     that is still two different SKUs.
+
+A SIZE MATCH IS NOT AN IDENTITY MATCH. This function narrows on size and then
+counts distinct amounts; it has no concentration axis. What keeps an Eau de
+Toilette query off an Eau de Parfum offer of the matching size is the EXACT
+GATE upstream (`_selection_match`), which never admits the candidate. Do not
+lift the size rung above that gate, and do not resolve a pend by size after the
+gate has rejected the candidates — measured, gate-off, a 50ml EDT query takes
+marionnaud's 50mL EDP at 127.5.
+"""
+
+
 def _adjudicate_jsonld_multiplicity(
     candidates: List[Dict[str, Any]], query_name: str,
 ) -> Optional[List[Dict[str, Any]]]:
     """MULTIPLICITY AS AN EXPLICIT OUTCOME. Returns the candidate list selection
     may choose from, or None meaning PEND.
 
-    THE RULE, and why each rung is where it is:
+    The numbered contract is ``_MULTIPLICITY_POLICY``, appended to this
+    docstring below so there is one copy of it. Why each implemented rung is
+    where it is:
 
       1. ONE distinct identity-matched amount -> return the list unchanged.
          There is no ambiguity, so the overwhelming majority of pages — 109 of
@@ -10248,6 +10304,13 @@ def _adjudicate_jsonld_multiplicity(
 
     # Rung 4.
     return candidates if len(amounts_of(candidates)) == 1 else None
+
+
+# The contract above and the prose above it are ONE document. Appended rather
+# than interpolated because a docstring cannot be an f-string; guarded because
+# `python -OO` strips docstrings to None.
+if _adjudicate_jsonld_multiplicity.__doc__:
+    _adjudicate_jsonld_multiplicity.__doc__ += "\n" + _MULTIPLICITY_POLICY
 
 
 # UNIT B2 (a) — the DOUBLED-QUOTE value shape. A PrestaShop template
