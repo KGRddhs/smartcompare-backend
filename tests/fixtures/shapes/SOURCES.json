@@ -74,6 +74,16 @@
    "cached_sha1_of_page": "a1c51b506ffa0c41786f3e8721493520962de802",
    "kept": "every application/ld+json block whose raw text contains 'hasVariant', verbatim (re-serialised by json.dumps, values untouched), plus the og/product price meta tags and <title> from the same cached bytes"
   },
+  "us_shopify_scentsplit_com_productgroup_decants_and_bottle.html": {
+   "url": "https://scentsplit.com/products/xerjoff-ilm-sample-decants",
+   "host": "scentsplit.com",
+   "country": "US",
+   "cached_bytes": "022e73c809458fc9a8a241c6843f1ad47e285545.html",
+   "cached_sha1_of_page": "4e31c3149420cafe70e723ddedc23ad2c4fd1b9f",
+   "kept": "every application/ld+json block whose raw text contains 'hasVariant', verbatim (re-serialised by json.dumps, values untouched), plus the og/product price meta tags and <title> from the same cached bytes",
+   "why": "the corpus row scentsplit.com carries jsonld_price 250.00 (the 50ml bottle, JSON-LD first value) beside a 1ml Sample at 8.99 and a 2ml Glass Spray at 16.99. It anchors the 2026-08-30 owner ruling that a DECANTS query must resolve to the decant price, not the bottle — see block H of tests/test_jsonld_shape_ladder.py",
+   "note": "the cached bytes are not wholly valid UTF-8 (a U+02BC and a U+2605 among them), so the ProductGroup 'description' carries one U+FFFD from the errors='replace' decode used by the same read_text recipe every cached_sha1_of_page in this file was computed with. No price-bearing field is affected: the fixture reproduces the cached page's extractor result on all 20 measured (query x exact-gate x category) combinations."
+  },
   "gb_notino_co_uk_offers_array_four_prices.html": {
    "url": "https://www.notino.co.uk/acqua-dell-elba/arcipelago-women-eau-de-parfum-for-women/",
    "host": "www.notino.co.uk",

@@ -512,6 +512,11 @@ _HEAD_TABLE = [
      "Byredo Young Rose Eau de Parfum 50ml", None, None),
     ("us_luckyscent_com_productgroup_decant_decoy.html", "Diptyque", "USD",
      "Diptyque L'Eau Papier 100ml", None, None),
+    # Block H's decants page. (None, None) is load-bearing: with the ladder OFF
+    # this ProductGroup yields NOTHING in either gate mode, so a rollback does
+    # not restore the 250.0 bottle price — it loses the page altogether.
+    ("us_shopify_scentsplit_com_productgroup_decants_and_bottle.html", "Xerjoff",
+     "USD", "xerjoff ilm sample decants", None, None),
     ("gb_notino_co_uk_offers_array_four_prices.html", "Acqua", "GBP",
      "Acqua dell' Elba Arcipelago Women eau de parfum", 51.42, None),
     ("gb_hybris_superdrug_com_graph_product_single_offer.html", "Paco", "GBP",
@@ -723,3 +728,165 @@ def test_g_every_fixture_records_its_provenance():
         assert meta["url"].startswith("http")
         assert meta["cached_bytes"].endswith(".html")
         assert len(meta["cached_sha1_of_page"]) == 40
+
+
+# ===========================================================================
+# H — THE DECANTS PRODUCT DECISION. A PIN, NOT A CHANGE.
+#
+# ---------------------------------------------------------------------------
+# THE 2026-08-30 OWNER DECISION, RECORDED VERBATIM
+#
+#     Ahmed, 2026-08-30:  "decant price for decants queries"
+#
+# ---------------------------------------------------------------------------
+# WHAT IT SETTLES. Gate 4 of the wave-3 fix wave flagged the scentsplit.com
+# decants PDPs as a suspected regression: HEAD had started returning the
+# QUERIED DECANT's price (8.99 USD here; 3.99 on the sibling
+# bon-parfumeur-001-sample-decants row) where the pre-ladder code returned the
+# JSON-LD FIRST VALUE, which on these pages is the full bottle (250.00 here,
+# 140.00 there — and 250.00 is what the corpus survey recorded as this page's
+# `jsonld_price`). The owner has now RULED that the decant price is CORRECT for
+# a decants query. That is a PRODUCT decision about what these pages sell, not
+# an extractor bug, so it is pinned here rather than re-litigated: scentsplit
+# is a decanting house, `.../products/xerjoff-ilm-sample-decants` is its decant
+# listing, and a shopper who asked for decants is not shopping for the 50ml
+# manufacturer's bottle that shares the URL.
+#
+# NOTHING IN THIS BLOCK CHANGES CODE. Every assertion below is HEAD's measured
+# behaviour on 2026-08-30, recorded so the next wave sees drift instead of
+# silently re-deciding this.
+#
+# ---------------------------------------------------------------------------
+# THE PAGE (fixture cut from the real cached bytes; provenance in SOURCES.json).
+# One top-level `ProductGroup`, three `hasVariant` Products, all InStock:
+#
+#     "'Ilm - 50ml in Manufacturer's bottle"   250.00 USD   <- JSON-LD FIRST
+#     "'Ilm - 1ml Sample"                        8.99 USD   <- THE DECANT
+#     "'Ilm - 2ml Glass Spray"                  16.99 USD
+#
+# plus `og:price:amount 250.00`. So "first value" and "the bottle" are the same
+# number on this page, which is exactly why the change was legible to gate 4.
+#
+# ---------------------------------------------------------------------------
+# THE MEASUREMENT, AND WHY THIS BLOCK IS SPLIT BY EXACT-GATE MODE.
+#
+# The first draft of this pin asserted the ruling at SHIPPED DEFAULTS and FAILED
+# (`assert None is not None`). That failure is the finding, so it is pinned too:
+#
+#   * ENABLE_EXACT_PRICE_GATE unset (SHIPPED) -> None, for BOTH a decants query
+#     and a bare "xerjoff ilm". `_selection_match` admits NEITHER variant, so
+#     the page ships no price at all. The ruling's NEGATIVE half therefore holds
+#     in production today — 250.00 is never served for a decants query — but its
+#     POSITIVE half does not: the decant price is not shipped either. That is a
+#     coverage pend of the documented fail-closed kind, not a wrong price.
+#   * ENABLE_EXACT_PRICE_GATE=false (extraction-isolated — the mode CLAUDE.md
+#     documents for isolating extraction from the gate) -> 8.99, the queried
+#     decant, NOT 250.0. THIS is where the ruling is observable, and it is what
+#     gate 4 measured.
+#
+# Say which mode you are in. A pin that only asserted the shipped default would
+# record "no price" and lose the ruling; one that only asserted the gate-off
+# value would claim a behaviour production does not have.
+#
+# The fixture reproduces the full cached page on all 20 measured
+# (query x gate x category) combinations, so nothing here is an artifact of the
+# cut.
+# ===========================================================================
+_DECANTS = "us_shopify_scentsplit_com_productgroup_decants_and_bottle.html"
+_DECANTS_QUERY = "xerjoff ilm sample decants"
+
+
+@pytest.mark.parametrize("category", [None, "fragrances"])
+def test_h_a_a_decants_query_takes_the_queried_decant_not_the_bottle(
+    monkeypatch, category,
+):
+    """THE RULING, pinned. Extraction-isolated, so the exact gate is not the
+    thing under test. A decants query resolves to the 1ml Sample at 8.99 — not
+    the 250.0 bottle that is both the JSON-LD first value and the og:price, and
+    not the 16.99 second decant."""
+    _gate(monkeypatch, "false")
+    got = extract_jsonld_price(
+        load(_DECANTS), "Xerjoff", "USD", _DECANTS_QUERY, category=category,
+    )
+    assert got is not None
+    assert got["amount"] == 8.99
+    assert got["amount"] != 250.0
+    assert got["currency"] == "USD"
+    assert got["name"] == "'Ilm - 1ml Sample"
+
+
+def test_h_b_the_shipped_exact_gate_pends_this_page_in_both_directions(
+    monkeypatch,
+):
+    """CURRENT SHIPPED BEHAVIOUR, right or wrong, so drift is visible.
+
+    With the exact gate at its shipped default, `_selection_match` rejects both
+    the sample and the bottle, so this page yields NO price for either query.
+    The ruling is not contradicted (250.0 is never returned for a decants
+    query) but neither is it delivered. If a future wave loosens the gate, THIS
+    is the test that will go red and force the decision to be made in the open:
+    the value that appears here must be 8.99, never 250.0."""
+    monkeypatch.delenv("ENABLE_EXACT_PRICE_GATE", raising=False)
+    assert ps.exact_gate_enabled() is True, "this test asserts the SHIPPED default"
+    for query in (_DECANTS_QUERY, "xerjoff ilm"):
+        pending = []
+        got = extract_jsonld_price(
+            load(_DECANTS), "Xerjoff", "USD", query, pending_out=pending,
+        )
+        assert got is None, f"{query!r} newly returns {got}"
+        assert pending == [], f"{query!r} newly pends candidates {pending}"
+
+
+def test_h_c_a_non_decant_query_does_not_take_the_decant_price(monkeypatch):
+    """THE INVERSE CASE, measured rather than assumed. A query that does NOT
+    ask for decants must not be answered with 8.99 just because it is on the
+    page — the authority-not-cheapest rule of block C.
+
+    Extraction-isolated, "xerjoff ilm" admits BOTH the bottle and the sample,
+    names no size, and neither variant is out of stock, so every rung of
+    `_adjudicate_jsonld_multiplicity` declines and the page PENDS with both
+    candidates handed back. HEAD is right here; the pin exists so a future
+    "make decants win" shortcut cannot quietly turn this into 8.99."""
+    _gate(monkeypatch, "false")
+    pending = []
+    got = extract_jsonld_price(
+        load(_DECANTS), "Xerjoff", "USD", "xerjoff ilm", pending_out=pending,
+    )
+    assert got is None
+    assert sorted(c["amount"] for c in pending[0]) == [8.99, 250.0]
+
+
+def test_h_d_a_size_qualified_bottle_query_still_reaches_the_bottle(monkeypatch):
+    """The ruling is QUERY-CONDITIONAL, not "the decant always wins". The same
+    page, asked for the 50ml, still returns 250.0 — so pinning H-a costs the
+    bottle nothing."""
+    _gate(monkeypatch, "false")
+    got = extract_jsonld_price(
+        load(_DECANTS), "Xerjoff", "USD", "Xerjoff 'Ilm 50ml",
+    )
+    assert got is not None
+    assert got["amount"] == 250.0
+    assert got["name"] == "'Ilm - 50ml in Manufacturer's bottle"
+
+
+def test_h_e_the_2ml_glass_spray_decant_is_rejected_as_an_accessory(monkeypatch):
+    """A SIDE FINDING, pinned as CURRENT behaviour and NOT fixed in this unit.
+
+    The third variant, "'Ilm - 2ml Glass Spray" at 16.99, is never a candidate
+    for ANY query — including its own name — because "glass" is in
+    ACCESSORY_KEYWORDS (tempered-glass / screen-protector vocabulary) and
+    `is_accessory_for_category` has no fragrance-scoped exemption for it, the
+    way it has one for "skin" on pharmacy categories and "keyboard" on laptops.
+
+    That is a real over-rejection on a decants page: a 2ml glass-spray decant
+    is the product, not an accessory to it. It is recorded here rather than
+    fixed because this unit changes no code, and because widening the exemption
+    touches every category's accessory filter. If someone adds a fragrance
+    exemption, this test goes red and is the place to record the new value."""
+    _gate(monkeypatch, "false")
+    assert ps.is_accessory_for_category("'Ilm - 2ml Glass Spray", "fragrances") is True
+    assert ps.is_accessory_for_category("'Ilm - 1ml Sample", "fragrances") is False
+    got = extract_jsonld_price(
+        load(_DECANTS), "Xerjoff", "USD", "Xerjoff 'Ilm 2ml Glass Spray",
+    )
+    assert got is None, f"the 2ml glass spray is now reachable: {got}"
