@@ -699,17 +699,61 @@ class TestSsrf:
 # --------------------------------------------------------- no accidental wiring
 
 
-class TestStillDormant:
-    def test_nothing_in_app_imports_this_module_yet(self):
-        """STEP 5 ships the adapter only. Wiring it into the price cascade is a
-        separate, separately-reviewable change - if this test starts failing,
-        that wiring landed without its own flag review."""
+class TestWiringStaysFlagGated:
+    """ADJUDICATED at M10 UNIT A4, 2026-08-31 — this class replaces the STEP 5
+    tripwire ``TestStillDormant::test_nothing_in_app_imports_this_module_yet``.
+
+    That test asserted this module had ZERO call sites under ``app/``, and its
+    own docstring named the condition for it to change: "if this test starts
+    failing, that wiring landed without its own flag review." UNIT A4 landed the
+    wiring WITH its flag review — ``ENABLE_UCP_JSON_PRICE``, default OFF,
+    reviewed against the M9 `measure-ucp-free` evidence — so the tripwire fired
+    for the reason it was built to allow, not for the reason it was built to
+    catch.
+
+    It is REPLACED rather than deleted, because "zero call sites" was only ever
+    a proxy for the property that actually matters and that still holds: no call
+    site may reach this module's network without a default-OFF flag in front of
+    it. A deleted guard would have left that property untested."""
+
+    def _importers(self):
         root = Path(__file__).resolve().parents[1] / "app"
-        importers = []
+        found = []
         for path in root.rglob("*.py"):
             if path.name == "shopify_pdp_service.py":
                 continue
             text = path.read_text(encoding="utf-8", errors="ignore")
             if "shopify_pdp_service" in text:
-                importers.append(str(path))
-        assert importers == []
+                found.append((path, text))
+        return found
+
+    def test_every_call_site_is_behind_a_default_off_flag(self):
+        """The invariant the old tripwire was standing in for. Any module that
+        reaches this one must consult a flag gate in the same file, so a fetch
+        can never become reachable by import alone."""
+        gates = ("ucp_json_price_enabled", "shopify_pdp_json_enabled")
+        ungated = [
+            str(path) for path, text in self._importers()
+            if not any(gate in text for gate in gates)
+        ]
+        assert ungated == [], (
+            "these modules reach shopify_pdp_service without consulting a flag "
+            "gate: %s" % ungated
+        )
+
+    def test_the_only_wired_call_site_is_the_a4_cascade_shim(self):
+        """Kept deliberately narrow. The point of the original tripwire was that
+        a NEW call site is a decision someone must make on purpose; naming the
+        one that exists preserves that, while a bare 'more than zero is fine'
+        would throw the guard away."""
+        wired = sorted(path.name for path, _ in self._importers())
+        assert wired == ["price_service.py"]
+
+    def test_both_flags_are_default_off(self, monkeypatch):
+        """Neither gate may drift to default-ON without this file noticing —
+        each adds a network round-trip per PDP on a throttle that answers a
+        burst with 503."""
+        for name in ("ENABLE_SHOPIFY_PDP_JSON", "ENABLE_UCP_JSON_PRICE"):
+            monkeypatch.delenv(name, raising=False)
+        assert svc.shopify_pdp_json_enabled() is False
+        assert svc.ucp_json_price_enabled() is False

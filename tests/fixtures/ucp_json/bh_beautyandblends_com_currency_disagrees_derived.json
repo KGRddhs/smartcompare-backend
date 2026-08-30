@@ -1,0 +1,86 @@
+{
+  "product": {
+    "id": 9123762045155,
+    "title": "N 1 DEHN OUD MOATTAQ",
+    "body_html": "<div>\n<strong>Features:</strong><ul class=\"products-specs mt-20\">\n<li>\n<i aria-hidden=\"true\" class=\"fa fa-caret-right flip-rtl-right\"></i> 100Ml Private Blends / N 1(Dehn Oud Moattaq) Perfume from Private Blend Collection\r</li> <li>\n<i aria-hidden=\"true\" class=\"fa fa-caret-right flip-rtl-right\"></i> MUSK\r</li> <li>\n<i aria-hidden=\"true\" class=\"fa fa-caret-right flip-rtl-right\"></i> PATCHOULI\r</li> <li>\n<i aria-hidden=\"true\" class=\"fa fa-caret-right flip-rtl-right\"></i> LAVENDER\r</li> <li>\n<i aria-hidden=\"true\" class=\"fa fa-caret-right flip-rtl-right\"></i> AGARWOOD\r</li> <li>\n<i aria-hidden=\"true\" class=\"fa fa-caret-right flip-rtl-right\"></i> LEATHER\r</li> </ul>\n</div><div>\n<strong>Description:</strong><div class=\"mt-20\">From the Private Blend Collection, Dehn Oud Moattaq (100ml) is a statement of timeless luxury and strength.<br>\r\nIt opens with the calming depth of lavender, soon joined by the earthy richness of patchouli and the commanding warmth of leather. At its core lies the sacred essence of agarwood (oud) — dark, resinous, and powerfully elegant — layered with musk to create a smooth, enduring finish that lingers like a whispered legacy.<br>\n<br>\n</div>\n</div>",
+    "vendor": "Beauty Blends",
+    "product_type": "New Arrivals",
+    "created_at": "2026-01-22T19:32:23+03:00",
+    "handle": "n-1-dehn-oud-moattaq",
+    "updated_at": "2026-08-30T22:49:40+03:00",
+    "published_at": "2026-08-23T14:41:54+03:00",
+    "template_suffix": null,
+    "published_scope": "global",
+    "tags": "New Arrivals",
+    "variants": [
+      {
+        "id": 47867259715811,
+        "product_id": 9123762045155,
+        "title": "Default Title",
+        "price": "20.000",
+        "sku": "41549",
+        "position": 1,
+        "compare_at_price": "",
+        "fulfillment_service": "manual",
+        "inventory_management": "shopify",
+        "option1": "Default Title",
+        "option2": null,
+        "option3": null,
+        "created_at": "2026-01-22T19:32:23+03:00",
+        "updated_at": "2026-08-30T22:49:40+03:00",
+        "taxable": true,
+        "barcode": null,
+        "grams": 0,
+        "image_id": null,
+        "weight": 0.0,
+        "weight_unit": "g",
+        "requires_shipping": true,
+        "quantity_rule": {
+          "min": 1,
+          "max": null,
+          "increment": 1
+        },
+        "price_currency": "AED",
+        "compare_at_price_currency": "",
+        "quantity_price_breaks": []
+      }
+    ],
+    "options": [
+      {
+        "id": 11548418834659,
+        "product_id": 9123762045155,
+        "name": "Title",
+        "position": 1,
+        "values": [
+          "Default Title"
+        ]
+      }
+    ],
+    "images": [
+      {
+        "id": 48858403930339,
+        "product_id": 9123762045155,
+        "position": 1,
+        "created_at": "2026-08-23T14:40:54+03:00",
+        "updated_at": "2026-08-23T14:40:55+03:00",
+        "alt": null,
+        "width": 3375,
+        "height": 3375,
+        "src": "https://cdn.shopify.com/s/files/1/0779/5959/4211/files/BB_website_Perfume_with_Ingredients_62.jpg?v=1787485255",
+        "variant_ids": []
+      }
+    ],
+    "image": {
+      "id": 48858403930339,
+      "product_id": 9123762045155,
+      "position": 1,
+      "created_at": "2026-08-23T14:40:54+03:00",
+      "updated_at": "2026-08-23T14:40:55+03:00",
+      "alt": null,
+      "width": 3375,
+      "height": 3375,
+      "src": "https://cdn.shopify.com/s/files/1/0779/5959/4211/files/BB_website_Perfume_with_Ingredients_62.jpg?v=1787485255",
+      "variant_ids": []
+    }
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "_note": "GET /products/{handle}.json payloads for the UCP free-channel adapter (M10 TRACK A / UNIT A4). Measured by the M9 `measure-ucp-free` E4 Probe A on 2026-08-30: 55 live GETs, throttle 3.2s, robots fetched and enforced per host, 34 handles tried / 32 x HTTP 200, 32/32 price present as a MAJOR-UNIT decimal string, 32/32 self-declared `price_currency` == the registry currency. Provenance is recorded per file below and is NOT uniform: one file is verbatim production bytes, one is rebuilt field-for-field from the probe's own measured record, and two are DERIVED edits of the verbatim file that pin branches the live corpus does not contain. Nothing here was fetched by the test suite; the tests are offline and never open a socket.",
+  "bh_beautyandblends_com_bhd.json": {
+    "url": "https://beautyandblends.com/products/n-1-dehn-oud-moattaq.json",
+    "provenance": "VERBATIM production bytes, saved unedited from the M9 probe artifact raw_product_beautyandblends_com.json",
+    "covers": "the happy path and the currency answer - variant price is the decimal string \"20.000\" and price_currency is a self-declared \"BHD\", so 20.000 BHD is 20.0 and never 20000 or 0.02. BHD's ISO 4217 minor unit is 3, which is exactly the case a minor-unit divisor gets wrong.",
+    "registry_currency": "BHD",
+    "http_status": 200
+  },
+  "om_swissarabian_com_omr_major_unit.json": {
+    "url": "https://om.swissarabian.com/products/oud-malaki.json",
+    "provenance": "REBUILT from the M9 probe's measured record (measured.json -> hosts['om.swissarabian.com'].products[handle='oud-malaki']); the raw response bytes were not retained by the probe. Every load-bearing field is verbatim from that record: title \"OUD MALAKI\", vendor \"Swiss Arabian\", handle \"oud-malaki\", n_variants 1, price \"17.200\", price_currency \"OMR\", availability absent. Ids, sku, body_html and images are filler and nothing asserts on them.",
+    "covers": "THE MINOR-UNIT TRAP, pinned. The same product's .js feed ships the integer 1720 and the .json feed ships the decimal string \"17.200\" OMR. 1720/100 is 17.20 - NOT /1000 - which is why the .js path needs a divisor at all and why guessing that divisor from the currency table under-prices a 3-decimal Gulf store 10x. The .json decimal string removes the divisor question entirely, so this adapter must route through the canonical money parser and must NEVER reach _to_minor/_to_major.",
+    "registry_currency": "OMR",
+    "http_status": 200
+  },
+  "bh_beautyandblends_com_currency_absent_derived.json": {
+    "url": "https://beautyandblends.com/products/n-1-dehn-oud-moattaq.json",
+    "provenance": "DERIVED from bh_beautyandblends_com_bhd.json by deleting the variant `price_currency` and `compare_at_price_currency` keys. SYNTHETIC - no host in the measured corpus omits the field (32/32 carry it). It exists to pin the fallback branch, which is otherwise unreachable from live bytes.",
+    "covers": "the registry fallback - with no self-declared currency the adapter must fall back to the registry row's currency rather than abstain, and must never stamp a currency it was not given.",
+    "registry_currency": "BHD",
+    "http_status": 200
+  },
+  "bh_beautyandblends_com_currency_disagrees_derived.json": {
+    "url": "https://beautyandblends.com/products/n-1-dehn-oud-moattaq.json",
+    "provenance": "DERIVED from bh_beautyandblends_com_bhd.json by rewriting the variant `price_currency` from \"BHD\" to \"AED\". SYNTHETIC - the measured corpus agrees 32/32, so a disagreement cannot be captured live. It exists to make the precedence rule falsifiable instead of merely coincidental.",
+    "covers": "self-declared currency WINS over the registry. On agreement both rules give the same answer, so only a disagreement can prove which one the adapter actually read. The merchant endpoint states its currency; the registry only guesses it.",
+    "registry_currency": "BHD",
+    "http_status": 200
+  }
+}

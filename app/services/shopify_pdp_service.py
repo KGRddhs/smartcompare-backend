@@ -66,10 +66,25 @@ spacing table, or a socket. Read per call from ``os.getenv`` (the
 ``price_service.exact_gate_enabled`` pattern) — never cached at import, and
 nothing added to ``app/config.py``.
 
-NOT WIRED IN. This module has ZERO call sites: nothing under ``app/`` imports
-it, so no code path reaches it and the runtime is byte-identical to 8adaefb with
-the flag in either position. Wiring it into the price cascade is a separate,
-separately-reviewable change with its own flag decision.
+WIRING — CORRECTED at M10 UNIT A4, 2026-08-31
+---------------------------------------------
+This docstring used to end "NOT WIRED IN. This module has ZERO call sites",
+which was true when the ``.js`` adapter shipped at STEP 5 and is no longer true.
+It is corrected rather than deleted, because the claim was load-bearing and a
+reader who trusted it would draw a wrong conclusion about the blast radius.
+
+The ``.js`` PRICE adapter (``fetch_shopify_pdp_json``) still has no call site
+under ``app/`` — that wiring remains a separate, separately-reviewable change.
+What UNIT A4 added is a second adapter in this file, the UCP
+``/products/{handle}.json`` channel (see the section at the bottom), and
+``price_service._try_ucp_json_price`` calls THAT one from two points in
+``fetch_page_price``, behind its own default-OFF ``ENABLE_UCP_JSON_PRICE``.
+
+So: this module is now imported by ``app/services/price_service.py``, and with
+both flags off no code path here reaches DNS, the spacing table or a socket. The
+guard that keeps that honest is
+``tests/test_shopify_pdp_json.py::TestWiringStaysFlagGated``, which replaced the
+old zero-call-sites tripwire with the property that tripwire was standing in for.
 """
 
 import asyncio
@@ -134,16 +149,28 @@ def _normalise_domain(domain: Optional[str]) -> str:
     return d[4:] if d.startswith("www.") else d
 
 
-def build_pdp_json_url(pdp_url: Optional[str]) -> Optional[str]:
-    """``https://host/products/handle`` -> ``https://host/products/handle.js``.
+def _build_pdp_feed_url(
+    pdp_url: Optional[str],
+    suffix: str,
+    *,
+    strip_siblings: Tuple[str, ...] = (),
+) -> Optional[str]:
+    """``https://host/products/handle`` -> the same path plus ``suffix``.
 
     Query and fragment are stripped first: a PDP URL that arrives from search or
     a sitemap routinely carries ``?variant=...`` or UTM parameters, and
     ``/products/x?variant=1.js`` is a 404. A trailing slash is dropped so we
     never emit ``/products/x/.js``.
 
-    A path that ALREADY ends in ``.js`` (any case) is returned as-is rather than
-    doubled into ``.js.js`` — some callers hand us the feed URL directly.
+    A path that ALREADY ends in ``suffix`` (any case) is returned as-is rather
+    than doubled — some callers hand us the feed URL directly.
+
+    ``strip_siblings`` names the OTHER per-handle feed extensions to remove
+    before appending. It exists because the two feeds are SIBLINGS, not layers:
+    a caller holding ``/products/x.js`` who asks for the ``.json`` sibling must
+    get ``/products/x.json``, never the 404 ``/products/x.js.json``. It defaults
+    to empty so ``build_pdp_json_url`` keeps its shipped behaviour exactly —
+    UNIT A4 extends this family and is not licensed to move the ``.js`` builder.
 
     Returns ``None`` for anything unusable (empty, non-string, non-http(s)
     scheme, or no host) so the caller short-circuits before any network work."""
@@ -157,13 +184,26 @@ def build_pdp_json_url(pdp_url: Optional[str]) -> Optional[str]:
         return None
 
     path = parsed.path or "/"
-    if path.lower().endswith(".js"):
+    if path.lower().endswith(suffix):
         clean_path = path
     else:
-        clean_path = path.rstrip("/") + ".js"
+        for other in strip_siblings:
+            if path.lower().endswith(other):
+                path = path[: -len(other)]
+                break
+        clean_path = path.rstrip("/") + suffix
 
     # Drop params/query/fragment — only scheme, netloc and path survive.
     return urlunparse((parsed.scheme, parsed.netloc, clean_path, "", "", ""))
+
+
+def build_pdp_json_url(pdp_url: Optional[str]) -> Optional[str]:
+    """``https://host/products/handle`` -> ``https://host/products/handle.js``.
+
+    The Shopify per-PDP VARIANT feed: integer minor-unit prices and a per-variant
+    ``available`` flag, but NO currency (see ``build_pdp_products_json_url`` for
+    the complementary feed that carries one)."""
+    return _build_pdp_feed_url(pdp_url, ".js")
 
 
 # ------------------------------------------------------------- domain spacing
@@ -495,26 +535,551 @@ async def fetch_shopify_pdp_json(pdp_url: str) -> Optional[Dict[str, Any]]:
         return None
 
     try:
-        status, body = await _fetch_once(js_url, domain)
-        if status == 503:
-            logger.info("[SHOPIFY_JS] 503 for %s — retrying once", domain)
-            status, body = await _fetch_once(js_url, domain)
-        if status != 200 or not body:
-            if status is not None and status != 200:
-                logger.info("[SHOPIFY_JS] HTTP %s for %s", status, domain)
+        body = await _fetch_feed_body(js_url, domain, log_tag="SHOPIFY_JS")
+        if not body:
             return None
 
-        product_url = urlunparse(
-            (
-                urlparse(js_url).scheme,
-                urlparse(js_url).netloc,
-                urlparse(js_url).path[:-3],  # drop the ".js" we appended
-                "", "", "",
-            )
-        )
+        product_url = _strip_feed_suffix(js_url, ".js")
         return parse_shopify_pdp_json(
             body, product_url=product_url, json_url=js_url, domain=domain,
         )
     except Exception as e:  # noqa: BLE001 — the adapter never raises outward
         logger.warning("[SHOPIFY_JS] unexpected failure for %s: %s", domain, e)
+        return None
+
+
+async def _fetch_feed_body(
+    feed_url: str, domain: str, *, log_tag: str = "SHOPIFY_JS",
+) -> Optional[str]:
+    """One per-handle feed GET with the measured 503 policy. Body text or None.
+
+    503 is the storefront's burst-throttle answer, so it is retried EXACTLY
+    once, and the retry waits out a fresh per-domain slot rather than hammering
+    the throttle. Every other status is a single attempt.
+
+    Shared by the ``.js`` and ``.json`` feeds on purpose: they are two endpoints
+    of ONE storefront, behind one rate limiter and one redirect/SSRF policy, so
+    a second copy of this loop would be a second place for those rules to drift."""
+    status, body = await _fetch_once(feed_url, domain)
+    if status == 503:
+        logger.info("[%s] 503 for %s — retrying once", log_tag, domain)
+        status, body = await _fetch_once(feed_url, domain)
+    if status != 200 or not body:
+        if status is not None and status != 200:
+            logger.info("[%s] HTTP %s for %s", log_tag, status, domain)
+        return None
+    return body
+
+
+def _strip_feed_suffix(feed_url: str, suffix: str) -> str:
+    """``https://host/products/x.json`` -> ``https://host/products/x``."""
+    parsed = urlparse(feed_url)
+    path = parsed.path
+    if path.lower().endswith(suffix):
+        path = path[: -len(suffix)]
+    return urlunparse((parsed.scheme, parsed.netloc, path, "", "", ""))
+
+
+# ============================================================================
+# M10 TRACK A / UNIT A4 — the UCP free-channel price adapter
+# ============================================================================
+# ``GET /products/{handle}.json`` — the OTHER per-handle Shopify feed, and the
+# first channel in this codebase where the CURRENCY IS AN OBSERVED FACT.
+#
+# MEASURED (M9 `measure-ucp-free`, E4 Probe A, 2026-08-30: 55 live GETs across
+# the 6 UCP-advertising hosts, throttle 3.2s, robots fetched and enforced per
+# host, no MCP handshake). 34 handles tried, 32 x HTTP 200, and on all 32 the
+# variant carries BOTH a major-unit decimal ``price`` and a self-declared
+# ``price_currency`` — 32/32 equal to the registry currency. Verbatim:
+#
+#     "price": "20.000", "price_currency": "BHD",
+#     "compare_at_price": "", "compare_at_price_currency": ""
+#
+# WHY THIS MATTERS MORE THAN ONE MORE ADAPTER. Everywhere else in this service
+# the currency is something we ASK for and then hope the page agrees with — the
+# failure mode UNIT A1 exists to fix, where a bare-brand query on faces.ae
+# shipped 1515 AED labelled BHD, about 9.8x. On this channel nothing is asked:
+# the merchant's own endpoint STATES the code next to the number it belongs to.
+# So the registry is demoted to a fallback, and the self-declared code wins.
+#
+# THE FOUR RULES, all measured — do not "improve" them from first principles.
+#
+# 1. THE PRICE IS ALREADY IN MAJOR UNITS. It is a decimal string scaled to the
+#    currency's own ISO 4217 minor-unit exponent (BHD/OMR 3dp, AED/SAR/QAR 2dp),
+#    and it goes through ``price_service.parse_money`` — THE canonical parser —
+#    with the resolved currency. There is NO division on this channel, and the
+#    ``.js`` helpers ``_to_minor``/``_to_major`` must never see these strings.
+#    THE PIN: om.swissarabian.com/products/oud-malaki is ``1720`` on ``.js`` and
+#    ``"17.200"`` OMR on ``.json``. 1720/100 = 17.20 — NOT /1000, which is why
+#    the ``.js`` adapter needs a fixed divisor at all. Feed "17.200" to that
+#    divisor chain and you get 0.17: a 100x under-price that wins every
+#    cheapest-price comparison downstream. The decimal string removes the
+#    divisor question rather than answering it.
+# 2. A RESOLVABLE SELF-DECLARED ``price_currency`` BEATS THE REGISTRY ROW; an
+#    absent or unresolvable one falls back to the registry; with NEITHER we
+#    ABSTAIN. Never fabricate a currency (Decision-F) — an unlabelled amount is
+#    a wrong-price stamp waiting for a downstream default.
+# 3. ``.json`` CARRIES NO ``available``. ``.js`` carries availability but no
+#    currency; the two feeds are COMPLEMENTARY, not layered. So availability is
+#    reported as None (unknown) and the ``.js`` companion is fetched ONLY when a
+#    caller actually requires in-stock filtering — one extra free GET, bought
+#    deliberately, never speculatively.
+# 4. ``/collections/all/products.json`` is CURRENCY-BLIND on all 6 hosts and is
+#    a discovery channel only. The parser rejects that envelope on purpose so it
+#    can never be mistaken for this one.
+#
+# FLAG — ``ENABLE_UCP_JSON_PRICE``, DEFAULT **OFF**. This adds a network call,
+# so it ships dormant. Read per call from ``os.getenv`` (the
+# ``price_service.exact_gate_enabled`` idiom) — never cached at import.
+
+
+def ucp_json_price_enabled() -> bool:
+    """True iff the UCP ``/products/{handle}.json`` channel is active (**OFF**).
+
+    Default OFF because it adds a NETWORK call per PDP. Deliberately INDEPENDENT
+    of ``ENABLE_SHOPIFY_PDP_JSON``: that flag gates the ``.js`` variant feed,
+    this one gates the ``.json`` currency feed, and the two answer different
+    questions on different evidence. Rolling one back must not roll back the
+    other.
+
+    Uses the repo's default-OFF idiom (an explicit truthy allow-list) so an
+    unset, empty or misspelled value leaves the network call OFF."""
+    return os.getenv("ENABLE_UCP_JSON_PRICE", "false").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
+def build_pdp_products_json_url(pdp_url: Optional[str]) -> Optional[str]:
+    """``https://host/products/handle`` -> ``.../handle.json``.
+
+    ``.js`` is stripped first, because the two per-handle feeds are SIBLINGS:
+    a caller holding the variant-feed URL wants the currency feed, not the 404
+    that ``/products/x.js.json`` returns."""
+    return _build_pdp_feed_url(pdp_url, ".json", strip_siblings=(".js",))
+
+
+def is_shopify_pdp_path(pdp_url: Optional[str]) -> bool:
+    """True iff the URL's PATH has the Shopify per-product shape.
+
+    THE CHEAP HALF OF THE CHANNEL PROBE, and the reason it exists: with the flag
+    on, an ungated adapter would issue a ``.json`` GET against every no-price
+    page the cascade reaches — most of which are not Shopify at all. That is a
+    cost we would be spending on other people's servers to learn something the
+    URL already tells us.
+
+    Shopify serves a product at a path whose LAST segment follows a
+    ``/products/`` segment. That covers the shapes the measured hosts actually
+    use — ``/products/handle``, ``/collections/all/products/handle`` and the
+    locale-prefixed ``/en-bh/products/handle`` — while rejecting the collection
+    and search paths that would return the currency-blind discovery envelope.
+
+    This is a NECESSARY condition, never a sufficient one: the parser still has
+    to see a real product envelope come back (rule 4). A path that looks right
+    on a host that is not Shopify simply 404s and the adapter returns None."""
+    if not pdp_url or not isinstance(pdp_url, str):
+        return False
+    try:
+        path = urlparse(pdp_url.strip()).path or ""
+    except Exception:  # noqa: BLE001 — a malformed URL is not a PDP
+        return False
+    segments = [seg for seg in path.split("/") if seg]
+    if len(segments) < 2:
+        return False
+    handle = segments[-1]
+    for suffix in (".json", ".js"):
+        if handle.lower().endswith(suffix):
+            handle = handle[: -len(suffix)]
+            break
+    return bool(handle) and segments[-2].lower() == "products"
+
+
+def _registry_currency_for_host(host: Optional[str]) -> Optional[str]:
+    """The registry row's expected currency for ``host``, or None.
+
+    This is the FALLBACK only — rule 2 above. Lazy-imported (source_router pulls
+    in price_service, which imports nothing from here) and fail-soft: no row, no
+    registry, or any error means "no fallback", which makes the adapter abstain
+    rather than guess."""
+    key = _normalise_domain(host)
+    if not key:
+        return None
+    try:
+        from app.services.source_router import SOURCE_REGISTRY
+    except Exception:  # noqa: BLE001 — no registry, no fallback
+        return None
+    try:
+        for source in SOURCE_REGISTRY:
+            domain = _normalise_domain(getattr(source, "domain", ""))
+            if not domain:
+                continue
+            if key == domain or key.endswith("." + domain):
+                code = (getattr(source, "currency", "") or "").strip().upper()
+                if code:
+                    return code
+    except Exception:  # noqa: BLE001 — a selector must never break a fetch
+        return None
+    return None
+
+
+def parse_ucp_products_json(
+    payload: Any,
+    *,
+    product_url: Optional[str] = None,
+    json_url: Optional[str] = None,
+    domain: Optional[str] = None,
+    registry_currency: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    """Normalise a ``/products/{handle}.json`` body (JSON text or parsed dict).
+
+    Pure and offline — no network, no flag, no clock. Returns ``None`` for
+    anything that is not a single Shopify product with at least one variant
+    carrying both a parseable major-unit price AND a resolvable currency. Never
+    raises.
+
+    ``priced_variants`` is the load-bearing output: one entry per usable
+    variant, each with its own resolved ``currency`` and ``currency_source``,
+    because Shopify states the currency PER VARIANT. Variant SELECTION is
+    deliberately NOT done here — that is the identity machinery's job, and this
+    stays a parser."""
+    data = payload
+    if isinstance(payload, (str, bytes, bytearray)):
+        try:
+            data = json.loads(payload)
+        except Exception:  # noqa: BLE001 — a non-JSON body is an honest miss
+            return None
+    if not isinstance(data, dict):
+        return None
+
+    # Rule 4 — the single-product envelope only. ``{"products": [...]}`` is the
+    # COLLECTION feed, which is currency-blind on all 6 measured hosts; accepting
+    # it here would silently re-introduce the registry-guess this unit removes.
+    product = data.get("product")
+    if not isinstance(product, dict):
+        if "products" in data or "variants" not in data:
+            return None
+        product = data  # a bare product object, unwrapped by a caller
+
+    raw_variants = product.get("variants")
+    if not isinstance(raw_variants, list):
+        return None
+    variants = [v for v in raw_variants if isinstance(v, dict)]
+    if not variants:
+        return None
+
+    from app.services.price_service import _normalize_currency_code, parse_money
+
+    fallback = _normalize_currency_code(registry_currency)
+
+    priced: List[Dict[str, Any]] = []
+    for variant in variants:
+        # Rule 2 — the merchant's own statement first, the registry second.
+        declared = _normalize_currency_code(variant.get("price_currency"))
+        currency = declared or fallback
+        if currency is None:
+            continue
+        # Rule 1 — major units, canonical parser, NO divisor.
+        amount = parse_money(variant.get("price"), currency)
+        if amount is None or amount <= 0:
+            continue
+        # A compare-at is a discount only when it is in the SAME currency and
+        # strictly above the price. Many themes write "" or 0 for "none", and a
+        # compare-at equal to the price is not a discount.
+        compare_currency = (
+            _normalize_currency_code(variant.get("compare_at_price_currency"))
+            or currency
+        )
+        list_price = None
+        if compare_currency == currency:
+            compare = parse_money(variant.get("compare_at_price"), currency)
+            if compare is not None and compare > amount:
+                list_price = compare
+        priced.append({
+            "variant": variant,
+            "amount": amount,
+            "currency": currency,
+            "currency_source": "self_declared" if declared else "registry",
+            "list_price": list_price,
+        })
+
+    if not priced:
+        return None
+
+    # Feed order, NOT a selection: the first usable variant so the dict answers
+    # "what does this feed say" on its own. A caller that must choose between
+    # variants uses ``priced_variants`` and the shared discriminator.
+    first = priced[0]
+    tags = product.get("tags")
+    images = product.get("images")
+    options = product.get("options")
+
+    return {
+        "source": "ucp_products_json",
+        "product_url": product_url,
+        "json_url": json_url,
+        "domain": _normalise_domain(domain) or None,
+        "product_id": product.get("id"),
+        "handle": product.get("handle"),
+        "title": product.get("title"),
+        # Price block — major units, currency observed.
+        "price": first["amount"],
+        "currency": first["currency"],
+        "currency_source": first["currency_source"],
+        "list_price": first["list_price"],
+        "registry_currency": fallback,
+        "price_basis": "ucp_json_variant",
+        # Rule 3 — this feed publishes no availability. Claiming True would be a
+        # fabrication; claiming False would pend a live product.
+        "in_stock": None,
+        "availability_known": False,
+        "variant_count": len(variants),
+        "variant_id": first["variant"].get("id"),
+        "sku": first["variant"].get("sku") or None,
+        "variant_title": first["variant"].get("title"),
+        "priced_variants": priced,
+        # Signal / capture surface — free on a node we already parsed. body_html
+        # ships inside this same envelope, which is where the measured 15-of-32
+        # missing variant sizes are recoverable with no extra request.
+        "vendor": product.get("vendor"),
+        "product_type": product.get("product_type") or product.get("type"),
+        "body_html": product.get("body_html") or product.get("description") or "",
+        "tags": list(tags) if isinstance(tags, list) else [],
+        "options": list(options) if isinstance(options, list) else [],
+        "featured_image": product.get("image") or product.get("featured_image"),
+        "images": list(images) if isinstance(images, list) else [],
+        "variants": variants,
+    }
+
+
+async def fetch_ucp_json_product(
+    pdp_url: str, *, registry_currency: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    """``GET {pdp}/products/{handle}.json`` -> the normalised dict, or ``None``.
+
+    ``None`` on: the flag being off (no network at all), an unusable URL, a
+    blocked SSRF hop, any non-200 after the 503 policy, a non-product body, or
+    any exception. ``registry_currency`` defaults to the host's registry row and
+    is only ever the FALLBACK (rule 2)."""
+    if not ucp_json_price_enabled():
+        return None
+
+    # The cheap half of the channel probe — never spend a request to learn
+    # something the URL already says.
+    if not is_shopify_pdp_path(pdp_url):
+        return None
+
+    json_url = build_pdp_products_json_url(pdp_url)
+    if not json_url:
+        return None
+
+    host = urlparse(json_url).hostname or ""
+    domain = _normalise_domain(host)
+    if not domain:
+        return None
+
+    try:
+        body = await _fetch_feed_body(json_url, domain, log_tag="UCP_JSON")
+        if not body:
+            return None
+        fallback = registry_currency
+        if fallback is None:
+            fallback = _registry_currency_for_host(host)
+        return parse_ucp_products_json(
+            body,
+            product_url=_strip_feed_suffix(json_url, ".json"),
+            json_url=json_url,
+            domain=domain,
+            registry_currency=fallback,
+        )
+    except Exception as e:  # noqa: BLE001 — the adapter never raises outward
+        logger.warning("[UCP_JSON] unexpected failure for %s: %s", domain, e)
+        return None
+
+
+async def fetch_ucp_json_availability(
+    pdp_url: str, *, variant_id: Any = None,
+) -> Optional[bool]:
+    """The ``.js`` companion GET — rule 3. True / False / None (unknown).
+
+    Called ONLY when a caller requires in-stock filtering, because ``.json``
+    publishes no availability and this costs a second request. Reuses the
+    shipped ``.js`` parser rather than re-reading that feed's minor-unit rules,
+    and is gated by THIS unit's flag (the ``.js`` price adapter's own flag gates
+    its own price path, which this does not use)."""
+    if not ucp_json_price_enabled():
+        return None
+
+    js_url = build_pdp_json_url(pdp_url)
+    if not js_url:
+        return None
+    domain = _normalise_domain(urlparse(js_url).hostname or "")
+    if not domain:
+        return None
+
+    try:
+        body = await _fetch_feed_body(js_url, domain, log_tag="UCP_JSON")
+        if not body:
+            return None
+        parsed = parse_shopify_pdp_json(body, json_url=js_url, domain=domain)
+        if not parsed:
+            return None
+        if variant_id is not None:
+            for variant in parsed.get("variants") or []:
+                if isinstance(variant, dict) and variant.get("id") == variant_id:
+                    return bool(variant.get("available")) and bool(
+                        parsed.get("product_available_flag")
+                    )
+        return bool(parsed.get("in_stock"))
+    except Exception as e:  # noqa: BLE001 — availability is best-effort
+        logger.info("[UCP_JSON] availability probe failed for %s: %s", domain, e)
+        return None
+
+
+async def fetch_ucp_json_price(
+    pdp_url: str,
+    product_name: str,
+    currency: str = "BHD",
+    resolved_category: Optional[str] = None,
+    *,
+    require_in_stock: bool = False,
+    registry_currency: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    """The cascade-facing entry: a standard price dict for a UCP PDP, or None.
+
+    Threads the SAME identity/size/label machinery every sibling adapter uses —
+    a cheap free channel is not a licence to skip the exact-SKU gate, and the
+    measured search probe showed size disambiguation stays a MATCHING problem
+    even when the fetch is perfect (sa.mubkhar returned ``-15ml``, ``-30-ml``
+    and ``-all-over-spray-150ml`` for a 150ml query).
+
+    Labelling follows the sibling ``/products.json`` matcher exactly: a price
+    already in the target currency is genuine (``shopify_json``); one we had to
+    convert is stamped with the canonical converted sentinel (``converted_usd``)
+    so a converted GCC figure can never bank as a genuine BH price."""
+    if not ucp_json_price_enabled():
+        return None
+    try:
+        from app.services import price_service as ps
+
+        product = await fetch_ucp_json_product(
+            pdp_url, registry_currency=registry_currency,
+        )
+        if not product:
+            return None
+
+        title = product.get("title") or ""
+        if not title:
+            return None
+        if ps.is_counterfeit_listing(title) or ps.is_accessory(title):
+            return None
+
+        category = ps._resolve_extractor_category(resolved_category, product_name)
+        candidate_brand = ps.normalize_candidate_brand(product.get("vendor"))
+        match_score = 0.0
+        if product_name:
+            if not ps.numbers_match(product_name, title):
+                return None
+            if not ps.strict_title_match(
+                product_name, title, candidate_brand=candidate_brand,
+            ):
+                return None
+            if ps.variant_mismatch(product_name, title):
+                return None
+            if not ps._selection_match(
+                product_name, title, category, candidate_brand=candidate_brand,
+            ):
+                return None
+            p_words = ps.normalize_words(product_name)
+            t_words = ps.normalize_words(title)
+            match_score = len(p_words & t_words) / len(p_words) if p_words else 0.0
+            if p_words and match_score < 0.4:
+                return None
+
+        priced = product.get("priced_variants") or []
+        if not priced:
+            return None
+
+        # Variant binding — the A3 policy, via the SHARED discriminator: the
+        # size stated on the query wins, an unbindable spread PENDS, and the
+        # smallest is never served as if it were the shelf price.
+        if ps.variant_min_guard_enabled():
+            chosen = ps._select_shopify_variant(
+                [entry["variant"] for entry in priced],
+                product_name, title, category, ps.is_luxury_brand(product_name),
+            )
+            if chosen is None:
+                return None
+            entry = next((e for e in priced if e["variant"] is chosen), None)
+            if entry is None:
+                return None
+        else:
+            entry = priced[0]
+
+        amount = entry["amount"]
+        store_currency = entry["currency"]
+        target_currency = (currency or "BHD").upper()
+        needs_conversion = store_currency != target_currency
+        if needs_conversion:
+            from app.services.exchange_rate_service import FALLBACK_RATES
+            if store_currency not in FALLBACK_RATES or target_currency != "BHD":
+                logger.info(
+                    "[UCP_JSON] %s: %s not safely convertible to %s — skipping hit",
+                    product.get("domain"), store_currency, target_currency,
+                )
+                return None
+            amount = ps._convert_to_bhd(amount, store_currency)
+            if amount is None or amount <= 0:
+                return None
+
+        # Rule 3 — availability is bought only when it was asked for.
+        in_stock: Optional[bool] = None
+        if require_in_stock:
+            in_stock = await fetch_ucp_json_availability(
+                pdp_url, variant_id=entry["variant"].get("id"),
+            )
+            if in_stock is not True:
+                return None
+
+        variant_title = str(entry["variant"].get("title") or "")
+        signal_text = f"{title} {variant_title}".strip()
+        sizes = ps.extract_sizes_ml(signal_text)
+        size = (sorted(sizes)[0] + "ml") if sizes else None
+        concentration = ps.extract_concentration(signal_text)
+        if ps.wide_signal_text_enabled() and (size is None or concentration is None):
+            # NARROW-FIRST, additive only: body_html rides in this same envelope
+            # (rule 3's residual-size recovery), but it is marketing copy that
+            # names flankers and bundle contents, so a widened value may only
+            # FILL a None and a widened size is taken only when the whole widened
+            # text agrees on exactly one.
+            wide = ps._wide_signal_capture_text(signal_text, product)
+            if concentration is None:
+                concentration = ps.extract_concentration(wide)
+            if size is None:
+                wide_sizes = ps.extract_sizes_ml(wide)
+                if len(wide_sizes) == 1:
+                    size = next(iter(wide_sizes)) + "ml"
+
+        return {
+            "amount": round(amount, 2),
+            "currency": target_currency,
+            "original_currency": store_currency,
+            "retailer": product.get("domain") or "",
+            "url": product.get("product_url") or pdp_url,
+            "in_stock": in_stock,
+            "confidence": round(min(0.7 + match_score * 0.3, 1.0), 2),
+            "estimated": False,
+            "source_method": (
+                "converted_usd" if needs_conversion else "shopify_json"
+            ),
+            # Provenance of the LABEL, not of the number: on the measured corpus
+            # registry and merchant agree 32/32, so without this the two are
+            # indistinguishable after the fact and a coincidence reads as evidence.
+            "price_currency_source": entry["currency_source"],
+            "list_price": entry["list_price"],
+            "concentration": concentration,
+            "size": size,
+            "title": title,
+            "match_score": round(match_score, 3),
+        }
+    except Exception as e:  # noqa: BLE001 — the adapter never raises outward
+        logger.warning("[UCP_JSON] price failed for %s: %s", pdp_url, e)
         return None

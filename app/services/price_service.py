@@ -13804,6 +13804,15 @@ async def fetch_page_price(
         sl_price = await _try_salla_slug_resolve(url, product_name, currency, html)
         if sl_price:
             return sl_price
+        # M10 UNIT A4 (ENABLE_UCP_JSON_PRICE, default OFF) — HTML present but no
+        # structured price on a Shopify PDP. The per-handle
+        # ``/products/{handle}.json`` feed carries the price AND the merchant's
+        # own ``price_currency``, so it recovers the price without asking the
+        # registry what currency to stamp. Flag OFF -> the shim returns None
+        # without a request, so this is byte-identical to pre-A4.
+        ucp_price = await _try_ucp_json_price(url, product_name, currency)
+        if ucp_price:
+            return ucp_price
         # UNIT F1 — ``{"_got_html": True}`` is the page-level RENDER-CANDIDATE
         # token: "we hold bytes and found no price", i.e. a renderer or a new
         # extractor might help. On a page that was never a product page that is
@@ -13824,7 +13833,51 @@ async def fetch_page_price(
     if mg_price:
         return mg_price
 
+    # M10 UNIT A4 — the HTML route was WALLED (curl_fetch_html_same_site returned
+    # None). om.swissarabian.com is one of the six measured UCP hosts and is also
+    # one of UNIT A2's wall false-positives, so a wall verdict on this family is
+    # exactly where a free JSON feed earns its keep. Flag OFF (default) -> the
+    # shim returns None without a request, byte-identical to pre-A4.
+    ucp_price = await _try_ucp_json_price(url, product_name, currency)
+    if ucp_price:
+        return ucp_price
+
     return None
+
+
+async def _try_ucp_json_price(
+    url: str, product_name: str, currency: str,
+    resolved_category: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    """M10 UNIT A4 shim (ENABLE_UCP_JSON_PRICE, default OFF). Lazy-import the UCP
+    ``/products/{handle}.json`` adapter (shopify_pdp_service imports FROM
+    price_service, so the import must be deferred to call time to avoid a
+    circular import) and, only when the flag is on, recover the price from the
+    per-handle Shopify JSON feed.
+
+    WHY THIS CHANNEL IS DIFFERENT from every other shim in this cascade: the feed
+    states its OWN ``price_currency`` per variant (M9 measured it present and
+    equal to the registry currency on 32 of 32 handles across the 6 UCP hosts),
+    so it is the one place where the currency is an observed fact rather than
+    something we ask for and hope the page agrees with. It is also a MAJOR-UNIT
+    decimal string, so it must never be routed through the ``.js`` minor-unit
+    divisor — om.swissarabian's oud-malaki is 1720 on ``.js`` and "17.200" OMR
+    here, and the divisor chain would read that as 0.17.
+
+    Returns None on flag-OFF / non-Shopify host / miss / any error — never
+    raises."""
+    try:
+        from app.services.shopify_pdp_service import (
+            ucp_json_price_enabled,
+            fetch_ucp_json_price,
+        )
+        if not ucp_json_price_enabled():
+            return None
+        return await fetch_ucp_json_price(
+            url, product_name, currency, resolved_category,
+        )
+    except Exception:  # noqa: BLE001 — best-effort; never crash the cascade
+        return None
 
 
 async def _try_magento_gql_url_fallback(
