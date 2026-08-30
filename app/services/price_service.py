@@ -11067,9 +11067,29 @@ CAPTURE_EMPTY_SHELL = "empty_shell"
 #: product than the one asked for — the page-identity gate declined it, so
 #: there is no structured price this query may take.
 CAPTURE_NO_STRUCTURED_PRICE = "no_structured_price"
+#: A page whose JSON-LD carries N identity-matched prices and NOTHING that says
+#: which of them is the one asked for, so the shape ladder pended rather than
+#: pick silently (see `extract_jsonld_price`'s `pending_out`). This is the ONE
+#: outcome `classify_capture` cannot name: it is handed the bytes and the price
+#: and the multiplicity fact lives in neither. `extract_price_from_html` stamps
+#: it — that is the only place that knows WHY the JSON-LD path declined.
+#:
+#: It exists because each outcome class is an INSTRUCTION, and without this one
+#: a multiplicity pend was issuing somebody else's: a wall needs a
+#: different fetch channel, a shell needs a renderer, a real page with no markup
+#: needs a new extractor — and a page with 4 candidate prices needs none of
+#: those. Its markup is present and already machine-normalised; what it needs is
+#: a DISCRIMINATOR (a size on the query, an availability, a declared default).
+#: The shape ladder measured 15 of 124 priced pages carrying more than one
+#: distinct identity-matched amount (perfume.com 2.81 of {2.81..24.91},
+#: fragrancex 19.99 of {19.99..130.43}) plus the ProductGroup pages the ladder
+#: added, so this is the far-from-rare class the channel was silently folding
+#: into "nothing on the page".
+CAPTURE_AMBIGUOUS_PRICE = "ambiguous_price"
 
 CAPTURE_OUTCOMES: Tuple[str, ...] = (
     CAPTURE_OK, CAPTURE_WALLED, CAPTURE_EMPTY_SHELL, CAPTURE_NO_STRUCTURED_PRICE,
+    CAPTURE_AMBIGUOUS_PRICE,
 )
 
 #: HTTP statuses that ARE the wall, whatever the body says. 30 of the 34 walled
@@ -11142,6 +11162,14 @@ def classify_capture(
     ``http_status`` is optional and, when it names a wall, decisive — see
     ``_WALL_HTTP_STATUS``. Callers that do not have it (``extract_price_from_html``
     is handed bytes, not a response) still get an honest answer from the body.
+
+    It answers from the BODY, so it names four of the five outcomes and never
+    ``CAPTURE_AMBIGUOUS_PRICE`` — the multiplicity fact is not in the bytes, it
+    is in what the shape ladder DID with them, and ``extract_price_from_html``
+    stamps it over this verdict. Deliberately not given a
+    ``pending``/``ambiguous`` parameter: it would be a second way to say the same
+    thing for the single caller that already knows, and this function's value is
+    that it is total over (html, price, status) and nothing else.
     """
     if isinstance(price, dict):
         amount = price.get("amount")
@@ -11673,7 +11701,10 @@ def extract_price_from_html(
     ``pending_out`` is: three call sites index this function's result directly,
     and a caller that wants the reason asks for it. Anything that is not a list
     is ignored. With the flag ON the successful case ALSO carries
-    ``capture_outcome`` on the returned price dict."""
+    ``capture_outcome`` on the returned price dict. Four of the five outcomes
+    come straight from ``classify_capture``; ``CAPTURE_AMBIGUOUS_PRICE`` is
+    stamped HERE, because only this function knows that the JSON-LD path
+    declined on unresolved candidate multiplicity rather than on absence."""
     from bs4 import BeautifulSoup
     brand = product_name.split()[0] if product_name else ""
     _category = _resolve_extractor_category(category, product_name)
@@ -11682,6 +11713,16 @@ def extract_price_from_html(
     # `_finish` share this call's verdict so a flag flipped mid-extraction
     # cannot produce a half-old, half-new cascade.
     _first = jsonld_first_enabled()
+    # The MULTIPLICITY signal, set at the pend site ~40 lines below and read by
+    # `_finish`. A plain closure flag, chosen over the two alternatives the unit
+    # offered: a second out-param would widen this function's PUBLIC signature
+    # for a fact no caller can supply and every caller would have to opt into
+    # twice (`outcome_out` already IS the channel this belongs in), and a
+    # sentinel return would have to be carried through all six `return
+    # _finish(...)` sites, i.e. six chances to forget it. The producer and the
+    # consumer are in ONE frame; a local is the honest shape for that, and it
+    # costs the flag-OFF path a single bool assignment that nothing reads.
+    _multiplicity_pend = False
 
     def _finish(price: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
         """Name the outcome of this capture. Flag OFF: identity, no new key,
@@ -11689,6 +11730,18 @@ def extract_price_from_html(
         if not _first:
             return price
         outcome = classify_capture(html, price)
+        # UNIT F4 — "N candidates, none provably yours" is a different failure
+        # from "nothing on the page", and `classify_capture` cannot see the
+        # difference: it reads the BODY, and the body of a page carrying four
+        # identity-matched JSON-LD offers looks exactly like the body of a page
+        # carrying none. So the multiplicity fact is DECISIVE over both of its
+        # body heuristics — a page whose markup the ladder actually walked is by
+        # construction neither a client-rendered shell nor markup-less. Only
+        # when the capture produced NO price: a price that some other branch (or
+        # the USD retry) did resolve is a successful capture, and `ok` is the
+        # outcome whatever the JSON-LD path went through to get there.
+        if price is None and _multiplicity_pend:
+            outcome = CAPTURE_AMBIGUOUS_PRICE
         if isinstance(price, dict):
             price["capture_outcome"] = outcome
         if isinstance(outcome_out, list):
@@ -11723,6 +11776,14 @@ def extract_price_from_html(
         if price_data:
             price_data["_needs_conversion"] = True
     if not price_data and _ld_pending:
+        # This condition IS "the JSON-LD path declined BECAUSE of multiplicity"
+        # — both currency attempts came back empty AND the ladder handed back
+        # candidates. `_ld_pending` alone would not be: the target-currency call
+        # can pend and the USD retry still answer, and a decline that follows is
+        # then the strict-currency-label pend, not this one. So the flag is set
+        # HERE, where the two facts are already conjoined, rather than derived
+        # again in `_finish`.
+        _multiplicity_pend = True
         logger.info(
             "[PRICE] jsonld multiplicity unresolved on %s — %d candidates %s "
             "(pending, never a silent pick)",

@@ -129,6 +129,18 @@
       "http_status": 200,
       "bytes": 45163,
       "amounts": "none - the document contains no JSON-LD price, no og/product price meta, no itemprop=price and no WooCommerce price span"
+    },
+    "us_sephora_com_three_sizeless_variants_ambiguous.html": {
+      "url": "https://www.sephora.com/product/dior-sauvage-elixir-P475526",
+      "host": "www.sephora.com",
+      "corpus": "global",
+      "cached_bytes": "eb0c552f45a3373c43ba40a28dd3281ecf5b0bc1.html",
+      "cached_sha1_of_page": "dfa38cf69ab9846a5ecd464f9dd9f64aef05c838",
+      "kept": "the ONE application/ld+json block whose raw text contains 'hasVariant' (re-serialised by json.dumps, every price/currency/name/availability value untouched, with the page's own 'reviews' array and 'aggregateRating' DROPPED - 1,349 reviews, ~900KB of text with nothing to do with price multiplicity), plus the page's own og:title meta and <title>. Nothing hand-authored.",
+      "country": "US",
+      "http_status": 200,
+      "bytes": 1950,
+      "amounts": "199.00 / 265.00 / 330.00 USD - three hasVariant Products, all named 'Sauvage Elixir', none carrying a size, none marked default, all InStock. No og/product price meta, no itemprop=price, no WooCommerce span anywhere in the 914KB cached page, so the whole cascade declines and the ONLY reason it declines is the multiplicity."
     }
   }
 }

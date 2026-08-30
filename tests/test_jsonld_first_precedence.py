@@ -117,6 +117,7 @@ EPERFUMY_OFFER = "pl_eperfumy_pl_microdata_offer_scope.html"
 KLINQ = "kw_klinq_com_kwd_price_converted_to_bhd.html"
 DM = "de_dm_de_empty_shell_2xx.html"
 MISWAG = "iq_miswag_com_no_structured_price_200.html"
+SEPHORA_MULTI = "us_sephora_com_three_sizeless_variants_ambiguous.html"
 
 
 # ===========================================================================
@@ -611,7 +612,8 @@ def test_f_a_the_outcome_classes_exist_and_are_distinct():
     assert ps.CAPTURE_WALLED == "walled"
     assert ps.CAPTURE_EMPTY_SHELL == "empty_shell"
     assert ps.CAPTURE_NO_STRUCTURED_PRICE == "no_structured_price"
-    assert len(set(ps.CAPTURE_OUTCOMES)) == 4
+    assert ps.CAPTURE_AMBIGUOUS_PRICE == "ambiguous_price"
+    assert len(set(ps.CAPTURE_OUTCOMES)) == 5
 
 
 def test_f_b_a_bot_wall_is_walled():
@@ -706,6 +708,106 @@ def test_f_j_the_outcome_channel_is_a_courtesy_never_a_dependency(monkeypatch):
         assert got["amount"] == 320.0
 
 
+# ---------------------------------------------------------------------------
+# F4 — "N CANDIDATES, NONE PROVABLY YOURS" IS NOT "NOTHING ON THE PAGE"
+#
+# The whole point of the outcome channel is that each class prescribes a
+# DIFFERENT next move: a wall needs a different fetch channel, a shell needs a
+# renderer, a real page with no markup needs a new extractor. The shape ladder's
+# multiplicity pend is a FOURTH prescription — the markup is there, it is
+# machine-normalised, and there are simply N of it: what that page needs is a
+# DISCRIMINATOR (a size, an availability, a declared default). Until this unit
+# the ladder's pend reached the channel as a body-only verdict and issued one of
+# the other three instructions, all of them wrong.
+# ---------------------------------------------------------------------------
+def test_f_k_n_candidates_none_provably_yours_is_its_own_outcome(monkeypatch):
+    """sephora.com P475526 ships a ProductGroup of THREE sizeless variants —
+    199.00 / 265.00 / 330.00 USD, no size on any of them and nothing marking a
+    default — so the ladder pends rather than silently taking the cheapest
+    (tests/test_jsonld_shape_ladder.py::test_c_a). That pend is what the channel
+    has to report."""
+    _gate(monkeypatch, "false")
+    _first(monkeypatch, "true")
+    out = []
+    got = extract_price_from_html(
+        load(SEPHORA_MULTI), "Dior Sauvage Elixir", "USD", "www.sephora.com",
+        "https://www.sephora.com/product/dior-sauvage-elixir-P475526",
+        outcome_out=out,
+    )
+    assert got is None
+    assert out == [ps.CAPTURE_AMBIGUOUS_PRICE]
+
+
+def test_f_l_the_multiplicity_fact_outranks_both_body_heuristics(monkeypatch):
+    """`classify_capture` only ever sees the BODY, so it misreports this page in
+    BOTH size regimes: the minimal cut (1.9KB) reads as an empty_shell and the
+    real 914KB page reads as no_structured_price. Both instructions are wrong for
+    the same reason — a page carrying three identity-matched, machine-normalised
+    JSON-LD offers is neither client-rendered nor price-less. Pinned in both."""
+    _gate(monkeypatch, "false")
+    _first(monkeypatch, "true")
+    small = load(SEPHORA_MULTI)
+    assert len(small) < 30000
+    big = small + "<!--" + ("x" * 40000) + "-->"
+    # What the body alone says, i.e. what this page used to report:
+    assert ps.classify_capture(small) == ps.CAPTURE_EMPTY_SHELL
+    assert ps.classify_capture(big) == ps.CAPTURE_NO_STRUCTURED_PRICE
+    for html in (small, big):
+        out = []
+        got = extract_price_from_html(
+            html, "Dior Sauvage Elixir", "USD", "www.sephora.com",
+            "https://x/y", outcome_out=out,
+        )
+        assert got is None
+        assert out == [ps.CAPTURE_AMBIGUOUS_PRICE]
+
+
+def test_f_m_ambiguous_price_fires_only_on_the_multiplicity_pend(monkeypatch):
+    """The class is NARROW. The other two no-price pages keep their own verdicts
+    (pinned in test_f_h), and the SAME sephora page with the shape ladder OFF
+    finds no candidate at all — no ProductGroup walk, so no multiplicity — and
+    falls back to the body verdict it had before."""
+    _gate(monkeypatch, "false")
+    _first(monkeypatch, "true")
+    monkeypatch.setenv("ENABLE_JSONLD_SHAPE_LADDER", "false")
+    out = []
+    got = extract_price_from_html(
+        load(SEPHORA_MULTI), "Dior Sauvage Elixir", "USD", "www.sephora.com",
+        "https://x/y", outcome_out=out,
+    )
+    assert got is None
+    assert out == [ps.CAPTURE_EMPTY_SHELL]
+
+
+def test_f_n_classify_capture_stays_total_and_never_says_ambiguous():
+    """The multiplicity fact is produced by the extractor, which is the only
+    thing that knows WHY the JSON-LD path declined; `classify_capture` is handed
+    bytes and a price and stays exactly as total, and as narrow, as it was."""
+    for html in (None, "", b"bytes", 3, [], {}, object()):
+        assert ps.classify_capture(html) in ps.CAPTURE_OUTCOMES
+        assert ps.classify_capture(html) != ps.CAPTURE_AMBIGUOUS_PRICE
+    assert ps.classify_capture(load(SEPHORA_MULTI)) != ps.CAPTURE_AMBIGUOUS_PRICE
+    assert ps.classify_capture(
+        load(SEPHORA_MULTI), price={"amount": 199.0, "currency": "USD"},
+    ) == ps.CAPTURE_OK
+
+
+def test_f_o_a_capture_that_produced_a_price_is_ok_not_ambiguous(monkeypatch):
+    """`ambiguous_price` names a DECLINE. A pend on the target currency that the
+    USD retry (or a lower cascade branch) then resolves is a successful capture
+    and must still report ok — the channel reports the outcome, not the journey."""
+    _gate(monkeypatch, "false")
+    _first(monkeypatch, "true")
+    out = []
+    got = extract_price_from_html(
+        load(NOTINO), "Amouage Honour", "GBP", "www.notino.co.uk",
+        "https://x/y", outcome_out=out,
+    )
+    assert got["amount"] == 320.0
+    assert out == [ps.CAPTURE_OK]
+    assert got["capture_outcome"] == ps.CAPTURE_OK
+
+
 # ===========================================================================
 # G — FLAG OFF IS BYTE-IDENTICAL, DEFECTS INCLUDED
 # ===========================================================================
@@ -770,6 +872,7 @@ def test_g_d_flag_off_adds_no_new_keys_anywhere(monkeypatch):
         (LULU, "Ahmed Al Maghribi EDP Perfume Marj 60 ml", "AED", "gcc.luluhypermarket.com"),
         (MISWAG, "Miswag", "IQD", "miswag.com"),
         (DM, "dm-drogerie markt", "EUR", "dm.de"),
+        (SEPHORA_MULTI, "Dior Sauvage Elixir", "USD", "www.sephora.com"),
     ):
         got = extract_price_from_html(load(name), q, cur, host, "https://x/y", outcome_out=out)
         if got is not None:
