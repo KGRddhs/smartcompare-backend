@@ -932,6 +932,40 @@ def _laptop_layout_keyboard_exempt(title_lower: str) -> bool:
     return True
 
 
+# M6 UNIT C3 — the ACCESSORY_KEYWORDS "glass" over-rejection for fragrances.
+# MEASURED (M0 A4 side finding): a scentsplit variant "'Ilm - 2ml Glass Spray"
+# at 16.99 USD is unreachable for ANY query including its own exact name because
+# "glass" is in ACCESSORY_KEYWORDS (tempered-glass / screen-protector vocab) and
+# is_accessory_for_category had no fragrance-scoped exemption for it. A 2ml
+# glass-spray decant IS the product on a decanting-house PDP. Scoped EXACTLY like
+# the pharmacy 'skin' exemption above (by ORCHESTRATOR-RESOLVED category, never
+# the title): "glass" (and the "glass spray"/"glass bottle"/"glass decant"
+# phrases, which are just the bare "glass" token plus a non-keyword word) no
+# longer flags a fragrance title. Any OTHER accessory keyword ("Glass Atomizer
+# Travel CASE" -> "case") still flags, so a genuine fragrance accessory the
+# existing logic caught another way stays rejectable. Fail direction of any
+# residual is over-flagging -> the broad is_accessory -> fail-closed.
+_FRAGRANCE_TITLE_CATEGORIES = frozenset({"fragrances"})
+_FRAGRANCE_BENIGN_ACCESSORY_KEYWORDS = frozenset({"glass"})
+
+
+def fragrance_glass_exemption_enabled() -> bool:
+    """True iff the fragrance "glass"-token accessory exemption is active
+    (default OFF).
+
+    Repairs a MEASURED-0% path (the scentsplit "'Ilm - 2ml Glass Spray" variant
+    is unreachable for its own exact name), but ships DARK anyway because it
+    changes a currently-shipping selection outcome — flipped on Railway during
+    canary. Read PER CALL from ``os.getenv`` (copying ``exact_gate_enabled``) so
+    the flag can be flipped without a restart. With the flag OFF the fragrance
+    branch in ``is_accessory_for_category`` is never taken, so it falls through
+    to the unscoped ``is_accessory`` exactly as on main and the rollback is
+    byte-identical."""
+    return os.getenv("ENABLE_FRAGRANCE_GLASS_EXEMPTION", "").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
 def is_accessory_for_category(title: Any, category: Optional[str] = None) -> bool:
     """Scoped `is_accessory` for the direct store-API matcher chains (BF4,
     sweep OR-7 + Wave C C2, RS-4). Two bounded exemptions, one keyword each:
@@ -951,8 +985,18 @@ def is_accessory_for_category(title: Any, category: Optional[str] = None) -> boo
       keyboard PART listing must keep its accessory flag (see
       _laptop_layout_keyboard_exempt).
 
-    In both scopes any OTHER accessory keyword still flags. Everything else
-    keeps the full broad is_accessory. The Serper-shopping extractors
+    - FRAGRANCE category scope (M6 C3, gated by
+      ENABLE_FRAGRANCE_GLASS_EXEMPTION, DEFAULT OFF): when the resolved
+      category is fragrances, a bare "glass" keyword hit alone must NOT
+      classify a genuine decant title ("'Ilm - 2ml Glass Spray", "Aventus
+      10ml Glass Bottle", "Oud Wood Glass Decant 5ml") as an accessory — the
+      glass-spray/bottle/decant vessel IS the product on a decanting-house
+      PDP. Fail-closed on the QUERY's resolved category, never the title, so a
+      genuine "Tempered Glass Screen Protector" under a non-fragrance query
+      still rejects. Flag OFF -> this branch never runs -> byte-identical.
+
+    In all three scopes any OTHER accessory keyword still flags. Everything
+    else keeps the full broad is_accessory. The Serper-shopping extractors
     deliberately keep the unscoped is_accessory (noisy listings need the
     broad net; direct store-API names are resolved products).
 
@@ -967,6 +1011,16 @@ def is_accessory_for_category(title: Any, category: Optional[str] = None) -> boo
         benign = _PHARMACY_BENIGN_ACCESSORY_KEYWORDS
     elif _laptop_layout_keyboard_exempt(title_lower):
         benign = _LAPTOP_CONTEXT_BENIGN_ACCESSORY_KEYWORDS
+    elif (
+        fragrance_glass_exemption_enabled()
+        and (category or "").lower() in _FRAGRANCE_TITLE_CATEGORIES
+    ):
+        # M6 UNIT C3 — a bare "glass" hit is the decant's own glass-spray/
+        # glass-bottle/glass-decant vessel, not an accessory, when the
+        # orchestrator-resolved category is fragrances. Gated by
+        # ENABLE_FRAGRANCE_GLASS_EXEMPTION (default OFF -> this branch never
+        # runs -> byte-identical to main).
+        benign = _FRAGRANCE_BENIGN_ACCESSORY_KEYWORDS
     else:
         return is_accessory(title)
     for kw in ACCESSORY_KEYWORDS:
