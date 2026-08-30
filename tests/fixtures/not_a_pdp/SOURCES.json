@@ -1,0 +1,95 @@
+{
+  "_what": "Minimal VERBATIM fragments of REAL cached pages, for tests/test_not_a_pdp_filter.py (UNIT F1). Every <title>, canonical, og:url and ld+json block below is copied out of the cached bytes unchanged; only the surrounding <html>/<head>/<body> skeleton is added, and what was dropped is named per file.",
+  "_corpora": {
+    "global": "_proof/global/html/ - index _proof/global/_corpus_cachemap.json",
+    "gulf": "_proof/html/ + _proof/sweep2_curl_cffi.jsonl"
+  },
+  "_measurement": "E1 census (scratchpad m8/E1/not_a_pdp_table.json + census_final.json): 61 of 422 corpus rows were never product pages.",
+  "files": {
+    "kw_boutiqaat_com_oops_error_shell.html": {
+      "url": "https://www.boutiqaat.com/en-kw/women/bonbon-eau-de-parfum-50-ml-1/p/",
+      "host": "www.boutiqaat.com",
+      "corpus": "global",
+      "cached_bytes": "46019983fabbf37ad0c78aef25f97fbd0e235ce9.html",
+      "cached_sha1_of_page": "46f8fcb37978cfdb0f3bbbb421c922c5c7376a42",
+      "cached_size_bytes": 3913225,
+      "country": "KW",
+      "kept": "the page's own <title>Oops</title>, its self-referential canonical + og:url, and its ONLY ld+json block (Organization/ContactPoint), all verbatim",
+      "dropped": "3.9MB of client-side bundle; the word 'oops' occurs 12 times in the full page and 1 time here - the detector is title-anchored, so the count is irrelevant",
+      "e1_reason": "oops_error_shell",
+      "full_page_capture_outcome": "no_structured_price (3,913,225 bytes, HTTP 200) - i.e. today it is an 'extractor gap' render/extractor candidate",
+      "fixture_capture_outcome": "empty_shell (the fragment is under _EMPTY_SHELL_MAX_BYTES) - still a render instruction, which is the point",
+      "fixture_size_bytes": 1002
+    },
+    "kw_abdulsamadalqurashi_com_homepage_collapse.html": {
+      "url": "https://kw.abdulsamadalqurashi.com/en/black-star-perfume-for-men-100-ml/p1469448370",
+      "host": "kw.abdulsamadalqurashi.com",
+      "corpus": "global",
+      "final_url": "https://kw.abdulsamadalqurashi.com/en/",
+      "cached_bytes": "ecb2f2e78d3683819959abe880a0e1b8e630f6a0.html",
+      "cached_sha1_of_page": "6553b9bbe66a07be7fc0aa351a56f5f2fc91f4b6",
+      "cached_size_bytes": 109083,
+      "country": "KW",
+      "kept": "the page's own <title>, its canonical AND og:url - both pointing at https://kw.abdulsamadalqurashi.com/en, i.e. the storefront HOME - and both ld+json blocks (Organization, WebPage), verbatim. No Product node anywhere.",
+      "dropped": "the homepage's markup body",
+      "e1_reason": "redirect_to_homepage",
+      "note": "the deep PDP path /en/black-star-perfume-for-men-100-ml/p1469448370 was served the HOMEPAGE; the same collapse is recorded on the om. and qa. hosts",
+      "fixture_size_bytes": 1049
+    },
+    "gb_pacoperfumerias_co_uk_collectionpage.html": {
+      "url": "https://www.pacoperfumerias.co.uk/fragrance/womens/fragrance/bvlgari/omnia-crystalline.html",
+      "host": "www.pacoperfumerias.co.uk",
+      "corpus": "global",
+      "cached_bytes": "8c585b83192e1e98e419d79588c6c7300ae964fa.html",
+      "cached_sha1_of_page": "d4d295510b3c23dbfcf0eb4529a404f1fe62b701",
+      "cached_size_bytes": 405174,
+      "country": "GB",
+      "kept": "the page's own <title>, canonical, og:url and 4 of its 6 ld+json blocks verbatim - including the '@type':'CollectionPage' block. NO Product node exists anywhere in the full 405KB page either.",
+      "dropped": "the Organization block and the OfferCatalog/WebPage block (neither carries a Product node), plus the markup body",
+      "e1_reason": "category_collectionpage",
+      "full_page_capture_outcome": "no_structured_price (405,174 bytes, HTTP 200)",
+      "fixture_size_bytes": 2557
+    },
+    "us_sephora_com_search_redirect_target.html": {
+      "url": "https://www.sephora.com/product/dior-sauvage-eau-de-toilette-P393401",
+      "host": "www.sephora.com",
+      "corpus": "global",
+      "final_url": "https://www.sephora.com/search?keyword=productnotcarried",
+      "cached_bytes": "6df60871364c33b62cf3292f96df4d2ce2c21704.html",
+      "cached_sha1_of_page": "871153822cdd12468f3dd261bc081fe849ef6bdc",
+      "cached_size_bytes": 587343,
+      "country": "US",
+      "kept": "the page's ENTIRE head evidence: <title>Sephora</title>. The 587KB redirect target carries NO canonical, NO og:url and ZERO ld+json blocks - which is exactly why this row needs the FINAL URL and cannot be classified from the bytes.",
+      "dropped": "587KB of client-side bundle",
+      "e1_reason": "redirect_to_search",
+      "full_page_capture_outcome": "no_structured_price (587,343 bytes, HTTP 200)",
+      "fixture_size_bytes": 85
+    },
+    "tr_nishane_com_real_pdp.html": {
+      "url": "https://nishane.com/product/hacivat-x-15ml/",
+      "host": "nishane.com",
+      "corpus": "global",
+      "cached_bytes": "0335175d2ba9a595534ef2b47445bb0b132c42ed.html",
+      "cached_sha1_of_page": "4399362404e80d72a44d614ae233f201396ddef8",
+      "cached_size_bytes": 357678,
+      "country": "TR",
+      "kept": "the page's <title>, canonical, og:url and its single ld+json block verbatim - Organization/WebSite/ItemPage/Product/Offer",
+      "e1_class": "ok (a REAL priced PDP)",
+      "why_here": "E1 recorded that a challenge heuristic mis-flagged the nishane pages; this fixture pins that the NOT-A-PDP filter never sweeps them",
+      "fixture_size_bytes": 2282
+    },
+    "us_sephora_com_real_pdp_itemlist_and_product.html": {
+      "url": "https://www.sephora.com/product/dior-sauvage-elixir-P475526",
+      "host": "www.sephora.com",
+      "corpus": "global",
+      "cached_bytes": "eb0c552f45a3373c43ba40a28dd3281ecf5b0bc1.html",
+      "cached_sha1_of_page": "dfa38cf69ab9846a5ecd464f9dd9f64aef05c838",
+      "cached_size_bytes": 914938,
+      "country": "US",
+      "kept": "the page's <title>, canonical, og:url, its '@type':'ItemList' block (a SiteNavigationElement list) and its ProductGroup->Product->Offer block, verbatim",
+      "e1_class": "ok (a REAL priced PDP)",
+      "why_here": "the falsifier for a bare 'ItemList means category page' rule: a REAL sephora PDP carries an ItemList. Only the absence of a Product node separates the two.",
+      "fixture_size_bytes": 8760
+    }
+  }
+}

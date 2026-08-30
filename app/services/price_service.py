@@ -18,7 +18,7 @@ from dataclasses import dataclass
 # shadow the module inside those bodies (Wave C C2 entity-decode).
 from html import unescape as html_unescape
 from typing import Optional, List, Dict, Any, FrozenSet, Tuple
-from urllib.parse import urlparse, quote_plus, urljoin
+from urllib.parse import urlparse, quote_plus, urljoin, urlsplit
 
 import httpx
 
@@ -11350,10 +11350,26 @@ CAPTURE_NO_STRUCTURED_PRICE = "no_structured_price"
 #: added, so this is the far-from-rare class the channel was silently folding
 #: into "nothing on the page".
 CAPTURE_AMBIGUOUS_PRICE = "ambiguous_price"
+#: UNIT F1 — the page in hand was NEVER a product page. Not a wall, not a shell,
+#: not a markup gap, not a multiplicity: a mis-resolution. The E1 census over the
+#: 422 corpus rows found **61 of them** in this class — a deep PDP path served
+#: the storefront homepage, a redirect to a search decoy, an offsite redirect, a
+#: category page, a branded error shell — and every one of them was sitting in
+#: the "we got no price" bucket, i.e. issuing an instruction to buy a renderer or
+#: write an extractor for a page with no product on it. Correcting that
+#: denominator moves the genuine render tier from ~16% of all rows to 7.8% of
+#: real PDPs.
+#:
+#: The instruction this one issues is the only one no fetch channel, renderer or
+#: extractor can satisfy: fix SELECTION. Like `CAPTURE_AMBIGUOUS_PRICE` it is
+#: stamped by `extract_price_from_html` rather than `classify_capture`, and for
+#: the same kind of reason — three of its five detectors read the URL and the
+#: redirect, which are not in the bytes `classify_capture` is total over.
+CAPTURE_NOT_A_PDP = "not_a_pdp"
 
 CAPTURE_OUTCOMES: Tuple[str, ...] = (
     CAPTURE_OK, CAPTURE_WALLED, CAPTURE_EMPTY_SHELL, CAPTURE_NO_STRUCTURED_PRICE,
-    CAPTURE_AMBIGUOUS_PRICE,
+    CAPTURE_AMBIGUOUS_PRICE, CAPTURE_NOT_A_PDP,
 )
 
 #: HTTP statuses that ARE the wall, whatever the body says. 30 of the 34 walled
@@ -11434,7 +11450,12 @@ def classify_capture(
     ``pending``/``ambiguous`` parameter: it would be a second way to say the same
     thing for the single caller that already knows, and this function's value is
     that it is total over (html, price, status) and nothing else.
-    """
+
+    ``final_url`` (UNIT F1, ENABLE_NOT_A_PDP_FILTER, optional) — the terminal URL
+    of the fetch, when the caller knows it. Read ONLY by the NOT-A-PDP filter,
+    which needs it for the two classes that are facts about the redirect rather
+    than the bytes (an offsite landing, and a search decoy whose body carries no
+    canonical at all). Ignored entirely with the flag off."""
     if isinstance(price, dict):
         amount = price.get("amount")
         if isinstance(amount, (int, float)) and not isinstance(amount, bool):
@@ -11449,6 +11470,351 @@ def classify_capture(
     if len(text) < _EMPTY_SHELL_MAX_BYTES:
         return CAPTURE_EMPTY_SHELL
     return CAPTURE_NO_STRUCTURED_PRICE
+
+
+# ===========================================================================
+# UNIT F1 — THE NOT-A-PDP FILTER (ENABLE_NOT_A_PDP_FILTER, default OFF)
+#
+# THE DEFECT THIS EXISTS FOR. The price path assumes that a fetched 2xx page is
+# the product page the selector resolved. The E1 census over both corpora (422
+# rows) measured that **61 of them were never product pages**: a deep PDP path
+# served the storefront HOMEPAGE (the three `*.abdulsamadalqurashi.com` hosts
+# collapse `/en/black-star-perfume-for-men-100-ml/p1469448370` onto `/en`), a
+# redirect to a SEARCH decoy (`sephora.com` answers
+# `/search?keyword=productnotcarried` for a product it does not carry), an
+# OFFSITE redirect (`thebay.com` -> `canadiantire.ca`, `seifonline.com` ->
+# `hugedomains.com`), a CATEGORY page whose JSON-LD says `CollectionPage` and
+# carries no Product node anywhere (`pacoperfumerias.co.uk`), and a branded
+# ERROR SHELL (`boutiqaat.com` answers HTTP 200 with `<title>Oops</title>` on
+# five country storefronts, in 3.9MB of bundle).
+#
+# Every one of those reaches the extractor, produces no price, and is then
+# counted as an extractor gap or a render candidate — an instruction nothing can
+# act on. Naming them removes ~half of what looked like a "render residual".
+#
+# THE ONE RULE THAT MAKES IT FAIL-OPEN: a page whose JSON-LD declares a Product
+# node ANYWHERE is never swept, whatever else fires. Measured over all 422 rows
+# that single condition takes the false-positive count on the 301 real priced
+# pages to ZERO for every detector below — including the two real PDPs that ship
+# an `ItemList` (sephora.com's SiteNavigationElement list), which a bare
+# "ItemList means category page" rule would have swept. The veto is deliberately
+# WIDER than the extractor's own `_shape_ladder_product_nodes` (any Product-family
+# `@type` at any depth, not only the ones the ladder can reach): it costs one
+# available catch on the corpus (caretobeauty.com's brand listing stays on
+# today's path) and buys the guarantee that a page which calls itself a product
+# is never dropped.
+#
+# DELIBERATELY OUT OF SCOPE, and named so a reader does not think they were
+# missed: `robots.txt` probe URLs, bare category URLs, HTTP errors and
+# wrong-product resolutions are also in the E1 table, but none of them is a fact
+# about a FETCHED page — they belong to URL validation (`validate_scrape_url`,
+# `_is_pdp_link`) and to the exact-identity gate respectively.
+# ===========================================================================
+def not_a_pdp_filter_enabled() -> bool:
+    """True iff the selection-time NOT-A-PDP filter is active (default OFF).
+
+    Read PER CALL from ``os.getenv`` (copying ``exact_gate_enabled``) so Railway
+    can flip it without a restart, and NEVER cached at import. With the flag off
+    ``classify_not_a_pdp`` is not called, no outcome is written, and both
+    ``extract_price_from_html`` and ``fetch_page_price`` take their exact
+    pre-F1 path."""
+    return os.getenv("ENABLE_NOT_A_PDP_FILTER", "").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
+#: The named classes. A reason is never a free-form string: each one is an
+#: instruction to a different part of DISCOVERY.
+NOT_A_PDP_REDIRECT_HOMEPAGE = "redirect_to_homepage"
+NOT_A_PDP_REDIRECT_SEARCH = "redirect_to_search"
+NOT_A_PDP_REDIRECT_OFFSITE = "redirect_offsite"
+NOT_A_PDP_CATEGORY_PAGE = "category_collectionpage"
+NOT_A_PDP_ERROR_SHELL = "error_shell"
+
+NOT_A_PDP_REASONS: Tuple[str, ...] = (
+    NOT_A_PDP_REDIRECT_OFFSITE, NOT_A_PDP_REDIRECT_SEARCH,
+    NOT_A_PDP_REDIRECT_HOMEPAGE, NOT_A_PDP_ERROR_SHELL, NOT_A_PDP_CATEGORY_PAGE,
+)
+
+#: schema.org's Product family. Any of these, at any depth, vetoes every
+#: detector below.
+_NOT_A_PDP_PRODUCT_TYPES: frozenset = frozenset({
+    "product", "productgroup", "productmodel", "individualproduct",
+    "somemodels", "someproducts",
+})
+
+#: The page-level types that say "this document is a LISTING". `CollectionPage`
+#: is a WebPage subtype — a claim about the page itself; `ItemList` is included
+#: because faces.ae's brand pages and arenal.com's promo pages carry nothing
+#: else, and it is safe ONLY because of the Product-node veto (see above).
+_NOT_A_PDP_LISTING_TYPES: frozenset = frozenset({"collectionpage", "itemlist"})
+
+#: A storefront ROOT, optionally with a locale segment. `/`, `/en`, `/ar/`,
+#: `/en-kw`, `/index.html`. Matched against the path ONLY — a query string is
+#: not evidence.
+_NOT_A_PDP_HOME_PATH_RE = re.compile(
+    r"^/?$|^/[a-z]{2}/?$|^/[a-z]{2}-[a-z]{2}/?$|^/index\.(?:html?|php)$", re.I,
+)
+
+#: A SEARCH route, PATH-anchored. The query string is deliberately not read: a
+#: `?q=` on a real PDP is a tracking or variant parameter often enough that it is
+#: not evidence, and the one measured case (`sephora.com/search?keyword=
+#: productnotcarried`) is already named by its path.
+_NOT_A_PDP_SEARCH_PATH_RE = re.compile(
+    r"^/(?:search|catalogsearch|suche|recherche|zoeken|busca|buscar|ricerca)"
+    r"(?:[/?]|$)", re.I,
+)
+
+#: THE ERROR SHELL, anchored at the START of the <title> and NEVER a substring
+#: over the body. That anchoring is the whole design: the swissarabian page in
+#: the corpus carries "access denied" inside a JavaScript COMMENT and a body
+#: substring test fires on it, on a page that served fine. The alternatives here
+#: are exactly the ones the corpus produced — boutiqaat "Oops" x5, macys "Not
+#: Found - Macy's", spinneys "404 Not Found | Spinneys Lebanon", orisdi
+#: "404 <arabic> - Orisdi" — plus the bare "error" the unit names. A real
+#: product whose NAME contains one of these words does not match, because the
+#: title has to BEGIN with it and the page would carry a Product node anyway.
+_NOT_A_PDP_ERROR_TITLE_RE = re.compile(
+    r"^[\s\W_]*(?:oops|error|404|not found|page not found)\b", re.I,
+)
+
+#: Multi-label public suffixes this classifier needs to compare registrable
+#: domains across. Deliberately a small explicit table rather than a
+#: `publicsuffix` dependency: the only question asked of it is "did the fetch
+#: land on a DIFFERENT company's domain", and a suffix this table misses makes
+#: the answer more conservative (two hosts look like one), never less.
+_NOT_A_PDP_TWO_LEVEL_SUFFIXES: frozenset = frozenset({
+    "co.uk", "org.uk", "com.tr", "com.eg", "com.sa", "com.kw", "com.qa",
+    "com.bh", "com.om", "com.au", "com.br", "com.mx", "co.jp", "co.il",
+    "co.za", "com.pk", "com.lb", "com.jo", "com.cy", "co.in", "com.sg",
+    "com.my", "co.nz",
+})
+
+#: Cost bounds. The classifier runs on the price path, and the corpus carries
+#: 4MB pages: cap how many JSON-LD blocks are read and how big one may be.
+_NOT_A_PDP_MAX_LD_BLOCKS = 40
+_NOT_A_PDP_MAX_LD_CHARS = 1_000_000
+#: Depth bound on the type walk, mirroring `_SHAPE_LADDER_MAX_DEPTH`: it exists
+#: only so a hostile self-referential document cannot hang the walk.
+_NOT_A_PDP_MAX_TYPE_DEPTH = 6
+
+
+def _not_a_pdp_registrable_domain(host: Any) -> str:
+    """The registrable domain of a host, lowercased, `www.` stripped. Total."""
+    if not isinstance(host, str):
+        return ""
+    host = host.strip().lower().split(":")[0]
+    if host.startswith("www."):
+        host = host[4:]
+    if not host:
+        return ""
+    parts = [p for p in host.split(".") if p]
+    if len(parts) <= 2:
+        return ".".join(parts)
+    if ".".join(parts[-2:]) in _NOT_A_PDP_TWO_LEVEL_SUFFIXES:
+        return ".".join(parts[-3:])
+    return ".".join(parts[-2:])
+
+
+def _not_a_pdp_split(value: Any):
+    """`urlsplit` for an http(s) URL that names a host, else None. Total."""
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        parts = urlsplit(value.strip())
+    except Exception:  # noqa: BLE001 — a classifier must never raise
+        return None
+    if parts.scheme not in ("http", "https") or not parts.netloc:
+        return None
+    return parts
+
+
+def _not_a_pdp_jsonld_types(soup: Any) -> Tuple[bool, set]:
+    """`(declares_product, listing_types_seen)` for one document.
+
+    Reads the ld+json blocks itself rather than reusing
+    `_shape_ladder_product_nodes` because the question is different: the ladder
+    asks "which Product nodes can the EXTRACTOR reach", this asks "does the page
+    call itself a product ANYWHERE" — and for a veto, wider is safer."""
+    declares_product = False
+    listing: set = set()
+    try:
+        scripts = soup.find_all("script", type="application/ld+json",
+                                limit=_NOT_A_PDP_MAX_LD_BLOCKS)
+    except Exception:  # noqa: BLE001 — a torn soup is not evidence
+        return False, listing
+
+    def walk(node: Any, depth: int) -> None:
+        nonlocal declares_product
+        if depth > _NOT_A_PDP_MAX_TYPE_DEPTH:
+            return
+        if isinstance(node, list):
+            for item in node:
+                walk(item, depth + 1)
+            return
+        if not isinstance(node, dict):
+            return
+        raw = node.get("@type")
+        labels = raw if isinstance(raw, list) else [raw]
+        for label in labels:
+            if not isinstance(label, str):
+                continue
+            low = label.strip().lower()
+            if low in _NOT_A_PDP_PRODUCT_TYPES:
+                declares_product = True
+            elif low in _NOT_A_PDP_LISTING_TYPES:
+                listing.add(low)
+        for value in node.values():
+            if isinstance(value, (dict, list)):
+                walk(value, depth + 1)
+
+    for script in scripts:
+        raw = script.string
+        if not isinstance(raw, str) or len(raw) > _NOT_A_PDP_MAX_LD_CHARS:
+            continue
+        try:
+            data = json.loads(raw)
+        except Exception:  # noqa: BLE001 — an unreadable block is not evidence
+            continue
+        walk(data, 0)
+    return declares_product, listing
+
+
+def _not_a_pdp_title(soup: Any) -> str:
+    """The document's own <title>, from <head> when there is one (an SVG can
+    carry a <title> too). Total."""
+    try:
+        head = getattr(soup, "head", None)
+        tag = head.find("title") if head is not None else soup.find("title")
+        if tag is None:
+            tag = soup.find("title")
+        return (tag.get_text() or "").strip() if tag is not None else ""
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def _not_a_pdp_document_url(soup: Any, base: str) -> Optional[str]:
+    """Where the DOCUMENT says it lives: `<link rel=canonical>` first, then
+    `og:url`. Resolved against `base` so a relative canonical still compares."""
+    candidates: List[Any] = []
+    try:
+        for link in soup.find_all("link", limit=100):
+            rel = link.get("rel")
+            rel_values = rel if isinstance(rel, list) else [rel]
+            if any(isinstance(r, str) and r.lower() == "canonical" for r in rel_values):
+                candidates.append(link.get("href"))
+        meta = soup.find("meta", attrs={"property": "og:url"})
+        if meta is not None:
+            candidates.append(meta.get("content"))
+    except Exception:  # noqa: BLE001
+        return None
+    for raw in candidates:
+        if not isinstance(raw, str) or not raw.strip():
+            continue
+        try:
+            resolved = urljoin(base, raw.strip())
+        except Exception:  # noqa: BLE001
+            continue
+        if _not_a_pdp_split(resolved) is not None:
+            return resolved
+    return None
+
+
+def _not_a_pdp_is_home(path: Any) -> bool:
+    return bool(_NOT_A_PDP_HOME_PATH_RE.match(path if isinstance(path, str) else ""))
+
+
+def _not_a_pdp_is_search(parts: Any) -> bool:
+    path = getattr(parts, "path", "") or ""
+    return bool(_NOT_A_PDP_SEARCH_PATH_RE.match(path))
+
+
+def classify_not_a_pdp(
+    html: Any, url: Any, final_url: Any = None, soup: Any = None,
+) -> Optional[str]:
+    """Name WHY this page was never a product page, or ``None``.
+
+    TOTAL — never raises, and ``None`` (stay on today's path) is the answer to
+    everything ambiguous, every unreadable input and every page that declares a
+    Product node.
+
+    ``final_url`` is the terminal URL of the fetch, when the caller knows it.
+    Two of the five classes are facts about the FETCH rather than the bytes and
+    are unreachable without it:
+
+      * an OFFSITE redirect is only ever read from an explicit ``final_url``. A
+        cross-domain `<link rel=canonical>` is the page's CLAIM about where it
+        belongs — a Shopify store on a custom domain publishes exactly that —
+        so it is deliberately not treated as evidence. Measured: allowing it
+        would have added zero catches over the 422 corpus rows.
+      * a redirect to a SEARCH route: `sephora.com`'s 587KB
+        `/search?keyword=productnotcarried` body carries no canonical, no
+        `og:url` and zero ld+json, so the terminal URL is the only witness.
+
+    The HOMEPAGE collapse is readable both ways and takes either: the
+    `*.abdulsamadalqurashi.com` pages publish a canonical AND an `og:url` of
+    `/en` while the requested path is `/en/black-star-perfume-for-men-100-ml/
+    p1469448370`.
+
+    ``soup`` lets the caller hand in the document it already parsed. It must be
+    the UNMUTATED parse — `extract_price_from_html` calls this before the
+    WooCommerce branch touches the tree.
+    """
+    try:
+        requested = _not_a_pdp_split(url)
+        if requested is None:
+            return None
+        text = html if isinstance(html, str) else ""
+        if soup is None:
+            if not text:
+                return None
+            from bs4 import BeautifulSoup
+            soup = BeautifulSoup(text, "html.parser")
+
+        # THE VETO, computed first because it overrules every detector.
+        declares_product, listing_types = _not_a_pdp_jsonld_types(soup)
+        if declares_product:
+            return None
+
+        requested_is_home = _not_a_pdp_is_home(requested.path)
+
+        # (b) + (a) from an explicit terminal URL — a fact about the fetch.
+        final = _not_a_pdp_split(final_url)
+        if final is not None and final.geturl() != requested.geturl():
+            if (_not_a_pdp_registrable_domain(final.netloc)
+                    != _not_a_pdp_registrable_domain(requested.netloc)):
+                return NOT_A_PDP_REDIRECT_OFFSITE
+            if _not_a_pdp_is_search(final):
+                return NOT_A_PDP_REDIRECT_SEARCH
+            if _not_a_pdp_is_home(final.path) and not requested_is_home:
+                return NOT_A_PDP_REDIRECT_HOMEPAGE
+
+        # (a) from the document's own canonical / og:url, SAME registrable
+        # domain only. A deep product path whose page says it lives at the
+        # storefront root has been collapsed onto the homepage.
+        if not requested_is_home:
+            document = _not_a_pdp_document_url(soup, requested.geturl())
+            doc = _not_a_pdp_split(document) if document else None
+            if doc is not None and (
+                _not_a_pdp_registrable_domain(doc.netloc)
+                == _not_a_pdp_registrable_domain(requested.netloc)
+            ):
+                if _not_a_pdp_is_search(doc):
+                    return NOT_A_PDP_REDIRECT_SEARCH
+                if _not_a_pdp_is_home(doc.path):
+                    return NOT_A_PDP_REDIRECT_HOMEPAGE
+
+        # (d) the branded error shell, title-anchored.
+        if _NOT_A_PDP_ERROR_TITLE_RE.match(_not_a_pdp_title(soup)):
+            return NOT_A_PDP_ERROR_SHELL
+
+        # (c) a listing page: CollectionPage / ItemList and no Product node.
+        if listing_types:
+            return NOT_A_PDP_CATEGORY_PAGE
+    except Exception as e:  # noqa: BLE001 — a classifier must never break pricing
+        logger.warning("[PRICE] classify_not_a_pdp failed for %s: %s", url, e)
+        return None
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -11961,6 +12327,7 @@ def _extract_og_price(
 def extract_price_from_html(
     html: str, product_name: str, currency: str, domain: str, url: str,
     category: Optional[str] = None, outcome_out: Optional[List[str]] = None,
+    final_url: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
     """Extract price from HTML using structured data (JSON-LD, OG, microdata).
 
@@ -12027,6 +12394,27 @@ def extract_price_from_html(
     # Parse once up front — also needed by the size-capture (frag-size-capture)
     # for the JSON-LD branch, which builds its result before the OG path.
     soup = BeautifulSoup(html, 'html.parser')
+
+    # UNIT F1 — THE NOT-A-PDP FILTER (ENABLE_NOT_A_PDP_FILTER, default OFF).
+    # Placed HERE, before the first branch, for three reasons. (1) It is the
+    # only position where "never priced" is STRUCTURAL rather than a price the
+    # cascade produced and something else took away again — a category page can
+    # carry an offer the ladder would happily read. (2) `soup` is still the
+    # UNMUTATED parse; the WooCommerce branch below rewrites the tree, and the
+    # classifier reads ld+json out of it. (3) A page that was never a product
+    # page should not pay for the whole cascade.
+    # Flag OFF this is one function call that returns False and the legacy path
+    # continues, so the rollback is byte-identical.
+    if not_a_pdp_filter_enabled():
+        _na_reason = classify_not_a_pdp(html, url, final_url=final_url, soup=soup)
+        if _na_reason is not None:
+            logger.info(
+                "[PRICE] %s is NOT a product page (%s) — not priced, not a "
+                "render candidate", domain, _na_reason,
+            )
+            if isinstance(outcome_out, list):
+                outcome_out.append(CAPTURE_NOT_A_PDP)
+            return None
 
     # Priority 1: JSON-LD (S4 — pass the full query as query_name so a brand-
     # field-only match still requires name-relatedness, no cheapest-unrelated-
@@ -12898,6 +13286,7 @@ async def curl_fetch_html_same_site(
     domain: str,
     max_redirects: int = 3,
     max_bytes: int = 3_000_000,
+    final_url_out: Optional[List[str]] = None,
 ) -> Optional[str]:
     """Redirect-validating same-site HTML fetch (Codex HIGH-5 SSRF fix).
 
@@ -12910,7 +13299,17 @@ async def curl_fetch_html_same_site(
     redirect-cap breach, or any exception → ``None``. NEVER raises.
 
     On a 200, returns ``resp.text`` truncated to ``max_bytes`` (guards a huge
-    body). Body is capped, not rejected, so a legit large PDP still parses."""
+    body). Body is capped, not rejected, so a legit large PDP still parses.
+
+    ``final_url_out`` (UNIT F1, optional) — when a list is supplied, the URL the
+    fetch actually TERMINATED on is appended to it on success. This loop is the
+    only place that knows: it follows same-host redirects hop by hop, and the
+    measured search-decoy class (``sephora.com/product/...`` ->
+    ``/search?keyword=productnotcarried``) is a same-host redirect whose body
+    carries no canonical, so the terminal URL is the only witness there is. An
+    opt-in out-parameter rather than a widened return type, exactly as
+    ``outcome_out``/``pending_out`` are: three call sites index this function's
+    result directly, and the caller that wants the extra fact asks for it."""
     from app.utils.url_validator import validate_external_url
 
     # Validate the INITIAL url before any network call.
@@ -12945,6 +13344,8 @@ async def curl_fetch_html_same_site(
                 continue
             if status == 200:
                 text = resp.text or ""
+                if isinstance(final_url_out, list):
+                    final_url_out.append(current)
                 return text[:max_bytes]
             # Any other non-2xx/non-3xx status → honest miss.
             return None
@@ -12964,13 +13365,31 @@ async def fetch_page_price(
         return None
 
     domain = urlparse(url).netloc.replace("www.", "")
+    # UNIT F1 (ENABLE_NOT_A_PDP_FILTER, default OFF) — ONE env read for this
+    # fetch, so a flag flipped mid-call cannot produce a half-old cascade. Flag
+    # OFF both channels stay None, which is what every argument below already
+    # defaults to: the calls are byte-identical to the pre-F1 ones.
+    _f1 = not_a_pdp_filter_enabled()
+    _final_out: Optional[List[str]] = [] if _f1 else None
+    _outcomes: Optional[List[str]] = [] if _f1 else None
+    # The two new arguments are passed ONLY with the flag on. Not tidiness:
+    # flag-OFF this leaves the CALL SHAPE identical too, so an existing test
+    # double for the fetch (`async def fake(url, domain)`) keeps working and the
+    # rollback is byte-identical at the call site, not merely in effect.
+    _fetch_kwargs = {"final_url_out": _final_out} if _f1 else {}
     # SSRF hardening (scraping audit 2026-07-08) — a Serper-discovered storefront
     # URL is externally-influenced, so validate the initial URL AND every redirect
     # hop (block private/loopback/link-local/metadata) and pin to the source host
     # via the same-site helper, instead of the unvalidated curl_fetch_html.
-    html = await curl_fetch_html_same_site(url, domain)
+    html = await curl_fetch_html_same_site(url, domain, **_fetch_kwargs)
     if html:
-        price = extract_price_from_html(html, product_name, currency, domain, url)
+        _extract_kwargs = {
+            "outcome_out": _outcomes,
+            "final_url": (_final_out[0] if _final_out else None),
+        } if _f1 else {}
+        price = extract_price_from_html(
+            html, product_name, currency, domain, url, **_extract_kwargs,
+        )
         if price:
             # L2 content safety — Tier 1.5 page-scrape entry point (Bundle B,
             # team-lead expansion of spec sec 5.2). Drop the candidate if the
@@ -12997,6 +13416,16 @@ async def fetch_page_price(
         sl_price = await _try_salla_slug_resolve(url, product_name, currency, html)
         if sl_price:
             return sl_price
+        # UNIT F1 — ``{"_got_html": True}`` is the page-level RENDER-CANDIDATE
+        # token: "we hold bytes and found no price", i.e. a renderer or a new
+        # extractor might help. On a page that was never a product page that is
+        # a false instruction, and it is the one the E1 census measured 61 rows
+        # issuing. Return the honest None instead. Deliberately AFTER the B3/B5
+        # side-doors: B5 exists precisely to recover a product from a Salla
+        # storefront that swallowed a dead PDP slug, and a recovered price is a
+        # better answer than a verdict about the page it came from.
+        if _outcomes is not None and CAPTURE_NOT_A_PDP in _outcomes:
+            return None
         return {"_got_html": True}
 
     # UNIT B3 — HTML route walled (curl_fetch_html_same_site returned None, e.g.

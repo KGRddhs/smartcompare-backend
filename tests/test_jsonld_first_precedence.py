@@ -613,7 +613,26 @@ def test_f_a_the_outcome_classes_exist_and_are_distinct():
     assert ps.CAPTURE_EMPTY_SHELL == "empty_shell"
     assert ps.CAPTURE_NO_STRUCTURED_PRICE == "no_structured_price"
     assert ps.CAPTURE_AMBIGUOUS_PRICE == "ambiguous_price"
-    assert len(set(ps.CAPTURE_OUTCOMES)) == 5
+    # UNIT F1 added a SIXTH outcome (`not_a_pdp`) to the enumeration: a page
+    # that was never a product page needs neither a fetch channel, nor a
+    # renderer, nor an extractor, nor a discriminator — it needs a better
+    # SELECTION. The count pin is replaced by the exact set, which is the
+    # stronger contract, and the invariant this test really protects — that
+    # `classify_capture` itself still answers only from (html, price, status) —
+    # is pinned directly below.
+    assert set(ps.CAPTURE_OUTCOMES) == {
+        "ok", "walled", "empty_shell", "no_structured_price", "ambiguous_price",
+        "not_a_pdp",
+    }
+
+
+def test_f_a2_classify_capture_never_names_the_selection_outcome():
+    """`not_a_pdp` is stamped by `extract_price_from_html`, which knows the url
+    and the redirect; `classify_capture` is handed the bytes and must never
+    reach for it."""
+    for html in ("", "<html></html>", load(MISWAG), load(DM)):
+        for status in (None, 200, 403, 404):
+            assert ps.classify_capture(html, http_status=status) != ps.CAPTURE_NOT_A_PDP
 
 
 def test_f_b_a_bot_wall_is_walled():
