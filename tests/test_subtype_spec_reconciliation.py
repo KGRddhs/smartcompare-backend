@@ -30,6 +30,16 @@ from app.services.extraction_service import (
 from app.services.product_type_router import PRODUCT_TYPE_SCHEMAS
 
 
+@pytest.fixture(autouse=True)
+def _pin_specs_no_fabrication_off(monkeypatch):
+    """U0.3 — these payloads carry NO ``_source`` citations, so they describe
+    the flag-OFF reconciliation contract. With ENABLE_SPECS_NO_FABRICATION on,
+    an uncited field is correctly DROPPED instead of reconciled; that arm is
+    pinned in tests/test_specs_no_fabrication_guard.py. Pin the flag here so
+    the contract under test is explicit rather than ambient."""
+    monkeypatch.delenv("ENABLE_SPECS_NO_FABRICATION", raising=False)
+
+
 def _mock_openai_returning(payload: dict):
     """Build a client whose completion returns exactly ``payload`` as JSON.
 

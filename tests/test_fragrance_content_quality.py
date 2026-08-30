@@ -576,11 +576,17 @@ def _mock_specs_client(content_dict):
 
 
 @pytest.mark.asyncio
-async def test_extract_specs_aliases_fragrance_subtype_keys():
+async def test_extract_specs_aliases_fragrance_subtype_keys(monkeypatch):
     """A fragrance GPT response carrying subtype-named keys (longevity_hrs,
     volume_ml) must reconcile onto the canonical longevity/volume rather than
-    being filtered out to 'N/A'."""
+    being filtered out to 'N/A'.
+
+    U0.3 — this payload is UNCITED, so it pins the flag-OFF contract; with
+    ENABLE_SPECS_NO_FABRICATION on an uncited field is dropped instead (see
+    tests/test_specs_no_fabrication_guard.py)."""
     from app.services import extraction_service
+
+    monkeypatch.delenv("ENABLE_SPECS_NO_FABRICATION", raising=False)
 
     gpt_out = {
         "brand": "Creed",
@@ -608,10 +614,14 @@ async def test_extract_specs_aliases_fragrance_subtype_keys():
 
 
 @pytest.mark.asyncio
-async def test_extract_specs_canonical_key_wins_over_subtype_alias():
+async def test_extract_specs_canonical_key_wins_over_subtype_alias(monkeypatch):
     """If GPT emits BOTH the canonical key and its subtype alias, the canonical
-    value is authoritative — the alias must not clobber it."""
+    value is authoritative — the alias must not clobber it.
+
+    U0.3 — uncited payload, so this pins the flag-OFF contract."""
     from app.services import extraction_service
+
+    monkeypatch.delenv("ENABLE_SPECS_NO_FABRICATION", raising=False)
 
     gpt_out = {
         "brand": "Dior", "model": "Sauvage", "variant": "EDT",

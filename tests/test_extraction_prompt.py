@@ -1,6 +1,19 @@
-"""Bucket A bug 3 - extraction prompt forces schema fields, no contradiction."""
+"""Bucket A bug 3 - extraction prompt forces schema fields, no contradiction.
+
+U0.3 NOTE: these pin the flag-OFF (default) specs prompt. With
+ENABLE_SPECS_NO_FABRICATION on, the must-attempt / training-data-fallback
+directives are deliberately REPLACED by their evidence-only counterparts, which
+are pinned in tests/test_specs_no_fabrication_guard.py. The autouse fixture
+below makes that split explicit instead of leaving these two tests dependent on
+ambient environment.
+"""
 import pytest
 from app.services.extraction_service import _build_specs_prompt, CATEGORY_SPEC_SCHEMAS
+
+
+@pytest.fixture(autouse=True)
+def _pin_specs_no_fabrication_off(monkeypatch):
+    monkeypatch.delenv("ENABLE_SPECS_NO_FABRICATION", raising=False)
 
 
 def test_prompt_does_not_say_omit_irrelevant_for_schema_fields():
