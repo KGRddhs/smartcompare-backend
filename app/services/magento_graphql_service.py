@@ -39,6 +39,7 @@ Returns a price dict or ``None``. NEVER raises — every network / parse error �
 $0 — no Serper, no render.
 """
 import json
+import os
 import re
 import time
 import logging
@@ -179,6 +180,89 @@ def _build_shape_b_query(brand_field: Optional[str] = None) -> str:
     the items selection. No pin → byte-identical legacy query."""
     brand_sel = f"\n      {brand_field}" if brand_field else ""
     return _SHAPE_B_QUERY_TEMPLATE.replace("__BRAND_SEL__", brand_sel)
+
+
+# ---------------------------------------------------------------------------
+# UNIT B3 — Shape C: URL-driven url_key filter lookup (ENABLE_MAGENTO_GQL_ADAPTER)
+# ---------------------------------------------------------------------------
+# Unlike Shape A/B (a phrase productSearch keyed by category→host discovery),
+# Shape C is driven by a PDP URL: the last path segment (minus ``.html``) is the
+# Magento ``url_key``, and ``products(filter:{url_key:{eq:...}})`` returns the ONE
+# matching product's final_price + regular_price + currency in a single POST.
+# B4 measured this live 3/3 on cached-free hosts — arenal.com 51.45/105 EUR,
+# jomashop.com 46.99 USD, pacoperfumerias.co.uk 42.5/89 GBP — and on jomashop it
+# walks straight past the Cloudflare wall that 403s the HTML PDP route. So it is
+# wired as a FALLBACK adapter in the page-scrape cascade (fetch_page_price): when
+# the HTML route yields no price for a pinned Magento host, this recovers it.
+
+
+def magento_gql_adapter_enabled() -> bool:
+    """True iff the URL-driven Magento GraphQL url_key adapter is active
+    (UNIT B3, default OFF).
+
+    This is a NEW capture capability (a url_key GraphQL side-door that recovers
+    the price on a Cloudflare-walled HTML PDP — measured live on jomashop.com),
+    not a repair of a measured-0%-success production path, so it ships DARK and
+    is flipped on Railway during canary (contrast ENABLE_FIRECRAWL_RAW_HTML, which
+    repaired a live 0/9 path and justified default-ON). Read PER CALL from
+    ``os.getenv`` (copying ``price_service.exact_gate_enabled``) so the flag can
+    be flipped without a restart. With the flag OFF the fallback never fires — the
+    POST is never issued — so ``fetch_page_price`` returns its exact pre-B3 value
+    and the rollback is byte-identical."""
+    return os.getenv("ENABLE_MAGENTO_GQL_ADAPTER", "").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
+# Hosts (www-stripped apex) known to answer the url_key filter shape. Pinned so
+# the fallback never blind-POSTs ``/graphql`` at an arbitrary Serper-discovered
+# host — the exact same host-pin discipline as _MAGENTO_STORES. All three were
+# measured live 3/3 by B4.
+_MAGENTO_GQL_URLKEY_HOSTS: frozenset = frozenset({
+    "arenal.com",
+    "jomashop.com",
+    "pacoperfumerias.co.uk",
+})
+
+# Shape C — url_key filter. The price_range shape is IDENTICAL to Shape B's
+# minimum_price.final_price/regular_price, so _shape_b_items / _shape_b_price_node
+# parse it unchanged. ``$urlKey`` is a typed String! variable (Shape B already
+# uses a $phrase variable via _post_graphql), so no query-string interpolation.
+_SHAPE_C_URLKEY_QUERY = """
+query($urlKey: String!) {
+  products(filter: { url_key: { eq: $urlKey } }) {
+    total_count
+    items {
+      name
+      sku
+      url_key
+      stock_status
+      price_range {
+        minimum_price {
+          final_price { value currency }
+          regular_price { value currency }
+        }
+      }
+    }
+  }
+}
+""".strip()
+
+
+def _url_key_from_url(url: str) -> str:
+    """Derive the Magento ``url_key`` from a PDP URL: the last non-empty path
+    segment, minus a trailing ``.html`` (the Magento product-url convention).
+    Query string, fragment and a trailing slash are dropped. Returns "" when no
+    path segment exists (→ the caller emits no POST)."""
+    from urllib.parse import urlparse, unquote
+    path = urlparse(url or "").path or ""
+    segs = [s for s in path.split("/") if s]
+    if not segs:
+        return ""
+    seg = unquote(segs[-1])
+    if seg.lower().endswith(".html"):
+        seg = seg[: -len(".html")]
+    return seg
 
 
 # ---------------------------------------------------------------------------
@@ -689,6 +773,20 @@ async def fetch_magento_graphql_price(
     if not node:
         return None
 
+    return _finalize_magento_price(node, host, pdp_url, product_name, currency)
+
+
+def _finalize_magento_price(
+    node: Dict[str, Any], host: str, pdp_url: str,
+    product_name: str, currency: str,
+) -> Optional[Dict[str, Any]]:
+    """Thread a matched Shape-A/B/C node through the shared genuine-vs-converted
+    currency-label + identity-stamp + plausibility + content-safety machinery →
+    the standard price dict (or None). Extracted VERBATIM from the Shape-A/B tail
+    so the URL-driven Shape-C adapter (UNIT B3) reuses the exact same contract —
+    genuine BHD → ``magento_graphql_bhd`` (7d TTL), any other rated GCC currency →
+    ``_convert_to_bhd`` + the literal ``converted_usd`` with ``original_currency``
+    carried, an un-rated currency dropped (never a 1:1 BHD relabel)."""
     # --- genuine vs converted: branch on the ACTUAL response currency ---
     resp_currency = node["currency"]
     amount = node["value"]
@@ -764,3 +862,57 @@ async def fetch_magento_graphql_price(
         source_method, price["currency"], price["amount"], product_name, host,
     )
     return price
+
+
+async def fetch_magento_graphql_url_price(
+    url: str, product_name: str, currency: str = "BHD",
+    resolved_category: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    """UNIT B3 — URL-driven Magento/Adobe-Commerce price via the url_key filter.
+
+    Given a PDP ``url`` on a pinned Magento host, derive the ``url_key`` (last
+    path segment minus ``.html``) and POST
+    ``products(filter:{url_key:{eq:...}})`` → the single matching product's
+    final_price + regular_price + currency in ONE call. On jomashop this walks
+    past the Cloudflare wall that 403s the HTML PDP route (B4, measured live 3/3).
+
+    Wired as a FALLBACK adapter in ``fetch_page_price``: it fires ONLY when
+    ``magento_gql_adapter_enabled()`` (ENABLE_MAGENTO_GQL_ADAPTER, default OFF)
+    AND the host is one of ``_MAGENTO_GQL_URLKEY_HOSTS``. Returns a price dict or
+    ``None`` on miss / wrong-brand-only / non-pinned host / flag-OFF / error.
+    NEVER raises."""
+    if not (ENABLE_PAGE_SCRAPE and magento_gql_adapter_enabled()):
+        return None
+
+    host = (url or "").strip()
+    if host.startswith("http://"):
+        host = host[7:]
+    elif host.startswith("https://"):
+        host = host[8:]
+    host = host.split("/")[0].split("?")[0].lower()
+    apex = host[4:] if host.startswith("www.") else host
+    if apex not in _MAGENTO_GQL_URLKEY_HOSTS:
+        return None
+
+    url_key = _url_key_from_url(url)
+    if not url_key:
+        return None
+
+    headers = {"Content-Type": "application/json", "Accept": "application/json"}
+    payload = await _post_graphql(
+        f"https://{host}/graphql", _SHAPE_C_URLKEY_QUERY, {"urlKey": url_key}, headers,
+    )
+    # Reuse the Shape-B parser — the price_range.minimum_price shape is identical.
+    # No brand_field (these are multi-brand storefronts, not own-brand stores), so
+    # brand="" → legacy strict matching.
+    nodes = [
+        n for n in (
+            _shape_b_price_node(it)
+            for it in _shape_b_items(payload) if isinstance(it, dict)
+        ) if n
+    ]
+    node = _best_match(nodes, product_name, resolved_category=resolved_category)
+    if not node:
+        return None
+
+    return _finalize_magento_price(node, host, url, product_name, currency)

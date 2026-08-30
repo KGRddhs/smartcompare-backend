@@ -1,0 +1,38 @@
+{
+  "_what": "Verbatim measured Magento/Adobe-Commerce GraphQL response bodies for tests/test_magento_gql_adapter.py (UNIT B3, ENABLE_MAGENTO_GQL_ADAPTER). Each file is the JSON body a POST https://<host>/graphql with a products(filter:{url_key:{eq:...}}) query returned, copied VERBATIM from the B4 side-door probes. Nothing here is authored except no_match_empty_control.json.",
+  "_mechanism": "url_key = last URL path segment minus '.html'. POST body {\"query\": \"{products(filter:{url_key:{eq:\\\"<url_key>\\\"}}){total_count items{name sku price_range{minimum_price{final_price{value currency} regular_price{value currency}}}}}}\"}. The response's price_range.minimum_price.{final_price,regular_price}.{value,currency} is the sale/list price + genuine currency. final_price is the sale price (sale-vs-list contract).",
+  "_measurement": "B4 sidedoor_probes.json / sidedoor_probes2.json (scratchpad research/B4), measured live 3/3 from the Bahrain residential IP, robots-checked, >=2.5s/host throttle. arenal 737ms, jomashop 648ms, paco 651ms. On jomashop.com the GraphQL POST returns 200 while the HTML PDP route is Cloudflare-403-walled — the side-door walks past the wall.",
+  "files": {
+    "arenal_gentleman_society_ambree_eur.json": {
+      "host": "www.arenal.com",
+      "url_key_probed": "gentleman-society-ambree-givenchy-eau-parfum-hombre",
+      "country": "ES",
+      "currency": "EUR",
+      "measured": "final_price 51.45 EUR / regular_price 105 EUR, total_count 1. Adapter converts to BHD via FALLBACK_RATES['EUR']=0.41 -> source_method converted_usd, original_currency EUR.",
+      "kept": "the response body VERBATIM (name 'Gentleman Society Ambree', sku 9411, both price nodes)."
+    },
+    "jomashop_gade_icon_roses_usd.json": {
+      "host": "www.jomashop.com",
+      "url_key_probed": "gade-ladies-icon-roses-edp-spray-1-69-oz-fragrances-7290106294011",
+      "country": "US",
+      "currency": "USD",
+      "measured": "final_price 46.99 USD (regular == final), total_count 1, while the HTML PDP route is Cloudflare-walled. Adapter converts via FALLBACK_RATES['USD']=0.376 -> converted_usd, original_currency USD.",
+      "kept": "the response body VERBATIM (the full barcode-suffixed name, sku Y-A459H, both price nodes)."
+    },
+    "paco_calvin_klein_eternity_gbp.json": {
+      "host": "www.pacoperfumerias.co.uk",
+      "url_key_probed": "calvin-klein-eternity-eau-de-parfum-100ml-spray",
+      "country": "GB",
+      "currency": "GBP",
+      "measured": "final_price 42.5 GBP / regular_price 89 GBP, total_count 1. Adapter converts via FALLBACK_RATES['GBP']=0.475 -> converted_usd, original_currency GBP.",
+      "kept": "the response body VERBATIM (name 'Calvin Klein Eternity Eau de Parfum 100ml Spray', sku 088300601400, both price nodes)."
+    },
+    "no_match_empty_control.json": {
+      "host": "(any pinned host)",
+      "url_key_probed": "(a url_key that matches no product)",
+      "country": "(n/a)",
+      "measured": "The genuine empty shape a url_key with no match returns: total_count 0, items []. Measured on paco for url_key 'omnia-crystalline' (sidedoor_probes.json paco_magento_graphql). Pins that a 200-but-no-item response yields None (no fabrication), so flag-ON adds recovery only when a product actually matches.",
+      "kept": "the verbatim empty products envelope."
+    }
+  }
+}

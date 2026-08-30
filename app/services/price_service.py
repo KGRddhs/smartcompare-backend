@@ -12845,9 +12845,44 @@ async def fetch_page_price(
                 logger.info("[content_safety] L2 dropped page-scrape candidate for %s", domain)
                 return None
             return price
+        # UNIT B3 (ENABLE_MAGENTO_GQL_ADAPTER, default OFF) — HTML present but no
+        # structured price (an empty SPA shell on a pinned Magento host). Try the
+        # url_key GraphQL side-door before returning the got-html sentinel.
+        mg_price = await _try_magento_gql_url_fallback(url, product_name, currency)
+        if mg_price:
+            return mg_price
         return {"_got_html": True}
 
+    # UNIT B3 — HTML route walled (curl_fetch_html_same_site returned None, e.g.
+    # jomashop.com's Cloudflare 403 on the HTML PDP). The Magento url_key GraphQL
+    # side-door walks past that wall. Flag OFF (default) → the helper returns None
+    # without issuing a POST, so this branch is byte-identical to pre-B3 (None).
+    mg_price = await _try_magento_gql_url_fallback(url, product_name, currency)
+    if mg_price:
+        return mg_price
+
     return None
+
+
+async def _try_magento_gql_url_fallback(
+    url: str, product_name: str, currency: str,
+) -> Optional[Dict[str, Any]]:
+    """UNIT B3 fallback shim (ENABLE_MAGENTO_GQL_ADAPTER, default OFF). Lazy-import
+    the Magento url_key adapter (magento_graphql_service imports FROM price_service,
+    so the import must be deferred to call time to avoid a circular import) and,
+    only when the flag is on, try to recover a walled Magento PDP's price via the
+    ``products(filter:{url_key:{eq:...}})`` GraphQL side-door. Returns None on
+    flag-OFF / non-Magento host / miss / any error — never raises."""
+    try:
+        from app.services.magento_graphql_service import (
+            magento_gql_adapter_enabled,
+            fetch_magento_graphql_url_price,
+        )
+        if not magento_gql_adapter_enabled():
+            return None
+        return await fetch_magento_graphql_url_price(url, product_name, currency)
+    except Exception:  # noqa: BLE001 — fallback is best-effort; never crash the cascade
+        return None
 
 
 # ============================================
