@@ -21,3 +21,16 @@ pillow>=11.0.0
 # Coverage reporting for the CI backend-tests job (#49). Pinned via the lock so a
 # point release cannot move the measured floor without a reviewable diff.
 pytest-cov>=6.0.0
+
+# SQL migration linter (M10 unit 4). .githooks/pre-commit stanza 5 has invoked
+# `sqlfluff lint` on staged migrations since it was written, but the tool was in
+# neither this file nor any developer's PATH, so the stanza always took its
+# "not installed" branch and had never linted a file. Declaring it here is what
+# turns that gate on. Configured by the repo-root .sqlfluff, which carries the
+# measured baseline (sqlfluff 4.3.0: 753 violations across 43 files, 0 parse
+# failures) and a reason for every excluded rule.
+# Floor is >= to match every other entry in this file; the EXACT version is
+# pinned by the generated requirements-dev.txt lock, which is what CI installs
+# and diffs, so a rule-retuning point release still cannot redden a no-change
+# day without a reviewable lock diff.
+sqlfluff>=4.3.0

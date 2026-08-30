@@ -1,0 +1,98 @@
+# sqlfluff configuration for the Supabase migration corpus.
+#
+# WHY THIS FILE EXISTS
+# .githooks/pre-commit stanza 5 has called `sqlfluff lint` on staged migrations
+# since it was written, but sqlfluff was in neither the dev lock nor on any
+# developer's PATH, so every run took the `else` branch and printed a NOTE. The
+# stanza read like a gate and had never linted a single file. This file plus the
+# requirements-dev.in pin turn it into a real one.
+#
+# MEASURED BASELINE -- sqlfluff 4.3.0, 2026-08-31, all 43 files
+# (`migrations/*.sql` 29 + `migrations/rollback/*.sql` 14).
+#
+#   sqlfluff lint --dialect postgres migrations/     ->  753 violations, exit 1
+#
+#   LT02 380   LT01 205   LT05 111   CP03  22   CP04  11   RF04   9
+#   CP05   8   CP02   2   AL01   2   AM05   1   ST09   1   LT14   1
+#
+#   PARSE failures: 0.  All 7 dollar-quoted files (001, 002, 010, 011, 014, 026
+#   and rollback/026), including the 4 `DO $$ ... $$` anonymous blocks and the 5
+#   `CREATE FUNCTION ... LANGUAGE plpgsql` bodies, parse cleanly on this version.
+#   No `.sqlfluffignore` is needed and none is shipped: every migration is linted.
+#
+# With this file: 0 violations, exit 0.
+#
+# THE RULE OF THIS FILE: every code in `exclude_rules` below carries the number of
+# violations it actually produced against this corpus. A rule excluded with a
+# measured count of 0 would be a lie, so there are none. The exclusions are a
+# RATCHET BASELINE, not a verdict -- they exist because reformatting 43 applied
+# production migrations is a different commit from configuring the linter (the
+# same argument .github/black-clean-paths.txt makes for Python). Narrow this list
+# as the corpus is cleaned; do not widen it to make a new migration pass.
+#
+# EXCLUDED RULES -- code: measured count, then the reason.
+#
+#   LT02: 321  Indentation. 214 "Line should not be indented" + 104 "Expected
+#              indent of 2 spaces", across 32 of 43 files. The corpus genuinely
+#              mixes 2- and 4-space indents; satisfying LT02 is a 32-file
+#              whitespace reformat of applied production DDL.
+#   LT01: 205  Single-whitespace spacing, across 20 files. Dominated by
+#              "naked identifier before '('" (30), "comma before quoted literal"
+#              (15) and "binary operator '->>' before quoted literal" (13) --
+#              i.e. the repo's own `jsonb ->>'key'` and `numeric(10,2)` house
+#              style. Cosmetic, and another whole-corpus reformat.
+#   CP03:  22  Function-name casing, 4 files. sqlfluff wants them consistently
+#              lower; the corpus mixes `NOW()` and `uuid_generate_v4()`.
+#   CP04:  11  Boolean/null literal casing. Genuinely inconsistent BETWEEN
+#              files -- 8 sites want lower and 3 want upper -- so no single
+#              policy reaches 0. Setting one explicitly measured WORSE (21).
+#   RF04:   9  Keywords used as identifiers, 5 files. Supabase schemas use
+#              `user`, `end`, `check` and friends as column names; renaming a
+#              column in applied DDL is a data migration, not a lint fix.
+#   CP05:   8  Datatype casing, 6 files. Same mixed-corpus story as CP03;
+#              forcing `upper` measured WORSE (55).
+#   CP02:   2  Unquoted identifier casing, 1 file
+#              (001_update_comparisons.sql:45).
+#   AL01:   2  Implicit/explicit table aliasing, 1 file
+#              (013_demographics_cohort.sql:55).
+#   AM05:   1  Unqualified join, 013_demographics_cohort.sql:56.
+#   ST09:   1  Join operand order, 013_demographics_cohort.sql:56.
+#   LT14:   1  WHERE not starting a new line,
+#              022_referral_invites_code_redeem.sql:25.
+#
+# Everything NOT listed is enforced -- including PRS/LXR parse errors, CP01
+# keyword casing, LT05 line length, and the rest of the AL/AM/CV/RF/ST families.
+# A new migration with a syntax error, a lowercase keyword or a 200-char line is
+# still refused by the hook.
+
+[sqlfluff]
+dialect = postgres
+
+# The corpus is hand-written DDL with no Jinja/dbt templating. `raw` keeps
+# sqlfluff from trying to render these files through a templater.
+templater = raw
+
+# LT05 is DELIBERATELY NOT EXCLUDED -- it is enforced, and clean.
+# The longest lintable line in the corpus is 178 chars
+# (migrations/016_referral_invite_privacy.sql:17; then 021:13 at 164 and
+# 023:15 at 157). The 179-char line at 026:71 sits inside a `$$` body, which
+# LT05 does not measure. The limit is set just above the existing maximum so the
+# rule stays ON and catches a runaway new line, rather than being muted for the
+# sake of 3 pre-existing ones. Ratchet this DOWN toward 120 when those 3 lines
+# are wrapped -- wrapping them is a migrations/ commit, out of scope here.
+max_line_length = 180
+
+exclude_rules = LT01, LT02, CP02, CP03, CP04, CP05, RF04, AL01, AM05, ST09, LT14
+
+[sqlfluff:indentation]
+indent_unit = space
+# Measured: the corpus indents with 2 spaces on 337 lines and 4 on 193. Declaring
+# 2 is what the majority uses, and it alone drops LT02 from 380 to 321.
+tab_space_size = 2
+
+# Keyword casing is ENFORCED and already clean: CP01 measures 0 violations under
+# `upper`, matching the corpus census (2,171 uppercase keyword hits vs 477
+# lowercase). Pinned explicitly so the convention is stated, not merely inferred
+# by `consistent` from whatever a future file happens to do first.
+[sqlfluff:rules:capitalisation.keywords]
+capitalisation_policy = upper

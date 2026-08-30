@@ -10,6 +10,10 @@ certifi==2026.7.22
     # via
     #   -c requirements.txt
     #   requests
+chardet==7.6.0
+    # via
+    #   diff-cover
+    #   sqlfluff
 charset-normalizer==3.5.1
     # via
     #   -c requirements.txt
@@ -18,17 +22,22 @@ click==8.4.2
     # via
     #   -c requirements.txt
     #   black
-colorama==0.4.6 ; sys_platform == 'win32'
+    #   sqlfluff
+colorama==0.4.6
     # via
     #   -c requirements.txt
     #   click
     #   pytest
+    #   sqlfluff
+    #   tqdm
 coverage==7.15.4
     # via pytest-cov
 cyclonedx-python-lib==11.12.0
     # via pip-audit
 defusedxml==0.7.1
     # via py-serializable
+diff-cover==10.5.1
+    # via sqlfluff
 filelock==3.32.4
     # via cachecontrol
 idna==3.19
@@ -37,10 +46,16 @@ idna==3.19
     #   requests
 iniconfig==2.3.0
     # via pytest
+jinja2==3.1.6
+    # via
+    #   diff-cover
+    #   sqlfluff
 license-expression==30.4.4
     # via cyclonedx-python-lib
 markdown-it-py==4.2.0
     # via rich
+markupsafe==3.0.3
+    # via jinja2
 mdurl==0.1.2
     # via markdown-it-py
 msgpack==1.2.1
@@ -57,7 +72,9 @@ packaging==26.3
     #   pip-requirements-parser
     #   pytest
 pathspec==1.1.1
-    # via black
+    # via
+    #   black
+    #   sqlfluff
 pillow==12.3.0
     # via -r requirements-dev.in
 pip==26.2.1
@@ -72,14 +89,17 @@ platformdirs==4.11.4
     # via
     #   black
     #   pip-audit
+    #   sqlfluff
 pluggy==1.6.0
     # via
+    #   diff-cover
     #   pytest
     #   pytest-cov
 py-serializable==2.1.0
     # via cyclonedx-python-lib
 pygments==2.21.0
     # via
+    #   diff-cover
     #   pytest
     #   rich
 pyparsing==3.3.2
@@ -98,6 +118,14 @@ pytest-timeout==2.4.0
     # via -r requirements-dev.in
 pytokens==0.4.1
     # via black
+pyyaml==6.0.3
+    # via
+    #   -c requirements.txt
+    #   sqlfluff
+regex==2026.7.19
+    # via
+    #   -c requirements.txt
+    #   sqlfluff
 requests==2.34.2
     # via
     #   -c requirements.txt
@@ -109,10 +137,16 @@ ruff==0.16.5
     # via -r requirements-dev.in
 sortedcontainers==2.4.0
     # via cyclonedx-python-lib
+sqlfluff==4.3.0
+    # via -r requirements-dev.in
+tblib==3.2.2
+    # via sqlfluff
 tomli==2.4.1
     # via pip-audit
 tomli-w==1.2.0
     # via pip-audit
+tqdm==4.70.0
+    # via sqlfluff
 typing-extensions==4.16.0 ; python_full_version < '3.13'
     # via
     #   -c requirements.txt
