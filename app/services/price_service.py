@@ -10917,29 +10917,136 @@ def iso_currency_label(raw: Any) -> Optional[str]:
     return token if token in _ISO_4217_ALPHA else None
 
 
-def _currency_label_for(raw: Any, expected: Any) -> str:
-    """The code a price should be LABELLED with: the page's own token when it
-    is (or resolves to) an ISO 4217 code, else the expected currency, else the
-    raw token unchanged.
+def _resolve_iso_currency(raw: Any) -> Optional[str]:
+    """A token's ISO 4217 code, directly or through the GCC display-glyph table,
+    else None. TOTAL — any object may be passed and nothing raises."""
+    return iso_currency_label(raw) or iso_currency_label(_normalize_currency_code(raw))
 
-    A GCC display glyph is resolved through ``_normalize_currency_code`` first,
-    so a WooCommerce ``.woocommerce-Price-currencySymbol`` of ".د.ب" is labelled
-    BHD rather than shipping the glyph into the payload and the cache key.
 
-    A token that is NOT an ISO code carries no information, so it is treated as
-    the same epistemic state as a MISSING tag — which every branch here already
-    resolves to the expected currency, with the reasoning spelled out in
-    ``_extract_og_price`` (bahrain.sharafdg.com publishes product:price:amount
-    244.990 with no currency tag on a BHD page). What must never happen is the
-    junk token being stamped: brownthomas.com publishes
-    ``og:price:currency content="N/A"``.
+def _page_currency_evidence(soup) -> Optional[str]:
+    """The currency this DOCUMENT declares somewhere else, ISO-validated, or None.
+
+    Consulted only when the branch's own currency token is unreadable. Two
+    sources, in order, both machine-readable and both cheap:
+
+      1. the OpenGraph / product price-currency metas — the tags a storefront
+         template emits for Facebook, which survive on pages whose microdata is
+         hand-rolled and incomplete. ``niche-beauty.com`` is the measured case:
+         its Offer carries ``itemprop=price content="195.00"`` and NO
+         ``itemprop=priceCurrency`` anywhere, while ``og:price:currency`` says
+         EUR three lines above it.
+      2. any ``priceCurrency`` reachable in a JSON-LD blob on the page. This is
+         evidence even when the Offer carrying it was DECLINED as a price
+         source: ``samawa.ae`` publishes an OutOfStock Offer of 271.0 AED (so
+         ``extract_jsonld_price`` hard-continues it against a BHD ask) and then
+         a ``product:price:amount`` of 271.00 with no currency meta at all —
+         its own template writes the code into a SECOND
+         ``product:price:amount`` tag. The number and the code are the same
+         money; only the tag naming is broken.
+
+    A page whose ONLY currency token is the unreadable one returns None, which
+    is what keeps the two epistemic states below distinguishable.
     """
-    return (
-        iso_currency_label(raw)
-        or iso_currency_label(_normalize_currency_code(raw))
-        or iso_currency_label(expected)
-        or (raw if isinstance(raw, str) and raw.strip() else str(expected or ""))
-    )
+    if soup is None:
+        return None
+    for prop in (
+        "og:price:currency",
+        "product:price:currency",
+        "product:sale_price:currency",
+    ):
+        try:
+            tag = soup.find("meta", property=prop)
+        except Exception:  # noqa: BLE001 — evidence must never break a capture
+            return None
+        code = _resolve_iso_currency(tag.get("content")) if tag is not None else None
+        if code:
+            return code
+    try:
+        scripts = soup.find_all("script", type="application/ld+json")
+    except Exception:  # noqa: BLE001
+        return None
+    for script in scripts:
+        try:
+            data = json.loads(script.string or "")
+        except (json.JSONDecodeError, TypeError, ValueError):
+            # Same tuple extract_jsonld_price uses — json.loads raises a PLAIN
+            # ValueError on a >4300-digit bare numeric literal (BLOCKER 3).
+            continue
+        code = _jsonld_price_currency(data)
+        if code:
+            return code
+    return None
+
+
+def _jsonld_price_currency(node: Any, depth: int = 0) -> Optional[str]:
+    """First ISO-resolvable ``priceCurrency`` anywhere in a decoded JSON-LD blob.
+
+    Shape-agnostic on purpose: the code may sit on an Offer, an AggregateOffer,
+    a priceSpecification, a ``@graph`` member or a ``hasVariant`` child, and this
+    is only ever asked "what currency is this page written in", never "what is
+    the price". Depth-capped so a self-referential decode cannot recurse away.
+    """
+    if depth > 8:
+        return None
+    if isinstance(node, dict):
+        code = _resolve_iso_currency(node.get("priceCurrency"))
+        if code:
+            return code
+        children = node.values()
+    elif isinstance(node, list):
+        children = node
+    else:
+        return None
+    for child in children:
+        if isinstance(child, (dict, list)):
+            code = _jsonld_price_currency(child, depth + 1)
+            if code:
+                return code
+    return None
+
+
+def _currency_label_for(raw: Any, expected: Any, soup=None) -> str:
+    """The code a price should be LABELLED with, resolved down a CURRENCY-EVIDENCE
+    HIERARCHY:
+
+      1. the branch's own token, when it is (or resolves to) an ISO 4217 code. A
+         GCC display glyph is resolved through ``_normalize_currency_code``
+         first, so a WooCommerce ``.woocommerce-Price-currencySymbol`` of ".د.ب"
+         is labelled BHD rather than shipping the glyph into the payload and the
+         cache key, and lulu's lowercase "bhd" uppercases.
+      2. else PAGE-LEVEL evidence — ``_page_currency_evidence(soup)``, when the
+         caller threaded the document in.
+      3. else, if the token was MISSING or empty, the EXPECTED currency. This is
+         the sharafdg rule and it is unchanged: bahrain.sharafdg.com publishes
+         ``product:price:amount 244.990`` with no currency tag, no OG currency
+         and no JSON-LD on a BHD page, and 244.990 BHD is what it means.
+      4. else — the token was PRESENT and unreadable, and the page offers no
+         second opinion — the RAW token, unchanged.
+
+    Rungs 3 and 4 are the correction. Collapsing rung 4 into rung 3 treats "this
+    page says nothing" and "this page says something I cannot read" as the same
+    state, and they are not: the second one is a page whose money is denominated
+    in SOMETHING, and stamping it with the ask currency asserts a 1.0 rate that
+    nothing measured. That is BLOCKER 4 exactly — it shipped niche-beauty.com's
+    195 EUR as 195 "BHD" (2.27x) and samawa.ae's 271 AED as 271 "BHD" (9.77x).
+    Handing the raw token back instead is what re-arms the existing machinery:
+    conversion fails on it, and every call site already pends on that failure
+    when ``strict_currency_label_enabled()``. With strict OFF the junk token
+    still reaches ``_convert_gpt_price_currency``, which relabels at the legacy
+    implicit 1.0 — the 8adaefb serve-with-the-ask-label behaviour, preserved.
+
+    ``soup`` is optional and defaults to None so a caller with no document (or a
+    direct unit call) keeps rungs 1, 3 and 4 and simply has no rung 2.
+    """
+    resolved = _resolve_iso_currency(raw)
+    if resolved:
+        return resolved
+    evidence = _page_currency_evidence(soup)
+    if evidence:
+        return evidence
+    if isinstance(raw, str) and raw.strip():
+        return raw
+    return iso_currency_label(expected) or str(expected or "")
 
 
 # ---------------------------------------------------------------------------
@@ -11467,10 +11574,20 @@ def _extract_og_price(
                 # currency tag on a BHD page — the old "USD" default converted a
                 # genuine 244.990 BHD price down to 92.12 BHD. An unlabeled price
                 # on a BH retailer page is in BHD (the region/expected currency).
-                detected_currency = (
+                #
+                # The raw tag is kept SEPARATELY (None when the page publishes
+                # no currency meta) because `_currency_label_for` has to be able
+                # to tell "this page is silent" from "this page said something
+                # unreadable", and folding the fallback in here erases that
+                # distinction before it can be asked. `detected_currency` itself
+                # is the same value it has always been.
+                _raw_og_currency = (
                     og_currency['content']
                     if og_currency and og_currency.get('content')
-                    else currency
+                    else None
+                )
+                detected_currency = (
+                    _raw_og_currency if _raw_og_currency is not None else currency
                 )
                 # ENABLE_JSONLD_FIRST — UPPERCASE AND ISO-VALIDATE THE LABEL.
                 # Reproduced end to end on the cached bytes: www.flormar.com.tr
@@ -11482,8 +11599,16 @@ def _extract_og_price(
                 # currency for a token that is not a currency at all
                 # (brownthomas.com publishes `content="N/A"`). Flag OFF: the
                 # page's raw token, exactly as before.
+                #
+                # `soup` is threaded so the label can consult PAGE-LEVEL
+                # currency evidence when this branch's own tag is missing or
+                # unreadable — samawa.ae reaches here with NO currency meta at
+                # all (its template writes "AED" into a second
+                # product:price:amount tag) while its JSON-LD Offer says AED.
                 if jsonld_first_enabled():
-                    detected_currency = _currency_label_for(detected_currency, currency)
+                    detected_currency = _currency_label_for(
+                        _raw_og_currency, currency, soup,
+                    )
                 # (a) STOCK — the literal True here asserted availability with no
                 # page signal behind it (3 of 4 live Shopify targets have zero
                 # available variants while production called them in stock). Read
@@ -11804,8 +11929,12 @@ def _extract_woocommerce_price(
         return None
     # Currency from the symbol child (strip it out of the numeric text after).
     sym = span.find(class_="woocommerce-Price-currencySymbol")
-    detected_currency = (sym.get_text(" ", strip=True) if sym else "") or currency
-    detected_currency = detected_currency.strip().upper()
+    # The symbol child kept SEPARATELY (None when the span carries no symbol) —
+    # `_currency_label_for` must be able to tell a silent span from one holding
+    # an unreadable glyph, and the `or currency` fallback erases that. The value
+    # of `detected_currency` is unchanged.
+    _raw_wc_symbol = (sym.get_text(" ", strip=True) if sym else "") or None
+    detected_currency = (_raw_wc_symbol or currency).strip().upper()
     # ENABLE_JSONLD_FIRST — the symbol child is a DISPLAY GLYPH, so the label
     # this branch stamps has always been a glyph rather than an ISO code (the
     # qatarperfumeshop.com Qatari-riyal glyph is the origin of the whole
@@ -11814,7 +11943,7 @@ def _extract_woocommerce_price(
     # ORIGINAL token, because `_money_minor_unit` folds a glyph itself and the
     # two must not disagree. Flag OFF: the raw glyph, exactly as before.
     _wc_label = (
-        _currency_label_for(detected_currency, currency)
+        _currency_label_for(_raw_wc_symbol, currency, soup)
         if jsonld_first_enabled() else detected_currency
     )
     if sym:
@@ -11939,8 +12068,11 @@ def _extract_microdata_price(
             if not cur:
                 cur_el = soup.find(attrs={"itemprop": "priceCurrency"})
                 cur = (cur_el.get("content") or cur_el.get_text(strip=True)) if cur_el else None
-            # (b) + (c) — expected currency for a silent page, ISO-validated.
-            cur = _currency_label_for(cur, currency)
+            # (b) + (c) — expected currency for a silent page, ISO-validated,
+            # but PAGE EVIDENCE first: niche-beauty.com publishes no
+            # itemprop=priceCurrency anywhere and an og:price:currency of EUR,
+            # and 195 EUR is not 195 BHD.
+            cur = _currency_label_for(cur, currency, soup)
             # (a) — ONE canonical parser. ``display_text`` is False for a
             # ``content`` attribute, which schema.org specifies as the
             # MACHINE-readable value, and True for the node's visible text.

@@ -55,6 +55,16 @@
       "country": "DE",
       "amounts": "microdata 195.00 (currency-less), og 195.00 EUR"
     },
+    "ae_samawa_ae_og_no_currency_jsonld_aed.html": {
+      "url": "https://samawa.ae/products/paco-rabanne-lady-million-prive-for-women-eau-de-parfum-80ml",
+      "host": "samawa.ae",
+      "corpus": "gulf",
+      "cached_bytes": "cd6d49ab43ca4579ea828faa96a5c4385b6ae322.html",
+      "cached_sha1_of_page": "cef2905dd84fa2120287afba66aad5d6682109a5",
+      "kept": "the page's og:title, BOTH of its product:price:amount metas verbatim (the second one carries the content 'AED' - the store's own template bug, which is why the document has no product:price:currency at all), its whole Product JSON-LD block, and the visible shelf span <span class=\"money\">AED. 271.00 </span>",
+      "country": "AE",
+      "amounts": "JSON-LD Offer 271.0 AED (availability OutOfStock, so extract_jsonld_price declines it against a BHD ask); og product:price:amount 271.00 with NO currency tag; visible 'AED. 271.00'"
+    },
     "pl_eperfumy_pl_microdata_comma_decimal.html": {
       "url": "https://eperfumy.pl/pl/wody-toaletowe-meskie/31-paco-rabanne-1-million-men-woda-toaletowa-200ml.html",
       "host": "eperfumy.pl",

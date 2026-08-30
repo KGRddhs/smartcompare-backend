@@ -42,6 +42,7 @@ import app.services.price_service as ps
 
 REPO = Path(__file__).resolve().parents[1]
 CORPUS = REPO / "_proof" / "html"
+FIXTURES = Path(__file__).parent / "fixtures" / "jsonld_first"
 
 QPS_URL = "https://qatarperfumeshop.com/product/reef-perfume/"
 
@@ -549,7 +550,330 @@ class TestShippedMode:
 
 
 # ---------------------------------------------------------------------------
-# 6. FOLLOW-UP (out of scope, pinned so it cannot be forgotten)
+# 6. THE CURRENCY-EVIDENCE HIERARCHY
+#
+# WHY THIS SECTION EXISTS. `_currency_label_for` used to end with
+# `or iso_currency_label(expected)`, which collapsed a PRESENT-but-unreadable
+# currency token into the ASK currency. That reads "this page says something I
+# cannot parse" as "this page says nothing", and those are not the same state:
+# the second one is a page whose money is denominated in SOMETHING, and
+# stamping it with the ask asserts a 1.0 rate nothing measured. It un-did
+# BLOCKER 4 for every branch — the three `test_flag_on_unresolvable*` tests in
+# section 4 above are the direct casualties — and it shipped two measured
+# over-prices on the cached corpora, both re-pinned below.
+#
+# The hierarchy is now: (1) the branch's own token when it resolves to ISO;
+# (2) PAGE-LEVEL evidence — an OG/product currency meta or any JSON-LD
+# priceCurrency on the document; (3) evidence absent AND the token MISSING ->
+# the expected currency (the sharafdg rule, unchanged); (4) evidence absent AND
+# the token PRESENT-but-junk -> the RAW token, which conversion fails on and
+# `strict_currency_label_enabled()` then pends at every call site.
+# ---------------------------------------------------------------------------
+
+NICHE_BEAUTY = "de_niche_beauty_com_microdata_no_pricecurrency.html"
+SAMAWA = "ae_samawa_ae_og_no_currency_jsonld_aed.html"
+
+
+def _fixture(name: str) -> str:
+    return (FIXTURES / name).read_text(encoding="utf-8")
+
+
+class TestPageCurrencyEvidence:
+    """Rung 2 in isolation. Provenance for both real pages is in
+    tests/fixtures/jsonld_first/SOURCES.json."""
+
+    def test_no_document_is_no_evidence(self):
+        assert ps._page_currency_evidence(None) is None
+
+    def test_a_silent_document_yields_none(self):
+        soup = BeautifulSoup("<html><body><p>350.00</p></body></html>", "html.parser")
+        assert ps._page_currency_evidence(soup) is None
+
+    def test_a_document_whose_only_token_is_junk_yields_none(self):
+        """The state that MUST stay distinguishable from 'silent' — otherwise
+        rung 2 would launder the junk into a confident label."""
+        soup = BeautifulSoup(
+            "<html><head>"
+            "<meta property='og:price:currency' content='N/A'>"
+            "</head><body></body></html>", "html.parser",
+        )
+        assert ps._page_currency_evidence(soup) is None
+
+    @pytest.mark.parametrize("prop", [
+        "og:price:currency", "product:price:currency", "product:sale_price:currency",
+    ])
+    def test_each_price_currency_meta_is_read(self, prop):
+        soup = BeautifulSoup(
+            "<html><head><meta property='" + prop + "' content='EUR'>"
+            "</head><body></body></html>", "html.parser",
+        )
+        assert ps._page_currency_evidence(soup) == "EUR"
+
+    def test_a_meta_is_iso_normalised_not_stamped_raw(self):
+        """flormar.com.tr publishes a lowercase code; the GCC hosts publish
+        glyphs. Evidence goes through the same resolver rung 1 uses."""
+        for raw, iso in (("try", "TRY"), ("aed", "AED"), (QAR_SYMBOL, "QAR")):
+            soup = BeautifulSoup(
+                "<html><head><meta property='og:price:currency' content='"
+                + raw + "'></head><body></body></html>", "html.parser",
+            )
+            assert ps._page_currency_evidence(soup) == iso
+
+    def test_a_jsonld_offer_price_currency_is_read(self):
+        soup = BeautifulSoup(
+            "<html><head><script type='application/ld+json'>"
+            '{"@type":"Product","offers":{"@type":"Offer","price":"271.0",'
+            '"priceCurrency":"AED"}}'
+            "</script></head><body></body></html>", "html.parser",
+        )
+        assert ps._page_currency_evidence(soup) == "AED"
+
+    def test_jsonld_evidence_survives_the_shapes_the_corpora_publish(self):
+        """@graph members, hasVariant children and priceSpecification all count —
+        this asks what currency the PAGE is written in, never what the price is."""
+        shapes = (
+            '{"@graph":[{"@type":"Product","offers":{"priceCurrency":"OMR"}}]}',
+            '[{"@type":"ProductGroup","hasVariant":[{"offers":'
+            '{"priceCurrency":"OMR"}}]}]',
+            '{"@type":"Product","offers":{"priceSpecification":'
+            '{"priceCurrency":"OMR"}}}',
+        )
+        for blob in shapes:
+            soup = BeautifulSoup(
+                "<html><head><script type='application/ld+json'>" + blob
+                + "</script></head><body></body></html>", "html.parser",
+            )
+            assert ps._page_currency_evidence(soup) == "OMR", blob
+
+    def test_an_unreadable_jsonld_block_is_skipped_not_raised(self):
+        soup = BeautifulSoup(
+            "<html><head>"
+            "<script type='application/ld+json'>{not json,,,</script>"
+            "<script type='application/ld+json'>"
+            '{"offers":{"priceCurrency":"SAR"}}</script>'
+            "</head><body></body></html>", "html.parser",
+        )
+        assert ps._page_currency_evidence(soup) == "SAR"
+
+    def test_a_meta_outranks_a_jsonld_offer(self):
+        """The metas are the storefront TEMPLATE's own declaration; a JSON-LD
+        Offer may be one of several (a related-product rail carries them too)."""
+        soup = BeautifulSoup(
+            "<html><head><meta property='og:price:currency' content='EUR'>"
+            "<script type='application/ld+json'>"
+            '{"offers":{"priceCurrency":"USD"}}</script>'
+            "</head><body></body></html>", "html.parser",
+        )
+        assert ps._page_currency_evidence(soup) == "EUR"
+
+
+class TestLabelHierarchy:
+    """`_currency_label_for` rung by rung, with the document threaded in."""
+
+    def _soup(self, *metas):
+        return BeautifulSoup(
+            "<html><head>" + "".join(metas) + "</head><body></body></html>",
+            "html.parser",
+        )
+
+    def test_rung_1_a_resolvable_token_never_consults_the_page(self):
+        soup = self._soup("<meta property='og:price:currency' content='EUR'>")
+        assert ps._currency_label_for(QAR_SYMBOL, "BHD", soup) == "QAR"
+        assert ps._currency_label_for("bhd", "BHD", soup) == "BHD"
+
+    def test_rung_2_evidence_beats_the_expected_currency_for_a_missing_token(self):
+        soup = self._soup("<meta property='og:price:currency' content='EUR'>")
+        assert ps._currency_label_for(None, "BHD", soup) == "EUR"
+        assert ps._currency_label_for("", "BHD", soup) == "EUR"
+
+    def test_rung_2_evidence_beats_a_junk_token(self):
+        soup = self._soup("<meta property='product:price:currency' content='AED'>")
+        assert ps._currency_label_for(TUGRIK, "BHD", soup) == "AED"
+
+    def test_rung_3_missing_token_and_no_evidence_is_the_expected_currency(self):
+        assert ps._currency_label_for(None, "BHD", self._soup()) == "BHD"
+        assert ps._currency_label_for("  ", "BHD", self._soup()) == "BHD"
+
+    def test_rung_4_a_junk_token_with_no_evidence_comes_back_RAW(self):
+        """NOT the ask currency. Returning it raw is what re-arms the existing
+        machinery: conversion fails on it and every call site already pends."""
+        assert ps._currency_label_for(TUGRIK, "BHD", self._soup()) == TUGRIK
+        assert ps._currency_label_for("N/A", "BHD", self._soup()) == "N/A"
+
+    def test_the_document_is_optional(self):
+        """A direct caller with no soup keeps rungs 1, 3 and 4."""
+        assert ps._currency_label_for("usd", "BHD") == "USD"
+        assert ps._currency_label_for(None, "BHD") == "BHD"
+        assert ps._currency_label_for("N/A", "BHD") == "N/A"
+
+
+class TestNicheBeautyMicrodataUsesTheOgCurrency:
+    """de_niche_beauty_com_microdata_no_pricecurrency.html — the 2.27x.
+
+    The page's Offer carries ``itemprop=price content="195.00"`` and NO
+    ``itemprop=priceCurrency`` anywhere; three lines above it
+    ``og:price:currency`` says EUR. Asked in BHD, the microdata branch used to
+    label the 195 with the ASK and ship 195.0 "BHD" for a 195 EUR product.
+    """
+
+    def _run(self, monkeypatch, strict="true"):
+        monkeypatch.setenv("ENABLE_STRICT_CURRENCY_LABEL", strict)
+        return ps._extract_microdata_price(
+            BeautifulSoup(_fixture(NICHE_BEAUTY), "html.parser"),
+            "BHD", "niche-beauty.com",
+            "https://www.niche-beauty.com/de-de/produkte/borntostandout-cola-addict/752-052",
+        )
+
+    def test_the_og_currency_is_consulted_and_the_price_is_converted(self, monkeypatch):
+        from app.services.exchange_rate_service import FALLBACK_RATES
+        r = self._run(monkeypatch)
+        assert r is not None, "EUR is resolvable — convert, do not pend"
+        assert r["original_currency"] == "EUR"
+        assert r["currency"] == "BHD"
+        assert r["amount"] == pytest.approx(round(195.0 * FALLBACK_RATES["EUR"], 2))
+        assert r["source_method"] == "converted_usd"
+
+    def test_it_is_no_longer_195_bahraini_dinar(self, monkeypatch):
+        r = self._run(monkeypatch)
+        assert not (r["currency"] == "BHD" and r["amount"] == 195.0), (
+            "195 EUR shipped as 195 BHD — 2.27x, and entirely plausible, so no "
+            "downstream magnitude guard catches it"
+        )
+
+    def test_an_eur_ask_still_reads_the_page_natively(self, monkeypatch):
+        """The pre-existing EUR-ask pin in tests/test_jsonld_first_precedence.py
+        (test_b_e / test_b_f) must not move: on an EUR ask rung 2 and rung 3
+        agree, so the answer is the same 195.0 EUR either way."""
+        monkeypatch.setenv("ENABLE_STRICT_CURRENCY_LABEL", "true")
+        r = ps._extract_microdata_price(
+            BeautifulSoup(_fixture(NICHE_BEAUTY), "html.parser"),
+            "EUR", "niche-beauty.com", "https://x/y",
+        )
+        assert r["amount"] == 195.0
+        assert r["original_currency"] == "EUR"
+        assert r["source_method"] == "page_scrape"
+
+
+class TestSamawaOgUsesTheDeclinedJsonLdOffersCurrency:
+    """ae_samawa_ae_og_no_currency_jsonld_aed.html — the 9.77x.
+
+    samawa.ae publishes ``product:price:amount 271.00`` and, instead of a
+    currency meta, a SECOND ``product:price:amount`` whose content is the literal
+    "AED" (the store's own template bug). So the OG branch sees the currency tag
+    as MISSING and used to fall straight to the ask. The document is not silent
+    though: its Product JSON-LD Offer says AED — declined as a PRICE source
+    (priceCurrency != the BHD ask, and OutOfStock), but perfectly good EVIDENCE
+    of what the 271 is denominated in.
+    """
+
+    URL = ("https://samawa.ae/products/"
+           "paco-rabanne-lady-million-prive-for-women-eau-de-parfum-80ml")
+
+    def _run(self, monkeypatch, strict="true"):
+        monkeypatch.setenv("ENABLE_STRICT_CURRENCY_LABEL", strict)
+        return ps.extract_price_from_html(
+            _fixture(SAMAWA),
+            "Paco Rabanne Lady Million Prive for Women - Eau de Parfum, 80ml",
+            "BHD", "samawa.ae", self.URL, category="fragrances",
+        )
+
+    def test_the_jsonld_offer_currency_is_the_page_evidence(self):
+        assert ps._page_currency_evidence(
+            BeautifulSoup(_fixture(SAMAWA), "html.parser")
+        ) == "AED"
+
+    def test_the_271_is_converted_out_of_aed(self, monkeypatch):
+        from app.services.exchange_rate_service import FALLBACK_RATES
+        r = self._run(monkeypatch)
+        assert r is not None, "AED is resolvable — convert, do not pend"
+        assert r["original_currency"] == "AED"
+        assert r["currency"] == "BHD"
+        assert r["amount"] == pytest.approx(round(271.0 * FALLBACK_RATES["AED"], 2))
+
+    def test_it_is_no_longer_271_bahraini_dinar(self, monkeypatch):
+        r = self._run(monkeypatch)
+        assert not (r["currency"] == "BHD" and r["amount"] == 271.0), (
+            "271 AED shipped as 271 BHD — 9.77x"
+        )
+
+
+class TestMissingEverythingStillMeansTheExpectedCurrency:
+    """Rung 3, the sharafdg rule — the thing rung 4 must NOT swallow.
+
+    Already pinned end to end at
+    tests/test_og_branch_fixes.py::TestUnchangedOgBehaviour::
+    test_currencyless_og_defaults_to_expected_not_usd (244.990 -> BHD, both
+    ENABLE_OG_BRANCH_FIXES states) and at
+    tests/test_og_branch_fixes.py::...::
+    test_a_currencyless_og_price_uses_the_EXPECTED_currency_minor_unit (the
+    "22,902" -> 22.902 tie-break, which only reads right if the LABEL fell back
+    to BHD). Re-pinned here against the strict flag, which is what now decides
+    whether a fallback happens at all.
+    """
+
+    SHARAFDG = (
+        "<html><head>"
+        '<meta property="product:price:amount" content="244.990">'
+        "</head><body></body></html>"
+    )
+
+    @pytest.mark.parametrize("strict", ["true", "false"])
+    def test_a_page_with_no_currency_anywhere_is_read_in_the_ask(self, monkeypatch, strict):
+        monkeypatch.setenv("ENABLE_STRICT_CURRENCY_LABEL", strict)
+        r = ps.extract_price_from_html(
+            self.SHARAFDG, "Apple iPhone 15 128GB", "BHD", "bahrain.sharafdg.com",
+            "https://bahrain.sharafdg.com/product/apple-iphone-15-128gb-blue/",
+        )
+        assert r is not None, "a currency-less BH page must not pend"
+        assert r["amount"] == pytest.approx(244.990)
+        assert r["currency"] == "BHD"
+        assert r["source_method"] == "page_scrape", "not a conversion"
+
+    def test_the_soup_is_what_makes_the_two_states_separable(self):
+        """Same branch, same ask, one document silent and one document junk —
+        different answers. That is the whole fix in one assertion."""
+        silent = BeautifulSoup(self.SHARAFDG, "html.parser")
+        assert ps._currency_label_for(None, "BHD", silent) == "BHD"
+        assert ps._currency_label_for("N/A", "BHD", silent) == "N/A"
+
+
+class TestJunkWithNoEvidenceStillPends:
+    """Rung 4 through the branches — section 4's guarantee, restored.
+
+    Section 4 already pins the three `test_flag_on_unresolvable*` cases; these
+    add the case that motivates rung 4 specifically: a page that carries a real
+    junk token AND nothing else to consult.
+    """
+
+    BROWNTHOMAS = (
+        '<html><head><title>Aventus Eau de Parfum</title>'
+        '<meta property="og:title" content="Aventus Eau de Parfum"/>'
+        '<meta property="og:price:amount" content="285.00"/>'
+        '<meta property="og:price:currency" content="N/A"/>'
+        "</head><body></body></html>"
+    )
+
+    def _run(self, monkeypatch, strict):
+        monkeypatch.setenv("ENABLE_STRICT_CURRENCY_LABEL", strict)
+        return ps.extract_price_from_html(
+            self.BROWNTHOMAS, "Aventus Eau de Parfum", "EUR",
+            "www.brownthomas.com", "https://x/y",
+        )
+
+    def test_flag_on_pends(self, monkeypatch):
+        assert self._run(monkeypatch, "true") is None
+
+    def test_flag_off_is_the_legacy_serve_with_the_ask_label(self, monkeypatch):
+        """Rollback fidelity: 8adaefb relabelled the junk to the ask at an
+        implicit rate and shipped it. It still does with the flag off."""
+        r = self._run(monkeypatch, "false")
+        assert r is not None
+        assert r["currency"] == "EUR"
+        assert r["original_currency"] == "N/A"
+
+
+# ---------------------------------------------------------------------------
+# 7. FOLLOW-UP (out of scope, pinned so it cannot be forgotten)
 # ---------------------------------------------------------------------------
 
 class TestCommaDecimalFollowUp:

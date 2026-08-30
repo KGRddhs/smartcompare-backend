@@ -388,29 +388,80 @@ def test_d_e_iso_validation_is_total():
         assert ps.iso_currency_label(raw) is None
 
 
-def test_d_f_a_junk_currency_token_is_treated_as_absent_not_as_a_label(monkeypatch):
-    """brownthomas.com publishes ``og:price:currency content="N/A"``. A token
-    that is not an ISO 4217 code carries no information, so it is the same
-    epistemic state as a MISSING tag — which the OG branch has always resolved
-    to the expected currency (bahrain.sharafdg 244.990, documented in
-    ``_extract_og_price``). What must never happen is the junk token being
-    stamped on the price as its currency."""
-    html = (
-        '<html><head><title>Aventus Eau de Parfum</title>'
-        '<meta property="og:title" content="Aventus Eau de Parfum"/>'
-        '<meta property="og:price:amount" itemprop="price:amount" content="285.00"/>'
-        '<meta property="og:price:currency" itemprop="price:currency" content="N/A"/>'
-        "</head><body></body></html>"
-    )
+BROWNTHOMAS_NA = (
+    '<html><head><title>Aventus Eau de Parfum</title>'
+    '<meta property="og:title" content="Aventus Eau de Parfum"/>'
+    '<meta property="og:price:amount" itemprop="price:amount" content="285.00"/>'
+    '<meta property="og:price:currency" itemprop="price:currency" content="N/A"/>'
+    "</head><body></body></html>"
+)
+
+
+def test_d_f_a_junk_currency_token_is_NOT_the_same_state_as_a_missing_one(monkeypatch):
+    """brownthomas.com publishes ``og:price:currency content="N/A"``.
+
+    THIS TEST USED TO ASSERT THE OPPOSITE, and that assertion was the bug.
+    It read: a token that is not an ISO 4217 code carries no information, so it
+    is the same epistemic state as a MISSING tag — and the OG branch resolves a
+    missing tag to the expected currency (bahrain.sharafdg 244.990). The premise
+    is wrong. A page with no currency tag is SILENT; a page with an unreadable
+    one is denominated in SOMETHING, and stamping it with the ask asserts a 1.0
+    rate that nothing measured. Collapsing the two un-did BLOCKER 4 for every
+    branch (``tests/test_strict_currency_label.py`` section 4 pins the
+    casualties) and shipped niche-beauty.com's 195 EUR as 195 "BHD" and
+    samawa.ae's 271 AED as 271 "BHD".
+
+    ``_currency_label_for`` now consults PAGE-LEVEL evidence first and only then
+    distinguishes the two states — this page has no second opinion to give, so
+    the junk comes back raw, conversion fails on it and the price PENDS. The
+    sharafdg rule is untouched and is pinned at
+    ``tests/test_strict_currency_label.py::
+    TestMissingEverythingStillMeansTheExpectedCurrency``.
+    """
     _gate(monkeypatch, "false")
     _first(monkeypatch, "true")
+    monkeypatch.setenv("ENABLE_STRICT_CURRENCY_LABEL", "true")
+    assert extract_price_from_html(
+        BROWNTHOMAS_NA, "Aventus Eau de Parfum", "EUR",
+        "www.brownthomas.com", "https://x/y",
+    ) is None, "an unreadable currency was served with the ask stamped on it"
+
+
+def test_d_g_page_evidence_rescues_a_junk_token_when_the_page_has_a_second_opinion(
+    monkeypatch,
+):
+    """The junk token only pends when the DOCUMENT is out of answers. Give the
+    same page a product:price:currency of GBP and the 285 is read as GBP."""
+    _gate(monkeypatch, "false")
+    _first(monkeypatch, "true")
+    monkeypatch.setenv("ENABLE_STRICT_CURRENCY_LABEL", "true")
+    html = BROWNTHOMAS_NA.replace(
+        "</head>",
+        '<meta property="product:price:currency" content="GBP"/></head>',
+    )
     got = extract_price_from_html(
         html, "Aventus Eau de Parfum", "EUR", "www.brownthomas.com", "https://x/y",
     )
     assert got is not None
+    assert got["original_currency"] == "GBP"
     assert got["currency"] == "EUR"
-    assert got["original_currency"] == "EUR"
     assert "N/A" not in json.dumps(got)
+
+
+def test_d_h_the_junk_token_rollback_is_the_legacy_serve(monkeypatch):
+    """With the strict flag OFF the junk still reaches
+    ``_convert_gpt_price_currency``, which relabels at the legacy implicit rate —
+    the 8adaefb behaviour, junk in ``original_currency`` and all."""
+    _gate(monkeypatch, "false")
+    _first(monkeypatch, "true")
+    monkeypatch.setenv("ENABLE_STRICT_CURRENCY_LABEL", "false")
+    got = extract_price_from_html(
+        BROWNTHOMAS_NA, "Aventus Eau de Parfum", "EUR",
+        "www.brownthomas.com", "https://x/y",
+    )
+    assert got is not None
+    assert got["currency"] == "EUR"
+    assert got["original_currency"] == "N/A"
 
 
 # ===========================================================================

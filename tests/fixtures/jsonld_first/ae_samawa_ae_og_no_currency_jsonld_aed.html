@@ -1,0 +1,45 @@
+<!doctype html>
+<html><head>
+<!-- Cut from the cached bytes of
+     https://samawa.ae/products/paco-rabanne-lady-million-prive-for-women-eau-de-parfum-80ml
+     (_proof/html/cd6d49ab43ca4579ea828faa96a5c4385b6ae322.html).
+
+     THE POINT OF THIS FILE: the page publishes NO product:price:currency and no
+     og:price:currency. Its second meta is `product:price:amount content="AED"` -
+     the store's own template bug, copied here VERBATIM - so the OG branch reads
+     an amount tag and finds the currency tag MISSING. The only machine-readable
+     currency on the document is the Product JSON-LD Offer's "AED", and that
+     Offer is DECLINED by extract_jsonld_price (priceCurrency != the BHD ask), so
+     the price falls through to the OG branch with no currency of its own.
+
+     Kept verbatim: the og:title, both product:price:amount metas, the whole
+     Product JSON-LD block, and the visible shelf span. Nothing else. -->
+<title>Paco Rabanne Lady Million Prive for Women - Eau de Parfum, 80ml</title>
+<meta property="og:title" content="Paco Rabanne Lady Million Prive for Women - Eau de Parfum, 80ml">
+<meta property="product:price:amount" content="271.00">
+  <meta property="product:price:amount" content="AED">
+<script type="application/ld+json">{
+  "@context": "http://schema.org/",
+  "@type": "Product",
+  "name": "Paco Rabanne Lady Million Prive for Women - Eau de Parfum, 80ml",
+  "url": "https://samawa.ae/products/paco-rabanne-lady-million-prive-for-women-eau-de-parfum-80ml",
+  "sku": "3349668535446",
+  "mpn": "3349668535446",
+  "productID": "6736559866040",
+  "brand": {
+    "@type": "Thing",
+    "name": "Paco Rabanne"
+  },"offers": {
+        "@type" : "Offer",
+        "sku": "3349668535446",
+        "availability" : "http://schema.org/OutOfStock",
+        "price" : "271.0",
+        "priceCurrency" : "AED",
+        "itemCondition": "https://schema.org/NewCondition",
+        "url" : "https://samawa.ae/products/paco-rabanne-lady-million-prive-for-women-eau-de-parfum-80ml",
+        "mpn": "3349668535446","gtin13": "","priceValidUntil": "2027-08-25"
+  }}
+</script>
+</head><body>
+<p class="price_range" id="price_ppr"><span class="money">AED. 271.00 </span></p>
+</body></html>
