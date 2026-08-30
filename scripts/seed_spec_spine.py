@@ -57,6 +57,17 @@ from urllib.parse import urlparse
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+# House rule 7 ("no key -> no call"): the intended-run decision is made from
+# whether OPENAI_API_KEY was in the PROCESS ENVIRONMENT AT STARTUP, snapshotted
+# HERE, BEFORE the app.services imports below. Those imports pull in
+# extraction_service, whose module-level ``load_dotenv(override=True)`` would
+# otherwise REPOPULATE the key from the repo .env - so a guard that read a live
+# ``os.getenv`` at run time would be a no-op even when the operator unset the
+# key, and the seeder would issue live /chat/completions calls. The snapshot is
+# taken before any import can run load_dotenv, so it reflects the real
+# environment the operator launched with. Overridable in-process for tests.
+_STARTUP_OPENAI_KEY = (os.environ.get("OPENAI_API_KEY") or "").strip()
+
 from app.services.spec_spine_service import (  # noqa: E402
     SPINE_CATEGORY,
     SPINE_FIELDS,
@@ -490,7 +501,11 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     # The no-op guard. OpenAI is 429 as of this unit; the seeder is built to be
     # runnable LATER, so "no key" is a normal, successful outcome, not an error.
-    if not (os.getenv("OPENAI_API_KEY") or "").strip():
+    # Decided from the STARTUP snapshot, never a live getenv: the app.services
+    # imports above run load_dotenv(override=True), which repopulates the key
+    # from .env, so a live check here would pass with the operator's key unset
+    # and leak a real completion call.
+    if not _STARTUP_OPENAI_KEY:
         print("OPENAI_API_KEY is not set - nothing seeded, %s not written." % _ascii(args.out))
         print("Re-run this command with the key set to perform the extraction; "
               "use --dry-run to inspect candidates without it.")

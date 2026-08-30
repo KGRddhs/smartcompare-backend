@@ -389,16 +389,107 @@ class TestSeeder:
         assert hosts == {"www.fragrancex.com", "www.perfume.com"}
         assert "bergamot" in " ".join(p["text"] for p in pair["pages"]).lower()
 
-    def test_no_api_key_is_a_clean_no_op(self, monkeypatch, tmp_path):
+    def test_no_api_key_is_a_clean_no_op(self, monkeypatch, tmp_path, capsys):
+        """The DEFECT this closes: OPENAI_API_KEY is absent from the process
+        environment at startup, but by the time the guard runs
+        ``extraction_service``'s module-level ``load_dotenv(override=True)`` has
+        REPOPULATED ``os.environ`` from the repo .env. A guard that read a live
+        ``os.getenv`` would therefore see a key and issue live completions with
+        the operator's key unset. The decision must come from the startup
+        snapshot instead. This test pins that: snapshot empty, os.environ
+        deliberately carrying a (repopulated) key -> still a clean no-op, and
+        the LLM entrypoint is never reached."""
         import scripts.seed_spec_spine as seeder
 
-        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        monkeypatch.setattr(seeder, "_STARTUP_OPENAI_KEY", "")
+        # Simulate load_dotenv(override=True) having refilled the env post-import.
+        monkeypatch.setenv("OPENAI_API_KEY", "repopulated-by-load-dotenv")
         out = tmp_path / "spec_spine.json"
         with patch.object(seeder, "extract_spine_specs",
                           AsyncMock(side_effect=AssertionError("LLM must not run"))):
             rc = seeder.main(["--corpus", str(FIXTURES), "--out", str(out)])
         assert rc == 0
         assert not out.exists()
+        assert "OPENAI_API_KEY is not set" in capsys.readouterr().out
+
+    def test_no_key_run_makes_zero_outbound_socket_attempts(
+        self, monkeypatch, tmp_path, capsys
+    ):
+        """House rule 7 the hard way: with the key absent at startup, a full
+        ``main()`` run must not attempt a single non-loopback socket. Every
+        outbound name-resolution and connect is trapped and RAISES; the run is
+        asserted to have made ZERO attempts. Under the pre-fix live-getenv guard
+        this records the OpenAI getaddrinfo attempts and fails."""
+        import socket
+
+        import scripts.seed_spec_spine as seeder
+
+        monkeypatch.setattr(seeder, "_STARTUP_OPENAI_KEY", "")
+        monkeypatch.setenv("OPENAI_API_KEY", "repopulated-by-load-dotenv")
+
+        attempts = []
+        loopback = {"127.0.0.1", "::1", "localhost", "0.0.0.0",
+                    b"127.0.0.1", b"::1", b"localhost"}
+        orig_gai = socket.getaddrinfo
+        orig_connect = socket.socket.connect
+
+        def _boom_gai(host, *a, **k):
+            if host not in loopback:
+                attempts.append(("getaddrinfo", host))
+                raise RuntimeError("no-network guard: getaddrinfo(%r)" % (host,))
+            return orig_gai(host, *a, **k)
+
+        def _boom_connect(self, address, *a, **k):
+            host = address[0] if isinstance(address, (tuple, list)) else address
+            if host not in loopback:
+                attempts.append(("connect", host))
+                raise RuntimeError("no-network guard: connect(%r)" % (address,))
+            return orig_connect(self, address, *a, **k)
+
+        monkeypatch.setattr(socket, "getaddrinfo", _boom_gai)
+        monkeypatch.setattr(socket.socket, "connect", _boom_connect)
+
+        out = tmp_path / "spec_spine.json"
+        rc = seeder.main(["--corpus", str(FIXTURES), "--out", str(out)])
+        assert rc == 0
+        assert attempts == [], "the no-key seeder attempted an outbound call"
+        assert not out.exists()
+        assert "OPENAI_API_KEY is not set" in capsys.readouterr().out
+
+    def test_dry_run_without_a_key_still_lists_candidates(
+        self, monkeypatch, tmp_path, capsys
+    ):
+        """--dry-run returns BEFORE the guard, so it is usable with no key at
+        all - it inspects candidates and never touches the store or the LLM."""
+        import scripts.seed_spec_spine as seeder
+
+        monkeypatch.setattr(seeder, "_STARTUP_OPENAI_KEY", "")
+        out = tmp_path / "spec_spine.json"
+        rc = seeder.main(["--corpus", str(FIXTURES), "--dry-run", "--out", str(out)])
+        assert rc == 0
+        assert not out.exists()
+        printed = capsys.readouterr().out
+        assert "dry run" in printed
+        # The no-key guard is downstream of the dry-run return, so its message
+        # must NOT appear on the dry-run path.
+        assert "OPENAI_API_KEY is not set" not in printed
+
+    def test_a_key_present_at_startup_still_seeds(self, monkeypatch, tmp_path):
+        """The other half of the contract: a real run WITH a key at startup
+        runs the extraction and writes the store. The LLM call is mocked, so no
+        network is touched, but the seeding PATH past the guard is exercised."""
+        import scripts.seed_spec_spine as seeder
+
+        monkeypatch.setattr(seeder, "_STARTUP_OPENAI_KEY", "present-at-startup")
+        out = tmp_path / "spec_spine.json"
+        fake = AsyncMock(return_value={"scent_family": "Aromatic Fougere"})
+        with patch.object(seeder, "extract_spine_specs", fake):
+            rc = seeder.main(["--corpus", str(FIXTURES), "--out", str(out)])
+        assert rc == 0
+        assert fake.await_count >= 1, "a key at startup must reach the extraction"
+        assert out.exists(), "a real run with a key must write the store"
+        written = json.load(io.open(out, encoding="utf-8"))
+        assert written, "at least one fragrance should have been seeded"
 
     def test_html_entities_in_a_jsonld_name_are_decoded(self, tmp_path):
         """Caught by the first real dry run over the corpora: 6 of 184
