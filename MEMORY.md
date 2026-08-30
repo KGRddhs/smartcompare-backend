@@ -4,6 +4,14 @@
 
 ---
 
+## Session 61: Wave-3 finished + fix wave + MERGED TO MAIN — 2026-08-30
+
+**Merged + deployed:** `feature/fragrance-hybrid-capture` FF-pushed `8adaefb..4c7abf6` (22 commits) then `6205a7c` (tooling); Railway `/health` 200. Wave-3 unit 7 (`ENABLE_JSONLD_FIRST`) was found complete-and-green-but-uncommitted from the token-limit interruption; committed `7c586ab` after review. The 4 gates then ran: g1 byte-identity PASS, g4 corpus PASS, g2/g3 FAIL → a 4-unit Opus fix wave closed them (`6610623` currency-evidence hierarchy, `1ac1455` OG-agreement guard, `704d6c0` pin adjudication, `4c7abf6` ambiguous_price outcome) → re-verify 3/3 PASS (byte-identity re-proven post-fix; estate 0-failed both flag modes; 143 explained corpus moves).
+
+**Durable lessons this session:** (a) a promoted extractor inherits the latent weaknesses its old position masked — the microdata max-rule comment literally named nazih.qa and the reorder un-latented it same-day; when two structured sources disagree, the corpus says the promoted one is wrong (2-for-2) — guard on agreement, fail-open. (b) "junk currency token" and "missing currency token" are different epistemic states; collapsing them re-created BLOCKER 4. Page-level evidence (OG metas, any JSON-LD priceCurrency — even on a DECLINED Offer) resolves most junk/missing cases; only then expected-or-pend. (c) A test that pins flag-ON behaviour must SET the flag, or it is ambient-dependent (4 F1 tests were red only under flag-OFF for this reason). (d) `requires-python = "^3.12"` (Poetry caret) in `[project]` is invalid PEP 440 and silently breaks every standards tool that parses pyproject; been latent since the file was created. (e) The 2026-08-26 "371 literals / 43% unknown-platform" numbers don't reproduce from the artifacts (313 pairs/11 corrupt; 50.3%) — always re-derive advertised numbers from the artifact before gating on them.
+
+**Capture scorecard (pre-LLM, 414 pages) headline for the myez/Qaren kanban:** scraping owns price/identity/image/size/concentration/gender (80–96% captured pages, Gulf near-ceiling); notes pyramid 38%/longevity 32% → spec-DB or licensing; ratings 30%; review text 15% (widget APIs: Bazaarvoice 48, judge.me 39 = 27/34 Gulf, Yotpo 35; Trustpilot = shop badges); renderer ≈16% global buy-back. Artifact: claude.ai/code/artifact/ac6ad7e5-5871-4139-b596-b691b47adeb7. Follow-ups queued: faces.ae visible-text currency rung, classify_capture wall-signature anchoring, scentsplit decants product decision (Ahmed), VariantDescriptor discriminator, sqlfluff pass. Serper/OpenAI keys still dead by user choice (scraper variety strategy). Tooling: ruff E9,F63,F7,F82 blocking + `.githooks/pre-commit` (activate: `git config core.hooksPath .githooks`).
+
 ## Session 60: Fragrance data-provenance audit + global scrape validation — 2026-08-25/26
 
 Branch `feature/fragrance-hybrid-capture` (base 8adaefb). Three artifacts published: Fragrance Data
