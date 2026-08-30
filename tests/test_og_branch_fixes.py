@@ -613,12 +613,37 @@ class TestOgAvailability:
         assert res is not None
         assert res["in_stock"] is True
 
-    def test_availability_does_not_disturb_the_amount(self, flag_on):
+    @pytest.mark.parametrize(
+        "jsonld_first,confidence",
+        [("false", 0.9), ("true", 0.675)],
+        ids=["jsonld_first_off", "jsonld_first_on"],
+    )
+    def test_availability_does_not_disturb_the_amount(
+        self, flag_on, monkeypatch, jsonld_first, confidence,
+    ):
+        """ADJUDICATED IN UNIT F3 - STALE PIN on ONE key, not a code leak.
+
+        Diagnosed: the AMOUNT is intact (23.0), the currency is intact, the
+        provenance is intact and the availability read is intact. The single
+        delta was `confidence` 0.9 -> 0.675, and it is ENABLE_JSONLD_FIRST's
+        visible-text cross-check doing exactly its job: `_og_html` is a bare
+        meta-tag head with an EMPTY body, so the number 23 appears nowhere a
+        shopper could see it, `price_confirmed_in_text` is False and
+        `_cross_check_price` scales the branch's 0.9 by
+        `_UNCONFIRMED_CONFIDENCE_FACTOR`. That is an unconfirmed price being
+        scored down, not an amount moving.
+
+        Re-pinned so the assertion says what it means: the amount and the
+        availability are what this test guards, and the confidence is pinned in
+        BOTH flag states rather than in whichever one happens to be default.
+        """
+        monkeypatch.setenv("ENABLE_JSONLD_FIRST", jsonld_first)
         res = _extract(_og_html("23", availability="out of stock"))
         assert res["amount"] == pytest.approx(23.0)
         assert res["currency"] == "BHD"
         assert res["source_method"] == "page_scrape"
-        assert res["confidence"] == 0.9
+        assert res["in_stock"] is False, "the availability tag is still read"
+        assert res["confidence"] == confidence
 
 
 # ---------------------------------------------------------------------------
@@ -699,23 +724,63 @@ class TestMicrodataIsUntouchedByThisFlag:
         assert res is not None
         assert res["amount"] == pytest.approx(45.0)
 
+    #: klinq.com's shape - a KWD Offer answered against a BHD ask, so the
+    #: branch converts. WHAT it stamps on the converted result is the subject.
+    _CONVERTED_KWD_OFFER = """<html><body>
+      <div itemscope itemtype="https://schema.org/Product">
+        <div itemprop="offers" itemscope itemtype="https://schema.org/Offer">
+          <span itemprop="price" content="15.000">15.000</span>
+          <meta itemprop="priceCurrency" content="KWD" />
+        </div>
+      </div>
+    </body></html>"""
+
     @pytest.mark.parametrize("flag", ["true", "false"])
     def test_converted_microdata_provenance_is_flag_invariant(
         self, monkeypatch, flag,
     ):
-        html = """<html><body>
-          <div itemscope itemtype="https://schema.org/Product">
-            <div itemprop="offers" itemscope itemtype="https://schema.org/Offer">
-              <span itemprop="price" content="15.000">15.000</span>
-              <meta itemprop="priceCurrency" content="KWD" />
-            </div>
-          </div>
-        </body></html>"""
+        """ADJUDICATED IN UNIT F3 - STALE PIN, RE-SCOPED to the flag it is
+        actually about, plus a complementary pin below.
+
+        The `converted_usd` relabel is no longer absent: ENABLE_JSONLD_FIRST
+        landed it as its own flagged, measured change (5 cached pages move
+        page_scrape -> converted_usd, 0 amounts change - see the "(d) THE
+        RELABEL" block in `_extract_microdata_price`). What this test was
+        written to catch is the relabel riding ENABLE_OG_BRANCH_FIXES, an
+        OG-TAG flag, as a smuggled precondition of the reverted (c) reorder.
+        That claim is still exactly true and still worth pinning, so the test
+        keeps its subject and scopes the JSON-LD-first lever OFF - and, unlike
+        before, actually SETS the OG flag it parametrises over (it never did).
+        """
+        monkeypatch.setenv("ENABLE_OG_BRANCH_FIXES", flag)
+        monkeypatch.setenv("ENABLE_JSONLD_FIRST", "false")
         res = extract_price_from_html(
-            html, "Miss Dior EDP", "BHD", "klinq.com", "https://klinq.com/p",
+            self._CONVERTED_KWD_OFFER, "Miss Dior EDP", "BHD",
+            "klinq.com", "https://klinq.com/p",
         )
         assert res is not None
         assert res["source_method"] == "page_scrape"
+        assert res["currency"].upper() == "BHD"
+
+    @pytest.mark.parametrize("flag", ["true", "false"])
+    def test_jsonld_first_relabels_that_same_price_converted_usd(
+        self, monkeypatch, flag,
+    ):
+        """The complementary half of the pin above, added in UNIT F3: the
+        relabel DOES happen, it happens on ENABLE_JSONLD_FIRST, and it is still
+        invariant under ENABLE_OG_BRANCH_FIXES. Together the two tests say the
+        relabel moved from "absent" to "owned by a different flag" rather than
+        "unpinned"."""
+        monkeypatch.setenv("ENABLE_OG_BRANCH_FIXES", flag)
+        monkeypatch.setenv("ENABLE_JSONLD_FIRST", "true")
+        res = extract_price_from_html(
+            self._CONVERTED_KWD_OFFER, "Miss Dior EDP", "BHD",
+            "klinq.com", "https://klinq.com/p",
+        )
+        assert res is not None
+        assert res["source_method"] == "converted_usd", (
+            "a converted foreign price must not ship as a genuine local shelf price"
+        )
         assert res["currency"].upper() == "BHD"
 
     @pytest.mark.parametrize("flag", ["true", "false"])

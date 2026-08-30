@@ -443,6 +443,20 @@ class TestQatarPerfumeShopCorpus:
         # needs BOTH rollback flags off - the 32000.0 below is the legacy
         # comma-strip, not the strict-currency behaviour this file is about.
         monkeypatch.setenv("ENABLE_MONEY_PARSER_V2", "false")
+        # ADJUDICATED IN UNIT F3 - STALE PIN, SCOPED (not a code leak).
+        # This is a ROLLBACK-SURFACE pin for the STRICT-LABEL lever, and it
+        # spells the whole 8adaefb dict. ENABLE_JSONLD_FIRST (default ON) is a
+        # LATER wave that legitimately owns three of those keys on this page:
+        # it resolves the WooCommerce symbol child's Qatari-riyal GLYPH to the
+        # ISO code "QAR" (`_currency_label_for` rung 1), which then makes the
+        # branch CONVERT (3305.6) instead of relabelling at an implicit 1.0,
+        # lowers `confidence` 0.9 -> 0.675 via the visible-text cross-check,
+        # and adds `capture_outcome` / `price_confirmed_in_text`. Rolling back
+        # the strict lever alone no longer reaches 8adaefb, so this pin names
+        # the JSON-LD-first lever too. Flag-OFF byte-identity itself is what
+        # gate 1 proves against a pristine 8adaefb worktree; this test pins the
+        # LEVER, not the whole shipped mode.
+        monkeypatch.setenv("ENABLE_JSONLD_FIRST", "false")
         assert self._run() == {
             "amount": 32000.0,
             "original_currency": QAR_SYMBOL,
@@ -464,22 +478,38 @@ class TestQatarPerfumeShopCorpus:
                 "the QAR symbol was relabelled, not converted"
             )
 
+    @pytest.mark.parametrize("jsonld_first,label", [
+        ("false", QAR_SYMBOL),   # 8adaefb: the branch stamps the DISPLAY GLYPH
+        ("true", "QAR"),         # ENABLE_JSONLD_FIRST: ISO-normalised
+    ], ids=["jsonld_first_off", "jsonld_first_on"])
     @pytest.mark.parametrize("money_v2,riyals", [
         ("false", 32000.0),   # the legacy comma-strip reading of "320,00"
         ("true", 320.0),      # BLOCKER 6 - what the page actually prints
     ], ids=["money_parser_v1", "money_parser_v2"])
-    def test_flag_on_converts_at_the_qar_rate(self, monkeypatch, money_v2, riyals):
+    def test_flag_on_converts_at_the_qar_rate(
+        self, monkeypatch, money_v2, riyals, jsonld_first, label,
+    ):
         """The RATE is this file's subject and it is right in both states; the
         MAGNITUDE was BLOCKER 6's, fixed by ENABLE_MONEY_PARSER_V2. Pinning both
-        rows keeps the two fixes independently rollback-able."""
+        rows keeps the two fixes independently rollback-able.
+
+        ADJUDICATED IN UNIT F3 - the AMOUNT did not move, so this is not a code
+        bug. The only delta was `original_currency`, and it is the DELIBERATE
+        F-currency improvement: ENABLE_JSONLD_FIRST resolves the WooCommerce
+        symbol child through `_currency_label_for`, so a display GLYPH that used
+        to travel into the payload and the cache key now ships as the ISO code
+        "QAR". Both labels are pinned rather than one, because the glyph is
+        exactly what the rollback surface has to keep producing.
+        """
         from app.services.exchange_rate_service import FALLBACK_RATES
         monkeypatch.setenv("ENABLE_STRICT_CURRENCY_LABEL", "true")
         monkeypatch.setenv("ENABLE_MONEY_PARSER_V2", money_v2)
+        monkeypatch.setenv("ENABLE_JSONLD_FIRST", jsonld_first)
         r = self._run()
         assert r is not None, "the QAR symbol is resolvable -> convert, do not pend"
         assert r["currency"] == "BHD"
         assert r["amount"] == pytest.approx(round(riyals * FALLBACK_RATES["QAR"], 2))
-        assert r["original_currency"] == QAR_SYMBOL
+        assert r["original_currency"] == label
 
 
 class TestShippedMode:
@@ -523,6 +553,16 @@ class TestShippedMode:
 
     def test_flag_off_sells_a_350_qar_bottle_as_350_bhd(self, monkeypatch):
         monkeypatch.setenv("ENABLE_STRICT_CURRENCY_LABEL", "false")
+        # ADJUDICATED IN UNIT F3 - STALE PIN, SCOPED (not a code leak). This
+        # pins the STRICT-LABEL lever's rollback surface: with that lever off,
+        # the unconverted 350 ships stamped BHD. ENABLE_JSONLD_FIRST (default
+        # ON) is a later, independent lever that ALSO closes this hole by a
+        # different route - it ISO-resolves the Qatari-riyal glyph to "QAR", so
+        # `_wc_label != currency` and the branch converts to 36.16 whatever the
+        # strict lever says. The defect this class documents is real either
+        # way; reproducing it now takes BOTH levers off, and saying so is the
+        # point of the pin.
+        monkeypatch.setenv("ENABLE_JSONLD_FIRST", "false")
         r = self._run(self.QAR_PDP, monkeypatch)
         assert r is not None
         assert r["currency"] == "BHD"
@@ -718,6 +758,13 @@ class TestNicheBeautyMicrodataUsesTheOgCurrency:
 
     def _run(self, monkeypatch, strict="true"):
         monkeypatch.setenv("ENABLE_STRICT_CURRENCY_LABEL", strict)
+        # ADJUDICATED IN UNIT F3 - the page-level CURRENCY EVIDENCE hierarchy
+        # (rung 2) lives entirely inside the ENABLE_JSONLD_FIRST arm of
+        # `_extract_microdata_price`; with that flag off the branch never
+        # consults the document and the EUR meta is invisible to it. Set the
+        # flag the behaviour belongs to rather than inheriting the ambient
+        # default, so this class is green in BOTH ambient modes.
+        monkeypatch.setenv("ENABLE_JSONLD_FIRST", "true")
         return ps._extract_microdata_price(
             BeautifulSoup(_fixture(NICHE_BEAUTY), "html.parser"),
             "BHD", "niche-beauty.com",
@@ -745,6 +792,7 @@ class TestNicheBeautyMicrodataUsesTheOgCurrency:
         (test_b_e / test_b_f) must not move: on an EUR ask rung 2 and rung 3
         agree, so the answer is the same 195.0 EUR either way."""
         monkeypatch.setenv("ENABLE_STRICT_CURRENCY_LABEL", "true")
+        monkeypatch.setenv("ENABLE_JSONLD_FIRST", "true")  # F3 - see `_run`
         r = ps._extract_microdata_price(
             BeautifulSoup(_fixture(NICHE_BEAUTY), "html.parser"),
             "EUR", "niche-beauty.com", "https://x/y",
@@ -771,6 +819,11 @@ class TestSamawaOgUsesTheDeclinedJsonLdOffersCurrency:
 
     def _run(self, monkeypatch, strict="true"):
         monkeypatch.setenv("ENABLE_STRICT_CURRENCY_LABEL", strict)
+        # ADJUDICATED IN UNIT F3 - same scoping as the niche-beauty class: the
+        # JSON-LD-offer rung of `_page_currency_evidence` is only consulted
+        # from the ENABLE_JSONLD_FIRST arm, so the flag this behaviour belongs
+        # to is set explicitly instead of inherited from the ambient default.
+        monkeypatch.setenv("ENABLE_JSONLD_FIRST", "true")
         return ps.extract_price_from_html(
             _fixture(SAMAWA),
             "Paco Rabanne Lady Million Prive for Women - Eau de Parfum, 80ml",
