@@ -1,0 +1,46 @@
+{
+  "_unit": "C5 — judge.me server-HTML opportunistic enrichment (ENABLE_JUDGEME_HTML_REVIEWS, default OFF)",
+  "_measurement": "M5 measure-judgeme/VERDICT.md — zero-network scan over the 92 cached Gulf PDPs in _proof/html (index _proof/sweep2_curl_cffi.jsonl). 24/24 judge.me hosts by the STRICT multi-marker detector; the 6 bare-'judge' substring pages correctly excluded. Server-side recovery: AGGREGATE RATING for 9/24 (badge or JSON-LD AggregateRating), some REVIEW TEXT for 6/24, 18/24 pure shells. So RATING is PRIMARY, review bodies secondary; this is a small enrichment, not a reviews spine.",
+  "_source": "read ONLY the merchant's OWN PDP HTML the crawler already holds (its robots governs it) — NEVER judge.me's closed API (B6). No network call at all: the input HTML is parsed in hand.",
+  "_hard_rules": [
+    "STRICT install detector: cdn.judge.me loader OR jdgm.*= config OR jdgm- node class OR id=judgeme_product_reviews. NEVER the bare 'judge' substring (M5: 6/6 false positives — Shopify web pixel webPixelName:'Judge.me', empty integration settings, render-fail app block, minified c.includes('judge'), leftover judgeme-reviews.css asset).",
+    "JSON-LD first (AggregateRating + Review[]), then DOM fallback (.jdgm-prev-badge / .jdgm-rev-widg badge + div.jdgm-rev nodes).",
+    "Treat a badge of 0.00/0 as ABSENT (client-rendered placeholder), never a real zero.",
+    "Drop review bodies of length <= 1 char (albayanperfumes.com's lone body is U+0660 junk).",
+    "The measurement's badge 0.00 for myperfumes/parfum was a CSS-SELECTOR false match (.jdgm-prev-badge[data-average-rating='0.00'] inside a <style> block); the parser reads data-average-rating only from a REAL HTML element, so the true DOM badges (myperfumes 4.79/115, parfum 4.15/169) are recovered."
+  ],
+  "files": {
+    "myperfumes_full_jsonld.html": {
+      "origin": "SYNTHETIC — models the measured myperfumes.ae FULL_SERVER page (_proof/html/3933183f7b64d7f046e1ee231c2937112df15441.html). Real page: JSON-LD AggregateRating 4.79/115 + 28 JSON-LD Review objects AND 28 .jdgm-rev__body DOM nodes; DOM prev-badge 4.79/115. Fixture models the SHAPE with 3 JSON-LD reviews (author/rating/date/body) + the agreeing DOM badge. Also carries the CSS 0.00 decoy selector to prove the parser ignores it.",
+      "measured": {"jsonld_agg": "4.79/115", "jsonld_reviews": 28, "dom_badge": "4.79/115"},
+      "expect": "rating source=jsonld 4.79/115; reviews from JSON-LD (3 in fixture) with bodies; JSON-LD wins over DOM."
+    },
+    "swissarabian_thin_dom.html": {
+      "origin": "SYNTHETIC — models the measured swissarabian.com THIN page (_proof/html/cfd0a7d1fb30ae43c5a61628d52844a1f09373a9.html). Real page: NO JSON-LD reviews/aggregate; DOM prev-badge 5.00/3 + 3 div.jdgm-rev nodes (author=Debra Sullivan Reguiti/Sawsan G./Anonymous, title=Nice/Beautiful scents/..., body via .jdgm-rev__body>p). Strict signals were jdgm- classes + id=judgeme_product_reviews only (no cdn.judge.me/jdgm.*= on that capture).",
+      "measured": {"dom_badge": "5.00/3", "dom_bodies": 3},
+      "expect": "rating source=dom_badge 5.00/3; reviews=3 with author/title/body; a multi-line body collapses its <br> to a single space."
+    },
+    "parfum_ae_shell_badge_only.html": {
+      "origin": "SYNTHETIC — models the measured parfum.ae SHELL page (_proof/html/432ab6ce08d2f79128520ac89cafa406fe86a37a.html). Real page: main DOM prev-badge 4.15/169, five more nonzero related-product badges, several 0.00/0 placeholders, and ZERO .jdgm-rev__body server-side. The definitive shell proof (count present, bodies absent).",
+      "measured": {"dom_badge_main": "4.15/169", "dom_bodies": 0},
+      "expect": "rating source=dom_badge 4.15/169 (the FIRST nonzero badge = main product, never a related-product badge); reviews=[] (rating only)."
+    },
+    "albayan_junk_body_1char.html": {
+      "origin": "SYNTHETIC — models the measured albayanperfumes.com THIN page (_proof/html/d2c7cfacf6046e9e090d961d4865b8b1a16bd774.html). Real page: aggregate ONLY on the .jdgm-rev-widg root (5.00/1, no .jdgm-prev-badge) + ONE .jdgm-rev node whose sole body is the single character U+0660 (ARABIC-INDIC DIGIT ZERO) — junk.",
+      "measured": {"dom_widget_badge": "5.00/1", "dom_bodies": "1 (U+0660 junk, 1 char)"},
+      "expect": "rating source=dom_badge 5.00/1 (read from .jdgm-rev-widg); reviews=[] (the lone 1-char body is dropped by the >1-char floor)."
+    },
+    "shell_placeholder_zero_badge.html": {
+      "origin": "SYNTHETIC — models the 15/24 pure-placeholder shell hosts whose only badge is the 0.00/0 client-rendered placeholder and which render zero bodies server-side.",
+      "expect": "install detected, but aggregate 0.00/0 => ABSENT and no bodies => the enrichment returns None (nothing usable)."
+    },
+    "false_positive_webpixel.html": {
+      "origin": "SYNTHETIC — models the M5 substring false positives (houseofperfumes.com / om.junaidperfumes.com Shopify web pixel webPixelName:'Judge.me' + a leftover judgeme-reviews.css theme asset). Carries the bare 'judge'/'Judge.me' substring but NONE of the four strict install markers.",
+      "expect": "NO install detected (strict detector, not the bare substring) => None; nothing parsed."
+    },
+    "no_judgeme_control.html": {
+      "origin": "SYNTHETIC — control: a plain PDP with no judge.me markers and not even the bare substring.",
+      "expect": "NO install => None."
+    }
+  }
+}
