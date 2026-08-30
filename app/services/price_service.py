@@ -3395,11 +3395,52 @@ def _strict_word_present(word: str, title_normalized: str) -> bool:
     ) is not None
 
 
+def normalize_words_empty_fix_enabled() -> bool:
+    """True iff ``normalize_words`` drops phantom empty-string tokens (default OFF).
+
+    THE BUG (M5 sitemap measurement): the shipped comprehension filters on the
+    UN-replaced token — ``if w.strip(punct)`` — but YIELDS the replaced value
+    ``w.replace("-", "").strip(punct)``. A lone ``"-"`` (from a spaced hyphen
+    ``" - "``, or any all-hyphen token) passes the filter yet its value is ``""``,
+    so a phantom empty-string token joins the set. Because ``_slug_from_pdp`` folds
+    hyphens to spaces, no slug token set ever carries ``""`` — so a query with a
+    spaced hyphen is NEVER a subset of any slug and the sitemap matcher (and every
+    other ``issubset`` / overlap consumer) records a guaranteed MISS.
+
+    GATED, NOT unconditional. The empty token cannot ever have *produced* a correct
+    match — a non-word can only inflate an overlap denominator or force a spurious
+    ``issubset`` miss. BUT proving flag-independent byte-identity of every currently
+    -correct RESULT across the ~50 ``normalize_words`` consumers is impossible: in
+    the fail-closed price matchers (``strict_title_match`` subset gates, the adapter
+    ``p_words``/``t_words`` overlap gates in algolia/noon/occ/unbxd/zyte/…), a
+    phantom-empty MISS can COINCIDENTALLY align with ground truth — e.g. query
+    "Sauvage - EDT" vs a title "Sauvage EDT Elixir" whose real words are all present
+    would match on the real tokens, and the phantom "" is the only thing rejecting
+    the (genuinely-different) Elixir. Dropping "" flips such a coincidental-correct
+    reject to a possibly-wrong accept, a ground-truth-dependent change I cannot
+    prove away. So the global fix ships behind a default-OFF flag; flag-OFF runs the
+    exact shipped comprehension (byte-identical). PART B recovers the measured
+    sitemap hits independently by dropping empties LOCALLY inside the relaxed matcher.
+
+    Read PER CALL from ``os.getenv`` (copying ``exact_gate_enabled``) so Railway can
+    flip it without a restart."""
+    return os.getenv("ENABLE_NORMALIZE_WORDS_EMPTY_FIX", "").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
 def normalize_words(text: str) -> set:
     """Normalize words for matching."""
     text = _APOSTROPHES_RE.sub("", text)
     if exact_gate_enabled():
         text = _fold_spaced_units(text)
+    if normalize_words_empty_fix_enabled():
+        # Filter on the REPLACED value so an all-hyphen token (value "") is dropped
+        # instead of joining the set as a phantom empty string.
+        return set(
+            v for w in text.lower().split()
+            if (v := w.replace("-", "").strip(",.()&:;'\""))
+        )
     return set(w.replace("-", "").strip(",.()&:;'\"") for w in text.lower().split() if w.strip(",.()&:;'\""))
 
 

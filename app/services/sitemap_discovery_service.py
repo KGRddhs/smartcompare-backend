@@ -437,6 +437,36 @@ async def _default_fetch(url: str) -> Optional[str]:
         return None
 
 
+# V2 overlap floor — the fraction of QUERY tokens that must appear in the slug once
+# the strict ``issubset`` requirement is dropped. Higher than the shipped 0.5 floor
+# so the relaxed matcher stays fail-closed: it tolerates a FEW extra brand/gender/
+# size tokens the slug omits (M5: coral "Coral", myperfumes "Men", goldenscent
+# "30 ml") but still rejects a genuinely-different product that only shares a generic
+# token or two. Measured M5 "extra-token" recoveries sit at ~0.67 (4 of 6 words).
+_SITEMAP_V2_MIN_OVERLAP = 0.6
+
+
+def sitemap_match_v2_enabled() -> bool:
+    """True iff the relaxed overlap-ratio SITEMAP matcher is active (default OFF).
+
+    The shipped ``_match_sitemap_slug`` demands strict ``q_words.issubset(s_words)``
+    — every query token present in the slug. Real JSON-LD ``Product.name`` values
+    carry store/brand/gender/size tokens the URL slug omits, so a name-driven query
+    is never a subset and the match is lost (M5: 92% of targets present, 8% matched).
+    V2 relaxes the SITEMAP matcher ONLY (never the price identity gate) toward the
+    word-overlap ratio it already computes, and drops phantom empty-string tokens
+    LOCALLY (so the measured empty-token hits — tuzzut, samawa — recover regardless
+    of ``ENABLE_NORMALIZE_WORDS_EMPTY_FIX``). The ``numbers_match`` / ``variant_
+    mismatch`` / ml-size guards and the "return None, never a wrong URL" fail-closed
+    property are preserved.
+
+    Read PER CALL from ``os.getenv`` (copying ``exact_gate_enabled``); flag-OFF is
+    byte-identical to the shipped strict matcher."""
+    return os.getenv("ENABLE_SITEMAP_MATCH_V2", "").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
 def _match_sitemap_slug(
     slug_index: Optional[Dict[str, str]],
     query: str,
@@ -450,8 +480,12 @@ def _match_sitemap_slug(
       - the query must NOT be a different model-line variant (``variant_mismatch``),
       - an ml-size in the QUERY must appear in the slug (size guard — the 50ml-vs-
         30ml case ``variant_mismatch`` doesn't cover for skincare/fragrance),
-      - the query's normalized tokens must be a SUBSET of the slug tokens
-        (every query word present), gated by a word-overlap ratio,
+      - SHIPPED (V2 OFF): the query's normalized tokens must be a SUBSET of the slug
+        tokens (every query word present), gated by a ≥0.5 word-overlap ratio,
+      - RELAXED (``ENABLE_SITEMAP_MATCH_V2``): the strict subset requirement is
+        dropped for a ≥``_SITEMAP_V2_MIN_OVERLAP`` word-overlap ratio (phantom empty
+        tokens dropped locally), so a name with extra brand/gender/size tokens still
+        resolves its own PDP while a genuinely-different product still returns None,
       - ties broken by the highest word-overlap (then shortest slug — the most
         specific exact match).
 
@@ -466,6 +500,13 @@ def _match_sitemap_slug(
     q_words = normalize_words(q)
     if not q_words:
         return None
+    v2 = sitemap_match_v2_enabled()
+    if v2:
+        # Drop phantom empty-string tokens LOCALLY (independent of PART A's global
+        # flag) so a spaced-hyphen name is not sunk before the overlap is computed.
+        q_words = q_words - {""}
+        if not q_words:
+            return None
     q_sizes = extract_sizes_ml(q)
 
     best_url: Optional[str] = None
@@ -482,13 +523,21 @@ def _match_sitemap_slug(
             if slug_sizes and not (q_sizes & slug_sizes):
                 continue
         s_words = normalize_words(slug)
-        # Query tokens must be a subset of the slug tokens (every query word
-        # present in the slug) — the discovery match is name-driven.
-        if not q_words.issubset(s_words):
-            continue
-        overlap = len(q_words & s_words) / len(q_words)
-        if overlap < 0.5:
-            continue
+        if v2:
+            # Relaxed: overlap-ratio only (no strict subset). The guards above +
+            # this floor keep it fail-closed on a genuinely-different product.
+            s_words = s_words - {""}
+            overlap = len(q_words & s_words) / len(q_words)
+            if overlap < _SITEMAP_V2_MIN_OVERLAP:
+                continue
+        else:
+            # Query tokens must be a subset of the slug tokens (every query word
+            # present in the slug) — the discovery match is name-driven.
+            if not q_words.issubset(s_words):
+                continue
+            overlap = len(q_words & s_words) / len(q_words)
+            if overlap < 0.5:
+                continue
         rank = (overlap, -len(slug))
         if rank > best_rank:
             best_rank = rank
