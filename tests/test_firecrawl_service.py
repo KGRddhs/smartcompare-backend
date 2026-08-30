@@ -19,6 +19,11 @@ import httpx
 from app.services.firecrawl_service import scrape_page, scrape_page_with_status, is_available
 
 
+@pytest.fixture(autouse=True)
+def _pin_firecrawl_raw_html_default(monkeypatch):
+    monkeypatch.delenv("ENABLE_FIRECRAWL_RAW_HTML", raising=False)
+
+
 SAMPLE_HTML = "<html><body>" + "x" * 1000 + "</body></html>"
 
 
