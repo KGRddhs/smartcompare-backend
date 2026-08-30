@@ -63,10 +63,23 @@ if git diff --cached --name-only --diff-filter=ACM | grep -qxE '\.env(\..*)?'; t
 fi
 
 # 5. SQL migrations — lint staged migration files when sqlfluff is available.
+#    Config (dialect, max_line_length, the measured exclude_rules) lives in the
+#    repo-root .sqlfluff; `--dialect postgres` is kept as a belt-and-braces
+#    default for an invocation that somehow misses config discovery.
+#
+#    PYTHONIOENCODING=utf-8 is LOAD-BEARING, not decoration. sqlfluff's success
+#    message contains an emoji, and on Windows a non-console stdout (a GUI git
+#    client, an IDE's commit box, any pipe) defaults to cp1252, so writing it
+#    raises UnicodeEncodeError and sqlfluff exits 1 with ZERO violations —
+#    blocking a commit whose SQL is clean. Measured 2026-08-31: `sqlfluff lint
+#    migrations/*.sql >/dev/null` exits 1 on a corpus that exits 0 on a console,
+#    and exits 0 again with this variable set. Same family as the cp1252 trap
+#    CLAUDE.md already records under "Recurring durable gotchas" (h). Removing
+#    it re-arms a false failure that looks exactly like a real lint error.
 if [ -n "$SQL_FILES" ]; then
   if command -v sqlfluff >/dev/null 2>&1; then
     # shellcheck disable=SC2086
-    sqlfluff lint --dialect postgres $SQL_FILES || fail "sqlfluff failed on staged migrations"
+    PYTHONIOENCODING=utf-8 sqlfluff lint --dialect postgres $SQL_FILES || fail "sqlfluff failed on staged migrations"
   else
     echo "pre-commit: NOTE sqlfluff not installed — staged migrations not linted" >&2
   fi
