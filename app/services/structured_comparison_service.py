@@ -413,6 +413,63 @@ _TIER2_WALL_SECONDS = 4.0
 _TIER2_PER_FIELD_SECONDS = 3.5  # near-full wall; gather lets fields share
 
 
+def _no_fabrication_blocks_refill(stage: str, specs_so_far: Optional[dict] = None) -> bool:
+    """UNIT D1 — True iff ENABLE_SPECS_NO_FABRICATION must veto a spec refill.
+
+    WHY THIS LIVES UNDER THE A3 FLAG. ``ENABLE_SPECS_NO_FABRICATION`` is ONE
+    semantic contract — "a spec field ships only when a snippet said so" — not
+    a per-function switch. A3 (``extraction_service.specs_no_fabrication_enabled``)
+    enforces it at ``extract_specs``: an uncited field is DROPPED instead of
+    stamped ``"N/A"``, and the dict carries ``_evidence_limited``. But all three
+    downstream refill tiers test ``not specs_so_far.get(f) or ... in ("N/A","")``,
+    which is TRUE for A3's principled omission exactly as it is for an "N/A" —
+    so each tier read the omission as a gap and refilled it through its own
+    ungated LLM call. A second flag would let the two halves disagree and ship
+    a guard that guards nothing; this is the same promise, kept end to end.
+
+    WHY (b) SKIP AT ALL THREE SITES, not (a) a no-fabrication refill prompt:
+
+      * Tier 3 (``extract_specs_synthesized``) — (a) is IMPOSSIBLE. The call
+        takes no snippet context at all; pure training-data synthesis is its
+        entire mechanism, so there is nothing to cite and no prompt wording
+        that could make it citable.
+      * Tier 2 and smart-fallback (``extract_specs_targeted``) — both DO carry
+        fresh snippets, but the helper returns ``{field: value}`` only: it has
+        no ``<field>_source`` channel, and the merge sites here write the value
+        straight into the specs dict. A prompt-level "cite or omit" contract
+        with no citation returned is unverifiable — ``verify_spec_citations``
+        would have nothing to check — and it would break the invariant A3's
+        dict is FOR: that every field present in it carries a snippet citation.
+        Adding that channel means forking a third prompt plus changing
+        ``openai_service``'s return filter, i.e. a refactor of the very
+        monolith this unit is told to touch minimally. Skipping keeps the
+        guarantee exact and the diff two lines per site.
+
+    WHY THE FLAG IS THE GATE AND ``_evidence_limited`` IS ONLY READ. The marker
+    is the honest signal for a dict A3 just produced, and it is logged here for
+    exactly that reason. It cannot be the gate: specs are cached 7 days, so
+    right after a Railway flip the live dicts are PRE-flip ones carrying "N/A"
+    stamps and no marker — gating on the marker would leave that whole TTL
+    refilling fabrications under a flag that promises none. Under the flag,
+    every blank in a spec sheet is uncited by construction, marker or not.
+
+    Read per call via A3's ``os.getenv`` helper — never cached at import — so
+    Railway can flip it without a restart (house rule 1). Flag OFF returns
+    False before anything else happens, so the cascade is byte-identical.
+    """
+    from app.services.extraction_service import specs_no_fabrication_enabled
+
+    if not specs_no_fabrication_enabled():
+        return False
+    logger.info(
+        "[specs] no-fabrication guard skipped the %s refill "
+        "(evidence_limited=%s)",
+        stage,
+        bool((specs_so_far or {}).get("_evidence_limited")),
+    )
+    return True
+
+
 def _detect_subtype(brand: str, name: str, category: str):
     """Resolve the product subtype id (e.g. ``electronics.tv``) for a product.
 
@@ -466,6 +523,12 @@ async def tier2_fill_non_negotiables(
     ]
     if not missing:
         return {}  # Happy path — all non-negotiables already filled.
+
+    # UNIT D1 — under ENABLE_SPECS_NO_FABRICATION these blanks are A3's
+    # evidence-omissions, and this tier's per-field refill returns no citation
+    # to justify overwriting them. See _no_fabrication_blocks_refill().
+    if _no_fabrication_blocks_refill("tier2", specs_so_far):
+        return {}
 
     full_name = f"{brand} {name} {variant or ''}".strip()
 
@@ -580,6 +643,12 @@ async def tier3_synthesize_non_negotiables(
         if not specs_so_far.get(f) or specs_so_far.get(f) in ("N/A", "")
     ]
     if not missing:
+        return {}
+
+    # UNIT D1 — this tier has NO evidence channel (no Serper, no snippets), so
+    # every value it returns is the training-data fallback the flag forbids.
+    # It cannot be made citation-or-omit; under the flag it must not run.
+    if _no_fabrication_blocks_refill("tier3", specs_so_far):
         return {}
 
     full_name = f"{brand} {name} {variant or ''}".strip()
@@ -6870,6 +6939,13 @@ class StructuredComparisonService:
         OpenAI sometimes exceeded 3s, dropping the fallback fill silently.
         """
         if not missing_fields:
+            return {}
+
+        # UNIT D1 — same contract as Tier 2: `extract_specs_targeted` returns
+        # no `<field>_source`, so a fill here would put an uncited value into a
+        # dict whose whole invariant is that every field is cited.
+        # See _no_fabrication_blocks_refill().
+        if _no_fabrication_blocks_refill("smart_fallback"):
             return {}
 
         try:

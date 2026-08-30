@@ -537,13 +537,18 @@ def specs_no_fabrication_enabled() -> bool:
     ``ENABLE_SPECS_NO_FABRICATION`` in Railway. That is why it ships OFF in
     code (house rule: flags default OFF and flip in Railway).
 
-    SCOPE BOUNDARY. This guards ``extract_specs`` only. The downstream
+    SCOPE — NOW END TO END (UNIT D1). This function is where the guard is
+    ENFORCED, but it is no longer where the guard STOPS. The downstream
     smart-fallback / Tier-2 / Tier-3 spec-refill cascade in
-    ``structured_comparison_service`` treats an omitted field exactly as it
-    treats "N/A" (``specs_so_far.get(f)`` is falsy either way) and refills it
-    with its own LLM call, which is not yet evidence-gated. Closing that is a
-    separate unit; until then the flag narrows fabrication, it does not
-    eliminate it end to end.
+    ``structured_comparison_service`` used to treat an omitted field exactly as
+    it treats "N/A" (``specs_so_far.get(f)`` is falsy either way) and refill it
+    through its own ungated LLM call — so this guard narrowed fabrication
+    without eliminating it. All three tiers now read the SAME flag and skip the
+    refill when it is on: see ``_no_fabrication_blocks_refill`` in that module
+    for why each site skips rather than carrying a refill-side prompt contract
+    (Tier 3 has no evidence channel at all; the other two have no
+    ``<field>_source`` return channel, so a filled value could not satisfy this
+    dict's every-field-is-cited invariant).
 
     Read per call via ``os.getenv`` — never cached at import — so Railway can
     flip it without a restart (the ``price_service.exact_gate_enabled`` idiom).
