@@ -12851,6 +12851,15 @@ async def fetch_page_price(
         mg_price = await _try_magento_gql_url_fallback(url, product_name, currency)
         if mg_price:
             return mg_price
+        # UNIT B5 (ENABLE_SALLA_SLUG_RESOLVE, default OFF) — HTML present but no
+        # structured price AND the page is a Salla storefront HOMEPAGE (a
+        # cross-country dead PDP slug that redirected home). Resolve the product
+        # via the Salla search API before the got-html sentinel. Flag OFF -> the
+        # shim returns None without any search, so this is byte-identical to
+        # pre-B5 ({"_got_html": True}).
+        sl_price = await _try_salla_slug_resolve(url, product_name, currency, html)
+        if sl_price:
+            return sl_price
         return {"_got_html": True}
 
     # UNIT B3 — HTML route walled (curl_fetch_html_same_site returned None, e.g.
@@ -12891,6 +12900,31 @@ async def _try_magento_gql_url_fallback(
             return jp
         return await fetch_magento_graphql_url_price(url, product_name, currency)
     except Exception:  # noqa: BLE001 — fallback is best-effort; never crash the cascade
+        return None
+
+
+async def _try_salla_slug_resolve(
+    url: str, product_name: str, currency: str, html: Optional[str],
+) -> Optional[Dict[str, Any]]:
+    """UNIT B5 fallback shim (ENABLE_SALLA_SLUG_RESOLVE, default OFF). Lazy-import
+    the Salla slug resolver (salla_service imports FROM price_service, so the
+    import must be deferred to call time to avoid a circular import) and, only when
+    the flag is on AND the fetched page is a Salla storefront-homepage collapse (a
+    cross-country dead PDP slug), recover the price via the store's Salla search
+    API. Returns None on flag-OFF / non-Salla / not-a-collapse / miss / any error —
+    never raises. Flag OFF -> no search is issued -> the caller's got-html sentinel
+    is byte-identical to pre-B5."""
+    try:
+        from app.services.salla_service import (
+            salla_slug_resolve_enabled,
+            fetch_salla_slug_resolved_price,
+        )
+        if not salla_slug_resolve_enabled():
+            return None
+        return await fetch_salla_slug_resolved_price(
+            url, product_name, currency, html=html,
+        )
+    except Exception:  # noqa: BLE001 — best-effort; never crash the cascade
         return None
 
 

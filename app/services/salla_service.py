@@ -29,8 +29,10 @@ price is emitted (no-fab).
 
 import asyncio
 import logging
+import os
 import re
 from typing import Any, Dict, Optional
+from urllib.parse import urlparse
 
 from app.services.price_service import (
     normalize_candidate_brand,
@@ -324,3 +326,119 @@ async def fetch_salla_api_price(
         price["currency"], price["amount"], product_name, domain,
     )
     return price
+
+
+# ===========================================================================
+# UNIT B5 — cross-country Salla slug resolution (ENABLE_SALLA_SLUG_RESOLVE)
+# ===========================================================================
+# MEASURED (B4): ae.abdulsamadalqurashi.com prices cleanly from its Salla @graph
+# JSON-LD (227.81 AED), but the kw/om/qa hosts FAILED only because the AE product
+# slug does not exist on those storefronts and the request REDIRECTS to the store
+# HOMEPAGE (proof: the "PDP" byte counts were identical to the homepage rows). A
+# homepage has no product structured data, so extract_price_from_html returns
+# nothing and the page-scrape cascade gives up. That is RESOLUTION, not a wall:
+# the same store's Salla search API can still find the product by name.
+#
+# So when a fetched Salla PDP has collapsed to the storefront homepage, resolve
+# the product via the storefront SEARCH API for that store — REUSING the existing
+# ``fetch_salla_api_price`` client (store-id + keyword search). No second Salla
+# client, no new transport. Ships DARK behind ENABLE_SALLA_SLUG_RESOLVE (default
+# OFF, read PER CALL); with it off the resolver returns None before doing
+# anything, so the caller's pre-B5 value (the got-html sentinel) is byte-identical.
+
+
+def salla_slug_resolve_enabled() -> bool:
+    """True iff the B5 cross-country slug resolver is active (default OFF).
+
+    This is a NEW capture capability (recover a cross-country dead-slug price via
+    the Salla search API), not a repair of a measured-0%-success production path,
+    so it ships DARK and is flipped on Railway during canary. Read PER CALL from
+    ``os.getenv`` (copying ``price_service.exact_gate_enabled``) so the flag can be
+    flipped without a restart. With the flag OFF the resolver never runs — no
+    search is issued — so the caller returns its exact pre-B5 value and the
+    rollback is byte-identical."""
+    return os.getenv("ENABLE_SALLA_SLUG_RESOLVE", "").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
+# A real Salla PDP carries the product's identity in structured data — a JSON-LD
+# Product node (``"@type":"Product"``, standalone OR inside an ``@graph``) and/or
+# an OpenGraph ``og:type=product``. The storefront homepage the dead slug
+# redirects to carries NEITHER (it is ``og:type=website`` with only a WebSite/
+# Organization node). Absence of BOTH product signals on a Salla page is the
+# cheap, reliable homepage-collapse tell.
+_PRODUCT_JSONLD_RE = re.compile(r'"@type"\s*:\s*"product"', re.IGNORECASE)
+# og:type=product in either attribute order (property-then-content or reverse),
+# tolerant of surrounding whitespace/quote style.
+_OG_TYPE_PRODUCT_RE = re.compile(
+    r'og:type["\'][^>]*content\s*=\s*["\']\s*product'
+    r'|content\s*=\s*["\']\s*product["\'][^>]*og:type',
+    re.IGNORECASE,
+)
+
+
+def _is_salla_homepage_collapse(html: Optional[str], url: str = "") -> bool:
+    """True iff ``html`` is a Salla STOREFRONT HOMEPAGE reached by a dead PDP slug.
+
+    Cheap and total (never raises): a Salla storefront (``detect_platform`` ==
+    ``"salla"``) that carries NO product structured data (no JSON-LD Product node,
+    no ``og:type=product``). A genuine Salla PDP — even one whose price the
+    extractor happened to miss — carries those markers and is NOT treated as a
+    collapse, so the resolver never hijacks a real product page. Non-Salla / empty
+    input is never a collapse."""
+    if not html or not isinstance(html, str):
+        return False
+    try:
+        from app.services.platform_router import detect_platform
+        if detect_platform(html, url) != "salla":
+            return False
+    except Exception:  # noqa: BLE001 — platform probe is best-effort
+        return False
+    if _PRODUCT_JSONLD_RE.search(html):
+        return False
+    if _OG_TYPE_PRODUCT_RE.search(html):
+        return False
+    return True
+
+
+async def fetch_salla_slug_resolved_price(
+    url: str,
+    product_name: str,
+    currency: str = "BHD",
+    resolved_category: Optional[str] = None,
+    html: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    """Recover a Salla price when a cross-country PDP slug collapsed to the store
+    homepage, by resolving the product through the storefront SEARCH API.
+
+    ``url`` is the (dead) PDP url that was fetched; ``html`` is the body it
+    returned (the storefront homepage on a collapse). Returns the shared price
+    dict (genuine ``salla_api`` for a native-BHD store, else BHD-converted stamped
+    ``converted_usd``) or ``None`` on flag-OFF / non-Salla / not-a-collapse /
+    miss / error (verify-or-omit — never raises). ``$0`` — no Serper, no render.
+
+    REUSES ``fetch_salla_api_price`` (store-id + keyword search); NO second Salla
+    client. The store-id is seeded from the homepage bytes we already hold (the
+    redirect target carries it), so the reused client skips its storefront
+    round-trip and issues only the one search request."""
+    if not salla_slug_resolve_enabled():
+        return None
+    if not _is_salla_homepage_collapse(html, url):
+        return None
+    domain = (urlparse(url).netloc or "").replace("www.", "").strip().lower()
+    if not domain:
+        return None
+    # Don't fetch what we already have (CLAUDE.md op-principle #2): the homepage
+    # body carries the numeric store-id, so seed the cache and let the reused
+    # client's _resolve_store_id serve it without a second storefront GET.
+    store_id = _extract_store_id(html or "")
+    if store_id:
+        _STORE_ID_CACHE.setdefault(domain, store_id)
+    logger.info(
+        "[PRICE] salla slug-collapse for '%s' @ %s -> search-resolve",
+        product_name, domain,
+    )
+    return await fetch_salla_api_price(
+        domain, product_name, currency, resolved_category=resolved_category,
+    )

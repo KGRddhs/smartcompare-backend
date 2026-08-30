@@ -1,0 +1,27 @@
+{
+  "_unit": "B5 — abdulsamadalqurashi cross-country Salla slug resolution (ENABLE_SALLA_SLUG_RESOLVE, default OFF)",
+  "_measured": "B4: ae.abdulsamadalqurashi.com parses cleanly (227.81 AED via Salla @graph); kw/om/qa FAILED because the AE slug does not exist there and REDIRECTS to the storefront homepage (PDP byte counts identical to homepage rows). Resolution, not a wall. Store-ids B4 extracted: ae 162072861, kw 1246890663, om 2093527835, qa 894646047, sa 1068090911.",
+  "files": {
+    "abdulsamadalqurashi_ae_pdp_aed.html": {
+      "origin": "SYNTHETIC — models the AE clean case: a real Salla PDP (cdn.salla.network, og:type=product, JSON-LD @graph Product) carrying priceCurrency AED / price 227.81. Extracted directly by extract_price_from_html; the B5 slug-resolver must treat it as NOT a homepage-collapse and never fire the search (AE behaviour unchanged).",
+      "host": "ae.abdulsamadalqurashi.com",
+      "platform": "salla",
+      "expect": "not a homepage-collapse; no Salla search issued"
+    },
+    "abdulsamadalqurashi_kw_homepage_collapse.html": {
+      "origin": "SYNTHETIC — models the redirect target for a dead AE slug on the KW host: the Salla storefront HOMEPAGE (cdn.salla.network, og:type=website, WebSite JSON-LD, NO Product node) carrying the KW store-id 1246890663 in an inline store blob.",
+      "host": "kw.abdulsamadalqurashi.com",
+      "platform": "salla",
+      "expect": "homepage-collapse detected; flag-ON resolves via Salla search API"
+    },
+    "salla_api_search_kw.json": {
+      "origin": "SYNTHETIC — models GET https://api.salla.dev/store/v1/products?keyword=<name> with Store-Identifier: 1246890663 (KW store). data[0] is the resolved product 'Al Qurashi Blend Perfume 90ml' @ 25 KWD (converts to BHD -> converted_usd); data[1] is a non-matching decoy.",
+      "endpoint": "api.salla.dev/store/v1/products",
+      "store_id": "1246890663"
+    },
+    "not_salla_no_price.html": {
+      "origin": "SYNTHETIC — control: a non-Salla page with no structured price and no salla markers. The resolver must NOT classify it as a collapse and must NOT issue a search.",
+      "expect": "not a collapse; no search issued"
+    }
+  }
+}

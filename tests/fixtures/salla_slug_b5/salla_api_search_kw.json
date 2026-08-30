@@ -1,0 +1,33 @@
+{
+  "status": 200,
+  "success": true,
+  "data": [
+    {
+      "id": 495814384,
+      "name": "Al Qurashi Blend Perfume 90ml",
+      "url": "https://kw.abdulsamadalqurashi.com/en/al-qurashi-blend-perfume-90ml/p495814399",
+      "sku": null,
+      "brand": null,
+      "gtin": null,
+      "price": 25,
+      "regular_price": 25,
+      "sale_price": 0,
+      "currency": "KWD",
+      "is_out_of_stock": false,
+      "is_available": true
+    },
+    {
+      "id": 111111111,
+      "name": "Oud Muattar Incense 50g",
+      "url": "https://kw.abdulsamadalqurashi.com/en/oud-muattar-incense-50g/p111111111",
+      "sku": null,
+      "brand": null,
+      "gtin": null,
+      "price": 40,
+      "currency": "KWD",
+      "is_out_of_stock": false,
+      "is_available": true
+    }
+  ],
+  "cursor": {"next": null}
+}
