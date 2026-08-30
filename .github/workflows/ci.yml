@@ -120,6 +120,18 @@ jobs:
       - name: Install black
         run: pip install "black==26.5.1"
 
+      # BLOCKING. Ruff bug-class tier only — E9 (syntax), F63 (literal-comparison
+      # misuse), F7 (syntax-adjacent statement errors), F82 (undefined names).
+      # Measured clean repo-wide at 4c7abf6, so it gates from day one without an
+      # allowlist. The fuller [tool.ruff.lint] ruleset stays report-only/local.
+      # Pinned EXACTLY for the same reason black is (a point release must not
+      # redden a no-change day); the dev lock carries the same pin.
+      - name: Install ruff
+        run: pip install "ruff==0.16.5"
+
+      - name: ruff (blocking bug-class tier)
+        run: ruff check --select E9,F63,F7,F82 --no-cache app/ scripts/ tests/
+
       # BLOCKING. Scoped to .github/black-clean-paths.txt — the ratchet of files
       # that are black-clean today. See that file for why the gate is not repo-wide.
       - name: black --check (clean-paths allowlist)

@@ -1,0 +1,67 @@
+#!/bin/sh
+# Pre-commit gate — Synack orchestrator Step 2.
+# Fast checks only; CI remains the deep gate (comm gate, coverage, full lint).
+# Never weakens a safety check: this ADDS commit-time checks where none existed.
+
+set -u
+
+fail() { echo "pre-commit: $1" >&2; exit 1; }
+
+# Staged python files (added/copied/modified only — deletions excluded)
+PY_FILES=$(git diff --cached --name-only --diff-filter=ACM -- '*.py')
+SQL_FILES=$(git diff --cached --name-only --diff-filter=ACM -- 'migrations/*.sql')
+
+# 1. Syntax: every staged .py must compile.
+if [ -n "$PY_FILES" ]; then
+  # shellcheck disable=SC2086
+  python -m py_compile $PY_FILES || fail "python syntax error in staged files"
+fi
+
+# 2. Ruff blocking tier — real-bug classes only (undefined names, syntax,
+#    comparison-to-literal misuse). Repo-wide fuller ruleset stays report-only in CI.
+if [ -n "$PY_FILES" ]; then
+  if command -v ruff >/dev/null 2>&1; then
+    # shellcheck disable=SC2086
+    ruff check --select E9,F63,F7,F82 --no-cache $PY_FILES || fail "ruff blocking tier failed"
+  else
+    echo "pre-commit: WARNING ruff not installed — blocking tier skipped (pip install -r requirements-dev.txt)" >&2
+  fi
+fi
+
+# 3. Black — only files on the CI allowlist ratchet (.github/black-clean-paths.txt),
+#    intersected with what is staged. Mirrors the blocking CI step exactly.
+if [ -n "$PY_FILES" ] && [ -f .github/black-clean-paths.txt ]; then
+  ALLOW=$(grep -v -e '^[[:space:]]*#' -e '^[[:space:]]*$' .github/black-clean-paths.txt | tr -d '\r')
+  STAGED_ALLOWED=""
+  for f in $PY_FILES; do
+    echo "$ALLOW" | grep -qx "$f" && STAGED_ALLOWED="$STAGED_ALLOWED $f"
+  done
+  if [ -n "$STAGED_ALLOWED" ]; then
+    if command -v black >/dev/null 2>&1; then
+      # shellcheck disable=SC2086
+      python -m black --check $STAGED_ALLOWED || fail "black allowlist check failed (run: python -m black <file>)"
+    fi
+  fi
+fi
+
+# 4. Secrets guard — block obvious credentials in the staged diff.
+#    Patterns are deliberately narrow (real key shapes) to avoid false positives.
+if git diff --cached -U0 | grep -E '^\+' | grep -Ev '^\+\+\+' | \
+   grep -qE '(sk-[A-Za-z0-9_-]{20,}|AKIA[0-9A-Z]{16}|xox[baprs]-[A-Za-z0-9-]{10,}|-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----)'; then
+  fail "staged diff contains what looks like a credential — remove it (keys live only in gitignored .env)"
+fi
+if git diff --cached --name-only --diff-filter=ACM | grep -qxE '\.env(\..*)?'; then
+  fail ".env must never be committed"
+fi
+
+# 5. SQL migrations — lint staged migration files when sqlfluff is available.
+if [ -n "$SQL_FILES" ]; then
+  if command -v sqlfluff >/dev/null 2>&1; then
+    # shellcheck disable=SC2086
+    sqlfluff lint --dialect postgres $SQL_FILES || fail "sqlfluff failed on staged migrations"
+  else
+    echo "pre-commit: NOTE sqlfluff not installed — staged migrations not linted" >&2
+  fi
+fi
+
+exit 0

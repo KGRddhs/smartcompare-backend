@@ -8,6 +8,12 @@ pytest-timeout>=2.3.0
 black>=26.1.0
 pip-audit>=2.7.0
 
+# Linter (Step 2, Synack orchestrator). The BLOCKING tier (E9,F63,F7,F82 —
+# syntax errors, undefined names, literal-comparison misuse) runs repo-wide in
+# CI backend-lint and in .githooks/pre-commit; the fuller ruleset in
+# [tool.ruff.lint] is report-only for local runs.
+ruff>=0.16.0
+
 # Imported by tests/test_security_regression.py; was declared only in the
 # non-deployed backend/pyproject.toml, so CI failed with ModuleNotFoundError: PIL.
 pillow>=11.0.0
