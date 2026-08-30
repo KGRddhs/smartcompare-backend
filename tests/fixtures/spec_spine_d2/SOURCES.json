@@ -1,0 +1,50 @@
+{
+  "_what": "Trimmed fragments of REAL cached fragrance PDPs, for tests/test_spec_spine_d2.py (M7 UNIT D2, the spec spine). Each file is: the page's own <title>, its og:title/og:description/og:url meta tags, and the ONE JSON-LD <script> block carrying a Product node WITH a description — all copied byte-for-byte out of the cached page. Everything else (nav, offers markup outside that block, scripts, body) is dropped. Nothing is added, rewritten or invented: no note list, concentration, scent family or size below was authored here.",
+  "_why_these_three": "us_fragrancex + us_perfume_com are the SAME fragrance (Christian Dior 'Sauvage Cologne') captured from two different retailers, so the seeder's group-by-normalised-identity step has a real two-page group to collapse. ae_tuzzut is a third, unrelated fragrance so a passing grouping test cannot be an artefact of everything landing in one bucket.",
+  "_corpora": {
+    "gulf": "_proof/html/ (92 Gulf PDPs) + _proof/sweep2_curl_cffi.jsonl - filename sha1('curl_cffi|'+url)",
+    "global": "_proof/global/html/ + _proof/global/_dach_html/ - index _proof/global/_corpus_cachemap.json"
+  },
+  "_no_network": "Every byte here came off disk. NOTHING in this unit fetched fragrantica.com, parfumo.com, Serper or OpenAI (house rule 7).",
+  "files": {
+    "us_fragrancex_com_dior_sauvage_cologne.html": {
+      "url": "https://www.fragrancex.com/products/christian-dior/sauvage-cologne",
+      "host": "www.fragrancex.com",
+      "country": "US",
+      "region": "US_CA",
+      "corpus": "global",
+      "cached_bytes": "_proof/global/html/8a3824947e0844b86fc9d1a33822ff979ff59ab5.html",
+      "cached_sha1_of_page": "ccd909db5dadc7f67a9a3fb248811042ecdd9859",
+      "http_status": 200,
+      "kept": "<title>, the og:title/og:description meta tags, and JSON-LD block #3 verbatim (the Product node: name 'Sauvage Cologne', brand 'Christian Dior', and a 1327-char description whose prose states the fragrance family 'Aromatic Fougere' and the top/heart/base note lists).",
+      "spec_fields_present": ["size_ml", "concentration", "gender", "notes", "family_accords", "perfumer", "launch_year", "longevity_sillage"],
+      "used_by": "TestSeederDryRun — one of the two pages that must collapse into a single spine candidate."
+    },
+    "us_perfume_com_dior_sauvage_cologne.html": {
+      "url": "https://www.perfume.com/christian-dior/sauvage/men-cologne",
+      "host": "www.perfume.com",
+      "country": "US",
+      "region": "US_CA",
+      "corpus": "global",
+      "cached_bytes": "_proof/global/html/138b1e50db28bd26c4371ea74c38c2500e2679b2.html",
+      "cached_sha1_of_page": "b2e714fdfa1d669718210730eddfb416c8efc0ca",
+      "http_status": 200,
+      "kept": "<title>, the og:title/og:description meta tags, and JSON-LD block #2 verbatim (the Product node: name 'Sauvage Cologne', brand 'Christian Dior', and a 2121-char description whose prose states 'Fragrance Family: Fresh, Woody' and explicit Top/Middle/Base note lists).",
+      "spec_fields_present": ["size_ml", "concentration", "gender", "notes", "family_accords", "longevity_sillage"],
+      "used_by": "TestSeederDryRun — the SECOND page of the same fragrance. Its retailer title differs from FragranceX's, so a passing test shows the normalised identity key (not the raw title) is what groups them."
+    },
+    "ae_tuzzut_com_maison_alhambra_sceptre_malachite.html": {
+      "url": "https://tuzzut.com/products/sceptre-malachite-maison-alhambra-100ml",
+      "host": "tuzzut.com",
+      "country": "QA",
+      "region": "GCC",
+      "corpus": "gulf",
+      "cached_bytes": "_proof/html/686c6381a89c3e9a52826ba1439e3d7a9a96991d.html",
+      "cached_sha1_of_page": "7dca1e8405c08656c68c3b87a1dee6b751a39de7",
+      "http_status": 200,
+      "kept": "<title>, the og:title/og:description meta tags, and JSON-LD block #0 verbatim (the Product node: name 'Sceptre Malachite Maison Alhambra - 100ml', brand 'Maison Alhambra', and a description whose prose states 'Oriental Woody', the top/middle/base note lists and 'Eau De Parfum').",
+      "spec_fields_present": ["size_ml", "concentration", "gender", "notes", "family_accords", "perfumer", "launch_year", "longevity_sillage"],
+      "used_by": "TestSeederDryRun — the third, DISTINCT fragrance: it must land in its own spine candidate."
+    }
+  }
+}

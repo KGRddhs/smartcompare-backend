@@ -683,10 +683,20 @@ CRITICAL RULES (apply to all categories):
 """
 
 
-def _build_specs_prompt(brand: str, name: str, variant: str, category: str, search_context: str, drug_context: str = "") -> dict:
+def _build_specs_prompt(brand: str, name: str, variant: str, category: str, search_context: str, drug_context: str = "", skip_fields: Optional[set] = None) -> dict:
     """Build specs extraction prompt with system/user message separation.
 
     Returns dict with 'system' and 'user' keys for message construction.
+
+    UNIT D2 (``skip_fields``, default None = byte-identical to main). Fields the
+    caller ALREADY HAS from the spec spine are removed from the REQUIRED SCHEMA
+    block, so the completion covers only what the spine lacks. This is the whole
+    point of the spine: a fragrance's notes and scent family do not change
+    between comparisons, so re-asking for them every time is pure waste. It is
+    a PROMPT-side trim only — the response filter below still keeps the full
+    category schema, and the caller merges its spine values over the result.
+    Passing every field is a degenerate prompt (an empty schema is not a
+    question), so a skip set that would empty the list is ignored.
 
     D2 Intervention 2: the system prompt is structured as
         SPECS_SYSTEM_STATIC_PREFIX (>=1024 tokens, byte-identical across calls)
@@ -727,6 +737,25 @@ def _build_specs_prompt(brand: str, name: str, variant: str, category: str, sear
     else:
         schema_key = category if category in CATEGORY_SPEC_SCHEMAS else "other"
         fields = CATEGORY_SPEC_SCHEMAS[schema_key]
+    if skip_fields:
+        # UNIT D2 — drop what the spine already answered.
+        #
+        # THE ALIAS STEP IS LOAD-BEARING, not defensive. When a subtype is
+        # detected (`fragrances.niche` is the common case here) the field list
+        # above is the SUBTYPE's, which names the same facts differently:
+        # `longevity_hrs`, `volume_ml`. The spine speaks the CANONICAL schema
+        # (`longevity`, `volume`) because that is what `extract_specs` filters
+        # to and what the merge writes. Without expanding the skip set through
+        # `subtype_spec_aliases` (alias -> canonical) the trim would silently
+        # miss exactly the fields the spine covers on the fragrance path — the
+        # one path this unit exists for.
+        _skip = set(skip_fields)
+        _skip |= {a for a, c in subtype_spec_aliases(type_key).items() if c in _skip}
+        # Never to empty: an empty REQUIRED SCHEMA is not a question, so a
+        # fully-covering skip set falls back to the untouched list.
+        _remaining = [f for f in fields if f not in _skip]
+        if _remaining:
+            fields = _remaining
     fields_json = ",\n    ".join(f'"{f}": null' for f in fields)
 
     # D2 Intervention 2: static prefix FIRST (cached by OpenAI auto-caching
@@ -1320,15 +1349,25 @@ async def extract_specs(
     variant: Optional[str],
     category: str,
     search_context: str,
-    drug_context: str = ""
+    drug_context: str = "",
+    skip_fields: Optional[set] = None,
 ) -> Dict[str, Any]:
-    """Extract structured specifications for a product, enforcing a fixed schema."""
+    """Extract structured specifications for a product, enforcing a fixed schema.
+
+    ``skip_fields`` (UNIT D2, default None = byte-identical to main) names the
+    schema fields the caller already holds from the spec spine; they are left
+    out of the PROMPT's required schema so the completion spends its attention
+    on the rest. The response filter is deliberately unchanged — it still walks
+    the full category schema — because the caller merges its spine values over
+    this dict afterwards and the spine value must win.
+    """
     try:
         client = get_client()
         prompt_parts = _build_specs_prompt(
             brand, name, variant or "", category,
             search_context[:3000],
-            drug_context=drug_context
+            drug_context=drug_context,
+            skip_fields=skip_fields,
         )
 
         response = await client.chat.completions.create(

@@ -470,6 +470,36 @@ def _no_fabrication_blocks_refill(stage: str, specs_so_far: Optional[dict] = Non
     return True
 
 
+async def _spine_specs_or_empty(
+    brand: str, name: str, variant: Optional[str], category: str
+) -> Dict[str, str]:
+    """UNIT D2 — spine-known spec fields for this product, or ``{}``.
+
+    A thin, crash-proof seam between the specs path and
+    ``spec_spine_service``. ``spine_specs_for`` already gates on
+    ``ENABLE_SPEC_SPINE`` (read per call), restricts itself to fragrances and
+    swallows its own failures; this wrapper exists so the import stays local
+    (the spine pulls in ``price_service``'s identity machinery, and the specs
+    path must not grow an import-time dependency on it) and so a spine that
+    somehow raises still cannot break a comparison. Flag OFF: ``{}``, and the
+    caller is byte-identical to main.
+    """
+    try:
+        from app.services.spec_spine_service import spine_specs_for
+
+        return await spine_specs_for(brand, name, variant, category)
+    except Exception:  # noqa: BLE001 — the spine is an optimisation, never a dependency
+        logger.warning("[specs] spine lookup failed for %s %s", brand, name, exc_info=True)
+        return {}
+
+
+def _spine_covered_fields(spine_specs: Dict[str, str]) -> set:
+    """The schema fields a spine hit actually answered (not the ``_source``
+    companions), i.e. exactly what ``extract_specs`` no longer needs to ask
+    for."""
+    return {k for k in spine_specs if not k.endswith("_source")}
+
+
 def _detect_subtype(brand: str, name: str, category: str):
     """Resolve the product subtype id (e.g. ``electronics.tv``) for a product.
 
@@ -4817,13 +4847,45 @@ class StructuredComparisonService:
                 db_specs["_cache_source"] = "db"
                 return db_specs
 
+        # UNIT D2 — consult the spec spine BEFORE the per-compare specs LLM
+        # call. A hit is a set of fragrance facts a PREVIOUS, off-clock
+        # extraction already cited from cached PDP prose (see
+        # spec_spine_service): they do not change between comparisons, so
+        # paying a completion to re-derive them every time is pure waste.
+        # Flag OFF -> `spine_specs` is {} and the two call sites below are
+        # byte-identical to main (no `skip_fields` kwarg, no merge).
+        spine_specs = await _spine_specs_or_empty(brand, name, variant, category)
+
         if search_results is None:
             search_results = await search_web(f"{search_query} specifications features")
             self._track_serper_cost()
 
         search_context, raw_snippets = self._format_numbered_search_results(search_results)
-        specs, usage = await extract_specs(brand, name, variant, category, search_context, drug_context=drug_context)
+        _extra = {"skip_fields": _spine_covered_fields(spine_specs)} if spine_specs else {}
+        specs, usage = await extract_specs(
+            brand, name, variant, category, search_context,
+            drug_context=drug_context, **_extra,
+        )
         self._track_gpt_cost(usage)
+
+        # The spine value WINS over whatever the trimmed completion returned
+        # for that field — the field was omitted from its prompt, so anything
+        # it returned there is an unprompted guess, and the spine value is a
+        # cited one. Never applied to an error dict: there is no spec sheet to
+        # enrich, and the caller distinguishes the two by `error`.
+        #
+        # TWO CONSEQUENCES, both intended:
+        #   * `verify_spec_citations` scores a `spec_spine` source as
+        #     "unverified" (it is not a `snippet_N` of THIS request's digest).
+        #     That is the honest label — the citation lives in the off-clock
+        #     seed run, not in this request — and it is the same treatment
+        #     `training` already gets. It cannot be mislabelled "verified".
+        #   * the merged dict is what gets cached (L1 7d / L2 30d), so spine
+        #     values survive in cache for that TTL after the flag is turned
+        #     back off. Identical in shape to every other flag-behind-a-cache
+        #     in this file; a purge is the immediate rollback if one is needed.
+        if spine_specs and isinstance(specs, dict) and not specs.get("error"):
+            specs.update(spine_specs)
 
         if specs and not specs.get("error"):
             set_cached(cache_key, specs, SPECS_CACHE_TTL)
