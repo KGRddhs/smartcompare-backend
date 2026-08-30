@@ -11554,8 +11554,36 @@ _WALL_HTTP_STATUS: frozenset = frozenset(
 #:   * "/cdn-cgi/challenge" — that is Cloudflare's PASSIVE jsd script, injected
 #:     into perfectly normal 200 responses; it appears on 16 cached pages that
 #:     serve a real price, gcc.luluhypermarket.com among them.
-#: With those two gone this table has ZERO false positives against the corpora's
-#: own recorded http_status/blocked flags across all 414 pages.
+#:
+#: THIS TABLE IS THE ROLLBACK PATH ONLY, and the claim that used to stand here
+#: — "with those two gone this table has ZERO false positives across all 414
+#: pages" — IS FALSE. M10 UNIT A2 enumerated every fire instead of trusting the
+#: aggregate. Of the 44 pages the corpora classify WALLED, 37 are named by
+#: HTTP STATUS alone; the table below is responsible for the other 7, and FOUR
+#: OF THOSE SEVEN ARE WRONG (adjudicated against the corpora's own
+#: blocked / block_kind / has_price flags):
+#:
+#:   host                status bytes    phrase        offset  verdict
+#:   om.swissarabian.com 200    611,667  access denied 102,029 FALSE POSITIVE
+#:   www.walmart.com x2  200    ~480,000 perimeterx    ~4,600  FALSE POSITIVE
+#:   www.macys.com       404     16,098  access denied   8,722 FALSE POSITIVE
+#:   www.boots.com       200      6,183  _Incapsula_     4,996 true wall
+#:   www.sallybeauty.com 200      6,608  px-captcha        369 true wall
+#:   www.dillards.com    200        378  Access Denied      24 true wall
+#:
+#: swissarabian's phrase is a COMMENTED-OUT `console.log('Service access denied
+#: based on billing status')` in a Shopify popup app's inline JS, 100KB into a
+#: served 611KB product page. walmart's is `*.perimeterx.net` inside a
+#: Content-Security-Policy HOST ALLOWLIST on two PDPs the corpus records as
+#: `has_price: true` — the SAME failure mode the `/cdn-cgi/challenge` bullet
+#: above already documents. macys' is `// ... so we got an access denied.` on a
+#: genuine 404 titled "Not Found - Macy's".
+#:
+#: The old claim survived only because `classify_capture` returns CAPTURE_OK
+#: BEFORE any wall test whenever a price was found, and three of the four carry
+#: a price. The moment the extractor returns None for one of them — an identity
+#: pend, a currency mismatch, a multiplicity pend — a served page is told to go
+#: buy a different fetch channel.
 _WALL_SIGNATURES = re.compile(
     r"access denied"
     r"|attention required!\s*\|\s*cloudflare"
@@ -11570,6 +11598,77 @@ _WALL_SIGNATURES = re.compile(
     re.I,
 )
 
+#: M10 UNIT A2 — the same table with the two measured defects removed. Used
+#: ONLY when ``wall_anchor_enabled()``. Exactly two edits, and no others:
+#:
+#:   * ``access denied`` is GONE — it MOVED to ``_WALL_TITLE_SIGNATURES``
+#:     below, which reads the ``<title>``/``<h1>``/``<h2>`` zone only. It is the
+#:     false-firing alternative on 2 of the 4 bad pages, and its one true
+#:     consumer (dillards.com) carries it as its literal
+#:     ``<TITLE>Access Denied</TITLE>``.
+#:   * bare ``perimeterx`` is NARROWED to ``perimeterx-container`` — the class
+#:     PerimeterX puts on the interstitial ITSELF, present on the sallybeauty
+#:     wall (``.perimeterx-container { font-size: 14px; padding: 25px; }``) and
+#:     absent from both walmart CSP allowlists. ``px-captcha`` independently
+#:     catches sallybeauty, so this narrowing costs nothing on the corpus.
+#:
+#: ``_incapsula_`` DELIBERATELY STAYS unanchored: it is the only thing catching
+#: boots.com and it false-fired on none of the 414. Residual risk, recorded so
+#: the next measurement knows where to look: Imperva injects
+#: ``/_Incapsula_Resource?...`` into ordinary 200s on some estates, so if a
+#: future corpus shows a SERVED page carrying it, that alternative moves to the
+#: anchored family too.
+_WALL_SIGNATURES_NARROWED = re.compile(
+    r"attention required!\s*\|\s*cloudflare"
+    r"|cf-browser-verification|cf_chl_opt|__cf_chl_"
+    r"|<title>\s*just a moment"
+    r"|you (?:have been|are) blocked"
+    r"|px-captcha|perimeterx-container|distil_r_captcha|_incapsula_|incap_ses"
+    r"|are you a (?:human|robot)|unusual traffic (?:from|has)"
+    r"|request unsuccessful\.?\s*incapsula"
+    r"|verify you are (?:a )?human"
+    r"|enable javascript and cookies to continue",
+    re.I,
+)
+
+#: M10 UNIT A2 — phrases that are a wall only when they are WHAT THE PAGE SAYS
+#: IT IS. Matched against the ``<title>`` and the ``<h1>``/``<h2>`` text ONLY,
+#: never a bare body substring. The precedent is 200 lines below in this same
+#: file: ``_NOT_A_PDP_ERROR_TITLE_RE`` is anchored at the START of the
+#: ``<title>`` and its comment names this exact swissarabian page as the reason.
+#: The wall table was written first and never got that decision; A2 applies it.
+#:
+#: ``pardon our interruption`` (the Imperva interstitial title, boots.com) and
+#: ``access to this page has been denied`` (the PerimeterX title,
+#: sallybeauty.com) are ADDED, not required for correctness today — both pages
+#: are already caught by ``_incapsula_`` / ``px-captcha`` — but they make this
+#: family self-sufficient rather than dependent on vendor SDK strings that
+#: churn. For the same reason ``you have been blocked`` and ``are you a human``
+#: appear here as well as in the unanchored table: they are inert duplicates
+#: today, and they are what the anchored family must already carry on the day a
+#: measurement demotes them from the unanchored one.
+_WALL_TITLE_SIGNATURES = re.compile(
+    r"access denied"
+    r"|access to this page has been denied"
+    r"|pardon our interruption"
+    r"|attention required"
+    r"|you (?:have been|are) blocked"
+    r"|are you a (?:human|robot)",
+    re.I,
+)
+
+#: The anchor zone. Deliberately NOT widened past headings: a wall says what it
+#: is immediately, and scanning ``<p>`` text re-opens the JS-comment class
+#: through a different door.
+_WALL_TITLE_RE = re.compile(r"<title[^>]*>(.*?)</title>", re.I | re.S)
+_WALL_HEADING_RE = re.compile(r"<h[12][^>]*>(.*?)</h[12]>", re.I | re.S)
+_WALL_TAG_RE = re.compile(r"<[^>]+>")
+#: Cost bounds on the zone, on top of ``_WALL_SCAN_CHARS``: a hostile document
+#: can carry thousands of headings or one enormous one, and the zone is built on
+#: the price path.
+_WALL_ZONE_MAX_HEADINGS = 40
+_WALL_ZONE_MAX_CHARS = 4000
+
 #: Below this a 2xx body is a shell, not a page. Chosen from the corpora: the
 #: smallest cached response that actually yields a price is 26KB above it, and
 #: the largest genuine shell (bathandbodyworks.ae) is 26,290 bytes.
@@ -11579,6 +11678,53 @@ _EMPTY_SHELL_MAX_BYTES = 30000
 #: interstitial — it says so immediately — and the cap bounds the cost on the
 #: 4MB pages in the corpus.
 _WALL_SCAN_CHARS = 200000
+
+
+def wall_anchor_enabled() -> bool:
+    """True iff the ANCHORED wall-signature table is active (M10 UNIT A2,
+    default OFF).
+
+    ITS OWN FLAG rather than a fold into ``ENABLE_JSONLD_FIRST`` (default ON),
+    even though that flag's outcome channel is this verdict's only consumer.
+    ``classify_capture`` runs on every capture (``extract_price_from_html``'s
+    ``_finish``), its answer is stamped onto ``price["capture_outcome"]`` and
+    read by the scorecard, and ``CAPTURE_WALLED`` is a ROUTING INSTRUCTION —
+    "buy a different fetch channel". Riding a default-ON flag would change the
+    measured outcome distribution in the same commit that changes the regex,
+    and the corpus before/after (``scripts/measure_wall_anchoring.py``: 44 -> 40,
+    DROPPED exactly the four false positives, ADDED empty) is the only evidence
+    that the change is those four pages and nothing else. That measurement has
+    to be reproducible against a switch, so the switch is separate; flip it
+    after the measurement, alone.
+
+    Read PER CALL from ``os.getenv`` (copying ``exact_gate_enabled``) so Railway
+    flips it without a restart. With the flag OFF ``classify_capture`` consults
+    the LITERAL pre-A2 ``_WALL_SIGNATURES`` and never builds the anchor zone, so
+    the rollback is byte-identical."""
+    return os.getenv("ENABLE_WALL_SIGNATURE_ANCHOR", "false").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
+def _wall_anchor_zone(head: str) -> str:
+    """The text a page uses to SAY WHAT IT IS: its first ``<title>`` plus its
+    ``<h1>``/``<h2>`` text, tags stripped. Total — never raises, and bounded by
+    ``_WALL_ZONE_MAX_HEADINGS`` / ``_WALL_ZONE_MAX_CHARS`` on top of the
+    ``_WALL_SCAN_CHARS`` slice its caller already applied."""
+    if not isinstance(head, str) or not head:
+        return ""
+    parts = []
+    try:
+        match = _WALL_TITLE_RE.search(head)
+        if match is not None:
+            parts.append(match.group(1))
+        for index, match in enumerate(_WALL_HEADING_RE.finditer(head)):
+            if index >= _WALL_ZONE_MAX_HEADINGS:
+                break
+            parts.append(match.group(1))
+        return _WALL_TAG_RE.sub(" ", " \n ".join(parts))[:_WALL_ZONE_MAX_CHARS]
+    except Exception:  # noqa: BLE001 — a classifier must never raise
+        return ""
 
 
 def classify_capture(
@@ -11597,6 +11743,10 @@ def classify_capture(
     responses: a wall needs a different fetch channel, a shell needs a
     renderer, and a real page with no structured price needs a new extractor.
 
+    ``html`` is the captured body, and ANY object may be passed: a non-``str``
+    is read as an empty body rather than rejected, because a classifier that
+    raises on a surprise is worse than one that says "empty shell".
+
     ``price`` is the extractor's own answer: a dict with a positive numeric
     amount is the ONLY thing that makes this ``ok``.
 
@@ -11604,19 +11754,27 @@ def classify_capture(
     ``_WALL_HTTP_STATUS``. Callers that do not have it (``extract_price_from_html``
     is handed bytes, not a response) still get an honest answer from the body.
 
-    It answers from the BODY, so it names four of the five outcomes and never
-    ``CAPTURE_AMBIGUOUS_PRICE`` — the multiplicity fact is not in the bytes, it
-    is in what the shape ladder DID with them, and ``extract_price_from_html``
-    stamps it over this verdict. Deliberately not given a
-    ``pending``/``ambiguous`` parameter: it would be a second way to say the same
-    thing for the single caller that already knows, and this function's value is
-    that it is total over (html, price, status) and nothing else.
+    Those three are the WHOLE input. It answers from the BODY, so it names four
+    of the six outcomes and never ``CAPTURE_AMBIGUOUS_PRICE`` — the multiplicity
+    fact is not in the bytes, it is in what the shape ladder DID with them, and
+    ``extract_price_from_html`` stamps it over this verdict. Deliberately not
+    given a ``pending``/``ambiguous`` parameter: it would be a second way to say
+    the same thing for the single caller that already knows, and this function's
+    value is that it is total over (html, price, status) and nothing else.
 
-    ``final_url`` (UNIT F1, ENABLE_NOT_A_PDP_FILTER, optional) — the terminal URL
-    of the fetch, when the caller knows it. Read ONLY by the NOT-A-PDP filter,
-    which needs it for the two classes that are facts about the redirect rather
-    than the bytes (an offsite landing, and a search decoy whose body carries no
-    canonical at all). Ignored entirely with the flag off."""
+    It never names ``CAPTURE_NOT_A_PDP`` either, and for the same kind of
+    reason: three of that filter's five detectors read the terminal URL and the
+    redirect, which are facts about the FETCH, not about the bytes. The filter
+    (UNIT F1, ``ENABLE_NOT_A_PDP_FILTER``) is handed the final URL separately by
+    ``extract_price_from_html`` and stamps its verdict over this one. This
+    function takes no URL parameter, by design — adding one would make it total
+    over something it cannot be handed on the ``extract_price_from_html`` path.
+
+    Behind ``ENABLE_WALL_SIGNATURE_ANCHOR`` (M10 UNIT A2, default OFF) the wall
+    PHRASES are read from the ``<title>``/``<h1>``/``<h2>`` zone rather than as
+    bare body substrings — see ``_WALL_TITLE_SIGNATURES`` and the measured false
+    positives tabulated above ``_WALL_SIGNATURES``. Flag off, this consults the
+    literal pre-A2 table and nothing else changes."""
     if isinstance(price, dict):
         amount = price.get("amount")
         if isinstance(amount, (int, float)) and not isinstance(amount, bool):
@@ -11626,7 +11784,13 @@ def classify_capture(
         if http_status in _WALL_HTTP_STATUS:
             return CAPTURE_WALLED
     text = html if isinstance(html, str) else ""
-    if _WALL_SIGNATURES.search(text[:_WALL_SCAN_CHARS]):
+    head = text[:_WALL_SCAN_CHARS]
+    if wall_anchor_enabled():
+        if _WALL_SIGNATURES_NARROWED.search(head):
+            return CAPTURE_WALLED
+        if _WALL_TITLE_SIGNATURES.search(_wall_anchor_zone(head)):
+            return CAPTURE_WALLED
+    elif _WALL_SIGNATURES.search(head):
         return CAPTURE_WALLED
     if len(text) < _EMPTY_SHELL_MAX_BYTES:
         return CAPTURE_EMPTY_SHELL

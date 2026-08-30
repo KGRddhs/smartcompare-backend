@@ -1,0 +1,2166 @@
+<!doctype html>
+<html lang="en">
+<head>
+<title>
+    MUSK 07 EDP + BODY LOTION GIFT SET
+    
+    
+    
+      &ndash; Swiss Arabian Oman
+    
+  </title>
+</head>
+<body>
+<h1 class="seo-h1" style="position: absolute;left: -9999px; font-size: 14px;">
+ <!-- check discount based on collection name written by prajosh, this code will use to check the product will come under collection based on meta object, for employee discount -->
+                  
+                    
+
+
+
+
+
+
+
+
+  
+ 
+  
+    
+    
+       
+    
+  
+
+  
+
+  
+ 
+  
+    
+    
+       
+    
+  
+
+  
+
+  
+ 
+  
+    
+    
+       
+    
+  
+
+  
+
+  
+ 
+  
+    
+    
+       
+    
+  
+
+  
+
+  
+ 
+  
+    
+    
+       
+    
+  
+
+  
+
+  
+ 
+  
+    
+    
+       
+    
+  
+
+  
+
+  
+ 
+  
+    
+    
+       
+    
+  
+
+  
+
+  
+ 
+  
+    
+    
+       
+    
+  
+
+  
+
+  
+ 
+  
+    
+    
+       
+    
+  
+
+  
+
+  
+ 
+  
+    
+    
+       
+    
+  
+
+  
+
+  
+ 
+  
+    
+    
+       
+    
+  
+
+  
+
+  
+ 
+  
+    
+    
+       
+    
+  
+
+  
+
+  
+ 
+  
+    
+    
+       
+    
+  
+
+  
+
+  
+
+
+
+<!-- end code by prajosh -->
+
+
+
+  
+</h1>
+<script defer>
+<!-- BEGIN app snippet: convert-boost-storage -->
+
+(function() {
+  'use strict';
+
+  const DB_NAME = 'ConvertBoostDB';
+  const DB_VERSION = 1;
+  const STORE_NAME = 'storage';
+  const MIGRATION_KEY = 'cb_storage_migrated';
+
+  // In-memory cache for synchronous access
+  let cache = {};
+  let db = null;
+  let initPromise = null;
+  let useIndexedDB = true;
+
+  // Preserve original localStorage
+  if (!window.originalLocalStorage) {
+    window.originalLocalStorage = window.localStorage;
+  }
+
+  // Initialize IndexedDB
+  function initDB() {
+    if (initPromise) return initPromise;
+
+    // Load from localStorage FIRST (synchronous, immediate)
+    loadFromLocalStorage();
+
+    initPromise = new Promise((resolve, reject) => {
+      // Check if IndexedDB is available
+      if (!window.indexedDB) {
+        console.warn('[ConvertBoost Storage] IndexedDB not available, falling back to localStorage');
+        useIndexedDB = false;
+        resolve();
+        return;
+      }
+
+      const request = indexedDB.open(DB_NAME, DB_VERSION);
+
+      request.onerror = () => {
+        console.warn('[ConvertBoost Storage] IndexedDB error, falling back to localStorage', request.error);
+        useIndexedDB = false;
+        resolve();
+      };
+
+      request.onsuccess = () => {
+        db = request.result;
+        console.log('[ConvertBoost Storage] IndexedDB opened successfully');
+        // Merge IndexedDB data into cache (may overwrite localStorage with newer data)
+        loadFromIndexedDB().then(() => {
+          console.log('[ConvertBoost Storage] Loaded from IndexedDB, cache size:', Object.keys(cache).length);
+          // Migrate localStorage to IndexedDB if needed
+          migrateFromLocalStorage().then(() => {
+            console.log('[ConvertBoost Storage] Initialization complete');
+            resolve();
+          });
+        });
+      };
+
+      request.onupgradeneeded = (event) => {
+        db = event.target.result;
+        if (!db.objectStoreNames.contains(STORE_NAME)) {
+          const store = db.createObjectStore(STORE_NAME, { keyPath: 'key' });
+        }
+      };
+    });
+
+    return initPromise;
+  }
+
+  // Load data from IndexedDB into cache
+  async function loadFromIndexedDB() {
+    if (!db || !useIndexedDB) return;
+
+    return new Promise((resolve, reject) => {
+      try {
+        const transaction = db.transaction([STORE_NAME], 'readonly');
+        const store = transaction.objectStore(STORE_NAME);
+        const request = store.openCursor();
+
+        request.onsuccess = (event) => {
+          const cursor = event.target.result;
+          if (cursor) {
+            cache[cursor.value.key] = cursor.value.value;
+            cursor.continue();
+          } else {
+            resolve();
+          }
+        };
+
+        request.onerror = () => {
+          console.warn('[ConvertBoost Storage] Failed to load from IndexedDB', request.error);
+          resolve(); // Don't reject, just continue
+        };
+      } catch (e) {
+        console.warn('[ConvertBoost Storage] Error loading from IndexedDB', e);
+        resolve();
+      }
+    });
+  }
+
+  // Load data from localStorage into cache (immediate, synchronous)
+  function loadFromLocalStorage() {
+    try {
+      const originalStorage = window.originalLocalStorage || window.localStorage;
+      for (let i = 0; i < originalStorage.length; i++) {
+        const key = originalStorage.key(i);
+        if (key) {
+          cache[key] = originalStorage.getItem(key);
+        }
+      }
+    } catch (e) {
+      console.warn('[ConvertBoost Storage] Failed to load from localStorage', e);
+    }
+  }
+
+  // Migrate data from localStorage to IndexedDB
+  async function migrateFromLocalStorage() {
+    if (!db || !useIndexedDB) return;
+
+    // Check if migration already done - check both cache and IndexedDB
+    let migrated = getItem(MIGRATION_KEY);
+    if (migrated === 'true') {
+      return;
+    }
+
+    // Also check IndexedDB directly in case cache doesn't have it
+    try {
+      const checkTransaction = db.transaction([STORE_NAME], 'readonly');
+      const checkStore = checkTransaction.objectStore(STORE_NAME);
+      const checkRequest = checkStore.get(MIGRATION_KEY);
+      await new Promise((resolve) => {
+        checkRequest.onsuccess = () => {
+          if (checkRequest.result && checkRequest.result.value === 'true') {
+            migrated = 'true';
+          }
+          resolve();
+        };
+        checkRequest.onerror = () => resolve();
+      });
+    } catch (e) {
+      // Ignore errors checking migration status
+    }
+
+    if (migrated === 'true') {
+      return;
+    }
+
+    console.log('[ConvertBoost Storage] Starting migration from localStorage to IndexedDB...');
+
+    try {
+      const transaction = db.transaction([STORE_NAME], 'readwrite');
+      const store = transaction.objectStore(STORE_NAME);
+
+      // Migrate all localStorage items (use original localStorage to get source data)
+      for (let i = 0; i < window.originalLocalStorage.length; i++) {
+        const key = window.originalLocalStorage.key(i);
+        if (key) {
+          const value = window.originalLocalStorage.getItem(key);
+          await new Promise((resolve, reject) => {
+            // When using keyPath, don't pass key as second parameter
+            const request = store.put({ key, value });
+            request.onsuccess = () => resolve();
+            request.onerror = () => {
+              console.error('[ConvertBoost Storage] Migration put error for key:', key, request.error);
+              reject(request.error);
+            };
+          });
+        }
+      }
+
+      // Mark migration as complete - write directly to IndexedDB
+      await new Promise((resolve, reject) => {
+        const markRequest = store.put({ key: MIGRATION_KEY, value: 'true' });
+        markRequest.onsuccess = () => {
+          cache[MIGRATION_KEY] = 'true';
+          console.log('[ConvertBoost Storage] Migration from localStorage to IndexedDB completed');
+          resolve();
+        };
+        markRequest.onerror = () => {
+          console.error('[ConvertBoost Storage] Failed to mark migration complete', markRequest.error);
+          reject(markRequest.error);
+        };
+      });
+    } catch (e) {
+      console.warn('[ConvertBoost Storage] Migration failed', e);
+    }
+  }
+
+  // Get item from cache (synchronous)
+  function getItem(key) {
+    return cache[key] || null;
+  }
+
+  // Set item in cache, IndexedDB, and localStorage
+  async function setItem(key, value) {
+    // Update cache immediately (synchronous)
+    cache[key] = value;
+
+    // Write to localStorage (synchronous backup)
+    try {
+      const originalStorage = window.originalLocalStorage || window.localStorage;
+      originalStorage.setItem(key, value);
+    } catch (e) {
+      console.warn('[ConvertBoost Storage] Failed to write to localStorage', e);
+    }
+
+    // Write to IndexedDB (async) - wait for DB to be ready
+    if (useIndexedDB) {
+      // Ensure DB is initialized
+      if (!db) {
+        await initDB();
+      }
+      
+      if (db) {
+        try {
+          const transaction = db.transaction([STORE_NAME], 'readwrite');
+          const store = transaction.objectStore(STORE_NAME);
+          await new Promise((resolve, reject) => {
+            // When using keyPath, don't pass key as second parameter
+            const request = store.put({ key, value });
+            request.onsuccess = () => {
+              // console.log('[ConvertBoost Storage] Successfully wrote to IndexedDB:', key);
+              resolve();
+            };
+            request.onerror = () => {
+              console.error('[ConvertBoost Storage] Failed to write to IndexedDB for key:', key, request.error);
+              reject(request.error);
+            };
+          });
+        } catch (e) {
+          console.warn('[ConvertBoost Storage] Failed to write to IndexedDB', e);
+        }
+      }
+    }
+  }
+
+  // Remove item from cache, IndexedDB, and localStorage
+  async function removeItem(key) {
+    // Remove from cache immediately
+    delete cache[key];
+
+    // Remove from localStorage
+    try {
+      const originalStorage = window.originalLocalStorage || window.localStorage;
+      originalStorage.removeItem(key);
+    } catch (e) {
+      console.warn('[ConvertBoost Storage] Failed to remove from localStorage', e);
+    }
+
+    // Remove from IndexedDB
+    if (db && useIndexedDB) {
+      try {
+        const transaction = db.transaction([STORE_NAME], 'readwrite');
+        const store = transaction.objectStore(STORE_NAME);
+        await new Promise((resolve, reject) => {
+          const request = store.delete(key);
+          request.onsuccess = () => resolve();
+          request.onerror = () => reject(request.error);
+        });
+      } catch (e) {
+        console.warn('[ConvertBoost Storage] Failed to remove from IndexedDB', e);
+      }
+    }
+  }
+
+  // Get key at index (for compatibility)
+  function key(index) {
+    const keys = Object.keys(cache);
+    return keys[index] || null;
+  }
+
+  // Get length
+  function getLength() {
+    return Object.keys(cache).length;
+  }
+
+  // Clear all data
+  async function clear() {
+    cache = {};
+
+    try {
+      const originalStorage = window.originalLocalStorage || window.localStorage;
+      originalStorage.clear();
+    } catch (e) {
+      console.warn('[ConvertBoost Storage] Failed to clear localStorage', e);
+    }
+
+    if (db && useIndexedDB) {
+      try {
+        const transaction = db.transaction([STORE_NAME], 'readwrite');
+        const store = transaction.objectStore(STORE_NAME);
+        await new Promise((resolve, reject) => {
+          const request = store.clear();
+          request.onsuccess = () => resolve();
+          request.onerror = () => reject(request.error);
+        });
+      } catch (e) {
+        console.warn('[ConvertBoost Storage] Failed to clear IndexedDB', e);
+      }
+    }
+  }
+
+  // Create localStorage-like API object
+  const storageAPI = {
+    getItem: function(key) {
+      return getItem(key);
+    },
+    setItem: function(key, value) {
+      // Fire and forget for synchronous compatibility
+      setItem(key, value).catch(err => {
+        console.warn('[ConvertBoost Storage] Async setItem error', err);
+      });
+    },
+    removeItem: function(key) {
+      // Fire and forget for synchronous compatibility
+      removeItem(key).catch(err => {
+        console.warn('[ConvertBoost Storage] Async removeItem error', err);
+      });
+    },
+    key: function(index) {
+      return key(index);
+    },
+    get length() {
+      return getLength();
+    },
+    clear: function() {
+      clear().catch(err => {
+        console.warn('[ConvertBoost Storage] Async clear error', err);
+      });
+    }
+  };
+
+  // Expose async methods for advanced usage
+  storageAPI.getItemAsync = getItem;
+  storageAPI.setItemAsync = setItem;
+  storageAPI.removeItemAsync = removeItem;
+  storageAPI.clearAsync = clear;
+  storageAPI.init = initDB;
+  
+  // Debug method to check IndexedDB contents
+  storageAPI.debugIndexedDB = async function() {
+    if (!db || !useIndexedDB) {
+      console.log('[ConvertBoost Storage] IndexedDB not available');
+      return { indexedDB: [], cache: cache };
+    }
+    
+    try {
+      const transaction = db.transaction([STORE_NAME], 'readonly');
+      const store = transaction.objectStore(STORE_NAME);
+      const request = store.openCursor();
+      const items = [];
+      
+      await new Promise((resolve) => {
+        request.onsuccess = (event) => {
+          const cursor = event.target.result;
+          if (cursor) {
+            items.push({ key: cursor.value.key, value: cursor.value.value });
+            cursor.continue();
+          } else {
+            resolve();
+          }
+        };
+        request.onerror = () => resolve();
+      });
+      
+      console.group('🔍 ConvertBoost Storage Debug');
+      console.log('📦 IndexedDB contents (' + items.length + ' items):', items);
+      console.log('💾 Cache contents (' + Object.keys(cache).length + ' items):', cache);
+      console.log('📊 Database:', db.name, 'Version:', db.version);
+      console.log('✅ Using IndexedDB:', useIndexedDB);
+      console.groupEnd();
+      
+      return { indexedDB: items, cache: cache, db: db };
+    } catch (e) {
+      console.error('[ConvertBoost Storage] Debug error:', e);
+      return { error: e.message };
+    }
+  };
+  
+  // Quick check method
+  storageAPI.check = function() {
+    console.log('Quick check - run: window.cbStorage.debugIndexedDB() for full details');
+    console.log('Cache keys:', Object.keys(cache));
+    console.log('Cache size:', Object.keys(cache).length);
+    return {
+      cacheKeys: Object.keys(cache),
+      cacheSize: Object.keys(cache).length,
+      usingIndexedDB: useIndexedDB,
+      dbReady: !!db
+    };
+  };
+
+  // Replace localStorage with our wrapper
+  Object.defineProperty(window, 'localStorage', {
+    value: storageAPI,
+    writable: false,
+    configurable: false
+  });
+
+  // Expose storage wrapper globally for debugging
+  window.cbStorage = storageAPI;
+
+  // Initialize on load
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+      initDB();
+    });
+  } else {
+    initDB();
+  }
+})();
+<!-- END app snippet -->
+<!-- BEGIN app snippet: convert-boost-logger -->window.convertBoostLogger={error:(m,d)=>console.error(m,d),warn:(m,d)=>console.warn(m,d)};
+window.logError=(m,d)=>window.convertBoostLogger.error(m,d);
+window.logWarn=(m,d)=>window.convertBoostLogger.warn(m,d);<!-- END app snippet -->
+<!-- BEGIN app snippet: convert-boost-core-functions -->let discountCode = localStorage.getItem('discountCode') || null;
+let savedPopupId = localStorage.getItem('popupId') || null;
+let currentFormData = null;
+
+const coreLogger = {
+  error: console.error,
+  warn: console.warn
+};
+
+function logEvent(type, details) {
+  try {
+    let data = JSON.parse(localStorage.getItem('userEngagementData')) || {events:[]};
+    data.events.push({type, details, timestamp:Date.now()});
+    localStorage.setItem('userEngagementData', JSON.stringify(data));
+  } catch (e) {}
+}
+
+function debug(...args) { 
+}
+
+function logStorage() {
+  const storageData = {};
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      storageData[key] = localStorage.getItem(key);
+    }
+  } catch (e) {}
+}
+function getMachineTime() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = ('0' + (d.getMonth() + 1)).slice(-2);
+  const day = ('0' + d.getDate()).slice(-2);
+  const h = ('0' + d.getHours()).slice(-2);
+  const min = ('0' + d.getMinutes()).slice(-2);
+  const s = ('0' + d.getSeconds()).slice(-2);
+  const off = -d.getTimezoneOffset();
+  const sign = off >= 0 ? '+' : '-';
+  const absOff = Math.abs(off);
+  const offH = Math.floor(absOff / 60);
+  const offM = absOff % 60;
+  const tz = `GMT${sign}${('0' + offH).slice(-2)}:${('0' + offM).slice(-2)}`;
+  return `${m}/${day}/${y}, ${h}:${min}:${s} ${tz}`;
+}
+
+function canShowPopup() {
+  if (discountCode) {
+    return false;
+  }
+
+  const existingPopup = document.querySelector('[id^="popup-container-"]');
+  if (existingPopup && existingPopup.style.display === 'block') {
+    return false;
+  }
+
+  if (sessionStorage.getItem('convertBoostPopupShown')) {
+    return false;
+  }
+
+  return true;
+}
+function getProductId(path) {
+  if (!path.includes('/products/')) return null;
+  return path.split('/products/')[1].split('?')[0];
+}
+
+
+function copyCode(code, btnId) {
+  if (!code) return;
+  const textarea = document.createElement('textarea');
+  textarea.value = code;
+  textarea.style.position = 'fixed';
+  document.body.appendChild(textarea);
+  try {
+    textarea.select();
+    document.execCommand('copy');
+    const msg = document.createElement('div');
+    msg.textContent = 'Copied!';
+    msg.style.position = 'absolute';
+    msg.style.backgroundColor = '#fff';
+    msg.style.right = '35px';
+    msg.style.top = '20%';
+    msg.style.transform = 'translateY(-20%)';
+    msg.style.fontSize = '12px';
+    msg.style.color = '#666';
+    document.getElementById(btnId).parentNode.appendChild(msg);
+    setTimeout(() => msg.remove(), 2000);
+  } catch (err) {
+  } finally {
+    document.body.removeChild(textarea);
+  }
+}
+function getDevice() {
+  return window.innerWidth <= 900 ? 'mobile' : 'desktop';
+}
+
+function getDeviceDetails() {
+  const width = window.innerWidth;
+  const userAgent = navigator.userAgent;
+  
+  if (width <= 900) {
+    let os = 'unknown';
+    if (/iPad|iPhone|iPod/.test(userAgent)) {
+      os = 'ios';
+    } else if (/Android/.test(userAgent)) {
+      os = 'android';
+    }
+    return { type: 'mobile', os: os };
+  }
+  return { type: 'desktop', os: null };
+}
+function checkPageRules() {
+  const path = window.location.pathname;
+  if (currentFormData.pageRules === 'everyPage') return true;
+  if (currentFormData.pageRules === 'specificPages') {
+    const rule = currentFormData.subPageRules;
+    if (rule === 'homepage') return path === '/' || path === '';
+    if (rule === 'product') return path.includes('/products/');
+    if (rule === 'collection') return path.includes('/collections/');
+  }
+  return false;
+}
+function checkDeviceRules() {
+  const deviceDetails = getDeviceDetails();
+  
+  if (currentFormData.devices.includes('all')) {
+    return true;
+  }
+  
+  if (!currentFormData.devices.includes(deviceDetails.type)) {
+    return false;
+  }
+  
+  if (deviceDetails.type === 'mobile' && currentFormData.mobileDevices && currentFormData.mobileDevices !== 'all') {
+    return currentFormData.mobileDevices === deviceDetails.os;
+  }
+  
+  return true;
+}
+function checkTimeRules() {
+  const now = new Date();
+  const mins = now.getHours() * 60 + now.getMinutes();
+  
+  if (!currentFormData.scheduleRules || currentFormData.scheduleRules === 'showAllTime') {
+    return true;
+  }
+  
+  if (currentFormData.scheduleRules === 'schedule') {
+    try {
+      const start = new Date(currentFormData.startDate);
+      const end = new Date(currentFormData.endDate);
+      
+      if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+        return false;
+      }
+      
+      const nowDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const startDate = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+      const endDate = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+      
+      if (nowDate < startDate || nowDate > endDate) {
+        return false;
+      }
+      
+      if (!currentFormData.startTime || !currentFormData.endTime) {
+        return false;
+      }
+      
+      const startTimeParts = currentFormData.startTime.split(':');
+      const endTimeParts = currentFormData.endTime.split(':');
+      
+      if (startTimeParts.length !== 2 || endTimeParts.length !== 2) {
+        return false;
+      }
+      
+      const [startH, startM] = startTimeParts.map(Number);
+      const [endH, endM] = endTimeParts.map(Number);
+      
+      if (isNaN(startH) || isNaN(startM) || isNaN(endH) || isNaN(endM) ||
+          startH < 0 || startH > 23 || startM < 0 || startM > 59 ||
+          endH < 0 || endH > 23 || endM < 0 || endM > 59) {
+        return false;
+      }
+      
+      const scheduleStart = startH * 60 + startM;
+      const scheduleEnd = endH * 60 + endM;
+      
+      let timeInRange = false;
+      
+      if (scheduleStart <= scheduleEnd) {
+        timeInRange = mins >= scheduleStart && mins <= scheduleEnd;
+      } else {
+        timeInRange = mins >= scheduleStart || mins <= scheduleEnd;
+      }
+      
+      return timeInRange;
+      
+    } catch (error) {
+      return false;
+    }
+  }
+  
+  return false;
+}
+
+function getBorderRadius(r) {
+  switch (r) {
+    case 'standard': return '8px';
+    case 'rounded': return '100%';
+    case 'sharp': return '0';
+    default: return '8px';
+  }
+}
+function handleScrollTrigger(popup) {
+  const percent = parseInt(currentFormData.scrollPercentage) || 0;
+  if (percent > 0) {
+    const checkScroll = () => {
+      const scrollPos = window.scrollY + window.innerHeight;
+      const total = document.documentElement.scrollHeight;
+      const scrolled = (scrollPos / total) * 100;
+      if (scrolled >= percent) {
+        popup.style.display = 'block';
+        return true;
+      }
+      return false;
+    };
+    
+    if (!checkScroll()) {
+      const handler = () => {
+        if (checkScroll()) window.removeEventListener('scroll', handler);
+      };
+      window.addEventListener('scroll', handler);
+    }
+  }
+}
+
+function handleTimerTrigger(popup) {
+  const time = parseInt(currentFormData.time) || 0;
+  if (time > 0) {
+    setTimeout(() => {
+      popup.style.display = 'block';
+    }, time * 1000);
+  } else {
+    popup.style.display = 'block';
+  }
+}
+
+function checkCurrentUrl() {
+  if (window.location.pathname.includes('/discount/')) {
+    localStorage.setItem('discountApplied', 'true');
+  }
+}
+
+window.setConvertBoostLogLevel = function(level) {
+  window.convertBoostLogger.setLogLevel(level);
+};
+
+window.getConvertBoostLogs = function(count = 50) {
+  return window.convertBoostLogger.getRecentLogs(count);
+};
+
+window.exportConvertBoostLogs = function() {
+  const logs = window.convertBoostLogger.exportLogs();
+  return logs;
+};
+
+async function trackPopupEvent(eventType, popupConfig, additionalData = {}) {
+  try {
+    const location = additionalData.location || 'Unknown';
+    const city = location?.city || location?.state || location?.country || 'Unknown';
+    
+    let ipAddress = 'unknown';
+    try {
+      const ipResponse = await fetch('https://api.ipify.org?format=json');
+      const ipData = await ipResponse.json();
+      ipAddress = ipData.ip || 'unknown';
+    } catch (ipError) {
+      ipAddress = window.location.hostname || 'unknown';
+    }
+
+    const trackingData = {
+      shopName: window.Shopify?.shop || 'unknown',
+      popupConfigId: popupConfig?.id || null,
+      eventType: eventType,
+      ipAddress: ipAddress,
+      location: typeof location === 'object' ? JSON.stringify(location) : location.toString(),
+      city: city,
+      userAgent: navigator.userAgent,
+      reason: additionalData.reason || null,
+      timestamp: new Date().toISOString(),
+      // Enhanced tracking for multi-location popups
+      discountValue: popupConfig?.discountValue || null,
+      discountType: popupConfig?.discountType || null,
+      valueType: popupConfig?.valueType || null,
+      locationType: popupConfig?.locationType || null,
+      discountLocation: popupConfig?.discountLocation || null,
+      selectedCountries: popupConfig?.selectedCountries || [],
+      selectedState: popupConfig?.selectedState || [],
+      selectedCity: popupConfig?.selectedCity || []
+    };
+    const response = await fetch('https://convert-boost-backend.vercel.app/api/track-popup', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(trackingData)
+    });
+
+    if (response.ok) {
+    } else {
+      const errorData = await response.json();
+    }
+
+  } catch (error) {
+  }
+}
+
+function trackConversion(popupConfig, additionalData = {}) {
+  trackPopupEvent('conversion', popupConfig, additionalData);
+}
+window.convertBoostDebug = {
+  setLogLevel: window.setConvertBoostLogLevel,
+  getLogs: window.getConvertBoostLogs,
+  exportLogs: window.exportConvertBoostLogs,
+  currentLevel: () => window.convertBoostLogger ? window.convertBoostLogger.getLevelName(window.convertBoostLogger.currentLevel) : 'LOGGER_NOT_READY',
+  test: () => {
+    if (window.convertBoostLogger) {
+      window.convertBoostLogger.error('Test ERROR message');
+      window.convertBoostLogger.warn('Test WARN message');
+    }
+    return 'Test completed - check console above';
+  },
+  resetPopupState: () => {
+    sessionStorage.removeItem('convertBoostPopupShown');
+
+    if (window.intentEvaluationInterval) {
+      clearInterval(window.intentEvaluationInterval);
+      window.intentEvaluationInterval = null;
+    }
+
+    const popups = document.querySelectorAll('[id^="popup-container-"]');
+    popups.forEach(popup => popup.style.display = 'none');
+
+    return 'Popup state reset successfully';
+  },
+  status: () => {
+    return {
+      canShowPopup: canShowPopup(),
+      discountCode: !!discountCode,
+      sessionShown: !!sessionStorage.getItem('convertBoostPopupShown'),
+      intervalActive: !!window.intentEvaluationInterval,
+      currentPath: window.currentPagePath
+    };
+  }
+};
+<!-- END app snippet -->
+<!-- BEGIN app snippet: convert-boost-popup-rendering -->// Popup rendering
+function renderPopup(data) {
+  // Get container - try with section ID first, then fallback
+  let container = document.querySelector('[id^="popup-content-"]');
+  if (!container) {
+    container = document.getElementById('popup-content-convertboost');
+    if (!container) return;
+  }
+  
+  // Extract configuration
+  const imgPos = data.imagePosition || 'none';
+  const align = data.alignment || 'left';
+  const cornerRadius = data.cornerRadius || '0';
+  const fontFamily = data.fontFamily === 'system' || !data.fontFamily ? 'inherit' : data.fontFamily;
+  const fontSizes = {
+    heading: (data.headingSize || 18) + 'px',
+    body: (data.bodySize || 14) + 'px',
+    button: (data.buttonSize || 12) + 'px',
+    footer: (data.footerSize || 11) + 'px'
+  };
+
+  // Generate logo HTML
+  let logo = data.logo ? `<img src="${data.logo}" alt="Logo" style="width:${data.imageWidth}px;height:${data.imageWidth}px;object-fit:cover;border-radius:${getBorderRadius(cornerRadius)};">` : '';
+  
+  // Background styles
+  let bgStyle = data.backgroundImage && imgPos === 'background'
+    ? `background-image:url(${data.backgroundImage});background-size:cover;background-position:center;background-repeat:no-repeat;`
+    : '';
+  
+  // Background overlay for opacity
+  let bgOverlay = data.backgroundImage && imgPos === 'background' && (data.backgroundOpacity || 100) < 100
+    ? `<div style="position:absolute;top:0;left:0;right:0;bottom:0;background-color:${data.backgroundColor || '#FFFFFF'};opacity:${(100 - (data.backgroundOpacity || 100)) / 100};border-radius:8px;pointer-events:none;"></div>`
+    : '';
+    
+  let contentStyle = `background-color:${data.backgroundColor};${bgStyle}padding:0 20px;border-radius:8px;`;
+  
+  // Generate form fields
+  let fields = '';
+  if (data.fields && Array.isArray(data.fields)) {
+    fields = data.fields
+      .filter(f => f.checked)
+      .map(f => `
+        <input type="${f.type}" 
+               placeholder="Enter ${f.label}" 
+               name="${f.label.replace(/\s+/g,'').toLowerCase()}" 
+               required 
+               class="popup-input-field" 
+               style="padding:9px;width:100%;border-radius:6px;border:1px solid ${data.consentColor};margin-bottom:10px;font-size:${fontSizes.button};background-color:${data.inputColor};color:${data.textColor};font-family:${fontFamily};">
+      `).join('');
+  }
+
+  // Primary button
+  let primaryBtn = data.primaryButton ? `
+    <button id="primaryButton" class="popup-button" style="background-color:${data.primaryButtonBackground};color:${data.primaryButtonTextColor};padding:9px 20px;border:none;border-radius:6px;cursor:pointer;width:100%;margin-bottom:10px;font-size:${fontSizes.button};font-weight:bold;font-family:${fontFamily};">
+      ${data.primaryButtonText}
+    </button>` : '';
+
+  // Secondary button
+  let secondaryBtn = data.secondaryButton ? `
+    <p id="secondaryButton" style="margin:0;color:${data.secondaryButtonTextColor};cursor:pointer;font-size:${fontSizes.button};font-family:${fontFamily};">
+      ${data.secondaryButtonText}
+    </p>` : '';
+
+  // Side image for left/right layouts
+  const sideImg = (imgPos === 'left' || imgPos === 'right') && data.backgroundImage ? `
+    <div style="width:60%;height:100vh;max-height:inherit;overflow:hidden;">
+      <img src="${data.backgroundImage}" style="width:100%;height:100%;object-fit:cover;object-position:center;opacity:${(data.backgroundOpacity || 100) / 100};mask-repeat:no-repeat;border-top-left-radius:${imgPos==='left'?'0.5rem':'0'};border-bottom-left-radius:${imgPos==='left'?'0.5rem':'0'};border-top-right-radius:${imgPos==='right'?'0.5rem':'0'};border-bottom-right-radius:${imgPos==='right'?'0.5rem':'0'};">
+    </div>
+  ` : '';
+
+  // Build complete HTML
+  const html = `
+    <div class="popup-inner" style="position:relative;text-align:center;padding:0;background:${bgStyle?'transparent':data.backgroundColor};border-radius:8px;box-shadow:0 4px 8px rgba(0,0,0,.1);max-width:450px;width:100%;">
+      <div style="display:${imgPos==='left'||imgPos==='right'?'flex':'block'};flex-direction:${imgPos==='left'?'row':'row-reverse'};border-radius:0.5rem;width:100%;max-height:${imgPos==='left'||imgPos==='right'?'376px':'auto'};align-items:center;justify-content:${imgPos==='left'?'flex-start':'flex-end'};">
+        ${sideImg}
+        ${bgOverlay}
+        <div style="${contentStyle}">
+          <div style="display:flex;flex-direction:column;direction:${align==='right'?'rtl':'ltr'};justify-content:space-between;">
+            <div style="width:100%;display:${align==='center'?'block':'flex'};justify-content:${align};align-items:center;margin:15px 0;">
+              ${logo}
+              <div style="display:flex;align-items:center;justify-content:center;">
+                <div style="text-align:${align};margin-right:${align==='right'&&data.logo?'20px':'0'};margin-left:${align==='left'&&data.logo?'10px':'0'};">
+                  <h2 style="margin:0;font-weight:bold;font-size:${fontSizes.heading};color:${data.headingColor};font-family:${fontFamily};">${data.heading}</h2>
+                  <p style="margin:0;color:${data.descriptionColor};direction:${align==='right'?'rtl':'ltr'};font-size:${fontSizes.body};font-family:${fontFamily};">${data.description}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+          ${fields}
+          ${primaryBtn}
+          ${secondaryBtn}
+          <p style="font-size:${fontSizes.footer};line-height:normal;padding-bottom:20px;margin:0;color:${data.footerTextColor};font-family:${fontFamily};">${data.footerText||"You are signing up to receive communication via email and can unsubscribe at any time."}</p>
+        </div>
+      </div>
+      <div id="popupCloseButton" style="position:absolute;top:3%;right:3%;background-color:white;border-radius:100%;padding:3px;cursor:pointer;">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="black" style="width:12px;display:flex;justify-content:center;align-items:center;">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+        </svg>
+      </div>
+    </div>`;
+
+  container.innerHTML = html;
+
+  // Add event listeners
+  const primaryButton = document.getElementById('primaryButton');
+  if (primaryButton) {
+    primaryButton.addEventListener('click', () => {
+      const inputs = document.querySelectorAll('.popup-input-field');
+      let allFilled = true;
+      const params = new URLSearchParams();
+      params.append('popupConfigId', data.id);
+      params.append('shopName', window.shopConfig.shopName);
+      
+      inputs.forEach(input => {
+        if (!input.value.trim()) {
+          allFilled = false;
+          input.style.border = '1px solid red';
+        } else {
+          input.style.border = '1px solid ' + data.consentColor;
+          params.append(input.name, input.value);
+        }
+      });
+      
+      if (allFilled) triggerDiscountAPI(params);
+    });
+  }
+
+  const secondaryButton = document.getElementById('secondaryButton');
+  if (secondaryButton) {
+    secondaryButton.addEventListener('click', () => {
+      const popupContainer = document.querySelector('[id^="popup-container-"]') || document.getElementById('popup-container-convertboost');
+      if (popupContainer) {
+        popupContainer.style.display = 'none';
+      }
+      // Store popup dismissal with popup ID - this popup will NEVER show again
+      const dismissalKey = `popup_dismissal_cb_${data.id}`;
+      localStorage.setItem(dismissalKey, 'true');
+      // console.log("Popup dismissed by secondary button (No Thanks) - will NEVER show again", { popupId: data.id });
+
+      if (typeof logEvent === 'function') {
+        logEvent("popupDismissedBySecondaryButton", {timestamp: Date.now()});
+      }
+    });
+  }
+  
+  const closeButton = document.getElementById('popupCloseButton');
+  if (closeButton) {
+    closeButton.addEventListener('click', () => {
+      const popupContainer = document.querySelector('[id^="popup-container-"]') || document.getElementById('popup-container-convertboost');
+      if (popupContainer) {
+        popupContainer.style.display = 'none';
+      }
+      // Store popup dismissal with popup ID - this popup will NEVER show again
+      const dismissalKey = `popup_dismissal_cb_${data.id}`;
+      localStorage.setItem(dismissalKey, 'true');
+      // console.log("Popup dismissed by close button - will NEVER show again", { popupId: data.id });
+
+      if (typeof debug === 'function') {
+        debug("Popup closed via close button");
+      }
+      if (typeof logStorage === 'function') {
+        logStorage();
+      }
+    });
+  }
+}
+
+// Success popup rendering
+function renderSuccessPopup(data, code) {
+  const container = document.querySelector('[id^="popup-content-"]') || document.getElementById('popup-content-convertboost');
+  if (!container) return;
+  
+  const popupContainer = document.querySelector('[id^="popup-container-"]') || document.getElementById('popup-container-convertboost');
+  if (popupContainer) {
+    popupContainer.style.display = 'block';
+    popupContainer.dataset.convertboostState = 'success';
+    delete popupContainer.dataset.stickyDelayCount;
+  }
+  
+  const align = data.alignment || 'left';
+  const imgPos = data.imagePosition || 'none';
+  const fontFamily = data.fontFamily === 'system' || !data.fontFamily ? 'inherit' : data.fontFamily;
+  const fontSizes = {
+    heading: (data.headingSize || 18) + 'px',
+    body: (data.bodySize || 14) + 'px',
+    button: (data.buttonSize || 12) + 'px',
+    footer: (data.footerSize || 11) + 'px'
+  };
+  
+  let bgStyle = data.backgroundImage && imgPos === 'background'
+    ? `background-image:url(${data.backgroundImage});background-size:cover;background-position:center;background-repeat:no-repeat;`
+    : '';
+  
+  let bgOverlay = data.backgroundImage && imgPos === 'background' && (data.backgroundOpacity || 100) < 100
+    ? `<div style="position:absolute;top:0;left:0;right:0;bottom:0;background-color:${data.backgroundColor || '#FFFFFF'};opacity:${(100 - (data.backgroundOpacity || 100)) / 100};border-radius:8px;pointer-events:none;"></div>`
+    : '';
+    
+  let contentStyle = `background-color:${data.backgroundColor};${bgStyle}padding:0 20px;border-radius:8px;`;
+  
+  let btnClick = '';
+  if (data.clickAction === 'closeForm') {
+    btnClick = `(document.querySelector('[id^="popup-container-"]') || document.getElementById('popup-container-convertboost')).style.display='none'`;
+  } else if (data.clickAction === 'redirect') {
+    btnClick = `window.location.href='${data.redirectUrl}'`;
+  }
+
+  const sideImg = (imgPos === 'left' || imgPos === 'right') && data.backgroundImage ? `
+    <div style="width:60%;height:100vh;max-height:inherit;overflow:hidden;">
+      <img src="${data.backgroundImage}" style="width:100%;height:100%;object-fit:cover;object-position:center;opacity:${(data.backgroundOpacity || 100) / 100};mask-repeat:no-repeat;border-top-left-radius:${imgPos==='left'?'0.5rem':'0'};border-bottom-left-radius:${imgPos==='left'?'0.5rem':'0'};border-top-right-radius:${imgPos==='right'?'0.5rem':'0'};border-bottom-right-radius:${imgPos==='right'?'0.5rem':'0'};">
+    </div>
+  ` : '';
+
+  const html = `
+    <div class="popup-inner" style="position:relative;text-align:center;padding:0;background:${bgStyle?'transparent':data.backgroundColor};border-radius:8px;box-shadow:0 4px 8px rgba(0,0,0,.1);max-width:450px;width:100%;">
+      <div style="display:${imgPos==='left'||imgPos==='right'?'flex':'block'};flex-direction:${imgPos==='left'?'row':'row-reverse'};border-radius:0.5rem;width:100%;max-height:${imgPos==='left'||imgPos==='right'?'376px':'auto'};align-items:center;justify-content:${imgPos==='left'?'flex-start':'flex-end'};">
+        ${sideImg}
+        ${bgOverlay}
+        <div style="${contentStyle}">
+          <div style="display:flex;flex-direction:column;direction:${align==='right'?'rtl':'ltr'};justify-content:space-between;">
+            <div style="width:100%;display:${align==='center'?'block':'flex'};justify-content:${align};align-items:center;margin:15px 0;">
+              ${data.logo ? `<img src="${data.logo}" alt="Logo" style="width:${data.imageWidth}px;height:${data.imageWidth}px;object-fit:cover;border-radius:${getBorderRadius(data.cornerRadius)};">` : ''}
+              <div style="display:flex;align-items:center;justify-content:center;">
+                <div style="text-align:${align};margin-top:${align==='center'?'10px':'0'};margin-right:${align==='right'&&data.logo?'20px':'0'};margin-left:${data.logo&&align==='left'?'5px':'0'};">
+                  <h2 style="margin:0;font-weight:bold;font-size:${fontSizes.heading};color:${data.headingColor};font-family:${fontFamily};">${data.sucessStatusHeading || data.successStatusHeading}</h2>
+                </div>
+              </div>
+            </div>
+            <div style="position:relative">
+              <input type="text" value="${code}" readonly style="padding:9px;width:100%;border-radius:6px;border:1px solid ${data.consentColor};margin-bottom:10px;font-size:${fontSizes.button};background-color:${data.inputColor};color:${data.textColor};font-family:${fontFamily}">
+              <div id="copyButton" style="cursor:pointer;position:absolute;right:10px;top:19px;transform:translateY(-50%)">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                </svg>
+              </div>
+            </div>
+            ${(data.clickAction === 'closeForm' || data.clickAction === 'redirect') ? `
+              <button id="successActionButton" style="background-color:${data.primaryButtonBackground};color:${data.primaryButtonTextColor};padding:9px 20px;border:none;border-radius:6px;cursor:pointer;width:100%;margin-bottom:10px;font-size:${fontSizes.button};font-weight:bold;font-family:${fontFamily};">
+                ${data.buttonText}
+              </button>
+            ` : ''}
+          </div>
+          <p style="margin:0 0 10px;color:${data.descriptionColor};font-size:${fontSizes.body};font-family:${fontFamily};">${data.successDescription}</p>
+        </div>
+      </div>
+      <div id="popupCloseButtonSuccess" style="position:absolute;top:3%;right:3%;background-color:white;border-radius:100%;padding:3px;cursor:pointer;">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="black" style="width:12px;display:flex;justify-content:center;align-items:center;">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+        </svg>
+      </div>
+    </div>`;
+
+  container.innerHTML = html;
+
+  const copyButton = document.getElementById('copyButton');
+  if (copyButton) {
+    copyButton.addEventListener('click', () => {
+      if (typeof copyCode === 'function') {
+        copyCode(code, 'copyButton');
+      }
+    });
+  }
+
+  const successActionButton = document.getElementById('successActionButton');
+  if (successActionButton) {
+    successActionButton.addEventListener('click', () => handleSuccessAction(data));
+  }
+
+  const closeButtonSuccess = document.getElementById('popupCloseButtonSuccess');
+  if (closeButtonSuccess) {
+    closeButtonSuccess.addEventListener('click', () => {
+      const popupContainer = document.querySelector('[id^="popup-container-"]') || document.getElementById('popup-container-convertboost');
+      if (popupContainer) {
+        popupContainer.style.display = 'none';
+        delete popupContainer.dataset.convertboostState;
+        delete popupContainer.dataset.stickyDelayCount;
+      }
+      // Store popup dismissal with popup ID - this popup will NEVER show again
+      const dismissalKey = `popup_dismissal_cb_${data.id || currentFormData?.id}`;
+      localStorage.setItem(dismissalKey, 'true');
+      // console.log('Success popup dismissed by user - will NEVER show again', { popupId: data.id || currentFormData?.id });
+
+      setTimeout(() => initStickyBar(), 200);
+    });
+  }
+}
+
+function handleSuccessAction(data) {
+  const popupContainer = document.querySelector('[id^="popup-container-"]') || document.getElementById('popup-container-convertboost');
+
+  if (data.clickAction === 'redirect' && data.redirectUrl) {
+    window.location.href = data.redirectUrl;
+  } else {
+    if (popupContainer) {
+      popupContainer.style.display = 'none';
+    }
+  }
+
+  if (popupContainer) {
+    delete popupContainer.dataset.convertboostState;
+    delete popupContainer.dataset.stickyDelayCount;
+  }
+
+  const dismissalKey = `popup_dismissal_cb_${data.id || currentFormData?.id}`;
+  localStorage.setItem(dismissalKey, 'true');
+
+  setTimeout(() => initStickyBar(), 200);
+}
+
+// Initialize sticky discount bar
+function initStickyBar() {
+  // Try to get sticky config from localStorage first
+  let stickyConfig;
+  let discountCodeToUse;
+
+  const savedStickyConfig = localStorage.getItem('stickyBarConfig');
+  if (savedStickyConfig) {
+    try {
+      stickyConfig = JSON.parse(savedStickyConfig);
+      discountCodeToUse = stickyConfig.discountCode;
+    } catch (e) {
+      console.error('Failed to parse sticky config', e);
+      return;
+    }
+  } else if (discountCode) {
+    // Fallback to current form data
+    discountCodeToUse = discountCode;
+    stickyConfig = currentFormData;
+  } else {
+    return; // No discount code available
+  }
+
+  // Check if sticky bar was previously dismissed
+  const stickyDismissalKey = `sticky_dismissal_cb_${stickyConfig.popupId || currentFormData?.id || 'default'}`;
+  console.log('Checking sticky dismissal key:', stickyDismissalKey, 'Value:', localStorage.getItem(stickyDismissalKey));
+  if (localStorage.getItem(stickyDismissalKey) === 'true') {
+    console.log('Sticky bar was previously dismissed, not showing');
+    return;
+  }
+
+  const bar = document.getElementById('stickyDiscountBar');
+  console.log('Sticky bar element found:', !!bar);
+  if (!bar) {
+    console.error('stickyDiscountBar element not found in DOM');
+    return;
+  }
+
+  // Hide the main popup when sticky bar is showing, but respect active success state
+  const popupContainer = document.querySelector('[id^="popup-container-"]') || document.getElementById('popup-container-convertboost');
+  if (popupContainer && popupContainer.dataset.convertboostState === 'success') {
+    const retries = parseInt(popupContainer.dataset.stickyDelayCount || '0', 10) || 0;
+    if (retries < 5) {
+      popupContainer.dataset.stickyDelayCount = String(retries + 1);
+      console.log('Success popup active, delaying sticky bar');
+      setTimeout(() => initStickyBar(), 1000);
+      return;
+    }
+    delete popupContainer.dataset.convertboostState;
+    delete popupContainer.dataset.stickyDelayCount;
+  }
+
+  if (popupContainer) {
+    popupContainer.style.display = 'none';
+    console.log('Main popup hidden because sticky bar is active');
+  }
+  
+  const bgColor = stickyConfig?.stickyDiscountBarBackground || 'transparent';
+  const fontFamily = stickyConfig?.fontFamily === 'system' || !stickyConfig?.fontFamily ? 'inherit' : stickyConfig?.fontFamily;
+  const fontSizes = {
+    heading: (stickyConfig?.headingSize || 18) + 'px',
+    body: (stickyConfig?.bodySize || 14) + 'px',
+    button: (stickyConfig?.buttonSize || 12) + 'px',
+    footer: (stickyConfig?.footerSize || 11) + 'px'
+  };
+  
+  bar.style.display = 'flex';
+  bar.style.background = bgColor;
+  bar.innerHTML = `
+    <div id="DiscountBarInnerSection" style="padding-top:5px;background-color:${stickyConfig?.stickyDiscountBarBackground};position:relative;display:flex;justify-content:center;">
+      <div style="color:${stickyConfig?.stickyDiscountBarText};margin-right:8px;font-size:${fontSizes.body};font-family:${fontFamily};">Here you go</div>
+      <div style="position:relative;">
+        <input type="text" value="${discountCodeToUse||''}" id="discountCodeInput" readonly style="padding:9px;width:230px;border-radius:6px;border:1px solid ${stickyConfig?.consentColor};margin-bottom:4px;font-size:${fontSizes.button};background-color:${stickyConfig?.inputColor};color:${stickyConfig?.textColor};font-family:${fontFamily};">
+        <div id="copyButtonTop" style="cursor:pointer;position:absolute;right:10px;top:50%;transform:translateY(-50%)">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+          </svg>
+        </div>
+      </div>
+    </div>
+    <div id="stickyBarCloseBtn" style="position:absolute;top:10px;right:10px;cursor:pointer;">
+      <span>
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="black" style="width:2rem;font-weight:900;background-color:white;border-radius:100%;padding:2px">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+        </svg>
+      </span>
+    </div>
+  `;
+  
+  const copyButtonTop = document.getElementById('copyButtonTop');
+  if (copyButtonTop) {
+    copyButtonTop.addEventListener('click', () => {
+      if (typeof copyCode === 'function') {
+        copyCode(discountCodeToUse, 'copyButtonTop');
+      }
+    });
+  }
+  
+  // Add event listener for sticky bar close button
+  const stickyBarCloseBtn = document.getElementById('stickyBarCloseBtn');
+  if (stickyBarCloseBtn) {
+    stickyBarCloseBtn.addEventListener('click', () => {
+      bar.style.display = 'none';
+      // Store sticky bar dismissal with popup ID for tracking
+      const stickyDismissalKey = `sticky_dismissal_cb_${stickyConfig.popupId || currentFormData?.id || 'default'}`;
+      localStorage.setItem(stickyDismissalKey, 'true');
+      // console.log('Sticky bar dismissed by user - will NEVER show again', { popupId: stickyConfig.popupId });
+    });
+  }
+}
+<!-- END app snippet -->
+<!-- BEGIN app snippet: convert-boost-api-functions -->
+
+// API functions
+function triggerSilentDiscount(params) {
+  // Silent discount creation
+  
+  fetch('https://convert-boost.vercel.app/api/create-silent-discount', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+    body: params.toString(),
+  })
+  .then(response => {
+    // Check if response is ok, but also try to get the discount code from error
+    if (!response.ok) {
+      console.warn('Silent discount API returned error, but discount may have been created in Shopify');
+    }
+    return response.json();
+  })
+  .then(data => {
+    // Try to extract discount code from the response or error
+    let extractedCode = null;
+    
+    if (data.success && data.discountCode) {
+      // Success case - use the returned code
+      extractedCode = data.discountCode;
+    } else if (data.error && data.error.includes('DISCOUNT-')) {
+      // Error case but discount was created - extract code from error message
+      const codeMatch = data.error.match(/DISCOUNT-[A-Z0-9]+/);
+      if (codeMatch) {
+        extractedCode = codeMatch[0];
+        console.log('Extracted discount code from error response:', extractedCode);
+      }
+    }
+    
+    if (extractedCode) {
+      discountCode = extractedCode;
+      localStorage.setItem('discountCode', discountCode);
+      localStorage.setItem('popupId', currentFormData.id);
+      localStorage.setItem('discountApplied', 'true');
+      
+      // Store sticky bar configuration if enabled for silent discount
+      if (currentFormData.stickyDiscountBar === 'yes') {
+        const stickyConfig = {
+          discountCode: discountCode,
+          popupId: currentFormData.id,
+          stickyDiscountBarBackground: currentFormData.stickyDiscountBarBackground,
+          stickyDiscountBarText: currentFormData.stickyDiscountBarText,
+          fontFamily: currentFormData.fontFamily,
+          bodySize: currentFormData.bodySize,
+          buttonSize: currentFormData.buttonSize,
+          consentColor: currentFormData.consentColor,
+          inputColor: currentFormData.inputColor,
+          textColor: currentFormData.textColor
+        };
+        localStorage.setItem('stickyBarConfig', JSON.stringify(stickyConfig));
+      }
+      
+      // Mark as dismissed since it's a silent discount
+      const dismissalKey = `popup_dismissal_cb_${currentFormData.id}`;
+      localStorage.setItem(dismissalKey, 'true');
+      
+      // Don't set popup dismissal - silent discounts don't show popups
+      // Auto-apply discount and redirect to checkout
+      window.location.href = '/checkout?discount=' + extractedCode;
+    } else {
+      console.error("Failed to create or extract silent discount code", data.error);
+      // Fallback - still redirect but without code
+      window.location.href = '/';
+    }
+  })
+  .catch(err => {
+    console.error("Silent discount API request failed", err.message);
+  });
+}
+
+function triggerDiscountAPI(params) {
+  const apiLogger = {
+    info: (msg, data) => console.log(`[API] ${msg}`, data || ''),
+    debug: (msg, data) => console.log(`[API] ${msg}`, data || ''),
+    error: (msg, data) => console.error(`[API] ${msg}`, data || '')
+  };
+  const btn = document.getElementById('primaryButton');
+
+  if (!btn) {
+    console.error("Primary button not found");
+    return;
+  }
+
+  // Get current discount code from localStorage
+  const existingDiscountCode = localStorage.getItem('discountCode');
+  const existingSavedPopupId = localStorage.getItem('popupId');
+
+  // If discount code exists for this popup, show success popup
+  if (existingDiscountCode && existingSavedPopupId && existingSavedPopupId === currentFormData.id) {
+    return renderSuccessPopup(currentFormData, existingDiscountCode);
+  }
+  
+  // Update button state
+  btn.textContent = 'Generating discount code...';
+  btn.disabled = true;
+  
+  // For manual discounts, use the predefined code
+  if (currentFormData.discountType === 'manual' && currentFormData.couponCode) {
+    discountCode = currentFormData.couponCode;
+    localStorage.setItem('discountCode', discountCode);
+    localStorage.setItem('popupId', currentFormData.id);
+    // Don't set popupDismissed - let user explicitly close it
+    
+    // Store sticky bar configuration if enabled
+    if (currentFormData.stickyDiscountBar === 'yes') {
+      const stickyConfig = {
+        discountCode: discountCode,
+        popupId: currentFormData.id,
+        stickyDiscountBarBackground: currentFormData.stickyDiscountBarBackground,
+        stickyDiscountBarText: currentFormData.stickyDiscountBarText,
+        fontFamily: currentFormData.fontFamily,
+        bodySize: currentFormData.bodySize,
+        buttonSize: currentFormData.buttonSize,
+        consentColor: currentFormData.consentColor,
+        inputColor: currentFormData.inputColor,
+        textColor: currentFormData.textColor
+      };
+      localStorage.setItem('stickyBarConfig', JSON.stringify(stickyConfig));
+    }
+    
+    // Track manual discount conversion
+    trackConversion(currentFormData, {
+      discountCode: discountCode,
+      discountType: 'manual'
+    });
+    
+    // Dismiss popup after successful discount claim
+    const dismissalKey = `popup_dismissal_cb_${currentFormData.id}`;
+    localStorage.setItem(dismissalKey, 'true');
+    // console.log("Popup dismissed after discount claim - will NEVER show again", { popupId: currentFormData.id });
+    
+    return renderSuccessPopup(currentFormData, discountCode);
+  }
+  
+  // For other discount types, call the API
+  fetch('https://convert-boost.vercel.app/api/create-discount', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+    body: params.toString()
+  })
+  .then(response => response.json())
+  .then(data => {
+    if (data.success) {
+      discountCode = data.discountCode;
+      localStorage.setItem('discountCode', discountCode);
+      localStorage.setItem('popupId', currentFormData.id);
+      // Don't set popupDismissed - let user explicitly close it
+      
+      // Store sticky bar configuration if enabled
+      if (currentFormData.stickyDiscountBar === 'yes') {
+        const stickyConfig = {
+          discountCode: discountCode,
+          popupId: currentFormData.id,
+          stickyDiscountBarBackground: currentFormData.stickyDiscountBarBackground,
+          stickyDiscountBarText: currentFormData.stickyDiscountBarText,
+          fontFamily: currentFormData.fontFamily,
+          bodySize: currentFormData.bodySize,
+          buttonSize: currentFormData.buttonSize,
+          consentColor: currentFormData.consentColor,
+          inputColor: currentFormData.inputColor,
+          textColor: currentFormData.textColor
+        };
+        localStorage.setItem('stickyBarConfig', JSON.stringify(stickyConfig));
+      }
+      
+      // Track successful conversion
+      trackConversion(currentFormData, {
+        discountCode: discountCode,
+        discountType: currentFormData.discountType
+      });
+      
+      // Dismiss popup after successful discount claim
+      const dismissalKey = `popup_dismissal_cb_${currentFormData.id}`;
+      localStorage.setItem(dismissalKey, 'true');
+      // console.log("Popup dismissed after discount claim - will NEVER show again", { popupId: currentFormData.id });
+      
+      if (currentFormData.discountType === 'silent') {
+        return window.location.href = currentFormData.redirectUrl || '/';
+      }
+      
+      renderSuccessPopup(currentFormData, discountCode);
+    } else {
+      console.error("Failed to create discount", data.error);
+      btn.textContent = 'Claim Discount Now';
+      btn.disabled = false;
+    }
+  })
+  .catch(err => {
+    console.error("Discount API request failed", err.message);
+    btn.textContent = 'Claim Discount Now';
+    btn.disabled = false;
+  });
+}
+<!-- END app snippet -->
+<!-- BEGIN app snippet: convert-boost-popup-validation -->
+
+// Function to validate popup with database-first backend
+async function validatePopupWithBackend(popupConfig) {
+  const validationLogger = {
+    error: (msg, data) => console.error(`[Validation] ${msg}`, data || '')
+  };
+
+  try {
+    // Validating popup with database-first backend
+
+    // Frontend optimization: Skip API calls ONLY for specific edge cases
+    
+    // ONLY skip when discountLocation is "exclude" with empty selection arrays or null values
+    // This means "exclude nothing" = "include everyone"
+    if (popupConfig.discountLocation === 'exclude') {
+      // console.log('🔍 Checking exclude logic', {
+      //   locationType: popupConfig.locationType,
+      //   selectedCountries: popupConfig.selectedCountries,
+      //   selectedState: popupConfig.selectedState,
+      //   selectedCity: popupConfig.selectedCity
+      // });
+      
+      let hasNoSelection = false;
+      
+      if (popupConfig.locationType === 'country') {
+        // For country: only check selectedCountries (plural array)
+        hasNoSelection = !popupConfig.selectedCountries || popupConfig.selectedCountries.length === 0;
+      } else if (popupConfig.locationType === 'state') {
+        hasNoSelection = !popupConfig.selectedState || popupConfig.selectedState.length === 0;
+      } else if (popupConfig.locationType === 'city') {
+        hasNoSelection = !popupConfig.selectedCity || popupConfig.selectedCity.length === 0;
+      }
+      
+      // console.log('🔍 Has no selection result:', hasNoSelection);
+      
+      if (hasNoSelection) {
+        // console.log('✅ Frontend optimization: Exclude nothing = include everyone', {
+        //   discountLocation: popupConfig.discountLocation,
+        //   locationType: popupConfig.locationType,
+        //   selectedCountries: popupConfig.selectedCountries,
+        //   selectedState: popupConfig.selectedState,
+        //   selectedCity: popupConfig.selectedCity
+        // });
+        return { shouldShow: true, optimized: true };
+      }
+    }
+
+    // Only make API call if optimization doesn't apply
+    // console.log('🌐 Making API call - optimization not applicable', {
+    //   locationRules: popupConfig.locationRules,
+    //   discountLocation: popupConfig.discountLocation,
+    //   locationType: popupConfig.locationType
+    // });
+
+    // Prepare validation payload (only location-based)
+    const validationPayload = {
+      locationRules: popupConfig.locationRules || 'everyWhere',
+      discountLocation: popupConfig.discountLocation || 'include',
+      locationType: popupConfig.locationType || 'country',
+      selectedCountries: popupConfig.selectedCountries || [],
+      selectedState: popupConfig.selectedState || [],
+      selectedCity: popupConfig.selectedCity || []
+    };
+
+    // console.log('📤 Sending validation payload', validationPayload);
+
+    const response = await fetch('https://convert-boost-backend.vercel.app/api/validate-popup', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(validationPayload)
+    });
+
+    const result = await response.json();
+    
+    // console.log('📥 Backend validation response', {
+    //   status: response.status,
+    //   result: result,
+    //   userLocation: result.userLocation
+    // });
+
+    // 200 = show popup, 401 = don't show popup
+    if (response.status === 200) {
+      // console.log('✅ Popup validation PASSED - showing popup', {
+      //   userLocation: result.userLocation,
+      //   message: result.message
+      // });
+      return { 
+        shouldShow: true, 
+        userLocation: result.userLocation,
+        debug: result.debug 
+      };
+    } else if (response.status === 401) {
+      // console.log('❌ Popup validation FAILED - hiding popup', {
+      //   userLocation: result.userLocation,
+      //   message: result.message
+      // });
+      return { 
+        shouldShow: false, 
+        userLocation: result.userLocation,
+        reason: result.message,
+        debug: result.debug 
+      };
+    } else {
+      validationLogger.error('⚠️ Unexpected validation response', { 
+        status: response.status, 
+        result 
+      });
+      return { 
+        shouldShow: false, 
+        error: `Unexpected status: ${response.status}`,
+        details: result 
+      };
+    }
+
+  } catch (error) {
+    validationLogger.error('💥 Error validating popup with backend', { 
+      error: error.message,
+      stack: error.stack 
+    });
+    
+    // On error, default to not showing popup for safety
+    return { 
+      shouldShow: false, 
+      error: error.message,
+      fallback: 'Network error - defaulting to hide popup for safety'
+    };
+  }
+}
+
+// Helper function to validate visitor location (can be used anywhere in the extension)
+async function validateVisitorLocation(locationRules) {
+  const validationLogger = {
+    info: (msg, data) => console.log(`[LocationCheck] ${msg}`, data || ''),
+    debug: (msg, data) => console.log(`[LocationCheck] ${msg}`, data || ''),
+    error: (msg, data) => console.error(`[LocationCheck] ${msg}`, data || '')
+  };
+
+  try {
+    // console.log('🔍 Checking visitor location', locationRules);
+
+    const response = await fetch('https://convert-boost-backend.vercel.app/api/validate-popup', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(locationRules)
+    });
+
+    const result = await response.json();
+    
+    // console.log('📍 Location check result', {
+    //   status: response.status,
+    //   userLocation: result.userLocation
+    // });
+
+    return {
+      success: response.status === 200,
+      userLocation: result.userLocation,
+      allowed: response.status === 200,
+      blocked: response.status === 401,
+      error: response.status >= 400 ? result.message : null
+    };
+
+  } catch (error) {
+    validationLogger.error('❌ Location check failed', { error: error.message });
+    return {
+      success: false,
+      error: error.message,
+      userLocation: null,
+      allowed: false,
+      blocked: true
+    };
+  }
+}<!-- END app snippet -->
+<!-- BEGIN app snippet: convert-boost-initialization -->
+
+// Global state variables are declared in convert-boost-core-functions.liquid
+// currentFormData, discountCode, savedPopupId are available globally
+
+// Initialize logger
+const initLogger = {
+  error: (msg, data) => console.error(`[Init] ${msg}`, data || ''),
+  warn: (msg, data) => console.warn(`[Init] ${msg}`, data || '')
+};
+
+// Function to show popup after validation passes
+function displayValidatedPopup(popupConfig) {
+  
+  // Store current form data globally
+  currentFormData = popupConfig;
+  
+  // Render the popup HTML
+  renderPopup(popupConfig);
+  
+  // Get popup container - use querySelector to find any popup-container-* element
+  let popupContainer = document.querySelector('[id^="popup-container-"]');
+  if (!popupContainer) {
+    // Try with a fallback ID
+    popupContainer = document.getElementById('popup-container-convertboost');
+    if (!popupContainer) {
+      initLogger.error('Popup container not found - tried both section ID and fallback');
+      // Log all elements with popup-container in their ID
+      const allContainers = document.querySelectorAll('[id*="popup-container"]');
+      initLogger.error('Found containers:', Array.from(allContainers).map(el => el.id));
+      return;
+    }
+  }
+
+  // Function to mark popup as shown (currently no-op since we only track dismissals)
+  function markPopupShown() {
+    // No-op: We don't track "shown" state anymore
+    // Popup will keep showing until dismissed
+  }
+
+  // Handle different trigger types
+  if (popupConfig.trigger === 'scroll') {
+    handleScrollTrigger(popupContainer, popupConfig, markPopupShown);
+  } else if (popupConfig.trigger === 'timer') {
+    handleTimerTrigger(popupContainer, popupConfig, markPopupShown);
+  } else {
+    // Default: show immediately
+    popupContainer.style.display = 'block';
+    markPopupShown();
+  }
+
+  // Add close button handler
+  const closeButton = document.getElementById('popupCloseButton');
+  if (closeButton) {
+    closeButton.addEventListener('click', () => {
+      popupContainer.style.display = 'none';
+      // Store popup dismissal with popup ID - this popup will NEVER show again
+      const dismissalKey = `popup_dismissal_cb_${popupConfig.id}`;
+      localStorage.setItem(dismissalKey, 'true');
+      // console.log("Popup dismissed by user - will NEVER show again", { popupId: popupConfig.id });
+    });
+  }
+}
+
+// Handle scroll trigger
+function handleScrollTrigger(container, config, onShow) {
+  const scrollPercent = parseInt(config.scrollPercentage) || 50;
+  
+  window.addEventListener('scroll', function onScroll() {
+    const scrollTop = window.scrollY || document.documentElement.scrollTop;
+    const scrollHeight = document.documentElement.scrollHeight - window.innerHeight;
+    const scrolledPercent = (scrollTop / scrollHeight) * 100;
+    
+    if (scrolledPercent >= scrollPercent) {
+      container.style.display = 'block';
+      if (onShow) onShow();
+      window.removeEventListener('scroll', onScroll);
+      //(`Popup triggered by scroll at ${scrolledPercent.toFixed(1)}%`);
+    }
+  });
+}
+
+// Handle timer trigger
+function handleTimerTrigger(container, config, onShow) {
+  const time = parseInt(config.time) || 3;
+  
+  setTimeout(() => {
+    container.style.display = 'block';
+    if (onShow) onShow();
+    //(`Popup triggered by timer after ${time} seconds`);
+  }, time * 1000);
+}
+
+
+// Main initialization function
+async function initializeConvertBoost() {
+  try {
+    // console.log('🚀 Starting Convert Boost initialization');
+
+    // FIRST: Check if sticky bar config exists (discount already claimed)
+    const savedStickyConfig = localStorage.getItem('stickyBarConfig');
+    if (savedStickyConfig) {
+      console.log('✋ Sticky bar config found - user already has discount, skipping popup initialization');
+      return; // Don't initialize popup at all
+    }
+
+    // Get shop configuration
+    const shopName = window.shopConfig ? window.shopConfig.shopName : 'om.swissarabian.com';
+    // console.log('Shop configuration', {
+    //   shopName,
+    //   shopConfig: window.shopConfig,
+    //   shopDomain: 'om.swissarabian.com'
+    // });
+
+    if (!shopName) {
+      initLogger.error('Shop name not found in configuration, using domain fallback');
+    }
+
+    // Read popup configuration from metafields - now supports multiple popups
+    const billingStatusRaw = "{\"canUseService\":true,\"plan\":\"Active\",\"lastUpdated\":\"2026-07-08T13:19:49.269Z\"}";
+
+    // console.log('🔍 Metafield data', {
+    //   activePopupIdsRaw,
+    //   billingStatus: billingStatusRaw,
+    //   shopName
+    // });
+
+    // Parse billing status
+    let canUseService = true;
+    if (billingStatusRaw && typeof billingStatusRaw === 'object') {
+      canUseService = billingStatusRaw.canUseService !== false;
+    } else if (typeof billingStatusRaw === 'string' && billingStatusRaw !== "null" && billingStatusRaw !== "") {
+      try {
+        const billingData = JSON.parse(billingStatusRaw);
+        canUseService = billingData.canUseService !== false;
+      } catch (e) {
+        initLogger.warn('Could not parse billing status, defaulting to allow service');
+      }
+    }
+
+    if (!canUseService) {
+      // console.log('Service access denied based on billing status');
+      return;
+    }
+
+    // Get all popup configurations from metafield array
+    const popupsDataRaw = "[{\"id\":\"0ce28401-6f2c-4aa4-ba98-d74b02920b70\",\"shopName\":\"oman-swiss.myshopify.com\",\"discountName\":\"Exclusive Khareef Salalah Offer\",\"couponCode\":null,\"subheading\":null,\"discountType\":\"automatic\",\"valueType\":\"percentage\",\"discountValue\":25,\"expirationDate\":null,\"discountLocation\":\"include\",\"selectedCountry\":\"Oman\",\"selectedCountries\":[],\"selectedCity\":[\"Salalah\"],\"selectedState\":[],\"locationType\":\"city\",\"locationRules\":\"certainCountries\",\"stickyDiscountBar\":\"yes\",\"sidebarWidget\":\"no\",\"trigger\":\"timer\",\"scrollPercentage\":\"50\",\"time\":\"1\",\"devices\":[\"all\"],\"limitFrequency\":true,\"popupFrequency\":3,\"popupPeriod\":\"day\",\"pageRules\":\"everyPage\",\"subPageRules\":\"homepage\",\"scheduleRules\":\"showAllTime\",\"everydaystartTime\":\"00:00\",\"everydayendTime\":\"23:59\",\"endDate\":\"2026-07-15T00:00:00.000Z\",\"endTime\":\"23:59\",\"askForEmail\":true,\"startImmediately\":true,\"startDate\":\"2026-07-08T00:00:00.000Z\",\"startTime\":\"11:06\",\"mobileDevices\":\"all\",\"minPurchaseValue\":0,\"purchaseType\":\"both\",\"maxUsesType\":\"total\",\"maxTotalUses\":100,\"combineWithProductDiscounts\":false,\"combineWithOrderDiscounts\":false,\"combineWithShippingDiscounts\":false,\"heading\":\"Exclusive Khareef Salalah Offer\",\"description\":\"Get your discount now\",\"fields\":[{\"type\":\"email\",\"label\":\"Email\",\"checked\":true}],\"primaryButton\":true,\"primaryButtonText\":\"Claim Discount Now\",\"secondaryButton\":true,\"secondaryButtonText\":\"No Thanks\",\"footerText\":\"You are signing up to receive communication via email and can unsubscribe at any time.\",\"sucessStatusHeading\":\"Discount Unlocked 🎉\",\"successDescription\":\"Thanks for subscribing. Copy your discount code and apply to your next order.\",\"clickAction\":\"closeForm\",\"buttonText\":\"Shop Now\",\"stickyBarDescription\":\"Don't forget to use your discount code\",\"sidebarButtonText\":\"Get 25% OFF\",\"redirectUrl\":\"https:\/\/example.com\",\"intentMultiplier\":5,\"template\":\"minimalist\",\"logo\":null,\"alignment\":\"center\",\"cornerRadius\":\"standard\",\"imagePosition\":\"right\",\"imageWidth\":20,\"backgroundImage\":\"https:\/\/storage.googleapis.com\/convert-boost\/1783494765656-background-oman-swiss.myshopify.com-1783494765602.webp\",\"backgroundColor\":\"#E8D8BB\",\"textColor\":\"#202223\",\"headingColor\":\"#8C4435\",\"descriptionColor\":\"#000000\",\"inputColor\":\"#FFFFFF\",\"consentColor\":\"#202223\",\"errorColor\":\"#D82C0D\",\"footerTextColor\":\"#42474C\",\"primaryButtonBackground\":\"#8C4435\",\"primaryButtonTextColor\":\"#FFFFFF\",\"secondaryButtonBackground\":\"#FFFFFF\",\"secondaryButtonTextColor\":\"#6D7175\",\"stickyDiscountBarBackground\":\"#FFFFFF\",\"stickyDiscountBarText\":\"#202223\",\"sidebarWidgetBackground\":\"#F4F6F8\",\"sidebarWidgetTextColor\":\"#202223\",\"createdAt\":\"2026-07-08T07:06:14.131Z\",\"updatedAt\":\"2026-07-08T13:19:49.118Z\",\"status\":true,\"backgroundOpacity\":100,\"fontFamily\":\"system\",\"headingSize\":18,\"bodySize\":14,\"buttonSize\":12,\"footerSize\":11,\"lastUpdated\":\"2026-07-08T13:19:49.269Z\"}]";
+    let allPopups = [];
+
+    // console.log('📦 Raw popups_data from metafield', {
+    //   type: typeof popupsDataRaw,
+    //   value: popupsDataRaw,
+    //   isNull: popupsDataRaw === null,
+    //   isEmpty: popupsDataRaw === ""
+    // });
+
+    if (popupsDataRaw && popupsDataRaw !== null && popupsDataRaw !== "") {
+      try {
+        // If it's already an object/array (from | json filter), use it directly
+        if (typeof popupsDataRaw === 'object') {
+          allPopups = Array.isArray(popupsDataRaw) ? popupsDataRaw : [popupsDataRaw];
+        } else {
+          // Otherwise, parse as JSON string
+          allPopups = JSON.parse(popupsDataRaw);
+        }
+        // console.log('✅ Popup configurations loaded from popups_data metafield', {
+        //   count: allPopups.length,
+        //   ids: allPopups.map(p => p.id),
+        //   popups: allPopups
+        // });
+      } catch (error) {
+        initLogger.error('❌ Failed to parse popups_data metafield', { error: error.message });
+        return;
+      }
+    } else {
+      // console.log('⚠️ No popups_data metafield found - raw value:', popupsDataRaw);
+      initLogger.warn('⚠️ No popups_data metafield found');
+      return;
+    }
+
+    const activePopups = allPopups.filter(popup => popup.status === true);
+
+    if (activePopups.length === 0) {
+      initLogger.warn('⚠️ No active popups found in metafields', {
+        hint: 'Make sure at least one popup is created and activated in the app admin'
+      });
+      return;
+    }
+
+    // Filter to get eligible popups (check device rules, schedule rules, dismissals)
+    const eligiblePopups = [];
+
+    for (const popup of activePopups) {
+      // Check if popup was dismissed by user
+      const popupDismissalKey = `popup_dismissal_cb_${popup.id}`;
+      const popupWasDismissed = localStorage.getItem(popupDismissalKey) === 'true';
+
+      if (popupWasDismissed) {
+        // console.log(`Popup ${popup.id} was dismissed, skipping`);
+        continue;
+      }
+
+      // Check device rules
+      const originalFormData = currentFormData;
+      currentFormData = popup;
+      const deviceCheckPassed = checkDeviceRules();
+      currentFormData = originalFormData;
+
+      if (!deviceCheckPassed) {
+        // console.log(`Popup ${popup.id} failed device check, skipping`);
+        continue;
+      }
+
+      // Check schedule rules
+      currentFormData = popup;
+      const scheduleCheckPassed = checkTimeRules();
+      currentFormData = originalFormData;
+
+      if (!scheduleCheckPassed) {
+        // console.log(`Popup ${popup.id} failed schedule check, skipping`);
+        continue;
+      }
+
+      // Validate location rules with backend
+      const validation = await validatePopupWithBackend(popup);
+
+      if (!validation.shouldShow) {
+        // console.log(`Popup ${popup.id} failed location validation, skipping`);
+        continue;
+      }
+
+      // Add eligible popup with validation data
+      eligiblePopups.push({
+        popup,
+        validation
+      });
+    }
+
+    // console.log('✅ Eligible popups after all checks', {
+    //   total: allPopups.length,
+    //   eligible: eligiblePopups.length,
+    //   eligiblePopups: eligiblePopups
+    // });
+
+    if (eligiblePopups.length === 0) {
+      // console.log('No eligible popups to display');
+      return;
+    }
+
+    // Enhanced popup selection: Prioritize location-specific popups
+    // Score each popup based on location specificity and priority
+    const scoredPopups = eligiblePopups.map(({ popup, validation }, index) => {
+      let score = 0;
+      
+      // Base score from updatedAt (newer = higher priority)
+      // Assuming popups are already sorted by updatedAt DESC, give higher score to earlier ones
+      const indexScore = (eligiblePopups.length - index) * 10;
+      score += indexScore;
+      
+      // Location specificity scoring (more specific = higher priority)
+      if (popup.discountLocation === 'include') {
+        // City-level targeting is most specific
+        if (popup.locationType === 'city' && popup.selectedCity && popup.selectedCity.length > 0) {
+          score += 100;
+          // More cities = less specific, so subtract
+          score -= popup.selectedCity.length;
+        }
+        // State-level targeting
+        else if (popup.locationType === 'state' && popup.selectedState && popup.selectedState.length > 0) {
+          score += 50;
+          score -= popup.selectedState.length;
+        }
+        // Country-level targeting
+        else if (popup.locationType === 'country' && popup.selectedCountries && popup.selectedCountries.length > 0) {
+          score += 25;
+          score -= popup.selectedCountries.length;
+        }
+      } else if (popup.discountLocation === 'exclude') {
+        // Exclude rules are less specific (show to everyone except X)
+        score += 5;
+      } else {
+        // Everywhere (no location rules) - lowest priority
+        score += 1;
+      }
+      
+      // Discount value priority (higher discount = higher priority, optional)
+      if (popup.discountValue) {
+        score += popup.discountValue * 0.1; // Small boost for higher discounts
+      }
+      
+      return {
+        popup,
+        validation,
+        score
+      };
+    });
+    
+    // Sort by score (highest first)
+    scoredPopups.sort((a, b) => b.score - a.score);
+    
+    // Select the highest scoring popup (most location-specific)
+    const selectedPopupData = scoredPopups[0];
+    const popupConfig = selectedPopupData.popup;
+    const validation = selectedPopupData.validation;
+    
+    // console.log('🎯 Popup selection scores', {
+    //   selected: {
+    //     id: popupConfig.id,
+    //     score: selectedPopupData.score,
+    //     locationType: popupConfig.locationType,
+    //     discountValue: popupConfig.discountValue
+    //   },
+    //   allScores: scoredPopups.map(p => ({
+    //     id: p.popup.id,
+    //     score: p.score,
+    //     locationType: p.popup.locationType
+    //   }))
+    // });
+
+    // console.log('🎯 Selected popup to display', {
+    //   id: popupConfig.id,
+    //   discountName: popupConfig.discountName,
+    //   locationRules: popupConfig.locationRules,
+    //   discountLocation: popupConfig.discountLocation,
+    //   locationType: popupConfig.locationType,
+    //   hasCompleteData: !!(popupConfig.heading && popupConfig.description),
+    //   fullConfig: popupConfig
+    // });
+
+    // All validation already done above, we have a selected popup to show
+
+    // Track successful popup view
+    await trackPopupEvent('view', popupConfig, {
+      location: validation.userLocation
+    });
+
+    // Check if this is a silent discount - handle differently
+    if (popupConfig.discountType === 'silent') {
+      console.log('Silent discount detected - creating discount automatically');
+      
+      // Create params for silent discount
+      const params = new URLSearchParams();
+      params.append('popupConfigId', popupConfig.id);
+      params.append('shopName', window.shopConfig ? window.shopConfig.shopName : 'om.swissarabian.com');
+      
+      // Store current form data for the silent discount function
+      currentFormData = popupConfig;
+      
+      // Trigger silent discount automatically
+      triggerSilentDiscount(params);
+    } else {
+      // Display the popup for normal discounts
+      // console.log('🎯 About to display popup - all checks passed');
+      displayValidatedPopup(popupConfig);
+    }
+
+  } catch (error) {
+    initLogger.error('Error during Convert Boost initialization', {
+      error: error.message,
+      stack: error.stack
+    });
+  }
+  
+  // Note: Sticky bar is handled separately by checkAndShowStickyBar()
+}
+
+// Function to always check and show sticky bar if config exists
+function checkAndShowStickyBar() {
+  try {
+    const savedStickyConfig = localStorage.getItem('stickyBarConfig');
+    if (savedStickyConfig) {
+      console.log('Found sticky bar config, always showing discount');
+      
+      // Create sticky bar element if it doesn't exist
+      let stickyBar = document.getElementById('stickyDiscountBar');
+      if (!stickyBar) {
+        console.log('Creating sticky bar element');
+        stickyBar = document.createElement('div');
+        stickyBar.id = 'stickyDiscountBar';
+        stickyBar.style.cssText = `
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          z-index: 10000;
+          display: none;
+          background: transparent;
+        `;
+        document.body.appendChild(stickyBar);
+      }
+      
+      initStickyBar();
+    }
+  } catch (stickyError) {
+    console.error('Error initializing sticky bar', stickyError.message);
+  }
+}
+
+// Start initialization when DOM is ready
+// console.log('🎯 Checking DOM state for initialization...');
+if (document.readyState === 'loading') {
+  // console.log('🕑 DOM still loading, waiting for DOMContentLoaded event');
+  document.addEventListener('DOMContentLoaded', () => {
+    // console.log('✅ DOMContentLoaded fired, starting initialization');
+    initializeConvertBoost();
+    checkAndShowStickyBar(); // Always check for sticky bar
+  });
+} else {
+  // DOM is already ready
+  // console.log('✅ DOM already loaded, starting initialization immediately');
+  initializeConvertBoost();
+  checkAndShowStickyBar(); // Always check for sticky bar
+}
+<!-- END app snippet -->
+</script>
+</body>
+</html>

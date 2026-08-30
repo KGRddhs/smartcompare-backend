@@ -1,0 +1,66 @@
+{
+ "_note": "Fixtures cut from the REAL cached bytes of the two read-only corpora under _proof/. Nothing is hand-authored: every wall phrase, <title>, <h1> and <script> block below is verbatim from the page named. Where a cut page had to clear _EMPTY_SHELL_MAX_BYTES (30,000) so that classify_capture reaches the wall-signature rung at all, neutral <p> filler was appended and the pad is recorded per file.",
+ "corpus": "_proof/sweep2_curl_cffi.jsonl + _proof/html/ (Gulf); _proof/global/corpus.json + _proof/global/html/ (global)",
+ "files": {
+  "om_swissarabian_com_js_comment_access_denied.html": {
+   "url": "https://om.swissarabian.com/products/musk-07-edp-body-lotion-gift-set",
+   "host": "om.swissarabian.com",
+   "http_status": 200,
+   "cached_bytes": "ace8a7d60b296c84271c13443cec9cea3b2a3e09.html",
+   "cached_chars": 611667,
+   "kept": "the page's own <title>, its first <h1>, and the whole inline <script> block enclosing the commented-out console.log('Service access denied based on billing status') at offset 102029 of the cached bytes",
+   "pad": "NONE - the kept markup is already 79258 chars, clear of _EMPTY_SHELL_MAX_BYTES=30000, so classify_capture reaches the wall-signature rung without filler",
+   "corpus_truth": "gulf row: verdict CAPTURED, structurally_blocked false"
+  },
+  "www_walmart_com_csp_allowlist_perimeterx_mon_paris.html": {
+   "url": "https://www.walmart.com/ip/Ysl-Mon-Paris-3-Oz-Edp-Sp-For-Women/137848167",
+   "host": "www.walmart.com",
+   "http_status": 200,
+   "cached_bytes": "8bef5d11e622dd89553889fe42efa3c57f3dfcdc.html",
+   "cached_chars": 476119,
+   "kept": "the page's own <title>, its first <h1>, and the whole tag carrying the Content-Security-Policy host allowlist whose *.perimeterx.net entry is the page's only 'perimeterx' occurrence (offset 4628)",
+   "pad": "19425 chars of neutral <p> filler appended so the cut clears _EMPTY_SHELL_MAX_BYTES=30000 and classify_capture reaches the wall-signature rung (final 30042 chars)",
+   "corpus_truth": "blocked false, usable_pdp true, has_price true, jsonld_price \"Now $85.50\""
+  },
+  "www_macys_com_404_js_comment_access_denied.html": {
+   "url": "https://www.macys.com/shop/product/dior-sauvage-eau-de-toilette-spray?ID=1147845",
+   "host": "www.macys.com",
+   "http_status": 404,
+   "cached_bytes": "46e59538e7f82332d000c7b913a9d4189484d056.html",
+   "cached_chars": 16098,
+   "kept": "the page's own <title> (\"Not Found - Macy's\"), its first <h1>, and the whole inline <script> block enclosing the JavaScript comment '...so we got an access denied.' at offset 8722",
+   "pad": "NONE - deliberately left under _EMPTY_SHELL_MAX_BYTES so the flag-ON verdict is empty_shell, which is what a 16KB 404 is",
+   "corpus_truth": "blocked false, block_kind [\"akamai_bot_manager|bot_generic\"]"
+  },
+  "www_dillards_com_title_access_denied_wall.html": {
+   "url": "https://www.dillards.com/c/beauty/fragrance",
+   "host": "www.dillards.com",
+   "http_status": 200,
+   "cached_bytes": "a452e0e9230b2793825073b4619c666f87b00a0d.html",
+   "cached_chars": 378,
+   "kept": "the ENTIRE cached response, byte for byte \u2014 it is an interstitial, so there is nothing to cut",
+   "pad": "NONE",
+   "corpus_truth": "blocked true"
+  },
+  "www_boots_com_incapsula_interstitial_wall.html": {
+   "url": "https://www.boots.com/boots-fragrance",
+   "host": "www.boots.com",
+   "http_status": 200,
+   "cached_bytes": "a841f717e78218207902aa9234c651e50801ed05.html",
+   "cached_chars": 6183,
+   "kept": "the ENTIRE cached response, byte for byte \u2014 it is an interstitial, so there is nothing to cut",
+   "pad": "NONE",
+   "corpus_truth": "blocked true"
+  },
+  "www_sallybeauty_com_px_captcha_wall.html": {
+   "url": "https://www.sallybeauty.com/fragrance/",
+   "host": "www.sallybeauty.com",
+   "http_status": 200,
+   "cached_bytes": "3b531ed7c05546bb2fee2fe37bcf15506c8f3f46.html",
+   "cached_chars": 6608,
+   "kept": "the ENTIRE cached response, byte for byte \u2014 it is an interstitial, so there is nothing to cut",
+   "pad": "NONE",
+   "corpus_truth": "blocked true"
+  }
+ }
+}
