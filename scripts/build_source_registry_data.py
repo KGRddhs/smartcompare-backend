@@ -4,8 +4,11 @@ file (data/bh_gcc_sources.json) that app/services/source_router._load_catalog_ro
 reads.
 
 BH/GCC source-build (2026-06-25). The 4 discovery catalogs
-(data/bh_gcc_source_candidates{,_round2,_round3,_round4}.json) are the IMMUTABLE
-provenance — this script never writes them back. It maps each catalog row to the
+(data/bh_gcc_source_candidates{,_round2,_round3,_round4}.json) are the
+provenance — this script never writes them back, and a correction to a row
+belongs THERE, not in the generated file (a generated-file edit is erased by the
+next rebuild; issue #94). A hand-applied correction must carry a dated
+`measured` probe record, which this script propagates onto the generated row. It maps each catalog row to the
 FINAL Source field values (tier/weight/categories/mechanism/flags/currency/
 sample_url/priority_rank/status), dedups (against the registry literals AND across
 rounds), and writes the consolidated list.
@@ -217,6 +220,66 @@ def _clean_sample_url(raw) -> str:
     return s.split()[0]
 
 
+def _measured_note(row: dict) -> str:
+    """The catalog row's dated PROBE RECORD, carried onto the generated row.
+
+    Issue #94 item 5 — a corrected row has to say WHEN it was measured, or the
+    next reader cannot tell a fresh verdict from a two-year-old guess. This is a
+    deliberately separate key from `note`: `note` is the DEMOTION rationale the
+    liveness gate's merge preserves (the Wave D CV3 non-retail demotions), while
+    `measured` is scrape evidence (status / bytes / latency / extracted price).
+    Only rows that were actually re-probed carry one, so a regeneration's diff
+    stays confined to the rows a human measured.
+    """
+    return str(row.get("measured") or "").strip()
+
+
+def _sort_rows(rows: List[dict]) -> List[dict]:
+    return sorted(rows, key=lambda r: (r["tier"], r["priority_rank"], r["domain"]))
+
+
+def _merge_prior_verdicts(rows: List[dict], prior: Dict[str, dict]) -> List[dict]:
+    """Carry the prior generated file's LIVENESS VERDICT (+ its rationale) onto
+    the freshly-consolidated rows, in place, and return the merged list.
+
+    "live"/"dead" are verdicts the gate (scripts/verify_bh_gcc_sources.py) or a
+    demotion wrote ABOUT the source, and a re-consolidation must never clobber
+    them. "render-only" is different: it is not a verdict about the source, it
+    is the status the consolidation itself derives from `is_render_only`. So it
+    is preserved ONLY while the row is still render-only — carrying it onto a
+    row whose catalog mechanism has since been corrected to plain curl would
+    silently undo the correction on the very next rebuild (issue #94: the four
+    rows the bake-off measured as wrong-labelled).
+
+    DEAD ROWS ARE TOMBSTONES AND SURVIVE EVEN WHEN THE CONSOLIDATION NO LONGER
+    EMITS THEM. Four of the five demotions this file carries were followed by a
+    generator SKIP (`_NON_RETAIL_DOMAINS`) and a fifth domain was promoted to a
+    registry literal, so a plain re-consolidation drops all five — silently
+    deleting the "Do not re-promote" rationale that is the whole point of the
+    demotion. The row is `status="dead"`, which the loader never admits, so
+    keeping it costs nothing and keeps the record readable.
+    """
+    for r in rows:
+        p = prior.get(r["domain"])
+        if not p:
+            continue
+        status = p.get("status")
+        if status in ("live", "dead") or (
+            status == "render-only" and r.get("is_render_only")
+        ):
+            r["status"] = status
+            if p.get("note"):
+                r["note"] = p["note"]
+    emitted = {r["domain"] for r in rows}
+    tombstones = [
+        p for domain, p in prior.items()
+        if domain not in emitted and p.get("status") == "dead"
+    ]
+    if tombstones:
+        rows[:] = _sort_rows(rows + tombstones)
+    return rows
+
+
 def _literal_domains() -> set:
     """Apex domains of the registry literals (so the consolidation excludes
     overlap up front — the loader dedups again as a backstop)."""
@@ -290,7 +353,10 @@ def consolidate() -> List[dict]:
                 "priority_rank": prank,
                 "status": status,
             }
-    return sorted(by_domain.values(), key=lambda r: (r["tier"], r["priority_rank"], r["domain"]))
+            measured = _measured_note(row)
+            if measured:
+                by_domain[domain]["measured"] = measured
+    return _sort_rows(list(by_domain.values()))
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -299,18 +365,15 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     # IDEMPOTENT MERGE — preserve any liveness status already written, plus
     # the demotion rationale (Wave D CV3: a "note" documents WHY a row is
-    # dead — a regeneration must never silently strip it).
+    # dead — a regeneration must never silently strip it). See
+    # `_merge_prior_verdicts` for why a stale "render-only" is NOT preserved
+    # onto a row that is no longer render-only.
     if _OUT.exists():
         try:
             prior = {r["domain"]: r for r in json.loads(_OUT.read_text(encoding="utf-8"))}
         except Exception:  # noqa: BLE001
             prior = {}
-        for r in rows:
-            p = prior.get(r["domain"])
-            if p and p.get("status") in ("live", "render-only", "dead"):
-                r["status"] = p["status"]
-                if p.get("note"):
-                    r["note"] = p["note"]
+        _merge_prior_verdicts(rows, prior)
 
     if "--stats" in argv:
         import collections

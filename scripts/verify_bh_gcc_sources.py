@@ -30,6 +30,13 @@ Usage:
   python -m scripts.verify_bh_gcc_sources                # probe + promote + write
   python -m scripts.verify_bh_gcc_sources --limit 40     # probe first N (smoke)
   python -m scripts.verify_bh_gcc_sources --tier bahrain # only bahrain-tier rows
+  python -m scripts.verify_bh_gcc_sources --domain a.com,b.com   # only these rows
+
+`--domain` exists so a CORRECTED row can be re-probed and re-verdicted without
+re-writing every other row's status in the same pass (issue #94: a whole-file
+re-probe makes the correction's diff unreviewable, and sources rot at different
+rates). Comma-separated or repeated; matched against the row's domain exactly,
+www-stripped.
 
 Exit: 0 = ran (some promoted), 2 = nothing promoted, 3 = controls failed (env
 untrusted — no writes).
@@ -137,13 +144,21 @@ async def _check_controls() -> bool:
     return True
 
 
-async def _run(rows: List[dict], limit: Optional[int], tier: Optional[str]) -> Dict[str, int]:
+def _norm_domain(d: str) -> str:
+    return str(d or "").strip().lower().replace("www.", "")
+
+
+async def _run(
+    rows: List[dict], limit: Optional[int], tier: Optional[str],
+    domains: Optional[set] = None,
+) -> Dict[str, int]:
     sem = asyncio.Semaphore(_CONCURRENCY)
     targets = [
         r for r in rows
         if not r.get("is_render_only")
         and r.get("status") != "render-only"
         and (tier is None or r.get("tier") == tier)
+        and (domains is None or _norm_domain(r.get("domain")) in domains)
     ]
     if limit:
         targets = targets[:limit]
@@ -174,7 +189,17 @@ def main(argv: Optional[List[str]] = None) -> int:
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--limit", type=int, default=None)
     ap.add_argument("--tier", choices=["bahrain", "gcc"], default=None)
+    ap.add_argument(
+        "--domain", action="append", default=None,
+        help="probe ONLY these domains (comma-separated or repeated)",
+    )
     args = ap.parse_args(argv)
+    domains = None
+    if args.domain:
+        domains = {
+            _norm_domain(d)
+            for chunk in args.domain for d in chunk.split(",") if d.strip()
+        }
 
     if not _DATA.exists():
         print(f"no consolidated data file at {_DATA} — run build_source_registry_data first")
@@ -185,8 +210,9 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 3
 
     print(f"=== probing {len(rows)} catalog rows (tier={args.tier or 'all'}, "
-          f"limit={args.limit or 'none'}) ===")
-    tally = asyncio.run(_run(rows, args.limit, args.tier))
+          f"limit={args.limit or 'none'}, "
+          f"domain={','.join(sorted(domains)) if domains else 'all'}) ===")
+    tally = asyncio.run(_run(rows, args.limit, args.tier, domains))
     print(f"=== live={tally['live']} dead={tally['dead']} "
           f"inconclusive={tally['inconclusive']} ===")
 

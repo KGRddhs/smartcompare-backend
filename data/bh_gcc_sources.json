@@ -2371,16 +2371,17 @@
   "categories": [
    "fashion"
   ],
-  "mechanism": "render",
+  "mechanism": "",
   "is_shopify": false,
   "is_algolia": false,
-  "is_render_only": true,
+  "is_render_only": false,
   "currency": "BHD",
   "country": "BH",
-  "genuine_method": "",
-  "sample_url": "https://bfab.com/bh_en/girls-gingham-dress",
+  "genuine_method": "page_scrape_jsonld",
+  "sample_url": "https://bfab.com/bh_en/navy-collegiate-cap",
   "priority_rank": 63,
-  "status": "render-only"
+  "status": "live",
+  "measured": "2026-08-30 free curl_cffi impersonate=chrome. OLD sample_pdp_url /bh_en/girls-gingham-dress 308-redirects to the /bh_en/kids CATEGORY listing (0 ld+json) - unscoreable by any fetcher (#94). NEW sample: HTTP 200, 424,414 B, 0.21s, 1 ld+json; price_service.fetch_page_price -> 4.900 BHD page_scrape in_stock, 0.17s, exact gate at shipped default. NOT render-only."
  },
  {
   "domain": "matalanme.com",
@@ -2389,16 +2390,17 @@
   "categories": [
    "fashion"
   ],
-  "mechanism": "render",
+  "mechanism": "",
   "is_shopify": false,
   "is_algolia": false,
-  "is_render_only": true,
+  "is_render_only": false,
   "currency": "BHD",
   "country": "BH",
-  "genuine_method": "",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.matalanme.com/bh_en/sarong",
   "priority_rank": 64,
-  "status": "render-only"
+  "status": "live",
+  "measured": "2026-08-30 free curl_cffi impersonate=chrome: HTTP 200, 586,174 B, 0.16s, 1 ld+json; price_service.fetch_page_price -> 1.400 BHD page_scrape in_stock, 0.31s, exact gate at shipped default. Reproduces the 2026-08-25 bake-off. NOT render-only."
  },
  {
   "domain": "mumzworld.com",
@@ -6716,16 +6718,17 @@
   "categories": [
    "electronics"
   ],
-  "mechanism": "render",
+  "mechanism": "",
   "is_shopify": false,
   "is_algolia": false,
-  "is_render_only": true,
+  "is_render_only": false,
   "currency": "KWD",
   "country": "KW",
-  "genuine_method": "",
+  "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.xcite.com/apple-iphone-16-6-1-inch-128gb-black/p",
   "priority_rank": 204,
-  "status": "render-only"
+  "status": "live",
+  "measured": "2026-08-30 free curl_cffi impersonate=chrome: HTTP 200, 251,845 B, 0.78s; static HTML carries <meta itemProp=\"price\" content=\"229.9\"/><meta itemProp=\"priceCurrency\" content=\"KWD\"/> AND \"price\":{\"currency\":\"KWD\",\"value\":229.9,\"formattedPrice\":\"229.900 KD\"}. NOT render-only. KNOWN SEPARATE DEFECT (bake-off 'two smaller defects'): fetch_page_price still returns {_got_html:True} here because _page_identity_ok over-rejects under the electronics category - an extractor bug, NOT a fetch bug, so a paid render would not help either (Firecrawl scored 0/9)."
  },
  {
   "domain": "eros.ae",
@@ -6907,15 +6910,16 @@
    "skincare",
    "fragrances"
   ],
-  "mechanism": "render",
+  "mechanism": "",
   "is_shopify": false,
   "is_algolia": false,
-  "is_render_only": true,
+  "is_render_only": false,
   "currency": "AED",
   "country": "UAE",
-  "genuine_method": "",
-  "sample_url": "https://letoile.ae/p/5-1-30-sxt000001",
+  "genuine_method": "page_scrape_jsonld",
+  "sample_url": "https://letoile.ae/products/lancome_edp_la_vie_est_belle_spray_100_ml_klm999779",
   "priority_rank": 214,
-  "status": "render-only"
+  "status": "live",
+  "measured": "2026-08-30 free curl_cffi impersonate=chrome. OLD sample_pdp_url /p/5-1-30-sxt000001 is a real 404 (Shopify soft-404 template; Firecrawl reported HTTP 200 on it and billed a credit - #92). NEW sample: HTTP 200, 317,348 B, 0.84s, 5 ld+json; price_service.fetch_page_price -> 670.0 AED page_scrape in_stock size=100ml, 1.0s, exact gate at shipped default. 3/3 sampled PDPs priced (670/290/195 AED). NOT render-only. Left as a plain curl row rather than is_shopify: the builder demotes a non-bahrain-tier Shopify row to plain discovery anyway, and re-platforming a row is out of scope for #94."
  }
 ]
