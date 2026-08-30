@@ -1,0 +1,49 @@
+{
+  "_what": "Minimal cuts of REAL cached PDPs for tests/test_extractor_fixes_2608.py (UNIT B2, ENABLE_EXTRACTOR_FIXES_2608). Three zero-fetch extractor fixes, each pinned to the B4 residual-recovery page whose price a different parser gap was hiding. Every JSON-LD / OG price/currency fragment below is copied VERBATIM out of the cached bytes; only the <head> boilerplate, the <h1>/visible-price text and the choice of which script/meta block to keep are authored.",
+  "_corpus": "_proof/global/html/ + _proof/global/_corpus_cachemap.json (corpus.json rows in _proof/global/eu_south.jsonl for parfumdo/aromas, middle_east_non_gulf.jsonl for beirutdutyfree). The cached file name is sha1(url).hex + '.html'.",
+  "_measurement": "B4 residual-recovery.json/residual_triage.json: parfumdo (prestashop) ld_blocks_parse_ok=0 — json.loads FAILS; aromas (sfcc) parses but the AggregateOffer keys are lowercase; beirutdutyfree ld_blocks_found=0, price lives only in an og:product:price:amount alias carrying a $ symbol.",
+  "files": {
+    "parfumdo_coco_mademoiselle_doubledquote_eur.html": {
+      "url": "https://www.parfumdo.com/5561-coco-mademoiselle-eau-de-parfum-vaporisateur.html",
+      "host": "www.parfumdo.com",
+      "corpus": "global",
+      "cached_bytes": "2d364ce4d72fb9f1ff1e59063e081469dcfe3ed8.html",
+      "country": "FR",
+      "platform": "prestashop",
+      "fix": "(a) DOUBLED-QUOTE JSON-LD",
+      "measured": "AggregateOffer members 67.30 / 96.30 / 132.90 / 209.10 EUR, hidden because \"unitPricingMeasure\":\"\"35 ml\"\" breaks json.loads (ld_blocks_parse_ok=0). Pinned recovery: the no-query extract_jsonld_price returns the cheapest member 67.30 EUR.",
+      "kept": "the page <title>/og:title verbatim plus the ONE application/ld+json block VERBATIM, doubled quotes intact (8 doubled-quote value pairs), so the repair is tested against the real bytes."
+    },
+    "aromas_black_opium_lowercase_aggregateoffer_eur.html": {
+      "url": "https://www.aromas.es/yves-saint-laurent-black-opium-pink-glaze-eau-de-parfum/157485M.html",
+      "host": "www.aromas.es",
+      "corpus": "global",
+      "cached_bytes": "03f7a8564269c3072d3d92469117ce9b1532f871.html",
+      "country": "ES",
+      "platform": "sfcc",
+      "fix": "(b) LOWERCASE offer keys",
+      "measured": "AggregateOffer \"lowprice\": 43.95, \"highprice\": 79.95 (schema.org is lowPrice/highPrice), so the offer is missed. Pinned recovery: no-query extract_jsonld_price returns 43.95 EUR.",
+      "kept": "the page <title>/og:title verbatim plus the Product application/ld+json block VERBATIM, the lowercase lowprice/highprice keys intact."
+    },
+    "beirutdutyfree_armani_code_ogalias_dollar_usd.html": {
+      "url": "https://www.beirutdutyfree.com/product/giorgio-armani-code-parfum-125ml-4108",
+      "host": "www.beirutdutyfree.com",
+      "corpus": "global",
+      "cached_bytes": "693e51961e7d78494d03903a95cdb7a0cfd4e1f4.html",
+      "country": "LB",
+      "platform": "unknown",
+      "fix": "(c) og:product:price:amount ALIAS + currency SYMBOL",
+      "measured": "og:product:price:amount content=\"$168\" + og:product:price:currency USD (no JSON-LD, no og:price:amount, no product:price:amount). Pinned recovery: extract_price_from_html reads the alias and the shared money parser strips the $ -> 168.0 USD. (Sibling page giorgio-armani-code-women-edp-75ml-2225 -> $133, verified in the corpus scope proof, not cut as a fixture.)",
+      "kept": "the page <title>/og:title/og:url verbatim, the og:product:price:amount + og:product:price:currency metas verbatim, and a visible-text '$168' so the ENABLE_JSONLD_FIRST cross-check (default ON) confirms the number."
+    },
+    "no_structured_price_control.html": {
+      "url": "(authored control — no cached counterpart)",
+      "host": "(none)",
+      "corpus": "authored",
+      "country": "(n/a)",
+      "fix": "control",
+      "measured": "n/a",
+      "kept": "AUTHORED control: a title/og:title-only page with NO JSON-LD, NO OG price (not even the alias) and NO microdata. Flag ON is a no-op here (still None), pinning that the three fixes add recovery, never a fabricated price."
+    }
+  }
+}

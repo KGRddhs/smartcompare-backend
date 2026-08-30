@@ -3953,6 +3953,44 @@ def rsc_flight_price_enabled() -> bool:
     )
 
 
+def extractor_fixes_2608_enabled() -> bool:
+    """True iff the three UNIT B2 zero-fetch extractor fixes are active
+    (default OFF).
+
+    B4 residual-recovery measurement, three cached PDPs each losing a real price
+    to a different parser gap in the structured-data cascade:
+
+    (a) www.parfumdo.com (PrestaShop) emits a DOUBLED QUOTE in a JSON-LD value —
+        ``"unitPricingMeasure":""35 ml""`` — so ``json.loads`` raises and the
+        whole block is skipped, hiding the AggregateOffer members
+        67.30 / 96.30 / 132.90 / 209.10 EUR. ``_repair_doubled_quote_jsonld_parse``
+        is tried ONLY after the normal parse fails and collapses only the
+        ``:""X""`` value shape, so it can never corrupt a well-formed empty-string
+        field (``"k":""``).
+    (b) www.aromas.es writes the AggregateOffer keys LOWERCASE (``"lowprice"`` /
+        ``"highprice"``) where schema.org is ``lowPrice`` / ``highPrice``, so the
+        offer's price (43.95 EUR) is missed. The low/high lookup is made
+        case-insensitive.
+    (c) www.beirutdutyfree.com ships ``og:product:price:amount`` (the ``og:``
+        -prefixed alias the OG branch does not read) with a currency SYMBOL inside
+        the number (``content="$168"`` + ``og:product:price:currency USD``).
+        Reading the alias and letting the SHARED canonical money parser strip the
+        leading ``$`` recovers 168 USD.
+
+    DEFAULT OFF because these are new recovery paths on measured no-price
+    residuals, not a repair of a live 0%-success production path — so they ship
+    dark and are flipped on Railway during canary (contrast ENABLE_FIRECRAWL_RAW_HTML,
+    which repaired a live 0/9 path and justified default-ON). Read PER CALL from
+    ``os.getenv`` (copying ``exact_gate_enabled``) so the flag can be flipped
+    without a restart. With the flag OFF none of the three code paths run — the
+    doubled-quote block is skipped, the lowercase keys are not consulted, and the
+    alias is never looked up — so every page stays the exact no-price residual it
+    is on main and the rollback is byte-identical."""
+    return os.getenv("ENABLE_EXTRACTOR_FIXES_2608", "").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
 def og_branch_fixes_enabled() -> bool:
     """True iff the two OpenGraph-branch correctness fixes are active (default ON).
 
@@ -10075,6 +10113,44 @@ def _adjudicate_jsonld_multiplicity(
     return candidates if len(amounts_of(candidates)) == 1 else None
 
 
+# UNIT B2 (a) — the DOUBLED-QUOTE value shape. A PrestaShop template
+# (www.parfumdo.com) writes a JSON-LD value with its quotes DOUBLED —
+# ``"unitPricingMeasure":""35 ml""`` — which is invalid JSON. This pattern
+# matches ONLY the ``: ""X""`` VALUE position (a colon, optional space, then a
+# doubled-quote-wrapped run that itself contains no ``"``); it deliberately does
+# NOT match a well-formed empty string ``:""`` (two quotes, no inner run), so the
+# repair below cannot turn ``"k":""`` into ``"k":"`` and break otherwise-valid
+# JSON. The repair is also only ever attempted AFTER a normal parse has failed.
+_DOUBLED_QUOTE_JSONLD_VALUE_RE = re.compile(r':\s*""([^"]*)""')
+
+
+def _repair_doubled_quote_jsonld_parse(raw: Any) -> Optional[Any]:
+    """UNIT B2 (a) — a tolerant re-parse for PrestaShop's DOUBLED-QUOTE JSON-LD.
+
+    Returns the parsed object when a doubled-quote repair turns an unparseable
+    block into valid JSON, else None (nothing to repair, or the repaired text is
+    still not valid JSON — in which case the caller skips the block exactly as it
+    already does).
+
+    SCOPED so it cannot corrupt well-formed JSON-LD: it touches only the
+    ``:""X""`` value shape (see ``_DOUBLED_QUOTE_JSONLD_VALUE_RE``), a legitimate
+    empty-string field is left alone, and when the regex changes nothing the
+    function returns None without ever calling ``json.loads`` a second time. It is
+    called ONLY from the ``json.loads`` failure arm, so a page whose JSON-LD
+    already parses never reaches it."""
+    if not isinstance(raw, str):
+        return None
+    repaired = _DOUBLED_QUOTE_JSONLD_VALUE_RE.sub(
+        lambda m: ':"' + m.group(1) + '"', raw,
+    )
+    if repaired == raw:
+        return None
+    try:
+        return json.loads(repaired)
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return None
+
+
 def extract_jsonld_price(
     html: str, brand: str, expected_currency: str, query_name: str = "",
     category: Optional[str] = None, pending_out: Optional[List[Any]] = None,
@@ -10120,7 +10196,20 @@ def extract_jsonld_price(
         try:
             data = json.loads(script.string or "")
         except (json.JSONDecodeError, TypeError):
-            continue
+            # UNIT B2 (a) — RETRY a doubled-quote block after the normal parse
+            # fails (ENABLE_EXTRACTOR_FIXES_2608, default OFF). www.parfumdo.com
+            # emits ``"unitPricingMeasure":""35 ml""`` which raises here; the
+            # scoped repair collapses only the ``:""X""`` value shape and re-parses,
+            # recovering the AggregateOffer members. Flag OFF (or nothing to
+            # repair / still-invalid): fall through to the legacy ``continue``, so
+            # the block is skipped exactly as on main.
+            _repaired = (
+                _repair_doubled_quote_jsonld_parse(script.string)
+                if extractor_fixes_2608_enabled() else None
+            )
+            if _repaired is None:
+                continue
+            data = _repaired
         except ValueError:
             # BLOCKER 3 — json.loads does NOT only raise JSONDecodeError. On
             # Python 3.11+ a bare number LITERAL with more than
@@ -10330,6 +10419,21 @@ def extract_jsonld_price(
                     explicit = _ladder_price if _ladder else offer.get("price")
                     low = offer.get("lowPrice")
                     high = offer.get("highPrice")
+                    # UNIT B2 (b) — www.aromas.es writes the AggregateOffer keys
+                    # LOWERCASE ("lowprice"/"highprice") where schema.org is
+                    # lowPrice/highPrice, so the offer was missed entirely. Make
+                    # the low/high lookup CASE-INSENSITIVE (only these two keys).
+                    # Flag OFF (ENABLE_EXTRACTOR_FIXES_2608, default OFF): the
+                    # exact camelCase reads above, byte-identical to main.
+                    if extractor_fixes_2608_enabled() and (low is None or high is None):
+                        _ci_offer = {
+                            str(k).lower(): v for k, v in offer.items()
+                            if isinstance(k, str)
+                        }
+                        if low is None:
+                            low = _ci_offer.get("lowprice")
+                        if high is None:
+                            high = _ci_offer.get("highprice")
                     # B4 (external review) — on the EXACTNESS path (query known), an
                     # AggregateOffer with NO explicit per-SKU `price` (only low/high) is
                     # the cheapest variant/seller, NOT proof of the EXACT SKU's price ->
@@ -11593,6 +11697,19 @@ def _extract_og_price(
     if not og_price:
         og_price = soup.find('meta', property='product:price:amount')
         og_currency = soup.find('meta', property='product:price:currency')
+
+    # UNIT B2 (c) — the ``og:``-PREFIXED alias. www.beirutdutyfree.com ships
+    # ``og:product:price:amount`` (content "$168") + ``og:product:price:currency``
+    # (USD); neither the ``og:price:amount`` nor the ``product:price:amount`` tag
+    # above exists, so the OG branch found nothing. Read the alias here — the
+    # leading ``$`` is stripped by the SAME canonical money parser the consumer
+    # below already uses (``_parse_og_price_number`` -> ``parse_money``), so no
+    # second parser is introduced. Flag OFF (ENABLE_EXTRACTOR_FIXES_2608, default
+    # OFF): the alias is never looked up, so the page stays a no-price residual
+    # exactly as on main.
+    if not og_price and extractor_fixes_2608_enabled():
+        og_price = soup.find('meta', property='og:product:price:amount')
+        og_currency = soup.find('meta', property='og:product:price:currency')
 
     if og_price and og_price.get('content'):
         try:
