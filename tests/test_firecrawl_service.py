@@ -1,4 +1,17 @@
-"""Tests for Firecrawl service."""
+"""Tests for Firecrawl service.
+
+#92 adjudication (2026-08-30): every response fixture in this file used to be
+shaped ``{"data": {"html": ...}}`` and the payload test pinned
+``formats == ["html"]``. Those pins encoded the measured DEFECT — ``html`` is
+Firecrawl's CLEANED markup (0 script tags, 0 ld+json), so the integration could
+never price a page while billing a credit per call. They are re-pointed at the
+``rawHtml`` format/key, which is the shipped default.
+
+The legacy request/response shape is still covered, deliberately and
+explicitly, under the documented rollback state
+(``ENABLE_FIRECRAWL_RAW_HTML=false``) in
+``tests/test_firecrawl_raw_html.py::TestRollbackStateIsLegacyBehaviour``.
+"""
 import pytest
 from unittest.mock import patch, AsyncMock, MagicMock
 import httpx
@@ -44,7 +57,7 @@ class TestScrapePage:
     async def test_returns_html_on_success(self, mock_env_key):
         mock_resp = MagicMock()
         mock_resp.status_code = 200
-        mock_resp.json.return_value = {"success": True, "data": {"html": SAMPLE_HTML}}
+        mock_resp.json.return_value = {"success": True, "data": {"rawHtml": SAMPLE_HTML}}
 
         with patch("app.services.firecrawl_service.httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
@@ -58,7 +71,7 @@ class TestScrapePage:
     async def test_sends_correct_payload(self, mock_env_key):
         mock_resp = MagicMock()
         mock_resp.status_code = 200
-        mock_resp.json.return_value = {"success": True, "data": {"html": SAMPLE_HTML}}
+        mock_resp.json.return_value = {"success": True, "data": {"rawHtml": SAMPLE_HTML}}
 
         with patch("app.services.firecrawl_service.httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
@@ -69,7 +82,7 @@ class TestScrapePage:
             call_kwargs = mock_client.post.call_args
             payload = call_kwargs.kwargs.get("json") or call_kwargs[1].get("json")
             assert payload["url"] == "https://example.com/product"
-            assert payload["formats"] == ["html"]
+            assert payload["formats"] == ["rawHtml"]
             assert "waitFor" in payload
 
     @pytest.mark.asyncio
@@ -106,7 +119,7 @@ class TestScrapePage:
     async def test_returns_none_on_short_html(self, mock_env_key):
         mock_resp = MagicMock()
         mock_resp.status_code = 200
-        mock_resp.json.return_value = {"success": True, "data": {"html": "<html></html>"}}
+        mock_resp.json.return_value = {"success": True, "data": {"rawHtml": "<html></html>"}}
 
         with patch("app.services.firecrawl_service.httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
@@ -145,7 +158,7 @@ class TestScrapePageWithStatus:
     async def test_returns_html_and_200(self, mock_env_key):
         mock_resp = MagicMock()
         mock_resp.status_code = 200
-        mock_resp.json.return_value = {"success": True, "data": {"html": SAMPLE_HTML}}
+        mock_resp.json.return_value = {"success": True, "data": {"rawHtml": SAMPLE_HTML}}
 
         with patch("app.services.firecrawl_service.httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
@@ -160,7 +173,7 @@ class TestScrapePageWithStatus:
     async def test_returns_none_and_200_on_no_content(self, mock_env_key):
         mock_resp = MagicMock()
         mock_resp.status_code = 200
-        mock_resp.json.return_value = {"success": True, "data": {"html": "<html></html>"}}
+        mock_resp.json.return_value = {"success": True, "data": {"rawHtml": "<html></html>"}}
 
         with patch("app.services.firecrawl_service.httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
@@ -250,7 +263,7 @@ class TestFirecrawlEdgeCases:
     async def test_scrape_page_empty_html_string(self, mock_env_key):
         mock_resp = MagicMock()
         mock_resp.status_code = 200
-        mock_resp.json.return_value = {"success": True, "data": {"html": ""}}
+        mock_resp.json.return_value = {"success": True, "data": {"rawHtml": ""}}
 
         with patch("app.services.firecrawl_service.httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
@@ -266,7 +279,7 @@ class TestFirecrawlEdgeCases:
         html_500 = "x" * 500
         mock_resp = MagicMock()
         mock_resp.status_code = 200
-        mock_resp.json.return_value = {"success": True, "data": {"html": html_500}}
+        mock_resp.json.return_value = {"success": True, "data": {"rawHtml": html_500}}
 
         with patch("app.services.firecrawl_service.httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
@@ -281,7 +294,7 @@ class TestFirecrawlEdgeCases:
         html_501 = "x" * 501
         mock_resp = MagicMock()
         mock_resp.status_code = 200
-        mock_resp.json.return_value = {"success": True, "data": {"html": html_501}}
+        mock_resp.json.return_value = {"success": True, "data": {"rawHtml": html_501}}
 
         with patch("app.services.firecrawl_service.httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
