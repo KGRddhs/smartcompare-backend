@@ -9086,18 +9086,60 @@ def is_marketplace_reseller(source: str) -> bool:
     return False
 
 
+def _descriptor_search_url(source: str, product_name: str) -> Optional[str]:
+    """M7 D3 — the per-host SEARCH DESCRIPTOR, consulted BEFORE the hard-coded
+    ``RETAILER_SEARCH_URLS`` table. ``ENABLE_SEARCH_DESCRIPTOR``, default OFF.
+
+    ``RETAILER_SEARCH_URLS`` is exactly the artefact B8 measured as unreliable:
+    a search path guessed from a retailer NAME or a platform, which is wrong
+    about 40% of the time — most often because the store's robots.txt forbids
+    the path we guessed (two Shopify robots defaults ship in the wild, one
+    Disallowing ``/search``). A descriptor is the same artefact RESOLVED, per
+    host, once, off-clock, with robots checked at resolution time.
+
+    Only a HOST-shaped source can carry one (the descriptor is keyed on the
+    registry apex, and "Best Buy" is not a host), so a retailer-name source
+    falls straight through to the legacy table. With the flag OFF this returns
+    ``None`` before reading anything, so ``build_retailer_url`` is byte-identical
+    to its pre-D3 behaviour.
+    """
+    try:
+        from app.services import search_descriptor_service as _sds
+
+        if not _sds.search_descriptor_enabled():
+            return None
+        host = str(source or "").strip().lower()
+        if "." not in host or " " in host:
+            return None
+        return _sds.format_search_url(_sds.descriptor_for_host(host), product_name)
+    except Exception:  # noqa: BLE001 — never break URL building over a lookup
+        return None
+
+
 def has_retailer_url(source: str) -> bool:
-    """Check if a source name matches any key in RETAILER_SEARCH_URLS."""
+    """Check if a source name matches any key in RETAILER_SEARCH_URLS.
+
+    M7 D3: a host carrying a resolved search descriptor also has a URL, so the
+    two stay consistent (`rating_service` gates `build_retailer_url` on this).
+    Flag OFF -> the descriptor branch is inert and this is the legacy answer.
+    """
     if not source:
         return False
     source_lower = source.lower().strip()
-    return any(key in source_lower for key in RETAILER_SEARCH_URLS)
+    if any(key in source_lower for key in RETAILER_SEARCH_URLS):
+        return True
+    return _descriptor_search_url(source, "probe") is not None
 
 
 def build_retailer_url(source: str, product_name: str) -> Optional[str]:
     """Build a retailer search URL from the source name and product name."""
     if not source:
         return None
+    # M7 D3 — a resolved per-host descriptor beats a guessed template. Inert
+    # (returns None immediately) while ENABLE_SEARCH_DESCRIPTOR is off.
+    descriptor_url = _descriptor_search_url(source, product_name)
+    if descriptor_url:
+        return descriptor_url
     source_lower = source.lower().strip()
     for key, template in RETAILER_SEARCH_URLS.items():
         if key in source_lower:

@@ -15,6 +15,14 @@ from dataclasses import dataclass
 from typing import List, Optional, Tuple
 from urllib.parse import urlparse, parse_qs
 
+# M7 D3 — the descriptor dataclass + its parser. This module is imported by
+# `search_descriptor_service` only LAZILY (inside `descriptor_for_host`), so
+# importing it here at module scope cannot cycle.
+from app.services.search_descriptor_service import (
+    SearchDescriptor,
+    parse_search_descriptor,
+)
+
 
 @dataclass(frozen=True)
 class Source:
@@ -73,6 +81,15 @@ class Source:
     # fetched first. Frozen-default 100 → every existing literal row byte-unchanged
     # (and outranked by a curated low-rank catalog row only when one exists).
     priority_rank: int = 100
+    # M7 D3 (2026-08-30) — the per-host SEARCH DESCRIPTOR, resolved ONCE
+    # off-clock by scripts/resolve_search_descriptors.py and persisted on the
+    # generated catalog row as {"search": {...}}. B8 measured why it must be
+    # per-HOST and not per-platform: a platform template is wrong ~40% of the
+    # time on robots.txt alone (two Shopify robots defaults in the wild, one of
+    # which Disallows /search and so kills BOTH the HTML search page and
+    # /search/suggest.json). Default None -> every literal row byte-unchanged,
+    # and a row without one behaves exactly as it does today.
+    search_descriptor: Optional["SearchDescriptor"] = None
 
 
 _LITERAL_ROWS: List[Source] = [
@@ -443,6 +460,9 @@ def _row_to_source(row: dict) -> Optional[Source]:
             sample_url=str(row.get("sample_url") or ""),
             status=status,
             priority_rank=prank,
+            # M7 D3 — malformed/absent -> None, i.e. the pre-D3 world for this
+            # row. A bad descriptor must never cost us the source itself.
+            search_descriptor=parse_search_descriptor(row.get("search")),
         )
     except Exception as exc:  # noqa: BLE001 — one bad row must never brick the load
         _loader_logger.info("[source_router] skipped malformed catalog row: %s", exc)

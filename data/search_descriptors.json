@@ -1,0 +1,14 @@
+{
+ "_what": "Per-host SEARCH DESCRIPTORS (M7 D3). One entry per host: where that store's product search lives, and whether its robots.txt lets us use it. Written by scripts/resolve_search_descriptors.py (off-clock, robots-first, >=2s throttle, 12-host cap), folded onto the rows of data/bh_gcc_sources.json by scripts/build_source_registry_data.py, and read at runtime behind ENABLE_SEARCH_DESCRIPTOR (default OFF).",
+ "_why_a_separate_file": "Issue #94: a correction hand-written into the GENERATED registry file is erased by the next rebuild. This overlay is re-read on EVERY consolidation, so a rebuild preserves the resolver's work by construction rather than by discipline.",
+ "_why_per_host": "B8 (2026-08-30) measured a per-PLATFORM search template as wrong ~40% of the time, and the dominant reason is robots.txt rather than markup: Shopify ships two default robots templates in the wild and the older one Disallows /search, which -- RFC 9309 matching being prefix-based -- kills BOTH the HTML search page and /search/suggest.json. Three 'Shopify' hosts on the 30-host panel block it and six do not. It also measured that 71 of the 95 live fragrance registry rows carry no mechanism at all, so each pays a platform probe on every cold compare for an answer that never changes.",
+ "_shape": {
+  "kind": "platform_api | onsite_html | sitemap | none",
+  "url_template": "absolute URL containing the literal {q}; empty for kind sitemap/none",
+  "robots_allowed": "evaluated at resolution time with app/services/robots_eval.py under a NAMED agent token",
+  "discovered_via": "platform_probe | homepage_form | robots | manual",
+  "resolved_at": "ISO-8601 UTC"
+ },
+ "_empty_on_purpose": "Ships EMPTY, so the unit is dark twice over: the flag is off AND there is nothing to serve. Populate it with a real, throttled run -- python scripts/resolve_search_descriptors.py --from-registry --category fragrances --live -- and commit the result.",
+ "hosts": {}
+}

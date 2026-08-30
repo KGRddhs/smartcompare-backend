@@ -1,0 +1,51 @@
+{
+  "_what": "Real bytes for tests/test_search_descriptor_d3.py (M7 UNIT D3, the per-host search descriptor). Four robots.txt bodies copied byte-for-byte out of the B8 measurement cache, plus ONE <form> block copied byte-for-byte out of a cached PDP. Nothing here was authored, rewritten or trimmed except where 'kept' says so.",
+  "_why_these_files": "Each robots body is the EVIDENCE for one claim the unit makes. scentsplit + klinq are the two files on which Python's urllib.robotparser gives the wrong (fail-OPEN) answer, which is why app/services/robots_eval.py exists. bh.afnan is Shopify's older default robots template, which Disallows /search and therefore kills both discovery surfaces at once -- the measured reason a per-PLATFORM template cannot work. fragrancebh is the permissive counter-example plus the host whose real search form the resolver reads.",
+  "_provenance": {
+    "robots": "Fetched live on 2026-08-30 by the B8 discovery unit under the NAMED agent token QarenBot, throttled >=2.1s, and cached to research/B8/robots_cache/<host>.txt. Copied from that cache; not re-fetched here.",
+    "html": "_proof/_raw_fragrancebh.com.html (a cached fragrancebh.com PDP from the Gulf corpus). Only the <form class=\"dgwt-wcas-search-form\"> ... </form> block was kept."
+  },
+  "_no_network": "Every byte here came off disk. Nothing in this unit fetched fragrantica.com, parfumo.com, Serper or OpenAI (house rule 7); probe_search_descriptor refuses the first two in code.",
+  "files": {
+    "robots_scentsplit_com.txt": {
+      "host": "scentsplit.com",
+      "fetched": "2026-08-30 (B8)",
+      "bytes": 6552,
+      "kept": "the whole file, verbatim",
+      "why": "It ships TWO 'User-agent: *' groups. RFC 9309 sec 2.2.1 says same-token records are ONE group, so the first group's 'Disallow: /search' still applies; urllib.robotparser lets the SECOND group overwrite the first and reports /search?q= as ALLOWED. This is the fail-open direction -- the stdlib would have us fetch a path the site forbade.",
+      "used_by": "TestRobotsEvaluator::test_later_star_group_merges_it_does_not_overwrite"
+    },
+    "robots_klinq_com.txt": {
+      "host": "klinq.com",
+      "fetched": "2026-08-30 (B8)",
+      "bytes": 3500,
+      "kept": "the whole file, verbatim",
+      "why": "It carries 'User-agent: Mozilla' / 'Disallow: /'. Agent matching is by PRODUCT TOKEN, so a browser-shaped UA (what curl_cffi impersonate=chrome sends) is disallowed site-wide including PDPs, while the named token QarenBot falls into the permissive '*' group. urllib.robotparser admits the browser UA. MEASURED consequence: klinq is more crawlable when we identify honestly than when we impersonate.",
+      "used_by": "TestRobotsEvaluator::test_named_token_is_not_prefix_matched_into_a_mozilla_group"
+    },
+    "robots_bh_afnan_com.txt": {
+      "host": "bh.afnan.com",
+      "fetched": "2026-08-30 (B8)",
+      "bytes": 13009,
+      "kept": "the whole file, verbatim",
+      "why": "Shopify's OLDER default robots template: 'Disallow: /search'. Because RFC 9309 path matching is prefix-based, that one line blocks the HTML search page AND /search/suggest.json -- the best-performing discovery channel B8 measured. Six other Shopify hosts on the same panel ship the newer permissive template. Same platform, opposite answer: this file is the measurement behind 'the descriptor must be per HOST'. It also publishes a Sitemap line, so the resolver records kind=sitemap instead of a dead end.",
+      "used_by": "TestRobotsEvaluator::test_shopify_legacy_template_blocks_both_search_surfaces, TestResolverProbe::test_robots_is_fetched_first_and_a_blocked_surface_is_never_requested"
+    },
+    "robots_fragrancebh_com.txt": {
+      "host": "fragrancebh.com",
+      "fetched": "2026-08-30 (B8)",
+      "bytes": 442,
+      "kept": "the whole file, verbatim",
+      "why": "The permissive counter-example, and a second same-token merge case (a Yoast block appends a second 'User-agent: *' with a bare 'Disallow:'). Its own on-site product search is allowed, and it publishes sitemap_index.xml.",
+      "used_by": "TestRobotsEvaluator::test_woo_host_allows_its_own_search_and_publishes_a_sitemap, TestResolverProbe::test_probe_falls_through_from_the_platform_api_to_the_form"
+    },
+    "bh_fragrancebh_com_search_form.html": {
+      "host": "fragrancebh.com",
+      "source_file": "_proof/_raw_fragrancebh.com.html",
+      "bytes": 1274,
+      "kept": "the single <form class=\"dgwt-wcas-search-form\" role=\"search\" action=\"https://fragrancebh.com/\" method=\"get\"> ... </form> block, verbatim (SVG icon, label and all three inputs included). Everything else on the page was dropped.",
+      "why": "B8's finding is that the on-site search path is NOT guessable per platform -- the store states it, in its own form. This form carries the text input 's' AND two HIDDEN inputs, post_type=product and dgwt_wcas=1. Reproducing the hidden fields is what turns a site-wide WordPress search into a PRODUCT search; a template guessed from the platform would have dropped them.",
+      "used_by": "TestResolverProbe::test_homepage_form_discovery_reads_the_sites_own_form, TestResolverProbe::test_probe_falls_through_from_the_platform_api_to_the_form"
+    }
+  }
+}

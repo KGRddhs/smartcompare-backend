@@ -8,7 +8,16 @@ BH/GCC source-build (2026-06-25). The 4 discovery catalogs
 provenance — this script never writes them back, and a correction to a row
 belongs THERE, not in the generated file (a generated-file edit is erased by the
 next rebuild; issue #94). A hand-applied correction must carry a dated
-`measured` probe record, which this script propagates onto the generated row. It maps each catalog row to the
+`measured` probe record, which this script propagates onto the generated row.
+
+M7 D3 adds a SECOND propagated record on the same principle: the per-host
+`search` descriptor. Its durable home is the overlay `data/search_descriptors.json`
+(written off-clock by scripts/resolve_search_descriptors.py), which is re-read on
+every consolidation — so a rebuild preserves it by construction, not by
+discipline. A catalog row may also carry a hand-authored `search` block; the
+overlay wins. Rows nothing has resolved keep NO `search` key at all.
+
+It maps each catalog row to the
 FINAL Source field values (tier/weight/categories/mechanism/flags/currency/
 sample_url/priority_rank/status), dedups (against the registry literals AND across
 rounds), and writes the consolidated list.
@@ -37,6 +46,15 @@ _CATALOGS = [
     _DATA / "bh_gcc_source_candidates_round4.json",
 ]
 _OUT = _DATA / "bh_gcc_sources.json"
+# M7 D3 — the per-host SEARCH DESCRIPTOR overlay, written by
+# scripts/resolve_search_descriptors.py. It is a SEPARATE file for the same
+# reason the catalogs are immutable provenance (issue #94): a descriptor
+# hand-written into the GENERATED file is erased by the next rebuild, whereas
+# this overlay is re-read on EVERY consolidation, so a rebuild is a fixed
+# point. A catalog row may also carry its own `search` block (a hand-authored
+# seed, same class as `measured`); the overlay WINS, because it is the dated,
+# machine-resolved record and the catalog row is the older guess.
+_SEARCH_DESCRIPTORS = _DATA / "search_descriptors.json"
 
 # --- Canonical categories -------------------------------------------------
 _CANON = {
@@ -234,6 +252,48 @@ def _measured_note(row: dict) -> str:
     return str(row.get("measured") or "").strip()
 
 
+def _load_search_descriptors() -> Dict[str, dict]:
+    """The resolver's per-host descriptor overlay, keyed by normalised domain.
+
+    Missing / unreadable / malformed -> ``{}``, i.e. the pre-D3 world: no row
+    grows a `search` block and the consolidation is byte-identical. The
+    resolver is off-clock tooling; a rebuild must never depend on it having run.
+    """
+    try:
+        if not _SEARCH_DESCRIPTORS.exists():
+            return {}
+        data = json.loads(_SEARCH_DESCRIPTORS.read_text(encoding="utf-8"))
+    except Exception as exc:  # noqa: BLE001
+        print(f"WARN: could not read {_SEARCH_DESCRIPTORS.name}: {exc}", file=sys.stderr)
+        return {}
+    hosts = data.get("hosts") if isinstance(data, dict) else None
+    if not isinstance(hosts, dict):
+        return {}
+    return {
+        _norm_domain(str(host)): value
+        for host, value in hosts.items()
+        if isinstance(value, dict)
+    }
+
+
+def _search_descriptor(domain: str, row: dict, overlay: Dict[str, dict]) -> Optional[dict]:
+    """The `search` block for one generated row, or None to omit the key.
+
+    Precedence: the resolver overlay, then a hand-authored `search` block on the
+    catalog row. Both are validated through the runtime parser, so a shape the
+    loader would reject never reaches the generated file — and a row with
+    neither keeps NO `search` key at all (368 rows of empty descriptors would be
+    a diff nobody can read).
+    """
+    from app.services.search_descriptor_service import parse_search_descriptor
+
+    for raw in (overlay.get(domain), row.get("search"), row.get("search_descriptor")):
+        parsed = parse_search_descriptor(raw)
+        if parsed is not None:
+            return parsed.to_row()
+    return None
+
+
 def _sort_rows(rows: List[dict]) -> List[dict]:
     return sorted(rows, key=lambda r: (r["tier"], r["priority_rank"], r["domain"]))
 
@@ -292,6 +352,7 @@ def _literal_domains() -> set:
 
 def consolidate() -> List[dict]:
     literal_domains = _literal_domains()
+    search_overlay = _load_search_descriptors()
     by_domain: Dict[str, dict] = {}
     for cat_path in _CATALOGS:
         try:
@@ -356,6 +417,12 @@ def consolidate() -> List[dict]:
             measured = _measured_note(row)
             if measured:
                 by_domain[domain]["measured"] = measured
+            # M7 D3 — the resolved per-host search descriptor. Same propagation
+            # shape as `measured`: present only on rows something actually
+            # resolved, so a regeneration's diff stays readable.
+            descriptor = _search_descriptor(domain, row, search_overlay)
+            if descriptor:
+                by_domain[domain]["search"] = descriptor
     return _sort_rows(list(by_domain.values()))
 
 
