@@ -9346,6 +9346,18 @@ _LETTER_DOLLAR_RE = re.compile(r"[A-Za-z]\$")
 #: A standalone "$" (not letter-prefixed) — a genuine USD sign.
 _BARE_DOLLAR_RE = re.compile(r"(?<![A-Za-z])\$")
 
+#: GCC display glyphs keyed by their SEPARATOR-STRIPPED residue. The residue the
+#: strict-shopping signal inspects has already had the number AND every ``.,/-``
+#: removed (see the ``re.sub`` below), so a dotted glyph like "ر.س" arrives as
+#: "رس" and misses the DOTTED keys of ``GCC_CURRENCY_SYMBOLS``. This mirror is
+#: built with the SAME residue transform so a GCC glyph resolves to its ISO code
+#: after stripping — the target-currency glyph the pend must NOT reject. (M13-09
+#: over-rejection fix: derived from GCC_CURRENCY_SYMBOLS, one ISO per residue.)
+_GCC_SYMBOL_RESIDUE = {
+    re.sub(r"[0-9.,%\s/\-]", "", _k): _v
+    for _k, _v in GCC_CURRENCY_SYMBOLS.items()
+}
+
 
 def _shopping_foreign_currency_signal(price_str: str, target: str) -> bool:
     """True iff ``price_str`` visibly carries a currency that is NOT ``target``
@@ -9353,18 +9365,32 @@ def _shopping_foreign_currency_signal(price_str: str, target: str) -> bool:
 
     Strips the number (digits, grouping/decimal separators, spaces, bidi
     controls) and inspects the residue: a residue that ``_normalize_currency_code``
-    resolves to a non-target ISO code is a foreign signal; an unresolved residue
-    is a foreign signal only when it carries a non-ASCII glyph (an Arabic riyal/
-    dirham/dinar glyph, €/£/¥/₺ …) so a bare number or an ASCII noise word never
-    over-pends. Used only on the strict-shopping path (flag ON).
+    resolves to a non-target ISO code is a foreign signal; a residue that resolves
+    (via the separator-stripped GCC glyph mirror) to the TARGET currency is NOT a
+    foreign signal — a Saudi "250 ر.س" on a SAR ask, or a UAE "1,399 د.إ" on an
+    AED ask, is a GENUINE target-currency price and must ship, not pend; only a
+    residue that resolves to a NON-target currency, or an unresolved non-ASCII
+    glyph, is foreign. A bare number or an ASCII noise word never over-pends. Used
+    only on the strict-shopping path (flag ON).
+
+    M13-09 over-rejection (dispatcher gate, Wave-2 closeout): the original guard
+    stopped at ``_normalize_currency_code`` (dotted keys) + a blanket non-ASCII
+    catch-all, so the separator-stripped target glyph ("رس"/"دإ") fell through to
+    the catch-all and pended a correct target-currency price. Resolving the glyph
+    against the mirror BEFORE the catch-all keeps the foreign-pend (د.إ on a BHD
+    ask still pends) while letting the target glyph through.
     """
     folded = str(price_str or "").translate(_CURRENCY_FOLD_STRIP)
     residue = re.sub(r"[0-9.,%\s/\-]", "", folded).strip()
     if not residue:
         return False
+    tgt = (target or "").upper()
     code = _normalize_currency_code(residue)
     if code is not None:
-        return code != (target or "").upper()
+        return code != tgt
+    glyph_iso = _GCC_SYMBOL_RESIDUE.get(residue)
+    if glyph_iso is not None:
+        return glyph_iso != tgt
     return bool(re.search(r"[^\x00-\x7F]", residue))
 
 

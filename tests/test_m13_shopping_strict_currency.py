@@ -69,3 +69,50 @@ def test_m13_09_genuine_target_and_western_symbol_unaffected(monkeypatch):
         assert _run("BHD 12.500") == (12.5, "BHD", "local_bhd"), flag
         eur = _run("€ 73,39")
         assert eur is not None and eur[0] == 30.09, (flag, eur)  # 73.39 * 0.41
+
+
+def _run_ask(price_str, ask, region):
+    item = {
+        "title": "Acme Widget Deluxe",
+        "price": price_str,
+        "source": "noon.com",
+        "link": "https://noon.com/p",
+    }
+    r = ps.extract_price_from_shopping(
+        "Acme Widget Deluxe", [item], ask, shopping_region=region,
+    )
+    return None if r is None else (r["amount"], r["currency"], r["source_method"])
+
+
+def test_m13_09_target_currency_glyph_is_not_over_pended(monkeypatch):
+    """Dispatcher-gate regression (M13-09 over-rejection).
+
+    A price written in the TARGET currency's own Arabic glyph is GENUINE and must
+    ship, not pend: "250 ر.س" on a SAR ask, "1,399 د.إ" on an AED ask. The
+    separator-stripped residue ("رس"/"دإ") misses the dotted GCC keys, so the
+    original guard fell through to the non-ASCII catch-all and pended a correct
+    target-currency price. The strict guard must be a NO-OP for a target-currency
+    glyph: flag ON == flag OFF, amount preserved."""
+    monkeypatch.setenv("ENABLE_EXACT_PRICE_GATE", "false")
+    for ask, region, price, want in (
+        ("SAR", "saudi_arabia", "250 ر.س", (250.0, "SAR", "local_bhd")),
+        ("AED", "uae", "1,399 د.إ", (1399.0, "AED", "local_bhd")),
+    ):
+        monkeypatch.setenv("ENABLE_SHOPPING_STRICT_CURRENCY", "false")
+        off = _run_ask(price, ask, region)
+        monkeypatch.setenv("ENABLE_SHOPPING_STRICT_CURRENCY", "true")
+        on = _run_ask(price, ask, region)
+        assert off == want, (ask, off)
+        assert on == want, (ask, on)   # NOT pended — genuine amount preserved
+        assert on == off               # strict guard is a no-op on a target glyph
+
+
+def test_m13_09_foreign_glyph_still_pends_after_over_pend_fix(monkeypatch):
+    """The over-rejection fix must NOT weaken the genuine foreign-pend: an AED
+    glyph on a BHD ask is a NON-target currency and still pends under the flag
+    (OFF ships the buggy 1399 BHD 9.8x-over, ON pends)."""
+    monkeypatch.setenv("ENABLE_EXACT_PRICE_GATE", "false")
+    monkeypatch.setenv("ENABLE_SHOPPING_STRICT_CURRENCY", "false")
+    assert _run_ask("1,399 د.إ", "BHD", "bahrain") == (1399.0, "BHD", "local_bhd")
+    monkeypatch.setenv("ENABLE_SHOPPING_STRICT_CURRENCY", "true")
+    assert _run_ask("1,399 د.إ", "BHD", "bahrain") is None
