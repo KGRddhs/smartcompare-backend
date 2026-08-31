@@ -1,0 +1,2742 @@
+{
+  "totals": {
+    "filed": 147,
+    "surviving": 145,
+    "refuted": 2,
+    "downgraded": 22,
+    "upgraded": 1,
+    "documented_status_wrong": 32,
+    "documented_status_wrong_ids": [
+      "M13-04",
+      "M13-05",
+      "M13-27",
+      "M13-32",
+      "M13-39",
+      "M13-42",
+      "M13-45",
+      "M13-47",
+      "M13-49",
+      "M13-52",
+      "M13-53",
+      "M13-55",
+      "M13-61",
+      "M13-64",
+      "M13-71",
+      "M13-79",
+      "M13-84",
+      "M13-89",
+      "M13-90",
+      "M13-99",
+      "M13-104",
+      "M13-107",
+      "M13-108",
+      "M13-109",
+      "M13-114",
+      "M13-118",
+      "M13-122",
+      "M13-123",
+      "M13-124",
+      "M13-127",
+      "M13-128",
+      "M13-130"
+    ],
+    "deduped_rows": 131,
+    "p0": 0,
+    "p1": 17,
+    "p2": 74,
+    "p3": 40,
+    "known_item_status_wrong": 16,
+    "by_lane_confirmed": {
+      "security": 18,
+      "correctness": 14,
+      "price-pipeline": 12,
+      "quality-bloat": 15,
+      "frontend": 23,
+      "tests-ci": 30,
+      "data-migrations": 10
+    }
+  },
+  "waves": [
+    {
+      "id": "wave-1",
+      "name": "Front door: authentication, rate limiting and paid-work gating",
+      "rationale": "Every one of these is reachable by an anonymous or token-bearing caller with no feature flag in the way. They share one file cluster (app/main.py, app/middleware/rate_limiter.py, app/api/*_routes.py) so they merge cleanly, and two of them (M13-01, M13-03) are the only findings in the whole review that cost real money or real credentials today.",
+      "findings": [
+        "M13-01",
+        "M13-02",
+        "M13-03",
+        "M13-21",
+        "M13-25",
+        "M13-26",
+        "M13-28",
+        "M13-29"
+      ],
+      "scope": "Add SlowAPIMiddleware and audit the 21 undecorated routes; a proxy-aware key_func shared with the audit ip_address field; Depends(verify_admin_key) on /text/price-kpi; an anonymous usage gate keyed on X-Device-Fingerprint for /text/quick and /image/identify; max_length on the POST /text/compare model; the unified error envelope on image_routes.py:267; limiter + Path/Query patterns on the two referral endpoints (both handlers must gain `request: Request`); openapi_url=None under RAILWAY_ENVIRONMENT; UUID validation on the feedback comparison_id.",
+      "dark_flags": [
+        "ENABLE_PROXY_AWARE_RATELIMIT (default OFF) - wraps the key_func swap so the limiter-key change can be canaried and reverted without a redeploy of the middleware wiring",
+        "ENABLE_ANON_USAGE_GATE (default OFF) - the anonymous freemium gate, so a bad fingerprint heuristic cannot lock out real users"
+      ],
+      "unflagged": "Adding SlowAPIMiddleware, the admin dependency on /price-kpi, the body max_length constraints and the error-envelope fix are the corrections themselves and have no dark-ship form; they land with pins instead.",
+      "pins": [
+        "TestClient proof that a previously-undecorated route now 429s (the security lane already wrote it)",
+        "two distinct X-Forwarded-For values produce two limiter keys",
+        "401/403 on unauthenticated /text/price-kpi",
+        "404 on /openapi.json when RAILWAY_ENVIRONMENT is set"
+      ],
+      "rough_scope": "1 middleware registration, 1 key_func, ~21 route decorators, 4 route models, 2 dependencies, 2 flags"
+    },
+    {
+      "id": "wave-2",
+      "name": "Currency truth: stop shipping a wrong number labelled genuine",
+      "rationale": "Five of the seventeen P1s are one design gap - a price is a bare float with a currency string beside it and nothing compares that string to anything. They must land together because fixing the WooCommerce label (M13-07) without fixing its parse (M13-08) just relabels a wrong number, and because the region guard (M13-11) is what makes the rest safe to leave on. Host resolution (M13-12) rides along: it is the same 'wrong storefront, wrong currency' failure one layer up.",
+      "findings": [
+        "M13-07",
+        "M13-08",
+        "M13-09",
+        "M13-10",
+        "M13-11",
+        "M13-12",
+        "M13-40",
+        "M13-44",
+        "M13-38",
+        "M13-39"
+      ],
+      "scope": "Five branch-level edits in price_service.py (13095 parse-before-label, 13119 converted_usd relabel, 3371 strict-label pend on the shopping tier, 10601 accept foreign JSON-LD offers, 760 null-currency coercion); one parse-call fix at scs:7245 plus threading shopping_region into the stash; a region-vs-currency guard at the response chokepoint; the eight adapters' currency parameter; one shared _registry_row_for_host longest-match helper replacing every SOURCE_REGISTRY suffix scan; widen FALLBACK_RATES or wire _convert_to_bhd to the live rate table before the RSC rung is flipped.",
+      "dark_flags": [
+        "ENABLE_REGION_CURRENCY_GUARD (default OFF) - the response-chokepoint pend for a currency that does not match the request region; the highest-blast-radius change in the wave",
+        "ENABLE_LONGEST_HOST_MATCH (default OFF) - the registry/descriptor resolution swap, canaried against the 2-of-319 and 2-of-95 known mismatches",
+        "reuse jsonld_first_enabled() for the WooCommerce relabel and parse-order change so the flag-OFF path stays byte-identical, matching the microdata branch's existing pattern"
+      ],
+      "unflagged": "The null-currency coercion (M13-44) and the stash's parse arguments (M13-10) are pure defect fixes with no behavioural fork worth flagging.",
+      "pins": [
+        "parse currency == stamped currency for every WooCommerce result",
+        "AED/SAR/OMR display tokens pend rather than stamp the target currency",
+        "the same Serper price string produces the same amount on the main path and in the re-selection stash",
+        "every {q} descriptor row resolves to its own host",
+        "every registry row's currency lookup returns its own currency (currently 2 of 319 fail)"
+      ],
+      "rough_scope": "~6 branch edits in price_service.py, 1 in the orchestrator, 8 adapters, 1 shared resolver helper, 3 flags"
+    },
+    {
+      "id": "wave-3",
+      "name": "Event loop and deadline integrity",
+      "rationale": "Every timeout in this system is wall-clock and the process is a single-worker uvicorn, so blocking calls inside async defs are not a style problem - they are how one user's request becomes another user's timeout. This wave also closes the two places where a budget is documented but not enforced (the stream cap, the Serper breaker) and the two where cleanup does not run (the missing finally, the SSE disconnect).",
+      "findings": [
+        "M13-04",
+        "M13-05",
+        "M13-06",
+        "M13-30",
+        "M13-31",
+        "M13-32",
+        "M13-33",
+        "M13-34",
+        "M13-35",
+        "M13-37"
+      ],
+      "scope": "asyncio.to_thread sweep over the request-path hot set of the 128 sync Supabase executes plus the audit insert; cache_get_async/cache_set_async wrappers and mechanical conversion of the ~111 blocking Redis/budget sites with a memoised per-provider budget+breaker read; a deadline computed at generator entry with a wait_for around the post-Phase-1 tail; try/finally around _get_price from the first ensure_future; the half-open counter increment; a Serper circuit breaker; one clamped adapter_timeout() derived from PRICE_RACE_TIMEOUT; the SSE post-stream finally; an atomic Redis consume for the freemium gate; an explicitly sized default executor.",
+      "dark_flags": [
+        "ENABLE_SYNC_DB_OFFLOAD (default OFF) - the to_thread wrapping of the Supabase hot set, so the executor pressure can be measured before it is universal",
+        "ENABLE_SERPER_BREAKER (default OFF) - the new breaker on the highest-volume provider",
+        "ENABLE_ASYNC_REDIS_OFFLOAD already exists and is default OFF: extend it to cover writes, then flip it ON as the last step of the wave"
+      ],
+      "unflagged": "The missing finally, the half-open increment, the SSE finally and the adapter-timeout clamp only tighten invariants that are already supposed to hold; flagging them would mean shipping a known leak behind a switch.",
+      "pins": [
+        "a generator whose verdict stage hangs still terminates within the documented cap and yields PARTIAL",
+        "after the recovery timeout exactly one half-open probe is admitted (the correctness lane's repro currently admits six)",
+        "inner adapter timeout <= _ADAPTER_TIMEOUT - 1 for every module in _new_adapter_specs",
+        "six concurrent compares from a user with one remaining daily credit consume exactly one"
+      ],
+      "rough_scope": "~40 request-path call sites converted (of 128 + 111 enumerated), 1 generator restructure, 3 flags, 1 executor config"
+    },
+    {
+      "id": "wave-4",
+      "name": "Client gates and a CI floor that can fail",
+      "rationale": "The frontend has no enforced automated check of any kind, which is why it produced 23 confirmed findings; and the backend's only regression signal reports a false positive on an untouched tree. Wave 4 lands the four user-visible client defects together with the gate that would have caught them, so the gate arrives with a known-green baseline instead of a mystery red.",
+      "findings": [
+        "M13-13",
+        "M13-14",
+        "M13-15",
+        "M13-16",
+        "M13-17",
+        "M13-74",
+        "M13-54",
+        "M13-55"
+      ],
+      "scope": "Pass picked assets through the gallery fallback and give the under-2 branch feedback; derive the compare gate from the fetched UsageStatus; add the 65 missing i18n keys from their own defaultValues plus a jest key fence; add test/test:ci/typecheck scripts and a frontend-tests CI job; render the permission pad in ScanCameraScreen and gate the Home CTA; delete the B4-DIAG console.log and add transform-remove-console; re-capture tests/.pre_impl_failures.txt from a clean main run and make it the gate's only default baseline.",
+      "dark_flags": [
+        "No dark flags apply - these are client-side and CI changes. The one behavioural risk (the compare gate) is derisked by sourcing limits from the already-fetched UsageStatus with the current hardcoded values as the fallback, so a missing field degrades to today's behaviour rather than opening the gate."
+      ],
+      "unflagged": "All of it.",
+      "pins": [
+        "the new frontend-tests job runs and its red count is recorded before it is made blocking",
+        "a jest fence asserting every literal t() key exists in en.json",
+        "a test_ci_gates assertion that DEFAULT_BASELINE is inside REPO_ROOT and that the baseline count is re-derivable from a clean run"
+      ],
+      "rough_scope": "4 screen/hook edits, 65 catalog keys, 2 package.json scripts, 1 CI job, 1 baseline re-capture, 2 gate assertions"
+    }
+  ],
+  "findings": [
+    {
+      "id": "M13-01",
+      "severity": "P1",
+      "title": "slowapi default_limits are dead config - 21 routes have no rate limit at all",
+      "file": "app/main.py",
+      "line": 110,
+      "locations": [
+        "app/main.py:110",
+        "app/middleware/rate_limiter.py:11"
+      ],
+      "lanes": [
+        "security"
+      ],
+      "source_ids": [
+        "security-01"
+      ],
+      "failure_scenario": "SlowAPIMiddleware is never added, so `default_limits` never fire: with a stolen or shared access token an attacker submits unlimited `current_password` guesses against PUT /auth/password and PUT /auth/email at network speed, and `check_account_locked` is consulted only on POST /login.",
+      "fix_sketch": "Add `app.add_middleware(SlowAPIMiddleware)` (or decorate the 21 routes), give the two credential-checking routes a tight explicit limit plus the login lockout treatment, and pin it with the TestClient proof the security lane already wrote (undecorated 200x5 vs decorated 200,200,429,429,429).",
+      "known_item": false
+    },
+    {
+      "id": "M13-02",
+      "severity": "P1",
+      "title": "Rate-limit key and admin_audit_log.ip_address are the Railway edge-proxy IP, not the client",
+      "file": "app/middleware/rate_limiter.py",
+      "line": 27,
+      "locations": [
+        "app/middleware/rate_limiter.py:27",
+        "app/api/admin_routes.py:194"
+      ],
+      "lanes": [
+        "security"
+      ],
+      "source_ids": [
+        "security-02"
+      ],
+      "failure_scenario": "`get_remote_address` returns the TCP peer and no proxy-header handling exists anywhere in app/, Procfile or railway.json, so every caller hashes to one limiter key - five failed logins anywhere on earth lock POST /auth/login for every user for the rest of the minute, and every audit row records the same proxy IP so the abuse-investigation surface cannot attribute anything.",
+      "fix_sketch": "Run uvicorn with `--proxy-headers --forwarded-allow-ips` (safe because Railway terminates at its own edge) or supply an XFF-reading `key_func`, share the same helper with the audit `ip_address` field, and add a test asserting two different XFF values produce two limiter keys.",
+      "known_item": false
+    },
+    {
+      "id": "M13-03",
+      "severity": "P1",
+      "title": "Paid-work endpoints are unauthenticated and outside the freemium gate",
+      "file": "app/api/text_routes.py",
+      "line": 636,
+      "locations": [
+        "app/api/text_routes.py:636",
+        "app/api/text_routes.py:562",
+        "app/api/image_routes.py:57"
+      ],
+      "lanes": [
+        "security"
+      ],
+      "source_ids": [
+        "security-11"
+      ],
+      "failure_scenario": "GET /text/price-kpi is 30/min with no auth dependency and runs a real OpenAI parse plus the full Serper cascade per call (~450 Serper credits + 30 OpenAI calls per minute from one anonymous caller), while CLAUDE.md:326 records the SERPER_LIFETIME_LIMIT spend gate as shipping INERT; `check_usage_allowed` is called only when `user` is truthy, so the 3-lifetime/10-monthly tier is bypassed by omitting the Authorization header.",
+      "fix_sketch": "Put /text/price-kpi behind `Depends(verify_admin_key)` like its sibling debug routes, and extend the usage gate to anonymous callers on /text/quick and /image/identify keyed on the already-regex-validated `X-Device-Fingerprint` header (land the anonymous gate behind a default-OFF flag so it can be canaried).",
+      "known_item": false
+    },
+    {
+      "id": "M13-04",
+      "severity": "P1",
+      "title": "SSE stream hard cap covers only Phase 1 - verdict, self-critique and moderation run unbounded past it",
+      "file": "app/services/structured_comparison_service.py",
+      "line": 3577,
+      "locations": [
+        "app/services/structured_comparison_service.py:3577",
+        "app/services/structured_comparison_service.py:1139",
+        "app/services/extraction_service.py:2201"
+      ],
+      "lanes": [
+        "correctness"
+      ],
+      "source_ids": [
+        "correctness-01"
+      ],
+      "failure_scenario": "The single `wait_for` in the 3396-4055 generator wraps only the two `_fetch_product_data` calls; the awaits at 3795/3829/3842/4015 and `generate_comparison` are unbounded, so on a slow OpenAI the connection lives ~150s past the documented 25/30s budget and dies at the client's 120s axios timeout with no `error` event while the server holds an in-flight GPT call.",
+      "fix_sketch": "Compute a deadline at generator entry and wrap the post-Phase-1 tail (verdict + critique + moderation) in a `wait_for` with the residual budget, yielding the existing best-available PARTIAL on expiry; correct the 1139-1143 comment and CLAUDE.md:324 to say what the cap actually covers.",
+      "known_item": false
+    },
+    {
+      "id": "M13-05",
+      "severity": "P1",
+      "title": "128 synchronous Supabase .execute() calls run on the asyncio event loop inside async def, on a single-worker uvicorn",
+      "file": "app/services/database_service.py",
+      "line": 91,
+      "locations": [
+        "app/services/database_service.py:91",
+        "app/services/database_service.py:12",
+        "app/services/audit_service.py:20"
+      ],
+      "lanes": [
+        "correctness"
+      ],
+      "source_ids": [
+        "correctness-03",
+        "correctness-13"
+      ],
+      "failure_scenario": "The sync supabase client blocks the loop for a full Supabase RTT inside `async def`, so one user's profile fetch stalls every other coroutine - and because the 15s price race and the 25/30s stream cap are wall-clock deadlines, a burst of concurrent DB round trips converts directly into hard-cap timeouts for unrelated requests; audit_service's docstring promise that it 'never blocks the request' is false for the same reason.",
+      "fix_sketch": "Wrap each terminal `.execute()` in `await asyncio.to_thread(...)` (the spec_spine_service pattern) starting with the request-path hot set - get_user_by_id, get_user_comparisons, save_comparison, usage_service, auth token verify, audit insert - behind a default-OFF `ENABLE_SYNC_DB_OFFLOAD`; cap the default executor explicitly; correct docs/CONTEXT_DECISIONS_BUGS.md:83's 'AsyncIO throughout / Non-blocking'.",
+      "known_item": true
+    },
+    {
+      "id": "M13-06",
+      "severity": "P1",
+      "title": "~111 blocking Upstash/budget calls inside async defs; the ENABLE_ASYNC_REDIS_OFFLOAD escape hatch covers 4 read sites and is default OFF",
+      "file": "app/services/cache_service.py",
+      "line": 539,
+      "locations": [
+        "app/services/cache_service.py:539",
+        "app/services/cache_service.py:549",
+        "app/services/structured_comparison_service.py:838"
+      ],
+      "lanes": [
+        "correctness"
+      ],
+      "source_ids": [
+        "correctness-04"
+      ],
+      "failure_scenario": "One warm streaming compare performs roughly 20-30 blocking Redis round trips (4 cache reads, ~10 writes, ~6-12 budget/breaker calls); at the module's own 163ms measurement that is 3-5s of event-loop stall charged to every concurrent request inside a 15s race - the offload dispatch has exactly 4 call sites, all reads, and every write and every budget/breaker call is inline.",
+      "fix_sketch": "Promote the dispatch into `cache_get_async`/`cache_set_async` wrappers over `asyncio.to_thread`, convert the enumerated sites mechanically, batch the per-provider budget+breaker read into one memoised async check (the `_serper_budget_ok` pattern), then flip ENABLE_ASYNC_REDIS_OFFLOAD to default ON once the write path is covered.",
+      "known_item": true
+    },
+    {
+      "id": "M13-07",
+      "severity": "P1",
+      "title": "WooCommerce branch never relabels a CONVERTED price - a foreign price banks as a genuine Bahrain shelf price",
+      "file": "app/services/price_service.py",
+      "line": 13119,
+      "locations": [
+        "app/services/price_service.py:13119",
+        "app/services/price_service.py:15427"
+      ],
+      "lanes": [
+        "price-pipeline"
+      ],
+      "source_ids": [
+        "price-pipeline-01"
+      ],
+      "failure_scenario": "The four sibling branches stamp `source_method=converted_usd`; this one does not, so a EUR/OMR/LBP WooCommerce PDP (klinq, ardalzaafaranshop, bawwaba.om, armaf.ae, spinneyslebanon are named in the tree's own docstring) is cached 7 days instead of 24h, counted in the genuine-BH-share KPI, shown without the indicative caption, and satisfies `_confirmed()` so it ends the fan-out race and cancels a still-pending genuine BH scraper - the exact regression `_confirmed`'s docstring says it exists to prevent.",
+      "fix_sketch": "Inside the `if _wc_label != currency.upper():` block add `result['source_method'] = 'converted_usd'`, gated on `jsonld_first_enabled()` so the flag-OFF path stays byte-identical (matching the microdata branch's `if _first:` at :13503).",
+      "known_item": false
+    },
+    {
+      "id": "M13-08",
+      "severity": "P1",
+      "title": "WooCommerce parses the amount under the ASK currency but labels and converts from PAGE evidence",
+      "file": "app/services/price_service.py",
+      "line": 13095,
+      "locations": [
+        "app/services/price_service.py:13095",
+        "app/services/price_service.py:13083"
+      ],
+      "lanes": [
+        "price-pipeline"
+      ],
+      "source_ids": [
+        "price-pipeline-02"
+      ],
+      "failure_scenario": "The minor-unit divisor comes from `detected_currency` and the stamped currency from `_wc_label`, so a de-DE dot-grouped '1.234' on a EUR page parses as 1.234, converts EUR->BHD and ships 0.51 BHD - a ~2,400x under-price that wins every cheapest-price comparison (electronics/other only; the fragrance and haircare low-price floors reject it).",
+      "fix_sketch": "Resolve `_wc_label` BEFORE the parse and pass it into `parse_price_string` when `jsonld_first_enabled()`, keeping `detected_currency` only on the flag-OFF path; add a pin asserting the parse currency and the stamped currency are the same token.",
+      "known_item": false
+    },
+    {
+      "id": "M13-09",
+      "severity": "P1",
+      "title": "Serper-shopping tier has no strict-currency guard: a GCC display token is invisible to detect_currency",
+      "file": "app/services/price_service.py",
+      "line": 3371,
+      "locations": [
+        "app/services/price_service.py:3371",
+        "app/services/price_service.py:555"
+      ],
+      "lanes": [
+        "price-pipeline"
+      ],
+      "source_ids": [
+        "price-pipeline-03"
+      ],
+      "failure_scenario": "`detect_currency` never consults GCC_CURRENCY_SYMBOLS or `_normalize_currency_code`, so a GCC token returns None and `extract_price_from_shopping` stamps the raw foreign amount with the target currency: AED 1,399 ships as 1399 BHD (9.8x over, truth 143.3) labelled `local_bhd` i.e. GENUINE, showable, KPI-counted and cached 7 days - BLOCKER-4's exact mode on the one tier the fix never covered.",
+      "fix_sketch": "Add the strict-label pend to `extract_price_from_shopping` (skip the candidate when `detected_cur` is None on a non-target-currency string) and fix the `'$' in 'R$'` collision; do NOT apply the filed one-line fix - `_normalize_currency_code` matches a folded token exactly by design and returns None for a whole price string.",
+      "known_item": false
+    },
+    {
+      "id": "M13-10",
+      "severity": "P1",
+      "title": "The same Serper shopping price string is parsed two different ways inside one request (1000x divergence)",
+      "file": "app/services/structured_comparison_service.py",
+      "line": 7245,
+      "locations": [
+        "app/services/structured_comparison_service.py:7245",
+        "app/services/price_service.py:9340",
+        "app/services/structured_comparison_service.py:7292"
+      ],
+      "lanes": [
+        "price-pipeline"
+      ],
+      "source_ids": [
+        "price-pipeline-04"
+      ],
+      "failure_scenario": "The main path calls `parse_price_string(price_str, detected_cur, display_text=True)` and the re-selection stash calls `parse_price_string(price_str)`, so 'BHD 12,500' is 12.5 on one and 12500.0 on the other; the stash is gated only by `is_price_showable` without `enforce_correctness`, which has a low-price floor and NO upper-magnitude guard, so `reconcile_pair_fairness` can re-select and serve the 1000x figure.",
+      "fix_sketch": "Hoist the `detect_currency` call that already exists two lines below and pass `(detected, display_text=True)`; thread `shopping_region` into `_seed_shortcircuit_candidates`; best, have the stash reuse `extract_price_from_shopping`'s normalisation instead of re-implementing it.",
+      "known_item": false
+    },
+    {
+      "id": "M13-11",
+      "severity": "P1",
+      "title": "Eight direct-fetch adapters hard-code currency BHD and ignore their own currency parameter",
+      "file": "app/services/salla_service.py",
+      "line": 275,
+      "locations": [
+        "app/services/salla_service.py:275",
+        "app/services/price_service.py:743"
+      ],
+      "lanes": [
+        "price-pipeline"
+      ],
+      "source_ids": [
+        "price-pipeline-07"
+      ],
+      "failure_scenario": "There is no region gate in the fan-out and no target-vs-actual currency check in `is_price_showable` or `response_builder`, so a region=saudi_arabia compare can serve a BHD 25.0 from a BH adapter against a SAR 250.0 from the Serper tier; every downstream consumer reads `product.price.amount` as a bare number, so the 10x-wrong product wins and the card renders 'BHD 25.0' to a Saudi user.",
+      "fix_sketch": "Short term add one guard at the response chokepoint (pend any price whose currency differs from the region currency) behind a default-OFF `ENABLE_REGION_CURRENCY_GUARD`; medium term make each adapter honour its `currency` parameter or make the registry region-aware. Note docs/plans/2026-05-17-bucket-a-bugs-design.md section 4b specified `_convert_price_to_region_currency` and it was never implemented.",
+      "known_item": false
+    },
+    {
+      "id": "M13-12",
+      "severity": "P1",
+      "title": "First-match-wins suffix scan lets an apex registry row shadow its own country subdomains",
+      "file": "app/services/search_descriptor_service.py",
+      "line": 216,
+      "locations": [
+        "app/services/search_descriptor_service.py:216",
+        "app/services/shopify_pdp_service.py:711",
+        "app/services/source_router.py:557"
+      ],
+      "lanes": [
+        "data-migrations"
+      ],
+      "source_ids": [
+        "data-02",
+        "data-01"
+      ],
+      "failure_scenario": "om.swissarabian.com and ksa.swissarabian.com resolve to the apex USD storefront's search template instead of their own rows, so on the descriptor flag-flip discovery returns global-catalogue handles and a PDP URL on the wrong storefront with the wrong currency - a valid URL for the wrong store, invisible; the identical scan in `_registry_currency_for_host` gets 2 of 319 registry rows' currency wrong the same way, and the code contradicts its own docstring contract at :195-199.",
+      "fix_sketch": "One shared `_registry_row_for_host(host)` helper resolving LONGEST-domain-wins (exact match outright), called by every `for s in SOURCE_REGISTRY` suffix scan, behind a default-OFF flag; add the self-consistency sweeps as tests (every {q} descriptor row resolves to its own host; every registry row's currency lookup returns its own currency).",
+      "known_item": false
+    },
+    {
+      "id": "M13-13",
+      "severity": "P1",
+      "title": "HomeScreen gallery fallback silently discards the images the user just picked",
+      "file": "SmartCompareApp/src/screens/HomeScreen.tsx",
+      "line": 461,
+      "locations": [
+        "SmartCompareApp/src/screens/HomeScreen.tsx:461"
+      ],
+      "lanes": [
+        "frontend"
+      ],
+      "source_ids": [
+        "frontend-02"
+      ],
+      "failure_scenario": "The fallback drops `result.assets` and navigates to a param-less ScanCamera whose slot cache is module-private (zero external `_slotsCache` references), so a user who denies camera and picks two photos gets a permission dead end with their photos thrown away - and a one-photo pick fails the `>= MAX_IMAGES` guard and does absolutely nothing, no toast, no error.",
+      "fix_sketch": "Pass the picked URIs through (`navigation.navigate('Results', { vision_products: result.assets.map(a => a.uri) })`, matching ScanCameraScreen.tsx:214-221) or export a slot-seeding setter, and give the under-2 branch visible feedback.",
+      "known_item": false
+    },
+    {
+      "id": "M13-14",
+      "severity": "P1",
+      "title": "The client compare gate hardcodes `used < 3`, ignoring tier, backend allowance and referral bonus",
+      "file": "SmartCompareApp/src/hooks/useComparisonCounter.ts",
+      "line": 46,
+      "locations": [
+        "SmartCompareApp/src/hooks/useComparisonCounter.ts:46",
+        "app/services/usage_service.py:167"
+      ],
+      "lanes": [
+        "frontend"
+      ],
+      "source_ids": [
+        "frontend-03"
+      ],
+      "failure_scenario": "The backend still grants free users 10/month + 3/day plus referral bonus past the 3 lifetime freebies, but the client blocks permanently at 3 and every blocked entry point routes to a Paywall whose CTA is `Alert.alert('Coming soon')` - so base capacity AND the entire referral incentive loop terminate in a dead end.",
+      "fix_sketch": "Derive the gate from the already-fetched `UsageStatus` (`tier === 'premium' || used < (limits.lifetime_free ?? 3) + bonusRemaining`) so it degrades to today's behaviour if the field is absent, and move the header counter pill out from under the `canCompare` guard.",
+      "known_item": false
+    },
+    {
+      "id": "M13-15",
+      "severity": "P1",
+      "title": "65 t() keys referenced by screens are absent from both en.json and ar.json",
+      "file": "SmartCompareApp/src/screens/LoginScreen.tsx",
+      "line": 323,
+      "locations": [
+        "SmartCompareApp/src/screens/LoginScreen.tsx:323",
+        "SmartCompareApp/src/i18n/en.json:1"
+      ],
+      "lanes": [
+        "frontend"
+      ],
+      "source_ids": [
+        "frontend-04"
+      ],
+      "failure_scenario": "Reproduced from scratch: 460 referenced / 65 missing / EN 798 == AR 798, so Login, Paywall, Profile section headers, History hero and camera copy all render each call site's English defaultValue to Arabic users - roughly a third of rendered copy escapes localisation, and __tests__/i18n.test.ts only compares en/ar key SETS so nothing can see it. (64 static keys + 1 dynamic template family.)",
+      "fix_sketch": "Add the 65 keys to both catalogs - the English text already exists verbatim in each defaultValue - then add a jest fence that walks src/ for literal `t('...')` keys and asserts membership in en.json, the same shape as __tests__/i18n/no-deleted-keys.test.ts.",
+      "known_item": false
+    },
+    {
+      "id": "M13-16",
+      "severity": "P1",
+      "title": "The frontend has no blocking CI gate at all - jest never runs, tsc is continue-on-error",
+      "file": ".github/workflows/ci.yml",
+      "line": 189,
+      "locations": [
+        ".github/workflows/ci.yml:189",
+        "SmartCompareApp/package.json:5",
+        ".github/workflows/ci.yml:205"
+      ],
+      "lanes": [
+        "frontend",
+        "tests-ci"
+      ],
+      "source_ids": [
+        "frontend-05",
+        "tests-ci-02",
+        "tests-ci-26"
+      ],
+      "failure_scenario": "There is no `test` script and no jest job in either workflow (grep for jest/npm test returns nothing), so 135-235 suites and the eslint i18n fence are never executed and the TS error count is unbounded - every frontend finding in this review was catchable by tooling already present in the repo, and .copy-policy.json's `_doc` falsely claims its jest fence 'runs on every CI build'.",
+      "fix_sketch": "Add `test`/`test:ci`/`typecheck` scripts to package.json and a `frontend-tests` job (`npm ci && npx jest --ci`, `npx eslint 'src/**/*.{ts,tsx}'`); land non-blocking to measure the current red count, then ratchet to blocking the way backend-lint was, and drive the tsc errors to zero before dropping continue-on-error.",
+      "known_item": false
+    },
+    {
+      "id": "M13-17",
+      "severity": "P1",
+      "title": "The committed failure baseline is stale, so the regression gate reports a false regression on an untouched tree",
+      "file": "tests/.pre_impl_failures.txt",
+      "line": 17,
+      "locations": [
+        "tests/.pre_impl_failures.txt:17",
+        "tests/PRE_IMPL_FAILURE_BASELINE.md:1"
+      ],
+      "lanes": [
+        "tests-ci"
+      ],
+      "source_ids": [
+        "tests-ci-32",
+        "tests-ci-06"
+      ],
+      "failure_scenario": "Four free-tier nodes fail on this pinned main and are in neither the committed 48-id baseline nor NETWORK_FLAKY_EXCLUDE (all four re-run and failed), so `current - baseline` is non-empty on a clean clone: anyone running the documented gate sees four NEW failures on a branch that touched nothing and stops trusting the only regression signal the repo has - and the baseline is stale two more ways (two dead ids forgive forever, the markdown mirror says 49 against the file's 48).",
+      "fix_sketch": "Re-capture `tests/.pre_impl_failures.txt` from a clean main run, delete the dead ids, generate the markdown table from the file rather than by hand, and add a `test_ci_gates` assertion that re-derives the count so it cannot silently fall behind main again.",
+      "known_item": false
+    },
+    {
+      "id": "M13-18",
+      "severity": "P2",
+      "title": "GET /auth/verify returns the caller's JWT in the response body",
+      "file": "app/api/auth_routes.py",
+      "line": 624,
+      "locations": [
+        "app/api/auth_routes.py:624",
+        "app/services/auth_service.py:255"
+      ],
+      "lanes": [
+        "security"
+      ],
+      "source_ids": [
+        "security-03"
+      ],
+      "failure_scenario": "The route returns `current_user` wholesale (the only route in app/api/ that does; GET /me builds a whitelist) and that dict carries `access_token`, so a live JWT lands in the mobile client's response logging, any APM body capture and any intermediary - contradicting auth_service.py:239-243's own 'do NOT log the full current_user dict' note. Downgraded from P1: the token is echoed only to the caller who just presented it, so every consequence needs a second independent flaw.",
+      "fix_sketch": "Return an explicit whitelist mirroring GET /me and pin `'access_token' not in json.dumps(response.json())` for /verify.",
+      "known_item": false
+    },
+    {
+      "id": "M13-19",
+      "severity": "P2",
+      "title": "Magento GraphQL adapter POSTs to a URL taken verbatim from a remote configs.json",
+      "file": "app/services/magento_graphql_service.py",
+      "line": 1039,
+      "locations": [
+        "app/services/magento_graphql_service.py:1039",
+        "app/services/magento_graphql_service.py:414"
+      ],
+      "lanes": [
+        "security"
+      ],
+      "source_ids": [
+        "security-04"
+      ],
+      "failure_scenario": "`_parse_configs` gates the harvested `commerce-endpoint` on truthiness alone - no scheme, host or IP check, and grep for validate_external_url in the module returns 0 - so a compromised _MAGENTO_STORES host can point 24h of Shape-A price lookups at 169.254.169.254 from inside the Railway container and have the body JSON-parsed. Downgraded from P1: ENABLE_MAGENTO_GQL_ADAPTER is default OFF and exploitation also requires owning the host's /configs.json.",
+      "fix_sketch": "Before caching a harvested cfg require https scheme, `_host_on_domain(endpoint, host)` (or a per-store endpoint allowlist - Alshaya endpoints are stable) and `validate_external_url`.",
+      "known_item": false
+    },
+    {
+      "id": "M13-20",
+      "severity": "P2",
+      "title": "The Codex SSRF hardening was never propagated - 17 adapter fetch sites follow redirects unvalidated",
+      "file": "app/services/salla_service.py",
+      "line": 98,
+      "locations": [
+        "app/services/salla_service.py:98",
+        "app/services/price_service.py:13638",
+        "app/services/structured_comparison_service.py:2321"
+      ],
+      "lanes": [
+        "security"
+      ],
+      "source_ids": [
+        "security-05"
+      ],
+      "failure_scenario": "`_resolve_store_id` follows a 302 from a live registry host straight into an internal address and hands the response body to `_extract_store_id`; worse, the bare `curl_fetch_html` is not even registry-pinned - scs:2321 feeds it a link taken from a Serper result, so redirect validation is the only control and it is absent.",
+      "fix_sketch": "Add a shared `fetch_json_same_site(url, domain)` mirroring `curl_fetch_html_same_site` (allow_redirects=False, per-hop validate_external_url + _host_on_domain, hop cap, body cap) and route the 17 sites through it; retire the bare helper.",
+      "known_item": false
+    },
+    {
+      "id": "M13-21",
+      "severity": "P2",
+      "title": "/openapi.json is still public in production - only the docs UIs were disabled",
+      "file": "app/main.py",
+      "line": 79,
+      "locations": [
+        "app/main.py:79"
+      ],
+      "lanes": [
+        "security"
+      ],
+      "source_ids": [
+        "security-06"
+      ],
+      "failure_scenario": "`FastAPI(docs_url=None, redoc_url=None)` still registers /openapi.json (verified against fastapi 0.115.0), so anyone can pull the full contract: the 19 /api/v1/admin/* endpoints, the X-Admin-Key header name, the DELETE /text/cache and /text/parse debug routes and every request-model field and constraint.",
+      "fix_sketch": "`openapi_url=None if os.getenv('RAILWAY_ENVIRONMENT') else '/openapi.json'` plus a test asserting 404 when RAILWAY_ENVIRONMENT is set.",
+      "known_item": false
+    },
+    {
+      "id": "M13-22",
+      "severity": "P2",
+      "title": "The last 10 characters of OPENAI_API_KEY are logged at INFO on every cold client init",
+      "file": "app/services/extraction_service.py",
+      "line": 45,
+      "locations": [
+        "app/services/extraction_service.py:45"
+      ],
+      "lanes": [
+        "security"
+      ],
+      "source_ids": [
+        "security-07"
+      ],
+      "failure_scenario": "Every process cold start writes a 10-char suffix of the production OpenAI key to Railway logs, readable by anyone with log access, any future log-shipping integration, or anyone sent a support screenshot - against CLAUDE.md's own 'full keys ONLY in gitignored .env' posture.",
+      "fix_sketch": "Log presence and length only, or drop the line - the `[models] ...` startup line already identifies the deployment.",
+      "known_item": false
+    },
+    {
+      "id": "M13-23",
+      "severity": "P2",
+      "title": "The pre-commit credential guard matches none of the credential shapes this repo actually holds",
+      "file": ".githooks/pre-commit",
+      "line": 58,
+      "locations": [
+        ".githooks/pre-commit:58"
+      ],
+      "lanes": [
+        "security",
+        "tests-ci"
+      ],
+      "source_ids": [
+        "security-09",
+        "tests-ci-10"
+      ],
+      "failure_scenario": "The alternation covers sk-/AKIA/xox/PEM and misses the Supabase service-role JWT (`eyJ...`), Firecrawl `fc-`, GitHub `gh*_`, Google `AIza` and `GOCSPX-`, and every NAME=value form - so a service-role key pasted into a runbook, a fixture or a debug script commits silently and is in history forever, and that key bypasses every RLS policy in migrations/.",
+      "fix_sketch": "Add the missing shapes plus a name-anchored `(SUPABASE_SERVICE_KEY|SERPER_API_KEY|SCRAPEDO_API_TOKEN|ZYTE_API_KEY|UPSTASH_REDIS_TOKEN|ADMIN_API_KEY)\\s*[:=]` pattern, and add a hook self-test fixture so the guard is itself covered.",
+      "known_item": false
+    },
+    {
+      "id": "M13-24",
+      "severity": "P2",
+      "title": "Search-descriptor url_template is never host- or scheme-checked and is derived from remote homepage HTML",
+      "file": "app/services/search_descriptor_service.py",
+      "line": 236,
+      "locations": [
+        "app/services/search_descriptor_service.py:236"
+      ],
+      "lanes": [
+        "security"
+      ],
+      "source_ids": [
+        "security-10"
+      ],
+      "failure_scenario": "A legitimate `resolve_search_descriptors.py --live` re-run against a site using third-party hosted search, or a hostile storefront serving `<form role=search action='https://attacker.tld/collect'>`, persists an off-host template; with ENABLE_SEARCH_DESCRIPTOR on (store already seeded) discovery then sends the product query to that host. Today's store is clean - 95 hosts, 0 off-host templates - so this is a guard gap, not a live leak.",
+      "fix_sketch": "Assert at parse time that the template's hostname equals or is a subdomain of the registry row's domain and the scheme is https; reject at resolution time so a bad row can never be persisted.",
+      "known_item": false
+    },
+    {
+      "id": "M13-25",
+      "severity": "P2",
+      "title": "POST /text/compare body fields carry no max_length, unlike their GET twins",
+      "file": "app/api/text_routes.py",
+      "line": 46,
+      "locations": [
+        "app/api/text_routes.py:46",
+        "app/api/text_routes.py:137"
+      ],
+      "lanes": [
+        "security"
+      ],
+      "source_ids": [
+        "security-12"
+      ],
+      "failure_scenario": "FastAPI applies no default body-size limit, so a 5 MB `query` is logged in full at :137 and written to `search_logs` by `log_search` - an unauthenticated log-flood and row-bloat primitive - and the GET/POST asymmetry means a validation fix applied to one silently misses the other.",
+      "fix_sketch": "Mirror the GET constraints on the model: query max_length 500, product_a/product_b 80, region 20, selected_category bounded.",
+      "known_item": false
+    },
+    {
+      "id": "M13-26",
+      "severity": "P2",
+      "title": "Raw exception text is returned to the client on the camera comparison path",
+      "file": "app/api/image_routes.py",
+      "line": 267,
+      "locations": [
+        "app/api/image_routes.py:267"
+      ],
+      "lanes": [
+        "security"
+      ],
+      "source_ids": [
+        "security-13"
+      ],
+      "failure_scenario": "A Supabase/httpx/asyncpg failure inside `compare_from_text` surfaces `str(e)` to an anonymous client - these messages routinely embed hostnames, table names, row counts, Postgres error codes and upstream URLs, so repeated uploads map the backend from the differences in exception text.",
+      "fix_sketch": "Return a constant user-facing message plus `request.state.request_id` and keep `str(e)` in the log/Sentry path only, matching `_surface_comparison_failure` in text_routes.py:89-112.",
+      "known_item": false
+    },
+    {
+      "id": "M13-27",
+      "severity": "P2",
+      "title": "npm audit is NOT clean (1 critical, 20 high) and the CI job that would catch it is continue-on-error",
+      "file": ".github/workflows/ci.yml",
+      "line": 185,
+      "locations": [
+        ".github/workflows/ci.yml:185",
+        "CLAUDE.md:17"
+      ],
+      "lanes": [
+        "security"
+      ],
+      "source_ids": [
+        "security-14"
+      ],
+      "failure_scenario": "Reproduced byte-for-byte: {low 1, moderate 13, high 20, critical 1} with axios and expo isDirect - and axios is the HTTP client every backend call in api.ts goes through, i.e. the one advisory that ships to devices rather than staying in the build toolchain. CLAUDE.md:17 ticks `npm audit --audit-level=high` clean as a completed App-Store gate; it is false on this tree.",
+      "fix_sketch": "Bump axios to a patched 1.x, then either drop continue-on-error or convert the step into a 'no NEW advisories vs a checked-in baseline' gate with the accepted build-tooling advisories recorded and dated.",
+      "known_item": true
+    },
+    {
+      "id": "M13-28",
+      "severity": "P2",
+      "title": "Referral invite endpoints are unauthenticated, unrate-limited and their params unvalidated",
+      "file": "app/api/referral_routes.py",
+      "line": 248,
+      "locations": [
+        "app/api/referral_routes.py:248",
+        "app/api/referral_routes.py:261"
+      ],
+      "lanes": [
+        "security"
+      ],
+      "source_ids": [
+        "security-15"
+      ],
+      "failure_scenario": "With ENABLE_REFERRAL_SYSTEM on (flipped in Railway), an anonymous client hammers `POST /referrals/invite/<anything>/quiz` - a DB round trip plus a re-score each - at full speed with no limit and no auth, and the unbounded share_token/ref strings reach the PostgREST filter values.",
+      "fix_sketch": "Add limiter decorators (20/min, 10/min on the quiz POST) and pin the params with Path/Query patterns using the existing invite-code alphabet; note both handlers must gain the `request: Request` parameter slowapi requires, so the change is larger than a decorator.",
+      "known_item": false
+    },
+    {
+      "id": "M13-29",
+      "severity": "P2",
+      "title": "Anonymous feedback/events writes use the service-role client with a client-supplied comparison_id",
+      "file": "app/services/feedback_service.py",
+      "line": 113,
+      "locations": [
+        "app/services/feedback_service.py:113"
+      ],
+      "lanes": [
+        "security"
+      ],
+      "source_ids": [
+        "security-16"
+      ],
+      "failure_scenario": "An anonymous caller POSTs 50 events per request at 60/min pinned to another user's comparison_id harvested from a share link; the rows land under the service role so RLS cannot stop them, poisoning comparison_feedback / user_events - the tables feeding the /admin/cohort dashboards, the pain-workflow derivation and save_comparison_and_track_cohort.",
+      "fix_sketch": "UUID-validate comparison_id at the Pydantic layer and write through `get_user_supabase_client(access_token)` when the caller is authenticated. Note migrations/010_enable_rls.sql:48-58's INSERT policies allow `user_id IS NULL` and never constrain comparison_id, so switching to a user-scoped client alone will NOT stop the forgery.",
+      "known_item": false
+    },
+    {
+      "id": "M13-30",
+      "severity": "P2",
+      "title": "_get_price has no try/finally - ~18 tasks, connections and executor slots orphan on every race timeout",
+      "file": "app/services/structured_comparison_service.py",
+      "line": 5354,
+      "locations": [
+        "app/services/structured_comparison_service.py:5354",
+        "app/services/structured_comparison_service.py:5842"
+      ],
+      "lanes": [
+        "correctness"
+      ],
+      "source_ids": [
+        "correctness-02"
+      ],
+      "failure_scenario": "AST walk confirms 18 try blocks and zero finally in the 5044-6976 body; up to 4 `ensure_future(search_web(...))` tasks plus the adapter gathers are independent Tasks that survive the outer wait_for cancel and run to completion unread. Downgraded from P1: the filed cost is wrong - the Serper request is dispatched within milliseconds and billed on receipt, so a 15s cancel saves zero credits; the real residual is resource leak, not spend.",
+      "fix_sketch": "Wrap the body from the first ensure_future onward in `try: ... finally: _cancel_prefetched_discovery()` (which already chains _cancel_prefetched_direct) - one finally makes every cancel/raise path converge on the existing cleanup with no behaviour change.",
+      "known_item": false
+    },
+    {
+      "id": "M13-31",
+      "severity": "P2",
+      "title": "Circuit-breaker half-open state admits unlimited calls - half_open_calls is written, read, and never incremented",
+      "file": "app/services/api_budget_service.py",
+      "line": 511,
+      "locations": [
+        "app/services/api_budget_service.py:511"
+      ],
+      "lanes": [
+        "correctness"
+      ],
+      "source_ids": [
+        "correctness-05"
+      ],
+      "failure_scenario": "Proven zero-network: after 3 failures trip the breaker and the recovery timeout elapses, six consecutive `is_circuit_closed` calls all return True with half_open_calls still 0 against CB_HALF_OPEN_MAX_CALLS=1 - so the whole Tier-1.5 fan-out (~6-10 render candidates at ~5 Scrape.do credits each) is admitted where one probe was designed.",
+      "fix_sketch": "In the HALF_OPEN branch increment and persist before returning: `state['half_open_calls'] += 1; _redis_set(...); return state['half_open_calls'] <= CB_HALF_OPEN_MAX_CALLS`.",
+      "known_item": false
+    },
+    {
+      "id": "M13-32",
+      "severity": "P2",
+      "title": "Serper - the highest-volume paid provider - has metering but no circuit breaker",
+      "file": "app/services/serper_service.py",
+      "line": 537,
+      "locations": [
+        "app/services/serper_service.py:537",
+        "CLAUDE.md:158"
+      ],
+      "lanes": [
+        "correctness"
+      ],
+      "source_ids": [
+        "correctness-06"
+      ],
+      "failure_scenario": "`record_failure('serper')` and `is_circuit_closed('serper')` have zero call sites (7 and 13 sites exist, none for serper), so on the documented 403 state every compare still dispatches all six Serper entry points at their full 15s httpx timeout, per product, forever - no cooldown ever engages and the price race spends most of its budget on calls known to fail. CLAUDE.md:158 credits api_budget_service with a Serper breaker.",
+      "fix_sketch": "Gate `_serper_post`'s dispatch on `is_circuit_closed('serper')`, call record_failure on timeout/5xx/403 and record_success on 200, reusing the existing 60s `_serper_budget_ok` memo; land behind a default-OFF `ENABLE_SERPER_BREAKER`.",
+      "known_item": false
+    },
+    {
+      "id": "M13-33",
+      "severity": "P2",
+      "title": "The one plain asyncio.create_task fire-and-forget left in app/ - the pattern the repo's own convention bans",
+      "file": "app/services/review_service.py",
+      "line": 697,
+      "locations": [
+        "app/services/review_service.py:697",
+        "app/utils/async_utils.py:54"
+      ],
+      "lanes": [
+        "correctness"
+      ],
+      "source_ids": [
+        "correctness-07"
+      ],
+      "failure_scenario": "If `save_reviews` raises (RLS denial, schema drift, Supabase 5xx) the reviews L2 DB cache silently stops being written and every later request for the product re-pays a Serper search plus a GPT extract, with nothing in logs or Sentry - the exception is only retrievable from a Task object nobody retains.",
+      "fix_sketch": "One-line change to `fire_and_forget(save_reviews(...), label='save_reviews.l2')`, matching the 22 already-converted sites.",
+      "known_item": false
+    },
+    {
+      "id": "M13-34",
+      "severity": "P2",
+      "title": "Adapter fetch timeouts are hardcoded per module; four exceed the outer cancel and Bright Data's 20s exceeds the 15s price race",
+      "file": "app/services/structured_comparison_service.py",
+      "line": 208,
+      "locations": [
+        "app/services/structured_comparison_service.py:208",
+        "app/services/brightdata_service.py:43"
+      ],
+      "lanes": [
+        "correctness",
+        "quality-bloat"
+      ],
+      "source_ids": [
+        "correctness-08",
+        "quality-bloat-11"
+      ],
+      "failure_scenario": "Eleven divergent hardcoded ceilings exist. Four adapters' inner curl timeout exceeds `_ADAPTER_TIMEOUT`, so `_timeout_none` returns None at 10s while the thread stays parked in curl.perform() on the shared unbounded default executor (33 to_thread sites compete for it); and Bright Data's 20s sits above the 15s race, so the fallback added to survive Serper depletion can only ever return after the race has cancelled - it is structurally incapable of helping.",
+      "fix_sketch": "Derive every adapter ceiling from one `adapter_timeout(default)` clamped under PRICE_RACE_TIMEOUT minus a margin, add a unit test asserting `inner <= _ADAPTER_TIMEOUT - 1` for every module in `_new_adapter_specs`, and install an explicitly sized executor.",
+      "known_item": false
+    },
+    {
+      "id": "M13-35",
+      "severity": "P2",
+      "title": "SSE client-disconnect return skips ALL post-stream side effects - quota metering, history save and analytics",
+      "file": "app/api/text_routes.py",
+      "line": 493,
+      "locations": [
+        "app/api/text_routes.py:493",
+        "app/services/structured_comparison_service.py:3898"
+      ],
+      "lanes": [
+        "correctness"
+      ],
+      "source_ids": [
+        "correctness-09"
+      ],
+      "failure_scenario": "The filed scenario is a no-op, but the real bypass is stronger: the verdict event at scs:3898 already carries the ENTIRE comparison, so a client can consume the full result and drop the socket before `record_comparison` / `save_comparison` / `log_search` ever run - the OpenAI and Serper spend is made, the counters do not move, and the pattern is repeatable.",
+      "fix_sketch": "Hoist the post-stream block into a `finally:` around the `async for`, keyed on whether the payload was produced, so a disconnect after the result was generated still meters and persists.",
+      "known_item": false
+    },
+    {
+      "id": "M13-36",
+      "severity": "P2",
+      "title": "All three Redis-backed auth security controls fail open with zero observability, and a failed expire strands the lockout counter",
+      "file": "app/services/auth_service.py",
+      "line": 554,
+      "locations": [
+        "app/services/auth_service.py:554",
+        "app/services/auth_service.py:567"
+      ],
+      "lanes": [
+        "correctness"
+      ],
+      "source_ids": [
+        "correctness-11"
+      ],
+      "failure_scenario": "During an Upstash incident every `check_account_locked` returns locked:false and every `_is_token_revoked` returns False, so brute-force protection and logout revocation both silently stop with no WARNING and no Sentry breadcrumb; separately the incr-then-expire sequence means a failed expire leaves the counter with no TTL - a permanent lockout that reports retry_after 0.",
+      "fix_sketch": "Add a logger.warning plus a Sentry capture_message to each of the four handlers (fail-open behaviour unchanged, observability restored) and make incr+expire a single pipeline or use `set(..., nx=True, ex=...)`.",
+      "known_item": false
+    },
+    {
+      "id": "M13-37",
+      "severity": "P2",
+      "title": "Freemium quota is a TOCTOU: the check is awaited before the work, the increment is fire-and-forget after it",
+      "file": "app/api/text_routes.py",
+      "line": 158,
+      "locations": [
+        "app/api/text_routes.py:158"
+      ],
+      "lanes": [
+        "correctness"
+      ],
+      "source_ids": [
+        "correctness-12"
+      ],
+      "failure_scenario": "A free user at 2 of 3 daily fires 6 parallel /text/compare requests (the limiter permits 10/min); all six read daily_used=2, all six pass, all six run a full comparison - 6 comparisons against a 3/day cap, at ~$0.01 plus 10-15 Serper credits each, repeatable.",
+      "fix_sketch": "Port the `try_consume_serper_image_credit` pattern to usage: an atomic Redis `incrby` + limit check + `decrby` rollback called synchronously at the gate, keeping the Supabase lifetime write fire-and-forget.",
+      "known_item": false
+    },
+    {
+      "id": "M13-38",
+      "severity": "P2",
+      "title": "ENABLE_RSC_FLIGHT_PRICE is a dead rung: its entire measured cohort pends under the shipped strict-label default",
+      "file": "app/services/price_service.py",
+      "line": 13600,
+      "locations": [
+        "app/services/price_service.py:13600",
+        "app/services/exchange_rate_service.py:18"
+      ],
+      "lanes": [
+        "price-pipeline"
+      ],
+      "source_ids": [
+        "price-pipeline-05"
+      ],
+      "failure_scenario": "Executed: the rung's own 3/3 cached TRY pages return None because TRY is absent from the 13-currency FALLBACK_RATES, while the same page in EUR converts correctly. Downgraded from P1 because the flag is default OFF and pending is the safe designed outcome - the cost is that activation step (1) flips it, the canary reads 'no regression, no gain', and the actual blocker (the rate table) is never named.",
+      "fix_sketch": "Widen FALLBACK_RATES to the corpus currencies, or wire `_convert_to_bhd` to the live rate table `exchange_rate_service._fetch_rates()` already knows how to fetch, BEFORE flipping the flag.",
+      "known_item": false
+    },
+    {
+      "id": "M13-39",
+      "severity": "P2",
+      "title": "exchange_rate_service.get_rate() has ZERO production callers - every conversion runs on a table hardcoded 'as of 2026-05'",
+      "file": "app/services/exchange_rate_service.py",
+      "line": 56,
+      "locations": [
+        "app/services/exchange_rate_service.py:56",
+        "app/services/exchange_rate_service.py:127"
+      ],
+      "lanes": [
+        "price-pipeline"
+      ],
+      "source_ids": [
+        "price-pipeline-06"
+      ],
+      "failure_scenario": "Two costs: the floating rates (EUR, GBP, SGD, JPY, CNY, INR) are frozen at their 2026-05 values so every `converted_usd` price in those currencies carries that error permanently; and `_fallback_rate` returns 1.0 for an unknown currency with only a warning - the exact implicit-1.0 stamp the whole BLOCKER-4 wave exists to eliminate.",
+      "fix_sketch": "Decide one way: delete get_rate/_fetch_rates/_lookup_rate/_fallback_rate and correct CLAUDE.md, or make `_convert_to_bhd` cached over the live table and replace the 1.0 branch with None.",
+      "known_item": true
+    },
+    {
+      "id": "M13-40",
+      "severity": "P2",
+      "title": "A well-formed JSON-LD PDP in any non-target, non-USD currency returns NO price",
+      "file": "app/services/price_service.py",
+      "line": 10601,
+      "locations": [
+        "app/services/price_service.py:10601"
+      ],
+      "lanes": [
+        "price-pipeline"
+      ],
+      "source_ids": [
+        "price-pipeline-08"
+      ],
+      "failure_scenario": "The extractor hard-continues on a currency mismatch and retries only USD (at :12824), so exactly the Gulf cross-border storefronts this product targets are pushed off the channel CLAUDE.md's own global validation calls the answer (353 of 360 JSON-LD prices machine-normalised) and onto the OG/microdata/WooCommerce fallbacks - which is where M13-07 and M13-08 live.",
+      "fix_sketch": "Accept a foreign-currency Offer as a candidate carrying its own priceCurrency and run it through the same `_convert_gpt_price_currency` + strict-label + `converted_usd` relabel the sibling branches use.",
+      "known_item": false
+    },
+    {
+      "id": "M13-41",
+      "severity": "P2",
+      "title": "An EMPTY env value silently DISABLES every default-ON correctness flag, and only those",
+      "file": "app/services/price_service.py",
+      "line": 677,
+      "locations": [
+        "app/services/price_service.py:677"
+      ],
+      "lanes": [
+        "price-pipeline"
+      ],
+      "source_ids": [
+        "price-pipeline-09"
+      ],
+      "failure_scenario": "The polarity footgun fires only in the unsafe direction: an operator who adds ENABLE_STRICT_CURRENCY_LABEL to Railway and saves it empty (or writes `ENABLE_EXACT_PRICE_GATE=` in .env) silently reverts the pipeline to pre-fix behaviour - the 32,000-BHD perfume stamp, the '320,00' -> 32000 100x parse, cheapest-pick selection with a fully open cache-write gate.",
+      "fix_sketch": "Add a shared `_flag(name, default)` helper that treats empty/whitespace as ABSENT and only an explicit off-token as OFF, route all 53 readers through it, and log one INFO line per flag at first read naming the effective value.",
+      "known_item": false
+    },
+    {
+      "id": "M13-42",
+      "severity": "P2",
+      "title": "The CLAUDE.md feature-flag inventory is wrong in both directions",
+      "file": "CLAUDE.md",
+      "line": 330,
+      "locations": [
+        "CLAUDE.md:330",
+        "CLAUDE.md:328"
+      ],
+      "lanes": [
+        "price-pipeline",
+        "data-migrations"
+      ],
+      "source_ids": [
+        "price-pipeline-10",
+        "data-05",
+        "data-06"
+      ],
+      "failure_scenario": "21 of the 53 ENABLE_* flags the deployed backend reads are absent from CLAUDE.md - 10 of them default-ON price-correctness flags whose rollback re-arms documented P0s, and ENABLE_HOSTILE_NUMERIC_GUARD=false actively RE-RAISES into two unwrapped call sites - while the same paragraph asserts 'all flags default OFF in code' against 22 default-ON flags and contradicts itself two sentences later. (An AST sweep also finds 65 of 128 env names undocumented overall.)",
+      "fix_sketch": "Generate the inventory instead of hand-maintaining it: a script that AST-scans app/ for ENABLE_*/DISABLE_* getenv defaults and emits name + default + effect, run in CI and diffed against a committed table; replace the blanket default-OFF sentence with per-flag defaults.",
+      "known_item": false
+    },
+    {
+      "id": "M13-43",
+      "severity": "P2",
+      "title": "The NOT-A-PDP verdict is computed and then bypassed by all three side-door channels",
+      "file": "app/services/price_service.py",
+      "line": 13824,
+      "locations": [
+        "app/services/price_service.py:13824"
+      ],
+      "lanes": [
+        "price-pipeline"
+      ],
+      "source_ids": [
+        "price-pipeline-11"
+      ],
+      "failure_scenario": "Offsite-redirect and category-page rows still pay a Magento GraphQL POST plus a Salla search API call plus a /products/{handle}.json GET each against a URL that was never a product page - the exact cost the filter exists to remove, removed only for the HTML rung - and a UCP or Magento answer for a non-PDP URL can be served as a price.",
+      "fix_sketch": "Move the CAPTURE_NOT_A_PDP check directly after `extract_price_from_html` returns None, keeping only the documented Salla-slug homepage-collapse recovery below it and re-gating that on the redirect reason.",
+      "known_item": false
+    },
+    {
+      "id": "M13-44",
+      "severity": "P2",
+      "title": "_convert_gpt_price_currency and the Tier-2 label branch crash on original_currency: null",
+      "file": "app/services/price_service.py",
+      "line": 760,
+      "locations": [
+        "app/services/price_service.py:760"
+      ],
+      "lanes": [
+        "price-pipeline"
+      ],
+      "source_ids": [
+        "price-pipeline-12"
+      ],
+      "failure_scenario": "A Tier-2 GPT-organic extract returning `original_currency: null` with an amount present raises out of the tier cascade instead of degrading to Tier 3, so the product's price is lost for that request and - because the raise precedes any cache write - re-lost on every retry.",
+      "fix_sketch": "Coerce at both sites (`str(price.get('original_currency') or '').upper()`) and add the same normalisation to `sanitize_gpt_price` so every LLM-sourced price dict is fixed once at the boundary.",
+      "known_item": false
+    },
+    {
+      "id": "M13-45",
+      "severity": "P2",
+      "title": "_get_price is a 1,933-line method inside the module CLAUDE.md calls 'orchestrator only'",
+      "file": "app/services/structured_comparison_service.py",
+      "line": 5044,
+      "locations": [
+        "app/services/structured_comparison_service.py:5044"
+      ],
+      "lanes": [
+        "quality-bloat"
+      ],
+      "source_ids": [
+        "quality-bloat-01"
+      ],
+      "failure_scenario": "Measured: 1,933 lines, 318 decision points, 32 return paths, 152 live locals, 9 nested closures in one scope - which is why the 2026-08-30 wave needed a module-reference-based regression gate at all: nobody can predict which of the 32 exits a change moves, and the filename-keyword gate missed the one deterministic regression.",
+      "fix_sketch": "Lift the 9 named closures to module-level functions over an explicit context object (~400 lines out, each independently testable), then split the supplement stage.",
+      "known_item": false
+    },
+    {
+      "id": "M13-46",
+      "severity": "P2",
+      "title": "price_service.py is 15,622 lines / 363 top-level defs, and its size is paid for in deferred imports",
+      "file": "app/services/price_service.py",
+      "line": 1,
+      "locations": [
+        "app/services/price_service.py:1"
+      ],
+      "lanes": [
+        "quality-bloat"
+      ],
+      "source_ids": [
+        "quality-bloat-02"
+      ],
+      "failure_scenario": "139 grep hits across app/ and scripts/ reference the module and 21 of them are FUNCTION-LOCAL imports written solely to dodge the import cycle its size creates (shopify_pdp_service.py:718, source_router.py:279, review_service) - every new adapter pays that tax.",
+      "fix_sketch": "Extract the 6 embedded adapters into `app/services/<retailer>_service.py` mirroring the 11 that already exist: the band is contiguous (13611-15402) and depends upward only on parse_price_string, extract_size_ml_any and the match helpers.",
+      "known_item": false
+    },
+    {
+      "id": "M13-47",
+      "severity": "P2",
+      "title": "CLAUDE.md:107 states the orchestrator is ~1,500 lines, orchestrator only; it is 7,563 lines",
+      "file": "CLAUDE.md",
+      "line": 107,
+      "locations": [
+        "CLAUDE.md:107"
+      ],
+      "lanes": [
+        "quality-bloat"
+      ],
+      "source_ids": [
+        "quality-bloat-03"
+      ],
+      "failure_scenario": "An agent reads CLAUDE.md first by the repo's own instruction, budgets a full read of a 1,500-line file, and either blows its context or assumes the price logic must be in price_service because this one is 'orchestrator only' - missing the 1,933-line `_get_price` that lives here.",
+      "fix_sketch": "Correct the sentence to name the real size and the `_get_price` body, and add a test in tests/test_ci_gates.py asserting the documented magnitude is within 2x of wc -l so it drifts loudly.",
+      "known_item": false
+    },
+    {
+      "id": "M13-48",
+      "severity": "P2",
+      "title": "app/models/ is an entirely dead package - 406 lines, 20 Pydantic classes, zero production importers",
+      "file": "app/models/schemas.py",
+      "line": 13,
+      "locations": [
+        "app/models/schemas.py:13"
+      ],
+      "lanes": [
+        "quality-bloat"
+      ],
+      "source_ids": [
+        "quality-bloat-04"
+      ],
+      "failure_scenario": "The live request/response models are declared inline in each route file, so a reader who opens app/models/schemas.py to learn the API contract gets ComparisonRequest/ComparisonResponse/HealthResponse shapes no endpoint has ever served.",
+      "fix_sketch": "Delete schemas.py and product_schema.py (337 lines); keep scoring_v2.py but move it beside its only consumer or wire it into scoring_service so the validation actually runs.",
+      "known_item": false
+    },
+    {
+      "id": "M13-49",
+      "severity": "P2",
+      "title": "cache_service carries an 82-line orphan block containing a SECOND free-tier limiter with a different limit",
+      "file": "app/services/cache_service.py",
+      "line": 637,
+      "locations": [
+        "app/services/cache_service.py:637",
+        "app/services/cache_service.py:665"
+      ],
+      "lanes": [
+        "quality-bloat"
+      ],
+      "source_ids": [
+        "quality-bloat-05"
+      ],
+      "failure_scenario": "`check_rate_limit` reads FREE_TIER_DAILY_LIMIT default 5 while the live limiter `usage_service.TIER_LIMITS` sets free daily = 3, and the block's docstrings cite a file that does not exist in the deployed tree - anything wired to the cache_service one would silently grant a 67% overrun of the freemium ceiling, with no test to catch it because nothing calls it.",
+      "fix_sketch": "Delete the 11 orphaned symbols and the FREE_TIER_DAILY_LIMIT / MAX_MONTHLY_COST constants only they read; fix the two surviving docstrings to name their real caller.",
+      "known_item": false
+    },
+    {
+      "id": "M13-50",
+      "severity": "P2",
+      "title": "Three unused direct runtime dependencies ship to Railway on every deploy",
+      "file": "requirements.in",
+      "line": 22,
+      "locations": [
+        "requirements.in:22"
+      ],
+      "lanes": [
+        "quality-bloat"
+      ],
+      "source_ids": [
+        "quality-bloat-07"
+      ],
+      "failure_scenario": "lxml is a C-extension wheel rebuilt on every NIXPACKS build and tiktoken drags requests + regex + charset-normalizer into the production image - 6 extra packages inside the `pip-audit --strict` surface CLAUDE.md:19 lists as an App-Store gate, so every future CVE in that second HTTP stack blocks a submission for code that never runs.",
+      "fix_sketch": "Drop lxml and pydantic-settings, move tiktoken to requirements-dev.in (it is genuinely used by one script and two tests), recompile both locks with the uv command in the file header.",
+      "known_item": false
+    },
+    {
+      "id": "M13-51",
+      "severity": "P2",
+      "title": "16 abandoned root-level files are tracked in git and the .gitignore rules meant to cover them are inert",
+      "file": ".gitignore",
+      "line": 33,
+      "locations": [
+        ".gitignore:33",
+        ".coverage:1",
+        "test_services.py:10"
+      ],
+      "lanes": [
+        "quality-bloat",
+        "tests-ci",
+        "data-migrations"
+      ],
+      "source_ids": [
+        "quality-bloat-09",
+        "tests-ci-27",
+        "data-11",
+        "tests-ci-01"
+      ],
+      "failure_scenario": "`.coverage` is a binary SQLite file rewritten by every local coverage run, so git status is permanently dirty and two branches that both ran coverage produce an unmergeable binary conflict; four response-dump JSONs (53KB, two with path-mangled Windows-shell names) ship to every clone and every Railway build; and three root-level test_*.py probes sit outside tests/conftest.py's credential strip and target live third-party storefronts (they are currently inert only because all 12 nodes are unmarked `async def` and pytest skips them).",
+      "fix_sketch": "`git rm --cached` all 16, add `.coverage` and root scratch-JSON patterns to .gitignore, and either delete the root test files or move them under tests/ so the conftest guarantees apply.",
+      "known_item": false
+    },
+    {
+      "id": "M13-52",
+      "severity": "P2",
+      "title": "51 unused imports in the deployed backend, 11 in price_service including two whole modules",
+      "file": "app/services/price_service.py",
+      "line": 38,
+      "locations": [
+        "app/services/price_service.py:38",
+        "app/services/price_service.py:35"
+      ],
+      "lanes": [
+        "quality-bloat"
+      ],
+      "source_ids": [
+        "quality-bloat-10"
+      ],
+      "failure_scenario": "The import list is how a reader and every dependency tool infers what a module needs: price_service.py:35-36 advertises that it enforces the API-budget circuit breaker and it does not (that happens upstream), so a maintainer trusting it will skip adding the check where it is actually needed.",
+      "fix_sketch": "`ruff check --select F401 --fix app` (ruff marks all 51 autofixable), then promote F401 from the report-only tier to the blocking tier for app/ so it cannot re-accumulate.",
+      "known_item": false
+    },
+    {
+      "id": "M13-53",
+      "severity": "P2",
+      "title": "database_service exposes 4 zero-reference user-CRUD functions on the service-role client with no access_token",
+      "file": "app/services/database_service.py",
+      "line": 87,
+      "locations": [
+        "app/services/database_service.py:87"
+      ],
+      "lanes": [
+        "quality-bloat"
+      ],
+      "source_ids": [
+        "quality-bloat-13"
+      ],
+      "failure_scenario": "They sit at the top of the module, ahead of the dual-client accessors, with the obvious names (create_user, get_user_by_email) - and CLAUDE.md:161 states user-facing DB functions MUST accept access_token so the query runs under RLS. A maintainer reaching for them gets a service-role query that bypasses row-level security on the users table, with no test to catch it.",
+      "fix_sketch": "Delete all four; if a user-lookup helper is wanted, add it with the mandatory access_token parameter next to the RLS-aware accessors.",
+      "known_item": false
+    },
+    {
+      "id": "M13-54",
+      "severity": "P2",
+      "title": "ScanCameraScreen never requests camera permission and the Home 'Open camera' CTA is un-gated",
+      "file": "SmartCompareApp/src/screens/ScanCameraScreen.tsx",
+      "line": 81,
+      "locations": [
+        "SmartCompareApp/src/screens/ScanCameraScreen.tsx:81",
+        "SmartCompareApp/src/screens/HomeScreen.tsx:788"
+      ],
+      "lanes": [
+        "frontend"
+      ],
+      "source_ids": [
+        "frontend-01"
+      ],
+      "failure_scenario": "`useCameraPermissions()` is destructured without `requestPermission` and the denied branch renders a permission card, an X and nothing else, while HomeScreen navigates to it unconditionally - so a fresh-install user taps the visually dominant CTA and lands somewhere with no way to grant. Downgraded from P1: HomeScreen.tsx:504-521 renders a working requestPermission card on the same screen, so the dead end is recoverable.",
+      "fix_sketch": "Render the full permission pad in ScanCameraScreen (body + a CTA calling requestPermission + the gallery link) mirroring HomeScreen.tsx:504-521, and gate the Home CTA on cameraPermissionGranted.",
+      "known_item": false
+    },
+    {
+      "id": "M13-55",
+      "severity": "P2",
+      "title": "Google ID-token head is console.logged in release builds, and the CLAUDE.md invariant that says otherwise is false",
+      "file": "SmartCompareApp/src/services/authService.ts",
+      "line": 480,
+      "locations": [
+        "SmartCompareApp/src/services/authService.ts:480",
+        "SmartCompareApp/babel.config.js:1"
+      ],
+      "lanes": [
+        "frontend",
+        "tests-ci"
+      ],
+      "source_ids": [
+        "frontend-06",
+        "tests-ci-19"
+      ],
+      "failure_scenario": "This is the only unguarded console.* in non-test src (41 hits checked), it writes to logcat / the iOS unified log on every Google sign-in and the same prefix goes into a user-facing error string, no transform-remove-console exists, and the DO-NOT-SKIP security test that catches it was baselined wholesale because the same detector also emits a false positive - so the file is now unmonitored. Downgraded from P1: substring(0,24) of a JWT is the base64 header, not usable token material.",
+      "fix_sketch": "Delete the resolved B4-DIAG block (or wrap :480 in `if (__DEV__)`), drop diagHead from user-facing strings, add transform-remove-console for production builds, and make the detector brace-aware so the line-599 false positive clears.",
+      "known_item": true
+    },
+    {
+      "id": "M13-56",
+      "severity": "P2",
+      "title": "The frontend Sentry scrubber covers exceptions and breadcrumbs but not event.message or event.extra",
+      "file": "SmartCompareApp/src/services/sentry.ts",
+      "line": 98,
+      "locations": [
+        "SmartCompareApp/src/services/sentry.ts:98"
+      ],
+      "lanes": [
+        "frontend"
+      ],
+      "source_ids": [
+        "frontend-07"
+      ],
+      "failure_scenario": "captureMessage with extra is the only capture path the app actually uses, so a Google sign-in rejection ships extra.diagHead (token prefix), extra.server_error (verbatim backend text) and extra.errStack to Sentry unredacted, and every future captureMessage/setContext inherits the blind spot.",
+      "fix_sketch": "Extend scrubBeforeSend to scrub event.message, event.extra and event.contexts, and add the corresponding cases to src/services/__tests__/sentry.test.ts.",
+      "known_item": false
+    },
+    {
+      "id": "M13-57",
+      "severity": "P2",
+      "title": "identifyFromImages uses raw fetch, bypassing the 401 refresh interceptor",
+      "file": "SmartCompareApp/src/services/api.ts",
+      "line": 167,
+      "locations": [
+        "SmartCompareApp/src/services/api.ts:167"
+      ],
+      "lanes": [
+        "frontend"
+      ],
+      "source_ids": [
+        "frontend-08"
+      ],
+      "failure_scenario": "After the app is backgrounded past the Supabase access-token TTL the identify POST 401s with no refresh attempted, and the user is told their photos were unreadable ('snap each product in better light') - so they re-shoot, and every retry fails identically until some unrelated axios call happens to refresh the token.",
+      "fix_sketch": "Call the interceptor's own `getOrStartRefresh()` on a 401 and retry once, or route multipart through axios with transformRequest untouched so the interceptor applies.",
+      "known_item": false
+    },
+    {
+      "id": "M13-58",
+      "severity": "P2",
+      "title": "The Arabic logout confirmation carries the account-deletion irreversibility warning",
+      "file": "SmartCompareApp/src/screens/ProfileScreen.tsx",
+      "line": 304,
+      "locations": [
+        "SmartCompareApp/src/screens/ProfileScreen.tsx:304"
+      ],
+      "lanes": [
+        "frontend"
+      ],
+      "source_ids": [
+        "frontend-09"
+      ],
+      "failure_scenario": "A `.replace()` on a t() result reuses the delete-account string, so an Arabic user tapping Log Out is warned the action is irreversible - a Build Principle #4 ('ZERO scary copy') violation that lands only in the locale nobody spot-checks and plausibly suppresses logouts on shared devices.",
+      "fix_sketch": "Add a dedicated `profile.logoutConfirm` key to both catalogs and delete the .replace(); add a lint rule forbidding `.replace(` on a t() result.",
+      "known_item": false
+    },
+    {
+      "id": "M13-59",
+      "severity": "P2",
+      "title": "HistoryScreen's focus effect captures a stale closure and discards the active search",
+      "file": "SmartCompareApp/src/screens/HistoryScreen.tsx",
+      "line": 347,
+      "locations": [
+        "SmartCompareApp/src/screens/HistoryScreen.tsx:347"
+      ],
+      "lanes": [
+        "frontend"
+      ],
+      "source_ids": [
+        "frontend-10"
+      ],
+      "failure_scenario": "User searches 'iPhone', opens a result, comes back - the frozen loadHistory runs with searchQuery='' and the full 50-row list reappears under a search box that still reads 'iPhone', so the user believes the filter matched everything.",
+      "fix_sketch": "Hoist loadHistory into `useCallback([searchQuery])` and depend on it in the focus effect, or read the query from a ref.",
+      "known_item": false
+    },
+    {
+      "id": "M13-60",
+      "severity": "P2",
+      "title": "EditProfileScreen's focus effect discards an unsaved display-name edit",
+      "file": "SmartCompareApp/src/screens/EditProfileScreen.tsx",
+      "line": 76,
+      "locations": [
+        "SmartCompareApp/src/screens/EditProfileScreen.tsx:76"
+      ],
+      "lanes": [
+        "frontend"
+      ],
+      "source_ids": [
+        "frontend-11"
+      ],
+      "failure_scenario": "A user types a new display name, taps 'Edit style profile' to adjust priorities first, and returns to find the field silently reverted and Save disabled - the edit is gone with no prompt.",
+      "fix_sketch": "Guard the re-seed on `!dirty`, or seed once on mount and refresh only user/initialName on focus while leaving displayName alone when it differs.",
+      "known_item": false
+    },
+    {
+      "id": "M13-61",
+      "severity": "P2",
+      "title": "Choosing Arabic at onboarding step 2 hard-reloads the bundle and loses all flow state",
+      "file": "SmartCompareApp/src/hooks/useLanguage.ts",
+      "line": 21,
+      "locations": [
+        "SmartCompareApp/src/hooks/useLanguage.ts:21",
+        "SmartCompareApp/src/config/featureBucket.ts:19"
+      ],
+      "lanes": [
+        "frontend"
+      ],
+      "source_ids": [
+        "frontend-12"
+      ],
+      "failure_scenario": "The reload remounts App.tsx with needsPreferences still true, dropping the user back at step 1 of 17 with no explanation - and because it is not awaited, a fast tapper loses country/age/priorities too. featureBucket.ts:19's claim that the orchestrator 'persists step state' is false (that claim appears only there, not in CLAUDE.md as filed).",
+      "fix_sketch": "Persist {step, data} to AsyncStorage on each setField/setStep and rehydrate via the existing initialStep/initialData props, or defer the RTL reload to the end of onboarding.",
+      "known_item": true
+    },
+    {
+      "id": "M13-62",
+      "severity": "P2",
+      "title": "First launch on an Arabic-locale device renders LTR - forceRTL is applied at boot with no reload",
+      "file": "SmartCompareApp/App.tsx",
+      "line": 169,
+      "locations": [
+        "SmartCompareApp/App.tsx:169"
+      ],
+      "lanes": [
+        "frontend"
+      ],
+      "source_ids": [
+        "frontend-13"
+      ],
+      "failure_scenario": "Session 1 shows Arabic copy in a mirrored-wrong layout: `I18nManager.isRTL` is still false so flipForRTL, SlideTransition, tab bar and list alignment all run backwards - the entire 17-step onboarding, the user's first and most formative session.",
+      "fix_sketch": "Call `Updates.reloadAsync()` after forceRTL (guarded for dev) before setIsLoading(false), exactly as useLanguage.ts already does.",
+      "known_item": false
+    },
+    {
+      "id": "M13-63",
+      "severity": "P2",
+      "title": "Boot has no failure path - a rejected init or a swallowed font error leaves a permanent splash",
+      "file": "SmartCompareApp/App.tsx",
+      "line": 164,
+      "locations": [
+        "SmartCompareApp/App.tsx:164"
+      ],
+      "lanes": [
+        "frontend"
+      ],
+      "source_ids": [
+        "frontend-14"
+      ],
+      "failure_scenario": "On a captive portal the boot refresh hangs and the user stares at the splash for up to two minutes; if `Localization.getLocales()` (outside that function's try) or the font loader fails, the splash is permanent with no error, no retry and no route out - indistinguishable from a hang and unrecoverable without a reinstall.",
+      "fix_sketch": "Wrap the whole init() body in try/finally with setIsLoading(false) in the finally, pass an explicit short timeout to the boot refresh, and read and honour the `error` element from both font hooks.",
+      "known_item": false
+    },
+    {
+      "id": "M13-64",
+      "severity": "P2",
+      "title": "Twelve components (~1,685 LOC) have zero render references and CLAUDE.md lists two of them as the design system",
+      "file": "SmartCompareApp/src/components/ReferralStatusCard.tsx",
+      "line": 1,
+      "locations": [
+        "SmartCompareApp/src/components/ReferralStatusCard.tsx:1"
+      ],
+      "lanes": [
+        "frontend"
+      ],
+      "source_ids": [
+        "frontend-15"
+      ],
+      "failure_scenario": "Measurable in three places: ~1,685 LOC of unreachable JS in every EAS bundle; ~17 test files whose green status implies coverage of surfaces no user can reach, inflating the coverage number the team steers by; and a design-system inventory that sends the next contributor to two components that do not render.",
+      "fix_sketch": "Delete the twelve modules with their tests in one commit and correct the CLAUDE.md component list to the primitives actually rendered.",
+      "known_item": false
+    },
+    {
+      "id": "M13-65",
+      "severity": "P2",
+      "title": "lucide-react-native is imported from the barrel at 35 sites for 68 of ~1,500 icons, and Metro does not tree-shake",
+      "file": "SmartCompareApp/src/screens/HomeScreen.tsx",
+      "line": 40,
+      "locations": [
+        "SmartCompareApp/src/screens/HomeScreen.tsx:40"
+      ],
+      "lanes": [
+        "frontend"
+      ],
+      "source_ids": [
+        "frontend-16"
+      ],
+      "failure_scenario": "Roughly 1,430 unused icon components ride in every OTA update and store binary, inflating eas update payload size and cold-start parse work on the low-end Android devices that dominate the GCC market. (The byte figure is inferred - node_modules is absent in the pinned tree, so no expo export was run.)",
+      "fix_sketch": "Re-export the 68 used icons from src/icons/index.ts via deep paths and repoint the 35 call sites, or add a babel module-resolver alias; measure with `npx expo export` before and after.",
+      "known_item": false
+    },
+    {
+      "id": "M13-66",
+      "severity": "P2",
+      "title": "HomeScreen's fallback alert renders the raw backend error string",
+      "file": "SmartCompareApp/src/screens/HomeScreen.tsx",
+      "line": 381,
+      "locations": [
+        "SmartCompareApp/src/screens/HomeScreen.tsx:381"
+      ],
+      "lanes": [
+        "frontend"
+      ],
+      "source_ids": [
+        "frontend-17"
+      ],
+      "failure_scenario": "When parseApiError yields any code other than TIMEOUT the default branch renders `error.message` verbatim in an Alert - backend English copy shown to an Arabic user, including strings the copy policy bans.",
+      "fix_sketch": "Drop error.message from the alert and always render `t('home.errors.comparison')`, adding per-code i18n branches where a distinct message is warranted.",
+      "known_item": false
+    },
+    {
+      "id": "M13-67",
+      "severity": "P2",
+      "title": "HistoryScreen renders parseApiError().message, which is deliberately empty for TIMEOUT/503",
+      "file": "SmartCompareApp/src/screens/HistoryScreen.tsx",
+      "line": 367,
+      "locations": [
+        "SmartCompareApp/src/screens/HistoryScreen.tsx:367"
+      ],
+      "lanes": [
+        "frontend"
+      ],
+      "source_ids": [
+        "frontend-18"
+      ],
+      "failure_scenario": "A Railway restart during a history load produces a native alert titled 'Something went wrong' with a completely empty body and one OK button - no cause, no retry hint; every other 5xx shape shows raw English backend text instead.",
+      "fix_sketch": "Switch on `parseApiError(error).code` - TIMEOUT to the timeout copy with a retry affordance, otherwise `t('history.errors.load')` - and never render .message.",
+      "known_item": false
+    },
+    {
+      "id": "M13-68",
+      "severity": "P2",
+      "title": "Hardcoded English strings survive in rendered UI because the eslint i18n fence is jsx-text-only and never runs",
+      "file": "SmartCompareApp/src/screens/LoadingScreenVariants.tsx",
+      "line": 408,
+      "locations": [
+        "SmartCompareApp/src/screens/LoadingScreenVariants.tsx:408"
+      ],
+      "lanes": [
+        "frontend"
+      ],
+      "source_ids": [
+        "frontend-20"
+      ],
+      "failure_scenario": "An Arabic user sees an English 'Top match' badge on the winning card, a half-English Paywall trial timeline, English relative times in Profile, and Results back/share plus the preferences close button announced in English or as a raw key by a screen reader.",
+      "fix_sketch": "Replace each literal with the existing or a new key (results.bestPick already covers the badge; add common.close) and run eslint in CI so the fence stops being decorative.",
+      "known_item": false
+    },
+    {
+      "id": "M13-69",
+      "severity": "P2",
+      "title": "Arabic dates render in the Hijri calendar and prices use device-locale digits inconsistently",
+      "file": "SmartCompareApp/src/utils/formatDate.ts",
+      "line": 14,
+      "locations": [
+        "SmartCompareApp/src/utils/formatDate.ts:14"
+      ],
+      "lanes": [
+        "frontend"
+      ],
+      "source_ids": [
+        "frontend-21"
+      ],
+      "failure_scenario": "A history row is labelled with a Hijri date under a section header derived from the Gregorian calendar, and the same session renders Arabic-Indic digits on the Results price line while the loading counter above it renders Western digits - two digit systems for the same number, one screen apart.",
+      "fix_sketch": "Use 'ar-BH-u-ca-gregory' in formatDate.ts and give every toLocaleString call the same explicit locale plus minimumFractionDigits via one shared money formatter.",
+      "known_item": false
+    },
+    {
+      "id": "M13-70",
+      "severity": "P2",
+      "title": "The mount-only-fetch staleness class covers the savings banner and trending list, not just SmartPickCard",
+      "file": "SmartCompareApp/src/components/HomeEditorialSections.tsx",
+      "line": 268,
+      "locations": [
+        "SmartCompareApp/src/components/HomeEditorialSections.tsx:268"
+      ],
+      "lanes": [
+        "frontend"
+      ],
+      "source_ids": [
+        "frontend-22"
+      ],
+      "failure_scenario": "After a comparison that saves BHD 12 the 'This month / X BHD shopped smarter' banner still shows the pre-comparison figures until a cold start - a numerically wrong claim about the user's own money - and the free-comparisons pill has the same problem, worsened by camera compares never calling increment().",
+      "fix_sketch": "Swap the three `useEffect([])` calls and the counter hydrate to `useFocusEffect(useCallback(...))` matching HomeScreen.tsx:196, and call increment() on the camera completion path.",
+      "known_item": true
+    },
+    {
+      "id": "M13-71",
+      "severity": "P2",
+      "title": "The real regression gate is a local-only script; CI runs a raw pytest that is red by construction",
+      "file": ".github/workflows/ci.yml",
+      "line": 86,
+      "locations": [
+        ".github/workflows/ci.yml:86",
+        "scripts/regression_gate_diff.py:1"
+      ],
+      "lanes": [
+        "tests-ci"
+      ],
+      "source_ids": [
+        "tests-ci-03"
+      ],
+      "failure_scenario": "grep of .github/ and .githooks/ for regression_gate_diff returns nothing - the gate has zero automation consumers - so every PR shows backend-tests red, a genuine 16th failure is visually identical to the standing 15, and `--cov-fail-under=83`, the lock-drift gate and the syntax check all lose their signal inside the same ignored job.",
+      "fix_sketch": "Either add a known-red deselect file so backend-tests can be green and required, or replace the raw pytest step with the gate script diffing against the committed baseline.",
+      "known_item": true
+    },
+    {
+      "id": "M13-72",
+      "severity": "P2",
+      "title": "Two baselined failures pin a raw Supabase error string returned to end users",
+      "file": "app/services/auth_service.py",
+      "line": 64,
+      "locations": [
+        "app/services/auth_service.py:64"
+      ],
+      "lanes": [
+        "tests-ci"
+      ],
+      "source_ids": [
+        "tests-ci-04"
+      ],
+      "failure_scenario": "The social_login branch returns the first 300 characters of the raw provider exception plus its class name in the API response body, and the FE's B4-DIAG wrapper renders it on screen - three months after the diagnostic's own removal note. Downgraded from P1 because CLAUDE.md:562 independently records the removal precondition as genuinely unmet, so the 'intentional' baseline label is honest.",
+      "fix_sketch": "Delete the social_login branch (restoring the generic return at :66) or gate it on an env flag that is OFF in prod, and add the flag-ON/flag-OFF pair to the tests.",
+      "known_item": true
+    },
+    {
+      "id": "M13-73",
+      "severity": "P2",
+      "title": "The 3 baselined camera_vision failures are an unguarded crash on the identify_products main path",
+      "file": "app/services/openai_service.py",
+      "line": 97,
+      "locations": [
+        "app/services/openai_service.py:97"
+      ],
+      "lanes": [
+        "tests-ci"
+      ],
+      "source_ids": [
+        "tests-ci-05"
+      ],
+      "failure_scenario": "All four `_log_cache_telemetry` call sites are bare statements outside any try, and `cached_tokens > 0` raises TypeError on a non-int - so a proxy returning prompt_tokens_cached as the string '0' crashes identify_products, not just the test. Downgraded from P1: the filed dict-shaped trigger is wrong (getattr on a dict returns the default 0).",
+      "fix_sketch": "Coerce cached_tokens with int() in a try/except and wrap all four call sites in try/except Exception: pass; the three tests then go green and leave the baseline.",
+      "known_item": true
+    },
+    {
+      "id": "M13-74",
+      "severity": "P2",
+      "title": "Three competing regression baselines exist, two unversioned, and the default is an absolute path into another checkout",
+      "file": "scripts/regression_gate_diff.py",
+      "line": 42,
+      "locations": [
+        "scripts/regression_gate_diff.py:42",
+        "CLAUDE.md:276"
+      ],
+      "lanes": [
+        "tests-ci"
+      ],
+      "source_ids": [
+        "tests-ci-07",
+        "tests-ci-31"
+      ],
+      "failure_scenario": "DEFAULT_BASELINE points at `.qa-discovery/BASELINE_FAILURES.txt` in a sibling checkout on one machine, so editing that file silently forgives an id for every local run while CI and every fresh clone read the committed 48-id mirror - two people run 'the same gate' and get opposite verdicts, and the deciding artefact is gitignored by the `.qa-*/` rule so the disagreement leaves no trace.",
+      "fix_sketch": "Make the committed tests/.pre_impl_failures.txt the only default, accept others only via an explicit --baseline argument, and assert in test_ci_gates that DEFAULT_BASELINE is inside REPO_ROOT.",
+      "known_item": false
+    },
+    {
+      "id": "M13-75",
+      "severity": "P2",
+      "title": "The #48 credential-neutralisation guarantee is verified by two tests that are inert without a .env",
+      "file": "tests/test_conftest_env_safety.py",
+      "line": 98,
+      "locations": [
+        "tests/test_conftest_env_safety.py:98"
+      ],
+      "lanes": [
+        "tests-ci"
+      ],
+      "source_ids": [
+        "tests-ci-08"
+      ],
+      "failure_scenario": "CI has no .env, so both tests are structurally satisfied by the very code under test: someone who deletes or reorders neutralize_credentials()/install_dotenv_guard() in tests/conftest.py sees a fully green CI, and only the one main checkout that has a .env would catch it.",
+      "fix_sketch": "Add a subprocess test that writes a synthetic .env into tmp_path, runs a one-line pytest session there, and asserts the synthetic credential is absent from the child's environment.",
+      "known_item": false
+    },
+    {
+      "id": "M13-76",
+      "severity": "P2",
+      "title": "The pre-commit hook lints the working tree, not the staged content it is gating",
+      "file": ".githooks/pre-commit",
+      "line": 17,
+      "locations": [
+        ".githooks/pre-commit:17"
+      ],
+      "lanes": [
+        "tests-ci"
+      ],
+      "source_ids": [
+        "tests-ci-09"
+      ],
+      "failure_scenario": "Stage a file with a syntax error, fix it in the editor without re-adding, and py_compile plus ruff read the FIXED file and pass while the BROKEN blob is committed; the mirror case - `git add -p` a clean hunk mid-refactor - rejects a commit that would have been fine.",
+      "fix_sketch": "Materialise the staged blobs into a temp dir with `git show :$f` and run the four checks against those, or wrap the hook body in a `git stash --keep-index`.",
+      "known_item": false
+    },
+    {
+      "id": "M13-77",
+      "severity": "P2",
+      "title": "The coverage floor measures app/ only - scripts/ (13,418 lines of cron, eval and gate code) has no floor",
+      "file": ".github/workflows/ci.yml",
+      "line": 93,
+      "locations": [
+        ".github/workflows/ci.yml:93"
+      ],
+      "lanes": [
+        "tests-ci"
+      ],
+      "source_ids": [
+        "tests-ci-11"
+      ],
+      "failure_scenario": "A refactor that short-circuits a branch in cron_warm_price_cache.py (the genuine-price lever that spends the finite Serper budget) or in regression_gate_diff.py (the gate itself) leaves --cov-fail-under=83 passing and the collapse invisible until an off-clock cron either burns budget or silently stops.",
+      "fix_sketch": "Change to `--cov=app --cov=scripts` and set the floor from the first measured combined run, using the same ratchet procedure that took app/ from 60 to 83.",
+      "known_item": false
+    },
+    {
+      "id": "M13-78",
+      "severity": "P2",
+      "title": "ENABLE_SITEMAP_INDEX is the one activation-runbook flag no test ever sets",
+      "file": "app/services/sitemap_discovery_service.py",
+      "line": 915,
+      "locations": [
+        "app/services/sitemap_discovery_service.py:915"
+      ],
+      "lanes": [
+        "tests-ci"
+      ],
+      "source_ids": [
+        "tests-ci-13"
+      ],
+      "failure_scenario": "Its env reader is patched out everywhere, so if the truthy tuple has a typo or Railway supplies an unhandled token, `sitemap_discovery_is_cold()` keeps returning False after the flag flip, every structural-gap estimate stays on the 30d path, and the whole sitemap channel activation is a silent no-op that reads as 'no gain'.",
+      "fix_sketch": "Add a parametrised test driving monkeypatch.setenv over the truthy/falsey token set and asserting the reader directly - the same seam every other activation flag already has.",
+      "known_item": false
+    },
+    {
+      "id": "M13-79",
+      "severity": "P2",
+      "title": "CLAUDE.md and the wave-1 handoff document a coverage floor of 60; ci.yml has been 83 since d48bc19",
+      "file": "CLAUDE.md",
+      "line": 403,
+      "locations": [
+        "CLAUDE.md:403"
+      ],
+      "lanes": [
+        "tests-ci"
+      ],
+      "source_ids": [
+        "tests-ci-14"
+      ],
+      "failure_scenario": "A session picks up the documented task 'raise the coverage floor', finds 83, and burns a cycle re-deriving what already shipped - or trusts the doc, concludes CI has no real floor, and waves through a change that drops coverage to a tenth of a point above a floor everyone believes is 60.",
+      "fix_sketch": "Replace both sentences with the real number and its provenance, and note the intent to re-ratchet after the #89 failures are fixed.",
+      "known_item": true
+    },
+    {
+      "id": "M13-80",
+      "severity": "P2",
+      "title": "Two Bundle-C RED-by-design stubs redden CI while the identical 35-stub class next to them is xfail-contained",
+      "file": "tests/test_personalization_bundle_c.py",
+      "line": 188,
+      "locations": [
+        "tests/test_personalization_bundle_c.py:188"
+      ],
+      "lanes": [
+        "tests-ci"
+      ],
+      "source_ids": [
+        "tests-ci-16"
+      ],
+      "failure_scenario": "Two of the failures blocking backend-tests from becoming a required status check are not defects at all - they are TDD placeholders for a feature that was never scheduled, so whoever works issue #89 diagnoses them and finds nothing fixable without shipping Bundle C personalization.",
+      "fix_sketch": "Give them the value_math treatment: a module-scoped non-strict xfail with a reason, plus an expiry guard in test_ci_gates that goes red when build_comparison_response gains the personalization parameter.",
+      "known_item": false
+    },
+    {
+      "id": "M13-81",
+      "severity": "P2",
+      "title": "test_backend_cleanup pins a source-text property that has legitimately reverted - pure rot",
+      "file": "tests/test_backend_cleanup.py",
+      "line": 163,
+      "locations": [
+        "tests/test_backend_cleanup.py:163"
+      ],
+      "lanes": [
+        "tests-ci"
+      ],
+      "source_ids": [
+        "tests-ci-17"
+      ],
+      "failure_scenario": "The assertion is a substring search over a module's own source text (it would also match `import ossl` or a comment) and cannot be made to pass without deleting a genuinely-used import, so it will sit in the baseline forever while teaching by example that a source-text grep is an acceptable regression test - a pattern already replicated elsewhere in tests/.",
+      "fix_sketch": "Delete the assertion and its baseline node; ruff's F401 already covers import hygiene repo-wide.",
+      "known_item": false
+    },
+    {
+      "id": "M13-82",
+      "severity": "P2",
+      "title": "test_referral_e2e fails on stale fixture data that migration 021's regex has rejected since it landed",
+      "file": "tests/test_referral_e2e.py",
+      "line": 133,
+      "locations": [
+        "tests/test_referral_e2e.py:133"
+      ],
+      "lanes": [
+        "tests-ci"
+      ],
+      "source_ids": [
+        "tests-ci-18"
+      ],
+      "failure_scenario": "The request is rejected at validation, so the share -> invite -> Loop-1-credit smoke chain has verified nothing since 021 shipped while sitting in the baseline as accepted - a real break in create_invite, the share-link builder or the referral-code stamp would be invisible.",
+      "fix_sketch": "Replace the literal with a valid sha256 digest and remove the node from the baseline; add the same helper to the other referral fixtures.",
+      "known_item": false
+    },
+    {
+      "id": "M13-83",
+      "severity": "P2",
+      "title": "response_builder does not strip the internal flags its own regression test says it must",
+      "file": "app/services/response_builder.py",
+      "line": 315,
+      "locations": [
+        "app/services/response_builder.py:315"
+      ],
+      "lanes": [
+        "tests-ci"
+      ],
+      "source_ids": [
+        "tests-ci-20"
+      ],
+      "failure_scenario": "Latent only because no current path attaches `_internal` to a product - the moment any extraction change stamps provenance there (which is what the key is for) it ships to every API client with no change to the response builder, and the test that exists to catch that has already been reclassified as an accepted baseline failure.",
+      "fix_sketch": "Add a top-level strip in build_comparison_response popping _SPEC_INTERNAL_FIELDS (or any leading-underscore key) from each product dict, mirroring the spec-level filter.",
+      "known_item": false
+    },
+    {
+      "id": "M13-84",
+      "severity": "P2",
+      "title": "One un-mocked free-tier test hangs past the pytest timeout and, under the Windows thread method, kills the whole run",
+      "file": "tests/test_rate_limiting_complete.py",
+      "line": 34,
+      "locations": [
+        "tests/test_rate_limiting_complete.py:34"
+      ],
+      "lanes": [
+        "tests-ci"
+      ],
+      "source_ids": [
+        "tests-ci-21"
+      ],
+      "failure_scenario": "Proved with a probe: the thread-method timeout hard-kills the interpreter mid-run, so around 74% the developer gets a wall of stack text, no summary line, and nothing about the remaining ~4,100 nodes - the natural reading is 'the suite is broken'. CLAUDE.md:440 records the hang but not that it aborts the run.",
+      "fix_sketch": "Mark the node live_unit so the conftest hook skips it without LIVE=1 (it is already in NETWORK_FLAKY_EXCLUDE), or mock _get_price so the test exercises the limiter rather than the internet.",
+      "known_item": true
+    },
+    {
+      "id": "M13-85",
+      "severity": "P2",
+      "title": "35 encoding-less read_text() calls in tests, 11 of whose targets already hold non-ASCII, on a cp1252 machine",
+      "file": "tests/test_security_regression.py",
+      "line": 502,
+      "locations": [
+        "tests/test_security_regression.py:502"
+      ],
+      "lanes": [
+        "tests-ci"
+      ],
+      "source_ids": [
+        "tests-ci-22"
+      ],
+      "failure_scenario": "They pass only because none of the five bytes cp1252 leaves undefined appears yet - and Arabic UTF-8 hits one directly: the most common Arabic letter FEH encodes as b'\\xd9\\x81' and 0x81 raises UnicodeDecodeError. This is a Bahrain product whose fixtures will acquire Arabic.",
+      "fix_sketch": "Sweep read_text() to read_text(encoding='utf-8') across the 35 sites plus the 18 encoding-less open() calls, and add a test_ci_gates guard asserting no encoding-less read in tests/.",
+      "known_item": false
+    },
+    {
+      "id": "M13-86",
+      "severity": "P2",
+      "title": "11 free-tier tests make real network calls; the docs name 3",
+      "file": "tests/test_security_hardening.py",
+      "line": 1,
+      "locations": [
+        "tests/test_security_hardening.py:1"
+      ],
+      "lanes": [
+        "tests-ci"
+      ],
+      "source_ids": [
+        "tests-ci-33"
+      ],
+      "failure_scenario": "Proved with a DNS-blocker plugin: the three SSRF tests flip from 3 passed to 3 failed - so on a runner with restricted egress or behind an NXDOMAIN-hijacking resolver, three SECURITY tests go red for environmental reasons, indistinguishable from a real SSRF-guard regression; two more reach Supabase, and free-tier tests were observed calling third-party storefronts directly.",
+      "fix_sketch": "Patch socket.getaddrinfo in the three SSRF tests so they test the validator's logic rather than the internet, mock the PostgREST client in the two Supabase ones, and adopt a socket-blocking plugin for the free tier.",
+      "known_item": false
+    },
+    {
+      "id": "M13-87",
+      "severity": "P2",
+      "title": "The invite-resolution route 500s on any Supabase error",
+      "file": "app/services/referral_service.py",
+      "line": 397,
+      "locations": [
+        "app/services/referral_service.py:397",
+        "app/api/referral_routes.py:261"
+      ],
+      "lanes": [
+        "tests-ci"
+      ],
+      "source_ids": [
+        "tests-ci-34"
+      ],
+      "failure_scenario": "A Supabase blip, a PostgREST timeout, an RLS policy error or a transient DNS failure turns every invite-link open into a 500 instead of the documented graceful 404 - the shared WhatsApp link renders an error screen, the invitee bounces, the Loop-1 credit is never earned, and Sentry sees unhandled exceptions rather than a handled miss. The test that reports it is red and untracked.",
+      "fix_sketch": "Wrap both lookups in try/except returning None so the route's existing 404 path handles it, then fix or baseline the node.",
+      "known_item": false
+    },
+    {
+      "id": "M13-88",
+      "severity": "P2",
+      "title": "Two test_page_scraping nodes pin behaviour the repo deliberately reversed, including the forbidden smallest-wins rule",
+      "file": "tests/test_page_scraping.py",
+      "line": 195,
+      "locations": [
+        "tests/test_page_scraping.py:195"
+      ],
+      "lanes": [
+        "tests-ci"
+      ],
+      "source_ids": [
+        "tests-ci-35"
+      ],
+      "failure_scenario": "The first test does not merely fail - it documents the opposite of shipped policy, so a maintainer reading it as the contract could re-introduce silent smallest-wins picking, the exact leak the multiplicity pend exists to prevent.",
+      "fix_sketch": "Rewrite it to assert the pend (no amount, a reason) and rename it accordingly; update the confidence expectation in test_og_meta_extraction to the current constant with a comment naming the commit that changed it.",
+      "known_item": false
+    },
+    {
+      "id": "M13-89",
+      "severity": "P2",
+      "title": "Migration 025's stated reason for keeping the users row is false, and 029 claims a coverage it does not have",
+      "file": "migrations/025_delete_user_cascade_completeness.sql",
+      "line": 57,
+      "locations": [
+        "migrations/025_delete_user_cascade_completeness.sql:57",
+        "migrations/029_user_preference_history.sql:20"
+      ],
+      "lanes": [
+        "data-migrations"
+      ],
+      "source_ids": [
+        "data-03"
+      ],
+      "failure_scenario": "025:57 keeps the users row 'so admin_audit_log foreign keys resolve' and admin_audit_log has no FK to users at all (9 FK hits in migrations/, none of them that table), while 029:20-24 claims its rows are covered implicitly. Downgraded from P1: docs/CONTEXT_DATABASE_API.md:83-84 records a public.users -> auth.users ON DELETE CASCADE and auth_service deletes the auth user immediately after, so 028/029 most likely do cascade - what survives is two false in-repo rationales.",
+      "fix_sketch": "Run `SELECT confrelid::regclass, confdeltype FROM pg_constraint WHERE conrelid='public.users'::regclass` once and write the answer into CLAUDE.md, then correct both comments - this is a one-query fact the repo has guessed at across three migrations.",
+      "known_item": true
+    },
+    {
+      "id": "M13-90",
+      "severity": "P2",
+      "title": "CLAUDE.md's migration ledger stops at 032 and never mentions ENABLE_PRICE_TITLE_PERSIST",
+      "file": "CLAUDE.md",
+      "line": 83,
+      "locations": [
+        "CLAUDE.md:83"
+      ],
+      "lanes": [
+        "data-migrations"
+      ],
+      "source_ids": [
+        "data-04"
+      ],
+      "failure_scenario": "An operator who reads CLAUDE.md and sets the flag before applying 033/034 makes PostgREST reject the whole insert row with 'column product_prices.title does not exist' - so EVERY L2 price write stops, not just the title - and the exception is swallowed into a warning, so the cache silently goes cold with no error surface.",
+      "fix_sketch": "Extend the ledger to an explicit per-migration APPLIED/UNAPPLIED list through 035 and document the flag's migration precondition, or better, make the flag self-guarding by probing the column once at startup.",
+      "known_item": false
+    },
+    {
+      "id": "M13-91",
+      "severity": "P2",
+      "title": "The cohort_priors loader catches two exception types where its siblings catch everything, and both auth call sites are unguarded",
+      "file": "app/services/cohort_service.py",
+      "line": 77,
+      "locations": [
+        "app/services/cohort_service.py:77"
+      ],
+      "lanes": [
+        "data-migrations"
+      ],
+      "source_ids": [
+        "data-07"
+      ],
+      "failure_scenario": "A rebuilt priors file emitting a list, or a BOM/latin-1 byte from a Windows editor (the repo already records cp1252 as a recurring gotcha), raises UnicodeDecodeError - a ValueError but NOT a json.JSONDecodeError - which propagates and makes POST /auth/demographics return 500 for every user submitting the onboarding cohort modal.",
+      "fix_sketch": "Widen to `except Exception` plus an `isinstance(data, dict)` guard, matching spec_spine_service.load_store, and wrap the two auth_routes call sites the way the other three already are.",
+      "known_item": false
+    },
+    {
+      "id": "M13-92",
+      "severity": "P3",
+      "title": "Sentry's OpenAI-key scrubber only matches sk-proj- keys",
+      "file": "app/services/sentry_service.py",
+      "line": 17,
+      "locations": [
+        "app/services/sentry_service.py:17"
+      ],
+      "lanes": [
+        "security"
+      ],
+      "source_ids": [
+        "security-08"
+      ],
+      "failure_scenario": "Executed against the repo's own _scrub_string: classic sk-, sk-svcacct-, GOCSPX- and Upstash-shaped tokens all pass through unredacted. Downgraded from P2 - no carrier for a full key into Sentry free text exists in this tree, so it is a defence-in-depth gap.",
+      "fix_sketch": "Add the classic sk-, sk-svcacct-, GOCSPX- and Upstash patterns to the alternation and cover them in the scrubber test.",
+      "known_item": false
+    },
+    {
+      "id": "M13-93",
+      "severity": "P3",
+      "title": "The admin static mount accepts the admin key over HTTP Basic with no rate limit",
+      "file": "app/main.py",
+      "line": 195,
+      "locations": [
+        "app/main.py:195"
+      ],
+      "lanes": [
+        "security"
+      ],
+      "source_ids": [
+        "security-17"
+      ],
+      "failure_scenario": "A Basic-auth brute-forcer against /admin/costs.html is bounded only by network speed, and ADMIN_API_KEY is an operator-chosen env var rather than a generated high-entropy value.",
+      "fix_sketch": "Put the mount behind the same limiter as the API routes and require a generated key length.",
+      "known_item": false
+    },
+    {
+      "id": "M13-94",
+      "severity": "P3",
+      "title": "Prompt-injection detection only logs; the documented injection_attempt audit event is never emitted",
+      "file": "app/services/extraction_service.py",
+      "line": 1313,
+      "locations": [
+        "app/services/extraction_service.py:1313"
+      ],
+      "lanes": [
+        "security"
+      ],
+      "source_ids": [
+        "security-18"
+      ],
+      "failure_scenario": "/admin/audit-log will never return an injection_attempt row, so an operator reviewing the audit surface concludes there have been zero attempts while the detector may be firing constantly; the raw query is also logged.",
+      "fix_sketch": "Emit the audit event from the detector and log a hash or a truncated form of the query rather than the raw text.",
+      "known_item": false
+    },
+    {
+      "id": "M13-95",
+      "severity": "P3",
+      "title": "CORS defaults ship localhost origins with allow_credentials=True and would accept CORS_ORIGINS='*'",
+      "file": "app/main.py",
+      "line": 86,
+      "locations": [
+        "app/main.py:86"
+      ],
+      "lanes": [
+        "security"
+      ],
+      "source_ids": [
+        "security-19"
+      ],
+      "failure_scenario": "Documented as a deliberate decision at docs/CONTEXT_DECISIONS_BUGS.md:43, and the app's cookie-less Bearer auth makes 'credentialed cross-origin access' an overstatement; the residual is the unguarded '*' path.",
+      "fix_sketch": "Reject '*' explicitly when allow_credentials is True, and drop the localhost defaults when RAILWAY_ENVIRONMENT is set.",
+      "known_item": true
+    },
+    {
+      "id": "M13-96",
+      "severity": "P3",
+      "title": "verify_admin_key 500s instead of 403 on a non-ASCII X-Admin-Key",
+      "file": "app/api/admin_routes.py",
+      "line": 37,
+      "locations": [
+        "app/api/admin_routes.py:37"
+      ],
+      "lanes": [
+        "security"
+      ],
+      "source_ids": [
+        "security-20"
+      ],
+      "failure_scenario": "Reproduced through the repo's own ErrorHandlerMiddleware: a raw \\xe9 header byte raises TypeError and returns HTTP 500 SERVER_ERROR while firing capture_exception - a trivially-sendable header becomes a Sentry-noise generator.",
+      "fix_sketch": "Coerce/encode the header before comparison and return 403 on any non-matching value.",
+      "known_item": false
+    },
+    {
+      "id": "M13-97",
+      "severity": "P3",
+      "title": ".claude/settings.local.json is committed with a blanket Bash allowlist every clone inherits",
+      "file": ".claude/settings.local.json",
+      "line": 4,
+      "locations": [
+        ".claude/settings.local.json:4"
+      ],
+      "lanes": [
+        "security"
+      ],
+      "source_ids": [
+        "security-21"
+      ],
+      "failure_scenario": "`Bash(python:*)` plus `Bash(curl:*)` is a full arbitrary-execution grant, so an agent following a poisoned instruction found in scraped page content, a fixture or a doc runs it without a prompt; `Bash(git push:*)` is in the same list.",
+      "fix_sketch": "Untrack the file (it is a local settings file by name), or narrow the allowlist to specific subcommands.",
+      "known_item": false
+    },
+    {
+      "id": "M13-98",
+      "severity": "P3",
+      "title": "Admin /costs runs an unbounded month-wide select, so the number is silently truncated",
+      "file": "app/api/admin_routes.py",
+      "line": 110,
+      "locations": [
+        "app/api/admin_routes.py:110"
+      ],
+      "lanes": [
+        "security"
+      ],
+      "source_ids": [
+        "security-22"
+      ],
+      "failure_scenario": "Once a month exceeds PostgREST's default max-rows the cost figures are understated with no error and no warning. Note the finding self-contradicts - the same cap it relies on for truncation is what prevents the memory spike it also alleges - and it is a correctness item mis-filed in the security lane.",
+      "fix_sketch": "Aggregate server-side or paginate explicitly, and surface a truncation flag in the response.",
+      "known_item": false
+    },
+    {
+      "id": "M13-99",
+      "severity": "P3",
+      "title": "STREAM_HARD_CAP_SECONDS code default (25.0) disagrees with the documented production value (30.0)",
+      "file": "app/services/structured_comparison_service.py",
+      "line": 1144,
+      "locations": [
+        "app/services/structured_comparison_service.py:1144"
+      ],
+      "lanes": [
+        "correctness"
+      ],
+      "source_ids": [
+        "correctness-14"
+      ],
+      "failure_scenario": "Any environment that does not set the variable - a preview deploy, the warmer process, a local eval - gets 25s while _PRICE_RACE_TIMEOUT stays 15s, so the Phase-2 and verdict tail loses 5s against the documented budget.",
+      "fix_sketch": "Make the code default 30.0 or document 25.0 as the default and 30.0 as the Railway override.",
+      "known_item": false
+    },
+    {
+      "id": "M13-100",
+      "severity": "P3",
+      "title": "fire_and_forget returns a Task no caller retains, leaving the documented mid-flight GC hazard",
+      "file": "app/utils/async_utils.py",
+      "line": 54,
+      "locations": [
+        "app/utils/async_utils.py:54"
+      ],
+      "lanes": [
+        "correctness"
+      ],
+      "source_ids": [
+        "correctness-16"
+      ],
+      "failure_scenario": "A suspended audit or save_comparison task whose only remaining reference runs through itself can be collected mid-flight, dropping the write with no exception and no done-callback.",
+      "fix_sketch": "Hold the tasks in a module-level set and discard on completion, the standard asyncio idiom.",
+      "known_item": false
+    },
+    {
+      "id": "M13-101",
+      "severity": "P3",
+      "title": "Shopify PDP domain spacing serialises concurrent callers into their own timeout budget and never evicts",
+      "file": "app/services/shopify_pdp_service.py",
+      "line": 243,
+      "locations": [
+        "app/services/shopify_pdp_service.py:243"
+      ],
+      "lanes": [
+        "correctness"
+      ],
+      "source_ids": [
+        "correctness-17"
+      ],
+      "failure_scenario": "The fifth concurrent caller on one storefront reserves a slot 4s out (8s with a redirect) and spends most of its 10s adapter budget sleeping before the first byte. Reachable only via price_service._try_ucp_json_price under ENABLE_UCP_JSON_PRICE, which is default OFF.",
+      "fix_sketch": "Cap the reservation at the remaining adapter budget and evict per-domain state on a TTL.",
+      "known_item": false
+    },
+    {
+      "id": "M13-102",
+      "severity": "P3",
+      "title": "quality_ranker is unreferenced, and the method it emits would be un-showable if it were ever wired in",
+      "file": "app/services/quality_ranker.py",
+      "line": 26,
+      "locations": [
+        "app/services/quality_ranker.py:26"
+      ],
+      "lanes": [
+        "price-pipeline"
+      ],
+      "source_ids": [
+        "price-pipeline-13"
+      ],
+      "failure_scenario": "45 lines plus a rank table duplicated by hand against scs:1293, and a booby trap: wiring it in - the obvious 'use the scatter-gather winner' change - would emit `confirmed_multi_source`, a method the showable set does not contain.",
+      "fix_sketch": "Delete it, or add its method to the showable set and de-duplicate the rank table.",
+      "known_item": false
+    },
+    {
+      "id": "M13-103",
+      "severity": "P3",
+      "title": "serper_service exports 5 zero-reference functions (137 lines) with a singular/plural name collision",
+      "file": "app/services/serper_service.py",
+      "line": 453,
+      "locations": [
+        "app/services/serper_service.py:453"
+      ],
+      "lanes": [
+        "quality-bloat"
+      ],
+      "source_ids": [
+        "quality-bloat-06"
+      ],
+      "failure_scenario": "A maintainer greps search_product_price and finds the dead singular 250 lines before the live plural. Downgraded from P2: the danger narrative is refuted - :470 delegates to the live gated function and extract_prices_from_text makes no network call, so there is no unmetered burn.",
+      "fix_sketch": "Delete the five functions; the name collision is the only real cost.",
+      "known_item": false
+    },
+    {
+      "id": "M13-104",
+      "severity": "P3",
+      "title": "pyproject.toml is a stale third dependency declaration that would install a non-bootable app",
+      "file": "pyproject.toml",
+      "line": 9,
+      "locations": [
+        "pyproject.toml:9"
+      ],
+      "lanes": [
+        "quality-bloat"
+      ],
+      "source_ids": [
+        "quality-bloat-08"
+      ],
+      "failure_scenario": "It declares 15 deps against requirements.in's 18, omitting slowapi, sentry-sdk and tiktoken - so an env built from it dies at `import app.main`. Downgraded: no dependabot/renovate config exists and neither CI nor NIXPACKS reads pyproject, so the cost is hypothetical. (Its cited line refs are also wrong: :48 and :31, not :34 and :30.)",
+      "fix_sketch": "Either delete the [project].dependencies block in favour of the requirements files, or generate it from them.",
+      "known_item": false
+    },
+    {
+      "id": "M13-105",
+      "severity": "P3",
+      "title": "Two contradictory Shopify variant-selection policies live in two modules",
+      "file": "app/services/price_service.py",
+      "line": 14077,
+      "locations": [
+        "app/services/price_service.py:14077",
+        "app/services/shopify_pdp_service.py:446"
+      ],
+      "lanes": [
+        "quality-bloat"
+      ],
+      "source_ids": [
+        "quality-bloat-12"
+      ],
+      "failure_scenario": "One picks the flagship bottle and one picks the cheapest available variant. Downgraded from P2: the min() rule is reachable only from fetch_shopify_pdp_json, which has zero non-test callers, and the wired channel calls the flagship policy - so the claimed 20x divergence cannot occur today.",
+      "fix_sketch": "Delete the unreachable parser or make it call the shared _select_shopify_variant, so the two cannot diverge if it is ever wired.",
+      "known_item": false
+    },
+    {
+      "id": "M13-106",
+      "severity": "P3",
+      "title": "6 of the orchestrator's 39 back-compat wrappers are referenced by nothing at all",
+      "file": "app/services/structured_comparison_service.py",
+      "line": 2422,
+      "locations": [
+        "app/services/structured_comparison_service.py:2422"
+      ],
+      "lanes": [
+        "quality-bloat"
+      ],
+      "source_ids": [
+        "quality-bloat-14"
+      ],
+      "failure_scenario": "The wrapper block is a second signature surface for 39 functions, so every parameter change to a delegated module function must be mirrored here or the wrapper silently drifts.",
+      "fix_sketch": "Delete the 6 zero-reference wrappers and add a test asserting each surviving wrapper's signature matches its delegate.",
+      "known_item": false
+    },
+    {
+      "id": "M13-107",
+      "severity": "P3",
+      "title": "Cron scripts import app.* with no sys.path bootstrap while CLAUDE.md documents them by path",
+      "file": "scripts/cron_reengagement.py",
+      "line": 23,
+      "locations": [
+        "scripts/cron_reengagement.py:23"
+      ],
+      "lanes": [
+        "quality-bloat"
+      ],
+      "source_ids": [
+        "quality-bloat-15"
+      ],
+      "failure_scenario": "Reproduced by subprocess: `python scripts/cron_reengagement.py` dies instantly on ModuleNotFoundError: No module named 'app'. (Only that one script is documented in path form, not three as filed.)",
+      "fix_sketch": "Add the two-line sys.path bootstrap or document the `python -m scripts.cron_reengagement` form.",
+      "known_item": false
+    },
+    {
+      "id": "M13-108",
+      "severity": "P3",
+      "title": ".gitignore's '.qa-*/ NEVER track' comment claims a fail-closed guarantee that 7 tracked files disprove",
+      "file": ".gitignore",
+      "line": 59,
+      "locations": [
+        ".gitignore:59"
+      ],
+      "lanes": [
+        "quality-bloat"
+      ],
+      "source_ids": [
+        "quality-bloat-16"
+      ],
+      "failure_scenario": "A reviewer reading the comment concludes the .qa-* surface is closed and stops checking, while the next recon dump written into an already-tracked .qa-* directory is committed silently.",
+      "fix_sketch": "Untrack the 7 files or soften the comment to describe what the rule actually does.",
+      "known_item": true
+    },
+    {
+      "id": "M13-109",
+      "severity": "P3",
+      "title": "The openai import-bomb note points at openai_service.py:20; the client is built at :27",
+      "file": "requirements.in",
+      "line": 7,
+      "locations": [
+        "requirements.in:7"
+      ],
+      "lanes": [
+        "quality-bloat"
+      ],
+      "source_ids": [
+        "quality-bloat-17"
+      ],
+      "failure_scenario": "A reader following the repo's own documented workaround lands on an import of model_config and concludes either the note is wrong or the trap was fixed.",
+      "fix_sketch": "Correct the line reference.",
+      "known_item": true
+    },
+    {
+      "id": "M13-110",
+      "severity": "P3",
+      "title": "One test file carries a UTF-8 BOM that breaks non-import-based tooling",
+      "file": "tests/test_subtype_spec_reconciliation.py",
+      "line": 1,
+      "locations": [
+        "tests/test_subtype_spec_reconciliation.py:1"
+      ],
+      "lanes": [
+        "quality-bloat"
+      ],
+      "source_ids": [
+        "quality-bloat-18"
+      ],
+      "failure_scenario": "Any repo-wide AST pass silently drops the file - the quality lane's own dead-code scan reported PARSE FAIL on it, meaning a coverage-driven audit of its contents is invisible to exactly the whole-tree tooling this review relies on.",
+      "fix_sketch": "Rewrite the file without the BOM and add a byte-scan guard to test_ci_gates.",
+      "known_item": false
+    },
+    {
+      "id": "M13-111",
+      "severity": "P3",
+      "title": "clearSession leaves the previous account's local state on the device",
+      "file": "SmartCompareApp/src/services/authService.ts",
+      "line": 349,
+      "locations": [
+        "SmartCompareApp/src/services/authService.ts:349"
+      ],
+      "lanes": [
+        "frontend"
+      ],
+      "source_ids": [
+        "frontend-19"
+      ],
+      "failure_scenario": "Recent searches, the free-comparisons counter and the demographics-prompt record all survive logout. Downgraded from P2: the headline (the next user sees the first user's search chips) is refuted - HomeScreen discards the recentSearches state value at declaration and it never reaches JSX, so the whole recent-searches feature is inert. Residual: data at rest plus the demographics suppression read at ResultsScreen.tsx:470.",
+      "fix_sketch": "Clear all @qaren_* keys in clearSession; separately, either render recent searches or delete the write path.",
+      "known_item": false
+    },
+    {
+      "id": "M13-112",
+      "severity": "P3",
+      "title": "Certificate pinning initialisation is fired without await",
+      "file": "SmartCompareApp/src/services/api.ts",
+      "line": 16,
+      "locations": [
+        "SmartCompareApp/src/services/api.ts:16"
+      ],
+      "lanes": [
+        "frontend"
+      ],
+      "source_ids": [
+        "frontend-23"
+      ],
+      "failure_scenario": "Nothing gates a request on pinningInitialized. Downgraded from P2: the boot path interposes four native async round trips (AsyncStorage, a dynamic import, changeLanguage, SecureStore) before the first request, so no unpinned request is demonstrated.",
+      "fix_sketch": "Await the init, or have the axios request interceptor await a retained promise.",
+      "known_item": false
+    },
+    {
+      "id": "M13-113",
+      "severity": "P3",
+      "title": "Sentry initialises unconditionally, so development crashes and 10% traces bill the production project",
+      "file": "SmartCompareApp/src/services/sentry.ts",
+      "line": 134,
+      "locations": [
+        "SmartCompareApp/src/services/sentry.ts:134"
+      ],
+      "lanes": [
+        "frontend"
+      ],
+      "source_ids": [
+        "frontend-24"
+      ],
+      "failure_scenario": "Every reload-time error and 10% of dev navigation transactions consume production quota and pollute the issue list release triage depends on.",
+      "fix_sketch": "Guard init on `!__DEV__` or point dev at a separate DSN/environment tag.",
+      "known_item": false
+    },
+    {
+      "id": "M13-114",
+      "severity": "P3",
+      "title": "CLAUDE.md documents @sentry/react-native@8.11.1; package.json pins ~7.2.0",
+      "file": "SmartCompareApp/package.json",
+      "line": 19,
+      "locations": [
+        "SmartCompareApp/package.json:19"
+      ],
+      "lanes": [
+        "frontend"
+      ],
+      "source_ids": [
+        "frontend-25"
+      ],
+      "failure_scenario": "A contributor applies v8 beforeSend/integration guidance to a v7 install, or assumes an upgrade already landed when planning the deferred sourcemap-upload follow-up.",
+      "fix_sketch": "Correct the documented version, or do the upgrade and update both.",
+      "known_item": false
+    },
+    {
+      "id": "M13-115",
+      "severity": "P3",
+      "title": "react-native-markdown-display is eagerly bundled for two rarely-opened modal screens",
+      "file": "SmartCompareApp/src/screens/LegalScreen.tsx",
+      "line": 18,
+      "locations": [
+        "SmartCompareApp/src/screens/LegalScreen.tsx:18"
+      ],
+      "lanes": [
+        "frontend"
+      ],
+      "source_ids": [
+        "frontend-26"
+      ],
+      "failure_scenario": "markdown-it plus the renderer's component tree ship in every EAS update and store binary for a screen the median user never opens.",
+      "fix_sketch": "Render the two legal documents as plain styled Text, or move them to a WebView. Note the filed React.lazy fix would not work - Metro has no code splitting.",
+      "known_item": false
+    },
+    {
+      "id": "M13-116",
+      "severity": "P3",
+      "title": "Deep links to Register with an invite code silently fail once the user is authenticated",
+      "file": "SmartCompareApp/App.tsx",
+      "line": 260,
+      "locations": [
+        "SmartCompareApp/App.tsx:260"
+      ],
+      "lanes": [
+        "frontend"
+      ],
+      "source_ids": [
+        "frontend-27"
+      ],
+      "failure_scenario": "An existing signed-in user taps a friend's share link, React Navigation cannot resolve Auth.Register, and the app opens on Home with the invite dropped - no error, no fallback. Softened by the server contract: invite redemption is register-only, so an authed user could not redeem it anyway.",
+      "fix_sketch": "Route authed users to a 'you are already signed in' explainer instead of dropping the link.",
+      "known_item": false
+    },
+    {
+      "id": "M13-117",
+      "severity": "P3",
+      "title": "The documented Nasser kill switch only responds to the literal string 'false'",
+      "file": "app/services/price_service.py",
+      "line": 14840,
+      "locations": [
+        "app/services/price_service.py:14840"
+      ],
+      "lanes": [
+        "tests-ci"
+      ],
+      "source_ids": [
+        "tests-ci-12"
+      ],
+      "failure_scenario": "`os.environ.get(..., 'true').lower() != 'false'` means an operator setting '0' or 'off' leaves the adapter ON - the same shape in four flags. Downgraded from P2: the coverage claim is refuted for two of the four (test_firecrawl_service.py:52,56 and test_scrapedo_service.py:34,38 drive the env var through patch.dict).",
+      "fix_sketch": "Route all four through a shared truthy/falsey parser (see M13-41) and add the parametrised test for the two uncovered flags.",
+      "known_item": false
+    },
+    {
+      "id": "M13-118",
+      "severity": "P3",
+      "title": "ci.yml's coverage comment block contradicts itself: it records the 83 ratchet then argues at length for 60",
+      "file": ".github/workflows/ci.yml",
+      "line": 69,
+      "locations": [
+        ".github/workflows/ci.yml:69"
+      ],
+      "lanes": [
+        "tests-ci"
+      ],
+      "source_ids": [
+        "tests-ci-15"
+      ],
+      "failure_scenario": "The next person to touch the gate reads a 25-line comment naming two floors and giving an already-completed instruction; both likely resolutions are wrong.",
+      "fix_sketch": "Delete the superseded paragraph and keep one sentence naming the current floor and its provenance.",
+      "known_item": false
+    },
+    {
+      "id": "M13-119",
+      "severity": "P3",
+      "title": "The prod-host marker ratchet only inspects tests that already carry live_unit",
+      "file": "tests/test_ci_gates.py",
+      "line": 708,
+      "locations": [
+        "tests/test_ci_gates.py:708"
+      ],
+      "lanes": [
+        "tests-ci"
+      ],
+      "source_ids": [
+        "tests-ci-23"
+      ],
+      "failure_scenario": "A convenience smoke test that POSTs to the production host with no markers at all passes the gate designed to catch exactly that.",
+      "fix_sketch": "Invert the check: scan for the production host literal first, then assert the enclosing test carries the marker.",
+      "known_item": false
+    },
+    {
+      "id": "M13-120",
+      "severity": "P3",
+      "title": "The black 'ratchet' has not gained a file since it was created and is 62% empty __init__.py",
+      "file": ".github/black-clean-paths.txt",
+      "line": 1,
+      "locations": [
+        ".github/black-clean-paths.txt:1"
+      ],
+      "lanes": [
+        "tests-ci"
+      ],
+      "source_ids": [
+        "tests-ci-24"
+      ],
+      "failure_scenario": "Nine implementation waves added code without a single file joining the allowlist, so the blocking format gate applies to essentially nothing while consuming a job step and a pinned dependency.",
+      "fix_sketch": "Either add files each wave (a real ratchet) or drop the gate and its dependency.",
+      "known_item": false
+    },
+    {
+      "id": "M13-121",
+      "severity": "P3",
+      "title": "The scheduled live suite installs pytest unpinned and skips the dev lock",
+      "file": ".github/workflows/live-suite.yml",
+      "line": 138,
+      "locations": [
+        ".github/workflows/live-suite.yml:138"
+      ],
+      "lanes": [
+        "tests-ci"
+      ],
+      "source_ids": [
+        "tests-ci-25"
+      ],
+      "failure_scenario": "A breaking pytest-asyncio default change (it has shipped twice) errors the Sunday run at collection, the reporter files 'likely scraper drift', and the triage session is spent re-sampling storefronts.",
+      "fix_sketch": "Install from requirements-dev.txt like the main workflow does.",
+      "known_item": false
+    },
+    {
+      "id": "M13-122",
+      "severity": "P3",
+      "title": "The value_math xfail reason points at a CLAUDE.md line number that now names a different paragraph",
+      "file": "tests/test_value_math.py",
+      "line": 66,
+      "locations": [
+        "tests/test_value_math.py:66"
+      ],
+      "lanes": [
+        "tests-ci"
+      ],
+      "source_ids": [
+        "tests-ci-28"
+      ],
+      "failure_scenario": "CLAUDE.md is 85KB and edited most sessions, so a pinned line number in a CI failure summary is guaranteed to drift and sends the reader to an unrelated paragraph.",
+      "fix_sketch": "Cite the section heading rather than the line number.",
+      "known_item": false
+    },
+    {
+      "id": "M13-123",
+      "severity": "P3",
+      "title": "Stale xfail narration in test_cascade_order_regression_qa describes an estate the file no longer has",
+      "file": "tests/test_cascade_order_regression_qa.py",
+      "line": 357,
+      "locations": [
+        "tests/test_cascade_order_regression_qa.py:357"
+      ],
+      "lanes": [
+        "tests-ci"
+      ],
+      "source_ids": [
+        "tests-ci-29"
+      ],
+      "failure_scenario": "The real whole-repo xfail estate is three marks; grepping for xfail returns prose that suggests otherwise, so the next reader mis-scopes the cleanup.",
+      "fix_sketch": "Delete the stale narration.",
+      "known_item": false
+    },
+    {
+      "id": "M13-124",
+      "severity": "P3",
+      "title": "CLAUDE.md documents a ~100-file test estate that is actually 535 files and 15,839 nodes",
+      "file": "CLAUDE.md",
+      "line": 368,
+      "locations": [
+        "CLAUDE.md:368"
+      ],
+      "lanes": [
+        "tests-ci"
+      ],
+      "source_ids": [
+        "tests-ci-30"
+      ],
+      "failure_scenario": "Planning decisions keyed off this number are wrong by 5x: 'run the free unit tests' reads as a two-minute action rather than a multi-thousand-node run, and the gate-batch rule at CLAUDE.md:532 is sized against the wrong denominator.",
+      "fix_sketch": "Replace with the measured figures and add a test_ci_gates assertion so it cannot drift silently again.",
+      "known_item": false
+    },
+    {
+      "id": "M13-125",
+      "severity": "P3",
+      "title": "16 of 29 forward migrations have no rollback file",
+      "file": "CLAUDE.md",
+      "line": 83,
+      "locations": [
+        "CLAUDE.md:83",
+        "migrations/rollback/"
+      ],
+      "lanes": [
+        "data-migrations"
+      ],
+      "source_ids": [
+        "data-08"
+      ],
+      "failure_scenario": "Reverting a 010-era policy change under time pressure means reconstructing the pre-010 RLS posture by hand. Downgraded from P2: the denominator is 29 not 30, CLAUDE.md:83 is a locator sentence rather than a coverage guarantee, and the uncovered set is entirely pre-023 DDL applied long ago.",
+      "fix_sketch": "Add a one-line coverage note to the migrations section rather than back-filling 16 rollbacks.",
+      "known_item": false
+    },
+    {
+      "id": "M13-126",
+      "severity": "P3",
+      "title": "The running service writes a committed repo data file with a non-atomic truncating write",
+      "file": "app/services/price_service.py",
+      "line": 8631,
+      "locations": [
+        "app/services/price_service.py:8631"
+      ],
+      "lanes": [
+        "data-migrations"
+      ],
+      "source_ids": [
+        "data-09"
+      ],
+      "failure_scenario": "A SIGTERM mid-write (Railway sends one on every redeploy, and the warmer is the process that runs this path) leaves partial JSON, after which the blanket `except Exception: pass` makes every future append a silent no-op. Downgraded from P2: data/variant_hint_learned.json is write-only - nothing in app/, scripts/ or tests/ reads it - and both gating flags are default OFF.",
+      "fix_sketch": "Write via tempfile + os.replace, or delete the write path since nothing consumes it.",
+      "known_item": false
+    },
+    {
+      "id": "M13-127",
+      "severity": "P3",
+      "title": "The cold-start cron runbook baked into main.py points at a Railway host no other reference uses",
+      "file": "app/main.py",
+      "line": 261,
+      "locations": [
+        "app/main.py:261"
+      ],
+      "lanes": [
+        "data-migrations"
+      ],
+      "source_ids": [
+        "data-10"
+      ],
+      "failure_scenario": "`curl -sf` is silent on failure by design, so the cron reports success forever while pinging a host that is not the deployed service and the cold-start penalty it exists to remove is never removed.",
+      "fix_sketch": "Correct the host in the comment, or make the runbook read the host from an env var.",
+      "known_item": false
+    },
+    {
+      "id": "M13-128",
+      "severity": "P3",
+      "title": "CLAUDE.md pins the catalog registry at 274 liveness-gated rows; the committed store yields 275",
+      "file": "CLAUDE.md",
+      "line": 328,
+      "locations": [
+        "CLAUDE.md:328"
+      ],
+      "lanes": [
+        "data-migrations"
+      ],
+      "source_ids": [
+        "data-12"
+      ],
+      "failure_scenario": "It is the number an operator uses to confirm the flag took effect after a deploy, so an off-by-one against a hand-maintained count makes the check either fail spuriously or pass for the wrong reason.",
+      "fix_sketch": "Derive the count in the test suite rather than documenting it by hand.",
+      "known_item": false
+    },
+    {
+      "id": "M13-129",
+      "severity": "P3",
+      "title": "spec_spine_service.lookup returns the memoised store's inner dict by reference",
+      "file": "app/services/spec_spine_service.py",
+      "line": 313,
+      "locations": [
+        "app/services/spec_spine_service.py:313"
+      ],
+      "lanes": [
+        "data-migrations"
+      ],
+      "source_ids": [
+        "data-13"
+      ],
+      "failure_scenario": "A caller that mutates a returned entry in place poisons the process-wide memoised store. (Two sub-claims in the filing are fabricated: the cited __all__ export does not exist and the seeder never calls lookup().)",
+      "fix_sketch": "Return a deep copy, or document the contract as read-only and add a test that mutating the result does not change a second lookup.",
+      "known_item": false
+    },
+    {
+      "id": "M13-130",
+      "severity": "P3",
+      "title": "CLAUDE.md describes the seeded descriptor store as 'robots-allowed rows only'; 2 of 95 carry robots_allowed=false",
+      "file": "CLAUDE.md",
+      "line": 334,
+      "locations": [
+        "CLAUDE.md:334"
+      ],
+      "lanes": [
+        "data-migrations"
+      ],
+      "source_ids": [
+        "data-14"
+      ],
+      "failure_scenario": "The sentence teaches that robots enforcement happens at resolve time and the store is pre-filtered; it does not - the store deliberately persists resolved 'no' answers so they are never re-probed.",
+      "fix_sketch": "Correct the sentence to describe the persist-the-no design.",
+      "known_item": false
+    },
+    {
+      "id": "M13-131",
+      "severity": "P3",
+      "title": "The fixture that stops the test suite writing a committed data file is opt-in, not autouse",
+      "file": "tests/test_variant_llm_hint_b3b.py",
+      "line": 64,
+      "locations": [
+        "tests/test_variant_llm_hint_b3b.py:64"
+      ],
+      "lanes": [
+        "data-migrations"
+      ],
+      "source_ids": [
+        "data-15"
+      ],
+      "failure_scenario": "7 of 20 tests do not request it, so a 21st test exercising the high-confidence LLM branch - the branch the module exists to test - would rewrite the committed data file during a test run. (13 signatures and 7 autouse fixtures, not the 14 and 8 filed.)",
+      "fix_sketch": "Make the fixture autouse at module scope.",
+      "known_item": false
+    }
+  ]
+}
