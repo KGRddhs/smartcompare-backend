@@ -1208,7 +1208,13 @@ def build_comparison_response(
     try:
         from app.services.price_service import (
             is_price_showable, make_pending_price, _infer_category_from_query,
+            region_currency_guard_enabled,
         )
+        from app.services.exchange_rate_service import get_region_currency
+        # M13-11 — the request region's own currency, resolved once. Empty/unknown
+        # region defaults to BHD (get_region_currency's contract).
+        _region_currency = get_region_currency(region).upper()
+        _region_guard_on = region_currency_guard_enabled()
         for _pd_idx, pd_item in enumerate(product_data):
             _name = pd_item.get("full_name") or pd_item.get("name") or ""
             _price = pd_item.get("price")
@@ -1237,6 +1243,28 @@ def build_comparison_response(
             # already non-showable and correctly shaped.
             if _price.get("unavailable") is True:
                 continue
+            # M13-11 (ENABLE_REGION_CURRENCY_GUARD, default OFF) — pend a price
+            # whose currency does not match the request region's currency (a BHD
+            # adapter price served to a Saudi region). Every downstream consumer
+            # reads price.amount as a bare number, so a mislabelled price wins or
+            # loses the comparison as if it were the region currency. Flag OFF:
+            # this block never runs (byte-identical).
+            if _region_guard_on:
+                _pcur = str(_price.get("currency") or "").upper()
+                if _pcur and _pcur != _region_currency:
+                    _price["guard_rejected"] = "region_currency_mismatch"
+                    _guard_rejected_diag.append(
+                        {"product_index": _pd_idx,
+                         "reason": "region_currency_mismatch"}
+                    )
+                    pd_item["price"] = make_pending_price(
+                        currency=_region_currency, reason="pending_genuine",
+                        size=_price.get("size"),
+                    )
+                    pd_item["best_price"] = None
+                    if "retailer" in pd_item:
+                        pd_item["retailer"] = None
+                    continue
             if not is_price_showable(_name, _price, _cat, enforce_correctness=True):
                 _pend = make_pending_price(
                     currency=_price.get("currency") or "BHD",

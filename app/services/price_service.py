@@ -679,6 +679,27 @@ def strict_currency_label_enabled() -> bool:
     )
 
 
+def region_currency_guard_enabled() -> bool:
+    """True iff the response chokepoint PENDS a price whose currency does not
+    match the request region's currency (default OFF).
+
+    M13-11. Eight direct-fetch adapters hard-code BHD and ignore their own
+    ``currency`` parameter, and there is no region-vs-currency check anywhere in
+    the fan-out, ``is_price_showable`` or ``response_builder`` — so a
+    region=saudi_arabia compare can serve a BHD 25.0 from a BH adapter against a
+    SAR 250.0 from another tier, and because every consumer reads
+    ``product.price.amount`` as a bare number the 10x-wrong product wins and the
+    card renders 'BHD 25.0' to a Saudi user. This is the buildable half of the
+    fix (the adapter-level currency parameter is a larger follow-up): ONE guard
+    at the response chokepoint that pends any price whose currency != the region
+    currency. Read PER CALL from os.getenv; default OFF so flag-OFF is byte-
+    identical to 5ee72e8 — the highest-blast-radius change in the wave.
+    """
+    return os.getenv("ENABLE_REGION_CURRENCY_GUARD", "").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
 def _convert_to_bhd(amount: float, currency: str) -> float:
     """Convert amount to BHD using the central FALLBACK_RATES table.
 
