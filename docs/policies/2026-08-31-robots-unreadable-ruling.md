@@ -1,6 +1,26 @@
-# Robots-unreadable ruling — the 5-minute decision (U4, 2026-08-31)
+# Robots-unreadable ruling — DECIDED (U4 dossier 2026-08-31; ruling recorded M12 U:V1)
 
-**Decision owner:** Ahmed. **Prepared by:** M11 U4 (docs-only unit; no app behavior changed).
+> ## ✅ RULING: FAIL-CLOSED (Option A + C rider) — approved by Ahmed, 2026-08-31
+>
+> Ahmed approved the dossier's recommendation as written (2026-08-31): when a host's
+> `robots.txt` is **UNREADABLE** (the robots file itself returns 403 / a WAF challenge
+> page / times out / errors), we **fail-closed — skip the host**. Option A's scheduled
+> re-read applies (a later successful robots read lets the host rejoin under its actual
+> policy), and the **Option C rider** applies to egress artifacts (a policy readable
+> from residential IS the policy; a datacenter wall on the *reader's IP* is not
+> fail-open — the residential-read policy is obeyed). Option B (fail-open-with-care)
+> was NOT taken; www.perfume.com stays skipped.
+>
+> Boundary, for implementers: a **404/410** on `/robots.txt` is NOT "unreadable" — it
+> is a host publishing no policy, which stays allow-all per RFC 9309 sec 2.3.1.3.
+> "Unreadable" means the policy document is *walled or unreachable*: 403/401, any
+> other non-2xx wall or challenge page, a 5xx, a timeout, or a network error.
+> Likewise an empty-or-junk **200** body stays allow-all (RFC "unparseable") — but a
+> caller must NEVER map a *failed fetch* to an empty body, because that silently
+> converts unreadable into allow-all (`robots_eval.can_fetch("", ...) is True`).
+> Enforcement surfaces + pinning tests: see "Enforcement surfaces" at the end.
+
+**Decision owner:** Ahmed (ruled 2026-08-31). **Prepared by:** M11 U4 (docs-only unit; no app behavior changed). **Pinned in code:** M12 U:V1 (branch `feature/m12-robots-ruling`).
 **Live evidence:** 22 hosts' `/robots.txt` fetched fresh today from the Bahrain residential IP,
 throttled 2.2s/host, evaluated with `app.services.robots_eval` as `QarenBot` (the registry
 `NAMED_AGENT`). Raw per-host results: `docs/policies/2026-08-31-robots-probe-evidence.json`.
@@ -56,7 +76,8 @@ Reasoning:
    (`search_descriptor_service.resolve_descriptor`) currently treats a non-200 robots read as
    allow-all (empty body ⇒ RFC-unparseable ⇒ allow) — RFC-legal, but if this ruling lands as
    fail-closed, that branch should be tightened to match in a later code unit (it is dark today:
-   flag off, store empty, so nothing live disagrees with the ruling).
+   flag off, store empty, so nothing live disagrees with the ruling). *[DONE — M12 U:V1
+   tightened exactly this branch; see "Enforcement surfaces" below.]*
 
 ## The 2–3 options to pick from
 
@@ -157,16 +178,28 @@ scope.
 
 ---
 
-## bh.afnan.com adjudication — TODO (blocked on the descriptor-seed unit)
+## bh.afnan.com adjudication — RESOLVED 2026-08-31 (M11 descriptor-seed run)
 
-> **TODO [do not resolve in this unit]:** the search-descriptor seed unit (M7 D3 /
-> `scripts/resolve_search_descriptors.py` run) will produce its own robots-checked verdict for
-> bh.afnan.com's search surface. Adjudicate bh.afnan.com's registry status HERE once that
-> verdict lands, combining: (a) this dossier's finding that its robots explicitly ALLOWS AI
-> agents on `/products/` and `/collections/` (the U01 "named-disallow / policy-skip" tag is a
-> false positive for this host), (b) the descriptor unit's search-surface verdict, and (c) the
-> BHD-vs-SAR style currency check if flagged. Until then the U01 policy-skip stands
-> operationally.
+**ADJUDICATED: the U01 "named-disallow → policy-skip" tag is REFUTED for both Afnan
+stores.** The M11 search-descriptor seed run (`scripts/resolve_search_descriptors.py`,
+robots-first, `robots_eval` as `QarenBot`) produced its per-host verdict on 2026-08-31,
+now persisted in `data/search_descriptors.json`:
+
+| host | robots_eval per-host verdict | descriptor | resolved |
+|---|---|---|---|
+| bh.afnan.com | **ALLOW** (PDP sample + `/`) | `kind=sitemap`, `robots_allowed=true`, `discovered_via=robots` | 2026-08-31T12:31:33Z |
+| oman.afnan.com | **ALLOW** (PDP sample + `/`) | `kind=sitemap`, `robots_allowed=true`, `discovered_via=robots` | 2026-08-31T12:25:28Z |
+
+Combined with Table 1's finding (their robots explicitly ALLOWS AI bots on `/products/`,
+`/collections/`, `/blogs/` — the named AI groups only fence off cart/checkout/account),
+the egress probe's coarse named-disallow gate is **refuted** for these two hosts: it
+conflated "a robots file that NAMES AI agents" with "a robots file that disallows us".
+The per-group evaluation shows the opposite — AI agents are welcomed on exactly the
+surfaces the registry samples. Their search surface stays closed (legacy Shopify
+`Disallow: /search`, hence `kind=sitemap`, not `platform_api`), which the descriptor
+records honestly. **Registry status: both rows stand as live robots-ALLOWED sources;
+the U01 policy-skip no longer applies.** The BHD-vs-SAR-style currency check was not
+flagged for either host (both serve their registry currency: BHD / OMR).
 
 ## Method + provenance (for re-runs)
 
@@ -184,3 +217,24 @@ scope.
 - Compact per-host evidence (statuses, byte counts, matched groups, verdicts):
   `docs/policies/2026-08-31-robots-probe-evidence.json`. Raw bodies live in the U4 session
   scratchpad only (they are third-party content; not committed).
+
+---
+
+## Enforcement surfaces (audited + pinned by M12 U:V1, 2026-08-31)
+
+Every robots-consulting surface in the repo, classified against the ruling. "Pinned"
+means a test asserts the fail-closed behaviour on an unreadable robots.
+
+| surface | robots role | state at `6d3d2d3` | state after V1 | pin |
+|---|---|---|---|---|
+| `app/services/robots_eval.py` | pure evaluator — never fetches; caller supplies the body | not a fetch surface. `can_fetch("")` is allow-all (RFC unparseable), which is CORRECT for a 200-empty body and a TRAP for a caller that maps a failed fetch to `""` | unchanged (evaluation semantics are RFC-correct); docstring now states the caller contract: an unreadable FETCH must fail closed BEFORE `can_fetch` is consulted | `tests/test_search_descriptor_d3.py::TestRobotsEvaluator` (incl. the empty-body-is-allow-all pin) + `tests/test_robots_unreadable_ruling.py` |
+| `app/services/search_descriptor_service.py::probe_search_descriptor` (called by `scripts/resolve_search_descriptors.py`; reachable from `resolve_search_url` only when a caller injects a fetch — the live path never does) | fetches `/robots.txt` FIRST, gates every candidate path | **fail-OPEN** on unreadable robots: a non-200 status or a fetch exception left `robots_txt=""` → allow-all → the probe continued (the branch this dossier itself flagged for tightening) | **fail-CLOSED**: 403/401/5xx/timeout/error → `RobotsUnreadableError` → host skipped this run, NOT persisted (so the next resolver run retries it — Option A's re-read for free). 404/410 stays allow-all (no policy published). `resolve_search_url` catches it → `None` (fail-closed) | `tests/test_robots_unreadable_ruling.py` (red-first) |
+| sitemap builder: `app/services/sitemap_discovery_service.py::build_sitemap_index` + `scripts/cron_index_sitemaps.py` (off-clock crawler; the ONLY thing that fetches sitemaps) | none — did NOT consult robots AT ALL (it does not use `urllib.robotparser` either; B8's stdlib concern is moot, the gate was simply absent) | **fail-OPEN in the strongest sense**: crawled a host's sitemap index + children with zero robots consultation — contradicts the ruling | **fail-CLOSED robots gate added**: per-host `robots.txt` fetched (status-aware, named `QarenBot` UA) before ANY sitemap fetch; unreadable → the whole index build for that entry point is skipped (0 indexed, prior index left in place); readable → the index URL and every child sitemap URL are evaluated with `robots_eval.can_fetch` and disallowed URLs are never fetched; 404/410 → allow-all. Unconditional (off-clock compliance infrastructure; the live request path only reads Redis and is untouched; channel stays behind `ENABLE_SITEMAP_INDEX`, default OFF) | `tests/test_robots_unreadable_ruling.py` (red-first) |
+| `app/services/yotpo_service.py` | hard ALLOWLIST pinned from `api-cdn.yotpo.com/robots.txt` (fetched 2026-08-30), checked BEFORE every network call | **fail-CLOSED by construction** — no live robots read exists to be unreadable; any path not on the allowlist is refused | unchanged | `tests/test_yotpo_reviews.py::test_allowlist_rejects_arbitrary_and_disallowed_paths` + `::test_get_json_refuses_a_non_allowlisted_url` |
+| `app/services/platform_router.py` | consumes a robots BODY (when a caller already has one) as a platform-DETECTION signal only | not a permission surface — makes no fetch decisions | unchanged | n/a |
+| other fetching scripts (`verify_bh_gcc_sources.py`, `probe_truth_freshness.py`, `bias_matrix_probe.py`, `measure_*.py`, `run_validation_matrix.py`, `seed_zyte_luxury.py`, `cron_warm_price_cache.py`, `ab_render_providers.py`) and the live price path | do not consult robots (single sample-URL probes / corpus replays / vendor calls / the user-requested PDP fetch) | not robots-consulting surfaces — there is no unreadable-robots branch to classify. Whether any of them SHOULD gain a robots gate is a separate policy question, out of this ruling's scope | unchanged | n/a |
+
+`scripts/seed_spec_spine.py` reads nothing from the network (file inputs only) —
+not a surface. `scripts/resolve_search_descriptors.py` itself has no robots branch of
+its own; it delegates to `probe_search_descriptor` and inherits its fail-closed
+behaviour (an unreadable host prints `SKIP` and stays unresolved in the store).
