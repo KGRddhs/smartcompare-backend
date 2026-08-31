@@ -10354,8 +10354,20 @@ def _repair_doubled_quote_jsonld_parse(raw: Any) -> Optional[Any]:
 def extract_jsonld_price(
     html: str, brand: str, expected_currency: str, query_name: str = "",
     category: Optional[str] = None, pending_out: Optional[List[Any]] = None,
+    accept_any_currency: bool = False,
 ) -> Optional[Dict[str, Any]]:
     """Parse JSON-LD Product schema from HTML for price data.
+
+    `accept_any_currency` (M13-40, ENABLE_JSONLD_FIRST at the caller, default
+    False) — when True the per-Offer currency gate is LIFTED and each candidate
+    carries its OWN ISO-validated ``priceCurrency`` instead of
+    ``expected_currency``. The caller (``extract_price_from_html``) uses this on
+    a THIRD pass, only after the target-currency and USD passes both returned
+    nothing, so a Gulf cross-border storefront whose Offer is denominated in a
+    currency that is neither the target nor USD (EUR/SAR/AED) becomes a
+    convertible candidate instead of being pushed off the channel onto the
+    OG/microdata/WooCommerce fallbacks. False = the exact legacy currency gate,
+    byte-identical.
 
     `pending_out` (ENABLE_JSONLD_SHAPE_LADDER, optional) — the MULTIPLICITY
     channel. When the page carries several distinct identity-matched prices and
@@ -10598,8 +10610,22 @@ def extract_jsonld_price(
                 else:
                     _ladder_price = None
                     currency = offer.get("priceCurrency") or ""
-                if str(currency).upper() != expected_currency.upper():
-                    continue
+                # M13-40 — accept_any_currency LIFTS the target-currency gate and
+                # carries the Offer's OWN ISO-validated code, so a foreign-currency
+                # Offer becomes a convertible candidate. A non-ISO/junk currency is
+                # still dropped (never stamp a number with an unreadable code).
+                # Flag OFF (accept_any_currency False): the exact legacy gate —
+                # currency must equal expected_currency, and the candidate is
+                # stamped expected_currency, byte-identical.
+                if accept_any_currency:
+                    _own_cur = iso_currency_label(currency)
+                    if not _own_cur:
+                        continue
+                    _cand_currency = _own_cur
+                else:
+                    if str(currency).upper() != expected_currency.upper():
+                        continue
+                    _cand_currency = expected_currency
                 # A struck-through WAS-price is not an offer anybody can accept.
                 # Same flag as the Gulf half of the sale-price rule
                 # (ENABLE_SALE_PRICE_FIRST, default ON) because it is the same
@@ -10722,7 +10748,9 @@ def extract_jsonld_price(
 
                 cand: Dict[str, Any] = {
                     "amount": price_val,
-                    "currency": expected_currency,
+                    # M13-40: the Offer's own ISO code on the accept-any pass,
+                    # else expected_currency (byte-identical to the legacy stamp).
+                    "currency": _cand_currency,
                     "in_stock": in_stock,
                 }
                 # The JSON-LD Product NAME is carried UNCONDITIONALLY — LEGACY (b207bfa /
@@ -12825,6 +12853,21 @@ def extract_price_from_html(
         price_data = extract_jsonld_price(
             html, brand, "USD", query_name=product_name, category=category,
             pending_out=_ld_pending,
+        )
+        if price_data:
+            price_data["_needs_conversion"] = True
+    # M13-40 (ENABLE_JSONLD_FIRST) — THIRD PASS: accept a foreign-currency Offer.
+    # Only reached when the target-currency AND USD passes both found nothing, so
+    # a Gulf cross-border storefront whose JSON-LD Offer is denominated in a
+    # currency that is neither the ask nor USD (EUR/SAR/AED) is captured HERE and
+    # run through the SAME _convert_gpt_price_currency + strict-label +
+    # converted_usd relabel the sibling branches use (the shared block just
+    # below), instead of being dropped onto the OG/microdata/WooCommerce
+    # fallbacks where M13-07/M13-08 live. Flag OFF: never runs, byte-identical.
+    if not price_data and _first:
+        price_data = extract_jsonld_price(
+            html, brand, currency, query_name=product_name, category=category,
+            pending_out=_ld_pending, accept_any_currency=True,
         )
         if price_data:
             price_data["_needs_conversion"] = True
