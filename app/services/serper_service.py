@@ -18,7 +18,13 @@ from typing import Optional, Dict, Any, List
 # 2-product compare burns ~10-30 credits against a 2,500-credit ONE-TIME free
 # pool (~180 cold compares), which is why the key has depleted repeatedly.
 # `serper_gate_allows` is the read side; see _serper_budget_ok below.
-from app.services.api_budget_service import record_usage, serper_gate_allows
+from app.services.api_budget_service import (
+    record_usage,
+    serper_gate_allows,
+    is_circuit_closed,
+    record_failure,
+    record_success,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -260,6 +266,79 @@ def _serper_budget_ok() -> bool:
 
 
 # ============================================
+# SERPER CIRCUIT BREAKER (ENABLE_SERPER_BREAKER — opt-in, default OFF) — M13-32
+# ============================================
+# Serper — the highest-volume paid provider — had metering but NO circuit breaker
+# (record_failure('serper') / is_circuit_closed('serper') had zero call sites). On
+# the documented 403 state every compare still dispatched all six Serper entry
+# points at their full timeout, per product, forever — no cooldown ever engaged.
+# Gate _serper_post's dispatch on the breaker, record success/failure per response,
+# and — like _serper_budget_ok — MEMOISE the breaker read so it adds no per-call
+# blocking Redis round trip on the hot path (the exact event-loop hazard the block
+# comment above exists to avoid). The memo is invalidated the moment a
+# success/failure is recorded, so a trip/recovery takes effect on the very next
+# call. Flag OFF -> none of this runs and _serper_post is byte-identical (every
+# call dispatches, no breaker read, no record).
+_serper_breaker_cache: Optional[tuple] = None  # (expires_at_monotonic, closed)
+
+
+def _serper_breaker_enabled() -> bool:
+    return os.getenv("ENABLE_SERPER_BREAKER", "").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
+def _reset_serper_breaker_cache() -> None:
+    global _serper_breaker_cache
+    _serper_breaker_cache = None
+
+
+def _serper_breaker_closed() -> bool:
+    """Memoised is_circuit_closed('serper'), reusing the SERPER_GATE_CACHE_TTL
+    window. FAIL-OPEN on any error. Invalidated by _serper_record_failure/success
+    so the breaker's trip/recovery is seen on the next call."""
+    global _serper_breaker_cache
+    now = _time.monotonic()
+    cached = _serper_breaker_cache
+    if cached is not None and now < cached[0]:
+        return cached[1]
+    try:
+        closed = is_circuit_closed("serper")
+    except Exception as e:  # noqa: BLE001 — a monitoring failure must not block calls
+        logger.warning("[CIRCUIT] serper breaker check failed (%s) — failing open", e)
+        closed = True
+    ttl = _serper_gate_cache_ttl()
+    _serper_breaker_cache = (now + ttl, closed) if ttl > 0 else None
+    return closed
+
+
+def _serper_record_failure() -> None:
+    """Record a Serper failure (timeout / 5xx / 403) and drop the breaker memo so
+    a resulting trip engages immediately. No-op unless the breaker flag is ON."""
+    if not _serper_breaker_enabled():
+        return
+    try:
+        record_failure("serper")
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[CIRCUIT] serper record_failure failed: %s", e)
+    finally:
+        _reset_serper_breaker_cache()
+
+
+def _serper_record_success() -> None:
+    """Record a Serper 200 and drop the breaker memo so a recovery closes the
+    breaker promptly. No-op unless the breaker flag is ON."""
+    if not _serper_breaker_enabled():
+        return
+    try:
+        record_success("serper")
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[CIRCUIT] serper record_success failed: %s", e)
+    finally:
+        _reset_serper_breaker_cache()
+
+
+# ============================================
 # FAIL-FAST SERPER TIMEOUT (ENABLE_SERPER_FAIL_FAST — opt-in, default OFF)
 # ============================================
 # The multi-key rotation loop below can stack N x the per-call timeout (3 keys x
@@ -328,6 +407,36 @@ def _serper_now() -> float:
 
 
 async def _serper_post(client, path: str, payload: Dict[str, Any]):
+    """Breaker-gated wrapper over _serper_post_impl (M13-32).
+
+    Flag OFF (default) -> delegates directly, byte-identical to the pre-breaker
+    dispatch (no breaker read, no record, timeouts propagate identically). Flag ON
+    -> short-circuits when the 'serper' breaker is OPEN (returns None so the
+    caller's raise_for_status degrades to the same benign-empty path as a budget-
+    out), records a failure on timeout / 5xx / 403 and a success on 200."""
+    if not _serper_breaker_enabled():
+        return await _serper_post_impl(client, path, payload)
+
+    if not _serper_breaker_closed():
+        logger.info("[CIRCUIT] serper breaker OPEN — short-circuiting Serper POST %s", path)
+        return None
+
+    try:
+        response = await _serper_post_impl(client, path, payload)
+    except httpx.TimeoutException:
+        _serper_record_failure()
+        raise
+
+    if response is not None:
+        status = getattr(response, "status_code", None)
+        if status == 200:
+            _serper_record_success()
+        elif status is not None and (status >= 500 or status == 403):
+            _serper_record_failure()
+    return response
+
+
+async def _serper_post_impl(client, path: str, payload: Dict[str, Any]):
     """Shared Serper POST with credit-exhaustion failover.
 
     Picks the active (first non-exhausted) key, POSTs to
