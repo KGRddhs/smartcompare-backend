@@ -18,6 +18,7 @@ from app.services.extraction_service import (
 from app.services.serper_service import search_web
 from app.services.cache_service import get_cached, set_cached
 from app.services.api_budget_service import has_budget, record_usage
+from app.utils.async_utils import fire_and_forget
 # Bundle B S3 L2 — YouTube cited review signal (imported at module scope so
 # tests can patch app.services.review_service.fetch_youtube_review_signal).
 from app.services.youtube_service import fetch_youtube_review_signal
@@ -694,7 +695,15 @@ async def get_reviews(
     if reviews and not reviews.get("error"):
         set_cached(cache_key, reviews, REVIEWS_CACHE_TTL)
         from app.services.product_data_service import save_reviews
-        asyncio.create_task(save_reviews(cache_key, brand, name, variant, reviews))
+        # M13-33: plain asyncio.create_task swallows exceptions — an RLS denial /
+        # schema drift / Supabase 5xx in save_reviews would silently stop the L2
+        # reviews cache from being written, re-paying a Serper search + GPT extract
+        # on every later request with nothing in logs. fire_and_forget attaches an
+        # exception-logging done-callback (the repo convention, 22 other sites).
+        fire_and_forget(
+            save_reviews(cache_key, brand, name, variant, reviews),
+            label="save_reviews.l2",
+        )
         extraction_persisted = True
 
     # S2 I2.5 — optional review-content consultation from usage="review" GCC
