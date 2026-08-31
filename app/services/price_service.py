@@ -9290,6 +9290,55 @@ def shopping_listing_matches(product_name: str, title: str) -> bool:
     return match_score >= 0.4
 
 
+def shopping_strict_currency_enabled() -> bool:
+    """True iff the Serper-shopping tier PENDS a candidate whose visible price
+    string carries a non-target currency it cannot resolve (default OFF).
+
+    M13-09. ``detect_currency`` consults neither ``GCC_CURRENCY_SYMBOLS`` nor
+    ``_normalize_currency_code``, so a GCC display GLYPH ("1,399 د.إ") returns
+    None and ``extract_price_from_shopping`` stamps the raw foreign amount with
+    the target currency — 1,399 shipped as 1399 BHD (9.8x over) labelled
+    ``local_bhd`` i.e. GENUINE, showable, KPI-counted and cached 7 days. It also
+    fixes the ``'$' in 'R$'`` collision (``detect_currency`` reads "R$ 1.399" as
+    US dollars because "$" is a substring of "R$"). With the flag ON such a
+    candidate PENDS (is skipped) rather than mislabelling a foreign price as the
+    target currency. Read PER CALL from os.getenv so Railway can flip it without
+    a restart; default OFF so flag-OFF is byte-identical to 5ee72e8.
+    """
+    return os.getenv("ENABLE_SHOPPING_STRICT_CURRENCY", "").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
+# A "$" immediately preceded by a letter is NOT the US dollar sign: R$ (Brazilian
+# real), HK$/A$/S$/C$/NZ$ etc. ``detect_currency`` returns "USD" for these because
+# "$" is a substring; the strict shopping guard uses this to un-detect that.
+_LETTER_DOLLAR_RE = re.compile(r"[A-Za-z]\$")
+#: A standalone "$" (not letter-prefixed) — a genuine USD sign.
+_BARE_DOLLAR_RE = re.compile(r"(?<![A-Za-z])\$")
+
+
+def _shopping_foreign_currency_signal(price_str: str, target: str) -> bool:
+    """True iff ``price_str`` visibly carries a currency that is NOT ``target``
+    and ``detect_currency`` failed to resolve it.
+
+    Strips the number (digits, grouping/decimal separators, spaces, bidi
+    controls) and inspects the residue: a residue that ``_normalize_currency_code``
+    resolves to a non-target ISO code is a foreign signal; an unresolved residue
+    is a foreign signal only when it carries a non-ASCII glyph (an Arabic riyal/
+    dirham/dinar glyph, €/£/¥/₺ …) so a bare number or an ASCII noise word never
+    over-pends. Used only on the strict-shopping path (flag ON).
+    """
+    folded = str(price_str or "").translate(_CURRENCY_FOLD_STRIP)
+    residue = re.sub(r"[0-9.,%\s/\-]", "", folded).strip()
+    if not residue:
+        return False
+    code = _normalize_currency_code(residue)
+    if code is not None:
+        return code != (target or "").upper()
+    return bool(re.search(r"[^\x00-\x7F]", residue))
+
+
 def extract_price_from_shopping(
     product_name: str,
     shopping_items: List[Dict],
@@ -9349,6 +9398,25 @@ def extract_price_from_shopping(
         # was already called three lines below; hoisting it changes nothing when
         # ENABLE_MONEY_PARSER_V2 is off, where both arguments are ignored.
         detected_cur = detect_currency(price_str)
+        # M13-09 (ENABLE_SHOPPING_STRICT_CURRENCY, default OFF) — the strict-label
+        # pend for the one tier the BLOCKER-4 wave never covered. Flag OFF: this
+        # whole block is skipped, byte-identical.
+        if shopping_strict_currency_enabled():
+            # (a) the "$" in "R$"/"HK$"/"A$" collision — a letter-prefixed $ is a
+            # FOREIGN symbol, not USD; when it is the only $, detect_currency's
+            # "USD" is bogus and the amount must PEND, not convert BRL as USD.
+            if (
+                detected_cur == "USD"
+                and _LETTER_DOLLAR_RE.search(price_str)
+                and not _BARE_DOLLAR_RE.search(price_str)
+            ):
+                continue
+            # (b) a GCC glyph / foreign code detect_currency could not resolve:
+            # PEND rather than stamp the raw amount with the target currency.
+            if detected_cur is None and _shopping_foreign_currency_signal(
+                price_str, currency
+            ):
+                continue
         amount = parse_price_string(price_str, detected_cur, display_text=True)
         if amount is None or amount <= 0:
             continue
