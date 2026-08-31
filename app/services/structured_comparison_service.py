@@ -5943,6 +5943,7 @@ class StructuredComparisonService:
                     # without a new fetch. A winner-only seed would be a no-op.
                     self._seed_shortcircuit_candidates(
                         full_name, kind="tier1_shopping", currency=currency,
+                        shopping_region=shopping_region,
                     )
                     self._persist_genuine_price(
                         cache_key, price, brand, name, variant, region, full_name, category)
@@ -7207,6 +7208,7 @@ class StructuredComparisonService:
         kind: str,
         currency: str = "BHD",
         price_dicts: Optional[List[Dict[str, Any]]] = None,
+        shopping_region: Optional[str] = None,
     ) -> None:
         """CDE-3 (WS-3) — seed self._price_candidates from a NON-cache short-circuit
         path with the FULL viable candidate set the path observed, NOT just the
@@ -7236,6 +7238,12 @@ class StructuredComparisonService:
         observed no live candidate set.
         """
         try:
+            # M13-10 — mirror extract_price_from_shopping's honest-label rule: a
+            # gl=us fallback region means every price is US-converted even when
+            # its string is bare.
+            region_is_us_fallback = str(shopping_region or "").lower() in (
+                "us_fallback", "us",
+            )
             observed: List[Dict[str, Any]] = []
             if kind == "tier1_shopping":
                 items = self._shopping_items_cache.get(full_name) or []
@@ -7245,11 +7253,20 @@ class StructuredComparisonService:
                     price_str = item.get("price")
                     if not price_str:
                         continue
-                    amount = parse_price_string(price_str)
+                    # M13-10 — parse the SAME way the main path does: hoist
+                    # detect_currency ABOVE the parse and pass (detected,
+                    # display_text=True). The bare parse_price_string(price_str)
+                    # read 'BHD 12,500' as 12500.0 where the main path reads 12.5
+                    # (a 1000x divergence the fairness re-select could then serve).
+                    detected = detect_currency(price_str)
+                    amount = parse_price_string(
+                        price_str, detected, display_text=True,
+                    )
                     if amount is None or amount <= 0:
                         continue
-                    detected = detect_currency(price_str)
-                    item_converted = bool(detected and detected != currency)
+                    item_converted = region_is_us_fallback or bool(
+                        detected and detected != currency
+                    )
                     if detected and detected != currency:
                         amount = _convert_to_bhd(amount, detected)
                         if currency != "BHD":
