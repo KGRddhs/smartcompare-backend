@@ -291,11 +291,18 @@ async def identify_and_compare(
             label="log_search.camera.failure",
         )
 
-        # Still return the identified products so frontend can fall back to text compare
+        # M13-26: never surface str(e) to the client — it embeds hostnames, table
+        # names, Postgres codes and upstream URLs. Return the unified error
+        # envelope (constant message + code + request_id), keeping str(e) only in
+        # the log/Sentry path above and the fire-and-forget log_search error. The
+        # action + products keys stay so the frontend can still fall back to text
+        # compare (mirrors _surface_comparison_failure in text_routes.py).
         return {
             "success": False,
             "action": "comparison_failed",
-            "error": str(e),
+            "error": "Products identified — comparing them is unavailable right now.",
+            "code": "INTERNAL_ERROR",
+            "request_id": getattr(request.state, "request_id", "unknown"),
             "products": products,
             "vision_cost": vision_cost,
             "message": "Products identified but comparison failed. You can compare them via text.",
