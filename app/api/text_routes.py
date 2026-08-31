@@ -7,7 +7,7 @@ import time
 from typing import Optional, Dict, AsyncGenerator
 from fastapi import APIRouter, HTTPException, Path, Query, Depends, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 from app.services.structured_comparison_service import (
     get_comparison_service,
@@ -50,14 +50,18 @@ class TextCompareRequest(BaseModel):
     handler is shape-agnostic; the explicit pair is also surfaced via
     a separate kwarg to skip parse_product_query() downstream.
     """
-    query: Optional[str] = None
-    product_a: Optional[str] = None
-    product_b: Optional[str] = None
-    region: str = "bahrain"
+    # M13-25: mirror the GET twin's length caps so the POST body cannot be used
+    # as an unauthenticated log-flood / search_logs row-bloat primitive (FastAPI
+    # applies no default body-size limit). q=500, product_a/b=80 match GET;
+    # region + selected_category are bounded to their real value ranges.
+    query: Optional[str] = Field(default=None, max_length=500)
+    product_a: Optional[str] = Field(default=None, max_length=80)
+    product_b: Optional[str] = Field(default=None, max_length=80)
+    region: str = Field(default="bahrain", max_length=20)
     include_specs: bool = True
     include_reviews: bool = True
     include_pros_cons: bool = True
-    selected_category: Optional[str] = None
+    selected_category: Optional[str] = Field(default=None, max_length=40)
 
     @model_validator(mode="after")
     def normalize_shape(self) -> "TextCompareRequest":
