@@ -18,7 +18,7 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 from app.main import app
-from app.api.feedback_routes import FeedbackRequest
+from app.api.feedback_routes import FeedbackRequest, EventItem
 
 _VALID_UUID = "123e4567-e89b-12d3-a456-426614174000"
 
@@ -48,6 +48,40 @@ def test_model_accepts_valid_uuid():
 def test_model_accepts_none_and_empty():
     assert FeedbackRequest(useful=True).comparison_id is None
     assert FeedbackRequest(useful=True, comparison_id="").comparison_id is None
+
+
+# ---- EventItem / POST /events: the higher-volume vector the finding names ---
+# (closeout gap: only FeedbackRequest was validated in the front-door wave; the
+# /events path writes evt.comparison_id to user_events via the service-role
+# client, so an unvalidated string is the same forgery/injection primitive.)
+
+def test_event_item_rejects_non_uuid_comparison_id():
+    with pytest.raises(ValidationError):
+        EventItem(event_type="save", comparison_id="not-a-uuid")
+
+
+def test_event_item_rejects_injection_string_comparison_id():
+    with pytest.raises(ValidationError):
+        EventItem(event_type="save", comparison_id="1 OR 1=1")
+
+
+def test_event_item_accepts_valid_uuid_none_empty():
+    assert EventItem(event_type="save", comparison_id=_VALID_UUID).comparison_id == _VALID_UUID
+    assert EventItem(event_type="save").comparison_id is None
+    assert EventItem(event_type="save", comparison_id="").comparison_id is None
+
+
+def test_http_events_invalid_comparison_id_is_422(client, monkeypatch):
+    """POST /events with a forged/injection comparison_id is rejected at
+    validation before track_events_batch ever writes to user_events."""
+    batch = AsyncMock(return_value=[{"success": True}])
+    monkeypatch.setattr("app.api.feedback_routes.track_events_batch", batch)
+    resp = client.post(
+        "/api/v1/events",
+        json={"events": [{"event_type": "save", "comparison_id": "1 OR 1=1"}]},
+    )
+    assert resp.status_code == 422, resp.text
+    batch.assert_not_awaited()
 
 
 # ---- HTTP: invalid comparison_id -> 422, valid -> 200 (fire-and-forget) -----

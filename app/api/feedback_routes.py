@@ -112,6 +112,17 @@ class EventItem(BaseModel):
     event_data: dict = Field(default_factory=dict)
     comparison_id: Optional[str] = None
 
+    @field_validator("comparison_id")
+    @classmethod
+    def _validate_comparison_id(cls, v: Optional[str]) -> Optional[str]:
+        # M13-29 (closeout): the /events vector is the one the finding's
+        # failure_scenario centres on ("50 events per request at 60/min pinned to
+        # another user's comparison_id … poisoning … user_events"). track_events_batch
+        # writes evt.comparison_id to user_events via the service-role client, so an
+        # arbitrary string here is an unvalidated forged/injection value under RLS
+        # bypass. Same UUID guard the FeedbackRequest path already carries.
+        return _validate_optional_uuid(v)
+
     @field_validator("event_data")
     @classmethod
     def validate_event_data_size(cls, v: dict) -> dict:
