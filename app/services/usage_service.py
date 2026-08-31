@@ -134,6 +134,150 @@ def _get_redis_count(key: str) -> int:
         return 0
 
 
+def _safe_expire(key: str, ttl: int) -> None:
+    try:
+        redis_client.expire(key, ttl)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[usage] TTL set failed for %s: %s", key, e)
+
+
+def _safe_decr(key: str) -> None:
+    try:
+        redis_client.decrby(key, 1)
+    except Exception:  # noqa: BLE001 — rollback is best-effort
+        pass
+
+
+def _atomic_consume(user_id: str, daily_limit: int, monthly_cap: int):
+    """Atomic INCRBY-then-check-then-DECRBY-rollback of the daily then monthly
+    Redis counters (the try_consume_serper_image_credit pattern). Returns None on
+    success (both counters advanced), else the reason string
+    ('daily_limit'/'monthly_limit') after fully rolling back. Fails OPEN (None) on
+    a Redis error — a cache outage must never block a legitimate user."""
+    if not redis_client:
+        return None  # fail-open: cannot meter without Redis
+    daily_key = _daily_key(user_id)
+    monthly_key = _monthly_key(user_id)
+    try:
+        new_daily = redis_client.incrby(daily_key, 1)
+        if new_daily == 1:
+            _safe_expire(daily_key, 86400)  # 24h
+        if new_daily > daily_limit:
+            _safe_decr(daily_key)
+            return "daily_limit"
+        new_monthly = redis_client.incrby(monthly_key, 1)
+        if new_monthly == 1:
+            _safe_expire(monthly_key, 86400 * 32)  # ~32d
+        if new_monthly > monthly_cap:
+            _safe_decr(monthly_key)
+            _safe_decr(daily_key)  # roll back the daily taken above
+            return "monthly_limit"
+        return None
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[usage] atomic consume failed for %s: %s — fail-open", user_id, e)
+        return None
+
+
+def _bump_counters(user_id: str) -> None:
+    """Advance daily+monthly WITHOUT a cap check (the lifetime-free window). Parity
+    with the legacy record_comparison, which incremented daily/monthly even during
+    the first 3 lifetime-free comparisons."""
+    if not redis_client:
+        return
+    try:
+        daily_key = _daily_key(user_id)
+        monthly_key = _monthly_key(user_id)
+        if redis_client.incrby(daily_key, 1) == 1:
+            _safe_expire(daily_key, 86400)
+        if redis_client.incrby(monthly_key, 1) == 1:
+            _safe_expire(monthly_key, 86400 * 32)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[usage] lifetime-free counter bump failed for %s: %s", user_id, e)
+
+
+async def consume_comparison_credit(user_id: str, access_token: str) -> dict:
+    """TOCTOU-safe freemium gate — the request-path replacement for
+    check_usage_allowed.
+
+    check_usage_allowed READ the counters and record_comparison INCREMENTED them
+    later fire-and-forget, so N parallel /text/compare requests all read the same
+    pre-increment value, all passed, and all ran (6 comparisons against a 3/day
+    cap). This SYNCHRONOUSLY reserves the daily+monthly Redis credit with an atomic
+    INCRBY + cap check + DECRBY rollback; the Supabase lifetime write stays
+    fire-and-forget (record_lifetime_comparison). If the comparison work then
+    fails, the caller refunds via refund_comparison_credit.
+
+    Same return shape as check_usage_allowed, plus 'consumed' (True when the
+    daily/monthly credit was taken and must be refunded on a later work failure).
+    """
+    user_info = await _get_user_tier_info(user_id)
+    tier = user_info.get("subscription_tier", "free")
+    lifetime_used = user_info.get("lifetime_comparisons_used", 0)
+    bonus = await _get_active_referral_bonus(user_id)
+    limits = TIER_LIMITS.get(tier, TIER_LIMITS["free"])
+    monthly_cap = limits["monthly"] + bonus
+
+    # Lifetime-free path: allowed regardless of daily/monthly, but still advance
+    # the counters (parity with the legacy record_comparison).
+    if tier == "free" and lifetime_used < limits["lifetime_free"]:
+        _bump_counters(user_id)
+        return {
+            "allowed": True,
+            "reason": None,
+            "tier": tier,
+            "consumed": True,
+            "remaining": {
+                "daily": limits["daily"],
+                "monthly": monthly_cap,
+                "lifetime_free": limits["lifetime_free"] - lifetime_used,
+            },
+        }
+
+    reason = _atomic_consume(user_id, limits["daily"], monthly_cap)
+    if reason == "daily_limit":
+        return {
+            "allowed": False, "reason": "daily_limit", "tier": tier, "consumed": False,
+            "remaining": {"daily": 0, "monthly": max(0, monthly_cap - _get_redis_count(_monthly_key(user_id))), "lifetime_free": 0},
+        }
+    if reason == "monthly_limit":
+        return {
+            "allowed": False, "reason": "monthly_limit", "tier": tier, "consumed": False,
+            "remaining": {"daily": max(0, limits["daily"] - _get_redis_count(_daily_key(user_id))), "monthly": 0, "lifetime_free": 0},
+        }
+    return {
+        "allowed": True, "reason": None, "tier": tier, "consumed": True,
+        "remaining": {
+            "daily": max(0, limits["daily"] - _get_redis_count(_daily_key(user_id))),
+            "monthly": max(0, monthly_cap - _get_redis_count(_monthly_key(user_id))),
+            "lifetime_free": 0,
+        },
+    }
+
+
+async def refund_comparison_credit(user_id: str) -> None:
+    """Best-effort DECRBY of the daily+monthly credit reserved at the gate, for
+    when the comparison work then failed — preserves the legacy behaviour where a
+    failed comparison did not burn a daily credit. Fire-and-forget safe."""
+    if not redis_client:
+        return
+    try:
+        _safe_decr(_daily_key(user_id))
+        _safe_decr(_monthly_key(user_id))
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[usage] refund failed for %s: %s", user_id, e)
+
+
+async def record_lifetime_comparison(user_id: str, access_token: str) -> None:
+    """Fire-and-forget Supabase lifetime-counter increment. The daily+monthly
+    Redis credit is reserved synchronously at the gate by consume_comparison_credit,
+    so this deliberately does NOT touch the Redis counters (that would double-count)."""
+    try:
+        client = get_admin_supabase_client()
+        client.rpc("increment_lifetime_comparisons", {"target_user_id": user_id}).execute()
+    except Exception as e:
+        logger.error(f"Failed to record lifetime comparison for {user_id}: {e}")
+
+
 async def _get_user_tier_info(user_id: str) -> dict:
     """Get user's subscription tier, lifetime usage, and referral bonus state.
 

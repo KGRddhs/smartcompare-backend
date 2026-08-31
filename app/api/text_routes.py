@@ -20,8 +20,9 @@ from app.services.database_service import save_comparison, log_search
 from app.services.feedback_service import save_comparison_and_track_cohort
 from app.middleware.rate_limiter import limiter
 from app.services.usage_service import (
-    check_usage_allowed,
-    record_comparison,
+    consume_comparison_credit,
+    refund_comparison_credit,
+    record_lifetime_comparison,
     anon_usage_gate_enabled,
     valid_device_fingerprint,
     check_anon_usage_allowed,
@@ -164,9 +165,12 @@ async def text_compare(request: Request, body: TextCompareRequest, user: Optiona
             f"prefs_result: {prefs_result}"
         )
 
-    # Usage check for authenticated users
+    # Usage gate for authenticated users. M13-37: consume the daily/monthly credit
+    # ATOMICALLY at the gate (was a TOCTOU — read here, increment fire-and-forget
+    # after, so N parallel requests all read the same value and all passed).
+    usage_consumed = False
     if user and user.get("id"):
-        usage_check = await check_usage_allowed(user["id"], user.get("access_token", ""))
+        usage_check = await consume_comparison_credit(user["id"], user.get("access_token", ""))
         if not usage_check["allowed"]:
             raise HTTPException(
                 status_code=429,
@@ -177,6 +181,7 @@ async def text_compare(request: Request, body: TextCompareRequest, user: Optiona
                     "remaining": usage_check["remaining"],
                 }
             )
+        usage_consumed = usage_check.get("consumed", False)
 
     # Dual-shape: explicit pair bypasses parse_product_query() in the service
     # (wired via explicit_pair= kwarg in Phase 2). Stored here for forward use.
@@ -216,6 +221,14 @@ async def text_compare(request: Request, body: TextCompareRequest, user: Optiona
         # PARTIAL has success:true so it never reaches this branch.
         surfaced = _surface_comparison_failure(result)
         if surfaced is not None:
+            # M13-37: the work failed after the gate reserved a credit — refund it
+            # so a failed comparison does not burn the user's daily allowance
+            # (parity with the legacy record-only-on-success behaviour).
+            if usage_consumed and user and user.get("id"):
+                fire_and_forget(
+                    refund_comparison_credit(user["id"]),
+                    label="usage_refund.text.post",
+                )
             return surfaced
 
     # Extract product names for logging
@@ -244,9 +257,11 @@ async def text_compare(request: Request, body: TextCompareRequest, user: Optiona
             ),
             label="save_comparison.text.post",
         )
+        # M13-37: daily/monthly were reserved atomically at the gate; only the
+        # Supabase lifetime counter remains to be written (fire-and-forget).
         fire_and_forget(
-            record_comparison(user_id, user.get("access_token", "")),
-            label="record_comparison.text.post",
+            record_lifetime_comparison(user_id, user.get("access_token", "")),
+            label="record_lifetime.text.post",
         )
 
     return result
@@ -309,9 +324,11 @@ async def text_compare_get(
             f"prefs_result: {prefs_result}"
         )
 
-    # Usage check for authenticated users
+    # Usage gate for authenticated users. M13-37: atomic consume at the gate
+    # (same TOCTOU fix as POST /compare).
+    usage_consumed = False
     if user and user.get("id"):
-        usage_check = await check_usage_allowed(user["id"], user.get("access_token", ""))
+        usage_check = await consume_comparison_credit(user["id"], user.get("access_token", ""))
         if not usage_check["allowed"]:
             raise HTTPException(
                 status_code=429,
@@ -322,6 +339,7 @@ async def text_compare_get(
                     "remaining": usage_check["remaining"],
                 }
             )
+        usage_consumed = usage_check.get("consumed", False)
 
     result = await service.compare_from_text(
         query=q,
@@ -354,6 +372,12 @@ async def text_compare_get(
         # bug that surfaced a hard-cap TIMEOUT as BAD_REQUEST with scary copy.
         surfaced = _surface_comparison_failure(result)
         if surfaced is not None:
+            # M13-37: refund the gate-reserved credit on a failed comparison.
+            if usage_consumed and user and user.get("id"):
+                fire_and_forget(
+                    refund_comparison_credit(user["id"]),
+                    label="usage_refund.text.get",
+                )
             return surfaced
 
     product_names = [f"{p.get('brand', '')} {p.get('name', '')}".strip()
@@ -379,9 +403,10 @@ async def text_compare_get(
             ),
             label="save_comparison.text.get",
         )
+        # M13-37: daily/monthly reserved at the gate; write only lifetime here.
         fire_and_forget(
-            record_comparison(user_id, user.get("access_token", "")),
-            label="record_comparison.text.get",
+            record_lifetime_comparison(user_id, user.get("access_token", "")),
+            label="record_lifetime.text.get",
         )
 
     return result
@@ -446,9 +471,12 @@ async def text_compare_stream(
             f"prefs_result: {prefs_result}"
         )
 
-    # Usage check for authenticated users
+    # Usage gate for authenticated users. M13-37: atomic consume at the gate
+    # (same TOCTOU fix as POST/GET /compare). usage_consumed is captured by the
+    # event_generator closure so it can refund on a streaming error.
+    usage_consumed = False
     if user and user.get("id"):
-        usage_check = await check_usage_allowed(user["id"], user.get("access_token", ""))
+        usage_check = await consume_comparison_credit(user["id"], user.get("access_token", ""))
         if not usage_check["allowed"]:
             raise HTTPException(
                 status_code=429,
@@ -459,6 +487,7 @@ async def text_compare_stream(
                     "remaining": usage_check["remaining"],
                 }
             )
+        usage_consumed = usage_check.get("consumed", False)
 
     # Bundle E Task 2.5 § Decision 8 — event-type contract documented here
     # so future readers see the wire shape without grep'ing the service.
@@ -561,9 +590,10 @@ async def text_compare_stream(
                         ),
                         label="save_comparison.text_stream",
                     )
+                    # M13-37: daily/monthly reserved at the gate; lifetime only here.
                     fire_and_forget(
-                        record_comparison(user_id, user.get("access_token", "")),
-                        label="record_comparison.text_stream",
+                        record_lifetime_comparison(user_id, user.get("access_token", "")),
+                        label="record_lifetime.text_stream",
                     )
             elif had_error:
                 # Bundle D 2.B.6 WRAP: failure-path log on streaming.
@@ -575,6 +605,13 @@ async def text_compare_stream(
                     ),
                     label="log_search.text_stream.failure",
                 )
+                # M13-37: the stream errored after the gate reserved a credit —
+                # refund it so a failed comparison does not burn a daily credit.
+                if usage_consumed and user_id:
+                    fire_and_forget(
+                        refund_comparison_credit(user_id),
+                        label="usage_refund.text_stream",
+                    )
 
     return StreamingResponse(
         event_generator(),

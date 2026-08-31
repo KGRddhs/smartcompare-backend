@@ -60,8 +60,9 @@ async def test_disconnect_after_verdict_still_meters(monkeypatch):
     monkeypatch.setattr(tr, "get_user_preferences", _prefs)
 
     async def _usage(uid, tok):
-        return {"allowed": True, "reason": "", "tier": "free", "remaining": 5}
-    monkeypatch.setattr(tr, "check_usage_allowed", _usage)
+        return {"allowed": True, "reason": None, "tier": "free", "consumed": False,
+                "remaining": {"daily": 5, "monthly": 5, "lifetime_free": 0}}
+    monkeypatch.setattr(tr, "consume_comparison_credit", _usage)
 
     fired = []
 
@@ -103,7 +104,7 @@ async def test_disconnect_after_verdict_still_meters(monkeypatch):
     # ...but the side effects STILL fired from the finally.
     assert "log_search.text_stream.success" in fired
     assert "save_comparison.text_stream" in fired
-    assert "record_comparison.text_stream" in fired
+    assert "record_lifetime.text_stream" in fired
 
 
 @pytest.mark.asyncio
@@ -124,8 +125,9 @@ async def test_full_stream_no_disconnect_still_meters_once(monkeypatch):
     monkeypatch.setattr(tr, "get_user_preferences", _prefs)
 
     async def _usage(uid, tok):
-        return {"allowed": True, "reason": "", "tier": "free", "remaining": 5}
-    monkeypatch.setattr(tr, "check_usage_allowed", _usage)
+        return {"allowed": True, "reason": None, "tier": "free", "consumed": False,
+                "remaining": {"daily": 5, "monthly": 5, "lifetime_free": 0}}
+    monkeypatch.setattr(tr, "consume_comparison_credit", _usage)
 
     fired = []
     monkeypatch.setattr(tr, "fire_and_forget",
@@ -143,6 +145,6 @@ async def test_full_stream_no_disconnect_still_meters_once(monkeypatch):
     async for _chunk in resp.body_iterator:
         pass
 
-    assert fired.count("record_comparison.text_stream") == 1
+    assert fired.count("record_lifetime.text_stream") == 1
     assert fired.count("save_comparison.text_stream") == 1
     assert fired.count("log_search.text_stream.success") == 1
