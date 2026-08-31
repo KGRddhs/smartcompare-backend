@@ -53,8 +53,19 @@ _logging.getLogger(__name__).info(
     "[models] " + " ".join(f"{role}={mid}" for role, mid in sorted(_resolved_models().items()))
 )
 
+# M13-21: /openapi.json is registered independently of docs_url/redoc_url, so
+# disabling the Swagger/ReDoc UIs left the full machine-readable contract (every
+# /admin endpoint, the X-Admin-Key header name, the debug routes, every
+# request-model constraint) world-readable in prod. Suppress it whenever
+# RAILWAY_ENVIRONMENT is set — local dev + the test suite (where it is unset)
+# keep the schema.
+def _openapi_url():
+    return None if os.getenv("RAILWAY_ENVIRONMENT") else "/openapi.json"
+
+
 # Create FastAPI app
 app = FastAPI(
+    openapi_url=_openapi_url(),
     title="SmartCompare API",
     description="""
     AI-powered product comparison API with multiple input methods.
