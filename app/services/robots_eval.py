@@ -32,6 +32,19 @@ anything; the caller supplies the body. It never raises: a junk or empty body
 is allow-all, which is what RFC 9309 sec 2.3.1.3 requires of an unparseable
 file, and a crawler that crashes on a malformed robots is a crawler that stops.
 
+CALLER CONTRACT — UNREADABLE ROBOTS FAILS CLOSED (ruling approved 2026-08-31,
+``docs/policies/2026-08-31-robots-unreadable-ruling.md``). The empty-body
+allow-all above is correct ONLY for a body that was actually READ (a genuine
+200-empty/junk response) or genuinely ABSENT (404/410 — the host publishes no
+policy). When the robots FETCH itself fails — 403 / a WAF challenge / any
+non-2xx wall / a 5xx / a timeout / a network error — the caller must SKIP THE
+HOST before ever consulting this module: passing ``""`` for a failed fetch
+silently converts "the policy is walled" into allow-all, which is the exact
+fail-open the ruling forbids. Enforced callers:
+``search_descriptor_service.probe_search_descriptor`` (raises
+``RobotsUnreadableError``) and ``sitemap_discovery_service`` (skips the
+build); pinned in ``tests/test_robots_unreadable_ruling.py``.
+
 PATH MATCHING. Longest-match wins, ``*`` is any run of characters, a trailing
 ``$`` anchors the end (sec 2.2.2), and Allow beats Disallow at equal length
 (sec 2.2.2's tie-break). The query string participates in matching, because

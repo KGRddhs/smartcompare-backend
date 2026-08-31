@@ -84,6 +84,19 @@ class _FakeFetcher:
         return self._map.get(url)
 
 
+@pytest.fixture(autouse=True)
+def permissive_robots(monkeypatch):
+    """M12 U:V1 (fail-closed ruling 2026-08-31): the builder now robots-gates
+    every sitemap fetch, and an UNREADABLE robots skips the build. These suites
+    test the sitemap machinery itself, so the default robots fetch is stubbed
+    PERMISSIVE (200, allow-all) — and never live. The ruling's own branches
+    (unreadable/disallow/404) are pinned in tests/test_robots_unreadable_ruling.py."""
+    async def _ok(url):
+        return (200, "User-agent: *\nAllow: /\n")
+
+    monkeypatch.setattr(sd, "_default_robots_fetch", _ok)
+
+
 @pytest.fixture
 def memory_redis(monkeypatch):
     """In-memory get_cached/set_cached so the index lands in a dict, not Redis."""
