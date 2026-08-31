@@ -3,10 +3,27 @@ Feedback Routes - Comparison feedback and event tracking endpoints
 """
 import json
 import logging
+import uuid
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator
+
+
+def _validate_optional_uuid(v):
+    """M13-29: comparison_id is client-supplied and lands in a service-role
+    write, so it must be a real UUID — an arbitrary string could pin a row to
+    another user's comparison or carry an injection payload into the PostgREST
+    filter. None/empty stay None (anonymous feedback with no comparison)."""
+    if v is None:
+        return None
+    s = str(v).strip()
+    if not s:
+        return None
+    try:
+        return str(uuid.UUID(s))
+    except (ValueError, AttributeError, TypeError):
+        raise ValueError("comparison_id must be a valid UUID")
 
 from app.api.auth_routes import get_optional_user
 from app.middleware.rate_limiter import limiter
@@ -73,6 +90,11 @@ class FeedbackRequest(BaseModel):
     mattered_most: List[str] = Field(default_factory=list)
     change_suggestion: Optional[str] = Field(None, max_length=1000)
 
+    @field_validator("comparison_id")
+    @classmethod
+    def _validate_comparison_id(cls, v: Optional[str]) -> Optional[str]:
+        return _validate_optional_uuid(v)
+
     @field_validator("mattered_most")
     @classmethod
     def validate_mattered_most(cls, v: List[str]) -> List[str]:
@@ -137,6 +159,7 @@ async def submit_feedback(
             useful=body.useful,
             mattered_most=body.mattered_most,
             change_suggestion=body.change_suggestion,
+            access_token=(user.get("access_token") if user else None),
         ),
         label="save_feedback",
     )

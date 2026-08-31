@@ -103,14 +103,26 @@ async def save_feedback(
     useful: bool,
     mattered_most: List[str],
     change_suggestion: Optional[str] = None,
+    access_token: Optional[str] = None,
 ) -> dict:
     """
     Save comparison feedback to Supabase. Fire-and-forget safe.
 
     Returns dict with success status. Never raises.
+
+    M13-29: when the caller is authenticated (user_id + access_token) the write
+    goes through the RLS-scoped user client instead of the service-role client.
+    Anonymous writes keep using the service-role client (unchanged). The
+    load-bearing forgery control is the UUID validation on comparison_id at the
+    route layer — migrations/010 INSERT policies do not constrain comparison_id,
+    so the user client alone would not stop it (recorded follow-up).
     """
     try:
-        client = get_supabase_client()
+        if user_id and access_token:
+            from app.services.database_service import get_user_supabase_client
+            client = get_user_supabase_client(access_token)
+        else:
+            client = get_supabase_client()
         record: Dict = {
             "useful": useful,
             "mattered_most": mattered_most,
