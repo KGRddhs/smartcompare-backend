@@ -54,7 +54,8 @@ logger = logging.getLogger(__name__)
 # needed; record_failure/is_circuit_closed work for any provider string).
 _UNBXD_PROVIDER = "unbxd"
 
-_HTTP_TIMEOUT = 8.0
+from app.services.adapter_timeouts import adapter_timeout
+_HTTP_TIMEOUT = adapter_timeout(8.0)  # M13-34: routed through the shared clamp (already under wrap)
 _ROWS = 20
 
 # Per-store Unbxd config. `genuine`=True => native BHD => local_bhd;

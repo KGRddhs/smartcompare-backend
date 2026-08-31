@@ -73,7 +73,8 @@ _OCC_STORES: Dict[str, Tuple[str, str, str]] = {
     ),
 }
 
-_TIMEOUT = 12
+from app.services.adapter_timeouts import adapter_timeout
+_TIMEOUT = adapter_timeout(12)  # M13-34: clamp under the per-source _timeout_none wrap
 _PAGE_SIZE = 5
 # MANDATORY — omit Accept and the OCC server returns XML, breaking json.loads.
 _HEADERS = {

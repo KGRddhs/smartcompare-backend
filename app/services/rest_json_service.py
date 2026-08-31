@@ -50,7 +50,8 @@ logger = logging.getLogger(__name__)
 # price always stamps the literal "converted_usd", never this.
 _GENUINE_METHOD = "rest_json_bhd"
 
-_REQUEST_TIMEOUT = 12  # per-request curl timeout (s)
+from app.services.adapter_timeouts import adapter_timeout
+_REQUEST_TIMEOUT = adapter_timeout(12)  # per-request curl timeout (s); M13-34 clamp under wrap
 _MATCH_MIN_OVERLAP = 0.4  # word-overlap floor (mirrors _match_nasser_product)
 
 # Per-domain pinned config. host = the API host (may differ from the storefront

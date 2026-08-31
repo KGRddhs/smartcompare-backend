@@ -102,7 +102,8 @@ _MAGENTO_STORES: Dict[str, Dict[str, str]] = {
 _CONFIG_CACHE: Dict[str, Any] = {}
 _CONFIG_TTL = 24 * 60 * 60
 
-_HTTP_TIMEOUT = 12.0
+from app.services.adapter_timeouts import adapter_timeout
+_HTTP_TIMEOUT = adapter_timeout(12.0)  # M13-34: clamp under the per-source _timeout_none wrap
 _PAGE_SIZE = 5  # productSearch / products page size — small; strict-match the hits
 
 # --- GraphQL queries -------------------------------------------------------

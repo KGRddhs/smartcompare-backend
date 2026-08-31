@@ -40,7 +40,11 @@ logger = logging.getLogger(__name__)
 
 BRIGHTDATA_URL = "https://api.brightdata.com/request"
 _GOOGLE_SEARCH = "https://www.google.com/search"
-_TIMEOUT = 20.0  # Bright Data SERP is sync but proxies a real Google fetch (1-5s)
+from app.services.adapter_timeouts import adapter_timeout
+# M13-34: Bright Data SERP proxies a real Google fetch (1-5s) but its 20s ceiling
+# sat ABOVE the 15s _PRICE_RACE_TIMEOUT, so the Serper-depletion fallback could
+# only ever return after the race had cancelled. Clamp under the race.
+_TIMEOUT = adapter_timeout(20.0)
 
 
 def _brightdata_enabled() -> bool:

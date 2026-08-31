@@ -98,7 +98,8 @@ logger = logging.getLogger(__name__)
 # is_circuit_closed work for any provider string; the unbxd pattern).
 _NOON_PROVIDER = "noon"
 
-_HTTP_TIMEOUT = 8.0
+from app.services.adapter_timeouts import adapter_timeout
+_HTTP_TIMEOUT = adapter_timeout(8.0)  # M13-34: routed through the shared clamp (already under wrap)
 _SEARCH_LIMIT = 10
 _SEARCH_URL = "https://www.noon.com/_svc/catalog/api/v3/search?q={q}&limit={limit}"
 _PDP_URL = "https://www.noon.com/bahrain-en/{slug}/{sku}/p/"

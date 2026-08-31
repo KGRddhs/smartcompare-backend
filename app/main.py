@@ -159,6 +159,18 @@ app.add_middleware(SecurityHeadersMiddleware)
 # Request ID (outermost -- generates ID before anything else)
 app.add_middleware(RequestIDMiddleware)
 
+
+# M13-34 — bound the shared thread pool the ~33 asyncio.to_thread sites (adapter
+# curl fetches + sync DB/Redis offload) run on. CPython's default pool is
+# host-dependent (min(32, cpu+4)) and unnamed; install an explicit, named,
+# bounded pool on the running loop at startup so the ceiling is deterministic and
+# a thread dump is readable. See app/utils/executor.py for the sizing rationale.
+@app.on_event("startup")
+async def _install_default_executor() -> None:
+    from app.utils.executor import install_default_executor
+    install_default_executor()
+
+
 # -- Routes --
 app.include_router(auth_router)      # /api/v1/auth/*
 app.include_router(text_router)      # /api/v1/text/*

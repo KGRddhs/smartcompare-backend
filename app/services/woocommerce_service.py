@@ -61,7 +61,8 @@ _WOO_GENUINE_METHOD = "woo_store_api"
 
 # Per-request timeout (s). The cascade also wraps the coro in a 10s
 # _ADAPTER_TIMEOUT, so keep the inner curl timeout below that.
-_WOO_TIMEOUT = 10
+from app.services.adapter_timeouts import adapter_timeout
+_WOO_TIMEOUT = adapter_timeout(10)  # M13-34: clamp under the per-source _timeout_none wrap
 
 # Default headers. WAF stores (ownperfumes/purpleorchidbh/fragrancebh) 403 the
 # JSON endpoint without the Sec-Fetch-* + Referer set, so make them DEFAULT —

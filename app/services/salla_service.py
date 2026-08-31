@@ -55,7 +55,8 @@ logger = logging.getLogger(__name__)
 _SALLA_API_URL = "https://api.salla.dev/store/v1/products"
 
 # Per-request curl timeout (SPEC universal recipe: 12-15s; Salla is fast).
-_HTTP_TIMEOUT = 12
+from app.services.adapter_timeouts import adapter_timeout
+_HTTP_TIMEOUT = adapter_timeout(12)  # M13-34: clamp under the per-source _timeout_none wrap
 
 # How many search hits to pull per lookup — enough to find the right product
 # past fuzzy noise, small enough to keep the response light.
