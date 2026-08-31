@@ -10,6 +10,7 @@ from supabase import create_client, Client
 from app.services.cache_service import redis_client
 from app.services.database_service import record_preference_history
 from app.utils.async_utils import fire_and_forget
+from app.utils.db_offload import run_db  # M13-05 ENABLE_SYNC_DB_OFFLOAD
 
 logger = logging.getLogger(__name__)
 
@@ -250,7 +251,7 @@ async def verify_token(access_token: str) -> Optional[Dict]:
             return None
 
         client = get_auth_client()
-        response = client.auth.get_user(access_token)
+        response = await run_db(lambda: client.auth.get_user(access_token))
 
         if response.user:
             return {

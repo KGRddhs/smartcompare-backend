@@ -4,6 +4,7 @@ from typing import Optional
 from datetime import datetime, timezone
 
 from app.services.database_service import get_admin_supabase_client
+from app.utils.db_offload import run_db  # M13-05 ENABLE_SYNC_DB_OFFLOAD
 
 logger = logging.getLogger(__name__)
 
@@ -27,14 +28,14 @@ async def log_audit_event(
     """
     try:
         client = get_admin_supabase_client()
-        client.table("admin_audit_log").insert({
+        await run_db(lambda: client.table("admin_audit_log").insert({
             "event_type": event_type,
             "user_id": user_id,
             "ip_address": ip_address,
             "endpoint": endpoint,
             "details": details,
             "created_at": datetime.now(timezone.utc).isoformat(),
-        }).execute()
+        }).execute())
     except Exception as e:
         logger.error(f"Failed to log audit event '{event_type}': {e}")
 

@@ -80,7 +80,7 @@ Discovered during 4-agent forensic analysis (backend Opus + frontend/db/legal So
 | Price > 500 BHD heuristic | Likely mislabeled AED, auto-convert |
 | Rating requires source_url | No URL = no rating shown (prevent fake data) |
 | BeautifulSoup for HTML parsing | Standard, reliable, handles malformed HTML |
-| AsyncIO throughout | Non-blocking, handles concurrent requests |
+| AsyncIO throughout | Handles concurrent requests. NOTE (M13-05): the sync Supabase client is NOT non-blocking — its `.execute()` calls run inside `async def` and block the single-worker event loop for a full RTT. The request-path hot set (get_user_by_id, get_user_comparisons, save_comparison, usage tier/bonus reads + the lifetime rpc writes, verify_token, audit insert) is offloadable off the loop via `asyncio.to_thread` behind `ENABLE_SYNC_DB_OFFLOAD` (default OFF; flag-OFF is byte-identical, inline). Off-path/cron/script executes are a named follow-up, not yet wrapped. |
 
 ## Mobile Decisions
 

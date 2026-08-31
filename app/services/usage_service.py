@@ -12,6 +12,7 @@ from typing import Optional
 
 from app.services.cache_service import redis_client
 from app.services.database_service import get_admin_supabase_client
+from app.utils.db_offload import run_db  # M13-05 ENABLE_SYNC_DB_OFFLOAD
 
 logger = logging.getLogger(__name__)
 
@@ -273,7 +274,7 @@ async def record_lifetime_comparison(user_id: str, access_token: str) -> None:
     so this deliberately does NOT touch the Redis counters (that would double-count)."""
     try:
         client = get_admin_supabase_client()
-        client.rpc("increment_lifetime_comparisons", {"target_user_id": user_id}).execute()
+        await run_db(lambda: client.rpc("increment_lifetime_comparisons", {"target_user_id": user_id}).execute())
     except Exception as e:
         logger.error(f"Failed to record lifetime comparison for {user_id}: {e}")
 
@@ -286,10 +287,10 @@ async def _get_user_tier_info(user_id: str) -> dict:
     """
     try:
         client = get_admin_supabase_client()
-        result = client.table("users").select(
+        result = await run_db(lambda: client.table("users").select(
             "subscription_tier, lifetime_comparisons_used, "
             "referral_bonus_comparisons_this_month, referral_bonus_reset_at"
-        ).eq("id", user_id).single().execute()
+        ).eq("id", user_id).single().execute())
         data = result.data or {}
         # Lazy referral bonus reset
         return _maybe_reset_referral_bonus(client, user_id, data)
@@ -356,14 +357,14 @@ async def _get_active_referral_bonus(user_id: str) -> int:
     try:
         client = get_admin_supabase_client()
         now_iso = datetime.now(timezone.utc).isoformat()
-        resp = (
+        resp = await run_db(lambda: (
             client.table("referral_redemptions")
             .select("loop2_comparisons_granted")
             .eq("referrer_user_id", user_id)
             .gt("expires_at", now_iso)
             .is_("consumed_at", "null")
             .execute()
-        )
+        ))
         rows = resp.data or []
         return sum(int(r.get("loop2_comparisons_granted") or 0) for r in rows)
     except Exception as exc:  # noqa: BLE001
@@ -461,7 +462,7 @@ async def record_comparison(user_id: str, access_token: str) -> None:
 
         # Increment lifetime counter in Supabase
         client = get_admin_supabase_client()
-        client.rpc("increment_lifetime_comparisons", {"target_user_id": user_id}).execute()
+        await run_db(lambda: client.rpc("increment_lifetime_comparisons", {"target_user_id": user_id}).execute())
 
     except Exception as e:
         logger.error(f"Failed to record comparison usage for {user_id}: {e}")

@@ -11,6 +11,8 @@ from typing import Dict, List, Optional
 from datetime import datetime, timezone
 from supabase import create_client, Client
 
+from app.utils.db_offload import run_db  # M13-05 ENABLE_SYNC_DB_OFFLOAD
+
 logger = logging.getLogger(__name__)
 
 # Initialize Supabase credentials
@@ -88,7 +90,9 @@ async def get_user_by_id(user_id: str) -> Optional[Dict]:
     """Get user by ID"""
     try:
         client = get_supabase_client()
-        response = client.table("users").select("*").eq("id", user_id).single().execute()
+        response = await run_db(
+            lambda: client.table("users").select("*").eq("id", user_id).single().execute()
+        )
         return response.data
     except Exception as e:
         logger.error(f"Error getting user: {e}")
@@ -218,7 +222,7 @@ async def save_comparison(
         if user_id:
             record["user_id"] = user_id
 
-        response = client.table("comparisons").insert(record).execute()
+        response = await run_db(lambda: client.table("comparisons").insert(record).execute())
         return response.data[0] if response.data else None
     except Exception as e:
         # Fire-and-forget — never break the comparison response
@@ -253,7 +257,7 @@ async def get_user_comparisons(
             escaped = search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
             query = query.ilike("query", f"%{escaped}%")
 
-        response = query.range(offset, offset + limit - 1).execute()
+        response = await run_db(lambda: query.range(offset, offset + limit - 1).execute())
         return response.data or []
     except Exception as e:
         logger.error(f"Error getting comparisons: {e}")
