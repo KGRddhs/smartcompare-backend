@@ -366,14 +366,20 @@ def test_d_f_the_predicate_never_raises_on_a_hostile_document(monkeypatch):
 # ===========================================================================
 # E — THE CASCADE STILL FALLS THROUGH, IT DOES NOT PEND
 # ===========================================================================
-def test_e_a_refusing_microdata_hands_the_page_to_opengraph_not_to_none(monkeypatch):
-    """The guard returns None from the microdata branch, which is the cascade's
-    "keep going" signal — Priority 3 (OpenGraph) then answers. Asserted as a
-    provenance claim, not just an amount: 0.9 is the OG branch's confidence and
-    ``in_stock`` None is ``_og_availability`` on a page with no availability
-    meta, where the microdata branch would have said True."""
+def test_e_a_refusing_microdata_hands_the_page_to_a_real_price_not_to_none(monkeypatch):
+    """The invariant this pins is "the guard must NEVER turn a real page into a
+    pend". Post-M13-40 the BHD ask on nazih is answered by the JSON-LD
+    foreign-currency pass — the SAME authoritative 10 QAR Offer that answers the
+    QAR ask (test_a_c), converted to 1.03 BHD and labelled converted_usd at
+    confidence 1.0 — rather than by the OG fallback it fell to before M13-40. The
+    amount is unchanged (1.03 BHD, the PDP's own Offer, NOT the 45 QAR rail), the
+    page still yields a real price, and the source is now the authoritative
+    JSON-LD one. The microdata->OG handoff itself still runs on the flag-OFF
+    cascade (test_a_e pins the legacy OG dict at confidence 0.9)."""
     _first(monkeypatch, "true")
     got = nazih("BHD")
     assert got is not None, "the guard must never turn a real page into a pend"
-    assert got["confidence"] == 0.9, got
-    assert got["in_stock"] is None, got
+    assert got["amount"] == 1.03, got
+    assert got["currency"] == "BHD", got
+    assert got["source_method"] == "converted_usd", got
+    assert got["confidence"] == 1.0, got  # JSON-LD (M13-40), was OG 0.9 pre-fix
