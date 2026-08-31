@@ -31,7 +31,7 @@ landing/
 
 ## Design notes
 
-- **Brand:** emerald `#10B981` accent, Inter (EN) + Cairo (AR) loaded via Google Fonts CDN.
+- **Brand:** emerald `#10B981` accent, Geist (EN) + Cairo (AR) loaded via Google Fonts CDN (Inter retired 2026-08-31 to match the app's Phase-1 Geist swap, `SmartCompareApp/src/theme/fonts.ts`).
 - **Listing identity:** "Compare Smart" tagline appears below the Qaren wordmark in `index.html`, matching the Ahmed-locked ASC App Name "Qaren — Compare Smart."
 - **Visual mark:** inline SVG concentric-circles motif matching `src/components/illustrations/ConcentricMotif.tsx` (the app's brand language). Avoids dependency on `assets/icon.png` which is still an Expo placeholder per asset audit (A5 pending).
 - **Mobile-first:** clamp() responsive type, viewport-fit cover for notch devices, prefers-color-scheme dark variant.
