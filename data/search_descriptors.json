@@ -1,14 +1,671 @@
 {
- "_what": "Per-host SEARCH DESCRIPTORS (M7 D3). One entry per host: where that store's product search lives, and whether its robots.txt lets us use it. Written by scripts/resolve_search_descriptors.py (off-clock, robots-first, >=2s throttle, 12-host cap), folded onto the rows of data/bh_gcc_sources.json by scripts/build_source_registry_data.py, and read at runtime behind ENABLE_SEARCH_DESCRIPTOR (default OFF).",
- "_why_a_separate_file": "Issue #94: a correction hand-written into the GENERATED registry file is erased by the next rebuild. This overlay is re-read on EVERY consolidation, so a rebuild preserves the resolver's work by construction rather than by discipline.",
- "_why_per_host": "B8 (2026-08-30) measured a per-PLATFORM search template as wrong ~40% of the time, and the dominant reason is robots.txt rather than markup: Shopify ships two default robots templates in the wild and the older one Disallows /search, which -- RFC 9309 matching being prefix-based -- kills BOTH the HTML search page and /search/suggest.json. Three 'Shopify' hosts on the 30-host panel block it and six do not. It also measured that 71 of the 95 live fragrance registry rows carry no mechanism at all, so each pays a platform probe on every cold compare for an answer that never changes.",
- "_shape": {
-  "kind": "platform_api | onsite_html | sitemap | none",
-  "url_template": "absolute URL containing the literal {q}; empty for kind sitemap/none",
-  "robots_allowed": "evaluated at resolution time with app/services/robots_eval.py under a NAMED agent token",
-  "discovered_via": "platform_probe | homepage_form | robots | manual",
-  "resolved_at": "ISO-8601 UTC"
- },
- "_empty_on_purpose": "Ships EMPTY, so the unit is dark twice over: the flag is off AND there is nothing to serve. Populate it with a real, throttled run -- python scripts/resolve_search_descriptors.py --from-registry --category fragrances --live -- and commit the result.",
- "hosts": {}
+ "_what": "Per-host SEARCH DESCRIPTORS (M7 D3). Written by scripts/resolve_search_descriptors.py, folded onto the registry rows by scripts/build_source_registry_data.py, read at runtime behind ENABLE_SEARCH_DESCRIPTOR. Each entry is one host's resolved search surface: where it is, and whether robots.txt allows it.",
+ "_updated": "2026-08-31T12:36:00Z",
+ "hosts": {
+  "3saf.com": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:28:35Z"
+  },
+  "albayanperfumes.com": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:12:37Z"
+  },
+  "alhajisoman.com": {
+   "kind": "platform_api",
+   "url_template": "https://alhajisoman.com/search/suggest.json?q={q}&resources[type]=product&resources[limit]=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:12:42Z"
+  },
+  "alibaksh.com": {
+   "kind": "platform_api",
+   "url_template": "https://alibaksh.com/wp-json/wc/store/v1/products?search={q}&per_page=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:31:10Z"
+  },
+  "alrehabstore.com": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:12:49Z"
+  },
+  "ardalzaafaranshop.com": {
+   "kind": "platform_api",
+   "url_template": "https://ardalzaafaranshop.com/search/suggest.json?q={q}&resources[type]=product&resources[limit]=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:12:54Z"
+  },
+  "armaf.ae": {
+   "kind": "platform_api",
+   "url_template": "https://armaf.ae/search/suggest.json?q={q}&resources[type]=product&resources[limit]=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:12:59Z"
+  },
+  "ashrafsbahrain.com": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:13:05Z"
+  },
+  "atelierperfumery.com": {
+   "kind": "platform_api",
+   "url_template": "https://atelierperfumery.com/search/suggest.json?q={q}&resources[type]=product&resources[limit]=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:13:09Z"
+  },
+  "bahrain.naseem.com": {
+   "kind": "platform_api",
+   "url_template": "https://bahrain.naseem.com/search/suggest.json?q={q}&resources[type]=product&resources[limit]=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:31:15Z"
+  },
+  "banafaforoud.com": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:13:16Z"
+  },
+  "bawwaba.om": {
+   "kind": "none",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:13:25Z"
+  },
+  "bdutyfree.com": {
+   "kind": "none",
+   "url_template": "",
+   "robots_allowed": false,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:13:27Z"
+  },
+  "beautiquefragrances.com": {
+   "kind": "platform_api",
+   "url_template": "https://beautiquefragrances.com/search/suggest.json?q={q}&resources[type]=product&resources[limit]=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:13:32Z"
+  },
+  "beautyandblends.com": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:31:23Z"
+  },
+  "bh-en.smellsoreal.com": {
+   "kind": "platform_api",
+   "url_template": "https://bh-en.smellsoreal.com/wp-json/wc/store/v1/products?search={q}&per_page=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:31:28Z"
+  },
+  "bh.afnan.com": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:31:33Z"
+  },
+  "bh.arabianoud.com": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:13:39Z"
+  },
+  "bh.azhaperfumes.com": {
+   "kind": "platform_api",
+   "url_template": "https://bh.azhaperfumes.com/search/suggest.json?q={q}&resources[type]=product&resources[limit]=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:31:37Z"
+  },
+  "bh.cosmostore.org": {
+   "kind": "onsite_html",
+   "url_template": "https://bh.cosmostore.org/catalog/search/?q={q}",
+   "robots_allowed": true,
+   "discovered_via": "homepage_form",
+   "resolved_at": "2026-08-31T12:18:03Z"
+  },
+  "bh.jashanmal.com": {
+   "kind": "platform_api",
+   "url_template": "https://bh.jashanmal.com/search/suggest.json?q={q}&resources[type]=product&resources[limit]=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:31:42Z"
+  },
+  "bh.mubkhar.com": {
+   "kind": "platform_api",
+   "url_template": "https://bh.mubkhar.com/search/suggest.json?q={q}&resources[type]=product&resources[limit]=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:31:47Z"
+  },
+  "bh.oudelite.com": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:18:10Z"
+  },
+  "bh.taifalemarat.com": {
+   "kind": "platform_api",
+   "url_template": "https://bh.taifalemarat.com/search/suggest.json?q={q}&resources[type]=product&resources[limit]=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:31:52Z"
+  },
+  "bloomingdales.com.kw": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:18:18Z"
+  },
+  "capitalstoreoman.com": {
+   "kind": "platform_api",
+   "url_template": "https://capitalstoreoman.com/search/suggest.json?q={q}&resources[type]=product&resources[limit]=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:18:23Z"
+  },
+  "caretobeauty.com": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:18:32Z"
+  },
+  "coralperfumes.com": {
+   "kind": "platform_api",
+   "url_template": "https://coralperfumes.com/search/suggest.json?q={q}&resources[type]=product&resources[limit]=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:18:36Z"
+  },
+  "en-bh.rituals.com": {
+   "kind": "none",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:18:49Z"
+  },
+  "en-kwt.ajmal.com": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:31:59Z"
+  },
+  "en-sa.rituals.com": {
+   "kind": "none",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:18:59Z"
+  },
+  "faces.ae": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:19:05Z"
+  },
+  "faces.sa": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:19:14Z"
+  },
+  "fragrancebh.com": {
+   "kind": "platform_api",
+   "url_template": "https://fragrancebh.com/wp-json/wc/store/v1/products?search={q}&per_page=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:32:03Z"
+  },
+  "fyzara.com": {
+   "kind": "platform_api",
+   "url_template": "https://fyzara.com/search/suggest.json?q={q}&resources[type]=product&resources[limit]=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:19:18Z"
+  },
+  "gazzaz.com.sa": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:19:26Z"
+  },
+  "ghawali.com": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:21:32Z"
+  },
+  "goldencollections.net": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:32:10Z"
+  },
+  "goldenscent.com": {
+   "kind": "onsite_html",
+   "url_template": "https://goldenscent.com/?search={q}",
+   "robots_allowed": true,
+   "discovered_via": "homepage_form",
+   "resolved_at": "2026-08-31T12:34:44Z"
+  },
+  "houseofperfumes.com": {
+   "kind": "platform_api",
+   "url_template": "https://houseofperfumes.com/search/suggest.json?q={q}&resources[type]=product&resources[limit]=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:21:37Z"
+  },
+  "klinq.com": {
+   "kind": "none",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:34:48Z"
+  },
+  "ksa.swissarabian.com": {
+   "kind": "platform_api",
+   "url_template": "https://ksa.swissarabian.com/search/suggest.json?q={q}&resources[type]=product&resources[limit]=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:21:42Z"
+  },
+  "kw.oudelite.com": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:21:49Z"
+  },
+  "kwt.nazih.com": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:21:57Z"
+  },
+  "laverne.com": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:22:04Z"
+  },
+  "leperfumeqa.com": {
+   "kind": "platform_api",
+   "url_template": "https://leperfumeqa.com/search/suggest.json?q={q}&resources[type]=product&resources[limit]=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:22:09Z"
+  },
+  "letoile.ae": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:22:16Z"
+  },
+  "mamlakataloud.ae": {
+   "kind": "platform_api",
+   "url_template": "https://mamlakataloud.ae/search/suggest.json?q={q}&resources[type]=product&resources[limit]=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:22:19Z"
+  },
+  "mhgboutique.com": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:22:27Z"
+  },
+  "mushtariyat.com": {
+   "kind": "onsite_html",
+   "url_template": "https://mushtariyat.com/?s={q}&post_type=product&dgwt_wcas=1",
+   "robots_allowed": true,
+   "discovered_via": "homepage_form",
+   "resolved_at": "2026-08-31T12:35:13Z"
+  },
+  "myperfumes.ae": {
+   "kind": "platform_api",
+   "url_template": "https://myperfumes.ae/search/suggest.json?q={q}&resources[type]=product&resources[limit]=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:22:32Z"
+  },
+  "nazih.ae": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:22:40Z"
+  },
+  "nazih.qa": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:24:47Z"
+  },
+  "numberc.com": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:24:56Z"
+  },
+  "om.asgharali.com": {
+   "kind": "platform_api",
+   "url_template": "https://om.asgharali.com/search/suggest.json?q={q}&resources[type]=product&resources[limit]=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:25:00Z"
+  },
+  "om.junaidperfumes.com": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:25:07Z"
+  },
+  "om.oudelite.com": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:25:14Z"
+  },
+  "om.swissarabian.com": {
+   "kind": "platform_api",
+   "url_template": "https://om.swissarabian.com/search/suggest.json?q={q}&resources[type]=product&resources[limit]=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:25:20Z"
+  },
+  "oman.afnan.com": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:25:28Z"
+  },
+  "omanluxury.store": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:25:35Z"
+  },
+  "oqba.qa": {
+   "kind": "platform_api",
+   "url_template": "https://oqba.qa/search/suggest.json?q={q}&resources[type]=product&resources[limit]=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:25:40Z"
+  },
+  "ouddubai.ae": {
+   "kind": "platform_api",
+   "url_template": "https://ouddubai.ae/wp-json/wc/store/v1/products?search={q}&per_page=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:35:19Z"
+  },
+  "oudworlds.com": {
+   "kind": "platform_api",
+   "url_template": "https://oudworlds.com/wp-json/wc/store/v1/products?search={q}&per_page=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:35:24Z"
+  },
+  "ounass.ae": {
+   "kind": "none",
+   "url_template": "",
+   "robots_allowed": false,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:25:45Z"
+  },
+  "parfum.ae": {
+   "kind": "platform_api",
+   "url_template": "https://parfum.ae/search/suggest.json?q={q}&resources[type]=product&resources[limit]=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:25:50Z"
+  },
+  "parfum.qa": {
+   "kind": "platform_api",
+   "url_template": "https://parfum.qa/search/suggest.json?q={q}&resources[type]=product&resources[limit]=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:25:55Z"
+  },
+  "parigallery.com": {
+   "kind": "platform_api",
+   "url_template": "https://parigallery.com/search/suggest.json?q={q}&resources[type]=product&resources[limit]=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:26:05Z"
+  },
+  "parisgallery.ae": {
+   "kind": "platform_api",
+   "url_template": "https://parisgallery.ae/search/suggest.json?q={q}&resources[type]=product&resources[limit]=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:26:10Z"
+  },
+  "perfumeqatar.com": {
+   "kind": "platform_api",
+   "url_template": "https://perfumeqatar.com/wp-json/wc/store/v1/products?search={q}&per_page=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:35:30Z"
+  },
+  "perfumeskuwait.com": {
+   "kind": "platform_api",
+   "url_template": "https://perfumeskuwait.com/wp-json/wc/store/v1/products?search={q}&per_page=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:35:35Z"
+  },
+  "perfumistaaloud.com": {
+   "kind": "onsite_html",
+   "url_template": "https://perfumistaaloud.com/en-bh/search?q={q}&type=product&options%5Bprefix%5D=last",
+   "robots_allowed": true,
+   "discovered_via": "homepage_form",
+   "resolved_at": "2026-08-31T12:35:41Z"
+  },
+  "qatarperfumeshop.com": {
+   "kind": "platform_api",
+   "url_template": "https://qatarperfumeshop.com/wp-json/wc/store/v1/products?search={q}&per_page=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:35:47Z"
+  },
+  "rasasistore.com": {
+   "kind": "platform_api",
+   "url_template": "https://rasasistore.com/search/suggest.json?q={q}&resources[type]=product&resources[limit]=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:26:15Z"
+  },
+  "reefperfumes.com": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:26:22Z"
+  },
+  "rend-bahrain.com": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:35:54Z"
+  },
+  "sa.abdulsamadalqurashi.com": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:26:30Z"
+  },
+  "sa.ajmal.com": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:26:38Z"
+  },
+  "sa.ghawali.com": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:26:45Z"
+  },
+  "sa.mubkhar.com": {
+   "kind": "platform_api",
+   "url_template": "https://sa.mubkhar.com/search/suggest.json?q={q}&resources[type]=product&resources[limit]=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:26:50Z"
+  },
+  "sa.oudelite.com": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:26:57Z"
+  },
+  "salams.com": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:27:06Z"
+  },
+  "samawa.ae": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:27:13Z"
+  },
+  "saudi.jazp.com": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:27:20Z"
+  },
+  "saudi.naseem.com": {
+   "kind": "platform_api",
+   "url_template": "https://saudi.naseem.com/search/suggest.json?q={q}&resources[type]=product&resources[limit]=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:27:28Z"
+  },
+  "scentlibraryofficial.com": {
+   "kind": "platform_api",
+   "url_template": "https://scentlibraryofficial.com/search/suggest.json?q={q}&resources[type]=product&resources[limit]=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:27:33Z"
+  },
+  "souqscent.com": {
+   "kind": "platform_api",
+   "url_template": "https://souqscent.com/search/suggest.json?q={q}&resources[type]=product&resources[limit]=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:27:38Z"
+  },
+  "store.rasasi.com.sa": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:27:46Z"
+  },
+  "swissarabian.com": {
+   "kind": "platform_api",
+   "url_template": "https://swissarabian.com/search/suggest.json?q={q}&resources[type]=product&resources[limit]=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:27:51Z"
+  },
+  "theperfumesclub.com": {
+   "kind": "platform_api",
+   "url_template": "https://theperfumesclub.com/wp-json/wc/store/v1/products?search={q}&per_page=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:36:00Z"
+  },
+  "touchofoud.com": {
+   "kind": "platform_api",
+   "url_template": "https://touchofoud.com/search/suggest.json?q={q}&resources[type]=product&resources[limit]=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:27:56Z"
+  },
+  "tuzzut.com": {
+   "kind": "platform_api",
+   "url_template": "https://tuzzut.com/search/suggest.json?q={q}&resources[type]=product&resources[limit]=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:28:01Z"
+  },
+  "vanilla.sa": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:28:10Z"
+  },
+  "vperfumes.com": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:28:14Z"
+  },
+  "watsons.sa": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:28:22Z"
+  },
+  "yusufbhaifragrances.com": {
+   "kind": "platform_api",
+   "url_template": "https://yusufbhaifragrances.com/search/suggest.json?q={q}&resources[type]=product&resources[limit]=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:28:26Z"
+  }
+ }
 }

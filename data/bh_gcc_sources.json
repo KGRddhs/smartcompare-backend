@@ -38,7 +38,14 @@
   "genuine_method": "shopify_json",
   "sample_url": "https://bh.jashanmal.com/products.json",
   "priority_rank": 1,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "platform_api",
+   "url_template": "https://bh.jashanmal.com/search/suggest.json?q={q}&resources[type]=product&resources[limit]=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:31:42Z"
+  }
  },
  {
   "domain": "klinq.com",
@@ -59,7 +66,14 @@
   "genuine_method": "magento_graphql_bhd",
   "sample_url": "https://klinq.com/en/dior-miss-dior-edp.html",
   "priority_rank": 1,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "none",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:34:48Z"
+  }
  },
  {
   "domain": "sporter.com",
@@ -96,7 +110,14 @@
   "genuine_method": "shopify_json",
   "sample_url": "https://bahrain.naseem.com/products.json",
   "priority_rank": 2,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "platform_api",
+   "url_template": "https://bahrain.naseem.com/search/suggest.json?q={q}&resources[type]=product&resources[limit]=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:31:15Z"
+  }
  },
  {
   "domain": "bh.mubkhar.com",
@@ -114,7 +135,14 @@
   "genuine_method": "shopify_json",
   "sample_url": "https://bh.mubkhar.com/products/swash-white-100-ml",
   "priority_rank": 2,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "platform_api",
+   "url_template": "https://bh.mubkhar.com/search/suggest.json?q={q}&resources[type]=product&resources[limit]=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:31:47Z"
+  }
  },
  {
   "domain": "drnutrition.com",
@@ -209,7 +237,14 @@
   "genuine_method": "shopify_json",
   "sample_url": "https://bh.taifalemarat.com/products/oud-nights",
   "priority_rank": 4,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "platform_api",
+   "url_template": "https://bh.taifalemarat.com/search/suggest.json?q={q}&resources[type]=product&resources[limit]=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:31:52Z"
+  }
  },
  {
   "domain": "namshi.com",
@@ -324,7 +359,14 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://en-bh.rituals.com/products/body/shower-bath/shower-foam/8719134161106-ritualssportshowerfoam.html",
   "priority_rank": 6,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "none",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:18:49Z"
+  }
  },
  {
   "domain": "emsquarebh.com",
@@ -398,7 +440,14 @@
   "genuine_method": "shopify_json",
   "sample_url": "https://bh.azhaperfumes.com/collections/classiq-collection",
   "priority_rank": 8,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "platform_api",
+   "url_template": "https://bh.azhaperfumes.com/search/suggest.json?q={q}&resources[type]=product&resources[limit]=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:31:37Z"
+  }
  },
  {
   "domain": "gamerspoint.bh",
@@ -452,7 +501,14 @@
   "genuine_method": "shopify_json",
   "sample_url": "https://www.beautyandblends.com/products/oud-extreme",
   "priority_rank": 9,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:31:23Z"
+  }
  },
  {
   "domain": "bh.afnan.com",
@@ -470,7 +526,14 @@
   "genuine_method": "shopify_json",
   "sample_url": "https://bh.afnan.com/",
   "priority_rank": 9,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:31:33Z"
+  }
  },
  {
   "domain": "ibsouq.com",
@@ -719,7 +782,14 @@
   "genuine_method": "shopify_json",
   "sample_url": "https://perfumistaaloud.com/products.json",
   "priority_rank": 13,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "onsite_html",
+   "url_template": "https://perfumistaaloud.com/en-bh/search?q={q}&type=product&options%5Bprefix%5D=last",
+   "robots_allowed": true,
+   "discovered_via": "homepage_form",
+   "resolved_at": "2026-08-31T12:35:41Z"
+  }
  },
  {
   "domain": "goldencollections.net",
@@ -739,7 +809,14 @@
   "genuine_method": "shopify_json",
   "sample_url": "https://goldencollections.net/products.json",
   "priority_rank": 14,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:32:10Z"
+  }
  },
  {
   "domain": "muji.bh",
@@ -1041,7 +1118,14 @@
   "genuine_method": "woo_store_api",
   "sample_url": "https://bh-en.smellsoreal.com/wp-json/wc/store/products?per_page=100",
   "priority_rank": 21,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "platform_api",
+   "url_template": "https://bh-en.smellsoreal.com/wp-json/wc/store/v1/products?search={q}&per_page=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:31:28Z"
+  }
  },
  {
   "domain": "fragrancebh.com",
@@ -1059,7 +1143,14 @@
   "genuine_method": "woo_store_api",
   "sample_url": "https://fragrancebh.com/wp-json/wc/store/products?per_page=2",
   "priority_rank": 21,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "platform_api",
+   "url_template": "https://fragrancebh.com/wp-json/wc/store/v1/products?search={q}&per_page=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:32:03Z"
+  }
  },
  {
   "domain": "iworld.bh",
@@ -1113,7 +1204,14 @@
   "genuine_method": "woo_store_api",
   "sample_url": "https://alibaksh.com/product/carolina-herrera-good-girl-edp-80ml/",
   "priority_rank": 23,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "platform_api",
+   "url_template": "https://alibaksh.com/wp-json/wc/store/v1/products?search={q}&per_page=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:31:10Z"
+  }
  },
  {
   "domain": "miniso-bh.com",
@@ -1226,7 +1324,14 @@
   "genuine_method": "woo_store_api",
   "sample_url": "https://theperfumesclub.com/wp-json/wc/store/products?per_page=100",
   "priority_rank": 27,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "platform_api",
+   "url_template": "https://theperfumesclub.com/wp-json/wc/store/v1/products?search={q}&per_page=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:36:00Z"
+  }
  },
  {
   "domain": "ymhonlinepharmacy.com.bh",
@@ -1489,7 +1594,14 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://bh.arabianoud.com/en/0301020485-arabella-100-ml",
   "priority_rank": 34,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:13:39Z"
+  }
  },
  {
   "domain": "ashrafsbahrain.com",
@@ -1510,7 +1622,14 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.ashrafsbahrain.com/casio-g-shock-gm-b2100bd-1adr-analog-digital-men-s-watch.html",
   "priority_rank": 35,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:13:05Z"
+  }
  },
  {
   "domain": "vogacloset.com",
@@ -1585,7 +1704,14 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://bh.oudelite.com/en/-/p1866281610",
   "priority_rank": 37,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:18:10Z"
+  }
  },
  {
   "domain": "basharacare.com",
@@ -2176,7 +2302,14 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://bdutyfree.com/departure/apple-airpods-4-with-active-noise-cancellation-567013.html",
   "priority_rank": 56,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "none",
+   "url_template": "",
+   "robots_allowed": false,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:13:27Z"
+  }
  },
  {
   "domain": "reefperfumes.com",
@@ -2195,7 +2328,14 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://reefperfumes.com/en/reef-33/p1243364177",
   "priority_rank": 56,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:26:22Z"
+  }
  },
  {
   "domain": "advanti.com",
@@ -2440,7 +2580,14 @@
   "genuine_method": "local_bhd",
   "sample_url": "https://www.goldenscent.com/en/p/tom-ford-oud-wood-eau-de-parfum-for-men-and-women.html",
   "priority_rank": 79,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "onsite_html",
+   "url_template": "https://goldenscent.com/?search={q}",
+   "robots_allowed": true,
+   "discovered_via": "homepage_form",
+   "resolved_at": "2026-08-31T12:34:44Z"
+  }
  },
  {
   "domain": "bahrain.desertcart.com",
@@ -2555,7 +2702,14 @@
   "genuine_method": "magento_graphql_bhd",
   "sample_url": "https://en-kwt.ajmal.com/violet-musc-hair-mist-100-ml",
   "priority_rank": 9,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:31:59Z"
+  }
  },
  {
   "domain": "wibi.com.kw",
@@ -2591,7 +2745,14 @@
   "genuine_method": "woo_store_api",
   "sample_url": "https://www.perfumeskuwait.com/product/eternity-for-men-edt-100ml-by-calvin-klein",
   "priority_rank": 11,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "platform_api",
+   "url_template": "https://perfumeskuwait.com/wp-json/wc/store/v1/products?search={q}&per_page=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:35:35Z"
+  }
  },
  {
   "domain": "rend-bahrain.com",
@@ -2609,7 +2770,14 @@
   "genuine_method": "salla_api",
   "sample_url": "https://rend-bahrain.com/ar/%D8%B9%D8%A8%D9%82-158/p1544427235",
   "priority_rank": 12,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:35:54Z"
+  }
  },
  {
   "domain": "daralamirat.com.sa",
@@ -2855,7 +3023,14 @@
   "genuine_method": "salla_api",
   "sample_url": "https://3saf.com/ar/special-wedding-offer/p1715267935",
   "priority_rank": 23,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:28:35Z"
+  }
  },
  {
   "domain": "bohperfume.com",
@@ -2983,7 +3158,14 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://banafaforoud.com/ar/-/p1964126244",
   "priority_rank": 35,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:13:16Z"
+  }
  },
  {
   "domain": "nike.sa",
@@ -3246,7 +3428,14 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://nazih.qa/diva-car-freshener-musky-scent-8ml.html",
   "priority_rank": 52,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:24:47Z"
+  }
  },
  {
   "domain": "leperfumeqa.com",
@@ -3264,7 +3453,14 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://leperfumeqa.com/",
   "priority_rank": 53,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "platform_api",
+   "url_template": "https://leperfumeqa.com/search/suggest.json?q={q}&resources[type]=product&resources[limit]=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:22:09Z"
+  }
  },
  {
   "domain": "store974.com",
@@ -3357,7 +3553,14 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://fyzara.com/",
   "priority_rank": 58,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "platform_api",
+   "url_template": "https://fyzara.com/search/suggest.json?q={q}&resources[type]=product&resources[limit]=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:19:18Z"
+  }
  },
  {
   "domain": "qsales.qa",
@@ -3433,7 +3636,14 @@
   "genuine_method": "woo_store_api",
   "sample_url": "https://oudworlds.com/product/oud-world-family-offer-luxury-fragrance/",
   "priority_rank": 62,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "platform_api",
+   "url_template": "https://oudworlds.com/wp-json/wc/store/v1/products?search={q}&per_page=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:35:24Z"
+  }
  },
  {
   "domain": "rasasistore.com",
@@ -3451,7 +3661,14 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://rasasistore.com/products.json",
   "priority_rank": 62,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "platform_api",
+   "url_template": "https://rasasistore.com/search/suggest.json?q={q}&resources[type]=product&resources[limit]=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:26:15Z"
+  }
  },
  {
   "domain": "ardalzaafaranshop.com",
@@ -3469,7 +3686,14 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://ardalzaafaranshop.com/products.json",
   "priority_rank": 63,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "platform_api",
+   "url_template": "https://ardalzaafaranshop.com/search/suggest.json?q={q}&resources[type]=product&resources[limit]=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:12:54Z"
+  }
  },
  {
   "domain": "gamingpcoman.shop",
@@ -3505,7 +3729,14 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://swissarabian.com/products.json",
   "priority_rank": 64,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "platform_api",
+   "url_template": "https://swissarabian.com/search/suggest.json?q={q}&resources[type]=product&resources[limit]=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:27:51Z"
+  }
  },
  {
   "domain": "thefaceshop.om",
@@ -3545,7 +3776,14 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.gazzaz.com.sa/products.json",
   "priority_rank": 65,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:19:26Z"
+  }
  },
  {
   "domain": "olaplex.com",
@@ -3618,7 +3856,14 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://ksa.swissarabian.com/products.json",
   "priority_rank": 66,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "platform_api",
+   "url_template": "https://ksa.swissarabian.com/search/suggest.json?q={q}&resources[type]=product&resources[limit]=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:21:42Z"
+  }
  },
  {
   "domain": "parisgallery.ae",
@@ -3636,7 +3881,14 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://parisgallery.ae/collections/designer-perfumes",
   "priority_rank": 66,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "platform_api",
+   "url_template": "https://parisgallery.ae/search/suggest.json?q={q}&resources[type]=product&resources[limit]=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:26:10Z"
+  }
  },
  {
   "domain": "albayanperfumes.com",
@@ -3654,7 +3906,14 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://albayanperfumes.com/en",
   "priority_rank": 67,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:12:37Z"
+  }
  },
  {
   "domain": "mls.om",
@@ -3690,7 +3949,14 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://sa.ajmal.com/products.json",
   "priority_rank": 67,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:26:38Z"
+  }
  },
  {
   "domain": "kuludonline.com",
@@ -3746,7 +4012,14 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://sa.ghawali.com/products.json",
   "priority_rank": 68,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:26:45Z"
+  }
  },
  {
   "domain": "myaster.com",
@@ -3803,7 +4076,14 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://sa.mubkhar.com/products/nordic-frost-eau-de-parfum-150-ml",
   "priority_rank": 69,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "platform_api",
+   "url_template": "https://sa.mubkhar.com/search/suggest.json?q={q}&resources[type]=product&resources[limit]=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:26:50Z"
+  }
  },
  {
   "domain": "darbeauty.com",
@@ -3861,7 +4141,14 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://saudi.naseem.com/products.json",
   "priority_rank": 70,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "platform_api",
+   "url_template": "https://saudi.naseem.com/search/suggest.json?q={q}&resources[type]=product&resources[limit]=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:27:28Z"
+  }
  },
  {
   "domain": "glamorous-beauty.com",
@@ -3921,7 +4208,14 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.watsons.sa/products/gosh-eyedentity-eyeshadow-palette",
   "priority_rank": 71,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:28:22Z"
+  }
  },
  {
   "domain": "alqamarshop.com",
@@ -3998,7 +4292,14 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.caretobeauty.com/bh/cerave/",
   "priority_rank": 73,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:18:32Z"
+  }
  },
  {
   "domain": "thebubblewrap.com",
@@ -4037,7 +4338,14 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://bh.cosmostore.org/catalog/product/the_ordinary_aha_30___bha_2_peeling_solution__282664/",
   "priority_rank": 74,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "onsite_html",
+   "url_template": "https://bh.cosmostore.org/catalog/search/?q={q}",
+   "robots_allowed": true,
+   "discovered_via": "homepage_form",
+   "resolved_at": "2026-08-31T12:18:03Z"
+  }
  },
  {
   "domain": "blink.com.kw",
@@ -4132,7 +4440,14 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.ounass.ae/shop-tom-ford-beauty-noir-eau-de-parfum-100ml-for-men-205723212_242.html",
   "priority_rank": 75,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "none",
+   "url_template": "",
+   "robots_allowed": false,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:25:45Z"
+  }
  },
  {
   "domain": "bawwaba.om",
@@ -4153,7 +4468,14 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://bawwaba.om/honor-600-8gb-256gb-5g-black.html",
   "priority_rank": 76,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "none",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:13:25Z"
+  }
  },
  {
   "domain": "faces.ae",
@@ -4174,7 +4496,14 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.faces.ae/en/brands/tom-ford",
   "priority_rank": 76,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:19:05Z"
+  }
  },
  {
   "domain": "future.com.kw",
@@ -4307,7 +4636,14 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://om.swissarabian.com/products/musk-07-edp-body-lotion-gift-set",
   "priority_rank": 79,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "platform_api",
+   "url_template": "https://om.swissarabian.com/search/suggest.json?q={q}&resources[type]=product&resources[limit]=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:25:20Z"
+  }
  },
  {
   "domain": "mamasfirst.com",
@@ -4343,7 +4679,14 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://oman.afnan.com/products.json?limit=1",
   "priority_rank": 80,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:25:28Z"
+  }
  },
  {
   "domain": "numberc.com",
@@ -4363,7 +4706,14 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.numberc.com/products/hourglass-ambient-soft-glow-foundation-for-her",
   "priority_rank": 81,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:24:56Z"
+  }
  },
  {
   "domain": "om.asgharali.com",
@@ -4381,7 +4731,14 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://om.asgharali.com/products.json?limit=1",
   "priority_rank": 81,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "platform_api",
+   "url_template": "https://om.asgharali.com/search/suggest.json?q={q}&resources[type]=product&resources[limit]=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:25:00Z"
+  }
  },
  {
   "domain": "om.junaidperfumes.com",
@@ -4399,7 +4756,14 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://om.junaidperfumes.com/products.json?limit=1",
   "priority_rank": 82,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:25:07Z"
+  }
  },
  {
   "domain": "pharmacypluskw.com",
@@ -4475,7 +4839,14 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://alhajisoman.com/products.json",
   "priority_rank": 84,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "platform_api",
+   "url_template": "https://alhajisoman.com/search/suggest.json?q={q}&resources[type]=product&resources[limit]=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:12:42Z"
+  }
  },
  {
   "domain": "amazon.sa",
@@ -4560,7 +4931,14 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://capitalstoreoman.com/products.json",
   "priority_rank": 86,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "platform_api",
+   "url_template": "https://capitalstoreoman.com/search/suggest.json?q={q}&resources[type]=product&resources[limit]=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:18:23Z"
+  }
  },
  {
   "domain": "ghawyoman.com",
@@ -4617,7 +4995,14 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://omanluxury.store/en/products/hommage-1744",
   "priority_rank": 89,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:25:35Z"
+  }
  },
  {
   "domain": "allaboutskindoha.com",
@@ -4711,7 +5096,14 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://qat.mhgboutique.com/products/shay-oud-parfum-75ml",
   "priority_rank": 94,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:22:27Z"
+  }
  },
  {
   "domain": "oqba.qa",
@@ -4729,7 +5121,14 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://oqba.qa/products/discovery-set-for-women",
   "priority_rank": 95,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "platform_api",
+   "url_template": "https://oqba.qa/search/suggest.json?q={q}&resources[type]=product&resources[limit]=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:25:40Z"
+  }
  },
  {
   "domain": "parfum.qa",
@@ -4747,7 +5146,14 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://parfum.qa/products.json",
   "priority_rank": 96,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "platform_api",
+   "url_template": "https://parfum.qa/search/suggest.json?q={q}&resources[type]=product&resources[limit]=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:25:55Z"
+  }
  },
  {
   "domain": "parigallery.com",
@@ -4767,7 +5173,14 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://parigallery.com/collections/perfumes",
   "priority_rank": 97,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "platform_api",
+   "url_template": "https://parigallery.com/search/suggest.json?q={q}&resources[type]=product&resources[limit]=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:26:05Z"
+  }
  },
  {
   "domain": "rptech.qa",
@@ -4803,7 +5216,14 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://souqscent.com/products.json",
   "priority_rank": 99,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "platform_api",
+   "url_template": "https://souqscent.com/search/suggest.json?q={q}&resources[type]=product&resources[limit]=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:27:38Z"
+  }
  },
  {
   "domain": "sunlife.qa",
@@ -4842,7 +5262,14 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://tuzzut.com/products/sceptre-malachite-maison-alhambra-100ml",
   "priority_rank": 101,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "platform_api",
+   "url_template": "https://tuzzut.com/search/suggest.json?q={q}&resources[type]=product&resources[limit]=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:28:01Z"
+  }
  },
  {
   "domain": "vitaminqatar.com",
@@ -4935,7 +5362,14 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.armaf.ae/collections/new-arrivals-2/products/odyssey-soda-pop",
   "priority_rank": 106,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "platform_api",
+   "url_template": "https://armaf.ae/search/suggest.json?q={q}&resources[type]=product&resources[limit]=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:12:59Z"
+  }
  },
  {
   "domain": "atelierdeglow.ae",
@@ -4971,7 +5405,14 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://beautiquefragrances.com/products.json",
   "priority_rank": 108,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "platform_api",
+   "url_template": "https://beautiquefragrances.com/search/suggest.json?q={q}&resources[type]=product&resources[limit]=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:13:32Z"
+  }
  },
  {
   "domain": "coralperfumes.com",
@@ -4989,7 +5430,14 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.coralperfumes.com/products/dark-night-for-men-edp-100ml",
   "priority_rank": 109,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "platform_api",
+   "url_template": "https://coralperfumes.com/search/suggest.json?q={q}&resources[type]=product&resources[limit]=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:18:36Z"
+  }
  },
  {
   "domain": "cozmada.com",
@@ -5100,7 +5548,14 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://ae.ghawali.com/products/9pm-in-saudi-parfum",
   "priority_rank": 115,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:21:32Z"
+  }
  },
  {
   "domain": "houseofperfumes.com",
@@ -5118,7 +5573,14 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://houseofperfumes.com/products.json",
   "priority_rank": 116,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "platform_api",
+   "url_template": "https://houseofperfumes.com/search/suggest.json?q={q}&resources[type]=product&resources[limit]=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:21:37Z"
+  }
  },
  {
   "domain": "jnknutrition.com",
@@ -5228,7 +5690,14 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://mamlakataloud.ae/products.json",
   "priority_rank": 122,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "platform_api",
+   "url_template": "https://mamlakataloud.ae/search/suggest.json?q={q}&resources[type]=product&resources[limit]=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:22:19Z"
+  }
  },
  {
   "domain": "med7online.com",
@@ -5343,7 +5812,14 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://myperfumes.ae/products/arabiyat-prestige-marwa-edp-unisex",
   "priority_rank": 128,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "platform_api",
+   "url_template": "https://myperfumes.ae/search/suggest.json?q={q}&resources[type]=product&resources[limit]=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:22:32Z"
+  }
  },
  {
   "domain": "nutristore.ae",
@@ -5397,7 +5873,14 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://parfum.ae/products.json",
   "priority_rank": 131,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "platform_api",
+   "url_template": "https://parfum.ae/search/suggest.json?q={q}&resources[type]=product&resources[limit]=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:25:50Z"
+  }
  },
  {
   "domain": "refab.me",
@@ -5451,7 +5934,14 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://samawa.ae/collections/oud-perfume",
   "priority_rank": 134,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:27:13Z"
+  }
  },
  {
   "domain": "scentlibraryofficial.com",
@@ -5469,7 +5959,14 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.scentlibraryofficial.com/products.json",
   "priority_rank": 135,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "platform_api",
+   "url_template": "https://scentlibraryofficial.com/search/suggest.json?q={q}&resources[type]=product&resources[limit]=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:27:33Z"
+  }
  },
  {
   "domain": "usbs-uae.com",
@@ -5524,7 +6021,14 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://yusufbhaifragrances.com/products/dior-sauvage",
   "priority_rank": 138,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "platform_api",
+   "url_template": "https://yusufbhaifragrances.com/search/suggest.json?q={q}&resources[type]=product&resources[limit]=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:28:26Z"
+  }
  },
  {
   "domain": "sa.getkuwa.com",
@@ -5560,7 +6064,14 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.vperfumes.com/sa-en/product/gucci-intense-oud-edp-for-unisex-90ml",
   "priority_rank": 140,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:28:14Z"
+  }
  },
  {
   "domain": "mbayoman.com",
@@ -5617,7 +6128,14 @@
   "genuine_method": "woo_store_api",
   "sample_url": "https://mushtariyat.com/wp-json/wc/store/products?per_page=100",
   "priority_rank": 143,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "onsite_html",
+   "url_template": "https://mushtariyat.com/?s={q}&post_type=product&dgwt_wcas=1",
+   "robots_allowed": true,
+   "discovered_via": "homepage_form",
+   "resolved_at": "2026-08-31T12:35:13Z"
+  }
  },
  {
   "domain": "qimia.om",
@@ -5690,7 +6208,14 @@
   "genuine_method": "woo_store_api",
   "sample_url": "https://perfumeqatar.com/product/chrome-for-men-edt-100ml-by-azzaro/",
   "priority_rank": 147,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "platform_api",
+   "url_template": "https://perfumeqatar.com/wp-json/wc/store/v1/products?search={q}&per_page=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:35:30Z"
+  }
  },
  {
   "domain": "qatarperfumeshop.com",
@@ -5708,7 +6233,14 @@
   "genuine_method": "woo_store_api",
   "sample_url": "https://qatarperfumeshop.com/wp-json/wc/store/products?per_page=100",
   "priority_rank": 148,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "platform_api",
+   "url_template": "https://qatarperfumeshop.com/wp-json/wc/store/v1/products?search={q}&per_page=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:35:47Z"
+  }
  },
  {
   "domain": "babystore.ae",
@@ -5783,7 +6315,14 @@
   "genuine_method": "woo_store_api",
   "sample_url": "https://ouddubai.ae/product/al-eimaan-pour-femme/",
   "priority_rank": 152,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "platform_api",
+   "url_template": "https://ouddubai.ae/wp-json/wc/store/v1/products?search={q}&per_page=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:35:19Z"
+  }
  },
  {
   "domain": "oudera.ae",
@@ -5970,7 +6509,14 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://en-sa.rituals.com/products/perfumes/women/8719134187984-travel-ocean-infini-15ml.html",
   "priority_rank": 162,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "none",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:18:59Z"
+  }
  },
  {
   "domain": "faces.sa",
@@ -5992,7 +6538,14 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.faces.sa/en/p/armani-power-of-you-eau-de-parfum-pm001717604552.html",
   "priority_rank": 164,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:19:14Z"
+  }
  },
  {
   "domain": "firstcry.sa",
@@ -6028,7 +6581,14 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://laverne.com/ar/oOKrVB",
   "priority_rank": 167,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:22:04Z"
+  }
  },
  {
   "domain": "narscosmetics.sa",
@@ -6084,7 +6644,14 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://sa.abdulsamadalqurashi.com/en/al-qurashi-blend-perfume-90ml/p495814384",
   "priority_rank": 170,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:26:30Z"
+  }
  },
  {
   "domain": "sa.oudelite.com",
@@ -6102,7 +6669,14 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://sa.oudelite.com/en/-/p582872998",
   "priority_rank": 171,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:26:57Z"
+  }
  },
  {
   "domain": "saudi.jazp.com",
@@ -6123,7 +6697,14 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://saudi.jazp.com/sa-en/Hugo-Boss-100ml-Boss-Bottled-Infinite-Fragrance/p/136105",
   "priority_rank": 172,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:27:20Z"
+  }
  },
  {
   "domain": "saudi.microless.com",
@@ -6159,7 +6740,14 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://store.rasasi.com.sa/en/-/p666775809",
   "priority_rank": 174,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:27:46Z"
+  }
  },
  {
   "domain": "vanilla.sa",
@@ -6177,7 +6765,14 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://vanilla.sa/en/Dior-Homme-Intense-perfume/p1925357018",
   "priority_rank": 175,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:28:10Z"
+  }
  },
  {
   "domain": "almutawaph.com.kw",
@@ -6236,7 +6831,14 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://en.bloomingdales.com.kw/beauty-makeup/",
   "priority_rank": 178,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:18:18Z"
+  }
  },
  {
   "domain": "damasjewellery.com",
@@ -6272,7 +6874,14 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://kw.oudelite.com/en/e0301010101-man-desert",
   "priority_rank": 180,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:21:49Z"
+  }
  },
  {
   "domain": "kwt.nazih.com",
@@ -6292,7 +6901,14 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://kwt.nazih.com",
   "priority_rank": 181,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:21:57Z"
+  }
  },
  {
   "domain": "mamasandpapas.com.kw",
@@ -6349,7 +6965,14 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://om.oudelite.com/en/-/p1866281610",
   "priority_rank": 184,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:25:14Z"
+  }
  },
  {
   "domain": "jazp.com",
@@ -6520,7 +7143,14 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://nazih.ae/zero-frizz-argan-oil-hair-care-serum-148-ml.html",
   "priority_rank": 193,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:22:40Z"
+  }
  },
  {
   "domain": "rivolishop.com",
@@ -6575,7 +7205,14 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://alrehabstore.com/en/oud-bahraini-100-ml/p1068529267",
   "priority_rank": 196,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:12:49Z"
+  }
  },
  {
   "domain": "whites.sa",
@@ -6616,7 +7253,14 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://salams.com/beauty/men-perfume",
   "priority_rank": 198,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:27:06Z"
+  }
  },
  {
   "domain": "atelierperfumery.com",
@@ -6634,7 +7278,14 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.atelierperfumery.com/essential-parfums-ambre-latte-edp-100ml",
   "priority_rank": 199,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "platform_api",
+   "url_template": "https://atelierperfumery.com/search/suggest.json?q={q}&resources[type]=product&resources[limit]=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:13:09Z"
+  }
  },
  {
   "domain": "nrtcfresh.com",
@@ -6670,7 +7321,14 @@
   "genuine_method": "page_scrape_jsonld",
   "sample_url": "https://www.touchofoud.com/rajwan-2",
   "priority_rank": 201,
-  "status": "live"
+  "status": "live",
+  "search": {
+   "kind": "platform_api",
+   "url_template": "https://touchofoud.com/search/suggest.json?q={q}&resources[type]=product&resources[limit]=10",
+   "robots_allowed": true,
+   "discovered_via": "platform_probe",
+   "resolved_at": "2026-08-31T12:27:56Z"
+  }
  },
  {
   "domain": "nahdionline.com",
@@ -6920,6 +7578,13 @@
   "sample_url": "https://letoile.ae/products/lancome_edp_la_vie_est_belle_spray_100_ml_klm999779",
   "priority_rank": 214,
   "status": "live",
-  "measured": "2026-08-30 free curl_cffi impersonate=chrome. OLD sample_pdp_url /p/5-1-30-sxt000001 is a real 404 (Shopify soft-404 template; Firecrawl reported HTTP 200 on it and billed a credit - #92). NEW sample: HTTP 200, 317,348 B, 0.84s, 5 ld+json; price_service.fetch_page_price -> 670.0 AED page_scrape in_stock size=100ml, 1.0s, exact gate at shipped default. 3/3 sampled PDPs priced (670/290/195 AED). NOT render-only. Left as a plain curl row rather than is_shopify: the builder demotes a non-bahrain-tier Shopify row to plain discovery anyway, and re-platforming a row is out of scope for #94."
+  "measured": "2026-08-30 free curl_cffi impersonate=chrome. OLD sample_pdp_url /p/5-1-30-sxt000001 is a real 404 (Shopify soft-404 template; Firecrawl reported HTTP 200 on it and billed a credit - #92). NEW sample: HTTP 200, 317,348 B, 0.84s, 5 ld+json; price_service.fetch_page_price -> 670.0 AED page_scrape in_stock size=100ml, 1.0s, exact gate at shipped default. 3/3 sampled PDPs priced (670/290/195 AED). NOT render-only. Left as a plain curl row rather than is_shopify: the builder demotes a non-bahrain-tier Shopify row to plain discovery anyway, and re-platforming a row is out of scope for #94.",
+  "search": {
+   "kind": "sitemap",
+   "url_template": "",
+   "robots_allowed": true,
+   "discovered_via": "robots",
+   "resolved_at": "2026-08-31T12:22:16Z"
+  }
  }
 ]
