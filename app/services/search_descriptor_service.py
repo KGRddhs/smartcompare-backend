@@ -65,6 +65,7 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "SEARCH_KINDS",
+    "RobotsUnreadableError",
     "SearchDescriptor",
     "candidate_search_templates",
     "descriptor_for_host",
@@ -75,6 +76,24 @@ __all__ = [
     "search_descriptor_enabled",
     "search_form_template",
 ]
+
+
+class RobotsUnreadableError(ValueError):
+    """A host's ``robots.txt`` is UNREADABLE — fail closed, skip the host.
+
+    THE RULING (``docs/policies/2026-08-31-robots-unreadable-ruling.md``,
+    approved by Ahmed 2026-08-31): when the policy document itself is walled or
+    unreachable (403 / a WAF challenge / any non-2xx wall / a 5xx / a timeout /
+    a network error), the host is SKIPPED — never probed under an empty policy.
+    A 404/410 is NOT unreadable: that is a host publishing no policy, which
+    stays allow-all per RFC 9309 sec 2.3.1.3.
+
+    Subclasses ``ValueError`` so the off-clock resolver's existing skip branch
+    (``scripts/resolve_search_descriptors.py::resolve_hosts``) handles it the
+    same way as a house-rule-7 refusal: the host prints ``SKIP``, is NOT
+    persisted to the store, and the next resolver run retries it — which IS
+    Option A's scheduled re-read, for free.
+    """
 
 #: The four answers a resolution can produce. ``platform_api`` and
 #: ``onsite_html`` are usable search surfaces; ``sitemap`` records "no search,
@@ -424,6 +443,16 @@ def probe_search_descriptor(
     requested — so a host that forbids its search surface costs exactly one
     fetch and yields ``kind="none"``, which we then never re-probe.
 
+    UNREADABLE ROBOTS FAILS CLOSED (ruling 2026-08-31). A robots fetch that
+    fails (exception) or returns a walled/erroring status (403/401/5xx/anything
+    that is not 200 or 404/410) raises ``RobotsUnreadableError`` — the host is
+    skipped for this run and NOT persisted, so a later run retries it. Before
+    this ruling the branch mapped a failed read to an EMPTY body, and
+    ``robots_eval.can_fetch("")`` is allow-all — i.e. it silently converted
+    "the policy is walled" into "there is no policy", the exact fail-open the
+    ruling forbids. A 404/410 (no policy published) and a genuine 200-empty
+    body remain allow-all per RFC 9309 sec 2.3.1.3.
+
     Order (B8 sec 10, cheapest first):
       1. the platform product-search API for the recorded mechanism (or, with
          none recorded, Shopify then Woo — the 2-fetch probe this unit exists
@@ -446,10 +475,25 @@ def probe_search_descriptor(
     try:
         status, body = fetch("https://%s/robots.txt" % host)
         spent += 1
-        if status == 200 and isinstance(body, str):
-            robots_txt = body
-    except Exception as exc:  # noqa: BLE001 — an unreachable robots is allow-all
-        logger.info("[search_descriptor] robots fetch failed for %s: %s", host, exc)
+    except Exception as exc:  # noqa: BLE001 — unreadable ⇒ fail-closed skip
+        raise RobotsUnreadableError(
+            "robots.txt UNREADABLE for %s (fetch failed: %s) — fail-closed "
+            "ruling 2026-08-31: host skipped" % (host, exc)
+        ) from exc
+    if status == 200:
+        # Readable. A non-str/empty body is readable-but-unparseable ⇒
+        # allow-all (RFC 9309 sec 2.3.1.3) — that is a property of the BODY,
+        # not of the fetch, so it is not the unreadable branch.
+        robots_txt = body if isinstance(body, str) else ""
+    elif status in (404, 410):
+        robots_txt = ""  # no policy published ⇒ allow-all (NOT "unreadable")
+    else:
+        # 403 / 401 / 429 / 5xx / a WAF challenge / anything else: the policy
+        # document itself is walled ⇒ UNREADABLE ⇒ skip the host (fail-closed).
+        raise RobotsUnreadableError(
+            "robots.txt UNREADABLE for %s (HTTP %s) — fail-closed ruling "
+            "2026-08-31: host skipped" % (host, status)
+        )
 
     def allowed(url: str) -> bool:
         return robots_eval.can_fetch(robots_txt, agent, url)

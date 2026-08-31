@@ -52,14 +52,16 @@ consumed by the Wave-3 adapters.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import re
 import time
-from typing import Awaitable, Callable, Dict, List, Optional, Sequence, Union
+from typing import Awaitable, Callable, Dict, List, Optional, Sequence, Tuple, Union
 from urllib.parse import urlparse
 from xml.etree import ElementTree as ET
 
+from app.services import robots_eval
 from app.services.cache_service import get_cached, set_cached
 from app.services.price_service import (
     extract_sizes_ml,
@@ -359,17 +361,143 @@ def _slug_from_pdp(url: str) -> str:
     return slug.replace("-", " ")
 
 
+# --- robots.txt gate (fail-closed ruling 2026-08-31) ------------------------
+# docs/policies/2026-08-31-robots-unreadable-ruling.md, approved by Ahmed
+# 2026-08-31. This builder is the ONLY thing in the repo that crawls a host's
+# sitemaps, and until M12 U:V1 it consulted robots NOT AT ALL — the strongest
+# possible fail-open, contradicting the ruling. The gate below runs BEFORE any
+# sitemap fetch:
+#   * robots.txt UNREADABLE (403/401/5xx/wall/timeout/error) → the whole build
+#     for that entry point is SKIPPED (0 indexed; a prior index stays in place
+#     and the next cron run retries — Option A's scheduled re-read for free);
+#   * robots READABLE → the index URL and EVERY child sitemap URL are evaluated
+#     with ``robots_eval.can_fetch`` under the NAMED agent, and a disallowed
+#     URL is never fetched;
+#   * 404/410 → the host publishes no policy → allow-all (RFC 9309 sec 2.3.1.3
+#     — NOT "unreadable");
+#   * a genuine 200-empty/junk body → readable-but-unparseable → allow-all.
+# Applied UNCONDITIONALLY (no flag): this is off-clock compliance
+# infrastructure — the live request path only READS Redis and is untouched,
+# and the whole channel stays behind ENABLE_SITEMAP_INDEX (default OFF).
+
+#: The named UA the live robots read identifies as. NEVER a browser UA — the
+#: klinq measurement (see ``robots_eval``): a browser-shaped UA falls into a
+#: ``User-agent: Mozilla / Disallow: /`` group, so impersonating makes us LESS
+#: entitled to the bytes, not more. Mirrors the off-clock resolver's UA.
+_ROBOTS_UA = "%s/1.0 (+https://qaren.app/bot; contact: kingzatel@gmail.com)" % (
+    robots_eval.NAMED_AGENT
+)
+_ROBOTS_TIMEOUT = 20
+
+#: The robots fetch contract: ``(status, body)``. Status-aware on purpose —
+#: the Optional[str] sitemap fetcher cannot tell a 404 (no policy ⇒ allow-all)
+#: from a 403 (walled policy ⇒ fail-closed skip), and that distinction is the
+#: ruling's entire boundary.
+RobotsFetch = Callable[[str], Awaitable[Tuple[int, str]]]
+
+
+async def _default_robots_fetch(url: str) -> Tuple[int, str]:
+    """Live status-aware robots.txt fetch (curl_cffi in a thread, named UA).
+
+    Raises on a network failure — the caller (``_robots_policy``) maps ANY
+    exception to UNREADABLE ⇒ fail-closed. Only used off-clock (the builder);
+    tests inject their own ``robots_fetch``."""
+
+    def _get() -> Tuple[int, str]:
+        from curl_cffi import requests as cffi_requests
+
+        resp = cffi_requests.get(
+            url,
+            headers={"User-Agent": _ROBOTS_UA, "Accept": "*/*"},
+            timeout=_ROBOTS_TIMEOUT,
+        )
+        return int(resp.status_code), resp.text or ""
+
+    return await asyncio.to_thread(_get)
+
+
+async def _robots_policy(
+    netloc: str,
+    robots_fetch: RobotsFetch,
+    cache: Dict[str, Optional[str]],
+) -> Optional[str]:
+    """The robots policy body governing ``netloc``, memoized per build.
+
+    Returns the body for a 200 (``""`` for a non-str body — readable-but-
+    unparseable ⇒ allow-all), ``""`` for a 404/410 (no policy published ⇒
+    allow-all), and ``None`` when the robots file is UNREADABLE (any other
+    status, or a fetch failure) — the fail-closed ruling's skip signal."""
+    if netloc in cache:
+        return cache[netloc]
+    policy: Optional[str]
+    try:
+        status, body = await robots_fetch("https://%s/robots.txt" % netloc)
+        status = int(status)
+        if 200 <= status < 300:
+            policy = body if isinstance(body, str) else ""
+        elif status in (404, 410):
+            policy = ""  # no policy published ⇒ allow-all (NOT "unreadable")
+        else:
+            logger.warning(
+                "[sitemap_discovery] robots.txt UNREADABLE on %s (HTTP %d) — "
+                "fail-closed skip (ruling 2026-08-31)", netloc, status,
+            )
+            policy = None
+    except Exception as exc:  # noqa: BLE001 — unreadable ⇒ fail-closed skip
+        logger.warning(
+            "[sitemap_discovery] robots.txt UNREADABLE on %s (%s) — "
+            "fail-closed skip (ruling 2026-08-31)", netloc, exc,
+        )
+        policy = None
+    cache[netloc] = policy
+    return policy
+
+
+async def _robots_allows(
+    url: str,
+    robots_fetch: RobotsFetch,
+    cache: Dict[str, Optional[str]],
+) -> Optional[bool]:
+    """May the NAMED agent fetch ``url`` under its host's robots policy?
+
+    ``True``/``False`` under a readable policy; ``None`` when that host's
+    robots is UNREADABLE (the caller must skip — fail-closed)."""
+    try:
+        netloc = (urlparse(url).netloc or "").strip().lower()
+    except (ValueError, TypeError):
+        return False
+    if not netloc:
+        return False
+    policy = await _robots_policy(netloc, robots_fetch, cache)
+    if policy is None:
+        return None
+    return robots_eval.can_fetch(policy, robots_eval.NAMED_AGENT, url)
+
+
 async def _collect_slugs_for_index(
     domain: str,
     index_url: str,
     fetch: Callable[[str], Awaitable[Optional[str]]],
     max_children: int,
+    robots_fetch: RobotsFetch,
+    robots_cache: Dict[str, Optional[str]],
 ) -> Dict[str, str]:
     """Fetch + validate ONE sitemap-index ``index_url`` → its ``{slug → pdp_url}``
     map. Each index derives its OWN ``_expected_site`` and applies the per-index
     SSRF ``_same_site`` guard against THAT host (so a 2-URL build can't smuggle a
-    cross-host loc through the other index's expected domain). Graceful-empty on
-    any failure (a missing / malformed index or child is skipped). Never raises."""
+    cross-host loc through the other index's expected domain). Every fetch —
+    the index AND each child — is robots-gated first (fail-closed ruling
+    2026-08-31: unreadable robots ⇒ skip). Graceful-empty on any failure (a
+    missing / malformed index or child is skipped). Never raises."""
+    verdict = await _robots_allows(index_url, robots_fetch, robots_cache)
+    if verdict is not True:
+        logger.warning(
+            "[sitemap_discovery] %s: index NOT fetched (%s) — robots %s",
+            domain, index_url,
+            "UNREADABLE, fail-closed skip (ruling 2026-08-31)"
+            if verdict is None else "disallows it",
+        )
+        return {}
     index_xml = await fetch(index_url)
     if not index_xml:
         logger.info("[sitemap_discovery] %s: index fetch empty (%s)", domain, index_url)
@@ -402,6 +530,15 @@ async def _collect_slugs_for_index(
                 slug_index[slug] = url
     else:
         for child_url in child_sitemaps[:max_children]:
+            child_verdict = await _robots_allows(child_url, robots_fetch, robots_cache)
+            if child_verdict is not True:
+                logger.warning(
+                    "[sitemap_discovery] %s: child NOT fetched (%s) — robots %s",
+                    domain, child_url,
+                    "UNREADABLE, fail-closed skip (ruling 2026-08-31)"
+                    if child_verdict is None else "disallows it",
+                )
+                continue
             child_xml = await fetch(child_url)
             if not child_xml:
                 logger.info("[sitemap_discovery] %s: child empty (%s)", domain, child_url)
@@ -423,6 +560,7 @@ async def build_sitemap_index(
     index_url: Union[str, Sequence[str]],
     fetch: Optional[Callable[[str], Awaitable[Optional[str]]]] = None,
     max_children: int = 32,
+    robots_fetch: Optional[RobotsFetch] = None,
 ) -> int:
     """OFF-CLOCK ONLY. Build + Redis-cache a BOUNDED token-bucket inverted index of
     the ``{normalized_slug → pdp_url}`` map for ``domain`` from its sitemap-index
@@ -448,11 +586,22 @@ async def build_sitemap_index(
     a META key → ``discovery:sitemap:{domain}:meta``. The request path reads small
     buckets, never the full catalog.
 
+    🤖 ROBOTS-GATED, FAIL-CLOSED (ruling 2026-08-31 — see the gate block above
+    ``_default_robots_fetch``): each entry point's host robots.txt is read ONCE
+    (status-aware, named UA, injectable ``robots_fetch`` for tests) BEFORE any
+    sitemap fetch. Unreadable robots ⇒ that entry point contributes NOTHING
+    (a prior index stays; the next cron run retries). A readable policy gates
+    the index URL and every child sitemap URL via ``robots_eval.can_fetch``.
+
     Returns the number of PDP URLs actually indexed (0 on a totally-failed build OR
     a failed META write — MED-4: no phantom success count). Graceful on every
-    failure (a missing / malformed child sitemap is skipped). Never raises.
+    failure (a missing / malformed child sitemap is skipped, an unreadable or
+    disallowing robots skips its entry point). Never raises.
     """
     fetch = fetch or _default_fetch
+    robots_fetch = robots_fetch or _default_robots_fetch
+    #: One robots read per host per build — memoized across the index + children.
+    robots_cache: Dict[str, Optional[str]] = {}
 
     # Normalize to a list of index URLs. A str keeps the exact current behavior;
     # a sequence fetches + validates EACH index independently, then UNIONs the
@@ -464,7 +613,7 @@ async def build_sitemap_index(
     slug_index: Dict[str, str] = {}
     for one_index_url in index_urls:
         partial = await _collect_slugs_for_index(
-            domain, one_index_url, fetch, max_children
+            domain, one_index_url, fetch, max_children, robots_fetch, robots_cache
         )
         # UNION across indexes (a later index's slug wins on a collision — same
         # last-writer semantics as the within-index dict assignment).

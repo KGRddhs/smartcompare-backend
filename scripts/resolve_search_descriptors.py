@@ -23,7 +23,10 @@ THE FOUR SAFETY RULES, ENFORCED IN CODE
      from B8's panel in two ways: it lets a later ``User-agent: *`` group
      overwrite an earlier one, and it prefix-matches a browser UA into a
      ``User-agent: Mozilla`` group. We identify as a NAMED token
-     (``robots_eval.NAMED_AGENT``), never as a browser.
+     (``robots_eval.NAMED_AGENT``), never as a browser. An UNREADABLE robots
+     (403/wall/5xx/timeout/error) FAILS CLOSED (ruling 2026-08-31): the host
+     is skipped and NOT persisted, so the next run retries it; a 404/410 is a
+     host publishing no policy and stays allow-all.
   2. **A hard 12-host live cap** (``MAX_LIVE_HOSTS``). A run larger than that is
      refused, not truncated.
   3. **A >= 2s throttle per host** (``MIN_THROTTLE_SECONDS``), floor-enforced.
@@ -227,7 +230,10 @@ def resolve_hosts(
     for host, mechanism in hosts:
         try:
             descriptor = probe_search_descriptor(host, fetch, mechanism=mechanism)
-        except ValueError as exc:  # house rule 7 refusal
+        except ValueError as exc:  # house rule 7 refusal OR unreadable-robots
+            # fail-closed skip (RobotsUnreadableError, ruling 2026-08-31).
+            # Either way the host is NOT persisted: an unresolved host is
+            # retried by the next run — Option A's scheduled re-read for free.
             print("SKIP %s: %s" % (host, exc))
             continue
         except Exception as exc:  # noqa: BLE001 — one host must not end the run
