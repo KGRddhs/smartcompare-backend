@@ -13092,8 +13092,21 @@ def _extract_woocommerce_price(
     # rollback). ``detected_currency`` may be the SYMBOL child's glyph rather
     # than an ISO code — ``_money_minor_unit`` folds it, which is what stops a
     # Bahraini Woo store's "12,500" reading as 12500 instead of 12.5.
+    #
+    # M13-08 (ENABLE_JSONLD_FIRST) — THE MINOR-UNIT DIVISOR MUST COME FROM THE
+    # SAME TOKEN THE PRICE IS STAMPED WITH. ``detected_currency`` is the symbol
+    # child ``or`` the ASK currency; ``_wc_label`` is the ISO code resolved from
+    # page evidence. They DIVERGE exactly when the Woo span carries no symbol
+    # child: ``detected_currency`` falls back to the ASK (BHD, 3 minor units) and
+    # reads a de-DE "1.234" on a EUR page as 1.234, while ``_wc_label`` resolves
+    # to EUR (2 minor units, "1.234" -> 1234). The old code parsed with the ASK
+    # and stamped EUR, converting 1.234 EUR -> 0.51 BHD (~2400x under). When the
+    # flag is on, parse with the SAME resolved label the result is stamped with,
+    # so parse-currency == stamped-currency by construction. Flag OFF: the ASK/
+    # glyph token, byte-identical to before.
+    _parse_currency = _wc_label if jsonld_first_enabled() else detected_currency
     amount = parse_price_string(
-        span.get_text(" ", strip=True), detected_currency, display_text=True,
+        span.get_text(" ", strip=True), _parse_currency, display_text=True,
     )
     if amount is None or amount <= 0:
         return None
@@ -13127,6 +13140,18 @@ def _extract_woocommerce_price(
         # Flag OFF: `_ok` is ignored entirely, exact 8adaefb path.
         if strict_currency_label_enabled() and not _ok:
             return None
+        # M13-07 (ENABLE_JSONLD_FIRST) — THE RELABEL, mirroring the microdata
+        # sibling's `if _first:` at ~:13503. Until now this branch converted a
+        # foreign WooCommerce price to the ask currency but left it stamped
+        # ``page_scrape`` — i.e. a EUR/OMR/LBP price (klinq, ardalzaafaranshop,
+        # bawwaba.om, armaf.ae, spinneyslebanon) banked as a GENUINE Bahrain
+        # shelf price: cached 7 days, counted in the genuine-BH-share KPI, shown
+        # without the indicative caption, and satisfying `_confirmed()` so it
+        # ends the fan-out race and cancels a still-pending genuine BH scraper.
+        # Relabel converted_usd so its provenance is honest. Flag OFF: byte-
+        # identical (the relabel never runs).
+        if jsonld_first_enabled():
+            result["source_method"] = "converted_usd"
     return result
 
 
