@@ -6791,7 +6791,10 @@ class StructuredComparisonService:
             # 244" lifted from a snippet) is a cited price → local_bhd/converted.
             # Supplements get the iHerb retailer assigned below, so they qualify.
             _has_retailer = bool(price.get("retailer")) or (is_supplement and iherb_organic)
-            original_cur = price.get("original_currency", "").upper()
+            # M13-44 — original_currency may be an explicit JSON null; coerce so
+            # `.upper()` cannot crash the Tier-2 label branch (a null degrades to
+            # local_bhd/gpt_organic_extract here, never a raise out of the tier).
+            original_cur = str(price.get("original_currency") or "").upper()
             if not _has_retailer:
                 # Retailer-less GPT guess — honest gpt_* label, never genuine-BH.
                 price["source_method"] = "gpt_organic_extract"

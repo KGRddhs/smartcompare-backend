@@ -757,7 +757,11 @@ def _convert_gpt_price_currency(price: Optional[Dict], target_currency: str) -> 
     """
     if not price or not price.get("amount"):
         return False
-    original = price.get("original_currency", "").upper()
+    # M13-44 — original_currency may be an explicit JSON null (key present, value
+    # None): `.get(key, "")` returns None then, so `.upper()` raised out of the
+    # tier cascade and LOST the price for the whole request (re-lost on retry, as
+    # the raise precedes any cache write). Coerce so a null degrades to Tier 3.
+    original = str(price.get("original_currency") or "").upper()
     if not original or original == target_currency:
         return False
     strict = strict_currency_label_enabled()
@@ -9166,6 +9170,14 @@ def sanitize_gpt_price(price: Optional[Dict]) -> None:
             continue
         if val.lower() == "null" or "or null" in val.lower():
             price[key] = None
+    # M13-44 — fix a null/non-string original_currency ONCE at the boundary so no
+    # downstream `.upper()` (the Tier-2 label branch, _convert_gpt_price_currency)
+    # can crash on `None.upper()`. Coerce to a plain string; an empty string then
+    # degrades the price to Tier 3 rather than raising it out of the cascade.
+    if "original_currency" in price and not isinstance(
+        price.get("original_currency"), str
+    ):
+        price["original_currency"] = str(price.get("original_currency") or "")
 
 
 # S3-reopen T1 (team-lead Decision-F 2026-06-14) — ABSOLUTE plausibility gate.
