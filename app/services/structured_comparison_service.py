@@ -1170,10 +1170,27 @@ SPECS_CACHE_TTL = 7 * 24 * 60 * 60    # 7 days
 
 # Bundle E § Decision 8 + Decision 9 — hard cap on the streaming pipeline.
 # A runaway scraper or slow GPT response cannot extend the SSE stream past
-# this many seconds. asyncio.wait_for(...) wraps the data-fetch + scoring
-# + verdict pipeline; on timeout the orchestrator yields a `settle_complete`
-# with whatever fields we have so far and the client unblocks.
+# this many seconds. M13-04 CORRECTION: today the `asyncio.wait_for(...)` in
+# compare_from_text_streaming wraps ONLY Phase 1 (the two _fetch_product_data
+# calls) — NOT scoring or the verdict. The post-Phase-1 tail (generate_comparison
+# + self-critique + output moderation) has always run UNBOUNDED past this cap, so
+# a slow GPT verdict could keep the connection alive ~150s until the client's 120s
+# axios timeout with no error event. ENABLE_FULL_STREAM_DEADLINE (default OFF)
+# extends this cap over that tail: a deadline computed at generator entry, with the
+# RESIDUAL budget wrapping each tail await; on expiry it yields the best-available
+# PARTIAL. Flag OFF -> the tail is unbounded, exactly as before.
 STREAM_HARD_CAP_SECONDS = float(os.getenv("STREAM_HARD_CAP_SECONDS", "25.0"))
+
+
+def _full_stream_deadline_enabled() -> bool:
+    """ENABLE_FULL_STREAM_DEADLINE (default OFF) — read PER CALL. Extends the
+    STREAM_HARD_CAP_SECONDS cap over the post-Phase-1 verdict/critique/moderation
+    tail. Default OFF because it changes the timeout envelope of a currently-
+    unbounded tail: a slow-but-valid verdict that completes at 60s today would be
+    cut to a PARTIAL. Canary before flipping."""
+    return os.getenv("ENABLE_FULL_STREAM_DEADLINE", "").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
 
 # I5.7 — the OUTER per-product price-race cap (wraps the whole _get_price path:
 # Tier 1 + escalation + the inner fan_out + Tier 3 estimate). Module-level so it's
@@ -3447,9 +3464,56 @@ class StructuredComparisonService:
         self.serper_calls = 0
         self._shopping_items_cache = {}
 
+        # M13-04 — deadline for the FULL stream (Phase 1 + the verdict/critique/
+        # moderation tail). Computed at entry; the tail awaits are wrapped in
+        # wait_for with the RESIDUAL budget when ENABLE_FULL_STREAM_DEADLINE is ON.
+        # Flag OFF -> this local is unused and the tail stays unbounded (today).
+        _full_deadline_on = _full_stream_deadline_enabled()
+        _stream_deadline = time.monotonic() + STREAM_HARD_CAP_SECONDS
+
         # I5.6 lever-2 — bound to None at the top so the outer exception handler
         # can always cancel it (mirror of the sync path).
         _profile_task = None
+
+        def _tail_residual() -> float:
+            """M13-04 — remaining budget for a post-Phase-1 tail await; floored so a
+            nearly-spent budget still gives the await a brief chance, never 0."""
+            return max(0.05, _stream_deadline - time.monotonic())
+
+        async def _emit_stream_deadline_partial():
+            """M13-04 — best-available PARTIAL when the post-Phase-1 tail exceeds the
+            stream deadline. Mirrors the Phase-1 hard-cap salvage: a success:true
+            PARTIAL from the stash when usable, else the STREAM_TIMEOUT soft-retry."""
+            await _cancel_profile_task(_profile_task)
+            if self._partial_has_usable_data():
+                try:
+                    _partial = self._build_partial_response(
+                        elapsed_seconds=(datetime.now() - start_time).total_seconds()
+                    )
+                    logger.warning(
+                        "[stream] full-stream deadline %.1fs hit for %r in the tail — "
+                        "returning best-available PARTIAL (success:true)",
+                        STREAM_HARD_CAP_SECONDS, query,
+                    )
+                    yield ("settle_complete", _partial)
+                    yield ("complete", _partial)
+                    return
+                except Exception:  # noqa: BLE001 — fall through to STREAM_TIMEOUT
+                    logger.error(
+                        "[stream] tail-deadline partial build failed for %r",
+                        query, exc_info=True,
+                    )
+            partial_response = {
+                "success": False,
+                "error": TIMEOUT_FRIENDLY_MESSAGE,
+                "code": "STREAM_TIMEOUT",
+                "partial": True,
+                "elapsed_seconds": (datetime.now() - start_time).total_seconds(),
+                "total_cost": self.total_cost,
+                "api_calls": self.api_calls,
+            }
+            yield ("settle_complete", partial_response)
+            yield ("complete", partial_response)
 
         # Phase 2A.1 — orchestrator-level stage timings (only allocated when flag is on)
         orchestrator_timings = {} if _debug_timings_enabled() else None
@@ -3858,20 +3922,33 @@ class StructuredComparisonService:
             # priors block in extraction_service can render when conditions are met).
             yield ("status", {"message": "Generating verdict...", "progress": 80})
             t_verdict = time.perf_counter() if orchestrator_timings is not None else None
-            comparison, usage = await generate_comparison(
+            # M13-04 — the verdict LLM call is the dominant post-Phase-1 tail cost
+            # and was UNBOUNDED. Under ENABLE_FULL_STREAM_DEADLINE, bound it by the
+            # residual stream budget and yield the best-available PARTIAL on expiry;
+            # flag OFF -> await it directly (byte-identical, unbounded, as today).
+            _verdict_coro = generate_comparison(
                 product_data[0], product_data[1], region,
                 parsed.get("comparison_type", "value") if not vision_products else "value",
                 user_preferences=user_preferences,
                 scores_summary=scores_summary, category=category_used,
                 demographics_profile=demographics_profile,
             )
+            if _full_deadline_on:
+                try:
+                    comparison, usage = await asyncio.wait_for(_verdict_coro, timeout=_tail_residual())
+                except asyncio.TimeoutError:
+                    async for _ev in _emit_stream_deadline_partial():
+                        yield _ev
+                    return
+            else:
+                comparison, usage = await _verdict_coro
             if orchestrator_timings is not None:
                 orchestrator_timings["verdict_ms"] = round((time.perf_counter() - t_verdict) * 1000, 1)
             self._track_gpt_cost(usage)
 
             # I3.1 — optional self-critique pass (flag-gated OFF; no-op in prod).
             # Same flow as the sync path; may regenerate the verdict ONCE.
-            comparison = await self._apply_self_critique(
+            _critique_coro = self._apply_self_critique(
                 comparison=comparison,
                 product_names=product_names,
                 regen_args=dict(
@@ -3883,6 +3960,17 @@ class StructuredComparisonService:
                 pain_workflow_context=scores_summary,
                 stage_timings=orchestrator_timings,
             )
+            # M13-04 — bound the (optional) self-critique regen under the residual
+            # stream budget; flag OFF -> await directly (byte-identical no-op in prod).
+            if _full_deadline_on:
+                try:
+                    comparison = await asyncio.wait_for(_critique_coro, timeout=_tail_residual())
+                except asyncio.TimeoutError:
+                    async for _ev in _emit_stream_deadline_partial():
+                        yield _ev
+                    return
+            else:
+                comparison = await _critique_coro
 
             from app.services.trust_validation_service import validate_verdict
             verdict_validation = validate_verdict(comparison, scoring_result, category_used, products=product_data)
@@ -4044,7 +4132,18 @@ class StructuredComparisonService:
                     for h in (pd.get("reviews", {}) or {}).get("highlights", [])
                 ][:10],
             ]))
-            _l3 = await _safety.moderate_output(_l3_text)
+            # M13-04 — bound the L3 output-moderation call under the residual
+            # stream budget; flag OFF -> await directly (byte-identical).
+            _mod_coro = _safety.moderate_output(_l3_text)
+            if _full_deadline_on:
+                try:
+                    _l3 = await asyncio.wait_for(_mod_coro, timeout=_tail_residual())
+                except asyncio.TimeoutError:
+                    async for _ev in _emit_stream_deadline_partial():
+                        yield _ev
+                    return
+            else:
+                _l3 = await _mod_coro
             if not _l3.allowed:
                 _fire_and_forget(
                     log_content_blocked(
