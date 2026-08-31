@@ -1,13 +1,17 @@
-"""M13-01 — SlowAPIMiddleware is registered so the 21 previously-undecorated
-routes are throttled, and the two credential-checking PUT routes get a tight
-explicit limit plus the login-style account-lockout treatment.
+"""M13-01 — the blanket `default_limits` throttle for the 21 previously-
+undecorated routes is gated behind the default-OFF ENABLE_DEFAULT_RATE_LIMITS
+flag (closeout finding A), and the two credential-checking PUT routes get a tight
+explicit limit plus the login-style account-lockout treatment (LIVE, unflagged —
+decorator-driven, independent of the gated middleware).
 
-Baseline (674034e) behaviour that these pins reproduce as failures:
-  * `SlowAPIMiddleware` is never added, so `default_limits` fire on nothing and
-    GET /api/v1/app/version (undecorated) returns 200 forever.
-  * PUT /auth/password + PUT /auth/email have no rate limit and never consult
-    `check_account_locked`, so a token-bearing attacker can guess
-    `current_password` at network speed.
+Closeout dispatcher-gate: the front-door wave originally registered
+SlowAPIMiddleware unflagged, which — under the shipped ENABLE_PROXY_AWARE_RATELIMIT
+OFF default — keys the blanket 10/min on the shared Railway edge-proxy IP, i.e.
+ONE deployment-wide bucket per URL path. That 429s the hot app-open reads
+(/app/version, /usage/status, /auth/me, /auth/verify) and infra (/health, /,
+/favicon.ico) for every user once aggregate path traffic tops 10/min. So the
+blanket default is gated behind a NEW default-OFF flag; flag-OFF is byte-identical
+to 674034e (no middleware, no default limit).
 
 Free-tier only: no network. The slowapi limiter uses in-memory storage and the
 conftest autouse `_reset_rate_limiter` fixture gives each test a clean window.
@@ -16,6 +20,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 from fastapi.testclient import TestClient
+from starlette.requests import Request
 
 from app.main import app
 from app.api.auth_routes import get_current_user
@@ -26,27 +31,65 @@ def client():
     return TestClient(app)
 
 
-def test_slowapi_middleware_is_registered():
-    """The middleware that makes `default_limits` fire must be in the stack."""
+def test_default_rate_limits_gated_off_by_default():
+    """Shipped default (flag unset): SlowAPIMiddleware is NOT registered, so the
+    blanket default_limits are inert — byte-identical to 674034e. This is the
+    guard that keeps the deployment-wide-per-path availability regression from
+    shipping live."""
     from slowapi.middleware import SlowAPIMiddleware
+    from app.middleware.rate_limiter import _default_rate_limits_enabled
 
+    assert _default_rate_limits_enabled() is False, (
+        "ENABLE_DEFAULT_RATE_LIMITS must default OFF"
+    )
     classes = [m.cls for m in app.user_middleware]
-    assert SlowAPIMiddleware in classes, (
-        "SlowAPIMiddleware not registered — default_limits are dead config and "
-        "the 21 undecorated routes have no rate limit"
+    assert SlowAPIMiddleware not in classes, (
+        "SlowAPIMiddleware must NOT be registered when the gate is OFF — the "
+        "blanket 10/min default would be a deployment-wide per-path cap under "
+        "the shared proxy IP"
     )
 
 
-def test_previously_undecorated_route_now_429s(client):
-    """GET /api/v1/app/version had no decorator; with the middleware added the
-    default per-minute limit now fires. Pins the security lane's proof shape:
-    a previously-undecorated route returns 200 x N then 429."""
+def test_undecorated_route_not_throttled_when_gate_off(client):
+    """Byte-identity: with the gate OFF an undecorated hot read route
+    (GET /app/version) returns 200 forever — never 429 — exactly as at 674034e.
+    (The reviewers' regression: this route 429ing all users deployment-wide.)"""
     statuses = [client.get("/api/v1/app/version").status_code for _ in range(15)]
-    assert statuses[0] == 200, f"first call should succeed, got {statuses[0]}"
-    assert 429 in statuses, (
-        f"undecorated route never rate-limited across 15 calls: {statuses}"
+    assert all(s == 200 for s in statuses), (
+        f"undecorated route must not be throttled when the gate is OFF: {statuses}"
     )
-    # Every response before the first 429 is a success (no spurious early reject).
+
+
+def test_default_limits_fire_when_gate_on(monkeypatch):
+    """Gate ON: SlowAPIMiddleware makes default_limits fire on an undecorated
+    route — 200 x N then 429. Proven on a minimal app wired to the SAME limiter
+    (avoids reloading app.main), which is exactly the registration app.main does
+    when ENABLE_DEFAULT_RATE_LIMITS is set."""
+    monkeypatch.setenv("ENABLE_DEFAULT_RATE_LIMITS", "1")
+    from fastapi import FastAPI
+    from slowapi import _rate_limit_exceeded_handler
+    from slowapi.errors import RateLimitExceeded
+    from slowapi.middleware import SlowAPIMiddleware
+    from app.middleware.rate_limiter import limiter, _default_rate_limits_enabled
+
+    assert _default_rate_limits_enabled() is True
+
+    test_app = FastAPI()
+    test_app.state.limiter = limiter
+    test_app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+    @test_app.get("/undecorated")
+    async def _undecorated(request: Request):  # no @limiter.limit — default only
+        return {"ok": True}
+
+    test_app.add_middleware(SlowAPIMiddleware)
+
+    with TestClient(test_app) as tc:
+        statuses = [tc.get("/undecorated").status_code for _ in range(15)]
+    assert statuses[0] == 200, statuses
+    assert 429 in statuses, (
+        f"default_limits never fired with the gate ON + middleware present: {statuses}"
+    )
     first_429 = statuses.index(429)
     assert all(s == 200 for s in statuses[:first_429]), statuses
 

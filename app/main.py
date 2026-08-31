@@ -34,7 +34,7 @@ from app.api.profile_routes import router as profile_router    # Phase 2.6 edito
 from app.middleware.request_id import RequestIDMiddleware
 from app.middleware.security import SecurityHeadersMiddleware
 from app.middleware.error_handler import ErrorHandlerMiddleware
-from app.middleware.rate_limiter import limiter
+from app.middleware.rate_limiter import limiter, _default_rate_limits_enabled
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
@@ -125,7 +125,17 @@ app.add_middleware(
 # stay exempt (slowapi's _should_exempt lets their decorator handle them, no
 # double-limit). Added here — inside RequestIDMiddleware — so a 429 still carries
 # the request_id and the security headers.
-app.add_middleware(SlowAPIMiddleware)
+#
+# M13-01 closeout gate: the blanket default (ANON_LIMIT=10/min) is keyed on the
+# limiter key_func, which under the shipped default (ENABLE_PROXY_AWARE_RATELIMIT
+# OFF) is the shared Railway edge-proxy IP — making the 10/min a DEPLOYMENT-WIDE
+# per-path cap that would 429 the hot app-open reads and /health for every user.
+# So the middleware (and therefore the blanket default_limits) is gated behind a
+# NEW default-OFF flag; flag-OFF is byte-identical to 674034e (no middleware, no
+# default limit). The credential-route brute-force protection is decorator-driven
+# and stays live regardless. Activate ONLY with a verified proxy-aware key.
+if _default_rate_limits_enabled():
+    app.add_middleware(SlowAPIMiddleware)
 
 # Exception handlers (unified error format)
 app.state.limiter = limiter

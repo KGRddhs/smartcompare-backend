@@ -69,6 +69,30 @@ def audit_client_ip(request: Request) -> Optional[str]:
             return ip
     return request.client.host if request.client else None
 
+
+# M13-01 (closeout gate): the blanket ANON_LIMIT default fires on EVERY
+# undecorated route once SlowAPIMiddleware is registered. Under the shipped
+# default (ENABLE_PROXY_AWARE_RATELIMIT OFF) the limiter key is the shared
+# Railway edge-proxy IP, so a 10/min default is ONE deployment-wide bucket per
+# URL path — it would 429 the hot app-open reads (/app/version, /usage/status,
+# /auth/me, /auth/verify) and the infra endpoints (/health, /, /favicon.ico) for
+# ALL users the moment aggregate traffic on a path tops 10/min. That is a
+# self-inflicted availability regression, so the blanket default is gated behind
+# a NEW default-OFF flag and SlowAPIMiddleware is only registered when it is ON
+# (see app/main.py). Read PER CALL via os.getenv so the gate is byte-identical
+# to 674034e when OFF. ACTIVATION PRECONDITION: flip this ONLY together with a
+# verified ENABLE_PROXY_AWARE_RATELIMIT so the key is per-client, never the
+# shared proxy IP. The credential-route protection (explicit @limiter.limit +
+# account lockout on PUT /auth/{email,password}) rides its own decorators and is
+# LIVE regardless of this flag.
+def _default_rate_limits_enabled() -> bool:
+    return os.getenv("ENABLE_DEFAULT_RATE_LIMITS", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
 # Default rate limits for different endpoint types
 ANON_LIMIT = "10/minute"
 AUTH_LIMIT = "30/minute"
