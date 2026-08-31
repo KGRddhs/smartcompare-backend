@@ -36,6 +36,7 @@ from app.middleware.security import SecurityHeadersMiddleware
 from app.middleware.error_handler import ErrorHandlerMiddleware
 from app.middleware.rate_limiter import limiter
 from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 
 # Initialize Sentry (no-op if SENTRY_DSN not set)
 from app.services.sentry_service import init_sentry
@@ -105,6 +106,15 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "X-Admin-Key", "X-Request-ID"],
 )
+
+# M13-01: register SlowAPIMiddleware so the limiter's default_limits actually
+# fire on the routes WITHOUT an explicit @limiter.limit decorator. Without this
+# the 21 undecorated routes (PUT /auth/password, PUT /auth/email, /usage/status,
+# the referral invite endpoints, …) had no rate limit at all. Decorated routes
+# stay exempt (slowapi's _should_exempt lets their decorator handle them, no
+# double-limit). Added here — inside RequestIDMiddleware — so a 429 still carries
+# the request_id and the security headers.
+app.add_middleware(SlowAPIMiddleware)
 
 # Exception handlers (unified error format)
 app.state.limiter = limiter

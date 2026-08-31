@@ -788,6 +788,7 @@ async def test_update_email_success():
     with patch("app.api.auth_routes.update_user_email", new_callable=AsyncMock,
                return_value={"success": True, "message": "Verification email sent to new address"}):
         result = await update_email(
+            request=_mock_request(),
             body=UpdateEmailRequest(new_email="new@example.com", current_password="MyPassword1"),
             current_user=mock_user
         )
@@ -867,6 +868,7 @@ async def test_change_password_success():
     with patch("app.api.auth_routes.change_user_password", new_callable=AsyncMock,
                return_value={"success": True, "message": "Password changed successfully"}):
         result = await change_password(
+            request=_mock_request(),
             body=ChangePasswordRequest(current_password="oldpass123", new_password="NewPass1234"),
             current_user=mock_user
         )
@@ -892,6 +894,7 @@ async def test_change_password_wrong_current():
                return_value={"success": False, "error": "Current password is incorrect"}):
         with pytest.raises(HTTPException) as exc_info:
             await change_password(
+                request=_mock_request(),
                 body=ChangePasswordRequest(current_password="wrong", new_password="NewPass1234"),
                 current_user=mock_user
             )
@@ -1184,6 +1187,7 @@ async def test_update_email_service_failure_returns_gracefully():
                return_value={"success": False, "error": "Rate limited"}):
         with pytest.raises(HTTPException) as exc_info:
             await update_email(
+                request=_mock_request(),
                 body=UpdateEmailRequest(new_email="new@example.com", current_password="MyPassword1"),
                 current_user=mock_user
             )
@@ -1292,6 +1296,7 @@ async def test_change_password_passes_correct_user_info():
     with patch("app.api.auth_routes.change_user_password", new_callable=AsyncMock,
                return_value={"success": True, "message": "Changed"}) as mock_svc:
         await change_password(
+            request=_mock_request(),
             body=ChangePasswordRequest(current_password="old", new_password="NewPass1234"),
             current_user=mock_user
         )

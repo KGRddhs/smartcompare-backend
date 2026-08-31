@@ -635,34 +635,89 @@ async def update_profile(
     return result
 
 
+def _account_locked_response(email: str, retry_after: int, request: Request, endpoint: str):
+    """Fire the brute-force audit event and raise the 429 ACCOUNT_LOCKED envelope,
+    mirroring POST /login (auth_routes.py:459-478)."""
+    fire_and_forget(
+        log_audit_event(
+            event_type="brute_force_lockout",
+            ip_address=request.client.host if request.client else None,
+            endpoint=endpoint,
+            details={"email_hash": hashlib.sha256(email.lower().encode()).hexdigest()[:16]},
+        ),
+        label="audit.brute_force_lockout",
+    )
+    raise HTTPException(
+        status_code=429,
+        detail={
+            "error": "Account temporarily locked due to too many failed attempts",
+            "code": "ACCOUNT_LOCKED",
+            "retry_after": retry_after,
+        },
+    )
+
+
 @router.put("/email")
+@limiter.limit("5/minute")
 async def update_email(
+    request: Request,
     body: UpdateEmailRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    """Update user email. Requires current password for verification."""
+    """Update user email. Requires current password for verification.
+
+    M13-01: this route verifies `current_password`, so it gets the same
+    brute-force lockout treatment POST /login gets (check_account_locked before,
+    track_failed_login on a wrong-password result, clear_failed_logins on
+    success), plus a tight explicit 5/min limit — otherwise a token-bearing
+    attacker could guess the password at network speed.
+    """
+    email = current_user.get("email") or ""
+    lockout = await check_account_locked(email)
+    if lockout["locked"]:
+        _account_locked_response(email, lockout["retry_after"], request, "/api/v1/auth/email")
+
     result = await update_user_email(
         current_user["id"], current_user["email"],
         body.current_password, str(body.new_email)
     )
     if not result["success"]:
-        status = 400 if "password" in result.get("error", "").lower() else 500
+        is_password_failure = "password" in result.get("error", "").lower()
+        if is_password_failure:
+            await track_failed_login(email)
+        status = 400 if is_password_failure else 500
         raise HTTPException(status_code=status, detail=result["error"])
+    await clear_failed_logins(email)
     return result
 
 
 @router.put("/password")
+@limiter.limit("5/minute")
 async def change_password(
+    request: Request,
     body: ChangePasswordRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    """Change password. Requires current password for verification."""
+    """Change password. Requires current password for verification.
+
+    M13-01: same brute-force lockout treatment + tight 5/min limit as PUT
+    /email — this route checks `current_password` and previously had neither.
+    """
+    email = current_user.get("email") or ""
+    lockout = await check_account_locked(email)
+    if lockout["locked"]:
+        _account_locked_response(email, lockout["retry_after"], request, "/api/v1/auth/password")
+
     result = await change_user_password(
         current_user["id"], current_user["email"],
         body.current_password, body.new_password
     )
     if not result["success"]:
+        error_text = result.get("error", "").lower()
+        if "password" in error_text or "incorrect" in error_text or "credentials" in error_text:
+            await track_failed_login(email)
         raise HTTPException(status_code=400, detail=result["error"])
+    await clear_failed_logins(email)
     return result
 
 
