@@ -21,6 +21,12 @@ from app.api.auth_routes import get_optional_user
 from app.services.database_service import log_search, save_comparison
 from app.services.feedback_service import save_comparison_and_track_cohort
 from app.middleware.rate_limiter import limiter
+from app.services.usage_service import (
+    anon_usage_gate_enabled,
+    valid_device_fingerprint,
+    check_anon_usage_allowed,
+    record_anon_comparison,
+)
 from app.utils.async_utils import fire_and_forget
 
 logger = logging.getLogger(__name__)
@@ -73,6 +79,27 @@ async def identify_and_compare(
     """
     logger.info(f"[IMAGE] Received {len(images)} image(s) for identification")
     start_time = time.time()
+
+    # M13-03: anonymous freemium gate (dark, ENABLE_ANON_USAGE_GATE default OFF).
+    # /image/identify runs a paid Vision call + a full comparison for anonymous
+    # callers with no tier check. With the flag ON we meter anonymous callers by
+    # their (regex-validated) X-Device-Fingerprint before the Vision call.
+    # Flag-OFF (or an authenticated caller) leaves device_fp None -> byte-identical.
+    device_fp = None
+    if anon_usage_gate_enabled() and not user:
+        device_fp = valid_device_fingerprint(request.headers.get("x-device-fingerprint"))
+        if device_fp:
+            usage_check = await check_anon_usage_allowed(device_fp)
+            if not usage_check["allowed"]:
+                raise HTTPException(
+                    status_code=429,
+                    detail={
+                        "error": f"Comparison limit reached ({usage_check['reason']})",
+                        "code": "USAGE_LIMIT",
+                        "tier": usage_check["tier"],
+                        "remaining": usage_check["remaining"],
+                    },
+                )
 
     # Validate image count
     if len(images) < 1:
@@ -241,6 +268,10 @@ async def identify_and_compare(
                 ),
                 label="save_comparison.camera",
             )
+
+        # M13-03: meter the anonymous device only when a real comparison ran.
+        if device_fp:
+            fire_and_forget(record_anon_comparison(device_fp), label="record_anon.image")
 
         return result
 

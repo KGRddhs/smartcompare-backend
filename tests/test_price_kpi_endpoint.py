@@ -21,6 +21,15 @@ client = TestClient(app)
 @pytest.fixture(autouse=True)
 def _gate_on(monkeypatch):
     monkeypatch.setenv("ENABLE_EXACT_PRICE_GATE", "true")
+    # M13-03: /text/price-kpi is now admin-gated (Depends(verify_admin_key)).
+    # These KPI-measurement tests run as the operator, so satisfy the gate by
+    # overriding the dependency (ADMIN_API_KEY is unset in the credential-stripped
+    # test env, so a header would be rejected).
+    from app.api.admin_routes import verify_admin_key
+
+    app.dependency_overrides[verify_admin_key] = lambda: True
+    yield
+    app.dependency_overrides.pop(verify_admin_key, None)
 
 
 def _parsed(brand, name, category):

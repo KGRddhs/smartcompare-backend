@@ -19,7 +19,14 @@ from app.services.auth_service import get_user_preferences
 from app.services.database_service import save_comparison, log_search
 from app.services.feedback_service import save_comparison_and_track_cohort
 from app.middleware.rate_limiter import limiter
-from app.services.usage_service import check_usage_allowed, record_comparison
+from app.services.usage_service import (
+    check_usage_allowed,
+    record_comparison,
+    anon_usage_gate_enabled,
+    valid_device_fingerprint,
+    check_anon_usage_allowed,
+    record_anon_comparison,
+)
 from app.utils.async_utils import fire_and_forget
 
 logger = logging.getLogger(__name__)
@@ -572,6 +579,27 @@ async def quick_compare(request: Request, body: QuickCompareRequest):
         "region": "bahrain"
     }
     """
+    # M13-03: anonymous freemium gate (dark, ENABLE_ANON_USAGE_GATE default OFF).
+    # This is an unauthenticated endpoint that runs a full paid comparison, so a
+    # caller could bypass the 3-lifetime/10-monthly tier by never signing in.
+    # With the flag ON we meter anonymous callers by their (regex-validated)
+    # X-Device-Fingerprint. Flag-OFF leaves device_fp None -> byte-identical.
+    device_fp = None
+    if anon_usage_gate_enabled():
+        device_fp = valid_device_fingerprint(request.headers.get("x-device-fingerprint"))
+        if device_fp:
+            usage_check = await check_anon_usage_allowed(device_fp)
+            if not usage_check["allowed"]:
+                raise HTTPException(
+                    status_code=429,
+                    detail={
+                        "error": f"Comparison limit reached ({usage_check['reason']})",
+                        "code": "USAGE_LIMIT",
+                        "tier": usage_check["tier"],
+                        "remaining": usage_check["remaining"],
+                    },
+                )
+
     query = f"{body.product1} vs {body.product2}"
 
     service = get_comparison_service()
@@ -588,6 +616,9 @@ async def quick_compare(request: Request, body: QuickCompareRequest):
             status_code=400,
             detail=result.get("error", "Comparison failed")
         )
+
+    if device_fp:
+        fire_and_forget(record_anon_comparison(device_fp), label="record_anon.quick")
 
     return result
 
@@ -640,6 +671,7 @@ async def price_kpi(
     q: str = Query(..., max_length=200, description="Single-product query"),
     region: str = Query("bahrain", max_length=20),
     nocache: bool = Query(True, description="Bypass cache (COLD KPI); false = WARMED"),
+    _admin: bool = Depends(verify_admin_key),
 ):
     """SINGLE-PRODUCT price resolution for the usable_exact_genuine KPI (external
     review #1). The KPI cannot use /compare (it rejects a query resolving to <2

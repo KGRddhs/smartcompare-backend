@@ -5,6 +5,8 @@ Lazy reset of the bonus happens inside ``_get_user_tier_info`` whenever
 ``referral_bonus_reset_at`` falls in the past — no cron job required.
 """
 import logging
+import os
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -12,6 +14,90 @@ from app.services.cache_service import redis_client
 from app.services.database_service import get_admin_supabase_client
 
 logger = logging.getLogger(__name__)
+
+# M13-03: X-Device-Fingerprint contract — SHA-256 hex, same regex the register
+# endpoint enforces (auth_routes._DEVICE_FINGERPRINT_RE).
+_DEVICE_FINGERPRINT_RE = re.compile(r"^[a-f0-9]{64}$")
+
+
+def anon_usage_gate_enabled() -> bool:
+    """ENABLE_ANON_USAGE_GATE — read PER CALL. Default OFF so a bad fingerprint
+    heuristic can never lock out real users until the flag is canaried on."""
+    return os.getenv("ENABLE_ANON_USAGE_GATE", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
+def valid_device_fingerprint(value: Optional[str]) -> Optional[str]:
+    """Return the fingerprint iff it matches the SHA-256 hex contract, else None
+    (an absent/garbage header simply means the anon gate does not apply)."""
+    if value and _DEVICE_FINGERPRINT_RE.match(value):
+        return value
+    return None
+
+
+async def check_anon_usage_allowed(device_fingerprint: str) -> dict:
+    """Freemium gate for an ANONYMOUS caller, keyed on the device fingerprint.
+
+    Anonymous devices have no `users` row (the lifetime counter lives in Supabase
+    keyed by user_id), so this uses the free-tier daily + monthly Redis counters
+    keyed on ``anon:{fingerprint}``. Fails OPEN when Redis is unavailable — a
+    cache outage must never block a legitimate user. Same shape as
+    ``check_usage_allowed``.
+    """
+    limits = TIER_LIMITS["free"]
+    anon_id = f"anon:{device_fingerprint}"
+    daily_used = _get_redis_count(_daily_key(anon_id))
+    monthly_used = _get_redis_count(_monthly_key(anon_id))
+
+    if daily_used >= limits["daily"]:
+        return {
+            "allowed": False,
+            "reason": "daily_limit",
+            "tier": "free",
+            "remaining": {"daily": 0, "monthly": max(0, limits["monthly"] - monthly_used), "lifetime_free": 0},
+        }
+    if monthly_used >= limits["monthly"]:
+        return {
+            "allowed": False,
+            "reason": "monthly_limit",
+            "tier": "free",
+            "remaining": {"daily": max(0, limits["daily"] - daily_used), "monthly": 0, "lifetime_free": 0},
+        }
+    return {
+        "allowed": True,
+        "reason": None,
+        "tier": "free",
+        "remaining": {
+            "daily": limits["daily"] - daily_used,
+            "monthly": limits["monthly"] - monthly_used,
+            "lifetime_free": 0,
+        },
+    }
+
+
+async def record_anon_comparison(device_fingerprint: str) -> None:
+    """Increment the anonymous device's daily+monthly Redis counters after a
+    successful comparison. Fire-and-forget safe; no-op when Redis is down."""
+    if not redis_client:
+        return
+    try:
+        anon_id = f"anon:{device_fingerprint}"
+        daily_key = _daily_key(anon_id)
+        monthly_key = _monthly_key(anon_id)
+
+        daily_count = redis_client.incr(daily_key)
+        if daily_count == 1:
+            redis_client.expire(daily_key, 86400)  # 24h TTL
+
+        monthly_count = redis_client.incr(monthly_key)
+        if monthly_count == 1:
+            redis_client.expire(monthly_key, 86400 * 32)  # ~32 days TTL
+    except Exception as e:
+        logger.error(f"Failed to record anon comparison usage: {e}")
 
 # Tier configuration
 TIER_LIMITS = {
