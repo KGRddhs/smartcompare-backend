@@ -259,12 +259,12 @@ async def text_compare_get(
     q: Optional[str] = Query(None, max_length=500, description="Legacy single-string query, e.g., 'iPhone 15 vs S24'"),
     product_a: Optional[str] = Query(None, max_length=80, description="Bundle B: explicit first product, paired with product_b"),
     product_b: Optional[str] = Query(None, max_length=80, description="Bundle B: explicit second product, paired with product_a"),
-    region: str = Query("bahrain", description="GCC region for pricing"),
+    region: str = Query("bahrain", max_length=20, description="GCC region for pricing"),
     specs: bool = Query(True, description="Include specifications"),
     reviews: bool = Query(True, description="Include reviews"),
     pros_cons: bool = Query(True, description="Include pros/cons"),
     nocache: bool = Query(False, description="Bypass cache for fresh data"),
-    selected_category: Optional[str] = Query(None, description="User-selected category hint"),
+    selected_category: Optional[str] = Query(None, max_length=40, description="User-selected category hint"),
     user: Optional[Dict] = Depends(get_optional_user),
 ):
     """GET version of text comparison for easy testing.
@@ -394,12 +394,12 @@ async def text_compare_stream(
     q: Optional[str] = Query(None, max_length=500, description="Legacy single-string query, e.g., 'iPhone 15 vs S24'"),
     product_a: Optional[str] = Query(None, max_length=80, description="Bundle B: explicit first product, paired with product_b"),
     product_b: Optional[str] = Query(None, max_length=80, description="Bundle B: explicit second product, paired with product_a"),
-    region: str = Query("bahrain", description="GCC region for pricing"),
+    region: str = Query("bahrain", max_length=20, description="GCC region for pricing"),
     specs: bool = Query(True, description="Include specifications"),
     reviews: bool = Query(True, description="Include reviews"),
     pros_cons: bool = Query(True, description="Include pros/cons"),
     nocache: bool = Query(False, description="Bypass cache for fresh data"),
-    selected_category: Optional[str] = Query(None, description="User-selected category hint"),
+    selected_category: Optional[str] = Query(None, max_length=40, description="User-selected category hint"),
     user: Optional[Dict] = Depends(get_optional_user),
 ):
     """SSE streaming version of text comparison. Returns Server-Sent Events.
