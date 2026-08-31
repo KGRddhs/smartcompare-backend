@@ -500,15 +500,26 @@ def is_circuit_closed(provider: str) -> bool:
         if state["state"] == CB_OPEN:
             # Check recovery timeout
             if time.time() - state.get("tripped_at", 0) >= CB_RECOVERY_TIMEOUT:
-                # Transition to half-open
+                # Transition to half-open. M13-31: do NOT early-return True here —
+                # that admitted an UNCOUNTED probe (the transition call), on top of
+                # the ones the HALF_OPEN branch below then admitted, so the probe
+                # budget was effectively never spent. Set up the half-open state
+                # and FALL THROUGH to the single admission branch, which counts it.
                 state["state"] = CB_HALF_OPEN
                 state["half_open_calls"] = 0
-                _redis_set(_circuit_key(provider), json.dumps(state), ex=_CB_TTL)
                 logger.info(f"[CIRCUIT] {provider} transitioning to half-open")
-                return True
-            return False
+                # fall through to the CB_HALF_OPEN admission branch
+            else:
+                return False
         if state["state"] == CB_HALF_OPEN:
-            return state.get("half_open_calls", 0) < CB_HALF_OPEN_MAX_CALLS
+            # M13-31: half_open_calls was written and read but never incremented,
+            # so every gate check in the half-open window returned True and the
+            # whole render fan-out was admitted where exactly one probe (
+            # CB_HALF_OPEN_MAX_CALLS) was designed. Increment + persist BEFORE the
+            # verdict so the Nth check reflects the N-1 already admitted.
+            state["half_open_calls"] = state.get("half_open_calls", 0) + 1
+            _redis_set(_circuit_key(provider), json.dumps(state), ex=_CB_TTL)
+            return state["half_open_calls"] <= CB_HALF_OPEN_MAX_CALLS
         return True
     except Exception as e:
         logger.warning(f"[CIRCUIT] Error checking {provider}: {e}")
