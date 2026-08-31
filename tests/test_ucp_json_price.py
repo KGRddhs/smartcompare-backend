@@ -41,6 +41,7 @@ The rules, and which class pins each:
     never fires and never touches the seam.  -> TestFeatureFlag
 """
 
+import logging
 import socket
 from pathlib import Path
 
@@ -664,3 +665,117 @@ class TestPriceServiceShim:
 
         monkeypatch.setattr(svc, "fetch_ucp_json_price", _boom)
         assert await price_service._try_ucp_json_price(BB_URL, BB_TITLE, "BHD") is None
+
+
+@pytest.mark.asyncio
+class TestShimExceptionTriage:
+    """M11 backlog item 1 (recorded M10 verify finding). The shim's single bare
+    ``except Exception: return None`` collapsed three DISTINCT states into one
+    silent None: the flag being off, an expected miss (404 / non-JSON body / no
+    matching variant), and a genuine defect. The first two are routine; the
+    third was invisible — a bug in the adapter would be indistinguishable from
+    "the flag is off". Split:
+
+      * flag OFF        -> quiet None, byte-identical pre-A4 path, ZERO log
+      * expected miss   -> None with a DEBUG line only (never WARNING)
+      * genuine defect  -> None (the live path must never raise) plus ONE
+                           WARNING naming the host and the exception class
+    """
+
+    async def test_flag_off_is_completely_silent(self, monkeypatch, caplog):
+        """The untouched pre-A4 path: no request, no log record at any level."""
+        monkeypatch.delenv("ENABLE_UCP_JSON_PRICE", raising=False)
+        calls = serve(monkeypatch)
+        with caplog.at_level(logging.DEBUG):
+            out = await price_service._try_ucp_json_price(BB_URL, BB_TITLE, "BHD")
+        assert out is None
+        assert calls == []
+        assert [r for r in caplog.records if "[UCP_JSON]" in r.getMessage()] == []
+
+    async def test_an_expected_miss_is_debug_not_warning(
+        self, monkeypatch, no_sleep, caplog
+    ):
+        """A 404 on the feed is the channel working as designed (the M9 probe
+        measured 2 of 34 handles missing). It must not cry wolf."""
+        serve(monkeypatch, FakeResponse(404, "<html>not found</html>"))
+        with caplog.at_level(logging.DEBUG):
+            out = await price_service._try_ucp_json_price(BB_URL, BB_TITLE, "BHD")
+        assert out is None
+        assert [
+            r for r in caplog.records
+            if r.levelno >= logging.WARNING and "[UCP_JSON]" in r.getMessage()
+        ] == []
+        assert [
+            r for r in caplog.records
+            if r.levelno == logging.DEBUG
+            and r.name == "app.services.price_service"
+            and "[UCP_JSON]" in r.getMessage()
+        ], "the shim must leave a DEBUG trace of an expected miss"
+
+    async def test_a_non_matching_variant_is_also_an_expected_miss(
+        self, monkeypatch, no_sleep, caplog
+    ):
+        """The identity gate rejecting a wrong product is a miss, not a defect."""
+        serve(monkeypatch, FakeResponse(200, load_fixture(REAL_BHD)))
+        with caplog.at_level(logging.DEBUG):
+            out = await price_service._try_ucp_json_price(
+                BB_URL, "Tom Ford Oud Wood 100ml", "BHD",
+            )
+        assert out is None
+        assert [
+            r for r in caplog.records
+            if r.levelno >= logging.WARNING and "[UCP_JSON]" in r.getMessage()
+        ] == []
+
+    async def test_a_genuine_defect_warns_with_host_and_exception_class(
+        self, monkeypatch, caplog
+    ):
+        """An exception escaping the adapter is a DEFECT: still return None
+        (the live path must never raise) but say so — host + exception class."""
+        def _boom(*a, **k):
+            raise RuntimeError("adapter exploded")
+
+        monkeypatch.setattr(svc, "fetch_ucp_json_price", _boom)
+        with caplog.at_level(logging.DEBUG):
+            out = await price_service._try_ucp_json_price(BB_URL, BB_TITLE, "BHD")
+        assert out is None
+        warnings = [
+            r for r in caplog.records
+            if r.levelno == logging.WARNING
+            and r.name == "app.services.price_service"
+            and "[UCP_JSON]" in r.getMessage()
+        ]
+        assert len(warnings) == 1
+        msg = warnings[0].getMessage()
+        assert "RuntimeError" in msg
+        assert "beautyandblends.com" in msg
+
+    async def test_a_defect_of_a_different_class_names_that_class(
+        self, monkeypatch, caplog
+    ):
+        """The class is in the message so triage can bucket without a repro."""
+        def _boom(*a, **k):
+            raise KeyError("variants")
+
+        monkeypatch.setattr(svc, "fetch_ucp_json_price", _boom)
+        with caplog.at_level(logging.WARNING):
+            out = await price_service._try_ucp_json_price(BB_URL, BB_TITLE, "BHD")
+        assert out is None
+        msgs = [
+            r.getMessage() for r in caplog.records
+            if r.levelno == logging.WARNING and "[UCP_JSON]" in r.getMessage()
+        ]
+        assert any("KeyError" in m for m in msgs)
+
+    async def test_a_recovered_price_leaves_no_miss_log(
+        self, monkeypatch, no_sleep, caplog
+    ):
+        serve(monkeypatch, FakeResponse(200, load_fixture(REAL_BHD)))
+        with caplog.at_level(logging.DEBUG):
+            out = await price_service._try_ucp_json_price(BB_URL, BB_TITLE, "BHD")
+        assert out is not None
+        assert [
+            r for r in caplog.records
+            if r.name == "app.services.price_service"
+            and "[UCP_JSON]" in r.getMessage()
+        ] == []

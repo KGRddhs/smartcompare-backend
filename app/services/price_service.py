@@ -13865,19 +13865,44 @@ async def _try_ucp_json_price(
     here, and the divisor chain would read that as 0.17.
 
     Returns None on flag-OFF / non-Shopify host / miss / any error — never
-    raises."""
+    raises. The three None states are TRIAGED, not collapsed (M11 backlog,
+    recorded M10 verify finding — a single bare ``except`` made a defect
+    indistinguishable from the flag being off):
+
+      * flag OFF       -> quiet None, the byte-identical pre-A4 path, no log;
+      * expected miss  -> None with a DEBUG line (404 / non-JSON body / no
+                          matching variant is the channel working as designed);
+      * genuine defect -> None — the live cascade must never raise — plus ONE
+                          WARNING naming the host and the exception class."""
     try:
         from app.services.shopify_pdp_service import (
             ucp_json_price_enabled,
             fetch_ucp_json_price,
         )
-        if not ucp_json_price_enabled():
-            return None
-        return await fetch_ucp_json_price(
+        flag_on = ucp_json_price_enabled()
+    except Exception as exc:  # noqa: BLE001 — defect: adapter machinery broken
+        logger.warning(
+            "[UCP_JSON] adapter unavailable for %s (%s: %s)",
+            extract_domain(url) or url, type(exc).__name__, exc,
+        )
+        return None
+    if not flag_on:
+        # Flag OFF — the pre-A4 cascade byte-for-byte: no request, no log.
+        return None
+    try:
+        price = await fetch_ucp_json_price(
             url, product_name, currency, resolved_category,
         )
-    except Exception:  # noqa: BLE001 — best-effort; never crash the cascade
+    except Exception as exc:  # noqa: BLE001 — never crash the cascade
+        logger.warning(
+            "[UCP_JSON] unexpected %s for %s: %s",
+            type(exc).__name__, extract_domain(url) or url, exc,
+        )
         return None
+    if price is None:
+        # Expected miss — 404 / non-JSON / identity or variant gate declined.
+        logger.debug("[UCP_JSON] expected miss for %s", url)
+    return price
 
 
 async def _try_magento_gql_url_fallback(
