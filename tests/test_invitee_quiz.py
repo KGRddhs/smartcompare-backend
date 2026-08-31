@@ -50,7 +50,7 @@ class TestInviteeViewSanitization:
                 "invite_id": "i-1",
             })
 
-            resp = client.get("/api/v1/referrals/invite/aaaaaaaaaaaaaaaaaaaa?ref=QR-AHMED1")
+            resp = client.get("/api/v1/referrals/invite/aaaaaaaaaaaaaaaaaaaa?ref=QR-AHMED3")
             assert resp.status_code == 200, resp.text
             comparison = resp.json()["comparison"]
             assert "preferences" not in comparison
@@ -94,7 +94,7 @@ class TestInviteeViewSanitization:
                 "invite_id": "i",
             })
 
-            resp = client.get("/api/v1/referrals/invite/aaaaaaaaaaaaaaaaaaaa?ref=QR-ALI4567")
+            resp = client.get("/api/v1/referrals/invite/aaaaaaaaaaaaaaaaaaaa?ref=QR-AL4567")
             body = resp.json()
             assert "behavior_profile" not in str(body), "behavior_profile leaked!"
 
@@ -213,6 +213,6 @@ class TestInviteResolutionEdgeCases:
 
             svc.resolve_invite = AsyncMock(side_effect=fake_resolve)
 
-            client.get("/api/v1/referrals/invite/aaaaaaaaaaaaaaaaaaaa?ref=QR-AHMED1")
+            client.get("/api/v1/referrals/invite/aaaaaaaaaaaaaaaaaaaa?ref=QR-AHMED3")
             # Resolve was called — implementation must set first_viewed_at internally
             assert len(captured_calls) == 1

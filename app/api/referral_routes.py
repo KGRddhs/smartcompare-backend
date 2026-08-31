@@ -23,8 +23,16 @@ trip the resolver with ``PydanticUndefinedAnnotation`` on Python 3.12.
 import os
 from typing import Any, List, Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
 from pydantic import BaseModel, Field, field_validator
+
+# M13-28: bound the invite params so unbounded/hostile strings can never reach
+# the PostgREST filter values. share_token is the 22-char url-safe token
+# (comparisons.share_token = token_urlsafe(16)); ref is the QR- invite code from
+# the unambiguous alphabet (matches auth_routes._INVITE_CODE_RE / the register
+# endpoint's contract).
+_SHARE_TOKEN_PATTERN = r"^[A-Za-z0-9_-]{1,64}$"
+_INVITE_CODE_PATTERN = r"^QR-[A-HJ-NP-Z2-9]{6}$"
 
 from app.api.auth_routes import (
     VALID_BRAND_ATTITUDE,
@@ -246,9 +254,11 @@ async def get_referral_status(
 
 
 @router.get("/invite/{share_token}")
+@limiter.limit("20/minute")
 async def resolve_invite(
-    share_token: str,
-    ref: str,
+    request: Request,
+    share_token: str = Path(..., pattern=_SHARE_TOKEN_PATTERN),
+    ref: str = Query(..., pattern=_INVITE_CODE_PATTERN),
     user: Optional[dict] = Depends(get_optional_user),
 ):
     """Resolve an invite link to referrer + sanitized comparison.
@@ -256,6 +266,9 @@ async def resolve_invite(
     Auth-optional (PDF #6 — gradual commitment, no signup gate before result).
     Strips personalization (preferences, budget) from the comparison before
     returning it.
+
+    M13-28: rate-limited (20/min) and both params are format-validated so an
+    anonymous caller cannot hammer this or push arbitrary strings at PostgREST.
     """
     service = ReferralService()
     resolved = await service.resolve_invite(share_token=share_token, ref_code=ref)
@@ -273,9 +286,11 @@ async def resolve_invite(
 
 
 @router.post("/invite/{share_token}/quiz")
+@limiter.limit("10/minute")
 async def submit_invitee_quiz(
-    share_token: str,
+    request: Request,
     body: InviteeQuizRequest,
+    share_token: str = Path(..., pattern=_SHARE_TOKEN_PATTERN),
     user: Optional[dict] = Depends(get_optional_user),
 ):
     """Re-score a comparison with the invitee's quiz answers.
@@ -283,6 +298,9 @@ async def submit_invitee_quiz(
     Anon-friendly: no PII stored pre-signup. Returns the same comparison
     response shape as /text/compare but with ``personalization.scoring_method
     = "invitee_quiz"``.
+
+    M13-28: rate-limited (10/min, tighter — each call is a DB round trip + a
+    re-score) and share_token is format-validated.
     """
     service = ReferralService()
     result = await service.run_invitee_quiz(

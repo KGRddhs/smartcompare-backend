@@ -255,7 +255,7 @@ class TestGetReferralInvite:
             svc = MockSvc.return_value
             svc.resolve_invite = AsyncMock(return_value=None)
 
-            resp = client.get("/api/v1/referrals/invite/sometoken123456789?ref=QR-NOTREAL")
+            resp = client.get("/api/v1/referrals/invite/sometoken123456789?ref=QR-ZZ9999")
             # Either router 404 or 200 with success=False — accept either, but if 200 must say not found
             assert resp.status_code in (200, 404)
             if resp.status_code == 200:
@@ -280,7 +280,7 @@ class TestGetReferralInvite:
                 "invite_id": "invite-uuid-1",
             })
 
-            resp = client.get("/api/v1/referrals/invite/tokenAAAAAAAAAAAAAAAA?ref=QR-AHMED1")
+            resp = client.get("/api/v1/referrals/invite/tokenAAAAAAAAAAAAAAAA?ref=QR-AHMED3")
             assert resp.status_code == 200, resp.text
             data = resp.json()
             assert data["referrer_display_name"] == "Ahmed"
