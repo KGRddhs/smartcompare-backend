@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException, Depends, Header
 from pydantic import BaseModel, EmailStr, Field, field_validator
 from typing import Any, List, Literal, Optional
 from starlette.requests import Request
-from app.middleware.rate_limiter import limiter
+from app.middleware.rate_limiter import limiter, audit_client_ip
 
 # Bundle A §1.1 — invite-code format. QR-XXXXXX with unambiguous alphabet
 # matching app/services/referral_service.py::_CODE_ALPHABET (no 0/1/I/L/O).
@@ -434,7 +434,7 @@ async def register(request: Request, body: RegisterRequest):
             log_audit_event(
                 event_type="invite_code_redeemed",
                 user_id=new_user_id,
-                ip_address=request.client.host if request.client else None,
+                ip_address=audit_client_ip(request),
                 endpoint="/api/v1/auth/register",
                 details={
                     "invite_code": body.invite_code,
@@ -462,7 +462,7 @@ async def login(request: Request, body: LoginRequest):
         fire_and_forget(
             log_audit_event(
                 event_type="brute_force_lockout",
-                ip_address=request.client.host if request.client else None,
+                ip_address=audit_client_ip(request),
                 endpoint="/api/v1/auth/login",
                 details={"email_hash": hashlib.sha256(body.email.lower().encode()).hexdigest()[:16]},
             ),
@@ -485,7 +485,7 @@ async def login(request: Request, body: LoginRequest):
         fire_and_forget(
             log_audit_event(
                 event_type="login_failed",
-                ip_address=request.client.host if request.client else None,
+                ip_address=audit_client_ip(request),
                 endpoint="/api/v1/auth/login",
                 details={"reason": result.get("error", "unknown")},
             ),
@@ -503,7 +503,7 @@ async def login(request: Request, body: LoginRequest):
         log_audit_event(
             event_type="login_success",
             user_id=result.get("user", {}).get("id"),
-            ip_address=request.client.host if request.client else None,
+            ip_address=audit_client_ip(request),
             endpoint="/api/v1/auth/login",
         ),
         label="audit.login_success",
@@ -641,7 +641,7 @@ def _account_locked_response(email: str, retry_after: int, request: Request, end
     fire_and_forget(
         log_audit_event(
             event_type="brute_force_lockout",
-            ip_address=request.client.host if request.client else None,
+            ip_address=audit_client_ip(request),
             endpoint=endpoint,
             details={"email_hash": hashlib.sha256(email.lower().encode()).hexdigest()[:16]},
         ),
