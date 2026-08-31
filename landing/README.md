@@ -1,7 +1,13 @@
 # Qaren Landing Page (Bundle D Task 2.N.2 — pre-build)
 
-**Status:** READY for Railway deploy + Ahmed QA pass. NOT yet on `qaren.app`.
-**Date:** 2026-05-23 (refit for Railway hosting per dispatcher A6 decision)
+**Status:** DEPLOYED 2026-08-31 to Railway service `qaren-landing` — live at
+https://qaren-landing-production.up.railway.app (full §4 validation battery PASS: all pages
+200 EN+AR, /healthz ok, AASA+assetlinks application/json with appID populated, 5 security
+headers, clean /support). NOT yet on `qaren.app` — remaining: add `qaren.app` + `www.qaren.app`
+under the service's Settings → Domains (Ahmed; the CLI attach was permission-gated), then the
+DNS flip at Cloudflare (§6 below; apex CNAME-flattening works there). Redeploy after edits:
+`railway up landing --path-as-root -s qaren-landing -d` from the repo root.
+**Date:** 2026-05-23 (refit for Railway hosting per dispatcher A6 decision); deployed 2026-08-31
 **Owner:** native-ops
 
 ## What this is
