@@ -1299,6 +1299,13 @@ async def run_usable_exact_genuine_kpi(
     client_kwargs: Dict[str, Any] = {"base_url": base_url}
     if transport is not None:
         client_kwargs["transport"] = transport
+    # M13-03 (closeout): GET /text/price-kpi is now behind Depends(verify_admin_key),
+    # so this harness must send X-Admin-Key or every request 422s and the
+    # usable_exact_genuine KPI silently reads 0 for every entry (a false GATE FAIL
+    # indistinguishable from a total price regression). Send the key from env.
+    _admin_key = os.getenv("ADMIN_API_KEY", "")
+    if _admin_key:
+        client_kwargs["headers"] = {"X-Admin-Key": _admin_key}
 
     async with httpx.AsyncClient(**client_kwargs) as client:
         async def _one(entry: Dict[str, Any]) -> tuple:
