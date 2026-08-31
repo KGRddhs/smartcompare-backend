@@ -1,0 +1,1177 @@
+[
+  {
+    "host": "bh.afnan.com",
+    "cohort": "named-disallow",
+    "eval_url": "https://bh.afnan.com/products.json",
+    "robots_url": "https://bh.afnan.com/robots.txt",
+    "status": 200,
+    "bytes": 12622,
+    "final_url": "https://bh.afnan.com/robots.txt",
+    "readable": true,
+    "n_groups": 19,
+    "matched_token": null,
+    "applied_groups": [
+      {
+        "tokens": [
+          "*"
+        ],
+        "rules": [
+          [
+            false,
+            "/a/downloads/-/*"
+          ],
+          [
+            false,
+            "/admin"
+          ],
+          [
+            false,
+            "/cart"
+          ],
+          [
+            false,
+            "/orders"
+          ],
+          [
+            false,
+            "/checkouts/"
+          ],
+          [
+            false,
+            "/checkout"
+          ],
+          [
+            false,
+            "/75869126906/checkouts"
+          ],
+          [
+            false,
+            "/75869126906/orders"
+          ],
+          [
+            false,
+            "/carts"
+          ],
+          [
+            false,
+            "/account"
+          ],
+          [
+            false,
+            "/collections/*sort_by*"
+          ],
+          [
+            false,
+            "/*/collections/*sort_by*"
+          ]
+        ]
+      }
+    ],
+    "ai_named_tokens": [
+      "anthropic-ai",
+      "chatgpt-user",
+      "claudebot",
+      "cohere-ai",
+      "google-extended",
+      "gptbot",
+      "meta-externalagent",
+      "meta-externalfetcher",
+      "perplexitybot"
+    ],
+    "can_fetch_eval_url": true,
+    "can_fetch_root": true,
+    "ms": 655
+  },
+  {
+    "host": "ashrafsbahrain.com",
+    "cohort": "named-disallow",
+    "eval_url": "https://www.ashrafsbahrain.com/casio-g-shock-gm-b2100bd-1adr-analog-digital-men-s-watch.html",
+    "robots_url": "https://ashrafsbahrain.com/robots.txt",
+    "status": 200,
+    "bytes": 6164,
+    "final_url": "https://ashrafsbahrain.com/robots.txt",
+    "readable": true,
+    "n_groups": 73,
+    "matched_token": null,
+    "applied_groups": [
+      {
+        "tokens": [
+          "*"
+        ],
+        "rules": [
+          [
+            true,
+            "/"
+          ]
+        ]
+      },
+      {
+        "tokens": [
+          "*"
+        ],
+        "rules": [
+          [
+            true,
+            "/*?p=*"
+          ],
+          [
+            true,
+            "/*&p=*"
+          ],
+          [
+            false,
+            "/*?"
+          ],
+          [
+            false,
+            "/*?*"
+          ],
+          [
+            false,
+            "/*filter*"
+          ],
+          [
+            false,
+            "/*sort*"
+          ],
+          [
+            false,
+            "/*category*"
+          ],
+          [
+            false,
+            "/*price*"
+          ],
+          [
+            false,
+            "/*dir*"
+          ],
+          [
+            false,
+            "/*limit*"
+          ],
+          [
+            false,
+            "/*mode*"
+          ],
+          [
+            false,
+            "/catalog/product/view"
+          ]
+        ]
+      }
+    ],
+    "ai_named_tokens": [
+      "amazonbot",
+      "bytespider",
+      "ccbot",
+      "chatgpt-user",
+      "claude-searchbot",
+      "claude-user",
+      "claudebot",
+      "claudebot/1.0",
+      "google-extended",
+      "gptbot",
+      "meta-externalagent",
+      "perplexitybot"
+    ],
+    "can_fetch_eval_url": true,
+    "can_fetch_root": true,
+    "ms": 469
+  },
+  {
+    "host": "oudworlds.com",
+    "cohort": "named-disallow",
+    "eval_url": "https://oudworlds.com/product/oud-world-family-offer-luxury-fragrance/",
+    "robots_url": "https://oudworlds.com/robots.txt",
+    "status": 200,
+    "bytes": 2815,
+    "final_url": "https://oudworlds.com/robots.txt",
+    "readable": true,
+    "n_groups": 16,
+    "matched_token": null,
+    "applied_groups": [
+      {
+        "tokens": [
+          "*"
+        ],
+        "rules": [
+          [
+            true,
+            "/"
+          ]
+        ]
+      },
+      {
+        "tokens": [
+          "*"
+        ],
+        "rules": [
+          [
+            false,
+            "/wp-admin/"
+          ],
+          [
+            true,
+            "/wp-admin/admin-ajax.php"
+          ],
+          [
+            false,
+            "/cart/"
+          ],
+          [
+            false,
+            "/checkout/"
+          ],
+          [
+            false,
+            "/my-account/"
+          ],
+          [
+            false,
+            "/order-pay/"
+          ],
+          [
+            false,
+            "/order-received/"
+          ],
+          [
+            false,
+            "/wp-login.php"
+          ],
+          [
+            false,
+            "/wp-register.php"
+          ],
+          [
+            false,
+            "/*?add-to-cart="
+          ],
+          [
+            false,
+            "/*?added-to-cart="
+          ],
+          [
+            false,
+            "/*?remove_item="
+          ]
+        ]
+      }
+    ],
+    "ai_named_tokens": [
+      "amazonbot",
+      "bytespider",
+      "ccbot",
+      "claudebot",
+      "google-extended",
+      "gptbot",
+      "meta-externalagent",
+      "perplexitybot"
+    ],
+    "can_fetch_eval_url": true,
+    "can_fetch_root": true,
+    "ms": 922
+  },
+  {
+    "host": "bh.cosmostore.org",
+    "cohort": "named-disallow",
+    "eval_url": "https://bh.cosmostore.org/catalog/product/the_ordinary_aha_30___bha_2_peeling_solution__282664/",
+    "robots_url": "https://bh.cosmostore.org/robots.txt",
+    "status": 200,
+    "bytes": 2859,
+    "final_url": "https://bh.cosmostore.org/robots.txt",
+    "readable": true,
+    "n_groups": 11,
+    "matched_token": null,
+    "applied_groups": [
+      {
+        "tokens": [
+          "*"
+        ],
+        "rules": [
+          [
+            true,
+            "/"
+          ]
+        ]
+      },
+      {
+        "tokens": [
+          "*"
+        ],
+        "rules": [
+          [
+            false,
+            "/conf"
+          ],
+          [
+            false,
+            "/tmp"
+          ],
+          [
+            false,
+            "/logs"
+          ],
+          [
+            false,
+            "/home"
+          ],
+          [
+            false,
+            "/catalog/basket/*"
+          ],
+          [
+            false,
+            "/shop/member/*"
+          ],
+          [
+            false,
+            "/cabinet/*"
+          ],
+          [
+            false,
+            "/*direction=*"
+          ],
+          [
+            false,
+            "/*ages=*"
+          ],
+          [
+            false,
+            "/*cat=*"
+          ],
+          [
+            false,
+            "/*count_list=*"
+          ],
+          [
+            false,
+            "/*cpamit_uid=*"
+          ]
+        ]
+      }
+    ],
+    "ai_named_tokens": [
+      "amazonbot",
+      "bytespider",
+      "ccbot",
+      "claudebot",
+      "google-extended",
+      "gptbot",
+      "meta-externalagent"
+    ],
+    "can_fetch_eval_url": true,
+    "can_fetch_root": true,
+    "ms": 820
+  },
+  {
+    "host": "bawwaba.om",
+    "cohort": "named-disallow",
+    "eval_url": "https://bawwaba.om/honor-600-8gb-256gb-5g-black.html",
+    "robots_url": "https://bawwaba.om/robots.txt",
+    "status": 200,
+    "bytes": 1947,
+    "final_url": "https://bawwaba.om/robots.txt",
+    "readable": true,
+    "n_groups": 10,
+    "matched_token": null,
+    "applied_groups": [
+      {
+        "tokens": [
+          "*"
+        ],
+        "rules": [
+          [
+            true,
+            "/"
+          ]
+        ]
+      }
+    ],
+    "ai_named_tokens": [
+      "amazonbot",
+      "bytespider",
+      "ccbot",
+      "claudebot",
+      "google-extended",
+      "gptbot",
+      "meta-externalagent"
+    ],
+    "can_fetch_eval_url": true,
+    "can_fetch_root": true,
+    "ms": 171
+  },
+  {
+    "host": "oman.afnan.com",
+    "cohort": "named-disallow",
+    "eval_url": "https://oman.afnan.com/products.json?limit=1",
+    "robots_url": "https://oman.afnan.com/robots.txt",
+    "status": 200,
+    "bytes": 12664,
+    "final_url": "https://oman.afnan.com/robots.txt",
+    "readable": true,
+    "n_groups": 19,
+    "matched_token": null,
+    "applied_groups": [
+      {
+        "tokens": [
+          "*"
+        ],
+        "rules": [
+          [
+            false,
+            "/a/downloads/-/*"
+          ],
+          [
+            false,
+            "/admin"
+          ],
+          [
+            false,
+            "/cart"
+          ],
+          [
+            false,
+            "/orders"
+          ],
+          [
+            false,
+            "/checkouts/"
+          ],
+          [
+            false,
+            "/checkout"
+          ],
+          [
+            false,
+            "/92136210727/checkouts"
+          ],
+          [
+            false,
+            "/92136210727/orders"
+          ],
+          [
+            false,
+            "/carts"
+          ],
+          [
+            false,
+            "/account"
+          ],
+          [
+            false,
+            "/collections/*sort_by*"
+          ],
+          [
+            false,
+            "/*/collections/*sort_by*"
+          ]
+        ]
+      }
+    ],
+    "ai_named_tokens": [
+      "anthropic-ai",
+      "chatgpt-user",
+      "claudebot",
+      "cohere-ai",
+      "google-extended",
+      "gptbot",
+      "meta-externalagent",
+      "meta-externalfetcher",
+      "perplexitybot"
+    ],
+    "can_fetch_eval_url": true,
+    "can_fetch_root": true,
+    "ms": 802
+  },
+  {
+    "host": "klinq.com",
+    "cohort": "unreadable-403",
+    "eval_url": "https://klinq.com/en/dior-miss-dior-edp.html",
+    "robots_url": "https://klinq.com/robots.txt",
+    "status": 200,
+    "bytes": 3343,
+    "final_url": "https://klinq.com/robots.txt",
+    "readable": true,
+    "n_groups": 40,
+    "matched_token": null,
+    "applied_groups": [
+      {
+        "tokens": [
+          "*"
+        ],
+        "rules": [
+          [
+            true,
+            "/"
+          ],
+          [
+            false,
+            "/en/customer/account/login/referer/"
+          ],
+          [
+            false,
+            "/ar/customer/account/login/referer/"
+          ],
+          [
+            false,
+            "/en/shop-all.html"
+          ],
+          [
+            false,
+            "/ar/shop-all.html"
+          ],
+          [
+            false,
+            "/en/oriental-fragrances/perfumes.html"
+          ],
+          [
+            false,
+            "/ar/oriental-fragrances/perfumes.html"
+          ],
+          [
+            false,
+            "/en/catalog/"
+          ],
+          [
+            false,
+            "/ar/catalog/"
+          ],
+          [
+            false,
+            "/en/catalogsearch/result/"
+          ],
+          [
+            false,
+            "/ar/catalogsearch/result/"
+          ],
+          [
+            false,
+            "*/shop-all/*"
+          ]
+        ]
+      }
+    ],
+    "ai_named_tokens": [
+      "anthropic-ai",
+      "ccbot",
+      "chatgpt-user",
+      "claudebot",
+      "google-extended",
+      "gptbot",
+      "meta-externalagent",
+      "mozilla",
+      "perplexitybot"
+    ],
+    "can_fetch_eval_url": true,
+    "can_fetch_root": true,
+    "ms": 486
+  },
+  {
+    "host": "nazih.qa",
+    "cohort": "unreadable-403",
+    "eval_url": "https://nazih.qa/diva-car-freshener-musky-scent-8ml.html",
+    "robots_url": "https://nazih.qa/robots.txt",
+    "status": 200,
+    "bytes": 1511,
+    "final_url": "https://nazih.qa/robots.txt",
+    "readable": true,
+    "n_groups": 1,
+    "matched_token": null,
+    "applied_groups": [
+      {
+        "tokens": [
+          "*"
+        ],
+        "rules": [
+          [
+            false,
+            "/app/"
+          ],
+          [
+            false,
+            "/bin/"
+          ],
+          [
+            false,
+            "/dev/"
+          ],
+          [
+            false,
+            "/lib/"
+          ],
+          [
+            false,
+            "/phpserver/"
+          ],
+          [
+            false,
+            "/pkginfo/"
+          ],
+          [
+            false,
+            "/report/"
+          ],
+          [
+            false,
+            "/setup/"
+          ],
+          [
+            false,
+            "/update/"
+          ],
+          [
+            false,
+            "/var/"
+          ],
+          [
+            false,
+            "/vendor/"
+          ],
+          [
+            false,
+            "/index.php/"
+          ]
+        ]
+      }
+    ],
+    "ai_named_tokens": [],
+    "can_fetch_eval_url": true,
+    "can_fetch_root": true,
+    "ms": 441
+  },
+  {
+    "host": "numberc.com",
+    "cohort": "unreadable-403",
+    "eval_url": "https://www.numberc.com/products/hourglass-ambient-soft-glow-foundation-for-her",
+    "robots_url": "https://numberc.com/robots.txt",
+    "status": 200,
+    "bytes": 5575,
+    "final_url": "https://www.numberc.com/robots.txt",
+    "readable": true,
+    "n_groups": 9,
+    "matched_token": null,
+    "applied_groups": [
+      {
+        "tokens": [
+          "*"
+        ],
+        "rules": [
+          [
+            false,
+            "/a/downloads/-/*"
+          ],
+          [
+            false,
+            "/admin"
+          ],
+          [
+            false,
+            "/cart"
+          ],
+          [
+            false,
+            "/orders"
+          ],
+          [
+            false,
+            "/checkouts/"
+          ],
+          [
+            false,
+            "/checkout"
+          ],
+          [
+            false,
+            "/64212992252/checkouts"
+          ],
+          [
+            false,
+            "/64212992252/orders"
+          ],
+          [
+            false,
+            "/carts"
+          ],
+          [
+            false,
+            "/account"
+          ],
+          [
+            false,
+            "/collections/*sort_by*"
+          ],
+          [
+            false,
+            "/*/collections/*sort_by*"
+          ]
+        ]
+      }
+    ],
+    "ai_named_tokens": [],
+    "can_fetch_eval_url": true,
+    "can_fetch_root": true,
+    "ms": 1228
+  },
+  {
+    "host": "fragrancebuy.ca",
+    "cohort": "render-13",
+    "eval_url": "https://fragrancebuy.ca/",
+    "robots_url": "https://fragrancebuy.ca/robots.txt",
+    "status": 403,
+    "bytes": 4551,
+    "final_url": "https://fragrancebuy.ca/robots.txt",
+    "readable": false,
+    "state": "unreadable-403",
+    "ms": 39
+  },
+  {
+    "host": "galeria.de",
+    "cohort": "render-13",
+    "eval_url": "https://galeria.de/",
+    "robots_url": "https://galeria.de/robots.txt",
+    "status": 403,
+    "bytes": 5703,
+    "final_url": "https://galeria.de/robots.txt",
+    "readable": false,
+    "state": "unreadable-403",
+    "ms": 167
+  },
+  {
+    "host": "notino.de",
+    "cohort": "render-13",
+    "eval_url": "https://notino.de/",
+    "robots_url": "https://notino.de/robots.txt",
+    "status": 200,
+    "bytes": 2549,
+    "final_url": "https://www.notino.de/robots.txt",
+    "readable": true,
+    "n_groups": 9,
+    "matched_token": null,
+    "applied_groups": [
+      {
+        "tokens": [
+          "*"
+        ],
+        "rules": [
+          [
+            false,
+            "/*.jpg$"
+          ],
+          [
+            false,
+            "/*.jpeg$"
+          ],
+          [
+            false,
+            "/*.png$"
+          ],
+          [
+            false,
+            "/*.gif$"
+          ],
+          [
+            false,
+            "/order.asp*"
+          ],
+          [
+            false,
+            "/order-multistep.asp*"
+          ],
+          [
+            false,
+            "/order-summary.asp*"
+          ],
+          [
+            false,
+            "/orderFrame.asp*"
+          ],
+          [
+            false,
+            "/detailsend.asp*"
+          ],
+          [
+            false,
+            "/addvote.asp*"
+          ],
+          [
+            false,
+            "/newpassword.asp*"
+          ],
+          [
+            false,
+            "/myaccount.asp*"
+          ]
+        ]
+      }
+    ],
+    "ai_named_tokens": [],
+    "can_fetch_eval_url": true,
+    "can_fetch_root": true,
+    "ms": 728
+  },
+  {
+    "host": "www.notino.it",
+    "cohort": "render-13",
+    "eval_url": "https://www.notino.it/",
+    "robots_url": "https://www.notino.it/robots.txt",
+    "status": 200,
+    "bytes": 2549,
+    "final_url": "https://www.notino.it/robots.txt",
+    "readable": true,
+    "n_groups": 9,
+    "matched_token": null,
+    "applied_groups": [
+      {
+        "tokens": [
+          "*"
+        ],
+        "rules": [
+          [
+            false,
+            "/*.jpg$"
+          ],
+          [
+            false,
+            "/*.jpeg$"
+          ],
+          [
+            false,
+            "/*.png$"
+          ],
+          [
+            false,
+            "/*.gif$"
+          ],
+          [
+            false,
+            "/order.asp*"
+          ],
+          [
+            false,
+            "/order-multistep.asp*"
+          ],
+          [
+            false,
+            "/order-summary.asp*"
+          ],
+          [
+            false,
+            "/orderFrame.asp*"
+          ],
+          [
+            false,
+            "/detailsend.asp*"
+          ],
+          [
+            false,
+            "/addvote.asp*"
+          ],
+          [
+            false,
+            "/newpassword.asp*"
+          ],
+          [
+            false,
+            "/myaccount.asp*"
+          ]
+        ]
+      }
+    ],
+    "ai_named_tokens": [],
+    "can_fetch_eval_url": true,
+    "can_fetch_root": true,
+    "ms": 549
+  },
+  {
+    "host": "www.notino.nl",
+    "cohort": "render-13",
+    "eval_url": "https://www.notino.nl/",
+    "robots_url": "https://www.notino.nl/robots.txt",
+    "status": 200,
+    "bytes": 2549,
+    "final_url": "https://www.notino.nl/robots.txt",
+    "readable": true,
+    "n_groups": 9,
+    "matched_token": null,
+    "applied_groups": [
+      {
+        "tokens": [
+          "*"
+        ],
+        "rules": [
+          [
+            false,
+            "/*.jpg$"
+          ],
+          [
+            false,
+            "/*.jpeg$"
+          ],
+          [
+            false,
+            "/*.png$"
+          ],
+          [
+            false,
+            "/*.gif$"
+          ],
+          [
+            false,
+            "/order.asp*"
+          ],
+          [
+            false,
+            "/order-multistep.asp*"
+          ],
+          [
+            false,
+            "/order-summary.asp*"
+          ],
+          [
+            false,
+            "/orderFrame.asp*"
+          ],
+          [
+            false,
+            "/detailsend.asp*"
+          ],
+          [
+            false,
+            "/addvote.asp*"
+          ],
+          [
+            false,
+            "/newpassword.asp*"
+          ],
+          [
+            false,
+            "/myaccount.asp*"
+          ]
+        ]
+      }
+    ],
+    "ai_named_tokens": [],
+    "can_fetch_eval_url": true,
+    "can_fetch_root": true,
+    "ms": 345
+  },
+  {
+    "host": "www.notino.pl",
+    "cohort": "render-13",
+    "eval_url": "https://www.notino.pl/",
+    "robots_url": "https://www.notino.pl/robots.txt",
+    "status": 200,
+    "bytes": 2549,
+    "final_url": "https://www.notino.pl/robots.txt",
+    "readable": true,
+    "n_groups": 9,
+    "matched_token": null,
+    "applied_groups": [
+      {
+        "tokens": [
+          "*"
+        ],
+        "rules": [
+          [
+            false,
+            "/*.jpg$"
+          ],
+          [
+            false,
+            "/*.jpeg$"
+          ],
+          [
+            false,
+            "/*.png$"
+          ],
+          [
+            false,
+            "/*.gif$"
+          ],
+          [
+            false,
+            "/order.asp*"
+          ],
+          [
+            false,
+            "/order-multistep.asp*"
+          ],
+          [
+            false,
+            "/order-summary.asp*"
+          ],
+          [
+            false,
+            "/orderFrame.asp*"
+          ],
+          [
+            false,
+            "/detailsend.asp*"
+          ],
+          [
+            false,
+            "/addvote.asp*"
+          ],
+          [
+            false,
+            "/newpassword.asp*"
+          ],
+          [
+            false,
+            "/myaccount.asp*"
+          ]
+        ]
+      }
+    ],
+    "ai_named_tokens": [],
+    "can_fetch_eval_url": true,
+    "can_fetch_root": true,
+    "ms": 354
+  },
+  {
+    "host": "www.perfume.com",
+    "cohort": "render-13",
+    "eval_url": "https://www.perfume.com/",
+    "robots_url": "https://www.perfume.com/robots.txt",
+    "status": 403,
+    "bytes": 5393,
+    "final_url": "https://www.perfume.com/robots.txt",
+    "readable": false,
+    "state": "unreadable-403",
+    "ms": 275
+  },
+  {
+    "host": "www.perfumeemporium.com",
+    "cohort": "render-13",
+    "eval_url": "https://www.perfumeemporium.com/",
+    "robots_url": "https://www.perfumeemporium.com/robots.txt",
+    "status": 403,
+    "bytes": 4555,
+    "final_url": "https://www.perfumeemporium.com/robots.txt",
+    "readable": false,
+    "state": "unreadable-403",
+    "ms": 144
+  },
+  {
+    "host": "www.pinalli.it",
+    "cohort": "render-13",
+    "eval_url": "https://www.pinalli.it/",
+    "robots_url": "https://www.pinalli.it/robots.txt",
+    "status": 403,
+    "bytes": 5414,
+    "final_url": "https://www.pinalli.it/robots.txt",
+    "readable": false,
+    "state": "unreadable-403",
+    "ms": 50
+  },
+  {
+    "host": "www.primor.eu",
+    "cohort": "render-13",
+    "eval_url": "https://www.primor.eu/",
+    "robots_url": "https://www.primor.eu/robots.txt",
+    "status": 200,
+    "bytes": 6503,
+    "final_url": "https://www.primor.eu/robots.txt",
+    "readable": true,
+    "n_groups": 3,
+    "matched_token": null,
+    "applied_groups": [
+      {
+        "tokens": [
+          "*"
+        ],
+        "rules": [
+          [
+            false,
+            "/*?ic="
+          ],
+          [
+            false,
+            "/*?orderby="
+          ],
+          [
+            false,
+            "/*?orderway="
+          ],
+          [
+            false,
+            "/*?tag="
+          ],
+          [
+            false,
+            "/*?id_currency="
+          ],
+          [
+            false,
+            "/*?back="
+          ],
+          [
+            false,
+            "/*?n="
+          ],
+          [
+            false,
+            "/*formulacion="
+          ],
+          [
+            false,
+            "/*marca="
+          ],
+          [
+            false,
+            "/*price="
+          ],
+          [
+            false,
+            "/*stock="
+          ],
+          [
+            false,
+            "/*null="
+          ]
+        ]
+      }
+    ],
+    "ai_named_tokens": [],
+    "can_fetch_eval_url": true,
+    "can_fetch_root": true,
+    "ms": 618
+  },
+  {
+    "host": "www.riteaid.com",
+    "cohort": "render-13",
+    "eval_url": "https://www.riteaid.com/",
+    "robots_url": "https://www.riteaid.com/robots.txt",
+    "status": 403,
+    "bytes": 5389,
+    "final_url": "https://riteaid.com/robots.txt",
+    "readable": false,
+    "state": "unreadable-403",
+    "ms": 620
+  },
+  {
+    "host": "www.saksfifthavenue.com",
+    "cohort": "render-13",
+    "eval_url": "https://www.saksfifthavenue.com/",
+    "robots_url": "https://www.saksfifthavenue.com/robots.txt",
+    "status": 403,
+    "bytes": 779,
+    "final_url": "https://www.saksfifthavenue.com/robots.txt",
+    "readable": false,
+    "state": "unreadable-403",
+    "ms": 464
+  },
+  {
+    "host": "www.shoppersdrugmart.ca",
+    "cohort": "render-13",
+    "eval_url": "https://www.shoppersdrugmart.ca/",
+    "robots_url": "https://www.shoppersdrugmart.ca/robots.txt",
+    "status": 403,
+    "bytes": 391,
+    "final_url": "https://www.shoppersdrugmart.ca/robots.txt",
+    "readable": false,
+    "state": "unreadable-403",
+    "ms": 94
+  }
+]
