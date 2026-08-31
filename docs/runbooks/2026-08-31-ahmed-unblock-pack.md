@@ -55,25 +55,23 @@ goes live; steps 2-7 queue behind it.
 
 ---
 
-## 2. Firecrawl top-up
+## 2. Firecrawl top-up — ✅ RESOLVED 2026-08-31, NO ACTION NEEDED
 
-**WHY:** 447/450 lifetime credits used, 3 left — the account is effectively dead, and the #92
-rawHtml fix has never been validated live.
+**What happened (same day this pack was written):** the "3 credits left" state was stale — the
+Firecrawl billing periods rolled over on their own. Verified via `GET /v1/team/credit-usage`:
+the **prod key holds 1,009 credits** (period ends 09-04) and the local key holds 2,282 (period
+ends 09-27). Then, with that headroom:
 
-**DO:**
-1. Go to firecrawl.dev → dashboard → billing. Current plans (verified 2026-08-31 on
-   firecrawl.dev/pricing): Free $0/1,000 credits/mo · **Hobby $16/mo/5,000** · Standard
-   $83/mo/100,000 · Growth $333/mo/500,000 · Scale $599/mo/1,000,000. Scrape = 1 credit/page.
-   One-time top-ups exist: **$5 batches** (1,000 credits on Hobby tier), auto-reload optional.
-2. Cheapest sufficient move: Hobby for one month, or a single $5 batch if the account tier allows
-   it. The re-bake needs ≤ 15 credits — anything you buy covers it many times over.
-3. Tell the next Claude session it's done. (Dev-side follow-up, not yours: the app's own budget
-   gate latches at 450 lifetime — Redis keys `budget:firecrawl:lifetime` and
-   `budget:firecrawl:burn_alert_fired:budget:firecrawl:lifetime` must be reset after the top-up,
-   same playbook as the Serper rotation.)
+1. **The #92 rawHtml 9-target live re-bake RAN and CONFIRMED the fixtures** (9 credits spent,
+   zero contradictions; sephora.me now cracks live at 77.000 BHD through Akamai). Full write-up:
+   `docs/investigations/2026-08-31-firecrawl-rebake.md`.
+2. **The app's Redis budget latch was reset** — `budget:firecrawl:lifetime` was at **449/450**
+   (one call from prod going Firecrawl-dark regardless of account credits); both it and the
+   burn-alert sentinel were deleted per the rotation playbook. Prod's Firecrawl tier is fully
+   re-armed.
 
-**UNBLOCKS:** the #92 rawHtml 9-target live re-bake (budgeted ≤ 15 credits) — proves the
-`ENABLE_FIRECRAWL_RAW_HTML` repair (0/9 → priced) against live Firecrawl instead of cached bytes.
+**Only if you want more headroom later:** firecrawl.dev plans (verified 2026-08-31): Free
+$0/1,000 credits/mo · Hobby $16/mo/5,000 · Standard $83/mo/100,000. Not needed today.
 
 ---
 
@@ -189,6 +187,14 @@ where scraping can never provide it.
   measurement run is gone from the dashboard.)
 - **Bright Data: CONFIRMED LIVE in prod.** ~10 queries per cold lookup; the 5k/mo free tier ≈ 500
   cold lookups/month. Nothing for you to do.
+- **Firecrawl: fully unblocked 2026-08-31** — credits rolled over on their own (prod key 1,009),
+  the #92 live re-bake ran and CONFIRMED (see section 2), and the app's 449/450 Redis budget
+  latch + burn-alert sentinel were reset. Nothing for you to do.
+- **Search-descriptor store SEEDED 2026-08-31** — 95 fragrance hosts resolved (47 usable search
+  templates), registry folded, merged to main. Activation-runbook step (6) is now a pure
+  flag-flip for `ENABLE_SEARCH_DESCRIPTOR`.
+- **reefperfumes BHD-vs-SAR: adjudicated** — geo-serving (BHD for Bahrain visitors, SAR for
+  foreign IPs); registry is correct, extraction stamps page-declared currency, no bug.
 
 ---
 
