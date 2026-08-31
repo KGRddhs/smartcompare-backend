@@ -852,6 +852,38 @@ async def _cache_get_async(key: str):
     return get_cached(key)
 
 
+async def _cache_set_async(key: str, value, ttl):
+    """M13-06 — the WRITE mirror of _cache_get_async. A warm streaming compare
+    performs ~10 blocking Upstash SET round trips (specs + price cache writes) that
+    were ALL inline on the event loop; the offload dispatch previously covered only
+    the 4 reads. References the module-level `set_cached` in BOTH branches so a test
+    patching structured_comparison_service.set_cached still intercepts it. Flag OFF
+    -> `set_cached(...)` runs synchronously to completion with NO scheduler yield ->
+    byte-identical to the pre-change direct write (the return value is unused at
+    every call site). Flag ON -> asyncio.to_thread runs the identical stateless
+    Upstash POST in the default executor."""
+    if _redis_offload_enabled():
+        return await asyncio.to_thread(set_cached, key, value, ttl)
+    return set_cached(key, value, ttl)
+
+
+async def _provider_gate_ok_async(provider: str) -> bool:
+    """M13-06 — one BATCHED off-loop read of a render provider's breaker+budget
+    gate (was two separate inline blocking Upstash GETs per render candidate:
+    is_circuit_closed(p) AND has_budget(p)). Flag OFF -> both run inline, evaluated
+    left-to-right exactly as before (byte-identical, incl. has_budget's short-
+    circuit when the breaker is open). Flag ON -> ONE asyncio.to_thread runs both
+    off the loop. Deliberately NOT memoised across calls: a breaker trip / budget-
+    out must short-circuit the very next render candidate, so a stale cached 'ok'
+    would leak paid render spend — the offload already removes the event-loop
+    stall, which is this finding's cost."""
+    if _redis_offload_enabled():
+        return await asyncio.to_thread(
+            lambda: is_circuit_closed(provider) and has_budget(provider)
+        )
+    return is_circuit_closed(provider) and has_budget(provider)
+
+
 # Wave-2 B1.1b (chokepoint R8b) — a module-level counter of cache-read identity
 # rejections so the read-chokepoint blast radius is MEASURABLE (the display side
 # already stamps guard_rejected -> a response_builder metadata diag; the cache
@@ -1371,7 +1403,7 @@ async def _firecrawl_scraper(
     records usage/failure, and returns the fan_out candidate shape."""
     if not firecrawl_service.is_available():
         return None
-    if not (is_circuit_closed("firecrawl") and has_budget("firecrawl")):
+    if not await _provider_gate_ok_async("firecrawl"):
         # WS-G G3 — the shared breaker / spent budget starved a render we wanted
         # to fire. Record it ($0, no provider call) so G4 can see breaker
         # contagion. Strictly additive: return value unchanged (None).
@@ -1445,7 +1477,7 @@ async def _scrapedo_scraper(
     """Scrape.do wrapper — residential proxy fallback for SPA pages."""
     if not scrapedo_service.is_available():
         return None
-    if not (is_circuit_closed("scrapedo") and has_budget("scrapedo")):
+    if not await _provider_gate_ok_async("scrapedo"):
         # WS-G G3 — breaker/budget starved a render we wanted to fire ($0).
         _record_provider_attempt(
             provider="scrapedo", url=url, retailer_domain=retailer_domain,
@@ -4735,7 +4767,7 @@ class StructuredComparisonService:
                 }
                 if _enriched and not _enriched.get("error"):
                     _specs_key = get_specs_cache_key(brand, name, variant)
-                    set_cached(_specs_key, _enriched, SPECS_CACHE_TTL)
+                    await _cache_set_async(_specs_key, _enriched, SPECS_CACHE_TTL)
                     from app.services.product_data_service import save_specs
                     _fire_and_forget(
                         save_specs(_specs_key, brand, name, variant, category, _enriched),
@@ -4842,7 +4874,7 @@ class StructuredComparisonService:
             from app.services.product_data_service import get_cached_specs
             db_specs = await get_cached_specs(cache_key)
             if db_specs:
-                set_cached(cache_key, db_specs, SPECS_CACHE_TTL)
+                await _cache_set_async(cache_key, db_specs, SPECS_CACHE_TTL)
                 db_specs["_cached"] = True
                 db_specs["_cache_source"] = "db"
                 return db_specs
@@ -4888,7 +4920,7 @@ class StructuredComparisonService:
             specs.update(spine_specs)
 
         if specs and not specs.get("error"):
-            set_cached(cache_key, specs, SPECS_CACHE_TTL)
+            await _cache_set_async(cache_key, specs, SPECS_CACHE_TTL)
             # Save to L2 DB (fire-and-forget — B0-B Item 4: wrapped per
             # audit convention 2026-05-22 so DB write exceptions WARNING-log
             # instead of silently disappearing).
@@ -5132,7 +5164,7 @@ class StructuredComparisonService:
                             brand, name,
                         )
                 if _promote:
-                    set_cached(cache_key, db_price, price_cache_ttl(db_price))
+                    await _cache_set_async(cache_key, db_price, price_cache_ttl(db_price))
                 db_price["_cached"] = True
                 db_price["_cache_source"] = "db"
                 return db_price
@@ -5221,7 +5253,7 @@ class StructuredComparisonService:
                         # unverified/OOS/wrong-concentration luxury render can't poison the shared
                         # cache (coverage review D — was a raw set_cached bypass).
                         if should_cache_price(full_name, _zp, category):
-                            set_cached(cache_key, _zp, price_cache_ttl(_zp))
+                            await _cache_set_async(cache_key, _zp, price_cache_ttl(_zp))
                             self._save_price_to_db(cache_key, brand, name, variant, region, _zp)
                         _zp["_cached"] = False
                         logger.info(
@@ -5797,7 +5829,7 @@ class StructuredComparisonService:
                 # matching the request (the converted/page-scrape `best` does not pass
                 # through select_best on every path).
                 if should_cache_price(full_name, best, category):
-                    set_cached(cache_key, best, price_cache_ttl(best))
+                    await _cache_set_async(cache_key, best, price_cache_ttl(best))
                     self._save_price_to_db(cache_key, brand, name, variant, region, best)
                 best["_cached"] = False
                 logger.info(
@@ -6649,7 +6681,7 @@ class StructuredComparisonService:
                     # B6 — only cache under the request key when the resolved iHerb
                     # product's identity matches the request (defense-in-depth).
                     if should_cache_price(full_name, iherb_price, category):
-                        set_cached(cache_key, iherb_price, price_cache_ttl(iherb_price))
+                        await _cache_set_async(cache_key, iherb_price, price_cache_ttl(iherb_price))
                     return iherb_price
 
                 iherb_task = search_web(f"{iherb_query} iherb price", num_results=5, country=iherb_cc)
@@ -6680,7 +6712,7 @@ class StructuredComparisonService:
                     _maybe_park_supplement(pharmacy_price)
                     # B6 — cache under the request key only on a resolved-identity match.
                     if should_cache_price(full_name, pharmacy_price, category):
-                        set_cached(cache_key, pharmacy_price, price_cache_ttl(pharmacy_price))
+                        await _cache_set_async(cache_key, pharmacy_price, price_cache_ttl(pharmacy_price))
                     return pharmacy_price
 
                 # --- Stage 3: page-scrape known supplement/pharmacy PDPs (bounded ~3s) ---
@@ -6735,7 +6767,7 @@ class StructuredComparisonService:
                         # should_cache_price, able to cache an OOS / no-url / wrong-variant price).
                         # Still RETURN it for display so the chokepoint pends an OOS/unverifiable one.
                         if should_cache_price(full_name, page_price, category):
-                            set_cached(cache_key, page_price, price_cache_ttl(page_price))
+                            await _cache_set_async(cache_key, page_price, price_cache_ttl(page_price))
                         return page_price
 
                 combined_organic = iherb_organic + bh_organic
@@ -6947,7 +6979,7 @@ class StructuredComparisonService:
                     price["source_method"] = "estimated"
                 if price.get("retailer") and not price.get("url"):
                     price["url"] = build_retailer_url(price["retailer"], full_name)
-                set_cached(cache_key, price, PRICE_CACHE_TTL // 2)
+                await _cache_set_async(cache_key, price, PRICE_CACHE_TTL // 2)
                 self._save_price_to_db(cache_key, brand, name, variant, region, price)
                 # Task 1.3 — Tier-3 GPT estimate means no real BH price exists; the
                 # cascade is a structural dead-end. Record it so we don't re-run the
