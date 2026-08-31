@@ -704,18 +704,22 @@ def _registry_currency_for_host(host: Optional[str]) -> Optional[str]:
     if not key:
         return None
     try:
-        from app.services.source_router import SOURCE_REGISTRY
+        from app.services.source_router import _registry_row_for_host
     except Exception:  # noqa: BLE001 — no registry, no fallback
         return None
     try:
-        for source in SOURCE_REGISTRY:
-            domain = _normalise_domain(getattr(source, "domain", ""))
-            if not domain:
-                continue
-            if key == domain or key.endswith("." + domain):
-                code = (getattr(source, "currency", "") or "").strip().upper()
-                if code:
-                    return code
+        # M13-12 — the ONE shared longest-match resolver, filtered to rows that
+        # carry a currency (preserving the legacy "first match WITH a currency"
+        # semantic on the flag-OFF path). Flag ON: an apex row no longer shadows
+        # ksa/om.swissarabian.com's own SAR/OMR.
+        row = _registry_row_for_host(
+            key,
+            where=lambda s: bool((getattr(s, "currency", "") or "").strip()),
+        )
+        if row is not None:
+            code = (getattr(row, "currency", "") or "").strip().upper()
+            if code:
+                return code
     except Exception:  # noqa: BLE001 — a selector must never break a fetch
         return None
     return None

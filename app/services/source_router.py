@@ -10,9 +10,10 @@ Source weighting drives the cross-validation in `confidence_service.py` so
 mismatched Tier-1 Bahrain prices outvote a distant amazon.com listing.
 """
 
+import os
 import re
 from dataclasses import dataclass
-from typing import List, Optional, Tuple
+from typing import Callable, List, Optional, Tuple
 from urllib.parse import urlparse, parse_qs
 
 # M7 D3 — the descriptor dataclass + its parser. This module is imported by
@@ -541,6 +542,60 @@ def _normalize_domain(host: str) -> str:
     return host
 
 
+def longest_host_match_enabled() -> bool:
+    """True iff SOURCE_REGISTRY host resolution is LONGEST-domain-wins (default OFF).
+
+    M13-12. Every ``for s in SOURCE_REGISTRY`` suffix scan is first-match-wins, so
+    an apex row (``swissarabian.com``, USD) shadows its own country subdomains
+    (``ksa.swissarabian.com`` SAR, ``om.swissarabian.com`` OMR) whenever the apex
+    is listed first — 2 of 319 registry rows get the wrong currency, and the
+    descriptor scan returns the apex's search template for a subdomain host.
+    With the flag ON, resolution is longest-domain-wins (an exact match is the
+    longest possible, so it wins outright). Read PER CALL from os.getenv; default
+    OFF so flag-OFF is byte-identical to the legacy first-match scans.
+    """
+    return os.getenv("ENABLE_LONGEST_HOST_MATCH", "").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
+def _registry_row_for_host(
+    host: str,
+    *,
+    where: Optional[Callable[["Source"], bool]] = None,
+    registry: Optional[List["Source"]] = None,
+) -> Optional["Source"]:
+    """Resolve ``host`` to its SOURCE_REGISTRY row — the ONE shared suffix scan.
+
+    Flag OFF (``longest_host_match_enabled()`` False): first-match-wins in
+    registry order, byte-identical to the per-call scans this replaces. Flag ON:
+    longest-domain-wins, so an apex row can no longer shadow its own country
+    subdomains. ``where`` filters candidate rows (the currency lookup skips
+    currency-less rows; the descriptor lookup skips descriptor-less rows) so each
+    caller keeps its own "first match WITH the field" semantic on both paths.
+    ``registry`` overrides SOURCE_REGISTRY for unit tests.
+    """
+    reg = SOURCE_REGISTRY if registry is None else registry
+    domain = _normalize_domain(str(host or ""))
+    if not domain:
+        return None
+    longest = longest_host_match_enabled()
+    best: Optional["Source"] = None
+    best_len = -1
+    for s in reg:
+        registry_domain = (getattr(s, "domain", "") or "").lower()
+        if not registry_domain:
+            continue
+        if domain == registry_domain or domain.endswith("." + registry_domain):
+            if where is not None and not where(s):
+                continue
+            if not longest:
+                return s
+            if len(registry_domain) > best_len:
+                best, best_len = s, len(registry_domain)
+    return best
+
+
 def match_registry_apex(host: str) -> str:
     """Collapse a winning retailer host to its registry apex, if any.
 
@@ -554,11 +609,8 @@ def match_registry_apex(host: str) -> str:
     if not host:
         return host
     domain = _normalize_domain(str(host))
-    for s in SOURCE_REGISTRY:
-        registry_domain = s.domain.lower()
-        if domain == registry_domain or domain.endswith("." + registry_domain):
-            return registry_domain
-    return domain
+    row = _registry_row_for_host(domain)
+    return row.domain.lower() if row is not None else domain
 
 
 def registry_tier(host_or_url: str) -> Optional[str]:
@@ -590,11 +642,8 @@ def registry_tier(host_or_url: str) -> Optional[str]:
     domain = _normalize_domain(raw)
     if not domain:
         return None
-    for s in SOURCE_REGISTRY:
-        registry_domain = s.domain.lower()
-        if domain == registry_domain or domain.endswith("." + registry_domain):
-            return s.tier
-    return None
+    row = _registry_row_for_host(domain)
+    return row.tier if row is not None else None
 
 
 def _usage_allows(source_usage_value: str, wanted: str) -> bool:

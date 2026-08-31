@@ -203,7 +203,9 @@ def descriptor_for_host(host: str) -> Optional[SearchDescriptor]:
     if not host:
         return None
     try:
-        from app.services.source_router import SOURCE_REGISTRY  # lazy: cycle-safe
+        from app.services.source_router import (  # lazy: cycle-safe
+            _registry_row_for_host,
+        )
 
         raw = str(host)
         if "://" in raw or "/" in raw:
@@ -213,14 +215,15 @@ def descriptor_for_host(host: str) -> Optional[SearchDescriptor]:
             domain = domain[4:]
         if not domain:
             return None
-        for source in SOURCE_REGISTRY:
-            desc = getattr(source, "search_descriptor", None)
-            if desc is None:
-                continue
-            registry_domain = source.domain.lower()
-            if domain == registry_domain or domain.endswith("." + registry_domain):
-                return desc
-        return None
+        # M13-12 — the ONE shared longest-match resolver, filtered to rows that
+        # carry a descriptor (preserving the legacy "first match WITH a
+        # descriptor" semantic on the flag-OFF path). Flag ON: a subdomain host
+        # resolves to its OWN {q} template, not the apex storefront's.
+        row = _registry_row_for_host(
+            domain,
+            where=lambda s: getattr(s, "search_descriptor", None) is not None,
+        )
+        return getattr(row, "search_descriptor", None) if row is not None else None
     except Exception:  # noqa: BLE001 — a lookup must never break discovery
         return None
 
