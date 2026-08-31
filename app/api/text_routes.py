@@ -488,76 +488,93 @@ async def text_compare_stream(
     async def event_generator() -> AsyncGenerator[str, None]:
         complete_response = None
         had_error = False
+        client_gone = False
 
-        async for event_type, data in service.compare_from_text_streaming(
-            query=q,
-            region=region,
-            include_specs=specs,
-            include_reviews=reviews,
-            include_pros_cons=pros_cons,
-            nocache=nocache,
-            selected_category=selected_category,
-            user_preferences=user_prefs,
-            user_id=user.get("id") if user else None,
-            explicit_pair=explicit_pair,
-        ):
-            if await request.is_disconnected():
-                logger.info(f"[SSE] Client disconnected during stream for query: {q}")
-                return
+        # M13-35: the post-stream side effects (quota metering, history save,
+        # analytics) MUST run even if the client drops the socket AFTER the
+        # verdict/complete events — by then it already has the entire comparison
+        # and the OpenAI/Serper spend is already made, so an early `return` on
+        # disconnect was a free, repeatable metering bypass. The whole loop is
+        # wrapped in try/finally, the final payload is captured BEFORE the
+        # disconnect check, and a disconnect drains (not abandons) the generator
+        # so the payload is fully captured. Side effects then fire in the finally,
+        # keyed on whether the payload was produced.
+        try:
+            async for event_type, data in service.compare_from_text_streaming(
+                query=q,
+                region=region,
+                include_specs=specs,
+                include_reviews=reviews,
+                include_pros_cons=pros_cons,
+                nocache=nocache,
+                selected_category=selected_category,
+                user_preferences=user_prefs,
+                user_id=user.get("id") if user else None,
+                explicit_pair=explicit_pair,
+            ):
+                # Capture the final payload BEFORE the disconnect check. `complete`
+                # is the canonical final-payload event; `settle_complete` is the
+                # Bundle E equivalent emitted right after `verdict` and carries the
+                # same payload — capturing it means a disconnect right after the
+                # verdict still has the full response to meter + persist.
+                if event_type in ("complete", "settle_complete"):
+                    complete_response = data
+                if event_type == "error":
+                    had_error = True
 
-            # `complete` is the canonical final-payload event for analytics
-            # (post-stream logging below). `settle_complete` is the Bundle E
-            # equivalent; both carry the same payload — favour `complete`
-            # for the analytics hook so older clients still work.
-            if event_type == "complete":
-                complete_response = data
-            if event_type == "error":
-                had_error = True
+                if client_gone:
+                    # Client already left: keep draining so the final payload is
+                    # captured, but stop pushing bytes to a dead socket.
+                    continue
+                if await request.is_disconnected():
+                    logger.info(f"[SSE] Client disconnected during stream for query: {q}")
+                    client_gone = True
+                    continue
 
-            yield f"event: {event_type}\ndata: {json.dumps(data, default=str)}\n\n"
+                yield f"event: {event_type}\ndata: {json.dumps(data, default=str)}\n\n"
+        finally:
+            # Fire-and-forget logging once the stream (or the client) is done.
+            duration_ms = int((time.time() - start_time) * 1000)
+            user_id = user.get("id") if user else None
 
-        # Fire-and-forget logging after stream completes
-        duration_ms = int((time.time() - start_time) * 1000)
-        user_id = user.get("id") if user else None
-
-        if complete_response and not had_error:
-            product_names = [
-                f"{p.get('brand', '')} {p.get('name', '')}".strip()
-                for p in complete_response.get("products", [])
-            ]
-            # Bundle D 2.B.6 WRAP: post-stream analytics; silent fail = wrong
-            # KPI numbers + missing history rows.
-            fire_and_forget(
-                log_search(
-                    query=q, input_type="text_stream", user_id=user_id,
-                    products_found=product_names, success=True,
-                    cost=complete_response.get("metadata", {}).get("total_cost", 0),
-                    duration_ms=duration_ms,
-                ),
-                label="log_search.text_stream.success",
-            )
-            if user_id:
+            if complete_response and not had_error:
+                product_names = [
+                    f"{p.get('brand', '')} {p.get('name', '')}".strip()
+                    for p in complete_response.get("products", [])
+                ]
+                # Bundle D 2.B.6 WRAP: post-stream analytics; silent fail = wrong
+                # KPI numbers + missing history rows.
                 fire_and_forget(
-                    save_comparison_and_track_cohort(
-                        full_response=complete_response, query=q,
-                        input_type="text_stream", user_id=user_id,
+                    log_search(
+                        query=q, input_type="text_stream", user_id=user_id,
+                        products_found=product_names, success=True,
+                        cost=complete_response.get("metadata", {}).get("total_cost", 0),
+                        duration_ms=duration_ms,
                     ),
-                    label="save_comparison.text_stream",
+                    label="log_search.text_stream.success",
                 )
+                if user_id:
+                    fire_and_forget(
+                        save_comparison_and_track_cohort(
+                            full_response=complete_response, query=q,
+                            input_type="text_stream", user_id=user_id,
+                        ),
+                        label="save_comparison.text_stream",
+                    )
+                    fire_and_forget(
+                        record_comparison(user_id, user.get("access_token", "")),
+                        label="record_comparison.text_stream",
+                    )
+            elif had_error:
+                # Bundle D 2.B.6 WRAP: failure-path log on streaming.
                 fire_and_forget(
-                    record_comparison(user_id, user.get("access_token", "")),
-                    label="record_comparison.text_stream",
+                    log_search(
+                        query=q, input_type="text_stream", user_id=user_id,
+                        success=False, error_message="Streaming comparison failed",
+                        duration_ms=duration_ms,
+                    ),
+                    label="log_search.text_stream.failure",
                 )
-        elif had_error:
-            # Bundle D 2.B.6 WRAP: failure-path log on streaming.
-            fire_and_forget(
-                log_search(
-                    query=q, input_type="text_stream", user_id=user_id,
-                    success=False, error_message="Streaming comparison failed",
-                    duration_ms=duration_ms,
-                ),
-                label="log_search.text_stream.failure",
-            )
 
     return StreamingResponse(
         event_generator(),
