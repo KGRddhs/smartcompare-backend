@@ -5,6 +5,7 @@ Caches in Redis with 24h TTL. Falls back to hardcoded rates if API is unavailabl
 """
 import json
 import logging
+import os
 from datetime import datetime
 from typing import Dict, Optional
 
@@ -31,6 +32,48 @@ FALLBACK_RATES: Dict[str, float] = {
     "BHD": 1.0,
 }
 
+# M13-38 — the currencies the _proof corpus actually carries that are ABSENT from
+# FALLBACK_RATES, so their pages PEND today (a TRY page returns None, ENABLE_RSC_
+# FLIGHT_PRICE's entire measured cohort is dead). Approximate BHD rates as of
+# 2026 — the exact figure is not load-bearing (any positive rate converts instead
+# of pending; the live table via _fetch_rates is the authoritative source when a
+# fetcher is wired). Gated behind a DEFAULT-OFF flag so widening the table cannot
+# change the flag-OFF extract_price_from_html output (TRY/PLN/CAD/JOD corpus pages
+# that pend today would otherwise convert, breaking flag-OFF byte-identity).
+FALLBACK_RATES_EXTENDED: Dict[str, float] = {
+    "TRY": 0.0094,   # Turkish lira
+    "PLN": 0.094,    # Polish zloty
+    "CAD": 0.274,    # Canadian dollar
+    "JOD": 0.531,    # Jordanian dinar (3-decimal)
+    "SEK": 0.035,    # Swedish krona
+    "DKK": 0.0545,   # Danish krone
+    "CHF": 0.427,    # Swiss franc
+    "EGP": 0.0078,   # Egyptian pound
+    "NOK": 0.034,    # Norwegian krone
+    "AUD": 0.245,    # Australian dollar
+}
+
+
+def extended_fallback_rates_enabled() -> bool:
+    """True iff FALLBACK_RATES is widened with the corpus currencies (default OFF).
+
+    M13-38. Read PER CALL from os.getenv so Railway can flip it without a
+    restart; default OFF so the effective table — and therefore the flag-OFF
+    extract_price_from_html output — is byte-identical to 5ee72e8.
+    """
+    return os.getenv("ENABLE_EXTENDED_FALLBACK_RATES", "").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
+def effective_fallback_rates() -> Dict[str, float]:
+    """The rate table price_service should convert against: the base 13 currencies,
+    plus the corpus tail when ``extended_fallback_rates_enabled()``. A NEW dict on
+    each ON call (never mutate FALLBACK_RATES) so the base table stays pristine."""
+    if extended_fallback_rates_enabled():
+        return {**FALLBACK_RATES, **FALLBACK_RATES_EXTENDED}
+    return FALLBACK_RATES
+
 # Maps backend region codes to their native currency.
 # Used by price pipeline to display prices in the user's region currency.
 REGION_TO_CURRENCY: Dict[str, str] = {
@@ -53,7 +96,7 @@ def get_region_currency(region: Optional[str]) -> str:
 _CACHE_TTL = 24 * 3600  # 24 hours
 
 
-async def get_rate(from_currency: str, to_currency: str = "BHD") -> float:
+async def get_rate(from_currency: str, to_currency: str = "BHD") -> Optional[float]:
     """Get exchange rate from one currency to another.
 
     Args:
@@ -61,7 +104,12 @@ async def get_rate(from_currency: str, to_currency: str = "BHD") -> float:
         to_currency: Target currency code, defaults to "BHD".
 
     Returns:
-        The exchange rate as a float. Falls back to hardcoded rates on failure.
+        The exchange rate as a float, or None when neither the live nor the
+        hardcoded table can resolve the pair. M13-39 — None replaces the old
+        implicit-1.0 stamp: an UNKNOWN currency must NOT be silently treated as
+        1:1 with the target (the exact failure the currency wave exists to kill).
+        This function has zero production callers today; the production converter
+        is price_service._convert_to_bhd.
     """
     from_currency = from_currency.upper()
     to_currency = to_currency.upper()
@@ -91,7 +139,10 @@ async def get_rate(from_currency: str, to_currency: str = "BHD") -> float:
         if rate is not None:
             return rate
 
-    # Fallback to hardcoded rates
+    # Fallback to hardcoded rates. M13-39 — an unknown currency now yields None
+    # (never an implicit 1.0), so surface that honestly rather than fabricating a
+    # rate: the caller must treat None as "cannot convert" (pend), the same
+    # posture strict_currency_label_enabled() takes on the production path.
     return _fallback_rate(from_currency, to_currency)
 
 
@@ -124,18 +175,28 @@ def _lookup_rate(
     return None
 
 
-def _fallback_rate(from_currency: str, to_currency: str) -> float:
-    """Compute rate from hardcoded BHD-based fallback table."""
-    # FALLBACK_RATES maps currency -> BHD
-    from_to_bhd = FALLBACK_RATES.get(from_currency)
-    to_to_bhd = FALLBACK_RATES.get(to_currency)
+def _fallback_rate(from_currency: str, to_currency: str) -> Optional[float]:
+    """Compute rate from hardcoded BHD-based fallback table.
+
+    M13-39 — an unknown currency returns None, NOT 1.0. Returning 1.0 was the
+    implicit-1.0 stamp the whole currency wave exists to eliminate: it declared a
+    foreign amount to be 1:1 with the target and shipped it as a real number.
+    None makes the caller pend instead. Same-currency (from == to) still returns
+    1.0, and the extended-corpus tail participates so a TRY/PLN/CAD/JOD pair
+    resolves when the extension flag is on.
+    """
+    # FALLBACK_RATES maps currency -> BHD; include the corpus tail when enabled.
+    rates = effective_fallback_rates()
+    from_to_bhd = rates.get(from_currency)
+    to_to_bhd = rates.get(to_currency)
 
     if from_to_bhd and to_to_bhd:
         # from_currency -> BHD -> to_currency
         return from_to_bhd / to_to_bhd
 
-    # Unknown currency — return 1.0 as safe default
+    # Unknown currency — None, never an implicit 1.0 (M13-39).
     logger.warning(
-        f"[EXCHANGE] No fallback rate for {from_currency}->{to_currency}, returning 1.0"
+        f"[EXCHANGE] No fallback rate for {from_currency}->{to_currency}, "
+        "returning None (cannot convert)"
     )
-    return 1.0
+    return None

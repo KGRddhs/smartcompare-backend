@@ -619,9 +619,13 @@ def _normalize_currency_code(raw: Any) -> Optional[str]:
     folded = raw.translate(_CURRENCY_FOLD_STRIP).strip()
     if not folded:
         return None
-    from app.services.exchange_rate_service import FALLBACK_RATES
+    # M13-38 — resolve against the effective table so a corpus currency (TRY/…)
+    # folds to itself when the extension flag is on; OFF this is the base 13,
+    # byte-identical.
+    from app.services.exchange_rate_service import effective_fallback_rates
+    rates = effective_fallback_rates()
     upper = folded.upper()
-    if upper in FALLBACK_RATES:
+    if upper in rates:
         return upper
     # The Arabic glyphs are caseless, so try the raw fold too.
     for key in (upper, folded):
@@ -725,19 +729,23 @@ def _convert_to_bhd(amount: float, currency: str) -> float:
     """
     if not currency:
         return amount
-    from app.services.exchange_rate_service import FALLBACK_RATES
+    # M13-38 — the effective table widens to the corpus currencies (TRY/PLN/CAD/
+    # JOD/…) when ENABLE_EXTENDED_FALLBACK_RATES is on; OFF it is exactly the base
+    # 13-currency FALLBACK_RATES, byte-identical.
+    from app.services.exchange_rate_service import effective_fallback_rates
+    rates = effective_fallback_rates()
     currency_upper = currency.upper()
-    if currency_upper not in FALLBACK_RATES:
+    if currency_upper not in rates:
         if strict_currency_label_enabled():
             resolved = _normalize_currency_code(currency)
             if resolved is not None:
-                return amount * FALLBACK_RATES[resolved]
+                return amount * rates[resolved]
         logger.warning(
             f"[CURRENCY] No rate for {currency_upper}->BHD, returning amount unchanged. "
             f"Add {currency_upper} to FALLBACK_RATES to enable conversion."
         )
         return amount
-    return amount * FALLBACK_RATES[currency_upper]
+    return amount * rates[currency_upper]
 
 
 def _convert_gpt_price_currency(price: Optional[Dict], target_currency: str) -> bool:

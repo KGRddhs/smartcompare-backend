@@ -330,8 +330,9 @@ class TestEdgeCases:
     """Test edge cases and error handling."""
 
     @pytest.mark.asyncio
-    async def test_unknown_currency_pair_returns_one(self, mock_redis_helpers, mock_httpx):
-        """Unknown currency pair should fall back gracefully to 1.0."""
+    async def test_unknown_currency_pair_returns_none(self, mock_redis_helpers, mock_httpx):
+        """M13-39 — an unknown currency pair returns None, NEVER an implicit 1.0
+        (the exact 1:1 stamp the currency wave exists to eliminate)."""
         mock_redis_helpers["store"] = {}
 
         # Mock API failure
@@ -343,8 +344,8 @@ class TestEdgeCases:
 
         rate = await get_rate("XXX", "YYY")
 
-        # Unknown currencies not in FALLBACK_RATES → should return 1.0
-        assert rate == 1.0
+        # Unknown currencies not in FALLBACK_RATES → None (cannot convert), never 1.0.
+        assert rate is None
 
     @pytest.mark.asyncio
     async def test_redis_error_during_get_doesnt_crash(self, mock_httpx):
@@ -461,19 +462,16 @@ class TestEdgeCases:
         assert rate == pytest.approx(expected, rel=0.001)
 
     def test_fallback_rate_unknown_from_currency(self):
-        """_fallback_rate returns 1.0 for unknown from_currency."""
-        rate = _fallback_rate("XXX", "BHD")
-        assert rate == 1.0
+        """M13-39 — unknown from_currency returns None, never an implicit 1.0."""
+        assert _fallback_rate("XXX", "BHD") is None
 
     def test_fallback_rate_unknown_to_currency(self):
-        """_fallback_rate returns 1.0 for unknown to_currency."""
-        rate = _fallback_rate("USD", "YYY")
-        assert rate == 1.0
+        """M13-39 — unknown to_currency returns None, never an implicit 1.0."""
+        assert _fallback_rate("USD", "YYY") is None
 
     def test_fallback_rate_both_unknown(self):
-        """_fallback_rate returns 1.0 when both currencies unknown."""
-        rate = _fallback_rate("XXX", "YYY")
-        assert rate == 1.0
+        """M13-39 — both-unknown returns None, never an implicit 1.0."""
+        assert _fallback_rate("XXX", "YYY") is None
 
     @pytest.mark.asyncio
     async def test_case_insensitive_currency_codes(self, mock_redis_helpers, mock_httpx):
