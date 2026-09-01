@@ -1,0 +1,860 @@
+{
+  "electronics": {
+    "category": "electronics",
+    "category_weights": {
+      "build_quality_score": 0.15,
+      "ecosystem_score": 0.1,
+      "feature_score": 0.2,
+      "futureproof_score": 0.1,
+      "performance_score": 0.25,
+      "value_score": 0.2
+    },
+    "dimension_winners": {
+      "build_quality_score": {
+        "margin": 59.2,
+        "winner": "electronics A"
+      },
+      "ecosystem_score": {
+        "margin": 28.4,
+        "winner": "electronics A"
+      },
+      "feature_score": {
+        "margin": 5.6,
+        "winner": "electronics B"
+      },
+      "futureproof_score": {
+        "margin": 22.0,
+        "winner": "electronics A"
+      },
+      "performance_score": {
+        "margin": 24.0,
+        "winner": "electronics B"
+      },
+      "value_score": {
+        "margin": 27.2,
+        "winner": "electronics B"
+      }
+    },
+    "is_cross_tier": true,
+    "price_tiers": {
+      "electronics A": "mid",
+      "electronics B": "budget"
+    },
+    "price_tiers_by_index": {
+      "product_0": "mid",
+      "product_1": "budget"
+    },
+    "scores": {
+      "product_0": {
+        "breakdown": {
+          "build_quality_score": 92.5,
+          "ecosystem_score": 83.5,
+          "feature_score": 65.4,
+          "futureproof_score": 84.0,
+          "performance_score": 53.0,
+          "value_score": 36.4
+        },
+        "missing_data": null,
+        "overall": 64.2,
+        "weights_used": {
+          "build_quality_score": 0.15,
+          "ecosystem_score": 0.1,
+          "feature_score": 0.2,
+          "futureproof_score": 0.1,
+          "performance_score": 0.25,
+          "value_score": 0.2
+        }
+      },
+      "product_1": {
+        "breakdown": {
+          "build_quality_score": 33.3,
+          "ecosystem_score": 55.1,
+          "feature_score": 71.0,
+          "futureproof_score": 62.0,
+          "performance_score": 77.0,
+          "value_score": 63.6
+        },
+        "missing_data": null,
+        "overall": 62.9,
+        "weights_used": {
+          "build_quality_score": 0.15,
+          "ecosystem_score": 0.1,
+          "feature_score": 0.2,
+          "futureproof_score": 0.1,
+          "performance_score": 0.25,
+          "value_score": 0.2
+        }
+      }
+    },
+    "scoring_method": "category_weighted",
+    "win_margin": 1.3,
+    "winner_evidence": [
+      "electronics A draws stronger reviewer ratings"
+    ],
+    "winner_index": 0
+  },
+  "fashion": {
+    "category": "fashion",
+    "category_weights": {
+      "cpw_score": 0.1,
+      "craft_score": 0.25,
+      "durability_score": 0.15,
+      "fit_score": 0.2,
+      "heritage_score": 0.1,
+      "style_score": 0.2
+    },
+    "dimension_winners": {
+      "cpw_score": {
+        "margin": null,
+        "winner": "N/A"
+      },
+      "craft_score": {
+        "margin": null,
+        "winner": "N/A"
+      },
+      "durability_score": {
+        "margin": 59.2,
+        "winner": "fashion A"
+      },
+      "fit_score": {
+        "margin": 22.0,
+        "winner": "fashion A"
+      },
+      "heritage_score": {
+        "margin": 22.0,
+        "winner": "fashion A"
+      },
+      "style_score": {
+        "margin": 28.4,
+        "winner": "fashion A"
+      }
+    },
+    "is_cross_tier": false,
+    "price_tiers": {
+      "fashion A": "mid",
+      "fashion B": "mid"
+    },
+    "price_tiers_by_index": {
+      "product_0": "mid",
+      "product_1": "mid"
+    },
+    "scores": {
+      "product_0": {
+        "breakdown": {
+          "cpw_score": 30.0,
+          "craft_score": 50,
+          "durability_score": 92.5,
+          "fit_score": 84.0,
+          "heritage_score": 84.0,
+          "style_score": 83.5
+        },
+        "missing_data": [
+          "craft_score",
+          "cpw_score"
+        ],
+        "overall": 71.3,
+        "weights_used": {
+          "cpw_score": 0.1,
+          "craft_score": 0.25,
+          "durability_score": 0.15,
+          "fit_score": 0.2,
+          "heritage_score": 0.1,
+          "style_score": 0.2
+        }
+      },
+      "product_1": {
+        "breakdown": {
+          "cpw_score": 100.0,
+          "craft_score": 50,
+          "durability_score": 33.3,
+          "fit_score": 62.0,
+          "heritage_score": 62.0,
+          "style_score": 55.1
+        },
+        "missing_data": [
+          "craft_score",
+          "cpw_score"
+        ],
+        "overall": 57.1,
+        "weights_used": {
+          "cpw_score": 0.1,
+          "craft_score": 0.25,
+          "durability_score": 0.15,
+          "fit_score": 0.2,
+          "heritage_score": 0.1,
+          "style_score": 0.2
+        }
+      }
+    },
+    "scoring_method": "category_weighted",
+    "win_margin": 14.2,
+    "winner_evidence": [
+      "fashion A draws stronger reviewer ratings"
+    ],
+    "winner_index": 0
+  },
+  "fragrances": {
+    "category": "fragrances",
+    "category_weights": {
+      "character_score": 0.25,
+      "longevity_score": 0.25,
+      "presentation_score": 0.1,
+      "projection_score": 0.15,
+      "versatility_score": 0.15,
+      "wear_value_score": 0.1
+    },
+    "dimension_winners": {
+      "character_score": {
+        "margin": 1.2,
+        "winner": "tie"
+      },
+      "longevity_score": {
+        "margin": 9.6,
+        "winner": "fragrances B"
+      },
+      "presentation_score": {
+        "margin": 28.4,
+        "winner": "fragrances A"
+      },
+      "projection_score": {
+        "margin": 22.0,
+        "winner": "fragrances A"
+      },
+      "versatility_score": {
+        "margin": 59.2,
+        "winner": "fragrances A"
+      },
+      "wear_value_score": {
+        "margin": 20.2,
+        "winner": "fragrances B"
+      }
+    },
+    "is_cross_tier": false,
+    "price_tiers": {
+      "fragrances A": "premium",
+      "fragrances B": "premium"
+    },
+    "price_tiers_by_index": {
+      "product_0": "premium",
+      "product_1": "premium"
+    },
+    "scores": {
+      "product_0": {
+        "breakdown": {
+          "character_score": 65.6,
+          "longevity_score": 63.4,
+          "presentation_score": 83.5,
+          "projection_score": 84.0,
+          "versatility_score": 92.5,
+          "wear_value_score": 54.9
+        },
+        "missing_data": null,
+        "overall": 72.6,
+        "weights_used": {
+          "character_score": 0.25,
+          "longevity_score": 0.25,
+          "presentation_score": 0.1,
+          "projection_score": 0.15,
+          "versatility_score": 0.15,
+          "wear_value_score": 0.1
+        }
+      },
+      "product_1": {
+        "breakdown": {
+          "character_score": 64.4,
+          "longevity_score": 73.0,
+          "presentation_score": 55.1,
+          "projection_score": 62.0,
+          "versatility_score": 33.3,
+          "wear_value_score": 75.1
+        },
+        "missing_data": null,
+        "overall": 61.7,
+        "weights_used": {
+          "character_score": 0.25,
+          "longevity_score": 0.25,
+          "presentation_score": 0.1,
+          "projection_score": 0.15,
+          "versatility_score": 0.15,
+          "wear_value_score": 0.1
+        }
+      }
+    },
+    "scoring_method": "category_weighted",
+    "win_margin": 10.9,
+    "winner_evidence": [
+      "fragrances A draws stronger reviewer ratings"
+    ],
+    "winner_index": 0
+  },
+  "grocery": {
+    "category": "grocery",
+    "category_weights": {
+      "availability_score": 0.05,
+      "dietary_score": 0.15,
+      "ingredient_score": 0.2,
+      "nutrition_score": 0.25,
+      "serving_value_score": 0.15,
+      "taste_score": 0.2
+    },
+    "dimension_winners": {
+      "availability_score": {
+        "margin": 28.4,
+        "winner": "grocery A"
+      },
+      "dietary_score": {
+        "margin": 32.8,
+        "winner": "grocery A"
+      },
+      "ingredient_score": {
+        "margin": 59.2,
+        "winner": "grocery A"
+      },
+      "nutrition_score": {
+        "margin": 40.0,
+        "winner": "grocery A"
+      },
+      "serving_value_score": {
+        "margin": 7.0,
+        "winner": "grocery A"
+      },
+      "taste_score": {
+        "margin": 22.0,
+        "winner": "grocery A"
+      }
+    },
+    "is_cross_tier": false,
+    "price_tiers": {
+      "grocery A": "luxury",
+      "grocery B": "luxury"
+    },
+    "price_tiers_by_index": {
+      "product_0": "luxury",
+      "product_1": "luxury"
+    },
+    "scores": {
+      "product_0": {
+        "breakdown": {
+          "availability_score": 83.5,
+          "dietary_score": 84.6,
+          "ingredient_score": 92.5,
+          "nutrition_score": 85.0,
+          "serving_value_score": 68.5,
+          "taste_score": 84.0
+        },
+        "missing_data": null,
+        "overall": 83.7,
+        "weights_used": {
+          "availability_score": 0.05,
+          "dietary_score": 0.15,
+          "ingredient_score": 0.2,
+          "nutrition_score": 0.25,
+          "serving_value_score": 0.15,
+          "taste_score": 0.2
+        }
+      },
+      "product_1": {
+        "breakdown": {
+          "availability_score": 55.1,
+          "dietary_score": 51.8,
+          "ingredient_score": 33.3,
+          "nutrition_score": 45.0,
+          "serving_value_score": 61.5,
+          "taste_score": 62.0
+        },
+        "missing_data": null,
+        "overall": 50.1,
+        "weights_used": {
+          "availability_score": 0.05,
+          "dietary_score": 0.15,
+          "ingredient_score": 0.2,
+          "nutrition_score": 0.25,
+          "serving_value_score": 0.15,
+          "taste_score": 0.2
+        }
+      }
+    },
+    "scoring_method": "category_weighted",
+    "win_margin": 33.6,
+    "winner_evidence": [
+      "grocery A draws stronger reviewer ratings"
+    ],
+    "winner_index": 0
+  },
+  "haircare": {
+    "category": "haircare",
+    "category_weights": {
+      "hair_match_score": 0.25,
+      "ingredient_score": 0.15,
+      "multi_value_score": 0.1,
+      "results_score": 0.25,
+      "scalp_score": 0.1,
+      "scent_score": 0.15
+    },
+    "dimension_winners": {
+      "hair_match_score": {
+        "margin": 28.8,
+        "winner": "haircare A"
+      },
+      "ingredient_score": {
+        "margin": 59.2,
+        "winner": "haircare A"
+      },
+      "multi_value_score": {
+        "margin": 16.6,
+        "winner": "haircare A"
+      },
+      "results_score": {
+        "margin": 22.0,
+        "winner": "haircare A"
+      },
+      "scalp_score": {
+        "margin": 28.4,
+        "winner": "haircare A"
+      },
+      "scent_score": {
+        "margin": 26.0,
+        "winner": "haircare A"
+      }
+    },
+    "is_cross_tier": true,
+    "price_tiers": {
+      "haircare A": "luxury",
+      "haircare B": "premium"
+    },
+    "price_tiers_by_index": {
+      "product_0": "luxury",
+      "product_1": "premium"
+    },
+    "scores": {
+      "product_0": {
+        "breakdown": {
+          "hair_match_score": 79.4,
+          "ingredient_score": 92.5,
+          "multi_value_score": 43.1,
+          "results_score": 84.0,
+          "scalp_score": 83.5,
+          "scent_score": 81.2
+        },
+        "missing_data": null,
+        "overall": 79.6,
+        "weights_used": {
+          "hair_match_score": 0.25,
+          "ingredient_score": 0.15,
+          "multi_value_score": 0.1,
+          "results_score": 0.25,
+          "scalp_score": 0.1,
+          "scent_score": 0.15
+        }
+      },
+      "product_1": {
+        "breakdown": {
+          "hair_match_score": 50.6,
+          "ingredient_score": 33.3,
+          "multi_value_score": 26.5,
+          "results_score": 62.0,
+          "scalp_score": 55.1,
+          "scent_score": 55.2
+        },
+        "missing_data": null,
+        "overall": 49.6,
+        "weights_used": {
+          "hair_match_score": 0.25,
+          "ingredient_score": 0.15,
+          "multi_value_score": 0.1,
+          "results_score": 0.25,
+          "scalp_score": 0.1,
+          "scent_score": 0.15
+        }
+      }
+    },
+    "scoring_method": "category_weighted",
+    "win_margin": 30.0,
+    "winner_evidence": [
+      "haircare A draws stronger reviewer ratings"
+    ],
+    "winner_index": 0
+  },
+  "makeup": {
+    "category": "makeup",
+    "category_weights": {
+      "finish_score": 0.15,
+      "ingredient_safety_score": 0.1,
+      "longevity_score": 0.25,
+      "perf_value_score": 0.1,
+      "shade_score": 0.2,
+      "skin_compat_score": 0.2
+    },
+    "dimension_winners": {
+      "finish_score": {
+        "margin": 15.0,
+        "winner": "makeup B"
+      },
+      "ingredient_safety_score": {
+        "margin": 28.4,
+        "winner": "makeup A"
+      },
+      "longevity_score": {
+        "margin": 22.0,
+        "winner": "makeup A"
+      },
+      "perf_value_score": {
+        "margin": 38.2,
+        "winner": "makeup B"
+      },
+      "shade_score": {
+        "margin": 39.8,
+        "winner": "makeup B"
+      },
+      "skin_compat_score": {
+        "margin": 59.2,
+        "winner": "makeup A"
+      }
+    },
+    "is_cross_tier": true,
+    "price_tiers": {
+      "makeup A": "luxury",
+      "makeup B": "premium"
+    },
+    "price_tiers_by_index": {
+      "product_0": "luxury",
+      "product_1": "premium"
+    },
+    "scores": {
+      "product_0": {
+        "breakdown": {
+          "finish_score": 60.7,
+          "ingredient_safety_score": 83.5,
+          "longevity_score": 84.0,
+          "perf_value_score": 15.7,
+          "shade_score": 45.1,
+          "skin_compat_score": 92.5
+        },
+        "missing_data": null,
+        "overall": 67.5,
+        "weights_used": {
+          "finish_score": 0.15,
+          "ingredient_safety_score": 0.1,
+          "longevity_score": 0.25,
+          "perf_value_score": 0.1,
+          "shade_score": 0.2,
+          "skin_compat_score": 0.2
+        }
+      },
+      "product_1": {
+        "breakdown": {
+          "finish_score": 75.7,
+          "ingredient_safety_score": 55.1,
+          "longevity_score": 62.0,
+          "perf_value_score": 53.9,
+          "shade_score": 84.9,
+          "skin_compat_score": 33.3
+        },
+        "missing_data": null,
+        "overall": 61.4,
+        "weights_used": {
+          "finish_score": 0.15,
+          "ingredient_safety_score": 0.1,
+          "longevity_score": 0.25,
+          "perf_value_score": 0.1,
+          "shade_score": 0.2,
+          "skin_compat_score": 0.2
+        }
+      }
+    },
+    "scoring_method": "category_weighted",
+    "win_margin": 6.1,
+    "winner_evidence": [
+      "makeup A draws stronger reviewer ratings"
+    ],
+    "winner_index": 0
+  },
+  "other": {
+    "category": "other",
+    "category_weights": {
+      "build_score": 0.15,
+      "feature_match_score": 0.1,
+      "function_score": 0.25,
+      "reliability_score": 0.1,
+      "review_score": 0.25,
+      "value_score": 0.15
+    },
+    "dimension_winners": {
+      "build_score": {
+        "margin": 59.2,
+        "winner": "other A"
+      },
+      "feature_match_score": {
+        "margin": 28.4,
+        "winner": "other A"
+      },
+      "function_score": {
+        "margin": null,
+        "winner": "N/A"
+      },
+      "reliability_score": {
+        "margin": 22.0,
+        "winner": "other A"
+      },
+      "review_score": {
+        "margin": 22.0,
+        "winner": "other A"
+      },
+      "value_score": {
+        "margin": null,
+        "winner": "N/A"
+      }
+    },
+    "is_cross_tier": false,
+    "price_tiers": {
+      "other A": "premium",
+      "other B": "premium"
+    },
+    "price_tiers_by_index": {
+      "product_0": "premium",
+      "product_1": "premium"
+    },
+    "scores": {
+      "product_0": {
+        "breakdown": {
+          "build_score": 92.5,
+          "feature_match_score": 83.5,
+          "function_score": 50,
+          "reliability_score": 84.0,
+          "review_score": 84.0,
+          "value_score": 30.0
+        },
+        "missing_data": [
+          "function_score",
+          "value_score"
+        ],
+        "overall": 68.6,
+        "weights_used": {
+          "build_score": 0.15,
+          "feature_match_score": 0.1,
+          "function_score": 0.25,
+          "reliability_score": 0.1,
+          "review_score": 0.25,
+          "value_score": 0.15
+        }
+      },
+      "product_1": {
+        "breakdown": {
+          "build_score": 33.3,
+          "feature_match_score": 55.1,
+          "function_score": 50,
+          "reliability_score": 62.0,
+          "review_score": 62.0,
+          "value_score": 100.0
+        },
+        "missing_data": [
+          "function_score",
+          "value_score"
+        ],
+        "overall": 59.7,
+        "weights_used": {
+          "build_score": 0.15,
+          "feature_match_score": 0.1,
+          "function_score": 0.25,
+          "reliability_score": 0.1,
+          "review_score": 0.25,
+          "value_score": 0.15
+        }
+      }
+    },
+    "scoring_method": "category_weighted",
+    "win_margin": 8.9,
+    "winner_evidence": [
+      "other A draws stronger reviewer ratings"
+    ],
+    "winner_index": 0
+  },
+  "skincare": {
+    "category": "skincare",
+    "category_weights": {
+      "actives_score": 0.25,
+      "evidence_score": 0.2,
+      "formulation_score": 0.15,
+      "results_value_score": 0.1,
+      "sensory_score": 0.1,
+      "skin_compat_score": 0.2
+    },
+    "dimension_winners": {
+      "actives_score": {
+        "margin": 1.2,
+        "winner": "tie"
+      },
+      "evidence_score": {
+        "margin": 59.2,
+        "winner": "skincare A"
+      },
+      "formulation_score": {
+        "margin": 9.6,
+        "winner": "skincare A"
+      },
+      "results_value_score": {
+        "margin": 5.4,
+        "winner": "skincare B"
+      },
+      "sensory_score": {
+        "margin": 28.4,
+        "winner": "skincare A"
+      },
+      "skin_compat_score": {
+        "margin": 22.0,
+        "winner": "skincare A"
+      }
+    },
+    "is_cross_tier": true,
+    "price_tiers": {
+      "skincare A": "luxury",
+      "skincare B": "premium"
+    },
+    "price_tiers_by_index": {
+      "product_0": "luxury",
+      "product_1": "premium"
+    },
+    "scores": {
+      "product_0": {
+        "breakdown": {
+          "actives_score": 65.6,
+          "evidence_score": 92.5,
+          "formulation_score": 73.0,
+          "results_value_score": 32.1,
+          "sensory_score": 83.5,
+          "skin_compat_score": 84.0
+        },
+        "missing_data": null,
+        "overall": 74.2,
+        "weights_used": {
+          "actives_score": 0.25,
+          "evidence_score": 0.2,
+          "formulation_score": 0.15,
+          "results_value_score": 0.1,
+          "sensory_score": 0.1,
+          "skin_compat_score": 0.2
+        }
+      },
+      "product_1": {
+        "breakdown": {
+          "actives_score": 64.4,
+          "evidence_score": 33.3,
+          "formulation_score": 63.4,
+          "results_value_score": 37.5,
+          "sensory_score": 55.1,
+          "skin_compat_score": 62.0
+        },
+        "missing_data": null,
+        "overall": 53.9,
+        "weights_used": {
+          "actives_score": 0.25,
+          "evidence_score": 0.2,
+          "formulation_score": 0.15,
+          "results_value_score": 0.1,
+          "sensory_score": 0.1,
+          "skin_compat_score": 0.2
+        }
+      }
+    },
+    "scoring_method": "category_weighted",
+    "win_margin": 20.3,
+    "winner_evidence": [
+      "skincare A draws stronger reviewer ratings"
+    ],
+    "winner_index": 0
+  },
+  "supplements": {
+    "category": "supplements",
+    "category_weights": {
+      "dosage_score": 0.15,
+      "efficacy_score": 0.3,
+      "form_score": 0.1,
+      "safety_score": 0.25,
+      "serving_value_score": 0.1,
+      "trust_score": 0.1
+    },
+    "dimension_winners": {
+      "dosage_score": {
+        "margin": 15.2,
+        "winner": "supplements B"
+      },
+      "efficacy_score": {
+        "margin": 40.0,
+        "winner": "supplements B"
+      },
+      "form_score": {
+        "margin": 22.0,
+        "winner": "supplements A"
+      },
+      "safety_score": {
+        "margin": 59.2,
+        "winner": "supplements A"
+      },
+      "serving_value_score": {
+        "margin": 49.0,
+        "winner": "supplements B"
+      },
+      "trust_score": {
+        "margin": 28.4,
+        "winner": "supplements A"
+      }
+    },
+    "is_cross_tier": false,
+    "price_tiers": {
+      "supplements A": "luxury",
+      "supplements B": "luxury"
+    },
+    "price_tiers_by_index": {
+      "product_0": "luxury",
+      "product_1": "luxury"
+    },
+    "scores": {
+      "product_0": {
+        "breakdown": {
+          "dosage_score": 60.6,
+          "efficacy_score": 45.0,
+          "form_score": 84.0,
+          "safety_score": 92.5,
+          "serving_value_score": 40.5,
+          "trust_score": 83.5
+        },
+        "missing_data": null,
+        "overall": 66.5,
+        "weights_used": {
+          "dosage_score": 0.15,
+          "efficacy_score": 0.3,
+          "form_score": 0.1,
+          "safety_score": 0.25,
+          "serving_value_score": 0.1,
+          "trust_score": 0.1
+        }
+      },
+      "product_1": {
+        "breakdown": {
+          "dosage_score": 75.8,
+          "efficacy_score": 85.0,
+          "form_score": 62.0,
+          "safety_score": 33.3,
+          "serving_value_score": 89.5,
+          "trust_score": 55.1
+        },
+        "missing_data": null,
+        "overall": 65.9,
+        "weights_used": {
+          "dosage_score": 0.15,
+          "efficacy_score": 0.3,
+          "form_score": 0.1,
+          "safety_score": 0.25,
+          "serving_value_score": 0.1,
+          "trust_score": 0.1
+        }
+      }
+    },
+    "scoring_method": "category_weighted",
+    "win_margin": 0.6,
+    "winner_evidence": [
+      "supplements A draws stronger reviewer ratings"
+    ],
+    "winner_index": 0
+  }
+}

@@ -7,7 +7,7 @@ prices, reviews, and user preferences. Same input = same output (deterministic).
 import logging
 import os
 import re
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Tuple
 
 from app.services.extraction_service import CATEGORY_SPEC_SCHEMAS, canonicalize_category
 
@@ -434,6 +434,32 @@ def _category_value_badge_enabled() -> bool:
     return os.environ.get("ENABLE_CATEGORY_VALUE_BADGE", "").strip().lower() in (
         "1", "true", "yes", "on",
     )
+
+
+# M26 #100 — ENABLE_SPEC_FIELD_NORM (default OFF). When ON, `spec_raw` is
+# recomputed pair-relatively in `_normalize_scores`: each schema field
+# contributes a unit-free 0..1 score (pair min-max via _magnitude_aware_ratio;
+# a >=10x same-field magnitude gap reads as a unit/notation tie; a one-sided
+# field is a genuine 1.0 vs 0.0 advantage), the product score is the mean over
+# the UNION of populated fields (missing fields dilute, never concentrate),
+# and the coverage discount uses TOTAL schema fields as its divisor basis:
+# `mean * (0.5 + scored_fields / total_fields)` (PO-rubric-01 + PO-rubric-02).
+# Read LIVE per call (the response_builder._gpt_winner_lever_enabled idiom, NOT
+# the module-cached _bundle_c_scoring_enabled) so a Railway flip needs no
+# restart and monkeypatch.setenv alone works in tests.
+def _spec_field_norm_enabled() -> bool:
+    import os
+    return os.environ.get("ENABLE_SPEC_FIELD_NORM", "").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
+
+
+# M26 #100 — within a single schema field, a >=10x magnitude gap between two
+# comparable products is overwhelmingly a unit/notation artifact ("5000mAh" vs
+# "Up to 29 hours video playback"; "1 TB" vs "128 GB"), not merit — the same
+# order-of-magnitude discipline as the price extractor's 10x/100x per-unit
+# decoy guard. Such a pair reads as a tie at the 0.5 midpoint.
+_SPEC_FIELD_UNIT_MISMATCH_RATIO = 10.0
 
 
 # Bundle C § 3b + § 3e — per-category 5-tier breakpoints (BHD).
@@ -1490,6 +1516,13 @@ class ScoringService:
             scores["spec_raw"] = spec_score
             if spec_score is None:
                 scores["_spec_missing"] = True
+            elif _spec_field_norm_enabled():
+                # M26 #100 — stash the per-field tuple so _normalize_scores
+                # (where the PAIR is visible) can recompute spec_raw
+                # pair-relatively. Additive private key; nothing reads it when
+                # the flag is OFF, and _score_specs_fields returns None on
+                # exactly the same zero-coverage condition as _score_specs.
+                scores["_spec_fields"] = self._score_specs_fields(specs, category)
         else:
             scores["spec_raw"] = None
             scores["_spec_missing"] = True
@@ -1643,6 +1676,126 @@ class ScoringService:
 
         return total_score / scored_fields
 
+    def _score_specs_fields(
+        self, specs: Dict[str, Any], category: str
+    ) -> Optional[Tuple[Dict[str, float], int, int]]:
+        """M26 #100 — per-field signed numerics for pair-relative spec scoring.
+
+        Returns ({field: signed_numeric}, scored_fields, total_fields), reusing
+        _score_specs' schema/direction selection verbatim: higher-is-better
+        fields carry +magnitude, lower-is-better carry -magnitude (so the pair
+        min-max always runs higher_better=True), and neutral/non-numeric
+        populated fields carry the same presence credit of 1.0 the legacy sum
+        uses (`total_score += 1`) — both sides populated ties at 0.5, one side
+        populated is a genuine 1.0 vs 0.0 advantage. Returns None on exactly
+        the same zero-coverage condition as _score_specs (the B0-A v2.1
+        guard), so `spec_raw is None` and `_spec_fields is None` agree.
+        """
+        schema_key = category if category in CATEGORY_SPEC_SCHEMAS else "other"
+        schema_fields = [
+            f for f in CATEGORY_SPEC_SCHEMAS[schema_key]
+            if f not in NON_SCORING_SPEC_KEYS
+        ]
+
+        higher = HIGHER_IS_BETTER_BY_CATEGORY.get(category, set())
+        lower = LOWER_IS_BETTER_BY_CATEGORY.get(category, set())
+
+        field_values: Dict[str, float] = {}
+        scored_fields = 0
+        for field in schema_fields:
+            value = specs.get(field)
+            if not value or value == "N/A":
+                continue
+            numeric = self._extract_number(str(value))
+            if numeric is not None and field in higher:
+                field_values[field] = numeric
+            elif numeric is not None and field in lower:
+                field_values[field] = -numeric
+            else:
+                field_values[field] = 1.0  # presence credit (legacy `+= 1`)
+            scored_fields += 1
+
+        if scored_fields == 0:
+            return None
+
+        return field_values, scored_fields, len(schema_fields)
+
+    def _apply_spec_field_normalization(self, raw_scores: List[Dict[str, Any]]) -> None:
+        """M26 #100 (flag ON only) — recompute each product's `spec_raw` as a
+        pair-relative, per-field-normalized score, in place.
+
+        For each field populated on at least one product:
+          * populated on ALL sides — pair min-max via _magnitude_aware_ratio
+            (equal values short-circuit to 0.5 before the helper, per its
+            hi > lo contract), EXCEPT a >=10x magnitude gap on the same field,
+            which is a unit/notation artifact (mAh vs hours) and ties at 0.5;
+          * populated on a strict subset — the holders min-max among
+            themselves (a single holder scores 1.0), absent sides score 0.0
+            for that field: presence is a genuine advantage, and missing
+            fields DILUTE the mean instead of concentrating it.
+
+        Each product's score is the mean over the UNION of populated fields,
+        then discounted by coverage with TOTAL schema fields as the divisor
+        basis: `mean * (0.5 + scored_fields / total_fields)` — the
+        PO-rubric-02 half. `spec_raw` stays a single Optional[float], so every
+        downstream consumer (_normalize_dimension, spec/spec_secondary, the
+        value formula, the tied-spec collapse) is untouched in shape; products
+        with `spec_raw is None` keep the missing path unchanged.
+        """
+        entries = []
+        for idx, rs in enumerate(raw_scores):
+            stash = rs.get("_spec_fields")
+            if (
+                isinstance(stash, tuple) and len(stash) == 3
+                and isinstance(stash[0], dict) and stash[0]
+            ):
+                entries.append((idx, stash[0], stash[1], stash[2]))
+        if not entries:
+            return
+
+        union_fields = set()
+        for _, field_map, _, _ in entries:
+            union_fields.update(field_map.keys())
+        if not union_fields:
+            return
+
+        holders_by_field = {
+            field: [fm[field] for _, fm, _, _ in entries if field in fm]
+            for field in union_fields
+        }
+
+        for idx, field_map, scored_fields, total_fields in entries:
+            acc = 0.0
+            ratios: Dict[str, float] = {}
+            for field in union_fields:
+                if field not in field_map:
+                    continue  # absent here → contributes 0.0 to the mean
+                holders = holders_by_field[field]
+                if len(holders) == 1:
+                    ratio = 1.0  # present on this side only — genuine advantage
+                else:
+                    lo, hi = min(holders), max(holders)
+                    lo_mag, hi_mag = min(abs(lo), abs(hi)), max(abs(lo), abs(hi))
+                    if hi == lo:
+                        ratio = 0.5  # short-circuit before _magnitude_aware_ratio
+                    elif (
+                        lo_mag > 0
+                        and hi_mag / lo_mag >= _SPEC_FIELD_UNIT_MISMATCH_RATIO
+                    ):
+                        ratio = 0.5  # same-field unit/notation artifact → tie
+                    else:
+                        ratio = _magnitude_aware_ratio(
+                            field_map[field], lo, hi, higher_better=True
+                        )
+                ratios[field] = ratio
+                acc += ratio
+            mean = acc / len(union_fields)
+            coverage_ratio = (
+                scored_fields / total_fields if total_fields > 0 else 0.0
+            )
+            raw_scores[idx]["spec_raw"] = mean * (0.5 + coverage_ratio)
+            raw_scores[idx]["_spec_field_ratios"] = ratios
+
     def _score_reliability(self, fact_check: Dict[str, Any]) -> Optional[float]:
         """Score reliability from fact_check data on 0-1 scale.
 
@@ -1787,6 +1940,12 @@ class ScoringService:
             else:
                 price_tiers.append("mid")
         is_cross_tier_flag = self._is_cross_tier(price_tiers)
+
+        # M26 #100 — pair-relative per-field spec normalization (default OFF).
+        # Must run BEFORE spec_raw is consumed below; flag OFF leaves the
+        # legacy raw-magnitude spec_raw byte-identical.
+        if _spec_field_norm_enabled():
+            self._apply_spec_field_normalization(raw_scores)
 
         # Compute intermediate normalized signals
         price_scores = [self._normalize_price(raw_scores, i) for i in range(len(raw_scores))]
