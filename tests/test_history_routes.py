@@ -692,3 +692,55 @@ def test_delete_forbidden_does_not_bust_cache(mock_get):
             assert mock_delete_cached.call_count == 0
         finally:
             _cleanup_overrides()
+
+
+# ============================================================
+# #116 — DELETE must also bust the home:savings cache (same
+# three-invariant contract as smart_pick / profile_recent).
+# ============================================================
+
+
+@patch("app.api.history_routes.delete_comparison", new_callable=AsyncMock, return_value=True)
+@patch("app.api.history_routes.get_comparison_by_id", new_callable=AsyncMock, return_value=MOCK_COMPARISON)
+def test_delete_busts_home_savings_cache(mock_get, mock_del):
+    """DELETE /comparisons/{id} must invalidate home:savings:{user_id}."""
+    with patch("app.api.history_routes.delete_cached") as mock_delete_cached:
+        client = _get_client_with_user()
+        try:
+            resp = client.delete("/api/v1/comparisons/a1b2c3d4-e5f6-7890-abcd-ef1234567890")
+            assert resp.status_code == 200
+            called_keys = [c.args[0] for c in mock_delete_cached.call_args_list]
+            assert "home:savings:user-123" in called_keys, (
+                f"home:savings cache not busted; delete_cached called with: {called_keys}"
+            )
+        finally:
+            _cleanup_overrides()
+
+
+@patch("app.api.history_routes.delete_comparison", new_callable=AsyncMock, return_value=False)
+@patch("app.api.history_routes.get_comparison_by_id", new_callable=AsyncMock, return_value=MOCK_COMPARISON)
+def test_delete_failure_does_not_bust_home_savings(mock_get, mock_del):
+    """DB delete fails => the savings key must NOT be busted."""
+    with patch("app.api.history_routes.delete_cached") as mock_delete_cached:
+        client = _get_client_with_user()
+        try:
+            resp = client.delete("/api/v1/comparisons/a1b2c3d4-e5f6-7890-abcd-ef1234567890")
+            assert resp.status_code == 500
+            called_keys = [c.args[0] for c in mock_delete_cached.call_args_list]
+            assert "home:savings:user-123" not in called_keys
+        finally:
+            _cleanup_overrides()
+
+
+@patch("app.api.history_routes.get_comparison_by_id", new_callable=AsyncMock, return_value=MOCK_COMPARISON)
+def test_forbidden_delete_does_not_bust_home_savings(mock_get):
+    """403/404 path => the savings key must NOT be busted."""
+    with patch("app.api.history_routes.delete_cached") as mock_delete_cached:
+        client = _get_client_with_user(MOCK_OTHER_USER)
+        try:
+            resp = client.delete("/api/v1/comparisons/a1b2c3d4-e5f6-7890-abcd-ef1234567890")
+            assert resp.status_code == 404
+            called_keys = [c.args[0] for c in mock_delete_cached.call_args_list]
+            assert "home:savings:user-123" not in called_keys
+        finally:
+            _cleanup_overrides()

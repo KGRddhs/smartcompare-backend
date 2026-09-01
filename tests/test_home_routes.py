@@ -941,3 +941,208 @@ class TestHomeTrending:
         assert resp.status_code == 200, resp.text
         body = resp.json()
         assert body["region"] == "bahrain"
+
+
+
+# =============================================================================
+# #116 (M18 LS-event-loop-01) — /home/savings SQL-side aggregate
+# =============================================================================
+
+
+class _RpcRecordingClient:
+    """Records .rpc() and .table() calls; rpc().execute() returns `rpc_rows`
+    and captures the executing thread."""
+
+    def __init__(self, rpc_rows=None, raise_on_rpc=False):
+        self.rpc_calls: list = []
+        self.table_calls: list = []
+        self.threads: list = []
+        self._rpc_rows = rpc_rows if rpc_rows is not None else []
+        self._raise_on_rpc = raise_on_rpc
+        outer = self
+
+        class _Exec:
+            def execute(self):
+                import threading as _threading
+                outer.threads.append(_threading.current_thread())
+                if outer._raise_on_rpc:
+                    raise RuntimeError("rpc down")
+                resp = MagicMock()
+                resp.data = outer._rpc_rows
+                return resp
+
+        self._exec = _Exec()
+
+    def rpc(self, name, params):
+        self.rpc_calls.append((name, params))
+        return self._exec
+
+    def table(self, name):
+        self.table_calls.append(name)
+        return MagicMock()
+
+
+class TestHomeSavingsAggregate:
+    """ENABLE_HOME_SAVINGS_AGGREGATE (default OFF) — the SQL-side aggregate
+    replaces the unbounded full_response SELECT; flag OFF keeps the legacy
+    Python-side path byte-identical."""
+
+    def _call_savings(self, supabase, flag_on=True):
+        import os as _os
+        from app.api.auth_routes import get_current_user
+        app.dependency_overrides[get_current_user] = _fake_user()
+        if flag_on:
+            env_patch = patch.dict(
+                _os.environ, {"ENABLE_HOME_SAVINGS_AGGREGATE": "true"}
+            )
+        else:
+            env_patch = patch.dict(_os.environ, {}, clear=False)
+        with env_patch, \
+             patch("app.api.home_routes.get_user_supabase_client", return_value=supabase), \
+             patch("app.api.home_routes._redis_get", return_value=None), \
+             patch("app.api.home_routes._redis_set", return_value=True):
+            if not flag_on:
+                _os.environ.pop("ENABLE_HOME_SAVINGS_AGGREGATE", None)
+            return client.get(
+                "/api/v1/home/savings", headers={"Authorization": "Bearer fake"}
+            )
+
+    def test_savings_uses_sql_aggregate_rpc_and_never_selects_full_response(self):
+        supabase = _RpcRecordingClient(
+            rpc_rows=[{"savings_bhd": 175.0, "decisions_count": 4}]
+        )
+        resp = self._call_savings(supabase, flag_on=True)
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body == {
+            "savings_bhd": 175.0,
+            "decisions_count": 4,
+            "threshold_met": True,
+        }
+        # Exactly ONE bounded round trip: the RPC. No table scan at all.
+        assert supabase.rpc_calls == [
+            ("home_savings_aggregate", {"p_user_id": "test-user-id"})
+        ]
+        assert supabase.table_calls == []
+
+    def test_savings_rpc_payload_shape_and_rounding(self):
+        supabase = _RpcRecordingClient(
+            rpc_rows=[{"savings_bhd": 10.005, "decisions_count": 2}]
+        )
+        resp = self._call_savings(supabase, flag_on=True)
+        body = resp.json()
+        assert set(body.keys()) == {"savings_bhd", "decisions_count", "threshold_met"}
+        assert body["savings_bhd"] in (10.0, 10.01)  # rounded to 2dp
+        assert body["threshold_met"] is False
+
+    def test_savings_rpc_zero_rows_returns_threshold_not_met(self):
+        supabase = _RpcRecordingClient(rpc_rows=[])
+        resp = self._call_savings(supabase, flag_on=True)
+        assert resp.status_code == 200
+        assert resp.json() == {
+            "savings_bhd": 0.0,
+            "decisions_count": 0,
+            "threshold_met": False,
+        }
+
+    def test_savings_rpc_failure_returns_empty_payload_not_500(self):
+        supabase = _RpcRecordingClient(raise_on_rpc=True)
+        resp = self._call_savings(supabase, flag_on=True)
+        assert resp.status_code == 200
+        assert resp.json() == {
+            "savings_bhd": 0.0,
+            "decisions_count": 0,
+            "threshold_met": False,
+        }
+
+    def test_savings_flag_off_uses_legacy_select_no_rpc(self):
+        """OFF-branch identity pin: default OFF keeps the legacy comparisons
+        SELECT and never calls the RPC."""
+        rows = [_comparison_row(winner_idx=0, p0_price=200, p1_price=250)]
+        supabase = MagicMock()
+        _patch_supabase_comparisons(supabase, rows)
+        rpc_probe = MagicMock()
+        supabase.rpc = rpc_probe
+        resp = self._call_savings(supabase, flag_on=False)
+        assert resp.status_code == 200
+        assert resp.json()["decisions_count"] == 1
+        assert rpc_probe.call_count == 0
+
+    def test_savings_legacy_skips_non_bhd_rows(self):
+        row = _comparison_row(winner_idx=0, p0_price=200, p1_price=250)
+        row["full_response"]["products"][0]["price"]["currency"] = "SAR"
+        supabase = MagicMock()
+        _patch_supabase_comparisons(supabase, [row])
+        resp = self._call_savings(supabase, flag_on=False)
+        body = resp.json()
+        assert body["decisions_count"] == 0
+        assert body["savings_bhd"] == 0.0
+
+    def test_savings_legacy_skips_bad_winner_index(self):
+        row = _comparison_row(winner_idx=0, p0_price=200, p1_price=250)
+        row["full_response"]["winner_index"] = 2
+        supabase = MagicMock()
+        _patch_supabase_comparisons(supabase, [row])
+        resp = self._call_savings(supabase, flag_on=False)
+        body = resp.json()
+        assert body["decisions_count"] == 0
+        assert body["savings_bhd"] == 0.0
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("flag_on", [True, False])
+    async def test_savings_rpc_offload_via_run_db_dispatch(self, monkeypatch, flag_on):
+        """Thread-identity pin for the remaining round trip (the RPC), via the
+        module helper — ENABLE_SYNC_DB_OFFLOAD ON => off-loop, OFF => inline."""
+        import threading
+        from app.api import home_routes as hr
+
+        if flag_on:
+            monkeypatch.setenv("ENABLE_SYNC_DB_OFFLOAD", "true")
+        else:
+            monkeypatch.delenv("ENABLE_SYNC_DB_OFFLOAD", raising=False)
+        main = threading.current_thread()
+        supabase = _RpcRecordingClient(
+            rpc_rows=[{"savings_bhd": 1.0, "decisions_count": 1}]
+        )
+        savings, count = await hr._fetch_savings_aggregate(supabase, "u1")
+        assert (savings, count) == (1.0, 1)
+        assert len(supabase.threads) == 1
+        if flag_on:
+            assert supabase.threads[0] is not main
+        else:
+            assert supabase.threads[0] is main
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("flag_on", [True, False])
+    async def test_savings_redis_async_dispatch(self, monkeypatch, flag_on):
+        """home_routes gets its own module-local _redis_get/_redis_set dispatch
+        (NOT scs._cache_get_async — different decode semantics)."""
+        import threading
+        from app.api import home_routes as hr
+
+        if flag_on:
+            monkeypatch.setenv("ENABLE_ASYNC_REDIS_OFFLOAD", "true")
+        else:
+            monkeypatch.delenv("ENABLE_ASYNC_REDIS_OFFLOAD", raising=False)
+        main = threading.current_thread()
+        seen = {}
+
+        def fake_get(key):
+            seen["get"] = threading.current_thread()
+            return None
+
+        def fake_set(key, value, ex=None):
+            seen["set"] = threading.current_thread()
+            return True
+
+        monkeypatch.setattr(hr, "_redis_get", fake_get)
+        monkeypatch.setattr(hr, "_redis_set", fake_set)
+
+        assert await hr._redis_get_async("k") is None
+        assert await hr._redis_set_async("k", "v", ex=60) is True
+        if flag_on:
+            assert seen["get"] is not main
+            assert seen["set"] is not main
+        else:
+            assert seen["get"] is main
+            assert seen["set"] is main

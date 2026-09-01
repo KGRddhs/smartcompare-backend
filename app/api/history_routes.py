@@ -205,5 +205,8 @@ async def remove_comparison(
     user_id = current_user["id"]
     delete_cached(f"home:smart_pick:{user_id}")
     delete_cached(f"profile_recent:{user_id}")
+    # #116 — savings now carries a long bust-on-write TTL; a deleted comparison
+    # must stop counting toward the banner immediately, not at TTL expiry.
+    delete_cached(f"home:savings:{user_id}")
 
     return {"success": True}

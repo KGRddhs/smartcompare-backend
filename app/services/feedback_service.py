@@ -1,12 +1,25 @@
 """
 Feedback Service - Save comparison feedback and track user events
 """
+import asyncio
 import logging
 from typing import Dict, List, Optional
 
+from app.services.cache_service import delete_cached, _redis_offload_enabled
 from app.services.database_service import get_supabase_client, save_comparison
 from app.services.model_config import critic_model
 from app.utils.db_offload import run_db  # M13-05 / #115 ENABLE_SYNC_DB_OFFLOAD
+
+
+async def _delete_cached_async(key: str) -> bool:
+    """#116 — offload dispatch for the savings cache bust
+    (ENABLE_ASYNC_REDIS_OFFLOAD). References the module-level `delete_cached`
+    in BOTH branches (the cache_service.py design note) so a test patching
+    feedback_service.delete_cached intercepts flag-ON and flag-OFF alike.
+    Flag OFF -> inline, byte-identical; delete_cached swallows Redis errors."""
+    if _redis_offload_enabled():
+        return await asyncio.to_thread(delete_cached, key)
+    return delete_cached(key)
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +51,12 @@ async def save_comparison_and_track_cohort(
         comparison_id = (saved or {}).get("id")
         cohort_injected = (full_response.get("metadata") or {}).get("cohort_injected", False)
         if comparison_id:
+            # #116 — the save side of the home:savings bust-on-write contract
+            # (delete side: history_routes.remove_comparison). Only when the
+            # save actually succeeded (comparison_id truthy) — a failed save
+            # must never nuke a valid cache. Unflagged: it only deletes a key
+            # a TTL would have expired anyway.
+            await _delete_cached_async(f"home:savings:{user_id}")
             await track_event(
                 user_id=user_id,
                 event_type="comparison_completed",

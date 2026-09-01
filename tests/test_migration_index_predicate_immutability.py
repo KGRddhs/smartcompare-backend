@@ -159,3 +159,18 @@ def test_detector_ignores_immutable_index_predicate():
     preds = _index_predicates(ok)
     assert len(preds) == 1
     assert _volatile_hits(preds[0][1]) == []
+
+
+def test_036_has_matching_rollback():
+    """#116 — migration 036 (home_savings_aggregate RPC) ships with its
+    rollback pair. Both files must exist even though the migration is applied
+    by hand later (033/035 precedent: the SQL lands first and is inert until
+    the Supabase MCP apply)."""
+    fwd = MIGRATIONS_DIR / "036_home_savings_aggregate.sql"
+    rb = MIGRATIONS_DIR / "rollback" / "036_home_savings_aggregate.sql"
+    assert fwd.exists(), "migrations/036_home_savings_aggregate.sql is missing"
+    assert rb.exists(), "migrations/rollback/036_home_savings_aggregate.sql is missing"
+    fwd_sql = fwd.read_text(encoding="utf-8")
+    rb_sql = rb.read_text(encoding="utf-8")
+    assert "home_savings_aggregate" in fwd_sql
+    assert "DROP FUNCTION" in rb_sql.upper()

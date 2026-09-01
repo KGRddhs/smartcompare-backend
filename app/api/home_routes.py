@@ -14,8 +14,9 @@ All endpoints:
 - read from `comparisons` rows filtered to `schema_version=2` (Migration
   020 invariant — never include legacy v1 rows that bypassed the
   `_validate_renderable` write-side check)
-- cache results in Redis (per-user 5min for savings + smart-pick; global
-  per-region 1h for trending)
+- cache results in Redis (per-user 5min for smart-pick, per-user 6h
+  bust-on-write backstop for savings (#116); global per-region 1h for
+  trending)
 - return safe defaults / empty-state on degraded data — frontend never
   needs to defensively check for null at top-level
 
@@ -27,8 +28,10 @@ followup on Approach B (k-anonymity threshold + PII regex filter).
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
+import os
 import re
 from pathlib import Path
 from typing import Any, Optional
@@ -37,20 +40,84 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from app.api.auth_routes import get_current_user, get_optional_user
 from app.middleware.rate_limiter import limiter
-from app.services.cache_service import _redis_get, _redis_set
+from app.services.cache_service import _redis_get, _redis_set, _redis_offload_enabled
 from app.services.database_service import (
     get_admin_supabase_client,
     get_user_supabase_client,
 )
+from app.utils.db_offload import run_db  # M13-05 / #116 ENABLE_SYNC_DB_OFFLOAD
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/home", tags=["home"])
 
+
+def _home_savings_aggregate_enabled() -> bool:
+    """#116 — ENABLE_HOME_SAVINGS_AGGREGATE, read PER CALL (the
+    db_offload.sync_db_offload_enabled idiom). Default OFF => the legacy
+    Python-side full_response scan below runs byte-identically; ON => the
+    aggregate is computed server-side by the migration-036
+    home_savings_aggregate(p_user_id) RPC in one small round trip whose cost
+    does not grow with the user's history. Flip in Railway only AFTER
+    migrations/036_home_savings_aggregate.sql is applied and verified."""
+    return os.getenv("ENABLE_HOME_SAVINGS_AGGREGATE", "").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
+# --- #116 module-local Redis offload dispatches (ENABLE_ASYNC_REDIS_OFFLOAD) --
+# Deliberately NOT scs._cache_get_async: that wraps get_cached, which
+# JSON-decodes and returns None on a decode failure, while this module does its
+# own json.loads inside a try that logs and RECOMPUTES on failure — reusing the
+# scs dispatch would double-decode and change the degraded path. Per the
+# cache_service.py design note, the dispatch lives HERE and references the
+# module-level _redis_get/_redis_set in BOTH branches, so a test patching
+# home_routes._redis_get intercepts flag-ON and flag-OFF alike. Flag OFF ->
+# inline, no scheduler yield, byte-identical.
+
+
+async def _redis_get_async(key: str) -> Optional[str]:
+    if _redis_offload_enabled():
+        return await asyncio.to_thread(_redis_get, key)
+    return _redis_get(key)
+
+
+async def _redis_set_async(key: str, value: str, ex: Optional[int] = None) -> bool:
+    if _redis_offload_enabled():
+        return await asyncio.to_thread(_redis_set, key, value, ex=ex)
+    return _redis_set(key, value, ex=ex)
+
+
+async def _fetch_savings_aggregate(client, user_id: str) -> tuple[float, int]:
+    """#116 — the flag-ON savings round trip: ONE home_savings_aggregate RPC,
+    routed through run_db (ENABLE_SYNC_DB_OFFLOAD; inline when OFF). Returns
+    (savings_bhd, decisions_count). Raises on RPC failure — the route's caller
+    degrades to the empty payload, matching the legacy path's contract."""
+    resp = await run_db(
+        lambda: client.rpc("home_savings_aggregate", {"p_user_id": user_id}).execute()
+    )
+    data = resp.data
+    if isinstance(data, list):
+        row = data[0] if data else {}
+    else:
+        row = data or {}
+    savings = round(float(row.get("savings_bhd") or 0.0), 2)
+    count = int(row.get("decisions_count") or 0)
+    return savings, count
+
+
 # -----------------------------------------------------------------------------
 # Cache TTLs per dispatcher spec
 # -----------------------------------------------------------------------------
-_SAVINGS_TTL_SECONDS = 5 * 60        # per-user 5min
+# #116 — savings only changes when a comparison is saved or deleted, and both
+# writers now bust `home:savings:{user_id}` (history_routes.remove_comparison
+# and feedback_service.save_comparison_and_track_cohort), so the TTL is a
+# backstop, not the freshness mechanism. Lengthened 5min -> 6h: the old 5min
+# TTL forced every active user to re-pay the full aggregate 12x/hour while
+# still serving up-to-5-minutes-stale data; bust-on-write serves fresher data
+# AND cuts the recompute rate. Worst case on a missed bust (Redis outage during
+# the write) is a stale banner until the 6h backstop.
+_SAVINGS_TTL_SECONDS = 6 * 60 * 60   # per-user 6h backstop (bust-on-write)
 _SMART_PICK_TTL_SECONDS = 5 * 60     # per-user 5min
 _TRENDING_TTL_SECONDS = 60 * 60      # global per-region 1h
 
@@ -129,13 +196,14 @@ async def home_savings(
     Frontend HIDES the SavingsBanner when `threshold_met=false` —
     avoids "you saved 0 BHD across 1 decision" for new users.
 
-    Cache: 5min per-user Redis. ~30/min rate limit (defensive — this is
-    a read-only endpoint, abuse vector is minimal).
+    Cache: per-user Redis, 6h backstop TTL busted on comparison save/delete
+    (#116). ~30/min rate limit (defensive — this is a read-only endpoint,
+    abuse vector is minimal).
     """
     user_id = current_user["id"]
     cache_key = f"home:savings:{user_id}"
 
-    cached = _redis_get(cache_key)
+    cached = await _redis_get_async(cache_key)
     if cached:
         try:
             return json.loads(cached)
@@ -148,14 +216,44 @@ async def home_savings(
         else get_admin_supabase_client()
     )
 
+    if _home_savings_aggregate_enabled():
+        # #116 flag-ON path — one server-side aggregate round trip (RPC), cost
+        # independent of the user's history. Same degraded contract as the
+        # legacy path: any DB failure logs and returns the empty payload, 200.
+        try:
+            total_savings, decisions_count = await _fetch_savings_aggregate(
+                client, user_id
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.error(
+                "[home/savings] aggregate RPC failed for %s: %r", user_id, exc
+            )
+            total_savings, decisions_count = 0.0, 0
+        payload = {
+            "savings_bhd": total_savings,
+            "decisions_count": decisions_count,
+            "threshold_met": decisions_count >= _SAVINGS_BANNER_THRESHOLD,
+        }
+        try:
+            await _redis_set_async(
+                cache_key, json.dumps(payload), ex=_SAVINGS_TTL_SECONDS
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[home/savings] cache write failed: %r", exc)
+        return payload
+
+    # Flag-OFF fallback — the pre-#116 Python-side scan, kept byte-identical
+    # (the SELECT is additionally run_db-routed, inline when
+    # ENABLE_SYNC_DB_OFFLOAD is OFF). Unbounded in rows and payload — that is
+    # exactly why the aggregate path above exists; do not extend this branch.
     try:
-        resp = (
+        resp = await run_db(lambda: (
             client.table("comparisons")
             .select("full_response")
             .eq("user_id", user_id)
             .eq("schema_version", 2)
             .execute()
-        )
+        ))
         rows = resp.data or []
     except Exception as exc:  # noqa: BLE001
         logger.error("[home/savings] DB fetch failed for %s: %r", user_id, exc)
@@ -167,7 +265,11 @@ async def home_savings(
     for row in rows:
         winner, loser = _extract_winner_loser_prices(row.get("full_response") or {})
         if winner is None or loser is None:
-            continue  # row has shape gaps; skip from aggregate but still counted
+            # Row has shape gaps (bad winner_index / non-BHD / null amounts):
+            # skipped from the aggregate AND from decisions_count. (#116 fixed
+            # this comment — the old text claimed skipped rows were "still
+            # counted", contradicting the code, whose behaviour is preserved.)
+            continue
         decisions_count += 1
         # max(0, ...) — never frame as negative savings (user chose pricier
         # winner: surfaced as 0 saved on that row, not -BHD).
@@ -180,7 +282,7 @@ async def home_savings(
     }
 
     try:
-        _redis_set(cache_key, json.dumps(payload), ex=_SAVINGS_TTL_SECONDS)
+        await _redis_set_async(cache_key, json.dumps(payload), ex=_SAVINGS_TTL_SECONDS)
     except Exception as exc:  # noqa: BLE001
         logger.warning("[home/savings] cache write failed: %r", exc)
 
@@ -485,7 +587,7 @@ async def home_smart_pick(
     user_id = current_user["id"]
     cache_key = f"home:smart_pick:{user_id}"
 
-    cached = _redis_get(cache_key)
+    cached = await _redis_get_async(cache_key)
     if cached:
         try:
             return json.loads(cached)
@@ -575,7 +677,7 @@ async def home_smart_pick(
         }
 
     try:
-        _redis_set(cache_key, json.dumps(payload), ex=_SMART_PICK_TTL_SECONDS)
+        await _redis_set_async(cache_key, json.dumps(payload), ex=_SMART_PICK_TTL_SECONDS)
     except Exception as exc:  # noqa: BLE001
         logger.warning("[home/smart_pick] cache write failed: %r", exc)
 
@@ -737,7 +839,7 @@ async def home_trending(
             resolved_region = _DEFAULT_REGION
 
     cache_key = f"home:trending:{resolved_region}"
-    cached = _redis_get(cache_key)
+    cached = await _redis_get_async(cache_key)
     if cached:
         try:
             return json.loads(cached)
@@ -766,7 +868,7 @@ async def home_trending(
     payload = {"trending": entries, "region": resolved_region}
 
     try:
-        _redis_set(cache_key, json.dumps(payload), ex=_TRENDING_TTL_SECONDS)
+        await _redis_set_async(cache_key, json.dumps(payload), ex=_TRENDING_TTL_SECONDS)
     except Exception as exc:  # noqa: BLE001
         logger.warning("[home/trending] cache write failed: %r", exc)
 
