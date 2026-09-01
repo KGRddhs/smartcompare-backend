@@ -79,7 +79,12 @@ describe('Bundle E S3 — HistoryScreen JSX element-order (HistoryScreen.jsx 1-3
   it('HistoryRowV2 marks winner with TOP MATCH eyebrow + emerald-border block', () => {
     expect(HISTORY_SRC).toMatch(/rowV2TopMatch/);
     expect(HISTORY_SRC).toMatch(/rowV2BlockWinner/);
-    expect(HISTORY_SRC).toMatch(/TOP MATCH/);
+    // M18: the eyebrow copy moved from a hardcoded "TOP MATCH" literal to the
+    // catalog key `results.topMatch` ("Top match"), uppercased at render time
+    // by `rowV2TopMatch.textTransform: 'uppercase'`. Pinning the KEY is a
+    // stronger contract than pinning the English glyphs — it also fails if a
+    // refactor drops the translation and re-hardcodes the string.
+    expect(HISTORY_SRC).toMatch(/t\(['"]results\.topMatch['"]\)/);
   });
 
   it('HistoryRowV2 product tiles have image_url slot testIDs (Bundle E S3 — A4 wires Image)', () => {

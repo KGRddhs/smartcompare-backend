@@ -364,6 +364,9 @@ interface StreamingCardProps {
 }
 
 function StreamingCard({ revealIndex, isWinner, testID }: StreamingCardProps) {
+  // Own hook: StreamingCard is a sibling component, not nested inside
+  // LoadingScreenVariants' closure, so it cannot borrow that `t`.
+  const { t } = useTranslation();
   const revealedThrough = (stage: RevealStage): boolean =>
     revealIndex > REVEAL_STAGES.indexOf(stage);
 
@@ -405,7 +408,9 @@ function StreamingCard({ revealIndex, isWinner, testID }: StreamingCardProps) {
           style={streamingStyles.badge}
           testID={`${testID}-badge`}
         >
-          <Text style={streamingStyles.badgeText}>Top match</Text>
+          <Text style={streamingStyles.badgeText}>
+            {t('results.topMatch', { defaultValue: 'Top match' })}
+          </Text>
         </View>
       ) : null}
     </View>

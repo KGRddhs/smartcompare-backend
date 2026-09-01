@@ -598,7 +598,9 @@ export default function HistoryScreen({ navigation, onLogout }: HistoryScreenPro
               ]}
               testID={`history-row-${item.id}-block-a`}
             >
-              {isAWinner ? <Text style={styles.rowV2TopMatch}>TOP MATCH</Text> : null}
+              {isAWinner ? (
+                <Text style={styles.rowV2TopMatch}>{t('results.topMatch')}</Text>
+              ) : null}
               {/* Bundle E S3 A4 Wave 2 — ProductImage primitive per JSX
                   HistoryScreen.jsx:226-233. tone background falls through
                   as placeholderTone. */}
@@ -644,7 +646,9 @@ export default function HistoryScreen({ navigation, onLogout }: HistoryScreenPro
               ]}
               testID={`history-row-${item.id}-block-b`}
             >
-              {isBWinner ? <Text style={styles.rowV2TopMatch}>TOP MATCH</Text> : null}
+              {isBWinner ? (
+                <Text style={styles.rowV2TopMatch}>{t('results.topMatch')}</Text>
+              ) : null}
               {/* Bundle E S3 A4 Wave 2 — ProductImage primitive per JSX
                   HistoryScreen.jsx:226-233. */}
               <View style={styles.rowV2TileWrap}>

@@ -107,6 +107,9 @@ const AVATAR_COLORS = ['#FCD9D2', '#E6EEF9', '#FFF1DA', '#FBE6E6', '#1B1C1F'];
 const AVATAR_INITIALS = ['K', 'M', 'A', 'S', '+'];
 
 function SocialProof() {
+  // Own hook: SocialProof is a module-level sibling of PaywallScreen, so it
+  // cannot borrow the screen's `t`.
+  const { t } = useTranslation();
   return (
     <View style={socialStyles.row}>
       <View style={socialStyles.avatars}>
@@ -129,8 +132,13 @@ function SocialProof() {
           </View>
         ))}
       </View>
+      {/* Split into prefix/suffix keys rather than one interpolated string:
+          the count keeps its own bold <Text> run, and AR reads naturally
+          around it ("يثق بنا أكثر من 5,000+ متسوق في الخليج"). */}
       <Text style={socialStyles.label} numberOfLines={1}>
-        Trusted by <Text style={socialStyles.labelBold}>5,000+</Text> GCC shoppers
+        {t('paywall.socialProof.prefix', { defaultValue: 'Trusted by' })}{' '}
+        <Text style={socialStyles.labelBold}>5,000+</Text>{' '}
+        {t('paywall.socialProof.suffix', { defaultValue: 'GCC shoppers' })}
       </Text>
       <View style={socialStyles.ratingPill}>
         <Star size={11} color={colors.accentDark} fill={colors.accentDark} />
@@ -329,21 +337,27 @@ export default function PaywallScreen() {
           </Text>
           <View style={styles.timelineRows}>
             <Text style={styles.timelineRow}>
-              <Text style={styles.timelineAnchorActive}>Today</Text>
+              <Text style={styles.timelineAnchorActive}>
+                {t('paywall.timeline.anchor.today', { defaultValue: 'Today' })}
+              </Text>
               <Text> · </Text>
               {t('paywall.timeline.today', {
                 defaultValue: 'Unlock everything immediately.',
               })}
             </Text>
             <Text style={styles.timelineRow}>
-              <Text style={styles.timelineAnchorMuted}>In 2 days</Text>
+              <Text style={styles.timelineAnchorMuted}>
+                {t('paywall.timeline.anchor.in2', { defaultValue: 'In 2 days' })}
+              </Text>
               <Text> · </Text>
               {t('paywall.timeline.in2', {
                 defaultValue: 'Gentle reminder before billing.',
               })}
             </Text>
             <Text style={styles.timelineRow}>
-              <Text style={styles.timelineAnchorMuted}>In 3 days</Text>
+              <Text style={styles.timelineAnchorMuted}>
+                {t('paywall.timeline.anchor.in3', { defaultValue: 'In 3 days' })}
+              </Text>
               <Text> · </Text>
               {t('paywall.timeline.in3', {
                 defaultValue: 'Billing starts — cancel anytime.',
