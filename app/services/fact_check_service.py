@@ -447,7 +447,13 @@ def _verify_price_currency_normalized(
             # digits + junk the currency detector cannot resolve: basis unknown
             unresolved += 1
             continue
-        amount = parse_price_string(raw, detected, display_text=True)
+        # A bare numeral carries no currency signal, so it is read as already
+        # being in the TARGET currency (same rule the numeric-row branch above
+        # applies). It must be PARSED under that currency too: BHD has three
+        # decimals, so the ordinary Bahraini string "99.500" is 99.5 -- parsing
+        # it with no currency reads 99500.0 and inverts the verdict on a
+        # correct price. Same M13-10 canon as `BHD 12,500` -> 12.5.
+        amount = parse_price_string(raw, detected or target, display_text=True)
         if amount is None or amount <= 0:
             continue
         if detected and detected != target:
