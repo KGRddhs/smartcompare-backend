@@ -1,8 +1,10 @@
 """
 Text Comparison Routes - API endpoints for text-based product comparisons
 """
+import inspect
 import json
 import logging
+import os
 import time
 from typing import Optional, Dict, AsyncGenerator
 from fastapi import APIRouter, HTTPException, Path, Query, Depends, Request
@@ -33,6 +35,23 @@ from app.utils.async_utils import fire_and_forget
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/text", tags=["text-comparison"])
+
+
+def _preverdict_abort_enabled() -> bool:
+    """M20 #112 Half B flag reader (default OFF). Read PER CALL via os.getenv so
+    Railway flips it without a restart, and so flag OFF is byte-identical to
+    17cb981 (the `break` never fires and M13-35's drain is unchanged).
+
+    ON: a client that leaves BEFORE the final payload also stops driving the
+    orchestrator, and the route's finally then awaits `aclose()` on it —
+    throwing GeneratorExit so the orchestrator's finally (and M13-30's
+    `_get_price` prefetch cancellation) runs deterministically, instead of
+    paying for the default-unbounded verdict/critique/moderation OpenAI tail of
+    a comparison nobody will read. Half A (the refund) is UNFLAGGED and
+    independent."""
+    return os.getenv("ENABLE_PREVERDICT_DISCONNECT_ABORT", "").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
 
 
 # ============================================
@@ -525,6 +544,15 @@ async def text_compare_stream(
         complete_response = None
         had_error = False
         client_gone = False
+        # M20 #112 Half A — was the final payload captured while the client had
+        # ALREADY left? M13-35's drain means `complete_response` ends up non-None
+        # on ANY disconnect, including one at second 2, so it alone can no longer
+        # discriminate "delivered then dropped" from "left before the verdict".
+        # `client_gone` is set on the iteration the disconnect is FIRST observed,
+        # and the payload capture below runs before that check on the same
+        # iteration — which is exactly why M13-35's post-verdict case still
+        # meters.
+        complete_after_client_gone = False
 
         # M13-35: the post-stream side effects (quota metering, history save,
         # analytics) MUST run even if the client drops the socket AFTER the
@@ -535,8 +563,14 @@ async def text_compare_stream(
         # disconnect check, and a disconnect drains (not abandons) the generator
         # so the payload is fully captured. Side effects then fire in the finally,
         # keyed on whether the payload was produced.
+        # M20 #112 Half B — bind the orchestrator generator so the finally can
+        # CLOSE it explicitly. A bare `break` out of an `async for` does NOT call
+        # aclose(); CPython finalizes the generator later via the loop's
+        # async-generator finalizer, so the orchestrator's finally (and M13-30's
+        # `_get_price` prefetch cancellation) would not run deterministically.
+        _stream = None
         try:
-            async for event_type, data in service.compare_from_text_streaming(
+            _stream = service.compare_from_text_streaming(
                 query=q,
                 region=region,
                 include_specs=specs,
@@ -547,13 +581,20 @@ async def text_compare_stream(
                 user_preferences=user_prefs,
                 user_id=user.get("id") if user else None,
                 explicit_pair=explicit_pair,
-            ):
+            )
+            async for event_type, data in _stream:
                 # Capture the final payload BEFORE the disconnect check. `complete`
                 # is the canonical final-payload event; `settle_complete` is the
                 # Bundle E equivalent emitted right after `verdict` and carries the
                 # same payload — capturing it means a disconnect right after the
                 # verdict still has the full response to meter + persist.
                 if event_type in ("complete", "settle_complete"):
+                    # Latch on the FIRST final payload: a settle_complete
+                    # delivered while connected pins this False even if the later
+                    # `complete` arrives post-disconnect. That is the M13-35 case
+                    # and it is correct.
+                    if complete_response is None:
+                        complete_after_client_gone = client_gone
                     complete_response = data
                 if event_type == "error":
                     had_error = True
@@ -565,15 +606,36 @@ async def text_compare_stream(
                 if await request.is_disconnected():
                     logger.info(f"[SSE] Client disconnected during stream for query: {q}")
                     client_gone = True
+                    if complete_response is None and _preverdict_abort_enabled():
+                        # Nothing was delivered yet — stop paying for a comparison
+                        # nobody will read. The finally below closes the generator
+                        # and still refunds.
+                        break
                     continue
 
                 yield f"event: {event_type}\ndata: {json.dumps(data, default=str)}\n\n"
         finally:
+            # M20 #112 Half B — deterministic close. On every path except the
+            # flag-ON `break` the generator is already exhausted or already
+            # raised, so aclose() is a no-op and flag OFF stays behaviourally
+            # identical to 17cb981. Guarded on isasyncgen so a MagicMock-stubbed
+            # service in tests is never awaited.
+            if inspect.isasyncgen(_stream):
+                try:
+                    await _stream.aclose()
+                except Exception as _close_exc:  # noqa: BLE001 — never mask the response
+                    logger.warning(f"[SSE] orchestrator aclose failed: {_close_exc}")
             # Fire-and-forget logging once the stream (or the client) is done.
             duration_ms = int((time.time() - start_time) * 1000)
             user_id = user.get("id") if user else None
 
-            if complete_response and not had_error:
+            # M20 #112 Half A (UNFLAGGED) — meter only when the payload landed
+            # while the client was still there. A pre-verdict departure falls
+            # through to the `else` and refunds via the existing
+            # usage_refund.text_stream.incomplete label. `elif had_error` still
+            # wins when an `error` event was also seen, so exactly one refund
+            # fires, never two.
+            if complete_response and not had_error and not complete_after_client_gone:
                 product_names = [
                     f"{p.get('brand', '')} {p.get('name', '')}".strip()
                     for p in complete_response.get("products", [])
