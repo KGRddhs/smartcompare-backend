@@ -6,7 +6,12 @@
  * with the granted-state mock used by the capture flow.
  */
 import React from 'react';
-import { render } from '@testing-library/react-native';
+import { render, fireEvent } from '@testing-library/react-native';
+
+// M13-54: a stable requestPermission mock so we can assert the denied
+// branch's CTA actually calls it (the previous inline `jest.fn()` handed
+// out a fresh spy on every render, un-assertable).
+const mockRequestPermission = jest.fn();
 
 jest.mock('expo-camera', () => {
   const ReactInner = require('react');
@@ -17,18 +22,24 @@ jest.mock('expo-camera', () => {
   }
   return {
     CameraView,
-    useCameraPermissions: () => [{ granted: false }, jest.fn()],
+    useCameraPermissions: () => [{ granted: false }, mockRequestPermission],
   };
 });
 
 jest.mock('expo-image-picker', () => ({
-  launchImageLibraryAsync: jest.fn(),
+  launchImageLibraryAsync: jest.fn(() =>
+    Promise.resolve({ canceled: true, assets: [] })
+  ),
   MediaTypeOptions: { Images: 'Images' },
 }));
 
 import ScanCameraScreen from '../src/screens/ScanCameraScreen';
 
 const makeNav = () => ({ goBack: jest.fn(), navigate: jest.fn() }) as any;
+
+beforeEach(() => {
+  mockRequestPermission.mockClear();
+});
 
 describe('ScanCameraScreen — permission denied', () => {
   it('renders the permission-required pad instead of the camera UI', () => {
@@ -47,5 +58,23 @@ describe('ScanCameraScreen — permission denied', () => {
       <ScanCameraScreen navigation={makeNav()} route={{} as any} />
     );
     expect(getByTestId('scan-camera-close')).toBeTruthy();
+  });
+
+  // M13-54: the denied branch is no longer a dead end — it renders a
+  // grant-access CTA (calling requestPermission) and a gallery link.
+  it('renders the grant-access CTA and the gallery link', () => {
+    const { getByTestId } = render(
+      <ScanCameraScreen navigation={makeNav()} route={{} as any} />
+    );
+    expect(getByTestId('scan-camera-permission-cta')).toBeTruthy();
+    expect(getByTestId('scan-camera-permission-gallery')).toBeTruthy();
+  });
+
+  it('grant-access CTA calls requestPermission', () => {
+    const { getByTestId } = render(
+      <ScanCameraScreen navigation={makeNav()} route={{} as any} />
+    );
+    fireEvent.press(getByTestId('scan-camera-permission-cta'));
+    expect(mockRequestPermission).toHaveBeenCalledTimes(1);
   });
 });

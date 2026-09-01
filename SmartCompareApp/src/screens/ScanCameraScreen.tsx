@@ -19,6 +19,7 @@ import {
   StyleSheet,
   TouchableOpacity,
   Text,
+  Alert,
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
@@ -78,7 +79,9 @@ function nextEmptyIndex(slots: Slots): 0 | 1 | null {
 
 export default function ScanCameraScreen({ navigation }: Props) {
   const { t } = useTranslation();
-  const [permission] = useCameraPermissions();
+  // M13-54: keep requestPermission so the denied branch can actually
+  // request access instead of dead-ending on a card with only an X.
+  const [permission, requestPermission] = useCameraPermissions();
   const cameraRef = useRef<CameraView>(null);
   const [slots, setSlots] = useState<Slots>(_slotsCache);
   const [flash, setFlash] = useState<FlashMode>('off');
@@ -210,6 +213,41 @@ export default function ScanCameraScreen({ navigation }: Props) {
     setFlash(FLASH_CYCLE[(i + 1) % FLASH_CYCLE.length]);
   };
 
+  // M13-54: permission-denied fallback. When camera access is denied the
+  // user can still finish a compare by picking two photos from the
+  // library. Mirrors HomeScreen.pickFromGalleryFallback — pass the picked
+  // URIs straight through to Results (never a param-less nav), and give
+  // an under-2 pick visible feedback instead of a silent no-op.
+  const onGalleryPickToResults = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsMultipleSelection: true,
+        selectionLimit: 2,
+        quality: 0.8,
+      });
+      if (result.canceled) return;
+      const assets = result.assets ?? [];
+      if (assets.length >= 2) {
+        _slotsCache = [null, null];
+        navigation.navigate('Results', {
+          vision_products: assets.slice(0, 2).map((a) => a.uri),
+        } as any);
+      } else {
+        Alert.alert(
+          t('home.permission.gallery_need_two_title', {
+            defaultValue: 'Pick two photos',
+          }),
+          t('home.permission.gallery_need_two_body', {
+            defaultValue: 'Select two product photos so we can compare them.',
+          })
+        );
+      }
+    } catch {
+      // picker failure — non-fatal, stay on the permission pad.
+    }
+  };
+
   const onCompare = () => {
     const visionProducts = slots
       .filter((s): s is { uri: string } => s !== null)
@@ -239,9 +277,37 @@ export default function ScanCameraScreen({ navigation }: Props) {
         </View>
         <View testID="scan-camera-permission" style={styles.permissionPad}>
           <Camera size={48} color={colors.text.onInverse} />
-          <Text style={styles.permissionText}>
+          <Text style={styles.permissionTitle}>
             {t('home.permission.title')}
           </Text>
+          <Text style={styles.permissionText}>
+            {t('home.permission.body')}
+          </Text>
+          {/* M13-54: the missing CTA. Without this the denied branch was a
+              dead end — a card, an X, and nothing else. Mirrors
+              HomeScreen.tsx:504-521 (grant CTA + gallery link). */}
+          <TouchableOpacity
+            testID="scan-camera-permission-cta"
+            style={styles.permissionButton}
+            onPress={requestPermission}
+            accessibilityRole="button"
+            accessibilityLabel={t('home.permission.cta')}
+          >
+            <Text style={styles.permissionButtonText}>
+              {t('home.permission.cta')}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            testID="scan-camera-permission-gallery"
+            style={styles.galleryFallback}
+            onPress={onGalleryPickToResults}
+            accessibilityRole="button"
+            accessibilityLabel={t('home.permission.gallery_link')}
+          >
+            <Text style={styles.galleryFallbackText}>
+              {t('home.permission.gallery_link')}
+            </Text>
+          </TouchableOpacity>
         </View>
       </SafeAreaView>
     );
@@ -549,11 +615,40 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: spacing['2xl'],
   },
-  permissionText: {
-    ...typography.body,
+  permissionTitle: {
+    ...typography.title,
     color: colors.text.onInverse,
     marginTop: spacing.lg,
+    marginBottom: spacing.sm,
     textAlign: 'center',
+  },
+  permissionText: {
+    ...typography.body,
+    color: 'rgba(255,255,255,0.65)',
+    marginTop: 0,
+    marginBottom: spacing.xl,
+    textAlign: 'center',
+  },
+  // M13-54 — grant-access CTA + gallery link on the dark camera surface,
+  // mirroring HomeScreen's permission card (emerald pill + text link).
+  permissionButton: {
+    backgroundColor: colors.accent,
+    paddingHorizontal: spacing['2xl'],
+    paddingVertical: spacing.md,
+    borderRadius: radii.button,
+  },
+  permissionButtonText: {
+    ...typography.body,
+    color: colors.text.onInverse,
+    fontWeight: '700',
+  },
+  galleryFallback: {
+    marginTop: spacing.base,
+    padding: spacing.md,
+  },
+  galleryFallbackText: {
+    ...typography.caption,
+    color: colors.accent,
   },
   // Bundle B § 4.3 — celebration overlay sits above the ImageSlotRow,
   // pointer-events transparent so taps still reach the underlying slots.

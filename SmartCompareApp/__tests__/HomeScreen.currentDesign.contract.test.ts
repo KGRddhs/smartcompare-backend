@@ -78,6 +78,44 @@ describe('HomeScreen current design — Bundle B Task 2.6 MAX_IMAGES + Scan nav'
   });
 });
 
+describe('HomeScreen — M13-13 gallery fallback passes picked photos through', () => {
+  it('navigates to Results with vision_products mapped from result.assets', () => {
+    // The fallback must NOT navigate to a param-less ScanCamera (which
+    // drops the photos into a module-private slot cache). It threads the
+    // picked URIs straight to Results, matching ScanCameraScreen.onCompare.
+    const match = homeSrc.match(
+      /const\s+pickFromGalleryFallback\s*=\s*async\s*\([^)]*\)\s*=>\s*\{([\s\S]*?)\n\s{2}\};/
+    );
+    expect(match).toBeTruthy();
+    const body = match![1];
+    expect(body).toMatch(
+      /navigation\.navigate\(\s*['"]Results['"][\s\S]*?vision_products\s*:[\s\S]*?\.map\(/
+    );
+    // And it must NOT fall back to the old param-less ScanCamera nav.
+    expect(body).not.toMatch(/navigation\.navigate\(\s*['"]ScanCamera['"]\s*\)/);
+  });
+
+  it('under-2 pick surfaces a visible Alert instead of a silent no-op', () => {
+    const match = homeSrc.match(
+      /const\s+pickFromGalleryFallback\s*=\s*async\s*\([^)]*\)\s*=>\s*\{([\s\S]*?)\n\s{2}\};/
+    );
+    expect(match).toBeTruthy();
+    const body = match![1];
+    expect(body).toMatch(/Alert\.alert\(/);
+  });
+});
+
+describe('HomeScreen — M13-54 scan CTA gated on camera permission', () => {
+  it('Open-camera CTA renders only when cameraPermissionGranted', () => {
+    // The bottom "Open camera" CTA must be hidden while permission is not
+    // granted — otherwise it routes to ScanCamera with no way to grant.
+    // renderCenterArea() shows the in-place permission pad in that state.
+    expect(homeSrc).toMatch(
+      /canCompare\s*&&\s*inputMode\s*===\s*['"]scan['"]\s*&&\s*cameraPermissionGranted\s*&&/
+    );
+  });
+});
+
 describe('HomeScreen current design — handleModeChange paywall gate', () => {
   it('handleModeChange routes through Paywall when canCompare=false', () => {
     // Bundle B/C/D Task 2.6 — tapping any chip while at usage cap opens

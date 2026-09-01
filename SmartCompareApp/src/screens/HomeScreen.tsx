@@ -466,8 +466,29 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
       quality: 0.8,
       exif: false,
     });
-    if (!result.canceled && result.assets && result.assets.length >= MAX_IMAGES) {
-      navigation.navigate('ScanCamera');
+    if (result.canceled) return;
+    const assets = result.assets ?? [];
+    if (assets.length >= MAX_IMAGES) {
+      // M13-13: pass the picked photos straight through to Results. The
+      // previous code navigated to a param-less ScanCamera whose slot
+      // cache is module-private, so the two photos the user just picked
+      // were silently thrown away. Mirrors ScanCameraScreen.onCompare's
+      // vision_products contract (ScanCameraScreen.tsx:214-221).
+      navigation.navigate('Results' as any, {
+        vision_products: assets.slice(0, MAX_IMAGES).map((a) => a.uri),
+      } as any);
+    } else {
+      // M13-13: a one-photo pick used to fail the >= MAX_IMAGES guard
+      // silently — no toast, no error. A compare needs two products, so
+      // give the user visible feedback instead of a dead no-op.
+      Alert.alert(
+        t('home.permission.gallery_need_two_title', {
+          defaultValue: 'Pick two photos',
+        }),
+        t('home.permission.gallery_need_two_body', {
+          defaultValue: 'Select two product photos so we can compare them.',
+        })
+      );
     }
   };
 
@@ -642,53 +663,56 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
           <QarenLogo size={28} />
           <Text style={[styles.logo, styles.logoSpaced]}>{t('app.name')}</Text>
         </View>
-        {canCompare && (
-          <TouchableOpacity
-            testID="home-header-counter"
-            onPress={handleHeaderCounterPress}
-            accessibilityRole="button"
-            accessibilityLabel={t('home.headerCounter.a11y', {
-              free: baseFreeRemaining,
-              total,
-              bonus: bonusInfo.bonusRemaining,
-            })}
+        {/* M13-14: the header counter pill renders UNCONDITIONALLY — it is
+            NOT under the `canCompare` guard. A paywalled user (canCompare
+            false) must still see their "0/3 free" count and be able to tap
+            through to the Paywall; hiding the pill exactly when they hit the
+            cap removed the one affordance that explains why. */}
+        <TouchableOpacity
+          testID="home-header-counter"
+          onPress={handleHeaderCounterPress}
+          accessibilityRole="button"
+          accessibilityLabel={t('home.headerCounter.a11y', {
+            free: baseFreeRemaining,
+            total,
+            bonus: bonusInfo.bonusRemaining,
+          })}
+          style={[
+            styles.headerCounter,
+            isLastFree && styles.headerCounterLast,
+          ]}
+        >
+          <Text
             style={[
-              styles.headerCounter,
-              isLastFree && styles.headerCounterLast,
+              styles.headerCounterText,
+              isLastFree && styles.headerCounterTextLast,
             ]}
           >
-            <Text
-              style={[
-                styles.headerCounterText,
-                isLastFree && styles.headerCounterTextLast,
-              ]}
-            >
-              {baseFreeRemaining}/{total} {t('home.headerCounter.free')}
-            </Text>
-            {bonusInfo.bonusRemaining > 0 && (
-              <>
-                <Text
-                  style={[
-                    styles.headerCounterDot,
-                    isLastFree && styles.headerCounterTextLast,
-                  ]}
-                  accessibilityElementsHidden
-                  importantForAccessibility="no"
-                >
-                  {' · '}
-                </Text>
-                <Text
-                  style={[
-                    styles.headerCounterText,
-                    isLastFree && styles.headerCounterTextLast,
-                  ]}
-                >
-                  +{bonusInfo.bonusRemaining}
-                </Text>
-              </>
-            )}
-          </TouchableOpacity>
-        )}
+            {baseFreeRemaining}/{total} {t('home.headerCounter.free')}
+          </Text>
+          {bonusInfo.bonusRemaining > 0 && (
+            <>
+              <Text
+                style={[
+                  styles.headerCounterDot,
+                  isLastFree && styles.headerCounterTextLast,
+                ]}
+                accessibilityElementsHidden
+                importantForAccessibility="no"
+              >
+                {' · '}
+              </Text>
+              <Text
+                style={[
+                  styles.headerCounterText,
+                  isLastFree && styles.headerCounterTextLast,
+                ]}
+              >
+                +{bonusInfo.bonusRemaining}
+              </Text>
+            </>
+          )}
+        </TouchableOpacity>
       </View>
 
       {/* 2. Hero copy "Compare anything." */}
@@ -784,8 +808,13 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
               consolidated INSIDE TwoInputShell (single source of truth).
               In scan mode the label flips to "Open camera" and routes
               straight to the ScanCamera screen. Hidden during paywall
-              takeover (PaywallBanner has its own CTA). */}
-          {canCompare && inputMode === 'scan' && (
+              takeover (PaywallBanner has its own CTA).
+              M13-54: gate on cameraPermissionGranted. When permission is
+              not yet granted, renderCenterArea() shows the in-place
+              permission pad (with its own requestPermission CTA + gallery
+              link), so the "Open camera" button below would be a dead end —
+              tapping it lands on ScanCamera with no way to grant. */}
+          {canCompare && inputMode === 'scan' && cameraPermissionGranted && (
             <TouchableOpacity
               testID="home-compare-cta"
               onPress={handleScanCtaPress}
