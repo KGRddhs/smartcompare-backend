@@ -645,6 +645,46 @@ class TestVerifyPriceCurrencyNormalization:
     +/-30% cross-check (flag ON), and degrade to a None verdict — never a
     confident one — when no row's currency basis can be resolved."""
 
+    def test_bare_numeral_rows_parse_under_the_target_currency(self, service, monkeypatch):
+        """A bare-numeral row must be parsed under the TARGET currency.
+
+        BHD carries three decimals, so `99.500` is the ordinary way a Bahraini
+        price is written -- and Bahrain is the primary market. Parsing it with
+        no currency hint reads it as 99500.0 (a 1000x error) and inverts the
+        verdict on a CORRECT price: the flag-ON path reported
+        price_verified False at 99.9% deviation for rows that match the final
+        price exactly. `parse_price_string("99.500", "BHD")` returns 99.5,
+        which is the same M13-10 canon CLAUDE.md pins for `BHD 12,500` -> 12.5.
+        """
+        monkeypatch.setenv("ENABLE_FACTCHECK_CURRENCY_NORMALIZATION", "true")
+        price = {"amount": 99.5, "currency": "BHD", "estimated": False}
+        rows = [{"price": "99.500"}, {"price": "99.500"}, {"price": "99.500"}]
+        result = service._verify_price(price, rows)
+        assert result["price_verified"] is True, (
+            "a bare-numeral BHD row matching the final price exactly must "
+            f"verify, got deviation {result['deviation_pct']}%"
+        )
+        assert result["deviation_pct"] == 0.0
+
+    def test_bare_numeral_thousands_group_parses_under_target(self, service, monkeypatch):
+        """`12,500` under a BHD target is 12.5, not 12500 (M13-10 canon)."""
+        monkeypatch.setenv("ENABLE_FACTCHECK_CURRENCY_NORMALIZATION", "true")
+        price = {"amount": 12.5, "currency": "BHD", "estimated": False}
+        rows = [{"price": "12,500"}, {"price": "12,500"}]
+        result = service._verify_price(price, rows)
+        assert result["price_verified"] is True
+        assert result["deviation_pct"] == 0.0
+
+    def test_bare_numeral_under_two_decimal_target_is_unchanged(self, service, monkeypatch):
+        """The fix must be per-currency, not a blanket re-parse: SAR has two
+        decimals, so `99.500` stays 99500.0 there and must NOT verify against
+        a 99.5 SAR final price. Guards against 'fix BHD, break everyone else'."""
+        monkeypatch.setenv("ENABLE_FACTCHECK_CURRENCY_NORMALIZATION", "true")
+        price = {"amount": 99.5, "currency": "SAR", "estimated": False}
+        rows = [{"price": "99.500"}, {"price": "99.500"}]
+        result = service._verify_price(price, rows)
+        assert result["price_verified"] is False
+
     def test_raw_foreign_amount_stamped_bhd_is_not_verified(self, service, monkeypatch):
         """A raw AED amount stamped BHD must NOT pass against AED rows."""
         monkeypatch.setenv("ENABLE_FACTCHECK_CURRENCY_NORMALIZATION", "true")
