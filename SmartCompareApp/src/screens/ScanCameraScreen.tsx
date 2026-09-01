@@ -341,7 +341,11 @@ export default function ScanCameraScreen({ navigation }: Props) {
         >
           <Text style={styles.slotIndicatorText}>
             {t('home.camera.slotIndicator', {
-              defaultValue: `${(nextEmptyIndex(slots) ?? 1) + 1} of 2`,
+              index: (nextEmptyIndex(slots) ?? 1) + 1,
+              // M13-15: interpolation form so the (now-present) catalog key
+              // renders the live slot number in EN and AR. The defaultValue
+              // is a fallback if the key were ever absent.
+              defaultValue: '{{index}} of 2',
             })}
           </Text>
         </View>
