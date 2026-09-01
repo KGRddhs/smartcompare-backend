@@ -113,6 +113,163 @@ def _gpt_winner_lever_enabled() -> bool:
     )
 
 
+def _winner_prose_reconcile_enabled() -> bool:
+    """M20 #110 flag reader (default OFF). Read live so a Railway flip /
+    monkeypatch takes effect without a restart.
+
+    ON: on a scoring-vs-GPT winner disagreement the three verdict strings are
+    REPLACED by the deterministic template (`deterministic_verdict_fields`).
+    OFF: the unflagged safety repair in `reconcile_winner_prose` still runs —
+    the shipped winner is never NAMED or PRAISED as the loser — but GPT's
+    surviving reason text is kept."""
+    return os.environ.get("ENABLE_WINNER_PROSE_RECONCILE", "").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
+
+
+def deterministic_verdict_fields(
+    scoring_result: Dict[str, Any],
+    product_names: List[str],
+    tradeoffs: List[Dict[str, Any]],
+) -> Dict[str, str]:
+    """M20 #110 — the three user-facing verdict strings for the DETERMINISTIC
+    winner. Pure; no merge semantics (the caller decides fill vs overwrite).
+
+    Score-safe by construction: the margin stays in a debug log and never
+    reaches the prose (the partial-verdict template leaked one once — see the
+    comment kept at `_deterministic_partial_verdict`).
+
+    This is the SINGLE source of these f-strings. It backs both
+    `structured_comparison_service._deterministic_partial_verdict` (fill-only)
+    and `reconcile_winner_prose` (overwrite, flag-gated); a second copy would
+    drift. It lives here because `structured_comparison_service` imports
+    `response_builder` at module level, never the reverse.
+    """
+    scores = (scoring_result or {}).get("scores") or {}
+    names = list(product_names or [])
+    winner_index = (scoring_result or {}).get("winner_index", 0)
+    if isinstance(winner_index, bool) or not isinstance(winner_index, int):
+        winner_index = 0
+    if not (0 <= winner_index < len(names)):
+        winner_index = 0
+    winner_name = names[winner_index] if names else ""
+    w_overall = (scores.get(f"product_{winner_index}") or {}).get("overall")
+    l_overall = (scores.get(f"product_{1 - winner_index}") or {}).get("overall")
+
+    out = {"winner_declaration": winner_name, "winner_reason": "", "key_tradeoff": ""}
+    if winner_name:
+        if isinstance(w_overall, (int, float)) and isinstance(l_overall, (int, float)):
+            # margin retained for logging ONLY — never surfaced in user-facing text.
+            logger.debug(
+                "[PARTIAL_VERDICT] %s qualitative win (margin=%s)",
+                winner_name, round(abs(w_overall - l_overall), 1),
+            )
+            out["winner_reason"] = f"{winner_name} edges ahead on the overall picture."
+        else:
+            out["winner_reason"] = f"{winner_name} leads on the overall picture."
+    if tradeoffs:
+        lw = (tradeoffs[0] or {}).get("loser_wins") or {}
+        dim = lw.get("dimension")
+        loser_name = lw.get("product")
+        if dim and loser_name:
+            dim_label = str(dim).replace("_score", "").replace("_", " ")
+            out["key_tradeoff"] = f"{loser_name} stays competitive on {dim_label}."
+    return out
+
+
+def reconcile_winner_prose(
+    comparison: Dict[str, Any],
+    scoring_result: Dict[str, Any],
+    product_names: List[str],
+    tradeoffs: List[Dict[str, Any]],
+) -> int:
+    """M20 #99 + #110 — THE winner chokepoint. Resolves the SHIPPED winner index
+    and, when the deterministic winner disagrees with GPT's, repairs
+    `comparison` IN PLACE so no winner-facing string can name or praise the
+    losing product. Returns the resolved index.
+
+    Two layers, deliberately shipped differently:
+
+    * UNFLAGGED (always): the BC `comparison["winner_index"]` alias is
+      re-indexed, and ALL THREE GPT verdict strings are dropped — the
+      declaration (so `overview.winner.name` falls back to the deterministic
+      product name), the key_tradeoff (written from the INVERTED orientation —
+      it frames the shipped winner as the runner-up) and the winner_reason
+      (replaced by `_QUALITATIVE_WINNER_REASON`). Shipping the losing product's
+      name is indefensible; it must not wait on a flag flip. Only rows that are
+      ALREADY self-contradictory are touched.
+    * `ENABLE_WINNER_PROSE_RECONCILE` (default OFF): additionally restores a
+      real key_tradeoff and a dimension-aware reason from the deterministic
+      template instead of the bare qualitative fallback. That is a user-facing
+      copy change on the core surface, so it ships dark and canaries alone.
+
+    WHY THE REASON IS DROPPED UNCONDITIONALLY, not on a loser-name containment
+    check (which is what this repair shipped first): on a mismatch GPT wrote
+    `winner_reason` to justify ITS winner, so by construction it is an argument
+    for the LOSER — there is no case where it legitimately argues for the
+    shipped winner. Containment is a weak proxy for that: `extraction_service`
+    caps the field at 20 words (`:953`, `:983`) while a full product name runs
+    5-6, so the model is structurally pushed AWAY from the string the check
+    looks for. Measured, 4 of 5 realistic phrasings evaded it (pronoun, short
+    name, brand fragment and subject-free praise all shipped verbatim) — worst
+    is the pronoun form, where dropping the declaration re-points the dangling
+    "It" at the shipped winner and silently converts praise of the loser into
+    praise of the winner. Pinned by
+    `tests/test_response_builder_winner_card_consistency.py`.
+
+    IDEMPOTENT: after a repair the indices agree, so a second call is a no-op
+    (the streaming path calls it before the SSE `verdict` emit and
+    `build_comparison_response` calls it again on the same dict — the
+    WINNER_INDEX_MISMATCH warning therefore still fires exactly once per
+    request, which is the only telemetry on how often this happens).
+    """
+    _scoring_winner = (scoring_result or {}).get("winner_index")
+    _gpt_winner = (comparison or {}).get("winner_index", 0)
+    # Legacy fixtures / scoring-disabled mode: GPT's index and prose both stand.
+    if _scoring_winner is None:
+        return _gpt_winner
+    winner_index = _scoring_winner
+    if _scoring_winner == _gpt_winner:
+        return winner_index
+
+    names = list(product_names or [])
+    _winner_name = _name_at_index(names, winner_index)
+    # Surface the disagreement so we can audit how often the GPT verdict prose
+    # names a different winner than the score. Low volume (only fires on
+    # mismatch); the product names make the repair gradeable from logs.
+    # Field names and `_name_at_index` are kept exactly as they ship today —
+    # this log is already being read, and `_name_at_index` is the defensive
+    # lookup that keeps a legacy empty `product_names` (or a non-int GPT index)
+    # from raising inside a diagnostic.
+    logger.warning(
+        "WINNER_INDEX_MISMATCH scoring=%s gpt=%s "
+        "win_margin=%s scoring_name=%r gpt_name=%r "
+        "— using deterministic scoring",
+        _scoring_winner,
+        _gpt_winner,
+        (scoring_result or {}).get("win_margin", 0),
+        _winner_name,
+        _name_at_index(names, _gpt_winner),
+    )
+
+    # BC alias: `result["comparison"]["winner_index"]` shipped GPT's stale index.
+    comparison["winner_index"] = winner_index
+
+    if _winner_prose_reconcile_enabled():
+        comparison.update(
+            deterministic_verdict_fields(scoring_result, names, tradeoffs or [])
+        )
+        return winner_index
+
+    if comparison.get("winner_declaration"):
+        comparison["winner_declaration"] = ""
+    if comparison.get("key_tradeoff"):
+        comparison["key_tradeoff"] = ""
+    if comparison.get("winner_reason"):
+        comparison["winner_reason"] = _QUALITATIVE_WINNER_REASON(_winner_name)
+    return winner_index
+
+
 def _eval_capture_debug_enabled() -> bool:
     """S3 L3 v2 — EVAL_CAPTURE_DEBUG flag (default OFF). When ON, the response
     serializes the RAW per-product scoring INPUTS (fact_check) under
@@ -1154,31 +1311,22 @@ def build_comparison_response(
     # scoring_v2.overall_score.winner_idx (always deterministic). Fall back
     # to GPT only when scoring did not produce a winner (legacy fixtures
     # or scoring-disabled mode).
-    _scoring_winner = scoring_result.get("winner_index")
-    _gpt_winner = comparison.get("winner_index", 0)
-    # Issue #99 — when the deterministic winner overrides GPT's, the GPT
-    # NARRATIVE still describes GPT's pick, so the card could highlight A while
-    # naming and praising B. This flag stays in scope down to the verdict-scrub
-    # block and the BC-alias block, which reconcile every winner-facing field.
-    _winner_overridden = _scoring_winner is not None and _scoring_winner != _gpt_winner
-    if _scoring_winner is not None:
-        winner_index = _scoring_winner
-        if _winner_overridden:
-            # Surface the disagreement so we can audit how often the GPT
-            # verdict prose names a different winner than the score. Low
-            # volume (only fires on mismatch); not flag-gated for now.
-            logger.warning(
-                "WINNER_INDEX_MISMATCH scoring=%s gpt=%s "
-                "win_margin=%s scoring_name=%r gpt_name=%r "
-                "— using deterministic scoring",
-                _scoring_winner,
-                _gpt_winner,
-                scoring_result.get("win_margin", 0),
-                _name_at_index(product_names, _scoring_winner),
-                _name_at_index(product_names, _gpt_winner),
-            )
-    else:
-        winner_index = _gpt_winner
+    #
+    # M21 #110 — the repair that used to live inline HERE (and again at the
+    # `_scrubbed_*` composition below) moved WHOLE into
+    # `reconcile_winner_prose`, which repairs the `comparison` dict IN PLACE.
+    # Nothing about the outcome changes: the composition below reads the same
+    # fields off the same dict, so every downstream surface — overview.winner,
+    # the BC `comparison` alias, `recommendation` — still ships one consistent
+    # winner in a single pass. The move exists so the SSE `verdict` event can
+    # call the SAME chokepoint before it emits, instead of shipping GPT's index
+    # and then contradicting itself in the `complete` payload that follows.
+    # The chokepoint also owns the WINNER_INDEX_MISMATCH warning, and it is
+    # idempotent, so the warning still fires exactly once per request even
+    # though the streaming path now calls it twice on the same dict.
+    winner_index = reconcile_winner_prose(
+        comparison, scoring_result, product_names, tradeoffs
+    )
     win_margin = scoring_result.get("win_margin", 0)
 
     # S3 L3 v2 (e) — GPT-qualitative-winner as a GROUNDED CROSS-CHECK LOG ONLY.
@@ -1435,48 +1583,14 @@ def build_comparison_response(
     _scrubbed_winner_name_field = (
         strip_score_internals(comparison.get("winner_declaration", "")) or _winner_name
     )
-    # Issue #99 — the deterministic winner overrode GPT's, so GPT's narrative
-    # describes the LOSER. Reconcile every winner-facing field to `winner_index`
-    # rather than shipping a card that names/praises the product we did not pick.
-    # We DROP the declaration instead of regenerating it: regeneration needs a
-    # second LLM call on the slowest path, and the bare product name is honest.
-    #
-    # WHY THE DROP IS UNCONDITIONAL, not gated on a loser-name containment check
-    # (which is what this block shipped first): on a mismatch GPT wrote
-    # `winner_reason` and `key_tradeoff` to justify ITS winner, so BY
-    # CONSTRUCTION they argue for the product we did not choose. There is no
-    # case where keeping them is correct, which makes containment the wrong
-    # question entirely — it asks "does this praise mention the loser by full
-    # name?" when the answer that matters is "was this praise written about the
-    # loser?", and the second is already known to be yes.
-    #
-    # Containment was also structurally weak, not merely unlucky: extraction_service
-    # caps winner_reason at 20 words (:953, :983) while a full product name runs
-    # 5-6, so the prompt pushes the model AWAY from the exact string the check
-    # looked for. Measured against this function on a real mismatch row, 4 of 5
-    # realistic phrasings evaded it and shipped verbatim into
-    # overview.winner.reason -> the top-level recommendation, the Home
-    # verdict_short, History and the Share text (pinned in
-    # tests/test_response_builder_winner_card_consistency.py):
-    #     full name      -> dropped   (the ONE case containment handled)
-    #     pronoun        -> SHIPPED   "It offers a noticeably richer flavour..."
-    #     short name     -> SHIPPED   "Budget Pickle wins on everyday value."
-    #     brand fragment -> SHIPPED   "The Budget option is the better..."
-    #     subject-free   -> SHIPPED   "Delivers a richer flavour at a lower..."
-    # The short-name case still NAMES the loser, beside the winner's own name.
-    # Worst is the pronoun form: because we also drop the declaration, the
-    # dangling "It" re-points at the SHIPPED winner and silently converts praise
-    # of the loser into fabricated praise of the winner.
-    #
-    # key_tradeoff is dropped for the same reason plus its own: it is written
-    # from the INVERTED orientation, framing the shipped winner as the runner-up
-    # ("<winner> costs more for a similar jar") — which containment never caught
-    # at all, because that sentence names the WINNER.
-    if _winner_overridden:
-        _scrubbed_winner_name_field = _winner_name
-        _scrubbed_declaration = ""
-        _scrubbed_reason = _QUALITATIVE_WINNER_REASON(_winner_name)
-        _scrubbed_tradeoff = ""
+    # M21 #110 — the reconciliation that used to live HERE now runs at the
+    # `reconcile_winner_prose` chokepoint above, which repairs the `comparison`
+    # dict IN PLACE before this composition reads it. The four locals below
+    # therefore already resolve to the reconciled values on a mismatch (the
+    # declaration and key_tradeoff to "", the reason to the qualitative
+    # fallback, and `_scrubbed_winner_name_field` to the deterministic product
+    # name via the `or _winner_name` fallback). Re-applying it here would be a
+    # double application of the same repair on the same fields.
 
     # Detect price method mismatch
     price_methods = [p.get("price", {}).get("source_method") for p in product_data if p.get("price")]

@@ -55,6 +55,16 @@ def _build(*, names, scoring_winner, gpt_winner, declaration="", reason="",
     )
 
 
+@pytest.fixture(autouse=True)
+def _prose_reconcile_off(monkeypatch):
+    """This file pins the UNFLAGGED safety repair only. The richer deterministic
+    template prose lives behind ENABLE_WINNER_PROSE_RECONCILE (default OFF) and
+    is covered by tests/test_winner_prose_reconciliation.py; clearing the env
+    here keeps these cases honest if the flag is ever exported in a shell."""
+    monkeypatch.delenv("ENABLE_WINNER_PROSE_RECONCILE", raising=False)
+    yield
+
+
 # ---------------------------------------------------------------------------
 # 1-4, 8 — mismatch: everything must follow the deterministic winner
 # ---------------------------------------------------------------------------
