@@ -2683,8 +2683,13 @@ class StructuredComparisonService:
     def _verify_spec_citations(self, specs: Dict, search_snippets: List[str]) -> Dict[str, str]:
         return verify_spec_citations(specs, search_snippets)
 
-    def _cross_validate_specs_with_shopping(self, specs: Dict, shopping_items: List[Dict]) -> Dict[str, str]:
-        return cross_validate_specs_with_shopping(specs, shopping_items)
+    def _cross_validate_specs_with_shopping(
+        self, specs: Dict, shopping_items: List[Dict], product_name: str = ""
+    ) -> Dict[str, str]:
+        # #108 — product_name feeds the flag-ON identity fence (a model-number
+        # digit cannot upgrade a spec value); optional so existing callers and
+        # tests stay valid, ignored when ENABLE_CITATION_RUBRIC_V2 is off.
+        return cross_validate_specs_with_shopping(specs, shopping_items, product_name)
 
     def _verify_review_sentiment(self, reviews: Dict, source_ratings: List[Dict]) -> Dict:
         return verify_review_sentiment(reviews, source_ratings)
@@ -4802,7 +4807,11 @@ class StructuredComparisonService:
             # re-cache still needs the key on the dict.
             citation_confidence = _resolve_citation_confidence(raw_specs, search_snippets)
             shopping_items = self._shopping_items_cache.get(full_name, [])
-            shopping_flags = cross_validate_specs_with_shopping(raw_specs, shopping_items)
+            # #108 — full_name feeds the identity fence (flag ON); with the
+            # flag OFF the extra argument is ignored, byte-identical.
+            shopping_flags = cross_validate_specs_with_shopping(
+                raw_specs, shopping_items, full_name
+            )
             spec_confidence = {}
             for key in citation_confidence:
                 if shopping_flags.get(key) == "verified":

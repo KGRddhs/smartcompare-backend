@@ -41,6 +41,125 @@ NUMERIC_SPEC_FIELDS = {
 }
 
 
+def citation_rubric_v2_enabled() -> bool:
+    """True iff the citation rubric is unit-aware and can emit "flagged"
+    (issue #108, default OFF).
+
+    The v1 rubric compares bare digit substrings: a fabricated `128 TB` cited
+    against a `128 GB` snippet earns "verified", a value that CONTRADICTS its
+    own cited snippet earns "likely" (weight 0.7 — above an honest "training"
+    at 0.3), and "flagged" is counted downstream but produced nowhere. Read
+    PER CALL from os.getenv (the price_service.exact_gate_enabled idiom);
+    default OFF is byte-identical to f2481b9.
+    """
+    return os.getenv("ENABLE_CITATION_RUBRIC_V2", "").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
+#: Arabic thousands separator (U+066C) — stripped alongside "," before any
+#: number matching so `5,000`/`5٬000`/`5000` compare equal on both sides.
+_ARABIC_THOUSANDS_SEP = "٬"
+
+
+def _strip_thousands_separators(text: str) -> str:
+    return text.replace(",", "").replace(_ARABIC_THOUSANDS_SEP, "")
+
+
+# Bounded unit vocabulary (issue #108). Copied from price_service's
+# _SPACED_UNIT_RE (gb|tb|ml|oz|mm|hz|mah|inch(es)) and extended with the units
+# NUMERIC_SPEC_FIELDS actually carry (mb, kg, g, mg, mcg, iu, l, w, in, ").
+# Deliberately BOUNDED rather than any-trailing-letters: an open capture would
+# read prose words after a number ("128 different") as units and manufacture
+# false "flagged" disagreements. Alternation order matters — longer tokens
+# before their prefixes (gb before g, mcg/mg before g, inch before in).
+_UNIT_CORE = r"gb|tb|mb|ml|oz|mm|hz|mah|inch(?:es)?|kg|mcg|mg|g|iu|l|w"
+# Value side accepts "in" and the double-quote inch spelling. Snippet side
+# deliberately EXCLUDES bare "in": in prose it is a preposition ("128 in
+# stock") far more often than a unit, and treating it as one would turn the
+# contradiction rule into a false-"flagged" generator. A value spelled "in"
+# still matches a snippet spelled "inch"/"inches" via aliasing; a snippet that
+# only ever says "in" degrades that pair to "unverified" — absent, never a
+# manufactured contradiction.
+_VALUE_NUM_UNIT_RE = re.compile(
+    r"(\d+(?:\.\d+)?)\s*(" + _UNIT_CORE + r"|in|\")(?![a-z0-9])", re.I
+)
+_SNIPPET_NUM_UNIT_RE = re.compile(
+    r"(\d+(?:\.\d+)?)\s*(" + _UNIT_CORE + r"|\")(?![a-z0-9])", re.I
+)
+_UNIT_ALIASES = {"inches": "inch", "in": "inch", '"': "inch"}
+
+
+def _extract_number_units(text: str, *, value_side: bool):
+    """Extract ((number, unit) pairs, loose-number strings) from text.
+
+    A number immediately followed (optionally spaced — "128 GB" == "128GB")
+    by a bounded-vocabulary unit forms a pair; every other number is "loose".
+    """
+    rx = _VALUE_NUM_UNIT_RE if value_side else _SNIPPET_NUM_UNIT_RE
+    pairs = []
+    spans = []
+    for m in rx.finditer(text):
+        unit = _UNIT_ALIASES.get(m.group(2).lower(), m.group(2).lower())
+        try:
+            pairs.append((float(m.group(1)), unit))
+        except ValueError:  # pragma: no cover — \d-only capture always floats
+            continue
+        spans.append(m.span(1))
+    loose = []
+    for m in re.finditer(r"\d+(?:\.\d+)?", text):
+        if any(s <= m.start() < e for (s, e) in spans):
+            continue
+        loose.append(m.group(0))
+    return pairs, loose
+
+
+def _grade_citation_v2(key: str, value_str: str, snippet_text: str) -> str:
+    """Issue #108 flag-ON grading of one cited field against its snippet.
+
+    Numeric fields: a cited (number, unit) counts as matched only when the
+    SAME unit appears adjacent to that number in the snippet.
+      * every number matched            -> "verified"
+      * same-unit number, wrong number  -> "flagged"   (contradicted)
+      * no comparable same-unit number  -> "unverified" (absent — a snippet
+        with nothing to compare is not evidence and must not outscore an
+        honest "training", which also lands on "unverified")
+    Non-numeric fields keep the term-overlap rubric (on separator-normalized
+    text, so `5,000`-style spellings benefit there too).
+    """
+    value_norm = _strip_thousands_separators(value_str)
+    snippet_norm = _strip_thousands_separators(snippet_text)
+
+    v_pairs, v_loose = _extract_number_units(value_norm, value_side=True)
+    v_loose_sig = [n for n in v_loose if len(n.replace(".", "")) >= 2]
+
+    if key in NUMERIC_SPEC_FIELDS and (v_pairs or v_loose_sig):
+        s_pairs, _ = _extract_number_units(snippet_norm, value_side=False)
+        all_matched = True
+        contradicted = False
+        for num, unit in v_pairs:
+            same_unit = [n for (n, u) in s_pairs if u == unit]
+            if any(abs(n - num) <= 1e-9 * max(1.0, abs(num)) for n in same_unit):
+                continue
+            all_matched = False
+            if same_unit:
+                contradicted = True
+        for n in v_loose_sig:
+            if n not in snippet_norm:
+                all_matched = False
+        if all_matched:
+            return "verified"
+        if contradicted:
+            return "flagged"
+        return "unverified"
+
+    terms = [t for t in value_norm.split() if len(t) > 2]
+    if not terms:
+        return "likely"
+    matches = sum(1 for t in terms if t in snippet_norm)
+    return "verified" if matches >= len(terms) * 0.5 else "likely"
+
+
 def verify_spec_citations(specs: Dict, search_snippets: List[str]) -> Dict[str, str]:
     """Verify GPT spec citations against actual search snippets.
 
@@ -64,6 +183,13 @@ def verify_spec_citations(specs: Dict, search_snippets: List[str]) -> Dict[str, 
                 if 0 <= idx < len(search_snippets):
                     snippet_text = search_snippets[idx].lower()
                     value_str = str(value).lower()
+
+                    # Issue #108 (flag ON): unit-aware rubric that can emit
+                    # "flagged". Flag OFF: the legacy digit-substring rubric
+                    # below runs untouched, byte-identical to f2481b9.
+                    if citation_rubric_v2_enabled():
+                        confidence[key] = _grade_citation_v2(key, value_str, snippet_text)
+                        continue
 
                     spec_numbers = re.findall(r'\d+', value_str)
 
@@ -96,10 +222,51 @@ def verify_spec_citations(specs: Dict, search_snippets: List[str]) -> Dict[str, 
     return confidence
 
 
-def cross_validate_specs_with_shopping(specs: Dict, shopping_items: List[Dict]) -> Dict[str, str]:
+def _shopping_number_confirmed(
+    n: str, value_str: str, shopping_text: str, identity_numbers: set
+) -> bool:
+    """Issue #108 fix (c), flag-ON only — is spec number `n` genuinely
+    confirmed by the shopping text?
+
+    A digit that is part of the product's own name/brand/model (e.g. the "16"
+    of "iPhone 16") is NOT evidence for a spec value: it only counts when it
+    appears in the shopping text ADJACENT to the unit the spec value itself
+    pairs it with ("16GB"/"16 GB" confirms ram="16 GB"; a bare model-number
+    "16" does not). A colliding digit whose value carries no unit cannot be
+    disambiguated and is dropped (degrades toward unverified, never upgrades).
+    Non-colliding digits keep the legacy substring check.
+    """
+    if n not in identity_numbers:
+        return n in shopping_text
+    v_pairs, _ = _extract_number_units(
+        _strip_thousands_separators(value_str), value_side=True
+    )
+    try:
+        n_val = float(n)
+    except ValueError:  # pragma: no cover — \d-only capture always floats
+        return False
+    for num, unit in v_pairs:
+        if abs(num - n_val) > 1e-9:
+            continue
+        pat_unit = "inch(?:es)?" if unit == "inch" else re.escape(unit)
+        if re.search(
+            r"\b" + re.escape(n) + r"\s*" + pat_unit + r"(?![a-z0-9])",
+            shopping_text,
+        ):
+            return True
+    return False
+
+
+def cross_validate_specs_with_shopping(
+    specs: Dict, shopping_items: List[Dict], product_name: str = ""
+) -> Dict[str, str]:
     """Cross-check spec values against Serper Shopping product titles/descriptions.
 
     Upgrades 'likely' to 'verified' if shopping data confirms.
+
+    `product_name` (issue #108, optional so existing callers stay valid) feeds
+    the flag-ON identity fence: a digit belonging to the product's own
+    name/brand/model cannot upgrade a spec value. Flag OFF it is ignored.
     """
     if not shopping_items:
         return {}
@@ -108,6 +275,15 @@ def cross_validate_specs_with_shopping(specs: Dict, shopping_items: List[Dict]) 
         f"{item.get('title', '')} {item.get('description', '')}"
         for item in shopping_items
     ).lower()
+
+    rubric_v2 = citation_rubric_v2_enabled()
+    identity_numbers: set = set()
+    if rubric_v2:
+        identity_text = " ".join(
+            str(part or "")
+            for part in (product_name, specs.get("brand"), specs.get("model"))
+        ).lower()
+        identity_numbers = set(re.findall(r"\d+", identity_text))
 
     flags = {}
     checkable = ["storage", "ram", "display", "processor", "count", "dosage", "form"]
@@ -118,7 +294,15 @@ def cross_validate_specs_with_shopping(specs: Dict, shopping_items: List[Dict]) 
         value_str = str(value).lower()
         spec_numbers = [n for n in re.findall(r'\d+', value_str) if len(n) >= 2]
         if spec_numbers:
-            all_found = all(n in shopping_text for n in spec_numbers)
+            if rubric_v2:
+                all_found = all(
+                    _shopping_number_confirmed(
+                        n, value_str, shopping_text, identity_numbers
+                    )
+                    for n in spec_numbers
+                )
+            else:
+                all_found = all(n in shopping_text for n in spec_numbers)
             if all_found:
                 flags[key] = "verified"
         else:

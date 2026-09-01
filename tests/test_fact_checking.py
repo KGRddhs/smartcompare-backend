@@ -729,3 +729,155 @@ class TestVerifyPriceCurrencyNormalization:
         monkeypatch.delenv("ENABLE_FACTCHECK_CURRENCY_NORMALIZATION", raising=False)
         result = service._verify_price(price, list(rows))
         assert result == expected
+
+
+# =====================================================
+# Issue #108 — unit-aware citation rubric + reachable "flagged"
+# (ENABLE_CITATION_RUBRIC_V2, default OFF)
+# =====================================================
+
+class TestCitationRubricV2:
+    """#108 — verify_spec_citations must be unit-aware and able to say
+    'contradicted' ("flagged"); a citation of a snippet with no comparable
+    number is not evidence and must not outscore an honest 'training'."""
+
+    def test_unit_mismatch_is_not_verified(self, service, monkeypatch):
+        monkeypatch.setenv("ENABLE_CITATION_RUBRIC_V2", "true")
+        specs = {"storage": "128 TB", "storage_source": "snippet_1"}
+        snippets = ["Ships with 128 GB of storage."]
+        result = service._verify_spec_citations(specs, snippets)
+        assert result["storage"] != "verified"
+
+    def test_contradicted_numeric_value_is_flagged(self, service, monkeypatch):
+        monkeypatch.setenv("ENABLE_CITATION_RUBRIC_V2", "true")
+        specs = {"battery": "5000 mAh", "battery_source": "snippet_1"}
+        snippets = ["The handset packs a 3582 mAh battery."]
+        result = service._verify_spec_citations(specs, snippets)
+        assert result["battery"] == "flagged"
+
+    def test_numeric_field_citing_number_free_snippet_is_unverified(self, service, monkeypatch):
+        """Cross-cutting rule: no comparable number = the check cannot be
+        computed = 'unverified' (absent), never 'likely' (reads as evidence)."""
+        monkeypatch.setenv("ENABLE_CITATION_RUBRIC_V2", "true")
+        specs = {"battery": "5000 mAh", "battery_source": "snippet_1"}
+        snippets = ["All-day battery life with fast charging."]
+        result = service._verify_spec_citations(specs, snippets)
+        assert result["battery"] == "unverified"
+
+    def test_thousands_separator_matches_both_directions(self, service, monkeypatch):
+        monkeypatch.setenv("ENABLE_CITATION_RUBRIC_V2", "true")
+        r1 = service._verify_spec_citations(
+            {"battery": "5000 mAh", "battery_source": "snippet_1"},
+            ["5,000 mAh battery"],
+        )
+        assert r1["battery"] == "verified"
+        r2 = service._verify_spec_citations(
+            {"battery": "5,000 mAh", "battery_source": "snippet_1"},
+            ["5000 mAh battery"],
+        )
+        assert r2["battery"] == "verified"
+
+    def test_spaced_and_glued_unit_spellings_are_equal(self, service, monkeypatch):
+        monkeypatch.setenv("ENABLE_CITATION_RUBRIC_V2", "true")
+        r1 = service._verify_spec_citations(
+            {"storage": "128 GB", "storage_source": "snippet_1"},
+            ["128GB model"],
+        )
+        assert r1["storage"] == "verified"
+        r2 = service._verify_spec_citations(
+            {"storage": "128GB", "storage_source": "snippet_1"},
+            ["128 GB model"],
+        )
+        assert r2["storage"] == "verified"
+
+    def test_flagged_scores_below_unverified_in_reliability(self):
+        """Pin: the new 'flagged' output lands on weight 0.0, strictly below
+        'unverified' (0.3), in ScoringService._score_reliability."""
+        from app.services.scoring_service import ScoringService
+        s = ScoringService()
+        flagged = s._score_reliability(
+            {"specs_verified": 0, "specs_likely": 0, "specs_flagged": 1, "specs_unverified": 0}
+        )
+        unverified = s._score_reliability(
+            {"specs_verified": 0, "specs_likely": 0, "specs_flagged": 0, "specs_unverified": 1}
+        )
+        assert flagged < unverified
+
+    def test_fabricated_citation_no_longer_outscores_training(self, service, monkeypatch):
+        """End-to-end: product A cites battery to a number-free snippet,
+        product B honestly answers 'training'. A must not outscore B."""
+        monkeypatch.setenv("ENABLE_CITATION_RUBRIC_V2", "true")
+        from app.services.scoring_service import ScoringService
+        s = ScoringService()
+        conf_a = service._verify_spec_citations(
+            {"battery": "5000 mAh", "battery_source": "snippet_1"},
+            ["All-day battery life with fast charging."],
+        )
+        conf_b = service._verify_spec_citations(
+            {"battery": "5000 mAh", "battery_source": "training"},
+            ["All-day battery life with fast charging."],
+        )
+        fc_a = service._build_fact_check({"_spec_confidence": conf_a})
+        fc_b = service._build_fact_check({"_spec_confidence": conf_b})
+        rel_a = s._score_reliability(fc_a)
+        rel_b = s._score_reliability(fc_b)
+        assert rel_a <= rel_b
+
+    @pytest.mark.parametrize("specs,snippets,expected", [
+        (  # case 1 today: unit ignored -> "verified"
+            {"storage": "128 TB", "storage_source": "snippet_1"},
+            ["Ships with 128 GB of storage."],
+            "verified",
+        ),
+        (  # case 2 today: no negative verdict exists -> "likely"
+            {"battery": "5000 mAh", "battery_source": "snippet_1"},
+            ["The handset packs a 3582 mAh battery."],
+            "likely",
+        ),
+        (  # case 4 (first direction) today: separator never stripped -> "likely"
+            {"battery": "5000 mAh", "battery_source": "snippet_1"},
+            ["5,000 mAh battery"],
+            "likely",
+        ),
+    ])
+    def test_flag_off_reproduces_citation_defects(self, service, monkeypatch, specs, snippets, expected):
+        """REQUIRED flag-OFF identity pin (citation half): with the flag unset
+        the rubric returns today's exact values."""
+        monkeypatch.delenv("ENABLE_CITATION_RUBRIC_V2", raising=False)
+        key = next(k for k in specs if not k.endswith("_source"))
+        result = service._verify_spec_citations(dict(specs), list(snippets))
+        assert result[key] == expected
+
+
+class TestCrossValidateIdentityFence:
+    """#108 fix (c) — the shopping cross-validation must not upgrade a spec on
+    a digit that is part of the product's own name/brand/model."""
+
+    def test_shopping_crossval_ignores_model_number_digit(self, service, monkeypatch):
+        monkeypatch.setenv("ENABLE_CITATION_RUBRIC_V2", "true")
+        specs = {"ram": "16 GB", "brand": "Apple"}
+        shopping_items = [{"title": "Apple iPhone 16 128GB Black", "description": ""}]
+        result = service._cross_validate_specs_with_shopping(
+            specs, shopping_items, "Apple iPhone 16"
+        )
+        assert result.get("ram") != "verified"
+
+    def test_shopping_crossval_still_upgrades_genuine_match(self, service, monkeypatch):
+        """Pin that the fence did not over-reject: a unit-adjacent occurrence
+        of the colliding digit is a genuine confirmation."""
+        monkeypatch.setenv("ENABLE_CITATION_RUBRIC_V2", "true")
+        specs = {"ram": "16 GB", "brand": "Apple"}
+        shopping_items = [{"title": "Apple iPhone 16 16GB RAM 128GB Black", "description": ""}]
+        result = service._cross_validate_specs_with_shopping(
+            specs, shopping_items, "Apple iPhone 16"
+        )
+        assert result.get("ram") == "verified"
+
+    def test_flag_off_reproduces_crossval_defect(self, service, monkeypatch):
+        """REQUIRED flag-OFF identity pin (cross-val half): today the bare
+        substring check upgrades ram=16GB off the model number '16'."""
+        monkeypatch.delenv("ENABLE_CITATION_RUBRIC_V2", raising=False)
+        specs = {"ram": "16 GB", "brand": "Apple"}
+        shopping_items = [{"title": "Apple iPhone 16 128GB Black", "description": ""}]
+        result = service._cross_validate_specs_with_shopping(specs, shopping_items)
+        assert result.get("ram") == "verified"
