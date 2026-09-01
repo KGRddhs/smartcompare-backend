@@ -1,0 +1,506 @@
+{
+  "electronics": {
+    "scores": {
+      "product_0": {
+        "breakdown": {
+          "build_quality_score": 100,
+          "ecosystem_score": 82.6,
+          "feature_score": 40.0,
+          "futureproof_score": 40.0,
+          "performance_score": 50,
+          "value_score": 75.0
+        },
+        "missing_data": [
+          "performance_score",
+          "value_score"
+        ],
+        "overall": 62.8,
+        "weights_used": {
+          "build_quality_score": 0.15,
+          "ecosystem_score": 0.1,
+          "feature_score": 0.2,
+          "futureproof_score": 0.1,
+          "performance_score": 0.25,
+          "value_score": 0.2
+        }
+      },
+      "product_1": {
+        "breakdown": {
+          "build_quality_score": 50,
+          "ecosystem_score": 50,
+          "feature_score": 50,
+          "futureproof_score": 50,
+          "performance_score": 50,
+          "value_score": 75.0
+        },
+        "missing_data": [
+          "performance_score",
+          "value_score",
+          "build_quality_score",
+          "feature_score",
+          "ecosystem_score",
+          "futureproof_score"
+        ],
+        "overall": 55.0,
+        "weights_used": {
+          "build_quality_score": 0.15,
+          "ecosystem_score": 0.1,
+          "feature_score": 0.2,
+          "futureproof_score": 0.1,
+          "performance_score": 0.25,
+          "value_score": 0.2
+        }
+      }
+    },
+    "win_margin": 7.8,
+    "winner_index": 0
+  },
+  "fashion": {
+    "scores": {
+      "product_0": {
+        "breakdown": {
+          "cpw_score": 75.0,
+          "craft_score": 50,
+          "durability_score": 100,
+          "fit_score": 40.0,
+          "heritage_score": 40.0,
+          "style_score": 82.6
+        },
+        "missing_data": [
+          "craft_score",
+          "cpw_score"
+        ],
+        "overall": 63.5,
+        "weights_used": {
+          "cpw_score": 0.1,
+          "craft_score": 0.25,
+          "durability_score": 0.15,
+          "fit_score": 0.2,
+          "heritage_score": 0.1,
+          "style_score": 0.2
+        }
+      },
+      "product_1": {
+        "breakdown": {
+          "cpw_score": 75.0,
+          "craft_score": 50,
+          "durability_score": 50,
+          "fit_score": 50,
+          "heritage_score": 50,
+          "style_score": 50
+        },
+        "missing_data": [
+          "craft_score",
+          "fit_score",
+          "style_score",
+          "durability_score",
+          "heritage_score",
+          "cpw_score"
+        ],
+        "overall": 52.5,
+        "weights_used": {
+          "cpw_score": 0.1,
+          "craft_score": 0.25,
+          "durability_score": 0.15,
+          "fit_score": 0.2,
+          "heritage_score": 0.1,
+          "style_score": 0.2
+        }
+      }
+    },
+    "win_margin": 11.0,
+    "winner_index": 0
+  },
+  "fragrances": {
+    "scores": {
+      "product_0": {
+        "breakdown": {
+          "character_score": 50,
+          "longevity_score": 40.0,
+          "presentation_score": 82.6,
+          "projection_score": 40.0,
+          "versatility_score": 100,
+          "wear_value_score": 75.0
+        },
+        "missing_data": [
+          "character_score",
+          "wear_value_score"
+        ],
+        "overall": 59.3,
+        "weights_used": {
+          "character_score": 0.25,
+          "longevity_score": 0.25,
+          "presentation_score": 0.1,
+          "projection_score": 0.15,
+          "versatility_score": 0.15,
+          "wear_value_score": 0.1
+        }
+      },
+      "product_1": {
+        "breakdown": {
+          "character_score": 50,
+          "longevity_score": 50,
+          "presentation_score": 50,
+          "projection_score": 50,
+          "versatility_score": 50,
+          "wear_value_score": 75.0
+        },
+        "missing_data": [
+          "character_score",
+          "longevity_score",
+          "projection_score",
+          "versatility_score",
+          "wear_value_score",
+          "presentation_score"
+        ],
+        "overall": 52.5,
+        "weights_used": {
+          "character_score": 0.25,
+          "longevity_score": 0.25,
+          "presentation_score": 0.1,
+          "projection_score": 0.15,
+          "versatility_score": 0.15,
+          "wear_value_score": 0.1
+        }
+      }
+    },
+    "win_margin": 6.8,
+    "winner_index": 0
+  },
+  "grocery": {
+    "scores": {
+      "product_0": {
+        "breakdown": {
+          "availability_score": 82.6,
+          "dietary_score": 40.0,
+          "ingredient_score": 100,
+          "nutrition_score": 50,
+          "serving_value_score": 75.0,
+          "taste_score": 40.0
+        },
+        "missing_data": [
+          "nutrition_score",
+          "serving_value_score"
+        ],
+        "overall": 61.9,
+        "weights_used": {
+          "availability_score": 0.05,
+          "dietary_score": 0.15,
+          "ingredient_score": 0.2,
+          "nutrition_score": 0.25,
+          "serving_value_score": 0.15,
+          "taste_score": 0.2
+        }
+      },
+      "product_1": {
+        "breakdown": {
+          "availability_score": 50,
+          "dietary_score": 50,
+          "ingredient_score": 50,
+          "nutrition_score": 50,
+          "serving_value_score": 75.0,
+          "taste_score": 50
+        },
+        "missing_data": [
+          "nutrition_score",
+          "ingredient_score",
+          "taste_score",
+          "serving_value_score",
+          "dietary_score",
+          "availability_score"
+        ],
+        "overall": 53.8,
+        "weights_used": {
+          "availability_score": 0.05,
+          "dietary_score": 0.15,
+          "ingredient_score": 0.2,
+          "nutrition_score": 0.25,
+          "serving_value_score": 0.15,
+          "taste_score": 0.2
+        }
+      }
+    },
+    "win_margin": 8.1,
+    "winner_index": 0
+  },
+  "haircare": {
+    "scores": {
+      "product_0": {
+        "breakdown": {
+          "hair_match_score": 50,
+          "ingredient_score": 100,
+          "multi_value_score": 75.0,
+          "results_score": 40.0,
+          "scalp_score": 82.6,
+          "scent_score": 40.0
+        },
+        "missing_data": [
+          "hair_match_score",
+          "multi_value_score"
+        ],
+        "overall": 59.3,
+        "weights_used": {
+          "hair_match_score": 0.25,
+          "ingredient_score": 0.15,
+          "multi_value_score": 0.1,
+          "results_score": 0.25,
+          "scalp_score": 0.1,
+          "scent_score": 0.15
+        }
+      },
+      "product_1": {
+        "breakdown": {
+          "hair_match_score": 50,
+          "ingredient_score": 50,
+          "multi_value_score": 75.0,
+          "results_score": 50,
+          "scalp_score": 50,
+          "scent_score": 50
+        },
+        "missing_data": [
+          "hair_match_score",
+          "results_score",
+          "ingredient_score",
+          "scent_score",
+          "multi_value_score",
+          "scalp_score"
+        ],
+        "overall": 52.5,
+        "weights_used": {
+          "hair_match_score": 0.25,
+          "ingredient_score": 0.15,
+          "multi_value_score": 0.1,
+          "results_score": 0.25,
+          "scalp_score": 0.1,
+          "scent_score": 0.15
+        }
+      }
+    },
+    "win_margin": 6.8,
+    "winner_index": 0
+  },
+  "makeup": {
+    "scores": {
+      "product_0": {
+        "breakdown": {
+          "finish_score": 40.0,
+          "ingredient_safety_score": 82.6,
+          "longevity_score": 40.0,
+          "perf_value_score": 75.0,
+          "shade_score": 50,
+          "skin_compat_score": 100
+        },
+        "missing_data": [
+          "shade_score",
+          "perf_value_score"
+        ],
+        "overall": 61.8,
+        "weights_used": {
+          "finish_score": 0.15,
+          "ingredient_safety_score": 0.1,
+          "longevity_score": 0.25,
+          "perf_value_score": 0.1,
+          "shade_score": 0.2,
+          "skin_compat_score": 0.2
+        }
+      },
+      "product_1": {
+        "breakdown": {
+          "finish_score": 50,
+          "ingredient_safety_score": 50,
+          "longevity_score": 50,
+          "perf_value_score": 75.0,
+          "shade_score": 50,
+          "skin_compat_score": 50
+        },
+        "missing_data": [
+          "shade_score",
+          "longevity_score",
+          "skin_compat_score",
+          "finish_score",
+          "ingredient_safety_score",
+          "perf_value_score"
+        ],
+        "overall": 52.5,
+        "weights_used": {
+          "finish_score": 0.15,
+          "ingredient_safety_score": 0.1,
+          "longevity_score": 0.25,
+          "perf_value_score": 0.1,
+          "shade_score": 0.2,
+          "skin_compat_score": 0.2
+        }
+      }
+    },
+    "win_margin": 9.3,
+    "winner_index": 0
+  },
+  "other": {
+    "scores": {
+      "product_0": {
+        "breakdown": {
+          "build_score": 100,
+          "feature_match_score": 82.6,
+          "function_score": 50,
+          "reliability_score": 40.0,
+          "review_score": 40.0,
+          "value_score": 75.0
+        },
+        "missing_data": [
+          "function_score",
+          "value_score"
+        ],
+        "overall": 61.0,
+        "weights_used": {
+          "build_score": 0.15,
+          "feature_match_score": 0.1,
+          "function_score": 0.25,
+          "reliability_score": 0.1,
+          "review_score": 0.25,
+          "value_score": 0.15
+        }
+      },
+      "product_1": {
+        "breakdown": {
+          "build_score": 50,
+          "feature_match_score": 50,
+          "function_score": 50,
+          "reliability_score": 50,
+          "review_score": 50,
+          "value_score": 75.0
+        },
+        "missing_data": [
+          "function_score",
+          "build_score",
+          "review_score",
+          "value_score",
+          "reliability_score",
+          "feature_match_score"
+        ],
+        "overall": 53.8,
+        "weights_used": {
+          "build_score": 0.15,
+          "feature_match_score": 0.1,
+          "function_score": 0.25,
+          "reliability_score": 0.1,
+          "review_score": 0.25,
+          "value_score": 0.15
+        }
+      }
+    },
+    "win_margin": 7.2,
+    "winner_index": 0
+  },
+  "skincare": {
+    "scores": {
+      "product_0": {
+        "breakdown": {
+          "actives_score": 50,
+          "evidence_score": 100,
+          "formulation_score": 40.0,
+          "results_value_score": 75.0,
+          "sensory_score": 82.6,
+          "skin_compat_score": 40.0
+        },
+        "missing_data": [
+          "actives_score",
+          "results_value_score"
+        ],
+        "overall": 62.3,
+        "weights_used": {
+          "actives_score": 0.25,
+          "evidence_score": 0.2,
+          "formulation_score": 0.15,
+          "results_value_score": 0.1,
+          "sensory_score": 0.1,
+          "skin_compat_score": 0.2
+        }
+      },
+      "product_1": {
+        "breakdown": {
+          "actives_score": 50,
+          "evidence_score": 50,
+          "formulation_score": 50,
+          "results_value_score": 75.0,
+          "sensory_score": 50,
+          "skin_compat_score": 50
+        },
+        "missing_data": [
+          "actives_score",
+          "evidence_score",
+          "skin_compat_score",
+          "formulation_score",
+          "sensory_score",
+          "results_value_score"
+        ],
+        "overall": 52.5,
+        "weights_used": {
+          "actives_score": 0.25,
+          "evidence_score": 0.2,
+          "formulation_score": 0.15,
+          "results_value_score": 0.1,
+          "sensory_score": 0.1,
+          "skin_compat_score": 0.2
+        }
+      }
+    },
+    "win_margin": 9.8,
+    "winner_index": 0
+  },
+  "supplements": {
+    "scores": {
+      "product_0": {
+        "breakdown": {
+          "dosage_score": 40.0,
+          "efficacy_score": 50,
+          "form_score": 40.0,
+          "safety_score": 100,
+          "serving_value_score": 75.0,
+          "trust_score": 82.6
+        },
+        "missing_data": [
+          "efficacy_score",
+          "serving_value_score"
+        ],
+        "overall": 65.8,
+        "weights_used": {
+          "dosage_score": 0.15,
+          "efficacy_score": 0.3,
+          "form_score": 0.1,
+          "safety_score": 0.25,
+          "serving_value_score": 0.1,
+          "trust_score": 0.1
+        }
+      },
+      "product_1": {
+        "breakdown": {
+          "dosage_score": 50,
+          "efficacy_score": 50,
+          "form_score": 50,
+          "safety_score": 50,
+          "serving_value_score": 75.0,
+          "trust_score": 50
+        },
+        "missing_data": [
+          "efficacy_score",
+          "safety_score",
+          "dosage_score",
+          "serving_value_score",
+          "form_score",
+          "trust_score"
+        ],
+        "overall": 52.5,
+        "weights_used": {
+          "dosage_score": 0.15,
+          "efficacy_score": 0.3,
+          "form_score": 0.1,
+          "safety_score": 0.25,
+          "serving_value_score": 0.1,
+          "trust_score": 0.1
+        }
+      }
+    },
+    "win_margin": 13.3,
+    "winner_index": 0
+  }
+}

@@ -2961,6 +2961,66 @@ def _mark_unit_pending(*products: Dict[str, Any]) -> None:
             p["retailer"] = None
 
 
+def apply_region_currency_guard(
+    product_data: List[Dict[str, Any]],
+    region: Optional[str],
+) -> bool:
+    """M13-11 PRE-SCORING half (M18 CD-interactions-02). Pend any price whose
+    currency != the request region's currency, IN PLACE, BEFORE scoring / the
+    verdict / the SSE `prices` event read it. Pure, no network. Returns True iff it
+    changed a price. No-op when ENABLE_REGION_CURRENCY_GUARD is OFF.
+
+    The response chokepoint (response_builder's price-pending loop) applies the
+    same rule, but it runs AFTER compute_scores has already picked a winner from
+    the raw amount and AFTER the streaming `prices` event has shipped that amount
+    to the client — so with the flag ON the final payload showed `price: pending`
+    next to a winner decided by the hidden mismatched price (BHD 10 vs SAR 40
+    scored as 10 vs 40). This pass closes that half; the chokepoint STAYS as the
+    idempotent backstop for direct build_comparison_response callers (share /
+    history rebuilds, tests), where an already-pended price hits its
+    `unavailable is True` early-continue and cannot double-pend.
+
+    Mirrors the chokepoint's condition exactly so the two cannot drift: a
+    non-dict price is left alone (the chokepoint's SIB-5 branch owns it), an
+    already-pending price keeps its own reason (size_mismatch / unit_mismatch),
+    and a missing / empty currency label is NOT a mismatch.
+
+    The rejection reason is stashed on the PRODUCT dict as
+    ``_region_guard_rejected`` (not on the price) so response_builder can still
+    surface it as ``metadata.guard_rejected``: ``public_price_view`` only strips
+    ``_``-prefixed keys from a price when ENABLE_EXACT_PRICE_GATE is ON, so a
+    price-level key would leak into the public price surface with that gate off,
+    whereas both product projections build explicit keys.
+
+    Must run AFTER reconcile_pair_fairness (which can re-select a candidate with a
+    different currency) and BEFORE the `specs` event.
+    """
+    if not region_currency_guard_enabled():
+        return False
+    from app.services.exchange_rate_service import get_region_currency
+    _region_currency = get_region_currency(region).upper()
+    changed = False
+    for pd in product_data:
+        _price = pd.get("price")
+        if not isinstance(_price, dict):
+            continue
+        if _price.get("unavailable") is True:
+            continue
+        _pcur = str(_price.get("currency") or "").upper()
+        if not _pcur or _pcur == _region_currency:
+            continue
+        pd["price"] = make_pending_price(
+            currency=_region_currency, reason="pending_genuine",
+            size=_price.get("size"),
+        )
+        pd["best_price"] = None
+        if "retailer" in pd:
+            pd["retailer"] = None
+        pd["_region_guard_rejected"] = "region_currency_mismatch"
+        changed = True
+    return changed
+
+
 def reconcile_pair_fairness(
     product_data: List[Dict[str, Any]],
     user_query: Optional[str],

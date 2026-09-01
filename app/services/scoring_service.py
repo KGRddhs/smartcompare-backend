@@ -6,7 +6,7 @@ prices, reviews, and user preferences. Same input = same output (deterministic).
 """
 import logging
 import re
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Tuple
 
 from app.services.extraction_service import CATEGORY_SPEC_SCHEMAS, canonicalize_category
 
@@ -433,6 +433,89 @@ def _category_value_badge_enabled() -> bool:
     return os.environ.get("ENABLE_CATEGORY_VALUE_BADGE", "").strip().lower() in (
         "1", "true", "yes", "on",
     )
+
+
+# M20 #101 — ENABLE_MISSING_DIM_RENORM (default OFF). MISSING_SCORE=50 injected
+# into the `overall` roll-up makes NO DATA BEAT BAD DATA: a genuinely measured
+# 2.0-star rating normalizes to 40.0 via _normalize_review, so an UNRATED
+# product outranks an otherwise-identical 2.0-star one (measured on
+# `fragrances`: 51.8 vs 52.5, winner flipped to the void). When ON, a dimension
+# whose SOURCE SIGNAL is missing for at least one but not all products is
+# EXCLUDED from every product's `overall` and the remaining weights are
+# renormalized to 1.0 — neither side is rewarded or punished for the gap.
+# Read LIVE (not process-cached like _bundle_c_scoring_enabled) so a Railway
+# flip / monkeypatch takes effect without a restart and tests need no global
+# reset. Mirrors response_builder._gpt_winner_lever_enabled.
+def _missing_dim_renorm_enabled() -> bool:
+    import os
+    return os.environ.get("ENABLE_MISSING_DIM_RENORM", "").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
+
+
+# M20 #100 — ENABLE_SPEC_FIELD_NORM (default OFF). `_score_specs` sums RAW
+# magnitudes across incompatible units (mAh + GB + MP + counts) into one score,
+# so spec NOTATION decides the winner instead of product quality: the same phone
+# scores 761.1 with `battery: "5000mAh"` and 51.0 with
+# `battery: "Up to 29 hours video playback"` (14.9x). The same raw-magnitude sum
+# inverts the sparse-coverage penalty — `{"battery": "5000mAh"}` alone scores
+# `(5000/1) * (0.5 + 1/11)` = 2954.5, so a 1-of-11 capture BEATS a 7-of-11
+# capture of the same product. M18 PO-rubric-01 + PO-rubric-02, one root cause.
+# When ON, each schema field contributes a unit-free 0-1 score relative to the
+# comparison PAIR, the product score is the MEAN of those, and the coverage
+# discount `mean * (0.5 + scored_fields / total_fields)` is applied
+# unconditionally with `total_fields` as the divisor basis so missing fields
+# DILUTE instead of concentrating.
+# Read LIVE (not process-cached like _bundle_c_scoring_enabled) so a Railway
+# flip / monkeypatch takes effect without a restart and tests need no global
+# reset. Mirrors response_builder._gpt_winner_lever_enabled.
+def _spec_field_norm_enabled() -> bool:
+    import os
+    return os.environ.get("ENABLE_SPEC_FIELD_NORM", "").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
+
+
+# M20 #100 — unit token immediately following the first number in a spec value.
+# `_SPEC_UNIT_RE` allows up to 3 leading non-alphanumeric characters so
+# "6.7-inch" and "29 hours" both resolve, but never skips a digit (so "2 x 500
+# ml" resolves to no unit rather than borrowing "ml" from a second number).
+_SPEC_NUMBER_RE = re.compile(r'[\d,]+\.?\d*')
+_SPEC_UNIT_RE = re.compile(r'^[^A-Za-z0-9]{0,3}([A-Za-z]+)')
+
+# Separator between a spec field name and its unit token in the per-field map.
+# A value in a DIFFERENT unit is a DIFFERENT measurement — pair-relative
+# min-max cannot convert mAh to hours, and an absolute conversion table would
+# need per-category per-field curation across 9 categories and would rot as new
+# fields land. Keying on `field@unit` makes the mAh-vs-hours pair symmetric
+# (each side scores 1.0 on its own key and 0.0 on the other's) instead of a
+# 14.9x landslide, with no conversion table anywhere.
+_SPEC_FIELD_UNIT_SEP = "@"
+
+# Value stored for a field that is PRESENT but carries no comparable magnitude
+# (an undirected schema field, or a non-numeric value). Mirrors the legacy
+# `total_score += 1` presence credit: presence is the signal, magnitude is not.
+_SPEC_PRESENCE_CREDIT = 1.0
+
+
+def _spec_unit_token(text: str) -> str:
+    """Return the normalized unit that follows the first number in `text`.
+
+    "5000mAh" -> "mah", "Up to 29 hours video playback" -> "hour", "8 GB" ->
+    "gb", "100 ml" -> "ml", "50" -> "" (unitless). Commas are stripped first so
+    the offsets line up with `_extract_number`, which does the same.
+    """
+    cleaned = (text or "").replace(",", "")
+    match = _SPEC_NUMBER_RE.search(cleaned)
+    if not match:
+        return ""
+    unit_match = _SPEC_UNIT_RE.match(cleaned[match.end():])
+    if not unit_match:
+        return ""
+    unit = unit_match.group(1).lower()
+    if len(unit) > 1 and unit.endswith("s"):
+        unit = unit[:-1]  # hours -> hour, capsules -> capsule
+    return unit
 
 
 # Bundle C § 3b + § 3e — per-category 5-tier breakpoints (BHD).
@@ -1211,13 +1294,52 @@ class ScoringService:
 
         # Compute overall weighted score for each product
         dims = CATEGORY_DIMENSIONS.get(category, CATEGORY_DIMENSIONS["other"])
+
+        # M20 #101 — PRE-PASS: which dims are ONE-SIDED missing (missing for at
+        # least one product but not all)? Read from the EXPLICIT per-dim
+        # `_<dim>_missing` flags set in _normalize_scores — never `== 50.0`
+        # value-equality, because a 2.5-star rating normalizes to EXACTLY 50.0
+        # (_normalize_review) and a 0.5 reliability/popularity raw does too
+        # (_normalize_direct). Same discipline as count_missing_dim_cells.
+        # Computed BEFORE the loop because the loop cannot see the other
+        # product's gaps while it is scoring this one.
+        renorm_on = _missing_dim_renorm_enabled()
+        one_sided_dims: set = set()
+        if renorm_on:
+            n_products = len(raw_scores)
+            one_sided_dims = {
+                dim for dim in dims
+                if 0 < sum(1 for rs in raw_scores if rs.get(f"_{dim}_missing")) < n_products
+            }
+
         result_products = {}
         for i, product in enumerate(products_data):
             product_key = f"product_{i}"
             breakdown = normalized[i]
-            overall = sum(
-                breakdown.get(dim, MISSING_SCORE) * weights.get(dim, 0) for dim in weights
-            )
+            effective_weights = {
+                d: w for d, w in weights.items() if d not in one_sided_dims
+            }
+            effective_total = sum(effective_weights.values())
+            if one_sided_dims and effective_total > 0:
+                # Renormalize the surviving weights to sum to 1.0 so the gap
+                # neither rewards nor punishes either side.
+                overall = sum(
+                    breakdown.get(d, MISSING_SCORE) * w / effective_total
+                    for d, w in effective_weights.items()
+                )
+            else:
+                # Flag OFF, nothing one-sided, or EVERY dim one-sided (the
+                # divide-by-zero edge) -> legacy un-renormalized sum.
+                if renorm_on and one_sided_dims:
+                    logger.warning(
+                        "[SCORING] every dimension one-sided-missing for category=%s "
+                        "(%d dims); falling back to the un-renormalized roll-up. "
+                        "At volume this is an EXTRACTION bug, not a scoring one.",
+                        category, len(one_sided_dims),
+                    )
+                overall = sum(
+                    breakdown.get(dim, MISSING_SCORE) * weights.get(dim, 0) for dim in weights
+                )
             overall = round(max(0, min(100, overall)), 1)
 
             # Track which dimensions had missing data
@@ -1229,6 +1351,15 @@ class ScoringService:
                 "weights_used": {k: round(v, 4) for k, v in weights.items()},
                 "missing_data": missing_dims if missing_dims else None,
             }
+            if renorm_on:
+                # Additive key, shaped EXACTLY like `missing_data` (list, or
+                # None when empty) so consumers branch identically. Lets
+                # build_dimensions_v2 omit the dim instead of rendering a
+                # synthetic 50 bar as if it were a measurement. Omitted
+                # entirely when the flag is OFF so flag-OFF output is
+                # byte-identical to 593ec1e.
+                excluded = [d for d in dims if d in one_sided_dims]
+                result_products[product_key]["excluded_dims"] = excluded or None
 
         # S3 L3 v2 — PRICE-AUTHORITY AS A SCORE FACTOR (Ahmed pivot 2026-06-13).
         # "Facts beat estimates" now lives IN the genuine `overall` score, NOT a
@@ -1424,6 +1555,17 @@ class ScoringService:
             scores["spec_raw"] = None
             scores["_spec_missing"] = True
 
+        # M20 #100 — the per-field decomposition, stashed IN ADDITION to
+        # `spec_raw` for the pair-relative step in `_normalize_scores` (this
+        # function is per-product, so it cannot see the pair). Only written when
+        # the flag is ON, and nothing reads it otherwise, so flag-OFF output is
+        # byte-identical.
+        if _spec_field_norm_enabled():
+            scores["_spec_fields"] = (
+                self._score_specs_fields(specs, category)
+                if specs and isinstance(specs, dict) else None
+            )
+
         # F4.1 (#16) — capture the REAL longevity-hours signal so the fragrance/
         # makeup longevity_score dim can be reconciled to it (the dim is sourced
         # from a generic spec/review composite that ignores the actual longevity
@@ -1573,6 +1715,127 @@ class ScoringService:
 
         return total_score / scored_fields
 
+    def _score_specs_fields(
+        self, specs: Dict[str, Any], category: str
+    ) -> Optional[Tuple[Dict[str, float], int, int]]:
+        """M20 #100 — the per-FIELD decomposition `_score_specs` throws away.
+
+        Returns `({field_key: signed_value}, scored_fields, total_fields)`, or
+        None on the same zero-coverage condition `_score_specs` returns None for
+        (B0-A v2.1 phantom-tie guard). The schema/direction selection and the
+        `scored_fields` tally are byte-identical to `_score_specs`, so the
+        coverage math is unchanged — only the AGGREGATION differs (this returns
+        the parts; `_score_specs` sums them across incompatible units).
+
+        Field keys:
+        * a directed field with a numeric value -> `"{field}@{unit}"`, value =
+          the magnitude, NEGATED for lower-is-better so the pair-relative step
+          can always ask for higher_better=True.
+        * everything else (undirected field, or a non-numeric value) -> the bare
+          `field`, value = `_SPEC_PRESENCE_CREDIT`. This mirrors the legacy
+          `total_score += 1` credit: presence is the signal, magnitude is not
+          (comparing "Snapdragon 8 Gen 3" against "A17 Pro" by magnitude would
+          be noise, and the legacy code deliberately never did).
+        """
+        schema_key = category if category in CATEGORY_SPEC_SCHEMAS else "other"
+        # S2 I2.4 — strip verdict-awareness-only keys, exactly as _score_specs
+        # does, so coverage_ratio and the tally stay identical.
+        schema_fields = [
+            f for f in CATEGORY_SPEC_SCHEMAS[schema_key]
+            if f not in NON_SCORING_SPEC_KEYS
+        ]
+
+        higher = HIGHER_IS_BETTER_BY_CATEGORY.get(category, set())
+        lower = LOWER_IS_BETTER_BY_CATEGORY.get(category, set())
+
+        fields: Dict[str, float] = {}
+        scored_fields = 0
+
+        for field in schema_fields:
+            value = specs.get(field)
+            if not value or value == "N/A":
+                continue
+
+            text = str(value)
+            numeric = self._extract_number(text)
+            if numeric is not None and field in higher:
+                fields[f"{field}{_SPEC_FIELD_UNIT_SEP}{_spec_unit_token(text)}"] = numeric
+            elif numeric is not None and field in lower:
+                fields[f"{field}{_SPEC_FIELD_UNIT_SEP}{_spec_unit_token(text)}"] = -numeric
+            else:
+                fields[field] = _SPEC_PRESENCE_CREDIT
+            scored_fields += 1
+
+        if scored_fields == 0:
+            return None  # same B0-A v2.1 guard as _score_specs
+
+        return fields, scored_fields, len(schema_fields)
+
+    def _spec_field_pair_ratios(
+        self, field_maps: List[Dict[str, float]]
+    ) -> List[Dict[str, float]]:
+        """Map every field key onto a unit-free 0-1 score relative to the PAIR.
+
+        * present in only one product -> 1.0 for that product, 0.0 for the rest
+          (a genuine capture advantage, not a notation artifact).
+        * present in all with equal values -> 0.5 for everyone. Short-circuited
+          BEFORE `_magnitude_aware_ratio`, which assumes hi > lo.
+        * otherwise -> `_magnitude_aware_ratio`, which already collapses a
+          within-tolerance relative gap to the 0.5 midpoint.
+        """
+        all_keys = set()
+        for field_map in field_maps:
+            all_keys |= set(field_map.keys())
+
+        ratios: List[Dict[str, float]] = [{} for _ in field_maps]
+        for key in sorted(all_keys):
+            present = [fm.get(key) for fm in field_maps]
+            values = [v for v in present if v is not None]
+            only_one = len(values) == 1
+            lo, hi = min(values), max(values)
+            for i, value in enumerate(present):
+                if value is None:
+                    ratios[i][key] = 0.0
+                elif only_one:
+                    ratios[i][key] = 1.0
+                elif hi == lo:
+                    ratios[i][key] = 0.5
+                else:
+                    ratios[i][key] = _magnitude_aware_ratio(
+                        value, lo, hi, higher_better=True
+                    )
+        return ratios
+
+    def _spec_raw_from_fields(
+        self, field_tuples: List[Optional[Tuple[Dict[str, float], int, int]]]
+    ) -> List[Optional[float]]:
+        """Pair-relative replacement for `_score_specs`'s cross-unit sum.
+
+        Mean of the per-field 0-1 ratios, discounted by coverage against
+        `total_fields` (PO-rubric-02): `mean * (0.5 + scored_fields /
+        total_fields)`. The discount is UNCONDITIONAL — the legacy version only
+        applied below `CATEGORY_MIN_COVERAGE`, which is precisely why a 1-of-11
+        capture could out-concentrate a full one. Shape is unchanged: one
+        Optional[float] per product, so `_normalize_dimension`, the
+        spec/spec_secondary mapping and the value formula are untouched.
+        """
+        maps = [ft[0] if ft else {} for ft in field_tuples]
+        ratios = self._spec_field_pair_ratios(maps)
+
+        out: List[Optional[float]] = []
+        for i, field_tuple in enumerate(field_tuples):
+            if field_tuple is None:
+                out.append(None)
+                continue
+            _, scored_fields, total_fields = field_tuple
+            per_field = ratios[i]
+            # `per_field` is empty only when this product has no fields at all,
+            # which `_score_specs_fields` already reports as None above.
+            mean = sum(per_field.values()) / len(per_field) if per_field else 0.5
+            coverage = scored_fields / total_fields if total_fields > 0 else 0.0
+            out.append(round(mean * (0.5 + coverage), 6))
+        return out
+
     def _score_reliability(self, fact_check: Dict[str, Any]) -> Optional[float]:
         """Score reliability from fact_check data on 0-1 scale.
 
@@ -1717,6 +1980,22 @@ class ScoringService:
             else:
                 price_tiers.append("mid")
         is_cross_tier_flag = self._is_cross_tier(price_tiers)
+
+        # M20 #100 — the PAIR is visible here, so this is where the raw
+        # cross-unit spec sum is replaced by the pair-relative per-field mean.
+        # Guarded on the stash actually being present so direct
+        # `_normalize_scores` callers that hand-build `raw_scores` are unaffected.
+        if _spec_field_norm_enabled() and any(
+            "_spec_fields" in rs for rs in raw_scores
+        ):
+            rebuilt = self._spec_raw_from_fields(
+                [rs.get("_spec_fields") for rs in raw_scores]
+            )
+            for i, new_spec_raw in enumerate(rebuilt):
+                # Never resurrect a product whose spec signal is already absent:
+                # `_spec_missing` is set and must stay authoritative.
+                if raw_scores[i].get("spec_raw") is not None:
+                    raw_scores[i]["spec_raw"] = new_spec_raw
 
         # Compute intermediate normalized signals
         price_scores = [self._normalize_price(raw_scores, i) for i in range(len(raw_scores))]
