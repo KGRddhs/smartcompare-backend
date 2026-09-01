@@ -225,6 +225,21 @@ def reconcile_winner_prose(
     """
     _scoring_winner = (scoring_result or {}).get("winner_index")
     _gpt_winner = (comparison or {}).get("winner_index", 0)
+    # NORMALIZE before comparing. `comparison` is the RAW parsed model JSON —
+    # `extraction_service` returns it as-is and `ComparisonResult`
+    # (app/models/product_schema.py:140) is never applied to this dict — so a
+    # JSON `null` or a quoted "0" arrives untouched. A bare `!=` reads both as a
+    # genuine disagreement and destroys a declaration, key_tradeoff and reason
+    # that already name the DETERMINISTIC winner; and the `_scoring_winner is
+    # None` path below would return a non-index straight into
+    # `product_names[...]`. Anything unusable collapses to the same 0 the
+    # `.get(..., 0)` default already implies.
+    # NB bool is deliberately left alone: it is an int subclass, so True/False
+    # already compare as 1/0, which is the pre-existing behaviour.
+    if isinstance(_gpt_winner, str) and _gpt_winner.strip().lstrip("+").isdigit():
+        _gpt_winner = int(_gpt_winner.strip())
+    elif not isinstance(_gpt_winner, int):
+        _gpt_winner = 0
     # Legacy fixtures / scoring-disabled mode: GPT's index and prose both stand.
     if _scoring_winner is None:
         return _gpt_winner

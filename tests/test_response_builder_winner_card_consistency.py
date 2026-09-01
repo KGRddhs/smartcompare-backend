@@ -314,3 +314,42 @@ def test_empty_product_names_does_not_raise():
         product_names=[],
     )
     assert result["overview"]["winner"]["name"] == ""
+
+
+@pytest.mark.parametrize("raw,label", [
+    (0, "int (the normal case)"),
+    (None, "JSON null"),
+    ("0", "quoted index"),
+    (False, "bool False (int subclass, already compared as 0)"),
+])
+def test_non_int_gpt_winner_index_is_not_read_as_a_disagreement(raw, label):
+    """`comparison` is the RAW parsed model JSON — extraction_service returns it
+    as-is and ComparisonResult (app/models/product_schema.py:140) is never
+    applied to this dict — so a JSON null or a quoted "0" reaches the chokepoint
+    untouched. A bare `!=` read both as a genuine mismatch and DESTROYED prose
+    that already named the deterministic winner. Measured before the fix: `null`
+    and `"0"` both took the mismatch branch; `int`, `bool False` and a missing
+    key were already correct. Normalize first: with scoring and GPT both on
+    product 0 the prose must survive verbatim in every spelling."""
+    result = _build(
+        names=["Product A", "Product B"],
+        scoring_winner=0,
+        gpt_winner=raw,
+        declaration="Product A wins on flavor",
+        reason="Product A has the richer flavor.",
+        tradeoff="Product B is milder.",
+    )
+    w = result["overview"]["winner"]
+    assert w["product_index"] == 0
+    assert w["name"] == "Product A wins on flavor"
+    assert w["declaration"] == "Product A wins on flavor"
+    assert w["reason"] == "Product A has the richer flavor."
+    assert w["key_tradeoff"] == "Product B is milder."
+    assert result["winner_index"] == 0
+    # The BC alias is normalized to the resolved index even on the agreement
+    # path, because build_comparison_response writes it back UNCONDITIONALLY —
+    # that is main's #99 behaviour and it is kept. It is strictly better than
+    # the chokepoint-only write the integrated branch proposed (which left a raw
+    # `None`/`"0"` in the alias on agreement), since history_routes
+    # ._extract_winner_index reads exactly this field.
+    assert result["comparison"]["winner_index"] == 0
