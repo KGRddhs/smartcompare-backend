@@ -1065,6 +1065,11 @@ from app.services.response_builder import (
     build_comparison_response,
     derive_rating_from_scores,
     _youtube_signal_for_response,  # S3 L2 — streaming reviews-event parity
+    # M20 #99/#110 — the shared winner chokepoint + the deterministic verdict
+    # template. Both live in response_builder because THIS module imports it at
+    # module level (the reverse import is lazy, so the other direction cycles).
+    deterministic_verdict_fields,
+    reconcile_winner_prose,
 )
 from app.services.image_service import get_product_image_url
 # B.0 (Bundle B Lane F1) — Bahrain-first source registry. Wires the weighted
@@ -4012,13 +4017,29 @@ class StructuredComparisonService:
                 scores=scoring_result.get("scores"),  # F4.2 sweep fallback
             )
 
-            winner_index = comparison.get("winner_index", 0)
+            # M20 #99/#110 — the SSE `verdict` event used to read GPT's index
+            # while the `complete` event that follows carries the deterministic
+            # one, so on a mismatch a streaming client saw the winner FLIP
+            # mid-stream. Reconcile here, on the same `comparison` dict
+            # build_comparison_response will later receive: the repair is
+            # idempotent, so the WINNER_INDEX_MISMATCH warning still fires
+            # exactly once per request.
+            winner_index = reconcile_winner_prose(
+                comparison, scoring_result, product_names, tradeoffs
+            )
             win_margin = scoring_result.get("win_margin", 0)
+            # Mirror build_comparison_response's `_scrubbed_winner_name_field`
+            # fallback: an EMPTY declaration degrades to the product name, never
+            # to an empty winner name.
+            _verdict_winner_name = comparison.get("winner_declaration") or (
+                product_names[winner_index]
+                if 0 <= winner_index < len(product_names or []) else ""
+            )
 
             yield ("verdict", {
                 "winner": {
                     "product_index": winner_index,
-                    "name": comparison.get("winner_declaration", product_names[winner_index] if product_names else ""),
+                    "name": _verdict_winner_name,
                     "reason": comparison.get("winner_reason", ""),
                     "key_tradeoff": comparison.get("key_tradeoff", ""),
                     "margin": win_margin,
@@ -7307,39 +7328,30 @@ class StructuredComparisonService:
         Fills winner_index / winner_declaration / winner_reason from the
         deterministic scores, and key_tradeoff from the loser's strongest dim
         (the F4.2 tradeoff already computed). Merges onto whatever the LLM
-        verdict had — never overwrites a present field. Returns a NEW dict."""
+        verdict had — never overwrites a present field. Returns a NEW dict.
+
+        M20 #110 — the STRINGS now come from the shared
+        `response_builder.deterministic_verdict_fields`; this method keeps only
+        the fill-not-overwrite merge semantics. The one behavioural deviation is
+        the degenerate `product_names == []` case, where the old inline template
+        produced a leading-space `" edges ahead on the overall picture."` and the
+        shared helper now yields no reason at all."""
         out = dict(comparison or {})
-        scores = scoring_result.get("scores") or {}
         winner_index = scoring_result.get("winner_index", 0)
         if not (0 <= winner_index < len(product_names)):
             winner_index = 0
-        winner_name = product_names[winner_index] if product_names else ""
-        w_overall = ((scores.get(f"product_{winner_index}") or {}).get("overall"))
-        l_overall = ((scores.get(f"product_{1 - winner_index}") or {}).get("overall"))
+        _fields = deterministic_verdict_fields(
+            scoring_result, product_names, tradeoffs or []
+        )
 
         out.setdefault("winner_index", winner_index)
         if not out.get("winner_declaration"):
-            out["winner_declaration"] = winner_name
-        if not out.get("winner_reason"):
-            if isinstance(w_overall, (int, float)) and isinstance(l_overall, (int, float)):
-                # margin retained for logging only — NEVER surfaced in user-facing
-                # text (the deterministic partial verdict is the dominant verdict
-                # users see for fragrances; the score leak shipped here once).
-                margin = round(abs(w_overall - l_overall), 1)
-                logger.debug(
-                    f"[PARTIAL_VERDICT] {winner_name} qualitative win (margin={margin})"
-                )
-                out["winner_reason"] = f"{winner_name} edges ahead on the overall picture."
-            elif winner_name:
-                out["winner_reason"] = f"{winner_name} leads on the overall picture."
+            out["winner_declaration"] = _fields["winner_declaration"]
+        if not out.get("winner_reason") and _fields["winner_reason"]:
+            out["winner_reason"] = _fields["winner_reason"]
         # key_tradeoff from the loser's strongest dim (F4.2 tradeoff result).
-        if not out.get("key_tradeoff") and tradeoffs:
-            lw = (tradeoffs[0] or {}).get("loser_wins") or {}
-            dim = lw.get("dimension")
-            loser_name = lw.get("product")
-            if dim and loser_name:
-                dim_label = dim.replace("_score", "").replace("_", " ")
-                out["key_tradeoff"] = f"{loser_name} stays competitive on {dim_label}."
+        if not out.get("key_tradeoff") and _fields["key_tradeoff"]:
+            out["key_tradeoff"] = _fields["key_tradeoff"]
         return out
 
     def _seed_shortcircuit_candidates(
