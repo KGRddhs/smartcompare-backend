@@ -141,11 +141,13 @@ def _walk(target: Any, prefix: str, seen: set) -> Iterator[MountedRoute]:
             )
             continue
         # No .path -- a wrapper/sub-router. Descend, guarding against cycles.
+        # PER-BRANCH guard, not walk-global: `seen` means "is an ancestor of this
+        # node". A single shared set would walk a router reachable at TWO mount
+        # points only once and silently drop the second mount's routes.
         child_id = id(child)
         if child_id in seen:
             continue
-        seen.add(child_id)
-        yield from _walk(child, prefix, seen)
+        yield from _walk(child, prefix, seen | {child_id})
 
 
 def walk_routes(target: Any) -> Iterator[MountedRoute]:
