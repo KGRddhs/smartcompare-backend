@@ -1377,6 +1377,16 @@ def build_comparison_response(
                 if "retailer" in pd_item:
                     pd_item["retailer"] = None
                 continue
+            # M20 #113 — harvest the PRE-SCORING guard's rejection reason BEFORE
+            # the `unavailable` early-continue below, otherwise an upstream pend
+            # (price_service.apply_region_currency_guard) would silently drop
+            # `region_currency_mismatch` from metadata.guard_rejected. Product-
+            # level `_`-key, so it can never leak into a price projection.
+            _upstream_guard = pd_item.pop("_region_guard_rejected", None)
+            if _upstream_guard:
+                _guard_rejected_diag.append(
+                    {"product_index": _pd_idx, "reason": _upstream_guard}
+                )
             # An upstream pass (e.g. Task C2 size-basis reconciliation in the
             # orchestrator) may already have marked this price pending with its
             # OWN reason (size_mismatch). Don't clobber that reason — it's

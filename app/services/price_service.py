@@ -704,6 +704,66 @@ def region_currency_guard_enabled() -> bool:
     )
 
 
+def apply_region_currency_guard(
+    product_data: List[Dict[str, Any]],
+    region: Optional[str],
+) -> bool:
+    """M20 #113 — the PRE-SCORING half of the M13-11 region-currency guard.
+
+    Pends any price whose currency != the request region's currency, IN PLACE,
+    BEFORE `compute_scores`, the LLM verdict and the SSE `prices` event read it.
+    Pure; no network. Returns True iff it changed a price. No-op (and
+    `product_data` untouched, byte-identical) when the flag is OFF.
+
+    Why this exists: M13-11 as shipped pends only at the FINAL projection
+    (`response_builder`), so with the flag ON the winner was still chosen by a
+    10-vs-40 comparison of two DIFFERENT currencies and the mid-stream `prices`
+    event still flashed the raw foreign amount before `complete` retracted it.
+    A final-payload canary therefore reads clean while the real defect is
+    unnamed — which is why this is a HARD PRECONDITION on flipping the flag.
+
+    Mirrors `response_builder.py`'s chokepoint block EXACTLY so the two cannot
+    drift; that chokepoint stays as the idempotent backstop for direct
+    `build_comparison_response` callers (tests, share/history rebuilds), where an
+    already-pended price hits its `unavailable is True` early-continue.
+
+    The rejection reason is stashed on the PRODUCT dict (`_region_guard_rejected`)
+    rather than the price dict: `public_price_view` strips `_`-prefixed keys from
+    a PRICE only when `exact_gate_enabled()` is True, so a price-level key would
+    leak into the SSE price surface with `ENABLE_EXACT_PRICE_GATE` off. Both
+    product projections build explicit keys, so a product-level key cannot leak.
+    `response_builder` harvests it back into `metadata.guard_rejected`.
+    """
+    if not region_currency_guard_enabled():
+        return False
+    from app.services.exchange_rate_service import get_region_currency
+    _region_currency = get_region_currency(region).upper()
+    changed = False
+    for pd_item in product_data or []:
+        if not isinstance(pd_item, dict):
+            continue
+        _price = pd_item.get("price")
+        if not isinstance(_price, dict):
+            continue
+        # Already pending for its OWN reason (size_mismatch / unit_mismatch) —
+        # don't clobber it, and don't claim a currency rejection.
+        if _price.get("unavailable") is True:
+            continue
+        _pcur = str(_price.get("currency") or "").upper()
+        if not _pcur or _pcur == _region_currency:
+            continue
+        pd_item["_region_guard_rejected"] = "region_currency_mismatch"
+        pd_item["price"] = make_pending_price(
+            currency=_region_currency, reason="pending_genuine",
+            size=_price.get("size"),
+        )
+        pd_item["best_price"] = None
+        if "retailer" in pd_item:
+            pd_item["retailer"] = None
+        changed = True
+    return changed
+
+
 def _convert_to_bhd(amount: float, currency: str) -> float:
     """Convert amount to BHD using the central FALLBACK_RATES table.
 
