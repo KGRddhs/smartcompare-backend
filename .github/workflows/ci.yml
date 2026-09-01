@@ -211,12 +211,22 @@ jobs:
   # referenced-key fence, the M13-14 hook test and the M13-13/M13-54 screen
   # tests among the full suite.
   #
-  # LANDS NON-BLOCKING (continue-on-error on each check step): node_modules is
-  # absent from the dev tree, so jest/eslint/tsc cannot be run locally and the
-  # CURRENT red count is UNMEASURED — this job exists to MEASURE it on a real
-  # runner without reddening CI. RATCHET each step to blocking the way
-  # backend-lint was: read the count off the first run, drive it to zero, then
-  # drop that step's continue-on-error.
+  # RATCHETED TO BLOCKING 2026-09-01 (M18). The job landed non-blocking with
+  # continue-on-error on each check step, purely to MEASURE a red count that
+  # could not be read locally (node_modules is absent from the dev tree). The
+  # first run on main 593ec1e measured it:
+  #     jest    2103 passed / 0 failed
+  #     tsc     0 errors
+  #     eslint  8 errors / 143 warnings  — all 8 i18next/no-literal-string
+  # The 8 ESLint errors were fixed in the same wave, so all three checks are
+  # green and each continue-on-error is now removed. This is the first
+  # BLOCKING frontend gate the repo has ever had.
+  #
+  # The 143 ESLint WARNINGS do not block and are not meant to: eslint exits 0
+  # with warnings and 1 only on errors, so the warning backlog can be drained
+  # incrementally without a red build. Tighten it later with --max-warnings=N
+  # ratcheted downward, the way .github/black-clean-paths.txt works — do NOT
+  # re-add continue-on-error to do it.
   frontend-tests:
     runs-on: ubuntu-latest
     steps:
@@ -231,14 +241,16 @@ jobs:
       - name: Install frontend dependencies
         run: cd SmartCompareApp && npm ci
 
+      # BLOCKING since M18 — measured 2103 passed / 0 failed on main 593ec1e.
       - name: Jest (unit suite + i18n/console fences)
-        continue-on-error: true  # RATCHET: measure the red count first, then make blocking
         run: cd SmartCompareApp && npx jest --ci
 
+      # BLOCKING since M18 — measured 0 errors / 143 warnings after the 8
+      # i18next/no-literal-string errors were translated. eslint exits 0 on
+      # warnings, so the backlog reports without blocking.
       - name: ESLint (src)
-        continue-on-error: true  # RATCHET: measure the red count first, then make blocking
         run: cd SmartCompareApp && npx eslint "src/**/*.{ts,tsx}"
 
+      # BLOCKING since M18 — measured 0 errors on main 593ec1e.
       - name: TypeScript type check
-        continue-on-error: true  # RATCHET: measure the red count first, then make blocking
         run: cd SmartCompareApp && npx tsc --noEmit
