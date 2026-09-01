@@ -195,6 +195,37 @@ class TestPriceRangeEdgeCases:
         assert pref["tier_distribution"]["premium"] == 0.25
         assert pref["tier_distribution"]["luxury"] == 0.25
 
+    def test_behavioral_price_tier_is_category_aware(self):
+        """M20 #103 defect 3 — the behavioral tier must use the SAME
+        category-aware breakpoints as scoring (PRICE_TIERS_BY_CATEGORY).
+
+        The flat 189 BHD breakpoint marked every electronics comparison above
+        189 BHD a `luxury` shopper, while electronics scoring puts `luxury` at
+        2000 BHD and reads ~200 BHD as `mid`.
+        """
+        service = BehaviorService()
+        comparisons = [
+            {
+                "category_used": "electronics",
+                "products": [{"price": {"amount": 200}}, {"price": {"amount": 210}}],
+            },
+        ]
+        pref = service._compute_price_range(comparisons)
+        assert pref["tier_distribution"].get("luxury", 0) == 0.0
+        assert pref["tier_distribution"]["mid"] == 1.0
+
+    def test_behavioral_price_tier_defaults_to_other_when_category_missing(self):
+        """A row with no category falls through to _detect_price_tier's documented
+        `other_light` default — which is the legacy flat scale, so the existing
+        uncategorized rows keep their tiers."""
+        service = BehaviorService()
+        comparisons = [
+            {"products": [{"price": {"amount": 5}}, {"price": {"amount": 250}}]},
+        ]
+        pref = service._compute_price_range(comparisons)
+        assert pref["tier_distribution"]["budget"] == 0.5
+        assert pref["tier_distribution"]["luxury"] == 0.5
+
     def test_price_as_plain_number(self):
         """Products with price as plain number (not dict) are included"""
         service = BehaviorService()

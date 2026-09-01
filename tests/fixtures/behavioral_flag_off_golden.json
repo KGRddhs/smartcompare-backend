@@ -1,0 +1,101 @@
+{
+  "electronics": {
+    "scoring_method": "behavioral",
+    "weights_used": {
+      "build_quality_score": 0.184,
+      "ecosystem_score": 0.0943,
+      "feature_score": 0.1887,
+      "futureproof_score": 0.0943,
+      "performance_score": 0.3066,
+      "value_score": 0.1321
+    }
+  },
+  "fashion": {
+    "scoring_method": "behavioral",
+    "weights_used": {
+      "cpw_score": 0.0642,
+      "craft_score": 0.2982,
+      "durability_score": 0.1789,
+      "fit_score": 0.1835,
+      "heritage_score": 0.0917,
+      "style_score": 0.1835
+    }
+  },
+  "fragrances": {
+    "scoring_method": "behavioral",
+    "weights_used": {
+      "character_score": 0.2902,
+      "longevity_score": 0.2902,
+      "presentation_score": 0.0893,
+      "projection_score": 0.1339,
+      "versatility_score": 0.1339,
+      "wear_value_score": 0.0625
+    }
+  },
+  "grocery": {
+    "scoring_method": "behavioral",
+    "weights_used": {
+      "availability_score": 0.0459,
+      "dietary_score": 0.1376,
+      "ingredient_score": 0.2385,
+      "nutrition_score": 0.2982,
+      "serving_value_score": 0.0963,
+      "taste_score": 0.1835
+    }
+  },
+  "haircare": {
+    "scoring_method": "behavioral",
+    "weights_used": {
+      "hair_match_score": 0.2294,
+      "ingredient_score": 0.1789,
+      "multi_value_score": 0.0642,
+      "results_score": 0.2982,
+      "scalp_score": 0.0917,
+      "scent_score": 0.1376
+    }
+  },
+  "makeup": {
+    "scoring_method": "behavioral",
+    "weights_used": {
+      "finish_score": 0.1789,
+      "ingredient_safety_score": 0.0917,
+      "longevity_score": 0.2982,
+      "perf_value_score": 0.0642,
+      "shade_score": 0.1835,
+      "skin_compat_score": 0.1835
+    }
+  },
+  "other": {
+    "scoring_method": "behavioral",
+    "weights_used": {
+      "build_score": 0.1857,
+      "feature_match_score": 0.0952,
+      "function_score": 0.3095,
+      "reliability_score": 0.0952,
+      "review_score": 0.2143,
+      "value_score": 0.1
+    }
+  },
+  "skincare": {
+    "scoring_method": "behavioral",
+    "weights_used": {
+      "actives_score": 0.2982,
+      "evidence_score": 0.1835,
+      "formulation_score": 0.1789,
+      "results_value_score": 0.0642,
+      "sensory_score": 0.0917,
+      "skin_compat_score": 0.1835
+    }
+  },
+  "supplements": {
+    "scoring_method": "behavioral",
+    "weights_used": {
+      "dosage_score": 0.1765,
+      "efficacy_score": 0.3529,
+      "form_score": 0.0905,
+      "safety_score": 0.2262,
+      "serving_value_score": 0.0633,
+      "trust_score": 0.0905
+    }
+  }
+}

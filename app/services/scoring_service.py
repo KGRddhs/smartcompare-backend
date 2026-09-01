@@ -420,6 +420,21 @@ def _bundle_c_scoring_enabled() -> bool:
     return _BUNDLE_C_SCORING_FLAG
 
 
+# M20 #102 — ENABLE_CATEGORY_VALUE_BADGE (default OFF). When ON, `value_badge`
+# reads the value-signal dimension the product's CATEGORY actually emits (7 of
+# 9 categories do NOT emit `value_score`, so the badge was a constant
+# `fair_price` for them) and resolves the price tier by product INDEX instead
+# of by a bare name that never matched the brand+name tier map.
+# Read LIVE (not process-cached like _bundle_c_scoring_enabled) so a Railway
+# flip takes effect without a restart — 7 of 9 categories move from a constant
+# to a varying badge in one step. Mirrors response_builder._gpt_winner_lever_enabled.
+def _category_value_badge_enabled() -> bool:
+    import os
+    return os.environ.get("ENABLE_CATEGORY_VALUE_BADGE", "").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
+
+
 # Bundle C § 3b + § 3e — per-category 5-tier breakpoints (BHD).
 # Each entry is an ordered list of (upper_bound_exclusive, tier_label) tuples;
 # walked low-to-high so the first range a price falls under wins. The final
@@ -621,6 +636,20 @@ _PRICE_TRUST_SET = frozenset({
     # Without this, _price_authority_delta's "all other → estimate-grade" fall-
     # through would penalise a genuine BH Shopify price −4 (inverts L1's purpose).
     "shopify_json",
+    # M18 PO-fact-check-06 — the remaining genuine-BH stamps. Each of these is a
+    # REAL Bahrain price (price_service._GENUINE_BH_SOURCE_METHODS): the JSON-LD
+    # page scrape, the firecrawl brand-domain scraper, the 5 direct-fetch $0
+    # adapters' NATIVE-BHD stamps, and the Zyte luxury render tier. The rest of
+    # the system already treats all of them as genuine (7d cache TTL, showable,
+    # quality_ranker, the genuine-share KPI); the trust set was the last outlier,
+    # so a genuine scraped price took the FULL estimate-grade penalty — harder
+    # than converted_usd's half-penalty, the exact inversion the shopify_json
+    # note above documents. tests/test_price_trust_set_parity.py pins these
+    # (GENUINE - TRUST must stay empty) so a future genuine method cannot
+    # silently drift out again.
+    "page_scrape_jsonld", "firecrawl_brand_domain",
+    "woo_store_api", "salla_api", "occ_rest_bhd",
+    "magento_graphql_bhd", "rest_json_bhd", "zyte_render_bhd",
 })
 
 
@@ -708,6 +737,77 @@ def _value_weight_scale() -> float:
         return max(0.0, float(raw))
     except (TypeError, ValueError):
         return 1.0
+
+
+# M20 #103 — the LEGACY universal sensitivity key space -> the raw SIGNAL each
+# key stands for. `behavior_service.TAB_DIMENSION_MAP` emits these keys and every
+# profile already stored in the DB uses them, so the translation to category dims
+# happens at APPLICATION time; rewriting the emitter would strand every existing
+# profile.
+_LEGACY_SENSITIVITY_SIGNAL = {
+    "spec_score": "spec",
+    "review_score": "review",
+    "price_score": "value",
+}
+
+
+def _behavioral_dim_translation_enabled() -> bool:
+    """M20 #103 flag reader — ENABLE_BEHAVIORAL_DIM_TRANSLATION (default OFF).
+
+    Gates BOTH halves of the fix: the legacy-key -> category-dim translation in
+    `apply_behavioral_adjustments`, and the effect-based `scoring_method` label in
+    `compute_scores` (the label is a documented contract clients read, so it must
+    not shift under them mid-release). Read live so a Railway flip / monkeypatch
+    takes effect without a restart.
+    """
+    import os
+    return os.environ.get("ENABLE_BEHAVIORAL_DIM_TRANSLATION", "").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
+
+
+def _translate_sensitivity(sensitivity: Dict[str, Any], category: str) -> Dict[str, float]:
+    """M20 #103 — re-key a legacy universal sensitivity dict onto the CATEGORY's
+    own dimensions: legacy key -> raw signal -> the dim carrying that signal.
+
+    The dim is resolved by inverting `_DIMENSION_SIGNAL_MAP` (the same single
+    source of truth `_scale_value_weight` already uses) rather than a literal
+    table, so a category whose signal map carries no dim for one of the signals
+    simply DROPS that key instead of raising.
+
+    Each legacy key lands on exactly ONE primary dim — `spec_score` feeds the
+    'spec' dim and never also 'spec_secondary'. Splitting one tab's dwell across
+    two dims would double-count the signal inside the +/-10% budget and make the
+    cap meaningless.
+
+    A key that is not in the legacy space passes through unchanged, so a profile
+    already written in category-dim keys keeps working.
+    """
+    dim_map = ScoringService._DIMENSION_SIGNAL_MAP.get(
+        category, ScoringService._DIMENSION_SIGNAL_MAP["other"]
+    )
+    signal_to_dim: Dict[str, str] = {}
+    for dim, signal in dim_map.items():
+        signal_to_dim.setdefault(signal, dim)
+
+    translated: Dict[str, float] = {}
+    for key, value in sensitivity.items():
+        signal = _LEGACY_SENSITIVITY_SIGNAL.get(key)
+        if signal is None:
+            translated[key] = value
+            continue
+        dim = signal_to_dim.get(signal)
+        if dim is None:
+            continue
+        translated[dim] = translated.get(dim, 0.0) + value
+    return translated
+
+
+def _weights_differ(a: Dict[str, float], b: Dict[str, float]) -> bool:
+    """M20 #103 — compare two weight dicts at the SAME 4-decimal rounding that
+    `weights_used` is serialized with, so float noise can never flip the
+    `scoring_method` label."""
+    return {k: round(v, 4) for k, v in a.items()} != {k: round(v, 4) for k, v in b.items()}
 
 
 def _scale_value_weight(weights: Dict[str, float], category: str) -> Dict[str, float]:
@@ -1069,6 +1169,13 @@ class ScoringService:
             category = "other"
         weights = self._compute_weights(preferences, category)
 
+        # M20 #103 — when the flag is on, `scoring_method` is derived from what
+        # ACTUALLY moved the weights instead of which inputs were merely present.
+        label_by_effect = _behavioral_dim_translation_enabled()
+        prefs_moved = bool(preferences) and label_by_effect and _weights_differ(
+            weights, self._compute_weights(None, category)
+        )
+
         # S3 L3 v2 (c) — cohort priors into the score weights, ONLY when the user
         # has no explicit preferences (cohort is the weak inferred default).
         cohort_applied = False
@@ -1078,10 +1185,17 @@ class ScoringService:
             weights = new_weights
 
         # Apply behavioral and session adjustments (layered on top of explicit preferences)
+        behavioral_moved = False
         if behavior_profile:
-            weights = self.apply_behavioral_adjustments(weights, behavior_profile)
+            before_behavioral = dict(weights)
+            weights = self.apply_behavioral_adjustments(weights, behavior_profile, category)
+            behavioral_moved = label_by_effect and _weights_differ(weights, before_behavioral)
         if session_signals:
+            before_session = dict(weights)
             weights = self.apply_session_signals(weights, session_signals)
+            behavioral_moved = behavioral_moved or (
+                label_by_effect and _weights_differ(weights, before_session)
+            )
 
         # Compute raw dimension scores for each product
         raw_scores = []
@@ -1155,7 +1269,21 @@ class ScoringService:
                 products_data, result_products, winner_index, category,
             )
 
-        if behavior_profile or session_signals:
+        # M20 #103 — label by EFFECT, not by presence. Precedence:
+        # personalized (explicit +/-30% prefs moved weights) > behavioral >
+        # cohort > category_weighted. A profile that moved nothing is NOT
+        # "behavioral", and an explicit preference is never shadowed by an
+        # inferred profile that did nothing.
+        if label_by_effect:
+            if prefs_moved:
+                scoring_method = "personalized"
+            elif behavioral_moved:
+                scoring_method = "behavioral"
+            elif cohort_applied:
+                scoring_method = "cohort"
+            else:
+                scoring_method = "category_weighted"
+        elif behavior_profile or session_signals:
             scoring_method = "behavioral"
         elif preferences:
             scoring_method = "personalized"
@@ -1166,9 +1294,16 @@ class ScoringService:
 
         # Build price tier metadata
         price_tiers_map = {}
+        price_tiers_by_index = {}
         for i, product in enumerate(products_data):
             name = f"{product.get('brand', '')} {product.get('name', '')}".strip()
-            price_tiers_map[name] = price_tiers[i] if i < len(price_tiers) else "mid"
+            tier = price_tiers[i] if i < len(price_tiers) else "mid"
+            price_tiers_map[name] = tier
+            # M20 #102 — index-keyed mirror. `price_tiers_map` is keyed on
+            # brand+name, so any consumer holding only `name` (both value-badge
+            # call sites did) misses every lookup and silently gets "mid".
+            # An index key cannot mismatch. `price_tiers` kept unchanged for BC.
+            price_tiers_by_index[f"product_{i}"] = tier
 
         # Compute dimension winners
         product_names = [
@@ -1184,8 +1319,13 @@ class ScoringService:
             "win_margin": win_margin,
             "scoring_method": scoring_method,
             "price_tiers": price_tiers_map,
+            "price_tiers_by_index": price_tiers_by_index,
             "is_cross_tier": is_cross_tier,
             "dimension_winners": dimension_winners,
+            # M20 #102 — the canonicalized category, so a consumer can resolve
+            # this result's dimension keys without re-deriving the category.
+            # Makes the value badge a pure function of `scoring_result`.
+            "category": category,
             "category_weights": dict(CATEGORY_DIMENSION_WEIGHTS.get(category, CATEGORY_DIMENSION_WEIGHTS["other"])),
             # S3 L3 v2 — qualitative reasons describing the GENUINE winner
             # (price provenance + signal strength). Surfaced in scoring_v2 by L3.4.
@@ -1958,6 +2098,58 @@ class ScoringService:
 
         return winners
 
+    @staticmethod
+    def value_dim_for(category: str) -> str:
+        """The dimension key carrying the "value" signal for `category`.
+
+        Resolved from `_DIMENSION_SIGNAL_MAP` (the single source of truth that
+        `_scale_value_weight` already uses) rather than a literal table, so a
+        renamed dim or a 10th category needs no edit at the badge call sites.
+        Unknown categories fall back to `other`, matching `compute_scores`.
+        """
+        dim_map = ScoringService._DIMENSION_SIGNAL_MAP.get(
+            category, ScoringService._DIMENSION_SIGNAL_MAP["other"]
+        )
+        for dim, signal in dim_map.items():
+            if signal == "value":
+                return dim
+        return "value_score"
+
+    def apply_value_badges(
+        self, products: List[Dict[str, Any]], scoring_result: Dict[str, Any],
+    ) -> None:
+        """Set `product["value_badge"]` in place for each product.
+
+        Single implementation shared by the sync and streaming comparison call
+        sites so the two cannot drift.
+
+        Flag ON (ENABLE_CATEGORY_VALUE_BADGE): the value score is read from the
+        dim `value_dim_for(scoring_result["category"])` names, and the price
+        tier from the index-keyed `price_tiers_by_index`. When the value dim is
+        genuinely absent, NO badge is set — an absent badge is honest, a
+        defaulted one is a claim.
+
+        Flag OFF: byte-identical to the pre-#102 call sites (literal
+        `value_score` key with a 50 default, name-keyed tier lookup).
+        """
+        scores = (scoring_result or {}).get("scores") or {}
+        legacy_tiers = (scoring_result or {}).get("price_tiers") or {}
+        enabled = _category_value_badge_enabled()
+        if enabled:
+            value_dim = self.value_dim_for((scoring_result or {}).get("category", "other"))
+            tiers_by_index = (scoring_result or {}).get("price_tiers_by_index") or {}
+        for i, product in enumerate(products):
+            breakdown = (scores.get(f"product_{i}") or {}).get("breakdown") or {}
+            if enabled:
+                value_score = breakdown.get(value_dim)
+                if value_score is None:
+                    continue
+                price_tier = tiers_by_index.get(f"product_{i}", "mid")
+            else:
+                value_score = breakdown.get("value_score", 50)
+                price_tier = legacy_tiers.get(product.get("name", ""), "mid")
+            product["value_badge"] = self.compute_value_badge(value_score, price_tier)
+
     def compute_value_badge(self, value_score: float, price_tier: str) -> str:
         """Deterministic value badge from value_score and price tier.
 
@@ -2138,14 +2330,29 @@ class ScoringService:
         self,
         weights: Dict[str, float],
         behavior_profile: Dict[str, Any],
+        category: str = "other",
     ) -> Dict[str, float]:
         """Apply behavioral profile adjustments to weights (capped at +/-10%).
 
         Operates on whichever dimension keys are present in weights dict.
+
+        M20 #103: stored profiles carry the LEGACY universal sensitivity keys
+        (`spec_score` / `review_score` / `price_score`), which intersect the
+        category dimension sets in exactly one place (`review_score` in `other`)
+        — so the layer was dead for 8 of 9 categories. With
+        ENABLE_BEHAVIORAL_DIM_TRANSLATION on, the sensitivity is re-keyed onto
+        `category`'s own dims first. `category` defaults to "other" (as
+        `apply_cohort_adjustments` already does) so existing callers are
+        unchanged.
         """
         sensitivity = behavior_profile.get("dimension_sensitivity", {})
         if not sensitivity:
             return weights
+
+        if _behavioral_dim_translation_enabled():
+            sensitivity = _translate_sensitivity(sensitivity, category)
+            if not sensitivity:
+                return weights
 
         original = dict(weights)
         avg_sensitivity = sum(sensitivity.values()) / len(sensitivity) if sensitivity else 0
