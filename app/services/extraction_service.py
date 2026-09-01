@@ -41,12 +41,17 @@ def get_client() -> AsyncOpenAI:
     """Get OpenAI client (lazy initialization)"""
     global _client
     if _client is None:
+        from app.services.model_config import openai_max_retries
         api_key = os.getenv("OPENAI_API_KEY")
         logger.info(f"Initializing OpenAI client with key ending in: ...{api_key[-10:] if api_key else 'NONE'}")
         _client = AsyncOpenAI(
             api_key=api_key,
             base_url=provider_base_url(),
             timeout=httpx.Timeout(120.0, connect=30.0),
+            # #117 — OPENAI_MAX_RETRIES (default 2 == SDK default). Read at
+            # first construction; the fallback call below re-reads its own
+            # ceiling per call via with_options.
+            max_retries=openai_max_retries(),
         )
     return _client
 
@@ -2362,7 +2367,17 @@ Primary concern: {concern}
                     _fallback_model,
                 )
                 verdict_model = _fallback_model
-                response = await client.chat.completions.create(
+                # #117 — bound the retry amplification: the primary call
+                # already spent (1 + OPENAI_MAX_RETRIES) attempts; the fallback
+                # gets its OWN explicit ceiling (OPENAI_FALLBACK_MAX_RETRIES,
+                # default inherits OPENAI_MAX_RETRIES == today's behaviour; set
+                # 0 at launch) so a 429 storm cannot retry 3x into an
+                # already-saturated mini TPM budget. Worst-case chain total is
+                # model_config.verdict_chain_max_attempts(), read per call.
+                from app.services.model_config import openai_fallback_max_retries
+                response = await client.with_options(
+                    max_retries=openai_fallback_max_retries()
+                ).chat.completions.create(
                     model=verdict_model,
                     messages=[
                         {"role": "system", "content": system_msg},

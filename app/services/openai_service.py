@@ -12,6 +12,7 @@ from openai import AsyncOpenAI
 
 from app.services.llm_provider import provider_base_url
 from app.services.model_config import (
+    openai_max_retries,
     sampling_kwargs,
     standard_model,
     token_limit_kwargs,
@@ -24,7 +25,15 @@ logger = logging.getLogger(__name__)
 # Initialize async client (reads OPENAI_API_KEY from env at request time).
 # Explicit timeout: 30s connect (Railway networking can be slow), 120s total.
 # This module-level singleton is kept for back-compat with existing call sites.
-client = AsyncOpenAI(base_url=provider_base_url(), timeout=httpx.Timeout(120.0, connect=30.0))
+# #117 — max_retries is the OPENAI_MAX_RETRIES knob (default 2 == the SDK
+# default, byte-identical unset). Construction-time for THIS singleton (a
+# Railway change needs a restart to reach it); the lazy clients below read it
+# fresh at first build.
+client = AsyncOpenAI(
+    base_url=provider_base_url(),
+    timeout=httpx.Timeout(120.0, connect=30.0),
+    max_retries=openai_max_retries(),
+)
 
 # Memoised per-project clients for the dual-project routing in
 # select_client_for_user. Filled lazily by get_client(); resolved against
@@ -50,7 +59,9 @@ def get_client(use_shared_project: bool = True) -> AsyncOpenAI:
     if use_shared_project:
         # Shared (default). Existing OPENAI_API_KEY env handles this.
         new_client = AsyncOpenAI(
-            base_url=provider_base_url(), timeout=httpx.Timeout(120.0, connect=30.0)
+            base_url=provider_base_url(),
+            timeout=httpx.Timeout(120.0, connect=30.0),
+            max_retries=openai_max_retries(),  # #117
         )
     else:
         # Private. Fall back to default key if a separate one isn't set —
@@ -60,6 +71,7 @@ def get_client(use_shared_project: bool = True) -> AsyncOpenAI:
             api_key=private_key,
             base_url=provider_base_url(),
             timeout=httpx.Timeout(120.0, connect=30.0),
+            max_retries=openai_max_retries(),  # #117
         )
     _client_cache[use_shared_project] = new_client
     return new_client

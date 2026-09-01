@@ -143,3 +143,63 @@ def token_limit_kwargs(model: str, limit: Optional[int]) -> Dict[str, Any]:
 def resolved_models() -> Dict[str, str]:
     """All roles resolved — for the one-line startup log."""
     return {role: _resolve(role) for role in _ROLE_DEFAULTS}
+
+
+# ---------------------------------------------------------------------------
+# #117 (M18 LS-capacity-math-03) — explicit, env-configurable retry ceilings.
+#
+# The SDK default (2 retries = 3 attempts per call) was never overridden
+# anywhere, so a 429 storm silently tripled request volume — and the verdict
+# chain's second-model fallback multiplied it again (worst case 6 upstream
+# attempts for one verdict). These knobs make the ceiling explicit and
+# derivable. They resolve here (not app/config.py — that module requires seven
+# credentials at import) and are read fresh at each client CONSTRUCTION /
+# fallback call: the module-level openai_service.client is built at import, so
+# changing OPENAI_MAX_RETRIES for it needs a restart; the lazily-built
+# per-project and extraction clients, and the per-call fallback, pick the env
+# up without one.
+#
+# Launch settings (see docs/runbooks/2026-09-02-openai-tpm-launch-sizing.md):
+# OPENAI_MAX_RETRIES=1, OPENAI_FALLBACK_MAX_RETRIES=0. The shipped DEFAULTS
+# stay at the SDK's 2 so behaviour is byte-identical until the env is set —
+# the verdict call genuinely benefits from a retry, so a hard-coded 0 would
+# trade a quality property for a load property.
+# ---------------------------------------------------------------------------
+
+_SDK_DEFAULT_MAX_RETRIES = 2
+
+
+def _resolve_retries(env_name: str, default: int) -> int:
+    """Non-negative int from env; blank/malformed -> default; negatives clamp
+    to 0 (a retry count can never be negative)."""
+    raw = os.getenv(env_name)
+    if raw is None or not raw.strip():
+        return default
+    try:
+        return max(0, int(raw.strip()))
+    except ValueError:
+        return default
+
+
+def openai_max_retries() -> int:
+    """SDK retry ceiling for the AsyncOpenAI clients (OPENAI_MAX_RETRIES).
+
+    Default 2 == the openai-python SDK default, so an unset env is
+    byte-identical to every construction before this knob existed."""
+    return _resolve_retries("OPENAI_MAX_RETRIES", _SDK_DEFAULT_MAX_RETRIES)
+
+
+def openai_fallback_max_retries() -> int:
+    """Retry ceiling for the verdict chain's second-model 429 fallback
+    (OPENAI_FALLBACK_MAX_RETRIES). Defaults to openai_max_retries() (inherit),
+    so unset env == today's behaviour; set it to 0 at launch so a fallback
+    into an already-saturated mini TPM budget cannot itself retry 3x."""
+    return _resolve_retries("OPENAI_FALLBACK_MAX_RETRIES", openai_max_retries())
+
+
+def verdict_chain_max_attempts() -> int:
+    """The EXPLICIT worst-case upstream attempt count for one verdict:
+    (1 + primary retries) on the verdict model, then — only on a
+    429/rate/quota failure — (1 + fallback retries) on the standard model.
+    Shipped default: (1+2)+(1+2) = 6. Runbook launch setting: (1+1)+(1+0) = 3."""
+    return (1 + openai_max_retries()) + (1 + openai_fallback_max_retries())
