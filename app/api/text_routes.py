@@ -215,20 +215,24 @@ async def text_compare(request: Request, body: TextCompareRequest, user: Optiona
             ),
             label="log_search.text.post.failure",
         )
+        # M13-37: the work failed after the gate reserved a credit — refund it
+        # for EVERY failure surface so a failed comparison never burns the user's
+        # daily allowance (parity with the legacy record-only-on-success flow).
+        # This MUST fire BEFORE _surface_comparison_failure: that call RAISES
+        # HTTPException for TIMEOUT/INSUFFICIENT_DATA/generic codes (only
+        # CONTENT_UNAVAILABLE returns a dict), so a refund placed after it is
+        # unreachable on exactly the common cold-path failures.
+        if usage_consumed and user and user.get("id"):
+            fire_and_forget(
+                refund_comparison_credit(user["id"]),
+                label="usage_refund.text.post",
+            )
         # WS1 (D2) — map the failure code to its proper wire surface
         # (CONTENT_UNAVAILABLE→200 body, TIMEOUT→503, else→400). Replaces the
         # old blanket 400 that hid TIMEOUT behind BAD_REQUEST. A best-available
         # PARTIAL has success:true so it never reaches this branch.
         surfaced = _surface_comparison_failure(result)
         if surfaced is not None:
-            # M13-37: the work failed after the gate reserved a credit — refund it
-            # so a failed comparison does not burn the user's daily allowance
-            # (parity with the legacy record-only-on-success behaviour).
-            if usage_consumed and user and user.get("id"):
-                fire_and_forget(
-                    refund_comparison_credit(user["id"]),
-                    label="usage_refund.text.post",
-                )
             return surfaced
 
     # Extract product names for logging
@@ -367,17 +371,20 @@ async def text_compare_get(
             ),
             label="log_search.text.get.failure",
         )
+        # M13-37: refund the gate-reserved credit on a failed comparison — BEFORE
+        # _surface_comparison_failure, which RAISES for TIMEOUT/INSUFFICIENT_DATA/
+        # generic (only CONTENT_UNAVAILABLE returns a dict), so a refund after it
+        # is unreachable on the common cold-path failures.
+        if usage_consumed and user and user.get("id"):
+            fire_and_forget(
+                refund_comparison_credit(user["id"]),
+                label="usage_refund.text.get",
+            )
         # WS1 (D2) — same code→surface mapping as the POST handler. TIMEOUT→503,
         # CONTENT_UNAVAILABLE→200 body, else→400. The old blanket 400 was the
         # bug that surfaced a hard-cap TIMEOUT as BAD_REQUEST with scary copy.
         surfaced = _surface_comparison_failure(result)
         if surfaced is not None:
-            # M13-37: refund the gate-reserved credit on a failed comparison.
-            if usage_consumed and user and user.get("id"):
-                fire_and_forget(
-                    refund_comparison_credit(user["id"]),
-                    label="usage_refund.text.get",
-                )
             return surfaced
 
     product_names = [f"{p.get('brand', '')} {p.get('name', '')}".strip()
@@ -611,6 +618,19 @@ async def text_compare_stream(
                     fire_and_forget(
                         refund_comparison_credit(user_id),
                         label="usage_refund.text_stream",
+                    )
+            else:
+                # M13-37 parity: neither a final payload NOR an explicit error
+                # event was produced — a mid-stream raise, or a pre-verdict client
+                # disconnect/cancel that drained without ever reaching `complete`
+                # (this finally runs on CancelledError/GeneratorExit too). The gate
+                # reserved a credit that was never metered, so refund it — matching
+                # the legacy record-only-on-success behaviour and closing the last
+                # leak the POST/GET fix left on the streaming route.
+                if usage_consumed and user_id:
+                    fire_and_forget(
+                        refund_comparison_credit(user_id),
+                        label="usage_refund.text_stream.incomplete",
                     )
 
     return StreamingResponse(
