@@ -279,9 +279,13 @@ class TestCircuitBreaker:
         assert is_circuit_closed("firecrawl") is True
 
     def test_half_open_blocks_excess_calls(self, mock_redis_helpers):
-        mock_redis_helpers["store"][_circuit_key("firecrawl")] = json.dumps({
-            "state": CB_HALF_OPEN, "failure_count": 0, "half_open_calls": 1
-        })
+        from app.services import api_budget_service as abs_mod
+        state = {"state": CB_HALF_OPEN, "failure_count": 0, "half_open_calls": 1}
+        mock_redis_helpers["store"][_circuit_key("firecrawl")] = json.dumps(state)
+        # #115 — the admission count now lives in the atomic per-trip-window
+        # probe counter (not the JSON blob), so seed THAT to represent the one
+        # probe already admitted. Same pinned semantic: excess calls blocked.
+        mock_redis_helpers["store"][abs_mod._half_open_probe_key("firecrawl", state)] = "1"
         # CB_HALF_OPEN_MAX_CALLS is 1, so with 1 already made, should block
         assert is_circuit_closed("firecrawl") is False
 
@@ -814,3 +818,52 @@ class TestBurnAlertSentinelTTL:
         ex = self._sentinel_set_ex(mock_redis_helpers["set"], "scrapedo")
         assert ex != "NO_CALL", "monthly crossing must set the sentinel"
         assert ex == _MONTHLY_TTL, "monthly sentinel must be bounded by _MONTHLY_TTL"
+
+
+class TestHalfOpenCounterAtomicity:
+    """#115 hard precondition for any ENABLE_ASYNC_REDIS_OFFLOAD canary:
+    the half-open probe admission must be a single atomic Redis INCR, never a
+    decode -> +1 -> _redis_set read-modify-write. Under to_thread offload,
+    concurrent render-gate checks running the RMW in parallel all read the same
+    half_open_calls and admit MULTIPLE paid render probes (spend leak).
+
+    Assertion shape mirrors tests/test_model_router.py
+    test_record_usage_uses_atomic_incrby.
+    """
+
+    def _half_open_state(self, half_open_calls=0, tripped_at=1000.0):
+        return json.dumps({
+            "state": CB_HALF_OPEN,
+            "failure_count": 3,
+            "half_open_calls": half_open_calls,
+            "tripped_at": tripped_at,
+        })
+
+    def test_half_open_counter_is_atomic_incr(self, mock_redis_helpers):
+        """The admission decision must come from the INCR return value, not
+        from the JSON blob. Seed the blob at 0 but the atomic counter at 1
+        (what a concurrent thread's INCR just did): the RMW implementation
+        reads 0 -> +1 -> admits (True); the atomic implementation INCRs to 2
+        -> rejects (False)."""
+        from app.services import api_budget_service as abs_mod
+
+        state_key = _circuit_key("firecrawl")
+        mock_redis_helpers["store"][state_key] = self._half_open_state(0)
+        probe_key = abs_mod._half_open_probe_key("firecrawl", {"tripped_at": 1000.0})
+        mock_redis_helpers["store"][probe_key] = "1"  # concurrent probe already admitted
+
+        assert is_circuit_closed("firecrawl") is False, (
+            "admission ignored the atomic counter — the non-atomic RMW is back"
+        )
+        # And the atomic op actually ran (the seam the offload makes safe).
+        incr_keys = [c.args[0] for c in mock_redis_helpers["incr"].call_args_list]
+        assert probe_key in incr_keys, "half-open admission did not INCR the probe key"
+
+    def test_half_open_admission_never_rewrites_count_from_blob(self, mock_redis_helpers):
+        """Serial sanity: with a fresh probe window, the first check is admitted,
+        the second rejected — same observable contract as M13-31, now atomic."""
+        state_key = _circuit_key("scrapedo")
+        mock_redis_helpers["store"][state_key] = self._half_open_state(0)
+
+        assert is_circuit_closed("scrapedo") is True
+        assert is_circuit_closed("scrapedo") is False

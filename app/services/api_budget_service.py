@@ -488,6 +488,15 @@ def record_usage(provider: str, count: int = 1) -> None:
         logger.warning(f"[BUDGET] Error recording {provider}: {e}")
 
 
+def _half_open_probe_key(provider: str, state: Dict[str, Any]) -> str:
+    """#115 — the atomic half-open probe counter key. Scoped by the trip's
+    `tripped_at` so every OPEN->HALF_OPEN window gets a FRESH counter with no
+    reset write (a delete-then-INCR reset would itself race under concurrent
+    gate checks); a re-trip writes a new tripped_at and thereby a new counter.
+    Old windows expire via the _CB_TTL set on first increment."""
+    return f"{_circuit_key(provider)}:half_open:{int(state.get('tripped_at', 0) or 0)}"
+
+
 def is_circuit_closed(provider: str) -> bool:
     """Check if circuit breaker allows calls. Returns True if Redis unavailable (fail-open)."""
     try:
@@ -512,14 +521,28 @@ def is_circuit_closed(provider: str) -> bool:
             else:
                 return False
         if state["state"] == CB_HALF_OPEN:
-            # M13-31: half_open_calls was written and read but never incremented,
-            # so every gate check in the half-open window returned True and the
-            # whole render fan-out was admitted where exactly one probe (
-            # CB_HALF_OPEN_MAX_CALLS) was designed. Increment + persist BEFORE the
-            # verdict so the Nth check reflects the N-1 already admitted.
-            state["half_open_calls"] = state.get("half_open_calls", 0) + 1
+            # M13-31 landed the increment; #115 makes it ATOMIC. The old shape
+            # was a decode -> +1 -> _redis_set read-modify-write on the JSON
+            # blob: safe while inline-sync (no loop yield => gate checks
+            # serialise), UNSAFE once ENABLE_ASYNC_REDIS_OFFLOAD wraps the gate
+            # in asyncio.to_thread — parallel threads all read the same
+            # half_open_calls and admit MULTIPLE paid render probes. The
+            # admission now comes from a single Redis INCR on a per-trip-window
+            # side key (the record_usage INCRBY idiom), so N concurrent checks
+            # observe 1..N and exactly CB_HALF_OPEN_MAX_CALLS are admitted.
+            probe_key = _half_open_probe_key(provider, state)
+            n = _redis_incr(probe_key)
+            if n <= 0:
+                # Redis unavailable mid-branch — same fail-open contract as the
+                # except path below.
+                return True
+            if n == 1:
+                _redis_expire(probe_key, _CB_TTL)
+            # Mirror the count into the blob for observability only — it is
+            # NEVER the admission input, so the blob RMW can no longer over-admit.
+            state["half_open_calls"] = n
             _redis_set(_circuit_key(provider), json.dumps(state), ex=_CB_TTL)
-            return state["half_open_calls"] <= CB_HALF_OPEN_MAX_CALLS
+            return n <= CB_HALF_OPEN_MAX_CALLS
         return True
     except Exception as e:
         logger.warning(f"[CIRCUIT] Error checking {provider}: {e}")

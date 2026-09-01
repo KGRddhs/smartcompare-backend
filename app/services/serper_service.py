@@ -25,8 +25,23 @@ from app.services.api_budget_service import (
     record_failure,
     record_success,
 )
+from app.services.cache_service import _redis_offload_enabled
 
 logger = logging.getLogger(__name__)
+
+
+async def _record_usage_async(provider: str) -> None:
+    """#115 — offload dispatch for the per-Serper-200 budget INCRBY, which ran
+    inline on the event loop in every async search_* function
+    (ENABLE_ASYNC_REDIS_OFFLOAD). Lives in THIS module and references the
+    module-level `record_usage` in BOTH branches (the cache_service.py design
+    note), so a test patching serper_service.record_usage intercepts flag-ON
+    and flag-OFF alike. Flag OFF -> inline, byte-identical. record_usage
+    swallows its own errors, so no new failure mode is introduced."""
+    if _redis_offload_enabled():
+        await asyncio.to_thread(record_usage, provider)
+        return
+    record_usage(provider)
 
 SERPER_API_KEY = os.getenv("SERPER_API_KEY")
 SERPER_BASE_URL = "https://google.serper.dev"
@@ -643,7 +658,7 @@ async def search_web(
                 }
             )
             response.raise_for_status()
-            record_usage("serper")
+            await _record_usage_async("serper")
             return response.json()
 
     except Exception as e:
@@ -770,7 +785,7 @@ async def _do_serper_shopping(product: str, gl: str) -> Dict[str, Any]:
                 }
             )
             if shopping_response.status_code == 200:
-                record_usage("serper")
+                await _record_usage_async("serper")
                 return shopping_response.json()
             # Bundle C v1.1 § 1c SERPER_SHOPPING_NON_200 — capture what
             # Serper actually returns when not 200 so we can disambiguate
@@ -982,7 +997,7 @@ async def search_price_organic(
             results = {}
             if response.status_code == 200:
                 results = response.json()
-                record_usage("serper")
+                await _record_usage_async("serper")
             elif _brightdata_enabled():
                 # Serper non-200 (depletion/error) — fall back to Bright Data.
                 logger.info("[brightdata] Serper price-organic HTTP %s — fallback", response.status_code)
@@ -1074,7 +1089,7 @@ async def search_videos(
                 }
             )
             response.raise_for_status()
-            record_usage("serper")
+            await _record_usage_async("serper")
             return response.json()
 
     except Exception as e:
@@ -1110,7 +1125,7 @@ async def search_images(
                 }
             )
             response.raise_for_status()
-            record_usage("serper")
+            await _record_usage_async("serper")
             return response.json()
 
     except Exception as e:
@@ -1151,7 +1166,7 @@ async def search_news(
                 }
             )
             response.raise_for_status()
-            record_usage("serper")
+            await _record_usage_async("serper")
             return response.json()
 
     except Exception as e:

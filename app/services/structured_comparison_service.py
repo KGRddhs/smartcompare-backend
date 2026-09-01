@@ -53,6 +53,7 @@ from app.services.cache_service import (
     record_cache_observability,
 )
 from app.services.drug_database_service import find_matching_drugs, format_drug_context
+from app.utils.db_offload import run_db  # M13-05 / #115 ENABLE_SYNC_DB_OFFLOAD
 from app.services.scoring_service import get_scoring_service, MISSING_SCORE
 from app.services.api_budget_service import (
     has_budget, record_usage, record_failure, record_success,
@@ -4388,7 +4389,9 @@ class StructuredComparisonService:
         try:
             from app.services.database_service import get_supabase_client
             supabase = get_supabase_client()
-            result = supabase.table("users").select("behavior_profile").eq("id", user_id).single().execute()
+            # #115 — pre-scoring request-path read; run_db offloads under
+            # ENABLE_SYNC_DB_OFFLOAD, inline (byte-identical) when OFF.
+            result = await run_db(lambda: supabase.table("users").select("behavior_profile").eq("id", user_id).single().execute())
             if result.data and result.data.get("behavior_profile"):
                 return result.data["behavior_profile"]
         except Exception as e:
@@ -4404,14 +4407,19 @@ class StructuredComparisonService:
             behavior_service = get_behavior_service()
             supabase = get_supabase_client()
 
-            comparisons = supabase.table("comparisons").select("category_used, products, created_at").eq("user_id", user_id).order("created_at", desc=True).limit(50).execute()
-            feedback = supabase.table("comparison_feedback").select("useful").eq("user_id", user_id).execute()
-            events = supabase.table("user_events").select("event_type, metadata").eq("user_id", user_id).order("created_at", desc=True).limit(200).execute()
+            # #115 — the four serial round trips were the single largest W3
+            # residual; each now routes through run_db (ENABLE_SYNC_DB_OFFLOAD,
+            # inline when OFF). The comparison_feedback select gains a .limit()
+            # mirroring the 50/200 bounds its siblings already carry — it was
+            # the one unbounded read in the chain.
+            comparisons = await run_db(lambda: supabase.table("comparisons").select("category_used, products, created_at").eq("user_id", user_id).order("created_at", desc=True).limit(50).execute())
+            feedback = await run_db(lambda: supabase.table("comparison_feedback").select("useful").eq("user_id", user_id).limit(200).execute())
+            events = await run_db(lambda: supabase.table("user_events").select("event_type, metadata").eq("user_id", user_id).order("created_at", desc=True).limit(200).execute())
 
             profile = await behavior_service.build_behavior_profile(
                 comparisons.data or [], feedback.data or [], events.data or [],
             )
-            supabase.table("users").update({"behavior_profile": profile}).eq("id", user_id).execute()
+            await run_db(lambda: supabase.table("users").update({"behavior_profile": profile}).eq("id", user_id).execute())
         except Exception as e:
             logger.warning(f"Failed to update behavior profile: {e}")
 
@@ -6225,7 +6233,7 @@ class StructuredComparisonService:
                             full_name, kind="tier1_shopping", currency=currency,
                             shopping_region=shopping_region,
                         )
-                        self._persist_genuine_price(
+                        await self._persist_genuine_price(
                             cache_key, price, brand, name, variant, region, full_name, category)
                         price["_cached"] = False
                         return price
@@ -6364,7 +6372,7 @@ class StructuredComparisonService:
                                 full_name, kind="price_dicts", currency=currency,
                                 price_dicts=shop_results,
                             )
-                            self._persist_genuine_price(
+                            await self._persist_genuine_price(
                                 cache_key, shop_best, brand, name, variant, region, full_name, category)
                             shop_best["_cached"] = False
                             logger.info(
@@ -6457,7 +6465,7 @@ class StructuredComparisonService:
                             full_name, kind="price_dicts", currency=currency,
                             price_dicts=algolia_results,
                         )
-                        self._persist_genuine_price(
+                        await self._persist_genuine_price(
                             cache_key, algolia_best, brand, name, variant, region, full_name, category)
                         algolia_best["_cached"] = False
                         logger.info(
@@ -6674,9 +6682,11 @@ class StructuredComparisonService:
                     # F1.6 — count one Tier 1.5 escalation attempt (fail-open).
                     record_tier15_attempt(category)
 
-                    def _finalize_fan_winner(fan_result):
+                    async def _finalize_fan_winner(fan_result):
                         """Stamp + route-record + cache a fan_out winner; returns the
-                    winning_price dict or None. Shared by the curl + render waves."""
+                    winning_price dict or None. Shared by the curl + render waves.
+                    #115 — async so the _persist_genuine_price Redis write can go
+                    through the offload dispatch; flag OFF stays inline."""
                         nonlocal _guard_rejected_this_request  # CDE-4
                         best = fan_result.get("best")
                         if not (best and best.get("raw_data") and best["raw_data"].get("amount")):
@@ -6723,7 +6733,7 @@ class StructuredComparisonService:
                                 ),
                             }
                         record_tier15_hit(category, win_domain or None)
-                        self._persist_genuine_price(
+                        await self._persist_genuine_price(
                             cache_key, winning_price, brand, name, variant, region, full_name, category)
                         winning_price["_cached"] = False
                         if fan_result.get("cancelled_count", 0) > 0:
@@ -6822,7 +6832,7 @@ class StructuredComparisonService:
                                 self._price_candidates.setdefault(full_name, []).extend(_retained)
                         except Exception:  # noqa: BLE001 — retention must never block a price
                             pass
-                        _winner = _finalize_fan_winner(_fan)
+                        _winner = await _finalize_fan_winner(_fan)
                         if _winner is not None:
                             # Curl-wave win → genuine BH price, no render credits burned.
                             return _winner
@@ -6847,7 +6857,7 @@ class StructuredComparisonService:
                     }
                     record_tier15_attempt(category)
                     record_tier15_hit(category, win_domain or None)
-                    self._persist_genuine_price(
+                    await self._persist_genuine_price(
                         cache_key, shopify_fallback, brand, name, variant, region, full_name, category)
                     shopify_fallback["_cached"] = False
                     logger.info(
@@ -7151,7 +7161,7 @@ class StructuredComparisonService:
                     # gpt_organic_extract fails is_price_showable and is NEVER parked.
                     if is_supplement:
                         _maybe_park_supplement(price)
-                    self._persist_genuine_price(
+                    await self._persist_genuine_price(
                         cache_key, price, brand, name, variant, region, full_name, category)
                     price["_cached"] = False
                     return price
@@ -7176,7 +7186,7 @@ class StructuredComparisonService:
                     )
                     if price and price.get("amount"):
                         price.pop("retailer_score", None)
-                        self._persist_genuine_price(
+                        await self._persist_genuine_price(
                             cache_key, price, brand, name, variant, region, full_name, category)
                         price["_cached"] = False
                         return price
@@ -7190,7 +7200,7 @@ class StructuredComparisonService:
                     converted_fallback["url"] = build_retailer_url(
                         converted_fallback["retailer"], full_name
                     )
-                self._persist_genuine_price(
+                await self._persist_genuine_price(
                     cache_key, converted_fallback, brand, name, variant, region, full_name, category)
                 # Task 1.3 — the FULL genuine-BH cascade ran and missed; this is a
                 # structural dead-end. Record it so the next call skips the cascade.
@@ -7417,16 +7427,22 @@ class StructuredComparisonService:
     # Cost tracking
     # ============================================
 
-    def _persist_genuine_price(self, cache_key, price_obj, brand, name, variant,
-                               region, full_name, category):
+    async def _persist_genuine_price(self, cache_key, price_obj, brand, name, variant,
+                                     region, full_name, category):
         """B6 — cache (Redis) + persist (L2 DB) a resolved genuine price under the
         request key ONLY when its identity matches the request (should_cache_price).
         A no-op for an already-select_best-selected price (same matcher), so it never
         blocks a legit price; it blocks a wrong-identity price that bypassed the
-        selector from being cached under the requested product for the genuine TTL."""
+        selector from being cached under the requested product for the genuine TTL.
+
+        #115 — now async: the Redis SET goes through _cache_set_async
+        (ENABLE_ASYNC_REDIS_OFFLOAD; inline byte-identical when OFF) instead of
+        blocking the loop. Every call site awaits it; the L2 DB half stays
+        fire-and-forget (and its .execute() is run_db-wrapped in
+        product_data_service.save_price)."""
         if not should_cache_price(full_name, price_obj, category):
             return
-        set_cached(cache_key, price_obj, price_cache_ttl(price_obj))
+        await _cache_set_async(cache_key, price_obj, price_cache_ttl(price_obj))
         self._save_price_to_db(cache_key, brand, name, variant, region, price_obj)
 
     def _save_price_to_db(self, cache_key: str, brand: str, name: str, variant: Optional[str], region: str, price: Dict):

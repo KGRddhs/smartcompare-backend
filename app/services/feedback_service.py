@@ -6,6 +6,7 @@ from typing import Dict, List, Optional
 
 from app.services.database_service import get_supabase_client, save_comparison
 from app.services.model_config import critic_model
+from app.utils.db_offload import run_db  # M13-05 / #115 ENABLE_SYNC_DB_OFFLOAD
 
 logger = logging.getLogger(__name__)
 
@@ -134,7 +135,9 @@ async def save_feedback(
         if change_suggestion:
             record["change_suggestion"] = change_suggestion
 
-        response = client.table("comparison_feedback").insert(record).execute()
+        # #115 — request-path write (POST /feedback); offload under
+        # ENABLE_SYNC_DB_OFFLOAD, inline (byte-identical) when OFF.
+        response = await run_db(lambda: client.table("comparison_feedback").insert(record).execute())
         return {"success": True, "id": response.data[0]["id"] if response.data else None}
     except Exception as e:
         logger.warning(f"Error saving feedback: {e}", exc_info=True)
@@ -166,7 +169,10 @@ async def track_event(
         if session_id:
             record["session_id"] = session_id
 
-        response = client.table("user_events").insert(record).execute()
+        # #115 — fires inside save_comparison_and_track_cohort on every saved
+        # compare (highest-frequency request-path write #2); run_db offloads
+        # under ENABLE_SYNC_DB_OFFLOAD, inline (byte-identical) when OFF.
+        response = await run_db(lambda: client.table("user_events").insert(record).execute())
         return {"success": True, "id": response.data[0]["id"] if response.data else None}
     except Exception as e:
         logger.warning(f"Error tracking event: {e}", exc_info=True)
@@ -198,7 +204,8 @@ async def track_events_batch(events: List[dict]) -> List[dict]:
                 record["session_id"] = evt["session_id"]
             records.append(record)
 
-        response = client.table("user_events").insert(records).execute()
+        # #115 — request-path write (POST /events batch); same offload contract.
+        response = await run_db(lambda: client.table("user_events").insert(records).execute())
         return [{"success": True, "id": r["id"]} for r in (response.data or [])]
     except Exception as e:
         logger.warning(f"Error batch tracking events: {e}", exc_info=True)

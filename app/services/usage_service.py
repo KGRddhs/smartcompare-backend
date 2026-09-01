@@ -4,13 +4,14 @@ Monthly cap = base tier limit + ``users.referral_bonus_comparisons_this_month``.
 Lazy reset of the bonus happens inside ``_get_user_tier_info`` whenever
 ``referral_bonus_reset_at`` falls in the past — no cron job required.
 """
+import asyncio
 import logging
 import os
 import re
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from app.services.cache_service import redis_client
+from app.services.cache_service import redis_client, _redis_offload_enabled
 from app.services.database_service import get_admin_supabase_client
 from app.utils.db_offload import run_db  # M13-05 ENABLE_SYNC_DB_OFFLOAD
 
@@ -179,6 +180,36 @@ def _atomic_consume(user_id: str, daily_limit: int, monthly_cap: int):
         return None
 
 
+# --- #115 module-local offload dispatches (ENABLE_ASYNC_REDIS_OFFLOAD) -------
+# Per the cache_service.py design note, each dispatch lives in the CALLING
+# module and references the module-level blocking symbol in BOTH branches, so a
+# test that patches usage_service._atomic_consume / _get_redis_count /
+# _bump_counters intercepts flag-ON and flag-OFF alike. Flag OFF -> the sync
+# call runs inline to completion with no scheduler yield (byte-identical).
+
+
+async def _atomic_consume_async(user_id: str, daily_limit: int, monthly_cap: int):
+    """Offload dispatch for _atomic_consume (up to ~6 Upstash commands). The
+    INCRBY/DECRBY rollback ordering lives inside _atomic_consume, untouched."""
+    if _redis_offload_enabled():
+        return await asyncio.to_thread(_atomic_consume, user_id, daily_limit, monthly_cap)
+    return _atomic_consume(user_id, daily_limit, monthly_cap)
+
+
+async def _get_redis_count_async(key: str) -> int:
+    """Offload dispatch for the remaining-count GETs on the consume path."""
+    if _redis_offload_enabled():
+        return await asyncio.to_thread(_get_redis_count, key)
+    return _get_redis_count(key)
+
+
+async def _bump_counters_async(user_id: str) -> None:
+    """Offload dispatch for the lifetime-free-window counter bump."""
+    if _redis_offload_enabled():
+        return await asyncio.to_thread(_bump_counters, user_id)
+    return _bump_counters(user_id)
+
+
 def _bump_counters(user_id: str) -> None:
     """Advance daily+monthly WITHOUT a cap check (the lifetime-free window). Parity
     with the legacy record_comparison, which incremented daily/monthly even during
@@ -221,7 +252,7 @@ async def consume_comparison_credit(user_id: str, access_token: str) -> dict:
     # Lifetime-free path: allowed regardless of daily/monthly, but still advance
     # the counters (parity with the legacy record_comparison).
     if tier == "free" and lifetime_used < limits["lifetime_free"]:
-        _bump_counters(user_id)
+        await _bump_counters_async(user_id)
         return {
             "allowed": True,
             "reason": None,
@@ -234,22 +265,29 @@ async def consume_comparison_credit(user_id: str, access_token: str) -> dict:
             },
         }
 
-    reason = _atomic_consume(user_id, limits["daily"], monthly_cap)
+    # #115 — the atomic consume and the remaining-count reads go through the
+    # module-local async dispatches (ENABLE_ASYNC_REDIS_OFFLOAD; inline when
+    # OFF). Same values, same order — only the executing thread changes ON.
+    reason = await _atomic_consume_async(user_id, limits["daily"], monthly_cap)
     if reason == "daily_limit":
+        monthly_used = await _get_redis_count_async(_monthly_key(user_id))
         return {
             "allowed": False, "reason": "daily_limit", "tier": tier, "consumed": False,
-            "remaining": {"daily": 0, "monthly": max(0, monthly_cap - _get_redis_count(_monthly_key(user_id))), "lifetime_free": 0},
+            "remaining": {"daily": 0, "monthly": max(0, monthly_cap - monthly_used), "lifetime_free": 0},
         }
     if reason == "monthly_limit":
+        daily_used = await _get_redis_count_async(_daily_key(user_id))
         return {
             "allowed": False, "reason": "monthly_limit", "tier": tier, "consumed": False,
-            "remaining": {"daily": max(0, limits["daily"] - _get_redis_count(_daily_key(user_id))), "monthly": 0, "lifetime_free": 0},
+            "remaining": {"daily": max(0, limits["daily"] - daily_used), "monthly": 0, "lifetime_free": 0},
         }
+    daily_used = await _get_redis_count_async(_daily_key(user_id))
+    monthly_used = await _get_redis_count_async(_monthly_key(user_id))
     return {
         "allowed": True, "reason": None, "tier": tier, "consumed": True,
         "remaining": {
-            "daily": max(0, limits["daily"] - _get_redis_count(_daily_key(user_id))),
-            "monthly": max(0, monthly_cap - _get_redis_count(_monthly_key(user_id))),
+            "daily": max(0, limits["daily"] - daily_used),
+            "monthly": max(0, monthly_cap - monthly_used),
             "lifetime_free": 0,
         },
     }
@@ -292,8 +330,12 @@ async def _get_user_tier_info(user_id: str) -> dict:
             "referral_bonus_comparisons_this_month, referral_bonus_reset_at"
         ).eq("id", user_id).single().execute())
         data = result.data or {}
-        # Lazy referral bonus reset
-        return _maybe_reset_referral_bonus(client, user_id, data)
+        # Lazy referral bonus reset. #115 — W3 deferred this site by name: the
+        # reset path does a users UPDATE .execute() inline on the loop. The
+        # whole call goes through run_db (ENABLE_SYNC_DB_OFFLOAD; inline when
+        # OFF); the lambda references the module-level symbol so test patches
+        # on usage_service._maybe_reset_referral_bonus intercept both branches.
+        return await run_db(lambda: _maybe_reset_referral_bonus(client, user_id, data))
     except Exception as e:
         logger.error(f"Failed to get user tier info: {e}")
         return {

@@ -21,6 +21,7 @@ from app.services.database_service import (
     get_admin_supabase_client,
     get_user_supabase_client,
 )
+from app.utils.db_offload import run_db  # M13-05 / #115 ENABLE_SYNC_DB_OFFLOAD
 
 logger = logging.getLogger(__name__)
 
@@ -717,7 +718,10 @@ class ReferralService:
         """Most-recent invite where ``redeemed_by_user_id == invitee_user_id``
         and ``redeemed_at IS NULL``."""
         try:
-            resp = (
+            # #115 — this is the ALWAYS-firing Loop-2 entry query (runs on every
+            # saved compare via save_comparison_and_track_cohort); run_db offloads
+            # under ENABLE_SYNC_DB_OFFLOAD, inline (byte-identical) when OFF.
+            resp = await run_db(lambda: (
                 self.client.table("referral_invites")
                 .select(
                     "id, referrer_user_id, redeemed_by_user_id, redeemed_at, "
@@ -728,7 +732,7 @@ class ReferralService:
                 .order("created_at", desc=True)
                 .limit(1)
                 .execute()
-            )
+            ))
             rows = resp.data or []
             return rows[0] if rows else None
         except Exception as exc:  # noqa: BLE001
@@ -738,12 +742,14 @@ class ReferralService:
     async def _count_user_comparisons(self, user_id: str) -> int:
         """Total comparisons by this user. We treat ``1`` as 'first comparison'."""
         try:
-            resp = (
+            # #115 — second Loop-2 entry query (fires only when an unredeemed
+            # invite exists); same run_db offload contract as above.
+            resp = await run_db(lambda: (
                 self.client.table("comparisons")
                 .select("id", count="exact")
                 .eq("user_id", user_id)
                 .execute()
-            )
+            ))
             return resp.count or 0
         except Exception as exc:  # noqa: BLE001
             logger.warning("[referral] comparison-count lookup failed: %s", exc)

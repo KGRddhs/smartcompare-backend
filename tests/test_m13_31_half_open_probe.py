@@ -36,13 +36,27 @@ def _dict_stubbed_redis():
         store[key] = value
         return True
 
-    return store, fake_get, fake_set
+    # #115 — the half-open admission is now a single atomic _redis_incr on a
+    # per-trip-window side key (the ENABLE_ASYNC_REDIS_OFFLOAD canary
+    # precondition), so the harness stubs it too. The assertions below are
+    # UNCHANGED: exactly one probe admitted, state lands in HALF_OPEN.
+    def fake_incr(key):
+        val = int(store.get(key, 0)) + 1
+        store[key] = str(val)
+        return val
+
+    def fake_expire(key, seconds):
+        return True
+
+    return store, fake_get, fake_set, fake_incr, fake_expire
 
 
 def test_half_open_admits_exactly_one_probe_after_recovery():
-    store, fake_get, fake_set = _dict_stubbed_redis()
+    store, fake_get, fake_set, fake_incr, fake_expire = _dict_stubbed_redis()
     with patch.object(abs_mod, "_redis_get", side_effect=fake_get), \
-         patch.object(abs_mod, "_redis_set", side_effect=fake_set):
+         patch.object(abs_mod, "_redis_set", side_effect=fake_set), \
+         patch.object(abs_mod, "_redis_incr", side_effect=fake_incr), \
+         patch.object(abs_mod, "_redis_expire", side_effect=fake_expire):
         # Trip the breaker with CB_FAILURE_THRESHOLD failures.
         for _ in range(CB_FAILURE_THRESHOLD):
             record_failure("firecrawl")
@@ -70,9 +84,11 @@ def test_half_open_admits_exactly_one_probe_after_recovery():
 
 def test_half_open_state_is_half_open_after_transition():
     """The transition still lands in HALF_OPEN state (not skipped to CLOSED)."""
-    store, fake_get, fake_set = _dict_stubbed_redis()
+    store, fake_get, fake_set, fake_incr, fake_expire = _dict_stubbed_redis()
     with patch.object(abs_mod, "_redis_get", side_effect=fake_get), \
-         patch.object(abs_mod, "_redis_set", side_effect=fake_set):
+         patch.object(abs_mod, "_redis_set", side_effect=fake_set), \
+         patch.object(abs_mod, "_redis_incr", side_effect=fake_incr), \
+         patch.object(abs_mod, "_redis_expire", side_effect=fake_expire):
         for _ in range(CB_FAILURE_THRESHOLD):
             record_failure("scrapedo")
         state = json.loads(store[_circuit_key("scrapedo")])

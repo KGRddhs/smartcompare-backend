@@ -16,8 +16,20 @@ from app.services.extraction_service import (
     get_reviews_cache_key,
 )
 from app.services.serper_service import search_web
-from app.services.cache_service import get_cached, set_cached
+from app.services.cache_service import get_cached, set_cached, _redis_offload_enabled
 from app.services.api_budget_service import has_budget, record_usage
+
+
+async def _has_budget_async(provider: str) -> bool:
+    """#115 — offload dispatch for the blocking has_budget Upstash GET on the
+    reviews path (ENABLE_ASYNC_REDIS_OFFLOAD). Lives in THIS module and
+    references the module-level `has_budget` in BOTH branches (the
+    cache_service.py design note) so a test patching review_service.has_budget
+    intercepts flag-ON and flag-OFF alike. Flag OFF -> inline, byte-identical.
+    Fail-open on Redis errors is inherited from has_budget itself."""
+    if _redis_offload_enabled():
+        return await asyncio.to_thread(has_budget, provider)
+    return has_budget(provider)
 from app.utils.async_utils import fire_and_forget
 # Bundle B S3 L2 — YouTube cited review signal (imported at module scope so
 # tests can patch app.services.review_service.fetch_youtube_review_signal).
@@ -790,7 +802,7 @@ async def fetch_retailer_quotes(
         # traffic (3 calls per product, 6 per compare). fail-open on Redis down
         # is inherited from has_budget(); record_usage on success keeps the
         # counter accurate for subsequent guards.
-        if not has_budget("serper"):
+        if not await _has_budget_async("serper"):
             logger.info("[L2.11] retailer quote skipped — serper budget exhausted: %s", retailer)
             return None
         try:
@@ -884,7 +896,7 @@ async def fetch_review_source_snippets(
     if cached and isinstance(cached, dict) and isinstance(cached.get("snippets"), list):
         return cached["snippets"]
 
-    if not has_budget("serper"):
+    if not await _has_budget_async("serper"):
         logger.info("[I2.5] review-source consult skipped — serper budget exhausted")
         return []
 

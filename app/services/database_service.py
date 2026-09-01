@@ -501,7 +501,10 @@ async def log_search(
         if error_message:
             record["error_message"] = error_message
 
-        client.table("search_logs").insert(record).execute()
+        # #115 — fire-and-forget but still loop-stalling: this is one of the two
+        # highest-frequency request-path writes. run_db offloads under
+        # ENABLE_SYNC_DB_OFFLOAD; inline (byte-identical) when OFF.
+        await run_db(lambda: client.table("search_logs").insert(record).execute())
     except Exception as e:
         # Never fail the request for logging
         logger.warning(f"Error logging search: {e}", exc_info=True)
