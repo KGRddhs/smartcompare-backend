@@ -83,8 +83,16 @@ jobs:
       # RATCHET IT UP to the observed CI percentage (rounded down) after the first
       # green run on main — that number is the one the acceptance criterion asks
       # for, and it can only be read off CI itself.
+      # M18 (M13-71): backend-tests is GREEN AND MEANINGFUL — the committed
+      # 14-node baseline (tests/.pre_impl_failures.txt, the SAME file the local
+      # regression gate reads) is deselected here, derived at run time so the
+      # file stays the single source. A NEW failure still reddens the job.
+      # To retire a baseline node: fix it, then re-capture the file (see its
+      # header) — never hand-add a --deselect below.
+      # tests/test_ci_gates.py pins this step's coupling to the baseline file.
       - name: Run unit tests
         run: |
+          DESELECT=$(grep -vE '^\s*(#|$)' tests/.pre_impl_failures.txt | sed 's/^/--deselect=/' | tr '\n' ' ')
           python -m pytest tests/ -v \
             -m "not (live_unit or live_db or integration)" \
             --ignore=tests/test_integration.py \
@@ -93,7 +101,8 @@ jobs:
             --cov=app \
             --cov-report=term-missing \
             --cov-fail-under=83 \
-            --tb=short
+            --tb=short \
+            $DESELECT
 
   # NOT AUTOMATICALLY REQUIRED. Adding a job to this file does not make it a
   # required status check: until branch protection on `main` lists

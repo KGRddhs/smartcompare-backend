@@ -845,3 +845,53 @@ def test_live_suite_header_audit_lists_every_live_prod_file():
         "these files carry live_prod but are missing from the PRODUCTION-CACHE "
         f"AUDIT header of live-suite.yml: {sorted(undocumented)}"
     )
+
+
+# ---------------------------------------------------------------------------
+# M18 (M13-71): backend-tests deselects the committed failure baseline at run
+# time, derived from tests/.pre_impl_failures.txt — the SINGLE source shared
+# with scripts/regression_gate_diff.py. These pins keep the coupling honest.
+# ---------------------------------------------------------------------------
+
+
+def test_backend_tests_derives_deselect_from_the_committed_baseline():
+    """ci.yml's unit-test step must read tests/.pre_impl_failures.txt at run
+    time (grep -> --deselect=), never carry a hand-copied node list."""
+    ci = (WORKFLOWS / "ci.yml").read_text(encoding="utf-8")
+    assert (
+        "tests/.pre_impl_failures.txt" in ci
+    ), "backend-tests no longer references the committed baseline file"
+    assert (
+        "--deselect=" in ci
+    ), "backend-tests no longer derives --deselect args from the baseline"
+    # no literal baseline node id may be hand-copied into the workflow
+    baseline = (TESTS_DIR / ".pre_impl_failures.txt").read_text(encoding="utf-8")
+    ids = [
+        ln.strip()
+        for ln in baseline.splitlines()
+        if ln.strip() and not ln.strip().startswith("#")
+    ]
+    assert ids, "baseline file has no node ids — re-capture it"
+    for node_id in ids:
+        assert node_id not in ci, (
+            f"baseline node {node_id} is hand-copied into ci.yml — the file "
+            "must stay the single source"
+        )
+
+
+def test_baseline_node_ids_are_shell_safe_for_deselect():
+    """The ci.yml derivation word-splits on whitespace, so a baseline id with
+    a space (a parametrized id with spaces in the param repr) would break the
+    pytest invocation silently. Reject at commit time instead."""
+    baseline = (TESTS_DIR / ".pre_impl_failures.txt").read_text(encoding="utf-8")
+    for ln in baseline.splitlines():
+        node_id = ln.strip()
+        if not node_id or node_id.startswith("#"):
+            continue
+        assert not any(ch.isspace() for ch in node_id), (
+            f"baseline id contains whitespace and would word-split in ci.yml: "
+            f"{node_id!r} — quote-proof the derivation before adding it"
+        )
+        assert (
+            node_id.startswith("tests/") and "::" in node_id
+        ), f"not a pytest node id: {node_id!r}"
