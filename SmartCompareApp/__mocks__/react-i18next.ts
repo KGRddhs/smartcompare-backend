@@ -7,6 +7,19 @@ const translations: Record<string, Record<string, string>> = {
     'results.personalization.chip_template': 'Weighted {{arrows}} (based on your priorities)',
     'results.personalization.arrow_up': '↑ {{dim}}',
     'results.personalization.arrow_down': '↓ {{dim}}',
+    // #105 — confidence-sheet composed lines (toConfidenceLines). Without
+    // these the sheet tests would render literal key strings and the
+    // no-backend-internals leak assertions would prove nothing.
+    'results.confidence.sheet.price.sources': 'Checked across {{n}} retail sources.',
+    'results.confidence.sheet.price.method_retailer': 'Price confirmed from retailer listings.',
+    'results.confidence.sheet.price.method_converted': 'Price converted from an international retailer listing.',
+    'results.confidence.sheet.price.freshness_live': 'Pricing checked just now.',
+    'results.confidence.sheet.price.freshness_cached': 'Pricing from a recent check.',
+    'results.confidence.sheet.reviews.count': '{{n}} reviews considered.',
+    'results.confidence.sheet.reviews.source': 'Ratings sourced from {{source}}.',
+    'results.confidence.sheet.reviews.verified': 'Review source cross-checked.',
+    'results.confidence.sheet.specs.citations': 'Backed by {{n}} source citations.',
+    'results.confidence.sheet.specs.verified': 'Key specs cross-checked against sources.',
   },
 };
 

@@ -1,10 +1,13 @@
 /**
- * ConfidenceDetailsSheet — Bundle C spec § 5b.
+ * ConfidenceDetailsSheet — Bundle C spec § 5b, adapted for #105.
  *
- * "What we know" bottom sheet. Renders 2-3 factual lines for the tapped
- * confidence leg. Strings are composed BACKEND-SIDE
- * (`scoring_v2.confidence_details: { price?: string[]; reviews?: string[]; specs?: string[] }`)
- * and rendered verbatim — frontend never composes the strings.
+ * "What we know" bottom sheet. Renders 1-3 factual lines for the tapped
+ * confidence leg. The backend ships `scoring_v2.confidence_details` as
+ * per-leg evidence DICTS (see `confidenceDetailsLines.ts`); the
+ * `toConfidenceLines` adapter localizes them app-side (the app owns
+ * EN/AR; the backend has no locale in scope). A legacy string[] leg still
+ * renders verbatim, and any other shape renders an honest empty sheet —
+ * never a throw.
  *
  * Critical rules absorbed:
  *  - Rule #2 (NO backend internals): no thresholds, coefficients, cap
@@ -21,20 +24,22 @@ import { View, Text, Modal, StyleSheet, ScrollView, TouchableOpacity, Pressable 
 import { useTranslation } from 'react-i18next';
 
 import { colors, spacing, radii, typography } from '../../theme';
+import type { ConfidenceDetails } from '../../types/types';
+import { toConfidenceLines } from './confidenceDetailsLines';
 
 export type ConfidenceLeg = 'price' | 'reviews' | 'specs';
 
 interface Props {
   visible: boolean;
   leg: ConfidenceLeg;
-  details: { price?: string[]; reviews?: string[]; specs?: string[] };
+  details: ConfidenceDetails;
   onClose: () => void;
   testID?: string;
 }
 
 export function ConfidenceDetailsSheet({ visible, leg, details, onClose, testID = 'confidence-sheet' }: Props) {
   const { t } = useTranslation();
-  const lines = details[leg] ?? [];
+  const lines = toConfidenceLines(leg, details, t);
 
   return (
     <Modal

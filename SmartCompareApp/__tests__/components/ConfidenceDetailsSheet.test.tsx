@@ -113,6 +113,118 @@ test('NO threshold numbers or coefficient leaks across props (spec § 5b + rule 
   expect(factText).not.toMatch(/\d+%|coefficient|threshold|cap of \d|multiplier/i);
 });
 
+// ---------------------------------------------------------------------
+// #105 — the backend ships `confidence_details` as nested DICTS
+// (response_builder._confidence_legs_and_details at b073918), not string
+// arrays. The sheet must render the live dict shape via the
+// toConfidenceLines adapter and degrade gracefully on anything else.
+// ---------------------------------------------------------------------
+
+test('#105 — renders live dict shape for price leg without throwing', () => {
+  const { getByTestId } = render(
+    <ConfidenceDetailsSheet
+      visible
+      leg="price"
+      details={
+        {
+          price: {
+            sources_count: 3,
+            method: 'retailer_verified',
+            method_p0: 'page_scrape_jsonld',
+            method_p1: 'converted_usd',
+            freshness: 'live',
+          },
+        } as any
+      }
+      onClose={() => {}}
+    />,
+  );
+  expect(getByTestId('confidence-sheet-price-fact-0')).toBeTruthy();
+});
+
+test.each([
+  [
+    'reviews',
+    { reviews: { review_count: 1200, source: 'Google Shopping', verified: true } },
+  ],
+  ['specs', { specs: { verified_pct: 60, citation_count: 9 } }],
+])('#105 — renders live dict shape for %s leg', (leg, details) => {
+  const { getByTestId } = render(
+    <ConfidenceDetailsSheet
+      visible
+      leg={leg as any}
+      details={details as any}
+      onClose={() => {}}
+    />,
+  );
+  expect(getByTestId(`confidence-sheet-${leg}-fact-0`)).toBeTruthy();
+});
+
+test.each([
+  ['empty object', {}],
+  ['null leg value', { price: null, reviews: null, specs: null }],
+  ['undefined leg value', { price: undefined, reviews: undefined, specs: undefined }],
+  ['empty leg dict', { price: {}, reviews: {}, specs: {} }],
+  ['string leg value', { price: 'oops', reviews: 'oops', specs: 'oops' }],
+  ['number leg value', { price: 7, reviews: 7, specs: 7 }],
+])('#105 — does not throw on %s details (all three legs)', (_label, details) => {
+  for (const leg of ['price', 'reviews', 'specs'] as const) {
+    const { queryByTestId, unmount } = render(
+      <ConfidenceDetailsSheet
+        visible
+        leg={leg}
+        details={details as any}
+        onClose={() => {}}
+      />,
+    );
+    // Honest empty sheet — no fact lines, but no throw either.
+    expect(queryByTestId(`confidence-sheet-${leg}-fact-0`)).toBeNull();
+    unmount();
+  }
+});
+
+test('#105 — composed lines leak no backend internals (rule #2)', () => {
+  const { getByTestId } = render(
+    <ConfidenceDetailsSheet
+      visible
+      leg="price"
+      details={
+        {
+          price: {
+            sources_count: 3,
+            method: 'retailer_verified',
+            method_p0: 'page_scrape_jsonld',
+            method_p1: 'converted_usd',
+            freshness: 'live',
+          },
+        } as any
+      }
+      onClose={() => {}}
+    />,
+  );
+  // Every rendered fact line — walk indices until the testID runs out.
+  for (let idx = 0; ; idx++) {
+    let fact;
+    try {
+      fact = getByTestId(`confidence-sheet-price-fact-${idx}`);
+    } catch {
+      expect(idx).toBeGreaterThan(0); // at least one line composed
+      break;
+    }
+    const factText = String(fact.props.children ?? '');
+    // The existing rule-#2 guard regex, extended over the composed lines.
+    expect(factText).not.toMatch(/\d+%|coefficient|threshold|cap of \d|multiplier/i);
+    // Internal source_method enums must be mapped or omitted, never raw.
+    expect(factText).not.toContain('page_scrape_jsonld');
+    expect(factText).not.toContain('converted_usd');
+    expect(factText).not.toContain('shopify_json');
+    expect(factText).not.toContain('retailer_verified');
+    // The mock catalog must actually translate — a raw key string here
+    // means the composed line proves nothing.
+    expect(factText).not.toMatch(/^results\.confidence\./);
+  }
+});
+
 test('NO scary copy across rendered facts (spec § 5d, rule #5)', () => {
   const tree = render(
     <ConfidenceDetailsSheet

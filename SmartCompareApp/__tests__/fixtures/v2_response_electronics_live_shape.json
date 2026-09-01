@@ -165,9 +165,9 @@
     },
     "confidence_legs": { "price": "strong", "reviews": "strong", "specs": "strong" },
     "confidence_details": {
-      "price": ["3 retailers checked across Bahrain.", "Pricing fresh within the last 24 hours."],
-      "reviews": ["12,450 reviews aggregated.", "Source: Google Shopping with verified reviews."],
-      "specs": ["8 of 9 specs verified against source citations.", "All key dims captured with high confidence."]
+      "price": { "sources_count": 3, "method": "retailer_verified", "method_p0": "page_scrape", "method_p1": "page_scrape_jsonld", "freshness": "live" },
+      "reviews": { "review_count": 12450, "source": "Google Shopping", "verified": true },
+      "specs": { "verified_pct": 60, "citation_count": 9 }
     },
     "factual_verdict": {
       "line1": "BHD 30 less, 0.2\u2605 higher rating, more storage at base.",

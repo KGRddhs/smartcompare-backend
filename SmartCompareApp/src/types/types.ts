@@ -409,13 +409,37 @@ export interface PersonalizationApplied {
   applied_shifts: Array<{ dim_display: string; direction: 'up' | 'down' }>;
 }
 
-// Bundle C — confidence_details strings per leg, composed by backend
-// for the "What we know" bottom sheet (spec § 5b). Frontend never
-// composes these strings; regex test guards against threshold leaks.
+// #105 — per-leg evidence dicts, field-for-field with the backend's
+// `response_builder._confidence_legs_and_details` (verified at b073918).
+// All fields optional AND nullable: `method`, `source`, `freshness` are
+// Optional[str] server-side, and history replay may carry older rows.
+export interface PriceConfidenceLegDetail {
+  sources_count?: number | null;
+  method?: string | null;
+  method_p0?: string | null;
+  method_p1?: string | null;
+  freshness?: string | null;
+}
+
+export interface ReviewsConfidenceLegDetail {
+  review_count?: number | null;
+  source?: string | null;
+  verified?: boolean | null;
+}
+
+export interface SpecsConfidenceLegDetail {
+  verified_pct?: number | null;
+  citation_count?: number | null;
+}
+
+// Bundle C / #105 — confidence_details per leg for the "What we know"
+// bottom sheet (spec § 5b). The backend ships the LIVE dict shape above;
+// string[] is the legacy shape, still rendered verbatim when present.
+// The regex test still guards against threshold leaks in composed lines.
 export interface ConfidenceDetails {
-  price?: string[];
-  reviews?: string[];
-  specs?: string[];
+  price?: string[] | PriceConfidenceLegDetail | null;
+  reviews?: string[] | ReviewsConfidenceLegDetail | null;
+  specs?: string[] | SpecsConfidenceLegDetail | null;
 }
 
 export interface ConfidenceLegs {
