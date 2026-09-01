@@ -99,6 +99,33 @@ def _iterable_routes(candidate: Any) -> Optional[list]:
     return list(candidate)
 
 
+def _discover_prefix(obj: Any) -> str:
+    """The include-time mount prefix of a router-like container, RENAME-PROOF.
+
+    ``.prefix`` is the documented name and is tried first. It is NOT trusted as
+    the only name: CI proved (fastapi 0.141.1, run 886c483) that the real
+    ``_IncludedRouter`` does not surface it there -- all 72 ``/api/v1/admin/*``
+    paths walked without their mount prefix. Rather than hard-code whatever the
+    private attribute happens to be called this release, fall back to scanning
+    the instance dict for a path-shaped string under a prefix-ish key. A wrong
+    guess cannot pass silently: ``assert_route_table_visible`` cross-checks the
+    walk against the app's own OpenAPI paths.
+    """
+    prefix = getattr(obj, "prefix", None)
+    if isinstance(prefix, str) and prefix:
+        return prefix
+    try:
+        attrs = vars(obj)
+    except TypeError:  # objects without __dict__ (slots/builtins)
+        return ""
+    for key, value in attrs.items():
+        if "prefix" not in key.lower():
+            continue
+        if isinstance(value, str) and value.startswith("/") and value != "/":
+            return value
+    return ""
+
+
 def _as_container(obj: Any) -> Optional[tuple]:
     """Return ``(child_routes, own_prefix)`` if ``obj`` holds routes, else None.
 
@@ -106,9 +133,7 @@ def _as_container(obj: Any) -> Optional[tuple]:
     fastapi 0.141 ``_IncludedRouter`` wrapper -- including the variant that
     exposes its routes indirectly via ``.router``.
     """
-    prefix = getattr(obj, "prefix", "") or ""
-    if not isinstance(prefix, str):
-        prefix = ""
+    prefix = _discover_prefix(obj)
 
     children = _iterable_routes(getattr(obj, "routes", None))
     if children is None:
@@ -116,8 +141,7 @@ def _as_container(obj: Any) -> Optional[tuple]:
         if inner is not None and inner is not obj:
             children = _iterable_routes(getattr(inner, "routes", None))
             if not prefix:
-                inner_prefix = getattr(inner, "prefix", "") or ""
-                prefix = inner_prefix if isinstance(inner_prefix, str) else ""
+                prefix = _discover_prefix(inner)
     if children is None:
         return None
     return children, prefix
