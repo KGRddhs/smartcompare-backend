@@ -203,3 +203,42 @@ jobs:
       - name: TypeScript type check
         run: cd SmartCompareApp && npx tsc --noEmit
         continue-on-error: true  # 7 pre-existing TS errors
+
+  # The FIRST blocking-capable automated gate the frontend has ever had. Before
+  # this job, the Jest suite (135-235 specs), the eslint i18n fence and tsc were
+  # all decorative — nothing ran them in CI, which is why the M13 review's
+  # frontend lane was a prediction fulfilled. It runs the M13-15 i18n
+  # referenced-key fence, the M13-14 hook test and the M13-13/M13-54 screen
+  # tests among the full suite.
+  #
+  # LANDS NON-BLOCKING (continue-on-error on each check step): node_modules is
+  # absent from the dev tree, so jest/eslint/tsc cannot be run locally and the
+  # CURRENT red count is UNMEASURED — this job exists to MEASURE it on a real
+  # runner without reddening CI. RATCHET each step to blocking the way
+  # backend-lint was: read the count off the first run, drive it to zero, then
+  # drop that step's continue-on-error.
+  frontend-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: SmartCompareApp/package-lock.json
+
+      - name: Install frontend dependencies
+        run: cd SmartCompareApp && npm ci
+
+      - name: Jest (unit suite + i18n/console fences)
+        continue-on-error: true  # RATCHET: measure the red count first, then make blocking
+        run: cd SmartCompareApp && npx jest --ci
+
+      - name: ESLint (src)
+        continue-on-error: true  # RATCHET: measure the red count first, then make blocking
+        run: cd SmartCompareApp && npx eslint "src/**/*.{ts,tsx}"
+
+      - name: TypeScript type check
+        continue-on-error: true  # RATCHET: measure the red count first, then make blocking
+        run: cd SmartCompareApp && npx tsc --noEmit
