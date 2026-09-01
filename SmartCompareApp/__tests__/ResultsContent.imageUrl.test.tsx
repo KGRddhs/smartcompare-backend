@@ -56,7 +56,6 @@ jest.mock('react-i18next', () => ({
 jest.mock('../src/components/results/TopMatchBadge', () => ({
   TopMatchBadge: () => null,
 }));
-jest.mock('../src/components/results/HeroRings', () => ({ HeroRings: () => null }));
 jest.mock('../src/components/results/DimensionBars', () => ({ DimensionBars: () => null }));
 jest.mock('../src/components/results/FactualVerdict', () => ({ FactualVerdict: () => null }));
 jest.mock('../src/components/results/ConfidencePills', () => ({ ConfidencePills: () => null }));

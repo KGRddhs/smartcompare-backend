@@ -60,11 +60,6 @@ jest.mock('../src/components/CategorySelector', () => ({
   default: () => require('react').createElement('CategorySelector'),
 }));
 
-jest.mock('../src/components/ComparisonCounter', () => ({
-  ComparisonCounter: ({ used, total }: { used: number; total: number }) =>
-    require('react').createElement('ComparisonCounter', { used, total }),
-}));
-
 jest.mock('../src/hooks/useComparisonCounter', () => ({
   useComparisonCounter: () => ({
     used: 1,

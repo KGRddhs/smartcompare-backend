@@ -69,14 +69,6 @@ jest.mock('../../src/components/results/TopMatchBadge', () => {
       React.createElement(View, { testID: p.testID ?? 'mock-top-match' }),
   };
 });
-jest.mock('../../src/components/results/HeroRings', () => {
-  const React = require('react');
-  const { View } = require('react-native');
-  return {
-    HeroRings: (p: any) =>
-      React.createElement(View, { testID: p.testID ?? 'results-v2-hero-rings' }),
-  };
-});
 jest.mock('../../src/components/results/DimensionBars', () => {
   const React = require('react');
   const { View } = require('react-native');

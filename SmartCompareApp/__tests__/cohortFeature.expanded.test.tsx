@@ -5,7 +5,6 @@
  * what frontend-cohort wrote in the primary test files. Asserts:
  *   - Bottom sheet behavior with already-selected values
  *   - Trigger gates: NEVER show after submission, even after dismissals
- *   - StyleProfileCard hides cleanly for low-confidence/null payloads
  *   - Trigger respects cooldown boundary (exactly 7 days)
  *   - State helpers handle malformed SecureStore data
  *   - Dismissal tracking after ALL 4 attempts → permanent stop
@@ -209,87 +208,6 @@ describe('shouldShowDemographicsPrompt — boundary conditions', () => {
 
   it('respects COOLDOWN_DAYS=7 per design 5.5', () => {
     expect(COOLDOWN_DAYS).toBe(7);
-  });
-});
-
-// ===== StyleProfileCard — additional negative cases =====
-
-import StyleProfileCard from '../src/components/StyleProfileCard';
-
-describe('StyleProfileCard — additional UI states', () => {
-  it('returns null tree (renders nothing) when display.confidence is "low"', () => {
-    // Per design 3.6: confidence < medium → backend returns null display
-    // Frontend SHOULD only get null. But defensively, verify card hides.
-    const { queryByText } = render(
-      <StyleProfileCard display={null} onEditPress={jest.fn()} />
-    );
-    expect(queryByText('profile.styleProfile.title')).toBeNull();
-    expect(queryByText('profile.styleProfile.editButton')).toBeNull();
-  });
-
-  it('renders edit button only when display is non-null', () => {
-    const { queryByText } = render(
-      <StyleProfileCard display={null} onEditPress={jest.fn()} />
-    );
-    expect(queryByText('profile.styleProfile.editButton')).toBeNull();
-  });
-
-  it('renders persona label correctly for budget-conscious cohort', () => {
-    const display = {
-      persona_label: 'Budget-conscious value seeker',
-      n: 7,
-      confidence: 'low' as const,
-      modal: {
-        top_deciding_factor: 'Price',
-        spend_bracket: '<25 BHD',
-        preferred_assistance_style: 'Show me 2 or 3 suitable options',
-      },
-    };
-    const { getByText } = render(
-      <StyleProfileCard display={display} onEditPress={jest.fn()} />
-    );
-    expect(getByText('Budget-conscious value seeker')).toBeTruthy();
-  });
-
-  it('renders persona label correctly for premium brand-loyal cohort', () => {
-    const display = {
-      persona_label: 'Premium brand-loyal buyer',
-      n: 18,
-      confidence: 'medium' as const,
-      modal: {
-        top_deciding_factor: 'Brand',
-        spend_bracket: '100-250 BHD',
-        preferred_assistance_style: 'Suggest best with reason',
-      },
-    };
-    const { getByText } = render(
-      <StyleProfileCard display={display} onEditPress={jest.fn()} />
-    );
-    expect(getByText('Premium brand-loyal buyer')).toBeTruthy();
-    expect(getByText('100-250 BHD')).toBeTruthy();
-  });
-
-  it('renders multiple distinct displays after rerender', () => {
-    const a = {
-      persona_label: 'Quality-first focused buyer',
-      n: 23,
-      confidence: 'high' as const,
-      modal: { top_deciding_factor: 'Quality', spend_bracket: '25-50 BHD' },
-    };
-    const b = {
-      persona_label: 'Premium brand-loyal buyer',
-      n: 18,
-      confidence: 'medium' as const,
-      modal: { top_deciding_factor: 'Brand', spend_bracket: '100-250 BHD' },
-    };
-    const { getByText, queryByText, rerender } = render(
-      <StyleProfileCard display={a} onEditPress={jest.fn()} />
-    );
-    expect(getByText('Quality-first focused buyer')).toBeTruthy();
-
-    rerender(<StyleProfileCard display={b} onEditPress={jest.fn()} />);
-    expect(queryByText('Quality-first focused buyer')).toBeNull();
-    expect(getByText('Premium brand-loyal buyer')).toBeTruthy();
   });
 });
 

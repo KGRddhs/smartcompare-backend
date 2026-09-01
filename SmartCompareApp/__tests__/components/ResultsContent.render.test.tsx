@@ -50,12 +50,6 @@ jest.mock('../../src/components/results/TopMatchBadge', () => ({
     return <View testID={testID ?? 'mock-top-match-badge'} />;
   },
 }));
-jest.mock('../../src/components/results/HeroRings', () => ({
-  HeroRings: ({ testID }: any) => {
-    const { View } = require('react-native');
-    return <View testID={testID ?? 'mock-hero-rings'} />;
-  },
-}));
 jest.mock('../../src/components/results/DimensionBars', () => ({
   DimensionBars: ({ testID }: any) => {
     const { View } = require('react-native');

@@ -91,7 +91,6 @@ jest.mock('../src/services/authService', () => ({
 }));
 
 jest.mock('../src/components/CategorySelector', () => 'CategorySelector');
-jest.mock('../src/components/ComparisonCounter', () => ({ ComparisonCounter: 'ComparisonCounter' }));
 jest.mock('../src/hooks/useComparisonCounter', () => ({
   useComparisonCounter: () => ({
     used: 1,
