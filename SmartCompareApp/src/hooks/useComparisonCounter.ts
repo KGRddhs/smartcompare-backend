@@ -45,22 +45,41 @@ export function useComparisonCounter() {
     return newCount;
   }, [used]);
 
-  // M13-14: derive the gate from the already-fetched UsageStatus rather than
-  // hardcoding `used < 3`. The backend grants premium unlimited and free users a
-  // lifetime-free window plus any active referral bonus, so a hardcoded `used < 3`
-  // dead-ends BOTH the base allowance and the entire referral incentive loop at a
-  // fixed 3 — every blocked entry point routes to the "Coming soon" paywall.
+  // M18 CD-interactions-04 (supersedes the M13-14 formula): derive the gate from
+  // the SAME AXES the backend enforces. The old formula compared the backend's
+  // NEVER-RESETTING lifetime counter against a MONTHLY-expiring referral bonus
+  // (`used < lifetime_free + monthly_bonus`), so a free user past lifetime-3 was
+  // client-paywalled even when check_usage_allowed would pass (daily 3 / monthly
+  // 10+bonus), and every consumed bonus permanently eroded all FUTURE bonus
+  // windows (lifetime 8 makes a fresh +5 grant compute 8 < 3+5 = false forever).
   //
-  // Safe-fallback derisking (no flag needed — RN has no per-call env flag): every
-  // field is read defensively so a MISSING field degrades to today's behaviour.
-  // When `status` is null (offline hydrate) or the fields are absent (older
-  // backend), `tier` is undefined, `lifetimeFree` falls back to FREE_LIMIT and
-  // `bonusRemaining` to 0, so `canCompare` collapses to `used < 3` — never MORE
-  // permissive than today, only tier-aware when the data is actually present.
+  // Backend gate (usage_service.check_usage_allowed), mirrored here off the
+  // `remaining` block get_usage_status already serves:
+  //   free with lifetime-free left → allowed (remaining.lifetime_free > 0)
+  //   otherwise                    → allowed iff daily AND monthly remain
+  // Compares consumed locally since hydration (increment()) are subtracted from
+  // each axis so the gate moves within a session without a refetch; the backend
+  // increments all three counters per compare, so one shared delta is faithful.
+  //
+  // Safe-fallback derisking retained from M13-14 (no flag — RN has no per-call
+  // env flag): when `status` is null (offline) or the `remaining` axes are
+  // absent (older backend), the gate collapses to the historical `used < 3` —
+  // never MORE permissive than the data actually present supports.
   const lifetimeFree = status?.limits?.lifetime_free ?? FREE_LIMIT;
-  const bonusRemaining = status?.limits?.monthly_bonus ?? 0;
   const isPremium = status?.tier === 'premium';
-  const canCompare = isPremium || used < lifetimeFree + bonusRemaining;
+  const remaining = status?.remaining;
+  const hasBackendAxes =
+    typeof remaining?.daily === 'number' && typeof remaining?.monthly === 'number';
+  const fetchedLifetime = status?.used?.lifetime;
+  const sessionConsumed =
+    typeof fetchedLifetime === 'number' ? Math.max(0, used - fetchedLifetime) : 0;
+  const backendAllows =
+    hasBackendAxes &&
+    ((remaining.lifetime_free ?? 0) - sessionConsumed > 0 ||
+      (remaining.daily - sessionConsumed > 0 &&
+        remaining.monthly - sessionConsumed > 0));
+  const canCompare =
+    isPremium || (hasBackendAxes ? backendAllows : used < FREE_LIMIT);
   const shouldShowPaywall = !canCompare;
 
   // Pill denominator = the BASE lifetime-free cap only. The header pill renders

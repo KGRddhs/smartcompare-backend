@@ -242,6 +242,13 @@ export async function deleteComparison(comparisonId: string) {
  * wrapper as-is, leaving ResultsScreen with `result.products === undefined`
  * → empty-state branch even though the row loaded fine. Ahmed flagged
  * "History still doesn't show comparison content".
+ *
+ * M18 MB-contract-03: surface `wrapper.comparison.id` on the payload as
+ * `comparison_id` (additive, shape-preserving). Prior code discarded it,
+ * which left ResultsScreen's sharableComparisonId permanently null (the
+ * share/referral Loop-1 flow was unreachable) and pushed the screen onto
+ * metadata.query as its comparison id — a raw query string the backend's
+ * M13-29 UUID validators 422-reject on /events and /feedback.
  */
 export async function getComparison(comparisonId: string) {
   const response = await api.get(`/api/v1/comparisons/${comparisonId}`);
@@ -253,7 +260,7 @@ export async function getComparison(comparisonId: string) {
       response: { status: 404, data: wrapper },
     });
   }
-  return full;
+  return comparison?.id ? { ...full, comparison_id: comparison.id } : full;
 }
 
 /**

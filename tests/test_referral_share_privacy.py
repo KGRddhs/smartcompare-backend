@@ -100,7 +100,7 @@ class TestResolveInviteHonorsPrivacy:
                 "id": "cmp-1",
                 "user_id": "ref-1",
                 "share_token": "tok",
-                "response_data": {
+                "full_response": {
                     "products": [{"name": "iPhone"}, {"name": "Galaxy"}],
                     "winner": {"name": "iPhone"},
                     "winner_index": 0,
@@ -143,7 +143,7 @@ class TestResolveInviteHonorsPrivacy:
                 "id": "c",
                 "user_id": "ref",
                 "share_token": "tok",
-                "response_data": {
+                "full_response": {
                     "products": [{"name": "A"}, {"name": "B"}],
                     "winner": {"name": "A"},
                     "winner_index": 0,
@@ -183,7 +183,7 @@ class TestResolveInviteHonorsPrivacy:
                 "id": "c",
                 "user_id": "ref",
                 "share_token": "tok",
-                "response_data": {
+                "full_response": {
                     "products": [{"name": "A"}, {"name": "B"}],
                     "winner": {"name": "A"},
                     "verdict": "Detailed verdict prose here",
@@ -226,7 +226,7 @@ class TestResolveInviteHonorsPrivacy:
                 "id": "c",
                 "user_id": "ref",
                 "share_token": "tok",
-                "response_data": {
+                "full_response": {
                     "products": [{"name": "A"}],
                     "winner": {"name": "A"},
                     "verdict": "A wins",

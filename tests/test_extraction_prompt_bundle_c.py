@@ -32,7 +32,10 @@ EXPECTED_NON_NEGOTIABLE = {
     "skincare":    {"volume", "ingredients", "active_ingredient"},
     "haircare":    {"volume", "ingredients"},
     "makeup":      {"volume", "shade_range"},
-    "grocery":     {"weight", "ingredients"},
+    # M18 PO-prompts-06: spec §2f said "weight", but CATEGORY_SPEC_SCHEMAS
+    # ["grocery"] defines "size" — "weight" was an unfillable paid chase
+    # (never prompted, always filter-dropped). Reconciled to the schema key.
+    "grocery":     {"size", "ingredients"},
     "other":       set(),  # all preferred
 }
 

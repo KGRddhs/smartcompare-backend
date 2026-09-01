@@ -328,7 +328,17 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
   const pendingEventsRef = useRef<
     Array<{ event_type: string; event_data?: Record<string, any>; comparison_id?: string }>
   >([]);
-  const comparisonId = metadata?.query;
+  // M18 MB-contract-01 — the REAL persisted-row UUID, or undefined.
+  // metadata.query was sent here before, but it is the raw query string
+  // ("iPhone 15 vs S24"), which the backend's M13-29 UUID validators
+  // 422-reject on BOTH /events and /feedback — silently killing every
+  // Results event batch and every feedback row (trackEvents swallows the
+  // error). The id exists on the History path only: getComparison surfaces
+  // wrapper.comparison.id as result.comparison_id, and the route param
+  // carries the same id. Fresh compares have NO id (the backend never
+  // echoes it), so comparisonId stays undefined there — JSON.stringify
+  // drops it and the batch passes validation without an anchor.
+  const comparisonId = result?.comparison_id ?? route?.params?.comparison_id;
 
   const trackEvent = (eventType: string, eventData?: Record<string, any>) => {
     pendingEventsRef.current.push({
@@ -409,15 +419,25 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
   // F2.4: Result-aware CTA variant. Strong/close mapping per design 3.1.
   // 'saved' variant deferred until ResultsScreen Save tap actually persists state.
   const ctaVariant: 'strong' | 'close' | 'default' = (() => {
-    const margin = scoring?.win_margin;
+    // M18 MB-contract-10 — scoring.win_margin never exists on the wire
+    // (response_builder emits six scoring keys, none of them win_margin),
+    // so this was permanently undefined → 'default'. The real keys are
+    // scoring_v2.win_margin and overview.winner.margin.
+    const margin = scoring_v2?.win_margin ?? result?.overview?.winner?.margin;
     if (typeof margin !== 'number') return 'default';
     if (margin >= 15) return 'strong';
     if (margin < 8) return 'close';
     return 'default';
   })();
 
-  const sharableComparisonId =
-    (result as any)?.comparison_id || (metadata as any)?.comparison_id;
+  // M18 MB-contract-03 — the same real id threaded into events/feedback.
+  // The old read consulted an any-cast result/metadata `comparison_id` pair
+  // that no backend payload ever carried, so this was permanently null and
+  // the share/referral Loop-1 flow was unreachable from Results
+  // (handleShare always fell to text-only Share.share). Fresh compares
+  // still have no id — text-only by design until the backend echoes the
+  // saved id.
+  const sharableComparisonId = comparisonId;
 
   const winnerName = isNewFormat
     ? result!.overview!.winner.name
