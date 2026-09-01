@@ -17,6 +17,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
+from tests._route_introspection import assert_route_table_visible, find_route
 
 _VALID_FP = "a" * 64  # SHA-256 hex
 
@@ -50,12 +51,33 @@ def test_price_kpi_rejects_missing_admin_header(client):
 
 
 def test_price_kpi_route_declares_admin_dependency():
-    """Structural pin: verify_admin_key is a dependency of the route."""
+    """Structural pin: verify_admin_key is a dependency of the route.
+
+    THIS IS A SECURITY PIN — it must be able to go red. The old
+    `next(r for r in app.routes if getattr(r, "path", "") == ...)` idiom could
+    not: on the pinned fastapi 0.141 the route lives inside an `_IncludedRouter`
+    wrapper with no `.path`, so the generator found nothing and raised
+    StopIteration — an ERROR with no diagnostic, and the admin dependency went
+    unverified in CI while the pin looked like it was doing its job.
+    Route lookup now goes through the version-robust walker, and a missing
+    route is an explicit assertion failure, not a StopIteration.
+    """
     from app.api.admin_routes import verify_admin_key
 
-    route = next(r for r in app.routes if getattr(r, "path", "") == "/api/v1/text/price-kpi")
-    dep_calls = [d.call for d in route.dependant.dependencies]
-    assert verify_admin_key in dep_calls
+    assert_route_table_visible(app)
+    entry = find_route(app, "/api/v1/text/price-kpi", method="GET")
+    assert entry is not None, (
+        "GET /api/v1/text/price-kpi is not mounted at all -- the paid-work "
+        "endpoint this pin guards has moved or been removed."
+    )
+
+    dep_calls = [d.call for d in entry.route.dependant.dependencies]
+    assert verify_admin_key in dep_calls, (
+        "GET /api/v1/text/price-kpi no longer declares "
+        "Depends(verify_admin_key). It runs a real OpenAI parse + full Serper "
+        f"cascade -- it must not be reachable anonymously. Dependencies seen: "
+        f"{[getattr(c, '__name__', repr(c)) for c in dep_calls]}"
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -47,6 +47,10 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
+from tests._route_introspection import (
+    assert_route_table_visible,
+    route_method_paths,
+)
 
 
 client = TestClient(app)
@@ -453,15 +457,26 @@ class TestManifestMaintenance:
         entry. New endpoints must add a manifest entry — even if the body
         is empty, it forces the author to think about which JSX consumes it.
         """
+        # POSITIVE CONTROL FIRST — this is a negative assertion and would pass
+        # vacuously against an empty route table. On the pinned fastapi 0.141 a
+        # bare `for route in app.routes` sees `_IncludedRouter` wrappers with no
+        # `.path`, so the getattr-defended loop that used to live here found
+        # ZERO editorial routes and this guard silently stopped guarding.
+        # See tests/_route_introspection.py.
         editorial_routes: list[str] = []
-        for route in app.routes:
-            path = getattr(route, "path", "")
-            methods = getattr(route, "methods", set()) or set()
-            if "GET" not in methods:
+        for entry in assert_route_table_visible(app):
+            if "GET" not in entry.methods:
                 continue
-            if path.startswith("/api/v1/home/") or path.startswith("/api/v1/profile/"):
-                editorial_routes.append(f"GET {path}")
+            if entry.path.startswith("/api/v1/home/") or entry.path.startswith(
+                "/api/v1/profile/"
+            ):
+                editorial_routes.append(f"GET {entry.path}")
 
+        assert editorial_routes, (
+            "No /home or /profile GET routes were visible at all — route "
+            "introspection is blind, not the manifest. See "
+            "tests/_route_introspection.py."
+        )
         missing = [r for r in editorial_routes if r not in ENDPOINT_MANIFEST]
         assert not missing, (
             f"Editorial endpoint(s) added without a manifest entry: {missing}. "
@@ -474,12 +489,12 @@ class TestManifestMaintenance:
         """The reverse guard — every ENDPOINT_MANIFEST key must match an
         actual mounted route. Catches stale manifest entries after an
         endpoint is removed."""
-        registered_routes = set()
-        for route in app.routes:
-            path = getattr(route, "path", "")
-            methods = getattr(route, "methods", set()) or set()
-            for method in methods:
-                registered_routes.add(f"{method} {path}")
+        # This one fails LOUDLY on a blind walk (every manifest key looks
+        # phantom) — that was CI failure #2 of the M19 trio, reporting
+        # "Current /home + /profile GET routes: []" for six mounted endpoints.
+        # The positive control keeps the diagnosis in the message.
+        assert_route_table_visible(app)
+        registered_routes = route_method_paths(app)
 
         phantom = [k for k in ENDPOINT_MANIFEST if k not in registered_routes]
         assert not phantom, (

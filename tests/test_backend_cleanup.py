@@ -10,6 +10,11 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+from tests._route_introspection import (  # noqa: E402
+    assert_route_table_visible,
+    route_paths,
+)
+
 
 class TestLegacyRoutesRemoved:
     """Verify legacy routes.py has been deleted and main.py still works."""
@@ -28,7 +33,13 @@ class TestLegacyRoutesRemoved:
         """The legacy api_router should not be registered."""
         from app.main import app
 
-        route_paths = [route.path for route in app.routes]
+        # POSITIVE CONTROL FIRST. This assertion is a negative one, so it passes
+        # vacuously against an empty route table — which is exactly what the
+        # fastapi 0.141 `_IncludedRouter` shape produced (see
+        # tests/_route_introspection.py). Naive `[r.path for r in app.routes]`
+        # raised AttributeError there; the getattr-defended variant silently saw
+        # nothing. assert_route_table_visible fails loudly in both cases.
+        route_paths = [entry.path for entry in assert_route_table_visible(app)]
         # Legacy router used /api/v1/compare/quick — modern routes don't have this
         legacy_patterns = ["/api/v1/compare/quick"]
         for pattern in legacy_patterns:
@@ -38,13 +49,13 @@ class TestLegacyRoutesRemoved:
         """Legacy POST /api/v1/compare (image upload) should be gone."""
         from app.main import app
 
-        # Collect (path, methods) for all routes
-        for route in app.routes:
-            if getattr(route, "path", None) == "/api/v1/compare":
-                methods = getattr(route, "methods", set())
+        # Same vacuous-pass hazard as above — walk through the version-robust
+        # helper and gate on the positive control before scanning.
+        for entry in assert_route_table_visible(app):
+            if entry.path == "/api/v1/compare":
                 # The legacy route was POST /api/v1/compare for image upload
                 # The modern text route is GET/POST /api/v1/text/compare
-                assert "POST" not in methods or "/text/" in route.path, \
+                assert "POST" not in entry.methods or "/text/" in entry.path, \
                     "Legacy POST /api/v1/compare (image upload) still registered"
 
     def test_no_import_of_comparison_service(self):
@@ -71,7 +82,12 @@ class TestDeadEndpointsRemoved:
 
     def _get_router_paths(self):
         from app.api.text_routes import router
-        return [route.path for route in router.routes]
+
+        # Bare APIRouter today, but walked through the same version-robust
+        # helper so a future lazy-router shape cannot blank this out either.
+        # (`test_selected_category_param_still_works` below is this class's
+        # positive control — it fails loudly if the walk returns nothing.)
+        return route_paths(router)
 
     def test_no_electronics_endpoint(self):
         """Category-specific /compare/electronics should not exist."""
