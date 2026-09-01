@@ -1270,6 +1270,21 @@ def build_comparison_response(
                 if "retailer" in pd_item:
                     pd_item["retailer"] = None
                 continue
+            # M18 CD-interactions-02 — harvest the diagnostic that the PRE-SCORING
+            # pass (price_service.apply_region_currency_guard) stashed on the
+            # PRODUCT dict. That pass already pended the price, so the
+            # `unavailable` early-continue just below would return before the
+            # region_currency_mismatch diag is appended and metadata.guard_rejected
+            # would silently lose it. Harvest FIRST, then let the continue run.
+            # (Product-level `_`-prefixed key, never price-level: public_price_view
+            # only strips `_`-keys from a price when ENABLE_EXACT_PRICE_GATE is ON.)
+            if _region_guard_on and pd_item.get("_region_guard_rejected") == (
+                "region_currency_mismatch"
+            ):
+                _entry = {"product_index": _pd_idx,
+                          "reason": "region_currency_mismatch"}
+                if _entry not in _guard_rejected_diag:
+                    _guard_rejected_diag.append(_entry)
             # An upstream pass (e.g. Task C2 size-basis reconciliation in the
             # orchestrator) may already have marked this price pending with its
             # OWN reason (size_mismatch). Don't clobber that reason — it's

@@ -962,6 +962,7 @@ from app.services.price_service import (
     shopping_listing_matches,
     reconcile_pair_sizes,
     reconcile_pair_fairness,
+    apply_region_currency_guard,
     is_price_plausible,
     is_luxury_brand,
     is_supplement_query,
@@ -3178,6 +3179,20 @@ class StructuredComparisonService:
             except Exception as _e:  # noqa: BLE001 — never block the response
                 logger.warning("fairness reconciliation skipped (sync): %s", _e)
 
+            # M13-11 PRE-SCORING region-currency guard (M18 CD-interactions-02),
+            # ENABLE_REGION_CURRENCY_GUARD, default OFF. The response chokepoint
+            # pends a currency-mismatched price only in the FINAL projection —
+            # after compute_scores below has already picked winner_index /
+            # dimension_winners from the raw amount and after generate_comparison
+            # has been handed the raw product_data. Pend it HERE instead, in
+            # place, so the price and value dimensions take their honest
+            # missing-data path. Runs AFTER fairness (which can re-select a
+            # candidate in a different currency). Flag OFF: pure no-op.
+            try:
+                apply_region_currency_guard(product_data, region)
+            except Exception as _e:  # noqa: BLE001 — never block the response
+                logger.warning("region-currency guard skipped (sync): %s", _e)
+
             # Fetch behavioral profile + demographics_profile if user is logged in.
             # I5.6 lever-2: the fetch was kicked off above (concurrent with the
             # product gather); here we just await the already-running task.
@@ -3771,6 +3786,21 @@ class StructuredComparisonService:
                 )
             except Exception as _e:  # noqa: BLE001 — never block the stream
                 logger.warning("fairness reconciliation skipped (stream): %s", _e)
+
+            # M13-11 PRE-SCORING region-currency guard (M18 CD-interactions-02),
+            # ENABLE_REGION_CURRENCY_GUARD, default OFF. Must run BEFORE the
+            # `specs` yield, the `prices` yield and compute_scores: the `prices`
+            # projection below builds its OWN pending block whose only pends are
+            # the non-dict branch and is_price_showable (which takes no region and
+            # cannot see a currency mismatch), so a foreign-currency amount was
+            # flashed mid-stream and only retracted by the final `complete`, while
+            # the winner was still decided by that amount. Runs AFTER fairness
+            # (which can re-select a candidate in a different currency). Flag OFF:
+            # pure no-op.
+            try:
+                apply_region_currency_guard(product_data, region)
+            except Exception as _e:  # noqa: BLE001 — never block the stream
+                logger.warning("region-currency guard skipped (stream): %s", _e)
 
             # Yield specs (Bundle E S3 — piggyback image_url onto specs event
             # since both land together at end of Phase 1; avoids adding a new

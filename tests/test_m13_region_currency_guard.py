@@ -60,3 +60,23 @@ def test_m13_11_flag_on_bahrain_bhd_price_unaffected(monkeypatch):
     pd = [_product("Alpha Phone", 25.0, "BHD")]
     resp = build_comparison_response(product_data=pd, region="bahrain")
     assert _prices(resp) == [(25.0, "BHD", None)]
+
+
+def test_m13_11_metadata_guard_rejected_survives_an_upstream_pend(monkeypatch):
+    """M18 CD-interactions-02 — once the PRE-SCORING pass
+    (price_service.apply_region_currency_guard) has already pended the price, the
+    chokepoint's `unavailable is True` early-continue returns before the diag is
+    appended, so `metadata.guard_rejected` would silently lose
+    `region_currency_mismatch`. The chokepoint must harvest the reason the upstream
+    pass stashed on the PRODUCT dict."""
+    monkeypatch.setenv("ENABLE_REGION_CURRENCY_GUARD", "true")
+    pd = [_product("Alpha Phone", 25.0, "BHD")]
+    pd[0]["price"] = {
+        "amount": None, "currency": "SAR", "unavailable": True,
+        "reason": "pending_genuine",
+    }
+    pd[0]["_region_guard_rejected"] = "region_currency_mismatch"
+    resp = build_comparison_response(product_data=pd, region="saudi_arabia")
+    assert {"product_index": 0, "reason": "region_currency_mismatch"} in (
+        resp["metadata"]["guard_rejected"]
+    ), resp["metadata"].get("guard_rejected")

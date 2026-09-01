@@ -3,6 +3,7 @@ Text Comparison Routes - API endpoints for text-based product comparisons
 """
 import json
 import logging
+import os
 import time
 from typing import Optional, Dict, AsyncGenerator
 from fastapi import APIRouter, HTTPException, Path, Query, Depends, Request
@@ -33,6 +34,25 @@ from app.utils.async_utils import fire_and_forget
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/text", tags=["text-comparison"])
+
+
+def preverdict_disconnect_abort_enabled() -> bool:
+    """True iff a PRE-verdict SSE disconnect closes the orchestrator generator
+    instead of draining it (M18 CD-interactions-01 Half B, default OFF).
+
+    Half A of that finding (refund the gate-reserved credit and skip metering
+    when the client left before the final payload) is UNFLAGGED — it is a pure
+    accounting correction with no result fork for legitimate completed traffic.
+    This flag covers only the RESOURCE half: with it ON the route stops pulling
+    from `compare_from_text_streaming` and awaits its `aclose()`, so the
+    default-unbounded verdict/critique/moderation OpenAI tail is not paid for a
+    comparison nobody will read. Read PER CALL from os.getenv (the
+    ``price_service.exact_gate_enabled`` idiom) so Railway flips it without a
+    restart, and so flag OFF is byte-identical to the M13-35 drain.
+    """
+    return os.getenv("ENABLE_PREVERDICT_DISCONNECT_ABORT", "").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
 
 
 # ============================================
@@ -523,6 +543,7 @@ async def text_compare_stream(
 
     async def event_generator() -> AsyncGenerator[str, None]:
         complete_response = None
+        complete_after_client_gone = False
         had_error = False
         client_gone = False
 
@@ -535,25 +556,46 @@ async def text_compare_stream(
         # disconnect check, and a disconnect drains (not abandons) the generator
         # so the payload is fully captured. Side effects then fire in the finally,
         # keyed on whether the payload was produced.
+        #
+        # M18 CD-interactions-01: that drain also made the M13-37 refund
+        # unreachable for a PRE-verdict drop — the generator ran to completion,
+        # so `complete_response` was set and the finally took the METERING
+        # branch, burning a free credit for a result the user never received.
+        # `complete_after_client_gone` records WHEN the payload landed relative
+        # to the client leaving: `client_gone` is set on the iteration the
+        # disconnect is first observed, and the capture below runs before that
+        # check on the same iteration, which is exactly why M13-35's post-verdict
+        # case still meters.
+        #
+        # The orchestrator generator is BOUND (not inlined into the `async for`)
+        # so Half B can close it explicitly. It is closed ONLY on the Half-B
+        # abort path: with the flag OFF this route makes exactly the same calls
+        # on `_stream` as it did before M18, so flag-OFF behaviour is unchanged.
+        _stream = service.compare_from_text_streaming(
+            query=q,
+            region=region,
+            include_specs=specs,
+            include_reviews=reviews,
+            include_pros_cons=pros_cons,
+            nocache=nocache,
+            selected_category=selected_category,
+            user_preferences=user_prefs,
+            user_id=user.get("id") if user else None,
+            explicit_pair=explicit_pair,
+        )
         try:
-            async for event_type, data in service.compare_from_text_streaming(
-                query=q,
-                region=region,
-                include_specs=specs,
-                include_reviews=reviews,
-                include_pros_cons=pros_cons,
-                nocache=nocache,
-                selected_category=selected_category,
-                user_preferences=user_prefs,
-                user_id=user.get("id") if user else None,
-                explicit_pair=explicit_pair,
-            ):
+            async for event_type, data in _stream:
                 # Capture the final payload BEFORE the disconnect check. `complete`
                 # is the canonical final-payload event; `settle_complete` is the
                 # Bundle E equivalent emitted right after `verdict` and carries the
                 # same payload — capturing it means a disconnect right after the
                 # verdict still has the full response to meter + persist.
                 if event_type in ("complete", "settle_complete"):
+                    if complete_response is None:
+                        # Latch on the FIRST final payload: a settle_complete
+                        # delivered while still connected pins this False even if
+                        # the duplicate `complete` arrives post-disconnect.
+                        complete_after_client_gone = client_gone
                     complete_response = data
                 if event_type == "error":
                     had_error = True
@@ -565,6 +607,18 @@ async def text_compare_stream(
                 if await request.is_disconnected():
                     logger.info(f"[SSE] Client disconnected during stream for query: {q}")
                     client_gone = True
+                    if complete_response is None and preverdict_disconnect_abort_enabled():
+                        # Half B (dark): nobody will read this comparison, so stop
+                        # driving the orchestrator instead of paying for its
+                        # default-unbounded verdict/critique/moderation tail. A
+                        # bare `break` is NOT enough — leaving an `async for` does
+                        # not call aclose(), and CPython's async-generator
+                        # finalizer runs the orchestrator's finally later and
+                        # non-deterministically. Closing here throws GeneratorExit
+                        # into it now, so M13-30's `_get_price` finally cancels its
+                        # prefetch tasks at the break.
+                        await _stream.aclose()
+                        break
                     continue
 
                 yield f"event: {event_type}\ndata: {json.dumps(data, default=str)}\n\n"
@@ -573,7 +627,7 @@ async def text_compare_stream(
             duration_ms = int((time.time() - start_time) * 1000)
             user_id = user.get("id") if user else None
 
-            if complete_response and not had_error:
+            if complete_response and not had_error and not complete_after_client_gone:
                 product_names = [
                     f"{p.get('brand', '')} {p.get('name', '')}".strip()
                     for p in complete_response.get("products", [])
@@ -620,11 +674,12 @@ async def text_compare_stream(
                         label="usage_refund.text_stream",
                     )
             else:
-                # M13-37 parity: neither a final payload NOR an explicit error
-                # event was produced — a mid-stream raise, or a pre-verdict client
-                # disconnect/cancel that drained without ever reaching `complete`
-                # (this finally runs on CancelledError/GeneratorExit too). The gate
-                # reserved a credit that was never metered, so refund it — matching
+                # M13-37 parity: no metered final payload and no explicit error
+                # event — a mid-stream raise, a cancel (this finally runs on
+                # CancelledError/GeneratorExit too), or (M18) a payload that only
+                # landed AFTER the client was already gone, whether the generator
+                # drained to it or Half B closed it. The gate reserved a credit
+                # that was never metered, so refund it — matching
                 # the legacy record-only-on-success behaviour and closing the last
                 # leak the POST/GET fix left on the streaming route.
                 if usage_consumed and user_id:
