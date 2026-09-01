@@ -41,6 +41,7 @@ app/services/prompt_personalities.py
 app/utils/__init__.py
 scripts/__init__.py
 tests/__init__.py
+tests/_route_introspection.py
 tests/fixtures/lane1/__init__.py
 tests/perf/__init__.py
 tests/test_ci_gates.py
@@ -48,3 +49,4 @@ tests/test_fan_out_budget_env.py
 tests/test_parallel_race_escalation.py
 tests/test_price_consolidation.py
 tests/test_registry_ounass_bh_l12.py
+tests/test_route_introspection.py
