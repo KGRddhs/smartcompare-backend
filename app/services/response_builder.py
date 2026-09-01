@@ -1064,17 +1064,18 @@ def _name_at_index(product_names, idx) -> str:
     return name if isinstance(name, str) else ""
 
 
-def _names_the_loser(text, loser_name: str) -> bool:
-    """Issue #99 — case-insensitive containment on the loser's FULL name.
+def _QUALITATIVE_WINNER_REASON(winner_name: str) -> str:
+    """Issue #99 — THE qualitative winner-reason fallback. Single source: the
+    scrub-empty fallback and the mismatch repair must emit the SAME string, or
+    two surfaces reading the same row would disagree on the reason text.
 
-    Deliberately NOT token-matching: the two products in a comparison usually
-    share a brand token ("Manama Pickles"), and token-matching would nuke every
-    legitimate reason. Only a full-name mention means GPT is praising the
-    product the deterministic score did not pick.
-    """
-    if not loser_name or not isinstance(text, str) or not text:
-        return False
-    return loser_name.lower() in text.lower()
+    Score-safe: no margin, no number — `has_score_internals` returns False and
+    `strip_score_internals` leaves it unchanged, so routing it through the
+    existing scrub is a no-op."""
+    return (
+        f"{winner_name} is the stronger overall pick." if winner_name
+        else "The stronger overall pick."
+    )
 
 
 def build_comparison_response(
@@ -1424,10 +1425,9 @@ def build_comparison_response(
     # AND the top-level recommendation, so scrubbing it once covers both
     # (plus Home/History/Share, which re-read this payload).
     _winner_name = product_names[winner_index] if product_names else ""
-    _scrubbed_reason = strip_score_internals(comparison.get("winner_reason", "")) or (
-        f"{_winner_name} is the stronger overall pick." if _winner_name
-        else "The stronger overall pick."
-    )
+    _scrubbed_reason = strip_score_internals(
+        comparison.get("winner_reason", "")
+    ) or _QUALITATIVE_WINNER_REASON(_winner_name)
     _scrubbed_tradeoff = strip_score_internals(comparison.get("key_tradeoff", "")) or ""
     _scrubbed_declaration = strip_score_internals(comparison.get("winner_declaration", "")) or ""
     # overview.winner.name historically copies winner_declaration (falling back
@@ -1440,21 +1440,43 @@ def build_comparison_response(
     # rather than shipping a card that names/praises the product we did not pick.
     # We DROP the declaration instead of regenerating it: regeneration needs a
     # second LLM call on the slowest path, and the bare product name is honest.
+    #
+    # WHY THE DROP IS UNCONDITIONAL, not gated on a loser-name containment check
+    # (which is what this block shipped first): on a mismatch GPT wrote
+    # `winner_reason` and `key_tradeoff` to justify ITS winner, so BY
+    # CONSTRUCTION they argue for the product we did not choose. There is no
+    # case where keeping them is correct, which makes containment the wrong
+    # question entirely — it asks "does this praise mention the loser by full
+    # name?" when the answer that matters is "was this praise written about the
+    # loser?", and the second is already known to be yes.
+    #
+    # Containment was also structurally weak, not merely unlucky: extraction_service
+    # caps winner_reason at 20 words (:953, :983) while a full product name runs
+    # 5-6, so the prompt pushes the model AWAY from the exact string the check
+    # looked for. Measured against this function on a real mismatch row, 4 of 5
+    # realistic phrasings evaded it and shipped verbatim into
+    # overview.winner.reason -> the top-level recommendation, the Home
+    # verdict_short, History and the Share text (pinned in
+    # tests/test_response_builder_winner_card_consistency.py):
+    #     full name      -> dropped   (the ONE case containment handled)
+    #     pronoun        -> SHIPPED   "It offers a noticeably richer flavour..."
+    #     short name     -> SHIPPED   "Budget Pickle wins on everyday value."
+    #     brand fragment -> SHIPPED   "The Budget option is the better..."
+    #     subject-free   -> SHIPPED   "Delivers a richer flavour at a lower..."
+    # The short-name case still NAMES the loser, beside the winner's own name.
+    # Worst is the pronoun form: because we also drop the declaration, the
+    # dangling "It" re-points at the SHIPPED winner and silently converts praise
+    # of the loser into fabricated praise of the winner.
+    #
+    # key_tradeoff is dropped for the same reason plus its own: it is written
+    # from the INVERTED orientation, framing the shipped winner as the runner-up
+    # ("<winner> costs more for a similar jar") — which containment never caught
+    # at all, because that sentence names the WINNER.
     if _winner_overridden:
-        _loser_name = _name_at_index(product_names, 1 - winner_index) \
-            if len(product_names) > 1 else ""
         _scrubbed_winner_name_field = _winner_name
         _scrubbed_declaration = ""
-        if _names_the_loser(_scrubbed_reason, _loser_name):
-            _scrubbed_reason = (
-                f"{_winner_name} is the stronger overall pick." if _winner_name
-                else "The stronger overall pick."
-            )
-        if _names_the_loser(_scrubbed_tradeoff, _loser_name):
-            _scrubbed_tradeoff = (
-                f"{_winner_name} is the stronger overall pick." if _winner_name
-                else "The stronger overall pick."
-            )
+        _scrubbed_reason = _QUALITATIVE_WINNER_REASON(_winner_name)
+        _scrubbed_tradeoff = ""
 
     # Detect price method mismatch
     price_methods = [p.get("price", {}).get("source_method") for p in product_data if p.get("price")]
