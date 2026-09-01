@@ -114,6 +114,13 @@ def _discover_prefix(obj: Any) -> str:
     prefix = getattr(obj, "prefix", None)
     if isinstance(prefix, str) and prefix:
         return prefix
+    # fastapi 0.141's `_IncludedRouter` keeps the include-time prefix on a
+    # context object, and its `original_router.prefix` is EMPTY -- so this is
+    # the only place the mount prefix exists. Verified against a real 0.141.1
+    # install: `include_context.prefix == '/api/v1/admin'`.
+    ctx_prefix = getattr(getattr(obj, "include_context", None), "prefix", None)
+    if isinstance(ctx_prefix, str) and ctx_prefix:
+        return ctx_prefix
     try:
         attrs = vars(obj)
     except TypeError:  # objects without __dict__ (slots/builtins)
@@ -137,11 +144,21 @@ def _as_container(obj: Any) -> Optional[tuple]:
 
     children = _iterable_routes(getattr(obj, "routes", None))
     if children is None:
-        inner = getattr(obj, "router", None)
-        if inner is not None and inner is not obj:
+        # Indirect holders. `original_router` is fastapi 0.141's `_IncludedRouter`
+        # (verified against a real 0.141.1 install): it exposes NEITHER `.routes`
+        # NOR `.router`, so without this the whole included router -- every
+        # /api/v1/admin/* route -- is skipped as a non-container. Its child paths
+        # are UNPREFIXED and may nest another `_IncludedRouter`, which the
+        # recursion in `_walk` handles.
+        for attr in ("router", "original_router"):
+            inner = getattr(obj, attr, None)
+            if inner is None or inner is obj:
+                continue
             children = _iterable_routes(getattr(inner, "routes", None))
-            if not prefix:
-                prefix = _discover_prefix(inner)
+            if children is not None:
+                if not prefix:
+                    prefix = _discover_prefix(inner)
+                break
     if children is None:
         return None
     return children, prefix
