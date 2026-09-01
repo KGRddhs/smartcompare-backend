@@ -145,6 +145,107 @@ class TestVerifySpecCitations:
         assert "category" not in result
         assert "battery" in result
 
+    # =====================================================
+    # Issue #108 — unit-aware citation rubric with a reachable
+    # "flagged" outcome (ENABLE_CITATION_RUBRIC_V2, default OFF)
+    # =====================================================
+
+    FLAG = "ENABLE_CITATION_RUBRIC_V2"
+
+    def test_unit_mismatch_is_not_verified(self, service, monkeypatch):
+        """A cited value whose UNIT disagrees with the snippet must not verify.
+
+        Today only the bare digits are compared ("128" in snippet), so a
+        fabricated 128 TB verifies against a 128 GB snippet.
+        """
+        monkeypatch.setenv(self.FLAG, "true")
+        specs = {"storage": "128 TB", "storage_source": "snippet_1"}
+        snippets = ["Ships with 128 GB of storage."]
+        result = service._verify_spec_citations(specs, snippets)
+        assert result["storage"] != "verified"
+
+    def test_contradicted_numeric_value_is_flagged(self, service, monkeypatch):
+        """A cited value contradicted by a same-unit number in its OWN cited
+        snippet must come back 'flagged' — the outcome that today is counted
+        in build_fact_check and weighted 0.0 in _score_reliability but is
+        produced nowhere."""
+        monkeypatch.setenv(self.FLAG, "true")
+        specs = {"battery": "5000 mAh", "battery_source": "snippet_1"}
+        snippets = ["The handset packs a 3582 mAh battery."]
+        result = service._verify_spec_citations(specs, snippets)
+        assert result["battery"] == "flagged"
+
+    def test_numeric_field_citing_number_free_snippet_is_unverified(self, service, monkeypatch):
+        """A numeric field citing a snippet with NO comparable number is not
+        evidence — it must land on 'unverified' (0.3), not 'likely' (0.7),
+        so a fabricated citation cannot outscore an honest 'training'."""
+        monkeypatch.setenv(self.FLAG, "true")
+        specs = {"battery": "5000 mAh", "battery_source": "snippet_1"}
+        snippets = ["All-day battery life with fast charging."]
+        result = service._verify_spec_citations(specs, snippets)
+        assert result["battery"] == "unverified"
+
+    def test_thousands_separator_matches_both_directions(self, service, monkeypatch):
+        """'5,000' and '5000' must match each other in BOTH directions."""
+        monkeypatch.setenv(self.FLAG, "true")
+        r1 = service._verify_spec_citations(
+            {"battery": "5000 mAh", "battery_source": "snippet_1"},
+            ["5,000 mAh battery"],
+        )
+        assert r1["battery"] == "verified"
+        r2 = service._verify_spec_citations(
+            {"battery": "5,000 mAh", "battery_source": "snippet_1"},
+            ["5000 mAh battery"],
+        )
+        assert r2["battery"] == "verified"
+
+    def test_spaced_and_glued_unit_spellings_are_equal(self, service, monkeypatch):
+        """'128 GB' and '128GB' must be the same token on both sides."""
+        monkeypatch.setenv(self.FLAG, "true")
+        r1 = service._verify_spec_citations(
+            {"storage": "128 GB", "storage_source": "snippet_1"},
+            ["128GB model"],
+        )
+        assert r1["storage"] == "verified"
+        r2 = service._verify_spec_citations(
+            {"storage": "128GB", "storage_source": "snippet_1"},
+            ["128 GB model"],
+        )
+        assert r2["storage"] == "verified"
+
+    def test_flag_off_reproduces_all_four_defects(self, service, monkeypatch):
+        """Flag unset -> today's exact values for cases 1, 2, 4 and 6.
+
+        This is the per-function flag-OFF identity pin required by the issue's
+        gates (scripts/verify_flag_byte_identity.py does not cover this module).
+        """
+        monkeypatch.delenv(self.FLAG, raising=False)
+        # Case 1: unit swap verifies (defect a)
+        r1 = service._verify_spec_citations(
+            {"storage": "128 TB", "storage_source": "snippet_1"},
+            ["Ships with 128 GB of storage."],
+        )
+        assert r1["storage"] == "verified"
+        # Case 2: contradiction earns 'likely' (defect b)
+        r2 = service._verify_spec_citations(
+            {"battery": "5000 mAh", "battery_source": "snippet_1"},
+            ["The handset packs a 3582 mAh battery."],
+        )
+        assert r2["battery"] == "likely"
+        # Case 4: separator spelling fails to verify (defect d)
+        r4 = service._verify_spec_citations(
+            {"battery": "5000 mAh", "battery_source": "snippet_1"},
+            ["5,000 mAh battery"],
+        )
+        assert r4["battery"] == "likely"
+        # Case 6: model-number digit upgrades ram to verified (defect c)
+        r6 = service._cross_validate_specs_with_shopping(
+            {"ram": "16 GB", "brand": "Apple"},
+            [{"title": "Apple iPhone 16 128GB Black", "description": ""}],
+            "Apple iPhone 16",
+        )
+        assert r6.get("ram") == "verified"
+
 
 # =====================================================
 # Spec shopping cross-validation (_cross_validate_specs_with_shopping)
@@ -192,6 +293,35 @@ class TestCrossValidateSpecsWithShopping:
         ]
         result = service._cross_validate_specs_with_shopping(specs, shopping_items)
         assert "color" not in result
+
+    # =====================================================
+    # Issue #108 — identity fence on the shopping cross-validation
+    # (ENABLE_CITATION_RUBRIC_V2, default OFF)
+    # =====================================================
+
+    FLAG = "ENABLE_CITATION_RUBRIC_V2"
+
+    def test_shopping_crossval_ignores_model_number_digit(self, service, monkeypatch):
+        """A digit that is part of the product's own name ('iPhone 16') must
+        not upgrade a fabricated ram spec ('16 GB') to verified."""
+        monkeypatch.setenv(self.FLAG, "true")
+        specs = {"ram": "16 GB", "brand": "Apple"}
+        shopping_items = [{"title": "Apple iPhone 16 128GB Black", "description": ""}]
+        result = service._cross_validate_specs_with_shopping(
+            specs, shopping_items, "Apple iPhone 16"
+        )
+        assert result.get("ram") != "verified"
+
+    def test_shopping_crossval_still_upgrades_genuine_match(self, service, monkeypatch):
+        """A genuine unit-adjacent occurrence ('16GB RAM') still verifies —
+        pins that the identity fence did not over-reject."""
+        monkeypatch.setenv(self.FLAG, "true")
+        specs = {"ram": "16 GB", "brand": "Apple"}
+        shopping_items = [{"title": "Apple iPhone 16 16GB RAM 128GB Black", "description": ""}]
+        result = service._cross_validate_specs_with_shopping(
+            specs, shopping_items, "Apple iPhone 16"
+        )
+        assert result.get("ram") == "verified"
 
 
 # =====================================================
@@ -463,6 +593,150 @@ class TestVerifyPrice:
         assert result["source_count"] == 1
         assert result["price_verified"] is True
 
+    # =====================================================
+    # Issue #106 — currency normalization before the cross-check
+    # (ENABLE_FACTCHECK_CURRENCY_NORMALIZATION, default OFF)
+    # =====================================================
+
+    FLAG = "ENABLE_FACTCHECK_CURRENCY_NORMALIZATION"
+    AED_ROWS = [
+        {"price": "AED 1,399.00"},
+        {"price": "AED 1,399.00"},
+        {"price": "AED 1,450.00"},
+    ]
+
+    def test_raw_foreign_amount_stamped_bhd_is_not_verified(self, service, monkeypatch):
+        """A raw AED amount stamped BHD must NOT be verified by AED rows.
+
+        Today the check is currency-blind: the AED numerals match the wrong
+        BHD-stamped amount at 0.0% deviation and the defect is endorsed.
+        """
+        monkeypatch.setenv(self.FLAG, "true")
+        price = {"amount": 1399, "currency": "BHD", "estimated": False}
+        result = service._verify_price(price, list(self.AED_ROWS))
+        assert result["price_verified"] is False
+        assert result["deviation_pct"] > 30
+
+    def test_correct_conversion_against_foreign_rows_is_verified(self, service, monkeypatch):
+        """The CORRECT BHD conversion of the AED rows must be verified.
+
+        142.9 BHD ~= AED 1,399 (rate 0.1024); today it is flagged at ~89.8%.
+        """
+        monkeypatch.setenv(self.FLAG, "true")
+        price = {"amount": 142.9, "currency": "BHD", "estimated": False}
+        result = service._verify_price(price, list(self.AED_ROWS))
+        assert result["price_verified"] is True
+        assert result["deviation_pct"] <= 30
+
+    def test_usd_rows_converted_before_median(self, service, monkeypatch):
+        """USD shopping rows are converted to BHD before the median is taken."""
+        monkeypatch.setenv(self.FLAG, "true")
+        price = {"amount": 150.4, "currency": "BHD", "estimated": False}
+        shopping_items = [
+            {"price": "$399.00"},
+            {"price": "$405.00"},
+            {"price": "$395.00"},
+        ]
+        result = service._verify_price(price, shopping_items)
+        assert result["price_verified"] is True
+
+    def test_unresolvable_mixed_currencies_returns_none_verdict(self, service, monkeypatch):
+        """Rows with unresolvable currency tokens -> NO verdict, not a wrong one."""
+        monkeypatch.setenv(self.FLAG, "true")
+        price = {"amount": 50, "currency": "BHD", "estimated": False}
+        shopping_items = [{"price": "ab 12"}, {"price": "cd 99"}]
+        result = service._verify_price(price, shopping_items)
+        assert result["price_verified"] is None
+        assert result["deviation_pct"] is None
+        assert result["source_count"] == 2
+
+    def test_numeric_price_rows_unchanged(self, service, monkeypatch):
+        """Numeric rows (no string to inspect) behave exactly as today, BOTH modes."""
+        price = {"amount": 110, "currency": "BHD", "estimated": False}
+        shopping_items = [{"price": 95}, {"price": 105}, {"price": 100}]
+
+        monkeypatch.delenv(self.FLAG, raising=False)
+        off = service._verify_price(price, list(shopping_items))
+        monkeypatch.setenv(self.FLAG, "true")
+        on = service._verify_price(price, list(shopping_items))
+
+        expected = {"price_verified": True, "deviation_pct": 10.0, "source_count": 3}
+        assert off == expected
+        assert on == expected
+
+    def test_thousands_and_decimal_separators_parse_correctly(self, service, monkeypatch):
+        """BHD rows parse via parse_price_string, not re.findall on comma-stripped text.
+
+        Canonical parser (M13-10 canon): on a BHD label BOTH "BHD 12,500" and
+        "BHD 12.500" read as 12.5 (3-digit tail on a minor-unit-3 currency).
+        Flag OFF today the comma row is read as 12500.0 by re.findall.
+        NOTE: issue #106's prediction of 12500.0 for the comma row contradicts
+        parse_price_string itself and the shipped M13-10 fix; the canonical
+        parser is authoritative here.
+        """
+        monkeypatch.setenv(self.FLAG, "true")
+        price = {"amount": 12.5, "currency": "BHD", "estimated": False}
+
+        # Each row asserted explicitly via a single-row median.
+        r_dot = service._verify_price(dict(price), [{"price": "BHD 12.500"}])
+        assert r_dot["deviation_pct"] == 0.0
+        assert r_dot["price_verified"] is True
+
+        r_comma = service._verify_price(dict(price), [{"price": "BHD 12,500"}])
+        assert r_comma["deviation_pct"] == 0.0  # 12.5, NOT 12500.0
+        assert r_comma["price_verified"] is True
+
+    @pytest.mark.parametrize(
+        "price,shopping_items,expected",
+        [
+            pytest.param(
+                {"amount": 1399, "currency": "BHD", "estimated": False},
+                [{"price": "AED 1,399.00"}, {"price": "AED 1,399.00"}, {"price": "AED 1,450.00"}],
+                {"price_verified": True, "deviation_pct": 0.0, "source_count": 3},
+                id="case1-raw-aed-stamped-bhd",
+            ),
+            pytest.param(
+                {"amount": 142.9, "currency": "BHD", "estimated": False},
+                [{"price": "AED 1,399.00"}, {"price": "AED 1,399.00"}, {"price": "AED 1,450.00"}],
+                {"price_verified": False, "deviation_pct": 89.8, "source_count": 3},
+                id="case2-correct-conversion",
+            ),
+            pytest.param(
+                {"amount": 150.4, "currency": "BHD", "estimated": False},
+                [{"price": "$399.00"}, {"price": "$405.00"}, {"price": "$395.00"}],
+                {"price_verified": False, "deviation_pct": 62.3, "source_count": 3},
+                id="case3-usd-rows",
+            ),
+            pytest.param(
+                {"amount": 50, "currency": "BHD", "estimated": False},
+                [{"price": "ab 12"}, {"price": "cd 99"}],
+                {"price_verified": False, "deviation_pct": 49.5, "source_count": 2},
+                id="case4-unresolvable-rows",
+            ),
+            pytest.param(
+                {"amount": 110, "currency": "BHD", "estimated": False},
+                [{"price": 95}, {"price": 105}, {"price": 100}],
+                {"price_verified": True, "deviation_pct": 10.0, "source_count": 3},
+                id="case5-numeric-rows",
+            ),
+            pytest.param(
+                {"amount": 12.5, "currency": "BHD", "estimated": False},
+                [{"price": "BHD 12,500"}, {"price": "BHD 12.500"}],
+                {"price_verified": False, "deviation_pct": 99.9, "source_count": 2},
+                id="case6-separator-rows",
+            ),
+        ],
+    )
+    def test_flag_off_is_byte_identical(self, service, monkeypatch, price, shopping_items, expected):
+        """Flag unset -> the returned dict is EXACTLY today's, for every #106 input.
+
+        This is the per-function flag-OFF identity pin required by the issue's
+        gates (scripts/verify_flag_byte_identity.py does not cover this module).
+        """
+        monkeypatch.delenv(self.FLAG, raising=False)
+        result = service._verify_price(price, shopping_items)
+        assert result == expected
+
 
 # =====================================================
 # Fact-check assembly (_build_fact_check)
@@ -605,3 +879,48 @@ class TestBuildFactCheck:
             "review_sentiment_consistent", "review_rating_deviation",
         }
         assert set(result.keys()) == expected_keys
+
+
+# =====================================================
+# Issue #108 — reliability weighting of the new 'flagged' outcome
+# =====================================================
+
+class TestFlaggedReliabilityWeighting:
+    FLAG = "ENABLE_CITATION_RUBRIC_V2"
+
+    def test_flagged_scores_below_unverified_in_reliability(self):
+        """'flagged' (0.0) must score strictly below 'unverified' (0.3) —
+        pins that the new output lands on the intended weight."""
+        from app.services.scoring_service import ScoringService
+        s = ScoringService()
+        flagged_score = s._score_reliability(
+            {"specs_verified": 0, "specs_likely": 0, "specs_flagged": 1, "specs_unverified": 0}
+        )
+        unverified_score = s._score_reliability(
+            {"specs_verified": 0, "specs_likely": 0, "specs_flagged": 0, "specs_unverified": 1}
+        )
+        assert flagged_score < unverified_score
+
+    def test_fabricated_citation_no_longer_outscores_training(self, service, monkeypatch):
+        """End-to-end: product A cites battery to a number-free snippet,
+        product B honestly answers 'training'. A must not outscore B.
+
+        Today A earns 'likely' (0.7) and B 'unverified' (0.3) — the
+        reliability dimension actively pays the model to invent a citation.
+        """
+        from app.services.scoring_service import ScoringService
+        monkeypatch.setenv(self.FLAG, "true")
+        snippets = ["All-day battery life with fast charging."]
+
+        conf_a = service._verify_spec_citations(
+            {"battery": "5000 mAh", "battery_source": "snippet_1"}, snippets
+        )
+        fc_a = service._build_fact_check({"_spec_confidence": conf_a})
+
+        conf_b = service._verify_spec_citations(
+            {"battery": "5000 mAh", "battery_source": "training"}, snippets
+        )
+        fc_b = service._build_fact_check({"_spec_confidence": conf_b})
+
+        s = ScoringService()
+        assert s._score_reliability(fc_a) <= s._score_reliability(fc_b)

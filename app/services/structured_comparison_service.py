@@ -500,6 +500,80 @@ def _spine_covered_fields(spine_specs: Dict[str, str]) -> set:
     return {k for k in spine_specs if not k.endswith("_source")}
 
 
+def spec_confidence_cache_enabled() -> bool:
+    """True iff the derived spec-citation-confidence map is persisted inside
+    the cached specs dict and preferred by the fact-check pass (issue #107,
+    default OFF).
+
+    Without it, spec-citation verification is DEAD on every cache hit: the
+    L1/L2 cache write happens before ``_search_snippets`` is attached, so a
+    warm comparison (the normal case at 7d/30d TTLs) verifies its citations
+    against an empty list and every ``snippet_N``-cited field scores
+    "unverified" — production showed specs_verified=0 AND specs_likely=0 on
+    24/24 recent sides. Persisting the derived map (never the 3KB snippet
+    digest) also makes it impossible to score this request's citations
+    against ANOTHER request's snippets, the failure mode the fire-and-forget
+    L2 save can otherwise produce. Read PER CALL from os.getenv (the
+    price_service.exact_gate_enabled idiom) so a Railway flip needs no
+    restart. Dark because turning the layer back on materially moves
+    specs_verified/specs_likely, which feeds ScoringService._score_reliability
+    and therefore the overall score — canary BEFORE the specs half of
+    ENABLE_CONFIDENCE_FACTCHECK_WIRING.
+    """
+    return os.getenv("ENABLE_SPEC_CONFIDENCE_CACHE", "").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
+def _compute_spec_confidence(
+    raw_specs: Dict[str, Any],
+    search_snippets: List[str],
+    shopping_items: List[Dict[str, Any]],
+    full_name: str,
+) -> Dict[str, str]:
+    """The fact-check pass's per-field spec confidence map (issue #107).
+
+    Extracted from the inline block in ``_fetch_product_data`` (the
+    ``_apply_gpt_review_aggregate_fallback`` precedent) so the citation-vs-
+    cache contract is unit-testable against the real code.
+
+    Citation verdicts: with ENABLE_SPEC_CONFIDENCE_CACHE on, a non-empty
+    ``_spec_citation_confidence`` dict carried by the cached specs (computed
+    on the cold pass against that request's own snippets) is preferred —
+    warm traffic gets the same per-field confidence a cold pass produces,
+    with no recompute and no snippet persistence. Absent (cold path, legacy
+    cache entries, flag off) they are computed from ``search_snippets``
+    exactly as before. The shopping-flag upgrade ALWAYS runs per request
+    against fresh shopping rows.
+    """
+    citation_confidence = None
+    if spec_confidence_cache_enabled():
+        cached_map = raw_specs.get("_spec_citation_confidence")
+        if isinstance(cached_map, dict) and cached_map:
+            citation_confidence = cached_map
+    if citation_confidence is None:
+        citation_confidence = verify_spec_citations(raw_specs, search_snippets)
+    shopping_flags = cross_validate_specs_with_shopping(raw_specs, shopping_items, full_name)
+    spec_confidence = {}
+    for key in citation_confidence:
+        if shopping_flags.get(key) == "verified":
+            spec_confidence[key] = "verified"
+        else:
+            spec_confidence[key] = citation_confidence[key]
+    return spec_confidence
+
+
+def _enriched_recache_payload(specs: Dict[str, Any]) -> Dict[str, Any]:
+    """The dict the #59 Half-2 enriched re-cache persists: the (cleaned)
+    specs minus the transient keys that must never be written to L1/L2.
+    Extracted from the inline comprehension in ``_fetch_product_data`` so the
+    persisted-payload contract is unit-testable against the real code."""
+    return {
+        k: v for k, v in specs.items()
+        if k not in ("_search_snippets", "_cached", "_cache_source")
+    }
+
+
 def _detect_subtype(brand: str, name: str, category: str):
     """Resolve the product subtype id (e.g. ``electronics.tv``) for a product.
 
@@ -1065,6 +1139,8 @@ from app.services.fact_check_service import (
 from app.services.response_builder import (
     build_comparison_response,
     derive_rating_from_scores,
+    deterministic_verdict_fields,  # #110 — shared verdict-template strings
+    _winner_prose_reconcile_enabled,  # #110 — SSE verdict reconciliation flag
     _youtube_signal_for_response,  # S3 L2 — streaming reviews-event parity
 )
 from app.services.image_service import get_product_image_url
@@ -2589,6 +2665,16 @@ class StructuredComparisonService:
 
         if field_confidence:
             cleaned["_field_confidence"] = field_confidence
+        # #107 — carry the derived citation-confidence map through the clean
+        # (next to _field_confidence, the same lifecycle): _clean_specs runs
+        # BETWEEN the fact-check read and the enriched re-cache, so stripping
+        # it here would overwrite a good cache entry with one missing the key
+        # and silently re-kill the layer for that product. Carried through
+        # from the input, never recomputed. Flag OFF: stripped as today.
+        if spec_confidence_cache_enabled():
+            _citation_map = specs.get("_spec_citation_confidence")
+            if isinstance(_citation_map, dict) and _citation_map:
+                cleaned["_spec_citation_confidence"] = _citation_map
         return cleaned
 
     def _has_retailer_url(self, source: str) -> bool:
@@ -2613,8 +2699,10 @@ class StructuredComparisonService:
     def _verify_spec_citations(self, specs: Dict, search_snippets: List[str]) -> Dict[str, str]:
         return verify_spec_citations(specs, search_snippets)
 
-    def _cross_validate_specs_with_shopping(self, specs: Dict, shopping_items: List[Dict]) -> Dict[str, str]:
-        return cross_validate_specs_with_shopping(specs, shopping_items)
+    def _cross_validate_specs_with_shopping(
+        self, specs: Dict, shopping_items: List[Dict], product_name: str = "",
+    ) -> Dict[str, str]:
+        return cross_validate_specs_with_shopping(specs, shopping_items, product_name)
 
     def _verify_review_sentiment(self, reviews: Dict, source_ratings: List[Dict]) -> Dict:
         return verify_review_sentiment(reviews, source_ratings)
@@ -4043,20 +4131,49 @@ class StructuredComparisonService:
             winner_index = comparison.get("winner_index", 0)
             win_margin = scoring_result.get("win_margin", 0)
 
+            # Issue #110 — the final `complete` event (build_comparison_response
+            # below) ships the DETERMINISTIC winner via the H1 override, but
+            # this earlier `verdict` event read GPT's index + prose, so on a
+            # WINNER_INDEX_MISMATCH the streamed winner FLIPPED between the two
+            # events. Flag ON: emit the deterministic index with the
+            # deterministic template prose. The reconciliation happens on a
+            # COPY — the source `comparison` flows on to
+            # build_comparison_response, whose own #110 branch derives the SAME
+            # template strings from the SAME helper, so verdict and complete
+            # agree without shared-state mutation. Flag OFF: `_ev_comparison`
+            # IS `comparison` and the emit is byte-identical to base (the flip
+            # stands, as it does today).
+            _ev_winner_index = winner_index
+            _ev_comparison = comparison
+            _det_winner = scoring_result.get("winner_index")
+            if (
+                _winner_prose_reconcile_enabled()
+                and _det_winner is not None
+                and _det_winner != winner_index
+            ):
+                _ev_winner_index = _det_winner
+                _ev_comparison = {
+                    **comparison,
+                    **deterministic_verdict_fields(
+                        scoring_result, product_names, tradeoffs
+                    ),
+                    "winner_index": _det_winner,
+                }
+
             yield ("verdict", {
                 "winner": {
-                    "product_index": winner_index,
-                    "name": comparison.get("winner_declaration", product_names[winner_index] if product_names else ""),
-                    "reason": comparison.get("winner_reason", ""),
-                    "key_tradeoff": comparison.get("key_tradeoff", ""),
+                    "product_index": _ev_winner_index,
+                    "name": _ev_comparison.get("winner_declaration", product_names[_ev_winner_index] if product_names else ""),
+                    "reason": _ev_comparison.get("winner_reason", ""),
+                    "key_tradeoff": _ev_comparison.get("key_tradeoff", ""),
                     "margin": win_margin,
                 },
-                "value_context": comparison.get("value_context", ""),
-                "best_for": comparison.get("best_for", {}),
-                "personalized_insights": comparison.get("personalized_insights", []),
-                "comparison": comparison,
-                "winner_index": winner_index,
-                "recommendation": comparison.get("winner_reason", ""),
+                "value_context": _ev_comparison.get("value_context", ""),
+                "best_for": _ev_comparison.get("best_for", {}),
+                "personalized_insights": _ev_comparison.get("personalized_insights", []),
+                "comparison": _ev_comparison,
+                "winner_index": _ev_winner_index,
+                "recommendation": _ev_comparison.get("winner_reason", ""),
                 "key_differences": [],
             })
 
@@ -4705,20 +4822,17 @@ class StructuredComparisonService:
             ):
                 result["image_url"] = page_img.strip()
 
-        # Fact-check: verify spec citations
+        # Fact-check: verify spec citations (extracted to _compute_spec_confidence
+        # so the #107 citation-vs-cache contract is unit-testable).
         if result.get("specs") and isinstance(result["specs"], dict):
             raw_specs = result["specs"]
             search_snippets = raw_specs.pop("_search_snippets", [])
-            citation_confidence = verify_spec_citations(raw_specs, search_snippets)
-            shopping_items = self._shopping_items_cache.get(full_name, [])
-            shopping_flags = cross_validate_specs_with_shopping(raw_specs, shopping_items)
-            spec_confidence = {}
-            for key in citation_confidence:
-                if shopping_flags.get(key) == "verified":
-                    spec_confidence[key] = "verified"
-                else:
-                    spec_confidence[key] = citation_confidence[key]
-            result["_spec_confidence"] = spec_confidence
+            result["_spec_confidence"] = _compute_spec_confidence(
+                raw_specs,
+                search_snippets,
+                self._shopping_items_cache.get(full_name, []),
+                full_name,
+            )
 
         if result.get("specs"):
             result["specs"] = self._clean_specs(result["specs"])
@@ -4888,10 +5002,7 @@ class StructuredComparisonService:
         # strips the transient keys that must never be persisted.
         if _specs_enriched_by_fallback:
             try:
-                _enriched = {
-                    k: v for k, v in (result.get("specs") or {}).items()
-                    if k not in ("_search_snippets", "_cached", "_cache_source")
-                }
+                _enriched = _enriched_recache_payload(result.get("specs") or {})
                 if _enriched and not _enriched.get("error"):
                     _specs_key = get_specs_cache_key(brand, name, variant)
                     await _cache_set_async(_specs_key, _enriched, SPECS_CACHE_TTL)
@@ -5045,6 +5156,22 @@ class StructuredComparisonService:
         #     in this file; a purge is the immediate rollback if one is needed.
         if spine_specs and isinstance(specs, dict) and not specs.get("error"):
             specs.update(spine_specs)
+
+        # #107 — derive the per-field citation-confidence map from THIS
+        # request's snippets BEFORE the cache write below, so both the L1
+        # payload and the fire-and-forget L2 save persist it. The raw
+        # snippets themselves are still attached only AFTER the write (and
+        # never cached): the derived map is ~100x smaller and can never be
+        # scored against another request's snippets.
+        if (
+            spec_confidence_cache_enabled()
+            and isinstance(specs, dict)
+            and specs
+            and not specs.get("error")
+        ):
+            specs["_spec_citation_confidence"] = verify_spec_citations(
+                specs, raw_snippets
+            )
 
         if specs and not specs.get("error"):
             await _cache_set_async(cache_key, specs, SPECS_CACHE_TTL)
@@ -7335,39 +7462,29 @@ class StructuredComparisonService:
         Fills winner_index / winner_declaration / winner_reason from the
         deterministic scores, and key_tradeoff from the loser's strongest dim
         (the F4.2 tradeoff already computed). Merges onto whatever the LLM
-        verdict had — never overwrites a present field. Returns a NEW dict."""
+        verdict had — never overwrites a present field. Returns a NEW dict.
+
+        #110 — the STRINGS come from response_builder.deterministic_verdict_fields
+        (the shared template; a second copy of the f-strings would drift).
+        Only the fill-not-overwrite merge semantics live here."""
         out = dict(comparison or {})
-        scores = scoring_result.get("scores") or {}
         winner_index = scoring_result.get("winner_index", 0)
         if not (0 <= winner_index < len(product_names)):
             winner_index = 0
-        winner_name = product_names[winner_index] if product_names else ""
-        w_overall = ((scores.get(f"product_{winner_index}") or {}).get("overall"))
-        l_overall = ((scores.get(f"product_{1 - winner_index}") or {}).get("overall"))
+        fields = deterministic_verdict_fields(
+            scoring_result, product_names, tradeoffs
+        )
 
         out.setdefault("winner_index", winner_index)
         if not out.get("winner_declaration"):
-            out["winner_declaration"] = winner_name
-        if not out.get("winner_reason"):
-            if isinstance(w_overall, (int, float)) and isinstance(l_overall, (int, float)):
-                # margin retained for logging only — NEVER surfaced in user-facing
-                # text (the deterministic partial verdict is the dominant verdict
-                # users see for fragrances; the score leak shipped here once).
-                margin = round(abs(w_overall - l_overall), 1)
-                logger.debug(
-                    f"[PARTIAL_VERDICT] {winner_name} qualitative win (margin={margin})"
-                )
-                out["winner_reason"] = f"{winner_name} edges ahead on the overall picture."
-            elif winner_name:
-                out["winner_reason"] = f"{winner_name} leads on the overall picture."
-        # key_tradeoff from the loser's strongest dim (F4.2 tradeoff result).
-        if not out.get("key_tradeoff") and tradeoffs:
-            lw = (tradeoffs[0] or {}).get("loser_wins") or {}
-            dim = lw.get("dimension")
-            loser_name = lw.get("product")
-            if dim and loser_name:
-                dim_label = dim.replace("_score", "").replace("_", " ")
-                out["key_tradeoff"] = f"{loser_name} stays competitive on {dim_label}."
+            out["winner_declaration"] = fields["winner_declaration"]
+        # The template returns "" for an underivable reason/tradeoff; the
+        # pre-#110 code assigned those keys only when it had a real sentence,
+        # so guard on truthiness to preserve the merge behavior exactly.
+        if not out.get("winner_reason") and fields["winner_reason"]:
+            out["winner_reason"] = fields["winner_reason"]
+        if not out.get("key_tradeoff") and fields["key_tradeoff"]:
+            out["key_tradeoff"] = fields["key_tradeoff"]
         return out
 
     def _seed_shortcircuit_candidates(

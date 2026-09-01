@@ -113,6 +113,16 @@ def _gpt_winner_lever_enabled() -> bool:
     )
 
 
+def _winner_prose_reconcile_enabled() -> bool:
+    """Issue #110 flag reader (default OFF). Read live so a Railway flip /
+    monkeypatch takes effect without a restart. Gates the deterministic-template
+    OVERWRITE of the winner prose on an index mismatch (sync chokepoint) AND
+    the SSE `verdict` event reconciliation in structured_comparison_service."""
+    return os.environ.get("ENABLE_WINNER_PROSE_RECONCILE", "").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
+
+
 def _eval_capture_debug_enabled() -> bool:
     """S3 L3 v2 — EVAL_CAPTURE_DEBUG flag (default OFF). When ON, the response
     serializes the RAW per-product scoring INPUTS (fact_check) under
@@ -1077,6 +1087,66 @@ def _names_the_loser(text, loser_name: str) -> bool:
     return loser_name.lower() in text.lower()
 
 
+def deterministic_verdict_fields(
+    scoring_result: Dict[str, Any],
+    product_names: List[str],
+    tradeoffs: Optional[List[Dict[str, Any]]] = None,
+) -> Dict[str, str]:
+    """Issue #110 — the string-building half of the deterministic verdict
+    template (extracted from structured_comparison_service.
+    _deterministic_partial_verdict, which now sources its strings here so the
+    two paths can never drift). Returns {"winner_declaration", "winner_reason",
+    "key_tradeoff"} for the DETERMINISTIC winner. Score-safe by construction
+    (the margin stays in a debug log, never in the prose). No merge semantics —
+    the caller decides fill vs overwrite.
+
+    Lives in response_builder (NOT structured_comparison_service) because
+    structured_comparison_service imports response_builder at module level
+    while the reverse import is lazy — the other direction would create an
+    import cycle."""
+    scoring_result = scoring_result or {}
+    scores = scoring_result.get("scores") or {}
+    winner_index = scoring_result.get("winner_index", 0)
+    # Template clamp — an out-of-range index (or empty product_names) must
+    # degrade to 0 / "" rather than IndexError (legacy fixtures ship []).
+    if not isinstance(winner_index, int) or isinstance(winner_index, bool) \
+            or not (0 <= winner_index < len(product_names or [])):
+        winner_index = 0
+    winner_name = _name_at_index(product_names, winner_index)
+    w_overall = (scores.get(f"product_{winner_index}") or {}).get("overall")
+    l_overall = (scores.get(f"product_{1 - winner_index}") or {}).get("overall")
+
+    if isinstance(w_overall, (int, float)) and isinstance(l_overall, (int, float)):
+        # margin retained for logging only — NEVER surfaced in user-facing
+        # text (this template family leaked a score once before).
+        margin = round(abs(w_overall - l_overall), 1)
+        logger.debug(
+            "[PARTIAL_VERDICT] %s qualitative win (margin=%s)", winner_name, margin
+        )
+        winner_reason = f"{winner_name} edges ahead on the overall picture."
+    elif winner_name:
+        winner_reason = f"{winner_name} leads on the overall picture."
+    else:
+        winner_reason = ""
+
+    # key_tradeoff from the loser's strongest dim (the F4.2 tradeoff result);
+    # "" when none is derivable — never a fabricated sentence.
+    key_tradeoff = ""
+    if tradeoffs:
+        lw = (tradeoffs[0] or {}).get("loser_wins") or {}
+        dim = lw.get("dimension")
+        loser_name = lw.get("product")
+        if dim and loser_name:
+            dim_label = dim.replace("_score", "").replace("_", " ")
+            key_tradeoff = f"{loser_name} stays competitive on {dim_label}."
+
+    return {
+        "winner_declaration": winner_name,
+        "winner_reason": winner_reason,
+        "key_tradeoff": key_tradeoff,
+    }
+
+
 def build_comparison_response(
     *,
     product_data: Optional[List[Dict[str, Any]]] = None,
@@ -1444,17 +1514,38 @@ def build_comparison_response(
         _loser_name = _name_at_index(product_names, 1 - winner_index) \
             if len(product_names) > 1 else ""
         _scrubbed_winner_name_field = _winner_name
-        _scrubbed_declaration = ""
-        if _names_the_loser(_scrubbed_reason, _loser_name):
-            _scrubbed_reason = (
+        if _winner_prose_reconcile_enabled():
+            # Issue #110 — REPLACE the prose with the deterministic template
+            # for the shipped winner (overwrite semantics on the shared
+            # helper). #99's containment scrub below only fires when the prose
+            # NAMES the loser; GPT prose about its own pick that names nobody
+            # (or frames the shipped winner as the staying-competitive loser
+            # in key_tradeoff) survived it. On a mismatch the whole narrative
+            # describes the wrong product, so it is replaced, not name-
+            # filtered — which also sidesteps #123's prefix over-scrub on
+            # this path. These locals fan out to overview.winner, the BC
+            # comparison alias (written back below) and result["recommendation"].
+            _det_fields = deterministic_verdict_fields(
+                scoring_result, product_names, tradeoffs
+            )
+            _scrubbed_declaration = _det_fields["winner_declaration"]
+            _scrubbed_reason = _det_fields["winner_reason"] or (
                 f"{_winner_name} is the stronger overall pick." if _winner_name
                 else "The stronger overall pick."
             )
-        if _names_the_loser(_scrubbed_tradeoff, _loser_name):
-            _scrubbed_tradeoff = (
-                f"{_winner_name} is the stronger overall pick." if _winner_name
-                else "The stronger overall pick."
-            )
+            _scrubbed_tradeoff = _det_fields["key_tradeoff"]
+        else:
+            _scrubbed_declaration = ""
+            if _names_the_loser(_scrubbed_reason, _loser_name):
+                _scrubbed_reason = (
+                    f"{_winner_name} is the stronger overall pick." if _winner_name
+                    else "The stronger overall pick."
+                )
+            if _names_the_loser(_scrubbed_tradeoff, _loser_name):
+                _scrubbed_tradeoff = (
+                    f"{_winner_name} is the stronger overall pick." if _winner_name
+                    else "The stronger overall pick."
+                )
 
     # Detect price method mismatch
     price_methods = [p.get("price", {}).get("source_method") for p in product_data if p.get("price")]
