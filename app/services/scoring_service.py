@@ -454,6 +454,27 @@ def _spec_field_norm_enabled() -> bool:
     )
 
 
+# M26 #101 — ENABLE_MISSING_DIM_RENORM (default OFF). When ON, a dimension
+# whose source signal is missing for at least one but not ALL products is
+# EXCLUDED from every product's `overall` and the remaining weights are
+# renormalized to 1.0, so a data void can no longer collect the injected
+# MISSING_SCORE=50 and outrank a genuinely measured bad signal
+# (PO-rubric-03). Missingness is read from the authoritative `_<dim>_missing`
+# flags — NEVER `== MISSING_SCORE` value-equality (see count_missing_dim_cells
+# / _cell_missing: a real 2.5-star review normalizes to exactly 50.0).
+# Composition with ENABLE_BUNDLE_C_SCORING (both states): that flag gates ONE
+# site — the per-dim raw-key emission in _compute_raw_scores (None vs the 50
+# sentinel). The renormalization reads only the `_<dim>_missing` flags and the
+# normalized `breakdown`, both of which are identical under either bundle-C
+# state, so this fix behaves the same whether bundle-C is ON or OFF.
+# Read LIVE per call for the same reasons as _spec_field_norm_enabled.
+def _missing_dim_renorm_enabled() -> bool:
+    import os
+    return os.environ.get("ENABLE_MISSING_DIM_RENORM", "").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
+
+
 # M26 #100 — within a single schema field, a >=10x magnitude gap between two
 # comparable products is overwhelmingly a unit/notation artifact ("5000mAh" vs
 # "Up to 29 hours video playback"; "1 TB" vs "128 GB"), not merit — the same
@@ -1307,13 +1328,65 @@ class ScoringService:
 
         # Compute overall weighted score for each product
         dims = CATEGORY_DIMENSIONS.get(category, CATEGORY_DIMENSIONS["other"])
+
+        # M26 #101 (default OFF) — pre-pass: a dim whose source signal is
+        # missing for at least one but not ALL products is excluded from EVERY
+        # product's overall (weights renormalized), so the injected
+        # MISSING_SCORE=50 can no longer let a data void outrank a genuinely
+        # measured bad signal. Missingness comes from the authoritative
+        # `_<dim>_missing` flags set in _normalize_scores — never `== 50.0`
+        # value-equality (a real 2.5-star review normalizes to exactly 50.0;
+        # see count_missing_dim_cells/_cell_missing). Both-sided-missing dims
+        # keep today's behavior. Independent of ENABLE_BUNDLE_C_SCORING in
+        # both its states: that flag's single site is the per-dim raw-key
+        # emission in _compute_raw_scores, which neither the `_<dim>_missing`
+        # flags nor the normalized breakdown read here depend on.
+        renorm_enabled = _missing_dim_renorm_enabled()
+        one_sided_dims: List[str] = []
+        if renorm_enabled:
+            n_products = len(raw_scores)
+            for dim in dims:
+                missing_count = sum(
+                    1 for rs in raw_scores if rs.get(f"_{dim}_missing")
+                )
+                if 0 < missing_count < n_products:
+                    one_sided_dims.append(dim)
+
         result_products = {}
         for i, product in enumerate(products_data):
             product_key = f"product_{i}"
             breakdown = normalized[i]
-            overall = sum(
-                breakdown.get(dim, MISSING_SCORE) * weights.get(dim, 0) for dim in weights
-            )
+            excluded_dims: Optional[List[str]] = None
+            if renorm_enabled and one_sided_dims:
+                effective = {
+                    d: w for d, w in weights.items() if d not in one_sided_dims
+                }
+                effective_total = sum(effective.values())
+                if effective_total > 0:
+                    overall = sum(
+                        breakdown.get(d, MISSING_SCORE) * w / effective_total
+                        for d, w in effective.items()
+                    )
+                    excluded_dims = list(one_sided_dims)
+                else:
+                    # Every dim is one-sided-missing — renormalizing would
+                    # divide by zero. Fall back to the legacy sum; at any
+                    # volume this is an extraction bug, not a scoring one.
+                    logger.warning(
+                        "[scoring] ENABLE_MISSING_DIM_RENORM: all %d dims "
+                        "one-sided-missing for category=%s — falling back to "
+                        "the un-renormalized legacy sum",
+                        len(one_sided_dims), category,
+                    )
+                    overall = sum(
+                        breakdown.get(dim, MISSING_SCORE) * weights.get(dim, 0)
+                        for dim in weights
+                    )
+            else:
+                overall = sum(
+                    breakdown.get(dim, MISSING_SCORE) * weights.get(dim, 0)
+                    for dim in weights
+                )
             overall = round(max(0, min(100, overall)), 1)
 
             # Track which dimensions had missing data
@@ -1325,6 +1398,13 @@ class ScoringService:
                 "weights_used": {k: round(v, 4) for k, v in weights.items()},
                 "missing_data": missing_dims if missing_dims else None,
             }
+            if renorm_enabled:
+                # Additive payload key, flag-ON only (flag OFF stays
+                # byte-identical to base): mirrors missing_data's shape (a
+                # list, or None when nothing is excluded) so consumers —
+                # build_dimensions_v2 / the FE — can stop rendering a
+                # synthetic 50 bar for a cell that was never measured.
+                result_products[product_key]["excluded_dims"] = excluded_dims
 
         # S3 L3 v2 — PRICE-AUTHORITY AS A SCORE FACTOR (Ahmed pivot 2026-06-13).
         # "Facts beat estimates" now lives IN the genuine `overall` score, NOT a
