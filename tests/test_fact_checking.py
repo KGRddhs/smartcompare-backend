@@ -368,8 +368,29 @@ class TestVerifyPrice:
         assert result["price_verified"] is True  # not estimated, just no cross-check data
         assert result["source_count"] == 0
 
-    def test_string_prices_parsed(self, service):
-        """Shopping items with string prices (e.g. '$99.99') are parsed."""
+    @pytest.mark.parametrize("flag_on", [False, True])
+    def test_string_prices_parsed(self, service, monkeypatch, flag_on):
+        """Shopping items with string prices (e.g. '$99.99') are parsed.
+
+        Issue #106 makes this pin FLAG-AWARE rather than deleting it, because
+        the two modes disagree for a real reason and both answers are worth
+        pinning:
+
+          * flag OFF (legacy): the amounts are compared currency-BLIND, so USD
+            95/105/100 sit within 30% of "100" and the price reads verified.
+            That is exactly the defect #106 exists to remove.
+          * flag ON: $100 is normalized to ~37.6 BHD, the deviation against a
+            BHD 100 ask is ~166%, and the honest verdict is NOT verified.
+
+        Asserting the legacy expectation unconditionally would have forced the
+        code to keep the currency-blind behaviour to stay green — the tail
+        wagging the dog. Pinning both modes keeps the regression cover for the
+        string PARSING (source_count == 3 either way, which is what the test is
+        named for) while letting the flag change the VERDICT.
+        """
+        monkeypatch.setenv(
+            "ENABLE_FACTCHECK_CURRENCY_NORMALIZATION", "true" if flag_on else ""
+        )
         price = {"amount": 100, "currency": "BHD", "estimated": False}
         shopping_items = [
             {"price": "$95.00"},
@@ -378,7 +399,7 @@ class TestVerifyPrice:
         ]
         result = service._verify_price(price, shopping_items)
         assert result["source_count"] == 3
-        assert result["price_verified"] is True
+        assert result["price_verified"] is (False if flag_on else True)
 
     def test_price_amount_zero(self, service):
         """Price amount of 0 -> not verified."""
