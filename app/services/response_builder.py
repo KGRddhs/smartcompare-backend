@@ -1250,6 +1250,48 @@ def _QUALITATIVE_WINNER_REASON(winner_name: str) -> str:
     )
 
 
+# M18 CD-ci-truth-11 / PO-prompts-07-marker — the internal fabrication-provenance
+# marker value. Tier 3 outputs are tagged inference_source="model_knowledge"
+# (spec §2f) for QA/dashboards ONLY; it must NEVER reach the serialized API
+# response. Pinned by
+# tests/test_extraction_prompt_bundle_c.py::test_response_builder_strips_inference_source.
+_INFERENCE_MARKER_VALUE = "model_knowledge"
+
+
+def _strip_inference_markers(obj) -> None:
+    """Recursively strip the internal inference-provenance marker from the
+    assembled response, IN PLACE (preserves object identity for every dict the
+    builder already mutated in place — rating, price-pending, pros/cons).
+
+    Drops:
+    - any dict key whose name contains "inference_source" (e.g.
+      "processor_inference_source", "inference_source"), whatever its value;
+    - any dict entry / list item whose value is the internal marker string
+      "model_knowledge" (e.g. a bare {"source": "model_knowledge"}).
+
+    Belt-and-braces: applied to the WHOLE result at the single exit of
+    build_comparison_response, so the marker cannot leak through any
+    projection (products alias, overview, specs block, metadata).
+    """
+    if isinstance(obj, dict):
+        _doomed = [
+            k for k, v in obj.items()
+            if (isinstance(k, str) and "inference_source" in k)
+            or (isinstance(v, str) and v == _INFERENCE_MARKER_VALUE)
+        ]
+        for k in _doomed:
+            del obj[k]
+        for v in obj.values():
+            _strip_inference_markers(v)
+    elif isinstance(obj, list):
+        obj[:] = [
+            v for v in obj
+            if not (isinstance(v, str) and v == _INFERENCE_MARKER_VALUE)
+        ]
+        for v in obj:
+            _strip_inference_markers(v)
+
+
 def build_comparison_response(
     *,
     product_data: Optional[List[Dict[str, Any]]] = None,
@@ -1951,5 +1993,13 @@ def build_comparison_response(
         "price_tiers": scoring_result.get("price_tiers", {}),
         "is_cross_tier": scoring_result.get("is_cross_tier", False),
     }
+
+    # M18 CD-ci-truth-11 — final serialization walk: the internal
+    # fabrication-provenance marker (inference_source="model_knowledge",
+    # Tier 3 QA/dashboards only) must never ship to API clients. Applied at
+    # the function's single exit so every projection (products alias,
+    # overview, specs block, metadata) is covered. In-place, so all the
+    # object identities established above are preserved.
+    _strip_inference_markers(result)
 
     return result

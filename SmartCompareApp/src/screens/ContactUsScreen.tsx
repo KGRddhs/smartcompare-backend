@@ -31,9 +31,28 @@ type Props = NativeStackScreenProps<RootStackParamList, 'ContactUs'>;
 type Category = 'bug' | 'suggestion' | 'business' | 'other';
 
 const CATEGORIES: Category[] = ['bug', 'suggestion', 'business', 'other'];
+
+// M18 CD-uncovered-02 / MB-flows-09: the change_suggestion prefix is the
+// operators' triage key (`change_suggestion LIKE '[Bug]%'`), so it must be a
+// STABLE ENGLISH tag independent of the device locale. t() is for the
+// on-screen chip labels only — an Arabic reporter previously produced
+// a localized Arabic prefix, invisible to the documented grep.
+const CATEGORY_TAGS: Record<Category, string> = {
+  bug: 'Bug',
+  suggestion: 'Suggestion',
+  business: 'Business',
+  other: 'Other',
+};
+
 const MIN_MESSAGE = 10;
-const MAX_MESSAGE = 2000;
 const MAX_SUBJECT = 120;
+// Backend FeedbackRequest.change_suggestion caps at 1000 chars.
+// Composed payload = "[<tag>] <subject>\n\n<body>"; worst-case overhead is
+// "[Suggestion] " (13) + MAX_SUBJECT (120) + "\n\n" (2) = 135, so the honest
+// message cap is 1000 - 135 = 865. (Was 2000, which silently truncated.)
+const BACKEND_MAX_CHANGE_SUGGESTION = 1000;
+const MAX_MESSAGE =
+  BACKEND_MAX_CHANGE_SUGGESTION - ('[Suggestion] '.length + MAX_SUBJECT + '\n\n'.length);
 const RATE_LIMIT_MS = 30_000;
 
 export default function ContactUsScreen({ navigation }: Props) {
@@ -58,15 +77,21 @@ export default function ContactUsScreen({ navigation }: Props) {
     setErrorKey(null);
     try {
       // Category encoded inline so we don't need a new backend endpoint.
-      // Operators query: `change_suggestion LIKE '[Bug]%'` etc.
-      const categoryLabel = t(`contact.category.${category}`);
+      // Operators query: `change_suggestion LIKE '[Bug]%'` etc. — the tag is
+      // the stable English enum (CATEGORY_TAGS), NEVER the localized label,
+      // so the grep works for every locale.
+      const categoryTag = CATEGORY_TAGS[category];
       const composed = subject.trim()
-        ? `[${categoryLabel}] ${subject.trim()}\n\n${trimmedMessage}`
-        : `[${categoryLabel}] ${trimmedMessage}`;
+        ? `[${categoryTag}] ${subject.trim()}\n\n${trimmedMessage}`
+        : `[${categoryTag}] ${trimmedMessage}`;
       await api.post('/api/v1/feedback', {
-        useful: true,
+        // A bug report is not positive feedback; other contact reasons are
+        // neutral-to-positive. (`useful` is required by FeedbackRequest.)
+        useful: category !== 'bug',
         mattered_most: [],
-        change_suggestion: composed.slice(0, 1000),
+        // MAX_MESSAGE + MAX_SUBJECT are sized so this never exceeds the
+        // backend cap; the slice is a defensive backstop, not a truncator.
+        change_suggestion: composed.slice(0, BACKEND_MAX_CHANGE_SUGGESTION),
       });
       try { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); } catch {}
       setSuccess(true);

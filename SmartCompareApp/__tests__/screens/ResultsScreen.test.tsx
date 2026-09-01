@@ -89,12 +89,15 @@ describe('ResultsScreen — Bundle E Task 0.1 defensive guards', () => {
     expect(matches.length).toBeGreaterThanOrEqual(2);
   });
 
-  it('uses optional chaining on `result.comparison_id` (line 210 fix)', () => {
-    // Design § 1a explicit before/after. The current source has
-    // `(result as any).comparison_id || ...` — must become
-    // `(result as any)?.comparison_id || ...`.
+  it('uses optional chaining on the comparison id read (line 210 fix, M18-updated)', () => {
+    // Design § 1a intent: never a non-optional `result.` access that can
+    // throw before the empty-state early return. M18 MB-contract-01/03
+    // replaced the any-cast phantom-key read with the typed, still
+    // optional-chained real id (`result?.comparison_id ??
+    // route?.params?.comparison_id`) — the crash guard this pin protects
+    // is preserved.
     expect(SOURCE).toMatch(
-      /\(result as any\)\?\.comparison_id\s*\|\|\s*\(metadata as any\)\?\.comparison_id/,
+      /result\?\.comparison_id\s*\?\?\s*route\?\.params\?\.comparison_id/,
     );
     // Negative assertion: the non-optional form must NOT remain in source.
     expect(SOURCE).not.toMatch(/\(result as any\)\.comparison_id/);
@@ -129,14 +132,19 @@ describe('ResultsScreen — Bundle E Task 0.1 defensive guards', () => {
     );
   });
 
-  it('v2 row with comparison_id still uses metadata fallback (no regression)', () => {
-    // The `|| (metadata as any)?.comparison_id` tail of the sharable id
-    // must survive the fix. History rows persist the id at
-    // `result.comparison_id` (top-level), while live SSE responses put
-    // it at `result.metadata.comparison_id` — both must work.
-    expect(SOURCE).toMatch(
-      /sharableComparisonId\s*=\s*\(result as any\)\?\.comparison_id\s*\|\|\s*\(metadata as any\)\?\.comparison_id/,
-    );
+  it('sharable id survives for history rows (M18-updated: real id, phantom metadata tail removed)', () => {
+    // STALE-PIN UPDATE (M18 MB-contract-03): the old assertion protected a
+    // `(metadata as any)?.comparison_id` tail on the belief that live SSE
+    // responses carry `result.metadata.comparison_id`. Verified false —
+    // response_builder.py has ZERO comparison_id emit sites, so that tail
+    // could never fire and the sharable id was permanently null (share
+    // Loop-1 unreachable). The invariant this pin exists for — a history
+    // row's sharable id must survive into ShareBottomSheet — now holds via
+    // the real id: getComparison surfaces wrapper.comparison.id as
+    // result.comparison_id, with route.params.comparison_id as fallback,
+    // and sharableComparisonId is that same id.
+    expect(SOURCE).toMatch(/const\s+sharableComparisonId\s*=\s*comparisonId/);
+    expect(SOURCE).not.toMatch(/\(metadata as any\)\?\.comparison_id/);
   });
 });
 

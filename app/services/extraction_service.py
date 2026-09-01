@@ -348,7 +348,13 @@ CRITICAL_SCHEMA_FIELDS_NON_NEGOTIABLE: Dict[str, List[str]] = {
     "skincare":    ["volume", "ingredients", "active_ingredient"],
     "haircare":    ["volume", "ingredients"],
     "makeup":      ["volume", "shade_range"],
-    "grocery":     ["weight", "ingredients"],
+    # M18 PO-prompts-06: was ["weight", "ingredients"] — but the grocery
+    # schema defines "size", not "weight", so the prompt never asked for
+    # it, extract_specs' schema filter dropped any volunteered value, and
+    # every cold grocery compare paid Tier-2 (Serper+GPT) and Tier-3
+    # (gpt-4o) chasing a field that could never be filled. "size" is the
+    # canonical key (grocery.chocolate aliases weight_g -> size).
+    "grocery":     ["size", "ingredients"],
     "other":       [],
 }
 
@@ -483,10 +489,12 @@ Output spec:
   model: "Tobacco Vanille"
   variant: "50 ml"
   concentration: "EDP"
-  notes: "Tobacco, vanilla, cocoa, dried fruit, ginger, tonka bean"
+  notes_top: "Tobacco leaf, ginger"
+  notes_heart: "Vanilla, cocoa, tonka bean"
+  notes_base: "Dried fruit, woody notes"
   longevity: "8-10 hours"
   sillage: "Heavy"
-Reasoning: EDP is the canonical concentration for Tobacco Vanille; notes ordered top-to-base where source distinguishes. Longevity range, sillage as one qualitative term.
+Reasoning: EDP is the canonical concentration for Tobacco Vanille; notes are split into the schema's notes_top/notes_heart/notes_base pyramid, top-to-base as the source distinguishes. Longevity range, sillage as one qualitative term.
 
 Example 5 (fashion, minimal schema):
 Input: "Nike Air Force 1"
@@ -503,7 +511,7 @@ Output spec:
   brand: "Bioderma"
   model: "Sensibio H2O Micellar Water"
   variant: "500 ml"
-  volume_ml: "500 ml"
+  volume: "500 ml"
   ingredients: "Water, PEG-6 caprylic/capric glycerides, cucumber extract, mannitol, xylitol, rhamnose, fructooligosaccharides"
 Reasoning: ingredient list is from the official Bioderma INCI label; volume matches the variant.
 """

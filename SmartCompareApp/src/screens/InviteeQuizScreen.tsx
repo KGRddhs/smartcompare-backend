@@ -149,15 +149,18 @@ export default function InviteeQuizScreen({ navigation, route }: Props) {
     const winnerReason: string | undefined =
       result?.overview?.winner?.reason ?? result?.recommendation;
 
-    // Phase 4 § 4e — match score animates 0→N. Backend ships per-product
-    // scores via `result.scoring.products[i].score`; pick the winner's
-    // and clamp to [0, 100]. Falls back to a sensible 78 when scoring
-    // data is absent (anonymous/quiz path may skip personalization).
-    const scoringProducts: any[] = result?.scoring?.products ?? [];
+    // Phase 4 § 4e — match score animates 0→N. M18 MB-contract-10: the
+    // backend ships per-product scores at `scoring.scores.product_N.overall`
+    // (response_builder.py:1557-1564) — the previously-read
+    // `scoring.products[i].score` exists on NO backend payload shape, so
+    // every invitee saw the fabricated 78 fallback. Pick the winner's
+    // overall and clamp to [0, 100]; 78 remains the fallback only when
+    // scoring data is genuinely absent.
     const winnerIdx: number =
       result?.overview?.winner?.product_index ??
       (typeof result?.winner_index === 'number' ? result.winner_index : 0);
-    const rawScore: number = scoringProducts[winnerIdx]?.score ?? 78;
+    const rawScore: number =
+      result?.scoring?.scores?.[`product_${winnerIdx}`]?.overall ?? 78;
     const matchScore = Math.max(0, Math.min(100, Math.round(rawScore)));
 
     return (

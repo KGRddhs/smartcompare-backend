@@ -279,6 +279,14 @@ export interface MetadataSection {
 
 export interface ComparisonResult {
   success: boolean;
+  // M18 MB-contract-01/03 — the persisted comparisons-row UUID. NOT emitted
+  // by /text/compare (the id is created at save time and never echoed back);
+  // present only on payloads that came through getComparison(), which
+  // surfaces wrapper.comparison.id here. ResultsScreen threads it into
+  // /events + /feedback (backend M13-29 UUID-validates comparison_id) and
+  // into the share/referral Loop-1 flow. Optional: fresh compares omit it,
+  // and JSON.stringify drops the undefined so event batches still pass.
+  comparison_id?: string;
   products: Product[];
   comparison: Comparison;
   winner_index: number;
@@ -343,11 +351,22 @@ export interface DimensionWinner {
   margin: number | null;
 }
 
+// M18 MB-contract-10 — corrected to the six keys the backend actually emits
+// (response_builder.py:1557-1564: scores, dimension_winners, price_tiers,
+// is_cross_tier, scoring_method, category_weights). The previously-declared
+// required `winner_index`/`win_margin` NEVER exist on the wire (win_margin
+// lives at overview.winner.margin and scoring_v2.win_margin), so tsc was
+// asserting phantom fields and consumers read undefined. scoring_method
+// widened to the full backend enum (CLAUDE.md scoring_method contract).
 export interface ScoringResult {
   scores: Record<string, ProductScores>;
-  winner_index: number;
-  win_margin: number;
-  scoring_method: 'personalized' | 'default' | 'category_weighted';
+  scoring_method:
+    | 'personalized'
+    | 'default'
+    | 'category_weighted'
+    | 'behavioral'
+    | 'cohort'
+    | 'invitee_quiz';
   dimension_winners?: Record<string, DimensionWinner>;
   price_tiers?: Record<string, string>;
   is_cross_tier?: boolean;

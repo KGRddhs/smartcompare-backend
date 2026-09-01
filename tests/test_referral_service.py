@@ -455,7 +455,7 @@ class TestResolveInvite:
             "id": "cmp-1",
             "user_id": "ref-1",
             "share_token": "tok-aaaaaaaaaaaaaaaaaa",
-            "response_data": {
+            "full_response": {
                 "products": [{"name": "iPhone"}],
                 "winner": {"name": "iPhone"},
                 "preferences": {"priorities": ["best_price"]},  # MUST be stripped
@@ -534,7 +534,7 @@ class TestResolveInvite:
 
         # Comparison owner is DIFFERENT from referrer
         wrong_comp = MagicMock(data={
-            "id": "c", "user_id": "DIFFERENT-USER", "share_token": "t", "response_data": {},
+            "id": "c", "user_id": "DIFFERENT-USER", "share_token": "t", "full_response": {},
         })
         client.table.return_value.select.return_value.eq.return_value.single.return_value.execute.return_value = wrong_comp
 
@@ -555,7 +555,7 @@ class TestResolveInvite:
         )
 
         comp = MagicMock(data={
-            "id": "c", "user_id": "ref-1", "share_token": "t", "response_data": {},
+            "id": "c", "user_id": "ref-1", "share_token": "t", "full_response": {},
         })
         invite_already_viewed = MagicMock(data=[{"id": "i", "first_viewed_at": "2026-05-04T00:00:00Z"}])
 
@@ -595,7 +595,7 @@ class TestRunInviteeQuiz:
         client = MagicMock()
         comp = MagicMock(data={
             "id": "c1",
-            "response_data": {
+            "full_response": {
                 "products": [{"name": "iPhone"}, {"name": "Galaxy"}],
                 "winner": {"name": "iPhone"},
                 "scoring": {"scoring_method": "category_weighted"},

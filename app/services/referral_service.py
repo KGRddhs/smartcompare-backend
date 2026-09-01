@@ -410,7 +410,7 @@ class ReferralService:
         # 2. Lookup the comparison by share_token
         comp_resp = (
             self.client.table("comparisons")
-            .select("id, user_id, response_data, share_token")
+            .select("id, user_id, full_response, share_token")
             .eq("share_token", share_token)
             .single()
             .execute()
@@ -442,7 +442,7 @@ class ReferralService:
 
         # 4. Sanitize comparison — strip personalization first, then apply
         #    the referrer's privacy choices on top.
-        sanitized = _strip_personalization(comp.get("response_data") or {})
+        sanitized = _strip_personalization(comp.get("full_response") or {})
         sanitized = _apply_privacy(sanitized, privacy)
         sanitized["id"] = comp["id"]
 
@@ -476,7 +476,7 @@ class ReferralService:
         # 1. Lookup the cached comparison
         comp_resp = (
             self.client.table("comparisons")
-            .select("id, response_data")
+            .select("id, full_response")
             .eq("share_token", share_token)
             .single()
             .execute()
@@ -485,7 +485,7 @@ class ReferralService:
         if not comp:
             return None
 
-        response = comp.get("response_data") or {}
+        response = comp.get("full_response") or {}
         sanitized = _strip_personalization(response)
         sanitized["id"] = comp["id"]
 

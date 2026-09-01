@@ -112,8 +112,11 @@ def test_makeup_split():
 
 
 def test_grocery_split():
+    # M18 PO-prompts-06: spec §2f said "weight", but the grocery schema
+    # defines "size" (the prompt/filter never carry "weight", so it was an
+    # unfillable paid Tier-2/3 chase). Pin the schema-reconciled value.
     assert set(CRITICAL_SCHEMA_FIELDS_NON_NEGOTIABLE["grocery"]) == {
-        "weight", "ingredients",
+        "size", "ingredients",
     }
     # Spec lists `nutrition_*` — we use the discrete schema keys.
     assert set(CRITICAL_SCHEMA_FIELDS_PREFERRED["grocery"]) == {
