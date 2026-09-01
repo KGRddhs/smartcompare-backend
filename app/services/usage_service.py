@@ -4,6 +4,7 @@ Monthly cap = base tier limit + ``users.referral_bonus_comparisons_this_month``.
 Lazy reset of the bonus happens inside ``_get_user_tier_info`` whenever
 ``referral_bonus_reset_at`` falls in the past — no cron job required.
 """
+import asyncio
 import logging
 import os
 import re
@@ -11,6 +12,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from app.services.cache_service import redis_client
+from app.services.cache_service import _redis_offload_enabled  # M18 #115
 from app.services.database_service import get_admin_supabase_client
 from app.utils.db_offload import run_db  # M13-05 ENABLE_SYNC_DB_OFFLOAD
 
@@ -196,6 +198,34 @@ def _bump_counters(user_id: str) -> None:
         logger.warning("[usage] lifetime-free counter bump failed for %s: %s", user_id, e)
 
 
+# M18 #115 -- module-local offload dispatchers for the request-path Redis
+# counter commands (the cache_service.py:540-548 design: the dispatch lives in
+# the CALLING module and references the module-level blocking primitive in BOTH
+# branches, so a test patching e.g. `usage_service._atomic_consume` intercepts
+# either path). Flag OFF -> the inline call, byte-identical (no suspension
+# point added). Flag ON -> asyncio.to_thread runs the identical blocking
+# Upstash command off the event loop. NOTE: `_atomic_consume` keeps its
+# internal daily-then-monthly increment and monthly-then-daily rollback
+# ordering untouched -- the dispatch wraps the whole call, never reorders it.
+
+async def _atomic_consume_async(user_id: str, daily_limit: int, monthly_cap: int):
+    if _redis_offload_enabled():
+        return await asyncio.to_thread(_atomic_consume, user_id, daily_limit, monthly_cap)
+    return _atomic_consume(user_id, daily_limit, monthly_cap)
+
+
+async def _get_redis_count_async(key: str) -> int:
+    if _redis_offload_enabled():
+        return await asyncio.to_thread(_get_redis_count, key)
+    return _get_redis_count(key)
+
+
+async def _bump_counters_async(user_id: str) -> None:
+    if _redis_offload_enabled():
+        return await asyncio.to_thread(_bump_counters, user_id)
+    return _bump_counters(user_id)
+
+
 async def consume_comparison_credit(user_id: str, access_token: str) -> dict:
     """TOCTOU-safe freemium gate — the request-path replacement for
     check_usage_allowed.
@@ -221,7 +251,7 @@ async def consume_comparison_credit(user_id: str, access_token: str) -> dict:
     # Lifetime-free path: allowed regardless of daily/monthly, but still advance
     # the counters (parity with the legacy record_comparison).
     if tier == "free" and lifetime_used < limits["lifetime_free"]:
-        _bump_counters(user_id)
+        await _bump_counters_async(user_id)
         return {
             "allowed": True,
             "reason": None,
@@ -234,22 +264,22 @@ async def consume_comparison_credit(user_id: str, access_token: str) -> dict:
             },
         }
 
-    reason = _atomic_consume(user_id, limits["daily"], monthly_cap)
+    reason = await _atomic_consume_async(user_id, limits["daily"], monthly_cap)
     if reason == "daily_limit":
         return {
             "allowed": False, "reason": "daily_limit", "tier": tier, "consumed": False,
-            "remaining": {"daily": 0, "monthly": max(0, monthly_cap - _get_redis_count(_monthly_key(user_id))), "lifetime_free": 0},
+            "remaining": {"daily": 0, "monthly": max(0, monthly_cap - await _get_redis_count_async(_monthly_key(user_id))), "lifetime_free": 0},
         }
     if reason == "monthly_limit":
         return {
             "allowed": False, "reason": "monthly_limit", "tier": tier, "consumed": False,
-            "remaining": {"daily": max(0, limits["daily"] - _get_redis_count(_daily_key(user_id))), "monthly": 0, "lifetime_free": 0},
+            "remaining": {"daily": max(0, limits["daily"] - await _get_redis_count_async(_daily_key(user_id))), "monthly": 0, "lifetime_free": 0},
         }
     return {
         "allowed": True, "reason": None, "tier": tier, "consumed": True,
         "remaining": {
-            "daily": max(0, limits["daily"] - _get_redis_count(_daily_key(user_id))),
-            "monthly": max(0, monthly_cap - _get_redis_count(_monthly_key(user_id))),
+            "daily": max(0, limits["daily"] - await _get_redis_count_async(_daily_key(user_id))),
+            "monthly": max(0, monthly_cap - await _get_redis_count_async(_monthly_key(user_id))),
             "lifetime_free": 0,
         },
     }

@@ -59,6 +59,7 @@ from app.services.api_budget_service import (
     is_circuit_closed,
 )
 from app.services import firecrawl_service, scrapedo_service
+from app.utils.db_offload import run_db  # M18 #115 ENABLE_SYNC_DB_OFFLOAD
 
 
 # WS-G G3 — per-attempt provider TRACE (backend observability ONLY; metadata,
@@ -4388,7 +4389,10 @@ class StructuredComparisonService:
         try:
             from app.services.database_service import get_supabase_client
             supabase = get_supabase_client()
-            result = supabase.table("users").select("behavior_profile").eq("id", user_id).single().execute()
+            # M18 #115 -- runs pre-scoring on the request path; offload the
+            # blocking Supabase RTT when ENABLE_SYNC_DB_OFFLOAD is on.
+            _q = supabase.table("users").select("behavior_profile").eq("id", user_id).single()
+            result = await run_db(lambda: _q.execute())
             if result.data and result.data.get("behavior_profile"):
                 return result.data["behavior_profile"]
         except Exception as e:
@@ -4404,14 +4408,32 @@ class StructuredComparisonService:
             behavior_service = get_behavior_service()
             supabase = get_supabase_client()
 
-            comparisons = supabase.table("comparisons").select("category_used, products, created_at").eq("user_id", user_id).order("created_at", desc=True).limit(50).execute()
-            feedback = supabase.table("comparison_feedback").select("useful").eq("user_id", user_id).execute()
-            events = supabase.table("user_events").select("event_type, metadata").eq("user_id", user_id).order("created_at", desc=True).limit(200).execute()
+            # M18 #115 -- this fire-and-forget chain was FOUR serial blocking
+            # Supabase round trips ON the event loop inside the request
+            # lifecycle (the single largest residual the M18 load review
+            # measured). Each hop now goes through run_db so
+            # ENABLE_SYNC_DB_OFFLOAD moves it off-loop; flag OFF stays inline
+            # and byte-identical. The comparison_feedback select was UNBOUNDED
+            # -- it is now ordered+bounded at 200 rows (mirroring its
+            # user_events sibling; comparison_feedback has created_at, indexed
+            # DESC by migration 027) so one heavy-feedback user cannot drag an
+            # arbitrarily large result set through the request path.
+            # Collapsing the 4 round trips into one Postgres RPC is the
+            # preferred next step (needs its own numbered migration + rollback;
+            # 036 is already claimed by home_savings_aggregate) -- wrap-first
+            # ships dark and canaries immediately, RPC-second.
+            _q_comparisons = supabase.table("comparisons").select("category_used, products, created_at").eq("user_id", user_id).order("created_at", desc=True).limit(50)
+            comparisons = await run_db(lambda: _q_comparisons.execute())
+            _q_feedback = supabase.table("comparison_feedback").select("useful").eq("user_id", user_id).order("created_at", desc=True).limit(200)
+            feedback = await run_db(lambda: _q_feedback.execute())
+            _q_events = supabase.table("user_events").select("event_type, metadata").eq("user_id", user_id).order("created_at", desc=True).limit(200)
+            events = await run_db(lambda: _q_events.execute())
 
             profile = await behavior_service.build_behavior_profile(
                 comparisons.data or [], feedback.data or [], events.data or [],
             )
-            supabase.table("users").update({"behavior_profile": profile}).eq("id", user_id).execute()
+            _q_update = supabase.table("users").update({"behavior_profile": profile}).eq("id", user_id)
+            await run_db(lambda: _q_update.execute())
         except Exception as e:
             logger.warning(f"Failed to update behavior profile: {e}")
 

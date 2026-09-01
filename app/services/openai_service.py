@@ -21,10 +21,47 @@ from app.services.model_config import (
 
 logger = logging.getLogger(__name__)
 
+
+def _resolve_max_retries() -> int:
+    """Retry ceiling for every ``AsyncOpenAI`` construction (issue #117 (b)).
+
+    ``OPENAI_MAX_RETRIES`` bounds the SDK's own retry loop: the default of 2
+    retries (3 attempts per call) triples request volume during a 429 storm,
+    which at Tier-1 TPM turns one saturated minute into several. Default is
+    ``2`` — exactly the SDK default — so with the env unset the shipped
+    behaviour is byte-identical to before this knob existed. Set it to 0-1 in
+    Railway for the Phase-1-facing traffic once OpenAI is re-funded (the
+    Phase-1 calls are cancelled by their ``wait_for``s anyway, so their
+    retries are pure waste; the verdict call genuinely benefits from one).
+
+    NOTE: the issue asks for this to resolve through ``model_config``; the
+    resolver lives here instead because this lane may only edit this module —
+    same safe pattern (plain env read, safe default, zero credentials).
+    Garbage values fall back to the default rather than crashing the import;
+    negatives clamp to 0 (the SDK rejects them).
+    """
+    raw = os.getenv("OPENAI_MAX_RETRIES")
+    if raw is None or not raw.strip():
+        return 2
+    try:
+        return max(0, int(raw.strip()))
+    except ValueError:
+        logger.warning(
+            "[openai_service] ignoring non-integer OPENAI_MAX_RETRIES=%r", raw
+        )
+        return 2
+
+
 # Initialize async client (reads OPENAI_API_KEY from env at request time).
 # Explicit timeout: 30s connect (Railway networking can be slow), 120s total.
 # This module-level singleton is kept for back-compat with existing call sites.
-client = AsyncOpenAI(base_url=provider_base_url(), timeout=httpx.Timeout(120.0, connect=30.0))
+# max_retries is read at import here (Railway restart applies it); the lazy
+# per-project clients below read it at first construction.
+client = AsyncOpenAI(
+    base_url=provider_base_url(),
+    timeout=httpx.Timeout(120.0, connect=30.0),
+    max_retries=_resolve_max_retries(),
+)
 
 # Memoised per-project clients for the dual-project routing in
 # select_client_for_user. Filled lazily by get_client(); resolved against
@@ -50,7 +87,9 @@ def get_client(use_shared_project: bool = True) -> AsyncOpenAI:
     if use_shared_project:
         # Shared (default). Existing OPENAI_API_KEY env handles this.
         new_client = AsyncOpenAI(
-            base_url=provider_base_url(), timeout=httpx.Timeout(120.0, connect=30.0)
+            base_url=provider_base_url(),
+            timeout=httpx.Timeout(120.0, connect=30.0),
+            max_retries=_resolve_max_retries(),
         )
     else:
         # Private. Fall back to default key if a separate one isn't set —
@@ -60,6 +99,7 @@ def get_client(use_shared_project: bool = True) -> AsyncOpenAI:
             api_key=private_key,
             base_url=provider_base_url(),
             timeout=httpx.Timeout(120.0, connect=30.0),
+            max_retries=_resolve_max_retries(),
         )
     _client_cache[use_shared_project] = new_client
     return new_client

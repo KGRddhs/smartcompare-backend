@@ -6,6 +6,7 @@ from typing import Dict, List, Optional
 
 from app.services.database_service import get_supabase_client, save_comparison
 from app.services.model_config import critic_model
+from app.utils.db_offload import run_db  # M18 #115 ENABLE_SYNC_DB_OFFLOAD
 
 logger = logging.getLogger(__name__)
 
@@ -166,7 +167,10 @@ async def track_event(
         if session_id:
             record["session_id"] = session_id
 
-        response = client.table("user_events").insert(record).execute()
+        # M18 #115 -- runs inside save_comparison_and_track_cohort on every
+        # completed compare; offload the blocking insert when
+        # ENABLE_SYNC_DB_OFFLOAD is on (flag OFF: inline, byte-identical).
+        response = await run_db(lambda: client.table("user_events").insert(record).execute())
         return {"success": True, "id": response.data[0]["id"] if response.data else None}
     except Exception as e:
         logger.warning(f"Error tracking event: {e}", exc_info=True)

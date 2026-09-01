@@ -27,8 +27,10 @@ followup on Approach B (k-anonymity threshold + PII regex filter).
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
+import os
 import re
 from pathlib import Path
 from typing import Any, Optional
@@ -37,11 +39,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from app.api.auth_routes import get_current_user, get_optional_user
 from app.middleware.rate_limiter import limiter
-from app.services.cache_service import _redis_get, _redis_set
+from app.services.cache_service import _redis_get, _redis_offload_enabled, _redis_set
 from app.services.database_service import (
     get_admin_supabase_client,
     get_user_supabase_client,
 )
+from app.utils.db_offload import run_db
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +59,44 @@ _TRENDING_TTL_SECONDS = 60 * 60      # global per-region 1h
 
 # Frontend caption gate per dispatcher: hide SavingsBanner when count < 3.
 _SAVINGS_BANNER_THRESHOLD = 3
+
+
+def _home_savings_aggregate_enabled() -> bool:
+    """Issue #116 — gate the SQL-side savings aggregate (migration 036).
+
+    Read PER CALL via os.getenv (the db_offload.sync_db_offload_enabled idiom)
+    so Railway can flip it without a redeploy. Default OFF: the legacy inline
+    full_response scan runs, byte-identical to pre-#116 behaviour. Flip ONLY
+    after migrations/036_home_savings_aggregate.sql has been applied — although
+    flipping early is safe (the rpc failure logs and falls back to the inline
+    scan), it pays an extra failed round trip per cache miss.
+    """
+    return os.getenv("ENABLE_HOME_SAVINGS_AGGREGATE", "").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Module-local Redis offload dispatch (M13-06 pattern, cache_service.py:540+:
+# the dispatch MUST live in the calling module so a test patching
+# `home_routes._redis_get` / `home_routes._redis_set` intercepts BOTH branches).
+# Deliberately NOT scs._cache_get_async — that wraps get_cached, which
+# json-decodes and returns None on JSONDecodeError, whereas this endpoint does
+# its own json.loads inside a try that logs and RECOMPUTES on a decode failure.
+# Flag OFF = inline call, identical semantics to the direct call.
+# ---------------------------------------------------------------------------
+
+
+async def _redis_get_async(key: str) -> Optional[str]:
+    if _redis_offload_enabled():
+        return await asyncio.to_thread(_redis_get, key)
+    return _redis_get(key)
+
+
+async def _redis_set_async(key: str, value: str, ex: int) -> bool:
+    if _redis_offload_enabled():
+        return await asyncio.to_thread(_redis_set, key, value, ex)
+    return _redis_set(key, value, ex=ex)
 
 # Curated trending list — Approach A (zero PII surface). Admin updates
 # via PR; weekly refresh cadence.
@@ -135,7 +176,7 @@ async def home_savings(
     user_id = current_user["id"]
     cache_key = f"home:savings:{user_id}"
 
-    cached = _redis_get(cache_key)
+    cached = await _redis_get_async(cache_key)
     if cached:
         try:
             return json.loads(cached)
@@ -148,43 +189,100 @@ async def home_savings(
         else get_admin_supabase_client()
     )
 
+    payload: Optional[dict] = None
+    if _home_savings_aggregate_enabled():
+        # Issue #116 primary path: one SMALL round trip — Postgres computes the
+        # SUM/COUNT over the jsonb price paths (migration 036), so cost no
+        # longer grows with the user's comparison history and no full_response
+        # blob crosses the wire. The blocking .execute() rides run_db so
+        # ENABLE_SYNC_DB_OFFLOAD moves it off the event loop.
+        payload = await _savings_via_sql_aggregate(client, user_id)
+
+    if payload is None:
+        # Legacy inline scan — the flag-OFF default (byte-identical to
+        # pre-#116), and the safe degradation when the 036 migration has not
+        # been applied yet (the rpc failure above logs and lands here — the
+        # spec_spine_service fallback pattern: a deploy must not break on
+        # unapplied DDL).
+        try:
+            resp = (
+                client.table("comparisons")
+                .select("full_response")
+                .eq("user_id", user_id)
+                .eq("schema_version", 2)
+                .execute()
+            )
+            rows = resp.data or []
+        except Exception as exc:  # noqa: BLE001
+            logger.error("[home/savings] DB fetch failed for %s: %r", user_id, exc)
+            # Fail-safe — don't 500; degrade to empty.
+            rows = []
+
+        total_savings = 0.0
+        decisions_count = 0
+        for row in rows:
+            winner, loser = _extract_winner_loser_prices(row.get("full_response") or {})
+            if winner is None or loser is None:
+                continue  # row has shape gaps; skipped from BOTH the sum and the count
+            decisions_count += 1
+            # max(0, ...) — never frame as negative savings (user chose pricier
+            # winner: surfaced as 0 saved on that row, not -BHD).
+            total_savings += max(0.0, loser - winner)
+
+        payload = {
+            "savings_bhd": round(total_savings, 2),
+            "decisions_count": decisions_count,
+            "threshold_met": decisions_count >= _SAVINGS_BANNER_THRESHOLD,
+        }
+
     try:
-        resp = (
-            client.table("comparisons")
-            .select("full_response")
-            .eq("user_id", user_id)
-            .eq("schema_version", 2)
-            .execute()
-        )
-        rows = resp.data or []
-    except Exception as exc:  # noqa: BLE001
-        logger.error("[home/savings] DB fetch failed for %s: %r", user_id, exc)
-        # Fail-safe — don't 500; degrade to empty.
-        rows = []
-
-    total_savings = 0.0
-    decisions_count = 0
-    for row in rows:
-        winner, loser = _extract_winner_loser_prices(row.get("full_response") or {})
-        if winner is None or loser is None:
-            continue  # row has shape gaps; skip from aggregate but still counted
-        decisions_count += 1
-        # max(0, ...) — never frame as negative savings (user chose pricier
-        # winner: surfaced as 0 saved on that row, not -BHD).
-        total_savings += max(0.0, loser - winner)
-
-    payload = {
-        "savings_bhd": round(total_savings, 2),
-        "decisions_count": decisions_count,
-        "threshold_met": decisions_count >= _SAVINGS_BANNER_THRESHOLD,
-    }
-
-    try:
-        _redis_set(cache_key, json.dumps(payload), ex=_SAVINGS_TTL_SECONDS)
+        await _redis_set_async(cache_key, json.dumps(payload), _SAVINGS_TTL_SECONDS)
     except Exception as exc:  # noqa: BLE001
         logger.warning("[home/savings] cache write failed: %r", exc)
 
     return payload
+
+
+async def _savings_via_sql_aggregate(client, user_id: str) -> Optional[dict]:
+    """Call the migration-036 `home_savings_aggregate` rpc and shape the payload.
+
+    Returns None on ANY failure (rpc missing because the migration has not been
+    applied, network error, unexpected payload shape) so the caller degrades to
+    the legacy inline scan — never a 500, never a silently-zeroed banner.
+
+    The function is SECURITY INVOKER: called through the user-scoped client the
+    comparisons RLS policy keeps the caller inside their own rows regardless of
+    p_user_id; through the admin client the WHERE user_id filter does the work.
+    """
+    try:
+        resp = await run_db(
+            lambda: client.rpc(
+                "home_savings_aggregate", {"p_user_id": user_id}
+            ).execute()
+        )
+        data = resp.data
+        if isinstance(data, list):
+            row = data[0] if data else None
+        elif isinstance(data, dict):
+            row = data
+        else:
+            row = None
+        if not isinstance(row, dict):
+            raise ValueError(f"unexpected rpc payload shape: {type(data).__name__}")
+        savings = float(row.get("savings_bhd") or 0.0)
+        count = int(row.get("decisions_count") or 0)
+    except Exception as exc:  # noqa: BLE001
+        logger.error(
+            "[home/savings] SQL aggregate failed for %s "
+            "(falling back to inline scan): %r",
+            user_id, exc,
+        )
+        return None
+    return {
+        "savings_bhd": round(savings, 2),
+        "decisions_count": count,
+        "threshold_met": count >= _SAVINGS_BANNER_THRESHOLD,
+    }
 
 
 # =============================================================================

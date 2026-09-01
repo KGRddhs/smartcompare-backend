@@ -148,6 +148,19 @@ def test_detector_ignores_now_outside_index_predicate():
     assert preds == []
 
 
+def test_036_has_matching_rollback():
+    """Issue #116 — migration 036 (home_savings_aggregate) must ship as a
+    forward/rollback PAIR, following the 025-035 convention. The IMMUTABLE
+    index-predicate scan above covers its DDL automatically via the glob."""
+    fwd = MIGRATIONS_DIR / "036_home_savings_aggregate.sql"
+    rb = MIGRATIONS_DIR / "rollback" / "036_home_savings_aggregate.sql"
+    assert fwd.exists(), f"missing forward migration: {fwd}"
+    assert rb.exists(), f"missing rollback migration: {rb}"
+    # Both must be readable UTF-8 and reference the same function.
+    assert "home_savings_aggregate" in fwd.read_text(encoding="utf-8")
+    assert "home_savings_aggregate" in rb.read_text(encoding="utf-8")
+
+
 def test_detector_ignores_immutable_index_predicate():
     """A partial index with an IMMUTABLE predicate (e.g. IS NOT NULL) is the
     legal, common case and must pass clean."""

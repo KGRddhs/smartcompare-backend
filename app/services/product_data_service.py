@@ -10,6 +10,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any
 
 from app.services.database_service import get_admin_supabase_client
+from app.utils.db_offload import run_db  # M18 #115 ENABLE_SYNC_DB_OFFLOAD
 
 logger = logging.getLogger(__name__)
 
@@ -68,13 +69,18 @@ async def get_cached_specs(product_key: str) -> Optional[Dict[str, Any]]:
     """Fetch specs from DB if fresher than 30 days."""
     try:
         client = get_admin_supabase_client()
-        response = (
+        # M18 #115 -- every L2 read/write in this module goes through run_db so
+        # ENABLE_SYNC_DB_OFFLOAD moves the blocking Supabase RTT off the event
+        # loop (flag OFF: inline, byte-identical). Pinned by the static scan in
+        # tests/test_m18_offload_sweep_residual.py -- keep any new execute call
+        # inside run_db.
+        query = (
             client.table("product_specs")
             .select("specs, fetched_at")
             .eq("product_key", product_key)
             .single()
-            .execute()
         )
+        response = await run_db(lambda: query.execute())
         if not response.data:
             return None
         fetched_at = datetime.fromisoformat(response.data["fetched_at"].replace("Z", "+00:00"))
@@ -93,7 +99,7 @@ async def save_specs(
     """Upsert specs into product_specs."""
     try:
         client = get_admin_supabase_client()
-        client.table("product_specs").upsert(
+        query = client.table("product_specs").upsert(
             {
                 "product_key": product_key,
                 "brand": brand,
@@ -105,7 +111,8 @@ async def save_specs(
                 "fetched_at": datetime.now(timezone.utc).isoformat(),
             },
             on_conflict="product_key",
-        ).execute()
+        )
+        await run_db(lambda: query.execute())
     except Exception as e:
         logger.warning(f"Failed to save specs for {product_key}: {e}")
 
@@ -122,15 +129,15 @@ async def get_cached_price(product_key: str, region: str) -> Optional[Dict[str, 
             # so a DB-served price is SKU- AND stock-verifiable. Gated by the SAME
             # flag as title so flag-OFF is byte-identical (no extra SELECT cols).
             cols += ", brand, in_stock"
-        response = (
+        query = (
             client.table("product_prices")
             .select(cols)
             .eq("product_key", product_key)
             .eq("region", region)
             .order("fetched_at", desc=True)
             .limit(1)
-            .execute()
         )
+        response = await run_db(lambda: query.execute())
         if not response.data:
             return None
         row = response.data[0]
@@ -201,7 +208,7 @@ async def save_price(
             _in_stock = price_data.get("in_stock")
             if isinstance(_in_stock, bool):
                 row["in_stock"] = _in_stock
-        client.table("product_prices").insert(row).execute()
+        await run_db(lambda: client.table("product_prices").insert(row).execute())
     except Exception as e:
         logger.warning(f"Failed to save price for {product_key}/{region}: {e}")
 
@@ -210,13 +217,13 @@ async def get_cached_reviews(product_key: str) -> Optional[Dict[str, Any]]:
     """Fetch reviews from DB if fresher than 14 days."""
     try:
         client = get_admin_supabase_client()
-        response = (
+        query = (
             client.table("product_reviews")
             .select("reviews, fetched_at")
             .eq("product_key", product_key)
             .single()
-            .execute()
         )
+        response = await run_db(lambda: query.execute())
         if not response.data:
             return None
         fetched_at = datetime.fromisoformat(response.data["fetched_at"].replace("Z", "+00:00"))
@@ -235,7 +242,7 @@ async def save_reviews(
     """Upsert reviews into product_reviews."""
     try:
         client = get_admin_supabase_client()
-        client.table("product_reviews").upsert(
+        query = client.table("product_reviews").upsert(
             {
                 "product_key": product_key,
                 "brand": brand,
@@ -246,6 +253,7 @@ async def save_reviews(
                 "fetched_at": datetime.now(timezone.utc).isoformat(),
             },
             on_conflict="product_key",
-        ).execute()
+        )
+        await run_db(lambda: query.execute())
     except Exception as e:
         logger.warning(f"Failed to save reviews for {product_key}: {e}")

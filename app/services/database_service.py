@@ -501,7 +501,10 @@ async def log_search(
         if error_message:
             record["error_message"] = error_message
 
-        client.table("search_logs").insert(record).execute()
+        # M18 #115 -- fire-and-forget but previously still a blocking Supabase
+        # RTT on the event loop; run_db offloads it when ENABLE_SYNC_DB_OFFLOAD
+        # is on (flag OFF: inline, byte-identical).
+        await run_db(lambda: client.table("search_logs").insert(record).execute())
     except Exception as e:
         # Never fail the request for logging
         logger.warning(f"Error logging search: {e}", exc_info=True)

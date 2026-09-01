@@ -1,6 +1,7 @@
 """
 Auth Service - Supabase Authentication
 """
+import asyncio
 import hashlib
 import logging
 import os
@@ -245,8 +246,10 @@ async def verify_token(access_token: str) -> Optional[Dict]:
     `current_user['id']` — verified safe at audit time.
     """
     try:
-        # Check revocation blacklist first (fast Redis lookup)
-        if _is_token_revoked(access_token):
+        # Check revocation blacklist first (fast Redis lookup).
+        # M18 #115 -- the lookup runs on EVERY authed request before Supabase,
+        # so it dispatches off-loop when ENABLE_ASYNC_REDIS_OFFLOAD is on.
+        if await _is_token_revoked_async(access_token):
             logger.info("Token rejected: revoked via logout")
             return None
 
@@ -313,6 +316,28 @@ def _is_token_revoked(token: str) -> bool:
         return False  # Fail-open if Redis unavailable
     except Exception:
         return False  # Fail-open
+
+
+async def _is_token_revoked_async(token: str) -> bool:
+    """M18 #115 -- offload dispatch for the revocation-blacklist Redis GET.
+
+    Dispatch lives HERE (the calling module) per the cache_service.py:540-548
+    design note, and references the module-level `_is_token_revoked` in BOTH
+    branches so a test patching `auth_service._is_token_revoked` intercepts
+    either path. Flag OFF -> the inline call, byte-identical to the pre-change
+    `_is_token_revoked(token)` (no suspension point is added by the flag read).
+    Flag ON -> asyncio.to_thread runs the identical blocking Upstash GET off the
+    event loop. FAIL-OPEN is preserved in both branches: `_is_token_revoked`
+    already swallows every Redis error and returns False; the extra guard here
+    covers a dispatch-layer failure (e.g. executor shutdown) so a broken offload
+    can never convert fail-open into fail-closed token rejection."""
+    try:
+        from app.services.cache_service import _redis_offload_enabled
+        if _redis_offload_enabled():
+            return await asyncio.to_thread(_is_token_revoked, token)
+    except Exception:
+        return False  # Fail-open, mirroring _is_token_revoked itself
+    return _is_token_revoked(token)
 
 
 async def sign_in_with_social(provider: str, id_token: str, nonce: str = None) -> Dict:
@@ -436,9 +461,13 @@ async def get_user_preferences(user_id: str) -> Dict:
     """Get user preferences from the users table."""
     try:
         admin = get_admin_client()
-        response = admin.table("users").select(
+        # M18 #115 -- called on all three compare routes before the pipeline
+        # runs; offload the blocking Supabase RTT when ENABLE_SYNC_DB_OFFLOAD
+        # is on (flag OFF: run_db runs the call inline, byte-identical).
+        query = admin.table("users").select(
             "preferences, preferences_completed"
-        ).eq("id", user_id).single().execute()
+        ).eq("id", user_id).single()
+        response = await run_db(lambda: query.execute())
         if response.data:
             return {
                 "success": True,

@@ -262,6 +262,310 @@ class TestHomeSavings:
 
 
 # =============================================================================
+# /api/v1/home/savings — issue #116: SQL-side aggregate behind
+# ENABLE_HOME_SAVINGS_AGGREGATE (default OFF)
+# =============================================================================
+
+
+def _rpc_supabase(rpc_rows=None, rpc_calls=None, rpc_raises=None, table_rows=None,
+                  table_raises=None):
+    """Stub supabase client recording .rpc() calls and optionally serving the
+    legacy .table('comparisons') chain (for fallback-path tests)."""
+    import threading as _threading
+
+    supabase = MagicMock()
+
+    def _rpc(name, params=None):
+        m = MagicMock()
+
+        def _execute():
+            if rpc_calls is not None:
+                rpc_calls.append((name, params, _threading.current_thread()))
+            if rpc_raises is not None:
+                raise rpc_raises
+            resp = MagicMock()
+            resp.data = rpc_rows if rpc_rows is not None else []
+            return resp
+        m.execute.side_effect = _execute
+        return m
+    supabase.rpc.side_effect = _rpc
+
+    def _table_dispatch(name):
+        m = MagicMock()
+        if name == "users":
+            user_resp = MagicMock(); user_resp.data = {"preferences": {}}
+            m.select.return_value.eq.return_value.single.return_value.execute.return_value = user_resp
+        else:
+            chain = m.select.return_value.eq.return_value.eq.return_value
+            if table_raises is not None:
+                chain.execute.side_effect = table_raises
+            else:
+                comp_resp = MagicMock(); comp_resp.data = table_rows or []
+                chain.execute.return_value = comp_resp
+        return m
+    supabase.table.side_effect = _table_dispatch
+    return supabase
+
+
+class TestHomeSavingsAggregate:
+    """Issue #116 — /home/savings must not pull every full_response blob."""
+
+    def _call(self, supabase):
+        from app.api.auth_routes import get_current_user
+        app.dependency_overrides[get_current_user] = _fake_user()
+        with patch("app.api.home_routes.get_user_supabase_client", return_value=supabase), \
+             patch("app.api.home_routes._redis_get", return_value=None), \
+             patch("app.api.home_routes._redis_set", return_value=True):
+            return client.get("/api/v1/home/savings", headers={"Authorization": "Bearer fake"})
+
+    def test_savings_query_does_not_select_full_response(self, monkeypatch):
+        """Flag ON: no .select() containing full_response may run — the
+        aggregate is computed server-side."""
+        monkeypatch.setenv("ENABLE_HOME_SAVINGS_AGGREGATE", "true")
+        select_args: list = []
+        supabase = _rpc_supabase(rpc_rows=[{"savings_bhd": 0, "decisions_count": 0}])
+        inner_dispatch = supabase.table.side_effect
+
+        def _spy_table(name):
+            m = inner_dispatch(name)
+            orig_select = m.select.side_effect or (lambda *a, **k: m.select.return_value)
+
+            def _spy_select(*a, **k):
+                select_args.append(a)
+                return orig_select(*a, **k)
+            m.select.side_effect = _spy_select
+            return m
+        supabase.table.side_effect = _spy_table
+
+        resp = self._call(supabase)
+        assert resp.status_code == 200, resp.text
+        flat = [arg for call_ in select_args for arg in call_]
+        assert not any("full_response" in str(a) for a in flat), (
+            f"savings still selects full_response: {select_args}"
+        )
+
+    def test_savings_uses_sql_aggregate_rpc(self, monkeypatch):
+        monkeypatch.setenv("ENABLE_HOME_SAVINGS_AGGREGATE", "true")
+        rpc_calls: list = []
+        supabase = _rpc_supabase(
+            rpc_rows=[{"savings_bhd": 12.5, "decisions_count": 4}],
+            rpc_calls=rpc_calls,
+        )
+        resp = self._call(supabase)
+        assert resp.status_code == 200, resp.text
+        assert len(rpc_calls) == 1, f"expected exactly one rpc call, got {rpc_calls}"
+        name, params, _ = rpc_calls[0]
+        assert name == "home_savings_aggregate"
+        assert params == {"p_user_id": "test-user-id"}
+        table_names = [c.args[0] for c in supabase.table.call_args_list]
+        assert "comparisons" not in table_names, (
+            f"flag ON must not scan comparisons; table() calls: {table_names}"
+        )
+        body = resp.json()
+        assert body == {"savings_bhd": 12.5, "decisions_count": 4, "threshold_met": True}
+
+    def test_savings_query_is_bounded(self, monkeypatch):
+        """RPC path: the round trip returns exactly ONE aggregate row — cost
+        does not grow with the user's history."""
+        monkeypatch.setenv("ENABLE_HOME_SAVINGS_AGGREGATE", "true")
+        rpc_calls: list = []
+        supabase = _rpc_supabase(
+            rpc_rows=[{"savings_bhd": 999.99, "decisions_count": 1000}],
+            rpc_calls=rpc_calls,
+        )
+        resp = self._call(supabase)
+        assert resp.status_code == 200, resp.text
+        assert len(rpc_calls) == 1
+        # A 1000-comparison user still costs one row, not 1000 blobs.
+        assert resp.json()["decisions_count"] == 1000
+
+    def test_savings_offloads_via_run_db_when_flag_on(self, monkeypatch):
+        monkeypatch.setenv("ENABLE_HOME_SAVINGS_AGGREGATE", "true")
+        monkeypatch.setenv("ENABLE_SYNC_DB_OFFLOAD", "true")
+        from app.utils import db_offload
+        real_to_thread = db_offload.asyncio.to_thread
+        calls = {"n": 0}
+
+        async def spy_to_thread(fn, *a, **k):
+            calls["n"] += 1
+            return await real_to_thread(fn, *a, **k)
+        monkeypatch.setattr(db_offload.asyncio, "to_thread", spy_to_thread)
+
+        supabase = _rpc_supabase(rpc_rows=[{"savings_bhd": 1.0, "decisions_count": 1}])
+        resp = self._call(supabase)
+        assert resp.status_code == 200, resp.text
+        assert calls["n"] >= 1, "rpc execute did not route through asyncio.to_thread"
+
+    def test_savings_inline_when_offload_flag_off(self, monkeypatch):
+        monkeypatch.setenv("ENABLE_HOME_SAVINGS_AGGREGATE", "true")
+        monkeypatch.delenv("ENABLE_SYNC_DB_OFFLOAD", raising=False)
+        monkeypatch.delenv("ENABLE_ASYNC_REDIS_OFFLOAD", raising=False)
+        from app.utils import db_offload
+        real_to_thread = db_offload.asyncio.to_thread
+        calls = {"n": 0}
+
+        async def spy_to_thread(fn, *a, **k):
+            calls["n"] += 1
+            return await real_to_thread(fn, *a, **k)
+        monkeypatch.setattr(db_offload.asyncio, "to_thread", spy_to_thread)
+
+        supabase = _rpc_supabase(rpc_rows=[{"savings_bhd": 1.0, "decisions_count": 1}])
+        resp = self._call(supabase)
+        assert resp.status_code == 200, resp.text
+        assert calls["n"] == 0, "flag OFF must run the rpc inline (byte-identical)"
+
+    def test_savings_redis_uses_async_dispatch_when_flag_on(self, monkeypatch):
+        """ENABLE_ASYNC_REDIS_OFFLOAD=true routes _redis_get/_redis_set through
+        asyncio.to_thread via a home_routes-local dispatch (so this patch on
+        home_routes._redis_get intercepts BOTH branches)."""
+        monkeypatch.delenv("ENABLE_HOME_SAVINGS_AGGREGATE", raising=False)
+        monkeypatch.delenv("ENABLE_SYNC_DB_OFFLOAD", raising=False)
+        monkeypatch.setenv("ENABLE_ASYNC_REDIS_OFFLOAD", "true")
+        import asyncio as _asyncio
+        real_to_thread = _asyncio.to_thread
+        calls = {"n": 0}
+
+        async def spy_to_thread(fn, *a, **k):
+            calls["n"] += 1
+            return await real_to_thread(fn, *a, **k)
+        monkeypatch.setattr(_asyncio, "to_thread", spy_to_thread)
+
+        supabase = _rpc_supabase(table_rows=[])
+        resp = self._call(supabase)
+        assert resp.status_code == 200, resp.text
+        assert calls["n"] >= 2, (
+            "redis get+set must dispatch via asyncio.to_thread when "
+            "ENABLE_ASYNC_REDIS_OFFLOAD is on"
+        )
+
+    def test_savings_redis_inline_when_flag_off(self, monkeypatch):
+        monkeypatch.delenv("ENABLE_HOME_SAVINGS_AGGREGATE", raising=False)
+        monkeypatch.delenv("ENABLE_SYNC_DB_OFFLOAD", raising=False)
+        monkeypatch.delenv("ENABLE_ASYNC_REDIS_OFFLOAD", raising=False)
+        import asyncio as _asyncio
+        real_to_thread = _asyncio.to_thread
+        calls = {"n": 0}
+
+        async def spy_to_thread(fn, *a, **k):
+            calls["n"] += 1
+            return await real_to_thread(fn, *a, **k)
+        monkeypatch.setattr(_asyncio, "to_thread", spy_to_thread)
+
+        supabase = _rpc_supabase(table_rows=[])
+        resp = self._call(supabase)
+        assert resp.status_code == 200, resp.text
+        assert calls["n"] == 0, "OFF branch must stay inline on the event loop"
+
+    def test_savings_payload_shape_unchanged(self, monkeypatch):
+        """Flag ON returns exactly the legacy keys, savings rounded to 2dp."""
+        monkeypatch.setenv("ENABLE_HOME_SAVINGS_AGGREGATE", "true")
+        supabase = _rpc_supabase(rpc_rows=[{"savings_bhd": "123.456", "decisions_count": 3}])
+        resp = self._call(supabase)
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert set(body.keys()) == {"savings_bhd", "decisions_count", "threshold_met"}
+        assert body["savings_bhd"] == 123.46
+        assert body["decisions_count"] == 3
+        assert body["threshold_met"] is True
+
+    def test_savings_rpc_failure_falls_back_to_legacy_scan(self, monkeypatch):
+        """Migration 036 not applied (rpc raises) must NOT zero the banner —
+        the endpoint degrades to the inline scan (spec_spine fallback pattern)."""
+        monkeypatch.setenv("ENABLE_HOME_SAVINGS_AGGREGATE", "true")
+        supabase = _rpc_supabase(
+            rpc_raises=RuntimeError("function home_savings_aggregate does not exist"),
+            table_rows=[_comparison_row(winner_idx=0, p0_price=200, p1_price=250)],
+        )
+        resp = self._call(supabase)
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["decisions_count"] == 1
+        assert body["savings_bhd"] == 50.0
+
+    def test_savings_db_failure_returns_empty_payload_not_500(self, monkeypatch):
+        """Both the rpc AND the legacy scan raising still yields 200 + zeros."""
+        monkeypatch.setenv("ENABLE_HOME_SAVINGS_AGGREGATE", "true")
+        supabase = _rpc_supabase(
+            rpc_raises=RuntimeError("db down"),
+            table_raises=RuntimeError("db down"),
+        )
+        resp = self._call(supabase)
+        assert resp.status_code == 200, resp.text
+        assert resp.json() == {
+            "savings_bhd": 0.0, "decisions_count": 0, "threshold_met": False,
+        }
+
+    def test_savings_zero_rows_returns_threshold_not_met(self, monkeypatch):
+        monkeypatch.setenv("ENABLE_HOME_SAVINGS_AGGREGATE", "true")
+        supabase = _rpc_supabase(rpc_rows=[{"savings_bhd": 0, "decisions_count": 0}])
+        resp = self._call(supabase)
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["threshold_met"] is False
+        assert body["savings_bhd"] == 0.0
+        assert body["decisions_count"] == 0
+
+    # ------------------------------------------------------------------
+    # Python-path parity pins (flag OFF) — the rules the SQL mirrors.
+    # ------------------------------------------------------------------
+
+    def test_savings_skips_non_bhd_rows(self):
+        row = _comparison_row(winner_idx=0, p0_price=100, p1_price=150)
+        row["full_response"]["products"][0]["price"]["currency"] = "SAR"
+        supabase = MagicMock()
+        _patch_supabase_comparisons(supabase, [row])
+        resp = self._call(supabase)
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["decisions_count"] == 0
+        assert body["savings_bhd"] == 0.0
+
+    def test_savings_skips_bad_winner_index(self):
+        row = _comparison_row(winner_idx=2, p0_price=100, p1_price=150)
+        supabase = MagicMock()
+        _patch_supabase_comparisons(supabase, [row])
+        resp = self._call(supabase)
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["decisions_count"] == 0
+        assert body["savings_bhd"] == 0.0
+
+    def test_savings_never_negative(self):
+        # Winner pricier than loser: contributes 0.0, counted, never negative.
+        supabase = MagicMock()
+        _patch_supabase_comparisons(
+            supabase, [_comparison_row(winner_idx=0, p0_price=300, p1_price=100)]
+        )
+        resp = self._call(supabase)
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["savings_bhd"] == 0.0
+        assert body["decisions_count"] == 1
+
+    # ------------------------------------------------------------------
+    # Static guard on the migration SQL — the unit tests cannot execute
+    # Postgres, so pin the load-bearing predicates textually.
+    # ------------------------------------------------------------------
+
+    def test_migration_sql_mirrors_python_rules(self):
+        from pathlib import Path
+        sql_path = (
+            Path(__file__).resolve().parent.parent
+            / "migrations" / "036_home_savings_aggregate.sql"
+        )
+        assert sql_path.exists(), "migrations/036_home_savings_aggregate.sql missing"
+        sql = sql_path.read_text(encoding="utf-8")
+        assert "home_savings_aggregate" in sql
+        assert "GREATEST" in sql, "must clamp negative savings to 0"
+        assert "'BHD'" in sql, "must enforce the BHD-only rule on both sides"
+        assert "schema_version" in sql, "must filter schema_version = 2"
+        assert "SECURITY INVOKER" in sql, (
+            "must be SECURITY INVOKER so RLS keeps a caller inside their own rows"
+        )
+        assert "COALESCE" in sql, "zero rows must yield 0, not NULL"
+
+
+# =============================================================================
 # /api/v1/home/smart-pick
 # =============================================================================
 
