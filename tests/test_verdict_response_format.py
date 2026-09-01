@@ -109,6 +109,11 @@ async def test_429_fallback_path_also_passes_response_format():
         return fake_fallback
 
     mock_client.chat.completions.create = AsyncMock(side_effect=_create)
+    # #117 — the fallback now goes through client.with_options(max_retries=...)
+    # to bound the retry amplification; route it back to the SAME recording
+    # create so both calls land in call_args_list and the response_format pin
+    # below is unchanged.
+    mock_client.with_options = MagicMock(return_value=mock_client)
 
     # Force the 4o-priority path so the 429 → mini fallback triggers
     with patch("app.services.extraction_service.get_client", return_value=mock_client):
@@ -130,6 +135,9 @@ async def test_429_fallback_path_also_passes_response_format():
         assert kwargs.get("response_format") == {"type": "json_object"}, (
             f"call {call} missing response_format — fallback regressed"
         )
+    # #117 — and the fallback carried an explicit bounded retry ceiling.
+    assert mock_client.with_options.called
+    assert "max_retries" in mock_client.with_options.call_args.kwargs
 
 
 # ---------------------------------------------------------------------------
@@ -177,6 +185,9 @@ async def test_429_fallback_verdict_temperature_zero():
         return fake_fallback
 
     mock_client.chat.completions.create = AsyncMock(side_effect=_create)
+    # #117 — the fallback goes through with_options(max_retries=...); same
+    # recording client both sides so the temperature pin is unchanged.
+    mock_client.with_options = MagicMock(return_value=mock_client)
     with patch("app.services.extraction_service.get_client", return_value=mock_client):
         with patch(
             "app.services.model_router_service.model_router.get_model",
