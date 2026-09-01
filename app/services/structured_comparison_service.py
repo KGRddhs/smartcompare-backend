@@ -243,6 +243,61 @@ def _fire_and_forget(coro, label: str) -> None:
     fire_and_forget(coro, label)
 
 
+def spec_confidence_cache_enabled() -> bool:
+    """True iff the derived spec-citation-confidence map is persisted WITH the
+    cached specs so the citation layer runs on WARM traffic (issue #107,
+    default OFF).
+
+    Without it the citation check is computed on a cold extract and lost on the
+    7d cache write (`_get_specs` writes the cache BEFORE attaching
+    `_search_snippets`), so every warm hit scores citations against an empty
+    snippet list: specs_verified=0 / specs_likely=0 on all cached comparisons,
+    and everything downstream (reliability scoring, the specs confidence pill)
+    scores against a constant. Read PER CALL from os.getenv (the
+    price_service.exact_gate_enabled idiom) so Railway can flip it without a
+    restart; default OFF is byte-identical to f2481b9.
+    """
+    return os.getenv("ENABLE_SPEC_CONFIDENCE_CACHE", "").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
+#: Transient per-request keys that must never be persisted by the enriched
+#: specs re-cache. `_spec_citation_confidence` is deliberately NOT here — it is
+#: the derived map #107 persists across the cache (same lifecycle as
+#: `_field_confidence`).
+_TRANSIENT_SPEC_KEYS = ("_search_snippets", "_cached", "_cache_source")
+
+
+def _strip_transient_spec_keys(specs: Dict[str, Any]) -> Dict[str, Any]:
+    """Build the persistable enriched-specs payload (issue #107 extraction of
+    the inline re-cache comprehension — behaviour identical)."""
+    return {k: v for k, v in (specs or {}).items() if k not in _TRANSIENT_SPEC_KEYS}
+
+
+def _resolve_citation_confidence(
+    raw_specs: Dict[str, Any], search_snippets: List[str]
+) -> Dict[str, str]:
+    """Issue #107 — resolve per-field citation confidence for the fact-check
+    pass.
+
+    Flag ON: prefer the `_spec_citation_confidence` map persisted with the
+    cached specs (computed at extract time against THAT request's snippets —
+    scoring this request's citations against another request's snippets is
+    impossible by construction). Falls back to computing from the popped
+    `_search_snippets` for the cold path and any legacy cache entry written by
+    the OLD shape — a legacy entry therefore degrades to 'unverified' (absent),
+    never to a default that reads as verified.
+
+    Flag OFF: exactly today's call, byte-identical.
+    """
+    if spec_confidence_cache_enabled():
+        cached_map = raw_specs.get("_spec_citation_confidence")
+        if isinstance(cached_map, dict) and cached_map:
+            return cached_map
+    return verify_spec_citations(raw_specs, search_snippets)
+
+
 def _phase1_completely_failed(pd: Dict[str, Any]) -> bool:
     """H6 (audit 2026-05-22): True when a product's Phase 1 fetches all came
     back as None — i.e., asyncio.gather caught exceptions for BOTH specs AND
@@ -2594,6 +2649,16 @@ class StructuredComparisonService:
 
         if field_confidence:
             cleaned["_field_confidence"] = field_confidence
+        # Issue #107 (flag ON) — carry the persisted citation-confidence map
+        # through the display-clean, next to _field_confidence. Without this
+        # the enriched re-cache (which reads the CLEANED dict) would overwrite
+        # a good cache entry with one missing the key, silently re-killing the
+        # citation layer for that product. Carried through from the input,
+        # never recomputed. Flag OFF: stripped exactly as today.
+        if spec_confidence_cache_enabled():
+            _citation_map = specs.get("_spec_citation_confidence")
+            if isinstance(_citation_map, dict) and _citation_map:
+                cleaned["_spec_citation_confidence"] = _citation_map
         return cleaned
 
     def _has_retailer_url(self, source: str) -> bool:
@@ -4730,7 +4795,12 @@ class StructuredComparisonService:
         if result.get("specs") and isinstance(result["specs"], dict):
             raw_specs = result["specs"]
             search_snippets = raw_specs.pop("_search_snippets", [])
-            citation_confidence = verify_spec_citations(raw_specs, search_snippets)
+            # #107 — prefer the citation-confidence map persisted with the
+            # cached specs (flag ON); compute from the popped snippets on the
+            # cold path / legacy entries. `.get`, never `.pop`, inside the
+            # resolver: _clean_specs owns display-stripping and the enriched
+            # re-cache still needs the key on the dict.
+            citation_confidence = _resolve_citation_confidence(raw_specs, search_snippets)
             shopping_items = self._shopping_items_cache.get(full_name, [])
             shopping_flags = cross_validate_specs_with_shopping(raw_specs, shopping_items)
             spec_confidence = {}
@@ -4909,10 +4979,10 @@ class StructuredComparisonService:
         # strips the transient keys that must never be persisted.
         if _specs_enriched_by_fallback:
             try:
-                _enriched = {
-                    k: v for k, v in (result.get("specs") or {}).items()
-                    if k not in ("_search_snippets", "_cached", "_cache_source")
-                }
+                # #107 — extracted helper; strips the same three transient
+                # keys as before and deliberately KEEPS
+                # _spec_citation_confidence in the persisted dict.
+                _enriched = _strip_transient_spec_keys(result.get("specs") or {})
                 if _enriched and not _enriched.get("error"):
                     _specs_key = get_specs_cache_key(brand, name, variant)
                     await _cache_set_async(_specs_key, _enriched, SPECS_CACHE_TTL)
@@ -5066,6 +5136,26 @@ class StructuredComparisonService:
         #     in this file; a purge is the immediate rollback if one is needed.
         if spine_specs and isinstance(specs, dict) and not specs.get("error"):
             specs.update(spine_specs)
+
+        # Issue #107 (flag ON) — derive the citation-confidence map NOW,
+        # against THIS extract's snippets, and persist it with the cached
+        # specs. The snippets themselves are attached only after the cache
+        # write below (deliberately: up to 3000 chars/product of transient
+        # digest), so without this the citation layer is dead on every warm
+        # hit. Flag OFF: no key computed or attached — byte-identical.
+        if (
+            spec_confidence_cache_enabled()
+            and isinstance(specs, dict) and not specs.get("error")
+        ):
+            try:
+                specs["_spec_citation_confidence"] = verify_spec_citations(
+                    specs, raw_snippets
+                )
+            except Exception as _cc_err:  # noqa: BLE001 — never block specs
+                logger.warning(
+                    "[specs] citation-confidence derivation failed for %s %s: %r",
+                    brand, name, _cc_err,
+                )
 
         if specs and not specs.get("error"):
             await _cache_set_async(cache_key, specs, SPECS_CACHE_TTL)
