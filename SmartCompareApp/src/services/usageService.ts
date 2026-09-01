@@ -16,10 +16,16 @@ export interface UsageStatus {
     daily: number;
     monthly: number;
     lifetime_free: number;
+    // Effective monthly cap breakdown (get_usage_status, usage_service.py).
+    // Optional so an older backend that omits them degrades gracefully —
+    // useComparisonCounter reads monthly_bonus for the compare gate.
+    monthly_base?: number;
+    monthly_bonus?: number;
   };
   remaining: {
     daily: number;
     monthly: number;
+    lifetime_free?: number;
   };
 }
 

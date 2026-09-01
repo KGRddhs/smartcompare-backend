@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { getUsageStatus } from '../services/usageService';
+import { getUsageStatus, UsageStatus } from '../services/usageService';
 
 const COUNTER_KEY = '@qaren_free_comparisons_used';
 const FREE_LIMIT = 3;
 
 export function useComparisonCounter() {
   const [used, setUsed] = useState(0);
+  const [status, setStatus] = useState<UsageStatus | null>(null);
 
   // Source of truth = the BACKEND lifetime counter. Previously this hook tracked
   // `used` purely in AsyncStorage, so it never reflected the server: once it hit 3
@@ -17,11 +18,12 @@ export function useComparisonCounter() {
     let cancelled = false;
     (async () => {
       try {
-        const status = await getUsageStatus();
-        if (status && typeof status.used?.lifetime === 'number') {
+        const fetched = await getUsageStatus();
+        if (fetched && typeof fetched.used?.lifetime === 'number') {
           if (!cancelled) {
-            setUsed(status.used.lifetime);
-            AsyncStorage.setItem(COUNTER_KEY, String(status.used.lifetime));
+            setStatus(fetched);
+            setUsed(fetched.used.lifetime);
+            AsyncStorage.setItem(COUNTER_KEY, String(fetched.used.lifetime));
           }
           return;
         }
@@ -43,8 +45,29 @@ export function useComparisonCounter() {
     return newCount;
   }, [used]);
 
-  const canCompare = used < FREE_LIMIT;
-  const shouldShowPaywall = used >= FREE_LIMIT;
+  // M13-14: derive the gate from the already-fetched UsageStatus rather than
+  // hardcoding `used < 3`. The backend grants premium unlimited and free users a
+  // lifetime-free window plus any active referral bonus, so a hardcoded `used < 3`
+  // dead-ends BOTH the base allowance and the entire referral incentive loop at a
+  // fixed 3 — every blocked entry point routes to the "Coming soon" paywall.
+  //
+  // Safe-fallback derisking (no flag needed — RN has no per-call env flag): every
+  // field is read defensively so a MISSING field degrades to today's behaviour.
+  // When `status` is null (offline hydrate) or the fields are absent (older
+  // backend), `tier` is undefined, `lifetimeFree` falls back to FREE_LIMIT and
+  // `bonusRemaining` to 0, so `canCompare` collapses to `used < 3` — never MORE
+  // permissive than today, only tier-aware when the data is actually present.
+  const lifetimeFree = status?.limits?.lifetime_free ?? FREE_LIMIT;
+  const bonusRemaining = status?.limits?.monthly_bonus ?? 0;
+  const isPremium = status?.tier === 'premium';
+  const canCompare = isPremium || used < lifetimeFree + bonusRemaining;
+  const shouldShowPaywall = !canCompare;
 
-  return { used, total: FREE_LIMIT, canCompare, shouldShowPaywall, increment };
+  // Pill denominator = the BASE lifetime-free cap only. The header pill renders
+  // the referral bonus separately as "+N", so folding the bonus into `total`
+  // here would double-count it. Premium keeps the historical FREE_LIMIT so the
+  // pill never shows a "0/0" (premium's lifetime_free is 0 by design).
+  const total = isPremium ? FREE_LIMIT : lifetimeFree;
+
+  return { used, total, canCompare, shouldShowPaywall, increment };
 }
