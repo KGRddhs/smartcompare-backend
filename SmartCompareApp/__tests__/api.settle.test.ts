@@ -43,6 +43,10 @@ jest.mock('expo-image-manipulator', () => ({
   SaveFormat: { JPEG: 'jpeg' },
 }));
 
+// #118 — the settle-window SSE transport is now expo/fetch (flag ON), never
+// the global whatwg-fetch polyfill (which has no ReadableStream body on RN).
+jest.mock('expo/fetch', () => ({ fetch: jest.fn() }));
+
 // Polyfill TextDecoder in jest's node env — RN ships it on device.
 if (typeof (global as any).TextDecoder === 'undefined') {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -102,7 +106,10 @@ describe('streamComparison — Bundle E settle-window SSE dispatch', () => {
       comparison: 'ok',
     };
 
-    (global as any).fetch = jest.fn().mockResolvedValue(
+    // #118 — global fetch must stay untouched on the flag-ON transport.
+    (global as any).fetch = jest.fn();
+    const expoFetchMod = require('expo/fetch');
+    (expoFetchMod.fetch as jest.Mock).mockResolvedValue(
       makeFetchStream([
         sseFrame('first_paint', firstPaintPayload),
         sseFrame('settle_update', settleUpdatePayload),
@@ -110,6 +117,8 @@ describe('streamComparison — Bundle E settle-window SSE dispatch', () => {
         sseFrame('settle_complete', settleCompletePayload),
       ]),
     );
+    const featuresMod = require('../src/config/features');
+    featuresMod._setExpoFetchSseForTests?.(true);
 
     const { streamComparison } = await import('../src/services/api');
 
@@ -147,13 +156,20 @@ describe('streamComparison — Bundle E settle-window SSE dispatch', () => {
     expect(onSettleComplete).toHaveBeenCalledTimes(1);
     expect(onSettleComplete).toHaveBeenCalledWith(settleCompletePayload);
     expect(onError).not.toHaveBeenCalled();
+    // #118 — the settle-window events rode expo/fetch, not the polyfill.
+    expect((global as any).fetch).not.toHaveBeenCalled();
   });
 
   it('keeps the legacy onComplete callback wired so older backends continue to work', async () => {
     const completePayload = { success: true, comparison: 'legacy-shape' };
-    (global as any).fetch = jest.fn().mockResolvedValue(
+    // #118 — global fetch must stay untouched on the flag-ON transport.
+    (global as any).fetch = jest.fn();
+    const expoFetchMod = require('expo/fetch');
+    (expoFetchMod.fetch as jest.Mock).mockResolvedValue(
       makeFetchStream([sseFrame('complete', completePayload)]),
     );
+    const featuresMod = require('../src/config/features');
+    featuresMod._setExpoFetchSseForTests?.(true);
 
     const { streamComparison } = await import('../src/services/api');
 

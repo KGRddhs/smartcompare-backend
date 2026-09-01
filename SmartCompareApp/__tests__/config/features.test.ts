@@ -41,3 +41,32 @@ describe('feature flags', () => {
     }
   });
 });
+
+describe('#118 — ENABLE_EXPO_FETCH_SSE (SSE transport rollout knob)', () => {
+  // require + optional-call so these cases are meaningfully RED (undefined
+  // !== false) rather than import-broken at the pre-#118 base.
+  const featuresModule = require('../../src/config/features');
+
+  afterEach(() => {
+    featuresModule._setExpoFetchSseForTests?.(null);
+  });
+
+  it('ENABLE_EXPO_FETCH_SSE defaults to false (Option B: single REST compare)', () => {
+    expect((features as any).ENABLE_EXPO_FETCH_SSE).toBe(false);
+  });
+
+  it('ENABLE_EXPO_FETCH_SSE is a getter that re-reads its constant', () => {
+    const desc = Object.getOwnPropertyDescriptor(features, 'ENABLE_EXPO_FETCH_SSE');
+    expect(typeof desc?.get).toBe('function');
+    // Getter is pure across repeated reads.
+    const first = (features as any).ENABLE_EXPO_FETCH_SSE;
+    for (let i = 0; i < 10; i++) {
+      expect((features as any).ENABLE_EXPO_FETCH_SSE).toBe(first);
+    }
+    // Test override flips the read; clearing it restores the default.
+    featuresModule._setExpoFetchSseForTests?.(true);
+    expect((features as any).ENABLE_EXPO_FETCH_SSE).toBe(true);
+    featuresModule._setExpoFetchSseForTests?.(null);
+    expect((features as any).ENABLE_EXPO_FETCH_SSE).toBe(false);
+  });
+});

@@ -7,6 +7,8 @@ import axios from 'axios';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { ComparisonResult, ImageIdentifyResult, UserPreferences } from '../types';
 import { setupCertificatePinning } from './certificatePinning';
+import { features } from '../config/features';
+import { addSseFallbackBreadcrumb } from './sentry';
 
 // IMPORTANT: Change this to your computer's local IP
 // Find your IP: ipconfig (Windows) or ifconfig (Mac/Linux)
@@ -389,7 +391,86 @@ export function streamComparison(
   const controller = new AbortController();
 
   const subscribe = (callbacks: StreamCallbacks) => {
+    // #118 — exactly ONE backend comparison per user compare.
+    //
+    // React Native's global fetch is the whatwg-fetch polyfill: it has NO
+    // `response.body` ReadableStream, so the old always-try-stream path
+    // threw `Stream failed: 200` on every device call AFTER the backend
+    // had already run a FULL comparison, and the catch then issued a
+    // SECOND full REST compare (double OpenAI + double Serper per tap;
+    // since M13-35 drain-not-abandon the abandoned stream still completes
+    // server-side). The transport is now decided BEFORE any request goes
+    // out, keyed on ENABLE_EXPO_FETCH_SSE (features.ts):
+    //   - false (shipped default): skip the stream entirely — single REST
+    //     compare, no thrown-and-caught round trip.
+    //   - true: stream over `expo/fetch` (real ReadableStream +
+    //     AbortSignal); on runtime failure fall back to exactly one REST
+    //     compare and leave a Sentry breadcrumb.
+    //
+    // Single non-streaming compare. Fires at most ONCE per subscribe():
+    // it is the whole flag-OFF path, and the sole catch of the flag-ON
+    // stream attempt. Both error shapes are preserved exactly — the
+    // synthetic axios-shaped success:false error is what makes HomeScreen
+    // substitute the friendly results.timeout.* copy.
+    const runRestCompare = async () => {
+      try {
+        const baseParams: Record<string, any> = {
+          region: 'bahrain',
+          // catfix CLEANUP-5 — omit selected_category when unset (match the
+          // gated SSE query-param path + compareTextPair + the D1
+          // contract). Harmless before (axios drops undefined) but keeps the
+          // "no chip → no category hint" intent explicit at every send site.
+          ...(options?.selected_category && {
+            selected_category: options.selected_category,
+          }),
+          ...(options?.nocache && { nocache: true }),
+        };
+        // Bundle E S3 hotfix — GET /text/compare now accepts dual-shape (q OR pair).
+        // We send the explicit pair so backend skips parse_product_query() for
+        // higher-confidence extraction. Pair-shape support landed alongside this.
+        const queryParams =
+          typeof input === 'string'
+            ? { q: input, ...baseParams }
+            : {
+                product_a: input.product_a.trim(),
+                product_b: input.product_b.trim(),
+                ...baseParams,
+              };
+        const response = await api.get('/api/v1/text/compare', {
+          params: queryParams,
+          signal: controller.signal,
+        });
+        if (response.data.success) {
+          // success:true covers both fully-complete and the D1 best-available
+          // partial (metadata.partial:true); the Results screen renders either.
+          callbacks.onComplete?.(response.data);
+        } else {
+          // Genuine-BH bundle (D2) — preserve the structured code so the
+          // unified onError path substitutes the friendly results.timeout.*
+          // copy. A bare Error('Comparison failed') would have lost the code.
+          callbacks.onError?.(
+            Object.assign(new Error(response.data.error || 'Comparison failed'), {
+              response: {
+                status: 200,
+                data: { code: response.data.code, error: response.data.error },
+              },
+            })
+          );
+        }
+      } catch (fallbackErr: any) {
+        if (fallbackErr.name !== 'AbortError' && fallbackErr.name !== 'CanceledError') {
+          callbacks.onError?.(fallbackErr);
+        }
+      }
+    };
+
     (async () => {
+      if (!features.ENABLE_EXPO_FETCH_SSE) {
+        // #118 Option B (default) — the platform capability is decided
+        // before any request: no stream attempt, ONE backend compare.
+        await runRestCompare();
+        return;
+      }
       try {
         const { getToken } = require('./authService');
         const token = await getToken();
@@ -407,7 +488,11 @@ export function streamComparison(
         const headers: Record<string, string> = { Accept: 'text/event-stream' };
         if (token) headers['Authorization'] = `Bearer ${token}`;
 
-        const response = await fetch(
+        // #118 Option A — expo/fetch is the streaming-capable fetch of this
+        // SDK (winter runtime): real `response.body` ReadableStream, honors
+        // AbortSignal. Lazily required so the flag-OFF path never loads it.
+        const { fetch: expoFetch } = require('expo/fetch');
+        const response = await expoFetch(
           `${API_BASE_URL}/api/v1/text/compare/stream?${params.toString()}`,
           { method: 'GET', headers, signal: controller.signal }
         );
@@ -481,57 +566,12 @@ export function streamComparison(
         }
       } catch (err: any) {
         if (err.name === 'AbortError') return;
-        // Fallback to non-streaming
+        // Fallback to non-streaming — at most once per subscribe().
         if (__DEV__) console.log('SSE failed, falling back to non-streaming:', err.message);
-        try {
-          const baseParams: Record<string, any> = {
-            region: 'bahrain',
-            // catfix CLEANUP-5 — omit selected_category when unset (match the
-            // gated SSE query-param path ~L405 + compareTextPair + the D1
-            // contract). Harmless before (axios drops undefined) but keeps the
-            // "no chip → no category hint" intent explicit at every send site.
-            ...(options?.selected_category && {
-              selected_category: options.selected_category,
-            }),
-            ...(options?.nocache && { nocache: true }),
-          };
-          // Bundle E S3 hotfix — GET /text/compare now accepts dual-shape (q OR pair).
-          // We send the explicit pair so backend skips parse_product_query() for
-          // higher-confidence extraction. Pair-shape support landed alongside this.
-          const queryParams =
-            typeof input === 'string'
-              ? { q: input, ...baseParams }
-              : {
-                  product_a: input.product_a.trim(),
-                  product_b: input.product_b.trim(),
-                  ...baseParams,
-                };
-          const response = await api.get('/api/v1/text/compare', {
-            params: queryParams,
-            signal: controller.signal,
-          });
-          if (response.data.success) {
-            // success:true covers both fully-complete and the D1 best-available
-            // partial (metadata.partial:true); the Results screen renders either.
-            callbacks.onComplete?.(response.data);
-          } else {
-            // Genuine-BH bundle (D2) — preserve the structured code so the
-            // unified onError path substitutes the friendly results.timeout.*
-            // copy. A bare Error('Comparison failed') would have lost the code.
-            callbacks.onError?.(
-              Object.assign(new Error(response.data.error || 'Comparison failed'), {
-                response: {
-                  status: 200,
-                  data: { code: response.data.code, error: response.data.error },
-                },
-              })
-            );
-          }
-        } catch (fallbackErr: any) {
-          if (fallbackErr.name !== 'AbortError' && fallbackErr.name !== 'CanceledError') {
-            callbacks.onError?.(fallbackErr);
-          }
-        }
+        // #118 — breadcrumb so a silent streaming-transport regression is
+        // visible in the Sentry dashboard, not only in a __DEV__ log.
+        addSseFallbackBreadcrumb(err);
+        await runRestCompare();
       }
     })();
   };

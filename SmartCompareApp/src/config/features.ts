@@ -30,6 +30,37 @@ import { hashBucket } from './featureBucket';
 export const CANARY_NEW_ONBOARDING_PERCENT = 100;
 
 /**
+ * #118 — SSE transport decision for streamComparison().
+ *
+ * React Native's global fetch (whatwg-fetch) has NO `response.body`
+ * ReadableStream, so the old always-try-stream path threw on every device
+ * call AFTER the backend had already run a full comparison, then fell back
+ * to a SECOND full REST compare (double OpenAI + double Serper per tap).
+ *
+ *   false (shipped default) → Option B: never issue the stream request;
+ *     go straight to the single REST compare. One backend request per tap.
+ *   true → Option A: stream over `expo/fetch` (real ReadableStream +
+ *     AbortSignal). Flip ONLY after a device check on an EAS preview build
+ *     confirms certificate pinning still rejects a mismatched cert on both
+ *     platforms — expo/fetch rides its own native HTTP client and may
+ *     bypass the react-native-ssl-public-key-pinning hook on the one host
+ *     we pin (see issue #118).
+ *
+ * Rollout knob: this constant, flipped via EAS Update (same shape as
+ * CANARY_NEW_ONBOARDING_PERCENT above — RN has no per-call env flag).
+ */
+export const ENABLE_EXPO_FETCH_SSE_DEFAULT = false;
+
+/**
+ * Test-only override for ENABLE_EXPO_FETCH_SSE. `null` restores the
+ * shipped constant. Mirrors _resetFlagStableIdForTests below.
+ */
+let _expoFetchSseOverride: boolean | null = null;
+export function _setExpoFetchSseForTests(value: boolean | null): void {
+  _expoFetchSseOverride = value;
+}
+
+/**
  * Stable id resolved at app startup (App.tsx calls getStableId() once
  * and caches the result via setFlagStableId here). The features object
  * reads this synchronously per call — cheap because hashBucket is
@@ -76,6 +107,16 @@ export const features = {
    */
   get ENABLE_NEW_ONBOARDING(): boolean {
     return hashBucket(_stableIdForFlags, CANARY_NEW_ONBOARDING_PERCENT);
+  },
+
+  /**
+   * #118 — when true, streamComparison() streams SSE over `expo/fetch`;
+   * when false (default) it issues exactly one REST compare and never
+   * attempts the stream. See ENABLE_EXPO_FETCH_SSE_DEFAULT above for the
+   * flip preconditions (certificate-pinning device check).
+   */
+  get ENABLE_EXPO_FETCH_SSE(): boolean {
+    return _expoFetchSseOverride ?? ENABLE_EXPO_FETCH_SSE_DEFAULT;
   },
 } as const;
 

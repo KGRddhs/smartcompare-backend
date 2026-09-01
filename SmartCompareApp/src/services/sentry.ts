@@ -121,6 +121,28 @@ export function scrubBeforeSend(event: any, _hint: any): any {
   return event;
 }
 
+/**
+ * #118 — production-visible signal when the SSE streaming transport fails
+ * and streamComparison degrades to the single REST compare. Before this,
+ * the only trace was a __DEV__ console.log, so a silent transport
+ * regression (the exact defect #118 fixed) was invisible in the dashboard.
+ * Call shape mirrors the b4_diag breadcrumb in authService.ts.
+ */
+export function addSseFallbackBreadcrumb(err: unknown): void {
+  try {
+    const message = scrubString(
+      String((err as { message?: unknown })?.message ?? err),
+    );
+    Sentry.addBreadcrumb({
+      category: 'sse',
+      level: 'warning',
+      message: `SSE transport failed; fell back to REST compare: ${message}`,
+    });
+  } catch {
+    // A breadcrumb must never break the compare path.
+  }
+}
+
 let _initialized = false;
 
 export function initSentry(dsn?: string): void {

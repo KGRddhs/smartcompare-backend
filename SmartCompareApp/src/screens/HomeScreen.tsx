@@ -190,6 +190,13 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         clearTimeout(advanceTimerRef.current);
         advanceTimerRef.current = null;
       }
+      // #118 — abort any in-flight compare when Home unmounts (e.g.
+      // logout). Since M13-35 drain-not-abandon an abandoned stream still
+      // completes the full Phase-2 tail server-side, so an unaborted
+      // request is not free. onComplete/onError null the ref, so this
+      // only fires for a genuinely in-flight compare.
+      abortRef.current?.();
+      abortRef.current = null;
     };
   }, []);
 
