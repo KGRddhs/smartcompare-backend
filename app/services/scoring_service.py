@@ -621,6 +621,23 @@ _PRICE_TRUST_SET = frozenset({
     # Without this, _price_authority_delta's "all other → estimate-grade" fall-
     # through would penalise a genuine BH Shopify price −4 (inverts L1's purpose).
     "shopify_json",
+    # M20 #104 — the remaining GENUINE-BH stamps the trust set never learned
+    # about. Every one is a member of price_service._GENUINE_BH_SOURCE_METHODS
+    # and is already trusted by every OTHER consumer (the 7d genuine cache TTL,
+    # `_showable_source_methods`, quality_ranker rank 85, the genuine-share KPI);
+    # scoring was the single outlier, so the flagship genuine-BH capture scored
+    # HARDER (−4.0) than a converted_usd price (−2.0). `page_scrape_jsonld` is
+    # the flagship (a real BHD price out of a real Bahrain PDP's JSON-LD);
+    # `firecrawl_brand_domain` is the firecrawl scraper's actual stamp; the rest
+    # are the direct-fetch adapters' NATIVE-BHD-only stamps (a converted GCC→BHD
+    # price always stamps the literal "converted_usd", never one of these).
+    # tests/test_price_trust_set_parity.py pins the subset invariant so a future
+    # genuine method cannot silently drift out again. converted_usd stays OUT
+    # (real figure, not local data — its half penalty is deliberate) and so do
+    # `estimated` and the `sitemap_no_match` / `validation_rejected` sentinels.
+    "page_scrape_jsonld", "firecrawl_brand_domain",
+    "woo_store_api", "salla_api", "occ_rest_bhd",
+    "magento_graphql_bhd", "rest_json_bhd", "zyte_render_bhd",
 })
 
 
