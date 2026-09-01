@@ -25,9 +25,18 @@
 -- no renderable row diverges.
 --
 -- SECURITY DEFINER (the delete_user_cascade / increment_lifetime_comparisons
--- precedent): callable through the RLS-scoped user client; the aggregate is
--- scoped strictly by p_user_id, which the route always passes as the
--- authenticated user's id.
+-- precedent): callable through the RLS-scoped user client.
+--
+-- CROSS-TENANT GUARD (added before this migration was ever applied). SECURITY
+-- DEFINER BYPASSES RLS, and PostgREST exposes every GRANTed function as a
+-- callable rpc endpoint -- so "the route always passes the authenticated
+-- user's id" is not a control: the route is not the only caller. Any
+-- authenticated user could POST /rpc/home_savings_aggregate with somebody
+-- else's uuid and read their savings. The WHERE clause therefore re-derives
+-- the caller identity server-side: a JWT caller may only aggregate its OWN
+-- rows (auth.uid() = p_user_id), and the service-role admin client is allowed
+-- through explicitly. A cross-tenant call returns zero rows (savings 0,
+-- decisions 0), never another user's data.
 --
 -- Apply via Supabase MCP (apply_migration). NOT applied at commit time — the
 -- consuming code path is dark behind ENABLE_HOME_SAVINGS_AGGREGATE (default
@@ -48,6 +57,11 @@ AS $$
       c.full_response -> 'products' AS products
     FROM comparisons c
     WHERE c.user_id = p_user_id
+      -- cross-tenant guard: see the SECURITY DEFINER note above.
+      AND (
+        auth.uid() = p_user_id
+        OR coalesce(auth.role(), '') = 'service_role'
+      )
       AND c.schema_version = 2
       AND jsonb_typeof(c.full_response) = 'object'
       AND jsonb_typeof(c.full_response -> 'products') = 'array'

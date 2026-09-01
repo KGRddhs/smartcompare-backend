@@ -174,3 +174,44 @@ def test_036_has_matching_rollback():
     rb_sql = rb.read_text(encoding="utf-8")
     assert "home_savings_aggregate" in fwd_sql
     assert "DROP FUNCTION" in rb_sql.upper()
+
+
+def test_036_security_definer_rpc_has_a_cross_tenant_guard():
+    """A SECURITY DEFINER function that takes a user id and is GRANTed to
+    `authenticated` is a cross-tenant read unless it re-derives the caller.
+
+    SECURITY DEFINER bypasses RLS, and PostgREST exposes every GRANTed function
+    as a callable `/rpc/<name>` endpoint — so "the route always passes the
+    authenticated user's id" is not a control; the route is not the only
+    caller. Without this guard any authenticated user could read another
+    user's savings by passing their uuid.
+
+    Caught in review BEFORE 036 was ever applied. This pin generalises: it
+    fails for ANY migration that GRANTs a SECURITY DEFINER function taking a
+    `p_user_id` to `authenticated` without an `auth.uid()` check.
+    """
+    migrations_dir = Path(__file__).resolve().parent.parent / "migrations"
+    offenders = []
+    for sql_path in sorted(migrations_dir.glob("*.sql")):
+        sql = sql_path.read_text(encoding="utf-8")
+        # Strip `--` comments FIRST: prose explaining the guard must never be
+        # mistaken for the guard. (The first version of this test passed
+        # against a file whose auth.uid() appeared only in a comment.)
+        code_only = "\n".join(
+            re.sub(r"--.*$", "", line) for line in sql.splitlines()
+        )
+        lowered = code_only.lower()
+        if "security definer" not in lowered:
+            continue
+        if "p_user_id" not in lowered:
+            continue
+        grants_to_authenticated = "to authenticated" in lowered
+        has_caller_check = "auth.uid()" in lowered
+        if grants_to_authenticated and not has_caller_check:
+            offenders.append(sql_path.name)
+    assert not offenders, (
+        "SECURITY DEFINER function(s) taking p_user_id are GRANTed to "
+        f"`authenticated` with no auth.uid() guard: {offenders}. That is a "
+        "cross-tenant read over PostgREST /rpc — scope the query to "
+        "auth.uid() (service_role may be allowed through explicitly)."
+    )
