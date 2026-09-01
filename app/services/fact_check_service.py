@@ -2,11 +2,37 @@
 
 Zero-cost cross-validation: spec citations, shopping cross-check, review sentiment, price deviation.
 """
+import os
 import re
 import logging
 from typing import Optional, List, Dict, Any
 
 logger = logging.getLogger(__name__)
+
+
+def factcheck_currency_normalization_enabled() -> bool:
+    """True iff ``verify_price`` normalizes every shopping row into the final
+    price's own currency BEFORE taking the median (issue #106, default OFF).
+
+    Without it the price cross-check is currency-blind: it strips shopping
+    price strings to bare numerals and compares them to the final BHD amount,
+    so a raw AED/USD amount stamped BHD passes at ~0% deviation while the
+    CORRECT conversion of the same rows is flagged unverified — the verdict is
+    systematically inverted, not noisy. Read PER CALL from os.getenv (the
+    price_service.shopping_strict_currency_enabled idiom) so Railway can flip
+    it without a restart; default OFF is byte-identical to f2481b9.
+    """
+    return os.getenv("ENABLE_FACTCHECK_CURRENCY_NORMALIZATION", "").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
+#: A shopping price string that is ONLY digits/separators/whitespace carries no
+#: currency signal at all — the legacy assumption (same currency as the final
+#: price) is the only available reading, exactly like a numeric row. Anything
+#: else that detect_currency cannot resolve (junk letters, an unknown glyph) is
+#: an UNRESOLVED basis and must be dropped from the median, never assumed.
+_PURE_NUMERAL_RE = re.compile(r"[\d.,\s]+\Z")
 
 # Fields where numeric values must match exactly during citation verification
 NUMERIC_SPEC_FIELDS = {
@@ -147,6 +173,12 @@ def verify_price(price: Dict, shopping_items: List[Dict]) -> Dict:
     if not final_amount:
         return {"price_verified": False, "deviation_pct": None, "source_count": 0}
 
+    # Issue #106 — normalize every shopping row into the final price's own
+    # currency before the median (flag ON). Flag OFF: the legacy currency-blind
+    # path below runs untouched, byte-identical to f2481b9.
+    if factcheck_currency_normalization_enabled():
+        return _verify_price_currency_normalized(price, final_amount, shopping_items)
+
     shopping_prices = []
     for item in shopping_items:
         p = item.get("price")
@@ -174,6 +206,103 @@ def verify_price(price: Dict, shopping_items: List[Dict]) -> Dict:
         "price_verified": deviation_pct is not None and deviation_pct <= 30 and not price.get("estimated", False),
         "deviation_pct": round(deviation_pct, 1) if deviation_pct is not None else None,
         "source_count": len(shopping_prices),
+    }
+
+
+def _verify_price_currency_normalized(
+    price: Dict, final_amount: float, shopping_items: List[Dict]
+) -> Dict:
+    """Issue #106 flag-ON body — currency-aware price cross-check.
+
+    Mirrors ``price_service.extract_price_from_shopping``'s row handling:
+    ``detect_currency`` -> ``parse_price_string(..., display_text=True)`` ->
+    ``_convert_to_bhd`` when the detected currency differs from the target
+    (with the same target!=BHD re-basing). Contract:
+
+      * numeric ``item["price"]`` — no string to inspect, treated as already
+        in the target currency (as today);
+      * string row with a resolvable currency — parsed under that currency and
+        converted into the target before the median;
+      * string row with digits but NO resolvable currency signal beyond a bare
+        numeral — DROPPED from the median (counted as unresolved), never
+        assumed to be the target currency;
+      * a resolved code the rate table cannot convert (``_convert_to_bhd``
+        returns the amount UNCHANGED for an unresolvable currency — that
+        return contract is deliberate, so we probe the 1.0 rate instead of
+        trusting the return) — also dropped as unresolved;
+      * zero usable rows but >=1 unresolved row — NO verdict:
+        ``price_verified: None`` (cross-cutting rule: a check that cannot be
+        computed degrades to ABSENT, never to a default that reads as
+        verified);
+      * zero rows of any kind — the existing no-usable-rows shape.
+
+    Lazy import on purpose: fact_check_service is deliberately dependency-light
+    and a module-level import of price_service would pull the whole pricing
+    stack into every importer.
+    """
+    from app.services.price_service import (
+        detect_currency, parse_price_string, _convert_to_bhd,
+    )
+
+    target = price.get("currency") or "BHD"
+    usable: List[float] = []
+    unresolved = 0
+
+    for item in shopping_items:
+        p = item.get("price")
+        if isinstance(p, (int, float)) and p > 0:
+            usable.append(float(p))
+            continue
+        if not isinstance(p, str):
+            continue
+        raw = p.strip()
+        if not raw or not re.search(r"\d", raw):
+            continue  # no numeral at all — contributes nothing (as today)
+        detected = detect_currency(raw)
+        if detected is None and not _PURE_NUMERAL_RE.fullmatch(raw):
+            # digits + junk the currency detector cannot resolve: basis unknown
+            unresolved += 1
+            continue
+        amount = parse_price_string(raw, detected, display_text=True)
+        if amount is None or amount <= 0:
+            continue
+        if detected and detected != target:
+            if detected.upper() != "BHD" and _convert_to_bhd(1.0, detected) == 1.0:
+                # detect_currency resolved a code the effective rate table
+                # cannot convert — never treat the unchanged return as a
+                # conversion (documented _convert_to_bhd contract).
+                unresolved += 1
+                continue
+            amount = _convert_to_bhd(amount, detected)
+            if target != "BHD":
+                bhd_rate = _convert_to_bhd(1.0, target)
+                if bhd_rate > 0:
+                    amount = amount / bhd_rate
+        usable.append(amount)
+
+    if not usable:
+        if unresolved > 0:
+            # Rows exist but none has a resolvable currency basis: no verdict.
+            return {
+                "price_verified": None,
+                "deviation_pct": None,
+                "source_count": unresolved,
+            }
+        return {
+            "price_verified": not price.get("estimated", False),
+            "deviation_pct": None,
+            "source_count": 0,
+        }
+
+    # Same upper-median indexing as the legacy path so a single-currency corpus
+    # produces the identical number flag-ON and flag-OFF.
+    median = sorted(usable)[len(usable) // 2]
+    deviation_pct = abs(final_amount - median) / median * 100 if median > 0 else None
+
+    return {
+        "price_verified": deviation_pct is not None and deviation_pct <= 30 and not price.get("estimated", False),
+        "deviation_pct": round(deviation_pct, 1) if deviation_pct is not None else None,
+        "source_count": len(usable),
     }
 
 

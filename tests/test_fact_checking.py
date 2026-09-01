@@ -605,3 +605,127 @@ class TestBuildFactCheck:
             "review_sentiment_consistent", "review_rating_deviation",
         }
         assert set(result.keys()) == expected_keys
+
+
+# =====================================================
+# Issue #106 — currency normalization before the price cross-check
+# (ENABLE_FACTCHECK_CURRENCY_NORMALIZATION, default OFF)
+# =====================================================
+
+_AED_ROWS = [
+    {"price": "AED 1,399.00"},
+    {"price": "AED 1,399.00"},
+    {"price": "AED 1,450.00"},
+]
+
+
+class TestVerifyPriceCurrencyNormalization:
+    """#106 — verify_price must normalize shopping-row currency BEFORE the
+    +/-30% cross-check (flag ON), and degrade to a None verdict — never a
+    confident one — when no row's currency basis can be resolved."""
+
+    def test_raw_foreign_amount_stamped_bhd_is_not_verified(self, service, monkeypatch):
+        """A raw AED amount stamped BHD must NOT pass against AED rows."""
+        monkeypatch.setenv("ENABLE_FACTCHECK_CURRENCY_NORMALIZATION", "true")
+        price = {"amount": 1399, "currency": "BHD", "estimated": False}
+        result = service._verify_price(price, list(_AED_ROWS))
+        assert result["price_verified"] is False
+        assert result["deviation_pct"] > 30
+
+    def test_correct_conversion_against_foreign_rows_is_verified(self, service, monkeypatch):
+        """The correct BHD conversion of the same AED rows must pass."""
+        monkeypatch.setenv("ENABLE_FACTCHECK_CURRENCY_NORMALIZATION", "true")
+        price = {"amount": 142.9, "currency": "BHD", "estimated": False}
+        result = service._verify_price(price, list(_AED_ROWS))
+        assert result["price_verified"] is True
+        assert result["deviation_pct"] <= 30
+
+    def test_usd_rows_converted_before_median(self, service, monkeypatch):
+        monkeypatch.setenv("ENABLE_FACTCHECK_CURRENCY_NORMALIZATION", "true")
+        price = {"amount": 150.4, "currency": "BHD", "estimated": False}
+        rows = [{"price": "$399.00"}, {"price": "$405.00"}, {"price": "$395.00"}]
+        result = service._verify_price(price, rows)
+        assert result["price_verified"] is True
+
+    def test_unresolvable_mixed_currencies_returns_none_verdict(self, service, monkeypatch):
+        """#106 cross-cutting rule: if the basis cannot be resolved the check
+        degrades to ABSENT (price_verified None) — never a verdict."""
+        monkeypatch.setenv("ENABLE_FACTCHECK_CURRENCY_NORMALIZATION", "true")
+        price = {"amount": 100, "currency": "BHD", "estimated": False}
+        rows = [{"price": "ab 12"}, {"price": "cd 99"}]
+        result = service._verify_price(price, rows)
+        assert result["price_verified"] is None
+        assert result["deviation_pct"] is None
+        assert result["source_count"] == 2
+
+    @pytest.mark.parametrize("flag_on", [False, True])
+    def test_numeric_price_rows_unchanged(self, service, monkeypatch, flag_on):
+        """Numeric rows carry no string to inspect — treated as target currency
+        in BOTH flag modes (pins the no-string path)."""
+        if flag_on:
+            monkeypatch.setenv("ENABLE_FACTCHECK_CURRENCY_NORMALIZATION", "true")
+        else:
+            monkeypatch.delenv("ENABLE_FACTCHECK_CURRENCY_NORMALIZATION", raising=False)
+        price = {"amount": 110, "currency": "BHD", "estimated": False}
+        rows = [{"price": 95}, {"price": 105}, {"price": 100}]
+        result = service._verify_price(price, rows)
+        assert result == {"price_verified": True, "deviation_pct": 10.0, "source_count": 3}
+
+    def test_thousands_and_decimal_separators_parse_correctly(self, service, monkeypatch):
+        """Flag ON routes string rows through the canonical parse_price_string
+        (currency-aware, display-text mode) instead of re.findall on a
+        comma-stripped string. Canonical reading (parse_money + M13-10
+        precedent): on a BHD ask BOTH "BHD 12,500" and "BHD 12.500" are 12.5
+        (3-digit tail on a minor-unit-3 currency = decimal). NOTE: issue #106
+        sketched "12,500" -> 12500.0, but that contradicts the repo's ONE
+        canonical parser (parse_price_string / M13-10: `BHD 12,500` -> 12.5 on
+        both paths); this test pins the canonical reading. Legacy re.findall
+        read them INCONSISTENTLY (12500.0 vs 12.5) — that inconsistency is the
+        bug being closed."""
+        monkeypatch.setenv("ENABLE_FACTCHECK_CURRENCY_NORMALIZATION", "true")
+        price = {"amount": 12.5, "currency": "BHD", "estimated": False}
+        rows = [{"price": "BHD 12,500"}, {"price": "BHD 12.500"}]
+        result = service._verify_price(price, rows)
+        # Both rows parse to 12.5 -> median 12.5 -> deviation 0 -> verified.
+        assert result["price_verified"] is True
+        assert result["deviation_pct"] == 0.0
+        assert result["source_count"] == 2
+
+    @pytest.mark.parametrize("price,rows,expected", [
+        (  # inputs of case 1
+            {"amount": 1399, "currency": "BHD", "estimated": False},
+            _AED_ROWS,
+            {"price_verified": True, "deviation_pct": 0.0, "source_count": 3},
+        ),
+        (  # inputs of case 2
+            {"amount": 142.9, "currency": "BHD", "estimated": False},
+            _AED_ROWS,
+            {"price_verified": False, "deviation_pct": 89.8, "source_count": 3},
+        ),
+        (  # inputs of case 3
+            {"amount": 150.4, "currency": "BHD", "estimated": False},
+            [{"price": "$399.00"}, {"price": "$405.00"}, {"price": "$395.00"}],
+            {"price_verified": False, "deviation_pct": 62.3, "source_count": 3},
+        ),
+        (  # inputs of case 4
+            {"amount": 100, "currency": "BHD", "estimated": False},
+            [{"price": "ab 12"}, {"price": "cd 99"}],
+            {"price_verified": True, "deviation_pct": 1.0, "source_count": 2},
+        ),
+        (  # inputs of case 5
+            {"amount": 110, "currency": "BHD", "estimated": False},
+            [{"price": 95}, {"price": 105}, {"price": 100}],
+            {"price_verified": True, "deviation_pct": 10.0, "source_count": 3},
+        ),
+        (  # inputs of case 6
+            {"amount": 12.5, "currency": "BHD", "estimated": False},
+            [{"price": "BHD 12,500"}, {"price": "BHD 12.500"}],
+            {"price_verified": False, "deviation_pct": 99.9, "source_count": 2},
+        ),
+    ])
+    def test_flag_off_is_byte_identical(self, service, monkeypatch, price, rows, expected):
+        """REQUIRED flag-OFF identity pin: with the flag unset, every input of
+        cases 1-6 reproduces the pre-change literal dict (captured at f2481b9)."""
+        monkeypatch.delenv("ENABLE_FACTCHECK_CURRENCY_NORMALIZATION", raising=False)
+        result = service._verify_price(price, list(rows))
+        assert result == expected
