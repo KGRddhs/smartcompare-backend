@@ -4,6 +4,27 @@
 
 ---
 
+# SESSION 61: M18–M19 — CI RATCHET + THE FIRST FULLY-GREEN CI ON MAIN — COMPLETE 2026-09-01
+
+**Main `886b65c`. CI run conclusion: SUCCESS — all five jobs green, `15,763 passed / 0 failed`, coverage 85.31% (floor 83).** CLAUDE.md recorded CI as RED on main since at least 2026-07-07; this is the first green run, and every job now both RUNS and CAN FAIL.
+
+## M18 — measure, then ratchet (`1311eda`)
+The first-ever `frontend-tests` run (landed non-blocking by Wave 4) MEASURED what the M13 review could only infer: **Jest 2,103/2,103 pass, tsc 0 errors** — the frontend was far healthier than assumed. The only real errors were **8 ESLint `i18next/no-literal-string`** (M13-68's exact strings: the TOP MATCH badges + Paywall "Today / In 2 days / In 3 days").
+- Fixed all 8 with real keys in BOTH catalogs (en/ar symmetric at **866**), then **removed `continue-on-error` from jest + eslint + tsc — the frontend gates are now BLOCKING**.
+- `backend-tests` made green-and-meaningful: the unit-test step now derives `--deselect` args at run time from the committed 14-node `tests/.pre_impl_failures.txt` (the SAME single source the local gate reads; 126 nodes deselected). Two `test_ci_gates` pins forbid hand-copied ids in the YAML and enforce shell-safe (whitespace-free) baseline ids.
+
+## M19 — the local/lock framework drift, and the CI-only blindness it caused (`886b65c`)
+`backend-tests` still failed on 3 pre-existing CI-ONLY tests. Root cause: **`requirements.txt` pins `fastapi==0.141.1`/`starlette==1.6.0` — what CI and Railway install — while the dev machine had `fastapi 0.115.0`/`starlette 0.38.6`.** Every local test run was validating against a different framework than production. **PROD WAS NEVER AFFECTED** (verified first: `/home/trending` 200, `/home/smart-pick` + `/profile/recent-decisions` 401 = routes mounted); it was purely test introspection.
+- The blind spot mattered: one of the three was **Wave-1's `test_price_kpi_route_declares_admin_dependency` SECURITY pin**, silently protecting nothing in CI (StopIteration). Both implementer and adversarial reviewer proved it fires by actually removing `Depends(verify_admin_key)` — the endpoint then served a real price body anonymously and the pin went red. Restored.
+- **THE DIAGNOSTIC LESSON: two rounds of inference were wrong because the premise was wrong.** It was assumed to be a lost-PREFIX bug. Ground truth (throwaway venv with a real `fastapi==0.141.1`; nothing in the repo or the lock touched) showed it is a lost-CONTAINER bug: `_IncludedRouter` exposes **neither `.routes` nor `.router`**, so the walker skipped every `/api/v1/admin/*` route entirely. It holds `.original_router` (child paths UNPREFIXED, may nest another `_IncludedRouter`) and keeps the mount prefix on `.include_context.prefix` — `original_router.prefix` is EMPTY, so that context is the only place it exists. **When two inference rounds fail, install the pinned version and look.**
+- Shared duck-typed walker: **`tests/_route_introspection.py`** — use it, never re-flatten to `for r in app.routes`. It carries a POSITIVE control (`assert_route_table_visible`) that cross-checks the walk against the app's own `app.openapi()` paths, so a blind route table fails LOUDLY (naming the file to fix) instead of passing vacuously — which is exactly how each wrong guess surfaced. Cycle guard is per-BRANCH (`seen` = "is an ancestor"), so a router mounted twice is not silently halved.
+- Also M13-84: `test_prices_endpoint_rate_limited` marked `live_unit` — its 25-iteration loop resolves a REAL price per call, so it timed out `--timeout=60` on a networked runner. The local gate already had it in `NETWORK_FLAKY_EXCLUDE`; the marker makes that skip apply in CI too.
+
+## NEXT
+Unchanged and all Ahmed-gated: OpenAI credits → step-1 canaries; qaren.app domain attach + Cloudflare; Awin/CJ paste-throughs; `eas update` to put Wave 4 on phones. Then: the M13-29 RLS migration (separate session), and the product-OUTPUT quality review (prompts / LLM answers / scoring rubric) that M13 explicitly did not cover. **Now that CI is green and blocking, a red build is real signal — keep it that way.** Worth doing: re-sync the local env (`pip install -r requirements.txt -r requirements-dev.txt`) so local runs match CI/prod.
+
+---
+
 # SESSION 60: M11–M17 — descriptor seed, robots ruling, landing deploy, M13 full review + ALL 4 FIX WAVES — COMPLETE 2026-09-01
 
 **Main at session end: `5179dde` — deployed, `/health` 200, `/openapi.json` 404 (prod-verified).**
