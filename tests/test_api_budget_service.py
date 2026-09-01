@@ -1,15 +1,25 @@
 """Tests for API budget service — credit tracking + circuit breakers."""
+
 import json
 import time
 import pytest
 from unittest.mock import patch, MagicMock, call
 
 from app.services.api_budget_service import (
-    has_budget, record_usage, record_failure, record_success,
-    is_circuit_closed, get_usage_summary,
-    PROVIDER_CONFIGS, CB_FAILURE_THRESHOLD, CB_RECOVERY_TIMEOUT,
-    CB_CLOSED, CB_OPEN, CB_HALF_OPEN,
-    _budget_key, _circuit_key,
+    has_budget,
+    record_usage,
+    record_failure,
+    record_success,
+    is_circuit_closed,
+    get_usage_summary,
+    PROVIDER_CONFIGS,
+    CB_FAILURE_THRESHOLD,
+    CB_RECOVERY_TIMEOUT,
+    CB_CLOSED,
+    CB_OPEN,
+    CB_HALF_OPEN,
+    _budget_key,
+    _circuit_key,
 )
 
 
@@ -34,14 +44,35 @@ def mock_redis_helpers():
         return True
 
     mock_client = MagicMock()
-    mock_client.incrby = MagicMock(side_effect=lambda key, count: fake_incr(key) if count == 1 else [fake_incr(key) for _ in range(count)][-1])
+    mock_client.incrby = MagicMock(
+        side_effect=lambda key, count: (
+            fake_incr(key) if count == 1 else [fake_incr(key) for _ in range(count)][-1]
+        )
+    )
 
-    with patch("app.services.api_budget_service._redis_get", side_effect=fake_get) as m_get, \
-         patch("app.services.api_budget_service._redis_set", side_effect=fake_set) as m_set, \
-         patch("app.services.api_budget_service._redis_incr", side_effect=fake_incr) as m_incr, \
-         patch("app.services.api_budget_service._redis_expire", side_effect=fake_expire) as m_expire, \
-         patch("app.services.cache_service.redis_client", mock_client):
-        yield {"get": m_get, "set": m_set, "incr": m_incr, "expire": m_expire, "store": store, "client": mock_client}
+    with (
+        patch(
+            "app.services.api_budget_service._redis_get", side_effect=fake_get
+        ) as m_get,
+        patch(
+            "app.services.api_budget_service._redis_set", side_effect=fake_set
+        ) as m_set,
+        patch(
+            "app.services.api_budget_service._redis_incr", side_effect=fake_incr
+        ) as m_incr,
+        patch(
+            "app.services.api_budget_service._redis_expire", side_effect=fake_expire
+        ) as m_expire,
+        patch("app.services.cache_service.redis_client", mock_client),
+    ):
+        yield {
+            "get": m_get,
+            "set": m_set,
+            "incr": m_incr,
+            "expire": m_expire,
+            "store": store,
+            "client": mock_client,
+        }
 
 
 class TestBudgetKey:
@@ -76,6 +107,7 @@ class TestSerperKeyScoping:
 
     def test_key_prefix_reads_first_8_chars(self, monkeypatch):
         from app.services.api_budget_service import _serper_key_prefix
+
         monkeypatch.setenv("SERPER_API_KEY", "0cda9843xxxxxxxxxxxx")
         assert _serper_key_prefix() == "0cda9843"
 
@@ -83,6 +115,7 @@ class TestSerperKeyScoping:
         """Unset/empty SERPER_API_KEY → a stable 'nokey' sentinel prefix so the
         key is deterministic in test/CI environments without the secret."""
         from app.services.api_budget_service import _serper_key_prefix
+
         monkeypatch.delenv("SERPER_API_KEY", raising=False)
         assert _serper_key_prefix() == "nokey"
         monkeypatch.setenv("SERPER_API_KEY", "")
@@ -92,6 +125,7 @@ class TestSerperKeyScoping:
         """Read fresh each call so a Railway env update / rotation takes effect
         without a process restart (mirrors _serper_image_daily_budget)."""
         from app.services.api_budget_service import _serper_key_prefix
+
         monkeypatch.setenv("SERPER_API_KEY", "aaaaaaaa1111")
         assert _serper_key_prefix() == "aaaaaaaa"
         monkeypatch.setenv("SERPER_API_KEY", "bbbbbbbb2222")
@@ -128,6 +162,7 @@ class TestSerperKeyScoping:
         rotation re-arms the alert (new prefix → new sentinel key → not the
         latched no-expiry one from the previous key)."""
         from app.services.api_budget_service import _burn_sentinel_key
+
         monkeypatch.setenv("SERPER_API_KEY", "0cda9843zzzz")
         sentinel = _burn_sentinel_key("serper")
         assert "0cda9843" in sentinel
@@ -137,6 +172,7 @@ class TestSerperKeyScoping:
         """Different keys → different sentinels → the latched lifetime alert
         from the old key does NOT suppress the new key's alert."""
         from app.services.api_budget_service import _burn_sentinel_key
+
         monkeypatch.setenv("SERPER_API_KEY", "3d304edepleted")
         old_sentinel = _burn_sentinel_key("serper")
         monkeypatch.setenv("SERPER_API_KEY", "0cda9843fresh")
@@ -146,6 +182,7 @@ class TestSerperKeyScoping:
     def test_record_usage_increments_scoped_key(self, mock_redis_helpers, monkeypatch):
         """record_usage writes to the key-scoped counter, end-to-end."""
         from app.services import api_budget_service as abs_mod
+
         monkeypatch.setenv("SERPER_API_KEY", "0cda9843zzzz")
         abs_mod.record_usage("serper", 1)
         assert mock_redis_helpers["store"]["budget:serper:0cda9843:lifetime"] == "1"
@@ -154,6 +191,7 @@ class TestSerperKeyScoping:
         """A rotation onto a fresh key reports 0 used even when the OLD key's
         counter is at the cap in Redis (the false-trip fix, end-to-end)."""
         from app.services.api_budget_service import get_burn_status
+
         # Old depleted key's counter is parked over the cap.
         mock_redis_helpers["store"]["budget:serper:3d304ede:lifetime"] = "5136"
         # Rotate onto the fresh key.
@@ -169,7 +207,9 @@ class TestHasBudget:
         assert has_budget("firecrawl") is True
 
     def test_at_limit(self, mock_redis_helpers):
-        mock_redis_helpers["store"][_budget_key("firecrawl")] = str(PROVIDER_CONFIGS["firecrawl"]["monthly_limit"])
+        mock_redis_helpers["store"][_budget_key("firecrawl")] = str(
+            PROVIDER_CONFIGS["firecrawl"]["monthly_limit"]
+        )
         assert has_budget("firecrawl") is False
 
     def test_over_limit(self, mock_redis_helpers):
@@ -184,7 +224,10 @@ class TestHasBudget:
         assert has_budget("nonexistent") is False
 
     def test_redis_error_fail_open(self):
-        with patch("app.services.api_budget_service._redis_get", side_effect=Exception("Redis down")):
+        with patch(
+            "app.services.api_budget_service._redis_get",
+            side_effect=Exception("Redis down"),
+        ):
             assert has_budget("firecrawl") is True
 
     def test_warning_logged_at_warn_threshold(self, mock_redis_helpers):
@@ -198,7 +241,9 @@ class TestHasBudget:
         assert has_budget("scrapedo") is True
 
     def test_scrapedo_exhausted(self, mock_redis_helpers):
-        mock_redis_helpers["store"][_budget_key("scrapedo")] = str(PROVIDER_CONFIGS["scrapedo"]["monthly_limit"])
+        mock_redis_helpers["store"][_budget_key("scrapedo")] = str(
+            PROVIDER_CONFIGS["scrapedo"]["monthly_limit"]
+        )
         assert has_budget("scrapedo") is False
 
 
@@ -222,7 +267,10 @@ class TestRecordUsage:
         mock_redis_helpers["expire"].assert_not_called()
 
     def test_redis_error_no_crash(self):
-        with patch("app.services.api_budget_service._redis_incr", side_effect=Exception("Redis down")):
+        with patch(
+            "app.services.api_budget_service._redis_incr",
+            side_effect=Exception("Redis down"),
+        ):
             record_usage("firecrawl")  # should not raise
 
 
@@ -247,25 +295,28 @@ class TestCircuitBreaker:
 
     def test_threshold_failures_trips_breaker(self, mock_redis_helpers):
         # Pre-load state with failures just below threshold
-        mock_redis_helpers["store"][_circuit_key("firecrawl")] = json.dumps({
-            "state": CB_CLOSED, "failure_count": CB_FAILURE_THRESHOLD - 1
-        })
+        mock_redis_helpers["store"][_circuit_key("firecrawl")] = json.dumps(
+            {"state": CB_CLOSED, "failure_count": CB_FAILURE_THRESHOLD - 1}
+        )
         record_failure("firecrawl")
         raw = mock_redis_helpers["store"][_circuit_key("firecrawl")]
         state = json.loads(raw)
         assert state["state"] == CB_OPEN
 
     def test_open_breaker_blocks_calls(self, mock_redis_helpers):
-        mock_redis_helpers["store"][_circuit_key("firecrawl")] = json.dumps({
-            "state": CB_OPEN, "failure_count": 3, "tripped_at": time.time()
-        })
+        mock_redis_helpers["store"][_circuit_key("firecrawl")] = json.dumps(
+            {"state": CB_OPEN, "failure_count": 3, "tripped_at": time.time()}
+        )
         assert is_circuit_closed("firecrawl") is False
 
     def test_open_transitions_to_half_open_after_timeout(self, mock_redis_helpers):
-        mock_redis_helpers["store"][_circuit_key("firecrawl")] = json.dumps({
-            "state": CB_OPEN, "failure_count": 3,
-            "tripped_at": time.time() - CB_RECOVERY_TIMEOUT - 1
-        })
+        mock_redis_helpers["store"][_circuit_key("firecrawl")] = json.dumps(
+            {
+                "state": CB_OPEN,
+                "failure_count": 3,
+                "tripped_at": time.time() - CB_RECOVERY_TIMEOUT - 1,
+            }
+        )
         assert is_circuit_closed("firecrawl") is True
         # Verify state was updated to half-open
         raw = mock_redis_helpers["store"][_circuit_key("firecrawl")]
@@ -273,26 +324,29 @@ class TestCircuitBreaker:
         assert state["state"] == CB_HALF_OPEN
 
     def test_half_open_allows_limited_calls(self, mock_redis_helpers):
-        mock_redis_helpers["store"][_circuit_key("firecrawl")] = json.dumps({
-            "state": CB_HALF_OPEN, "failure_count": 0, "half_open_calls": 0
-        })
+        mock_redis_helpers["store"][_circuit_key("firecrawl")] = json.dumps(
+            {"state": CB_HALF_OPEN, "failure_count": 0, "half_open_calls": 0}
+        )
         assert is_circuit_closed("firecrawl") is True
 
     def test_half_open_blocks_excess_calls(self, mock_redis_helpers):
         from app.services import api_budget_service as abs_mod
+
         state = {"state": CB_HALF_OPEN, "failure_count": 0, "half_open_calls": 1}
         mock_redis_helpers["store"][_circuit_key("firecrawl")] = json.dumps(state)
         # #115 — the admission count now lives in the atomic per-trip-window
         # probe counter (not the JSON blob), so seed THAT to represent the one
         # probe already admitted. Same pinned semantic: excess calls blocked.
-        mock_redis_helpers["store"][abs_mod._half_open_probe_key("firecrawl", state)] = "1"
+        mock_redis_helpers["store"][
+            abs_mod._half_open_probe_key("firecrawl", state)
+        ] = "1"
         # CB_HALF_OPEN_MAX_CALLS is 1, so with 1 already made, should block
         assert is_circuit_closed("firecrawl") is False
 
     def test_success_closes_half_open(self, mock_redis_helpers):
-        mock_redis_helpers["store"][_circuit_key("firecrawl")] = json.dumps({
-            "state": CB_HALF_OPEN, "failure_count": 0, "half_open_calls": 0
-        })
+        mock_redis_helpers["store"][_circuit_key("firecrawl")] = json.dumps(
+            {"state": CB_HALF_OPEN, "failure_count": 0, "half_open_calls": 0}
+        )
         record_success("firecrawl")
         raw = mock_redis_helpers["store"][_circuit_key("firecrawl")]
         state = json.loads(raw)
@@ -305,21 +359,30 @@ class TestCircuitBreaker:
         # Should not crash, no state created
 
     def test_redis_error_fail_open(self):
-        with patch("app.services.api_budget_service._redis_get", side_effect=Exception("Redis down")):
+        with patch(
+            "app.services.api_budget_service._redis_get",
+            side_effect=Exception("Redis down"),
+        ):
             assert is_circuit_closed("firecrawl") is True
 
     def test_record_failure_redis_error_no_crash(self):
-        with patch("app.services.api_budget_service._redis_get", side_effect=Exception("Redis down")):
+        with patch(
+            "app.services.api_budget_service._redis_get",
+            side_effect=Exception("Redis down"),
+        ):
             record_failure("firecrawl")  # should not raise
 
     def test_record_success_redis_error_no_crash(self):
-        with patch("app.services.api_budget_service._redis_get", side_effect=Exception("Redis down")):
+        with patch(
+            "app.services.api_budget_service._redis_get",
+            side_effect=Exception("Redis down"),
+        ):
             record_success("firecrawl")  # should not raise
 
     def test_tripped_at_set_when_breaker_opens(self, mock_redis_helpers):
-        mock_redis_helpers["store"][_circuit_key("firecrawl")] = json.dumps({
-            "state": CB_CLOSED, "failure_count": CB_FAILURE_THRESHOLD - 1
-        })
+        mock_redis_helpers["store"][_circuit_key("firecrawl")] = json.dumps(
+            {"state": CB_CLOSED, "failure_count": CB_FAILURE_THRESHOLD - 1}
+        )
         before = time.time()
         record_failure("firecrawl")
         after = time.time()
@@ -364,9 +427,9 @@ class TestUsageSummary:
         assert summary["providers"]["scrapedo"]["is_lifetime"] is False
 
     def test_circuit_breaker_open_reported(self, mock_redis_helpers):
-        mock_redis_helpers["store"][_circuit_key("firecrawl")] = json.dumps({
-            "state": CB_OPEN, "failure_count": 5
-        })
+        mock_redis_helpers["store"][_circuit_key("firecrawl")] = json.dumps(
+            {"state": CB_OPEN, "failure_count": 5}
+        )
         summary = get_usage_summary()
         assert summary["circuit_breakers"]["firecrawl"]["state"] == CB_OPEN
         assert summary["circuit_breakers"]["firecrawl"]["failures"] == 5
@@ -377,7 +440,10 @@ class TestUsageSummary:
         assert summary["providers"]["firecrawl"]["remaining"] == 0
 
     def test_redis_error_in_summary_returns_zero_usage(self):
-        with patch("app.services.api_budget_service._redis_get", side_effect=Exception("Redis down")):
+        with patch(
+            "app.services.api_budget_service._redis_get",
+            side_effect=Exception("Redis down"),
+        ):
             summary = get_usage_summary()
             for provider in PROVIDER_CONFIGS:
                 assert summary["providers"][provider]["used"] == 0
@@ -406,9 +472,9 @@ class TestEdgeCases:
 
     def test_record_failure_on_already_open_breaker(self, mock_redis_helpers):
         # Breaker already open — another failure should keep it open, increment count
-        mock_redis_helpers["store"][_circuit_key("firecrawl")] = json.dumps({
-            "state": CB_OPEN, "failure_count": 5, "tripped_at": time.time()
-        })
+        mock_redis_helpers["store"][_circuit_key("firecrawl")] = json.dumps(
+            {"state": CB_OPEN, "failure_count": 5, "tripped_at": time.time()}
+        )
         record_failure("firecrawl")
         raw = mock_redis_helpers["store"][_circuit_key("firecrawl")]
         state = json.loads(raw)
@@ -426,9 +492,9 @@ class TestEdgeCases:
         record_failure("firecrawl")
 
     def test_success_resets_failure_count_on_closed(self, mock_redis_helpers):
-        mock_redis_helpers["store"][_circuit_key("firecrawl")] = json.dumps({
-            "state": CB_CLOSED, "failure_count": 2
-        })
+        mock_redis_helpers["store"][_circuit_key("firecrawl")] = json.dumps(
+            {"state": CB_CLOSED, "failure_count": 2}
+        )
         record_success("firecrawl")
         raw = mock_redis_helpers["store"][_circuit_key("firecrawl")]
         state = json.loads(raw)
@@ -439,7 +505,9 @@ class TestEdgeCases:
         assert has_budget("serper") is True
 
     def test_has_budget_serper_exhausted(self, mock_redis_helpers):
-        mock_redis_helpers["store"][_budget_key("serper")] = str(PROVIDER_CONFIGS["serper"]["monthly_limit"])
+        mock_redis_helpers["store"][_budget_key("serper")] = str(
+            PROVIDER_CONFIGS["serper"]["monthly_limit"]
+        )
         assert has_budget("serper") is False
 
     def test_record_usage_count_zero(self, mock_redis_helpers):
@@ -458,6 +526,7 @@ class TestEdgeCases:
 # ============================================================================
 # Bundle E S3 — Serper Images dedicated daily counter
 # ============================================================================
+
 
 @pytest.fixture
 def mock_image_redis():
@@ -515,7 +584,7 @@ class TestSerperImageCounter:
 
         # Set counter near limit, then try to overflow
         mock_image_redis["store"]["counter"] = 499
-        assert try_consume_serper_image_credit(1) is True   # 500 (at limit, still OK)
+        assert try_consume_serper_image_credit(1) is True  # 500 (at limit, still OK)
         assert try_consume_serper_image_credit(1) is False  # 501 → rejected + rollback
 
         # After rollback, counter should be back at 500
@@ -578,7 +647,9 @@ class TestSerperImageCounter:
         # 11th call rejected
         assert try_consume_serper_image_credit(1) is False
 
-    def test_env_var_malformed_falls_back_to_default(self, mock_image_redis, monkeypatch):
+    def test_env_var_malformed_falls_back_to_default(
+        self, mock_image_redis, monkeypatch
+    ):
         """Garbage env value → use default 500."""
         from app.services.api_budget_service import (
             try_consume_serper_image_credit,
@@ -609,7 +680,10 @@ class TestSerperImageUsageDiagnostic:
         assert result["providers"]["serper_images"]["remaining"] == 458
 
     def test_get_serper_image_usage_returns_dict(self, mock_redis_helpers):
-        from app.services.api_budget_service import _serper_image_key, get_serper_image_usage
+        from app.services.api_budget_service import (
+            _serper_image_key,
+            get_serper_image_usage,
+        )
 
         mock_redis_helpers["store"][_serper_image_key()] = "5"
         usage = get_serper_image_usage()
@@ -647,15 +721,18 @@ class TestSerperImageKey:
 class TestBurnAlertThreshold:
     def test_burn_fraction_constant_is_80pct(self):
         from app.services.api_budget_service import WARN_BURN_FRACTION
+
         assert WARN_BURN_FRACTION == 0.80
 
     def test_serper_80pct_threshold_value(self):
         # 2200 ceiling * 0.80 = 1760 credits.
         from app.services.api_budget_service import _burn_threshold
+
         assert _burn_threshold("serper") == 1760
 
     def test_get_burn_status_below_threshold(self, mock_redis_helpers):
         from app.services.api_budget_service import get_burn_status
+
         mock_redis_helpers["store"][_budget_key("serper")] = "1000"
         status = get_burn_status("serper")
         assert status["used"] == 1000
@@ -667,19 +744,24 @@ class TestBurnAlertThreshold:
 
     def test_get_burn_status_at_threshold(self, mock_redis_helpers):
         from app.services.api_budget_service import get_burn_status
+
         mock_redis_helpers["store"][_budget_key("serper")] = "1760"
         status = get_burn_status("serper")
         assert status["over_threshold"] is True
 
     def test_get_burn_status_unknown_provider(self, mock_redis_helpers):
         from app.services.api_budget_service import get_burn_status
+
         status = get_burn_status("nonexistent")
         assert status["over_threshold"] is False
         assert status["limit"] == 0
 
     def test_get_burn_status_fail_open_on_redis_error(self):
         from app.services.api_budget_service import get_burn_status
-        with patch("app.services.api_budget_service._redis_get", side_effect=Exception("down")):
+
+        with patch(
+            "app.services.api_budget_service._redis_get", side_effect=Exception("down")
+        ):
             status = get_burn_status("serper")
             # Fail-safe: no usage observed, never raises.
             assert status["used"] == 0
@@ -691,6 +773,7 @@ class TestBurnAlertFires:
         """Drill test (binding-table exit criterion): crossing 80% fires a
         Sentry capture_message + WARNING log exactly once."""
         from app.services import api_budget_service as abs_mod
+
         # Seed just below threshold so the next increment crosses it.
         mock_redis_helpers["store"][_budget_key("serper")] = "1759"
 
@@ -706,11 +789,14 @@ class TestBurnAlertFires:
         assert "serper" in msg.lower()
         assert "80%" in msg or "burn" in msg.lower()
         # WARNING log emitted with a burn marker.
-        assert any("BURN" in str(c.args[0]).upper() or "burn" in str(c.args).lower()
-                   for c in m_warn.call_args_list)
+        assert any(
+            "BURN" in str(c.args[0]).upper() or "burn" in str(c.args).lower()
+            for c in m_warn.call_args_list
+        )
 
     def test_alert_does_not_fire_below_threshold(self, mock_redis_helpers):
         from app.services import api_budget_service as abs_mod
+
         mock_redis_helpers["store"][_budget_key("serper")] = "100"
 
         fake_sentry = MagicMock()
@@ -723,24 +809,29 @@ class TestBurnAlertFires:
         """The sentinel must suppress repeat alerts on every subsequent call
         within the same budget window."""
         from app.services import api_budget_service as abs_mod
+
         mock_redis_helpers["store"][_budget_key("serper")] = "1759"
 
         fake_sentry = MagicMock()
         with patch.dict("sys.modules", {"sentry_sdk": fake_sentry}):
-            abs_mod.record_usage("serper", 1)   # crosses -> alert #1
-            abs_mod.record_usage("serper", 1)   # 1761 -> still over, deduped
-            abs_mod.record_usage("serper", 5)   # 1766 -> still over, deduped
+            abs_mod.record_usage("serper", 1)  # crosses -> alert #1
+            abs_mod.record_usage("serper", 1)  # 1761 -> still over, deduped
+            abs_mod.record_usage("serper", 5)  # 1766 -> still over, deduped
 
         assert fake_sentry.capture_message.call_count == 1
 
-    def test_record_usage_still_increments_when_sentry_missing(self, mock_redis_helpers):
+    def test_record_usage_still_increments_when_sentry_missing(
+        self, mock_redis_helpers
+    ):
         """Alert path must never break the counter even if sentry_sdk import
         fails (ImportError swallowed)."""
         from app.services import api_budget_service as abs_mod
+
         mock_redis_helpers["store"][_budget_key("serper")] = "1759"
 
         # Force ImportError on `import sentry_sdk`.
         import builtins
+
         real_import = builtins.__import__
 
         def fake_import(name, *a, **k):
@@ -757,11 +848,14 @@ class TestBurnAlertFires:
         """If the sentinel read/write errors, record_usage must still complete
         (alert is best-effort, fail-open)."""
         from app.services import api_budget_service as abs_mod
+
         mock_redis_helpers["store"][_budget_key("serper")] = "1759"
 
         # _maybe_fire_burn_alert reads the sentinel via _redis_get; make that
         # specific path raise while the counter incrby (on the client) succeeds.
-        with patch("app.services.api_budget_service._redis_get", side_effect=Exception("down")):
+        with patch(
+            "app.services.api_budget_service._redis_get", side_effect=Exception("down")
+        ):
             # Should not raise.
             abs_mod.record_usage("serper", 1)
 
@@ -782,6 +876,7 @@ class TestBurnAlertSentinelTTL:
         """Return the `ex` kwarg _redis_set was called with for `provider`'s
         burn sentinel (None if the call wasn't made)."""
         from app.services.api_budget_service import _burn_sentinel_key
+
         sentinel = _burn_sentinel_key(provider)
         for call in m_set.call_args_list:
             args, kwargs = call
@@ -794,6 +889,7 @@ class TestBurnAlertSentinelTTL:
         """serper is lifetime → sentinel must be latched (ex=None), NOT 1h."""
         from app.services import api_budget_service as abs_mod
         from app.services.api_budget_service import _CB_TTL
+
         mock_redis_helpers["store"][_budget_key("serper")] = "1759"
         fake_sentry = MagicMock()
         with patch.dict("sys.modules", {"sentry_sdk": fake_sentry}):
@@ -802,13 +898,16 @@ class TestBurnAlertSentinelTTL:
         assert ex != "NO_CALL", "lifetime crossing must set the sentinel"
         # The bug: ex == _CB_TTL (3600). The fix: latched (None) — never the 1h.
         assert ex != _CB_TTL, "F1: lifetime sentinel must NOT use the 1h _CB_TTL"
-        assert ex is None, "lifetime sentinel must be latched (no expiry) until rotation"
+        assert (
+            ex is None
+        ), "lifetime sentinel must be latched (no expiry) until rotation"
 
     def test_monthly_sentinel_is_bounded_not_latched(self, mock_redis_helpers):
         """A monthly provider's sentinel is bounded by _MONTHLY_TTL (it re-arms
         on next month's key anyway). scrapedo is the monthly provider."""
         from app.services import api_budget_service as abs_mod
         from app.services.api_budget_service import _MONTHLY_TTL, _burn_threshold
+
         # Seed scrapedo just below its 80% threshold so the next call crosses.
         thr = _burn_threshold("scrapedo")
         mock_redis_helpers["store"][_budget_key("scrapedo")] = str(thr - 1)
@@ -832,12 +931,14 @@ class TestHalfOpenCounterAtomicity:
     """
 
     def _half_open_state(self, half_open_calls=0, tripped_at=1000.0):
-        return json.dumps({
-            "state": CB_HALF_OPEN,
-            "failure_count": 3,
-            "half_open_calls": half_open_calls,
-            "tripped_at": tripped_at,
-        })
+        return json.dumps(
+            {
+                "state": CB_HALF_OPEN,
+                "failure_count": 3,
+                "half_open_calls": half_open_calls,
+                "tripped_at": tripped_at,
+            }
+        )
 
     def test_half_open_counter_is_atomic_incr(self, mock_redis_helpers):
         """The admission decision must come from the INCR return value, not
@@ -850,16 +951,20 @@ class TestHalfOpenCounterAtomicity:
         state_key = _circuit_key("firecrawl")
         mock_redis_helpers["store"][state_key] = self._half_open_state(0)
         probe_key = abs_mod._half_open_probe_key("firecrawl", {"tripped_at": 1000.0})
-        mock_redis_helpers["store"][probe_key] = "1"  # concurrent probe already admitted
+        mock_redis_helpers["store"][
+            probe_key
+        ] = "1"  # concurrent probe already admitted
 
-        assert is_circuit_closed("firecrawl") is False, (
-            "admission ignored the atomic counter — the non-atomic RMW is back"
-        )
+        assert (
+            is_circuit_closed("firecrawl") is False
+        ), "admission ignored the atomic counter — the non-atomic RMW is back"
         # And the atomic op actually ran (the seam the offload makes safe).
         incr_keys = [c.args[0] for c in mock_redis_helpers["incr"].call_args_list]
         assert probe_key in incr_keys, "half-open admission did not INCR the probe key"
 
-    def test_half_open_admission_never_rewrites_count_from_blob(self, mock_redis_helpers):
+    def test_half_open_admission_never_rewrites_count_from_blob(
+        self, mock_redis_helpers
+    ):
         """Serial sanity: with a fresh probe window, the first check is admitted,
         the second rejected — same observable contract as M13-31, now atomic."""
         state_key = _circuit_key("scrapedo")
@@ -867,3 +972,62 @@ class TestHalfOpenCounterAtomicity:
 
         assert is_circuit_closed("scrapedo") is True
         assert is_circuit_closed("scrapedo") is False
+
+
+class TestHalfOpenMirrorCannotWedgeTheBreaker:
+    """#115 review (medium): a DENIED half-open check must not write the blob.
+
+    The admission counter is atomic, but the HALF_OPEN branch also mirrored the
+    count into the state blob on EVERY check. Flag-ON (ENABLE_ASYNC_REDIS_OFFLOAD)
+    the gate check runs in a thread while record_success runs on the loop, so a
+    denied check whose read->write span brackets record_success's CLOSED write
+    resurrects `half_open`. Every later check then INCRs to n >= 2, returns
+    False AND refreshes the TTL — and because denied checks never call
+    record_success/record_failure, the provider stays denied indefinitely. The
+    poisoned blob lives in Redis, so it survives flipping the flag back OFF.
+
+    Only the ADMITTED probe (n == 1) writes the mirror; its write strictly
+    precedes its own render call, so it can never land after that render's
+    record_success.
+    """
+
+    def _fake_redis(self, monkeypatch):
+        import app.services.api_budget_service as budget
+
+        store = {}
+        monkeypatch.setattr(budget, "_redis_get", lambda k: store.get(k))
+        monkeypatch.setattr(
+            budget, "_redis_set", lambda k, v, ex=None: store.__setitem__(k, v)
+        )
+
+        def _incr(k):
+            store[k] = str(int(store.get(k, 0)) + 1)
+            return int(store[k])
+
+        monkeypatch.setattr(budget, "_redis_incr", _incr)
+        monkeypatch.setattr(budget, "_redis_expire", lambda k, ttl: None)
+        return budget, store
+
+    def test_a_denied_check_does_not_resurrect_half_open(self, monkeypatch):
+        import json
+
+        budget, store = self._fake_redis(monkeypatch)
+        key = budget._circuit_key("firecrawl")
+        store[key] = json.dumps(
+            {
+                "state": budget.CB_HALF_OPEN,
+                "failure_count": 3,
+                "tripped_at": 1000,
+                "half_open_calls": 0,
+            }
+        )
+
+        assert budget.is_circuit_closed("firecrawl") is True  # the one probe
+        assert budget.is_circuit_closed("firecrawl") is False  # denied
+        budget.record_success("firecrawl")  # the probe's render succeeded
+
+        assert json.loads(store[key])["state"] == budget.CB_CLOSED, (
+            "a denied check re-stamped the blob half_open — the breaker would "
+            "wedge in deny-all under continuous traffic"
+        )
+        assert budget.is_circuit_closed("firecrawl") is True

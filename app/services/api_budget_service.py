@@ -538,10 +538,24 @@ def is_circuit_closed(provider: str) -> bool:
                 return True
             if n == 1:
                 _redis_expire(probe_key, _CB_TTL)
-            # Mirror the count into the blob for observability only — it is
-            # NEVER the admission input, so the blob RMW can no longer over-admit.
-            state["half_open_calls"] = n
-            _redis_set(_circuit_key(provider), json.dumps(state), ex=_CB_TTL)
+                # Mirror the count into the blob for observability ONLY — it is
+                # NEVER the admission input, so the blob write can no longer
+                # over-admit.
+                #
+                # ONLY the ADMITTED probe (n == 1) writes the mirror. A DENIED
+                # check must not, or it re-stamps the blob `half_open` and can
+                # WEDGE the breaker in deny-all: flag-ON the gate check runs in
+                # a thread while record_success runs on the loop, so a denied
+                # check whose read->write span brackets record_success's CLOSED
+                # write resurrects `half_open`; every later check then INCRs to
+                # n >= 2, returns False AND refreshes the TTL, and since denied
+                # checks never call record_success/record_failure the provider
+                # stays denied indefinitely (the poisoned blob survives a
+                # flag-OFF flip — it is in Redis). The admitted probe's mirror
+                # strictly PRECEDES its own render call, so it can never land
+                # after that render's record_success.
+                state["half_open_calls"] = n
+                _redis_set(_circuit_key(provider), json.dumps(state), ex=_CB_TTL)
             return n <= CB_HALF_OPEN_MAX_CALLS
         return True
     except Exception as e:
