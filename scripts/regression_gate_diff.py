@@ -25,6 +25,8 @@ Exit codes:
 from __future__ import annotations
 
 import argparse
+import importlib.metadata
+import re
 import dataclasses
 import sys
 from pathlib import Path
@@ -194,6 +196,76 @@ def format_report(result: DiffResult) -> str:
     return "\n".join(lines)
 
 
+# ---------------------------------------------------------------------------
+# Issue #121 — a baseline captured on an OFF-LOCK environment certifies nothing.
+#
+# requirements.txt is the lock CI and Railway install. When the local
+# interpreter runs different versions, "the suite is green here" is a statement
+# about a stack nobody ships. This is not hypothetical: on 2026-09-01 the dev
+# machine ran fastapi 0.115.0 against a pinned 0.141.1, whose lazy
+# `include_router` returns an `_IncludedRouter` with no `.path`. Three
+# route-introspection tests passed locally and failed only in CI for months —
+# and one of them was the security pin asserting GET /text/price-kpi still
+# carries its admin dependency. The gate therefore REFUSES to certify by
+# default and makes the drift visible instead of silently blessing it.
+# ---------------------------------------------------------------------------
+_PIN_RE = re.compile(r"^([A-Za-z0-9_.\-]+)==([^\s;#]+)")
+
+
+def _canon(name: str) -> str:
+    return name.strip().lower().replace("_", "-")
+
+
+def lock_drift(requirements: Path | str = REPO_ROOT / "requirements.txt") -> list:
+    """Return [(package, pinned, installed)] for every INSTALLED pin that differs.
+
+    Only installed distributions are compared: a pin absent from this
+    environment is a smaller claim (that code path is not exercised here) than
+    a pin present at the WRONG version, which silently changes behaviour.
+    """
+    try:
+        text = Path(requirements).read_text(encoding="utf-8")
+    except OSError:
+        return []
+    drift = []
+    for line in text.splitlines():
+        match = _PIN_RE.match(line.strip())
+        if not match:
+            continue
+        name, pinned = _canon(match.group(1)), match.group(2).strip()
+        try:
+            installed = importlib.metadata.version(name)
+        except importlib.metadata.PackageNotFoundError:
+            continue
+        except Exception:  # noqa: BLE001 — a broken dist must not break the gate
+            continue
+        if installed != pinned:
+            drift.append((name, pinned, installed))
+    return sorted(drift)
+
+
+def format_drift(drift: list) -> str:
+    lines = [
+        "REFUSING TO CERTIFY: this environment is OFF-LOCK.",
+        "",
+        f"{len(drift)} installed package(s) differ from requirements.txt, which is",
+        "what CI and Railway install. A pass here does not describe the shipped stack.",
+        "",
+        f"  {'package':<24} {'lock':<14} installed",
+    ]
+    for name, pinned, installed in drift:
+        lines.append(f"  {name:<24} {pinned:<14} {installed}")
+    lines += [
+        "",
+        "Re-sync, then re-capture:",
+        "  pip install -r requirements.txt -r requirements-dev.txt",
+        "",
+        "Pass --allow-off-lock to override (records the drift in the report and",
+        "certifies nothing about CI or production).",
+    ]
+    return "\n".join(lines)
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -203,7 +275,20 @@ def main(argv=None) -> int:
                              "(or failure-id list) to diff against the baseline.")
     parser.add_argument("--baseline", default=str(DEFAULT_BASELINE),
                         help=f"Baseline failure-id file (default {DEFAULT_BASELINE}).")
+    parser.add_argument("--allow-off-lock", action="store_true",
+                        help="Certify even when installed packages drift from "
+                             "requirements.txt (issue #121). The drift is still "
+                             "printed; use only when you know the delta is inert.")
     args = parser.parse_args(argv)
+
+    # Issue #121 — refuse before doing any diffing, so an off-lock run cannot
+    # produce a green report at all.
+    drift = lock_drift()
+    if drift:
+        print(format_drift(drift), file=sys.stderr)
+        if not args.allow_off_lock:
+            return 4
+        print("--allow-off-lock: continuing despite the drift above.\n", file=sys.stderr)
 
     try:
         current_text = Path(args.current).read_text(encoding="utf-8")

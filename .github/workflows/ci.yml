@@ -156,7 +156,7 @@ jobs:
       - name: black --check (whole repo, drift report)
         continue-on-error: true
         run: |
-          echo "Baseline at main c630436: 603 of 619 files would be reformatted."
+          echo "Baseline at main c630436: 603 of 619 files. MEASURED 2026-09-01: 701 of 719."
           echo "This step never blocks a PR — see .github/black-clean-paths.txt."
           python -m black --check app/ tests/ scripts/
 
@@ -177,20 +177,24 @@ jobs:
           cache-dependency-path: SmartCompareApp/package-lock.json
 
       # NON-BLOCKING on purpose, twice over:
-      #  1. requirements.txt is a floating `>=` list, not a lock, so pip-audit here
-      #     scans whatever resolved today — a red run would not be reproducible.
-      #     TODO(#46): point this at the compiled lock and drop continue-on-error,
-      #     which is the only version of this gate that actually means something.
-      #  2. #49 installs the gate and records the current state; triaging advisories
-      #     is separate work (issue #49, Out of scope).
+      # BLOCKING since #120. Both original reasons for the blindfold are spent:
+      # requirements.txt is now a COMPILED lock (#46 landed; the `Lock is current`
+      # step above re-compiles and diffs it), so a red run is reproducible; and the
+      # current state is not "untriaged" — the 2026-09-01 run measured
+      # `No known vulnerabilities found`. A new advisory should now stop a merge.
       - name: pip-audit (Python dependencies)
-        continue-on-error: true
         run: |
           pip install pip-audit
           pip-audit -r requirements.txt --strict
 
-      # NON-BLOCKING until the current high/critical advisory count is recorded and
-      # triaged; flip to blocking (or to a "no new advisories" baseline) after that.
+      # STAYS NON-BLOCKING — and this is the one blindfold in this file that hides a
+      # REAL failure. MEASURED on the 2026-09-01 main run: exit 1 with
+      # `43 vulnerabilities (1 low, 20 moderate, 21 high, 1 critical)` — worse than
+      # the 1-critical/20-high the M13 review recorded, so it is drifting upward.
+      # Un-blinding it today would simply block every merge, so the honest sequence
+      # is: bump the direct offenders (axios is the one that ships to devices), then
+      # convert this to a "no NEW advisories vs a checked-in baseline" gate. Until
+      # then CLAUDE.md must NOT claim `npm audit --audit-level=high` is clean.
       - name: npm audit (SmartCompareApp)
         continue-on-error: true
         run: cd SmartCompareApp && npm audit --audit-level=high
@@ -209,9 +213,14 @@ jobs:
       - name: Install frontend dependencies
         run: cd SmartCompareApp && npm ci
 
+      # BLOCKING since #120. The "7 pre-existing TS errors" this used to excuse are
+      # gone: the 2026-09-01 main run type-checks CLEAN (0 errors), and the same
+      # command already runs BLOCKING inside frontend-tests. Leaving it blind here
+      # was the worse half of the problem, because THIS job is one of the three
+      # branch-protection requires — so the merge gate required a job that could
+      # not fail.
       - name: TypeScript type check
         run: cd SmartCompareApp && npx tsc --noEmit
-        continue-on-error: true  # 7 pre-existing TS errors
 
   # The FIRST blocking-capable automated gate the frontend has ever had. Before
   # this job, the Jest suite (135-235 specs), the eslint i18n fence and tsc were

@@ -14,7 +14,7 @@ These items DO NOT block TestFlight internal testing (≤100 invited testers) �
 
 2. **Full legal-doc redraft** — current `app/legal/{privacy_policy,terms_of_service}.md` had brand strings rebranded (Bundle D R22) but the content is the pre-Bundle-D draft with names swapped — NOT a Qaren-jurisdiction redraft. 15 legal decisions still pending per `docs/plans/2026-05-16-tos-decisions-pending.md` (entity name, GCC jurisdiction, DPO contact, PDPL clauses, breach timeline, etc.). Apple may push back on jurisdictional mismatch (generic US-style template, no PDPL specifics). **Fix:** complete the 15 decisions + draft Qaren-specific clauses + republish via `legal_routes.py` + regen `landing/{privacy,terms}.html`.
 
-**Routine before App Store production submission:** icon byte-different ✓, legal docs Qaren-jurisdiction-redrafted ✓, `pip-audit --strict` + `npm audit --audit-level=high` clean ✓, QA static audit grep pack re-run ✓, ASC Privacy Nutrition Labels verified against current data flows ✓. **TestFlight internal ships freely without these — they're App Store production gates only.**
+**Routine before App Store production submission:** icon byte-different ✓, legal docs Qaren-jurisdiction-redrafted ✓, `pip-audit --strict` clean ✓ (BLOCKING in CI since #120) + `npm audit --audit-level=high` triaged — **MEASURED 2026-09-01: 43 vulnerabilities (1 low, 20 moderate, 21 high, 1 critical), exit 1**, so this is NOT clean today and the CI step stays reporting-only until the direct offenders (axios ships to devices) are bumped ✓, QA static audit grep pack re-run ✓, ASC Privacy Nutrition Labels verified against current data flows ✓. **TestFlight internal ships freely without these — they're App Store production gates only.**
 
 ## Operating Principles
 

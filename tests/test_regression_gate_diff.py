@@ -304,7 +304,9 @@ def test_main_exit_0_when_current_is_subset_of_baseline(tmp_path):
     base.write_text("tests/a.py::t1\ntests/b.py::t2\n", encoding="utf-8")
     cur = tmp_path / "cur.txt"
     cur.write_text("FAILED tests/a.py::t1 - boom\n", encoding="utf-8")  # subset
-    rc = rgd.main(["--current", str(cur), "--baseline", str(base)])
+    # --allow-off-lock: these exercise DIFF semantics, not lock certification.
+    # Without it the #121 guard refuses (exit 4) on any off-lock dev machine.
+    rc = rgd.main(["--current", str(cur), "--baseline", str(base), "--allow-off-lock"])
     assert rc == 0
 
 
@@ -313,14 +315,14 @@ def test_main_exit_1_on_new_failure(tmp_path, capsys):
     base.write_text("tests/a.py::t1\n", encoding="utf-8")
     cur = tmp_path / "cur.txt"
     cur.write_text("tests/a.py::t1\ntests/new.py::t_reg\n", encoding="utf-8")
-    rc = rgd.main(["--current", str(cur), "--baseline", str(base)])
+    rc = rgd.main(["--current", str(cur), "--baseline", str(base), "--allow-off-lock"])
     assert rc == 1
     out = capsys.readouterr().out
     assert "tests/new.py::t_reg" in out
 
 
 def test_main_exit_3_on_unreadable_current(tmp_path, capsys):
-    rc = rgd.main(["--current", str(tmp_path / "missing.txt")])
+    rc = rgd.main(["--current", str(tmp_path / "missing.txt"), "--allow-off-lock"])
     assert rc == 3
     assert "ERROR" in capsys.readouterr().err
 
@@ -333,5 +335,60 @@ def test_main_excludes_network_flaky(tmp_path):
     base.write_text("tests/a.py::t1\n", encoding="utf-8")
     cur = tmp_path / "cur.txt"
     cur.write_text(f"tests/a.py::t1\n{flaky}\n", encoding="utf-8")
-    rc = rgd.main(["--current", str(cur), "--baseline", str(base)])
+    rc = rgd.main(["--current", str(cur), "--baseline", str(base), "--allow-off-lock"])
     assert rc == 0
+
+
+# ---------------------------------------------------------------------------
+# Issue #121 — the gate must REFUSE to certify from an off-lock environment.
+# Motivation is concrete: the dev machine ran fastapi 0.115.0 against a pinned
+# 0.141.1, and three route-introspection tests (one of them the GET
+# /text/price-kpi admin-dependency SECURITY pin) passed locally while failing
+# in CI. A green baseline captured there described a stack nobody ships.
+# ---------------------------------------------------------------------------
+
+
+def _write_lock(tmp_path, entries):
+    lock = tmp_path / "requirements.txt"
+    lock.write_text("\n".join(entries) + "\n", encoding="utf-8")
+    return lock
+
+
+def test_lock_drift_is_empty_when_the_environment_matches_the_lock(tmp_path):
+    import importlib.metadata as md
+
+    from scripts.regression_gate_diff import lock_drift
+
+    entries = []
+    for name in ("pytest", "requests"):
+        try:
+            entries.append(f"{name}=={md.version(name)}")
+        except Exception:  # pragma: no cover - package genuinely absent
+            pass
+    assert entries, "expected pytest/requests to be installed in the test env"
+    assert lock_drift(_write_lock(tmp_path, entries)) == []
+
+
+def test_lock_drift_reports_every_installed_pin_at_the_wrong_version(tmp_path):
+    from scripts.regression_gate_diff import lock_drift
+
+    drift = lock_drift(_write_lock(tmp_path, ["pytest==0.0.0", "requests==0.0.0"]))
+    assert {name for name, _, _ in drift} == {"pytest", "requests"}
+    assert all(pinned == "0.0.0" for _, pinned, _ in drift)
+
+
+def test_a_pin_absent_from_the_environment_is_not_drift(tmp_path):
+    """An uninstalled pin is a SMALLER claim than one at the wrong version."""
+    from scripts.regression_gate_diff import lock_drift
+
+    assert lock_drift(_write_lock(tmp_path, ["definitely-not-installed-xyz==1.0"])) == []
+
+
+def test_format_drift_names_the_resync_command():
+    from scripts.regression_gate_diff import format_drift
+
+    text = format_drift([("fastapi", "0.141.1", "0.115.0")])
+    assert "REFUSING TO CERTIFY" in text
+    assert "pip install -r requirements.txt" in text
+    assert "--allow-off-lock" in text
+    assert "0.141.1" in text and "0.115.0" in text

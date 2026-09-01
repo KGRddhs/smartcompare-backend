@@ -343,7 +343,22 @@ def test_black_allowlist_entries_are_actually_clean():
 # ---------------------------------------------------------------------------
 
 
-def test_ci_has_a_non_blocking_dependency_audit_job():
+def test_dependency_audit_blocks_on_python_and_still_reports_on_npm():
+    """Issue #120. This job is branch-protection REQUIRED, so a step that cannot
+    fail makes the merge gate a formality. The two audits are now pinned
+    SEPARATELY, because their evidence differs:
+
+      * pip-audit BLOCKS — #46 landed, so requirements.txt is a compiled lock and
+        a red run is reproducible; the 2026-09-01 main run measured
+        "No known vulnerabilities found". A new advisory must stop a merge.
+      * npm audit still reports — the same run measured exit 1 with
+        43 vulnerabilities (1 critical). Un-blinding it today would block every
+        merge, so it stays visible-but-blind until the direct offenders are
+        bumped and it becomes a no-NEW-advisories gate.
+
+    Flipping npm audit to blocking is a deliberate act that must update this pin
+    (and CLAUDE.md, which must not claim the npm audit is clean meanwhile).
+    """
     jobs = _load(CI_YML)["jobs"]
     assert "dependency-audit" in jobs, f"no dependency-audit job; jobs = {sorted(jobs)}"
     job = jobs["dependency-audit"]
@@ -351,15 +366,18 @@ def test_ci_has_a_non_blocking_dependency_audit_job():
     assert "pip-audit" in run, "pip-audit is not run"
     assert "npm audit" in run and "--audit-level=high" in run, "npm audit is not run"
 
-    audit_steps = [
-        s
-        for s in _steps(job)
-        if "pip-audit" in str(s.get("run", "")) or "npm audit" in str(s.get("run", ""))
-    ]
-    assert audit_steps
-    assert all(s.get("continue-on-error") is True for s in audit_steps), (
-        "audit steps must be non-blocking reporting until #46 lands a pinned "
-        "lock and the current advisory count is triaged"
+    def _step(needle):
+        found = [s for s in _steps(job) if needle in str(s.get("run", ""))]
+        assert found, f"no step running {needle!r}"
+        return found[0]
+
+    assert _step("pip-audit").get("continue-on-error") is not True, (
+        "pip-audit must BLOCK: the lock is compiled and the current state is "
+        "clean, so a blindfold here only hides a NEW advisory (#120)"
+    )
+    assert _step("npm audit").get("continue-on-error") is True, (
+        "npm audit is measured red (43 vulns, 1 critical) — it must stay "
+        "reporting-only until the advisories are triaged, or CI blocks on day one"
     )
 
 
