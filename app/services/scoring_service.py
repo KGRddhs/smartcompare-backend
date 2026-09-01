@@ -1352,36 +1352,68 @@ class ScoringService:
                 if 0 < missing_count < n_products:
                     one_sided_dims.append(dim)
 
+        # M26b P1-B — the effective (non-excluded) set can be non-empty yet
+        # carry ZERO distinguishing signal: every residual dim flagged missing
+        # for ALL products AND sentinel-valued (== MISSING_SCORE) for all of
+        # them. The prod-common shape is "5 one-sided + 1 both-sided-missing"
+        # (reliability/fact_check absent on BOTH sides; near-tied specs also
+        # both-collapse via the B0-A v2.2 tie-collapse), which slips past the
+        # effective_total == 0 guard and lets the comparison be decided by
+        # sentinel-only dims (dead parity -> argmax -> product order). Treat it
+        # as the SAME degenerate case: fall back to the legacy sum, where the
+        # measured product's one-sided real signal is visible again.
+        #   The sentinel-value co-condition is what keeps this from firing on
+        # the "identical specs + real equal prices" shape: there the value dim
+        # is FLAGGED missing on both sides (value := spec-OR-price missing, and
+        # identical specs both-collapse) yet carries a genuine price-driven
+        # breakdown value (e.g. 75.0 != 50) — real, pairwise-equal signal the
+        # renormalized parity must keep (the legacy sum would resurrect the
+        # PO-rubric-03 no-data-beats-bad-data inversion for exactly that
+        # fixture). The == MISSING_SCORE check is safe from the 2.5-star
+        # collision because the `_<dim>_missing` flag gate runs FIRST — a
+        # genuine 2.5-star 50.0 is never flagged missing, so its dim never
+        # reaches the value-equality test.
+        renorm_degenerate = False
+        effective_weights: Dict[str, float] = {}
+        effective_weight_total = 0.0
+        if renorm_enabled and one_sided_dims:
+            effective_weights = {
+                d: w for d, w in weights.items() if d not in one_sided_dims
+            }
+            effective_weight_total = sum(effective_weights.values())
+            sentinel_only = bool(effective_weights) and all(
+                all(rs.get(f"_{d}_missing") for rs in raw_scores)
+                and all(
+                    nb.get(d, MISSING_SCORE) == MISSING_SCORE
+                    for nb in normalized
+                )
+                for d in effective_weights
+            )
+            renorm_degenerate = effective_weight_total <= 0 or sentinel_only
+            if renorm_degenerate:
+                # Renormalizing would either divide by zero (every dim
+                # one-sided-missing) or decide the comparison on dims with no
+                # measured data for ANY product. Fall back to the legacy sum.
+                logger.warning(
+                    "[scoring] ENABLE_MISSING_DIM_RENORM: degenerate effective "
+                    "set for category=%s (%d one-sided dims, effective weight "
+                    "%.4f, sentinel_only=%s) — falling back to the "
+                    "un-renormalized legacy sum",
+                    category, len(one_sided_dims), effective_weight_total,
+                    sentinel_only,
+                )
+
         result_products = {}
         for i, product in enumerate(products_data):
             product_key = f"product_{i}"
             breakdown = normalized[i]
             excluded_dims: Optional[List[str]] = None
-            if renorm_enabled and one_sided_dims:
-                effective = {
-                    d: w for d, w in weights.items() if d not in one_sided_dims
-                }
-                effective_total = sum(effective.values())
-                if effective_total > 0:
-                    overall = sum(
-                        breakdown.get(d, MISSING_SCORE) * w / effective_total
-                        for d, w in effective.items()
-                    )
-                    excluded_dims = list(one_sided_dims)
-                else:
-                    # Every dim is one-sided-missing — renormalizing would
-                    # divide by zero. Fall back to the legacy sum; at any
-                    # volume this is an extraction bug, not a scoring one.
-                    logger.warning(
-                        "[scoring] ENABLE_MISSING_DIM_RENORM: all %d dims "
-                        "one-sided-missing for category=%s — falling back to "
-                        "the un-renormalized legacy sum",
-                        len(one_sided_dims), category,
-                    )
-                    overall = sum(
-                        breakdown.get(dim, MISSING_SCORE) * weights.get(dim, 0)
-                        for dim in weights
-                    )
+            if renorm_enabled and one_sided_dims and not renorm_degenerate:
+                overall = sum(
+                    breakdown.get(d, MISSING_SCORE) * w / effective_weight_total
+                    for d, w in effective_weights.items()
+                )
+                excluded_dims = list(one_sided_dims)
             else:
                 overall = sum(
                     breakdown.get(dim, MISSING_SCORE) * weights.get(dim, 0)
@@ -1418,12 +1450,27 @@ class ScoringService:
             n_dims = len(dims)
             for i in range(len(products_data)):
                 pk = f"product_{i}"
-                # Guard: don't penalize an all-MISSING product — its `overall`
-                # is the MISSING-driven sentinel, not a genuine score, and the
-                # orchestrator returns INSUFFICIENT_DATA for the both-missing
-                # case anyway. Penalizing it would break the MISSING invariant.
+                # Guard (flag-OFF only): don't penalize an all-MISSING product —
+                # its `overall` is the MISSING-driven sentinel, not a genuine
+                # score, and the orchestrator returns INSUFFICIENT_DATA for the
+                # both-missing case anyway. At base this exemption was harmless
+                # (the measured product's real dims dominated by far more than
+                # the authority delta).
+                #   M26b P1-A — under ENABLE_MISSING_DIM_RENORM the exemption
+                # becomes the DECIDER: the renorm excludes every dim the
+                # measured product wins (one-sided by definition), the residual
+                # dims land at exact parity, and then this guard makes ONLY the
+                # measured product pay the estimate/converted_usd penalty — so
+                # the data void outright beats the measured product (reviewer-
+                # proven: 55.0 vs 51.0 both orders). Flag ON, the treatment is
+                # SYMMETRIC: every product pays its own provenance delta; an
+                # all-missing product is not exempt from a penalty its opponent
+                # pays for the same price provenance. Subtracting from a
+                # sentinel is no less honest than exempting it, and relative
+                # order between two all-missing products is unchanged (equal
+                # deltas). Flag OFF keeps the exemption byte-identical.
                 md = result_products[pk].get("missing_data")
-                if md and len(md) >= n_dims:
+                if md and len(md) >= n_dims and not renorm_enabled:
                     continue
                 delta = _price_authority_delta(products_data[i])
                 if delta:
@@ -1434,6 +1481,25 @@ class ScoringService:
         # overall. No flip overrides anywhere.
         overalls = [result_products[f"product_{i}"]["overall"] for i in range(len(products_data))]
         winner_index = overalls.index(max(overalls))
+        # M26b P2 (flag-ON only) — at EXACT parity argmax degenerates to
+        # product order, which crowns a data void whenever it happens to be
+        # product_0. Renormalized parity is the DESIGNED outcome for the
+        # "otherwise-identical except one-sided signals" pair, so parity is
+        # common under the flag, not a freak event. Deterministic, order-
+        # symmetric tie-break: prefer the product with MORE measured dims
+        # (fewer `missing_data` entries). Equal measured coverage keeps the
+        # legacy index-0 behavior. Flag OFF is untouched (byte-identity).
+        if (
+            renorm_enabled
+            and len(overalls) == 2
+            and overalls[0] == overalls[1]
+        ):
+            missing_counts = [
+                len(result_products[f"product_{i}"].get("missing_data") or [])
+                for i in range(2)
+            ]
+            if missing_counts[1] < missing_counts[0]:
+                winner_index = 1
         win_margin = round(abs(overalls[0] - overalls[1]), 1) if len(overalls) >= 2 else 0
 
         # S3 L3 v2 — qualitative winner_evidence describing the GENUINE winner
