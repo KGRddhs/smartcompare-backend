@@ -264,3 +264,45 @@ async def test_streaming_compute_scores_receives_guarded_product_data(
     ]
     scored_pd = scoring.compute_scores.call_args[0][0]
     assert scored_pd[0]["price"]["amount"] == expected, scored_pd[0]["price"]
+
+
+# ---------------------------------------------------------------------------
+# Ported from the second session's duplicate #113 implementation. That commit was
+# dropped in favour of main's (the two are functionally identical — same helper
+# name, same product-level `_region_guard_rejected` stash, same ordering
+# constraints), but these two cases had no counterpart in main's file.
+# ---------------------------------------------------------------------------
+
+def test_flag_on_non_dict_price_untouched(monkeypatch):
+    """A non-dict price is the chokepoint's SIB-5 branch, not the guard's. The
+    pre-scoring pass must skip it rather than crash or coerce it, so the two
+    halves keep mirroring each other exactly."""
+    monkeypatch.setenv("ENABLE_REGION_CURRENCY_GUARD", "true")
+    pd = [{"name": "Alpha", "price": None}]
+    assert apply_region_currency_guard(pd, "saudi_arabia") is False
+    assert pd[0]["price"] is None
+
+
+def test_metadata_guard_rejected_survives_an_upstream_pend(monkeypatch):
+    """The diagnostic must survive the hand-off between the two halves.
+
+    `response_builder`'s price-pending loop has an `unavailable is True`
+    early-continue, which returns BEFORE the diag is appended — so once the
+    PRE-scoring pass has already pended the price, `region_currency_mismatch`
+    would silently vanish from `metadata.guard_rejected` unless the builder
+    harvests the product-level `_region_guard_rejected` key first. Without this
+    pin the guard still works but becomes unobservable, which is precisely what
+    makes a canary read clean."""
+    from app.services.response_builder import build_comparison_response
+
+    monkeypatch.setenv("ENABLE_REGION_CURRENCY_GUARD", "true")
+    pd = [{
+        "name": "Alpha", "full_name": "Alpha", "category": "electronics",
+        "price": {"amount": None, "currency": "SAR", "unavailable": True,
+                  "reason": "pending_genuine"},
+        "best_price": None, "retailer": None,
+        "_region_guard_rejected": "region_currency_mismatch",
+    }]
+    resp = build_comparison_response(product_data=pd, region="saudi_arabia")
+    assert {"product_index": 0, "reason": "region_currency_mismatch"} in \
+        resp["metadata"]["guard_rejected"]

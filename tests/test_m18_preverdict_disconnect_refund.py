@@ -20,6 +20,9 @@ The post-verdict disconnect (M13-35) is a regression pin here, not a target.
 import os
 os.environ.setdefault("OPENAI_API_KEY", "sk-test-dummy")
 
+import asyncio
+import contextlib
+
 import pytest
 
 from app.api import text_routes as tr
@@ -208,3 +211,86 @@ async def test_abort_flag_off_still_drains_and_refunds(monkeypatch):
 
     assert stub.yielded == 6, "flag OFF must preserve the M13-35 drain"
     assert "usage_refund.text_stream.incomplete" in fired
+
+
+@pytest.mark.asyncio
+async def test_abort_flag_on_postverdict_disconnect_still_meters(monkeypatch):
+    """Half B must never fire once the payload has landed — M13-35's whole point.
+    The break is gated on `complete_response is None`.
+
+    Ported from the second session's duplicate #112 implementation, which was
+    otherwise dropped in favour of main's. Main's own file did not carry this
+    case: it pins flag-ON against the POST-verdict path, where the abort must
+    stay out of the way."""
+    monkeypatch.setenv("ENABLE_PREVERDICT_DISCONNECT_ABORT", "true")
+    stub, fired = _wire(monkeypatch, _SIX_EVENTS)
+
+    await _drive(_FakeRequest(disconnect_after=4))
+
+    assert fired.count("record_lifetime.text_stream") == 1
+    assert not any(l.startswith("usage_refund") for l in fired)
+
+
+# ---------------------------------------------------------------------------
+# Ordering pin — the accounting must not be pre-empted by generator cleanup
+# ---------------------------------------------------------------------------
+
+class _AcloseRaisesService(_StubService):
+    """An orchestrator whose unwind RAISES on aclose(). Models the day the
+    generator grows a `finally` containing an await checkpoint: under Starlette's
+    cancel-on-disconnect task group that unwind can surface CancelledError out of
+    `aclose()`."""
+
+    async def compare_from_text_streaming(self, **kwargs):
+        try:
+            for ev in self._events:
+                self.yielded += 1
+                yield ev
+        except GeneratorExit:
+            # Raise ONLY on aclose(), never on normal exhaustion — otherwise the
+            # stub would blow up inside the route's `async for` and never reach
+            # the finally this test is about.
+            #
+            # CancelledError specifically, because it is a BaseException: an
+            # `except Exception` guard around aclose() does NOT catch it, so this
+            # is the one shape that can actually skip the accounting block if
+            # aclose() is allowed to pre-empt it. A RuntimeError would prove
+            # nothing — an Exception handler swallows that either way.
+            self.closed = True
+            raise asyncio.CancelledError()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("flag_on", [False, True])
+async def test_refund_survives_an_aclose_that_raises(monkeypatch, flag_on):
+    """ORDERING PIN for #112 Half B, ported from the second session.
+
+    `aclose()` must never be positioned where a raising unwind can pre-empt the
+    metering/refund decision. If it ran at the FRONT of the finally that owns the
+    accounting and raised a BaseException, the whole block would be skipped — no
+    metering AND no refund — silently re-opening the exact credit burn #112
+    exists to close.
+
+    Main's implementation closes the generator at the `break` site inside the
+    `try` instead, so the `finally` still runs and the accounting is safe; the
+    other session put it last in the `finally`, which is equally safe. This test
+    pins the PROPERTY rather than either placement, so a future refactor that
+    moves the close cannot silently reintroduce the hazard. Both flag states,
+    because the close is reachable in one and the unwind happens in both."""
+    if flag_on:
+        monkeypatch.setenv("ENABLE_PREVERDICT_DISCONNECT_ABORT", "true")
+    else:
+        monkeypatch.delenv("ENABLE_PREVERDICT_DISCONNECT_ABORT", raising=False)
+    stub, fired = _wire(monkeypatch, _SIX_EVENTS)
+    monkeypatch.setattr(
+        tr, "get_comparison_service", lambda: _AcloseRaisesService(_SIX_EVENTS)
+    )
+    # The CancelledError is deliberately NOT swallowed by the route — cancellation
+    # must keep propagating. What matters is that the accounting already ran.
+    with contextlib.suppress(asyncio.CancelledError):
+        await _drive(_FakeRequest(disconnect_after=0))
+
+    assert "usage_refund.text_stream.incomplete" in fired
+    assert not any(l.startswith("log_search") for l in fired)
+    assert not any(l.startswith("save_comparison") for l in fired)
+    assert not any(l.startswith("record_lifetime") for l in fired)
