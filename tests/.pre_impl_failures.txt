@@ -2,63 +2,51 @@
 # scripts/regression_gate_diff.py, which reads only the lines carrying a pytest
 # node id; these '#' lines are ignored by parse_failure_ids.
 #
-# STALENESS NOTE (issue #49, 2026-08-25). 35 of the 48 ids below are
-# tests/test_value_math.py nodes. Since #49 that module carries a module-level
-# xfail, so those 35 can no longer be reported as FAILED by pytest and can
-# never appear in a 'current' set again. They are KEPT here on purpose: the
-# file is a snapshot of the pre-implementation baseline and the gate is a
-# SUBSET check (current minus baseline must be empty), so extra baseline ids
-# are inert - they can only ever forgive, never hide a new failure.
-# What they DO distort is the denominator when a human reads this file as 'how
-# red are we': the EFFECTIVE baseline is 13 nodes, not 48. Do not re-derive a
-# pass-rate from the raw line count.
-# When Bundle C v1.1 A.6.x ships and the xfail comes off, re-capture this file
-# rather than editing it by hand.
+# RE-CAPTURED 2026-09-01 (M13-17) from a CLEAN, CREDENTIAL-FREE free-tier run
+# (no worktree .env; conftest strips credentials — the exact state of CI and a
+# fresh clone), so `current - baseline` is empty on an untouched tree. This
+# replaces the stale 48-id snapshot, which was captured WITH credentials and so
+# reported FALSE regressions on a clean clone (four free-tier nodes failed on
+# pinned main that were in neither the old baseline nor NETWORK_FLAKY_EXCLUDE).
+#
+# What changed from the old 48-id snapshot:
+#   - DROPPED the 35 tests/test_value_math.py nodes: they carry a module-level
+#     pytest.mark.xfail since #49, so they report XFAIL (never FAILED) and can
+#     no longer appear in a 'current' set. Re-capture, do NOT hand-edit — when
+#     the A.6.x impl lands and the xfail comes off, re-run this capture.
+#   - DROPPED test_security_regression::test_no_bare_console_log_in_auth (fixed
+#     by M13-55), and test_lane1_helpers_unit / test_source_usage_field nodes
+#     (both green post wave-1-3).
+#   - ADDED the 4 deterministic assertion failures that fail on the
+#     credential-free tree but were in neither the old baseline nor the flaky
+#     exclude — the M13-17 false-regression set: test_database_service,
+#     test_page_scraping (x2), test_supplement_branch_genuine.
+#
+# Effective baseline count = 14 (all real, no xfail padding). The markdown
+# mirror tests/PRE_IMPL_FAILURE_BASELINE.md is GENERATED from this file by
+# scripts/gen_baseline_mirror.py; tests/test_ci_gates.py re-derives the count +
+# id set so the mirror can never silently fall behind this file again.
+#
+# Capture command (the two network-GET files hang under Windows pytest-timeout
+# and are both covered by scripts.regression_gate_diff.NETWORK_FLAKY_EXCLUDE, so
+# the gate ignores them on BOTH sides — excluding them here does not change the
+# gate verdict):
+#   pytest tests/ -m "not (live_unit or live_db or integration)" \
+#     --ignore=tests/test_integration.py \
+#     --ignore=tests/test_rate_limiting_complete.py \
+#     --ignore=tests/test_price_cache_bust_probe.py \
+#     --timeout=60 -q
 tests/test_auth_interceptor.py::test_sign_in_with_social_exception
 tests/test_auth_interceptor.py::test_social_login_user_insert_fails_gracefully
 tests/test_backend_cleanup.py::TestDeadFunctionsRemoved::test_unused_imports_cleaned
 tests/test_camera_vision.py::TestIdentifyProductsMocked::test_empty_product_fields_normalized
 tests/test_camera_vision.py::TestIdentifyProductsMocked::test_malformed_response_returns_error
 tests/test_camera_vision.py::TestIdentifyProductsMocked::test_successful_identification
+tests/test_database_service.py::test_save_comparison_skips_when_not_renderable
 tests/test_extraction_prompt_bundle_c.py::test_response_builder_strips_inference_source
-tests/test_lane1_helpers_unit.py::test_compose_delta_text_returns_empty_on_missing_score_sentinel
+tests/test_page_scraping.py::TestFetchPagePriceJsonLD::test_jsonld_nested_offers_picks_lowest
+tests/test_page_scraping.py::TestFetchPagePriceOpenGraph::test_og_meta_extraction
 tests/test_personalization_bundle_c.py::test_applied_shifts_list_is_default_empty_when_no_priorities
 tests/test_personalization_bundle_c.py::test_full_response_payload_audit_no_magnitude_keys
 tests/test_referral_e2e.py::test_e2e_share_creates_invite_and_grants_loop1_credit
-tests/test_security_regression.py::TestFrontendSecurityGuards::test_no_bare_console_log_in_auth
-tests/test_source_usage_field.py::test_registry_price_source_count
-tests/test_value_math.py::test_budget_mismatch_passes_to_preferences_prompt
-tests/test_value_math.py::test_classify_budget_mismatch[budget-product_tiers0-above]
-tests/test_value_math.py::test_classify_budget_mismatch[budget-product_tiers1-above]
-tests/test_value_math.py::test_classify_budget_mismatch[luxury-product_tiers2-below]
-tests/test_value_math.py::test_classify_budget_mismatch[mid-product_tiers4-None]
-tests/test_value_math.py::test_classify_budget_mismatch[mid-product_tiers5-None]
-tests/test_value_math.py::test_classify_budget_mismatch[premium-product_tiers6-None]
-tests/test_value_math.py::test_classify_budget_mismatch[top_tier-product_tiers3-below]
-tests/test_value_math.py::test_classify_value_match[budget-top_tier-above_range]
-tests/test_value_math.py::test_classify_value_match[luxury-budget-below_range]
-tests/test_value_math.py::test_classify_value_match[mid-budget-below_range]
-tests/test_value_math.py::test_classify_value_match[mid-luxury-above_range]
-tests/test_value_math.py::test_classify_value_match[mid-mid-in_range]
-tests/test_value_math.py::test_classify_value_match[mid-premium-above_range]
-tests/test_value_math.py::test_classify_value_match[mid-top_tier-above_range]
-tests/test_value_math.py::test_classify_value_match[top_tier-top_tier-in_range]
-tests/test_value_math.py::test_delta_text_price_percentage_format
-tests/test_value_math.py::test_delta_text_rating_stars_format
-tests/test_value_math.py::test_delta_text_value_no_priority_match_copy
-tests/test_value_math.py::test_delta_text_value_with_priority_match_copy
-tests/test_value_math.py::test_value_formula_coefficients_match_spec[_default-coeffs7]
-tests/test_value_math.py::test_value_formula_coefficients_match_spec[brand_reputation-coeffs4]
-tests/test_value_math.py::test_value_formula_coefficients_match_spec[durability-coeffs2]
-tests/test_value_math.py::test_value_formula_coefficients_match_spec[ease_of_use-coeffs6]
-tests/test_value_math.py::test_value_formula_coefficients_match_spec[eco_friendly-coeffs5]
-tests/test_value_math.py::test_value_formula_coefficients_match_spec[latest_features-coeffs3]
-tests/test_value_math.py::test_value_formula_coefficients_match_spec[price-coeffs0]
-tests/test_value_math.py::test_value_formula_coefficients_match_spec[quality-coeffs1]
-tests/test_value_math.py::test_value_formula_default_when_no_priorities
-tests/test_value_math.py::test_value_formula_first_match_wins_price_overrides_quality
-tests/test_value_math.py::test_value_formula_first_match_wins_quality
-tests/test_value_math.py::test_value_match_caption_in_range_is_silent
-tests/test_value_math.py::test_value_match_caption_one_tier_above
-tests/test_value_math.py::test_value_match_caption_one_tier_below
-tests/test_value_math.py::test_value_match_caption_two_plus_tier_above_appends_tradeoff
+tests/test_supplement_branch_genuine.py::TestCatalogSupplementSourceAttribution::test_cde2_attributes_catalog_supplement_domain_when_flag_on

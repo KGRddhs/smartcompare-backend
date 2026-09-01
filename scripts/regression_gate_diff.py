@@ -32,20 +32,19 @@ from typing import Iterable, Optional, Set
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-# Canonical baseline = QA's .qa-discovery/BASELINE_FAILURES.txt (dispatcher
-# ruling: ONE source of truth for the gate ignore-set, captured with .env).
-# It lives in the MAIN tree's untracked .qa-discovery/ scratch, which worktrees
-# do NOT carry, so it's referenced by absolute path. The committed local
-# snapshot tests/.pre_impl_failures.txt (verified byte-for-set identical to QA's
-# 59) is the fallback when the main tree isn't on disk (e.g. a fresh clone /
-# CI). Reconcile with QA, never fork the set.
-_QA_CANONICAL_BASELINE = Path(
-    r"C:\Users\SynAckITPC\Documents\AI\smartcompare\.qa-discovery\BASELINE_FAILURES.txt"
-)
-_LOCAL_BASELINE_SNAPSHOT = REPO_ROOT / "tests" / ".pre_impl_failures.txt"
-DEFAULT_BASELINE = (
-    _QA_CANONICAL_BASELINE if _QA_CANONICAL_BASELINE.exists() else _LOCAL_BASELINE_SNAPSHOT
-)
+# The committed, in-repo snapshot is the ONE default baseline (M13-17/M13-74).
+# It was RE-CAPTURED from a clean, credential-free free-tier run (no worktree
+# .env, conftest strips credentials — the exact state of CI and a fresh clone),
+# so `current - baseline` is empty on an untouched tree.
+#
+# Previously DEFAULT_BASELINE preferred an ABSOLUTE path into a sibling
+# checkout's untracked .qa-discovery/ scratch whenever that path existed, so the
+# same gate returned two different verdicts: the one machine that had that file
+# forgave whatever it contained, while CI and every fresh clone read the
+# committed mirror — and the deciding artefact was gitignored, so the
+# disagreement left no trace. A NON-default baseline is now opt-in ONLY, via the
+# explicit `--baseline` argument.
+DEFAULT_BASELINE = REPO_ROOT / "tests" / ".pre_impl_failures.txt"
 
 # Network-dependent tests that are NOT mocked and so flap based on live network
 # / Serper / Tier-1.5 reachability — excluded from the gate per CLAUDE.md

@@ -1,68 +1,24 @@
-# Pre-impl free-unit failure baseline — Faithful-Results bundle
+# Pre-impl free-unit failure baseline (GENERATED — do not hand-edit)
 
-> **UPDATE 2026-08-25 (issue #49 — CI gates):** the 35 `test_value_math.py` nodes in the
-> table below now report as **xfail, not FAILED**. They carry a module-level
-> `pytest.mark.xfail(strict=False)` so `.github/workflows/ci.yml` stops going red for a
-> documented non-regression. The gate is a SUBSET check (`current ⊆ baseline`), so the
-> 35 stale entries in `tests/.pre_impl_failures.txt` are harmless and deliberately left
-> in place rather than forked from QA's canonical file. Effective FAILED denominator on
-> a clean tree is therefore **13**, not 48. When Bundle C v1.1 (A.6.x) ships, those nodes
-> turn XPASS, the pytestmark comes off in that PR, and both files can be re-synced with QA.
+<!-- BASELINE_COUNT: 14 -->
 
-> **CANONICAL SOURCE OF TRUTH = QA's `.qa-discovery/BASELINE_FAILURES.txt`** — dispatcher
-> LOCKED at **48 nodes** (QA's FULL-credential capture). A branch is GREEN iff its FAILED
-> set ⊆ those 48 (minus the network-flaky exclude). `scripts/regression_gate_diff.py`
-> defaults to QA's file when the main tree is on disk, else the local mirror
-> `tests/.pre_impl_failures.txt` (re-synced to the SAME 48). Never fork the set —
-> reconcile with QA.
->
-> **Why 48, not 59:** my FIRST capture (59) ran WITHOUT a worktree `.env`. The extra 11
-> were 9 `test_youtube_*` (keyed off the missing `YOUTUBE_API_KEY` — they pass with
-> creds present) + `test_invitee_quiz` edge case. QA's full-cred capture is authoritative;
-> the 59 partial-cred snapshot is DISCARDED. This confirmed the .env gate-integrity catch
-> was real (worktrees don't inherit gitignored `.env`).
->
-> **Network-flaky EXCLUDE set** (`NETWORK_FLAKY_EXCLUDE` in `regression_gate_diff.py` —
-> gate ignores regardless of baseline membership): the two
-> `test_price_cache_bust_probe.py::TestPriceReadBypass` methods (Backend-flagged; live
-> Tier-1.5 escalation not mocked) + `test_rate_limiting_complete.py::...prices_endpoint_rate_limited`
-> (real GET). These pass-or-fail by live-network reachability, so they must never read as a
-> code regression. (The real-GET rate-limit test IS in the 48 baseline; the bust-probe two
-> are NOT — either way the exclude neutralizes them.)
+> **GENERATED FILE.** This mirror is rendered from `tests/.pre_impl_failures.txt` by `scripts/gen_baseline_mirror.py`. Do not edit it by hand — re-capture the baseline, then regenerate. `tests/test_ci_gates.py` re-derives the count and id set from the .txt and fails if this file drifts (the M13-17 regression: the mirror once claimed 49 against the file's 48).
 
-**Command (run by QA with full creds):**
-```
-python -m pytest tests/ -m "not (live_unit or live_db or integration)" \
-  --ignore=tests/test_integration.py -q
-```
+The free-unit regression gate (`scripts/regression_gate_diff.py`) is a SUBSET check: a branch is GREEN iff its FAILED set (minus `NETWORK_FLAKY_EXCLUDE`) is a subset of the 14 node ids below. The baseline was RE-CAPTURED 2026-09-01 (M13-17) from a clean, credential-free free-tier run — the exact state of CI and a fresh clone — so `current - baseline` is empty on an untouched tree.
 
-**LOCKED denominator:** 48 known failures. A "no regressions" claim for Phase 7.3 means
-*no FAILED nodeid outside those 48* (after the network-flaky exclude). None of the 48 touch
-the files this bundle modifies (`scripts/eval_runner.py`, `price_service` cache layer,
-`review_service` paraphrase, `extraction_service` category payload, `response_builder`,
-FE `results/*`).
-
-## Breakdown (the LOCKED 48)
-
-| File | # | Why pre-existing (not our bundle) |
-|---|---|---|
-| `test_value_math.py` | 35 | **Known RED-by-design** (CLAUDE.md): TDD stubs for unimplemented Bundle C v1.1 value-math fns. Documented non-regression. |
-| `test_camera_vision.py` | 3 | `openai_service._log_cache_telemetry` raises `TypeError: '>' not supported between MagicMock and int` — the mock's `usage` is a bare MagicMock; cache-telemetry code expects numeric. Mock drift, unrelated. |
-| `test_personalization_bundle_c.py` | 2 | Bundle C personalization payload-audit; pre-existing. |
-| `test_auth_interceptor.py` | 2 | `[B4-BE-DIAG]` Google-sign-in diagnostic string intentionally present (CLAUDE.md). |
-| `test_source_usage_field.py` | 1 | `registry_price_source_count` row-count assertion; pre-existing S3. |
-| `test_security_regression.py` | 1 | `[GOOGLE-DIAG]` console.log in FE auth — same intentional Google diagnostic instrumentation. |
-| `test_referral_e2e.py` | 1 | Referral e2e; pre-existing. |
-| `test_rate_limiting_complete.py` | 1 | **Does a real GET** (also in NETWORK_FLAKY_EXCLUDE). |
-| `test_lane1_helpers_unit.py` | 1 | `compose_delta_text` missing-score sentinel; pre-existing Bundle C v1.1 family. |
-| `test_extraction_prompt_bundle_c.py` | 1 | `response_builder_strips_inference_source`; pre-existing Bundle C. |
-| `test_backend_cleanup.py` | 1 | Dead-function/unused-import cleanup assertion; pre-existing. |
-
-(Dropped vs the partial-cred 59: 9 `test_youtube_*` + 1 `test_invitee_quiz` — all
-credential/WIP artifacts, NOT real baseline failures.)
-
-## Full failing-id list
-
-`tests/.pre_impl_failures.txt` is a local MIRROR of QA's canonical 48 (machine-readable,
-one bare nodeid per line). The gate prefers QA's `.qa-discovery/BASELINE_FAILURES.txt`;
-the mirror is the CI/fresh-clone fallback only.
+| # | Failing node id |
+|---|-----------------|
+| 1 | `tests/test_auth_interceptor.py::test_sign_in_with_social_exception` |
+| 2 | `tests/test_auth_interceptor.py::test_social_login_user_insert_fails_gracefully` |
+| 3 | `tests/test_backend_cleanup.py::TestDeadFunctionsRemoved::test_unused_imports_cleaned` |
+| 4 | `tests/test_camera_vision.py::TestIdentifyProductsMocked::test_empty_product_fields_normalized` |
+| 5 | `tests/test_camera_vision.py::TestIdentifyProductsMocked::test_malformed_response_returns_error` |
+| 6 | `tests/test_camera_vision.py::TestIdentifyProductsMocked::test_successful_identification` |
+| 7 | `tests/test_database_service.py::test_save_comparison_skips_when_not_renderable` |
+| 8 | `tests/test_extraction_prompt_bundle_c.py::test_response_builder_strips_inference_source` |
+| 9 | `tests/test_page_scraping.py::TestFetchPagePriceJsonLD::test_jsonld_nested_offers_picks_lowest` |
+| 10 | `tests/test_page_scraping.py::TestFetchPagePriceOpenGraph::test_og_meta_extraction` |
+| 11 | `tests/test_personalization_bundle_c.py::test_applied_shifts_list_is_default_empty_when_no_priorities` |
+| 12 | `tests/test_personalization_bundle_c.py::test_full_response_payload_audit_no_magnitude_keys` |
+| 13 | `tests/test_referral_e2e.py::test_e2e_share_creates_invite_and_grants_loop1_credit` |
+| 14 | `tests/test_supplement_branch_genuine.py::TestCatalogSupplementSourceAttribution::test_cde2_attributes_catalog_supplement_domain_when_flag_on` |

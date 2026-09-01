@@ -174,12 +174,13 @@ def test_diff_failures_all_green_current_no_regression():
 
 def test_load_baseline_reads_committed_file():
     ids = rgd.load_baseline(BASELINE_FILE)
-    # The committed baseline has 59 ids at capture; assert shape, not the exact
-    # count (it may be re-captured) — every id is a pytest nodeid.
+    # Assert shape, not the exact count (re-captured 2026-09-01 under M13-17) —
+    # every id is a pytest nodeid.
     assert len(ids) >= 1
     assert all("::" in i for i in ids)
-    # A couple of the documented baseline members are present.
-    assert any("test_value_math.py" in i for i in ids)
+    # A documented baseline member is present. (The value_math nodes are xfail'd
+    # since #49 and were dropped from the re-capture, so they must NOT be here.)
+    assert any("test_camera_vision.py" in i for i in ids)
 
 
 def test_load_baseline_missing_file_is_empty_set(tmp_path):
@@ -267,27 +268,30 @@ def test_format_report_shows_ignored_flaky():
 # Canonical baseline default — reconciled identical to QA's source of truth
 # ---------------------------------------------------------------------------
 
-def test_default_baseline_matches_committed_snapshot_set():
-    """The harness DEFAULT baseline (QA canonical when on disk, else the local
-    mirror) must be set-identical to the committed local mirror — proving the
-    dispatcher's 'ONE ignore-set' invariant holds (QA == mirror). LOCKED at 48
-    (QA full-cred capture; the partial-cred 59 was discarded)."""
+def test_default_baseline_is_the_committed_in_repo_snapshot():
+    """DEFAULT_BASELINE is now ALWAYS the committed in-repo file (M13-74 removed
+    the absolute-path QA-canonical default that made the same gate return two
+    verdicts). It must load to the same id set as the committed snapshot."""
     default_ids = rgd.load_baseline(rgd.DEFAULT_BASELINE)
     mirror_ids = rgd.load_baseline(BASELINE_FILE)
     assert default_ids == mirror_ids
+    assert rgd.DEFAULT_BASELINE.resolve() == BASELINE_FILE.resolve()
 
 
-def test_local_mirror_is_locked_48():
-    """The committed mirror is exactly the LOCKED 48-node canonical (re-synced
-    from QA). A drift here means someone forked the ignore-set — reconcile."""
+def test_local_baseline_has_no_stale_artifacts():
+    """Re-captured 2026-09-01 (M13-17) from a clean, credential-free run. The QA
+    48-node 'lock' is retired (M13-74). The exact count is deliberately NOT
+    hard-coded here — that brittleness was the M13-17 defect; the count is
+    re-derived instead in tests/test_ci_gates.py. What must hold: the baseline
+    is non-empty and carries no partial-cred / xfail'd artifacts."""
     mirror_ids = rgd.load_baseline(BASELINE_FILE)
-    assert len(mirror_ids) == 48, (
-        f"local mirror has {len(mirror_ids)} nodes, expected the LOCKED 48 "
-        f"(re-sync from QA's .qa-discovery/BASELINE_FAILURES.txt)"
-    )
-    # The 9 youtube + invitee_quiz partial-cred artifacts must be GONE.
+    assert mirror_ids, "committed baseline parsed to zero node ids"
+    # partial-cred artifacts (missing YOUTUBE_API_KEY etc.) must be GONE.
     assert not any("test_youtube" in i for i in mirror_ids)
     assert not any("test_invitee_quiz" in i for i in mirror_ids)
+    # value_math nodes are xfail'd since #49 -> can never be FAILED -> must be
+    # absent from a re-captured baseline.
+    assert not any("test_value_math.py" in i for i in mirror_ids)
 
 
 # ---------------------------------------------------------------------------

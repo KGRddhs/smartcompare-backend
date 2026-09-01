@@ -768,6 +768,71 @@ def test_every_production_host_live_test_is_marked_live_prod():
     )
 
 
+# --- M13-17 / M13-74: regression-gate baseline integrity ---------------------
+# The free-unit regression gate is the ONLY automated regression signal the repo
+# has. Two ways it silently lied: (M13-74) DEFAULT_BASELINE preferred an absolute
+# path into a sibling checkout's gitignored scratch, so the same gate returned
+# two verdicts; (M13-17) the committed baseline was captured with credentials and
+# never re-synced, so free-tier nodes failed on an untouched tree that were in
+# neither the baseline nor the flaky-exclude — a false "regression" on a clean
+# clone. These pins keep the default in-repo and the mirror re-derivable.
+
+BASELINE_FILE = TESTS_DIR / ".pre_impl_failures.txt"
+BASELINE_MIRROR = TESTS_DIR / "PRE_IMPL_FAILURE_BASELINE.md"
+
+
+def test_default_baseline_is_inside_repo_root():
+    """DEFAULT_BASELINE must be the committed in-repo snapshot, never an absolute
+    path into another checkout (M13-74). A per-machine default meant the one
+    machine that had the sibling file forgave whatever it contained while CI and
+    every fresh clone read the committed mirror — and that file was gitignored,
+    so the disagreement left no trace."""
+    from scripts.regression_gate_diff import DEFAULT_BASELINE
+
+    resolved = DEFAULT_BASELINE.resolve()
+    assert resolved.is_relative_to(REPO_ROOT), (
+        f"DEFAULT_BASELINE {resolved} is OUTSIDE the repo root {REPO_ROOT}. The "
+        "gate default must be the committed tests/.pre_impl_failures.txt so CI, a "
+        "fresh clone and every dev read the SAME baseline. A non-default baseline "
+        "is opt-in only, via --baseline."
+    )
+    assert resolved == BASELINE_FILE.resolve(), (
+        f"DEFAULT_BASELINE {resolved} is not the committed baseline "
+        f"{BASELINE_FILE.resolve()}."
+    )
+
+
+def test_baseline_count_is_rederivable_from_the_committed_file():
+    """The markdown mirror must be GENERATED from .pre_impl_failures.txt, not
+    hand-maintained: M13-17 found the mirror claiming 49 against the file's 48.
+    Re-derive the id set from the file with the gate's OWN parser and assert the
+    mirror (a) declares the same count via its machine-readable marker and (b)
+    lists every id verbatim, so it can never silently fall behind the file."""
+    from scripts.regression_gate_diff import parse_failure_ids
+
+    file_ids = parse_failure_ids(BASELINE_FILE.read_text(encoding="utf-8"))
+    assert file_ids, "tests/.pre_impl_failures.txt parsed to zero node ids"
+
+    mirror = BASELINE_MIRROR.read_text(encoding="utf-8")
+    m = re.search(r"<!--\s*BASELINE_COUNT:\s*(\d+)\s*-->", mirror)
+    assert m, (
+        "tests/PRE_IMPL_FAILURE_BASELINE.md is missing its "
+        "'<!-- BASELINE_COUNT: N -->' marker — regenerate it from "
+        "tests/.pre_impl_failures.txt."
+    )
+    declared = int(m.group(1))
+    assert declared == len(file_ids), (
+        f"mirror declares {declared} baseline nodes but "
+        f"tests/.pre_impl_failures.txt has {len(file_ids)} — regenerate the "
+        "mirror from the file."
+    )
+    missing = sorted(i for i in file_ids if i not in mirror)
+    assert not missing, (
+        f"the mirror is missing {len(missing)} baseline id(s) that are in the "
+        f"file (regenerate it): {missing[:5]}"
+    )
+
+
 def test_live_suite_header_audit_lists_every_live_prod_file():
     """Issue #49 requires a per-file record. Tie the header to reality so the
     audit cannot silently go stale when a file is added or removed."""
