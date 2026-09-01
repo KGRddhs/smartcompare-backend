@@ -476,8 +476,14 @@ export async function signInWithGoogle(): Promise<AuthResponse> {
     }
 
     const parts = idToken.split('.');
-    const diagHead = `len=${idToken.length} parts=${parts.length} head=${idToken.substring(0, 24)}`;
-    console.log('[GOOGLE-DIAG]', diagHead);
+    // M13-55: NEVER put token material in diagHead. The previous
+    // `head=${idToken.substring(0,24)}` prefix reached logcat / the iOS
+    // unified log (the console.log below) AND user-facing error strings.
+    // len/parts is the useful, non-sensitive shape signal; the token head
+    // is dropped entirely. The console.log is __DEV__-guarded so it never
+    // runs in a release build (babel also strips console.* in production).
+    const diagHead = `len=${idToken.length} parts=${parts.length}`;
+    if (__DEV__) console.log('[GOOGLE-DIAG]', diagHead);
     Sentry.addBreadcrumb({ category: 'b4_diag', level: 'info', message: '[GOOGLE-DIAG] ' + diagHead });
 
     // B4 resolution (2026-05-26): Google sign-in is fixed server-side via the
@@ -527,7 +533,8 @@ export async function signInWithGoogle(): Promise<AuthResponse> {
     Sentry.captureMessage(rejMsg, { level: 'error', tags: { b4_diag: 'backend_reject' }, extra: { status: response.status, code: data?.code, server_error: data?.error || data?.detail, diagHead } });
     return {
       success: false,
-      error: `${rejMsg}. token ${diagHead}. Send this whole message.`,
+      // M13-55: do NOT echo diagHead (token shape) into a user-facing string.
+      error: `${rejMsg}. Send this whole message.`,
     };
   } catch (error: any) {
     if (error.code === 'SIGN_IN_CANCELLED') {
@@ -594,15 +601,13 @@ export async function signInWithApple(): Promise<AuthResponse> {
     // can confirm whether `credential.identityToken` is the expected 3-part
     // JWT or something else (accessToken? undefined-as-string?). Remove
     // once Apple sign-in is verified GREEN.
-    if (__DEV__) {
-      const parts = idToken.split('.');
-      console.log(
-        '[APPLE-DIAG] token length:', idToken.length,
-        'parts:', parts.length,
-        'head:', idToken.substring(0, 30),
-        'nonce-hash-len:', hashedNonce.length
-      );
-    }
+    // M13-55: single-line __DEV__ guard so the line-based console detector
+    // (test_no_bare_console_log_in_auth) does not false-positive on what was
+    // a legitimate multi-line `if (__DEV__) { console.log( … ) }` block. The
+    // diagnostic is unchanged and stays dev-only (also stripped in production
+    // by the babel console transform).
+    const appleDiagParts = idToken.split('.');
+    if (__DEV__) console.log('[APPLE-DIAG] token length:', idToken.length, 'parts:', appleDiagParts.length, 'head:', idToken.substring(0, 30), 'nonce-hash-len:', hashedNonce.length);
 
     // Send to our backend
     const response = await fetch(`${API_BASE_URL}/api/v1/auth/social-login`, {
