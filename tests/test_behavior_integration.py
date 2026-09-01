@@ -191,6 +191,49 @@ class TestBehaviorIntegration:
             await service._update_behavior_profile("user-123")
 
 
+class TestBehaviorDimensionTranslationEndToEnd:
+    """M20 #103 — a DB-shaped (legacy-key) profile must reach the weights through
+    compute_scores once ENABLE_BEHAVIORAL_DIM_TRANSLATION is on."""
+
+    _PRODUCTS = [
+        {
+            "brand": "Apple", "name": "iPhone 15", "category": "electronics",
+            "specs": {"ram": "6GB", "storage": "128GB"},
+            "price": {"amount": 299, "currency": "BHD", "retailer": "Amazon", "estimated": False},
+            "reviews": {"average_rating": 4.5, "total_reviews": 1200},
+            "rating": 4.5, "review_count": 1200, "rating_verified": True,
+            "rating_source": {"name": "Amazon"}, "fact_check": {},
+        },
+        {
+            "brand": "Samsung", "name": "Galaxy S24", "category": "electronics",
+            "specs": {"ram": "8GB", "storage": "128GB"},
+            "price": {"amount": 279, "currency": "BHD", "retailer": "Noon", "estimated": False},
+            "reviews": {"average_rating": 4.3, "total_reviews": 800},
+            "rating": 4.3, "review_count": 800, "rating_verified": True,
+            "rating_source": {"name": "Noon"}, "fact_check": {},
+        },
+    ]
+
+    def test_legacy_key_profile_reaches_electronics_weights(self, monkeypatch):
+        from app.services.scoring_service import ScoringService
+        service = ScoringService()
+
+        monkeypatch.delenv("ENABLE_BEHAVIORAL_DIM_TRANSLATION", raising=False)
+        anon = service.compute_scores(self._PRODUCTS)["scores"]["product_0"]["weights_used"]
+        profile = {
+            "dimension_sensitivity": {
+                "spec_score": 0.7, "review_score": 0.2, "price_score": 0.1,
+            },
+        }
+        off = service.compute_scores(self._PRODUCTS, behavior_profile=profile)
+        assert off["scores"]["product_0"]["weights_used"] == anon  # dead today, preserved
+
+        monkeypatch.setenv("ENABLE_BEHAVIORAL_DIM_TRANSLATION", "true")
+        on = service.compute_scores(self._PRODUCTS, behavior_profile=profile)
+        assert on["scores"]["product_0"]["weights_used"] != anon
+        assert on["scoring_method"] == "behavioral"
+
+
 class TestBehaviorInRoutes:
     """Tests that routes pass user_id to service methods."""
 

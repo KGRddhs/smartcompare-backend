@@ -1052,6 +1052,31 @@ def _build_scoring_v2(
     return scoring_v2
 
 
+def _name_at_index(product_names, idx) -> str:
+    """Issue #99 — safe product-name lookup. Legacy fixtures ship an empty
+    `product_names`, so every winner/loser lookup must degrade to "" rather
+    than raise IndexError."""
+    if not isinstance(product_names, list):
+        return ""
+    if not isinstance(idx, int) or idx < 0 or idx >= len(product_names):
+        return ""
+    name = product_names[idx]
+    return name if isinstance(name, str) else ""
+
+
+def _names_the_loser(text, loser_name: str) -> bool:
+    """Issue #99 — case-insensitive containment on the loser's FULL name.
+
+    Deliberately NOT token-matching: the two products in a comparison usually
+    share a brand token ("Manama Pickles"), and token-matching would nuke every
+    legitimate reason. Only a full-name mention means GPT is praising the
+    product the deterministic score did not pick.
+    """
+    if not loser_name or not isinstance(text, str) or not text:
+        return False
+    return loser_name.lower() in text.lower()
+
+
 def build_comparison_response(
     *,
     product_data: Optional[List[Dict[str, Any]]] = None,
@@ -1130,18 +1155,26 @@ def build_comparison_response(
     # or scoring-disabled mode).
     _scoring_winner = scoring_result.get("winner_index")
     _gpt_winner = comparison.get("winner_index", 0)
+    # Issue #99 — when the deterministic winner overrides GPT's, the GPT
+    # NARRATIVE still describes GPT's pick, so the card could highlight A while
+    # naming and praising B. This flag stays in scope down to the verdict-scrub
+    # block and the BC-alias block, which reconcile every winner-facing field.
+    _winner_overridden = _scoring_winner is not None and _scoring_winner != _gpt_winner
     if _scoring_winner is not None:
         winner_index = _scoring_winner
-        if _scoring_winner != _gpt_winner:
+        if _winner_overridden:
             # Surface the disagreement so we can audit how often the GPT
             # verdict prose names a different winner than the score. Low
             # volume (only fires on mismatch); not flag-gated for now.
             logger.warning(
                 "WINNER_INDEX_MISMATCH scoring=%s gpt=%s "
-                "win_margin=%s — using deterministic scoring",
+                "win_margin=%s scoring_name=%r gpt_name=%r "
+                "— using deterministic scoring",
                 _scoring_winner,
                 _gpt_winner,
                 scoring_result.get("win_margin", 0),
+                _name_at_index(product_names, _scoring_winner),
+                _name_at_index(product_names, _gpt_winner),
             )
     else:
         winner_index = _gpt_winner
@@ -1387,6 +1420,26 @@ def build_comparison_response(
     _scrubbed_winner_name_field = (
         strip_score_internals(comparison.get("winner_declaration", "")) or _winner_name
     )
+    # Issue #99 — the deterministic winner overrode GPT's, so GPT's narrative
+    # describes the LOSER. Reconcile every winner-facing field to `winner_index`
+    # rather than shipping a card that names/praises the product we did not pick.
+    # We DROP the declaration instead of regenerating it: regeneration needs a
+    # second LLM call on the slowest path, and the bare product name is honest.
+    if _winner_overridden:
+        _loser_name = _name_at_index(product_names, 1 - winner_index) \
+            if len(product_names) > 1 else ""
+        _scrubbed_winner_name_field = _winner_name
+        _scrubbed_declaration = ""
+        if _names_the_loser(_scrubbed_reason, _loser_name):
+            _scrubbed_reason = (
+                f"{_winner_name} is the stronger overall pick." if _winner_name
+                else "The stronger overall pick."
+            )
+        if _names_the_loser(_scrubbed_tradeoff, _loser_name):
+            _scrubbed_tradeoff = (
+                f"{_winner_name} is the stronger overall pick." if _winner_name
+                else "The stronger overall pick."
+            )
 
     # Detect price method mismatch
     price_methods = [p.get("price", {}).get("source_method") for p in product_data if p.get("price")]
@@ -1713,6 +1766,10 @@ def build_comparison_response(
         comparison["key_tradeoff"] = _scrubbed_tradeoff
     if "winner_declaration" in comparison:
         comparison["winner_declaration"] = _scrubbed_declaration
+    # Issue #99 — the BC alias shipped GPT's stale index while result["winner_index"]
+    # (below) is the deterministic one; a client reading the alias saw the other
+    # product win. One source of truth.
+    comparison["winner_index"] = winner_index
     result["comparison"] = comparison
     # Task A5 — top-level recommendation reads the SCRUBBED winner reason
     # (same source field as overview.winner.reason), never the raw leak.

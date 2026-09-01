@@ -7,6 +7,9 @@ Profiles are stored as JSONB on the users table and updated after each compariso
 from datetime import datetime
 from typing import Any, Dict, List
 
+from app.services.extraction_service import canonicalize_category
+from app.services.scoring_service import _detect_price_tier
+
 
 # Tab-to-dimension mapping for sensitivity computation
 TAB_DIMENSION_MAP = {
@@ -49,29 +52,46 @@ class BehaviorService:
         return {cat: round(w / total, 3) for cat, w in weighted_counts.items()}
 
     def _compute_price_range(self, comparisons: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Compute price range preference from comparison prices."""
+        """Compute price range preference from comparison prices.
+
+        M20 #103 defect 3: the tier breakpoints are the SAME category-aware ones
+        scoring uses (`scoring_service.PRICE_TIERS_BY_CATEGORY` via
+        `_detect_price_tier`). The old flat 11/57/189 BHD ladder called every
+        electronics comparison above 189 BHD a `luxury` shopper while scoring put
+        electronics `luxury` at 2000 BHD.
+
+        This is a REAL behavior change, not a no-op. A row with no category
+        passes "other" → `_detect_price_tier`'s `other_light` sub-scale, which
+        is 11/57/189/500/inf: it matches the old flat ladder only BELOW 500 BHD.
+        An uncategorized row at or above 500 now lands in `top_tier` where the
+        flat ladder said `luxury`, and `tier_distribution` always carries the
+        5th `top_tier` key.
+
+        Shipped unflagged because `price_range_preference` is WRITE-ONLY — it is
+        persisted to `users.behavior_profile` and has zero readers in `app/` or
+        `SmartCompareApp/src/`, so no score, verdict or client surface consumes
+        it. Re-check that before giving it a reader.
+        """
         prices = []
+        # `top_tier` joins the four legacy buckets because the category ladders
+        # emit it above `luxury` (supplements/grocery fold it, so it stays 0 there).
+        tiers = {"budget": 0, "mid": 0, "premium": 0, "luxury": 0, "top_tier": 0}
         for c in comparisons:
+            category = canonicalize_category(c.get("category_used"))
             for p in c.get("products", []):
                 price = p.get("price", {})
                 if isinstance(price, dict) and price.get("amount"):
-                    prices.append(price["amount"])
+                    amount = price["amount"]
                 elif isinstance(price, (int, float)) and price > 0:
-                    prices.append(price)
+                    amount = price
+                else:
+                    continue
+                prices.append(amount)
+                tier = _detect_price_tier(amount, category)
+                tiers[tier] = tiers.get(tier, 0) + 1
         if not prices:
             return {"avg_price_viewed": 0, "tier_distribution": {}}
         avg = sum(prices) / len(prices)
-        # Compute tier distribution
-        tiers = {"budget": 0, "mid": 0, "premium": 0, "luxury": 0}
-        for p in prices:
-            if p < 11:
-                tiers["budget"] += 1
-            elif p < 57:
-                tiers["mid"] += 1
-            elif p < 189:
-                tiers["premium"] += 1
-            else:
-                tiers["luxury"] += 1
         total = len(prices)
         tier_dist = {t: round(c / total, 2) for t, c in tiers.items()}
         return {"avg_price_viewed": round(avg, 1), "tier_distribution": tier_dist}

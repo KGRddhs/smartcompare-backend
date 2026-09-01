@@ -3299,10 +3299,9 @@ class StructuredComparisonService:
                 }
 
             # Compute value badges
-            for i, product in enumerate(product_data):
-                value_score = scoring_result["scores"].get(f"product_{i}", {}).get("breakdown", {}).get("value_score", 50)
-                price_tier = scoring_result.get("price_tiers", {}).get(product.get("name", ""), "mid")
-                product["value_badge"] = scoring_service.compute_value_badge(value_score, price_tier)
+            # M20 #102 — one shared implementation; the sync and streaming
+            # sites must stay character-identical (they are copy-paste twins).
+            scoring_service.apply_value_badges(product_data, scoring_result)
 
             # Compute tradeoffs and confidence
             tradeoffs = scoring_service.compute_tradeoff_pairs(
@@ -4000,10 +3999,9 @@ class StructuredComparisonService:
                 }
 
             # Compute value badges
-            for i, product in enumerate(product_data):
-                value_score = scoring_result["scores"].get(f"product_{i}", {}).get("breakdown", {}).get("value_score", 50)
-                price_tier = scoring_result.get("price_tiers", {}).get(product.get("name", ""), "mid")
-                product["value_badge"] = scoring_service.compute_value_badge(value_score, price_tier)
+            # M20 #102 — one shared implementation; the sync and streaming
+            # sites must stay character-identical (they are copy-paste twins).
+            scoring_service.apply_value_badges(product_data, scoring_result)
 
             # Compute tradeoffs
             tradeoffs = scoring_service.compute_tradeoff_pairs(

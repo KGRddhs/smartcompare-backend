@@ -1,0 +1,38 @@
+{
+  "electronics": [
+    "great_value",
+    "premium_price"
+  ],
+  "grocery": [
+    "fair_price",
+    "fair_price"
+  ],
+  "supplements": [
+    "fair_price",
+    "fair_price"
+  ],
+  "makeup": [
+    "fair_price",
+    "fair_price"
+  ],
+  "skincare": [
+    "fair_price",
+    "fair_price"
+  ],
+  "haircare": [
+    "fair_price",
+    "fair_price"
+  ],
+  "fragrances": [
+    "fair_price",
+    "fair_price"
+  ],
+  "fashion": [
+    "fair_price",
+    "fair_price"
+  ],
+  "other": [
+    "great_value",
+    "premium_price"
+  ]
+}
