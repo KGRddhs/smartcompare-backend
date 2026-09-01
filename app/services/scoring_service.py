@@ -5,6 +5,7 @@ Pure Python, ZERO API calls. Computes per-product scores from extracted specs,
 prices, reviews, and user preferences. Same input = same output (deterministic).
 """
 import logging
+import os
 import re
 from typing import Dict, Any, List, Optional
 
@@ -916,10 +917,45 @@ def build_winner_evidence(
     return [f"{name} {r}" for r in reasons[:2]]
 
 
+def confidence_factcheck_wiring_enabled() -> bool:
+    """True iff the confidence pills read the fact-check's own truth signals
+    (issue #109, default OFF).
+
+    Without it the pills are uncorrelated with verification BY CONSTRUCTION:
+    the specs leg counts unverified/flagged fields as "citations" (>=4 spec
+    fields guarantees at least an acceptable pill regardless of verification),
+    and the price leg never reads `fact_check.price_verified` at all (a strong
+    price pill ships beside a recorded 75% deviation). Read PER CALL from
+    os.getenv (the price_service.exact_gate_enabled idiom); default OFF is
+    byte-identical to f2481b9.
+
+    ⛔ HARD ACTIVATION ORDER — do not flip until BOTH upstream flags are on and
+    canaried: (1) ENABLE_SPEC_CONFIDENCE_CACHE (#107 — otherwise
+    specs_verified+specs_likely is 0 on every warm comparison and the specs
+    pill goes weak on essentially all production traffic), then
+    (2) ENABLE_FACTCHECK_CURRENCY_NORMALIZATION (#106 — otherwise
+    price_verified=False fires on CORRECT genuine BHD prices compared against
+    USD shopping rows and the demotion punishes exactly the prices the
+    correctness program produces).
+    """
+    return os.getenv("ENABLE_CONFIDENCE_FACTCHECK_WIRING", "").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
 def _product_fact_check_pcts(p: Dict[str, Any]) -> tuple[int, int]:
     """Return (verified_pct, citation_count). Tolerates two shapes:
     legacy {specs_verified, specs_likely, specs_unverified, specs_flagged}
-    OR new {verified_pct, citation_count}."""
+    OR new {verified_pct, citation_count}.
+
+    #109 (flag ON): citation_count is verified + likely — the fields that were
+    actually cited — not the raw field count; `likely` is a real citation that
+    merely could not be fully cross-checked, while unverified/flagged fields
+    are the defect the old count smuggled in. verified_pct keeps the full
+    total as denominator ("fields we tried to verify"). The pre-shaped
+    {verified_pct, citation_count} early return is an external contract for a
+    differently-shaped payload and is untouched in both modes.
+    """
     fc = p.get("fact_check") or {}
     if not isinstance(fc, dict):
         return 0, 0
@@ -931,7 +967,32 @@ def _product_fact_check_pcts(p: Dict[str, Any]) -> tuple[int, int]:
     flagged = int(fc.get("specs_flagged") or 0)
     total = verified + likely + unverified + flagged
     verified_pct = round((verified / total) * 100) if total > 0 else 0
+    if confidence_factcheck_wiring_enabled():
+        return verified_pct, verified + likely
     return verified_pct, total
+
+
+def _product_price_factcheck_contradicts(p: Dict[str, Any]) -> bool:
+    """#109 — True iff the product's own fact-check CONTRADICTS its price:
+    `price_verified is False` AND a recorded deviation at/over the check's own
+    30% tolerance.
+
+    Deliberately identity-tested, never falsy-tested: the #106 unknown verdict
+    (`price_verified: None`) and an absent deviation (`price_deviation_pct:
+    None` — no comparable rows) are ABSENCE of evidence, not contradiction,
+    and must never demote. Defensive throughout — compute_confidence must
+    never raise (response_builder wraps it in a bare except that would
+    silently degrade every leg to weak and hide a bug here).
+    """
+    fc = p.get("fact_check") or {}
+    if not isinstance(fc, dict):
+        return False
+    if fc.get("price_verified") is not False:
+        return False
+    deviation = fc.get("price_deviation_pct")
+    if not isinstance(deviation, (int, float)) or isinstance(deviation, bool):
+        return False
+    return deviation >= 30
 
 
 def _classify_leg(strong: bool, near_strong: bool) -> str:
@@ -983,6 +1044,15 @@ def compute_confidence(
     max_shopping = max((_product_shopping_count(p) for p in products), default=0)
     price_strong = any_trust_method or max_shopping >= 3
     price_acceptable = max_shopping >= 2
+    # #109 (flag ON) — when ANY product's own fact-check contradicts its price
+    # (price_verified is False at >=30% recorded deviation), cap the price leg
+    # at "acceptable": a strong pill must not ship beside the check's own
+    # contradiction. Unknown verdicts (None) never demote. Flag OFF: skipped,
+    # byte-identical.
+    if confidence_factcheck_wiring_enabled() and price_strong:
+        if any(_product_price_factcheck_contradicts(p) for p in products):
+            price_strong = False
+            price_acceptable = True
 
     # --- specs leg -----------------------------------------------------------
     best_pct = 0

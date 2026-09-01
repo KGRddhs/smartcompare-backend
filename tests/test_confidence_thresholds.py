@@ -164,3 +164,183 @@ def test_legacy_overall_field_kept_for_backwards_compat():
     conf = _compute_confidence(products)
     assert "overall" in conf
     assert conf["overall"] in {"high", "medium", "low"}
+
+
+# ---------------------------------------------------------------------------
+# Issue #109 — wire fact_check verification into the confidence pills
+# (ENABLE_CONFIDENCE_FACTCHECK_WIRING, default OFF)
+# ---------------------------------------------------------------------------
+
+
+def _flag_on(monkeypatch):
+    monkeypatch.setenv("ENABLE_CONFIDENCE_FACTCHECK_WIRING", "true")
+
+
+def _flag_off(monkeypatch):
+    monkeypatch.delenv("ENABLE_CONFIDENCE_FACTCHECK_WIRING", raising=False)
+
+
+def test_specs_leg_weak_when_all_fields_unverified(monkeypatch):
+    """Flag ON: 11 unverified fields are ZERO citations, not 11 — reproduces
+    recorded row 289eb5e9 which rendered specs 'strong' at 0% verified."""
+    _flag_on(monkeypatch)
+    products = [{
+        "shopping_count": 0,
+        "fact_check": {"specs_verified": 0, "specs_likely": 0,
+                       "specs_unverified": 11, "specs_flagged": 0},
+    }]
+    conf = _compute_confidence(products)
+    assert conf["legs"]["specs"] == "weak"
+
+
+def test_specs_leg_acceptable_at_four_real_citations(monkeypatch):
+    """verified_pct = round(2/11*100) = 18 < 20, but 2+2 = 4 real citations."""
+    _flag_on(monkeypatch)
+    products = [{
+        "shopping_count": 0,
+        "fact_check": {"specs_verified": 2, "specs_likely": 2,
+                       "specs_unverified": 7, "specs_flagged": 0},
+    }]
+    conf = _compute_confidence(products)
+    assert conf["legs"]["specs"] == "acceptable"
+
+
+def test_specs_leg_strong_at_eight_real_citations(monkeypatch):
+    """Pin: verified work is still rewarded (8 verified => strong)."""
+    _flag_on(monkeypatch)
+    products = [{
+        "shopping_count": 0,
+        "fact_check": {"specs_verified": 8, "specs_likely": 0,
+                       "specs_unverified": 3, "specs_flagged": 0},
+    }]
+    conf = _compute_confidence(products)
+    assert conf["legs"]["specs"] == "strong"
+
+
+def test_flagged_fields_do_not_count_as_citations(monkeypatch):
+    _flag_on(monkeypatch)
+    products = [{
+        "shopping_count": 0,
+        "fact_check": {"specs_verified": 0, "specs_likely": 0,
+                       "specs_unverified": 0, "specs_flagged": 6},
+    }]
+    conf = _compute_confidence(products)
+    assert conf["legs"]["specs"] == "weak"
+
+
+def test_price_leg_demoted_when_fact_check_contradicts(monkeypatch):
+    """Flag ON: a product whose own fact-check recorded price_verified=False
+    at >=30% deviation cannot render a STRONG price pill — reproduces
+    recorded row 2bf16403 (strong pill at 75.6% deviation)."""
+    _flag_on(monkeypatch)
+    products = [{
+        "price": {"source_method": "page_scrape"},
+        "shopping_count": 0,
+        "fact_check": {"price_verified": False, "price_deviation_pct": 75.6},
+    }]
+    conf = _compute_confidence(products)
+    assert conf["legs"]["price"] == "acceptable"
+
+
+def test_price_leg_not_demoted_on_unknown_verdict(monkeypatch):
+    """The #106 None verdict is UNKNOWN, not contradiction — requires an
+    explicit `is False` identity test, never a falsy test."""
+    _flag_on(monkeypatch)
+    products = [{
+        "price": {"source_method": "page_scrape"},
+        "shopping_count": 0,
+        "fact_check": {"price_verified": None, "price_deviation_pct": None},
+    }]
+    conf = _compute_confidence(products)
+    assert conf["legs"]["price"] == "strong"
+
+
+def test_price_leg_not_demoted_on_small_deviation(monkeypatch):
+    _flag_on(monkeypatch)
+    products = [{
+        "price": {"source_method": "page_scrape"},
+        "shopping_count": 0,
+        "fact_check": {"price_verified": False, "price_deviation_pct": 12.0},
+    }]
+    conf = _compute_confidence(products)
+    assert conf["legs"]["price"] == "strong"
+
+
+def test_price_leg_not_demoted_when_no_deviation_available(monkeypatch):
+    """price_verified False with NO comparable rows is absence of evidence,
+    not contradiction — must not demote."""
+    _flag_on(monkeypatch)
+    products = [{
+        "price": {"source_method": "page_scrape"},
+        "shopping_count": 0,
+        "fact_check": {"price_verified": False, "price_deviation_pct": None},
+    }]
+    conf = _compute_confidence(products)
+    assert conf["legs"]["price"] == "strong"
+
+
+def test_overall_recomputed_from_demoted_legs(monkeypatch):
+    """Reviews strong + specs strong + price demoted => 2 strong => medium."""
+    _flag_on(monkeypatch)
+    products = [{
+        "review_count": 120,
+        "price": {"source_method": "page_scrape"},
+        "shopping_count": 0,
+        "fact_check": {"specs_verified": 8, "specs_likely": 0,
+                       "specs_unverified": 3, "specs_flagged": 0,
+                       "price_verified": False, "price_deviation_pct": 75.6},
+    }]
+    conf = _compute_confidence(products)
+    assert conf["overall"] == "medium"
+
+
+@pytest.mark.parametrize("products,expected", [
+    (  # inputs of case 1
+        [{"shopping_count": 0,
+          "fact_check": {"specs_verified": 0, "specs_likely": 0,
+                         "specs_unverified": 11, "specs_flagged": 0}}],
+        {"legs": {"price": "weak", "reviews": "weak", "specs": "strong"},
+         "overall": "low",
+         "price": {"source_count": 0, "method": "estimated", "freshness": "live"},
+         "rating": {"review_count": 0, "source": None, "verified": False},
+         "specs": {"verified_pct": 0, "citation_count": 11}},
+    ),
+    (  # inputs of case 4
+        [{"shopping_count": 0,
+          "fact_check": {"specs_verified": 0, "specs_likely": 0,
+                         "specs_unverified": 0, "specs_flagged": 6}}],
+        {"legs": {"price": "weak", "reviews": "weak", "specs": "acceptable"},
+         "overall": "low",
+         "price": {"source_count": 0, "method": "estimated", "freshness": "live"},
+         "rating": {"review_count": 0, "source": None, "verified": False},
+         "specs": {"verified_pct": 0, "citation_count": 6}},
+    ),
+    (  # inputs of case 5
+        [{"price": {"source_method": "page_scrape"}, "shopping_count": 0,
+          "fact_check": {"price_verified": False, "price_deviation_pct": 75.6}}],
+        {"legs": {"price": "strong", "reviews": "weak", "specs": "weak"},
+         "overall": "low",
+         "price": {"source_count": 0, "method": "retailer_verified", "freshness": "live"},
+         "rating": {"review_count": 0, "source": None, "verified": False},
+         "specs": {"verified_pct": 0, "citation_count": 0}},
+    ),
+    (  # inputs of case 9
+        [{"review_count": 120,
+          "price": {"source_method": "page_scrape"}, "shopping_count": 0,
+          "fact_check": {"specs_verified": 8, "specs_likely": 0,
+                         "specs_unverified": 3, "specs_flagged": 0,
+                         "price_verified": False, "price_deviation_pct": 75.6}}],
+        {"legs": {"price": "strong", "reviews": "strong", "specs": "strong"},
+         "overall": "high",
+         "price": {"source_count": 0, "method": "retailer_verified", "freshness": "live"},
+         "rating": {"review_count": 120, "source": None, "verified": False},
+         "specs": {"verified_pct": 73, "citation_count": 11}},
+    ),
+])
+def test_flag_off_byte_identical(monkeypatch, products, expected):
+    """REQUIRED flag-OFF identity pin: with the flag unset, compute_confidence
+    reproduces the pre-change literal dict for every input (captured at
+    f2481b9)."""
+    _flag_off(monkeypatch)
+    conf = _compute_confidence(products)
+    assert conf == expected
