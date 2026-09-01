@@ -465,6 +465,15 @@ export function streamComparison(
     };
 
     (async () => {
+      // #118 — TERMINAL LATCH. The read loop's outer catch cannot otherwise tell
+      // "failed before any result" from "failed AFTER the result was already
+      // delivered": a transport error between the last frame and a clean close
+      // would re-enter runRestCompare and buy a SECOND full backend compare
+      // (the exact double-compare this issue exists to remove). Set once a
+      // terminal event has been dispatched to the caller; the catch then
+      // reports the error but never re-requests.
+      let sawTerminal = false;
+
       if (!features.ENABLE_EXPO_FETCH_SSE) {
         // #118 Option B (default) — the platform capability is decided
         // before any request: no stream attempt, ONE backend compare.
@@ -551,13 +560,17 @@ export function streamComparison(
                   } else {
                     callbacks.onComplete?.(parsed);
                   }
+                  sawTerminal = true;
                   break;
                 // Bundle E § Decision 8 — settle-window events.
                 case 'first_paint': callbacks.onFirstPaint?.(parsed); break;
                 case 'settle_update': callbacks.onSettleUpdate?.(parsed); break;
                 case 'confidence_upgrade': callbacks.onConfidenceUpgrade?.(parsed); break;
                 case 'settle_complete': callbacks.onSettleComplete?.(parsed); break;
-                case 'error': callbacks.onError?.(new Error(parsed.error || 'Stream error')); break;
+                case 'error':
+                  callbacks.onError?.(new Error(parsed.error || 'Stream error'));
+                  sawTerminal = true;
+                  break;
               }
             } catch {
               // Ignore malformed JSON lines
@@ -571,6 +584,10 @@ export function streamComparison(
         // #118 — breadcrumb so a silent streaming-transport regression is
         // visible in the Sentry dashboard, not only in a __DEV__ log.
         addSseFallbackBreadcrumb(err);
+        // A terminal event already reached the caller — the compare SUCCEEDED.
+        // Falling back here would double-charge OpenAI + Serper for a result
+        // the user already has, so surface nothing further and stop.
+        if (sawTerminal) return;
         await runRestCompare();
       }
     })();

@@ -173,4 +173,40 @@ describe('streamComparison — #118 flag ON (expo/fetch SSE transport)', () => {
     expect((addSseFallbackBreadcrumb as jest.Mock).mock.calls[0][0].message).toBe('boom');
     expect((global as any).fetch).not.toHaveBeenCalled();
   });
+
+  it('flag ON: a transport error AFTER `complete` does NOT buy a second compare', async () => {
+    // Reviewer probe (#118): the read loop's outer catch could not tell "failed
+    // before any result" from "failed AFTER the result was delivered", so a
+    // transport error between the last frame and a clean close re-entered the
+    // REST fallback — a SECOND full backend comparison (double OpenAI + double
+    // Serper) for a result the user already had. The terminal latch closes it.
+    const encoder = new TextEncoder();
+    const frames = [sseFrame('complete', { success: true, comparison: 'ok' })];
+    let i = 0;
+    expoFetchMock.mockResolvedValue({
+      ok: true,
+      body: {
+        getReader: () => ({
+          read: jest.fn().mockImplementation(() => {
+            if (i < frames.length) {
+              return Promise.resolve({ done: false, value: encoder.encode(frames[i++]) });
+            }
+            return Promise.reject(new Error('transport died after complete'));
+          }),
+        }),
+      },
+    });
+    axiosInstance.get.mockResolvedValue({ data: { success: true, comparison: 'REST' } });
+    const { streamComparison } = require('../src/services/api');
+
+    const onComplete = jest.fn();
+    const onError = jest.fn();
+    streamComparison({ product_a: 'a', product_b: 'b' }).subscribe({ onComplete, onError });
+    await flush();
+
+    expect(onComplete).toHaveBeenCalledTimes(1);
+    expect(onComplete).toHaveBeenCalledWith({ success: true, comparison: 'ok' });
+    // THE INVARIANT: no REST re-run after a delivered result.
+    expect(axiosInstance.get).not.toHaveBeenCalled();
+  });
 });
