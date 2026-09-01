@@ -56,6 +56,16 @@ def test_converted_usd_and_estimated_penalties_unchanged():
     assert _price_authority_delta({}) == -4.0
 
 
+def test_sentinel_non_prices_are_not_trusted():
+    """`sitemap_no_match` / `validation_rejected` are SENTINELS, not prices —
+    they mark a lookup that found nothing. They must stay out of the trust set
+    and keep the full estimate-grade penalty, or a failed lookup would score as
+    a confirmed Bahrain fact."""
+    for method in ("sitemap_no_match", "validation_rejected"):
+        assert method not in TRUST
+        assert _price_authority_delta({"price": {"source_method": method}}) == -4.0
+
+
 @pytest.mark.parametrize("method", sorted(GENUINE))
 def test_has_real_price_true_for_each_genuine_method(method):
     assert _has_real_price({"price": {"source_method": method}}) is True
