@@ -45,7 +45,7 @@ from app.services.price_service import (
     _selection_match,
     variant_mismatch,
 )
-from app.services.exchange_rate_service import FALLBACK_RATES
+from app.services.exchange_rate_service import is_convertible
 
 logger = logging.getLogger(__name__)
 
@@ -240,8 +240,10 @@ def _build_price(
         out["source_method"] = "occ_rest_bhd"
     else:
         # Converted GCC price. Refuse to mis-stamp an unconvertible currency as a
-        # genuine BHD number — only convert known FX rates.
-        if src_ccy not in FALLBACK_RATES:
+        # genuine BHD number — only convert known FX rates. is_convertible reads
+        # the EFFECTIVE table (M21 W4: honours ENABLE_EXTENDED_FALLBACK_RATES;
+        # flag OFF it is exactly the old FALLBACK_RATES membership).
+        if not is_convertible(src_ccy):
             return None
         bhd = _convert_to_bhd(float(raw_amount), src_ccy)
         if bhd is None or bhd <= 0:

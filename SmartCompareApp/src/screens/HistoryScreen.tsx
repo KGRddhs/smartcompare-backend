@@ -33,6 +33,8 @@ import Animated, { FadeInDown } from 'react-native-reanimated';
 import { colors, spacing, radii, typography, shadows } from '../theme';
 import QarenLogo from '../components/QarenLogo';
 import { ProductImage } from '../components/primitives/ProductImage';
+import { DirectionalIcon } from '../components/primitives/DirectionalIcon';
+import { localizedCurrency } from '../utils/currencyDisplay';
 import {
   getComparisonHistory,
   deleteComparison,
@@ -706,11 +708,13 @@ export default function HistoryScreen({ navigation, onLogout }: HistoryScreenPro
 
   const formatPrice = (product: any): string => {
     if (!product || product.price === null || product.price === undefined) return 'N/A';
+    // MB-i18n-rtl-02 — currency label follows the app language, matching
+    // the hero copy ("د.ب" in AR) instead of mixing Latin ISO into Arabic.
     if (typeof product.price === 'object') {
       if (product.price.amount === null || product.price.amount === undefined) return 'N/A';
-      return `${product.price.amount.toFixed(2)} ${product.price.currency || 'BHD'}`;
+      return `${product.price.amount.toFixed(2)} ${localizedCurrency(product.price.currency || 'BHD', t)}`;
     }
-    return `${(product.price as number).toFixed(2)} BHD`;
+    return `${(product.price as number).toFixed(2)} ${localizedCurrency('BHD', t)}`;
   };
 
   const sections: HistorySection[] = useMemo(() => {
@@ -808,7 +812,9 @@ export default function HistoryScreen({ navigation, onLogout }: HistoryScreenPro
         onPress={() => navigation.navigate('HomeTab')}
       >
         <Text style={styles.emptyCtaText}>{t('history.empty.cta')}</Text>
-        <ChevronRight size={16} color={colors.bg.primary} />
+        <DirectionalIcon>
+          <ChevronRight size={16} color={colors.bg.primary} />
+        </DirectionalIcon>
       </TouchableOpacity>
     </View>
   );

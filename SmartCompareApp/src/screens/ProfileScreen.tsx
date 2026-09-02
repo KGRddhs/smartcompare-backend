@@ -67,6 +67,7 @@ import type { UserPreferences } from '../types';
 import { getSavedUser, logout } from '../services/authService';
 import QarenLogo from '../components/QarenLogo';
 import ToggleRow from '../components/ToggleRow';
+import { DirectionalIcon } from '../components/primitives/DirectionalIcon';
 import {
   RecentDecisionsRow,
   PrioritiesInline,
@@ -393,7 +394,9 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
       {right
         ? right
         : !destructive && (
-            <ChevronRight size={16} color={colors.text.placeholder} />
+            <DirectionalIcon>
+              <ChevronRight size={16} color={colors.text.placeholder} />
+            </DirectionalIcon>
           )}
     </TouchableOpacity>
   );

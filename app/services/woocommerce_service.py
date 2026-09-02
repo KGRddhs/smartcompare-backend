@@ -250,8 +250,11 @@ def _match_woo_product(
             # _convert_to_bhd returns the amount UNCHANGED (logs a warning) when
             # the currency is not in the rate table — that would mislabel a raw
             # foreign amount as BHD. Guard explicitly: unconvertible → skip.
-            from app.services.exchange_rate_service import FALLBACK_RATES
-            if currency_code not in FALLBACK_RATES:
+            # EFFECTIVE-table membership (is_convertible — M21 W4: honours
+            # ENABLE_EXTENDED_FALLBACK_RATES, the same table _convert_to_bhd
+            # converts from; flag OFF it is exactly the old FALLBACK_RATES check).
+            from app.services.exchange_rate_service import is_convertible
+            if not is_convertible(currency_code):
                 continue
             if converted is None:
                 continue

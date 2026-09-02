@@ -182,9 +182,14 @@ def _stamp_genuine_or_converted(
         return None
     # _convert_to_bhd returns the amount unchanged when the currency is unknown —
     # treat that as unconvertible (do NOT ship a foreign figure mislabelled BHD).
+    # Membership via the shared EFFECTIVE-table gate (is_convertible — M21 W4).
+    # Behaviour-neutral here: this branch only fires when _convert_to_bhd (which
+    # already reads the effective table) could not convert, i.e. the code is
+    # outside the effective table, hence outside the base table too — routed
+    # through the shared helper so no adapter gate reads the base table.
     if rc and converted == float(amount):
-        from app.services.exchange_rate_service import FALLBACK_RATES
-        if rc not in FALLBACK_RATES:
+        from app.services.exchange_rate_service import is_convertible
+        if not is_convertible(rc):
             return None
     return {
         "amount": round(float(converted), 3),

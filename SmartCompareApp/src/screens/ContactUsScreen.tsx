@@ -18,9 +18,11 @@ import {
   Platform,
   Linking,
   ActivityIndicator,
+  I18nManager,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { ChevronLeft } from 'lucide-react-native';
+import { DirectionalIcon } from '../components/primitives/DirectionalIcon';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as Haptics from 'expo-haptics';
 import { colors, spacing, radii, typography } from '../theme';
@@ -111,7 +113,9 @@ export default function ContactUsScreen({ navigation }: Props) {
         accessibilityLabel={t('common.back')}
         style={styles.headerBtn}
       >
-        <ChevronLeft size={24} color={colors.text.primary} />
+        <DirectionalIcon>
+          <ChevronLeft size={24} color={colors.text.primary} />
+        </DirectionalIcon>
       </TouchableOpacity>
       <Text style={styles.title} numberOfLines={1}>{t('contact.title')}</Text>
       <View style={styles.headerBtn} />
@@ -300,7 +304,9 @@ const styles = StyleSheet.create({
   charCount: {
     ...typography.small,
     color: colors.text.placeholder,
-    textAlign: 'right',
+    // Counter sits at the LOGICAL end of the textarea; textAlign is
+    // physical in RN so it must swap under RTL (M21 W4 MB-i18n-rtl-05).
+    textAlign: I18nManager.isRTL ? 'left' : 'right',
     marginBottom: spacing.md,
   },
   btn: {

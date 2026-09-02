@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { ChevronLeft, X } from 'lucide-react-native';
+import { DirectionalIcon } from '../components/primitives/DirectionalIcon';
 import * as Haptics from 'expo-haptics';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, spacing, radii, typography } from '../theme';
@@ -132,7 +133,9 @@ export default function EditPreferencesFlow({ navigation }: Props) {
           {pageIndex === 0 ? (
             <X size={22} color={colors.text.primary} />
           ) : (
-            <ChevronLeft size={24} color={colors.text.primary} />
+            <DirectionalIcon>
+              <ChevronLeft size={24} color={colors.text.primary} />
+            </DirectionalIcon>
           )}
         </TouchableOpacity>
         <Text style={styles.pageDots}>{`${pageIndex + 1} / ${PAGES.length}`}</Text>

@@ -29,6 +29,7 @@ import {
 } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { ArrowLeft, Sparkles } from 'lucide-react-native';
+import { DirectionalIcon } from '../components/primitives/DirectionalIcon';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useTranslation } from 'react-i18next';
 import { colors, spacing, radii, typography } from '../theme';
@@ -170,7 +171,9 @@ export default function ReferralLandingScreen({ navigation, route }: Props) {
           style={styles.headerButton}
           accessibilityLabel={t('common.back', { defaultValue: 'Back' })}
         >
-          <ArrowLeft size={20} color={colors.text.primary} />
+          <DirectionalIcon>
+            <ArrowLeft size={20} color={colors.text.primary} />
+          </DirectionalIcon>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{t('app.name')}</Text>
         <View style={styles.headerButton} />

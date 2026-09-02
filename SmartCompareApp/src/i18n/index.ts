@@ -1,3 +1,10 @@
+// Hermes does not implement Intl.PluralRules, and i18next v24+ cannot
+// resolve ANY plural category without it — Arabic counts silently fell
+// back to the English one/other forms (M21 W4 MB-i18n-rtl-08). The
+// polyfill is guarded: it only installs itself when the engine lacks a
+// working Intl.PluralRules, so node/jest keep the native implementation.
+// It MUST load before i18next.init below.
+import 'intl-pluralrules';
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
 import * as Localization from 'expo-localization';

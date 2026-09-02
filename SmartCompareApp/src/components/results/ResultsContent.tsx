@@ -49,6 +49,8 @@ import Animated, {
   type SharedValue,
 } from 'react-native-reanimated';
 import { ArrowLeft, Share2 } from 'lucide-react-native';
+import { DirectionalIcon } from '../primitives/DirectionalIcon';
+import { localizedCurrency } from '../../utils/currencyDisplay';
 import { useTranslation } from 'react-i18next';
 
 import { colors, spacing, radii } from '../../theme';
@@ -136,7 +138,9 @@ export const ResultsContent = React.memo(function ResultsContent({
     // No "estimated", no scary copy.
     if (price?.unavailable) return t('results.price.pending');
     if (!price || price.amount === null) return t('results.priceNA');
-    const base = `${price.currency} ${price.amount.toLocaleString()}`;
+    // MB-i18n-rtl-02 — currency label follows the app language (AR gets
+    // the same "د.ب"-style glyphs the Home/History hero copy uses).
+    const base = `${localizedCurrency(price.currency, t)} ${price.amount.toLocaleString()}`;
     // Provenance honesty (deep-review HIGH) — a converted (USD→BHD) figure is NOT
     // a genuine Bahrain shelf price; label it so it is never read as a local price
     // (the backend contract at price_service.py: "the UI says indicative/reference").
@@ -205,7 +209,9 @@ export const ResultsContent = React.memo(function ResultsContent({
           style={styles.headerCircleBtn}
           onPress={onBack}
         >
-          <ArrowLeft size={18} color={colors.text.primary} />
+          <DirectionalIcon>
+            <ArrowLeft size={18} color={colors.text.primary} />
+          </DirectionalIcon>
         </TouchableOpacity>
 
         <View style={styles.headerCenter}>

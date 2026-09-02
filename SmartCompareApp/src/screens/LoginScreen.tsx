@@ -52,6 +52,7 @@ import { parseApiError } from '../services/api';
 import { AuthStackParamList } from '../types';
 import { colors, spacing, radii } from '../theme';
 import { ChevronLeft, Mail } from 'lucide-react-native';
+import { DirectionalIcon } from '../components/primitives/DirectionalIcon';
 
 type LoginScreenProps = {
   navigation: NativeStackNavigationProp<AuthStackParamList, 'Login'>;
@@ -309,7 +310,9 @@ export default function LoginScreen({ navigation, onLoginSuccess }: LoginScreenP
           accessibilityLabel={t('common.back', { defaultValue: 'Back' })}
           style={styles.backBtn}
         >
-          <ChevronLeft size={18} color={colors.text.primary} strokeWidth={2.5} />
+          <DirectionalIcon>
+            <ChevronLeft size={18} color={colors.text.primary} strokeWidth={2.5} />
+          </DirectionalIcon>
         </TouchableOpacity>
       </View>
 
