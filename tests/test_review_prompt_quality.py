@@ -460,12 +460,20 @@ class TestNormalizeReviewResponseEdgeCases:
         result = _normalize_review_response({"average_rating": 3.5})
         assert result["source_ratings"] == []
 
-    def test_source_ratings_not_overwritten(self):
-        """Existing source_ratings are preserved."""
+    def test_model_emitted_source_ratings_dropped(self):
+        """M18 PO-fact-check-11 — model-emitted source_ratings are DROPPED.
+
+        The previous pin ("existing source_ratings are preserved") pinned the
+        enforcement gap itself: _normalize_review_response only ever sees raw
+        model output, the prompt forbids generating source_ratings, and the
+        real-ratings overwrite (review_service) runs AFTER normalization — so
+        anything present here is fabricated and violates the documented
+        "Ratings are NEVER AI-generated" invariant. The invariant is now
+        structural: the list is cleared unconditionally."""
         from app.services.extraction_service import _normalize_review_response
         raw = {"source_ratings": [{"source": "Amazon", "rating": 4.5}]}
         result = _normalize_review_response(raw)
-        assert len(result["source_ratings"]) == 1
+        assert result["source_ratings"] == []
 
 
 # ===========================================

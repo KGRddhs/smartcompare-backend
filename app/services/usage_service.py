@@ -44,62 +44,95 @@ def valid_device_fingerprint(value: Optional[str]) -> Optional[str]:
 async def check_anon_usage_allowed(device_fingerprint: str) -> dict:
     """Freemium gate for an ANONYMOUS caller, keyed on the device fingerprint.
 
-    Anonymous devices have no `users` row (the lifetime counter lives in Supabase
-    keyed by user_id), so this uses the free-tier daily + monthly Redis counters
-    keyed on ``anon:{fingerprint}``. Fails OPEN when Redis is unavailable — a
-    cache outage must never block a legitimate user. Same shape as
-    ``check_usage_allowed``.
+    M18 CD-interactions-05: this now CONSUMES the credit atomically at the gate
+    (the M13-37 ``_atomic_consume`` pattern, keyed ``anon:{fingerprint}``)
+    instead of read-then-record — N parallel same-fingerprint requests can no
+    longer all read the same pre-increment value and all pass. On ``allowed``
+    the credit is already debited; ``record_anon_comparison`` is a no-op and a
+    failed comparison should refund via ``refund_anon_comparison_credit``.
+
+    Anonymous devices have no `users` row (the lifetime counter lives in
+    Supabase keyed by user_id), so this uses the free-tier daily + monthly
+    Redis counters. Fails OPEN when Redis is unavailable — a cache outage must
+    never block a legitimate user. Same shape as ``check_usage_allowed`` plus
+    ``consumed`` / ``consumed_keys``.
     """
     limits = TIER_LIMITS["free"]
     anon_id = f"anon:{device_fingerprint}"
-    daily_used = _get_redis_count(_daily_key(anon_id))
-    monthly_used = _get_redis_count(_monthly_key(anon_id))
+    outcome = await _atomic_consume_async(anon_id, limits["daily"], limits["monthly"])
+    reason = (str(outcome) or None) if outcome is not None else None
+    daily_after = getattr(outcome, "daily_after", None)
+    monthly_after = getattr(outcome, "monthly_after", None)
 
-    if daily_used >= limits["daily"]:
+    if reason == "daily_limit":
+        monthly_used = (
+            monthly_after
+            if monthly_after is not None
+            else await _get_redis_count_async(_monthly_key(anon_id))
+        )
         return {
             "allowed": False,
             "reason": "daily_limit",
             "tier": "free",
+            "consumed": False,
             "remaining": {"daily": 0, "monthly": max(0, limits["monthly"] - monthly_used), "lifetime_free": 0},
         }
-    if monthly_used >= limits["monthly"]:
+    if reason == "monthly_limit":
+        daily_used = (
+            daily_after
+            if daily_after is not None
+            else await _get_redis_count_async(_daily_key(anon_id))
+        )
         return {
             "allowed": False,
             "reason": "monthly_limit",
             "tier": "free",
+            "consumed": False,
             "remaining": {"daily": max(0, limits["daily"] - daily_used), "monthly": 0, "lifetime_free": 0},
         }
+
+    # Success (or fail-open): the INCRBY return values ARE the post-consume
+    # counts (LS-event-loop-03) — no redundant re-reads. Fail-open (counts
+    # None) degrades to the same 0-count reads as before.
+    daily_used = (
+        daily_after if daily_after is not None else await _get_redis_count_async(_daily_key(anon_id))
+    )
+    monthly_used = (
+        monthly_after if monthly_after is not None else await _get_redis_count_async(_monthly_key(anon_id))
+    )
     return {
         "allowed": True,
         "reason": None,
         "tier": "free",
+        "consumed": True,
+        "consumed_keys": {
+            "daily": getattr(outcome, "daily_key", None) or _daily_key(anon_id),
+            "monthly": getattr(outcome, "monthly_key", None) or _monthly_key(anon_id),
+        },
         "remaining": {
-            "daily": limits["daily"] - daily_used,
-            "monthly": limits["monthly"] - monthly_used,
+            "daily": max(0, limits["daily"] - daily_used),
+            "monthly": max(0, limits["monthly"] - monthly_used),
             "lifetime_free": 0,
         },
     }
 
 
 async def record_anon_comparison(device_fingerprint: str) -> None:
-    """Increment the anonymous device's daily+monthly Redis counters after a
-    successful comparison. Fire-and-forget safe; no-op when Redis is down."""
-    if not redis_client:
-        return
-    try:
-        anon_id = f"anon:{device_fingerprint}"
-        daily_key = _daily_key(anon_id)
-        monthly_key = _monthly_key(anon_id)
+    """DEPRECATED no-op (M18 CD-interactions-05). The anonymous gate now
+    debits the credit atomically inside ``check_anon_usage_allowed`` —
+    incrementing here again would double-count every successful anonymous
+    comparison. Kept (async, same signature) because the routes still
+    fire-and-forget it on success."""
+    return None
 
-        daily_count = redis_client.incr(daily_key)
-        if daily_count == 1:
-            redis_client.expire(daily_key, 86400)  # 24h TTL
 
-        monthly_count = redis_client.incr(monthly_key)
-        if monthly_count == 1:
-            redis_client.expire(monthly_key, 86400 * 32)  # ~32 days TTL
-    except Exception as e:
-        logger.error(f"Failed to record anon comparison usage: {e}")
+async def refund_anon_comparison_credit(
+    device_fingerprint: str, consumed_keys: Optional[dict] = None
+) -> None:
+    """Refund the credit ``check_anon_usage_allowed`` reserved, for when the
+    comparison work then failed. Symmetric twin of ``refund_comparison_credit``
+    keyed on ``anon:{fingerprint}``. Fire-and-forget safe."""
+    await refund_comparison_credit(f"anon:{device_fingerprint}", consumed_keys)
 
 # Tier configuration
 TIER_LIMITS = {
@@ -126,6 +159,21 @@ def _monthly_key(user_id: str) -> str:
     return f"usage:monthly:{user_id}:{month}"
 
 
+def _previous_daily_key(user_id: str) -> str:
+    """Yesterday's daily key — the refund fallback window (M18 usage-symmetry):
+    a consume just before UTC midnight refunded just after must credit back the
+    window it actually debited."""
+    yesterday = datetime.now(timezone.utc) - timedelta(days=1)
+    return f"usage:daily:{user_id}:{yesterday.strftime('%Y-%m-%d')}"
+
+
+def _previous_monthly_key(user_id: str) -> str:
+    """Last month's monthly key — the refund fallback window across a month
+    rollover."""
+    last_month = datetime.now(timezone.utc).replace(day=1) - timedelta(days=1)
+    return f"usage:monthly:{user_id}:{last_month.strftime('%Y-%m')}"
+
+
 def _get_redis_count(key: str) -> int:
     if not redis_client:
         return 0
@@ -150,12 +198,48 @@ def _safe_decr(key: str) -> None:
         pass
 
 
+class _ConsumeOutcome(str):
+    """Result of ``_atomic_consume`` (M18 usage-symmetry). Compares equal to the
+    legacy reason string (``'' `` and falsy on success, ``'daily_limit'`` /
+    ``'monthly_limit'`` on rejection) so every existing ``reason == ...`` check
+    and test keeps working, while ALSO carrying:
+      - ``daily_after`` / ``monthly_after``: the post-operation counter values
+        (the INCRBY return values, rollback-adjusted) so callers need no
+        redundant remaining-count GETs (LS-event-loop-03);
+      - ``daily_key`` / ``monthly_key``: the exact date-stamped keys debited,
+        so a refund can credit back the SAME window the consume debited
+        (CD-interactions-07 / CD-wave-diffs-09).
+    """
+
+    daily_after: Optional[int]
+    monthly_after: Optional[int]
+    daily_key: Optional[str]
+    monthly_key: Optional[str]
+
+    def __new__(
+        cls,
+        reason: str = "",
+        daily_after: Optional[int] = None,
+        monthly_after: Optional[int] = None,
+        daily_key: Optional[str] = None,
+        monthly_key: Optional[str] = None,
+    ):
+        obj = super().__new__(cls, reason or "")
+        obj.daily_after = daily_after
+        obj.monthly_after = monthly_after
+        obj.daily_key = daily_key
+        obj.monthly_key = monthly_key
+        return obj
+
+
 def _atomic_consume(user_id: str, daily_limit: int, monthly_cap: int):
     """Atomic INCRBY-then-check-then-DECRBY-rollback of the daily then monthly
-    Redis counters (the try_consume_serper_image_credit pattern). Returns None on
-    success (both counters advanced), else the reason string
-    ('daily_limit'/'monthly_limit') after fully rolling back. Fails OPEN (None) on
-    a Redis error — a cache outage must never block a legitimate user."""
+    Redis counters (the try_consume_serper_image_credit pattern). Returns a
+    falsy ``_ConsumeOutcome('')`` on success (both counters advanced; carries
+    the post-INCRBY counts and the exact keys debited), else an outcome equal
+    to the reason string ('daily_limit'/'monthly_limit') after fully rolling
+    back. Fails OPEN (plain None, counts unknown) on a Redis error — a cache
+    outage must never block a legitimate user."""
     if not redis_client:
         return None  # fail-open: cannot meter without Redis
     daily_key = _daily_key(user_id)
@@ -166,15 +250,32 @@ def _atomic_consume(user_id: str, daily_limit: int, monthly_cap: int):
             _safe_expire(daily_key, 86400)  # 24h
         if new_daily > daily_limit:
             _safe_decr(daily_key)
-            return "daily_limit"
+            return _ConsumeOutcome(
+                "daily_limit",
+                daily_after=new_daily - 1,
+                daily_key=daily_key,
+                monthly_key=monthly_key,
+            )
         new_monthly = redis_client.incrby(monthly_key, 1)
         if new_monthly == 1:
             _safe_expire(monthly_key, 86400 * 32)  # ~32d
         if new_monthly > monthly_cap:
             _safe_decr(monthly_key)
             _safe_decr(daily_key)  # roll back the daily taken above
-            return "monthly_limit"
-        return None
+            return _ConsumeOutcome(
+                "monthly_limit",
+                daily_after=new_daily - 1,
+                monthly_after=new_monthly - 1,
+                daily_key=daily_key,
+                monthly_key=monthly_key,
+            )
+        return _ConsumeOutcome(
+            "",
+            daily_after=new_daily,
+            monthly_after=new_monthly,
+            daily_key=daily_key,
+            monthly_key=monthly_key,
+        )
     except Exception as e:  # noqa: BLE001
         logger.warning("[usage] atomic consume failed for %s: %s — fail-open", user_id, e)
         return None
@@ -240,24 +341,34 @@ async def consume_comparison_credit(user_id: str, access_token: str) -> dict:
     fails, the caller refunds via refund_comparison_credit.
 
     Same return shape as check_usage_allowed, plus 'consumed' (True when the
-    daily/monthly credit was taken and must be refunded on a later work failure).
+    daily/monthly credit was taken and must be refunded on a later work failure)
+    and 'consumed_keys' (the exact date-stamped Redis keys debited — pass them
+    to refund_comparison_credit so the refund credits the SAME window).
     """
-    user_info = await _get_user_tier_info(user_id)
+    # LS-event-loop-03: the two Supabase reads are independent of each other —
+    # fetch them concurrently instead of serially.
+    user_info, bonus = await asyncio.gather(
+        _get_user_tier_info(user_id), _get_active_referral_bonus(user_id)
+    )
     tier = user_info.get("subscription_tier", "free")
     lifetime_used = user_info.get("lifetime_comparisons_used", 0)
-    bonus = await _get_active_referral_bonus(user_id)
     limits = TIER_LIMITS.get(tier, TIER_LIMITS["free"])
     monthly_cap = limits["monthly"] + bonus
 
     # Lifetime-free path: allowed regardless of daily/monthly, but still advance
     # the counters (parity with the legacy record_comparison).
     if tier == "free" and lifetime_used < limits["lifetime_free"]:
+        # Keys captured adjacent to the bump so a later refund credits the
+        # window actually debited (the microsecond window to the incrby inside
+        # _bump_counters is negligible next to the minutes-later refund).
+        consumed_keys = {"daily": _daily_key(user_id), "monthly": _monthly_key(user_id)}
         await _bump_counters_async(user_id)
         return {
             "allowed": True,
             "reason": None,
             "tier": tier,
             "consumed": True,
+            "consumed_keys": consumed_keys,
             "remaining": {
                 "daily": limits["daily"],
                 "monthly": monthly_cap,
@@ -265,26 +376,52 @@ async def consume_comparison_credit(user_id: str, access_token: str) -> dict:
             },
         }
 
-    # #115 — the atomic consume and the remaining-count reads go through the
-    # module-local async dispatches (ENABLE_ASYNC_REDIS_OFFLOAD; inline when
-    # OFF). Same values, same order — only the executing thread changes ON.
-    reason = await _atomic_consume_async(user_id, limits["daily"], monthly_cap)
+    # #115 — the atomic consume (and any fallback remaining-count read) goes
+    # through the module-local async dispatches (ENABLE_ASYNC_REDIS_OFFLOAD;
+    # inline when OFF). LS-event-loop-03: the INCRBY return values carried on
+    # the outcome ARE the post-consume counts, so the success path issues ZERO
+    # extra reads; the GET fallback only fires for legacy/fail-open outcomes
+    # with no counts attached.
+    outcome = await _atomic_consume_async(user_id, limits["daily"], monthly_cap)
+    reason = (str(outcome) or None) if outcome is not None else None
+    daily_after = getattr(outcome, "daily_after", None)
+    monthly_after = getattr(outcome, "monthly_after", None)
     if reason == "daily_limit":
-        monthly_used = await _get_redis_count_async(_monthly_key(user_id))
+        monthly_used = (
+            monthly_after
+            if monthly_after is not None
+            else await _get_redis_count_async(_monthly_key(user_id))
+        )
         return {
             "allowed": False, "reason": "daily_limit", "tier": tier, "consumed": False,
             "remaining": {"daily": 0, "monthly": max(0, monthly_cap - monthly_used), "lifetime_free": 0},
         }
     if reason == "monthly_limit":
-        daily_used = await _get_redis_count_async(_daily_key(user_id))
+        daily_used = (
+            daily_after
+            if daily_after is not None
+            else await _get_redis_count_async(_daily_key(user_id))
+        )
         return {
             "allowed": False, "reason": "monthly_limit", "tier": tier, "consumed": False,
             "remaining": {"daily": max(0, limits["daily"] - daily_used), "monthly": 0, "lifetime_free": 0},
         }
-    daily_used = await _get_redis_count_async(_daily_key(user_id))
-    monthly_used = await _get_redis_count_async(_monthly_key(user_id))
+    daily_used = (
+        daily_after
+        if daily_after is not None
+        else await _get_redis_count_async(_daily_key(user_id))
+    )
+    monthly_used = (
+        monthly_after
+        if monthly_after is not None
+        else await _get_redis_count_async(_monthly_key(user_id))
+    )
     return {
         "allowed": True, "reason": None, "tier": tier, "consumed": True,
+        "consumed_keys": {
+            "daily": getattr(outcome, "daily_key", None) or _daily_key(user_id),
+            "monthly": getattr(outcome, "monthly_key", None) or _monthly_key(user_id),
+        },
         "remaining": {
             "daily": max(0, limits["daily"] - daily_used),
             "monthly": max(0, monthly_cap - monthly_used),
@@ -293,15 +430,77 @@ async def consume_comparison_credit(user_id: str, access_token: str) -> dict:
     }
 
 
-async def refund_comparison_credit(user_id: str) -> None:
-    """Best-effort DECRBY of the daily+monthly credit reserved at the gate, for
-    when the comparison work then failed — preserves the legacy behaviour where a
-    failed comparison did not burn a daily credit. Fire-and-forget safe."""
+def _refund_one_window(primary_key: Optional[str], fallback_key: Optional[str], ttl: int) -> None:
+    """Floor-at-zero refund of one counter window (M18 CD-interactions-07 /
+    CD-wave-diffs-09). Tries ``primary_key``; if the DECRBY would go negative
+    (the key was absent — this consume's debit lives in an OLDER window, e.g. a
+    pre-midnight consume refunded post-midnight, or was never taken at all) the
+    decrement is compensated back, the stray key gets a TTL so it cannot leak,
+    and the ``fallback_key`` (previous window) is tried the same way. Never
+    leaves a counter negative.
+
+    GET-before-DECR (not blind DECR) so a window that holds no debit — e.g.
+    the monthly counter after a partial fail-open consume where only the daily
+    INCRBY succeeded — is never decremented at all; the compensation branch
+    only covers the small GET→DECR race against a concurrent refund."""
+    for key in (primary_key, fallback_key):
+        if not key:
+            continue
+        try:
+            raw = redis_client.get(key)
+            current = int(raw) if raw else 0
+        except Exception:  # noqa: BLE001 — refund is best-effort
+            return
+        if current <= 0:
+            continue  # no debit recorded in this window — try the older one
+        try:
+            value = redis_client.decrby(key, 1)
+        except Exception:  # noqa: BLE001
+            return
+        if value >= 0:
+            return  # credited a real debit in this window — done
+        # Lost a GET→DECR race (another refund drained it first). Undo, and if
+        # we just created the key (-1), attach a TTL so the stray 0-key expires.
+        try:
+            redis_client.incrby(key, 1)
+            if value == -1:
+                _safe_expire(key, ttl)
+        except Exception:  # noqa: BLE001
+            return
+
+
+def _refund_credit_sync(counter_id: str, consumed_keys: Optional[dict] = None) -> None:
+    """Blocking body of refund_comparison_credit. With ``consumed_keys`` the
+    refund credits EXACTLY the keys the consume debited (deterministic
+    symmetry). Without them (legacy callers) it floors-at-zero on the current
+    window and falls back to the previous day/month window, so a consume that
+    straddled a UTC boundary is still credited back where it was debited."""
     if not redis_client:
         return
+    if consumed_keys:
+        _refund_one_window(consumed_keys.get("daily"), None, 86400)
+        _refund_one_window(consumed_keys.get("monthly"), None, 86400 * 32)
+        return
+    _refund_one_window(_daily_key(counter_id), _previous_daily_key(counter_id), 86400)
+    _refund_one_window(_monthly_key(counter_id), _previous_monthly_key(counter_id), 86400 * 32)
+
+
+async def refund_comparison_credit(user_id: str, consumed_keys: Optional[dict] = None) -> None:
+    """Best-effort refund of the daily+monthly credit reserved at the gate, for
+    when the comparison work then failed — preserves the legacy behaviour where a
+    failed comparison did not burn a daily credit. Fire-and-forget safe.
+
+    M18 usage-symmetry: pass the gate result's ``consumed_keys`` to credit the
+    exact window the consume debited; without them the refund floors at zero
+    and falls back to the previous UTC window instead of driving the NEW
+    window's counter negative (the midnight/month-rollover corruption)."""
     try:
-        _safe_decr(_daily_key(user_id))
-        _safe_decr(_monthly_key(user_id))
+        # #115-style offload dispatch: both branches reference the module-level
+        # blocking symbol so test patches intercept flag-ON and flag-OFF alike.
+        if _redis_offload_enabled():
+            await asyncio.to_thread(_refund_credit_sync, user_id, consumed_keys)
+        else:
+            _refund_credit_sync(user_id, consumed_keys)
     except Exception as e:  # noqa: BLE001
         logger.warning("[usage] refund failed for %s: %s", user_id, e)
 

@@ -60,6 +60,10 @@ import { RootStackParamList, AuthStackParamList, MainTabParamList } from './src/
 
 // Auth
 import { verifyAuth, initializeAuth, clearSession, configureGoogleSignIn, type User } from './src/services/authService';
+// M18 MB-flows-02 — non-UI session-death signal (401 interceptor's
+// failed refresh). Subscribed below so a cleared session routes back to
+// the Auth stack instead of leaving MainTabs mounted with no token.
+import { onSessionInvalid } from './src/services/sessionEvents';
 import { tryRegisterPushToken } from './src/services/pushTokenService';
 // Bundle B/C/D Task 2.11 — Play Install Referrer hand-off into the
 // module-scoped invite-code slot consumed later by RegisterScreen.
@@ -205,6 +209,22 @@ function App() {
     init();
   }, []);
 
+  // M18 MB-flows-02 — `setIsAuthenticated(false)` previously lived ONLY
+  // in the user-initiated handleLogout, so a session cleared by
+  // api.performRefresh (dead refresh token mid-session) left the app
+  // rendering MainTabs with no token and no route back to Auth. The
+  // emitter sites have already cleared the session, so this listener
+  // only downgrades state — calling clearSession here again would risk
+  // an emit->logout->emit loop if the emitters ever move.
+  useEffect(() => {
+    const unsubscribe = onSessionInvalid(() => {
+      setIsAuthenticated(false);
+      setNeedsPreferences(false);
+      setUser(null);
+    });
+    return unsubscribe;
+  }, []);
+
   const handleSplashFinish = useCallback(() => {
     setShowSplash(false);
   }, []);
@@ -224,6 +244,15 @@ function App() {
         // F5.4 — register push token immediately after first signup/login
         // so Loop 2 push lands on the right device for THIS session.
         tryRegisterPushToken().catch(() => { /* swallow */ });
+      } else if (__DEV__) {
+        // M18 MB-flows-03 (secondary) — the auth screen reported success
+        // but no usable session exists locally. The primary trigger
+        // (registration pending email confirmation) is now intercepted in
+        // RegisterScreen before this callback fires; reaching here means
+        // a login/social path stored no token, so we stay on the Auth
+        // stack (isAuthenticated remains false) and make the no-op
+        // visible instead of silently swallowing it.
+        console.warn('[AUTH] Login callback fired but no valid local session was found');
       }
     } catch (error) {
       if (__DEV__) console.error('Login verification error:', error);

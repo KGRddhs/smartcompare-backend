@@ -52,6 +52,11 @@ export default function RegisterScreen({ navigation, route, onRegisterSuccess }:
   const [clipboardCandidate, setClipboardCandidate] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  // M18 MB-flows-03 — set when register() succeeded but Supabase issued
+  // no session (email confirmation required). Renders the
+  // check-your-inbox card instead of firing onRegisterSuccess, which
+  // previously no-op'd (verifyAuth -> null) and dead-ended the screen.
+  const [confirmationEmail, setConfirmationEmail] = useState<string | null>(null);
   const [emailError, setEmailError] = useState('');
   const [passwordError, setPasswordError] = useState('');
   const [confirmError, setConfirmError] = useState('');
@@ -206,7 +211,14 @@ export default function RegisterScreen({ navigation, route, onRegisterSuccess }:
       });
 
       if (result.success) {
-        onRegisterSuccess();
+        if (result.needsEmailConfirmation) {
+          // M18 MB-flows-03 — no session was issued: the account exists
+          // but the user must confirm their email before signing in.
+          // onRegisterSuccess() would silently no-op (no token stored).
+          setConfirmationEmail(trimmedEmail.toLowerCase());
+        } else {
+          onRegisterSuccess();
+        }
       } else {
         setError(result.error || 'Registration failed');
       }
@@ -216,6 +228,32 @@ export default function RegisterScreen({ navigation, route, onRegisterSuccess }:
       setLoading(false);
     }
   };
+
+  // M18 MB-flows-03 — check-your-inbox state replaces the form once
+  // registration succeeded without a session. Early return keeps the
+  // main form JSX untouched; all hooks are declared above this point.
+  if (confirmationEmail) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.content}>
+          <View style={styles.header}>
+            <Text style={styles.logo}>قارن</Text>
+            <Text style={styles.subtitle}>{t('splash.tagline')}</Text>
+          </View>
+          <View style={styles.form} testID="email-confirmation-card">
+            <Text style={styles.title}>{t('register.emailConfirmation.title')}</Text>
+            <Text style={styles.confirmationMessage}>
+              {t('register.emailConfirmation.message', { email: confirmationEmail })}
+            </Text>
+            <Button
+              title={t('register.emailConfirmation.backToSignIn')}
+              onPress={() => navigation.navigate('Login')}
+            />
+          </View>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -477,6 +515,13 @@ const styles = StyleSheet.create({
     color: colors.text.primary,
     marginBottom: spacing.xl,
     textAlign: 'center',
+  },
+  // M18 MB-flows-03 — check-your-inbox card body copy.
+  confirmationMessage: {
+    ...typography.body,
+    color: colors.text.secondary,
+    textAlign: 'center',
+    marginBottom: spacing.xl,
   },
   errorContainer: {
     backgroundColor: '#FEF2F2',

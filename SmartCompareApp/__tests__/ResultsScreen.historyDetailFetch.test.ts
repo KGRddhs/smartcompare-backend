@@ -25,7 +25,16 @@ const AR = require('../src/i18n/ar.json') as Record<string, string>;
 
 describe('ResultsScreen — history detail fetch + 404 copy (Bundle D 1.F.5)', () => {
   it('catches 404 from getComparison() and sets loadError to "not_found"', () => {
-    expect(SOURCE).toMatch(/status\s*===\s*404[\s\S]{0,80}setLoadError\(\s*['"]not_found['"]/);
+    // M18 mobile-network: the status inspection moved into the shared
+    // explicit matrix (failureClassification.ts, status===404 ->
+    // 'not_found', behaviorally pinned in api.networkMatrix.m18.test.ts);
+    // ResultsScreen routes through it and wires the not_found state.
+    const FAILCLASS = fs.readFileSync(
+      path.resolve(__dirname, '../src/services/failureClassification.ts'),
+      'utf8'
+    );
+    expect(FAILCLASS).toMatch(/status === 404\) return 'not_found'/);
+    expect(SOURCE).toMatch(/kind\s*===\s*'not_found'[\s\S]{0,80}setLoadError\(\s*['"]not_found['"]/);
   });
 
   it('renders the not_found copy via t("results.emptyState.notFound")', () => {

@@ -27,6 +27,47 @@ def factcheck_currency_normalization_enabled() -> bool:
     )
 
 
+def factcheck_honest_absence_enabled() -> bool:
+    """True iff ``verify_price`` reports the ABSENCE of cross-check evidence
+    honestly (M18 PO-fact-check-07, default OFF).
+
+    Legacy (flag OFF): both empty-evidence branches return
+    ``price_verified = not estimated`` — i.e. TRUE for any scraped/converted
+    price with ZERO shopping rows to check it against (source_count=0), which
+    then earns the +0.1 reliability bonus precisely when nothing checked it.
+    Supplements ALWAYS hit this (their shopping cache is set to []).
+
+    Flag ON: zero usable evidence degrades to ``price_verified: None``
+    (unknown — the same cross-cutting rule as ``sentiment_consistent: None``
+    and the #106 unresolved-rows verdict) for a NON-estimated price, and
+    stays ``False`` for an estimate (an estimate is definitionally not a
+    verified price — that negative is honest, not fabricated). Downstream is
+    already None-safe from #109: ``_score_reliability`` truthy-tests (no
+    bonus), ``_product_price_factcheck_contradicts`` identity-tests
+    ``is False`` (no demotion), and ``is_data_freshness_shaky`` counts only
+    ``is False``. Read PER CALL from os.getenv (the
+    price_service.exact_gate_enabled idiom); default OFF is byte-identical.
+    """
+    return os.getenv("ENABLE_FACTCHECK_HONEST_ABSENCE", "").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
+def _empty_evidence_verdict(price: Optional[Dict]) -> Optional[bool]:
+    """The ``price_verified`` value for a source_count==0 return.
+
+    Flag OFF: legacy ``not estimated`` fabrication (byte-identical).
+    Flag ON: ``None`` (unknown) unless the price is missing or estimated,
+    both of which keep their honest ``False``.
+    """
+    if price is None:
+        return False
+    estimated = bool(price.get("estimated", False))
+    if factcheck_honest_absence_enabled():
+        return False if estimated else None
+    return not estimated
+
+
 #: A shopping price string that is ONLY digits/separators/whitespace carries no
 #: currency signal at all — the legacy assumption (same currency as the final
 #: price) is the only available reading, exactly like a numeric row. Anything
@@ -317,6 +358,17 @@ def cross_validate_specs_with_shopping(
 def verify_review_sentiment(reviews: Dict, source_ratings: List[Dict]) -> Dict:
     """Cross-check GPT review sentiment against real Serper ratings."""
     gpt_rating = reviews.get("average_rating")
+    # M18 PO-fact-check-09 — a JSON-mode model can emit a QUOTED number and
+    # cached reviews replay it for 7-14 days; `abs('4.5' - 4.3)` raised
+    # TypeError at an unguarded call site OUTSIDE every try, losing the whole
+    # compare. Coerce here (extract-time normalize also coerces, but cached
+    # rows written before that fix still carry strings). Unparseable ->
+    # None-shape, i.e. honest "could not check", never a crash.
+    if gpt_rating is not None and not isinstance(gpt_rating, (int, float)):
+        try:
+            gpt_rating = float(str(gpt_rating).strip())
+        except (ValueError, TypeError):
+            gpt_rating = None
     if not source_ratings or gpt_rating is None:
         return {"sentiment_consistent": None, "gpt_rating": gpt_rating, "serper_avg_rating": None, "deviation": None}
 
@@ -347,8 +399,10 @@ def verify_review_sentiment(reviews: Dict, source_ratings: List[Dict]) -> Dict:
 def verify_price(price: Dict, shopping_items: List[Dict]) -> Dict:
     """Cross-check final price against Serper Shopping prices."""
     if not price or not shopping_items:
+        # M18 PO-fact-check-07 — flag ON, zero evidence is UNKNOWN (None),
+        # never a fabricated True; estimates keep their honest False.
         return {
-            "price_verified": price is not None and not (price or {}).get("estimated", False),
+            "price_verified": _empty_evidence_verdict(price),
             "deviation_pct": None,
             "source_count": 0,
         }
@@ -377,8 +431,9 @@ def verify_price(price: Dict, shopping_items: List[Dict]) -> Dict:
                     pass
 
     if not shopping_prices:
+        # M18 PO-fact-check-07 — same absence rule as the no-items branch.
         return {
-            "price_verified": not price.get("estimated", False),
+            "price_verified": _empty_evidence_verdict(price),
             "deviation_pct": None,
             "source_count": 0,
         }
@@ -479,7 +534,8 @@ def _verify_price_currency_normalized(
                 "source_count": unresolved,
             }
         return {
-            "price_verified": not price.get("estimated", False),
+            # M18 PO-fact-check-07 — same absence rule as the legacy branches.
+            "price_verified": _empty_evidence_verdict(price),
             "deviation_pct": None,
             "source_count": 0,
         }

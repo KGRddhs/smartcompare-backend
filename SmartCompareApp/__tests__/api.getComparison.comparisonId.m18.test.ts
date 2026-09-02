@@ -73,7 +73,11 @@ describe('getComparison — comparison_id surfacing (M18 MB-contract-03)', () =>
   it('GETs /api/v1/comparisons/{id} and returns the full_response shape', async () => {
     axiosInstance.get.mockResolvedValueOnce({ data: WRAPPER });
     const result = await getComparison(ROW_ID);
-    expect(axiosInstance.get).toHaveBeenCalledWith(`/api/v1/comparisons/${ROW_ID}`);
+    // M18 MB-perf-03: the history detail fetch now carries a per-call
+    // compare-class deadline instead of riding the global 120s timeout.
+    expect(axiosInstance.get).toHaveBeenCalledWith(`/api/v1/comparisons/${ROW_ID}`, {
+      timeout: 35000,
+    });
     expect(result.products).toHaveLength(2);
     expect(result.metadata.query).toBe('iPhone 15 vs Galaxy S24');
   });

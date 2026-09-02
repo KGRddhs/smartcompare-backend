@@ -61,7 +61,11 @@ describe('api.ts — refresh-token mutex branch coverage', () => {
   });
 
   it('returns success=false (no throw) when refreshSession resolves but getToken yields null', async () => {
-    mockRefreshSession.mockResolvedValueOnce(undefined);
+    // M18 MB-flows-01 — performRefresh now gates on refreshSession()'s
+    // result BEFORE consulting getToken, so reaching the getToken-null
+    // branch requires the real AuthResponse success shape (refreshSession
+    // never resolves undefined in production).
+    mockRefreshSession.mockResolvedValueOnce({ success: true, token: 'saved-elsewhere' });
     mockGetToken.mockResolvedValueOnce(null);
 
     const result = await api.__testRefreshDedup();
@@ -73,12 +77,13 @@ describe('api.ts — refresh-token mutex branch coverage', () => {
   });
 
   it('clears the mutex after a null-token outcome so the next call refetches', async () => {
-    mockRefreshSession.mockResolvedValueOnce(undefined);
+    // M18 MB-flows-01 — real AuthResponse success shape (see above).
+    mockRefreshSession.mockResolvedValueOnce({ success: true, token: 'saved-elsewhere' });
     mockGetToken.mockResolvedValueOnce(null);
     const first = await api.__testRefreshDedup();
     expect(first.success).toBe(false);
 
-    mockRefreshSession.mockResolvedValueOnce(undefined);
+    mockRefreshSession.mockResolvedValueOnce({ success: true, token: 'recovered' });
     mockGetToken.mockResolvedValueOnce('recovered');
     const second = await api.__testRefreshDedup();
 

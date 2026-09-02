@@ -26,6 +26,15 @@ import * as Sentry from '@sentry/react-native';
 // tokens whose shape we don't pattern-match (Scrape.do, Upstash REST,
 // future providers). Mirrors the backend sentry_service.py changes.
 const SENSITIVE_PATTERNS: Array<[RegExp, string]> = [
+  // M18 MB-security-02 — R21 parity with the backend's
+  // _QUERY_STRING_SCRUB_PATTERN (sentry_service.py): the five query-string
+  // params that carry user-typed content (q/query/email/search/text).
+  // FIRST rung, mirroring the backend's "query scrub BEFORE token scrub"
+  // ordering, so `?q=eyJ...` doesn't get half-masked by the JWT pattern
+  // and then leak the rest of the value. Capture-group form (no lookbehind
+  // — Hermes compatibility), so bookkeeping params (?nocache=, ?limit=)
+  // never match.
+  [/([?&](?:q|query|email|search|text))=[^&#]*/gi, '$1=[QUERY_REDACTED]'],
   [/eyJ[A-Za-z0-9_-]{20,}\.eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]+/g, '[JWT_REDACTED]'],
   [/sk-proj-[A-Za-z0-9_-]+/g, '[OPENAI_KEY_REDACTED]'],
   [/fc-[a-f0-9]{20,}/g, '[FIRECRAWL_KEY_REDACTED]'],
@@ -97,8 +106,19 @@ export function scrubBeforeSend(event: any, _hint: any): any {
   }
 
   // Scrub breadcrumbs.
-  if (event.breadcrumbs && Array.isArray(event.breadcrumbs.values)) {
-    for (const crumb of event.breadcrumbs.values) {
+  // M18 MB-security-01 — the JS SDK (@sentry/core) types `event.breadcrumbs`
+  // as a plain `Breadcrumb[]`; the previous `event.breadcrumbs.values` guard
+  // was the PYTHON SDK's shape (copied during the parity mirror), so
+  // `Array.isArray(Array.prototype.values)` was false and this entire scrub
+  // NEVER ran on a real event. Handle the real array shape first; keep the
+  // legacy dict shape as tolerance.
+  const crumbs = Array.isArray(event.breadcrumbs)
+    ? event.breadcrumbs
+    : event.breadcrumbs && Array.isArray(event.breadcrumbs.values)
+      ? event.breadcrumbs.values
+      : null;
+  if (crumbs) {
+    for (const crumb of crumbs) {
       if (typeof crumb?.message === 'string') {
         crumb.message = scrubString(crumb.message);
       }
@@ -118,6 +138,65 @@ export function scrubBeforeSend(event: any, _hint: any): any {
     }
   }
 
+  // M18 MB-security-02 — scrub the request URL (R21 parity with the
+  // backend's `_scrub_query_string(event.request.url)`).
+  if (event.request && typeof event.request.url === 'string') {
+    event.request.url = scrubString(event.request.url);
+  }
+
+  return event;
+}
+
+/**
+ * M18 MB-security-02 — beforeBreadcrumb hook, parity with the backend's
+ * `_strip_tokens_from_breadcrumb` before_breadcrumb: scrub at
+ * breadcrumb-CREATION time so a fetch/XHR URL carrying user-typed query
+ * text never sits unscrubbed in the ring buffer waiting for an event.
+ */
+export function scrubBeforeBreadcrumb(breadcrumb: any, _hint?: any): any {
+  if (!breadcrumb) return breadcrumb;
+  if (typeof breadcrumb.message === 'string') {
+    breadcrumb.message = scrubString(breadcrumb.message);
+  }
+  if (
+    breadcrumb.data &&
+    typeof breadcrumb.data === 'object' &&
+    !Array.isArray(breadcrumb.data)
+  ) {
+    breadcrumb.data = scrubDict(breadcrumb.data as Record<string, unknown>);
+  }
+  return breadcrumb;
+}
+
+/**
+ * M18 MB-security-02 — beforeSendTransaction hook. tracesSampleRate is 0.1,
+ * so http.client spans ship transaction events whose descriptions and data
+ * carry the same request URLs `scrubBeforeSend` scrubs on error events.
+ * The backend has no transaction-URL leak (transaction_style="endpoint"
+ * uses route templates); mobile span descriptions embed the full URL.
+ */
+export function scrubBeforeSendTransaction(event: any, _hint?: any): any {
+  if (!event) return event;
+  if (typeof event.transaction === 'string') {
+    event.transaction = scrubString(event.transaction);
+  }
+  if (event.request && typeof event.request.url === 'string') {
+    event.request.url = scrubString(event.request.url);
+  }
+  if (Array.isArray(event.spans)) {
+    for (const span of event.spans) {
+      if (typeof span?.description === 'string') {
+        span.description = scrubString(span.description);
+      }
+      if (span?.data && typeof span.data === 'object' && !Array.isArray(span.data)) {
+        span.data = scrubDict(span.data as Record<string, unknown>);
+      }
+    }
+  }
+  const traceData = event.contexts?.trace?.data;
+  if (traceData && typeof traceData === 'object' && !Array.isArray(traceData)) {
+    event.contexts.trace.data = scrubDict(traceData as Record<string, unknown>);
+  }
   return event;
 }
 
@@ -158,6 +237,11 @@ export function initSentry(dsn?: string): void {
       sendDefaultPii: false,
       tracesSampleRate: 0.1,
       beforeSend: scrubBeforeSend,
+      // M18 MB-security-02 — R21 parity: scrub breadcrumb URLs at creation
+      // (backend registers before_breadcrumb) and scrub the http-span URLs
+      // that ride the 0.1-sampled transaction events.
+      beforeBreadcrumb: scrubBeforeBreadcrumb,
+      beforeSendTransaction: scrubBeforeSendTransaction,
     });
     _initialized = true;
   } catch {

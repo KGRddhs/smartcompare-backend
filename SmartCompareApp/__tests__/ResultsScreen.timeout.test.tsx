@@ -135,7 +135,14 @@ describe('ResultsScreen — timeout state wiring (source)', () => {
   });
 
   it('maps a 503 / TIMEOUT / STREAM_TIMEOUT response to the timeout state', () => {
-    expect(RESULTS).toMatch(/status === 503/);
+    // M18 mobile-network: the status/code inspection moved into the shared
+    // explicit matrix (failureClassification.ts) — the 503/TIMEOUT →
+    // 'timeout' mapping is now pinned BEHAVIORALLY in
+    // api.networkMatrix.m18.test.ts; here we pin that ResultsScreen routes
+    // through the matrix and still wires the timeout state.
+    const FAILCLASS = SRC('../src/services/failureClassification.ts');
+    expect(FAILCLASS).toMatch(/status === 503/);
+    expect(RESULTS).toMatch(/classifyLoadFailure\(/);
     expect(RESULTS).toMatch(/setLoadError\('timeout'\)/);
   });
 

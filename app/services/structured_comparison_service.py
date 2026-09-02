@@ -380,6 +380,37 @@ async def _resolve_pair_category(products, selected_category, parser_path=False)
     return category_used, category_switched, original_category
 
 
+def attach_data_freshness_notice(result: Dict[str, Any]) -> Dict[str, Any]:
+    """M18 PO-fact-check-10 — give Bundle E § Decision 7's designed notice a
+    PRODUCER. ``is_data_freshness_shaky`` shipped 2026-05-13 with zero
+    production callers, so the all-bad-signals state (0 verified specs both
+    sides, price unverified, sentiment unknown) reached users with no notice.
+
+    Reads both products' fact_check off ``metadata.fact_check`` (the builder
+    always emits ``product_0``/``product_1`` there) and attaches the boolean
+    under ``metadata.data_freshness_shaky``. Purely ADDITIVE (a new metadata
+    key; no existing consumer changes — the FE types fact_check as
+    ``Record<string, any>`` and reads nothing yet), so unflagged, same
+    category as M13-44. Defensive: never raises, returns the result dict
+    unchanged when the fact_check legs are absent (e.g. a direct
+    build_comparison_response caller that predates the metadata block).
+    """
+    try:
+        meta = result.get("metadata")
+        if not isinstance(meta, dict):
+            return result
+        fc = meta.get("fact_check")
+        if not isinstance(fc, dict):
+            return result
+        legs = [fc.get("product_0"), fc.get("product_1")]
+        if not all(isinstance(leg, dict) for leg in legs):
+            return result
+        meta["data_freshness_shaky"] = is_data_freshness_shaky(legs)
+    except Exception as e:  # noqa: BLE001 — a notice must never break a response
+        logger.warning("[fact-check] data_freshness notice attach failed: %s", e)
+    return result
+
+
 def _apply_gpt_review_aggregate_fallback(result: Dict[str, Any]) -> None:
     """A5/FIX-2 — last-resort rating fallback: when NO real rating provider
     produced a rating but the reviews dict carries a GPT-extracted
@@ -1116,6 +1147,7 @@ from app.services.fact_check_service import (
     verify_review_sentiment,
     verify_price,
     build_fact_check,
+    is_data_freshness_shaky,
     NUMERIC_SPEC_FIELDS,
 )
 from app.services.response_builder import (
@@ -2910,7 +2942,8 @@ class StructuredComparisonService:
             # absent → None → key omitted (badge hides). Same chokepoint, same gate.
             cohort_summary=self._build_cohort_summary(ctx.get("demographics_profile")),
         )
-        return result
+        # M18 PO-fact-check-10 — Decision 7 notice (additive metadata key).
+        return attach_data_freshness_notice(result)
 
     async def compare_from_text(
         self,
@@ -3455,6 +3488,8 @@ class StructuredComparisonService:
                 # flag off / governorate or N missing → key omitted, badge hides.
                 cohort_summary=self._build_cohort_summary(demographics_profile),
             )
+            # M18 PO-fact-check-10 — Decision 7 notice (additive metadata key).
+            result = attach_data_freshness_notice(result)
             if orchestrator_timings is not None:
                 orchestrator_timings["response_build_ms"] = round((time.perf_counter() - t_build) * 1000, 1)
                 orchestrator_timings["total_ms"] = round(
@@ -4201,6 +4236,8 @@ class StructuredComparisonService:
                 # Phase 3.1 — cohort proof line (streaming mirror of the sync path).
                 cohort_summary=self._build_cohort_summary(demographics_profile),
             )
+            # M18 PO-fact-check-10 — Decision 7 notice (additive metadata key).
+            complete_response = attach_data_freshness_notice(complete_response)
             if orchestrator_timings is not None:
                 orchestrator_timings["response_build_ms"] = round((time.perf_counter() - t_build) * 1000, 1)
                 orchestrator_timings["total_ms"] = round(
@@ -7369,35 +7406,53 @@ class StructuredComparisonService:
     # ============================================
 
     def _format_search_results(self, results: Dict) -> str:
-        """Format search results into context string."""
+        """Format search results into context string.
+
+        M18 PO-prompts-05: titles/snippets are third-party, SEO-controllable
+        text headed into a GPT prompt — each field is run through
+        ``sanitize_untrusted_block`` so a literal region tag in a page title
+        cannot escape the untrusted region the digest is wrapped in
+        (defense in depth with the ``_wrap_search_context`` chokepoint in
+        extraction_service; the neutralization is idempotent).
+        """
+        from app.utils.prompt_sanitizer import sanitize_untrusted_block
+
         if not results:
             return "No search results available."
         formatted = []
         organic = results.get("organic", [])[:5]
         for i, r in enumerate(organic):
-            title = r.get("title", "")
-            snippet = r.get("snippet", "")
+            title = sanitize_untrusted_block(r.get("title", ""))
+            snippet = sanitize_untrusted_block(r.get("snippet", ""))
             formatted.append(f"{i+1}. {title}\n   {snippet}")
         shopping = results.get("shopping", [])[:3]
         if shopping:
             formatted.append("\n--- Shopping Results ---")
             for s in shopping:
-                title = s.get("title", "")
-                price = s.get("price", "")
-                source = s.get("source", "")
+                title = sanitize_untrusted_block(s.get("title", ""))
+                price = sanitize_untrusted_block(s.get("price", ""))
+                source = sanitize_untrusted_block(s.get("source", ""))
                 formatted.append(f"- {title}: {price} ({source})")
         return "\n".join(formatted)
 
     def _format_numbered_search_results(self, results: Dict) -> Tuple[str, List[str]]:
-        """Format search results with [snippet_N] labels."""
+        """Format search results with [snippet_N] labels.
+
+        M18 PO-prompts-05: same per-field ``sanitize_untrusted_block`` pass as
+        ``_format_search_results`` above. ``raw_snippets`` are built from the
+        SANITIZED text on purpose — they feed the fact-check comparison
+        against the model's citations, and must match what the model saw.
+        """
+        from app.utils.prompt_sanitizer import sanitize_untrusted_block
+
         if not results:
             return "No search results available.", []
         formatted = []
         raw_snippets = []
         organic = results.get("organic", [])[:5]
         for i, r in enumerate(organic):
-            title = r.get("title", "")
-            snippet = r.get("snippet", "")
+            title = sanitize_untrusted_block(r.get("title", ""))
+            snippet = sanitize_untrusted_block(r.get("snippet", ""))
             snippet_text = f"{title} - {snippet}"
             raw_snippets.append(snippet_text)
             formatted.append(f"[snippet_{i+1}] {title}\n   {snippet}")
@@ -7405,9 +7460,9 @@ class StructuredComparisonService:
         if shopping:
             formatted.append("\n--- Shopping Results ---")
             for s in shopping:
-                title = s.get("title", "")
-                price = s.get("price", "")
-                source = s.get("source", "")
+                title = sanitize_untrusted_block(s.get("title", ""))
+                price = sanitize_untrusted_block(s.get("price", ""))
+                source = sanitize_untrusted_block(s.get("source", ""))
                 formatted.append(f"- {title}: {price} ({source})")
         return "\n".join(formatted), raw_snippets
 
