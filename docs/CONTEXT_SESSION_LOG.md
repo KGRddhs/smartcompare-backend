@@ -4,6 +4,19 @@
 
 ---
 
+# SESSION 63: ISSUE TRIAGE + MOBILE CHECKUP + PRICE CLUSTER (started) — 2026-09-02
+
+**Main: `b6ce090` (unchanged this session — no code shipped; work was triage + audit, then the session limit cut both workflows).** Findings captured in **`docs/investigations/2026-09-02-mobile-checkup-findings.md`** — read that FIRST; this is a pointer.
+
+- **Issue triage (`wp0x7p8rt`, 8 agents):** verified all 39 open issues against real code. **Closed 6** — #97 (Serper `web=0` confirmed live), #92 (Firecrawl rawHtml), #62 (prefetch try/finally), #50 (currency relabel default-ON), #47 (frontend CI blocking), #123 (stale, `_names_the_loser` deleted). **33 open.** Corrected a prior wrong claim: **#89 is NOT done** — CI is green only because the step deselects the 14 nodes in `tests/.pre_impl_failures.txt` (camera_vision MagicMock fixture still red locally). CLAUDE.md updated to stop anyone quoting "0 failed" off CI.
+- **Mobile checkup (`w9c972rwq`, Fable, 7 finders → verify → synth):** **17 findings survived adversarial verify, 0 refuted**; synth + safe-hygiene finder + ~18 verifiers were killed by the 6:50am limit. **⚠️ The audit ran at `79a4594` (pre-M21 W2-W4).** M21 W3 rewrote `HistoryScreen.tsx` (637 lines) + W4 rewrote RTL/ProfileScreen — so findings against those files may already be closed. The findings doc tags every finding with an M21-risk level. Verified P1s clear of the M21 lane: camera `/image/identify` unmetered for authed users (freemium bypass); SSE progress dead in shipped client (fake checklist "done" at 4.5s while backend runs ~31s); boot blocks splash on a 120s-ceiling token refresh; compare loader has no cancel/watchdog. Measured: JS bundle **8.2 MB / 3,826 modules**; unverified-but-flagged **lucide barrel = ~1.27 MB / 25%** of it.
+- **Price cluster (#51-#57, `wf_3bf65bef-d68`):** died 0/13 agents at the limit. One orphaned partial preserved on **`origin/wip/52-iherb-currency-partial`** (`712aeff`, compiles, UNREVIEWED). Resume re-runs from scratch (no agents cached). All 7 still open.
+- **Also this session:** git scare resolved — I briefly thought main was rewound; it was a stale local branch. `b6ce090` legitimately contains my axios/#98/docs work AND the parallel session's M21 (PRs #127-#132). No loss.
+
+**Next:** reconcile the M21-HIGH-risk mobile findings against `b6ce090`, then ship the M21-LOW-risk high-value ones (SSE checklist honesty, one-line friendly-error copy, lucide bundle, camera+url metering), then re-run the price cluster on budget reset. Full detail: the findings doc above.
+
+---
+
 # SESSION 62: M18 REVIEW → M20/M21 REMEDIATION — 25 OF 28 P1 FINDINGS CLOSED (24/25 ISSUES; #114 HELD BY DESIGN) + THE P2/P3 BACKLOG WORKED — COMPLETE 2026-09-02
 
 **Main at session end: `832188a` — deployed, `/health` 200 verified after every merge.** Two actors worked this arc in parallel (this orchestrator session + a second Claude session pushing directly to main); this entry reconciles BOTH. All 5 CI jobs green and blocking throughout; branch protection now requires all five (f2481b9, #120).
