@@ -15344,6 +15344,95 @@ async def fetch_nasser_price(
 # iHerb scraping
 # ============================================
 
+def iherb_page_currency_enabled() -> bool:
+    """True iff ``fetch_iherb_price`` decides genuine-vs-converted from a REAL
+    page currency signal (issue #52, default OFF).
+
+    It gets its own switch rather than riding an existing flag for the reason the
+    house already wrote down for ``ENABLE_VISIBLE_TEXT_CURRENCY``: this changes
+    the LABEL on money, and a wrong label is a wrong price, so a label change
+    gets its own rollback and its own canary window. It also changes an AMOUNT
+    (the conversion arm) and can turn a shipped price into a pend, which is the
+    highest blast radius a capture change has.
+
+    Read PER CALL from ``os.getenv`` — copying ``exact_gate_enabled`` — so Railway
+    flips it without a restart. With the flag OFF the currency signal is never
+    read and the returned dict is exactly the pre-#52 one on every input.
+    """
+    return os.getenv("ENABLE_IHERB_PAGE_CURRENCY", "").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
+def _iherb_card_currency_token(card) -> Optional[str]:
+    """The currency token ONE iHerb result card declares for its own price, or
+    None when the card is silent. TOTAL — any object may be passed and nothing
+    raises.
+
+    Hands back the token AS WRITTEN and deliberately does NOT resolve it, because
+    the caller must be able to tell "this card says nothing" from "this card says
+    something I cannot read" — the distinction ``_currency_label_for`` was
+    rewritten around (BLOCKER 4). A resolver collapses both to None.
+
+    ``meta[itemprop="priceCurrency"]`` is the marker iHerb actually emits beside
+    ``meta[itemprop="price"]`` (see ``tests/fixtures/iherb_microdata_only.html``);
+    ``data-ga-currency`` is the GA-attribute spelling, consulted second so a
+    future GA-only card is still readable.
+    """
+    if card is None:
+        return None
+    raw = None
+    try:
+        meta = card.select_one('meta[itemprop="priceCurrency"]')
+    except Exception:  # noqa: BLE001 — a currency read must never break a capture
+        meta = None
+    if meta is not None:
+        try:
+            raw = meta.get("content") or meta.get("value") or meta.get_text(" ")
+        except Exception:  # noqa: BLE001
+            raw = None
+    if not (isinstance(raw, str) and raw.strip()):
+        try:
+            raw = card.get("data-ga-currency")
+        except Exception:  # noqa: BLE001
+            raw = None
+    return raw.strip() if isinstance(raw, str) and raw.strip() else None
+
+
+def _iherb_page_currency_token(soup) -> Optional[str]:
+    """The currency the iHerb SEARCH PAGE declares document-wide, or None.
+
+    Consulted only when the CHOSEN card is silent. Two rungs, both reusing the
+    module's existing evidence helpers rather than growing a parallel ladder:
+
+      1. every schema.org ``priceCurrency`` on the document
+         (``_microdata_currency_tokens``) — the marker a search page carries once
+         per card. Exactly one distinct code is evidence; two or more is a
+         contradiction, and per the abstain-on-multiplicity rule already written
+         into ``_visible_text_currency_evidence`` a contradiction is not a
+         currency, so it returns None rather than guessing.
+      2. ``_page_currency_evidence`` — the OpenGraph/product metas and any
+         JSON-LD ``priceCurrency``, in that helper's own load-bearing order.
+    """
+    tokens = _microdata_currency_tokens(soup)
+    if tokens:
+        return next(iter(tokens)) if len(tokens) == 1 else None
+    return _page_currency_evidence(soup)
+
+
+def _iherb_currency_signal(card_token: Any, soup) -> Optional[str]:
+    """What money THIS page says its price is in, or None if it never says.
+
+    The card's own token wins over the document's — it is the narrower claim and
+    the one attached to the number being shipped. An unresolvable card token is
+    returned uppercased rather than dropped, so the caller pends on it instead of
+    reading it as silence.
+    """
+    if isinstance(card_token, str) and card_token.strip():
+        return _resolve_iso_currency(card_token) or card_token.strip().upper()
+    return _iherb_page_currency_token(soup)
+
+
 async def fetch_iherb_price(
     query: str, brand: str, full_name: str, region_code: str, currency: str,
 ) -> Optional[Dict[str, Any]]:
@@ -15368,6 +15457,10 @@ async def fetch_iherb_price(
             return None
         page = resp.text
         soup = BeautifulSoup(page, 'html.parser')
+        # #52 — one read, one call, before either card loop. OFF, every
+        # `if _currency_signal_gate` below is a False literal and no currency
+        # marker is ever looked at.
+        _currency_signal_gate = iherb_page_currency_enabled()
         cards = soup.select('a[data-ga-brand-name][data-ga-discount-price][title]')
         products = []
         for card in cards:
@@ -15406,6 +15499,11 @@ async def fetch_iherb_price(
                 "title": title,
                 "rating": rating,
                 "review_count": review_count,
+                # #52 — the card's own currency claim, carried alongside its
+                # price so the stamp below is about THIS card, not the page's
+                # average. Never leaves the function; the returned dict is built
+                # explicitly from named keys.
+                "currency_token": _iherb_card_currency_token(card) if _currency_signal_gate else None,
             })
 
         # F2.2 — schema.org microdata fallback. When iHerb drops/renames the
@@ -15467,6 +15565,9 @@ async def fetch_iherb_price(
                     "title": title,
                     "rating": rating,
                     "review_count": review_count,
+                    # #52 — the sibling `meta[itemprop="priceCurrency"]` this
+                    # fallback was already standing next to and never read.
+                    "currency_token": _iherb_card_currency_token(card) if _currency_signal_gate else None,
                 })
 
         if not products:
@@ -15528,10 +15629,64 @@ async def fetch_iherb_price(
         # undercounts the genuine-BH-price-share (a real BHD price miscounted as a
         # conversion). Rule: original_currency == region currency → local_bhd;
         # only a genuinely-foreign-origin price is converted_usd.
-        _origin = currency  # the regional storefront prices in the region currency
-        _genuine_bh = str(_origin).upper() == str(currency).upper()
+        #
+        # #52 — that rule was IMPLEMENTED as `_origin = currency` followed by
+        # `str(_origin).upper() == str(currency).upper()`: a variable compared to
+        # itself, so the answer was True for every page iHerb has ever served and
+        # the else-branch was unreachable. The function read no currency field at
+        # all — not the GA cards', not the microdata fallback's sibling
+        # `priceCurrency` — so "the storefront prices in the region currency" was
+        # an ASSUMPTION wearing a check's clothing, and a USD page would have
+        # shipped 3.852 USD as 3.852 "BHD" with the genuine stamp: 7-day TTL, the
+        # genuine authority tier in `_select_best`, a genuine-BH-share KPI slot.
+        #
+        # Behind ENABLE_IHERB_PAGE_CURRENCY the answer comes from a signal the
+        # page actually publishes. Flag OFF, `_ccy_signal` is None by construction
+        # and the three values below are exactly the pre-#52 ones.
+        _amount = best["price"]
+        _origin = currency
+        _genuine_bh = True
+        # The SAME table `_convert_to_bhd` will convert against — asking
+        # FALLBACK_RATES directly would disagree with it whenever
+        # ENABLE_EXTENDED_FALLBACK_RATES is on, pending a currency the converter
+        # can in fact handle.
+        from app.services.exchange_rate_service import effective_fallback_rates
+        _ccy_signal = (
+            _iherb_currency_signal(best.get("currency_token"), soup)
+            if _currency_signal_gate else None
+        )
+        _ask_ccy = iso_currency_label(currency) or str(currency or "").upper()
+        if _ccy_signal is None:
+            # THE ASSUMPTION, and this is now the ONLY place it lives: a page that
+            # declares no currency anywhere is taken to price in the currency its
+            # regional storefront exists to serve. Deliberately not a pend — the
+            # GA cards iHerb serves today carry no currency marker at all
+            # (tests/fixtures/iherb_ga_cards.html), so pending here would trade a
+            # mislabel nobody has observed for losing every supplement price the
+            # adapter currently captures.
+            pass
+        elif _ccy_signal == _ask_ccy:
+            # The page agrees with the storefront. Genuine, unconverted.
+            pass
+        elif _ask_ccy == "BHD" and _ccy_signal in effective_fallback_rates():
+            # A real, foreign, convertible denomination. Convert and say so —
+            # `converted_usd` is the module's literal for "not a native shelf
+            # price", which keeps it out of the genuine TTL/authority/KPI paths.
+            _amount = round(_convert_to_bhd(float(_amount), _ccy_signal), 3)
+            _origin = _ccy_signal
+            _genuine_bh = False
+        else:
+            # Either a token nothing can read, or a real currency with no rate to
+            # the asked one (`_convert_to_bhd` only ever targets BHD). There is no
+            # honest number to ship, so ship none — a foreign figure wearing the
+            # region-currency label is the BLOCKER-4 defect exactly.
+            logger.info(
+                "[PRICE] iHerb pend: page currency %s is not expressible in %s for '%s'",
+                _ccy_signal, _ask_ccy, full_name[:60],
+            )
+            return None
         return {
-            "amount": best["price"],
+            "amount": _amount,
             "original_currency": _origin,
             "currency": currency,
             "retailer": "iHerb",
