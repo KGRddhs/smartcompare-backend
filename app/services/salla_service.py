@@ -48,6 +48,7 @@ from app.services.price_service import (
     _convert_to_bhd,
     ENABLE_PAGE_SCRAPE,
 )
+from app.services.exchange_rate_service import is_convertible
 
 logger = logging.getLogger(__name__)
 
@@ -69,10 +70,12 @@ _STORE_ID_CACHE: Dict[str, str] = {}
 # Works for custom domains AND salla.sa/<slug>.
 _STORE_ID_RE = re.compile(r'"store"\s*:\s*\{[^}]*?"id"\s*:\s*(\d+)')
 
-# Currencies we can convert to BHD (mirrors exchange_rate_service.FALLBACK_RATES).
-# Anything outside this set is unconvertible -> we omit (honest None) rather than
-# fabricate a 1:1 number.
-_CONVERTIBLE = {"SAR", "AED", "KWD", "QAR", "OMR", "USD", "EUR", "GBP", "BHD"}
+# Convertibility is decided by exchange_rate_service.is_convertible (the
+# EFFECTIVE fallback-rate table — M21 W4). The old hand-copied ``_CONVERTIBLE``
+# mirror set is deliberately GONE: it had drifted from FALLBACK_RATES (missing
+# Bug 4's SGD/JPY/CNY/INR) and ignored ENABLE_EXTENDED_FALLBACK_RATES entirely.
+# Anything outside the effective table is unconvertible -> we omit (honest
+# None) rather than fabricate a 1:1 number.
 
 
 def _extract_store_id(html: str) -> Optional[str]:
@@ -283,7 +286,7 @@ async def fetch_salla_api_price(
             "confidence": 0.9,
         }
     else:
-        if src_ccy not in _CONVERTIBLE:
+        if not is_convertible(src_ccy):
             # Unconvertible currency -> omit rather than fabricate a 1:1 number.
             logger.info("[PRICE] salla unconvertible currency %s for '%s' @ %s",
                         src_ccy, product_name, domain)

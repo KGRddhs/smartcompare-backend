@@ -260,8 +260,11 @@ async def fetch_unbxd_price(
         source_method = "local_bhd"
         original_currency = None
     else:
-        from app.services.exchange_rate_service import FALLBACK_RATES
-        if src_currency not in FALLBACK_RATES:
+        # EFFECTIVE-table membership (is_convertible — M21 W4: honours
+        # ENABLE_EXTENDED_FALLBACK_RATES; flag OFF it is exactly the old
+        # FALLBACK_RATES check).
+        from app.services.exchange_rate_service import is_convertible
+        if not is_convertible(src_currency):
             logger.info("[UNBXD] no rate for %s->BHD (%s) — dropping", src_currency, norm_domain)
             return None
         converted = _convert_to_bhd(float(raw_amount), src_currency)

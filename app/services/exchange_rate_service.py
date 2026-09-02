@@ -74,6 +74,25 @@ def effective_fallback_rates() -> Dict[str, float]:
         return {**FALLBACK_RATES, **FALLBACK_RATES_EXTENDED}
     return FALLBACK_RATES
 
+
+def is_convertible(currency: Optional[str]) -> bool:
+    """True iff ``currency`` has a BHD rate in the EFFECTIVE fallback table.
+
+    M21 W4 (CD-wave-diffs-08 residual) — the ONE convertibility gate every
+    direct adapter (shopify_pdp/algolia/magento_graphql/occ/rest_json/unbxd/
+    woocommerce/salla) consults before shipping a converted price, replacing
+    eight per-module ``x in FALLBACK_RATES`` reads (and salla's hand-copied
+    mirror set) that ignored ENABLE_EXTENDED_FALLBACK_RATES and so kept
+    dropping TRY/PLN/CAD stores with the flag ON.
+
+    Membership is EXACT — no case folding, no stripping — so with the flag
+    unset this is byte-identical to the old ``x in FALLBACK_RATES`` gates
+    (keys are uppercase ISO codes; each caller normalises case exactly as it
+    did before). ``None``/empty never convert.
+    """
+    return (currency or "") in effective_fallback_rates()
+
+
 # Maps backend region codes to their native currency.
 # Used by price pipeline to display prices in the user's region currency.
 REGION_TO_CURRENCY: Dict[str, str] = {

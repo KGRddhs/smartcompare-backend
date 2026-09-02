@@ -47,6 +47,7 @@ import {
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { ChevronLeft, ChevronRight, Star, Trash2 } from 'lucide-react-native';
+import { DirectionalIcon } from '../components/primitives/DirectionalIcon';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, spacing, radii, typography } from '../theme';
 import api, { parseApiError, updateProfile } from '../services/api';
@@ -160,7 +161,9 @@ export default function EditProfileScreen({ navigation, onAccountDeleted }: Prop
           accessibilityLabel={t('common.back')}
           style={styles.headerBtn}
         >
-          <ChevronLeft size={24} color={colors.text.primary} />
+          <DirectionalIcon>
+            <ChevronLeft size={24} color={colors.text.primary} />
+          </DirectionalIcon>
         </TouchableOpacity>
         <Text style={styles.title} numberOfLines={1}>{t('editProfile.title')}</Text>
         <View style={styles.headerBtn} />
@@ -231,7 +234,9 @@ export default function EditProfileScreen({ navigation, onAccountDeleted }: Prop
               })}
             </Text>
           </View>
-          <ChevronRight size={18} color={colors.text.placeholder} />
+          <DirectionalIcon>
+            <ChevronRight size={18} color={colors.text.placeholder} />
+          </DirectionalIcon>
         </TouchableOpacity>
 
         {errorKey ? <Text style={styles.errorText}>{t(errorKey)}</Text> : null}

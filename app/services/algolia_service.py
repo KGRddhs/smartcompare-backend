@@ -887,10 +887,12 @@ async def _fetch_explicit_store_price(
         original_currency = None
     else:
         # GCC currency — convert. _convert_to_bhd returns the amount UNCHANGED
-        # for an unknown currency; guard with FALLBACK_RATES membership so we
-        # never label an unconvertible amount as BHD.
-        from app.services.exchange_rate_service import FALLBACK_RATES
-        if (src_currency or "").upper() not in FALLBACK_RATES:
+        # for an unknown currency; guard with EFFECTIVE-table membership
+        # (is_convertible — M21 W4: honours ENABLE_EXTENDED_FALLBACK_RATES;
+        # flag OFF it is exactly the old FALLBACK_RATES check) so we never
+        # label an unconvertible amount as BHD.
+        from app.services.exchange_rate_service import is_convertible
+        if not is_convertible((src_currency or "").upper()):
             logger.info("[ALGOLIA] no rate for %s->BHD (%s) — dropping", src_currency, domain)
             return None
         converted = _convert_to_bhd(float(raw_amount), src_currency)

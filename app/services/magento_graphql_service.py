@@ -1163,9 +1163,12 @@ def _finalize_magento_price(
         converted = _convert_to_bhd(amount, resp_currency)
         # _convert_to_bhd returns the amount UNCHANGED (with a warning) for an
         # unknown currency — guard that: an un-rated currency must NOT be shipped
-        # as a 1:1 BHD figure.
-        from app.services.exchange_rate_service import FALLBACK_RATES
-        if resp_currency not in FALLBACK_RATES:
+        # as a 1:1 BHD figure. Membership is against the EFFECTIVE table
+        # (is_convertible — M21 W4: honours ENABLE_EXTENDED_FALLBACK_RATES, the
+        # same table _convert_to_bhd converts from; flag OFF it is exactly the
+        # old FALLBACK_RATES check).
+        from app.services.exchange_rate_service import is_convertible
+        if not is_convertible(resp_currency):
             return None
         if converted is None or converted <= 0:
             return None

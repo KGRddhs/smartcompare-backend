@@ -1023,8 +1023,11 @@ async def fetch_ucp_json_price(
         target_currency = (currency or "BHD").upper()
         needs_conversion = store_currency != target_currency
         if needs_conversion:
-            from app.services.exchange_rate_service import FALLBACK_RATES
-            if store_currency not in FALLBACK_RATES or target_currency != "BHD":
+            # EFFECTIVE-table membership (is_convertible — M21 W4: honours
+            # ENABLE_EXTENDED_FALLBACK_RATES, the same table _convert_to_bhd
+            # converts from; flag OFF it is exactly the old FALLBACK_RATES check).
+            from app.services.exchange_rate_service import is_convertible
+            if not is_convertible(store_currency) or target_currency != "BHD":
                 logger.info(
                     "[UCP_JSON] %s: %s not safely convertible to %s — skipping hit",
                     product.get("domain"), store_currency, target_currency,

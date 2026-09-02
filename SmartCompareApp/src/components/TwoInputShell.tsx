@@ -110,11 +110,15 @@
  *     scope grep to JSX/animation code or use word-boundary patterns to
  *     exclude doc comments if false-positives surface.
  *
- * RTL (spec § 7.1):
- *   - I18nManager.isRTL toggles styles.hairlineLTR/RTL and
- *     styles.vsPillWrapLTR/RTL → numeral edges + hairline edge swap.
- *   - Row flexDirection becomes 'row-reverse' when isRTL → numeral circle
- *     sits on the right of the box in AR.
+ * RTL (spec § 7.1, reworked M21 W4 MB-i18n-rtl-04):
+ *   - Under I18nManager.forceRTL(true) React Native ITSELF mirrors
+ *     `flexDirection: 'row'` and resolves logical start/end offsets.
+ *     The previous explicit `row-reverse` + physical left/right
+ *     hairline/vs-pill variants stacked a second mirror on top of RN's,
+ *     cancelling it — Arabic users saw LTR anatomy. Rows are now plain
+ *     'row' and the hairline/vs-pill anchor via logical `start`, so RN
+ *     owns the mirroring end to end (numeral circle right of the box in
+ *     AR with zero component-side branching).
  *   - Box textInput uses textAlign: 'auto' (RN auto-detects script).
  *   - AR locale (i18n.language startsWith 'ar') triggers
  *     arabicLineHeightMultiplier on input + caption (1.7/1.5).
@@ -158,7 +162,6 @@
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  I18nManager,
   Keyboard,
   KeyboardAvoidingView,
   Platform,
@@ -281,7 +284,6 @@ function TwoInputShell({
   testID = 'two-input-shell',
 }: TwoInputShellProps) {
   const { t, i18n } = useTranslation();
-  const isRTL = I18nManager.isRTL;
   const isAR = i18n.language?.startsWith('ar');
   const cacheRef = useRef(_twoInputCache);
   const initialPair = useMemo(() => {
@@ -520,22 +522,10 @@ function TwoInputShell({
         >
           <View style={styles.shell} testID={testID}>
             {/* Connecting hairline — runs vertically between circles. */}
-            <View
-              pointerEvents="none"
-              style={[
-                styles.hairline,
-                isRTL ? styles.hairlineRTL : styles.hairlineLTR,
-              ]}
-            />
+            <View pointerEvents="none" style={styles.hairline} />
 
             {/* Vs pill — sits on the hairline midpoint. */}
-            <View
-              pointerEvents="none"
-              style={[
-                styles.vsPillWrap,
-                isRTL ? styles.vsPillWrapRTL : styles.vsPillWrapLTR,
-              ]}
-            >
+            <View pointerEvents="none" style={styles.vsPillWrap}>
               <View style={styles.vsPill} testID={`${testID}-vs-pill`}>
                 <Text
                   style={[
@@ -550,7 +540,6 @@ function TwoInputShell({
 
             {/* Box A row */}
             <Row
-              isRTL={isRTL}
               isAR={isAR}
               numeral={numeralA}
               valid={validA}
@@ -585,7 +574,6 @@ function TwoInputShell({
 
             {/* Box B row */}
             <Row
-              isRTL={isRTL}
               isAR={isAR}
               numeral={numeralB}
               valid={validB}
@@ -639,7 +627,6 @@ function TwoInputShell({
 }
 
 interface RowProps {
-  isRTL: boolean;
   isAR: boolean;
   numeral: string;
   valid: boolean;
@@ -660,7 +647,6 @@ interface RowProps {
 }
 
 function Row({
-  isRTL,
   isAR,
   numeral,
   valid,
@@ -681,10 +667,11 @@ function Row({
 }: RowProps) {
   const [focused, setFocused] = useState(false);
   const showClear = focused && value.length > 0;
-  const rowDirection = isRTL ? 'row-reverse' : 'row';
 
+  // MB-i18n-rtl-04 — NO explicit row-reverse: RN mirrors 'row' natively
+  // under forceRTL; an explicit reverse cancelled that mirroring.
   return (
-    <View style={[styles.row, { flexDirection: rowDirection as 'row' }]}>
+    <View style={styles.row}>
       <Animated.View
         testID={`${testIDPrefix}-circle`}
         accessibilityLabel={valid ? accessibilityLabelValid : undefined}
@@ -771,12 +758,10 @@ const styles = StyleSheet.create({
     bottom: BOX_HEIGHT + spacing.md,
     width: 1,
     backgroundColor: colors.border.light,
-  },
-  hairlineLTR: {
-    left: HAIRLINE_EDGE,
-  },
-  hairlineRTL: {
-    right: HAIRLINE_EDGE,
+    // Logical offset — RN resolves `start` to left in LTR and right in
+    // RTL, keeping the rule under the numeral circles in both directions
+    // (M21 W4 MB-i18n-rtl-04; physical left/right variants double-mirrored).
+    start: HAIRLINE_EDGE,
   },
   vsPillWrap: {
     position: 'absolute',
@@ -784,12 +769,8 @@ const styles = StyleSheet.create({
     height: VS_PILL_HEIGHT,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  vsPillWrapLTR: {
-    left: HAIRLINE_EDGE - 18,
-  },
-  vsPillWrapRTL: {
-    right: HAIRLINE_EDGE - 18,
+    // Logical offset — see hairline note (MB-i18n-rtl-04).
+    start: HAIRLINE_EDGE - 18,
   },
   vsPill: {
     height: VS_PILL_HEIGHT,
@@ -804,6 +785,9 @@ const styles = StyleSheet.create({
     color: colors.accentDark,
   },
   row: {
+    // Plain 'row' — RN mirrors it natively under forceRTL; the removed
+    // inline `row-reverse` double-mirrored (MB-i18n-rtl-04).
+    flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
   },

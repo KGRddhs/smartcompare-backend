@@ -27,6 +27,7 @@ import {
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { useTranslation } from 'react-i18next';
 import { ArrowLeft, Trophy, Sparkles } from 'lucide-react-native';
+import { DirectionalIcon } from '../components/primitives/DirectionalIcon';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, spacing, radii, typography } from '../theme';
 import { ProgressBar } from '../components/ProgressBar';
@@ -295,7 +296,9 @@ export default function InviteeQuizScreen({ navigation, route }: Props) {
           disabled={submitting}
           accessibilityLabel={t('common.back', { defaultValue: 'Back' })}
         >
-          <ArrowLeft size={20} color={colors.text.primary} />
+          <DirectionalIcon>
+            <ArrowLeft size={20} color={colors.text.primary} />
+          </DirectionalIcon>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>
           {t('referrals.quiz.stepCounter', { current: step + 1, total: TOTAL_QUESTIONS })}

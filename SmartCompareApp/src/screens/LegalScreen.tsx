@@ -19,6 +19,7 @@ import Markdown from 'react-native-markdown-display';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTranslation } from 'react-i18next';
 import { ChevronLeft } from 'lucide-react-native';
+import { DirectionalIcon } from '../components/primitives/DirectionalIcon';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, spacing, radii, typography } from '../theme';
 import api from '../services/api';
@@ -79,7 +80,9 @@ export default function LegalScreen({ route, navigation }: Props) {
           accessibilityLabel={t('common.back')}
           style={styles.headerBtn}
         >
-          <ChevronLeft size={24} color={colors.text.primary} />
+          <DirectionalIcon>
+            <ChevronLeft size={24} color={colors.text.primary} />
+          </DirectionalIcon>
         </TouchableOpacity>
         <Text style={styles.title} numberOfLines={1}>{title}</Text>
         <View style={styles.headerBtn} />

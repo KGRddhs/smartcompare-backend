@@ -1,0 +1,47 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`DirectionalIcon — RTL icon mirroring wrapper matches snapshot in LTR 1`] = `
+<View
+  pointerEvents="none"
+  style={
+    [
+      {
+        "transform": [
+          {
+            "scaleX": 1,
+          },
+        ],
+      },
+      undefined,
+    ]
+  }
+>
+  <mock-icon-ArrowLeft
+    color="#000"
+    size={24}
+  />
+</View>
+`;
+
+exports[`DirectionalIcon — RTL icon mirroring wrapper matches snapshot in RTL 1`] = `
+<View
+  pointerEvents="none"
+  style={
+    [
+      {
+        "transform": [
+          {
+            "scaleX": -1,
+          },
+        ],
+      },
+      undefined,
+    ]
+  }
+>
+  <mock-icon-ArrowLeft
+    color="#000"
+    size={24}
+  />
+</View>
+`;
