@@ -22,7 +22,47 @@
 #     exclude — the M13-17 false-regression set: test_database_service,
 #     test_page_scraping (x2), test_supplement_branch_genuine.
 #
-# Effective baseline count = 14 (all real, no xfail padding). The markdown
+# PRUNED 2026-09-02 (M18 baseline-clean unit: CD-ci-truth-09 / CD-ci-truth-12)
+# — a targeted per-row prune with per-row pass proof, NOT a re-capture. Three
+# rows removed, each proven green before removal:
+#   - test_backend_cleanup::test_unused_imports_cleaned — the test pinned
+#     'import os' ABSENT from openai_service, but os became load-bearing again
+#     (OPENAI_API_KEY_PRIVATE split uses os.getenv). Stale assertion REWRITTEN
+#     to the invariant it always meant ("no unused os import"); passes.
+#   - test_referral_e2e::test_e2e_share_creates_invite_and_grants_loop1_credit
+#     — the 2026-05-05 live-smoke capture sent 'smoke-referrer-device-hash',
+#     which 422s against the later ^[a-f0-9]{64}$ Pydantic pattern (M13-82).
+#     Test now sends a schema-valid 64-hex digest; passes.
+#   - test_database_service::test_save_comparison_skips_when_not_renderable —
+#     the CD-ci-truth-12 ORDER-DEPENDENT artifact (passed solo + CI, failed
+#     only under full-suite ordering at capture time). Re-verified 2026-09-02:
+#     passes solo, whole-file, under the full 121-file/2,698-test alphabetical
+#     collection prefix that precedes it, AND with full-tree collection
+#     (import side effects of all ~560 modules) — the pollution no longer
+#     reproduces on the current tree, consistent with it never failing in CI
+#     and not being among the 13 full-suite failures in the W4 closeout run.
+#     If this row ever flaps red again it is CROSS-TEST POLLUTION, not a
+#     product bug: bisect the predecessor set, do not re-baseline it.
+#
+# Rows NOT removed (still red for their ORIGINAL reasons — each needs its
+# owner, not a baseline edit; fixing them is #89):
+#   - test_auth_interceptor x2 — red-BY-CHOICE: auth_service returns the
+#     '[B4-BE-DIAG] supabase_error=...' diagnostic string the tests pin the
+#     generic message against; instrumentation is documented as KEPT until
+#     Google Sign-In is resolved (CLAUDE.md Known Remaining Bugs). app/ is
+#     owned by concurrent lanes; xfail-containment is #89's call.
+#   - test_camera_vision x3 — fixture bug: mocked usage object returns
+#     MagicMock so 'cached_tokens > 0' raises TypeError in openai_service
+#     (#89-diagnosed; production fine). Test file not in this unit's lane.
+#   - test_extraction_prompt_bundle_c x1, test_page_scraping x2 — the M13-17
+#     credential-free deterministic assertion failures; unchanged.
+#   - test_personalization_bundle_c x2 — TDD RED-by-design pytest.fail stubs
+#     ('RED: _compute_applied_shifts missing', M13-80) awaiting A.x wiring;
+#     never xfail-contained (same class as test_value_math pre-#49).
+#   - test_supplement_branch_genuine x1 — hermeticity: credential-free
+#     sentinels route to 'shopify_json' vs the pinned 'local_bhd' (#89).
+#
+# Effective baseline count = 11 (all real, no xfail padding). The markdown
 # mirror tests/PRE_IMPL_FAILURE_BASELINE.md is GENERATED from this file by
 # scripts/gen_baseline_mirror.py; tests/test_ci_gates.py re-derives the count +
 # id set so the mirror can never silently fall behind this file again.
@@ -38,15 +78,12 @@
 #     --timeout=60 -q
 tests/test_auth_interceptor.py::test_sign_in_with_social_exception
 tests/test_auth_interceptor.py::test_social_login_user_insert_fails_gracefully
-tests/test_backend_cleanup.py::TestDeadFunctionsRemoved::test_unused_imports_cleaned
 tests/test_camera_vision.py::TestIdentifyProductsMocked::test_empty_product_fields_normalized
 tests/test_camera_vision.py::TestIdentifyProductsMocked::test_malformed_response_returns_error
 tests/test_camera_vision.py::TestIdentifyProductsMocked::test_successful_identification
-tests/test_database_service.py::test_save_comparison_skips_when_not_renderable
 tests/test_extraction_prompt_bundle_c.py::test_response_builder_strips_inference_source
 tests/test_page_scraping.py::TestFetchPagePriceJsonLD::test_jsonld_nested_offers_picks_lowest
 tests/test_page_scraping.py::TestFetchPagePriceOpenGraph::test_og_meta_extraction
 tests/test_personalization_bundle_c.py::test_applied_shifts_list_is_default_empty_when_no_priorities
 tests/test_personalization_bundle_c.py::test_full_response_payload_audit_no_magnitude_keys
-tests/test_referral_e2e.py::test_e2e_share_creates_invite_and_grants_loop1_credit
 tests/test_supplement_branch_genuine.py::TestCatalogSupplementSourceAttribution::test_cde2_attributes_catalog_supplement_domain_when_flag_on

@@ -50,8 +50,14 @@ describe('ResultsScreen Bundle C integration — confidence pills + chip', () =>
     expect(SOURCE).toMatch(/<ConfidenceDetailsSheet/);
     // useState managing the open leg.
     expect(SOURCE).toMatch(/sheetLeg/);
-    // onPillPress wires to setSheetLeg.
-    expect(SOURCE).toMatch(/onPillPress=\{[^}]*setSheetLeg/);
+    // onPillPress wires to setSheetLeg. M21 MB-perf-06: the wiring goes
+    // through a useCallback-stable handler (an inline arrow recreated the
+    // closure every render and defeated React.memo on ResultsContent) —
+    // the contract is prop → named handler → setSheetLeg.
+    expect(SOURCE).toMatch(/onPillPress=\{onPillPressStable\}/);
+    expect(SOURCE).toMatch(
+      /onPillPressStable\s*=\s*useCallback\(\s*\(leg[^)]*\)\s*=>\s*setSheetLeg\(leg\)/
+    );
   });
 
   it('imports + wires PersonalizationChip below the verdict section', () => {

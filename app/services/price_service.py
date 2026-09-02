@@ -9405,16 +9405,30 @@ def shopping_strict_currency_enabled() -> bool:
 _LETTER_DOLLAR_RE = re.compile(r"[A-Za-z]\$")
 #: A standalone "$" (not letter-prefixed) — a genuine USD sign.
 _BARE_DOLLAR_RE = re.compile(r"(?<![A-Za-z])\$")
+#: The standard international USD notation — "US$"/"U.S.$" (Serper returns it on
+#: non-US gl asks). It IS the US dollar sign, so the letter-dollar un-detect must
+#: not fire on the S: the strict guard normalizes it to a bare "$" before testing
+#: (CD-wave-diffs-07a). The lookbehind keeps "AUS$" (letter-preceded U) pending.
+_US_DOLLAR_NOTATION_RE = re.compile(r"(?<![A-Za-z])U\.?S\.?\$")
+
+#: The residue transform of the strict-shopping signal: strip DIGITS (``\d`` —
+#: Unicode, so Arabic-Indic ٠-٩ / extended ۰-۹ strip like ASCII 0-9), the ASCII
+#: grouping/decimal separators, their Arabic twins U+066B (decimal) / U+066C
+#: (thousands), percent, whitespace and ``/-``. CD-wave-diffs-07b: the original
+#: ``[0-9...]`` class was ASCII-only, so "١٢٣ ر.س" kept its digits, missed the
+#: glyph mirror, and hit the non-ASCII catch-all — pending a CORRECT
+#: target-currency price.
+_RESIDUE_STRIP_RE = re.compile(r"[\d.,%\s/\-٫٬]")
 
 #: GCC display glyphs keyed by their SEPARATOR-STRIPPED residue. The residue the
 #: strict-shopping signal inspects has already had the number AND every ``.,/-``
-#: removed (see the ``re.sub`` below), so a dotted glyph like "ر.س" arrives as
+#: removed (see ``_RESIDUE_STRIP_RE``), so a dotted glyph like "ر.س" arrives as
 #: "رس" and misses the DOTTED keys of ``GCC_CURRENCY_SYMBOLS``. This mirror is
 #: built with the SAME residue transform so a GCC glyph resolves to its ISO code
 #: after stripping — the target-currency glyph the pend must NOT reject. (M13-09
 #: over-rejection fix: derived from GCC_CURRENCY_SYMBOLS, one ISO per residue.)
 _GCC_SYMBOL_RESIDUE = {
-    re.sub(r"[0-9.,%\s/\-]", "", _k): _v
+    _RESIDUE_STRIP_RE.sub("", _k): _v
     for _k, _v in GCC_CURRENCY_SYMBOLS.items()
 }
 
@@ -9441,7 +9455,7 @@ def _shopping_foreign_currency_signal(price_str: str, target: str) -> bool:
     ask still pends) while letting the target glyph through.
     """
     folded = str(price_str or "").translate(_CURRENCY_FOLD_STRIP)
-    residue = re.sub(r"[0-9.,%\s/\-]", "", folded).strip()
+    residue = _RESIDUE_STRIP_RE.sub("", folded).strip()
     if not residue:
         return False
     tgt = (target or "").upper()
@@ -9452,6 +9466,49 @@ def _shopping_foreign_currency_signal(price_str: str, target: str) -> bool:
     if glyph_iso is not None:
         return glyph_iso != tgt
     return bool(re.search(r"[^\x00-\x7F]", residue))
+
+
+def shopping_strict_currency_pend(
+    price_str: str, detected_cur: Optional[str], target: str,
+) -> bool:
+    """True iff the M13-09 strict-shopping currency guards say this shopping
+    candidate must PEND (be skipped) rather than ship/convert.
+
+    The ONE shared admission rule for BOTH consumers of the Serper-shopping
+    item list — ``extract_price_from_shopping`` (the front door) and
+    ``structured_comparison_service._seed_shortcircuit_candidates`` (the
+    M13-10 fairness re-selection stash). CD-wave-diffs-03: the stash had the
+    parse parity but not these guards, so with ENABLE_SHOPPING_STRICT_CURRENCY
+    ON the back door could seed (and the fairness re-select then SHIP) the
+    exact mislabelled foreign-currency row the front door pends. Factoring the
+    guards here makes the two paths structurally unable to drift.
+
+    Callers gate on ``shopping_strict_currency_enabled()`` — this helper is
+    pure policy, evaluated only with the flag ON.
+
+    (a) letter-dollar un-detect: a "$" only ever preceded by a letter (R$,
+        HK$, A$…) is a FOREIGN symbol; ``detect_currency``'s "USD" is bogus
+        and the amount must pend, not convert BRL-as-USD. CD-wave-diffs-07a:
+        "US$"/"U.S.$" IS the US dollar (the standard international notation,
+        detection CORRECT), so it is normalized to a bare "$" before the test
+        — "US$ 25.99" ships, "R$ 25.99" and "AUS$ 25.99" still pend.
+    (b) unresolved foreign signal: ``detect_currency`` returned None but the
+        string visibly carries a non-target currency
+        (``_shopping_foreign_currency_signal``) — pend rather than stamp the
+        raw foreign amount with the target currency.
+    """
+    text = _US_DOLLAR_NOTATION_RE.sub("$", str(price_str or ""))
+    if (
+        detected_cur == "USD"
+        and _LETTER_DOLLAR_RE.search(text)
+        and not _BARE_DOLLAR_RE.search(text)
+    ):
+        return True
+    if detected_cur is None and _shopping_foreign_currency_signal(
+        price_str, target
+    ):
+        return True
+    return False
 
 
 def extract_price_from_shopping(
@@ -9515,23 +9572,15 @@ def extract_price_from_shopping(
         detected_cur = detect_currency(price_str)
         # M13-09 (ENABLE_SHOPPING_STRICT_CURRENCY, default OFF) — the strict-label
         # pend for the one tier the BLOCKER-4 wave never covered. Flag OFF: this
-        # whole block is skipped, byte-identical.
-        if shopping_strict_currency_enabled():
-            # (a) the "$" in "R$"/"HK$"/"A$" collision — a letter-prefixed $ is a
-            # FOREIGN symbol, not USD; when it is the only $, detect_currency's
-            # "USD" is bogus and the amount must PEND, not convert BRL as USD.
-            if (
-                detected_cur == "USD"
-                and _LETTER_DOLLAR_RE.search(price_str)
-                and not _BARE_DOLLAR_RE.search(price_str)
-            ):
-                continue
-            # (b) a GCC glyph / foreign code detect_currency could not resolve:
-            # PEND rather than stamp the raw amount with the target currency.
-            if detected_cur is None and _shopping_foreign_currency_signal(
-                price_str, currency
-            ):
-                continue
+        # whole block is skipped, byte-identical. The two guards live in the
+        # SHARED admission helper so the M13-10 re-selection stash
+        # (_seed_shortcircuit_candidates) applies the identical rule
+        # (CD-wave-diffs-03) and the US$/Arabic-Indic over-pends are fixed once
+        # for both paths (CD-wave-diffs-07).
+        if shopping_strict_currency_enabled() and shopping_strict_currency_pend(
+            price_str, detected_cur, currency
+        ):
+            continue
         amount = parse_price_string(price_str, detected_cur, display_text=True)
         if amount is None or amount <= 0:
             continue
@@ -14505,8 +14554,14 @@ def _match_shopify_product(
         return None
     needs_conversion = store_currency != target_currency
     if needs_conversion:
-        from app.services.exchange_rate_service import FALLBACK_RATES
-        if store_currency not in FALLBACK_RATES or target_currency != "BHD":
+        # CD-wave-diffs-08 — membership must consult the EFFECTIVE table, not
+        # the base import, so ENABLE_EXTENDED_FALLBACK_RATES (M13-38) reaches
+        # this convertibility gate too: a TRY/PLN/CAD-base store converts with
+        # the flag ON instead of skipping (and a flag canary actually measures
+        # it). Flag OFF: effective == base FALLBACK_RATES, byte-identical.
+        # _convert_to_bhd below already reads the same effective table.
+        from app.services.exchange_rate_service import effective_fallback_rates
+        if store_currency not in effective_fallback_rates() or target_currency != "BHD":
             # Can't safely convert (unknown rate, or non-BHD target) → skip.
             logger.info(
                 "[PRICE] Shopify %s: store currency %s not safely convertible to "

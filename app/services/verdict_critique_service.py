@@ -296,6 +296,7 @@ async def critique_and_maybe_regenerate(
     product_names: List[str],
     regenerate,
     pain_workflow_context: Optional[str] = None,
+    comparison_quality: str = "normal",
 ) -> CritiqueOutcome:
     """Orchestrator-facing helper (keeps the ssc.py call site ~3 lines).
 
@@ -311,6 +312,14 @@ async def critique_and_maybe_regenerate(
     `regenerate` is an async callable taking the CritiqueResult and
     returning a new verdict dict — the caller supplies the closure that
     re-runs generate_comparison with the critique feedback.
+
+    `comparison_quality` (M18 PO-prompts-02): the orchestrator's data-quality
+    signal. When 'weak' or 'weird', hedging_score is EXEMPT from the regen
+    trigger — the verdict prompt explicitly relaxed decisiveness on thin
+    evidence, so an honest hedge is the DESIRED output, not a defect to
+    regenerate toward false confidence. The score is still recorded and
+    persisted for observability; only the regen decision ignores it. Callers
+    on the legacy path pass 'normal' (default) — behaviour unchanged.
     """
     zero_usage = {"prompt_tokens": 0, "completion_tokens": 0}
     if not is_self_critique_enabled():
@@ -332,7 +341,13 @@ async def critique_and_maybe_regenerate(
         )
 
     usage = dict(critique.usage)
-    if not critique.needs_regen:
+    # M18 PO-prompts-02 — on thin/odd data ('weak'/'weird') an honest hedge
+    # is prompt-sanctioned: drop hedging_score from the regen trigger set.
+    # critique.needs_regen / low_axes stay untouched (persistence honesty).
+    effective_low_axes = critique.low_axes
+    if comparison_quality in ("weak", "weird"):
+        effective_low_axes = [a for a in effective_low_axes if a != "hedging_score"]
+    if not effective_low_axes:
         return CritiqueOutcome(
             final_comparison=comparison, critique=critique,
             regenerated=False, critique_usage=usage,

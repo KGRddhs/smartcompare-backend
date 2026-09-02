@@ -65,6 +65,24 @@ export function runOnJS(fn: any) {
   return fn;
 }
 
+// M21 mobile-jank — chainable entering-animation builders. `delay` is a
+// jest.fn so tests can assert the per-row stagger values HistoryScreen
+// passes (MB-perf-07 caps them). Each method returns the same builder so
+// arbitrary chains (`FadeInDown.delay(50).duration(300)`) resolve.
+function makeEnteringBuilder() {
+  const builder: any = {};
+  builder.delay = jest.fn((_ms: number) => builder);
+  builder.duration = jest.fn((_ms: number) => builder);
+  builder.springify = jest.fn(() => builder);
+  builder.damping = jest.fn(() => builder);
+  builder.easing = jest.fn(() => builder);
+  return builder;
+}
+export const FadeInDown = makeEnteringBuilder();
+export const FadeIn = makeEnteringBuilder();
+export const FadeInUp = makeEnteringBuilder();
+export const FadeOut = makeEnteringBuilder();
+
 export const Easing = {
   inOut: (_easing: any) => (_t: number) => _t,
   out: (_easing: any) => (_t: number) => _t,

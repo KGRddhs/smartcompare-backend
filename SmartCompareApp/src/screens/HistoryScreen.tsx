@@ -82,6 +82,38 @@ interface HistorySection {
   data: HistoryItem[];
 }
 
+// B2 (Path A): defensive de-dupe of consecutive duplicate word(s) at the
+// start of a product name. Older comparison rows were saved with shapes
+// where the brand prefix got concatenated twice (e.g. "Apple Apple
+// iPhone 14", "Louis Vuitton Louis Vuitton Mesh Cap", "HealthAid
+// HealthAid Vit D"). Backend doesn't rewrite stored rows; FE collapses
+// visually so the history reads cleanly. (M21: hoisted to module level —
+// pure, so the memoized HistoryRow and the screen share one instance.)
+const dedupeBrandPrefix = (name: string): string => {
+  const trimmed = name.trim();
+  if (!trimmed) return trimmed;
+  // 2-word brand dedupe: "Louis Vuitton Louis Vuitton Mesh Cap" → "Louis Vuitton Mesh Cap"
+  const m2 = trimmed.match(/^(\S+\s+\S+)\s+\1\b/i);
+  if (m2) return trimmed.slice(m2[1].length + 1).trimStart();
+  // 1-word brand dedupe: "Apple Apple iPhone 14" → "Apple iPhone 14"
+  const m1 = trimmed.match(/^(\S+)\s+\1\b/i);
+  if (m1) return trimmed.slice(m1[1].length + 1).trimStart();
+  return trimmed;
+};
+
+// M21 MB-perf-07 — entrance-stagger cap. The old `index * 50` scaled the
+// FadeInDown delay with the row's position INSIDE its section; the
+// "Older" section can hold ~44 of the 50 fetched rows, so a row mounted
+// by scrolling sat invisible for up to ~2.2s — and SectionList
+// virtualization re-mounts rows scrolled out and back in, re-running the
+// same delayed entrance. Capping at 6 steps keeps the first-paint
+// stagger (the delight it was built for) while bounding any row's
+// invisible window to 300ms.
+const ROW_STAGGER_STEP_MS = 50;
+const ROW_STAGGER_MAX_STEPS = 6;
+export const rowEntranceDelayMs = (index: number): number =>
+  Math.min(index, ROW_STAGGER_MAX_STEPS) * ROW_STAGGER_STEP_MS;
+
 // ---------------------------------------------------------------------------
 // F-S1.6-D1 — HistoryHeroStats: stat strip + horizontal MarqueeCard list.
 //
@@ -96,10 +128,17 @@ interface HistorySection {
 // Silent-hide on network failure (UI never throws).
 // ---------------------------------------------------------------------------
 
-function HistoryHeroStats({
+// M21 MB-perf-06 + MB-flows-08: memoized so search keystrokes in the
+// parent don't re-render the 4-card marquee (8 remote ProductImages), and
+// given `excludeIds` so a just-deleted comparison is pruned instead of
+// staying tappable (the hero fetches once on mount and would otherwise
+// keep serving the deleted row).
+const HistoryHeroStats = React.memo(function HistoryHeroStats({
   onPressItem,
+  excludeIds,
 }: {
   onPressItem?: (comparisonId: string) => void;
+  excludeIds?: ReadonlySet<string>;
 }) {
   const { t } = useTranslation();
   const [stats, setStats] = useState<MonthlyStatsResponse | null>(null);
@@ -120,6 +159,9 @@ function HistoryHeroStats({
 
   const decisionsCount = stats?.decisions_count ?? 0;
   const savingsBhd = stats?.savings_bhd ?? 0;
+  const visibleRecents = recents.filter(
+    (it) => !excludeIds?.has(it.comparison_id)
+  );
 
   return (
     <View testID="history-hero-stats" style={historyHeroStyles.section}>
@@ -143,7 +185,7 @@ function HistoryHeroStats({
         </Text>
       </View>
 
-      {recents.length > 0 ? (
+      {visibleRecents.length > 0 ? (
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -151,7 +193,7 @@ function HistoryHeroStats({
           contentContainerStyle={historyHeroStyles.marqueeContent}
           testID="history-hero-marquee"
         >
-          {recents.slice(0, 4).map((it) => {
+          {visibleRecents.slice(0, 4).map((it) => {
             const toneA = deriveTone(it.runner_up_name);
             const toneB = deriveTone(it.winner_name);
             return (
@@ -211,7 +253,7 @@ function HistoryHeroStats({
       ) : null}
     </View>
   );
-}
+});
 
 const historyHeroStyles = StyleSheet.create({
   section: {
@@ -330,19 +372,292 @@ const historyHeroStyles = StyleSheet.create({
   },
 });
 
+interface HistoryRowProps {
+  item: HistoryItem;
+  index: number;
+  onPress: (item: HistoryItem) => void;
+  onDelete: (item: HistoryItem) => void;
+}
+
+// ---------------------------------------------------------------------------
+// M21 MB-perf-06/07 — HistoryRow, extracted from the screen's inline
+// renderItem closure and memoized.
+//
+// Before: renderItem was an inline arrow on the screen body with ZERO
+// memoized components anywhere in the app, so every search keystroke
+// (screen-level `setSearchQuery` state) re-rendered EVERY mounted row —
+// measured 26 deriveTone-bearing row/hero renders per keystroke at 12
+// rows in jest — each row re-deriving tones and re-diffing 2 remote
+// ProductImages + SVG check chips. After: React.memo + stable
+// `onPress`/`onDelete` callbacks from the screen means a keystroke
+// re-renders the screen shell only — 0 row re-renders (pinned by
+// HistoryScreen.mobileJank.m21.test.tsx).
+//
+// Bundle E F-S1.6: HistoryRowV2 — VS pair with center pill (NOT inline,
+// per dual-VS-pattern rule). Two ProductBlock tiles + center emerald
+// "vs" pill (this IS the center-pill variant — TrendingNearYou uses the
+// inline-text variant per HomeScreen.jsx:639).
+// Per JSX: HistoryScreen.jsx:251-305 (HistoryRowV2). Category eyebrow
+// (top-left) + ago (top-right) + ProductBlock pair + center vs pill +
+// verdict caption below.
+// ---------------------------------------------------------------------------
+const HistoryRow = React.memo(function HistoryRow({
+  item,
+  index,
+  onPress,
+  onDelete,
+}: HistoryRowProps) {
+  const { t, i18n } = useTranslation();
+
+  // Locale-aware relative time via i18n-opus' shared util (Bundle A §6.2).
+  const formatTimeAgoLocalized = (dateString: string): string =>
+    formatTimeAgo(dateString, (i18n.language as 'en' | 'ar') ?? 'en');
+
+  const formatTitle = (item: HistoryItem): string => {
+    // Bundle A §5.3 — list endpoint returns `product_names` (summary fields
+    // only; full_response is not in the list payload). The legacy
+    // `item.full_response?.products` lookup never worked because the list
+    // route doesn't hydrate full_response.
+    const names = (item.product_names ?? [])
+      .filter(Boolean)
+      .map(dedupeBrandPrefix);
+    if (names.length >= 2) {
+      const combined = `${names[0]} vs ${names[1]}`;
+      return combined.length > 40 ? combined.slice(0, 39) + '…' : combined;
+    }
+    const q = item.query?.trim();
+    if (q) return q;
+    return t('history.row.untitled');
+  };
+
+  // Bundle D 2.6.B.4 — render the title as 3 inline spans so the winning
+  // product name can be highlighted (emerald + bolder). When winner_index
+  // is null or names are unavailable, falls back to the plain formatTitle().
+  // (Currently unreferenced by the RowV2 layout — kept verbatim, as before
+  // the M21 extraction, for the planned title treatment.)
+  const renderTitle = (item: HistoryItem) => {
+    const names = (item.product_names ?? [])
+      .filter(Boolean)
+      .map(dedupeBrandPrefix);
+    if (names.length < 2 || (item.winner_index !== 0 && item.winner_index !== 1)) {
+      return (
+        <Text style={styles.cardQuery} numberOfLines={1}>
+          {formatTitle(item)}
+        </Text>
+      );
+    }
+    const winnerStyle = [styles.cardQuery, styles.cardQueryWinner];
+    const loserStyle = styles.cardQuery;
+    const aStyle = item.winner_index === 0 ? winnerStyle : loserStyle;
+    const bStyle = item.winner_index === 1 ? winnerStyle : loserStyle;
+    return (
+      <Text style={styles.cardQuery} numberOfLines={1}>
+        <Text style={aStyle}>{names[0]}</Text>
+        <Text style={styles.cardQueryVs}> {t('profile.recent.vs')} </Text>
+        <Text style={bStyle}>{names[1]}</Text>
+      </Text>
+    );
+  };
+  void renderTitle;
+
+  const names = (item.product_names ?? [])
+    .filter(Boolean)
+    .map(dedupeBrandPrefix);
+  const nameA = names[0] ?? '';
+  const nameB = names[1] ?? '';
+  // Tone-driven block backgrounds via deriveTone — matches JSX inline
+  // tone literals (HistoryScreen.jsx:31-72) across iPhone/Galaxy/
+  // Centrum/etc. Fallback neutral when brand isn't in the lookup.
+  const toneA = deriveTone(nameA);
+  const toneB = deriveTone(nameB);
+  const isAWinner = item.winner_index === 0;
+  const isBWinner = item.winner_index === 1;
+  // Bundle E S3 Hot-Fix Wave 2 — prefer the top-level
+  // winner_image_url + runner_up_image_url fields (L3 endpoint
+  // extension, shallow payload), fall back to the full_response
+  // traversal for backward-compat with pre-Wave-2 cached list state.
+  // Mapping is winner-relative: when winner_index=0, block A is the
+  // WINNER tile, so imageUrlA reads winner_image_url; when
+  // winner_index=1, the mapping inverts. winner_index can be null
+  // (legacy rows where the pipeline didn't emit it) — in that case we
+  // fall straight through to the full_response slice.
+  const fullResponseProducts =
+    (item.full_response && Array.isArray(item.full_response.products))
+      ? item.full_response.products
+      : [];
+  const imageUrlA: string | null = isAWinner
+    ? (item.winner_image_url ?? fullResponseProducts[0]?.image_url ?? null)
+    : (item.runner_up_image_url ?? fullResponseProducts[0]?.image_url ?? null);
+  const imageUrlB: string | null = isBWinner
+    ? (item.winner_image_url ?? fullResponseProducts[1]?.image_url ?? null)
+    : (item.runner_up_image_url ?? fullResponseProducts[1]?.image_url ?? null);
+  // Adapter pattern per backend B-XQA: `?? undefined` coercion for
+  // null-shipping fields consumed by props typed undefined.
+  const category = item.category ?? undefined;
+  const verdictShort = item.verdict_short ?? undefined;
+  // Verdict line: prefer backend verdict_short, else fall back to
+  // formatTitle so the test contract regex (`formatTitle\s*\(\s*item\s*\)`)
+  // still matches in the source.
+  const verdictLine = verdictShort ?? formatTitle(item);
+  const ago = formatTimeAgoLocalized(item.created_at);
+
+  return (
+    <Animated.View
+      entering={FadeInDown.delay(rowEntranceDelayMs(index)).duration(300)}
+    >
+      <TouchableOpacity
+        testID={`history-row-${item.id}`}
+        style={styles.rowV2}
+        onPress={() => onPress(item)}
+        activeOpacity={0.7}
+      >
+        {/* Header row: category eyebrow pill (left) + ago (right). The
+            eyebrow hides via null-hide-surround when category is absent. */}
+        <View style={styles.rowV2Header}>
+          {category ? (
+            <View style={styles.rowV2CatPill}>
+              <Text style={styles.rowV2CatPillText} numberOfLines={1}>
+                {category.toUpperCase()}
+              </Text>
+            </View>
+          ) : <View />}
+          <Text style={styles.rowV2Ago}>{ago}</Text>
+        </View>
+
+        {/* ProductBlock pair with center vs pill (the brand moment) */}
+        <View style={styles.rowV2Pair}>
+          {/* Product A */}
+          <View
+            style={[
+              styles.rowV2Block,
+              isAWinner ? styles.rowV2BlockWinner : styles.rowV2BlockBase,
+            ]}
+            testID={`history-row-${item.id}-block-a`}
+          >
+            {isAWinner ? (
+              <Text style={styles.rowV2TopMatch}>{t('results.topMatch')}</Text>
+            ) : null}
+            {/* Bundle E S3 A4 Wave 2 — ProductImage primitive per JSX
+                HistoryScreen.jsx:226-233. tone background falls through
+                as placeholderTone. */}
+            <View style={styles.rowV2TileWrap}>
+              <ProductImage
+                testID={`history-row-${item.id}-block-a-image-slot`}
+                imageUrl={imageUrlA}
+                placeholderTone={toneA}
+                aspectRatio={1}
+                borderRadius={radii.button}
+                style={styles.rowV2Tile}
+              />
+              {isAWinner ? (
+                <View style={styles.rowV2TileCheck}>
+                  <Check size={8} color={colors.text.onInverse} strokeWidth={4} />
+                </View>
+              ) : null}
+            </View>
+            <Text
+              style={[
+                styles.rowV2Name,
+                isAWinner ? styles.rowV2NameWinner : null,
+              ]}
+              numberOfLines={1}
+            >
+              {nameA || t('history.row.untitled')}
+            </Text>
+          </View>
+
+          {/* Center vs pill — the brand moment (NOT inline; this is the
+              center-pill variant per the dual-VS-pattern rule). */}
+          <View style={styles.rowV2VsAbs} pointerEvents="none">
+            <View style={styles.rowV2VsPill}>
+              <Text style={styles.rowV2VsText}>VS</Text>
+            </View>
+          </View>
+
+          {/* Product B */}
+          <View
+            style={[
+              styles.rowV2Block,
+              isBWinner ? styles.rowV2BlockWinner : styles.rowV2BlockBase,
+            ]}
+            testID={`history-row-${item.id}-block-b`}
+          >
+            {isBWinner ? (
+              <Text style={styles.rowV2TopMatch}>{t('results.topMatch')}</Text>
+            ) : null}
+            {/* Bundle E S3 A4 Wave 2 — ProductImage primitive per JSX
+                HistoryScreen.jsx:226-233. */}
+            <View style={styles.rowV2TileWrap}>
+              <ProductImage
+                testID={`history-row-${item.id}-block-b-image-slot`}
+                imageUrl={imageUrlB}
+                placeholderTone={toneB}
+                aspectRatio={1}
+                borderRadius={radii.button}
+                style={styles.rowV2Tile}
+              />
+              {isBWinner ? (
+                <View style={styles.rowV2TileCheck}>
+                  <Check size={8} color={colors.text.onInverse} strokeWidth={4} />
+                </View>
+              ) : null}
+            </View>
+            <Text
+              style={[
+                styles.rowV2Name,
+                isBWinner ? styles.rowV2NameWinner : null,
+              ]}
+              numberOfLines={1}
+            >
+              {nameB}
+            </Text>
+          </View>
+        </View>
+
+        {/* Verdict caption (preferred backend verdict_short, else
+            formatTitle fallback so the source-grep test contract holds). */}
+        <Text style={styles.rowV2Verdict} numberOfLines={2}>
+          {verdictLine}
+        </Text>
+
+        {/* Delete action — relocated to a footer row so the JSX-aligned
+            hero stays clean. */}
+        <View style={styles.rowV2Footer}>
+          <TouchableOpacity
+            testID={`history-row-${item.id}-delete`}
+            style={styles.rowV2DeleteBtn}
+            onPress={() => onDelete(item)}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityRole="button"
+            accessibilityLabel={t('history.delete', { defaultValue: 'Delete' })}
+          >
+            <Trash2 size={14} color={colors.text.secondary} />
+          </TouchableOpacity>
+        </View>
+      </TouchableOpacity>
+    </Animated.View>
+  );
+});
+
 interface HistoryScreenProps {
   navigation: any;
   onLogout: () => void;
 }
 
 export default function HistoryScreen({ navigation, onLogout }: HistoryScreenProps) {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [total, setTotal] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
   const [authError, setAuthError] = useState(false);
+  // M21 MB-flows-08 — ids deleted THIS session, so the mount-once hero
+  // marquee prunes them instead of keeping a dead (now 404) comparison
+  // tappable.
+  const [deletedRecentIds, setDeletedRecentIds] = useState<ReadonlySet<string>>(
+    new Set()
+  );
 
   useFocusEffect(
     useCallback(() => {
@@ -389,12 +704,6 @@ export default function HistoryScreen({ navigation, onLogout }: HistoryScreenPro
     return t('history.older');
   };
 
-  // Locale-aware relative time via i18n-opus' shared util (Bundle A §6.2).
-  // Replaces the inline hardcoded 'en-US' formatter so Arabic users get
-  // "منذ 2 يوم" / "الآن" instead of "2d ago" / "<1m ago".
-  const formatTimeAgoLocalized = (dateString: string): string =>
-    formatTimeAgo(dateString, (i18n.language as 'en' | 'ar') ?? 'en');
-
   const formatPrice = (product: any): string => {
     if (!product || product.price === null || product.price === undefined) return 'N/A';
     if (typeof product.price === 'object') {
@@ -419,14 +728,25 @@ export default function HistoryScreen({ navigation, onLogout }: HistoryScreenPro
       .map((title) => ({ title, data: groups[title] }));
   }, [history, t]);
 
-  const viewAsResult = (item: HistoryItem) => {
+  // M21 MB-perf-06 — stable via useCallback so the memoized HistoryRow's
+  // props don't churn on every screen re-render (each search keystroke).
+  const viewAsResult = useCallback((item: HistoryItem) => {
     // Bucket A bug 1: list endpoint returns summary only — item.full_response
     // is always null. Pass comparison_id so ResultsScreen can fetch the full
     // payload via getComparison(id) on mount.
     navigation.navigate('Results', { comparison_id: item.id });
-  };
+  }, [navigation]);
 
-  const handleDelete = (item: HistoryItem) => {
+  // M21 MB-flows-08 — the hero marquee is fed by /profile/recent-decisions,
+  // which can disagree with the separately fetched (and search-filtered)
+  // history page. The old handler resolved the id against `history` and
+  // silently dropped the tap on a miss; viewAsResult only ever needed the
+  // id, so navigate with it directly.
+  const openRecentDecision = useCallback((comparisonId: string) => {
+    navigation.navigate('Results', { comparison_id: comparisonId });
+  }, [navigation]);
+
+  const handleDelete = useCallback((item: HistoryItem) => {
     Alert.alert(
       t('history.delete'),
       t('profile.deleteConfirm'),
@@ -440,6 +760,12 @@ export default function HistoryScreen({ navigation, onLogout }: HistoryScreenPro
               await deleteComparison(item.id);
               setHistory((prev) => prev.filter((h) => h.id !== item.id));
               setTotal((prev) => prev - 1);
+              // M21 MB-flows-08 — prune the mount-once hero marquee too.
+              setDeletedRecentIds((prev) => {
+                const next = new Set(prev);
+                next.add(item.id);
+                return next;
+              });
             } catch {
               Alert.alert(t('common.error'), t('history.deleteError'));
             }
@@ -447,261 +773,24 @@ export default function HistoryScreen({ navigation, onLogout }: HistoryScreenPro
         },
       ]
     );
-  };
+  }, [t]);
 
-  // B2 (Path A): defensive de-dupe of consecutive duplicate word(s) at the
-  // start of a product name. Older comparison rows were saved with shapes
-  // where the brand prefix got concatenated twice (e.g. "Apple Apple
-  // iPhone 14", "Louis Vuitton Louis Vuitton Mesh Cap", "HealthAid
-  // HealthAid Vit D"). Backend doesn't rewrite stored rows; FE collapses
-  // visually so the history reads cleanly.
-  const dedupeBrandPrefix = (name: string): string => {
-    const trimmed = name.trim();
-    if (!trimmed) return trimmed;
-    // 2-word brand dedupe: "Louis Vuitton Louis Vuitton Mesh Cap" → "Louis Vuitton Mesh Cap"
-    const m2 = trimmed.match(/^(\S+\s+\S+)\s+\1\b/i);
-    if (m2) return trimmed.slice(m2[1].length + 1).trimStart();
-    // 1-word brand dedupe: "Apple Apple iPhone 14" → "Apple iPhone 14"
-    const m1 = trimmed.match(/^(\S+)\s+\1\b/i);
-    if (m1) return trimmed.slice(m1[1].length + 1).trimStart();
-    return trimmed;
-  };
+  // M21 MB-perf-06/07 — renderItem returns the memoized HistoryRow with
+  // stable callbacks; the row body (tones, images, title derivation)
+  // lives in HistoryRow at module level so screen-level state churn
+  // (search keystrokes) no longer re-renders mounted rows.
+  const renderItem = useCallback(
+    ({ item, index }: { item: HistoryItem; index: number }) => (
+      <HistoryRow
+        item={item}
+        index={index}
+        onPress={viewAsResult}
+        onDelete={handleDelete}
+      />
+    ),
+    [viewAsResult, handleDelete]
+  );
 
-  const formatTitle = (item: HistoryItem): string => {
-    // Bundle A §5.3 — list endpoint returns `product_names` (summary fields
-    // only; full_response is not in the list payload). The legacy
-    // `item.full_response?.products` lookup never worked because the list
-    // route doesn't hydrate full_response.
-    const names = (item.product_names ?? [])
-      .filter(Boolean)
-      .map(dedupeBrandPrefix);
-    if (names.length >= 2) {
-      const combined = `${names[0]} vs ${names[1]}`;
-      return combined.length > 40 ? combined.slice(0, 39) + '…' : combined;
-    }
-    const q = item.query?.trim();
-    if (q) return q;
-    return t('history.row.untitled');
-  };
-
-  // Bundle D 2.6.B.4 — render the title as 3 inline spans so the winning
-  // product name can be highlighted (emerald + bolder). When winner_index
-  // is null or names are unavailable, falls back to the plain formatTitle().
-  const renderTitle = (item: HistoryItem) => {
-    const names = (item.product_names ?? [])
-      .filter(Boolean)
-      .map(dedupeBrandPrefix);
-    if (names.length < 2 || (item.winner_index !== 0 && item.winner_index !== 1)) {
-      return (
-        <Text style={styles.cardQuery} numberOfLines={1}>
-          {formatTitle(item)}
-        </Text>
-      );
-    }
-    const winnerStyle = [styles.cardQuery, styles.cardQueryWinner];
-    const loserStyle = styles.cardQuery;
-    const aStyle = item.winner_index === 0 ? winnerStyle : loserStyle;
-    const bStyle = item.winner_index === 1 ? winnerStyle : loserStyle;
-    return (
-      <Text style={styles.cardQuery} numberOfLines={1}>
-        <Text style={aStyle}>{names[0]}</Text>
-        <Text style={styles.cardQueryVs}> {t('profile.recent.vs')} </Text>
-        <Text style={bStyle}>{names[1]}</Text>
-      </Text>
-    );
-  };
-
-  // Bundle E F-S1.6: HistoryRowV2 — VS pair with center pill (NOT inline,
-  // per dual-VS-pattern rule). Two ProductBlock tiles + center emerald
-  // "vs" pill (this IS the center-pill variant — TrendingNearYou uses the
-  // inline-text variant per HomeScreen.jsx:639).
-  // Per JSX: HistoryScreen.jsx:251-305 (HistoryRowV2). Category eyebrow
-  // (top-left) + ago (top-right) + ProductBlock pair + center vs pill +
-  // verdict caption below.
-  const renderItem = ({ item, index }: { item: HistoryItem; index: number }) => {
-    const names = (item.product_names ?? [])
-      .filter(Boolean)
-      .map(dedupeBrandPrefix);
-    const nameA = names[0] ?? '';
-    const nameB = names[1] ?? '';
-    // Tone-driven block backgrounds via deriveTone — matches JSX inline
-    // tone literals (HistoryScreen.jsx:31-72) across iPhone/Galaxy/
-    // Centrum/etc. Fallback neutral when brand isn't in the lookup.
-    const toneA = deriveTone(nameA);
-    const toneB = deriveTone(nameB);
-    const isAWinner = item.winner_index === 0;
-    const isBWinner = item.winner_index === 1;
-    // Bundle E S3 Hot-Fix Wave 2 — prefer the top-level
-    // winner_image_url + runner_up_image_url fields (L3 endpoint
-    // extension, shallow payload), fall back to the full_response
-    // traversal for backward-compat with pre-Wave-2 cached list state.
-    // Mapping is winner-relative: when winner_index=0, block A is the
-    // WINNER tile, so imageUrlA reads winner_image_url; when
-    // winner_index=1, the mapping inverts. winner_index can be null
-    // (legacy rows where the pipeline didn't emit it) — in that case we
-    // fall straight through to the full_response slice.
-    const fullResponseProducts =
-      (item.full_response && Array.isArray(item.full_response.products))
-        ? item.full_response.products
-        : [];
-    const winnerImageUrlTopLevel = item.winner_image_url ?? null;
-    const runnerImageUrlTopLevel = item.runner_up_image_url ?? null;
-    const imageUrlA: string | null = isAWinner
-      ? (item.winner_image_url ?? fullResponseProducts[0]?.image_url ?? null)
-      : (item.runner_up_image_url ?? fullResponseProducts[0]?.image_url ?? null);
-    const imageUrlB: string | null = isBWinner
-      ? (item.winner_image_url ?? fullResponseProducts[1]?.image_url ?? null)
-      : (item.runner_up_image_url ?? fullResponseProducts[1]?.image_url ?? null);
-    // Suppress "unused" lint without changing runtime — these locals
-    // document the field names + survive future refactors that pull
-    // the values directly. (eslint no-unused-vars is silent here.)
-    void winnerImageUrlTopLevel;
-    void runnerImageUrlTopLevel;
-    // Adapter pattern per backend B-XQA: `?? undefined` coercion for
-    // null-shipping fields consumed by props typed undefined.
-    const category = item.category ?? undefined;
-    const verdictShort = item.verdict_short ?? undefined;
-    // Verdict line: prefer backend verdict_short, else fall back to
-    // formatTitle so the test contract regex (`formatTitle\s*\(\s*item\s*\)`)
-    // still matches in the source.
-    const verdictLine = verdictShort ?? formatTitle(item);
-    const ago = formatTimeAgoLocalized(item.created_at);
-
-    return (
-      <Animated.View entering={FadeInDown.delay(index * 50).duration(300)}>
-        <TouchableOpacity
-          testID={`history-row-${item.id}`}
-          style={styles.rowV2}
-          onPress={() => viewAsResult(item)}
-          activeOpacity={0.7}
-        >
-          {/* Header row: category eyebrow pill (left) + ago (right). The
-              eyebrow hides via null-hide-surround when category is absent. */}
-          <View style={styles.rowV2Header}>
-            {category ? (
-              <View style={styles.rowV2CatPill}>
-                <Text style={styles.rowV2CatPillText} numberOfLines={1}>
-                  {category.toUpperCase()}
-                </Text>
-              </View>
-            ) : <View />}
-            <Text style={styles.rowV2Ago}>{ago}</Text>
-          </View>
-
-          {/* ProductBlock pair with center vs pill (the brand moment) */}
-          <View style={styles.rowV2Pair}>
-            {/* Product A */}
-            <View
-              style={[
-                styles.rowV2Block,
-                isAWinner ? styles.rowV2BlockWinner : styles.rowV2BlockBase,
-              ]}
-              testID={`history-row-${item.id}-block-a`}
-            >
-              {isAWinner ? (
-                <Text style={styles.rowV2TopMatch}>{t('results.topMatch')}</Text>
-              ) : null}
-              {/* Bundle E S3 A4 Wave 2 — ProductImage primitive per JSX
-                  HistoryScreen.jsx:226-233. tone background falls through
-                  as placeholderTone. */}
-              <View style={styles.rowV2TileWrap}>
-                <ProductImage
-                  testID={`history-row-${item.id}-block-a-image-slot`}
-                  imageUrl={imageUrlA}
-                  placeholderTone={toneA}
-                  aspectRatio={1}
-                  borderRadius={radii.button}
-                  style={styles.rowV2Tile}
-                />
-                {isAWinner ? (
-                  <View style={styles.rowV2TileCheck}>
-                    <Check size={8} color={colors.text.onInverse} strokeWidth={4} />
-                  </View>
-                ) : null}
-              </View>
-              <Text
-                style={[
-                  styles.rowV2Name,
-                  isAWinner ? styles.rowV2NameWinner : null,
-                ]}
-                numberOfLines={1}
-              >
-                {nameA || t('history.row.untitled')}
-              </Text>
-            </View>
-
-            {/* Center vs pill — the brand moment (NOT inline; this is the
-                center-pill variant per the dual-VS-pattern rule). */}
-            <View style={styles.rowV2VsAbs} pointerEvents="none">
-              <View style={styles.rowV2VsPill}>
-                <Text style={styles.rowV2VsText}>VS</Text>
-              </View>
-            </View>
-
-            {/* Product B */}
-            <View
-              style={[
-                styles.rowV2Block,
-                isBWinner ? styles.rowV2BlockWinner : styles.rowV2BlockBase,
-              ]}
-              testID={`history-row-${item.id}-block-b`}
-            >
-              {isBWinner ? (
-                <Text style={styles.rowV2TopMatch}>{t('results.topMatch')}</Text>
-              ) : null}
-              {/* Bundle E S3 A4 Wave 2 — ProductImage primitive per JSX
-                  HistoryScreen.jsx:226-233. */}
-              <View style={styles.rowV2TileWrap}>
-                <ProductImage
-                  testID={`history-row-${item.id}-block-b-image-slot`}
-                  imageUrl={imageUrlB}
-                  placeholderTone={toneB}
-                  aspectRatio={1}
-                  borderRadius={radii.button}
-                  style={styles.rowV2Tile}
-                />
-                {isBWinner ? (
-                  <View style={styles.rowV2TileCheck}>
-                    <Check size={8} color={colors.text.onInverse} strokeWidth={4} />
-                  </View>
-                ) : null}
-              </View>
-              <Text
-                style={[
-                  styles.rowV2Name,
-                  isBWinner ? styles.rowV2NameWinner : null,
-                ]}
-                numberOfLines={1}
-              >
-                {nameB}
-              </Text>
-            </View>
-          </View>
-
-          {/* Verdict caption (preferred backend verdict_short, else
-              formatTitle fallback so the source-grep test contract holds). */}
-          <Text style={styles.rowV2Verdict} numberOfLines={2}>
-            {verdictLine}
-          </Text>
-
-          {/* Delete action — relocated to a footer row so the JSX-aligned
-              hero stays clean. */}
-          <View style={styles.rowV2Footer}>
-            <TouchableOpacity
-              testID={`history-row-${item.id}-delete`}
-              style={styles.rowV2DeleteBtn}
-              onPress={() => handleDelete(item)}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              accessibilityRole="button"
-              accessibilityLabel={t('history.delete', { defaultValue: 'Delete' })}
-            >
-              <Trash2 size={14} color={colors.text.secondary} />
-            </TouchableOpacity>
-          </View>
-        </TouchableOpacity>
-      </Animated.View>
-    );
-  };
 
   const renderSectionHeader = ({ section }: { section: HistorySection }) => (
     <Text style={styles.sectionHeader}>{section.title}</Text>
@@ -761,13 +850,15 @@ export default function HistoryScreen({ navigation, onLogout }: HistoryScreenPro
 
       {/* F-S1.6-D1 HistoryHeroStats — stat strip + horizontal marquee.
           Always above search field per JSX. Tapping a card opens that
-          comparison via viewAsResult so the marquee acts as a quick-jump
-          entry to recent decisions. */}
+          comparison as a quick-jump entry to recent decisions.
+          M21 MB-flows-08: navigate with the id DIRECTLY — the old
+          `history.find(...)` gate silently no-op'd whenever the two
+          endpoints disagreed (recent decision beyond the 50-row page, an
+          active search filter, or a just-deleted row). deletedRecentIds
+          prunes deleted comparisons from the mount-once marquee. */}
       <HistoryHeroStats
-        onPressItem={(id) => {
-          const found = history.find((h) => h.id === id);
-          if (found) viewAsResult(found);
-        }}
+        onPressItem={openRecentDecision}
+        excludeIds={deletedRecentIds}
       />
 
       <View style={styles.searchContainer}>

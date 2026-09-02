@@ -25,25 +25,39 @@ const translations: Record<string, Record<string, string>> = {
 
 let currentLang = 'en';
 
+// M21 mobile-jank — `t` and the returned object are STABLE singletons, like
+// real react-i18next (whose `t` is referentially stable between renders and
+// only swaps on language change). The old mock fabricated a new `t` closure
+// per useTranslation() call, which made every `useCallback(..., [t])` in app
+// code churn each render and falsely defeated React.memo in tests. `t` reads
+// `currentLang` live, so changeLanguage behavior is unchanged.
+const stableT = (key: string, params?: Record<string, any>) => {
+  const dict = translations[currentLang] || translations['en'];
+  let value = dict[key] || key;
+  if (params) {
+    for (const [k, v] of Object.entries(params)) {
+      value = value.replace(new RegExp(`\\{\\{${k}\\}\\}`, 'g'), String(v));
+    }
+  }
+  return value;
+};
+
+const stableI18n = {
+  get language() {
+    return currentLang;
+  },
+  changeLanguage: jest.fn(async (lang: string) => {
+    currentLang = lang;
+  }),
+};
+
+const stableUseTranslationResult = {
+  t: stableT,
+  i18n: stableI18n,
+};
+
 export function useTranslation() {
-  return {
-    t: (key: string, params?: Record<string, any>) => {
-      const dict = translations[currentLang] || translations['en'];
-      let value = dict[key] || key;
-      if (params) {
-        for (const [k, v] of Object.entries(params)) {
-          value = value.replace(new RegExp(`\\{\\{${k}\\}\\}`, 'g'), String(v));
-        }
-      }
-      return value;
-    },
-    i18n: {
-      language: currentLang,
-      changeLanguage: jest.fn(async (lang: string) => {
-        currentLang = lang;
-      }),
-    },
-  };
+  return stableUseTranslationResult;
 }
 
 export function initReactI18next() {}

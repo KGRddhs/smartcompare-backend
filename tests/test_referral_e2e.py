@@ -47,6 +47,13 @@ CANONICAL_COMPARISON_ID = "6ff5f5b4-0d29-48df-bb3f-6128f481b245"
 CANONICAL_SHARE_TOKEN = "EOhHdTAO-kxZY_qu4m920w"  # 22-char URL-safe (TEXT column)
 CANONICAL_REFERRAL_CODE = "QR-ND9HEX"
 CANONICAL_INVITE_ID = "13cd5192-50f4-4cf4-9337-69dbb520ee21"
+# M18 CD-ci-truth-09 / M13-82: the live-smoke capture predates the
+# `^[a-f0-9]{64}$` Pydantic pattern on device_fingerprint_hash (Migration 021
+# anti-farming). The captured literal "smoke-referrer-device-hash" now 422s at
+# validation before the route body runs, so the e2e test must send a
+# schema-valid sha256 hex digest (value itself is not load-bearing — the
+# service layer is mocked).
+CANONICAL_DEVICE_FP = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 
 
 def _client_as(user):
@@ -91,6 +98,8 @@ def anon_client():
 # Live fixture (POST /api/v1/referrals/share):
 # Request:  {"comparison_id": "6ff5f5b4-...", "share_target": "whatsapp",
 #            "device_fingerprint_hash": "smoke-referrer-device-hash"}
+#           (fingerprint literal since replaced by CANONICAL_DEVICE_FP — the
+#            64-hex pattern landed after this capture; see note above)
 # Response: {
 #   "success": true,
 #   "invite_id": "13cd5192-50f4-4cf4-9337-69dbb520ee21",
@@ -126,7 +135,7 @@ def test_e2e_share_creates_invite_and_grants_loop1_credit(
         json={
             "comparison_id": CANONICAL_COMPARISON_ID,
             "share_target": "whatsapp",
-            "device_fingerprint_hash": "smoke-referrer-device-hash",
+            "device_fingerprint_hash": CANONICAL_DEVICE_FP,
         },
     )
 
