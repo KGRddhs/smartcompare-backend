@@ -126,10 +126,16 @@ def test_all_nine_categories_have_empty_exemplars(canonical_content):
 def test_anti_patterns_preserved_in_canonical(canonical_content):
     """The structural-signal carrier — I2's per-category anti_patterns — must
     remain intact in the canonical file. Categories that had APs keep them;
-    the AP-only-vs-empty split is exercised in test_per_category_anti_patterns."""
+    the AP-only-vs-empty split is exercised in test_per_category_anti_patterns.
+
+    Counts re-pinned for M21 (M18 PO-verdict-text-12): every category gained the
+    'score margin cited as the why' anti-pattern (+1 across the board), and the
+    four previously-EMPTY categories (supplements/haircare/fashion/other) gained
+    their first category-specific AP so build_exemplar_block never returns ''
+    for a live category. The old 0-count pins WERE that finding's defect."""
     expected_ap_counts = {
-        "electronics": 3, "grocery": 1, "supplements": 0, "makeup": 2,
-        "skincare": 1, "haircare": 0, "fragrances": 2, "fashion": 0, "other": 0,
+        "electronics": 4, "grocery": 2, "supplements": 2, "makeup": 3,
+        "skincare": 2, "haircare": 2, "fragrances": 3, "fashion": 2, "other": 2,
     }
     for cat in CATEGORIES:
         aps = canonical_content[cat].get("anti_patterns")

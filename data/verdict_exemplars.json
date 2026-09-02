@@ -1,7 +1,7 @@
 {
   "_schema": {
     "version": 1,
-    "note": "Few-shot verdict layer. exemplars[] are currently EMPTY per dispatcher ruling 2026-06-12: a T=0 attribution A/B on FRESH inputs found the worked exemplars add +0 over I2 anti_patterns (byte-identical 9/24 structural). The injection mechanism, per-category anti_patterns[] (authored by Lane I2), and the rotation cron all remain LIVE — anti_patterns carry the structural signal at T=0. The 26 synthetic exemplars are parked verbatim in data/verdict_exemplars.s3_parked.json (loader never reads that path) for re-evaluation once S3 ships a real Bahrain availability/service data layer for value reasoning to anchor on. anti_patterns[] authored by Lane I2. Consumed by app/services/verdict_exemplar_loader.build_exemplar_block(category).",
+    "note": "Few-shot verdict layer. exemplars[] are currently EMPTY per dispatcher ruling 2026-06-12: a T=0 attribution A/B on FRESH inputs found the worked exemplars add +0 over I2 anti_patterns (byte-identical 9/24 structural). The injection mechanism, per-category anti_patterns[] (authored by Lane I2), and the rotation cron all remain LIVE — anti_patterns carry the structural signal at T=0. The 26 synthetic exemplars are parked verbatim in data/verdict_exemplars.s3_parked.json (loader never reads that path) for re-evaluation once S3 ships a real Bahrain availability/service data layer for value reasoning to anchor on. anti_patterns[] authored by Lane I2; M21 (M18 PO-verdict-text-12) added the 'score margin cited as the why' counter-rule to every category and gave supplements/haircare/fashion/other their first category anti-patterns so build_exemplar_block never returns empty for a live category. Consumed by app/services/verdict_exemplar_loader.build_exemplar_block(category).",
     "exemplar_format": "COMPACT Option A (dispatcher ruling 2026-06-11): ~200 tok each, rendered as a labeled ABRIDGED teaching block — NOT a full verdict_json dump. Only the four teaching fields are rendered.",
     "exemplar_fields": {
       "title": "label string, must signal 'EXAMPLE -- do not copy'",
@@ -33,6 +33,11 @@
         "name": "climate-neutral verdict in a 45-degree market",
         "rule": "For appliances (AC/cooling/fridges), grade real Gulf-summer load -- sustained performance and energy cost in 45-degree heat -- not just rated figures measured in mild conditions.",
         "teaches": "H8"
+      },
+      {
+        "name": "score margin cited as the why",
+        "rule": "Never justify the winner by the size of its win or any internal score gap; name the concrete capability, price reality, or local advantage that makes it the better buy for a Bahrain shopper.",
+        "teaches": "H1"
       }
     ]
   },
@@ -43,12 +48,28 @@
         "name": "global prestige outranks GCC market reality",
         "rule": "A globally famous brand is not automatically the better pick here; a regional staple with broad local adoption and everyday availability can be the smarter everyday buy.",
         "teaches": "H2"
+      },
+      {
+        "name": "score margin cited as the why",
+        "rule": "Never justify the winner by the size of its win or any internal score gap; name the concrete capability, price reality, or local advantage that makes it the better buy for a Bahrain shopper.",
+        "teaches": "H1"
       }
     ]
   },
   "supplements": {
     "exemplars": [],
-    "anti_patterns": []
+    "anti_patterns": [
+      {
+        "name": "brand fame outranks dose and form",
+        "rule": "Judge supplements on actual dose per serving, form and absorbability, and how easily a Bahrain pharmacy stocks them -- not on which label is more famous globally.",
+        "teaches": "H2"
+      },
+      {
+        "name": "score margin cited as the why",
+        "rule": "Never justify the winner by the size of its win or any internal score gap; name the concrete capability, price reality, or local advantage that makes it the better buy for a Bahrain shopper.",
+        "teaches": "H1"
+      }
+    ]
   },
   "makeup": {
     "exemplars": [],
@@ -62,6 +83,11 @@
         "name": "climate-neutral verdict in a 45-degree market",
         "rule": "Grade wear in Gulf heat and humidity -- shine control, transfer and melt resistance through a hot, humid day -- not just finish and shade on a swatch.",
         "teaches": "H8"
+      },
+      {
+        "name": "score margin cited as the why",
+        "rule": "Never justify the winner by the size of its win or any internal score gap; name the concrete capability, price reality, or local advantage that makes it the better buy for a Bahrain shopper.",
+        "teaches": "H1"
       }
     ]
   },
@@ -72,12 +98,28 @@
         "name": "climate-neutral verdict in a 45-degree market",
         "rule": "Weigh how the formula behaves in Gulf heat and humidity -- active stability and feel on the skin in a hot climate -- not just the ingredient list on paper.",
         "teaches": "H8"
+      },
+      {
+        "name": "score margin cited as the why",
+        "rule": "Never justify the winner by the size of its win or any internal score gap; name the concrete capability, price reality, or local advantage that makes it the better buy for a Bahrain shopper.",
+        "teaches": "H1"
       }
     ]
   },
   "haircare": {
     "exemplars": [],
-    "anti_patterns": []
+    "anti_patterns": [
+      {
+        "name": "climate-neutral verdict in a 45-degree market",
+        "rule": "Weigh how hair actually holds up in Gulf heat, humidity and desalinated water -- frizz control, scalp comfort and wash-day frequency -- not just the formula story on the bottle.",
+        "teaches": "H8"
+      },
+      {
+        "name": "score margin cited as the why",
+        "rule": "Never justify the winner by the size of its win or any internal score gap; name the concrete capability, price reality, or local advantage that makes it the better buy for a Bahrain shopper.",
+        "teaches": "H1"
+      }
+    ]
   },
   "fragrances": {
     "exemplars": [],
@@ -91,15 +133,42 @@
         "name": "climate-neutral verdict in a 45-degree market",
         "rule": "Judge performance in Gulf heat -- how longevity and projection hold up in high temperature and humidity -- not just the note pyramid.",
         "teaches": "H8"
+      },
+      {
+        "name": "score margin cited as the why",
+        "rule": "Never justify the winner by the size of its win or any internal score gap; name the concrete capability, price reality, or local advantage that makes it the better buy for a Bahrain shopper.",
+        "teaches": "H1"
       }
     ]
   },
   "fashion": {
     "exemplars": [],
-    "anti_patterns": []
+    "anti_patterns": [
+      {
+        "name": "global prestige outranks GCC market reality",
+        "rule": "A famous global label is not automatically the better buy; fit for the Gulf climate and occasion, and easy local sizing or exchange, can make the regional pick the smarter choice.",
+        "teaches": "H2"
+      },
+      {
+        "name": "score margin cited as the why",
+        "rule": "Never justify the winner by the size of its win or any internal score gap; name the concrete capability, price reality, or local advantage that makes it the better buy for a Bahrain shopper.",
+        "teaches": "H1"
+      }
+    ]
   },
   "other": {
     "exemplars": [],
-    "anti_patterns": []
+    "anti_patterns": [
+      {
+        "name": "spec-sheet verdict with no daily-life anchor",
+        "rule": "Anchor the verdict in how the product is actually lived with in Bahrain -- availability, after-sales support and running costs -- not in a recital of on-paper differences.",
+        "teaches": "H4"
+      },
+      {
+        "name": "score margin cited as the why",
+        "rule": "Never justify the winner by the size of its win or any internal score gap; name the concrete capability, price reality, or local advantage that makes it the better buy for a Bahrain shopper.",
+        "teaches": "H1"
+      }
+    ]
   }
 }

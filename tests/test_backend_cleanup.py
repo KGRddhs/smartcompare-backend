@@ -170,10 +170,26 @@ class TestDeadFunctionsRemoved:
         assert encode_image_bytes_to_base64 is not None
 
     def test_unused_imports_cleaned(self):
-        """os and Optional should no longer be imported (only used by deleted functions)."""
+        """Top-level imports in openai_service must be USED, never leftovers.
+
+        HISTORY (M18 CD-ci-truth-09): this test originally pinned ``import os``
+        ABSENT, because at cleanup time ``os`` was only used by the deleted
+        functions. ``os`` later became load-bearing again (the
+        ``OPENAI_API_KEY_PRIVATE`` split reads ``os.getenv`` in
+        ``_build_client``), so the absence pin went stale and sat red in the
+        pre-impl baseline. The invariant the test always meant to enforce is
+        "no unused ``os`` import" — asserted directly now: if ``os`` is
+        imported it must be referenced somewhere in the module body.
+        """
         import inspect
+        import re
+
         import app.services.openai_service as mod
 
         source = inspect.getsource(mod)
-        # os was only used by deleted functions; Optional was only in type hints of deleted functions
-        assert "import os" not in source, "Unused 'os' import should be cleaned up"
+        if "import os" in source:
+            uses = re.findall(r"\bos\.\w+", source)
+            assert uses, (
+                "'import os' is present but os.<attr> is never referenced — "
+                "unused 'os' import should be cleaned up"
+            )

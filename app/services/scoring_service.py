@@ -907,8 +907,11 @@ def _has_real_price(p: Dict[str, Any]) -> bool:
 
 
 def _product_name_for_evidence(p: Dict[str, Any]) -> str:
-    name = (f"{p.get('brand', '')} {p.get('name', '')}".strip()
-            or (p.get('name') or '').strip())
+    # M18 PO-verdict-text-05 / PO-recorded-13 — shared dedup so a brand-prefixed
+    # `name` ("TOM FORD OUD WOOD 100 ML") no longer doubles into the
+    # winner_evidence line ("TOM FORD TOM FORD OUD WOOD 100 ML leads ...").
+    from app.services.text_sanitize import dedup_brand_name
+    name = dedup_brand_name(p.get('brand', ''), p.get('name', ''))
     return name or "the winning option"
 
 

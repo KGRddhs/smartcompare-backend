@@ -97,7 +97,10 @@ function filterSpecs(specs: Record<string, any>): Array<[string, any]> {
   });
 }
 
-export function ResultsAccordion({
+// M21 MB-perf-06 — memoized: the ~894-line accordion re-derived its
+// section data (specs key-merge, review aggregation) on every parent
+// render; React.memo limits that to actual prop changes.
+export const ResultsAccordion = React.memo(function ResultsAccordion({
   products,
   reviewProducts,
   specsProducts,
@@ -603,7 +606,7 @@ export function ResultsAccordion({
       </View>
     </View>
   );
-}
+});
 
 /**
  * Faithful-results Phase 5.2 (Contract 2) — paraphrased praise block.

@@ -1926,6 +1926,27 @@ strength. Do not add UI directives; only rewrite the natural text.
 """
 
 
+# M18 PO-prompts-02 — the thin-evidence counterpart to the weird clause.
+# COMPARISON_SYSTEM demands decisiveness twice with no evidence condition;
+# when the post-fallback data-quality signal is 'weak' (substantial specs
+# missing on at least one side), the verdict must be allowed to hedge
+# honestly instead of manufacturing confidence. Text-only — critical rule
+# #1 still applies: never instruct the model to surface a UI banner.
+_WEAK_VERDICT_INSTRUCTION = """
+
+THIN-EVIDENCE CONTEXT:
+Substantial spec data is missing for at least one of these products even
+after all lookups ran, so the evidence base for this comparison is thin.
+You may still pick a winner, but do NOT manufacture confidence the data
+cannot support. For this comparison the "Be DECISIVE" rule is RELAXED:
+honest hedging ("based on the available data", "appears to") is BETTER
+than a confidently wrong answer. Anchor winner_reason and every pro/con
+to facts that ARE present; where data is missing, say the comparison is
+limited rather than inventing specifics. Do not add UI directives; only
+adjust the natural text.
+"""
+
+
 def build_verdict_prompt(
     products,
     comparison_quality: str = "normal",
@@ -1996,6 +2017,9 @@ def build_verdict_prompt(
 
     if comparison_quality == "weird":
         base += _WEIRD_VERDICT_INSTRUCTION
+    elif comparison_quality == "weak":
+        # M18 PO-prompts-02 — thin evidence relaxes the decisiveness demand.
+        base += _WEAK_VERDICT_INSTRUCTION
     return base
 
 
@@ -2239,6 +2263,17 @@ def _verdict_safe_product(
     """
     if not isinstance(product, dict):
         return product
+    # M18 PO-verdict-text-04 — fact-check INTERNALS leaked into user-facing
+    # cons ("Price deviation of 53.9% from expected") because the whole product
+    # dict (incl. `fact_check` deviation_pct diagnostics and `_`-prefixed
+    # pipeline markers like `_search_snippets`) was json.dumps'd into the
+    # verdict user_msg. Strip them here (copy-on-write; the original dict —
+    # which downstream fact-check surfaces still read — is never mutated).
+    if "fact_check" in product or any(k.startswith("_") for k in product):
+        product = {
+            k: v for k, v in product.items()
+            if k != "fact_check" and not k.startswith("_")
+        }
     price = product.get("price")
     # No price object → nothing to hide (the verdict already sees no amount).
     if not isinstance(price, dict):
@@ -2273,6 +2308,7 @@ async def generate_comparison(
     scores_summary: Optional[str] = None,
     category: str = "other",
     demographics_profile: Optional[Dict[str, Any]] = None,
+    comparison_quality: str = "normal",
 ) -> Dict[str, Any]:
     """Generate detailed comparison between two products.
 
@@ -2280,6 +2316,13 @@ async def generate_comparison(
     so it routes through model_router with priority="high" — runs on
     gpt-4o while we're under 80% of the daily 4o cap, falls back to
     gpt-4o-mini once we hit the threshold (design 5.1, BX.1).
+
+    `comparison_quality` (M18 PO-prompts-02): the orchestrator-computed
+    data-quality signal ('normal' / 'weak' / 'weird'). Threaded into
+    build_verdict_prompt so 'weird' injects the non-forced framing and
+    'weak' injects the thin-evidence hedging clause. Callers that predate
+    the signal (url_extraction_service) default to 'normal' — byte-identical
+    to the previous hardcode.
     """
     try:
         client = get_client()
@@ -2292,13 +2335,14 @@ async def generate_comparison(
         # pain-workflow + decision-style) so audits grep what prod runs and
         # downstream injections (I2 exemplars) land in one place. Passing the
         # explicit `category` keeps the output byte-identical to the prior
-        # inline assembly; comparison_quality stays "normal" (prod never
-        # injected the weird-comparison clause — that's I3's missing-data
-        # epic). The per-call dynamic blocks (scoring/preferences/cohort) are
-        # appended below, exactly as before.
+        # inline assembly. M18 PO-prompts-02: comparison_quality is no longer
+        # hardcoded "normal" — the orchestrator threads the real signal in
+        # (still "normal" for every caller until ENABLE_COMPARISON_QUALITY_V2
+        # flips, so flag OFF is byte-identical). The per-call dynamic blocks
+        # (scoring/preferences/cohort) are appended below, exactly as before.
         system_msg = build_verdict_prompt(
             products=[product1, product2],
-            comparison_quality="normal",
+            comparison_quality=comparison_quality,
             user_cohort=demographics_profile,
             category=category,
         )

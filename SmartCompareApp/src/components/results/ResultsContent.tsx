@@ -97,7 +97,17 @@ export interface ResultsContentProps {
   onShare: () => void;
 }
 
-export function ResultsContent({
+// M21 MB-perf-06 — React.memo: the orchestrator (ResultsScreen) churns
+// through ~5-6 state transitions in the first 3s (usageStatus fetch,
+// winner reveal at 800ms, demographics timer at 2s, sheet/feedback/toast
+// state); without memo each one re-ran this whole ~757-line tree (plus
+// ResultsAccordion below it) on the JS thread — including at the exact
+// frame the winner spring + RevealBurst mount. With memo, only prop
+// changes (winnerRevealed, sheetLeg, feedbackSubmitted, ...) re-render
+// it; orchestrator-local state (share sheet, toast, demographics,
+// usageStatus) no longer reaches the tree. Requires the orchestrator to
+// pass useCallback-stable handlers — pinned by Results.memo.m21.test.tsx.
+export const ResultsContent = React.memo(function ResultsContent({
   result,
   products,
   winnerIndex,
@@ -552,7 +562,7 @@ export function ResultsContent({
       </ScrollView>
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   container: {

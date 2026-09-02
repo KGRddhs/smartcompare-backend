@@ -102,6 +102,13 @@ export function ProductImage({
           accessibilityRole="image"
           onError={() => setErrored(true)}
           resizeMode={resizeMode}
+          // M21 MB-perf-08 — og:image sources are routinely 1000-2400px
+          // while every consumer renders a 64-160px tile. On Android,
+          // Fresco only downsamples the DECODE when resizeMethod="resize"
+          // is set; the default decodes the full bitmap and GPU-scales it,
+          // so a History screen could hold ~100 multi-megapixel bitmaps.
+          // iOS ignores the prop (no-op).
+          resizeMethod="resize"
           style={imageStyle}
         />
       </View>

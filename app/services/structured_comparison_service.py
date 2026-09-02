@@ -809,6 +809,26 @@ async def tier3_synthesize_non_negotiables(
         return {}
 
 
+def comparison_quality_v2_enabled() -> bool:
+    """M18 PO-verdict-text-09 / PO-prompts-02 — ENABLE_COMPARISON_QUALITY_V2
+    (default OFF, read PER CALL so Railway flips take effect without a
+    restart). When ON:
+      - Rule 2 (post-fallback spec-coverage gap) returns the honest
+        sparse-data label 'weak' instead of 'weird', so 'weird' fires only
+        on genuinely suspect pairings (cross-category, 10x price spread) —
+        the docstring contract it always claimed. Measured OFF: 'weird' was
+        the modal label on real traffic (14/15 recorded rows, incl. TOM FORD
+        vs TOM FORD and iPhone 16 vs iPhone 17 Pro), purely from thin
+        early-pipeline data.
+      - The orchestrator feeds the computed quality into the verdict prompt
+        (verdict_comparison_quality below) so the model may hedge honestly
+        on thin evidence instead of being ordered to 'Be DECISIVE'
+        unconditionally.
+    OFF = byte-identical legacy behaviour (weird on sparse data; verdict
+    prompt always 'normal')."""
+    return os.getenv("ENABLE_COMPARISON_QUALITY_V2", "false").strip().lower() == "true"
+
+
 def _classify_comparison_quality(
     *,
     cat_a: str,
@@ -832,13 +852,14 @@ def _classify_comparison_quality(
         lo, hi = min(price_a, price_b), max(price_a, price_b)
         if hi / lo >= 10.0:
             return "weird"
-    # Rule 2: post-fallback >50% missing on either side → weird.
-    # (When callers pass already-resolved coverage ratios, those reflect the
-    # post-fallback state — apply the weird-jump immediately.)
+    # Rule 2: >50% missing on either side. Legacy (flag OFF): 'weird' — the
+    # M18 PO-verdict-text-09 defect (sparse data is NOT a suspect pairing).
+    # V2 (flag ON): the honest sparse-data label 'weak'.
+    _sparse_label = "weak" if comparison_quality_v2_enabled() else "weird"
     if spec_coverage_a is not None and spec_coverage_a < 0.5:
-        return "weird"
+        return _sparse_label
     if spec_coverage_b is not None and spec_coverage_b < 0.5:
-        return "weird"
+        return _sparse_label
     # Soft signal: under 0.85 coverage on either side → weak (gives Tier 2/3 room).
     if (spec_coverage_a is not None and spec_coverage_a < 0.85) or (
         spec_coverage_b is not None and spec_coverage_b < 0.85
@@ -858,6 +879,12 @@ def detect_comparison_quality(products, post_fallback=False) -> str:
     Returns 'normal' for happy-path comparisons; spec § 2e detector triggers
     are intentionally conservative — 'weird' must reflect a genuinely
     suspect pairing, never just sparse early-pipeline data.
+
+    M18 PO-verdict-text-09: the legacy Rule 2 violated that contract —
+    post-fallback coverage <50% returned 'weird', making sparse data the
+    MODAL trigger on real traffic. Under ENABLE_COMPARISON_QUALITY_V2 the
+    gap returns 'weak' (honest sparse-data label); flag OFF keeps the
+    legacy 'weird' byte-identically.
     """
     if not products or len(products) < 2:
         return "normal"
@@ -875,12 +902,15 @@ def detect_comparison_quality(products, post_fallback=False) -> str:
         if lo > 0 and hi / lo >= 10.0:
             return "weird"
 
-    # Rule 2: post-fallback spec coverage check. Either product < 50% filled → weird.
+    # Rule 2: post-fallback spec coverage check. Either product < 50% filled.
+    # Legacy (flag OFF) → 'weird'; V2 (ENABLE_COMPARISON_QUALITY_V2) → 'weak',
+    # because a thin spec pipeline is missing DATA, not a suspect PAIRING.
     if post_fallback:
+        _sparse_label = "weak" if comparison_quality_v2_enabled() else "weird"
         for p in products:
             filled, expected = _product_spec_coverage(p)
             if filled / expected < 0.5:
-                return "weird"
+                return _sparse_label
 
     # Soft signal: pre-fallback heavy spec gap → weak (gives Tier 2/3 room).
     for p in products:
@@ -889,6 +919,31 @@ def detect_comparison_quality(products, post_fallback=False) -> str:
             return "weak"
 
     return "normal"
+
+
+def verdict_comparison_quality(product_data) -> str:
+    """M18 PO-prompts-02 — the data-quality signal the orchestrator feeds
+    into the verdict prompt (generate_comparison → build_verdict_prompt).
+
+    Prod hardcoded comparison_quality='normal' at every verdict call site,
+    so the weird off-ramp was dead code and 'Be DECISIVE' applied even when
+    half the evidence was missing. Under ENABLE_COMPARISON_QUALITY_V2 this
+    returns detect_comparison_quality(post_fallback=True) — the SAME signal
+    the response builder already ships to the FE in scoring_v2 — so the
+    prompt and the payload finally agree: 'weird' injects the non-forced
+    framing, 'weak' injects the thin-evidence hedging clause.
+
+    Flag OFF (default) returns 'normal' — byte-identical to the legacy
+    hardcode. Defensive: never raises (a classifier bug must not kill the
+    verdict), degrades to 'normal'.
+    """
+    if not comparison_quality_v2_enabled():
+        return "normal"
+    try:
+        return detect_comparison_quality(product_data, post_fallback=True)
+    except Exception as e:  # noqa: BLE001 — signal is advisory, never fatal
+        logger.warning("[VERDICT_QUALITY] detect failed (%s) — using 'normal'", e)
+        return "normal"
 
 
 # Phase 2A.1 — env-gated per-stage timing instrumentation.
@@ -1013,6 +1068,38 @@ def _cache_price_identity_ok(cached: Any, brand: str, name: str, category: str) 
     return ok
 
 
+def _display_product_names(product_data) -> List[str]:
+    """M18 PO-verdict-text-05 / PO-recorded-13 — the ONE constructor for the
+    user-facing product_names list (winner name, declarations, scores summary,
+    tradeoffs, history/share denormalization). Routes through the shared
+    dedup helper so a brand-prefixed `name` (vision products, or a parser that
+    emits 'HealthAid HealthAid Vitamin D3') never doubles the brand."""
+    from app.services.text_sanitize import dedup_brand_name
+    return [
+        dedup_brand_name(p.get("brand", ""), p.get("name", ""))
+        for p in product_data
+    ]
+
+
+def _product_display_identity(
+    brand: str, name: str, variant, search_query: str, is_vision: bool
+):
+    """(full_name, display_name) for a product's response payload + verdict
+    prompt (M18 PO-verdict-text-05). Vision products previously got
+    full_name = display_name = search_query, which is '{brand} {name}' with a
+    camera `name` that routinely already starts with the brand — the
+    deterministic 'TOM FORD TOM FORD ...' constructor. Both paths now build
+    through dedup_brand_name; the text path keeps display_name = raw `name`
+    (unchanged shape) and only dedups full_name. `search_query` itself is NOT
+    touched (search/cache semantics preserved)."""
+    from app.services.text_sanitize import dedup_brand_name
+    if is_vision:
+        full = dedup_brand_name(brand, name) or search_query
+        return full, full
+    full = dedup_brand_name(brand, f"{name} {variant or ''}".strip())
+    return full, name
+
+
 async def _timed_task(label: str, coro, timings_dict):
     """Await a coroutine and record its elapsed time into timings_dict[label + '_ms'].
     Safe inside asyncio.gather — each wrapper records its OWN per-task wall (independent
@@ -1047,6 +1134,8 @@ from app.services.price_service import (
     _infer_category_from_query,
     set_resolved_price_category,
     shopping_listing_matches,
+    shopping_strict_currency_enabled,
+    shopping_strict_currency_pend,
     reconcile_pair_sizes,
     reconcile_pair_fairness,
     apply_region_currency_guard,
@@ -3332,10 +3421,7 @@ class StructuredComparisonService:
             )
             if orchestrator_timings is not None:
                 orchestrator_timings["scoring_ms"] = round((time.perf_counter() - t_score) * 1000, 1)
-            product_names = [
-                f"{p.get('brand', '')} {p.get('name', '')}".strip()
-                for p in product_data
-            ]
+            product_names = _display_product_names(product_data)
             scores_summary = scoring_service.build_scores_summary(scoring_result, product_names)
 
             # WS1 (D1) — scoring is done; stash it so a timeout during the
@@ -3347,6 +3433,9 @@ class StructuredComparisonService:
 
             # Step 4: Generate comparison (passes demographics_profile so the cohort
             # priors block in extraction_service can render when conditions are met).
+            # M18 PO-prompts-02 — feed the actual data-quality signal into the
+            # verdict prompt (flag OFF -> 'normal', the legacy hardcode).
+            _verdict_quality = verdict_comparison_quality(product_data)
             t_verdict = time.perf_counter() if orchestrator_timings is not None else None
             comparison, usage = await generate_comparison(
                 product_data[0], product_data[1], region,
@@ -3354,6 +3443,7 @@ class StructuredComparisonService:
                 user_preferences=user_preferences,
                 scores_summary=scores_summary, category=category_used,
                 demographics_profile=demographics_profile,
+                comparison_quality=_verdict_quality,
             )
             if orchestrator_timings is not None:
                 orchestrator_timings["verdict_ms"] = round((time.perf_counter() - t_verdict) * 1000, 1)
@@ -3370,6 +3460,7 @@ class StructuredComparisonService:
                     concern=parsed.get("comparison_type", "value") if not vision_products else "value",
                     user_preferences=user_preferences, scores_summary=scores_summary,
                     category=category_used, demographics_profile=demographics_profile,
+                    comparison_quality=_verdict_quality,
                 ),
                 pain_workflow_context=scores_summary,
                 stage_timings=orchestrator_timings,
@@ -4040,10 +4131,7 @@ class StructuredComparisonService:
             )
             if orchestrator_timings is not None:
                 orchestrator_timings["scoring_ms"] = round((time.perf_counter() - t_score) * 1000, 1)
-            product_names = [
-                f"{p.get('brand', '')} {p.get('name', '')}".strip()
-                for p in product_data
-            ]
+            product_names = _display_product_names(product_data)
             scores_summary = scoring_service.build_scores_summary(scoring_result, product_names)
 
             from_cache = not nocache
@@ -4061,6 +4149,9 @@ class StructuredComparisonService:
             # Step 4: Generate verdict (passes demographics_profile so the cohort
             # priors block in extraction_service can render when conditions are met).
             yield ("status", {"message": "Generating verdict...", "progress": 80})
+            # M18 PO-prompts-02 — feed the actual data-quality signal into the
+            # verdict prompt (flag OFF -> 'normal', the legacy hardcode).
+            _verdict_quality = verdict_comparison_quality(product_data)
             t_verdict = time.perf_counter() if orchestrator_timings is not None else None
             # M13-04 — the verdict LLM call is the dominant post-Phase-1 tail cost
             # and was UNBOUNDED. Under ENABLE_FULL_STREAM_DEADLINE, bound it by the
@@ -4072,6 +4163,7 @@ class StructuredComparisonService:
                 user_preferences=user_preferences,
                 scores_summary=scores_summary, category=category_used,
                 demographics_profile=demographics_profile,
+                comparison_quality=_verdict_quality,
             )
             if _full_deadline_on:
                 try:
@@ -4096,6 +4188,7 @@ class StructuredComparisonService:
                     concern=parsed.get("comparison_type", "value") if not vision_products else "value",
                     user_preferences=user_preferences, scores_summary=scores_summary,
                     category=category_used, demographics_profile=demographics_profile,
+                    comparison_quality=_verdict_quality,
                 ),
                 pain_workflow_context=scores_summary,
                 stage_timings=orchestrator_timings,
@@ -4483,12 +4576,11 @@ class StructuredComparisonService:
         search_query = product_info.get("search_query", f"{brand} {name} {variant or ''}")
         is_vision = product_info.get("_vision", False)
 
-        if is_vision:
-            full_name = search_query
-            display_name = full_name
-        else:
-            full_name = f"{brand} {name} {variant or ''}".strip()
-            display_name = name
+        # M18 PO-verdict-text-05 — dedup'd display identity (vision search_query
+        # is '{brand} {name}' with a brand-prefixed camera name -> doubled).
+        full_name, display_name = _product_display_identity(
+            brand, name, variant, search_query, is_vision
+        )
 
         result = {
             "brand": brand, "name": display_name, "full_name": full_name,
@@ -7610,6 +7702,19 @@ class StructuredComparisonService:
                     # read 'BHD 12,500' as 12500.0 where the main path reads 12.5
                     # (a 1000x divergence the fairness re-select could then serve).
                     detected = detect_currency(price_str)
+                    # CD-wave-diffs-03 — mirror the M13-09 strict-shopping
+                    # guards (letter-dollar un-detect + unresolved-foreign
+                    # signal) via the SHARED admission helper, under the same
+                    # flag. Without this, with ENABLE_SHOPPING_STRICT_CURRENCY
+                    # ON the front door (extract_price_from_shopping) pends a
+                    # foreign-currency row while this stash still seeds it —
+                    # and reconcile_pair_fairness could re-select and SHIP the
+                    # exact mislabelled price the flag exists to pend. Flag
+                    # OFF: skipped, byte-identical to the M13-10 parse parity.
+                    if shopping_strict_currency_enabled() and (
+                        shopping_strict_currency_pend(price_str, detected, currency)
+                    ):
+                        continue
                     amount = parse_price_string(
                         price_str, detected, display_text=True,
                     )
@@ -7806,6 +7911,9 @@ class StructuredComparisonService:
                 scores_summary=args.get("scores_summary"),
                 category=args.get("category", "other"),
                 demographics_profile=args.get("demographics_profile"),
+                # M18 PO-prompts-02 — the regen keeps the same data-quality
+                # framing as the original verdict (thin data stays hedgeable).
+                comparison_quality=args.get("comparison_quality", "normal"),
             )
             self._track_gpt_cost(regen_usage)
             return regen_comparison
@@ -7821,6 +7929,10 @@ class StructuredComparisonService:
                     product_names=product_names,
                     regenerate=_regenerate,
                     pain_workflow_context=pain_workflow_context,
+                    # M18 PO-prompts-02 — on weak/weird data the critic's
+                    # hedging axis must not force a regen toward false
+                    # confidence ('normal' when the V2 flag is OFF).
+                    comparison_quality=regen_args.get("comparison_quality", "normal"),
                 ),
                 timeout=8.0,
             )

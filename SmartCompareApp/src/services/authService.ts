@@ -227,6 +227,19 @@ export async function logout(): Promise<void> {
   } finally {
     // Always clear local storage
     await clearSession();
+    // M18 MB-flows-04 — a user-initiated logout is the account-switch
+    // path: drop any pending onboarding completion draft so it can never
+    // be replayed into a DIFFERENT account that signs in next on this
+    // device. Deliberately NOT in clearSession(): a stale-session
+    // auto-clear keeps the draft so the SAME user recovers it after
+    // re-login. Lazy import avoids pulling the draft module (and its
+    // AppState wiring) into every authService consumer at module load.
+    try {
+      const { clearOnboardingDraft } = await import('./onboardingDraft');
+      await clearOnboardingDraft();
+    } catch {
+      // never let draft cleanup break logout
+    }
   }
 }
 

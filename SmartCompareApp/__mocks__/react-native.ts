@@ -29,6 +29,40 @@ export const Modal = ({ children, visible, ...props }: any) => {
   return createElement('Modal', { ...props, visible }, children);
 };
 export const ActivityIndicator = createHostComponent('View');
+// M21 mobile-jank — RefreshControl is passed as an element to list
+// `refreshControl` props; a null-rendering component keeps the tree valid.
+export const RefreshControl = (_props: any) => null;
+// M21 mobile-jank — minimal non-virtualized SectionList: renders every
+// section header + row via the real renderItem/renderSectionHeader so
+// row-level render behavior (memoization, entering-animation props) is
+// observable in jest. Virtualization is deliberately not simulated.
+export const SectionList = ({
+  sections = [],
+  renderItem,
+  renderSectionHeader,
+  keyExtractor,
+  refreshControl,
+  ...props
+}: any) =>
+  createElement(
+    'View',
+    props,
+    refreshControl ?? null,
+    ...sections.map((section: any, si: number) =>
+      createElement(
+        React.Fragment,
+        { key: section?.title ?? si },
+        renderSectionHeader ? renderSectionHeader({ section }) : null,
+        ...(section?.data ?? []).map((item: any, index: number) =>
+          createElement(
+            React.Fragment,
+            { key: keyExtractor ? keyExtractor(item, index) : index },
+            renderItem({ item, index, section })
+          )
+        )
+      )
+    )
+  );
 export const Switch = ({ value, onValueChange, ...props }: any) =>
   createElement('RCTSwitch', { ...props, value, onValueChange });
 export const Pressable = ({ children, onPress, disabled, ...props }: any) =>
@@ -56,6 +90,27 @@ export const I18nManager = {
   forceRTL: jest.fn(),
 };
 
+// M21 onboarding-retry (MB-flows-04) — onboardingDraft.ts arms a
+// foreground replay via AppState while a completion draft is pending.
+// Minimal listener registry so tests can drive 'change' events.
+type AppStateListener = (state: string) => void;
+const appStateListeners = new Set<AppStateListener>();
+export const AppState = {
+  currentState: 'active',
+  addEventListener: jest.fn((_type: string, listener: AppStateListener) => {
+    appStateListeners.add(listener);
+    return {
+      remove: () => {
+        appStateListeners.delete(listener);
+      },
+    };
+  }),
+  // Test helper (not part of the RN API): fire a state change.
+  __emit: (state: string) => {
+    appStateListeners.forEach((listener) => listener(state));
+  },
+};
+
 // Bundle E S1 — screens use Alert.alert for "Coming soon" placeholder
 // CTAs (PaywallScreen subscribe, restore, terms, etc.). jest.spyOn(Alert,
 // 'alert') in test scaffolds requires Alert to be a real exported object.
@@ -72,6 +127,8 @@ export default {
   SafeAreaView,
   KeyboardAvoidingView,
   FlatList,
+  SectionList,
+  RefreshControl,
   ScrollView,
   Modal,
   Switch,
@@ -81,5 +138,6 @@ export default {
   Dimensions,
   StyleSheet,
   I18nManager,
+  AppState,
   Alert,
 };

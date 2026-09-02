@@ -3,7 +3,7 @@
  * Converts 3-tab layout to single continuous scroll.
  * Preserves ALL business logic: SSE handling, event tracking, share, feedback.
  */
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 // Lane A-L3 Task L3.7 — wall-time instrumentation. ResultsScreen marks
 // the 4 visual stages: first_card_visible, all_cards_visible,
 // ready_celebration (winner reveal), user_tappable (post-reveal interactive).
@@ -474,6 +474,26 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
     setTimeout(() => setLoop1ToastVisible(false), 4000);
   };
 
+  // M21 MB-perf-06 — stable handlers for the memoized ResultsContent.
+  // Passing inline arrows recreated all five closures on every orchestrator
+  // state transition and defeated React.memo on the ~1,650-line results
+  // tree. handleShare closes over per-render values (products, winnerName,
+  // ctaVariant, ...), so it goes through a latest-ref: the exposed callback
+  // identity is stable while the body always sees current values.
+  const handleShareRef = useRef(handleShare);
+  handleShareRef.current = handleShare;
+  const onShareStable = useCallback(() => handleShareRef.current(), []);
+  const onBackStable = useCallback(() => navigation.goBack(), [navigation]);
+  const onFeedbackSubmittedStable = useCallback(
+    () => setFeedbackSubmitted(true),
+    []
+  );
+  const onPillPressStable = useCallback(
+    (leg: 'price' | 'reviews' | 'specs') => setSheetLeg(leg),
+    []
+  );
+  const onCloseSheetStable = useCallback(() => setSheetLeg(null), []);
+
   const openRatingSource = (source: RatingSource | null | undefined) => {
     if (source?.url) {
       trackEvent('source_click', { source_name: source.name, url: source.url });
@@ -729,15 +749,15 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
         cohortGovernorate={resolveCohortGovernorate(result)}
         isRTL={isRTL}
         feedbackSubmitted={feedbackSubmitted}
-        onFeedbackSubmitted={() => setFeedbackSubmitted(true)}
+        onFeedbackSubmitted={onFeedbackSubmittedStable}
         feedbackComparisonId={comparisonId}
         sheetLeg={sheetLeg}
-        onPillPress={(leg) => setSheetLeg(leg)}
-        onCloseSheet={() => setSheetLeg(null)}
+        onPillPress={onPillPressStable}
+        onCloseSheet={onCloseSheetStable}
         winnerRevealed={winnerRevealed}
         winnerScaleAnimStyle={winnerAnimStyle}
-        onBack={() => navigation.goBack()}
-        onShare={handleShare}
+        onBack={onBackStable}
+        onShare={onShareStable}
       />
 
       {/*
