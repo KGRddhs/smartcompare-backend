@@ -1,5 +1,11 @@
 {
   "$schema": "https://railway.com/railway.schema.json",
+  "build": {
+    "watchPatterns": [
+      "scripts/cron_warm_price_cache.py",
+      "railway.warmer.json"
+    ]
+  },
   "deploy": {
     "startCommand": "python -m scripts.cron_warm_price_cache",
     "restartPolicyType": "NEVER"
