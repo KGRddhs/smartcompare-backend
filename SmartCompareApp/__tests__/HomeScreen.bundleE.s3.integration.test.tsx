@@ -62,6 +62,8 @@ jest.mock('../src/services/api', () => ({
   streamComparison: (...args: any[]) => mockStreamComparison(...args),
   parseApiError: (e: any) => ({ message: e?.message || 'error', code: undefined }),
   trackEvent: (...args: any[]) => mockTrackEvent(...args),
+  // M18 MB-perf-03 — HomeScreen imports the compare-class deadline constant.
+  COMPARE_TIMEOUT_MS: 35000,
 }));
 
 jest.mock('../src/services/authService', () => ({
@@ -488,6 +490,8 @@ describe('HomeScreen S3 integration — URL compare flow', () => {
           url2: 'https://amazon.com/b',
           region: 'bahrain',
         }),
+        // M18 MB-perf-03 — per-call compare-class deadline.
+        expect.objectContaining({ timeout: 35000 }),
       );
     });
   });

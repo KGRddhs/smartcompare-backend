@@ -361,11 +361,24 @@ class TestVerifyPrice:
         result = service._verify_price(None, [{"price": 100}])
         assert result["price_verified"] is False
 
-    def test_no_shopping_items(self, service):
-        """No shopping items -> verified only if not estimated."""
+    @pytest.mark.parametrize("honest_on", [False, True])
+    def test_no_shopping_items(self, service, monkeypatch, honest_on):
+        """No shopping items — flag-aware pin (M18 PO-fact-check-07).
+
+        The unconditional `is True` assertion here pinned the DEFECT itself
+        (verified-from-absence: zero rows read as confirmed and earned the
+        +0.1 reliability bonus). Same adjudication as #106's
+        test_string_prices_parsed: both modes are pinned rather than the
+        legacy one forced.
+          * flag OFF (legacy): not-estimated + no rows -> True (byte-identical).
+          * flag ON: no evidence -> None (unknown), never a verdict.
+        """
+        monkeypatch.setenv(
+            "ENABLE_FACTCHECK_HONEST_ABSENCE", "true" if honest_on else ""
+        )
         price = {"amount": 100, "currency": "BHD", "estimated": False}
         result = service._verify_price(price, [])
-        assert result["price_verified"] is True  # not estimated, just no cross-check data
+        assert result["price_verified"] is (None if honest_on else True)
         assert result["source_count"] == 0
 
     @pytest.mark.parametrize("flag_on", [False, True])
@@ -415,8 +428,13 @@ class TestVerifyPrice:
         result = service._verify_price(price, shopping_items)
         assert result["price_verified"] is False
 
-    def test_all_invalid_shopping_prices(self, service):
-        """All shopping items have invalid prices -> no cross-check."""
+    @pytest.mark.parametrize("honest_on", [False, True])
+    def test_all_invalid_shopping_prices(self, service, monkeypatch, honest_on):
+        """All shopping items invalid -> no cross-check. Flag-aware pin
+        (M18 PO-fact-check-07, see test_no_shopping_items)."""
+        monkeypatch.setenv(
+            "ENABLE_FACTCHECK_HONEST_ABSENCE", "true" if honest_on else ""
+        )
         price = {"amount": 100, "currency": "BHD", "estimated": False}
         shopping_items = [
             {"price": "N/A"},
@@ -424,7 +442,7 @@ class TestVerifyPrice:
             {"price": None},
         ]
         result = service._verify_price(price, shopping_items)
-        assert result["price_verified"] is True  # not estimated, just no valid prices to compare
+        assert result["price_verified"] is (None if honest_on else True)
         assert result["source_count"] == 0
         assert result["deviation_pct"] is None
 

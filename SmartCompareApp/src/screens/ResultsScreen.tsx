@@ -85,6 +85,7 @@ import {
   parseApiError,
   DemographicsPayload,
 } from '../services/api';
+import { classifyLoadFailure } from '../services/failureClassification';
 import { LoadingRings } from '../components/hero/LoadingRings';
 // Faithful-results Phase 2.1 — HeroRings pruned from the render path (the
 // score-rings card is not in the Qaren design-system Results layout).
@@ -198,14 +199,16 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
         }
       } catch (err: any) {
         if (cancelled) return;
-        const status = err?.response?.status;
-        const code = err?.response?.data?.code;
-        if (status === 404) {
+        // M18 MB-flows-05 — explicit matrix (failureClassification.ts).
+        // An offline row-tap or a 5xx now lands on the soft retryable
+        // timeout state instead of the permanent "No comparison loaded".
+        const kind = classifyLoadFailure(err);
+        if (kind === 'not_found') {
           setLoadError('not_found');
-        } else if (status === 401) {
+        } else if (kind === 'auth') {
           // Axios 401 interceptor handles refresh/redirect — no-op here.
-        } else if (status === 503 || code === 'TIMEOUT' || code === 'STREAM_TIMEOUT') {
-          // Genuine-BH bundle (D2) — transient timeout. Soft, retryable
+        } else if (kind === 'timeout') {
+          // Transient (timeout / 5xx / transport drop). Soft, retryable
           // state (never the generic "not loading"), with tap-to-retry.
           setLoadError('timeout');
         } else {
@@ -280,17 +283,16 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
           navigation.navigate('Paywall', { initialUsage: err.detail ?? undefined });
           return;
         }
-        // Genuine-BH bundle (D2) — a 503/TIMEOUT on the camera path is a
-        // transient settle, not a photo-read failure; route it to the soft
-        // retryable timeout state rather than vision_failed.
-        const status = err?.response?.status;
-        const code = err?.response?.data?.code ?? err?.code;
-        if (status === 503 || code === 'TIMEOUT' || code === 'STREAM_TIMEOUT') {
-          setLoadError('timeout');
-          setLoadingResult(false);
-          return;
-        }
-        setLoadError('vision_failed');
+        // M18 MB-flows-05 — explicit matrix (failureClassification.ts).
+        // 'vision_failed' ("snap each product in its own photo") is
+        // RESERVED for an actual action==='error' identify response in the
+        // try block above: a thrown failure here is transport/server-side
+        // (offline TypeError, aborted deadline, 503/TIMEOUT, any 5xx) and
+        // must NEVER blame the user's photos. Timeout-class failures get
+        // the soft retryable state; a genuine 4xx rejection gets the
+        // neutral generic state (back affordance, no photo-blame).
+        const kind = classifyLoadFailure(err);
+        setLoadError(kind === 'timeout' ? 'timeout' : 'generic');
         setLoadingResult(false);
       }
     })();

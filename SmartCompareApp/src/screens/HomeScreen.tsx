@@ -60,6 +60,7 @@ import {
   streamComparison,
   parseApiError,
   trackEvent,
+  COMPARE_TIMEOUT_MS,
 } from '../services/api';
 import api from '../services/api';
 import { getSavedUser, User } from '../services/authService';
@@ -385,7 +386,17 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
           Alert.alert(t('common.error'), t('home.errors.timeout'));
           return;
         }
-        Alert.alert(t('common.error'), error.message || t('home.errors.comparison'));
+        // M18 MB-contract-02 — when the backend sent a STRUCTURED code we
+        // did not recognize above, never render error.message (it may be a
+        // raw backend string, e.g. an SSE error event's str(e)); fall back
+        // to the neutral i18n copy instead. Codeless errors keep the
+        // legacy message fallback.
+        Alert.alert(
+          t('common.error'),
+          parsed.code
+            ? t('home.errors.comparison')
+            : error.message || t('home.errors.comparison')
+        );
       },
     });
   };
@@ -412,13 +423,19 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     setLoading(true);
     loadingStartedAtRef.current = Date.now();
     try {
-      const response = await api.post('/api/v1/url/compare', {
-        url1,
-        url2,
-        region: 'bahrain',
-        // catfix D1 — omit when no chip is selected (see stream path above).
-        ...(selectedCategory ? { selected_category: selectedCategory } : {}),
-      });
+      const response = await api.post(
+        '/api/v1/url/compare',
+        {
+          url1,
+          url2,
+          region: 'bahrain',
+          // catfix D1 — omit when no chip is selected (see stream path above).
+          ...(selectedCategory ? { selected_category: selectedCategory } : {}),
+        },
+        // M18 MB-perf-03 — compare-class per-call deadline (was the global
+        // 120s, 4x the backend's 30s hard cap).
+        { timeout: COMPARE_TIMEOUT_MS }
+      );
       if (response.data.success) {
         await increment();
         // Loader stays mounted until navigateToResultsWithFloor's

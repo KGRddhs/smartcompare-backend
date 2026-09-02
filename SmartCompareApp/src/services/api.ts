@@ -9,6 +9,10 @@ import { ComparisonResult, ImageIdentifyResult, UserPreferences } from '../types
 import { setupCertificatePinning } from './certificatePinning';
 import { features } from '../config/features';
 import { addSseFallbackBreadcrumb } from './sentry';
+// M18 MB-flows-02 — session-invalidation channel. App.tsx subscribes and
+// downgrades to the Auth stack; emitted here at the non-UI session-death
+// sites so a cleared session never leaves MainTabs mounted token-less.
+import { emitSessionInvalid } from './sessionEvents';
 
 // IMPORTANT: Change this to your computer's local IP
 // Find your IP: ipconfig (Windows) or ifconfig (Mac/Linux)
@@ -21,6 +25,26 @@ export const api = axios.create({
   baseURL: API_BASE_URL,
   timeout: 120000, // 2 minutes for image processing
 });
+
+// ---------------------------------------------------------------------------
+// M18 MB-perf-03 / MB-contract-06 — client-side deadlines.
+//
+// The backend's outermost compare budget is STREAM_HARD_CAP_SECONDS (30s),
+// so the global 120s axios timeout above held loaders 4x past any real
+// outcome, and the camera + SSE fetches had NO deadline at all (indefinite
+// spinner). Compare-class requests carry a per-call timeout of cap+margin;
+// the multipart image upload keeps the documented 2-minute budget but is
+// now actually BOUNDED by an AbortController; the SSE stream gets a 60s
+// watchdog covering the backend's default-unbounded post-Phase-1 tail
+// (ENABLE_FULL_STREAM_DEADLINE is default OFF server-side).
+// ---------------------------------------------------------------------------
+
+/** Compare-class per-request deadline: 30s server hard cap + margin. */
+export const COMPARE_TIMEOUT_MS = 35000;
+/** Camera identify (multipart upload + vision + auto-compare) deadline. */
+export const IDENTIFY_TIMEOUT_MS = 120000;
+/** SSE stream watchdog: covers connect + Phase 1 + the verdict tail. */
+export const STREAM_WATCHDOG_MS = 60000;
 
 // Auth interceptor — attach JWT to every request
 api.interceptors.request.use(
@@ -50,8 +74,31 @@ let refreshPromise: Promise<RefreshResult> | null = null;
 
 async function performRefresh(): Promise<RefreshResult> {
   try {
-    const { refreshSession, getToken } = require('./authService');
-    await refreshSession();
+    const { refreshSession, getToken, clearSession } = require('./authService');
+    // M18 MB-flows-01 — gate on refreshSession()'s RESULT, not on the
+    // mere presence of SOME token in SecureStore. refreshSession resolves
+    // (does not throw) with success:false on three paths that all leave
+    // the STALE access token stored — no refresh token, 200-without-
+    // session, and non-401/network errors — so the old `getToken()`-only
+    // check turned every one of them into a fake success and the 401
+    // interceptor replayed the IDENTICAL dead token.
+    const refreshResult = await refreshSession();
+    if (!refreshResult?.success) {
+      if (refreshResult?.sessionInvalid) {
+        // The session is definitively dead (no refresh token / server
+        // refused a session / 401): drop the stale token so it can never
+        // be replayed, and tell App.tsx to route back to Auth
+        // (MB-flows-02). A transient network failure deliberately skips
+        // both — a flaky connection must never log the user out.
+        await clearSession();
+        emitSessionInvalid();
+      }
+      return {
+        success: false,
+        token: null,
+        error: new Error(refreshResult?.error || 'Refresh failed'),
+      };
+    }
     const newToken = await getToken();
     if (newToken) {
       return { success: true, token: newToken };
@@ -59,7 +106,13 @@ async function performRefresh(): Promise<RefreshResult> {
     return { success: false, token: null, error: new Error('No token after refresh') };
   } catch (err) {
     const { clearSession } = require('./authService');
-    await clearSession();
+    try {
+      await clearSession();
+    } finally {
+      // MB-flows-02 — even when clearSession itself fails, the app must
+      // still learn the session is unusable.
+      emitSessionInvalid();
+    }
     throw err;
   }
 }
@@ -165,13 +218,24 @@ export async function identifyFromImages(
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  // Use fetch instead of Axios — Axios has known multipart issues on Android
+  // Use fetch instead of Axios — Axios has known multipart issues on Android.
+  // M18 MB-perf-03: this raw fetch previously had NO timeout and no
+  // AbortController — RN's XHR applies no default deadline, so a stalled
+  // multipart upload left ResultsScreen's loader spinning INDEFINITELY (the
+  // retryable timeout state was unreachable because no error ever fired).
+  // Bound it with the documented 2-minute image budget; an expiry rejects
+  // with a TIMEOUT-coded error so classifyLoadFailure routes it to the
+  // soft retryable state.
+  const controller = new AbortController();
+  const abortTimer = setTimeout(() => controller.abort(), IDENTIFY_TIMEOUT_MS);
+  try {
   const response = await fetch(
     `${API_BASE_URL}/api/v1/image/identify?region=${encodeURIComponent(region)}`,
     {
       method: 'POST',
       body: formData,
       headers,
+      signal: controller.signal,
     }
   );
 
@@ -204,12 +268,43 @@ export async function identifyFromImages(
     }
 
     if (__DEV__) console.error('Identify response error:', response.status, errorText);
-    throw new Error(`Server error ${response.status}: ${errorText}`);
+    // M18 MB-flows-05: a bare `Error('Server error N')` carried no
+    // `.response`, so ResultsScreen could not tell a 500 from a bad photo
+    // and blamed the user's PHOTOS while the backend was down. Throw an
+    // axios-SHAPED error (response.status + parsed body) so the explicit
+    // classification matrix sees the real status/code. The raw body text
+    // stays out of `message` (no-scary-copy contract) — it is preserved
+    // under response.data for structured consumers.
+    let parsedBody: any = null;
+    try {
+      parsedBody = JSON.parse(errorText);
+    } catch {
+      // Body wasn't JSON — keep it as the data.error string.
+    }
+    throw Object.assign(new Error(`Server error ${response.status}`), {
+      response: {
+        status: response.status,
+        data: parsedBody ?? { error: errorText },
+      },
+    });
   }
 
   const data: ImageIdentifyResult = await response.json();
   if (__DEV__) console.log('Identify response action:', (data as any).action);
   return data;
+  } catch (err: any) {
+    if (err?.name === 'AbortError') {
+      // Watchdog expiry — surface as a TIMEOUT so the caller shows the
+      // soft retryable state, never an indefinite spinner or photo-blame.
+      throw Object.assign(new Error('identify_timeout'), {
+        code: 'TIMEOUT',
+        response: { status: 503, data: { code: 'TIMEOUT' } },
+      });
+    }
+    throw err;
+  } finally {
+    clearTimeout(abortTimer);
+  }
 }
 
 /**
@@ -251,7 +346,10 @@ export async function deleteComparison(comparisonId: string) {
  * M13-29 UUID validators 422-reject on /events and /feedback.
  */
 export async function getComparison(comparisonId: string) {
-  const response = await api.get(`/api/v1/comparisons/${comparisonId}`);
+  // M18 MB-perf-03 — per-call deadline (history tap held the loader 120s).
+  const response = await api.get(`/api/v1/comparisons/${comparisonId}`, {
+    timeout: COMPARE_TIMEOUT_MS,
+  });
   const wrapper = response.data;
   const comparison = wrapper?.comparison ?? null;
   const full = comparison?.full_response ?? null;
@@ -446,6 +544,9 @@ export function streamComparison(
         const response = await api.get('/api/v1/text/compare', {
           params: queryParams,
           signal: controller.signal,
+          // M18 MB-perf-03 — server hard cap is 30s; don't hold the
+          // loader 120s for an outcome that can no longer arrive.
+          timeout: COMPARE_TIMEOUT_MS,
         });
         if (response.data.success) {
           // success:true covers both fully-complete and the D1 best-available
@@ -484,9 +585,41 @@ export function streamComparison(
       if (!features.ENABLE_EXPO_FETCH_SSE) {
         // #118 Option B (default) — the platform capability is decided
         // before any request: no stream attempt, ONE backend compare.
+        // (Its deadline is the per-call COMPARE_TIMEOUT_MS on the axios
+        // request inside runRestCompare.)
         await runRestCompare();
         return;
       }
+      // M18 MB-contract-06 — client-side watchdog on the stream. The
+      // backend's post-Phase-1 verdict tail is UNBOUNDED with
+      // ENABLE_FULL_STREAM_DEADLINE default OFF, and expo/fetch applies no
+      // deadline of its own, so a hung stream previously pinned the loader
+      // forever. The watchdog dispatches the terminal error ITSELF (before
+      // aborting) so surfacing does not depend on the hung transport
+      // honoring the abort — the exact pathology being defended against.
+      // sawTerminal doubles as the latch so complete/error can never
+      // double-fire.
+      let watchdogTimer: ReturnType<typeof setTimeout> | null = setTimeout(() => {
+        watchdogTimer = null;
+        if (!sawTerminal) {
+          sawTerminal = true;
+          callbacks.onError?.(
+            Object.assign(new Error('stream_watchdog_timeout'), {
+              response: {
+                status: 503,
+                data: { code: 'STREAM_TIMEOUT', error: 'stream watchdog timeout' },
+              },
+            })
+          );
+        }
+        controller.abort();
+      }, STREAM_WATCHDOG_MS);
+      const clearWatchdog = () => {
+        if (watchdogTimer) {
+          clearTimeout(watchdogTimer);
+          watchdogTimer = null;
+        }
+      };
       try {
         const { getToken } = require('./authService');
         const token = await getToken();
@@ -568,6 +701,10 @@ export function streamComparison(
                     callbacks.onComplete?.(parsed);
                   }
                   sawTerminal = true;
+                  // Disarm the watchdog — a delivered result must never be
+                  // followed by a spurious late timeout (and the settle
+                  // drain may legitimately outlive STREAM_WATCHDOG_MS).
+                  clearWatchdog();
                   break;
                 // Bundle E § Decision 8 — settle-window events.
                 case 'first_paint': callbacks.onFirstPaint?.(parsed); break;
@@ -575,8 +712,28 @@ export function streamComparison(
                 case 'confidence_upgrade': callbacks.onConfidenceUpgrade?.(parsed); break;
                 case 'settle_complete': callbacks.onSettleComplete?.(parsed); break;
                 case 'error':
-                  callbacks.onError?.(new Error(parsed.error || 'Stream error'));
+                  // M18 MB-contract-02 — mirror the complete-event pattern:
+                  // preserve the backend's structured code/layer via a
+                  // synthetic axios-shaped error so parseApiError /
+                  // isUsageLimitError / the CONTENT_UNAVAILABLE branch work
+                  // identically on both terminal shapes. A codeless error
+                  // (the backend's generic catch yields error=str(e))
+                  // normalizes to TIMEOUT via the bare-503 rule, so raw
+                  // exception text can never render.
+                  callbacks.onError?.(
+                    Object.assign(new Error(parsed.error || 'Stream error'), {
+                      response: {
+                        status: 503,
+                        data: {
+                          code: parsed.code ?? null,
+                          error: parsed.error,
+                          layer: parsed.layer,
+                        },
+                      },
+                    })
+                  );
                   sawTerminal = true;
+                  clearWatchdog();
                   break;
               }
             } catch {
@@ -585,6 +742,11 @@ export function streamComparison(
           }
         }
       } catch (err: any) {
+        // Any exit from the read loop disarms the watchdog: a watchdog
+        // expiry already dispatched its terminal error synchronously before
+        // aborting, a user abort must never grow a late timeout alert, and
+        // the REST fallback below carries its own axios deadline.
+        clearWatchdog();
         if (err.name === 'AbortError') return;
         // Fallback to non-streaming — at most once per subscribe().
         if (__DEV__) console.log('SSE failed, falling back to non-streaming:', err.message);
@@ -618,13 +780,18 @@ export async function compareTextPair(
   productB: string,
   opts: CompareOptions = {}
 ): Promise<ComparisonResult> {
-  const response = await api.post('/api/v1/text/compare', {
-    product_a: productA.trim(),
-    product_b: productB.trim(),
-    region: 'bahrain',
-    ...(opts.selected_category && { selected_category: opts.selected_category }),
-    ...(opts.nocache && { nocache: true }),
-  });
+  const response = await api.post(
+    '/api/v1/text/compare',
+    {
+      product_a: productA.trim(),
+      product_b: productB.trim(),
+      region: 'bahrain',
+      ...(opts.selected_category && { selected_category: opts.selected_category }),
+      ...(opts.nocache && { nocache: true }),
+    },
+    // M18 MB-perf-03 — compare-class per-call deadline.
+    { timeout: COMPARE_TIMEOUT_MS }
+  );
   return response.data;
 }
 
@@ -696,7 +863,31 @@ export function parseApiError(error: any): { message: string; code: string | nul
     (typeof data?.code === 'string' && data.code) ||
     (typeof data?.detail?.code === 'string' && data.detail.code) ||
     null;
-  if (rawCode === 'TIMEOUT' || rawCode === 'STREAM_TIMEOUT' || status === 503) {
+  // M18 MB-contract-09: a 503 maps to TIMEOUT only when the backend sent no
+  // MORE SPECIFIC code — an explicit non-timeout code on a 503 (e.g.
+  // FEATURE_DISABLED from a flag-off dependency) must survive, not be
+  // relabelled as a retryable timeout.
+  if (
+    rawCode === 'TIMEOUT' ||
+    rawCode === 'STREAM_TIMEOUT' ||
+    (status === 503 && !rawCode)
+  ) {
+    return { message: '', code: 'TIMEOUT' };
+  }
+
+  // M18 MB-perf-03/MB-flows-05: transport-level failures never produce a
+  // response at all — an axios deadline (ECONNABORTED/ETIMEDOUT) or an
+  // offline device (ERR_NETWORK). Both are retryable and their raw strings
+  // ("timeout of 35000ms exceeded", "Network Error") must never render, so
+  // normalize to the TIMEOUT contract (empty message, friendly copy by
+  // code). A deliberate cancel (ERR_CANCELED) is NOT a timeout and is left
+  // to the caller's abort filtering.
+  if (
+    !error?.response &&
+    (error?.code === 'ECONNABORTED' ||
+      error?.code === 'ETIMEDOUT' ||
+      error?.code === 'ERR_NETWORK')
+  ) {
     return { message: '', code: 'TIMEOUT' };
   }
 

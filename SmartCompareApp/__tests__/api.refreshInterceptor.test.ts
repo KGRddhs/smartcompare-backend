@@ -79,7 +79,10 @@ describe('api.ts — 401 response interceptor wiring (R9 mutex consumer)', () =>
   });
 
   it('on 401 success path: refreshes, sets new Bearer, retries originalRequest', async () => {
-    mockRefreshSession.mockResolvedValueOnce(undefined);
+    // M18 MB-flows-01 — performRefresh now gates on refreshSession()'s
+    // result, so the mock returns the real AuthResponse success shape
+    // (refreshSession never resolves undefined in production).
+    mockRefreshSession.mockResolvedValueOnce({ success: true, token: 'fresh-token' });
     mockGetToken.mockResolvedValueOnce('fresh-token');
     mockApiCall.mockResolvedValueOnce({ status: 200, data: { ok: true } });
 
@@ -151,7 +154,8 @@ describe('api.ts — 401 response interceptor wiring (R9 mutex consumer)', () =>
   });
 
   it('does NOT skip refresh for authenticated /auth/* endpoints like /auth/preferences', async () => {
-    mockRefreshSession.mockResolvedValueOnce(undefined);
+    // M18 MB-flows-01 — real AuthResponse success shape (see above).
+    mockRefreshSession.mockResolvedValueOnce({ success: true, token: 'preferences-token' });
     mockGetToken.mockResolvedValueOnce('preferences-token');
     mockApiCall.mockResolvedValueOnce({ status: 200, data: { saved: true } });
 

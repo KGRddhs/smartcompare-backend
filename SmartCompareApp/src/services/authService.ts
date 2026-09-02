@@ -61,6 +61,20 @@ export interface AuthResponse {
   user?: User;
   token?: string;
   error?: string;
+  /**
+   * M18 MB-flows-01 — set by refreshSession() when the stored session is
+   * DEFINITIVELY dead (no refresh token, 200-without-session, 401).
+   * Absent on transient failures (network) so callers never clear a
+   * session over a flaky connection. Consumed by api.performRefresh.
+   */
+  sessionInvalid?: boolean;
+  /**
+   * M18 MB-flows-03 — set by register() when the backend returned a user
+   * WITHOUT a session (Supabase email confirmation required). The caller
+   * must show a check-your-inbox state instead of treating this as a
+   * signed-in success.
+   */
+  needsEmailConfirmation?: boolean;
 }
 
 const USER_STORAGE_KEY = '@qaren_user'; // AsyncStorage — '@' prefix valid
@@ -126,6 +140,14 @@ export async function register(
         success: true,
         user: response.data.user,
         token: response.data.session?.access_token,
+        // M18 MB-flows-03 — user-without-session means Supabase requires
+        // email confirmation (the __DEV__ warn above already named the
+        // case). Surface it so RegisterScreen can render the
+        // check-your-inbox state instead of silently dead-ending on
+        // onRegisterSuccess -> verifyAuth() -> null -> no-op.
+        ...(response.data.session?.access_token
+          ? {}
+          : { needsEmailConfirmation: true }),
       };
     }
 
@@ -215,7 +237,9 @@ export async function refreshSession(): Promise<AuthResponse> {
   try {
     const refreshToken = await SecureStore.getItemAsync(REFRESH_TOKEN_KEY);
     if (!refreshToken) {
-      return { success: false, error: 'No refresh token found' };
+      // M18 MB-flows-01 — without a refresh token the stored access token
+      // can never be renewed: definitively dead, not transient.
+      return { success: false, error: 'No refresh token found', sessionInvalid: true };
     }
 
     const response = await api.post('/api/v1/auth/refresh', {
@@ -240,14 +264,16 @@ export async function refreshSession(): Promise<AuthResponse> {
       };
     }
 
-    return { success: false, error: 'Refresh failed' };
+    // M18 MB-flows-01 — the server answered but refused a session:
+    // definitively dead, not a network blip.
+    return { success: false, error: 'Refresh failed', sessionInvalid: true };
   } catch (error: any) {
     if (__DEV__) console.log('Session refresh failed:', error.message);
-    
+
     // If 401, session is invalid - clear it silently
     if (error.response?.status === 401) {
       await clearSession();
-      return { success: false, error: 'Session expired' };
+      return { success: false, error: 'Session expired', sessionInvalid: true };
     }
     
     // For other errors, don't clear session (might be network issue)
@@ -357,10 +383,40 @@ export async function clearSession(): Promise<void> {
 }
 
 /**
+ * M18 MB-security-03 — one-time hygiene sweep of the PRE-SecureStore
+ * plaintext token residue. Until the 2026-04-04 migration (0475d85),
+ * access AND refresh tokens lived in AsyncStorage under '@qaren_token' /
+ * '@qaren_refresh_token' ('@smartcompare_*' before the 2026-03-28
+ * rename); the migration switched every read/write to SecureStore but
+ * never deleted the legacy keys, so devices that logged in on a
+ * pre-Apr-2026 build still carry a plaintext refresh token in the
+ * Android-auto-backup-eligible RKStorage database. The current
+ * SecureStore keys have no '@' prefix, so these removals can never
+ * touch the live session.
+ */
+const LEGACY_ASYNC_STORAGE_TOKEN_KEYS = [
+  '@qaren_token',
+  '@qaren_refresh_token',
+  '@smartcompare_token',
+  '@smartcompare_refresh_token',
+];
+
+export async function purgeLegacyAuthStorage(): Promise<void> {
+  try {
+    await AsyncStorage.multiRemove(LEGACY_ASYNC_STORAGE_TOKEN_KEYS);
+  } catch (error) {
+    if (__DEV__) console.error('Error purging legacy auth storage:', error);
+  }
+}
+
+/**
  * Initialize auth - check and refresh session on app start
  * Returns user if valid session exists, null otherwise
  */
 export async function initializeAuth(): Promise<User | null> {
+  // MB-security-03 — fire-and-forget: the sweep must never delay or
+  // fail app boot (purgeLegacyAuthStorage swallows its own errors).
+  void purgeLegacyAuthStorage();
   try {
     const user = await getSavedUser();
     const token = await getToken();

@@ -54,7 +54,10 @@ describe('Bundle D contract — ResultsScreen', () => {
   });
 
   it('handles 404 → setLoadError("not_found") (Bundle D 1.F.5 contract)', () => {
-    expect(SRC).toMatch(/status\s*===\s*404[\s\S]{0,80}setLoadError\(\s*['"]not_found['"]/);
+    // M18 mobile-network: the status===404 inspection lives in the shared
+    // matrix (failureClassification.ts, behaviorally pinned); the screen
+    // routes its kind to the not_found state.
+    expect(SRC).toMatch(/kind\s*===\s*'not_found'[\s\S]{0,80}setLoadError\(\s*['"]not_found['"]/);
   });
 
   it('renders emptyState via results.emptyState.* i18n keys (NO hardcoded literals)', () => {
