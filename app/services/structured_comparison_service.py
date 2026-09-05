@@ -1220,6 +1220,9 @@ from app.services.price_service import (
     # on, reused (never re-derived) to decide whether a persist disproves a
     # `nogenuine:` sentinel.
     is_genuine_price,
+    # Issue #54 — default-OFF guard that stops a slow Tier-3 GPT estimate from
+    # clobbering a genuine price that landed at L1 while it was in flight.
+    genuine_clobber_guard_enabled,
     # Task 1.4 — size-aware price cache key (no storage/size variant collision).
     build_size_aware_price_cache_key,
     size_variant_token,
@@ -7504,8 +7507,8 @@ class StructuredComparisonService:
                     price["source_method"] = "estimated"
                 if price.get("retailer") and not price.get("url"):
                     price["url"] = build_retailer_url(price["retailer"], full_name)
-                await _cache_set_async(cache_key, price, PRICE_CACHE_TTL // 2)
-                self._save_price_to_db(cache_key, brand, name, variant, region, price)
+                await self._persist_tier3_estimate(
+                    cache_key, brand, name, variant, region, price)
                 # Task 1.3 — Tier-3 GPT estimate means no real BH price exists; the
                 # cascade is a structural dead-end. Record it so we don't re-run the
                 # full discovery+scrape next time (just serve this estimate from the
@@ -7765,6 +7768,54 @@ class StructuredComparisonService:
             await _cache_delete_async(negative_cache_key(cache_key))
         except Exception as e:  # noqa: BLE001 — never let the invalidation break a price
             logger.debug(f"negative-cache invalidation skipped: {e}")
+
+    async def _persist_tier3_estimate(self, cache_key, brand, name, variant,
+                                      region, price) -> bool:
+        """Issue #54 — the Tier-3 GPT-estimate terminal's cache+persist, made
+        CONDITIONAL on not clobbering a genuine price.
+
+        The old terminal was two unconditional statements: a 12h `set_cached`
+        (`PRICE_CACHE_TTL // 2`) and a `_save_price_to_db` append. Neither read the
+        existing L1 entry. With no single-flight anywhere in `app/`, a second live
+        request / the warmer / the nightly eval can resolve the same `cache_key`
+        concurrently, and a slow estimate lands ON TOP of a genuine 7d entry that
+        was written while the estimate was still in flight — L1 then serves the
+        guess, and the appended estimate row also becomes the newest `product_prices`
+        row (the L2 half of this issue).
+
+        Guarded: when the L1 entry already holds a genuine-method price, BOTH
+        writes are skipped and the fact is logged at INFO. The estimate is still
+        RETURNED to this request (the caller is unchanged) — it just doesn't get to
+        overwrite better data for everyone else. The following
+        `_record_negative_price_cache` call is deliberately untouched: the L1 read
+        in `_get_price` precedes the sentinel read, so the preserved genuine entry
+        wins on the next request anyway.
+
+        Flag OFF (`ENABLE_GENUINE_PRICE_CLOBBER_GUARD` unset/false) -> the existing
+        L1 entry is never even read and the two original statements run in their
+        original order with their original arguments: byte-identical.
+
+        Fail-open: a raising L1 read is swallowed and the write proceeds, because a
+        Redis hiccup must never cost us the estimate we already paid GPT for.
+
+        Returns True iff the writes happened (for tests/logging; no caller branches
+        on it)."""
+        if genuine_clobber_guard_enabled():
+            try:
+                existing = await _cache_get_async(cache_key)
+            except Exception as e:  # noqa: BLE001 — never let the guard drop a price
+                logger.debug(f"tier-3 clobber guard read skipped: {e}")
+                existing = None
+            if is_genuine_price(existing):
+                logger.info(
+                    "[PRICE] tier-3 estimate NOT cached for %s: L1 already holds a "
+                    "genuine %s price (concurrent write protected)",
+                    cache_key, (existing or {}).get("source_method"),
+                )
+                return False
+        await _cache_set_async(cache_key, price, PRICE_CACHE_TTL // 2)
+        self._save_price_to_db(cache_key, brand, name, variant, region, price)
+        return True
 
     def _save_price_to_db(self, cache_key: str, brand: str, name: str, variant: Optional[str], region: str, price: Dict):
         """Fire-and-forget save price to L2 DB.

@@ -148,6 +148,31 @@ GENUINE_PRICE_CACHE_TTL = int(os.getenv("GENUINE_PRICE_CACHE_TTL_SECONDS", str(7
 NEGATIVE_PRICE_CACHE_TTL = int(os.getenv("NEGATIVE_PRICE_CACHE_TTL_SECONDS", str(30 * 24 * 60 * 60)))  # 30 days
 
 
+def is_genuine_source_method(source_method: Optional[str]) -> bool:
+    """True iff a bare `source_method` STRING names a genuine Bahrain-shelf price.
+
+    The string-level half of `is_genuine_price`, hoisted for the callers that hold
+    a method but not a price dict — issue #54's L2 row selector reads
+    `row["source_method"]` off a Supabase row and must apply the SAME rule the L1
+    TTL policy applies. Hand-copying the branch there is precisely the drift
+    defect tracked in #67, so there is exactly ONE definition and everything else
+    calls it.
+
+    Genuine iff: the method is non-blank, contains NEITHER "converted" NOR
+    "estimate" (defensive — a method carrying either token is never genuine even
+    if it also matches a genuine apex), and is a member of
+    `_GENUINE_BH_SOURCE_METHODS`. That set is defined further down the module, so
+    it is resolved lazily at call time (same pattern as `_showable_source_methods`).
+
+    Pure function, no env read, no behaviour fork: it returns for every input
+    exactly what the inline branch it replaces returned.
+    """
+    sm = (source_method or "").lower()
+    if not sm or "converted" in sm or "estimate" in sm:
+        return False
+    return sm in _GENUINE_BH_SOURCE_METHODS
+
+
 def is_genuine_price(price: Optional[Dict[str, Any]]) -> bool:
     """True iff a resolved price carries a GENUINE Bahrain-shelf source method.
 
@@ -156,19 +181,14 @@ def is_genuine_price(price: Optional[Dict[str, Any]]) -> bool:
     needs the same rule to decide whether a persist disproves a `nogenuine:`
     sentinel — re-deriving it there would let the two drift).
 
-    Genuine iff: the input is a dict, its `source_method` is non-blank, it
-    contains NEITHER "converted" NOR "estimate" (defensive — a method carrying
-    either token is never genuine even if it also matches a genuine apex), and it
-    is a member of `_GENUINE_BH_SOURCE_METHODS`. `_GENUINE_BH_SOURCE_METHODS` is
-    defined further down the module, so it is resolved lazily at call time (same
-    pattern as `_showable_source_methods`).
+    Genuine iff: the input is a dict and its `source_method` satisfies
+    `is_genuine_source_method` (issue #54 split that string test out so a caller
+    holding only the method string shares this rule instead of re-deriving it).
+    Returns the identical verdict for every input it ever did.
     """
     if not isinstance(price, dict):
         return False
-    sm = (price.get("source_method") or "").lower()
-    if not sm or "converted" in sm or "estimate" in sm:
-        return False
-    return sm in _GENUINE_BH_SOURCE_METHODS
+    return is_genuine_source_method(price.get("source_method"))
 
 
 def price_cache_ttl(price: Optional[Dict[str, Any]]) -> int:
@@ -188,6 +208,41 @@ def price_cache_ttl(price: Optional[Dict[str, Any]]) -> int:
     every input it ever did.
     """
     return GENUINE_PRICE_CACHE_TTL if is_genuine_price(price) else PRICE_CACHE_TTL
+
+
+def genuine_clobber_guard_enabled() -> bool:
+    """Issue #54 — True iff a genuine price is protected from being clobbered by a
+    concurrently-resolving Tier-3 GPT estimate, at BOTH cache layers (default OFF).
+
+    There is no single-flight/lock/SETNX anywhere in `app/`, so the warmer, a
+    second live request and the nightly eval can all resolve the same
+    `cache_key` at once. Two defects then combine so a 12h estimate replaces a
+    7d genuine price:
+      * L1 — the Tier-3 terminal's `set_cached` is unconditional; it never reads
+        the existing entry, so a slow estimate overwrites a genuine price that
+        landed while it was in flight.
+      * L2 — `product_data_service.get_cached_price` reads only the NEWEST
+        `product_prices` row, and the table is append-only, so the estimate row
+        appended after a genuine one hides it (and once the estimate ages past
+        24h the read returns None while a still-fresh genuine row sits one
+        position deeper).
+
+    The flag governs BOTH halves because they are one defect: the write guard
+    without the read preference still leaves already-written estimate rows
+    shadowing genuine ones at L2, and the read preference without the write guard
+    still loses the L1 entry. ONE lever, one rollback.
+
+    Flag ON is a real behavioural fork — an estimate that used to be cached and
+    persisted is now dropped, and an L2 read can return a different (older, more
+    authoritative) row — so it ships dark. Flag OFF is byte-identical to the
+    pre-#54 code at every call site.
+
+    Read PER CALL from `os.getenv` (the `exact_gate_enabled` idiom) so Railway
+    flips it without a restart; never cached at import.
+    """
+    return os.getenv("ENABLE_GENUINE_PRICE_CLOBBER_GUARD", "").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
 
 
 def negative_cache_key(price_cache_key: str) -> str:
