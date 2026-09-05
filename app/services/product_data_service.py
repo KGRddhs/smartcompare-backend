@@ -56,6 +56,47 @@ def _genuine_clobber_guard_enabled() -> bool:
     return genuine_clobber_guard_enabled()
 
 
+def _l2_promotion_remaining_ttl_enabled() -> bool:
+    """Issue #57 — the L2 half of
+    `price_service.l2_promotion_remaining_ttl_enabled`.
+
+    Delegates to the ONE definition in price_service (imported lazily, exactly
+    like `_genuine_clobber_guard_enabled`, so this module never grows a
+    module-level dependency on the price cascade). Fail-CLOSED: if the import
+    raises, the flag reads OFF and `get_cached_price` returns the pre-#57 dict
+    with no age stamped. Never cached — the underlying helper reads os.getenv per
+    call so a Railway flip needs no restart."""
+    try:
+        from app.services.price_service import l2_promotion_remaining_ttl_enabled
+    except Exception:  # noqa: BLE001 — never let the import change the read path
+        return False
+    return l2_promotion_remaining_ttl_enabled()
+
+
+def _row_age_seconds(row: Optional[Dict[str, Any]], now: datetime) -> Optional[int]:
+    """Issue #57 — whole seconds of age for the `product_prices` row L2 SELECTED.
+
+    `None` when the row carries no parseable `fetched_at` (the promotion then
+    falls back to the full TTL — today's behaviour — rather than raising on a
+    malformed row). Clamped at 0 so a row stamped in the future by clock skew
+    reads as brand new instead of BUYING extra L1 lifetime via a negative age.
+
+    Deliberately takes `now` rather than reading the clock, so the caller can
+    stamp the age of the row `_select_price_row` picked using the SAME instant
+    that selection used, and so it is unit-testable without freezing time."""
+    raw = (row or {}).get("fetched_at")
+    if not raw:
+        return None
+    try:
+        fetched_at = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+    except Exception:  # noqa: BLE001 — a malformed row is un-aged, not fatal
+        return None
+    try:
+        return max(0, int((now - fetched_at).total_seconds()))
+    except Exception:  # noqa: BLE001 — naive/aware mismatch is un-aged, not fatal
+        return None
+
+
 def _title_persist_enabled() -> bool:
     """Persist + rehydrate the resolved listing identity (title + in_stock, and
     the ALREADY-persisted brand) on the L2 product_prices cache. Default OFF ->
@@ -255,6 +296,17 @@ async def get_cached_price(product_key: str, region: str) -> Optional[Dict[str, 
                 result["brand"] = row["brand"]
             if isinstance(row.get("in_stock"), bool):
                 result["in_stock"] = row["in_stock"]
+        # Issue #57 — stamp the age of the row we actually SELECTED (which under
+        # the #54 guard is NOT necessarily response.data[0]) so the L2->L1
+        # promotion in `_get_price` can hand Redis the row's REMAINING freshness
+        # instead of a full TTL measured from now. `_`-prefixed so it is a
+        # private transport key: `_get_price` pops it before returning, and
+        # `public_price_view` strips `_` keys anyway. Flag OFF -> no extra
+        # `fetched_at` parse and no extra key on the returned dict.
+        if _l2_promotion_remaining_ttl_enabled():
+            _age_seconds = _row_age_seconds(row, datetime.now(timezone.utc))
+            if _age_seconds is not None:
+                result["_l2_age_seconds"] = _age_seconds
         return result
     except Exception as e:
         logger.debug(f"L2 price miss for {product_key}/{region}: {e}")

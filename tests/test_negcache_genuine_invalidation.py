@@ -535,10 +535,41 @@ def _arg_label(node):
     return ast.dump(node)
 
 
+def _price_ttl_locals(fn):
+    """Locals in `fn` assigned (directly or by later re-assignment) from a
+    `price_cache_ttl(...)` call.
+
+    Issue #57 hoisted the L2->L1 promotion's TTL out of the call into a local
+    (`_ttl = price_cache_ttl(db_price)`, then reduced by the row's age) so it can
+    be clamped before the write. Without this resolution step the detector below
+    would stop seeing that site as a genuine-TTL write and silently go blind —
+    the pin has to follow the value, not the spelling."""
+    names = set()
+    changed = True
+    while changed:  # resolve chains (`_t = price_cache_ttl(p)` -> `_u = _t`)
+        changed = False
+        for node in ast.walk(fn):
+            if not isinstance(node, ast.Assign):
+                continue
+            value = node.value
+            from_ttl = (
+                (isinstance(value, ast.Call) and _call_name(value) == "price_cache_ttl")
+                or (isinstance(value, ast.Name) and value.id in names)
+            )
+            if not from_ttl:
+                continue
+            for target in node.targets:
+                if isinstance(target, ast.Name) and target.id not in names:
+                    names.add(target.id)
+                    changed = True
+    return names
+
+
 def _collect(fn):
     """(sites routed through the shared writer, raw genuine-TTL _cache_set_async
     sites), each labelled by the price variable being written."""
     routed, raw = [], []
+    ttl_locals = _price_ttl_locals(fn)
     for node in ast.walk(fn):
         if not isinstance(node, ast.Call):
             continue
@@ -547,7 +578,9 @@ def _collect(fn):
             routed.append(_arg_label(node.args[1]))
         elif name == "_cache_set_async" and len(node.args) == 3:
             ttl = node.args[2]
-            if isinstance(ttl, ast.Call) and _call_name(ttl) == "price_cache_ttl":
+            inlined = isinstance(ttl, ast.Call) and _call_name(ttl) == "price_cache_ttl"
+            hoisted = isinstance(ttl, ast.Name) and ttl.id in ttl_locals
+            if inlined or hoisted:
                 raw.append(_arg_label(node.args[1]))
     return routed, raw
 

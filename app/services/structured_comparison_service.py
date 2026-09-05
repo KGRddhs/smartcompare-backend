@@ -1223,6 +1223,9 @@ from app.services.price_service import (
     # Issue #54 — default-OFF guard that stops a slow Tier-3 GPT estimate from
     # clobbering a genuine price that landed at L1 while it was in flight.
     genuine_clobber_guard_enabled,
+    # Issue #57 — default-OFF: promote an L2 row into L1 with its REMAINING
+    # freshness (price_cache_ttl minus the row's age) instead of a full TTL.
+    l2_promotion_remaining_ttl_enabled,
     # Task 1.4 — size-aware price cache key (no storage/size variant collision).
     build_size_aware_price_cache_key,
     size_variant_token,
@@ -5677,8 +5680,33 @@ class StructuredComparisonService:
                             "row) for %s %s — serving without promoting",
                             brand, name,
                         )
+                # Issue #57 — the L2 row's own age, stamped by get_cached_price
+                # when ENABLE_L2_PROMOTION_REMAINING_TTL is ON (absent, so 0,
+                # when it is OFF). Popped HERE, before the promotion branch, so
+                # the dict this function returns is identical whether or not it
+                # was promoted and the private transport key never escapes
+                # `_get_price` in ANY flag state (public_price_view only strips
+                # `_` keys when ENABLE_EXACT_PRICE_GATE is ON).
+                _l2_age = int(db_price.pop("_l2_age_seconds", 0) or 0)
                 if _promote:
-                    await _cache_set_async(cache_key, db_price, price_cache_ttl(db_price))
+                    _ttl = price_cache_ttl(db_price)
+                    if l2_promotion_remaining_ttl_enabled():
+                        # Promote with what is LEFT of this row's window, not a
+                        # fresh full one: get_cached_price already admitted a row
+                        # aged up to the same window, so a full TTL here doubles
+                        # the age a price can be served at.
+                        _ttl = max(0, _ttl - _l2_age)
+                        if _ttl <= 0:
+                            # Nothing left to promote — serve this request from
+                            # the row, but never write a zero/negative TTL.
+                            _promote = False
+                            logger.info(
+                                "[PRICE] L2->L1 promotion skipped (row age %ss "
+                                "exhausts its cache window) for %s %s — serving "
+                                "without promoting", _l2_age, brand, name,
+                            )
+                    if _promote:
+                        await _cache_set_async(cache_key, db_price, _ttl)
                 db_price["_cached"] = True
                 db_price["_cache_source"] = "db"
                 return db_price
