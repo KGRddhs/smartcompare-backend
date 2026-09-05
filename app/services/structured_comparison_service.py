@@ -1543,6 +1543,65 @@ _RENDER_WAVE_MAX_DOMAINS = int(os.getenv("RENDER_WAVE_MAX_DOMAINS", "2"))
 _ALGOLIA_TIER2_TIMEOUT = float(os.getenv("ALGOLIA_TIER2_TIMEOUT", "5.0"))
 
 
+# ---------------------------------------------------------------------------
+# #51 part (a) — CONVERTED PROVENANCE THROUGH THE FAN-OUT
+# ---------------------------------------------------------------------------
+def _converted_provenance_enabled() -> bool:
+    """ENABLE_CONVERTED_PROVENANCE_STAMP (default OFF — ships DORMANT).
+
+    A price whose AMOUNT was converted must not end up wearing a member of
+    ``price_service._GENUINE_BH_SOURCE_METHODS``. A genuine label buys four
+    things a converted figure has not earned: the 7d genuine ``price_cache_ttl``,
+    the genuine authority tier in ``_select_best``, race-confirmation power in
+    ``_confirmed`` (which CANCELS pending genuine scrapers), and a slot in the
+    genuine-BH-share KPI.
+
+    The extractor is already honest — ``extract_price_from_html`` relabels a
+    converted price ``converted_usd`` on every branch (JSON-LD / microdata / OG /
+    Woo, ENABLE_JSONLD_FIRST). Four sites in THIS module then overwrite that
+    label with a genuine-set string, and this flag is what stops them:
+
+      (1) ``_curl_scraper`` — the candidate ``source_method`` is unconditionally
+          ``page_scrape_jsonld`` even when ``raw_data`` says ``converted_usd``.
+          (raw_data survives here, so ``_is_genuine_bh_candidate`` already says
+          no; the candidate label itself is still a lie.)
+      (2) ``_firecrawl_scraper`` — ``price["source_method"] = "firecrawl"``
+          STOMPS raw_data BEFORE ``_is_genuine_bh_candidate`` reads it.
+      (3) ``_scrapedo_scraper`` — same, with ``scrapedo_rendered``.
+      (4) ``_finalize_fan_winner`` via ``_fan_winner_source_method`` — clobbers
+          raw_data's label with the candidate rank-name, so a converted winner
+          is banked by ``_persist_genuine_price`` at the genuine TTL.
+
+    Rank / ``_RANK_*`` constants are deliberately UNTOUCHED, so within-tier
+    ordering does not shift; the only ordering effect is the authority tier the
+    honest label was always supposed to produce. No new string enters
+    ``_GENUINE_BH_SOURCE_METHODS`` or the eval mirror.
+
+    Default OFF and flag-OFF is byte-identical at all four sites. Read PER CALL
+    from os.getenv (the ``price_service.exact_gate_enabled`` idiom) so Railway
+    can flip it without a restart, and NEVER cached at import.
+    """
+    return os.getenv("ENABLE_CONVERTED_PROVENANCE_STAMP", "false").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
+def _fan_winner_source_method(best: Dict[str, Any]) -> str:
+    """The ``source_method`` ``_finalize_fan_winner`` stamps on the winning price.
+
+    Legacy (flag OFF): the candidate's rank-name, defaulting to ``page_scrape``.
+    Flag ON: an honest converted label on the winner's own ``raw_data`` is kept
+    instead of being clobbered by that rank-name.
+    """
+    legacy = best.get("source_method", "page_scrape")
+    if not _converted_provenance_enabled():
+        return legacy
+    raw_sm = ((best.get("raw_data") or {}).get("source_method") or "")
+    if "converted" in raw_sm:
+        return raw_sm
+    return legacy
+
+
 async def _curl_scraper(
     url: str, full_name: str, currency: str, retailer_domain: str
 ) -> Optional[Dict[str, Any]]:
@@ -1581,6 +1640,13 @@ async def _curl_scraper(
     # and off-registry (None — a discovered BH retailer PDP) keep page_scrape_jsonld.
     _src_method = "page_scrape_jsonld"
     _rank = _RANK_PAGE_SCRAPE_JSONLD
+    # #51(a) — the extractor already relabelled a CONVERTED amount converted_usd
+    # (extract_price_from_html, every branch). Don't hand it back to the fan-out
+    # wearing the genuine rank-name. raw_data is left exactly as the extractor
+    # wrote it. Flag OFF: byte-identical (the legacy page_scrape_jsonld stands).
+    _extractor_method = (page_price.get("source_method") or "")
+    if _converted_provenance_enabled() and "converted" in _extractor_method:
+        _src_method = _extractor_method
     if registry_tier(retailer_domain) == "global" or registry_tier(url) == "global":
         _src_method = "converted_usd"
         page_price["source_method"] = "converted_usd"
@@ -1654,7 +1720,15 @@ async def _firecrawl_scraper(
         status=status, cost=0, outcome="html", html_kb=_html_kb,
         detected_cf=_detected_cf, elapsed_ms=_elapsed_ms,
     )
-    price["source_method"] = "firecrawl"
+    # #51(a) — a CONVERTED amount keeps the extractor's honest converted_usd on
+    # BOTH raw_data and the candidate; only a genuine extraction gets the
+    # firecrawl / firecrawl_brand_domain pair. Flag OFF: byte-identical.
+    _extractor_method = (price.get("source_method") or "")
+    if _converted_provenance_enabled() and "converted" in _extractor_method:
+        _cand_method = _extractor_method
+    else:
+        price["source_method"] = "firecrawl"
+        _cand_method = "firecrawl_brand_domain"
     price["retailer"] = retailer_domain
     # L2 content safety — Firecrawl Tier 1.5a entry point (Bundle B,
     # team-lead expansion of spec sec 5.2).
@@ -1665,7 +1739,7 @@ async def _firecrawl_scraper(
         return None
     return {
         "value": float(price["amount"]),
-        "source_method": "firecrawl_brand_domain",
+        "source_method": _cand_method,
         "rank": _RANK_FIRECRAWL_BRAND_DOMAIN,
         "raw_data": price,
     }
@@ -1733,7 +1807,14 @@ async def _scrapedo_scraper(
         status=status, cost=cost, outcome="html", html_kb=_html_kb,
         detected_cf=_detected_cf, elapsed_ms=_elapsed_ms,
     )
-    price["source_method"] = "scrapedo_rendered"
+    # #51(a) — a CONVERTED amount keeps the extractor's honest converted_usd on
+    # BOTH raw_data and the candidate. Flag OFF: byte-identical.
+    _extractor_method = (price.get("source_method") or "")
+    if _converted_provenance_enabled() and "converted" in _extractor_method:
+        _cand_method = _extractor_method
+    else:
+        price["source_method"] = "scrapedo_rendered"
+        _cand_method = "scrapedo_rendered"
     price["retailer"] = retailer_domain
     # L2 content safety — Scrape.do Tier 1.5d entry point (Bundle B,
     # team-lead expansion of spec sec 5.2).
@@ -1744,7 +1825,7 @@ async def _scrapedo_scraper(
         return None
     return {
         "value": float(price["amount"]),
-        "source_method": "scrapedo_rendered",
+        "source_method": _cand_method,
         "rank": _RANK_SCRAPEDO_RENDERED,
         "raw_data": price,
     }
@@ -6821,7 +6902,12 @@ class StructuredComparisonService:
                         if not (best and best.get("raw_data") and best["raw_data"].get("amount")):
                             return None
                         winning_price = best["raw_data"]
-                        winning_price["source_method"] = best.get("source_method", "page_scrape")
+                        # #51(a) — flag OFF this IS best.get("source_method",
+                        # "page_scrape"); flag ON an honest converted label on
+                        # raw_data survives the rank-name clobber, so
+                        # _persist_genuine_price below can't bank a converted
+                        # figure at the 7d genuine TTL.
+                        winning_price["source_method"] = _fan_winner_source_method(best)
                         # Wrong-scrape guard (no wrong scrapes) — a fan_out curl can land
                         # on an accessory PDP (a "Galaxy S24" case at 11.9 BHD) the
                         # is_accessory keyword filter missed. Reject an implausibly-low
