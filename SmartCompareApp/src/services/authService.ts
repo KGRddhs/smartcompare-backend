@@ -7,6 +7,11 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 import * as Sentry from '@sentry/react-native';
+import {
+  fetchWithDeadline,
+  isDeadlineError,
+  SOCIAL_LOGIN_TIMEOUT_MS,
+} from './fetchWithDeadline';
 // Native modules loaded lazily — crashes Expo Go if imported at top level
 let GoogleSignin: any = null;
 let AppleAuthentication: any = null;
@@ -47,6 +52,13 @@ function getCrypto() {
 import api, { API_BASE_URL } from './api';
 import { getDeviceFingerprint } from './deviceFingerprint';
 
+/**
+ * A8 — i18n key rendered when a social sign-in POST exceeds its deadline.
+ * The key (not a sentence) crosses the service boundary so the screen
+ * resolves LOCALIZED copy; see `AuthResponse.errorKey`.
+ */
+export const SIGN_IN_TIMEOUT_KEY = 'auth.signInTimeout';
+
 export interface User {
   id: string;
   email: string;
@@ -75,6 +87,17 @@ export interface AuthResponse {
    * signed-in success.
    */
   needsEmailConfirmation?: boolean;
+  /**
+   * A8 — an i18n KEY for the user-facing message, set where the service can
+   * name the outcome precisely (today: a social sign-in deadline expiry).
+   *
+   * Callers MUST prefer `t(errorKey)` over `error` when it is present. The
+   * `error` strings on this interface are English-only diagnostics — the
+   * [B4-DIAG] captures are addressed to the dispatcher, not to a user, and
+   * an Arabic user would get English. Same reasoning as A11's
+   * `friendlyErrorKey`: copy comes from a code, never from a raw string.
+   */
+  errorKey?: string;
 }
 
 const USER_STORAGE_KEY = '@qaren_user'; // AsyncStorage — '@' prefix valid
@@ -567,12 +590,35 @@ export async function signInWithGoogle(): Promise<AuthResponse> {
 
     let response: Response;
     try {
-      response = await fetch(`${API_BASE_URL}/api/v1/auth/social-login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
+      // A8: this POST previously had NO deadline and no AbortController. RN's
+      // fetch applies none of its own, so a stalled socket never settles and
+      // never throws — the catch below could not fire, LoginScreen's
+      // `socialLoading` stayed set, and `disabled = loading ||
+      // Boolean(socialLoading)` left the WHOLE auth surface inert with no
+      // cancel affordance.
+      response = await fetchWithDeadline(
+        `${API_BASE_URL}/api/v1/auth/social-login`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        },
+        SOCIAL_LOGIN_TIMEOUT_MS
+      );
     } catch (netErr: any) {
+      if (isDeadlineError(netErr)) {
+        // A deadline expiry is NOT the cert-pin/transport failure this
+        // branch's [B4-DIAG] Sentry channel exists to capture — folding
+        // timeouts into it would corrupt an active diagnostic. Breadcrumb
+        // only, and hand the screen a localizable key so the user gets
+        // retryable copy instead of a diagnostic string.
+        Sentry.addBreadcrumb({
+          category: 'a8_deadline',
+          level: 'warning',
+          message: `social-login deadline (google) after ${SOCIAL_LOGIN_TIMEOUT_MS}ms`,
+        });
+        return { success: false, errorKey: SIGN_IN_TIMEOUT_KEY };
+      }
       const msg = `[B4-DIAG] network/cert-pin failure before backend. ${diagHead} err=${netErr?.message || 'unknown'}`;
       Sentry.captureMessage(msg, { level: 'error', tags: { b4_diag: 'network' }, extra: { errMessage: netErr?.message, errCode: netErr?.code } });
       return {
@@ -678,16 +724,37 @@ export async function signInWithApple(): Promise<AuthResponse> {
     const appleDiagParts = idToken.split('.');
     if (__DEV__) console.log('[APPLE-DIAG] token length:', idToken.length, 'parts:', appleDiagParts.length, 'head:', idToken.substring(0, 30), 'nonce-hash-len:', hashedNonce.length);
 
-    // Send to our backend
-    const response = await fetch(`${API_BASE_URL}/api/v1/auth/social-login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        provider: 'apple',
-        id_token: idToken,
-        nonce: rawNonce,
-      }),
-    });
+    // Send to our backend.
+    // A8: same unbounded-fetch defect as the Google path — RN applies no
+    // deadline, so a stalled socket left LoginScreen's `socialLoading` set
+    // forever. The non-deadline rejection is re-thrown so the outer catch
+    // keeps handling it EXACTLY as before.
+    let response: Response;
+    try {
+      response = await fetchWithDeadline(
+        `${API_BASE_URL}/api/v1/auth/social-login`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            provider: 'apple',
+            id_token: idToken,
+            nonce: rawNonce,
+          }),
+        },
+        SOCIAL_LOGIN_TIMEOUT_MS
+      );
+    } catch (netErr: any) {
+      if (isDeadlineError(netErr)) {
+        Sentry.addBreadcrumb({
+          category: 'a8_deadline',
+          level: 'warning',
+          message: `social-login deadline (apple) after ${SOCIAL_LOGIN_TIMEOUT_MS}ms`,
+        });
+        return { success: false, errorKey: SIGN_IN_TIMEOUT_KEY };
+      }
+      throw netErr;
+    }
 
     const data = await response.json();
 

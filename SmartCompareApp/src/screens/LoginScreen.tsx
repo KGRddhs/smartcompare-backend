@@ -204,7 +204,15 @@ export default function LoginScreen({ navigation, onLoginSuccess }: LoginScreenP
       if (result.success) {
         onLoginSuccess();
       } else if (result.error !== 'Sign-in cancelled') {
-        setError(result.error || t('auth.googleFailed', { defaultValue: 'Google sign-in failed' }));
+        // A8: `errorKey` wins over `error`. The service's `error` strings are
+        // English-only diagnostics ([B4-DIAG] captures addressed to the
+        // dispatcher); a named outcome such as a sign-in deadline carries a
+        // key so the copy is localized and retryable.
+        setError(
+          result.errorKey
+            ? t(result.errorKey)
+            : result.error || t('auth.googleFailed', { defaultValue: 'Google sign-in failed' })
+        );
       }
     } catch (err: any) {
       setError(parseApiError(err).message);
@@ -221,7 +229,12 @@ export default function LoginScreen({ navigation, onLoginSuccess }: LoginScreenP
       if (result.success) {
         onLoginSuccess();
       } else if (result.error !== 'Sign-in cancelled') {
-        setError(result.error || t('auth.appleFailed', { defaultValue: 'Apple sign-in failed' }));
+        // A8 — see handleGoogleSignIn.
+        setError(
+          result.errorKey
+            ? t(result.errorKey)
+            : result.error || t('auth.appleFailed', { defaultValue: 'Apple sign-in failed' })
+        );
       }
     } catch (err: any) {
       setError(parseApiError(err).message);
