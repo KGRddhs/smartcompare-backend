@@ -100,7 +100,6 @@ import { ConfidencePills } from '../components/results/ConfidencePills';
 import { ConfidenceDetailsSheet } from '../components/results/ConfidenceDetailsSheet';
 import { PersonalizationChip } from '../components/results/PersonalizationChip';
 import { anyEstimated } from '../services/sourceMethod';
-import { getUsageStatus, UsageStatus } from '../services/usageService';
 import {
   loadDemographicsState,
   recordDismissal,
@@ -164,7 +163,13 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
   const winnerAnimStyle = useAnimatedStyle(() => ({
     transform: [{ scale: winnerScale.value }],
   }));
-  const [usageStatus, setUsageStatus] = useState<UsageStatus | null>(null);
+  // M23 A15 — the `usageStatus` state + its mount `getUsageStatus()` effect
+  // lived here and were write-only: nothing on this screen (or anywhere in
+  // src/) ever read the value, so every Results open bought one discarded
+  // authenticated GET /api/v1/usage/status. The paywall hop on the camera
+  // path reads the thrown error's `detail`, and the freemium pill is Home's
+  // `useComparisonCounter` — neither goes through this state. If a live
+  // usage line is ever wanted on Results, re-add the fetch WITH a consumer.
 
   // Demographics prompt state
   const [demographicsVisible, setDemographicsVisible] = useState(false);
@@ -174,10 +179,6 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
   const [shareSheetVisible, setShareSheetVisible] = useState(false);
   const [loop1ToastVisible, setLoop1ToastVisible] = useState(false);
   const [lifetimeRemaining, setLifetimeRemaining] = useState<number | null>(null);
-
-  useEffect(() => {
-    getUsageStatus().then(setUsageStatus);
-  }, []);
 
   // Bucket A bug 1 — History tap path. Fetch the full payload when only
   // a comparison_id was passed. Respects the 1.2s brand-moment floor so
