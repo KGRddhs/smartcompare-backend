@@ -115,6 +115,7 @@
   "home.errors.insufficientData": "البيانات قليلة عن هذا الزوج — جرّب منتجين مع اسم العلامة والطراز.",
   "home.errors.rateLimited": "عدد المقارنات كبير الآن — أمهلها لحظة ثم اضغط.",
   "home.errors.timeout": "ما زلنا نجمع الأسعار — أمهلها لحظة ثم اضغط مجددًا.",
+  "home.loading.cancel_a11y": "إلغاء هذه المقارنة",
   "home.limit.max_title": "هذا يكفي حالياً",
   "home.limit.max_body": "قارن حتى {{max}} منتجات في المرّة.",
   "home.limit.rate_title": "خذ نفساً",

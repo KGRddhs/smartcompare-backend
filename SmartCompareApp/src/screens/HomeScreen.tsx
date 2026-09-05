@@ -115,6 +115,15 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
   // a chip (conditional spread at the two compare sites below).
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const abortRef = useRef<(() => void) | null>(null);
+  // A4 — compare generation token. Bumped on every compare START and on
+  // CANCEL, so a response that lands after the user backed out (or after a
+  // newer compare superseded it) is dropped instead of dragging them into a
+  // Results screen they walked away from. The text/stream transport already
+  // swallows AbortError/CanceledError without dispatching callbacks, but the
+  // URL path is a plain awaited axios call whose `then` still runs after an
+  // abort loses the race — so this guard, not the abort, is what actually
+  // makes cancel stick on both paths.
+  const compareRunRef = useRef(0);
 
   const { used, total, canCompare, increment } = useComparisonCounter();
 
@@ -205,6 +214,41 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     };
   }, []);
 
+  // A4 — the ONLY exit from the full-screen compare loader.
+  //
+  // `styles.loadingFullscreen` is an absoluteFill overlay at zIndex 100 with
+  // `pointerEvents="auto"`, and Home is a bottom-tab ROOT — so it never
+  // unmounts on a tab switch and the abort at the unmount cleanup above was
+  // unreachable for a user staring at a stuck loader. Their only escape was
+  // backgrounding the app.
+  //
+  // Deliberately NOT paired with a client watchdog: M18 MB-perf-03 already
+  // bounds every compare path (COMPARE_TIMEOUT_MS 35s on the REST GET and the
+  // url/compare POST, STREAM_WATCHDOG_MS 60s on the flag-ON stream,
+  // IDENTIFY_TIMEOUT_MS 120s on camera identify). A second timer here would
+  // only race COMPARE_TIMEOUT_MS and could fire a false timeout on a compare
+  // that was about to succeed.
+  //
+  // Cancel does NOT refund the freemium credit — the backend consumes it at
+  // the gate (M13-37 atomic consume) and the default REST path has no
+  // disconnect-refund. That is a product call, not something the client can
+  // fix, so the copy stays neutral ("Cancel") and promises nothing.
+  const handleCancelCompare = useCallback(() => {
+    // Invalidate the in-flight run FIRST so a response already in the
+    // microtask queue can't slip past between the abort and setLoading.
+    compareRunRef.current += 1;
+    abortRef.current?.();
+    abortRef.current = null;
+    if (advanceTimerRef.current) {
+      clearTimeout(advanceTimerRef.current);
+      advanceTimerRef.current = null;
+    }
+    loadingStartedAtRef.current = null;
+    setLoading(false);
+    setStatusMessage('');
+    trackEvent('compare_cancelled', { mode: inputMode });
+  }, [inputMode]);
+
   useFocusEffect(
     useCallback(() => {
       checkServer();
@@ -293,6 +337,9 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     setLoading(true);
     setStatusMessage(t('results.loading.finding'));
     loadingStartedAtRef.current = Date.now();
+    // A4 — claim this compare's generation; every callback below is a no-op
+    // once handleCancelCompare (or a newer compare) has bumped the ref.
+    const runId = ++compareRunRef.current;
     let navigated = false;
     // Lane A-L3 Task L3.7 — start wall-time tracker at the user's
     // Compare tap. Subsequent stages (`ttfb`, `first_card_visible`,
@@ -326,12 +373,16 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
 
     subscribe({
       onStatus: (message) => {
+        if (runId !== compareRunRef.current) return;
         markTtfb();
         setStatusMessage(typeof message === 'string' ? message : String(message));
       },
       onSpecs: () => markTtfb(),
       onPrices: () => markTtfb(),
       onComplete: async (data) => {
+        // A4 — cancelled/superseded run: never increment, never navigate,
+        // never re-open the loader the user just dismissed.
+        if (runId !== compareRunRef.current) return;
         markTtfb();
         abortRef.current = null;
         setStatusMessage('');
@@ -361,6 +412,11 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         }
       },
       onError: (error: any) => {
+        // A4 — a cancelled run must not raise an Alert over the Home screen
+        // the user just got back to. (The transports already swallow
+        // AbortError/CanceledError, so this is belt-and-braces for a
+        // superseded run and for any transport that reports differently.)
+        if (runId !== compareRunRef.current) return;
         abortRef.current = null;
         // Cancel any pending floor timer so a failed compare can never
         // silently navigate to Results after the 1.2s floor expires.
@@ -427,6 +483,12 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
 
     setLoading(true);
     loadingStartedAtRef.current = Date.now();
+    // A4 — claim this compare's generation and publish a real abort handle.
+    // Before this the URL path set no abortRef at all, so neither the
+    // unmount cleanup nor the new cancel control could stop it.
+    const runId = ++compareRunRef.current;
+    const controller = new AbortController();
+    abortRef.current = () => controller.abort();
     try {
       const response = await api.post(
         '/api/v1/url/compare',
@@ -439,8 +501,12 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         },
         // M18 MB-perf-03 — compare-class per-call deadline (was the global
         // 120s, 4x the backend's 30s hard cap).
-        { timeout: COMPARE_TIMEOUT_MS }
+        { timeout: COMPARE_TIMEOUT_MS, signal: controller.signal }
       );
+      // A4 — cancelled/superseded run: drop the response on the floor. The
+      // abort above races the resolution, so this guard is the real fence.
+      if (runId !== compareRunRef.current) return;
+      abortRef.current = null;
       if (response.data.success) {
         await increment();
         // Loader stays mounted until navigateToResultsWithFloor's
@@ -452,6 +518,10 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         Alert.alert(t('common.error'), response.data.error || t('home.errors.comparison'));
       }
     } catch (error: any) {
+      // A4 — a cancelled run swallows its own CanceledError: no Alert, no
+      // loader churn on a screen the user has already returned to.
+      if (runId !== compareRunRef.current) return;
+      abortRef.current = null;
       // Cancel any pending floor timer so a failed URL compare can
       // never silently navigate to Results after the 1.2s floor expires.
       if (advanceTimerRef.current) {
@@ -905,6 +975,20 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
             caption={statusMessage || t('results.loading.finding')}
             testID="home-loading-screen"
           />
+          {/* A4 — the loader's only exit. Bottom-CENTERED on purpose:
+              alignSelf:'center' + textAlign:'center' carry no writing
+              direction, so the affordance sits identically in LTR and RTL
+              with no start/end token to get backwards. */}
+          <TouchableOpacity
+            onPress={handleCancelCompare}
+            accessibilityRole="button"
+            accessibilityLabel={t('home.loading.cancel_a11y')}
+            hitSlop={{ top: 12, bottom: 12, left: 16, right: 16 }}
+            style={styles.loadingCancel}
+            testID="home-loading-cancel"
+          >
+            <Text style={styles.loadingCancelText}>{t('common.cancel')}</Text>
+          </TouchableOpacity>
         </View>
       ) : null}
     </SafeAreaView>
@@ -1248,6 +1332,20 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bg.primary,
     zIndex: 100,
     elevation: 100,
+  },
+  // A4 — RTL-neutral by construction: no left/right/start/end offsets, only
+  // `alignSelf: 'center'`. Keep it that way if this ever moves.
+  loadingCancel: {
+    position: 'absolute',
+    bottom: spacing['2xl'],
+    alignSelf: 'center',
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.xl,
+  },
+  loadingCancelText: {
+    ...typography.bodyEmphasis,
+    color: colors.text.secondary,
+    textAlign: 'center',
   },
 });
 
