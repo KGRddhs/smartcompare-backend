@@ -210,6 +210,44 @@ def price_cache_ttl(price: Optional[Dict[str, Any]]) -> int:
     return GENUINE_PRICE_CACHE_TTL if is_genuine_price(price) else PRICE_CACHE_TTL
 
 
+def l2_promotion_remaining_ttl_enabled() -> bool:
+    """Issue #57 — True iff an L2 (DB) price row promoted into L1 (Redis) is given
+    only its REMAINING freshness instead of a full TTL computed from now
+    (default OFF).
+
+    The defect: `_get_price`'s L2->L1 promotion writes
+    `price_cache_ttl(db_price)` — a FULL 7d (genuine) / 24h (converted,
+    estimated) window measured from the moment of the promotion — while
+    `product_data_service.get_cached_price` has already admitted a row aged up to
+    that SAME window (`_price_row_fresh`: `GENUINE_PRICE_DB_TTL` / `PRICE_DB_TTL`,
+    which read the identical env knobs). A 6.9d-old genuine row is therefore
+    re-promoted for another 7d and served to ~14d of total age — double its
+    documented window; a converted/estimated row reaches ~48h.
+
+    Flag ON: the promotion TTL becomes `price_cache_ttl(row) - row_age`, and a
+    row with nothing left (age >= its window, only reachable on a clock skew or
+    an env TTL shrink between the write and the read) is SERVED for this request
+    but NOT promoted — writing a zero/negative TTL to Redis is never correct.
+    ON therefore only ever SHORTENS an L1 lifetime; it can neither widen a
+    window, nor promote something the `_promote` gate refused, nor change what
+    this request returns.
+
+    Flag OFF: `get_cached_price` stamps no age (no extra key on the returned
+    price, no extra `fetched_at` parse) and the promotion writes the same full
+    `price_cache_ttl(db_price)` it always did — byte-identical to pre-#57.
+
+    ONE lever for both halves (the stamp at L2 and the subtraction at the
+    promotion) because they are one defect: the stamp alone changes nothing, and
+    the subtraction alone has no age to subtract.
+
+    Read PER CALL from `os.getenv` (the `exact_gate_enabled` idiom) so Railway
+    flips it without a restart; never cached at import.
+    """
+    return os.getenv("ENABLE_L2_PROMOTION_REMAINING_TTL", "").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
 def genuine_clobber_guard_enabled() -> bool:
     """Issue #54 — True iff a genuine price is protected from being clobbered by a
     concurrently-resolving Tier-3 GPT estimate, at BOTH cache layers (default OFF).
