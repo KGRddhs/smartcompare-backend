@@ -63,6 +63,10 @@ import {
   COMPARE_TIMEOUT_MS,
 } from '../services/api';
 import api from '../services/api';
+// A11 — code->copy map for failed comparisons. Deliberately NOT re-exported
+// from services/api so this stays importable (and testable) without the
+// network surface.
+import { friendlyErrorKey } from '../services/errorCopy';
 import { getSavedUser, User } from '../services/authService';
 import { isUsageLimitError, getUsageLimitDetail } from '../services/usageService';
 import CategorySelector from '../components/CategorySelector';
@@ -386,17 +390,18 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
           Alert.alert(t('common.error'), t('home.errors.timeout'));
           return;
         }
-        // M18 MB-contract-02 — when the backend sent a STRUCTURED code we
-        // did not recognize above, never render error.message (it may be a
-        // raw backend string, e.g. an SSE error event's str(e)); fall back
-        // to the neutral i18n copy instead. Codeless errors keep the
-        // legacy message fallback.
-        Alert.alert(
-          t('common.error'),
-          parsed.code
-            ? t('home.errors.comparison')
-            : error.message || t('home.errors.comparison')
-        );
+        // M18 MB-contract-02 + A11 — copy is chosen by CODE, on BOTH arms.
+        // MB-contract-02 stopped the coded arm rendering error.message; the
+        // codeless arm still did, so a Railway edge 502 / JSON-parse failure
+        // (no envelope => parseApiError falls through to the axios string)
+        // rendered "Request failed with status code 502" — a raw transport
+        // string carrying the forbidden token "failed". friendlyErrorKey is
+        // total, so a null code lands on the same neutral copy and NO branch
+        // can render a raw string. It also finally consumes the backend's
+        // structured code (INSUFFICIENT_DATA / RATE_LIMITED get their own
+        // guidance instead of the generic "try with brand or model", which
+        // told a rate-limited user to retype rather than wait).
+        Alert.alert(t('common.error'), t(friendlyErrorKey(parsed.code)));
       },
     });
   };
@@ -467,7 +472,13 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         // Genuine-BH bundle (D2) — soft timeout copy, never the backend string.
         Alert.alert(t('common.error'), t('home.errors.timeout'));
       } else {
-        Alert.alert(t('common.error'), parsed.message);
+        // A11 — was `Alert.alert(t('common.error'), parsed.message)`, i.e.
+        // UNCONDITIONALLY the parsed message. That made the URL path the
+        // WEAKER of the two compare paths after M18 MB-contract-02 hardened
+        // the text path: parseApiError falls through to `error?.message`
+        // when there is no envelope, so this leaked the raw axios string
+        // with no code guard at all. Both paths now share one code->copy map.
+        Alert.alert(t('common.error'), t(friendlyErrorKey(parsed.code)));
       }
     }
   };

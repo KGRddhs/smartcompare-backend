@@ -906,6 +906,12 @@ export function parseApiError(error: any): { message: string; code: string | nul
   return { message: 'Something went wrong', code: rawCode };
 }
 
+// A11 — the code->copy map that every caller of `parseApiError` must use
+// instead of rendering `.message`. It lives in `./errorCopy` (zero imports)
+// so a screen test can exercise the REAL map while still mocking this
+// module's network surface. See the header there for why `.message` is
+// never render input.
+
 export async function shareComparison(comparisonId: string): Promise<{ share_token: string; share_url: string }> {
   const response = await api.post(`/api/v1/share/${comparisonId}`);
   return response.data;

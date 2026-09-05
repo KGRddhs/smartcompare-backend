@@ -112,6 +112,8 @@
   "home.errors.camera": "صوّر مرّة ثانية — مع تركيز أوضح.",
   "home.errors.connection": "نُعيد الاتصال…",
   "home.errors.comparison": "نتيجة أدقّ قادمة — جرّب باسم العلامة أو الطراز.",
+  "home.errors.insufficientData": "البيانات قليلة عن هذا الزوج — جرّب منتجين مع اسم العلامة والطراز.",
+  "home.errors.rateLimited": "عدد المقارنات كبير الآن — أمهلها لحظة ثم اضغط.",
   "home.errors.timeout": "ما زلنا نجمع الأسعار — أمهلها لحظة ثم اضغط مجددًا.",
   "home.limit.max_title": "هذا يكفي حالياً",
   "home.limit.max_body": "قارن حتى {{max}} منتجات في المرّة.",
