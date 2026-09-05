@@ -620,6 +620,44 @@ export function streamComparison(
           watchdogTimer = null;
         }
       };
+      // A7 — TERMINAL DISPATCH, FIRST-WINS. `settle_complete` and `complete`
+      // are BOTH terminal: the backend yields them back to back carrying the
+      // SAME payload object, and `text_routes.py` documents `complete` as
+      // backward compatibility for current EAS builds, "remove in Bundle F".
+      // Routing only `complete` therefore (a) left `sawTerminal` false and the
+      // watchdog armed on the settle_complete frame, so a transport failure in
+      // the gap between the two wire writes fell through to a SECOND full
+      // backend compare — the exact double-spend the #118 latch exists to
+      // prevent — and (b) would deliver NO result at all the day the duplicate
+      // is deleted server-side. Latching first-wins (never last-wins) keeps
+      // today's behaviour byte-identical while both events coexist: the first
+      // final payload is dispatched exactly once, the duplicate is ignored,
+      // and the invariant survives the two diverging later.
+      const dispatchTerminal = (parsed: any) => {
+        if (sawTerminal) return;
+        // Genuine-BH bundle (D2) — a terminal event can arrive with
+        // success:false + a timeout code when the stream hit the hard cap.
+        // Route it through onError with a synthetic axios-shaped error so
+        // HomeScreen's unified error path substitutes the friendly
+        // results.timeout.* copy (never the backend string). The partial
+        // specs/prices already streamed remain rendered by the loading view;
+        // we do NOT discard them.
+        if (parsed && parsed.success === false) {
+          const code = parsed.code || parsed?.metadata?.code || null;
+          callbacks.onError?.(
+            Object.assign(new Error('stream_incomplete'), {
+              response: { status: 503, data: { code, error: parsed.error } },
+            })
+          );
+        } else {
+          callbacks.onComplete?.(parsed);
+        }
+        sawTerminal = true;
+        // Disarm the watchdog — a delivered result must never be
+        // followed by a spurious late timeout (and the settle
+        // drain may legitimately outlive STREAM_WATCHDOG_MS).
+        clearWatchdog();
+      };
       try {
         const { getToken } = require('./authService');
         const token = await getToken();
@@ -683,34 +721,18 @@ export function streamComparison(
                 case 'scores': callbacks.onScores?.(parsed); break;
                 case 'verdict': callbacks.onVerdict?.(parsed); break;
                 case 'complete':
-                  // Genuine-BH bundle (D2) — a complete event can arrive with
-                  // success:false + a timeout code when the stream hit the hard
-                  // cap. Route it through onError with a synthetic axios-shaped
-                  // error so HomeScreen's unified error path substitutes the
-                  // friendly results.timeout.* copy (never the backend string).
-                  // The partial specs/prices already streamed remain rendered
-                  // by the loading view; we do NOT discard them.
-                  if (parsed && parsed.success === false) {
-                    const code = parsed.code || parsed?.metadata?.code || null;
-                    callbacks.onError?.(
-                      Object.assign(new Error('stream_incomplete'), {
-                        response: { status: 503, data: { code, error: parsed.error } },
-                      })
-                    );
-                  } else {
-                    callbacks.onComplete?.(parsed);
-                  }
-                  sawTerminal = true;
-                  // Disarm the watchdog — a delivered result must never be
-                  // followed by a spurious late timeout (and the settle
-                  // drain may legitimately outlive STREAM_WATCHDOG_MS).
-                  clearWatchdog();
+                  dispatchTerminal(parsed);
                   break;
                 // Bundle E § Decision 8 — settle-window events.
                 case 'first_paint': callbacks.onFirstPaint?.(parsed); break;
                 case 'settle_update': callbacks.onSettleUpdate?.(parsed); break;
                 case 'confidence_upgrade': callbacks.onConfidenceUpgrade?.(parsed); break;
-                case 'settle_complete': callbacks.onSettleComplete?.(parsed); break;
+                case 'settle_complete':
+                  // The settle-window observer still sees every settle_complete;
+                  // the terminal dispatch below is what latches (A7).
+                  callbacks.onSettleComplete?.(parsed);
+                  dispatchTerminal(parsed);
+                  break;
                 case 'error':
                   // M18 MB-contract-02 — mirror the complete-event pattern:
                   // preserve the backend's structured code/layer via a
