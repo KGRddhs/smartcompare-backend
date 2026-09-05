@@ -857,7 +857,16 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         {canCompare && (
           <HomeEditorialSections
             onPressVerdict={(comparisonId) =>
-              navigation.navigate('Results' as any, { from_history: comparisonId } as any)
+              // A18 — the Smart-pick "View verdict" CTA used to pass an
+              // invented `from_history` param. `RootStackParamList.Results`
+              // has no such key and ResultsScreen never read it, so the tap
+              // landed on `results-empty-state` ("No comparison loaded")
+              // 100% of the time. `comparison_id` is the param ResultsScreen
+              // actually consumes (its getComparison() fetch effect), the
+              // same shape HistoryScreen has always used. Casts dropped on
+              // purpose: an un-cast payload is type-checked against the
+              // route, so a future key typo fails `tsc` instead of shipping.
+              navigation.navigate('Results', { comparison_id: comparisonId })
             }
             onPickCategory={(cat) => {
               setSelectedCategory(cat as any);

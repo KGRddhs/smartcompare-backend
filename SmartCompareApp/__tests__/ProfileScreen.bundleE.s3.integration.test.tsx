@@ -52,9 +52,12 @@ jest.mock('../src/services/authService', () => ({
 jest.mock('../src/components/ProfileEditorialSections', () => {
   const ReactRequired = require('react');
   return {
-    RecentDecisionsRow: () =>
+    // A18 — forward onItemPress so the recent-decision tap's navigate
+    // payload is assertable without the real row's network fetch.
+    RecentDecisionsRow: ({ onItemPress }: any) =>
       ReactRequired.createElement('View', {
         testID: 'mock-recent-decisions-row',
+        onItemPress,
       }),
     PrioritiesInline: ({ onTunePress }: any) =>
       ReactRequired.createElement(
@@ -428,5 +431,39 @@ describe('ProfileScreen S3 integration — null cohort defensive paths', () => {
     const rendered = render(<ProfileScreen {...props} />);
     // Logout row should still render even with null preferences.
     expect(rendered.getByTestId('profile-row-logout')).toBeTruthy();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A18 — recent-decision tap must hand ResultsScreen a param it reads.
+// Before the fix this navigate carried `from_history`, which is absent from
+// RootStackParamList.Results and which ResultsScreen never destructures, so
+// re-opening a decision from Profile rendered `results-empty-state`
+// ("No comparison loaded") every single time.
+// ---------------------------------------------------------------------------
+describe('ProfileScreen — recent-decision re-open param (A18)', () => {
+  it('navigates to Results with comparison_id', () => {
+    const props = makeProps();
+    const rendered = render(<ProfileScreen {...props} />);
+    const row = rendered.getByTestId('mock-recent-decisions-row');
+    row.props.onItemPress('cmp-a18');
+    expect(props.navigation.navigate).toHaveBeenCalledWith('Results', {
+      comparison_id: 'cmp-a18',
+    });
+  });
+
+  it('emits ONLY params ResultsScreen actually consumes', () => {
+    const props = makeProps();
+    const rendered = render(<ProfileScreen {...props} />);
+    rendered.getByTestId('mock-recent-decisions-row').props.onItemPress('cmp-a18');
+    const call = (props.navigation.navigate as jest.Mock).mock.calls.find(
+      (c: any[]) => c[0] === 'Results',
+    );
+    expect(call).toBeTruthy();
+    // The three shapes ResultsScreen destructures off route.params.
+    const CONSUMED = ['result', 'comparison_id', 'vision_products'];
+    for (const key of Object.keys(call![1])) {
+      expect(CONSUMED).toContain(key);
+    }
   });
 });
