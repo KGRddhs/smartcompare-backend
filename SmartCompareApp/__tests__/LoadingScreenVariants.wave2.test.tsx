@@ -121,7 +121,11 @@ describe('LoadingScreenVariants — Wave 2 default sections (comparison mode)', 
     expect(queryByTestId('loading-tips')).toBeTruthy();
   });
 
-  it('cycles stage status every 900ms (pending → active → done)', () => {
+  // A2 (2026-09-05): the cadence moved off a flat 900ms metronome onto the
+  // per-stage schedule DEFAULT_COMPARISON_STAGE_DONE_AT_MS =
+  // [1200, 4200, 12000, 19500, 26000]. The walk contract — pending → active
+  // → done, one stage at a time — is unchanged.
+  it('walks stage status one at a time on the per-stage schedule (pending → active → done)', () => {
     const { getByTestId } = render(
       <LoadingScreenVariants
         variant="concentric"
@@ -134,17 +138,17 @@ describe('LoadingScreenVariants — Wave 2 default sections (comparison mode)', 
     expect(getByTestId('stage-0-icon').props.accessibilityLabel).toBe('active');
     expect(getByTestId('stage-1-icon').props.accessibilityLabel).toBe('pending');
 
-    // After one tick (900ms) stage 0 → done, stage 1 → active, rest pending.
+    // After the first step (1200ms) stage 0 → done, stage 1 → active.
     act(() => {
-      jest.advanceTimersByTime(900);
+      jest.advanceTimersByTime(1200);
     });
     expect(getByTestId('stage-0-icon').props.accessibilityLabel).toBe('done');
     expect(getByTestId('stage-1-icon').props.accessibilityLabel).toBe('active');
     expect(getByTestId('stage-2-icon').props.accessibilityLabel).toBe('pending');
 
-    // After 5 ticks (4500ms total from mount) every stage is done.
+    // At 26,000ms total from mount every stage is done.
     act(() => {
-      jest.advanceTimersByTime(900 * 4);
+      jest.advanceTimersByTime(26000 - 1200);
     });
     expect(getByTestId('stage-0-icon').props.accessibilityLabel).toBe('done');
     expect(getByTestId('stage-4-icon').props.accessibilityLabel).toBe('done');

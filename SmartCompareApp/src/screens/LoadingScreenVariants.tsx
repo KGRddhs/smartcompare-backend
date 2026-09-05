@@ -92,11 +92,44 @@ interface Props {
 const DEFAULT_MIN_DISPLAY_MS = 3200;
 const DEFAULT_TIP_INTERVAL_MS = 3200;
 const DEFAULT_COUNTER_DURATION_MS = 2400;
-// Wave 2: default comparison-mode StageChecklist auto-cycles every
-// 900ms per JSX LoadingScreen.jsx:71. Each stage walks pending →
-// active → done at this cadence; the cycle restarts after every stage
-// is done so users in slow-backend territory never see a frozen list.
-const STAGE_CYCLE_MS = 900;
+// A2 — the derived comparison checklist is PACED TO THE REAL COMPARE,
+// not to a decorative 900ms metronome.
+//
+// It used to advance on a flat `STAGE_CYCLE_MS = 900` interval, so all
+// five emerald checkmarks — including "Cross-checking 25+ retailers" and
+// "Locking in your top match" — read DONE at t=4.5s while a cold compare
+// runs ~25-31s on prod. The loader stays mounted the whole time (see the
+// freeze note below), so the user then stared at a finished checklist for
+// another ~20-26 seconds. That is a claim the app cannot back: it says
+// the retailers have been checked when the request has not returned.
+//
+// Cumulative offsets (NOT a flat cadence) at which each stage lands its
+// check — the first two go fast so the list visibly moves the moment it
+// mounts, then the stages that genuinely dominate wall time stretch:
+//
+//   cursor 1 @  1.2s   "Understanding your query" done
+//   cursor 2 @  4.2s   "Reading specs" done
+//   cursor 3 @ 12.0s   "Cross-checking 25+ retailers" done
+//   cursor 4 @ 19.5s   "Analyzing reviews" done
+//   cursor 5 @ 26.0s   "Locking in your top match" done  <- the freeze
+//
+// 26s sits inside the 35s COMPARE_TIMEOUT_MS ceiling (api.ts) and past
+// the measured 24.5-31.5s cold envelope, so the last check no longer
+// lands before the work plausibly could. A FAST compare unmounts the
+// loader mid-walk, which is honest (work finished early) and already
+// safe — the effect clears its own timers on unmount.
+const DEFAULT_COMPARISON_STAGE_DONE_AT_MS = [1200, 4200, 12000, 19500, 26000];
+// A2 — the caption escalates on elapsed time so a long wait is narrated
+// instead of sitting on one static string for half a minute. `onStatus`
+// (the real SSE progress feed) is unreachable in the shipped client
+// while ENABLE_EXPO_FETCH_SSE is false, so there is nothing else moving
+// on this screen once the checklist freezes.
+const CAPTION_ESCALATE_1_MS = 8000;
+const CAPTION_ESCALATE_2_MS = 18000;
+const CAPTION_ESCALATION_KEYS = [
+  'loading.caption.still_checking',
+  'loading.caption.almost_there',
+];
 // Wave 2: default comparison-mode factoid card rotates every ~5s. The
 // LoadingTipsCarousel uses cross-fade internally so the rotation is
 // gentle (not a hard cut) — per "no scary copy / no jitter" rule.
@@ -177,14 +210,49 @@ export function LoadingScreenVariants({
   const stageCount = DEFAULT_COMPARISON_STAGE_KEYS.length;
   useEffect(() => {
     if (!shouldDeriveStages) return;
-    const id = setInterval(() => {
-      // Freeze at count — no wrap. React's setState bails when
-      // value === prev, so the interval naturally goes quiet past the
-      // freeze point (no extra re-renders).
-      setStageCursor((prev) => Math.min(prev + 1, stageCount));
-    }, STAGE_CYCLE_MS);
-    return () => clearInterval(id);
+    // A2 — one timeout PER STAGE, all armed at mount against the schedule
+    // above, instead of a flat repeating interval. Nothing is scheduled
+    // past the last offset, so the freeze costs no timer at all (the old
+    // interval kept firing into a setState that bailed).
+    const ids = DEFAULT_COMPARISON_STAGE_DONE_AT_MS.slice(0, stageCount).map(
+      (at, i) =>
+        setTimeout(() => {
+          // Freeze at count and never move backwards — no wrap. R3/Gate B:
+          // a modulo cycle made all five emerald checkmarks vanish back to
+          // pending 2-4x per comparison.
+          setStageCursor((prev) => Math.min(Math.max(prev, i + 1), stageCount));
+        }, at),
+    );
+    return () => ids.forEach(clearTimeout);
   }, [shouldDeriveStages, stageCount]);
+
+  // A2 — elapsed-time caption escalation. Phase 0 = the caller's caption,
+  // 1 at 8s, 2 at 18s. Comparison mode only: the onboarding caption is a
+  // 3.2s brand beat with nothing to escalate about.
+  const [captionPhase, setCaptionPhase] = useState(0);
+  useEffect(() => {
+    if (mode !== 'comparison') return;
+    const first = setTimeout(() => setCaptionPhase(1), CAPTION_ESCALATE_1_MS);
+    const second = setTimeout(() => setCaptionPhase(2), CAPTION_ESCALATE_2_MS);
+    return () => {
+      clearTimeout(first);
+      clearTimeout(second);
+    };
+  }, [mode]);
+
+  // The escalation is a STAND-IN for the dead progress feed, so it must
+  // yield the moment a real one appears: if the caller ever updates the
+  // caption prop (an `onStatus` message once ENABLE_EXPO_FETCH_SSE is on,
+  // per #118), the caller's live string wins from then on.
+  const mountCaptionRef = useRef(caption);
+  const callerCaptionIsStatic = caption === mountCaptionRef.current;
+  const effectiveCaption = useMemo(() => {
+    if (mode !== 'comparison' || !caption) return caption;
+    if (!callerCaptionIsStatic || captionPhase === 0) return caption;
+    return t(CAPTION_ESCALATION_KEYS[captionPhase - 1], {
+      defaultValue: caption,
+    });
+  }, [mode, caption, callerCaptionIsStatic, captionPhase, t]);
 
   // Effective stages — caller override OR derived comparison defaults.
   const effectiveStages = useMemo<Stage[] | undefined>(() => {
@@ -267,9 +335,9 @@ export function LoadingScreenVariants({
           {/* Y.B Bundle D rhythm: caption below the counter chip
               ("Loading your comparison" / "Building your shopping
               advisor"). Renders only when caption is supplied. */}
-          {caption ? (
+          {effectiveCaption ? (
             <Text style={styles.caption} testID="loading-caption">
-              {caption}
+              {effectiveCaption}
             </Text>
           ) : null}
 
