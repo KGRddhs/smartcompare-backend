@@ -892,6 +892,7 @@
   "auth.emailSignIn": "البريد الإلكتروني",
   "auth.googleFailed": "لم يكتمل تسجيل الدخول عبر Google",
   "auth.loginFailed": "لم يكتمل تسجيل الدخول",
+  "auth.signInTimeout": "لحظة — تسجيل الدخول يستغرق وقتاً. اضغط لإعادة المحاولة.",
   "auth.newHere": "جديد هنا؟ ",
   "auth.or": "أو",
   "auth.passwordRequired": "كلمة المرور مطلوبة",

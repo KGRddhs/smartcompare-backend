@@ -895,6 +895,7 @@
   "auth.emailSignIn": "Email",
   "auth.googleFailed": "Google sign-in failed",
   "auth.loginFailed": "Sign-in could not complete",
+  "auth.signInTimeout": "Hold on — sign-in is taking a moment. Tap to retry.",
   "auth.newHere": "New here? ",
   "auth.or": "OR",
   "auth.passwordRequired": "Password is required",

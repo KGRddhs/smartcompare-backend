@@ -127,7 +127,10 @@ export default function RegisterScreen({ navigation, route, onRegisterSuccess }:
       if (result.success) {
         onRegisterSuccess();
       } else if (result.error !== 'Sign-in cancelled') {
-        setError(result.error || 'Google sign-in failed');
+        // A8: `errorKey` wins over `error` — the service's `error` strings are
+        // English-only diagnostics, so a named outcome (a sign-in deadline)
+        // travels as a key and renders localized, retryable copy.
+        setError(result.errorKey ? t(result.errorKey) : result.error || 'Google sign-in failed');
       }
     } catch (err: any) {
       setError(parseApiError(err).message);
@@ -144,7 +147,8 @@ export default function RegisterScreen({ navigation, route, onRegisterSuccess }:
       if (result.success) {
         onRegisterSuccess();
       } else if (result.error !== 'Sign-in cancelled') {
-        setError(result.error || 'Apple sign-in failed');
+        // A8 — see handleGoogleSignIn.
+        setError(result.errorKey ? t(result.errorKey) : result.error || 'Apple sign-in failed');
       }
     } catch (err: any) {
       setError(parseApiError(err).message);
