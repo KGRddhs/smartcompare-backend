@@ -115,6 +115,8 @@
   "home.errors.camera": "Snap that one more time — sharper focus this round.",
   "home.errors.connection": "Reconnecting…",
   "home.errors.comparison": "Sharper match coming up — try with brand or model.",
+  "home.errors.insufficientData": "Thin data on that pair — swap in two products with brand and model.",
+  "home.errors.rateLimited": "Plenty of compares in flight — give it a moment, then tap.",
   "home.errors.timeout": "Still gathering prices — give it another tap in a moment.",
   "home.limit.max_title": "That's enough for now",
   "home.limit.max_body": "Compare up to {{max}} products at a time.",
