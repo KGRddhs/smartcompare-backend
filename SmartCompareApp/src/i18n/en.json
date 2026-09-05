@@ -118,6 +118,7 @@
   "home.errors.insufficientData": "Thin data on that pair — swap in two products with brand and model.",
   "home.errors.rateLimited": "Plenty of compares in flight — give it a moment, then tap.",
   "home.errors.timeout": "Still gathering prices — give it another tap in a moment.",
+  "home.loading.cancel_a11y": "Cancel this comparison",
   "home.limit.max_title": "That's enough for now",
   "home.limit.max_body": "Compare up to {{max}} products at a time.",
   "home.limit.rate_title": "Take a breath",
