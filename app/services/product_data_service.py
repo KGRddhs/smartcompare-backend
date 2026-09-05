@@ -29,6 +29,32 @@ GENUINE_PRICE_DB_TTL = timedelta(
     seconds=int(_os.getenv("GENUINE_PRICE_CACHE_TTL_SECONDS", str(7 * 24 * 60 * 60)))
 )
 
+# Issue #54 — how many recent `product_prices` rows the L2 read inspects when the
+# clobber guard is ON. `product_prices` is append-only (save_price is a plain
+# insert, no dedup), so a Tier-3 estimate row appended after a genuine one becomes
+# the newest row and hides a genuine row that is still inside its OWN 7d window.
+# Scanning a short window lets the selector prefer the genuine row. Deliberately
+# small: 5 rows is one extra page of a `fetched_at desc` read, not a table scan,
+# and it does NOT widen any freshness window — every row still has to pass
+# `_price_row_fresh` for its own method.
+_L2_PRICE_ROW_SCAN = 5
+
+
+def _genuine_clobber_guard_enabled() -> bool:
+    """Issue #54 — the L2 half of `price_service.genuine_clobber_guard_enabled`.
+
+    Delegates to the ONE definition in price_service (imported lazily, exactly
+    like `_price_row_fresh` imports `_GENUINE_BH_SOURCE_METHODS`, so this module
+    never grows a module-level dependency on the price cascade). Fail-CLOSED: if
+    the import raises, the guard reads OFF and `get_cached_price` keeps its
+    pre-#54 behaviour. Never cached — the underlying helper reads os.getenv per
+    call so a Railway flip needs no restart."""
+    try:
+        from app.services.price_service import genuine_clobber_guard_enabled
+    except Exception:  # noqa: BLE001 — never let the import change the read path
+        return False
+    return genuine_clobber_guard_enabled()
+
 
 def _title_persist_enabled() -> bool:
     """Persist + rehydrate the resolved listing identity (title + in_stock, and
@@ -63,6 +89,58 @@ def _price_row_fresh(source_method: Optional[str], age: timedelta) -> bool:
         except Exception:  # noqa: BLE001 — never let the import block the read
             pass
     return age <= PRICE_DB_TTL
+
+
+def _select_price_row(rows: list, now: datetime) -> Optional[Dict[str, Any]]:
+    """Issue #54 — pick which of the recent `product_prices` rows the L2 read serves.
+
+    Rule, in order:
+      1. Drop every row that is NOT fresh for its own `source_method`
+         (`_price_row_fresh` — genuine 7d, converted/estimated 24h). No window is
+         widened here; a row that used to be rejected is still rejected.
+      2. Of the survivors, return the NEWEST genuine-method row.
+      3. If none is genuine, return the newest survivor (today's answer).
+      4. Nothing fresh -> None (today's answer).
+
+    Why: `product_prices` is append-only, so an estimate row written after a
+    genuine one is newest and used to win — serving a 12h guess over a real
+    Bahrain shelf price, and then serving NOTHING once the estimate aged past 24h
+    while a genuine row inside its 7d window sat one position deeper.
+
+    Genuineness is `price_service.is_genuine_source_method` — the SAME predicate
+    the L1 TTL policy branches on, imported (never re-derived: re-deriving it is
+    the drift defect tracked in #67). Pure decision, unit-tested without Supabase.
+    Ordering is recomputed here rather than trusted from the query, so the helper
+    is correct for any input order; unparseable/missing `fetched_at` rows are
+    skipped rather than raising."""
+    try:
+        from app.services.price_service import is_genuine_source_method
+    except Exception:  # noqa: BLE001 — never let the import block the read
+        def is_genuine_source_method(_sm):  # type: ignore[misc]
+            return False
+
+    fresh = []
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+        raw = row.get("fetched_at")
+        if not raw:
+            continue
+        try:
+            fetched_at = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+            age = now - fetched_at
+        except Exception:  # noqa: BLE001 — a malformed row is skipped, not fatal
+            continue
+        if _price_row_fresh(row.get("source_method"), age):
+            fresh.append((fetched_at, row))
+
+    if not fresh:
+        return None
+    fresh.sort(key=lambda pair: pair[0], reverse=True)
+    for _fetched_at, row in fresh:
+        if is_genuine_source_method(row.get("source_method")):
+            return row
+    return fresh[0][1]
 
 
 async def get_cached_specs(product_key: str) -> Optional[Dict[str, Any]]:
@@ -126,24 +204,35 @@ async def get_cached_price(product_key: str, region: str) -> Optional[Dict[str, 
             # so a DB-served price is SKU- AND stock-verifiable. Gated by the SAME
             # flag as title so flag-OFF is byte-identical (no extra SELECT cols).
             cols += ", brand, in_stock"
+        # Issue #54 — flag OFF reads exactly ONE row and applies the freshness
+        # check to it, byte-identically to the pre-#54 code. Flag ON reads a short
+        # `fetched_at desc` window so `_select_price_row` can prefer a still-fresh
+        # genuine row over a newer estimate row appended on top of it.
+        guard_on = _genuine_clobber_guard_enabled()
+        row_limit = _L2_PRICE_ROW_SCAN if guard_on else 1
         response = await run_db(lambda: (
             client.table("product_prices")
             .select(cols)
             .eq("product_key", product_key)
             .eq("region", region)
             .order("fetched_at", desc=True)
-            .limit(1)
+            .limit(row_limit)
             .execute()
         ))
         if not response.data:
             return None
-        row = response.data[0]
-        fetched_at = datetime.fromisoformat(row["fetched_at"].replace("Z", "+00:00"))
-        # Faithful-Results Phase 1 — freshness window depends on source_method:
-        # genuine BH price = 7d, converted/estimated = 24h.
-        age = datetime.now(timezone.utc) - fetched_at
-        if not _price_row_fresh(row.get("source_method"), age):
-            return None
+        if guard_on:
+            row = _select_price_row(response.data, datetime.now(timezone.utc))
+            if row is None:
+                return None
+        else:
+            row = response.data[0]
+            fetched_at = datetime.fromisoformat(row["fetched_at"].replace("Z", "+00:00"))
+            # Faithful-Results Phase 1 — freshness window depends on source_method:
+            # genuine BH price = 7d, converted/estimated = 24h.
+            age = datetime.now(timezone.utc) - fetched_at
+            if not _price_row_fresh(row.get("source_method"), age):
+                return None
         result = {
             "amount": float(row["amount"]) if row["amount"] is not None else None,
             "currency": row["currency"],
