@@ -148,6 +148,29 @@ GENUINE_PRICE_CACHE_TTL = int(os.getenv("GENUINE_PRICE_CACHE_TTL_SECONDS", str(7
 NEGATIVE_PRICE_CACHE_TTL = int(os.getenv("NEGATIVE_PRICE_CACHE_TTL_SECONDS", str(30 * 24 * 60 * 60)))  # 30 days
 
 
+def is_genuine_price(price: Optional[Dict[str, Any]]) -> bool:
+    """True iff a resolved price carries a GENUINE Bahrain-shelf source method.
+
+    This is the predicate `price_cache_ttl` has always encoded inline, hoisted so
+    the "is this genuine?" question has ONE answer in the codebase (issue #53
+    needs the same rule to decide whether a persist disproves a `nogenuine:`
+    sentinel — re-deriving it there would let the two drift).
+
+    Genuine iff: the input is a dict, its `source_method` is non-blank, it
+    contains NEITHER "converted" NOR "estimate" (defensive — a method carrying
+    either token is never genuine even if it also matches a genuine apex), and it
+    is a member of `_GENUINE_BH_SOURCE_METHODS`. `_GENUINE_BH_SOURCE_METHODS` is
+    defined further down the module, so it is resolved lazily at call time (same
+    pattern as `_showable_source_methods`).
+    """
+    if not isinstance(price, dict):
+        return False
+    sm = (price.get("source_method") or "").lower()
+    if not sm or "converted" in sm or "estimate" in sm:
+        return False
+    return sm in _GENUINE_BH_SOURCE_METHODS
+
+
 def price_cache_ttl(price: Optional[Dict[str, Any]]) -> int:
     """The cache TTL (seconds) for a resolved price, branched on source_method.
 
@@ -160,17 +183,11 @@ def price_cache_ttl(price: Optional[Dict[str, Any]]) -> int:
     NEVER treated as genuine even if it also matches a genuine token, and a
     missing/blank method or a non-dict input falls back to the short TTL (a price
     we can't vouch for as genuine should refresh sooner, not linger a week).
-    `_GENUINE_BH_SOURCE_METHODS` is defined further down the module, so it is
-    resolved lazily at call time (same pattern as `_showable_source_methods`).
+    That branch now lives in `is_genuine_price` (same rule, one definition); this
+    function is a pure re-expression of it and returns the identical TTL for
+    every input it ever did.
     """
-    if not isinstance(price, dict):
-        return PRICE_CACHE_TTL
-    sm = (price.get("source_method") or "").lower()
-    if not sm or "converted" in sm or "estimate" in sm:
-        return PRICE_CACHE_TTL
-    if sm in _GENUINE_BH_SOURCE_METHODS:
-        return GENUINE_PRICE_CACHE_TTL
-    return PRICE_CACHE_TTL
+    return GENUINE_PRICE_CACHE_TTL if is_genuine_price(price) else PRICE_CACHE_TTL
 
 
 def negative_cache_key(price_cache_key: str) -> str:

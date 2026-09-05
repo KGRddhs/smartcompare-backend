@@ -43,6 +43,9 @@ from app.services.cache_service import (
     get_cached,
     _redis_offload_enabled,
     set_cached,
+    # Issue #53 — a genuine persist must be able to DELETE the `nogenuine:`
+    # sentinel that a prior dead-end resolution wrote.
+    delete_cached,
     record_tier15_attempt,
     record_tier15_hit,
     record_price_outcome,
@@ -1009,6 +1012,45 @@ async def _cache_set_async(key: str, value, ttl):
     return set_cached(key, value, ttl)
 
 
+def _negcache_genuine_invalidation_enabled() -> bool:
+    """Issue #53 — True iff a GENUINE price persist also DELETES that key's
+    `nogenuine:` sentinel (default OFF).
+
+    The sentinel (`nogenuine:{price_cache_key}`, 30d) records a STRUCTURAL
+    genuine-BH dead-end so the expensive Tier-1.5 cascade is not re-run. Nothing
+    in `app/` has ever deleted one, so a genuine price resolved LATER (typically
+    by an off-clock `nocache=True` writer — the warmer, seed_zyte_luxury, the
+    nightly eval — which is exactly the mode that SKIPS the sentinel read) banks
+    7d at L1/L2 and leaves the 30d claim standing. On day 8 both genuine entries
+    lapse, the negcache read fires again, and the day-0 estimate is served for
+    another ~23 days even though a genuine BH source was proven reachable.
+
+    Dark by default because clearing the sentinel un-suppresses the scrape
+    cascade for that key: flag ON trades finite Serper/Firecrawl budget for a
+    correct price. Read PER CALL from ``os.getenv`` (copying
+    ``price_service.exact_gate_enabled``) so Railway can flip it without a
+    restart; with the flag OFF the delete is never even attempted, so the write
+    path is byte-identical to before the change.
+    """
+    return os.getenv("ENABLE_NEGCACHE_GENUINE_INVALIDATION", "").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
+async def _cache_delete_async(key: str):
+    """Issue #53 — the DELETE mirror of _cache_set_async / _cache_get_async.
+
+    References the module-level `delete_cached` in BOTH branches so a test
+    patching structured_comparison_service.delete_cached still intercepts it.
+    Offload flag OFF -> `delete_cached(...)` runs synchronously to completion
+    with NO scheduler yield (the return value is unused at the call site); ON ->
+    asyncio.to_thread runs the identical stateless Upstash POST off the loop.
+    """
+    if _redis_offload_enabled():
+        return await asyncio.to_thread(delete_cached, key)
+    return delete_cached(key)
+
+
 async def _provider_gate_ok_async(provider: str) -> bool:
     """M13-06 — one BATCHED off-loop read of a render provider's breaker+budget
     gate (was two separate inline blocking Upstash GETs per render candidate:
@@ -1174,6 +1216,10 @@ from app.services.price_service import (
     GENUINE_PRICE_CACHE_TTL,
     NEGATIVE_PRICE_CACHE_TTL,
     price_cache_ttl,
+    # Issue #53 — the SAME genuine/non-genuine predicate price_cache_ttl branches
+    # on, reused (never re-derived) to decide whether a persist disproves a
+    # `nogenuine:` sentinel.
+    is_genuine_price,
     # Task 1.4 — size-aware price cache key (no storage/size variant collision).
     build_size_aware_price_cache_key,
     size_variant_token,
@@ -5718,7 +5764,10 @@ class StructuredComparisonService:
                         # unverified/OOS/wrong-concentration luxury render can't poison the shared
                         # cache (coverage review D — was a raw set_cached bypass).
                         if should_cache_price(full_name, _zp, category):
-                            await _cache_set_async(cache_key, _zp, price_cache_ttl(_zp))
+                            # Issue #53 — bypass site 1 of 5: routed through the
+                            # shared writer so a genuine Zyte render clears the
+                            # key's `nogenuine:` sentinel too.
+                            await self._cache_price_and_clear_sentinel(cache_key, _zp)
                             self._save_price_to_db(cache_key, brand, name, variant, region, _zp)
                         _zp["_cached"] = False
                         logger.info(
@@ -6294,7 +6343,8 @@ class StructuredComparisonService:
                 # matching the request (the converted/page-scrape `best` does not pass
                 # through select_best on every path).
                 if should_cache_price(full_name, best, category):
-                    await _cache_set_async(cache_key, best, price_cache_ttl(best))
+                    # Issue #53 — bypass site 2 of 5 (BH adapter direct hit).
+                    await self._cache_price_and_clear_sentinel(cache_key, best)
                     self._save_price_to_db(cache_key, brand, name, variant, region, best)
                 best["_cached"] = False
                 logger.info(
@@ -7153,7 +7203,8 @@ class StructuredComparisonService:
                     # B6 — only cache under the request key when the resolved iHerb
                     # product's identity matches the request (defense-in-depth).
                     if should_cache_price(full_name, iherb_price, category):
-                        await _cache_set_async(cache_key, iherb_price, price_cache_ttl(iherb_price))
+                        # Issue #53 — bypass site 3 of 5 (iHerb direct).
+                        await self._cache_price_and_clear_sentinel(cache_key, iherb_price)
                     return iherb_price
 
                 iherb_task = search_web(f"{iherb_query} iherb price", num_results=5, country=iherb_cc)
@@ -7184,7 +7235,8 @@ class StructuredComparisonService:
                     _maybe_park_supplement(pharmacy_price)
                     # B6 — cache under the request key only on a resolved-identity match.
                     if should_cache_price(full_name, pharmacy_price, category):
-                        await _cache_set_async(cache_key, pharmacy_price, price_cache_ttl(pharmacy_price))
+                        # Issue #53 — bypass site 4 of 5 (BH pharmacy JSON-LD).
+                        await self._cache_price_and_clear_sentinel(cache_key, pharmacy_price)
                     return pharmacy_price
 
                 # --- Stage 3: page-scrape known supplement/pharmacy PDPs (bounded ~3s) ---
@@ -7239,7 +7291,8 @@ class StructuredComparisonService:
                         # should_cache_price, able to cache an OOS / no-url / wrong-variant price).
                         # Still RETURN it for display so the chokepoint pends an OOS/unverifiable one.
                         if should_cache_price(full_name, page_price, category):
-                            await _cache_set_async(cache_key, page_price, price_cache_ttl(page_price))
+                            # Issue #53 — bypass site 5 of 5 (supplement page-scrape).
+                            await self._cache_price_and_clear_sentinel(cache_key, page_price)
                         return page_price
 
                 combined_organic = iherb_organic + bh_organic
@@ -7675,8 +7728,43 @@ class StructuredComparisonService:
         product_data_service.save_price)."""
         if not should_cache_price(full_name, price_obj, category):
             return
-        await _cache_set_async(cache_key, price_obj, price_cache_ttl(price_obj))
+        await self._cache_price_and_clear_sentinel(cache_key, price_obj)
         self._save_price_to_db(cache_key, brand, name, variant, region, price_obj)
+
+    async def _cache_price_and_clear_sentinel(self, cache_key: str, price_obj) -> None:
+        """Issue #53 — the ONE L1 price write for a RESOLVED price: cache it at
+        its source_method-keyed TTL and, when it is GENUINE, delete that key's
+        `nogenuine:` sentinel.
+
+        Every genuine-price write site in `_get_price` routes through here
+        (`_persist_genuine_price` plus the five sites that bypass it: Zyte
+        render-tier, BH-adapter direct hit, iHerb, BH pharmacy, supplement
+        page-scrape), so the structural-dead-end claim dies wherever it is
+        disproven, not only on one path.
+
+        Invariants:
+          * The caller's identity gate (`should_cache_price`) stays OUTSIDE this
+            helper — a rejected price never reaches it, so an identity rejection
+            can neither cache nor clear the sentinel.
+          * Genuineness is `price_service.is_genuine_price` — the SAME predicate
+            `price_cache_ttl` branches on. A `converted_usd` / `estimated` /
+            unknown-method write caches as before and leaves any sentinel alone
+            (it has not disproven anything).
+          * Flag OFF -> exactly the single `_cache_set_async` call this replaced,
+            same argument, same ordering, nothing else attempted.
+          * Fail-open: a Redis-down / raising `delete_cached` is swallowed, same
+            convention as the sentinel WRITE path — the sentinel is an
+            optimization, never correctness, and must never block a price.
+        """
+        await _cache_set_async(cache_key, price_obj, price_cache_ttl(price_obj))
+        if not _negcache_genuine_invalidation_enabled():
+            return
+        if not is_genuine_price(price_obj):
+            return
+        try:
+            await _cache_delete_async(negative_cache_key(cache_key))
+        except Exception as e:  # noqa: BLE001 — never let the invalidation break a price
+            logger.debug(f"negative-cache invalidation skipped: {e}")
 
     def _save_price_to_db(self, cache_key: str, brand: str, name: str, variant: Optional[str], region: str, price: Dict):
         """Fire-and-forget save price to L2 DB.
