@@ -8250,14 +8250,65 @@ class StructuredComparisonService:
 # GCC REGIONAL PRICING
 # ============================================
 
+def _regional_prices_category_enabled() -> bool:
+    """ENABLE_REGIONAL_PRICES_CATEGORY (default OFF — ships DORMANT).
+
+    ``get_regional_prices`` (the resolver behind the public
+    ``GET /api/v1/text/prices/{product}``) fans out six ``_get_price`` calls
+    WITHOUT ``category``, so every region resolves under that parameter's
+    ``"other"`` default while the compare path resolves the same product under
+    its real category. That default drives three things inside ``_get_price``:
+    ``set_resolved_price_category`` (the per-task ContextVar every downstream
+    extractor reads), ``build_size_aware_price_cache_key(..., category=...)``,
+    and every ``should_cache_price(..., category)`` WRITE gate — whose
+    electronics accessory veto (``price_service`` ``_is_device_accessory``)
+    only fires when the category actually says ``electronics``. Under
+    ``"other"`` that veto is inert, so a charger/case listing resolved under a
+    phone query can be banked into the same keyspace compare later reads.
+
+    Flag ON: the category already inferred for the DISPLAY gate lower down is
+    hoisted above the fan-out and threaded into all six calls (coerced to the
+    parameter's own ``"other"`` default, since ``_infer_category_from_query``
+    returns ``Optional[str]``). This makes the write gate STRICTER on this
+    endpoint and aligns its key construction with compare's.
+
+    Side effect, ON only: for an electronics query carrying a bare cellular
+    generation ("5G"), ``size_variant_token(text, category)`` now drops that
+    token, so the resolved key changes for that narrow class. Previously
+    written ``other``-keyed entries are simply orphaned and expire on their own
+    TTL — no migration.
+
+    Flag OFF: ``category`` is not passed at all (not even as ``"other"``), so
+    the call is byte-identical to today's, and the display gate still receives
+    the raw ``Optional[str]`` inference it receives today. Read PER CALL from
+    os.getenv (the ``price_service.exact_gate_enabled`` idiom), never cached at
+    import.
+    """
+    return os.getenv("ENABLE_REGIONAL_PRICES_CATEGORY", "false").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
 async def get_regional_prices(
     brand: str, name: str, variant: Optional[str], search_query: str
 ) -> Dict[str, Any]:
     """Get prices across all GCC regions in parallel."""
     service = StructuredComparisonService()
+    # CORRECTNESS (#56) — one inference per call, hoisted ABOVE the fan-out so the
+    # resolve path and the display gate below agree on the category. Flag ON threads
+    # it into _get_price so this endpoint's cache key + should_cache_price write gate
+    # match the compare path's; flag OFF passes nothing (byte-identical call).
+    _category = _infer_category_from_query(search_query)
+    _resolve_kwargs: Dict[str, Any] = (
+        {"category": _category or "other"}
+        if _regional_prices_category_enabled()
+        else {}
+    )
     tasks = []
     for region in GCC_REGIONS.keys():
-        tasks.append(service._get_price(brand, name, variant, region, search_query))
+        tasks.append(
+            service._get_price(brand, name, variant, region, search_query, **_resolve_kwargs)
+        )
     results = await asyncio.gather(*tasks, return_exceptions=True)
     regional = {}
     best_price = None
@@ -8266,7 +8317,8 @@ async def get_regional_prices(
     # response surface; apply the SAME fail-closed exact backstop the compare
     # chokepoints use, so an OOS / non-PDP-url / non-exact resolved price is PENDED
     # here too (it must never ship its amount just because it bypassed compare).
-    _category = _infer_category_from_query(search_query)
+    # NOTE: `_category` above is deliberately the RAW Optional[str] here — the display
+    # gate must keep receiving exactly the value it receives today, `None` included.
     for region, result in zip(GCC_REGIONS.keys(), results):
         if isinstance(result, Exception):
             regional[region] = None
