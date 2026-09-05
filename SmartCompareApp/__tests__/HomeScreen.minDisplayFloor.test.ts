@@ -146,10 +146,11 @@ describe('HomeScreen min-display floor — source-level wiring (Task #54)', () =
     );
     expect((bareLiteralNav ?? []).length).toBe(0);
 
-    // The helper is the ONLY allowed `'Results' as any` call. Bundle E
-    // S3 redesign added a separate history-entry navigate with the
-    // `{from_history: ...}` shape — that's a distinct entry path (not
-    // a compare-success completion) and DOES NOT need the floor.
+    // The helper is the ONLY allowed `'Results' as any` call carrying a
+    // `{result}`. Bundle E S3 added a separate re-open navigate (the
+    // Smart-pick "View verdict" CTA) which since A18 carries the
+    // `{comparison_id: ...}` shape — a distinct entry path, not a
+    // compare-success completion, so it does not go through the helper.
     const helperShapedCalls = SOURCE.match(
       /navigation\.navigate\(['"]Results['"] as any/g
     );
@@ -163,16 +164,30 @@ describe('HomeScreen min-display floor — source-level wiring (Task #54)', () =
     expect((helperInternalNav ?? []).length).toBe(1);
   });
 
-  it('history-tap entry sidesteps the floor (distinct from compare success)', () => {
-    // Bundle E S3 — HomeEditorialSections.onPressVerdict navigates with
-    // a `from_history` param shape. This is documented as an exception
-    // to the floor rule: the entry isn't a comparison-completion (the
-    // result is already cached/fetched in History), so the brand moment
-    // doesn't need to land. Pinning the pattern keeps the exception
-    // explicit so future refactors can audit it.
-    const historyTapNav = SOURCE.match(
-      /navigation\.navigate\(['"]Results['"] as any,\s*\{\s*from_history\s*:/g
+  it('re-open entry sidesteps the HomeScreen floor (distinct from compare success)', () => {
+    // Bundle E S3 — HomeEditorialSections.onPressVerdict re-opens an
+    // existing comparison rather than completing one, so it does NOT go
+    // through HomeScreen's navigateToResultsWithFloor.
+    //
+    // A18 corrected two things here. (1) The pinned param name was
+    // `from_history`, which is not in RootStackParamList.Results and
+    // which ResultsScreen never reads — pinning it kept the dead-tap
+    // alive. The real re-open param is `comparison_id`. (2) The old
+    // rationale ("the result is already cached/fetched in History") was
+    // factually wrong: nothing pre-fetches it. ResultsScreen fetches via
+    // getComparison(id) and enforces its OWN 1.2s floor on that path, so
+    // the brand moment still lands — it is just owned by ResultsScreen,
+    // not by HomeScreen's helper.
+    const reopenNav = SOURCE.match(
+      /navigation\.navigate\(['"]Results['"],\s*\{\s*comparison_id\s*:/g
     );
-    expect((historyTapNav ?? []).length).toBe(1);
+    expect((reopenNav ?? []).length).toBe(1);
+    // And the dead param must never come back on any Results navigate.
+    // Whole-line comments are stripped first so this greps CODE, not the
+    // prose above (which necessarily names the param it forbids).
+    const CODE = SOURCE.split('\n')
+      .filter((line: string) => !line.trim().startsWith('//'))
+      .join('\n');
+    expect(CODE).not.toMatch(/from_history/);
   });
 });

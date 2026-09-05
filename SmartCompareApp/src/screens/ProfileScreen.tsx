@@ -413,7 +413,12 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
             surface. */}
         <RecentDecisionsRow
           onItemPress={(comparisonId) =>
-            navigation.navigate('Results', { from_history: comparisonId })
+            // A18 — same defect as HomeScreen's Smart-pick CTA: the
+            // recent-decision tap passed an invented `from_history` param
+            // that ResultsScreen never reads, so re-opening a decision from
+            // Profile dead-ended on the empty state. `comparison_id` is the
+            // param the fetch effect consumes.
+            navigation.navigate('Results', { comparison_id: comparisonId })
           }
           onSeeAll={() => navigation.navigate('HistoryTab' as never)}
           onEmptyCompareTap={() => navigation.navigate('HomeTab' as never)}
