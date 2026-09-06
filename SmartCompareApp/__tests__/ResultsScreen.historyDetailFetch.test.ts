@@ -52,9 +52,20 @@ describe('ResultsScreen — history detail fetch + 404 copy (Bundle D 1.F.5)', (
     expect(AR['results.emptyState.notFound']).not.toMatch(forbiddenAr);
   });
 
-  it('preserves the 1.2s min-display floor for the history → results path', () => {
-    // Design § 3: cached responses still show LoadingRings for 1.2s.
-    expect(SOURCE).toMatch(/minDisplayUntilRef/);
+  it('keeps a display floor on the history → results path, shortened for fast hits (A17)', () => {
+    // Design § 3 gave every path one 1.2s brand-moment floor. A17 split it:
+    // the camera path keeps 1200 (identify+compare outruns it anyway) while
+    // a history re-open — one GET of an already-persisted comparison — floors
+    // at HISTORY_FLOOR_MS and skips the wait entirely below
+    // HISTORY_FLOOR_SKIP_BELOW_MS, so a fast re-open is not taxed ~1s of dead
+    // wait. The floor is NOT deleted: a mid-speed hit still floors, which is
+    // what stops the rings flashing up and vanishing.
+    //
+    // The timings themselves are pinned on the clock, not on these strings,
+    // in ResultsScreen.historyFloor.a17.test.tsx.
+    expect(SOURCE).toMatch(/const\s+CAMERA_FLOOR_MS\s*=\s*1200/);
+    expect(SOURCE).toMatch(/const\s+HISTORY_FLOOR_MS\s*=\s*\d+/);
+    expect(SOURCE).toMatch(/HISTORY_FLOOR_SKIP_BELOW_MS/);
     expect(SOURCE).toMatch(/await\s+new\s+Promise\(\s*\(resolve\)\s*=>\s*setTimeout/);
   });
 });

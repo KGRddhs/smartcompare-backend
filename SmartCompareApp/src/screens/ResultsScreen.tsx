@@ -110,6 +110,25 @@ import { getSavedUser } from '../services/authService';
 
 type ResultsScreenProps = NativeStackScreenProps<RootStackParamList, 'Results'>;
 
+// M23 A17 — per-path display floors, both anchored to the load start.
+//
+// The camera path keeps the full 1.2s brand-moment floor (Qaren UX redesign
+// § 3). identify+compare is always multi-second there, so the floor has
+// already elapsed by the time the payload lands: it costs nothing and the
+// LoadingRings hero animation gets its full run.
+//
+// The history path re-opens a comparison the backend has ALREADY persisted,
+// so `getComparison` is one plain GET that often answers in well under a
+// second — and the same 1.2s deadline turned nearly the whole of it into
+// dead wait on a re-open. It now floors at HISTORY_FLOOR_MS instead, and a
+// response that lands under HISTORY_FLOOR_SKIP_BELOW_MS renders immediately:
+// the rings were never really on screen, so there is no brand moment to
+// protect. Anything slower than that still floors, which is what keeps a
+// mid-speed hit from flashing the rings up and yanking them away.
+const CAMERA_FLOOR_MS = 1200;
+const HISTORY_FLOOR_MS = 400;
+const HISTORY_FLOOR_SKIP_BELOW_MS = 300;
+
 export default function ResultsScreen({ route, navigation }: ResultsScreenProps) {
   const { t } = useTranslation();
   // Bundle E Task 0.1 — History → Results crash: deep-link / stale-cache
@@ -138,12 +157,16 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
   const handleRetry = () => {
     setLoadError(null);
     setLoadingResult(true);
-    minDisplayUntilRef.current = Date.now() + 1200;
+    // A17: re-arming the ANCHOR (not a baked deadline) is what keeps a retry
+    // on its own path's floor — a retried history fetch gets the history
+    // floor, a retried camera run gets the 1.2s one.
+    loadStartedAtRef.current = Date.now();
     setRetryNonce((n) => n + 1);
   };
-  // 1.2s brand-moment floor (Qaren UX redesign § 3) — even fast fetches
-  // wait this long so the LoadingRings hero animation lands.
-  const minDisplayUntilRef = useRef<number>(Date.now() + 1200);
+  // A17 — when the current load started (mount, or the last handleRetry).
+  // Each path derives its own deadline from this: mount + CAMERA_FLOOR_MS
+  // for the camera run, mount + HISTORY_FLOOR_MS for a history re-open.
+  const loadStartedAtRef = useRef<number>(Date.now());
   const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
   // Bundle C § 5b — which leg's "What we know" sheet is currently open.
   // `null` keeps the sheet closed; tapping a pill sets the leg.
@@ -181,8 +204,9 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
   const [lifetimeRemaining, setLifetimeRemaining] = useState<number | null>(null);
 
   // Bucket A bug 1 — History tap path. Fetch the full payload when only
-  // a comparison_id was passed. Respects the 1.2s brand-moment floor so
-  // the LoadingRings animation lands even on instant cache hits.
+  // a comparison_id was passed. A17: floors at HISTORY_FLOOR_MS, and skips
+  // the floor entirely when the server answered fast — see the constants
+  // above for why this path is not on the camera path's 1.2s deadline.
   useEffect(() => {
     const comparisonId = route?.params?.comparison_id;
     if (!comparisonId || result) return;
@@ -192,9 +216,14 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
       try {
         const { getComparison } = await import('../services/api');
         const data = await getComparison(comparisonId);
-        const remaining = minDisplayUntilRef.current - Date.now();
-        if (remaining > 0) {
-          await new Promise((resolve) => setTimeout(resolve, remaining));
+        // A17 — fast hit: render it. Only a load the user actually watched
+        // (> HISTORY_FLOOR_SKIP_BELOW_MS) is held to the short floor.
+        const elapsed = Date.now() - loadStartedAtRef.current;
+        if (elapsed > HISTORY_FLOOR_SKIP_BELOW_MS) {
+          const remaining = loadStartedAtRef.current + HISTORY_FLOOR_MS - Date.now();
+          if (remaining > 0) {
+            await new Promise((resolve) => setTimeout(resolve, remaining));
+          }
         }
         if (!cancelled) {
           setResult(data);
@@ -231,8 +260,9 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
   // Bucket A bug 2 — Camera capture path. ScanCamera passes a
   // vision_products: [uri0, uri1] array via React Nav; identifyFromImages
   // returns either action='comparison' (full ComparisonResult inline) or
-  // action='need_second_product' / error. Same 1.2s min-display floor as
-  // the history path so the LoadingRings hero animation lands.
+  // action='need_second_product' / error. Keeps the full 1.2s min-display
+  // floor (A17 shortened only the history path) so the LoadingRings hero
+  // animation lands — identify+compare outruns it anyway.
   useEffect(() => {
     const visionProducts = route?.params?.vision_products;
     if (!visionProducts || visionProducts.length < 2 || result) return;
@@ -244,7 +274,8 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
         const data: any = await identifyFromImages(visionProducts, 'bahrain');
 
         if (data?.action === 'comparison') {
-          const remaining = minDisplayUntilRef.current - Date.now();
+          // A17 — camera keeps the full 1.2s brand floor, unchanged.
+          const remaining = loadStartedAtRef.current + CAMERA_FLOOR_MS - Date.now();
           if (remaining > 0) {
             await new Promise((resolve) => setTimeout(resolve, remaining));
           }

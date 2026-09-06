@@ -65,10 +65,16 @@ describe('Bundle D contract — ResultsScreen', () => {
     expect(SRC).toMatch(/results\.emptyState\.title/);
   });
 
-  it('respects 1.2s min-display floor on cached comparison_id fetches', () => {
-    // ResultsScreen mirrors HomeScreen's MIN_LOADING_MS pattern via
-    // minDisplayUntilRef + remaining timeout (lines 172-175 today).
-    expect(SRC).toMatch(/minDisplayUntilRef/);
+  it('keeps a per-path min-display floor on the async entry shapes (A17)', () => {
+    // Was: one mount-anchored 1.2s deadline shared by both async paths.
+    // A17 split it — CAMERA_FLOOR_MS still 1200 for vision_products, a
+    // shorter HISTORY_FLOOR_MS (with a skip-below threshold) for a
+    // comparison_id re-open, both derived from one loadStartedAtRef anchor
+    // so handleRetry re-arms whichever path retried. Timings pinned on the
+    // clock in ResultsScreen.historyFloor.a17.test.tsx.
+    expect(SRC).toMatch(/const\s+CAMERA_FLOOR_MS\s*=\s*1200/);
+    expect(SRC).toMatch(/const\s+HISTORY_FLOOR_MS\s*=\s*\d+/);
+    expect(SRC).toMatch(/loadStartedAtRef/);
     expect(SRC).toMatch(/await\s+new\s+Promise\(\s*\(resolve\)\s*=>\s*setTimeout/);
   });
 

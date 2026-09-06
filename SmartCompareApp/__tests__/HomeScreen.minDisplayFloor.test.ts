@@ -175,9 +175,12 @@ describe('HomeScreen min-display floor — source-level wiring (Task #54)', () =
     // alive. The real re-open param is `comparison_id`. (2) The old
     // rationale ("the result is already cached/fetched in History") was
     // factually wrong: nothing pre-fetches it. ResultsScreen fetches via
-    // getComparison(id) and enforces its OWN 1.2s floor on that path, so
-    // the brand moment still lands — it is just owned by ResultsScreen,
-    // not by HomeScreen's helper.
+    // getComparison(id) and enforces its OWN floor on that path, so the
+    // brand moment still lands — it is just owned by ResultsScreen, not by
+    // HomeScreen's helper. (A17 later shortened that floor to
+    // HISTORY_FLOOR_MS and made it skip a fast hit, because unlike the
+    // Home path the clock there starts at navigation, not at the compare.
+    // HomeScreen's own MIN_LOADING_MS is untouched.)
     const reopenNav = SOURCE.match(
       /navigation\.navigate\(['"]Results['"],\s*\{\s*comparison_id\s*:/g
     );
