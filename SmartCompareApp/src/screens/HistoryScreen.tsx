@@ -3,7 +3,7 @@
  * Past comparisons with date grouping, search, delete, and staggered animation
  */
 
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -38,7 +38,6 @@ import { localizedCurrency } from '../utils/currencyDisplay';
 import {
   getComparisonHistory,
   deleteComparison,
-  parseApiError,
   getProfileRecentDecisions,
   getProfileMonthlyStats,
   type RecentDecisionItem,
@@ -649,11 +648,36 @@ interface HistoryScreenProps {
 export default function HistoryScreen({ navigation, onLogout }: HistoryScreenProps) {
   const { t } = useTranslation();
   const [history, setHistory] = useState<HistoryItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  // A12 — `initialLoading` gates the FIRST paint only. It used to be a
+  // single `loading` flag that submit ALSO set, and the full-screen early
+  // return below then unmounted the header, the hero and the very search
+  // field the user had just typed into — the whole screen blinked to a
+  // centred spinner on every search. Refetches now use `searching`, which
+  // renders an inline indicator beside the field and keeps the list mounted.
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [searching, setSearching] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [total, setTotal] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
+  // A12 — the filter the CURRENT list was fetched with (set on submit /
+  // clear, never on keystroke). Drives the zero-result copy so a search
+  // that legitimately matches nothing no longer shows the first-comparison
+  // onboarding state to a user who has 40 saved comparisons.
+  const [appliedQuery, setAppliedQuery] = useState('');
+  // A12 — the focus refetch reads the active filter from this ref rather
+  // than from a closure. `useFocusEffect(useCallback(fn, []))` pins
+  // render-1's binding, and `loadHistory` was a fresh `const` per render,
+  // so returning to the tab (History stays mounted while Results opens as a
+  // root-stack modal) refetched UNFILTERED and clobbered the filtered list
+  // while the field still displayed the query. A ref keeps the focus
+  // callback stable — no re-subscribe churn — while always reading current.
+  const appliedQueryRef = useRef('');
   const [authError, setAuthError] = useState(false);
+  // A12 — a non-401 load failure used to leave `history` at [] and fall
+  // through to the onboarding empty state ("Your first comparison is
+  // waiting" + "Start Comparing"), telling a user with a flaky connection
+  // they have no comparisons. This renders a distinct, retryable state.
+  const [loadError, setLoadError] = useState(false);
   // M21 MB-flows-08 — ids deleted THIS session, so the mount-once hero
   // marquee prunes them instead of keeping a dead (now 404) comparison
   // tappable.
@@ -661,16 +685,14 @@ export default function HistoryScreen({ navigation, onLogout }: HistoryScreenPro
     new Set()
   );
 
-  useFocusEffect(
-    useCallback(() => {
-      loadHistory();
-    }, [])
-  );
-
-  const loadHistory = async () => {
+  // A12 — query is an explicit PARAMETER, not a closed-over binding, so
+  // every caller states which filter it is fetching and no caller can
+  // silently ship a stale one.
+  const loadHistory = useCallback(async (query: string) => {
     try {
       setAuthError(false);
-      const data = await getComparisonHistory(50, 0, searchQuery || undefined);
+      setLoadError(false);
+      const data = await getComparisonHistory(50, 0, query || undefined);
       setHistory(data.comparisons || []);
       setTotal(data.total || 0);
     } catch (error) {
@@ -681,18 +703,54 @@ export default function HistoryScreen({ navigation, onLogout }: HistoryScreenPro
         setTotal(0);
       } else {
         if (__DEV__) console.error('Error loading history:', error);
-        Alert.alert(t('common.error'), parseApiError(error).message);
+        // A12 — inline retryable state instead of an Alert carrying
+        // parseApiError's raw transport string (the A11 leak class).
+        setLoadError(true);
       }
     } finally {
-      setLoading(false);
+      setInitialLoading(false);
       setRefreshing(false);
+      setSearching(false);
     }
-  };
+  }, []);
 
-  const onRefresh = () => {
+  // A12 — stable identity (loadHistory has no deps, the query comes from
+  // the ref), so React Navigation subscribes once and every focus refetch
+  // carries the filter that is actually on screen.
+  useFocusEffect(
+    useCallback(() => {
+      loadHistory(appliedQueryRef.current);
+    }, [loadHistory])
+  );
+
+  const applyQuery = useCallback(
+    (query: string) => {
+      appliedQueryRef.current = query;
+      setAppliedQuery(query);
+      setSearching(true);
+      loadHistory(query);
+    },
+    [loadHistory]
+  );
+
+  const onSubmitSearch = useCallback(() => {
+    applyQuery(searchQuery.trim());
+  }, [applyQuery, searchQuery]);
+
+  const onClearSearch = useCallback(() => {
+    setSearchQuery('');
+    applyQuery('');
+  }, [applyQuery]);
+
+  const onRetryLoad = useCallback(() => {
+    setSearching(true);
+    loadHistory(appliedQueryRef.current);
+  }, [loadHistory]);
+
+  const onRefresh = useCallback(() => {
     setRefreshing(true);
-    loadHistory();
-  };
+    loadHistory(appliedQueryRef.current);
+  }, [loadHistory]);
 
   const getDateGroup = (dateString: string): string => {
     const date = new Date(dateString);
@@ -819,6 +877,48 @@ export default function HistoryScreen({ navigation, onLogout }: HistoryScreenPro
     </View>
   );
 
+  // A12 — a search that legitimately matches nothing is NOT the same state
+  // as an account with no comparisons. The onboarding CTA ("Start
+  // Comparing") sent a user with 40 saved rows to Home instead of offering
+  // the one action that helps: drop the filter.
+  const renderNoMatches = () => (
+    <View style={styles.emptyContainer} testID="history-no-matches">
+      <View style={styles.emptyIcon}>
+        <Search size={28} color={colors.text.placeholder} />
+      </View>
+      <Text style={styles.emptyTitle}>{t('history.noMatches.title')}</Text>
+      <TouchableOpacity
+        style={styles.emptyCta}
+        onPress={onClearSearch}
+        accessibilityRole="button"
+        testID="history-no-matches-clear"
+      >
+        <Text style={styles.emptyCtaText}>{t('history.noMatches.cta')}</Text>
+      </TouchableOpacity>
+    </View>
+  );
+
+  // A12 — distinct, retryable load-failed state. Previously a non-401
+  // failure left `history` at [] and fell through to renderEmpty(), so a
+  // flaky connection was reported to the user as "you have no history".
+  const renderLoadError = () => (
+    <View style={styles.emptyContainer} testID="history-load-error">
+      <View style={styles.emptyIcon}>
+        <RotateCcw size={28} color={colors.text.placeholder} />
+      </View>
+      <Text style={styles.emptyTitle}>{t('history.loadError.title')}</Text>
+      <Text style={styles.loadErrorBody}>{t('history.loadError.body')}</Text>
+      <TouchableOpacity
+        style={styles.emptyCta}
+        onPress={onRetryLoad}
+        accessibilityRole="button"
+        testID="history-load-error-retry"
+      >
+        <Text style={styles.emptyCtaText}>{t('common.retry')}</Text>
+      </TouchableOpacity>
+    </View>
+  );
+
   const renderAuthError = () => (
     <View style={styles.authContainer}>
       <Text style={styles.authTitle}>{t('common.signInRequired')}</Text>
@@ -834,7 +934,7 @@ export default function HistoryScreen({ navigation, onLogout }: HistoryScreenPro
     </View>
   );
 
-  if (loading) {
+  if (initialLoading) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.loadingContainer}>
@@ -867,6 +967,10 @@ export default function HistoryScreen({ navigation, onLogout }: HistoryScreenPro
         excludeIds={deletedRecentIds}
       />
 
+      {/* A12 — the search row stays mounted through every refetch. The
+          busy state is an inline indicator here (RTL-safe: the row is a
+          flex row with `gap`, no left/right offsets), NOT the full-screen
+          spinner that used to erase the field mid-typing. */}
       <View style={styles.searchContainer}>
         <Search size={16} color={colors.text.placeholder} />
         <TextInput
@@ -875,18 +979,39 @@ export default function HistoryScreen({ navigation, onLogout }: HistoryScreenPro
           placeholderTextColor={colors.text.placeholder}
           value={searchQuery}
           onChangeText={setSearchQuery}
-          onSubmitEditing={() => {
-            setLoading(true);
-            loadHistory();
-          }}
+          onSubmitEditing={onSubmitSearch}
           returnKeyType="search"
         />
+        {searching ? (
+          <ActivityIndicator
+            size="small"
+            color={colors.accent}
+            testID="history-search-busy"
+          />
+        ) : null}
       </View>
+
+      {/* A12 — when a refetch fails but rows are already on screen, keep
+          the rows and offer retry inline rather than replacing loaded
+          content with an error panel. */}
+      {loadError && history.length > 0 ? (
+        <TouchableOpacity
+          style={styles.inlineRetry}
+          onPress={onRetryLoad}
+          accessibilityRole="button"
+          testID="history-inline-retry"
+        >
+          <RotateCcw size={14} color={colors.text.secondary} />
+          <Text style={styles.inlineRetryText}>{t('common.retry')}</Text>
+        </TouchableOpacity>
+      ) : null}
 
       {authError ? (
         renderAuthError()
+      ) : loadError && history.length === 0 ? (
+        renderLoadError()
       ) : history.length === 0 ? (
-        renderEmpty()
+        appliedQuery ? renderNoMatches() : renderEmpty()
       ) : (
         <SectionList
           sections={sections}
@@ -1209,6 +1334,32 @@ const styles = StyleSheet.create({
     ...typography.body,
     fontWeight: '600',
     color: colors.bg.primary,
+  },
+  // A12 — supporting line under the load-failed headline.
+  loadErrorBody: {
+    ...typography.body,
+    color: colors.text.secondary,
+    textAlign: 'center',
+    marginTop: -spacing.md,
+    marginBottom: spacing.xl,
+  },
+  // A12 — compact retry affordance shown ABOVE the list when a refetch
+  // failed but rows are already loaded. RTL-safe: row + `gap`, no
+  // left/right offsets.
+  inlineRetry: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.sm,
+    paddingVertical: spacing.sm,
+    borderRadius: radii.input,
+    backgroundColor: colors.bg.secondary,
+  },
+  inlineRetryText: {
+    ...typography.caption,
+    color: colors.text.secondary,
   },
   authContainer: {
     flex: 1,
