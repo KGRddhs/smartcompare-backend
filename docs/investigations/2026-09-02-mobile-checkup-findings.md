@@ -1,5 +1,12 @@
 # Mobile app checkup + price-cluster + issue-triage — findings for later work
 
+> **SUPERSEDED IN PART — read `2026-09-06-session63b-handoff.md` FIRST.** On 2026-09-05/06 the
+> reconcile pass ran (24 of 27 findings still live post-M21, 2 fixed by M21, 1 refuted), the price
+> cluster was fully implemented on `feature/m22-price-truth-cluster` (ungated), and 13 of 24 mobile
+> fixes landed on `feature/m23-mobile-w1` (unreviewed). That file carries the exact resume recipes and
+> the **Session-64-shares-this-checkout coordination rules**. §A/§B below are the ORIGINAL pre-M21
+> audit findings and their line numbers are stale; §C/§D remain accurate as history.
+
 **Date:** 2026-09-02 · **Main at capture:** `b6ce090` (M21 W1-W4 + #98/axios merged)
 **Author:** Fable session (autonomous). Two workflows ran; both were cut off by the
 6:50am Asia/Bahrain session limit mid-flight. This doc preserves what survived so the
