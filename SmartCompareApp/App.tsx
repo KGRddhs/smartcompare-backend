@@ -184,9 +184,23 @@ function App() {
       const initialId = await getStableId();
       setFlagStableId(initialId);
 
-      // Auth check
+      // Auth check.
+      // A3 — initializeAuth resolves from the CACHED user and refreshes in
+      // the background, so this await no longer holds the splash for a
+      // network round trip. The callback below re-syncs once that
+      // background refresh lands; a dead session takes the
+      // onSessionInvalid path wired in the effect further down.
       try {
-        const authUser = await initializeAuth();
+        const authUser = await initializeAuth((refreshedUser) => {
+          setUser(refreshedUser);
+          // Only ever LOWER the onboarding gate. A user who finished
+          // onboarding on another device stops seeing it; a user who is
+          // mid-onboarding on THIS device can never be thrown back into
+          // it by a late server read.
+          if (refreshedUser.preferences_completed) {
+            setNeedsPreferences(false);
+          }
+        });
         if (authUser) {
           // Re-bucket on the user.id post-login so the canary follows
           // the user across devices (same user.id → same bucket).

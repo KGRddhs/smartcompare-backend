@@ -51,6 +51,10 @@ function getCrypto() {
 }
 import api, { API_BASE_URL } from './api';
 import { getDeviceFingerprint } from './deviceFingerprint';
+// A3 — the boot refresh runs in the background now, so authService itself
+// needs the session-death channel App.tsx already subscribes to (M18
+// MB-flows-02). Dependency-free module; no import cycle with api.ts.
+import { emitSessionInvalid } from './sessionEvents';
 
 /**
  * A8 — i18n key rendered when a social sign-in POST exceeds its deadline.
@@ -267,9 +271,25 @@ export async function logout(): Promise<void> {
 }
 
 /**
+ * A3 — deadline for the BOOT refresh only.
+ *
+ * `api` carries a 120s global timeout (api.ts) sized for multipart image
+ * uploads. A single small POST /auth/refresh riding that budget means a
+ * black-holing connection (captive portal, stalled proxy) can keep the
+ * refresh in flight for two minutes. The boot path now runs it in the
+ * background, so this deadline is belt-and-braces: it bounds the window
+ * in which a launch is still holding a socket open. The mid-session 401
+ * interceptor (api.performRefresh) deliberately passes NO options and
+ * keeps the global budget.
+ */
+export const BOOT_REFRESH_TIMEOUT_MS = 8000;
+
+/**
  * Refresh session - with graceful error handling
  */
-export async function refreshSession(): Promise<AuthResponse> {
+export async function refreshSession(
+  options?: { timeoutMs?: number },
+): Promise<AuthResponse> {
   try {
     const refreshToken = await SecureStore.getItemAsync(REFRESH_TOKEN_KEY);
     if (!refreshToken) {
@@ -278,9 +298,13 @@ export async function refreshSession(): Promise<AuthResponse> {
       return { success: false, error: 'No refresh token found', sessionInvalid: true };
     }
 
-    const response = await api.post('/api/v1/auth/refresh', {
-      refresh_token: refreshToken,
-    });
+    const response = await api.post(
+      '/api/v1/auth/refresh',
+      { refresh_token: refreshToken },
+      // Per-call deadline ONLY when the caller asks for one, so the
+      // interceptor path keeps its existing (global) budget.
+      options?.timeoutMs ? { timeout: options.timeoutMs } : undefined,
+    );
 
     if (response.data.success && response.data.session?.access_token) {
       // Always save new tokens — this is critical for the 401 interceptor
@@ -446,34 +470,85 @@ export async function purgeLegacyAuthStorage(): Promise<void> {
 }
 
 /**
+ * A3 — notified when the BACKGROUND boot refresh lands a fresher user
+ * than the cached one we already rendered from. Never called on failure:
+ * a transient failure keeps the cached user, and a definitively dead
+ * session goes down the existing session-invalid channel instead.
+ */
+export type SessionRefreshedListener = (user: User) => void;
+
+/**
+ * A3 — the boot refresh, run to completion OFF the render path.
+ *
+ * Three outcomes, mirroring api.performRefresh:
+ *  - success  → the rotated tokens are already stored by refreshSession;
+ *               hand the fresher user back so the UI can re-sync.
+ *  - dead     → drop the stale access token (refreshSession only clears
+ *               it on the 401 branch) and emit session-invalid, which is
+ *               the SAME path a mid-session dead refresh already takes.
+ *  - transient→ do nothing: the cached user stays, and the first real API
+ *               call self-heals through the 401 interceptor.
+ */
+async function runBootRefresh(
+  onSessionRefreshed?: SessionRefreshedListener,
+): Promise<void> {
+  try {
+    const refreshResult = await refreshSession({
+      timeoutMs: BOOT_REFRESH_TIMEOUT_MS,
+    });
+
+    if (refreshResult.success) {
+      if (refreshResult.user && onSessionRefreshed) {
+        onSessionRefreshed(refreshResult.user);
+      }
+      return;
+    }
+
+    // M21 left this gate on the `error === 'Session expired'` STRING,
+    // which missed the other two dead paths (no refresh token / server
+    // refused a session). The flag is the contract.
+    if (refreshResult.sessionInvalid) {
+      await clearSession();
+      emitSessionInvalid();
+    }
+  } catch (error) {
+    // A background boot task must never surface as an unhandled
+    // rejection — a flaky network is not a session death.
+    if (__DEV__) console.log('Boot session refresh failed:', error);
+  }
+}
+
+/**
  * Initialize auth - check and refresh session on app start
  * Returns user if valid session exists, null otherwise
+ *
+ * A3 — boots OPTIMISTICALLY. This used to `await refreshSession()` before
+ * resolving, so every launch held the splash for a full network round
+ * trip on the 120s global axios timeout, and the cached-user fallback
+ * only ran once that call settled — i.e. blocking bought nothing on the
+ * failure path, and a black-holing connection froze the splash with no
+ * cancel and no escape. With a cached user AND token present we now
+ * resolve immediately and refresh in the background; session death is
+ * handled end-to-end by the M18 MB-flows-02 channel (clearSession +
+ * emitSessionInvalid → App.tsx routes back to the Auth stack).
  */
-export async function initializeAuth(): Promise<User | null> {
+export async function initializeAuth(
+  onSessionRefreshed?: SessionRefreshedListener,
+): Promise<User | null> {
   // MB-security-03 — fire-and-forget: the sweep must never delay or
   // fail app boot (purgeLegacyAuthStorage swallows its own errors).
   void purgeLegacyAuthStorage();
   try {
     const user = await getSavedUser();
     const token = await getToken();
-    
+
     if (!user || !token) {
       return null;
     }
-    
-    // Try to refresh, but don't fail if it doesn't work
-    const refreshResult = await refreshSession();
-    
-    if (refreshResult.success && refreshResult.user) {
-      return refreshResult.user;
-    }
-    
-    // If refresh failed with 401, session is invalid
-    if (refreshResult.error === 'Session expired') {
-      return null;
-    }
-    
-    // For other errors (network), return cached user
+
+    // Fire-and-forget: the render path never waits on the network.
+    void runBootRefresh(onSessionRefreshed);
+
     return user;
   } catch (error) {
     if (__DEV__) console.error('Auth initialization error:', error);
@@ -485,8 +560,10 @@ export async function initializeAuth(): Promise<User | null> {
  * Verify auth status and return user if valid
  * Used by App.tsx to check auth state
  */
-export async function verifyAuth(): Promise<User | null> {
-  return await initializeAuth();
+export async function verifyAuth(
+  onSessionRefreshed?: SessionRefreshedListener,
+): Promise<User | null> {
+  return await initializeAuth(onSessionRefreshed);
 }
 
 /**

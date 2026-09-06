@@ -13,8 +13,10 @@
  * NOT emitted from clearSession() itself: handleLogout calls
  * clearSession, and emitting there would re-enter the logout path
  * (listener -> logout -> clearSession -> emit -> listener ...).
- * Emission sites are exactly the non-UI session-death points in
- * api.ts/performRefresh.
+ * Emission sites are exactly the non-UI session-death points:
+ * api.ts/performRefresh (mid-session 401) and, since A3,
+ * authService/runBootRefresh (the boot refresh, which now runs in the
+ * background instead of blocking the splash).
  */
 
 type SessionInvalidListener = () => void;
