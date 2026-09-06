@@ -22,8 +22,12 @@ import { StatusBar } from 'expo-status-bar';
 // Theme & i18n
 import { useAppFonts } from './src/theme/fonts';
 import { colors, typography } from './src/theme';
-import { getSavedLanguage } from './src/i18n';
-import './src/i18n'; // Initialize i18next
+// B5 — ONE import of the i18n module. Importing it runs i18next's init as a
+// side effect, and the default export is the configured instance used by
+// init() below. There used to be a second, dynamic import of this same
+// module inside init(); it resolved to the already-evaluated module, so it
+// bought nothing and only added an await to the boot chain.
+import i18n, { getSavedLanguage } from './src/i18n';
 
 // Screens
 import SplashScreen from './src/screens/SplashScreen';
@@ -168,7 +172,6 @@ function App() {
     async function init() {
       // Set language + RTL before rendering
       const lang = await getSavedLanguage();
-      const { default: i18n } = await import('./src/i18n');
       await i18n.changeLanguage(lang);
       const shouldBeRTL = lang === 'ar';
       if (I18nManager.isRTL !== shouldBeRTL) {
@@ -218,9 +221,32 @@ function App() {
       } catch (error) {
         if (__DEV__) console.error('Auth initialization error:', error);
       }
-      setIsLoading(false);
     }
-    init();
+
+    // B5 — the splash gate is released on EVERY path.
+    //
+    // `setIsLoading(false)` used to be the last statement INSIDE init(),
+    // after four awaits (saved language, i18n.changeLanguage, stable id,
+    // auth) of which only the auth one was wrapped in a try/catch. A
+    // rejection anywhere earlier skipped it, and because the render below
+    // returns <SplashScreen> while `isLoading` is true — with no retry, no
+    // timeout and no error surface — the app would have sat on the splash
+    // for the rest of the process. Every awaited callee happens to guard
+    // itself today, so this closes a latent stranding path rather than a
+    // reproduced hang.
+    //
+    // On that failure path the language/RTL side effects above have not
+    // applied, so the app renders at i18next's configured default ('en')
+    // instead of the saved language. That is strictly better than a frozen
+    // splash: the user reaches Main/Auth and can switch language from
+    // Profile.
+    init()
+      .catch((error) => {
+        if (__DEV__) console.error('App initialization error:', error);
+      })
+      .finally(() => {
+        setIsLoading(false);
+      });
   }, []);
 
   // M18 MB-flows-02 — `setIsAuthenticated(false)` previously lived ONLY

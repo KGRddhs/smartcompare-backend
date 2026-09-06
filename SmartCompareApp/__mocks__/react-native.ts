@@ -118,6 +118,29 @@ export const Alert = {
   alert: jest.fn(),
 };
 
+// B5 — HomeScreen pushes its two consumer-less boot calls (the /health
+// telemetry ping and the compare_entry_view analytics POST) behind the
+// interaction queue so they stop racing the first paint. The real
+// InteractionManager runs the task AFTER the current interactions/animations
+// settle, i.e. never in the same synchronous turn as the effect that
+// scheduled it — this shim reproduces exactly that asynchrony (a macrotask),
+// which is what lets a test tell "deferred" apart from "called inline".
+type InteractionTask = () => void;
+export const InteractionManager = {
+  runAfterInteractions: (task?: InteractionTask) => {
+    const handle = setTimeout(() => {
+      task?.();
+    }, 0);
+    return {
+      cancel: () => clearTimeout(handle),
+      then: (onDone: () => void) => Promise.resolve().then(onDone),
+      done: (onDone: () => void) => Promise.resolve().then(onDone),
+    };
+  },
+  createInteractionHandle: jest.fn(() => 1),
+  clearInteractionHandle: jest.fn(),
+};
+
 export default {
   View,
   Text,
@@ -140,4 +163,5 @@ export default {
   I18nManager,
   AppState,
   Alert,
+  InteractionManager,
 };
