@@ -4,6 +4,19 @@
 
 ---
 
+# SESSION 64: FULL REVIEW CAMPAIGN (workflow ids m22-*) — RAN, HIT THE LIMIT TWICE, STATE SAVED FOR CONTINUATION — 2026-09-05/06
+
+**Main `76ace90` unchanged by this session (review only; nothing implemented).** A SECOND session worked the same folders concurrently (`feature/m22-price-truth-cluster` = #55/#56/#57, `feature/m23-mobile-w1` = mobile A2/A4/A5/A10/A12/A17/B5, its own `2026-09-06-session63b-handoff.md`) — its "m22/m23" names are DIFFERENT work from this review; trust artifact paths.
+
+- **What ran:** 4 Opus ultracode workflows over `76ace90` (product-output 7 lanes, code-review 7, load/scale 7, mobile 9; coverage-driven finders → refute-by-default verifiers → second vote on P0/P1 → synthesis → critic), Fable orchestrating/reviewing. Run 1 died at the usage limit with 26/30 lanes done, 330 filed, 49 verified; run 2 (resume) switched to per-lane batch verification and was still running when the user asked to save state. **Lesson: one verifier per finding × 330 × 4 parallel workflows exceeds a 5-hour window — batch-verify by lane from the start.**
+- **Everything durable is in `docs/investigations/2026-09-06-full-review-state/` — read its `README.md` first** (brief + HARD RULES, prod-flag and measured baselines, raw journals, extracted findings, exact args, `extract_state.py` to refresh from the live journals, `m22_review_continue.js` + `continue-args-*.json` to continue in a NEW session, `FABLE_REVIEW_NOTES.md`).
+- **Fable-verified so far:** **P0** `app/utils/url_validator.py:30` — sync `socket.getaddrinfo` on the event loop from every unauthenticated `/api/v1/url/*` handler and per candidate URL/redirect hop on the price path (11–12 s per black-holed host, no negative cache, repeatable on the shared-IP bucket). **P1 load:** per-request Supabase `create_client` outside the offload lambda; Upstash client `timeout=None` + `time.sleep(3)` retry; postgrest 120 s default. **P1 mobile:** camera identify unmetered (known); boot awaits a 120 s-ceiling refresh; `from_history` dead taps on Home smart-pick + Profile; **the phone OTA `97b5f15` predates ALL FOUR M21 waves → analytics/feedback still 422 on devices and every free user paywalled at 3 lifetime** (`eas update --branch preview` is the top Ahmed action); `/url/compare` unmetered + no history + drops `selected_category`. **P1 product (status):** specs prompt still licenses training-data fill until Serper returns. **P2 LIVE regression from M21 W3:** brand dedup missed `compute_scores` internals → `tradeoffs` collapses to `[]` when a name repeats its brand.
+- **Ground truth captured:** OpenAI 429 `credit_balance_exhausted`; Serper negative; `search_logs` 16,283 rows = a MEASURED outcome series (~25% failure, success p95 23.8 s / p99 30 s, 10% partials, 5% category rejections); prod flags snapshot (`ENABLE_BRIGHTDATA_FALLBACK=true` with Serper dead and `ENABLE_PRICE_TITLE_PERSIST=true` with migration 033 unapplied are open questions handed to lanes); mobile clean at HEAD after `npm ci` (a stale node_modules faked a jest red).
+
+**Next:** re-run `extract_state.py`, continue the four workflows via the continuation script (batch verification, ≤4-wide), Fable review, consolidated report `docs/investigations/2026-09-06-full-review.md` via docs PR, then waves: W0 load foundations (DNS off-loop, client memo + timeouts, Upstash bound) → metering (camera+URL) → mobile units NOT already on `feature/m23-mobile-w1` → product-output units → activation runbook.
+
+---
+
 # SESSION 63: ISSUE TRIAGE + MOBILE CHECKUP + PRICE CLUSTER (started) — 2026-09-02
 
 **Main: `b6ce090` (unchanged this session — no code shipped; work was triage + audit, then the session limit cut both workflows).** Findings captured in **`docs/investigations/2026-09-02-mobile-checkup-findings.md`** — read that FIRST; this is a pointer.

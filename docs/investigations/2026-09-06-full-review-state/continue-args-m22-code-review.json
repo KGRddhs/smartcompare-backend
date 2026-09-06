@@ -1,0 +1,105 @@
+{
+ "name": "m22-code-review",
+ "brief": "C:/Users/SynAckITPC/Documents/AI/sc-scraper-proof/docs/investigations/2026-09-06-full-review-state/BRIEF.md",
+ "finderBatch": 4,
+ "verifyBatch": 3,
+ "batchVerifySize": 6,
+ "lanes": [
+  {
+   "key": "cr-delta-correctness",
+   "title": "The M20/M21 delta (593ec1e..76ace90) hunk by hunk, plus the flag-interaction matrix the waves created",
+   "prompt": [
+    "SURFACE: git diff 593ec1e..76ace90 -- app/ (33 files, ~2,900 lines) - list every file with numstat, then read EVERY hunk in app/services and app/api. For each hunk: logic errors, exception paths that swallow or re-raise wrongly, per-call flag reads (os.getenv at call time - any flag cached at import is a finding), the flag-OFF byte-identity CLAIM (open both branches of at least 8 of the new flags and confirm the OFF branch is literally the pre-wave code; a subtle OFF-path change is a P1 because the canary would attribute it to the flag), and tests that pin the wrong thing (fixtures that only use the one provenance whose delta is 0.0, mocks whose field names do not exist in the real model/migration, goldens that would pass a broken implementation).",
+    "INTERACTION MATRIX: enumerate every flag introduced or extended since 593ec1e (ENABLE_CATEGORY_VALUE_BADGE, ENABLE_BEHAVIORAL_DIM_TRANSLATION, ENABLE_PREVERDICT_DISCONNECT_ABORT, ENABLE_FACTCHECK_CURRENCY_NORMALIZATION, ENABLE_SPEC_CONFIDENCE_CACHE, ENABLE_CITATION_RUBRIC_V2, ENABLE_CONFIDENCE_FACTCHECK_WIRING, ENABLE_FACTCHECK_HONEST_ABSENCE, ENABLE_COMPARISON_QUALITY_V2, ENABLE_TPM_AWARE_ROUTING, ENABLE_HOME_SAVINGS_AGGREGATE, ENABLE_SPEC_FIELD_NORM, ENABLE_MISSING_DIM_RENORM, ENABLE_WINNER_PROSE_RECONCILE, ENABLE_EXPO_FETCH_SSE (client), plus the pre-existing flags whose code paths they share: ENABLE_FULL_STREAM_DEADLINE, ENABLE_ASYNC_REDIS_OFFLOAD, ENABLE_SYNC_DB_OFFLOAD, ENABLE_REGION_CURRENCY_GUARD, ENABLE_FAIRNESS_IGNORE_ESTIMATE, ENABLE_EXACT_PRICE_GATE, ENABLE_BUNDLE_C_SCORING, ENABLE_JSONLD_FIRST, ENABLE_EARLY_SPECS_STASH, ENABLE_ANON_USAGE_GATE). For every PAIR that touches a shared function or shared state, reason concretely about ON x ON and ON x OFF (e.g. PREVERDICT_DISCONNECT_ABORT x FULL_STREAM_DEADLINE x the M13-35 drain; SPEC_FIELD_NORM x MISSING_DIM_RENORM x BUNDLE_C MISSING_SCORE; REGION_GUARD pre-scoring pass x reconcile_pair_fairness x EXACT gate; QUALITY_V2 weak-mode x client celebration gating; HONEST_ABSENCE x CONFIDENCE_FACTCHECK_WIRING; HOME_SAVINGS_AGGREGATE with migration 036 UNAPPLIED). Reproduce interactions with a small pytest under the scratchpad where the code is importable.",
+    "Known (status only): M18 CD-interactions-01/02, CD-wave-diffs-01..09, the #112/#113 fixes, the #101 two inversions fixed pre-merge."
+   ]
+  },
+  {
+   "key": "cr-security",
+   "title": "Security sweep of the surfaces earlier lanes never owned - every route, every table, every secret",
+   "prompt": [
+    "ROUTE TABLE: use tests/_route_introspection.py (duck-typed walker; never re-flatten app.routes) to enumerate EVERY route at HEAD, then build the table route x method x auth dependency x rate-limit decorator x body/query max_length x flag gate. Read each handler in app/api/home_routes.py (875 LOC), profile_routes.py (558), admin_routes.py (879) + _AdminAuthenticatedStaticFiles in main.py, share_routes.py, legal_routes.py, version_routes.py, usage_routes.py, feedback_routes.py, history_routes.py, referral_routes.py (ENABLE_REFERRAL_SYSTEM=true in PROD), image_routes.py, url_routes.py - the M13/M18 lanes concentrated on text_routes/auth_routes. Look for: IDOR (comparison_id / share token / user-scoped reads through the ADMIN client instead of get_user_supabase_client), missing auth where sibling routes have it, unmetered paid work (camera identify and url compare are KNOWN - status only), admin dashboards (XSS in rendered HTML, Chart.js CDN + 'unsafe-inline' CSP), HTTP Basic fallback on admin, hmac.compare_digest everywhere a key is compared, the SSRF validator (url_validator.py: DNS rebinding TOCTOU, redirects followed after validation, IPv6/IPv4-mapped/decimal/octal forms, cloud metadata hosts, port restrictions) and every place a user-supplied URL is fetched WITHOUT it (price_service page scrape of Serper links? url_extraction_service? image_service?).",
+    "SECRETS/ENV: baseline/railway-web-vars.txt lists every Railway variable NAME. Cross-check three ways: names in Railway but with ZERO reads in app/ or scripts/ (dead secrets to rotate/remove: candidates NASSER_GUEST_TOKEN, YOUTUBE_API_KEY, CLOUDFLARE_ACCOUNT_ID/CLOUDFLARE_API_TOKEN, MAX_MONTHLY_COST, CACHE_DURATION, FREE_TIER_DAILY_LIMIT, SCRAPEDO_GEOCODE/SCRAPEDO_SUPER, SERPER_API_KEYS, ENVIRONMENT); names READ in code but ABSENT in Railway (silent defaults - list each with its default and whether the default is safe); secrets that can reach logs, Sentry (before_send scrub coverage - test the scrubber against a request that carries a Bearer JWT in a query string, a header and a body), error envelopes, or the admin dashboards. Also the JWT verify path (revocation blacklist fail-open on Redis down, token TTLs, refresh rotation), X-Device-Fingerprint trust, the account-deletion cascade (every table with a user_id column vs delete_user_cascade), prompt-injection residual extract_specs_targeted, backend/app shadow directory (is anything importing it?), pip-audit clean claim vs requirements.txt at HEAD (run pip-audit -r requirements.txt --strict in a throwaway venv if feasible).",
+    "DB EXPOSURE (coordinate: lane cr-data-migrations owns column drift; YOU own policy/grant exposure): for every table in migrations 010-036, the RLS matrix (anon / authenticated / service_role x SELECT/INSERT/UPDATE/DELETE) and whether the APP uses anon+JWT or service-role for that table; EVERY SECURITY DEFINER function and its GRANTs - PostgREST exposes each GRANTed function as /rpc/<name>, so 'the route passes the caller id' is not a control (the 036 lesson) - check whether the anon or authenticated role can call any of them with a foreign user id; the M13-29 feedback/events forgery gap status; the three L2 product-cache tables open to anon writes (cache poisoning into user-served prices) - status at HEAD; is SUPABASE_ANON_KEY in the mobile bundle now (grep SmartCompareApp/src)? Severity: rate a hole reachable only with the anon key as reachable (the key ships to any client eventually)."
+   ]
+  },
+  {
+   "key": "cr-performance",
+   "title": "Redundant work and blocking work on the request path - counted, not guessed",
+   "prompt": [
+    "METHOD: instrument, don't estimate. Build a harness under the scratchpad that drives compare_from_text (and the streaming generator) at HEAD with counting fakes for: Serper (_serper_post), OpenAI (every AsyncOpenAI construction and every .create), Redis (cache_service get/set/incr/expire and api_budget_service), Supabase (.execute()), curl_cffi/httpx fetches, asyncio.to_thread / run_in_executor dispatches. Run: warm (all caches hit) authed compare; cold anonymous compare with 2 products; the /home/* reads; /usage/status; /auth/me + /auth/verify + /auth/refresh; history list. Report per route: count of each call class, which are DUPLICATES (same key/query fetched twice in one request), which are BLOCKING on the event loop in the PROD flag state (ENABLE_SYNC_DB_OFFLOAD off, ENABLE_ASYNC_REDIS_OFFLOAD off) versus after the offload flags flip, and the deliberately-left inline sites after #115 (usage_service.get_usage_status / check_usage_allowed, review_service L1 get/set, the behaviour-profile RPC) - are they on the request path?",
+    "ALSO: cost of a per-request StructuredComparisonService() (__init__ work, module reloads, regex compiles, client constructions); get_user_supabase_client(token) per call (does it build a new httpx client + TLS handshake per request?); AsyncOpenAI construction per call (4 sites - constructed per request or module-level?); full_response JSON size and how many times it is (de)serialised per request; regexes compiled inside hot functions in price_service (grep re.compile / re.search with literal patterns inside loops); module-level dicts/lists that grow per request and are never evicted (memory leak candidates - list every module-level mutable in app/services with a writer on the request path); asyncio.gather vs sequential awaits in Phase 1/2; cProfile extract_price_from_html over 10 corpus pages and report the top-10 cumulative functions; the legacy /home/savings full scan (flag OFF = LIVE) - measure its cost formula against comparisons row count (27 today; model 1k/10k/100k rows) and full_response size.",
+    "Known (status only): #70-#74, M13-04/05/06/30-35, M18 LS-event-loop-01..09, #115/#116/#117. Label every number measured (your harness) or modelled."
+   ]
+  },
+  {
+   "key": "cr-complexity-deadcode",
+   "title": "God modules, duplicated helpers, and a PROVEN safe-to-remove list for the backend",
+   "prompt": [
+    "COMPLEXITY: map app/services/price_service.py (15,940 LOC) and structured_comparison_service.py (8,046) - top-level function inventory with LOC, call-graph fan-in/fan-out (AST), the 15 longest functions and the 15 highest cyclomatic complexities (install radon in a throwaway venv or compute branch counts by AST), and the duplicated-logic clusters across services (currency detection, price string parsing, brand/name normalisation, host/registry matching, Redis get/set wrappers, retry/timeout wrappers, JSON-LD parsing) - for each cluster: the N implementations with file:line, whether they disagree on an input you can construct, and the one that should remain. Also: functions with more than 8 parameters, boolean-parameter APIs, modules importing each other cyclically, exception classes defined but never raised.",
+    "DEAD CODE WITH PROOF (this is the backend SAFE-HYGIENE list - the user's rule is that NOTHING is deleted without it): (a) functions/classes in app/ with zero callers - AST-based, then grep-confirm across app/, scripts/, tests/, .github/, Procfile, railway*.json, docs/ (a docs-only reference is NOT a keeper); (b) the three-way flag table: every ENABLE_* / knob name appearing in Railway (baseline/railway-web-vars.txt), in code (grep os.getenv/os.environ in app/ and scripts/), and in CLAUDE.md - mark each PHANTOM (Railway or docs only, zero code reads), UNDOCUMENTED (code only), or CONSISTENT; ENABLE_HYBRID_MODEL_ROUTING is the documented phantom - confirm; (c) app/config.py (documented import-time trap) - who imports it; (d) backend/ (the shadow app) - any live import or CI reference; (e) repo-root junk: phase0_*.py, parse_*.py, test_client.py, test_services.py, tmp_result*.json, UsersSynAckITPCDocumentsAIsmartcomparetmp_*.json, full_response.json, session23_test_response.json, LANE_STATE*.md, MEMORY.md (root copy), temp_uploads/, test_images/, cloudflare-workers/ - for each: referenced by anything? in .gitignore? (f) scripts/ - which scripts still run (CI, cron config, docs runbooks) vs orphaned; (g) tests that test deleted code paths. Verdict per item: SAFE (with the grep/AST proof quoted) / KEEP (with the live reference) / UNSURE. Never propose deleting a test that pins a security invariant."
+   ]
+  },
+  {
+   "key": "cr-tests-ci-truth",
+   "title": "What the tests actually pin versus what the docs claim - and what CI can and cannot fail on",
+   "prompt": [
+    "BASELINE: the 11 nodes in tests/.pre_impl_failures.txt (#89) - for each: reproduce locally (note the env is off-lock), state the root cause and the fix cost in one line, and whether it hides a PRODUCT defect or a TEST defect. WRONG-SHAPE MOCKS: find tests whose mocks return field/column names that do not exist in the real Pydantic models or migrations (the referral response_data class) - AST-scan tests/ for .select(...) / .insert({...}) strings and MagicMock attribute names against the schema and models; each hit is a test that cannot catch the bug it claims to. GOLDENS: mutation-test three of tests/fixtures/*_flag_off_golden.json by hand (flip a sign or swap two products in the implementation under a scratch copy or via monkeypatch) and report whether the golden test goes red. COVERAGE OF NEW CODE: list every function added in 593ec1e..76ace90 under app/ with zero test references.",
+    "CI TRUTH: read .github/workflows/ci.yml and live-suite.yml step by step: how $DESELECT is derived (single source?), the coverage floor (83) versus the measured figure (find the last run's number via gh api on the latest main run if accessible: GH_TOKEN from git credential fill, REST only - GraphQL 401s), black allowlist drift (701/719 files reported 2026-09-01 - recount), npm audit reporting-only, any continue-on-error residue, pip-audit strict, the frontend job (jest/eslint/tsc blocking), the live-suite empty-secret failure (#96), what a PR can merge with (branch protection requires all 5 jobs - confirm via REST), and whether test_ci_gates pins still bind. HOOKS: .githooks/pre-commit versus CI - what does the hook check that CI does not and vice versa; is core.hooksPath set in this clone. NETWORK IN THE FREE TIER: find every test that performs real HTTP/DNS without a live marker (grep for httpx/requests/curl_cffi/socket usage in tests without mocks; the documented GET-hangers) - each is a CI flake risk. ORDER DEPENDENCE: importlib.reload in tests (rebinding classes), module-level state mutated by tests without teardown. XFAIL PADDING: tests/test_value_math.py 35 stubs and any other xfail(strict=False) that hides a real failure. Also: does scripts/regression_gate_diff.py's off-lock refusal (exit 4) actually fire on this box?"
+   ]
+  },
+  {
+   "key": "cr-data-migrations",
+   "title": "Code versus schema - phantom columns, unapplied migrations the code already relies on, indexes, RLS, growth",
+   "prompt": [
+    "COLUMN DRIFT (the #65 / response_data class, systematic): AST-scan app/ and scripts/ for every Supabase call chain - .table(name).select(cols) / .insert({...}) / .upsert({...}) / .update({...}) / .eq/.neq/.gte/.in_/.order/.text_search(col) / .rpc(fn, params) - and build the table (table, column, op, file:line). Cross-check every column against the DDL in migrations/*.sql (010-036 + add_share_token.sql + rollback/) and against the LIVE schema (read-only: SELECT from information_schema.columns via the admin client for each referenced table; also pg_indexes and pg_policies via a read-only RPC if one exists, else information_schema/pg_catalog through PostgREST is not available - say so and fall back to the DDL). Report: columns referenced but defined nowhere; columns defined only in UNAPPLIED migrations 033/034/035/036 that code already reads or writes - in particular ENABLE_PRICE_TITLE_PERSIST=true in PROD with 033 (product_prices.title) and 034 (product_prices.in_stock) unapplied: does the L2 price persist include those columns and therefore fail (PostgREST 400) on every write, silently? Prove from the live column list; the 036 home_savings_aggregate function (flag OFF, fine) and 035 spec_spine; .rpc() names called vs functions defined; text_search options shape.",
+    "RLS AND FUNCTIONS: per table, the RLS policy set as written in the migrations and which client the app uses (anon+JWT via get_user_supabase_client vs service-role admin) for each op - a user-data read through the admin client bypasses RLS and must be justified by an explicit ownership check in code; inventory every SECURITY DEFINER function + GRANT (lane cr-security owns the exposure verdict - you own the inventory and the DDL-vs-code call sites). INDEXES: for every query in the code table, the WHERE/ORDER columns vs existing indexes in the DDL; hot ones: comparisons(user_id, created_at, schema_version), search_logs(created_at, user_id), product_prices(product_key/created_at), user_events, comparison_feedback, referral_*; note immutability of index predicates. GROWTH/RETENTION: search_logs 16,283 rows, product_prices 3,945 append-only, user_events, admin_audit_log - any retention/cleanup? PostgREST default 1000-row cap on unbounded selects (which selects are unbounded, and do they silently truncate?). count='exact' usage cost. MIGRATION HYGIENE: numbering collisions, rollback parity for 033-036, statements that would fail inside the SQL-editor single transaction, the M13-29 RLS migration gap (feedback/events INSERT policies) status."
+   ]
+  },
+  {
+   "key": "cr-claude-config",
+   "title": "Claude Code configuration audit (read-only, propose-only) - reliability issues and the always-on token bill",
+   "prompt": [
+    "SURFACES (project layer, C:/Users/SynAckITPC/Documents/AI/sc-scraper-proof): CLAUDE.md (~131 KB - measure bytes and estimate tokens at chars/4), docs/CLAUDE_CODE_CONTEXT.md, .claude/settings.json, .claude/settings.local.json (13.6 KB), .claude/skills/{qaren-cohort,qaren-eas-deploy,qaren-referrals,qaren-scoring}/SKILL.md, .mcp.json, .githooks/pre-commit, repo-root MEMORY.md and memory/ directory. USER layer (read-only): C:/Users/SynAckITPC/.claude/skills/synack-build-orchestrator/SKILL.md and the list of other skill directories there (names + first line only), C:/Users/SynAckITPC/.claude/projects/C--Users-SynAckITPC-Documents/memory/MEMORY.md (index only). Do NOT edit anything.",
+    "RELIABILITY ISSUES (ordered by impact): contradictions inside CLAUDE.md or between CLAUDE.md and the code/Railway state at HEAD 76ace90 (examples to check: flags documented default-OFF that are ON in baseline/railway-web-vars.txt or vice versa; 'all 28 P1s closed' vs #114 open; jest/suite counts; the 'CI-GREEN IS NOT ALL-TESTS-PASS' rule vs other bullets quoting green; duplicated or superseded blocks; instructions that fight model defaults or each other; stale file paths - verify each cited path exists); skill trigger overlap or staleness vs code (e.g. does qaren-scoring describe scoring_service as it is at HEAD after #100/#101?); settings.local.json permission entries that are redundant, over-broad, stale, or contradictory; hook vs CI mismatches. For each: location (file + section/line), the problem in one sentence, the proposed fix, and which layer (project vs user) it lives in.",
+    "TOKEN EFFICIENCY: what is always-on per session (CLAUDE.md size in tokens by section - produce a per-H2 byte table; the auto-memory index; MCP tool schemas count from the session's tool list is not visible to you - say so); what can move to docs/ behind a one-line pointer without losing capability (the archive precedent already exists: docs/SESSION_BUNDLES.md); a proposed target size for CLAUDE.md with the estimated savings in tokens per session. Rules from the orchestrator skill: propose only; cite specific locations; say where a surface is healthy; flag anything not fully verifiable."
+   ]
+  }
+ ],
+ "synth": [
+  "Produce the orchestrator skill's Step-6 STRUCTURED CODE REVIEW as section 1 in place of the generic answers: (1a) Security - every verified security finding rated critical/high/medium/low with location; (1b) Performance - inefficiencies, redundant work, operations that scale poorly with data or load; (1c) Complexity - what should be simplified/abstracted/made testable; (1d) Dead code - the PROVEN safe-to-remove list (SAFE items only; KEEP/UNSURE go to an appendix). Then answer plainly: is the code sound after the M20/M21 delta, what is LIVE-broken today versus dark, and did any wave create an interaction bug the way M18 found two? Section 2 is the prioritized action plan as units through the standing gates (never direct fixes). Add APPENDIX A: the Claude Code configuration audit plan (reliability issues by impact + token-efficiency plan with estimated savings; propose-only). Add APPENDIX B: the flag three-way table (Railway / code / docs) from cr-complexity-deadcode. Add APPENDIX C: the #89 eleven-node root-cause table from cr-tests-ci-truth."
+ ],
+ "stateFile": "C:/Users/SynAckITPC/Documents/AI/sc-review-state/docs/investigations/2026-09-06-full-review-state/partial-m22-code-review.json",
+ "reviewNotes": "C:/Users/SynAckITPC/Documents/AI/sc-review-state/docs/investigations/2026-09-06-full-review-state/FABLE_REVIEW_NOTES.md",
+ "missingLanes": [],
+ "unverified": [],
+ "secondVote": [
+  {
+   "id": "CR-DATA-MIGRATIONS-05",
+   "lane": "cr-data-migrations",
+   "sev": "P1"
+  },
+  {
+   "id": "CR-PERFORMANCE-01",
+   "lane": "cr-performance",
+   "sev": "P1"
+  },
+  {
+   "id": "CR-PERFORMANCE-03",
+   "lane": "cr-performance",
+   "sev": "P1"
+  },
+  {
+   "id": "CR-CLAUDE-CONFIG-02",
+   "lane": "cr-claude-config",
+   "sev": "P1"
+  },
+  {
+   "id": "CR-CLAUDE-CONFIG-11",
+   "lane": "cr-claude-config",
+   "sev": "P1"
+  }
+ ],
+ "haveSynth": false,
+ "haveCritic": false
+}

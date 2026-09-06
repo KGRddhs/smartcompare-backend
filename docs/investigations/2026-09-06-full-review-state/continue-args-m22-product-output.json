@@ -1,0 +1,241 @@
+{
+ "name": "m22-product-output",
+ "brief": "C:/Users/SynAckITPC/Documents/AI/sc-scraper-proof/docs/investigations/2026-09-06-full-review-state/BRIEF.md",
+ "finderBatch": 4,
+ "verifyBatch": 3,
+ "batchVerifySize": 6,
+ "lanes": [
+  {
+   "key": "po-prompts",
+   "title": "Every prompt and every OpenAI call site - what the model is told and how its answer is trusted",
+   "prompt": [
+    "SURFACE: every prompt string/template and every OpenAI call site in app/services/extraction_service.py, prompt_personalities.py, openai_service.py, structured_comparison_service.py, model_router_service.py, model_config.py, and app/api/image_routes.py (vision identify). Enumerate: PRODUCT_PARSER_PROMPT, the 9 CATEGORY_SPEC_SCHEMAS specs prompts, price extraction, reviews, verdict, self-critique, moderation, targeted fallback (_smart_fallback_extract -> openai_service.extract_specs_targeted), vision. For each call site record model id resolution (model_config vs model_router_service; note ENABLE_HYBRID_MODEL_ROUTING=true in Railway is documented as a PHANTOM with zero code refs - confirm or refute at HEAD, and state which model actually serves the verdict in prod), temperature/determinism, max_tokens/token_limit_kwargs, response_format/JSON mode, timeout, retry ceiling (OPENAI_MAX_RETRIES), and what happens on malformed JSON / missing keys (the _normalize_* paths).",
+    "CHECK each prompt for: false-confidence pushes ('Be DECISIVE', mandated quantification - verify #111's evidence-conditional rule landed in ALL 9 categories); rules that contradict each other or the deterministic scorer; the training-data fallback instruction (extraction_service.py near line 515 'fall back to training data') as shipped in prod (ENABLE_SPECS_NO_FABRICATION is OFF) - what fabricated fields can reach the user and how the app renders them; the untrusted-input fence (<USER_INPUT>/<SEARCH_RESULTS> regions, sanitize_prompt_input, SEARCH_RESULTS_GUARD) - confirm every consuming prompt carries it and re-test the KNOWN residual extract_specs_targeted with a crafted snippet; truncation of the 3000/2500-char snippet digests (what gets cut and whether the prompt still claims it saw everything); prompt-cache prefix stability (static prefix first, per-request data last?); the never-empty-cons rule turning pipeline data gaps into product criticism.",
+    "DO NOT cover Arabic generation (lane po-categories-i18n owns it). Reproduce statically by importing the modules and rendering the prompts with a fixture product pair; you cannot call OpenAI."
+   ]
+  },
+  {
+   "key": "po-rubric",
+   "title": "The deterministic scoring rubric under prod and canary flag states - inversions, order dependence, no-data-beats-data",
+   "prompt": [
+    "SURFACE: app/services/scoring_service.py (3,819 LOC) via its public entry compute_scores (and whatever structured_comparison_service actually calls). Enumerate: CATEGORY_DIMENSIONS for all 9 categories (dims, weights, do weights sum to 1), _DIMENSION_SIGNAL_MAP, MISSING_SCORE handling, price authority deltas per source_method (all 15 stamps; _PRICE_TRUST_SET / GENUINE sets after #104), CATEGORY_MIN_COVERAGE penalty, the three personalization layers and caps (+-30/10/5, cohort), value_badge (ENABLE_CATEGORY_VALUE_BADGE), tradeoff pairs, compute_confidence legs, derive_rating_from_scores (the constant 3.6), win_margin, scoring_method derivation, dimension_winners, tie-breaks.",
+    "FLAG STATES to test: PROD = ENABLE_BUNDLE_C_SCORING=false, ENABLE_SPEC_FIELD_NORM off, ENABLE_MISSING_DIM_RENORM off, ENABLE_CATEGORY_VALUE_BADGE off, ENABLE_BEHAVIORAL_DIM_TRANSLATION off; CANARY = each of those ON singly and all ON. Flags are read per call via os.getenv - set them with monkeypatch/os.environ in your harness.",
+    "METHOD (coverage-driven): write a generator under the scratchpad folder that builds >=12 product pairs PER CATEGORY spanning data-availability patterns: both fully specified; one missing all specs; one missing price; estimated vs genuine (local_bhd / page_scrape_jsonld / converted_usd / estimated) price provenance; one unrated vs 2.0-star; 4.9-star/900 reviews vs unrated; identical products; 10x same-unit spec gap (16 vs 512 GB) and a unit-notation gap (5000 mAh vs 5 Ah); extreme price ratios. Run compute_scores in BOTH product orders under EVERY flag state. REPORT every: winner flip on order swap (order dependence), tie that should not be a tie, case where a product with NO data outscores measured data, case where a genuine price is penalised relative to an estimate, dimension where notation decides the winner, weight vectors not summing to 1, scoring_method label not matching what moved the weights, win_margin 0.0 on a clearly-decided pair (#101 residual - quantify how often). Also re-run every tests/fixtures/*_flag_off_golden.json through HEAD and confirm they still match (a mismatch is a P1).",
+    "Known and must be reconciled with status, not re-found: #100/#101 flag designs and their recorded residuals, #102 value badge, #103 behavioral translation, #104 trust set, CATEGORY_MIN_COVERAGE 'inversion' (verified NOT inverted in M18 closeout - re-check the arithmetic yourself once)."
+   ]
+  },
+  {
+   "key": "po-verdict-truth",
+   "title": "One response, one truth - every key of the comparison payload, who writes it, and whether it can disagree with another key",
+   "prompt": [
+    "SURFACE: app/services/response_builder.py (build_comparison_response), structured_comparison_service.py build paths (sync compare_from_text, streaming compare_from_text_streaming, quick), share GET (public strip), history GET rebuild, and the SSE event set (specs/prices/reviews/scores/verdict/complete/settle_complete/error). Enumerate EVERY key of the response contract (overview.*, specs, reviews, scoring.*, personalization, metadata.*, and the BC aliases products/comparison/winner_index/recommendation/key_differences) and for each: which module writes it, from which source (deterministic scorer vs raw model JSON vs cache), and every OTHER key it must agree with (winner name vs winner_index vs verdict prose vs dimension_winners vs SSE verdict event vs complete payload vs share text vs Home verdict_short).",
+    "CHECK: scrubbing of internals (_-prefixed keys, score internals in pros/cons, [snippet_N] citations, model_knowledge markers) on ALL build paths incl. share/history rebuild; comparison_quality labels with ENABLE_COMPARISON_QUALITY_V2 OFF (prod) and ON; INSUFFICIENT_DATA early-return conditions - map each user-facing error string in baseline/search_logs_summary.txt ('Still gathering prices - give it another tap in a moment.' 1288 rows, 'Comparison data was incomplete - choose different products.' 443, 'We need a moment more on these two - give it another tap.' 228, 'blocked' 215, 'We couldn't finish this comparison in time. Try again.' 209, 'Could not identify two products to compare' 179, \"'NoneType' object has no attribute 'get'\" 2) to the exact code path that produces it and judge whether the message is TRUE for that path (e.g. does 'give it another tap' actually succeed on the second tap? is 'blocked' ever shown to a user?); category_switched banner truth; price_method_mismatch; data_freshness_shaky; settle_complete/complete duplication (7 emit sites) and what a client that latches on complete only misses; metadata.stage_timings_ms presence; non-int winner_index normalisation; the ENABLE_WINNER_PROSE_RECONCILE template path.",
+    "METHOD: reproduce by feeding recorded payloads into the builder at HEAD where possible - the 27 Supabase comparisons.full_response rows (read-only SELECT per the brief) and tests/fixtures/comparison_baseline_d2*.json: extract the stored raw comparison/product_data inputs where present, re-run build_comparison_response at HEAD, and diff the stored output vs HEAD output key by key; report any stored row where two keys disagree TODAY and any HEAD behaviour change. Known (status only): #99/#110 winner card, M18 PO-recorded-01, PO-verdict-text-09 ('weird' modal label)."
+   ]
+  },
+  {
+   "key": "po-factcheck-confidence",
+   "title": "Fact-check and confidence - what is verified, what is fabricated, what reaches the screen",
+   "prompt": [
+    "SURFACE: app/services/fact_check_service.py, trust_validation_service.py, the confidence computation (compute_confidence and overview.confidence), attach_data_freshness_notice, and the client side that renders them: SmartCompareApp/src/components/results/confidenceDetailsLines.ts and the confidence pills / 'What we know' sheet in ResultsContent*/ResultsScreen (read only to learn which backend fields reach the screen). Enumerate every fact_check field (specs_verified/likely/flagged/unverified, price_verified, price_deviation_pct, review_sentiment_consistent, review_rating_deviation, the per-product metadata.fact_check.product_0/1, data_freshness_shaky) and every flag: ENABLE_FACTCHECK_CURRENCY_NORMALIZATION (#106), ENABLE_SPEC_CONFIDENCE_CACHE (#107), ENABLE_CITATION_RUBRIC_V2 (#108), ENABLE_CONFIDENCE_FACTCHECK_WIRING (#109), ENABLE_FACTCHECK_HONEST_ABSENCE.",
+    "FLAG STATES: all OFF (prod today), all ON (runbook target), and each single flip; the docstring's HARD ACTIVATION ORDER (SPEC_CONFIDENCE_CACHE -> CURRENCY_NORMALIZATION -> CONFIDENCE_FACTCHECK_WIRING) - verify the coupling is real by testing the forbidden orders.",
+    "METHOD: synthetic inputs (shopping rows in mixed currencies incl. BHD minor-unit-3 '99.500', AED/SAR glyph rows, bare numerals; specs with citations that match/mismatch/unit-shift '128 TB vs 128 GB'; reviews with numeric and string average_rating; zero-row and None cases) plus the recorded payloads. REPORT: any 'verified' that is fabricated or currency-blind in PROD state; confidence pills that contradict fact_check; absence reported as success; cache-hit blindness residuals (what is lost on the L1/L2 write path today); crash paths; fields computed but never rendered by the app (dead work) and fields the app renders that the backend never emits; whether a contradicted price still shows 'strong' confidence in prod; whether the +0.1 reliability bonus for a fabricated True is live. Known (status only): #105-#109, M18 PO-fact-check-01..11."
+   ]
+  },
+  {
+   "key": "po-recorded-measured",
+   "title": "What the product actually produced - recorded payloads through the judge, and 13k measured request outcomes",
+   "prompt": [
+    "PART A - recorded outputs: read-only SELECT the 27 Supabase comparisons rows (full_response, created_at, product_names, schema_version) plus tests/fixtures/comparison_baseline_d2*.json and the root full_response.json / tmp_result*.json / session23_test_response.json. Locate the deterministic judge in scripts/eval_runner.py (grading functions; axes winner/specs/factual) and run it offline on every payload; ALSO apply a manual rubric per payload: winner name == winner index == verdict prose subject; price provenance labels honest (estimated flagged, currency plausible for region, no 10x); spec plausibility and fabrication markers (fields the snippets could not have contained); review grounding (citations resolve, no invented retailers); ratings not model-generated; scary copy present; Arabic where the request was Arabic. Note the engine version at recording time (all rows <= 2026-06-21, pre-M13) versus HEAD and label each defect 'recorded-then, fixed-at-HEAD?' by checking the relevant HEAD code path - a recorded defect that HEAD still produces is the finding; one HEAD fixed is a status line only.",
+    "PART B - measured outcomes: baseline/search_logs_summary.txt is a start; pull the full search_logs series since 2026-06-01 (13,237 rows; columns created_at, success, duration_ms, error_message, input_type, cost, products_found, query, user_id) read-only and compute: failure taxonomy per error string and per input_type (text 12,505 / text_stream 721 / camera 11); success-only latency percentiles overall and per month; the 'We don't compare this category' 690 rows - list 40 distinct queries and judge whether the category gate over-rejects legitimate GCC products; the 'blocked' 215 rows - find the producing code path and whether a user ever sees that string; 'Still gathering prices' 1,288 rows (a ~10% partial rate) - which stage produces it and does a second tap succeed (look for the same query succeeding within 2 minutes after a partial); the 103.7s max and every row > 35s (pre-cap era? which dates); the two NoneType crashes - trace them to HEAD code; the cost column (June $20.5 -> Aug $0.29) per successful compare; camera path outcomes (11 rows). Also parse metadata.stage_timings_ms from the recorded rows for a per-stage latency breakdown.",
+    "Everything here is MEASURED or recorded - label it so, and keep query text private (do not include user_id; truncate queries to 60 chars)."
+   ]
+  },
+  {
+   "key": "po-price-truth",
+   "title": "The price the user sees - selection and labelling correctness over the 414-page zero-network corpus, both directions",
+   "prompt": [
+    "SURFACE: app/services/price_service.py selection + labelling as the user sees it (amount, currency, source_method, estimated, retailer, url, pends), via the platform router / extract_price_from_html / the page-scrape rung, driven by the zero-network corpus _proof/html + _proof/global (414 cached PDPs). _proof/sweep2.py shows how to drive it (python _proof/sweep2.py curl_cffi 6 BHD, ~100s, no network) - read it and reuse its wiring; write your harness under the scratchpad folder. Watch the MEASUREMENT TRAPS in CLAUDE.md: an empty product_name makes the JSON-LD branch unreachable (pass a real name); ENABLE_EXACT_PRICE_GATE=true masks extraction bugs (run with it OFF to isolate extraction and ON for shipped behaviour, and say which).",
+    "FLAG STATES: PROD (ENABLE_JSONLD_FIRST on, ENABLE_EXACT_PRICE_GATE on, ENABLE_BH_GCC_CATALOG_SOURCES on, ENABLE_VISIBLE_TEXT_CURRENCY off, ENABLE_EXTENDED_FALLBACK_RATES off, ENABLE_SHOPPING_STRICT_CURRENCY off, ENABLE_REGION_CURRENCY_GUARD off, ENABLE_LONGEST_HOST_MATCH off, ENABLE_UCP_JSON_PRICE off, ENABLE_NOT_A_PDP_FILTER off) and the W2 currency family ON (runbook target).",
+    "COVERAGE (both directions): per category present in the corpus (fragrance dominates; cover every other category the corpus has), >=12 pages each: LEAKS (foreign amount stamped as target currency, 10x/100x decimal or per-litre/unit-price decoy, list vs sale mispick, 'converted_usd' stamped on something not converted (#51), iHerb currency tautology stamping local_bhd (#52 - status at HEAD), size/variant mismatch shipped as a match) and OVER-REJECTIONS (a genuine correct price pended or dropped: size_mismatch/unit_mismatch/currency pends on correct rows, NOT-A-PDP false positives, EXACT gate rejecting the right SKU). For each finding give the page file, the expected value (from the page's own JSON-LD/visible text) and what HEAD returned. Also assert at HEAD: GENUINE - _PRICE_TRUST_SET == set() and every source_method stamp price_service emits is classified.",
+    "Known (status only): M13-W2 currency flags, M18 PO-fact-check-06/#104, #51-#57 cluster (report which of #51/#52/#53/#54/#56/#57 you can confirm at HEAD with corpus evidence)."
+   ]
+  },
+  {
+   "key": "po-categories-i18n",
+   "title": "Nine categories, two languages - does a GCC user get the right category, the right fields, and their own language",
+   "prompt": [
+    "PART A - category gate: PRODUCT_PARSER_PROMPT (extraction_service) plus every deterministic pre-check that can reject or reshape a query BEFORE the LLM (structured_comparison_service parse/validate paths, _validate_price_query Gate 0, the 'We don't compare this category' path, selected_category soft validation and category_switched). Enumerate 9 categories x 40 realistic GCC queries each written by YOU from domain knowledge (English, Arabic, mixed script, brand-only, model-number-only, 'X vs Y' / 'X or Y' / Arabic 'أو', typos, sizes, regional product names like Lattafa/Al Haramain/Almarai/Sunbulah, pharmacy brands, hijab/abaya fashion) and run every deterministic pre-check offline; the LLM parse itself cannot run - say so, and instead review the prompt's category definitions for over-rejection classes that would explain the measured 5% 'We don't compare this category' rate. Also read the 690 measured rejected queries (read-only search_logs SELECT, query truncated to 60 chars, no user_id) and classify them.",
+    "PART B - per-category output shape: CATEGORY_SPEC_SCHEMAS fields per category vs what the app renders (build_category_profile / 'At a glance' + Specs render populated fields in SCHEMA ORDER; scoring_service.CATEGORY_DIMENSIONS top-4 hero bars; price_service.CATEGORY_FAIRNESS like-for-like captions). Find fields the schema asks the model for that no screen renders (paid tokens for nothing) and rendered fields the schema never asks for (always empty).",
+    "PART C - Arabic: at HEAD is there ANY Arabic generation path for verdict / review summary / overview / pros-cons when the request is Arabic or the user locale is ar (M18 PO-verdict-text-02 said none - confirm or find the change)? What does an AR user see for English-only backend text (mixed direction, RTL punctuation)? localizedCurrency per locale, Arabic-Indic digits, the 6-form plural sites, the user-facing backend error strings reaching an AR client untranslated (map each error string in baseline/search_logs_summary.txt to whether the client i18n-substitutes it). PART D - copy contract: grep forbidden EN (couldn't, try again, Failed to) and AR (تعذر, فشل) across every backend string that reaches a client and both i18n catalogs; the measured 'We couldn't finish this comparison in time. Try again.' (209 rows) violates it - find where it is produced and whether it still ships at HEAD."
+   ]
+  }
+ ],
+ "synth": [
+  "Answer, in plain sentences, for a founder: (1) Is the product's output any good TODAY - i.e. under the PROD flag state (baseline/railway-web-vars.txt) with phones on the 97b5f15 bundle - and what exactly would each dark flag change if flipped? Separate LIVE defects (reachable now) from DARK ones (only under an unflipped flag) explicitly. (2) What did the MEASURED request series say about the product (failure rate, partial rate, category over-rejection, latency) and which of those are honest messages vs misleading ones? (3) What must be re-scored the moment OpenAI credits return (name the exact eval_runner command from the brief, and which findings can only be closed live)? (4) The #101 product call (win_margin 0.0): state the options and the evidence, do not decide it. Rank units by user-visible harm; every unit that touches price_service must carry the flag-OFF byte-identity gate; every prompt change is UNFLAGGED by nature - say what canary would validate it and note the OpenAI prompt-cache re-warm cost."
+ ],
+ "stateFile": "C:/Users/SynAckITPC/Documents/AI/sc-review-state/docs/investigations/2026-09-06-full-review-state/partial-m22-product-output.json",
+ "reviewNotes": "C:/Users/SynAckITPC/Documents/AI/sc-review-state/docs/investigations/2026-09-06-full-review-state/FABLE_REVIEW_NOTES.md",
+ "missingLanes": [],
+ "unverified": [
+  {
+   "id": "PO-CATEGORIES-I18N-07",
+   "lane": "po-categories-i18n",
+   "sev": "P2"
+  },
+  {
+   "id": "PO-CATEGORIES-I18N-08",
+   "lane": "po-categories-i18n",
+   "sev": "P2"
+  },
+  {
+   "id": "PO-CATEGORIES-I18N-09",
+   "lane": "po-categories-i18n",
+   "sev": "P2"
+  },
+  {
+   "id": "PO-CATEGORIES-I18N-10",
+   "lane": "po-categories-i18n",
+   "sev": "P2"
+  },
+  {
+   "id": "PO-CATEGORIES-I18N-11",
+   "lane": "po-categories-i18n",
+   "sev": "P2"
+  },
+  {
+   "id": "PO-CATEGORIES-I18N-12",
+   "lane": "po-categories-i18n",
+   "sev": "P2"
+  }
+ ],
+ "secondVote": [
+  {
+   "id": "PO-RUBRIC-01",
+   "lane": "po-rubric",
+   "sev": "P1"
+  },
+  {
+   "id": "PO-RUBRIC-02",
+   "lane": "po-rubric",
+   "sev": "P1"
+  },
+  {
+   "id": "PO-RUBRIC-03",
+   "lane": "po-rubric",
+   "sev": "P1"
+  },
+  {
+   "id": "PO-RUBRIC-09",
+   "lane": "po-rubric",
+   "sev": "P1"
+  },
+  {
+   "id": "PO-RUBRIC-10",
+   "lane": "po-rubric",
+   "sev": "P1"
+  },
+  {
+   "id": "PO-RUBRIC-11",
+   "lane": "po-rubric",
+   "sev": "P1"
+  },
+  {
+   "id": "PO-RECORDED-MEASURED-01",
+   "lane": "po-recorded-measured",
+   "sev": "P1"
+  },
+  {
+   "id": "PO-RECORDED-MEASURED-02",
+   "lane": "po-recorded-measured",
+   "sev": "P1"
+  },
+  {
+   "id": "PO-RECORDED-MEASURED-03",
+   "lane": "po-recorded-measured",
+   "sev": "P1"
+  },
+  {
+   "id": "PO-RECORDED-MEASURED-04",
+   "lane": "po-recorded-measured",
+   "sev": "P1"
+  },
+  {
+   "id": "PO-RECORDED-MEASURED-05",
+   "lane": "po-recorded-measured",
+   "sev": "P1"
+  },
+  {
+   "id": "PO-VERDICT-TRUTH-01",
+   "lane": "po-verdict-truth",
+   "sev": "P1"
+  },
+  {
+   "id": "PO-VERDICT-TRUTH-02",
+   "lane": "po-verdict-truth",
+   "sev": "P1"
+  },
+  {
+   "id": "PO-PRICE-TRUTH-07",
+   "lane": "po-price-truth",
+   "sev": "P1"
+  },
+  {
+   "id": "PO-PRICE-TRUTH-08",
+   "lane": "po-price-truth",
+   "sev": "P1"
+  },
+  {
+   "id": "PO-PRICE-TRUTH-01",
+   "lane": "po-price-truth",
+   "sev": "P1"
+  },
+  {
+   "id": "PO-PRICE-TRUTH-02",
+   "lane": "po-price-truth",
+   "sev": "P1"
+  },
+  {
+   "id": "PO-PRICE-TRUTH-03",
+   "lane": "po-price-truth",
+   "sev": "P1"
+  },
+  {
+   "id": "PO-PRICE-TRUTH-04",
+   "lane": "po-price-truth",
+   "sev": "P1"
+  },
+  {
+   "id": "PO-FACTCHECK-CONFIDENCE-01",
+   "lane": "po-factcheck-confidence",
+   "sev": "P1"
+  },
+  {
+   "id": "PO-FACTCHECK-CONFIDENCE-02",
+   "lane": "po-factcheck-confidence",
+   "sev": "P1"
+  },
+  {
+   "id": "PO-FACTCHECK-CONFIDENCE-03",
+   "lane": "po-factcheck-confidence",
+   "sev": "P1"
+  },
+  {
+   "id": "PO-FACTCHECK-CONFIDENCE-04",
+   "lane": "po-factcheck-confidence",
+   "sev": "P1"
+  },
+  {
+   "id": "PO-CATEGORIES-I18N-01",
+   "lane": "po-categories-i18n",
+   "sev": "P1"
+  },
+  {
+   "id": "PO-CATEGORIES-I18N-03",
+   "lane": "po-categories-i18n",
+   "sev": "P1"
+  }
+ ],
+ "haveSynth": false,
+ "haveCritic": false
+}
