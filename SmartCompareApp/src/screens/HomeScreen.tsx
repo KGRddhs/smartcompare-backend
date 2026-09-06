@@ -36,6 +36,7 @@ import {
   SafeAreaView,
   ScrollView,
   Alert,
+  InteractionManager,
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
@@ -251,7 +252,20 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
 
   useFocusEffect(
     useCallback(() => {
-      checkServer();
+      // B5 — Home's first paint used to fire four network calls at once
+      // (usage status, referral status, /health, and the compare_entry_view
+      // analytics POST). `checkServer` is the one with no consumer at all:
+      // its boolean is discarded (see the note on checkServer below), so it
+      // is pushed behind the interaction queue instead of competing with
+      // the paint. loadUser + loadRecentSearches stay inline — they are
+      // local AsyncStorage reads that feed what the screen renders.
+      //
+      // Deliberately NOT cancelled on blur/unmount: the task writes no
+      // state, and cancelling would silently drop the telemetry ping this
+      // defer is meant to preserve.
+      InteractionManager.runAfterInteractions(() => {
+        checkServer();
+      });
       loadUser();
       loadRecentSearches();
     }, [])
@@ -300,7 +314,15 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
   useEffect(() => {
     if (lastViewedModeRef.current !== inputMode) {
       lastViewedModeRef.current = inputMode;
-      trackEvent('compare_entry_view', { mode: inputMode });
+      // B5 — this is the mount-time analytics write (the initial mode
+      // counts as a view), so on a cold Home it was a POST racing the first
+      // paint. Deferred behind the interaction queue: the event still
+      // fires, and its payload is unchanged — only the server-side
+      // timestamp moves by the length of the defer, which no correctness
+      // path reads. Not cancelled on re-run/unmount, so no view is lost.
+      InteractionManager.runAfterInteractions(() => {
+        trackEvent('compare_entry_view', { mode: inputMode });
+      });
     }
   }, [inputMode]);
 
