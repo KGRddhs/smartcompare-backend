@@ -14,21 +14,37 @@
  *     parent state (analytics fetches, paywall mounting). This is
  *     load-bearing — re-emitting on every render would be jarring.
  *
- * Contract: __tests__/hero/RevealBurst.test.tsx
- *   - default snapshot + custom particleCount snapshot
- *   - fireOnce invariant: re-rendering with the same React key keeps the
- *     particle node count stable (no re-emit)
+ * A10 (mobile checkup, 2026-09-05) — the two shared values below used to be
+ * WRITE-ONLY: `badgeScale` and `particleProgress` were driven by the effect
+ * but never read by anything that renders, so the celebration shipped as a
+ * frozen tableau — six emerald dots parked at their resting position at a
+ * flat 0.85 opacity, plus a badge with no scale at all. Because the burst is
+ * mounted into an absolute-fill slot over the DimensionBars card and is never
+ * unmounted, that tableau then sat over the bars for the life of the screen.
+ * Both drivers are now BOUND to render:
+ *   - each particle is an `Animated.createAnimatedComponent(Circle)` whose
+ *     cx/cy/opacity come from `useAnimatedProps` off `particleProgress`
+ *   - the badge is an `Animated.View` scaled by `useAnimatedStyle`
+ * The resting geometry is unchanged (progress 1 lands on exactly the old
+ * static endpoint), so the only visual deltas are the motion itself and the
+ * designed fade-out, which also retires the persistent overlay.
+ *
+ * Contract: __tests__/hero/RevealBurst.test.tsx (snapshots + fireOnce)
+ *           __tests__/hero/RevealBurst.animation.test.tsx (driver binding)
  */
 import React, { useEffect, useMemo, useRef } from 'react';
 import { View, StyleSheet } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
-import {
+import Animated, {
   useSharedValue,
+  useAnimatedProps,
+  useAnimatedStyle,
   withSpring,
   withTiming,
   withDelay,
   Easing,
 } from 'react-native-reanimated';
+import type { SharedValue } from 'react-native-reanimated';
 import { colors, spacing } from '../../theme';
 import { motion } from '../../theme/motion';
 import { QaranIcon } from '../../icons/QaranIcon';
@@ -54,6 +70,22 @@ const CENTER = VIEWBOX / 2;
 const BADGE_R = 56;
 const PARTICLE_R = 5;
 const PARTICLE_TRAVEL = 110;
+/** Peak particle opacity, held until the fade phase begins. */
+const PARTICLE_OPACITY = 0.85;
+/**
+ * Downward drop (px) a particle accumulates by the end of the fall. Equal to
+ * the constant `+ 40` the pre-A10 static render baked into cy, so the resting
+ * position of every particle is byte-identical to what shipped before.
+ */
+const PARTICLE_FALL = 40;
+/** Driver fraction after which a particle fades out (design § 3.2). */
+const PARTICLE_FADE_START = 0.55;
+/** Whole-burst duration; the outward emit owns the first EMIT_FRACTION of it. */
+const DRIVER_MS =
+  motion.revealBurst.particleEmit + motion.revealBurst.particleFall;
+const EMIT_FRACTION = motion.revealBurst.particleEmit / DRIVER_MS;
+
+const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
 interface ParticleSpec {
   angleRad: number;
@@ -75,6 +107,63 @@ function buildParticles(count: number): ParticleSpec[] {
     });
   }
   return arr;
+}
+
+interface ParticleProps {
+  index: number;
+  spec: ParticleSpec;
+  progress: SharedValue<number>;
+}
+
+/**
+ * One emerald particle, bound to the shared burst driver.
+ *
+ * Extracted as its own component ONLY because hooks cannot be called inside
+ * `particles.map()`. It renders a single Circle, so the host tree shape is
+ * identical to the pre-A10 inline map.
+ */
+function Particle({ index, spec, progress }: ParticleProps) {
+  // Resolve the endpoint offsets to primitives up front so the worklet
+  // closes over plain numbers rather than the spec object.
+  const dx = Math.cos(spec.angleRad) * spec.distance;
+  const dy = Math.sin(spec.angleRad) * spec.distance;
+  const delayMs = spec.delayMs;
+
+  const animatedProps = useAnimatedProps(() => {
+    // Per-particle stagger. `delayMs` shifts only the START: at progress 0
+    // every particle is at the centre, at progress 1 every particle is at
+    // its resting position, whatever its delay.
+    const t = Math.min(
+      1,
+      Math.max(
+        0,
+        (progress.value * DRIVER_MS - delayMs) /
+          Math.max(1, DRIVER_MS - delayMs),
+      ),
+    );
+    // The outward emit completes inside the emit phase; gravity keeps
+    // accumulating across the whole driver, which is what makes the path
+    // parabolic rather than a straight radial slide.
+    const out = t < EMIT_FRACTION ? t / EMIT_FRACTION : 1;
+    const fade =
+      t <= PARTICLE_FADE_START
+        ? 1
+        : 1 - (t - PARTICLE_FADE_START) / (1 - PARTICLE_FADE_START);
+    return {
+      cx: CENTER + dx * out,
+      cy: CENTER + dy * out + PARTICLE_FALL * t * t,
+      opacity: PARTICLE_OPACITY * fade,
+    };
+  });
+
+  return (
+    <AnimatedCircle
+      testID={`reveal-burst-particle-${index}`}
+      r={PARTICLE_R}
+      fill={colors.accent}
+      animatedProps={animatedProps}
+    />
+  );
 }
 
 export function RevealBurst({
@@ -114,39 +203,31 @@ export function RevealBurst({
     particleProgress.value = withDelay(
       0,
       withTiming(1, {
-        duration: motion.revealBurst.particleEmit + motion.revealBurst.particleFall,
+        duration: DRIVER_MS,
         easing: Easing.out(Easing.cubic),
       }),
     );
   }, [animated, badgeScale, particleProgress]);
 
+  const badgeStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: badgeScale.value }],
+  }));
+
   return (
     <View style={[styles.root, { width: size, height: size }]} testID={testID}>
       <Svg width={size} height={size} viewBox={`0 0 ${VIEWBOX} ${VIEWBOX}`}>
-        {particles.map((p, i) => {
-          const cos = Math.cos(p.angleRad);
-          const sin = Math.sin(p.angleRad);
-          // Final resting position — animation lives in the worklet layer
-          // and we render the static endpoint in the SVG so tests can
-          // count nodes deterministically.
-          const cx = CENTER + cos * p.distance;
-          const cy = CENTER + sin * p.distance + 40;
-          return (
-            <Circle
-              key={`particle-${i}`}
-              testID={`reveal-burst-particle-${i}`}
-              cx={cx}
-              cy={cy}
-              r={PARTICLE_R}
-              fill={colors.accent}
-              opacity={0.85}
-            />
-          );
-        })}
+        {particles.map((p, i) => (
+          <Particle
+            key={`particle-${i}`}
+            index={i}
+            spec={p}
+            progress={particleProgress}
+          />
+        ))}
       </Svg>
 
       <View style={styles.badgeWrap} pointerEvents="none">
-        <View
+        <Animated.View
           testID="reveal-burst-badge"
           style={[
             styles.badge,
@@ -155,10 +236,11 @@ export function RevealBurst({
               height: BADGE_R * 2,
               borderRadius: BADGE_R,
             },
+            badgeStyle,
           ]}
         >
           <QaranIcon size={Math.round(BADGE_R * 1.2)} />
-        </View>
+        </Animated.View>
       </View>
     </View>
   );

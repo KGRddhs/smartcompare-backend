@@ -23,50 +23,74 @@ exports[`RevealBurst hero renders default snapshot 1`] = `
     width={320}
   >
     <Circle
-      cx={160}
-      cy={106.5}
+      animatedProps={
+        {
+          "cx": 160,
+          "cy": 160,
+          "opacity": 0.85,
+        }
+      }
       fill="#10B981"
-      opacity={0.85}
       r={5}
       testID="reveal-burst-particle-0"
     />
     <Circle
-      cx={255.26279441628824}
-      cy={145}
+      animatedProps={
+        {
+          "cx": 160,
+          "cy": 160,
+          "opacity": 0.85,
+        }
+      }
       fill="#10B981"
-      opacity={0.85}
       r={5}
       testID="reveal-burst-particle-1"
     />
     <Circle
-      cx={240.973375253845}
-      cy={246.75}
+      animatedProps={
+        {
+          "cx": 160,
+          "cy": 160,
+          "opacity": 0.85,
+        }
+      }
       fill="#10B981"
-      opacity={0.85}
       r={5}
       testID="reveal-burst-particle-2"
     />
     <Circle
-      cx={160}
-      cy={310}
+      animatedProps={
+        {
+          "cx": 160,
+          "cy": 160,
+          "opacity": 0.85,
+        }
+      }
       fill="#10B981"
-      opacity={0.85}
       r={5}
       testID="reveal-burst-particle-3"
     />
     <Circle
-      cx={79.02662474615501}
-      cy={246.75000000000003}
+      animatedProps={
+        {
+          "cx": 160,
+          "cy": 160,
+          "opacity": 0.85,
+        }
+      }
       fill="#10B981"
-      opacity={0.85}
       r={5}
       testID="reveal-burst-particle-4"
     />
     <Circle
-      cx={64.73720558371176}
-      cy={145}
+      animatedProps={
+        {
+          "cx": 160,
+          "cy": 160,
+          "opacity": 0.85,
+        }
+      }
       fill="#10B981"
-      opacity={0.85}
       r={5}
       testID="reveal-burst-particle-5"
     />
@@ -104,6 +128,13 @@ exports[`RevealBurst hero renders default snapshot 1`] = `
             "borderRadius": 56,
             "height": 112,
             "width": 112,
+          },
+          {
+            "transform": [
+              {
+                "scale": 0,
+              },
+            ],
           },
         ]
       }
@@ -167,66 +198,98 @@ exports[`RevealBurst hero renders with custom particle count 1`] = `
     width={320}
   >
     <Circle
-      cx={160}
-      cy={106.5}
+      animatedProps={
+        {
+          "cx": 160,
+          "cy": 160,
+          "opacity": 0.85,
+        }
+      }
       fill="#10B981"
-      opacity={0.85}
       r={5}
       testID="reveal-burst-particle-0"
     />
     <Circle
-      cx={237.78174593052023}
-      cy={122.21825406947978}
+      animatedProps={
+        {
+          "cx": 160,
+          "cy": 160,
+          "opacity": 0.85,
+        }
+      }
       fill="#10B981"
-      opacity={0.85}
       r={5}
       testID="reveal-burst-particle-1"
     />
     <Circle
-      cx={253.5}
-      cy={200}
+      animatedProps={
+        {
+          "cx": 160,
+          "cy": 160,
+          "opacity": 0.85,
+        }
+      }
       fill="#10B981"
-      opacity={0.85}
       r={5}
       testID="reveal-burst-particle-2"
     />
     <Circle
-      cx={237.78174593052023}
-      cy={277.78174593052023}
+      animatedProps={
+        {
+          "cx": 160,
+          "cy": 160,
+          "opacity": 0.85,
+        }
+      }
       fill="#10B981"
-      opacity={0.85}
       r={5}
       testID="reveal-burst-particle-3"
     />
     <Circle
-      cx={160}
-      cy={293.5}
+      animatedProps={
+        {
+          "cx": 160,
+          "cy": 160,
+          "opacity": 0.85,
+        }
+      }
       fill="#10B981"
-      opacity={0.85}
       r={5}
       testID="reveal-burst-particle-4"
     />
     <Circle
-      cx={82.21825406947978}
-      cy={277.78174593052023}
+      animatedProps={
+        {
+          "cx": 160,
+          "cy": 160,
+          "opacity": 0.85,
+        }
+      }
       fill="#10B981"
-      opacity={0.85}
       r={5}
       testID="reveal-burst-particle-5"
     />
     <Circle
-      cx={66.5}
-      cy={200}
+      animatedProps={
+        {
+          "cx": 160,
+          "cy": 160,
+          "opacity": 0.85,
+        }
+      }
       fill="#10B981"
-      opacity={0.85}
       r={5}
       testID="reveal-burst-particle-6"
     />
     <Circle
-      cx={82.21825406947976}
-      cy={122.21825406947978}
+      animatedProps={
+        {
+          "cx": 160,
+          "cy": 160,
+          "opacity": 0.85,
+        }
+      }
       fill="#10B981"
-      opacity={0.85}
       r={5}
       testID="reveal-burst-particle-7"
     />
@@ -264,6 +327,13 @@ exports[`RevealBurst hero renders with custom particle count 1`] = `
             "borderRadius": 56,
             "height": 112,
             "width": 112,
+          },
+          {
+            "transform": [
+              {
+                "scale": 0,
+              },
+            ],
           },
         ]
       }
