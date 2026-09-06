@@ -80,11 +80,6 @@
    "sev": "P1"
   },
   {
-   "id": "CR-PERFORMANCE-01",
-   "lane": "cr-performance",
-   "sev": "P1"
-  },
-  {
    "id": "CR-PERFORMANCE-03",
    "lane": "cr-performance",
    "sev": "P1"

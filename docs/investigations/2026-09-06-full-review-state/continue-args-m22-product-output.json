@@ -77,38 +77,7 @@
  "stateFile": "C:/Users/SynAckITPC/Documents/AI/sc-review-state/docs/investigations/2026-09-06-full-review-state/partial-m22-product-output.json",
  "reviewNotes": "C:/Users/SynAckITPC/Documents/AI/sc-review-state/docs/investigations/2026-09-06-full-review-state/FABLE_REVIEW_NOTES.md",
  "missingLanes": [],
- "unverified": [
-  {
-   "id": "PO-CATEGORIES-I18N-07",
-   "lane": "po-categories-i18n",
-   "sev": "P2"
-  },
-  {
-   "id": "PO-CATEGORIES-I18N-08",
-   "lane": "po-categories-i18n",
-   "sev": "P2"
-  },
-  {
-   "id": "PO-CATEGORIES-I18N-09",
-   "lane": "po-categories-i18n",
-   "sev": "P2"
-  },
-  {
-   "id": "PO-CATEGORIES-I18N-10",
-   "lane": "po-categories-i18n",
-   "sev": "P2"
-  },
-  {
-   "id": "PO-CATEGORIES-I18N-11",
-   "lane": "po-categories-i18n",
-   "sev": "P2"
-  },
-  {
-   "id": "PO-CATEGORIES-I18N-12",
-   "lane": "po-categories-i18n",
-   "sev": "P2"
-  }
- ],
+ "unverified": [],
  "secondVote": [
   {
    "id": "PO-RUBRIC-01",

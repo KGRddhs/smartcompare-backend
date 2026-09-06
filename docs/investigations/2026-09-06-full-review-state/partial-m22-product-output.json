@@ -2658,6 +2658,58 @@
    "corrected_line": 1172,
    "reason": "Reproduced with the real functions: all three topical vitamin-C queries return supplements with is_supplement_query=True, because 'vitamin' is an UNAMBIGUOUS token that stands alone (price_service.py:1181-1182) and classify_category_from_text short-circuits on it BEFORE the synonym sweep. Impact claims verified: supplements unit='count' vs skincare unit='volume' in CATEGORY_FAIRNESS, so the ml-vs-ml like-for-like axis really is replaced. Unflagged, reachable on the shipped explicit_pair path, and it overrides a correct Skincare chip. Two citation errors corrected: the short-circuit is at 1171-1173 (not 1168), and the AMBIGUOUS-token gate the fix leans on is price_service.py:1184-1195 (1294-1305 is is_fragrance_query). The proposed _TOPICAL_FORM_TOKENS guard is correct and flag-safe. P2 right (quality/cost, not a hard break).",
    "evidence": "probe: 'Garnier Vitamin C serum 30ml vs Olay Vitamin C 40ml' -> cat=supplements isq=True; 'Vitamin C serum 30ml vs hyaluronic serum 30ml' -> supplements; 'Vitamin C 1000mg effervescent tablets' -> supplements. ex76.py:1171-1173 `from app.services.price_service import is_supplement_query` / `if is_supplement_query(text): return \"supplements\"`. ps76.py:1181-1182 `if any(_contains_token(name_lower, tok) for tok in SUPPLEMENT_UNAMBIGUOUS): return True`; 1184-1195 ambiguous-needs-dose-or-form. price_service.py:2674-2675 supplements `\"unit\": \"count\"` vs 2704-2705 skincare `\"unit\": \"volume\"`."
+  },
+  "PO-CATEGORIES-I18N-07": {
+   "id": "PO-CATEGORIES-I18N-07",
+   "verdict": "CONFIRMED",
+   "sev_after": "P2",
+   "known_status": "still-open",
+   "corrected_title": "The 'food' token routes food containers, pet food and food processors to grocery on the explicit_pair path the app actually uses — the FIX-1 guard covers only the parser path",
+   "reason": "Reproduced through the runtime function at 76ace90. SCS:369 is the explicit_pair branch and the FIX-1 comment at :349-351 names this exact case but sits inside `if parser_path:` (:346). text_routes:209/332/482 set explicit_pair whenever product_a+product_b arrive, and HomeScreen:315 always sends that shape, so parser_path=False for every phone compare. Ungated in prod. Grocery schema really does ask nutrition_* (es.py:123-127) and scoring_service:3258 labels 'Taste'. New — no prior M13/M18 row. Note the docstring at :320-333 documents the explicit_pair behavior as deliberate, so the fix must overrule a stated design, not just propagate one.",
+   "evidence": "scs.py@76ace90:369 `det = name_cat if name_cat != \"other\" else llm_cat`; es.py:1117 `\"food\": \"grocery\"`. Ran _resolve_pair_category: \"explicit_pair sel=None Lock and Lock food container 1L vs Tupperware 1L -> ('grocery', False, None)\"; \"Pet food Royal Canin 10kg ... -> ('grocery', False, None)\"; \"Tefal food processor ... -> ('grocery', False, None)\"."
+  },
+  "PO-CATEGORIES-I18N-08": {
+   "id": "PO-CATEGORIES-I18N-08",
+   "verdict": "REFUTED",
+   "sev_after": "P3",
+   "known_status": "still-open",
+   "corrected_file": "SmartCompareApp/src/screens/HomeScreen.tsx",
+   "corrected_line": 470,
+   "corrected_title": "Residual raw-English alert leak is M13-66's codeless fallback (HomeScreen:398/:470), not the INSUFFICIENT_DATA or parser strings — both cited branches are unreachable",
+   "reason": "Both cited lines are dead. api.ts:693-699 routes a `complete` event with success:false through onError, and the REST path (:550-566, the SHIPPED default since ENABLE_EXPO_FETCH_SSE is off) does the same, so HomeScreen:341-357 never runs. url_routes.py:158-161 raises HTTPException on failure, so HomeScreen:447 never runs either. Neither named string reaches the alert: INSUFFICIENT_DATA carries a code so :397 renders t('home.errors.comparison'); the parser-failure return (scs:3274/3828) is unreachable from the app because explicit_pair skips parse_product_query (scs:3250-3264). A real leak survives at :470 (`parsed.message` = HTTPException detail) and :398 (`error.message`) — already filed as open M13-66 at HomeScreen.tsx:381.",
+   "evidence": "api.ts:693 `if (parsed && parsed.success === false) { ... callbacks.onError?.(...) }`; api.ts:558 same for the REST fallback; url_routes.py:159 `raise HTTPException(status_code=400, detail=result.get(\"error\", \"Comparison failed\"))`; m13-full-review.md:95 M13-66 'HomeScreen's fallback alert renders the raw backend error string'."
+  },
+  "PO-CATEGORIES-I18N-09": {
+   "id": "PO-CATEGORIES-I18N-09",
+   "verdict": "CONFIRMED",
+   "sev_after": "P2",
+   "known_status": "still-open",
+   "reason": "Reproduced with the real singleton. content_blocklist.json@76ace90 weapons.en holds bare 'silencer' (line 13) and 'tactical knife' (line 16); check_query_intent is word-boundary regex (content_safety_service.py:85-88) and is called ungated on every compare at scs.py:3216 and :3903, returning the terminal CONTENT_UNAVAILABLE body (scs:3225-3229) that HomeScreen renders as a retry-less alert (HomeScreen.tsx:265-274). No prior M13/M18/issue row covers blocklist false positives; the 'opium' tightening (9f6e498) is the precedent the fix cites and it exists. Kept at P2, not P1: auto-parts/EDC is a narrow slice of this app's traffic and measured prod traffic is ~zero.",
+   "evidence": "Ran get_content_safety_service().check_query_intent: \"'Bosch exhaust silencer vs Walker silencer' -> allowed=False reason=weapons match='silencer'\"; \"'Victorinox tactical knife vs Gerber tactical knife' -> allowed=False reason=weapons match='tactical knife'\"; control \"'Victorinox Swiss Army knife vs Leatherman' -> allowed=True\"."
+  },
+  "PO-CATEGORIES-I18N-10": {
+   "id": "PO-CATEGORIES-I18N-10",
+   "verdict": "CONFIRMED",
+   "sev_after": "P2",
+   "known_status": "still-open",
+   "reason": "Every code claim holds at 76ace90 (SmartCompareApp is byte-identical 76ace90..HEAD): ResultsContent.tsx:143 and ResultsScreen.tsx:411 build `localizedCurrency(...) ${amount.toLocaleString()}` with no locale argument, HistoryScreen.tsx:715 flips to `${amount.toFixed(2)} ${localizedCurrency(...)}`, ResultsAccordion.tsx:664 passes a formatted string as `count`. Node reproduced the numeral and precision arithmetic. Dedupe is mis-cited, though: this is open M13-69 (P2, 'give every toLocaleString call the same explicit locale plus minimumFractionDigits via one shared money formatter'), which M18 MB-i18n-rtl-07 already deferred to; M21 W4 fixed only the glyph. P2 is right because M13-69 is itself P2. Genuinely new residue: the Results-vs-History side/precision disagreement.",
+   "evidence": "node (app's own ICU): \"toLocaleString ar-BH 1234.5 = ١٬٢٣٤٫٥\", \"default toLocaleString 1234.5 = 1,234.5\", \"(12.345).toFixed(2) = 12.35\", \"(77).toLocaleString() = 77\". m13-full-review.md:98 M13-69 prescribes the shared money formatter verbatim."
+  },
+  "PO-CATEGORIES-I18N-11": {
+   "id": "PO-CATEGORIES-I18N-11",
+   "verdict": "CONFIRMED",
+   "sev_after": "P2",
+   "known_status": "still-open",
+   "reason": "All four checkpoints reproduce at 76ace90. TextCompareRequest (text_routes.py:62-88) carries only query/product_a/product_b/region/include_*/selected_category. `grep -rn 'Accept-Language|acceptLanguage' SmartCompareApp/src` returns zero hits; `grep -rniE 'in arabic|respond in|write in|output language' app/services/*.py` returns zero hits; the only language-to-prompt path is the cohort metadata line at extraction_service.py:1845-1852, gated on ENABLE_COHORT_PERSONALIZATION (=true in prod per baseline/railway-web-vars.txt:8) but emitted as USER CONTEXT metadata, not an output instruction. Correctly filed as a status re-report of M18 PO-verdict-text-02, which M18 itself DOWNGRADED to P2 — so P2 is the right carry-over, and the three-layer detail is a legitimate addition.",
+   "evidence": "text_routes.py@76ace90:78-85 fields list ends at `selected_category: Optional[str] = Field(default=None, max_length=40)`; es.py:1845 `language = demographics_profile.get('language') or 'English'`; :1849 `context_parts = [f\"Country={country}\", f\"Language={language}\"]`; both greps returned no output."
+  },
+  "PO-CATEGORIES-I18N-12": {
+   "id": "PO-CATEGORIES-I18N-12",
+   "verdict": "DOWNGRADED",
+   "sev_after": "P3",
+   "known_status": "still-open",
+   "reason": "Runtime claims all reproduce with the app's own i18next 26.1.0 + intl-pluralrules, and the finder does catch a live site MB-i18n-rtl-08's grep missed (ResultsAccordion.tsx:662-665 spans lines, so a same-line `t(...{count` grep skips it). But severity should stay at the class's established P3: the English-fallback instance (referrals.bonus.expiresIn*) has zero call sites in SmartCompareApp/src, so it is latent, and the one live instance is a plural-grammar nit ('4.5 · 1 reviews' / '· 3 تقييم'), exactly what M18 rated P3 for MB-i18n-rtl-01 and -08. Finder's dedupe swaps the prior ids: -07 is the currency row, -08 is the plurals row. M21 W4's 6-form fix really is confined to home.savings.count and history.hero.count.",
+   "evidence": "node: \"AR expiresInDays count=0 -> Expires in 0 days\", \"count=2/3/11 -> Expires in N days\", \"count=1 -> تنتهي خلال 1 يوم\"; \"EN ratingWithCount c=1 -> 4.5 · 1 reviews\"; \"AR ratingWithCount c=3 -> 4.5 · 3 تقييم\". ar.json:880-885 only _one/_other; ar.json:24-29 and :902-907 are the only 6-form bases. `grep -rn expiresInDays SmartCompareApp/src` hits catalogs only."
   }
  },
  "second_votes": {
@@ -2772,54 +2824,23 @@
  "synth": null,
  "critic": null,
  "tally": {
-  "P2": 51,
-  "P3": 17,
+  "P2": 55,
+  "P3": 18,
   "P1": 26,
-  "REFUTED": 4
+  "REFUTED": 5
  },
  "counts": {
-  "started": 113,
+  "started": 116,
   "failed": 63,
   "lanes_done": 7,
   "lanes_all": 7,
   "filed": 104,
-  "verified": 98,
-  "unverified": 6,
+  "verified": 104,
+  "unverified": 0,
   "second_votes": 10
  },
  "missing_lanes": [],
- "unverified": [
-  {
-   "id": "PO-CATEGORIES-I18N-07",
-   "lane": "po-categories-i18n",
-   "sev": "P2"
-  },
-  {
-   "id": "PO-CATEGORIES-I18N-08",
-   "lane": "po-categories-i18n",
-   "sev": "P2"
-  },
-  {
-   "id": "PO-CATEGORIES-I18N-09",
-   "lane": "po-categories-i18n",
-   "sev": "P2"
-  },
-  {
-   "id": "PO-CATEGORIES-I18N-10",
-   "lane": "po-categories-i18n",
-   "sev": "P2"
-  },
-  {
-   "id": "PO-CATEGORIES-I18N-11",
-   "lane": "po-categories-i18n",
-   "sev": "P2"
-  },
-  {
-   "id": "PO-CATEGORIES-I18N-12",
-   "lane": "po-categories-i18n",
-   "sev": "P2"
-  }
- ],
+ "unverified": [],
  "p0p1_needing_second_vote": [
   {
    "id": "PO-RUBRIC-01",

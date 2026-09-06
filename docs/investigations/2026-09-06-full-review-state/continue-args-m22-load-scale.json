@@ -72,11 +72,6 @@
  "unverified": [],
  "secondVote": [
   {
-   "id": "LS-CONCURRENCY-LIMITS-01",
-   "lane": "ls-concurrency-limits",
-   "sev": "P1"
-  },
-  {
    "id": "LS-CONCURRENCY-LIMITS-02",
    "lane": "ls-concurrency-limits",
    "sev": "P1"

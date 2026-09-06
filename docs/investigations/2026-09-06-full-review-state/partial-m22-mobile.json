@@ -3797,6 +3797,17 @@
    "corrected_title": "REGRESSION: Results has no outbound link — commit f99807a's presentation rewrite deleted all 3 openRatingSource call sites, leaving the helper dead; price.url is never rendered",
    "reason": "Fully reproduced at 76ace90 (mobile tree byte-identical to working HEAD 7dd04c1): one openRatingSource definition, zero call sites, the sole Linking.openURL in the results tree, zero price.url consumers app-wide, no buy/shop CTA copy. Upgrading to P1 because git resolves the finder's own hedge against it: f99807a (\"REWRITE ResultsScreen presentation\") deleted three working onPress call sites, so this is a lost shipped affordance, not a scope decision. No flag gates it — absent on both phones (97b5f15) and main. Known mobile-checkup lead, now verified still-open. Fix is flag-safe (client render only). Evidence nit: types.ts:12 is RatingSource.url; ProductPrice.url is src/types/types.ts:64.",
    "evidence": "`git grep -n openRatingSource 76ace90 -- SmartCompareApp/src/` = 1 hit: ResultsScreen.tsx:500 `const openRatingSource = (source: RatingSource | null | undefined) => {` … `Linking.openURL(source.url);` (503). `git diff --stat 76ace90..HEAD -- SmartCompareApp/` = empty. `grep -rn \"Linking\\|openURL\\|WebBrowser\" src/components/results/ src/screens/ResultsScreen.tsx` = 2 hits, both the dead fn. App-wide Linking.openURL = 3: ShareBottomSheet:182 (whatsapp intent), ContactUsScreen:219 (mailto), ResultsScreen:503. `grep -rn \"price\\.url\\|priceUrl\" src/` = 0. ResultsAccordion.tsx:35 `rating_source?: {name?; url?}` appears exactly once (grep -c = 1) — type only, never rendered. en.json: no buy/shop/view-at key; only :169 \"Checked across {{n}} retail sources.\" NEW: `git log -S \"openRatingSource(\" -- ResultsScreen.tsx` → f99807a; `git show f99807a` removes `-onPress={() => openRatingSource(product.rating_source)}` (×2, lines 233/539) and `-onPress={() => rp.rating_source?.url && openRatingSource(rp.rating_source)}` (474). docs/investigations/2026-09-02-mobile-checkup-findings.md:155 lists it as an unverified \"Flows lead\"."
+  },
+  "MB-RECONCILE-01": {
+   "id": "MB-RECONCILE-01",
+   "verdict": "CONFIRMED",
+   "sev_after": "P1",
+   "known_status": "still-open",
+   "corrected_file": "app/api/image_routes.py",
+   "corrected_line": 89,
+   "corrected_title": "POST /image/identify runs a paid Vision + full compare for an over-cap signed-in user with zero metering (text path 429s the same user)",
+   "reason": "I tried to break the confirmation by driving the REAL ASGI app end-to-end rather than grepping, and it held. Scratch pytest (scratchpad/m22-review/test_mb_reconcile_01_repro.py, no repo file touched) overrides get_optional_user with an authed user, patches consume/refund/record_lifetime in app.services.usage_service AND in every module namespace that binds them (image_routes bound none — the hasattr loop found zero symbols to patch, which is itself the defect), and mocks Vision + StructuredComparisonService so nothing paid actually fires. CONTROL (green, 1 passed): the same over-cap user on POST /api/v1/text/compare gets 429 {\"code\":\"USAGE_LIMIT\",\"error\":\"Comparison limit reached (daily_limit)\"}, consume awaited 1x, compare_from_text awaited 0x — the meter both refuses and prevents spend. SAME user, POST /api/v1/image/identify: HTTP 200, consume awaited 0x, paid Vision awaited 1x, compare awaited 1x. Two further reds: 1-product early return does not refund (refund awaited 0x) and the success path never records the lifetime counter (0x). So the bypass is reproduced, not inferred. Counter-hypotheses I checked and could not sustain: (a) metering lives elsewhere — no, main.py has no metering middleware and get_optional_user (auth_routes.py:306) only calls verify_token; (b) the text meter is itself dark so there is no asymmetry — no, text_routes.py:192 is unconditional for `user and user.get(\"id\")`, no flag, and it fired in my control; (c) the camera path is unreachable/unauthenticated from the client — no, SmartCompareApp/src/services/api.ts:212-221 attaches `Authorization: Bearer` to this exact fetch, and api.ts:249-268 already parses a 429 USAGE_LIMIT from it, i.e. the client implements a backend contract the backend never honours (dead branch today). Not P0 only because prod traffic is ~zero (search_logs 11 camera rows lifetime), so the leak is latent, not bleeding. Finder's fix: yes, it closes all three reds as written (consume before the Vision call for authed users, 429 USAGE_LIMIT shape, refund on the no-compare and exception paths, record_lifetime on success) — but it under-enumerates the refund sites: besides 0-or-1-product and the exception path, image_routes.py:146 (vision parse error) and :175 (L4 moderation CONTENT_UNAVAILABLE) are also paid-but-no-compare early returns that would strand a consumed credit; the fix must refund there too. Mirroring text_routes.py:247, refund is called with the user id only (no consumed_keys), which is consistent with the existing text bracket. test_first is the right red test but should also assert the spend, not just the status: pin `consume_comparison_credit` awaited 0x AND the Vision mock awaited 1x on the over-cap call — a status-only assertion would pass a fix that returns 429 after the Vision call and still leaks the spend.",
+   "evidence": "RUN (pytest, local off-lock fastapi 0.115): `test_image_identify_should_refuse_the_same_over_cap_user` FAILED — \"BYPASS: over-cap authed user got 200; consume_comparison_credit awaited 0x, paid Vision awaited 1x, compare awaited 1x\". `test_image_identify_should_refund_when_only_one_product_identified` FAILED — \"no refund on the no-compare path; refund awaited 0x\". `test_image_identify_should_record_lifetime_on_success` FAILED — lifetime awaits 0 != 1. CONTROL `test_text_compare_is_refused_for_the_over_cap_user` 1 passed: TEXT STATUS 429 BODY {\"success\":false,\"error\":\"Comparison limit reached (daily_limit)\",\"code\":\"USAGE_LIMIT\",...}; TEXT consume awaits: 1. STATIC: grep on app/api/image_routes.py at HEAD returns only anon_usage_gate_enabled (:25 import, :89 `if anon_usage_gate_enabled() and not user:`); ENABLE_ANON_USAGE_GATE default OFF (usage_service.py:26-33) and absent from baseline/railway-web-vars.txt, so even the anon branch is inert in prod. text_routes.py:192 `if user and user.get(\"id\"):` → :193 consume, :247 refund, :287 record_lifetime — unconditional, no flag. api.ts:213-221 attaches Bearer to the /image/identify fetch; api.ts:249-262 already branches on a 429 USAGE_LIMIT the backend never sends. Note: working tree HEAD has advanced to 7dd04c1 (#55/#56/#57 commits); `git diff 76ace90 HEAD -- app/api/image_routes.py app/services/usage_service.py` is EMPTY, so the repro is valid at 76ace90."
   }
  },
  "synth": null,
@@ -3814,16 +3825,11 @@
   "filed": 142,
   "verified": 142,
   "unverified": 0,
-  "second_votes": 12
+  "second_votes": 13
  },
  "missing_lanes": [],
  "unverified": [],
  "p0p1_needing_second_vote": [
-  {
-   "id": "MB-RECONCILE-01",
-   "lane": "mb-reconcile",
-   "sev": "P1"
-  },
   {
    "id": "MB-RECONCILE-03",
    "lane": "mb-reconcile",

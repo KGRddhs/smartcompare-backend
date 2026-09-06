@@ -86,11 +86,6 @@
  "unverified": [],
  "secondVote": [
   {
-   "id": "MB-RECONCILE-01",
-   "lane": "mb-reconcile",
-   "sev": "P1"
-  },
-  {
    "id": "MB-RECONCILE-03",
    "lane": "mb-reconcile",
    "sev": "P1"

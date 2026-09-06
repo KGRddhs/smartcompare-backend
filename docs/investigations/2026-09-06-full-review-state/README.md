@@ -19,11 +19,11 @@
 | `STATE_SUMMARY.md` | counts per workflow at snapshot time |
 | `RUNS.md` | run ids and launch facts |
 
-## State at snapshot (see `STATE_SUMMARY.md` for the exact generated numbers)
-All 30 finder lanes complete. 442 findings filed; 436 first-verified (product 98/104, code 100/100, load 96/96, mobile 142/142); second votes on P0/P1 were in progress (10–12 per workflow); NO synthesis or critic had run yet. Tallies after first verification: product 26 P1 / 51 P2 / 17 P3; code 11 P1 / 56 P2 / 30 P3; load **1 P0** / 16 P1 / 52 P2 / 27 P3; mobile 23 P1 / 77 P2 / 42 P3.
+## State at FINAL snapshot 2026-09-06 (workflows STOPPED by the user; exact numbers in `STATE_SUMMARY.md`)
+All 30 finder lanes complete. 442 findings filed; 436 first-verified (product 98/104, code 100/100, load 96/96, mobile 142/142); second votes on P0/P1 partially done (see STATE_SUMMARY.md); NO synthesis or critic had run when the runs were stopped — the continuation script does both. Tallies after first verification: product 26 P1 / 51 P2 / 17 P3; code 11 P1 / 56 P2 / 30 P3; load **1 P0** / 16 P1 / 52 P2 / 27 P3; mobile 23 P1 / 77 P2 / 42 P3.
 
 ## How to continue in a new session
-1. Live journals: `C:\Users\SynAckITPC\.claude\projects\C--Users-SynAckITPC-Documents-AI\f110259b-2c46-4d36-b8fd-39f57a9eb840\subagents\workflows\<run id>\journal.jsonl` (run ids in `RUNS.md`). If the runs kept going after the snapshot they may hold second votes, syntheses and critics — refresh:
+1. The four runs were STOPPED at the final snapshot, so the copies in `journals/` are complete; the live journals (if the machine still has them) are at `C:\Users\SynAckITPC\.claude\projects\C--Users-SynAckITPC-Documents-AI\f110259b-2c46-4d36-b8fd-39f57a9eb840\subagents\workflows\<run id>\journal.jsonl` (run ids in `RUNS.md`). If the runs kept going after the snapshot they may hold second votes, syntheses and critics — refresh:
    `python docs/investigations/2026-09-06-full-review-state/extract_state.py --journals "<that workflows dir>" --out docs/investigations/2026-09-06-full-review-state`
 2. For each workflow whose `STATE_SUMMARY.md` line shows missing lanes, unverified ids, P0/P1 without a second vote, or `synth NO`: `Workflow({scriptPath: "<abs path>/m22_review_continue.js", args: <contents of continue-args-<wf>.json>})`. Keep ≤4 agents wide; token budget is the constraint (one verifier per finding × 330 findings × 4 parallel workflows killed run 1).
 3. Fable review of each synthesis (re-derive every P0/P1 against code), consolidated report `docs/investigations/2026-09-06-full-review.md` + verified JSON via a docs PR, then the wave plan through the standing gates.
