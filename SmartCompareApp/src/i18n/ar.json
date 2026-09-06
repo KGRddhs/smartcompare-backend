@@ -200,6 +200,8 @@
   "loading.stage.cross_checking": "نقارن أكثر من 25 متجراً",
   "loading.stage.analyzing_reviews": "نحلل التقييمات",
   "loading.stage.locking_match": "نختار أفضل توافق لك",
+  "loading.caption.still_checking": "ما زلنا نقارن المتاجر، قد يستغرق ذلك حتى 30 ثانية",
+  "loading.caption.almost_there": "أوشكنا على الانتهاء، نثبّت أفضل خيار لك",
   "loading.tip.peer_prioritize": "73٪ من المتسوقين بعمرك في العاصمة يضعون الجودة أولاً.",
   "loading.tip.cross_checks": "قارن يتحقق من أكثر من 25 متجراً — لا نعتمد على متجر واحد فقط.",
   "loading.tip.work_for_you": "نعمل لصالحك — لا يدفع لنا البائعون.",

@@ -11,9 +11,21 @@
  * frozen all-done state IS the correct UX — work is locked in.
  *
  * Tests pin:
- *   - cursor advances every STAGE_CYCLE_MS
+ *   - cursor advances on the per-stage schedule
  *   - at cursor=count, all stages render `done` (full emerald)
  *   - on subsequent ticks past cursor=count, status STAYS done (no wrap)
+ *
+ * A2 (2026-09-05) retargeted the cadence from a flat 900ms metronome to
+ * the per-stage schedule in LoadingScreenVariants
+ * (DEFAULT_COMPARISON_STAGE_DONE_AT_MS) — the flat cadence claimed all five
+ * checks DONE at 4.5s while a cold compare runs ~25-31s. The FREEZE
+ * contract this file exists to protect is UNCHANGED and every assertion
+ * below still asserts it: the cursor still advances monotonically to
+ * `count` and still holds there, and the no-wrap assertions were widened
+ * (not weakened) to cover the longer schedule. Only the clock the walk is
+ * driven on moved. Do NOT "simplify" this back toward a modulo cycle —
+ * that is the R3/Gate B bug, and re-pacing was chosen precisely because it
+ * fixes the honesty problem WITHOUT reintroducing it.
  */
 
 import React from 'react';
@@ -44,7 +56,10 @@ jest.mock('../src/components/hero/LoadingRings', () => {
 import { LoadingScreenVariants } from '../src/screens/LoadingScreenVariants';
 
 const STAGE_COUNT = 5;
-const STAGE_CYCLE_MS = 900;
+// Cumulative wall-clock offsets at which each cursor value is reached,
+// mirroring DEFAULT_COMPARISON_STAGE_DONE_AT_MS in the component.
+const STAGE_DONE_AT_MS = [1200, 4200, 12000, 19500, 26000];
+const ALL_DONE_AT_MS = STAGE_DONE_AT_MS[STAGE_DONE_AT_MS.length - 1];
 
 describe('LoadingScreenVariants — Wave 2 R3 freeze-at-complete (no wrap-back)', () => {
   beforeEach(() => {
@@ -63,10 +78,10 @@ describe('LoadingScreenVariants — Wave 2 R3 freeze-at-complete (no wrap-back)'
       />,
     );
 
-    // Walk through all 5 stages. After STAGE_COUNT ticks every stage
-    // must be done.
+    // Walk through all 5 stages. At the final scheduled offset every
+    // stage must be done.
     act(() => {
-      jest.advanceTimersByTime(STAGE_CYCLE_MS * STAGE_COUNT);
+      jest.advanceTimersByTime(ALL_DONE_AT_MS);
     });
     for (let i = 0; i < STAGE_COUNT; i++) {
       expect(getByTestId(`stage-${i}-icon`).props.accessibilityLabel).toBe(
@@ -74,11 +89,11 @@ describe('LoadingScreenVariants — Wave 2 R3 freeze-at-complete (no wrap-back)'
       );
     }
 
-    // CRITICAL: advance many more ticks — covers the wall-floor budget
-    // of 14-25s plus a buffer. Status MUST stay all-done; no pending
+    // CRITICAL: advance far past the schedule — a slow compare can sit
+    // here well past 26s. Status MUST stay all-done; no pending
     // wrap-back.
     act(() => {
-      jest.advanceTimersByTime(STAGE_CYCLE_MS * 20); // ~18s additional
+      jest.advanceTimersByTime(ALL_DONE_AT_MS * 3); // ~78s additional
     });
     for (let i = 0; i < STAGE_COUNT; i++) {
       expect(getByTestId(`stage-${i}-icon`).props.accessibilityLabel).toBe(
@@ -101,24 +116,24 @@ describe('LoadingScreenVariants — Wave 2 R3 freeze-at-complete (no wrap-back)'
     expect(getByTestId('stage-1-icon').props.accessibilityLabel).toBe('pending');
     expect(getByTestId('stage-4-icon').props.accessibilityLabel).toBe('pending');
 
-    // tick 1 → cursor=1
+    // cursor=1
     act(() => {
-      jest.advanceTimersByTime(STAGE_CYCLE_MS);
+      jest.advanceTimersByTime(STAGE_DONE_AT_MS[0]);
     });
     expect(getByTestId('stage-0-icon').props.accessibilityLabel).toBe('done');
     expect(getByTestId('stage-1-icon').props.accessibilityLabel).toBe('active');
     expect(getByTestId('stage-2-icon').props.accessibilityLabel).toBe('pending');
 
-    // tick 4 → cursor=4 (last stage active, prior all done)
+    // cursor=4 (last stage active, prior all done)
     act(() => {
-      jest.advanceTimersByTime(STAGE_CYCLE_MS * 3);
+      jest.advanceTimersByTime(STAGE_DONE_AT_MS[3] - STAGE_DONE_AT_MS[0]);
     });
     expect(getByTestId('stage-3-icon').props.accessibilityLabel).toBe('done');
     expect(getByTestId('stage-4-icon').props.accessibilityLabel).toBe('active');
 
-    // tick 5 → cursor=5 (count) → all done. This is the freeze point.
+    // cursor=5 (count) → all done. This is the freeze point.
     act(() => {
-      jest.advanceTimersByTime(STAGE_CYCLE_MS);
+      jest.advanceTimersByTime(STAGE_DONE_AT_MS[4] - STAGE_DONE_AT_MS[3]);
     });
     for (let i = 0; i < STAGE_COUNT; i++) {
       expect(getByTestId(`stage-${i}-icon`).props.accessibilityLabel).toBe(
@@ -135,10 +150,10 @@ describe('LoadingScreenVariants — Wave 2 R3 freeze-at-complete (no wrap-back)'
         testID="lsv-r3"
       />,
     );
-    // 30 stage cycles (~27s) — well past the realistic 14-25s wall floor.
-    // The prior modulo cycle would have wrapped 3-4 times by now.
+    // ~130s — five times the full schedule, well past any realistic wall
+    // floor. The prior modulo cycle would have wrapped many times by now.
     act(() => {
-      jest.advanceTimersByTime(STAGE_CYCLE_MS * 30);
+      jest.advanceTimersByTime(ALL_DONE_AT_MS * 5);
     });
     // The previous behavior: at any wrap point, stage-0 briefly returned
     // to 'active' or 'pending'. Freeze contract: stays done.
