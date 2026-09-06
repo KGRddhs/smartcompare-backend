@@ -98,3 +98,8 @@ export const Palette = createIcon('Palette');
 // already declared earlier in this file; do NOT redeclare.)
 export const ListChecks = createIcon('ListChecks');
 export const BarChart3 = createIcon('BarChart3');
+// A12 — HistoryScreen has imported RotateCcw since Bundle E but never
+// rendered it, so the omission here was invisible; the load-failed and
+// inline-retry states render it, and an undefined component tears the
+// whole tree down ("Unable to find node on an unmounted component").
+export const RotateCcw = createIcon('RotateCcw');
