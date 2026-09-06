@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, StyleSheet } from 'react-native';
 import Animated, {
   useSharedValue,
@@ -11,15 +11,53 @@ import { useTranslation } from 'react-i18next';
 import { colors, typography, spacing } from '../theme';
 import QarenLogo from '../components/QarenLogo';
 
+/**
+ * A5 — the brand moment is a FLOOR, not a fixed toll.
+ *
+ * The splash used to hold an unconditional 1.5s from JS mount, and that
+ * clock starts AFTER process launch + bundle parse + RN root mount, so it
+ * stacked on native startup even when fonts and the auth check were
+ * already done (which, since A3's cached-session boot, is the common
+ * case). Now it ends as soon as the app is genuinely `ready` AND the
+ * short minimum below has passed — capped at the original 1.5s so a slow
+ * boot behaves exactly as it did before.
+ *
+ * MIN keeps the brand moment from flashing (same spirit as the documented
+ * 1.2s Home->Results min-display floor); MAX is the unchanged ceiling.
+ */
+const MIN_SPLASH_MS = 700;
+const MAX_SPLASH_MS = 1500;
+
 interface SplashScreenProps {
   onFinish: () => void;
+  /**
+   * True once fonts are loaded and the initial auth check has settled.
+   * Optional on purpose: an omitted `ready` degrades to the legacy
+   * hold-until-MAX behaviour, never to something shorter.
+   */
+  ready?: boolean;
 }
 
-export default function SplashScreen({ onFinish }: SplashScreenProps) {
+export default function SplashScreen({ onFinish, ready = false }: SplashScreenProps) {
   const { t } = useTranslation();
   const logoOpacity = useSharedValue(0);
   const logoScale = useSharedValue(0.8);
   const taglineOpacity = useSharedValue(0);
+  const [minElapsed, setMinElapsed] = useState(false);
+
+  // Held in a ref so a changed `onFinish` identity can never re-arm (and
+  // thereby restart) the floor timers below.
+  const onFinishRef = useRef(onFinish);
+  useEffect(() => {
+    onFinishRef.current = onFinish;
+  }, [onFinish]);
+
+  const finishedRef = useRef(false);
+  const finishOnce = useCallback(() => {
+    if (finishedRef.current) return;
+    finishedRef.current = true;
+    onFinishRef.current();
+  }, []);
 
   useEffect(() => {
     // Logo fades in + scales up
@@ -28,11 +66,27 @@ export default function SplashScreen({ onFinish }: SplashScreenProps) {
 
     // Tagline fades in after 200ms
     taglineOpacity.value = withDelay(200, withTiming(1, { duration: 400 }));
+  }, [logoOpacity, logoScale, taglineOpacity]);
 
-    // After 1.5s total, trigger onFinish
-    const timer = setTimeout(onFinish, 1500);
-    return () => clearTimeout(timer);
-  }, [logoOpacity, logoScale, taglineOpacity, onFinish]);
+  // Deliberately its OWN effect, keyed only on the stable `finishOnce`: the
+  // two clocks must be armed EXACTLY once at mount. Sharing the animation
+  // effect above would re-arm (and so restart) the floor on any re-render
+  // whose shared-value identities moved — which is precisely what the
+  // `minElapsed` state update below triggers.
+  useEffect(() => {
+    // The minimum the brand moment is allowed to be, and the maximum.
+    const minTimer = setTimeout(() => setMinElapsed(true), MIN_SPLASH_MS);
+    const capTimer = setTimeout(finishOnce, MAX_SPLASH_MS);
+    return () => {
+      clearTimeout(minTimer);
+      clearTimeout(capTimer);
+    };
+  }, [finishOnce]);
+
+  useEffect(() => {
+    // Whichever lands second — readiness or the minimum — releases the splash.
+    if (ready && minElapsed) finishOnce();
+  }, [ready, minElapsed, finishOnce]);
 
   const logoStyle = useAnimatedStyle(() => ({
     opacity: logoOpacity.value,

@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { render } from '@testing-library/react-native';
+import { render, act } from '@testing-library/react-native';
 import SplashScreen from '../src/screens/SplashScreen';
 
 // react-native-reanimated is mapped to __mocks__/react-native-reanimated.ts via
@@ -47,12 +47,18 @@ describe('SplashScreen', () => {
     expect(getByText('Compare smarter')).toBeTruthy();
   });
 
-  it('should call onFinish after 1.5 seconds', () => {
+  it('should call onFinish after 1.5 seconds when no readiness signal is given', () => {
+    // A5 — 1500ms is now the CAP, not a flat toll, and an omitted `ready`
+    // prop deliberately degrades to that cap (the safe fallback: never
+    // shorter than the pre-A5 behaviour). The ready-boot branch and the
+    // crossing cases are pinned in SplashScreen.readyFloor.a5.test.tsx.
     const mockOnFinish = jest.fn();
     render(<SplashScreen onFinish={mockOnFinish} />);
 
     expect(mockOnFinish).not.toHaveBeenCalled();
-    jest.advanceTimersByTime(1500);
+    act(() => {
+      jest.advanceTimersByTime(1500);
+    });
     expect(mockOnFinish).toHaveBeenCalledTimes(1);
   });
 

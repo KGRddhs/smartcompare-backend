@@ -284,9 +284,14 @@ function App() {
     setNeedsPreferences(false);
   }, []);
 
-  // Show splash during font loading, initial auth check, or splash animation
+  // Show splash during font loading, initial auth check, or splash animation.
+  // A5 — `ready` lets the splash end its brand-moment floor early once there
+  // is nothing left to wait for, instead of charging a flat 1.5s on top of
+  // native startup. It still caps at 1.5s, so a slow boot is unchanged.
   if (!fontsLoaded || isLoading || showSplash) {
-    return <SplashScreen onFinish={handleSplashFinish} />;
+    return (
+      <SplashScreen onFinish={handleSplashFinish} ready={fontsLoaded && !isLoading} />
+    );
   }
 
   // Deep-link config — qaren.app/c/{token}?ref={code} resolves to
