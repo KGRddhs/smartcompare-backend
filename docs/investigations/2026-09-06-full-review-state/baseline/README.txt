@@ -1,0 +1,7 @@
+# M22 baselines at HEAD 76ace90, measured 2026-09-05 on the dev box AFTER a fresh `npm ci` (node v24.11.1, npm 11.6.2)
+tsc --noEmit: TSC_EXIT=0 (tsc.txt)
+jest --ci: Test Suites: 3 skipped, 242 passed, 242 of 245 total | Tests:       13 skipped, 13 todo, 2320 passed, 2346 total | FAILING SUITES: none (jest.txt). NOTE: before npm ci, __tests__/i18n/plurals.test.ts failed locally with 'Cannot find module intl-pluralrules/plural-rules' = STALE node_modules on this box, not a code defect; CI is green at 76ace90.
+eslint src: errors=0 warnings=152; top rules=[('@typescript-eslint/no-unused-vars', 80), ('@typescript-eslint/array-type', 22), ('import/first', 13), ('@typescript-eslint/no-require-imports', 13), ('react-hooks/exhaustive-deps', 7), ('import/no-duplicates', 6), ('import/no-named-as-default', 6), ('import/no-named-as-default-member', 4)]; files with errors=[] (eslint.json)
+npm audit: {'info': 0, 'low': 1, 'moderate': 21, 'high': 19, 'critical': 1, 'total': 42}; DIRECT high/critical offenders=['expo'] (npm-audit.json)
+backend free-tier baseline: 11 known-red nodes in tests/.pre_impl_failures.txt (CI deselects them). Local pip is OFF-LOCK (see BRIEF.md).
+prod flags: railway-web-vars.txt. measured request series: search_logs_summary.txt.

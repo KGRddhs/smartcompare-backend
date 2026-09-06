@@ -1,0 +1,17 @@
+rows since 2026-06-01: 13237
+2026-06: n=9157 success=6991 (76%) p50=0 p90=20543 p95=25651 p99=30007 max=103697 cost_sum=20.528
+2026-07: n=3363 success=2455 (73%) p50=0 p90=1 p95=1716 p99=30004 max=72942 cost_sum=2.173
+2026-08: n=714 success=537 (75%) p50=0 p90=1 p95=3 p99=2271 max=4337 cost_sum=0.289
+2026-09: n=3 success=0 (0%) p50=22995 p90=31008 p95=31008 p99=31008 max=31008 cost_sum=0.000
+SUCCESS-ONLY latency (n=9983): p50=0 p90=18544 p95=23760 p99=30003 max=103697
+top error_message (failures):
+    1288  Still gathering prices — give it another tap in a moment.
+     690  We don't compare this category
+     443  Comparison data was incomplete — choose different products.
+     228  We need a moment more on these two — give it another tap.
+     215  blocked
+     209  We couldn't finish this comparison in time. Try again.
+     179  Could not identify two products to compare. Try: 'iPhone 15 vs Galaxy S24'
+       2  'NoneType' object has no attribute 'get'
+input_type: [('text', 12505), ('text_stream', 721), ('camera', 11)]
+last 15 active days: [('2026-06-27', 426), ('2026-06-28', 1397), ('2026-06-29', 644), ('2026-07-01', 790), ('2026-07-02', 52), ('2026-07-03', 605), ('2026-07-04', 150), ('2026-07-06', 524), ('2026-07-07', 649), ('2026-07-08', 593), ('2026-08-17', 148), ('2026-08-18', 147), ('2026-08-24', 17), ('2026-08-25', 402), ('2026-09-02', 3)]

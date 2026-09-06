@@ -1,0 +1,4 @@
+Test Suites: 3 skipped, 242 passed, 242 of 245 total
+Tests:       13 skipped, 13 todo, 2320 passed, 2346 total
+Snapshots:   44 passed, 44 total
+JEST_EXIT=0

@@ -1,0 +1,137 @@
+{
+ "name": "m22-load-scale",
+ "brief": "C:/Users/SynAckITPC/Documents/AI/sc-scraper-proof/docs/investigations/2026-09-06-full-review-state/BRIEF.md",
+ "finderBatch": 4,
+ "verifyBatch": 3,
+ "batchVerifySize": 6,
+ "lanes": [
+  {
+   "key": "ls-request-path-blocking",
+   "title": "Every blocking call on every hot route, in the prod flag state and after the offload flags flip",
+   "prompt": [
+    "SURFACE: the hot routes at HEAD - POST/GET /text/compare, /text/compare/stream, /text/quick, /image/identify, /url/compare, /home/trending, /home/smart-pick, /home/savings, /usage/status, /auth/me, /auth/verify, /auth/refresh, /auth/login, /comparisons (history list), /feedback, /events, /share/{token}, /app/version, /health. For each, trace the full call path at HEAD and enumerate EVERY call that blocks the event loop when awaited inline: Supabase .execute() (supabase-py is sync httpx), sync Redis (cache_service helpers, api_budget_service), requests/curl_cffi/httpx sync fetches, time.sleep, CPU-heavy work (JSON of full_response, regex over HTML, price parsing), and file I/O. Classify each site under PROD flags (ENABLE_SYNC_DB_OFFLOAD off, ENABLE_ASYNC_REDIS_OFFLOAD off) as INLINE-BLOCKING or already offloaded (asyncio.to_thread / run_db / _cache_set_async), and under the offload flags ON. Count sites per route and, using search_logs measured latencies (baseline/search_logs_summary.txt) plus stated RTT assumptions (Upstash and Supabase from Railway are UNMEASURED - state the assumption, e.g. 5/50/150 ms, and show sensitivity), model the loop-blocked milliseconds per request type. The deliberately-left inline sites after #115 (usage_service.get_usage_status / check_usage_allowed, review_service L1 get/set, behaviour-profile RPC) - which routes hit them and how often per compare.",
+    "Also: middleware chain cost per request (RequestID/SecurityHeaders/ErrorHandler/CORS/slowapi with memory:// storage - any blocking in slowapi's storage or key_func?), the per-request StructuredComparisonService construction, and whether /health does any I/O (it must not - it is the Railway healthcheck at 30s timeout). Label modelled vs measured; cite file:line."
+   ]
+  },
+  {
+   "key": "ls-concurrency-limits",
+   "title": "The concurrency model - executor, timeouts, OpenAI TPM, clients - and the cheapest lever per bottleneck",
+   "prompt": [
+    "INVENTORY at HEAD: uvicorn start command (1 process, 1 worker, no --workers, no --proxy-headers - from Procfile/railway.json and the live config); ADAPTER_EXECUTOR_MAX_WORKERS (default 40) and every asyncio.to_thread / run_in_executor site that competes for it; _PRICE_RACE_TIMEOUT 15s, STREAM_HARD_CAP_SECONDS 30, SERPER_ROTATION_DEADLINE 14s, adapter inner timeouts 9s, Firecrawl 30s; OpenAI: the four AsyncOpenAI constructions (per request or module-level? connection pooling? OPENAI_MAX_RETRIES / OPENAI_FALLBACK_MAX_RETRIES; verdict_chain_max_attempts), model_router TPM blindness (ENABLE_TPM_AWARE_ROUTING off), tokens per call class (use the recorded metadata / prompt sizes to estimate prompt+completion tokens for parser/specs/price/reviews/verdict/critique) and the documented Tier-1 limits (docs/runbooks/2026-09-02-openai-tpm-launch-sizing.md - re-derive its arithmetic, do not copy it); httpx/curl_cffi client pooling (#73 status - are clients created per call?); supabase client construction per request; per-request memory of a compare (estimate from full_response sizes and the product_data structures).",
+    "MODEL: for concurrent compares C = 1, 3, 5, 10, 30, 100 derive which resource saturates first and at what C: (a) executor starvation (fan-out threads per cold compare x C vs 40; queued adapters burn their timeout in the queue and return None = silent price collapse - find the code that makes it silent), (b) OpenAI TPM/RPM at Tier 1 (and at Tier 2/3 - the tier is UNVERIFIED, say so), (c) Upstash commands/sec and the free/paid tier limits (lane ls-cache-redis supplies the per-compare command count; use a placeholder and state it), (d) event-loop blocked time from lane ls-request-path-blocking's site counts (state assumption), (e) memory. Then for --workers 2/4: what BREAKS (slowapi memory:// storage per process; module-level breaker/gate memo state; per-process caches; the named executor) and what it buys. Label everything MODELLED with its inputs; the only measured numbers are in the brief and baseline files. Known (status only): M18 LS-capacity-math-01..06, #114, #117, M13-34."
+   ]
+  },
+  {
+   "key": "ls-ratelimit-key",
+   "title": "The rate-limit configuration as deployed - every decorated limit, the shared bucket, the storage, and the safe order of change",
+   "prompt": [
+    "ENUMERATE at HEAD every @limiter.limit(...) decorator and the default_limits path (ENABLE_DEFAULT_RATE_LIMITS) - table: route x limit string x key_func in effect x storage. Read app/middleware/rate_limiter.py fully: key_func (get_remote_address vs the ENABLE_PROXY_AWARE_RATELIMIT XFF reader and its leftmost-vs-rightmost trust anchor), storage URI (memory:// = per-process, lost on restart, not shared across workers; is a Redis storage option wired?), headers_enabled, the exempt list. Confirm the M18 mechanism at HEAD: with no --proxy-headers and uvicorn's forwarded_allow_ips default, request.client.host is the Railway edge peer, so every limit is ONE bucket deployment-wide - then list the limits whose GLOBAL nature is a live denial-of-service lever today (register 3/min, login 5/min, account-delete 1/min, compare 10/min, etc.) with the exact decorator lines. MEASURE what you can read-only: Railway HTTP logs for the latest deployment via the Railway MCP get_logs log_type=http (ToolSearch for mcp__plugin_railway_railway__get_logs) - do the entries expose the client IP / forwarded headers so the hop count can be inferred? Report what the logs show. Do NOT send bursts to prod.",
+    "ORDERING RULE (restate with evidence): the mis-keyed limiter is currently the accidental guard on the single loop (10 compares/min x 30s cap bounds concurrent cold compares to ~5). Write the SAFE ORDER: offload flags ACTIVE and canaried -> Redis-backed limiter storage (so multi-worker and restarts hold) -> verified per-client anchor via --proxy-headers --forwarded-allow-ips=<Railway edge> or rightmost-after-trusted XFF -> per-user keys for authed routes (#72) -> then raise limits. For #114 give the exact live verification procedure (what header/field to log, from which vantage) - it stays HELD BY DESIGN. Known (status only): M13-01/02, M18 LS-ratelimit-01..03, #114, #72, #63."
+   ]
+  },
+  {
+   "key": "ls-cache-redis",
+   "title": "Upstash as a budget - commands per request, stampedes, fail-open cascades, and the never-measured RTT",
+   "prompt": [
+    "COUNT, don't guess: build a harness under the scratchpad with a counting fake Redis (every method cache_service / api_budget_service / usage_service / auth blacklist / model_router / serper gate call) and drive at HEAD: cold anonymous compare (2 products), warm authed compare, /usage/status, /auth/me, app-open sequence (/app/version + /usage/status + /auth/me + /health + events batch as the client does it), history list, share GET. Report commands per request type by key family (price:*, specs:*, reviews:*, budget:*, usage:*, revoked:*, breaker:*, negcache, size-aware keys, home:smart_pick, profile_recent), TTLs, and the key-cardinality growth per day at 100 / 1,000 / 10,000 users (Upstash bills per command and per storage). Then STAMPEDE: two identical cold compares arriving 100 ms apart - does the second wait for the first's result or run a full duplicate pipeline (OpenAI+Serper twice)? Find any lock/singleflight (there may be none) - quantify the amplification at the 10/min ceiling and under a viral spike.",
+    "FAIL-OPEN CASCADE: enumerate every Redis-dependent gate and what it does when Upstash times out / returns errors / quota-exhausts: freemium consume (usage_service), API spend gates (Firecrawl/Scrape.do/Serper lifetime + breakers), token revocation blacklist, brute-force lockout, model_router daily cap, serper gate memo (SERPER_GATE_CACHE_TTL), anon usage gate. For each: fail-open or fail-closed at HEAD (cite the except block), and the cost/security consequence under a Redis outage during a traffic spike (spend meters disabling exactly when spend amplifies). Redis client: sync or async? connection reuse? timeout values? RTT: it has NEVER been measured from Railway - write the exact read-only procedure to measure it (a railway ssh / one-off command that pings Upstash from inside the web container 20 times and prints percentiles) for the orchestrator to run; do NOT run it yourself. Known (status only): M18 LS-event-loop-04..06, LS-capacity-math-04, M13-06/31/37, #61."
+   ]
+  },
+  {
+   "key": "ls-db-queries",
+   "title": "Supabase query patterns per route - unbounded scans, payload sizes, indexes, client construction",
+   "prompt": [
+    "ENUMERATE every Supabase query on a request path at HEAD (AST/grep .table(...).select/insert/update/upsert/rpc across app/) and classify: bounded (limit/range/eq on an indexed key) vs UNBOUNDED (no limit - PostgREST caps at 1000 rows silently; which paths would silently truncate?), projection (select('*') or full_response on list endpoints - payload size per row: measure the 27 recorded full_response sizes read-only and report min/median/max bytes), count='exact' usage, and whether the query runs through the admin client or the user JWT client. The LIVE legacy /home/savings path (ENABLE_HOME_SAVINGS_AGGREGATE off; migration 036 unapplied): its exact query and Python aggregation - cost formula in rows x bytes, at 27 / 1k / 10k / 100k comparisons; same for /home/smart-pick (5 full payloads) and /profile/recent-decisions and the history list. INDEXES: list the DDL indexes per table from migrations and match each hot query's WHERE/ORDER; flag missing ones (comparisons by user_id+created_at+schema_version; search_logs by created_at/user_id; product_prices by product_key+created_at; user_events by user_id/created_at; usage tables).",
+    "CLIENT COST: get_user_supabase_client(token) and get_admin_supabase_client() - constructed per request? does create_client build a new httpx client (TLS handshake ~100-300 ms from Railway to Supabase) per call? Is there any pooling? How many Supabase round trips does an authed compare make end to end (auth verify + usage + save + search_log + behaviour + L2 x2)? WRITE AMPLIFICATION: fire-and-forget writes per compare (log_search, save_comparison, record_lifetime, behaviour profile, L2 specs/prices/reviews saves, events) - count them, and what happens to them when the loop is saturated (they queue on the loop as tasks - do they ever get dropped?). Growth tables and retention: search_logs 16,283, product_prices 3,945 append-only, user_events, admin_audit_log - any cleanup cron? Label modelled vs measured. Known (status only): #116, M18 LS-event-loop-01/06, M13-05, #74, #65 (behaviour profile phantom columns = the RPC never succeeds - what does the failure cost per compare?)."
+   ]
+  },
+  {
+   "key": "ls-failure-modes-cost",
+   "title": "What breaks first under a burst, and what it costs - including the LIVE spend exposure with Serper dead",
+   "prompt": [
+    "CASCADE under burst (modelled, cite code): at 50 / 500 / 5,000 simultaneous app-opens and 10 / 100 / 1,000 compares per minute, in what order do these engage and what does the user see: the shared-bucket 429s (which routes first, what error the client renders), the loop stall (healthcheck 30s -> Railway restart? restartPolicy ON_FAILURE max 3 = zero-HA: what happens on the 4th failure), executor starvation (silent price collapse), OpenAI 429 storm (retries x 4 clients x fallback chain - total request multiplication; ENABLE_TPM_AWARE_ROUTING off), Serper depletion, Firecrawl/Scrape.do budgets, Upstash quota, memory. In-flight 30s SSE streams on deploy: graceful shutdown? (uvicorn default timeout_graceful_shutdown; Railway's SIGTERM window) - are compares killed mid-stream on every deploy and is the credit refunded?",
+    "LIVE SPEND EXPOSURE (check TODAY's config): Serper balance is NEGATIVE (-50) so every Serper call 403s; ENABLE_BRIGHTDATA_FALLBACK=true in PROD web AND price-warmer with BRIGHTDATA_ZONE=serp_api1 and BRIGHTDATA_API_KEY set. Trace at HEAD: when Serper returns 403/None, does the Bright Data SERP fallback fire on EVERY compare's search legs (unified search, price fan-out, discovery, images)? Is Bright Data metered by any budget gate / lifetime cap / breaker (api_budget_service) or is spend UNBOUNDED? What does one cold compare cost in Bright Data queries (~10 per cold lookup was measured 2026-08-31)? With OpenAI ALSO dead every compare fails - so is Bright Data being spent on compares that cannot succeed (search_logs shows 3 attempts on 2026-09-02, cost 0.0 - is Bright Data spend even accounted in the cost column)? Same question for Firecrawl (ENABLE_FIRECRAWL=true, 450 lifetime) and Scrape.do (ENABLE_SCRAPEDO=true; token documented DEAD 2026-06-26 - is it still 401 and does a 401 count against a breaker or retry forever?). MAX_MONTHLY_COST and FREE_TIER_DAILY_LIMIT exist in Railway - are they read anywhere? Rate anything that spends money on requests that cannot succeed as P1 LIVE.",
+    "OBSERVABILITY under load: what would tell an operator the loop is saturated (nothing? /health is no-I/O and always 200), Sentry capture of fire-and-forget failures (#68 status), log volume per compare at INFO. Known (status only): M18 LS-railway-metrics-01..06, LS-capacity-math-*, #80, #81, #61, #66."
+   ]
+  },
+  {
+   "key": "ls-measured-evidence",
+   "title": "Turn the 13k-row request log and the recorded stage timings into the measured load picture M18 never had",
+   "prompt": [
+    "MEASURED ONLY - this lane produces numbers, not opinions. Read-only SELECT the full search_logs series since 2026-06-01 (13,237 rows; columns created_at, success, duration_ms, error_message, input_type, cost, products_found, query, user_id) in pages of 1000. Compute: (1) requests per minute - the peak minute, the top-20 minutes, and the distribution (the 2026-06-28 day had 1,397 rows - was that a burst or a script? look at inter-arrival times and distinct user_id count per minute - report counts only, never ids); (2) PEAK CONCURRENCY measured: treat each row as in flight over [created_at - duration_ms, created_at] (duration_ms is time-to-complete; check whether created_at is start or end by looking at rows with duration 0) and compute the max overlapping in-flight compares and the top-10 overlap windows - this is the only measured concurrency number the project has; correlate overlap with success rate and duration (does p95 rise with concurrency? does the 'Still gathering prices' partial rate rise with overlap? that is the executor-starvation signature); (3) latency percentiles for success and failure by month and by input_type; every row with duration > 35,000 ms (pre-cap era or cap bypass?) by date; (4) cost per successful compare by month and the cost=0.0 share (unaccounted spend); (5) cached-vs-cold: duration_ms==0 or <100 share by month; (6) camera and text_stream rows outcomes.",
+    "ALSO: (7) parse metadata.stage_timings_ms (DEBUG_STAGE_TIMINGS=true) from the 27 recorded comparisons.full_response rows - per-stage min/median/max (parse, specs, price, reviews, scoring, verdict, critique, moderation, persist) - the only per-stage latency data that exists; (8) Railway MCP read-only (ToolSearch for mcp__plugin_railway_railway__service_metrics / http_response_time / http_requests / get_logs): pull the longest history the tool allows (try hours_back 168) for web and price-warmer CPU/memory, and the latest deployment's HTTP log sample - report what is and is not retained; (9) Supabase row counts and growth rates for search_logs, product_prices, user_events, comparisons (created_at histograms by week). Write all numbers to a UTF-8 file under the scratchpad and summarise them in your findings; each 'finding' here is a measured fact with its implication (e.g. 'peak measured overlap was N in-flight; the modelled quality cliff is 3-4; therefore the cliff was/was not observed')."
+   ]
+  }
+ ],
+ "synth": [
+  "Answer the founder's question directly and first: CAN IT HANDLE A HUGE LOAD OF PEOPLE AT THE SAME TIME? Give three answers with numbers and their inputs: (a) TODAY under the prod flag state, (b) after the dark offload flags (ENABLE_SYNC_DB_OFFLOAD, ENABLE_ASYNC_REDIS_OFFLOAD, ENABLE_SERPER_BREAKER, ENABLE_FULL_STREAM_DEADLINE, ENABLE_PREVERDICT_DISCONNECT_ABORT) are active, (c) after #114 (per-client limiter) and a second worker. State the ceiling per bottleneck (shared-bucket 429 / event loop / executor / OpenAI TPM / Upstash / Supabase / memory), each labelled MEASURED (cite ls-measured-evidence) or MODELLED (list inputs and the unmeasured assumptions: Upstash RTT, OpenAI tier). State the cascade order under a burst and what the user sees at each stage. Call out every LIVE spend exposure found (Bright Data fallback with Serper dead, Scrape.do dead token, unbounded meters) in section 0. Restate the ORDERING RULE (offloads active before the limiter key changes) with evidence. Section 2 units in the safe order. Section 3 must include: the read-only Upstash RTT measurement procedure for the orchestrator, and a READY-TO-RUN LOAD-TEST PLAN (k6 or locust script outline; an isolated Railway environment with its OWN Upstash and Supabase - never prod; staged ramp 1/3/5/10/30 concurrent; abort criteria on p95, 5xx, partial rate, spend; per-stage OpenAI/Serper spend ceiling; what to watch) explicitly PARKED pending the user's explicit GO and OpenAI credits."
+ ],
+ "stateFile": "C:/Users/SynAckITPC/Documents/AI/sc-review-state/docs/investigations/2026-09-06-full-review-state/partial-m22-load-scale.json",
+ "reviewNotes": "C:/Users/SynAckITPC/Documents/AI/sc-review-state/docs/investigations/2026-09-06-full-review-state/FABLE_REVIEW_NOTES.md",
+ "missingLanes": [],
+ "unverified": [],
+ "secondVote": [
+  {
+   "id": "LS-CONCURRENCY-LIMITS-02",
+   "lane": "ls-concurrency-limits",
+   "sev": "P1"
+  },
+  {
+   "id": "LS-CONCURRENCY-LIMITS-04",
+   "lane": "ls-concurrency-limits",
+   "sev": "P1"
+  },
+  {
+   "id": "LS-FAILURE-MODES-COST-01",
+   "lane": "ls-failure-modes-cost",
+   "sev": "P1"
+  },
+  {
+   "id": "LS-FAILURE-MODES-COST-02",
+   "lane": "ls-failure-modes-cost",
+   "sev": "P1"
+  },
+  {
+   "id": "LS-FAILURE-MODES-COST-03",
+   "lane": "ls-failure-modes-cost",
+   "sev": "P1"
+  },
+  {
+   "id": "LS-FAILURE-MODES-COST-05",
+   "lane": "ls-failure-modes-cost",
+   "sev": "P1"
+  },
+  {
+   "id": "LS-RATELIMIT-KEY-01",
+   "lane": "ls-ratelimit-key",
+   "sev": "P1"
+  },
+  {
+   "id": "LS-RATELIMIT-KEY-02",
+   "lane": "ls-ratelimit-key",
+   "sev": "P1"
+  },
+  {
+   "id": "LS-MEASURED-EVIDENCE-01",
+   "lane": "ls-measured-evidence",
+   "sev": "P1"
+  },
+  {
+   "id": "LS-CACHE-REDIS-01",
+   "lane": "ls-cache-redis",
+   "sev": "P1"
+  },
+  {
+   "id": "LS-CACHE-REDIS-02",
+   "lane": "ls-cache-redis",
+   "sev": "P1"
+  },
+  {
+   "id": "LS-CACHE-REDIS-03",
+   "lane": "ls-cache-redis",
+   "sev": "P1"
+  }
+ ],
+ "haveSynth": false,
+ "haveCritic": false
+}
