@@ -211,6 +211,9 @@ def _svc():
     return scs.StructuredComparisonService()
 
 
+_UNSET = object()
+
+
 class _Writes:
     """Records what the terminal actually wrote."""
 
@@ -231,10 +234,14 @@ class _Writes:
         self.svc = _svc()
         self.svc._save_price_to_db = lambda *a, **k: self.db_calls.append(a)
 
-    async def run(self, price=None):
+    async def run(self, price=None, category=_UNSET):
+        """`category` is OMITTED entirely unless a test names one, so the
+        signature default (None = today's answer for any caller that does not
+        thread it) is exercised by every pre-existing case here."""
+        kwargs = {} if category is _UNSET else {"category": category}
         return await self.svc._persist_tier3_estimate(
             "price:bahrain:iphone_15_128gb", "Apple", "iPhone 15", "128GB",
-            "bahrain", dict(price if price is not None else ESTIMATE),
+            "bahrain", dict(price if price is not None else ESTIMATE), **kwargs,
         )
 
 
@@ -320,6 +327,156 @@ class TestPersistTier3Estimate:
         )
         await w.run()
         assert seen["thread"] is not threading.current_thread()
+
+
+# ---------------------------------------------------------------------------
+# 3b. Guard READ PARITY with `_get_price`'s own L1 read
+#
+# Cache-coherence review of 7dd04c1, finding #3 (P2): the guard re-reads the SAME
+# L1 key `_get_price` read ~2,200 lines above it, but applied NEITHER of that
+# read's two rules. Half of that is now fixed and half is a documented decision:
+#
+#   * identity revalidation — FIXED. `_get_price` does
+#     `if cached and not _cache_price_identity_ok(cached, brand, name, category):
+#     cached = None`, so a genuine-method entry whose stored title does not match
+#     the request is dropped on EVERY read. Blocking the estimate write on it
+#     protected a price nobody can be served. The guard now runs the same
+#     predicate, with `category` threaded in from `_get_price` because the verdict
+#     is category-sensitive.
+#   * `price_nocache` — DELIBERATELY NOT applied; see
+#     TestNocacheIsNotAnEscapeHatch below.
+# ---------------------------------------------------------------------------
+
+# A genuine-method L1 entry whose title is a DIFFERENT SKU than the request
+# ("Apple iPhone 15"): the read path drops it, so it must not block the write.
+GENUINE_WRONG_TITLE = {
+    "amount": 45.0, "currency": "BHD", "source_method": "woo_store_api",
+    "title": "Apple iPhone 15 Pro Max 256GB",
+}
+# ...and one whose title matches: the read path serves it, so it must block.
+GENUINE_RIGHT_TITLE = {
+    "amount": 45.0, "currency": "BHD", "source_method": "woo_store_api",
+    "title": "Apple iPhone 15 128GB",
+}
+
+
+class TestGuardReadParityWithTheReadPath:
+    """Only an L1 entry the READ path would actually serve may block the write."""
+
+    @pytest.fixture(autouse=True)
+    def _gate_on(self, monkeypatch):
+        """`_cache_price_identity_ok` is a no-op when ENABLE_EXACT_PRICE_GATE is
+        OFF, so state the position explicitly instead of inheriting `.env`'s.
+        (Default is ON, and it is ON in prod.)"""
+        monkeypatch.setenv(FLAG, "true")
+        monkeypatch.setenv("ENABLE_EXACT_PRICE_GATE", "true")
+
+    @pytest.mark.asyncio
+    async def test_a_genuine_entry_that_passes_revalidation_still_blocks(
+        self, monkeypatch
+    ):
+        w = _Writes(monkeypatch, GENUINE_RIGHT_TITLE)
+        assert await w.run(category="electronics") is False
+        assert w.set_calls == []
+        assert w.db_calls == []
+
+    @pytest.mark.asyncio
+    async def test_a_genuine_entry_that_fails_revalidation_does_not_block(
+        self, monkeypatch
+    ):
+        """THE fix. Pre-parity this returned False and wrote nothing, protecting an
+        entry `_get_price` discards on every single read."""
+        w = _Writes(monkeypatch, GENUINE_WRONG_TITLE)
+        assert await w.run(category="electronics") is True
+        assert len(w.set_calls) == 1
+        assert w.set_calls[0][1]["source_method"] == "estimated"
+        assert w.set_calls[0][2] == ps.PRICE_CACHE_TTL // 2
+        assert len(w.db_calls) == 1
+
+    @pytest.mark.asyncio
+    async def test_the_threaded_category_is_what_makes_the_verdict(self, monkeypatch):
+        """Why `category` had to be threaded rather than left at its default: the
+        SAME entry passes revalidation with no category and FAILS under
+        `electronics`. A guard reading with `category=None` would go on protecting
+        exactly the entries the read path (which always has the real category)
+        throws away — i.e. it would look fixed and not be."""
+        assert scs._cache_price_identity_ok(
+            GENUINE_WRONG_TITLE, "Apple", "iPhone 15", None) is True
+        assert scs._cache_price_identity_ok(
+            GENUINE_WRONG_TITLE, "Apple", "iPhone 15", "electronics") is False
+
+        w_default = _Writes(monkeypatch, GENUINE_WRONG_TITLE)
+        assert await w_default.run() is False          # category omitted -> None
+        w_threaded = _Writes(monkeypatch, GENUINE_WRONG_TITLE)
+        assert await w_threaded.run(category="electronics") is True
+
+    @pytest.mark.asyncio
+    async def test_a_title_less_genuine_entry_still_blocks(self, monkeypatch):
+        """Regression: `_cache_price_identity_ok` serves a title-less entry (nothing
+        to verify, don't over-invalidate), so the guard must keep protecting it —
+        this is the shape every pre-existing case in this file uses."""
+        w = _Writes(monkeypatch, GENUINE)
+        assert await w.run(category="electronics") is False
+        assert w.set_calls == []
+
+    @pytest.mark.asyncio
+    async def test_a_wrong_title_entry_that_is_NOT_genuine_never_reaches_the_check(
+        self, monkeypatch
+    ):
+        """Genuineness is still the first question: a non-genuine entry is written
+        over without any revalidation, exactly as before."""
+        called: list = []
+        monkeypatch.setattr(
+            scs, "_cache_price_identity_ok",
+            lambda *a, **k: called.append(a) or False,
+        )
+        w = _Writes(monkeypatch, dict(ESTIMATE, title="Apple iPhone 15 Pro Max"))
+        assert await w.run(category="electronics") is True
+        assert called == []
+
+    @pytest.mark.asyncio
+    async def test_exact_gate_off_means_no_revalidation_so_the_guard_still_blocks(
+        self, monkeypatch
+    ):
+        """Coupling, stated: the parity fix inherits `ENABLE_EXACT_PRICE_GATE`.
+        With that gate OFF `_cache_price_identity_ok` returns True for everything,
+        so the guard's behaviour is the pre-parity behaviour. Nothing here is a
+        second env fork — it is the same predicate the read path is subject to."""
+        monkeypatch.setenv("ENABLE_EXACT_PRICE_GATE", "false")
+        w = _Writes(monkeypatch, GENUINE_WRONG_TITLE)
+        assert await w.run(category="electronics") is False
+        assert w.set_calls == []
+
+    @pytest.mark.asyncio
+    async def test_a_raising_revalidation_keeps_protecting(self, monkeypatch):
+        """Fail-SAFE, the opposite direction from the L1 READ's fail-open: the read
+        is fail-OPEN (a Redis hiccup must not cost us the estimate we paid GPT
+        for), but a revalidation that BLOWS UP must not be the thing that lets an
+        estimate land on a genuine price. It keeps today's answer."""
+        def _boom(*a, **k):
+            raise RuntimeError("descriptor extractor exploded")
+
+        monkeypatch.setattr(scs, "_cache_price_identity_ok", _boom)
+        w = _Writes(monkeypatch, GENUINE_WRONG_TITLE)
+        assert await w.run(category="electronics") is False
+        assert w.set_calls == []
+
+    @pytest.mark.asyncio
+    async def test_flag_off_never_revalidates_and_still_writes(self, monkeypatch):
+        """Flag-OFF byte-identity: no L1 read, therefore no revalidation, and the
+        `category` argument is never looked at."""
+        monkeypatch.delenv(FLAG, raising=False)
+        called: list = []
+        monkeypatch.setattr(
+            scs, "_cache_price_identity_ok",
+            lambda *a, **k: called.append(a) or True,
+        )
+        w = _Writes(monkeypatch, GENUINE_RIGHT_TITLE)
+        assert await w.run(category="electronics") is True
+        assert w.get_keys == []
+        assert called == []
+        assert len(w.set_calls) == 1
+        assert len(w.db_calls) == 1
 
 
 # ---------------------------------------------------------------------------
@@ -483,6 +640,74 @@ class TestTier3RaceEndToEnd:
         assert len(writes) == 1
         assert writes[0][2] == ps.PRICE_CACHE_TTL // 2
         assert race_harness["db"] == 1
+
+
+# ---------------------------------------------------------------------------
+# 4a. THE `nocache` DECISION (cache-coherence finding #3, consequence (b))
+#
+# The guard does NOT honour `price_nocache`. That is deliberate, and this section
+# is the pin that lets the merge note SAY it: with ENABLE_GENUINE_PRICE_CLOBBER_
+# GUARD ON, `?nocache=true` no longer replaces a genuine L1 entry with a Tier-3
+# estimate — the poisoned-entry remedy is the #55 flush (DELETE /text/cache).
+# ---------------------------------------------------------------------------
+
+
+class TestNocacheIsNotAnEscapeHatch:
+    @pytest.mark.asyncio
+    async def test_nocache_no_longer_replaces_a_genuine_l1_entry_with_an_estimate(
+        self, monkeypatch, race_harness
+    ):
+        """DECISION PIN — not a bug report.
+
+        `_get_price` computes `price_nocache = nocache or _price_cache_bust_
+        enabled()` and skips the L1 READ on it, so a forced refresh re-runs the
+        routing escalation from scratch. The guard reads L1 anyway. Consequence:
+        a `?nocache=true` refresh that degrades all the way to a Tier-3 estimate
+        can no longer overwrite a genuine-method entry.
+
+        KEEP IT. The warmer/seed race this issue exists for IS a forced refresh
+        racing a genuine write, and "an estimate must never clobber a genuine
+        price" does not acquire an exception because the caller asked loudly. The
+        cost is real and is the thing to write down: `nocache` stops being one of
+        the two documented remedies for a poisoned L1 entry. The remaining one is
+        #55's `DELETE /api/v1/text/cache`, which REMOVES the entry instead of
+        hoping a worse price lands on top of it.
+
+        `_run_race` drives `_get_price(..., nocache=True)`. The read really was
+        bypassed — the caller gets the 290.0 estimate, not the 45.0 genuine price
+        sitting in L1 — and the write was still refused."""
+        monkeypatch.setenv(FLAG, "true")
+        result = await _run_race(race_harness)
+        assert result["source_method"] == "estimated"
+        assert result["amount"] == pytest.approx(290.0)   # nocache DID bypass L1
+        assert _estimate_writes(race_harness) == []       # ...the guard did not
+        assert race_harness["db"] == 0
+
+    @pytest.mark.asyncio
+    async def test_flag_off_nocache_does_replace_it(self, monkeypatch, race_harness):
+        """The other direction, so the decision above is a CHANGE and not a
+        restatement of today: with the flag OFF the same `nocache=True` refresh
+        writes the estimate straight over the genuine entry."""
+        monkeypatch.delenv(FLAG, raising=False)
+        await _run_race(race_harness)
+        writes = _estimate_writes(race_harness)
+        assert len(writes) == 1
+        assert writes[0][2] == ps.PRICE_CACHE_TTL // 2
+
+    def test_the_named_remedy_is_a_real_endpoint(self):
+        """The merge note points users at `DELETE /api/v1/text/cache`; make that a
+        fact about the code rather than prose. #55 landed the live-price-key flush
+        there behind ENABLE_FLUSH_LIVE_PRICE_KEY."""
+        from app.api import text_routes
+
+        assert hasattr(text_routes, "flush_product_cache")
+        assert hasattr(text_routes, "_flush_price_cache_keys")
+        assert hasattr(text_routes, "flush_live_price_key_enabled")
+        assert any(
+            getattr(r, "path", "").endswith("/cache")
+            and "DELETE" in getattr(r, "methods", set())
+            for r in text_routes.router.routes
+        ), "DELETE /cache is not registered on the text router"
 
 
 # ---------------------------------------------------------------------------
@@ -903,6 +1128,52 @@ class TestStructuralPins:
         assert "is_genuine_price" in called
         assert "_cache_set_async" in called
         assert "self._save_price_to_db" in called
+
+    def test_the_writer_revalidates_identity_with_the_read_paths_helper(
+        self, scs_tree
+    ):
+        """Read parity, structurally: the guard must call the SAME
+        `_cache_price_identity_ok` the L1 read in `_get_price` calls (not a second
+        copy of the rule), and must accept a `category` parameter to feed it —
+        a docstring cannot satisfy either half."""
+        fn = _func(_class(scs_tree, "StructuredComparisonService"),
+                   "_persist_tier3_estimate")
+        assert "_cache_price_identity_ok" in _called(fn)
+
+        args = fn.args
+        names = [a.arg for a in args.posonlyargs + args.args + args.kwonlyargs]
+        assert "category" in names, "the guard cannot revalidate on the read axes"
+        # ...and it defaults, so every other caller keeps today's behaviour.
+        defaulted = {
+            a.arg for a, d in zip(args.args[len(args.args) - len(args.defaults):],
+                                  args.defaults)
+            if isinstance(d, ast.Constant) and d.value is None
+        } | {
+            a.arg for a, d in zip(args.kwonlyargs, args.kw_defaults)
+            if isinstance(d, ast.Constant) and d.value is None
+        }
+        assert "category" in defaulted, "`category` must default to None"
+
+        # The read path uses the identical helper — that is what makes it PARITY.
+        read = _func(_class(scs_tree, "StructuredComparisonService"), "_get_price")
+        assert "_cache_price_identity_ok" in _called(read)
+
+    def test_the_tier3_terminal_threads_the_real_category_into_the_writer(
+        self, scs_tree
+    ):
+        """A defaulted parameter nobody passes is a no-op: the ONE production
+        caller must hand the guard `_get_price`'s own `category`, because the
+        revalidation verdict is category-sensitive."""
+        fn = _func(_class(scs_tree, "StructuredComparisonService"), "_get_price")
+        calls = [
+            n for n in ast.walk(fn)
+            if isinstance(n, ast.Call)
+            and _call_name(n) == "self._persist_tier3_estimate"
+        ]
+        assert len(calls) == 1
+        kw = {k.arg: k.value for k in calls[0].keywords}
+        assert "category" in kw, "the terminal does not thread `category`"
+        assert isinstance(kw["category"], ast.Name) and kw["category"].id == "category"
 
     def test_the_tier3_sentinel_write_is_gated_on_the_persist_result(self, scs_tree):
         """REWRITTEN pin. It used to be `test_the_negative_cache_call_is_untouched`

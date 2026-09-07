@@ -7535,8 +7535,17 @@ class StructuredComparisonService:
                     price["source_method"] = "estimated"
                 if price.get("retailer") and not price.get("url"):
                     price["url"] = build_retailer_url(price["retailer"], full_name)
+                # `category=` is the read-parity thread (cache-coherence finding
+                # #3): the guard revalidates the existing L1 entry's identity with
+                # the SAME `_cache_price_identity_ok(cached, brand, name, category)`
+                # this function's own L1 read applies, and that verdict is
+                # category-sensitive. Keyword-only at the call site so the
+                # signature default (None) stays the answer for any other caller.
+                # Flag OFF -> the guard body is never entered and the argument is
+                # never read: byte-identical.
                 _tier3_persisted = await self._persist_tier3_estimate(
-                    cache_key, brand, name, variant, region, price)
+                    cache_key, brand, name, variant, region, price,
+                    category=category)
                 # Task 1.3 — Tier-3 GPT estimate means no real BH price exists; the
                 # cascade is a structural dead-end. Record it so we don't re-run the
                 # full discovery+scrape next time (just serve this estimate from the
@@ -7826,7 +7835,8 @@ class StructuredComparisonService:
             logger.debug(f"negative-cache invalidation skipped: {e}")
 
     async def _persist_tier3_estimate(self, cache_key, brand, name, variant,
-                                      region, price) -> bool:
+                                      region, price,
+                                      category: Optional[str] = None) -> bool:
         """Issue #54 — the Tier-3 GPT-estimate terminal's cache+persist, made
         CONDITIONAL on not clobbering a genuine price.
 
@@ -7839,10 +7849,52 @@ class StructuredComparisonService:
         guess, and the appended estimate row also becomes the newest `product_prices`
         row (the L2 half of this issue).
 
-        Guarded: when the L1 entry already holds a genuine-method price, BOTH
-        writes are skipped and the fact is logged at INFO. The estimate is still
-        RETURNED to this request (the caller is unchanged) — it just doesn't get to
-        overwrite better data for everyone else.
+        Guarded: when the L1 entry already holds a genuine-method price THAT THE
+        READ PATH WOULD ACTUALLY SERVE, BOTH writes are skipped and the fact is
+        logged at INFO. The estimate is still RETURNED to this request (the caller
+        is unchanged) — it just doesn't get to overwrite better data for everyone
+        else.
+
+        READ PARITY (cache-coherence review of 7dd04c1, finding #3) — "would
+        actually serve" is the correction. This guard re-reads the SAME L1 key
+        `_get_price` read ~2,200 lines above it, and the first version applied
+        NEITHER of that read's two rules:
+
+          * **Identity revalidation.** The read path is
+            `if cached and not _cache_price_identity_ok(cached, brand, name,
+            category): cached = None` — a poisoned entry whose stored `title`
+            does not match the request is dropped on EVERY read and can never be
+            served. Blocking the estimate write on such an entry protected
+            nothing and left the slot holding a price no one gets, so the guard
+            now runs the same predicate: a genuine-method entry blocks the write
+            only when it PASSES `_cache_price_identity_ok`; one that fails it
+            stands down and the estimate is written as it was pre-#54. That is
+            why `category` is threaded in from `_get_price` — the verdict is
+            category-sensitive (a cached "iPhone 15 Pro Max 256GB" under an
+            "iPhone 15" request passes with no category and FAILS under
+            `electronics`), so a guard reading with `category=None` would keep
+            re-protecting exactly the entries the read path discards. The
+            parameter defaults to None (= today's answer for any other caller);
+            `_get_price` is the only one today and it always passes the real
+            category. The revalidation itself is fail-SAFE: if it raises, the
+            guard keeps protecting (today's behaviour) rather than letting an
+            estimate through on an exception.
+
+          * **`price_nocache`.** DELIBERATELY NOT applied, and this is a
+            behaviour decision, not an oversight. `_get_price` computes
+            `price_nocache = nocache or _price_cache_bust_enabled()` and skips
+            the L1 READ so the routing escalation re-runs; the guard still reads
+            L1 on that path, so a forced refresh that degrades all the way to a
+            Tier-3 estimate can NO LONGER replace a genuine-method L1 entry.
+            That is required for the warmer/seed case this issue exists for (a
+            `?nocache=true` refresh racing a genuine write is precisely the race)
+            and it is what keeps the guard honest: an estimate must never clobber
+            a genuine price, whoever asked. The cost is that `nocache` stops being
+            one of the two documented poisoned-entry remedies — with this flag ON
+            the remedy is the #55 flush (`DELETE /api/v1/text/cache`), which
+            removes the entry outright instead of hoping a worse price lands on
+            top of it. Pinned by
+            `test_nocache_no_longer_replaces_a_genuine_l1_entry_with_an_estimate`.
 
         #54 x #53 correction — an earlier version of this docstring justified
         leaving the caller's `_record_negative_price_cache` call unconditional with
@@ -7857,8 +7909,9 @@ class StructuredComparisonService:
         is the disproof of a structural dead-end, not evidence for one).
 
         Flag OFF (`ENABLE_GENUINE_PRICE_CLOBBER_GUARD` unset/false) -> the existing
-        L1 entry is never even read and the two original statements run in their
-        original order with their original arguments: byte-identical.
+        L1 entry is never even read, no identity revalidation runs, `category` is
+        never touched, and the two original statements run in their original order
+        with their original arguments: byte-identical.
 
         Fail-open: a raising L1 read is swallowed and the write proceeds, because a
         Redis hiccup must never cost us the estimate we already paid GPT for.
@@ -7873,12 +7926,30 @@ class StructuredComparisonService:
                 logger.debug(f"tier-3 clobber guard read skipped: {e}")
                 existing = None
             if is_genuine_price(existing):
+                # Read parity: only an entry the READ path would actually serve
+                # may block the write. Fail-SAFE — a raising revalidation keeps
+                # the pre-parity behaviour (protect) rather than admitting an
+                # estimate over a genuine price on an exception.
+                try:
+                    _identity_ok = _cache_price_identity_ok(
+                        existing, brand, name, category
+                    )
+                except Exception as e:  # noqa: BLE001 — never let it drop the guard
+                    logger.debug(f"tier-3 guard identity revalidation skipped: {e}")
+                    _identity_ok = True
+                if _identity_ok:
+                    logger.info(
+                        "[PRICE] tier-3 estimate NOT cached for %s: L1 already holds a "
+                        "genuine %s price (concurrent write protected)",
+                        cache_key, (existing or {}).get("source_method"),
+                    )
+                    return False
                 logger.info(
-                    "[PRICE] tier-3 estimate NOT cached for %s: L1 already holds a "
-                    "genuine %s price (concurrent write protected)",
-                    cache_key, (existing or {}).get("source_method"),
+                    "[PRICE] tier-3 clobber guard STOOD DOWN for %s: the genuine %s L1 "
+                    "entry FAILS identity revalidation (cat=%s), so the read path "
+                    "discards it on every read — writing the estimate",
+                    cache_key, (existing or {}).get("source_method"), category,
                 )
-                return False
         await _cache_set_async(cache_key, price, PRICE_CACHE_TTL // 2)
         self._save_price_to_db(cache_key, brand, name, variant, region, price)
         return True
