@@ -255,6 +255,7 @@
   "profile.terms": "Terms of Service",
   "profile.contact": "Contact Us",
   "profile.logout": "Log Out",
+  "profile.logoutConfirm": "Are you sure?",
   "profile.deleteAccount": "Delete Account",
   "profile.deleteConfirm": "Are you sure? This cannot be undone.",
 

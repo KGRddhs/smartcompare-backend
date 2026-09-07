@@ -302,7 +302,15 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
   };
 
   const handleLogout = () => {
-    Alert.alert(t('profile.logout'), t('profile.deleteConfirm').replace('This cannot be undone.', ''), [
+    // B6 — logout is REVERSIBLE, so it gets its own key. This used to borrow
+    // `profile.deleteConfirm` ("Are you sure? This cannot be undone.") and strip
+    // the irreversibility sentence with an English `.replace()`. That literal
+    // never matches the Arabic catalog string, so every Arabic user was warned
+    // that signing out could not be undone. String surgery on translated output
+    // is locale-dependent by construction — the fix is a dedicated key in both
+    // catalogs. `profile.deleteConfirm` stays untouched for its two honest
+    // consumers (EditProfileScreen account deletion, HistoryScreen row delete).
+    Alert.alert(t('profile.logout'), t('profile.logoutConfirm'), [
       { text: t('common.cancel'), style: 'cancel' },
       {
         text: t('profile.logout'),
