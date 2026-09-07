@@ -44,11 +44,11 @@ measured here: 200K TPM gpt-4o-mini, 30K TPM gpt-4o, 500 RPM each):
 | Binding limit | Arithmetic | Ceiling (MODELLED) |
 |---|---|---|
 | gpt-4o-mini TPM | 200,000 ÷ ~20,000 tokens/cold compare | **~10 cold compares/min** |
-| gpt-4o (verdict) TPM | 30,000 ÷ ~4,500 tokens/verdict | **~6.6 verdicts/min** |
+| gpt-4o (verdict) TPM | 30,000 ÷ ~4,500 tokens/verdict | **~6.6 verdicts/min** — **CORRECTED 2026-09-07 (m22 load review, LS-CONCURRENCY-LIMITS-06): the real `build_verdict_prompt` tokenises to 5,498–5,942 prompt tokens over the recorded fixtures (measured twice, independently), and `extraction_service.py:2447` passes `max_tokens=1000`, which OpenAI charges to TPM at admission → 6,500–6,800 TPM per verdict → 4.4–4.6 verdicts/min (5.2/min if the reservation premise is discarded). Also `verdict_chain_max_attempts()` resolves to 6 in prod (both retry knobs unset), not the 3 this runbook documents as the launch setting.** |
 | RPM (either model) | 500 ÷ per-compare calls | not binding |
 
-So the restored product's deployment-wide ceiling is **~6.6–10 compares per
-minute (MODELLED, conditional on Tier 1)** — a tokens-per-minute wall, not a
+So the restored product's deployment-wide ceiling is **~4.4–5.2 compares per
+minute on the gpt-4o verdict leg (CORRECTED 2026-09-07; was published as ~6.6–10; MODELLED, conditional on Tier 1)** — a tokens-per-minute wall, not a
 requests-per-minute one. The only breaker in the code watches a **daily**
 counter (`model_router_service.DAILY_4O_CAP`), which is structurally blind to
 TPM: it cannot fire before a mid-minute wall is hit.
