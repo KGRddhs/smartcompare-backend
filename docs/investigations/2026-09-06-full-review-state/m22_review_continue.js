@@ -139,12 +139,12 @@ log(W.name + ': ' + groups.length + ' verifier batches')
 const newVerdicts = []
 for (const wave of chunk(groups, VERIFY_BATCH)) {
   const outs = await parallel(wave.map(g => () => agent(batchVerifierPrompt(g.items, g.inline), { label: 'verify-batch:' + g.lane, phase: 'Verify', schema: BATCH_VERDICT_SCHEMA, model: MODEL, effort: 'high' }).then(o => ({ g, o }))))
-  for (const g of wave) {
-    const hit = outs.filter(Boolean).find(x => x.g === g)
+  wave.forEach((g, gi) => {
+    const hit = outs[gi] && outs[gi].o ? outs[gi] : null  // match by INDEX: object identity does not survive the parallel() boundary
     const byId = {}
     for (const v of (hit && hit.o && hit.o.verdicts) || []) byId[v.id] = v
     for (const it of g.items) newVerdicts.push(byId[it.id] || { id: it.id, verdict: 'UNVERIFIABLE', sev_after: it.sev, reason: hit ? 'batch verifier returned no verdict for this id' : 'batch verifier died - re-run', evidence: '' })
-  }
+  })
 }
 
 // ---------- Second vote ----------
@@ -156,12 +156,12 @@ log(W.name + ': ' + need.length + ' P0/P1 second votes in ' + voteBins.length + 
 const secondVotes = []
 for (const wave of chunk(voteBins, VERIFY_BATCH)) {
   const outs = await parallel(wave.map(bin => () => agent(secondVoteBatchPrompt(bin), { label: 'vote2:' + bin[0].lane + '+' + bin.length, phase: 'Second vote', schema: BATCH_VERDICT_SCHEMA, model: MODEL, effort: 'high' }).then(o => ({ bin, o }))))
-  for (const bin of wave) {
-    const hit = outs.filter(Boolean).find(x => x.bin === bin)
+  wave.forEach((bin, bi) => {
+    const hit = outs[bi] && outs[bi].o ? outs[bi] : null  // match by INDEX (see above)
     const byId = {}
     for (const v of (hit && hit.o && hit.o.verdicts) || []) byId[v.id] = v
     for (const it of bin) secondVotes.push({ ...(byId[it.id] || { id: it.id, verdict: 'UNVERIFIABLE', sev_after: it.sev, reason: hit ? 'batch second-vote returned no verdict for this id' : 'batch second-vote agent died - re-run', evidence: '' }), stage: 'second-vote' })
-  }
+  })
 }
 
 // ---------- Synthesize + Critique ----------
