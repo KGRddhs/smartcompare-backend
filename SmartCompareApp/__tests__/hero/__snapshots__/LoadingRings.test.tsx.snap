@@ -35,31 +35,43 @@ exports[`LoadingRings hero renders default snapshot 1`] = `
       width={320}
     >
       <Circle
+        animatedProps={
+          {
+            "opacity": 1,
+            "r": 60,
+          }
+        }
         cx={160}
         cy={160}
         fill="none"
-        opacity={1}
-        r={60}
         stroke="#10B981"
         strokeWidth={2.5}
         testID="loading-rings-ring-0"
       />
       <Circle
+        animatedProps={
+          {
+            "opacity": 1,
+            "r": 60,
+          }
+        }
         cx={160}
         cy={160}
         fill="none"
-        opacity={1}
-        r={60}
         stroke="#10B981"
         strokeWidth={2.5}
         testID="loading-rings-ring-1"
       />
       <Circle
+        animatedProps={
+          {
+            "opacity": 1,
+            "r": 60,
+          }
+        }
         cx={160}
         cy={160}
         fill="none"
-        opacity={1}
-        r={60}
         stroke="#10B981"
         strokeWidth={2.5}
         testID="loading-rings-ring-2"
@@ -184,31 +196,43 @@ exports[`LoadingRings hero renders with explicit counter target 1`] = `
       width={320}
     >
       <Circle
+        animatedProps={
+          {
+            "opacity": 1,
+            "r": 60,
+          }
+        }
         cx={160}
         cy={160}
         fill="none"
-        opacity={1}
-        r={60}
         stroke="#10B981"
         strokeWidth={2.5}
         testID="loading-rings-ring-0"
       />
       <Circle
+        animatedProps={
+          {
+            "opacity": 1,
+            "r": 60,
+          }
+        }
         cx={160}
         cy={160}
         fill="none"
-        opacity={1}
-        r={60}
         stroke="#10B981"
         strokeWidth={2.5}
         testID="loading-rings-ring-1"
       />
       <Circle
+        animatedProps={
+          {
+            "opacity": 1,
+            "r": 60,
+          }
+        }
         cx={160}
         cy={160}
         fill="none"
-        opacity={1}
-        r={60}
         stroke="#10B981"
         strokeWidth={2.5}
         testID="loading-rings-ring-2"
