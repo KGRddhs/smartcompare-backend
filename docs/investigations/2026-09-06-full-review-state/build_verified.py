@@ -36,10 +36,10 @@ FABLE = {
     # load
     "LS-CACHE-REDIS-01": ("P1", "DEDUPE", "same defect as LS-REQUEST-PATH-BLOCKING-03"),
     "LS-CONCURRENCY-LIMITS-04": ("P1", "DEDUPE", "same defect as LS-REQUEST-PATH-BLOCKING-03"),
-    "LS-CACHE-REDIS-02": ("P2", "DOWNGRADED", "cost amplification under load, not a reachable defect; unit stays in load W1"),
-    "LS-CONCURRENCY-LIMITS-02": ("P2", "DOWNGRADED", "capacity/queueing bounded by per-adapter timeouts; semaphore unit in load W1"),
-    "LS-FAILURE-MODES-COST-05": ("P2", "DOWNGRADED", "latent: only in-flight compares at deploy time, ~0 traffic"),
-    "LS-MEASURED-EVIDENCE-01": ("P1", "EVIDENCE", "measured Upstash RTT 178 ms; not a code defect, load-model input"),
+    "LS-CACHE-REDIS-02": ("P1", "CONFIRMED", "Fable's P2 downgrade WITHDRAWN after the second vote reproduced n=5 -> 5 searches + 5 extractions on one key (launch-capacity defect)"),
+    "LS-CONCURRENCY-LIMITS-02": ("P1", "CONFIRMED", "Fable's P2 downgrade WITHDRAWN: measured 62 submissions / 21 queued against the real 40-worker pool from ONE fragrance compare"),
+    "LS-FAILURE-MODES-COST-05": ("P2", "DOWNGRADED", "vote + Fable agree: refund runs inline with the offload flags OFF and survives shutdown; becomes a real loss the moment ENABLE_ASYNC_REDIS_OFFLOAD is ON -> W1-6 drain is a precondition for that canary"),
+    "LS-MEASURED-EVIDENCE-01": ("P1", "EVIDENCE", "measured Upstash RTT 178 ms (re-measured 168-196 ms with the pooled client); not a code defect, load-model input"),
     # code
     "CR-PERFORMANCE-03": ("P1", "DEDUPE", "same defect as LS-REQUEST-PATH-BLOCKING-02"),
     "CR-SECURITY-05": ("P0", "DEDUPE", "same defect as LS-REQUEST-PATH-BLOCKING-01"),
@@ -48,7 +48,8 @@ FABLE = {
     "CR-DELTA-CORRECTNESS-07": ("P2", "UPGRADED", "LIVE regression from M21 W3 (tradeoffs collapse)"),
     "CR-DELTA-CORRECTNESS-09": ("P2", "UPGRADED", "canary note; re-take the free-credit baseline post-M21"),
     # product
-    "PO-RECORDED-MEASURED-01": ("P1", "EVIDENCE", "measurement truth: organic series = ~1,513 rows / 80% success / p50 22.0 s"),
+    "PO-RECORDED-MEASURED-01": ("P2", "EVIDENCE", "code half P2 (admin-read dilution); the MEASUREMENT stands as the campaign baseline: 79.7-88.6% probe volume, organic series ~1,513 rows / 80% success / p50 22.0 s"),
+    "PO-RECORDED-MEASURED-02": ("P2", "DOWNGRADED", "vote: 1,032 of the 1,484 local_bhd rows are already pended by the live non-PDP guard (~15 genuinely wrong-country showable) -> P2; MUST land with/before W4-2, which would otherwise un-pend those rows and expose the label"),
     # mobile
     "MB-NETWORK-CONTRACT-14": ("P1", "DEDUPE", "= MB-RECONCILE-01 + MB-RECONCILE-07 (one metering unit)"),
     "MB-STARTUP-BUNDLE-02": ("P1", "OTHER-SESSION", "fixed on feature/m23-mobile-w1 A3 e58f022 (unmerged); re-verify after merge"),
