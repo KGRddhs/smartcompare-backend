@@ -48,6 +48,10 @@ os.environ.setdefault("ENABLE_REFERRAL_SYSTEM", "true")
 _RATE_LIMITER_BYPASS_TEST_FILES = (
     "test_auth_demographics.py",
     "test_attribution_endpoint.py",
+    # W0-1 (SESSION 65): drives POST /api/v1/url/compare through the real ASGI
+    # app on the test's own loop to measure event-loop stalls; the process-wide
+    # in-memory 10/min bucket must not turn a heartbeat measurement into a 429.
+    "test_url_validator_offloop.py",
 )
 
 
