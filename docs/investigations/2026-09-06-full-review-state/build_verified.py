@@ -58,6 +58,9 @@ FABLE = {
     "MB-RECONCILE-05": ("P1", "OTHER-SESSION", "fixed on feature/m23-mobile-w1 A18 b73c47e (unmerged); re-verify after merge"),
     "MB-TESTS-TRUTH-04": ("P1", "OTHER-SESSION", "fixed on feature/m23-mobile-w1 A12 4f470cc (unmerged); re-verify after merge"),
     "MB-RECONCILE-07": ("P1", "UPGRADED", "P2->P1 (data loss + server-side freemium bypass), and /url/compare 500s on success (PO-VERDICT-TRUTH-01)"),
+    "MB-RECONCILE-04": ("P2", "DOWNGRADED", "synthesis adjudication accepted: the watchdog EXISTS at HEAD (api.ts:549/:793 COMPARE_TIMEOUT_MS=35000, :230 IDENTIFY abort, :616 SSE watchdog); unbounded only on the 97b5f15 bundle (= MB-RECONCILE-06); the cancel half is the other session's A4 (landed on feature/m23-mobile-w1)"),
+    "MB-FLOWS-STATE-06": ("P1", "OTHER-SESSION", "fixed on feature/m23-mobile-w1 B9 7863bd3 (landed 2026-09-07); re-verify after merge"),
+    "MB-I18N-RTL-03": ("P2", "CONFIRMED", "main-only REGRESSION from M21 W4 (textAlign double-flip on 5 sites, fenced in by a wrong contract test) - must be reverted BEFORE the OTA ships it to users for the first time (W3-11a)"),
     "MB-RECONCILE-15": ("P1", "PRODUCT-CALL", "outbound retailer link is a product decision, not a blind fix"),
 }
 
