@@ -12,10 +12,14 @@
  * `.copy-policy.json`'s scary vocabulary by __tests__/copy-policy.test.ts.
  */
 import React from 'react';
+import * as fs from 'fs';
+import * as path from 'path';
 import { render, fireEvent, waitFor, act } from '@testing-library/react-native';
 import enCatalog from '../src/i18n/en.json';
+import arCatalog from '../src/i18n/ar.json';
 
 const EN = enCatalog as Record<string, string>;
+const AR = arCatalog as Record<string, string>;
 
 const takePictureMock = jest.fn();
 const launchImageLibraryMock = jest.fn();
@@ -196,6 +200,119 @@ describe('B9 — the notice copy honours the zero-scary-copy contract', () => {
     expect(value.length).toBeGreaterThan(0);
     for (const banned of ["couldn't", 'try again', 'failed to', 'failed']) {
       expect(value.toLowerCase()).not.toContain(banned);
+    }
+  });
+});
+
+/**
+ * P-B9 (polish round) — the notice copy describes a LOCAL miss and agrees
+ * with the button underneath it.
+ *
+ * Two defects lived in these four strings. (1) Both Arabic hints were
+ * calques of the English delivery idioms: they said the frame/photo
+ * "لم تصل" — did not ARRIVE — for a capture that never leaves the phone
+ * (`takePictureAsync` / `launchImageLibraryAsync` upload nothing), so an
+ * Arabic reader was told a transfer failed. (2) On the gallery arm the
+ * hint said "اخترها" / "pick it one more time" (that same photo) directly
+ * above a button offering "اختر صورة أخرى" / "Pick another" — two
+ * different instructions in one notice. `onCaptureNoticeRetry` (above)
+ * re-fires the shutter or re-opens the picker; it never re-submits the
+ * frame that just missed, so "another" is the honest half of the pair and
+ * both halves now say it.
+ *
+ * The English fence lives above; this block adds the Arabic side plus the
+ * hint/button agreement, and pins the screen's own `defaultValue`
+ * fallbacks to the catalog so the two can't drift apart again.
+ */
+describe('P-B9 — the retry copy is local, and the hint agrees with its button', () => {
+  const ARMS = [
+    {
+      arm: 'capture',
+      hint: 'home.camera.capture_retry_hint',
+      action: 'home.camera.capture_retry_action',
+    },
+    {
+      arm: 'pick',
+      hint: 'home.camera.pick_retry_hint',
+      action: 'home.camera.pick_retry_action',
+    },
+  ] as const;
+
+  const KEYS = ARMS.flatMap((a) => [a.hint, a.action]);
+
+  // وصل / تصل = to arrive, to reach — transmission verbs. تحميل = to
+  // upload/download. None of them can describe a failure that happened
+  // entirely on-device.
+  const AR_DELIVERY = /تصل|وصل|أُرسل|إرسال|تحميل/;
+  const EN_DELIVERY = /come through|didn'?t land|\bupload|\bsent\b|\bdeliver|\breceiv/i;
+  // أخرى / غيرها = another / a different one.
+  const AR_ANOTHER = /أخرى|غيرها/;
+
+  it('all four keys resolve to real copy in BOTH catalogs', () => {
+    // Positive control for every assertion below — an absent key would
+    // otherwise sail through `not.toMatch` on `undefined`.
+    for (const key of KEYS) {
+      expect(typeof EN[key]).toBe('string');
+      expect(EN[key].trim().length).toBeGreaterThan(0);
+      expect(typeof AR[key]).toBe('string');
+      expect(AR[key].trim().length).toBeGreaterThan(0);
+    }
+  });
+
+  it.each(ARMS)(
+    'the $arm hint names a local miss, never a delivery one',
+    ({ hint }) => {
+      expect(AR[hint]).not.toMatch(AR_DELIVERY);
+      expect(EN[hint]).not.toMatch(EN_DELIVERY);
+    }
+  );
+
+  it.each(ARMS)(
+    'the $arm hint asks for the same thing its button offers',
+    ({ hint, action }) => {
+      expect(EN[hint].toLowerCase()).toContain('another');
+      expect(EN[action].toLowerCase()).toContain('another');
+      expect(AR[hint]).toMatch(AR_ANOTHER);
+      expect(AR[action]).toMatch(AR_ANOTHER);
+    }
+  );
+
+  it('neither pick string sends the user back to the SAME photo', () => {
+    // اخترها = "choose IT (fem.)" — re-select the very photo that just
+    // missed, which is precisely what the button contradicted.
+    expect(AR['home.camera.pick_retry_hint']).not.toContain('اخترها');
+    expect(EN['home.camera.pick_retry_hint'].toLowerCase()).not.toContain(
+      'pick it'
+    );
+  });
+
+  it("the screen's defaultValue fallbacks stay identical to en.json", () => {
+    const source = fs
+      .readFileSync(
+        path.join(__dirname, '..', 'src', 'screens', 'ScanCameraScreen.tsx'),
+        'utf8'
+      )
+      // Comments first: prose about the copy must never satisfy the grep.
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/^[ \t]*\/\/.*$/gm, '');
+
+    const fallbacks = new Map<string, string>();
+    const call =
+      /t\(\s*'([\w.]+)'\s*,\s*\{\s*defaultValue:\s*("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')/g;
+    for (let m = call.exec(source); m !== null; m = call.exec(source)) {
+      const raw = m[2];
+      fallbacks.set(
+        m[1],
+        raw.startsWith('"')
+          ? (JSON.parse(raw) as string)
+          : raw.slice(1, -1).replace(/\\'/g, "'")
+      );
+    }
+
+    // Positive control: the grep really found all four call sites.
+    expect(KEYS.filter((key) => fallbacks.has(key))).toHaveLength(KEYS.length);
+    for (const key of KEYS) {
+      expect(fallbacks.get(key)).toBe(EN[key]);
     }
   });
 });

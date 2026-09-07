@@ -458,18 +458,24 @@ export default function ScanCameraScreen({ navigation }: Props) {
         )}
         {/* B9 — capture / pick failure notice. Sits directly above the
             controls it points back at. Column layout + textAlign center so
-            it needs no start/end handling in RTL. */}
+            it needs no start/end handling in RTL.
+            P-B9 copy: both arms fail LOCALLY (no upload has happened yet),
+            so the hint names a local miss, never a delivery one, and it
+            asks for the same thing its button does — another shot / another
+            photo — because onCaptureNoticeRetry re-fires the shutter or
+            re-opens the picker, it never re-submits the previous frame.
+            These defaultValues must stay byte-identical to en.json; the B9
+            test greps this file to keep them in step. */}
         {captureNotice ? (
           <View style={styles.captureNotice} testID="scan-capture-notice">
             <Text style={styles.captureNoticeText}>
               {captureNotice === 'pick'
                 ? t('home.camera.pick_retry_hint', {
-                    defaultValue:
-                      "That photo didn't come through — pick it one more time.",
+                    defaultValue: "That photo didn't open — pick another one.",
                   })
                 : t('home.camera.capture_retry_hint', {
                     defaultValue:
-                      "That frame didn't land — snap it one more time.",
+                      "That shot didn't come out — take another one.",
                   })}
             </Text>
             <TouchableOpacity
