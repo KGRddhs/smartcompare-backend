@@ -7535,7 +7535,7 @@ class StructuredComparisonService:
                     price["source_method"] = "estimated"
                 if price.get("retailer") and not price.get("url"):
                     price["url"] = build_retailer_url(price["retailer"], full_name)
-                await self._persist_tier3_estimate(
+                _tier3_persisted = await self._persist_tier3_estimate(
                     cache_key, brand, name, variant, region, price)
                 # Task 1.3 — Tier-3 GPT estimate means no real BH price exists; the
                 # cascade is a structural dead-end. Record it so we don't re-run the
@@ -7550,19 +7550,47 @@ class StructuredComparisonService:
                 # estimate is TRANSIENT: a later off-clock index build can resolve a
                 # genuine PDP price. Cap to 24h so the cold-index estimate isn't frozen
                 # for 30d after the index becomes available.
-                self._record_negative_price_cache(
-                    cache_key, price,
-                    guard_rejected=_guard_rejected_this_request,
-                    transient_discovery=sitemap_discovery_is_cold(category),
-                    # R4 — a Serper-outage estimate is TRANSIENT too: the discovery
-                    # tiers all errored, so the cascade ran blind; cap to 24h so the
-                    # outage never freezes the estimate for 30 days.
-                    discovery_degraded=_discovery_degraded,
-                    # Codex re-review HIGH-3 — stamp the RAW cold sitemap domains
-                    # (NOT cron-gated) so a 30d-negcached estimate written while the
-                    # cron was OFF gets read-side-invalidated the moment the index warms.
-                    category=category,
-                )
+                #
+                # Issue #54 x #53 — but ONLY when the estimate was actually
+                # persisted. `_persist_tier3_estimate` returns False exactly when
+                # the ENABLE_GENUINE_PRICE_CLOBBER_GUARD guard fired, i.e. L1
+                # already holds a GENUINE price for this key. That is the direct
+                # DISPROOF of a structural dead-end — a genuine BH price exists
+                # right now — so planting a `nogenuine:` sentinel there would be a
+                # lie, and a durable one: the sentinel is NEGATIVE_PRICE_CACHE_TTL
+                # (30d) while the genuine entry it defers to is
+                # GENUINE_PRICE_CACHE_TTL (7d) at L1 and the same window at L2. Once
+                # both lapse on day 7 the negcache read (which sits AFTER the L1 and
+                # L2 reads) would serve this day-0 estimate for the remaining ~23
+                # days, and #53's deleter (`_cache_price_and_clear_sentinel`) can
+                # never fire again because the sentinel short-circuits the cascade
+                # before any live resolution runs. Withholding the sentinel costs
+                # one re-run of the cascade later and keeps the two fixes composable.
+                #
+                # Flag OFF -> `_persist_tier3_estimate` always returns True, so this
+                # is the same unconditional call with the same arguments in the same
+                # order: byte-identical.
+                if _tier3_persisted:
+                    self._record_negative_price_cache(
+                        cache_key, price,
+                        guard_rejected=_guard_rejected_this_request,
+                        transient_discovery=sitemap_discovery_is_cold(category),
+                        # R4 — a Serper-outage estimate is TRANSIENT too: the discovery
+                        # tiers all errored, so the cascade ran blind; cap to 24h so the
+                        # outage never freezes the estimate for 30 days.
+                        discovery_degraded=_discovery_degraded,
+                        # Codex re-review HIGH-3 — stamp the RAW cold sitemap domains
+                        # (NOT cron-gated) so a 30d-negcached estimate written while the
+                        # cron was OFF gets read-side-invalidated the moment the index warms.
+                        category=category,
+                    )
+                else:
+                    logger.info(
+                        "[PRICE] nogenuine sentinel NOT planted for %s: the clobber "
+                        "guard kept a genuine L1 price, so this Tier-3 estimate is "
+                        "the OPPOSITE of a structural dead-end (#54 x #53)",
+                        cache_key,
+                    )
                 price["_cached"] = False
                 return price
 
@@ -7814,10 +7842,19 @@ class StructuredComparisonService:
         Guarded: when the L1 entry already holds a genuine-method price, BOTH
         writes are skipped and the fact is logged at INFO. The estimate is still
         RETURNED to this request (the caller is unchanged) — it just doesn't get to
-        overwrite better data for everyone else. The following
-        `_record_negative_price_cache` call is deliberately untouched: the L1 read
-        in `_get_price` precedes the sentinel read, so the preserved genuine entry
-        wins on the next request anyway.
+        overwrite better data for everyone else.
+
+        #54 x #53 correction — an earlier version of this docstring justified
+        leaving the caller's `_record_negative_price_cache` call unconditional with
+        "the L1 read in `_get_price` precedes the sentinel read, so the preserved
+        genuine entry wins on the next request anyway". That is FALSE beyond the
+        7-day L1 window: the sentinel is NEGATIVE_PRICE_CACHE_TTL (30d) and outlives
+        the GENUINE_PRICE_CACHE_TTL (7d) entry it defers to at BOTH layers, after
+        which the negcache read serves the day-0 estimate for ~23 more days and
+        short-circuits the cascade so #53's deleter can never fire. So the caller now
+        BRANCHES on this return: it plants the sentinel only when the writes actually
+        happened, and logs instead when the guard withheld them (a live genuine price
+        is the disproof of a structural dead-end, not evidence for one).
 
         Flag OFF (`ENABLE_GENUINE_PRICE_CLOBBER_GUARD` unset/false) -> the existing
         L1 entry is never even read and the two original statements run in their
@@ -7826,8 +7863,9 @@ class StructuredComparisonService:
         Fail-open: a raising L1 read is swallowed and the write proceeds, because a
         Redis hiccup must never cost us the estimate we already paid GPT for.
 
-        Returns True iff the writes happened (for tests/logging; no caller branches
-        on it)."""
+        Returns True iff the writes happened. The Tier-3 terminal in `_get_price`
+        branches on it to decide whether the `nogenuine:` sentinel may be planted
+        (#54 x #53, above)."""
         if genuine_clobber_guard_enabled():
             try:
                 existing = await _cache_get_async(cache_key)

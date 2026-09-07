@@ -332,8 +332,30 @@ def race_harness(monkeypatch):
     """Drive `_get_price` all the way to the Tier-3 terminal with the whole
     cascade stubbed empty, and simulate the RACE: the concurrent request's
     genuine price lands in L1 *while the GPT training-data call is in flight*, so
-    the L1 read at the top of `_get_price` has already missed."""
-    state = {"landed": False, "sets": [], "db": 0}
+    the L1 read at the top of `_get_price` has already missed.
+
+    #54 x #53 (cache-coherence review finding #1) — the harness ALSO observes the
+    third write to this logical slot, the 30d `nogenuine:` sentinel. That write does
+    NOT go through `scs.set_cached` (which this fixture patches), it goes through the
+    module-level `scs.set_negative_cache` imported at scs.py:54, so a harness that
+    watches only `set_cached` is structurally blind to it — which is exactly how the
+    defect survived #54's own race test. `scs.delete_cached` is recorded too so #53's
+    sentinel invalidation is visible in the same timeline."""
+    state = {
+        "landed": False, "sets": [], "db": 0,
+        "sentinel_sets": [], "sentinel_deletes": [],
+        # Optional hook: an awaitable run at the instant the GPT call resolves, i.e.
+        # the point where the concurrent resolver banks its genuine price. Used by
+        # the both-flags-ON composition test to run the REAL #53 writer there.
+        "on_race": None,
+    }
+    # The key `_get_price` will actually build for the arguments `_run_race` passes —
+    # computed with the production builder so the sentinel-key assertions below pin
+    # the real namespaced key, not a hand-written one.
+    state["cache_key"] = scs.build_size_aware_price_cache_key(
+        "Apple", "iPhone 15", "128GB", "bahrain",
+        "Apple iPhone 15 128GB price", category="electronics",
+    )
 
     def _get_cached(key: str):
         if state["landed"] and str(key).startswith("price:"):
@@ -343,6 +365,14 @@ def race_harness(monkeypatch):
     monkeypatch.setattr(scs, "get_cached", _get_cached)
     monkeypatch.setattr(
         scs, "set_cached", lambda k, v, t: state["sets"].append((k, v, t)) or True
+    )
+    monkeypatch.setattr(
+        scs, "set_negative_cache",
+        lambda k, v, t: state["sentinel_sets"].append((k, v, t)) or True,
+    )
+    monkeypatch.setattr(
+        scs, "delete_cached",
+        lambda k: state["sentinel_deletes"].append(k) or True,
     )
     monkeypatch.setattr(
         "app.services.product_data_service.get_cached_price",
@@ -371,6 +401,8 @@ def race_harness(monkeypatch):
         # THE RACE: a concurrent resolver banks a genuine BH price at L1 while
         # this request is still waiting on GPT.
         state["landed"] = True
+        if state["on_race"] is not None:
+            await state["on_race"]()
         return ({"amount": 290.0, "currency": "BHD"}, {})
 
     monkeypatch.setattr(scs, "extract_price_from_training_data", _training)
@@ -397,6 +429,13 @@ def _estimate_writes(state):
     ]
 
 
+def _sentinel_writes(state):
+    """The THIRD write to the same logical slot: `nogenuine:{cache_key}`, planted by
+    `_record_negative_price_cache` through the module-level `scs.set_negative_cache`
+    (NOT through `scs.set_cached`, which is why `_estimate_writes` cannot see it)."""
+    return list(state["sentinel_sets"])
+
+
 class TestTier3RaceEndToEnd:
     @pytest.mark.asyncio
     async def test_flag_off_reproduces_the_bug(self, monkeypatch, race_harness):
@@ -418,9 +457,16 @@ class TestTier3RaceEndToEnd:
         # change what this request returns.
         assert result["source_method"] == "estimated"
         assert result["amount"] == pytest.approx(290.0)
-        # ...but nothing was written over the genuine entry, at either layer.
+        # ...but nothing was written over the genuine entry, at ANY layer.
+        # #54 x #53 — "either layer" used to mean L1 + L2 only. The 30d
+        # `nogenuine:` sentinel is a THIRD write to the same logical slot and it
+        # OUTLIVES the 7d genuine entry the guard just protected, so it belongs in
+        # this assertion; before the fix it fired here and this test could not see it
+        # (the harness patched `set_cached`, the sentinel goes through
+        # `set_negative_cache`).
         assert _estimate_writes(race_harness) == []
         assert race_harness["db"] == 0
+        assert _sentinel_writes(race_harness) == []
 
     @pytest.mark.asyncio
     async def test_flag_on_without_a_race_still_caches_the_estimate(
@@ -437,6 +483,118 @@ class TestTier3RaceEndToEnd:
         assert len(writes) == 1
         assert writes[0][2] == ps.PRICE_CACHE_TTL // 2
         assert race_harness["db"] == 1
+
+
+# ---------------------------------------------------------------------------
+# 4b. #54 x #53 — the sentinel is the third write, and the guard must withhold it
+#
+# Cache-coherence review of 7dd04c1, finding #1 (P1), reproduced with this very
+# harness: with BOTH flags ON the guard blocked the L1 and L2 writes and the
+# terminal then planted `nogenuine:price:...` for 30d holding the estimate anyway.
+# Because the negcache read in `_get_price` sits AFTER the L1 and L2 reads, and
+# both genuine entries live only GENUINE_PRICE_CACHE_TTL (7d), the day-0 estimate
+# gets served for the remaining ~23 days — and #53's deleter can never fire again,
+# because the sentinel short-circuits the cascade before any live resolution runs.
+# ---------------------------------------------------------------------------
+
+
+class TestSentinelWithheldWhenTheGuardFires:
+    @pytest.mark.asyncio
+    async def test_flag_on_guard_fires_no_sentinel_is_planted(
+        self, monkeypatch, race_harness
+    ):
+        """(b) The load-bearing one: guard ON + genuine already at L1 ->
+        `set_negative_cache` is not called at all. Strip the `if _tier3_persisted:`
+        branch in the Tier-3 terminal and this goes red with one 30d write."""
+        monkeypatch.setenv(FLAG, "true")
+        result = await _run_race(race_harness)
+        assert result["source_method"] == "estimated"  # the caller still gets it
+        assert race_harness["sentinel_sets"] == []
+
+    @pytest.mark.asyncio
+    async def test_flag_on_no_race_plants_the_sentinel_unchanged(
+        self, monkeypatch, race_harness
+    ):
+        """(c) Guard ON but not fired (no genuine at L1) -> the structural
+        dead-end sentinel is written exactly as before: same namespaced key, same
+        payload, same 30d TTL. The fix must narrow the sentinel to the guard path
+        ONLY."""
+        monkeypatch.setenv(FLAG, "true")
+        monkeypatch.setattr(scs, "get_cached", lambda k: None)
+        result = await _run_race(race_harness)
+        assert len(race_harness["sentinel_sets"]) == 1
+        key, value, ttl = race_harness["sentinel_sets"][0]
+        assert key == ps.negative_cache_key(race_harness["cache_key"])
+        assert key.startswith("nogenuine:price:")
+        assert value["source_method"] == "estimated"
+        assert value["amount"] == pytest.approx(290.0)
+        assert value is result  # the resolved estimate itself is the sentinel payload
+        assert ttl == ps.NEGATIVE_PRICE_CACHE_TTL
+
+    @pytest.mark.asyncio
+    async def test_flag_off_plants_the_sentinel_unchanged(
+        self, monkeypatch, race_harness
+    ):
+        """(d) Byte-identity pin. Flag OFF the guard never fires, so
+        `_persist_tier3_estimate` always returns True and the sentinel write is the
+        same unconditional call it has always been — including in the race, which is
+        the case the flag exists to change."""
+        monkeypatch.delenv(FLAG, raising=False)
+        result = await _run_race(race_harness)
+        assert len(race_harness["sentinel_sets"]) == 1
+        key, value, ttl = race_harness["sentinel_sets"][0]
+        assert key == ps.negative_cache_key(race_harness["cache_key"])
+        assert value is result
+        assert ttl == ps.NEGATIVE_PRICE_CACHE_TTL
+        # ...and the pre-#54 clobber still happens when the flag is OFF: this test
+        # asserts NO behaviour change, only that the sentinel half is untouched.
+        assert len(_estimate_writes(race_harness)) == 1
+        assert race_harness["db"] == 1
+
+    @pytest.mark.asyncio
+    async def test_both_flags_on_the_two_fixes_now_compose(
+        self, monkeypatch, race_harness
+    ):
+        """(e) The composition test the wave was missing — the reviewer's exact
+        end-to-end scenario with ENABLE_NEGCACHE_GENUINE_INVALIDATION AND
+        ENABLE_GENUINE_PRICE_CLOBBER_GUARD both ON.
+
+        Timeline inside one `_get_price`:
+          t0   a prior dead-end resolution left `nogenuine:{key}` standing (30d);
+          t1   the concurrent resolver banks a GENUINE price through #53's ONE
+               writer (`_cache_price_and_clear_sentinel`) while this request is
+               still blocked on GPT -> the sentinel is DELETED;
+          t2   the in-flight estimate finishes, #54's guard withholds both writes;
+          t3   the terminal must NOT re-plant the sentinel #53 just deleted.
+
+        Before the fix, t3 re-created it — one fix undoing the other on the highest
+        value path. `sentinel_deletes` proves #53 really ran here, so the empty
+        `sentinel_sets` is a composition assertion and not a vacuous one."""
+        monkeypatch.setenv(FLAG, "true")
+        monkeypatch.setenv("ENABLE_NEGCACHE_GENUINE_INVALIDATION", "true")
+
+        async def _concurrent_genuine_resolver():
+            # #53's real writer, unmocked, on the real key.
+            await race_harness["svc"]._cache_price_and_clear_sentinel(
+                race_harness["cache_key"], dict(GENUINE)
+            )
+
+        race_harness["on_race"] = _concurrent_genuine_resolver
+
+        result = await _run_race(race_harness)
+
+        # t1 really happened: #53 deleted the sentinel for this key.
+        assert race_harness["sentinel_deletes"] == [
+            ps.negative_cache_key(race_harness["cache_key"])
+        ]
+        # t2: the guard kept the genuine price at both layers.
+        assert _estimate_writes(race_harness) == []
+        assert race_harness["db"] == 0
+        # t3: and nothing re-planted the sentinel behind #53's back.
+        assert _sentinel_writes(race_harness) == []
+        # The caller is still served its estimate — unchanged contract.
+        assert result["source_method"] == "estimated"
+        assert result["amount"] == pytest.approx(290.0)
 
 
 # ---------------------------------------------------------------------------
@@ -746,11 +904,68 @@ class TestStructuralPins:
         assert "_cache_set_async" in called
         assert "self._save_price_to_db" in called
 
-    def test_the_negative_cache_call_is_untouched(self, scs_tree):
-        """Explicitly out of scope for #54 — the sentinel write must still happen
-        at the Tier-3 terminal."""
+    def test_the_tier3_sentinel_write_is_gated_on_the_persist_result(self, scs_tree):
+        """REWRITTEN pin. It used to be `test_the_negative_cache_call_is_untouched`
+        and asserted only that `self._record_negative_price_cache` still appeared in
+        `_get_price` — "explicitly out of scope for #54". The cache-coherence review
+        of 7dd04c1 (finding #1, P1) showed that omission is the defect: the withheld
+        estimate was still sentinelled for 30d, outliving the 7d genuine entry the
+        guard preserved, so #54 undid #53 with both flags ON.
+
+        The pin therefore now says something stronger AND narrower:
+          * the Tier-3 sentinel write (the kwargs-carrying call) must sit inside an
+            `if` on the boolean `_persist_tier3_estimate` returns — a comment or a
+            docstring cannot satisfy this;
+          * the converted_fallback terminal's sentinel (the bare positional call, a
+            different terminal with no guard in play) must stay UNCONDITIONAL, so
+            this fix cannot silently widen into that path.
+        """
         fn = _func(_class(scs_tree, "StructuredComparisonService"), "_get_price")
-        assert "self._record_negative_price_cache" in _called(fn)
+
+        # The name the terminal binds `_persist_tier3_estimate`'s bool to.
+        targets = [
+            node.targets[0].id
+            for node in ast.walk(fn)
+            if isinstance(node, ast.Assign)
+            and isinstance(node.targets[0], ast.Name)
+            and isinstance(node.value, ast.Await)
+            and _call_name(node.value.value) == "self._persist_tier3_estimate"
+        ]
+        assert len(targets) == 1, (
+            "the Tier-3 terminal discards `_persist_tier3_estimate`'s return value "
+            "instead of binding it"
+        )
+        persisted_name = targets[0]
+
+        record_calls = [
+            n for n in ast.walk(fn)
+            if isinstance(n, ast.Call)
+            and _call_name(n) == "self._record_negative_price_cache"
+        ]
+        tier3_calls = [c for c in record_calls if c.keywords]
+        fallback_calls = [c for c in record_calls if not c.keywords]
+        assert len(tier3_calls) == 1, "the Tier-3 sentinel write is not where expected"
+        assert len(fallback_calls) == 1, (
+            "the converted_fallback sentinel write went missing"
+        )
+
+        gates = [
+            n for n in ast.walk(fn)
+            if isinstance(n, ast.If)
+            and isinstance(n.test, ast.Name)
+            and n.test.id == persisted_name
+        ]
+        assert len(gates) == 1, (
+            f"the Tier-3 sentinel write is not gated on `{persisted_name}`"
+        )
+        gated = {id(c) for c in ast.walk(gates[0]) if isinstance(c, ast.Call)}
+        assert id(tier3_calls[0]) in gated, (
+            "the Tier-3 `nogenuine:` sentinel is still planted unconditionally — the "
+            "guard's withheld estimate would be cached for NEGATIVE_PRICE_CACHE_TTL"
+        )
+        assert id(fallback_calls[0]) not in gated, (
+            "the converted_fallback sentinel must NOT be gated on the Tier-3 guard"
+        )
 
     def test_l2_selector_uses_the_canonical_predicate_not_a_copy(self, pds_tree):
         """#67 — hand-copying `_GENUINE_BH_SOURCE_METHODS` is the defect. The
