@@ -8,9 +8,17 @@
  * Why we don't render a Reanimated.Text directly: the animated value is a
  * float that we want to render as an integer (no flickery decimals). We
  * drive a `useSharedValue`, listen with `useAnimatedReaction`, and commit
- * the rounded integer to React state. On JS-mock land (jest), the reaction
- * fires once with the final value — tests assert end-state. On-device, the
- * 60fps reaction interpolates and the displayed integer ticks naturally.
+ * the rounded integer to React state. On-device, the 60fps reaction
+ * interpolates and the displayed integer ticks naturally; the reaction only
+ * crosses the UI→JS boundary when the *rounded* value actually changes (A16
+ * — an unguarded reaction commits ~60 setStates/s, nearly all redundant).
+ *
+ * In jest the shared reanimated mock (`__mocks__/react-native-reanimated.ts`)
+ * no-ops `useAnimatedReaction` entirely — it never fires, not even once — so
+ * the displayed number in tests comes from the synchronous floor in the
+ * effect below, which is why that floor is load-bearing rather than
+ * defensive. `__tests__/components/CounterTicker.reactionGuard.test.tsx`
+ * drives the reaction body by hand to cover the on-device path.
  */
 
 import React, { useEffect, useState } from 'react';
@@ -65,8 +73,19 @@ export function CounterTicker({
 
   useAnimatedReaction(
     () => progress.value,
-    (current) => {
-      runOnJS(setDisplay)(Math.round(current));
+    (current, previous) => {
+      // A16 — this runs on the UI thread for EVERY frame of the timing (~60/s,
+      // ~72 frames for the 1.2s quiz ticker). Only a change in the *rounded*
+      // value can change what the Text node shows, so an unconditional
+      // runOnJS spends ~60 boundary crossings + setStates a second to commit
+      // the same integer over and over. `previous` is null on the reaction's
+      // first run after (re)registration, which still commits once so the
+      // display picks the animation up wherever it starts.
+      const rounded = Math.round(current);
+      if (previous !== null && rounded === Math.round(previous)) {
+        return;
+      }
+      runOnJS(setDisplay)(rounded);
     },
     [clampedTarget]
   );
