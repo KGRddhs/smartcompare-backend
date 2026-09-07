@@ -22,7 +22,6 @@ import {
   ActivityIndicator,
   SafeAreaView,
   Platform,
-  I18nManager,
 } from 'react-native';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { useTranslation } from 'react-i18next';
@@ -501,9 +500,12 @@ const styles = StyleSheet.create({
     ...typography.small,
     color: colors.text.placeholder,
     marginTop: spacing.xs,
-    // Trailing-edge alignment — flips to 'left' under RTL so the counter
-    // stays at the bottom-trailing corner of the textarea in both locales.
-    textAlign: I18nManager.isRTL ? 'left' : 'right',
+    // Trailing-edge alignment. RN mirrors physical left/right under RTL on
+    // every platform path, so the bare literal already keeps the counter at
+    // the bottom-trailing corner in both locales — an explicit isRTL ternary
+    // double-flips it back to the leading edge. See
+    // __tests__/rtl/textAlignLogical.contract.test.ts before adding one.
+    textAlign: 'right',
   },
   errorText: {
     ...typography.small,

@@ -26,7 +26,7 @@
  */
 
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, I18nManager } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import * as Haptics from 'expo-haptics';
 import { ChevronDown, ChevronUp } from 'lucide-react-native';
@@ -449,9 +449,10 @@ const styles = StyleSheet.create({
     color: colors.text.secondary,
   },
   legendNameRight: {
-    // Physical align must swap with the mirrored legend row under RTL
-    // (M21 W4 MB-i18n-rtl-05); isRTL is fixed for the app lifetime.
-    textAlign: I18nManager.isRTL ? 'left' : 'right',
+    // RN mirrors physical left/right under RTL on every platform path, so
+    // this bare literal lands on the trailing edge in both directions — see
+    // __tests__/rtl/textAlignLogical.contract.test.ts before adding a ternary.
+    textAlign: 'right',
   },
   legendDot: {
     fontSize: 12,
