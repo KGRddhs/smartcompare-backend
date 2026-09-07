@@ -16,8 +16,9 @@
  *  - MB-perf-03: compare-class endpoints carry a per-call
  *    COMPARE_TIMEOUT_MS instead of riding the global 120s axios timeout;
  *    identifyFromImages carries an AbortController + IDENTIFY_TIMEOUT_MS.
- *  - MB-contract-02: HomeScreen's terminal onError fallback never renders
- *    error.message when a structured code is present.
+ *  - MB-contract-02 (+ A11): HomeScreen's terminal error fallback never
+ *    renders a raw transport string on EITHER compare path — both end on
+ *    `t(friendlyErrorKey(parsed.code))`, and no Alert takes a `.message`.
  */
 
 import * as fs from 'fs';
@@ -85,10 +86,58 @@ describe('HomeScreen — MB-perf-03/MB-contract-02 (source)', () => {
     expect(HOME).toMatch(/COMPARE_TIMEOUT_MS/);
   });
 
-  it('the terminal onError fallback never renders error.message when a structured code is present', () => {
-    // The guarded fallback: code present -> i18n copy, never the raw string.
-    expect(HOME).toMatch(
-      /parsed\.code\s*\?\s*t\('home\.errors\.comparison'\)/
-    );
+  it('the terminal error fallback on BOTH compare paths resolves copy from the code', () => {
+    // MB-contract-02 originally pinned the guarded ternary
+    // `parsed.code ? t('home.errors.comparison') : error.message || ...`,
+    // which still rendered the raw axios string on the CODELESS arm (a
+    // Railway edge 502 carries no `{success, error, code}` envelope, so
+    // parseApiError falls through to `error?.message` = "Request failed
+    // with status code 502" — the forbidden token "failed", in the UI).
+    // A11 replaced that ternary with a TOTAL code->key map, so no arm can
+    // reach a raw string. Pin the stronger property the ternary was only
+    // approximating; re-pinning the old literal would pin a shape the
+    // source no longer has (and cannot fail for the right reason).
+    expect(HOME).toMatch(/from '\.\.\/services\/errorCopy'/);
+    const coded =
+      HOME.match(
+        /Alert\.alert\(\s*t\('common\.error'\),\s*t\(friendlyErrorKey\(parsed\.code\)\)\s*\)/g,
+      ) || [];
+    // One per compare path: the SSE/text terminal onError and the URL catch.
+    expect(coded.length).toBe(2);
+  });
+
+  it('no HomeScreen alert can render parseApiError().message or error.message', () => {
+    // The regression this guards: reintroducing `parsed.message` (or
+    // `error.message`) as Alert copy on EITHER compare path. Extract each
+    // Alert.alert(...) by BALANCING parens — a non-greedy `.*?\);` stops at
+    // the first `);` inside a nested call or a button handler and would
+    // silently miss a leak past that point.
+    //
+    // Comment lines are dropped first: A11's own comment QUOTES the pre-fix
+    // `Alert.alert(t('common.error'), parsed.message)` it replaced, and a
+    // fence that reads prose would fail on the explanation rather than on
+    // the code. No Alert.alert argument list in this file spans a comment
+    // line, so dropping them cannot unbalance a real call.
+    const CODE = HOME.split('\n')
+      .filter((line) => !/^\s*(\/\/|\*|\/\*)/.test(line))
+      .join('\n');
+    const calls: string[] = [];
+    const marker = 'Alert.alert(';
+    for (let i = CODE.indexOf(marker); i !== -1; i = CODE.indexOf(marker, i + 1)) {
+      let depth = 0;
+      for (let j = i + marker.length - 1; j < CODE.length; j += 1) {
+        if (CODE[j] === '(') depth += 1;
+        else if (CODE[j] === ')') {
+          depth -= 1;
+          if (depth === 0) {
+            calls.push(CODE.slice(i, j + 1));
+            break;
+          }
+        }
+      }
+    }
+    expect(calls.length).toBeGreaterThanOrEqual(2);
+    const leaky = calls.filter((call) => /(parsed|error|err)\??\.message/.test(call));
+    expect(leaky).toEqual([]);
   });
 });
