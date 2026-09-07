@@ -21,6 +21,20 @@ const HOUR = 1000 * 60 * 60;
 const DAY = HOUR * 24;
 
 describe('shouldShowDemographicsPrompt — edge schedule cases', () => {
+  // The trigger reads Date.now() itself, and every case below builds its fixture from a
+  // separate Date.now() read. Any clock tick between the two reads moved the boundary
+  // cases by 1 ms and turned a REQUIRED CI check red at random (two PRs on 2026-09-07).
+  // Pin the clock for the whole file: new Date(number) never consults Date.now, so the
+  // fixture arithmetic is unchanged and both reads now see one instant.
+  const FIXED_NOW = new Date('2026-09-07T12:00:00.000Z').getTime();
+  let nowSpy: jest.SpyInstance<number, []>;
+  beforeEach(() => {
+    nowSpy = jest.spyOn(Date, 'now').mockReturnValue(FIXED_NOW);
+  });
+  afterEach(() => {
+    nowSpy.mockRestore();
+  });
+
   it('shows when cooldown is exactly 7 days (boundary)', () => {
     const exactly7Days = new Date(Date.now() - COOLDOWN_DAYS * DAY);
     expect(
