@@ -6,6 +6,7 @@ import os
 import json
 import hashlib
 import logging
+import math
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any, List
 
@@ -15,35 +16,154 @@ logger = logging.getLogger(__name__)
 UPSTASH_REDIS_URL = os.getenv("UPSTASH_REDIS_URL", "")
 UPSTASH_REDIS_TOKEN = os.getenv("UPSTASH_REDIS_TOKEN", "")
 
-redis_client = None
 
-# Try to initialize Redis
-if UPSTASH_REDIS_URL and UPSTASH_REDIS_TOKEN:
+def _bounded_upstash_transport_enabled() -> bool:
+    """ENABLE_UPSTASH_BOUNDED_TRANSPORT (default OFF).
+
+    Finding LS-REQUEST-PATH-BLOCKING-03 == LS-CACHE-REDIS-01 ==
+    LS-CONCURRENCY-LIMITS-04: the pinned upstash-redis==1.7.0 builds
+    ``httpx.Client(timeout=None)`` inside ``SyncHttpClient`` and defaults to
+    ``rest_retries=1`` / ``rest_retry_interval=3``, so a black-holed Upstash REST
+    endpoint parks a request-path thread with NO ceiling and pays a blocking
+    ``time.sleep(3)`` between the two attempts.
+
+    Read with ``os.getenv`` like every other gate in this repo, but note the
+    operational difference: the client below is constructed at MODULE IMPORT, so
+    this flag and both knobs (``UPSTASH_TIMEOUT_SECONDS``,
+    ``UPSTASH_CONNECT_TIMEOUT_SECONDS``) are read exactly ONCE per process. A
+    Railway flip therefore needs a restart/redeploy, unlike the per-call
+    price-path flags.
+    """
+    return os.getenv("ENABLE_UPSTASH_BOUNDED_TRANSPORT", "").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
+def _upstash_bound_seconds(env_name: str, default: float) -> float:
+    """Positive FINITE float from ``env_name``, else ``default``.
+
+    Never raises: a typo in a timeout knob must not take the cache offline (every
+    helper in this module is fail-open, and so is its construction). ``inf`` is
+    rejected as well as ``<= 0`` and ``nan``: ``float('inf')`` parses and passes a
+    naive ``> 0`` test, and ``httpx.Timeout(inf)`` would silently reinstate the
+    unbounded client this flag exists to bound.
+    """
     try:
+        value = float(os.getenv(env_name, ""))
+    except (TypeError, ValueError):
+        return default
+    if not math.isfinite(value) or value <= 0:
+        return default
+    return value
+
+
+def _build_redis_client() -> Optional[Any]:
+    """Build the module's Redis client (or ``None``) - the process's ONE init path.
+
+    A helper CALLED at module level rather than a bare module-level block, so that
+    ``importlib.reload`` (and a fresh worker boot) still executes exactly this code
+    while none of the construction locals leak into the module namespace.
+
+    Fail-open at every step, like the helpers below: any failure logs at WARNING and
+    yields either today's client or ``None``, never an exception out of import.
+    """
+    if not (UPSTASH_REDIS_URL and UPSTASH_REDIS_TOKEN):
+        logger.info("Redis not configured - caching disabled")
+        return None
+
+    try:
+        # ENABLE_UPSTASH_BOUNDED_TRANSPORT: OFF -> construction below is
+        # byte-identical to the pre-unit code (no rest_retries kwarg, no transport
+        # swap, no socket kwargs).
+        bounded = _bounded_upstash_transport_enabled()
+        timeout_seconds = (
+            _upstash_bound_seconds("UPSTASH_TIMEOUT_SECONDS", 2.0)
+            if bounded else None
+        )
+        connect_timeout_seconds = (
+            _upstash_bound_seconds("UPSTASH_CONNECT_TIMEOUT_SECONDS", 1.0)
+            if bounded else None
+        )
         # Check if it's a REST API URL (https://) or standard Redis URL (redis://)
         if UPSTASH_REDIS_URL.startswith("https://"):
             # Use upstash-redis for REST API
             try:
                 from upstash_redis import Redis
-                redis_client = Redis(url=UPSTASH_REDIS_URL, token=UPSTASH_REDIS_TOKEN)
+                if bounded:
+                    # No timeout kwarg exists on the pinned SDK, so bound what is
+                    # public (rest_retries -> 0, which also removes the
+                    # time.sleep(rest_retry_interval) between attempts) and replace
+                    # the unbounded transport afterwards. Anything the SDK renames
+                    # out from under us (the kwarg, ._http, ._client) degrades to
+                    # today's client - logged once, NEVER to no client at all.
+                    try:
+                        import httpx
+                        client = Redis(
+                            url=UPSTASH_REDIS_URL,
+                            token=UPSTASH_REDIS_TOKEN,
+                            rest_retries=0,
+                        )
+                        displaced_http_client = client._http._client
+                        try:
+                            client._http._client = httpx.Client(
+                                timeout=httpx.Timeout(
+                                    timeout_seconds,
+                                    connect=connect_timeout_seconds,
+                                )
+                            )
+                        finally:
+                            # Close the displaced SDK client whether or not the swap
+                            # landed: if it raised, the rest_retries=0 client is
+                            # dropped by the degrade path below and nothing else
+                            # would ever close its pool.
+                            try:
+                                displaced_http_client.close()
+                            except Exception:
+                                pass
+                        logger.info(
+                            "Upstash bounded transport ON "
+                            f"(read {timeout_seconds}s, connect "
+                            f"{connect_timeout_seconds}s, rest_retries=0)"
+                        )
+                    except Exception as transport_error:
+                        logger.warning(
+                            "Upstash bounded transport unavailable, keeping SDK "
+                            f"default transport (non-fatal): {transport_error}"
+                        )
+                        client = Redis(url=UPSTASH_REDIS_URL, token=UPSTASH_REDIS_TOKEN)
+                else:
+                    client = Redis(url=UPSTASH_REDIS_URL, token=UPSTASH_REDIS_TOKEN)
                 logger.info("Upstash Redis (REST) client initialized")
+                return client
             except ImportError:
                 logger.warning("upstash-redis not installed, caching disabled")
-                redis_client = None
+                return None
         else:
             # Standard Redis URL (redis:// or rediss://)
             import redis
-            redis_client = redis.from_url(
-                UPSTASH_REDIS_URL,
-                password=UPSTASH_REDIS_TOKEN,
-                decode_responses=True
-            )
+            if bounded:
+                client = redis.from_url(
+                    UPSTASH_REDIS_URL,
+                    password=UPSTASH_REDIS_TOKEN,
+                    decode_responses=True,
+                    socket_timeout=timeout_seconds,
+                    socket_connect_timeout=connect_timeout_seconds,
+                )
+            else:
+                client = redis.from_url(
+                    UPSTASH_REDIS_URL,
+                    password=UPSTASH_REDIS_TOKEN,
+                    decode_responses=True
+                )
             logger.info("Standard Redis client initialized")
+            return client
     except Exception as e:
         logger.warning(f"Redis initialization failed (non-fatal): {e}")
-        redis_client = None
-else:
-    logger.info("Redis not configured - caching disabled")
+        return None
+
+
+# Try to initialize Redis (module-level so reload/boot drives the real init path)
+redis_client = _build_redis_client()
 
 
 # ============================================

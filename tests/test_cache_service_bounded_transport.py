@@ -21,6 +21,7 @@ which re-runs exactly the code a fresh worker process runs at boot.
 """
 
 import importlib
+import logging
 import os
 import time
 
@@ -166,6 +167,14 @@ def test_stalled_transport_returns_none_within_bound():
         "_redis_get blocked {:.2f}s on a stalled Upstash endpoint ({} HTTP attempt(s)); "
         "expected <= 2.5s under {}.".format(elapsed, transport.attempts, FLAG)
     )
+    assert transport.attempts == 1, (
+        "expected EXACTLY 1 HTTP attempt under {} (rest_retries=0 removes the second "
+        "attempt and its time.sleep; flag OFF makes 2); got {}. 0 attempts would be a far "
+        "worse regression than the one this unit fixes - a client that never issues the "
+        "request is fast AND permanently cold, so every cache read misses forever.".format(
+            FLAG, transport.attempts
+        )
+    )
 
 
 def test_redis_url_fallback_gets_socket_timeouts():
@@ -228,4 +237,103 @@ def test_flag_off_defaults_unchanged():
     )
     assert http._retry_interval == 3, (
         "flag OFF must keep rest_retry_interval=3; got {!r}.".format(http._retry_interval)
+    )
+
+
+def test_timeout_knobs_are_honoured():
+    """The two knobs actually reach the transport (the spec's optional extra node).
+
+    Pins that the bound is env-driven, not a hardcoded 2.0/1.0 pair - so a Railway
+    operator can tighten or loosen it (with a restart; the client is built at import).
+    """
+    module = _reload_cache_service(
+        **{
+            FLAG: "true",
+            "UPSTASH_REDIS_URL": STUB_REST_URL,
+            "UPSTASH_REDIS_TOKEN": STUB_TOKEN,
+            "UPSTASH_TIMEOUT_SECONDS": "0.7",
+            "UPSTASH_CONNECT_TIMEOUT_SECONDS": "0.4",
+        }
+    )
+    timeout = _http_layer(module)._client.timeout
+
+    assert timeout.read == 0.7, (
+        "UPSTASH_TIMEOUT_SECONDS=0.7 did not reach the transport; read is {!r}.".format(
+            timeout.read
+        )
+    )
+    assert timeout.connect == 0.4, (
+        "UPSTASH_CONNECT_TIMEOUT_SECONDS=0.4 did not reach the transport; connect is "
+        "{!r}.".format(timeout.connect)
+    )
+
+
+def test_sdk_drift_degrades_to_default_transport_not_to_no_client(monkeypatch, caplog):
+    """An SDK rename must cost the BOUND, never the CACHE.
+
+    The spec's degradation contract: if a future upstash-redis renames the
+    ``rest_retries`` kwarg (or ``._http`` / ``._client``), the flag-ON path logs once at
+    WARNING and keeps a WORKING client carrying today's SDK defaults. It must never let
+    that exception reach the outer handler, which sets ``redis_client = None`` and takes
+    caching offline process-wide for every consumer (auth revocation lookups, budget
+    gates, the circuit breaker) - a far worse outcome than an unbounded transport, and
+    one no other node in this file would catch.
+
+    Drift is simulated the way it would actually arrive: ``Redis.__init__`` rejects the
+    ``rest_retries`` kwarg while a plain ``Redis(url=..., token=...)`` still works.
+    ``cache_service`` does ``from upstash_redis import Redis`` INSIDE its own init path,
+    so patching the class on the SDK module is what the reload really re-imports.
+    """
+    import upstash_redis
+
+    real_init = upstash_redis.Redis.__init__
+
+    def _reject_rest_retries(self, *args, **kwargs):
+        if "rest_retries" in kwargs:
+            raise TypeError(
+                "__init__() got an unexpected keyword argument 'rest_retries'"
+            )
+        return real_init(self, *args, **kwargs)
+
+    monkeypatch.setattr(upstash_redis.Redis, "__init__", _reject_rest_retries)
+
+    with caplog.at_level(logging.WARNING, logger=CACHE_MODULE):
+        module = _reload_cache_service(
+            **{
+                FLAG: "true",
+                "UPSTASH_REDIS_URL": STUB_REST_URL,
+                "UPSTASH_REDIS_TOKEN": STUB_TOKEN,
+            }
+        )
+
+    assert module.redis_client is not None, (
+        "an SDK rename degraded the cache to NO CLIENT; the contract is to degrade to "
+        "today's client - 'bounded transport unavailable' must never mean 'caching "
+        "disabled'."
+    )
+
+    http = _http_layer(module)
+    assert http._retries == 1, (
+        "degradation must land on TODAY's client: expected rest_retries=1, got "
+        "{!r}.".format(http._retries)
+    )
+    assert http._client.timeout.read is None, (
+        "degradation must land on TODAY's client: expected the SDK's own "
+        "httpx.Client(timeout=None), got read timeout {!r}.".format(
+            http._client.timeout.read
+        )
+    )
+
+    degraded = [
+        record
+        for record in caplog.records
+        if record.name == CACHE_MODULE
+        and record.levelno == logging.WARNING
+        and "bounded transport unavailable" in record.getMessage()
+    ]
+    assert len(degraded) == 1, (
+        "expected EXACTLY one WARNING naming the degradation (silent degradation hides a "
+        "lost bound); got {}: {!r}.".format(
+            len(degraded), [record.getMessage() for record in degraded]
+        )
     )
