@@ -970,5 +970,9 @@
   "results.empty.body": "ابدأ مقارنة جديدة من الرئيسية.",
   "results.empty.cta": "إلى الرئيسية",
   "results.empty.title": "هذه المقارنة لم تُحمّل.",
-  "results.topMatch": "الأفضل تطابقاً"
+  "results.topMatch": "الأفضل تطابقاً",
+  "update.required.title": "نسخة أحدث من قارن جاهزة",
+  "update.required.body": "هذه النسخة أقدم مما يحتاجه قارن اليوم. حدّثها لمواصلة المقارنة بأسعار محدّثة.",
+  "update.required.cta": "الحصول على التحديث",
+  "update.required.manual": "افتح متجر التطبيقات وحدّث قارن للمتابعة."
 }

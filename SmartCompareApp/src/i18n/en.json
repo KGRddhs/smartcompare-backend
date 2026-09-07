@@ -973,5 +973,9 @@
   "results.empty.body": "Run a fresh comparison from Home.",
   "results.empty.cta": "Go home",
   "results.empty.title": "This one's not loading.",
-  "results.topMatch": "Top match"
+  "results.topMatch": "Top match",
+  "update.required.title": "A newer Qaren is ready",
+  "update.required.body": "This version is behind what Qaren needs today. Update to keep comparing with fresh prices.",
+  "update.required.cta": "Get the update",
+  "update.required.manual": "Open your app store and update Qaren to continue."
 }
