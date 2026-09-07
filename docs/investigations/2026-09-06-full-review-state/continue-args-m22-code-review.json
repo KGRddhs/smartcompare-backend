@@ -1,8 +1,8 @@
 {
  "name": "m22-code-review",
- "brief": "C:/Users/SynAckITPC/Documents/AI/sc-scraper-proof/docs/investigations/2026-09-06-full-review-state/BRIEF.md",
+ "brief": "C:/Users/SynAckITPC/Documents/AI/sc-review-s65/docs/investigations/2026-09-06-full-review-state/BRIEF.md",
  "finderBatch": 4,
- "verifyBatch": 3,
+ "verifyBatch": 1,
  "batchVerifySize": 6,
  "lanes": [
   {
@@ -69,8 +69,8 @@
  "synth": [
   "Produce the orchestrator skill's Step-6 STRUCTURED CODE REVIEW as section 1 in place of the generic answers: (1a) Security - every verified security finding rated critical/high/medium/low with location; (1b) Performance - inefficiencies, redundant work, operations that scale poorly with data or load; (1c) Complexity - what should be simplified/abstracted/made testable; (1d) Dead code - the PROVEN safe-to-remove list (SAFE items only; KEEP/UNSURE go to an appendix). Then answer plainly: is the code sound after the M20/M21 delta, what is LIVE-broken today versus dark, and did any wave create an interaction bug the way M18 found two? Section 2 is the prioritized action plan as units through the standing gates (never direct fixes). Add APPENDIX A: the Claude Code configuration audit plan (reliability issues by impact + token-efficiency plan with estimated savings; propose-only). Add APPENDIX B: the flag three-way table (Railway / code / docs) from cr-complexity-deadcode. Add APPENDIX C: the #89 eleven-node root-cause table from cr-tests-ci-truth."
  ],
- "stateFile": "C:/Users/SynAckITPC/Documents/AI/sc-review-state/docs/investigations/2026-09-06-full-review-state/partial-m22-code-review.json",
- "reviewNotes": "C:/Users/SynAckITPC/Documents/AI/sc-review-state/docs/investigations/2026-09-06-full-review-state/FABLE_REVIEW_NOTES.md",
+ "stateFile": "C:/Users/SynAckITPC/Documents/AI/sc-review-s65/docs/investigations/2026-09-06-full-review-state/partial-m22-code-review.json",
+ "reviewNotes": "C:/Users/SynAckITPC/Documents/AI/sc-review-s65/docs/investigations/2026-09-06-full-review-state/FABLE_REVIEW_NOTES.md",
  "missingLanes": [],
  "unverified": [],
  "secondVote": [
@@ -96,5 +96,7 @@
   }
  ],
  "haveSynth": false,
- "haveCritic": false
+ "haveCritic": false,
+ "repoNote": "REPO FOR THIS CONTINUATION (SESSION 65, 2026-09-07): read code in the worktree C:/Users/SynAckITPC/Documents/AI/sc-review-s65 (branch docs/session-65-full-review, HEAD 67e9e26 = origin/main). Its app/, SmartCompareApp/, tests/, scripts/, migrations/ and requirements are BYTE-IDENTICAL to the review base 76ace90 (verified: git diff --stat 76ace90 origin/main over those paths is empty; only docs commits landed since). Cite file:line as at 76ace90 (same lines). node_modules is present (junction), .env is present for read-only Supabase SELECT, python is the global 3.12 env (OFF-LOCK, see brief rule 6). The zero-network corpus _proof/ exists ONLY in C:/Users/SynAckITPC/Documents/AI/sc-scraper-proof (read it there; that clone is ANOTHER session's working tree - never write, run git state commands, or create files there). Scratch tests/snippets go ONLY under C:/Users/SynAckITPC/Documents/AI/sc-review-s65/.qa-m22-s65/ (gitignored); for jest, put scratch specs under C:/Users/SynAckITPC/Documents/AI/sc-review-s65/SmartCompareApp/src/__scratch_m22__/ and DELETE them when done. Never edit tracked files.",
+ "voteBatchSize": 6
 }
