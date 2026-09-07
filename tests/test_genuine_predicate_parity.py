@@ -208,13 +208,16 @@ class TestPriceRowFreshParity:
         window (rung 1) and the genuine preference (rung 2) were decided by two
         independent copies. Same input, same verdict, or the selector can prefer
         a row it just declared stale."""
+        assert timedelta(days=3) > pds.PRICE_DB_TTL, (
+            "3d must sit BETWEEN the two windows or this proves nothing"
+        )
+        assert timedelta(days=3) <= pds.GENUINE_PRICE_DB_TTL
         for method in ALL_INPUTS:
-            fresh_at_7d = pds._price_row_fresh(method, timedelta(days=3))
-            assert fresh_at_7d is _canonical(method) or not _canonical(method)
-            # A genuine method is fresh at 3d; a non-genuine one is not.
-            assert fresh_at_7d is (
-                _canonical(method) or timedelta(days=3) <= pds.PRICE_DB_TTL
-            )
+            # At 3d the two windows disagree, so rung 1's verdict IS the genuine
+            # verdict — the same one rung 2 (`is_genuine_source_method`) returns.
+            assert pds._price_row_fresh(method, timedelta(days=3)) is _canonical(
+                method
+            ), method
 
 
 # ---------------------------------------------------------------------------
