@@ -283,7 +283,14 @@ export function OnboardingFlow({
     setData((prev: OnboardingFlowData) => ({ ...prev, [key]: value }));
   }, []);
 
-  const handleNext = useCallback(() => {
+  /**
+   * Shared advance. Takes the answer set to hand `onComplete` EXPLICITLY
+   * rather than reading the `data` closure, because a step that records an
+   * answer and finishes in the same handler (Step 17) would otherwise ship
+   * the pre-update object — `setData` does not mutate the current render's
+   * `data`, so the terminal `onComplete(data)` never saw the fresh field.
+   */
+  const advance = useCallback((nextData: OnboardingFlowData) => {
     if (!valid) return;
     // Fire step_completed BEFORE advancing so the event payload's
     // step_number reflects the step the user just finished. fireEvent
@@ -297,11 +304,31 @@ export function OnboardingFlow({
     const isAtTerminal = currentIndex < 0 || currentIndex >= stepSequence.length - 1;
     if (isAtTerminal) {
       fireEvent('onboarding_completed');
-      onComplete(data);
+      onComplete(nextData);
       return;
     }
     setStep(stepSequence[currentIndex + 1]);
-  }, [valid, step, data, onComplete, fireEvent, stepSequence]);
+  }, [valid, step, onComplete, fireEvent, stepSequence]);
+
+  // Deliberately argument-less: this is wired straight to TouchableOpacity
+  // `onPress`, which would otherwise hand a press event through as the
+  // answer patch.
+  const handleNext = useCallback(() => {
+    advance(data);
+  }, [advance, data]);
+
+  /**
+   * B9 — Step 17's answer must reach `onComplete` on the same tap that
+   * finishes the flow. The old wiring was
+   * `setField('notifications_enabled', granted); handleNext();`, and
+   * `handleNext` closed over this render's `data`, so the answer was
+   * dropped every time. Merge it here and pass the merged object down.
+   */
+  const handleNotificationsDone = useCallback((granted: boolean) => {
+    const merged: OnboardingFlowData = { ...data, notifications_enabled: granted };
+    setData(merged);
+    advance(merged);
+  }, [advance, data]);
 
   const handleBack = useCallback(() => {
     setStep((prev: OnboardingStep) => {
@@ -390,10 +417,7 @@ export function OnboardingFlow({
                 // App.tsx swaps to once `onComplete` fires after step 17.
                 handleNext();
               }}
-              onNotificationsDone={(granted) => {
-                setField('notifications_enabled', granted);
-                handleNext();
-              }}
+              onNotificationsDone={handleNotificationsDone}
             />
           </SlideTransition>
         </ScrollView>

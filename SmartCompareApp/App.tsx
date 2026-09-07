@@ -22,8 +22,12 @@ import { StatusBar } from 'expo-status-bar';
 // Theme & i18n
 import { useAppFonts } from './src/theme/fonts';
 import { colors, typography } from './src/theme';
-import { getSavedLanguage } from './src/i18n';
-import './src/i18n'; // Initialize i18next
+// B5 — ONE import of the i18n module. Importing it runs i18next's init as a
+// side effect, and the default export is the configured instance used by
+// init() below. There used to be a second, dynamic import of this same
+// module inside init(); it resolved to the already-evaluated module, so it
+// bought nothing and only added an await to the boot chain.
+import i18n, { getSavedLanguage } from './src/i18n';
 
 // Screens
 import SplashScreen from './src/screens/SplashScreen';
@@ -54,6 +58,14 @@ import ReferralLandingScreen from './src/screens/ReferralLandingScreen';
 import InviteeQuizScreen from './src/screens/InviteeQuizScreen';
 import ScanCameraScreen from './src/screens/ScanCameraScreen';
 import PaywallScreen from './src/screens/PaywallScreen';
+// A9 — force-update gate. The backend has served GET /api/v1/app/version
+// since Bundle D with nobody calling it, so APP_FORCE_UPDATE could not
+// reach a device. The hook fires that check fire-and-forget (nothing
+// awaits it, so boot is untouched) and stays null on every fail-open path;
+// the screen below is deliberately outside the navigator — no route in or
+// out — and only renders AFTER the splash gate has already released.
+import UpdateRequiredScreen from './src/screens/UpdateRequiredScreen';
+import { useForcedUpdateGate } from './src/hooks/useForcedUpdateGate';
 
 // Types
 import { RootStackParamList, AuthStackParamList, MainTabParamList } from './src/types';
@@ -153,6 +165,9 @@ function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [needsPreferences, setNeedsPreferences] = useState(false);
   const [user, setUser] = useState<User | null>(null);
+  // A9 — null until (and unless) the backend affirmatively reports this
+  // install below APP_MIN_VERSION with APP_FORCE_UPDATE on.
+  const forcedUpdate = useForcedUpdateGate();
 
   useEffect(() => {
     // Bundle B/C/D Task 2.11 — Android Play Install Referrer hand-off.
@@ -168,7 +183,6 @@ function App() {
     async function init() {
       // Set language + RTL before rendering
       const lang = await getSavedLanguage();
-      const { default: i18n } = await import('./src/i18n');
       await i18n.changeLanguage(lang);
       const shouldBeRTL = lang === 'ar';
       if (I18nManager.isRTL !== shouldBeRTL) {
@@ -184,9 +198,23 @@ function App() {
       const initialId = await getStableId();
       setFlagStableId(initialId);
 
-      // Auth check
+      // Auth check.
+      // A3 — initializeAuth resolves from the CACHED user and refreshes in
+      // the background, so this await no longer holds the splash for a
+      // network round trip. The callback below re-syncs once that
+      // background refresh lands; a dead session takes the
+      // onSessionInvalid path wired in the effect further down.
       try {
-        const authUser = await initializeAuth();
+        const authUser = await initializeAuth((refreshedUser) => {
+          setUser(refreshedUser);
+          // Only ever LOWER the onboarding gate. A user who finished
+          // onboarding on another device stops seeing it; a user who is
+          // mid-onboarding on THIS device can never be thrown back into
+          // it by a late server read.
+          if (refreshedUser.preferences_completed) {
+            setNeedsPreferences(false);
+          }
+        });
         if (authUser) {
           // Re-bucket on the user.id post-login so the canary follows
           // the user across devices (same user.id → same bucket).
@@ -204,9 +232,32 @@ function App() {
       } catch (error) {
         if (__DEV__) console.error('Auth initialization error:', error);
       }
-      setIsLoading(false);
     }
-    init();
+
+    // B5 — the splash gate is released on EVERY path.
+    //
+    // `setIsLoading(false)` used to be the last statement INSIDE init(),
+    // after four awaits (saved language, i18n.changeLanguage, stable id,
+    // auth) of which only the auth one was wrapped in a try/catch. A
+    // rejection anywhere earlier skipped it, and because the render below
+    // returns <SplashScreen> while `isLoading` is true — with no retry, no
+    // timeout and no error surface — the app would have sat on the splash
+    // for the rest of the process. Every awaited callee happens to guard
+    // itself today, so this closes a latent stranding path rather than a
+    // reproduced hang.
+    //
+    // On that failure path the language/RTL side effects above have not
+    // applied, so the app renders at i18next's configured default ('en')
+    // instead of the saved language. That is strictly better than a frozen
+    // splash: the user reaches Main/Auth and can switch language from
+    // Profile.
+    init()
+      .catch((error) => {
+        if (__DEV__) console.error('App initialization error:', error);
+      })
+      .finally(() => {
+        setIsLoading(false);
+      });
   }, []);
 
   // M18 MB-flows-02 — `setIsAuthenticated(false)` previously lived ONLY
@@ -270,9 +321,24 @@ function App() {
     setNeedsPreferences(false);
   }, []);
 
-  // Show splash during font loading, initial auth check, or splash animation
+  // Show splash during font loading, initial auth check, or splash animation.
+  // A5 — `ready` lets the splash end its brand-moment floor early once there
+  // is nothing left to wait for, instead of charging a flat 1.5s on top of
+  // native startup. It still caps at 1.5s, so a slow boot is unchanged.
   if (!fontsLoaded || isLoading || showSplash) {
-    return <SplashScreen onFinish={handleSplashFinish} />;
+    return (
+      <SplashScreen onFinish={handleSplashFinish} ready={fontsLoaded && !isLoading} />
+    );
+  }
+
+  // A9 — force-update gate, deliberately placed AFTER the splash return and
+  // BEFORE the navigator. After, because the check is fire-and-forget and
+  // must never hold boot: an app that has not finished booting cannot be
+  // used anyway, so there is nothing to gain by racing it. Before, because
+  // the block has to replace the navigator outright — rendering it as a
+  // route would leave a dismissable modal over a usable app.
+  if (forcedUpdate) {
+    return <UpdateRequiredScreen updateUrl={forcedUpdate.updateUrl} />;
   }
 
   // Deep-link config — qaren.app/c/{token}?ref={code} resolves to

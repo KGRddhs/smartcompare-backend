@@ -7,6 +7,11 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 import * as Sentry from '@sentry/react-native';
+import {
+  fetchWithDeadline,
+  isDeadlineError,
+  SOCIAL_LOGIN_TIMEOUT_MS,
+} from './fetchWithDeadline';
 // Native modules loaded lazily — crashes Expo Go if imported at top level
 let GoogleSignin: any = null;
 let AppleAuthentication: any = null;
@@ -44,8 +49,15 @@ function getCrypto() {
   }
   return Crypto;
 }
-import api, { API_BASE_URL } from './api';
+import api, { API_BASE_URL, getOrStartRefresh } from './api';
 import { getDeviceFingerprint } from './deviceFingerprint';
+
+/**
+ * A8 — i18n key rendered when a social sign-in POST exceeds its deadline.
+ * The key (not a sentence) crosses the service boundary so the screen
+ * resolves LOCALIZED copy; see `AuthResponse.errorKey`.
+ */
+export const SIGN_IN_TIMEOUT_KEY = 'auth.signInTimeout';
 
 export interface User {
   id: string;
@@ -75,6 +87,17 @@ export interface AuthResponse {
    * signed-in success.
    */
   needsEmailConfirmation?: boolean;
+  /**
+   * A8 — an i18n KEY for the user-facing message, set where the service can
+   * name the outcome precisely (today: a social sign-in deadline expiry).
+   *
+   * Callers MUST prefer `t(errorKey)` over `error` when it is present. The
+   * `error` strings on this interface are English-only diagnostics — the
+   * [B4-DIAG] captures are addressed to the dispatcher, not to a user, and
+   * an Arabic user would get English. Same reasoning as A11's
+   * `friendlyErrorKey`: copy comes from a code, never from a raw string.
+   */
+  errorKey?: string;
 }
 
 const USER_STORAGE_KEY = '@qaren_user'; // AsyncStorage — '@' prefix valid
@@ -244,7 +267,33 @@ export async function logout(): Promise<void> {
 }
 
 /**
+ * P-A3 — session generation counter.
+ *
+ * Every clearSession() (a logout tap, a definitively dead session, an
+ * account switch) starts a NEW session generation. A refresh that was
+ * already in flight when that happened must not resurrect the old one:
+ * its rotated tokens and user would be written to storage AFTER the
+ * storage was cleared, so the next launch boots into Main as a user who
+ * logged out. Before A3 the boot refresh always settled before any
+ * interactive UI existed, so a logout could not overlap it; now that it
+ * runs in the background — and, per P-A3, is never cut short — a normal
+ * logout tap can land mid-flight.
+ */
+let sessionEpoch = 0;
+
+/**
  * Refresh session - with graceful error handling
+ *
+ * P-A3 — this POST carries NO per-call timeout and NO AbortSignal, and
+ * it deliberately has no parameter for one. The refresh token is
+ * SINGLE-USE: giving up client-side does not stop the server finishing
+ * the rotation, it only stops the phone learning the new token, and the
+ * next refresh then presents a spent one — which, past Supabase's 10s
+ * reuse interval, revokes the whole session family and logs the user out
+ * of a valid session. A deadline may bound what a CALLER waits for
+ * (nothing on the boot path waits: initializeAuth fires this and returns
+ * the cached user immediately), never the request. See api.ts
+ * performRefresh for the full note.
  */
 export async function refreshSession(): Promise<AuthResponse> {
   try {
@@ -255,9 +304,19 @@ export async function refreshSession(): Promise<AuthResponse> {
       return { success: false, error: 'No refresh token found', sessionInvalid: true };
     }
 
+    const epochAtRequest = sessionEpoch;
     const response = await api.post('/api/v1/auth/refresh', {
       refresh_token: refreshToken,
     });
+
+    if (sessionEpoch !== epochAtRequest) {
+      // P-A3 — the session was cleared while this round-trip was open.
+      // The server rotated the token, but writing it back would
+      // re-persist a session the user already ended. `sessionInvalid` is
+      // deliberately absent: nothing is wrong with the session state the
+      // app is already in.
+      return { success: false, error: 'Session ended during refresh' };
+    }
 
     if (response.data.success && response.data.session?.access_token) {
       // Always save new tokens — this is critical for the 401 interceptor
@@ -386,6 +445,9 @@ async function saveToken(token: string): Promise<void> {
  * Clear session (logout locally)
  */
 export async function clearSession(): Promise<void> {
+  // P-A3 — bump FIRST, before any await: a refresh already in flight must
+  // see the new generation even if the deletes below throw.
+  sessionEpoch += 1;
   try {
     await SecureStore.deleteItemAsync(TOKEN_STORAGE_KEY);
     await SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY);
@@ -423,34 +485,103 @@ export async function purgeLegacyAuthStorage(): Promise<void> {
 }
 
 /**
+ * A3 — notified when the BACKGROUND boot refresh lands a fresher user
+ * than the cached one we already rendered from. Never called on failure:
+ * a transient failure keeps the cached user, and a definitively dead
+ * session goes down the existing session-invalid channel instead.
+ */
+export type SessionRefreshedListener = (user: User) => void;
+
+/**
+ * A3 — the boot refresh, run to completion OFF the render path.
+ *
+ * It goes through api.ts's module-scope singleton (getOrStartRefresh),
+ * NOT refreshSession() directly. The refresh token is SINGLE-USE —
+ * Supabase rotates it on every successful /auth/refresh, and the backend
+ * names deduping as a client responsibility (app/api/auth_routes.py::
+ * refresh) — while this refresh now runs in the BACKGROUND, in flight
+ * alongside the launch's first authed calls (App.tsx's push-token PUT,
+ * Home's referral-status GET). Both of those ride the same cached-and-
+ * expired Bearer and enter the 401 interceptor's refresh, so calling
+ * refreshSession() here would spend the same token twice: the loser's
+ * 401 maps to clearSession() + sessionInvalid, which logs the user out
+ * at launch AND wipes the winner's freshly stored tokens.
+ *
+ * Three outcomes, all decided inside api.performRefresh:
+ *  - success  → the rotated tokens and the fresher user are already
+ *               persisted by refreshSession; read the user back so a boot
+ *               that COALESCED onto an interceptor-started refresh still
+ *               re-syncs the UI from the winner's result.
+ *  - dead     → performRefresh has already run clearSession() +
+ *               emitSessionInvalid() (keyed on the sessionInvalid FLAG,
+ *               not M21's `error === 'Session expired'` string), so there
+ *               is deliberately NOTHING to do here. Repeating it would
+ *               double-emit whenever a boot and a 401 share the one
+ *               round-trip; the coalescing is what makes it fire exactly
+ *               once.
+ *  - transient→ do nothing: the cached user stays, and the first real API
+ *               call self-heals through the 401 interceptor.
+ *
+ * P-A3 — it passes NO deadline. It used to send an 8s per-call timeout,
+ * which bounded the REQUEST rather than a wait: nothing on the render
+ * path waits for this (initializeAuth returns the cached user and fires
+ * this with `void`), so the deadline bought nothing user-visible while
+ * making the single-use refresh token burnable — the client gives up at
+ * 8s, a cold backend finishes the rotation anyway, the phone keeps the
+ * spent token and the next refresh gets the whole session family revoked.
+ * If a wait bound is ever wanted here, race this Promise; do not bound
+ * the request.
+ */
+async function runBootRefresh(
+  onSessionRefreshed?: SessionRefreshedListener,
+): Promise<void> {
+  try {
+    const refreshResult = await getOrStartRefresh();
+
+    if (refreshResult?.success) {
+      const user = await getSavedUser();
+      if (user && onSessionRefreshed) {
+        onSessionRefreshed(user);
+      }
+    }
+  } catch (error) {
+    // A background boot task must never surface as an unhandled
+    // rejection — a flaky network is not a session death.
+    if (__DEV__) console.log('Boot session refresh failed:', error);
+  }
+}
+
+/**
  * Initialize auth - check and refresh session on app start
  * Returns user if valid session exists, null otherwise
+ *
+ * A3 — boots OPTIMISTICALLY. This used to `await refreshSession()` before
+ * resolving, so every launch held the splash for a full network round
+ * trip on the 120s global axios timeout, and the cached-user fallback
+ * only ran once that call settled — i.e. blocking bought nothing on the
+ * failure path, and a black-holing connection froze the splash with no
+ * cancel and no escape. With a cached user AND token present we now
+ * resolve immediately and refresh in the background; session death is
+ * handled end-to-end by the M18 MB-flows-02 channel (clearSession +
+ * emitSessionInvalid → App.tsx routes back to the Auth stack).
  */
-export async function initializeAuth(): Promise<User | null> {
+export async function initializeAuth(
+  onSessionRefreshed?: SessionRefreshedListener,
+): Promise<User | null> {
   // MB-security-03 — fire-and-forget: the sweep must never delay or
   // fail app boot (purgeLegacyAuthStorage swallows its own errors).
   void purgeLegacyAuthStorage();
   try {
     const user = await getSavedUser();
     const token = await getToken();
-    
+
     if (!user || !token) {
       return null;
     }
-    
-    // Try to refresh, but don't fail if it doesn't work
-    const refreshResult = await refreshSession();
-    
-    if (refreshResult.success && refreshResult.user) {
-      return refreshResult.user;
-    }
-    
-    // If refresh failed with 401, session is invalid
-    if (refreshResult.error === 'Session expired') {
-      return null;
-    }
-    
-    // For other errors (network), return cached user
+
+    // Fire-and-forget: the render path never waits on the network.
+    void runBootRefresh(onSessionRefreshed);
+
     return user;
   } catch (error) {
     if (__DEV__) console.error('Auth initialization error:', error);
@@ -462,8 +593,10 @@ export async function initializeAuth(): Promise<User | null> {
  * Verify auth status and return user if valid
  * Used by App.tsx to check auth state
  */
-export async function verifyAuth(): Promise<User | null> {
-  return await initializeAuth();
+export async function verifyAuth(
+  onSessionRefreshed?: SessionRefreshedListener,
+): Promise<User | null> {
+  return await initializeAuth(onSessionRefreshed);
 }
 
 /**
@@ -567,12 +700,35 @@ export async function signInWithGoogle(): Promise<AuthResponse> {
 
     let response: Response;
     try {
-      response = await fetch(`${API_BASE_URL}/api/v1/auth/social-login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
+      // A8: this POST previously had NO deadline and no AbortController. RN's
+      // fetch applies none of its own, so a stalled socket never settles and
+      // never throws — the catch below could not fire, LoginScreen's
+      // `socialLoading` stayed set, and `disabled = loading ||
+      // Boolean(socialLoading)` left the WHOLE auth surface inert with no
+      // cancel affordance.
+      response = await fetchWithDeadline(
+        `${API_BASE_URL}/api/v1/auth/social-login`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        },
+        SOCIAL_LOGIN_TIMEOUT_MS
+      );
     } catch (netErr: any) {
+      if (isDeadlineError(netErr)) {
+        // A deadline expiry is NOT the cert-pin/transport failure this
+        // branch's [B4-DIAG] Sentry channel exists to capture — folding
+        // timeouts into it would corrupt an active diagnostic. Breadcrumb
+        // only, and hand the screen a localizable key so the user gets
+        // retryable copy instead of a diagnostic string.
+        Sentry.addBreadcrumb({
+          category: 'a8_deadline',
+          level: 'warning',
+          message: `social-login deadline (google) after ${SOCIAL_LOGIN_TIMEOUT_MS}ms`,
+        });
+        return { success: false, errorKey: SIGN_IN_TIMEOUT_KEY };
+      }
       const msg = `[B4-DIAG] network/cert-pin failure before backend. ${diagHead} err=${netErr?.message || 'unknown'}`;
       Sentry.captureMessage(msg, { level: 'error', tags: { b4_diag: 'network' }, extra: { errMessage: netErr?.message, errCode: netErr?.code } });
       return {
@@ -678,16 +834,37 @@ export async function signInWithApple(): Promise<AuthResponse> {
     const appleDiagParts = idToken.split('.');
     if (__DEV__) console.log('[APPLE-DIAG] token length:', idToken.length, 'parts:', appleDiagParts.length, 'head:', idToken.substring(0, 30), 'nonce-hash-len:', hashedNonce.length);
 
-    // Send to our backend
-    const response = await fetch(`${API_BASE_URL}/api/v1/auth/social-login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        provider: 'apple',
-        id_token: idToken,
-        nonce: rawNonce,
-      }),
-    });
+    // Send to our backend.
+    // A8: same unbounded-fetch defect as the Google path — RN applies no
+    // deadline, so a stalled socket left LoginScreen's `socialLoading` set
+    // forever. The non-deadline rejection is re-thrown so the outer catch
+    // keeps handling it EXACTLY as before.
+    let response: Response;
+    try {
+      response = await fetchWithDeadline(
+        `${API_BASE_URL}/api/v1/auth/social-login`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            provider: 'apple',
+            id_token: idToken,
+            nonce: rawNonce,
+          }),
+        },
+        SOCIAL_LOGIN_TIMEOUT_MS
+      );
+    } catch (netErr: any) {
+      if (isDeadlineError(netErr)) {
+        Sentry.addBreadcrumb({
+          category: 'a8_deadline',
+          level: 'warning',
+          message: `social-login deadline (apple) after ${SOCIAL_LOGIN_TIMEOUT_MS}ms`,
+        });
+        return { success: false, errorKey: SIGN_IN_TIMEOUT_KEY };
+      }
+      throw netErr;
+    }
 
     const data = await response.json();
 

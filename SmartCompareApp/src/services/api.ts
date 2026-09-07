@@ -68,10 +68,46 @@ api.interceptors.request.use(
 // 401s share a single refreshSession() network call instead of stampeding the
 // refresh endpoint. Identity-stable across coalesced callers — Promise.all on
 // the cached value works.
-type RefreshResult = { success: boolean; token: string | null; error?: unknown };
+//
+// A3 follow-up — this singleton is the app's ONLY dedup for
+// POST /api/v1/auth/refresh, and the refresh token is SINGLE-USE:
+// Supabase rotates it on every successful call, so a racing second
+// caller loses and gets a 401 (app/api/auth_routes.py::refresh —
+// "Deduping is therefore a CLIENT-SIDE responsibility"). That is why
+// getOrStartRefresh is EXPORTED rather than module-private: the boot
+// refresh now runs in the background, concurrently with the launch's
+// first authed calls (App.tsx's push-token PUT, Home's referral-status
+// GET), each of which can 401 on the same cached-and-expired Bearer and
+// enter this refresh. A caller that reached refreshSession() directly
+// would spend the same refresh token twice, and the loser's 401 maps to
+// clearSession() + sessionInvalid — logging the user out at launch and
+// deleting the winner's freshly stored tokens.
+export type RefreshResult = { success: boolean; token: string | null; error?: unknown };
 
 let refreshPromise: Promise<RefreshResult> | null = null;
 
+/**
+ * P-A3 — an in-flight POST /api/v1/auth/refresh is NEVER aborted
+ * client-side.
+ *
+ * The refresh token is SINGLE-USE: Supabase rotates it on every
+ * successful call, and outside the 10s reuse interval presenting an
+ * already-spent one marks the WHOLE session family revoked
+ * (supabase.com/docs/guides/auth/sessions). A client-side deadline does
+ * not stop the server from finishing that rotation — it only stops the
+ * phone from LEARNING the new token, so the device keeps a token the
+ * server has already retired and the NEXT refresh (a 401 on the History
+ * tab, or the next launch) logs the user out of a session that was
+ * perfectly valid.
+ *
+ * A deadline may bound what a CALLER waits for; it may never bound the
+ * request. That is why neither this function nor refreshSession() takes a
+ * per-call timeout or AbortSignal any more: there is no shape in which
+ * passing one here is correct, so the parameter that used to carry one
+ * (`RefreshOptions.timeoutMs`, whose only caller was the boot refresh) is
+ * gone rather than left as a footgun. Coalesced callers inherit the same
+ * un-abortable request — that is the point, one request.
+ */
 async function performRefresh(): Promise<RefreshResult> {
   try {
     const { refreshSession, getToken, clearSession } = require('./authService');
@@ -117,7 +153,23 @@ async function performRefresh(): Promise<RefreshResult> {
   }
 }
 
-function getOrStartRefresh(): Promise<RefreshResult> {
+/**
+ * The single entry point for POST /api/v1/auth/refresh.
+ *
+ * Coalesces every concurrent caller onto ONE in-flight round-trip so the
+ * single-use refresh token is spent exactly once — and, because the dead-
+ * session handling lives inside performRefresh, so that clearSession() +
+ * emitSessionInvalid() also fire exactly once per definitively-dead
+ * session rather than once per caller.
+ *
+ * P-A3 — it takes no per-call options: the request carries no
+ * client-side deadline and no AbortSignal (see performRefresh), so every
+ * caller — the boot refresh and every coalesced 401 — shares one
+ * un-abortable round-trip. A caller that wants to stop WAITING races this
+ * Promise instead; the refresh itself runs to completion and persists the
+ * rotated tokens either way.
+ */
+export function getOrStartRefresh(): Promise<RefreshResult> {
   if (refreshPromise) return refreshPromise;
   refreshPromise = performRefresh().finally(() => {
     refreshPromise = null;
@@ -620,6 +672,44 @@ export function streamComparison(
           watchdogTimer = null;
         }
       };
+      // A7 — TERMINAL DISPATCH, FIRST-WINS. `settle_complete` and `complete`
+      // are BOTH terminal: the backend yields them back to back carrying the
+      // SAME payload object, and `text_routes.py` documents `complete` as
+      // backward compatibility for current EAS builds, "remove in Bundle F".
+      // Routing only `complete` therefore (a) left `sawTerminal` false and the
+      // watchdog armed on the settle_complete frame, so a transport failure in
+      // the gap between the two wire writes fell through to a SECOND full
+      // backend compare — the exact double-spend the #118 latch exists to
+      // prevent — and (b) would deliver NO result at all the day the duplicate
+      // is deleted server-side. Latching first-wins (never last-wins) keeps
+      // today's behaviour byte-identical while both events coexist: the first
+      // final payload is dispatched exactly once, the duplicate is ignored,
+      // and the invariant survives the two diverging later.
+      const dispatchTerminal = (parsed: any) => {
+        if (sawTerminal) return;
+        // Genuine-BH bundle (D2) — a terminal event can arrive with
+        // success:false + a timeout code when the stream hit the hard cap.
+        // Route it through onError with a synthetic axios-shaped error so
+        // HomeScreen's unified error path substitutes the friendly
+        // results.timeout.* copy (never the backend string). The partial
+        // specs/prices already streamed remain rendered by the loading view;
+        // we do NOT discard them.
+        if (parsed && parsed.success === false) {
+          const code = parsed.code || parsed?.metadata?.code || null;
+          callbacks.onError?.(
+            Object.assign(new Error('stream_incomplete'), {
+              response: { status: 503, data: { code, error: parsed.error } },
+            })
+          );
+        } else {
+          callbacks.onComplete?.(parsed);
+        }
+        sawTerminal = true;
+        // Disarm the watchdog — a delivered result must never be
+        // followed by a spurious late timeout (and the settle
+        // drain may legitimately outlive STREAM_WATCHDOG_MS).
+        clearWatchdog();
+      };
       try {
         const { getToken } = require('./authService');
         const token = await getToken();
@@ -683,34 +773,18 @@ export function streamComparison(
                 case 'scores': callbacks.onScores?.(parsed); break;
                 case 'verdict': callbacks.onVerdict?.(parsed); break;
                 case 'complete':
-                  // Genuine-BH bundle (D2) — a complete event can arrive with
-                  // success:false + a timeout code when the stream hit the hard
-                  // cap. Route it through onError with a synthetic axios-shaped
-                  // error so HomeScreen's unified error path substitutes the
-                  // friendly results.timeout.* copy (never the backend string).
-                  // The partial specs/prices already streamed remain rendered
-                  // by the loading view; we do NOT discard them.
-                  if (parsed && parsed.success === false) {
-                    const code = parsed.code || parsed?.metadata?.code || null;
-                    callbacks.onError?.(
-                      Object.assign(new Error('stream_incomplete'), {
-                        response: { status: 503, data: { code, error: parsed.error } },
-                      })
-                    );
-                  } else {
-                    callbacks.onComplete?.(parsed);
-                  }
-                  sawTerminal = true;
-                  // Disarm the watchdog — a delivered result must never be
-                  // followed by a spurious late timeout (and the settle
-                  // drain may legitimately outlive STREAM_WATCHDOG_MS).
-                  clearWatchdog();
+                  dispatchTerminal(parsed);
                   break;
                 // Bundle E § Decision 8 — settle-window events.
                 case 'first_paint': callbacks.onFirstPaint?.(parsed); break;
                 case 'settle_update': callbacks.onSettleUpdate?.(parsed); break;
                 case 'confidence_upgrade': callbacks.onConfidenceUpgrade?.(parsed); break;
-                case 'settle_complete': callbacks.onSettleComplete?.(parsed); break;
+                case 'settle_complete':
+                  // The settle-window observer still sees every settle_complete;
+                  // the terminal dispatch below is what latches (A7).
+                  callbacks.onSettleComplete?.(parsed);
+                  dispatchTerminal(parsed);
+                  break;
                 case 'error':
                   // M18 MB-contract-02 — mirror the complete-event pattern:
                   // preserve the backend's structured code/layer via a
@@ -905,6 +979,12 @@ export function parseApiError(error: any): { message: string; code: string | nul
   }
   return { message: 'Something went wrong', code: rawCode };
 }
+
+// A11 — the code->copy map that every caller of `parseApiError` must use
+// instead of rendering `.message`. It lives in `./errorCopy` (zero imports)
+// so a screen test can exercise the REAL map while still mocking this
+// module's network surface. See the header there for why `.message` is
+// never render input.
 
 export async function shareComparison(comparisonId: string): Promise<{ share_token: string; share_url: string }> {
   const response = await api.post(`/api/v1/share/${comparisonId}`);

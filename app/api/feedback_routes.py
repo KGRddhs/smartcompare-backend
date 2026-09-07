@@ -52,6 +52,7 @@ VALID_EVENT_TYPES = [
     "feedback_submit", "result_view_duration",
     # Home compare-entry funnel (Bundle B two-input UX, HomeScreen.tsx).
     "compare_entry_view",
+    "compare_cancelled",  # M23 A4 - the loader cancel control (HomeScreen) fires it; it was 422-dropped
     "compare_entry_paywall_banner_view",
     "compare_entry_paywall_banner_tap",
     "compare_entry_content_block",

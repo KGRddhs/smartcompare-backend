@@ -88,6 +88,14 @@ export default function ScanCameraScreen({ navigation }: Props) {
   // Bundle D 1.F.4 (R17): controls the CameraHelpOverlay modal opened
   // from the ? button in the top-right of the camera surface.
   const [helpVisible, setHelpVisible] = useState(false);
+  // B9 — a capture or a library pick that produces no URI used to leave the
+  // slot silently empty: the shutter haptic fired, the press-scale played,
+  // and nothing else happened, so the user had no way to tell a failed shot
+  // from a mis-aimed one. Names which control to point back at; null = the
+  // normal state, nothing on screen.
+  const [captureNotice, setCaptureNotice] = useState<'capture' | 'pick' | null>(
+    null
+  );
   // Bundle B/C/D Task 3.2 — press-scale on the shutter. Tactile feedback
   // without flashing the whole frame; 80ms in / 120ms out feels snappy
   // without competing with the actual capture flash.
@@ -182,12 +190,20 @@ export default function ScanCameraScreen({ navigation }: Props) {
     if (idx === null) return;
     try {
       const photo = await cameraRef.current?.takePictureAsync?.();
-      if (!photo?.uri) return;
+      // B9: a resolved call with no URI is a failed capture too — it was the
+      // other silent exit alongside the empty catch below.
+      if (!photo?.uri) {
+        setCaptureNotice('capture');
+        return;
+      }
       const next: Slots = [slots[0], slots[1]];
       next[idx] = { uri: photo.uri } as Slot;
+      setCaptureNotice(null);
       updateSlots(next);
     } catch {
-      // Slot stays empty on capture failure; not user-facing here.
+      // B9: the slot still stays empty, but the user is told so and handed a
+      // way back to the shutter. Copy is calm per Build Principle #4.
+      setCaptureNotice('capture');
     }
   };
 
@@ -199,13 +215,34 @@ export default function ScanCameraScreen({ navigation }: Props) {
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         quality: 0.8,
       });
-      if (result.canceled || !result.assets?.[0]?.uri) return;
+      // A deliberate cancel is not a failure — say nothing.
+      if (result.canceled) return;
+      if (!result.assets?.[0]?.uri) {
+        setCaptureNotice('pick');
+        return;
+      }
       const next: Slots = [slots[0], slots[1]];
       next[idx] = { uri: result.assets[0].uri } as Slot;
+      setCaptureNotice(null);
       updateSlots(next);
     } catch {
-      // Slot stays empty on picker failure.
+      // B9 — see onCapture: the empty slot now comes with an explanation.
+      setCaptureNotice('pick');
     }
+  };
+
+  // B9 — the notice's own action. Retries whichever input just came back
+  // empty, so the user never has to work out which control failed. Clearing
+  // first is what makes a repeat failure visible as a fresh notice.
+  const onCaptureNoticeRetry = () => {
+    const which = captureNotice;
+    setCaptureNotice(null);
+    if (which === 'pick') {
+      void onGalleryPick();
+      return;
+    }
+    fireShutterHaptic();
+    void onCapture();
   };
 
   const onFlashCycle = () => {
@@ -419,6 +456,47 @@ export default function ScanCameraScreen({ navigation }: Props) {
             </Text>
           </View>
         )}
+        {/* B9 — capture / pick failure notice. Sits directly above the
+            controls it points back at. Column layout + textAlign center so
+            it needs no start/end handling in RTL.
+            P-B9 copy: both arms fail LOCALLY (no upload has happened yet),
+            so the hint names a local miss, never a delivery one, and it
+            asks for the same thing its button does — another shot / another
+            photo — because onCaptureNoticeRetry re-fires the shutter or
+            re-opens the picker, it never re-submits the previous frame.
+            These defaultValues must stay byte-identical to en.json; the B9
+            test greps this file to keep them in step. */}
+        {captureNotice ? (
+          <View style={styles.captureNotice} testID="scan-capture-notice">
+            <Text style={styles.captureNoticeText}>
+              {captureNotice === 'pick'
+                ? t('home.camera.pick_retry_hint', {
+                    defaultValue: "That photo didn't open — pick another one.",
+                  })
+                : t('home.camera.capture_retry_hint', {
+                    defaultValue:
+                      "That shot didn't come out — take another one.",
+                  })}
+            </Text>
+            <TouchableOpacity
+              testID="scan-capture-retry"
+              onPress={onCaptureNoticeRetry}
+              accessibilityRole="button"
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              style={styles.captureNoticeBtn}
+            >
+              <Text style={styles.captureNoticeAction}>
+                {captureNotice === 'pick'
+                  ? t('home.camera.pick_retry_action', {
+                      defaultValue: 'Pick another',
+                    })
+                  : t('home.camera.capture_retry_action', {
+                      defaultValue: 'Take another',
+                    })}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
         <View style={styles.shutterRow}>
           <TouchableOpacity
             testID="flash-button"
@@ -495,6 +573,38 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     lineHeight: 13,
     color: colors.text.onInverse,
+  },
+  // B9 — capture / pick failure notice. Same glass-blur treatment as the
+  // slot indicator pill so it reads as camera chrome, not an alarm.
+  captureNotice: {
+    alignSelf: 'center',
+    maxWidth: '92%',
+    paddingHorizontal: 14,
+    paddingVertical: spacing.sm,
+    borderRadius: radii.card,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    marginBottom: spacing.sm,
+  },
+  captureNoticeText: {
+    fontSize: 13,
+    fontWeight: '500',
+    lineHeight: 13 * 1.4,
+    color: colors.text.onInverse,
+    textAlign: 'center',
+  },
+  captureNoticeBtn: {
+    paddingHorizontal: spacing.sm,
+    paddingTop: spacing.xs,
+  },
+  captureNoticeAction: {
+    fontSize: 13,
+    fontWeight: '600',
+    lineHeight: 13 * 1.4,
+    color: colors.accent,
+    textAlign: 'center',
   },
   // Bundle E F-S1.7 — hint block per ScanCameraScreen.jsx:140-149
   hintBlock: {

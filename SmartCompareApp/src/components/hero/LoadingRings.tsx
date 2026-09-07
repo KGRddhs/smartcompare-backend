@@ -18,17 +18,41 @@
  *
  * Animation uses motion.counterTick (2400ms ease-out-cubic) and ring loop
  * staggers via withDelay + withRepeat. useReducedMotion no-ops.
+ *
+ * B3 (mobile checkup, 2026-09-06) — the three ring radii are UI-thread shared
+ * values, but the render used to sample them as PLAIN NUMBERS (`const r =
+ * sv.value`) into plain `react-native-svg` Circles. Mutating a shared value
+ * schedules no React render, so the rings only moved when something else
+ * re-rendered the component — in practice the counter's own rAF pump. That
+ * pump is bounded by motion.counterTick (2400ms), so the rings ran for ~2.4s,
+ * stuttered at whatever cadence the parent re-rendered at, and then FROZE
+ * mid-loop while the shared values kept looping on the UI thread forever. On
+ * ResultsScreen's loading branch (no timer at all) the freeze was total, for
+ * the whole 30s–120s of a compare. Each of those render-time reads was also a
+ * BLOCKING synchronous JS→UI-runtime hop (reanimated 4's `makeMutableNative`
+ * getter) — 3 per render at display rate, on the app's heaviest screen — and
+ * tripped reanimated's "Reading from `value` during component render" warning
+ * in dev. The radii now reach the pixels through `useAnimatedProps` on an
+ * `Animated.createAnimatedComponent(Circle)`, so the loop runs entirely on the
+ * UI thread for the life of the load and the JS thread reads nothing.
+ * Geometry is unchanged: a driver at RING_BASE_R still renders r=60/opacity=1,
+ * which is exactly what `animated={false}` keeps rendering.
+ *
+ * Contract: __tests__/hero/LoadingRings.test.tsx (snapshots + counter format)
+ *           __tests__/hero/LoadingRings.animation.test.tsx (driver binding)
  */
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
-import {
+import Animated, {
   useSharedValue,
+  useAnimatedProps,
   withRepeat,
   withTiming,
   withDelay,
   Easing,
 } from 'react-native-reanimated';
+import type { SharedValue } from 'react-native-reanimated';
 import { colors, spacing, radii } from '../../theme';
 // F-S2.W3.hotfix (task #37): swap center from QaranIcon (magnifier
 // mark, reads as "heavy black blob" at 96px with strokeWidth 10) to
@@ -54,8 +78,47 @@ const RING_TARGET_R = 150;
 const RING_DURATION_MS = 2100;
 const RING_STAGGER_MS = 700;
 
+const AnimatedCircle = Animated.createAnimatedComponent(Circle);
+
 function formatThousands(value: number): string {
   return value.toLocaleString('en-US');
+}
+
+interface RingProps {
+  index: number;
+  /** UI-thread driver holding this ring's current radius. */
+  radius: SharedValue<number>;
+}
+
+/**
+ * One expanding emerald ring, bound to its UI-thread radius driver.
+ *
+ * Extracted as its own component ONLY because hooks cannot be called inside
+ * the `[ring0, ring1, ring2].map()` that used to render these inline. It
+ * renders a single Circle, so the host tree shape is identical to the pre-B3
+ * inline map.
+ */
+function Ring({ index, radius }: RingProps) {
+  const animatedProps = useAnimatedProps(() => {
+    const r = radius.value;
+    // Fade the ring out as it expands: full opacity at the base radius,
+    // transparent by the time it reaches the target. Same ramp the pre-B3
+    // render-time read computed — it just runs on the UI thread now.
+    const progress = (r - RING_BASE_R) / (RING_TARGET_R - RING_BASE_R);
+    return { r, opacity: Math.max(0, 1 - progress) };
+  });
+
+  return (
+    <AnimatedCircle
+      testID={`loading-rings-ring-${index}`}
+      cx={CENTER}
+      cy={CENTER}
+      fill="none"
+      stroke={colors.accent}
+      strokeWidth={2.5}
+      animatedProps={animatedProps}
+    />
+  );
 }
 
 export function LoadingRings({
@@ -130,24 +193,9 @@ export function LoadingRings({
     <View style={[styles.root, { width: size }]} testID={testID}>
       <View style={[styles.ringWrap, { width: size, height: size }]}>
         <Svg width={size} height={size} viewBox={`0 0 ${VIEWBOX} ${VIEWBOX}`}>
-          {[ring0, ring1, ring2].map((sv, i) => {
-            const r = sv.value;
-            const progress = (r - RING_BASE_R) / (RING_TARGET_R - RING_BASE_R);
-            const opacity = Math.max(0, 1 - progress);
-            return (
-              <Circle
-                key={`ring-${i}`}
-                testID={`loading-rings-ring-${i}`}
-                cx={CENTER}
-                cy={CENTER}
-                r={r}
-                fill="none"
-                stroke={colors.accent}
-                strokeWidth={2.5}
-                opacity={opacity}
-              />
-            );
-          })}
+          {[ring0, ring1, ring2].map((sv, i) => (
+            <Ring key={`ring-${i}`} index={i} radius={sv} />
+          ))}
         </Svg>
         <View style={styles.center} pointerEvents="none" testID="loading-rings-logo">
           {/* QarenLogo at 0.22 of the rings size — visually centered

@@ -23,12 +23,24 @@
  *
  * Animation: phone slides up 16px + fades on mount; glow ring pulses
  * gently every ~1.4s.
+ *
+ * A10 (mobile checkup, 2026-09-05) — the pulse used to be a no-op that still
+ * cost frames: `glowOpacity` was driven by an INFINITE withRepeat, but its
+ * only consumer was a plain `opacity={glowOpacity.value}` read during render
+ * on a plain (non-animated) Rect. Mutating a shared value does not schedule a
+ * React render, so that read was a one-shot snapshot at mount — the ring
+ * painted at a flat 0.4 forever while the driver ticked on the UI thread
+ * every frame driving nothing. It also meant the production `animated` path
+ * rendered DIMMER (0.4) than the reduced-motion path (0.7). The glow Rect is
+ * now an animated component fed by `useAnimatedProps`, so the driver reaches
+ * the pixels.
  */
 import React, { useEffect } from 'react';
 import { View, StyleSheet } from 'react-native';
 import Svg, { Rect, Circle, G, Defs, LinearGradient, Stop, Path } from 'react-native-svg';
-import {
+import Animated, {
   useSharedValue,
+  useAnimatedProps,
   withRepeat,
   withTiming,
   withSequence,
@@ -85,6 +97,8 @@ const GLOW_W = CARD_W + GLOW_INSET * 2;
 const GLOW_H = CARD_H + GLOW_INSET * 2;
 const GLOW_R = 16 + GLOW_INSET;
 
+const AnimatedRect = Animated.createAnimatedComponent(Rect);
+
 export function PhoneMockup({ size = 320, animated = true, testID }: Props) {
   // Glow pulse driver (mock returns identity in tests).
   const glowOpacity = useSharedValue(animated ? 0.4 : 0.7);
@@ -99,6 +113,12 @@ export function PhoneMockup({ size = 320, animated = true, testID }: Props) {
       false,
     );
   }, [animated, glowOpacity]);
+
+  // A10 — the driver's only binding to render. Without this the ring is a
+  // static snapshot of the shared value's initial reading.
+  const glowProps = useAnimatedProps(() => ({
+    opacity: glowOpacity.value,
+  }));
 
   const ratio = size / VIEWBOX_W;
   const renderHeight = VIEWBOX_H * ratio;
@@ -209,7 +229,7 @@ export function PhoneMockup({ size = 320, animated = true, testID }: Props) {
           />
 
           {/* Glow ring around winner (animated opacity) */}
-          <Rect
+          <AnimatedRect
             testID="phone-mockup-glow"
             x={GLOW_X}
             y={GLOW_Y}
@@ -219,7 +239,7 @@ export function PhoneMockup({ size = 320, animated = true, testID }: Props) {
             fill="none"
             stroke={colors.accent}
             strokeWidth={4}
-            opacity={glowOpacity.value}
+            animatedProps={glowProps}
           />
 
           {/* Product card 2 (winner) */}

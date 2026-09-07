@@ -621,14 +621,31 @@ describe('HomeScreen S3 integration — editorial section callbacks', () => {
     });
   });
 
-  it('onPressVerdict navigates to Results with from_history', async () => {
+  // A18 — this test used to assert `from_history`, a param name that
+  // exists nowhere in RootStackParamList.Results and that ResultsScreen
+  // never reads. It enshrined the bug: every Smart-pick "View verdict"
+  // tap landed on results-empty-state. The Results route consumes
+  // `comparison_id` (the History-tap shape) — assert THAT.
+  it('onPressVerdict navigates to Results with comparison_id', async () => {
     const props = makeProps();
     const rendered = render(<HomeScreen {...props} />);
     const editorial = rendered.getByTestId('mock-home-editorial-sections');
     editorial.props.onPressVerdict('cmp-123');
     expect(props.navigation.navigate).toHaveBeenCalledWith(
       'Results',
-      expect.objectContaining({ from_history: 'cmp-123' }),
+      expect.objectContaining({ comparison_id: 'cmp-123' }),
     );
+  });
+
+  it('onPressVerdict never emits the dead from_history param (A18)', async () => {
+    const props = makeProps();
+    const rendered = render(<HomeScreen {...props} />);
+    const editorial = rendered.getByTestId('mock-home-editorial-sections');
+    editorial.props.onPressVerdict('cmp-123');
+    const call = (props.navigation.navigate as jest.Mock).mock.calls.find(
+      (c: any[]) => c[0] === 'Results',
+    );
+    expect(call).toBeTruthy();
+    expect(Object.keys(call![1])).toEqual(['comparison_id']);
   });
 });

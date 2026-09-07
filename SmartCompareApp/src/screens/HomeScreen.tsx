@@ -36,6 +36,7 @@ import {
   SafeAreaView,
   ScrollView,
   Alert,
+  InteractionManager,
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
@@ -63,6 +64,10 @@ import {
   COMPARE_TIMEOUT_MS,
 } from '../services/api';
 import api from '../services/api';
+// A11 — code->copy map for failed comparisons. Deliberately NOT re-exported
+// from services/api so this stays importable (and testable) without the
+// network surface.
+import { friendlyErrorKey } from '../services/errorCopy';
 import { getSavedUser, User } from '../services/authService';
 import { isUsageLimitError, getUsageLimitDetail } from '../services/usageService';
 import CategorySelector from '../components/CategorySelector';
@@ -111,6 +116,15 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
   // a chip (conditional spread at the two compare sites below).
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const abortRef = useRef<(() => void) | null>(null);
+  // A4 — compare generation token. Bumped on every compare START and on
+  // CANCEL, so a response that lands after the user backed out (or after a
+  // newer compare superseded it) is dropped instead of dragging them into a
+  // Results screen they walked away from. The text/stream transport already
+  // swallows AbortError/CanceledError without dispatching callbacks, but the
+  // URL path is a plain awaited axios call whose `then` still runs after an
+  // abort loses the race — so this guard, not the abort, is what actually
+  // makes cancel stick on both paths.
+  const compareRunRef = useRef(0);
 
   const { used, total, canCompare, increment } = useComparisonCounter();
 
@@ -201,9 +215,57 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     };
   }, []);
 
+  // A4 — the ONLY exit from the full-screen compare loader.
+  //
+  // `styles.loadingFullscreen` is an absoluteFill overlay at zIndex 100 with
+  // `pointerEvents="auto"`, and Home is a bottom-tab ROOT — so it never
+  // unmounts on a tab switch and the abort at the unmount cleanup above was
+  // unreachable for a user staring at a stuck loader. Their only escape was
+  // backgrounding the app.
+  //
+  // Deliberately NOT paired with a client watchdog: M18 MB-perf-03 already
+  // bounds every compare path (COMPARE_TIMEOUT_MS 35s on the REST GET and the
+  // url/compare POST, STREAM_WATCHDOG_MS 60s on the flag-ON stream,
+  // IDENTIFY_TIMEOUT_MS 120s on camera identify). A second timer here would
+  // only race COMPARE_TIMEOUT_MS and could fire a false timeout on a compare
+  // that was about to succeed.
+  //
+  // Cancel does NOT refund the freemium credit — the backend consumes it at
+  // the gate (M13-37 atomic consume) and the default REST path has no
+  // disconnect-refund. That is a product call, not something the client can
+  // fix, so the copy stays neutral ("Cancel") and promises nothing.
+  const handleCancelCompare = useCallback(() => {
+    // Invalidate the in-flight run FIRST so a response already in the
+    // microtask queue can't slip past between the abort and setLoading.
+    compareRunRef.current += 1;
+    abortRef.current?.();
+    abortRef.current = null;
+    if (advanceTimerRef.current) {
+      clearTimeout(advanceTimerRef.current);
+      advanceTimerRef.current = null;
+    }
+    loadingStartedAtRef.current = null;
+    setLoading(false);
+    setStatusMessage('');
+    trackEvent('compare_cancelled', { mode: inputMode });
+  }, [inputMode]);
+
   useFocusEffect(
     useCallback(() => {
-      checkServer();
+      // B5 — Home's first paint used to fire four network calls at once
+      // (usage status, referral status, /health, and the compare_entry_view
+      // analytics POST). `checkServer` is the one with no consumer at all:
+      // its boolean is discarded (see the note on checkServer below), so it
+      // is pushed behind the interaction queue instead of competing with
+      // the paint. loadUser + loadRecentSearches stay inline — they are
+      // local AsyncStorage reads that feed what the screen renders.
+      //
+      // Deliberately NOT cancelled on blur/unmount: the task writes no
+      // state, and cancelling would silently drop the telemetry ping this
+      // defer is meant to preserve.
+      InteractionManager.runAfterInteractions(() => {
+        checkServer();
+      });
       loadUser();
       loadRecentSearches();
     }, [])
@@ -252,7 +314,15 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
   useEffect(() => {
     if (lastViewedModeRef.current !== inputMode) {
       lastViewedModeRef.current = inputMode;
-      trackEvent('compare_entry_view', { mode: inputMode });
+      // B5 — this is the mount-time analytics write (the initial mode
+      // counts as a view), so on a cold Home it was a POST racing the first
+      // paint. Deferred behind the interaction queue: the event still
+      // fires, and its payload is unchanged — only the server-side
+      // timestamp moves by the length of the defer, which no correctness
+      // path reads. Not cancelled on re-run/unmount, so no view is lost.
+      InteractionManager.runAfterInteractions(() => {
+        trackEvent('compare_entry_view', { mode: inputMode });
+      });
     }
   }, [inputMode]);
 
@@ -289,6 +359,9 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     setLoading(true);
     setStatusMessage(t('results.loading.finding'));
     loadingStartedAtRef.current = Date.now();
+    // A4 — claim this compare's generation; every callback below is a no-op
+    // once handleCancelCompare (or a newer compare) has bumped the ref.
+    const runId = ++compareRunRef.current;
     let navigated = false;
     // Lane A-L3 Task L3.7 — start wall-time tracker at the user's
     // Compare tap. Subsequent stages (`ttfb`, `first_card_visible`,
@@ -322,12 +395,16 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
 
     subscribe({
       onStatus: (message) => {
+        if (runId !== compareRunRef.current) return;
         markTtfb();
         setStatusMessage(typeof message === 'string' ? message : String(message));
       },
       onSpecs: () => markTtfb(),
       onPrices: () => markTtfb(),
       onComplete: async (data) => {
+        // A4 — cancelled/superseded run: never increment, never navigate,
+        // never re-open the loader the user just dismissed.
+        if (runId !== compareRunRef.current) return;
         markTtfb();
         abortRef.current = null;
         setStatusMessage('');
@@ -357,6 +434,11 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         }
       },
       onError: (error: any) => {
+        // A4 — a cancelled run must not raise an Alert over the Home screen
+        // the user just got back to. (The transports already swallow
+        // AbortError/CanceledError, so this is belt-and-braces for a
+        // superseded run and for any transport that reports differently.)
+        if (runId !== compareRunRef.current) return;
         abortRef.current = null;
         // Cancel any pending floor timer so a failed compare can never
         // silently navigate to Results after the 1.2s floor expires.
@@ -386,17 +468,18 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
           Alert.alert(t('common.error'), t('home.errors.timeout'));
           return;
         }
-        // M18 MB-contract-02 — when the backend sent a STRUCTURED code we
-        // did not recognize above, never render error.message (it may be a
-        // raw backend string, e.g. an SSE error event's str(e)); fall back
-        // to the neutral i18n copy instead. Codeless errors keep the
-        // legacy message fallback.
-        Alert.alert(
-          t('common.error'),
-          parsed.code
-            ? t('home.errors.comparison')
-            : error.message || t('home.errors.comparison')
-        );
+        // M18 MB-contract-02 + A11 — copy is chosen by CODE, on BOTH arms.
+        // MB-contract-02 stopped the coded arm rendering error.message; the
+        // codeless arm still did, so a Railway edge 502 / JSON-parse failure
+        // (no envelope => parseApiError falls through to the axios string)
+        // rendered "Request failed with status code 502" — a raw transport
+        // string carrying the forbidden token "failed". friendlyErrorKey is
+        // total, so a null code lands on the same neutral copy and NO branch
+        // can render a raw string. It also finally consumes the backend's
+        // structured code (INSUFFICIENT_DATA / RATE_LIMITED get their own
+        // guidance instead of the generic "try with brand or model", which
+        // told a rate-limited user to retype rather than wait).
+        Alert.alert(t('common.error'), t(friendlyErrorKey(parsed.code)));
       },
     });
   };
@@ -422,6 +505,12 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
 
     setLoading(true);
     loadingStartedAtRef.current = Date.now();
+    // A4 — claim this compare's generation and publish a real abort handle.
+    // Before this the URL path set no abortRef at all, so neither the
+    // unmount cleanup nor the new cancel control could stop it.
+    const runId = ++compareRunRef.current;
+    const controller = new AbortController();
+    abortRef.current = () => controller.abort();
     try {
       const response = await api.post(
         '/api/v1/url/compare',
@@ -434,8 +523,12 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         },
         // M18 MB-perf-03 — compare-class per-call deadline (was the global
         // 120s, 4x the backend's 30s hard cap).
-        { timeout: COMPARE_TIMEOUT_MS }
+        { timeout: COMPARE_TIMEOUT_MS, signal: controller.signal }
       );
+      // A4 — cancelled/superseded run: drop the response on the floor. The
+      // abort above races the resolution, so this guard is the real fence.
+      if (runId !== compareRunRef.current) return;
+      abortRef.current = null;
       if (response.data.success) {
         await increment();
         // Loader stays mounted until navigateToResultsWithFloor's
@@ -447,6 +540,10 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         Alert.alert(t('common.error'), response.data.error || t('home.errors.comparison'));
       }
     } catch (error: any) {
+      // A4 — a cancelled run swallows its own CanceledError: no Alert, no
+      // loader churn on a screen the user has already returned to.
+      if (runId !== compareRunRef.current) return;
+      abortRef.current = null;
       // Cancel any pending floor timer so a failed URL compare can
       // never silently navigate to Results after the 1.2s floor expires.
       if (advanceTimerRef.current) {
@@ -467,7 +564,13 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         // Genuine-BH bundle (D2) — soft timeout copy, never the backend string.
         Alert.alert(t('common.error'), t('home.errors.timeout'));
       } else {
-        Alert.alert(t('common.error'), parsed.message);
+        // A11 — was `Alert.alert(t('common.error'), parsed.message)`, i.e.
+        // UNCONDITIONALLY the parsed message. That made the URL path the
+        // WEAKER of the two compare paths after M18 MB-contract-02 hardened
+        // the text path: parseApiError falls through to `error?.message`
+        // when there is no envelope, so this leaked the raw axios string
+        // with no code guard at all. Both paths now share one code->copy map.
+        Alert.alert(t('common.error'), t(friendlyErrorKey(parsed.code)));
       }
     }
   };
@@ -857,7 +960,16 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         {canCompare && (
           <HomeEditorialSections
             onPressVerdict={(comparisonId) =>
-              navigation.navigate('Results' as any, { from_history: comparisonId } as any)
+              // A18 — the Smart-pick "View verdict" CTA used to pass an
+              // invented `from_history` param. `RootStackParamList.Results`
+              // has no such key and ResultsScreen never read it, so the tap
+              // landed on `results-empty-state` ("No comparison loaded")
+              // 100% of the time. `comparison_id` is the param ResultsScreen
+              // actually consumes (its getComparison() fetch effect), the
+              // same shape HistoryScreen has always used. Casts dropped on
+              // purpose: an un-cast payload is type-checked against the
+              // route, so a future key typo fails `tsc` instead of shipping.
+              navigation.navigate('Results', { comparison_id: comparisonId })
             }
             onPickCategory={(cat) => {
               setSelectedCategory(cat as any);
@@ -885,6 +997,20 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
             caption={statusMessage || t('results.loading.finding')}
             testID="home-loading-screen"
           />
+          {/* A4 — the loader's only exit. Bottom-CENTERED on purpose:
+              alignSelf:'center' + textAlign:'center' carry no writing
+              direction, so the affordance sits identically in LTR and RTL
+              with no start/end token to get backwards. */}
+          <TouchableOpacity
+            onPress={handleCancelCompare}
+            accessibilityRole="button"
+            accessibilityLabel={t('home.loading.cancel_a11y')}
+            hitSlop={{ top: 12, bottom: 12, left: 16, right: 16 }}
+            style={styles.loadingCancel}
+            testID="home-loading-cancel"
+          >
+            <Text style={styles.loadingCancelText}>{t('common.cancel')}</Text>
+          </TouchableOpacity>
         </View>
       ) : null}
     </SafeAreaView>
@@ -1228,6 +1354,20 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bg.primary,
     zIndex: 100,
     elevation: 100,
+  },
+  // A4 — RTL-neutral by construction: no left/right/start/end offsets, only
+  // `alignSelf: 'center'`. Keep it that way if this ever moves.
+  loadingCancel: {
+    position: 'absolute',
+    bottom: spacing['2xl'],
+    alignSelf: 'center',
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.xl,
+  },
+  loadingCancelText: {
+    ...typography.bodyEmphasis,
+    color: colors.text.secondary,
+    textAlign: 'center',
   },
 });
 

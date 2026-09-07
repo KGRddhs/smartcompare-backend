@@ -98,6 +98,18 @@ export function buildPreferencesPayload(
   if (data.priorities) payload.priorities = data.priorities;
   if (data.budget) payload.budget = data.budget;
   if (data.brand_attitude) payload.brand_attitude = data.brand_attitude;
+  // B9 — Step 17's notifications answer had no transport: it was collected
+  // into OnboardingFlowData and then dropped here, so a user who tapped
+  // "Not now" arrived at the backend with the field unset. Unset is NOT
+  // neutral: ProfileScreen renders the toggle from
+  // `notifications_enabled !== false` (so it read ON) and
+  // reengagement_service skips only on `is False` (so they stayed
+  // targetable). `typeof === 'boolean'` because an explicit `false` is the
+  // whole point — a truthiness check would drop exactly the decline we need
+  // to record.
+  if (typeof data.notifications_enabled === 'boolean') {
+    payload.notifications_enabled = data.notifications_enabled;
+  }
   return payload;
 }
 
