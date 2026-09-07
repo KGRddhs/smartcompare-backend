@@ -15564,8 +15564,43 @@ def _iherb_card_currency_token(card) -> Optional[str]:
     return raw.strip() if isinstance(raw, str) and raw.strip() else None
 
 
-def _iherb_page_currency_token(soup) -> Optional[str]:
-    """The currency the iHerb SEARCH PAGE declares document-wide, or None.
+class _CurrencyContradiction:
+    """The type of :data:`_CURRENCY_CONTRADICTION`. One instance, compared with
+    ``is`` — never equal to any currency string, so an accidental ``==`` test
+    against an ISO code can only ever be False."""
+
+    __slots__ = ()
+
+    def __repr__(self) -> str:  # pragma: no cover — debugging aid only
+        return "<CURRENCY_CONTRADICTION>"
+
+
+#: A page that declares TWO OR MORE different document-level currencies. This is
+#: a THIRD state and it exists because the second one was being lost: "this page
+#: says nothing" (None) and "this page says something I cannot read" are the
+#: distinction the whole of #52 is built around (BLOCKER 4), and a page that
+#: contradicts itself is squarely the second. Returning None for it routed a
+#: self-contradicting page into the caller's storefront-ASSUMPTION arm, which
+#: keeps the amount untouched and stamps the genuine ``local_bhd`` — the exact
+#: conflation the fix removes, reintroduced one rung down. A sentinel object
+#: rather than a magic string so it can never collide with an ISO code, and a
+#: module-level singleton so the caller can test it with ``is``.
+_CURRENCY_CONTRADICTION = _CurrencyContradiction()
+
+#: What ``_iherb_currency_signal`` reports about WHERE its answer came from.
+#: Load-bearing, not decoration: the card rung is SCOPED to the number being
+#: shipped and may therefore convert it, while the document rung is not (see
+#: ``_iherb_page_currency_token``) and may only confirm or pend.
+_CCY_SCOPE_CARD = "card"
+_CCY_SCOPE_PAGE = "page"
+
+
+def _iherb_page_currency_token(soup):
+    """What the iHerb SEARCH PAGE declares document-wide. THREE-VALUED:
+
+      * an ISO code  — the document says this, unambiguously
+      * ``_CURRENCY_CONTRADICTION`` — the document says two different things
+      * ``None``     — the document says nothing at all
 
     Consulted only when the CHOSEN card is silent. Two rungs, both reusing the
     module's existing evidence helpers rather than growing a parallel ladder:
@@ -15575,18 +15610,41 @@ def _iherb_page_currency_token(soup) -> Optional[str]:
          per card. Exactly one distinct code is evidence; two or more is a
          contradiction, and per the abstain-on-multiplicity rule already written
          into ``_visible_text_currency_evidence`` a contradiction is not a
-         currency, so it returns None rather than guessing.
+         currency. It returns the SENTINEL rather than None, because None means
+         "silent" to the caller and silence buys the storefront assumption.
+         A contradicted page also stops here: it does NOT fall through to rung 2,
+         because a document that cannot agree with itself about its own cards is
+         not made trustworthy by a template-level OpenGraph tag.
       2. ``_page_currency_evidence`` — the OpenGraph/product metas and any
          JSON-LD ``priceCurrency``, in that helper's own load-bearing order.
+
+    NOTE ON SCOPE, and the reason the caller must never convert on this answer:
+    every rung here reads the DOCUMENT. ``_page_currency_evidence`` returns the
+    FIRST og/product meta or the FIRST JSON-LD ``priceCurrency`` anywhere on the
+    page, and its measured justification is single-product PDPs (niche-beauty,
+    samawa, faces) where og:price describes THE product. ``fetch_iherb_price``
+    parses a multi-product SEARCH page, so nothing ties that code to the card
+    whose number is being shipped.
     """
     tokens = _microdata_currency_tokens(soup)
     if tokens:
-        return next(iter(tokens)) if len(tokens) == 1 else None
+        if len(tokens) == 1:
+            return next(iter(tokens))
+        return _CURRENCY_CONTRADICTION
     return _page_currency_evidence(soup)
 
 
-def _iherb_currency_signal(card_token: Any, soup) -> Optional[str]:
-    """What money THIS page says its price is in, or None if it never says.
+def _iherb_currency_signal(card_token: Any, soup):
+    """``(scope, signal)`` — what money THIS page says its price is in, and how
+    narrowly that claim is attached to the number being shipped.
+
+    ``scope`` is ``_CCY_SCOPE_CARD`` when the answer is the chosen card's own
+    claim and ``_CCY_SCOPE_PAGE`` when it is the document's. The caller needs the
+    difference: only a card-scoped code licenses CONVERTING that card's amount.
+    A document-scoped code may confirm the storefront currency or force a pend,
+    never multiply a number it was never attached to.
+
+    ``signal`` is an ISO code, ``_CURRENCY_CONTRADICTION``, or None.
 
     The card's own token wins over the document's — it is the narrower claim and
     the one attached to the number being shipped. An unresolvable card token is
@@ -15594,8 +15652,11 @@ def _iherb_currency_signal(card_token: Any, soup) -> Optional[str]:
     reading it as silence.
     """
     if isinstance(card_token, str) and card_token.strip():
-        return _resolve_iso_currency(card_token) or card_token.strip().upper()
-    return _iherb_page_currency_token(soup)
+        return (
+            _CCY_SCOPE_CARD,
+            _resolve_iso_currency(card_token) or card_token.strip().upper(),
+        )
+    return _CCY_SCOPE_PAGE, _iherb_page_currency_token(soup)
 
 
 async def fetch_iherb_price(
@@ -15812,8 +15873,21 @@ async def fetch_iherb_price(
         _origin = currency
         _genuine_bh = True
         if _currency_signal_gate:
-            _ccy_signal = _iherb_currency_signal(best.get("currency_token"), soup)
+            _ccy_scope, _ccy_signal = _iherb_currency_signal(best.get("currency_token"), soup)
             _ask_ccy = iso_currency_label(currency) or str(currency or "").upper()
+            if _ccy_signal is _CURRENCY_CONTRADICTION:
+                # A page that declares two different currencies has SAID
+                # something — it just cannot be read. That is the SAME state as an
+                # unreadable card token (the last arm, which pends), not the
+                # silent-page state (the next arm, which assumes); routing it to
+                # silence is what shipped a genuine `local_bhd` stamp on an
+                # unconverted amount off a mixed-currency results page. There is
+                # no honest number to pick out of a contradiction, so ship none.
+                logger.info(
+                    "[PRICE] iHerb pend: page declares two or more currencies for '%s'",
+                    full_name[:60],
+                )
+                return None
             if _ccy_signal is None:
                 # THE ASSUMPTION, and this is now the ONLY place it lives: a page
                 # that declares no currency anywhere is taken to price in the
@@ -15824,11 +15898,32 @@ async def fetch_iherb_price(
                 # every supplement price the adapter currently captures.
                 pass
             elif _ccy_signal == _ask_ccy:
-                # The page agrees with the storefront. Genuine, unconverted.
+                # The page agrees with the storefront. Genuine, unconverted. True
+                # of both scopes: a DOCUMENT-level code that matches the ask only
+                # ever CONFIRMS the assumption already being made, so it cannot
+                # move a number and needs no scoping argument.
                 pass
+            elif _ccy_scope != _CCY_SCOPE_CARD:
+                # A foreign (or unreadable) code that is NOT attached to the card
+                # being shipped. Do NOT convert on it: `_page_currency_evidence`
+                # answers with the first og/product meta or the first JSON-LD
+                # `priceCurrency` ANYWHERE on a MULTI-PRODUCT search page, so a
+                # canonical document-level USD on a template whose cards price in
+                # BHD would multiply every genuine BHD supplement price by 0.376
+                # — a 62%-low number, strictly worse than the mislabel #52 exists
+                # to fix. Document evidence gets exactly two powers: confirm
+                # (above) or pend (here).
+                logger.info(
+                    "[PRICE] iHerb pend: document-level currency %s disagrees with %s "
+                    "and is not scoped to the chosen card for '%s'",
+                    _ccy_signal, _ask_ccy, full_name[:60],
+                )
+                return None
             else:
-                # A real foreign denomination, or a token nothing can read.
-                # `_convert_to_bhd` only ever targets BHD, and the shared
+                # A real foreign denomination, or a token nothing can read —
+                # declared BY THE CHOSEN CARD, which is what licenses touching
+                # that card's amount at all (the document-scoped case pended
+                # above). `_convert_to_bhd` only ever targets BHD, and the shared
                 # `is_convertible` gate is the SAME effective table it converts
                 # against (so ENABLE_EXTENDED_FALLBACK_RATES widens both together
                 # — asking FALLBACK_RATES directly would pend a currency the
@@ -15845,7 +15940,8 @@ async def fetch_iherb_price(
                 _amount = round(_convert_to_bhd(float(_amount), _ccy_signal), 3)
                 if not _amount or _amount <= 0:
                     return None
-                # `_origin` is now PAGE-DERIVED — the whole point of #52.
+                # `_origin` is now read off the CARD — the whole point of #52,
+                # and the only scope narrow enough to justify a conversion.
                 # `converted_usd` is the module's literal for "not a native shelf
                 # price", which keeps it out of the genuine TTL/authority/KPI paths.
                 _origin = _ccy_signal
