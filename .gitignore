@@ -32,6 +32,15 @@ Thumbs.db
 response_*.json
 /test_*.py
 /extract_*.py
+/parse_*.py
+/phase0_*.py
+/tmp_result*.json
+/full_response.json
+/session23_test_response.json
+/UsersSynAck*.json
+# coverage data file (CI writes a fresh one via --cov; a committed copy is stale)
+/.coverage
+/.coverage.*
 import_batches/
 nul
 
