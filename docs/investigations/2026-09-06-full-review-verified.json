@@ -4,8 +4,8 @@
  "generated_by": "build_verified.py (SESSION 65, 2026-09-07)",
  "tallies": {
   "m22-product-output": {
-   "P1": 22,
-   "P2": 59,
+   "P1": 21,
+   "P2": 60,
    "P3": 18,
    "REFUTED": 5
   },
@@ -23,8 +23,8 @@
    "P0": 1
   },
   "m22-mobile": {
-   "P1": 24,
-   "P2": 76,
+   "P1": 23,
+   "P2": 77,
    "P3": 42
   }
  },
@@ -33,9 +33,548 @@
    "run1_id": "wf_4127a8d5-5b2",
    "s65_id": "wf_490661b3-382",
    "filed": 104,
-   "second_votes_total": 33,
-   "synth": null,
-   "critic": null
+   "second_votes_total": 35,
+   "synth": {
+    "report_path": "C:/Users/SynAckITPC/Documents/AI/sc-review-s65/docs/investigations/2026-09-06-full-review-state/report-m22-product-output.md",
+    "headline_answers": "FINAL LEDGER: 0 P0 / 23 P1 / 59 P2 / 17 P3 / 5 refuted = 104 filed, 104 adjudicated. (Saved state read P1 26 / P2 55 / P3 18; the deltas are exactly the three orchestrator downgrades — PO-RUBRIC-11, PO-RECORDED-MEASURED-01, PO-RECORDED-MEASURED-02 — plus PO-PROMPTS-10, whose second vote restored P2 over the verify pass's P3. The 25 P0/P1 rows whose batch second-vote agent died arrived UNVERIFIABLE, which is not REFUTED, so they stand at their verify severity with FABLE_REVIEW_NOTES as the vote of record; I re-opened eight of the highest-harm citations myself and all held.)\n\n(1) IS THE OUTPUT GOOD TODAY? Literally, the product returns nothing to anyone: every compare path reaches an OpenAI call and dies at 429. The only surfaces that still execute are the deterministic pre-LLM gates, and two of them are wrong — the bare Arabic token in content_blocklist.json:53 hard-blocks YSL Opium with a terminal CONTENT_UNAVAILABLE while the English twin is allowed (PO-CATEGORIES-I18N-03), and 'silencer'/'tactical knife' block legitimate GCC queries the same way (I18N-09). Those are the only product-output defects user-reachable at this instant. The real answer is what ships on the first request after a top-up, and it is no. THE KEY INVERSION FOR A FOUNDER: the dark flags are not the risk, they are the remediation backlog — 23 of 23 P1s are LIVE and unflagged in the shipped configuration; the flags sitting OFF are the FIXES. There is no dark-flag-only P1 in this lane; the only genuinely DARK defects are hazards the fixes themselves create (flipping #108 alone promotes contradicted fields to user-facing \"source citations\"; #107 is a no-op until the 7d/30d specs cache rolls; #101's flag turns 18 rating-gap pairs into exact ties; #100's >=10x guard ties a genuine 16GB-vs-512GB gap at 0.0). LIVE list: winner decided by rubric artifacts (RUBRIC-01 a 4% price gap yields win_margin 14.0 carried entirely by a dim the same payload stamps missing and prints N/A; RUBRIC-02 two identical fully-verified products lose 4 of 6 dims to a tie-collapse; RUBRIC-03 fashion/other have zero numeric spec fields so 35-40% of the score is deleted; RUBRIC-09 no-data beats measured-bad 9/9; RUBRIC-10 unit notation moves 18.7-20.4 pts while a real 32x gap moves 0.3; 53.7% of dim cells stamped missing at prod flags). VERDICT-TRUTH-02: a 30s hard-cap PARTIAL crowns product_0 by input order with a fabricated 70/69 from MISSING_SCORE=50 while overall_score is null. VERDICT-TRUTH-01: /url/compare 500s on every successful extraction after paying for two extractions and a gpt-4o verdict. Price: PT-01 parses the native Bahraini \"22.500 BD\" as 22500 BHD stamped local_bhd (1000x, cached 7d, zero authority penalty) and M13-09's dark flag does NOT catch it; PT-02 the same for TRY/PLN/CHF/SEK/DKK/CAD; PT-03 the four GCC glyphs still ship unconverted; PT-04 the sample/decant guard reads price['title'] while every extractor branch writes price['name'], disarming it across the whole page-scrape rung (176/414 corpus pages, ENABLE_PAGE_SCRAPE=true); PT-07/-08 the iHerb self-comparison and the fan-out relabel are fixed only on the OTHER session's unmerged branch. RM-03: the shopping tier writes Google's search link into price.url and HEAD's own non_pdp_url backstop then rejects it — 24 of 40 recorded priced cells self-pend, 2 survive. RM-04: scores are computed on the raw price and the chokepoint pends it afterwards (a recorded payload asserts a 24.4-point win and value_score 100.0 while shipping both prices unavailable). Confidence: FC-03 \"High\" at 0% verified; FC-04 verify_price CERTIFIES the 9.8x wrong-currency error at 0.0% deviation and REJECTS the correct BHD price at 89.8%; FC-01 reliability is a per-product constant 0.3; FC-02 the pills users see come from a second, worse-informed compute_confidence with a dead \"Medium\" state and hardcoded freshness \"live\". PROMPTS-11: the shipped specs prefix orders training-data fill, empty fields stamped N/A, cached 7 days, guard dark AND blocked on Serper. RM-05: str(e) reaches the wire — two production rows read \"'NoneType' object has no attribute 'get'\". Two prod-state truths worth naming: ENABLE_HYBRID_MODEL_ROUTING=true is PHANTOM (zero code sites, so gpt-4o serves the verdict unconditionally) and OPENAI_MAX_RETRIES is unset so verdict_chain_max_attempts()=6, not the runbook's 3. Two-lever: confidenceDetailsLines.ts/ConfidencePills.tsx are byte-identical 97b5f15..76ace90 so the confidence claims are LIVE ON PHONES; everything in ResultsScreen/ResultsContent/DimensionBars is \"what main says\" until eas update --branch preview from >=76ace90.\n\n(2) THE MEASURED SERIES: 88.6% of the 13,237-row series since 2026-06-01 is 13 repeated probe strings (iphone 15 vs galaxy s24 alone = 5,605 rows / 42.3%). Organic: n=1,513 (11.4%), success 1,210 = 80.0% (not the brief's ~75%), p50 21,954ms (not 0 — zero-duration is 88.6-99.6% on probes and 0.0% on organic, diluting get_daily_stats 7.2x), p90 29,540 / p95 30,004 / p99 30,637 against STREAM_HARD_CAP_SECONDS=30; 15.4% terminate at the cap and 2.6% exceed it; verdict LLM 3.8-11.0s and per-product price fetch 6.5-15.9s (n=7 stage-timing rows). Unit cost is $0.0140 per successful organic compare, unchanged since June — the \"$20.53/mo -> $0.29/mo collapse\" is a traffic-mix artifact. Only 37 of 16,283 rows (0.23%) carry a user_id, and input_type='url' has 0 of 16,283 rows because /url/compare has no log_search call site at all. CATEGORY OVER-REJECTION CANNOT BE ANSWERED FROM TRAFFIC: 719 of the 721 category-reject rows are QA traffic (712 are 'glock 19'), leaving ~10 organic. The constructed 360-query GCC corpus answers it instead: 3/360 legitimate queries hard-blocked by L1, 7/360 misclassified in a way that silently overrides a correct chip, and 0 of 58 Arabic queries classify at all. THE PARTIAL RATE IS STRUCTURALLY UNMEASURABLE: partials return success:true, no counter exists, and text_stream shows 721/721 success lifetime including 30s partials with zero prices. HONEST MESSAGES: \"Still gathering prices - give it another tap\" (measured 50% recovery at 2min, 64% at 10min) and \"We couldn't finish this comparison in time\" (28%). MISLEADING: \"We don't compare this category\" (a false refusal on Arabic Opium/silencer/tactical knife, terminal, no retry); \"Comparison data was incomplete - choose different products\" (emitted from a pure asyncio.TimeoutError handler, blaming the user for our cap); the raw AttributeError text; success:true on a partial; cost=0 on 3,254 failed rows (24.6%) that burned OpenAI and Serper for up to 66s. REFUTED: \"We need a moment more on these two\" is NOT a shipped string at 76ace90 (test fixture only) and all 228 rows are the probe 'asdf vs qwer' — no user ever retried it.\n\n(3) RE-SCORE ON CREDIT RESTORE: `set -a; source .env; set +a` then `python -m scripts.eval_runner --subset smoke20 --mode regression --baseline-run-id 54b603e8-4eab-41c9-a34d-a5e391446559 --concurrency 1`. PROD-HTTP so post-deploy only; the short id 400s as invalid uuid and reads as a false GATE FAIL; --concurrency 1 on every measurement run (default is 3); a COLD smoke20 shows pass_rate=0/price=0 by design so judge the axis averages; the full 200 needs --allow-full plus GO (~600-1,000 Serper credits). TWO HONEST CAVEATS: CLAUDE.md carries two baseline run-ids (4aee8e88... \"S1 = 21.0%\" at :426 and the anchor 54b603e8... at :427) — resolve which is the gate of record before quoting a result; and OPENAI CREDIT ALONE IS NOT ENOUGH — the price axes need Serper, which is at -50 with SERPER_LIFETIME_LIMIT=0 on web, so with Serper dead every price cell grades 0. For the price-label work the mode is `--kpi usable_exact_genuine` (>=0.85/category), re-taken AFTER the local_bhd country predicate lands because today's genuine-BH numerator is inflated ~2.5x. CLOSABLE ONLY LIVE: PO-PROMPTS-11 (needs a non-empty digest = Serper, not OpenAI), PROMPTS-05/-09/-10/-02/-06 (every prompt claim is static-rendered; nothing is measured against a 2026-09 model), VERDICT-TRUTH-09 and -13 (measured on June rows that predate the prompt that changed the input distribution), VERDICT-TRUTH-02 + RM-13 (need the new metadata.partial_stage counter AND traffic), FC-05 (#107 needs a real L1/L2 round trip), PT-01/-02/-03 and RM-02/-03 (need a funded Serper key plus a canary each), and category A2b accuracy (87.8% of the corpus reaches a branch that was stubbed). Re-baseline the KPIs on the organic subset BEFORE the eval, or you compare a measurement to a fiction.\n\n(4) THE #101 PRODUCT CALL (win_margin 0.0) — STATED, NOT DECIDED. Problem: MISSING_SCORE=50 sits above _normalize_review(2.0)=40, so at prod flags an unrated product beats a 2.0-star product in 9/9 categories (electronics 55.0 vs 52.0, makeup/haircare/fragrances 52.5 vs 48.5, grocery/other 53.8 vs 50.2) while listing all six dims as missing against the loser's four. Flag ON: the unrated-vs-2-star inversion is fixed in 9/9 but becomes an EXACT 0.0 TIE in 9/9; the total-data-void shape still wins 8/9 (verifier; finder measured 4/9) because effective_weight_total hits 0, the degenerate guard logs and the code falls back to the un-renormalized legacy sum; win_margin==0.0 goes 13/144 (9.0%) -> 31/144 (21.5%) -> 45/144 (31.3%) all-on, and 18 of the 18 new zeros are exactly the rating-gap pairs the app should be most confident about. Two facts make it a product call: at an exact tie THERE IS NO TIE-BREAK IN PROD (the coverage tie-break is behind a dark flag, so the winner is whoever was passed first, PO-RUBRIC-05), and #100 manufactures ties from the other side (notation collapses to 0.0 AND a genuine 16GB-vs-512GB gap ties at 0.0). OPTIONS: (A) flip as designed and accept 21.5% zero-margin plus an order-dependent winner; (B) do not renormalize — clamp the missing injection to the dampened floor 45 instead of the midpoint 50, which removes the inversion and manufactures no ties (the \"at minimum\" half of M18 PO-rubric-03); (C) renormalize plus a real degenerate rule — when one side is a total void, route to INSUFFICIENT_DATA or award the measured product, closing the 8/9 residual; (D) renormalize + an order-symmetric tie-break + surface too_close_to_call / decided_on_coverage so the copy says \"we could only separate these on data availability\" (the only option that also unblocks #100; OTA-gated on the client half); (E) do not flip — treat it as an extraction-coverage problem first, which leaves the 9/9 inversion live meanwhile. MISSING EVIDENCE: all these rates are frequencies over the lane's constructed 2,016-run grid, not over traffic — search_logs has no category_used and the 27 recorded payloads are all <= 2026-06-21. One week of post-restore traffic with a win_margin histogram would decide it properly. U10 is BLOCKED until Ahmed answers.",
+    "ranked_ids": [
+     "PO-CATEGORIES-I18N-03",
+     "PO-VERDICT-TRUTH-01",
+     "PO-RUBRIC-01",
+     "PO-RUBRIC-02",
+     "PO-RUBRIC-09",
+     "PO-RUBRIC-10",
+     "PO-RUBRIC-03",
+     "PO-VERDICT-TRUTH-02",
+     "PO-PRICE-TRUTH-01",
+     "PO-PRICE-TRUTH-02",
+     "PO-PRICE-TRUTH-03",
+     "PO-PRICE-TRUTH-04",
+     "PO-RECORDED-MEASURED-04",
+     "PO-RECORDED-MEASURED-03",
+     "PO-FACTCHECK-CONFIDENCE-04",
+     "PO-FACTCHECK-CONFIDENCE-03",
+     "PO-FACTCHECK-CONFIDENCE-01",
+     "PO-FACTCHECK-CONFIDENCE-02",
+     "PO-CATEGORIES-I18N-01",
+     "PO-PROMPTS-11",
+     "PO-RECORDED-MEASURED-05",
+     "PO-PRICE-TRUTH-07",
+     "PO-PRICE-TRUTH-08",
+     "PO-RECORDED-MEASURED-02",
+     "PO-RUBRIC-11",
+     "PO-RUBRIC-05",
+     "PO-CATEGORIES-I18N-09",
+     "PO-VERDICT-TRUTH-14",
+     "PO-VERDICT-TRUTH-03",
+     "PO-FACTCHECK-CONFIDENCE-10",
+     "PO-RECORDED-MEASURED-01",
+     "PO-RECORDED-MEASURED-10",
+     "PO-CATEGORIES-I18N-04",
+     "PO-CATEGORIES-I18N-11",
+     "PO-FACTCHECK-CONFIDENCE-12",
+     "PO-FACTCHECK-CONFIDENCE-08",
+     "PO-FACTCHECK-CONFIDENCE-05",
+     "PO-FACTCHECK-CONFIDENCE-09",
+     "PO-VERDICT-TRUTH-07",
+     "PO-VERDICT-TRUTH-04",
+     "PO-VERDICT-TRUTH-06",
+     "PO-VERDICT-TRUTH-08",
+     "PO-VERDICT-TRUTH-09",
+     "PO-VERDICT-TRUTH-13",
+     "PO-PRICE-TRUTH-10",
+     "PO-PRICE-TRUTH-05",
+     "PO-PRICE-TRUTH-06",
+     "PO-PRICE-TRUTH-09",
+     "PO-PRICE-TRUTH-13",
+     "PO-RUBRIC-04",
+     "PO-RUBRIC-06",
+     "PO-RUBRIC-07",
+     "PO-RUBRIC-08",
+     "PO-RUBRIC-12",
+     "PO-CATEGORIES-I18N-02",
+     "PO-CATEGORIES-I18N-06",
+     "PO-CATEGORIES-I18N-07",
+     "PO-CATEGORIES-I18N-10",
+     "PO-CATEGORIES-I18N-13",
+     "PO-PROMPTS-01",
+     "PO-PROMPTS-02",
+     "PO-PROMPTS-05",
+     "PO-PROMPTS-06",
+     "PO-PROMPTS-13",
+     "PO-PROMPTS-03",
+     "PO-PROMPTS-04",
+     "PO-PROMPTS-07",
+     "PO-PROMPTS-08",
+     "PO-PROMPTS-09",
+     "PO-PROMPTS-10",
+     "PO-RECORDED-MEASURED-06",
+     "PO-RECORDED-MEASURED-07",
+     "PO-RECORDED-MEASURED-08",
+     "PO-RECORDED-MEASURED-11",
+     "PO-RECORDED-MEASURED-12",
+     "PO-RECORDED-MEASURED-13",
+     "PO-RECORDED-MEASURED-17",
+     "PO-FACTCHECK-CONFIDENCE-06",
+     "PO-FACTCHECK-CONFIDENCE-07",
+     "PO-FACTCHECK-CONFIDENCE-11",
+     "PO-FACTCHECK-CONFIDENCE-13",
+     "PO-VERDICT-TRUTH-10",
+     "PO-VERDICT-TRUTH-11",
+     "PO-VERDICT-TRUTH-12",
+     "PO-CATEGORIES-I18N-05",
+     "PO-CATEGORIES-I18N-12",
+     "PO-RECORDED-MEASURED-15",
+     "PO-RECORDED-MEASURED-16",
+     "PO-RUBRIC-13",
+     "PO-RUBRIC-14",
+     "PO-PRICE-TRUTH-12",
+     "PO-PROMPTS-14",
+     "PO-PROMPTS-15",
+     "PO-FACTCHECK-CONFIDENCE-14",
+     "PO-FACTCHECK-CONFIDENCE-15",
+     "PO-RECORDED-MEASURED-18",
+     "PO-VERDICT-TRUTH-05",
+     "PO-VERDICT-TRUTH-15",
+     "PO-CATEGORIES-I18N-14",
+     "PO-CATEGORIES-I18N-08",
+     "PO-PRICE-TRUTH-11",
+     "PO-PROMPTS-12",
+     "PO-RECORDED-MEASURED-09",
+     "PO-RECORDED-MEASURED-14"
+    ],
+    "proposed_units": [
+     {
+      "unit": "U1 - /url/compare returns instead of crashing",
+      "findings": [
+       "PO-VERDICT-TRUTH-01"
+      ],
+      "files": [
+       "app/services/url_extraction_service.py:575",
+       "app/services/url_extraction_service.py:583",
+       "app/services/extraction_service.py:2312"
+      ],
+      "flag": "none - the tuple unpack is strictly less broken; the separate re-route through build_comparison_response ships later behind ENABLE_URL_COMPARE_UNIFIED_CONTRACT",
+      "tests_first": [
+       "tests/test_url_compare_contract.py::test_compare_from_urls_returns_dict_not_crash - patch ONLY extract_from_url, _resolve_pair_category and generate_comparison to their production shapes; RED today with AttributeError: 'tuple' object has no attribute 'get' at line 583",
+       "tests/test_url_compare_contract.py::test_generate_comparison_returns_two_tuple - assert len(await generate_comparison(...)) == 2 so caller-side unpack drift is caught"
+      ],
+      "gates": "TDD red-first; module-reference comm gate (grep the test tree for url_extraction_service + extraction_service references, run at BASE and HEAD, branch-only-NEW == []); no price path so no byte-identity gate; Fable review before commit",
+      "order_reason": "A whole input mode has been 100% dead on the success path since 2026-03-13 (32f127e changed the callee, this call site was never updated), and every attempt burns two paid extractions AND a gpt-4o verdict before the crash. FOLD INTO THE CROSS-LANE METERING UNIT (MB-RECONCILE-07 / MB-NETWORK-CONTRACT-14) - metering a dead route is pointless, and the orchestrator has already assigned that unit to this session so the other session must skip A1/A6."
+     },
+     {
+      "unit": "U2 - Arabic blocklist parity",
+      "findings": [
+       "PO-CATEGORIES-I18N-03",
+       "PO-CATEGORIES-I18N-09"
+      ],
+      "files": [
+       "app/data/content_blocklist.json:53",
+       "app/data/content_blocklist.json:13"
+      ],
+      "flag": "none - a data file whose change strictly NARROWS a fail-closed block",
+      "tests_first": [
+       "tests/test_content_blocklist_opium_legitimate_products.py::test_arabic_opium_brand_name_no_longer_blocks - check_query_intent on the Arabic YSL Opium phrasing must be allowed; RED today (allowed=False, reason=illegal_drugs)",
+       "the Arabic twins of commit 9f6e498's five EN regression tests (the drug phrases must still block)",
+       "a catalog-parity test: no bare single-word AR entry may survive where its EN counterpart was tightened to a multi-word form"
+      ],
+      "gates": "TDD red-first; module-reference comm gate (content_safety_service + the blocklist data file); no price path; Fable review before commit",
+      "order_reason": "The ONLY product-output defect reachable at this instant with both vendors dead - the L1 prefilter runs before any API call. It is terminal (no retry path), it blocks a top-selling GCC fragrance in the primary market's own language while the English twin works, and it is the exact bug 9f6e498 declared fixed with an EN-only regression suite. Audit the next likely collision in the same pass."
+     },
+     {
+      "unit": "U3 - ambiguous category tokens",
+      "findings": [
+       "PO-CATEGORIES-I18N-01",
+       "PO-CATEGORIES-I18N-07",
+       "PO-CATEGORIES-I18N-06",
+       "PO-CATEGORIES-I18N-02"
+      ],
+      "files": [
+       "app/services/extraction_service.py:1072-1120",
+       "app/services/structured_comparison_service.py:369"
+      ],
+      "flag": "ENABLE_AMBIGUOUS_CATEGORY_TOKENS, default OFF, read per call via os.getenv",
+      "tests_first": [
+       "tests/test_category_classifier_ambiguous_tokens.py::test_pharmacy_tablets_are_not_electronics - classify_category_from_text('Panadol Extra 24 tablets vs Adol 500 tablets') != 'electronics' AND _resolve_pair_category(explicit_pair, 'supplements', parser_path=False)[0] == 'supplements'; RED today (electronics, chip overridden)",
+       "tests/test_category_classifier_ambiguous_tokens.py::test_device_tablet_sense_survives - 'Samsung Galaxy Tab S10 tablet 256GB' must still classify electronics. BOTH nodes are required: together they rule out the naive token-drop the finder proposed, which its own companion test would fail"
+      ],
+      "gates": "TDD red-first; module-reference comm gate; flag-OFF EQUALITY asserted over the lane's 360-query corpus (the _proof OVERALL SHA256 is the wrong gate here - extract_price_from_html is untouched); Fable review before commit",
+      "order_reason": "Category selects the spec schema, the six dimensions, CATEGORY_FAIRNESS and the category-gated price adapters, and the app's only path is explicit_pair where the deterministic token map OUTRANKS the user's chip. Pharmacy is a stated GCC launch category and 'tablets' is its single most common word."
+     },
+     {
+      "unit": "U4 - shopping rung: parse the currency you stamp",
+      "findings": [
+       "PO-PRICE-TRUTH-01",
+       "PO-PRICE-TRUTH-02",
+       "PO-PRICE-TRUTH-03"
+      ],
+      "files": [
+       "app/services/price_service.py:9572",
+       "app/services/price_service.py:9584",
+       "app/services/price_service.py:9436-9511"
+      ],
+      "flag": "rides the existing ENABLE_SHOPPING_STRICT_CURRENCY (default OFF); extend shopping_strict_currency_pend so an unresolvable residue pends rather than parses",
+      "tests_first": [
+       "tests/test_shopping_currency_display_tokens.py - parametrise ('22.500 BD',22.5), ('8.750 KD',10.7625), ('250 SR',25.075), ('32,000 QR',3305.6) through extract_price_from_shopping with currency='BHD'; RED today returning 22500.0 / 8750.0 / 250.0 / 32000.0, all stamped local_bhd",
+       "tests/test_shopping_foreign_iso_pend.py - with ENABLE_SHOPPING_STRICT_CURRENCY=true and ENABLE_EXTENDED_FALLBACK_RATES=false, each of TRY/PLN/CHF/SEK/DKK/CAD/EGP/JOD/ZAR/MYR must pend; RED today (raw number stamped local_bhd in both flag states)"
+      ],
+      "gates": "TDD red-first; module-reference comm gate; FLAG-OFF BYTE-IDENTITY REQUIRED (scripts/verify_flag_byte_identity.py over _proof, 414 pages / 1,656 calls, identical OVERALL SHA256 at base and HEAD with every new flag forced OFF; read _proof in sc-scraper-proof, never write there); Fable review before commit",
+      "order_reason": "1000x on the home currency's own notation, stamped as the strongest genuine label, showable, cached 7 days, zero price-authority penalty - and M13-09's dark flag does NOT catch it because the residue 'BD' resolves to the TARGET currency and correctly declines to pend after the damage was done at parse time. Latent only while Serper is unfunded, so THIS LANDS BEFORE ANY SERPER TOP-UP. PO-PRICE-TRUTH-03's flip comes after -01 and -02 land, in its own window, with ENABLE_EXTENDED_FALLBACK_RATES with-or-before it."
+     },
+     {
+      "unit": "U5 - local_bhd needs a country predicate; the search link leaves price.url",
+      "findings": [
+       "PO-RECORDED-MEASURED-02",
+       "PO-RECORDED-MEASURED-03"
+      ],
+      "files": [
+       "app/services/price_service.py:9678",
+       "app/services/price_service.py:9682",
+       "app/services/price_service.py:1744-1755"
+      ],
+      "flag": "ENABLE_REGION_SOURCED_LOCAL_LABEL and ENABLE_SHOPPING_DISCOVERY_URL_SPLIT, both default OFF",
+      "tests_first": [
+       "tests/test_local_bhd_requires_bh_host.py - a shopping item {source:'Best Buy', link:'https://www.google.com/search?ibp=oshop&q=x', price:'259.44'} at currency='BHD' must not stamp source_method='local_bhd'; RED today",
+       "tests/test_shopping_price_not_self_pending.py - a shopping candidate built through extract_price_from_shopping with a google.com search link and a matching title must be showable; RED today (False, guard_rejected='non_pdp_url')"
+      ],
+      "gates": "TDD red-first; module-reference comm gate; FLAG-OFF BYTE-IDENTITY REQUIRED over the 414-page _proof corpus; Fable review before commit",
+      "order_reason": "HARD ORDERING FROM THE ORCHESTRATOR: the host/country predicate lands WITH or BEFORE the url split. 1,032 of the 1,484 local_bhd rows are currently hidden by the live non-PDP guard, so splitting the url first un-pends 857 google-hosted rows straight onto a label that is 81.8% wrong. Backfill/expire those cache rows in the same change, and publish the re-measured genuine-BH share the day it flips - the number falls hard and the fall is the fix working (the KPI numerator is inflated ~2.5x today)."
+     },
+     {
+      "unit": "U6 - the showable guard reads the identity the extractor writes",
+      "findings": [
+       "PO-PRICE-TRUTH-04"
+      ],
+      "files": [
+       "app/services/price_service.py:1694",
+       "app/services/structured_comparison_service.py:1570",
+       "app/services/structured_comparison_service.py:1662",
+       "app/services/structured_comparison_service.py:1741"
+      ],
+      "flag": "ENABLE_SHOWABLE_NAME_IDENTITY, default OFF - stricter-only, but the price-path rule stands",
+      "tests_first": [
+       "tests/test_showable_reads_name_identity.py - is_price_showable('Xerjoff Ilm Eau de Parfum', {'amount':94.0,'currency':'BHD','source_method':'converted_usd','url':'https://scentsplit.com/products/xerjoff-ilm-sample-decants','name':\"'Ilm Sample & Decants by Xerjoff\"}, 'fragrances', enforce_correctness=True) must be False; RED today (True, sample_guard=False)"
+      ],
+      "gates": "TDD red-first; module-reference comm gate; FLAG-OFF BYTE-IDENTITY REQUIRED; Fable review before commit",
+      "order_reason": "One line (title or name) re-arms a guard the codebase already ships, across the whole page-scrape rung - 176 of 414 corpus captures, with ENABLE_PAGE_SCRAPE=true in prod - where a listing whose own name says 'Sample & Decants' or '1ml Sample' is currently shown as the product's price. The same key drift blanks the L2 content-safety surface. Then audit every other price.get('title') reader."
+     },
+     {
+      "unit": "U7 - score the price you are willing to show",
+      "findings": [
+       "PO-RECORDED-MEASURED-04"
+      ],
+      "files": [
+       "app/services/structured_comparison_service.py:3373-3418",
+       "app/services/response_builder.py:1522"
+      ],
+      "flag": "ENABLE_PRESCORING_SHOWABLE_GUARD, default OFF",
+      "tests_first": [
+       "tests/test_prescoring_showable_guard.py - two products whose prices carry a non-PDP (google search) url, run the sync compare path with a stubbed LLM, and assert overview.winner.reason carries no price-derived margin and breakdown.value_score takes the honest missing path. VERIFIER CAVEAT, LOAD-BEARING: assert on the margin/breakdown, NOT on missing_data - 'value_score' is ALREADY in missing_data at HEAD (see PO-RUBRIC-01), so that assertion is green today and would pin nothing"
+      ],
+      "gates": "TDD red-first; module-reference comm gate; FLAG-OFF BYTE-IDENTITY REQUIRED; Fable review before commit",
+      "order_reason": "Mirrors exactly what apply_region_currency_guard (#113) already did for the currency half - the correctness gate never got the same pre-scoring pass, and the code's own comment at price_service.py:2992 names this hazard for the currency half only. Expect winner flips; that is the point. Land AFTER U5 so the two guards move the pend set once rather than twice."
+     },
+     {
+      "unit": "U8 - a partial must not crown anyone",
+      "findings": [
+       "PO-VERDICT-TRUTH-02"
+      ],
+      "files": [
+       "app/services/response_builder.py:1105-1146",
+       "app/services/structured_comparison_service.py:2956"
+      ],
+      "flag": "none - a degraded path only; the new metadata.partial_stage counter ships in the same unit",
+      "tests_first": [
+       "tests/test_partial_response_no_fabricated_scores.py::test_partial_without_scoring_emits_no_overall_score - build_comparison_response(product_data=[A,B], comparison={}, scoring_result={}, metadata={'partial':True}) must emit no numeric overall_score and no win_margin; RED today at product_a=70 / product_b=69 / win_margin=1 / a factual_verdict naming product_0",
+       "an orchestrator twin: set _partial_scoring_result={} and assert _build_partial_response(elapsed_seconds=30.0) ships no numeric overall_score"
+      ],
+      "gates": "TDD red-first; module-reference comm gate; no price path; Fable review before commit",
+      "order_reason": "On a 30s hard-cap partial the user is shown a DEFINITIVE winner chosen by input order (raw defaults of 50 -> calibrate_score(50)=70 both -> a tie-nudge writes the loser to 69) while overall_score is null and scoring.scores is {}. RETURN null/ABSENT, NEVER {} - the verifier measured that {} is truthy in JS, so ResultsScreen.tsx:746 would not fall back and the fix would silently do nothing. Widen results.partial.note, which today mentions only prices. The FE half is OTA-gated."
+     },
+     {
+      "unit": "U9 - stop reporting measured data as missing",
+      "findings": [
+       "PO-RUBRIC-01",
+       "PO-RUBRIC-02",
+       "PO-RUBRIC-03",
+       "PO-RUBRIC-08"
+      ],
+      "files": [
+       "app/services/scoring_service.py:262-286",
+       "app/services/scoring_service.py:328-334",
+       "app/services/scoring_service.py:2113-2155",
+       "app/services/scoring_service.py:2225-2233"
+      ],
+      "flag": "ENABLE_VALUE_DIM_PARTIAL_SIGNAL and ENABLE_TIE_IS_NOT_MISSING, both default OFF",
+      "tests_first": [
+       "tests/test_scoring_value_dim_missing_contract.py::test_decisive_dim_is_never_reported_missing - on the 50-vs-52 BHD identical-spec electronics pair, no dimension contributing more than 1.0 point of the margin may appear in missing_data or resolve 'N/A' in dimension_winners; RED today (value_score contributes 14.0 of 14.0 and is both)",
+       "tests/test_scoring_tie_collapse.py::test_equal_strong_signal_is_not_reported_missing - two products with identical full specs, both 4.5 stars / 900 reviews / identical fully-verified fact_check must keep their measured reliability (breakdown >= 90) and carry no missing stamp; RED today (4 of 6 dims stamped, all three signals at the 50 sentinel)",
+       "tests/test_scoring_fashion_other_spec_dim.py::test_spec_dim_can_separate_two_fashion_products - two clearly different fashion products with identical field COUNT must separate on craft_score by more than the 3.0 tie margin; RED today (both spec_raw exactly 1.0)"
+      ],
+      "gates": "TDD red-first; module-reference comm gate; FLAG-OFF BYTE-IDENTITY REQUIRED (scoring is downstream of the price path and the goldens are co-located - regenerate the four *_flag_off_golden.json for the flag-ON arm only); Fable review before commit",
+      "order_reason": "53.7% of product_0 dimension cells carry a missing stamp at prod flags, and this is the mechanism that hands the paid gpt-4o verdict prompt 'Score winner: Brand A (clear lead)' and 'Dimension leaders: ... value=N/A, core function=N/A' in the SAME block - a direct driver of fabricated justification. Independent of U10's product call, and a precondition for U10's evidence being readable at all."
+     },
+     {
+      "unit": "U10 - the #100/#101/#102/#103 activation set, with its preconditions",
+      "findings": [
+       "PO-RUBRIC-09",
+       "PO-RUBRIC-10",
+       "PO-RUBRIC-05",
+       "PO-RUBRIC-11",
+       "PO-RUBRIC-12",
+       "PO-RUBRIC-04"
+      ],
+      "files": [
+       "app/services/scoring_service.py:297",
+       "app/services/scoring_service.py:1486-1497",
+       "app/services/scoring_service.py:1789-1826",
+       "app/services/scoring_service.py:1930-1935",
+       "app/services/scoring_service.py:2496-2533",
+       "app/services/response_builder.py:1706"
+      ],
+      "flag": "inside the four existing flags (ENABLE_MISSING_DIM_RENORM, ENABLE_SPEC_FIELD_NORM, ENABLE_CATEGORY_VALUE_BADGE, ENABLE_BEHAVIORAL_DIM_TRANSLATION) plus ONE new dark flag for the order-symmetric tie-break",
+      "tests_first": [
+       "tests/test_scoring_missing_beats_measured.py::test_no_data_never_outscores_measured_data - parametrised over 9 categories x {unrated_vs_2star, nodata_vs_measured_bad} x {flag off, ENABLE_MISSING_DIM_RENORM on}; RED 9/9 flag-off and 4-8/9 flag-on",
+       "tests/test_scoring_spec_field_normalization.py::test_notation_gap_ties_and_real_gap_separates - ('5000 mAh' vs '5 Ah') must yield win_margin 0.0 AND the same winner in both product orders, while ('16 GB' vs '512 GB') must yield win_margin > 3.0 for the 512 GB side; RED in BOTH flag states today (0.3 off, 0.0 on)",
+       "tests/test_value_badge_category_dims.py::test_no_badge_when_the_value_dim_is_missing - two products with no price and no specs must carry no value_badge and the payload must not default one; RED under both flags today ('fair_price')"
+      ],
+      "gates": "TDD red-first; module-reference comm gate; FLAG-OFF BYTE-IDENTITY REQUIRED; Fable review before commit",
+      "order_reason": "BLOCKED ON THE #101 PRODUCT CALL - do not implement until Ahmed answers (options A-E and the measured evidence are in section 1d of the report). Hard ordering regardless of the answer: the order-symmetric tie-break lands BEFORE ENABLE_SPEC_FIELD_NORM is flipped, because that flag converts notation pairs into exact 0.0 ties whose winner reverts to input order, and its >=10x guard also ties a GENUINE 16GB-vs-512GB gap at 0.0."
+     },
+     {
+      "unit": "U11 - one confidence computation, not two",
+      "findings": [
+       "PO-FACTCHECK-CONFIDENCE-02",
+       "PO-FACTCHECK-CONFIDENCE-12",
+       "PO-FACTCHECK-CONFIDENCE-11",
+       "PO-FACTCHECK-CONFIDENCE-06"
+      ],
+      "files": [
+       "app/services/response_builder.py:1055",
+       "app/services/structured_comparison_service.py:2978-2980",
+       "app/services/structured_comparison_service.py:3528-3529",
+       "app/services/structured_comparison_service.py:4138-4139"
+      ],
+      "flag": "none for the threading - it makes two surfaces in one payload agree and can worsen neither",
+      "tests_first": [
+       "a builder red test: build_comparison_response with a computed confidence dict carrying legs.price='acceptable' and from_cache=True must yield scoring_v2.confidence_legs == overview.confidence.legs and confidence_details.price.freshness == 'cached'; RED today ('weak' / 'live', sources_count 0)"
+      ],
+      "gates": "TDD red-first; module-reference comm gate; no price path; Fable review before commit",
+      "order_reason": "The pill row users act on comes from a strictly worse-informed second compute_confidence call than the one persisted beside it: its 'Medium' state is unreachable dead code on the shipped client, two recorded rows already disagree inside one payload, and it tells the user 'Pricing checked just now' on a fully cached comparison. Sequence the shopping_count half after PO-FACTCHECK-CONFIDENCE-06 gives that field a real (listing, not product) value."
+     },
+     {
+      "unit": "U12 - the fact-check activation chain (#107 -> cache roll -> #106 -> #109, with #108 sequenced)",
+      "findings": [
+       "PO-FACTCHECK-CONFIDENCE-03",
+       "PO-FACTCHECK-CONFIDENCE-04",
+       "PO-FACTCHECK-CONFIDENCE-01",
+       "PO-FACTCHECK-CONFIDENCE-05",
+       "PO-FACTCHECK-CONFIDENCE-08",
+       "PO-FACTCHECK-CONFIDENCE-09",
+       "PO-FACTCHECK-CONFIDENCE-10"
+      ],
+      "files": [
+       "app/services/scoring_service.py:982-989",
+       "app/services/scoring_service.py:1018-1022",
+       "app/services/scoring_service.py:1958-1976",
+       "app/services/fact_check_service.py:426-447"
+      ],
+      "flag": "no new flags - the four existing ones (ENABLE_SPEC_CONFIDENCE_CACHE, ENABLE_FACTCHECK_CURRENCY_NORMALIZATION, ENABLE_CITATION_RUBRIC_V2, ENABLE_CONFIDENCE_FACTCHECK_WIRING), plus the one-line specs_unverified exclusion and the _score_reliability None return, both INSIDE #109's gate",
+      "tests_first": [
+       "a prod-default red test: given two products whose fact_check is all-unverified with price_verified=False at 89.8%, compute_confidence(...)['legs'] must contain 'strong' for neither specs nor price; RED today (both strong)",
+       "a prod-default red test: verify_price({'amount':250.0,'currency':'BHD','estimated':False}, [{'price':'AED 250.00'}]*3)['price_verified'] must be False; RED today (True at 0.0% deviation)",
+       "assert ScoringService()._score_reliability({'specs_verified':0,'specs_likely':0,'specs_flagged':0,'specs_unverified':11,'price_verified':False}) is None; RED today (0.3 for every unverified count)"
+      ],
+      "gates": "TDD red-first; module-reference comm gate; no price path; Fable review before commit; one canary compare per activation step, never batched",
+      "order_reason": "Mostly activation rather than construction, but THE ORDER IS THE DELIVERABLE: #107 -> wait for the 7d L1 / 30d L2 specs cache to roll (it is a measured no-op until then) -> #106 -> #109. ADD #108 TO THAT DOCSTRING - it is absent, and flipping it alone promotes contradicted fields into user-facing 'source citations' (6 flagged + 1 unverified + 1 verified renders a strong specs pill and 'Backed by 8 source citations'). Until the chain lands, verify_price certifies the 9.8x wrong-currency error and rejects the correct price."
+     },
+     {
+      "unit": "U13 - never ship str(e), never blame the user for our timeout",
+      "findings": [
+       "PO-RECORDED-MEASURED-05",
+       "PO-VERDICT-TRUTH-11",
+       "PO-VERDICT-TRUTH-12"
+      ],
+      "files": [
+       "app/services/structured_comparison_service.py:3659",
+       "app/services/structured_comparison_service.py:4429",
+       "app/services/structured_comparison_service.py:3115",
+       "app/api/text_routes.py:144",
+       "app/api/text_routes.py:747"
+      ],
+      "flag": "none - it only narrows what leaves the process",
+      "tests_first": [
+       "tests/test_text_route_never_leaks_exception.py - patch the comparison service to return {'success': False, 'error': 'relation \"comparisons\" does not exist'} with no 'code', POST /api/v1/text/compare, and assert the 400 detail equals the constant copy and contains no 'relation'; RED today"
+      ],
+      "gates": "TDD red-first; module-reference comm gate; no price path; Fable review before commit",
+      "order_reason": "Two measured production rows shipped a Python AttributeError as the user-facing error copy, and the SSE variant emits the raw string as an 'error' event payload to any connected client. str(e) on this path can carry Supabase hostnames, table names and SQLSTATE codes - which is exactly why image_routes was fixed by M13-26, whose own comment falsely claims it mirrors text_routes. Classic fixed-once-never-propagated. The other session's A11 fixes the CLIENT copy only; the backend envelope half is this session's."
+     },
+     {
+      "unit": "U14 - measurement truth",
+      "findings": [
+       "PO-RECORDED-MEASURED-01",
+       "PO-RECORDED-MEASURED-07",
+       "PO-RECORDED-MEASURED-10",
+       "PO-RECORDED-MEASURED-11",
+       "PO-RECORDED-MEASURED-17",
+       "PO-CATEGORIES-I18N-13"
+      ],
+      "files": [
+       "app/services/analytics_service.py:12-32",
+       "app/services/analytics_service.py:59-74",
+       "app/services/database_service.py:499",
+       "app/api/text_routes.py:230",
+       "app/api/text_routes.py:630",
+       "app/api/url_routes.py",
+       "migrations/0NN_search_logs_is_synthetic.sql (new)"
+      ],
+      "flag": "none - admin read paths plus one nullable column",
+      "tests_first": [
+       "tests/test_analytics_probe_filter.py - insert (into a fake client) 10 rows of query='product1 vs product2' at duration_ms=0 plus 2 real rows at 22,000ms; assert get_daily_stats()['avg_duration_ms'] == 22000 and get_popular_queries()[0]['query'] is not the probe; RED today (3,667ms and the probe query)"
+      ],
+      "gates": "TDD red-first; module-reference comm gate; the migration reviewed as DDL (index predicates IMMUTABLE, rollback written); no price path; Fable review before commit",
+      "order_reason": "Every KPI this campaign, M18 and /admin/analytics quote is computed over 13 test strings (88.6% of the series), and three sibling lanes in THIS campaign cited the inflated counts as user-behaviour evidence. Failure rows are recorded at $0 cost, text_stream shows 721/721 success lifetime with no partial counter, and /url/compare is invisible to every KPI. LAND THIS BEFORE ANY LAUNCH GATE OR EVAL BASELINE READS A NUMBER."
+     },
+     {
+      "unit": "U15 - prompt truth (UNFLAGGED by nature)",
+      "findings": [
+       "PO-PROMPTS-11",
+       "PO-PROMPTS-01",
+       "PO-PROMPTS-02",
+       "PO-PROMPTS-05",
+       "PO-PROMPTS-06",
+       "PO-PROMPTS-13",
+       "PO-PROMPTS-03"
+      ],
+      "files": [
+       "app/services/extraction_service.py:614-616",
+       "app/services/extraction_service.py:824-832",
+       "app/services/extraction_service.py:937",
+       "app/services/extraction_service.py:1030",
+       "app/services/extraction_service.py:1042",
+       "app/services/openai_service.py:285",
+       "app/services/prompt_personalities.py:47",
+       "app/services/prompt_personalities.py:77",
+       "app/services/model_config.py (the 12 bypassing call sites)"
+      ],
+      "flag": "THERE IS NO FLAG FOR PROMPT TEXT - a prompt is a string in a module, so no os.getenv can fork it. The only lever is the existing ENABLE_SPECS_NO_FABRICATION for the specs guard; the fence, the ban/mandate contradiction and the model_config helper adoption ship unflagged",
+      "tests_first": [
+       "extend tests/test_prompt_fence.py - a snippet carrying a literal </SEARCH_RESULTS> plus an instruction must not escape its region in extract_specs_targeted OR in COMPARISON_SYSTEM, and the raw product name must be sanitised before it reaches the system role; RED today (openai_service imports no sanitizer at all and the verdict prompt carries no SEARCH_RESULTS guard)",
+       "tests/test_specs_prompt.py::test_shipped_prompt_does_not_license_training_data - 'fall back to your training data' must not appear in _build_specs_prompt(...)['system'] with the flag UNSET; it stays RED until the flag becomes the default, which is exactly the CI signal you want"
+      ],
+      "gates": "TDD red-first; module-reference comm gate; no price path; Fable review before commit; AND - because there is no flag - THE CANARY IS THE ENTIRE GATE: (1) offline, render the real _build_specs_prompt / COMPARISON_SYSTEM in both flag states and diff the rendered strings, assert the fence tests, assert resolved_models() unchanged; (2) post-deploy, eval_runner --subset smoke20 --concurrency 1 against the 54b603e8-4eab-41c9-a34d-a5e391446559 anchor judged on the AXIS AVERAGES not pass_rate, watching the '[specs] no-fabrication guard dropped N uncited field(s)' log line - COVERAGE FALLING IS THE SUCCESS SIGNAL; (3) N=20 real queries via /text/compare?nocache=true scored on this lane's manual rubric (winner name == winner index == prose subject, provenance labels honest, no score internals in pros/cons, cons non-empty and not a data-gap complaint) because the eval gold set contains none of these shapes; (4) watch the existing WINNER_INDEX_MISMATCH warning, the cheapest signal that a prompt edit moved the model away from the deterministic winner. OPENAI PROMPT-CACHE RE-WARM COST: the shipped specs prefix measures 2,121 tokens and the verdict prefix 2,241 (tiktoken, this lane) - both above the 1,024-token caching threshold and correctly static-prefix-first; price 555 / reviews 769 / parser 658 / critique 293 / extract_specs_targeted ~41 are ineligible either way. Any edit to a cached prefix INVALIDATES it, so the first call after each deploy pays full input price for ~2.1-2.2k tokens and the cache re-warms on the next request, with entries evicting after roughly 5-10 minutes idle (pricing/eviction is provider documentation, not a measurement here). At today's ~0 traffic every call is already a miss so the re-warm cost is NIL; at launch traffic it is one full-price prefix per cold window per prompt per deploy. The structural hazard matters more than the money: an edit that inserts dynamic text BEFORE the static prefix destroys cache eligibility permanently - which is the state extract_specs_targeted is already in. Keep every edit after the static-prefix boundary",
+      "order_reason": "The shipped specs prefix ORDERS the model to fill required schema fields from training data (four separate licences), empty fields are stamped 'N/A' and the result is cached 7 days - so every schema field of every uncached product can reach the user as a confident value with no snippet behind it. The guard is dark AND its precondition (a working search layer) is unmet, so this is an ORDERED ACTIVATION, not a code change: restore Serper, confirm non-empty digests, then flip ENABLE_SPECS_NO_FABRICATION LAST, in the same window as the #101 decision and the never-empty-cons rule."
+     },
+     {
+      "unit": "U16 - display contract: one spelling, one margin, one verdict",
+      "findings": [
+       "PO-VERDICT-TRUTH-03",
+       "PO-VERDICT-TRUTH-04",
+       "PO-VERDICT-TRUTH-06",
+       "PO-VERDICT-TRUTH-07",
+       "PO-VERDICT-TRUTH-08",
+       "PO-VERDICT-TRUTH-09",
+       "PO-VERDICT-TRUTH-14"
+      ],
+      "files": [
+       "app/services/response_builder.py:1136-1174",
+       "app/services/response_builder.py:1387",
+       "app/services/response_builder.py:1635",
+       "app/services/response_builder.py:1801",
+       "app/services/structured_comparison_service.py:4266",
+       "app/api/home_routes.py:503",
+       "app/api/home_routes.py:527",
+       "app/api/profile_routes.py:206"
+      ],
+      "flag": "none - restoring intended behaviour; the dedup_brand_name wiring rides the existing helper",
+      "tests_first": [
+       "the SSE 'verdict' event payload must equal the 'complete' payload after scrubbing (RED today: verdict ships the RAW unscrubbed comparison dict)",
+       "overview.winner.margin == scoring_v2.win_margin (RED on 23/23 recorded rows)",
+       "/home/smart-pick and /profile/recent-decisions names must be deduped (RED on 16/26 recorded rows: 'TOM FORD TOM FORD OUD WOOD 100 ML')",
+       "retailer_quotes and the BC products alias must pass the score-internals scrub (RED today: never scrubbed at all)"
+      ],
+      "gates": "TDD red-first; module-reference comm gate; no price path; Fable review before commit",
+      "order_reason": "Two different numbers ship as the verdict 'margin' in every payload (raw vs calibrated, ~2:1) and the client's 'strong win' CTA threshold reads the calibrated one, so the CTA fires at 13% where 41% was intended. Overlaps the mobile lane on the client half - coordinate before filing so one owner ships it."
+     },
+     {
+      "unit": "U17 - Arabic on the results surface",
+      "findings": [
+       "PO-CATEGORIES-I18N-04",
+       "PO-CATEGORIES-I18N-10",
+       "PO-CATEGORIES-I18N-11",
+       "PO-CATEGORIES-I18N-02",
+       "PO-CATEGORIES-I18N-05",
+       "PO-CATEGORIES-I18N-12"
+      ],
+      "files": [
+       "SmartCompareApp/src/components/results/DimensionBars.tsx:313",
+       "SmartCompareApp/src/components/results/ResultsContent.tsx:143",
+       "SmartCompareApp/src/screens/ResultsScreen.tsx:774",
+       "app/services/extraction_service.py:1849"
+      ],
+      "flag": "client-side; React Native has no per-call env flag - the gate is the OTA channel itself",
+      "tests_first": [
+       "a jest fence: every dimension label rendered on the hero bars must resolve through a results.dimension.* key present in BOTH en.json and ar.json; RED today (the key family does not exist - all 52 labels render raw English from the backend)",
+       "a jest test that a price string under lng='ar' does not mix numeral systems or currency-side between Results and History"
+      ],
+      "gates": "TDD red-first (jest); module-reference comm gate over the jest suite; no price path; Fable review before commit",
+      "order_reason": "52 scoring-dimension labels render raw English on the primary results surface of a bilingual app, and every verdict, review summary and pros/cons an Arabic user reads is English because no compare route accepts a locale, the client sends none and no prompt asks for Arabic. SHIPS ONLY WITH THE NEXT eas update --branch preview from >=76ace90, which is Ahmed-gated and already the campaign's top mobile action - phones run 97b5f15, which predates all four M21 waves."
+     },
+     {
+      "unit": "U18 - (NOT OURS) the #51/#52 price-provenance pair",
+      "findings": [
+       "PO-PRICE-TRUTH-07",
+       "PO-PRICE-TRUTH-08",
+       "PO-PRICE-TRUTH-13"
+      ],
+      "files": [
+       "app/services/price_service.py:15586",
+       "app/services/structured_comparison_service.py:1657",
+       "app/services/structured_comparison_service.py:1736"
+      ],
+      "flag": "ENABLE_IHERB_PAGE_CURRENCY and ENABLE_CONVERTED_PROVENANCE_STAMP - both already written on the OTHER session's branch (334d300, e748cbb), both absent from Railway",
+      "tests_first": [
+       "their tests/test_iherb_page_currency_signal.py and tests/test_converted_provenance_fanout.py already pin both directions",
+       "add here only the AST/grep pin that no fan-out site may assign a member of _GENUINE_BH_SOURCE_METHODS over a source_method that is already 'converted_usd', so a future scraper cannot re-introduce it"
+      ],
+      "gates": "theirs, plus FLAG-OFF BYTE-IDENTITY on merge; Fable review of the merge, not of a new implementation",
+      "order_reason": "DO NOT BUILD. Both are confirmed still-open at 76ace90 and in prod (fetch_iherb_price compares a variable with itself so every iHerb price is stamped local_bhd regardless of the page currency; the firecrawl/scrapedo fan-out overwrites the extractor's honest converted_usd with a genuine-BH method, and 91% of corpus captures are converted), but the fixes exist on feature/m22-price-truth-cluster, unmerged and ungated. Re-verify after their merge, then activate AFTER U4 and U5 so the genuine-BH share moves once, not three times."
+     }
+    ]
+   },
+   "critic": {
+    "gaps": [
+     "/home/savings is never enumerated by any of the 7 lanes (0 hits for 'savings' in the report) yet it is a live, user-facing MONEY claim: the app calls it (SmartCompareApp/src/services/api.ts:1015) and app/api/home_routes.py:151-172 (_extract_winner_loser_prices) sums winner-vs-loser price['amount'] straight out of stored full_response rows with NO filter on estimated / unavailable / source_method / guard_rejected — only a currency=='BHD' equality test. Every defect the report itself files (PO-PRICE-TRUTH-01 22.500 BD -> 22500 BHD; PO-RECORDED-MEASURED-12 42.8% of the price cache is a GPT training-data guess; PO-RECORDED-MEASURED-04 scores computed on a price that is pended afterwards) lands unfiltered in the SavingsBanner headline. Plausible P1, never checked.",
+     "/home/trending (app/api/home_routes.py:779, called at api.ts:1110, served from data/trending_curated.json with a 1h global per-region cache) is user-facing product output and is never mentioned in the report (0 hits for 'trending') — content freshness, region correctness and Arabic rendering of the curated list were never enumerated.",
+     "The camera / vision compare path is deferred by EVERY lane and covered by nothing: po-verdict-truth ('the image/camera compare build path' not covered), po-categories-i18n ('the camera/vision category path ... only read, not swept'), po-prompts ('image_service.extract_image_via_gpt prompt body ... body not read'). It is a real shipped path (api.ts:233 -> app/api/image_routes.py:229) and app/api/image_routes.py:229 passes NO selected_category, so on the camera path category is decided solely by the deterministic classify_category_from_text at structured_comparison_service.py:3243 with _parser_path=False — i.e. the exact 'name detection outranks the chip' mechanism behind P1 PO-CATEGORIES-I18N-01, with no chip to override it at all. Plausible P1 that no lane owns.",
+     "The cohort personalization layer is never swept, although ENABLE_COHORT_PERSONALIZATION=true is one of only a handful of flags ON in prod (baseline/railway-web-vars.txt). scoring_service.py:1299-1304 applies apply_cohort_adjustments (definition at :2744) whenever the user has NO explicit preferences — i.e. the default for most users — and it routes through the same _apply_capped_adjustments the lane's own PO-RUBRIC-07 measured breaching its cap by up to 43.65%. The report's rubric coverage claims 'all three personalization layers against their caps' (explicit/behavioral/session); the fourth, and the only one actually ON in prod, was not exercised.",
+     "Four product-output endpoints exist at HEAD and are never enumerated: GET /text/prices/{product} (text_routes.py:759 — CLAUDE.md flags it as serving stale cache with no category), GET /text/price-kpi (:800), GET /text/parse (:895), plus /home/savings and /home/trending above. The report's surface census stops at compare / stream / quick / url / share / smart-pick / recent-decisions.",
+     "Six flags that are SET in the prod snapshot the report claims to reason from are never named anywhere in it: ENABLE_PRICE_TITLE_PERSIST=true, ENABLE_FRAGRANCE_SIZE_RECONCILE_FIX=true, ENABLE_VARIANT_DESCRIPTOR_AXES=true, ENABLE_SERPER_FAIL_FAST=true, ENABLE_BH_GCC_CATALOG_SOURCES=true, ENABLE_COHORT_PERSONALIZATION=true (all 0 hits). Three of them govern exactly the surfaces the P1s are about — price identity (title round-trip, product_data_service.py:33-46,157-158,199-200), fragrance size stamping (PO-PRICE-TRUTH-06's size=None claim) and variant axes — so the prod flag state under which the price sweeps ran is not established.",
+     "Five of six GCC regions are never exercised. po-price-truth explicitly did not run the SAR/AED/KWD/QAR/OMR legs, and po-recorded-measured reports metadata.region='bahrain' on 26/27 recorded rows, yet region is a first-class product input (_VALID_REGIONS at home_routes.py:137, GCC_REGIONS in extraction_service). No lane checked what a Saudi/UAE/Kuwait user's payload looks like — the region-currency guard is OFF in prod, so a non-Bahrain request's prices, labels and value dimension are entirely unmeasured.",
+     "po-rubric's own explicitly recommended gap round was dropped from the synthesis: the lane said 'a gap round should re-score those bodies [the 27 recorded comparisons + tests/fixtures/comparison_baseline_d2*.json] to convert my modelled frequencies into corpus-measured ones'. Neither §3 nor §6 carries that recommendation, so every frequency in §0.1 and §1d (53.7% missing cells, 9.0%/21.5%/31.3% zero-margin, 84% constant badge) stays a statistic over a constructed grid with a known, cheap, offline path to a real one left untaken.",
+     "Re-engagement push copy is never reviewed (0 hits for 'reengagement'/'push'). app/services/reengagement_service.py:316-365 generates three classes of user-facing product prose in BOTH English and Arabic (e.g. Arabic title/body pairs at :316-317, :336-337, :356-357) naming the user's winner. It is product output, it is the only generated-Arabic surface in the backend, and its existence qualifies the report's sweeping §1a claim that no Arabic generation path exists anywhere. Flag is OFF on web today, so P2-shaped, but it was never enumerated.",
+     "Lane not_covered items that the synthesis's §6 silently dropped (so a later session cannot see them): (a) po-categories-i18n's 'the camera/vision category path and /url/compare's selected_category handling were only read, not swept'; (b) po-factcheck's '_calculate_freshness and the product-level result[\"data_freshness\"] field are NOT traced' and trust_validation_service not exercised; (c) po-verdict-truth's '4 stored rows with fewer than 2 products / no overview were skipped by the rebuild harness' (so '23 recorded rows' is 23 of 27, never stated in §3); (d) po-categories-i18n's per-category spec-field FILL rates (only which fields are ASKED FOR was checked).",
+     "Open issues in the brief's dedupe list that are product-output-relevant and never reconciled: #63 (/price-kpi auth+meter — 0 hits; the endpoint now carries Depends(verify_admin_key) at text_routes.py:807, i.e. its status appears to have changed and the lane leaned on this KPI without opening it), #67 (warmer stale genuine-method set — 0 hits, despite the lane measuring _GENUINE_BH_SOURCE_METHODS parity), #78 (nasser variant guard) and #79 (pharmacy hostname match) — both size/identity-truth issues on the supplements path the lane calls a launch category.",
+     "U6's fix framing is under-scoped: the guard-key drift is real for extract_price_from_html, but price['title'] IS stamped by the adapter rungs (price_service.py:14706 _match_shopify_product, :14994 fetch_bolo_price, :15093 fetch_boutiqaat_price, :15304 _match_nasser_product, :15461/:15596 fetch_iherb_price), and eval_runner.py:554 reads `price.get('title') or price.get('name')` while is_price_showable reads only title. Neither the asymmetry nor the regression risk to those rungs is enumerated anywhere in the report."
+    ],
+    "unverified_claims": [
+     "§1b's honest unit cost '$0.0140 per successful organic compare' is presented as the measured truth, but the lane's own PO-PROMPTS-07 says the Tier-3 gpt-4o synthesis never records its tokens and PO-RECORDED-MEASURED-07 says every failure row omits cost= — so the logged cost column is a floor, not a measurement, and the figure inherits an unquantified under-count. No caveat is attached where the number is quoted.",
+     "§1b's retry table is internally inconsistent: '893 retries within 2 min -> 640 successes (50 %); 1,037 within 10 min -> 818 (64 %)' — 640/893 is 71.7% and 818/1,037 is 78.9%. Either the denominators are something else (distinct users? distinct queries?) or the percentages are wrong; as printed the 'the retry works' verdict rests on numbers that do not reconcile.",
+     "The priced-cell denominator over the same 27 recorded payloads is quoted three different ways and never reconciled: '24 of 40 priced cells' (§1a / PO-RECORDED-MEASURED-03), '46 product sides' (§6 po-factcheck), and the verify note on PO-RECORDED-MEASURED-16 records '24/28 shown cells ... finder's 52-cell denominator does not reproduce — I get 46'. The headline 'the highest-volume price tier is structurally unshowable' is stated on the 40-cell basis with 14 cells unaccounted for.",
+     "'gpt-4o serves the prod verdict below the daily token threshold' (§1a) is asserted with no product-lane finding id behind it — it is a cross-lane borrow from the code review. The code half checks out (model_router_service.py:46-64, DAILY_4O_CAP 1_000_000 at :37, SWITCH_THRESHOLD 0.80), but the current Redis 4o counter was never read, so 'below the threshold' is inference, not measurement.",
+     "The cap-hit series ('15.4 % terminate at the 30 s cap, 2.6 % exceed it', PO-RECORDED-MEASURED-13) is rendered in the measured column of §1b, while §3.6 states the partial rate is structurally unmeasurable because partials log success:true. Duration >= 30 s is measurable; attributing those rows to the hard cap rather than a client abort or a slow success is inference and is not labelled as such at the point of use.",
+     "PO-PRICE-TRUTH-06 ('16 of 16 multi-variant captures ship with size=None') and the other price sweeps never state the flag state they ran under with respect to the prod-ON ENABLE_FRAGRANCE_SIZE_RECONCILE_FIX and ENABLE_VARIANT_DESCRIPTOR_AXES, both of which are size/variant flags set true on web. Flag-state provenance is missing for exactly the findings those flags could move.",
+     "PO-PRICE-TRUTH-04's blindness claim never addresses ENABLE_PRICE_TITLE_PERSIST=true in prod, which round-trips a `title` key through the L2 cache (product_data_service.py:157-158, :199-200). I checked and it does not rescue the guard (the write stores price_data.get('title'), which extract_price_from_html never sets), but the report reaches its conclusion without ever testing the one prod flag named after the key in question.",
+     "The 25 P0/P1 rows carrying 'orchestrator review notes' as their second vote of record — which is 23 of the 23 final P1s minus PO-PROMPTS-11 — are single-reviewer verdicts. The report declares this (§3.12), but every severity in §0 and §1a is then stated flatly; a gap round that re-votes those 25 independently is the cheapest remaining confidence purchase."
+    ],
+    "wrong_or_stale_claims": [
+     "§0.3 and §1c: 'the local_bhd label — the strongest member of _GENUINE_BH_SOURCE_METHODS, pinned 1:1 to the genuine-BH-share KPI' and 'the KPI numerator is inflated ~2.5x ... [the usable_exact_genuine KPI] must be re-taken AFTER the local_bhd country predicate lands' is contradicted by code at HEAD. The KPI is a live HTTP run through GET /text/price-kpi (app/api/text_routes.py:800-856), which applies is_price_showable(enforce_correctness=True) at :838-846 and pends anything that fails; and scripts/eval_runner.py:531-541 (usable_exact_genuine_for_product) independently rejects any price whose url is_non_pdp_listing_url, rejects converted/estimated methods, and fail-closes without a truth entry. The 857 google.com search-link rows therefore cannot enter the KPI numerator at all — the ~2.5x figure is a property of the product_prices CACHE TABLE, not of the KPI, and the ordering rationale built on it in §1c does not follow.",
+     "§0.2 and PO-CATEGORIES-I18N-01: 'the app's only compare path is explicit_pair' is overbroad and stale. api.ts:536-543 sends explicit product_a/product_b only when HomeScreen passes a pair (HomeScreen.tsx:316) — the same function sends q= for a string input — and the app additionally reaches the vision path (api.ts:233 -> image_routes.py:229 -> compare_from_text(vision_products=...)) and /url/compare. The finding's mechanism survives, but the exclusivity claim used to justify its severity does not, and the camera variant (no selected_category passed at all) is never mentioned.",
+     "§1a flag table preamble: 'ENABLE_BUNDLE_C_SCORING=false and ENABLE_GENUINE_PRICE_PRIORITY=false are the only two set explicitly OFF'. The captured snapshot the sentence cites (baseline/railway-web-vars.txt) lists a third explicit OFF on web: ENABLE_REENGAGEMENT_PUSHES=false (and price-warmer adds ENABLE_PRICE_CACHE_WARMER=false).",
+     "Spot-check result, for the record: I re-opened 12 cited pairs at HEAD and every one held — extraction_service.py:1096-1097 (tablet/tablets -> electronics), content_blocklist.json:53 (bare أفيون in illegal_drugs.ar), url_extraction_service.py:575/583 (comparison = await generate_comparison(...) then comparison.get(...), with generate_comparison returning `parsed, usage` at extraction_service.py:2543), response_builder.py:1055 (second compute_confidence call with no shopping_count/cached; module signature at scoring_service.py:1057-1060 vs the method at :2651-2655), response_builder.py:1107-1108 (raw_a/raw_b default 50 -> calibrate 70 + the loser-nudge block at :1129-1145), scoring_service.py:297 (MISSING_SCORE = 50), :2113-2120 (the B0-A reliability tie-collapse), fact_check_service.py:441-446 (median/deviation<=30 verdict), price_service.py:9572 (detect_currency on the shopping display string), model_config.py:200-205 (verdict_chain_max_attempts default 6), zero code sites for ENABLE_HYBRID_MODEL_ROUTING and ENABLE_TPM_AWARE_ROUTING under app/, and ConfidencePills.tsx + confidenceDetailsLines.ts byte-identical 97b5f15..HEAD while DimensionBars.tsx is not. No stale citation was found in the sample."
+    ],
+    "recommend_gap_round": true
+   }
   },
   "m22-code-review": {
    "run1_id": "wf_cbda6ac4-a50",
@@ -585,23 +1124,875 @@
      }
     ]
    },
-   "critic": null
+   "critic": {
+    "gaps": [
+     "ROUTE-HANDLER BODY CORRECTNESS was never a cell of this lane, and it hides at least one live P1 that I reproduced myself: app/services/url_extraction_service.py:575 does `comparison = await generate_comparison(...)`, but app/services/extraction_service.py:2302 returns a TUPLE (`return parsed, usage` at :2543 and `return {...}, {...}` at :2547) - every other caller unpacks it (`comparison, usage = await generate_comparison(` at structured_comparison_service.py:3440 and :7907), so url_extraction's `comparison.get(\"winner_index\", 0)` at :581 raises AttributeError and POST /api/v1/url/compare 500s on EVERY successful two-URL extraction. The lane opened url_routes.py and url_extraction_service.py (cited at :101/:111 for DNS and for 5 soup sites) but only for SSRF/DNS/parser cells, and the report's own LIVE-broken list in §the-three-plain-questions does not contain it. The same never-audited class covers /share/*, /referrals/*, /feedback + /events, /image/identify and all 20 /admin/* (§3 item 9 admits 54 of 68 routes were never driven, but files zero findings against any of them).",
+     "THE SSE STREAMING PATH WAS NEVER EXECUTED. `compare_from_text_streaming` and `text_routes.event_generator` (the path the shipped client actually uses) were not driven end-to-end by any lane; per-event Redis/analytics writes, the `complete_after_client_gone` metering latch and `_tail_residual()` are un-instrumented (report §3 item 8, cr-performance not_covered names it as its own biggest gap). Every delta finding that could be streaming-only - e.g. the CR-DELTA-CORRECTNESS-07(a) tradeoffs collapse, the region-guard pre-scoring pass, ENABLE_FULL_STREAM_DEADLINE x ENABLE_PREVERDICT_DISCONNECT_ABORT - was reasoned or unit-reproduced on the sync path only.",
+     "IDOR / OWNERSHIP was mandated by the cr-security lane prompt (\"user-scoped reads through the ADMIN client instead of get_user_supabase_client\") and the word IDOR appears ZERO times in the report and ZERO times in all 100 filed findings. The lane's coverage text says only that \"every admin-client read of user data in history_routes was checked\" - home_routes.py:215, :599, :822 and profile_routes.py:184, :305, :474 each fall back to `get_admin_supabase_client()` (RLS-bypassing) when `access_token` is falsy and were never enumerated, and neither was share_routes / referral_routes / feedback_routes client selection. 51 of 141 .execute() sites hit `users` and 22 hit `comparisons`; only the history subset got an ownership verdict.",
+     "THE UNVALIDATED-FETCH CENSUS IS ONE-SIDED. The lane prompt asked for \"every place a user-supplied URL is fetched WITHOUT [is_safe_url] (price_service page scrape of Serper links? url_extraction_service? image_service?)\". The report enumerates only the sites that DO call the validator (url_routes.py:91,112,148,175,197,216; price_service.py:14126/:14147; shopify_pdp_service.py:284). `image_service` appears zero times in the lane coverage statement and zero times in the 100 findings, so the negative half - which fetchers of model/Serper-supplied URLs skip the guard entirely - was never established.",
+     "TWO cr-data-migrations PROMPT CELLS WERE SKIPPED SILENTLY: `.text_search()` argument shape (CLAUDE.md documents a live trap - options={\"type\":\"plain\",\"config\":\"english\"} must be positional-options, not kwargs, and `.limit()` must precede it) is mentioned only as one entry in the op histogram and never checked at any call site; and `count='exact'` usage cost in app code was never censused (the only count=exact occurrences are the reviewers' own probe headers). Neither appears in the lane's not_covered list, so they read as covered when they are not.",
+     "AUTH-ROUTE BODIES ARE OWNED BY NOBODY IN THIS CAMPAIGN. cr-security's not_covered defers `auth_routes.py` register/login/refresh/social-login/password-reset internals to \"the M13/M18 lanes\" - lanes that do not exist in m22 - so token TTLs, refresh rotation, social-login nonce handling and the lockout path went unreviewed at 76ace90 while being cited as fixed in prior handoffs.",
+     "NO SYSTEMATIC STATUS PASS OVER THE PRIOR BACKLOG. Only 20 of 100 rows carry a `known:` dedupe. The brief's dedupe sources include M13's 74 P2 + 40 P3 and M18's 175 rows (of which ~130 were left live per the campaign handoff); the report gives fresh status for roughly eight of them (M13-45/49/50/102, quality-bloat-06, #65, #89, #114). A reader cannot tell whether the remaining live M13/M18 P2/P3 rows are still open at 76ace90.",
+     "ACKNOWLEDGED-BUT-UNCLOSED CELLS THAT STILL BOUND THE ANSWER: live index and RLS-policy state (PostgREST cannot reach pg_indexes/pg_policies, no DATABASE_URL, EXPLAIN disabled - so every index and policy claim is DDL-derived); no write-path RLS test (so the L2 cache-poisoning limb of CR-SECURITY-13 is reasoned only); dead code INSIDE function bodies, the 103 StructuredComparisonService methods and 298 price_service module constants; jest never run locally and the other 19 moduleNameMapper stubs never diffed; GitHub rulesets never checked; MCP tool-schema token cost unmeasured."
+    ],
+    "unverified_claims": [
+     "CR-PERFORMANCE-05's page sizes are labelled `measured` in the P2 table but are MODELLED extrapolations: the live `comparisons` table holds 27 rows with max_rows_per_user = 10 (the verify note on CR-PERFORMANCE-11 states exactly that), so the \"358 KB at the FE default limit=20\" and \"897 KB at 50\" pages do not exist in the data that was measured - only the per-row average does. The same report also prints two different 'measured' averages for that one SELECT: `avg 17,936 B/row` in §1b and `avg=17955 B` in the §5 verify note.",
+     "The P0's severity rests on dev-box (Windows, off-lock) resolver behaviour: the 3.0 s stub / 0 ticker advances and the 11.07 s black-holed-host number are Windows measurements, and Railway/Linux resolver timeouts, plus the deployment-wide reach through the shared-edge-IP limiter, are MODELLED. The report says so in §3 item 3 but §0.1 presents the finding as 'Measured, not argued'.",
+     "CR-SECURITY-01's headline consequence ('one unauthenticated POST wipes any user') is inferred, not demonstrated - the destructive RPC was deliberately never fired; the evidence is a GET-only privilege probe reading SQLSTATE 25006 with a per-function verb. Residual doubt is stated as ~0.02 but the claim is not executed.",
+     "§0.2's operational instruction ('treat ADMIN_API_KEY as possibly already disclosed and rotate it') rests on an unknowable: the report itself says nobody could check whether such a 500 has ever fired in prod. The exfiltration was reproduced locally through a real init_sentry()+TestClient pipeline, never against prod.",
+     "CR-CLAUDE-CONFIG-02's spend limb is env-derived only. That ENABLE_BRIGHTDATA_FALLBACK + key + zone are set on both services is measured; that Bright Data 'is the live search path the moment Serper errors' and that it bills was never exercised (no call was made, vendors dead), and CLAUDE.md's own note says the mapper must be validated from the first-call `[brightdata] parsed OK` log - i.e. it has never parsed a real response.",
+     "The entire §1d dead-code list is proof-of-no-reference, never proof-of-green-CI: no deletion was attempted and pytest was not run after any hypothetical removal (the lane says so). The same applies to §1c item 8's proposed fix - a two-entry jest `projects` matrix - which is untested because no lane ran jest at all.",
+     "§1b's per-request millisecond figures (SSL context construction, create_client, extract_price_from_html) are dev-box Windows numbers on an off-lock pip env; only the COUNTS transfer to Railway. Upstash RTT from Railway is still unmeasured, the same gap M18 recorded, so every 'compares/min' consequence stays modelled.",
+     "CR-DELTA-CORRECTNESS-04/06/07 and the home_routes rows were never driven through the real orchestrator (OpenAI 429, Serper -50); they are unit-reproduced against exported trees. The 27-fixture flag-OFF A/B is synthetic - authored by the lane, not drawn from the 27 recorded Supabase payloads, which the lane itself notes would not exercise the M20/M21 paths."
+    ],
+    "wrong_or_stale_claims": [
+     "STALE AT THE CHECKOUT THE REPORT TELLS READERS TO USE. §0.3, CR-CLAUDE-CONFIG-02 and unit U16 assert that `CLAUDE.md:328` documents Bright Data as 'default OFF/unset - dormant' and that the report 're-verified this myself this run'. At the worktree HEAD (`e8991cf`, 'docs(session-65): ... CLAUDE.md truth fixes', on top of 67e9e26) that same line 328 now reads '**ARMED IN PROD on `web` AND `price-warmer` - flag=true + key + zone set, verified 2026-09-05/07 ... documented as dormant until the 2026-09-06 review corrected it (CR-CLAUDE-CONFIG-02)**'. The doc half of the finding is already fixed and the report never says so. Same for `ENABLE_TPM_AWARE_ROUTING` at CLAUDE.md:394 (now explicitly labelled PHANTOM), the ACTIVATION-ORDER step-(2) caveat (now carries the CR-COMPLEXITY-DEADCODE-04 note), and the migrations 033/034-applied correction - all landed in that commit, all still presented as open in §0/§2/Appendix B.",
+     "SCOPE ERROR BEHIND THOSE CITATIONS: the report's header lists the byte-identical paths as `app/`, `SmartCompareApp/`, `tests/`, `scripts/`, `migrations/` and requirements - CLAUDE.md and `.claude/` are NOT in that list, and CLAUDE.md did change (git diff 76ace90..HEAD -- CLAUDE.md = +17/-4). Yet all 19 cr-claude-config findings cite CLAUDE.md line numbers with no statement of which revision they are at. (`.claude/settings.local.json` IS byte-identical between the two clones, 13,655 B both, so CR-CLAUDE-CONFIG-11 stands.)",
+     "INTERNAL COUNT CONTRADICTION ON THE ADMIN SURFACE. §6 coverage reports 'Auth census: verify_admin_key 19' while §1a / CR-SECURITY-04 says the TypeError 500s 'all 22 admin-key-gated routes'. Ground truth at HEAD: `grep -rn \"Depends(verify_admin_key)\" app/` = 22 (19 in app/api/admin_routes.py + 3 in app/api/text_routes.py:807, :863, :898). The finding's 22 is right; the coverage statement's route-table census under-counts its own surface by the three /text/* admin routes.",
+     "MEASUREMENT DENOMINATORS DISAGREE FOR CR-PERFORMANCE-01: §1b says '4 soups on 40/40 cached PDPs and 363 soups for 92 pages', the P1 table title says '4x per call on 89/92 cached PDPs'. Two different sample sizes are presented for one measurement with no note that they are two runs; 4x92=368 vs the reported 363 is only reconcilable via the 89/92 figure.",
+     "DEDUPE LABELLING ERROR (brief rule 3): CR-COMPLEXITY-DEADCODE-05 carries dedupe `new` in both the state file and the P2 table while its own title and §1c item 1 identify it as M13-45 still-open-and-grown (1,933 -> 1,949 LOC). CR-DELTA-CORRECTNESS-01 is likewise filed `new` and then refuted on the ground that it is the shipped fix of M18 PO-fact-check-06 / #104. The prose is right and the ledger column is wrong.",
+     "SPOT-CHECK RESULT (no error found, recorded for completeness): I re-opened 12 cited pairs at HEAD and all hold - url_validator.py:30 `socket.getaddrinfo(hostname, None)`; admin_routes.py:33 `Header(...)` + :37 `hmac.compare_digest` on str; text_routes.py:759 `@router.get(\"/prices/{product}\")` with no auth dep; auth_service.py:256 `client = get_auth_client()` one line above the run_db lambda at :257; scoring_service.py:1554-57 the raw `f\"{brand} {name}\"` concat; price_service.py:10642 `BeautifulSoup(html,'html.parser')`; price_service.py:3177 `extract_domain` with substring `.replace(\"www.\",\"\")` and no lower(); migrations/010_enable_rls.sql:28 / :58 / :70; config.py:55 `settings = get_settings()`; jest.config.js:18 + the 143-line react-native stub with `Platform = { OS: 'ios' }`; ResultsContent.tsx:425 `comparison_quality === 'weird'`; sentry_sdk.init at sentry_service.py:215 with no `include_local_variables`; zero `TPM_AWARE` hits under app/ + scripts/; `cleanup_expired_ratings` in no migration and no code; only 036 carries a REVOKE. CR-SECURITY-12's allow-list claims also reproduce on this box (100.64.0.1 and 224.0.0.1 both pass is_private/is_loopback/is_link_local/is_reserved; 169.254.169.254 and 127.0.0.1 are blocked)."
+    ],
+    "recommend_gap_round": true
+   }
   },
   "m22-load-scale": {
    "run1_id": "wf_46983729-4eb",
    "s65_id": "wf_509f5db6-d58",
    "filed": 96,
    "second_votes_total": 25,
-   "synth": null,
-   "critic": null
+   "synth": {
+    "report_path": "C:/Users/SynAckITPC/Documents/AI/sc-review-s65/docs/investigations/2026-09-06-full-review-state/report-m22-load-scale.md",
+    "headline_answers": "CAN IT HANDLE A HUGE LOAD OF PEOPLE AT THE SAME TIME? No — not today, not after the dark offload flags, and not after #114 plus a second worker.\n\n(a) TODAY, under the prod flag state: ~1 concurrent compare and ~3 compares/min — and 0 successful compares/min right now, because OpenAI returns 429 insufficient_quota and the Serper balance is -50. Inputs: 1 replica x 1 uvicorn worker x 1 event loop (MEASURED, railway.json:7 / Procfile:1, no --workers, no --limit-concurrency); both offload flags absent from the 54-var prod list (MEASURED); recorded single-request p50 19,927 ms / p95 30,004 ms over 1,892 non-overlapped rows (MEASURED) against STREAM_HARD_CAP_SECONDS=30, i.e. a DEADLINE cliff with 10 s of headroom; measured concurrency response 76% success at C=1 -> 54-57% at C=2 -> 37-38% at C=3 -> 0-29% at C>=4. Availability floor is worse than throughput: one anonymous /api/v1/url/* request with a black-holed host freezes the whole deployment 11-13.5 s (MEASURED four ways; a victim GET /health returned after 3,004 ms against a 3,000 ms stub), and one Upstash socket that accepts and never answers freezes it indefinitely (MEASURED: no return after 45 s, 0 heartbeat ticks). The often-quoted \"~10 compares/min\" is the LIMITER's number, not the machine's.\n\n(b) After ENABLE_SYNC_DB_OFFLOAD / ENABLE_ASYNC_REDIS_OFFLOAD / ENABLE_SERPER_BREAKER / ENABLE_FULL_STREAM_DEADLINE / ENABLE_PREVERDICT_DISCONNECT_ABORT are active: ~2-3 concurrent, ~5-8 compares/min (MODELLED). The flags move blockage, not wall clock. MEASURED coverage: SYNC_DB_OFFLOAD covers 28 of 129 async-def .execute() sites = 21.7%; per-route on-loop counts drop /auth/me 5->3, /usage/status 8->4, /comparisons/history 7->4, /home/savings 7->2, /auth/refresh 4->4. ASYNC_REDIS_OFFLOAD relocates ~36 warm / ~72 cold Upstash commands x 178 ms = 6.4-12.8 s of loop blockage, with latency unchanged. What no flag touches (all MEASURED with both flags forced ON): the P0 DNS resolve; per-call supabase create_client, which sits OUTSIDE the run_db lambda (every construction probed on_loop=True: /auth/me 2, /comparisons/history 3, /home/savings 2); Upstash timeout=None + 3 s blocking sleep retry; postgrest's 120 s default; and ~7.7 s/cold compare of on-loop HTML parsing (MODELLED from MEASURED 363-429 ms per p50 page over 1,235 real PDPs).\n\n(c) After #114 (per-client limiter) and a second worker: ~8-16 compares/min and 4-6 concurrent AT BEST, and ~4.4-5.2 compares/min if the OpenAI account is Tier 1 — MEASURED verdict prompt 5,498-5,942 tokens through the real build_verdict_prompt + tiktoken, plus the reserved max_tokens=1000, gives 6.5-6.8k TPM/verdict against a 30,000 TPM Tier-1 ceiling = 4.4-4.6/min (5.2/min even discarding the reservation premise), not the runbook's published 6.6. verdict_chain_max_attempts()=6 in prod vs the documented 3. The tier is UNVERIFIED and verifying it is a hard launch gate. #114 without W0 makes things strictly worse: it removes the accidental deployment-wide guard and lets 100 users offer ~1,000 compares/min at a machine that serves 3-8. A second worker needs RATELIMIT_STORAGE_URI first, or every rate limit silently doubles (slowapi storage is hardcoded memory://).\n\nBottleneck ceilings: shared-bucket 429 = 10/min deployment-wide EXCEPT 7 parameterised routes where it is per-URL and therefore unbounded (MEASURED 25 distinct ids -> 25x200, 0x429); event loop ~7.8 compares/min from parsing alone (MODELLED on MEASURED per-page cost); executor oversubscribed at C=1 (MEASURED 32 sources/product = >=64 work items vs 40 threads, zero Semaphores in app/); OpenAI TPM 4.4-4.6/min at Tier 1 (MEASURED tokens, MODELLED ceiling); Upstash 178 ms/command MEASURED from the prod container with the free tier exhausting near ~150 DAU; Supabase ~285 ms MEASURED with a 120 s unbounded client timeout and a silent 1,000-row PostgREST truncation MEASURED four ways; memory not binding today (166 MB idle of 8 GB) but MODELLED at ~716 MB for 40 concurrent p90 parses, which is exactly what the parse offload would make live.\n\nLIVE SPEND (section 0): Bright Data is ARMED and UNBUDGETED on both web and price-warmer while SERPER_LIFETIME_LIMIT=0 sends every search leg to it (MEASURED through the real modules: _bd_budget_precheck()=True, _bd_record() a no-op, nothing writes budget:brightdata:*); the app's only compare shape spends the full paid fan-out before failing on the dead LLM because 'openai' is not in PROVIDER_CONFIGS at all (MEASURED rows: 31,008 ms and 22,995 ms burned on 2026-09-02); Scrape.do meters a phantom 5 credits on a 401 that is in neither breaker failure set; and the two spend caps that ARE set in Railway (MAX_MONTHLY_COST=100, FREE_TIER_DAILY_LIMIT=5) are read only by zero-caller functions, while the cost meter prices gpt-4o at mini rates, records $0 for 549 real failures, and is silently truncated at 1,000 rows.\n\nORDERING RULE (restated with evidence): M18's rule survives, its premise does not. The limiter is a LEAKY guard - 7 routes bypassable by rotating a path parameter (MEASURED), >=10 distinct edge-peer buckets not 1 (MEASURED over 1,439 audit rows, all 100.64.0.0/10), and ENABLE_PROXY_AWARE_RATELIMIT as written is a TOTAL bypass (MEASURED 40/40 pass while rotating X-Forwarded-For). Corrected order: STEP 0 (does not wait) = the four unflagged loop blockers + close the guard's holes, since these only tighten; STEP 1 offload flags active, with the Upstash bounded transport as a hard precondition; STEP 2 Redis-backed limiter storage; STEP 3 verified per-client anchor (#114); STEP 4 per-user keys (#72); STEP 5 ENABLE_DEFAULT_RATE_LIMITS; STEP 6 raise limits. --limit-concurrency is free and safe at any point; --workers 2 only after STEP 2.\n\nLedger: 96 findings, 96 verified, 0 refuted, 35 severity moves (all downward). 1 P0, 13 P1 rows = 11 distinct defects after two dedupe merges, 55 P2, 27 P3. The 12 P1 rows whose second-vote agent died are carried on the orchestrator's own re-derivation in FABLE_REVIEW_NOTES.md.",
+    "ranked_ids": [
+     "LS-REQUEST-PATH-BLOCKING-01",
+     "LS-FAILURE-MODES-COST-01",
+     "LS-FAILURE-MODES-COST-02",
+     "LS-FAILURE-MODES-COST-03",
+     "LS-REQUEST-PATH-BLOCKING-03",
+     "LS-REQUEST-PATH-BLOCKING-02",
+     "LS-REQUEST-PATH-BLOCKING-04",
+     "LS-CONCURRENCY-LIMITS-01",
+     "LS-RATELIMIT-KEY-02",
+     "LS-RATELIMIT-KEY-01",
+     "LS-CACHE-REDIS-03",
+     "LS-MEASURED-EVIDENCE-01",
+     "LS-CONCURRENCY-LIMITS-02",
+     "LS-CACHE-REDIS-02",
+     "LS-CONCURRENCY-LIMITS-10",
+     "LS-FAILURE-MODES-COST-05",
+     "LS-CONCURRENCY-LIMITS-03",
+     "LS-MEASURED-EVIDENCE-05",
+     "LS-MEASURED-EVIDENCE-06",
+     "LS-RATELIMIT-KEY-10",
+     "LS-FAILURE-MODES-COST-13",
+     "LS-FAILURE-MODES-COST-12",
+     "LS-CONCURRENCY-LIMITS-06",
+     "LS-MEASURED-EVIDENCE-10",
+     "LS-FAILURE-MODES-COST-04",
+     "LS-MEASURED-EVIDENCE-07",
+     "LS-MEASURED-EVIDENCE-02",
+     "LS-RATELIMIT-KEY-09",
+     "LS-RATELIMIT-KEY-03",
+     "LS-RATELIMIT-KEY-12",
+     "LS-MEASURED-EVIDENCE-04",
+     "LS-MEASURED-EVIDENCE-03",
+     "LS-FAILURE-MODES-COST-09",
+     "LS-FAILURE-MODES-COST-08",
+     "LS-MEASURED-EVIDENCE-13",
+     "LS-DB-QUERIES-08",
+     "LS-DB-QUERIES-04",
+     "LS-REQUEST-PATH-BLOCKING-10",
+     "LS-REQUEST-PATH-BLOCKING-11",
+     "LS-CACHE-REDIS-04"
+    ],
+    "proposed_units": [
+     {
+      "unit": "W0-1 Off-loop, bounded, memoised DNS resolve (the P0)",
+      "findings": [
+       "LS-REQUEST-PATH-BLOCKING-01",
+       "CR-SECURITY-05 (same defect, code-review lane)"
+      ],
+      "files": [
+       "app/utils/url_validator.py:30",
+       "app/api/url_routes.py:91,112,148,175,197,216",
+       "app/services/url_extraction_service.py:101,111",
+       "app/services/price_service.py:14126,14147",
+       "app/services/shopify_pdp_service.py:284"
+      ],
+      "flag": "ENABLE_OFFLOOP_DNS_RESOLVE (default OFF; flipped as activation step 1)",
+      "tests_first": [
+       "tests/test_url_validator_offloop.py::test_resolver_does_not_block_the_loop - stub socket.getaddrinfo to sleep 3 s, drive POST /api/v1/url/compare through httpx.ASGITransport over the real app.main, assert a 10 ms heartbeat's max gap stays < 200 ms (measured 3,000 ms today)",
+       "::test_victim_health_is_not_starved - pins the measured 3,004 ms GET /health case",
+       "::test_unresolvable_host_returns_false_within_2s"
+      ],
+      "gates": "TDD red-first; module-reference comm gate over every test referencing url_validator / url_routes / url_extraction_service / price_service / shopify_pdp_service, branch-only-NEW == []; PRICE PATH IS TOUCHED so flag-OFF byte-identity over _proof (414 pages / 1,656 calls) is mandatory; Fable review before commit",
+      "order_reason": "The P0. Must precede #114 (re-keying raises the per-caller ceiling on exactly this unauthenticated route) and must precede any offload canary, because a frozen loop invalidates every canary measurement. Implementation constraint from review: use a DEDICATED small resolver pool, not the default executor - loop.getaddrinfo uses the default executor, which is the shared 40-thread adapter pool, and asyncio.wait_for cancels the await but not the libc call, leaving zombie threads. Keep a thin sync shim for the warmer/CLI."
+     },
+     {
+      "unit": "W0-2 Supabase client reuse + explicit ClientOptions timeouts",
+      "findings": [
+       "LS-REQUEST-PATH-BLOCKING-02",
+       "LS-REQUEST-PATH-BLOCKING-04",
+       "LS-CONCURRENCY-LIMITS-05",
+       "LS-DB-QUERIES-01",
+       "CR-PERFORMANCE-03 (dedupe)"
+      ],
+      "files": [
+       "app/services/auth_service.py:30,37,256-257",
+       "app/services/database_service.py:44,52"
+      ],
+      "flag": "ENABLE_SUPABASE_CLIENT_REUSE + env knob SUPABASE_POSTGREST_TIMEOUT_SECONDS (default preserves today's behaviour)",
+      "tests_first": [
+       "tests/test_supabase_client_reuse.py::test_client_is_not_rebuilt_per_request - patch create_client with a counter, drive /auth/me and /usage/status twice each, assert at most one construction per (url, key) pair (today 2 per request, 8 total)",
+       "tests/test_supabase_client_timeouts.py::test_postgrest_timeout_is_bounded - assert .postgrest.session.timeout.read <= 10 (today 120, verified at the locked postgrest 2.31.0 wheel)"
+      ],
+      "gates": "TDD red-first; module-reference comm gate over tests referencing auth_service / database_service; no price-path source change so byte-identity N/A; Fable review before commit",
+      "order_reason": "Must precede the ENABLE_SYNC_DB_OFFLOAD canary, or that canary measures a benefit swamped by a construction cost it structurally cannot remove (measured on_loop=True with both flags ON). Hard constraint: never share one anon client with per-call postgrest.auth(token) - that leaks a JWT across concurrent requests; use a keyed pool or a request-scoped wrapper over a shared transport. Caveat: an 8 s postgrest bound can cut the still-LIVE unbounded /home/savings scan at scale, so land with #116's aggregate or bound that route separately."
+     },
+     {
+      "unit": "W0-3 Upstash bounded transport + retries=0",
+      "findings": [
+       "LS-REQUEST-PATH-BLOCKING-03",
+       "LS-CACHE-REDIS-01 (dedupe)",
+       "LS-CONCURRENCY-LIMITS-04 (dedupe)"
+      ],
+      "files": [
+       "app/services/cache_service.py:28"
+      ],
+      "flag": "ENABLE_UPSTASH_BOUNDED_TRANSPORT (default OFF; flip immediately after canary)",
+      "tests_first": [
+       "tests/test_cache_service_timeout.py::test_client_has_a_bounded_timeout_and_no_sleep_retry - assert redis_client._http._client.timeout.read is not None and <= 2.0 and _retries == 0 (today Timeout(None), retries 1, interval 3 at the locked upstash-redis 1.7.0)",
+       "::test_redis_error_does_not_starve_the_loop - point the client at an accept-and-close socket and assert a 5 ms heartbeat keeps ticking (measured today: 0 ticks for 3.638 s; a black-hole peer never returned in 45 s)"
+      ],
+      "gates": "TDD red-first; module-reference comm gate over every test referencing cache_service; pin the _http._client attribute path so an upstash-redis bump cannot silently un-bound it; no price-path source change; Fable review before commit",
+      "order_reason": "HARD PRECONDITION for ENABLE_ASYNC_REDIS_OFFLOAD: off-loop, a hung command parks an executor thread forever and drains the same 40-thread pool the adapter fan-out uses - the offload relocates the hang, it does not remove it. Every cache helper is already fail-open, so a timeout degrades to a cache miss, which is the intended behaviour (proven in the same repro run: 3.638 s -> 0.016 s and 45 s+ -> 1.015 s, both still returning None)."
+     },
+     {
+      "unit": "W0-4 Parse once, off the loop, with a fetch size cap",
+      "findings": [
+       "LS-CONCURRENCY-LIMITS-01",
+       "LS-CONCURRENCY-LIMITS-09 (memory half)",
+       "CR-PERFORMANCE-01 (dedupe)"
+      ],
+      "files": [
+       "app/services/price_service.py:14090,15425,13943",
+       "app/services/structured_comparison_service.py:1643,1722",
+       "app/utils/executor.py (parse pool sizing + docstring)"
+      ],
+      "flag": "ENABLE_PRICE_PARSE_OFFLOAD (default OFF)",
+      "tests_first": [
+       "tests/test_parse_offload.py::test_extract_price_from_html_does_not_block_the_loop - 50 ms heartbeat task + fetch_page_price against the 10 MB corpus page with curl_fetch_html monkeypatched, assert max inter-tick gap < 200 ms (measured 8.5-10.4 s today)",
+       "::test_curl_fetch_html_truncates_at_3mb - mirror the existing max_bytes=3_000_000 cap on curl_fetch_html_same_site"
+      ],
+      "gates": "TDD red-first; module-reference comm gate over tests referencing price_service / structured_comparison_service; PRICE PATH so flag-OFF byte-identity over _proof is mandatory and the soup reuse must be pinned by the golden fixtures; Fable review before commit",
+      "order_reason": "The largest single on-loop cost per cold compare (MODELLED ~7.7 s from MEASURED 363-429 ms per p50 page x the ~18-wide fan-out). Land the 3 MB cap in the SAME change: moving 40 uncapped parses into the thread pool is exactly what makes the memory ceiling live (MODELLED 716 MB at 40 concurrent p90 parses against a MEASURED 166 MB idle RSS). Canary together with W1-2, because moving 18 parses into an already-oversubscribed pool relocates the queue instead of draining it."
+     },
+     {
+      "unit": "W0-5 Route-keyed limiter buckets",
+      "findings": [
+       "LS-RATELIMIT-KEY-01",
+       "LS-RATELIMIT-KEY-06 (test-truth half)",
+       "LS-RATELIMIT-KEY-05"
+      ],
+      "files": [
+       "app/middleware/rate_limiter.py:125-129",
+       "tests/test_rate_limiting_complete.py"
+      ],
+      "flag": "none (pure correction) - but verify key_style semantics at the PINNED slowapi 0.1.10 before shipping (local is 0.1.9; the verifier read 0.1.10's extension.py and found identical semantics, re-confirm at build time)",
+      "tests_first": [
+       "tests/test_rate_limiting_complete.py::test_share_view_limit_is_per_route_not_per_token - 35 GETs to /api/v1/share/<a different valid-pattern token each iteration>, assert a 429 appears (today 35x200, while the sibling constant-token test at :90-96 passes - that asymmetry IS the defect)"
+      ],
+      "gates": "TDD red-first; module-reference comm gate over every test referencing rate_limiter plus the 12 route modules; no price path; Fable review before commit",
+      "order_reason": "STEP 0 of the corrected ordering rule: it CLOSES a hole in the current guard rather than widening the front door, so the 'offloads first' constraint does not gate it. Must land WITH or BEFORE #114, otherwise #114 re-keys per client while the bucket stays per URL. key_style='endpoint' also makes the runtime key match what the repo's own tests already assert (limiter._route_limits by dotted name), so the two representations stop drifting."
+     },
+     {
+      "unit": "W0-6 Meter or gate GET /text/prices/{product}",
+      "findings": [
+       "LS-RATELIMIT-KEY-02",
+       "CR-SECURITY-06 (dedupe, same route)"
+      ],
+      "files": [
+       "app/api/text_routes.py:759-800"
+      ],
+      "flag": "none if admin-gated; ENABLE_PRICES_ROUTE_METERING if the route stays public",
+      "tests_first": [
+       "tests/test_prices_route_metering.py::test_prices_route_consumes_or_rejects - assert an unauthenticated call either 401s or records a usage consume (today it does neither, and the 20/min bucket is per product string so the rate is unbounded)"
+      ],
+      "gates": "TDD red-first; module-reference comm gate over tests referencing text_routes; route-level only so no price-path source change and byte-identity N/A; Fable review before commit",
+      "order_reason": "STEP 0 for the same reason as W0-5 - it closes a hole. OWNERSHIP: the consolidated plan folds camera + /url/compare + this route into ONE metering unit together with the PO-VERDICT-TRUTH-01 tuple unpack; do not file it twice, and the concurrent session's A1/A6 queue items must skip it."
+     },
+     {
+      "unit": "W1-1 ASGI backpressure at the front door",
+      "findings": [
+       "LS-CONCURRENCY-LIMITS-10"
+      ],
+      "files": [
+       "railway.json:7",
+       "Procfile:1"
+      ],
+      "flag": "none (start-command change; UVICORN_LIMIT_CONCURRENCY env, default 40)",
+      "tests_first": [
+       "tests/test_start_command.py::test_start_command_declares_a_concurrency_limit - parse railway.json and Procfile, assert --limit-concurrency is present AND that the two commands are byte-identical to each other (they can drift today and nothing notices)"
+      ],
+      "gates": "TDD red-first; no source touch so comm gate is trivially satisfied but still run; no price path; Fable review before commit",
+      "order_reason": "Free, safe and instantly reversible: it only SHEDS. A 503 at the door beats a 120 s spinner and stops stage 4 of the burst cascade (unbounded queueing -> client 120 s axios timeout -> SSE->REST retry -> metastable collapse). Do NOT add --proxy-headers in the same change: it changes what get_remote_address returns, i.e. the limiter key that currently protects the loop."
+     },
+     {
+      "unit": "W1-2 Bound the direct-adapter prefetch fan-out",
+      "findings": [
+       "LS-CONCURRENCY-LIMITS-02",
+       "LS-CONCURRENCY-LIMITS-09"
+      ],
+      "files": [
+       "app/services/structured_comparison_service.py:5866-5885",
+       "app/utils/executor.py:14-18 (docstring, currently the load-bearing justification for a wrong width)"
+      ],
+      "flag": "ENABLE_PREFETCH_CONCURRENCY_CAP + DIRECT_PREFETCH_CONCURRENCY (default 8), flag-OFF byte-identical",
+      "tests_first": [
+       "tests/test_prefetch_fanout_bound.py::test_direct_prefetch_never_exceeds_pool - monkeypatch each adapter's to_thread target with a counter recording max simultaneous in-flight, drive _fetch_product_data for a fragrance query with ENABLE_BH_GCC_CATALOG_SOURCES=true, assert max_in_flight <= default_executor_size() (measured today: 32 per product, >=64 per compare, against 40 workers)"
+      ],
+      "gates": "TDD red-first; module-reference comm gate over structured_comparison_service / source_router / executor; price path is reached so flag-OFF byte-identity over _proof; Fable review before commit",
+      "order_reason": "Must be canaried WITH W0-4: moving 18 parses into a pool already oversubscribed at C=1 relocates the queue instead of draining it. Prefer the semaphore over raising ADAPTER_EXECUTOR_MAX_WORKERS - more threads trades thread starvation for the memory ceiling, and the semaphore preserves the ranked source ordering so the highest-weight genuine-BH sources still get threads first."
+     },
+     {
+      "unit": "W1-3 OpenAI as a first-class provider: budget entry + breaker preflight",
+      "findings": [
+       "LS-FAILURE-MODES-COST-02",
+       "LS-FAILURE-MODES-COST-03",
+       "LS-CONCURRENCY-LIMITS-13"
+      ],
+      "files": [
+       "app/services/api_budget_service.py:33 (PROVIDER_CONFIGS)",
+       "app/services/openai_service.py:32,61,70",
+       "app/services/extraction_service.py:51",
+       "app/services/url_extraction_service.py:31",
+       "app/services/structured_comparison_service.py (_compare_from_text_impl preflight)"
+      ],
+      "flag": "ENABLE_LLM_PREFLIGHT_BREAKER (default OFF, flag-OFF byte-identical)",
+      "tests_first": [
+       "tests/test_openai_breaker.py::test_no_provider_fanout_when_llm_is_down - patch every OpenAI call to raise 429, patch serper_service.search_web / search_product_prices with counting stubs, call compare_from_text(explicit_pair=('a','b')), assert the search stubs were called ZERO times (today they fire on every leg)",
+       "tests/test_openai_breaker.py::test_breaker_opens_after_threshold - cannot even be written at 76ace90 because no 'openai' provider key exists; that impossibility IS the finding",
+       "tests/test_model_config.py::test_verdict_chain_attempts_under_prod_env - assert verdict_chain_max_attempts() <= 3 under the prod env dict (today 6)"
+      ],
+      "gates": "TDD red-first; module-reference comm gate over api_budget_service / openai_service / extraction_service / structured_comparison_service; price path is reached so flag-OFF byte-identity; Fable review before commit",
+      "order_reason": "Stops paying the full paid fan-out for a comparison that cannot succeed - measured today as 31,008 ms and 22,995 ms burned per attempt. Pairs with the ops flips (Bright Data budget gate; OPENAI_MAX_RETRIES=1 / OPENAI_FALLBACK_MAX_RETRIES=0, which need a restart because openai_service.py:32 reads the knob at import). W1 rather than W0 only because the ops flips remove the live bleed immediately at zero risk."
+     },
+     {
+      "unit": "W1-4 Give the silent adapter drop a name (observability precondition)",
+      "findings": [
+       "LS-CONCURRENCY-LIMITS-03"
+      ],
+      "files": [
+       "app/services/structured_comparison_service.py:212-230 (_timeout_none)",
+       "app/services/price_service.py:15898",
+       "app/services/structured_comparison_service.py:1665",
+       "fan_out_price_lookup return contract (price_service.py:15936-15940)"
+      ],
+      "flag": "none (additive observability, no behaviour fork)",
+      "tests_first": [
+       "tests/test_adapter_drop_observability.py::test_timeout_none_logs_and_counts - assert _timeout_none(slow_coro, 0.01, label='woo') emits exactly one INFO record containing 'woo' and increments the family counter (measured today: result=None, records_after=1, timeout_mentions=0)",
+       "tests/test_fan_out_integration.py::test_fan_out_reports_failed_count - a fan-out where every scraper raises returns failed_count == len(scrapers) (today only cancelled_count exists)"
+      ],
+      "gates": "TDD red-first; module-reference comm gate over structured_comparison_service / price_service; additive only so no behaviour fork, but price path is reached so run the byte-identity gate anyway; Fable review before commit",
+      "order_reason": "A HARD PRECONDITION for measuring every other unit in this lane and for the parked load test. Today an executor-starvation event and 'no Bahraini store carries this product' produce identical telemetry - prices silently degrade to converted_usd/estimated with no log line, no counter and no Sentry event (the two existing fan-out failure logs are logger.debug under LOG_LEVEL=INFO). Without this, no capacity change can be shown to have worked."
+     },
+     {
+      "unit": "W1-5 Per-key singleflight on the three resolve sites",
+      "findings": [
+       "LS-CACHE-REDIS-02",
+       "LS-CACHE-REDIS-10"
+      ],
+      "files": [
+       "app/services/structured_comparison_service.py:5231 (_get_specs)",
+       "app/services/structured_comparison_service.py:5500 (_get_price)",
+       "app/services/review_service.py:666 (_get_reviews)",
+       "app/services/cache_service.py (the in-process Future registry)"
+      ],
+      "flag": "ENABLE_SINGLEFLIGHT (default OFF; canary on specs first - cheapest to reason about, no race deadline)",
+      "tests_first": [
+       "tests/test_singleflight_specs.py::test_two_concurrent_cold_calls_resolve_once - patch extract_specs with an async counter sleeping 0.3 s, cold cache, asyncio.gather two identical _get_specs for the same brand/name, assert the counter == 1 (MEASURED today: 2/2 and 5/5 duplicate OpenAI+Serper pipelines with 5 GETs then 5 SETEXs on one key)"
+      ],
+      "gates": "TDD red-first; module-reference comm gate over structured_comparison_service / review_service / cache_service; price path reached via _get_price so flag-OFF byte-identity over _proof; Fable review before commit",
+      "order_reason": "In-process is sufficient at 1 replica x 1 worker and needs no Redis. Do NOT upgrade to a Redis reservation key before W0-3, or the lock itself can hang. Highest cost-per-line-of-code win in the lane once traffic exists: the resolve window is ~20-30 s (p90 18.5 s, p99 30.0 s) and every arrival inside it pays the full cold price again - one trending pair can convert the entire per-minute budget into N duplicate pipelines for one cacheable answer."
+     },
+     {
+      "unit": "W1-6 Logout actually revokes the Supabase session",
+      "findings": [
+       "LS-CACHE-REDIS-03"
+      ],
+      "files": [
+       "app/services/auth_service.py:284-294,304,309-319",
+       "app/api/auth_routes.py:548-560",
+       "SmartCompareApp/src/services/authService.ts (client half, OTA-gated)"
+      ],
+      "flag": "none; ship the backend tolerant (refresh_token optional in the body) so the two-lever OTA gap does not break existing clients",
+      "tests_first": [
+       "tests/test_logout_revokes_session.py::test_logout_calls_set_session_then_global_sign_out - assert the stubbed auth client recorded set_session(access_token, refresh_token) followed by sign_out(scope='global')",
+       "::test_logout_reports_failure_when_redis_is_down - with cache_service.redis_client = None, assert POST /auth/logout does not return success:true"
+      ],
+      "gates": "TDD red-first; module-reference comm gate over auth_service / auth_routes / cache_service; no price path; Fable review before commit; the client half needs eas update --branch preview and must not be claimed shipped before it",
+      "order_reason": "Mechanism proof rather than inference: gotrue's sign_out reads self.get_session() first, and a client built by create_client() has empty per-client storage, so no revoke is ever issued - the ONLY revocation today is a 1 h Redis blacklist whose read fails open twice over. A user who taps Log out, or an admin responding to a stolen device, gets no server-side revocation. Launch-blocking for an app holding purchase history and referral balances."
+     },
+     {
+      "unit": "W2-1 Redis-backed limiter storage",
+      "findings": [
+       "LS-RATELIMIT-KEY-10",
+       "#72"
+      ],
+      "files": [
+       "app/middleware/rate_limiter.py:103-110,125-129"
+      ],
+      "flag": "env RATELIMIT_STORAGE_URI (unset -> memory://, byte-identical) + in_memory_fallback=[ANON_LIMIT], in_memory_fallback_enabled=True",
+      "tests_first": [
+       "tests/test_rate_limiter_storage.py::test_storage_uri_honours_env_and_defaults_to_memory - assert _get_storage_uri() returns 'memory://' with the env unset and the exact env value when set",
+       "::test_limiter_degrades_when_storage_raises - patch the storage to raise, assert the request is served via the fallback rather than 500ing (today swallow_errors=False and the fallback list is empty)"
+      ],
+      "gates": "TDD red-first; module-reference comm gate over rate_limiter and the 12 route modules; no price path; measure the added Upstash round trip (178 ms, now MEASURED) across 61+ routes before flipping; Fable review before commit",
+      "order_reason": "STEP 2 of the corrected ordering rule, and the precondition for BOTH a second worker and per-user keys. Buckets are per-process and restart-wiped today, so every deploy is a free reset of the register/login/account-delete brute-force counters, and adding a worker silently multiplies every limit by the worker count. redis==8.1.0 and limits==5.8.0 are already pinned; Upstash serves native TLS Redis on the same database, so no new vendor is needed."
+     },
+     {
+      "unit": "W2-2 Bounded graceful shutdown + awaited stream refund",
+      "findings": [
+       "LS-FAILURE-MODES-COST-05",
+       "LS-FAILURE-MODES-COST-06"
+      ],
+      "files": [
+       "app/main.py:162-172 (add a shutdown handler + a tracked background-task set)",
+       "app/utils/async_utils.py:54",
+       "app/api/text_routes.py:685-689",
+       "railway.json:7 (--timeout-graceful-shutdown 20)"
+      ],
+      "flag": "ENABLE_AWAITED_STREAM_REFUND (default OFF) for the awaited-refund half; the tracked-task drain is unflagged",
+      "tests_first": [
+       "tests/test_shutdown_drain.py::test_refund_survives_loop_teardown - drive event_generator to the terminal else branch, then cancel all pending tasks the way asyncio.run does, assert refund_comparison_credit completed (today it never does; invert the assertion at that commit)"
+      ],
+      "gates": "TDD red-first; module-reference comm gate over text_routes / async_utils / main; no price path; Fable review before commit",
+      "order_reason": "Latent at ~zero traffic, which is why it is W2 and not W0 - but deploys are the routine event here and each one hits every concurrent user, silently burning a free-tier credit (3 lifetime / 10 monthly), losing the history row and the analytics row, with only a logger.warning (#68). Add --timeout-graceful-shutdown 20 in the same change so uvicorn's drain is bounded rather than None."
+     },
+     {
+      "unit": "W2-3 429 truth: Retry-After plus a client rate-limit branch",
+      "findings": [
+       "LS-FAILURE-MODES-COST-12",
+       "LS-RATELIMIT-KEY-08"
+      ],
+      "files": [
+       "app/middleware/error_handler.py:122-127,41-52",
+       "SmartCompareApp/src/screens/HomeScreen.tsx onError",
+       "SmartCompareApp/src/services/api.ts:146-153",
+       "SmartCompareApp/src/i18n/en.json",
+       "SmartCompareApp/src/i18n/ar.json"
+      ],
+      "flag": "none",
+      "tests_first": [
+       "tests/test_rate_limit_response.py::test_429_carries_retry_after - assert the Retry-After header and retry_after_seconds in the JSON body (today neither exists)",
+       "jest: HomeScreen renders dedicated rate-limited copy for code RATE_LIMITED in both en and ar (today it falls through to the generic comparison-failed string; the shipped 97b5f15 bundle shows the raw axios 429 text)"
+      ],
+      "gates": "TDD red-first; module-reference comm gate over error_handler plus jest for the client half; no price path; the client half reaches users only on the next eas update --branch preview so ship the backend half first and do not claim the client half shipped; Fable review before commit",
+      "order_reason": "Stage 3 of the burst cascade is the part that makes the ceiling WORSE rather than degrading gracefully: no Retry-After, no client handler on any compare screen (the only RATE_LIMITED handler in the app is ContactUsScreen.tsx:75), so the user re-taps immediately into the same deployment-wide bucket and sustains the storm."
+     },
+     {
+      "unit": "W2-4 A health signal that can see a stalled loop",
+      "findings": [
+       "LS-FAILURE-MODES-COST-13",
+       "#81"
+      ],
+      "files": [
+       "app/main.py:307-313 (report event-loop lag)",
+       "railway.json:8-11 (restartPolicyMaxRetries)",
+       "external uptime probe (ops, no code)"
+      ],
+      "flag": "none (additive payload key)",
+      "tests_first": [
+       "tests/test_health_reports_loop_lag.py::test_health_payload_includes_loop_lag_ms - assert /health returns a numeric loop_lag_ms measured across an await asyncio.sleep(0)"
+      ],
+      "gates": "TDD red-first; module-reference comm gate over main; additive so no behaviour fork; no price path; Fable review before commit",
+      "order_reason": "The ONLY unit that can DETECT the section 0.7 failure class. Railway does not monitor the healthcheck after a deployment goes live (its own docs) and ON_FAILURE fires only when the process exits - a stalled loop never exits, so zero restarts occur and the 3-retry budget is never consumed. Today nothing distinguishes 'saturated but alive' from 'healthy', and nothing polls /health at all."
+     },
+     {
+      "unit": "OPS-1 Arm the Bright Data budget gate (no code, first item of the activation runbook)",
+      "findings": [
+       "LS-FAILURE-MODES-COST-01",
+       "CR-CLAUDE-CONFIG-02"
+      ],
+      "files": [
+       "Railway env on services web and price-warmer",
+       "CLAUDE.md:328 (docs correction)"
+      ],
+      "flag": "ENABLE_BRIGHTDATA_BUDGET_GATE=true on BOTH services (or unset ENABLE_BRIGHTDATA_FALLBACK while OpenAI has no quota)",
+      "tests_first": [
+       "tests/test_brightdata_budget_gate.py::test_dispatch_records_usage - construct the exact prod env dict (fallback+key+zone set, budget gate unset), monkeypatch api_budget_service.record_usage, await bd_search_web('x') with _bd_post stubbed, assert record_usage was called at least once (today 0 calls)",
+       "::test_fallback_enabled_implies_budget_gate_enabled - a config test asserting that whenever _brightdata_enabled() is True, _brightdata_budget_gate_enabled() is also True"
+      ],
+      "gates": "TDD red-first for the two pins even though the flip itself is ops; module-reference comm gate over brightdata_service / api_budget_service; the env flip is Ahmed's to make and must be verified with railway variables --service <svc> --kv, never assumed repo-wide; Fable review of the docs correction before commit",
+      "order_reason": "The only LIVE, unbounded, unmetered spend exposure in the lane, and it is an env flip with no deploy risk (the gate fails open on a Redis fault). It must precede any traffic and any load test. Prefer declaring the ceiling in an env var rather than relying on the packaged 4,500 free-tier literal, so a free-tier number cannot silently darken a paid zone the way SERPER_LIFETIME_LIMIT's 2200 was documented to."
+     }
+    ]
+   },
+   "critic": {
+    "gaps": [
+     "ON-LOOP CPU AFTER THE FETCH IS NEVER ENUMERATED. The lane's loop-cost inventory covers HTML parse + SSL context + DB/Redis waits only. scoring_service.compute_scores (sync, app/services/scoring_service.py:1264, 3,819 lines) is called bare from async at structured_comparison_service.py:3418 and :4128; response_builder.build_comparison_response (app/services/response_builder.py:1295, 2,005 lines) and every fact_check_service entry (:204/:301/:358/:399, 608 lines) are sync and run on the loop for every compare. The strings 'scoring_service' and 'fact_check' appear ZERO times across all 96 findings. So 1a(b)'s per-compare loop budget (7.7 s parse + 0.4 s SSL + un-offloaded executes) and 1b row 2's '~7.8 compares/min from HTML parsing alone' rest on an incomplete term list — and scoring_service.py is +600 lines in the exact 593ec1e..76ace90 delta the brief flagged.",
+     "/image/identify WAS NEVER TRACED (acknowledged in 6.2 item 7, but it is the skipped cell most likely to hold a P1). app/api/image_routes.py:105-130 accepts 4 images x 10 MB, awaits img.read() into memory, and openai_service.identify_products (async def, :139) base64-encodes each one inline on the loop at :197-208, materialising ~53 MB of data-URI strings per request behind a 10/minute shared bucket and (per the mobile checkup) no usage metering for authed users. 1b row 7's verdict 'Memory: not binding today' is derived from HTML-parse allocations only and never accounts for this path.",
+     "INGRESS KNOBS BEYOND --limit-concurrency ARE UNENUMERATED. Only --limit-concurrency, --workers and --proxy-headers are considered. --timeout-keep-alive, h11 header/body read limits, request-body size ceilings and slowloris behaviour on the single worker are never listed as cells, although W1-1 is itself a start-command unit and the stage-4 metastability story is about unbounded accept-and-queue.",
+     "NO DISPOSITION FOR 67 OF 96 ROWS. Section 2 proposes units citing 29 finding ids; the remaining 67 (55 P2 / 27 P3 minus the four P2s that ride a unit) appear only as table rows with no defer/backlog/drop ruling. M18's precedent was an explicit P2/P3 triage (146 triaged, 17 dropped as noise); this report never says what happens to its own tail.",
+     "LOAD-ADJACENT OPEN ISSUES NOT RECONCILED (brief HARD RULE 3). #70 (curl pool + fan-out cap) is literally W1-2's subject and is never cited (0 mentions in the report); #64 (SSE analytics/quota keyed on the success flag) touches the same event_generator metering code as 1c stage 7 and W2-2 — 0 mentions; #63 (/price-kpi auth+meter) is the same unauthenticated-unmetered class as W0-6 — 0 mentions; #55, #67, #128 also 0; #61 appears once and only as the Firecrawl half of 0.4. Each should have carried a still-open/regressed/fixed status line.",
+     "THE price-warmer SERVICE AND THE CRON SURFACES WERE NOT COVERED. Acknowledged in 6.2 item 5, but it is the only unattended service that SPENDS (SERPER_LIFETIME_LIMIT=2200 vs web's 0, Bright Data armed with no budget gate), and reengagement/bonus-expiry crons that share the same Upstash and Supabase were never modelled at all (which is also why #80 cron failure visibility went unreconciled).",
+     "EXECUTOR SATURATION WITH THE OFFLOAD FLAGS ON WAS NEVER MEASURED (the ls-request-path-blocking finder's own not_covered item 7), yet 1a(b)'s '2-3 concurrent, 5-8/min' answer and W0-4/W1-2's 'canary together' ordering both depend on how the 40-thread pool behaves once DB and Redis work moves into it. Likewise the four things a second worker breaks are static reads, never exercised.",
+     "NO END-TO-END COMPARE MEASUREMENT ANYWHERE, so the fan-out width (~18) used in the 7.7 s parse arithmetic, the ~36 warm / ~72 cold Upstash commands, and the 12-18 Bright Data requests per compare are all derived from primitives. Acknowledged, but it means every per-compare figure in sections 0-1 is a composition, not an observation."
+    ],
+    "unverified_claims": [
+     "1b row 5 labels the Upstash ceiling 'MEASURED RTT + MEASURED command counts' and states 'free tier (500K commands/mo) exhausts near ~150 DAU'. The Upstash plan was never read (6.2 item 3), the per-compare counts are derived not observed, and the ls-cache-redis finder's own crossover estimate was 250-350 DAU on commands alone. The ceiling is MODELLED on an assumed plan.",
+     "1b row 6 labels 'a slow query can hold the loop 120 s' MEASURED. The 120 s is the locked postgrest default (DEFAULT_POSTGREST_CLIENT_TIMEOUT) plus a runtime Timeout probe — STATIC. No query was ever observed holding the loop; verified at HEAD that app/ contains zero ClientOptions/postgrest_client_timeout occurrences, which is the static half only.",
+     "1b row 1 labels the shared-bucket ceiling MEASURED while its own caveat column says the bucket count is [1..N_peers] and modelled from 10 peers accumulated over two months of ~zero traffic. 'Deployment-wide' is a modelled property presented under a MEASURED label.",
+     "The 178 ms Upstash RTT is an upper bound (urllib per call, no keep-alive, SDK path never timed — the report says so in 3.2), yet 1a(b) presents '~6.4 s warm / ~12.8 s cold of loop blockage relocated' as 'MEASURED counts x MEASURED RTT', and 1d's 'a cache HIT costs a full blocking round trip' inherits the same upper bound.",
+     "1c stage 3's client-side chain (api.ts:146-153, HomeScreen.tsx:394-399, ContactUsScreen.tsx:75, 'the shipped bundle shows the raw axios string Request failed with status code 429') is not backed by any verified finding in this lane — no SmartCompareApp file appears in the file field of any of the 96 rows — and is presented without attribution to the mobile lane.",
+     "The concurrency-cliff percentages are repeated as bare MEASURED numbers in 1c stages 1-2 without the 3.1 item 5 confound (overlap derived from duration_ms, so exposure and outcome share a variable), and 1a(a) still carries 'overlap>=4 success 0-29%', a range whose lower end (the finder's 0%) explicitly did not reproduce in the verifier's recount.",
+     "'78.3% of the request log is a synthetic harness' asserts authorship the evidence does not establish: the ls-measured-evidence finder recorded that it could not prove the mechanism behind the 10,364 duration_ms==0 rows and reported the population's signature, not its author.",
+     "Bright Data's 'packaged 4,500/month allowance' is the code constant PROVIDER_CONFIGS['brightdata']['monthly_limit'] (app/services/api_budget_service.py:49-52, comment '~5,000/mo free, save 500 buffer'), not a verified account plan; the ~250-375-compare burn-down and the 12-18 requests/compare are both modelled.",
+     "The 'four things a second worker breaks' in 1a(c) are called 'all verified', but only the memory:// limiter storage has its own finding row; the Shopify _next_slot_at doubling, the per-process observability under-count and the 40->80 thread arithmetic appear only inside other findings' evidence prose, never as ruled rows.",
+     "Evidence-integrity disclosure dropped in synthesis: the ls-cache-redis finder recorded that its cold _get_price run made real HTTP GETs to retailer Shopify catalogs before it realised the cascade would reach the network. The report's method statement ('zero network') never carries this."
+    ],
+    "wrong_or_stale_claims": [
+     "WRONG file:line AT HEAD. Section 0.1 and unit W0-1 cite the price-path DNS hops as price_service.py:14126,14147 'inside async def curl_fetch_html_same_site'. Verified at 76ace90: curl_fetch_html_same_site spans 13984-14059 and fetch_page_price starts at 14060, so 14126 is 'if ucp_price:' and 14147 is a blank line — neither resolves anything. The real validate_external_url call sites on that path are price_service.py:14016 and :14037. The defect is real; the citation (inherited verbatim from FABLE_REVIEW_NOTES row LS-REQUEST-PATH-BLOCKING-01) is wrong, and W0-1's call-site fix list would patch the wrong lines. (Independently verified: the only socket.getaddrinfo in app/ is url_validator.py:30, and validate_external_url's callers are url_routes.py:91/112/148/175/197/216, url_extraction_service.py:101/111, price_service.py:14016/14037, shopify_pdp_service.py:284, all confirmed present.)",
+     "SEVERITY OF RECORD CONTRADICTED. Section 5.2 records LS-CONCURRENCY-LIMITS-02 and LS-CACHE-REDIS-02 as moved P1 -> P2 by 'Fable review notes', and W1-2/W1-5 repeat '(Fable ↓P2, unit stays)'. FABLE_REVIEW_NOTES.md, SESSION 65 section, explicitly WITHDRAWS both downgrades: 'LS-CONCURRENCY-LIMITS-02 stays P1 — measured 62 submissions / 40 running / 21 queued ... LS-CACHE-REDIS-02 stays P1 — n=5 concurrent cold calls -> 5 searches + 5 extractions on one key'. The report's own preamble names those notes the severity of record, so the ledger should read 1 P0 / 15 P1 / 53 P2, not 1 P0 / 13 P1 / 55 P2, and the two units must be re-placed accordingly.",
+     "ORDERING CONTRADICTED BY THE SAME NOTES. FABLE_REVIEW_NOTES (SESSION 65, agreed-downgrades bullet) rules that with both offload flags OFF the streaming refund runs INLINE and survives shutdown, but the moment ENABLE_ASYNC_REDIS_OFFLOAD is ON it becomes a yielding await and IS lost — therefore 'bounded drain + --timeout-graceful-shutdown is a PRECONDITION for the Redis-offload canary'. The report puts that unit at W2-2, in the section titled 'only after the offloads are active and canaried', with the order reason 'Latent at ~zero traffic, which is exactly why it is W2 and not W0', and omits it from STEP 1 of the 1e ordering rule. As written the plan flips the flag that creates the loss before landing the fix.",
+     "INTERNAL INCONSISTENCY WITH ITS OWN EVIDENCE: 3.1 item 6 and 6.2 item 8 both say the recorded series contains '2 distinct user_id values'; the underlying ls-measured-evidence lane states 3 distinct user_id values and 18 non-null user_id rows.",
+     "CROSS-LANE NUMBERS UNRECONCILED. This lane's organic subset is 1,892 rows / p50 19,927 ms / 76% success with 78.3% of the series synthetic; the campaign's product lane (carried into CLAUDE.md) reports 88.6% probe strings and an organic series of ~1,513 rows / p50 22.0 s / 80% success. The headline throughput is 60/19.9 = 3.0 compares/min and becomes 2.7/min on the other subset. The report never names the discrepancy or says which filter is canonical.",
+     "Section 0.1 says all seven /api/v1/url/* routes are protected only by 'the route's 10/minute limit'. At HEAD url_routes.py:190 and :210 (/detect POST+GET) carry @limiter.limit('20/minute') and /retailers (:46-47) carries no limiter at all — so the burst arithmetic ('ten such requests are ~110-135 s of frozen loop inside a 60 s window') understates the reachable rate on three of the seven.",
+     "m21_touched is dropped from the synthesis entirely. It is present on all 96 rows in the state file (49 True / 47 False), and the brief called out the 593ec1e..76ace90 delta as the thing to look at; the report never uses it to separate long-standing defects from ones the M20/M21 waves introduced."
+    ],
+    "recommend_gap_round": true
+   }
   },
   "m22-mobile": {
    "run1_id": "wf_e23aeca8-908",
    "s65_id": "wf_c3d6962b-c9e",
    "filed": 142,
    "second_votes_total": 31,
-   "synth": null,
-   "critic": null
+   "synth": {
+    "report_path": "C:/Users/SynAckITPC/Documents/AI/sc-review-s65/docs/investigations/2026-09-06-full-review-state/report-m22-mobile.md",
+    "headline_answers": "M22 MOBILE, base 76ace90. Ledger: 0 P0 / 23 P1 rows (20 distinct after dedupe) / 77 P2 / 42 P3 / 0 refuted, from 142 filed and 142 first-verified. The second-vote agent died on 18 P1 rows; I re-derived all 18 myself this run against code and git (marked synth-2nd). Fable's notes are the severity of record and move 8 rows; I made 1 further adjudication (MB-RECONCILE-04 P1->P2).\n\n(1) IN SHAPE TODAY - two answers. ON PHONES (97b5f15 preview OTA): NOT in shape, and it is a release problem, not a code problem. I re-verified `git merge-base --is-ancestor d24d6e5 97b5f15` FAILS, so the bundle predates ALL FOUR M21 waves; `git diff --stat 97b5f15..76ace90 -- SmartCompareApp/` = 72 files / +5,329 -605. On a phone: every Results analytics batch and every feedback POST still 422s (metadata.query as comparison_id); NO compare deadline of any kind (grep -c COMPARE_TIMEOUT_MS at 97b5f15 = 0, so camera is unbounded and text/URL ride the 120 s axios ceiling); the paywall runs the M13-14 lifetime+bonus formula; no RTL/plural/currency sweep, no failure classification, no onboarding draft, no History jank fixes. Backend is current (prod = 76ace90), so the referral phantom-column fix IS live for phones. ON MAIN (76ace90): no P0, but the URL compare tab is DEAD end-to-end - url_extraction_service.py:575 calls generate_comparison() and then .get() at :583 while that function returns a (dict, usage) tuple on BOTH paths (extraction_service.py:2543/:2547) and every other caller unpacks (scs.py:3440/:7907); I read all four sites this run. Camera (/image/identify) and URL (/url/compare) are unmetered for authenticated users (0 metering symbols in either route vs 13 in text_routes.py). tsc exit 0 and 242/245 jest suites are green but structurally blind: App.tsx, ResultsScreen.tsx and usageService.ts are executed by zero tests and the CI eslint glob excludes App.tsx.\nPENDING OTA: NATIVE-COMPATIBLE - I re-derived it: app.json and eas.json diffs over 97b5f15..76ace90 are EMPTY, expo stays ~54.0.33, runtimeVersion appVersion 1.0.0 unchanged; package.json changes are exactly two pure-JS lines (axios ^1.13.4->^1.20.0, NEW intl-pluralrules ^2.0.1). Propagation is TWO launches. FIRST-LAUNCH RISK LIST, five items: (i) the OTA ships the new forced-logout listener while auth_routes.py:537-543 returns 401 for its OWN upstream failure (auth_service.py:49-53 folds network/dns/timeout into that path) and the client wipes both tokens on any refresh 401 - so one Supabase blip logs out the fleet, and the boot path refreshes on every cold start; ship the backend 503 half first; (ii) intl-pluralrules installs at bundle-load time and its Hermes path is device-unverified (jest takes the Node branch) while the polyfill guard probes en/es/ru/zh and never ar; (iii) the new cert-pinning \"running unpinned\" Sentry alarm is order-dead in its primary case (Babel hoists requires above initSentry, the ssl lib Proxy throws synchronously); (iv) three new Sentry hooks with NO sourcemap upload on either lever - every crash arrives unsymbolicated, which is also why Google Sign-In is undiagnosable; (v) useComparisonCounter now hard-depends on remaining.{daily,monthly} and degrades silently to the M13-14 hard-3 dead-end with no telemetry.\n\n(2) RECONCILIATION. M21 closed 31 prior rows (28 M18 + 3 checkup), all MAIN-ONLY, commit-attributed W1 d24d6e5 / W2 1df95b0 / W3 7fb0b0d / W4 9b34e95. Stale claims killed for good: \"phones run a hardcoded used<3\" (false - they run the more permissive lifetime+bonus formula); \"the referral phantom column is still live on devices\" (false - server-side, deployed); \"the W4 RTL regression is on phones\" (false - main-only); \"reanimated orphans infinite animations after unmount\" (refuted at 4.1.7); \"the 8.2 MB bundle is iOS\" (it is Android; iOS is 5.05 MB). Still open: the 20 distinct P1s plus 17 reconciled P2/P3 items.\n\n(3) BUNDLE, MEASURED (3 real expo export runs + VLQ attribution, verifier reproduced): iOS Hermes 5,299,992 B; Android 8,285,250 B (+56.3%); 5,060,869 B attributed over 3,842 modules. lucide-react-native 1,212,812 B = 23.96% (1,703 icon modules for 68 used across 34 barrel sites - I re-counted 34 sites / 1,704 icon files); all @sentry* 823,858 B = 16.28%, of which 198,567 B is dead browser replay/feedback/replay-canvas that nothing registers; assets 1,145,042 B of which 11 TTFs are 99.4%, and 5 unregistered Cairo weights are 469,608 B = 41.0% of the payload. BIGGEST VERIFIED WIN = the lucide barrel, ~1.19 MB (~24%), with two caveats: it is arithmetic on measured attribution not a second build, and BOTH obvious fixes fail - I checked lucide-react-native@1.14.0's exports map has only \".\" and \"./icons\" with no wildcard and no root icons/ dir, so a Metro resolveRequest shim or a babel transform is required. Multiplier: no metro.config.js exists, so inlineRequires:false means every factory runs eagerly at cold start.\n\n(4) SAFE-TO-REMOVE is APPENDIX A (12 rows, each with reference proof, the verification command, and OTA-vs-needs-build): the react-native-vector-icons.d.ts tripwire, 5 zero-caller exported symbols, the 56 dead ResultsScreen bindings, react-native-gesture-handler (needs-build, sole lock edge is ROOT), the 5 Cairo weights, the Sentry browser trio, the lucide icons, the 42 MB untracked dist/. APPENDIX B is KEEP/UNSURE with the proof that stops a cleanup: the 14-item KEEP list (bare side-effect imports @testing-library/jest-native and intl-pluralrules are the concrete traps, plus 4 peer-only natives and the tsc-load-bearing react-test-renderer.d.ts), and 5 UNSURE items - the 142 (not 160) orphan i18n keys, logo-wordmark.png, api.updateEmail, writingDirection, and the skipped suites/todos.\n\n(5) APP STORE. Icons OPEN (I recomputed the three SHA-256s: template-identical, splash == adaptive). Legal OPEN (DRAFT banner on line 7 of both, served live). Privacy manifest OPEN and worse than recorded - no NSPrivacyCollectedDataTypes at all against 9-11 collected types the policy's section 2 never mentions (demographics + a persistent hashed device id). NEW: RECORD_AUDIO is requested with zero audio use anywhere - needs-build, cannot be OTA'd, must land before the first production build. npm audit is triaged: only 3 of 20 high/critical reach the device bundle, all app-controlled. Google Sign-In still failing; the instrumentation does survive release but is unreadable until the Sentry ordering and sourcemap upload are fixed. Account recovery does not exist (no route, no screen, no redirect_to).\n\n(6) ARABIC, RENDERING SIDE. Catalogs are clean (896==896 keys, placeholder parity, no untranslated prose) and the W4 DirectionalIcon sweep is complete. Everything between catalog and glass fails: first launch runs LTR (forceRTL with no reload; RN caches isRTL as a module constant); two contradictory isRTL sources ship side by side; W4 introduced a MAIN-ONLY textAlign double-flip on 5 sites AND the contract test requires the wrong form, fencing the bug in; Cairo is loaded, blocks the splash and renders zero characters (fontFamily.ar has no consumers, typography presets carry no fontFamily, useTypography has no production importer); four numeral systems on one screen; BHD loses its third decimal on History/Home/Profile; relative time bypasses the catalog with wrong Arabic plurals and bare English \"3h\"/\"5d\"; ~1,500 of 3,254 measured failures render raw English backend prose inside Arabic alerts; the literal-string fence reads 0 and cannot see Alerts/attributes; no bidi isolation anywhere; and choosing Arabic hard-restarts the app with no warning, resetting onboarding to step 1.\n\n14 units proposed, all TDD red-first through the module-reference comm gate with Fable review before commit. No unit touches the price path, so the _proof byte-identity gate does not apply; flagged units carry a flag-OFF no-op assertion instead. Client units are unflagged by nature and OTA-only; U14 is the single needs-build bundle. Top Ahmed actions: publish the OTA, qaren.app DNS, icons, legal, and the outbound-link product call.",
+    "ranked_ids": [
+     "MB-RECONCILE-06",
+     "MB-RECONCILE-07",
+     "MB-RECONCILE-01",
+     "MB-NETWORK-CONTRACT-14",
+     "MB-NETWORK-CONTRACT-01",
+     "MB-NETWORK-CONTRACT-02",
+     "MB-FLOWS-STATE-01",
+     "MB-SAFE-HYGIENE-01",
+     "MB-SAFE-HYGIENE-02",
+     "MB-TWO-LEVER-RELEASE-02",
+     "MB-FLOWS-STATE-02",
+     "MB-NETWORK-CONTRACT-03",
+     "MB-NETWORK-CONTRACT-04",
+     "MB-NETWORK-CONTRACT-07",
+     "MB-FLOWS-STATE-04",
+     "MB-FLOWS-STATE-06",
+     "MB-STARTUP-BUNDLE-01",
+     "MB-RECONCILE-03",
+     "MB-STARTUP-BUNDLE-02",
+     "MB-RECONCILE-05",
+     "MB-FLOWS-STATE-05",
+     "MB-TESTS-TRUTH-04",
+     "MB-RECONCILE-15",
+     "MB-RECONCILE-02",
+     "MB-NETWORK-CONTRACT-05",
+     "MB-NETWORK-CONTRACT-06",
+     "MB-I18N-RTL-03",
+     "MB-I18N-RTL-04",
+     "MB-STARTUP-BUNDLE-03",
+     "MB-STARTUP-BUNDLE-05",
+     "MB-STARTUP-BUNDLE-06",
+     "MB-TWO-LEVER-RELEASE-03",
+     "MB-TWO-LEVER-RELEASE-04",
+     "MB-TWO-LEVER-RELEASE-05",
+     "MB-TWO-LEVER-RELEASE-07",
+     "MB-I18N-RTL-01",
+     "MB-I18N-RTL-05",
+     "MB-I18N-RTL-07",
+     "MB-I18N-RTL-08",
+     "MB-I18N-RTL-09",
+     "MB-I18N-RTL-11",
+     "MB-RENDER-PERF-A11Y-04",
+     "MB-RENDER-PERF-A11Y-05",
+     "MB-RENDER-PERF-A11Y-06",
+     "MB-TESTS-TRUTH-11",
+     "MB-SAFE-HYGIENE-05",
+     "MB-RECONCILE-04",
+     "MB-NETWORK-CONTRACT-09",
+     "MB-STARTUP-BUNDLE-11",
+     "MB-RECONCILE-18"
+    ],
+    "proposed_units": [
+     {
+      "unit": "U1 - EAS channel-freshness guard + publish runbook (release; no lever of its own)",
+      "findings": [
+       "MB-RECONCILE-06",
+       "MB-RECONCILE-19",
+       "MB-TWO-LEVER-RELEASE-05",
+       "MB-TWO-LEVER-RELEASE-10"
+      ],
+      "files": [
+       ".github/workflows/ci.yml",
+       "docs/runbooks/qaren-canary-onboarding.md"
+      ],
+      "flag": "none",
+      "tests_first": [
+       "CI job that resolves the preview channel's published commit and fails when it is more than one merge behind origin/main - RED today (6 commits / 72 files behind)"
+      ],
+      "gates": "comm gate n/a (CI-only); land non-blocking for one week then blocking; Fable review before commit",
+      "order_reason": "FIRST. It is the only thing that makes the two-lever gap self-reporting instead of requiring a reconciliation pass, and the runbook line (no NODE_ENV override, record the update group id + SHA, upload sourcemaps) is what makes the next OTA auditable. The publish itself is Ahmed's action, not a unit."
+     },
+     {
+      "unit": "U2 - Feedback chip allowlist + superset fence (backend deploy; fixes phones with NO OTA)",
+      "findings": [
+       "MB-NETWORK-CONTRACT-01"
+      ],
+      "files": [
+       "app/api/feedback_routes.py",
+       "tests/test_feedback_allowlist_superset.py"
+      ],
+      "flag": "none (additive, backwards-compatible)",
+      "tests_first": [
+       "backend test that greps SmartCompareApp/src for mattered_most chip literals and asserts each is in VALID_MATTERED_MOST - RED on accurate/detailed/fast",
+       "jest test asserting submitFeedback's payload is one FeedbackRequest accepts"
+      ],
+      "gates": "module-reference comm gate over every test referencing feedback_routes/feedback_service; free-unit pytest; branch-only-NEW == []; Fable review before commit",
+      "order_reason": "Before the OTA. The ONLY P1 a backend deploy alone fixes for users today - the chips are byte-identical in the shipped 97b5f15 bundle, so every in-app feedback is 422'd on phones AND main. Mirrors the existing tests/test_events_allowlist_superset.py precedent."
+     },
+     {
+      "unit": "U3 - /url/compare: make it work, then meter it; camera metering (backend deploy)",
+      "findings": [
+       "PO-VERDICT-TRUTH-01",
+       "MB-RECONCILE-07",
+       "MB-RECONCILE-01",
+       "MB-NETWORK-CONTRACT-14"
+      ],
+      "files": [
+       "app/services/url_extraction_service.py",
+       "app/api/url_routes.py",
+       "app/api/image_routes.py",
+       "tests/test_url_routes_metering.py",
+       "tests/test_image_routes_metering.py"
+      ],
+      "flag": "ENABLE_URL_USAGE_METER and ENABLE_IMAGE_USAGE_METER, both default OFF, read per call via os.getenv (the change turns 200s into 429s). The tuple unpack ships UNFLAGGED - a pure defect fix with no behavioural fork.",
+      "tests_first": [
+       "POST /api/v1/url/compare with two extractable URLs returns 200 success:true - RED today (the (dict,usage) tuple unpack raises)",
+       "authed caller over cap on POST /api/v1/image/identify -> 429 USAGE_LIMIT, consume awaited 1x AND the Vision mock awaited 0x (assert the SPEND, not just the status)",
+       "control: the same shape on POST /api/v1/text/compare stays green (reference bracket text_routes.py:193/:247/:278)",
+       "image/identify with <2 products identified -> refund_comparison_credit awaited exactly 1x",
+       "image/identify vision-parse error path (image_routes.py:146) -> refund 1x",
+       "image/identify L4 moderation CONTENT_UNAVAILABLE path (image_routes.py:175) -> refund 1x",
+       "image/identify success -> record_lifetime_comparison awaited 1x alongside save_comparison_and_track_cohort",
+       "authed caller over cap on POST /api/v1/url/compare -> 429 USAGE_LIMIT and compare_from_urls NOT called",
+       "url/compare success -> save_comparison_and_track_cohort scheduled with input_type='url' (URL compares finally reach History)",
+       "url/compare with a posted selected_category -> it reaches compare_from_urls, or the client send site HomeScreen.tsx:433 is deleted and a test pins that it is not sent",
+       "anonymous caller with both flags unset -> byte-identical call set to 76ace90 (no consume, no refund, no record)",
+       "guard test asserting refund_anon_comparison_credit has at least one caller before ENABLE_ANON_USAGE_GATE can be enabled (#128); this unit must NOT flip that flag"
+      ],
+      "gates": "module-reference comm gate over every test referencing url_routes/image_routes/url_extraction_service/usage_service; flag-OFF no-op assertion on both routes (the _proof byte-identity gate does not apply - the price path is untouched); free-unit pytest; Fable review before commit",
+      "order_reason": "Before any camera or URL promotion and before ENABLE_ANON_USAGE_GATE. The unpack leads because metering a route that 500s on every success is decoration. #128 stays a hard precondition on the anon gate, and MB-NETWORK-CONTRACT-09 shows why flipping it today is inert (the client never sends X-Device-Fingerprint on the only gated route it calls)."
+     },
+     {
+      "unit": "U4 - Refresh: distinguish 'session dead' from 'upstream down' (backend deploy first, client half OTA)",
+      "findings": [
+       "MB-NETWORK-CONTRACT-02"
+      ],
+      "files": [
+       "app/api/auth_routes.py",
+       "app/services/auth_service.py",
+       "SmartCompareApp/src/services/authService.ts"
+      ],
+      "flag": "none",
+      "tests_first": [
+       "patch refresh_session to raise ConnectionError and assert POST /auth/refresh returns 503 with a stable code, not 401 - RED today",
+       "jest: reject with {status:503, code:'REFRESH_UPSTREAM_UNAVAILABLE'} and assert clearSession was NOT called and sessionInvalid is falsy"
+      ],
+      "gates": "module-reference comm gate over auth_routes/auth_service; free-unit pytest + jest; tsc exit 0; Fable review before commit",
+      "order_reason": "The backend half MUST land before or with the OTA. The OTA ships the new forced-logout listener, and the server currently converts its own Supabase/DNS failure into a 401 that the client treats as a definitively dead session - the boot path refreshes on every cold start, so one blip ejects the fleet. Coordinate with the other session's remaining B2 expired-token 401 so the two do not collide in _categorize_auth_error."
+     },
+     {
+      "unit": "U5 - comparison_id echoed on the compare response (backend deploy; user value only with the OTA)",
+      "findings": [
+       "MB-NETWORK-CONTRACT-07"
+      ],
+      "files": [
+       "app/api/text_routes.py",
+       "app/services/feedback_service.py"
+      ],
+      "flag": "ENABLE_COMPARISON_ID_ECHO default OFF, or the zero-latency variant (generate the row UUID in the route and pass it into save_comparison, no added await)",
+      "tests_first": [
+       "route test asserting the POST /api/v1/text/compare body carries a comparison_id that is a valid UUID and matches the row written to comparisons - RED today (no comparison_id assignment exists anywhere in app/)",
+       "jest: render ResultsScreen with a fresh-compare payload carrying comparison_id and assert ShareBottomSheet mounts and trackEvent payloads carry that id"
+      ],
+      "gates": "module-reference comm gate over text_routes/feedback_service/database_service; free-unit pytest; the added await must not land on the single-loop hot path (prefer the UUID variant); Fable review before commit",
+      "order_reason": "After U3. The shipped ResultsScreen reads metadata.query, so the echo alone changes nothing on phones; with the OTA it unblocks the Loop-1 share at the one high-intent moment and anchors every feedback/event row to its comparison."
+     },
+     {
+      "unit": "U6 - Device fingerprint on social sign-in and the share sheet (client OTA + backend deploy)",
+      "findings": [
+       "MB-NETWORK-CONTRACT-03",
+       "MB-NETWORK-CONTRACT-04",
+       "MB-NETWORK-CONTRACT-09"
+      ],
+      "files": [
+       "SmartCompareApp/src/services/authService.ts",
+       "SmartCompareApp/src/components/ShareBottomSheet.tsx",
+       "app/api/auth_routes.py",
+       "app/services/auth_service.py"
+      ],
+      "flag": "none",
+      "tests_first": [
+       "jest: mock getDeviceFingerprint, call signInWithGoogle, assert fetch headers include X-Device-Fingerprint - RED today",
+       "pytest: POST /auth/social-login with the header sets users.device_fingerprint_hash and inherits lifetime_comparisons_used - RED today (0 device_fingerprint hits in auth_service.py)",
+       "jest: a share tap posts a 64-char lowercase hex device_fingerprint_hash - RED today (the prop has no caller)",
+       "pytest: evaluate_invite returns flagged_reason SAME_DEVICE when referrer and invitee share a hash"
+      ],
+      "gates": "module-reference comm gate over auth_routes/auth_service/referral_service/abuse_detection_service; free-unit pytest + jest; tsc exit 0; Fable review before commit",
+      "order_reason": "ENABLE_REFERRAL_SYSTEM is true in prod and BOTH device-based defences are down at once: social accounts get a NULL fingerprint (free-tier device lock bypassed by delete-and-resignup) and referral_invites.device_fingerprint_hash is always NULL (SAME_DEVICE can never fire). Each half is inert without the other, which is why the gap survived - resolve the fingerprint INSIDE ShareBottomSheet so no caller can forget it again."
+     },
+     {
+      "unit": "U7 - Route contract: never navigate with a param no screen reads (client, OTA-safe)",
+      "findings": [
+       "MB-FLOWS-STATE-04",
+       "MB-FLOWS-STATE-05",
+       "MB-RECONCILE-05"
+      ],
+      "files": [
+       "SmartCompareApp/src/screens/ReferralLandingScreen.tsx",
+       "SmartCompareApp/src/screens/InviteeQuizScreen.tsx",
+       "SmartCompareApp/src/types/types.ts",
+       "SmartCompareApp/__tests__/navigation.resultsEntry.contract.test.ts"
+      ],
+      "flag": "none (client-side ships unflagged by nature; reaches phones only via OTA)",
+      "tests_first": [
+       "router-level: for the UNAUTHENTICATED route-name set, StackRouter.getStateForAction(deepLinkState, reset({routes:[{name:<target>}]})) must not be null - RED today on all three reset->'Main' sites (ReferralLandingScreen.tsx:120/:162, InviteeQuizScreen.tsx:275)",
+       "source-contract test asserting every navigate('Results', ...) literal uses only keys in RootStackParamList['Results'] - RED today on the two from_history sites",
+       "RNTL: ResultsScreen with {comparison_id} renders the loading state, with {from_history} renders the empty state"
+      ],
+      "gates": "module-reference comm gate over the two screens + types.ts; jest; tsc --noEmit exit 0 AFTER the `as any` casts are removed and ProfileScreen's navigation is typed; Fable review before commit",
+      "order_reason": "After feature/m23-mobile-w1 merges - their A18 already fixes the from_history half, so this unit owns the referral-exit half they do not, plus the contract test that would have caught both. Fixing qaren.app (Ahmed) WITHOUT this makes the dead-end worse, because the deep link becomes the default invitee path."
+     },
+     {
+      "unit": "U8 - Boot cannot strand, and Sentry is armed before the import graph runs (client, OTA-safe)",
+      "findings": [
+       "MB-STARTUP-BUNDLE-03",
+       "MB-STARTUP-BUNDLE-07",
+       "MB-TWO-LEVER-RELEASE-03",
+       "MB-STARTUP-BUNDLE-14",
+       "MB-RECONCILE-03",
+       "MB-STARTUP-BUNDLE-02"
+      ],
+      "files": [
+       "SmartCompareApp/App.tsx",
+       "SmartCompareApp/index.ts",
+       "SmartCompareApp/src/services/sentry.ts",
+       "SmartCompareApp/src/i18n/index.ts",
+       "SmartCompareApp/src/config/featureBucket.ts",
+       "SmartCompareApp/src/services/certificatePinning.ts"
+      ],
+      "flag": "none",
+      "tests_first": [
+       "render App with expo-localization getLocales throwing and assert the tree leaves the splash within a tick - RED today (isLoading never clears; the 4 awaits at App.tsx:170/:171/:172/:184 sit outside the try at :188 and setIsLoading(false) at :207 is not in a finally)",
+       "require-order test asserting Sentry.init ran before the api.ts module body - RED today (Babel hoists 42 requires above initSentry())",
+       "a synchronously-throwing initializeSslPinning still produces a Sentry captureMessage - RED today",
+       "getStableId() rejection no longer strands boot (featureBucket.ts:84 Crypto.randomUUID inside the catch)"
+      ],
+      "gates": "module-reference comm gate over App.tsx/sentry/i18n/featureBucket/certificatePinning; jest; tsc exit 0; Fable review before commit",
+      "order_reason": "Before the OTA if it can be. The Sentry-ordering half is what makes every other first-launch risk observable - without it a boot crash introduced by an OTA is invisible in the dashboard. The refresh-blocking half (MB-RECONCILE-03 = MB-STARTUP-BUNDLE-02) is the other session's A3: re-verify after their merge, do not re-file."
+     },
+     {
+      "unit": "U9 - The onboarding Step-17 notifications answer is actually recorded (client, OTA-safe)",
+      "findings": [
+       "MB-FLOWS-STATE-06",
+       "MB-RECONCILE-17"
+      ],
+      "files": [
+       "SmartCompareApp/src/screens/onboarding/OnboardingFlow.tsx",
+       "SmartCompareApp/src/services/onboardingDraft.ts",
+       "SmartCompareApp/src/screens/ProfileScreen.tsx"
+      ],
+      "flag": "none",
+      "tests_first": [
+       "render the real OnboardingFlow at step 17, press s17-not-now, assert onComplete.mock.calls[0][0].notifications_enabled === false and === true after s17-allow - RED today (measured through the real component: the key is absent in BOTH branches)",
+       "buildPreferencesPayload({notifications_enabled:false}) contains the key - RED today (neither payload builder mentions it)"
+      ],
+      "gates": "module-reference comm gate over OnboardingFlow/onboardingDraft/ProfileScreen; jest; tsc exit 0; Fable review before commit",
+      "order_reason": "Before ENABLE_REENGAGEMENT_PUSHES is ever flipped. Today the consequence is only a wrong toggle state (ProfileScreen.tsx:233 renders undefined as ON); with that flag on it becomes push sent to users who explicitly declined at the last step of a 17-step funnel running at 100% canary. Verify the :476 'persists' handler is a different path before closing."
+     },
+     {
+      "unit": "U10 - Arabic rendering pack: revert the textAlign double-flip, invert its fence, one number/price/date formatter (client, OTA-safe)",
+      "findings": [
+       "MB-I18N-RTL-03",
+       "MB-I18N-RTL-05",
+       "MB-I18N-RTL-06",
+       "MB-I18N-RTL-07",
+       "MB-I18N-RTL-08",
+       "MB-I18N-RTL-09",
+       "MB-I18N-RTL-14",
+       "MB-RECONCILE-18"
+      ],
+      "files": [
+       "SmartCompareApp/src/components/results/ResultsAccordion.tsx",
+       "SmartCompareApp/src/components/results/DimensionBars.tsx",
+       "SmartCompareApp/src/components/ProfileEditorialSections.tsx",
+       "SmartCompareApp/src/screens/ContactUsScreen.tsx",
+       "SmartCompareApp/src/screens/InviteeQuizScreen.tsx",
+       "SmartCompareApp/src/screens/RegisterScreen.tsx",
+       "SmartCompareApp/src/screens/HistoryScreen.tsx",
+       "SmartCompareApp/src/screens/HomeScreen.tsx",
+       "SmartCompareApp/src/utils/formatDate.ts",
+       "SmartCompareApp/src/utils/formatPrice.ts",
+       "SmartCompareApp/src/utils/formatNumber.ts",
+       "SmartCompareApp/src/i18n/en.json",
+       "SmartCompareApp/src/i18n/ar.json",
+       "SmartCompareApp/eslint.config.js",
+       "SmartCompareApp/__tests__/rtl/textAlignLogical.contract.test.ts"
+      ],
+      "flag": "none",
+      "tests_first": [
+       "INVERT THE FENCE FIRST: rewrite textAlignLogical.contract.test.ts:52-53 to require the bare physical value and forbid the I18nManager.isRTL ternary - RED on the 5 regressed sites (RN mirrors physical left/right itself; verified in node_modules on all four platform paths)",
+       "formatPrice(12.345,'BHD') === '12.345 د.ب' and formatPrice(12.5,'SAR') === '12.50 ر.س' - RED at every one of the 6 existing price-render sites",
+       "HomeScreen SSE-complete and URL error paths under i18n.language='ar': the alert body contains no ASCII letters - RED today at :355 and :447",
+       "catalog fence: ar.json uses one digit system - RED today (32 Arabic-Indic vs 21 Western)",
+       "formatTimeAgo under ar returns six distinct plural forms and never bare '3h'/'5d'/'N/A'"
+      ],
+      "gates": "module-reference comm gate over every touched screen/component + formatDate; jest; tsc exit 0; plus the on-device Arabic walkthrough that has never happened before this is called done; Fable review before commit",
+      "order_reason": "The textAlign revert goes first and alone: the regression is MAIN-ONLY (9b34e95 is not on any phone), so shipping the OTA without it would be the first time a user ever sees it - and the contract test currently locks the bug in. The rest is one pack because every item is the same defect class: one number or one string rendered four different ways."
+     },
+     {
+      "unit": "U11 - Bundle diet: lucide barrel, dead Sentry browser code, Cairo subpaths (client, OTA-safe, gated on a measured before/after export)",
+      "findings": [
+       "MB-STARTUP-BUNDLE-01",
+       "MB-RECONCILE-09",
+       "MB-STARTUP-BUNDLE-05",
+       "MB-STARTUP-BUNDLE-06",
+       "MB-RECONCILE-10",
+       "MB-STARTUP-BUNDLE-08",
+       "MB-STARTUP-BUNDLE-13"
+      ],
+      "files": [
+       "SmartCompareApp/metro.config.js",
+       "SmartCompareApp/babel.config.js",
+       "SmartCompareApp/src/theme/fonts.ts",
+       "SmartCompareApp/app.json",
+       "SmartCompareApp/src (the 34 lucide barrel import sites)"
+      ],
+      "flag": "none",
+      "tests_first": [
+       "build-assertion over the exported source map: fewer than 100 modules under lucide-react-native/.../icons/ - RED today at 1,703; cheaper red first: an eslint no-restricted-imports banning the bare barrel - RED on all 34 sites",
+       "no source path matches @sentry-internal/(replay|replay-canvas|feedback) - RED today (4 modules, 198,567 B)",
+       "the exported asset manifest contains exactly the registered TTFs - RED today at 11 (5 unregistered Cairo weights = 469,608 B)"
+      ],
+      "gates": "module-reference comm gate over fonts.ts and every file referencing lucide; jest (the existing __mocks__/lucide-react-native.ts shim must stay valid); tsc exit 0; EXIT GATE = two expo export runs byte-diffed, plus a smoke that a thrown error still reaches the Sentry DSN; Fable review before commit",
+      "order_reason": "After U8, because it changes module-evaluation order - which is exactly what U8's Sentry-first bootstrap protects. Coordinate with the other session's remaining B1 (lucide per-icon imports); whichever session runs first owns it. Note the exports-map trap: lucide-react-native@1.14.0 exports only '.' and './icons', so the naive per-icon deep import does not resolve - a Metro resolveRequest shim or babel transform is required."
+     },
+     {
+      "unit": "U12 - Error copy the user can act on: RATE_LIMITED and the preferences 422 (client OTA + one backend contract choice)",
+      "findings": [
+       "MB-NETWORK-CONTRACT-05",
+       "MB-NETWORK-CONTRACT-06",
+       "MB-RECONCILE-18"
+      ],
+      "files": [
+       "SmartCompareApp/src/screens/HomeScreen.tsx",
+       "SmartCompareApp/src/screens/ProfileScreen.tsx",
+       "SmartCompareApp/src/screens/HistoryScreen.tsx",
+       "SmartCompareApp/src/screens/EditProfileScreen.tsx",
+       "SmartCompareApp/src/screens/ResultsScreen.tsx",
+       "SmartCompareApp/src/utils/failureClassification.ts",
+       "SmartCompareApp/src/i18n/en.json",
+       "SmartCompareApp/src/i18n/ar.json",
+       "app/api/auth_routes.py"
+      ],
+      "flag": "none",
+      "tests_first": [
+       "feed HomeScreen's error path a synthetic 429 {code:'RATE_LIMITED'} and assert the alert body is t('home.errors.rateLimited') and never contains 'Rate limit exceeded' - RED today (zero RATE_LIMITED references exist in the client; the text path currently shows the wrong-products copy)",
+       "classifyLoadFailure maps status 429 to a 'busy' kind rather than 'generic' - RED today",
+       "render ProfileScreen with getPreferences resolving null, tap the AI-sharing switch, assert no PUT with priorities:[] is issued (or that the rendered error is not the raw Pydantic string) - RED today"
+      ],
+      "gates": "module-reference comm gate over the five screens + failureClassification + auth_routes; jest + free-unit pytest; tsc exit 0; Fable review before commit",
+      "order_reason": "Before any real traffic. The 429 path is the first failure a launch-day spike produces, and today it tells text users their PRODUCTS are wrong and sends them back to retype - generating more requests against the same deployment-wide bucket - while URL/History/Profile render untranslated English. The preferences half blocks a privacy control (ai_sharing_enabled) for any user without a preferences row."
+     },
+     {
+      "unit": "U13 - Password reset actually exists (client OTA + backend deploy + Ahmed's Supabase dashboard)",
+      "findings": [
+       "MB-FLOWS-STATE-02"
+      ],
+      "files": [
+       "SmartCompareApp/App.tsx",
+       "SmartCompareApp/src/screens/ResetPasswordScreen.tsx",
+       "SmartCompareApp/src/screens/ForgotPasswordScreen.tsx",
+       "app/services/auth_service.py"
+      ],
+      "flag": "none",
+      "tests_first": [
+       "call the real getStateFromPath('reset-password#access_token=x&type=recovery', linkingConfig) and assert the state names a ResetPassword route - RED today (the config declares only c/:share_token, q/:share_token and Auth>Register r/:code)",
+       "pytest asserting request_password_reset forwards a non-empty redirect_to to reset_password_email - RED today (auth_service.py:539 passes none)"
+      ],
+      "gates": "module-reference comm gate over App.tsx/auth_service; jest + free-unit pytest; tsc exit 0; Fable review before commit",
+      "order_reason": "App Store account-recovery gate, and blocked on Ahmed adding qaren://reset-password to the Supabase redirect allow-list (that config was never read, which is this unit's confidence cap). Until it ships, ForgotPasswordScreen's success copy promises a link that cannot land anywhere - change that copy in the same OTA."
+     },
+     {
+      "unit": "U14 - The native-only App Store bundle: RECORD_AUDIO, icons, privacy manifest, orphan native dep (needs-build, ONE eas build)",
+      "findings": [
+       "MB-TWO-LEVER-RELEASE-02",
+       "MB-TWO-LEVER-RELEASE-08",
+       "MB-TWO-LEVER-RELEASE-09",
+       "MB-SAFE-HYGIENE-01",
+       "MB-TWO-LEVER-RELEASE-12",
+       "MB-SAFE-HYGIENE-06",
+       "MB-TWO-LEVER-RELEASE-07"
+      ],
+      "files": [
+       "SmartCompareApp/app.json",
+       "SmartCompareApp/package.json",
+       "SmartCompareApp/assets/icon.png",
+       "SmartCompareApp/assets/splash-icon.png",
+       "SmartCompareApp/assets/adaptive-icon.png",
+       "docs/privacy-data-inventory.md"
+      ],
+      "flag": "none",
+      "tests_first": [
+       "config test asserting android.permissions excludes RECORD_AUDIO AND both the expo-camera and expo-image-picker plugin entries set microphonePermission:false - RED today (the permission is added three times over)",
+       "the three PNG SHA-256s differ from the recorded template hashes AND splash-icon.png != adaptive-icon.png - RED on all four assertions today (74c64047... and 5f4c0a73... x2, recomputed this run)",
+       "ios.privacyManifests.NSPrivacyCollectedDataTypes is a non-empty array equal to the committed docs/privacy-data-inventory.md set - RED today (key absent while the app collects 9-11 declarable types)",
+       "package.json test that every runtime dependency is imported somewhere or allowlisted with a justification - RED on exactly one name, react-native-gesture-handler"
+      ],
+      "gates": "comm gate n/a (config/assets only); npx expo prebuild --clean then assert NSMicrophoneUsageDescription absent from the Info.plist and RECORD_AUDIO absent from the AndroidManifest; npx expo-doctor; smoke the tab + modal navigation on a preview build; Fable review before commit",
+      "order_reason": "LAST, and as ONE build. All four items are native-baked so no OTA can carry them, and doing them separately means four production builds. Sequence with Ahmed's icon re-render so the first production eas build is also the last rehearsal; consider switching runtimeVersion.policy to fingerprint in the same build, since appVersion+autoIncrement leaves the runtime pinned at 1.0.0 and would deliver an incompatible OTA to old binaries the first time a native dep is added."
+     }
+    ]
+   },
+   "critic": {
+    "gaps": [
+     "MONETIZATION / PURCHASE SURFACE NEVER ENUMERATED (plausible P1). No lane enumerated how a user becomes premium. Verified myself: `PaywallScreen.tsx:236-243` `onStartTrial` fires an Alert 'Coming soon' ('Subscriptions arrive after launch'), `:374` is the primary CTA and `:406` 'Restore' calls the same `onComingSoon` stub; `grep -rn 'purchase|StoreKit|RevenueCat|InAppPurchase|billing' src/screens/PaywallScreen.tsx` returns only a copy string; `isPremium` is server-derived only (`useComparisonCounter.ts:69` `status?.tier === 'premium'`). Meanwhile the same screen advertises concrete plans ('0.9 BHD/mo' :290, '2.9 BHD' :303) and a trial->billing timeline ('In 3 days' :359, 'Gentle reminder before billing' :354). So: no user can ever leave the free tier, and a free user at the cap has no forward path. This is an App Store completeness/2.1 and metadata risk of the same class as the eight gates in §1.5, and it appears in the report ONLY as a rationale for downgrading MB-FLOWS-STATE-03 to P2 — never as a finding, never in the §1.5 table, never in a unit.",
+     "PUSH-NOTIFICATION RECEIVE/TAP SURFACE NEVER ENUMERATED (plausible P1/P2, live flag). The flows lane probed '5 deep-link shapes' — all client-authored. The BACKEND-emitted set was never enumerated: `push_service.py:80` `qaren://profile/referrals` (Loop-2), `scripts/cron_expire_bonuses.py:125` same, `reengagement_service.py:326/:345/:366` `qaren://comparison/{id}?banner=insight|retrospective` and `qaren://cohort/divergence`. The client linking config (`App.tsx:283-297`) registers ONLY `c/:share_token`, `q/:share_token`, `r/:code` plus a `redeem?code=` rewrite — none of those four paths — and I found ZERO notification listeners in the whole client (`grep -rn 'Notifications\\.' src App.tsx` yields only `requestPermissionsAsync`/`getPermissionsAsync`/`getExpoPushTokenAsync`; no `addNotificationResponseReceivedListener`, no `setNotificationHandler`). `ENABLE_REFERRAL_SYSTEM=true` in prod (baseline/railway-web-vars.txt), so the referral push half is live while its tap target does not exist. This is the same defect class as MB-FLOWS-STATE-01/-04 (dead route target) and was missed because the enumeration started from the client.",
+     "CONSENT CAPTURE (ToS clickwrap + 13+ age gate) NEVER CHECKED. CLAUDE.md's Pre-launch section names 'ToS clickwrap + 13+ gate' as code-side blockers, and the brief told this lane to reconcile prior items. I grepped: `acceptTerms|terms_accepted|clickwrap|agreeTo` = 0 hits in `src`/`App.tsx`; no age/birthdate gate anywhere. §1.5's blocker table has 8 rows and neither cell appears; MB-FLOWS-STATE-08 (P2) covers only the ABSENCE OF LINKS before sign-in, not acceptance capture. Account deletion (the other CLAUDE.md code-side blocker) IS wired (`EditProfileScreen.tsx:135` `api.delete('/api/v1/auth/account')`) — but that was never stated either, so the reader cannot tell 'checked and fine' from 'not checked'.",
+     "NATIVE-STRING LOCALIZATION CELL MISSED, AND IT RIDES THE ONE-BUILD CONSTRAINT. `app.json` has no `locales` key and no `CFBundleLocalizations`; the camera/photos permission prompts are English-only literals (`app.json:95` cameraPermission, `:101` photosPermission) for an Arabic-first GCC product, and the notification plugin block (`:110-115`) carries no localized copy. §1.6 claims to cover 'the Arabic user's experience, end to end' (rendering side) and §6 disclaims the native side generally, but this is an `app.json` change — i.e. exactly the U14 class the report itself argues must all land in ONE `eas build`. Omitting it forces a second production build.",
+     "THE LEGACY 6-STEP `OnboardingScreen.tsx` WAS EXCLUDED ON A PREMISE THE LAUNCH PLAN BREAKS. §6 excludes it as 'unreachable at CANARY_NEW_ONBOARDING_PERCENT=100' (verified: `features.ts:30`). But CLAUDE.md's own soft-launch procedure says to drop that constant to 10 and ramp 10->50->100 before App Store launch — making a 413-line, unreviewed flow the signup path for ~90% of new users at exactly the moment the store gates matter. (I checked its enums are still backend-valid — `PRIORITY_OPTIONS`/`BUDGET_OPTIONS` at `OnboardingScreen.tsx:46-51` are subsets of `auth_routes.py:135-143` — so this is a coverage gap, not a known defect; nobody swept its screens, analytics, RTL or error paths.)",
+     "NO OFFLINE / CONNECTIVITY-STATE CELL IN ANY LANE. There is no `NetInfo` dependency and no offline state anywhere in the client (grep over `src`, `App.tsx`, `package.json` = 0). The failure-classification work (M21 W2) classifies errors AFTER a request fails; nothing enumerates cold-start-with-no-network, a compare submitted offline, or the boot refresh under airplane mode — which is the same code path as §0.3's fleet-logout risk. Not listed in §6's not-covered either.",
+     "GOOGLE PLAY STORE-SIDE GATES ABSENT. §1.5 enumerates Apple gates only (ASC labels, iOS privacy manifest, applinks). The Play Data Safety declaration, the Play 'Teen' rating questionnaire and the Android permission declaration (the same `android.permissions` RECORD_AUDIO row U14 removes) are never enumerated, although `assetlinks.json` and the Android bundle are treated as first-class elsewhere in the report.",
+     "THE TWO-LEVER AXIS IS UNRESOLVED FOR 119 OF 142 ROWS. §6 admits 'the two-lever gap was not re-derived per finding' — only the reconcile and two-lever lanes diffed against `97b5f15`. Since §0.2 forbids calling any mobile finding 'fixed for users', every P2/P3 row is left without the one tag ('on phones too?' / 'main-only?') that decides whether it needs the OTA or a code unit. That is a whole deliverable axis pushed onto the reader, not a sampling gap."
+    ],
+    "unverified_claims": [
+     "§1.6 item 8's headline impact number is labelled MEASURED but is probe-contaminated and I falsified its detail today. Report: 'MEASURED against the real error corpus, ~1,500 of 3,254 failures land on strings like \"We couldn't finish this comparison in time. Try again.\"'. My read-only Supabase SELECT (2026-09-07): `search_logs` total 16,284; failures 3,316; only ELEVEN distinct `error_message` values, of which the quoted timeout copy is 209 (English prose in aggregate is 3,094, dominated by 'Still gathering prices' 1,288 and \"We don't compare this category\" 721). Decisively: 3,039 of 3,316 failures (91.7%) come from 13 query strings — 'Carrier 1.5T AC vs LG 1.5T AC' x225, 'glock 19 vs iPhone' x112, 'glock 19 vs ar-15' x76, a prompt-injection probe x75, 'asdf vs qwer' x42. The campaign's own accepted correction (PO-RECORDED-MEASURED-01, Fable AGREE: 'every number that came from search_logs must be re-stated on the organic subset') is never applied anywhere in this report; the honest organic failure count is roughly 277, not ~1,500, so MB-I18N-RTL-05's user-reach evidence is ~5x overstated.",
+     "'Biggest verified size win: the lucide barrel' (§1.4 heading) is self-contradicting: two lines later the same section says the saving is 'arithmetic on the measured attribution ... not a measured second build'. The attribution inputs check out (I confirmed 34 barrel import sites, 1,704 icon files on disk, no `metro.config.js`, and `lucide-react-native@1.14.0` exports map = ['.', './icons'] exactly as claimed) — but 'verified' is the wrong word for the delta, and U11's exit gate is the only thing that would make it true.",
+     "'242/245 jest suites green' (§1.1b) versus §6's '245 suites, 2,320 passed ... 3 skipped suites' — skipped is not failing, and the report never reconciles the two phrasings. It compounds the acknowledged §3 problem that two coverage percentages (76.09% vs 84.26%) disagree, so no number in the tests-truth lane can be quoted as a floor.",
+     "'Phones run 97b5f15' underpins the whole §1.1(a) column and every 'not fixed for users' statement, and §3 concedes it comes from the handoff, not `eas update:list`, AND that the earlier cert-pin OTA has no recorded group id. If that OTA never fired, devices are older than the bundle actually analysed and §1.1(a) describes a bundle nobody runs.",
+     "The two silent first-launch risks in §1.2 are derived, never executed: (2) the Hermes install branch of `intl-pluralrules` (`src/i18n/index.ts:7`) is explicitly 'device-unverified' because jest takes the Node branch, and (3) the 'order-dead' Sentry alarm is inferred from Babel require-hoisting plus a Proxy that throws synchronously. Both are asserted as ship risks with no runtime reproduction and no red test in U8 that would fail today on a real release bundle.",
+     "The §1.5 npm-audit row ('42 rows / 1 critical + 19 high', 'only 3 reach the device JS bundle') is never reconciled against CLAUDE.md's recorded measurement of 43 rows / 21 high (2026-09-01), and the 'reaches the device bundle' split is a dependency-graph reading, not a check against the exported bundle or source map — which the lane had in hand from its three `expo export` runs."
+    ],
+    "wrong_or_stale_claims": [
+     "'3 are already fixed on the other session's unmerged `feature/m23-mobile-w1`' (report line 10, repeated in §3's coordination bullet) is WRONG — it is 4. FABLE_REVIEW_NOTES records MB-FLOWS-STATE-06 as 'AGREE P1 -> OTHER-SESSION (B9 `7863bd3`, landed 2026-09-07 during this session)', and the report's own preamble makes those notes the status of record. I verified: `git cat-file -t 7863bd3` = commit, `git branch -a --contains 7863bd3` = `feature/m23-mobile-w1`, message 'fix(mobile): B9 — persist the Step-17 notifications answer instead of dropping it'. §5's verdict table applies the OTHER-SESSION verdict to MB-FLOWS-STATE-05, MB-RECONCILE-03/-05, MB-STARTUP-BUNDLE-02 and MB-TESTS-TRUTH-04 but silently omits it for MB-FLOWS-STATE-06.",
+     "U9 ('The onboarding Step-17 answer is recorded') IS A REDUNDANT UNIT — both of its red tests are already green on that branch. `git show 7863bd3` fixes BOTH halves the unit names: the stale closure (`handleNotificationsDone` builds `const merged = {...data, notifications_enabled: granted}` and calls an explicit `advance(nextData)`) AND the transport (`buildPreferencesPayload` now sets `payload.notifications_enabled` guarded on `typeof === 'boolean'` so an explicit 'Not now' is sent). Scheduling U9 would duplicate landed work and collide on `OnboardingFlow.tsx`/`onboardingDraft.ts` — the exact cross-session collision the campaign is trying to avoid.",
+     "§5 downgrades MB-FLOWS-STATE-03 to P2 with the rationale 'nothing is purchasable — the trial CTA and Restore are the same \"Coming soon\" stub — so it is a dead control on a placeholder screen, not a submission blocker'. The rationale is true and verified (`PaywallScreen.tsx:236-243`, `:406`) but it is used to shrink a finding while the larger fact it establishes — the app has no purchase path at all — is never filed as a finding, never entered in the §1.5 gate table and never assigned to a unit or to Ahmed. A downgrade swallowed the bigger item.",
+     "The §1 arithmetic no longer holds and never matched the unit table: '20 distinct P1s: 3 other-session + 1 product call + 4 Ahmed-only, leaving 12 engineering units'. With the correct 4 other-session rows it is 11, and the §2 table actually proposes 14 units (U1-U14) spanning P1s plus P2/P3 packs — three different counts of 'the work' that the report never reconciles.",
+     "VERIFICATION NOTE (not a defect): I re-opened 16 cited `file:line` pairs at HEAD and every one held — `url_extraction_service.py:575/:583` (the un-unpacked tuple), `extraction_service.py:2543/:2547` (both return paths tuples), `image_routes.py:89`, `feedback_routes.py:37-39` vs `FeedbackCard.tsx:18-22`, `App.tsx:173-177/:212-227/:283-297`, `api.ts:22/:43/:45/:47/:86-95`, `authService.ts:287-289`, `auth_routes.py:537-543`, `auth_service.py:49-53`, `useComparisonCounter.ts:69-82`, `referral_service.py:50`, `app.json:21-41/:71-74`, `fonts.ts:11-17/:40-44` (fontFamily.ar zero consumers), `ci.yml:270` (`eslint \"src/**/*\"` excludes App.tsx), plus the git measurements (72 files/+5,329-605; empty app.json/eas.json diff; two-line package.json delta; `d24d6e5` NOT an ancestor of `97b5f15`). The evidence base is sound; the defects above are of omission and of failure to apply the orchestrator's own notes, not of fabricated citations."
+    ],
+    "recommend_gap_round": true
+   }
   }
  },
  "dedupe_clusters": [
@@ -2465,6 +3856,12 @@
      "verdict": "CONFIRMED",
      "sev_after": "P1",
      "reason": "Reproduced through the real runtime functions at 76ace90. `\"tablet\": \"electronics\", \"tablets\": \"electronics\"` are at exactly 1096-1097; classify_category_from_text (1156) sweeps _CATEGORY_SYNONYMS after the is_supplement_query short-circuit, so all four pharmacy pairs return electronics. Reachable with no flag: HomeScreen sends {product_a,product_b} -> explicit_pair -> _parser_path=False -> det=name_cat wins and flips a real chip (switched=True). Electronics unit=\"GB\" confirmed. Caveat: the finder's own companion test ('Galaxy Tab S10 tablet 256GB' == electronics) would FAIL under their own minimum fix (dropping the tokens) — only the corroborator variant satisfies both. Not in M13/M18/mobile docs; new. P1 stands."
+    },
+    {
+     "stage": "second-vote",
+     "verdict": "CONFIRMED",
+     "sev_after": "P1",
+     "reason": "Independently reproduced, and the impact is WORSE than filed: category also gates price routing at structured_comparison_service.py:5671-5677 (`is_supplement = category=='supplements' or (category in ('other',None) and is_supplement_query(...))`), so 'electronics' also kills the iHerb/Bahrain-pharmacy price branch, not just schema/dimensions/fairness. Caveats found, not refuting: 0 of 16,284 search_logs rows contain 'tablet(s)' (frequency unmeasured), and category_switched surfaces an FE banner so 'silently' overstates. Fix: I ran the minimum variant (dropped both tokens) - repro closes (pair -> other -> chip honored, switched=False) but the finder's own companion device assertion fails ('Galaxy Tab S10 tablet 256GB' -> other), so only the corroborator variant satisfies both. test_first is right minus that companion; add the is_supplement routing leg."
     }
    ],
    "fable": null,
@@ -2506,7 +3903,7 @@
    "file": "app/data/content_blocklist.json",
    "line": 53,
    "sev_filed": "P1",
-   "sev_final": "P1",
+   "sev_final": "P2",
    "status": "verified",
    "measured_or_modelled": "measured",
    "m21_touched": false,
@@ -2521,6 +3918,12 @@
      "verdict": "CONFIRMED",
      "sev_after": "P1",
      "reason": "Reproduced end-to-end through the real service. Bare Arabic 'أفيون' is at content_blocklist.json:53 while illegal_drugs.en carries only the tightened multi-word 'opium *' forms at 42-45. get_content_safety_service().check_query_intent hard-blocks both Arabic YSL Opium phrasings and allows the English twin. The gate is unflagged and runs FIRST on the joined 'A vs B' string on BOTH the sync (scs76.py:3216) and stream (scs76.py:3770) paths, returning a terminal CONTENT_UNAVAILABLE with no retry — so it is live on the shipped explicit_pair mobile path. Commit 9f6e498 (2026-06-09) is real, touched only content_blocklist.json + an EN-only regression file. Not in M13/M18/mobile docs; new. P1 (fail-closed block of a top-selling GCC fragrance in the primary market locale)."
+    },
+    {
+     "stage": "second-vote",
+     "verdict": "DOWNGRADED",
+     "sev_after": "P2",
+     "reason": "The block reproduces exactly, but the P1 reachability premise does not survive. The lookaround pattern fires ONLY on the bare hamza token: 'افيون' (no hamza, common typing), 'الأفيون' (definite article - the natural Arabic drug reference) and the market-standard transliteration 'بلاك اوبيوم ايف سان لوران' all pass, and the AR entry therefore barely functions as a safety control. Evidence of use: the 414-page corpus has ONE occurrence of the token, a person's name (Nancy Afiouny) that does not match; zero pages name the fragrance أفيون. And 0 of 16,284 search_logs rows are Arabic-script. Real fail-closed asymmetry, trivially worth fixing, but narrow-phrasing quality, not live user harm -> P2. Proposed fix verified to close the repro; test_first is right, add the no-hamza/al- variants."
     }
    ],
    "fable": null,
@@ -10150,7 +11553,7 @@
    "file": "SmartCompareApp/src/screens/HomeScreen.tsx",
    "line": 881,
    "sev_filed": "P1",
-   "sev_final": "P1",
+   "sev_final": "P2",
    "status": "verified",
    "measured_or_modelled": "static",
    "m21_touched": true,
@@ -10173,7 +11576,10 @@
      "reason": "Every static claim reproduces at 76ace90 (SmartCompareApp/ is byte-identical between 76ace90 and the local checkout 7dd04c1, verified by empty git diff --stat). Line 881 is exactly the cited View; LoadingScreenVariants.tsx contains zero Pressable/Touchable/onPress/cancel/abort tokens, so no cancel exists anywhere in the overlay subtree; abortRef is assigned at :321 and invoked only at :199 inside the unmount effect. Main-only fix confirmed: api.ts:43/:45 constants and the :229-230 AbortController exist at HEAD, absent at 97b5f15 (grep -c = 0), single -S hit 1df95b0. Reachable unflagged in prod (ENABLE_EXPO_FETCH_SSE_DEFAULT=false → REST path on the 120s axios instance). P1 correct: UX/spend defect, not security or live data harm."
     }
    ],
-   "fable": null,
+   "fable": {
+    "verdict": "DOWNGRADED",
+    "note": "synthesis adjudication accepted: the watchdog EXISTS at HEAD (api.ts:549/:793 COMPARE_TIMEOUT_MS=35000, :230 IDENTIFY abort, :616 SSE watchdog); unbounded only on the 97b5f15 bundle (= MB-RECONCILE-06); the cancel half is the other session's A4 (landed on feature/m23-mobile-w1)"
+   },
    "dedupe_cluster": null
   },
   {
@@ -11276,7 +12682,10 @@
      "reason": "Re-ran the render myself (the first verifier did not) and both halves reproduce: pressing s17-not-now AND s17-allow both call onComplete with notifications_enabled absent, and buildPreferencesPayload/buildDemographicsPayload both drop the key when it is explicitly present. Backend UserPreferencesRequest DOES accept notifications_enabled (auth_routes.py:182) and reengagement_service.py:108 treats a missing key as ON, so both fix edits land and the push-consent impact claim holds. Fix closes the reproduction; test_first is the right red test. Caveat on fix (2): flipping ProfileScreen:233 to `=== true` also flips every existing user's displayed toggle to OFF - ship it only with the write."
     }
    ],
-   "fable": null,
+   "fable": {
+    "verdict": "OTHER-SESSION",
+    "note": "fixed on feature/m23-mobile-w1 B9 7863bd3 (landed 2026-09-07); re-verify after merge"
+   },
    "dedupe_cluster": null
   },
   {
@@ -11668,7 +13077,10 @@
      "reason": "The central technical claim is CONFIRMED — I read all four RN 0.81.5 platform paths and every one mirrors physical left/right, so the comment at ResultsAccordion.tsx:883 and the test's premise are false; 593ec1e had the correct bare literals. Two corrections: only 5 sites regressed (InviteeQuizScreen.tsx:506 had no textAlign at 593ec1e — wrong, but new, not a regression), and it is NOT on any phone (97b5f15 still carries `textAlign: 'right'`), so no user is harmed today. Prior row MB-i18n-rtl-05 was P3; the inverted fence justifies P2, not P1."
     }
    ],
-   "fable": null,
+   "fable": {
+    "verdict": "CONFIRMED",
+    "note": "main-only REGRESSION from M21 W4 (textAlign double-flip on 5 sites, fenced in by a wrong contract test) - must be reverted BEFORE the OTA ships it to users for the first time (W3-11a)"
+   },
    "dedupe_cluster": null
   },
   {

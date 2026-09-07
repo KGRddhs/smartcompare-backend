@@ -38,3 +38,18 @@ All 30 finder lanes complete. 442 findings filed; 436 first-verified (product 98
 - **P1 load (no flag removes them):** per-request Supabase `create_client` outside `run_db`; Upstash client `timeout=None` + `time.sleep(3)` retry; postgrest 120 s default.
 - **P1 mobile:** the phone OTA `97b5f15` predates ALL FOUR M21 waves — analytics/feedback still 422 on devices, every free user paywalled at 3 lifetime; `eas update --branch preview` is the top Ahmed action. Camera and URL compares unmetered; `from_history` dead taps; boot awaits a 120 s-ceiling refresh.
 - **P2 live regression (M21 W3):** `tradeoffs` collapses to `[]` when a product name repeats its brand (`scoring_service.py:1554`).
+
+## SESSION 65 continuation (2026-09-07) — DONE. The consolidated report is `../2026-09-06-full-review.md`.
+The four continuations ran from this state in the worktree `sc-review-s65` (branch `docs/session-65-full-review`), **one agent wide each**, with the second votes **batched by lane** (≤6 P0/P1 ids per reproduction agent). Everything they produced is here:
+| file | what |
+|---|---|
+| `report-m22-{product-output,code-review,load-scale,mobile}.md` | the four synthesis reports (Opus 5), each with its own §0–§6 |
+| `critic-m22-*.md` | the four completeness critics (all four recommend a gap round; the gaps are itemised in the consolidated report §3) |
+| `FABLE_REVIEW_NOTES.md` | SESSION 65 section = the orchestrator's verdict on every remaining P0/P1 + the reconciliation with the second votes + the critic-found items it verified |
+| `build_verified.py` / `render_tables.py` | generate `../2026-09-06-full-review-verified.json` (442 rows, verdict trails, Fable overrides, dedupe clusters) and `../2026-09-06-full-review-tables.md` from the partial JSONs + the SESSION 65 journals |
+| `m22_review_continue.js` | now batches second votes by lane and matches batch results by INDEX — object identity does not survive the `parallel()` boundary, which made the first run's return value show the votes as "died" even though every vote is in the journal |
+| `continue-args-*.json` | refreshed; `brief`/`stateFile`/`reviewNotes` point at the worktree, plus `repoNote`, `verifyBatch: 1`, `voteBatchSize: 6` |
+
+**Run ids (this session's `subagents/workflows/`):** load `wf_509f5db6-d58`, code `wf_dc17e31e-df3`, mobile `wf_c3d6962b-c9e`, product `wf_490661b3-382`. Cost: 20 agents, 4.8 M subagent tokens, ~65 min wall-clock for all four in parallel (vs ~12 M tokens and two dead sessions for the per-finding fan-out of runs 1–2). **Lesson: batch by lane from the start.**
+
+**Citation correction:** the price-path DNS call sites are `price_service.py:14016/14037` (inside `curl_fetch_html_same_site`), not the `14126/14147` this README's "Headline verdicts" and the earlier notes carried (copied from the finder; caught by the load critic).
