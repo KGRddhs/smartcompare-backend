@@ -31,10 +31,30 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["admin"])
 
 
-def verify_admin_key(x_admin_key: str = Header(...)):
-    """Verify the admin API key from X-Admin-Key header."""
+def verify_admin_key(x_admin_key: str = Header(default="")):
+    """Verify the admin API key from X-Admin-Key header.
+
+    CR-SECURITY-04: compare BYTES, never ``str``. HTTP header values reach the
+    handler latin-1 decoded, so any byte >= 0x80 in ``X-Admin-Key`` produces a
+    non-ASCII ``str`` and ``hmac.compare_digest`` on two ``str`` arguments
+    raises ``TypeError: comparing strings with non-ASCII characters is not
+    supported``. That ``TypeError`` escaped the dependency, became a 500, and
+    the 500 was captured by Sentry carrying ``expected`` (the real
+    ``ADMIN_API_KEY``) in this frame's locals — i.e. an unauthenticated request
+    with one high byte in a header disclosed the production admin key.
+
+    ``errors="surrogateescape"`` so the encode step itself can never raise.
+    ``compare_digest`` on ``bytes`` keeps the comparison constant time.
+
+    An ABSENT header is a 403 like a wrong one (``Header(default="")``): a 422
+    tells an unauthenticated caller that the header is the thing being checked,
+    and it is a different response shape for the same "you are not an admin".
+    """
     expected = os.getenv("ADMIN_API_KEY", "")
-    if not expected or not hmac.compare_digest(x_admin_key, expected):
+    if not expected or not hmac.compare_digest(
+        x_admin_key.encode("utf-8", errors="surrogateescape"),
+        expected.encode("utf-8", errors="surrogateescape"),
+    ):
         raise HTTPException(status_code=403, detail="Invalid admin key")
     return True
 

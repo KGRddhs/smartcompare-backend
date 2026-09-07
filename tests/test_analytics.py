@@ -272,12 +272,19 @@ def test_admin_invalid_key_returns_403():
     assert response.status_code == 403
 
 
-def test_admin_missing_key_returns_422():
-    """Missing X-Admin-Key header returns 422."""
+def test_admin_missing_key_returns_403():
+    """Missing X-Admin-Key header returns 403.
+
+    W1-1 / CR-SECURITY-04: was 422. An absent header is now the SAME answer as a
+    wrong one — a 422 told an unauthenticated caller that the header is the
+    thing being checked, and it is a different response shape for what is the
+    same "you are not an admin". Pinned in
+    ``tests/test_admin_key_and_sentry_scrub.py::TestAdminRouteNeverReturns500``.
+    """
     app = _make_admin_app()
     client = TestClient(app)
     response = client.get("/api/v1/admin/stats/daily")
-    assert response.status_code == 422
+    assert response.status_code == 403
 
 
 def test_admin_empty_env_key_returns_403():

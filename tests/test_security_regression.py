@@ -56,10 +56,16 @@ class TestAdminRateLimiting:
         assert response.status_code == 403
 
     @patch.dict(os.environ, {"ADMIN_API_KEY": ADMIN_KEY})
-    def test_admin_endpoint_no_key_returns_422(self):
-        """Admin endpoints without key header return 422."""
+    def test_admin_endpoint_no_key_returns_403(self):
+        """Admin endpoints without key header return 403.
+
+        W1-1 / CR-SECURITY-04: was 422. ``verify_admin_key`` now takes
+        ``Header(default="")``, so an ABSENT header is the same "you are not an
+        admin" answer as a wrong one instead of a validation-error shape that
+        tells an unauthenticated caller which header is being checked.
+        """
         response = client.get("/api/v1/admin/stats/daily")
-        assert response.status_code == 422
+        assert response.status_code == 403
 
     @patch.dict(os.environ, {"ADMIN_API_KEY": ADMIN_KEY})
     def test_admin_key_uses_hmac_compare_digest(self):
