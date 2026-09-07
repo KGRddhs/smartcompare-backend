@@ -16,8 +16,9 @@
  *  - MB-perf-03: compare-class endpoints carry a per-call
  *    COMPARE_TIMEOUT_MS instead of riding the global 120s axios timeout;
  *    identifyFromImages carries an AbortController + IDENTIFY_TIMEOUT_MS.
- *  - MB-contract-02: HomeScreen's terminal onError fallback never renders
- *    error.message when a structured code is present.
+ *  - MB-contract-02 (+ A11): HomeScreen's terminal onError fallback never
+ *    renders a raw transport string on EITHER compare path — both end on
+ *    `t(friendlyErrorKey(parsed.code))`, and no Alert takes `.message`.
  */
 
 import * as fs from 'fs';
@@ -85,10 +86,30 @@ describe('HomeScreen — MB-perf-03/MB-contract-02 (source)', () => {
     expect(HOME).toMatch(/COMPARE_TIMEOUT_MS/);
   });
 
-  it('the terminal onError fallback never renders error.message when a structured code is present', () => {
-    // The guarded fallback: code present -> i18n copy, never the raw string.
-    expect(HOME).toMatch(
-      /parsed\.code\s*\?\s*t\('home\.errors\.comparison'\)/
+  it('the terminal onError fallback never renders a raw transport string', () => {
+    // MB-contract-02 originally pinned the guarded ternary
+    // `parsed.code ? t('home.errors.comparison') : parsed.message` — which
+    // still rendered the raw axios string on the CODELESS arm (a Railway edge
+    // 502 has no `{success, error, code}` envelope, so parseApiError falls
+    // through to `error?.message` = "Request failed with status code 502",
+    // carrying the forbidden token "failed"). A11 replaced the ternary with a
+    // TOTAL code->key map, so no arm can reach a raw string. Pin the stronger
+    // property the ternary was only approximating.
+    expect(HOME).toMatch(/from '\.\.\/services\/errorCopy'/);
+    const terminalFallbacks =
+      HOME.match(/Alert\.alert\(\s*t\('common\.error'\),\s*t\(friendlyErrorKey\(parsed\.code\)\)\s*\)/g) || [];
+    // Both compare paths (text stream + URL) end on the same coded copy.
+    expect(terminalFallbacks.length).toBe(2);
+  });
+
+  it('no HomeScreen alert can render parseApiError().message or error.message', () => {
+    // The regression this guards: reintroducing `parsed.message` (or
+    // `error.message`) as Alert copy on EITHER compare path.
+    const alertArgs = HOME.match(/Alert\.alert\([\s\S]*?\);/g) || [];
+    expect(alertArgs.length).toBeGreaterThan(0);
+    const leaky = alertArgs.filter((call) =>
+      /(parsed|error|err)\??\.message/.test(call)
     );
+    expect(leaky).toEqual([]);
   });
 });

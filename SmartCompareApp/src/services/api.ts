@@ -68,11 +68,26 @@ api.interceptors.request.use(
 // 401s share a single refreshSession() network call instead of stampeding the
 // refresh endpoint. Identity-stable across coalesced callers — Promise.all on
 // the cached value works.
-type RefreshResult = { success: boolean; token: string | null; error?: unknown };
+//
+// A3 follow-up: this singleton is the app's ONLY dedup for POST /auth/refresh,
+// and Supabase rotates refresh tokens on every successful call, so each one is
+// SINGLE-USE (app/api/auth_routes.py::refresh — "If two concurrent clients race
+// to refresh with the same token, only one wins; the loser gets a 401 ...
+// Deduping is therefore a CLIENT-SIDE responsibility"). Every refresh caller
+// must therefore come through getOrStartRefresh(), which is why it is exported:
+// authService's BACKGROUND boot refresh runs concurrently with the first authed
+// screen fetches, and a boot refresh that called refreshSession() directly would
+// spend the same refresh token twice — the loser's 401 maps to
+// clearSession()+sessionInvalid, logging the user out at launch and wiping the
+// winner's freshly stored tokens.
+export type RefreshResult = { success: boolean; token: string | null; error?: unknown };
+
+/** Per-call options forwarded to refreshSession by whichever caller STARTS the refresh. */
+export type RefreshOptions = { timeoutMs?: number };
 
 let refreshPromise: Promise<RefreshResult> | null = null;
 
-async function performRefresh(): Promise<RefreshResult> {
+async function performRefresh(options?: RefreshOptions): Promise<RefreshResult> {
   try {
     const { refreshSession, getToken, clearSession } = require('./authService');
     // M18 MB-flows-01 — gate on refreshSession()'s RESULT, not on the
@@ -82,7 +97,7 @@ async function performRefresh(): Promise<RefreshResult> {
     // session, and non-401/network errors — so the old `getToken()`-only
     // check turned every one of them into a fake success and the 401
     // interceptor replayed the IDENTICAL dead token.
-    const refreshResult = await refreshSession();
+    const refreshResult = await refreshSession(options);
     if (!refreshResult?.success) {
       if (refreshResult?.sessionInvalid) {
         // The session is definitively dead (no refresh token / server
@@ -117,9 +132,17 @@ async function performRefresh(): Promise<RefreshResult> {
   }
 }
 
-function getOrStartRefresh(): Promise<RefreshResult> {
+/**
+ * The single entry point for POST /api/v1/auth/refresh.
+ *
+ * Coalesces every concurrent caller onto ONE in-flight network round-trip so
+ * the single-use refresh token is spent exactly once. `options` are honoured
+ * only by the caller that actually STARTS the refresh; a caller that joins an
+ * in-flight one inherits its deadline (that is the point — one request).
+ */
+export function getOrStartRefresh(options?: RefreshOptions): Promise<RefreshResult> {
   if (refreshPromise) return refreshPromise;
-  refreshPromise = performRefresh().finally(() => {
+  refreshPromise = performRefresh(options).finally(() => {
     refreshPromise = null;
   });
   return refreshPromise;
