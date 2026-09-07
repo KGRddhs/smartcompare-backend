@@ -230,14 +230,33 @@ export async function login(email: string, password: string): Promise<AuthRespon
 
 /**
  * Logout user
+ *
+ * S65 W1-4 (client half) — the Bearer alone only tells the server WHICH
+ * user is leaving; Supabase revokes a session by its REFRESH token, so a
+ * logout that sends no refresh token leaves the stored one valid until it
+ * expires on its own. Hand the server the token it must revoke, in the
+ * optional `refresh_token` body field the backend added in PR #139
+ * (revoked upstream only when ENABLE_LOGOUT_UPSTREAM_REVOCATION is on;
+ * ignored otherwise). With nothing stored — or if the SecureStore read
+ * fails — the body stays `{}`, byte-for-byte today's request, so the
+ * server takes its existing path. The value is NEVER logged or sent to
+ * Sentry: it is a live credential until the server revokes it.
  */
 export async function logout(): Promise<void> {
   try {
     const token = await getToken();
     if (token) {
+      // A SecureStore read failure must never cost us the server call:
+      // degrade to today's empty body rather than skipping the POST.
+      let refreshToken: string | null = null;
+      try {
+        refreshToken = await SecureStore.getItemAsync(REFRESH_TOKEN_KEY);
+      } catch {
+        refreshToken = null;
+      }
       // Try to logout on server, but don't fail if it doesn't work
       try {
-        await api.post('/api/v1/auth/logout', {}, {
+        await api.post('/api/v1/auth/logout', refreshToken ? { refresh_token: refreshToken } : {}, {
           headers: { Authorization: `Bearer ${token}` }
         });
       } catch (e) {
