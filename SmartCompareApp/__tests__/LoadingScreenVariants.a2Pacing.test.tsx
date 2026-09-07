@@ -390,10 +390,45 @@ describe('A2 — escalation copy exists in both locales and stays non-scary', ()
     }
   });
 
-  it('the 8s caption sets an honest expectation about how long this takes', () => {
-    // The whole point of the escalation: tell the user a cold compare can
-    // run to ~30s rather than implying it is nearly done.
-    expect(enRec['loading.caption.still_checking']).toMatch(/30/);
-    expect(arRec['loading.caption.still_checking']).toMatch(/30/);
+  // P-A2 — the 8s caption used to read "up to 30 seconds" / "حتى 30 ثانية".
+  // That number was a promise the app cannot keep: the measured cold
+  // envelope is 24.5-31.5s, api.ts COMPARE_TIMEOUT_MS is 35000 and the
+  // stream watchdog is 60000, and the caption appears at t=8s where it
+  // naturally reads as "30 MORE seconds" (8 + 30 = 38s > the 35s abort).
+  // The escalation's job is to say the wait is longer than usual, WITHOUT
+  // quoting a duration. Pinned as a property (no digit in either locale),
+  // not as a literal, so the copy can still be reworded.
+  it('the 8s caption narrates the wait without promising a duration', () => {
+    const KEY = 'loading.caption.still_checking';
+    // Positive control: both catalogs actually carry this key with copy,
+    // so the digit assertions below are testing a string that exists.
+    expect(typeof enRec[KEY]).toBe('string');
+    expect(enRec[KEY].trim().length).toBeGreaterThan(10);
+    expect(typeof arRec[KEY]).toBe('string');
+    expect(arRec[KEY].trim().length).toBeGreaterThan(10);
+
+    // ASCII, Arabic-Indic and Eastern Arabic-Indic digits all count.
+    const ANY_DIGIT = /[0-9٠-٩۰-۹]/;
+    expect(ANY_DIGIT.test(enRec[KEY])).toBe(false);
+    expect(ANY_DIGIT.test(arRec[KEY])).toBe(false);
+    // Positive control for the digit matcher itself.
+    expect(ANY_DIGIT.test('up to 30 seconds')).toBe(true);
+  });
+
+  // P-A2 — the AR "almost there" caption used to render EN's approved
+  // "top match" as an endorsement lexeme (back-translation: "the best
+  // CHOICE for you"), which Bundle E § Decision 5 exists to keep out of the catalog,
+  // and which diverged from how the very next stage key renders the same
+  // phrase. Pin the two together: whatever wording the catalog settles on
+  // for "top match", both keys must use it. Derived from the catalog, so
+  // it survives a rewording and fails on a divergence.
+  it('AR "almost there" reuses the catalog rendering of "top match"', () => {
+    const lastWords = (s: string) => s.trim().split(/\s+/).slice(-3).join(' ');
+    const stage = arRec['loading.stage.locking_match'];
+    const caption = arRec['loading.caption.almost_there'];
+    // Positive control: both strings are long enough for a 3-word tail.
+    expect(stage.trim().split(/\s+/).length).toBeGreaterThanOrEqual(3);
+    expect(caption.trim().split(/\s+/).length).toBeGreaterThanOrEqual(3);
+    expect(lastWords(caption)).toBe(lastWords(stage));
   });
 });

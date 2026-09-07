@@ -28,6 +28,7 @@
   "banned_ar": [
     {"pattern": "أفضل اختيار", "label": "أفضل اختيار (Best Choice)"},
     {"pattern": "الخيار الأفضل", "label": "الخيار الأفضل (The Best Choice)"},
+    {"pattern": "أفضل خيار", "label": "أفضل خيار (Best Option - same lexeme as Best Choice, other word order)"},
     {"pattern": "الفائز", "label": "الفائز (Winner)"},
     {"pattern": "نوصي بـ", "label": "نوصي بـ (We recommend)"}
   ],
