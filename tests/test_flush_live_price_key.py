@@ -109,6 +109,18 @@ CHIP_PRODUCT_AS_PARSED = {          # what `parse_product_query` returns
 }
 CHIP_CATEGORY = "electronics"       # the chip -> `category_used` -> A3 write-back
 
+# The chip's LENGTH class, which every fixture above misses. The first #55
+# commit declared the chip as `category: Optional[str] = Query(None,
+# max_length=64, ...)` in the route signature — outside the flag branch — and
+# FastAPI enforces a declared constraint whatever the flag says. MEASURED at
+# that HEAD with ENABLE_FLUSH_LIVE_PRICE_KEY off: `?q=...&category=<65 chars>`
+# returned 422 VALIDATION_ERROR where merge-base 76ace90 performed the legacy
+# flush and returned 200 (base declares only `q`, so FastAPI ignored the unknown
+# param). CHIP_CATEGORY is 11 characters, so the OFF pin could never reach the
+# one input class the change altered. The bound now lives on the flagged path.
+OVER_LEN_CATEGORY = "x" * (text_routes.FLUSH_CATEGORY_MAX_LEN + 1)
+AT_LEN_CATEGORY = "y" * text_routes.FLUSH_CATEGORY_MAX_LEN
+
 # (c) a PRESENT-but-falsy `search_query`. `_fetch_product_data` uses
 # `.get(key, default)`, so "" stays "" and the identity text is empty; the first
 # #55 recipe used `or` and substituted the brand-carrying fallback, whose brand
@@ -449,7 +461,17 @@ def test_flag_off_body_is_the_legacy_shape_exactly(client):
 
 def test_flag_off_ignores_the_new_category_query_param(client):
     """The `category` param is flag-ON-only: supplying it must not move a single
-    byte of the flag-OFF body, and must not change which keys are deleted."""
+    byte of the flag-OFF body, and must not change which keys are deleted.
+
+    EXTENDED (fix-wave-2 review of #55): the original version only ever passed
+    the 11-char CHIP_CATEGORY, so its fixture could not reach the input class
+    the change actually altered — a value longer than the declared
+    `max_length=64`, which FastAPI rejected with 422 BEFORE the flag branch ran
+    while merge-base 76ace90 flushed and returned 200. OVER_LEN_CATEGORY (65
+    chars) is now asserted to be as inert as a short one: same status, same
+    body bytes, same delete list. It goes red against the declared-param
+    version of the route (measured: 422 + a VALIDATION_ERROR body).
+    """
     def _run(category):
         with patch.dict("os.environ", {"ADMIN_API_KEY": ADMIN_KEY,
                                        "ENABLE_FLUSH_LIVE_PRICE_KEY": "false"}), \
@@ -466,16 +488,51 @@ def test_flag_off_ignores_the_new_category_query_param(client):
                 headers={"X-Admin-Key": ADMIN_KEY},
             )
         sb.assert_not_called()
-        return resp.text, [c.args[0] for c in del_mock.call_args_list]
+        return (resp.status_code, resp.text,
+                [c.args[0] for c in del_mock.call_args_list])
 
-    bare_body, bare_keys = _run(None)
-    chip_body, chip_keys = _run(CHIP_CATEGORY)
+    bare_status, bare_body, bare_keys = _run(None)
+    chip_status, chip_body, chip_keys = _run(CHIP_CATEGORY)
+    over_status, over_body, over_keys = _run(OVER_LEN_CATEGORY)
+
+    assert bare_status == 200, bare_body
     assert bare_body == chip_body, "the OFF body moved when `category` was passed"
-    assert bare_keys == chip_keys == [
+    assert (over_status, over_body) == (bare_status, bare_body), (
+        "the OFF response moved when an over-length `category` was passed — a "
+        "declared max_length is enforced with the flag off, base 76ace90 "
+        f"returned 200 + the legacy body (got {over_status}: {over_body[:160]})"
+    )
+    assert bare_keys == chip_keys == over_keys == [
         get_price_cache_key("OnePlus", "Nord CE", None, REGION),
         get_specs_cache_key("OnePlus", "Nord CE", None),
         get_reviews_cache_key("OnePlus", "Nord CE", None),
     ]
+
+
+def test_flag_off_route_publishes_the_base_parameter_list(client):
+    """The chip must not be a DECLARED query parameter at all.
+
+    A declared parameter is flag-INDEPENDENT: it is validated and published in
+    the OpenAPI schema whether or not ENABLE_FLUSH_LIVE_PRICE_KEY is on. The
+    first #55 commit declared it, and MEASURED against merge-base 76ace90 the
+    route's published parameter list changed from ['q', 'x-admin-key'] to
+    ['q', 'category', 'x-admin-key'] with the flag OFF — an OFF-path body
+    divergence on a different endpoint (GET /openapi.json), which the corpus
+    byte-identity gate cannot see (it exercises only
+    `price_service.extract_price_from_html`).
+
+    Base's list is the literal below: `git show 76ace90:app/api/text_routes.py`
+    declares exactly `q: str = Query(...)` and `_admin: bool = Depends(...)`.
+    `request: Request` is a FastAPI-injected parameter and is schema-invisible,
+    so reading the chip off `request.query_params` keeps this list at base.
+    """
+    spec = client.get("/openapi.json")
+    assert spec.status_code == 200, spec.text
+    node = spec.json()["paths"]["/api/v1/text/cache"]["delete"]
+    assert [p["name"] for p in node["parameters"]] == ["q", "x-admin-key"]
+    assert "category" not in json.dumps(node), (
+        "the flag-ON-only chip leaked into the published schema"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -858,6 +915,82 @@ def test_flag_on_category_chip_targets_the_key_the_live_path_keyed_under(client)
         env={"ENABLE_FLUSH_LIVE_PRICE_KEY": "true"},
     )
     assert resp_no_chip.json()["flushed"]["price"]["key"] != live_chip["key"]
+
+
+def test_flag_on_repeated_chip_resolves_like_a_declared_param(client):
+    """Reading the chip off `request.query_params` must not change ON semantics.
+
+    FastAPI resolves a NON-sequence query parameter with exactly this call
+    (`dependencies.utils._get_multidict_value` -> `values.get(alias)`), and
+    Starlette's ImmutableMultiDict.get returns the LAST occurrence — so a
+    repeated `?category=` must still pick the last one, as it did while the
+    parameter was declared. A `getlist(...)[0]` "fix" flips this and goes red.
+    """
+    with patch.dict("os.environ", {"ADMIN_API_KEY": ADMIN_KEY,
+                                   "ENABLE_FLUSH_LIVE_PRICE_KEY": "true"}), \
+            patch("app.services.extraction_service.parse_product_query",
+                  _parse_mock(CHIP_PRODUCT_AS_PARSED)), \
+            patch("app.services.cache_service.redis_client", None), \
+            patch("app.services.database_service.get_admin_supabase_client",
+                  return_value=_supabase_mock()):
+        resp = client.delete(
+            "/api/v1/text/cache",
+            params=[("q", CHIP_Q), ("category", "grocery"),
+                    ("category", CHIP_CATEGORY)],
+            headers={"X-Admin-Key": ADMIN_KEY},
+        )
+    assert resp.status_code == 200, resp.text
+    last_wins = _flush_keys(CHIP_Q, CHIP_PRODUCT_AS_PARSED, category=CHIP_CATEGORY)[0]
+    first_wins = _flush_keys(CHIP_Q, CHIP_PRODUCT_AS_PARSED, category="grocery")[0]
+    assert last_wins != first_wins, "fixture no longer discriminates the two chips"
+    assert resp.json()["flushed"]["price"]["key"] == last_wins
+
+
+def test_flag_on_rejects_an_over_length_chip_before_it_parses(client):
+    """The 64-char bound survives the move off the declared parameter.
+
+    It is now enforced INSIDE the flag branch (so the OFF path keeps base's
+    "unknown params are ignored" behaviour), still short-circuits before the
+    paid `parse_product_query` call, and touches nothing.
+    """
+    with patch.dict("os.environ", {"ADMIN_API_KEY": ADMIN_KEY,
+                                   "ENABLE_FLUSH_LIVE_PRICE_KEY": "true"}), \
+            patch("app.services.extraction_service.parse_product_query",
+                  _parse_mock(CHIP_PRODUCT_AS_PARSED)) as parse_mock, \
+            patch("app.services.cache_service.delete_cached",
+                  return_value=True) as del_mock, \
+            patch("app.services.database_service.get_admin_supabase_client") as sb:
+        resp = client.delete(
+            "/api/v1/text/cache",
+            params={"q": CHIP_Q, "category": OVER_LEN_CATEGORY},
+            headers={"X-Admin-Key": ADMIN_KEY},
+        )
+    assert resp.status_code == 200, resp.text
+    assert resp.json() == {
+        "success": False,
+        "error": "category must be at most 64 characters",
+    }
+    parse_mock.assert_not_called()
+    del_mock.assert_not_called()
+    sb.assert_not_called()
+
+
+def test_flag_on_accepts_a_chip_exactly_at_the_bound(client):
+    """Boundary — the bound is `> MAX`, not `>= MAX`, so a 64-char chip flushes.
+
+    Without this an off-by-one that rejects everything (or a guard that rejects
+    every chip outright) would still satisfy the over-length pin above.
+    """
+    resp, _ = _flush(
+        client, CHIP_Q, CHIP_PRODUCT_AS_PARSED,
+        env={"ENABLE_FLUSH_LIVE_PRICE_KEY": "true"}, category=AT_LEN_CATEGORY,
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body.get("error") != "category must be at most 64 characters"
+    assert body["flushed"]["price"]["key"] == _flush_keys(
+        CHIP_Q, CHIP_PRODUCT_AS_PARSED, category=AT_LEN_CATEGORY,
+    )[0]
 
 
 def test_flag_on_rung_two_deletes_the_key_the_raw_query_still_carries(client):

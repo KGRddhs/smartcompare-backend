@@ -870,6 +870,10 @@ async def price_kpi(
 # it was not.
 
 FLUSH_REGION = "bahrain"
+# Upper bound on the operator's `category` chip (see `flush_product_cache`).
+# Enforced ONLY on the flagged path — a declared `Query(max_length=...)` would
+# enforce it with the flag off too, which is not what merge-base 76ace90 did.
+FLUSH_CATEGORY_MAX_LEN = 64
 
 
 def flush_live_price_key_enabled() -> bool:
@@ -1026,24 +1030,54 @@ async def _flush_l2_price_rows(price_keys: List[str], region: str) -> List[Dict[
 
 @router.delete("/cache")
 async def flush_product_cache(
+    request: Request,
     q: str = Query(..., max_length=500, description="Product query, e.g., 'rtx 3090'"),
-    category: Optional[str] = Query(
-        None, max_length=64,
-        description=(
-            "Optional: the category CHIP the poisoned comparison ran under. The "
-            "live price path keys under the PAIR-resolved category — which is "
-            "the chip whenever the LLM emitted 'other' — so passing it makes the "
-            "flush target the key that was actually written. Read ONLY when "
-            "ENABLE_FLUSH_LIVE_PRICE_KEY is on; inert (and body-invisible) "
-            "otherwise."
-        ),
-    ),
     _admin: bool = Depends(verify_admin_key),
 ):
     """
     Flush cached price/specs/reviews for a product.
     Useful after fixing pricing bugs to clear stale data.
     """
+    # The operator's category CHIP (issue #55): the live price path keys under
+    # the PAIR-resolved category — which is the chip whenever the LLM emitted
+    # "other" — so passing it makes the flush target the key that was actually
+    # written. It is read from the RAW query string rather than declared as a
+    # `Query(...)` parameter because a declared parameter is flag-INDEPENDENT:
+    # FastAPI validates it and publishes it whatever ENABLE_FLUSH_LIVE_PRICE_KEY
+    # says. The first version of this fix declared
+    # `category: Optional[str] = Query(None, max_length=64, ...)` and so broke
+    # flag-OFF byte-identity two ways, both MEASURED at HEAD vs merge-base
+    # 76ace90 with the flag off (fix-wave-2 review, issue #55):
+    #   * `?q=...&category=<65 chars>` -> 422 VALIDATION_ERROR, where base
+    #     performed the legacy flush and returned 200 (base declares only `q`,
+    #     so FastAPI ignored the unknown `category` entirely);
+    #   * GET /openapi.json listed the route's parameters as
+    #     ['q', 'category', 'x-admin-key'] instead of base's ['q', 'x-admin-key']
+    #     — the published API surface moved with the flag off.
+    # `request.query_params.get()` reproduces FastAPI's own scalar-query-param
+    # semantics exactly — it IS the call FastAPI makes for a non-sequence param
+    # (`dependencies.utils._get_multidict_value` -> `values.get(alias)`), so a
+    # repeated `?category=a&category=b` resolves to the same value here as it
+    # did when the parameter was declared (Starlette's ImmutableMultiDict.get
+    # returns the LAST occurrence — MEASURED, and pinned in the tests), and a
+    # present-but-empty `category=` stays `""`, which the key builder treats as
+    # absent. Meanwhile the OFF path's signature, validation and published
+    # schema stay byte-identical to base.
+    # `request` itself is a FastAPI-injected parameter, absent from the schema.
+    category: Optional[str] = None
+    if flush_live_price_key_enabled():
+        category = request.query_params.get("category")
+        if category is not None and len(category) > FLUSH_CATEGORY_MAX_LEN:
+            # The bound the declared parameter used to carry, now enforced on
+            # the flagged path only — and, like the declared version, BEFORE the
+            # LLM `parse_product_query` call below, so a junk chip costs nothing.
+            return {
+                "success": False,
+                "error": (
+                    f"category must be at most {FLUSH_CATEGORY_MAX_LEN} characters"
+                ),
+            }
+
     from app.services.extraction_service import (
         parse_product_query, get_price_cache_key, get_specs_cache_key, get_reviews_cache_key
     )
