@@ -10,7 +10,7 @@
  */
 
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, I18nManager } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { ChevronDown, Star, ListChecks, BarChart3, Info } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
 import { colors, spacing } from '../../theme';
@@ -878,17 +878,16 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: colors.text.primary,
   },
-  // First value cell hugs the centered label; the second reads outward
-  // from it. RN textAlign left/right is PHYSICAL (it does not follow
-  // I18nManager), while the surrounding flex row DOES mirror under RTL —
-  // so the sides must swap with direction (M21 W4 MB-i18n-rtl-05).
-  // isRTL is fixed for the app lifetime (direction change = restart), so
-  // StyleSheet.create-time evaluation is safe.
+  // Left value cell hugs the centered label (right-aligned per mockup).
+  // RN mirrors physical left/right under RTL on every platform path, so the
+  // bare literal already lands on the correct edge in both directions — see
+  // __tests__/rtl/textAlignLogical.contract.test.ts before adding a ternary.
   specsCellValueLeft: {
-    textAlign: I18nManager.isRTL ? 'left' : 'right',
+    textAlign: 'right',
   },
+  // Right value cell reads outward from the centered label (left-aligned).
   specsCellValueRight: {
-    textAlign: I18nManager.isRTL ? 'right' : 'left',
+    textAlign: 'left',
   },
   // Lane A-L3 Task L3.2 — winning spec cell paints emerald (accent),
   // bold weight, per design Screen 4.

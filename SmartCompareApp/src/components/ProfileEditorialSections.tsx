@@ -32,7 +32,6 @@ import {
   TouchableOpacity,
   ScrollView,
   StyleSheet,
-  I18nManager,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { Check, Plus } from 'lucide-react-native';
@@ -615,9 +614,11 @@ const styles = StyleSheet.create({
   },
   prioritiesPercent: {
     width: 36,
-    // Percent column reads toward the LOGICAL end of the mirrored bar
-    // row; physical align must swap under RTL (M21 W4 MB-i18n-rtl-05).
-    textAlign: I18nManager.isRTL ? 'left' : 'right',
+    // Percent column reads toward the trailing end of the mirrored bar row.
+    // RN mirrors physical left/right under RTL on every platform path, so the
+    // bare literal is already correct in both directions — see
+    // __tests__/rtl/textAlignLogical.contract.test.ts before adding a ternary.
+    textAlign: 'right',
     ...typography.small,
     color: colors.text.secondary,
   },

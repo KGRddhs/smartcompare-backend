@@ -125,9 +125,13 @@ describe('UpdateRequiredScreen', () => {
       path.resolve(__dirname, '../src/screens/UpdateRequiredScreen.tsx'),
       'utf8'
     );
-    // The M21 W4 fences (__tests__/rtl/*) enforce these repo-wide by an
-    // explicit file table; a new screen has to hold the same line or it
-    // silently bypasses the sweep.
+    // SCOPE: this rule is about THIS screen, which is centred and
+    // direction-neutral, so any physical left/right here is a smell.
+    // It is NOT a repo-wide policy, and the comment that used to say so
+    // was wrong (corrected in W3-11a). RN mirrors physical textAlign
+    // under RTL on every platform path, so elsewhere the BARE literal is
+    // the correct form and __tests__/rtl/textAlignLogical.contract.test.ts
+    // now requires it. Do not generalise the assertion below.
     expect(src).not.toMatch(/textAlign:\s*'(left|right)'/);
     expect(src).not.toMatch(/<(ArrowLeft|ChevronLeft|ChevronRight)\b/);
     expect(src).not.toMatch(/(marginLeft|marginRight|paddingLeft|paddingRight):/);

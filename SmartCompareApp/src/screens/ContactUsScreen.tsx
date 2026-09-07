@@ -18,7 +18,6 @@ import {
   Platform,
   Linking,
   ActivityIndicator,
-  I18nManager,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { ChevronLeft } from 'lucide-react-native';
@@ -304,9 +303,11 @@ const styles = StyleSheet.create({
   charCount: {
     ...typography.small,
     color: colors.text.placeholder,
-    // Counter sits at the LOGICAL end of the textarea; textAlign is
-    // physical in RN so it must swap under RTL (M21 W4 MB-i18n-rtl-05).
-    textAlign: I18nManager.isRTL ? 'left' : 'right',
+    // Counter sits at the trailing end of the textarea. RN mirrors physical
+    // left/right under RTL on every platform path, so the bare literal is
+    // already correct in both directions — see
+    // __tests__/rtl/textAlignLogical.contract.test.ts before adding a ternary.
+    textAlign: 'right',
     marginBottom: spacing.md,
   },
   btn: {
