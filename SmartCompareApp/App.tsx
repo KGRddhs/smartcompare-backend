@@ -58,6 +58,14 @@ import ReferralLandingScreen from './src/screens/ReferralLandingScreen';
 import InviteeQuizScreen from './src/screens/InviteeQuizScreen';
 import ScanCameraScreen from './src/screens/ScanCameraScreen';
 import PaywallScreen from './src/screens/PaywallScreen';
+// A9 — force-update gate. The backend has served GET /api/v1/app/version
+// since Bundle D with nobody calling it, so APP_FORCE_UPDATE could not
+// reach a device. The hook fires that check fire-and-forget (nothing
+// awaits it, so boot is untouched) and stays null on every fail-open path;
+// the screen below is deliberately outside the navigator — no route in or
+// out — and only renders AFTER the splash gate has already released.
+import UpdateRequiredScreen from './src/screens/UpdateRequiredScreen';
+import { useForcedUpdateGate } from './src/hooks/useForcedUpdateGate';
 
 // Types
 import { RootStackParamList, AuthStackParamList, MainTabParamList } from './src/types';
@@ -157,6 +165,9 @@ function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [needsPreferences, setNeedsPreferences] = useState(false);
   const [user, setUser] = useState<User | null>(null);
+  // A9 — null until (and unless) the backend affirmatively reports this
+  // install below APP_MIN_VERSION with APP_FORCE_UPDATE on.
+  const forcedUpdate = useForcedUpdateGate();
 
   useEffect(() => {
     // Bundle B/C/D Task 2.11 — Android Play Install Referrer hand-off.
@@ -318,6 +329,16 @@ function App() {
     return (
       <SplashScreen onFinish={handleSplashFinish} ready={fontsLoaded && !isLoading} />
     );
+  }
+
+  // A9 — force-update gate, deliberately placed AFTER the splash return and
+  // BEFORE the navigator. After, because the check is fire-and-forget and
+  // must never hold boot: an app that has not finished booting cannot be
+  // used anyway, so there is nothing to gain by racing it. Before, because
+  // the block has to replace the navigator outright — rendering it as a
+  // route would leave a dismissable modal over a usable app.
+  if (forcedUpdate) {
+    return <UpdateRequiredScreen updateUrl={forcedUpdate.updateUrl} />;
   }
 
   // Deep-link config — qaren.app/c/{token}?ref={code} resolves to

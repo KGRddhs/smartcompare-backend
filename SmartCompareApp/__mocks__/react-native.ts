@@ -118,6 +118,20 @@ export const Alert = {
   alert: jest.fn(),
 };
 
+// A9 — UpdateRequiredScreen's store CTA calls Linking.openURL. `Linking`
+// was previously not exported at all, so every call site (ShareBottomSheet,
+// ContactUsScreen, ResultsScreen) hit a TypeError that their own try/catch
+// swallowed. `canOpenURL` therefore resolves FALSE on purpose: that keeps
+// ShareBottomSheet on its Share-sheet fallback branch, i.e. the same
+// outcome those suites saw before this export existed. A test that wants
+// the deep-link branch should override it locally.
+export const Linking = {
+  openURL: jest.fn(() => Promise.resolve()),
+  canOpenURL: jest.fn(() => Promise.resolve(false)),
+  getInitialURL: jest.fn(() => Promise.resolve(null)),
+  addEventListener: jest.fn(() => ({ remove: jest.fn() })),
+};
+
 // B5 — HomeScreen pushes its two consumer-less boot calls (the /health
 // telemetry ping and the compare_entry_view analytics POST) behind the
 // interaction queue so they stop racing the first paint. The real
@@ -163,5 +177,6 @@ export default {
   I18nManager,
   AppState,
   Alert,
+  Linking,
   InteractionManager,
 };
