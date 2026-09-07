@@ -906,17 +906,24 @@ def _flush_price_cache_keys(
 ) -> List[str]:
     """Every L1 price key this product could be cached under, most-live first.
 
-    Ordered + de-duplicated (a sizeless/qualifierless product collapses all
-    three onto ONE key — `build_size_aware_price_cache_key` falls back to the
+    Ordered + de-duplicated (a sizeless/qualifierless product collapses all of
+    them onto ONE key — `build_size_aware_price_cache_key` falls back to the
     legacy builder when no identity token is found — so the caller issues a
-    single delete, not three).
+    single delete, not four).
 
     1. The LIVE key: the same builder, `search_query` and canonicalized
        `category` `_fetch_product_data` -> `_get_price` uses, so the identity
-       token (EDP / 100ml / 256GB / FE) matches the poisoned entry.
-       `category` (the operator's chip, from the route's optional query param)
-       takes precedence over the parser's own value — see the mirror notes at
-       the call below.
+       token (EDP / 100ml / 256GB / FE) matches the poisoned entry. The
+       `category` here is the PARSER's own value — see the mirror notes at the
+       call below.
+    1b. The CHIP key: rung 1 again under the operator's `category` chip, when
+       they supplied one. An ADDITIONAL candidate, never a replacement for rung
+       1: the chip is a GUESS about a decision the operator cannot observe
+       (`_resolve_pair_category` honours it only when the LLM emitted "other",
+       and lets the LLM's own category win otherwise), so keying rung 1 off it
+       deleted a key nothing had been written under whenever the guess was
+       wrong. When the chip canonicalizes to the parser's category the two
+       collapse onto one key and no duplicate delete is issued.
     2. The raw-`q` key: the operator's own query text under the best-effort
        `_infer_category_from_query`, in case the parser normalized an axis out
        of `search_query`/`category` that the raw query still carries.
@@ -945,15 +952,26 @@ def _flush_price_cache_keys(
     # #55 commit and both provable now that the tests DRIVE the live writer
     # instead of re-running this recipe:
     #
-    # (a) CATEGORY. The live path does not key under the parser's category.
+    # (a) CATEGORY. The live path may not key under the parser's category.
     #     `_resolve_pair_category` resolves the PAIR category — and on the `q=`
     #     path it returns the user's chip whenever the LLM emitted "other" —
     #     then the A3 write-back (`_p["category"] = category_used`) stamps that
     #     onto EVERY product dict BEFORE `_fetch_product_data` canonicalizes it.
     #     So an electronics-chip query the LLM called "other" writes its L1
-    #     entry under "electronics" while this recipe deleted under "other".
-    #     `category` is that chip, passed by the operator; the parser's value
-    #     remains the fallback when they do not know it.
+    #     entry under "electronics" while the parser's own dict still says
+    #     "other".
+    #     BUT the operator cannot know WHICH happened: `_resolve_pair_category`
+    #     lets the LLM's category win whenever it is not "other" and honours the
+    #     chip only when the LLM abstained, and neither outcome is visible from
+    #     outside. A chip that REPLACED rung 1 therefore deleted a key nothing
+    #     had ever been written under every time the guess went the other way —
+    #     the poisoned entry survived and the route still answered
+    #     `success: true` with empty `notes`, which is exactly the dishonesty
+    #     the rest of this route exists to remove (cache-truth review #55/P2).
+    #     So the chip ADDS a candidate (rung 1b) and never displaces rung 1;
+    #     both keys are price keys for THIS product+region, so deleting both is
+    #     as safe as deleting either, and when the chip canonicalizes to the
+    #     parser's category `_add` collapses them onto one.
     # (b) SEARCH_QUERY. `_fetch_product_data` uses `.get(key, default)`, so a
     #     PRESENT-but-falsy `search_query` stays falsy and the identity text is
     #     "" — `or` replaced it with the brand-carrying fallback and produced a
@@ -962,8 +980,13 @@ def _flush_price_cache_keys(
     search_query = info.get("search_query", f"{brand} {name} {variant or ''}")
     _add(build_size_aware_price_cache_key(
         brand, name, variant, region, search_query,
-        category=canonicalize_category(category or info.get("category")),
+        category=canonicalize_category(info.get("category")),
     ))
+    if category:
+        _add(build_size_aware_price_cache_key(
+            brand, name, variant, region, search_query,
+            category=canonicalize_category(category),
+        ))
     _add(build_size_aware_price_cache_key(
         brand, name, variant, region, q,
         category=_infer_category_from_query(q),
@@ -1040,9 +1063,13 @@ async def flush_product_cache(
     """
     # The operator's category CHIP (issue #55): the live price path keys under
     # the PAIR-resolved category — which is the chip whenever the LLM emitted
-    # "other" — so passing it makes the flush target the key that was actually
-    # written. It is read from the RAW query string rather than declared as a
-    # `Query(...)` parameter because a declared parameter is flag-INDEPENDENT:
+    # "other" — so passing it makes the flush target ONE MORE key, the one that
+    # was actually written in that case. It ADDS a candidate rung, it does not
+    # replace the parser-category rung: the operator cannot see whether the LLM
+    # abstained, so a chip that displaced rung 1 simply moved the miss (see
+    # `_flush_price_cache_keys` note (a)). It is read from the RAW query string
+    # rather than declared as a `Query(...)` parameter because a declared
+    # parameter is flag-INDEPENDENT:
     # FastAPI validates it and publishes it whatever ENABLE_FLUSH_LIVE_PRICE_KEY
     # says. The first version of this fix declared
     # `category: Optional[str] = Query(None, max_length=64, ...)` and so broke

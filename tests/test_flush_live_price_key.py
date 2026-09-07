@@ -109,6 +109,20 @@ CHIP_PRODUCT_AS_PARSED = {          # what `parse_product_query` returns
 }
 CHIP_CATEGORY = "electronics"       # the chip -> `category_used` -> A3 write-back
 
+# (b2) the chip is a GUESS, and this is the half where the guess is WRONG.
+# `_resolve_pair_category` honours the chip ONLY when the LLM emitted "other";
+# whenever the LLM named a real category the LLM wins and the chip is discarded
+# — and the operator, hours later at the flush prompt, cannot see which happened.
+# Here the pair resolved to the PARSER's own "other" (no chip at compare time, or
+# a chip the LLM overrode), so the live path keyed under "other" while the
+# operator types `?category=electronics`. MEASURED at aaaaa76 with the chip
+# REPLACING rung 1: the flush deleted the electronics key + the legacy key and
+# left the live "other" key readable, while still answering `success: true` with
+# empty `notes` — the honest-success half of #55 defeated from inside.
+# `MISGUESS_Q` is the operator's own words, deliberately carrying no identity
+# axis, so rung 2 collapses onto the legacy key and cannot cover the miss.
+MISGUESS_Q = "oneplus nord ce"
+
 # The chip's LENGTH class, which every fixture above misses. The first #55
 # commit declared the chip as `category: Optional[str] = Query(None,
 # max_length=64, ...)` in the route signature — outside the flag branch — and
@@ -886,9 +900,14 @@ def test_flag_on_category_chip_targets_the_key_the_live_path_keyed_under(client)
     `_resolve_pair_category` honours the chip when the LLM emitted "other" and
     the A3 write-back stamps it onto the product dict, so the live path keys
     under "electronics" while the parser's own dict still says "other". Without
-    the chip the flush reports (and deletes) a key the live path never wrote;
-    with it, the two agree. BOTH directions are asserted so the param cannot
-    become decorative.
+    the chip that key is in NO rung of the recipe; with it, it is. BOTH
+    directions are asserted so the param cannot become decorative.
+
+    REWRITTEN (cache-truth review #55/P2): the chip is an EXTRA rung, not a
+    replacement for rung 1, so the assertions moved off `keys[0]` /
+    `flushed.price.key` and onto "the chip key is among the keys this flush
+    deletes". Rung 1 stays the PARSER's key — see
+    `test_flag_on_a_misguessed_chip_still_deletes_the_live_key` for why.
     """
     live_chip = _capture_live_price_key(
         {**CHIP_PRODUCT_AS_PARSED, "category": CHIP_CATEGORY}
@@ -900,21 +919,148 @@ def test_flag_on_category_chip_targets_the_key_the_live_path_keyed_under(client)
         "fixture no longer diverges — the parser-category recipe already "
         "covers the live key, so the chip param is not exercised"
     )
-    assert with_chip[0] == live_chip["key"]
+    assert live_chip["key"] in with_chip
+    # ...added, not substituted: everything the chip-less recipe covered is
+    # still covered.
+    assert without == [k for k in with_chip if k in without]
+    assert set(without).issubset(with_chip)
 
-    # ...and through the route.
-    resp, _ = _flush(
-        client, CHIP_Q, CHIP_PRODUCT_AS_PARSED,
-        env={"ENABLE_FLUSH_LIVE_PRICE_KEY": "true"}, category=CHIP_CATEGORY,
-    )
+    # ...and through the route: the chip key is really DELETED.
+    with patch.dict("os.environ", {"ADMIN_API_KEY": ADMIN_KEY,
+                                   "ENABLE_FLUSH_LIVE_PRICE_KEY": "true"}), \
+            patch("app.services.extraction_service.parse_product_query",
+                  _parse_mock(CHIP_PRODUCT_AS_PARSED)), \
+            patch("app.services.cache_service.delete_cached",
+                  return_value=True) as del_mock, \
+            patch("app.services.cache_service.get_cached", return_value=None), \
+            patch("app.services.database_service.get_admin_supabase_client",
+                  return_value=_supabase_mock()):
+        resp = client.delete(
+            "/api/v1/text/cache",
+            params={"q": CHIP_Q, "category": CHIP_CATEGORY},
+            headers={"X-Admin-Key": ADMIN_KEY},
+        )
     assert resp.status_code == 200, resp.text
-    assert resp.json()["flushed"]["price"]["key"] == live_chip["key"]
+    deleted_keys = [c.args[0] for c in del_mock.call_args_list]
+    assert live_chip["key"] in deleted_keys
+    assert negative_cache_key(live_chip["key"]) in deleted_keys
+    reported = [resp.json()["flushed"]["price"]["key"]] + [
+        e["key"] for e in resp.json()["flushed"]["price_additional"]
+    ]
+    assert live_chip["key"] in reported
 
     resp_no_chip, _ = _flush(
         client, CHIP_Q, CHIP_PRODUCT_AS_PARSED,
         env={"ENABLE_FLUSH_LIVE_PRICE_KEY": "true"},
     )
-    assert resp_no_chip.json()["flushed"]["price"]["key"] != live_chip["key"]
+    no_chip_body = resp_no_chip.json()["flushed"]
+    assert live_chip["key"] not in (
+        [no_chip_body["price"]["key"]]
+        + [e["key"] for e in no_chip_body["price_additional"]]
+    )
+
+
+def test_flag_on_a_misguessed_chip_still_deletes_the_live_key(client):
+    """P2 (#55) — a WRONG chip must not cost the operator the real key.
+
+    The chip cannot be trusted to be right: `_resolve_pair_category` lets the
+    LLM's own category win whenever it is not "other" and honours the chip only
+    when the LLM abstained, and nothing in the response of the original compare
+    tells the operator which branch ran. While the chip REPLACED rung 1
+    (aaaaa76) a wrong guess deleted a key nothing had been written under: the
+    poisoned entry stayed readable in Redis and the route still said
+    `success: true` with empty `notes`.
+
+    Driven end to end against `_FakeRedis`, seeded with the key the LIVE writer
+    really wrote (measured by `_capture_live_price_key`, not re-derived) plus its
+    30-day sentinel. Both the live key and the chip key — and both sentinels —
+    must be deleted, and the poisoned entry must be GONE from the store.
+    """
+    from app.services import cache_service
+
+    live_parser = _capture_live_price_key(CHIP_PRODUCT_AS_PARSED)["key"]
+    live_chip = _capture_live_price_key(
+        {**CHIP_PRODUCT_AS_PARSED, "category": CHIP_CATEGORY}
+    )["key"]
+    legacy = get_price_cache_key("OnePlus", "Nord CE", None, REGION)
+    assert len({live_parser, live_chip, legacy}) == 3, (
+        "fixture no longer separates the parser key, the chip key and the "
+        f"legacy key: {live_parser} / {live_chip} / {legacy}"
+    )
+    keys = _flush_keys(MISGUESS_Q, CHIP_PRODUCT_AS_PARSED, category=CHIP_CATEGORY)
+    assert keys == [live_parser, live_chip, legacy], (
+        "the chip must ADD a rung, never displace the parser's: got "
+        f"{keys}"
+    )
+
+    fake = _FakeRedis()
+    poison = {"amount": 999.0, "currency": "BHD", "source_method": "estimated"}
+    fake.store[live_parser] = json.dumps(poison)
+    fake.store[negative_cache_key(live_parser)] = json.dumps(poison)
+
+    with patch.dict("os.environ", {"ADMIN_API_KEY": ADMIN_KEY,
+                                   "ENABLE_FLUSH_LIVE_PRICE_KEY": "true"}), \
+            patch("app.services.extraction_service.parse_product_query",
+                  _parse_mock(CHIP_PRODUCT_AS_PARSED)), \
+            patch.object(cache_service, "redis_client", fake), \
+            patch("app.services.database_service.get_admin_supabase_client",
+                  return_value=_supabase_mock(data=[])):
+        resp = client.delete(
+            "/api/v1/text/cache",
+            params={"q": MISGUESS_Q, "category": CHIP_CATEGORY},
+            headers={"X-Admin-Key": ADMIN_KEY},
+        )
+
+    assert resp.status_code == 200, resp.text
+    for key in (live_parser, live_chip):
+        assert key in fake.deleted, f"{key} was never deleted"
+        assert negative_cache_key(key) in fake.deleted, f"sentinel for {key} missing"
+    # The poisoned entry the live path wrote is GONE — the whole point.
+    assert live_parser not in fake.store
+    assert negative_cache_key(live_parser) not in fake.store
+
+    body = resp.json()
+    reported = [body["flushed"]["price"]["key"]] + [
+        e["key"] for e in body["flushed"]["price_additional"]
+    ]
+    assert reported == [live_parser, live_chip, legacy]
+    assert body["flushed"]["price"]["existed"] is True
+    assert body["success"] is True
+    assert body["notes"] == []
+
+
+def test_flag_on_a_chip_matching_the_parser_category_adds_no_duplicate_key(client):
+    """...and the collapse case: a chip that agrees costs nothing.
+
+    `_add` de-duplicates, so when the chip canonicalizes to the category the
+    parser already carries, rung 1b IS rung 1 and the flush issues the same
+    deletes it would have issued bare — same key list, same
+    `price_additional` length, same L2 row count. The `grocery` control keeps
+    that from being satisfied by a chip rung that never fires at all.
+    """
+    product = {**CHIP_PRODUCT_AS_PARSED, "category": CHIP_CATEGORY}
+    bare = _flush_keys(MISGUESS_Q, product)
+    same = _flush_keys(MISGUESS_Q, product, category=CHIP_CATEGORY)
+    other = _flush_keys(MISGUESS_Q, product, category="grocery")
+    assert same == bare, f"an agreeing chip added a key: {same} vs {bare}"
+    assert len(other) == len(bare) + 1, (
+        "control failed — a DISAGREEING chip must add exactly one rung, so "
+        f"the collapse above is real de-duplication: {other}"
+    )
+
+    def _run(category):
+        resp, _ = _flush(
+            client, MISGUESS_Q, product,
+            env={"ENABLE_FLUSH_LIVE_PRICE_KEY": "true"}, category=category,
+        )
+        assert resp.status_code == 200, resp.text
+        return resp.json()
+
+    bare_body, same_body = _run(None), _run(CHIP_CATEGORY)
+    assert bare_body["flushed"] == same_body["flushed"]
+    assert len(same_body["flushed"]["price_additional"]) == len(bare) - 1
+    assert len(same_body["flushed"]["negative_cache"]) == len(bare)
+    assert len(same_body["l2_product_prices"]) == len(bare)
 
 
 def test_flag_on_repeated_chip_resolves_like_a_declared_param(client):
@@ -925,6 +1071,10 @@ def test_flag_on_repeated_chip_resolves_like_a_declared_param(client):
     Starlette's ImmutableMultiDict.get returns the LAST occurrence — so a
     repeated `?category=` must still pick the last one, as it did while the
     parameter was declared. A `getlist(...)[0]` "fix" flips this and goes red.
+
+    The discriminator is the whole key LIST, not `keys[0]`: since the P2 repair
+    the chip adds rung 1b and leaves rung 1 alone, so the two chips differ in
+    the rung they contribute, not in the head of the list.
     """
     with patch.dict("os.environ", {"ADMIN_API_KEY": ADMIN_KEY,
                                    "ENABLE_FLUSH_LIVE_PRICE_KEY": "true"}), \
@@ -940,10 +1090,13 @@ def test_flag_on_repeated_chip_resolves_like_a_declared_param(client):
             headers={"X-Admin-Key": ADMIN_KEY},
         )
     assert resp.status_code == 200, resp.text
-    last_wins = _flush_keys(CHIP_Q, CHIP_PRODUCT_AS_PARSED, category=CHIP_CATEGORY)[0]
-    first_wins = _flush_keys(CHIP_Q, CHIP_PRODUCT_AS_PARSED, category="grocery")[0]
+    last_wins = _flush_keys(CHIP_Q, CHIP_PRODUCT_AS_PARSED, category=CHIP_CATEGORY)
+    first_wins = _flush_keys(CHIP_Q, CHIP_PRODUCT_AS_PARSED, category="grocery")
     assert last_wins != first_wins, "fixture no longer discriminates the two chips"
-    assert resp.json()["flushed"]["price"]["key"] == last_wins
+    body = resp.json()["flushed"]
+    assert [body["price"]["key"]] + [
+        e["key"] for e in body["price_additional"]
+    ] == last_wins
 
 
 def test_flag_on_rejects_an_over_length_chip_before_it_parses(client):
@@ -1104,6 +1257,81 @@ def test_flag_on_a_failing_sentinel_delete_also_fails_success(client):
     assert body["flushed"]["price"]["deleted"] is True
     assert body["success"] is False
     assert any("L1 delete FAILED" in n and sentinel in n for n in body["notes"])
+
+
+def _l1_row_case(name):
+    """(query, product, failing key, path into `flushed`) for one `_l1_rows` class.
+
+    Built lazily so the RUNG2 key set is computed inside the test, not at
+    collection time.
+    """
+    if name == "price_additional":
+        # The only fixture whose three rungs are three DISTINCT keys, so a
+        # `price_additional` entry exists to fail at all.
+        keys = _flush_keys(RUNG2_Q, RUNG2_PRODUCT)
+        assert len(keys) == 3, f"fixture lost its extra rungs: {keys}"
+        return RUNG2_Q, RUNG2_PRODUCT, keys[1]
+    if name == "specs":
+        return IDENTITY_Q, IDENTITY_PRODUCT, get_specs_cache_key(
+            "Dior", "Sauvage", "100ml")
+    if name == "reviews":
+        return IDENTITY_Q, IDENTITY_PRODUCT, get_reviews_cache_key(
+            "Dior", "Sauvage", "100ml")
+    raise AssertionError(name)
+
+
+@pytest.mark.parametrize("row_class", ["price_additional", "specs", "reviews"])
+def test_flag_on_every_l1_row_class_can_fail_success_and_be_named(client, row_class):
+    """P3 (#55) — all five classes flattened into `_l1_rows` are load-bearing.
+
+    `flushed.price` and `flushed.negative_cache` already had pins; the other
+    three did not, and MEASURED at aaaaa76 deleting `*flushed["price_additional"]`,
+    `flushed["specs"]` or `flushed["reviews"]` from the `_l1_rows` list left all
+    40 nodes of this file green — a failed specs or reviews delete would have
+    been reported as `success: true` with empty `notes`.
+
+    One node per class: Redis CONFIGURED, every L2 delete landing, and exactly
+    one L1 DELETE raising, so nothing but that row can be responsible for the
+    verdict.
+    """
+    from app.services import cache_service
+
+    q, product, failing_key = _l1_row_case(row_class)
+    fake = _FakeRedis(fail_keys={failing_key})
+
+    with patch.dict("os.environ", {"ADMIN_API_KEY": ADMIN_KEY,
+                                   "ENABLE_FLUSH_LIVE_PRICE_KEY": "true"}), \
+            patch("app.services.extraction_service.parse_product_query",
+                  _parse_mock(product)), \
+            patch.object(cache_service, "redis_client", fake), \
+            patch("app.services.database_service.get_admin_supabase_client",
+                  return_value=_supabase_mock(data=[])):
+        resp = client.delete(
+            "/api/v1/text/cache", params={"q": q},
+            headers={"X-Admin-Key": ADMIN_KEY},
+        )
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["cache_configured"] is True
+    assert all(row["ok"] for row in body["l2_product_prices"])
+
+    # The row that failed is the one under test, and it is the ONLY one.
+    rows = ([body["flushed"]["price"]]
+            + body["flushed"]["price_additional"]
+            + body["flushed"]["negative_cache"]
+            + [body["flushed"]["specs"], body["flushed"]["reviews"]])
+    failed = [r for r in rows if r["deleted"] is not True]
+    assert [r["key"] for r in failed] == [failing_key], (
+        f"expected only {failing_key} to fail, got {[r['key'] for r in failed]}"
+    )
+
+    assert body["success"] is False, (
+        f"a failed {row_class} delete was reported as success"
+    )
+    assert any("L1 delete FAILED" in n and failing_key in n for n in body["notes"]), (
+        f"no note named the surviving {row_class} key {failing_key}: {body['notes']}"
+    )
 
 
 def test_flag_on_missing_redis_does_not_add_the_per_key_l1_note(client):
