@@ -215,18 +215,21 @@ export default function LoginScreen({ navigation, onLoginSuccess }: LoginScreenP
       if (result.success) {
         onLoginSuccess();
       } else if (result.error !== 'Sign-in cancelled') {
-        // A8: `errorKey` wins over `error`. The service's `error` strings are
-        // English-only diagnostics ([B4-DIAG] captures addressed to the
-        // dispatcher); a named outcome such as a sign-in deadline carries a
-        // key so the copy is localized and retryable.
-        setError(
-          result.errorKey
-            ? t(result.errorKey)
-            : result.error || t('auth.googleFailed', { defaultValue: 'Google sign-in failed' })
-        );
+        // P-A8: the banner renders an i18n KEY and nothing else. `result.error`
+        // is a dispatcher-addressed English diagnostic (the [B4-DIAG] captures,
+        // see AuthResponse.error) that authService already ships to Sentry —
+        // it belongs to that channel and to a __DEV__ console, never to user
+        // copy: an Arabic user would read English, and the string carries
+        // transport detail. A named outcome (today: a sign-in deadline) travels
+        // as `errorKey`; every other outcome resolves the catalog sentence.
+        if (__DEV__) console.warn('[B4-DIAG] login/google:', result.error);
+        setError(t(result.errorKey ?? 'auth.googleFailed'));
       }
     } catch (err: any) {
-      setError(parseApiError(err).message);
+      // P-A8 — a throw is still "sign-in did not complete". parseApiError's
+      // message is the raw transport string (A11), so it stays diagnostic-only.
+      if (__DEV__) console.warn('[LoginScreen] google sign-in threw:', parseApiError(err).message);
+      setError(t('auth.googleFailed'));
     } finally {
       setSocialLoading('');
     }
@@ -240,15 +243,14 @@ export default function LoginScreen({ navigation, onLoginSuccess }: LoginScreenP
       if (result.success) {
         onLoginSuccess();
       } else if (result.error !== 'Sign-in cancelled') {
-        // A8 — see handleGoogleSignIn.
-        setError(
-          result.errorKey
-            ? t(result.errorKey)
-            : result.error || t('auth.appleFailed', { defaultValue: 'Apple sign-in failed' })
-        );
+        // P-A8 — see handleGoogleSignIn.
+        if (__DEV__) console.warn('[B4-DIAG] login/apple:', result.error);
+        setError(t(result.errorKey ?? 'auth.appleFailed'));
       }
     } catch (err: any) {
-      setError(parseApiError(err).message);
+      // P-A8 — see handleGoogleSignIn.
+      if (__DEV__) console.warn('[LoginScreen] apple sign-in threw:', parseApiError(err).message);
+      setError(t('auth.appleFailed'));
     } finally {
       setSocialLoading('');
     }

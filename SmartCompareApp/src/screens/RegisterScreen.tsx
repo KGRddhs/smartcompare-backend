@@ -127,13 +127,20 @@ export default function RegisterScreen({ navigation, route, onRegisterSuccess }:
       if (result.success) {
         onRegisterSuccess();
       } else if (result.error !== 'Sign-in cancelled') {
-        // A8: `errorKey` wins over `error` — the service's `error` strings are
-        // English-only diagnostics, so a named outcome (a sign-in deadline)
-        // travels as a key and renders localized, retryable copy.
-        setError(result.errorKey ? t(result.errorKey) : result.error || 'Google sign-in failed');
+        // P-A8: the banner renders an i18n KEY and nothing else. `result.error`
+        // is a dispatcher-addressed English diagnostic (the [B4-DIAG] captures,
+        // see AuthResponse.error) that authService already ships to Sentry —
+        // it belongs to that channel and to a __DEV__ console, never to user
+        // copy. A named outcome (today: a sign-in deadline) travels as
+        // `errorKey`; every other outcome resolves the catalog sentence.
+        if (__DEV__) console.warn('[B4-DIAG] register/google:', result.error);
+        setError(t(result.errorKey ?? 'auth.googleFailed'));
       }
     } catch (err: any) {
-      setError(parseApiError(err).message);
+      // P-A8 — a throw is still "sign-in did not complete". parseApiError's
+      // message is the raw transport string (A11), so it stays diagnostic-only.
+      if (__DEV__) console.warn('[RegisterScreen] google sign-in threw:', parseApiError(err).message);
+      setError(t('auth.googleFailed'));
     } finally {
       setSocialLoading('');
     }
@@ -147,11 +154,14 @@ export default function RegisterScreen({ navigation, route, onRegisterSuccess }:
       if (result.success) {
         onRegisterSuccess();
       } else if (result.error !== 'Sign-in cancelled') {
-        // A8 — see handleGoogleSignIn.
-        setError(result.errorKey ? t(result.errorKey) : result.error || 'Apple sign-in failed');
+        // P-A8 — see handleGoogleSignIn.
+        if (__DEV__) console.warn('[B4-DIAG] register/apple:', result.error);
+        setError(t(result.errorKey ?? 'auth.appleFailed'));
       }
     } catch (err: any) {
-      setError(parseApiError(err).message);
+      // P-A8 — see handleGoogleSignIn.
+      if (__DEV__) console.warn('[RegisterScreen] apple sign-in threw:', parseApiError(err).message);
+      setError(t('auth.appleFailed'));
     } finally {
       setSocialLoading('');
     }

@@ -200,6 +200,12 @@ describe('MB-perf-06/07 — search keystrokes must not re-render mounted rows', 
       <HistoryScreen navigation={makeNavigation()} onLogout={jest.fn()} />
     );
     await waitFor(() => getByTestId('history-row-r11'));
+    // BOTH mount-time fetches must have landed before the mock is cleared.
+    // `getProfileRecentDecisions` (the hero marquee) resolves independently
+    // of the history page, so under full-suite worker contention its render
+    // can arrive AFTER the clear and be miscounted as a keystroke
+    // re-render. Waiting on the hero pins the measurement to the keystroke.
+    await waitFor(() => getByTestId('history-hero-card-r0'));
 
     (deriveTone as jest.Mock).mockClear();
     fireEvent.changeText(getByPlaceholderText('history.search'), 'a');

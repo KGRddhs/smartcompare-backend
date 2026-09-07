@@ -7,8 +7,12 @@
  * — the A11 rule applied to auth: copy comes from a named outcome, never from
  * whatever string the service happened to build. The screens must PREFER that
  * key. If they fall through to `result.error || <fallback>` instead, an
- * Arabic user gets the English fallback ("Google sign-in failed" /
- * "Apple sign-in failed") — which also carries the forbidden token "failed".
+ * Arabic user gets the English service diagnostic.
+ *
+ * P-A8 closed the rest of that branch: the banner now renders ONLY a key
+ * (`t(result.errorKey ?? 'auth.googleFailed')`), so `result.error` never
+ * reaches user copy on ANY outcome. Pinned by
+ * __tests__/AuthScreens.socialDiagnostic.pa8.test.tsx.
  *
  * `t` here resolves through the REAL en.json, so these assertions are on the
  * sentence a user actually sees, not on a key echo.
@@ -132,15 +136,18 @@ describe('RegisterScreen — social deadline copy (A8)', () => {
     fireEvent.press(screen.getByText(EN['auth.googleSignIn']));
 
     await waitFor(() => expect(screen.getByText(TIMEOUT_COPY)).toBeTruthy());
-    expect(screen.queryByText('Google sign-in failed')).toBeNull();
+    expect(screen.queryByText(EN['auth.googleFailed'])).toBeNull();
   });
 
-  it('still shows the hardcoded fallback when the service sends no errorKey', async () => {
+  it('still shows the catalog fallback when the service sends no errorKey', async () => {
+    // P-A8 replaced RegisterScreen's raw English literal fallback
+    // ('Google sign-in failed') with the same catalog key LoginScreen uses,
+    // so both screens now resolve through en.json / ar.json.
     mockSignInWithGoogle.mockResolvedValueOnce({ success: false });
 
     const screen = renderRegister();
     fireEvent.press(screen.getByText(EN['auth.googleSignIn']));
 
-    await waitFor(() => expect(screen.getByText('Google sign-in failed')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(EN['auth.googleFailed'])).toBeTruthy());
   });
 });
