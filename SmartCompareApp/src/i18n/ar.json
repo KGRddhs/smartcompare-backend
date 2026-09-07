@@ -252,6 +252,7 @@
   "profile.terms": "شروط الاستخدام",
   "profile.contact": "اتصل بنا",
   "profile.logout": "تسجيل الخروج",
+  "profile.logoutConfirm": "هل أنت متأكد؟",
   "profile.deleteAccount": "حذف الحساب",
   "profile.deleteConfirm": "هل أنت متأكد؟ لا يمكن التراجع عن هذا.",
 
