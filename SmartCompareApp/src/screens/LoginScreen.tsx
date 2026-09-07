@@ -27,7 +27,7 @@
  *   - t('auth.googleSignIn') is pressable → signInWithGoogle() → onLoginSuccess()
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -130,6 +130,12 @@ interface AuthFieldProps {
   error?: string;
   editable?: boolean;
   testID?: string;
+  /**
+   * B9: lets the screen drive focus imperatively. The "Email" social pill
+   * promises to put the cursor in this field; without a handle on the inner
+   * TextInput the pill has nothing to act on.
+   */
+  inputRef?: React.RefObject<TextInput | null>;
 }
 
 function AuthField({
@@ -142,6 +148,7 @@ function AuthField({
   error,
   editable = true,
   testID,
+  inputRef,
 }: AuthFieldProps) {
   const [focused, setFocused] = useState(false);
   return (
@@ -155,6 +162,7 @@ function AuthField({
         ]}
       >
         <TextInput
+          ref={inputRef}
           testID={testID}
           value={value}
           onChangeText={onChangeText}
@@ -189,6 +197,9 @@ export default function LoginScreen({ navigation, onLoginSuccess }: LoginScreenP
   const [passwordError, setPasswordError] = useState('');
   const [socialLoading, setSocialLoading] = useState<'' | 'apple' | 'google' | 'email'>('');
   const [showApple, setShowApple] = useState(false);
+  // B9 — handle on the email field so the "Email" social pill has something
+  // to act on (see handleEmailSocialPress).
+  const emailInputRef = useRef<TextInput | null>(null);
 
   useEffect(() => {
     if (Platform.OS === 'ios') {
@@ -299,34 +310,56 @@ export default function LoginScreen({ navigation, onLoginSuccess }: LoginScreenP
   };
 
   const handleEmailSocialPress = () => {
-    // The "Email" social pill simply focuses the email field; if user is
-    // already typing, no-op. Per JSX: SocialRow has 3 entries, Email is
-    // the third — but on RN we already render AuthField pair below the
-    // divider, so the tap is a soft scroll/focus hint.
-    setSocialLoading('');
+    // B9 — this used to call `setSocialLoading('')`. The pill is only
+    // pressable while `socialLoading === ''` (see `disabled` below), so that
+    // was a same-value setState React bails out of: a visibly tappable
+    // control that produced no render and no effect. Do what the comment
+    // always claimed — put the cursor in the email field below the divider.
+    emailInputRef.current?.focus();
   };
 
   const disabled = loading || Boolean(socialLoading);
+
+  /**
+   * B9 — the header arrow was an unconditional `navigation.goBack()`. On
+   * every organic launch Login is index 0 of both the root stack and the
+   * auth stack (App.tsx renders only the "Auth" screen while signed out,
+   * and AuthNavigator lists Login first), and Register/ForgotPassword reach
+   * it with `navigate('Login')`, which POPS rather than pushes — so there is
+   * nothing below it and the arrow did nothing. It DOES have a target on the
+   * referral deep-link path (`r/:code` mounts Register alone, whose "Sign
+   * in" then pushes Login), so the control is kept and gated rather than
+   * deleted. `canGoBack` is guarded for callers (tests, embeds) that hand in
+   * a partial navigation object.
+   */
+  const canGoBack =
+    typeof navigation?.canGoBack === 'function' ? navigation.canGoBack() : false;
 
   return (
     <KeyboardAvoidingView
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      {/* Header: back arrow only */}
+      {/* Header: back arrow only — rendered only when there is somewhere to
+          go back to (B9). The spacer keeps the 36pt box so the headline sits
+          at the same y on both paths. */}
       <View style={styles.header}>
-        <TouchableOpacity
-          testID="login-back"
-          onPress={() => navigation.goBack()}
-          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-          accessibilityRole="button"
-          accessibilityLabel={t('common.back', { defaultValue: 'Back' })}
-          style={styles.backBtn}
-        >
-          <DirectionalIcon>
-            <ChevronLeft size={18} color={colors.text.primary} strokeWidth={2.5} />
-          </DirectionalIcon>
-        </TouchableOpacity>
+        {canGoBack ? (
+          <TouchableOpacity
+            testID="login-back"
+            onPress={() => navigation.goBack()}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            accessibilityRole="button"
+            accessibilityLabel={t('common.back', { defaultValue: 'Back' })}
+            style={styles.backBtn}
+          >
+            <DirectionalIcon>
+              <ChevronLeft size={18} color={colors.text.primary} strokeWidth={2.5} />
+            </DirectionalIcon>
+          </TouchableOpacity>
+        ) : (
+          <View testID="login-back-spacer" style={styles.backBtn} />
+        )}
       </View>
 
       <ScrollView
@@ -383,6 +416,7 @@ export default function LoginScreen({ navigation, onLoginSuccess }: LoginScreenP
         {/* Email + password fields */}
         <AuthField
           testID="login-email-input"
+          inputRef={emailInputRef}
           label={t('auth.email')}
           value={email}
           onChangeText={(v) => {
