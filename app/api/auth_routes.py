@@ -671,7 +671,17 @@ async def logout(
             token = auth_header[7:]
             await logout_user(token, body.refresh_token if body else None)
     except Exception as e:
-        logger.warning(f"Logout sign-out failed (non-critical): {e}")
+        # W1-4: log the TYPE only, never the exception text. `logout_user` is
+        # fully guarded and already logs a token-REDACTED reason, so this arm is
+        # a backstop that should not fire -- but the gotrue client contains
+        # `raise UserDoesntExist(access_token)`, whose `str()` IS the bearer
+        # token, and the only thing standing between that and this f-string is
+        # the callee's try block. A future refactor that moves a call outside it
+        # would turn this line into a credential leak with nothing to warn you.
+        # The detail is not lost: it is in the callee's scrubbed WARNING.
+        logger.warning(
+            "Logout sign-out failed (non-critical): %s", type(e).__name__
+        )
     return {"success": True, "message": "Logged out successfully"}
 
 
