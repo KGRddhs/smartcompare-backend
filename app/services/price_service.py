@@ -14130,10 +14130,16 @@ async def curl_fetch_html_same_site(
     opt-in out-parameter rather than a widened return type, exactly as
     ``outcome_out``/``pending_out`` are: three call sites index this function's
     result directly, and the caller that wants the extra fact asks for it."""
-    from app.utils.url_validator import validate_external_url
+    # W0-1 (P0 LS-REQUEST-PATH-BLOCKING-01): this is an `async def`, so the SSRF
+    # guard's synchronous getaddrinfo used to resolve ON the event loop -- for
+    # the initial URL and again for every redirect hop, on every same-site PDP
+    # fetch. Under ENABLE_OFFLOOP_DNS_RESOLVE the resolve moves to the dedicated
+    # `dns-resolve` pool under a 2s bound + 60s memo; flag OFF calls the same
+    # sync validator inline (byte-identical).
+    from app.utils.url_validator import _validate_url_offloop_or_sync
 
     # Validate the INITIAL url before any network call.
-    if not validate_external_url(url) or not _host_on_domain(url, domain):
+    if not await _validate_url_offloop_or_sync(url) or not _host_on_domain(url, domain):
         logger.info("[PRICE] same-site fetch blocked initial url for %s", domain)
         return None
 
@@ -14154,7 +14160,7 @@ async def curl_fetch_html_same_site(
                     return None
                 # Resolve a relative Location against the current url.
                 nxt = urljoin(current, location)
-                if not validate_external_url(nxt) or not _host_on_domain(nxt, domain):
+                if not await _validate_url_offloop_or_sync(nxt) or not _host_on_domain(nxt, domain):
                     logger.info(
                         "[PRICE] same-site fetch blocked redirect to off-domain/private host for %s",
                         domain,

@@ -286,6 +286,34 @@ def _hop_is_allowed(url: str, domain: str) -> bool:
         return False
 
 
+async def _hop_is_allowed_async(url: str, domain: str) -> bool:
+    """Off-loop twin of :func:`_hop_is_allowed` (W0-1, P0
+    LS-REQUEST-PATH-BLOCKING-01).
+
+    ``_fetch_once`` is ``async def`` and gates EVERY hop on this check, so the
+    sync form resolved DNS on the event loop before ``_await_domain_slot`` and
+    before any request — a black-holed host froze the single uvicorn worker for
+    the OS resolver timeout, per hop, with zero bytes on the wire. Under
+    ``ENABLE_OFFLOOP_DNS_RESOLVE`` the resolve runs in the dedicated
+    ``dns-resolve`` pool under a 2 s bound and a 60 s memo; with the flag OFF
+    ``_validate_url_offloop_or_sync`` calls the same sync validator inline with
+    no suspension point, so this is byte-identical to ``_hop_is_allowed``.
+
+    The sync form is kept for any future sync caller. Fail-closed on every rung,
+    exactly as before."""
+    try:
+        from app.utils.url_validator import _validate_url_offloop_or_sync
+        from app.services.price_service import _host_on_domain
+    except Exception:  # noqa: BLE001 — no validator, no request
+        logger.warning("[SHOPIFY_JS] SSRF validators unavailable — refusing fetch")
+        return False
+    try:
+        allowed = await _validate_url_offloop_or_sync(url)
+        return bool(allowed) and bool(_host_on_domain(url, domain))
+    except Exception:  # noqa: BLE001 — fail closed
+        return False
+
+
 async def _fetch_once(js_url: str, domain: str) -> Tuple[Optional[int], Optional[str]]:
     """One attempt: redirect-validating same-site GET.
 
@@ -296,7 +324,7 @@ async def _fetch_once(js_url: str, domain: str) -> Tuple[Optional[int], Optional
     every non-200 into ``None``."""
     current = js_url
     for _ in range(MAX_REDIRECTS + 1):
-        if not _hop_is_allowed(current, domain):
+        if not await _hop_is_allowed_async(current, domain):
             logger.info("[SHOPIFY_JS] blocked hop for %s", domain)
             return None, None
         await _await_domain_slot(domain)
