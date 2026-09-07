@@ -4217,6 +4217,28 @@ def exact_gate_enabled() -> bool:
     )
 
 
+def price_parse_offload_enabled() -> bool:
+    """True iff W0-4 "parse once, off the loop" is active (default OFF).
+
+    Covers BOTH halves of the unit (LS-CONCURRENCY-LIMITS-01 +
+    CR-PERFORMANCE-01): with the flag ON ``extract_price_from_html`` builds ONE
+    ``BeautifulSoup`` and hands it to all three ``extract_jsonld_price`` passes
+    (four html.parser passes over the same bytes become one), and every async
+    caller runs that pure-sync, CPU-bound parse on a worker thread via
+    ``asyncio.to_thread`` instead of inline on the event loop, where on the
+    single uvicorn worker one page parse stalls every other in-flight request
+    for its whole duration.
+
+    Read PER CALL from ``os.getenv`` (copying ``exact_gate_enabled``) so Railway
+    flips it without a restart. With the flag OFF the soup is never threaded
+    through (each pass builds its own, the call shape is unchanged) and each
+    async site keeps its existing inline call, so the rollback is
+    byte-identical."""
+    return os.getenv("ENABLE_PRICE_PARSE_OFFLOAD", "false").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
 def sale_price_first_enabled() -> bool:
     """True iff the OpenGraph fallback prefers the SALE price over the LIST price
     (default ON).
@@ -10718,7 +10740,7 @@ def _repair_doubled_quote_jsonld_parse(raw: Any) -> Optional[Any]:
 def extract_jsonld_price(
     html: str, brand: str, expected_currency: str, query_name: str = "",
     category: Optional[str] = None, pending_out: Optional[List[Any]] = None,
-    accept_any_currency: bool = False,
+    accept_any_currency: bool = False, soup: Optional[Any] = None,
 ) -> Optional[Dict[str, Any]]:
     """Parse JSON-LD Product schema from HTML for price data.
 
@@ -10756,10 +10778,22 @@ def extract_jsonld_price(
     brand item's price to the query. Empty `query_name` preserves the pre-S4
     behaviour (brand-field match alone). NOTE: kept distinct from the per-loop
     `product_name` (the candidate's own JSON-LD name) to avoid shadowing.
+
+    `soup` (W0-4 / CR-PERFORMANCE-01, ENABLE_PRICE_PARSE_OFFLOAD at the caller,
+    optional) — an ALREADY-PARSED tree for exactly these `html` bytes. This
+    function is called up to three times per extraction (target currency, USD
+    retry, the M13-40 accept-any pass) and each call re-parsed the same document
+    from scratch, so one successful capture paid for four full html.parser
+    passes. When a tree is supplied it is used as-is and nothing is parsed; when
+    it is None (every caller with the flag OFF, and every out-of-tree caller)
+    the tree is built here exactly as before. Read-only: this function only
+    walks the tree (`find_all`), it never mutates it, so sharing one soup across
+    the three passes cannot change what any pass sees.
     """
     from bs4 import BeautifulSoup
 
-    soup = BeautifulSoup(html, 'html.parser')
+    if soup is None:
+        soup = BeautifulSoup(html, 'html.parser')
     ld_scripts = soup.find_all('script', type='application/ld+json')
     if not ld_scripts:
         return None
@@ -13137,6 +13171,11 @@ def extract_price_from_html(
     # `_finish` share this call's verdict so a flag flipped mid-extraction
     # cannot produce a half-old, half-new cascade.
     _first = jsonld_first_enabled()
+    # W0-4 (ENABLE_PRICE_PARSE_OFFLOAD, default OFF) — same one-read-per-call
+    # discipline as `_first` above: the three JSON-LD passes below must all agree
+    # on whether they share this frame's soup, so a flag flipped mid-extraction
+    # cannot produce a half-shared, half-re-parsed ladder.
+    _offload = price_parse_offload_enabled()
     # The MULTIPLICITY signal, set at the pend site ~40 lines below and read by
     # `_finish`. A plain closure flag, chosen over the two alternatives the unit
     # offered: a second out-param would widen this function's PUBLIC signature
@@ -13174,6 +13213,14 @@ def extract_price_from_html(
     # Parse once up front — also needed by the size-capture (frag-size-capture)
     # for the JSON-LD branch, which builds its result before the OG path.
     soup = BeautifulSoup(html, 'html.parser')
+    # W0-4 / CR-PERFORMANCE-01 — hand THAT soup to the JSON-LD ladder instead of
+    # letting each of its three passes re-parse the same bytes (measured: four
+    # full html.parser passes for one successful capture on a foreign-currency
+    # Offer page, under the shipped `ENABLE_JSONLD_FIRST` default). Passed as a
+    # kwargs MAPPING rather than an argument so the flag-OFF CALL SHAPE is
+    # identical too, not merely the effect: with the flag off this is `{}` and
+    # the three calls below are textually and behaviourally what they were.
+    _ld_soup_kwargs = {"soup": soup} if _offload else {}
 
     # UNIT F1 — THE NOT-A-PDP FILTER (ENABLE_NOT_A_PDP_FILTER, default OFF).
     # Placed HERE, before the first branch, for three reasons. (1) It is the
@@ -13211,12 +13258,12 @@ def extract_price_from_html(
     _ld_pending: List[Any] = []
     price_data = extract_jsonld_price(
         html, brand, currency, query_name=product_name, category=category,
-        pending_out=_ld_pending,
+        pending_out=_ld_pending, **_ld_soup_kwargs,
     )
     if not price_data:
         price_data = extract_jsonld_price(
             html, brand, "USD", query_name=product_name, category=category,
-            pending_out=_ld_pending,
+            pending_out=_ld_pending, **_ld_soup_kwargs,
         )
         if price_data:
             price_data["_needs_conversion"] = True
@@ -13231,7 +13278,7 @@ def extract_price_from_html(
     if not price_data and _first:
         price_data = extract_jsonld_price(
             html, brand, currency, query_name=product_name, category=category,
-            pending_out=_ld_pending, accept_any_currency=True,
+            pending_out=_ld_pending, accept_any_currency=True, **_ld_soup_kwargs,
         )
         if price_data:
             price_data["_needs_conversion"] = True
@@ -14213,9 +14260,23 @@ async def fetch_page_price(
             "outcome_out": _outcomes,
             "final_url": (_final_out[0] if _final_out else None),
         } if _f1 else {}
-        price = extract_price_from_html(
-            html, product_name, currency, domain, url, **_extract_kwargs,
-        )
+        # W0-4 / LS-CONCURRENCY-LIMITS-01 (ENABLE_PRICE_PARSE_OFFLOAD, default
+        # OFF) — `extract_price_from_html` and everything it reaches is pure-sync
+        # and CPU-bound (no await, no Redis, no HTTP), and this is an `async def`
+        # on a single uvicorn worker, so running it here holds the loop for the
+        # whole parse. Under the flag it runs on a worker thread instead. The
+        # module-global name is resolved at CALL time (never aliased at import)
+        # so a monkeypatched `price_service.extract_price_from_html` is still the
+        # thing that runs. Flag OFF: the inline call below, untouched.
+        if price_parse_offload_enabled():
+            price = await asyncio.to_thread(
+                extract_price_from_html,
+                html, product_name, currency, domain, url, **_extract_kwargs,
+            )
+        else:
+            price = extract_price_from_html(
+                html, product_name, currency, domain, url, **_extract_kwargs,
+            )
         if price:
             # L2 content safety — Tier 1.5 page-scrape entry point (Bundle B,
             # team-lead expansion of spec sec 5.2). Drop the candidate if the

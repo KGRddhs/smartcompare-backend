@@ -1427,6 +1427,39 @@ def _full_stream_deadline_enabled() -> bool:
         "true", "1", "yes", "on",
     )
 
+
+def _price_parse_offload_enabled() -> bool:
+    """ENABLE_PRICE_PARSE_OFFLOAD (W0-4, default OFF) — read PER CALL, so a
+    Railway flip needs no restart. Mirrors
+    `price_service.price_parse_offload_enabled`; kept as a local one-liner so
+    this module owns its own env read rather than importing a predicate."""
+    return os.getenv("ENABLE_PRICE_PARSE_OFFLOAD", "false").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
+async def _extract_price_from_html_maybe_offloaded(
+    html: str, full_name: str, currency: str, retailer_domain: str, url: str,
+) -> Optional[Dict[str, Any]]:
+    """W0-4 / LS-CONCURRENCY-LIMITS-01 — the render legs' price parse.
+
+    `extract_price_from_html` is pure-sync and CPU-bound (no await, no Redis, no
+    HTTP anywhere in its call graph), and both render scrapers are `async def`
+    on a single uvicorn worker, so calling it inline held the event loop for the
+    whole parse and stalled every other in-flight request. Under the flag it
+    runs on a worker thread instead.
+
+    The module-global name is resolved at CALL time — never aliased at import —
+    so a monkeypatched `structured_comparison_service.extract_price_from_html`
+    is still what runs, on either branch. Flag OFF: the same inline call the two
+    render legs made before, awaited on a coroutine that never suspends, so the
+    parse still runs on the caller's thread and nothing else can interleave."""
+    if _price_parse_offload_enabled():
+        return await asyncio.to_thread(
+            extract_price_from_html, html, full_name, currency, retailer_domain, url,
+        )
+    return extract_price_from_html(html, full_name, currency, retailer_domain, url)
+
 # I5.7 — the OUTER per-product price-race cap (wraps the whole _get_price path:
 # Tier 1 + escalation + the inner fan_out + Tier 3 estimate). Module-level so it's
 # explicit + test-patchable (Fix A's timeout→parked test shrinks it). On timeout
@@ -1758,7 +1791,9 @@ async def _firecrawl_scraper(
         )
         return None
     record_success("firecrawl")
-    price = extract_price_from_html(html, full_name, currency, retailer_domain, url)
+    price = await _extract_price_from_html_maybe_offloaded(
+        html, full_name, currency, retailer_domain, url,
+    )
     if not price or not price.get("amount"):
         _record_provider_attempt(
             provider="firecrawl", url=url, retailer_domain=retailer_domain,
@@ -1845,7 +1880,9 @@ async def _scrapedo_scraper(
         )
         return None
     record_success("scrapedo")
-    price = extract_price_from_html(html, full_name, currency, retailer_domain, url)
+    price = await _extract_price_from_html_maybe_offloaded(
+        html, full_name, currency, retailer_domain, url,
+    )
     if not price or not price.get("amount"):
         _record_provider_attempt(
             provider="scrapedo", url=url, retailer_domain=retailer_domain,
