@@ -96,9 +96,17 @@ async def fetch_page(url: str) -> Optional[str]:
     # only the initial user URL, so a 30x redirect to a private/loopback/link-local/
     # cloud-metadata (169.254.169.254) address would otherwise be followed blindly.
     # Follow redirects MANUALLY, bounded, re-validating EVERY hop with the SSRF guard.
-    from app.utils.url_validator import validate_external_url
+    #
+    # W0-1 (P0 LS-REQUEST-PATH-BLOCKING-01): this is an `async def`, so the
+    # guard's synchronous getaddrinfo used to resolve ON the event loop for the
+    # initial URL and for every hop -- a black-holed host froze the single
+    # uvicorn worker for the OS resolver timeout before a byte was sent. Under
+    # ENABLE_OFFLOOP_DNS_RESOLVE the resolve moves to the dedicated
+    # `dns-resolve` pool under a 2s bound; flag OFF calls the same sync
+    # validator inline (byte-identical).
+    from app.utils.url_validator import _validate_url_offloop_or_sync
 
-    if not validate_external_url(url):
+    if not await _validate_url_offloop_or_sync(url):
         logger.warning(f"[SSRF] Blocked initial URL: {url}")
         return None
     try:
@@ -108,7 +116,7 @@ async def fetch_page(url: str) -> Optional[str]:
                 response = await client.get(current, headers=headers)
                 if response.is_redirect and response.next_request is not None:
                     nxt = str(response.next_request.url)
-                    if not validate_external_url(nxt):
+                    if not await _validate_url_offloop_or_sync(nxt):
                         logger.warning(f"[SSRF] Blocked redirect to {nxt}")
                         return None
                     current = nxt

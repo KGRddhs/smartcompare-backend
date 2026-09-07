@@ -8,7 +8,13 @@ from pydantic import BaseModel, HttpUrl
 from starlette.requests import Request
 
 from app.middleware.rate_limiter import limiter
-from app.utils.url_validator import validate_external_url
+# W0-1 (P0 LS-REQUEST-PATH-BLOCKING-01): these handlers are `async def`, so the
+# SSRF guard's synchronous getaddrinfo used to resolve ON the event loop --
+# an unauthenticated caller could freeze the single uvicorn worker for the OS
+# resolver timeout per URL. `_validate_url_offloop_or_sync` resolves in the
+# dedicated `dns-resolve` pool under ENABLE_OFFLOOP_DNS_RESOLVE and falls back
+# to the byte-identical inline sync call when the flag is OFF.
+from app.utils.url_validator import _validate_url_offloop_or_sync
 
 from app.services.url_extraction_service import (
     extract_from_url,
@@ -88,7 +94,7 @@ async def extract_product(request: Request, body: URLExtractRequest):
     """
     logger.info(f"URL extraction request: {body.url}")
 
-    if not validate_external_url(body.url):
+    if not await _validate_url_offloop_or_sync(body.url):
         raise HTTPException(status_code=400, detail="URL blocked by security policy")
 
     result = await extract_from_url(body.url)
@@ -109,7 +115,7 @@ async def extract_product_get(
     url: str = Query(..., description="Product URL to extract")
 ):
     """GET version of extract for easy testing."""
-    if not validate_external_url(url):
+    if not await _validate_url_offloop_or_sync(url):
         raise HTTPException(status_code=400, detail="URL blocked by security policy")
 
     result = await extract_from_url(url)
@@ -145,7 +151,7 @@ async def compare_urls(request: Request, body: URLCompareRequest):
     """
     logger.info(f"URL comparison request: {body.url1} vs {body.url2}")
 
-    if not validate_external_url(body.url1) or not validate_external_url(body.url2):
+    if not await _validate_url_offloop_or_sync(body.url1) or not await _validate_url_offloop_or_sync(body.url2):
         raise HTTPException(status_code=400, detail="URL blocked by security policy")
 
     result = await compare_from_urls(
@@ -172,7 +178,7 @@ async def compare_urls_get(
     region: str = Query("bahrain", description="Region for pricing context")
 ):
     """GET version of compare for easy testing."""
-    if not validate_external_url(url1) or not validate_external_url(url2):
+    if not await _validate_url_offloop_or_sync(url1) or not await _validate_url_offloop_or_sync(url2):
         raise HTTPException(status_code=400, detail="URL blocked by security policy")
 
     result = await compare_from_urls(url1, url2, region)
@@ -194,7 +200,7 @@ async def detect_retailer_endpoint(request: Request, body: URLExtractRequest):
 
     Useful for validating URLs before processing.
     """
-    if not validate_external_url(body.url):
+    if not await _validate_url_offloop_or_sync(body.url):
         raise HTTPException(status_code=400, detail="URL blocked by security policy")
 
     retailer = detect_retailer(body.url)
@@ -213,7 +219,7 @@ async def detect_retailer_get(
     url: str = Query(..., description="URL to detect retailer")
 ):
     """GET version of detect for easy testing."""
-    if not validate_external_url(url):
+    if not await _validate_url_offloop_or_sync(url):
         raise HTTPException(status_code=400, detail="URL blocked by security policy")
 
     retailer = detect_retailer(url)
