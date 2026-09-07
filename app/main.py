@@ -230,8 +230,18 @@ class _AdminAuthenticatedStaticFiles(StaticFiles):
             for k, v in scope.get("headers", [])
         }
 
+        # CR-SECURITY-04: compare BYTES. Both operands below are decoded from
+        # caller-controlled bytes (latin-1 for the header, UTF-8 for the Basic
+        # password), so a `str` compare_digest raises TypeError on any non-ASCII
+        # character — a 500 on this UNAUTHENTICATED mount, captured by Sentry
+        # with `expected` (= ADMIN_API_KEY) in the frame locals. `TypeError` is
+        # not caught by the `except (binascii.Error, UnicodeDecodeError)` below.
+        expected_bytes = expected.encode("utf-8", errors="surrogateescape")
+
         x_admin = headers.get("x-admin-key", "")
-        if x_admin and _hmac.compare_digest(x_admin, expected):
+        if x_admin and _hmac.compare_digest(
+            x_admin.encode("utf-8", errors="surrogateescape"), expected_bytes
+        ):
             await super().__call__(scope, receive, send)
             return
 
@@ -240,7 +250,10 @@ class _AdminAuthenticatedStaticFiles(StaticFiles):
             try:
                 decoded = base64.b64decode(authz[6:]).decode("utf-8")
                 _, _, password = decoded.partition(":")
-                if password and _hmac.compare_digest(password, expected):
+                if password and _hmac.compare_digest(
+                    password.encode("utf-8", errors="surrogateescape"),
+                    expected_bytes,
+                ):
                     await super().__call__(scope, receive, send)
                     return
             except (binascii.Error, UnicodeDecodeError):

@@ -1,6 +1,7 @@
 """Sentry integration -- error monitoring and performance tracing."""
 import os
 import re
+import copy
 import logging
 
 logger = logging.getLogger(__name__)
@@ -118,7 +119,14 @@ def _scrub_dict(data: dict) -> dict:
             scrubbed[key] = _scrub_string(value)
         elif isinstance(value, dict):
             scrubbed[key] = _scrub_dict(value)
-        elif isinstance(value, list):
+        elif isinstance(value, (list, tuple)):
+            # TUPLES matter, not just lists (Fable review, W1-1): the logging
+            # integration assigns `event['logentry']['params'] = record.args`,
+            # and `record.args` is a TUPLE (measured). Without this branch a
+            # `logger.warning('token=%s', tok)` shipped `tok` verbatim even
+            # after the logentry walk added by this unit. Normalising to a
+            # list is safe: the event is JSON-serialised downstream, where a
+            # tuple and a list are the same array, and nothing reads it back.
             scrubbed[key] = [_scrub_dict(v) if isinstance(v, dict) else (_scrub_string(v) if isinstance(v, str) else v) for v in value]
         else:
             scrubbed[key] = value
@@ -150,6 +158,14 @@ def _before_send(event, hint):
         for exc in event["exception"].get("values", []):
             if "value" in exc and isinstance(exc["value"], str):
                 exc["value"] = _scrub_string(exc["value"])
+            # CR-SECURITY-03: stack-frame LOCALS. `include_local_variables=False`
+            # in init_sentry is the primary fix (it stops the SDK collecting
+            # these at all); this walk is the belt to that pair of braces, for
+            # any event that reaches _before_send with frame vars already on it.
+            frames = (exc.get("stacktrace") or {}).get("frames") or []
+            for frame in frames:
+                if isinstance(frame, dict) and isinstance(frame.get("vars"), dict):
+                    frame["vars"] = _scrub_dict(frame["vars"])
     # Scrub breadcrumbs
     if "breadcrumbs" in event:
         for crumb in event["breadcrumbs"].get("values", []):
@@ -178,6 +194,46 @@ def _before_send(event, hint):
         raw_qs = event["request"].get("query_string")
         if raw_qs is not None:
             event["request"]["query_string"] = _scrub_raw_query_string(raw_qs)
+        # CR-SECURITY-03: request body + cookies were never walked. A JWT in a
+        # login body or a session cookie reached Sentry verbatim.
+        for _req_key in ("data", "cookies"):
+            _req_val = event["request"].get(_req_key)
+            if isinstance(_req_val, dict):
+                event["request"][_req_key] = _scrub_dict(_req_val)
+            elif isinstance(_req_val, str):
+                event["request"][_req_key] = _scrub_string(_req_val)
+    # CR-SECURITY-03: the remaining regions a secret can ride in. Scrub the
+    # secret PATTERNS inside them with the existing helpers — do NOT blank the
+    # regions. `contexts` in particular carries the runtime/OS/response metadata
+    # that makes an event triageable, and the 503-drop branch above READS
+    # contexts.response.status_code (it runs first, so the walk cannot disturb
+    # it). _scrub_dict passes non-str values (ints, bools, None) through
+    # untouched, so status_code stays an int and the structure stays nested.
+    event_contexts_original = copy.deepcopy(event.get("contexts")) if isinstance(event.get("contexts"), dict) else None
+    for _region in ("extra", "contexts", "logentry", "tags", "user"):
+        _value = event.get(_region)
+        if isinstance(_value, dict):
+            event[_region] = _scrub_dict(_value)
+    # Fable review (W1-1): PUT THE TRACE CORRELATION IDS BACK.
+    # A Sentry `trace_id` is `uuid4().hex` — 32 lowercase hex characters — which
+    # the pre-existing generic token pattern `[a-f0-9]{32,}` matches
+    # unconditionally, so the walk above rewrote it to `[TOKEN_REDACTED]` on
+    # EVERY error event (measured). Relay treats an invalid trace_id as a
+    # normalization error and drops the trace context, which would orphan every
+    # backend error from its transaction and from the mobile->backend
+    # distributed trace — silently degrading the observability this campaign
+    # relies on to read its own canaries, as a side effect of the OPTIONAL belt
+    # half of a security fix.
+    # Only these three fields are restored, and only from `contexts.trace`:
+    # they are SDK-generated correlation ids, never user input. Everything else
+    # under `contexts.trace` (notably `data`, which carries app-set span
+    # attributes) stays scrubbed.
+    _orig_trace = ((event_contexts_original or {}).get("trace") or {})
+    _new_trace = ((event.get("contexts") or {}).get("trace") or {})
+    if isinstance(_orig_trace, dict) and isinstance(_new_trace, dict):
+        for _id_field in ("trace_id", "span_id", "parent_span_id"):
+            if _id_field in _orig_trace:
+                _new_trace[_id_field] = _orig_trace[_id_field]
     return event
 
 
@@ -228,6 +284,17 @@ def init_sentry():
             environment=os.getenv("RAILWAY_ENVIRONMENT", "development"),
             release=os.getenv("RAILWAY_GIT_COMMIT_SHA", "unknown"),
             send_default_pii=False,
+            # CR-SECURITY-03 (the PRIMARY fix): the SDK default is True, so
+            # every captured 5xx shipped the raising frame's locals. This
+            # service holds the admin key, user JWTs, Supabase service keys and
+            # provider API keys as ordinary locals across most modules, so a
+            # scrub-by-name alternative has to be complete AND stay complete —
+            # one new local named `api_key_v2` would re-open it silently. False
+            # fails safe by construction. The exception value, the breadcrumbs,
+            # the request metadata and the log message all survive, which is
+            # what actually identifies a crash. Deliberate trade: stack traces
+            # lose local variables, which costs debuggability.
+            include_local_variables=False,
             before_send=_before_send,
             before_breadcrumb=_strip_tokens_from_breadcrumb,
         )
