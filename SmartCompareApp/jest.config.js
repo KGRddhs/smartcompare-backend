@@ -41,7 +41,11 @@ module.exports = {
     // so suites importing Step17Notifications.tsx / OnboardingFlow.tsx load. B.1 F3.6.
     '^expo-notifications$': '<rootDir>/__mocks__/expo-notifications.ts',
     '^expo-font$': '<rootDir>/__mocks__/expo-font.ts',
-    '^@expo-google-fonts/cairo$': '<rootDir>/__mocks__/expo-google-fonts-cairo.ts',
+    // B4 — src/theme/fonts.ts imports each Cairo weight from its own subpath
+    // (`@expo-google-fonts/cairo/400Regular`) so Metro only bundles the 3
+    // weights we actually load. The mapper must match those subpaths too, or
+    // jest resolves the real package and chokes on the raw .ttf require.
+    '^@expo-google-fonts/cairo(/.*)?$': '<rootDir>/__mocks__/expo-google-fonts-cairo.ts',
     '^react-native-svg$': '<rootDir>/__mocks__/react-native-svg.ts',
     // Lane A-L3 Task L3.7 — stub @sentry/react-native. Published ESM
     // re-exports from @sentry/core which Jest CJS can't parse; tests
