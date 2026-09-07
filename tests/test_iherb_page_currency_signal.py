@@ -463,6 +463,17 @@ def test_no_variable_is_compared_against_its_own_alias():
     side and its source on the other — unless one of the two was rebound in
     between, which is what makes an ordinary accumulator (``best_score =
     overlap`` then ``overlap > best_score`` on the next pass) not a tautology.
+
+    POSITIVE CONTROL (test-quality review #52/P3). Every assertion in this test
+    lives inside ``for alias, source, alias_line in pairs``, so an EMPTY
+    ``pairs`` — or zero ``Compare`` nodes, or a rename of ``fetch_iherb_price``
+    that made this an all-``continue`` loop — passes it VACUOUSLY, which is the
+    same failure mode the sibling pins were repaired for
+    (``tests/test_flush_live_price_key.py`` ``assert holder``,
+    ``tests/test_genuine_price_clobber_guard.py``). MEASURED at aaaaa76: 4 alias
+    pairs (``_origin = currency`` at line 15883 among them) and 20 ``Compare``
+    nodes. The three assertions below pin that the detector had real material,
+    and ``inspected`` pins that its comparison body actually RAN.
     """
     tree = ast.parse(PRICE_SERVICE_SRC.read_text(encoding="utf-8"))
     func = next(
@@ -488,7 +499,21 @@ def test_no_variable_is_compared_against_its_own_alias():
     def rebound_between(name, lo, hi):
         return any(lo < line <= hi for line in bound_at.get(name, ()))
 
-    for cmp_node in (n for n in ast.walk(func) if isinstance(n, ast.Compare)):
+    compares = [n for n in ast.walk(func) if isinstance(n, ast.Compare)]
+    # --- positive control: the detector must have had something to detect.
+    assert pairs, (
+        "no `alias = source` assignment found in fetch_iherb_price — the loop "
+        "below would pass vacuously, exactly as it did at merge-base where the "
+        "tautology this file exists to pin had not been written yet"
+    )
+    assert compares, "no Compare node in fetch_iherb_price — nothing to inspect"
+    assert any(alias == "_origin" for alias, _s, _l in pairs), (
+        "the `_origin = <name>` alias is gone; if that is deliberate, retarget "
+        f"this control at the alias that replaced it (found: {pairs})"
+    )
+
+    inspected = 0
+    for cmp_node in compares:
         sides = [names(cmp_node.left)] + [names(c) for c in cmp_node.comparators]
         for alias, source, alias_line in pairs:
             if cmp_node.lineno <= alias_line:
@@ -499,6 +524,7 @@ def test_no_variable_is_compared_against_its_own_alias():
                 continue
             for i, left in enumerate(sides):
                 for right in sides[i + 1:]:
+                    inspected += 1
                     assert not (
                         (alias in left and source in right)
                         or (alias in right and source in left)
@@ -506,3 +532,161 @@ def test_no_variable_is_compared_against_its_own_alias():
                         f"line {cmp_node.lineno}: '{alias}' is just '{source}', so this "
                         f"comparison is always True — read a real page signal instead"
                     )
+
+    # ...and the loop body really executed: every `continue` above firing on
+    # every pass would leave this at 0 and the test would prove nothing.
+    assert inspected, (
+        "no (comparison, alias) combination was ever inspected — the guards "
+        "skipped every pass, so this pin is asserting nothing"
+    )
+
+
+# ---------------------------------------------------------------------------
+# The contradiction arm is DEFENCE IN DEPTH — and must stay tellable apart
+# ---------------------------------------------------------------------------
+#
+# MEASURED at aaaaa76 (test-quality review #52/P3): deleting the
+# `if _ccy_signal is _CURRENCY_CONTRADICTION:` arm from `fetch_iherb_price`
+# left every node of this file green. It is behaviourally redundant given the
+# arm two rungs down — `_CURRENCY_CONTRADICTION` can only ever come from
+# `_iherb_page_currency_token`, which `_iherb_currency_signal` reaches only on
+# the `_CCY_SCOPE_PAGE` branch, so `_ccy_scope != _CCY_SCOPE_CARD` pends the
+# same page. Redundancy is fine here (the sentinel is the whole point of #52's
+# third state, and a future CARD-scoped contradiction must not be allowed to
+# fall through to conversion), so the arm STAYS — but a pin has to make its
+# deletion visible, and the canary has to be able to tell the two pends apart.
+_CONTRADICTION_LOG_PREFIX = "[PRICE] iHerb pend: page declares two or more currencies"
+
+
+def _fetch_iherb_func():
+    tree = ast.parse(PRICE_SERVICE_SRC.read_text(encoding="utf-8"))
+    return next(
+        n for n in ast.walk(tree)
+        if isinstance(n, (ast.AsyncFunctionDef, ast.FunctionDef))
+        and n.name == "fetch_iherb_price"
+    )
+
+
+def _ifs_testing_on(func, symbol):
+    """Every ``ast.If`` in ``func`` whose TEST mentions the name ``symbol``."""
+    return [
+        n for n in ast.walk(func)
+        if isinstance(n, ast.If)
+        and symbol in {x.id for x in ast.walk(n.test) if isinstance(x, ast.Name)}
+    ]
+
+
+def _pend_log_messages(if_node):
+    """Every ``logger.*("...")`` format string in this arm's OWN body.
+
+    ``if_node.body`` only — an ``elif`` chain hangs the remaining arms off
+    ``orelse``, so walking the node whole would attribute the ``else`` arm's
+    message to the ``elif`` above it.
+    """
+    msgs = []
+    for stmt in if_node.body:
+        for node in ast.walk(stmt):
+            if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                    and isinstance(node.func.value, ast.Name)
+                    and node.func.value.id == "logger"
+                    and node.args and isinstance(node.args[0], ast.Constant)
+                    and isinstance(node.args[0].value, str)):
+                msgs.append(node.args[0].value)
+    return msgs
+
+
+def test_the_contradiction_arm_is_tested_before_the_document_scope_arm():
+    """Structural pin — the arm exists, and it is reached FIRST.
+
+    Order is the whole of its value: the scope arm below it pends the same page
+    with a different message, so a contradiction that fell through would be
+    indistinguishable from an ordinary document/card disagreement. Parsed with
+    ``ast`` so a comment cannot satisfy it, and both lookups are asserted to
+    find EXACTLY ONE branch (the positive control) so a rename cannot make this
+    pass by finding nothing.
+    """
+    func = _fetch_iherb_func()
+    contradiction = _ifs_testing_on(func, "_CURRENCY_CONTRADICTION")
+    scope = _ifs_testing_on(func, "_CCY_SCOPE_CARD")
+
+    assert len(contradiction) == 1, (
+        "expected exactly one `is _CURRENCY_CONTRADICTION` branch in "
+        f"fetch_iherb_price, found {len(contradiction)}"
+    )
+    assert len(scope) == 1, (
+        "expected exactly one `_ccy_scope != _CCY_SCOPE_CARD` branch in "
+        f"fetch_iherb_price, found {len(scope)}"
+    )
+    assert contradiction[0].lineno < scope[0].lineno, (
+        "the contradiction arm no longer precedes the document-scope arm, so a "
+        "self-contradicting page now pends with the scope arm's message"
+    )
+
+
+def test_the_two_pend_arms_log_distinguishable_lines():
+    """A canary must be able to count contradictions separately from scope pends.
+
+    The merge note cites the contradiction prefix verbatim, so it is pinned
+    verbatim; the scope arm must not share it.
+    """
+    func = _fetch_iherb_func()
+    contradiction_msgs = _pend_log_messages(
+        _ifs_testing_on(func, "_CURRENCY_CONTRADICTION")[0])
+    scope_msgs = _pend_log_messages(_ifs_testing_on(func, "_CCY_SCOPE_CARD")[0])
+
+    assert len(contradiction_msgs) == 1, contradiction_msgs
+    assert len(scope_msgs) == 1, scope_msgs
+    assert contradiction_msgs[0].startswith(_CONTRADICTION_LOG_PREFIX), (
+        "the merge note cites this exact prefix and the canary greps for it: "
+        f"{contradiction_msgs[0]!r}"
+    )
+    assert not scope_msgs[0].startswith(_CONTRADICTION_LOG_PREFIX), (
+        "the scope pend is now indistinguishable from a contradiction pend"
+    )
+    assert contradiction_msgs[0] != scope_msgs[0]
+
+    # ...and no OTHER pend in this function reuses the prefix either (there is a
+    # third one, the non-convertible arm), so a grep for the merge note's string
+    # counts contradictions and nothing else.
+    all_pends = [
+        node.args[0].value
+        for node in ast.walk(func)
+        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "logger"
+            and node.args and isinstance(node.args[0], ast.Constant)
+            and isinstance(node.args[0].value, str)
+            and node.args[0].value.startswith("[PRICE] iHerb pend:"))
+    ]
+    assert len(all_pends) >= 3, f"pend arms disappeared: {all_pends}"
+    assert len(set(all_pends)) == len(all_pends), (
+        f"two pend arms log the SAME line: {all_pends}"
+    )
+    assert [m for m in all_pends if m.startswith(_CONTRADICTION_LOG_PREFIX)] == [
+        contradiction_msgs[0]
+    ]
+
+
+def test_a_contradicting_page_logs_the_contradiction_line_not_the_scope_line(
+        monkeypatch, caplog):
+    """...and the arm is really REACHED, not merely present.
+
+    Deleting the arm leaves the page pending anyway (the scope arm catches it),
+    so only the LOG can tell the difference — which is why this node reads the
+    log and not the return value.
+    """
+    import logging
+
+    monkeypatch.setenv(FLAG, "true")
+    with caplog.at_level(logging.INFO, logger="app.services.price_service"):
+        assert _fetch(_load("iherb_ga_cards_contradiction.html")) is None
+
+    lines = [r.getMessage() for r in caplog.records]
+    assert any(m.startswith(_CONTRADICTION_LOG_PREFIX) for m in lines), (
+        "the contradiction arm did not run — this page pended through some "
+        f"other arm: {[m for m in lines if 'iHerb pend' in m]}"
+    )
+    assert not any("document-level currency" in m for m in lines), (
+        "the document-scope arm handled a contradiction; the two pends are no "
+        "longer distinguishable in the logs"
+    )
