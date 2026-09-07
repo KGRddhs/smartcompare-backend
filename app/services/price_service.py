@@ -311,6 +311,16 @@ def should_negative_cache(price: Optional[Dict[str, Any]]) -> bool:
     Exception: a `validation_rejected` price is a garbage-QUERY rejection, not a
     structural product gap — it must NOT be negative-cached (a real product typed
     later under the same key must re-resolve).
+
+    #67 — the genuine test below is `is_genuine_source_method`, NOT a hand-copy of
+    it. This gate PLANTS the `nogenuine:` sentinel that #53's
+    `_cache_price_and_clear_sentinel` (via `is_genuine_price`) DELETES, so a drift
+    between the two would let one genuine price both clear a sentinel and re-plant
+    one. The copy it replaces (`sm in _GENUINE_BH_SOURCE_METHODS and "converted"
+    not in sm and "estimate" not in sm`) was measured EQUAL to the predicate on
+    every genuine method in every case/whitespace form, on None/blank, on
+    converted- and estimate-token strings and on unknown strings — pure refactor,
+    no behaviour fork, pinned by tests/test_genuine_predicate_parity.py.
     """
     if not isinstance(price, dict):
         return True  # None / missing → dead-end
@@ -318,7 +328,7 @@ def should_negative_cache(price: Optional[Dict[str, Any]]) -> bool:
     if sm == "validation_rejected":
         return False
     # A genuine BH price is never a dead-end.
-    if sm in _GENUINE_BH_SOURCE_METHODS and "converted" not in sm and "estimate" not in sm:
+    if is_genuine_source_method(sm):
         return False
     # `converted_usd` is a live cited price, not a structural gap — see docstring.
     if sm == "converted_usd":

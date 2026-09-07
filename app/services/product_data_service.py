@@ -120,15 +120,28 @@ def _price_row_fresh(source_method: Optional[str], age: timedelta) -> bool:
     estimated / unknown methods get the 24h window (PRICE_DB_TTL). Pure decision
     so it is unit-tested without touching Supabase. Defensive: a method
     containing "converted"/"estimate", or a missing one, always uses the short
-    window."""
+    window.
+
+    #67 — genuineness is `price_service.is_genuine_source_method`, the SAME
+    predicate `_select_price_row` (four lines of this module below) uses for its
+    genuine PREFERENCE. Until this refactor the two rungs of that one selector
+    were decided by two independent hand-copies of the rule: rung 1 (this
+    freshness window) re-derived `sm in _GENUINE_BH_SOURCE_METHODS and "converted"
+    not in sm and "estimate" not in sm`, rung 2 called the predicate — so a drift
+    could make the selector prefer a row it had just declared stale. Measured
+    EQUAL on the whole input matrix before the swap (pure refactor, no behaviour
+    fork); pinned by tests/test_genuine_predicate_parity.py.
+
+    The lazy import keeps this module free of a module-level dependency on the
+    price cascade and stays fail-CLOSED: if the import raises, the row falls to
+    the SHORT window exactly as before."""
     sm = (source_method or "").lower()
-    if sm and "converted" not in sm and "estimate" not in sm:
-        try:
-            from app.services.price_service import _GENUINE_BH_SOURCE_METHODS
-            if sm in _GENUINE_BH_SOURCE_METHODS:
-                return age <= GENUINE_PRICE_DB_TTL
-        except Exception:  # noqa: BLE001 — never let the import block the read
-            pass
+    try:
+        from app.services.price_service import is_genuine_source_method
+        if is_genuine_source_method(sm):
+            return age <= GENUINE_PRICE_DB_TTL
+    except Exception:  # noqa: BLE001 — never let the import block the read
+        pass
     return age <= PRICE_DB_TTL
 
 
