@@ -171,6 +171,89 @@ async def _install_default_executor() -> None:
     install_default_executor()
 
 
+# W1-10 (LS-FAILURE-MODES-COST-13 / #81) -- event-loop lag heartbeat.
+#
+# /health returned a static two-key dict, so nothing reported whether the single
+# uvicorn worker's loop was actually TURNING -- the one measurement that
+# distinguishes "the app is slow" from "the app is wedged". A heartbeat that was
+# due at T and runs at T+11s reports 11,000 ms; measuring inside the handler
+# cannot see that interval at all, because the handler only runs when the loop is
+# already running.
+#
+# The LAST value and the rolling MAX since process start are both reported: an
+# external probe polling every 30 s samples 1 second in 30 and would miss almost
+# every stall, so the max is what lets a low-frequency probe see one.
+import asyncio
+
+LOOP_LAG_INTERVAL_SECONDS: float = 1.0
+
+_loop_lag_last_ms: float = 0.0
+_loop_lag_max_ms: float = 0.0
+
+# The heartbeat task handle, so shutdown can cancel it. None before startup.
+_loop_lag_task = None
+
+
+def record_loop_lag_tick(elapsed_seconds: float) -> None:
+    """Record ONE heartbeat tick.
+
+    ``lag_ms = max(0, (elapsed_seconds - LOOP_LAG_INTERVAL_SECONDS) * 1000)`` --
+    floored at zero because an elapsed shorter than the interval is clock
+    granularity, not negative lag, and a negative value would corrupt the max.
+    """
+    global _loop_lag_last_ms, _loop_lag_max_ms
+    lag_ms = (float(elapsed_seconds) - LOOP_LAG_INTERVAL_SECONDS) * 1000.0
+    if lag_ms < 0.0:
+        lag_ms = 0.0
+    _loop_lag_last_ms = lag_ms
+    if lag_ms > _loop_lag_max_ms:
+        _loop_lag_max_ms = lag_ms
+
+
+def loop_lag_snapshot() -> dict:
+    """The two loop-lag numbers /health merges into its payload. A dict read."""
+    return {
+        "loop_lag_ms": _loop_lag_last_ms,
+        "loop_lag_max_ms": _loop_lag_max_ms,
+    }
+
+
+async def _loop_lag_heartbeat() -> None:
+    """Sleep on the interval and record how far each wake-up overshot it.
+
+    Deliberately carries NO exception handler: ``asyncio.CancelledError`` is a
+    ``BaseException`` and MUST propagate so shutdown can actually stop this task.
+    """
+    loop = asyncio.get_running_loop()
+    previous = loop.time()
+    while True:
+        await asyncio.sleep(LOOP_LAG_INTERVAL_SECONDS)
+        now = loop.time()
+        record_loop_lag_tick(now - previous)
+        previous = now
+
+
+@app.on_event("startup")
+async def _start_loop_lag_heartbeat() -> None:
+    global _loop_lag_task
+    _loop_lag_task = asyncio.create_task(_loop_lag_heartbeat())
+
+
+@app.on_event("shutdown")
+async def _stop_loop_lag_heartbeat() -> None:
+    global _loop_lag_task
+    task = _loop_lag_task
+    if task is None:
+        return
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        # Suppressed at the CANCELLER; the coroutine itself still propagates.
+        pass
+    _loop_lag_task = None
+
+
 # -- Routes --
 app.include_router(auth_router)      # /api/v1/auth/*
 app.include_router(text_router)      # /api/v1/text/*
@@ -314,15 +397,31 @@ async def root():
 # Cold-start prevention: Railway supports cron jobs to keep the service warm.
 # Set up a Railway cron service that pings GET /health every 5 minutes:
 #   Schedule: */5 * * * *
-#   Command:  curl -sf https://smartcompare-backend-production.up.railway.app/health
+#   Command:  curl -sf https://web-production-58776.up.railway.app/health
+#
+# W1-10 (2026-09-08): the host above USED to read
+# `smartcompare-backend-production.up.railway.app`, which returns Railway's edge
+# 404 "Application not found" -- no service is bound to it. The live service is
+# the host now written here (verified 200), and it is the one the mobile client
+# already targets (`SmartCompareApp/src/services/api.ts`). Anyone who had
+# followed these instructions would have built a cron against a dead hostname
+# and believed the worker was being kept warm.
 # This prevents the ~10-20s cold start penalty on first request after idle.
 
 @app.get("/health")
 async def health_check():
-    """Basic health check"""
+    """Basic health check
+
+    Additive only: `status` and `message` keep their exact values (an external
+    uptime check may be string-matching them). The two loop-lag numbers are a
+    pure dict read of state the heartbeat already wrote -- no await, no I/O.
+    This is Railway's deploy healthcheck with a 30 s timeout and must not become
+    a thing that can fail.
+    """
     return {
         "status": "healthy",
-        "message": "Qaren API is running"
+        "message": "Qaren API is running",
+        **loop_lag_snapshot()
     }
 
 
