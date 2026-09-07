@@ -3,11 +3,12 @@
  * Bottom tabs navigation with splash, auth, and onboarding flows
  */
 
-// Crash reporting MUST init before any other module so we capture
-// failures during early imports (font loading, i18n, native bridge).
-// See src/services/sentry.ts for the DSN + scrubbing config.
-import { initSentry } from './src/services/sentry';
-initSentry();
+// W3-12 — crash reporting is armed by `src/services/sentryBootstrap`, imported
+// FIRST in index.ts. It used to be `initSentry()` here, in this module's body,
+// which only runs AFTER this file's whole import graph has been evaluated — so
+// the certificate-pinning "running unpinned" alarm raised from api.ts's module
+// body, and any boot crash in an imported module, reached an uninitialised
+// Sentry and was dropped. See src/services/sentry.ts for DSN + scrubbing.
 
 import * as Sentry from '@sentry/react-native';
 import React, { useState, useEffect, useCallback } from 'react';
