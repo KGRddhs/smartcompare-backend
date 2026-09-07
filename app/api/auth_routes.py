@@ -110,6 +110,16 @@ class RefreshRequest(BaseModel):
     refresh_token: str
 
 
+class LogoutRequest(BaseModel):
+    """W1-4 -- OPTIONAL logout body.
+
+    Sending the refresh token is a CLIENT change that reaches devices only with
+    the next OTA, so every field is optional and a request with no body at all
+    (today's shape) stays valid and takes today's exact path.
+    """
+    refresh_token: Optional[str] = None
+
+
 class PasswordResetRequest(BaseModel):
     email: EmailStr
 
@@ -604,28 +614,74 @@ async def refresh(request: Request, body: RefreshRequest):
     avoid double-rotation issues that would come from caching).
     """
     result = await refresh_session(body.refresh_token)
-    
+
     if not result["success"]:
+        # W1-4 (LS-CACHE-REDIS-03 / MB-NETWORK-CONTRACT-02), UNFLAGGED.
+        # A TRANSIENT upstream failure is not a verdict on the token. Before
+        # this, EVERY failure became 401 -- and on phones that 401 drives the
+        # forced-logout listener, so one Supabase blip signed out every user
+        # holding an expiring token. `_categorize_auth_error` already isolated
+        # the network/connection/timeout/dns class; it now carries the
+        # machine-readable `UPSTREAM_UNAVAILABLE` marker so this route can tell
+        # the two apart.
+        #
+        # The detail MUST be structured: `error_handler.STATUS_CODE_MAP[503]`
+        # is "FEATURE_DISABLED", so a bare `HTTPException(503, "msg")` would
+        # ship that code. `http_exception_handler` unwraps a structured detail
+        # and lets its `code` override the map.
+        #
+        # Scope discipline: ONLY this route's mapping changes. Other auth
+        # routes share the categoriser and keep today's behaviour -- widening
+        # that is a separate unit.
+        if result.get("code") == "UPSTREAM_UNAVAILABLE":
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "code": "REFRESH_UPSTREAM_UNAVAILABLE",
+                    "error": result.get("error", "Connection failed. Please try again."),
+                },
+            )
         raise HTTPException(
             status_code=401,
             detail=result.get("error", "Failed to refresh session")
         )
-    
+
     return result
 
 
 @router.post("/logout")
-async def logout(request: Request, current_user: dict = Depends(get_current_user)):
+async def logout(
+    request: Request,
+    body: Optional[LogoutRequest] = None,
+    current_user: dict = Depends(get_current_user),
+):
     """
     Logout current user.
+
+    W1-4: the body is OPTIONAL and may carry the caller's `refresh_token`. When
+    it does AND `ENABLE_LOGOUT_UPSTREAM_REVOCATION` is on, `logout_user`
+    establishes the session on the client and signs out with
+    `{"scope": "local"}` so the refresh token is actually revoked upstream
+    instead of outliving the 1 h Redis blacklist. No body, no refresh token, or
+    the flag off -> today's exact path.
     """
     try:
         auth_header = request.headers.get("authorization", "")
         if auth_header.startswith("Bearer "):
             token = auth_header[7:]
-            await logout_user(token)
+            await logout_user(token, body.refresh_token if body else None)
     except Exception as e:
-        logger.warning(f"Logout sign-out failed (non-critical): {e}")
+        # W1-4: log the TYPE only, never the exception text. `logout_user` is
+        # fully guarded and already logs a token-REDACTED reason, so this arm is
+        # a backstop that should not fire -- but the gotrue client contains
+        # `raise UserDoesntExist(access_token)`, whose `str()` IS the bearer
+        # token, and the only thing standing between that and this f-string is
+        # the callee's try block. A future refactor that moves a call outside it
+        # would turn this line into a credential leak with nothing to warn you.
+        # The detail is not lost: it is in the callee's scrubbed WARNING.
+        logger.warning(
+            "Logout sign-out failed (non-critical): %s", type(e).__name__
+        )
     return {"success": True, "message": "Logged out successfully"}
 
 
