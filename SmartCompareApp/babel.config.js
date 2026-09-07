@@ -208,6 +208,6 @@ module.exports = function (api) {
   };
 };
 
-// Exported for the B1 regression suite (__tests__/babel.lucideIcons.test.ts).
+// Exported for the B1 regression suite (__tests__/babel.lucideIcons.b1.test.ts).
 module.exports.lucideIconImportsPlugin = lucideIconImportsPlugin;
 module.exports.buildLucideIconMap = buildLucideIconMap;

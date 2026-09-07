@@ -103,3 +103,13 @@ export const BarChart3 = createIcon('BarChart3');
 // inline-retry states render it, and an undefined component tears the
 // whole tree down ("Unable to find node on an unmounted component").
 export const RotateCcw = createIcon('RotateCcw');
+// B1-FENCES — the same latent hole as A12, found by machine this time:
+// ProfileEditorialSections renders <Plus/> and HomeEditorialSections renders
+// <TrendingUp/>, and neither name was declared here. B1 fenced the PRODUCTION
+// icon list (babel.config.js's map must cover every imported name) but not
+// this one, so the two lists had already drifted. The fence in
+// __tests__/babel.lucideIcons.b1.test.ts now pins them together: every
+// identifier value-imported from 'lucide-react-native' anywhere under src/
+// (plus App.tsx / index.ts) must be a callable export of THIS file.
+export const Plus = createIcon('Plus');
+export const TrendingUp = createIcon('TrendingUp');

@@ -16,12 +16,29 @@
  * This is a source-level fence because the defect is a bundler-graph
  * property: at runtime the app behaves identically either way, so only the
  * import shape can be asserted.
+ *
+ * B1-FENCES: the "only module that touches @expo-google-fonts" test used to
+ * walk src/ alone, which left App.tsx and index.ts — the two bundled modules
+ * outside src/, and App.tsx is the caller of `useAppFonts` — free to
+ * re-import the barrel with the fence still green. It now walks those two as
+ * well, and carries positive controls so an empty offender list can never
+ * mean "the walk found nothing".
  */
 import * as fs from 'fs';
 import * as path from 'path';
 
-const FONTS_TS = path.resolve(__dirname, '../../src/theme/fonts.ts');
-const SRC_ROOT = path.resolve(__dirname, '../../src');
+const APP_ROOT = path.resolve(__dirname, '../..');
+const FONTS_TS = path.resolve(APP_ROOT, 'src/theme/fonts.ts');
+const SRC_ROOT = path.resolve(APP_ROOT, 'src');
+
+/**
+ * The two bundled modules that live OUTSIDE src/ and so are invisible to a
+ * walk of src/ alone. App.tsx is precisely the caller of `useAppFonts`, which
+ * makes it the likeliest place for a barrel import to reappear; index.ts is
+ * the Metro entry point. A `@expo-google-fonts/cairo` import in either one
+ * restores all 469,608 B of never-loaded weights.
+ */
+const BUNDLED_ROOT_FILES = ['App.tsx', 'index.ts'].map((f) => path.resolve(APP_ROOT, f));
 
 /** Strip block + line comments so the doc block above the imports never matches. */
 function code(src: string): string {
@@ -70,10 +87,28 @@ describe('Cairo font weights are imported per-weight, not through the barrel', (
     }
   });
 
-  it('is the only module in src/ that touches @expo-google-fonts', () => {
-    const offenders = allSourceFiles(SRC_ROOT)
-      .filter((f) => path.resolve(f) !== FONTS_TS)
-      .filter((f) => code(fs.readFileSync(f, 'utf8')).includes('@expo-google-fonts'));
+  it('is the only bundled module that touches @expo-google-fonts', () => {
+    const scanned = [...allSourceFiles(SRC_ROOT), ...BUNDLED_ROOT_FILES].map((f) =>
+      path.resolve(f)
+    );
+
+    // Positive control 1: the walk reaches the two bundled files outside src/.
+    // Without this the fence used to pass vacuously for App.tsx / index.ts.
+    for (const file of BUNDLED_ROOT_FILES) {
+      expect([file, fs.existsSync(file)]).toEqual([file, true]);
+      expect(scanned).toContain(file);
+    }
+    // Positive control 2: the detector really fires on the one module that is
+    // allowed to match, so an empty `offenders` means "nothing else matched",
+    // not "the matcher is broken".
+    expect(scanned).toContain(FONTS_TS);
+    expect(code(fs.readFileSync(FONTS_TS, 'utf8')).match(/@expo-google-fonts/g)?.length ?? 0)
+      .toBeGreaterThan(0);
+
+    const offenders = scanned
+      .filter((f) => f !== FONTS_TS)
+      .filter((f) => code(fs.readFileSync(f, 'utf8')).includes('@expo-google-fonts'))
+      .map((f) => path.relative(APP_ROOT, f).split(path.sep).join('/'));
     expect(offenders).toEqual([]);
   });
 });
