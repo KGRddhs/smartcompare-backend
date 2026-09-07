@@ -1,0 +1,33 @@
+<!--
+  iHerb search-results fixture — NO per-card currency marker, and the page
+  template emits an OpenGraph price currency that AGREES with the storefront
+  (BHD on a bh.iherb.com/BHD ask).
+
+  The positive control for the document-level rung. That rung keeps exactly two
+  powers after the #52 follow-up: CONFIRM (this fixture — the document agrees
+  with the storefront, so the price is genuine and untouched) and PEND (the
+  iherb_ga_cards_og_currency.html fixture — the document disagrees, and a
+  document-scoped code must never multiply a card-scoped amount on a
+  multi-product search page). Without this fixture, deleting the rung outright
+  would look the same as scoping it.
+
+  Card markup is byte-for-byte the iherb_ga_cards.html shape.
+-->
+<html>
+<head>
+  <meta property="og:price:currency" content="BHD" />
+</head>
+<body>
+  <div class="products">
+    <a data-ga-brand-name="NOW Foods"
+       data-ga-discount-price="3.852"
+       data-ga-rating="4.8"
+       data-ga-review-count="3120"
+       title="NOW Foods, Vitamin D-3, 5,000 IU, 120 Softgels"
+       href="https://bh.iherb.com/pr/now-foods-vitamin-d-3-5-000-iu-120-softgels/12345">
+      <meta itemprop="price" content="3.852" />
+      <span>NOW Foods, Vitamin D-3, 5,000 IU, 120 Softgels</span>
+    </a>
+  </div>
+</body>
+</html>

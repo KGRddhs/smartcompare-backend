@@ -1,0 +1,36 @@
+<!--
+  iHerb search-results fixture — GA cards whose OWN microdata says the page is
+  priced in USD while the caller asked for BHD.
+
+  This is the shape issue #52 exists for: the regional-storefront ASSUMPTION
+  ("{region}.iherb.com prices natively in the region currency") is contradicted
+  by the page itself. Structurally identical to iherb_ga_cards.html except for
+  the `meta[itemprop="priceCurrency"]` inside each anchor.
+-->
+<html>
+<body>
+  <div class="products">
+    <a data-ga-brand-name="NOW Foods"
+       data-ga-discount-price="3.852"
+       data-ga-rating="4.8"
+       data-ga-review-count="3120"
+       title="NOW Foods, Vitamin D-3, 5,000 IU, 120 Softgels"
+       href="https://bh.iherb.com/pr/now-foods-vitamin-d-3-5-000-iu-120-softgels/12345">
+      <meta itemprop="price" content="3.852" />
+      <meta itemprop="priceCurrency" content="USD" />
+      <span>NOW Foods, Vitamin D-3, 5,000 IU, 120 Softgels</span>
+    </a>
+
+    <a data-ga-brand-name="California Gold Nutrition"
+       data-ga-discount-price="1.565"
+       data-ga-rating="4.7"
+       data-ga-review-count="2050"
+       title="California Gold Nutrition, Vitamin D3, 125 mcg, 90 Softgels"
+       href="https://bh.iherb.com/pr/california-gold-nutrition-vitamin-d3-125-mcg/67890">
+      <meta itemprop="price" content="1.565" />
+      <meta itemprop="priceCurrency" content="USD" />
+      <span>California Gold Nutrition, Vitamin D3, 125 mcg, 90 Softgels</span>
+    </a>
+  </div>
+</body>
+</html>

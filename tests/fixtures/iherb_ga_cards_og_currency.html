@@ -1,0 +1,25 @@
+<!--
+  iHerb search-results fixture — NO per-card currency marker, but the page
+  template emits an OpenGraph price currency of USD.
+
+  Exercises the page-level rung of the signal ladder (the card is silent, the
+  document is not). Card markup is byte-for-byte the iherb_ga_cards.html shape.
+-->
+<html>
+<head>
+  <meta property="og:price:currency" content="USD" />
+</head>
+<body>
+  <div class="products">
+    <a data-ga-brand-name="NOW Foods"
+       data-ga-discount-price="3.852"
+       data-ga-rating="4.8"
+       data-ga-review-count="3120"
+       title="NOW Foods, Vitamin D-3, 5,000 IU, 120 Softgels"
+       href="https://bh.iherb.com/pr/now-foods-vitamin-d-3-5-000-iu-120-softgels/12345">
+      <meta itemprop="price" content="3.852" />
+      <span>NOW Foods, Vitamin D-3, 5,000 IU, 120 Softgels</span>
+    </a>
+  </div>
+</body>
+</html>

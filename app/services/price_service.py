@@ -148,6 +148,49 @@ GENUINE_PRICE_CACHE_TTL = int(os.getenv("GENUINE_PRICE_CACHE_TTL_SECONDS", str(7
 NEGATIVE_PRICE_CACHE_TTL = int(os.getenv("NEGATIVE_PRICE_CACHE_TTL_SECONDS", str(30 * 24 * 60 * 60)))  # 30 days
 
 
+def is_genuine_source_method(source_method: Optional[str]) -> bool:
+    """True iff a bare `source_method` STRING names a genuine Bahrain-shelf price.
+
+    The string-level half of `is_genuine_price`, hoisted for the callers that hold
+    a method but not a price dict — issue #54's L2 row selector reads
+    `row["source_method"]` off a Supabase row and must apply the SAME rule the L1
+    TTL policy applies. Hand-copying the branch there is precisely the drift
+    defect tracked in #67, so there is exactly ONE definition and everything else
+    calls it.
+
+    Genuine iff: the method is non-blank, contains NEITHER "converted" NOR
+    "estimate" (defensive — a method carrying either token is never genuine even
+    if it also matches a genuine apex), and is a member of
+    `_GENUINE_BH_SOURCE_METHODS`. That set is defined further down the module, so
+    it is resolved lazily at call time (same pattern as `_showable_source_methods`).
+
+    Pure function, no env read, no behaviour fork: it returns for every input
+    exactly what the inline branch it replaces returned.
+    """
+    sm = (source_method or "").lower()
+    if not sm or "converted" in sm or "estimate" in sm:
+        return False
+    return sm in _GENUINE_BH_SOURCE_METHODS
+
+
+def is_genuine_price(price: Optional[Dict[str, Any]]) -> bool:
+    """True iff a resolved price carries a GENUINE Bahrain-shelf source method.
+
+    This is the predicate `price_cache_ttl` has always encoded inline, hoisted so
+    the "is this genuine?" question has ONE answer in the codebase (issue #53
+    needs the same rule to decide whether a persist disproves a `nogenuine:`
+    sentinel — re-deriving it there would let the two drift).
+
+    Genuine iff: the input is a dict and its `source_method` satisfies
+    `is_genuine_source_method` (issue #54 split that string test out so a caller
+    holding only the method string shares this rule instead of re-deriving it).
+    Returns the identical verdict for every input it ever did.
+    """
+    if not isinstance(price, dict):
+        return False
+    return is_genuine_source_method(price.get("source_method"))
+
+
 def price_cache_ttl(price: Optional[Dict[str, Any]]) -> int:
     """The cache TTL (seconds) for a resolved price, branched on source_method.
 
@@ -160,17 +203,84 @@ def price_cache_ttl(price: Optional[Dict[str, Any]]) -> int:
     NEVER treated as genuine even if it also matches a genuine token, and a
     missing/blank method or a non-dict input falls back to the short TTL (a price
     we can't vouch for as genuine should refresh sooner, not linger a week).
-    `_GENUINE_BH_SOURCE_METHODS` is defined further down the module, so it is
-    resolved lazily at call time (same pattern as `_showable_source_methods`).
+    That branch now lives in `is_genuine_price` (same rule, one definition); this
+    function is a pure re-expression of it and returns the identical TTL for
+    every input it ever did.
     """
-    if not isinstance(price, dict):
-        return PRICE_CACHE_TTL
-    sm = (price.get("source_method") or "").lower()
-    if not sm or "converted" in sm or "estimate" in sm:
-        return PRICE_CACHE_TTL
-    if sm in _GENUINE_BH_SOURCE_METHODS:
-        return GENUINE_PRICE_CACHE_TTL
-    return PRICE_CACHE_TTL
+    return GENUINE_PRICE_CACHE_TTL if is_genuine_price(price) else PRICE_CACHE_TTL
+
+
+def l2_promotion_remaining_ttl_enabled() -> bool:
+    """Issue #57 — True iff an L2 (DB) price row promoted into L1 (Redis) is given
+    only its REMAINING freshness instead of a full TTL computed from now
+    (default OFF).
+
+    The defect: `_get_price`'s L2->L1 promotion writes
+    `price_cache_ttl(db_price)` — a FULL 7d (genuine) / 24h (converted,
+    estimated) window measured from the moment of the promotion — while
+    `product_data_service.get_cached_price` has already admitted a row aged up to
+    that SAME window (`_price_row_fresh`: `GENUINE_PRICE_DB_TTL` / `PRICE_DB_TTL`,
+    which read the identical env knobs). A 6.9d-old genuine row is therefore
+    re-promoted for another 7d and served to ~14d of total age — double its
+    documented window; a converted/estimated row reaches ~48h.
+
+    Flag ON: the promotion TTL becomes `price_cache_ttl(row) - row_age`, and a
+    row with nothing left (age >= its window, only reachable on a clock skew or
+    an env TTL shrink between the write and the read) is SERVED for this request
+    but NOT promoted — writing a zero/negative TTL to Redis is never correct.
+    ON therefore only ever SHORTENS an L1 lifetime; it can neither widen a
+    window, nor promote something the `_promote` gate refused, nor change what
+    this request returns.
+
+    Flag OFF: `get_cached_price` stamps no age (no extra key on the returned
+    price, no extra `fetched_at` parse) and the promotion writes the same full
+    `price_cache_ttl(db_price)` it always did — byte-identical to pre-#57.
+
+    ONE lever for both halves (the stamp at L2 and the subtraction at the
+    promotion) because they are one defect: the stamp alone changes nothing, and
+    the subtraction alone has no age to subtract.
+
+    Read PER CALL from `os.getenv` (the `exact_gate_enabled` idiom) so Railway
+    flips it without a restart; never cached at import.
+    """
+    return os.getenv("ENABLE_L2_PROMOTION_REMAINING_TTL", "").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
+def genuine_clobber_guard_enabled() -> bool:
+    """Issue #54 — True iff a genuine price is protected from being clobbered by a
+    concurrently-resolving Tier-3 GPT estimate, at BOTH cache layers (default OFF).
+
+    There is no single-flight/lock/SETNX anywhere in `app/`, so the warmer, a
+    second live request and the nightly eval can all resolve the same
+    `cache_key` at once. Two defects then combine so a 12h estimate replaces a
+    7d genuine price:
+      * L1 — the Tier-3 terminal's `set_cached` is unconditional; it never reads
+        the existing entry, so a slow estimate overwrites a genuine price that
+        landed while it was in flight.
+      * L2 — `product_data_service.get_cached_price` reads only the NEWEST
+        `product_prices` row, and the table is append-only, so the estimate row
+        appended after a genuine one hides it (and once the estimate ages past
+        24h the read returns None while a still-fresh genuine row sits one
+        position deeper).
+
+    The flag governs BOTH halves because they are one defect: the write guard
+    without the read preference still leaves already-written estimate rows
+    shadowing genuine ones at L2, and the read preference without the write guard
+    still loses the L1 entry. ONE lever, one rollback.
+
+    Flag ON is a real behavioural fork — an estimate that used to be cached and
+    persisted is now dropped, and an L2 read can return a different (older, more
+    authoritative) row — so it ships dark. Flag OFF is byte-identical to the
+    pre-#54 code at every call site.
+
+    Read PER CALL from `os.getenv` (the `exact_gate_enabled` idiom) so Railway
+    flips it without a restart; never cached at import.
+    """
+    return os.getenv("ENABLE_GENUINE_PRICE_CLOBBER_GUARD", "").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
 
 
 def negative_cache_key(price_cache_key: str) -> str:
@@ -201,6 +311,16 @@ def should_negative_cache(price: Optional[Dict[str, Any]]) -> bool:
     Exception: a `validation_rejected` price is a garbage-QUERY rejection, not a
     structural product gap — it must NOT be negative-cached (a real product typed
     later under the same key must re-resolve).
+
+    #67 — the genuine test below is `is_genuine_source_method`, NOT a hand-copy of
+    it. This gate PLANTS the `nogenuine:` sentinel that #53's
+    `_cache_price_and_clear_sentinel` (via `is_genuine_price`) DELETES, so a drift
+    between the two would let one genuine price both clear a sentinel and re-plant
+    one. The copy it replaces (`sm in _GENUINE_BH_SOURCE_METHODS and "converted"
+    not in sm and "estimate" not in sm`) was measured EQUAL to the predicate on
+    every genuine method in every case/whitespace form, on None/blank, on
+    converted- and estimate-token strings and on unknown strings — pure refactor,
+    no behaviour fork, pinned by tests/test_genuine_predicate_parity.py.
     """
     if not isinstance(price, dict):
         return True  # None / missing → dead-end
@@ -208,7 +328,7 @@ def should_negative_cache(price: Optional[Dict[str, Any]]) -> bool:
     if sm == "validation_rejected":
         return False
     # A genuine BH price is never a dead-end.
-    if sm in _GENUINE_BH_SOURCE_METHODS and "converted" not in sm and "estimate" not in sm:
+    if is_genuine_source_method(sm):
         return False
     # `converted_usd` is a live cited price, not a structural gap — see docstring.
     if sm == "converted_usd":
@@ -15399,6 +15519,156 @@ async def fetch_nasser_price(
 # iHerb scraping
 # ============================================
 
+def iherb_page_currency_enabled() -> bool:
+    """True iff ``fetch_iherb_price`` decides genuine-vs-converted from a REAL
+    page currency signal (issue #52, default OFF).
+
+    It gets its own switch rather than riding an existing flag for the reason the
+    house already wrote down for ``ENABLE_VISIBLE_TEXT_CURRENCY``: this changes
+    the LABEL on money, and a wrong label is a wrong price, so a label change
+    gets its own rollback and its own canary window. It also changes an AMOUNT
+    (the conversion arm) and can turn a shipped price into a pend, which is the
+    highest blast radius a capture change has.
+
+    Read PER CALL from ``os.getenv`` — copying ``exact_gate_enabled`` — so Railway
+    flips it without a restart. With the flag OFF no currency marker is ever read
+    and the returned dict is exactly the pre-#52 one on every input.
+    """
+    return os.getenv("ENABLE_IHERB_PAGE_CURRENCY", "").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
+def _iherb_card_currency_token(card) -> Optional[str]:
+    """The currency token ONE iHerb result card declares for its own price, or
+    None when the card is silent. TOTAL — any object may be passed and nothing
+    raises.
+
+    Hands back the token AS WRITTEN and deliberately does NOT resolve it, because
+    the caller must be able to tell "this card says nothing" from "this card says
+    something I cannot read" — the distinction ``_currency_label_for`` was
+    rewritten around (BLOCKER 4). A resolver collapses both to None.
+
+    ``meta[itemprop="priceCurrency"]`` is the marker iHerb actually emits beside
+    ``meta[itemprop="price"]`` (see ``tests/fixtures/iherb_microdata_only.html``);
+    ``data-ga-currency`` is the GA-attribute spelling, consulted second so a
+    future GA-only card is still readable.
+    """
+    if card is None:
+        return None
+    raw = None
+    try:
+        meta = card.select_one('meta[itemprop="priceCurrency"]')
+    except Exception:  # noqa: BLE001 — a currency read must never break a capture
+        meta = None
+    if meta is not None:
+        try:
+            raw = meta.get("content") or meta.get("value") or meta.get_text(" ")
+        except Exception:  # noqa: BLE001
+            raw = None
+    if not (isinstance(raw, str) and raw.strip()):
+        try:
+            raw = card.get("data-ga-currency")
+        except Exception:  # noqa: BLE001
+            raw = None
+    return raw.strip() if isinstance(raw, str) and raw.strip() else None
+
+
+class _CurrencyContradiction:
+    """The type of :data:`_CURRENCY_CONTRADICTION`. One instance, compared with
+    ``is`` — never equal to any currency string, so an accidental ``==`` test
+    against an ISO code can only ever be False."""
+
+    __slots__ = ()
+
+    def __repr__(self) -> str:  # pragma: no cover — debugging aid only
+        return "<CURRENCY_CONTRADICTION>"
+
+
+#: A page that declares TWO OR MORE different document-level currencies. This is
+#: a THIRD state and it exists because the second one was being lost: "this page
+#: says nothing" (None) and "this page says something I cannot read" are the
+#: distinction the whole of #52 is built around (BLOCKER 4), and a page that
+#: contradicts itself is squarely the second. Returning None for it routed a
+#: self-contradicting page into the caller's storefront-ASSUMPTION arm, which
+#: keeps the amount untouched and stamps the genuine ``local_bhd`` — the exact
+#: conflation the fix removes, reintroduced one rung down. A sentinel object
+#: rather than a magic string so it can never collide with an ISO code, and a
+#: module-level singleton so the caller can test it with ``is``.
+_CURRENCY_CONTRADICTION = _CurrencyContradiction()
+
+#: What ``_iherb_currency_signal`` reports about WHERE its answer came from.
+#: Load-bearing, not decoration: the card rung is SCOPED to the number being
+#: shipped and may therefore convert it, while the document rung is not (see
+#: ``_iherb_page_currency_token``) and may only confirm or pend.
+_CCY_SCOPE_CARD = "card"
+_CCY_SCOPE_PAGE = "page"
+
+
+def _iherb_page_currency_token(soup):
+    """What the iHerb SEARCH PAGE declares document-wide. THREE-VALUED:
+
+      * an ISO code  — the document says this, unambiguously
+      * ``_CURRENCY_CONTRADICTION`` — the document says two different things
+      * ``None``     — the document says nothing at all
+
+    Consulted only when the CHOSEN card is silent. Two rungs, both reusing the
+    module's existing evidence helpers rather than growing a parallel ladder:
+
+      1. every schema.org ``priceCurrency`` on the document
+         (``_microdata_currency_tokens``) — the marker a search page carries once
+         per card. Exactly one distinct code is evidence; two or more is a
+         contradiction, and per the abstain-on-multiplicity rule already written
+         into ``_visible_text_currency_evidence`` a contradiction is not a
+         currency. It returns the SENTINEL rather than None, because None means
+         "silent" to the caller and silence buys the storefront assumption.
+         A contradicted page also stops here: it does NOT fall through to rung 2,
+         because a document that cannot agree with itself about its own cards is
+         not made trustworthy by a template-level OpenGraph tag.
+      2. ``_page_currency_evidence`` — the OpenGraph/product metas and any
+         JSON-LD ``priceCurrency``, in that helper's own load-bearing order.
+
+    NOTE ON SCOPE, and the reason the caller must never convert on this answer:
+    every rung here reads the DOCUMENT. ``_page_currency_evidence`` returns the
+    FIRST og/product meta or the FIRST JSON-LD ``priceCurrency`` anywhere on the
+    page, and its measured justification is single-product PDPs (niche-beauty,
+    samawa, faces) where og:price describes THE product. ``fetch_iherb_price``
+    parses a multi-product SEARCH page, so nothing ties that code to the card
+    whose number is being shipped.
+    """
+    tokens = _microdata_currency_tokens(soup)
+    if tokens:
+        if len(tokens) == 1:
+            return next(iter(tokens))
+        return _CURRENCY_CONTRADICTION
+    return _page_currency_evidence(soup)
+
+
+def _iherb_currency_signal(card_token: Any, soup):
+    """``(scope, signal)`` — what money THIS page says its price is in, and how
+    narrowly that claim is attached to the number being shipped.
+
+    ``scope`` is ``_CCY_SCOPE_CARD`` when the answer is the chosen card's own
+    claim and ``_CCY_SCOPE_PAGE`` when it is the document's. The caller needs the
+    difference: only a card-scoped code licenses CONVERTING that card's amount.
+    A document-scoped code may confirm the storefront currency or force a pend,
+    never multiply a number it was never attached to.
+
+    ``signal`` is an ISO code, ``_CURRENCY_CONTRADICTION``, or None.
+
+    The card's own token wins over the document's — it is the narrower claim and
+    the one attached to the number being shipped. An unresolvable card token is
+    returned uppercased rather than dropped, so the caller pends on it instead of
+    reading it as silence.
+    """
+    if isinstance(card_token, str) and card_token.strip():
+        return (
+            _CCY_SCOPE_CARD,
+            _resolve_iso_currency(card_token) or card_token.strip().upper(),
+        )
+    return _CCY_SCOPE_PAGE, _iherb_page_currency_token(soup)
+
+
 async def fetch_iherb_price(
     query: str, brand: str, full_name: str, region_code: str, currency: str,
 ) -> Optional[Dict[str, Any]]:
@@ -15423,6 +15693,10 @@ async def fetch_iherb_price(
             return None
         page = resp.text
         soup = BeautifulSoup(page, 'html.parser')
+        # #52 — one flag read, one call, before either card loop. OFF, every
+        # `if _currency_signal_gate` below is a False literal and no currency
+        # marker is ever looked at.
+        _currency_signal_gate = iherb_page_currency_enabled()
         cards = soup.select('a[data-ga-brand-name][data-ga-discount-price][title]')
         products = []
         for card in cards:
@@ -15461,6 +15735,11 @@ async def fetch_iherb_price(
                 "title": title,
                 "rating": rating,
                 "review_count": review_count,
+                # #52 — the card's own currency claim, carried alongside its
+                # price so the stamp below is about THIS card, not the page's
+                # average. Never leaves the function; the returned dict is built
+                # explicitly from named keys.
+                "currency_token": _iherb_card_currency_token(card) if _currency_signal_gate else None,
             })
 
         # F2.2 — schema.org microdata fallback. When iHerb drops/renames the
@@ -15522,6 +15801,9 @@ async def fetch_iherb_price(
                     "title": title,
                     "rating": rating,
                     "review_count": review_count,
+                    # #52 — the sibling `meta[itemprop="priceCurrency"]` this
+                    # fallback was already standing next to and never read.
+                    "currency_token": _iherb_card_currency_token(card) if _currency_signal_gate else None,
                 })
 
         if not products:
@@ -15583,10 +15865,99 @@ async def fetch_iherb_price(
         # undercounts the genuine-BH-price-share (a real BHD price miscounted as a
         # conversion). Rule: original_currency == region currency → local_bhd;
         # only a genuinely-foreign-origin price is converted_usd.
-        _origin = currency  # the regional storefront prices in the region currency
-        _genuine_bh = str(_origin).upper() == str(currency).upper()
+        #
+        # #52 — that rule was IMPLEMENTED as `_origin = currency` followed by
+        # `str(_origin).upper() == str(currency).upper()`: a variable compared to
+        # itself, so the answer was True for every page iHerb has ever served and
+        # the else-branch was unreachable. The function read no currency field at
+        # all — not the GA cards', not the microdata fallback's sibling
+        # `priceCurrency` — so "the storefront prices in the region currency" was
+        # an ASSUMPTION wearing a check's clothing, and a USD page would have
+        # shipped 3.852 USD as 3.852 "BHD" with the genuine stamp: 7-day TTL, the
+        # genuine authority tier in `_select_best`, a genuine-BH-share KPI slot.
+        #
+        # Behind ENABLE_IHERB_PAGE_CURRENCY the answer comes from a signal the
+        # page actually publishes. Flag OFF the block below is skipped whole and
+        # the three values seeded here are exactly the pre-#52 ones.
+        _amount = best["price"]
+        _origin = currency
+        _genuine_bh = True
+        if _currency_signal_gate:
+            _ccy_scope, _ccy_signal = _iherb_currency_signal(best.get("currency_token"), soup)
+            _ask_ccy = iso_currency_label(currency) or str(currency or "").upper()
+            if _ccy_signal is _CURRENCY_CONTRADICTION:
+                # A page that declares two different currencies has SAID
+                # something — it just cannot be read. That is the SAME state as an
+                # unreadable card token (the last arm, which pends), not the
+                # silent-page state (the next arm, which assumes); routing it to
+                # silence is what shipped a genuine `local_bhd` stamp on an
+                # unconverted amount off a mixed-currency results page. There is
+                # no honest number to pick out of a contradiction, so ship none.
+                logger.info(
+                    "[PRICE] iHerb pend: page declares two or more currencies for '%s'",
+                    full_name[:60],
+                )
+                return None
+            if _ccy_signal is None:
+                # THE ASSUMPTION, and this is now the ONLY place it lives: a page
+                # that declares no currency anywhere is taken to price in the
+                # currency its regional storefront exists to serve. Deliberately
+                # not a pend — the GA cards iHerb serves today carry no currency
+                # marker at all (tests/fixtures/iherb_ga_cards.html), so pending
+                # here would trade a mislabel nobody has observed for losing
+                # every supplement price the adapter currently captures.
+                pass
+            elif _ccy_signal == _ask_ccy:
+                # The page agrees with the storefront. Genuine, unconverted. True
+                # of both scopes: a DOCUMENT-level code that matches the ask only
+                # ever CONFIRMS the assumption already being made, so it cannot
+                # move a number and needs no scoping argument.
+                pass
+            elif _ccy_scope != _CCY_SCOPE_CARD:
+                # A foreign (or unreadable) code that is NOT attached to the card
+                # being shipped. Do NOT convert on it: `_page_currency_evidence`
+                # answers with the first og/product meta or the first JSON-LD
+                # `priceCurrency` ANYWHERE on a MULTI-PRODUCT search page, so a
+                # canonical document-level USD on a template whose cards price in
+                # BHD would multiply every genuine BHD supplement price by 0.376
+                # — a 62%-low number, strictly worse than the mislabel #52 exists
+                # to fix. Document evidence gets exactly two powers: confirm
+                # (above) or pend (here).
+                logger.info(
+                    "[PRICE] iHerb pend: document-level currency %s disagrees with %s "
+                    "and is not scoped to the chosen card for '%s'",
+                    _ccy_signal, _ask_ccy, full_name[:60],
+                )
+                return None
+            else:
+                # A real foreign denomination, or a token nothing can read —
+                # declared BY THE CHOSEN CARD, which is what licenses touching
+                # that card's amount at all (the document-scoped case pended
+                # above). `_convert_to_bhd` only ever targets BHD, and the shared
+                # `is_convertible` gate is the SAME effective table it converts
+                # against (so ENABLE_EXTENDED_FALLBACK_RATES widens both together
+                # — asking FALLBACK_RATES directly would pend a currency the
+                # converter can in fact handle). Either miss means there is no
+                # honest number to ship, so ship none: a foreign figure wearing
+                # the region-currency label is the BLOCKER-4 defect exactly.
+                from app.services.exchange_rate_service import is_convertible
+                if _ask_ccy != "BHD" or not is_convertible(_ccy_signal):
+                    logger.info(
+                        "[PRICE] iHerb pend: page currency %s is not expressible in %s for '%s'",
+                        _ccy_signal, _ask_ccy, full_name[:60],
+                    )
+                    return None
+                _amount = round(_convert_to_bhd(float(_amount), _ccy_signal), 3)
+                if not _amount or _amount <= 0:
+                    return None
+                # `_origin` is now read off the CARD — the whole point of #52,
+                # and the only scope narrow enough to justify a conversion.
+                # `converted_usd` is the module's literal for "not a native shelf
+                # price", which keeps it out of the genuine TTL/authority/KPI paths.
+                _origin = _ccy_signal
+                _genuine_bh = False
         return {
-            "amount": best["price"],
+            "amount": _amount,
             "original_currency": _origin,
             "currency": currency,
             "retailer": "iHerb",

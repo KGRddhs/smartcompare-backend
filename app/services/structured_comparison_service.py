@@ -43,6 +43,9 @@ from app.services.cache_service import (
     get_cached,
     _redis_offload_enabled,
     set_cached,
+    # Issue #53 — a genuine persist must be able to DELETE the `nogenuine:`
+    # sentinel that a prior dead-end resolution wrote.
+    delete_cached,
     record_tier15_attempt,
     record_tier15_hit,
     record_price_outcome,
@@ -1009,6 +1012,45 @@ async def _cache_set_async(key: str, value, ttl):
     return set_cached(key, value, ttl)
 
 
+def _negcache_genuine_invalidation_enabled() -> bool:
+    """Issue #53 — True iff a GENUINE price persist also DELETES that key's
+    `nogenuine:` sentinel (default OFF).
+
+    The sentinel (`nogenuine:{price_cache_key}`, 30d) records a STRUCTURAL
+    genuine-BH dead-end so the expensive Tier-1.5 cascade is not re-run. Nothing
+    in `app/` has ever deleted one, so a genuine price resolved LATER (typically
+    by an off-clock `nocache=True` writer — the warmer, seed_zyte_luxury, the
+    nightly eval — which is exactly the mode that SKIPS the sentinel read) banks
+    7d at L1/L2 and leaves the 30d claim standing. On day 8 both genuine entries
+    lapse, the negcache read fires again, and the day-0 estimate is served for
+    another ~23 days even though a genuine BH source was proven reachable.
+
+    Dark by default because clearing the sentinel un-suppresses the scrape
+    cascade for that key: flag ON trades finite Serper/Firecrawl budget for a
+    correct price. Read PER CALL from ``os.getenv`` (copying
+    ``price_service.exact_gate_enabled``) so Railway can flip it without a
+    restart; with the flag OFF the delete is never even attempted, so the write
+    path is byte-identical to before the change.
+    """
+    return os.getenv("ENABLE_NEGCACHE_GENUINE_INVALIDATION", "").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
+async def _cache_delete_async(key: str):
+    """Issue #53 — the DELETE mirror of _cache_set_async / _cache_get_async.
+
+    References the module-level `delete_cached` in BOTH branches so a test
+    patching structured_comparison_service.delete_cached still intercepts it.
+    Offload flag OFF -> `delete_cached(...)` runs synchronously to completion
+    with NO scheduler yield (the return value is unused at the call site); ON ->
+    asyncio.to_thread runs the identical stateless Upstash POST off the loop.
+    """
+    if _redis_offload_enabled():
+        return await asyncio.to_thread(delete_cached, key)
+    return delete_cached(key)
+
+
 async def _provider_gate_ok_async(provider: str) -> bool:
     """M13-06 — one BATCHED off-loop read of a render provider's breaker+budget
     gate (was two separate inline blocking Upstash GETs per render candidate:
@@ -1174,6 +1216,16 @@ from app.services.price_service import (
     GENUINE_PRICE_CACHE_TTL,
     NEGATIVE_PRICE_CACHE_TTL,
     price_cache_ttl,
+    # Issue #53 — the SAME genuine/non-genuine predicate price_cache_ttl branches
+    # on, reused (never re-derived) to decide whether a persist disproves a
+    # `nogenuine:` sentinel.
+    is_genuine_price,
+    # Issue #54 — default-OFF guard that stops a slow Tier-3 GPT estimate from
+    # clobbering a genuine price that landed at L1 while it was in flight.
+    genuine_clobber_guard_enabled,
+    # Issue #57 — default-OFF: promote an L2 row into L1 with its REMAINING
+    # freshness (price_cache_ttl minus the row's age) instead of a full TTL.
+    l2_promotion_remaining_ttl_enabled,
     # Task 1.4 — size-aware price cache key (no storage/size variant collision).
     build_size_aware_price_cache_key,
     size_variant_token,
@@ -1543,6 +1595,65 @@ _RENDER_WAVE_MAX_DOMAINS = int(os.getenv("RENDER_WAVE_MAX_DOMAINS", "2"))
 _ALGOLIA_TIER2_TIMEOUT = float(os.getenv("ALGOLIA_TIER2_TIMEOUT", "5.0"))
 
 
+# ---------------------------------------------------------------------------
+# #51 part (a) — CONVERTED PROVENANCE THROUGH THE FAN-OUT
+# ---------------------------------------------------------------------------
+def _converted_provenance_enabled() -> bool:
+    """ENABLE_CONVERTED_PROVENANCE_STAMP (default OFF — ships DORMANT).
+
+    A price whose AMOUNT was converted must not end up wearing a member of
+    ``price_service._GENUINE_BH_SOURCE_METHODS``. A genuine label buys four
+    things a converted figure has not earned: the 7d genuine ``price_cache_ttl``,
+    the genuine authority tier in ``_select_best``, race-confirmation power in
+    ``_confirmed`` (which CANCELS pending genuine scrapers), and a slot in the
+    genuine-BH-share KPI.
+
+    The extractor is already honest — ``extract_price_from_html`` relabels a
+    converted price ``converted_usd`` on every branch (JSON-LD / microdata / OG /
+    Woo, ENABLE_JSONLD_FIRST). Four sites in THIS module then overwrite that
+    label with a genuine-set string, and this flag is what stops them:
+
+      (1) ``_curl_scraper`` — the candidate ``source_method`` is unconditionally
+          ``page_scrape_jsonld`` even when ``raw_data`` says ``converted_usd``.
+          (raw_data survives here, so ``_is_genuine_bh_candidate`` already says
+          no; the candidate label itself is still a lie.)
+      (2) ``_firecrawl_scraper`` — ``price["source_method"] = "firecrawl"``
+          STOMPS raw_data BEFORE ``_is_genuine_bh_candidate`` reads it.
+      (3) ``_scrapedo_scraper`` — same, with ``scrapedo_rendered``.
+      (4) ``_finalize_fan_winner`` via ``_fan_winner_source_method`` — clobbers
+          raw_data's label with the candidate rank-name, so a converted winner
+          is banked by ``_persist_genuine_price`` at the genuine TTL.
+
+    Rank / ``_RANK_*`` constants are deliberately UNTOUCHED, so within-tier
+    ordering does not shift; the only ordering effect is the authority tier the
+    honest label was always supposed to produce. No new string enters
+    ``_GENUINE_BH_SOURCE_METHODS`` or the eval mirror.
+
+    Default OFF and flag-OFF is byte-identical at all four sites. Read PER CALL
+    from os.getenv (the ``price_service.exact_gate_enabled`` idiom) so Railway
+    can flip it without a restart, and NEVER cached at import.
+    """
+    return os.getenv("ENABLE_CONVERTED_PROVENANCE_STAMP", "false").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
+def _fan_winner_source_method(best: Dict[str, Any]) -> str:
+    """The ``source_method`` ``_finalize_fan_winner`` stamps on the winning price.
+
+    Legacy (flag OFF): the candidate's rank-name, defaulting to ``page_scrape``.
+    Flag ON: an honest converted label on the winner's own ``raw_data`` is kept
+    instead of being clobbered by that rank-name.
+    """
+    legacy = best.get("source_method", "page_scrape")
+    if not _converted_provenance_enabled():
+        return legacy
+    raw_sm = ((best.get("raw_data") or {}).get("source_method") or "")
+    if "converted" in raw_sm:
+        return raw_sm
+    return legacy
+
+
 async def _curl_scraper(
     url: str, full_name: str, currency: str, retailer_domain: str
 ) -> Optional[Dict[str, Any]]:
@@ -1581,6 +1692,13 @@ async def _curl_scraper(
     # and off-registry (None — a discovered BH retailer PDP) keep page_scrape_jsonld.
     _src_method = "page_scrape_jsonld"
     _rank = _RANK_PAGE_SCRAPE_JSONLD
+    # #51(a) — the extractor already relabelled a CONVERTED amount converted_usd
+    # (extract_price_from_html, every branch). Don't hand it back to the fan-out
+    # wearing the genuine rank-name. raw_data is left exactly as the extractor
+    # wrote it. Flag OFF: byte-identical (the legacy page_scrape_jsonld stands).
+    _extractor_method = (page_price.get("source_method") or "")
+    if _converted_provenance_enabled() and "converted" in _extractor_method:
+        _src_method = _extractor_method
     if registry_tier(retailer_domain) == "global" or registry_tier(url) == "global":
         _src_method = "converted_usd"
         page_price["source_method"] = "converted_usd"
@@ -1654,7 +1772,15 @@ async def _firecrawl_scraper(
         status=status, cost=0, outcome="html", html_kb=_html_kb,
         detected_cf=_detected_cf, elapsed_ms=_elapsed_ms,
     )
-    price["source_method"] = "firecrawl"
+    # #51(a) — a CONVERTED amount keeps the extractor's honest converted_usd on
+    # BOTH raw_data and the candidate; only a genuine extraction gets the
+    # firecrawl / firecrawl_brand_domain pair. Flag OFF: byte-identical.
+    _extractor_method = (price.get("source_method") or "")
+    if _converted_provenance_enabled() and "converted" in _extractor_method:
+        _cand_method = _extractor_method
+    else:
+        price["source_method"] = "firecrawl"
+        _cand_method = "firecrawl_brand_domain"
     price["retailer"] = retailer_domain
     # L2 content safety — Firecrawl Tier 1.5a entry point (Bundle B,
     # team-lead expansion of spec sec 5.2).
@@ -1665,7 +1791,7 @@ async def _firecrawl_scraper(
         return None
     return {
         "value": float(price["amount"]),
-        "source_method": "firecrawl_brand_domain",
+        "source_method": _cand_method,
         "rank": _RANK_FIRECRAWL_BRAND_DOMAIN,
         "raw_data": price,
     }
@@ -1733,7 +1859,14 @@ async def _scrapedo_scraper(
         status=status, cost=cost, outcome="html", html_kb=_html_kb,
         detected_cf=_detected_cf, elapsed_ms=_elapsed_ms,
     )
-    price["source_method"] = "scrapedo_rendered"
+    # #51(a) — a CONVERTED amount keeps the extractor's honest converted_usd on
+    # BOTH raw_data and the candidate. Flag OFF: byte-identical.
+    _extractor_method = (price.get("source_method") or "")
+    if _converted_provenance_enabled() and "converted" in _extractor_method:
+        _cand_method = _extractor_method
+    else:
+        price["source_method"] = "scrapedo_rendered"
+        _cand_method = "scrapedo_rendered"
     price["retailer"] = retailer_domain
     # L2 content safety — Scrape.do Tier 1.5d entry point (Bundle B,
     # team-lead expansion of spec sec 5.2).
@@ -1744,7 +1877,7 @@ async def _scrapedo_scraper(
         return None
     return {
         "value": float(price["amount"]),
-        "source_method": "scrapedo_rendered",
+        "source_method": _cand_method,
         "rank": _RANK_SCRAPEDO_RENDERED,
         "raw_data": price,
     }
@@ -5547,8 +5680,33 @@ class StructuredComparisonService:
                             "row) for %s %s — serving without promoting",
                             brand, name,
                         )
+                # Issue #57 — the L2 row's own age, stamped by get_cached_price
+                # when ENABLE_L2_PROMOTION_REMAINING_TTL is ON (absent, so 0,
+                # when it is OFF). Popped HERE, before the promotion branch, so
+                # the dict this function returns is identical whether or not it
+                # was promoted and the private transport key never escapes
+                # `_get_price` in ANY flag state (public_price_view only strips
+                # `_` keys when ENABLE_EXACT_PRICE_GATE is ON).
+                _l2_age = int(db_price.pop("_l2_age_seconds", 0) or 0)
                 if _promote:
-                    await _cache_set_async(cache_key, db_price, price_cache_ttl(db_price))
+                    _ttl = price_cache_ttl(db_price)
+                    if l2_promotion_remaining_ttl_enabled():
+                        # Promote with what is LEFT of this row's window, not a
+                        # fresh full one: get_cached_price already admitted a row
+                        # aged up to the same window, so a full TTL here doubles
+                        # the age a price can be served at.
+                        _ttl = max(0, _ttl - _l2_age)
+                        if _ttl <= 0:
+                            # Nothing left to promote — serve this request from
+                            # the row, but never write a zero/negative TTL.
+                            _promote = False
+                            logger.info(
+                                "[PRICE] L2->L1 promotion skipped (row age %ss "
+                                "exhausts its cache window) for %s %s — serving "
+                                "without promoting", _l2_age, brand, name,
+                            )
+                    if _promote:
+                        await _cache_set_async(cache_key, db_price, _ttl)
                 db_price["_cached"] = True
                 db_price["_cache_source"] = "db"
                 return db_price
@@ -5637,7 +5795,10 @@ class StructuredComparisonService:
                         # unverified/OOS/wrong-concentration luxury render can't poison the shared
                         # cache (coverage review D — was a raw set_cached bypass).
                         if should_cache_price(full_name, _zp, category):
-                            await _cache_set_async(cache_key, _zp, price_cache_ttl(_zp))
+                            # Issue #53 — bypass site 1 of 5: routed through the
+                            # shared writer so a genuine Zyte render clears the
+                            # key's `nogenuine:` sentinel too.
+                            await self._cache_price_and_clear_sentinel(cache_key, _zp)
                             self._save_price_to_db(cache_key, brand, name, variant, region, _zp)
                         _zp["_cached"] = False
                         logger.info(
@@ -6213,7 +6374,8 @@ class StructuredComparisonService:
                 # matching the request (the converted/page-scrape `best` does not pass
                 # through select_best on every path).
                 if should_cache_price(full_name, best, category):
-                    await _cache_set_async(cache_key, best, price_cache_ttl(best))
+                    # Issue #53 — bypass site 2 of 5 (BH adapter direct hit).
+                    await self._cache_price_and_clear_sentinel(cache_key, best)
                     self._save_price_to_db(cache_key, brand, name, variant, region, best)
                 best["_cached"] = False
                 logger.info(
@@ -6821,7 +6983,12 @@ class StructuredComparisonService:
                         if not (best and best.get("raw_data") and best["raw_data"].get("amount")):
                             return None
                         winning_price = best["raw_data"]
-                        winning_price["source_method"] = best.get("source_method", "page_scrape")
+                        # #51(a) — flag OFF this IS best.get("source_method",
+                        # "page_scrape"); flag ON an honest converted label on
+                        # raw_data survives the rank-name clobber, so
+                        # _persist_genuine_price below can't bank a converted
+                        # figure at the 7d genuine TTL.
+                        winning_price["source_method"] = _fan_winner_source_method(best)
                         # Wrong-scrape guard (no wrong scrapes) — a fan_out curl can land
                         # on an accessory PDP (a "Galaxy S24" case at 11.9 BHD) the
                         # is_accessory keyword filter missed. Reject an implausibly-low
@@ -7067,7 +7234,8 @@ class StructuredComparisonService:
                     # B6 — only cache under the request key when the resolved iHerb
                     # product's identity matches the request (defense-in-depth).
                     if should_cache_price(full_name, iherb_price, category):
-                        await _cache_set_async(cache_key, iherb_price, price_cache_ttl(iherb_price))
+                        # Issue #53 — bypass site 3 of 5 (iHerb direct).
+                        await self._cache_price_and_clear_sentinel(cache_key, iherb_price)
                     return iherb_price
 
                 iherb_task = search_web(f"{iherb_query} iherb price", num_results=5, country=iherb_cc)
@@ -7098,7 +7266,8 @@ class StructuredComparisonService:
                     _maybe_park_supplement(pharmacy_price)
                     # B6 — cache under the request key only on a resolved-identity match.
                     if should_cache_price(full_name, pharmacy_price, category):
-                        await _cache_set_async(cache_key, pharmacy_price, price_cache_ttl(pharmacy_price))
+                        # Issue #53 — bypass site 4 of 5 (BH pharmacy JSON-LD).
+                        await self._cache_price_and_clear_sentinel(cache_key, pharmacy_price)
                     return pharmacy_price
 
                 # --- Stage 3: page-scrape known supplement/pharmacy PDPs (bounded ~3s) ---
@@ -7153,7 +7322,8 @@ class StructuredComparisonService:
                         # should_cache_price, able to cache an OOS / no-url / wrong-variant price).
                         # Still RETURN it for display so the chokepoint pends an OOS/unverifiable one.
                         if should_cache_price(full_name, page_price, category):
-                            await _cache_set_async(cache_key, page_price, price_cache_ttl(page_price))
+                            # Issue #53 — bypass site 5 of 5 (supplement page-scrape).
+                            await self._cache_price_and_clear_sentinel(cache_key, page_price)
                         return page_price
 
                 combined_organic = iherb_organic + bh_organic
@@ -7365,8 +7535,17 @@ class StructuredComparisonService:
                     price["source_method"] = "estimated"
                 if price.get("retailer") and not price.get("url"):
                     price["url"] = build_retailer_url(price["retailer"], full_name)
-                await _cache_set_async(cache_key, price, PRICE_CACHE_TTL // 2)
-                self._save_price_to_db(cache_key, brand, name, variant, region, price)
+                # `category=` is the read-parity thread (cache-coherence finding
+                # #3): the guard revalidates the existing L1 entry's identity with
+                # the SAME `_cache_price_identity_ok(cached, brand, name, category)`
+                # this function's own L1 read applies, and that verdict is
+                # category-sensitive. Keyword-only at the call site so the
+                # signature default (None) stays the answer for any other caller.
+                # Flag OFF -> the guard body is never entered and the argument is
+                # never read: byte-identical.
+                _tier3_persisted = await self._persist_tier3_estimate(
+                    cache_key, brand, name, variant, region, price,
+                    category=category)
                 # Task 1.3 — Tier-3 GPT estimate means no real BH price exists; the
                 # cascade is a structural dead-end. Record it so we don't re-run the
                 # full discovery+scrape next time (just serve this estimate from the
@@ -7380,19 +7559,47 @@ class StructuredComparisonService:
                 # estimate is TRANSIENT: a later off-clock index build can resolve a
                 # genuine PDP price. Cap to 24h so the cold-index estimate isn't frozen
                 # for 30d after the index becomes available.
-                self._record_negative_price_cache(
-                    cache_key, price,
-                    guard_rejected=_guard_rejected_this_request,
-                    transient_discovery=sitemap_discovery_is_cold(category),
-                    # R4 — a Serper-outage estimate is TRANSIENT too: the discovery
-                    # tiers all errored, so the cascade ran blind; cap to 24h so the
-                    # outage never freezes the estimate for 30 days.
-                    discovery_degraded=_discovery_degraded,
-                    # Codex re-review HIGH-3 — stamp the RAW cold sitemap domains
-                    # (NOT cron-gated) so a 30d-negcached estimate written while the
-                    # cron was OFF gets read-side-invalidated the moment the index warms.
-                    category=category,
-                )
+                #
+                # Issue #54 x #53 — but ONLY when the estimate was actually
+                # persisted. `_persist_tier3_estimate` returns False exactly when
+                # the ENABLE_GENUINE_PRICE_CLOBBER_GUARD guard fired, i.e. L1
+                # already holds a GENUINE price for this key. That is the direct
+                # DISPROOF of a structural dead-end — a genuine BH price exists
+                # right now — so planting a `nogenuine:` sentinel there would be a
+                # lie, and a durable one: the sentinel is NEGATIVE_PRICE_CACHE_TTL
+                # (30d) while the genuine entry it defers to is
+                # GENUINE_PRICE_CACHE_TTL (7d) at L1 and the same window at L2. Once
+                # both lapse on day 7 the negcache read (which sits AFTER the L1 and
+                # L2 reads) would serve this day-0 estimate for the remaining ~23
+                # days, and #53's deleter (`_cache_price_and_clear_sentinel`) can
+                # never fire again because the sentinel short-circuits the cascade
+                # before any live resolution runs. Withholding the sentinel costs
+                # one re-run of the cascade later and keeps the two fixes composable.
+                #
+                # Flag OFF -> `_persist_tier3_estimate` always returns True, so this
+                # is the same unconditional call with the same arguments in the same
+                # order: byte-identical.
+                if _tier3_persisted:
+                    self._record_negative_price_cache(
+                        cache_key, price,
+                        guard_rejected=_guard_rejected_this_request,
+                        transient_discovery=sitemap_discovery_is_cold(category),
+                        # R4 — a Serper-outage estimate is TRANSIENT too: the discovery
+                        # tiers all errored, so the cascade ran blind; cap to 24h so the
+                        # outage never freezes the estimate for 30 days.
+                        discovery_degraded=_discovery_degraded,
+                        # Codex re-review HIGH-3 — stamp the RAW cold sitemap domains
+                        # (NOT cron-gated) so a 30d-negcached estimate written while the
+                        # cron was OFF gets read-side-invalidated the moment the index warms.
+                        category=category,
+                    )
+                else:
+                    logger.info(
+                        "[PRICE] nogenuine sentinel NOT planted for %s: the clobber "
+                        "guard kept a genuine L1 price, so this Tier-3 estimate is "
+                        "the OPPOSITE of a structural dead-end (#54 x #53)",
+                        cache_key,
+                    )
                 price["_cached"] = False
                 return price
 
@@ -7589,8 +7796,163 @@ class StructuredComparisonService:
         product_data_service.save_price)."""
         if not should_cache_price(full_name, price_obj, category):
             return
-        await _cache_set_async(cache_key, price_obj, price_cache_ttl(price_obj))
+        await self._cache_price_and_clear_sentinel(cache_key, price_obj)
         self._save_price_to_db(cache_key, brand, name, variant, region, price_obj)
+
+    async def _cache_price_and_clear_sentinel(self, cache_key: str, price_obj) -> None:
+        """Issue #53 — the ONE L1 price write for a RESOLVED price: cache it at
+        its source_method-keyed TTL and, when it is GENUINE, delete that key's
+        `nogenuine:` sentinel.
+
+        Every genuine-price write site in `_get_price` routes through here
+        (`_persist_genuine_price` plus the five sites that bypass it: Zyte
+        render-tier, BH-adapter direct hit, iHerb, BH pharmacy, supplement
+        page-scrape), so the structural-dead-end claim dies wherever it is
+        disproven, not only on one path.
+
+        Invariants:
+          * The caller's identity gate (`should_cache_price`) stays OUTSIDE this
+            helper — a rejected price never reaches it, so an identity rejection
+            can neither cache nor clear the sentinel.
+          * Genuineness is `price_service.is_genuine_price` — the SAME predicate
+            `price_cache_ttl` branches on. A `converted_usd` / `estimated` /
+            unknown-method write caches as before and leaves any sentinel alone
+            (it has not disproven anything).
+          * Flag OFF -> exactly the single `_cache_set_async` call this replaced,
+            same argument, same ordering, nothing else attempted.
+          * Fail-open: a Redis-down / raising `delete_cached` is swallowed, same
+            convention as the sentinel WRITE path — the sentinel is an
+            optimization, never correctness, and must never block a price.
+        """
+        await _cache_set_async(cache_key, price_obj, price_cache_ttl(price_obj))
+        if not _negcache_genuine_invalidation_enabled():
+            return
+        if not is_genuine_price(price_obj):
+            return
+        try:
+            await _cache_delete_async(negative_cache_key(cache_key))
+        except Exception as e:  # noqa: BLE001 — never let the invalidation break a price
+            logger.debug(f"negative-cache invalidation skipped: {e}")
+
+    async def _persist_tier3_estimate(self, cache_key, brand, name, variant,
+                                      region, price,
+                                      category: Optional[str] = None) -> bool:
+        """Issue #54 — the Tier-3 GPT-estimate terminal's cache+persist, made
+        CONDITIONAL on not clobbering a genuine price.
+
+        The old terminal was two unconditional statements: a 12h `set_cached`
+        (`PRICE_CACHE_TTL // 2`) and a `_save_price_to_db` append. Neither read the
+        existing L1 entry. With no single-flight anywhere in `app/`, a second live
+        request / the warmer / the nightly eval can resolve the same `cache_key`
+        concurrently, and a slow estimate lands ON TOP of a genuine 7d entry that
+        was written while the estimate was still in flight — L1 then serves the
+        guess, and the appended estimate row also becomes the newest `product_prices`
+        row (the L2 half of this issue).
+
+        Guarded: when the L1 entry already holds a genuine-method price THAT THE
+        READ PATH WOULD ACTUALLY SERVE, BOTH writes are skipped and the fact is
+        logged at INFO. The estimate is still RETURNED to this request (the caller
+        is unchanged) — it just doesn't get to overwrite better data for everyone
+        else.
+
+        READ PARITY (cache-coherence review of 7dd04c1, finding #3) — "would
+        actually serve" is the correction. This guard re-reads the SAME L1 key
+        `_get_price` read ~2,200 lines above it, and the first version applied
+        NEITHER of that read's two rules:
+
+          * **Identity revalidation.** The read path is
+            `if cached and not _cache_price_identity_ok(cached, brand, name,
+            category): cached = None` — a poisoned entry whose stored `title`
+            does not match the request is dropped on EVERY read and can never be
+            served. Blocking the estimate write on such an entry protected
+            nothing and left the slot holding a price no one gets, so the guard
+            now runs the same predicate: a genuine-method entry blocks the write
+            only when it PASSES `_cache_price_identity_ok`; one that fails it
+            stands down and the estimate is written as it was pre-#54. That is
+            why `category` is threaded in from `_get_price` — the verdict is
+            category-sensitive (a cached "iPhone 15 Pro Max 256GB" under an
+            "iPhone 15" request passes with no category and FAILS under
+            `electronics`), so a guard reading with `category=None` would keep
+            re-protecting exactly the entries the read path discards. The
+            parameter defaults to None (= today's answer for any other caller);
+            `_get_price` is the only one today and it always passes the real
+            category. The revalidation itself is fail-SAFE: if it raises, the
+            guard keeps protecting (today's behaviour) rather than letting an
+            estimate through on an exception.
+
+          * **`price_nocache`.** DELIBERATELY NOT applied, and this is a
+            behaviour decision, not an oversight. `_get_price` computes
+            `price_nocache = nocache or _price_cache_bust_enabled()` and skips
+            the L1 READ so the routing escalation re-runs; the guard still reads
+            L1 on that path, so a forced refresh that degrades all the way to a
+            Tier-3 estimate can NO LONGER replace a genuine-method L1 entry.
+            That is required for the warmer/seed case this issue exists for (a
+            `?nocache=true` refresh racing a genuine write is precisely the race)
+            and it is what keeps the guard honest: an estimate must never clobber
+            a genuine price, whoever asked. The cost is that `nocache` stops being
+            one of the two documented poisoned-entry remedies — with this flag ON
+            the remedy is the #55 flush (`DELETE /api/v1/text/cache`), which
+            removes the entry outright instead of hoping a worse price lands on
+            top of it. Pinned by
+            `test_nocache_no_longer_replaces_a_genuine_l1_entry_with_an_estimate`.
+
+        #54 x #53 correction — an earlier version of this docstring justified
+        leaving the caller's `_record_negative_price_cache` call unconditional with
+        "the L1 read in `_get_price` precedes the sentinel read, so the preserved
+        genuine entry wins on the next request anyway". That is FALSE beyond the
+        7-day L1 window: the sentinel is NEGATIVE_PRICE_CACHE_TTL (30d) and outlives
+        the GENUINE_PRICE_CACHE_TTL (7d) entry it defers to at BOTH layers, after
+        which the negcache read serves the day-0 estimate for ~23 more days and
+        short-circuits the cascade so #53's deleter can never fire. So the caller now
+        BRANCHES on this return: it plants the sentinel only when the writes actually
+        happened, and logs instead when the guard withheld them (a live genuine price
+        is the disproof of a structural dead-end, not evidence for one).
+
+        Flag OFF (`ENABLE_GENUINE_PRICE_CLOBBER_GUARD` unset/false) -> the existing
+        L1 entry is never even read, no identity revalidation runs, `category` is
+        never touched, and the two original statements run in their original order
+        with their original arguments: byte-identical.
+
+        Fail-open: a raising L1 read is swallowed and the write proceeds, because a
+        Redis hiccup must never cost us the estimate we already paid GPT for.
+
+        Returns True iff the writes happened. The Tier-3 terminal in `_get_price`
+        branches on it to decide whether the `nogenuine:` sentinel may be planted
+        (#54 x #53, above)."""
+        if genuine_clobber_guard_enabled():
+            try:
+                existing = await _cache_get_async(cache_key)
+            except Exception as e:  # noqa: BLE001 — never let the guard drop a price
+                logger.debug(f"tier-3 clobber guard read skipped: {e}")
+                existing = None
+            if is_genuine_price(existing):
+                # Read parity: only an entry the READ path would actually serve
+                # may block the write. Fail-SAFE — a raising revalidation keeps
+                # the pre-parity behaviour (protect) rather than admitting an
+                # estimate over a genuine price on an exception.
+                try:
+                    _identity_ok = _cache_price_identity_ok(
+                        existing, brand, name, category
+                    )
+                except Exception as e:  # noqa: BLE001 — never let it drop the guard
+                    logger.debug(f"tier-3 guard identity revalidation skipped: {e}")
+                    _identity_ok = True
+                if _identity_ok:
+                    logger.info(
+                        "[PRICE] tier-3 estimate NOT cached for %s: L1 already holds a "
+                        "genuine %s price (concurrent write protected)",
+                        cache_key, (existing or {}).get("source_method"),
+                    )
+                    return False
+                logger.info(
+                    "[PRICE] tier-3 clobber guard STOOD DOWN for %s: the genuine %s L1 "
+                    "entry FAILS identity revalidation (cat=%s), so the read path "
+                    "discards it on every read — writing the estimate",
+                    cache_key, (existing or {}).get("source_method"), category,
+                )
+        await _cache_set_async(cache_key, price, PRICE_CACHE_TTL // 2)
+        self._save_price_to_db(cache_key, brand, name, variant, region, price)
+        return True
 
     def _save_price_to_db(self, cache_key: str, brand: str, name: str, variant: Optional[str], region: str, price: Dict):
         """Fire-and-forget save price to L2 DB.
@@ -7997,14 +8359,65 @@ class StructuredComparisonService:
 # GCC REGIONAL PRICING
 # ============================================
 
+def _regional_prices_category_enabled() -> bool:
+    """ENABLE_REGIONAL_PRICES_CATEGORY (default OFF — ships DORMANT).
+
+    ``get_regional_prices`` (the resolver behind the public
+    ``GET /api/v1/text/prices/{product}``) fans out six ``_get_price`` calls
+    WITHOUT ``category``, so every region resolves under that parameter's
+    ``"other"`` default while the compare path resolves the same product under
+    its real category. That default drives three things inside ``_get_price``:
+    ``set_resolved_price_category`` (the per-task ContextVar every downstream
+    extractor reads), ``build_size_aware_price_cache_key(..., category=...)``,
+    and every ``should_cache_price(..., category)`` WRITE gate — whose
+    electronics accessory veto (``price_service`` ``_is_device_accessory``)
+    only fires when the category actually says ``electronics``. Under
+    ``"other"`` that veto is inert, so a charger/case listing resolved under a
+    phone query can be banked into the same keyspace compare later reads.
+
+    Flag ON: the category already inferred for the DISPLAY gate lower down is
+    hoisted above the fan-out and threaded into all six calls (coerced to the
+    parameter's own ``"other"`` default, since ``_infer_category_from_query``
+    returns ``Optional[str]``). This makes the write gate STRICTER on this
+    endpoint and aligns its key construction with compare's.
+
+    Side effect, ON only: for an electronics query carrying a bare cellular
+    generation ("5G"), ``size_variant_token(text, category)`` now drops that
+    token, so the resolved key changes for that narrow class. Previously
+    written ``other``-keyed entries are simply orphaned and expire on their own
+    TTL — no migration.
+
+    Flag OFF: ``category`` is not passed at all (not even as ``"other"``), so
+    the call is byte-identical to today's, and the display gate still receives
+    the raw ``Optional[str]`` inference it receives today. Read PER CALL from
+    os.getenv (the ``price_service.exact_gate_enabled`` idiom), never cached at
+    import.
+    """
+    return os.getenv("ENABLE_REGIONAL_PRICES_CATEGORY", "false").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
 async def get_regional_prices(
     brand: str, name: str, variant: Optional[str], search_query: str
 ) -> Dict[str, Any]:
     """Get prices across all GCC regions in parallel."""
     service = StructuredComparisonService()
+    # CORRECTNESS (#56) — one inference per call, hoisted ABOVE the fan-out so the
+    # resolve path and the display gate below agree on the category. Flag ON threads
+    # it into _get_price so this endpoint's cache key + should_cache_price write gate
+    # match the compare path's; flag OFF passes nothing (byte-identical call).
+    _category = _infer_category_from_query(search_query)
+    _resolve_kwargs: Dict[str, Any] = (
+        {"category": _category or "other"}
+        if _regional_prices_category_enabled()
+        else {}
+    )
     tasks = []
     for region in GCC_REGIONS.keys():
-        tasks.append(service._get_price(brand, name, variant, region, search_query))
+        tasks.append(
+            service._get_price(brand, name, variant, region, search_query, **_resolve_kwargs)
+        )
     results = await asyncio.gather(*tasks, return_exceptions=True)
     regional = {}
     best_price = None
@@ -8013,7 +8426,8 @@ async def get_regional_prices(
     # response surface; apply the SAME fail-closed exact backstop the compare
     # chokepoints use, so an OOS / non-PDP-url / non-exact resolved price is PENDED
     # here too (it must never ship its amount just because it bypassed compare).
-    _category = _infer_category_from_query(search_query)
+    # NOTE: `_category` above is deliberately the RAW Optional[str] here — the display
+    # gate must keep receiving exactly the value it receives today, `None` included.
     for region, result in zip(GCC_REGIONS.keys(), results):
         if isinstance(result, Exception):
             regional[region] = None

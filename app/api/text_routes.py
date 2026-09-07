@@ -5,7 +5,7 @@ import json
 import logging
 import os
 import time
-from typing import Optional, Dict, AsyncGenerator
+from typing import Any, List, Optional, Dict, AsyncGenerator
 from fastapi import APIRouter, HTTPException, Path, Query, Depends, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, model_validator
@@ -857,8 +857,203 @@ async def price_kpi(
     }
 
 
+# ============================================
+# Issue #55 — DELETE /text/cache actually clears what the LIVE price path wrote
+# ============================================
+# The flush is the documented remedy for a poisoned price, but it deleted the
+# LEGACY size-agnostic `get_price_cache_key(...)` while `_get_price` keys L1 with
+# `build_size_aware_price_cache_key(...)`. It also never touched the 30-day
+# `nogenuine:{price_key}` sentinel or the L2 `product_prices` row that
+# `_get_price` re-promotes into L1 on the very next request — and it reported
+# `"deleted": true` regardless, because `delete_cached` returns True for any
+# Redis call that does not raise. An operator believed the cache was clear when
+# it was not.
+
+FLUSH_REGION = "bahrain"
+# Upper bound on the operator's `category` chip (see `flush_product_cache`).
+# Enforced ONLY on the flagged path — a declared `Query(max_length=...)` would
+# enforce it with the flag off too, which is not what merge-base 76ace90 did.
+FLUSH_CATEGORY_MAX_LEN = 64
+
+
+def flush_live_price_key_enabled() -> bool:
+    """True iff DELETE /text/cache clears the keys the LIVE price path writes
+    (issue #55, default OFF).
+
+    Flag ON: the flush also deletes the size-aware L1 price key(s) that
+    `structured_comparison_service._get_price` actually writes, the
+    `nogenuine:` sentinel derived from each of them, and the L2
+    `product_prices` rows for the flushed region — and reports, per key,
+    whether a readable value was present before the delete.
+
+    Flag OFF: byte-identical to the pre-#55 route — the same three legacy keys,
+    the same `{"key": ..., "deleted": ...}` shape, the same top-level body, no
+    Supabase call and no extra Redis read. (The tuple-unpack repair above the
+    branch is the ONE unflagged change; see its comment.)
+
+    Read PER CALL from `os.getenv` (the `price_service.exact_gate_enabled`
+    idiom) so Railway flips it without a restart; never cached at import.
+    """
+    return os.getenv("ENABLE_FLUSH_LIVE_PRICE_KEY", "").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
+def _flush_price_cache_keys(
+    brand: str, name: str, variant: Optional[str], region: str,
+    q: str, product_info: Optional[Dict[str, Any]] = None,
+    category: Optional[str] = None,
+) -> List[str]:
+    """Every L1 price key this product could be cached under, most-live first.
+
+    Ordered + de-duplicated (a sizeless/qualifierless product collapses all of
+    them onto ONE key — `build_size_aware_price_cache_key` falls back to the
+    legacy builder when no identity token is found — so the caller issues a
+    single delete, not four).
+
+    1. The LIVE key: the same builder, `search_query` and canonicalized
+       `category` `_fetch_product_data` -> `_get_price` uses, so the identity
+       token (EDP / 100ml / 256GB / FE) matches the poisoned entry. The
+       `category` here is the PARSER's own value — see the mirror notes at the
+       call below.
+    1b. The CHIP key: rung 1 again under the operator's `category` chip, when
+       they supplied one. An ADDITIONAL candidate, never a replacement for rung
+       1: the chip is a GUESS about a decision the operator cannot observe
+       (`_resolve_pair_category` honours it only when the LLM emitted "other",
+       and lets the LLM's own category win otherwise), so keying rung 1 off it
+       deleted a key nothing had been written under whenever the guess was
+       wrong. When the chip canonicalizes to the parser's category the two
+       collapse onto one key and no duplicate delete is issued.
+    2. The raw-`q` key: the operator's own query text under the best-effort
+       `_infer_category_from_query`, in case the parser normalized an axis out
+       of `search_query`/`category` that the raw query still carries.
+    3. The LEGACY size-agnostic key, so an entry warmed before the size-aware
+       key existed is still cleared.
+
+    Deleting a superset is safe: every candidate is a price key for THIS
+    product+region — nothing here can reach a different product's slot.
+    """
+    from app.services.extraction_service import (
+        get_price_cache_key, canonicalize_category,
+    )
+    from app.services.price_service import (
+        build_size_aware_price_cache_key, _infer_category_from_query,
+    )
+
+    info = product_info or {}
+    keys: List[str] = []
+
+    def _add(key: Optional[str]) -> None:
+        if key and key not in keys:
+            keys.append(key)
+
+    # Mirrors `structured_comparison_service._fetch_product_data` — and the two
+    # ways it did NOT, both found by the flag-discipline review of the first
+    # #55 commit and both provable now that the tests DRIVE the live writer
+    # instead of re-running this recipe:
+    #
+    # (a) CATEGORY. The live path may not key under the parser's category.
+    #     `_resolve_pair_category` resolves the PAIR category — and on the `q=`
+    #     path it returns the user's chip whenever the LLM emitted "other" —
+    #     then the A3 write-back (`_p["category"] = category_used`) stamps that
+    #     onto EVERY product dict BEFORE `_fetch_product_data` canonicalizes it.
+    #     So an electronics-chip query the LLM called "other" writes its L1
+    #     entry under "electronics" while the parser's own dict still says
+    #     "other".
+    #     BUT the operator cannot know WHICH happened: `_resolve_pair_category`
+    #     lets the LLM's category win whenever it is not "other" and honours the
+    #     chip only when the LLM abstained, and neither outcome is visible from
+    #     outside. A chip that REPLACED rung 1 therefore deleted a key nothing
+    #     had ever been written under every time the guess went the other way —
+    #     the poisoned entry survived and the route still answered
+    #     `success: true` with empty `notes`, which is exactly the dishonesty
+    #     the rest of this route exists to remove (cache-truth review #55/P2).
+    #     So the chip ADDS a candidate (rung 1b) and never displaces rung 1;
+    #     both keys are price keys for THIS product+region, so deleting both is
+    #     as safe as deleting either, and when the chip canonicalizes to the
+    #     parser's category `_add` collapses them onto one.
+    # (b) SEARCH_QUERY. `_fetch_product_data` uses `.get(key, default)`, so a
+    #     PRESENT-but-falsy `search_query` stays falsy and the identity text is
+    #     "" — `or` replaced it with the brand-carrying fallback and produced a
+    #     different token (a brand whose words hit the qualifier set is enough).
+    #     Mirrored exactly, `or` -> the two-arg `.get`.
+    search_query = info.get("search_query", f"{brand} {name} {variant or ''}")
+    _add(build_size_aware_price_cache_key(
+        brand, name, variant, region, search_query,
+        category=canonicalize_category(info.get("category")),
+    ))
+    if category:
+        _add(build_size_aware_price_cache_key(
+            brand, name, variant, region, search_query,
+            category=canonicalize_category(category),
+        ))
+    _add(build_size_aware_price_cache_key(
+        brand, name, variant, region, q,
+        category=_infer_category_from_query(q),
+    ))
+    _add(get_price_cache_key(brand, name, variant, region))
+    return keys
+
+
+def _flush_delete_key(key: str) -> Dict[str, Any]:
+    """Delete one cache key and report HONESTLY what happened.
+
+    `delete_cached` returns True for any Redis call that does not raise, so it
+    cannot tell "removed a poisoned entry" from "the key was never there".
+    `existed` is a pre-delete read: True = a readable JSON value was present.
+    """
+    from app.services.cache_service import delete_cached, get_cached
+    try:
+        existed = get_cached(key) is not None
+    except Exception:  # noqa: BLE001 — an unreadable probe must not fail the flush
+        existed = None
+    return {"key": key, "existed": existed, "deleted": delete_cached(key)}
+
+
+async def _flush_l2_price_rows(price_keys: List[str], region: str) -> List[Dict[str, Any]]:
+    """Delete the L2 `product_prices` rows for each price key in `region`.
+
+    Without this the row survives and `_get_price` re-promotes it into L1 on the
+    very next request, so the flush would undo itself. `migrations/012` defines
+    only `prices_select` / `prices_insert` policies — the service-role admin
+    client bypasses RLS, so REPORT the affected row count rather than assume the
+    delete landed, and never let a Supabase failure 500 the route.
+    """
+    from app.services.database_service import get_admin_supabase_client
+    from app.utils.db_offload import run_db
+
+    out: List[Dict[str, Any]] = []
+    for key in price_keys:
+        entry: Dict[str, Any] = {"product_key": key, "region": region}
+        try:
+            client = get_admin_supabase_client()
+            # Both loop-varying names are bound as defaults so the thunk cannot
+            # close over a later iteration's value (run_db may run it on a
+            # worker thread when ENABLE_SYNC_DB_OFFLOAD is on).
+            response = await run_db(lambda c=client, k=key: (
+                c.table("product_prices")
+                .delete()
+                .eq("product_key", k)
+                .eq("region", region)
+                .execute()
+            ))
+            rows = getattr(response, "data", None)
+            entry["ok"] = True
+            # None = the client returned no representation; the delete may still
+            # have landed. Reported as unknown, never as 0.
+            entry["rows_deleted"] = len(rows) if isinstance(rows, list) else None
+        except Exception as e:  # noqa: BLE001 — reported, not raised (issue #55)
+            logger.warning("[FLUSH] L2 product_prices delete failed for %s: %s", key, e)
+            entry["ok"] = False
+            entry["rows_deleted"] = None
+            entry["error"] = str(e)[:300]
+        out.append(entry)
+    return out
+
+
 @router.delete("/cache")
 async def flush_product_cache(
+    request: Request,
     q: str = Query(..., max_length=500, description="Product query, e.g., 'rtx 3090'"),
     _admin: bool = Depends(verify_admin_key),
 ):
@@ -866,12 +1061,67 @@ async def flush_product_cache(
     Flush cached price/specs/reviews for a product.
     Useful after fixing pricing bugs to clear stale data.
     """
+    # The operator's category CHIP (issue #55): the live price path keys under
+    # the PAIR-resolved category — which is the chip whenever the LLM emitted
+    # "other" — so passing it makes the flush target ONE MORE key, the one that
+    # was actually written in that case. It ADDS a candidate rung, it does not
+    # replace the parser-category rung: the operator cannot see whether the LLM
+    # abstained, so a chip that displaced rung 1 simply moved the miss (see
+    # `_flush_price_cache_keys` note (a)). It is read from the RAW query string
+    # rather than declared as a `Query(...)` parameter because a declared
+    # parameter is flag-INDEPENDENT:
+    # FastAPI validates it and publishes it whatever ENABLE_FLUSH_LIVE_PRICE_KEY
+    # says. The first version of this fix declared
+    # `category: Optional[str] = Query(None, max_length=64, ...)` and so broke
+    # flag-OFF byte-identity two ways, both MEASURED at HEAD vs merge-base
+    # 76ace90 with the flag off (fix-wave-2 review, issue #55):
+    #   * `?q=...&category=<65 chars>` -> 422 VALIDATION_ERROR, where base
+    #     performed the legacy flush and returned 200 (base declares only `q`,
+    #     so FastAPI ignored the unknown `category` entirely);
+    #   * GET /openapi.json listed the route's parameters as
+    #     ['q', 'category', 'x-admin-key'] instead of base's ['q', 'x-admin-key']
+    #     — the published API surface moved with the flag off.
+    # `request.query_params.get()` reproduces FastAPI's own scalar-query-param
+    # semantics exactly — it IS the call FastAPI makes for a non-sequence param
+    # (`dependencies.utils._get_multidict_value` -> `values.get(alias)`), so a
+    # repeated `?category=a&category=b` resolves to the same value here as it
+    # did when the parameter was declared (Starlette's ImmutableMultiDict.get
+    # returns the LAST occurrence — MEASURED, and pinned in the tests), and a
+    # present-but-empty `category=` stays `""`, which the key builder treats as
+    # absent. Meanwhile the OFF path's signature, validation and published
+    # schema stay byte-identical to base.
+    # `request` itself is a FastAPI-injected parameter, absent from the schema.
+    category: Optional[str] = None
+    if flush_live_price_key_enabled():
+        category = request.query_params.get("category")
+        if category is not None and len(category) > FLUSH_CATEGORY_MAX_LEN:
+            # The bound the declared parameter used to carry, now enforced on
+            # the flagged path only — and, like the declared version, BEFORE the
+            # LLM `parse_product_query` call below, so a junk chip costs nothing.
+            return {
+                "success": False,
+                "error": (
+                    f"category must be at most {FLUSH_CATEGORY_MAX_LEN} characters"
+                ),
+            }
+
     from app.services.extraction_service import (
         parse_product_query, get_price_cache_key, get_specs_cache_key, get_reviews_cache_key
     )
     from app.services.cache_service import delete_cached
 
     parsed = await parse_product_query(q + " vs placeholder")
+    # UNFLAGGED defect repair (issue #55): `parse_product_query` returns
+    # `(result, usage)` — every other caller unpacks the tuple, this one did
+    # not, so `parsed.get(...)` raised AttributeError and the endpoint 500'd on
+    # EVERY real call. (The existing admin-auth test passed only because its
+    # mock returns a bare dict.) There is no legitimate input for which the old
+    # line returned anything at all, so there is no behaviour to preserve; the
+    # unpack is tolerant of both shapes so a dict-returning mock still works.
+    if isinstance(parsed, tuple):
+        parsed = parsed[0] if parsed else {}
+    if not isinstance(parsed, dict):
+        parsed = {}
     products = parsed.get("products", [])
     if not products:
         return {"success": False, "error": "Could not parse product name"}
@@ -879,17 +1129,94 @@ async def flush_product_cache(
     p = products[0]
     brand, name, variant = p["brand"], p["name"], p.get("variant")
 
-    keys = {
-        "price": get_price_cache_key(brand, name, variant, "bahrain"),
-        "specs": get_specs_cache_key(brand, name, variant),
-        "reviews": get_reviews_cache_key(brand, name, variant),
+    if not flush_live_price_key_enabled():
+        keys = {
+            "price": get_price_cache_key(brand, name, variant, FLUSH_REGION),
+            "specs": get_specs_cache_key(brand, name, variant),
+            "reviews": get_reviews_cache_key(brand, name, variant),
+        }
+
+        deleted = {}
+        for label, key in keys.items():
+            deleted[label] = {"key": key, "deleted": delete_cached(key)}
+
+        return {"success": True, "product": f"{brand} {name}", "flushed": deleted}
+
+    from app.services.price_service import negative_cache_key
+    from app.services import cache_service
+
+    price_keys = _flush_price_cache_keys(
+        brand, name, variant, FLUSH_REGION, q, p, category=category,
+    )
+
+    flushed: Dict[str, Any] = {
+        # `price` stays the LIVE key so an existing consumer reading
+        # flushed.price.key now sees the key the price path actually writes.
+        "price": _flush_delete_key(price_keys[0]),
+        "price_additional": [_flush_delete_key(k) for k in price_keys[1:]],
+        "negative_cache": [
+            _flush_delete_key(negative_cache_key(k)) for k in price_keys
+        ],
+        "specs": _flush_delete_key(get_specs_cache_key(brand, name, variant)),
+        "reviews": _flush_delete_key(get_reviews_cache_key(brand, name, variant)),
     }
 
-    deleted = {}
-    for label, key in keys.items():
-        deleted[label] = {"key": key, "deleted": delete_cached(key)}
+    l2 = await _flush_l2_price_rows(price_keys, FLUSH_REGION)
 
-    return {"success": True, "product": f"{brand} {name}", "flushed": deleted}
+    cache_configured = bool(getattr(cache_service, "redis_client", None))
+
+    # Every L1 row this response reports on, flattened. `success` must not
+    # outrank the weakest of them: `delete_cached` returns False when the Redis
+    # DELETE raises (an Upstash 5xx / timeout), so with Redis CONFIGURED the old
+    # expression — L2 rows only — still said `success: true` while the poisoned
+    # key was still readable. That is the very failure this route exists to
+    # stop, one level down (cache-coherence review finding #4).
+    _l1_rows: List[Dict[str, Any]] = [
+        flushed["price"],
+        *flushed["price_additional"],
+        *flushed["negative_cache"],
+        flushed["specs"],
+        flushed["reviews"],
+    ]
+    _l1_failed = [row["key"] for row in _l1_rows if row.get("deleted") is not True]
+
+    notes: List[str] = []
+    if not cache_configured:
+        notes.append(
+            "Redis is not configured in this process — no L1 key was removed."
+        )
+    elif _l1_failed:
+        # Named, not counted: the operator has to know WHICH key survived.
+        notes.append(
+            "L1 delete FAILED for " + ", ".join(_l1_failed) + " — Redis IS "
+            "configured, so the entry may still be readable; re-run the flush."
+        )
+    if any(not row.get("ok") for row in l2):
+        notes.append(
+            "One or more L2 product_prices deletes FAILED; the stale row can be "
+            "re-promoted into L1 on the next request."
+        )
+    if any(row.get("ok") and row.get("rows_deleted") is None for row in l2):
+        notes.append(
+            "An L2 delete returned no row representation — the affected row "
+            "count is UNKNOWN, not zero."
+        )
+
+    return {
+        # Honest: False the moment any leg of the flush could not be completed —
+        # including a single L1 delete that did not land.
+        "success": (
+            cache_configured
+            and not _l1_failed
+            and all(row.get("ok") for row in l2)
+        ),
+        "product": f"{brand} {name}",
+        "region": FLUSH_REGION,
+        "flushed": flushed,
+        "l2_product_prices": l2,
+        "cache_configured": cache_configured,
+        "notes": notes,
+    }
 
 
 @router.get("/parse")

@@ -1,0 +1,65 @@
+<!--
+  iHerb search-results fixture (microdata-only / F2.2 variant) — the page
+  CONTRADICTS ITSELF about its currency and the CHOSEN card is silent.
+
+  Same provenance as iherb_microdata_only.html: the real bh.iherb.com/search
+  markup with the proprietary data-ga-* attributes REMOVED, so the legacy
+  `a[data-ga-brand-name][data-ga-discount-price][title]` selector yields zero
+  cards and the F2.2 `div.product-inner` fallback is the arm under test.
+
+  The NOW Foods card (the one the query selects) carries `meta[itemprop=price]`
+  and NO `priceCurrency`. Its two siblings carry one each and they DISAGREE:
+  BHD and USD. Deliberately the dangerous pair — one code is the storefront
+  currency, so a rung that picks an arbitrary element of the token set would
+  confirm the genuine `local_bhd` stamp half the time and pend the other half.
+
+  Expected: PEND. A contradiction is not silence, and silence is the only state
+  that buys the regional-storefront assumption.
+-->
+<html>
+<body>
+  <div class="products">
+    <div class="product-cell-container">
+      <div class="product-inner product-inner-wide">
+        <a class="product-link" href="https://bh.iherb.com/pr/now-foods-vitamin-d-3-5-000-iu-120-softgels/12345"
+           title="NOW Foods, Vitamin D-3, 5,000 IU, 120 Softgels">
+          <span itemprop="name">NOW Foods, Vitamin D-3, 5,000 IU, 120 Softgels</span>
+        </a>
+        <div class="product-rating" data-rating="4.8" data-review-count="3120"></div>
+        <div class="price">
+          <meta itemprop="price" content="3.852" />
+          <span class="price-inner">3.85</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="product-cell-container">
+      <div class="product-inner product-inner-wide">
+        <a class="product-link" href="https://bh.iherb.com/pr/california-gold-nutrition-vitamin-d3-125-mcg/67890"
+           title="California Gold Nutrition, Vitamin D3, 125 mcg, 90 Softgels">
+          <span itemprop="name">California Gold Nutrition, Vitamin D3, 125 mcg (5,000 IU), 90 Softgels</span>
+        </a>
+        <div class="price">
+          <meta itemprop="price" content="1.565" />
+          <meta itemprop="priceCurrency" content="BHD" />
+          <span class="price-inner">BHD 1.57</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="product-cell-container">
+      <div class="product-inner product-inner-wide">
+        <a class="product-link" href="https://bh.iherb.com/pr/solgar-vitamin-d3-cholecalciferol-5000-iu/24680"
+           title="Solgar, Vitamin D3 (Cholecalciferol), 5,000 IU, 120 Softgels">
+          <span itemprop="name">Solgar, Vitamin D3 (Cholecalciferol), 5,000 IU, 120 Softgels</span>
+        </a>
+        <div class="price">
+          <meta itemprop="price" content="5.049" />
+          <meta itemprop="priceCurrency" content="USD" />
+          <span class="price-inner">USD 5.05</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

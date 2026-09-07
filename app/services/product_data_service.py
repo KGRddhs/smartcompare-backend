@@ -29,6 +29,73 @@ GENUINE_PRICE_DB_TTL = timedelta(
     seconds=int(_os.getenv("GENUINE_PRICE_CACHE_TTL_SECONDS", str(7 * 24 * 60 * 60)))
 )
 
+# Issue #54 — how many recent `product_prices` rows the L2 read inspects when the
+# clobber guard is ON. `product_prices` is append-only (save_price is a plain
+# insert, no dedup), so a Tier-3 estimate row appended after a genuine one becomes
+# the newest row and hides a genuine row that is still inside its OWN 7d window.
+# Scanning a short window lets the selector prefer the genuine row. Deliberately
+# small: 5 rows is one extra page of a `fetched_at desc` read, not a table scan,
+# and it does NOT widen any freshness window — every row still has to pass
+# `_price_row_fresh` for its own method.
+_L2_PRICE_ROW_SCAN = 5
+
+
+def _genuine_clobber_guard_enabled() -> bool:
+    """Issue #54 — the L2 half of `price_service.genuine_clobber_guard_enabled`.
+
+    Delegates to the ONE definition in price_service (imported lazily, exactly
+    like `_price_row_fresh` imports `_GENUINE_BH_SOURCE_METHODS`, so this module
+    never grows a module-level dependency on the price cascade). Fail-CLOSED: if
+    the import raises, the guard reads OFF and `get_cached_price` keeps its
+    pre-#54 behaviour. Never cached — the underlying helper reads os.getenv per
+    call so a Railway flip needs no restart."""
+    try:
+        from app.services.price_service import genuine_clobber_guard_enabled
+    except Exception:  # noqa: BLE001 — never let the import change the read path
+        return False
+    return genuine_clobber_guard_enabled()
+
+
+def _l2_promotion_remaining_ttl_enabled() -> bool:
+    """Issue #57 — the L2 half of
+    `price_service.l2_promotion_remaining_ttl_enabled`.
+
+    Delegates to the ONE definition in price_service (imported lazily, exactly
+    like `_genuine_clobber_guard_enabled`, so this module never grows a
+    module-level dependency on the price cascade). Fail-CLOSED: if the import
+    raises, the flag reads OFF and `get_cached_price` returns the pre-#57 dict
+    with no age stamped. Never cached — the underlying helper reads os.getenv per
+    call so a Railway flip needs no restart."""
+    try:
+        from app.services.price_service import l2_promotion_remaining_ttl_enabled
+    except Exception:  # noqa: BLE001 — never let the import change the read path
+        return False
+    return l2_promotion_remaining_ttl_enabled()
+
+
+def _row_age_seconds(row: Optional[Dict[str, Any]], now: datetime) -> Optional[int]:
+    """Issue #57 — whole seconds of age for the `product_prices` row L2 SELECTED.
+
+    `None` when the row carries no parseable `fetched_at` (the promotion then
+    falls back to the full TTL — today's behaviour — rather than raising on a
+    malformed row). Clamped at 0 so a row stamped in the future by clock skew
+    reads as brand new instead of BUYING extra L1 lifetime via a negative age.
+
+    Deliberately takes `now` rather than reading the clock, so the caller can
+    stamp the age of the row `_select_price_row` picked using the SAME instant
+    that selection used, and so it is unit-testable without freezing time."""
+    raw = (row or {}).get("fetched_at")
+    if not raw:
+        return None
+    try:
+        fetched_at = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+    except Exception:  # noqa: BLE001 — a malformed row is un-aged, not fatal
+        return None
+    try:
+        return max(0, int((now - fetched_at).total_seconds()))
+    except Exception:  # noqa: BLE001 — naive/aware mismatch is un-aged, not fatal
+        return None
+
 
 def _title_persist_enabled() -> bool:
     """Persist + rehydrate the resolved listing identity (title + in_stock, and
@@ -53,16 +120,81 @@ def _price_row_fresh(source_method: Optional[str], age: timedelta) -> bool:
     estimated / unknown methods get the 24h window (PRICE_DB_TTL). Pure decision
     so it is unit-tested without touching Supabase. Defensive: a method
     containing "converted"/"estimate", or a missing one, always uses the short
-    window."""
+    window.
+
+    #67 — genuineness is `price_service.is_genuine_source_method`, the SAME
+    predicate `_select_price_row` (four lines of this module below) uses for its
+    genuine PREFERENCE. Until this refactor the two rungs of that one selector
+    were decided by two independent hand-copies of the rule: rung 1 (this
+    freshness window) re-derived `sm in _GENUINE_BH_SOURCE_METHODS and "converted"
+    not in sm and "estimate" not in sm`, rung 2 called the predicate — so a drift
+    could make the selector prefer a row it had just declared stale. Measured
+    EQUAL on the whole input matrix before the swap (pure refactor, no behaviour
+    fork); pinned by tests/test_genuine_predicate_parity.py.
+
+    The lazy import keeps this module free of a module-level dependency on the
+    price cascade and stays fail-CLOSED: if the import raises, the row falls to
+    the SHORT window exactly as before."""
     sm = (source_method or "").lower()
-    if sm and "converted" not in sm and "estimate" not in sm:
-        try:
-            from app.services.price_service import _GENUINE_BH_SOURCE_METHODS
-            if sm in _GENUINE_BH_SOURCE_METHODS:
-                return age <= GENUINE_PRICE_DB_TTL
-        except Exception:  # noqa: BLE001 — never let the import block the read
-            pass
+    try:
+        from app.services.price_service import is_genuine_source_method
+        if is_genuine_source_method(sm):
+            return age <= GENUINE_PRICE_DB_TTL
+    except Exception:  # noqa: BLE001 — never let the import block the read
+        pass
     return age <= PRICE_DB_TTL
+
+
+def _select_price_row(rows: list, now: datetime) -> Optional[Dict[str, Any]]:
+    """Issue #54 — pick which of the recent `product_prices` rows the L2 read serves.
+
+    Rule, in order:
+      1. Drop every row that is NOT fresh for its own `source_method`
+         (`_price_row_fresh` — genuine 7d, converted/estimated 24h). No window is
+         widened here; a row that used to be rejected is still rejected.
+      2. Of the survivors, return the NEWEST genuine-method row.
+      3. If none is genuine, return the newest survivor (today's answer).
+      4. Nothing fresh -> None (today's answer).
+
+    Why: `product_prices` is append-only, so an estimate row written after a
+    genuine one is newest and used to win — serving a 12h guess over a real
+    Bahrain shelf price, and then serving NOTHING once the estimate aged past 24h
+    while a genuine row inside its 7d window sat one position deeper.
+
+    Genuineness is `price_service.is_genuine_source_method` — the SAME predicate
+    the L1 TTL policy branches on, imported (never re-derived: re-deriving it is
+    the drift defect tracked in #67). Pure decision, unit-tested without Supabase.
+    Ordering is recomputed here rather than trusted from the query, so the helper
+    is correct for any input order; unparseable/missing `fetched_at` rows are
+    skipped rather than raising."""
+    try:
+        from app.services.price_service import is_genuine_source_method
+    except Exception:  # noqa: BLE001 — never let the import block the read
+        def is_genuine_source_method(_sm):  # type: ignore[misc]
+            return False
+
+    fresh = []
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+        raw = row.get("fetched_at")
+        if not raw:
+            continue
+        try:
+            fetched_at = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+            age = now - fetched_at
+        except Exception:  # noqa: BLE001 — a malformed row is skipped, not fatal
+            continue
+        if _price_row_fresh(row.get("source_method"), age):
+            fresh.append((fetched_at, row))
+
+    if not fresh:
+        return None
+    fresh.sort(key=lambda pair: pair[0], reverse=True)
+    for _fetched_at, row in fresh:
+        if is_genuine_source_method(row.get("source_method")):
+            return row
+    return fresh[0][1]
 
 
 async def get_cached_specs(product_key: str) -> Optional[Dict[str, Any]]:
@@ -126,24 +258,35 @@ async def get_cached_price(product_key: str, region: str) -> Optional[Dict[str, 
             # so a DB-served price is SKU- AND stock-verifiable. Gated by the SAME
             # flag as title so flag-OFF is byte-identical (no extra SELECT cols).
             cols += ", brand, in_stock"
+        # Issue #54 — flag OFF reads exactly ONE row and applies the freshness
+        # check to it, byte-identically to the pre-#54 code. Flag ON reads a short
+        # `fetched_at desc` window so `_select_price_row` can prefer a still-fresh
+        # genuine row over a newer estimate row appended on top of it.
+        guard_on = _genuine_clobber_guard_enabled()
+        row_limit = _L2_PRICE_ROW_SCAN if guard_on else 1
         response = await run_db(lambda: (
             client.table("product_prices")
             .select(cols)
             .eq("product_key", product_key)
             .eq("region", region)
             .order("fetched_at", desc=True)
-            .limit(1)
+            .limit(row_limit)
             .execute()
         ))
         if not response.data:
             return None
-        row = response.data[0]
-        fetched_at = datetime.fromisoformat(row["fetched_at"].replace("Z", "+00:00"))
-        # Faithful-Results Phase 1 — freshness window depends on source_method:
-        # genuine BH price = 7d, converted/estimated = 24h.
-        age = datetime.now(timezone.utc) - fetched_at
-        if not _price_row_fresh(row.get("source_method"), age):
-            return None
+        if guard_on:
+            row = _select_price_row(response.data, datetime.now(timezone.utc))
+            if row is None:
+                return None
+        else:
+            row = response.data[0]
+            fetched_at = datetime.fromisoformat(row["fetched_at"].replace("Z", "+00:00"))
+            # Faithful-Results Phase 1 — freshness window depends on source_method:
+            # genuine BH price = 7d, converted/estimated = 24h.
+            age = datetime.now(timezone.utc) - fetched_at
+            if not _price_row_fresh(row.get("source_method"), age):
+                return None
         result = {
             "amount": float(row["amount"]) if row["amount"] is not None else None,
             "currency": row["currency"],
@@ -166,6 +309,17 @@ async def get_cached_price(product_key: str, region: str) -> Optional[Dict[str, 
                 result["brand"] = row["brand"]
             if isinstance(row.get("in_stock"), bool):
                 result["in_stock"] = row["in_stock"]
+        # Issue #57 — stamp the age of the row we actually SELECTED (which under
+        # the #54 guard is NOT necessarily response.data[0]) so the L2->L1
+        # promotion in `_get_price` can hand Redis the row's REMAINING freshness
+        # instead of a full TTL measured from now. `_`-prefixed so it is a
+        # private transport key: `_get_price` pops it before returning, and
+        # `public_price_view` strips `_` keys anyway. Flag OFF -> no extra
+        # `fetched_at` parse and no extra key on the returned dict.
+        if _l2_promotion_remaining_ttl_enabled():
+            _age_seconds = _row_age_seconds(row, datetime.now(timezone.utc))
+            if _age_seconds is not None:
+                result["_l2_age_seconds"] = _age_seconds
         return result
     except Exception as e:
         logger.debug(f"L2 price miss for {product_key}/{region}: {e}")
