@@ -21,6 +21,7 @@ which re-runs exactly the code a fresh worker process runs at boot.
 """
 
 import importlib
+import importlib.util
 import logging
 import os
 import time
@@ -50,11 +51,9 @@ EXPECTED_CONNECT_BOUND = 1.0
 
 @pytest.fixture(autouse=True)
 def _cache_service_env_sandbox():
-    """Save/restore the env keys this file drives, and restore the module afterwards.
+    """Save/restore only the env keys this file drives.
 
-    ``cache_service`` builds its client at import time, so every test here reloads the
-    module. The teardown reloads it once more under the ORIGINAL environment so no other
-    test file inherits a stubbed ``redis_client``.
+    No module reload happens here any more -- see ``_reload_cache_service``.
     """
     saved = {key: os.environ.get(key) for key in _ENV_KEYS}
     try:
@@ -65,16 +64,44 @@ def _cache_service_env_sandbox():
                 os.environ.pop(key, None)
             else:
                 os.environ[key] = value
-        importlib.reload(importlib.import_module(CACHE_MODULE))
 
 
 def _reload_cache_service(**env):
-    """Re-run cache_service's own init path under ``env``. Returns the reloaded module."""
+    """Execute ``cache_service``'s own init path under ``env`` in a PRIVATE module
+    instance, and return it.
+
+    Why not ``importlib.reload``: reloading the real
+    ``app.services.cache_service`` rebinds every function object in
+    ``sys.modules``, while modules that did ``from app.services.cache_service
+    import delete_cached`` at import time keep the ORIGINAL object. Any later test
+    asserting that the two are the same function then fails -- which is exactly
+    what happened in CI: ``tests/test_negcache_genuine_invalidation.py::
+    test_module_imports_delete_cached`` (`assert scs.delete_cached is
+    cache_service.delete_cached`) went red on a full-suite run, while both files
+    passed in isolation. Pollution of the global module registry is invisible to
+    a per-unit comm gate that excludes this file, so it must not happen at all.
+
+    A private instance re-executes the module body -- which is the whole point,
+    since the Redis client is built at module level -- without ever touching
+    ``sys.modules['app.services.cache_service']``. Safe because the module's
+    imports are all absolute stdlib ones (``os``/``json``/``hashlib``/``logging``/
+    ``math``/``datetime``/``typing``); the SDK imports happen inside the init
+    block and still honour any monkeypatch on ``upstash_redis``/``redis``/``httpx``.
+    """
     for key in _ENV_KEYS:
         os.environ.pop(key, None)
     for key, value in env.items():
         os.environ[key] = value
-    return importlib.reload(importlib.import_module(CACHE_MODULE))
+    real = importlib.import_module(CACHE_MODULE)
+    # NOTE the spec is given the REAL dotted name, not a probe-suffixed one: the
+    # module does `logger = logging.getLogger(__name__)`, so a private name would
+    # silently move its log records onto a different logger and the caplog
+    # assertion in the SDK-drift test would stop seeing them. The instance is
+    # still private -- `module_from_spec` does not touch `sys.modules`.
+    spec = importlib.util.spec_from_file_location(CACHE_MODULE, real.__file__)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)  # runs the module-level init under `env`
+    return module
 
 
 def _http_layer(module):
