@@ -49,12 +49,8 @@ function getCrypto() {
   }
   return Crypto;
 }
-import api, { API_BASE_URL } from './api';
+import api, { API_BASE_URL, getOrStartRefresh } from './api';
 import { getDeviceFingerprint } from './deviceFingerprint';
-// A3 — the boot refresh runs in the background now, so authService itself
-// needs the session-death channel App.tsx already subscribes to (M18
-// MB-flows-02). Dependency-free module; no import cycle with api.ts.
-import { emitSessionInvalid } from './sessionEvents';
 
 /**
  * A8 — i18n key rendered when a social sign-in POST exceeds its deadline.
@@ -480,12 +476,30 @@ export type SessionRefreshedListener = (user: User) => void;
 /**
  * A3 — the boot refresh, run to completion OFF the render path.
  *
- * Three outcomes, mirroring api.performRefresh:
- *  - success  → the rotated tokens are already stored by refreshSession;
- *               hand the fresher user back so the UI can re-sync.
- *  - dead     → drop the stale access token (refreshSession only clears
- *               it on the 401 branch) and emit session-invalid, which is
- *               the SAME path a mid-session dead refresh already takes.
+ * It goes through api.ts's module-scope singleton (getOrStartRefresh),
+ * NOT refreshSession() directly. The refresh token is SINGLE-USE —
+ * Supabase rotates it on every successful /auth/refresh, and the backend
+ * names deduping as a client responsibility (app/api/auth_routes.py::
+ * refresh) — while this refresh now runs in the BACKGROUND, in flight
+ * alongside the launch's first authed calls (App.tsx's push-token PUT,
+ * Home's referral-status GET). Both of those ride the same cached-and-
+ * expired Bearer and enter the 401 interceptor's refresh, so calling
+ * refreshSession() here would spend the same token twice: the loser's
+ * 401 maps to clearSession() + sessionInvalid, which logs the user out
+ * at launch AND wipes the winner's freshly stored tokens.
+ *
+ * Three outcomes, all decided inside api.performRefresh:
+ *  - success  → the rotated tokens and the fresher user are already
+ *               persisted by refreshSession; read the user back so a boot
+ *               that COALESCED onto an interceptor-started refresh still
+ *               re-syncs the UI from the winner's result.
+ *  - dead     → performRefresh has already run clearSession() +
+ *               emitSessionInvalid() (keyed on the sessionInvalid FLAG,
+ *               not M21's `error === 'Session expired'` string), so there
+ *               is deliberately NOTHING to do here. Repeating it would
+ *               double-emit whenever a boot and a 401 share the one
+ *               round-trip; the coalescing is what makes it fire exactly
+ *               once.
  *  - transient→ do nothing: the cached user stays, and the first real API
  *               call self-heals through the 401 interceptor.
  */
@@ -493,23 +507,15 @@ async function runBootRefresh(
   onSessionRefreshed?: SessionRefreshedListener,
 ): Promise<void> {
   try {
-    const refreshResult = await refreshSession({
+    const refreshResult = await getOrStartRefresh({
       timeoutMs: BOOT_REFRESH_TIMEOUT_MS,
     });
 
-    if (refreshResult.success) {
-      if (refreshResult.user && onSessionRefreshed) {
-        onSessionRefreshed(refreshResult.user);
+    if (refreshResult?.success) {
+      const user = await getSavedUser();
+      if (user && onSessionRefreshed) {
+        onSessionRefreshed(user);
       }
-      return;
-    }
-
-    // M21 left this gate on the `error === 'Session expired'` STRING,
-    // which missed the other two dead paths (no refresh token / server
-    // refused a session). The flag is the contract.
-    if (refreshResult.sessionInvalid) {
-      await clearSession();
-      emitSessionInvalid();
     }
   } catch (error) {
     // A background boot task must never surface as an unhandled
