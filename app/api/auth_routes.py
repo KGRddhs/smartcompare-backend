@@ -3,6 +3,7 @@ Auth Routes - Authentication endpoints
 """
 import hashlib
 import logging
+import os
 import re
 from fastapi import APIRouter, HTTPException, Depends, Header
 from pydantic import BaseModel, EmailStr, Field, field_validator
@@ -303,23 +304,91 @@ async def get_current_user(authorization: Optional[str] = Header(None)):
     return user
 
 
+def strict_optional_auth_enabled() -> bool:
+    """True iff a PRESENTED-but-rejected Bearer token 401s (default OFF).
+
+    B2 (mobile checkup 2026-09-06). ``get_optional_user`` collapses two very
+    different situations into the same ``None``:
+
+    * ABSENT — no ``Authorization`` header at all. The caller is genuinely
+      anonymous and the auth-optional route should serve them.
+    * PRESENTED-BUT-REJECTED — a Bearer token arrived and ``verify_token``
+      refused it (expired JWT, bad signature, revoked via logout). The caller
+      BELIEVES it is signed in.
+
+    In the second case the route runs ANONYMOUSLY and returns HTTP 200, so the
+    mobile client never learns its token went stale: ``text_routes.text_compare``
+    skips the preferences fetch, skips ``consume_comparison_credit`` (the compare
+    is unmetered) and skips ``save_comparison_and_track_cohort`` (no history row,
+    no cohort) — silently, with the user still looking at a logged-in UI. The
+    401-refresh-retry the mobile interceptor implements (``api.ts`` response
+    interceptor) can never fire because a 401 is never emitted.
+
+    With this flag ON, PRESENTED-but-rejected raises 401 ``AUTH_REQUIRED`` so the
+    interceptor refreshes and re-drives the original request with the new token;
+    ABSENT still returns ``None`` and stays anonymous.
+
+    Read per call via ``os.getenv`` (``price_service.exact_gate_enabled`` idiom)
+    so Railway can flip it without a restart. Default OFF: flag-OFF takes exactly
+    the pre-change path — every rejection funnels through ``_reject_or_anonymous``
+    which returns ``None`` — so the rollback is byte-identical.
+    """
+    return os.getenv("ENABLE_STRICT_OPTIONAL_AUTH", "false").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
+def _reject_or_anonymous(message: str):
+    """B2 — the single decision point for a PRESENTED-but-rejected credential.
+
+    Flag OFF (default): return ``None``, i.e. today's silent anonymous
+    downgrade. Flag ON: raise the standard 401 envelope
+    (``{"success": false, "error": ..., "code": "AUTH_REQUIRED", ...}`` via
+    ``error_handler.http_exception_handler``) so the client refreshes + retries.
+    """
+    if not strict_optional_auth_enabled():
+        return None
+    raise HTTPException(
+        status_code=401,
+        detail={"code": "AUTH_REQUIRED", "error": message},
+    )
+
+
 async def get_optional_user(authorization: Optional[str] = Header(None)):
     """
     Optional auth - returns user if authenticated, None otherwise.
     Useful for endpoints that work for both authenticated and anonymous users.
+
+    B2: "otherwise" means ABSENT only when ENABLE_STRICT_OPTIONAL_AUTH is on —
+    a header that WAS presented and rejected then raises 401 instead of quietly
+    becoming an anonymous request. See ``strict_optional_auth_enabled``.
     """
     if not authorization:
+        # ABSENT — genuinely anonymous in both modes.
         return None
-    
+
     try:
         parts = authorization.split()
         if len(parts) != 2 or parts[0].lower() != "bearer":
-            return None
-        
+            return _reject_or_anonymous(
+                "Invalid authorization header format. Use: Bearer <token>"
+            )
+
         token = parts[1]
-        return await verify_token(token)
+        user = await verify_token(token)
+        if user is None:
+            # verify_token swallows the Supabase AuthApiError an expired JWT
+            # raises and reports it as None, so this is the EXPIRED / revoked /
+            # bad-signature branch as well as the unknown-user one.
+            return _reject_or_anonymous("Invalid or expired token")
+        return user
+    except HTTPException:
+        # The strict-mode 401 must reach the client. Without this re-raise the
+        # legacy catch-all below would swallow it and restore the very
+        # downgrade this flag exists to remove (HTTPException is an Exception).
+        raise
     except Exception:
-        return None
+        return _reject_or_anonymous("Invalid or expired token")
 
 
 # ============================================
