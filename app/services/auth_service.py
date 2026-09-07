@@ -174,7 +174,18 @@ def _categorize_auth_error(e: Exception, context: str = "operation") -> Dict:
         "network", "connection", "timeout", "dns", "econnrefused",
         "socket hang up", "enotfound", "failed to fetch", "no network"
     ]):
-        return {"success": False, "error": "Connection failed. Please try again."}
+        # W1-4 (LS-CACHE-REDIS-03 / MB-NETWORK-CONTRACT-02) -- purely ADDITIVE
+        # machine-readable marker for the TRANSIENT class. `/auth/refresh` maps
+        # THIS code, and only this code, to 503; every other failure stays 401.
+        # Without it the route cannot tell a Supabase blip from a genuinely
+        # invalid token, so one blip 401s every user holding an expiring token
+        # straight into the mobile forced-logout listener. Every other caller
+        # ignores unknown keys, and no other branch's shape or message moves.
+        return {
+            "success": False,
+            "error": "Connection failed. Please try again.",
+            "code": "UPSTREAM_UNAVAILABLE",
+        }
     else:
         logger.error(f"Auth error in {context}: {e}")
         # Bundle E B4 diagnostic (2026-05-26, Ahmed Sentry-sampling issue):
@@ -404,18 +415,85 @@ async def get_user_profile(user_id: str) -> Optional[Dict]:
         return None
 
 
-async def logout_user(access_token: str) -> Dict:
-    """Logout user -- revoke token via Redis blacklist + Supabase sign_out."""
+def logout_upstream_revocation_enabled() -> bool:
+    """W1-4 -- True iff logout actually revokes the session UPSTREAM (default OFF).
+
+    Read PER CALL from `os.getenv` (the `price_service.exact_gate_enabled`
+    idiom) so Railway can flip it without a restart; never cached at import.
+
+    Flag OFF, or no refresh token supplied, is today's exact path: the access
+    token is blacklisted in Redis for 1 h and a bare `sign_out()` is made on a
+    freshly built anon client that holds NO session, which gotrue turns into a
+    silent no-op. The flag exists because sending the refresh token in the
+    logout body is a CLIENT change that reaches devices only with the next OTA,
+    so flag ON is INERT until then.
+    """
+    return os.getenv("ENABLE_LOGOUT_UPSTREAM_REVOCATION", "false").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
+async def logout_user(access_token: str, refresh_token: Optional[str] = None) -> Dict:
+    """Logout user -- revoke token via Redis blacklist + Supabase sign_out.
+
+    W1-4 (LS-CACHE-REDIS-03). `sign_out` reads the session off the CLIENT's own
+    storage (`supabase_auth/_sync/gotrue_client.py`: `session = self.get_session()`
+    then `if access_token: self.admin.sign_out(access_token, scope)`), and this
+    client is built fresh per call and holds nothing -- so today's bare call
+    revokes NOTHING and the refresh token outlives the 1 h blacklist upstream.
+
+    Under `ENABLE_LOGOUT_UPSTREAM_REVOCATION`, and only when the caller supplied
+    a refresh token, we `set_session(access, refresh)` first so gotrue has a
+    session to end, then `sign_out({"scope": "local"})`.
+
+    Two pinned SDK facts (supabase / supabase-auth 2.31.0):
+
+    * The options DICT is mandatory. The real signature is
+      `sign_out(self, options: Optional[SignOutOptions] = None)`, so
+      `sign_out(scope="local")` raises `TypeError` -- which the broad except
+      below would swallow while still reporting success, i.e. a silent no-op
+      that LOOKS fixed. And the body does `options or {"scope": "global"}`, so
+      passing nothing signs the user out on EVERY device. `local` revokes
+      exactly the session just ended, which is what the finding asks for;
+      "sign out everywhere" is a separate product feature.
+    * `set_session` has real side effects. It decodes the access token
+      (`access_token.split(".")[1]` -> `decode_jwt`), so a non-JWT string
+      RAISES; and on an ALREADY-EXPIRED access token it calls
+      `_refresh_access_token(refresh_token)`, which ROTATES the refresh token
+      (otherwise it makes a `get_user` round trip). So logout now makes ONE
+      upstream call it never made before, and on the expired path revocation
+      happens via that rotation plus the `sign_out` on the NEW session rather
+      than `sign_out` on the old one. The old refresh token is dead either way.
+
+    The catch stays broad and the response stays `{"success": True}` -- the
+    local blacklist has been written and the client ignores this response
+    anyway -- but a failure is logged at WARNING and never implies that
+    upstream revocation happened.
+    """
+    upstream_revocation = bool(refresh_token) and logout_upstream_revocation_enabled()
     try:
         # Add token to revocation blacklist (TTL = 1 hour, matching Supabase default JWT expiry)
         _revoke_token(access_token)
 
         client = get_auth_client()
-        client.auth.sign_out()
+        if upstream_revocation:
+            client.auth.set_session(access_token, refresh_token)
+            client.auth.sign_out({"scope": "local"})
+        else:
+            client.auth.sign_out()
         return {"success": True, "message": "Logged out successfully"}
     except Exception as e:
-        # Even if Supabase sign_out fails, token is blacklisted
-        logger.warning(f"Supabase sign_out failed (token still revoked): {e}")
+        # The access token IS blacklisted locally (that write precedes this
+        # call and has its own guard); what failed is the UPSTREAM leg, so the
+        # refresh token was NOT revoked at Supabase. Never let a
+        # TypeError-shaped mistake pass silently as success again.
+        logger.warning(
+            "[auth] logout upstream leg failed (%s): %s: %s -- access token is "
+            "blacklisted locally for 1 h, but the session was NOT revoked upstream",
+            "set_session+sign_out(local)" if upstream_revocation else "sign_out",
+            type(e).__name__,
+            e,
+        )
         return {"success": True, "message": "Logged out successfully"}
 
 
