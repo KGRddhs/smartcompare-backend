@@ -1,5 +1,7 @@
 # FULL REVIEW CAMPAIGN 2026-09-05 (internal workflow ids m22-*; NOT the other session's feature/m22-price-truth-cluster) — shared agent brief. Durable copy: docs/investigations/2026-09-06-full-review-state/ (baseline/ lives next to it)
 
+> **SESSION 65 CONTINUATION (2026-09-07):** the repo checkout for this continuation is the worktree `C:/Users/SynAckITPC/Documents/AI/sc-review-s65` (HEAD `67e9e26` = `origin/main`), whose `app/`, `SmartCompareApp/`, `tests/`, `scripts/`, `migrations/` and requirements are byte-identical to the review base `76ace90` (only docs commits landed since). Every rule below still applies; "HEAD `76ace90`" means that code. `sc-scraper-proof` is ANOTHER session's working tree: read `_proof/` there if you need the corpus, never write there. Scratch goes only under `sc-review-s65/.qa-m22-s65/` (gitignored).
+
 You are one lane of a multi-workflow review of **SmartCompare / Qaren** (FastAPI backend + Expo RN app).
 Repo (read-only for you): `C:\Users\SynAckITPC\Documents\AI\sc-scraper-proof` — **HEAD `76ace90` == `origin/main`**, clean tree.
 Prod: `https://web-production-58776.up.railway.app` (Railway service `web`, 1 replica, `uvicorn app.main:app` — 1 worker, no `--proxy-headers`). `/health` 200 at review time. Deployed SHA = `76ace90`.

@@ -1,8 +1,8 @@
 {
  "name": "m22-mobile",
- "brief": "C:/Users/SynAckITPC/Documents/AI/sc-scraper-proof/docs/investigations/2026-09-06-full-review-state/BRIEF.md",
+ "brief": "C:/Users/SynAckITPC/Documents/AI/sc-review-s65/docs/investigations/2026-09-06-full-review-state/BRIEF.md",
  "finderBatch": 4,
- "verifyBatch": 3,
+ "verifyBatch": 1,
  "batchVerifySize": 6,
  "lanes": [
   {
@@ -80,8 +80,8 @@
  "synth": [
   "Answer for the founder: (1) Is the mobile app in shape TODAY - two answers, one for the bundle ON PHONES (97b5f15 preview OTA) and one for MAIN (76ace90) - and what does the pending eas update --branch preview change, is it native-compatible, and what is the first-launch risk list? (2) Which prior mobile findings are still open at HEAD (the reconciliation ledger) and which were closed by M21 - so the stale ones are killed for good. (3) The measured bundle picture and the biggest verified size win. (4) The SAFE-TO-REMOVE list for the mobile app as APPENDIX A (SAFE only; KEEP/UNSURE in APPENDIX B) - the user's rule is nothing is deleted without it. (5) The App Store production blocker status (icons, legal, privacy labels, Google Sign-In). (6) The Arabic user's experience end to end (rendering side; the product lane owns generation). Units: client-side changes ship UNFLAGGED by nature but reach phones only via OTA - every unit must say OTA-safe or needs-build, and the backend units (camera/url metering) must carry the usage-gate tests-first list."
  ],
- "stateFile": "C:/Users/SynAckITPC/Documents/AI/sc-review-state/docs/investigations/2026-09-06-full-review-state/partial-m22-mobile.json",
- "reviewNotes": "C:/Users/SynAckITPC/Documents/AI/sc-review-state/docs/investigations/2026-09-06-full-review-state/FABLE_REVIEW_NOTES.md",
+ "stateFile": "C:/Users/SynAckITPC/Documents/AI/sc-review-s65/docs/investigations/2026-09-06-full-review-state/partial-m22-mobile.json",
+ "reviewNotes": "C:/Users/SynAckITPC/Documents/AI/sc-review-s65/docs/investigations/2026-09-06-full-review-state/FABLE_REVIEW_NOTES.md",
  "missingLanes": [],
  "unverified": [],
  "secondVote": [
@@ -177,5 +177,7 @@
   }
  ],
  "haveSynth": false,
- "haveCritic": false
+ "haveCritic": false,
+ "repoNote": "REPO FOR THIS CONTINUATION (SESSION 65, 2026-09-07): read code in the worktree C:/Users/SynAckITPC/Documents/AI/sc-review-s65 (branch docs/session-65-full-review, HEAD 67e9e26 = origin/main). Its app/, SmartCompareApp/, tests/, scripts/, migrations/ and requirements are BYTE-IDENTICAL to the review base 76ace90 (verified: git diff --stat 76ace90 origin/main over those paths is empty; only docs commits landed since). Cite file:line as at 76ace90 (same lines). node_modules is present (junction), .env is present for read-only Supabase SELECT, python is the global 3.12 env (OFF-LOCK, see brief rule 6). The zero-network corpus _proof/ exists ONLY in C:/Users/SynAckITPC/Documents/AI/sc-scraper-proof (read it there; that clone is ANOTHER session's working tree - never write, run git state commands, or create files there). Scratch tests/snippets go ONLY under C:/Users/SynAckITPC/Documents/AI/sc-review-s65/.qa-m22-s65/ (gitignored); for jest, put scratch specs under C:/Users/SynAckITPC/Documents/AI/sc-review-s65/SmartCompareApp/src/__scratch_m22__/ and DELETE them when done. Never edit tracked files.",
+ "voteBatchSize": 6
 }

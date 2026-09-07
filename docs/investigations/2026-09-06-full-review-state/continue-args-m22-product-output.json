@@ -1,8 +1,8 @@
 {
  "name": "m22-product-output",
- "brief": "C:/Users/SynAckITPC/Documents/AI/sc-scraper-proof/docs/investigations/2026-09-06-full-review-state/BRIEF.md",
+ "brief": "C:/Users/SynAckITPC/Documents/AI/sc-review-s65/docs/investigations/2026-09-06-full-review-state/BRIEF.md",
  "finderBatch": 4,
- "verifyBatch": 3,
+ "verifyBatch": 1,
  "batchVerifySize": 6,
  "lanes": [
   {
@@ -74,8 +74,8 @@
  "synth": [
   "Answer, in plain sentences, for a founder: (1) Is the product's output any good TODAY - i.e. under the PROD flag state (baseline/railway-web-vars.txt) with phones on the 97b5f15 bundle - and what exactly would each dark flag change if flipped? Separate LIVE defects (reachable now) from DARK ones (only under an unflipped flag) explicitly. (2) What did the MEASURED request series say about the product (failure rate, partial rate, category over-rejection, latency) and which of those are honest messages vs misleading ones? (3) What must be re-scored the moment OpenAI credits return (name the exact eval_runner command from the brief, and which findings can only be closed live)? (4) The #101 product call (win_margin 0.0): state the options and the evidence, do not decide it. Rank units by user-visible harm; every unit that touches price_service must carry the flag-OFF byte-identity gate; every prompt change is UNFLAGGED by nature - say what canary would validate it and note the OpenAI prompt-cache re-warm cost."
  ],
- "stateFile": "C:/Users/SynAckITPC/Documents/AI/sc-review-state/docs/investigations/2026-09-06-full-review-state/partial-m22-product-output.json",
- "reviewNotes": "C:/Users/SynAckITPC/Documents/AI/sc-review-state/docs/investigations/2026-09-06-full-review-state/FABLE_REVIEW_NOTES.md",
+ "stateFile": "C:/Users/SynAckITPC/Documents/AI/sc-review-s65/docs/investigations/2026-09-06-full-review-state/partial-m22-product-output.json",
+ "reviewNotes": "C:/Users/SynAckITPC/Documents/AI/sc-review-s65/docs/investigations/2026-09-06-full-review-state/FABLE_REVIEW_NOTES.md",
  "missingLanes": [],
  "unverified": [],
  "secondVote": [
@@ -206,5 +206,7 @@
   }
  ],
  "haveSynth": false,
- "haveCritic": false
+ "haveCritic": false,
+ "repoNote": "REPO FOR THIS CONTINUATION (SESSION 65, 2026-09-07): read code in the worktree C:/Users/SynAckITPC/Documents/AI/sc-review-s65 (branch docs/session-65-full-review, HEAD 67e9e26 = origin/main). Its app/, SmartCompareApp/, tests/, scripts/, migrations/ and requirements are BYTE-IDENTICAL to the review base 76ace90 (verified: git diff --stat 76ace90 origin/main over those paths is empty; only docs commits landed since). Cite file:line as at 76ace90 (same lines). node_modules is present (junction), .env is present for read-only Supabase SELECT, python is the global 3.12 env (OFF-LOCK, see brief rule 6). The zero-network corpus _proof/ exists ONLY in C:/Users/SynAckITPC/Documents/AI/sc-scraper-proof (read it there; that clone is ANOTHER session's working tree - never write, run git state commands, or create files there). Scratch tests/snippets go ONLY under C:/Users/SynAckITPC/Documents/AI/sc-review-s65/.qa-m22-s65/ (gitignored); for jest, put scratch specs under C:/Users/SynAckITPC/Documents/AI/sc-review-s65/SmartCompareApp/src/__scratch_m22__/ and DELETE them when done. Never edit tracked files.",
+ "voteBatchSize": 6
 }

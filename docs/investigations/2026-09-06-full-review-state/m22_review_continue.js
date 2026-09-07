@@ -46,6 +46,8 @@ const CRITIC_SCHEMA = { type: 'object', required: ['gaps', 'unverified_claims', 
 function chunk(arr, n) { const out = []; for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n)); return out }
 
 const STATE_NOTE = 'SAVED STATE: the prior run\'s finder results and verdicts are in the JSON file ' + W.stateFile + ' (keys: lanes[<lane>].findings[], verdicts{id}, second_votes{id}). Read it with a UTF-8 file read; do not print non-ASCII to the console. The orchestrator\'s own review verdicts on the P0/P1 set are in ' + W.reviewNotes + '.'
+const REPO_NOTE = W.repoNote ? ('\n' + W.repoNote) : ''
+const VOTE_BATCH_SIZE = W.voteBatchSize || 6
 
 function finderPrompt(lane) {
   return [
@@ -61,7 +63,7 @@ function batchVerifierPrompt(items, inline) {
   return [
     'ROLE: ADVERSARIAL VERIFIER for a BATCH of ' + items.length + ' findings from lane ' + items[0].lane + '. Default verdict for EACH is REFUTED. Return CONFIRMED only after you independently reproduced the defect at HEAD 76ace90 in the repo named in the brief (open the cited file:line YOURSELF; run the cited repro or an equivalent; for static claims read the full call path). Verify EVERY id - one verdict object per id, same order; if you run out of room mark the remainder UNVERIFIABLE with reason "not reached".',
     'Read the brief first (HARD RULES apply, read-only): ' + W.brief,
-    STATE_NOTE,
+    STATE_NOTE + REPO_NOTE,
     inline ? 'FINDINGS UNDER TEST (JSON array, inline):\n' + JSON.stringify(inline) : 'FINDINGS UNDER TEST: ids ' + JSON.stringify(items.map(i => i.id)) + ' - read each full record from lanes["' + items[0].lane + '"].findings in the state file.',
     '',
     'Per finding: (1) Does the code at HEAD behave as claimed? Quote lines. (2) Reachable in the PROD flag state (baseline/railway-web-vars.txt next to the brief) or dark-flag-only (=> at most P2)? (3) New vs the prior reviews / open issues in the brief? set known_status. (4) Severity honest per the brief scale? UPGRADE if live harm/spend/security was under-rated. (5) Fix correct and flag-safe? (6) Recompute modelled numbers. Correct file/line/title if wrong. UNVERIFIABLE only when reproduction needs OpenAI/Serper/a device/prod writes.',
@@ -69,21 +71,35 @@ function batchVerifierPrompt(items, inline) {
   ].join('\n')
 }
 
-function secondVotePrompt(item) {
+function secondVoteBatchPrompt(items) {
+  const ids = items.map(i => i.id + ' (' + i.sev + ')').join(', ')
   return [
-    'ROLE: SECOND, INDEPENDENT VERIFIER (reproduction lens). A first verifier CONFIRMED finding ' + item.id + ' as ' + item.sev + '. Try to BREAK that confirmation: build the smallest concrete reproduction (pytest / jest / python or node snippet) against HEAD 76ace90 and RUN it. If you cannot make the defect manifest, verdict = REFUTED or DOWNGRADED (say to what). Never confirm on reading alone; never edit tracked files - write scratch tests under the folder that holds the brief.',
+    'ROLE: SECOND, INDEPENDENT VERIFIER (reproduction lens) for a BATCH of ' + items.length + ' P0/P1 findings: ' + ids + '. A first verifier CONFIRMED each. For EACH id, try to BREAK that confirmation: build the smallest concrete reproduction (pytest / jest / python or node snippet) against the review base and RUN it. If you cannot make the defect manifest, verdict = REFUTED or DOWNGRADED (say to what). Never confirm on reading alone; never edit tracked files - write scratch tests ONLY under the scratch folder named in the repo note (it is gitignored).',
     'Read the brief first (HARD RULES apply): ' + W.brief,
-    STATE_NOTE,
-    'The finding record is lanes["' + item.lane + '"].findings (id ' + item.id + ') and the first verdict is verdicts["' + item.id + '"] in the state file. Set stage="second-vote" in your output.',
-    'Also answer inside reason: does the proposed fix close the reproduction you built, and is test_first the right red test? Return ONLY the structured verdict.',
+    STATE_NOTE + REPO_NOTE,
+    'Each finding record is lanes[<lane>].findings (by id) and its first verdict is verdicts[<id>] in the state file; the lane for each id: ' + JSON.stringify(items.map(i => ({ id: i.id, lane: i.lane }))) + '. Set stage="second-vote" on every verdict.',
+    'Work P0 first, then in the order given. Return ONLY {"verdicts":[...]} with exactly one entry per id (same order). If you run out of room, mark the remainder UNVERIFIABLE with reason "not reached" - never skip an id silently. In each reason (<= 120 words) also answer: does the proposed fix close the reproduction you built, and is test_first the right red test?',
   ].join('\n')
+}
+
+function packByLane(items, cap) {
+  const byLane = {}
+  for (const it of items) (byLane[it.lane] = byLane[it.lane] || []).push(it)
+  const chunks = []
+  for (const lane of Object.keys(byLane)) chunk(byLane[lane], cap).forEach(c => chunks.push(c))
+  const bins = []
+  for (const c of chunks) {
+    const bin = bins.find(b => b.length + c.length <= cap)
+    if (bin) bin.push(...c); else bins.push([...c])
+  }
+  return bins
 }
 
 function synthPrompt(newFindings, newVerdicts, secondVotes, coverage) {
   const reportPath = W.stateFile.replace(/partial-[^/]+\.json$/, 'report-' + W.name + '.md')
   return [
     'ROLE: SYNTHESIS for workflow ' + W.name + '. Read the brief first: ' + W.brief,
-    STATE_NOTE,
+    STATE_NOTE + REPO_NOTE,
     'Inputs: EVERYTHING in the state file (prior lanes, prior verdicts, prior second votes) PLUS this run\'s additions passed below. Treat a finding as VERIFIED when its latest verdict is not REFUTED (a second-vote REFUTED overrides). Apply the orchestrator\'s review notes (' + W.reviewNotes + ') as the authoritative severity where they disagree with an agent.',
     'WORKFLOW-SPECIFIC INSTRUCTIONS:', ...W.synth, '',
     'Write the FULL report (house format: "# " title with date and base 76ace90; ## 0 Stop the line; ## 1 The answers (measured/modelled/static labels, finding ids); ## 2 Proposed units through the standing gates (table: unit | findings | files | flag | tests-first | gates | order reason - never a direct fix; TDD red-first, module-reference comm gate, flag-OFF byte-identity where the price path is touched, Fable review before commit); ## 3 What could not be known; ## 4 Findings tables per severity (id | title | file:line | measured/modelled | verdict trail | dedupe); ## 5 Refuted and downgraded ledger; ## 6 Coverage statement) to the UTF-8 file ' + reportPath + ' and return its path in report_path. Do not invent findings; do not soften verified ones; do not restate code.',
@@ -96,7 +112,7 @@ function synthPrompt(newFindings, newVerdicts, secondVotes, coverage) {
 
 function criticPrompt(synth) {
   return [
-    'ROLE: COMPLETENESS CRITIC for workflow ' + W.name + '. Read the brief first: ' + W.brief, STATE_NOTE,
+    'ROLE: COMPLETENESS CRITIC for workflow ' + W.name + '. Read the brief first: ' + W.brief, STATE_NOTE + REPO_NOTE,
     'Read the synthesis report at ' + synth.report_path + ' and the state file. Name what is MISSING: surfaces never enumerated, cells skipped, claims not backed by a verified finding, numbers labelled measured that are modelled, stale claims contradicted by code at HEAD 76ace90 (spot-check >= 5 cited file:line pairs yourself), prior-review items the brief said to reconcile that were not. recommend_gap_round=true only if a missing surface could plausibly hold a P0/P1. Return ONLY the structured output.',
   ].join('\n')
 }
@@ -135,11 +151,17 @@ for (const wave of chunk(groups, VERIFY_BATCH)) {
 phase('Second vote')
 const need = [...(W.secondVote || [])]
 for (const v of newVerdicts) if (v.verdict !== 'REFUTED' && (v.sev_after === 'P0' || v.sev_after === 'P1')) need.push({ id: v.id, lane: (groups.find(g => g.items.some(i => i.id === v.id)) || {}).lane || '', sev: v.sev_after })
-log(W.name + ': ' + need.length + ' P0/P1 second votes')
+const voteBins = packByLane(need, VOTE_BATCH_SIZE)
+log(W.name + ': ' + need.length + ' P0/P1 second votes in ' + voteBins.length + ' lane-batched agent(s) (cap ' + VOTE_BATCH_SIZE + ', width ' + VERIFY_BATCH + ')')
 const secondVotes = []
-for (const wave of chunk(need, VERIFY_BATCH)) {
-  const outs = await parallel(wave.map(it => () => agent(secondVotePrompt(it), { label: 'vote2:' + it.id, phase: 'Second vote', schema: VERDICT_SCHEMA, model: MODEL, effort: 'high' })))
-  secondVotes.push(...outs.filter(Boolean).map(v => ({ ...v, stage: 'second-vote' })))
+for (const wave of chunk(voteBins, VERIFY_BATCH)) {
+  const outs = await parallel(wave.map(bin => () => agent(secondVoteBatchPrompt(bin), { label: 'vote2:' + bin[0].lane + '+' + bin.length, phase: 'Second vote', schema: BATCH_VERDICT_SCHEMA, model: MODEL, effort: 'high' }).then(o => ({ bin, o }))))
+  for (const bin of wave) {
+    const hit = outs.filter(Boolean).find(x => x.bin === bin)
+    const byId = {}
+    for (const v of (hit && hit.o && hit.o.verdicts) || []) byId[v.id] = v
+    for (const it of bin) secondVotes.push({ ...(byId[it.id] || { id: it.id, verdict: 'UNVERIFIABLE', sev_after: it.sev, reason: hit ? 'batch second-vote returned no verdict for this id' : 'batch second-vote agent died - re-run', evidence: '' }), stage: 'second-vote' })
+  }
 }
 
 // ---------- Synthesize + Critique ----------

@@ -1,8 +1,8 @@
 {
  "name": "m22-load-scale",
- "brief": "C:/Users/SynAckITPC/Documents/AI/sc-scraper-proof/docs/investigations/2026-09-06-full-review-state/BRIEF.md",
+ "brief": "C:/Users/SynAckITPC/Documents/AI/sc-review-s65/docs/investigations/2026-09-06-full-review-state/BRIEF.md",
  "finderBatch": 4,
- "verifyBatch": 3,
+ "verifyBatch": 1,
  "batchVerifySize": 6,
  "lanes": [
   {
@@ -66,8 +66,8 @@
  "synth": [
   "Answer the founder's question directly and first: CAN IT HANDLE A HUGE LOAD OF PEOPLE AT THE SAME TIME? Give three answers with numbers and their inputs: (a) TODAY under the prod flag state, (b) after the dark offload flags (ENABLE_SYNC_DB_OFFLOAD, ENABLE_ASYNC_REDIS_OFFLOAD, ENABLE_SERPER_BREAKER, ENABLE_FULL_STREAM_DEADLINE, ENABLE_PREVERDICT_DISCONNECT_ABORT) are active, (c) after #114 (per-client limiter) and a second worker. State the ceiling per bottleneck (shared-bucket 429 / event loop / executor / OpenAI TPM / Upstash / Supabase / memory), each labelled MEASURED (cite ls-measured-evidence) or MODELLED (list inputs and the unmeasured assumptions: Upstash RTT, OpenAI tier). State the cascade order under a burst and what the user sees at each stage. Call out every LIVE spend exposure found (Bright Data fallback with Serper dead, Scrape.do dead token, unbounded meters) in section 0. Restate the ORDERING RULE (offloads active before the limiter key changes) with evidence. Section 2 units in the safe order. Section 3 must include: the read-only Upstash RTT measurement procedure for the orchestrator, and a READY-TO-RUN LOAD-TEST PLAN (k6 or locust script outline; an isolated Railway environment with its OWN Upstash and Supabase - never prod; staged ramp 1/3/5/10/30 concurrent; abort criteria on p95, 5xx, partial rate, spend; per-stage OpenAI/Serper spend ceiling; what to watch) explicitly PARKED pending the user's explicit GO and OpenAI credits."
  ],
- "stateFile": "C:/Users/SynAckITPC/Documents/AI/sc-review-state/docs/investigations/2026-09-06-full-review-state/partial-m22-load-scale.json",
- "reviewNotes": "C:/Users/SynAckITPC/Documents/AI/sc-review-state/docs/investigations/2026-09-06-full-review-state/FABLE_REVIEW_NOTES.md",
+ "stateFile": "C:/Users/SynAckITPC/Documents/AI/sc-review-s65/docs/investigations/2026-09-06-full-review-state/partial-m22-load-scale.json",
+ "reviewNotes": "C:/Users/SynAckITPC/Documents/AI/sc-review-s65/docs/investigations/2026-09-06-full-review-state/FABLE_REVIEW_NOTES.md",
  "missingLanes": [],
  "unverified": [],
  "secondVote": [
@@ -133,5 +133,7 @@
   }
  ],
  "haveSynth": false,
- "haveCritic": false
+ "haveCritic": false,
+ "repoNote": "REPO FOR THIS CONTINUATION (SESSION 65, 2026-09-07): read code in the worktree C:/Users/SynAckITPC/Documents/AI/sc-review-s65 (branch docs/session-65-full-review, HEAD 67e9e26 = origin/main). Its app/, SmartCompareApp/, tests/, scripts/, migrations/ and requirements are BYTE-IDENTICAL to the review base 76ace90 (verified: git diff --stat 76ace90 origin/main over those paths is empty; only docs commits landed since). Cite file:line as at 76ace90 (same lines). node_modules is present (junction), .env is present for read-only Supabase SELECT, python is the global 3.12 env (OFF-LOCK, see brief rule 6). The zero-network corpus _proof/ exists ONLY in C:/Users/SynAckITPC/Documents/AI/sc-scraper-proof (read it there; that clone is ANOTHER session's working tree - never write, run git state commands, or create files there). Scratch tests/snippets go ONLY under C:/Users/SynAckITPC/Documents/AI/sc-review-s65/.qa-m22-s65/ (gitignored); for jest, put scratch specs under C:/Users/SynAckITPC/Documents/AI/sc-review-s65/SmartCompareApp/src/__scratch_m22__/ and DELETE them when done. Never edit tracked files.",
+ "voteBatchSize": 6
 }
