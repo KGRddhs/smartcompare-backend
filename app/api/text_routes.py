@@ -898,6 +898,7 @@ def flush_live_price_key_enabled() -> bool:
 def _flush_price_cache_keys(
     brand: str, name: str, variant: Optional[str], region: str,
     q: str, product_info: Optional[Dict[str, Any]] = None,
+    category: Optional[str] = None,
 ) -> List[str]:
     """Every L1 price key this product could be cached under, most-live first.
 
@@ -909,6 +910,9 @@ def _flush_price_cache_keys(
     1. The LIVE key: the same builder, `search_query` and canonicalized
        `category` `_fetch_product_data` -> `_get_price` uses, so the identity
        token (EDP / 100ml / 256GB / FE) matches the poisoned entry.
+       `category` (the operator's chip, from the route's optional query param)
+       takes precedence over the parser's own value — see the mirror notes at
+       the call below.
     2. The raw-`q` key: the operator's own query text under the best-effort
        `_infer_category_from_query`, in case the parser normalized an axis out
        of `search_query`/`category` that the raw query still carries.
@@ -932,11 +936,29 @@ def _flush_price_cache_keys(
         if key and key not in keys:
             keys.append(key)
 
-    # Mirrors structured_comparison_service._fetch_product_data exactly.
-    search_query = info.get("search_query") or f"{brand} {name} {variant or ''}"
+    # Mirrors `structured_comparison_service._fetch_product_data` — and the two
+    # ways it did NOT, both found by the flag-discipline review of the first
+    # #55 commit and both provable now that the tests DRIVE the live writer
+    # instead of re-running this recipe:
+    #
+    # (a) CATEGORY. The live path does not key under the parser's category.
+    #     `_resolve_pair_category` resolves the PAIR category — and on the `q=`
+    #     path it returns the user's chip whenever the LLM emitted "other" —
+    #     then the A3 write-back (`_p["category"] = category_used`) stamps that
+    #     onto EVERY product dict BEFORE `_fetch_product_data` canonicalizes it.
+    #     So an electronics-chip query the LLM called "other" writes its L1
+    #     entry under "electronics" while this recipe deleted under "other".
+    #     `category` is that chip, passed by the operator; the parser's value
+    #     remains the fallback when they do not know it.
+    # (b) SEARCH_QUERY. `_fetch_product_data` uses `.get(key, default)`, so a
+    #     PRESENT-but-falsy `search_query` stays falsy and the identity text is
+    #     "" — `or` replaced it with the brand-carrying fallback and produced a
+    #     different token (a brand whose words hit the qualifier set is enough).
+    #     Mirrored exactly, `or` -> the two-arg `.get`.
+    search_query = info.get("search_query", f"{brand} {name} {variant or ''}")
     _add(build_size_aware_price_cache_key(
         brand, name, variant, region, search_query,
-        category=canonicalize_category(info.get("category")),
+        category=canonicalize_category(category or info.get("category")),
     ))
     _add(build_size_aware_price_cache_key(
         brand, name, variant, region, q,
@@ -1005,6 +1027,17 @@ async def _flush_l2_price_rows(price_keys: List[str], region: str) -> List[Dict[
 @router.delete("/cache")
 async def flush_product_cache(
     q: str = Query(..., max_length=500, description="Product query, e.g., 'rtx 3090'"),
+    category: Optional[str] = Query(
+        None, max_length=64,
+        description=(
+            "Optional: the category CHIP the poisoned comparison ran under. The "
+            "live price path keys under the PAIR-resolved category — which is "
+            "the chip whenever the LLM emitted 'other' — so passing it makes the "
+            "flush target the key that was actually written. Read ONLY when "
+            "ENABLE_FLUSH_LIVE_PRICE_KEY is on; inert (and body-invisible) "
+            "otherwise."
+        ),
+    ),
     _admin: bool = Depends(verify_admin_key),
 ):
     """
@@ -1051,7 +1084,9 @@ async def flush_product_cache(
     from app.services.price_service import negative_cache_key
     from app.services import cache_service
 
-    price_keys = _flush_price_cache_keys(brand, name, variant, FLUSH_REGION, q, p)
+    price_keys = _flush_price_cache_keys(
+        brand, name, variant, FLUSH_REGION, q, p, category=category,
+    )
 
     flushed: Dict[str, Any] = {
         # `price` stays the LIVE key so an existing consumer reading
@@ -1068,10 +1103,32 @@ async def flush_product_cache(
     l2 = await _flush_l2_price_rows(price_keys, FLUSH_REGION)
 
     cache_configured = bool(getattr(cache_service, "redis_client", None))
+
+    # Every L1 row this response reports on, flattened. `success` must not
+    # outrank the weakest of them: `delete_cached` returns False when the Redis
+    # DELETE raises (an Upstash 5xx / timeout), so with Redis CONFIGURED the old
+    # expression — L2 rows only — still said `success: true` while the poisoned
+    # key was still readable. That is the very failure this route exists to
+    # stop, one level down (cache-coherence review finding #4).
+    _l1_rows: List[Dict[str, Any]] = [
+        flushed["price"],
+        *flushed["price_additional"],
+        *flushed["negative_cache"],
+        flushed["specs"],
+        flushed["reviews"],
+    ]
+    _l1_failed = [row["key"] for row in _l1_rows if row.get("deleted") is not True]
+
     notes: List[str] = []
     if not cache_configured:
         notes.append(
             "Redis is not configured in this process — no L1 key was removed."
+        )
+    elif _l1_failed:
+        # Named, not counted: the operator has to know WHICH key survived.
+        notes.append(
+            "L1 delete FAILED for " + ", ".join(_l1_failed) + " — Redis IS "
+            "configured, so the entry may still be readable; re-run the flush."
         )
     if any(not row.get("ok") for row in l2):
         notes.append(
@@ -1085,8 +1142,13 @@ async def flush_product_cache(
         )
 
     return {
-        # Honest: False the moment any leg of the flush could not be completed.
-        "success": cache_configured and all(row.get("ok") for row in l2),
+        # Honest: False the moment any leg of the flush could not be completed —
+        # including a single L1 delete that did not land.
+        "success": (
+            cache_configured
+            and not _l1_failed
+            and all(row.get("ok") for row in l2)
+        ),
         "product": f"{brand} {name}",
         "region": FLUSH_REGION,
         "flushed": flushed,
