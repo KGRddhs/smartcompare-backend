@@ -904,6 +904,26 @@ class TestSelectPriceRow:
     def test_all_rows_malformed_returns_none(self):
         assert _select(["x", {"fetched_at": "nope"}]) is None
 
+    def test_a_genuine_row_at_position_five_still_wins(self):
+        """Depth, as a property of the SELECTOR (its companion at the
+        `get_cached_price` level is TestGetCachedPriceFlagOn's scan-depth trio).
+        Every pre-existing case here used at most 3 rows with the genuine one at
+        position 2, so nothing said what happens when several estimate rows are
+        appended on top of a genuine one — which is the append-only shape #54 is
+        about. `_select_price_row` itself is depth-INDEPENDENT: it must find the
+        genuine row wherever it sits in what the query handed it."""
+        rows = [
+            _row("estimated", timedelta(hours=1), 70.0),
+            _row("estimated", timedelta(hours=2), 71.0),
+            _row("estimated", timedelta(hours=3), 72.0),
+            _row("estimated", timedelta(hours=4), 73.0),
+            _row("woo_store_api", timedelta(days=3), 45.0),
+        ]
+        assert _select(rows)["amount"] == "45.0"
+        # ...and at position 4, and deeper than the window ever reaches.
+        assert _select(rows[:3] + [rows[4]])["amount"] == "45.0"
+        assert _select(rows[:4] * 2 + [rows[4]])["amount"] == "45.0"
+
     def test_no_freshness_window_is_widened(self):
         """A genuine row past 7d and an estimate past 24h are BOTH still rejected
         — the selector only reorders, it never extends a window."""
@@ -917,20 +937,36 @@ class TestSelectPriceRow:
 # ---------------------------------------------------------------------------
 
 
-def _mock_supabase():
+def _mock_supabase(rows):
+    """A fake Supabase that HONOURS `.limit(n)`.
+
+    Test-quality review of 7dd04c1, finding #4 (P3): the previous mock returned
+    every row it was given no matter what limit the code asked for, so
+    `_L2_PRICE_ROW_SCAN` was UNOBSERVABLE from this file — shrinking it from 5 to
+    2 left the whole file at 116 passed / 0 failed while restoring the #54 bug for
+    any product with 2+ estimate rows appended over a genuine one. A real
+    `.limit(n)` bounds the result set, so the fake does too, and the scan depth
+    becomes a fact the tests can hold."""
     client = MagicMock()
     client.table.return_value = client
     client.select.return_value = client
     client.eq.return_value = client
     client.single.return_value = client
     client.order.return_value = client
-    client.limit.return_value = client
+
+    def _limit(n):
+        client.execute.return_value = MagicMock(data=list(rows)[:n])
+        return client
+
+    client.limit.side_effect = _limit
+    # Never reached in practice (get_cached_price always calls .limit), but keeps
+    # the fake honest if that ever changes.
+    client.execute.return_value = MagicMock(data=list(rows))
     return client
 
 
 async def _cached_price(rows):
-    client = _mock_supabase()
-    client.execute.return_value = MagicMock(data=rows)
+    client = _mock_supabase(rows)
     with patch("app.services.product_data_service.get_admin_supabase_client",
                return_value=client):
         result = await pds.get_cached_price("price:abc123def4", "bahrain")
@@ -983,9 +1019,65 @@ class TestGetCachedPriceFlagOn:
 
     @pytest.mark.asyncio
     async def test_scan_window_is_widened(self):
+        """REWRITTEN pin (test-quality review of 7dd04c1, finding #4). It used to
+        assert `client.limit.call_args[0][0] == pds._L2_PRICE_ROW_SCAN`, which is a
+        tautology: it only proves the code reads the constant, and a silent shrink
+        of the constant satisfies it. MEASURED at 7dd04c1: changing
+        `_L2_PRICE_ROW_SCAN` from 5 to 2 left this file at 116 passed / 0 failed.
+        The expected depth is now a LITERAL."""
         _, client = await _cached_price([GEN_3D()])
-        assert client.limit.call_args[0][0] == pds._L2_PRICE_ROW_SCAN
-        assert pds._L2_PRICE_ROW_SCAN > 1
+        assert client.limit.call_args[0][0] == 5
+        assert pds._L2_PRICE_ROW_SCAN == 5
+
+    @pytest.mark.asyncio
+    async def test_a_genuine_row_buried_under_four_estimates_is_recovered(self):
+        """The whole POINT of the widened window, which no case exercised: five
+        `product_prices` rows, `fetched_at desc`, with four estimate rows appended
+        on top of a genuine one that is still inside its own 7d window. That is the
+        ordinary shape of an append-only table for a product the cascade keeps
+        estimating. Position 5 — the deepest the window reaches."""
+        rows = [
+            _row("estimated", timedelta(hours=1), 70.0),
+            _row("estimated", timedelta(hours=2), 71.0),
+            _row("estimated", timedelta(hours=3), 72.0),
+            _row("estimated", timedelta(hours=4), 73.0),
+            _row("woo_store_api", timedelta(days=3), 45.0),
+        ]
+        result, client = await _cached_price(rows)
+        assert client.limit.call_args[0][0] == 5
+        assert result["source_method"] == "woo_store_api"
+        assert result["amount"] == 45.0
+
+    @pytest.mark.asyncio
+    async def test_the_scan_depth_is_what_makes_that_recovery_reachable(
+        self, monkeypatch
+    ):
+        """Positive control for the two assertions above: shrink the window to 2
+        and the SAME five rows lose the genuine price to the newest estimate — the
+        exact #54 bug, restored. This is what a silent shrink would cost, and it is
+        why the depth is now pinned to a literal instead of to itself."""
+        monkeypatch.setattr(pds, "_L2_PRICE_ROW_SCAN", 2)
+        rows = [
+            _row("estimated", timedelta(hours=1), 70.0),
+            _row("estimated", timedelta(hours=2), 71.0),
+            _row("estimated", timedelta(hours=3), 72.0),
+            _row("estimated", timedelta(hours=4), 73.0),
+            _row("woo_store_api", timedelta(days=3), 45.0),
+        ]
+        result, client = await _cached_price(rows)
+        assert client.limit.call_args[0][0] == 2
+        assert result["source_method"] == "estimated"
+        assert result["amount"] == 70.0
+
+    @pytest.mark.asyncio
+    async def test_the_mock_really_honours_the_limit(self):
+        """Harness control. If `.limit(n)` were ignored (as it was at 7dd04c1) the
+        two tests above would BOTH pass at any depth and pin nothing."""
+        rows = [EST_1H(), EST_1H(), EST_1H(), EST_1H(), GEN_3D(), GEN_3D()]
+        client = _mock_supabase(rows)
+        assert len(client.limit(1).execute().data) == 1
+        assert len(client.limit(5).execute().data) == 5
+        assert len(client.limit(99).execute().data) == 6
 
 
 class TestGetCachedPriceFlagOffIsByteIdentical:
