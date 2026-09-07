@@ -16,8 +16,11 @@ attempt costs an extra 3 s of ``time.sleep`` before the second attempt.
 
 The flag ``ENABLE_UPSTASH_BOUNDED_TRANSPORT`` (default OFF) is expected to bound both.
 The client is constructed by module-level init code, so the *existing* init path is
-"import the module with this environment" - these tests drive it via ``importlib.reload``,
-which re-runs exactly the code a fresh worker process runs at boot.
+"import the module with this environment". These tests drive it by executing the module
+body in a PRIVATE instance (``importlib.util.spec_from_file_location`` +
+``module_from_spec``), which re-runs exactly the code a fresh worker process runs at boot
+WITHOUT touching ``sys.modules`` - see ``_reload_cache_service`` for why a plain
+``importlib.reload`` is not usable here (it broke an unrelated test in CI).
 """
 
 import importlib
