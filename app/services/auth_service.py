@@ -1,15 +1,30 @@
 """
 Auth Service - Supabase Authentication
+
+W0-2 (LS-REQUEST-PATH-BLOCKING-02 / -04, CR-PERFORMANCE-03) --
+ENABLE_SUPABASE_CLIENT_REUSE builds every Supabase client in this module on the
+ONE shared httpx transport owned by `database_service` (that module owns the
+transport, the flag helper and the ClientOptions builder, so both service
+modules use the SAME SSLContext and connection pool).
+
+Only the SERVICE-ROLE client is memoised. The ANON client is rebuilt on EVERY
+call, deliberately -- see `get_auth_client` for why (Fable MUST-FIX ruling
+2026-09-07: a memoised anon client takes on the last signed-in user's identity).
 """
 import asyncio
 import hashlib
 import logging
 import os
-from typing import Optional, Dict
+import threading
+from typing import Optional, Dict, Tuple
 from supabase import create_client, Client
 
 from app.services.cache_service import redis_client, _redis_offload_enabled
-from app.services.database_service import record_preference_history
+from app.services.database_service import (
+    record_preference_history,
+    build_supabase_client_options,
+    supabase_client_reuse_enabled,
+)
 from app.utils.async_utils import fire_and_forget
 from app.utils.db_offload import run_db  # M13-05 ENABLE_SYNC_DB_OFFLOAD
 
@@ -23,17 +38,126 @@ SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
 SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
 
 
+# --- W0-2: ENABLE_SUPABASE_CLIENT_REUSE client memo ------------------------
+# Neither client below was memoised, so EVERY authed request paid a fresh
+# `create_client` (~215 ms of blocking TLS setup) ON the event loop -- in
+# `verify_token` the construction sits outside `run_db`, so it blocks the loop
+# even with ENABLE_SYNC_DB_OFFLOAD on.
+#
+# This memo holds ONLY the SERVICE-ROLE client (`get_admin_client`). It stays
+# keyed by (url, key) so a key rotation cannot serve a stale client and so an
+# anon key can never land here by accident. `get_auth_client` deliberately does
+# NOT use it: the shared transport already removes ~100% of the construction
+# cost (216.62 ms -> 0.12 ms measured, .qa-w0/_rv_probe_cost.py), so memoising
+# the anon client buys nothing and costs cross-user auth-state safety.
+_CLIENT_MEMO: Dict[Tuple[str, str], Client] = {}
+_CLIENT_MEMO_LOCK = threading.Lock()
+
+
+def _build_client(url: str, key: str) -> Client:
+    """Construct ONE Supabase client on the shared transport (flag ON only).
+
+    `build_supabase_client_options()` returns None when the shared transport
+    could not be built (fail-open, see `database_service.get_shared_httpx_client`);
+    this then degrades to today's bare `create_client(url, key)` instead of
+    letting an httpx/h2 environment failure escape into the request path.
+    """
+    options = build_supabase_client_options()
+    if options is not None:
+        return create_client(url, key, options=options)
+    return create_client(url, key)
+
+
+def _memoised_client(url: str, key: str) -> Client:
+    """Return the process-wide SERVICE-ROLE client for (url, key), building it
+    once on the shared transport. Double-checked under a lock so concurrent
+    `run_db` threads cannot build two.
+
+    Safe for the service-role key ONLY: the only calls ever made on those
+    clients are `auth.admin.*` (GoTrueAdminAPI), which take their token as an
+    argument and never store a session or emit SIGNED_IN / TOKEN_REFRESHED, so
+    the client's identity cannot be re-pointed by one caller and then read by
+    the next. See `get_auth_client` for the anon-client hazard.
+    """
+    memo_key = (url, key)
+    client = _CLIENT_MEMO.get(memo_key)
+    if client is not None:
+        return client
+    with _CLIENT_MEMO_LOCK:
+        client = _CLIENT_MEMO.get(memo_key)
+        if client is None:
+            client = _build_client(url, key)
+            _CLIENT_MEMO[memo_key] = client
+    return client
+
+
+def _reset_client_cache_for_tests() -> None:
+    """Drop the memoised clients. Test-only hook (W0-2); never called from
+    production code. The shared transport is owned by `database_service` and is
+    dropped by its own hook of the same name."""
+    with _CLIENT_MEMO_LOCK:
+        _CLIENT_MEMO.clear()
+
+
 def get_auth_client() -> Client:
-    """Get Supabase client for auth operations (uses anon key)"""
+    """Get Supabase client for auth operations (uses anon key).
+
+    W0-2: under ENABLE_SUPABASE_CLIENT_REUSE (read per call) this returns a
+    FRESH client on EVERY call, built on the shared httpx transport. It is
+    NEVER memoised -- that is the binding Fable ruling of 2026-09-07, and this
+    is why.
+
+    Nine of this module's ten call sites are auth-STATE operations, not token
+    checks: `sign_up`, `sign_in_with_password` (login, plus the password checks
+    behind a password change and an email change), `refresh_session`,
+    `sign_out`, `sign_in_with_id_token`, `resend`, `reset_password_email`.
+    supabase-py stamps the signed-in user's identity onto the CLIENT OBJECT on
+    each of those:
+
+      * `supabase_auth/_sync/gotrue_client.py:342-343` (pinned 2.31.0 wheel;
+        :341-342 on the installed 2.28.0) -- a successful sign-in does
+        `_save_session(session)` then `_notify_all_subscribers("SIGNED_IN", ...)`;
+      * `supabase/_sync/client.py:99` registers `Client._listen_to_auth_events`
+        as that subscriber, and `:334-346` resets `_postgrest` / `_storage` and
+        writes `self.options.headers["Authorization"] = Bearer <that user JWT>`.
+
+    So on a process-wide client the LAST sign-in becomes the client's identity.
+    `sign_out()` takes no caller token at all (`gotrue_client.py:779-798`
+    pinned, :778-797 installed): it reads the session off the client's OWN
+    storage and calls `admin.sign_out(access_token, scope="global")`. On a
+    shared client one user's logout would therefore GLOBALLY revoke whoever
+    signed in last, across all their devices, while leaving the actual caller's
+    upstream session alive -- and any postgrest call made through that client
+    would run as that other user.
+
+    The memo would buy nothing anyway: on the shared transport a fresh client
+    costs ~0.12 ms against ~216 ms today (.qa-w0/_rv_probe_cost.py, n=20), i.e.
+    the whole CR-PERFORMANCE-03 win comes from `ClientOptions(httpx_client=)`,
+    not from caching the object.
+
+    `verify_token` is the one call site that passes the token explicitly
+    (`client.auth.get_user(access_token)`) and would have been safe either way.
+    """
     if not SUPABASE_URL or not SUPABASE_ANON_KEY:
         raise ValueError("SUPABASE_URL and SUPABASE_ANON_KEY must be set")
+    if supabase_client_reuse_enabled():
+        return _build_client(SUPABASE_URL, SUPABASE_ANON_KEY)
     return create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
 
 
 def get_admin_client() -> Client:
-    """Get Supabase client with service role (admin operations)"""
+    """Get Supabase client with service role (admin operations).
+
+    W0-2: memoised under ENABLE_SUPABASE_CLIENT_REUSE (read per call). Safe to
+    memoise, unlike the anon client above: the only calls ever made on it are
+    `auth.admin.*` (GoTrueAdminAPI), which take their token as an argument and
+    never store a session or emit SIGNED_IN, so this client's identity is
+    always the service-role key.
+    """
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
         raise ValueError("SUPABASE_URL and SUPABASE_SERVICE_KEY must be set")
+    if supabase_client_reuse_enabled():
+        return _memoised_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
     return create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
 

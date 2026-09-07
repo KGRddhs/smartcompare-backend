@@ -32,8 +32,10 @@ OFF-LOCK supabase 2.28.0 / postgrest 2.28.0 / httpx 0.27.0 (the lock pins
 """
 from __future__ import annotations
 
+import json
 import os
 import threading
+import time
 from typing import Any, Dict, List
 from unittest.mock import patch
 
@@ -50,6 +52,9 @@ TIMEOUT_ENV = "SUPABASE_POSTGREST_TIMEOUT_SECONDS"
 FAKE_URL = "https://w0-2-probe.supabase.co"
 FAKE_ANON = "w0-2-anon-key"
 FAKE_SERVICE = "w0-2-service-key"
+
+# Stand-in for a signed-in user's access token in the SIGNED_IN simulation below.
+FAKE_USER_JWT = "w0-2-alice-jwt"
 
 # Measured on this tree at base -- see test_flag_off_construction_unchanged
 # for the call-by-call derivation.
@@ -186,9 +191,18 @@ def _drive_two_routes_twice() -> List[Dict[str, Any]]:
 
 def test_create_client_called_at_most_once_per_key_kind(monkeypatch):
     """RED: with the reuse flag ON, four authenticated requests must build at
-    most two Supabase clients (one anon + one admin); today they build one per
-    `auth_service.get_admin_client()` call because that function memoises
-    nothing.
+    most two Supabase clients; today they build three, because
+    `auth_service.get_admin_client()` memoises nothing.
+
+    Framing note (Fable review 2026-09-07, S4): BOTH constructions counted here
+    are SERVICE-ROLE ones -- `auth_service.get_admin_client()` (memo 1) and
+    `database_service.get_admin_supabase_client()` (memo 1). The anon client is
+    never built on these two routes at all, because the fixture overrides
+    `get_current_user`, so `verify_token` -> `get_auth_client()` never runs. The
+    bound is therefore "<= 2 SERVICE-ROLE constructions across 4 requests", and
+    it is deliberately independent of the anon client, which
+    `test_anon_client_does_not_inherit_a_prior_sign_in` requires to be rebuilt
+    fresh on every call.
     """
     monkeypatch.setenv(FLAG, "true")
 
@@ -242,15 +256,31 @@ def test_postgrest_timeout_is_bounded_when_env_set(monkeypatch):
 
 
 def test_user_scoped_clients_do_not_share_jwt(monkeypatch):
-    """RED: with the reuse flag ON the anon client must be memoised, and two
-    concurrently-built user-scoped clients must still each carry their own JWT
-    while the shared client carries neither.
+    """With the reuse flag ON the anon client must be built FRESH on every call
+    but on the ONE shared transport, and two concurrently-built user-scoped
+    clients must still each carry their own JWT while no shared object carries
+    either.
 
-    Today `get_auth_client()` returns a fresh object on every call, so the FIRST
-    assertion (memoisation identity) is the red. The JWT-isolation assertions
-    that follow already hold today and are the invariant the implementation must
-    not break: the token lands on the per-request POSTGREST client's own
-    `headers` (`postgrest/base_client.py:54`), never on the transport session --
+    The first assertion used to demand memoisation. That was wrong and is now
+    inverted (Fable MUST-FIX ruling 2026-09-07). A process-wide anon client
+    takes on the identity of the last user to run any auth-STATE call on it:
+    `sign_in_with_password` does `_save_session(session)` then
+    `_notify_all_subscribers("SIGNED_IN", session)`
+    (`supabase_auth/_sync/gotrue_client.py:342-343`, pinned 2.31.0 wheel), and
+    `Client._listen_to_auth_events` (registered at `supabase/_sync/client.py:99`,
+    body at :334-346) stamps that user JWT onto `options.headers`. The sharpest
+    consequence is `sign_out()`: it takes NO caller token
+    (`gotrue_client.py:779-798`), reads the session off the client OWN storage
+    and calls `admin.sign_out(token, scope="global")` -- so on a shared client
+    Bob logging out would globally revoke ALICE, on every device, and leave
+    Bob upstream session alive. Hence: fresh client, shared transport, own
+    storage. The behavioural pin is
+    `test_anon_client_does_not_inherit_a_prior_sign_in` below.
+
+    The JWT-isolation assertions that follow hold both today and under the
+    implementation, and are the invariant it must not break: the token lands on
+    the per-request POSTGREST client own `headers`
+    (`postgrest/base_client.py:54`), never on the transport session --
     `postgrest.session.headers['authorization']` carries the ANON KEY, which is
     exactly why sharing one `httpx.Client` cannot bleed a JWT.
     """
@@ -258,10 +288,26 @@ def test_user_scoped_clients_do_not_share_jwt(monkeypatch):
 
     shared_a = auth_service.get_auth_client()
     shared_b = auth_service.get_auth_client()
-    assert shared_a is shared_b, (
-        f"{FLAG}=true but auth_service.get_auth_client() still returns a NEW "
-        "client on every call (no memoisation), so every request pays a fresh "
-        "TLS/SSLContext build on the event loop."
+    assert shared_a is not shared_b, (
+        f"{FLAG}=true but auth_service.get_auth_client() returned the SAME "
+        "client twice. The anon client must never be memoised: any auth-state "
+        "call re-points its identity to that user, and sign_out() would then "
+        "globally revoke whoever signed in last."
+    )
+    assert shared_a.options.httpx_client is not None, (
+        f"{FLAG}=true but the anon client carries no shared httpx transport, so "
+        "a fresh client per call would cost ~216 ms of TLS setup instead of "
+        "~0.12 ms"
+    )
+    assert shared_a.options.httpx_client is shared_b.options.httpx_client, (
+        "two anon clients got DIFFERENT httpx transports -- fresh-per-call is "
+        "only cheap because ONE transport (SSLContext + connection pool) is "
+        "shared by every construction"
+    )
+    assert shared_a.options.storage is not shared_b.options.storage, (
+        "two anon clients share one options.storage -- a sign-in on the first "
+        "would be read back by the second (supabase/_sync/client.py:113), which "
+        "is the cross-user JWT bleed the fresh-ClientOptions rule prevents"
     )
 
     built: Dict[str, Any] = {}
@@ -292,6 +338,102 @@ def test_user_scoped_clients_do_not_share_jwt(monkeypatch):
     shared_auth = shared_a.postgrest.session.headers.get("authorization", "")
     assert "TOKEN_A" not in shared_auth and "TOKEN_B" not in shared_auth, (
         f"the shared/memoised anon client leaked a user JWT: {shared_auth!r}"
+    )
+
+
+def test_anon_client_does_not_inherit_a_prior_sign_in(monkeypatch):
+    """The behavioural pin behind the identity assertions above: after a
+    SIGNED_IN event on one anon client, the NEXT `get_auth_client()` caller must
+    see the ANON key, not that user.
+
+    Object identity alone does not describe the failure, so this test drives the
+    real library mechanism offline, exactly as `.qa-w0/_rv_probe_anon_bleed.py`
+    does:
+
+      1. write a fake `Session` into the client own gotrue storage -- what
+         `_save_session(session)` does on a successful sign-in
+         (`supabase_auth/_sync/gotrue_client.py:342`, pinned 2.31.0 wheel;
+         :341 on the installed 2.28.0);
+      2. call `Client._listen_to_auth_events("SIGNED_IN", session)` -- the
+         subscriber supabase registers at `supabase/_sync/client.py:99` and
+         which `_notify_all_subscribers("SIGNED_IN", ...)` invokes on the very
+         next line of the sign-in (`gotrue_client.py:343` pinned / :342
+         installed). Its body (`supabase/_sync/client.py:334-346`) resets
+         `_postgrest` / `_storage` and writes
+         `self.options.headers["Authorization"] = Bearer <that user JWT>`.
+
+    No network is touched: `create_client` performs no I/O (spike section 1),
+    and `get_session()` on an unexpired stored session returns it straight from
+    storage without the `_call_refresh_token` branch
+    (`gotrue_client.py:645-673`).
+
+    RED against the first W0-2 implementation, which memoised the anon client:
+    there `client_b is client_a`, so `client_b.options.headers["Authorization"]`
+    would be `Bearer w0-2-alice-jwt` and `client_b.auth.get_session()` would
+    return Alice session. GREEN only when `get_auth_client()` builds a fresh
+    client, with its own `options.storage`, on every call.
+    """
+    monkeypatch.setenv(FLAG, "true")
+    monkeypatch.setenv(TIMEOUT_ENV, "8")
+
+    client_a = auth_service.get_auth_client()
+    assert client_a.options.headers["Authorization"] == f"Bearer {FAKE_ANON}", (
+        "precondition: a freshly built anon client must carry the ANON key"
+    )
+
+    fake_session = {
+        "access_token": FAKE_USER_JWT,
+        "refresh_token": "w0-2-alice-refresh",
+        "expires_in": 3600,
+        # Far enough in the future that get_session() cannot take the
+        # _call_refresh_token branch, which WOULD hit the network.
+        "expires_at": int(time.time()) + 3600,
+        "token_type": "bearer",
+        "user": {
+            "id": "w0-2-alice",
+            "app_metadata": {},
+            "user_metadata": {},
+            "aud": "authenticated",
+            "created_at": "2026-01-01T00:00:00Z",
+        },
+    }
+
+    class _FakeSession:
+        access_token = FAKE_USER_JWT
+
+    client_a.auth._storage.set_item(
+        client_a.auth._storage_key, json.dumps(fake_session)
+    )
+    client_a._listen_to_auth_events("SIGNED_IN", _FakeSession())
+
+    # Preconditions: the simulation actually took on client_a.
+    assert client_a.options.headers["Authorization"] == f"Bearer {FAKE_USER_JWT}", (
+        "precondition failed: the SIGNED_IN simulation did not stamp the user "
+        "JWT onto the client -- the library callback contract moved, so the "
+        "rest of this test would prove nothing"
+    )
+    stored = client_a.auth.get_session()
+    assert stored is not None and stored.access_token == FAKE_USER_JWT, (
+        "precondition failed: the fake Session was not stored on client_a"
+    )
+
+    client_b = auth_service.get_auth_client()
+
+    assert client_b is not client_a, (
+        "the anon client was memoised, so the next caller IS the client that "
+        "just signed Alice in"
+    )
+    assert client_b.options.headers["Authorization"] == f"Bearer {FAKE_ANON}", (
+        "the next caller anon client carries "
+        f"{client_b.options.headers['Authorization']!r} instead of the anon "
+        "key: it inherited a prior user identity. Any postgrest call through "
+        "it would run as that user, and sign_out() would revoke that user "
+        "globally instead of the caller."
+    )
+    assert client_b.auth.get_session() is None, (
+        "the next caller anon client can read a prior user stored session, so "
+        "sign_out() on it would revoke that user (scope='global') rather than "
+        "the caller -- options.storage must be per-construction"
     )
 
 
@@ -448,4 +590,52 @@ def test_client_options_fresh_per_construction_but_transport_shared(monkeypatch)
         "the two constructions share one options.storage -- a sign-in on one "
         "user's client would be read back into the next user's client "
         "(spike hazard 1, cross-user JWT bleed)"
+    )
+
+
+# ---------------------------------------------------------------------------
+# 6. the flag is a real kill-switch, without a restart
+#    (Fable review 2026-09-07, S2)
+# ---------------------------------------------------------------------------
+
+
+def test_admin_client_reverts_when_flag_is_switched_off(monkeypatch):
+    """Flipping ENABLE_SUPABASE_CLIENT_REUSE OFF must restore the library
+    timeout on `database_service.get_admin_supabase_client()` immediately.
+
+    `_admin_client` is a module-level singleton that predates W0-2, so the
+    `if _admin_client is None` memo check runs BEFORE any flag check: without
+    provenance tracking, a Railway rollback keeps serving the 8 s-bounded,
+    shared-transport client until the process restarts, while
+    `auth_service.get_admin_client()` (which checks the flag first) reverts at
+    once -- leaving the two admin clients on DIFFERENT timeouts.
+
+    That matters because the 8 s bound reaching the legacy unbounded
+    `/home/savings` scan is an accepted flag-ON canary-watch item: if the canary
+    shows the bound cutting that scan, the flag has to be able to undo it
+    without a redeploy.
+    """
+    monkeypatch.setenv(FLAG, "true")
+    monkeypatch.setenv(TIMEOUT_ENV, "8")
+
+    bounded = database_service.get_admin_supabase_client()
+    assert bounded.postgrest.session.timeout.read == 8.0, (
+        f"{FLAG}=true with {TIMEOUT_ENV}=8 must bound the admin client "
+        f"postgrest read timeout at 8.0s -- got "
+        f"{bounded.postgrest.session.timeout.read}s"
+    )
+
+    monkeypatch.delenv(FLAG, raising=False)  # Railway rollback, no restart
+
+    reverted = database_service.get_admin_supabase_client()
+    assert reverted is not bounded, (
+        "flag OFF still served the client built while the flag was ON, so the "
+        "kill-switch needs a redeploy to take effect"
+    )
+    assert (
+        reverted.postgrest.session.timeout.read == LIBRARY_DEFAULT_POSTGREST_TIMEOUT
+    ), (
+        "flag OFF must restore the library default postgrest read timeout "
+        f"({LIBRARY_DEFAULT_POSTGREST_TIMEOUT}s) -- got "
+        f"{reverted.postgrest.session.timeout.read}s"
     )

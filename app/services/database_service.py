@@ -4,12 +4,21 @@ Database Service - Supabase integration for storing comparisons and user data.
 Two client paths:
   - get_user_supabase_client(access_token): anon key + user JWT -> RLS enforced
   - get_admin_supabase_client(): service-role key -> bypasses RLS (admin only)
+
+W0-2 (LS-REQUEST-PATH-BLOCKING-02 / -04, CR-PERFORMANCE-03) --
+ENABLE_SUPABASE_CLIENT_REUSE: this module also owns the ONE shared
+`httpx.Client` every Supabase client is built on when that flag is ON. See
+`build_supabase_client_options` for the design and its two deliberate
+consequences.
 """
 import logging
 import os
+import threading
 from typing import Dict, List, Optional
 from datetime import datetime, timezone
-from supabase import create_client, Client
+
+import httpx
+from supabase import create_client, Client, ClientOptions
 
 from app.utils.db_offload import run_db  # M13-05 ENABLE_SYNC_DB_OFFLOAD
 
@@ -22,6 +31,32 @@ SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
 
 # Admin client singleton (for health check, admin analytics, anonymous inserts)
 _admin_client: Optional[Client] = None
+# W0-2/S2: which flag state `_admin_client` was BUILT under (None = not built
+# yet). Without it the `if _admin_client is None` memo check short-circuits the
+# flag check, so flipping ENABLE_SUPABASE_CLIENT_REUSE OFF in Railway would keep
+# serving the bounded, shared-transport client until a restart -- i.e. the flag
+# would not be a real kill-switch for this module (it already is for
+# `auth_service.get_admin_client`, which would leave the two admin clients on
+# DIFFERENT timeouts after a rollback).
+_admin_client_reuse: Optional[bool] = None
+
+# --- W0-2: ENABLE_SUPABASE_CLIENT_REUSE shared transport -------------------
+# The ONE process-wide httpx.Client every Supabase client is built on when the
+# flag is ON, plus the lock guarding it and the memoised admin client.
+_SHARED_HTTPX: Optional[httpx.Client] = None
+# W0-2/S1: set once if the transport build ever raises, so the WARNING is logged
+# once per process instead of once per request.
+_SHARED_HTTPX_FAILED = False
+# Two locks, never one: the admin-client build happens INSIDE `_CLIENT_LOCK`
+# and itself needs the transport, so a single non-reentrant lock deadlocks.
+# Ordering is always _CLIENT_LOCK -> _TRANSPORT_LOCK, never the reverse.
+_CLIENT_LOCK = threading.Lock()
+_TRANSPORT_LOCK = threading.Lock()
+
+SUPABASE_CLIENT_REUSE_FLAG = "ENABLE_SUPABASE_CLIENT_REUSE"
+SUPABASE_POSTGREST_TIMEOUT_ENV = "SUPABASE_POSTGREST_TIMEOUT_SECONDS"
+_DEFAULT_POSTGREST_TIMEOUT_SECONDS = 8.0
+_SHARED_CONNECT_TIMEOUT_SECONDS = 3.0
 
 # Canonical change_source enum for user_preference_history (Migration 029).
 # MUST stay in sync with the 029 CHECK constraint — drift is guarded by
@@ -35,21 +70,213 @@ VALID_PREFERENCE_CHANGE_SOURCES = frozenset({
 })
 
 
+def supabase_client_reuse_enabled() -> bool:
+    """W0-2 -- ENABLE_SUPABASE_CLIENT_REUSE, read PER CALL via os.getenv (the
+    price_service.exact_gate_enabled idiom) so Railway flips it without a
+    restart. Default OFF."""
+    return os.getenv(SUPABASE_CLIENT_REUSE_FLAG, "").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
+def shared_postgrest_timeout_seconds() -> float:
+    """Seconds for SUPABASE_POSTGREST_TIMEOUT_SECONDS (default 8). A garbage
+    value degrades to the default rather than crashing a request path."""
+    raw = os.getenv(SUPABASE_POSTGREST_TIMEOUT_ENV, "").strip()
+    if not raw:
+        return _DEFAULT_POSTGREST_TIMEOUT_SECONDS
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        logger.warning(
+            "[supabase] ignoring non-numeric %s=%r; using %ss",
+            SUPABASE_POSTGREST_TIMEOUT_ENV, raw, _DEFAULT_POSTGREST_TIMEOUT_SECONDS,
+        )
+        return _DEFAULT_POSTGREST_TIMEOUT_SECONDS
+    if value <= 0:
+        logger.warning(
+            "[supabase] ignoring non-positive %s=%r; using %ss",
+            SUPABASE_POSTGREST_TIMEOUT_ENV, raw, _DEFAULT_POSTGREST_TIMEOUT_SECONDS,
+        )
+        return _DEFAULT_POSTGREST_TIMEOUT_SECONDS
+    return value
+
+
+def get_shared_httpx_client() -> Optional[httpx.Client]:
+    """W0-2 -- the ONE httpx.Client shared by every Supabase client under
+    ENABLE_SUPABASE_CLIENT_REUSE. Built lazily under `_TRANSPORT_LOCK`.
+
+    ~100% of a `create_client` call is httpx's default TLS setup (a fresh
+    SSLContext + certifi CA bundle load): ~215 ms on the dev box, ~450 ms for a
+    user-scoped client that also touches `.postgrest`, all of it blocking CPU ON
+    the event loop. Sharing one transport takes that to ~0.06 ms and keeps one
+    keep-alive connection pool for the whole process.
+
+    The timeout is read WHEN THE TRANSPORT IS BUILT, i.e. once per process --
+    unlike the flag, a change to SUPABASE_POSTGREST_TIMEOUT_SECONDS needs a
+    restart/redeploy to take effect.
+
+    NEVER close this client: closing it would kill the transport for every
+    Supabase client in the process.
+
+    FAILS OPEN (S1). `http2=True` needs the `h2` package, so an environment
+    drift is the realistic failure here. Every flag-ON construction site reaches
+    this function, and those sites cannot fail this way today, so any exception
+    is swallowed: log ONCE at WARNING (module latch) and return None. The
+    callers then build today's bare `create_client(url, key)`, degrading to
+    today's transport rather than raising into the request path -- the same
+    contract W0-3 mandates for the analogous case. The build is retried on the
+    next call (it fails fast) so a transient failure can still recover, but only
+    the first one is logged.
+    """
+    global _SHARED_HTTPX, _SHARED_HTTPX_FAILED
+    if _SHARED_HTTPX is None:
+        with _TRANSPORT_LOCK:
+            if _SHARED_HTTPX is None:
+                timeout = shared_postgrest_timeout_seconds()
+                try:
+                    _SHARED_HTTPX = httpx.Client(
+                        timeout=httpx.Timeout(
+                            timeout, connect=_SHARED_CONNECT_TIMEOUT_SECONDS
+                        ),
+                        http2=True,
+                        follow_redirects=True,
+                        limits=httpx.Limits(
+                            max_connections=100, max_keepalive_connections=20
+                        ),
+                    )
+                except Exception:  # noqa: BLE001 - deliberate fail-open
+                    if not _SHARED_HTTPX_FAILED:
+                        _SHARED_HTTPX_FAILED = True
+                        logger.warning(
+                            "[supabase] shared httpx transport could not be built; "
+                            "falling back to per-client transports (today's behaviour). "
+                            "This is logged once per process.",
+                            exc_info=True,
+                        )
+                    return None
+                logger.info(
+                    "[supabase] shared httpx transport built: read=%ss connect=%ss",
+                    timeout, _SHARED_CONNECT_TIMEOUT_SECONDS,
+                )
+    return _SHARED_HTTPX
+
+
+def build_supabase_client_options() -> Optional[ClientOptions]:
+    """W0-2 -- a FRESH ClientOptions carrying the SHARED httpx client, or None
+    if the shared transport could not be built (S1 fail-open; callers then use
+    today's bare `create_client(url, key)`).
+
+    Fresh per construction is load-bearing: `supabase/_sync/client.py:72` does
+    `self.options = copy.copy(options)` -- a SHALLOW copy -- so a module-level
+    options object would hand every client the SAME `options.storage`. With
+    `persist_session=True` (the default) one user's sign-in Session is written
+    into that shared storage and the next `Client.create()` reads it back and
+    stamps that JWT into its own headers: a cross-user JWT bleed. Sharing the
+    TRANSPORT is safe (postgrest/gotrue/storage adopt an injected client as-is
+    and never write an Authorization header onto it -- every leg passes its
+    headers per request); sharing the OPTIONS is not.
+
+    Only `httpx_client=` is passed. `postgrest_client_timeout` /
+    `storage_client_timeout` are inert once a shared client is adopted (the
+    library skips the `timeout=` forward on that branch) and emit a
+    DeprecationWarning on the pinned 2.31.0, so the bound lives on the shared
+    client itself.
+
+    Two deliberate, test-pinned consequences of ONE shared transport:
+      * the gotrue leg moves off httpx's 5.0 s default onto this knob's value
+        (8 s by default) -- a LOOSENING of the auth ceiling;
+      * `/home/savings`' legacy unbounded scan inherits the same bound (no
+        per-route override; #116 / migration 036 is the real fix). Canary-watch.
+    """
+    shared = get_shared_httpx_client()
+    if shared is None:
+        return None
+    return ClientOptions(httpx_client=shared)
+
+
+def _reset_client_cache_for_tests() -> None:
+    """Drop the memoised admin client (and its flag provenance) AND the shared
+    transport + its fail-open latch. Test-only hook (W0-2); never called from
+    production code. The shared client is deliberately NOT closed -- see
+    get_shared_httpx_client."""
+    global _admin_client, _admin_client_reuse, _SHARED_HTTPX, _SHARED_HTTPX_FAILED
+    with _CLIENT_LOCK:
+        _admin_client = None
+        _admin_client_reuse = None
+    with _TRANSPORT_LOCK:
+        _SHARED_HTTPX = None
+        _SHARED_HTTPX_FAILED = False
+
+
+def _construct_admin_client(reuse: bool) -> Client:
+    """Build ONE service-role client. `reuse=False` is the literal base
+    expression (bare positional `create_client`, no `options=`), which is also
+    the S1 fail-open fallback when the shared transport is unavailable."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        raise ValueError("SUPABASE_URL and SUPABASE_SERVICE_KEY must be set")
+    if reuse:
+        options = build_supabase_client_options()
+        if options is not None:
+            return create_client(
+                SUPABASE_URL, SUPABASE_SERVICE_KEY, options=options
+            )
+    return create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+
+
 def get_admin_supabase_client() -> Client:
-    """Get Supabase client with service-role key. ONLY for admin operations."""
-    global _admin_client
+    """Get Supabase client with service-role key. ONLY for admin operations.
+
+    W0-2: memoised as it already was, but the memo now records WHICH flag state
+    it was built under, so flipping ENABLE_SUPABASE_CLIENT_REUSE at runtime
+    rebuilds instead of serving the old client until a restart (S2). Flag OFF
+    from process start is unchanged: first call builds with the bare
+    `create_client`, every later call returns that singleton.
+    """
+    global _admin_client, _admin_client_reuse
+    reuse = supabase_client_reuse_enabled()
     if _admin_client is None:
-        if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
-            raise ValueError("SUPABASE_URL and SUPABASE_SERVICE_KEY must be set")
-        _admin_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+        if reuse:
+            # W0-2: double-checked under the lock so concurrent run_db threads
+            # build exactly one admin client, on the shared transport.
+            with _CLIENT_LOCK:
+                if _admin_client is None:
+                    _admin_client = _construct_admin_client(True)
+                    _admin_client_reuse = True
+        else:
+            # Base branch, deliberately lock-free: today's benign race (two
+            # threads can both build) is left exactly as it is when the flag
+            # is OFF.
+            _admin_client = _construct_admin_client(False)
+            _admin_client_reuse = False
+    elif _admin_client_reuse is not None and _admin_client_reuse != reuse:
+        # The flag flipped since this client was built. The Railway rollback
+        # direction is the one that matters: it must restore the 120 s timeout
+        # rather than keep serving the 8 s-bounded client until a restart.
+        with _CLIENT_LOCK:
+            if _admin_client_reuse != reuse:
+                _admin_client = _construct_admin_client(reuse)
+                _admin_client_reuse = reuse
     return _admin_client
 
 
 def get_user_supabase_client(access_token: str) -> Client:
-    """Get Supabase client with anon key + user JWT. RLS is enforced."""
+    """Get Supabase client with anon key + user JWT. RLS is enforced.
+
+    W0-2: still ONE client per request under the flag -- the JWT belongs on the
+    per-request postgrest client's own header bag, never on a shared object --
+    but it is built on the shared transport, so it costs ~0.06 ms instead of
+    ~450 ms of TLS setup on the event loop.
+    """
     if not SUPABASE_URL or not SUPABASE_ANON_KEY:
         raise ValueError("SUPABASE_URL and SUPABASE_ANON_KEY must be set")
-    client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+    options = (
+        build_supabase_client_options() if supabase_client_reuse_enabled() else None
+    )
+    if options is not None:
+        client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY, options=options)
+    else:
+        client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
     client.postgrest.auth(access_token)
     return client
 
