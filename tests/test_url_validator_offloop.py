@@ -17,13 +17,18 @@ otherwise exercises today's sync path.
 
 Contract under ``ENABLE_OFFLOOP_DNS_RESOLVE`` (default OFF, read per call):
   * the resolve runs in a DEDICATED ThreadPoolExecutor named ``dns-resolve``
-    (``DNS_RESOLVER_POOL_SIZE``, default 4) -- never the shared ``qaren-worker``
-    pool, because a libc getaddrinfo cannot be cancelled and the zombie count
-    must be bounded by this pool alone;
+    (``DNS_RESOLVER_POOL_SIZE``, default 16, clamped to 1..64) -- never the
+    shared ``qaren-worker`` pool, because a libc getaddrinfo cannot be
+    cancelled and the zombie count must be bounded by this pool alone;
   * it is bounded by ``DNS_RESOLVE_TIMEOUT_SECONDS`` (default 2.0) and fails
     CLOSED (False) on TimeoutError / socket.gaierror, exactly like today's
     gaierror branch;
-  * positive AND negative results are memoised for 60s (bounded, ~512 entries);
+  * CONFIRMED NEGATIVES ONLY are memoised for 60s (bounded, ~512 entries): a
+    gaierror, a private/loopback/link-local/reserved verdict, and a timeout
+    whose resolve actually STARTED. A successful public resolve is NEVER
+    memoised (a positive memo is a deterministic 60s DNS-rebinding replay
+    window on unauthenticated routes) and neither is a timeout whose resolve
+    never left the pool queue (that would blacklist a host nobody resolved);
   * with the flag OFF the sync path is byte-identical to today: a direct
     ``socket.getaddrinfo`` on the caller's thread, no pool, no memo.
 
@@ -35,6 +40,7 @@ import os
 import socket
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
@@ -224,22 +230,211 @@ def test_negative_result_is_memoized(monkeypatch):
     )
 
 
-def test_positive_result_is_memoized(monkeypatch):
-    """The memo must cover successful resolves too (the price path validates
-    the same host once per redirect hop)."""
+def test_positive_result_is_not_memoized(monkeypatch):
+    """SECURITY: a successful public resolve must NEVER be memoised.
+
+    The W0-1 spec originally ordered a memo over BOTH polarities. The adversarial
+    review measured what the positive half costs
+    (``.qa-w0/qa_probes/p3_memo.py``, case ``c2_dns_rebinding``): a host that
+    first resolves to ``93.184.216.34`` and then rebinds to the cloud-metadata
+    address ``169.254.169.254`` kept validating True for the rest of the 60s
+    window --
+
+        flag_on_first(public)                   : true
+        flag_on_after_rebind_to_169.254.169.254 : true    <-- SSRF guard bypassed
+        flag_off_after_rebind (== base)         : false
+
+    -- so the memo converted the guard's millisecond-wide DNS-rebinding TOCTOU
+    into a DETERMINISTIC 60s replay window on the UNAUTHENTICATED
+    ``/api/v1/url/*`` front door. The P0 is entirely about the NEGATIVE case (a
+    black-holed host re-resolved per URL and per hop), so the positive half buys
+    little and costs a security regression. Contract: a public host is
+    re-resolved on EVERY call, exactly as base does.
+    """
     monkeypatch.setenv(FLAG, "true")
+    uv._reset_dns_state_for_tests()
     calls = []
     _stub_getaddrinfo(monkeypatch, 0, calls, result=_PUBLIC_ADDRINFO)
-    url = "https://memo-positive-w01.example/p"
+    host = "memo-positive-w01.example"
+    url = f"https://{host}/p"
 
     first = asyncio.run(_validate_under_flag(url))
     second = asyncio.run(_validate_under_flag(url))
 
     assert first is True and second is True, "a public host must validate True"
-    assert len(calls) == 1, (
-        "the 60s resolver memo is missing for POSITIVE results: two "
-        f"validations of the same host made {len(calls)} getaddrinfo calls "
-        "(expected 1)."
+    assert len(calls) == 2, (
+        "a POSITIVE verdict was memoised: two validations of the same public "
+        f"host made {len(calls)} getaddrinfo calls (expected 2 -- every call "
+        "must re-resolve, or a rebinding host replays a stale True for 60s)."
+    )
+    assert uv._memo_get(host) is None, (
+        f"the memo must hold CONFIRMED NEGATIVES ONLY, but {host!r} was stored "
+        f"as {uv._memo_get(host)!r} after a successful resolve"
+    )
+
+    # ...and the measured consequence: a rebinding host must not replay True.
+    rebind_host = "rebind-w01.example"
+    current = {"ip": "93.184.216.34"}
+
+    def _rebinding(host_arg, port, *args, **kwargs):
+        calls.append(host_arg)
+        return [
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", (current["ip"], 0))
+        ]
+
+    monkeypatch.setattr(uv.socket, "getaddrinfo", _rebinding)
+    assert asyncio.run(_validate_under_flag(f"https://{rebind_host}/x")) is True
+    current["ip"] = "169.254.169.254"  # rebind to the cloud-metadata address
+    assert asyncio.run(_validate_under_flag(f"https://{rebind_host}/x")) is False, (
+        "a host that rebinds to 169.254.169.254 after one good resolve still "
+        "validates True -- the positive memo is replaying a stale verdict past "
+        "the SSRF guard, on an unauthenticated route. Base re-resolves every "
+        "call and returns False here."
+    )
+
+
+def test_queued_but_never_started_resolve_is_not_memoized(monkeypatch):
+    """MUST-FIX regression pin: never record a verdict about a host that was
+    never resolved.
+
+    ``ThreadPoolExecutor`` QUEUES work past its worker count, but
+    ``asyncio.wait_for``'s clock starts at the await -- so a validation that
+    never reached a worker still hits the bound. Recording that False in the 60s
+    memo blacklists a host NOTHING ever looked up. Measured at the shipped
+    defaults (``.qa-w0/qa_probes/p6_realistic_starvation.py``): 4 black-holed
+    hosts saturating the pool memoised 8 of 8 unrelated HEALTHY storefronts as
+    False, and the price path then served them straight from the poisoned memo
+    with no resolve and no fetch -- making flag ON strictly WORSE than flag OFF
+    for price capture.
+
+    Contract: a queued-only timeout fails closed for THIS call and writes
+    NOTHING, so an immediate retry against a free pool resolves normally.
+    """
+    monkeypatch.setenv(FLAG, "true")
+    monkeypatch.setenv("DNS_RESOLVE_TIMEOUT_SECONDS", "0.3")
+    uv._reset_dns_state_for_tests()
+
+    # A one-worker pool makes "queued past the bound" deterministic instead of
+    # load-dependent. monkeypatch restores the module pool afterwards.
+    pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="dns-resolve")
+    monkeypatch.setattr(uv, "_DNS_POOL", pool)
+
+    blackhole = "queue-blackhole-w01.example"
+    healthy = "queue-healthy-w01.example"
+    release = threading.Event()
+    started = []
+    lock = threading.Lock()
+
+    def _stub(host, port, *args, **kwargs):
+        with lock:
+            started.append(host)
+        if host == blackhole:
+            release.wait(20.0)
+            raise socket.gaierror(-2, "Name or service not known")
+        return _PUBLIC_ADDRINFO
+
+    monkeypatch.setattr(uv.socket, "getaddrinfo", _stub)
+
+    async def _drive():
+        parked = asyncio.create_task(
+            uv.validate_external_url_async(f"https://{blackhole}/x")
+        )
+        await asyncio.sleep(0.1)  # the single worker is now parked
+        queued = await uv.validate_external_url_async(f"https://{healthy}/p")
+        snapshot = (list(started), uv._memo_get(healthy))
+        release.set()
+        await parked
+        retry = await uv.validate_external_url_async(f"https://{healthy}/p")
+        return queued, snapshot, retry
+
+    try:
+        queued, (started_snapshot, memo_snapshot), retry = asyncio.run(_drive())
+    finally:
+        release.set()
+        pool.shutdown(wait=False)
+
+    assert queued is False, "a queued-out validation must still fail CLOSED"
+    assert healthy not in started_snapshot, (
+        "precondition: the healthy host's resolve must never have reached a "
+        f"worker, but the stub recorded {started_snapshot!r}"
+    )
+    assert memo_snapshot is None, (
+        f"the healthy host {healthy!r} was memoised as {memo_snapshot!r} after a "
+        "timeout its resolve NEVER STARTED -- that is a 60s blacklist of a host "
+        "nothing ever looked up. Only a STARTED timeout (a genuinely slow or "
+        "black-holed resolver) may be memoised."
+    )
+    assert retry is True, (
+        "with the pool free again the healthy host must resolve and validate "
+        f"True, got {retry!r} (a poisoned memo is still short-circuiting it)"
+    )
+
+
+def test_started_timeout_is_memoized(monkeypatch):
+    """The other half of the must-fix: a timeout whose resolve DID start is a
+    real signal about a slow / black-holed resolver, and memoising it is the
+    P0's win (one resolve instead of one per URL and per redirect hop). It must
+    survive the queued-timeout fix."""
+    monkeypatch.setenv(FLAG, "true")
+    monkeypatch.setenv("DNS_RESOLVE_TIMEOUT_SECONDS", "0.3")
+    uv._reset_dns_state_for_tests()
+    calls = []
+    _stub_getaddrinfo(monkeypatch, 1.0, calls)  # starts, then far outruns the bound
+    host = "slow-started-w01.example"
+    url = f"https://{host}/x"
+
+    first = asyncio.run(uv.validate_external_url_async(url))
+    memoised = uv._memo_get(host)
+    second = asyncio.run(uv.validate_external_url_async(url))
+
+    assert first is False and second is False, "both calls must fail CLOSED"
+    assert memoised is False, (
+        "a STARTED timeout must be memoised -- that is the P0 fix: without it a "
+        "black-holed host is re-resolved on every URL and every redirect hop"
+    )
+    assert calls == [host], (
+        "the second validation must be served from the memo without a second "
+        f"getaddrinfo, got {calls!r}"
+    )
+
+
+def test_memo_is_bounded_has_a_60s_ttl_and_is_resettable(monkeypatch):
+    """Coverage for the three memo invariants the W0-1 red tests never pinned
+    (adversarial review, should_fix 4): the 512-entry cap, the 60s TTL, and
+    ``_reset_dns_state_for_tests`` (which must clear the memo and must NOT join
+    the pool -- an uncancellable getaddrinfo would hang the caller)."""
+    # (i) the cap holds under a flood of puts
+    uv._reset_dns_state_for_tests()
+    for i in range(uv._MEMO_MAX_ENTRIES + 128):
+        uv._memo_put(f"cap{i}-w01.example", False)
+    assert len(uv._DNS_MEMO) <= uv._MEMO_MAX_ENTRIES, (
+        f"memo grew to {len(uv._DNS_MEMO)} entries, cap is "
+        f"{uv._MEMO_MAX_ENTRIES}"
+    )
+
+    # (ii) the TTL is 60s and an expired entry is dropped on read
+    uv._reset_dns_state_for_tests()
+    host = "ttl-w01.example"
+    uv._memo_put(host, False)
+    expiry, result = uv._DNS_MEMO[host]
+    assert result is False
+    remaining = expiry - time.monotonic()
+    assert 55.0 < remaining <= 60.0, f"TTL should be ~60s, got {remaining:.1f}s"
+    assert uv._memo_get(host) is False
+    uv._DNS_MEMO[host] = (time.monotonic() - 1.0, False)
+    assert uv._memo_get(host) is None, "an expired entry must not be served"
+    assert host not in uv._DNS_MEMO, "an expired entry must be evicted on read"
+
+    # (iii) the reset helper clears the memo and leaves the pool alive
+    monkeypatch.setenv(FLAG, "true")
+    pool = uv._dns_pool()
+    uv._memo_put("reset-w01.example", False)
+    uv._reset_dns_state_for_tests()
+    assert uv._DNS_MEMO == {}, "the reset helper must clear the memo"
+    assert uv._DNS_POOL is pool, "the reset helper must not replace the pool"
+    assert pool._shutdown is False, (
+        "the reset helper must NOT shut the pool down: joining a parked, "
+        "uncancellable getaddrinfo would hang the caller"
     )
 
 
@@ -280,9 +475,46 @@ def test_resolver_uses_dedicated_pool(monkeypatch):
         "ThreadPoolExecutor used for the resolve"
     )
     assert getattr(pool, "_thread_name_prefix", "") == "dns-resolve"
-    assert pool._max_workers == 4, (
-        f"DNS_RESOLVER_POOL_SIZE default must be 4, got {pool._max_workers}"
+    assert pool._max_workers == 16, (
+        "DNS_RESOLVER_POOL_SIZE default must be 16, got "
+        f"{pool._max_workers}. The ordinary price fan-out runs 10-20 concurrent "
+        "validations (one task per candidate URL, two products in parallel), so "
+        "a pool of 4 made queue-induced timeouts the NORMAL case."
     )
+
+
+def test_pool_size_knob_defaults_to_16_and_is_clamped(monkeypatch):
+    """``DNS_RESOLVER_POOL_SIZE`` degrades junk/zero/negative to the default and
+    CLAMPS everything else to 1..64.
+
+    The clamp is load-bearing: bounding the uncancellable-``getaddrinfo`` zombie
+    count is the entire reason this pool is dedicated, and the review measured
+    an unclamped ``1000000`` building a million-worker ``ThreadPoolExecutor``
+    (``.qa-w0/qa_probes/p4_pool.py`` d3_pool_size_knob).
+    """
+    cases = [
+        (None, 16),
+        ("", 16),
+        ("0", 16),
+        ("-4", 16),
+        ("garbage", 16),
+        ("4.5", 16),
+        ("1", 1),
+        ("4", 4),
+        ("16", 16),
+        ("64", 64),
+        ("65", 64),
+        ("1000000", 64),
+    ]
+    for raw, expected in cases:
+        if raw is None:
+            monkeypatch.delenv("DNS_RESOLVER_POOL_SIZE", raising=False)
+        else:
+            monkeypatch.setenv("DNS_RESOLVER_POOL_SIZE", raw)
+        assert uv._dns_pool_size() == expected, (
+            f"DNS_RESOLVER_POOL_SIZE={raw!r} resolved to "
+            f"{uv._dns_pool_size()}, expected {expected}"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -418,6 +650,11 @@ def test_url_routes_use_offloop_validator_under_flag(monkeypatch):
     status_on, ticks_on, stall_on, elapsed_on = _drive_url_compare_with_heartbeat()
 
     assert status_on == 400, f"expected 400 under the flag too, got {status_on}"
+    assert calls_on == ["route-blackhole-w01.example"], (
+        "the or-chain short-circuit must hold under the flag too: url2 is "
+        "never validated once url1 is blocked, so exactly one resolve is "
+        f"expected on the route path, got {calls_on!r}"
+    )
     assert ticks_on > 0, (
         "POST /api/v1/url/compare produced no heartbeat ticks at all under "
         f"{FLAG}=true (request took {elapsed_on:.2f}s)"

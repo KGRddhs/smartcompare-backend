@@ -347,3 +347,135 @@ def test_shopify_fetch_once_validates_off_loop_under_flag(monkeypatch):
         "call the async twin _hop_is_allowed_async under the flag; the sync "
         "_hop_is_allowed at :284 cannot leave the loop."
     )
+
+
+# ---------------------------------------------------------------------------
+# (D) The realistic price-path fan-out -- a black-holed burst must not
+#     blacklist healthy storefronts (adversarial-review must-fix, probe p6)
+# ---------------------------------------------------------------------------
+
+_PUBLIC_ADDRINFO = [
+    (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 0)),
+]
+
+
+def test_blackholed_burst_does_not_blacklist_healthy_storefronts(monkeypatch):
+    """MUST-FIX regression pin, price-path shape, at the DEFAULT knobs.
+
+    ``price_service.fan_out_price_lookup`` launches ONE validation task per
+    candidate URL and the two products run in parallel, so 10-20 concurrent
+    validations is the ORDINARY price path, not a burst. With a 4-worker pool
+    the review measured (``.qa-w0/qa_probes/p6_realistic_starvation.py``, pool=4
+    / timeout=2.0 / ttl=60):
+
+        resolves_actually_started:            blackhole0..3 only
+        HEALTHY_HOSTS_WRONGLY_REJECTED:       store0..store7  (8 of 8)
+        HEALTHY_HOSTS_MEMOISED_FALSE_FOR_60s: store0..store7  (8 of 8)
+        downstream: curl_fetch_html_same_site -> None, resolve_attempted: []
+
+    i.e. four black-holed hosts took every worker, the eight unrelated healthy
+    storefronts timed out IN THE QUEUE, and each was blacklisted for 60s -- so
+    flag ON was strictly WORSE than flag OFF for price capture (at base every
+    healthy host is slow but ultimately resolved and allowed).
+
+    Contract, and what this pins: a pool sized for the real fan-out (default
+    16), plus "never memoise a verdict about a host that was never resolved".
+    Zero healthy hosts rejected, zero healthy hosts memoised, while the P0's
+    own win -- a STARTED timeout memoised so the price path stops re-resolving
+    a black hole per URL and per hop -- is preserved.
+    """
+    monkeypatch.setenv(FLAG, "true")
+    monkeypatch.delenv("DNS_RESOLVER_POOL_SIZE", raising=False)
+    monkeypatch.delenv("DNS_RESOLVE_TIMEOUT_SECONDS", raising=False)
+    uv._reset_dns_state_for_tests()
+
+    pool = uv._dns_pool()
+    assert pool._max_workers == 16, (
+        "precondition: the DEFAULT resolver pool must be 16 workers (the "
+        f"ordinary price fan-out is 10-20 concurrent validations), got "
+        f"{pool._max_workers}"
+    )
+
+    black = [f"burst-blackhole{i}-w01.example" for i in range(4)]
+    healthy = [f"burst-store{i}-w01.example" for i in range(8)]
+    release = threading.Event()
+    started = []
+    lock = threading.Lock()
+
+    def _stub(host, port, *args, **kwargs):
+        with lock:
+            started.append(host)
+        if host in black:
+            release.wait(30.0)  # released by the test, never a real 12s stall
+            raise socket.gaierror(-2, "Name or service not known")
+        time.sleep(0.05)  # a healthy cold resolve
+        return _PUBLIC_ADDRINFO
+
+    monkeypatch.setattr(uv.socket, "getaddrinfo", _stub)
+
+    async def _fanout():
+        hosts = black + healthy
+        results = await asyncio.gather(
+            *[
+                uv.validate_external_url_async(f"https://{h}/products/x")
+                for h in hosts
+            ]
+        )
+        return dict(zip(hosts, results))
+
+    try:
+        verdicts = asyncio.run(_fanout())
+    finally:
+        release.set()
+
+    wrongly_rejected = [h for h in healthy if verdicts[h] is not True]
+    assert wrongly_rejected == [], (
+        f"{len(wrongly_rejected)} of {len(healthy)} HEALTHY storefronts were "
+        f"rejected because four black-holed hosts saturated the resolver pool: "
+        f"{wrongly_rejected!r}. On the price path that is a capture loss the "
+        "flag-OFF code does not have."
+    )
+    poisoned = [h for h in healthy if uv._memo_get(h) is not None]
+    assert poisoned == [], (
+        f"HEALTHY storefronts were memoised for 60s after a queue-induced "
+        f"timeout their resolve never even started: {poisoned!r}"
+    )
+    assert all(verdicts[h] is False for h in black), (
+        f"the black-holed hosts must still fail CLOSED, got {verdicts!r}"
+    )
+    assert uv._memo_get(black[0]) is False, (
+        "the P0's win must survive: a STARTED timeout is still memoised, so a "
+        "black hole is resolved once instead of once per URL and per hop"
+    )
+
+    # Downstream, on the real price-path helper: the black-holed host is
+    # short-circuited straight from the memo (no fresh resolve -- that is the
+    # P0 fix), while a healthy storefront still passes the very gate
+    # curl_fetch_html_same_site applies at price_service.py:14016.
+    with lock:
+        started.clear()
+    blocked = asyncio.run(
+        price_service.curl_fetch_html_same_site(
+            f"https://{black[0]}/products/x", black[0]
+        )
+    )
+    assert blocked is None, (
+        f"a black-holed host must be refused before any fetch, got "
+        f"{type(blocked).__name__}"
+    )
+    assert started == [], (
+        "the black-holed host must be served from the memo without a fresh "
+        f"resolve, got {started!r}"
+    )
+    assert (
+        asyncio.run(
+            uv._validate_url_offloop_or_sync(
+                f"https://{healthy[0]}/products/x"
+            )
+        )
+        is True
+    ), (
+        f"the healthy storefront {healthy[0]!r} is still being refused by the "
+        "price path's own validation gate after the burst -- a transient "
+        "contention event became a 60s blacklist"
+    )

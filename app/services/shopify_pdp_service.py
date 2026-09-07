@@ -42,13 +42,21 @@ THE RULES, ALL MEASURED — do not "improve" them from first principles
 SAFETY
 ------
 * **SSRF.** The request goes through the repo's own primitives — the initial URL
-  and EVERY redirect hop must pass ``app.utils.url_validator.validate_external_url``
-  (blocks non-http(s), unresolvable hosts, private/loopback/link-local/reserved
-  IPs) AND ``price_service._host_on_domain`` (pins the chain to the source
-  storefront). This mirrors ``curl_fetch_html_same_site`` hop for hop. It is a
-  separate loop only because that helper collapses every non-200 to ``None`` and
-  this adapter has to see the literal 503 to apply rule 5 — nothing here relaxes
-  a check that helper makes.
+  and EVERY redirect hop must pass :func:`_hop_is_allowed_async`, which applies
+  ``app.utils.url_validator._validate_url_offloop_or_sync`` (blocks non-http(s),
+  unresolvable hosts, private/loopback/link-local/reserved IPs; under
+  ``ENABLE_OFFLOOP_DNS_RESOLVE`` the resolve runs in the dedicated
+  ``dns-resolve`` pool under a bound and a negatives-only memo, and with the
+  flag OFF it calls the same sync ``validate_external_url`` inline with no new
+  suspension point) AND ``price_service._host_on_domain`` (pins the chain to the
+  source storefront). The SYNC :func:`_hop_is_allowed` is retained for future
+  sync callers and has no production caller today — ``_fetch_once`` is
+  ``async def``, so gating a hop on the sync form resolved DNS on the event
+  loop (W0-1, P0 LS-REQUEST-PATH-BLOCKING-01). This mirrors
+  ``curl_fetch_html_same_site`` hop for hop. It is a separate loop only because
+  that helper collapses every non-200 to ``None`` and this adapter has to see
+  the literal 503 to apply rule 5 — nothing here relaxes a check that helper
+  makes.
 * **Rate limit.** >= 1s of spacing per domain. A burst gets an identical
   12194-byte HTTP 503. The slot is RESERVED before the request (not merely
   checked), so concurrent callers queue instead of all reading a stale
