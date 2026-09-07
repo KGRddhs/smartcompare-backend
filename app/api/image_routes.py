@@ -26,7 +26,13 @@ from app.services.usage_service import (
     valid_device_fingerprint,
     check_anon_usage_allowed,
     record_anon_comparison,
+    consume_comparison_credit,
+    refund_comparison_credit,
+    record_lifetime_comparison,
 )
+# W2-1: ONE definition of the flag for the whole unit (see the helper's
+# docstring). image_routes/url_routes deliberately do not re-parse the env.
+from app.api.text_routes import paid_route_metering_enabled
 from app.utils.async_utils import fire_and_forget
 
 logger = logging.getLogger(__name__)
@@ -130,17 +136,66 @@ async def identify_and_compare(
         image_data_list.append({"bytes": content, "mime_type": content_type})
         logger.info(f"[IMAGE]   Image {i+1}: {len(content)} bytes, {content_type}")
 
+    # W2-1 (MB-RECONCILE-01): the AUTHENTICATED freemium gate, mirroring
+    # `text_routes.text_compare` (`:193`). This route runs a paid GPT-4o Vision
+    # call AND a full comparison for a signed-in user with NO tier check at all
+    # -- the M13-03 anon gate above is a different, default-OFF,
+    # fingerprint-keyed path that explicitly no-ops when `user` is truthy.
+    #
+    # Placed AFTER image validation and BEFORE the Vision call: the five 400s
+    # above are pre-gate (nothing reserved, nothing to refund), and everything
+    # paid is below. Flag OFF: `consume_comparison_credit` is never called and
+    # `_refund_reserved_credit` is a no-op, so the route is byte-identical.
+    usage_user_id = user.get("id") if user else None
+    usage_consumed = False
+    _refund_state = {"done": False}
+
+    def _refund_reserved_credit(label: str) -> None:
+        """Give the gate-reserved credit back, AT MOST ONCE per request.
+
+        The double-charge trap this closes: the routine "one bottle in frame"
+        exit and the two "bad photo" exits are the ones a real user hits, so a
+        MISSING refund burns a free comparison for no product -- while a refund
+        that fires twice on one request silently grants a credit. The
+        `_refund_state` latch makes the second call a no-op, so every exit can
+        refund unconditionally without auditing what ran before it.
+        """
+        if not usage_consumed or not usage_user_id or _refund_state["done"]:
+            return
+        _refund_state["done"] = True
+        fire_and_forget(refund_comparison_credit(usage_user_id), label=label)
+
+    if paid_route_metering_enabled() and usage_user_id:
+        usage_check = await consume_comparison_credit(
+            usage_user_id, user.get("access_token", "")
+        )
+        if not usage_check["allowed"]:
+            raise HTTPException(
+                status_code=429,
+                detail={
+                    "error": f"Comparison limit reached ({usage_check['reason']})",
+                    "code": "USAGE_LIMIT",
+                    "tier": usage_check["tier"],
+                    "remaining": usage_check["remaining"],
+                },
+            )
+        usage_consumed = usage_check.get("consumed", False)
+
     # Step 1: Vision identification (single GPT call for all images)
     try:
         vision_result = await identify_products(image_data_list)
     except Exception as e:
         logger.error(f"[IMAGE] Vision call failed: {e}")
+        # Non-delivery exit 1 of 6.
+        _refund_reserved_credit("usage_refund.image.vision_exception")
         raise HTTPException(status_code=500, detail="Image analysis failed. Please try again.")
 
     if vision_result.get("error"):
         logger.error(f"[IMAGE] Vision parse error: {vision_result['error']}")
         if vision_result.get("raw_response"):
             logger.debug(f"[IMAGE] Raw response (server-only): {vision_result['raw_response']}")
+        # Non-delivery exit 2 of 6.
+        _refund_reserved_credit("usage_refund.image.vision_parse_error")
         return {
             "success": False,
             "action": "error",
@@ -159,7 +214,20 @@ async def identify_and_compare(
     from app.services.audit_service import log_content_blocked
 
     _safety = get_content_safety_service()
-    _l4 = await _safety.moderate_vision_output(vision_result)
+    # W2-1: this is the ONE external call in the window between the vision
+    # try/except above and the comparison try/except below, so before the gate
+    # existed nothing here could cost anything. Now a raise would leave the
+    # gate-reserved credit consumed with no product delivered, so refund and
+    # re-raise -- `_refund_reserved_credit` is latched, so this can never
+    # double-refund alongside the exits that follow. (Residual, deliberate and
+    # narrow: a raise in the PURE-PYTHON parsing between here and the next try
+    # is not covered; closing that needs a ~170-line re-indent of a live route,
+    # which is not worth the regression risk inside a clean comm gate.)
+    try:
+        _l4 = await _safety.moderate_vision_output(vision_result)
+    except Exception:
+        _refund_reserved_credit("usage_refund.image.moderation_exception")
+        raise
     if not _l4.allowed:
         _hash_input = " ".join(
             f"{p.get('brand', '')} {p.get('name', '')}".strip()
@@ -173,6 +241,8 @@ async def identify_and_compare(
             ),
             label="audit.vision_moderation_blocked",
         )
+        # Non-delivery exit 3 of 6.
+        _refund_reserved_credit("usage_refund.image.moderation_blocked")
         return {
             "success": False,
             "action": "need_second_product",
@@ -198,6 +268,8 @@ async def identify_and_compare(
 
     # --- 0 products ---
     if len(products) == 0:
+        # Non-delivery exit 4 of 6.
+        _refund_reserved_credit("usage_refund.image.zero_products")
         return {
             "success": False,
             "action": "error",
@@ -208,6 +280,9 @@ async def identify_and_compare(
     # --- 1 product ---
     if len(products) == 1:
         product = products[0]
+        # Non-delivery exit 5 of 6 -- and the one an ordinary user hits most
+        # often, so the refund here is what keeps a single-bottle photo free.
+        _refund_reserved_credit("usage_refund.image.need_second_product")
         return {
             "success": True,
             "action": "need_second_product",
@@ -268,6 +343,15 @@ async def identify_and_compare(
                 ),
                 label="save_comparison.camera",
             )
+            # W2-1: the DELIVERY exit -- the one path that keeps the credit and
+            # must never refund. The daily+monthly credit was reserved
+            # atomically at the gate; only the Supabase lifetime counter is
+            # left, exactly as `text_compare` does it.
+            if usage_consumed:
+                fire_and_forget(
+                    record_lifetime_comparison(user_id, user.get("access_token", "")),
+                    label="record_lifetime.image",
+                )
 
         # M13-03: meter the anonymous device only when a real comparison ran.
         if device_fp:
@@ -290,6 +374,9 @@ async def identify_and_compare(
             ),
             label="log_search.camera.failure",
         )
+
+        # Non-delivery exit 6 of 6.
+        _refund_reserved_credit("usage_refund.image.comparison_failed")
 
         # M13-26: never surface str(e) to the client — it embeds hostnames, table
         # names, Postgres codes and upstream URLs. Return the unified error

@@ -10,7 +10,7 @@ import json
 import asyncio
 import hashlib
 import logging
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Tuple
 from datetime import datetime
 import httpx
 from openai import AsyncOpenAI
@@ -1347,7 +1347,7 @@ def build_category_profile(category: Any, specs: Optional[Dict[str, Any]]) -> Di
 # EXTRACTION FUNCTIONS
 # ============================================
 
-async def parse_product_query(query: str) -> Dict[str, Any]:
+async def parse_product_query(query: str) -> Tuple[Dict[str, Any], Dict[str, int]]:
     """
     Parse a natural language query to extract product information.
     
@@ -2309,7 +2309,7 @@ async def generate_comparison(
     category: str = "other",
     demographics_profile: Optional[Dict[str, Any]] = None,
     comparison_quality: str = "normal",
-) -> Dict[str, Any]:
+) -> Tuple[Dict[str, Any], Dict[str, int]]:
     """Generate detailed comparison between two products.
 
     Verdict generation is the single highest-impact subjective prose call,
