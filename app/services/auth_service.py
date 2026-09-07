@@ -487,12 +487,26 @@ async def logout_user(access_token: str, refresh_token: Optional[str] = None) ->
         # call and has its own guard); what failed is the UPSTREAM leg, so the
         # refresh token was NOT revoked at Supabase. Never let a
         # TypeError-shaped mistake pass silently as success again.
+        # SCRUB THE MESSAGE. `set_session` can raise
+        # `UserDoesntExist(access_token)` (supabase_auth `_sync/gotrue_client.py`:
+        # `user_response = self.get_user(access_token)` -> `if user_response is
+        # None: raise UserDoesntExist(access_token)`), and that exception's
+        # `str()` IS THE BEARER TOKEN -- measured, not assumed. Interpolating the
+        # exception raw would write a live credential into the logs, and from
+        # there into Sentry: exactly the class of defect this wave exists to
+        # close. Only the upstream leg can carry one, so redact both tokens by
+        # value before formatting.
+        detail = str(e)
+        for secret, label in ((access_token, "<access_token>"),
+                              (refresh_token, "<refresh_token>")):
+            if secret:
+                detail = detail.replace(secret, label)
         logger.warning(
             "[auth] logout upstream leg failed (%s): %s: %s -- access token is "
             "blacklisted locally for 1 h, but the session was NOT revoked upstream",
             "set_session+sign_out(local)" if upstream_revocation else "sign_out",
             type(e).__name__,
-            e,
+            detail,
         )
         return {"success": True, "message": "Logged out successfully"}
 

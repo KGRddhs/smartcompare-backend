@@ -107,6 +107,8 @@ window before each test, and no node spends more than 2 of ``/refresh``'s
 registered. conftest is NOT modified by this unit.
 """
 from __future__ import annotations
+import asyncio
+import logging
 
 import hashlib
 from typing import Any, Dict, List, Optional, Tuple
@@ -611,3 +613,65 @@ def test_node6_flag_off_is_todays_behaviour_on_both_routes(
         + str(resp_r.status_code) + " " + resp_r.text
     )
     assert resp_r.json().get("code") == AUTH_REQUIRED, resp_r.text
+
+def test_node7_logout_failure_never_logs_the_bearer_token(monkeypatch, caplog):
+    """SECURITY PIN (W1-4): a failing upstream logout leg must not write a live
+    credential into the logs.
+
+    `set_session` raises `UserDoesntExist(access_token)` when the access token is
+    well-formed but the user lookup returns nothing
+    (`supabase_auth/_sync/gotrue_client.py`: `user_response = self.get_user(
+    access_token)` then `if user_response is None: raise UserDoesntExist(
+    access_token)`). That exception's `str()` IS THE TOKEN -- measured, not
+    assumed -- so interpolating the exception raw into the WARNING would put a
+    bearer credential in the logs and from there into Sentry. This is the same
+    class as the admin-key-in-frame-locals finding this wave exists to close, so
+    it gets a pin rather than a comment.
+
+    The handler must still return success (the local blacklist was written and
+    the client ignores this response) and must still name the leg and the
+    exception TYPE -- only the token-bearing message is redacted.
+    """
+    from supabase_auth.errors import UserDoesntExist
+
+    access = "eyJhbGciOi.NODE7ACCESSSECRET.sig"
+    refresh = "NODE7REFRESHSECRET"
+
+    monkeypatch.setenv("ENABLE_LOGOUT_UPSTREAM_REVOCATION", "true")
+
+    class _RaisingAuth:
+        def set_session(self, a, r):
+            raise UserDoesntExist(a)
+
+        def sign_out(self, options=None):  # pragma: no cover - never reached
+            raise AssertionError("sign_out must not run after set_session raised")
+
+    class _Client:
+        auth = _RaisingAuth()
+
+    monkeypatch.setattr(auth_service, "get_auth_client", lambda: _Client())
+    monkeypatch.setattr(auth_service, "_revoke_token", lambda _t: None)
+
+    with caplog.at_level(logging.WARNING, logger="app.services.auth_service"):
+        result = asyncio.run(auth_service.logout_user(access, refresh))
+
+    assert result["success"] is True, (
+        "a failed upstream leg must still report success -- the local blacklist "
+        "was written and the client ignores this response"
+    )
+
+    emitted = chr(10).join(r.getMessage() for r in caplog.records)
+    assert access not in emitted, (
+        "THE ACCESS TOKEN LEAKED INTO THE LOGS via the exception message: "
+        f"{emitted[:300]!r}"
+    )
+    assert refresh not in emitted, (
+        f"the refresh token leaked into the logs: {emitted[:300]!r}"
+    )
+    assert "<access_token>" in emitted, (
+        "the redaction placeholder is missing, so the scrub did not run: "
+        f"{emitted[:300]!r}"
+    )
+    assert "UserDoesntExist" in emitted, (
+        "the exception TYPE must survive redaction -- it is the diagnostic"
+    )
