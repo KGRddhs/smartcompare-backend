@@ -69,6 +69,21 @@ def test_normalize_product_data_canonicalizes_category(raw_cat, expected):
 # ============================================
 # (c) compare_from_urls resolves + writes back + passes category to the verdict
 # ============================================
+#
+# W2-1 MOCK CORRECTION (2026-09-07). Both doubles below used to return a BARE
+# DICT, while the real `extraction_service.generate_comparison` returns
+# `(parsed, usage)` on EVERY path (`:2543` and the except-branch twin at
+# `:2547`). That wrong shape was exactly the shape the un-unpacked call site
+# in `compare_from_urls` expected, so these two tests asserted
+# `resp["success"] is True` and PASSED while production 500'd with
+# `AttributeError: 'tuple' object has no attribute 'get'` on every
+# successful URL comparison. A green test was actively defending the bug.
+# The fix is the strict unpack in production and the REAL 2-tuple here --
+# never a tolerant unpack added to keep a lying double alive.
+
+# What the real function returns alongside the parsed verdict.
+_ZERO_USAGE = {"prompt_tokens": 0, "completion_tokens": 0}
+
 
 def test_compare_from_urls_writes_back_and_passes_category():
     frag_a = {"success": True, "product": {
@@ -86,7 +101,10 @@ def test_compare_from_urls_writes_back_and_passes_category():
         captured["category"] = k.get("category")
         captured["p0_cat"] = p0.get("category")
         captured["p1_cat"] = p1.get("category")
-        return {"winner_index": 0, "recommendation": "x", "key_differences": []}
+        return (
+            {"winner_index": 0, "recommendation": "x", "key_differences": []},
+            _ZERO_USAGE,
+        )
 
     async def fake_extract(url):
         return frag_a if "oud" in url else frag_b
@@ -120,7 +138,10 @@ def test_compare_from_urls_canonicalizes_legacy_category_before_verdict():
 
     async def fake_generate(p0, p1, region, *a, **k):
         captured["category"] = k.get("category")
-        return {"winner_index": 0, "recommendation": "", "key_differences": []}
+        return (
+            {"winner_index": 0, "recommendation": "", "key_differences": []},
+            _ZERO_USAGE,
+        )
 
     async def fake_extract(url):
         return prod_a if url.endswith("a") else prod_b

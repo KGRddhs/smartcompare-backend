@@ -409,9 +409,16 @@ def test_camera_at_lifetime_cap_returns_429_usage_limit(
         "flag ON: /image/identify must refuse a capped authenticated user with "
         f"429 USAGE_LIMIT, got {resp.status_code} body={resp.text[:200]}"
     )
-    detail = resp.json().get("detail", {})
-    assert detail.get("code") == "USAGE_LIMIT", (
-        f"429 envelope must mirror text_routes, got {detail!r}"
+    # The app NEVER emits a nested `detail`: main.py registers
+    # error_handler.http_exception_handler, which unwraps a structured detail
+    # into the documented envelope {success, error, code, request_id}. The
+    # sibling gate on this very route is pinned the same way at
+    # tests/test_m13_03_paid_work_gating.py:132. (This assertion originally
+    # read resp.json()["detail"]["code"] and so could never pass; corrected to
+    # the same FACT at the place the envelope actually puts it.)
+    body = resp.json()
+    assert body.get("code") == "USAGE_LIMIT", (
+        f"429 envelope must mirror text_routes, got {body!r}"
     )
     assert ledger.consumes == [authed["id"]], (
         f"expected exactly one consume at the gate, got {ledger.consumes!r}"
@@ -562,7 +569,9 @@ def test_url_compare_at_cap_returns_429_usage_limit(
         "flag ON: /url/compare must refuse a capped user with 429 USAGE_LIMIT; "
         f"got {resp.status_code} body={resp.text[:200]}"
     )
-    assert resp.json().get("detail", {}).get("code") == "USAGE_LIMIT", resp.text[:200]
+    # Top-level `code`, not a nested `detail` -- see the note in the camera
+    # test above: the error handler unwraps structured details.
+    assert resp.json().get("code") == "USAGE_LIMIT", resp.text[:200]
     assert ledger.refunds == [], (
         f"a refused gate must not refund, got {ledger.refunds!r}"
     )

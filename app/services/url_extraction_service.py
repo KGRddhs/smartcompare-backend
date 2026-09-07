@@ -525,7 +525,12 @@ def normalize_product_data(raw: Dict, retailer: Dict, url: str) -> Dict[str, Any
 # COMPARE FROM URLs
 # ============================================
 
-async def compare_from_urls(url1: str, url2: str, region: str = "bahrain") -> Dict[str, Any]:
+async def compare_from_urls(
+    url1: str,
+    url2: str,
+    region: str = "bahrain",
+    selected_category: Optional[str] = None,
+) -> Dict[str, Any]:
     """
     Compare two products from their URLs.
     
@@ -533,6 +538,12 @@ async def compare_from_urls(url1: str, url2: str, region: str = "bahrain") -> Di
         url1: First product URL
         url2: Second product URL
         region: Region for additional price lookup
+        selected_category: the caller's category chip, threaded through to
+            ``_resolve_pair_category`` exactly as the text path threads
+            ``body.selected_category`` (MB-RECONCILE-07). It was hardcoded
+            ``None`` here, so a URL comparison could never honour a user chip
+            even when the LLM abstained with "other". UNFLAGGED: the default is
+            ``None``, which is byte-identical to the hardcoded value.
     
     Returns:
         Comparison result with both products
@@ -570,17 +581,31 @@ async def compare_from_urls(url1: str, url2: str, region: str = "bahrain") -> Di
     # before the verdict, so URL-mode fragrance/supplement compares get the correct
     # category (dims + spec framing). extract_from_url's per-product category is the
     # LLM's full-context judgment (the parser-path analog), so it is AUTHORITATIVE:
-    # reuse the shared _resolve_pair_category with parser_path=True. No user chip on
-    # the URL path. Falls back gracefully to "other" if resolution can't decide.
+    # reuse the shared _resolve_pair_category with parser_path=True. The caller's
+    # chip is honoured on exactly the same terms as the text path (MB-RECONCILE-07:
+    # under parser_path=True a real chip is consulted only when the LLM abstained
+    # with "other", and otherwise only re-flags a switch) — it used to be hardcoded
+    # None here, which made the chip unreachable. Falls back gracefully to "other"
+    # if resolution can't decide.
     from app.services.structured_comparison_service import _resolve_pair_category
     category_used, _switched, _orig = await _resolve_pair_category(
-        products, None, parser_path=True
+        products, selected_category, parser_path=True
     )
     for _p in products:
         _p["category"] = category_used
 
-    # Generate comparison (now told the resolved category instead of the default)
-    comparison = await generate_comparison(
+    # Generate comparison (now told the resolved category instead of the default).
+    # MB-RECONCILE-01 / PO-VERDICT-TRUTH-01: generate_comparison returns
+    # ``(parsed, usage)`` on EVERY path (extraction_service.py `:2543` and the
+    # except-branch twin at `:2547`) — its `-> Dict[str, Any]` annotation was
+    # simply wrong, and is corrected in the same change. This call site was the
+    # only one of four that kept the 2-tuple whole and then called ``.get()`` on
+    # it below, so POST/GET /api/v1/url/compare raised
+    # ``AttributeError: 'tuple' object has no attribute 'get'`` and 500'd on
+    # EVERY successful extraction — a successful URL comparison has never been
+    # deliverable. UNFLAGGED (the M13-10 / M13-44 pure-defect class): gating the
+    # unpack would leave the route 500ing whenever the flag was off.
+    comparison, _usage = await generate_comparison(
         products[0], products[1], region, category=category_used
     )
 

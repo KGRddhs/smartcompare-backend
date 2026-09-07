@@ -55,6 +55,47 @@ def preverdict_disconnect_abort_enabled() -> bool:
     )
 
 
+def paid_route_metering_enabled() -> bool:
+    """True iff the two unmetered paid doors are gated and `/text/prices` is
+    admin-only (W2-1, `ENABLE_PAID_ROUTE_METERING`, default OFF).
+
+    THE SINGLE DEFINITION for the whole unit -- `app.api.image_routes` and
+    `app.api.url_routes` import this one rather than re-parsing the env, so a
+    second reader can never drift from it (the lesson #136 recorded when
+    `product_data_service` grew its own copy of a `price_service` gate).
+
+    Flag ON:
+      * `POST /api/v1/image/identify` and `POST|GET /api/v1/url/compare`
+        consume a freemium credit at the gate for an AUTHENTICATED caller
+        (429 `USAGE_LIMIT` on refusal) and refund it on every non-delivery
+        exit, mirroring `text_compare` -- today both run a paid Vision /
+        extraction + verdict pass with no tier check at all.
+      * A delivered `/url/compare` writes its history row
+        (`save_comparison_and_track_cohort(input_type="url")`), so a URL
+        comparison finally appears in the History tab.
+      * `GET /api/v1/text/prices/{product}` requires `X-Admin-Key` (the
+        treatment its already-admin-gated sibling `GET /text/price-kpi` got in
+        M13-03; it has zero client callers) and its rate-limit bucket stops
+        varying with the path parameter.
+
+    Flag OFF: every one of those is a no-op. The category chip + the
+    `generate_comparison` / `parse_product_query` tuple unpacks that ship in the
+    same change are DELIBERATELY unflagged -- they are pure defect fixes
+    (M13-10 / M13-44 class) and a flag would leave the routes broken with it off.
+
+    Read PER CALL from `os.getenv` (the `price_service.exact_gate_enabled`
+    idiom) so Railway flips it without a restart; never cached at import.
+    """
+    return os.getenv("ENABLE_PAID_ROUTE_METERING", "").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
+def _paid_route_metering_disabled() -> bool:
+    """`exempt_when` inverse of the flag, for the flag-OFF limiter branch."""
+    return not paid_route_metering_enabled()
+
+
 # ============================================
 # Request/Response Models
 # ============================================
@@ -757,7 +798,24 @@ async def quick_compare(request: Request, body: QuickCompareRequest):
 
 
 @router.get("/prices/{product}")
-@limiter.limit("20/minute")
+# W2-1 (LS-RATELIMIT-KEY-02 = CR-SECURITY-06), flag-gated so flag OFF is
+# byte-identical. `Limiter(...)` at `rate_limiter.py:125` passes no `key_style`
+# and slowapi's default is `"url"`, so this route's bucket is scoped to
+# `request["path"]` -- i.e. the PRODUCT STRING is part of the key. MEASURED: 25
+# distinct product strings produce ZERO 429s and 25 real paid price
+# resolutions, while 25 requests for the SAME string produce 5. The GLOBAL
+# `key_style` fix belongs to W1-5 (LS-RATELIMIT-KEY-01) because it re-buckets
+# EVERY path-parameterised route; here we take the route-local half only, via
+# an explicit `shared_limit` scope. Exactly ONE of the two limits is live per
+# request -- `exempt_when` is evaluated per call -- so flag OFF keeps today's
+# url-keyed 20/minute untouched and flag ON replaces it with the same ceiling
+# on a bucket the caller cannot vary.
+@limiter.shared_limit(
+    "20/minute",
+    scope="text_prices_route",
+    exempt_when=_paid_route_metering_disabled,
+)
+@limiter.limit("20/minute", exempt_when=paid_route_metering_enabled)
 async def get_gcc_prices(
     request: Request,
     product: str = Path(..., max_length=100),
@@ -770,6 +828,24 @@ async def get_gcc_prices(
     
     Returns prices in: Bahrain, Saudi Arabia, UAE, Kuwait, Qatar, Oman
     """
+    # W2-1: this endpoint runs the full paid price cascade (Serper + GPT +
+    # render tiers) for an ANONYMOUS caller, uncounted. It has ZERO client
+    # callers -- the only references are its own docstring, `scs.py`, the
+    # CLAUDE.md Serper-rotation liveness probe and a test -- and its sibling
+    # measurement route `GET /text/price-kpi` was already admin-gated by
+    # M13-03. Same class, same treatment: `X-Admin-Key`, not metering.
+    #
+    # The header is read off `request.headers` INSIDE the flag branch rather
+    # than declared as a `Header(...)` dependency, for two reasons: a declared
+    # parameter would change the flag-OFF OpenAPI surface (and 422 a missing
+    # header instead of 403) -- the trap issue #55 hit with a `Query` param --
+    # and a dependency resolves BEFORE the slowapi wrapper, which would make
+    # the route-keyed limit above unreachable. `verify_admin_key` itself is
+    # reused verbatim, so the 403 envelope and the `hmac.compare_digest`
+    # comparison are exactly the admin routes'.
+    if paid_route_metering_enabled():
+        verify_admin_key(request.headers.get("x-admin-key", ""))
+
     # Parse product string to extract brand/name
     parts = product.strip().split(" ", 1)
     if len(parts) == 1:
@@ -1230,8 +1306,17 @@ async def parse_query(
     Returns extracted product information.
     """
     from app.services.extraction_service import parse_product_query
-    
-    result = await parse_product_query(q)
+
+    # UNFLAGGED defect repair (same class as the `/url/compare` unpack and the
+    # issue-#55 flush repair): `parse_product_query` returns `(parsed, usage)`
+    # on every path -- its `-> Dict[str, Any]` annotation was wrong and is
+    # corrected in the same change. Returning the value whole serialised the
+    # 2-tuple as `"parsed"` AND leaked the token-usage object to the client.
+    # Strict unpack, not a tolerant one: no mock of this function feeds this
+    # route with a bare dict (checked), and a tolerant unpack would keep a
+    # future wrong-shaped double alive. `flush_product_cache`'s tolerant unpack
+    # is a DIFFERENT owner's decision and is deliberately left exactly as it is.
+    result, _usage = await parse_product_query(q)
     return {
         "query": q,
         "parsed": result
