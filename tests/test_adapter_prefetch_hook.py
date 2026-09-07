@@ -608,12 +608,14 @@ class TestAdapterCancellationNoOrphan:
         captured = []
         real_timeout_none = scs._timeout_none
 
-        def spy_timeout_none(make_coro, timeout=scs._ADAPTER_TIMEOUT):
+        # **kwargs so the spy mirrors whatever the production signature grows
+        # (W1-8 added `label=`) instead of TypeError-ing at every call site.
+        def spy_timeout_none(make_coro, timeout=scs._ADAPTER_TIMEOUT, **kwargs):
             captured.append({
                 "callable": callable(make_coro),
                 "is_coroutine": asyncio.iscoroutine(make_coro),
             })
-            return real_timeout_none(make_coro, timeout)
+            return real_timeout_none(make_coro, timeout, **kwargs)
         monkeypatch.setattr(scs, "_timeout_none", spy_timeout_none)
 
         price = await self._drive_genuine_tier1_cancel(scs, svc, monkeypatch)
@@ -643,9 +645,11 @@ class TestAdapterCancellationNoOrphan:
         captured = []
         real_timeout_none = scs._timeout_none
 
-        def spy_timeout_none(make_coro, timeout=scs._ADAPTER_TIMEOUT):
+        # **kwargs so the spy mirrors whatever the production signature grows
+        # (W1-8 added `label=`) instead of TypeError-ing at every call site.
+        def spy_timeout_none(make_coro, timeout=scs._ADAPTER_TIMEOUT, **kwargs):
             captured.append(asyncio.iscoroutine(make_coro) or not callable(make_coro))
-            return real_timeout_none(make_coro, timeout)
+            return real_timeout_none(make_coro, timeout, **kwargs)
         monkeypatch.setattr(scs, "_timeout_none", spy_timeout_none)
 
         _stub_common(scs, svc, monkeypatch)

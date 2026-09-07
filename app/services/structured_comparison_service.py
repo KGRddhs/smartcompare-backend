@@ -212,7 +212,9 @@ def _sitemap_fetch_coro(domain: str, full_name: str, currency: str):
 _ADAPTER_TIMEOUT = 10.0
 
 
-async def _timeout_none(make_coro, timeout: float = _ADAPTER_TIMEOUT):
+async def _timeout_none(
+    make_coro, timeout: float = _ADAPTER_TIMEOUT, label: str = "adapter"
+):
     """Await an adapter coro with a per-source timeout; return None on
     timeout/error so a slow adapter never discards a fast sibling's valid result.
     Cancels the underlying coro on timeout (asyncio.wait_for semantics) — no
@@ -226,10 +228,40 @@ async def _timeout_none(make_coro, timeout: float = _ADAPTER_TIMEOUT):
     `_cancel_prefetched_direct`), the factory is never called, so no orphan
     coroutine object is ever created (no "coroutine was never awaited"
     RuntimeWarning, no un-drained coroutine). With an EAGER coro the inner coro
-    existed before the task ran and leaked on a pre-run cancellation."""
+    existed before the task ran and leaked on a pre-run cancellation.
+
+    W1-8 (LS-CONCURRENCY-LIMITS-03) — the drop is NAMED. `make_coro` is a
+    zero-arg lambda factory, so `make_coro.__name__` is '<lambda>' and carries
+    nothing: the adapter family has to be passed in as `label`. A TIMEOUT and an
+    adapter ERROR are logged distinctly — a timeout is the LOAD signal, an
+    exception is a bug — at INFO, because a cold Bahraini source with no listing
+    is not a warning. The success path stays silent.
+
+    NOTE on telling the two branches apart (Fable review): since CPython 3.11
+    `asyncio.TimeoutError IS the builtin TimeoutError` (measured on the pinned
+    3.12.9), so the first branch also catches a `TimeoutError` an adapter raised
+    itself, and `type(exc).__name__` in the ERROR branch can literally be
+    "TimeoutError". The two lines are still unambiguous, but only because they
+    are discriminated by their PREFIX — ": TIMEOUT after" vs ": ERROR " — never
+    by the substring "TIMEOUT" alone. A test that greps for "TIMEOUT" anywhere
+    in the message cannot tell them apart and pins nothing.
+
+    DO NOT widen the catch to `BaseException`: `asyncio.CancelledError` derives
+    from BaseException (measured on the pinned CPython 3.12.9:
+    `issubclass(asyncio.CancelledError, Exception)` is False), so `except
+    Exception` is what lets `_cancel_prefetched_direct` actually cancel the ~18
+    speculative prefetch tasks. Catching BaseException here would convert every
+    cancellation into a `None` return and make the prefetch cancel a no-op."""
     try:
         return await asyncio.wait_for(make_coro(), timeout)
-    except Exception:  # noqa: BLE001 — TimeoutError + any adapter error → drop
+    except asyncio.TimeoutError:
+        # The load signal this unit exists to expose.
+        logger.info(f"[ADAPTER DROP] {label}: TIMEOUT after {timeout}s")
+        return None
+    except Exception as exc:  # noqa: BLE001 — any adapter error → drop
+        # An adapter exception is a BUG, never a load signal — keep it
+        # distinguishable from the timeout above.
+        logger.info(f"[ADAPTER DROP] {label}: ERROR {type(exc).__name__}: {exc}")
         return None
 
 
@@ -6112,6 +6144,7 @@ class StructuredComparisonService:
                     _timeout_none(
                         lambda d=d: _sitemap_fetch_coro(d, full_name, currency),
                         _ADAPTER_TIMEOUT,
+                        label=f"sitemap:{d}",
                     )
                     for d in _sm_domains
                 ]
@@ -6132,6 +6165,7 @@ class StructuredComparisonService:
                             _timeout_none(
                                 lambda: fetch_nasser_price(full_name, currency),
                                 _ADAPTER_TIMEOUT,
+                                label="jsonapi:nasserpharmacy.com",
                             )
                             for _ in _jsonapi_sources_pf
                         ),
@@ -6155,6 +6189,7 @@ class StructuredComparisonService:
                                 # (coverage/independent review).
                                 lambda s=s, fn=_na_fn: fn(s.domain, full_name, currency, resolved_category=category),
                                 _ADAPTER_TIMEOUT,
+                                label=f"{_na_key}:{s.domain}",
                             )
                             for s in _na_srcs
                         ),
@@ -6228,6 +6263,7 @@ class StructuredComparisonService:
                             _timeout_none(
                                 lambda d=d: _sitemap_fetch_coro(d, full_name, currency),
                                 _ADAPTER_TIMEOUT,
+                                label=f"sitemap:{d}",
                             )
                             for d in _sm_domains
                         ]
@@ -6257,6 +6293,7 @@ class StructuredComparisonService:
                                     _timeout_none(
                                         lambda: fetch_nasser_price(full_name, currency),
                                         _ADAPTER_TIMEOUT,
+                                        label="jsonapi:nasserpharmacy.com",
                                     )
                                     for _ in _jsonapi_sources_pf
                                 ),
@@ -6291,6 +6328,7 @@ class StructuredComparisonService:
                                         _timeout_none(
                                             lambda s=s, fn=_na_fn: fn(s.domain, full_name, currency),
                                             _ADAPTER_TIMEOUT,
+                                            label=f"{_na_key}:{s.domain}",
                                         )
                                         for s in _na_srcs
                                     ),

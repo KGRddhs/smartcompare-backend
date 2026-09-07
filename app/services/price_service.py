@@ -16290,8 +16290,14 @@ async def fan_out_price_lookup(
             "best": dict | None,
             "alternates": list[dict],
             "cancelled_count": int,
+            "failed_count": int,
             "elapsed_seconds": float,
         }
+
+    W1-8 (LS-CONCURRENCY-LIMITS-03) — `failed_count` is additive (every caller
+    reads by key). Without it a caller can tell "deliberately cancelled" from
+    "completed" but NOT from "failed": twelve adapters raising and twelve
+    adapters finding nothing returned the identical dict.
     """
     start = time.monotonic()
 
@@ -16300,12 +16306,14 @@ async def fan_out_price_lookup(
             "best": None,
             "alternates": [],
             "cancelled_count": 0,
+            "failed_count": 0,
             "elapsed_seconds": time.monotonic() - start,
         }
 
     tasks = [asyncio.create_task(s(product)) for s in scrapers]
     completed: List[dict] = []
     cancelled_count = 0
+    failed_count = 0
 
     try:
         for fut in asyncio.as_completed(tasks):
@@ -16333,6 +16341,11 @@ async def fan_out_price_lookup(
                 cancelled_count += 1
                 continue
             except Exception as e:  # noqa: BLE001
+                # W1-8 (Fable review): do NOT count here. `as_completed` yields
+                # wrappers, not the tasks, so a count taken here cannot be
+                # reconciled with the sweep below without double-counting. The
+                # authoritative count is computed once, over `tasks`, after the
+                # drain. The log stays: it names the failure as it happens.
                 logger.debug(f"[fan_out] scraper raised: {e}")
                 continue
 
@@ -16367,6 +16380,27 @@ async def fan_out_price_lookup(
                 except (asyncio.CancelledError, Exception):  # noqa: BLE001
                     pass
 
+    # W1-8 (Fable review, from an adversarial finding) — count failures ONCE,
+    # over the authoritative task set, AFTER every drain.
+    #
+    # The incremental count this replaces reported 0 in the fan-out's DESIGNED
+    # hot path. When a scraper confirms (rank >= 85) the loop breaks, and both
+    # the confirmation drain and the defensive `finally` drain skip a task with
+    # `if t.cancelled() or t.done(): continue` — so a scraper that had ALREADY
+    # raised was `done()`, was skipped, and its exception was never retrieved:
+    # counted as neither failed nor cancelled. That is precisely the case the
+    # metric exists to measure, and it was the one case it could not see.
+    #
+    # A single sweep also cannot double-count (the previous design would have,
+    # had the drains been fixed naively), and retrieving `.exception()` here
+    # silences the "exception was never retrieved" warning for those tasks.
+    # `cancelled()` is checked first: `.exception()` on a cancelled task raises.
+    failed_count = sum(
+        1
+        for t in tasks
+        if t.done() and not t.cancelled() and t.exception() is not None
+    )
+
     best = _select_best(completed)
     alternates = [c for c in completed if c is not best] if best else []
 
@@ -16374,5 +16408,6 @@ async def fan_out_price_lookup(
         "best": best,
         "alternates": alternates,
         "cancelled_count": cancelled_count,
+        "failed_count": failed_count,
         "elapsed_seconds": time.monotonic() - start,
     }
