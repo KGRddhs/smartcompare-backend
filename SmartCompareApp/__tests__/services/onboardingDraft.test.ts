@@ -98,11 +98,32 @@ describe('persistOnboardingBuckets', () => {
   });
 
   it('resolves true without any call when nothing is persistable', async () => {
-    const ok = await persistOnboardingBuckets({ notifications_enabled: true });
+    const ok = await persistOnboardingBuckets({});
     expect(ok).toBe(true);
     expect(putDemographicsMock).not.toHaveBeenCalled();
     expect(savePreferencesMock).not.toHaveBeenCalled();
     expect(saveAttributionMock).not.toHaveBeenCalled();
+  });
+
+  // B9 — this case used to assert the OPPOSITE: `{ notifications_enabled:
+  // true }` was pinned as "nothing is persistable", which is what made
+  // Step 17's answer unsendable even after the flow stopped dropping it.
+  it('sends the Step-17 notifications answer through the preferences bucket', async () => {
+    const ok = await persistOnboardingBuckets({ notifications_enabled: true });
+    expect(ok).toBe(true);
+    expect(savePreferencesMock).toHaveBeenCalledTimes(1);
+    expect(savePreferencesMock).toHaveBeenCalledWith({ notifications_enabled: true });
+    expect(putDemographicsMock).not.toHaveBeenCalled();
+    expect(saveAttributionMock).not.toHaveBeenCalled();
+  });
+
+  it('sends an explicit "Not now" decline, not just the grant', async () => {
+    // The decline is the value that matters: unset reads as ON in Profile
+    // and leaves the user eligible for re-engagement pushes, so a
+    // truthiness guard in buildPreferencesPayload would be the same bug.
+    const ok = await persistOnboardingBuckets({ notifications_enabled: false });
+    expect(ok).toBe(true);
+    expect(savePreferencesMock).toHaveBeenCalledWith({ notifications_enabled: false });
   });
 
   it('retries a failed bucket once and resolves true when the retry succeeds', async () => {
