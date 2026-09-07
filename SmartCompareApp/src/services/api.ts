@@ -84,12 +84,31 @@ api.interceptors.request.use(
 // deleting the winner's freshly stored tokens.
 export type RefreshResult = { success: boolean; token: string | null; error?: unknown };
 
-/** Per-call options forwarded to refreshSession by whoever STARTS the refresh. */
-export type RefreshOptions = { timeoutMs?: number };
-
 let refreshPromise: Promise<RefreshResult> | null = null;
 
-async function performRefresh(options?: RefreshOptions): Promise<RefreshResult> {
+/**
+ * P-A3 — an in-flight POST /api/v1/auth/refresh is NEVER aborted
+ * client-side.
+ *
+ * The refresh token is SINGLE-USE: Supabase rotates it on every
+ * successful call, and outside the 10s reuse interval presenting an
+ * already-spent one marks the WHOLE session family revoked
+ * (supabase.com/docs/guides/auth/sessions). A client-side deadline does
+ * not stop the server from finishing that rotation — it only stops the
+ * phone from LEARNING the new token, so the device keeps a token the
+ * server has already retired and the NEXT refresh (a 401 on the History
+ * tab, or the next launch) logs the user out of a session that was
+ * perfectly valid.
+ *
+ * A deadline may bound what a CALLER waits for; it may never bound the
+ * request. That is why neither this function nor refreshSession() takes a
+ * per-call timeout or AbortSignal any more: there is no shape in which
+ * passing one here is correct, so the parameter that used to carry one
+ * (`RefreshOptions.timeoutMs`, whose only caller was the boot refresh) is
+ * gone rather than left as a footgun. Coalesced callers inherit the same
+ * un-abortable request — that is the point, one request.
+ */
+async function performRefresh(): Promise<RefreshResult> {
   try {
     const { refreshSession, getToken, clearSession } = require('./authService');
     // M18 MB-flows-01 — gate on refreshSession()'s RESULT, not on the
@@ -99,7 +118,7 @@ async function performRefresh(options?: RefreshOptions): Promise<RefreshResult> 
     // session, and non-401/network errors — so the old `getToken()`-only
     // check turned every one of them into a fake success and the 401
     // interceptor replayed the IDENTICAL dead token.
-    const refreshResult = await refreshSession(options);
+    const refreshResult = await refreshSession();
     if (!refreshResult?.success) {
       if (refreshResult?.sessionInvalid) {
         // The session is definitively dead (no refresh token / server
@@ -143,13 +162,16 @@ async function performRefresh(options?: RefreshOptions): Promise<RefreshResult> 
  * emitSessionInvalid() also fire exactly once per definitively-dead
  * session rather than once per caller.
  *
- * `options` are honoured only by the caller that actually STARTS the
- * refresh; a caller that joins an in-flight one inherits its deadline.
- * That is the point — one request.
+ * P-A3 — it takes no per-call options: the request carries no
+ * client-side deadline and no AbortSignal (see performRefresh), so every
+ * caller — the boot refresh and every coalesced 401 — shares one
+ * un-abortable round-trip. A caller that wants to stop WAITING races this
+ * Promise instead; the refresh itself runs to completion and persists the
+ * rotated tokens either way.
  */
-export function getOrStartRefresh(options?: RefreshOptions): Promise<RefreshResult> {
+export function getOrStartRefresh(): Promise<RefreshResult> {
   if (refreshPromise) return refreshPromise;
-  refreshPromise = performRefresh(options).finally(() => {
+  refreshPromise = performRefresh().finally(() => {
     refreshPromise = null;
   });
   return refreshPromise;

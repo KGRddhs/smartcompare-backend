@@ -267,25 +267,35 @@ export async function logout(): Promise<void> {
 }
 
 /**
- * A3 — deadline for the BOOT refresh only.
+ * P-A3 — session generation counter.
  *
- * `api` carries a 120s global timeout (api.ts) sized for multipart image
- * uploads. A single small POST /auth/refresh riding that budget means a
- * black-holing connection (captive portal, stalled proxy) can keep the
- * refresh in flight for two minutes. The boot path now runs it in the
- * background, so this deadline is belt-and-braces: it bounds the window
- * in which a launch is still holding a socket open. The mid-session 401
- * interceptor (api.performRefresh) deliberately passes NO options and
- * keeps the global budget.
+ * Every clearSession() (a logout tap, a definitively dead session, an
+ * account switch) starts a NEW session generation. A refresh that was
+ * already in flight when that happened must not resurrect the old one:
+ * its rotated tokens and user would be written to storage AFTER the
+ * storage was cleared, so the next launch boots into Main as a user who
+ * logged out. Before A3 the boot refresh always settled before any
+ * interactive UI existed, so a logout could not overlap it; now that it
+ * runs in the background — and, per P-A3, is never cut short — a normal
+ * logout tap can land mid-flight.
  */
-export const BOOT_REFRESH_TIMEOUT_MS = 8000;
+let sessionEpoch = 0;
 
 /**
  * Refresh session - with graceful error handling
+ *
+ * P-A3 — this POST carries NO per-call timeout and NO AbortSignal, and
+ * it deliberately has no parameter for one. The refresh token is
+ * SINGLE-USE: giving up client-side does not stop the server finishing
+ * the rotation, it only stops the phone learning the new token, and the
+ * next refresh then presents a spent one — which, past Supabase's 10s
+ * reuse interval, revokes the whole session family and logs the user out
+ * of a valid session. A deadline may bound what a CALLER waits for
+ * (nothing on the boot path waits: initializeAuth fires this and returns
+ * the cached user immediately), never the request. See api.ts
+ * performRefresh for the full note.
  */
-export async function refreshSession(
-  options?: { timeoutMs?: number },
-): Promise<AuthResponse> {
+export async function refreshSession(): Promise<AuthResponse> {
   try {
     const refreshToken = await SecureStore.getItemAsync(REFRESH_TOKEN_KEY);
     if (!refreshToken) {
@@ -294,13 +304,19 @@ export async function refreshSession(
       return { success: false, error: 'No refresh token found', sessionInvalid: true };
     }
 
-    const response = await api.post(
-      '/api/v1/auth/refresh',
-      { refresh_token: refreshToken },
-      // Per-call deadline ONLY when the caller asks for one, so the
-      // interceptor path keeps its existing (global) budget.
-      options?.timeoutMs ? { timeout: options.timeoutMs } : undefined,
-    );
+    const epochAtRequest = sessionEpoch;
+    const response = await api.post('/api/v1/auth/refresh', {
+      refresh_token: refreshToken,
+    });
+
+    if (sessionEpoch !== epochAtRequest) {
+      // P-A3 — the session was cleared while this round-trip was open.
+      // The server rotated the token, but writing it back would
+      // re-persist a session the user already ended. `sessionInvalid` is
+      // deliberately absent: nothing is wrong with the session state the
+      // app is already in.
+      return { success: false, error: 'Session ended during refresh' };
+    }
 
     if (response.data.success && response.data.session?.access_token) {
       // Always save new tokens — this is critical for the 401 interceptor
@@ -429,6 +445,9 @@ async function saveToken(token: string): Promise<void> {
  * Clear session (logout locally)
  */
 export async function clearSession(): Promise<void> {
+  // P-A3 — bump FIRST, before any await: a refresh already in flight must
+  // see the new generation even if the deletes below throw.
+  sessionEpoch += 1;
   try {
     await SecureStore.deleteItemAsync(TOKEN_STORAGE_KEY);
     await SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY);
@@ -502,14 +521,22 @@ export type SessionRefreshedListener = (user: User) => void;
  *               once.
  *  - transient→ do nothing: the cached user stays, and the first real API
  *               call self-heals through the 401 interceptor.
+ *
+ * P-A3 — it passes NO deadline. It used to send an 8s per-call timeout,
+ * which bounded the REQUEST rather than a wait: nothing on the render
+ * path waits for this (initializeAuth returns the cached user and fires
+ * this with `void`), so the deadline bought nothing user-visible while
+ * making the single-use refresh token burnable — the client gives up at
+ * 8s, a cold backend finishes the rotation anyway, the phone keeps the
+ * spent token and the next refresh gets the whole session family revoked.
+ * If a wait bound is ever wanted here, race this Promise; do not bound
+ * the request.
  */
 async function runBootRefresh(
   onSessionRefreshed?: SessionRefreshedListener,
 ): Promise<void> {
   try {
-    const refreshResult = await getOrStartRefresh({
-      timeoutMs: BOOT_REFRESH_TIMEOUT_MS,
-    });
+    const refreshResult = await getOrStartRefresh();
 
     if (refreshResult?.success) {
       const user = await getSavedUser();

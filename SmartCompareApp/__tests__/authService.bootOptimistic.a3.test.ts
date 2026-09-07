@@ -10,19 +10,40 @@
  * The cached-user fallback existed but only ran once the call SETTLED, so
  * blocking bought nothing on the failure path.
  *
+ * P-A3 (round-1 polish) — the first cut of A3 replaced the 120s budget
+ * with an 8s per-call deadline on the boot POST. That was the wrong
+ * lever, and a regression against main: the refresh token is SINGLE-USE,
+ * so giving up client-side does NOT stop the server finishing the
+ * rotation — it only stops the phone learning the new token. The device
+ * then keeps a spent token, and the next refresh (a 401 on History, or
+ * the next launch) presents it; past Supabase's 10s reuse interval the
+ * whole session family is revoked and a perfectly valid session is logged
+ * out. Nothing on the render path ever waited for this refresh, so the
+ * deadline bought nothing user-visible either.
+ *
+ * PRINCIPLE PINNED HERE: an in-flight POST /auth/refresh is NEVER aborted
+ * client-side. A deadline may bound what a CALLER waits for; it may never
+ * bound the request.
+ *
  * Pinned here:
  *   1. cached user + token present, refresh still pending -> initializeAuth
  *      RESOLVES (the render path never waits on the network).
- *   2. the boot refresh carries a per-call deadline far under the 120s
- *      global; the mid-session interceptor path passes none.
+ *   2. the boot refresh reaches the transport with NO per-call config —
+ *      no timeout, no AbortSignal — and a refresh that lands long after
+ *      the boot stopped waiting still persists the rotated tokens + user
+ *      and still calls onSessionRefreshed.
  *   3. refresh failure (transient) -> the cached user still stands, tokens
  *      are kept, and nothing tells the app the session died.
  *   4. refresh dead (401 / no refresh token) -> the EXISTING session-death
  *      path runs: tokens cleared + session-invalid emitted, which is what
  *      App.tsx already subscribes to.
- *   5. the auth-state contract stays `verifyAuth(): User | null`.
+ *   5. a logout that lands mid-flight is not undone by the refresh's own
+ *      completion (P-A3 session-generation guard).
+ *   6. the auth-state contract stays `verifyAuth(): User | null`.
  */
 
+import * as fs from 'fs';
+import * as path from 'path';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 import {
@@ -74,8 +95,12 @@ const CACHED_USER = {
   preferences_completed: true,
 };
 
-/** api.ts's global axios budget — the ceiling this finding is about. */
-const GLOBAL_AXIOS_TIMEOUT_MS = 120000;
+const FRESH_USER = {
+  id: 'u-cached',
+  email: 'cached@qaren.app',
+  display_name: 'Renamed Elsewhere',
+  preferences_completed: true,
+};
 
 /** Let every already-queued microtask/`setImmediate` continuation run. */
 async function settleBackground(): Promise<void> {
@@ -83,11 +108,126 @@ async function settleBackground(): Promise<void> {
   await new Promise((resolve) => setImmediate(resolve));
 }
 
+/**
+ * Like settleBackground, but also drains 0ms timers — the queue a
+ * client-side deadline would fire on. After this, "the client gave up"
+ * has either happened or can no longer happen.
+ */
+async function settleIncludingTimers(): Promise<void> {
+  for (let i = 0; i < 3; i += 1) {
+    await new Promise((resolve) => setImmediate(resolve));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+}
+
 async function seedCachedSession(): Promise<void> {
   await AsyncStorage.setItem(USER_KEY, JSON.stringify(CACHED_USER));
   await SecureStore.setItemAsync(TOKEN_KEY, 'at-cached');
   await SecureStore.setItemAsync(REFRESH_KEY, 'rt-cached');
 }
+
+/** A refresh POST that stays in flight until the test settles it. */
+function pendingPost(): { resolve: (v: any) => void; reject: (e: any) => void } {
+  const handles: any = {};
+  mockPost.mockImplementationOnce(
+    () =>
+      new Promise((res, rej) => {
+        handles.resolve = res;
+        handles.reject = rej;
+      }),
+  );
+  return handles;
+}
+
+/**
+ * A transport that HONOURS whatever per-call deadline the client sends —
+ * the whole point of the P-A3 pins below.
+ *
+ * The scenario is "the server needs longer than the client's patience":
+ * if the client attaches a `timeout`, this request is cut off client-side
+ * FIRST (axios's ECONNABORTED shape, no `response`), and the server's own
+ * completion — `completeOnServer(...)`, i.e. the rotation that really did
+ * happen — lands on an already-settled promise and is lost. With no
+ * deadline attached, the request simply stays open until the server
+ * answers. A mock that ignored `config.timeout` would make these tests
+ * pass with the abort restored, which is exactly the regression they
+ * exist to catch.
+ */
+function slowServerPost(): { completeOnServer: (value: any) => void } {
+  const handles: any = {};
+  mockPost.mockImplementationOnce(
+    (_url: string, _body: any, config?: any) =>
+      new Promise((resolve, reject) => {
+        handles.completeOnServer = resolve;
+        if (config && typeof config.timeout === 'number') {
+          setTimeout(
+            () =>
+              reject(
+                Object.assign(
+                  new Error(`timeout of ${config.timeout}ms exceeded`),
+                  { code: 'ECONNABORTED' },
+                ),
+              ),
+            0,
+          );
+        }
+      }),
+  );
+  return handles as { completeOnServer: (value: any) => void };
+}
+
+/**
+ * Comment-aware source stripper for the static fences below: a fence that
+ * matched commentary would keep passing after the code moved into a
+ * comment. String literals are preserved (the URL the fence anchors on
+ * lives in one); `//` and `/* *\/` runs are dropped.
+ */
+function stripComments(src: string): string {
+  let out = '';
+  let quote: string | null = null;
+  let i = 0;
+  while (i < src.length) {
+    const c = src[i];
+    const next = src[i + 1];
+    if (quote) {
+      out += c;
+      if (c === '\\') {
+        out += next ?? '';
+        i += 2;
+        continue;
+      }
+      if (c === quote) quote = null;
+      i += 1;
+      continue;
+    }
+    if (c === '"' || c === "'" || c === '`') {
+      quote = c;
+      out += c;
+      i += 1;
+      continue;
+    }
+    if (c === '/' && next === '/') {
+      while (i < src.length && src[i] !== '\n') i += 1;
+      continue;
+    }
+    if (c === '/' && next === '*') {
+      i += 2;
+      while (i < src.length && !(src[i] === '*' && src[i + 1] === '/')) i += 1;
+      i += 2;
+      continue;
+    }
+    out += c;
+    i += 1;
+  }
+  return out;
+}
+
+const authServiceSrc = stripComments(
+  fs.readFileSync(path.resolve(__dirname, '../src/services/authService.ts'), 'utf8'),
+);
+const apiSrc = stripComments(
+  fs.readFileSync(path.resolve(__dirname, '../src/services/api.ts'), 'utf8'),
+);
 
 beforeEach(async () => {
   mockPost.mockReset();
@@ -148,25 +288,71 @@ describe('initializeAuth — boots from cache without awaiting the network (A3)'
   });
 });
 
-describe('boot refresh deadline (A3)', () => {
-  it('sends the boot refresh with a per-call timeout well under the 120s global', async () => {
+/**
+ * P-A3 — these five replace the round-0 pins that asserted the boot POST
+ * carried `{ timeout: BOOT_REFRESH_TIMEOUT_MS }`.
+ *
+ * They are not deleted but INVERTED, because the old contract was the
+ * bug: the deadline aborted the REQUEST, and an aborted refresh still
+ * spends the single-use token server-side. The replacement contract is
+ * (a) a late-landing refresh still persists its rotation, and (b) nothing
+ * client-side can cut the request off in the first place.
+ */
+describe('the boot refresh is never aborted client-side (P-A3)', () => {
+  it('reaches the transport with NO per-call config — no timeout, no AbortSignal', async () => {
     await seedCachedSession();
     mockPost.mockImplementationOnce(() => new Promise(() => {}));
 
     await authService.initializeAuth();
+    await settleBackground();
 
-    expect(mockPost).toHaveBeenCalledWith(
-      '/api/v1/auth/refresh',
-      { refresh_token: 'rt-cached' },
-      { timeout: authService.BOOT_REFRESH_TIMEOUT_MS },
-    );
-    expect(authService.BOOT_REFRESH_TIMEOUT_MS).toBeGreaterThan(0);
-    expect(authService.BOOT_REFRESH_TIMEOUT_MS).toBeLessThan(
-      GLOBAL_AXIOS_TIMEOUT_MS,
-    );
+    expect(mockPost).toHaveBeenCalledTimes(1); // positive control
+    const call = mockPost.mock.calls[0];
+    expect(call[0]).toBe('/api/v1/auth/refresh');
+    expect(call[1]).toEqual({ refresh_token: 'rt-cached' });
+    // `undefined` covers both "no third argument" and "an explicitly
+    // undefined config"; anything else is a client-side abort lever.
+    expect(call[2]).toBeUndefined();
+    expect(JSON.stringify(call)).not.toMatch(/timeout|signal/i);
   });
 
-  it('leaves the mid-session interceptor path on the global budget (no per-call config)', async () => {
+  it('a refresh that lands AFTER the boot stopped waiting still persists the rotated session', async () => {
+    // The token-burn hazard in one test: the client's patience runs out,
+    // the cold backend finishes the rotation anyway. The phone must end
+    // up holding the NEW tokens, never the spent ones.
+    await seedCachedSession();
+    const server = slowServerPost();
+    const sessionDied = jest.fn();
+    onSessionInvalid(sessionDied);
+    const onSessionRefreshed = jest.fn();
+
+    const user = await authService.initializeAuth(onSessionRefreshed);
+    expect(user).toEqual(CACHED_USER); // boot never waited
+
+    // Any client-side deadline the request carried would fire in here.
+    await settleIncludingTimers();
+
+    // ...and only now does the server answer.
+    server.completeOnServer({
+      data: {
+        success: true,
+        session: { access_token: 'at-new', refresh_token: 'rt-new' },
+        user: FRESH_USER,
+      },
+    });
+    await settleIncludingTimers();
+
+    expect(await SecureStore.getItemAsync(TOKEN_KEY)).toBe('at-new');
+    expect(await SecureStore.getItemAsync(REFRESH_KEY)).toBe('rt-new');
+    expect(JSON.parse((await AsyncStorage.getItem(USER_KEY)) as string)).toEqual(
+      FRESH_USER,
+    );
+    expect(onSessionRefreshed).toHaveBeenCalledTimes(1);
+    expect(onSessionRefreshed).toHaveBeenCalledWith(FRESH_USER);
+    expect(sessionDied).not.toHaveBeenCalled();
+  });
+
+  it('the mid-session interceptor path carries no per-call config either', async () => {
     await SecureStore.setItemAsync(REFRESH_KEY, 'rt-cached');
     mockPost.mockResolvedValueOnce({
       data: { success: true, session: { access_token: 'at-new' } },
@@ -175,11 +361,51 @@ describe('boot refresh deadline (A3)', () => {
     // api.performRefresh calls refreshSession() with no arguments.
     await authService.refreshSession();
 
-    expect(mockPost).toHaveBeenCalledWith(
-      '/api/v1/auth/refresh',
-      { refresh_token: 'rt-cached' },
-      undefined,
-    );
+    expect(mockPost).toHaveBeenCalledTimes(1); // positive control
+    expect(mockPost).toHaveBeenCalledWith('/api/v1/auth/refresh', {
+      refresh_token: 'rt-cached',
+    });
+  });
+
+  it('source fence: the refresh POST call site has no deadline/abort plumbing', () => {
+    // Positive controls first — a fence that silently stopped matching
+    // would "pass" forever.
+    expect(authServiceSrc).toContain('async function refreshSession(');
+    const occurrences =
+      authServiceSrc.split("'/api/v1/auth/refresh'").length - 1;
+    expect(occurrences).toBe(1);
+
+    const urlIdx = authServiceSrc.indexOf("'/api/v1/auth/refresh'");
+    const openIdx = authServiceSrc.lastIndexOf('api.post(', urlIdx);
+    expect(openIdx).toBeGreaterThan(-1);
+    let depth = 0;
+    let end = -1;
+    for (let i = openIdx + 'api.post'.length; i < authServiceSrc.length; i += 1) {
+      const ch = authServiceSrc[i];
+      if (ch === '(') depth += 1;
+      else if (ch === ')') {
+        depth -= 1;
+        if (depth === 0) {
+          end = i;
+          break;
+        }
+      }
+    }
+    expect(end).toBeGreaterThan(openIdx);
+    const callSite = authServiceSrc.slice(openIdx, end + 1);
+    expect(callSite).toContain('refresh_token'); // positive control
+    expect(callSite).not.toMatch(/timeout/i);
+    expect(callSite).not.toMatch(/signal|abort/i);
+    // The removed constant must not come back as a footgun either.
+    expect(authServiceSrc).not.toContain('BOOT_REFRESH_TIMEOUT_MS');
+    expect(authService.BOOT_REFRESH_TIMEOUT_MS).toBeUndefined();
+  });
+
+  it('source fence: api.ts exposes no per-call refresh options to pass one through', () => {
+    expect(apiSrc).toContain('getOrStartRefresh'); // positive control
+    expect(apiSrc).toMatch(/export function getOrStartRefresh\(\s*\)/);
+    expect(apiSrc).toMatch(/function performRefresh\(\s*\)/);
+    expect(apiSrc).not.toContain('RefreshOptions');
   });
 });
 
@@ -199,15 +425,15 @@ describe('background refresh outcomes (A3)', () => {
     expect(await SecureStore.getItemAsync(REFRESH_KEY)).toBe('rt-cached');
   });
 
-  it('timeout failure is transient too: the session survives an unreachable backend', async () => {
+  it('a transport-level timeout is still transient: the session survives an unreachable backend', async () => {
+    // The client no longer ARMS a deadline (see P-A3 above), but the OS
+    // or the server can still drop a socket. That shape must stay
+    // transient — it must never be read as a dead session.
     await seedCachedSession();
     const sessionDied = jest.fn();
     onSessionInvalid(sessionDied);
-    // Shape axios produces on a per-call timeout: no `response`.
     mockPost.mockRejectedValueOnce(
-      Object.assign(new Error('timeout of 8000ms exceeded'), {
-        code: 'ECONNABORTED',
-      }),
+      Object.assign(new Error('socket hang up'), { code: 'ECONNABORTED' }),
     );
 
     const user = await authService.initializeAuth();
@@ -269,17 +495,11 @@ describe('background refresh outcomes (A3)', () => {
     await seedCachedSession();
     const sessionDied = jest.fn();
     onSessionInvalid(sessionDied);
-    const fresh = {
-      id: 'u-cached',
-      email: 'cached@qaren.app',
-      display_name: 'Renamed Elsewhere',
-      preferences_completed: true,
-    };
     mockPost.mockResolvedValueOnce({
       data: {
         success: true,
         session: { access_token: 'at-new', refresh_token: 'rt-new' },
-        user: fresh,
+        user: FRESH_USER,
       },
     });
 
@@ -289,7 +509,7 @@ describe('background refresh outcomes (A3)', () => {
 
     expect(user).toEqual(CACHED_USER); // rendered from cache first
     expect(onSessionRefreshed).toHaveBeenCalledTimes(1);
-    expect(onSessionRefreshed).toHaveBeenCalledWith(fresh);
+    expect(onSessionRefreshed).toHaveBeenCalledWith(FRESH_USER);
     expect(sessionDied).not.toHaveBeenCalled();
     expect(await SecureStore.getItemAsync(TOKEN_KEY)).toBe('at-new');
   });
@@ -302,6 +522,39 @@ describe('background refresh outcomes (A3)', () => {
     await authService.initializeAuth(onSessionRefreshed);
     await settleBackground();
 
+    expect(onSessionRefreshed).not.toHaveBeenCalled();
+  });
+
+  it('a logout mid-flight is not undone when the refresh lands (P-A3 session generation)', async () => {
+    // Round-0 P3 carry-over, now reachable BY DESIGN: the boot refresh
+    // runs in the background and (P-A3) is never cut short, so a logout
+    // tap can land while it is open. Its completion must not write the
+    // rotated tokens back over the cleared storage — that resurrects a
+    // session the user ended, and the next launch boots into Main as the
+    // logged-out user.
+    await seedCachedSession();
+    const post = pendingPost();
+    const onSessionRefreshed = jest.fn();
+
+    await authService.initializeAuth(onSessionRefreshed);
+    await settleBackground();
+    expect(mockPost).toHaveBeenCalledTimes(1); // positive control: in flight
+
+    await authService.logout();
+    expect(await SecureStore.getItemAsync(TOKEN_KEY)).toBeNull();
+
+    post.resolve({
+      data: {
+        success: true,
+        session: { access_token: 'at-new', refresh_token: 'rt-new' },
+        user: FRESH_USER,
+      },
+    });
+    await settleBackground();
+
+    expect(await SecureStore.getItemAsync(TOKEN_KEY)).toBeNull();
+    expect(await SecureStore.getItemAsync(REFRESH_KEY)).toBeNull();
+    expect(await AsyncStorage.getItem(USER_KEY)).toBeNull();
     expect(onSessionRefreshed).not.toHaveBeenCalled();
   });
 });
@@ -327,28 +580,12 @@ describe('background refresh outcomes (A3)', () => {
  * refresh with the same token: the loser's 401 lands on clearSession() +
  * sessionInvalid, routing the user back to the Auth stack at launch and
  * deleting the winner's freshly stored tokens.
+ *
+ * P-A3 — coalesced callers inherit the shared request, and that request
+ * is un-abortable for all of them: the assertions below pin the two-arg
+ * (config-free) POST from BOTH start orders.
  */
 describe('boot refresh shares api.ts refresh mutex (A3 / R9)', () => {
-  const FRESH_USER = {
-    id: 'u-cached',
-    email: 'cached@qaren.app',
-    display_name: 'Renamed Elsewhere',
-    preferences_completed: true,
-  };
-
-  /** A refresh POST that stays in flight until the test resolves it. */
-  function pendingPost(): { resolve: (v: any) => void; reject: (e: any) => void } {
-    const handles: any = {};
-    mockPost.mockImplementationOnce(
-      () =>
-        new Promise((res, rej) => {
-          handles.resolve = res;
-          handles.reject = rej;
-        }),
-    );
-    return handles;
-  }
-
   it('a 401 landing DURING boot joins the boot refresh: ONE POST, one token spend', async () => {
     await seedCachedSession();
     const post = pendingPost();
@@ -365,11 +602,9 @@ describe('boot refresh shares api.ts refresh mutex (A3 / R9)', () => {
     // Bypassing the mutex shows up here as a SECOND POST carrying the
     // SAME (already-spent) refresh token.
     expect(mockPost).toHaveBeenCalledTimes(1);
-    expect(mockPost).toHaveBeenCalledWith(
-      '/api/v1/auth/refresh',
-      { refresh_token: 'rt-cached' },
-      { timeout: authService.BOOT_REFRESH_TIMEOUT_MS },
-    );
+    expect(mockPost).toHaveBeenCalledWith('/api/v1/auth/refresh', {
+      refresh_token: 'rt-cached',
+    });
 
     post.resolve({
       data: {
@@ -394,16 +629,14 @@ describe('boot refresh shares api.ts refresh mutex (A3 / R9)', () => {
     await seedCachedSession();
     const post = pendingPost();
 
-    // The interceptor wins the start this time, so its (global-budget)
-    // deadline is the one on the wire.
+    // The interceptor wins the start this time; the request on the wire
+    // is the same config-free one either way.
     const interceptorRefresh = apiModule.__testRefreshDedup();
     await settleBackground();
     expect(mockPost).toHaveBeenCalledTimes(1);
-    expect(mockPost).toHaveBeenCalledWith(
-      '/api/v1/auth/refresh',
-      { refresh_token: 'rt-cached' },
-      undefined,
-    );
+    expect(mockPost).toHaveBeenCalledWith('/api/v1/auth/refresh', {
+      refresh_token: 'rt-cached',
+    });
 
     const onSessionRefreshed = jest.fn();
     const sessionDied = jest.fn();
