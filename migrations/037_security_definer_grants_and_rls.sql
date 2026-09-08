@@ -1,0 +1,259 @@
+-- 037_security_definer_grants_and_rls.sql
+-- W1-2 — findings CR-SECURITY-01 and CR-SECURITY-02.
+--
+-- MERGING THIS CHANGES NOTHING IN PRODUCTION. It is a file in a repo until
+-- somebody applies it, and 035 and 036 are ALSO unapplied. (033 and 034 ARE
+-- applied — verified live 2026-09-06, CR-DATA-MIGRATIONS-07 — so do NOT
+-- re-apply them.) See the "APPLY ORDER" note below; it is a hard
+-- prerequisite, not advice.
+--
+-- ============================================================================
+-- CR-SECURITY-01 — SECURITY DEFINER functions executable by PUBLIC
+-- ============================================================================
+-- A SECURITY DEFINER function runs as its OWNER, so it is a deliberate
+-- privilege-escalation primitive. PostgreSQL grants EXECUTE on a new function
+-- to PUBLIC BY DEFAULT, and PostgREST publishes every executable function as
+-- `/rpc/<name>`. Silence is therefore not safety: a function with no GRANT at
+-- all is the MOST exposed, not the least.
+--
+-- Census of `SECURITY DEFINER` across migrations/ (measured 2026-09-08 at
+-- eecd8bf9, `grep -rn "SECURITY DEFINER" migrations/`), and the state before
+-- this file:
+--
+--   function                             defined at        REVOKE?  explicit GRANT?
+--   delete_user_cascade(uuid)            010:70, 025:28    no       none
+--   increment_lifetime_comparisons(uuid) 011:55            no       none
+--   resolve_referral_code(text)          014:97            no       anon, authenticated (014:102)
+--   home_savings_aggregate(uuid)         036:47            yes 036:94   authenticated, service_role (036:95)
+--
+-- `grep -rn "REVOKE" migrations/` returned exactly ONE line repo-wide (036:94),
+-- so three of the four signatures are exposed by the PUBLIC default. 036 is the
+-- correct template and is already in the repo — this file copies its shape and
+-- widens the revoke (see the next section for why PUBLIC alone is not enough).
+--
+-- NOTE FOR ANYONE CARRYING THE CONSOLIDATED REPORT FORWARD: that report names
+-- `cleanup_expired_ratings` as one of the three offenders. NO SUCH FUNCTION
+-- EXISTS — `grep -rn cleanup_expired_ratings migrations/ app/` returns nothing.
+-- The real third offender is `resolve_referral_code`, and its fix differs in
+-- kind (keep the anon grant).
+--
+-- ============================================================================
+-- WHY THE REVOKES NAME anon AND authenticated, AND WHY service_role IS GRANTED
+-- EXPLICITLY — the ACL premise, corrected
+--
+-- (Statement 3 below is the one exception and says so in place: anon and
+-- authenticated are resolve_referral_code's INTENDED grantees, so revoking
+-- them one statement before re-granting them would be churn with a window
+-- in it.)
+-- ============================================================================
+-- Supabase's `service_role` is an ORDINARY ROLE carrying `BYPASSRLS`. It is NOT
+-- a superuser. `BYPASSRLS` is about ROW security and says nothing about the
+-- EXECUTE privilege: a role can call a function only through a grant to itself,
+-- to PUBLIC, or to a role it is a member of. "The service role bypasses grants"
+-- is false, and an earlier draft of this file rested on it.
+--
+-- On a stock Supabase project the `postgres`-owned functions in `public` also
+-- carry EXPLICIT default-privilege grants to `anon, authenticated,
+-- service_role`. We cannot read this database's real ACL from a repo checkout,
+-- so BOTH readings have to be survivable, and only one shape is:
+--
+--   * If those explicit default grants exist here, then `REVOKE … FROM PUBLIC`
+--     alone removes NOTHING for `anon` — its own grant survives, /rpc stays
+--     open, and this migration would be a no-op wearing the costume of a fix.
+--     Hence `FROM PUBLIC, anon, authenticated`.
+--   * If they do NOT exist here, then `service_role`'s EXECUTE was coming from
+--     the very PUBLIC default this file revokes, and revoking without a
+--     re-grant would break account deletion and the freemium counter. Hence the
+--     explicit `GRANT EXECUTE … TO service_role`.
+--
+-- WHICH ROLES ACTUALLY NEED EXECUTE — from the callers, not from guesswork
+-- (`grep -rn "<fn>" app/`, re-verified 2026-09-08):
+--
+--   delete_user_cascade            ONE caller: database_service.py:384, inside
+--                                  delete_user_data_cascade, whose client is
+--                                  get_admin_supabase_client() (:382).
+--   increment_lifetime_comparisons TWO callers: usage_service.py:514 and :706,
+--                                  both get_admin_supabase_client() on the
+--                                  preceding line.
+--   resolve_referral_code          ONE caller: referral_service.py:399, on
+--                                  self.client, which __init__ (:207) sets to
+--                                  get_admin_supabase_client() UNCONDITIONALLY.
+--   home_savings_aggregate         home_routes.py:97, on the USER client when a
+--                                  token is present (:213-216), else the admin
+--                                  client — i.e. authenticated + service_role,
+--                                  exactly what 036:95 already grants.
+--
+-- get_admin_supabase_client() is the SERVICE-ROLE client (database_service.py
+-- :227). So `service_role` is the only role the first two need, and
+-- `tests/test_migration_037_security_definer_grants.py::
+-- test_service_role_only_functions_are_granted_to_service_role_and_nobody_else`
+-- asserts BOTH directions: the grant must exist exactly once, and no migration
+-- may grant either function to PUBLIC / anon / authenticated — which would hand
+-- every logged-in user a one-call account-destruction primitive for ANY uuid,
+-- plus a freemium-counter primitive.
+--
+-- THE anon GRANT ON resolve_referral_code IS KEPT, AND THE HONEST REASON IS
+-- NOT "a caller needs it". It was added deliberately at 014:102, and no
+-- anonymous caller for it exists IN THIS REPO: the invitee landing
+-- (referral_routes.py:255-279) talks to FastAPI, which talks to PostgREST with
+-- the service-role key, and the mobile client ships no Supabase credential at
+-- all. But "I found no caller in THIS repo" is not evidence a grant is unused —
+-- a client build, an operator script or the Supabase dashboard could be the
+-- caller — and revoking an existing, deliberate grant on that basis is the
+-- riskier change. It is retained; `service_role` is added alongside it because
+-- the only caller we CAN see is the admin client, and after this revoke that
+-- caller must not be resting on a default either. Dropping `anon` later is a
+-- cheap follow-up with its own evidence.
+--
+-- ============================================================================
+-- CR-SECURITY-02 — user_events readable by the anon role
+-- ============================================================================
+-- This half is a MIGRATIONS-VS-LIVE divergence, not a source defect. 010:12
+-- already says `ALTER TABLE user_events ENABLE ROW LEVEL SECURITY` and 010:56-59
+-- already define events_insert / events_select `USING (auth.uid() = user_id)`.
+-- The source has been right the whole time; the finding is that the live table
+-- does not match it (146 rows visible to the anon role, 7 distinct real user
+-- uuids). The ALTER below is therefore an IDEMPOTENT RE-ASSERTION whose only
+-- purpose is to make "apply 037" sufficient. No source test can see this
+-- finding — only the live_db pins in the test file can, and only after apply.
+--
+-- FORCE ROW LEVEL SECURITY IS DELIBERATELY NOT INCLUDED. The unit spec asks for
+-- it "if the table owner is the service role". Table ownership is a live-database
+-- fact and there is nothing in migrations/ that states who owns user_events, so
+-- that condition CANNOT be evaluated from source and was not evaluated at all —
+-- no live database was touched while writing this. Shipping FORCE on an
+-- unverified premise is the worse error of the two: FORCE also applies RLS to
+-- the table's OWNER, so it can silently empty an owner-connection maintenance
+-- query. The check to run at apply time, and the statement to run if it comes
+-- back saying you need it, are in the commented block after the ALTER.
+--
+-- ============================================================================
+-- APPLY ORDER — a hard prerequisite
+-- ============================================================================
+-- 033 and 034 are ALREADY APPLIED and writing (verified live 2026-09-06,
+-- CR-DATA-MIGRATIONS-07). 035 and 036 are NOT. The order is therefore:
+--
+--     035 -> 036 -> 037
+--
+-- This is enforced rather than requested: the fourth REVOKE below names
+-- public.home_savings_aggregate(uuid), which does not exist until 036 has been
+-- applied, and PostgreSQL has no `REVOKE … IF EXISTS` for a function. Applying
+-- 037 out of order therefore raises `function … does not exist` and, inside the
+-- BEGIN/COMMIT below, rolls the whole file back. That is the intended failure:
+-- loud and total, never half-applied.
+--
+-- ============================================================================
+-- APPLY-TIME VERIFICATION — run this BEFORE and AFTER, and keep both outputs
+-- ============================================================================
+-- The SQL editor wraps a multi-statement script in ONE transaction, so a later
+-- failure silently rolls back everything before it. A "no error" screen is not
+-- evidence. The ACL is:
+--
+--     SELECT p.proname, p.proacl
+--       FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+--      WHERE n.nspname = 'public'
+--        AND p.proname IN ('delete_user_cascade', 'increment_lifetime_comparisons',
+--                          'resolve_referral_code', 'home_savings_aggregate');
+--
+-- AFTER 037, the first two rows must show a `service_role=X/…` entry and NO
+-- `anon=`, NO `authenticated=` and NO bare `=X/…` entry. The empty grantee IS
+-- PUBLIC, so an `=X/postgres` entry present means PUBLIC still holds EXECUTE
+-- and this file did not take effect. A NULL proacl also means "PUBLIC default
+-- still in force" — it is not a clean slate.
+--
+-- Then the live proof that the finding is closed, from a shell:
+--
+--     curl -i -X POST "$SUPABASE_URL/rest/v1/rpc/delete_user_cascade" \
+--          -H "apikey: $SUPABASE_ANON_KEY" \
+--          -H "Authorization: Bearer $SUPABASE_ANON_KEY" \
+--          -H "Content-Type: application/json" \
+--          -d '{"target_user_id": "00000000-0000-0000-0000-000000000000"}'
+--
+-- That must come back **42501 permission denied** — not 404, not 200. A 404
+-- (PGRST202 "Could not find the function") is NOT proof: it is also what an
+-- absent function, a typo'd name and a stale PostgREST schema cache return, so
+-- it cannot tell "revoked" from "never applied here". If you get one, settle it
+-- with the proacl query above. A 200 means the revoke did not land and the
+-- function is still an open account-destruction primitive. The nil uuid is used
+-- on purpose: if the call DOES succeed it deletes nothing.
+--
+-- Then run the live pins — that run, not the merge of this file, is the
+-- evidence that production is fixed:
+--     $env:LIVE=1
+--     $env:PYTHONIOENCODING="utf-8"
+--     python -m pytest tests/test_migration_037_security_definer_grants.py -v -m live_db -p no:randomly
+
+BEGIN;
+
+-- ---------------------------------------------------------------------------
+-- 1. delete_user_cascade(uuid) — service-role only.
+--    Defined 010:70, redefined 025:28 (and in rollback/025:18).
+--    The revoke names anon and authenticated because a PUBLIC-only revoke is a
+--    no-op wherever Supabase's default privileges granted them EXECUTE
+--    explicitly; the grant is explicit because service_role is an ordinary
+--    role and must not be left resting on the default this revoke removes.
+-- ---------------------------------------------------------------------------
+REVOKE ALL ON FUNCTION public.delete_user_cascade(uuid)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.delete_user_cascade(uuid)
+  TO service_role;
+
+-- ---------------------------------------------------------------------------
+-- 2. increment_lifetime_comparisons(uuid) — service-role only, same shape.
+--    Defined 011:55.
+-- ---------------------------------------------------------------------------
+REVOKE ALL ON FUNCTION public.increment_lifetime_comparisons(uuid)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.increment_lifetime_comparisons(uuid)
+  TO service_role;
+
+-- ---------------------------------------------------------------------------
+-- 3. resolve_referral_code(text) — defined 014:97. The anon grant from 014:102
+--    is retained on purpose (see the long note above) and re-asserted here,
+--    together with service_role, which is the only caller this repo can point
+--    at. anon and authenticated are NOT named in the revoke: they are the
+--    intended grantees and are re-granted on the next statement, so revoking
+--    them would be churn with a window in it.
+-- ---------------------------------------------------------------------------
+REVOKE ALL ON FUNCTION public.resolve_referral_code(text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.resolve_referral_code(text)
+  TO anon, authenticated, service_role;
+
+-- ---------------------------------------------------------------------------
+-- 4. home_savings_aggregate(uuid) — defined 036:47, already revoked at 036:94
+--    and granted at 036:95. Re-asserted here so the set of SECURITY DEFINER
+--    functions closed by an explicit REVOKE is complete in ONE file, and so
+--    that this migration is self-contained against a database where 036 landed.
+--    `anon` is added to the revoke for the same reason as statements 1 and 2:
+--    036's PUBLIC-only revoke leaves a stock explicit anon grant standing, and
+--    036:92-93 says the function is meant for the authenticated and
+--    service-role clients only. No data was exposed by that gap — the function
+--    re-derives the caller (`auth.uid() = p_user_id`), so an anon call returns
+--    zero rows — but an open /rpc endpoint on a SECURITY DEFINER function is
+--    exactly what CR-SECURITY-01 is about.
+--    Requires 036 to have been applied first (see APPLY ORDER above).
+-- ---------------------------------------------------------------------------
+REVOKE ALL ON FUNCTION public.home_savings_aggregate(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.home_savings_aggregate(uuid)
+  TO authenticated, service_role;
+
+-- ---------------------------------------------------------------------------
+-- 5. user_events RLS — idempotent re-assertion of 010:12, so that the
+--    events_insert / events_select policies at 010:56-59 are actually in
+--    effect. Enabling RLS on an already-RLS-enabled table is a no-op.
+-- ---------------------------------------------------------------------------
+ALTER TABLE public.user_events ENABLE ROW LEVEL SECURITY;
+
+-- FORCE: NOT SHIPPED, NOT DECIDED. Run this first --
+--     SELECT c.relowner::regrole AS owner,
+--            c.relrowsecurity    AS rls_enabled,
+--            c.relforcerowsecurity AS rls_forced
+--       FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+--      WHERE n.nspname = 'public' AND c.relname = 'user_events';
+-- -- and only if the owner is a role the application actually connects as
+-- -- (rather than a superuser/`postgres` maintenance owner) does FORCE add
+-- -- anything. It is NOT needed to close CR-SECURITY-02: `anon` is not the
+-- -- table owner, so plain ENABLE already constrains it.
+--     ALTER TABLE public.user_events FORCE ROW LEVEL SECURITY;
+
+COMMIT;

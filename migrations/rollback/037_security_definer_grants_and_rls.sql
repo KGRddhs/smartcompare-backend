@@ -1,0 +1,122 @@
+-- Rollback for 037_security_definer_grants_and_rls.sql (W1-2, CR-SECURITY-01 /
+-- CR-SECURITY-02).
+--
+-- READ THIS BEFORE RUNNING IT. This rollback is deliberately PARTIAL: it
+-- reverses exactly one of 037's statements, and refuses to reverse the
+-- privilege changes. That is not an oversight, and the reasoning is below.
+--
+-- ============================================================================
+-- WHAT THIS FILE REVERSES — the RLS enable, and only that
+-- ============================================================================
+-- `ALTER TABLE public.user_events ENABLE ROW LEVEL SECURITY` is the ONLY
+-- statement in 037 that can break a running product, so it is the only one with
+-- a real escape hatch here.
+--
+-- The blast radius was measured, not assumed. Every user_events access in app/
+-- goes through the service-role client (`grep -rn user_events app/ --include=*.py`,
+-- 2026-09-08): the writes at feedback_service.py:194 and :227 use
+-- get_supabase_client(), which database_service.py:285-288 documents as
+-- DEPRECATED and returns get_admin_supabase_client(); the reads at
+-- structured_comparison_service.py:4837 and admin_routes.py:395 are admin-client
+-- too. There is no anon-key or user-JWT path to user_events in this repo. So the
+-- expected impact of enabling RLS on the backend is NONE.
+--
+-- "Expected" is doing real work in that sentence. It rests on the service role
+-- bypassing row level security, which is a Supabase/PostgreSQL platform
+-- behaviour that was NOT measured for this unit — there is no PostgreSQL on the
+-- machine this was written on (`psql` absent, Docker daemon down).
+--
+-- ============================================================================
+-- WHAT TO MONITOR AFTER APPLYING 037 — a SHARE, not a volume
+-- ============================================================================
+-- If that assumption is wrong, THE FAILURE IS PARTIAL, and a dashboard that
+-- watches total event volume will not show it. 010:56-57 is
+--
+--     CREATE POLICY events_insert ON user_events FOR INSERT
+--       WITH CHECK (auth.uid() = user_id OR user_id IS NULL);
+--
+-- — no `TO` clause, so it applies to every role. `auth.uid()` is NULL on a
+-- service-role connection, so under an RLS failure the `user_id IS NULL` arm
+-- still passes and ANONYMOUS ROWS KEEP LANDING; only rows carrying a non-null
+-- user_id are rejected. Total volume barely moves. What collapses is the SHARE
+-- of rows that are attributed to a user — and every logged-in-user analytic,
+-- the retention join at admin_routes.py:395, and the cohort view at 013:56 are
+-- built on exactly those rows.
+--
+-- So watch this, hourly, across the apply:
+--
+--     SELECT date_trunc('hour', created_at)                          AS hour,
+--            COUNT(*)                                                AS total,
+--            COUNT(*) FILTER (WHERE user_id IS NOT NULL)             AS identified,
+--            ROUND(100.0 * COUNT(*) FILTER (WHERE user_id IS NOT NULL)
+--                  / NULLIF(COUNT(*), 0), 1)                         AS pct_identified
+--       FROM user_events
+--      WHERE created_at > now() - interval '48 hours'
+--      GROUP BY 1
+--      ORDER BY 1;
+--
+-- Take the baseline BEFORE applying 037. A `pct_identified` that drops toward
+-- zero while `total` holds is this failure mode and nothing else. It will not
+-- announce itself: feedback_service.track_event / track_events_batch swallow
+-- their exceptions (`logger.warning(f"Error tracking event: …")`) and return
+-- `{"success": False}`, so nothing 500s and nothing pages.
+--
+-- Running the statement below returns user_events to the state the finding
+-- recorded: readable by the anon role. That IS the vulnerability, reinstated.
+-- It also leaves the table diverging from 010:12, which has asked for RLS on
+-- this table since the beginning. Use it to stop a live incident, then fix
+-- forward — do not leave the database here.
+
+BEGIN;
+
+ALTER TABLE public.user_events DISABLE ROW LEVEL SECURITY;
+
+COMMIT;
+
+-- ============================================================================
+-- WHAT THIS FILE REFUSES TO REVERSE — the revokes and the grants
+-- ============================================================================
+-- Undoing `REVOKE ALL ON FUNCTION … FROM PUBLIC, anon, authenticated` means
+-- granting EXECUTE back to those roles, which re-opens CR-SECURITY-01 in full:
+-- PostgREST would again publish /rpc/delete_user_cascade, a one-call
+-- account-destruction primitive accepting ANY uuid, to an unauthenticated
+-- caller.
+--
+-- There is also nothing to restore. The measured callers of the two
+-- service-role-only functions (database_service.py:384; usage_service.py:514
+-- and :706) all authenticate as the SERVICE ROLE, and 037 grants that role
+-- EXECUTE explicitly — so no caller in this repo loses anything, and none was
+-- relying on the PUBLIC default. A rollback exists to restore behaviour
+-- somebody depended on; here, nobody did.
+--
+-- The two functions that DID have explicit grants keep them: 037 re-asserts
+-- 014:102 (resolve_referral_code TO anon, authenticated — plus service_role,
+-- its only visible caller) and 036:95 (home_savings_aggregate TO authenticated,
+-- service_role) immediately after revoking them, so those two functions are
+-- already in the state their own migrations intended and there is nothing for a
+-- rollback to put back.
+--
+-- If you nonetheless have to hand EXECUTE back — you should not, and you should
+-- have a live caller to point at first — the statements are below, COMMENTED
+-- OUT ON PURPOSE.
+--
+-- WHAT CI WOULD ACTUALLY CATCH, EXACTLY: only the FIRST TWO. Uncommenting
+-- either of them fails
+-- tests/test_migration_037_security_definer_grants.py::
+-- test_service_role_only_functions_are_granted_to_service_role_and_nobody_else,
+-- which scans migrations/rollback/*.sql as well as migrations/*.sql precisely
+-- so that a rollback file cannot be the hole in that rule. The last two are NOT
+-- fenced by any test:
+--
+--   * the resolve_referral_code line would widen a grant that is already
+--     deliberately anonymous — no guard distinguishes PUBLIC from anon there;
+--   * the home_savings_aggregate line would SILENTLY UNDO 036:94, a revoke this
+--     rollback has no business touching (036 is not 037's to reverse), and
+--     nothing in the estate would go red.
+--
+-- Do not treat "CI is green" as permission to uncomment either of those.
+--
+--     GRANT EXECUTE ON FUNCTION public.delete_user_cascade(uuid) TO PUBLIC;
+--     GRANT EXECUTE ON FUNCTION public.increment_lifetime_comparisons(uuid) TO PUBLIC;
+--     GRANT EXECUTE ON FUNCTION public.resolve_referral_code(text) TO PUBLIC;
+--     GRANT EXECUTE ON FUNCTION public.home_savings_aggregate(uuid) TO PUBLIC;
