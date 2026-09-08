@@ -22,6 +22,7 @@ from app.utils.prompt_sanitizer import (
     sanitize_untrusted_block,
     check_injection_patterns,
 )
+from app.services import api_budget_service as _llm_breaker
 
 logger = logging.getLogger(__name__)
 
@@ -1220,7 +1221,7 @@ async def classify_category_llm(texts: list) -> str:
         user_content = sanitize_prompt_input(" | ".join(names), max_length=300)
         client = get_client()
         response = await asyncio.wait_for(
-            client.chat.completions.create(
+            _llm_breaker.guarded_llm_create(client,
                 model=standard_model(),
                 messages=[
                     {"role": "system", "content": _CLASSIFY_CATEGORY_LLM_PROMPT},
@@ -1360,7 +1361,7 @@ async def parse_product_query(query: str) -> Tuple[Dict[str, Any], Dict[str, int
         sanitized_query = sanitize_prompt_input(query, max_length=500)
         if check_injection_patterns(query):
             logger.warning(f"Injection pattern detected in query: {query[:100]}")
-        response = await client.chat.completions.create(
+        response = await _llm_breaker.guarded_llm_create(client,
             model=standard_model(),
             messages=[
                 {"role": "system", "content": PRODUCT_PARSER_PROMPT},
@@ -1418,7 +1419,7 @@ async def extract_specs(
             skip_fields=skip_fields,
         )
 
-        response = await client.chat.completions.create(
+        response = await _llm_breaker.guarded_llm_create(client,
             model=standard_model(),
             messages=[
                 {"role": "system", "content": prompt_parts["system"]},
@@ -1577,7 +1578,7 @@ Region: {region} ({region_info["currency"]})
 SEARCH CONTEXT:
 {_wrap_search_context(search_context[:2000])}"""
 
-        response = await client.chat.completions.create(
+        response = await _llm_breaker.guarded_llm_create(client,
             model=standard_model(),
             messages=[
                 {"role": "system", "content": PRICE_EXTRACTION_SYSTEM},
@@ -1623,7 +1624,7 @@ async def extract_price_from_training_data(
 Product: {s_brand} {s_name} {s_variant}
 Region: {region} ({region_info["currency"]})
 </USER_INPUT>"""
-        response = await client.chat.completions.create(
+        response = await _llm_breaker.guarded_llm_create(client,
             model=standard_model(),
             messages=[
                 {"role": "system", "content": PRICE_FALLBACK_SYSTEM},
@@ -1670,7 +1671,7 @@ Category: {category}
 SEARCH CONTEXT:
 {_wrap_search_context(search_context[:2500])}"""
 
-        response = await client.chat.completions.create(
+        response = await _llm_breaker.guarded_llm_create(client,
             model=standard_model(),
             messages=[
                 {"role": "system", "content": REVIEWS_EXTRACTION_SYSTEM},
@@ -2438,7 +2439,7 @@ Primary concern: {concern}
         # COMPARISON_SYSTEM already contains "Return ONLY valid JSON" so
         # OpenAI's prompt-validation contract is satisfied.
         try:
-            response = await client.chat.completions.create(
+            response = await _llm_breaker.guarded_llm_create(client,
                 model=verdict_model,
                 messages=[
                     {"role": "system", "content": system_msg},
@@ -2480,9 +2481,10 @@ Primary concern: {concern}
                 # already-saturated mini TPM budget. Worst-case chain total is
                 # model_config.verdict_chain_max_attempts(), read per call.
                 from app.services.model_config import openai_fallback_max_retries
-                response = await client.with_options(
-                    max_retries=openai_fallback_max_retries()
-                ).chat.completions.create(
+                response = await _llm_breaker.guarded_llm_create(
+                    client.with_options(
+                        max_retries=openai_fallback_max_retries()
+                    ),
                     model=verdict_model,
                     messages=[
                         {"role": "system", "content": system_msg},
