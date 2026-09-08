@@ -34,8 +34,17 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["feedback"])
 
+# Allowlist of mattered_most values accepted by POST /feedback. This MUST be a
+# SUPERSET of every chip key the mobile app can send: FeedbackCard.tsx sends the
+# tapped chip as `mattered_most: [chipKey]`, and an unknown value 422-rejects the
+# WHOLE submission, which the client swallows (fire-and-forget), so the tap is
+# silently dropped server-side. tests/test_feedback_allowlist_superset.py greps
+# the FE chip definitions and fails if any is missing here. WIDEN this list only
+# — removing an accepted value breaks any client still sending it.
 VALID_MATTERED_MOST = [
-    "price", "specs", "reviews", "brand", "value", "warranty", "ratings"
+    "price", "specs", "reviews", "brand", "value", "warranty", "ratings",
+    # FeedbackCard.tsx chips (the MATTERED_OPTIONS array) — on phones today.
+    "accurate", "detailed", "fast",
 ]
 
 # Allowlist of event_type values accepted by POST /events. This MUST be a
