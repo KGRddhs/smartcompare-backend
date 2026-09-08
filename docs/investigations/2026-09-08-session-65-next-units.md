@@ -285,3 +285,49 @@ different list gives a different SHA over identical results.
 Note W1-8 is UNFLAGGED, so this is not a flag-OFF check in the usual sense. What it
 proves is that adding logging and a `failed_count` key changed no extracted price
 result anywhere in the 1,656-call corpus.
+
+---
+
+# PART 4 — state at the SESSION 65c close (2026-09-08 evening, weekly budget exhausted)
+
+## In flight, STOPPED, files on disk (uncommitted — inspect `git diff`; never `git checkout` or `stash` in these worktrees)
+- **W3-2** `sc-w3-cid` (`feature/s65-w3-2-comparison-id-echo`): green implementation complete (14/14 in `tests/test_comparison_id_echo.py`); the rework under the BINDING ruling at the end of `.qa-w1b/W3_2_UNIT_SPEC.md` (flag `ENABLE_COMPARISON_ID_ECHO` default OFF; `asyncio.wait_for` + `COMPARISON_ID_PERSIST_TIMEOUT_SECONDS` 5.0; four pins; activation after `ENABLE_SUPABASE_CLIENT_REUSE`) was stopped at "mutation checks" — most of it is likely on disk. Run the unit file with the flag unset AND set, read the diff against the ruling, finish the mutations, then the gates.
+- **W1-5** `sc-w1-limkey` (`feature/s65-w1-5-limiter-endpoint-key`): red done (`tests/test_limiter_endpoint_key.py`, 11 nodes, 3 red); green stopped early (`app/middleware/rate_limiter.py` modified). Rulings appended to `.qa-w1b/W1_5_UNIT_SPEC.md`.
+- **W1-6** `sc-w1-drain` (`feature/s65-w1-6-shutdown-drain`): red done (`tests/test_shutdown_drain.py`, 17 nodes, 14 red); green stopped early (`app/main.py`, `app/utils/async_utils.py`, `Procfile`, `railway.json` modified). Rulings appended to `.qa-w1b/W1_6_UNIT_SPEC.md`.
+- Resume batch 3 with `Workflow({scriptPath: <session>/workflows/scripts/s65-batch3-w1-5-w1-6-wf_dce3b4f7-aba.js, resumeFromRunId: 'wf_dce3b4f7-aba'})` — reds replay from cache, greens re-run against whatever is on disk; or run each unit file first and decide keep-or-revert per file.
+- **Migration 037 (merged in #153) is NOT applied.** Apply order `035 -> 036 -> 037`; verification = the `proacl` query in the migration header before/after, then the anon-key `POST /rest/v1/rpc/delete_user_cascade` probe must return 42501 (a 404 proves nothing); then monitor the share of `user_events` rows with non-null `user_id`.
+
+## Docs debt applied to CLAUDE.md in this PR, and the full measured record
+
+# Docs debt to land in the next context-files PR (accumulated 2026-09-08, batch 2/3)
+
+Every item below is MEASURED in this session, not inferred. Line anchors are at `08167de1` unless stated.
+
+## Corrections to CLAUDE.md
+1. **SESSION 65b block, W1-3 sentence is WRONG:** "the merged rework uses the read-only `get_breaker_state`". Shipped code (`api_budget_service.py:781`, `openai_preflight_allows_compare`) reads `_openai_breaker_snapshot()`; there is zero `get_breaker_state` in the preflight block. `get_breaker_state` is read-only but never applies OPEN→HALF_OPEN, so it would have re-created the permanent-lockout defect from the other direction. Fix the sentence.
+2. **`loop_lag_max_ms` is a per-process high-water mark — now PROVEN, not asserted:** prod read 285.99 ms before the `08167de1` deploy and **1.0 ms** immediately after it (new process). The 286 ms idle figure is the container-scheduling noise floor first measured 2026-09-08; a W5 canary must compare readings within ONE process lifetime.
+3. **Railway config-as-code deprecation:** existing `railway.json` / `railway.warmer.json` honoured until **2026-12-01**; migrate per docs.railway.com/infrastructure-as-code before then. (Already in the flag row; repeat in the ops checklist.)
+4. **Railway teardown DOES run graceful shutdown:** removed-deployment logs show `Shutting down … Finished server process [1]`; the earlier "draining default 0 = no window" claim is withdrawn. W1-6 relies on this.
+5. **`_verdict_critique` LEAKS into the client payload today** (pre-existing; measured by W3-2's green at `eecd8bf9`): POST `/text/compare` body and BOTH SSE terminal events carry `metadata._verdict_critique` while the DB row does not, because the old in-place pop ran fire-and-forget AFTER serialization. W3-2 preserves both halves deliberately (sanitizes a COPY for the insert). Closing the leak is a separate unit: strip it in `build_comparison_response` or at the route before serialization, with a pin that the client payload has no `_`-prefixed metadata keys. Only fires when `ENABLE_SELF_CRITIQUE` is ON (default OFF).
+6. **`ENABLE_DEFAULT_RATE_LIMITS` row needs a new precondition (W1-9 adversary, measured on slowapi 0.1.9):** `SlowAPIMiddleware.sync_check_limits` contains `if inspect.iscoroutinefunction(exception_handler): exception_handler = _rate_limit_exceeded_handler`, so our async `rate_limit_handler` is DISCARDED on the 21 default-limited routes — their 429s carry slowapi's bare `{"error": "Rate limit exceeded: 10 per 1 minute"}`, no envelope, no `Retry-After`. Latent while the flag is OFF; flipping it makes those routes' 429s strictly worse than the decorated ones. Fix options: a sync handler shim, or `SlowAPIASGIMiddleware`; verify on the pinned 0.1.10.
+7. **Two 429 classes now share ONE contract** (W1-9): slowapi limits AND the brute-force lockout (`ACCOUNT_LOCKED`) both emit `Retry-After` + `retry_after_seconds`. The client half (W3-14) should read `retry_after_seconds` and nothing else; the lockout detail's internal `retry_after` key is not on the wire.
+8. **`comparison_feedback` (and five other live tables) have no DDL in the repo** (`CR-DATA-MIGRATIONS-08`), so whether `comparison_feedback.comparison_id` is a FOREIGN KEY is unknowable from source; a stale/dangling `comparison_id` today is either an orphan row or a swallowed FK violation in `save_feedback`. Record as unknown wherever the id contract is described.
+
+## Process rules to add (each from a miss this session)
+9. **Mutation restore:** never `git checkout -- <file>` to restore after a mutation on a file carrying uncommitted unit work — it reverts to BASE (wiped W1-9's 84-line implementation in one command; recovered from the agent's own byte snapshot). Snapshot bytes first, restore from the snapshot, sha256-verify. Batch-3's COMMON prompt now says so.
+10. **Green phases run their own mutation checks** (batch-3 schema makes `mutation_checks` required) — W3-2's green found the M18-reversal blindness itself via mutation #10 and added the two disconnect pins before the adversary ran.
+11. **Heredoc mangling now has a third instance:** a literal backslash-b inside a Git-Bash heredoc became a backspace byte in a regex (`^H` in `cat -A`). Any file content with backslashes goes through the Write/Edit tools or `chr()`-built strings, never a heredoc.
+12. **Agents read the spec ONCE at start:** a ruling appended after an agent has started is invisible to it (W3-2's green never saw ruling 1; W1-9's green quoted the superseded body over ruling 4). Append rulings BEFORE the next phase's agent is spawned, or re-spawn.
+
+## Verified schema facts (for the W3-2 PR and the comparisons contract)
+- `comparisons.id UUID PRIMARY KEY DEFAULT gen_random_uuid()` (`docs/CONTEXT_DATABASE_API.md:99`); six migrations FK to it.
+- All six non-happy SSE terminal pairs terminate their generator (five `return`, one is the last statement of the nested `_emit_stream_deadline_partial` helper at `structured_comparison_service.py:3990-4022`); the happy path's `:4711` is the last statement of the try. No path yields an event after a terminal pair.
+
+## W1-2 (migration 037) — for CLAUDE.md's Migrations paragraph and the SESSION 65 block
+13. 037 is WRITTEN, NOT APPLIED. Apply order `035 -> 036 -> 037` (033/034 applied 2026-09-06). Apply-time verification = the `proacl` query over the four functions BEFORE and AFTER, then the anon-key `POST /rest/v1/rpc/delete_user_cascade` probe which must return 42501 (a 404 proves nothing). After apply, watch the SHARE of `user_events` rows with non-null `user_id` (partial-failure mode of RLS if the service role does not bypass it), not total volume.
+14. Correction of an earlier claim in this repo's docs and the first cut: "the service role bypasses grants" is FALSE as stated — `BYPASSRLS` is row security only; EXECUTE needs a grant. Every future SECURITY DEFINER function names its grantees explicitly (036's template).
+
+## Batch 3 facts (from the red phases, measured)
+15. W1-5: `ENABLE_LIMITER_ENDPOINT_KEY` re-buckets SEVEN path-parameter routes under the shipped default (history ×2, referral ×2, share ×2, and `GET /text/prices/{product}` whose live decorator has an empty scope while `ENABLE_PAID_ROUTE_METERING` is OFF; with metering ON that route's `shared_limit` scope makes the flag a no-op there). Flag read ONCE at Limiter construction — restart required.
+16. W1-6: seven `refund_comparison_credit` fire-and-forget sites (text ×4, image ×1, url ×2 — the url pair became real credit refunds with W2-1). Sequencing on uvicorn: request-task wait (`--timeout-graceful-shutdown 20`) THEN lifespan shutdown (drain, `DRAIN_TIMEOUT` 8), so `deploy.drainingSeconds` (30) > 20 + 8 is the load-bearing inequality; verify the `drainingSeconds` key against Railway's schema at apply.
+
