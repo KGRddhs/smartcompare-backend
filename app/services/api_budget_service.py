@@ -3,6 +3,7 @@
 Uses cache_service helpers (_redis_get, _redis_set, _redis_incr, _redis_expire)
 for Redis access. Gracefully degrades if Redis is unavailable.
 """
+import asyncio
 import json
 import os
 import time
@@ -55,6 +56,24 @@ PROVIDER_CONFIGS = {
         "monthly_limit": 2200,      # 2,500 credits, save 300 buffer
         "warn_at": 2000,
         "is_lifetime": True,
+    },
+    # W1-3 (LS-FAILURE-MODES-COST-02) — OpenAI was the ONE provider with no
+    # budget row at all, despite gating whether any compare is worth anything.
+    # This is a BUDGET ROW FOR FUTURE METERING, NOT PART OF THE BREAKER.
+    # It is INERT today, and more inert than the `brightdata` entry above:
+    # nothing calls has_budget("openai") or record_usage("openai"), and the
+    # circuit-breaker path this unit wires up does NOT read it either — the
+    # breaker keys off `circuit:openai` via _circuit_key(), which never
+    # consults PROVIDER_CONFIGS (renaming this key leaves every breaker test
+    # green; adversarial review MINOR 7). The only live effect of the row's
+    # presence is cosmetic: PROVIDER_CONFIGS-iterating admin surfaces
+    # (get_usage_summary, get_provider_burn) now list an `openai` line reading
+    # 0/100000. The limit is a REQUEST count, not tokens or dollars; the real
+    # spend ceilings are OPENAI_MAX_RETRIES (#117) and the OpenAI account cap.
+    "openai": {
+        "monthly_limit": 100000,    # request-count ceiling, monthly reset
+        "warn_at": 90000,
+        "is_lifetime": False,       # Monthly reset (budget:openai:<YYYY-MM>)
     },
     # Bundle B S3 L2 — YouTube Data API v3. Free quota is 10,000 units/DAY
     # (NOT lifetime, NOT monthly): search.list costs 100 units, videos.list 1.
@@ -602,6 +621,330 @@ def record_success(provider: str) -> None:
         _redis_set(key, json.dumps(state), ex=_CB_TTL)
     except Exception as e:
         logger.warning(f"[CIRCUIT] Error recording success for {provider}: {e}")
+
+
+# ============================================================================
+# W1-3 — OPENAI PREFLIGHT BREAKER (ENABLE_LLM_PREFLIGHT_BREAKER, default OFF)
+# ============================================================================
+# Findings LS-FAILURE-MODES-COST-02/-03. Serper is dead by configuration on the
+# `web` service (SERPER_LIFETIME_LIMIT=0), so every search leg routes to Bright
+# Data, which is armed with no budget gate. Meanwhile OpenAI answers 429. The
+# app's only compare shape (explicit_pair) never checked LLM health before
+# dispatching, so every compare paid the full scrape/render cascade and THEN
+# failed at the LLM. Money out, nothing back.
+#
+# This mirrors serper_service.py:284-320 (ENABLE_SERPER_BREAKER) — the template
+# that already solved the two hard parts — and reuses THIS module's existing
+# breaker (is_circuit_closed / record_failure / record_success). No new breaker
+# abstraction is introduced.
+#
+#   * MEMOISE the breaker state (LLM_BREAKER_CACHE_TTL, default 60s) so the
+#     check adds no per-call blocking Redis round trip to an async hot path —
+#     the event-loop hazard W0 spent four units removing.
+#   * FAIL-OPEN on any error. If the breaker state cannot be read, DISPATCH. A
+#     Redis blip must never become "the app refuses every compare".
+#   * Flag OFF -> nothing here runs: no breaker read, no record, every call
+#     dispatches (byte-identical to the pre-unit code path).
+#
+# TWO DIFFERENT QUESTIONS, TWO DIFFERENT FUNCTIONS (adversarial review, BLOCKING
+# 2 — this is the defect that would have fired the first time anyone flipped the
+# flag). `is_circuit_closed` is NOT read-only: its CB_HALF_OPEN branch does a
+# `_redis_incr(probe_key)` and CB_HALF_OPEN_MAX_CALLS is 1. Using it for the
+# compare-entry preflight SPENDS that single probe on a compare that may never
+# dispatch an LLM call at all (blocked by the L1 content-safety prefilter, or
+# short-circuited earlier), after which nothing records an outcome, the breaker
+# stays half-open with its budget spent, and every later compare is denied
+# forever. So:
+#
+#   * PREFLIGHT — "should I even start?" — openai_preflight_allows_compare().
+#     Strictly read-only (one GET, memoised, never an INCR, never a SET). It
+#     denies ONLY a breaker that is OPEN and still inside its cooldown. A
+#     half-open (or cooldown-expired) breaker PROCEEDS, precisely so the probe
+#     is spent at a real dispatch that records an outcome.
+#   * ADMISSION — "may I make this probe call?" — the dispatch chokepoint
+#     guarded_llm_create(), which keeps is_circuit_closed and where a success or
+#     failure is actually recorded.
+#
+# WHY THE PREFLIGHT IS RECOVERY-AWARE (a correction to the ruling's letter, kept
+# faithful to its intent). get_breaker_state() returns the PERSISTED state
+# string; it does not apply the CB_RECOVERY_TIMEOUT transition, because only
+# is_circuit_closed writes that transition. A preflight that denied on a bare
+# `state == CB_OPEN` would therefore deny forever: it blocks the compare, so
+# nothing on the compare path ever calls is_circuit_closed, so the blob is never
+# transitioned to half-open, so the preflight keeps reading "open" — the same
+# permanent lockout in a new place (verified: get_breaker_state returns "open"
+# indefinitely for a blob tripped long past CB_RECOVERY_TIMEOUT). Treating a
+# cooldown-expired OPEN as "proceed" is what hands the probe to the dispatch
+# chokepoint, which transitions and counts it correctly.
+#
+# THE SUCCESS PATH COSTS NOTHING ON THE HOT PATH (adversarial review, MAJOR 3).
+# Measured before the fix: an identical compare went 12 -> 24 blocking Redis
+# GETs with the flag ON, eleven of them from an un-memoised record_success on
+# every successful dispatch. A closed breaker learning it is still closed is not
+# information. The memo therefore caches the STATE (not just a boolean), and a
+# dispatch whose snapshot says CLOSED with a zero failure count neither calls
+# is_circuit_closed nor records a success: zero Redis round trips per call, one
+# GET per memo window. An outcome is recorded only when it can change something
+# — a standing failure streak, a half-open probe, or any failure.
+_LLM_PREFLIGHT_FLAG = "ENABLE_LLM_PREFLIGHT_BREAKER"
+_LLM_BREAKER_CACHE_TTL_ENV = "LLM_BREAKER_CACHE_TTL"
+_DEFAULT_LLM_BREAKER_CACHE_TTL = 60.0
+
+OPENAI_PROVIDER = "openai"
+
+# (expires_at_monotonic, state, tripped_at, failure_count)
+_openai_breaker_cache: Optional[tuple] = None
+
+
+class LLMUnavailableError(RuntimeError):
+    """Raised INSTEAD of dispatching when the `openai` breaker denies admission.
+
+    The message deliberately avoids the substrings
+    `extraction_service.generate_comparison` matches on to decide whether to run
+    its rate-limited verdict fallback ("429" / "rate" / "quota"), so a suppressed
+    primary call cannot trigger a second dispatch attempt.
+    """
+
+
+def llm_preflight_breaker_enabled() -> bool:
+    """Read PER CALL (the price_service.exact_gate_enabled idiom) so a Railway
+    flip takes effect without a restart. Default OFF."""
+    return os.getenv(_LLM_PREFLIGHT_FLAG, "").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
+def _llm_breaker_cache_ttl() -> float:
+    """Seconds a breaker snapshot is reused. <=0 disables memoisation entirely
+    (every call re-reads Redis) — the escape hatch if a decision must be
+    instant."""
+    raw = (os.environ.get(_LLM_BREAKER_CACHE_TTL_ENV) or "").strip()
+    if not raw:
+        return _DEFAULT_LLM_BREAKER_CACHE_TTL
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return _DEFAULT_LLM_BREAKER_CACHE_TTL
+
+
+def _reset_openai_breaker_cache() -> None:
+    """Drop the memoised breaker snapshot so the next call re-reads. Used by
+    openai_record_failure and by tests."""
+    global _openai_breaker_cache
+    _openai_breaker_cache = None
+
+
+def _store_openai_breaker_snapshot(state: str, tripped_at: float, failures: int) -> None:
+    """Seed the memo from a state we just wrote ourselves, so a recorded outcome
+    does not force the next call to re-read Redis."""
+    global _openai_breaker_cache
+    ttl = _llm_breaker_cache_ttl()
+    _openai_breaker_cache = (
+        (time.monotonic() + ttl, state, tripped_at, failures) if ttl > 0 else None
+    )
+
+
+def _openai_breaker_snapshot() -> tuple:
+    """(state, tripped_at, failure_count) for the `openai` breaker.
+
+    READ-ONLY — exactly one Redis GET per memo window and never a write, so it
+    can never spend the half-open probe. FAIL-OPEN: an absent, malformed or
+    unreadable blob reads as a clean CLOSED breaker, which dispatches."""
+    global _openai_breaker_cache
+    now = time.monotonic()
+    cached = _openai_breaker_cache
+    if cached is not None and now < cached[0]:
+        return cached[1], cached[2], cached[3]
+    state, tripped_at, failures = CB_CLOSED, 0.0, 0
+    try:
+        raw = _redis_get(_circuit_key(OPENAI_PROVIDER))
+        if raw:
+            blob = json.loads(raw)
+            state = blob.get("state") or CB_CLOSED
+            tripped_at = float(blob.get("tripped_at") or 0)
+            failures = int(blob.get("failure_count") or 0)
+    except Exception as e:  # noqa: BLE001 — a monitoring failure must not block calls
+        logger.warning("[CIRCUIT] openai breaker read failed (%s) — failing open", e)
+        state, tripped_at, failures = CB_CLOSED, 0.0, 0
+    _store_openai_breaker_snapshot(state, tripped_at, failures)
+    return state, tripped_at, failures
+
+
+def openai_preflight_allows_compare() -> bool:
+    """READ-ONLY compare-entry preflight: "should I even start?".
+
+    False ONLY for a breaker that is OPEN and still inside CB_RECOVERY_TIMEOUT.
+    Everything else proceeds — closed, half-open, a cooldown-expired OPEN, and
+    any state that could not be read (fail-open). Never increments the half-open
+    probe counter; that budget belongs to guarded_llm_create, which records an
+    outcome for it."""
+    state, tripped_at, _failures = _openai_breaker_snapshot()
+    if state != CB_OPEN:
+        return True
+    if time.time() - tripped_at >= CB_RECOVERY_TIMEOUT:
+        # Cooldown expired: this compare is the recovery probe's carrier. Let it
+        # through so is_circuit_closed can transition + count the probe at a
+        # dispatch that will actually record success or failure.
+        return True
+    return False
+
+
+def _openai_dispatch_admission() -> tuple:
+    """(admitted, outcome_matters) for ONE OpenAI dispatch.
+
+    `outcome_matters` is False on the overwhelmingly common path — a breaker
+    that is closed with no standing failure streak — because record_success
+    would then write a state Redis already holds (MAJOR 3: eleven such writes
+    per compare). Whenever the breaker is anything else, is_circuit_closed does
+    the real admission (including the atomic half-open probe INCR) and the
+    outcome is recorded."""
+    state, tripped_at, failures = _openai_breaker_snapshot()
+    if state == CB_CLOSED:
+        # A closed breaker admits; is_circuit_closed would spend a Redis GET to
+        # say the same thing. A success still matters while a partial failure
+        # streak stands, because recording it resets the streak.
+        return True, failures > 0
+    if state == CB_OPEN and (time.time() - tripped_at) < CB_RECOVERY_TIMEOUT:
+        # Denied without touching Redis; the probe budget is untouched.
+        return False, False
+    try:
+        admitted = is_circuit_closed(OPENAI_PROVIDER)
+    except Exception as e:  # noqa: BLE001 — a monitoring failure must not block calls
+        logger.warning("[CIRCUIT] openai breaker check failed (%s) — failing open", e)
+        admitted = True
+    return admitted, True
+
+
+def openai_record_failure() -> None:
+    """Record an OpenAI transport failure (429 / 5xx / timeout / cancellation)
+    and drop the breaker memo so a resulting trip engages immediately. No-op
+    unless the preflight flag is ON."""
+    if not llm_preflight_breaker_enabled():
+        return
+    try:
+        record_failure(OPENAI_PROVIDER)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[CIRCUIT] openai record_failure failed: %s", e)
+    finally:
+        _reset_openai_breaker_cache()
+
+
+def openai_record_success() -> None:
+    """Record an OpenAI 200 so a half-open probe closes the breaker, or a
+    standing failure streak resets. No-op unless the preflight flag is ON.
+
+    Callers gate this on `outcome_matters` from _openai_dispatch_admission — a
+    closed, clean breaker learning it is still closed is not information, and
+    paying two Redis round trips per successful dispatch to write it is the
+    hot-path tax MAJOR 3 measured."""
+    if not llm_preflight_breaker_enabled():
+        return
+    try:
+        record_success(OPENAI_PROVIDER)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[CIRCUIT] openai record_success failed: %s", e)
+        _reset_openai_breaker_cache()
+        return
+    # We just wrote CLOSED / failure_count 0; model it locally instead of paying
+    # a GET on the next call to rediscover it.
+    _store_openai_breaker_snapshot(CB_CLOSED, 0.0, 0)
+
+
+def _openai_failure_is_transient(exc: BaseException) -> bool:
+    """True only for the failure classes record_failure's own docstring names:
+    429, 5xx, timeout, connection error. A 400/401/403/404/422 is a REQUEST
+    defect (a bad prompt, a wrong model id, a dead key) and must never trip a
+    breaker that gates every compare. `openai` is imported lazily so this module
+    keeps importing without the SDK present."""
+    if isinstance(exc, TimeoutError):  # asyncio.TimeoutError is TimeoutError on 3.11+
+        return True
+    try:
+        import openai as _openai_sdk
+    except Exception:  # noqa: BLE001 — no SDK -> nothing to classify
+        return False
+    if isinstance(
+        exc,
+        (
+            _openai_sdk.RateLimitError,
+            _openai_sdk.APIConnectionError,  # APITimeoutError subclasses this
+            _openai_sdk.InternalServerError,
+        ),
+    ):
+        return True
+    if isinstance(exc, _openai_sdk.APIStatusError):
+        status = getattr(exc, "status_code", None)
+        return isinstance(status, int) and status >= 500
+    return False
+
+
+# WHICH OpenAI CALLERS FEED THIS BREAKER — the full census, so nobody later
+# assumes it sees traffic it does not (ruling #2; adversarial review MINOR 6).
+# WIRED (14 dispatches, all reachable from a compare):
+#   extraction_service      classify_category_llm, parse_product_query,
+#                           extract_specs, extract_price_*(2), extract_reviews,
+#                           generate_comparison (primary + rate-limit fallback)
+#   openai_service          identify_products (vision), extract_specs_targeted,
+#                           generate_comparison, disambiguate_variant_line
+#   url_extraction_service  extract_with_ai
+#   verdict_critique_service critique_verdict   (wired by this rework)
+# NOT WIRED, deliberately:
+#   content_safety_service:152 — `moderations.create`, a DIFFERENT API surface
+#     with its own fail-open contract. A moderation blip is not an "LLM is down"
+#     signal and must not gate every compare.
+#   image_service:173 — the Tier-3 product-image GPT fallback. It IS reachable
+#     from a compare (structured_comparison_service awaits get_product_image_url
+#     in the product fetch), so this is a scope decision, not a reachability
+#     one: it is optional enrichment whose own failure is already swallowed into
+#     "no image", and letting it trip the breaker that gates every compare would
+#     let a cosmetic tier take the whole product down. Revisit deliberately.
+async def guarded_llm_create(client, **kwargs):
+    """The ONE OpenAI chat-completion dispatch chokepoint the preflight breaker
+    reads and records at.
+
+    Flag OFF: a bare ``await client.chat.completions.create(**kwargs)`` — no
+    breaker read, no record, every call dispatches.
+
+    Flag ON: a denied admission raises LLMUnavailableError WITHOUT dispatching;
+    otherwise the call runs and its outcome is recorded WHEN THE OUTCOME CAN
+    CHANGE SOMETHING. This call-site guard is the backstop, NOT the saving — the
+    saving is the preflight at the two compare entries
+    (structured_comparison_service.compare_from_text and
+    compare_from_text_streaming), because a check here alone saves the LLM call
+    and still pays for all the scraping, which is the entire cost being attacked.
+    """
+    if not llm_preflight_breaker_enabled():
+        return await client.chat.completions.create(**kwargs)
+    admitted, outcome_matters = _openai_dispatch_admission()
+    if not admitted:
+        raise LLMUnavailableError(
+            "openai circuit breaker denied admission — dispatch suppressed"
+        )
+    try:
+        response = await client.chat.completions.create(**kwargs)
+    except asyncio.CancelledError:
+        # MINOR 5 — CancelledError is a BaseException, so an `except Exception`
+        # never saw it and an asyncio.wait_for timeout around this call was
+        # never recorded (measured: {'fail': 0, 'succ': 0}). Almost every
+        # wait_for in the compare path wraps THIS coroutine, so the timeout the
+        # breaker most needs to see arrived here as a cancellation.
+        #
+        # ACCEPTED RESIDUAL, disclosed rather than hidden: a cancellation from
+        # an outer cause (process shutdown, or ENABLE_PREVERDICT_DISCONNECT_ABORT
+        # closing the stream) is indistinguishable from a deadline here — the
+        # task is cancelled identically in both cases — so it also records a
+        # failure. It takes CB_FAILURE_THRESHOLD *consecutive* such records to
+        # trip, and any successful dispatch in between resets the streak (that
+        # is exactly the case `outcome_matters` keeps recording for).
+        # The cancellation is re-raised untouched, never swallowed.
+        openai_record_failure()
+        raise
+    except Exception as e:  # noqa: BLE001 — classify, record, re-raise unchanged
+        if _openai_failure_is_transient(e):
+            openai_record_failure()
+        raise
+    if outcome_matters:
+        openai_record_success()
+    return response
 
 
 def get_remaining(provider: str) -> int:

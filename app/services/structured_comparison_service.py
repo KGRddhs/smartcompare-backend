@@ -61,6 +61,10 @@ from app.services.scoring_service import get_scoring_service, MISSING_SCORE
 from app.services.api_budget_service import (
     has_budget, record_usage, record_failure, record_success,
     is_circuit_closed,
+    # W1-3 — the OpenAI preflight breaker (ENABLE_LLM_PREFLIGHT_BREAKER).
+    # openai_preflight_allows_compare is the READ-ONLY half deliberately: the
+    # half-open probe budget belongs to the dispatch chokepoint, never here.
+    llm_preflight_breaker_enabled, openai_preflight_allows_compare,
 )
 from app.services import firecrawl_service, scrapedo_service
 
@@ -1504,6 +1508,29 @@ _PRICE_RACE_TIMEOUT = float(os.getenv("PRICE_RACE_TIMEOUT", "15.0"))
 # "couldn't" / "try again" / "Failed to". The FE i18n-substitutes by CODE
 # ("TIMEOUT"), so this string is the API-level fallback, not the rendered copy.
 TIMEOUT_FRIENDLY_MESSAGE = "Still gathering prices — give it another tap in a moment."
+
+# W1-3 — copy for the LLM-preflight short-circuit. Same friendly register as
+# TIMEOUT_FRIENDLY_MESSAGE and inside the Build-Principle-#4 copy contract (no
+# "couldn't", no "try again", no "Failed to").
+LLM_UNAVAILABLE_FRIENDLY_MESSAGE = (
+    "Still warming up the comparison engine — give it another tap in a moment."
+)
+
+
+def _llm_preflight_short_circuits() -> bool:
+    """W1-3 — True when the compare must NOT start because the `openai` breaker
+    is OPEN and still inside its cooldown.
+
+    Deliberately calls the READ-ONLY preflight, never `is_circuit_closed`: the
+    latter increments the half-open probe counter (CB_HALF_OPEN_MAX_CALLS == 1),
+    so using it here would spend the single recovery probe on a compare that may
+    never reach an LLM dispatch at all — and, since nothing would then record an
+    outcome, the breaker would stay half-open with its budget spent and deny
+    every later compare indefinitely. A half-open (or cooldown-expired) breaker
+    PROCEEDS from here, so the probe is spent at a real dispatch inside
+    api_budget_service.guarded_llm_create, which records success or failure.
+    Flag OFF short-circuits the check itself, so nothing is read at all."""
+    return llm_preflight_breaker_enabled() and not openai_preflight_allows_compare()
 
 
 def _fan_out_budget_seconds() -> float:
@@ -3236,6 +3263,26 @@ class StructuredComparisonService:
         # M18 PO-fact-check-10 — Decision 7 notice (additive metadata key).
         return attach_data_freshness_notice(result)
 
+    def _llm_unavailable_envelope(self) -> Dict[str, Any]:
+        """W1-3 — the ONE body both compare entries return when the `openai`
+        breaker short-circuits, so the SSE path and the POST path cannot drift.
+
+        Shape: the existing failure envelope this route already emits (the same
+        keys as the TIMEOUT / STREAM_TIMEOUT bodies built a few lines above), so
+        the client's existing `parseApiError` handling applies unchanged. The
+        `code` is new — text_routes maps it to 503 alongside TIMEOUT — and the
+        client has no i18n key for it yet, so it renders `error` verbatim; that
+        is why the copy is written to the Build-Principle-#4 contract (no
+        "couldn't", no "try again", no "Failed to")."""
+        return {
+            "success": False,
+            "error": LLM_UNAVAILABLE_FRIENDLY_MESSAGE,
+            "code": "LLM_UNAVAILABLE",
+            "elapsed_seconds": 0.0,
+            "total_cost": self.total_cost,
+            "api_calls": self.api_calls,
+        }
+
     async def compare_from_text(
         self,
         query: str,
@@ -3262,7 +3309,26 @@ class StructuredComparisonService:
           - else → the existing INSUFFICIENT_DATA body (both products empty).
         A true `code:TIMEOUT` is reserved for the no-data case if even the
         partial build fails; the route maps it to HTTP 503 (D2), never 400.
+
+        W1-3 (ENABLE_LLM_PREFLIGHT_BREAKER, default OFF) — the LLM preflight
+        sits HERE, at the compare entry, and not at the OpenAI call sites: a
+        check at the call sites saves the LLM call and still pays for the whole
+        Serper / Bright Data / Firecrawl fan-out, which is the entire cost being
+        attacked. With the `openai` breaker OPEN this returns the error envelope
+        before a single paid provider is touched. The read is memoised, READ-ONLY
+        and FAILS OPEN (see _llm_preflight_short_circuits), so a Redis blip can
+        never become "the app refuses every compare". The SSE entry
+        (compare_from_text_streaming) carries the same guard — it is the route
+        the mobile client actually drives. Flag OFF: no breaker read, no record,
+        the method is byte-identical.
         """
+        if _llm_preflight_short_circuits():
+            logger.warning(
+                "[CIRCUIT] openai breaker OPEN — short-circuiting compare for "
+                "query=%r BEFORE the provider fan-out",
+                query,
+            )
+            return self._llm_unavailable_envelope()
         _t0 = time.time()
         try:
             return await asyncio.wait_for(
@@ -3881,6 +3947,28 @@ class StructuredComparisonService:
         self.gpt_calls = 0
         self.serper_calls = 0
         self._shopping_items_cache = {}
+
+        # W1-3 (ENABLE_LLM_PREFLIGHT_BREAKER, default OFF) — the SAME preflight
+        # the non-streaming entry runs, mirrored here because THIS is the entry
+        # the app actually uses: the client calls SSE streamComparison() and only
+        # falls back to POST /compare. Guarding one of the two entries would
+        # leave the primary user path paying the full Serper / Bright Data /
+        # Firecrawl cascade (measured on the non-streaming path: 22 search_web +
+        # 2 bd_search_web calls) before failing at the LLM — i.e. the unit's
+        # headline saving would not reach most real traffic. Emitted as an
+        # `error` event, which is what the route's `had_error` branch already
+        # keys the credit refund off. Placed before the L1 content-safety
+        # prefilter for exact parity with the sync path, where the preflight sits
+        # in compare_from_text and L1 lives inside _compare_from_text_impl.
+        # Flag OFF: no breaker read, no record, byte-identical.
+        if _llm_preflight_short_circuits():
+            logger.warning(
+                "[CIRCUIT] openai breaker OPEN — short-circuiting streaming "
+                "compare for query=%r BEFORE the provider fan-out",
+                query,
+            )
+            yield ("error", self._llm_unavailable_envelope())
+            return
 
         # M13-04 — deadline for the FULL stream (Phase 1 + the verdict/critique/
         # moderation tail). Computed at entry; the tail awaits are wrapped in

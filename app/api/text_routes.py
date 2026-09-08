@@ -166,13 +166,21 @@ def _surface_comparison_failure(result: Dict):
         # Preserve the structured body (FE matches the spec contract). Wrapping
         # in HTTPException would drop the layer/extra keys via str(detail).
         return result
-    if code == "TIMEOUT":
+    if code in ("TIMEOUT", "LLM_UNAVAILABLE"):
         # D2 — transient timeout. Structured detail so the envelope keeps
         # code:"TIMEOUT" (error_handler overrides the 503→FEATURE_DISABLED
         # default when a code is supplied). 503, NOT 400.
+        #
+        # W1-3 (adversarial review MAJOR 4): LLM_UNAVAILABLE joins it. Without
+        # this it fell through to the generic arm below and a SERVER-side LLM
+        # outage was reported to the client as a 400 client error. It belongs
+        # with the other upstream-unavailable surfaces. NOTE: the mobile client
+        # has no i18n key for this code yet, so it renders the raw `error`
+        # string — which is why that copy is written to the no-scary-copy
+        # contract.
         raise HTTPException(
             status_code=503,
-            detail={"code": "TIMEOUT", "error": error_msg},
+            detail={"code": code, "error": error_msg},
         )
     # INSUFFICIENT_DATA + parser-failure + anything unrecognized → 400. Keep
     # the structured code where present so the FE can branch (e.g. show the

@@ -19,6 +19,7 @@ from app.services.llm_provider import provider_base_url
 from app.services.model_config import standard_model, token_limit_kwargs
 
 from app.services.extraction_service import canonicalize_category
+from app.services import api_budget_service as _llm_breaker
 
 logger = logging.getLogger(__name__)
 
@@ -392,7 +393,7 @@ async def extract_with_ai(url: str, html: str, retailer: Dict) -> Dict[str, Any]
     try:
         client = get_client()
         _model = standard_model()
-        response = await client.chat.completions.create(
+        response = await _llm_breaker.guarded_llm_create(client,
             model=_model,
             messages=[{
                 "role": "user",

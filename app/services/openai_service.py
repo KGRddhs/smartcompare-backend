@@ -19,6 +19,7 @@ from app.services.model_config import (
     verdict_model,
     vision_model,
 )
+from app.services import api_budget_service as _llm_breaker
 
 logger = logging.getLogger(__name__)
 
@@ -212,7 +213,7 @@ EXAMPLES:
     
     # Call OpenAI Vision API
     _vision_model = vision_model()
-    response = await client.chat.completions.create(
+    response = await _llm_breaker.guarded_llm_create(client,
         model=_vision_model,
         messages=[{"role": "user", "content": content}],
         **token_limit_kwargs(_vision_model, 500),
@@ -299,7 +300,7 @@ Rules:
     try:
         client_local = get_client()
         _model = standard_model()
-        response = await client_local.chat.completions.create(
+        response = await _llm_breaker.guarded_llm_create(client_local,
             model=_model,
             messages=[
                 {"role": "system", "content": system},
@@ -374,7 +375,7 @@ Rules:
         # explicit id (structured_comparison_service routes one in from
         # model_router) are unaffected.
         _model = model or verdict_model()
-        response = await client_local.chat.completions.create(
+        response = await _llm_breaker.guarded_llm_create(client_local,
             model=_model,
             messages=[
                 {"role": "system", "content": system},
@@ -436,7 +437,7 @@ async def disambiguate_variant_line(
     try:
         client_local = get_client()
         _model = standard_model()
-        response = await client_local.chat.completions.create(
+        response = await _llm_breaker.guarded_llm_create(client_local,
             model=_model,
             messages=[
                 {"role": "system", "content": system},
