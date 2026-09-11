@@ -26,6 +26,20 @@ from typing import Awaitable
 
 logger = logging.getLogger(__name__)
 
+# W1-6 (LS-FAILURE-MODES-COST-05) — the in-flight fire-and-forget task registry.
+#
+# Nothing used to hold a reference to these tasks, so at shutdown a task that was
+# mid-``await`` was simply dropped when the loop stopped. The user-visible cost is
+# ``usage_service.refund_comparison_credit``: with ``ENABLE_ASYNC_REDIS_OFFLOAD``
+# ON it yields at ``asyncio.to_thread``, so a deploy landing in that window
+# charges a credit for a comparison that failed and never gives it back.
+#
+# ``app.main._drain_background_tasks`` awaits this set on shutdown. It is bounded
+# BY CONSTRUCTION, not by a cap: ``fire_and_forget`` adds and the done-callback
+# discards, so a task leaves the moment it finishes and the set cannot leak on a
+# long-lived worker that fires one of these per comparison.
+_BACKGROUND_TASKS: "set[asyncio.Task]" = set()
+
 
 def fire_and_forget(coro: Awaitable, label: str) -> asyncio.Task:
     """Create a fire-and-forget asyncio task with an exception-logging done
@@ -51,9 +65,16 @@ def fire_and_forget(coro: Awaitable, label: str) -> asyncio.Task:
         await it in fixtures); production callers can ignore the return
         value.
     """
-    task = asyncio.create_task(coro)
+    # W1-6: the label rides on the task NAME so the shutdown drain can attribute
+    # an abandoned task to its call site ("1 task did not finish" is not
+    # actionable at 3am). The registry stays a plain set of tasks.
+    task = asyncio.create_task(coro, name=label)
+    _BACKGROUND_TASKS.add(task)
 
     def _on_done(t: asyncio.Task) -> None:
+        # Discard FIRST and unconditionally: a cancelled task returns early
+        # below, and leaving it in the registry would leak it forever.
+        _BACKGROUND_TASKS.discard(t)
         if t.cancelled():
             return
         try:
