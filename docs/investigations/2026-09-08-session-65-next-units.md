@@ -331,3 +331,32 @@ Every item below is MEASURED in this session, not inferred. Line anchors are at 
 15. W1-5: `ENABLE_LIMITER_ENDPOINT_KEY` re-buckets SEVEN path-parameter routes under the shipped default (history ×2, referral ×2, share ×2, and `GET /text/prices/{product}` whose live decorator has an empty scope while `ENABLE_PAID_ROUTE_METERING` is OFF; with metering ON that route's `shared_limit` scope makes the flag a no-op there). Flag read ONCE at Limiter construction — restart required.
 16. W1-6: seven `refund_comparison_credit` fire-and-forget sites (text ×4, image ×1, url ×2 — the url pair became real credit refunds with W2-1). Sequencing on uvicorn: request-task wait (`--timeout-graceful-shutdown 20`) THEN lifespan shutdown (drain, `DRAIN_TIMEOUT` 8), so `deploy.drainingSeconds` (30) > 20 + 8 is the load-bearing inequality; verify the `drainingSeconds` key against Railway's schema at apply.
 
+---
+
+# PART 5 — SESSION 65d (2026-09-11): four units + a flake fix merged, W4-1 in rework, batch 5 specced
+
+## Merged (main `b63a8368`)
+| PR | unit | flag | state |
+|---|---|---|---|
+| #155 `aac79f78` | W3-2 comparison_id echo | `ENABLE_COMPARISON_ID_ECHO` (+ `COMPARISON_ID_PERSIST_TIMEOUT_SECONDS` 5.0) | OFF; flip only after `ENABLE_SUPABASE_CLIENT_REUSE` |
+| #156 `5ad0f7dc` | W1-5 endpoint-keyed limiter | `ENABLE_LIMITER_ENDPOINT_KEY` | OFF; **restart-class**; sequence after `ENABLE_PROXY_AWARE_RATELIMIT` |
+| #157 `be5267cf` | W1-6 shutdown drain | none (ops) | live on merge; on-deploy `[DRAIN]` check owed |
+| #158 `d32f2983` | W4-5 showable name identity | `ENABLE_SHOWABLE_NAME_IDENTITY` | OFF; flip immediately, no coupling |
+| #159 `b63a8368` | CI flake fix | none | merged |
+
+## In flight
+- **W4-1** `ENABLE_SHOPPING_CURRENCY_TRUTH`, worktree `sc-w4-1`, branch `feature/s65-w4-1-shopping-currency-truth`, uncommitted. Green was reviewed DEFECTIVE (the Bahrain host-evidence rule applied to non-BHD asks); the binding rework ruling is the last section of `sc-w4-1/.qa-w4/W4_1_UNIT_SPEC.md` (R1 BHD-scoped vocabulary with a region-agnostic `no_link`/`listing_url` pair, R2 other-country before the BH markers, R3 the compound-price-string limit stated and pinned, R4 `no_host` in the canary vocabulary, R5 pins for the four rungs and both canary lines). **Hard order: W4-1 lands WITH or BEFORE W4-2** — 1,032 of the 1,484 `local_bhd` rows are hidden today only by the `non_pdp_url` pend that W4-2 removes.
+- **Batch 5 specs** (spec-only, no source edits): `sc-w4-2` shopping url split, `sc-w4-3` pre-scoring showable guard, `sc-w4-4` honest partial scoring, `sc-w4-9` error envelope, `sc-w4-10` tradeoffs dedup parity — all branched from `b63a8368`.
+
+## Follow-up rows opened by this batch (none fixed here)
+- `PO-PRICE-TRUTH-04b` — the L2 content-safety surface in `structured_comparison_service.py` reads `title` only for `name`-only page-scrape candidates.
+- `PO-PRICE-TRUTH-04c` — the low-fragrance floor receives `title` only and over-rejects honest small listings under `name`.
+- `PO-PRICE-TRUTH-01b` — region-aware host evidence for SAR/AED/KWD/QAR/OMR asks (W4-1 scopes its Bahrain vocabulary to BHD asks).
+- `PO-PRICE-TRUTH-01c` — a tokenised price residue, so compound Serper strings (`From 22.500 BD`) resolve; today they still parse 22,500× under the W4-1 flag, a stated limit.
+- The sample/decant guard stamps no `guard_rejected` on a pend, contrary to its docstring.
+- Nine env knobs parsed with bare `float()` accept `inf`/`nan` (list in the CLAUDE.md SESSION 65d addendum). One W1-class unit, flag-free.
+- `tests/test_m13_26_image_error_envelope.py` still asserts three substrings against a raw body; those tokens cannot collide with a UUID, so they were left alone.
+
+## Ahmed's list (unchanged, plus two)
+`ENABLE_BRIGHTDATA_BUDGET_GATE=true` → the OTA (`eas update --branch preview --clear-cache`) → rotate `ADMIN_API_KEY` → apply migration 037 (`035 → 036 → 037`, then the `proacl` query and the anon-key RPC probe must return 42501). **New:** `railway login` (the Railway MCP token expired 2026-09-11, so deploy verification this session was `/health` only), and watch the next redeploy's OLD-deployment log for the `[DRAIN]` lines that close W1-6.
+
