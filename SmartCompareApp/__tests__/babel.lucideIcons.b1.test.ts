@@ -1,17 +1,23 @@
 /**
  * B1 — lucide barrel-import splitter (babel.config.js).
  *
- * 34 source files did `import { Camera, Star } from 'lucide-react-native'`.
+ * 35 source files (34 under src/ + App.tsx) did
+ * `import { Camera, Star } from 'lucide-react-native'`.
  * That bare specifier resolves to the package barrel, which re-exports all
  * 1,703 icon modules lucide ships, so Metro kept every one of them for the 68
  * icons the app renders (measured: 8,259,431 B -> 6,510,149 B of iOS Hermes
  * bytecode, 3,832 -> 2,192 modules, once the inline plugin landed).
  *
- * lucide-react-native@1.14.0's `exports` map has exactly "." and "./icons",
- * so neither `lucide-react-native/icons/<kebab>` nor
- * `lucide-react-native/dist/esm/icons/<kebab>.mjs` resolves. The inline babel
- * plugin rewrites each named icon import to a RELATIVE FILE PATH instead — a
- * file path is not a package specifier, so the exports map never applies.
+ * lucide-react-native@1.14.0's `exports` map has exactly "." and "./icons".
+ * `lucide-react-native/icons/<kebab>` therefore resolves nowhere: Metro throws
+ * FailedToResolveNameError, jest MODULE_NOT_FOUND, tsc leaves it unresolved.
+ * `lucide-react-native/dist/esm/icons/<kebab>.mjs` is refused by jest and tsc
+ * the same way — but NOT by Metro: metro-resolver 0.83.3 catches
+ * PackagePathNotExportedError, logs a warning and falls back to file-based
+ * resolution (measured; `resolve.js:343-351` then `:359`). The inline babel
+ * plugin sidesteps all of it by rewriting each named icon import to a
+ * RELATIVE FILE PATH instead — a file path is not a package specifier, so the
+ * exports map never applies and all three resolvers agree.
  *
  * What this suite pins:
  *   1. The plugin is wired into the config for dev + production, is OFF under
@@ -38,6 +44,14 @@
  *      imports, 0 type-only imports and 0 `createLucideIcon` imports, so
  *      neither is excepted here — a future one has to face this fence and be
  *      a deliberate decision.
+ *      W3-9 widened that fence's REACH and moved it to
+ *      `__tests__/helpers/lucideFence.ts`: `require('lucide-react-native')`,
+ *      a dynamic `import('lucide-react-native')`, `import x = require(...)`
+ *      and `.js/.jsx/.mjs/.cjs` sources under src/ are fenced too. Each of
+ *      them was invisible before — the classifier read `node.source` on
+ *      top-level statements only, and the walk matched `/\.tsx?$/` only —
+ *      and each one re-adds all 1,703 icon modules under Metro with every
+ *      required CI check green.
  *   6. B1-FENCES — the mock fence: every one of those imported identifiers is
  *      a callable export of __mocks__/lucide-react-native.ts. B1 fenced the
  *      production list and not this one, and the two had already drifted
@@ -48,12 +62,12 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
+import { lucideRefs, sourceFiles, type LucideRef } from './helpers/lucideFence';
+
 const babel = require('@babel/core');
-const parser = require('@babel/parser');
 const babelConfig = require('../babel.config.js');
 
 const APP_ROOT = path.resolve(__dirname, '..');
-const LUCIDE_PACKAGE = 'lucide-react-native';
 const ICON_PATH_RE = /lucide-react-native\/dist\/esm\/icons\//;
 
 function fakeApi() {
@@ -87,91 +101,8 @@ function transform(filename: string, code: string): string {
   return out.code as string;
 }
 
-/** Every .ts/.tsx under src/, plus the two bundled entry files beside it. */
-function sourceFiles(): string[] {
-  const found: string[] = [];
-  const walk = (dir: string) => {
-    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-      const full = path.join(dir, entry.name);
-      if (entry.isDirectory()) walk(full);
-      else if (/\.tsx?$/.test(entry.name)) found.push(full);
-    }
-  };
-  walk(path.join(APP_ROOT, 'src'));
-  found.push(path.join(APP_ROOT, 'App.tsx'));
-  found.push(path.join(APP_ROOT, 'index.ts'));
-  return found;
-}
-
 function rel(file: string): string {
   return path.relative(APP_ROOT, file).split(path.sep).join('/');
-}
-
-/**
- * Every reference to the lucide package in `code`, classified by shape.
- *
- * AST, not a regex: a regex over source cannot tell `import type { X }` from
- * `import { X }`, cannot see the per-specifier `type` modifier, and happily
- * matches inside a comment or a string. Only `shape: 'value'` costs bundle
- * bytes; everything except 'value' and 'type' keeps the entire barrel alive.
- */
-type LucideRef = {
-  file: string;
-  shape: 'value' | 'type' | 'default' | 'namespace' | 'side-effect' | 're-export' | 'subpath';
-  exported: string;
-  local: string;
-};
-
-function lucideRefs(filename: string, code: string): LucideRef[] {
-  const ast = parser.parse(code, {
-    sourceType: 'module',
-    plugins: ['typescript', 'jsx'],
-  });
-
-  const refs: LucideRef[] = [];
-  const push = (shape: LucideRef['shape'], exported: string, local: string) =>
-    refs.push({ file: filename, shape, exported, local });
-
-  for (const node of ast.program.body) {
-    const source = node.source?.value;
-    if (typeof source !== 'string' || !new RegExp(`^${LUCIDE_PACKAGE}(/|$)`).test(source)) {
-      continue;
-    }
-    // `lucide-react-native/<anything>` is blocked by the package's exports map
-    // at runtime and is invisible to the plugin, which only matches the bare
-    // specifier.
-    if (source !== LUCIDE_PACKAGE) {
-      push('subpath', source, source);
-      continue;
-    }
-    // `export { Camera } from 'lucide-react-native'` / `export * from ...`.
-    if (node.type !== 'ImportDeclaration') {
-      push('re-export', source, source);
-      continue;
-    }
-    if (node.specifiers.length === 0) {
-      push('side-effect', source, source);
-      continue;
-    }
-
-    const declIsType = node.importKind === 'type' || node.importKind === 'typeof';
-    for (const spec of node.specifiers) {
-      if (spec.type === 'ImportDefaultSpecifier') {
-        push('default', 'default', spec.local.name);
-        continue;
-      }
-      if (spec.type === 'ImportNamespaceSpecifier') {
-        push('namespace', '*', spec.local.name);
-        continue;
-      }
-      const exported =
-        spec.imported.type === 'Identifier' ? spec.imported.name : String(spec.imported.value);
-      const isType =
-        declIsType || spec.importKind === 'type' || spec.importKind === 'typeof';
-      push(isType ? 'type' : 'value', exported, spec.local.name);
-    }
-  }
-  return refs;
 }
 
 /**
@@ -187,7 +118,7 @@ function barrelValueImports(filename: string, code: string): Array<[string, stri
 /** Every value identifier the bundled sources import from the barrel. */
 function importedIconNames(): Set<string> {
   const imported = new Set<string>();
-  for (const file of sourceFiles()) {
+  for (const file of sourceFiles(APP_ROOT)) {
     for (const [exported] of barrelValueImports(file, fs.readFileSync(file, 'utf8'))) {
       imported.add(exported);
     }
@@ -242,7 +173,7 @@ describe('B1 — lucide icon imports are split out of the barrel', () => {
     const map = babelConfig.buildLucideIconMap();
     expect(map).toBeTruthy();
 
-    const refs = sourceFiles().flatMap((file) =>
+    const refs = sourceFiles(APP_ROOT).flatMap((file) =>
       lucideRefs(file, fs.readFileSync(file, 'utf8'))
     );
     const label = (ref: LucideRef) => `${rel(ref.file)}: ${ref.shape} '${ref.exported}'`;
@@ -271,7 +202,7 @@ describe('B1 — lucide icon imports are split out of the barrel', () => {
   it('rewrites every real source file to icon paths that exist on disk', () => {
     const touched: string[] = [];
 
-    for (const file of sourceFiles()) {
+    for (const file of sourceFiles(APP_ROOT)) {
       const code = fs.readFileSync(file, 'utf8');
       const wanted = barrelValueImports(file, code);
       if (wanted.length === 0) continue;
@@ -291,7 +222,9 @@ describe('B1 — lucide icon imports are split out of the barrel', () => {
       }
     }
 
-    // 34 barrel sites when B1 landed; guard against a silent regression to 0.
+    // 35 barrel sites when B1 landed (34 under src/ + App.tsx; the header and
+    // babel.config.js both say "34", which undercounts App.tsx by one).
+    // Guard against a silent regression to 0.
     expect(touched.length).toBeGreaterThanOrEqual(30);
   });
 
