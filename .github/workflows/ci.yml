@@ -272,3 +272,143 @@ jobs:
       # BLOCKING since M18 — measured 0 errors on main 593ec1e.
       - name: TypeScript type check
         run: cd SmartCompareApp && npx tsc --noEmit
+
+  # CHANNEL FRESHNESS (W3-13, MB-RECONCILE-06). Phones run whatever `eas update`
+  # last published to the `preview` channel — merging to main ships NOTHING to a
+  # device (CLAUDE.md "Two-lever launch model"). Measured 2026-09-11 at ed75dc70:
+  # the channel ran 97b5f15, 33 first-parent commits (28 merges + 5 direct
+  # pushes) / 311 files behind main, and CI was green. That is a DATED
+  # measurement, not a live claim — it grows with every merge, and no test
+  # asserts it. This job resolves the channel's published commit and fails when
+  # it is more than ONE first-parent commit behind origin/main. First-parent,
+  # not merges: five of those 33 were direct pushes, and a merge count would let
+  # a direct-push regression through.
+  #
+  # NOT A REQUIRED CHECK and NON-BLOCKING until 2026-09-18: the check step carries
+  # `continue-on-error: true`. The precedent is this file's own frontend-tests
+  # block (see the comment at the `frontend-tests:` job): it landed non-blocking
+  # on each check step purely to MEASURE a red count that could not be read
+  # locally, then was ratcheted to blocking once measured. The "do NOT re-add
+  # continue-on-error to do it" sentence in that same comment is about draining
+  # the ESLint WARNING backlog on an already-green check — it is not a repo-wide
+  # prohibition, so do not delete this line on the strength of it.
+  # tests/test_ci_gates.py pins the non-blocking state; flip the pin in the same
+  # PR that flips the line.
+  #
+  # ⚠ FLIP PRECONDITION — read before deleting `continue-on-error`. This job runs
+  # on every PR (the workflow triggers on pull_request AND push to main), but its
+  # verdict is a property of the CHANNEL, not of the PR — and merging anything to
+  # main makes it worse, while the only cure (`eas update`, which needs an
+  # interactive `eas login`) is outside CI. The moment `continue-on-error` is
+  # deleted and `channel-freshness` is added to branch protection, NO CONTRIBUTOR
+  # CAN MERGE ANYTHING until an OTA is published — including the PR that would fix
+  # an outage. That is a self-inflicted merge freeze. So the flip PR must, in the
+  # same change, either add `if: github.event_name == 'push'` at job level (the
+  # `github` context IS available in a job-level `if`, and it also removes the
+  # per-PR `npm ci` + two `npx` downloads) or land an equivalent documented
+  # break-glass; and the flip is additionally conditional on the OTA having
+  # landed, so the first blocking run is green. While it is non-blocking the job
+  # keeps both triggers, because a per-PR reading is free data and harmless.
+  #
+  # SKIPS CLEANLY WITHOUT THE SECRET. `secrets.*` cannot be read from an `if`
+  # (docs.github.com "Using secrets in a workflow"), and a job-level `if` sees
+  # neither `secrets` nor `env` (contexts reference: job-level keys see
+  # github/needs/strategy/matrix/vars/inputs; step-level keys additionally see
+  # job/runner/env/secrets/steps). So a job-level env var DERIVED from the secret
+  # gates every step after checkout — the documented "Run a step if a secret has
+  # been set" pattern, with one hardening: the job-level value is a BOOLEAN, and
+  # the raw token is scoped to the single eas-cli step so it is never in the
+  # environment of `npm ci` and its postinstall scripts. Until Ahmed adds the
+  # EXPO_TOKEN repository secret (an Expo access token,
+  # docs.expo.dev/accounts/programmatic-access) the job prints a notice and
+  # passes; every fork PR takes the same path, because secrets are not passed to
+  # fork PRs.
+  #
+  # FALLBACK IF THE BOOLEAN DOES NOT EVALUATE. The composition
+  # `${{ secrets.EXPO_TOKEN != '' }}` at job level is two documented facts put
+  # together, not itself a documented example. If the first armed run shows the
+  # skip step running despite the secret (or the resolve step running without
+  # it), replace this job-level boolean with the documented verbatim form
+  # (`EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}` at job env, steps gated on
+  # `env.EXPO_TOKEN != ''`) and delete the token-scoping assertion in
+  # tests/test_ci_gates.py in the same PR. The two step conditions are
+  # complementary and exhaustive, so the job always runs one branch and always
+  # exits green — it fails safe; the skip notice therefore PRINTS the observed
+  # value, so "skipped" can never be mistaken for "measured".
+  #
+  # WHY TWO eas COMMANDS: at eas-cli 18.8.1 `update:list --json` emits group id,
+  # runtimeVersion, platforms, message — but NOT the git commit; only
+  # `update:view <group> --json` carries `gitCommitHash` (one entry per
+  # platform), and eas-cli's JSON sanitizer omits null keys, so an unhashed
+  # publish has no key at all (script exit 2). `--limit 1` + index 0 is eas-cli's
+  # own convention for "latest" (build/update/queries.js fetches the latest group
+  # with limit 1 / offset 0; build/update/utils.js:170 reads `updates[0]`;
+  # build/project/publish.js:433 labels `updates[0]` the current update) — the
+  # first armed run confirms it, which is why the script prints the view JSON's
+  # `createdAt`. eas-cli is pinned to the exact version those JSON shapes were
+  # read on; `npx --yes eas-cli@18.8.1` resolves because eas-cli declares a
+  # single bin (`{"eas": "./bin/run"}`) and is NOT a dependency of
+  # SmartCompareApp/package.json, so no local copy shadows the pin. eas.json
+  # requires >= 18.8.1 (enforced by applyCliConfigAsync) and eas-cli requires
+  # node >= 20.
+  #
+  # DO NOT ADD `--non-interactive` TO `update:view`. It has no such flag at
+  # 18.8.1 (it spreads EasJsonOnlyFlag, which is `{json}` alone; `update:list`
+  # spreads EasNonInteractiveAndJsonFlags) — adding one for symmetry turns the
+  # armed job into an oclif "nonexistent flag" error that no test can see.
+  # Nothing is lost: Actions sets CI=true, which makes eas-cli non-interactive by
+  # default, and `--json` implies it as well.
+  channel-freshness:
+    runs-on: ubuntu-latest
+    env:
+      EXPO_TOKEN_SET: ${{ secrets.EXPO_TOKEN != '' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # merge-base / rev-list need history; the default (1) has none
+
+      - name: Skipped — EXPO_TOKEN secret not configured
+        if: ${{ env.EXPO_TOKEN_SET != 'true' }}
+        run: |
+          echo "::notice title=channel-freshness skipped::EXPO_TOKEN_SET='${{ env.EXPO_TOKEN_SET }}' — add the EXPO_TOKEN repository secret to arm the preview-channel freshness guard; if the secret IS set, this value did not evaluate and the job needs the fallback form in the comment above."
+
+      - uses: actions/setup-node@v4
+        if: ${{ env.EXPO_TOKEN_SET == 'true' }}
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: SmartCompareApp/package-lock.json
+
+      - uses: actions/setup-python@v5
+        if: ${{ env.EXPO_TOKEN_SET == 'true' }}
+        with:
+          python-version: '3.12'
+
+      # eas-cli resolves the project id by spawning `npx expo config --json` in
+      # the app dir whenever `expo` is a package.json dependency; install first
+      # so that spawn is deterministic against the lockfile. No token here.
+      - name: Install frontend dependencies
+        if: ${{ env.EXPO_TOKEN_SET == 'true' }}
+        run: cd SmartCompareApp && npm ci
+
+      - name: Resolve the preview channel (eas-cli 18.8.1)
+        if: ${{ env.EXPO_TOKEN_SET == 'true' }}
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}   # the ONLY step that sees the token
+        run: |
+          cd SmartCompareApp
+          npx --yes eas-cli@18.8.1 update:list --branch preview --limit 1 --json --non-interactive > "$RUNNER_TEMP/preview-list.json"
+          GROUP=$(python -c "import json,os;t=open(os.environ['RUNNER_TEMP']+'/preview-list.json',encoding='utf-8').read();i=min(x for x in (t.find('{'),t.find('[')) if x>=0);print(json.loads(t[i:])['currentPage'][0]['group'])")
+          npx --yes eas-cli@18.8.1 update:view "$GROUP" --json > "$RUNNER_TEMP/preview-group.json"
+
+      # Exit codes: 0 fresh - 1 stale - 2 unresolvable - 3 published from a
+      # commit not on main - 4 roll-back-to-embedded. No pip install: the script
+      # is stdlib-only and a unit test pins that.
+      - name: Preview channel is at most one first-parent commit behind main (NON-BLOCKING until 2026-09-18)
+        if: ${{ env.EXPO_TOKEN_SET == 'true' }}
+        continue-on-error: true
+        run: |
+          python scripts/check_channel_freshness.py \
+            --list-json "$RUNNER_TEMP/preview-list.json" \
+            --view-json "$RUNNER_TEMP/preview-group.json" \
+            --main origin/main --max-behind 1

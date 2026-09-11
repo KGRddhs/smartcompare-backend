@@ -913,3 +913,211 @@ def test_baseline_node_ids_are_shell_safe_for_deselect():
         assert (
             node_id.startswith("tests/") and "::" in node_id
         ), f"not a pytest node id: {node_id!r}"
+
+
+# ---------------------------------------------------------------------------
+# 8. ci.yml — channel-freshness job (W3-13, MB-RECONCILE-06)
+# ---------------------------------------------------------------------------
+#
+# Phones run whatever `eas update` last published to the `preview` channel;
+# merging to main ships nothing to a device. Measured 2026-09-11 at ed75dc70
+# the channel ran 97b5f15, 33 first-parent commits behind main, and every job
+# in this file was green. The `channel-freshness` job resolves the channel's
+# published commit through eas-cli and fails when it is more than one
+# first-parent commit behind origin/main. These pins hold its SHAPE: the job
+# must skip cleanly without the EXPO_TOKEN secret (every fork PR, and this repo
+# until Ahmed adds it), must never hand the raw token to `npm ci`, and must
+# stay non-blocking until the dated flip.
+
+RUNBOOK_CANARY = REPO_ROOT / "docs" / "runbooks" / "qaren-canary-onboarding.md"
+EAS_JSON = REPO_ROOT / "SmartCompareApp" / "eas.json"
+CLAUDE_MD = REPO_ROOT / "CLAUDE.md"
+
+
+def _channel_freshness_job() -> dict:
+    jobs = _load(CI_YML)["jobs"]
+    assert (
+        "channel-freshness" in jobs
+    ), f"no channel-freshness job; jobs = {sorted(jobs)}"
+    return jobs["channel-freshness"]
+
+
+def _step_running(job: dict, needle: str) -> dict:
+    found = [s for s in _steps(job) if needle in str(s.get("run", ""))]
+    assert (
+        len(found) == 1
+    ), f"expected exactly one step running {needle!r}, got {len(found)}"
+    return found[0]
+
+
+def test_channel_freshness_job_skips_cleanly_without_the_secret():
+    """`secrets.*` cannot be read from an `if`, and a job-level `if` sees neither
+    `secrets` nor `env` (docs.github.com "Using secrets in a workflow" + the
+    contexts reference), so the documented "Run a step if a secret has been set"
+    pattern is: derive a job-level env var from the secret and gate every step
+    after checkout on it. One hardening over the documented example: the
+    job-level value is the BOOLEAN `secrets.EXPO_TOKEN != ''`, and the raw
+    token is scoped to the single eas-cli step so `npm ci` and its postinstall
+    scripts never see it.
+
+    Mutations that redden this: removing `fetch-depth`, removing one step's
+    `if`, moving the raw secret to job env, changing the eas-cli pin.
+    """
+    job = _channel_freshness_job()
+
+    # job-level env: exactly the derived boolean, never the raw token
+    env = job.get("env") or {}
+    assert list(env) == [
+        "EXPO_TOKEN_SET"
+    ], f"job env must be exactly EXPO_TOKEN_SET, got {env}"
+    derived = str(env["EXPO_TOKEN_SET"])
+    assert "secrets.EXPO_TOKEN" in derived and "!= ''" in derived, (
+        "EXPO_TOKEN_SET must be the comparison `secrets.EXPO_TOKEN != ''` — a bare "
+        f"`${{{{ secrets.EXPO_TOKEN }}}}` would put the token in every step's env; got {derived!r}"
+    )
+
+    # first step: full-history checkout — merge-base / rev-list need it
+    steps = _steps(job)
+    assert steps, "channel-freshness has no steps"
+    checkout = steps[0]
+    assert str(checkout.get("uses", "")).startswith(
+        "actions/checkout@v4"
+    ), f"first step must be actions/checkout@v4, got {checkout}"
+    assert (checkout.get("with") or {}).get("fetch-depth") == 0, (
+        "checkout must set fetch-depth: 0 — the default depth of 1 has no history "
+        "for merge-base or rev-list"
+    )
+
+    # every other step is gated on the derived boolean (the skip-cleanly contract)
+    gated = steps[1:]
+    assert gated, "the job has no steps after checkout"
+    for step in gated:
+        cond = str(step.get("if", ""))
+        assert "env.EXPO_TOKEN_SET" in cond, (
+            f"step {step.get('name') or step.get('uses')!r} has no EXPO_TOKEN_SET gate — "
+            "it would run and fail on every PR without the secret"
+        )
+
+    # exactly one negative branch, and it is the notice
+    negative = [
+        s for s in gated if "!= 'true'" in str(s["if"]) or "== 'false'" in str(s["if"])
+    ]
+    assert (
+        len(negative) == 1
+    ), f"expected exactly one skip-notice step, got {len(negative)}"
+    assert "::notice" in str(
+        negative[0].get("run", "")
+    ), "the negative branch must print a ::notice"
+    for step in gated:
+        if step is not negative[0]:
+            assert "== 'true'" in str(step["if"]), f"positive gate expected on {step}"
+
+    # token scoping: the resolve step is the ONLY place the raw secret appears
+    resolve = _step_running(job, "update:view")
+    assert resolve.get("env") == {
+        "EXPO_TOKEN": "${{ secrets.EXPO_TOKEN }}"
+    }, f"the eas-cli step must carry exactly EXPO_TOKEN from the secret, got {resolve.get('env')}"
+    for step in steps:
+        if step is not resolve:
+            assert "secrets." not in str(
+                step.get("env", {})
+            ), f"raw secret leaked into the env of step {step.get('name') or step.get('uses')!r}"
+
+    # the two eas commands, pinned to the version the JSON shapes were read on
+    run = str(resolve.get("run", ""))
+    for needle in (
+        "eas-cli@18.8.1",
+        "update:list --branch preview",
+        "--json",
+        "--non-interactive",
+        "update:view",
+    ):
+        assert needle in run, f"resolve step is missing {needle!r}"
+    pins = set(re.findall(r"eas-cli@(\d+\.\d+\.\d+)", run))
+    assert pins == {"18.8.1"}, f"eas-cli must be pinned once, to 18.8.1; got {pins}"
+
+    # the pin satisfies eas.json's own `cli.version` range (cross-file, read
+    # from disk; tuple compare — no `packaging` import)
+    eas = yaml.safe_load(EAS_JSON.read_text(encoding="utf-8"))
+    rng = str(eas["cli"]["version"]).strip()
+    m = re.fullmatch(r">=\s*(\d+)\.(\d+)\.(\d+)", rng)
+    assert m, f"eas.json cli.version is not a `>= X.Y.Z` range: {rng!r}"
+    floor = tuple(int(x) for x in m.groups())
+    assert (
+        18,
+        8,
+        1,
+    ) >= floor, f"eas-cli@18.8.1 does not satisfy eas.json cli.version {rng!r}"
+
+    # the check step calls the script with the contract's default distance
+    check = _step_running(job, "scripts/check_channel_freshness.py")
+    assert "--max-behind 1" in str(
+        check.get("run", "")
+    ), "check step must pass --max-behind 1"
+
+
+def test_channel_freshness_is_non_blocking_until_the_dated_flip():
+    """Flip both in the PR that makes it blocking; this pin is the reminder,
+    not a calendar trigger — a date-aware assertion would redden the REQUIRED
+    backend-tests job on a no-change day, which is the failure mode this file
+    exists to end. Mutation that reddens this: deleting `continue-on-error`."""
+    job = _channel_freshness_job()
+    check = _step_running(job, "scripts/check_channel_freshness.py")
+    assert check.get("continue-on-error") is True, (
+        "the freshness check must stay continue-on-error until the dated flip; "
+        "removing it and adding the job to branch protection is one PR"
+    )
+    raw = CI_YML.read_text(encoding="utf-8")
+    assert (
+        "NON-BLOCKING until 2026-09-18" in raw
+    ), "the job's leading comment must carry the dated non-blocking notice"
+
+
+# ---------------------------------------------------------------------------
+# 9. docs/runbooks/qaren-canary-onboarding.md — publishes to the channel
+#    with devices (MB-TWO-LEVER-RELEASE-05 / -10)
+# ---------------------------------------------------------------------------
+
+
+def test_canary_runbook_publishes_to_the_channel_with_devices():
+    """`eas.json` binds `build.production.channel` to a build that was never
+    made, so `--branch production` reaches ZERO phones; the only channel with
+    devices is `preview`. The runbook's ramp AND rollback sections both said
+    `--branch production` (5 lines measured 2026-09-11), which during an
+    incident would publish to nobody. It must now agree with CLAUDE.md's own
+    publish block, carry the sourcemap-upload line, verify with `update:view`,
+    name the one real console-strip hazard (`--skip-bundler`), and keep an OTA
+    ledger. Mutation that reddens this: reintroducing one `--branch production`
+    command line.
+
+    Ruling 18: the scan is for the COMMAND, not for the flag name. Forbidding
+    the substring outright would forbid the runbook from NAMING the hazard —
+    the replacement lines and the publish block both have to say
+    "never `--branch production`", so a substring ban would make the spec's own
+    runbook text unable to pass this test. The positive pin below is the other
+    half: a runbook that silently stops mentioning the trap has lost the
+    finding."""
+    text = RUNBOOK_CANARY.read_text(encoding="utf-8")
+    commands = re.findall(r"eas\s+update(?::list)?\s+--branch\s+production", text)
+    assert commands == [], (
+        "runbook still publishes to the device-less production channel: "
+        f"{len(commands)} `eas update --branch production` command(s)"
+    )
+    assert (
+        "--branch production" in text
+    ), "the runbook must still NAME the hazard it stopped using"
+    for needle in (
+        "--branch preview --clear-cache",
+        "expo-upload-sourcemaps",
+        "update:view",
+        "--skip-bundler",
+        "| gitCommitHash |",
+    ):
+        assert needle in text, f"runbook is missing {needle!r}"
+
+    # consistency pin between the two documents: CLAUDE.md's publish block is
+    # the authority the runbook now agrees with
+    claude_md = CLAUDE_MD.read_text(encoding="utf-8")
+    assert (
+        "never `--branch production`" in claude_md
+    ), "CLAUDE.md no longer carries the `never --branch production` rule the runbook mirrors"

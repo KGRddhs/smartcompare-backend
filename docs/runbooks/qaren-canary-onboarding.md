@@ -2,7 +2,9 @@
 
 **Owner:** backend (canary mechanic) + test-qa (metrics)
 **Scope:** ramp `ENABLE_NEW_ONBOARDING` from 10% → 50% → 100% over 7-10 days.
-**Last revised:** 2026-05-07.
+**Last revised:** 2026-09-11 (W3-13: every `eas update` retargeted from the
+device-less `production` channel to `preview`; publish procedure added as
+section 2.0; OTA ledger added as section 9). Previously revised 2026-05-07.
 
 This runbook is the single source of truth for the Phase 5 onboarding
 canary. Task 47 (10%) landed — see commit history. Task 48 covers the
@@ -130,6 +132,61 @@ The flag is a frontend build-time const. Ramping does NOT require an
 app-store re-release. EAS Update pushes a new JS bundle to existing
 installed app versions.
 
+### 2.0 Publish procedure — the only sanctioned command sequence
+
+Every `eas update` in this runbook (ramp, rollback, quick reference) goes
+through the sequence below. It mirrors CLAUDE.md's publish block, which is the
+authority; this section adds the sourcemap upload and the ledger row.
+
+```bash
+cd SmartCompareApp
+git fetch origin main
+git status --porcelain            # MUST be empty. `eas update` will NOT stop you: eas.json sets no
+                                  # `cli.requireCommit`, so eas-cli publishes a dirty tree, records
+                                  # HEAD's hash as `gitCommitHash`, and the only trace is a `*` in the
+                                  # human output — the JSON and the CI guard cannot see it.
+git merge-base --is-ancestor HEAD origin/main && git rev-parse HEAD
+                                  # publish from a commit that IS on main — the CI guard fails a hash it
+                                  # cannot find on main (exit 3), and reviewers cannot audit a bundle
+                                  # built from a side branch.
+# Do NOT set NODE_ENV or BABEL_ENV in this shell, and NEVER use --skip-bundler: `eas update` bundles
+# through `expo export`, which forces NODE_ENV=production itself (@expo/cli exportApp.js "Force the
+# environment during export and do not allow overriding it"), so a shell NODE_ENV cannot defeat the
+# console-strip through `eas update`. A hand-exported --dev bundle fed in with --skip-bundler is how the
+# strip (babel.config.js isProduction, :190-198) actually gets skipped, and BABEL_ENV=test flips isTest
+# and drops the lucide splitter from the bundle.
+eas update --branch preview --clear-cache --message "<PR numbers shipped>" --non-interactive --json \
+  | tee "$TEMP/preview-publish-$(date +%F).json"
+                                  # `preview` is the only channel with devices; no production build
+                                  # exists (eas.json binds `production` to build.production, never
+                                  # built), so publishing there reaches zero phones — never
+                                  # `--branch production`.
+                                  # --json prints one entry per platform with id, group, gitCommitHash,
+                                  # runtimeVersion, createdAt (non-JSON progress goes to stderr) — paste
+                                  # it into the ledger row in section 9.
+                                  # --clear-cache: metro.config.js keys the transform cache on
+                                  # babel.config.js since 8d8b9dc; keep it, it is cheap insurance.
+# Sourcemaps — required, or every crash from this bundle is unsymbolicated in Sentry
+# (MB-TWO-LEVER-RELEASE-05). `eas update` already exported them (its source-maps flag defaults to true;
+# --input-dir defaults to dist):
+SENTRY_AUTH_TOKEN=<token> node node_modules/@sentry/react-native/scripts/expo-upload-sourcemaps dist
+                                  # org/project/url resolve from the @sentry/react-native plugin block
+                                  # in app.json (qaren-rr / react-native / https://de.sentry.io/); only
+                                  # the token is needed, and it is created in Sentry with
+                                  # sourcemap-upload permission. The script's own `NODE_ENV ||=
+                                  # development` line affects its own process, not the bundle.
+# Verify + record:
+eas update:view <group-id> --json # gitCommitHash must equal the SHA you published from
+# Append a row to section 9 (OTA ledger). Then on a device: force-close and reopen TWICE (first launch
+# downloads, second swaps — docs/SESSION_BUNDLES.md "two-launch propagation"), and check one analytics
+# POST returns 2xx.
+```
+
+The CI job `channel-freshness` (`.github/workflows/ci.yml`) reads this same
+channel on every PR and fails when it is more than one first-parent commit
+behind `origin/main`; it is non-blocking until 2026-09-18 and inert until the
+`EXPO_TOKEN` repository secret exists.
+
 ### 2.1 Bump 10 → 50
 
 ```bash
@@ -151,11 +208,14 @@ git commit -m "chore(canary): bump ENABLE_NEW_ONBOARDING to 50%" \
 git push origin main
 
 # 5. Push EAS Update — frontend bundle to live users
-eas update --branch production \
+# `preview` is the only channel with devices; no production build exists (eas.json binds
+# `production` to build.production, never built) -- `--branch production` reaches zero phones.
+# Full procedure + sourcemaps + ledger: section 2.0.
+eas update --branch preview --clear-cache \
   --message "Canary onboarding ramp 10% → 50%"
 
 # 6. Verify update is live
-eas update:list --branch production --limit 5
+eas update:list --branch preview --limit 5
 ```
 
 Wait 72 hours post-update before evaluating Section 1 metrics for the
@@ -187,11 +247,12 @@ git commit -m "revert(canary): rollback ENABLE_NEW_ONBOARDING to 0% (incident: <
 
 git push origin main
 
-eas update --branch production \
+# Same channel rule as the ramp: `--branch production` reaches zero phones (section 2.0).
+eas update --branch preview --clear-cache \
   --message "ROLLBACK — canary onboarding to 0%"
 
 # Verify users on the new flow flip back to legacy on next app open
-eas update:list --branch production --limit 5
+eas update:list --branch preview --limit 5
 ```
 
 Users already mid-onboarding on the new flow will FINISH on the new
@@ -366,10 +427,36 @@ within 4 hours.
 |---|---|
 | Canary percent constant | `SmartCompareApp/src/config/features.ts` line ~30 |
 | Bucket helper | `SmartCompareApp/src/config/featureBucket.ts` |
-| EAS Update | `cd SmartCompareApp && eas update --branch production --message "..."` |
+| EAS Update | `cd SmartCompareApp && eas update --branch preview --clear-cache --message "..."` -- never `--branch production` (zero devices); full sequence in section 2.0 |
 | Rollback to 0 | Same as ramp; commit + push EAS Update |
 | Backend flag flip | Railway dashboard → Variables → save |
 | Onboarding events | `event_type` in `('onboarding_started','onboarding_step_completed','onboarding_completed')` |
 | Sentry filter | `tags[flow_variant]:new` |
 | Loop 2 trigger | `app/services/referral_service.py::try_trigger_loop2` |
 | Cron entrypoint | `scripts/cron_expire_bonuses.py` (gated by `ENABLE_BONUS_EXPIRY_PUSHES`) |
+
+---
+
+## 9. OTA ledger
+
+Every `eas update` publish gets a row, appended at publish time from the
+`--json` output of section 2.0. Before this ledger existed the group id was
+simply not recorded anywhere (MB-two-lever-03), so nobody could answer "what is
+on phones, and from which commit" without an interactive `eas` session. The
+rows below `2026-09-02` are seeded from `docs/SESSION_BUNDLES.md` (line numbers
+in the notes) and are as complete as those entries allow — a missing cell is
+written `(not recorded)`, never guessed.
+
+| date | channel | group id | gitCommitHash | runtimeVersion | sourcemaps uploaded | published by | notes |
+|---|---|---|---|---|---|---|---|
+| 2026-09-02 | preview | (not recorded) | `97b5f1501a1242c405fd3cf12bee9ab419db2bdd` | 1.0.0 | no | Ahmed | M18/M20 set; `docs/CONTEXT_SESSION_LOG.md:131`. Group id was never recorded — the gap this ledger closes. Still the live bundle as of 2026-09-11. |
+| 2026-06-18 | preview | `3efa9d81` (short form only) | (not recorded) | (not recorded) | no | Ahmed | Wave 3 walk-fix wave; `docs/SESSION_BUNDLES.md:721`. `2cb4439` on that line is the BACKEND commit, not the bundle's. |
+| 2026-06-10 | preview | `ba52fdf9-e5c1-41cd-9bd4-cb5a71c183d7` | (not recorded) | (not recorded) | no | Ahmed | Bundle B Session 1 (pain events + auth cleanup); `docs/SESSION_BUNDLES.md:646`. |
+| 2026-06-03 | preview | `90087c4f-ee62-4e4c-84e7-d0c17a62276f` | (not recorded) | (not recorded) | no | Ahmed | Bundle E S3 hot-fix wave 2; `docs/SESSION_BUNDLES.md:545`. |
+| 2026-06-02 | preview | `18af8a48-a191-4b5d-bc62-9508ab4b5952` | (not recorded) | (not recorded) | no | Ahmed | Bundle E S3 hot-fix wave 1; `docs/SESSION_BUNDLES.md:523`. |
+| (not recorded) | preview | `1856c8fb-70ea-4333-b402-b09ad7f2af5f` | (not recorded) | (not recorded) | no | Ahmed | Bucket A bugs 1 + 2; `docs/SESSION_BUNDLES.md:89`. |
+| 2026-05-13 | preview | `d540c1e6-c07c-46d7-ac69-5103dde1fb56` | `0129106` | 1.0.0 | no | Ahmed | Bundle E results quality overhaul; `docs/SESSION_BUNDLES.md:36` (commit) and `:47` (full group id, both platforms). |
+
+Two run ids that look like groups and are NOT: `4aee8e88-da97-41b3-974b-3e75c2c9c10e`
+and `54b603e8-4eab-41c9-a34d-a5e391446559` are `eval_runner` baseline run ids
+(`docs/SESSION_BUNDLES.md:636` and `:752`), not EAS update groups. Do not add them here.
