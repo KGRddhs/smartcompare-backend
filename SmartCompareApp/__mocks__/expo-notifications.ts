@@ -19,6 +19,19 @@ export const getExpoPushTokenAsync = async () => ({ data: 'ExponentPushToken[tes
 export const setNotificationChannelAsync = async () => null;
 export const setNotificationHandler = (_handler: unknown) => {};
 
+// W3-15 — src/services/pushNavigation.ts lazy-requires this module for the
+// notification-response listener + the cold-start replay. The names below are
+// the real 0.32.17 surface it touches (NotificationsEmitter.js:11 for the
+// action-identifier literal; :105-112 / :136-141 for the sync getLast/clear
+// pair — both of which throw UnavailabilityError when the native fn is absent).
+// Suites that need behaviour override with jest.doMock per test.
+export const DEFAULT_ACTION_IDENTIFIER = 'expo.modules.notifications.actions.DEFAULT';
+export const addNotificationResponseReceivedListener = (_listener: unknown) => ({
+  remove: () => {},
+});
+export const getLastNotificationResponse = () => null;
+export const clearLastNotificationResponse = () => {};
+
 export const AndroidImportance = {
   DEFAULT: 3,
   HIGH: 4,
@@ -33,5 +46,9 @@ export default {
   getExpoPushTokenAsync,
   setNotificationChannelAsync,
   setNotificationHandler,
+  DEFAULT_ACTION_IDENTIFIER,
+  addNotificationResponseReceivedListener,
+  getLastNotificationResponse,
+  clearLastNotificationResponse,
   AndroidImportance,
 };

@@ -591,6 +591,11 @@ export type RootStackParamList = {
     result?: ComparisonResult;
     comparison_id?: string;
     vision_products?: string[];
+    // W3-15 — `qaren://comparison/{id}?banner=insight|retrospective`
+    // (reengagement_service.py:326/366) puts the query param here via
+    // getStateFromPath. Typing only: no screen reads it in this unit, the
+    // banner UI belongs to the (dark) re-engagement feature.
+    banner?: string;
   };
   // F3.2/F3.3 — invitee landing flow (gradual commitment, no signup gate).
   ReferralLanding: { share_token: string; ref: string };
