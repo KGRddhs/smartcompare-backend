@@ -360,3 +360,43 @@ Every item below is MEASURED in this session, not inferred. Line anchors are at 
 ## Ahmed's list (unchanged, plus two)
 `ENABLE_BRIGHTDATA_BUDGET_GATE=true` → the OTA (`eas update --branch preview --clear-cache`) → rotate `ADMIN_API_KEY` → apply migration 037 (`035 → 036 → 037`, then the `proacl` query and the anon-key RPC probe must return 42501). **New:** `railway login` (the Railway MCP token expired 2026-09-11, so deploy verification this session was `/health` only), and watch the next redeploy's OLD-deployment log for the `[DRAIN]` lines that close W1-6.
 
+---
+
+# PART 6 — SESSION 65e close (2026-09-11): exact resume state for BOTH concurrent sessions
+
+Main `19ec866a`. Nothing is uncommitted on `main`, and the two sessions' file footprints are disjoint (confirmed by message both ways).
+
+## This session (65e) — W4 product-output truth
+
+### W4-1 — DONE BUT UNREVIEWED. Do not merge before the adversary runs.
+- Worktree `sc-w4-1`, branch `feature/s65-w4-1-shopping-currency-truth`, base `ed75dc70`, **uncommitted**: `app/services/price_service.py` +295/-3, `app/services/structured_comparison_service.py` +49/-3, untracked `tests/test_shopping_currency_truth.py` (124 nodes). Verified green in both flag states after the last agent stopped, so nothing is mid-mutation.
+- Gates already PASSED (re-running them is not required): unit 124/124 flag-unset and flag-on; Preserve pins 32/32; the 30 `extract_price_from_shopping` files 739/739; comm gate over the 304-file set 3 failed / 11 363 passed with `comm -13` EMPTY, all three failures in `tests/.pre_impl_failures.txt`; byte-identity base → head → base2 = 0 differing records on all three pairings (harness blind to the shopping rung — flag-OFF identity is pin-carried, stated in the PR body).
+- **Missing: the post-rework adversarial review.** Resume it with `Workflow({scriptPath: <session>/workflows/scripts/s65-w4-1-rework-finish-wf_2d2fddc6-153.js, resumeFromRunId: 'wf_2d2fddc6-153', args: {...the priorAdversary string...}})` — the green replays from cache and only the adversary runs live. Then: full CI-mirrored suite → commit → rebase on main → PR → tell the peer → merge on green.
+- PR body draft (already revised for the rework): the session scratchpad's `prbody_W4-1.md`. Ruling R1–R5 is the last section of `sc-w4-1/.qa-w4/W4_1_UNIT_SPEC.md`.
+- **Hard order: W4-1 merges WITH or BEFORE W4-2.** 1,032 of the 1,484 `local_bhd` rows are hidden today only by the `non_pdp_url` pend that W4-2 removes.
+- Highest residual risk, recorded by the implementer: a non-BHD ask has NO host evidence past the agnostic pair (that is the deliberate R1 scope, follow-up `PO-PRICE-TRUTH-01b`), and the compound-string limit (`From 22.500 BD` still parses 22,500 with the flag ON) is a live 1000× error of the same class the unit fixes — `PO-PRICE-TRUTH-01c` is not cosmetic.
+
+### W4-2 / W4-3 / W4-4 / W4-9 / W4-10 — specs written, NOT reviewed, NOT implemented
+Worktrees `sc-w4-2`, `sc-w4-3`, `sc-w4-4`, `sc-w4-9`, `sc-w4-10`, all branched from `b63a8368`, all with ZERO source edits. Each spec is `.qa-w4/W4_N_UNIT_SPEC.md` — **`.qa-*/` is gitignored, so `git status` shows these worktrees CLEAN even though the specs are on disk.** Every spec reproduced its defect with a probe at HEAD and lists its own open rulings.
+- **W4-2** `ENABLE_SHOPPING_DISCOVERY_URL_SPLIT` (default OFF). Measured: 9 of the 46 `RETAILER_SEARCH_URLS` templates escape `_is_listing_url`, so those rows ship showable AND cacheable as genuine `local_bhd` for 7 days on a url we fabricated and never fetched. Riskiest part, and an addition to the review's design: the Tier-1 park predicate must learn the discovery url, or a google-linked row flips from parked to a genuine short-circuit.
+- **W4-3** `ENABLE_PRESCORING_SHOWABLE_GUARD` (default OFF), the mirror of #113's region-currency guard, plus a `guard_rejected` harvest without which the flag's own canary reads clean while the flag works.
+- **W4-4** `ENABLE_HONEST_PARTIAL_SCORING` (default OFF) — **the spec overrules the wave plan's "unflagged"**: the change is visible on the pre-OTA bundle. `scoring_v2: null`, never popped (a test pins the key's presence), and nulling only `overall_score`/`win_margin` is rejected because it can flip the crown.
+- **W4-9** unflagged error envelope (only stricter). Four disclosure surfaces plus a route allowlist; no private `_internal_error` key, because `image_routes.py:360` returns `compare_from_text`'s dict verbatim to the client.
+- **W4-10** unflagged regression fix of M21-W3. `price_tiers` is deliberately OUT of scope: deduping its keys flips `value_badge` from `great_value` to `fair_price` on the DEFAULT flag state.
+- **Next step for all five:** re-run the adversarial spec review (`s65-w4-batch5-spec-review-wf_af47444c-a20.js`; it was killed with nothing salvageable, so it is a full re-run), then append the orchestrator's rulings to each spec, then red → green → adversary per unit.
+
+### Still untouched in W4
+W4-6a, W4-6b (blocked on the #101 product call), W4-7, W4-8, W4-11, W4-12, W4-13, and W4-14 (client, OTA-gated).
+
+## The peer session (65b) — W3 remainder
+State as it reported at 2026-09-11 (not verified by this session, and its worktrees are NOT to be touched): ten `sc-w3-*` worktrees, all fast-forwarded to `b63a8368`, **no source edits anywhere**; 10/10 W3 specs written, 6/10 reviewed (W3-3, W3-4, W3-6, W3-9, W3-13, W3-15), the other four reviews cut by its own limit; group A implementation (W3-3, W3-4, W3-6, W3-15) queued. It holds no edits to any file this session touched. Its W3-14 is the CLIENT copy half of the error work — the backend half is W4-9 here — plus at most an additive preferences path in `auth_routes.py`, which it will name before opening a PR.
+
+## Standing agreements between the two sessions (keep these)
+- Message the other session before merging anything that touches a shared file; both sessions ACK before the merge.
+- CLAUDE.md is split by construction: the peer inserts its own `## Active runtime (SESSION 65d — W3 remainder …)` block ABOVE the existing SESSION 65 blocks and APPENDS new flag rows at the end of the table; this session edits the SESSION 65 blocks and the flag table's existing rows. Neither edits the other's.
+- Both start commands (`Procfile`, `railway.json`) must stay byte-identical to each other, and any new lifespan handler goes after `_drain_background_tasks`, never between it and the heartbeat cancel.
+- Before launching any workflow on a shared worktree, check the peer's `isRunning` and the workflow-script mtimes.
+
+## Ahmed (unchanged, plus the two from #160)
+`ENABLE_BRIGHTDATA_BUDGET_GATE=true` → the OTA (`eas update --branch preview --clear-cache`) → rotate `ADMIN_API_KEY` → apply migration 037 (`035 → 036 → 037`, then the `proacl` query and the anon-key RPC probe must return 42501). Plus: **`railway login`** (the Railway MCP token expired on 2026-09-11, so `/health` was the only prod verification available), and on the next redeploy watch the OLD deployment's log for the `[DRAIN]` lines that close out W1-6.
+

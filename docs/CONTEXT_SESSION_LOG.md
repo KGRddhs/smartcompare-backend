@@ -4,6 +4,14 @@
 
 ---
 
+# SESSION 65e — W4-1 reworked to green (unreviewed), five W4 specs written, both sessions' state saved (2026-09-11)
+
+**Merged this session:** #155 W3-2 `aac79f78`, #156 W1-5 `5ad0f7dc`, #157 W1-6 `be5267cf`, #158 W4-5 `d32f2983`, #159 test hardening `b63a8368`, #160 docs `19ec866a`. Main `19ec866a`; prod `/health` 200 on a fresh process after each code deploy.
+**W4-1 (`ENABLE_SHOPPING_CURRENCY_TRUTH`) — green, all gates, NOT reviewed, NOT committed.** Its first green was DEFECTIVE (the Bahrain host-evidence rule applied to every region ask; a KSA store's native SAR price on a Saudi request lost `local_bhd` and would be parked at the Tier-1 call site). The binding rework scopes that vocabulary to BHD asks behind a region-agnostic `no_link`/`listing_url` pair, evaluates the other-country rung BEFORE the BH markers so conflicting evidence cannot mint a genuine label, and pins the four host rungs, the three-decimal-only ISO pend and both canary log lines — all of which had survived every earlier mutation. 124 nodes; the previously-inert mutations X4/X5/X6/X7/X16b now redden exactly their own pin.
+**Five W4 specs written and measured at `b63a8368`** (W4-2 shopping url split, W4-3 pre-scoring showable guard, W4-4 honest partial scoring, W4-9 error envelope, W4-10 tradeoffs dedup parity). Each reproduced its defect, named its must-not-touch list and left open rulings for the orchestrator. Two specs overruled their wave-plan row on measurement: W4-4 refuses to ship unflagged because the shape change is visible on the PRE-OTA bundle the phones still run, and W4-10 keeps `price_tiers` out of scope because deduping its keys flips `value_badge` on the default flag state.
+**Process:** the Fable usage limit killed six agents mid-run; the session continued on Opus 5 agents. Every killed agent's worktree was re-baselined before relaunch, and every partial was verified by running the unit file rather than trusted.
+**Resume:** memory `project-myez-session65e-batch4-2026-09-11` + PART 6 of `docs/investigations/2026-09-08-session-65-next-units.md`.
+
 # SESSION 65 (part 5) — W3-2 + W1-5 + W1-6 + W4-5 merged, W4-1 in rework (2026-09-11)
 
 **Merged:** #155 W3-2 (`aac79f78`), #156 W1-5 (`5ad0f7dc`), #158 W4-5 (`d32f2983`), #157 W1-6 (`be5267cf`), #159 test hardening (`b63a8368`). Main `b63a8368`; prod `/health` 200 on a fresh process after each deploy. Auto-merge is DISABLED on this repo — every merge is `gh pr merge N --merge` by hand on green.
