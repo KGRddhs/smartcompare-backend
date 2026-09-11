@@ -125,7 +125,13 @@ class TestHistoryRouteHardening:
             headers={"Authorization": "Bearer test-token"}
         )
         assert response.status_code == 404
-        assert "403" not in response.text
+        # Assert on the envelope FIELDS, not the raw body: the body carries a
+        # random request_id UUID, and one containing "403" flaked CI on #157
+        # (2026-09-11). The contract is "no 403 leaks through the code/error".
+        body = response.json()
+        assert body["code"] == "NOT_FOUND"
+        assert "403" not in body["code"] and "403" not in body["error"]
+        assert "forbidden" not in body["error"].lower()
 
     @patch("app.api.auth_routes.verify_token", new_callable=AsyncMock)
     @patch("app.api.history_routes.get_comparison_by_id", new_callable=AsyncMock)
