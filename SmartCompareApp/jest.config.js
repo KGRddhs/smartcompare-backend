@@ -12,7 +12,16 @@ module.exports = {
     },
   },
   transformIgnorePatterns: [
-    'node_modules/(?!(@expo-google-fonts|expo-localization|@react-native-async-storage|react-native|@react-native|lucide-react-native|react-i18next|i18next|expo-haptics|expo-image|react-native-reanimated)/)',
+    // W3-6: `@react-navigation` is in this allowlist so ts-jest may transform
+    // the package's TSX *sources*. The published packages ship ESM-only
+    // `lib/module` and an `exports` map that blocks deep imports, so the only
+    // way to exercise the REAL `getStateFromPath` parser (which is what the
+    // recovery deep-link test must do — a hand-rolled fake would prove
+    // nothing about how a `#fragment` actually travels) is to
+    // `jest.requireActual` the `.tsx` source by relative path. The ts-jest
+    // preset only transforms `^.+\.tsx?$`, so the untransformed `lib/module`
+    // `.js` files stay excluded either way and no existing suite is affected.
+    'node_modules/(?!(@expo-google-fonts|expo-localization|@react-native-async-storage|react-native|@react-native|lucide-react-native|react-i18next|i18next|expo-haptics|expo-image|react-native-reanimated|@react-navigation)/)',
   ],
   moduleNameMapper: {
     '^react-native$': '<rootDir>/__mocks__/react-native.ts',
