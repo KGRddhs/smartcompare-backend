@@ -1839,7 +1839,11 @@ def is_price_showable(
         return False
     if is_implausible_high_value_price(product_name, amount):
         return False
-    if _is_sample_or_decant_listing(product_name, title, amount):
+    if _is_sample_or_decant_listing(
+        product_name,
+        (title or price.get("name")) if showable_name_identity_enabled() else title,
+        amount,
+    ):
         return False
     # --- correctness backstop (CARDINAL RULE) — OPT-IN via enforce_correctness ---
     # Defense-in-depth at the RESPONSE CHOKEPOINT only (response_builder + streaming
@@ -4235,6 +4239,27 @@ def price_parse_offload_enabled() -> bool:
     async site keeps its existing inline call, so the rollback is
     byte-identical."""
     return os.getenv("ENABLE_PRICE_PARSE_OFFLOAD", "false").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
+def showable_name_identity_enabled() -> bool:
+    """True iff W4-5 (PO-PRICE-TRUTH-04) is active (default OFF).
+
+    ``is_price_showable`` feeds the sample/decant guard the ``title`` key only,
+    but every ``extract_price_from_html`` rung (JSON-LD / OG / microdata /
+    WooCommerce / RSC) stamps the listing identity under ``name`` and never
+    writes ``title``, so a decant listing arriving through the page-scrape
+    family is invisible to the guard and ships as the full-bottle price. With
+    the flag ON the guard receives ``title or name`` (the same precedence the
+    correctness backstop already uses) as an ARGUMENT -- never written into
+    ``price["title"]``.
+
+    Read PER CALL from ``os.getenv`` (copying ``price_parse_offload_enabled``)
+    so Railway flips it without a restart. With the flag OFF the guard's
+    argument is ``title``, the identical value it receives today, so the
+    rollback is byte-identical at the function level."""
+    return os.getenv("ENABLE_SHOWABLE_NAME_IDENTITY", "false").strip().lower() in (
         "true", "1", "yes", "on",
     )
 
