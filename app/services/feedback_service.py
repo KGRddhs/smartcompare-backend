@@ -24,6 +24,115 @@ async def _delete_cached_async(key: str) -> bool:
 logger = logging.getLogger(__name__)
 
 
+def _without_verdict_critique(full_response: Dict) -> Dict:
+    """G6 integration fix, W3-2 form: `_verdict_critique` is an INTERNAL key —
+    the comparisons row (which history and the public share read verbatim) must
+    never carry it.
+
+    Returns a payload for the insert with that key removed, WITHOUT mutating the
+    caller's dict. The old composition popped in place; it could afford to,
+    because it only ever ran fire-and-forget AFTER the route had serialized its
+    response. W3-2 awaits the insert ON the request path, so an in-place pop
+    would strip the key from the payload the route is about to return.
+    MEASURED at eecd8bf9 on this tree: today's POST body and BOTH SSE terminal
+    events DO carry `metadata._verdict_critique` while the DB payload does not
+    — sanitizing a copy keeps both halves of that true.
+
+    When there is nothing to remove (the normal case — ENABLE_SELF_CRITIQUE is
+    default OFF) the SAME object is returned, so `save_comparison` receives
+    exactly what it received before.
+    """
+    metadata = full_response.get("metadata")
+    if not isinstance(metadata, dict) or "_verdict_critique" not in metadata:
+        return full_response
+    sanitized = dict(full_response)
+    sanitized["metadata"] = {
+        key: value for key, value in metadata.items() if key != "_verdict_critique"
+    }
+    return sanitized
+
+
+async def persist_comparison(
+    *,
+    full_response: Dict,
+    query: str,
+    input_type: str,
+    user_id: str,
+) -> Optional[str]:
+    """W3-2 (MB-NETWORK-CONTRACT-07) — the AWAITABLE half: the comparisons
+    insert and nothing else. Returns the new row's id, or None.
+
+    SAFE TO AWAIT FROM A ROUTE: it never raises and never blocks on anything but
+    the insert. An insert that fails (or a payload `save_comparison` refuses as
+    unrenderable) yields None, so the compare still succeeds and the route
+    echoes an honest `comparison_id: null` instead of omitting the key. Today's
+    behaviour on failure is silence; the new behaviour is silence plus that null.
+    """
+    try:
+        saved = await save_comparison(
+            full_response=_without_verdict_critique(full_response), query=query,
+            input_type=input_type, user_id=user_id,
+        )
+        return (saved or {}).get("id")
+    except Exception as e:  # noqa: BLE001 — never break the user-facing flow
+        logger.warning(f"persist_comparison failed (silent): {e}")
+        return None
+
+
+async def track_after_persist(
+    comparison_id: Optional[str],
+    *,
+    full_response: Dict,
+    user_id: str,
+) -> None:
+    """W3-2 — the FIRE-AND-FORGET half: the four follow-ups that all need the
+    saved row's id. Same set, same order, same falsy-id gate as before the split
+    (savings-cache bust → cohort event → critique persist → referral Loop 2).
+
+    A falsy `comparison_id` returns immediately: there is no row to track
+    against, and a failed save must never bust a valid cache. Errors swallowed.
+    """
+    try:
+        if not comparison_id:
+            return
+        metadata = full_response.get("metadata") or {}
+        cohort_injected = metadata.get("cohort_injected", False)
+        _crit = metadata.get("_verdict_critique")
+        # #116 — the save side of the home:savings bust-on-write contract
+        # (delete side: history_routes.remove_comparison). Only when the
+        # save actually succeeded (comparison_id truthy) — a failed save
+        # must never nuke a valid cache. Unflagged: it only deletes a key
+        # a TTL would have expired anyway.
+        await _delete_cached_async(f"home:savings:{user_id}")
+        await track_event(
+            user_id=user_id,
+            event_type="comparison_completed",
+            event_data={"cohort_injected": bool(cohort_injected)},
+            comparison_id=comparison_id,
+        )
+        # I3.2 — persist the self-critique row now that the FK target
+        # (comparison_id) exists. The orchestrator threads the critique
+        # into metadata._verdict_critique only when ENABLE_SELF_CRITIQUE
+        # was ON and a critique ran; absent otherwise. Best-effort —
+        # persist_critique swallows its own errors, never blocks.
+        if isinstance(_crit, dict):
+            await _persist_verdict_critique(comparison_id, _crit)
+        # Referral Loop 2 — only fires when the user has an unredeemed
+        # invite AND this is their first comparison AND abuse checks pass.
+        # Self-contained no-op for organic users (most calls).
+        try:
+            from app.services.referral_service import ReferralService
+
+            await ReferralService().try_trigger_loop2(
+                invitee_user_id=user_id,
+                comparison_id=comparison_id,
+            )
+        except Exception as loop2_exc:  # noqa: BLE001
+            logger.warning(f"Loop 2 trigger failed (silent): {loop2_exc}")
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"track_after_persist failed (silent): {e}")
+
+
 async def save_comparison_and_track_cohort(
     *,
     full_response: Dict,
@@ -38,52 +147,20 @@ async def save_comparison_and_track_cohort(
 
     Sequenced (not parallel) because event + Loop 2 both need the saved
     comparison's id. Errors swallowed — never break the user-facing flow.
-    """
-    try:
-        # G6 integration fix: _verdict_critique is an INTERNAL key — pop it
-        # before the comparisons insert so history + the public share read
-        # (which serve full_response verbatim) never carry critique internals.
-        _crit = (full_response.get("metadata") or {}).pop("_verdict_critique", None)
-        saved = await save_comparison(
-            full_response=full_response, query=query,
-            input_type=input_type, user_id=user_id,
-        )
-        comparison_id = (saved or {}).get("id")
-        cohort_injected = (full_response.get("metadata") or {}).get("cohort_injected", False)
-        if comparison_id:
-            # #116 — the save side of the home:savings bust-on-write contract
-            # (delete side: history_routes.remove_comparison). Only when the
-            # save actually succeeded (comparison_id truthy) — a failed save
-            # must never nuke a valid cache. Unflagged: it only deletes a key
-            # a TTL would have expired anyway.
-            await _delete_cached_async(f"home:savings:{user_id}")
-            await track_event(
-                user_id=user_id,
-                event_type="comparison_completed",
-                event_data={"cohort_injected": bool(cohort_injected)},
-                comparison_id=comparison_id,
-            )
-            # I3.2 — persist the self-critique row now that the FK target
-            # (comparison_id) exists. The orchestrator threads the critique
-            # into metadata._verdict_critique only when ENABLE_SELF_CRITIQUE
-            # was ON and a critique ran; absent otherwise. Best-effort —
-            # persist_critique swallows its own errors, never blocks.
-            if isinstance(_crit, dict):
-                await _persist_verdict_critique(comparison_id, _crit)
-            # Referral Loop 2 — only fires when the user has an unredeemed
-            # invite AND this is their first comparison AND abuse checks pass.
-            # Self-contained no-op for organic users (most calls).
-            try:
-                from app.services.referral_service import ReferralService
 
-                await ReferralService().try_trigger_loop2(
-                    invitee_user_id=user_id,
-                    comparison_id=comparison_id,
-                )
-            except Exception as loop2_exc:  # noqa: BLE001
-                logger.warning(f"Loop 2 trigger failed (silent): {loop2_exc}")
-    except Exception as e:
-        logger.warning(f"save_comparison_and_track_cohort failed (silent): {e}")
+    W3-2: now a thin composition of `persist_comparison` + `track_after_persist`
+    so the text compare routes can await ONLY the insert and echo its id. This
+    is still the entry point for every NON-text caller (`image_routes.py:340`,
+    `url_routes.py:122`) and their behaviour is unchanged: one insert, then the
+    same four follow-ups in the same order, gated on the same truthy id.
+    """
+    comparison_id = await persist_comparison(
+        full_response=full_response, query=query,
+        input_type=input_type, user_id=user_id,
+    )
+    await track_after_persist(
+        comparison_id, full_response=full_response, user_id=user_id,
+    )
 
 
 async def _persist_verdict_critique(comparison_id: str, crit_meta: Dict) -> None:
