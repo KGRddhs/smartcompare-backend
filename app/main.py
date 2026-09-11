@@ -254,6 +254,76 @@ async def _stop_loop_lag_heartbeat() -> None:
     _loop_lag_task = None
 
 
+# W1-6 (LS-FAILURE-MODES-COST-05) -- drain the fire-and-forget tasks on shutdown.
+#
+# `app/utils/async_utils.fire_and_forget` used to create a task nobody held, so a
+# task that was mid-`await` when the loop stopped was simply dropped. The
+# user-visible cost is `usage_service.refund_comparison_credit`: with
+# `ENABLE_ASYNC_REDIS_OFFLOAD` ON it yields at `asyncio.to_thread`, so a deploy
+# landing in that window charges a credit for a comparison that FAILED and never
+# gives it back. This handler is therefore a HARD PRECONDITION for canarying that
+# flag.
+#
+# THE THREE NUMBERS, and the arithmetic is load-bearing -- 30 > 20 + 8:
+#   30 s  railway.json `deploy.drainingSeconds` -- Railway's SIGTERM->SIGKILL
+#         window. Set explicitly so it is deterministic instead of an
+#         undocumented platform default a bounded drain has to fit under blind.
+#   20 s  `--timeout-graceful-shutdown` on both start commands -- a cap on
+#         UVICORN'S OWN request-drain phase, not on this handler. Measured on the
+#         installed uvicorn 0.30.0: it bounds `_wait_tasks_to_complete()` and the
+#         installed default is None (unbounded), so one hung request handler used
+#         to block shutdown until Railway killed the container -- taking this
+#         drain with it. Lifespan shutdown, where this handler runs, happens
+#         AFTER that wait and is NOT under that timeout.
+#   8 s  DRAIN_TIMEOUT -- the bound on this handler. If the request cap plus this
+#         drain ever exceeded the Railway window the container would die
+#         mid-drain and we would lose work again behind a false sense of safety.
+#
+# Registered AFTER `_stop_loop_lag_heartbeat` on purpose: shutdown stops the
+# things that never end before it waits on the things that do.
+#
+# HONEST LIMIT: this drains a GRACEFUL shutdown (SIGTERM). A SIGKILL or an OOM
+# kill drains nothing, and `restartPolicyType: ON_FAILURE` implies those happen.
+# The refund stays best-effort by design; this makes it survive the common case.
+DRAIN_TIMEOUT: float = 8.0
+
+
+@app.on_event("shutdown")
+async def _drain_background_tasks() -> None:
+    """Wait, bounded, for the in-flight fire-and-forget tasks to finish.
+
+    `asyncio.wait`, never `gather`: `gather` propagates the FIRST exception
+    immediately, so one raising task would end the drain while its slower
+    siblings were still mid-await -- and at shutdown that means they are dropped.
+    `wait` never propagates a task's exception (the `fire_and_forget`
+    done-callback is what logs it), so the handler cannot fail the shutdown.
+
+    Bounded, not best-effort-forever: whatever has not finished inside
+    `DRAIN_TIMEOUT` is logged at WARNING BY LABEL and ABANDONED, and the process
+    still exits. `DRAIN_TIMEOUT` is read as a module global at CALL time so ops
+    (and tests) can change it without re-importing.
+    """
+    from app.utils.async_utils import _BACKGROUND_TASKS
+
+    # Snapshot before awaiting: done-callbacks mutate the registry as tasks
+    # finish, and iterating a set while it changes raises.
+    pending = {task for task in _BACKGROUND_TASKS if not task.done()}
+    if not pending:
+        return
+
+    log = _logging.getLogger(__name__)
+    log.info("[DRAIN] waiting up to %ss for %d background task(s)", DRAIN_TIMEOUT, len(pending))
+
+    _done, still_pending = await asyncio.wait(pending, timeout=DRAIN_TIMEOUT)
+
+    for task in still_pending:
+        log.warning(
+            "[DRAIN] abandoning background task %s -- it did not finish within %ss",
+            task.get_name(),
+            DRAIN_TIMEOUT,
+        )
+
+
 # -- Routes --
 app.include_router(auth_router)      # /api/v1/auth/*
 app.include_router(text_router)      # /api/v1/text/*
