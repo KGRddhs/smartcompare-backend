@@ -348,6 +348,31 @@ def strict_optional_auth_enabled() -> bool:
     )
 
 
+def social_device_fingerprint_enabled() -> bool:
+    """True iff ``/social-login`` applies the device fingerprint (default OFF).
+
+    W3-3 / MB-NETWORK-CONTRACT-03. ``sign_in_with_social`` inserts only
+    ``{id, email, auth_provider, subscription_tier}`` for a new user
+    (``auth_service.py:551-617``) and ``grep -c device_fingerprint
+    app/services/auth_service.py`` is 0, so the ONLY writer of
+    ``users.device_fingerprint_hash`` is the ``/register`` block below. Every
+    account that arrived through Google or Apple therefore has that column
+    NULL, and both consumers fail OPEN on the NULL:
+    ``referral_service._referrer_device_lifetime_count`` (``if not fp: return
+    0`` -- the 3-per-device LIFETIME cap is unreachable for social referrers)
+    and ``abuse_detection_service.evaluate_invite`` (``is_same_device`` False).
+
+    Read per call via ``os.getenv`` (the ``strict_optional_auth_enabled`` idiom
+    directly above) so Railway flips it without a restart. Default OFF:
+    ``social_login`` then executes exactly today's four statements --
+    ``request.headers`` unread, ``get_admin_supabase_client`` uncalled, the
+    response body returned verbatim.
+    """
+    return os.getenv("ENABLE_SOCIAL_DEVICE_FINGERPRINT", "false").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
 def _reject_or_anonymous(message: str):
     """B2 — the single decision point for a PRESENTED-but-rejected credential.
 
@@ -405,6 +430,107 @@ async def get_optional_user(authorization: Optional[str] = Header(None)):
 # Auth Endpoints
 # ============================================
 
+
+def _read_valid_device_fingerprint(request: Request) -> Optional[str]:
+    """Read and validate the ``X-Device-Fingerprint`` header.
+
+    Extracted verbatim from the ``/register`` block (behaviour unchanged): the
+    H5 audit (2026-05-22) requires the header to be real SHA-256 hex before it
+    is used, because a malicious client could otherwise send any string (empty,
+    garbage, or another user's known hash) to poison or inherit
+    ``lifetime_comparisons_used`` counters and defeat the Migration 021
+    anti-farming gate. Invalid values are dropped silently so no caller ever
+    blocks on a misconfigured client.
+    """
+    fp = request.headers.get("X-Device-Fingerprint")
+    if fp and not _DEVICE_FINGERPRINT_RE.match(fp):
+        logger.info(
+            "device-fp header rejected: invalid format (expected 64-char hex), len=%d",
+            len(fp),
+        )
+        return None
+    return fp
+
+
+def _inherit_device_counter(
+    admin_client, fp: str, user_id: str, *, floor: int = 0
+) -> None:
+    """Bind ``user_id`` to device ``fp`` and carry the device's usage counter.
+
+    Extracted from the ``/register`` block with ONE addition: ``floor``. With
+    ``floor=0`` (register) the written value is ``max(0, prior)``, i.e. exactly
+    today's value -- ``prior`` comes through ``... or 0`` and is never negative
+    -- so the register path stays call-for-call identical and
+    ``tests/test_auth_routes_invite_fingerprint.py::test_register_with_fingerprint_inherits_lifetime_counter``
+    stays green unchanged.
+
+    ``floor`` exists for ``/social-login`` (hazard H1): that route serves
+    RETURNING users too, whose own row is excluded from the SELECT below (it
+    matches on ``device_fingerprint_hash``, which is NULL for every social user
+    today). Without a floor, a returning social user with
+    ``lifetime_comparisons_used = 5`` and no sibling row on the device would be
+    UPDATEd to 0 -- a fresh free quota on every social login, the exact opposite
+    of the finding. ``max(own, device-max)`` is monotone: it never lowers
+    anyone, and for a NEW user (own = 0) it is identical to register.
+    """
+    prior = (
+        admin_client.table("users")
+        .select("lifetime_comparisons_used")
+        .eq("device_fingerprint_hash", fp)
+        .order("lifetime_comparisons_used", desc=True)
+        .limit(1)
+        .execute()
+    )
+    inherited = 0
+    if prior.data:
+        inherited = prior.data[0].get("lifetime_comparisons_used", 0) or 0
+    inherited = max(floor, inherited)
+    admin_client.table("users").update(
+        {
+            "device_fingerprint_hash": fp,
+            "lifetime_comparisons_used": inherited,
+        }
+    ).eq("id", user_id).execute()
+
+
+def _apply_social_device_fingerprint(request: Request, user_id: Optional[str]) -> None:
+    """Best-effort device binding for ``/social-login``. Never raises.
+
+    Mirrors ``/register``'s first-device binding: the hash is written only when
+    the row's ``device_fingerprint_hash`` is still NULL, so a user signing in on
+    a second device keeps the first binding. Always-overwriting would let a
+    referrer move its hash off a saturated device simply by reinstalling (the
+    nonce in ``deviceFingerprint.ts`` resets on uninstall), defeating both
+    ``_referrer_device_lifetime_count`` and SAME_DEVICE.
+
+    Never touches the response body, and a failure is swallowed but LOGGED --
+    an invisible swallow would make the whole leg undiagnosable in prod.
+    """
+    fp = _read_valid_device_fingerprint(request)
+    if not fp or not user_id:
+        return
+    try:
+        admin = get_admin_supabase_client()
+        own = (
+            admin.table("users")
+            .select("device_fingerprint_hash, lifetime_comparisons_used")
+            .eq("id", user_id)
+            .limit(1)
+            .execute()
+        )
+        row = (own.data or [{}])[0]
+        if row.get("device_fingerprint_hash"):
+            return
+        _inherit_device_counter(
+            admin,
+            fp,
+            user_id,
+            floor=int(row.get("lifetime_comparisons_used") or 0),
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"device-fp social apply failed (silent): {exc}")
+
+
 @router.post("/register", response_model=AuthResponse)
 @limiter.limit("3/minute")
 async def register(request: Request, body: RegisterRequest):
@@ -441,33 +567,10 @@ async def register(request: Request, body: RegisterRequest):
     # anti-farming gate. Legitimate clients (deviceFingerprint.ts) always
     # produce 64-char lowercase hex. Invalid values are dropped silently
     # so signup never blocks on a misconfigured/tampered client.
-    fp = request.headers.get("X-Device-Fingerprint")
-    if fp and not _DEVICE_FINGERPRINT_RE.match(fp):
-        logger.info(
-            "device-fp header rejected: invalid format (expected 64-char hex), len=%d",
-            len(fp),
-        )
-        fp = None
+    fp = _read_valid_device_fingerprint(request)
     if fp and new_user_id:
         try:
-            admin_client = get_admin_supabase_client()
-            prior = (
-                admin_client.table("users")
-                .select("lifetime_comparisons_used")
-                .eq("device_fingerprint_hash", fp)
-                .order("lifetime_comparisons_used", desc=True)
-                .limit(1)
-                .execute()
-            )
-            inherited = 0
-            if prior.data:
-                inherited = prior.data[0].get("lifetime_comparisons_used", 0) or 0
-            admin_client.table("users").update(
-                {
-                    "device_fingerprint_hash": fp,
-                    "lifetime_comparisons_used": inherited,
-                }
-            ).eq("id", new_user_id).execute()
+            _inherit_device_counter(get_admin_supabase_client(), fp, new_user_id)
         except Exception as exc:  # noqa: BLE001
             logger.warning(f"device-fp inheritance failed (silent): {exc}")
 
@@ -853,6 +956,11 @@ async def social_login(request: Request, body: SocialLoginRequest):
     result = await sign_in_with_social(body.provider, body.id_token, body.nonce)
     if not result["success"]:
         raise HTTPException(status_code=401, detail=result["error"])
+    # W3-3: additive, default OFF, read per call. Sits AFTER the 401 raise so a
+    # rejected login costs no DB work, and before the unchanged return so the
+    # response body is byte-equal in both flag states.
+    if social_device_fingerprint_enabled():
+        _apply_social_device_fingerprint(request, (result.get("user") or {}).get("id"))
     return result
 
 

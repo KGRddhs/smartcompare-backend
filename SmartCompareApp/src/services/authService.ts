@@ -717,6 +717,20 @@ export async function signInWithGoogle(): Promise<AuthResponse> {
     // mismatch). Final body is exactly { provider, id_token }.
     const body: Record<string, string> = { provider: 'google', id_token: idToken };
 
+    // W3-3 (MB-NETWORK-CONTRACT-03): social sign-in must carry the same device
+    // binding /register has sent since Bundle A (:131-148). Without it every
+    // Google/Apple account lands with users.device_fingerprint_hash NULL and
+    // the anti-farming controls that read it fail OPEN. Read AFTER the native
+    // sheet has returned an id token, so a cancelled sign-in touches neither
+    // SecureStore nor crypto; swallowed exactly like register, so sign-in never
+    // blocks on a fingerprint failure.
+    let fingerprint: string | null = null;
+    try {
+      fingerprint = await getDeviceFingerprint();
+    } catch (e) {
+      if (__DEV__) console.warn('[AUTH] device fingerprint unavailable:', e);
+    }
+
     let response: Response;
     try {
       // A8: this POST previously had NO deadline and no AbortController. RN's
@@ -729,7 +743,10 @@ export async function signInWithGoogle(): Promise<AuthResponse> {
         `${API_BASE_URL}/api/v1/auth/social-login`,
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            ...(fingerprint ? { 'X-Device-Fingerprint': fingerprint } : {}),
+          },
           body: JSON.stringify(body),
         },
         SOCIAL_LOGIN_TIMEOUT_MS
@@ -853,6 +870,20 @@ export async function signInWithApple(): Promise<AuthResponse> {
     const appleDiagParts = idToken.split('.');
     if (__DEV__) console.log('[APPLE-DIAG] token length:', idToken.length, 'parts:', appleDiagParts.length, 'head:', idToken.substring(0, 30), 'nonce-hash-len:', hashedNonce.length);
 
+    // W3-3 (MB-NETWORK-CONTRACT-03): social sign-in must carry the same device
+    // binding /register has sent since Bundle A (:131-148). Without it every
+    // Google/Apple account lands with users.device_fingerprint_hash NULL and
+    // the anti-farming controls that read it fail OPEN. Read AFTER the native
+    // sheet has returned an id token, so a cancelled sign-in touches neither
+    // SecureStore nor crypto; swallowed exactly like register, so sign-in never
+    // blocks on a fingerprint failure.
+    let fingerprint: string | null = null;
+    try {
+      fingerprint = await getDeviceFingerprint();
+    } catch (e) {
+      if (__DEV__) console.warn('[AUTH] device fingerprint unavailable:', e);
+    }
+
     // Send to our backend.
     // A8: same unbounded-fetch defect as the Google path — RN applies no
     // deadline, so a stalled socket left LoginScreen's `socialLoading` set
@@ -864,7 +895,10 @@ export async function signInWithApple(): Promise<AuthResponse> {
         `${API_BASE_URL}/api/v1/auth/social-login`,
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            ...(fingerprint ? { 'X-Device-Fingerprint': fingerprint } : {}),
+          },
           body: JSON.stringify({
             provider: 'apple',
             id_token: idToken,

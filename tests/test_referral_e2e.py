@@ -156,6 +156,13 @@ def test_e2e_share_creates_invite_and_grants_loop1_credit(
     call_kwargs = svc.create_invite.await_args.kwargs
     assert call_kwargs["share_target"] == "whatsapp"
     assert call_kwargs["comparison_id"] == CANONICAL_COMPARISON_ID
+    # W3-3 (MB-NETWORK-CONTRACT-04, 6 optional pin): the route already
+    # validates the hash (referral_routes.py:117-119) and forwards it
+    # (:209) — this asserts the FORWARD, which nothing pinned before, because
+    # W3-3's client half makes that field non-NULL for the first time and the
+    # SAME_DEVICE control depends on it reaching create_invite verbatim.
+    # Green today. Mutation that reddens it: drop the kwarg at :209.
+    assert call_kwargs["device_fingerprint_hash"] == CANONICAL_DEVICE_FP
 
 
 # ============================================================================
