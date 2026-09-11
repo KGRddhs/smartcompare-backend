@@ -93,6 +93,52 @@ def _default_rate_limits_enabled() -> bool:
         "on",
     )
 
+
+# W1-5 (LS-RATELIMIT-KEY-01): a rate limit that path parameters cannot walk
+# around, behind a NEW default-OFF flag.
+#
+# slowapi's Limiter takes `key_style: Literal["endpoint", "url"] = "url"` and we
+# have never passed it, so the bucket is (client key, RESOLVED URL). Every route
+# with a path parameter therefore gets one bucket PER PARAMETER VALUE:
+# /api/v1/share/abc and /api/v1/share/xyz are different URLs, so the 30/minute
+# on share_routes.py:53 is 30 per TOKEN, not 30 per caller, and 35 GETs to 35
+# distinct tokens trip nothing. `"endpoint"` keys on the view function name
+# instead, so every parameter value shares one bucket per caller. slowapi
+# already implements this; the unit only has to ask for it.
+#
+# UNLIKE the two flags above this one is read ONCE, at Limiter CONSTRUCTION,
+# because that is when slowapi stores `_key_style` (extension.py:185 on the
+# installed 0.1.9; requirements.txt pins 0.1.10, same shape). The Limiter is
+# built at IMPORT, so **a Railway flip of this flag needs a restart/redeploy** —
+# this is the W0-3 Upstash class of flag, not the per-call os.getenv class.
+#
+# BLAST RADIUS — flipping this re-buckets EVERY path-parameterised route that
+# carries an unscoped limit, not just share. Under the shipped default that is
+# SEVEN routes: history GET+DELETE /{comparison_id} (20/min each), referral GET
+# /invite/{share_token} (20/min) and POST /invite/{share_token}/quiz (10/min),
+# share POST /{comparison_id} (10/min) and GET /{token} (30/min), and
+# text GET /prices/{product} (20/min). A route registered with an explicit
+# `scope=` is NOT affected, because slowapi resolves `limit_scope = lim.scope or
+# endpoint` (extension.py:488) — so once ENABLE_PAID_ROUTE_METERING is ON, the
+# text prices route rides its `shared_limit` scope and this flag is a no-op for
+# it. Non-parameterised routes are unaffected either way: their `request["path"]`
+# is constant, so url-keying and endpoint-keying already agree.
+#
+# INTERACTION, stated not solved: while ENABLE_PROXY_AWARE_RATELIMIT is OFF the
+# key is still the shared Railway edge-proxy IP, so `"endpoint"` yields ONE
+# deployment-wide bucket per route. That is already true of every
+# non-parameterised route today (see the M13-01 comment below); this unit only
+# removes the path-parameter escape. Sequence it after the proxy-aware key is ON
+# if a deployment-wide bucket on /share/* is a concern.
+def _endpoint_key_style_enabled() -> bool:
+    return os.getenv("ENABLE_LIMITER_ENDPOINT_KEY", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
 # Default rate limits for different endpoint types
 ANON_LIMIT = "10/minute"
 AUTH_LIMIT = "30/minute"
@@ -122,8 +168,18 @@ def _get_storage_uri() -> str:
 # matches the regime the already-decorated hot path (/text/compare = 10/min)
 # has run under in production. The two credential-checking PUT routes get their
 # own tighter explicit 5/min limit in auth_routes.
-limiter = Limiter(
-    key_func=_rate_limit_key,
-    storage_uri=_get_storage_uri(),
-    default_limits=[ANON_LIMIT],
-)
+#
+# W1-5: with ENABLE_LIMITER_ENDPOINT_KEY OFF the constructor call below is
+# exactly today's — no key_style argument at all, so slowapi's own "url" default
+# applies and behaviour is byte-identical. The kwargs are assembled in a dict so
+# the flag adds ONE key and _get_storage_uri() is still called exactly once.
+_LIMITER_KWARGS = {
+    "key_func": _rate_limit_key,
+    "storage_uri": _get_storage_uri(),
+    "default_limits": [ANON_LIMIT],
+}
+
+if _endpoint_key_style_enabled():
+    _LIMITER_KWARGS["key_style"] = "endpoint"
+
+limiter = Limiter(**_LIMITER_KWARGS)
