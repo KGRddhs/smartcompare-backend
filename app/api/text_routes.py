@@ -1,8 +1,10 @@
 """
 Text Comparison Routes - API endpoints for text-based product comparisons
 """
+import asyncio
 import json
 import logging
+import math
 import os
 import time
 from typing import Any, List, Optional, Dict, AsyncGenerator
@@ -18,7 +20,11 @@ from app.api.auth_routes import get_optional_user
 from app.api.admin_routes import verify_admin_key
 from app.services.auth_service import get_user_preferences
 from app.services.database_service import save_comparison, log_search
-from app.services.feedback_service import save_comparison_and_track_cohort
+from app.services.feedback_service import (
+    persist_comparison,
+    save_comparison_and_track_cohort,
+    track_after_persist,
+)
 from app.middleware.rate_limiter import limiter
 from app.services.usage_service import (
     consume_comparison_credit,
@@ -53,6 +59,112 @@ def preverdict_disconnect_abort_enabled() -> bool:
     return os.getenv("ENABLE_PREVERDICT_DISCONNECT_ABORT", "").strip().lower() in (
         "true", "1", "yes", "on",
     )
+
+
+def comparison_id_echo_enabled() -> bool:
+    """True iff the text compare routes AWAIT the comparisons insert and echo
+    its id (W3-2 / MB-NETWORK-CONTRACT-07, `ENABLE_COMPARISON_ID_ECHO`,
+    default OFF).
+
+    Flag OFF is today's exact pre-W3-2 path on all three routes: POST and GET
+    hand `save_comparison_and_track_cohort(...)` to `fire_and_forget` under
+    today's label and the response gains no `comparison_id` key; the stream's
+    hoisted insert block never runs, so its `finally` fires the same composite
+    under the M18 CD-interactions-01 gate, which this unit leaves byte-unchanged.
+
+    Flag ON moves ONE Supabase round trip onto the user-facing critical path so
+    the response can name the row it just wrote. That is why it is flagged: with
+    `ENABLE_SUPABASE_CLIENT_REUSE` OFF (prod today, both services) the admin
+    client is a bare `create_client` with no `ClientOptions`, so the postgrest
+    ceiling is the library's 120 s default rather than the ~285 ms a healthy
+    insert costs — an unflagged version had no kill switch for that tail.
+    See `comparison_id_persist_timeout_seconds` for the bound, and the PR body
+    for the activation preconditions.
+
+    Read PER CALL from `os.getenv` (the ``price_service.exact_gate_enabled``
+    idiom) so Railway flips it without a restart; never cached at import.
+    """
+    return os.getenv("ENABLE_COMPARISON_ID_ECHO", "").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
+_COMPARISON_ID_PERSIST_TIMEOUT_DEFAULT = 5.0
+
+
+def comparison_id_persist_timeout_seconds() -> float:
+    """Wall-clock bound on the awaited insert (`COMPARISON_ID_PERSIST_TIMEOUT_SECONDS`,
+    default 5.0), read PER CALL.
+
+    An unparseable, non-positive or non-finite value falls back to the default:
+    `float()` accepts ``inf`` and ``nan``, and ``inf`` would silently reinstate
+    the unbounded wait this knob exists to close (``nan`` fails every comparison
+    and would disable the echo path outright). This knob has no "unbounded"
+    setting.
+
+    HONEST LIMIT — this bound is EFFECTIVE only when `run_db` yields, i.e.
+    `ENABLE_SYNC_DB_OFFLOAD` ON. With that flag OFF `run_db` executes the
+    blocking `.execute()` INLINE in the coroutine, so the event loop is blocked
+    and no timeout can fire until the call returns; the real ceiling in that
+    configuration is W0-2's transport timeout
+    (`SUPABASE_POSTGREST_TIMEOUT_SECONDS`, itself gated on
+    `ENABLE_SUPABASE_CLIENT_REUSE`), and absent that, supabase-py's 120 s
+    default.
+    """
+    raw = os.getenv("COMPARISON_ID_PERSIST_TIMEOUT_SECONDS", "").strip()
+    if not raw:
+        return _COMPARISON_ID_PERSIST_TIMEOUT_DEFAULT
+    try:
+        value = float(raw)
+    except ValueError:
+        logger.warning(
+            "COMPARISON_ID_PERSIST_TIMEOUT_SECONDS=%r is not a number; "
+            "using the %.1fs default", raw, _COMPARISON_ID_PERSIST_TIMEOUT_DEFAULT,
+        )
+        return _COMPARISON_ID_PERSIST_TIMEOUT_DEFAULT
+    if value <= 0 or not math.isfinite(value):
+        logger.warning(
+            "COMPARISON_ID_PERSIST_TIMEOUT_SECONDS=%r is not a positive finite number; "
+            "using the %.1fs default", raw, _COMPARISON_ID_PERSIST_TIMEOUT_DEFAULT,
+        )
+        return _COMPARISON_ID_PERSIST_TIMEOUT_DEFAULT
+    return value
+
+
+async def _persist_comparison_bounded(
+    *,
+    full_response: Dict,
+    query: str,
+    input_type: str,
+    user_id: str,
+) -> Optional[str]:
+    """`persist_comparison` under `asyncio.wait_for`. THE single awaited-insert
+    site for all three text routes, so the bound cannot be added to two of them
+    and forgotten on the third.
+
+    A timeout is treated exactly like a failed insert: WARNING + None, so the
+    route echoes an honest `comparison_id: null` and `track_after_persist`'s
+    falsy gate skips every follow-up. `persist_comparison` swallows `Exception`
+    but not `BaseException`, so `wait_for`'s cancellation propagates cleanly.
+    On 3.11+ `asyncio.TimeoutError` IS the builtin `TimeoutError`.
+    """
+    timeout = comparison_id_persist_timeout_seconds()
+    try:
+        return await asyncio.wait_for(
+            persist_comparison(
+                full_response=full_response, query=query,
+                input_type=input_type, user_id=user_id,
+            ),
+            timeout=timeout,
+        )
+    except asyncio.TimeoutError:
+        logger.warning(
+            "persist_comparison exceeded COMPARISON_ID_PERSIST_TIMEOUT_SECONDS "
+            "(%.3fs, input_type=%s); echoing comparison_id: null. The row may "
+            "still land server-side — the client just cannot name it.",
+            timeout, input_type,
+        )
+        return None
 
 
 def paid_route_metering_enabled() -> bool:
@@ -323,13 +435,49 @@ async def text_compare(request: Request, body: TextCompareRequest, user: Optiona
         label="log_search.text.post.success",
     )
     if user_id:
-        fire_and_forget(
-            save_comparison_and_track_cohort(
+        if comparison_id_echo_enabled():
+            # W3-2 (MB-NETWORK-CONTRACT-07): await ONLY the insert, so the
+            # response can carry the id of the row it just wrote. The client
+            # half is already shipped -- `SmartCompareApp/src/services/api.ts:413`
+            # merges a persisted row id onto the payload under exactly this key
+            # ("additive, shape-preserving") and `src/types/types.ts:289`
+            # declares `comparison_id?: string` on ComparisonResult -- so this
+            # is the missing backend half of a wired contract, not a new one.
+            # Without it the feedback/analytics rows the client writes
+            # afterwards carry no comparison_id and `vw_cohort_feedback_lift`
+            # cannot join them.
+            #
+            # `persist_comparison` NEVER raises and never awaits anything but
+            # the insert: a failed write (or a timeout at the bound) returns
+            # None, the compare still succeeds, and the response carries an
+            # honest `comparison_id: null`.
+            comparison_id = await _persist_comparison_bounded(
                 full_response=result, query=body.query,
                 input_type="text", user_id=user_id,
-            ),
-            label="save_comparison.text.post",
-        )
+            )
+            result["comparison_id"] = comparison_id
+            # The four follow-ups (savings-cache bust, cohort event, critique
+            # persist, referral Loop 2) stay OFF the critical path exactly as
+            # before. The LABEL is deliberately unchanged: same logical site,
+            # and existing tests + log greps key on it.
+            fire_and_forget(
+                track_after_persist(
+                    comparison_id, full_response=result, user_id=user_id,
+                ),
+                label="save_comparison.text.post",
+            )
+        else:
+            # Flag OFF = today's exact pre-W3-2 path: nothing awaited on the
+            # request path, no `comparison_id` key on the response. The
+            # composite is now `persist_comparison` + `track_after_persist`,
+            # which the composition tests pin as behaviourally identical.
+            fire_and_forget(
+                save_comparison_and_track_cohort(
+                    full_response=result, query=body.query,
+                    input_type="text", user_id=user_id,
+                ),
+                label="save_comparison.text.post",
+            )
         # M13-37: daily/monthly were reserved atomically at the gate; only the
         # Supabase lifetime counter remains to be written (fire-and-forget).
         fire_and_forget(
@@ -472,13 +620,30 @@ async def text_compare_get(
         label="log_search.text.get.success",
     )
     if user_id:
-        fire_and_forget(
-            save_comparison_and_track_cohort(
+        if comparison_id_echo_enabled():
+            # W3-2: the GET twin of the POST site above -- same contract, same
+            # reasons. Echoing on POST alone would leave the two sync entry
+            # points inconsistent.
+            comparison_id = await _persist_comparison_bounded(
                 full_response=result, query=q,
                 input_type="text", user_id=user_id,
-            ),
-            label="save_comparison.text.get",
-        )
+            )
+            result["comparison_id"] = comparison_id
+            fire_and_forget(
+                track_after_persist(
+                    comparison_id, full_response=result, user_id=user_id,
+                ),
+                label="save_comparison.text.get",
+            )
+        else:
+            # Flag OFF = today's exact pre-W3-2 path (see the POST site).
+            fire_and_forget(
+                save_comparison_and_track_cohort(
+                    full_response=result, query=q,
+                    input_type="text", user_id=user_id,
+                ),
+                label="save_comparison.text.get",
+            )
         # M13-37: daily/monthly reserved at the gate; write only lifetime here.
         fire_and_forget(
             record_lifetime_comparison(user_id, user.get("access_token", "")),
@@ -595,6 +760,12 @@ async def text_compare_stream(
         complete_after_client_gone = False
         had_error = False
         client_gone = False
+        # W3-2: the id of the row this stream persisted, and whether the insert
+        # was attempted at all. `user_id` is hoisted out of the `finally` (where
+        # it used to be derived) because the persist now happens inside the loop.
+        comparison_id = None
+        persisted = False
+        user_id = user.get("id") if user else None
 
         # M13-35: the post-stream side effects (quota metering, history save,
         # analytics) MUST run even if the client drops the socket AFTER the
@@ -645,6 +816,49 @@ async def text_compare_stream(
                         # delivered while still connected pins this False even if
                         # the duplicate `complete` arrives post-disconnect.
                         complete_after_client_gone = client_gone
+                        # W3-2 (MB-NETWORK-CONTRACT-07): the SSE stream is the
+                        # mobile client's PRIMARY compare path, and `api.ts`
+                        # hands the FIRST terminal payload straight to
+                        # `onComplete` as the ComparisonResult (first-wins, A7).
+                        # So the id has to be IN that payload before it is
+                        # yielded -- which is why the insert moves out of the
+                        # `finally` and up to here. It is the ROUTE, not the
+                        # orchestrator: the orchestrator has seven terminal
+                        # pairs and no id to echo.
+                        #
+                        # The gate below reproduces the `finally`'s metering
+                        # condition EXACTLY, so M18 CD-interactions-01 is
+                        # preserved: `not client_gone` is read at the same
+                        # instant that latches `complete_after_client_gone`, and
+                        # `had_error` is monotonic. A client that left BEFORE
+                        # the final payload therefore still persists nothing,
+                        # is still not metered, and is still refunded.
+                        #
+                        # Flag OFF (prod default) this whole block is skipped,
+                        # `persisted` stays False, and the `finally` takes its
+                        # composite arm -- today's exact pre-W3-2 stream path.
+                        if (
+                            comparison_id_echo_enabled()
+                            and user_id and not client_gone and not had_error
+                        ):
+                            comparison_id = await _persist_comparison_bounded(
+                                full_response=data, query=q,
+                                input_type="text_stream", user_id=user_id,
+                            )
+                            # DELIBERATE: True even when the insert returned
+                            # None, so the terminal event carries
+                            # `comparison_id: null` (key PRESENT, honest) rather
+                            # than silently omitting it, which on the wire is
+                            # indistinguishable from an anonymous compare.
+                            # `track_after_persist`'s falsy gate then skips
+                            # every follow-up.
+                            persisted = True
+                    if persisted and isinstance(data, dict):
+                        # Both terminal events carry the SAME payload object in
+                        # every one of the orchestrator's terminal pairs;
+                        # setting the key on each is idempotent and survives a
+                        # future split into distinct objects.
+                        data["comparison_id"] = comparison_id
                     complete_response = data
                 if event_type == "error":
                     had_error = True
@@ -674,7 +888,6 @@ async def text_compare_stream(
         finally:
             # Fire-and-forget logging once the stream (or the client) is done.
             duration_ms = int((time.time() - start_time) * 1000)
-            user_id = user.get("id") if user else None
 
             if complete_response and not had_error and not complete_after_client_gone:
                 product_names = [
@@ -693,13 +906,38 @@ async def text_compare_stream(
                     label="log_search.text_stream.success",
                 )
                 if user_id:
-                    fire_and_forget(
-                        save_comparison_and_track_cohort(
-                            full_response=complete_response, query=q,
-                            input_type="text_stream", user_id=user_id,
-                        ),
-                        label="save_comparison.text_stream",
-                    )
+                    # W3-2. The LABEL is deliberately the same on BOTH arms --
+                    # same logical site, and existing tests + log greps key on
+                    # it. Which arm runs is decided by the flag, one level up:
+                    #
+                    #   persisted True  <- ENABLE_COMPARISON_ID_ECHO ON. The
+                    #     insert already ran (awaited, bounded) immediately
+                    #     before the terminal event was yielded, so only the
+                    #     four follow-ups are left. A None `comparison_id` here
+                    #     is the honest-null case; `track_after_persist` gates
+                    #     on it and does nothing.
+                    #   persisted False <- ENABLE_COMPARISON_ID_ECHO OFF (prod
+                    #     default): the hoisted block never ran, so this is
+                    #     today's exact pre-W3-2 path -- the whole composite,
+                    #     fire-and-forget, under the UNCHANGED M18
+                    #     CD-interactions-01 gate above. This arm is NOT dead
+                    #     code; it is the shipped path.
+                    if persisted:
+                        fire_and_forget(
+                            track_after_persist(
+                                comparison_id, full_response=complete_response,
+                                user_id=user_id,
+                            ),
+                            label="save_comparison.text_stream",
+                        )
+                    else:
+                        fire_and_forget(
+                            save_comparison_and_track_cohort(
+                                full_response=complete_response, query=q,
+                                input_type="text_stream", user_id=user_id,
+                            ),
+                            label="save_comparison.text_stream",
+                        )
                     # M13-37: daily/monthly reserved at the gate; lifetime only here.
                     fire_and_forget(
                         record_lifetime_comparison(user_id, user.get("access_token", "")),
