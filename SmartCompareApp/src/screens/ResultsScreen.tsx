@@ -88,6 +88,7 @@ import {
   DemographicsPayload,
 } from '../services/api';
 import { classifyLoadFailure } from '../services/failureClassification';
+import { settingsErrorKey } from '../services/errorCopy';
 import { LoadingRings } from '../components/hero/LoadingRings';
 // Faithful-results Phase 2.1 — HeroRings pruned from the render path (the
 // score-rings card is not in the Qaren design-system Results layout).
@@ -577,8 +578,10 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
           payload.governorate === 'Prefer not to say',
       });
     } catch (err: any) {
-      const { message } = parseApiError(err);
-      setDemographicsError(message || t('demographics.error.network'));
+      // W3-14: catalog copy keyed by code (PUT /demographics is 5/minute).
+      setDemographicsError(
+        t(settingsErrorKey(parseApiError(err).code, 'demographics.error.network')),
+      );
     }
   };
 

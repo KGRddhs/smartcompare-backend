@@ -126,9 +126,11 @@ describe('Bundle D contract — HistoryScreen', () => {
 describe('Bundle D contract — ProfileScreen', () => {
   const SRC = readScreen('ProfileScreen');
 
-  it('imports putReengagementSubs alongside savePreferences', () => {
+  // W3-14 — the two masters moved from savePreferences (PUT /preferences,
+  // priorities required) to putPreferenceToggles (PUT /preference-toggles).
+  it('imports putReengagementSubs alongside putPreferenceToggles', () => {
     expect(SRC).toMatch(
-      /import\s*\{[\s\S]{0,400}savePreferences[\s\S]{0,400}putReengagementSubs[\s\S]{0,400}\}\s*from\s+['"]\.\.\/services\/api['"]/
+      /import\s*\{[\s\S]{0,400}putPreferenceToggles[\s\S]{0,400}putReengagementSubs[\s\S]{0,400}\}\s*from\s+['"]\.\.\/services\/api['"]/
     );
   });
 

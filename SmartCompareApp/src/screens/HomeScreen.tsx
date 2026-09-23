@@ -479,7 +479,13 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         // structured code (INSUFFICIENT_DATA / RATE_LIMITED get their own
         // guidance instead of the generic "try with brand or model", which
         // told a rate-limited user to retype rather than wait).
-        Alert.alert(t('common.error'), t(friendlyErrorKey(parsed.code)));
+        // W3-14: a 429 carries `retry_after_seconds`; `count` picks the
+        // seconds sentence (home.errors.rateLimited_*). Absent -> undefined
+        // -> i18next renders the base key, i.e. exactly today's sentence.
+        Alert.alert(
+          t('common.error'),
+          t(friendlyErrorKey(parsed.code), { count: parsed.retryAfterSeconds }),
+        );
       },
     });
   };
@@ -570,7 +576,13 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         // the text path: parseApiError falls through to `error?.message`
         // when there is no envelope, so this leaked the raw axios string
         // with no code guard at all. Both paths now share one code->copy map.
-        Alert.alert(t('common.error'), t(friendlyErrorKey(parsed.code)));
+        // W3-14: a 429 carries `retry_after_seconds`; `count` picks the
+        // seconds sentence (home.errors.rateLimited_*). Absent -> undefined
+        // -> i18next renders the base key, i.e. exactly today's sentence.
+        Alert.alert(
+          t('common.error'),
+          t(friendlyErrorKey(parsed.code), { count: parsed.retryAfterSeconds }),
+        );
       }
     }
   };

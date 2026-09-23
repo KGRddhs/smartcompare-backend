@@ -60,9 +60,10 @@ import {
   getCohortProfile,
   CohortDisplayProfile,
   getPreferences,
-  savePreferences,
+  putPreferenceToggles,
   putReengagementSubs,
 } from '../services/api';
+import { settingsErrorKey } from '../services/errorCopy';
 import type { UserPreferences } from '../types';
 import { getSavedUser, logout } from '../services/authService';
 import QarenLogo from '../components/QarenLogo';
@@ -119,9 +120,19 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
     }, []),
   );
 
+  // W3-14: true only once a GET returned a stored row. getPreferences()
+  // yields null on ANY thrown error, on a `{}` row, and nothing before its
+  // first resolve — in all three the stored notification_types are unknown.
+  // PUT /reengagement-subs overwrites all three sub keys, so the subs render
+  // only when this is true (a sub flip must never write default-ON values
+  // over categories the user opted out of). The two masters stay usable:
+  // /preference-toggles writes only the key the user flipped.
+  const [prefsRowLoaded, setPrefsRowLoaded] = useState(false);
+
   const loadPreferences = async () => {
     const p = await getPreferences();
     setPreferences(p);
+    setPrefsRowLoaded(p !== null);
   };
 
   // Default OFF when undefined (Bundle D 1.F.6, R23). App-Store privacy
@@ -142,6 +153,11 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
     };
   };
 
+  // W3-14 — the two masters go to PUT /api/v1/auth/preference-toggles,
+  // which (unlike /preferences) has no `priorities` requirement, so a user
+  // WITHOUT priorities can exercise the AI-sharing opt-out. Every error
+  // render is catalog copy keyed by code — never the backend's English
+  // `error` string nor the raw axios message.
   const handleAiSharingToggle = async (value: boolean) => {
     if (aiSharingSaving) return;
     setAiSharingError('');
@@ -150,14 +166,16 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
     setPreferences(next);
     setAiSharingSaving(true);
     try {
-      const result = await savePreferences(next);
+      const result = await putPreferenceToggles({ ai_sharing_enabled: value });
       if (!result.success) {
         setPreferences(previous);
-        setAiSharingError(result.error || t('profile.aiSharing.errorSave'));
+        setAiSharingError(t(settingsErrorKey(null, 'profile.aiSharing.errorSave')));
       }
     } catch (err: any) {
       setPreferences(previous);
-      setAiSharingError(parseApiError(err).message || t('profile.aiSharing.errorSave'));
+      setAiSharingError(
+        t(settingsErrorKey(parseApiError(err).code, 'profile.aiSharing.errorSave')),
+      );
     } finally {
       setAiSharingSaving(false);
     }
@@ -165,22 +183,22 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
 
   // F5.4 — notifications master toggle ONLY. Sub-toggles route through
   // handleSubToggle → PUT /reengagement-subs.
-  const handleNotificationsToggle = async (override: Partial<UserPreferences>) => {
+  const handleNotificationsToggle = async (value: boolean) => {
     if (notifsSaving) return;
     setNotifsError('');
     const previous = preferences;
-    const next = buildNextPrefs(override);
+    const next = buildNextPrefs({ notifications_enabled: value });
     setPreferences(next);
     setNotifsSaving(true);
     try {
-      const result = await savePreferences(next);
+      const result = await putPreferenceToggles({ notifications_enabled: value });
       if (!result.success) {
         setPreferences(previous);
-        setNotifsError(result.error || t('profile.notifs.errorSave'));
+        setNotifsError(t(settingsErrorKey(null, 'profile.notifs.errorSave')));
       }
     } catch (err: any) {
       setPreferences(previous);
-      setNotifsError(parseApiError(err).message || t('profile.notifs.errorSave'));
+      setNotifsError(t(settingsErrorKey(parseApiError(err).code, 'profile.notifs.errorSave')));
     } finally {
       setNotifsSaving(false);
     }
@@ -216,13 +234,13 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
       const result = await putReengagementSubs(body);
       if (!result.success) {
         setPreferences(previous);
-        const msg = result.error || t('profile.notifs.errorSave');
+        const msg = t(settingsErrorKey(null, 'profile.notifs.errorSave'));
         setNotifsError(msg);
         Alert.alert(t('profile.notifs.errorTitle'), msg);
       }
     } catch (err: any) {
       setPreferences(previous);
-      const msg = parseApiError(err).message || t('profile.notifs.errorSave');
+      const msg = t(settingsErrorKey(parseApiError(err).code, 'profile.notifs.errorSave'));
       setNotifsError(msg);
       Alert.alert(t('profile.notifs.errorTitle'), msg);
     } finally {
@@ -235,19 +253,6 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
   const insightEnabled = notifTypes.decision_insight !== false;
   const cohortEnabled = notifTypes.cohort_curiosity !== false;
   const retroEnabled = notifTypes.decision_retrospective !== false;
-
-  // F-S1.5i: Backend Pydantic `priorities: min_length=1` rejects every
-  // /preferences PUT that ships with an empty priorities array. The
-  // five toggles below (AI sharing master + notifications master + 3
-  // re-engagement sub-toggles) all flow through savePreferences /
-  // putReengagementSubs, so when the user has no priorities yet, those
-  // toggles would silently 422 every flip. Gate them visually (muted
-  // row, disabled flip) and route a tap on the row to EditPreferences
-  // so the user can pick a priority first. Once `preferences` itself
-  // is null (fresh load / network blip), treat the same way — saver
-  // path can't succeed either way.
-  const hasPriorities = (preferences?.priorities?.length ?? 0) > 0;
-  const togglesGated = preferences === null || !hasPriorities;
 
   const loadUser = async () => {
     const savedUser = await getSavedUser();
@@ -295,7 +300,15 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
         setPasswordError(result.error || 'Password change failed');
       }
     } catch (err: any) {
-      setPasswordError(parseApiError(err).message);
+      // W3-14: the two 429 codes (5/minute limiter, 900 s ACCOUNT_LOCKED)
+      // get catalog copy; the 400 arm keeps the backend sentence on purpose
+      // ("Current password is incorrect" is the actionable information).
+      const parsed = parseApiError(err);
+      setPasswordError(
+        parsed.code === 'RATE_LIMITED' || parsed.code === 'ACCOUNT_LOCKED'
+          ? t(settingsErrorKey(parsed.code, 'profile.aiSharing.errorSave'))
+          : parsed.message,
+      );
     } finally {
       setPasswordLoading(false);
     }
@@ -486,61 +499,32 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
               defaultValue: 'Privacy & notifications',
             })}
           </SettingsEyebrow>
-          {/* F-S1.5i: when togglesGated, wrap each host in a TouchableOpacity
-              that routes to EditPreferences. Mute the row visually so the
-              user sees the toggle is dormant without a red error or
-              modal interrupting them. */}
-          <TouchableOpacity
-            style={[styles.flatRowToggleHost, togglesGated && styles.flatRowToggleHostMuted]}
-            onPress={togglesGated ? handleEditStyleProfile : undefined}
-            activeOpacity={togglesGated ? 0.6 : 1}
-            disabled={!togglesGated}
-            accessibilityRole={togglesGated ? 'button' : undefined}
-            accessibilityLabel={
-              togglesGated
-                ? t('profile.toggle.disabledReason', {
-                    defaultValue: 'Pick your priorities first',
-                  })
-                : undefined
-            }
-          >
+          {/* W3-14: the F-S1.5i priorities gate (dbf152d9, surface C) is
+              removed — the two masters now save through the additive
+              /preference-toggles route, which has no priorities
+              requirement, and the sub-toggles' /reengagement-subs route
+              never touched priorities. The hosts are plain Views. */}
+          <View style={styles.flatRowToggleHost}>
             <ToggleRow
               icon={<Shield size={18} color={colors.text.secondary} />}
               label={t('profile.aiSharing.title')}
               subtitle={t('profile.aiSharing.subtitle')}
               value={aiSharingEnabled}
               onValueChange={handleAiSharingToggle}
-              disabled={aiSharingSaving || togglesGated}
+              disabled={aiSharingSaving}
             />
             {aiSharingError ? <Text style={styles.errorText}>{aiSharingError}</Text> : null}
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[
-              styles.flatRowToggleHost,
-              styles.flatRowToggleHostLast,
-              togglesGated && styles.flatRowToggleHostMuted,
-            ]}
-            onPress={togglesGated ? handleEditStyleProfile : undefined}
-            activeOpacity={togglesGated ? 0.6 : 1}
-            disabled={!togglesGated}
-            accessibilityRole={togglesGated ? 'button' : undefined}
-            accessibilityLabel={
-              togglesGated
-                ? t('profile.toggle.disabledReason', {
-                    defaultValue: 'Pick your priorities first',
-                  })
-                : undefined
-            }
-          >
+          </View>
+          <View style={[styles.flatRowToggleHost, styles.flatRowToggleHostLast]}>
             <ToggleRow
               icon={<Bell size={18} color={colors.text.secondary} />}
               label={t('profile.notifs.master.title')}
               subtitle={t('profile.notifs.master.subtitle')}
               value={notificationsEnabled}
-              onValueChange={(v) => handleNotificationsToggle({ notifications_enabled: v })}
-              disabled={notifsSaving || togglesGated}
+              onValueChange={handleNotificationsToggle}
+              disabled={notifsSaving}
             />
-            {notificationsEnabled && !togglesGated ? (
+            {notificationsEnabled && prefsRowLoaded ? (
               <View style={styles.subToggles}>
                 <ToggleRow
                   label={t('profile.notifs.insight')}
@@ -563,14 +547,7 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
               </View>
             ) : null}
             {notifsError ? <Text style={styles.errorText}>{notifsError}</Text> : null}
-          </TouchableOpacity>
-          {togglesGated ? (
-            <Text style={styles.toggleGatedCaption}>
-              {t('profile.toggle.disabledReason', {
-                defaultValue: 'Pick your priorities first',
-              })}
-            </Text>
-          ) : null}
+          </View>
 
           {/* HELP */}
           <SettingsEyebrow>
@@ -771,18 +748,6 @@ const styles = StyleSheet.create({
   },
   flatRowToggleHostLast: {
     borderBottomWidth: 0,
-  },
-  // F-S1.5i: muted state when toggles are gated on priorities pickup.
-  // Whole row tap routes to EditPreferences; 0.55 opacity makes the
-  // dormant intent legible without scary red.
-  flatRowToggleHostMuted: {
-    opacity: 0.55,
-  },
-  toggleGatedCaption: {
-    ...typography.small,
-    color: colors.text.placeholder,
-    paddingHorizontal: spacing.base,
-    paddingBottom: spacing.sm,
   },
   // F5.4 — sub-toggles inside the notifications master row
   subToggles: {

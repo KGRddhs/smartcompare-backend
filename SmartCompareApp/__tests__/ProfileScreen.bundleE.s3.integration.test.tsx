@@ -28,6 +28,7 @@ const mockLogout = jest.fn();
 const mockGetCohortProfile = jest.fn();
 const mockGetPreferences = jest.fn();
 const mockSavePreferences = jest.fn();
+const mockPutPreferenceToggles = jest.fn();
 const mockPutReengagementSubs = jest.fn();
 const mockChangePassword = jest.fn();
 
@@ -38,6 +39,8 @@ jest.mock('../src/services/api', () => ({
   getCohortProfile: (...args: any[]) => mockGetCohortProfile(...args),
   getPreferences: (...args: any[]) => mockGetPreferences(...args),
   savePreferences: (...args: any[]) => mockSavePreferences(...args),
+  // W3-14 — the two masters moved to PUT /preference-toggles.
+  putPreferenceToggles: (...args: any[]) => mockPutPreferenceToggles(...args),
   putReengagementSubs: (...args: any[]) => mockPutReengagementSubs(...args),
 }));
 
@@ -232,7 +235,7 @@ describe('ProfileScreen S3 integration — logout flow', () => {
 
 describe('ProfileScreen S3 integration — preferences toggle paths', () => {
   it('AI sharing toggle on success path optimistically updates state', async () => {
-    mockSavePreferences.mockResolvedValueOnce({ success: true });
+    mockPutPreferenceToggles.mockResolvedValueOnce({ success: true });
     const props = makeProps();
     const rendered = render(<ProfileScreen {...props} />);
     await waitFor(() => {
@@ -245,26 +248,33 @@ describe('ProfileScreen S3 integration — preferences toggle paths', () => {
     // First switch is AI sharing master.
     fireEvent(switches[0], 'valueChange', false);
     await waitFor(() => {
-      expect(mockSavePreferences).toHaveBeenCalled();
+      expect(mockPutPreferenceToggles).toHaveBeenCalled();
     });
   });
 
   it('AI sharing toggle on failure path reverts preferences state', async () => {
-    mockSavePreferences.mockResolvedValueOnce({ success: false, error: 'oops' });
+    mockPutPreferenceToggles.mockResolvedValueOnce({ success: false, error: 'oops' });
     const props = makeProps();
     const rendered = render(<ProfileScreen {...props} />);
     await waitFor(() => {
       expect(mockGetPreferences).toHaveBeenCalled();
     });
-    const switches = rendered.UNSAFE_getAllByType(Switch);
-    fireEvent(switches[0], 'valueChange', false);
+    // W3-14: wait for the loaded row (ai_sharing_enabled: true), flip OFF,
+    // and require the `{success:false}` arm to put the switch back ON.
     await waitFor(() => {
-      expect(mockSavePreferences).toHaveBeenCalled();
+      expect(rendered.UNSAFE_getAllByType(Switch)[0].props.value).toBe(true);
+    });
+    fireEvent(rendered.UNSAFE_getAllByType(Switch)[0], 'valueChange', false);
+    await waitFor(() => {
+      expect(mockPutPreferenceToggles).toHaveBeenCalledWith({ ai_sharing_enabled: false });
+    });
+    await waitFor(() => {
+      expect(rendered.UNSAFE_getAllByType(Switch)[0].props.value).toBe(true);
     });
   });
 
-  it('Notifications master toggle reaches savePreferences with expected payload', async () => {
-    mockSavePreferences.mockResolvedValueOnce({ success: true });
+  it('Notifications master toggle reaches putPreferenceToggles with expected payload', async () => {
+    mockPutPreferenceToggles.mockResolvedValueOnce({ success: true });
     const props = makeProps();
     const rendered = render(<ProfileScreen {...props} />);
     await waitFor(() => {
@@ -275,7 +285,7 @@ describe('ProfileScreen S3 integration — preferences toggle paths', () => {
     if (switches.length >= 2) {
       fireEvent(switches[1], 'valueChange', false);
       await waitFor(() => {
-        expect(mockSavePreferences).toHaveBeenCalled();
+        expect(mockPutPreferenceToggles).toHaveBeenCalled();
       });
     }
   });
@@ -298,8 +308,12 @@ describe('ProfileScreen S3 integration — preferences toggle paths', () => {
   });
 });
 
-describe('ProfileScreen S3 integration — togglesGated muted state', () => {
-  it('renders the togglesGated caption when preferences.priorities is empty', async () => {
+// W3-14 — INVERTED. This used to pin the F-S1.5i gate caption ("Pick your
+// priorities first"); the gate is removed because the masters now save via
+// the priorities-free /preference-toggles route. Same fixture, opposite
+// contract: no caption, and the AI switch is live and saves.
+describe('ProfileScreen S3 integration — no priorities gate (W3-14)', () => {
+  it('does NOT render the old gate caption when preferences.priorities is empty; the AI switch saves', async () => {
     mockGetPreferences.mockResolvedValueOnce({
       priorities: [],
       budget: 'mid',
@@ -309,13 +323,21 @@ describe('ProfileScreen S3 integration — togglesGated muted state', () => {
       notifications_enabled: true,
       notification_types: {},
     });
+    mockPutPreferenceToggles.mockResolvedValueOnce({ success: true });
     const props = makeProps();
     const rendered = render(<ProfileScreen {...props} />);
     await waitFor(() => {
-      expect(
-        rendered.getByText('Pick your priorities first'),
-      ).toBeTruthy();
+      expect(mockGetPreferences).toHaveBeenCalled();
     });
+    const switches = rendered.UNSAFE_getAllByType(Switch);
+    // AI master + notifications master + 3 subs, none hidden by a gate.
+    expect(switches.length).toBe(5);
+    expect(rendered.queryAllByText('Pick your priorities first').length).toBe(0);
+    fireEvent(switches[0], 'valueChange', false);
+    await waitFor(() => {
+      expect(mockPutPreferenceToggles).toHaveBeenCalledWith({ ai_sharing_enabled: false });
+    });
+    expect(mockSavePreferences).not.toHaveBeenCalled();
   });
 });
 

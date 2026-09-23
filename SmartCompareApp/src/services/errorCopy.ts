@@ -50,3 +50,28 @@ export function friendlyErrorKey(code: string | null | undefined): string {
       return 'home.errors.comparison';
   }
 }
+
+/**
+ * W3-14 — the same code -> key contract for the SETTINGS surfaces (Profile
+ * toggles, password, EditProfile delete, Results demographics).
+ *
+ * These surfaces sit behind 1/5/10-minute limiters and the 900 s
+ * ACCOUNT_LOCKED lockout, so the two 429 codes get their own neutral
+ * sentences (deliberately NOT seconds-interpolated: "give it 900 seconds"
+ * is worse than "a moment"); everything else — including `null` /
+ * `undefined` / '' (a codeless transport failure or Starlette's bare 404) —
+ * returns the caller's own fallback key. Total by construction, so no branch
+ * can fall back to rendering `parseApiError(...).message`.
+ * `friendlyErrorKey` above is untouched (its compare-surface default is
+ * pinned by errorCopy.a11.test.ts).
+ */
+export function settingsErrorKey(code: string | null | undefined, fallbackKey: string): string {
+  switch (code) {
+    case 'RATE_LIMITED':
+      return 'common.errors.rateLimited';
+    case 'ACCOUNT_LOCKED':
+      return 'common.errors.locked';
+    default:
+      return fallbackKey;
+  }
+}
