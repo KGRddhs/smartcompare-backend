@@ -9678,6 +9678,322 @@ def shopping_strict_currency_pend(
     return False
 
 
+def shopping_currency_truth_enabled() -> bool:
+    """True iff the Serper-shopping tier stamps the currency it PARSED and
+    requires HOST evidence for a ``local_bhd`` label (default OFF).
+
+    W4-1 (PO-PRICE-TRUTH-01 / PO-PRICE-TRUTH-02 / PO-RECORDED-MEASURED-02).
+    ``detect_currency`` reads only ``CURRENCY_SYMBOLS`` + the 11-code
+    ``CURRENCY_CODES``, never ``GCC_CURRENCY_SYMBOLS``, so a GCC display token
+    ("22.500 BD") returned None, the parse fell back to minor unit 2 and read
+    the 3-digit tail as a GROUPING run (22.500 -> 22500 BHD), and the row was
+    stamped ``local_bhd`` — genuine, KPI-counted, cached 7 days — whatever host
+    the link pointed at (a ``google.com/search`` listing url included). With the
+    flag ON (three shared helpers, BOTH doors — ``extract_price_from_shopping``
+    and the M13-10 stash ``_seed_shortcircuit_candidates`` — call them under the
+    same flag): (1) ``_shopping_display_currency`` resolves the display token
+    BEFORE the strict check and the parse; (2) ``_shopping_unconvertible_foreign_iso``
+    pends a KNOWN non-target ISO code the effective rate table cannot convert;
+    (3) ``_shopping_bh_host_evidence`` decides whether ``local_bhd`` may stand
+    (its no_link / listing_url pair on every ask; the Bahrain host vocabulary
+    ONLY on a BHD ask — rework ruling R1).
+    Read PER CALL from os.getenv so Railway can flip it without a restart;
+    default OFF so flag-OFF is byte-identical to ed75dc70.
+    """
+    return os.getenv("ENABLE_SHOPPING_CURRENCY_TRUTH", "").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
+def _shopping_price_residue(price_str: str) -> str:
+    """The currency RESIDUE of a shopping price string: bidi controls folded
+    away, then digits / grouping+decimal separators / percent / whitespace /
+    ``-`` stripped (``_RESIDUE_STRIP_RE``). The same transform
+    ``_shopping_foreign_currency_signal`` applies, factored so W4-1's two
+    resolvers read the identical residue without touching the M13-09 code."""
+    folded = str(price_str or "").translate(_CURRENCY_FOLD_STRIP)
+    return _RESIDUE_STRIP_RE.sub("", folded).strip()
+
+
+def _shopping_display_currency(price_str: str) -> Optional[str]:
+    """W4-1 step 1 — the ISO code a shopping price string DISPLAYS, resolved
+    from its residue, or None when the residue is empty / unknown.
+
+    ``_shopping_foreign_currency_signal``'s first two rungs with the answer
+    KEPT instead of compared: ``_normalize_currency_code`` (effective-table ISO
+    first, then the dotted ``GCC_CURRENCY_SYMBOLS`` — "BD"->BHD, "KD"->KWD,
+    "SR"->SAR, "QR"->QAR, "DHS"->AED) and then the separator-stripped glyph
+    mirror ``_GCC_SYMBOL_RESIDUE`` ("رس"->SAR, "دإ"->AED). Called ONLY when
+    ``detect_currency`` returned None — a ``detect_currency`` hit (including the
+    bogus USD for "R$") is left alone; that collision stays STRICT's job. The
+    hit becomes ``detected_cur`` so the EXISTING parse receives the currency it
+    was always meant to receive ("22.500" under BHD -> minor unit 3 -> 22.5)
+    and the EXISTING T2 rule labels/converts it. Pure; no flag read here — the
+    callers gate on ``shopping_currency_truth_enabled()``.
+
+    KNOWN LIMIT (rework ruling R3; follow-up ``PO-PRICE-TRUTH-01c``): the
+    residue is the WHOLE non-numeric remainder of the string — deliberately the
+    M13-09 transform of ``_shopping_foreign_currency_signal``, unchanged — so a
+    COMPOUND price string defeats this step: "From 22.500 BD" leaves residue
+    "FromBD" and "22.500 BD (was 30 BD)" leaves "BD(wasBD)", neither resolves,
+    step 1 does not fire, and with the flag ON the string still parses as
+    22,500 ``local_bhd`` exactly as at HEAD (pinned as a limit by
+    ``tests/test_shopping_currency_truth.py::test_r3_compound_price_string_is_a_stated_limit``).
+    Tokenising the residue is 01c's job, not this unit's.
+
+    TWO MORE STATED LIMITS (fix round, pinned as limits): (a) the Latin Omani
+    tokens "RO" / "R.O." resolve nowhere — ``GCC_CURRENCY_SYMBOLS`` excludes
+    "RO" by a documented ruling (not an emitted spelling; 0 price-adjacent
+    occurrences in the 92-page Gulf + 429-page global corpus, against 86
+    "OMR"), and this step reuses that table unchanged, so "RO 12.500" on an OMR
+    ask still parses 12,500; the Arabic "ر.ع." form resolves (12.5). (b) a BARE
+    numeral has an empty residue, so "12.500" on a BHD ask still parses 12,500:
+    parsing bare strings under the ask currency would turn "1,299" into 1.299
+    (measured), trading one 1000x error for its mirror — a design call, not
+    this step's.
+    """
+    residue = _shopping_price_residue(price_str)
+    if not residue:
+        return None
+    code = _normalize_currency_code(residue)
+    if code is not None:
+        return code
+    return _GCC_SYMBOL_RESIDUE.get(residue)
+
+
+def _shopping_known_currency_codes() -> FrozenSet[str]:
+    """W4-1 — the flag-INDEPENDENT vocabulary of currencies the codebase knows:
+    the KEYS of ``FALLBACK_RATES`` ∪ ``FALLBACK_RATES_EXTENDED`` ∪
+    ``_THREE_DECIMAL_CURRENCIES`` ∪ ``_ZERO_DECIMAL_CURRENCIES``. Reading the
+    extended dict's KEYS is not converting with it: it lets the unit say "TRY is
+    a currency we know and cannot convert today" while
+    ``ENABLE_EXTENDED_FALLBACK_RATES`` is off."""
+    from app.services.exchange_rate_service import (
+        FALLBACK_RATES, FALLBACK_RATES_EXTENDED,
+    )
+    return (
+        frozenset(FALLBACK_RATES)
+        | frozenset(FALLBACK_RATES_EXTENDED)
+        | _THREE_DECIMAL_CURRENCIES
+        | _ZERO_DECIMAL_CURRENCIES
+    )
+
+
+def _shopping_unconvertible_foreign_iso(price_str: str, target: str) -> bool:
+    """W4-1 step 2 — True iff the price string's residue is a KNOWN, non-target
+    ISO code the EFFECTIVE rate table cannot convert, so the candidate must PEND
+    rather than ship the raw foreign amount stamped with the target currency.
+
+    Evaluated only after ``_shopping_display_currency`` returned None (so the
+    residue is NOT in the effective table and NOT a GCC token). A well-formed
+    non-target ISO code is FOREIGN even when unconvertible: "TRY 1.299,00" on a
+    BHD ask pends with ``ENABLE_EXTENDED_FALLBACK_RATES`` off, and CONVERTS
+    (step 1 resolves it) once that flag is on — the two flags compose in the
+    direction CLAUDE.md documents. Only ISO-shaped tokens in the known vocabulary
+    pend; "TL" / "zł" / "kr" still ship exactly as today (STRICT's non-ASCII
+    catch-all covers the glyph ones when it is on).
+
+    Two DEFENSIVE clauses, kept deliberately (rework ruling R5.7): the
+    ``residue.isascii()`` guard and the final ``code != target`` comparison.
+    Today every ask currency is a key of the base 13-rate table, so step 1
+    resolves it before this helper is reached and the ``!= target`` clause is
+    dead by construction; both stay as belt-and-braces against a future ask
+    currency outside the base table. No pin required.
+    """
+    residue = _shopping_price_residue(price_str)
+    if not residue or not residue.isascii():
+        return False
+    code = residue.upper()
+    if code not in _shopping_known_currency_codes():
+        return False
+    return code != (target or "").upper()
+
+
+#: W4-1 step 3 — the BOUNDED host-evidence vocabularies, one module-level
+#: frozenset per class; an entry is added only with a measured URL (the 23
+#: dry-run shapes are pinned row-by-row in tests/test_shopping_currency_truth.py).
+#: Subdomain labels that name Bahrain (``bahrain.sharafdg.com``, ``bh.<host>``).
+_BH_HOST_SUBDOMAIN_LABELS: FrozenSet[str] = frozenset({
+    "bh", "bahrain", "en-bh", "ar-bh",
+})
+#: First path segments that name Bahrain — the BH locale vocabulary the registry
+#: documents on its ``locale_paths`` field (``/en-bh/``, ``/bh-en/``, ``/bahrain/``)
+#: plus the hyphenated ``bahrain-en`` form noon uses.
+_BH_HOST_PATH_SEGMENTS: FrozenSet[str] = frozenset({
+    "en-bh", "ar-bh", "bh-en", "bh-ar", "bahrain-en", "bahrain-ar", "bahrain", "bh",
+})
+#: Tokens naming ANOTHER GCC/Arab country (any subdomain label or ANY path
+#: segment — polish round: ``talabat.com/ar/uae/`` hides the token behind a
+#: language segment). The second line (fix round, adversary-measured shapes on the multi-country
+#: bahrain-tier registry hosts: ``talabat.com/iraq/``, ``talabat.com/eg/``,
+#: ``/jo/``, ``/iq/``, ``sephora.me/lb-en/``, ``/lebanon/``) closes the ISO forms
+#: of egypt/jordan plus Iraq and Lebanon, which kept ``local_bhd`` via the
+#: registry rung.
+_OTHER_GCC_COUNTRY_TOKENS: FrozenSet[str] = frozenset({
+    "sa", "ksa", "ae", "uae", "kw", "qa", "om",
+    "saudi", "kuwait", "qatar", "oman", "egypt", "jordan",
+    "eg", "jo", "iq", "iraq", "lb", "lebanon",
+})
+#: The other-country tokens plus their locale forms (``en-sa`` / ``ar-sa`` /
+#: ``uae-en`` / ``uae-ar`` …) — a superset of ``source_router._LOCALE_SEG_RE``.
+_OTHER_GCC_COUNTRY_SEGMENTS: FrozenSet[str] = frozenset(
+    set(_OTHER_GCC_COUNTRY_TOKENS)
+    | {f"{lang}-{c}" for c in _OTHER_GCC_COUNTRY_TOKENS for lang in ("en", "ar")}
+    | {f"{c}-{lang}" for c in _OTHER_GCC_COUNTRY_TOKENS for lang in ("en", "ar")}
+)
+
+
+def _shopping_bh_host_evidence(
+    link: Optional[str], *, ask_currency: str, reason_out: Optional[List[str]] = None,
+) -> bool:
+    """W4-1 step 3 — True iff ``link`` may keep the genuine ``local_bhd`` label
+    the T2 rule gave the row. Consulted ONLY when the row would otherwise be
+    ``local_bhd``; a row that fails is stamped ``converted_usd`` instead (amount
+    / url / retailer and every other key unchanged). ``reason_out`` (an
+    ``outcome_out``-style list) receives the reason for the canary log line;
+    the advertised ``reason=`` vocabulary is exactly the ``_no(...)`` strings
+    below: ``no_link``, ``listing_url``, ``no_host``, ``global_tier``,
+    ``other_country``, ``no_bh_evidence``, ``host_classifier_error``.
+
+    TWO SCOPES (FABLE REWORK RULING R1, 2026-09-11 — step 3 is a BAHRAIN-shelf
+    rule; the spec never addressed non-BHD asks, and applying the vocabulary to
+    a SAR ask cost a KSA store's ``250 SR`` its native label and, at
+    structured_comparison_service ~:6662 where a converted_usd Tier-1 price is
+    PARKED, every non-Bahrain region its shopping short-circuit).
+
+    Region-AGNOSTIC pair — every ask currency:
+      - no link                                          -> no  (``no_link``: the
+        ``build_retailer_url`` search fallback is not a shelf for ANY region)
+      - ``_is_listing_url(link)``, or ANY google.com host (hostname
+        ``google.com`` or ending ``.google.com``)         -> no  (``listing_url``:
+        google search / a retailer listing page / ``google.com/shopping/
+        product/<id>``, which is a shelf for no region; ``_is_listing_url``
+        itself is untouched — W4-2 follow-up 03c owns the showable gate)
+
+    BHD asks ONLY (``(ask_currency or "").upper() == "BHD"``) — the Bahrain
+    shelf vocabulary, in this order (every rung measured through the real
+    predicates; conflicting markers resolve toward NO evidence, ruling R2).
+    ``host`` is the parsed hostname — lower-cased, port removed, trailing dot
+    stripped — and it is what BOTH registry lookups receive (polish round: the
+    raw netloc let ``bh.iherb.com:443`` / ``bh.iherb.com.`` miss the global row):
+      - unparseable host                                 -> no  (``no_host``:
+        ``'https://'``, ``'not a url'``, ``'javascript:alert(1)'``)
+      - ``registry_tier(host) == "global"``              -> no  (``global_tier``:
+        amazon.com, bh.iherb.com, bh.iherb.com:443, bh.iherb.com. — the iHerb
+        tension is the #52 open product call)
+      - ANY subdomain label or ANY path segment in
+        ``_OTHER_GCC_COUNTRY_SEGMENTS``                  -> no  (``other_country``:
+        extra.com/en-sa/, noon.com/uae-en/, uae.sharafdg.com,
+        ksa.swissarabian.com, talabat.com/ar/uae/, talabat.com/grocery/uae/ —
+        AND a URL carrying both a BH marker and another country's anywhere,
+        uae.sharafdg.com/en-bh/ or bahrain.sharafdg.com/en-sa/: R2's principle
+        is "anywhere", and a contradiction must not mint a genuine,
+        7-day-cached, KPI-counted label)
+      - host ends ``.bh``, a subdomain label in ``_BH_HOST_SUBDOMAIN_LABELS``,
+        or the FIRST path segment in ``_BH_HOST_PATH_SEGMENTS``   -> yes
+        (sephora.me/bh-en/, boutiqaat.com/en-bh/, nasserpharmacy.com/bh-en)
+      - ``_registry_row_for_host(host, where=tier == "bahrain")`` is a row
+        that declares NO ``locale_paths``                -> yes (alosraonline.com,
+        noon.com/p — the registry's SECOND, bahrain-tier noon row). A row
+        that DECLARES ``locale_paths`` (sephora.me ``/bh-en``, boutiqaat
+        ``/en-bh``, nasserpharmacy ``/bh-en``) is a multi-locale store whose
+        bare host is not a Bahrain shelf: it earns nothing here and falls
+        through to ``no_bh_evidence`` (sephora.me/p/x, sephora.me/en-us/p/x).
+        A path UNDER one of its locales never reaches this rung — every
+        declared locale's first segment is a BH path segment (measured in
+        both registry states and pinned), so the previous rung already
+        accepted it; a future locale outside that vocabulary resolves toward
+        NO evidence until the vocabulary learns it.
+      - else                                             -> no  (``no_bh_evidence``:
+        bestbuy.com, amazon.ae, www.sharafdg.com)
+    Fails toward "no evidence" (``host_classifier_error``) on any parse or
+    registry error inside the BHD branch (``http://[invalid`` raises in
+    ``urlparse``; pinned, together with a raising registry lookup).
+    KNOWN LIMIT: the other-country vocabulary is bounded; a country token
+    outside it (``/pk/``, ``/en-us/``) on a bahrain-tier registry host with no
+    ``locale_paths`` (talabat, extra, noon) still earns ``local_bhd``. So does
+    a non-``google.com`` Google ccTLD (``google.com.bh``: a ``.bh`` host).
+
+    NON-BHD asks (SAR / AED / KWD / QAR / OMR …) past the agnostic pair: the
+    label stands exactly as at HEAD — return True, NO reason appended, no host
+    parse, no registry lookup. Region-aware host evidence for those asks
+    (``.sa`` / ``.ae`` TLDs, the region's own country tokens, the registry's
+    currency field) is follow-up ``PO-PRICE-TRUTH-01b`` — recorded in the PR,
+    not built here.
+    """
+    def _no(reason: str) -> bool:
+        if reason_out is not None:
+            reason_out.append(reason)
+        return False
+
+    # Region-agnostic pair: a missing link or a listing URL is a shelf nowhere.
+    if not link:
+        return _no("no_link")
+    if _is_listing_url(link):
+        return _no("listing_url")
+    # Polish round — any google.com host (google.com/shopping/product/<id>
+    # included) is a listing for EVERY ask; a parse failure here is not
+    # evidence either way (the BHD branch below fails it closed).
+    try:
+        _agnostic_host = (urlparse(str(link)).hostname or "").lower().rstrip(".")
+    except Exception:  # noqa: BLE001
+        _agnostic_host = ""
+    if _agnostic_host == "google.com" or _agnostic_host.endswith(".google.com"):
+        return _no("listing_url")
+    # R1 — the Bahrain shelf vocabulary below is meaningless for a non-BHD ask:
+    # the T2 label stands as at HEAD.
+    if (ask_currency or "").upper() != "BHD":
+        return True
+    try:
+        from app.services.source_router import _registry_row_for_host, registry_tier
+        parsed = urlparse(str(link))
+        # Polish round — the parsed hostname (port removed, lower-cased,
+        # trailing dot stripped) feeds every rung AND both registry lookups.
+        host = (parsed.hostname or "").lower().rstrip(".")
+        segments = [seg for seg in (parsed.path or "").lower().split("/") if seg]
+        if not host:
+            return _no("no_host")
+        if registry_tier(host) == "global":
+            return _no("global_tier")
+        first_seg = segments[0] if segments else ""
+        sub_labels = host.split(".")[:-2]
+        # R2 — another country's marker ANYWHERE (any subdomain label OR any
+        # path segment — polish round: ``/ar/uae/`` hides it behind a language
+        # segment) is contradictory evidence and is evaluated BEFORE the BH
+        # markers, so a URL carrying both resolves toward NO evidence. The
+        # underscore locale spelling (``en_sa`` / ``sa_en``) is folded to the
+        # hyphen form for THIS check only (fix round), so it can only ever move
+        # a row toward no evidence.
+        if (
+            any(label.replace("_", "-") in _OTHER_GCC_COUNTRY_SEGMENTS for label in sub_labels)
+            or any(seg.replace("_", "-") in _OTHER_GCC_COUNTRY_SEGMENTS for seg in segments)
+        ):
+            return _no("other_country")
+        if (
+            host.endswith(".bh")
+            or any(label in _BH_HOST_SUBDOMAIN_LABELS for label in sub_labels)
+            or first_seg in _BH_HOST_PATH_SEGMENTS
+        ):
+            return True
+        bh_row = _registry_row_for_host(
+            host, where=lambda s: getattr(s, "tier", None) == "bahrain",
+        )
+        # Fix round, simplified in the polish round — a bahrain-tier row with
+        # NO ``locale_paths`` keeps today's host-only evidence
+        # (alosraonline.com, noon.com/p — ruling 2). A row that DECLARES them
+        # (sephora.me ``/bh-en``, boutiqaat ``/en-bh``, nasserpharmacy
+        # ``/bh-en``) is a multi-locale store: the host alone is not a Bahrain
+        # shelf, so it is REJECTED here. A path under one of its locales was
+        # already accepted by the BH path-segment rung above (every declared
+        # locale's first segment is a BH path segment — pinned), which is why
+        # there is no accept expression.
+        if bh_row is not None and not tuple(getattr(bh_row, "locale_paths", ()) or ()):
+            return True
+    except Exception:  # noqa: BLE001 — a host-classifier failure must never mint a genuine label
+        return _no("host_classifier_error")
+    return _no("no_bh_evidence")
+
+
 def extract_price_from_shopping(
     product_name: str,
     shopping_items: List[Dict],
@@ -9737,6 +10053,25 @@ def extract_price_from_shopping(
         # was already called three lines below; hoisting it changes nothing when
         # ENABLE_MONEY_PARSER_V2 is off, where both arguments are ignored.
         detected_cur = detect_currency(price_str)
+        # W4-1 (ENABLE_SHOPPING_CURRENCY_TRUTH, default OFF) — steps 1+2, BEFORE
+        # the strict check and the parse, via the SHARED helpers the M13-10
+        # stash (_seed_shortcircuit_candidates) calls under the same flag:
+        # (1) resolve the GCC display token / ISO residue detect_currency
+        # cannot see ("22.500 BD" -> BHD, "8.750 KD" -> KWD, "1,399 د.إ" -> AED)
+        # so the existing parse gets its minor unit and the existing T2 rule
+        # labels/converts it; (2) a KNOWN non-target ISO code the effective
+        # table cannot convert ("TRY 1.299,00", EXTENDED off) PENDS instead of
+        # shipping 1299 "BHD" local_bhd. Flag OFF: skipped, byte-identical.
+        if shopping_currency_truth_enabled() and detected_cur is None:
+            detected_cur = _shopping_display_currency(price_str)
+            if detected_cur is None and _shopping_unconvertible_foreign_iso(
+                price_str, currency
+            ):
+                logger.info(
+                    "[SHOPPING_CURRENCY_TRUTH] pend unconvertible %s for %s",
+                    _shopping_price_residue(price_str).upper(), product_name,
+                )
+                continue
         # M13-09 (ENABLE_SHOPPING_STRICT_CURRENCY, default OFF) — the strict-label
         # pend for the one tier the BLOCKER-4 wave never covered. Flag OFF: this
         # whole block is skipped, byte-identical. The two guards live in the
@@ -9838,15 +10173,36 @@ def extract_price_from_shopping(
         # on 100ml so two compared products share a basis (D4 consistency default).
         _conc_rank, _size_rank = variant_precision_rank(product_name, title)
         _flagship = flagship_basis_bonus(product_name, title, is_lux)
+        # T2 — honest label: converted_usd for gl=us-fallback / converted
+        # prices, local_bhd only for genuinely native-BHD listings.
+        source_method = "converted_usd" if item_converted else "local_bhd"
+        # W4-1 step 3 (ENABLE_SHOPPING_CURRENCY_TRUTH) — local_bhd requires HOST
+        # evidence (shared helper, same rule in the stash): on EVERY ask a
+        # missing link, a listing link or any google.com link is relabelled
+        # converted_usd; on a BHD ask ONLY (rework ruling R1) so is a
+        # global-tier host, an other-country token in any subdomain label or path segment or an
+        # off-registry host with no BH marker — amount, url, retailer and every
+        # other key unchanged. Flag OFF: skipped.
+        if shopping_currency_truth_enabled() and source_method == "local_bhd":
+            _no_evidence: List[str] = []
+            if not _shopping_bh_host_evidence(
+                link, ask_currency=currency, reason_out=_no_evidence,
+            ):
+                logger.info(
+                    "[SHOPPING_CURRENCY_TRUTH] relabel local_bhd->converted_usd "
+                    "host=%s reason=%s for %s",
+                    extract_domain(link) if link else "",
+                    _no_evidence[0] if _no_evidence else "no_bh_evidence",
+                    product_name,
+                )
+                source_method = "converted_usd"
         candidates.append({
             "amount": round(amount, 2),
             "currency": currency,
             "retailer": retailer,
             "url": item.get("link") or build_retailer_url(retailer, product_name),
             "in_stock": True,
-            # T2 — honest label: converted_usd for gl=us-fallback / converted
-            # prices, local_bhd only for genuinely native-BHD listings.
-            "source_method": "converted_usd" if item_converted else "local_bhd",
+            "source_method": source_method,
             "confidence": round(min(0.7 + match_score * 0.3, 1.0), 2),
             "match_score": match_score,
             "retailer_score": retailer_score,
