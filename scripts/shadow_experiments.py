@@ -759,7 +759,19 @@ def _compute_scores_summary_offline(product_data: List[Dict[str, Any]]) -> str:
 
     svc = get_scoring_service()
     scoring_result = svc.compute_scores(product_data)
-    names = [f"{p.get('brand', '')} {p.get('name', '')}".strip() for p in product_data]
+    # CR-DELTA-CORRECTNESS-07(a), ruling R2 — the same display spelling the
+    # production orchestrator hands `build_scores_summary`
+    # (`structured_comparison_service._display_product_names`), built from the
+    # identical `text_sanitize.dedup_brand_name` call so this offline path does
+    # NOT import the orchestrator (which constructs AsyncOpenAI at import and
+    # would make `prepare` need OPENAI_API_KEY). `str(x or "")` matches the
+    # coercion `compute_scores` applies to its winner labels (ruling R4).
+    from app.services.text_sanitize import dedup_brand_name
+
+    names = [
+        dedup_brand_name(str(p.get('brand') or ''), str(p.get('name') or ''))
+        for p in product_data
+    ]
     return svc.build_scores_summary(scoring_result, names)
 
 

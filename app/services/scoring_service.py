@@ -1550,9 +1550,18 @@ class ScoringService:
             # An index key cannot mismatch. `price_tiers` kept unchanged for BC.
             price_tiers_by_index[f"product_{i}"] = tier
 
-        # Compute dimension winners
+        # Compute dimension winners.
+        # CR-DELTA-CORRECTNESS-07(a) — spell each product the SAME way the
+        # display side does (`structured_comparison_service._display_product_names`,
+        # which every `compute_tradeoff_pairs` call site passes as `product_names`).
+        # M21-W3 `7fb0b0d4` moved the display half onto `dedup_brand_name` and
+        # left this half raw, so `info["winner"]` never matched a brand-prefixed
+        # name and `compute_tradeoff_pairs` returned [] (blank `key_tradeoff`).
+        # `str(x or "")` (ruling R4): a direct caller passing a non-str brand/name
+        # must not raise here where the raw f-string did not.
+        from app.services.text_sanitize import dedup_brand_name
         product_names = [
-            f"{p.get('brand', '')} {p.get('name', '')}".strip()
+            dedup_brand_name(str(p.get('brand') or ''), str(p.get('name') or ''))
             for p in products_data
         ]
         result_so_far = {"scores": result_products}
@@ -2858,7 +2867,13 @@ class ScoringService:
             ps = scores[key]
             overall = ps["overall"]
             breakdown = ps["breakdown"]
-            tier = scoring_result.get("price_tiers", {}).get(name, "unknown")
+            # CR-DELTA-CORRECTNESS-07(a), ruling R3 — read the index-keyed mirror
+            # (M20 #102). `price_tiers` is keyed on the RAW brand+name while
+            # `name` here is the deduped display spelling, so a brand-repeating
+            # product read "unknown". Legacy name lookup kept as the fallback for
+            # a hand-built result that carries no index map.
+            tier = (scoring_result.get("price_tiers_by_index") or {}).get(
+                key, scoring_result.get("price_tiers", {}).get(name, "unknown"))
             # Rank word: the highest-overall product is the stronger one; others are
             # "comparable" (close) or "slightly behind" (further back).
             if overall >= top_overall:
