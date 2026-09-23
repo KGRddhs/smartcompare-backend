@@ -389,6 +389,8 @@ Worktrees `sc-w4-2`, `sc-w4-3`, `sc-w4-4`, `sc-w4-9`, `sc-w4-10`, all branched f
 W4-6a, W4-6b (blocked on the #101 product call), W4-7, W4-8, W4-11, W4-12, W4-13, and W4-14 (client, OTA-gated).
 
 ## The peer session (65b) — W3 remainder
+**Superseded 2026-09-11 by `docs/investigations/2026-09-11-w3-remainder-state.md` (10/10 specs reviewed, six units part-built), and on 2026-09-23 by session 66's log entry. The session labels "65b"/"65d" were used by both sessions for each other; read the file names, not the labels.**
+
 State as it reported at 2026-09-11 (not verified by this session, and its worktrees are NOT to be touched): ten `sc-w3-*` worktrees, all fast-forwarded to `b63a8368`, **no source edits anywhere**; 10/10 W3 specs written, 6/10 reviewed (W3-3, W3-4, W3-6, W3-9, W3-13, W3-15), the other four reviews cut by its own limit; group A implementation (W3-3, W3-4, W3-6, W3-15) queued. It holds no edits to any file this session touched. Its W3-14 is the CLIENT copy half of the error work — the backend half is W4-9 here — plus at most an additive preferences path in `auth_routes.py`, which it will name before opening a PR.
 
 ## Standing agreements between the two sessions (keep these)
