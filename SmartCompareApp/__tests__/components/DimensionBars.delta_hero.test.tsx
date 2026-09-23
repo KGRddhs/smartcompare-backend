@@ -90,7 +90,8 @@ test('value row is SILENT on in_range / in_range (spec § 4d)', () => {
   );
   expect(queryByText('results.valueMatch.above_range')).toBeNull();
   expect(queryByText('results.valueMatch.below_range')).toBeNull();
-  expect(queryByText('results.valueMatch.cheaper_of_two')).toBeNull();
+  // W3-11 RTL-14(c): key renamed from cheaper_of_two (reserved `_two` suffix).
+  expect(queryByText('results.valueMatch.cheaperOfTwo')).toBeNull();
 });
 
 test('value row renders "cheaper of the two" when BOTH products are below_range (spec § 4e case 2)', () => {
@@ -101,7 +102,8 @@ test('value row renders "cheaper of the two" when BOTH products are below_range 
   const { getByText } = render(
     <DimensionBars dimensions={dims} winnerIndex={0} testID="bars" />,
   );
-  expect(getByText('results.valueMatch.cheaper_of_two')).toBeTruthy();
+  // W3-11 RTL-14(c): key renamed from cheaper_of_two (reserved `_two` suffix).
+  expect(getByText('results.valueMatch.cheaperOfTwo')).toBeTruthy();
 });
 
 test('PRICE row does NOT render value-match captions (only value row does)', () => {

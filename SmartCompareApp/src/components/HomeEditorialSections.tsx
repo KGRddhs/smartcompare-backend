@@ -37,6 +37,7 @@ import {
   type HomeTrendingItem,
 } from '../services/api';
 import { deriveTone } from '../utils/deriveTone';
+import { formatPrice } from '../utils/formatNumber';
 import { ProductImage } from './primitives/ProductImage';
 
 // ---------------------------------------------------------------------------
@@ -139,7 +140,7 @@ export function SmartPickCard({ onPressVerdict }: SmartPickCardProps) {
             ) : null}
             {pick.runner_up_price_bhd !== null ? (
               <Text style={styles.smartTilePrice}>
-                {pick.runner_up_price_bhd.toFixed(0)} {t('home.smart_pick.bhd')}
+                {formatPrice(pick.runner_up_price_bhd, 'BHD', t)}
               </Text>
             ) : null}
           </View>
@@ -184,7 +185,7 @@ export function SmartPickCard({ onPressVerdict }: SmartPickCardProps) {
             ) : null}
             {pick.winner_price_bhd !== null ? (
               <Text style={[styles.smartTilePrice, styles.smartTilePriceWinner]}>
-                {pick.winner_price_bhd.toFixed(0)} {t('home.smart_pick.bhd')}
+                {formatPrice(pick.winner_price_bhd, 'BHD', t)}
               </Text>
             ) : null}
           </View>

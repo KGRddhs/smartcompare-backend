@@ -25,7 +25,7 @@
  * transition.
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { View, StyleSheet, Text } from 'react-native';
+import { View, StyleSheet, Text, I18nManager } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import Animated, {
   useSharedValue,
@@ -526,12 +526,15 @@ interface GhostFieldProps {
 // Animated.View that sweeps a soft highlight via translateX driven
 // by motion.shimmer (1.4s linear loop).
 function GhostField({ revealed, style, testID }: GhostFieldProps) {
-  const sweep = useSharedValue(-SHIMMER_TRANSLATE_PX);
+  // W3-11 RTL-14(d) — the sweep follows the reading direction. Read at
+  // RENDER time, never at module scope (I18nManager can change after load).
+  const dir = I18nManager.isRTL ? -1 : 1;
+  const sweep = useSharedValue(-SHIMMER_TRANSLATE_PX * dir);
 
   useEffect(() => {
     if (revealed) return;
     sweep.value = withRepeat(
-      withTiming(SHIMMER_TRANSLATE_PX, {
+      withTiming(SHIMMER_TRANSLATE_PX * dir, {
         duration: motion.shimmer.duration,
         easing: Easing.linear,
       }),
@@ -539,7 +542,7 @@ function GhostField({ revealed, style, testID }: GhostFieldProps) {
       motion.shimmer.repeat,
       false,
     );
-  }, [revealed, sweep]);
+  }, [revealed, sweep, dir]);
 
   const sweepStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: sweep.value }],

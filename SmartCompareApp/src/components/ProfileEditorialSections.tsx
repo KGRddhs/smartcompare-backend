@@ -45,6 +45,7 @@ import {
   type WeightedPriority,
 } from '../services/api';
 import { deriveTone } from '../utils/deriveTone';
+import { formatTimeAgo, type AppLanguage } from '../utils/formatDate';
 import { ProductImage } from './primitives/ProductImage';
 
 // ---------------------------------------------------------------------------
@@ -60,31 +61,19 @@ interface RecentDecisionsRowProps {
   onEmptyCompareTap?: () => void;
 }
 
-function timeAgo(iso: string, t: (k: string) => string): string {
-  try {
-    const created = new Date(iso).getTime();
-    const diff = Date.now() - created;
-    const mins = Math.floor(diff / 60000);
-    if (mins < 60) return t('profile.recent.justNow');
-    const hrs = Math.floor(mins / 60);
-    if (hrs < 24) return `${hrs}h`;
-    const days = Math.floor(hrs / 24);
-    if (days === 1) return t('profile.recent.yesterday');
-    if (days < 7) return `${days}d`;
-    return new Date(iso).toLocaleDateString();
-  } catch {
-    return '';
-  }
-}
-
+// W3-11 RTL-08 — the local `timeAgo` (English `3h` / `5d` and a
+// device-locale date for Arabic users) is replaced by the shared,
+// catalog-backed formatTimeAgo.
 function MiniVsCard({
   item,
   onPress,
   t,
+  language,
 }: {
   item: RecentDecisionItem;
   onPress?: () => void;
-  t: (k: string) => string;
+  t: (k: string, o?: Record<string, unknown>) => string;
+  language: AppLanguage;
 }) {
   // Per JSX (ProfileScreen.jsx:122-130): each MiniProduct tile uses a
   // brand-derived tone background. Backend ships winner_name + runner_up_name;
@@ -139,7 +128,7 @@ function MiniVsCard({
         </View>
       </View>
       <Text style={styles.miniMeta} numberOfLines={1}>
-        {item.winner_name} · {timeAgo(item.created_at, t)}
+        {item.winner_name} · {formatTimeAgo(item.created_at, language, t)}
       </Text>
     </TouchableOpacity>
   );
@@ -150,7 +139,8 @@ export function RecentDecisionsRow({
   onItemPress,
   onEmptyCompareTap,
 }: RecentDecisionsRowProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const language: AppLanguage = (i18n?.language as AppLanguage) ?? 'en';
   const [items, setItems] = useState<RecentDecisionItem[] | null>(null);
   const [loaded, setLoaded] = useState(false);
 
@@ -223,6 +213,7 @@ export function RecentDecisionsRow({
               key={it.comparison_id}
               item={it}
               t={t}
+              language={language}
               onPress={onItemPress ? () => onItemPress(it.comparison_id) : undefined}
             />
           ))

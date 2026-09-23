@@ -15,6 +15,7 @@ import { ChevronDown, Star, ListChecks, BarChart3, Info } from 'lucide-react-nat
 import { useTranslation } from 'react-i18next';
 import { colors, spacing } from '../../theme';
 import type { Product, ReviewSummary } from '../../types';
+import { formatNumber } from '../../utils/formatNumber';
 // W1 walk-fix 2026-06-18 — CategoryProfile is now the FIRST "Dig deeper"
 // section (curated "At a glance"), embedded (no own card — the accordion
 // panel supplies it). `hasCategoryProfile` gates whether the section shows.
@@ -221,7 +222,7 @@ export const ResultsAccordion = React.memo(function ResultsAccordion({
       sub: (() => {
         const tail =
           totalReviews > 0
-            ? `${totalReviews.toLocaleString()} ${t('results.accordion.reviewsSub')}`
+            ? `${formatNumber(totalReviews)} ${t('results.accordion.reviewsSub')}`
             : t('results.accordion.reviewsSub');
         if (avgRating !== null) {
           return `${avgRating.toFixed(1)}${t('results.accordion.reviewsAvg')} · ${tail}`;
@@ -661,7 +662,9 @@ function ReviewPraiseBlock({
               {typeof ratingCount === 'number' && ratingCount > 0
                 ? t('results.reviews.ratingWithCount', {
                     rating: (rating as number).toFixed(1),
-                    count: ratingCount.toLocaleString(),
+                    // W3-11 R10 — a STRING count keeps the grouping
+                    // separator (ratingWithCount has no plural family).
+                    count: formatNumber(ratingCount),
                   })
                 : (rating as number).toFixed(1)}
             </Text>

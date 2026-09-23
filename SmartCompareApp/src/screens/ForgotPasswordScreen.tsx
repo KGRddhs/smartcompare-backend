@@ -38,7 +38,7 @@ export default function ForgotPasswordScreen({ navigation }: ForgotPasswordScree
 
   const handleReset = async () => {
     if (!email.trim()) {
-      setError(t('auth.email') + ' is required');
+      setError(t('auth.emailRequired'));
       return;
     }
 

@@ -265,7 +265,7 @@ export default function RegisterScreen({ navigation, route, onRegisterSuccess }:
           onRegisterSuccess();
         }
       } else {
-        setError(result.error || 'Registration failed');
+        setError(result.error || t('auth.registerFailed'));
       }
     } catch (err: any) {
       setError(parseApiError(err).message);
