@@ -95,12 +95,13 @@ describe('RegisterScreen — invite code field (Bundle A 4.8)', () => {
   });
 
   it('forwards a valid typed invite code in the register call', async () => {
-    const { getByPlaceholderText, getByText } = renderScreen(undefined);
+    const { getByTestId, getByPlaceholderText, getByText } = renderScreen(undefined);
     fillRequired(getByPlaceholderText);
     fireEvent.changeText(
       getByPlaceholderText('register.inviteCode.placeholder'),
       'QR-ABCD23',
     );
+    fireEvent.press(getByTestId('consent-checkbox')); // W3-16: consent precondition
     fireEvent.press(getByText('auth.register'));
 
     await waitFor(() => expect(mockRegister).toHaveBeenCalled());
@@ -112,7 +113,7 @@ describe('RegisterScreen — invite code field (Bundle A 4.8)', () => {
   });
 
   it('blocks submit and shows inline error when typed code has wrong shape', async () => {
-    const { getByPlaceholderText, getByText, queryByText } = renderScreen(undefined);
+    const { getByTestId, getByPlaceholderText, getByText, queryByText } = renderScreen(undefined);
     fillRequired(getByPlaceholderText);
     fireEvent.changeText(
       getByPlaceholderText('register.inviteCode.placeholder'),
@@ -123,6 +124,7 @@ describe('RegisterScreen — invite code field (Bundle A 4.8)', () => {
       // exactly 6 after the dash.
       'QR-BAD',
     );
+    fireEvent.press(getByTestId('consent-checkbox')); // W3-16: consent precondition
     fireEvent.press(getByText('auth.register'));
 
     await waitFor(() => {
@@ -132,8 +134,9 @@ describe('RegisterScreen — invite code field (Bundle A 4.8)', () => {
   });
 
   it('omits inviteCode entirely when field is empty', async () => {
-    const { getByPlaceholderText, getByText } = renderScreen(undefined);
+    const { getByTestId, getByPlaceholderText, getByText } = renderScreen(undefined);
     fillRequired(getByPlaceholderText);
+    fireEvent.press(getByTestId('consent-checkbox')); // W3-16: consent precondition
     fireEvent.press(getByText('auth.register'));
 
     await waitFor(() => expect(mockRegister).toHaveBeenCalled());

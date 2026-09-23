@@ -390,12 +390,6 @@ function App() {
               component={ResultsScreen}
               options={{ presentation: 'modal' }}
             />
-            {/* Bundle A — Privacy + Terms (shared screen, switched by route param). */}
-            <Stack.Screen
-              name="Legal"
-              component={LegalScreen}
-              options={{ presentation: 'modal' }}
-            />
             <Stack.Screen
               name="ContactUs"
               component={ContactUsScreen}
@@ -484,6 +478,17 @@ function App() {
           component={ReferralLandingScreen}
         />
         <Stack.Screen name="InviteeQuiz" component={InviteeQuizScreen} />
+        {/* Bundle A — Privacy + Terms (shared screen, switched by route param).
+            W3-16: hoisted out of the authenticated branch so the consent
+            row's Terms / Privacy links on Register and Login (nested
+            AuthStack, reached via getParent()) resolve while signed out.
+            Registered ONCE here — never also inside a branch (v7 collapses
+            duplicate names; App.distinctRouteNames.test.ts pins it). */}
+        <Stack.Screen
+          name="Legal"
+          component={LegalScreen}
+          options={{ presentation: 'modal' }}
+        />
       </Stack.Navigator>
     </NavigationContainer>
   );

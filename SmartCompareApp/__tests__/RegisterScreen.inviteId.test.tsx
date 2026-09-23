@@ -89,12 +89,13 @@ describe('RegisterScreen — invite_id forwarding (F3.5)', () => {
   });
 
   it('forwards invite_id from route.params to authService.register', async () => {
-    const { getByPlaceholderText, getByText } = renderScreen({
+    const { getByTestId, getByPlaceholderText, getByText } = renderScreen({
       invite_id: 'invite-uuid-1',
     });
     fireEvent.changeText(getByPlaceholderText('auth.email'), 'invitee@example.com');
     fireEvent.changeText(getByPlaceholderText('auth.password'), 'StrongPass1!');
     fireEvent.changeText(getByPlaceholderText('auth.confirmPassword'), 'StrongPass1!');
+    fireEvent.press(getByTestId('consent-checkbox')); // W3-16: consent precondition
     // Button title — RNTL's fireEvent.press walks up to the TouchableOpacity ancestor.
     fireEvent.press(getByText('auth.register'));
     await waitFor(() => expect(mockRegister).toHaveBeenCalled());
@@ -109,10 +110,11 @@ describe('RegisterScreen — invite_id forwarding (F3.5)', () => {
   });
 
   it('omits invite_id (passes undefined inside options) when route.params is empty', async () => {
-    const { getByPlaceholderText, getByText } = renderScreen(undefined);
+    const { getByTestId, getByPlaceholderText, getByText } = renderScreen(undefined);
     fireEvent.changeText(getByPlaceholderText('auth.email'), 'fresh@example.com');
     fireEvent.changeText(getByPlaceholderText('auth.password'), 'StrongPass1!');
     fireEvent.changeText(getByPlaceholderText('auth.confirmPassword'), 'StrongPass1!');
+    fireEvent.press(getByTestId('consent-checkbox')); // W3-16: consent precondition
     fireEvent.press(getByText('auth.register'));
     await waitFor(() => expect(mockRegister).toHaveBeenCalled());
     expect(mockRegister).toHaveBeenCalledWith(

@@ -12,6 +12,7 @@ import {
   isDeadlineError,
   SOCIAL_LOGIN_TIMEOUT_MS,
 } from './fetchWithDeadline';
+import type { ConsentPayload } from './consent';
 // Native modules loaded lazily — crashes Expo Go if imported at top level
 let GoogleSignin: any = null;
 let AppleAuthentication: any = null;
@@ -108,6 +109,8 @@ export interface RegisterOptions {
   name?: string;
   inviteId?: string;
   inviteCode?: string;
+  /** W3-16: ToS acceptance + 13+ attestation. Sent ONLY when present. */
+  consent?: ConsentPayload;
 }
 
 /**
@@ -144,6 +147,7 @@ export async function register(
         ...(options.name ? { name: options.name } : {}),
         ...(options.inviteId ? { invite_id: options.inviteId } : {}),
         ...(options.inviteCode ? { invite_code: options.inviteCode } : {}),
+        ...(options.consent ?? {}),
       },
       fingerprint ? { headers: { 'X-Device-Fingerprint': fingerprint } } : undefined,
     );
@@ -688,7 +692,7 @@ export function configureGoogleSignIn() {
 /**
  * Sign in with Google. Gets ID token from native SDK, sends to backend.
  */
-export async function signInWithGoogle(): Promise<AuthResponse> {
+export async function signInWithGoogle(consent?: ConsentPayload): Promise<AuthResponse> {
   try {
     const gs = getGoogleSignin();
     if (!gs) return { success: false, error: 'Google Sign-In not available (requires development build)' };
@@ -740,8 +744,13 @@ export async function signInWithGoogle(): Promise<AuthResponse> {
     // working configuration is to skip the check. The FE therefore sends NO
     // nonce: the previous decode-and-echo block was dead at best (skip ON →
     // Supabase ignores it) and auth-breaking at worst (skip OFF → hash-of-hash
-    // mismatch). Final body is exactly { provider, id_token }.
-    const body: Record<string, string> = { provider: 'google', id_token: idToken };
+    // mismatch). Final body is exactly { provider, id_token } — plus the W3-16
+    // consent fields ONLY when the screen passed a consent object.
+    const body: Record<string, string | boolean> = {
+      provider: 'google',
+      id_token: idToken,
+      ...(consent ?? {}),
+    };
 
     // W3-3 (MB-NETWORK-CONTRACT-03): social sign-in must carry the same device
     // binding /register has sent since Bundle A (:131-148). Without it every
@@ -854,7 +863,7 @@ export async function isAppleSignInAvailable(): Promise<boolean> {
 /**
  * Sign in with Apple. Gets identity token from native SDK, sends to backend with nonce.
  */
-export async function signInWithApple(): Promise<AuthResponse> {
+export async function signInWithApple(consent?: ConsentPayload): Promise<AuthResponse> {
   try {
     const apple = getAppleAuth();
     const crypto = getCrypto();
@@ -930,6 +939,7 @@ export async function signInWithApple(): Promise<AuthResponse> {
             provider: 'apple',
             id_token: idToken,
             nonce: rawNonce,
+            ...(consent ?? {}),
           }),
         },
         SOCIAL_LOGIN_TIMEOUT_MS

@@ -27,6 +27,8 @@ import { tryReadClipboardForInviteCode } from '../services/clipboardFallbackServ
 import { AuthStackParamList } from '../types';
 import { colors, spacing, radii, typography, shadows } from '../theme';
 import { Button } from '../components/Button';
+import { ConsentRow, LegalDoc } from '../components/ConsentRow';
+import { buildConsentPayload } from '../services/consent';
 
 type RegisterScreenProps = NativeStackScreenProps<AuthStackParamList, 'Register'> & {
   onRegisterSuccess: () => void;
@@ -62,6 +64,10 @@ export default function RegisterScreen({ navigation, route, onRegisterSuccess }:
   const [confirmError, setConfirmError] = useState('');
   const [socialLoading, setSocialLoading] = useState('');
   const [showApple, setShowApple] = useState(false);
+  // W3-16 — explicit Terms acceptance + 13+ attestation, gating every
+  // account-creating action on this screen.
+  const [consentAccepted, setConsentAccepted] = useState(false);
+  const [consentError, setConsentError] = useState(false);
 
   // Format: QR- followed by 6 chars from an unambiguous alphabet (no I/O/1/0).
   // Server is authoritative on validity; client just guards the obvious shape.
@@ -119,11 +125,26 @@ export default function RegisterScreen({ navigation, route, onRegisterSuccess }:
     setClipboardCandidate(null);
   };
 
+  const handleConsentToggle = () => {
+    setConsentAccepted((prev) => !prev);
+    setConsentError(false);
+  };
+
+  // W3-16 — Legal is registered on the ROOT navigator; Register lives in the
+  // nested AuthStack, so the navigate goes through the parent.
+  const handleOpenLegal = (doc: LegalDoc) => {
+    navigation.getParent()?.navigate('Legal', { doc });
+  };
+
   const handleGoogleSignIn = async () => {
+    if (!consentAccepted) {
+      setConsentError(true);
+      return;
+    }
     setSocialLoading('google');
     setError('');
     try {
-      const result = await signInWithGoogle();
+      const result = await signInWithGoogle(buildConsentPayload());
       if (result.success) {
         onRegisterSuccess();
       } else if (result.error !== 'Sign-in cancelled') {
@@ -147,10 +168,14 @@ export default function RegisterScreen({ navigation, route, onRegisterSuccess }:
   };
 
   const handleAppleSignIn = async () => {
+    if (!consentAccepted) {
+      setConsentError(true);
+      return;
+    }
     setSocialLoading('apple');
     setError('');
     try {
-      const result = await signInWithApple();
+      const result = await signInWithApple(buildConsentPayload());
       if (result.success) {
         onRegisterSuccess();
       } else if (result.error !== 'Sign-in cancelled') {
@@ -213,6 +238,11 @@ export default function RegisterScreen({ navigation, route, onRegisterSuccess }:
       setInviteCodeError('');
     }
 
+    if (!consentAccepted) {
+      setConsentError(true);
+      hasError = true;
+    }
+
     if (hasError) return;
 
     setLoading(true);
@@ -222,6 +252,7 @@ export default function RegisterScreen({ navigation, route, onRegisterSuccess }:
       const result = await register(email.trim().toLowerCase(), password, {
         inviteId,
         inviteCode: inviteCode || undefined,
+        consent: buildConsentPayload(),
       });
 
       if (result.success) {
@@ -424,6 +455,14 @@ export default function RegisterScreen({ navigation, route, onRegisterSuccess }:
                 </View>
                 {inviteCodeError ? <Text style={styles.fieldError}>{inviteCodeError}</Text> : null}
               </View>
+
+              <ConsentRow
+                checked={consentAccepted}
+                onToggle={handleConsentToggle}
+                onOpenLegal={handleOpenLegal}
+                error={consentError}
+                disabled={loading || !!socialLoading}
+              />
 
               <Button
                 title={t('auth.register')}

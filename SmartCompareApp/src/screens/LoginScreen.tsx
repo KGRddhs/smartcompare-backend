@@ -53,6 +53,8 @@ import { AuthStackParamList } from '../types';
 import { colors, spacing, radii } from '../theme';
 import { ChevronLeft, Mail } from 'lucide-react-native';
 import { DirectionalIcon } from '../components/primitives/DirectionalIcon';
+import { ConsentRow, LegalDoc } from '../components/ConsentRow';
+import { buildConsentPayload } from '../services/consent';
 
 type LoginScreenProps = {
   navigation: NativeStackNavigationProp<AuthStackParamList, 'Login'>;
@@ -197,6 +199,11 @@ export default function LoginScreen({ navigation, onLoginSuccess }: LoginScreenP
   const [passwordError, setPasswordError] = useState('');
   const [socialLoading, setSocialLoading] = useState<'' | 'apple' | 'google' | 'email'>('');
   const [showApple, setShowApple] = useState(false);
+  // W3-16 — Google/Apple CREATE an account on a first social sign-in, so
+  // they are gated by the same consent checkbox as Register. Email/password
+  // Sign in never creates an account and is NOT gated.
+  const [consentAccepted, setConsentAccepted] = useState(false);
+  const [consentError, setConsentError] = useState(false);
   // B9 — handle on the email field so the "Email" social pill has something
   // to act on (see handleEmailSocialPress).
   const emailInputRef = useRef<TextInput | null>(null);
@@ -207,11 +214,26 @@ export default function LoginScreen({ navigation, onLoginSuccess }: LoginScreenP
     }
   }, []);
 
+  const handleConsentToggle = () => {
+    setConsentAccepted((prev) => !prev);
+    setConsentError(false);
+  };
+
+  // W3-16 — Legal is registered on the ROOT navigator; Login lives in the
+  // nested AuthStack, so the navigate goes through the parent.
+  const handleOpenLegal = (doc: LegalDoc) => {
+    navigation.getParent()?.navigate('Legal', { doc });
+  };
+
   const handleGoogleSignIn = async () => {
+    if (!consentAccepted) {
+      setConsentError(true);
+      return;
+    }
     setSocialLoading('google');
     setError('');
     try {
-      const result = await signInWithGoogle();
+      const result = await signInWithGoogle(buildConsentPayload());
       if (result.success) {
         onLoginSuccess();
       } else if (result.error !== 'Sign-in cancelled') {
@@ -236,10 +258,14 @@ export default function LoginScreen({ navigation, onLoginSuccess }: LoginScreenP
   };
 
   const handleAppleSignIn = async () => {
+    if (!consentAccepted) {
+      setConsentError(true);
+      return;
+    }
     setSocialLoading('apple');
     setError('');
     try {
-      const result = await signInWithApple();
+      const result = await signInWithApple(buildConsentPayload());
       if (result.success) {
         onLoginSuccess();
       } else if (result.error !== 'Sign-in cancelled') {
@@ -378,6 +404,15 @@ export default function LoginScreen({ navigation, onLoginSuccess }: LoginScreenP
             defaultValue: 'Your advisor and credits are waiting.',
           })}
         </Text>
+
+        {/* W3-16 — consent gates the account-creating social buttons below. */}
+        <ConsentRow
+          checked={consentAccepted}
+          onToggle={handleConsentToggle}
+          onOpenLegal={handleOpenLegal}
+          error={consentError}
+          disabled={disabled}
+        />
 
         {/* SocialRow — Apple (iOS only), Google, Email */}
         <View style={styles.socialRow}>
