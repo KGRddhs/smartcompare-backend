@@ -1375,13 +1375,12 @@ def test_canary_runbook_publishes_to_the_channel_with_devices():
                 else dated[0]
             )
         else:
-            first = cited_line if anchor in cited_line else carriers[0]
-        if first not in cited:
-            cited = [first] + cited
-        else:
             assert date == "(not recorded)" or date.endswith(
                 " (section date)"
             ), f"unrecognised seeded date cell {date!r}: {row}"
+            first = cited_line if anchor in cited_line else carriers[0]
+        if first not in cited:
+            cited = [first] + cited
         if runtime != "(not recorded)":
             assert any(f"runtime {runtime}" in ln for ln in cited), (
                 f"seeded row states runtimeVersion {runtime} but no cited line "
