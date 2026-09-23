@@ -26,6 +26,16 @@ from app.services import api_budget_service as _llm_breaker
 
 logger = logging.getLogger(__name__)
 
+# W4-9 (PO-RECORDED-MEASURED-05, rulings R2(b)/(c)/(e)) — constant `error`
+# markers for the three catches whose result dict reaches a response body, an
+# SSE event, a persisted comparison row or the public share payload. str(e)
+# there carried OpenAI quota text + org ids; the raw text now goes ONLY to
+# logger.error(..., exc_info=True). Every consumer tests the key for
+# truthiness, so a non-empty constant preserves each branch.
+PARSE_PRODUCT_QUERY_ERROR = "product parsing unavailable"
+REVIEWS_EXTRACTION_ERROR = "reviews extraction unavailable"
+COMPARISON_GENERATION_ERROR = "verdict generation unavailable"
+
 # Bundle C § 1a diagnostic flag — gated on DEBUG_STAGE_TIMINGS=true so
 # the pros/cons raw-response hook adds zero overhead in production.
 # Cached at process init; tests reset via monkeypatch on _PROS_CONS_DIAG_FLAG.
@@ -1388,8 +1398,8 @@ async def parse_product_query(query: str) -> Tuple[Dict[str, Any], Dict[str, int
         return json.loads(result), usage
 
     except Exception as e:
-        logger.error(f"Product parsing error: {e}")
-        return {"products": [], "error": str(e)}, {"prompt_tokens": 0, "completion_tokens": 0}
+        logger.error(f"Product parsing error: {e}", exc_info=True)
+        return {"products": [], "error": PARSE_PRODUCT_QUERY_ERROR}, {"prompt_tokens": 0, "completion_tokens": 0}
 
 
 async def extract_specs(
@@ -1697,8 +1707,8 @@ SEARCH CONTEXT:
         return _normalize_review_response(data), usage
 
     except Exception as e:
-        logger.error(f"Reviews extraction error: {e}")
-        return {"average_rating": None, "error": str(e)}, {"prompt_tokens": 0, "completion_tokens": 0}
+        logger.error(f"Reviews extraction error: {e}", exc_info=True)
+        return {"average_rating": None, "error": REVIEWS_EXTRACTION_ERROR}, {"prompt_tokens": 0, "completion_tokens": 0}
 
 
 def _normalize_review_response(data: Dict[str, Any]) -> Dict[str, Any]:
@@ -2545,8 +2555,8 @@ Primary concern: {concern}
         return parsed, usage
 
     except Exception as e:
-        logger.error(f"Comparison generation error: {e}")
-        return {"winner_index": 0, "error": str(e)}, {"prompt_tokens": 0, "completion_tokens": 0}
+        logger.error(f"Comparison generation error: {e}", exc_info=True)
+        return {"winner_index": 0, "error": COMPARISON_GENERATION_ERROR}, {"prompt_tokens": 0, "completion_tokens": 0}
 
 
 # ============================================

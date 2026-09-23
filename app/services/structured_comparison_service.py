@@ -1523,6 +1523,24 @@ LLM_UNAVAILABLE_FRIENDLY_MESSAGE = (
     "Still warming up the comparison engine — give it another tap in a moment."
 )
 
+# W4-9 (PO-RECORDED-MEASURED-05) — the generic catch's user-facing copy. str(e)
+# on this path carries Supabase hostnames, table names, Postgres SQLSTATE codes
+# and upstream URLs; the raw text stays in the logger.error(..., exc_info=True)
+# at each catch and in Sentry, never in a response. Same register as
+# TIMEOUT_FRIENDLY_MESSAGE and inside the Build-Principle-#4 copy contract (no
+# "couldn't", no "try again", no "Failed to"). The FE i18n-substitutes by CODE
+# ("INTERNAL_ERROR"), so this string is the API-level fallback only.
+INTERNAL_ERROR_FRIENDLY_MESSAGE = (
+    "Something went wrong on our side — give it another tap in a moment."
+)
+
+# W4-9 — the ONLY other codeless failure copy the orchestrators produce (the
+# sync and stream parser exits). Named so text_routes' floors can tell a
+# legitimate codeless sentence from a leaked exception without a heuristic.
+PRODUCT_PARSE_FAILURE_MESSAGE = (
+    "Could not identify two products to compare. Try: 'iPhone 15 vs Galaxy S24'"
+)
+
 
 def _llm_preflight_short_circuits() -> bool:
     """W1-3 — True when the compare must NOT start because the `openai` breaker
@@ -3580,10 +3598,12 @@ class StructuredComparisonService:
                 self._track_gpt_cost(usage)
 
                 if not parsed.get("products") or len(parsed["products"]) < 2:
+                    # W4-9 R2(b): ship `parsed` with ONLY `products` — the
+                    # parser's own `error` key must never reach the wire.
                     return {
                         "success": False,
-                        "error": "Could not identify two products to compare. Try: 'iPhone 15 vs Galaxy S24'",
-                        "parsed": parsed
+                        "error": PRODUCT_PARSE_FAILURE_MESSAGE,
+                        "parsed": {"products": parsed.get("products") or []},
                     }
 
                 products = parsed["products"][:2]
@@ -3980,7 +4000,14 @@ class StructuredComparisonService:
             # I5.6 lever-2 — if the failure happened before the profile task was
             # awaited, cancel it so no orphaned coroutine is left pending.
             await _cancel_profile_task(_profile_task)
-            return {"success": False, "error": str(e), "total_cost": self.total_cost}
+            # W4-9: the raw text went to the log above; the response carries
+            # the unified envelope, never str(e).
+            return {
+                "success": False,
+                "error": INTERNAL_ERROR_FRIENDLY_MESSAGE,
+                "code": "INTERNAL_ERROR",
+                "total_cost": self.total_cost,
+            }
 
     async def compare_from_text_streaming(
         self,
@@ -4170,10 +4197,12 @@ class StructuredComparisonService:
                 self._track_gpt_cost(usage)
 
                 if not parsed.get("products") or len(parsed["products"]) < 2:
+                    # W4-9 R2(b): `parsed` carries ONLY `products` (mirror of
+                    # the sync exit).
                     yield ("error", {
                         "success": False,
-                        "error": "Could not identify two products to compare. Try: 'iPhone 15 vs Galaxy S24'",
-                        "parsed": parsed,
+                        "error": PRODUCT_PARSE_FAILURE_MESSAGE,
+                        "parsed": {"products": parsed.get("products") or []},
                     })
                     return
 
@@ -4785,8 +4814,13 @@ class StructuredComparisonService:
             # I5.6 lever-2 — cancel the profile task if the failure happened
             # before it was awaited (mirror of the sync path).
             await _cancel_profile_task(_profile_task)
+            # W4-9: the raw text went to the log above; the terminal event
+            # carries the unified envelope, never str(e).
             yield ("error", {
-                "success": False, "error": str(e), "total_cost": self.total_cost,
+                "success": False,
+                "error": INTERNAL_ERROR_FRIENDLY_MESSAGE,
+                "code": "INTERNAL_ERROR",
+                "total_cost": self.total_cost,
             })
 
     # ============================================

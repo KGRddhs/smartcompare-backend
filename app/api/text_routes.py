@@ -14,7 +14,9 @@ from pydantic import BaseModel, Field, model_validator
 
 from app.services.structured_comparison_service import (
     get_comparison_service,
-    get_regional_prices
+    get_regional_prices,
+    INTERNAL_ERROR_FRIENDLY_MESSAGE,
+    PRODUCT_PARSE_FAILURE_MESSAGE,
 )
 from app.api.auth_routes import get_optional_user
 from app.api.admin_routes import verify_admin_key
@@ -258,6 +260,29 @@ class QuickCompareRequest(BaseModel):
     region: str = "bahrain"
 
 
+_DEFAULT_FAILURE_MESSAGE = "Comparison failed"
+
+# W4-9 (PO-RECORDED-MEASURED-05) — the ONLY strings the orchestrators emit on
+# the codeless failure arm (the parser exits, plus this module's own `.get`
+# default). Anything ELSE arriving without a `code` did not come from a
+# reviewed exit and is treated as a leaked exception: redacted to the unified
+# INTERNAL_ERROR envelope. An allowlist, not a heuristic — a substring check on
+# "relation" or "Traceback" would pass the next unfamiliar message through.
+# Used by BOTH floors: the sync `_surface_comparison_failure` and the SSE
+# `error`-event floor in `text_compare_stream`.
+_CODELESS_SAFE_MESSAGES = frozenset({
+    _DEFAULT_FAILURE_MESSAGE,
+    PRODUCT_PARSE_FAILURE_MESSAGE,
+})
+
+
+def _is_codeless_safe_message(msg) -> bool:
+    # The isinstance check keeps both floors failing CLOSED: a non-str `error`
+    # (list/dict) is unhashable, and a bare frozenset membership test would
+    # raise TypeError at the last gate before the wire instead of redacting.
+    return isinstance(msg, str) and msg in _CODELESS_SAFE_MESSAGES
+
+
 # WS1 (genuine-bh-latency bundle, D2) — map a non-success comparison result to
 # the right wire surface. Replaces the old blanket `HTTPException(400)` that
 # collapsed EVERY failure code (including TIMEOUT) into BAD_REQUEST.
@@ -273,7 +298,7 @@ class QuickCompareRequest(BaseModel):
 # Returns a dict to early-return (CONTENT_UNAVAILABLE) or raises HTTPException.
 def _surface_comparison_failure(result: Dict):
     code = result.get("code")
-    error_msg = result.get("error", "Comparison failed")
+    error_msg = result.get("error", _DEFAULT_FAILURE_MESSAGE)
     if code == "CONTENT_UNAVAILABLE":
         # Preserve the structured body (FE matches the spec contract). Wrapping
         # in HTTPException would drop the layer/extra keys via str(detail).
@@ -301,6 +326,22 @@ def _surface_comparison_failure(result: Dict):
         raise HTTPException(
             status_code=400,
             detail={"code": code, "error": error_msg},
+        )
+    if not _is_codeless_safe_message(error_msg):
+        # W4-9 floor. Deliberately does NOT interpolate error_msg — that would
+        # re-create the disclosure in a lower-trust log sink; the exception is
+        # already logged with exc_info at its source catch. Status stays 400
+        # in this unit (ruling R4; 400 -> 500 is follow-up 05d).
+        logger.error(
+            "[W4-9] codeless comparison failure with an unrecognized message; "
+            "redacting to the INTERNAL_ERROR envelope"
+        )
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "INTERNAL_ERROR",
+                "error": INTERNAL_ERROR_FRIENDLY_MESSAGE,
+            },
         )
     raise HTTPException(status_code=400, detail=error_msg)
 
@@ -862,6 +903,29 @@ async def text_compare_stream(
                     complete_response = data
                 if event_type == "error":
                     had_error = True
+                    if isinstance(data, dict):
+                        # W4-9 R2(d) — SSE floor, symmetric with the sync
+                        # `_surface_comparison_failure` allowlist: a CODELESS
+                        # error payload whose message is not a reviewed
+                        # sentence is a leaked exception -> the unified
+                        # envelope. Coded events are never rewritten.
+                        if (
+                            not data.get("code")
+                            and not _is_codeless_safe_message(data.get("error"))
+                        ):
+                            data["error"] = INTERNAL_ERROR_FRIENDLY_MESSAGE
+                            data["code"] = "INTERNAL_ERROR"
+                        # W4-9 — the orchestrator has no Request, so the ROUTE
+                        # stamps the correlation id onto error events only,
+                        # only when absent (the error_handler envelope
+                        # contract). Double getattr: a request double without
+                        # `.state` must not crash the stream.
+                        if "request_id" not in data:
+                            data["request_id"] = getattr(
+                                getattr(request, "state", None),
+                                "request_id",
+                                "unknown",
+                            )
 
                 if client_gone:
                     # Client already left: keep draining so the final payload is
