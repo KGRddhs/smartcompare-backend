@@ -102,4 +102,33 @@ describe('deviceFingerprint', () => {
     expect(b).toBe(c);
     expect(SecureStore.getItemAsync).toHaveBeenCalledTimes(1);
   });
+
+  /**
+   * W3-3 C5 (RULING R1) — ONE transient failure must not poison the process.
+   *
+   * `inflight = null` runs only on the success path (deviceFingerprint.ts:37),
+   * so a single SecureStore/crypto rejection leaves the REJECTED promise
+   * parked in `inflight` and every later call returns it: the device sends no
+   * fingerprint for the rest of the process lifetime. Register already
+   * swallows that failure silently, and W3-3 adds two more tolerant call sites
+   * (both social sign-ins and every share), so this unit is what turns one
+   * keychain hiccup into a device-wide, session-long anti-farming blind spot.
+   *
+   * Mutation that reddens this after the fix: revert the
+   * `.catch((e) => { inflight = null; throw e; })` on the IIFE.
+   */
+  it('retries after a transient SecureStore failure instead of replaying the rejection', async () => {
+    const err = new Error('keychain busy');
+    (SecureStore.getItemAsync as jest.Mock)
+      .mockRejectedValueOnce(err)
+      .mockResolvedValue('nonce-ok');
+
+    await expect(getDeviceFingerprint()).rejects.toBe(err);
+    await expect(getDeviceFingerprint()).resolves.toBe(
+      'hash(app.qaren.test|iPhone15,2/21D|nonce-ok)',
+    );
+
+    expect(SecureStore.getItemAsync).toHaveBeenCalledTimes(2);
+    expect(SecureStore.setItemAsync).not.toHaveBeenCalled();
+  });
 });

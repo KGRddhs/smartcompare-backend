@@ -29,6 +29,7 @@ import { useTranslation } from 'react-i18next';
 import { MessageCircle, Copy as CopyIcon, Send, AtSign, Camera, Sparkles, Gift } from 'lucide-react-native';
 import { colors, spacing, radii, typography } from '../theme';
 import { createShare, ReferralError, ShareTarget, CreateShareResult } from '../services/referralService';
+import { getDeviceFingerprint } from '../services/deviceFingerprint';
 
 export interface ShareBottomSheetComparison {
   id: string;
@@ -153,10 +154,26 @@ export default function ShareBottomSheet({
     setErrorMessage(null);
     setSubmitting(target);
     try {
+      // W3-3 (MB-NETWORK-CONTRACT-04): `deviceFingerprintHash` has been an
+      // optional prop nobody sets since this sheet shipped — ResultsScreen, the
+      // only mount, passes five props and not this one — so every invite row
+      // was written with device_fingerprint_hash NULL and
+      // abuse_detection_service's SAME_DEVICE control was dead. Resolve it here
+      // instead; an explicit prop still wins, and a fingerprint failure never
+      // blocks a share (the inner catch is deliberate: without it the rejection
+      // reaches the outer catch, renders an error and never calls createShare).
+      let fp: string | undefined = deviceFingerprintHash;
+      if (!fp) {
+        try {
+          fp = await getDeviceFingerprint();
+        } catch {
+          fp = undefined;
+        }
+      }
       const result = await createShare({
         comparison_id: comparison.id,
         share_target: target,
-        device_fingerprint_hash: deviceFingerprintHash,
+        device_fingerprint_hash: fp,
         privacy: {
           show_name: privacy.name,
           show_result: privacy.result,

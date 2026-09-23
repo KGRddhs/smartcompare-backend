@@ -36,7 +36,17 @@ export async function getDeviceFingerprint(): Promise<string> {
     cached = hash;
     inflight = null;
     return hash;
-  })();
+  })().catch((e) => {
+    // W3-3 C5: `inflight` was cleared only on the success path, so ONE
+    // transient SecureStore/crypto rejection parked the rejected promise here
+    // and every later call replayed it — the device then sent no fingerprint
+    // for the rest of the process lifetime. All three call sites (register,
+    // both social sign-ins, every share) swallow the failure silently, so the
+    // symptom is invisible. Clear it and rethrow: the next call re-reads
+    // SecureStore; `cached` is untouched, so the success path is unchanged.
+    inflight = null;
+    throw e;
+  });
 
   return inflight;
 }
