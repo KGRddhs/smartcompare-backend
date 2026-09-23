@@ -34,6 +34,7 @@ import { Chip } from '../components/Chip';
 import { Button } from '../components/Button';
 import { CounterTicker } from '../components/CounterTicker';
 import { RootStackParamList } from '../types';
+import { backOrExit, exitToBranchRoot } from '../utils/branchRoot';
 import {
   submitInviteeQuiz,
   ReferralError,
@@ -89,7 +90,7 @@ export default function InviteeQuizScreen({ navigation, route }: Props) {
 
   const handleBack = () => {
     if (step === 0) {
-      navigation.goBack();
+      backOrExit(navigation);
     } else {
       setStep(step - 1);
     }
@@ -270,9 +271,7 @@ export default function InviteeQuizScreen({ navigation, route }: Props) {
               })}
             />
             <TouchableOpacity
-              onPress={() =>
-                navigation.reset({ index: 0, routes: [{ name: 'Main' as never }] })
-              }
+              onPress={() => exitToBranchRoot(navigation)}
               accessibilityRole="button"
               accessibilityLabel={t('referrals.quiz.skipSignup')}
               style={styles.skipLinkWrap}

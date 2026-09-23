@@ -34,6 +34,7 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useTranslation } from 'react-i18next';
 import { colors, spacing, radii, typography } from '../theme';
 import { RootStackParamList } from '../types';
+import { backOrExit, exitToBranchRoot } from '../utils/branchRoot';
 import {
   resolveInvite,
   ReferralError,
@@ -113,12 +114,10 @@ export default function ReferralLandingScreen({ navigation, route }: Props) {
             title={t('referrals.landing.openQaren')}
             variant="primary"
             onPress={() => {
-              // "Open Qaren" — drop the user into the main app flow. If they're
-              // unauth they'll hit Auth; if they're authed they'll see Home.
-              navigation.reset({
-                index: 0,
-                routes: [{ name: 'Main' as never }],
-              });
+              // "Open Qaren" — reset onto the root of whichever branch the
+              // root navigator has mounted (Auth / Onboarding / Main), read
+              // from its own route names at press time.
+              exitToBranchRoot(navigation);
             }}
             accessibilityLabel={t('referrals.landing.openQaren')}
           />
@@ -153,21 +152,18 @@ export default function ReferralLandingScreen({ navigation, route }: Props) {
   };
 
   const handleSkipPath = () => {
-    // Cool path: drop the invitee into the main app flow. They'll hit
-    // Auth (unauth) or Main (authed); the invitee credit is applied
-    // server-side at signup time so they can revisit the comparison
-    // from History after registering.
-    navigation.reset({
-      index: 0,
-      routes: [{ name: 'Main' as never }],
-    });
+    // Cool path: reset onto the root of the mounted branch — Auth (unauth),
+    // Onboarding (preferences pending) or Main (authed); the invitee credit
+    // is applied server-side at signup time so they can revisit the
+    // comparison from History after registering.
+    exitToBranchRoot(navigation);
   };
 
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity
-          onPress={() => navigation.goBack()}
+          onPress={() => backOrExit(navigation)}
           style={styles.headerButton}
           accessibilityLabel={t('common.back', { defaultValue: 'Back' })}
         >

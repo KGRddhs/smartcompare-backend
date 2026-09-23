@@ -82,6 +82,13 @@ const mockNavigation: any = {
   navigate: jest.fn(),
   goBack: jest.fn(),
   reset: jest.fn(),
+  // W3-4: the screens' exit controls now read the navigator's own
+  // mounted route names (and ask whether there is anything to go back
+  // to) instead of hard-coding 'Main'. Without these two the press
+  // handlers would throw `navigation.getState is not a function` /
+  // `navigation.canGoBack is not a function`. Assertions unchanged.
+  getState: () => ({ routeNames: ['Auth', 'ReferralLanding', 'InviteeQuiz'] }),
+  canGoBack: () => true,
 };
 
 const baseRoute: any = {
