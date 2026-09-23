@@ -35,7 +35,7 @@ branch; force-added on the wip branch so it survives).
 | W3-4 unauth reset | `sc-w3-reset` | 366 L + 12 rulings | `wip/s65d-W3-4-partial` — red done (3 new suites, 4 existing adjusted) |
 | W3-6 password reset | `sc-w3-pwreset` | 385 L + 14 rulings | `wip/s65d-W3-6-partial` — red done (5 client suites + 1 backend) |
 | W3-15 push tap targets | `sc-w3-push` | 433 L + 2 ruling passes | `wip/s65d-W3-15-partial` — **green well advanced** (`src/navigation/linking.ts`, `src/services/pushNavigation.ts`, App.tsx, types.ts) |
-| W3-9 lucide fence | `sc-w3-lucide` | 658 L + 13 rulings | `wip/s65d-W3-9-partial` — red done (test-only unit) |
+| W3-9 lucide fence | `sc-w3-lucide` | 658 L + 13 rulings | `wip/s65d-W3-9-partial` — red AND a green (the `lucideFence.ts` helper + the b1 rewire, 21/21 target tests, 7-mutant harness) were on disk; session 66 finished it as TEST-ONLY hardening and merged it as PR #164 (2026-09-23) |
 | W3-13 channel freshness | `sc-w3-ci` | 745 L + 2 ruling passes | `wip/s65d-W3-13-partial` — **green well advanced** (`scripts/check_channel_freshness.py`, ci.yml, runbook, gates) |
 | W3-14 error copy | `sc-w3-copy` | 1116 L + 20 rulings | none — clean, never started |
 | W3-11b/c/d Arabic pack | `sc-w3-ar` | 769 L + 14 rulings | none — clean, never started |
@@ -61,7 +61,8 @@ reverts to base and has already destroyed a unit once in this campaign).
    left is optional test-only fence hardening: `require()`, dynamic `import()`,
    `import =` and `.js`/`.jsx` sources are not fenced, and any of them silently
    re-adds all 1,703 icon modules with CI green. **Phones still run the pre-B1 bundle**
-   until `eas update --branch preview --clear-cache`.
+   until `eas update --branch preview --clear-cache`. Correction 2026-09-23: the unit was
+   NOT closed; the optional fence hardening shipped test-only as #164.
 2. **W3-15: `@react-navigation/*` ships ESM only (no `lib/commonjs`), so its real
    router has never executed under jest** — every suite that touched the package mocked
    it. Testing real deep-link resolution needs a narrow `babel-jest` transform for
