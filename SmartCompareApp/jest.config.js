@@ -11,8 +11,25 @@ module.exports = {
       isolatedModules: true,
     },
   },
+  // W3-15 — @react-navigation/* ships ESM only (lib/module; there is no
+  // lib/commonjs), so the real getStateFromPath / getActionFromState /
+  // createNavigationContainerRef had never loaded under this runner: every
+  // suite that touched the package jest.mock()ed it. src/navigation/linking.ts
+  // is a real importer, so the package's own .js must go through babel-jest +
+  // babel-preset-expo (the preset Metro uses; both already installed — no
+  // dependency change). Both transform keys are written out explicitly rather
+  // than relying on jest's preset merge: ts-jest keeps every .ts/.tsx exactly
+  // as before, and the second key is NARROW — only
+  // node_modules/@react-navigation/**/*.js, nothing else under node_modules.
+  transform: {
+    '^.+\\.tsx?$': 'ts-jest',
+    '[\\\\/]node_modules[\\\\/]@react-navigation[\\\\/].+\\.js$': [
+      'babel-jest',
+      { presets: ['babel-preset-expo'], babelrc: false, configFile: false },
+    ],
+  },
   transformIgnorePatterns: [
-    'node_modules/(?!(@expo-google-fonts|expo-localization|@react-native-async-storage|react-native|@react-native|lucide-react-native|react-i18next|i18next|expo-haptics|expo-image|react-native-reanimated)/)',
+    'node_modules/(?!(@react-navigation|@expo-google-fonts|expo-localization|@react-native-async-storage|react-native|@react-native|lucide-react-native|react-i18next|i18next|expo-haptics|expo-image|react-native-reanimated)/)',
   ],
   moduleNameMapper: {
     '^react-native$': '<rootDir>/__mocks__/react-native.ts',

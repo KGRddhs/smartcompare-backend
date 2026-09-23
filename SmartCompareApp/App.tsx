@@ -13,7 +13,7 @@
 import * as Sentry from '@sentry/react-native';
 import React, { useState, useEffect, useCallback } from 'react';
 import { I18nManager, StyleSheet } from 'react-native';
-import { NavigationContainer, getStateFromPath, type LinkingOptions } from '@react-navigation/native';
+import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Home, Clock, User as UserIcon } from 'lucide-react-native';
@@ -78,6 +78,11 @@ import { verifyAuth, initializeAuth, clearSession, configureGoogleSignIn, type U
 // the Auth stack instead of leaving MainTabs mounted with no token.
 import { onSessionInvalid } from './src/services/sessionEvents';
 import { tryRegisterPushToken } from './src/services/pushTokenService';
+// W3-15 — the deep-link config used to be a non-exported `const` in this
+// component, so nothing outside the render tree could resolve a URL. It now
+// lives in one place and is shared by the container and the push-tap handler.
+import { linking, navigationRef } from './src/navigation/linking';
+import { installPushTapListeners, onNavigationReady } from './src/services/pushNavigation';
 // Bundle B/C/D Task 2.11 — Play Install Referrer hand-off into the
 // module-scoped invite-code slot consumed later by RegisterScreen.
 import { tryReadPlayInstallReferrer } from './src/services/playInstallReferrerService';
@@ -277,6 +282,14 @@ function App() {
     return unsubscribe;
   }, []);
 
+  // W3-15 — arm the notification-response listener and the foreground
+  // presentation handler at boot. Deliberately its OWN effect and NOT part of
+  // the awaited init() block: a tap that launched the app arrives while the
+  // splash is still up, so the listener has to exist before auth resolves —
+  // it parks the tap and onNavigationReady below drains it. The returned
+  // unsubscribe is the effect's cleanup.
+  useEffect(() => installPushTapListeners(), []);
+
   const handleSplashFinish = useCallback(() => {
     setShowSplash(false);
   }, []);
@@ -342,44 +355,8 @@ function App() {
     return <UpdateRequiredScreen updateUrl={forcedUpdate.updateUrl} />;
   }
 
-  // Deep-link config — qaren.app/c/{token}?ref={code} resolves to
-  // ReferralLanding pre-auth (gradual commitment per design 3.5/3.6).
-  // qaren.app/r/{code} + qaren://r/{code} resolve to Register with the
-  // code pre-filled (Bundle A §1.2). qaren://redeem?code={code} is also
-  // supported via the getStateFromPath rewrite below.
-  const linking: LinkingOptions<RootStackParamList> = {
-    prefixes: ['qaren://', 'https://qaren.app'],
-    config: {
-      screens: {
-        ReferralLanding: 'c/:share_token',
-        InviteeQuiz: 'q/:share_token',
-        Auth: {
-          screens: {
-            Register: {
-              path: 'r/:code',
-              parse: { code: (c: string) => c.toUpperCase() },
-            },
-          },
-        },
-      },
-    },
-    getStateFromPath: (path: string, options: any) => {
-      // Rewrite `redeem?code=QR-XXXXXX` → `r/QR-XXXXXX` so the existing
-      // pattern handles both URL shapes from social-share copy.
-      const redeemMatch = path.match(/^\/?redeem\??(.*)$/);
-      if (redeemMatch) {
-        const params = new URLSearchParams(redeemMatch[1]);
-        const code = params.get('code');
-        if (code) {
-          return getStateFromPath(`r/${code.toUpperCase()}`, options);
-        }
-      }
-      return getStateFromPath(path, options);
-    },
-  };
-
   return (
-    <NavigationContainer linking={linking}>
+    <NavigationContainer ref={navigationRef} linking={linking} onReady={onNavigationReady}>
       <StatusBar style="auto" />
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {!isAuthenticated ? (
