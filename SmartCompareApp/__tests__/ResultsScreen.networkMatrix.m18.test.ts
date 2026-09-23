@@ -98,9 +98,13 @@ describe('HomeScreen — MB-perf-03/MB-contract-02 (source)', () => {
     // approximating; re-pinning the old literal would pin a shape the
     // source no longer has (and cannot fail for the right reason).
     expect(HOME).toMatch(/from '\.\.\/services\/errorCopy'/);
+    // W3-14 (rulings R-15/R-16): both calls now pass the 429's seconds as
+    // `{ count: parsed.retryAfterSeconds }`, which wraps the call across
+    // lines — every join is `\s*` so the formatted source matches. This is
+    // also the call-site anchor for HomeScreen.rateLimitedSeconds.w314.
     const coded =
       HOME.match(
-        /Alert\.alert\(\s*t\('common\.error'\),\s*t\(friendlyErrorKey\(parsed\.code\)\)\s*\)/g,
+        /Alert\.alert\(\s*t\('common\.error'\)\s*,\s*t\(\s*friendlyErrorKey\(\s*parsed\.code\s*\)\s*,\s*\{\s*count\s*:\s*parsed\.retryAfterSeconds\s*\}\s*\)\s*,?\s*\)/g,
       ) || [];
     // One per compare path: the SSE/text terminal onError and the URL catch.
     expect(coded.length).toBe(2);

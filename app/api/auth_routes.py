@@ -6,7 +6,7 @@ import logging
 import os
 import re
 from fastapi import APIRouter, HTTPException, Depends, Header
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 from typing import Any, List, Literal, Optional
 from starlette.requests import Request
 from app.middleware.rate_limiter import limiter, audit_client_ip
@@ -1267,6 +1267,80 @@ async def update_reengagement_subs(
             },
         )
     return {"success": True, "notification_types": new_types}
+
+
+class PreferenceTogglesBody(BaseModel):
+    """W3-14 -- body for ``PUT /preference-toggles``.
+
+    The two master toggles only. Unlike ``UserPreferencesRequest`` there is
+    NO ``priorities`` requirement, so a user without priorities can still
+    exercise the AI-sharing (PDPL) opt-out and the notifications master.
+    At least one key must be provided.
+    """
+
+    ai_sharing_enabled: Optional[bool] = None
+    notifications_enabled: Optional[bool] = None
+
+    @model_validator(mode="after")
+    def _at_least_one(self):
+        if self.ai_sharing_enabled is None and self.notifications_enabled is None:
+            raise ValueError(
+                "provide ai_sharing_enabled and/or notifications_enabled"
+            )
+        return self
+
+
+@router.put("/preference-toggles")
+@limiter.limit("10/minute")
+async def update_preference_toggles(
+    request: Request,
+    body: PreferenceTogglesBody,
+    current_user: dict = Depends(get_current_user),
+):
+    """Update ``ai_sharing_enabled`` and/or ``notifications_enabled`` only.
+
+    W3-14: additive single-purpose route shaped like ``/reengagement-subs``.
+    Reads-modifies-writes ``users.preferences`` touching ONLY the provided
+    key(s) -- never ``priorities``, ``_sources``, ``notification_types`` or
+    ``preferences_completed``, and never via ``save_user_preferences``.
+    Uses the user-scoped Supabase client so RLS enforces row ownership.
+    """
+    access_token = current_user.get("access_token")
+    client = (
+        get_user_supabase_client(access_token) if access_token
+        else get_admin_supabase_client()
+    )
+    user_id = current_user["id"]
+
+    try:
+        row_resp = client.table("users").select("preferences").eq(
+            "id", user_id
+        ).single().execute()
+        current_prefs = (row_resp.data or {}).get("preferences") or {}
+        for key in ("ai_sharing_enabled", "notifications_enabled"):
+            value = getattr(body, key)
+            if value is not None:
+                current_prefs[key] = value
+        client.table("users").update(
+            {"preferences": current_prefs}
+        ).eq("id", user_id).execute()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "[AUTH] preference-toggles update failed for %s: %s: %r",
+            user_id, type(exc).__name__, exc,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "code": "INTERNAL_ERROR",
+                "error": "Failed to update preferences",
+            },
+        )
+    return {
+        "success": True,
+        "ai_sharing_enabled": current_prefs.get("ai_sharing_enabled"),
+        "notifications_enabled": current_prefs.get("notifications_enabled"),
+    }
 
 
 # ============================================

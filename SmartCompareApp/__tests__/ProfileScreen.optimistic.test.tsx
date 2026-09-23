@@ -4,7 +4,8 @@
  * Contract:
  *   - 5 toggles: aiSharing + notificationsMaster + 3 sub-toggles
  *     (decision_insight, cohort_curiosity, decision_retrospective)
- *   - aiSharing + notificationsMaster → PUT /preferences (full body)
+ *   - aiSharing + notificationsMaster → PUT /preference-toggles (W3-14;
+ *     was PUT /preferences with the full body, which required priorities)
  *   - 3 sub-toggles → PUT /reengagement-subs (3-field body, plural keys
  *     per Backend 228ff63)
  *   - Optimistic update FIRST, rollback on failure with `Alert`

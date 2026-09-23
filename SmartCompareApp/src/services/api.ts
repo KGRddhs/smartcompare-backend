@@ -509,6 +509,28 @@ export async function putReengagementSubs(
 }
 
 /**
+ * W3-14 — the two master toggles (AI-sharing opt-out, notifications) go to a
+ * dedicated additive route instead of the full /preferences body, whose
+ * `priorities` field is required (min 1) — so a user WITHOUT priorities can
+ * still exercise the privacy control. The backend read-modify-writes
+ * `users.preferences` touching only the provided key(s). 10/min; auth required.
+ */
+export interface PreferenceTogglesBody {
+  ai_sharing_enabled?: boolean;
+  notifications_enabled?: boolean;
+}
+
+export async function putPreferenceToggles(body: PreferenceTogglesBody): Promise<{
+  success: boolean;
+  ai_sharing_enabled?: boolean | null;
+  notifications_enabled?: boolean | null;
+  error?: string;
+}> {
+  const response = await api.put('/api/v1/auth/preference-toggles', body);
+  return response.data;
+}
+
+/**
  * SSE streaming comparison.
  * Uses fetch + ReadableStream (EventSource not reliable in React Native).
  * Falls back to non-streaming on failure.
@@ -920,7 +942,28 @@ export async function trackEvent(
   await trackEvents([{ event_type, event_data, comparison_id }]);
 }
 
-export function parseApiError(error: any): { message: string; code: string | null } {
+// W3-14 — both backend 429 classes (slowapi limits and the ACCOUNT_LOCKED
+// lockout) put `retry_after_seconds` at the TOP level of the envelope since
+// W1-9. Mirror `error_handler._detail_retry_after`: only a positive integer
+// counts (bool / float / <= 0 / string rejected), and when it does not count
+// the key is ABSENT, so every existing `{ message, code }` consumer sees the
+// exact object it saw before.
+function withRetryAfter(
+  parsed: { message: string; code: string | null },
+  data: any,
+): { message: string; code: string | null; retryAfterSeconds?: number } {
+  const v = data?.retry_after_seconds;
+  if (typeof v === 'number' && Number.isInteger(v) && v > 0) {
+    return { ...parsed, retryAfterSeconds: v };
+  }
+  return parsed;
+}
+
+export function parseApiError(error: any): {
+  message: string;
+  code: string | null;
+  retryAfterSeconds?: number;
+} {
   const data = error?.response?.data;
   const status = error?.response?.status;
 
@@ -966,13 +1009,16 @@ export function parseApiError(error: any): { message: string; code: string | nul
   }
 
   if (data?.error) {
-    return { message: data.error, code: rawCode };
+    return withRetryAfter({ message: data.error, code: rawCode }, data);
   }
   if (data?.detail) {
-    return {
-      message: typeof data.detail === 'string' ? data.detail : 'Invalid request',
-      code: rawCode,
-    };
+    return withRetryAfter(
+      {
+        message: typeof data.detail === 'string' ? data.detail : 'Invalid request',
+        code: rawCode,
+      },
+      data,
+    );
   }
   if (error?.message) {
     return { message: error.message, code: rawCode };

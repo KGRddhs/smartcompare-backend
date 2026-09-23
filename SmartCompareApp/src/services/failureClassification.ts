@@ -10,6 +10,9 @@
  * The matrix (first match wins):
  *   1. USAGE_LIMIT (top-level err.code from the camera raw-fetch tagged
  *      error, or the axios response.data / detail shapes)  -> 'usage_limit'
+ *   1b. HTTP 429 that is NOT USAGE_LIMIT (a rate limit — W3-14):
+ *      a WAIT, never "No comparison loaded"; sits BELOW row 1
+ *      so a metering 429 still routes to the Paywall       -> 'timeout'
  *   2. HTTP 404                                            -> 'not_found'
  *   3. HTTP 401 (axios refresh-interceptor territory)      -> 'auth'
  *   4. code TIMEOUT / STREAM_TIMEOUT (any carrier)         -> 'timeout'
@@ -47,6 +50,7 @@ export function classifyLoadFailure(err: any): LoadFailureKind {
     err?.code;
 
   if (code === 'USAGE_LIMIT') return 'usage_limit';
+  if (status === 429) return 'timeout';
   if (status === 404) return 'not_found';
   if (status === 401) return 'auth';
   if (code === 'TIMEOUT' || code === 'STREAM_TIMEOUT') return 'timeout';

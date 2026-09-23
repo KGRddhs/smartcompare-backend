@@ -51,6 +51,7 @@ import { DirectionalIcon } from '../components/primitives/DirectionalIcon';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, spacing, radii, typography } from '../theme';
 import api, { parseApiError, updateProfile } from '../services/api';
+import { settingsErrorKey } from '../services/errorCopy';
 import {
   getSavedUser,
   clearSession,
@@ -137,7 +138,12 @@ export default function EditProfileScreen({ navigation, onAccountDeleted }: Prop
               onAccountDeleted?.();
             } catch (err) {
               setDeleting(false);
-              Alert.alert(t('editProfile.error.deleteTitle'), parseApiError(err).message);
+              // W3-14: catalog copy keyed by code, never the raw backend /
+              // axios string (DELETE /account is 1/minute, so a 429 is real).
+              Alert.alert(
+                t('editProfile.error.deleteTitle'),
+                t(settingsErrorKey(parseApiError(err).code, 'common.error')),
+              );
             }
           },
         },
