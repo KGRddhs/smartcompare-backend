@@ -20,7 +20,7 @@
 
 **Step 1:** Run `mcp__railway__list_variables` (service_id `7ab6a780-e4df-4f72-97c2-b95992b96312`) to confirm Firecrawl/Scrape.do/Serper API keys are set.
 
-**Step 2:** Curl `/admin/costs` with `X-Admin-Key: 9JE8mrED4TwH5U6qLBmvf-n214_Ch3LoBGboFbX62L4` to inspect: `firecrawl_lifetime_used`, `scrapedo_monthly_used`, `serper_monthly_used`, circuit breaker open/closed state per provider.
+**Step 2:** Curl `/admin/costs` with `X-Admin-Key: <ADMIN_API_KEY>` to inspect: `firecrawl_lifetime_used`, `scrapedo_monthly_used`, `serper_monthly_used`, circuit breaker open/closed state per provider.
 
 **Step 3:** Record findings in dispatcher session notes (so Lane 2 starts with known good state).
 
