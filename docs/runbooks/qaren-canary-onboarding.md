@@ -451,7 +451,7 @@ marked `(section date)` and the header line is cited in the notes.
 
 | date | channel | group id | gitCommitHash | runtimeVersion | sourcemaps uploaded | published by | notes |
 |---|---|---|---|---|---|---|---|
-| 2026-09-02 | preview | (not recorded) | `97b5f1501a1242c405fd3cf12bee9ab419db2bdd` | (not recorded) | (not recorded) | (not recorded) | M18/M20 set; `docs/CONTEXT_SESSION_LOG.md:131`, which names only "parallel session" as the publisher. Group id was never recorded — the gap this ledger closes. Still the live bundle as of 2026-09-11. |
+| 2026-09-02 | preview | (not recorded) | `97b5f1501a1242c405fd3cf12bee9ab419db2bdd` | (not recorded) | (not recorded) | (not recorded) | M18/M20 set; `docs/CONTEXT_SESSION_LOG.md:156`, which names only "parallel session" as the publisher. Group id was never recorded — the gap this ledger closes. Still the live bundle as of 2026-09-11. |
 | 2026-06-18 | preview | `3efa9d81` (short form only) | (not recorded) | (not recorded) | (not recorded) | (not recorded) | Wave 3 walk-fix wave; `docs/SESSION_BUNDLES.md:721`. `2cb4439` on that line is the BACKEND commit, not the bundle's. |
 | 2026-06-10 (section date) | preview | `ba52fdf9-e5c1-41cd-9bd4-cb5a71c183d7` | (not recorded) | (not recorded) | (not recorded) | (not recorded) | Bundle B Session 1 (pain events + auth cleanup); `docs/SESSION_BUNDLES.md:646`; date from the `:625` header (SHIPPED 2026-06-10). |
 | 2026-06-03 (section date) | preview | `90087c4f-ee62-4e4c-84e7-d0c17a62276f` | (not recorded) | (not recorded) | (not recorded) | (not recorded) | Bundle E S3 hot-fix wave 2; `docs/SESSION_BUNDLES.md:545`; date from the `:525` header (SHIPPED 2026-06-03). |

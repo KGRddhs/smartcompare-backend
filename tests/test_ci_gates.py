@@ -1229,6 +1229,17 @@ def test_channel_freshness_is_non_blocking_until_the_dated_flip():
 # ---------------------------------------------------------------------------
 
 
+def _seeded_row_anchor(cells: list) -> str:
+    """The content anchor of a seeded OTA-ledger row: the first 8 hex chars of
+    its backticked group id, else the first 7 of its backticked commit hash
+    (the short form the session docs use)."""
+    m = re.search(r"`([0-9a-f]{7,})", cells[2])
+    if m:
+        return m.group(1)[:8]
+    m = re.search(r"`([0-9a-f]{7,})", cells[3])
+    return m.group(1)[:7] if m else ""
+
+
 def test_canary_runbook_publishes_to_the_channel_with_devices():
     """`eas.json` binds `build.production.channel` to a build that was never
     made, so `--branch production` reaches ZERO phones; the only channel with
@@ -1334,13 +1345,39 @@ def test_canary_runbook_publishes_to_the_channel_with_devices():
         cite = re.search(r"docs/(SESSION_BUNDLES|CONTEXT_SESSION_LOG)\.md:(\d+)", notes)
         assert cite, f"seeded ledger row cites no source line: {row}"
         lines = source_lines[cite.group(1) + ".md"]
-        first = lines[int(cite.group(2)) - 1]
-        cited = [lines[int(n) - 1] for n in re.findall(r":(\d+)", notes)]
+        # Resolve the citation by CONTENT (the row's group id or commit hash),
+        # so a docs insertion above the cited line cannot redden this test:
+        # PR #167 added 25 lines to CONTEXT_SESSION_LOG.md and moved :131 to
+        # :156 between the local run and CI. The line number in the notes is
+        # a reader aid; it is honoured while it still carries the anchor.
+        anchor = _seeded_row_anchor(cells)
+        assert anchor, f"seeded ledger row carries no group id or commit hash: {row}"
+        carriers = [ln for ln in lines if anchor in ln]
+        assert carriers, f"no line of docs/{cite.group(1)}.md carries {anchor!r}: {row}"
+        cited_no = int(cite.group(2))
+        cited_line = lines[cited_no - 1] if cited_no <= len(lines) else ""
+        cited = [
+            lines[int(n) - 1]
+            for n in re.findall(r":(\d+)", notes)
+            if int(n) <= len(lines)
+        ]
         if re.fullmatch(r"\d{4}-\d{2}-\d{2}", date):
-            assert date in first, (
-                f"seeded row states {date} but its source line does not; mark it "
-                f"(section date) or (not recorded): {row}"
+            # A bare date must sit on a source line that also carries the
+            # row's anchor (the cited line when it is still accurate).
+            dated = [ln for ln in carriers if date in ln]
+            assert dated, (
+                f"seeded row states {date} but no source line carrying {anchor!r} "
+                f"does; mark it (section date) or (not recorded): {row}"
             )
+            first = (
+                cited_line
+                if (anchor in cited_line and date in cited_line)
+                else dated[0]
+            )
+        else:
+            first = cited_line if anchor in cited_line else carriers[0]
+        if first not in cited:
+            cited = [first] + cited
         else:
             assert date == "(not recorded)" or date.endswith(
                 " (section date)"
