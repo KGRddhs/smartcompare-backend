@@ -1222,6 +1222,7 @@ from app.services.price_service import (
     reconcile_pair_sizes,
     reconcile_pair_fairness,
     apply_region_currency_guard,
+    apply_prescoring_showable_guard,
     is_price_plausible,
     is_luxury_brand,
     is_supplement_query,
@@ -3650,6 +3651,20 @@ class StructuredComparisonService:
             except Exception as _e:  # noqa: BLE001 — never block the response
                 logger.warning("fairness reconciliation skipped (sync): %s", _e)
 
+            # W4-3 PRE-SCORING showable guard, ENABLE_PRESCORING_SHOWABLE_GUARD,
+            # default OFF. The response chokepoint pends a non-showable price only
+            # in the FINAL projection — after compute_scores below has picked the
+            # winner from the raw amount and after generate_comparison was handed
+            # it. Pend it HERE, in place. Order is load-bearing: AFTER fairness
+            # (which can re-select a candidate with a different url) and BEFORE the
+            # region-currency guard (a non-showable price pends in its own currency
+            # with its own reason; the region guard then hits its `unavailable`
+            # early-continue). Flag OFF: pure no-op.
+            try:
+                apply_prescoring_showable_guard(product_data)
+            except Exception as _e:  # noqa: BLE001 — never block the response
+                logger.warning("pre-scoring showable guard skipped (sync): %s", _e)
+
             # M13-11 PRE-SCORING region-currency guard (M18 CD-interactions-02),
             # ENABLE_REGION_CURRENCY_GUARD, default OFF. The response chokepoint
             # pends a currency-mismatched price only in the FINAL projection —
@@ -4283,6 +4298,20 @@ class StructuredComparisonService:
                 )
             except Exception as _e:  # noqa: BLE001 — never block the stream
                 logger.warning("fairness reconciliation skipped (stream): %s", _e)
+
+            # W4-3 PRE-SCORING showable guard, ENABLE_PRESCORING_SHOWABLE_GUARD,
+            # default OFF. Must run BEFORE the `specs` yield, the `prices` yield
+            # and compute_scores, so the winner, the dimension winners and the
+            # verdict input read the same price the user is allowed to see. Order
+            # is load-bearing: AFTER fairness (which can re-select a candidate with
+            # a different url) and BEFORE the region-currency guard (a non-showable
+            # price pends in its own currency with its own reason; the region
+            # guard then hits its `unavailable` early-continue). Flag OFF: pure
+            # no-op.
+            try:
+                apply_prescoring_showable_guard(product_data)
+            except Exception as _e:  # noqa: BLE001 — never block the stream
+                logger.warning("pre-scoring showable guard skipped (stream): %s", _e)
 
             # M13-11 PRE-SCORING region-currency guard (M18 CD-interactions-02),
             # ENABLE_REGION_CURRENCY_GUARD, default OFF. Must run BEFORE the

@@ -824,6 +824,25 @@ def region_currency_guard_enabled() -> bool:
     )
 
 
+def prescoring_showable_guard_enabled() -> bool:
+    """True iff the orchestrator pends a NON-SHOWABLE price BEFORE scoring
+    (default OFF).
+
+    W4-3 (PO-RECORDED-MEASURED-04). The correctness predicate that decides what
+    the user may SEE (``is_price_showable(..., enforce_correctness=True)``) ran
+    only at the response chokepoint — after compute_scores had picked
+    winner_index / dimension_winners / win_margin from the raw amount and after
+    the verdict was handed that amount — so the payload shipped ``price:
+    pending`` beside a win decided by the hidden price. Gates
+    ``apply_prescoring_showable_guard`` and response_builder's harvest of its
+    ``_prescoring_showable_rejected`` stash. Read PER CALL from os.getenv (never
+    at import); default OFF so flag-OFF is byte-identical to b63a8368.
+    """
+    return os.getenv("ENABLE_PRESCORING_SHOWABLE_GUARD", "").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
 def _convert_to_bhd(amount: float, currency: str) -> float:
     """Convert amount to BHD using the central FALLBACK_RATES table.
 
@@ -3141,6 +3160,63 @@ def apply_region_currency_guard(
         if "retailer" in pd:
             pd["retailer"] = None
         pd["_region_guard_rejected"] = "region_currency_mismatch"
+        changed = True
+    return changed
+
+
+def apply_prescoring_showable_guard(product_data: List[Dict[str, Any]]) -> bool:
+    """W4-3 PRE-SCORING showable pass (ENABLE_PRESCORING_SHOWABLE_GUARD, default
+    OFF). Pend every price the response chokepoint would refuse to SHOW, IN PLACE,
+    BEFORE compute_scores / the verdict / the SSE `prices` event read it. Pure, no
+    network. Returns True iff it changed a price; flag OFF returns False at once.
+
+    Mirrors the chokepoint's showable branch (response_builder's price-pending
+    loop) line for line so the two cannot drift: a non-dict price is left alone
+    (the chokepoint's SIB-5 branch owns it), an already-pending price keeps its own
+    reason (size_mismatch / unit_mismatch), the category is derived exactly as the
+    chokepoint derives it, and the WHOLE predicate is delegated to
+    ``is_price_showable(..., enforce_correctness=True)`` — no source-method test of
+    its own, so a showable ``converted_usd`` row is never blanked. The chokepoint
+    STAYS as the idempotent backstop for direct build_comparison_response callers
+    (the hard-cap partial path).
+
+    The reason is stashed on the PRODUCT dict as ``_prescoring_showable_rejected``
+    (never on the price — the #113 argument recorded on
+    apply_region_currency_guard), so response_builder can harvest it before its
+    ``unavailable`` early-continue. ``is_price_showable`` returns False for an
+    estimated / sample / low-floor row BEFORE stamping any ``guard_rejected``, so
+    the stash falls back to the documented reason ``not_showable``.
+
+    Order (load-bearing, both twins): AFTER reconcile_pair_fairness (which can
+    re-select a candidate with a different url) and BEFORE
+    apply_region_currency_guard — a non-showable price pends in its OWN currency
+    with its own reason, and the region guard then hits its ``unavailable``
+    early-continue.
+    """
+    if not prescoring_showable_guard_enabled():
+        return False
+    changed = False
+    for pd in product_data:
+        _price = pd.get("price")
+        if not isinstance(_price, dict):
+            continue
+        if _price.get("unavailable") is True:
+            continue
+        _name = pd.get("full_name") or pd.get("name") or ""
+        _cat = pd.get("category") or _infer_category_from_query(_name)
+        if is_price_showable(_name, _price, _cat, enforce_correctness=True):
+            continue
+        pd["price"] = make_pending_price(
+            currency=_price.get("currency") or "BHD",
+            reason="pending_genuine",
+            size=_price.get("size"),
+        )
+        pd["best_price"] = None
+        if "retailer" in pd:
+            pd["retailer"] = None
+        pd["_prescoring_showable_rejected"] = (
+            _price.get("guard_rejected") or "not_showable"
+        )
         changed = True
     return changed
 

@@ -1448,12 +1448,14 @@ def build_comparison_response(
         from app.services.price_service import (
             is_price_showable, make_pending_price, _infer_category_from_query,
             region_currency_guard_enabled,
+            prescoring_showable_guard_enabled,
         )
         from app.services.exchange_rate_service import get_region_currency
         # M13-11 — the request region's own currency, resolved once. Empty/unknown
         # region defaults to BHD (get_region_currency's contract).
         _region_currency = get_region_currency(region).upper()
         _region_guard_on = region_currency_guard_enabled()
+        _prescoring_guard_on = prescoring_showable_guard_enabled()
         for _pd_idx, pd_item in enumerate(product_data):
             _name = pd_item.get("full_name") or pd_item.get("name") or ""
             _price = pd_item.get("price")
@@ -1491,6 +1493,21 @@ def build_comparison_response(
                           "reason": "region_currency_mismatch"}
                 if _entry not in _guard_rejected_diag:
                     _guard_rejected_diag.append(_entry)
+            # W4-3 (ENABLE_PRESCORING_SHOWABLE_GUARD, default OFF) — harvest the
+            # reason the PRE-SCORING showable pass
+            # (price_service.apply_prescoring_showable_guard) stashed on the
+            # PRODUCT dict, for the same reason as the region harvest above: that
+            # pass already pended the price, so the `unavailable` early-continue
+            # just below would drop it and the canary would read clean. The
+            # reason may be `not_showable` (an estimated / sample / low-floor row
+            # the predicate rejects before stamping any guard_rejected). Flag OFF:
+            # never harvested (byte-identical).
+            if _prescoring_guard_on:
+                _psr = pd_item.get("_prescoring_showable_rejected")
+                if _psr:
+                    _guard_rejected_diag.append(
+                        {"product_index": _pd_idx, "reason": _psr}
+                    )
             # An upstream pass (e.g. Task C2 size-basis reconciliation in the
             # orchestrator) may already have marked this price pending with its
             # OWN reason (size_mismatch). Don't clobber that reason — it's
@@ -1532,9 +1549,13 @@ def build_comparison_response(
                 # renders the generic "pricing lands soon" line (reason=pending_genuine).
                 _gr = _price.get("guard_rejected")
                 if _gr:
-                    _guard_rejected_diag.append(
-                        {"product_index": _pd_idx, "reason": _gr}
-                    )
+                    _gr_entry = {"product_index": _pd_idx, "reason": _gr}
+                    # W4-3 (R3) — under ENABLE_PRESCORING_SHOWABLE_GUARD the harvest
+                    # above may already carry this (product_index, reason) for a
+                    # product whose price was not pended upstream; append once.
+                    # Flag OFF: the unconditional append, byte-identical.
+                    if not _prescoring_guard_on or _gr_entry not in _guard_rejected_diag:
+                        _guard_rejected_diag.append(_gr_entry)
                 pd_item["price"] = _pend
                 # Keep best_price/currency/retailer mirrors honest.
                 pd_item["best_price"] = None
