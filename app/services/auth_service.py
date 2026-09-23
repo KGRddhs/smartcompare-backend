@@ -24,6 +24,12 @@ from supabase import create_client, Client
 from supabase_auth.errors import AuthApiError, AuthRetryableError
 
 from app.services.cache_service import redis_client, _redis_offload_enabled
+from app.services.consent_service import (
+    TERMS_ACCEPTANCE_REQUIRED,
+    TERMS_ACCEPTANCE_REQUIRED_MESSAGE,
+    consent_columns,
+    consent_required_enabled,
+)
 from app.services.database_service import (
     record_preference_history,
     build_supabase_client_options,
@@ -237,10 +243,14 @@ async def _enrich_response_with_profile(response: Dict, user_id: str) -> Dict:
     return response
 
 
-async def register_user(email: str, password: str) -> Dict:
+async def register_user(email: str, password: str, *, consent: Optional[Dict] = None) -> Dict:
     """
     Register a new user with email and password.
     Returns user data and session on success.
+
+    W3-16: ``consent`` (from ``consent_service.consent_from_fields``) is written
+    into the users row only when ENABLE_CONSENT_PERSIST is on; flag OFF keeps the
+    insert dict byte-identical.
     """
     try:
         client = get_auth_client()
@@ -255,7 +265,8 @@ async def register_user(email: str, password: str) -> Dict:
             admin.table("users").insert({
                 "id": response.user.id,
                 "email": email,
-                "subscription_tier": "free"
+                "subscription_tier": "free",
+                **consent_columns(consent),
             }).execute()
 
             result = {
@@ -561,8 +572,15 @@ async def _is_token_revoked_async(token: str) -> bool:
     return _is_token_revoked(token)
 
 
-async def sign_in_with_social(provider: str, id_token: str, nonce: str = None) -> Dict:
-    """Sign in with social provider via Supabase's signInWithIdToken."""
+async def sign_in_with_social(
+    provider: str, id_token: str, nonce: str = None, *, consent: Optional[Dict] = None
+) -> Dict:
+    """Sign in with social provider via Supabase's signInWithIdToken.
+
+    W3-16: a NEW account (no users row yet) with ENABLE_CONSENT_REQUIRED on and
+    no ``consent`` is refused before our row is written. Existing accounts are
+    never gated.
+    """
     try:
         auth_client = get_auth_client()
 
@@ -592,11 +610,18 @@ async def sign_in_with_social(provider: str, id_token: str, nonce: str = None) -
         admin = get_admin_client()
         existing = admin.table("users").select("id").eq("id", response.user.id).execute()
         if not existing.data:
+            if consent is None and consent_required_enabled():
+                return {
+                    "success": False,
+                    "code": TERMS_ACCEPTANCE_REQUIRED,
+                    "error": TERMS_ACCEPTANCE_REQUIRED_MESSAGE,
+                }
             admin.table("users").insert({
                 "id": response.user.id,
                 "email": response.user.email,
                 "auth_provider": provider,
                 "subscription_tier": "free",
+                **consent_columns(consent),
             }).execute()
 
         # Fetch preferences_completed

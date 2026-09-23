@@ -150,6 +150,7 @@ describe('LoginScreen — a service diagnostic never reaches the banner (P-A8)',
     mockSignInWithGoogle.mockResolvedValueOnce({ success: false, error });
 
     const screen = render(<LoginScreen navigation={navigation} onLoginSuccess={jest.fn()} />);
+    fireEvent.press(screen.getByTestId('consent-checkbox')); // W3-16: consent precondition
     fireEvent.press(screen.getByTestId('login-social-google'));
 
     await waitFor(() => expect(screen.getByText(EN['auth.googleFailed'])).toBeTruthy());
@@ -162,6 +163,7 @@ describe('LoginScreen — a service diagnostic never reaches the banner (P-A8)',
 
     const screen = render(<LoginScreen navigation={navigation} onLoginSuccess={jest.fn()} />);
     await waitFor(() => expect(screen.getByTestId('login-social-apple')).toBeTruthy());
+    fireEvent.press(screen.getByTestId('consent-checkbox')); // W3-16: consent precondition
     fireEvent.press(screen.getByTestId('login-social-apple'));
 
     await waitFor(() => expect(screen.getByText(EN['auth.appleFailed'])).toBeTruthy());
@@ -176,6 +178,7 @@ describe('LoginScreen — a service diagnostic never reaches the banner (P-A8)',
     });
 
     const screen = render(<LoginScreen navigation={navigation} onLoginSuccess={jest.fn()} />);
+    fireEvent.press(screen.getByTestId('consent-checkbox')); // W3-16: consent precondition
     fireEvent.press(screen.getByTestId('login-social-google'));
 
     await waitFor(() => expect(screen.getByText(AR['auth.googleFailed'])).toBeTruthy());
@@ -187,6 +190,7 @@ describe('LoginScreen — a service diagnostic never reaches the banner (P-A8)',
     mockSignInWithGoogle.mockRejectedValueOnce(new Error('Request failed with status code 502'));
 
     const screen = render(<LoginScreen navigation={navigation} onLoginSuccess={jest.fn()} />);
+    fireEvent.press(screen.getByTestId('consent-checkbox')); // W3-16: consent precondition
     fireEvent.press(screen.getByTestId('login-social-google'));
 
     await waitFor(() => expect(screen.getByText(EN['auth.googleFailed'])).toBeTruthy());
@@ -202,6 +206,7 @@ describe('LoginScreen — a service diagnostic never reaches the banner (P-A8)',
     });
 
     const screen = render(<LoginScreen navigation={navigation} onLoginSuccess={jest.fn()} />);
+    fireEvent.press(screen.getByTestId('consent-checkbox')); // W3-16: consent precondition
     fireEvent.press(screen.getByTestId('login-social-google'));
 
     await waitFor(() => expect(screen.getByText(EN['auth.signInTimeout'])).toBeTruthy());
@@ -211,6 +216,7 @@ describe('LoginScreen — a service diagnostic never reaches the banner (P-A8)',
     mockSignInWithGoogle.mockResolvedValueOnce({ success: false, error: 'Sign-in cancelled' });
 
     const screen = render(<LoginScreen navigation={navigation} onLoginSuccess={jest.fn()} />);
+    fireEvent.press(screen.getByTestId('consent-checkbox')); // W3-16: consent precondition
     fireEvent.press(screen.getByTestId('login-social-google'));
 
     await waitFor(() => expect(mockSignInWithGoogle).toHaveBeenCalledTimes(1));
@@ -233,6 +239,7 @@ describe('RegisterScreen — a service diagnostic never reaches the banner (P-A8
     mockSignInWithGoogle.mockResolvedValueOnce({ success: false, error });
 
     const screen = renderRegister();
+    fireEvent.press(screen.getByTestId('consent-checkbox')); // W3-16: consent precondition
     fireEvent.press(screen.getByText(EN['auth.googleSignIn']));
 
     await waitFor(() => expect(screen.getByText(EN['auth.googleFailed'])).toBeTruthy());
@@ -243,6 +250,7 @@ describe('RegisterScreen — a service diagnostic never reaches the banner (P-A8
     mockSignInWithGoogle.mockRejectedValueOnce(new Error('Request failed with status code 502'));
 
     const screen = renderRegister();
+    fireEvent.press(screen.getByTestId('consent-checkbox')); // W3-16: consent precondition
     fireEvent.press(screen.getByText(EN['auth.googleSignIn']));
 
     await waitFor(() => expect(screen.getByText(EN['auth.googleFailed'])).toBeTruthy());

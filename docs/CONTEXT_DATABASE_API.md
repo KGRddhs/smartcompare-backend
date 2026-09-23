@@ -91,6 +91,9 @@ CREATE TABLE public.users (
     updated_at TIMESTAMPTZ DEFAULT now()
 );
 -- RLS: users read/update own row, service_role full access
+-- W3-16 (migration 038, UNAPPLIED): terms_accepted_at TIMESTAMPTZ, terms_version TEXT,
+-- age_attested_at TIMESTAMPTZ -- all nullable; written on the account-creating insert only
+-- when ENABLE_CONSENT_PERSIST is ON.
 ```
 
 ### comparisons
@@ -190,6 +193,9 @@ Query params:
   "password": "password123"
 }
 ```
+W3-16: optional `terms_accepted` (bool), `terms_version` (string, max 32), `age_attested` (bool) — also accepted on
+`POST /api/v1/auth/social-login`. With `ENABLE_CONSENT_REQUIRED` ON, an account creation without all three
+(both booleans `true`, non-empty version) returns 400 `TERMS_ACCEPTANCE_REQUIRED` (social: new accounts only).
 
 ### POST `/api/v1/auth/login`
 ```json

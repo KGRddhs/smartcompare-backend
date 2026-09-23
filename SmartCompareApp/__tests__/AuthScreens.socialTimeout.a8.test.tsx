@@ -73,6 +73,7 @@ describe('LoginScreen — social deadline copy (A8)', () => {
     mockSignInWithGoogle.mockResolvedValueOnce(TIMEOUT_RESULT);
 
     const screen = render(<LoginScreen navigation={navigation} onLoginSuccess={jest.fn()} />);
+    fireEvent.press(screen.getByTestId('consent-checkbox')); // W3-16: consent precondition
     fireEvent.press(screen.getByTestId('login-social-google'));
 
     await waitFor(() => expect(screen.getByTestId('login-error')).toBeTruthy());
@@ -86,6 +87,7 @@ describe('LoginScreen — social deadline copy (A8)', () => {
 
     const screen = render(<LoginScreen navigation={navigation} onLoginSuccess={jest.fn()} />);
     await waitFor(() => expect(screen.getByTestId('login-social-apple')).toBeTruthy());
+    fireEvent.press(screen.getByTestId('consent-checkbox')); // W3-16: consent precondition
     fireEvent.press(screen.getByTestId('login-social-apple'));
 
     await waitFor(() => expect(screen.getByText(TIMEOUT_COPY)).toBeTruthy());
@@ -97,6 +99,7 @@ describe('LoginScreen — social deadline copy (A8)', () => {
     mockSignInWithGoogle.mockResolvedValueOnce({ success: false });
 
     const screen = render(<LoginScreen navigation={navigation} onLoginSuccess={jest.fn()} />);
+    fireEvent.press(screen.getByTestId('consent-checkbox')); // W3-16: consent precondition
     fireEvent.press(screen.getByTestId('login-social-google'));
 
     await waitFor(() => expect(screen.getByText(EN['auth.googleFailed'])).toBeTruthy());
@@ -109,6 +112,7 @@ describe('LoginScreen — social deadline copy (A8)', () => {
     mockSignInWithGoogle.mockResolvedValueOnce(TIMEOUT_RESULT);
 
     const screen = render(<LoginScreen navigation={navigation} onLoginSuccess={jest.fn()} />);
+    fireEvent.press(screen.getByTestId('consent-checkbox')); // W3-16: consent precondition
     fireEvent.press(screen.getByTestId('login-social-google'));
     await waitFor(() => expect(screen.getByText(TIMEOUT_COPY)).toBeTruthy());
 
@@ -133,6 +137,7 @@ describe('RegisterScreen — social deadline copy (A8)', () => {
     mockSignInWithGoogle.mockResolvedValueOnce(TIMEOUT_RESULT);
 
     const screen = renderRegister();
+    fireEvent.press(screen.getByTestId('consent-checkbox')); // W3-16: consent precondition
     fireEvent.press(screen.getByText(EN['auth.googleSignIn']));
 
     await waitFor(() => expect(screen.getByText(TIMEOUT_COPY)).toBeTruthy());
@@ -146,6 +151,7 @@ describe('RegisterScreen — social deadline copy (A8)', () => {
     mockSignInWithGoogle.mockResolvedValueOnce({ success: false });
 
     const screen = renderRegister();
+    fireEvent.press(screen.getByTestId('consent-checkbox')); // W3-16: consent precondition
     fireEvent.press(screen.getByText(EN['auth.googleSignIn']));
 
     await waitFor(() => expect(screen.getByText(EN['auth.googleFailed'])).toBeTruthy());

@@ -113,10 +113,11 @@ describe('LoginScreen', () => {
   it('should handle Google sign-in', async () => {
     (signInWithGoogle as jest.Mock).mockResolvedValueOnce({ success: true });
     const mockOnLoginSuccess = jest.fn();
-    const { getAllByText } = render(
+    const { getByTestId, getAllByText } = render(
       <LoginScreen navigation={mockNavigation} onLoginSuccess={mockOnLoginSuccess} />
     );
 
+    fireEvent.press(getByTestId('consent-checkbox')); // W3-16: consent precondition
     fireEvent.press(getAllByText('auth.googleSignIn')[0]);
 
     await waitFor(() => {

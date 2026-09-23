@@ -10,6 +10,12 @@ from pydantic import BaseModel, EmailStr, Field, field_validator
 from typing import Any, List, Literal, Optional
 from starlette.requests import Request
 from app.middleware.rate_limiter import limiter, audit_client_ip
+from app.services.consent_service import (
+    TERMS_ACCEPTANCE_REQUIRED,
+    consent_from_fields,
+    consent_rejection,
+    consent_required_enabled,
+)
 
 # Bundle A §1.1 — invite-code format. QR-XXXXXX with unambiguous alphabet
 # matching app/services/referral_service.py::_CODE_ALPHABET (no 0/1/I/L/O).
@@ -86,6 +92,10 @@ class RegisterRequest(BaseModel):
     invite_id: Optional[str] = Field(default=None, max_length=64)
     # Bundle A §1.1 — typed-at-Register referral code (vs. deep-link invite_id).
     invite_code: Optional[str] = Field(default=None, max_length=16)
+    # W3-16 consent capture — OPTIONAL: phones on older OTAs send none of them.
+    terms_accepted: Optional[bool] = None
+    terms_version: Optional[str] = Field(default=None, max_length=32)
+    age_attested: Optional[bool] = None
 
     @field_validator("password")
     @classmethod
@@ -281,6 +291,10 @@ class SocialLoginRequest(BaseModel):
     provider: Literal["google", "apple"]
     id_token: str
     nonce: Optional[str] = None  # Apple Sign-In uses nonce
+    # W3-16 consent capture — OPTIONAL: phones on older OTAs send none of them.
+    terms_accepted: Optional[bool] = None
+    terms_version: Optional[str] = Field(default=None, max_length=32)
+    age_attested: Optional[bool] = None
 
 
 class AuthResponse(BaseModel):
@@ -565,7 +579,13 @@ async def register(request: Request, body: RegisterRequest):
       device. Re-signups on the same device inherit prior usage so the
       free tier can't be reset by deleting the account.
     """
-    result = await register_user(body.email, body.password)
+    # W3-16: decide consent BEFORE register_user so REQUIRED never lets a
+    # Supabase account exist without an acceptance.
+    consent = consent_from_fields(body.terms_accepted, body.terms_version, body.age_attested)
+    if consent is None and consent_required_enabled():
+        raise consent_rejection()
+
+    result = await register_user(body.email, body.password, consent=consent)
 
     if not result["success"]:
         raise HTTPException(
@@ -990,8 +1010,11 @@ async def change_password(
 @limiter.limit("10/minute")
 async def social_login(request: Request, body: SocialLoginRequest):
     """Authenticate via Google or Apple ID token. Creates account if new."""
-    result = await sign_in_with_social(body.provider, body.id_token, body.nonce)
+    consent = consent_from_fields(body.terms_accepted, body.terms_version, body.age_attested)
+    result = await sign_in_with_social(body.provider, body.id_token, body.nonce, consent=consent)
     if not result["success"]:
+        if result.get("code") == TERMS_ACCEPTANCE_REQUIRED:
+            raise consent_rejection()
         raise HTTPException(status_code=401, detail=result["error"])
     # W3-3: additive, default OFF, read per call. Sits AFTER the 401 raise so a
     # rejected login costs no DB work, and before the unchanged return so the

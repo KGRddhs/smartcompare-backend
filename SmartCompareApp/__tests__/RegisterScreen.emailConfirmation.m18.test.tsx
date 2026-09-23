@@ -77,6 +77,7 @@ describe('RegisterScreen — email-confirmation flow (M18 MB-flows-03)', () => {
 
     const screen = renderScreen();
     fillRequired(screen.getByPlaceholderText);
+    fireEvent.press(screen.getByTestId('consent-checkbox')); // W3-16: consent precondition
     fireEvent.press(screen.getByText('auth.register'));
 
     await waitFor(() =>
@@ -94,6 +95,7 @@ describe('RegisterScreen — email-confirmation flow (M18 MB-flows-03)', () => {
 
     const screen = renderScreen();
     fillRequired(screen.getByPlaceholderText);
+    fireEvent.press(screen.getByTestId('consent-checkbox')); // W3-16: consent precondition
     fireEvent.press(screen.getByText('auth.register'));
 
     await waitFor(() =>
@@ -113,6 +115,7 @@ describe('RegisterScreen — email-confirmation flow (M18 MB-flows-03)', () => {
 
     const screen = renderScreen();
     fillRequired(screen.getByPlaceholderText);
+    fireEvent.press(screen.getByTestId('consent-checkbox')); // W3-16: consent precondition
     fireEvent.press(screen.getByText('auth.register'));
 
     await waitFor(() => expect(onRegisterSuccess).toHaveBeenCalledTimes(1));
