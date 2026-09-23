@@ -46,6 +46,7 @@ import { TabBarIcon } from './src/components/TabBarIcon';
 import LoginScreen from './src/screens/LoginScreen';
 import RegisterScreen from './src/screens/RegisterScreen';
 import ForgotPasswordScreen from './src/screens/ForgotPasswordScreen';
+import ResetPasswordScreen from './src/screens/ResetPasswordScreen';
 import HomeScreen from './src/screens/HomeScreen';
 import ResultsScreen from './src/screens/ResultsScreen';
 // Bundle A — support / preferences / edit-profile screens routed from Profile.
@@ -106,6 +107,7 @@ function AuthNavigator({ onLoginSuccess }: { onLoginSuccess: () => void }) {
         {(props) => <RegisterScreen {...props} onRegisterSuccess={onLoginSuccess} />}
       </AuthStack.Screen>
       <AuthStack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
+      <AuthStack.Screen name="ResetPassword" component={ResetPasswordScreen} />
     </AuthStack.Navigator>
   );
 }

@@ -635,6 +635,32 @@ export async function requestPasswordReset(email: string): Promise<void> {
   }
 }
 
+/**
+ * W3-6 — complete a password reset with the recovery link's ACCESS token.
+ * The refresh token is deliberately never sent. A bad token comes back as a
+ * 400 (never 401, so the api interceptor never starts a refresh on an
+ * unauthenticated device); the caller renders it via parseApiError.
+ */
+export async function completePasswordRecovery(
+  accessToken: string,
+  newPassword: string,
+): Promise<void> {
+  try {
+    const response = await api.post('/api/v1/auth/password-recovery', {
+      access_token: accessToken,
+      new_password: newPassword,
+    });
+    if (!response.data.success) {
+      throw new Error(response.data.error || 'Password recovery failed');
+    }
+  } catch (error: any) {
+    if (error.response?.data?.detail) {
+      throw new Error(error.response.data.detail);
+    }
+    throw error;
+  }
+}
+
 // --- Google Sign-In ---
 
 /**
