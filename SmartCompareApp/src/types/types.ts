@@ -630,6 +630,10 @@ export type AuthStackParamList = {
   // qaren.app/r/QR-XXXXXX) and pre-fills the invite-code field on Register.
   Register: { invite_id?: string; code?: string } | undefined;
   ForgotPassword: undefined;
+  // W3-6 — reached from the qaren://reset-password recovery link. Takes NO
+  // params on purpose: the recovery token rides a memory-only slot
+  // (services/passwordRecoveryLink), never navigation state.
+  ResetPassword: undefined;
 };
 
 // Main tabs (inside Main screen)

@@ -12,12 +12,16 @@ call, deliberately -- see `get_auth_client` for why (Fable MUST-FIX ruling
 2026-09-07: a memoised anon client takes on the last signed-in user's identity).
 """
 import asyncio
+import base64
 import hashlib
+import json
 import logging
 import os
 import threading
 from typing import Optional, Dict, Tuple
+import httpx
 from supabase import create_client, Client
+from supabase_auth.errors import AuthApiError, AuthRetryableError
 
 from app.services.cache_service import redis_client, _redis_offload_enabled
 from app.services.database_service import (
@@ -161,6 +165,22 @@ def get_admin_client() -> Client:
     return create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
 
+# The TRANSIENT upstream class, by exception text (W1-4). Shared with the W3-6
+# recovery path so both routes draw the "blip vs verdict" line in one place.
+_TRANSIENT_AUTH_ERROR_TERMS = (
+    "network", "connection", "timeout", "dns", "econnrefused",
+    "socket hang up", "enotfound", "failed to fetch", "no network"
+)
+
+
+def _upstream_unavailable_result() -> Dict:
+    return {
+        "success": False,
+        "error": "Connection failed. Please try again.",
+        "code": "UPSTREAM_UNAVAILABLE",
+    }
+
+
 def _categorize_auth_error(e: Exception, context: str = "operation") -> Dict:
     """Categorize auth errors into user-friendly messages."""
     error_msg = str(e).lower()
@@ -170,10 +190,7 @@ def _categorize_auth_error(e: Exception, context: str = "operation") -> Dict:
         return {"success": False, "error": "An account with this email already exists"}
     elif "email not confirmed" in error_msg:
         return {"success": False, "error": "Please verify your email before logging in"}
-    elif any(term in error_msg for term in [
-        "network", "connection", "timeout", "dns", "econnrefused",
-        "socket hang up", "enotfound", "failed to fetch", "no network"
-    ]):
+    elif any(term in error_msg for term in _TRANSIENT_AUTH_ERROR_TERMS):
         # W1-4 (LS-CACHE-REDIS-03 / MB-NETWORK-CONTRACT-02) -- purely ADDITIVE
         # machine-readable marker for the TRANSIENT class. `/auth/refresh` maps
         # THIS code, and only this code, to 503; every other failure stays 401.
@@ -181,11 +198,7 @@ def _categorize_auth_error(e: Exception, context: str = "operation") -> Dict:
         # invalid token, so one blip 401s every user holding an expiring token
         # straight into the mobile forced-logout listener. Every other caller
         # ignores unknown keys, and no other branch's shape or message moves.
-        return {
-            "success": False,
-            "error": "Connection failed. Please try again.",
-            "code": "UPSTREAM_UNAVAILABLE",
-        }
+        return _upstream_unavailable_result()
     else:
         logger.error(f"Auth error in {context}: {e}")
         # Bundle E B4 diagnostic (2026-05-26, Ahmed Sentry-sampling issue):
@@ -749,17 +762,155 @@ async def resend_verification_email(email: str) -> bool:
     return True
 
 
+def password_reset_deep_link_enabled() -> bool:
+    """W3-6 -- True iff the reset email is told to return to the app (default OFF).
+
+    Read PER CALL (the `logout_upstream_revocation_enabled` idiom) so Railway can
+    flip it without a restart. It ships dark because GoTrue honours `redirect_to`
+    only when the value is on the Supabase project's Redirect-URL allow-list (a
+    dashboard step); off the list it silently falls back to the Site URL.
+    """
+    return os.getenv("ENABLE_PASSWORD_RESET_DEEP_LINK", "false").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
+def password_reset_redirect_url() -> str:
+    """W3-6 -- where the recovery link sends the user (read per call)."""
+    return os.getenv("PASSWORD_RESET_REDIRECT_URL", "qaren://reset-password").strip() or (
+        "qaren://reset-password"
+    )
+
+
 async def request_password_reset(email: str) -> Dict:
-    """Send password reset email."""
+    """Send password reset email.
+
+    W3-6: under `ENABLE_PASSWORD_RESET_DEEP_LINK` the SDK's `options` dict
+    (`reset_password_email(email, options=None)` on supabase-auth 2.28.0) carries
+    `redirect_to`, which becomes the `?redirect_to=` query param of
+    `POST /auth/v1/recover`. Flag OFF is today's exact one-positional call.
+    """
     try:
         client = get_auth_client()
-        client.auth.reset_password_email(email)
+        if password_reset_deep_link_enabled():
+            client.auth.reset_password_email(
+                email, {"redirect_to": password_reset_redirect_url()}
+            )
+        else:
+            client.auth.reset_password_email(email)
         return {
             "success": True,
             "message": "Password reset email sent"
         }
     except Exception as e:
         return _categorize_auth_error(e, "password_reset")
+
+
+def _recovery_token_invalid() -> Dict:
+    return {
+        "success": False,
+        "code": "RECOVERY_TOKEN_INVALID",
+        "error": "This reset link is no longer valid.",
+    }
+
+
+def _recovery_amr_methods(access_token: str) -> Optional[list]:
+    """The `amr` method names in the token payload, or None if undecodable.
+
+    NOT a verification: the signature and expiry were already checked upstream
+    by `get_user`. GoTrue strips the base64 `=` padding, so it is restored here.
+    """
+    try:
+        seg = access_token.split(".")[1]
+        claims = json.loads(base64.urlsafe_b64decode(seg + "=" * (-len(seg) % 4)))
+        return [str(m.get("method")) for m in claims.get("amr", []) if isinstance(m, dict)]
+    except Exception:
+        return None
+
+
+def _is_upstream_unavailable(e: Exception, scrubbed_text: str) -> bool:
+    """W3-6 -- True iff a `get_user` failure is a TRANSPORT/upstream blip, not a
+    verdict on the token.
+
+    Measured on the pinned supabase-auth 2.31.0: a connect/DNS/read-timeout
+    failure escapes `get_user` as the raw `httpx.TransportError` (whose text,
+    e.g. "[Errno 11001] getaddrinfo failed", the W1-4 term list misses), and a
+    GoTrue 5xx arrives as `AuthRetryableError`; an invalid/expired token is a
+    4xx `AuthApiError`, which is never transient whatever its text says. The
+    W1-4 text class covers anything else. `scrubbed_text` has the token removed
+    first: base64 can spell "dns" by chance.
+    """
+    if isinstance(e, (httpx.TransportError, AuthRetryableError)):
+        return True
+    if isinstance(e, AuthApiError):
+        return False
+    lowered = scrubbed_text.lower()
+    return any(term in lowered for term in _TRANSIENT_AUTH_ERROR_TERMS)
+
+
+async def complete_password_recovery(access_token: str, new_password: str) -> Dict:
+    """W3-6 -- set a new password with the access token from a recovery link.
+
+    Order: local blacklist (a spent token cannot be replayed here) -> upstream
+    `get_user` verification -> fail-closed AMR gate (only a session minted from
+    a RECOVERY link may rotate the password; any other live bearer would be a
+    "change password without the current one" door) -> the same admin write
+    `change_user_password` makes -> blacklist the token.
+
+    A transport/upstream failure during `get_user` is NOT a verdict on the
+    token: it returns the W1-4 `UPSTREAM_UNAVAILABLE` shape (retryable), never
+    `RECOVERY_TOKEN_INVALID` (which sends the user back for a new email).
+
+    The token never reaches a log: `UserDoesntExist(access_token)`'s `str()` IS
+    the bearer on this SDK, so every exception text is scrubbed by value.
+    """
+    try:
+        if await _is_token_revoked_async(access_token):
+            logger.warning("[auth] password recovery rejected: token already spent")
+            return _recovery_token_invalid()
+
+        client = get_auth_client()
+        try:
+            user_response = await run_db(lambda: client.auth.get_user(access_token))
+        except Exception as e:
+            scrubbed = str(e).replace(access_token, "<access_token>")
+            if _is_upstream_unavailable(e, scrubbed):
+                # A blip is not a verdict: the link is still good, so the
+                # screen keeps the form and the user can retry.
+                logger.warning(
+                    "[auth] password recovery upstream unavailable: %s: %s",
+                    type(e).__name__,
+                    scrubbed,
+                )
+                return _upstream_unavailable_result()
+            logger.warning(
+                "[auth] password recovery rejected: upstream verification failed: %s: %s",
+                type(e).__name__,
+                scrubbed,
+            )
+            return _recovery_token_invalid()
+        if user_response is None or getattr(user_response, "user", None) is None:
+            return _recovery_token_invalid()
+
+        methods = _recovery_amr_methods(access_token)
+        if not methods or "recovery" not in methods:
+            logger.warning(
+                "[auth] password recovery rejected: amr=%s",
+                methods if methods is not None else "<undecodable>",
+            )
+            return _recovery_token_invalid()
+
+        user_id = user_response.user.id
+        admin = get_admin_client()
+        await run_db(
+            lambda: admin.auth.admin.update_user_by_id(user_id, {"password": new_password})
+        )
+        _revoke_token(access_token)
+        return {"success": True, "message": "Password updated"}
+    except Exception as e:
+        return _categorize_auth_error(
+            Exception(str(e).replace(access_token, "<access_token>")), "password_recovery"
+        )
 
 
 # ============================================

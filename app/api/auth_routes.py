@@ -30,6 +30,7 @@ from app.services.auth_service import (
     get_user_profile,
     logout_user,
     request_password_reset,
+    complete_password_recovery,
     update_user_profile,
     update_user_email,
     change_user_password,
@@ -122,6 +123,17 @@ class LogoutRequest(BaseModel):
 
 class PasswordResetRequest(BaseModel):
     email: EmailStr
+
+
+class PasswordRecoveryRequest(BaseModel):
+    """W3-6 -- the recovery access token IS the credential (no auth dependency)."""
+    access_token: str = Field(..., min_length=20, max_length=4096)
+    new_password: str = Field(..., min_length=10)
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_new_password_strength(cls, v):
+        return _validate_password_strength(v)
 
 
 class UpdateProfileRequest(BaseModel):
@@ -842,6 +854,27 @@ async def password_reset(request: Request, body: PasswordResetRequest):
         "success": True,
         "message": "If an account with that email exists, a reset link has been sent."
     }
+
+
+@router.post("/password-recovery")
+@limiter.limit("5/minute")
+async def password_recovery(request: Request, body: PasswordRecoveryRequest):
+    """W3-6 -- complete a password reset with the token from the recovery link.
+
+    A bad token is 400 (never 401: the client's 401 interceptor would start a
+    refresh on an unauthenticated device) with a structured detail, so the
+    unified envelope surfaces `code` at the top level.
+    """
+    result = await complete_password_recovery(body.access_token, body.new_password)
+    if not result["success"]:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": result.get("code", "RECOVERY_FAILED"),
+                "error": result["error"],
+            },
+        )
+    return {"success": True, "message": "Password updated"}
 
 
 @router.get("/verify")

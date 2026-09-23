@@ -21,6 +21,15 @@ import {
 } from '@react-navigation/native';
 
 import { RootStackParamList } from '../types';
+import { parseRecoveryLink, setPendingRecovery } from '../services/passwordRecoveryLink';
+
+// W3-6: qaren://reset-password -- every such path routes to Auth > ResetPassword.
+// A usable recovery token is parked in the passwordRecoveryLink slot and NEVER
+// enters navigation state; a link with no usable token (expired-link error
+// redirect, wrong type) still reaches the screen, whose empty-slot state
+// offers a new link. The fragment is parsed here because @react-navigation/core
+// splits a path on '?' only.
+const RESET_PASSWORD_PATH = /^\/?reset-password(?:[#?]|$)/;
 
 /**
  * The container ref `App.tsx` hands to `<NavigationContainer ref={...}>`.
@@ -46,6 +55,8 @@ export const linking: LinkingOptions<RootStackParamList> = {
             path: 'r/:code',
             parse: { code: (c: string) => c.toUpperCase() },
           },
+          // W3-6 -- the password-recovery link (no params: the token rides the slot).
+          ResetPassword: 'reset-password',
         },
       },
       // W3-15 — the backend push targets. Measured decisions:
@@ -73,6 +84,13 @@ export const linking: LinkingOptions<RootStackParamList> = {
     },
   },
   getStateFromPath: (path: string, options: any) => {
+    if (RESET_PASSWORD_PATH.test(path)) {
+      const recovery = parseRecoveryLink(path);
+      if (recovery) {
+        setPendingRecovery(recovery);
+      }
+      return getStateFromPath('reset-password', options);
+    }
     // Rewrite `redeem?code=QR-XXXXXX` → `r/QR-XXXXXX` so the existing
     // pattern handles both URL shapes from social-share copy.
     const redeemMatch = path.match(/^\/?redeem\??(.*)$/);
