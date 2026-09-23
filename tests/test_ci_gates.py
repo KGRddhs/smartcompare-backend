@@ -913,3 +913,483 @@ def test_baseline_node_ids_are_shell_safe_for_deselect():
         assert (
             node_id.startswith("tests/") and "::" in node_id
         ), f"not a pytest node id: {node_id!r}"
+
+
+# ---------------------------------------------------------------------------
+# 8. ci.yml — channel-freshness job (W3-13, MB-RECONCILE-06)
+# ---------------------------------------------------------------------------
+#
+# Phones run whatever `eas update` last published to the `preview` channel;
+# merging to main ships nothing to a device. Measured 2026-09-11 at ed75dc70
+# the channel ran 97b5f15, 33 first-parent commits behind main, and every job
+# in this file was green. The `channel-freshness` job resolves the channel's
+# published commit through eas-cli and fails when it is more than one
+# first-parent commit behind origin/main. These pins hold its SHAPE: the job
+# must skip cleanly without the EXPO_TOKEN secret (every fork PR, and this repo
+# until Ahmed adds it), must never hand the raw token to `npm ci`, and must
+# stay non-blocking until the dated flip.
+
+RUNBOOK_CANARY = REPO_ROOT / "docs" / "runbooks" / "qaren-canary-onboarding.md"
+EAS_JSON = REPO_ROOT / "SmartCompareApp" / "eas.json"
+CLAUDE_MD = REPO_ROOT / "CLAUDE.md"
+
+
+def _channel_freshness_job() -> dict:
+    jobs = _load(CI_YML)["jobs"]
+    assert (
+        "channel-freshness" in jobs
+    ), f"no channel-freshness job; jobs = {sorted(jobs)}"
+    return jobs["channel-freshness"]
+
+
+def _step_running(job: dict, needle: str) -> dict:
+    found = [s for s in _steps(job) if needle in str(s.get("run", ""))]
+    assert (
+        len(found) == 1
+    ), f"expected exactly one step running {needle!r}, got {len(found)}"
+    return found[0]
+
+
+def test_channel_freshness_job_skips_cleanly_without_the_secret():
+    """`secrets.*` cannot be read from an `if`, and a job-level `if` sees neither
+    `secrets` nor `env` (docs.github.com "Using secrets in a workflow" + the
+    contexts reference), so the documented "Run a step if a secret has been set"
+    pattern is: derive a job-level env var from the secret and gate every step
+    after checkout on it. One hardening over the documented example: the
+    job-level value is the BOOLEAN `secrets.EXPO_TOKEN != ''`, and the raw
+    token is scoped to the single eas-cli step so `npm ci` and its postinstall
+    scripts never see it.
+
+    Mutations that redden this: removing `fetch-depth`, removing one step's
+    `if`, moving the raw secret to job env, changing the eas-cli pin.
+    """
+    job = _channel_freshness_job()
+
+    # job-level env: exactly the derived boolean, never the raw token
+    env = job.get("env") or {}
+    assert list(env) == [
+        "EXPO_TOKEN_SET"
+    ], f"job env must be exactly EXPO_TOKEN_SET, got {env}"
+    derived = str(env["EXPO_TOKEN_SET"])
+    assert "secrets.EXPO_TOKEN" in derived and "!= ''" in derived, (
+        "EXPO_TOKEN_SET must be the comparison `secrets.EXPO_TOKEN != ''` — a bare "
+        f"`${{{{ secrets.EXPO_TOKEN }}}}` would put the token in every step's env; got {derived!r}"
+    )
+
+    # first step: full-history checkout — merge-base / rev-list need it
+    steps = _steps(job)
+    assert steps, "channel-freshness has no steps"
+    checkout = steps[0]
+    assert str(checkout.get("uses", "")).startswith(
+        "actions/checkout@v4"
+    ), f"first step must be actions/checkout@v4, got {checkout}"
+    assert (checkout.get("with") or {}).get("fetch-depth") == 0, (
+        "checkout must set fetch-depth: 0 — the default depth of 1 has no history "
+        "for merge-base or rev-list"
+    )
+
+    # every other step is gated on the derived boolean (the skip-cleanly contract)
+    gated = steps[1:]
+    assert gated, "the job has no steps after checkout"
+    for step in gated:
+        cond = str(step.get("if", ""))
+        assert "env.EXPO_TOKEN_SET" in cond, (
+            f"step {step.get('name') or step.get('uses')!r} has no EXPO_TOKEN_SET gate — "
+            "it would run and fail on every PR without the secret"
+        )
+
+    # exactly one negative branch, and it is the notice. It must be the exact
+    # COMPLEMENT of the positive gate (`!= 'true'`, never `== 'false'`): if the
+    # boolean ever renders as something other than true/false, `== 'false'`
+    # would run NO branch and the job would pass silently (ruling 21).
+    negative = [s for s in gated if "== 'true'" not in str(s["if"])]
+    assert (
+        len(negative) == 1
+    ), f"expected exactly one skip-notice step, got {len(negative)}"
+    assert "env.EXPO_TOKEN_SET != 'true'" in str(
+        negative[0]["if"]
+    ), f"the skip branch must be the complement `!= 'true'`, got {negative[0]['if']!r}"
+    notice = str(negative[0].get("run", ""))
+    assert "::notice" in notice, "the negative branch must print a ::notice"
+    # ruling 21: the notice prints the OBSERVED value, so "skipped because the
+    # boolean did not evaluate" can never read as "skipped, no secret"
+    assert (
+        "EXPO_TOKEN_SET='${{ env.EXPO_TOKEN_SET }}'" in notice
+    ), "the skip notice must print the observed EXPO_TOKEN_SET value"
+    for step in gated:
+        if step is not negative[0]:
+            assert "env.EXPO_TOKEN_SET == 'true'" in str(
+                step["if"]
+            ), f"positive gate expected on {step}"
+
+    # token scoping: the resolve step is the ONLY place the raw secret appears
+    resolve = _step_running(job, "update:view")
+    assert resolve.get("env") == {
+        "EXPO_TOKEN": "${{ secrets.EXPO_TOKEN }}"
+    }, f"the eas-cli step must carry exactly EXPO_TOKEN from the secret, got {resolve.get('env')}"
+    for step in steps:
+        if step is not resolve:
+            assert "secrets." not in str(
+                step.get("env", {})
+            ), f"raw secret leaked into the env of step {step.get('name') or step.get('uses')!r}"
+
+    # the two eas commands, pinned to the version the JSON shapes were read on
+    run = str(resolve.get("run", ""))
+    for needle in (
+        "eas-cli@18.8.1",
+        "update:list --branch preview",
+        "--json",
+        "--non-interactive",
+        "update:view",
+    ):
+        assert needle in run, f"resolve step is missing {needle!r}"
+    pins = set(re.findall(r"eas-cli@(\d+\.\d+\.\d+)", run))
+    assert pins == {"18.8.1"}, f"eas-cli must be pinned once, to 18.8.1; got {pins}"
+
+    # the pin satisfies eas.json's own `cli.version` range (cross-file, read
+    # from disk; tuple compare — no `packaging` import)
+    eas = yaml.safe_load(EAS_JSON.read_text(encoding="utf-8"))
+    rng = str(eas["cli"]["version"]).strip()
+    m = re.fullmatch(r">=\s*(\d+)\.(\d+)\.(\d+)", rng)
+    assert m, f"eas.json cli.version is not a `>= X.Y.Z` range: {rng!r}"
+    floor = tuple(int(x) for x in m.groups())
+    assert (
+        18,
+        8,
+        1,
+    ) >= floor, f"eas-cli@18.8.1 does not satisfy eas.json cli.version {rng!r}"
+
+    # the check step compares against origin/main at the contract's distance —
+    # `--main HEAD` would compare against the PR's merge ref instead
+    check = _step_running(job, "scripts/check_channel_freshness.py")
+    check_run = str(check.get("run", ""))
+    assert "--max-behind 1" in check_run, "check step must pass --max-behind 1"
+    assert re.search(
+        r"--main\s+origin/main(\s|$)", check_run
+    ), "check step must pass --main origin/main"
+
+
+def test_channel_freshness_resolve_step_shares_the_script_loader():
+    """The resolve step picks the group it hands to `update:view`. It must pick
+    it with the script's OWN `load_json_document` + `parse_list` (imported),
+    not an inline re-implementation: two loaders drift (the old inline one was
+    char-based and died on a `{` inside a chatter line, and took whatever
+    index it was written with), and then the job fetches one group while the
+    unit tests guard another. The variable assigned must be the variable
+    `update:view` reads, and `update:view` takes no `--non-interactive` (it
+    has no such flag at 18.8.1 — ruling 20; adding one is an oclif error).
+
+    The step is `continue-on-error: true` so a fetch-side failure (expired
+    token, EAS outage, empty page) falls through to the check step and is
+    reported as exit 2 with a ::warning::, instead of a bare traceback ending
+    the job red in this step.
+
+    Mutations that redden this: an inline `json.load(...)['currentPage'][...]`
+    one-liner; `"$GROUPX"`; `--non-interactive` on update:view; deleting the
+    step's continue-on-error."""
+    job = _channel_freshness_job()
+    resolve = _step_running(job, "update:view")
+    assert resolve.get("continue-on-error") is True, (
+        "the resolve step must be continue-on-error so fetch failures reach the "
+        "script's exit-2 ::warning:: path"
+    )
+    lines = [ln.strip() for ln in str(resolve.get("run", "")).splitlines()]
+
+    assigns = [ln for ln in lines if re.match(r"^[A-Z_]+=\$\(", ln)]
+    assert len(assigns) == 1, f"expected one group assignment, got {assigns}"
+    var = assigns[0].split("=", 1)[0]
+    assert (
+        "from scripts.check_channel_freshness import" in assigns[0]
+    ), f"the group must be picked by the script's own loader, got {assigns[0]!r}"
+    assert "parse_list(load_json_document(" in assigns[0], assigns[0]
+    assert (
+        "currentPage" not in assigns[0]
+    ), "the group must come from parse_list, not an inline currentPage index"
+    assert 'PYTHONPATH="$GITHUB_WORKSPACE"' in assigns[0], (
+        "the step cds into SmartCompareApp, so the repo root must be on "
+        "PYTHONPATH for `scripts.` to import"
+    )
+
+    views = [ln for ln in lines if "update:view" in ln]
+    assert views == [
+        f'npx --yes eas-cli@18.8.1 update:view "${var}" --json '
+        '> "$RUNNER_TEMP/preview-group.json"'
+    ], f"update:view must read ${var} with --json only, got {views}"
+
+
+def test_channel_freshness_check_reads_exactly_the_files_the_resolve_step_wrote():
+    """The resolve step writes two files under $RUNNER_TEMP and the check step
+    reads them back by path; the inline group picker reads the list file too.
+    Nothing but these strings connects the steps, so a rename on one side
+    (`update:list > "$RUNNER_TEMP/list.json"`, or `--view-json
+    "$RUNNER_TEMP/preview-view.json"`) makes the armed guard report exit 2
+    ("cannot read ...") on every run and never measure — the "guard measures
+    nothing forever" failure, reached without touching the token or the `if`s.
+    The pin compares the path strings byte for byte after parsing the YAML.
+
+    Mutations that redden this: `update:list` writing a different file; the
+    check step reading a different `--list-json` or `--view-json` path; the
+    inline picker reading a different file name; both eas commands writing the
+    same file."""
+    job = _channel_freshness_job()
+    resolve_run = str(_step_running(job, "update:view").get("run", ""))
+    check_run = str(
+        _step_running(job, "scripts/check_channel_freshness.py").get("run", "")
+    )
+
+    def written_by(command: str) -> str:
+        lines = [ln for ln in resolve_run.splitlines() if command in ln]
+        assert len(lines) == 1, f"expected one {command} line, got {lines}"
+        m = re.search(r'>\s*("[^"]+"|\S+)\s*$', lines[0])
+        assert m, f"{command} output is not redirected to a file: {lines[0]!r}"
+        return m.group(1)
+
+    def read_by(flag: str) -> str:
+        found = re.findall(re.escape(flag) + r'\s+("[^"]+"|\S+)', check_run)
+        assert len(found) == 1, f"expected one {flag} argument, got {found}"
+        return found[0]
+
+    list_written = written_by("update:list")
+    view_written = written_by("update:view")
+    assert list_written != view_written, "both eas commands write the same file"
+    assert read_by("--list-json") == list_written, (
+        f"check step reads --list-json {read_by('--list-json')} but update:list "
+        f"wrote {list_written}"
+    )
+    assert read_by("--view-json") == view_written, (
+        f"check step reads --view-json {read_by('--view-json')} but update:view "
+        f"wrote {view_written}"
+    )
+
+    # the inline group picker reads the list file by NAME under RUNNER_TEMP
+    picked = re.findall(
+        r"Path\(os\.environ\['RUNNER_TEMP'\],\s*'([^']+)'\)", resolve_run
+    )
+    assert (
+        len(picked) == 1
+    ), f"expected one RUNNER_TEMP read in the picker, got {picked}"
+    assert (
+        f'"$RUNNER_TEMP/{picked[0]}"' == list_written
+    ), f"the group picker reads {picked[0]!r} but update:list wrote {list_written}"
+
+
+def test_channel_freshness_is_non_blocking_until_the_dated_flip():
+    """Flip both in the PR that makes it blocking; this pin is the reminder,
+    not a calendar trigger — a date-aware assertion would redden the REQUIRED
+    backend-tests job on a no-change day, which is the failure mode this file
+    exists to end. Mutation that reddens this: deleting `continue-on-error`."""
+    job = _channel_freshness_job()
+    check = _step_running(job, "scripts/check_channel_freshness.py")
+    assert check.get("continue-on-error") is True, (
+        "the freshness check must stay continue-on-error until the dated flip; "
+        "removing it and adding the job to branch protection is one PR"
+    )
+    # the COMMENT must carry it (the step name also says it, and must not be
+    # what satisfies this pin): comment lines only
+    comments = [
+        ln.strip()
+        for ln in CI_YML.read_text(encoding="utf-8").splitlines()
+        if ln.strip().startswith("#")
+    ]
+    assert any(
+        "NON-BLOCKING until 2026-10-07" in ln for ln in comments
+    ), "the job's leading comment must carry the dated non-blocking notice"
+
+    # The date is written in THREE places a reader acts on — the job comment,
+    # the check step's name (what the Actions UI shows) and the runbook's
+    # section-2.0 sentence. Re-dating one and not the others leaves a reader
+    # holding an expired window (the 2026-09-18 date was re-dated on
+    # 2026-09-23 because it passed with zero armed readings). Mutation that
+    # reddens this: changing the date in any one of the three.
+    comment_dates = set(
+        re.findall(
+            r"NON-BLOCKING until (\d{4}-\d{2}-\d{2})",
+            "\n".join(ln for ln in comments),
+        )
+    )
+    name_dates = set(
+        re.findall(r"NON-BLOCKING until (\d{4}-\d{2}-\d{2})", str(check.get("name")))
+    )
+    runbook_dates = set(
+        re.findall(
+            r"non-blocking until (\d{4}-\d{2}-\d{2})",
+            RUNBOOK_CANARY.read_text(encoding="utf-8"),
+        )
+    )
+    assert comment_dates == name_dates == runbook_dates == {"2026-10-07"}, (
+        "the dated flip must read the same day in the ci.yml comment, the check "
+        f"step name and the runbook: comment={sorted(comment_dates)} "
+        f"name={sorted(name_dates)} runbook={sorted(runbook_dates)}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# 9. docs/runbooks/qaren-canary-onboarding.md — publishes to the channel
+#    with devices (MB-TWO-LEVER-RELEASE-05 / -10)
+# ---------------------------------------------------------------------------
+
+
+def _seeded_row_anchor(cells: list) -> str:
+    """The content anchor of a seeded OTA-ledger row: the first 8 hex chars of
+    its backticked group id, else the first 7 of its backticked commit hash
+    (the short form the session docs use)."""
+    m = re.search(r"`([0-9a-f]{7,})", cells[2])
+    if m:
+        return m.group(1)[:8]
+    m = re.search(r"`([0-9a-f]{7,})", cells[3])
+    return m.group(1)[:7] if m else ""
+
+
+def test_canary_runbook_publishes_to_the_channel_with_devices():
+    """`eas.json` binds `build.production.channel` to a build that was never
+    made, so `--branch production` reaches ZERO phones; the only channel with
+    devices is `preview`. The runbook's ramp AND rollback sections both said
+    `--branch production` (5 lines measured 2026-09-11), which during an
+    incident would publish to nobody. It must now agree with CLAUDE.md's own
+    publish block, carry the sourcemap-upload line, verify with `update:view`,
+    name the one real console-strip hazard (`--skip-bundler`), and keep an OTA
+    ledger. Mutation that reddens this: reintroducing one `--branch production`
+    command line.
+
+    Ruling 18: the scan is for the COMMAND, not for the flag name. Forbidding
+    the substring outright would forbid the runbook from NAMING the hazard —
+    the replacement lines and the publish block both have to say
+    "never `--branch production`", so a substring ban would make the spec's own
+    runbook text unable to pass this test. The positive pin below is the other
+    half: a runbook that silently stops mentioning the trap has lost the
+    finding."""
+    text = RUNBOOK_CANARY.read_text(encoding="utf-8")
+    # A command runs from `eas update` to the end of its logical line: shell
+    # backslash-continuations are joined, and a backtick (inline code in a
+    # table cell or prose) ends it. `--branch production` ANYWHERE in that span
+    # is the hazard, whatever flags come first (`eas update --clear-cache
+    # --branch production`) and however the line is wrapped
+    # (`eas update \` + newline + `--branch production`). The command may be
+    # spelled through the package (`npx eas-cli update`, `npx --yes
+    # eas-cli@18.8.1 update`), and eas-cli 18.8.1 also takes `--channel`
+    # (build/commands/update/index.js:64), which reaches the same zero devices.
+    commands = [
+        m.group(0)
+        for m in re.finditer(
+            r"\beas(?:-cli(?:@[\w.\-]+)?)?\s+update(?::list)?\b(?:\\\r?\n|[^\n`])*",
+            text,
+        )
+        if re.search(r"--(?:branch|channel)[=\s]+[\"\']?production\b", m.group(0))
+    ]
+    assert (
+        commands == []
+    ), f"runbook still publishes to the device-less production channel: {commands}"
+    assert (
+        "--branch production" in text
+    ), "the runbook must still NAME the hazard it stopped using"
+    for needle in (
+        "--branch preview --clear-cache",
+        "expo-upload-sourcemaps",
+        "update:view",
+        "--skip-bundler",
+        "| gitCommitHash |",
+        # ruling 2(a): the dirty-tree truth (eas.json sets no cli.requireCommit)
+        "`eas update` will NOT stop you",
+        "`cli.requireCommit`",
+    ):
+        assert needle in text, f"runbook is missing {needle!r}"
+
+    # the ledger keeps the one publish that is on phones today, with its group
+    # id explicitly unrecorded — the gap the ledger exists to close
+    assert re.search(
+        r"^\| 2026-09-02 \| preview \| \(not recorded\) \| "
+        r"`97b5f1501a1242c405fd3cf12bee9ab419db2bdd` \| "
+        r"\(not recorded\) \| \(not recorded\) \| \(not recorded\) \|",
+        text,
+        re.MULTILINE,
+    ), (
+        "the OTA ledger lost its 2026-09-02 97b5f15 row, or states a runtimeVersion "
+        "/ sourcemap / publisher cell that CONTEXT_SESSION_LOG.md:131 does not record"
+    )
+
+    # the SEEDED rows (copied from the session docs, which cite their source
+    # line) must not state as fact what their sources do not record: none of
+    # those source lines names who ran `eas update` (CONTEXT_SESSION_LOG.md:131
+    # says only "parallel session"). Rows appended at publish time are free.
+    seeded = [
+        ln
+        for ln in text.splitlines()
+        if ln.startswith("| ")
+        and ("SESSION_BUNDLES.md:" in ln or "CONTEXT_SESSION_LOG.md:" in ln)
+    ]
+    assert len(seeded) == 7, f"expected the 7 seeded ledger rows, got {len(seeded)}"
+    source_lines = {
+        name: (REPO_ROOT / "docs" / name).read_text(encoding="utf-8").splitlines()
+        for name in ("SESSION_BUNDLES.md", "CONTEXT_SESSION_LOG.md")
+    }
+    for row in seeded:
+        cells = [c.strip() for c in row.strip().strip("|").split("|")]
+        date, runtime, sourcemaps, published_by, notes = (
+            cells[0],
+            cells[4],
+            cells[5],
+            cells[6],
+            cells[7],
+        )
+        assert (
+            published_by == "(not recorded)"
+        ), f"seeded ledger row guesses its publisher: {row}"
+        # no source line records a sourcemap upload for any seeded publish
+        assert (
+            sourcemaps == "(not recorded)"
+        ), f"seeded ledger row guesses its sourcemap upload: {row}"
+        # every other stated cell must be READ from the cited source line(s),
+        # not inferred: a bare date must be on the FIRST cited line (a date
+        # from a section header is marked "(section date)"), and a stated
+        # runtimeVersion must appear as "runtime <v>" on a cited line.
+        cite = re.search(r"docs/(SESSION_BUNDLES|CONTEXT_SESSION_LOG)\.md:(\d+)", notes)
+        assert cite, f"seeded ledger row cites no source line: {row}"
+        lines = source_lines[cite.group(1) + ".md"]
+        # Resolve the citation by CONTENT (the row's group id or commit hash),
+        # so a docs insertion above the cited line cannot redden this test:
+        # PR #167 added 25 lines to CONTEXT_SESSION_LOG.md and moved :131 to
+        # :156 between the local run and CI. The line number in the notes is
+        # a reader aid; it is honoured while it still carries the anchor.
+        anchor = _seeded_row_anchor(cells)
+        assert anchor, f"seeded ledger row carries no group id or commit hash: {row}"
+        carriers = [ln for ln in lines if anchor in ln]
+        assert carriers, f"no line of docs/{cite.group(1)}.md carries {anchor!r}: {row}"
+        cited_no = int(cite.group(2))
+        cited_line = lines[cited_no - 1] if cited_no <= len(lines) else ""
+        cited = [
+            lines[int(n) - 1]
+            for n in re.findall(r":(\d+)", notes)
+            if int(n) <= len(lines)
+        ]
+        if re.fullmatch(r"\d{4}-\d{2}-\d{2}", date):
+            # A bare date must sit on a source line that also carries the
+            # row's anchor (the cited line when it is still accurate).
+            dated = [ln for ln in carriers if date in ln]
+            assert dated, (
+                f"seeded row states {date} but no source line carrying {anchor!r} "
+                f"does; mark it (section date) or (not recorded): {row}"
+            )
+            first = (
+                cited_line
+                if (anchor in cited_line and date in cited_line)
+                else dated[0]
+            )
+        else:
+            assert date == "(not recorded)" or date.endswith(
+                " (section date)"
+            ), f"unrecognised seeded date cell {date!r}: {row}"
+            first = cited_line if anchor in cited_line else carriers[0]
+        if first not in cited:
+            cited = [first] + cited
+        if runtime != "(not recorded)":
+            assert any(f"runtime {runtime}" in ln for ln in cited), (
+                f"seeded row states runtimeVersion {runtime} but no cited line "
+                f"records it: {row}"
+            )
+
+    # consistency pin between the two documents: CLAUDE.md's publish block is
+    # the authority the runbook now agrees with
+    claude_md = CLAUDE_MD.read_text(encoding="utf-8")
+    assert (
+        "never `--branch production`" in claude_md
+    ), "CLAUDE.md no longer carries the `never --branch production` rule the runbook mirrors"
