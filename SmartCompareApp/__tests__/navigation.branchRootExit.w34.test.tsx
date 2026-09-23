@@ -250,11 +250,14 @@ describe('W3-4 — the exit controls reset to the MOUNTED branch root', () => {
   });
 
   it('extracted the three route-name sets App.tsx mounts', () => {
-    expect(SETS.unauth).toEqual(['Auth', 'ReferralLanding', 'InviteeQuiz']);
+    // W3-16 hoisted `Legal` to root level after InviteeQuiz (consent-row links
+    // must resolve while signed out), so every branch also mounts it.
+    expect(SETS.unauth).toEqual(['Auth', 'ReferralLanding', 'InviteeQuiz', 'Legal']);
     expect(SETS.needsPreferences).toEqual([
       'Onboarding',
       'ReferralLanding',
       'InviteeQuiz',
+      'Legal',
     ]);
     expect(SETS.authed).toContain('Main');
   });

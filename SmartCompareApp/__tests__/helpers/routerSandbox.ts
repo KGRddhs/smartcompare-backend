@@ -193,8 +193,11 @@ export function rootRouteNameSets(): RootRouteNameSets {
 
   // Sanity: the shape App.tsx has today. A drift here means the extraction, not
   // the screens, needs attention — fail with the sets in the message.
-  const expectUnauth = ['Auth', 'ReferralLanding', 'InviteeQuiz'];
-  const expectPrefs = ['Onboarding', 'ReferralLanding', 'InviteeQuiz'];
+  // W3-16 hoisted `Legal` (Privacy + Terms) to root-navigator level after
+  // InviteeQuiz so the consent row's links resolve while signed out, so the
+  // hoisted set is now three screens on every branch.
+  const expectUnauth = ['Auth', 'ReferralLanding', 'InviteeQuiz', 'Legal'];
+  const expectPrefs = ['Onboarding', 'ReferralLanding', 'InviteeQuiz', 'Legal'];
   const same = (a: string[], b: string[]) => a.length === b.length && a.every((x, i) => x === b[i]);
   if (!same(sets.unauth, expectUnauth) || !same(sets.needsPreferences, expectPrefs) || !sets.authed.includes('Main')) {
     throw new Error(`rootRouteNameSets: App.tsx branch shape drifted; extracted ${JSON.stringify(sets)}`);
