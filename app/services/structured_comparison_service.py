@@ -1214,6 +1214,11 @@ from app.services.price_service import (
     shopping_listing_matches,
     shopping_strict_currency_enabled,
     shopping_strict_currency_pend,
+    shopping_currency_truth_enabled,
+    _shopping_display_currency,
+    _shopping_unconvertible_foreign_iso,
+    _shopping_bh_host_evidence,
+    _shopping_price_residue,
     reconcile_pair_sizes,
     reconcile_pair_fairness,
     apply_region_currency_guard,
@@ -8227,6 +8232,25 @@ class StructuredComparisonService:
                     # read 'BHD 12,500' as 12500.0 where the main path reads 12.5
                     # (a 1000x divergence the fairness re-select could then serve).
                     detected = detect_currency(price_str)
+                    # W4-1 (ENABLE_SHOPPING_CURRENCY_TRUTH) — mirror steps 1+2
+                    # of the front door via the SAME shared helpers, under the
+                    # same flag, BEFORE the strict check and the parse: resolve
+                    # the display token detect_currency cannot see, and pend a
+                    # known non-target ISO code the effective table cannot
+                    # convert. Without this the stash would seed "22.500 BD"
+                    # as 22500 and "TRY 1.299,00" as 1299 local_bhd — the exact
+                    # rows the front door now fixes/pends (the CD-wave-diffs-03
+                    # back-door lesson). Flag OFF: skipped, byte-identical.
+                    if shopping_currency_truth_enabled() and detected is None:
+                        detected = _shopping_display_currency(price_str)
+                        if detected is None and _shopping_unconvertible_foreign_iso(
+                            price_str, currency
+                        ):
+                            logger.info(
+                                "[SHOPPING_CURRENCY_TRUTH] pend unconvertible %s for %s",
+                                _shopping_price_residue(price_str).upper(), full_name,
+                            )
+                            continue
                     # CD-wave-diffs-03 — mirror the M13-09 strict-shopping
                     # guards (letter-dollar un-detect + unresolved-foreign
                     # signal) via the SHARED admission helper, under the same
@@ -8266,12 +8290,31 @@ class StructuredComparisonService:
                     retailer = item.get("source", "") or ""
                     sizes = extract_sizes_ml(title)
                     size = (sorted(sizes)[0] + "ml") if sizes else None
+                    # honest label: gl=string-converted -> converted_usd, else
+                    # native local_bhd (matches extract_price_from_shopping).
+                    source_method = "converted_usd" if item_converted else "local_bhd"
+                    # W4-1 step 3 — local_bhd requires HOST evidence; the SAME
+                    # shared predicate the front door consults (the loop's ask
+                    # ``currency`` scopes its Bahrain vocabulary — rework ruling
+                    # R1), so a google-linked row can never be seeded genuine by
+                    # the back door.
+                    if shopping_currency_truth_enabled() and source_method == "local_bhd":
+                        _no_evidence: List[str] = []
+                        if not _shopping_bh_host_evidence(
+                            item.get("link"), ask_currency=currency, reason_out=_no_evidence,
+                        ):
+                            logger.info(
+                                "[SHOPPING_CURRENCY_TRUTH] relabel local_bhd->converted_usd "
+                                "host=%s reason=%s for %s",
+                                extract_domain(item.get("link") or ""),
+                                _no_evidence[0] if _no_evidence else "no_bh_evidence",
+                                full_name,
+                            )
+                            source_method = "converted_usd"
                     observed.append({
                         "amount": round(amount, 2),
                         "currency": currency,
-                        # honest label: gl=string-converted -> converted_usd, else
-                        # native local_bhd (matches extract_price_from_shopping).
-                        "source_method": "converted_usd" if item_converted else "local_bhd",
+                        "source_method": source_method,
                         "retailer": retailer,
                         "url": item.get("link") or build_retailer_url(retailer, full_name),
                         "title": title,
