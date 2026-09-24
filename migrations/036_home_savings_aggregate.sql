@@ -91,6 +91,14 @@ $$;
 
 -- Locked down to the roles the API uses (service-role admin client and the
 -- RLS-scoped authenticated user client).
-REVOKE ALL ON FUNCTION public.home_savings_aggregate(uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.home_savings_aggregate(uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.home_savings_aggregate(uuid)
   TO authenticated, service_role;
+-- `anon` is named in the revoke as well as PUBLIC (amended 2026-09-23, before
+-- this file was ever applied) because a stock Supabase project's default
+-- privileges grant EXECUTE to anon EXPLICITLY, and a PUBLIC-only revoke leaves
+-- that grant standing (measured on a local PostgreSQL 18 with Supabase-style
+-- default privileges: anon kept EXECUTE after the PUBLIC-only form). It matters
+-- because 037 may now be applied BEFORE this file — 037's statement 4 is
+-- guarded and skips a function that does not exist yet — so this revoke is the
+-- one that has to close anon on its own.
