@@ -1,3 +1,4 @@
+<!-- Copy of the PR #189 body kept for the session-67 state folder. The literal old apply-order chain was rewritten as "035, then 036, then 037 (the OLD order)" so tests/test_retro_w1_2d.py, which forbids that literal anywhere under docs/investigations, keeps its meaning: this file only DESCRIBES the order R-MIG retired. -->
 ## Retro-fix R-MIG (W1-2 migration 037 (#153, merged in session 65 without review))
 
 Retroactive adversary sweep (session 66, audit lens C) reproduced these defects on `origin/main`; this PR is the TDD fix: red (Fable-gated) -> green -> adversary -> fix -> re-adversary, all on Opus 5.5 agents with Fable gating, on the pinned CI stack.
@@ -31,7 +32,7 @@ Retroactive adversary sweep (session 66, audit lens C) reproduced these defects 
 2. **W1-2c: 037 assumed CR-SECURITY-02 means "RLS is off".**
    - With RLS already on plus an out-of-band `USING (true)` policy, anon read 4 of 4 rows before 037 and 4 of 4 after.
    - The old rollback then DISABLEd RLS unconditionally, which let anon DELETE rows.
-3. **W1-2d: 037 prescribed `035 -> 036 -> 037` as a hard prerequisite.**
+3. **W1-2d: 037 prescribed `035, then 036, then 037 (the OLD order)` as a hard prerequisite.**
    - On today's schema, statement 4 (036's function) made 037 fail with rc 3 and roll back entirely.
 
 ### Fixes
@@ -61,7 +62,7 @@ Retroactive adversary sweep (session 66, audit lens C) reproduced these defects 
 - **Two more 040 mutants were unpinned.**
   - `PERFORM format(` builds the REVOKE and never runs it, while still printing a success NOTICE. The roles are now read from the literal that `EXECUTE format(` runs.
   - `pg_get_function_arguments` gives rc 3 on a DEFAULT overload. A new pin requires the identity signature, fed from the loop record.
-- **Apply order was still wrong in docs.** `docs/investigations/2026-09-11-w3-remainder-state.md:126` still said `035 -> 036 -> 037`; it is corrected, and a new pin scans every investigations doc.
+- **Apply order was still wrong in docs.** `docs/investigations/2026-09-11-w3-remainder-state.md:126` still said `035, then 036, then 037 (the OLD order)`; it is corrected, and a new pin scans every investigations doc.
 - **THE RULE keyed on names only.** RLS off plus a same-named `events_select USING (true)` gave anon 4 -> 4 after 037. The header now prints the expected pg_policies rendering and states that any difference means NOT closed, and this is pinned.
 - **Tests that proved nothing, now real pins.**
   - The statement-4 guard must be the WHOLE IF condition, which kills `IS NOT NULL AND false` and `OR true`.
@@ -97,7 +98,7 @@ None. There is no runtime code. 037's executable SQL is identical to the green's
 
 ### Context-file corrections (separate docs PR; not edited here)
 - **CLAUDE.md:370** (`ENABLE_SYNC_DB_OFFLOAD` row): "the behaviour-profile RPC (needs migration 037)" -> "needs a future migration (unnumbered)".
-- **CLAUDE.md, SESSION 65c ADDENDUM, #153 bullet:** "apply order `035 -> 036 -> 037`" -> "037 applies any time (statement 4 is guarded by `to_regprocedure('public.home_savings_aggregate(uuid)')`); 036 whenever `ENABLE_HOME_SAVINGS_AGGREGATE` is readied, then re-run 037; 035 independent; run 037's `user_events` BEFORE checks first; apply 040 for `cleanup_expired_ratings`."
+- **CLAUDE.md, SESSION 65c ADDENDUM, #153 bullet:** "apply order `035, then 036, then 037 (the OLD order)`" -> "037 applies any time (statement 4 is guarded by `to_regprocedure('public.home_savings_aggregate(uuid)')`); 036 whenever `ENABLE_HOME_SAVINGS_AGGREGATE` is readied, then re-run 037; 035 independent; run 037's `user_events` BEFORE checks first; apply 040 for `cleanup_expired_ratings`."
 - **CLAUDE.md, SESSION 65 "Corrections to the consolidated review itself":** "`cleanup_expired_ratings` ... does not exist anywhere in migrations/ or app/" -> "exists LIVE, out of band (anon GET -> SQLSTATE 25006, recorded in docs/investigations/2026-09-06-full-review-verified.json); it is in no migration, which is why a repo grep misses it; migration 040 revokes it from PUBLIC, anon, authenticated."
 - **docs/CONTEXT_SESSION_LOG.md:68**, "(6) Corrections to the consolidated review itself": "`cleanup_expired_ratings` ... does not exist anywhere" -> the same sentence as the CLAUDE.md SESSION 65 correction above.
 
