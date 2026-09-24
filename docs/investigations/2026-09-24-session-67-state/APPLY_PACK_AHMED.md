@@ -9,6 +9,8 @@ Measured 2026-09-24 ~15:00 local via the Railway CLI (logged in as the account y
 - `railway redeploy --service web --yes` → **`Your trial has expired. Please select a plan to continue using Railway.`** That is the cause.
 - Consequence for the code: `web` has had **no deployment since 2026-09-11 10:26 UTC (PR #162, `fe0298ae`)**. Every merge of sessions 66 and 67 (#163–#196) is on main but has NEVER run in production; the GitHub webhook still reaches the project (`price-warmer` records a `SKIPPED` row per push, correctly, via its watch patterns) but blocked builds create nothing on `web`.
 
+**UPDATE 15:20 local — steps 1 and 2 are DONE:** you subscribed at ~15:18; Railway re-created `web` and `qaren-landing` and I re-issued `railway redeploy` for both; `/health` is 200 on image `fe0298ae` (2026-09-11). What remains here is step 4: current main has to deploy — the docs PR #197 merge is the first push after the plan; if no `BUILDING` row appears on `web` within a minute of it, reconnect the source as described.
+
 Do, in order:
 
 1. Railway dashboard → Billing → **select a plan** (Hobby is enough for one web + one static service; the price-warmer is off). I cannot do this: payments are yours alone.
