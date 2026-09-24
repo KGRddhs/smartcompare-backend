@@ -808,17 +808,21 @@ async def test_flag_off_streaming_never_short_circuits(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# MINOR 5 — a wait_for timeout must be RECORDED, and never swallowed
+# MINOR 5, INVERTED by retro-fix W1-3a — an OUTER wait_for deadline cancels the
+# guarded dispatch; that cancellation is re-raised and is NOT recorded
 # ---------------------------------------------------------------------------
 @pytest.mark.asyncio
-async def test_wait_for_timeout_around_the_guard_records_a_failure(monkeypatch):
-    """`asyncio.CancelledError` is a BaseException, so an `except Exception`
-    never saw it: an `asyncio.wait_for` deadline around a guarded dispatch
-    cancelled the call and the breaker recorded NOTHING (measured
-    {'fail': 0, 'succ': 0}). Most compare-path LLM calls are wrapped in exactly
-    such a wait_for, so this was the timeout class the breaker most needed to
-    see. The cancellation must still propagate — the guard records, it does not
-    swallow."""
+async def test_wait_for_timeout_around_the_guard_records_no_failure(monkeypatch):
+    """Retro-fix W1-3a (BLOCKING) inverts the MINOR-5 pin. An outer
+    `asyncio.wait_for` deadline reaches the guard as a bare CancelledError,
+    which is indistinguishable from a sibling's wall, the stream hard cap, a
+    client disconnect or a shutdown -- none of which says anything about
+    OpenAI's health. Recording it let ONE compare that cancels three in-flight
+    calls trip the global breaker (tests/test_retro_w1_3.py reproduces it). A
+    genuine OpenAI stall is still recorded through the SDK's own request
+    timeout (APITimeoutError, a transient APIConnectionError) or a TimeoutError
+    raised inside the call; both are pinned in tests/test_retro_w1_3.py. The
+    cancellation must still propagate -- the guard never swallows it."""
     monkeypatch.setenv(FLAG, "true")
     store, ops, _get, _set, _incr, _expire = _dict_breaker_redis()
 
@@ -837,11 +841,12 @@ async def test_wait_for_timeout_around_the_guard_records_a_failure(monkeypatch):
             )
 
     blob = _breaker_blob(store)
-    assert blob is not None, (
-        "a wait_for timeout around the dispatch chokepoint recorded nothing — "
-        "the cancellation escaped the guard's `except Exception`"
+    assert blob is None or (
+        blob.get("state") == abs_mod.CB_CLOSED and int(blob.get("failure_count") or 0) == 0
+    ), (
+        "an outer wait_for cancellation of the dispatch chokepoint was recorded "
+        f"as an OpenAI failure: {blob}"
     )
-    assert blob["failure_count"] == 1, f"expected one recorded failure, got {blob}"
 
 
 # ---------------------------------------------------------------------------

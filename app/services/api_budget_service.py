@@ -790,35 +790,41 @@ def openai_preflight_allows_compare() -> bool:
 
 
 def _openai_dispatch_admission() -> tuple:
-    """(admitted, outcome_matters) for ONE OpenAI dispatch.
+    """(admitted, outcome_matters, probe) for ONE OpenAI dispatch.
 
     `outcome_matters` is False on the overwhelmingly common path — a breaker
     that is closed with no standing failure streak — because record_success
     would then write a state Redis already holds (MAJOR 3: eleven such writes
     per compare). Whenever the breaker is anything else, is_circuit_closed does
     the real admission (including the atomic half-open probe INCR) and the
-    outcome is recorded."""
+    outcome is recorded.
+
+    `probe` (retro-fix W1-3b) is True only when the admission went through
+    is_circuit_closed's recovery path — i.e. this dispatch may hold the single
+    half-open probe slot, so guarded_llm_create must end it with a TOTAL
+    outcome (success, failure, or an explicit slot release)."""
     state, tripped_at, failures = _openai_breaker_snapshot()
     if state == CB_CLOSED:
         # A closed breaker admits; is_circuit_closed would spend a Redis GET to
         # say the same thing. A success still matters while a partial failure
         # streak stands, because recording it resets the streak.
-        return True, failures > 0
+        return True, failures > 0, False
     if state == CB_OPEN and (time.time() - tripped_at) < CB_RECOVERY_TIMEOUT:
         # Denied without touching Redis; the probe budget is untouched.
-        return False, False
+        return False, False, False
     try:
         admitted = is_circuit_closed(OPENAI_PROVIDER)
     except Exception as e:  # noqa: BLE001 — a monitoring failure must not block calls
         logger.warning("[CIRCUIT] openai breaker check failed (%s) — failing open", e)
         admitted = True
-    return admitted, True
+    return admitted, True, True
 
 
 def openai_record_failure() -> None:
-    """Record an OpenAI transport failure (429 / 5xx / timeout / cancellation)
-    and drop the breaker memo so a resulting trip engages immediately. No-op
-    unless the preflight flag is ON."""
+    """Record an OpenAI transport failure (429 / 5xx / connection / timeout —
+    never an outer cancellation, retro-fix W1-3a) and drop the breaker memo so
+    a resulting trip engages immediately. No-op unless the preflight flag is
+    ON."""
     if not llm_preflight_breaker_enabled():
         return
     try:
@@ -848,6 +854,51 @@ def openai_record_success() -> None:
     # We just wrote CLOSED / failure_count 0; model it locally instead of paying
     # a GET on the next call to rediscover it.
     _store_openai_breaker_snapshot(CB_CLOSED, 0.0, 0)
+
+
+def openai_release_half_open_probe() -> None:
+    """Retro-fix W1-3b: hand the half-open probe slot back WITHOUT a verdict.
+
+    Used when an admitted probe ends in an outcome that says nothing about
+    OpenAI's health — an outer cancellation (W1-3a) or a non-SDK exception.
+    Recording nothing would leave the probe INCR spent and the blob half_open,
+    so every later dispatch is denied (INCR >= 2) until the 3600 s blob TTL
+    lapses while the read-only preflight admits every compare. Resetting the
+    per-trip-window probe counter to 0 lets the NEXT dispatch take the probe.
+    Resetting (not DECR) also discards the increments of checks that were
+    denied while this probe was in flight, which would otherwise keep the
+    counter >= 1. Acts only on a blob still half_open; if another dispatch
+    already recorded an outcome (CLOSED / re-OPEN), there is nothing to
+    release. No-op unless the preflight flag is ON."""
+    if not llm_preflight_breaker_enabled():
+        return
+    try:
+        raw = _redis_get(_circuit_key(OPENAI_PROVIDER))
+        if raw:
+            state = json.loads(raw)
+            if state.get("state") == CB_HALF_OPEN:
+                _redis_set(_half_open_probe_key(OPENAI_PROVIDER, state), "0", ex=_CB_TTL)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[CIRCUIT] openai half-open probe release failed: %s", e)
+    finally:
+        _reset_openai_breaker_cache()
+
+
+def _openai_server_answered(exc: BaseException) -> bool:
+    """Retro-fix W1-3b: True for an SDK status error with a 4xx other than 429
+    (context-length / content-policy 400, 401, 403, 404, 409, 422). OpenAI
+    RECEIVED and ANSWERED the request, so for breaker health this is a live
+    server — a half-open probe that gets one closes the breaker instead of
+    wedging it. Never a failure: these are request defects
+    (_openai_failure_is_transient returns False for all of them)."""
+    try:
+        import openai as _openai_sdk
+    except Exception:  # noqa: BLE001 — no SDK -> nothing answered
+        return False
+    if not isinstance(exc, _openai_sdk.APIStatusError):
+        return False
+    status = getattr(exc, "status_code", None)
+    return isinstance(status, int) and 400 <= status < 500 and status != 429
 
 
 def _openai_failure_is_transient(exc: BaseException) -> bool:
@@ -914,7 +965,7 @@ async def guarded_llm_create(client, **kwargs):
     """
     if not llm_preflight_breaker_enabled():
         return await client.chat.completions.create(**kwargs)
-    admitted, outcome_matters = _openai_dispatch_admission()
+    admitted, outcome_matters, probe = _openai_dispatch_admission()
     if not admitted:
         raise LLMUnavailableError(
             "openai circuit breaker denied admission — dispatch suppressed"
@@ -922,25 +973,41 @@ async def guarded_llm_create(client, **kwargs):
     try:
         response = await client.chat.completions.create(**kwargs)
     except asyncio.CancelledError:
-        # MINOR 5 — CancelledError is a BaseException, so an `except Exception`
-        # never saw it and an asyncio.wait_for timeout around this call was
-        # never recorded (measured: {'fail': 0, 'succ': 0}). Almost every
-        # wait_for in the compare path wraps THIS coroutine, so the timeout the
-        # breaker most needs to see arrived here as a cancellation.
+        # Retro-fix W1-3a (BLOCKING) — a bare cancellation records NO failure.
+        # It is indistinguishable from a sibling's wall, the Tier-2 wall, the
+        # stream hard cap, a client disconnect or a shutdown, none of which
+        # says anything about OpenAI's health; recording it (the MINOR-5
+        # rework) let ONE compare that cancels three in-flight calls trip the
+        # global breaker and refuse every compare for CB_RECOVERY_TIMEOUT. A
+        # genuine OpenAI stall is still recorded via the SDK's own request
+        # timeout (APITimeoutError is a transient APIConnectionError) or a
+        # TimeoutError raised inside the call (the `except Exception` arm).
         #
-        # ACCEPTED RESIDUAL, disclosed rather than hidden: a cancellation from
-        # an outer cause (process shutdown, or ENABLE_PREVERDICT_DISCONNECT_ABORT
-        # closing the stream) is indistinguishable from a deadline here — the
-        # task is cancelled identically in both cases — so it also records a
-        # failure. It takes CB_FAILURE_THRESHOLD *consecutive* such records to
-        # trip, and any successful dispatch in between resets the streak (that
-        # is exactly the case `outcome_matters` keeps recording for).
-        # The cancellation is re-raised untouched, never swallowed.
-        openai_record_failure()
+        # W1-3a x W1-3b: a cancelled HALF-OPEN probe must still end its slot,
+        # or recording nothing would wedge the breaker in deny-all. The
+        # cancellation is re-raised untouched, never swallowed.
+        if probe:
+            openai_release_half_open_probe()
         raise
     except Exception as e:  # noqa: BLE001 — classify, record, re-raise unchanged
         if _openai_failure_is_transient(e):
             openai_record_failure()
+        elif probe:
+            # Retro-fix W1-3b — every admitted half-open probe records a TOTAL
+            # outcome. A 4xx other than 429 means OpenAI answered: success for
+            # health. Anything else (a non-SDK exception, a response-validation
+            # error) is no verdict: release the slot for the next dispatch.
+            if _openai_server_answered(e):
+                openai_record_success()
+            else:
+                openai_release_half_open_probe()
+        raise
+    except BaseException:
+        # Retro-fix W1-3b, made total: any other BaseException (KeyboardInterrupt,
+        # SystemExit, GeneratorExit when an orphaned coroutine is closed) is no
+        # verdict either; a probe releases its slot so it cannot wedge deny-all.
+        if probe:
+            openai_release_half_open_probe()
         raise
     if outcome_matters:
         openai_record_success()
