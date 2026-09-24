@@ -97,9 +97,31 @@ def _default_flag_state(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _serper_unconfigured(monkeypatch):
+    """Pin Serper to "no key" for every test in this file, whatever ran first.
+
+    conftest pops SERPER_API_KEY/SERPER_API_KEYS from the environment, but
+    ``serper_service.SERPER_API_KEY`` is a MODULE global read once at import.
+    ``tests/test_hotfix_shopping_query_clean.py`` (3 tests) does
+    ``monkeypatch.setenv("SERPER_API_KEY", "test-key")`` then
+    ``importlib.reload(serper_service)``; monkeypatch restores the env var but
+    not the reloaded global, so in the one-process CI suite every later test
+    sees a configured key and the unstubbed quota_outage path fires real
+    Serper lookups (CI, PR #178: 22 x getaddrinfo google.serper.dev)."""
+    from app.services import serper_service
+
+    monkeypatch.delenv("SERPER_API_KEYS", raising=False)
+    monkeypatch.delenv("SERPER_API_KEY", raising=False)
+    monkeypatch.setattr(serper_service, "SERPER_API_KEY", None)
+    assert serper_service._active_serper_key() is None
+    yield
+
+
+@pytest.fixture(autouse=True)
 def socket_guard(monkeypatch):
-    """Block every non-loopback connect and DNS lookup; fail the test if
-    anything but the conftest-neutralised ``*.invalid`` sentinel was tried."""
+    """Block every non-loopback connect and DNS lookup (and every curl_cffi
+    transfer); fail the test if anything but the conftest-neutralised
+    ``*.invalid`` sentinel was tried."""
     attempts = []
     real_connect = socket.socket.connect
     real_connect_ex = socket.socket.connect_ex
@@ -131,6 +153,34 @@ def socket_guard(monkeypatch):
     monkeypatch.setattr(socket.socket, "connect", _connect)
     monkeypatch.setattr(socket.socket, "connect_ex", _connect_ex)
     monkeypatch.setattr(socket, "getaddrinfo", _gai)
+
+    # curl_cffi drives NATIVE libcurl, which never touches the Python socket
+    # module, so the three patches above cannot see it (CI, PR #178: the
+    # quota_outage tests reached www.noon.com for real — "HTTP/2 stream 1
+    # reset by server"). Block and record it at the Python entry points.
+    from urllib.parse import urlsplit
+
+    import curl_cffi.curl as _curl
+    import curl_cffi.requests as _curl_requests
+
+    def _curl_host(url):
+        return urlsplit(str(url)).hostname or str(url)
+
+    def _curl_request(self, method, url, *a, **k):
+        attempts.append(("curl_cffi", _curl_host(url)))
+        raise OSError(f"W4-9 socket guard: curl_cffi {method} {url!r} blocked")
+
+    async def _curl_request_async(self, method, url, *a, **k):
+        attempts.append(("curl_cffi", _curl_host(url)))
+        raise OSError(f"W4-9 socket guard: curl_cffi {method} {url!r} blocked")
+
+    def _curl_perform(self, *a, **k):
+        attempts.append(("curl_cffi.perform", "?"))
+        raise OSError("W4-9 socket guard: curl_cffi perform blocked")
+
+    monkeypatch.setattr(_curl_requests.Session, "request", _curl_request)
+    monkeypatch.setattr(_curl_requests.AsyncSession, "request", _curl_request_async)
+    monkeypatch.setattr(_curl.Curl, "perform", _curl_perform)
     yield attempts
     unexpected = [a for a in attempts if not a[1].endswith(".invalid")]
     assert not unexpected, f"W4-9 socket guard: real egress attempted: {unexpected}"
@@ -378,15 +428,23 @@ def quota_outage(llm_429):
     """R2(e) — the REAL orchestrator end to end (no _fetch_product_data stub):
     EVERY OpenAI call (specs, reviews, price, verdict) raises the 429 string,
     as in a real `insufficient_quota` outage. L3 moderation allowed and the
-    verdict model id pinned; every other I/O is left to the conftest
-    neutralisation + the socket guard (measured: zero socket attempts)."""
+    verdict model id pinned; Serper is keyless (``_serper_unconfigured``);
+    the two curl_cffi scrapers this path reaches — the Shopify
+    ``/products.json`` catalog and the noon-BH adapter, measured 16 native
+    fetches per run that the socket patches cannot see — are stubbed to a
+    MISS; every other I/O is left to the conftest neutralisation + the socket
+    guard, which now also fails the test on any other curl_cffi transfer."""
+    from app.services import price_service
     from app.services.content_safety_service import ContentSafetyService, SafetyResult
     from app.services.model_config import verdict_model
 
     with patch("app.services.model_router_service.model_router.get_model",
                AsyncMock(return_value=verdict_model())), \
          patch.object(ContentSafetyService, "moderate_output",
-                      AsyncMock(return_value=SafetyResult(allowed=True))):
+                      AsyncMock(return_value=SafetyResult(allowed=True))), \
+         patch.object(price_service, "_fetch_shopify_catalog",
+                      AsyncMock(return_value=None)), \
+         patch.object(scs, "fetch_noon_price", AsyncMock(return_value=None)):
         yield llm_429
 
 
