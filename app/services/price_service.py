@@ -7510,19 +7510,15 @@ def _vd_category_type_added(q: VariantDescriptor, c: VariantDescriptor, cat: str
 
 
 def _vd_gender_mismatch(q: VariantDescriptor, c: VariantDescriptor) -> bool:
-    """Gender CONTRADICTION (_gender_mismatch): both stated and conflicting. Combines the
-    STRICT gender with the flag-gated flanker-pronoun gender (him/her) so "Her" vs "Him"
-    rejects — WITHOUT the pronoun leaking into the femme-asymmetry, which reads q.gender/
-    c.gender STRICT. gender_pronoun is None flag-OFF → byte-identical to the strict check."""
-    def _combined(d: VariantDescriptor) -> Optional[str]:
-        men = d.gender == "men" or d.gender_pronoun == "men"
-        women = d.gender == "women" or d.gender_pronoun == "women"
-        if men and not women:
-            return "men"
-        if women and not men:
-            return "women"
-        return None
-    qg, cg = _combined(q), _combined(c)
+    """Gender CONTRADICTION (_gender_mismatch): both stated and conflicting. The STRICT
+    gender WINS; the flag-gated flanker-pronoun gender (him/her/gents/ladies) is consulted
+    ONLY when the strict gender is None, so "Her" vs "Him" rejects — and a strict
+    contradiction carrying a stray opposite catalogue word ("Eros Pour Homme" vs "Eros Pour
+    Femme - Gents") is NOT downgraded to ambiguous and stays rejected. The pronoun never
+    reaches the femme-asymmetry, which reads q.gender/c.gender STRICT. gender_pronoun is
+    None flag-OFF → byte-identical to the strict check."""
+    qg = q.gender or q.gender_pronoun
+    cg = c.gender or c.gender_pronoun
     return bool(qg and cg and qg != cg)
 
 
