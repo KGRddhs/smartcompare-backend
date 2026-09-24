@@ -368,11 +368,14 @@ def test_migration_files_are_discoverable():
 def test_census_sees_the_known_security_definer_functions():
     """Parser pin. If this ever shrinks, every guard below went vacuous.
 
-    Also pins the correction to the consolidated report: it names
-    `cleanup_expired_ratings` as one of the three offenders and NO SUCH
-    FUNCTION EXISTS — `grep -rn cleanup_expired_ratings migrations/ app/`
-    returns nothing. The real third offender is `resolve_referral_code`, whose
-    fix differs in kind (keep the anon grant).
+    `cleanup_expired_ratings` is NOT in this census, and that says nothing about
+    whether it exists: it was created OUT OF BAND, so no migration CREATEs it.
+    The live review measured it present and anon-executable
+    (docs/investigations/2026-09-06-full-review-verified.json: an anon GET on
+    /rpc/cleanup_expired_ratings returned SQLSTATE 25006, i.e. EXECUTE passed
+    and the body ran). An earlier version of this pin asserted it absent on the
+    strength of a repo grep; that assert is gone. What the repo CAN pin is that
+    migration 040 names it in executable SQL, so the function is closed by name.
     """
     census = _census()
     for sig in (
@@ -382,9 +385,18 @@ def test_census_sees_the_known_security_definer_functions():
         _sig("home_savings_aggregate", "uuid"),
     ):
         assert sig in census, f"census lost {sig[0]}{sig[1]} — the parser regressed"
-    assert not [n for (n, _t) in census if n.endswith(".cleanup_expired_ratings")], (
-        "cleanup_expired_ratings does not exist in this repo; do not carry the "
-        "consolidated report's text forward"
+    migration_040 = sorted(MIGRATIONS_DIR.glob("040_*.sql"))
+    assert len(migration_040) == 1, (
+        f"expected exactly one migrations/040_*.sql, found {migration_040}"
+    )
+    assert re.search(
+        r"proname\s*=\s*'cleanup_expired_ratings'",
+        _strip_sql_line_comments(migration_040[0].read_text(encoding="utf-8")),
+    ), (
+        "migration 040 must name cleanup_expired_ratings in executable SQL, as "
+        "the `proname = 'cleanup_expired_ratings'` catalog filter it revokes by "
+        "(a mention in a NOTICE string or a comment is not a pin) — it is the "
+        "live, out-of-band SECURITY DEFINER function 040 exists to revoke"
     )
 
 
@@ -615,8 +627,10 @@ def test_migration_037_enables_rls_on_user_events():
     (`ALTER TABLE user_events ENABLE ROW LEVEL SECURITY`) plus the
     `events_insert` / `events_select` policies at `010:56-59` — the finding is
     that the LIVE database does not match, i.e. 010 never applied that part or
-    RLS was turned back off. 037 re-asserts it (idempotent) so that applying
-    037 is sufficient; the `live_db` pin below is what proves it took effect.
+    RLS was turned back off. 037 re-asserts it (idempotent), which closes the
+    RLS-off cause only; a permissive out-of-band policy is the other cause and
+    037's header carries the pg_class + pg_policies BEFORE checks that tell
+    them apart. The `live_db` pin below is what proves it took effect.
     """
     if not MIGRATION_037.exists():
         pytest.fail(f"missing {MIGRATION_037}")
@@ -635,22 +649,37 @@ def test_migration_037_header_states_the_apply_order_and_the_live_proof():
     """The operator reads the MIGRATION, not the PR.
 
     Two facts have to be in that file or the apply is done on wrong
-    information: (a) 033 and 034 are ALREADY APPLIED (verified live
-    2026-09-06) and only 035 and 036 precede this one, so the order is
-    035 -> 036 -> 037; (b) the ACL query and the anon-key RPC probe that
-    prove the revoke actually landed. A `proacl` reading is the only way to
-    tell "revoked" from "the default grant is still there".
+    information: (a) the apply order — 037 does NOT depend on 035 or 036:
+    statement 4, the only one naming a function an unapplied migration
+    creates (036's home_savings_aggregate), is guarded by
+    `to_regprocedure('public.home_savings_aggregate(uuid)')`, so 037 applies in
+    any order, and if 036 lands after it 037 is re-run (it is idempotent). The
+    old '035 -> 036 -> 037' hard prerequisite tied the security fix to a
+    migration (035) whose own header says not to apply it, and was measured to
+    roll 037 back entirely on a schema without 036; (b) the ACL query and the
+    anon-key RPC probe that prove the revoke actually landed. A `proacl`
+    reading is the only way to tell "revoked" from "the default grant is still
+    there".
     """
     header = MIGRATION_037.read_text(encoding="utf-8").lower()
     for needle, why in (
-        ("035 -> 036 -> 037", "the apply order after 033/034 (already applied)"),
+        ("037 does not depend on 035 or 036", "that 037 needs neither 035 nor 036"),
+        (
+            "to_regprocedure('public.home_savings_aggregate(uuid)') is not null",
+            "the guard that lets statement 4 skip a function 036 has not created",
+        ),
+        ("re-run 037", "that 037 is re-run when 036 lands after it"),
         ("proacl", "the pg_proc ACL query that proves the revoke landed"),
         ("42501", "the anon-key RPC probe's expected permission-denied code"),
         ("service_role=x", "what a correct proacl entry looks like after 037"),
     ):
-        assert needle in header, (
-            f"migration 037's header must state {why}; `{needle}` is missing"
+        assert needle in " ".join(header.split()), (
+            f"migration 037 must state {why}; `{needle}` is missing"
         )
+    assert "035 -> 036 -> 037" not in header, (
+        "037 must not prescribe 035 -> 036 -> 037: it never depended on 035 and "
+        "its statement 4 is to_regprocedure-guarded, so it does not depend on 036"
+    )
     assert "033, 034, 035 and 036 are also unapplied" not in header, (
         "033 and 034 ARE applied (verified live 2026-09-06, "
         "CR-DATA-MIGRATIONS-07) — a security migration must not carry a wrong "
@@ -830,9 +859,11 @@ def test_detector_does_not_credit_a_revoke_from_a_role_other_than_public():
 # they reach production infrastructure, and running them BEFORE 037 is applied
 # would only re-measure the finding.
 #
-# WHEN TO RUN: after `037` has been applied to the live database, in order,
-# after 035 and 036 (033 and 034 are already applied). That run is the evidence
-# that production is fixed. Merging this file changes nothing in production.
+# WHEN TO RUN: after `037` has been applied to the live database (it needs
+# neither 035 nor 036 — statement 4 is to_regprocedure-guarded; re-run 037 if
+# 036 lands after it), and after `040` for cleanup_expired_ratings. That run is
+# the evidence that production is fixed. Merging this file changes nothing in
+# production.
 #
 # HOW TO RUN (PowerShell, from the repo root):
 #     $env:LIVE=1
@@ -880,9 +911,13 @@ class TestMigration037LiveGrantsAndRls:
         RED BEFORE 037 IS APPLIED: the finding recorded 146 rows visible to the
         anon role, containing 7 distinct real user uuids. `events_select` is
         `USING (auth.uid() = user_id)` and an anon caller has a NULL
-        `auth.uid()`, so 0 is the only correct answer once RLS is actually in
-        effect on the table — a non-zero count means RLS is still off, not that
-        the policy is wrong.
+        `auth.uid()`, so 0 is the only correct answer once RLS is in effect AND
+        no other policy admits anon. A non-zero count has TWO possible causes
+        and this count cannot tell them apart: RLS is still off, OR RLS is on
+        and a permissive policy (added out of band, e.g. `USING (true)`) lets
+        anon read — measured locally: with such a policy anon read 4 of 4 rows
+        both before and after 037. Settle it with the pg_class relrowsecurity
+        query and the pg_policies query in migration 037's header.
 
         A count, not the rows: this test must never pull other people's event
         data into a CI log.
@@ -894,9 +929,13 @@ class TestMigration037LiveGrantsAndRls:
             .execute()
         )
         assert result.count == 0, (
-            f"{result.count} user_events rows are readable with the ANON key — "
-            "row level security is not in effect on the live table (the "
-            "policies from 010:56-59 are inert while RLS is off)"
+            f"{result.count} user_events rows are readable with the ANON key. "
+            "Either row level security is not in effect on the live table, or "
+            "it is and a policy other than events_insert/events_select admits "
+            "anon. Run migration 037's header checks: `SELECT relrowsecurity "
+            "FROM pg_class WHERE oid = 'public.user_events'::regclass` and "
+            "`SELECT policyname, cmd, roles, qual FROM pg_policies WHERE "
+            "schemaname = 'public' AND tablename = 'user_events'`"
         )
 
     def test_anon_cannot_execute_delete_user_cascade(self, anon_client):

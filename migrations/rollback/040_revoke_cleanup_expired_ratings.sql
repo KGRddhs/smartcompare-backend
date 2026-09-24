@@ -1,0 +1,17 @@
+-- Rollback for 040_revoke_cleanup_expired_ratings.sql (W1-2b, CR-SECURITY-01).
+--
+-- THIS ROLLBACK DELIBERATELY CONTAINS NO EXECUTABLE SQL.
+--
+-- 040 only REVOKEs EXECUTE on public.cleanup_expired_ratings from PUBLIC, anon
+-- and authenticated. Reversing it means handing EXECUTE on an out-of-band
+-- SECURITY DEFINER function that runs a DELETE back to the anonymous role —
+-- the measured CR-SECURITY-01 hole (anon GET -> SQLSTATE 25006), reinstated.
+--
+-- There is also nothing to restore: no caller of cleanup_expired_ratings
+-- exists in app/ or scripts/, so nothing that worked before 040 stops working
+-- after it. A rollback exists to give back behaviour somebody depended on.
+--
+-- If a real caller surfaces after 040 is applied, give THAT caller's role an
+-- explicit grant in a new forward migration, with the caller named in its
+-- header. Use the pre-apply output of 040's first catalog query (the proacl
+-- you kept) as the record of what the function's ACL was.

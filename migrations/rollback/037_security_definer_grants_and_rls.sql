@@ -61,15 +61,50 @@
 -- their exceptions (`logger.warning(f"Error tracking event: …")`) and return
 -- `{"success": False}`, so nothing 500s and nothing pages.
 --
--- Running the statement below returns user_events to the state the finding
--- recorded: readable by the anon role. That IS the vulnerability, reinstated.
--- It also leaves the table diverging from 010:12, which has asked for RLS on
--- this table since the beginning. Use it to stop a live incident, then fix
--- forward — do not leave the database here.
+-- ============================================================================
+-- WARNING — THIS RESTORES THE RECORDED BEFORE VALUE, IT DOES NOT BLINDLY DISABLE
+-- ============================================================================
+-- 037's header tells the operator to run, BEFORE applying 037, and to KEEP:
+--
+--     SELECT c.relrowsecurity, c.relforcerowsecurity
+--       FROM pg_class c
+--      WHERE c.oid = 'public.user_events'::regclass;
+--
+-- Set `before_relrowsecurity` in the block below to that recorded value:
+--
+--   * false — RLS was OFF before 037, so 037's ENABLE is what changed the
+--     table, and this rollback DISABLEs it again. That puts user_events back
+--     to readable-by-the-anon-role: the CR-SECURITY-02 vulnerability,
+--     reinstated, and a table diverging from 010:12. Use it to stop a live
+--     incident, then fix forward — do not leave the database here.
+--   * true — RLS was ALREADY ON before 037, so 037's ENABLE was a no-op and
+--     there is nothing to reverse. This rollback leaves RLS ON. An earlier
+--     version DISABLEd unconditionally; measured on a local PostgreSQL 18 with
+--     RLS on plus an out-of-band permissive policy, that moved relrowsecurity
+--     from true to false and let the anon role DELETE user_events rows (1 row
+--     via DELETE ... RETURNING) — strictly worse than the state before 037.
+--   * left NULL (the shipped value) — the block raises and the transaction
+--     rolls back with NOTHING changed. The value has to be a decision made
+--     from the recorded BEFORE output, never a default. If that output was not
+--     kept, there is no safe answer: do not guess false.
 
 BEGIN;
 
-ALTER TABLE public.user_events DISABLE ROW LEVEL SECURITY;
+DO $$
+DECLARE
+  before_relrowsecurity boolean := NULL;  -- EDIT: the recorded BEFORE value
+BEGIN
+  IF before_relrowsecurity IS NULL THEN
+    RAISE EXCEPTION
+      'rollback/037: set before_relrowsecurity to the relrowsecurity value recorded BEFORE 037 was applied; nothing was changed';
+  ELSIF before_relrowsecurity THEN
+    RAISE NOTICE
+      'rollback/037: RLS on user_events was already ON before 037; leaving it ON';
+  ELSE
+    ALTER TABLE public.user_events DISABLE ROW LEVEL SECURITY;
+  END IF;
+END
+$$;
 
 COMMIT;
 

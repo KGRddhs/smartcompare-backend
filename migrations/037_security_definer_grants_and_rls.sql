@@ -4,8 +4,8 @@
 -- MERGING THIS CHANGES NOTHING IN PRODUCTION. It is a file in a repo until
 -- somebody applies it, and 035 and 036 are ALSO unapplied. (033 and 034 ARE
 -- applied — verified live 2026-09-06, CR-DATA-MIGRATIONS-07 — so do NOT
--- re-apply them.) See the "APPLY ORDER" note below; it is a hard
--- prerequisite, not advice.
+-- re-apply them.) 037 does not depend on 035 or 036 — see the "APPLY ORDER"
+-- note below — and it is safe to apply on today's production schema.
 --
 -- ============================================================================
 -- CR-SECURITY-01 — SECURITY DEFINER functions executable by PUBLIC
@@ -31,11 +31,17 @@
 -- correct template and is already in the repo — this file copies its shape and
 -- widens the revoke (see the next section for why PUBLIC alone is not enough).
 --
--- NOTE FOR ANYONE CARRYING THE CONSOLIDATED REPORT FORWARD: that report names
--- `cleanup_expired_ratings` as one of the three offenders. NO SUCH FUNCTION
--- EXISTS — `grep -rn cleanup_expired_ratings migrations/ app/` returns nothing.
--- The real third offender is `resolve_referral_code`, and its fix differs in
--- kind (keep the anon grant).
+-- `cleanup_expired_ratings` — CORRECTED 2026-09-23. An earlier version of this
+-- note called it nonexistent because a repo grep finds nothing, but it was
+-- created OUT OF BAND: docs/investigations/2026-09-06-full-review-verified.json
+-- records it "exists live but in NO migration", and an anon-key GET on
+-- /rpc/cleanup_expired_ratings returned SQLSTATE 25006 (anon passed EXECUTE and
+-- the body reached its DELETE). Its signature and body are unknown to the repo,
+-- so it is NOT handled here: migration 040 revokes it by NAME from PUBLIC,
+-- anon, authenticated, and 040's header carries the catalog queries to run
+-- first. Until 040 is applied, CR-SECURITY-01 is only partly closed here.
+-- `resolve_referral_code` is the third offender this file CAN see, and its fix
+-- differs in kind (keep the anon grant).
 --
 -- ============================================================================
 -- WHY THE REVOKES NAME anon AND authenticated, AND WHY service_role IS GRANTED
@@ -113,9 +119,41 @@
 -- already define events_insert / events_select `USING (auth.uid() = user_id)`.
 -- The source has been right the whole time; the finding is that the live table
 -- does not match it (146 rows visible to the anon role, 7 distinct real user
--- uuids). The ALTER below is therefore an IDEMPOTENT RE-ASSERTION whose only
--- purpose is to make "apply 037" sufficient. No source test can see this
--- finding — only the live_db pins in the test file can, and only after apply.
+-- uuids). No migration CREATEs user_events, so the live table and its live
+-- policies are outside migration control, and the finding left TWO causes
+-- open: (a) RLS is OFF on the live table, or (b) RLS is ON and a permissive
+-- policy was added out of band. The ALTER below is an IDEMPOTENT RE-ASSERTION
+-- that closes cause (a) ONLY. Measured on a local PostgreSQL 18 with RLS
+-- already on plus an out-of-band `FOR SELECT USING (true)` policy: the anon
+-- role read 4 of 4 rows before this file AND after it. No source test can see
+-- which cause is live — only the BEFORE checks below and the live_db pins in
+-- the test file can.
+--
+-- BEFORE CHECKS FOR user_events — run BOTH before applying, and keep the output
+-- (the rollback needs the first one):
+--
+--     SELECT c.relrowsecurity, c.relforcerowsecurity
+--       FROM pg_class c
+--      WHERE c.oid = 'public.user_events'::regclass;
+--
+--     SELECT policyname, permissive, cmd, roles, qual, with_check
+--       FROM pg_policies
+--      WHERE schemaname = 'public' AND tablename = 'user_events';
+--
+-- THE RULE: if relrowsecurity is ALREADY true, or pg_policies lists ANY
+-- policy other than events_insert and events_select, then this migration does
+-- NOT close CR-SECURITY-02: the anon read is coming from a policy, and the
+-- ENABLE below changes nothing. Names are not enough; 010:56-59 renders as
+--   events_insert PERMISSIVE INSERT {public} qual NULL
+--     with_check ((auth.uid() = user_id) OR (user_id IS NULL))
+--   events_select PERMISSIVE SELECT {public} qual (auth.uid() = user_id)
+-- Any difference in permissive, cmd, roles, qual or with_check (e.g. a
+-- same-named events_select USING (true)) also does NOT close CR-SECURITY-02.
+-- Do not report the finding closed on the strength of applying 037. The fix is
+-- a follow-up migration that drops (or re-creates) the offending policies BY
+-- NAME, written from that pg_policies output (never a blanket loop — the
+-- names are unknown until the query runs). Either way, the after-apply proof
+-- is an anon-key `count=exact` over user_events returning 0.
 --
 -- FORCE ROW LEVEL SECURITY IS DELIBERATELY NOT INCLUDED. The unit spec asks for
 -- it "if the table owner is the service role". Table ownership is a live-database
@@ -128,19 +166,29 @@
 -- back saying you need it, are in the commented block after the ALTER.
 --
 -- ============================================================================
--- APPLY ORDER — a hard prerequisite
+-- APPLY ORDER — 037 does not depend on 035 or 036
 -- ============================================================================
 -- 033 and 034 are ALREADY APPLIED and writing (verified live 2026-09-06,
--- CR-DATA-MIGRATIONS-07). 035 and 036 are NOT. The order is therefore:
+-- CR-DATA-MIGRATIONS-07). 035 and 036 are NOT, and 037 needs neither:
 --
---     035 -> 036 -> 037
+--   * 037 applies ANY TIME, including on today's production schema.
+--   * 036 whenever ENABLE_HOME_SAVINGS_AGGREGATE is readied. If 036 lands AFTER
+--     037, re-run 037 once 036 is in (it is idempotent) and re-check proacl.
+--     036's own revoke now names anon too, so the re-run is belt and braces,
+--     not the only thing standing between anon and /rpc/home_savings_aggregate.
+--   * 035 is independent of 037 (its own header says not to apply it until
+--     the store has outgrown a file).
 --
--- This is enforced rather than requested: the fourth REVOKE below names
--- public.home_savings_aggregate(uuid), which does not exist until 036 has been
--- applied, and PostgreSQL has no `REVOKE … IF EXISTS` for a function. Applying
--- 037 out of order therefore raises `function … does not exist` and, inside the
--- BEGIN/COMMIT below, rolls the whole file back. That is the intended failure:
--- loud and total, never half-applied.
+-- Why this is safe: statement 4 below is the only one that names a function
+-- created by an unapplied migration (036's home_savings_aggregate), and it is
+-- wrapped in a DO block guarded by
+-- to_regprocedure('public.home_savings_aggregate(uuid)') IS NOT NULL, because
+-- PostgreSQL has no `REVOKE … IF EXISTS` for a function. Without 036 it is a
+-- no-op; with 036 it re-asserts the lockdown. Statements 1-3 stay UNGUARDED on
+-- purpose: those functions exist in production, so a typo or a signature
+-- drift there must still raise `function … does not exist` and, inside the
+-- BEGIN/COMMIT below, roll the whole file back — loud and total, never
+-- half-applied.
 --
 -- ============================================================================
 -- APPLY-TIME VERIFICATION — run this BEFORE and AFTER, and keep both outputs
@@ -159,7 +207,10 @@
 -- `anon=`, NO `authenticated=` and NO bare `=X/…` entry. The empty grantee IS
 -- PUBLIC, so an `=X/postgres` entry present means PUBLIC still holds EXECUTE
 -- and this file did not take effect. A NULL proacl also means "PUBLIC default
--- still in force" — it is not a clean slate.
+-- still in force" — it is not a clean slate. No home_savings_aggregate row is
+-- expected until 036 is applied (statement 4 then skipped itself). Run the two
+-- user_events BEFORE CHECKS in the CR-SECURITY-02 section as well, and keep
+-- that output next to this one.
 --
 -- Then the live proof that the finding is closed, from a shell:
 --
@@ -224,23 +275,35 @@ GRANT EXECUTE ON FUNCTION public.resolve_referral_code(text)
 --    and granted at 036:95. Re-asserted here so the set of SECURITY DEFINER
 --    functions closed by an explicit REVOKE is complete in ONE file, and so
 --    that this migration is self-contained against a database where 036 landed.
---    `anon` is added to the revoke for the same reason as statements 1 and 2:
---    036's PUBLIC-only revoke leaves a stock explicit anon grant standing, and
+--    `anon` is named in the revoke for the same reason as statements 1 and 2:
+--    a PUBLIC-only revoke leaves a stock explicit anon grant standing (036:94
+--    was PUBLIC-only until 2026-09-23 and now names anon too), and
 --    036:92-93 says the function is meant for the authenticated and
 --    service-role clients only. No data was exposed by that gap — the function
 --    re-derives the caller (`auth.uid() = p_user_id`), so an anon call returns
 --    zero rows — but an open /rpc endpoint on a SECURITY DEFINER function is
 --    exactly what CR-SECURITY-01 is about.
---    Requires 036 to have been applied first (see APPLY ORDER above).
+--    GUARDED: 036 is unapplied in production, so this statement runs only
+--    when the function exists (see APPLY ORDER above) and is a no-op
+--    otherwise. If 036 is applied later, re-run 037.
 -- ---------------------------------------------------------------------------
-REVOKE ALL ON FUNCTION public.home_savings_aggregate(uuid) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.home_savings_aggregate(uuid)
-  TO authenticated, service_role;
+DO $$
+BEGIN
+  IF to_regprocedure('public.home_savings_aggregate(uuid)') IS NOT NULL THEN
+    REVOKE ALL ON FUNCTION public.home_savings_aggregate(uuid) FROM PUBLIC, anon;
+    GRANT EXECUTE ON FUNCTION public.home_savings_aggregate(uuid)
+      TO authenticated, service_role;
+  END IF;
+END
+$$;
 
 -- ---------------------------------------------------------------------------
 -- 5. user_events RLS — idempotent re-assertion of 010:12, so that the
 --    events_insert / events_select policies at 010:56-59 are actually in
---    effect. Enabling RLS on an already-RLS-enabled table is a no-op.
+--    effect. Enabling RLS on an already-RLS-enabled table is a no-op — which
+--    is exactly why this closes CR-SECURITY-02 only when the BEFORE CHECKS in
+--    the header showed RLS off, no extra policy, and both expected policies
+--    still defined as 010:56-59 wrote them.
 -- ---------------------------------------------------------------------------
 ALTER TABLE public.user_events ENABLE ROW LEVEL SECURITY;
 

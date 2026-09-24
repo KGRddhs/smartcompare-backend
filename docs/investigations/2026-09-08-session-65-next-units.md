@@ -36,7 +36,8 @@ mutation results and the stated limits:
 ## THE NEXT UNIT — W1-2
 
 Re-verified at `38ea28a9`: `cleanup_expired_ratings` still returns **0 files**
-across `migrations/` and `app/`; the five `SECURITY DEFINER` definitions and the
+across `migrations/` and `app/` (true of the repo, and NOT evidence the function
+is absent — it exists live, out of band; see the 2026-09-23 correction below); the five `SECURITY DEFINER` definitions and the
 single `REVOKE` are exactly as described; `resolve_referral_code` is still
 granted `TO anon, authenticated` at `014:102`; the highest migration is still
 `036`, so `037` remains the right number.
@@ -61,9 +62,17 @@ the mistake, and the live pins that prove whether it worked.
 
 ## Corrections to the consolidated report — verified, do not carry the old text
 
-**`cleanup_expired_ratings` DOES NOT EXIST.** The report names it as one of the
-three offenders; `grep -rn cleanup_expired_ratings migrations/ app/` returns
-nothing. The actual census of `SECURITY DEFINER` in `migrations/`:
+**CORRECTED 2026-09-23 — `cleanup_expired_ratings` EXISTS LIVE, out of band.**
+The report names it as one of the three offenders. `grep -rn
+cleanup_expired_ratings migrations/ app/` returns nothing, and this section
+originally concluded from that grep that the function was absent — wrong: a repo
+grep cannot see a function created outside the migrations.
+`docs/investigations/2026-09-06-full-review-verified.json` records that it "exists
+live but in NO migration", and an anon-key GET on `/rpc/cleanup_expired_ratings`
+returned SQLSTATE 25006 (the anon role passed EXECUTE and the body reached its
+DELETE). Migration **040** revokes it by name from `PUBLIC, anon, authenticated`
+(revoke only — no repo caller exists) and carries the catalog queries to run
+first. The census of `SECURITY DEFINER` functions that migrations CREATE, in `migrations/`:
 
 | function | defined in | `REVOKE … FROM PUBLIC`? | explicit GRANT? |
 |---|---|---|---|
@@ -295,7 +304,7 @@ result anywhere in the 1,656-call corpus.
 - **W1-5** `sc-w1-limkey` (`feature/s65-w1-5-limiter-endpoint-key`): red done (`tests/test_limiter_endpoint_key.py`, 11 nodes, 3 red); green stopped early (`app/middleware/rate_limiter.py` modified). Rulings appended to `.qa-w1b/W1_5_UNIT_SPEC.md`.
 - **W1-6** `sc-w1-drain` (`feature/s65-w1-6-shutdown-drain`): red done (`tests/test_shutdown_drain.py`, 17 nodes, 14 red); green stopped early (`app/main.py`, `app/utils/async_utils.py`, `Procfile`, `railway.json` modified). Rulings appended to `.qa-w1b/W1_6_UNIT_SPEC.md`.
 - Resume batch 3 with `Workflow({scriptPath: <session>/workflows/scripts/s65-batch3-w1-5-w1-6-wf_dce3b4f7-aba.js, resumeFromRunId: 'wf_dce3b4f7-aba'})` — reds replay from cache, greens re-run against whatever is on disk; or run each unit file first and decide keep-or-revert per file.
-- **Migration 037 (merged in #153) is NOT applied.** Apply order `035 -> 036 -> 037`; verification = the `proacl` query in the migration header before/after, then the anon-key `POST /rest/v1/rpc/delete_user_cascade` probe must return 42501 (a 404 proves nothing); then monitor the share of `user_events` rows with non-null `user_id`.
+- **Migration 037 (merged in #153) is NOT applied.** Apply order (corrected 2026-09-23): 037 any time — statement 4 is guarded by `to_regprocedure('public.home_savings_aggregate(uuid)')`, so it needs neither 035 nor 036; 036 whenever its flag is readied, then re-run 037; 035 independent; 040 (`cleanup_expired_ratings`) any time. Before applying, run 037's `pg_class` + `pg_policies` BEFORE checks for `user_events` and keep the output; verification = the `proacl` query in the migration header before/after, then the anon-key `POST /rest/v1/rpc/delete_user_cascade` probe must return 42501 (a 404 proves nothing); then monitor the share of `user_events` rows with non-null `user_id`.
 
 ## Docs debt applied to CLAUDE.md in this PR, and the full measured record
 
@@ -324,7 +333,7 @@ Every item below is MEASURED in this session, not inferred. Line anchors are at 
 - All six non-happy SSE terminal pairs terminate their generator (five `return`, one is the last statement of the nested `_emit_stream_deadline_partial` helper at `structured_comparison_service.py:3990-4022`); the happy path's `:4711` is the last statement of the try. No path yields an event after a terminal pair.
 
 ## W1-2 (migration 037) — for CLAUDE.md's Migrations paragraph and the SESSION 65 block
-13. 037 is WRITTEN, NOT APPLIED. Apply order `035 -> 036 -> 037` (033/034 applied 2026-09-06). Apply-time verification = the `proacl` query over the four functions BEFORE and AFTER, then the anon-key `POST /rest/v1/rpc/delete_user_cascade` probe which must return 42501 (a 404 proves nothing). After apply, watch the SHARE of `user_events` rows with non-null `user_id` (partial-failure mode of RLS if the service role does not bypass it), not total volume.
+13. 037 is WRITTEN, NOT APPLIED. Apply order (corrected 2026-09-23): 037 any time (statement 4 is `to_regprocedure`-guarded, so 037 needs neither 035 nor 036); 036 whenever its flag is readied, then re-run 037; 035 independent (033/034 applied 2026-09-06). Before applying, run 037's `pg_class` relrowsecurity + `pg_policies` BEFORE checks for `user_events` — RLS already on, or any policy other than `events_insert`/`events_select`, means 037 does not close CR-SECURITY-02. Apply-time verification = the `proacl` query over the four functions BEFORE and AFTER, then the anon-key `POST /rest/v1/rpc/delete_user_cascade` probe which must return 42501 (a 404 proves nothing). After apply, watch the SHARE of `user_events` rows with non-null `user_id` (partial-failure mode of RLS if the service role does not bypass it), not total volume.
 14. Correction of an earlier claim in this repo's docs and the first cut: "the service role bypasses grants" is FALSE as stated — `BYPASSRLS` is row security only; EXECUTE needs a grant. Every future SECURITY DEFINER function names its grantees explicitly (036's template).
 
 ## Batch 3 facts (from the red phases, measured)
@@ -358,7 +367,7 @@ Every item below is MEASURED in this session, not inferred. Line anchors are at 
 - `tests/test_m13_26_image_error_envelope.py` still asserts three substrings against a raw body; those tokens cannot collide with a UUID, so they were left alone.
 
 ## Ahmed's list (unchanged, plus two)
-`ENABLE_BRIGHTDATA_BUDGET_GATE=true` → the OTA (`eas update --branch preview --clear-cache`) → rotate `ADMIN_API_KEY` → apply migration 037 (`035 → 036 → 037`, then the `proacl` query and the anon-key RPC probe must return 42501). **New:** `railway login` (the Railway MCP token expired 2026-09-11, so deploy verification this session was `/health` only), and watch the next redeploy's OLD-deployment log for the `[DRAIN]` lines that close W1-6.
+`ENABLE_BRIGHTDATA_BUDGET_GATE=true` → the OTA (`eas update --branch preview --clear-cache`) → rotate `ADMIN_API_KEY` → apply migration 037 (any time — it needs neither 035 nor 036 since statement 4 is `to_regprocedure`-guarded; re-run it if 036 lands later; run its `user_events` BEFORE checks first; then the `proacl` query and the anon-key RPC probe must return 42501) and migration 040 (`cleanup_expired_ratings`). **New:** `railway login` (the Railway MCP token expired 2026-09-11, so deploy verification this session was `/health` only), and watch the next redeploy's OLD-deployment log for the `[DRAIN]` lines that close W1-6.
 
 ---
 
@@ -400,5 +409,5 @@ State as it reported at 2026-09-11 (not verified by this session, and its worktr
 - Before launching any workflow on a shared worktree, check the peer's `isRunning` and the workflow-script mtimes.
 
 ## Ahmed (unchanged, plus the two from #160)
-`ENABLE_BRIGHTDATA_BUDGET_GATE=true` → the OTA (`eas update --branch preview --clear-cache`) → rotate `ADMIN_API_KEY` → apply migration 037 (`035 → 036 → 037`, then the `proacl` query and the anon-key RPC probe must return 42501). Plus: **`railway login`** (the Railway MCP token expired on 2026-09-11, so `/health` was the only prod verification available), and on the next redeploy watch the OLD deployment's log for the `[DRAIN]` lines that close out W1-6.
+`ENABLE_BRIGHTDATA_BUDGET_GATE=true` → the OTA (`eas update --branch preview --clear-cache`) → rotate `ADMIN_API_KEY` → apply migration 037 (any time — it needs neither 035 nor 036 since statement 4 is `to_regprocedure`-guarded; re-run it if 036 lands later; run its `user_events` BEFORE checks first; then the `proacl` query and the anon-key RPC probe must return 42501) and migration 040 (`cleanup_expired_ratings`). Plus: **`railway login`** (the Railway MCP token expired on 2026-09-11, so `/health` was the only prod verification available), and on the next redeploy watch the OLD deployment's log for the `[DRAIN]` lines that close out W1-6.
 

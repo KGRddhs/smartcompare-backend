@@ -122,8 +122,12 @@ reverts to base and has already destroyed a unit once in this campaign).
 
 **Ahmed (unchanged and still blocking):** `ENABLE_BRIGHTDATA_BUDGET_GATE=true` →
 `eas update --branch preview --clear-cache` (the OTA is what puts every merged client
-fix, B1's bundle included, on a phone) → rotate `ADMIN_API_KEY` → apply migrations
-`035 → 036 → 037` and verify the anon `delete_user_cascade` RPC returns `42501`.
+fix, B1's bundle included, on a phone) → rotate `ADMIN_API_KEY` → apply migration
+`037` (any time — corrected 2026-09-24: it depends on neither 035 nor 036, its
+statement 4 is guarded by `to_regprocedure`; run its `user_events` BEFORE checks
+first, and re-run it if 036 is applied later) and migration `040` (the
+out-of-band `cleanup_expired_ratings` revoke; run its header queries first), then
+verify the anon `delete_user_cascade` RPC returns `42501`.
 New: add the `EXPO_TOKEN` repo secret for W3-13; `railway login` (the MCP token
 expired, so prod flag state is currently inferred, not read); W3-10's retailer-link
 product call; W3-7's icon artwork; W3-16's age-gate shape.
