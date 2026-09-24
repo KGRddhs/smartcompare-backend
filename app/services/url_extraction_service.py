@@ -610,6 +610,27 @@ async def compare_from_urls(
         products[0], products[1], region, category=category_used
     )
 
+    # R-METER (W2-1c), UNFLAGGED -- a live leak with no legitimate reader:
+    # generate_comparison's except-branch returns
+    # `{"winner_index": 0, "error": <text>}`, which the unpack above made
+    # deliverable as `success: True` with a fabricated winner_index 0 and the
+    # raw exception text (measured: an OpenAI key tail) in `comparison.error`.
+    # Keyed on the TRUTHINESS of the value (Fable round-3 ruling): that branch
+    # stores a non-empty string whether it is str(e) today or W4-9's constant,
+    # so the check composes with either; a verdict carrying a falsy `error`
+    # (None / "") is delivered exactly as base. Never forward the text; the
+    # route maps LLM_UNAVAILABLE through the text route's failure contract.
+    if comparison.get("error"):
+        from app.services.structured_comparison_service import (
+            LLM_UNAVAILABLE_FRIENDLY_MESSAGE,
+        )
+        logger.warning("[URL] verdict generation failed; not delivering a comparison")
+        return {
+            "success": False,
+            "code": "LLM_UNAVAILABLE",
+            "error": LLM_UNAVAILABLE_FRIENDLY_MESSAGE,
+        }
+
     return {
         "success": True,
         "products": products,

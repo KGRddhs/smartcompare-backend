@@ -8,6 +8,7 @@ Endpoints:
 """
 import hashlib
 import logging
+import os
 import time
 import uuid
 from pathlib import Path
@@ -28,6 +29,7 @@ from app.services.usage_service import (
     record_anon_comparison,
     consume_comparison_credit,
     refund_comparison_credit,
+    refund_anon_comparison_credit,
     record_lifetime_comparison,
 )
 # W2-1: ONE definition of the flag for the whole unit (see the helper's
@@ -36,6 +38,56 @@ from app.api.text_routes import paid_route_metering_enabled
 from app.utils.async_utils import fire_and_forget
 
 logger = logging.getLogger(__name__)
+
+# R-METER (W2-1b, M13-26 class, UNFLAGGED): the ONLY value the camera route
+# ever sends in place of a code-less unsuccessful comparison's `error`.
+# compare_from_text's generic except-branch returns `{success: False,
+# error: str(e)}`, and str(e) of an OpenAI client error carries the masked key
+# tail, org and quota text -- so that string must never reach the client.
+CAMERA_UNSUCCESSFUL_CONSTANT_ERROR = "comparison unavailable"
+
+
+def camera_failure_envelope_enabled() -> bool:
+    """True iff an UNSUCCESSFUL camera comparison is served as a failure
+    envelope instead of today's `action: "comparison"` body
+    (R-METER W2-1b, `ENABLE_CAMERA_FAILURE_ENVELOPE`, default OFF).
+
+    Flag OFF: the pre-OTA client (97b5f15) keeps receiving exactly today's
+    body for a `success: False` result -- the result dict plus the camera
+    metadata and `action: "comparison"` (only a code-less result's `error`
+    value is replaced, unflagged, by `CAMERA_UNSUCCESSFUL_CONSTANT_ERROR`).
+    Flag ON: the route returns the same `action: "comparison_failed"`
+    envelope exit 6 already ships (so the client's existing
+    fall-back-to-text branch handles it), carrying the result's own `code`.
+
+    Read PER CALL from `os.getenv` so Railway flips it without a restart.
+    """
+    return os.getenv("ENABLE_CAMERA_FAILURE_ENVELOPE", "").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
+def _camera_failure_envelope(result: Dict, request: Request, products: list,
+                             vision_cost) -> Dict:
+    """The body an UNSUCCESSFUL comparison gets under
+    ENABLE_CAMERA_FAILURE_ENVELOPE: exit 6's `comparison_failed` shape (the
+    client already branches on it and falls back to text compare), carrying
+    the result's own `code` -- INTERNAL_ERROR for a code-less failure, whose
+    `error` is the constant, never str(e)."""
+    code = result.get("code")
+    envelope = {
+        "success": False,
+        "action": "comparison_failed",
+        "error": result.get("error") if code else CAMERA_UNSUCCESSFUL_CONSTANT_ERROR,
+        "code": code or "INTERNAL_ERROR",
+        "request_id": getattr(request.state, "request_id", "unknown"),
+        "products": products,
+        "vision_cost": vision_cost,
+        "message": "Products identified but comparison failed. You can compare them via text.",
+    }
+    if result.get("layer"):
+        envelope["layer"] = result["layer"]
+    return envelope
 
 # Supported image MIME types for OpenAI Vision
 SUPPORTED_MIME_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
@@ -92,6 +144,12 @@ async def identify_and_compare(
     # their (regex-validated) X-Device-Fingerprint before the Vision call.
     # Flag-OFF (or an authenticated caller) leaves device_fp None -> byte-identical.
     device_fp = None
+    # R-METER (W2-1d): True only when the anon gate actually DEBITED a credit
+    # AND ENABLE_PAID_ROUTE_METERING is ON -- then each non-delivery exit
+    # below gives it back via `_refund_anon_credit`. Metering OFF keeps today's
+    # anon accounting exactly (debit at the gate, no refund anywhere).
+    anon_credit_refundable = False
+    anon_consumed_keys = None
     if anon_usage_gate_enabled() and not user:
         device_fp = valid_device_fingerprint(request.headers.get("x-device-fingerprint"))
         if device_fp:
@@ -106,6 +164,9 @@ async def identify_and_compare(
                         "remaining": usage_check["remaining"],
                     },
                 )
+            if paid_route_metering_enabled() and usage_check.get("consumed", False):
+                anon_credit_refundable = True
+                anon_consumed_keys = usage_check.get("consumed_keys")
 
     # Validate image count
     if len(images) < 1:
@@ -165,6 +226,26 @@ async def identify_and_compare(
         _refund_state["done"] = True
         fire_and_forget(refund_comparison_credit(usage_user_id), label=label)
 
+    _anon_refund_state = {"done": False}
+
+    def _refund_anon_credit(label: str) -> None:
+        """R-METER (W2-1d): give the ANON gate's debited credit back, at most
+        once per request, on a non-delivery exit. `refund_anon_comparison_credit`
+        had no caller at all, so under ENABLE_PAID_ROUTE_METERING every failed
+        anonymous camera attempt burned a free credit for nothing. Only armed
+        when the gate debited AND metering is ON (`anon_credit_refundable`).
+
+        Deliberately NOT wired (recorded follow-ups for issue #128): the five
+        image-validation 400s above -- the anon debit happens BEFORE them -- and
+        the moderation-exception re-raise.
+        """
+        if not anon_credit_refundable or not device_fp or _anon_refund_state["done"]:
+            return
+        _anon_refund_state["done"] = True
+        fire_and_forget(
+            refund_anon_comparison_credit(device_fp, anon_consumed_keys), label=label
+        )
+
     if paid_route_metering_enabled() and usage_user_id:
         usage_check = await consume_comparison_credit(
             usage_user_id, user.get("access_token", "")
@@ -188,6 +269,7 @@ async def identify_and_compare(
         logger.error(f"[IMAGE] Vision call failed: {e}")
         # Non-delivery exit 1 of 6.
         _refund_reserved_credit("usage_refund.image.vision_exception")
+        _refund_anon_credit("usage_refund.image.anon.vision_exception")
         raise HTTPException(status_code=500, detail="Image analysis failed. Please try again.")
 
     if vision_result.get("error"):
@@ -196,6 +278,7 @@ async def identify_and_compare(
             logger.debug(f"[IMAGE] Raw response (server-only): {vision_result['raw_response']}")
         # Non-delivery exit 2 of 6.
         _refund_reserved_credit("usage_refund.image.vision_parse_error")
+        _refund_anon_credit("usage_refund.image.anon.vision_parse_error")
         return {
             "success": False,
             "action": "error",
@@ -243,6 +326,7 @@ async def identify_and_compare(
         )
         # Non-delivery exit 3 of 6.
         _refund_reserved_credit("usage_refund.image.moderation_blocked")
+        _refund_anon_credit("usage_refund.image.anon.moderation_blocked")
         return {
             "success": False,
             "action": "need_second_product",
@@ -270,6 +354,7 @@ async def identify_and_compare(
     if len(products) == 0:
         # Non-delivery exit 4 of 6.
         _refund_reserved_credit("usage_refund.image.zero_products")
+        _refund_anon_credit("usage_refund.image.anon.zero_products")
         return {
             "success": False,
             "action": "error",
@@ -283,6 +368,7 @@ async def identify_and_compare(
         # Non-delivery exit 5 of 6 -- and the one an ordinary user hits most
         # often, so the refund here is what keeps a single-bottle photo free.
         _refund_reserved_credit("usage_refund.image.need_second_product")
+        _refund_anon_credit("usage_refund.image.anon.need_second_product")
         return {
             "success": True,
             "action": "need_second_product",
@@ -303,6 +389,23 @@ async def identify_and_compare(
         service = StructuredComparisonService()
         result = await service.compare_from_text(query, region=region, vision_products=products, nocache=nocache)
 
+        # R-METER (W2-1b): compare_from_text mostly RETURNS its failures
+        # (`success: False` + TIMEOUT / INSUFFICIENT_DATA / LLM_UNAVAILABLE /
+        # CONTENT_UNAVAILABLE, or the code-less generic except-branch) instead
+        # of raising, and this route never read `success` -- it served every
+        # one of them as a delivered comparison.
+        comparison_unsuccessful = not result.get("success")
+        if comparison_unsuccessful and not result.get("code") and "error" in result:
+            # UNFLAGGED (M13-26 class): a code-less failure's `error` is the
+            # service's str(e) -- measured carrying an OpenAI key tail. Only
+            # that one value changes; every other key is untouched.
+            result["error"] = CAMERA_UNSUCCESSFUL_CONSTANT_ERROR
+        # Under ENABLE_PAID_ROUTE_METERING an unsuccessful result is a
+        # NON-delivery: refund, no lifetime bump, no history row, failure log.
+        unsuccessful_not_billed = (
+            comparison_unsuccessful and paid_route_metering_enabled()
+        )
+
         # Inject vision metadata
         if result.get("metadata"):
             result["metadata"]["input_method"] = "camera"
@@ -322,6 +425,26 @@ async def identify_and_compare(
 
         duration_ms = int((time.time() - start_time) * 1000)
         user_id = user.get("id") if user else None
+
+        if unsuccessful_not_billed:
+            # Non-delivery exit 7 (R-METER W2-1b): the comparison ran and
+            # returned a failure. The body is still decided by the envelope
+            # flag below, so metering ON alone moves the accounting only.
+            fire_and_forget(
+                log_search(
+                    query=query, input_type="camera", user_id=user_id,
+                    products_found=product_names, success=False,
+                    error_message=result.get("code") or CAMERA_UNSUCCESSFUL_CONSTANT_ERROR,
+                    cost=result.get("metadata", {}).get("total_cost", 0),
+                    duration_ms=duration_ms,
+                ),
+                label="log_search.camera.unsuccessful",
+            )
+            _refund_reserved_credit("usage_refund.image.comparison_unsuccessful")
+            _refund_anon_credit("usage_refund.image.anon.comparison_unsuccessful")
+            if camera_failure_envelope_enabled():
+                return _camera_failure_envelope(result, request, products, vision_cost)
+            return result
 
         # Fire-and-forget: log search + save history — Bundle D 2.B.6 WRAP
         # (search-log fail = lost analytics; save-comparison fail = missing
@@ -357,6 +480,11 @@ async def identify_and_compare(
         if device_fp:
             fire_and_forget(record_anon_comparison(device_fp), label="record_anon.image")
 
+        if comparison_unsuccessful and camera_failure_envelope_enabled():
+            # Metering OFF, envelope ON: the body says what happened; the
+            # accounting above is today's (history + success log) by design --
+            # the no-bill half belongs to ENABLE_PAID_ROUTE_METERING.
+            return _camera_failure_envelope(result, request, products, vision_cost)
         return result
 
     except Exception as e:
@@ -377,6 +505,7 @@ async def identify_and_compare(
 
         # Non-delivery exit 6 of 6.
         _refund_reserved_credit("usage_refund.image.comparison_failed")
+        _refund_anon_credit("usage_refund.image.anon.comparison_failed")
 
         # M13-26: never surface str(e) to the client — it embeds hostnames, table
         # names, Postgres codes and upstream URLs. Return the unified error
