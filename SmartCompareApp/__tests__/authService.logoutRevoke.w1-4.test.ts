@@ -21,6 +21,13 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 
 const mockPost = jest.fn();
+// W1-4d — logout() may consult the refresh singleton before posting. These
+// tests use non-JWT access tokens ('at-live'), which are expired-UNKNOWN, so
+// logout must never start a refresh here; nothing is in flight either.
+// (Real-api coverage of both paths lives in
+// authService.logoutRefreshFirst.w1-4d.test.ts.)
+const mockGetOrStartRefresh = jest.fn(async () => ({ success: false, token: null }));
+const mockGetInFlightRefresh = jest.fn(() => null);
 
 jest.mock('../src/services/api', () => ({
   __esModule: true,
@@ -31,6 +38,8 @@ jest.mock('../src/services/api', () => ({
     delete: jest.fn(),
   },
   API_BASE_URL: 'https://test.invalid',
+  getOrStartRefresh: () => mockGetOrStartRefresh(),
+  getInFlightRefresh: () => mockGetInFlightRefresh(),
 }));
 
 jest.mock('../src/services/deviceFingerprint', () => ({
@@ -51,6 +60,8 @@ const STORED_REFRESH = 'rt-must-be-revoked-9f3a';
 
 beforeEach(async () => {
   mockPost.mockReset();
+  mockGetOrStartRefresh.mockClear();
+  mockGetInFlightRefresh.mockClear();
   (SecureStore as any).__reset();
   await AsyncStorage.clear();
 });
@@ -69,18 +80,42 @@ describe('logout sends the stored refresh_token so the server can revoke it', ()
     expect(url).toBe('/api/v1/auth/logout');
     expect(body).toEqual({ refresh_token: STORED_REFRESH });
     expect(config.headers.Authorization).toBe('Bearer at-live');
+    // A non-JWT access token is expired-UNKNOWN: no refresh is started.
+    expect(mockGetOrStartRefresh).not.toHaveBeenCalled();
   });
 
   it('sends the SAME stored value refreshSession() would spend', async () => {
-    await SecureStore.setItemAsync(TOKEN_KEY, 'at-live');
-    await SecureStore.setItemAsync(REFRESH_KEY, STORED_REFRESH);
-    mockPost.mockResolvedValueOnce({ data: { success: true } });
+    // Retro W1-4 prove-nothing fix: no storage-key literal anywhere in this
+    // test. The token is WRITTEN by login() and READ by refreshSession()
+    // through authService's own REFRESH_TOKEN_KEY, so a logout that read any
+    // other key would send {} here, and a refreshSession that read any other
+    // key would never POST.
+    const ISSUED = 'rt-issued-by-login-77c2';
+    mockPost.mockResolvedValueOnce({
+      data: {
+        user: { id: 'u1', email: 'a@b.c' },
+        session: { access_token: 'at-live', refresh_token: ISSUED },
+      },
+    });
+    const loginResult = await authService.login('a@b.c', 'StrongPass1x');
+    expect(loginResult.success).toBe(true);
 
-    // Read through the same key surface the app uses, then log out.
-    const stored = await SecureStore.getItemAsync(REFRESH_KEY);
+    // A transient refresh failure leaves the stored session untouched, so
+    // the value refreshSession() spent is still the one logout must send.
+    mockPost.mockRejectedValueOnce({ message: 'Network Error' });
+    const refreshResult = await authService.refreshSession();
+    expect(refreshResult.success).toBe(false);
+    const refreshCall = mockPost.mock.calls.find(([url]) => url === '/api/v1/auth/refresh');
+    expect(refreshCall).toBeDefined();
+    const spent = refreshCall![1].refresh_token;
+    expect(spent).toBe(ISSUED);
+
+    mockPost.mockResolvedValueOnce({ data: { success: true } });
     await authService.logout();
 
-    expect(mockPost.mock.calls[0][1]).toEqual({ refresh_token: stored });
+    const logoutCall = mockPost.mock.calls.find(([url]) => url === '/api/v1/auth/logout');
+    expect(logoutCall).toBeDefined();
+    expect(logoutCall![1]).toEqual({ refresh_token: spent });
   });
 
   it('keeps today exact empty body when no refresh token is stored', async () => {
@@ -120,13 +155,36 @@ describe('logout sends the stored refresh_token so the server can revoke it', ()
         return realGet(key);
       });
 
+    try {
+      await authService.logout();
+
+      // The POST still happens (a keystore hiccup must not cost the server
+      // call), with today's body shape.
+      expect(mockPost).toHaveBeenCalledTimes(1);
+      expect(mockPost.mock.calls[0][1]).toEqual({});
+    } finally {
+      // Retro W1-4 hygiene: restore even when an assertion fails, so the
+      // throwing spy cannot leak into the following tests.
+      spy.mockRestore();
+    }
+  });
+
+  it('W1-4d: a failure inside the refresh-first preparation never costs the POST (stored pair sent)', async () => {
+    await SecureStore.setItemAsync(TOKEN_KEY, 'at-live');
+    await SecureStore.setItemAsync(REFRESH_KEY, STORED_REFRESH);
+    mockPost.mockResolvedValueOnce({ data: { success: true } });
+    mockGetInFlightRefresh.mockImplementationOnce(() => {
+      throw new Error('refresh view unavailable');
+    });
+
     await authService.logout();
 
-    // The POST still happens (a keystore hiccup must not cost the server
-    // call), with today's body shape.
     expect(mockPost).toHaveBeenCalledTimes(1);
-    expect(mockPost.mock.calls[0][1]).toEqual({});
-    spy.mockRestore();
+    const [url, body, config] = mockPost.mock.calls[0];
+    expect(url).toBe('/api/v1/auth/logout');
+    expect(body).toEqual({ refresh_token: STORED_REFRESH });
+    expect(config.headers.Authorization).toBe('Bearer at-live');
+    expect(await SecureStore.getItemAsync(TOKEN_KEY)).toBeNull();
   });
 });
 
