@@ -161,11 +161,25 @@ class TestHarnessRuns:
 # ===========================================================================
 
 import hashlib  # noqa: E402
+import importlib  # noqa: E402
 import os  # noqa: E402
 import socket  # noqa: E402
 
 import scripts.verify_flag_byte_identity as vfbi  # noqa: E402
-from app.services import price_service as ps  # noqa: E402
+
+
+def _live_price_service():
+    """The ``app.services.price_service`` module main() will import, resolved at CALL time.
+
+    main() does ``from app.services.price_service import extract_price_from_html`` inside the
+    call, which reads whatever module object sys.modules holds right then. A collection-time
+    ``from app.services import price_service as ps`` binding can go stale in the one-process CI
+    suite (issue #185 class): tests/test_platform_router.py::test_does_not_import_price_service
+    deletes every price_service entry from sys.modules and never restores it, so the next
+    import builds a FRESH module and a spy set on the old binding never fires (0 of 8 calls
+    recorded). Resolving here, immediately before the patch, patches the object main() reads."""
+    return importlib.import_module("app.services.price_service")
+
 
 _PROBE_FLAG = "ENABLE_W04_HARNESS_PROBE"
 _LOOPBACK = {"127.0.0.1", "::1", "localhost", "0.0.0.0", "", None}
@@ -254,7 +268,7 @@ def _install_env_spy(monkeypatch):
         seen.append(value)
         return {"amount": 1.0, "probe": value, "url": url}
 
-    monkeypatch.setattr(ps, "extract_price_from_html", spy)
+    monkeypatch.setattr(_live_price_service(), "extract_price_from_html", spy)
     return seen
 
 

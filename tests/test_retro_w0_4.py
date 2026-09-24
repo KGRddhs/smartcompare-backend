@@ -1167,6 +1167,14 @@ def _canonical(value):
     return json.loads(json.dumps(value, sort_keys=True, ensure_ascii=True, default=repr))
 
 
+# CI budget, not a behaviour change (PR #196; a per-test time budget, NOT a #185-class stale-module
+# defect). This node runs ~1,300 real extract_price_from_html calls (~125M Python calls, identical in
+# count in every suite order measured) and CI runs the whole free tier under --cov=app with a per-test
+# --timeout=60. MEASURED:
+# 47-52 s alone under coverage on the dev box, and on the CI runner it was cut at 60 s just short of
+# the end of the fixture list. The per-test marker overrides the CLI budget for this node only, the
+# same way tests/test_retro_w1_1.py marks its end-to-end class; every assertion below is unchanged.
+@pytest.mark.timeout(600)
 def test_flag_on_extraction_is_identical_over_every_fixture_page(monkeypatch):
     """PIN (green today, must stay green): the existing flag-ON identity test covers ONE
     synthetic EUR page, and the reviewer's mutation M6 (build the shared soup with 'lxml' only
