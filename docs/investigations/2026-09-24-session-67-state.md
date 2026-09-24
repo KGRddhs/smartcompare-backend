@@ -64,6 +64,8 @@ W1-3c (fail-open admission during an INCR blip can double-probe; stale-memo stre
 
 ## 7. What is next (in order)
 
+The ready-to-paste kickoff for the next session (skill to load, read order, the measured state it may rely on, the binding process and the unit order) is `docs/investigations/2026-09-24-session-67-state/NEXT_SESSION_PROMPT.md`.
+
 1. R-W04's follow-ups (W0-4e / W0-4f / W0-4g) and the repo-wide netguard 04c with curl_cffi (issue #184) as the next retro-class units; the #183 / #185 / #186 test-hygiene issues as one hermeticity unit.
 2. The remaining W4 specs (6a, 7, 8, 11, 12, 13, 14; 6b waits on #101): spec → adversarial spec review → red → gate → green, per the skill.
 3. Skill Step 2 tooling (extend `.githooks/pre-commit`), the config-audit fixes as a docs/config PR, the Step 6 structured review at the milestone end, the end-of-session redaction re-run.
