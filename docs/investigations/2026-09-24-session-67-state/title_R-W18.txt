@@ -1,0 +1,1 @@
+retro(price): R-W18 - adapter drops become grep-stable INFO lines (fan-out fetch failures, wave summaries, consume-bound and slow-miss timeouts, scrubbed exception text)

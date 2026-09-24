@@ -1,0 +1,17 @@
+retro(main): W1-1b Sentry transaction scrub, W1-1c /admin Basic raw-byte 401, W1-9c async-aware default limiter, W1-10b windowed loop-lag max
+
+Retro-fix group R-MAIN for units merged in session 65 without review (#142 W1-1, #144 W1-7/W1-10, #152 W1-9).
+- W1-1b (unflagged, security): init_sentry passes before_send_transaction with the same request-region scrub as
+  before_send through one shared helper, so sampled performance transactions never carry X-Admin-Key / Authorization / Cookie.
+- W1-1c (unflagged, security): the /admin/* Basic branch catches (ValueError, UnicodeError) so a raw byte >= 0x80
+  in the credential is a 401 with WWW-Authenticate, never a 500; the try wraps only the decode (pinned).
+- W1-9c (inside ENABLE_DEFAULT_RATE_LIMITS, default OFF): SlowAPIASGIMiddleware replaces SlowAPIMiddleware so the
+  default-limited app-level routes 429 with the envelope + Retry-After; flag OFF byte-identical (pinned). Measured limit:
+  on the pinned slowapi the blanket default reaches only /health, / and /favicon.ico (+ the docs routes off Railway),
+  never router routes (follow-up W1-9d); every reachable route is single-chunk (pinned) because the ASGI middleware
+  re-sends response.start per body chunk.
+- W1-7b/W1-10b: /health gains loop_lag_max_60s_ms from a 60-slot ring recomputed by the recorder (pure dict read,
+  pinned); tests/test_health_loop_lag.py stays byte-identical to base.
+Tests: 201 unit nodes green on the pinned venv; CI-order run with test_observability.py 243 passed; comm gate base == head.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>

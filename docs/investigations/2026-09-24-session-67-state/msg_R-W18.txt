@@ -1,0 +1,15 @@
+retro(price): W1-8b/c/d adapter-drop visibility - INFO drop lines per fetch failure, one wave summary per fan-out, CONSUME-BOUND / SLOW-MISS / TIMEOUT lines, _safe_exc scrubs userinfo and query strings
+
+Retro-fix group R-W18 for W1-8 (#143). Logging only, unflagged, no return-value change (pinned).
+- W1-8b: _curl_scraper / _firecrawl_scraper / _scrapedo_scraper log `[ADAPTER DROP] fanout:<kind>:<domain>: ERROR <Type>`
+  (registrable domain only) on a raised fetch and one `FETCH-FAIL` line when the fetch layer returned no HTML (the
+  layer that actually swallows transport errors); the fan_out call site logs ONE `[FANOUT] wave=<kind> completed= failed=
+  cancelled= elapsed=` summary per wave, with the true still-pending count on its TimeoutError branch.
+- W1-8c: the three consume `except asyncio.TimeoutError` branches log `[ADAPTER DROP] <family>: CONSUME-BOUND after <bound>s`;
+  _timeout_none logs `SLOW-MISS after <elapsed>s` for a None at >= adapter_inner_ceiling() - 0.5 and distinguishes a
+  wrap TIMEOUT from an adapter-raised TimeoutError; cancellation stays unlogged.
+- W1-8d: _safe_exc(exc) strips userinfo and query strings from every <scheme>:// token (bounded scheme quantifier, linear),
+  collapses newlines and truncates to 200 chars; the P4 probe shape (200 KB message with https://user:hunter2@proxy/?api_key=SECRET) is pinned.
+Tests: 47 unit nodes green; 152-file comm set base == head; adversary r1 SOUND.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>

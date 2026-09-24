@@ -1,0 +1,17 @@
+retro(price): W0-4b 3 MB fetch cap, W0-4c the six remaining inline parse sites offloaded + AST guard, W0-4d bounded price-parse pool with a per-loop submission semaphore, harness --flags-on/--compare
+
+Retro-fix group R-W04 for W0-4 (#135). Inside ENABLE_PRICE_PARSE_OFFLOAD (default OFF); flag OFF byte-identical on the corpus
+(OFF OVERALL 9504e5a9 / results a1b3460c == same-env origin/main; ON --compare OFF 0/1656 differ) and on the 289-file comm set.
+- W0-4b: curl_fetch_html and the firecrawl/scrapedo render legs cap the parse input at PRICE_FETCH_MAX_BYTES = 3_000_000
+  (html_kb telemetry keeps the raw body); 11 corpus records exceed the cap, none moves.
+- W0-4c: fetch_iherb_price, fetch_bolo_price, fetch_boutiqaat_price, _try_pharmacy_urls, extract_with_ai and
+  StructuredComparisonService._fetch_page_price move their pure-sync parse block into ONE offload call (flag OFF keeps the
+  inline code verbatim); a source-level AST guard keeps the inline-parse allowlist empty.
+- W0-4d: every offloaded parse runs on a dedicated 'price-parse' ThreadPoolExecutor (PRICE_PARSE_MAX_WORKERS, default 4,
+  clamped 1..16) behind a per-event-loop asyncio.Semaphore of the same size acquired before submit, entered through
+  contextvars.copy_context().run; pins for saturation, cancellation, thread names, pool size and a CPU-bound gap bound.
+- Harness: scripts/verify_flag_byte_identity.py gains --flags-on (env restored) and --compare (results-array sha equality).
+Tests: 112 unit nodes both flag states; site files green (2 baseline ids); 289-file comm base == head; 32/32 mutants killed;
+adversary r0 SOUND, r1 SOUND.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>

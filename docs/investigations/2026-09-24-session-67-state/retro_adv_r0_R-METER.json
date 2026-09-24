@@ -1,0 +1,53 @@
+{
+ "unit": "R-METER / W2-1 retro GREEN (W2-1b camera unsuccessful result, W2-1c /url/compare failed verdict, W2-1d anon refunds + /url/compare anon-gap record). Worktree C:/Users/SynAckITPC/Documents/AI/sc-r-meter, base origin/main 1c6f6796.",
+ "verdict": "SOUND",
+ "defects": [
+  {
+   "severity": "minor",
+   "location": "app/api/url_routes.py:124 (routes the non-success exit through text_routes._surface_comparison_failure) + tests/test_retro_w2_1.py::test_url_compare_failed_verdict_wire_shape",
+   "claim": "Ruling 3 is internally contradictory, and the implementer resolved it toward the mapping. The ruling names 'the SAME mapping the text route uses (_surface_comparison_failure)' and also 'code LLM_UNAVAILABLE -> HTTP 400'. That mapping sends LLM_UNAVAILABLE as 503 (text_routes.py:281-296). The code ships 503 with top-level {code: LLM_UNAVAILABLE, error: LLM_UNAVAILABLE_FRIENDLY_MESSAGE}, and a pin asserts status 503 on both verbs. Reproduced: my own probe (GET, metering ON, the real generate_comparison except-branch) returned 503 with code LLM_UNAVAILABLE, one refund, no history and no lifetime bump. The deviation is disclosed in deviations_from_spec.",
+   "why_it_matters": "The orchestrator must pick 503 or 400 before merge; the code and pin currently encode 503. Client impact at 503 is benign on the current source. HomeScreen's URL path calls parseApiError, which keeps an explicit non-timeout code on a 503 and does not auto-retry, so the user gets the generic error alert. The shipped 97b5f15 client was not checked on a device.",
+   "reproduced": true
+  },
+  {
+   "severity": "minor",
+   "location": "app/api/image_routes.py:246 (_refund_anon_credit passes anon_consumed_keys) + tests/test_retro_w2_1.py Ledger.anon_refund",
+   "claim": "The PR body says 'The new anon refund does pass them' (consumed_keys), but no test pins it. The Ledger's anon_refund recorder throws away its consumed_keys argument. Mutation anon_keys_dropped (refund_anon_comparison_credit(device_fp, None)) SURVIVED: 99/99 green. The behaviour itself is correct: my probe test_probe_anon_refund_passes_gate_consumed_keys confirmed the gate's {daily, monthly} keys reach the refund.",
+   "why_it_matters": "This is the M18 usage-symmetry class (adversary defect 8). A future edit that drops the keys would silently return the credit to the wrong day's window near UTC midnight, and every test would stay green.",
+   "reproduced": true
+  },
+  {
+   "severity": "minor",
+   "location": "app/api/image_routes.py:53-73 (_camera_failure_envelope)",
+   "claim": "Three documented properties of the new ENABLE_CAMERA_FAILURE_ENVELOPE body are unpinned. Each mutation SURVIVED with 99/99 green: (a) dropping the `layer` passthrough ('plus layer when present' in the PR body and flag row); (b) dropping `request_id`; (c) changing the code-less fallback `INTERNAL_ERROR` to another string (the test only checks for a non-empty code).",
+   "why_it_matters": "The flag row in the PR body promises this exact envelope shape for the client, and the client branches on `layer` for CONTENT_UNAVAILABLE. A regression would go unnoticed until the flag is flipped.",
+   "reproduced": true
+  },
+  {
+   "severity": "minor",
+   "location": "app/services/url_extraction_service.py:621 (`if \"error\" in comparison`)",
+   "claim": "The ruling requires the W2-1c check to key on the PRESENCE of the error key so that it composes with W4-9, and it does: my probe test_probe_url_presence_semantics passed for error=None, '' and a constant. But mutation url_truthy_not_presence (`if comparison.get(\"error\"):`) SURVIVED: 99/99 green. No test drives a falsy error value.",
+   "why_it_matters": "If W4-9 ever stores an empty or None marker, a truthiness regression would ship a fabricated winner_index 0 as success:true again (the live leak this unit closes), and CI would stay green.",
+   "reproduced": true
+  },
+  {
+   "severity": "minor",
+   "location": "app/api/image_routes.py:483-487 (envelope ON, metering OFF branch)",
+   "claim": "This is the literal reading of the ruling, and the implementer disclosed and pinned it. With ENABLE_CAMERA_FAILURE_ENVELOPE ON and metering OFF, a failed comparison returns action 'comparison_failed' while still writing log_search(success=True) and a history attempt. The body says failure and the analytics say success.",
+   "why_it_matters": "The activation note must keep the 'flip both together' instruction. Flipping the envelope alone would count failed camera comparisons as successes in search_logs.",
+   "reproduced": true
+  }
+ ],
+ "tests_that_prove_nothing": [
+  "Mutation anon_keys_dropped SURVIVED: tests/test_retro_w2_1.py's Ledger.anon_refund throws away consumed_keys, so no test pins the PR's claim that the anon refund passes the gate's consumed_keys. The behaviour is correct by probe, but unpinned.",
+  "Mutation envelope_drops_layer SURVIVED: test_camera_failure_envelope_flag_returns_failure_not_comparison[*-CONTENT_UNAVAILABLE] and test_pin_camera_envelope_shape never assert that `layer` is carried.",
+  "Mutation envelope_drops_request_id SURVIVED: no envelope test asserts request_id.",
+  "Mutation envelope_code_fallback_changed SURVIVED: test_camera_failure_envelope_flag_returns_failure_not_comparison[*-generic_str_e] asserts only that `code` is a non-empty str, not INTERNAL_ERROR.",
+  "Mutation url_truthy_not_presence SURVIVED: no test feeds compare_from_urls a verdict whose `error` value is falsy, so the ruled presence semantics are unpinned.",
+  "Mutations anon_latch_removed and reviewer_M2_authed_latch SURVIVED as expected. No exit calls either refund twice, so neither latch is observable; ruling 5 accepts this for M2, and the anon latch is the same class.",
+  "Mutation envelope_forwards_generic_error SURVIVED as expected (benign). The unflagged scrub has already replaced a code-less `error`, so the envelope's `if code else CONSTANT` is redundant defence, not a gap.",
+  "Mutation anon_armed_regardless_of_consumed SURVIVED (benign). The gate never returns allowed with consumed False; its fail-open path also reports consumed True."
+ ],
+ "worktree_left_byte_identical": true,
+ "summary": "**SOUND, with five minor findings.** All four fixes behave correctly in the real code: the unflagged camera str(e) scrub, the camera no-bill half under ENABLE_PAID_ROUTE_METERING behind the new default-OFF ENABLE_CAMERA_FAILURE_ENVELOPE, the unflagged /url/compare failed-verdict fix with the shared mapping, and the anon refunds on the six exits plus the unsuccessful-result exit. Every load-bearing half has a pin that goes red when its fix is removed.\n\n**How I tested.** I never touched the worktree. Mutants ran in scratch copies at C:/Users/SYNACK~1/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/a47353ce-a0e3-4273-b85d-f21cfa01e031/scratchpad/rmeter_adv/w0..w3, restored from sha-verified snapshots. Driver: rmeter_adv/driver.py; results: rmeter_adv/results.jsonl. All runs used the pinned venv with -p no:randomly --timeout=120 and the not-(live) marker.\n\n**Measured results.**\n- Control: tests/test_retro_w2_1.py + tests/test_paid_route_metering.py gave 99 passed.\n- ruff E9,F63,F7,F82: clean.\n- Mutation matrix: 36 mutations, 27 killed, 9 survived (listed in tests_that_prove_nothing).\n  - Killed: the ruling-1 restore of str(e), the scrub applied to coded results, dropping the authed refund, logging success=True, writing history, metering ignoring the flag or never firing, the envelope ignoring the flag or missing in either branch, the envelope dropping products, the reader without strip/lower, all seven anon-refund drops, the anon refund ignoring metering, reviewer M1 and M3, dropping the URL error check, forwarding str(e) on the URL path, changing the URL code, restoring the blanket 400, and dropping the URL failure refund.\n  - This settles all 15 of the implementer's unconfirmed mutations.\n- Base-side run of the new test file in the existing scratch base_wt at 1c6f6796: 30 passed, 48 failed. Every node documented as passing today passed at base, including test_pin_url_compare_extraction_failure_envelope_unchanged, which the implementer never ran at base. All 48 base failures are red nodes or green pins that need the new code.\n- Real-function probes, 9/9 passed:\n  - The real StructuredComparisonService generic except-branch, carrying an sk-proj probe, is scrubbed to 'comparison unavailable' in all four flag states. With flags OFF the key order is unchanged and only the one value changes.\n  - The anon refund carries the gate's consumed_keys.\n  - The URL check keys on presence for None, '' and a constant.\n  - GET /url/compare with metering ON returns 503 LLM_UNAVAILABLE with one refund and no history.\n\n**Comm-gate sample**, run sequentially per ruling 6. Files: test_m13_26_image_error_envelope, test_url_compare_category, test_m13_03_paid_work_gating, test_camera_vision, test_b2_strict_optional_auth, test_security_regression, test_paid_route_metering.\n- Base: 3 failed. These are the known #89 TestIdentifyProductsMocked MagicMock nodes.\n- First HEAD run: pytest-timeout killed the run at test_security_regression::TestInputValidation::test_normal_length_query_accepted. The stack shows a /text/compare real-OpenAI-client hang under load in a file with no network guard; text_routes is not in this diff. Re-run alone at HEAD it passed.\n- HEAD re-run with that node deselected: 9 failed. Three are the #89 nodes. Six are TestFrontendSecurityGuards, which read SmartCompareApp/ sources that I deliberately left out of my scratch copy; they passed at base and the diff does not touch SmartCompareApp. That the six would pass with SmartCompareApp present is an inference, not a measurement.\n- Net branch-only-NEW on the sample: empty. The full 18-file grep_set comm gate is still not run.\n\n**Worktree state.** The five files still match the green sha256 (image_routes b2aed119, url_routes 1dddb57a, url_extraction_service 7b003ffd, test_paid_route_metering 9e7fd283, test_retro_w2_1 fb387146). git status and diff --stat are unchanged. I deleted the .env copies from my scratch dirs, and the test file I placed temporarily in base_wt is gone.\n\n**Orchestrator actions.**\n- Choose 503 or 400 for ruling 3. The code and its pin currently say 503.\n- Optionally add pins for consumed_keys, layer, request_id, INTERNAL_ERROR, and a falsy `error` value.\n- Remove the implementer's detached scratch worktree scratchpad/rmeter_green/base_wt (still registered, no junction) with `git worktree remove`. I reused it but did not create it."
+}

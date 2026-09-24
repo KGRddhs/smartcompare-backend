@@ -1,0 +1,13 @@
+retro(mobile): W1-4d logout awaits the in-flight refresh (5 s bound), refreshes an expired JWT once, and hands the rotated pair to the logout that owns the session
+
+Retro-fix group R-CLIENT for the W1-4 client half (#140). OTA-gated; phones on 97b5f15 unaffected.
+- logout() bumps the session epoch FIRST (P-A3), awaits an in-flight refresh bounded by 5 s, refreshes an EXPIRED
+  access token (JWT exp decoded without verification; malformed = expired-unknown = no refresh) exactly once, clears
+  the local session, then sends exactly ONE POST /auth/logout with the freshest pair held in memory; clearSession
+  stays in finally; every preparation error degrades to today's request.
+- refreshSession() hands a rotated pair that lands after the epoch bump to the logout whose handoff epoch equals
+  the epoch the refresh was sent under (never to a later session's logout); api.ts gains the read-only
+  getInFlightRefresh().
+Tests: 103 across 7 auth suites, tsc + eslint clean, full jest at commit time; adversary r1 SOUND (2 minors -> follow-ups).
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>

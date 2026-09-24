@@ -1,0 +1,26 @@
+test(price): R-W04 resolve the live price_service module at call time in the harness test; per-test timeout for the full-fixture retro node (CI order)
+
+PR #196's first CI run failed backend-tests on five test-only nodes; app/ and
+scripts/ bytes are unchanged (git diff -- app scripts is empty).
+
+- tests/test_verify_flag_byte_identity.py (issue #185 class): the file bound
+  `from app.services import price_service as ps` at collection time and put its
+  env spy on that object, while scripts/verify_flag_byte_identity.py imports
+  extract_price_from_html inside main() at call time.
+  tests/test_platform_router.py::test_does_not_import_price_service deletes
+  every price_service entry from sys.modules and never restores it, so in the
+  one-process CI order the harness ran a FRESH module and the spy saw 0 of 8
+  calls. The spy now patches importlib.import_module("app.services.price_service")
+  resolved immediately before the patch. Mutation: restoring the collection-time
+  binding re-fails the same four nodes in the platform_router-first order.
+- tests/test_retro_w0_4.py::test_flag_on_extraction_is_identical_over_every_fixture_page:
+  the fifth node was a pytest-timeout (>60 s under --cov=app), not an assertion;
+  it runs ~1,300 real extract_price_from_html calls (~125M Python calls, the
+  same count in every suite order measured). @pytest.mark.timeout(600) on that
+  node only, precedent tests/test_retro_w1_1.py; every assertion unchanged.
+
+Proof on the final bytes under the process-wide network guard (0 blocked):
+platform_router -> retro -> verify, flag OFF: 434 passed, 3 skipped;
+platform_router -> verify, flag ON: 277 passed, 3 skipped.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>

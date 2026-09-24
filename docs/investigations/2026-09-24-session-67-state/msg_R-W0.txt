@@ -1,0 +1,13 @@
+retro(net): W0-1b memoise only EAI_NONAME/EAI_NODATA and started-and-ran timeouts, drop a stale negative when a zombie resolves public; W0-2b shared transport http2=False
+
+Retro-fix group R-W0 for W0-1/W0-2 (#135). Both flags stay default OFF; flag OFF byte-identical (pinned).
+- W0-1b (inside ENABLE_OFFLOOP_DNS_RESOLVE): a gaierror is memoised as a negative only for EAI_NONAME / EAI_NODATA read
+  from the platform at call time (EAI_AGAIN, EAI_FAIL, errno None fail closed for this call only); a timeout is memoised
+  only when the resolve STARTED and ran >= 0.75 of the bound by the deadline; a done-callback drops a stale False memo
+  when a zombie resolve returns an allowed public address (never writes True - the DNS-rebinding window stays closed).
+- W0-2b (inside ENABLE_SUPABASE_CLIENT_REUSE): the shared httpx transport is built with http2=False (HTTP/1.1
+  keep-alive pool) so a hung PostgREST call cannot head-of-line-block unrelated requests; the OFF-path construction
+  of the anon and user clients is pinned.
+Tests: 71 unit nodes through the guarded runner in both flag states; 35-file comm set = the 5 accepted base failures; adversary r1 SOUND.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>

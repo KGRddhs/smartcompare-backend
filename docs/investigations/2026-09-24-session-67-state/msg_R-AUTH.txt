@@ -1,0 +1,15 @@
+retro(auth): W1-4b/c type-based refresh classifier + no server auto-refresh, W1-4 logout revokes via admin.sign_out(access_token, local) incl. the expired-bearer path (10/min budget), W1-9b atomic lockout arming with TTL re-arm
+
+Retro-fix group R-AUTH for W1-4 server (#139) + W1-9 lockout (#152).
+- W1-4b (unflagged): refresh failures classified by exception TYPE (AuthRetryableError, httpx transport/timeout, AuthUnknownError
+  carrying an upstream 5xx/429) -> the transient dict; every other shape stays 401 (pinned per shape).
+- W1-4c (unflagged): get_auth_client builds ClientOptions(auto_refresh_token=False, persist_session=False) on both branches -
+  no orphaned refresh Timer ever spends the device's refresh token (Timer pins).
+- W1-4 (inside ENABLE_LOGOUT_UPSTREAM_REVOCATION, default OFF): a valid bearer -> admin.sign_out(access_token, 'local') via
+  run_db regardless of the refresh token; an expired bearer + refresh_token body -> one set_session refresh then sign_out local +
+  blacklist, type-only logging, budgeted 10/minute per limiter key (own bucket) after the expiry and token checks.
+- W1-9b (unflagged): lockout arming is SET NX EX + INCR; a non-positive TTL is re-armed with the window (never permanent);
+  a legacy TTL-less key gets expire(nx=True); the 429 lockout envelope carries a real retry_after.
+Tests: 137 unit nodes both flag states; 47-file comm set base == head; adversary r1 SOUND.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>

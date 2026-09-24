@@ -1,0 +1,1 @@
+retro(price): R-W04 - every price parse offloads to a bounded price-parse pool under ENABLE_PRICE_PARSE_OFFLOAD, fetches capped at 3 MB, harness --flags-on/--compare

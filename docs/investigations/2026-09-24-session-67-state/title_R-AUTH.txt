@@ -1,0 +1,1 @@
+retro(auth): R-AUTH - refresh failures classified by type, server clients never auto-refresh, logout revokes by the access token (also with an expired bearer, rate-limited), atomic lockout arming

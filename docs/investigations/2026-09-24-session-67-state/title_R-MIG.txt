@@ -1,0 +1,1 @@
+retro(migrations): R-MIG - 037 self-contained (guarded statement 4, BEFORE checks, honest rollback), 036 revokes anon, new 040 revokes cleanup_expired_ratings by name

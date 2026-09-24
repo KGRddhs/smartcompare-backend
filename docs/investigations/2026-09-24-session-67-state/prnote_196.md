@@ -1,0 +1,9 @@
+
+## CI hermeticity note (second commit `30adbbeb`, test-only, #185 class)
+
+The first CI run failed `backend-tests` on five test-only nodes (5 failed / 18,820 passed). No product defect: `git diff 9d620327..30adbbeb -- app scripts` is empty. Two separate causes:
+
+1. **Four `TestW04HarnessFlagsOnAndCompare` nodes (issue #185 class).** `tests/test_platform_router.py::test_does_not_import_price_service` deletes every `price_service` entry from `sys.modules` and never restores it. `tests/test_verify_flag_byte_identity.py` bound `price_service as ps` at collection time and put its env spy on that object, while `scripts/verify_flag_byte_identity.py` imports `extract_price_from_html` inside `main()` at call time, so in the one-process CI order the harness ran a fresh module and the spy recorded 0 of 8 calls. Fix: the spy now patches `importlib.import_module("app.services.price_service")` resolved immediately before the patch. Mutation proof: restoring the collection-time binding re-fails exactly those four nodes in the `platform_router` -> `verify` order (4 failed / 273 passed on the base bytes, 277 passed on the fixed bytes).
+2. **`test_flag_on_extraction_is_identical_over_every_fixture_page`** was a pytest-timeout (`Failed: Timeout (>60.0s)` under `--cov=app`), not an assertion failure; it runs ~1,300 real `extract_price_from_html` calls (~125M Python calls, the same count in every suite order measured, so not order-dependent). `@pytest.mark.timeout(600)` on that node only (precedent: `tests/test_retro_w1_1.py`); every assertion unchanged.
+
+Proof on the final bytes under the process-wide network guard (0 blocked attempts): `platform_router -> retro -> verify`, flag OFF: 434 passed / 3 skipped; `platform_router -> verify`, flag ON: 277 passed / 3 skipped. Adversarial verifier: SOUND (three minors, the comment mislabel fixed before the commit).
