@@ -79,7 +79,7 @@ def _stub_getaddrinfo(monkeypatch, delay, calls, thread_names=None, result=None)
         if delay:
             time.sleep(delay)
         if result is None:
-            raise socket.gaierror(-2, "Name or service not known")
+            raise socket.gaierror(socket.EAI_NONAME, "Name or service not known")
         return result
 
     monkeypatch.setattr(uv.socket, "getaddrinfo", _stub)
@@ -407,7 +407,7 @@ def test_blackholed_burst_does_not_blacklist_healthy_storefronts(monkeypatch):
             started.append(host)
         if host in black:
             release.wait(30.0)  # released by the test, never a real 12s stall
-            raise socket.gaierror(-2, "Name or service not known")
+            raise socket.gaierror(socket.EAI_NONAME, "Name or service not known")
         time.sleep(0.05)  # a healthy cold resolve
         return _PUBLIC_ADDRINFO
 

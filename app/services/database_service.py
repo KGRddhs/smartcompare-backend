@@ -119,8 +119,19 @@ def get_shared_httpx_client() -> Optional[httpx.Client]:
     NEVER close this client: closing it would kill the transport for every
     Supabase client in the process.
 
-    FAILS OPEN (S1). `http2=True` needs the `h2` package, so an environment
-    drift is the realistic failure here. Every flag-ON construction site reaches
+    HTTP/1.1 ONLY (W0-2b, `http2=False`): a keep-alive POOL, one request per
+    connection. On one shared HTTP/2 connection httpcore 1.0.9 couples every
+    in-flight Supabase call: a hung PostgREST stream's read timeout tears the
+    connection down and fails every unrelated request multiplexed on it, and
+    the read timeout is per socket read, not per call. It also allocates h2
+    stream ids outside its write lock (`_sync/http2.py:134` vs `:144`), so
+    concurrent requests send out-of-order stream ids and the server kills the
+    connection: ~4% of concurrent requests failed with NO hung call, 0 of
+    3,989 with `http2=False` (measured on loopback TLS+ALPN, R-W0 red phase).
+    The CR-PERFORMANCE-03 win is the shared SSLContext/certifi setup, which
+    HTTP/1.1 keeps. `max_connections` stays >= the run_db executor width (40).
+
+    FAILS OPEN (S1). Every flag-ON construction site reaches
     this function, and those sites cannot fail this way today, so any exception
     is swallowed: log ONCE at WARNING (module latch) and return None. The
     callers then build today's bare `create_client(url, key)`, degrading to
@@ -139,7 +150,7 @@ def get_shared_httpx_client() -> Optional[httpx.Client]:
                         timeout=httpx.Timeout(
                             timeout, connect=_SHARED_CONNECT_TIMEOUT_SECONDS
                         ),
-                        http2=True,
+                        http2=False,  # W0-2b: HTTP/1.1 pool, see docstring
                         follow_redirects=True,
                         limits=httpx.Limits(
                             max_connections=100, max_keepalive_connections=20

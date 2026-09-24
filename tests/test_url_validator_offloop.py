@@ -69,7 +69,7 @@ def _stub_getaddrinfo(monkeypatch, delay, calls, thread_names=None, result=None)
         if delay:
             time.sleep(delay)
         if result is None:
-            raise socket.gaierror(-2, "Name or service not known")
+            raise socket.gaierror(socket.EAI_NONAME, "Name or service not known")
         return result
 
     monkeypatch.setattr(uv.socket, "getaddrinfo", _stub)
@@ -330,7 +330,7 @@ def test_queued_but_never_started_resolve_is_not_memoized(monkeypatch):
             started.append(host)
         if host == blackhole:
             release.wait(20.0)
-            raise socket.gaierror(-2, "Name or service not known")
+            raise socket.gaierror(socket.EAI_NONAME, "Name or service not known")
         return _PUBLIC_ADDRINFO
 
     monkeypatch.setattr(uv.socket, "getaddrinfo", _stub)
