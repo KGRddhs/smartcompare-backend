@@ -1,0 +1,1 @@
+retro(net): R-W0 - the SSRF resolver memoises only confirmed negatives and genuinely slow resolves; the shared Supabase transport is HTTP/1.1

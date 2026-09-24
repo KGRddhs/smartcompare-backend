@@ -1,0 +1,1 @@
+retro(api): R-METER - a failed camera comparison is a non-delivery under metering (refund, no lifetime bump, no history), a failed URL verdict never ships raw exception text, anon credits are refunded on every non-delivery exit

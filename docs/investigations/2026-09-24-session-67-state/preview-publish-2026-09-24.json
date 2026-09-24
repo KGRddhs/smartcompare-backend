@@ -1,0 +1,26 @@
+[
+  {
+    "id": "01a0d34f-a2f6-7578-a9af-7aa09210b108",
+    "createdAt": "2026-09-24T12:06:46.774Z",
+    "group": "561d2cba-f374-40e8-866b-3bfe6c7c9c3b",
+    "branch": "preview",
+    "message": "session 67 from main ab9442ae: W3 client halves (W3-4 W3-6 W3-9 W3-11bcd W3-14 W3-15 W3-16), R-CLIENT W1-4d logout body, B1 lucide split, M21/M23 mobile waves; PRs #163-#195",
+    "runtimeVersion": "1.0.0",
+    "platform": "android",
+    "manifestPermalink": "https://u.expo.dev/update/01a0d34f-a2f6-7578-a9af-7aa09210b108",
+    "isRollBackToEmbedded": false,
+    "gitCommitHash": "ab9442ae6625267cd114a5593661ee9b79f1a78f"
+  },
+  {
+    "id": "01a0d34f-a2f6-7649-93bf-0a46700434c8",
+    "createdAt": "2026-09-24T12:06:46.774Z",
+    "group": "561d2cba-f374-40e8-866b-3bfe6c7c9c3b",
+    "branch": "preview",
+    "message": "session 67 from main ab9442ae: W3 client halves (W3-4 W3-6 W3-9 W3-11bcd W3-14 W3-15 W3-16), R-CLIENT W1-4d logout body, B1 lucide split, M21/M23 mobile waves; PRs #163-#195",
+    "runtimeVersion": "1.0.0",
+    "platform": "ios",
+    "manifestPermalink": "https://u.expo.dev/update/01a0d34f-a2f6-7649-93bf-0a46700434c8",
+    "isRollBackToEmbedded": false,
+    "gitCommitHash": "ab9442ae6625267cd114a5593661ee9b79f1a78f"
+  }
+]

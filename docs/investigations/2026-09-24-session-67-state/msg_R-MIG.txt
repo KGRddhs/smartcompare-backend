@@ -1,0 +1,16 @@
+retro(migrations): W1-2b/c/d - 037 no longer depends on 035/036, user_events BEFORE checks + honest rollback, 036 revokes anon, 040 revokes cleanup_expired_ratings by name
+
+Retro-fix group R-MIG for W1-2 (#153). No production change (unapplied files).
+- W1-2b: new migrations/040_revoke_cleanup_expired_ratings.sql - an idempotent DO block that REVOKEs EXECUTE FROM
+  PUBLIC, anon, authenticated on every public function of that NAME (signature unknown to the repo; created out of
+  band, measured live in the 2026-09-06 review); header carries the catalog queries and the anon-executable
+  SECURITY DEFINER census to run first; the wrong 'does not exist' assert is replaced by a pin that 040 names it.
+- W1-2c: 037's header gains the user_events BEFORE checks (relrowsecurity + pg_policies with qual/with_check) and
+  the rule that any policy other than events_insert/events_select means CR-SECURITY-02 is NOT closed; the rollback
+  restores the recorded BEFORE value instead of blindly disabling RLS.
+- W1-2d: statement 4 is guarded by to_regprocedure('public.home_savings_aggregate(uuid)') so 037 no longer
+  depends on 035/036; 036's revoke names anon as well as PUBLIC (a stock Supabase explicit anon grant survives a
+  PUBLIC-only revoke, measured on PostgreSQL 18); apply order corrected in the docs it appears in.
+Tests: 103 source-level nodes green; engine-verified mutants killed; adversary r1 SOUND (2 recorded minors).
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>

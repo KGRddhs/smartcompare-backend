@@ -1,0 +1,1 @@
+retro(llm): R-BREAKER - a cancelled dispatch never trips the OpenAI breaker; every half-open probe ends its slot

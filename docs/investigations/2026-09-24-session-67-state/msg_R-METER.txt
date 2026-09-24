@@ -1,0 +1,16 @@
+retro(api): W2-1b camera unsuccessful result = non-delivery under ENABLE_PAID_ROUTE_METERING (+ ENABLE_CAMERA_FAILURE_ENVELOPE), W2-1c /url/compare failed verdict -> 503 LLM_UNAVAILABLE never str(e), W2-1d anon refunds on the six exits
+
+Retro-fix group R-METER for W2-1 (#137).
+- W2-1b: the camera route reads compare_from_text's success flag. Inside ENABLE_PAID_ROUTE_METERING an unsuccessful result is a
+  NON-delivery: refund the reserved credit, refund the anon credit once, no lifetime bump, no history row, log_search
+  success=False (pinned in the both-flags-ON state). Inside the NEW ENABLE_CAMERA_FAILURE_ENVELOPE (default OFF) the body
+  is the comparison_failed envelope exit 6 already ships; OFF keeps today's action=comparison body. Unflagged: a code-less
+  failure's error (str(e), measured with an OpenAI key tail) becomes the constant 'comparison unavailable'.
+- W2-1c (unflagged): compare_from_urls returns success False / LLM_UNAVAILABLE / constant message when the verdict carries a
+  non-empty error (truthiness, composes with W4-9's constant); the route ships 503 through the text route's mapping ONLY for
+  a coded failure - the code-less <2-products exit keeps main's bare-string 400 (W4-9's allowlist would redact it).
+- W2-1d: refund_anon_comparison_credit wired on the six non-delivery exits + the new exit 7 under the metering flag;
+  /url/compare's missing anon gate and the pre-validation anon debit are recorded for #128, not built.
+Tests: 132 nodes x 6 ambient states; 17-file comm set base(db1ed3a4) == head; 67/75 mutants killed; adversary r4 SOUND.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>

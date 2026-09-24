@@ -1,0 +1,1 @@
+retro(mobile): R-CLIENT - logout lets an in-flight refresh land, refreshes an expired token once, and revokes the pair the server considers live (OTA-gated)

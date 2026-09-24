@@ -1,0 +1,14 @@
+feat(price): W4-2 keep search links out of price.url on the shopping rung (ENABLE_SHOPPING_DISCOVERY_URL_SPLIT, default OFF, coupled to W4-1)
+
+PO-RECORDED-MEASURED-03: extract_price_from_shopping stamped Serper's google search link or a synthesized retailer
+search url into url, so is_price_showable's non_pdp_url backstop pended the rung's own output and 9 of the 46
+RETAILER_SEARCH_URLS templates shipped as showable, cacheable fabricated urls. With the flag ON (and only when
+ENABLE_SHOPPING_CURRENCY_TRUTH is also ON - ruling R1) a search link rides in the private _discovery_url key and url
+is None (rung 1 listing link, rung 2 synthesized fallback, rung 3 a real PDP untouched); the stash mirror applies
+the same splitter; the tier-7 converted_fallback backfill never re-mints a url for a row carrying the key
+(_discovery_url_of reads the key unconditionally, ruling R3); public_price_view and GET /text/prices strip the key
+under the exact gate (only that key - pinned); one [SHOPPING_DISCOVERY_URL] canary line for best. Flag OFF is
+byte-identical to 6ab9d7ea (corpus base -> head -> base2 record-by-record; the harness never enters the shopping
+rung, stated). 114 unit nodes green in five flag states, Preserve 164, 27 mutations killed from byte snapshots.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>

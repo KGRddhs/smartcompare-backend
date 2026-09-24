@@ -1,0 +1,13 @@
+retro(llm): W1-3a cancellation records no breaker failure, W1-3b every half-open probe records a total outcome
+
+Retro-fix group R-BREAKER for W1-3 (#147). Inside ENABLE_LLM_PREFLIGHT_BREAKER (default OFF, flag OFF byte-identical):
+- W1-3a (BLOCKING): a bare asyncio.CancelledError in guarded_llm_create records NO breaker failure (a sibling wall,
+  the hard cap, a disconnect or a shutdown is not an OpenAI health signal); three concurrent dispatches cancelled by
+  one outer wall leave the breaker CLOSED (pinned).
+- W1-3b: _openai_dispatch_admission returns (admitted, outcome_matters, probe); every admitted half-open probe
+  records a TOTAL outcome - a non-429 4xx is success-for-health (the server answered), any other exception, a
+  cancellation or a teardown BaseException releases the probe slot (openai_release_half_open_probe resets the
+  per-trip counter to 0 on a still-half_open blob), so a failing probe never wedges deny-all until the TTL.
+Tests: 79 nodes green both flag states; comm 16-file set base == head; adversary r1 SOUND.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
