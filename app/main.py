@@ -36,7 +36,7 @@ from app.middleware.security import SecurityHeadersMiddleware
 from app.middleware.error_handler import ErrorHandlerMiddleware
 from app.middleware.rate_limiter import limiter, _default_rate_limits_enabled
 from slowapi.errors import RateLimitExceeded
-from slowapi.middleware import SlowAPIMiddleware
+from slowapi.middleware import SlowAPIASGIMiddleware
 
 # Initialize Sentry (no-op if SENTRY_DSN not set)
 from app.services.sentry_service import init_sentry
@@ -134,8 +134,19 @@ app.add_middleware(
 # NEW default-OFF flag; flag-OFF is byte-identical to 674034e (no middleware, no
 # default limit). The credential-route brute-force protection is decorator-driven
 # and stays live regardless. Activate ONLY with a verified proxy-aware key.
+#
+# W1-9c: the ASGI variant, not SlowAPIMiddleware. On the pinned slowapi 0.1.10
+# SlowAPIMiddleware.sync_check_limits cannot await a coroutine handler, so it
+# silently swaps our async rate_limit_handler for slowapi's own and the 429
+# ships a bare {"error": ...} body with no code, request_id or Retry-After
+# (measured). SlowAPIASGIMiddleware awaits it, so the 429 carries the envelope.
+# MEASURED LIMIT on the pinned stack: slowapi's _find_route_handler cannot see
+# through fastapi 0.141's _IncludedRouter entries, so the blanket default
+# reaches ONLY the app-level routes (/health, /, /favicon.ico on Railway; the
+# four FastAPI docs routes too when RAILWAY_ENVIRONMENT is unset) -- not the
+# router-included routes the comment above names (follow-up W1-9d).
 if _default_rate_limits_enabled():
-    app.add_middleware(SlowAPIMiddleware)
+    app.add_middleware(SlowAPIASGIMiddleware)
 
 # Exception handlers (unified error format)
 app.state.limiter = limiter
@@ -183,12 +194,26 @@ async def _install_default_executor() -> None:
 # The LAST value and the rolling MAX since process start are both reported: an
 # external probe polling every 30 s samples 1 second in 30 and would miss almost
 # every stall, so the max is what lets a low-frequency probe see one.
+# (W1-10b: that max is a high-water mark since process start, NOT rolling; the
+# rolling one-minute max is `loop_lag_max_60s_ms` below.)
 import asyncio
+import collections
 
 LOOP_LAG_INTERVAL_SECONDS: float = 1.0
 
 _loop_lag_last_ms: float = 0.0
 _loop_lag_max_ms: float = 0.0
+
+# W1-10b: `_loop_lag_max_ms` is a HIGH-WATER MARK since process start that
+# never decays, so after one big stall a NEW, smaller stall is invisible to
+# both numbers above (measured: 11 s stall, an hour of healthy ticks, a new 4 s
+# stall -> /health read {loop_lag_ms: 0.0, loop_lag_max_ms: 11000.0}). Keep the
+# per-tick samples in a 60-slot ring (one minute at the 1 s interval) and
+# report their max as `loop_lag_max_60s_ms`, recomputed by the RECORDER so
+# /health stays a pure dict read.
+LOOP_LAG_WINDOW_SLOTS: int = 60
+_loop_lag_ring: "collections.deque[float]" = collections.deque(maxlen=LOOP_LAG_WINDOW_SLOTS)
+_loop_lag_max_60s_ms: float = 0.0
 
 # The heartbeat task handle, so shutdown can cancel it. None before startup.
 _loop_lag_task = None
@@ -201,20 +226,25 @@ def record_loop_lag_tick(elapsed_seconds: float) -> None:
     floored at zero because an elapsed shorter than the interval is clock
     granularity, not negative lag, and a negative value would corrupt the max.
     """
-    global _loop_lag_last_ms, _loop_lag_max_ms
+    global _loop_lag_last_ms, _loop_lag_max_ms, _loop_lag_max_60s_ms
     lag_ms = (float(elapsed_seconds) - LOOP_LAG_INTERVAL_SECONDS) * 1000.0
     if lag_ms < 0.0:
         lag_ms = 0.0
     _loop_lag_last_ms = lag_ms
     if lag_ms > _loop_lag_max_ms:
         _loop_lag_max_ms = lag_ms
+    # W1-10b: one sample per tick into the ring; max over <= 60 floats, once a
+    # second, off the /health path.
+    _loop_lag_ring.append(lag_ms)
+    _loop_lag_max_60s_ms = max(_loop_lag_ring)
 
 
 def loop_lag_snapshot() -> dict:
-    """The two loop-lag numbers /health merges into its payload. A dict read."""
+    """The loop-lag numbers /health merges into its payload. A dict read."""
     return {
         "loop_lag_ms": _loop_lag_last_ms,
         "loop_lag_max_ms": _loop_lag_max_ms,
+        "loop_lag_max_60s_ms": _loop_lag_max_60s_ms,
     }
 
 
@@ -349,7 +379,6 @@ app.include_router(profile_router)   # /api/v1/profile/* (recent-decisions, mont
 # Without this gate, /admin/*.html shells were world-readable even though
 # the underlying /api/v1/admin/* JSON endpoints were protected.
 import base64
-import binascii
 import hmac as _hmac
 from pathlib import Path as _Path
 from fastapi.staticfiles import StaticFiles
@@ -388,7 +417,7 @@ class _AdminAuthenticatedStaticFiles(StaticFiles):
         # password), so a `str` compare_digest raises TypeError on any non-ASCII
         # character — a 500 on this UNAUTHENTICATED mount, captured by Sentry
         # with `expected` (= ADMIN_API_KEY) in the frame locals. `TypeError` is
-        # not caught by the `except (binascii.Error, UnicodeDecodeError)` below.
+        # not caught by the `except (ValueError, UnicodeError)` below.
         expected_bytes = expected.encode("utf-8", errors="surrogateescape")
 
         x_admin = headers.get("x-admin-key", "")
@@ -402,15 +431,24 @@ class _AdminAuthenticatedStaticFiles(StaticFiles):
         if authz.lower().startswith("basic "):
             try:
                 decoded = base64.b64decode(authz[6:]).decode("utf-8")
-                _, _, password = decoded.partition(":")
-                if password and _hmac.compare_digest(
-                    password.encode("utf-8", errors="surrogateescape"),
-                    expected_bytes,
-                ):
-                    await super().__call__(scope, receive, send)
-                    return
-            except (binascii.Error, UnicodeDecodeError):
-                pass
+            except (ValueError, UnicodeError):
+                # W1-1c: ValueError, not binascii.Error. A raw >= 0x80 byte in
+                # the Basic payload makes b64decode(str) raise a plain
+                # ValueError ("string argument should contain only ASCII
+                # characters"); binascii.Error is a SUBCLASS of ValueError, so
+                # the old clause missed it and this unauthenticated mount
+                # 500'd. ValueError covers binascii.Error and
+                # UnicodeDecodeError; UnicodeError is kept explicit. The try
+                # wraps ONLY the decode, so an error raised while SERVING an
+                # authenticated request is not swallowed into a 401.
+                decoded = ""
+            _, _, password = decoded.partition(":")
+            if password and _hmac.compare_digest(
+                password.encode("utf-8", errors="surrogateescape"),
+                expected_bytes,
+            ):
+                await super().__call__(scope, receive, send)
+                return
 
         await _Response(
             "Unauthorized",

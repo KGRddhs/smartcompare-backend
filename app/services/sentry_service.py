@@ -133,6 +133,60 @@ def _scrub_dict(data: dict) -> dict:
     return scrubbed
 
 
+def _scrub_request_region(event) -> None:
+    """Scrub ``event["request"]`` in place: secret headers, PII query strings,
+    body and cookies.
+
+    W1-1b: ONE helper shared by ``_before_send`` (error events) and
+    ``_before_send_transaction`` (performance transactions) so the two hooks
+    can never drift apart on what leaves the process in the request region.
+    """
+    if "request" in event:
+        if "headers" in event["request"]:
+            headers = event["request"]["headers"]
+            if isinstance(headers, dict):
+                for key in list(headers.keys()):
+                    if key.lower() in ("authorization", "x-admin-key", "cookie"):
+                        headers[key] = "[REDACTED]"
+        # Bundle D Task 1.B.6 (R21) — scrub PII query-string values from request URL
+        if isinstance(event["request"].get("url"), str):
+            event["request"]["url"] = _scrub_query_string(event["request"]["url"])
+        # Bundle D R21 follow-up (Frontend cross-QA review on c12a7c6):
+        # modern sentry-python FastAPI/Starlette integrations populate
+        # `request.query_string` separately as raw `key=val&key2=val2`
+        # (no leading `?`). The lookbehind in _QUERY_STRING_SCRUB_PATTERN
+        # would miss the first param of a raw query_string, so route it
+        # through _scrub_raw_query_string which normalizes by prepending
+        # `?` before regex application.
+        raw_qs = event["request"].get("query_string")
+        if raw_qs is not None:
+            event["request"]["query_string"] = _scrub_raw_query_string(raw_qs)
+        # CR-SECURITY-03: request body + cookies were never walked. A JWT in a
+        # login body or a session cookie reached Sentry verbatim.
+        for _req_key in ("data", "cookies"):
+            _req_val = event["request"].get(_req_key)
+            if isinstance(_req_val, dict):
+                event["request"][_req_key] = _scrub_dict(_req_val)
+            elif isinstance(_req_val, str):
+                event["request"][_req_key] = _scrub_string(_req_val)
+
+
+def _before_send_transaction(event, hint):
+    """Scrub the request region of a performance TRANSACTION before sending.
+
+    W1-1b: ``before_send`` is never called for transactions, and the SDK's own
+    header filter does not list ``x-admin-key``, so every sampled transaction
+    for an authenticated admin request shipped the operator's key verbatim in
+    ``request.headers`` (measured on sentry-sdk 2.68.1). This applies exactly
+    the request-region scrub ``_before_send`` applies and nothing else:
+    the trace ids, spans and contexts are left alone (a rewritten trace_id
+    orphans the trace), and the 503 drop is NOT applied -- that drop exists to
+    keep deliberate 503s out of the ERROR stream, not the performance stream.
+    """
+    _scrub_request_region(event)
+    return event
+
+
 def _before_send(event, hint):
     """Scrub sensitive data from Sentry events before sending.
 
@@ -174,34 +228,7 @@ def _before_send(event, hint):
             if "message" in crumb and isinstance(crumb["message"], str):
                 crumb["message"] = _scrub_string(crumb["message"])
     # Scrub request headers + query-string
-    if "request" in event:
-        if "headers" in event["request"]:
-            headers = event["request"]["headers"]
-            if isinstance(headers, dict):
-                for key in list(headers.keys()):
-                    if key.lower() in ("authorization", "x-admin-key", "cookie"):
-                        headers[key] = "[REDACTED]"
-        # Bundle D Task 1.B.6 (R21) — scrub PII query-string values from request URL
-        if isinstance(event["request"].get("url"), str):
-            event["request"]["url"] = _scrub_query_string(event["request"]["url"])
-        # Bundle D R21 follow-up (Frontend cross-QA review on c12a7c6):
-        # modern sentry-python FastAPI/Starlette integrations populate
-        # `request.query_string` separately as raw `key=val&key2=val2`
-        # (no leading `?`). The lookbehind in _QUERY_STRING_SCRUB_PATTERN
-        # would miss the first param of a raw query_string, so route it
-        # through _scrub_raw_query_string which normalizes by prepending
-        # `?` before regex application.
-        raw_qs = event["request"].get("query_string")
-        if raw_qs is not None:
-            event["request"]["query_string"] = _scrub_raw_query_string(raw_qs)
-        # CR-SECURITY-03: request body + cookies were never walked. A JWT in a
-        # login body or a session cookie reached Sentry verbatim.
-        for _req_key in ("data", "cookies"):
-            _req_val = event["request"].get(_req_key)
-            if isinstance(_req_val, dict):
-                event["request"][_req_key] = _scrub_dict(_req_val)
-            elif isinstance(_req_val, str):
-                event["request"][_req_key] = _scrub_string(_req_val)
+    _scrub_request_region(event)
     # CR-SECURITY-03: the remaining regions a secret can ride in. Scrub the
     # secret PATTERNS inside them with the existing helpers — do NOT blank the
     # regions. `contexts` in particular carries the runtime/OS/response metadata
@@ -296,6 +323,8 @@ def init_sentry():
             # lose local variables, which costs debuggability.
             include_local_variables=False,
             before_send=_before_send,
+            # W1-1b: transactions never pass through before_send.
+            before_send_transaction=_before_send_transaction,
             before_breadcrumb=_strip_tokens_from_breadcrumb,
         )
         logger.info("Sentry initialized successfully")
