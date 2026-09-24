@@ -109,6 +109,7 @@ registered. conftest is NOT modified by this unit.
 from __future__ import annotations
 import asyncio
 import logging
+import threading
 
 import hashlib
 from typing import Any, Dict, List, Optional, Tuple
@@ -152,10 +153,18 @@ class UpstreamTokenStore:
     def __init__(self) -> None:
         self._owner: Dict[str, str] = {}
         self._revoked: set = set()
+        # R-AUTH retro: gotrue revokes by the JWT's SESSION, so the store also
+        # knows which refresh token belongs to the session an access token is for.
+        self._session_of_access: Dict[str, str] = {}
 
-    def issue(self, user_id: str, refresh_token: str) -> str:
+    def issue(self, user_id: str, refresh_token: str, access_token: Optional[str] = None) -> str:
         self._owner[refresh_token] = user_id
+        if access_token is not None:
+            self._session_of_access[access_token] = refresh_token
         return refresh_token
+
+    def refresh_token_of(self, access_token: str) -> Optional[str]:
+        return self._session_of_access.get(access_token)
 
     def is_valid(self, refresh_token: str) -> bool:
         return refresh_token in self._owner and refresh_token not in self._revoked
@@ -186,6 +195,34 @@ class _StubAuthResponse:
         self.user = None
 
 
+class StubGoTrueAdmin:
+    """Stand-in for ``client.auth.admin`` (``SyncGoTrueAdminAPI``) with the
+    PINNED signature ``sign_out(self, jwt, scope="global")`` -- so a call that
+    drops the scope resolves to ``global`` here exactly as in production.
+
+    Records the calling thread, so the flag-ON leg can be pinned OFF the event
+    loop (R-AUTH retro, Fable red-gate ruling 1).
+    """
+
+    def __init__(self, upstream: UpstreamTokenStore, calls: List[Tuple[str, tuple, dict]]) -> None:
+        self._upstream = upstream
+        self.calls = calls
+        self.threads: List[int] = []
+
+    def sign_out(self, jwt: str, scope: str = "global") -> None:
+        self.calls.append(("admin.sign_out", (jwt, scope), {}))
+        self.threads.append(threading.get_ident())
+        refresh = self._upstream.refresh_token_of(jwt)
+        if refresh is None:
+            return
+        if scope == "global":
+            owner = self._upstream._owner.get(refresh)
+            if owner:
+                self._upstream.revoke_all_for_user(owner)
+        else:
+            self._upstream.revoke_one(refresh)
+
+
 class StubGoTrueAuth:
     """Stand-in for ``client.auth`` with the PINNED SDK's real signatures.
 
@@ -197,6 +234,7 @@ class StubGoTrueAuth:
     def __init__(self, upstream: UpstreamTokenStore, calls: List[Tuple[str, tuple, dict]]) -> None:
         self._upstream = upstream
         self.calls = calls
+        self.admin = StubGoTrueAdmin(upstream, calls)
         # What `_save_session` would have stored; None until set_session runs.
         self._session: Optional[_StubSession] = None
         self.refresh_error: Optional[BaseException] = None
@@ -244,9 +282,13 @@ class FakeRedis:
     def __init__(self) -> None:
         self.setex_calls: List[Tuple[str, int, str]] = []
         self.store: Dict[str, str] = {}
+        # `_revoke_token` runs INLINE in `logout_user`, i.e. on the event-loop
+        # thread -- the reference the off-loop pin compares against.
+        self.setex_threads: List[int] = []
 
     def setex(self, key: str, ttl: int, value: str) -> None:
         self.setex_calls.append((key, ttl, value))
+        self.setex_threads.append(threading.get_ident())
         self.store[key] = value
 
     def get(self, key: str) -> Optional[str]:
@@ -400,22 +442,25 @@ def test_node2_invalid_refresh_token_still_401(client, gotrue, upstream):
 
 
 # ===========================================================================
-# NODE 3 -- flag ON + refresh token in the body -> set_session THEN sign_out(local)
+# NODE 3 -- flag ON + refresh token in the body -> admin.sign_out(access, "local")
 # ===========================================================================
-def test_node3_flag_on_sets_session_then_signs_out_local(
+# R-AUTH retro, Fable red-gate ruling 1 (2026-09-23): the flag-ON contract for a
+# VALID bearer is now ONE `auth.admin.sign_out(access_token, "local")`, offloaded,
+# regardless of the refresh token (whose VALUE never reached Supabase on this
+# path -- gotrue revokes by the JWT's session). PR #139's pins on the
+# `set_session`-then-`sign_out` ORDER are RETIRED by that ruling; the
+# `set_session` leg survives only on the expired-bearer path
+# (tests/test_retro_w1_4_logout_expired.py).
+def test_node3_flag_on_revokes_by_access_token_scope_local(
     client, gotrue, upstream, fake_redis, monkeypatch
 ):
-    """RED TODAY: the call log is exactly ``["sign_out"]`` -- no ``set_session``,
-    so gotrue has no session to revoke and the call is a silent no-op.
-
-    The ORDER matters and is why the stub records an ordered log rather than
-    two booleans: ``sign_out`` reads the session off the client's own storage,
-    so a ``sign_out`` that runs BEFORE ``set_session`` revokes nothing at all.
-    """
+    """Flag ON, refresh token in the body: exactly one admin sign_out, by the
+    ACCESS token, scope ``local``, off the event-loop thread; no ``set_session``
+    and the refresh-token value appears in no upstream call."""
     monkeypatch.setenv(FLAG, "true")
     access = "w1-4-n3-access"
     refresh = "w1-4-n3-refresh"
-    upstream.issue("user-n3", refresh)
+    upstream.issue("user-n3", refresh, access_token=access)
     _authenticate_as("user-n3", access)
 
     resp = client.post(
@@ -424,29 +469,22 @@ def test_node3_flag_on_sets_session_then_signs_out_local(
         headers={"Authorization": "Bearer " + access},
     )
     assert resp.status_code == 200, resp.text
+    assert resp.json() == {"success": True, "message": "Logged out successfully"}, resp.text
 
-    names = _names(gotrue.calls)
-    assert "set_session" in names, (
-        "flag ON with a refresh token in the body must call set_session before "
-        "sign_out, or gotrue has nothing to revoke; call log was " + repr(names)
+    assert gotrue.calls == [("admin.sign_out", (access, "local"), {})], (
+        "flag ON must make exactly one admin.sign_out(access_token, 'local'); "
+        "call log was " + repr(gotrue.calls)
     )
-    assert "sign_out" in names, "sign_out must still be called; log " + repr(names)
-    assert names.index("set_session") < names.index("sign_out"), (
-        "set_session must precede sign_out; call log was " + repr(names)
+    assert all(refresh not in repr(c) for c in gotrue.calls), (
+        "the refresh-token VALUE must never be sent upstream; " + repr(gotrue.calls)
     )
+    assert not upstream.is_valid(refresh), "the caller's session must be revoked upstream"
 
-    set_call = [c for c in gotrue.calls if c[0] == "set_session"][0]
-    assert set_call[1] == (access, refresh), (
-        "set_session must receive (access_token, refresh_token) positionally, "
-        "matching the pinned SDK signature; got " + repr(set_call)
-    )
-
-    signout_call = [c for c in gotrue.calls if c[0] == "sign_out"][0]
-    assert _signout_scope(signout_call[2].get("options")) == "local", (
-        "BINDING RULING: scope must be 'local', not 'global' -- see the unit "
-        "spec. Resolved scope was "
-        + _signout_scope(signout_call[2].get("options"))
-        + " from " + repr(signout_call[2])
+    # Off the event loop: `_revoke_token`'s setex runs inline on the loop thread.
+    assert fake_redis.setex_threads and gotrue.admin.threads, "precondition: both legs ran"
+    assert gotrue.admin.threads[0] != fake_redis.setex_threads[0], (
+        "the upstream admin.sign_out must run in a worker thread, not on the "
+        "event-loop thread"
     )
 
     # The 1 h access-token blacklist is unchanged by the flag.
@@ -472,14 +510,18 @@ def test_node4_flag_on_logout_is_local_second_device_survives(
 
     (b) is measured END TO END: B's token is driven back through the real
     ``POST /api/v1/auth/refresh`` route and must return 200.
+
+    R-AUTH retro (ruling 1): revocation now goes through the ADMIN call by A's
+    access token; the stub admin revokes per SESSION for ``local`` and per USER
+    for ``global``, so a scope regression still turns (b) red.
     """
     monkeypatch.setenv(FLAG, "true")
     user = "user-n4"
     access_a = "w1-4-n4-access-A"
     refresh_a = "w1-4-n4-refresh-A"
     refresh_b = "w1-4-n4-refresh-B"
-    upstream.issue(user, refresh_a)
-    upstream.issue(user, refresh_b)
+    upstream.issue(user, refresh_a, access_token=access_a)
+    upstream.issue(user, refresh_b, access_token="w1-4-n4-access-B")
     _authenticate_as(user, access_a)
 
     resp = client.post(
@@ -498,6 +540,10 @@ def test_node4_flag_on_logout_is_local_second_device_survives(
         "'global'); it was revoked, so logout signed the user out everywhere"
     )
 
+    assert [c for c in gotrue.calls if c[0] == "admin.sign_out"] == [
+        ("admin.sign_out", (access_a, "local"), {})
+    ], "exactly one admin sign_out by device A's access token; " + repr(gotrue.calls)
+
     resp_b = client.post(REFRESH_URL, json={"refresh_token": refresh_b})
     assert resp_b.status_code == 200, (
         "device B must still be able to refresh after device A logs out; got "
@@ -507,19 +553,19 @@ def test_node4_flag_on_logout_is_local_second_device_survives(
 
 
 # ===========================================================================
-# NODE 5 -- flag ON, NO refresh token in the body -> today's path exactly
+# NODE 5 -- flag ON, NO refresh token in the body -> ONE admin sign_out by access
 # ===========================================================================
-def test_node5_flag_on_without_refresh_token_is_todays_path(
+def test_node5_flag_on_without_refresh_token_revokes_by_access_token(
     client, gotrue, upstream, fake_redis, monkeypatch
 ):
-    """GREEN today and after. Sending the refresh token is a CLIENT change that
-    reaches devices only with the next OTA, so flag ON must be inert for every
-    client that does not send one -- blacklist write only, ``set_session``
-    never called.
+    """R-AUTH retro, Fable red-gate ruling 1 (replaces PR #139's "flag ON is
+    inert without a refresh token" pin, retired by that ruling): every build
+    already on phones logs out WITHOUT a refresh token, and gotrue revokes by
+    the JWT's session, so flag ON makes exactly ONE
+    ``admin.sign_out(access_token, "local")`` per logout -- ``set_session``
+    never called, the 1 h blacklist write kept.
 
-    Both no-body shapes are exercised, with DISTINCT users and tokens, because
-    the implementation may declare the body as ``Optional[LogoutRequest] = None``
-    (no body at all) or as a model with an optional field (``{}``):
+    Both no-body shapes are exercised, with DISTINCT users and tokens:
       (a) no request body at all;
       (b) an explicit empty JSON object.
     """
@@ -542,12 +588,15 @@ def test_node5_flag_on_without_refresh_token_is_todays_path(
     assert resp_b.json() == {"success": True, "message": "Logged out successfully"}, resp_b.text
 
     assert "set_session" not in _names(gotrue.calls), (
-        "with no refresh token in the body the path must be exactly today's; "
-        "call log was " + repr(_names(gotrue.calls))
-    )
-    assert _names(gotrue.calls) == ["sign_out", "sign_out"], (
-        "exactly one bare sign_out per logout, as today; got "
+        "a valid bearer never needs set_session; call log was "
         + repr(_names(gotrue.calls))
+    )
+    assert gotrue.calls == [
+        ("admin.sign_out", (access_a, "local"), {}),
+        ("admin.sign_out", (access_b, "local"), {}),
+    ], (
+        "flag ON with no refresh token must make exactly one "
+        "admin.sign_out(access_token, 'local') per logout; got " + repr(gotrue.calls)
     )
     for key in (_blacklist_key(access_a), _blacklist_key(access_b)):
         assert (key, BLACKLIST_TTL_SECONDS, "1") in fake_redis.setex_calls, (
@@ -639,12 +688,22 @@ def test_node7_logout_failure_never_logs_the_bearer_token(monkeypatch, caplog):
 
     monkeypatch.setenv("ENABLE_LOGOUT_UPSTREAM_REVOCATION", "true")
 
-    class _RaisingAuth:
-        def set_session(self, a, r):
-            raise UserDoesntExist(a)
+    # R-AUTH retro (ruling 1): the flag-ON leg for a valid bearer is now
+    # `admin.sign_out(access_token, "local")`, so the credential-carrying
+    # exception is raised from THERE (a gotrue error built around the JWT it
+    # was handed); set_session is no longer on this path.
+    class _RaisingAdmin:
+        def sign_out(self, jwt, scope="global"):
+            raise UserDoesntExist(jwt)
 
-        def sign_out(self, options=None):  # pragma: no cover - never reached
-            raise AssertionError("sign_out must not run after set_session raised")
+    class _RaisingAuth:
+        admin = _RaisingAdmin()
+
+        def set_session(self, a, r):  # pragma: no cover - not on this path
+            raise AssertionError("a valid bearer must not call set_session")
+
+        def sign_out(self, options=None):  # pragma: no cover - not on this path
+            raise AssertionError("flag ON must not make the bare sign_out")
 
     class _Client:
         auth = _RaisingAuth()
