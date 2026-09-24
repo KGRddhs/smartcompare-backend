@@ -1,0 +1,77 @@
+-- 041_user_events_drop_public_select_policy.sql
+-- CR-SECURITY-02, the half migration 037 cannot close: drop the out-of-band
+-- policy that lets the anon role read every public.user_events row.
+--
+-- MERGING THIS CHANGES NOTHING IN PRODUCTION. It is a file in a repo until
+-- somebody applies it. It depends on nothing unapplied and may be applied
+-- before or after 037 / 038 / 040 (039 is reserved for the M13-29 RLS
+-- migration; 040 is the cleanup_expired_ratings revoke).
+--
+-- ============================================================================
+-- WHAT WAS MEASURED (live, 2026-09-24, Supabase project qulajmyxdbdkchvecmvc,
+-- the SQL editor, BEFORE 037 / 040 / 038 were applied) — exactly 037's own
+-- BEFORE CHECKS:
+-- ============================================================================
+--
+--     SELECT c.relowner::regrole AS owner, c.relrowsecurity, c.relforcerowsecurity
+--       FROM pg_class c WHERE c.oid = 'public.user_events'::regclass;
+--     -> postgres | relrowsecurity = true | relforcerowsecurity = false
+--
+--     SELECT policyname, permissive, cmd, roles, qual, with_check
+--       FROM pg_policies WHERE schemaname = 'public' AND tablename = 'user_events';
+--     -> "Service role can read all events" | PERMISSIVE | SELECT | {public} | true | NULL
+--        "Users can insert own events"      | PERMISSIVE | INSERT | {public} | NULL | ((auth.uid() = user_id) OR (user_id IS NULL))
+--        events_insert                      | PERMISSIVE | INSERT | {public} | NULL | ((auth.uid() = user_id) OR (user_id IS NULL))
+--        events_select                      | PERMISSIVE | SELECT | {public} | (auth.uid() = user_id) | NULL
+--
+--     anon-key HEAD /rest/v1/user_events?select=id with Prefer: count=exact
+--     -> HTTP 200, content-range 0-146/147  (147 rows visible to anon)
+--
+-- So THE RULE in 037's header applies: RLS is ALREADY enabled, and pg_policies
+-- lists a policy other than events_insert / events_select. 037's
+-- `ALTER TABLE ... ENABLE ROW LEVEL SECURITY` is therefore a no-op on this
+-- database and does NOT close CR-SECURITY-02. The anon read comes from the
+-- policy "Service role can read all events": PERMISSIVE, FOR SELECT, roles
+-- {public}, USING (true). Its name is a misunderstanding — service_role BYPASSES
+-- row security (BYPASSRLS) and needs no policy at all — so what the policy
+-- actually does is grant SELECT on every row to EVERY role, anon included.
+-- 037's header prescribes the fix: "a follow-up migration that drops (or
+-- re-creates) the offending policies BY NAME, written from that pg_policies
+-- output (never a blanket loop)". This file is that migration: one DROP POLICY,
+-- by the measured name, nothing else.
+--
+-- NOT touched, on purpose:
+--   * "Users can insert own events" — an out-of-band DUPLICATE of events_insert
+--     with the identical WITH CHECK. Harmless (two permissive INSERT policies
+--     OR together into the same predicate). Recorded, not dropped: this file
+--     closes the read leak and nothing more.
+--   * events_insert / events_select — 010:56-59, as written; the app's own
+--     reads (auth.uid() = user_id) keep working through events_select.
+--   * FORCE ROW LEVEL SECURITY — see 037's header; the owner is postgres, so
+--     FORCE adds nothing to what anon can do.
+--
+-- AFTER APPLYING, in the same session:
+--
+--     SELECT policyname, permissive, cmd, roles, qual, with_check
+--       FROM pg_policies WHERE schemaname = 'public' AND tablename = 'user_events';
+--     -> three rows; "Service role can read all events" gone.
+--
+-- Then the live proof, from a shell (the anon key comes from the environment):
+--
+--     curl -sI "$SUPABASE_URL/rest/v1/user_events?select=id" \
+--          -H "apikey: $SUPABASE_ANON_KEY" -H "Authorization: Bearer $SUPABASE_ANON_KEY" \
+--          -H "Prefer: count=exact" -H "Range: 0-0"
+--
+-- The anon count=exact must now be 0 rows (content-range */0), and service_role
+-- must still read all rows (it bypasses RLS; nothing here changes that).
+--
+-- Rollback: migrations/rollback/041_user_events_drop_public_select_policy.sql
+-- re-creates the policy exactly as measured — and therefore RE-OPENS the leak.
+
+BEGIN;
+
+-- RF05 exemption: the measured live policy name contains spaces, so it can
+-- only be named by quoting it verbatim.
+DROP POLICY IF EXISTS "Service role can read all events" ON public.user_events; -- noqa: RF05
+
+COMMIT;
