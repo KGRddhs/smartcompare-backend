@@ -27,6 +27,41 @@ const wordsExclude = [
   '^عر$',
 ];
 
+// W3-11 RTL-09 — under mode:'jsx-text-only' the i18next plugin skips any
+// node whose DIRECT parent is not a JSXElement/JSXFragment, so user-visible
+// literals in attributes, setError(...) and Alert.alert(...) were invisible
+// (measured: 0 messages while accessibilityLabel="Back", 'N/A', ... shipped).
+// These child-combinator selectors see exactly those shapes; `t('key')`
+// arguments, `{ defaultValue }` and `{ style: 'cancel' }` are children of a
+// `t` call / ObjectExpression and never match. `label="English"` is the
+// language picker's self-label (like '^EN$' / '^عر$' above).
+const LETTERS = '/[A-Za-z]{2,}/';
+const USER_VISIBLE_ATTRS = 'accessibilityLabel|accessibilityHint|placeholder|title|label';
+const SET_ERROR = "CallExpression[callee.name='setError']";
+const ALERT = "CallExpression[callee.object.name='Alert'][callee.property.name='alert']";
+const literalArms = (root) => [
+  `${root} > Literal[value=${LETTERS}]`,
+  `${root} > LogicalExpression > Literal[value=${LETTERS}]`,
+  `${root} > ConditionalExpression > Literal[value=${LETTERS}]`,
+  `${root} > TemplateLiteral > TemplateElement[value.raw=${LETTERS}]`,
+  `${root} > BinaryExpression > Literal[value=${LETTERS}]`,
+];
+const restrictedLiteralSyntax = [
+  {
+    selector: `JSXAttribute[name.name=/^(${USER_VISIBLE_ATTRS})$/] > Literal[value=${LETTERS}]:not([value='English'])`,
+    message: 'A user-visible JSX attribute carries an untranslated literal — use t(key).',
+  },
+  ...literalArms(SET_ERROR).map((selector) => ({
+    selector,
+    message: 'A literal English string reaches setError() — use t(key).',
+  })),
+  ...literalArms(ALERT).map((selector) => ({
+    selector,
+    message: 'A literal English string reaches Alert.alert() — use t(key).',
+  })),
+  { selector: "Literal[value='N/A']", message: "'N/A' is user-visible English — use t(key)." },
+];
+
 module.exports = [
   {
     ignores: [
@@ -56,6 +91,7 @@ module.exports = [
           words: { exclude: wordsExclude },
         },
       ],
+      'no-restricted-syntax': ['error', ...restrictedLiteralSyntax],
     },
   },
   {

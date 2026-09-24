@@ -71,7 +71,6 @@ import {
 } from '../types';
 import { Card } from '../components/Card';
 import { DirectionalIcon } from '../components/primitives/DirectionalIcon';
-import { localizedCurrency } from '../utils/currencyDisplay';
 import { SkeletonLoader } from '../components/SkeletonLoader';
 import { ProgressBar } from '../components/ProgressBar';
 import { CohortBadge } from '../components/CohortBadge';
@@ -437,16 +436,6 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
   }, []);
 
   // --- Helpers ---
-
-  const formatPrice = (price?: Product['price']) => {
-    if (!price || price.unavailable || price.amount === null) return t('results.priceNA');
-    // MB-i18n-rtl-02 — currency label follows the app language.
-    const base = `${localizedCurrency(price.currency, t)} ${price.amount.toLocaleString()}`;
-    // Provenance honesty (deep-review HIGH) — a converted (USD→BHD) figure is not a
-    // genuine BH shelf price; label it so it never reads as a local price.
-    if (price.source_method === 'converted_usd') return `${base} ${t('results.convertedUSD')}`;
-    return base;
-  };
 
   const getScoreColor = (score: number): string => {
     if (score > 70) return colors.accent;

@@ -322,6 +322,9 @@ export interface ComparisonResult {
   // envelope (success:false), mirrors the unified error code. Read by the
   // FE to substitute friendly copy by code rather than rendering `error`.
   code?: string;
+  // W3-11 RTL-05: the backend's block layer on a CONTENT_UNAVAILABLE
+  // envelope (e.g. "query_prefilter"), forwarded to the content-block event.
+  layer?: string;
   // New structured response fields (optional for backward compat with history)
   overview?: OverviewSection;
   specs?: SpecsSection;

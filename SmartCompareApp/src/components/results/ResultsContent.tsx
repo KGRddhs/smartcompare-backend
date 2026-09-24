@@ -50,7 +50,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { ArrowLeft, Share2 } from 'lucide-react-native';
 import { DirectionalIcon } from '../primitives/DirectionalIcon';
-import { localizedCurrency } from '../../utils/currencyDisplay';
+import { formatPrice as formatAmountWithCurrency } from '../../utils/formatNumber';
 import { useTranslation } from 'react-i18next';
 
 import { colors, spacing, radii } from '../../theme';
@@ -140,7 +140,9 @@ export const ResultsContent = React.memo(function ResultsContent({
     if (!price || price.amount === null) return t('results.priceNA');
     // MB-i18n-rtl-02 — currency label follows the app language (AR gets
     // the same "د.ب"-style glyphs the Home/History hero copy uses).
-    const base = `${localizedCurrency(price.currency, t)} ${price.amount.toLocaleString()}`;
+    // W3-11 RTL-07 — amount first, then the symbol, with the ISO minor unit
+    // (BHD 3 decimals) and the app digit policy, not the device locale.
+    const base = formatAmountWithCurrency(price.amount, price.currency, t);
     // Provenance honesty (deep-review HIGH) — a converted (USD→BHD) figure is NOT
     // a genuine Bahrain shelf price; label it so it is never read as a local price
     // (the backend contract at price_service.py: "the UI says indicative/reference").
@@ -205,7 +207,7 @@ export const ResultsContent = React.memo(function ResultsContent({
         <TouchableOpacity
           testID="results-content-back-btn"
           accessibilityRole="button"
-          accessibilityLabel="Back"
+          accessibilityLabel={t('results.a11y.back')}
           style={styles.headerCircleBtn}
           onPress={onBack}
         >
@@ -221,7 +223,7 @@ export const ResultsContent = React.memo(function ResultsContent({
         <TouchableOpacity
           testID="results-content-share-btn"
           accessibilityRole="button"
-          accessibilityLabel="Share"
+          accessibilityLabel={t('results.a11y.share')}
           style={styles.headerCircleBtn}
           onPress={onShare}
         >

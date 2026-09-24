@@ -346,8 +346,11 @@ describe('ResultsContent — render coverage', () => {
 
   it('renders formatted price with currency + retailer', () => {
     const { getByText } = render(<ResultsContent {...baseProps} />);
-    expect(getByText('BHD 329')).toBeTruthy();
-    expect(getByText('BHD 299')).toBeTruthy();
+    // W3-11 RTL-07: amount first, then the symbol, with BHD's 3-decimal
+    // minor unit (was 'BHD 329' / 'BHD 299'). The echo-`t` mock makes
+    // localizedCurrency return the ISO code.
+    expect(getByText('329.000 BHD')).toBeTruthy();
+    expect(getByText('299.000 BHD')).toBeTruthy();
   });
 
   it('renders priceNA fallback when product.price is null', () => {

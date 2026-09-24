@@ -34,7 +34,6 @@ import { colors, spacing, radii, typography, shadows } from '../theme';
 import QarenLogo from '../components/QarenLogo';
 import { ProductImage } from '../components/primitives/ProductImage';
 import { DirectionalIcon } from '../components/primitives/DirectionalIcon';
-import { localizedCurrency } from '../utils/currencyDisplay';
 import {
   getComparisonHistory,
   deleteComparison,
@@ -412,7 +411,7 @@ const HistoryRow = React.memo(function HistoryRow({
 
   // Locale-aware relative time via i18n-opus' shared util (Bundle A §6.2).
   const formatTimeAgoLocalized = (dateString: string): string =>
-    formatTimeAgo(dateString, (i18n.language as 'en' | 'ar') ?? 'en');
+    formatTimeAgo(dateString, (i18n.language as 'en' | 'ar') ?? 'en', t);
 
   const formatTitle = (item: HistoryItem): string => {
     // Bundle A §5.3 — list endpoint returns `product_names` (summary fields
@@ -762,17 +761,6 @@ export default function HistoryScreen({ navigation, onLogout }: HistoryScreenPro
     if (diffDays === 1) return t('history.yesterday');
     if (diffDays < 7) return t('history.thisWeek');
     return t('history.older');
-  };
-
-  const formatPrice = (product: any): string => {
-    if (!product || product.price === null || product.price === undefined) return 'N/A';
-    // MB-i18n-rtl-02 — currency label follows the app language, matching
-    // the hero copy ("د.ب" in AR) instead of mixing Latin ISO into Arabic.
-    if (typeof product.price === 'object') {
-      if (product.price.amount === null || product.price.amount === undefined) return 'N/A';
-      return `${product.price.amount.toFixed(2)} ${localizedCurrency(product.price.currency || 'BHD', t)}`;
-    }
-    return `${(product.price as number).toFixed(2)} ${localizedCurrency('BHD', t)}`;
   };
 
   const sections: HistorySection[] = useMemo(() => {

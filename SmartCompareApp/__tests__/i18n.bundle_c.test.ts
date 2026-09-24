@@ -22,7 +22,8 @@ const REQUIRED_KEYS = [
   'results.valueMatch.above_range',
   'results.valueMatch.below_range',
   'results.valueMatch.above_range_with_tradeoff',
-  'results.valueMatch.cheaper_of_two',
+  // W3-11 RTL-14(c): renamed from cheaper_of_two (reserved `_two` suffix).
+  'results.valueMatch.cheaperOfTwo',
   // Section 5b — confidence pills + sheet
   'results.confidence.pill.price',
   'results.confidence.pill.reviews',

@@ -370,7 +370,9 @@ function computeValueMatchCaptionKey(d: Dimension): string | null {
   if (!a && !b) return null;
   if (a === 'in_range' && b === 'in_range') return null;
   // Both below → "cheaper of the two" (spec § 4e case 2).
-  if (a === 'below_range' && b === 'below_range') return 'results.valueMatch.cheaper_of_two';
+  // W3-11 RTL-14(c) — renamed from `cheaper_of_two`: a lone key ending in
+  // i18next's reserved `_two` plural suffix is not a dual form of anything.
+  if (a === 'below_range' && b === 'below_range') return 'results.valueMatch.cheaperOfTwo';
   // Any product above → caption surfaces above-range, with tradeoff
   // variant if backend supplied a key_tradeoff snippet.
   if (a === 'above_range' || b === 'above_range') {

@@ -426,11 +426,19 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
           // results-still-settling copy, never the backend `error` string
           // (which may carry forbidden vocab). Other failures keep the
           // existing sharper-match nudge.
-          const isTimeout = data.code === 'TIMEOUT' || data.code === 'STREAM_TIMEOUT';
-          Alert.alert(
-            t('common.error'),
-            isTimeout ? t('home.errors.timeout') : data.error || t('home.errors.comparison')
-          );
+          // W3-11 RTL-05 — copy is chosen by CODE, exactly like the onError
+          // branch below: `data.error` is backend English prose and is never
+          // render input. Defensive arm: api.ts's dispatchTerminal routes a
+          // success:false terminal payload to onError today.
+          if (data.code === 'CONTENT_UNAVAILABLE') {
+            handleContentUnavailable('text', data.layer ?? 'unknown');
+          } else {
+            const isTimeout = data.code === 'TIMEOUT' || data.code === 'STREAM_TIMEOUT';
+            Alert.alert(
+              t('common.error'),
+              isTimeout ? t('home.errors.timeout') : t(friendlyErrorKey(data.code))
+            );
+          }
         }
       },
       onError: (error: any) => {
@@ -543,7 +551,19 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
       } else {
         // Backend reported success=false — drop loader immediately.
         setLoading(false);
-        Alert.alert(t('common.error'), response.data.error || t('home.errors.comparison'));
+        // W3-11 RTL-05 — the sync /url/compare envelope carries English
+        // prose in `error` ("We don't compare this category", "Could not
+        // identify ..."); route by code like the catch branch, never render it.
+        if (response.data.code === 'CONTENT_UNAVAILABLE') {
+          handleContentUnavailable('url', response.data.layer ?? 'unknown');
+        } else {
+          const isTimeout =
+            response.data.code === 'TIMEOUT' || response.data.code === 'STREAM_TIMEOUT';
+          Alert.alert(
+            t('common.error'),
+            isTimeout ? t('home.errors.timeout') : t(friendlyErrorKey(response.data.code))
+          );
+        }
       }
     } catch (error: any) {
       // A4 — a cancelled run swallows its own CanceledError: no Alert, no

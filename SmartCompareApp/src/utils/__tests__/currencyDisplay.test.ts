@@ -61,15 +61,20 @@ describe('localizedCurrency', () => {
 
 describe('localizedCurrency wiring (price render sites)', () => {
   const SRC = path.resolve(__dirname, '../..');
-  const SITES = [
-    'components/results/ResultsContent.tsx',
-    'screens/ResultsScreen.tsx',
-    'screens/HistoryScreen.tsx',
-  ];
+  // W3-11 RTL-07: every live price site now renders through
+  // utils/formatNumber's formatPrice, which resolves the symbol via
+  // localizedCurrency. The two never-called `formatPrice` helpers in
+  // screens/ResultsScreen.tsx and screens/HistoryScreen.tsx (the previous
+  // SITES) were dead code and are deleted.
+  it('utils/formatNumber.ts resolves the price symbol via localizedCurrency', () => {
+    const src = fs.readFileSync(path.join(SRC, 'utils/formatNumber.ts'), 'utf8');
+    expect(src).toMatch(/localizedCurrency\s*\(/);
+  });
+  const SITES = ['components/results/ResultsContent.tsx', 'components/HomeEditorialSections.tsx'];
   for (const rel of SITES) {
-    it(`${rel} formats price currency via localizedCurrency`, () => {
+    it(`${rel} formats prices via utils/formatNumber's formatPrice`, () => {
       const src = fs.readFileSync(path.join(SRC, rel), 'utf8');
-      expect(src).toMatch(/localizedCurrency\s*\(/);
+      expect(src).toMatch(/import\s*\{[^}]*\bformatPrice\b[^}]*\}\s*from\s*'[./]*utils\/formatNumber'/);
     });
   }
 });
