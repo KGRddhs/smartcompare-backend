@@ -1219,6 +1219,8 @@ from app.services.price_service import (
     _shopping_unconvertible_foreign_iso,
     _shopping_bh_host_evidence,
     _shopping_price_residue,
+    shopping_discovery_url_split_enabled,
+    _shopping_split_discovery_url,
     reconcile_pair_sizes,
     reconcile_pair_fairness,
     apply_region_currency_guard,
@@ -2431,6 +2433,20 @@ def _park_listing_url_tier1_enabled() -> bool:
     return os.getenv("ENABLE_PARK_LISTING_URL_TIER1", "true").strip().lower() not in (
         "false", "0", "no", "off", "",
     )
+
+
+def _discovery_url_of(price: Any) -> str:
+    """W4-2 — the split-off SEARCH url a shopping price carries in the private
+    ``_discovery_url`` key, or "".
+
+    Reads the key UNCONDITIONALLY — no flag read (Fable ruling R3): only
+    ``extract_price_from_shopping`` / the stash mirror write the key, and only
+    with ENABLE_SHOPPING_DISCOVERY_URL_SPLIT on, so with the flag OFF the key
+    never exists and this is always "". A flag read here would only add a
+    mid-request rollback race (the row already split, the guard re-mints)."""
+    if not isinstance(price, dict):
+        return ""
+    return str(price.get("_discovery_url") or "")
 
 
 # BF5 (sweep OR-8) — BH-locale URL-path prefixes that mark a page as the
@@ -7762,7 +7778,12 @@ class StructuredComparisonService:
             # missed; the converted_usd Tier-1 price we parked is a REAL cited price
             # (gl=us, labeled indicative), so it BEATS the GPT estimate (tier-8).
             if converted_fallback and converted_fallback.get("amount"):
-                if converted_fallback.get("retailer") and not converted_fallback.get("url"):
+                # W4-2 — a row whose search url was split off to the private
+                # ``_discovery_url`` must not get it re-minted into ``url``
+                # (the load-bearing edit, ruling R2). No key -> today's backfill.
+                if (converted_fallback.get("retailer")
+                        and not converted_fallback.get("url")
+                        and not _discovery_url_of(converted_fallback)):
                     converted_fallback["url"] = build_retailer_url(
                         converted_fallback["retailer"], full_name
                     )
@@ -8410,14 +8431,24 @@ class StructuredComparisonService:
                                 full_name,
                             )
                             source_method = "converted_usd"
+                    # W4-2 — the SAME split the front door applies, same flag
+                    # (the shared splitter). Flag OFF: today's url, no key.
+                    _discovery: Optional[str] = None
+                    if shopping_discovery_url_split_enabled():
+                        _url, _discovery = _shopping_split_discovery_url(
+                            item.get("link"), retailer, full_name,
+                        )
+                    else:
+                        _url = item.get("link") or build_retailer_url(retailer, full_name)
                     observed.append({
                         "amount": round(amount, 2),
                         "currency": currency,
                         "source_method": source_method,
                         "retailer": retailer,
-                        "url": item.get("link") or build_retailer_url(retailer, full_name),
+                        "url": _url,
                         "title": title,
                         "size": size,
+                        **({"_discovery_url": _discovery} if _discovery else {}),
                     })
             elif kind == "price_dicts":
                 for p in (price_dicts or []):
@@ -8747,6 +8778,13 @@ async def get_regional_prices(
                 reason="pending_genuine",
                 size=result.get("size") if isinstance(result, dict) else None,
             )
+        elif _discovery_url_of(result) and exact_gate_enabled():
+            # W4-2 — this route ships the raw `_get_price` dict (no
+            # public_price_view), so drop the private `_discovery_url` here under
+            # the exact gate, as public_price_view does on the compare surfaces.
+            # Only a split row carries the key (flag OFF: never reached). A copy,
+            # never an in-place pop on a dict the cascade may still hold.
+            result = {k: v for k, v in result.items() if k != "_discovery_url"}
         regional[region] = result
         if isinstance(result, dict) and result.get("amount"):
             amount_bhd = _convert_to_bhd(result["amount"], result.get("currency", "BHD"))

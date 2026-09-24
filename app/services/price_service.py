@@ -10075,6 +10075,49 @@ def _shopping_bh_host_evidence(
     return _no("no_bh_evidence")
 
 
+def shopping_discovery_url_split_enabled() -> bool:
+    """True iff a SEARCH link is kept out of a shopping candidate's ``url`` and
+    carried in the PRIVATE key ``_discovery_url`` instead (default OFF).
+
+    W4-2 (PO-RECORDED-MEASURED-03). The Serper-shopping rung stamped
+    ``item["link"] or build_retailer_url(...)`` into ``url`` — Serper's
+    google.com/search link or a SYNTHESIZED retailer search url — so the
+    ``non_pdp_url`` backstop in ``is_price_showable`` pended the rung's own
+    output, and 9 of the 46 search templates evade ``_is_listing_url`` and
+    shipped as a fabricated, cacheable url. With the split ON a search link
+    goes to ``_discovery_url`` (``public_price_view`` strips it under the exact
+    gate) and ``url`` is None; a real merchant PDP link is untouched.
+
+    COUPLED to W4-1 (Fable ruling R1): True ONLY when
+    ``shopping_currency_truth_enabled()`` is also True, so a row this split
+    un-pends is always ``converted_usd`` (showable, never genuine) — split ON
+    with W4-1 OFF would display search-link rows as genuine ``local_bhd``, and a
+    W4-1 rollback must turn the split off with it. Both flags are read PER CALL
+    from os.getenv so Railway can flip them without a restart; default OFF so
+    flag-OFF is byte-identical to 6ab9d7ea.
+    """
+    return os.getenv("ENABLE_SHOPPING_DISCOVERY_URL_SPLIT", "").strip().lower() in (
+        "true", "1", "yes", "on",
+    ) and shopping_currency_truth_enabled()
+
+
+def _shopping_split_discovery_url(
+    link: Optional[str], retailer: str, product_name: str,
+) -> Tuple[Optional[str], Optional[str]]:
+    """W4-2 — ``(url, discovery_url)`` for a shopping candidate. Pure; the
+    callers gate it on ``shopping_discovery_url_split_enabled()``.
+
+    Rung 1: a ``link`` that ``_is_listing_url`` flags -> ``(None, link)``.
+    Rung 2: NO link -> ``(None, build_retailer_url(...))`` — a
+    ``build_retailer_url`` output is a SEARCH url by construction (None for an
+    unknown retailer, so nothing is invented). Rung 3: a real PDP ``link`` ->
+    ``(link, None)``, unchanged.
+    """
+    if link:
+        return (None, link) if _is_listing_url(link) else (link, None)
+    return (None, build_retailer_url(retailer, product_name))
+
+
 def extract_price_from_shopping(
     product_name: str,
     shopping_items: List[Dict],
@@ -10122,6 +10165,9 @@ def extract_price_from_shopping(
         min_price = max(min_price, 50.0)
 
     candidates = []
+    # W4-2 — id(candidate) -> (reason, host) for candidates whose search link
+    # was split off; stays EMPTY with the split flag OFF (no log line).
+    _discovery_split: Dict[int, Tuple[str, str]] = {}
 
     for item in shopping_items:
         price_str = item.get("price", "")
@@ -10277,11 +10323,20 @@ def extract_price_from_shopping(
                     product_name,
                 )
                 source_method = "converted_usd"
+        # W4-2 (ENABLE_SHOPPING_DISCOVERY_URL_SPLIT, coupled to W4-1) — a
+        # SEARCH link (a listing ``link`` or the synthesized no-link fallback)
+        # never enters ``url``; it rides in the private ``_discovery_url``.
+        # Flag OFF: the else-expression is today's and no key is added.
+        _discovery: Optional[str] = None
+        if shopping_discovery_url_split_enabled():
+            _url, _discovery = _shopping_split_discovery_url(link, retailer, product_name)
+        else:
+            _url = item.get("link") or build_retailer_url(retailer, product_name)
         candidates.append({
             "amount": round(amount, 2),
             "currency": currency,
             "retailer": retailer,
-            "url": item.get("link") or build_retailer_url(retailer, product_name),
+            "url": _url,
             "in_stock": True,
             "source_method": source_method,
             "confidence": round(min(0.7 + match_score * 0.3, 1.0), 2),
@@ -10293,7 +10348,12 @@ def extract_price_from_shopping(
             "concentration": extract_concentration(title),
             "size": (sorted(extract_sizes_ml(title))[0] + "ml")
                      if extract_sizes_ml(title) else None,
+            **({"_discovery_url": _discovery} if _discovery else {}),
         })
+        if _discovery:
+            _discovery_split[id(candidates[-1])] = (
+                "listing_url" if link else "synthesized", extract_domain(_discovery),
+            )
 
     if not candidates:
         # Bundle C v1 hot-fix — diagnostic log when ZERO candidates survive
@@ -10338,6 +10398,13 @@ def extract_price_from_shopping(
         f"({len(candidates)} candidates; variant_rank={best['variant_rank']} "
         f"size={best.get('size')} conc={best.get('concentration')})"
     )
+    # W4-2 canary — ONE line, for ``best`` only (ruling R6e), never per candidate.
+    if id(best) in _discovery_split:
+        _split_reason, _split_host = _discovery_split[id(best)]
+        logger.info(
+            "[SHOPPING_DISCOVERY_URL] split url->_discovery_url host=%s reason=%s for %s",
+            _split_host, _split_reason, product_name,
+        )
 
     best.pop("match_score", None)
     best.pop("variant_rank", None)
