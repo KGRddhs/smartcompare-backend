@@ -42,6 +42,7 @@ import json
 import logging
 import os
 import socket
+import sys
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -423,8 +424,38 @@ def test_r2c_every_sse_event_carries_no_raw_text(client, verdict_pipeline, monke
     assert not leaking, f"verdict exception text on SSE events: {leaking}"
 
 
+def _price_service_globals():
+    """Every distinct ``app.services.price_service`` module dict a caller can
+    reach: the one in ``sys.modules`` now, plus the ``__globals__`` of every
+    ``fetch_shopify_price`` function object bound by name in any loaded module.
+
+    They differ in the one-process CI suite (PR #178 round 2):
+    ``tests/test_platform_router.py::test_does_not_import_price_service`` does
+    ``del sys.modules[...price_service...]`` as an import-cycle proof, so the
+    next import builds a FRESH module object, while ``scs`` still holds the
+    ``fetch_shopify_price`` it bound at ITS import (``from
+    app.services.price_service import (... fetch_shopify_price ...)``), whose
+    ``__globals__`` is the ORPHANED old module dict. A stub set on the fresh
+    module never reached the function the orchestrator calls. A reload() keeps
+    one dict (re-executes into it), a fresh import makes two; covering the
+    set handles both."""
+    found = {}
+    live = sys.modules.get("app.services.price_service")
+    if live is not None:
+        found[id(vars(live))] = vars(live)
+    for mod in list(sys.modules.values()):
+        try:
+            fn = vars(mod).get("fetch_shopify_price")
+        except TypeError:  # None placeholders / objects without __dict__
+            continue
+        g = getattr(fn, "__globals__", None)
+        if isinstance(g, dict) and g.get("__name__") == "app.services.price_service":
+            found[id(g)] = g
+    return list(found.values())
+
+
 @pytest.fixture()
-def quota_outage(llm_429):
+def quota_outage(llm_429, monkeypatch):
     """R2(e) — the REAL orchestrator end to end (no _fetch_product_data stub):
     EVERY OpenAI call (specs, reviews, price, verdict) raises the 429 string,
     as in a real `insufficient_quota` outage. L3 moderation allowed and the
@@ -433,17 +464,24 @@ def quota_outage(llm_429):
     ``/products.json`` catalog and the noon-BH adapter, measured 16 native
     fetches per run that the socket patches cannot see — are stubbed to a
     MISS; every other I/O is left to the conftest neutralisation + the socket
-    guard, which now also fails the test on any other curl_cffi transfer."""
-    from app.services import price_service
+    guard, which now also fails the test on any other curl_cffi transfer.
+
+    The Shopify stub is set in EVERY price_service module dict the running
+    code can resolve ``_fetch_shopify_catalog`` from (``_price_service_globals``)
+    — not on whichever module object an import happens to return — and is
+    restored per key by monkeypatch (``patch.dict`` would clear and refill a
+    live module dict on exit)."""
     from app.services.content_safety_service import ContentSafetyService, SafetyResult
     from app.services.model_config import verdict_model
+
+    shopify_miss = AsyncMock(return_value=None)
+    for g in _price_service_globals():
+        monkeypatch.setitem(g, "_fetch_shopify_catalog", shopify_miss)
 
     with patch("app.services.model_router_service.model_router.get_model",
                AsyncMock(return_value=verdict_model())), \
          patch.object(ContentSafetyService, "moderate_output",
                       AsyncMock(return_value=SafetyResult(allowed=True))), \
-         patch.object(price_service, "_fetch_shopify_catalog",
-                      AsyncMock(return_value=None)), \
          patch.object(scs, "fetch_noon_price", AsyncMock(return_value=None)):
         yield llm_429
 
