@@ -32,7 +32,6 @@ OFF-LOCK supabase 2.28.0 / postgrest 2.28.0 / httpx 0.27.0 (the lock pins
 """
 from __future__ import annotations
 
-import json
 import os
 import threading
 import time
@@ -401,9 +400,14 @@ def test_anon_client_does_not_inherit_a_prior_sign_in(monkeypatch):
     class _FakeSession:
         access_token = FAKE_USER_JWT
 
-    client_a.auth._storage.set_item(
-        client_a.auth._storage_key, json.dumps(fake_session)
-    )
+    # R-AUTH retro W1-4c: the anon client is now built with
+    # persist_session=False (and auto_refresh_token=False), so a sign-in keeps
+    # its session in `_in_memory_session`, not `_storage`. Seed it through the
+    # SDK's own `_save_session` -- the exact call a successful sign-in makes --
+    # so the precondition below measures the real carrier on either setting.
+    from supabase_auth.types import Session as _GoTrueSession
+
+    client_a.auth._save_session(_GoTrueSession.model_validate(fake_session))
     client_a._listen_to_auth_events("SIGNED_IN", _FakeSession())
 
     # Preconditions: the simulation actually took on client_a.

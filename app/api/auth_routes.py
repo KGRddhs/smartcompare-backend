@@ -1,15 +1,21 @@
 """
 Auth Routes - Authentication endpoints
 """
+import base64
 import hashlib
+import json
 import logging
 import os
 import re
+import time
 from fastapi import APIRouter, HTTPException, Depends, Header
+from fastapi.responses import JSONResponse
+from fastapi.routing import APIRoute
+from limits import parse as parse_rate_limit
 from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 from typing import Any, List, Literal, Optional
 from starlette.requests import Request
-from app.middleware.rate_limiter import limiter, audit_client_ip
+from app.middleware.rate_limiter import limiter, audit_client_ip, _rate_limit_key
 from app.services.consent_service import (
     TERMS_ACCEPTANCE_REQUIRED,
     consent_from_fields,
@@ -35,6 +41,7 @@ from app.services.auth_service import (
     verify_token,
     get_user_profile,
     logout_user,
+    logout_upstream_revocation_enabled,
     request_password_reset,
     complete_password_recovery,
     update_user_profile,
@@ -788,7 +795,133 @@ async def refresh(request: Request, body: RefreshRequest):
     return result
 
 
-@router.post("/logout")
+def _unverified_jwt_is_expired(token: str) -> bool:
+    """True iff `token` is JWT-shaped and its `exp` claim is in the past.
+
+    The signature is deliberately NOT verified: this only picks the logout
+    route's branch (ruling 2). Nothing is trusted from it -- gotrue itself
+    decides whether the presented refresh token is good, and the pair is
+    rotated upstream before anything is revoked. Any parse failure -> False,
+    i.e. today's 401.
+    """
+    parts = token.split(".")
+    if len(parts) != 3 or not parts[1]:
+        return False
+    try:
+        raw = base64.urlsafe_b64decode(parts[1] + "=" * (-len(parts[1]) % 4))
+        payload = json.loads(raw)
+    except Exception:
+        return False
+    exp = payload.get("exp") if isinstance(payload, dict) else None
+    if isinstance(exp, bool) or not isinstance(exp, (int, float)):
+        return False
+    return exp <= time.time()
+
+
+async def _logout_body_refresh_token(request: Request) -> Optional[str]:
+    """The body's `refresh_token` if it is a non-empty string, else None.
+    FastAPI has already read (and cached) the body before the dependency ran."""
+    try:
+        data = await request.json()
+    except Exception:
+        return None
+    value = data.get("refresh_token") if isinstance(data, dict) else None
+    return value if isinstance(value, str) and value else None
+
+
+# The expired-bearer branch is reached WITHOUT authentication: the JWT's
+# signature is never verified, so a made-up token with a past `exp` plus any
+# refresh-token string qualifies, and each one costs an upstream POST /token
+# (gotrue's per-IP refresh budget, which the whole fleet shares from the Railway
+# IP), a Redis blacklist write and a WARNING. `/auth/logout` carries no
+# `@limiter.limit`, and a decorator could not cover this branch anyway (its
+# check runs inside the endpoint, which `get_current_user` never lets run
+# here). So the branch spends the SAME budget as `/auth/refresh` (10/minute per
+# limiter key) from its own bucket, checked here, before anything upstream or
+# in Redis. Over budget -> None -> the route's ORIGINAL 401, byte-identical to
+# the flag-OFF answer (the client clears locally either way).
+_EXPIRED_LOGOUT_BUDGET = parse_rate_limit("10/minute")
+_EXPIRED_LOGOUT_SCOPE = "auth-logout-expired-bearer"
+
+
+def _expired_logout_within_budget(request: Request) -> bool:
+    """One hit on the expired-bearer logout bucket; False when it is spent.
+    Keyed exactly like every decorated route (`_rate_limit_key`); a disabled
+    limiter is honoured like slowapi does; a storage error fails CLOSED
+    (today's 401), never open."""
+    if not limiter.enabled:
+        return True
+    try:
+        return bool(limiter.limiter.hit(
+            _EXPIRED_LOGOUT_BUDGET, _rate_limit_key(request), _EXPIRED_LOGOUT_SCOPE,
+        ))
+    except Exception:
+        return False
+
+
+async def _logout_with_expired_bearer(request: Request) -> Optional[dict]:
+    """W1-4 expired-bearer logout (R-AUTH retro, Fable red-gate ruling 2).
+
+    Returns the logout body when the request qualifies -- a Bearer JWT whose
+    `exp` has passed AND a string `refresh_token` in the JSON body, within the
+    branch's rate budget -- or None, which re-raises the route's original 401
+    unchanged. Caller has already checked the flag.
+    """
+    auth_header = request.headers.get("authorization", "")
+    if not auth_header.startswith("Bearer "):
+        return None
+    token = auth_header[7:]
+    if not _unverified_jwt_is_expired(token):
+        return None
+    refresh_token = await _logout_body_refresh_token(request)
+    if refresh_token is None:
+        return None
+    if not _expired_logout_within_budget(request):
+        return None
+    try:
+        await logout_user(token, refresh_token, access_token_expired=True)
+    except Exception as e:
+        # Same backstop as the valid-bearer path: TYPE only, never the text.
+        logger.warning(
+            "Logout sign-out failed (non-critical): %s", type(e).__name__
+        )
+    return {"success": True, "message": "Logged out successfully"}
+
+
+class _LogoutRoute(APIRoute):
+    """W1-4 -- `/auth/logout` accepts a presented-but-EXPIRED bearer, only under
+    `ENABLE_LOGOUT_UPSTREAM_REVOCATION` and only with a refresh token in the
+    body (R-AUTH retro, Fable red-gate ruling 2; the W1-4 client report's
+    server alternative, which also covers the builds already on phones).
+
+    `Depends(get_current_user)` 401s an expired access token before the
+    endpoint runs, so the in-flight-refresh race and the idle-over-1 h logout
+    revoked nothing upstream. A route class is the one place that sees that
+    dependency's HTTPException for THIS route only -- `get_current_user`, every
+    other route and every test override of it stay untouched.
+
+    Flag OFF, any non-401, or a request that does not qualify -> the ORIGINAL
+    exception is re-raised unchanged (today's exact 401). The success path
+    never enters the except arm.
+    """
+
+    def get_route_handler(self):
+        original_handler = super().get_route_handler()
+
+        async def logout_route_handler(request: Request):
+            try:
+                return await original_handler(request)
+            except HTTPException as exc:
+                if exc.status_code != 401 or not logout_upstream_revocation_enabled():
+                    raise
+                body = await _logout_with_expired_bearer(request)
+                if body is None:
+                    raise
+                return JSONResponse(content=body)
+
+        return logout_route_handler
+
+
 async def logout(
     request: Request,
     body: Optional[LogoutRequest] = None,
@@ -797,12 +930,12 @@ async def logout(
     """
     Logout current user.
 
-    W1-4: the body is OPTIONAL and may carry the caller's `refresh_token`. When
-    it does AND `ENABLE_LOGOUT_UPSTREAM_REVOCATION` is on, `logout_user`
-    establishes the session on the client and signs out with
-    `{"scope": "local"}` so the refresh token is actually revoked upstream
-    instead of outliving the 1 h Redis blacklist. No body, no refresh token, or
-    the flag off -> today's exact path.
+    W1-4: the body is OPTIONAL and may carry the caller's `refresh_token`.
+    Under `ENABLE_LOGOUT_UPSTREAM_REVOCATION` a valid bearer is revoked
+    upstream by the access token (`admin.sign_out(access, "local")`) whether or
+    not a refresh token is sent, and an EXPIRED bearer plus a refresh token is
+    accepted by `_LogoutRoute` and rotated-then-signed-out. Flag off -> today's
+    exact path.
     """
     try:
         auth_header = request.headers.get("authorization", "")
@@ -822,6 +955,11 @@ async def logout(
             "Logout sign-out failed (non-critical): %s", type(e).__name__
         )
     return {"success": True, "message": "Logged out successfully"}
+
+
+# Registered explicitly (in the decorator's place, so route order is unchanged)
+# because `router.post` cannot take a route class.
+router.add_api_route("/logout", logout, methods=["POST"], route_class_override=_LogoutRoute)
 
 
 @router.get("/me")

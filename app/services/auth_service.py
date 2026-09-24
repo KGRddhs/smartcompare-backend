@@ -20,8 +20,8 @@ import os
 import threading
 from typing import Optional, Dict, Tuple
 import httpx
-from supabase import create_client, Client
-from supabase_auth.errors import AuthApiError, AuthRetryableError
+from supabase import create_client, Client, ClientOptions
+from supabase_auth.errors import AuthApiError, AuthRetryableError, AuthUnknownError
 
 from app.services.cache_service import redis_client, _redis_offload_enabled
 from app.services.consent_service import (
@@ -33,6 +33,7 @@ from app.services.consent_service import (
 from app.services.database_service import (
     record_preference_history,
     build_supabase_client_options,
+    get_shared_httpx_client,
     supabase_client_reuse_enabled,
 )
 from app.utils.async_utils import fire_and_forget
@@ -147,12 +148,45 @@ def get_auth_client() -> Client:
 
     `verify_token` is the one call site that passes the token explicitly
     (`client.auth.get_user(access_token)`) and would have been safe either way.
+
+    W1-4c (R-AUTH retro, UNFLAGGED -- a server-side client that auto-refreshes
+    is a defect with no legitimate reader): on BOTH branches the anon client is
+    built with `auto_refresh_token=False, persist_session=False`. The SDK
+    default (True) makes every `_save_session` (login, refresh, set_session)
+    arm a daemon `threading.Timer` for `expires_in - 10 s` on this throw-away
+    client; when it fires it spends the refresh token that was just handed to
+    the DEVICE and re-arms forever (measured: the server posted the device's
+    token upstream unprompted). With `persist_session=False` the session lives
+    in `_in_memory_session`, which `get_session()` / `sign_out()` still read,
+    so the flag-ON logout's set_session + sign_out path keeps working.
+
+    The options are built HERE, with the constructor, not via the shared
+    `build_supabase_client_options()` (database_service's admin and
+    user-scoped clients use it and are out of this ruling), and never via
+    `ClientOptions.replace(...)`: its body is `auto_refresh_token or
+    self.auto_refresh_token`, so `False` cannot be set that way (measured).
     """
     if not SUPABASE_URL or not SUPABASE_ANON_KEY:
         raise ValueError("SUPABASE_URL and SUPABASE_ANON_KEY must be set")
     if supabase_client_reuse_enabled():
-        return _build_client(SUPABASE_URL, SUPABASE_ANON_KEY)
-    return create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+        # Same fail-open as `_build_client`: no shared transport -> the SDK's
+        # own per-client transport, never no client at all.
+        return create_client(
+            SUPABASE_URL, SUPABASE_ANON_KEY,
+            options=_anon_client_options(get_shared_httpx_client()),
+        )
+    return create_client(SUPABASE_URL, SUPABASE_ANON_KEY, options=_anon_client_options(None))
+
+
+def _anon_client_options(httpx_client: Optional[httpx.Client]) -> ClientOptions:
+    """W1-4c -- a FRESH options object per anon client (fresh `storage`, see
+    `database_service.build_supabase_client_options` for why sharing one is a
+    cross-user bleed) that never auto-refreshes and never persists a session."""
+    if httpx_client is None:
+        return ClientOptions(auto_refresh_token=False, persist_session=False)
+    return ClientOptions(
+        httpx_client=httpx_client, auto_refresh_token=False, persist_session=False,
+    )
 
 
 def get_admin_client() -> Client:
@@ -220,6 +254,52 @@ def _categorize_auth_error(e: Exception, context: str = "operation") -> Dict:
                 "error": f"[B4-BE-DIAG] supabase_error={str(e)[:300]} exc_type={type(e).__name__}",
             }
         return {"success": False, "error": "Something went wrong. Please try again later."}
+
+
+def _is_transient_upstream_status(status: object) -> bool:
+    """429 (gotrue's per-IP rate limit -- shared by the whole fleet, since every
+    refresh leaves from the Railway IP) or any 5xx."""
+    return isinstance(status, int) and not isinstance(status, bool) and (
+        status == 429 or status >= 500
+    )
+
+
+def _is_transient_refresh_error(e: BaseException) -> bool:
+    """W1-4b (R-AUTH retro, UNFLAGGED) -- classify a refresh failure by its TYPE.
+
+    `_categorize_auth_error` matches substrings of `str(e)`, and the real SDK
+    outage shapes mostly miss them (measured against a loopback gotrue on the
+    pinned supabase_auth 2.31.0 / httpx 0.28.1: 429, 500, 502, 503, 520, 522,
+    544, a dropped socket and a real ~5 s hang -- `ReadTimeout('timed out')`
+    has no 'timeout' in it -- all came out 401, i.e. a forced logout on both
+    client builds). The transient class is:
+
+    * `AuthRetryableError` -- the SDK's own type for 502/503/504/520-524/530
+      and for a `RuntimeError` in the transport;
+    * `httpx.TransportError` -- every timeout / connect / read / protocol
+      error; they escape `gotrue_base_api._request` UNWRAPPED (it only catches
+      `HTTPStatusError` and `RuntimeError`);
+    * `AuthApiError` with `.status` 429 or >= 500 (a JSON error body);
+    * `AuthUnknownError` built from a 429 / 5xx whose body is not JSON (a
+      gateway / Cloudflare HTML page). MEASURED: its `.original_error` is the
+      `JSONDecodeError` from `response.json()`, not the `HTTPStatusError`; the
+      status error is the implicit `__context__` (`raise handle_exception(e)`
+      inside `except HTTPStatusError`), so both are inspected.
+
+    Everything else -- 400 refresh_token_not_found / already_used, 401, 403,
+    404 session_not_found, 422, a 400 HTML page, missing config, any non-SDK
+    exception -- is NOT transient and keeps today's path (the substring
+    categoriser, then 401).
+    """
+    if isinstance(e, (AuthRetryableError, httpx.TransportError)):
+        return True
+    if isinstance(e, AuthApiError):
+        return _is_transient_upstream_status(getattr(e, "status", None))
+    if isinstance(e, AuthUnknownError):
+        for inner in (getattr(e, "original_error", None), e.__context__):
+            if isinstance(inner, httpx.HTTPStatusError):
+                return _is_transient_upstream_status(inner.response.status_code)
+    return False
 
 
 async def _enrich_response_with_profile(response: Dict, user_id: str) -> Dict:
@@ -383,6 +463,20 @@ async def refresh_session(refresh_token: str) -> Dict:
             return {"success": False, "error": "Failed to refresh session"}
 
     except Exception as e:
+        # W1-4b: the TYPE decides first. The result dict is byte-identical to
+        # the substring branch's transient dict, so `/auth/refresh` maps it to
+        # 503 REFRESH_UPSTREAM_UNAVAILABLE exactly as before; every other shape
+        # falls through to today's categoriser unchanged. Scoped to THIS
+        # caller only -- login/register/password-reset/social keep their dicts.
+        if _is_transient_refresh_error(e):
+            logger.warning(
+                "[auth] refresh upstream unavailable (transient): %s", type(e).__name__
+            )
+            return {
+                "success": False,
+                "error": "Connection failed. Please try again.",
+                "code": "UPSTREAM_UNAVAILABLE",
+            }
         return _categorize_auth_error(e, "refresh")
 
 
@@ -445,19 +539,28 @@ def logout_upstream_revocation_enabled() -> bool:
     Read PER CALL from `os.getenv` (the `price_service.exact_gate_enabled`
     idiom) so Railway can flip it without a restart; never cached at import.
 
-    Flag OFF, or no refresh token supplied, is today's exact path: the access
-    token is blacklisted in Redis for 1 h and a bare `sign_out()` is made on a
-    freshly built anon client that holds NO session, which gotrue turns into a
-    silent no-op. The flag exists because sending the refresh token in the
-    logout body is a CLIENT change that reaches devices only with the next OTA,
-    so flag ON is INERT until then.
+    Flag OFF is today's exact path: the access token is blacklisted in Redis
+    for 1 h and a bare `sign_out()` is made on a freshly built anon client that
+    holds NO session, which gotrue turns into a silent no-op.
+
+    Flag ON (R-AUTH retro, Fable red-gate ruling 1): a VALID bearer is revoked
+    upstream by the ACCESS token -- `admin.sign_out(access_token, "local")` --
+    whether or not the body carried a refresh token, so the flag acts for every
+    installed build, not only after the OTA (the refresh-token VALUE never
+    reached Supabase on this path anyway: gotrue revokes by the JWT's session).
+    An EXPIRED bearer plus a refresh token takes the rotation path (ruling 2,
+    see `logout_user`).
     """
     return os.getenv("ENABLE_LOGOUT_UPSTREAM_REVOCATION", "false").strip().lower() in (
         "true", "1", "yes", "on",
     )
 
 
-async def logout_user(access_token: str, refresh_token: Optional[str] = None) -> Dict:
+async def logout_user(
+    access_token: str,
+    refresh_token: Optional[str] = None,
+    access_token_expired: bool = False,
+) -> Dict:
     """Logout user -- revoke token via Redis blacklist + Supabase sign_out.
 
     W1-4 (LS-CACHE-REDIS-03). `sign_out` reads the session off the CLIENT's own
@@ -466,9 +569,24 @@ async def logout_user(access_token: str, refresh_token: Optional[str] = None) ->
     client is built fresh per call and holds nothing -- so today's bare call
     revokes NOTHING and the refresh token outlives the 1 h blacklist upstream.
 
-    Under `ENABLE_LOGOUT_UPSTREAM_REVOCATION`, and only when the caller supplied
-    a refresh token, we `set_session(access, refresh)` first so gotrue has a
-    session to end, then `sign_out({"scope": "local"})`.
+    Under `ENABLE_LOGOUT_UPSTREAM_REVOCATION` (R-AUTH retro, Fable red-gate
+    rulings 1 and 2 -- they replace PR #139's set_session-then-sign_out for the
+    valid-bearer case):
+
+    * VALID bearer (the route's normal path): `auth.admin.sign_out(access_token,
+      "local")` -- the exact call the SDK's own `sign_out` makes once a session
+      is stored -- with or without a refresh token. No `set_session`, no
+      `GET /user`, and the refresh-token VALUE is never sent upstream.
+    * EXPIRED bearer + refresh token (`access_token_expired=True`, reached only
+      through the route's expired-bearer branch): `set_session(access, refresh)`
+      -- whose expired branch ROTATES the pair upstream (POST /token) -- then
+      `sign_out({"scope": "local"})` on the new session. A pair gotrue rejects
+      still returns success (the local blacklist is written) and logs ONE
+      WARNING carrying the exception TYPE only.
+
+    Both upstream legs run OFF the event loop (`asyncio.to_thread`: the path is
+    already gated by this flag, so the offload does not also wait on
+    ENABLE_SYNC_DB_OFFLOAD). Flag OFF keeps today's inline bare `sign_out()`.
 
     Two pinned SDK facts (supabase / supabase-auth 2.31.0):
 
@@ -494,19 +612,31 @@ async def logout_user(access_token: str, refresh_token: Optional[str] = None) ->
     anyway -- but a failure is logged at WARNING and never implies that
     upstream revocation happened.
     """
-    upstream_revocation = bool(refresh_token) and logout_upstream_revocation_enabled()
+    upstream_revocation = logout_upstream_revocation_enabled()
+    expired_rotation = upstream_revocation and access_token_expired and bool(refresh_token)
     try:
         # Add token to revocation blacklist (TTL = 1 hour, matching Supabase default JWT expiry)
         _revoke_token(access_token)
 
-        client = get_auth_client()
-        if upstream_revocation:
-            client.auth.set_session(access_token, refresh_token)
-            client.auth.sign_out({"scope": "local"})
+        if expired_rotation:
+            await asyncio.to_thread(_sign_out_expired_pair, access_token, refresh_token)
+        elif upstream_revocation:
+            await asyncio.to_thread(_sign_out_by_access_token, access_token)
         else:
+            client = get_auth_client()
             client.auth.sign_out()
         return {"success": True, "message": "Logged out successfully"}
     except Exception as e:
+        if expired_rotation:
+            # TYPE only: this leg handles an expired JWT AND a live refresh
+            # token, and a rejected pair's message is not worth a credential.
+            logger.warning(
+                "[auth] logout upstream leg failed (set_session+sign_out(local), "
+                "expired access token): %s -- access token is blacklisted locally "
+                "for 1 h, but the session was NOT revoked upstream",
+                type(e).__name__,
+            )
+            return {"success": True, "message": "Logged out successfully"}
         # The access token IS blacklisted locally (that write precedes this
         # call and has its own guard); what failed is the UPSTREAM leg, so the
         # refresh token was NOT revoked at Supabase. Never let a
@@ -528,11 +658,29 @@ async def logout_user(access_token: str, refresh_token: Optional[str] = None) ->
         logger.warning(
             "[auth] logout upstream leg failed (%s): %s: %s -- access token is "
             "blacklisted locally for 1 h, but the session was NOT revoked upstream",
-            "set_session+sign_out(local)" if upstream_revocation else "sign_out",
+            "admin.sign_out(local)" if upstream_revocation else "sign_out",
             type(e).__name__,
             detail,
         )
         return {"success": True, "message": "Logged out successfully"}
+
+
+def _sign_out_by_access_token(access_token: str) -> None:
+    """Flag-ON VALID-bearer upstream leg (runs in a worker thread): revoke the
+    caller's session -- and only that one, `scope="local"` -- by its JWT.
+    POST /auth/v1/logout?scope=local with `Authorization: Bearer <access>`."""
+    get_auth_client().auth.admin.sign_out(access_token, "local")
+
+
+def _sign_out_expired_pair(access_token: str, refresh_token: str) -> None:
+    """Flag-ON EXPIRED-bearer upstream leg (runs in a worker thread). On an
+    expired access token `set_session` calls `_refresh_access_token`, which
+    rotates the pair upstream (the presented refresh token dies there); the
+    `sign_out` then ends the NEW session with `scope="local"`. The client never
+    auto-refreshes and keeps the session in memory only (W1-4c)."""
+    client = get_auth_client()
+    client.auth.set_session(access_token, refresh_token)
+    client.auth.sign_out({"scope": "local"})
 
 
 def _revoke_token(token: str) -> None:
@@ -961,7 +1109,21 @@ async def check_account_locked(email: str) -> dict:
         attempts = redis_client.get(key)
         if attempts and int(attempts) >= LOCKOUT_THRESHOLD:
             ttl = redis_client.ttl(key)
-            return {"locked": True, "retry_after": max(ttl, 0)}
+            if ttl <= 0:
+                # W1-9b (R-AUTH retro, UNFLAGGED): a locked count with no
+                # positive TTL is never "locked forever". -1 = the arming was
+                # lost (a key stuck like this never expired and nothing clears
+                # it, because the lock blocks the successful login that would);
+                # -2 / 0 = it expired or is expiring between the two round
+                # trips. Re-arm the window now and report it, so the 429 always
+                # carries a real Retry-After. A failed re-arm keeps the lock
+                # and is retried on the next check.
+                try:
+                    redis_client.expire(key, LOCKOUT_WINDOW_SECONDS)
+                except Exception:
+                    pass
+                ttl = LOCKOUT_WINDOW_SECONDS
+            return {"locked": True, "retry_after": ttl}
         return {"locked": False, "retry_after": 0}
     except Exception:
         return {"locked": False, "retry_after": 0}
@@ -976,9 +1138,25 @@ async def track_failed_login(email: str) -> dict:
         return {"locked": False, "attempts": 0}
     try:
         key = _login_attempt_key(email)
+        # W1-9b (R-AUTH retro, UNFLAGGED): ARM FIRST, then count. `SET key 0 NX
+        # EX <window>` creates the key WITH its window in one command (a no-op
+        # while a window is live), so the INCR below can never make a counter
+        # that lacks one. The old INCR-then-EXPIRE-if-count==1 pair lost the
+        # window whenever the EXPIRE (or the client's view of an applied INCR)
+        # was lost, and five failures over ANY span then locked the account for
+        # good. Both commands exist on upstash-redis 1.7.0 and redis-py.
+        redis_client.set(key, 0, nx=True, ex=LOCKOUT_WINDOW_SECONDS)
         count = redis_client.incr(key)
-        if count == 1:
-            redis_client.expire(key, LOCKOUT_WINDOW_SECONDS)
+        # Backstop for the two counters the SET NX cannot arm: a legacy key
+        # already stuck WITHOUT a TTL (SET NX is a no-op on an existing key),
+        # and a key that expired between the SET and the INCR (INCR recreates
+        # it TTL-less). `EXPIRE ... NX` sets the window only when the key has
+        # none, so a live window is never extended. Its own guard: a failure
+        # here must not turn an applied count into "attempts 0".
+        try:
+            redis_client.expire(key, LOCKOUT_WINDOW_SECONDS, nx=True)
+        except Exception:
+            pass
         return {"locked": count >= LOCKOUT_THRESHOLD, "attempts": count}
     except Exception:
         return {"locked": False, "attempts": 0}
