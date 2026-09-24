@@ -1342,6 +1342,7 @@ from app.services.response_builder import (
     # module level (the reverse import is lazy, so the other direction cycles).
     deterministic_verdict_fields,
     reconcile_winner_prose,
+    _honest_partial_scoring_enabled,  # W4-4 — per-call flag reader
 )
 from app.services.image_service import get_product_image_url
 # B.0 (Bundle B Lane F1) — Bahrain-first source registry. Wires the weighted
@@ -3164,6 +3165,22 @@ class StructuredComparisonService:
                 return True
         return False
 
+    def _partial_stage(self) -> str:
+        """W4-4 — the stage the partial CARRIED, derived from the same stash
+        `_build_partial_response` reads: `verdict` (verdict stashed), `scoring`
+        (scoring stashed, no verdict), `post_gather` (product data, no scoring),
+        `gather` (early buffer only). Never `none`: every call site gates on
+        `_partial_has_usable_data`. The streaming path never stashes, so a
+        streaming partial reports the early-buffer value even after later stages
+        ran (latent while phones use REST; recorded follow-up)."""
+        if self._partial_comparison:
+            return "verdict"
+        if self._partial_scoring_result:
+            return "scoring"
+        if self._partial_product_data:
+            return "post_gather"
+        return "gather"
+
     def _build_partial_response(self, *, elapsed_seconds: float) -> Dict[str, Any]:
         """WS1 (D1) — assemble a best-available response from whatever stages
         landed before the hard cap fired. Reuses `build_comparison_response`
@@ -3189,6 +3206,20 @@ class StructuredComparisonService:
         # the post-gather stash is still None (cancel DURING the Phase-1 gather).
         product_data = self._partial_product_data or self._early_specs_buffer_list() or []
         scoring_result = self._partial_scoring_result or {}
+        partial_stage = self._partial_stage()
+        # W4-4 R1(i) — flag ON, post-gather stash present and scoring absent:
+        # compute the deterministic scores on the stash (pure CPU, no LLM, no
+        # network) instead of shipping a fabricated 70/69 crowned by input
+        # order. ctx user_preferences only (no behavior/cohort profile). A
+        # compute failure leaves {} so the builder ships the honest null shape.
+        if not scoring_result and self._partial_product_data and _honest_partial_scoring_enabled():
+            try:
+                scoring_result = get_scoring_service().compute_scores(
+                    product_data, preferences=ctx.get("user_preferences"),
+                ) or {}
+            except Exception as e:  # noqa: BLE001 — partial must never crash
+                logger.warning("[W4-4] partial compute_scores failed: %s", type(e).__name__)
+                scoring_result = {}
         comparison = self._partial_comparison or {}
         product_names = self._partial_product_names or [
             p.get("name", "") for p in product_data
@@ -3260,7 +3291,12 @@ class StructuredComparisonService:
             # Mirror the same ctx value the positional kwarg above uses so the
             # two never diverge; an unresolved (mid-resolution timeout) ctx
             # carries "" — never None, never a phantom category.
-            metadata={"partial": True, "category_used": ctx.get("category_used", "")},
+            metadata={
+                "partial": True,
+                # W4-4 (unflagged, additive) — gather/post_gather/scoring/verdict.
+                "partial_stage": partial_stage,
+                "category_used": ctx.get("category_used", ""),
+            },
             # Phase 3.1 — cohort proof line on the partial path too. ctx carries
             # demographics_profile only if the await landed before the hard cap;
             # absent → None → key omitted (badge hides). Same chokepoint, same gate.

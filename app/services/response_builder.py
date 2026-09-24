@@ -113,6 +113,28 @@ def _gpt_winner_lever_enabled() -> bool:
     )
 
 
+def _honest_partial_scoring_enabled() -> bool:
+    """W4-4 / PO-VERDICT-TRUTH-02 flag reader (default OFF). Read live so a
+    Railway flip / monkeypatch takes effect without a restart."""
+    return os.environ.get("ENABLE_HONEST_PARTIAL_SCORING", "").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
+
+
+def _scoring_overall_absent(scoring_result: Dict[str, Any]) -> bool:
+    """W4-4 — True when the scorer never produced BOTH products' `overall`, i.e.
+    when _build_scoring_v2's `, 50)` defaults would fabricate a score. Pure, no
+    env read."""
+    scores = (scoring_result or {}).get("scores")
+    if not isinstance(scores, dict) or not scores:
+        return True
+    for key in ("product_0", "product_1"):
+        entry = scores.get(key)
+        if not isinstance(entry, dict) or entry.get("overall") is None:
+            return True
+    return False
+
+
 def _winner_prose_reconcile_enabled() -> bool:
     """M20 #110 flag reader (default OFF). Read live so a Railway flip /
     monkeypatch takes effect without a restart.
@@ -1099,11 +1121,20 @@ def _build_scoring_v2(
     scoring_result: Dict[str, Any],
     category: str,
     winner_index: int,
-) -> Dict[str, Any]:
+    *,
+    honest_null: bool = True,
+) -> Optional[Dict[str, Any]]:
     """Bundle E § Decision 2 — emit calibrated overall_score + dimensions[].
-    Backward-compatible: lives alongside legacy `scoring` key for one release."""
+    Backward-compatible: lives alongside legacy `scoring` key for one release.
+
+    W4-4 — with ENABLE_HONEST_PARTIAL_SCORING ON (and `honest_null`), an absent
+    `overall` returns None instead of the fabricated 70/69 pair. The builder
+    passes `honest_null` only for a partial response (metadata.partial is True);
+    the `len < 2 → {}` guard fires first in both flag states."""
     if len(product_data) < 2:
         return {}
+    if honest_null and _honest_partial_scoring_enabled() and _scoring_overall_absent(scoring_result):
+        return None
     raw_a = scoring_result.get("scores", {}).get("product_0", {}).get("overall", 50)
     raw_b = scoring_result.get("scores", {}).get("product_1", {}).get("overall", 50)
     score_a = calibrate_score(raw_a)
@@ -1693,6 +1724,10 @@ def build_comparison_response(
     # metadata that reads `_cached` off the pre-projection price is unaffected.
     from app.services.price_service import public_price_view
 
+    # W4-4 (FABLE RED-GATE ruling 1) — the honest-partial null and blanks are
+    # SCOPED to partial responses; a non-partial build keeps today's behaviour.
+    _w44_is_partial = isinstance(metadata, dict) and metadata.get("partial") is True
+
     result = {
         "success": True,
         "query": query,
@@ -1845,7 +1880,9 @@ def build_comparison_response(
             "category_weights": scoring_result.get("category_weights", {}),
         },
 
-        "scoring_v2": _build_scoring_v2(product_data, scoring_result, category_used, winner_index),
+        "scoring_v2": _build_scoring_v2(
+            product_data, scoring_result, category_used, winner_index, honest_null=_w44_is_partial,
+        ),
 
         "personalization": {
             "personalized": personalized,
@@ -2003,6 +2040,17 @@ def build_comparison_response(
     # Task A5 — top-level recommendation reads the SCRUBBED winner reason
     # (same source field as overview.winner.reason), never the raw leak.
     result["recommendation"] = _scrubbed_reason
+    # W4-4 R1(iii) — a partial whose scoring_v2 was nulled (only the
+    # ENABLE_HONEST_PARTIAL_SCORING branch of _build_scoring_v2 returns None)
+    # must not ship an unqualified input-order verdict: blank the reason, the
+    # key_tradeoff, the recommendation alias and the persisted BC alias. Keys stay.
+    if _w44_is_partial and result.get("scoring_v2") is None:
+        result["overview"]["winner"]["reason"] = ""
+        result["overview"]["winner"]["key_tradeoff"] = ""
+        result["recommendation"] = ""
+        comparison["winner_reason"] = ""
+        if "key_tradeoff" in comparison:
+            comparison["key_tradeoff"] = ""
     result["key_differences"] = []
     result["winner_index"] = winner_index
     result["category_used"] = category_used
