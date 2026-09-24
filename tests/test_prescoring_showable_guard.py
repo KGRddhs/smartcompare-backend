@@ -190,7 +190,7 @@ def _missing(res, i):
 def test_01_red_headline_both_google_numeric_specs(monkeypatch):
     """RED. Both prices behind a google search link (`non_pdp_url`), numeric specs.
     Today compute_scores reads the raw amount: value 89.5 / 40.5, dimension winner
-    "Sony Sony WH-1000XM5" by 49.0, win_margin 24.6 — on two prices the payload then
+    "Sony WH-1000XM5" by 49.0, win_margin 24.6 — on two prices the payload then
     ships as `unavailable: true`. Guarded: value falls back to the spec signal
     (85.0 / 45.0), the value dimension has no winner, win_margin 22.8, and — R8 —
     `value_score` enters missing_data (it is NOT there raw for this numeric shape)."""
@@ -228,7 +228,7 @@ def test_02_red_review_literal_missing_score(monkeypatch):
 
 def test_03_red_fragrance_missing_data_pins_something(monkeypatch):
     """RED. Fragrance (value dim `wear_value_score`, spec signal present): raw 76.0,
-    NOT in missing_data, dimension winner "Dior Dior Sauvage EDP 100ml" by 22.0,
+    NOT in missing_data, dimension winner "Dior Sauvage EDP 100ml" by 22.0,
     win_margin 2.8. Guarded: 65.7, in missing_data, no winner, win_margin 0.6."""
     _flag(monkeypatch, "true")
     f0 = _mk("Dior Sauvage EDP 100ml", "Dior", 40.0, GOOG0,
@@ -479,7 +479,7 @@ def test_r7b_pin_current_manufactured_cross_tier(monkeypatch):
     assert res["is_cross_tier"] is True
     assert _value(res, 0) == 85.0
     assert _value(res, 1) == 15.6
-    assert res["dimension_winners"]["value_score"]["winner"] == "Bose Bose QuietComfort Ultra"
+    assert res["dimension_winners"]["value_score"]["winner"] == "Bose QuietComfort Ultra"
 
 
 # ------------------------------------------------------ PINs on the pure pass
@@ -527,7 +527,7 @@ def test_10b_pin_flag_off_end_to_end_numbers_hold(monkeypatch, value):
     assert resp["overview"]["winner"]["margin"] == 24.6
     assert resp["scoring"]["scores"]["product_0"]["breakdown"]["value_score"] == 89.5
     assert resp["scoring"]["dimension_winners"]["value_score"] == {
-        "winner": "Sony Sony WH-1000XM5", "margin": 49.0,
+        "winner": "Sony WH-1000XM5", "margin": 49.0,
     }
     assert resp["metadata"]["guard_rejected"] == [
         {"product_index": 0, "reason": "non_pdp_url"},
