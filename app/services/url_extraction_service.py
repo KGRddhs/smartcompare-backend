@@ -373,22 +373,41 @@ RULES:
 - Be precise with product name and variant"""
 
 
+def _price_parse_offload_enabled() -> bool:
+    """ENABLE_PRICE_PARSE_OFFLOAD (W0-4, default OFF), read PER CALL. A local
+    one-liner (like structured_comparison_service's) so the flag-OFF path never
+    imports price_service."""
+    return os.getenv("ENABLE_PRICE_PARSE_OFFLOAD", "false").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
 async def extract_with_ai(url: str, html: str, retailer: Dict) -> Dict[str, Any]:
     """Use AI to extract product data when structured data is insufficient."""
-    soup = BeautifulSoup(html, "html.parser")
+    # R-W04 (W0-4c) — the soup + text extraction is pure-sync parsing. Under
+    # ENABLE_PRICE_PARSE_OFFLOAD it runs as ONE job on the bounded price-parse
+    # pool; flag OFF the same block runs inline, exactly as before.
+    def _w04_parse_block():
+        soup = BeautifulSoup(html, "html.parser")
     
-    # Get page title
-    title = soup.find("title")
-    title_text = title.string if title else "Unknown"
+        # Get page title
+        title = soup.find("title")
+        title_text = title.string if title else "Unknown"
     
-    # Get main content (remove scripts, styles, nav, footer)
-    for tag in soup(["script", "style", "nav", "footer", "header", "aside"]):
-        tag.decompose()
+        # Get main content (remove scripts, styles, nav, footer)
+        for tag in soup(["script", "style", "nav", "footer", "header", "aside"]):
+            tag.decompose()
     
-    # Get text content
-    text_content = soup.get_text(separator="\n", strip=True)
-    # Truncate to avoid token limits
-    text_content = text_content[:4000]
+        # Get text content
+        text_content = soup.get_text(separator="\n", strip=True)
+        # Truncate to avoid token limits
+        text_content = text_content[:4000]
+        return title_text, text_content
+    if _price_parse_offload_enabled():
+        from app.services.price_service import run_parse_offloaded
+        title_text, text_content = await run_parse_offloaded(_w04_parse_block)
+    else:
+        title_text, text_content = _w04_parse_block()
     
     try:
         client = get_client()
