@@ -67,6 +67,9 @@ from app.services.api_budget_service import (
     llm_preflight_breaker_enabled, openai_preflight_allows_compare,
 )
 from app.services import firecrawl_service, scrapedo_service
+# R-W18 (W1-8c) — the SLOW-MISS threshold keys on the same inner ceiling the
+# adapters clamp to. adapter_timeouts imports nothing from app (no cycle).
+from app.services.adapter_timeouts import adapter_inner_ceiling
 
 
 # WS-G G3 — per-attempt provider TRACE (backend observability ONLY; metadata,
@@ -255,18 +258,100 @@ async def _timeout_none(
     `issubclass(asyncio.CancelledError, Exception)` is False), so `except
     Exception` is what lets `_cancel_prefetched_direct` actually cancel the ~18
     speculative prefetch tasks. Catching BaseException here would convert every
-    cancellation into a `None` return and make the prefetch cancel a no-op."""
+    cancellation into a `None` return and make the prefetch cancel a no-op.
+
+    R-W18 (W1-8c/W1-8d, logging only — every return value is unchanged):
+    the await is timed with time.monotonic(). A TimeoutError is a wrap
+    `TIMEOUT after <elapsed>s` only when elapsed >= timeout - 0.05; one the
+    adapter raised itself earlier is `ERROR TimeoutError (adapter-raised)` (a
+    bug, not load). A None arriving at/after adapter_inner_ceiling() - 0.5 is a
+    `SLOW-MISS after <elapsed>s` — the signature of an inner fetch timeout the
+    adapter swallowed. Fast misses and every hit stay silent; cancellation is
+    still never caught, so it stays unlogged. The ERROR text goes through
+    `_safe_exc` (URL userinfo/query stripped, one line, <= 200 chars)."""
+    _t0 = time.monotonic()
     try:
-        return await asyncio.wait_for(make_coro(), timeout)
+        result = await asyncio.wait_for(make_coro(), timeout)
     except asyncio.TimeoutError:
-        # The load signal this unit exists to expose.
-        logger.info(f"[ADAPTER DROP] {label}: TIMEOUT after {timeout}s")
+        _elapsed = time.monotonic() - _t0
+        if _elapsed >= timeout - 0.05:
+            # The load signal this unit exists to expose.
+            logger.info(f"[ADAPTER DROP] {label}: TIMEOUT after {_elapsed:.2f}s")
+        else:
+            # Raised by the adapter itself, well inside the wrap: a bug.
+            logger.info(f"[ADAPTER DROP] {label}: ERROR TimeoutError (adapter-raised)")
         return None
     except Exception as exc:  # noqa: BLE001 — any adapter error → drop
         # An adapter exception is a BUG, never a load signal — keep it
         # distinguishable from the timeout above.
-        logger.info(f"[ADAPTER DROP] {label}: ERROR {type(exc).__name__}: {exc}")
+        logger.info(f"[ADAPTER DROP] {label}: ERROR {type(exc).__name__}: {_safe_exc(exc)}")
         return None
+    if result is None:
+        _elapsed = time.monotonic() - _t0
+        if _elapsed >= adapter_inner_ceiling() - 0.5:
+            logger.info(f"[ADAPTER DROP] {label}: SLOW-MISS after {_elapsed:.2f}s")
+    return result
+
+
+# R-W18 (W1-8d) — bound + scrub exception text before it reaches an INFO drop
+# line. LOCAL on purpose: sentry_service._scrub_query_string keeps `api_key=`
+# and never strips URL userinfo (measured), so it cannot be reused here.
+# Every `<scheme>://<token>` (http, https, socks5, ... — a proxy URL is the
+# threat; the scheme quantifier is BOUNDED so a long letter run stays linear) is
+# rewritten by _safe_exc_url: userinfo = everything up to the LAST '@' in the
+# token, so a '@', '/' or ':' inside an unencoded password cannot leak its
+# tail; the whole query string and fragment are dropped; host + path are kept.
+# When the text before that '@' holds a '?' or '#', the '@' may sit in a query
+# (`?email=a@b&k=SECRET`) or in a password (`user:pa?ss@host`) — the two cannot
+# be told apart, so the whole token is replaced by `[redacted]`.
+_SAFE_EXC_URL_RE = re.compile(r"(?i)([a-z][a-z0-9+.\-]{0,15}://)(\S*)")
+_SAFE_EXC_LINEBREAK_RE = re.compile(r"[\r\n\x0b\x0c\x1c-\x1e\x85\u2028\u2029]+")
+_SAFE_EXC_MAX_CHARS = 200
+
+
+def _safe_exc_url(m: "re.Match[str]") -> str:
+    scheme, rest = m.group(1), m.group(2)
+    at = rest.rfind("@")
+    if at != -1:
+        if "?" in rest[:at] or "#" in rest[:at]:
+            return scheme + "[redacted]"
+        rest = rest[at + 1:]
+    for sep in ("?", "#"):
+        cut = rest.find(sep)
+        if cut != -1:
+            rest = rest[:cut]
+    return scheme + rest
+
+
+def _safe_exc(exc: BaseException) -> str:
+    """`str(exc)` made safe for a grep-stable INFO line: userinfo and the query
+    string stripped from every http(s) URL, line breaks collapsed to one space,
+    truncated to 200 chars. Scrubs the FULL text before truncating so a cut can
+    never land inside a URL's credentials."""
+    try:
+        text = str(exc)
+    except Exception:  # noqa: BLE001 — a broken __str__ must not break logging
+        return f"<unprintable {type(exc).__name__}>"
+    text = _SAFE_EXC_URL_RE.sub(_safe_exc_url, text)
+    text = _SAFE_EXC_LINEBREAK_RE.sub(" ", text)
+    return text[:_SAFE_EXC_MAX_CHARS]
+
+
+def _count_finished(scraper, box: list):
+    """R-W18 fixer (W1-8b, adversary defect 2) — wrap a fan-out scraper so the
+    Tier-1.5 call site knows how many FINISHED (returned or raised) before a
+    budget cancel. Returns / raises exactly what `scraper` does; a
+    cancellation (BaseException, not Exception) is never counted, so it stays
+    pending. Logging only: fan_out sees the identical results."""
+    async def _counted(product):
+        try:
+            result = await scraper(product)
+        except Exception:
+            box[0] += 1
+            raise
+        box[0] += 1
+        return result
+    return _counted
 
 
 def _fire_and_forget(coro, label: str) -> None:
@@ -1786,7 +1871,18 @@ async def _curl_scraper(
     try:
         page_price = await fetch_page_price(url, full_name, currency)
     except Exception as e:  # noqa: BLE001
-        logger.debug(f"[fan_out curl] {url} raised: {e}")
+        # R-W18 (W1-8b) — INFO, retailer label only, never the URL.
+        logger.info(
+            f"[ADAPTER DROP] fanout:curl:{retailer_domain}: ERROR {type(e).__name__}: {_safe_exc(e)}"
+        )
+        return None
+    if page_price is None:
+        # R-W18 fixer (W1-8b, adversary defect 1) — THE production fetch-failure
+        # shape: curl_fetch_html_same_site swallows every transport error (WARNING
+        # + None) and a wall / non-2xx / blocked URL is a quiet None, so the
+        # `except` above only ever sees a bug. None = no HTML was obtained; a MISS
+        # is `{"_got_html": True}` (HTML, no price). Logging only: returns None.
+        logger.info(f"[ADAPTER DROP] fanout:curl:{retailer_domain}: FETCH-FAIL no-html")
         return None
     if not page_price or not page_price.get("amount"):
         return None
@@ -1854,7 +1950,10 @@ async def _firecrawl_scraper(
     try:
         html, status = await firecrawl_service.scrape_page_with_status(url)
     except Exception as e:  # noqa: BLE001
-        logger.debug(f"[fan_out firecrawl] {url} raised: {e}")
+        # R-W18 (W1-8b) — INFO, retailer label only, never the URL.
+        logger.info(
+            f"[ADAPTER DROP] fanout:firecrawl:{retailer_domain}: ERROR {type(e).__name__}: {_safe_exc(e)}"
+        )
         _record_provider_attempt(
             provider="firecrawl", url=url, retailer_domain=retailer_domain,
             status=0, cost=0, outcome="timeout", html_kb=0, detected_cf=False,
@@ -1867,6 +1966,12 @@ async def _firecrawl_scraper(
     if status == 200:
         record_usage("firecrawl")
     if not html:
+        if status != 200:
+            # R-W18 fixer (W1-8b, adversary defect 1) — the service swallows its
+            # transport errors and returns (None, 0) / (None, <status>), so this,
+            # not the `except` above, is where a production fetch failure lands.
+            # A 200 without usable HTML is an honest miss and stays silent.
+            logger.info(f"[ADAPTER DROP] fanout:firecrawl:{retailer_domain}: FETCH-FAIL status={status}")
         if status in (429, 503) or status == 0:
             record_failure("firecrawl")
         _record_provider_attempt(
@@ -1938,7 +2043,10 @@ async def _scrapedo_scraper(
     try:
         html, status, cost = await scrapedo_service.render_page_with_status(url)
     except Exception as e:  # noqa: BLE001
-        logger.debug(f"[fan_out scrapedo] {url} raised: {e}")
+        # R-W18 (W1-8b) — INFO, retailer label only, never the URL.
+        logger.info(
+            f"[ADAPTER DROP] fanout:scrapedo:{retailer_domain}: ERROR {type(e).__name__}: {_safe_exc(e)}"
+        )
         _record_provider_attempt(
             provider="scrapedo", url=url, retailer_domain=retailer_domain,
             status=0, cost=0, outcome="timeout", html_kb=0, detected_cf=False,
@@ -1956,6 +2064,9 @@ async def _scrapedo_scraper(
     if cost > 0:
         record_usage("scrapedo", count=cost)
     if not html:
+        if status != 200:
+            # R-W18 fixer (W1-8b, adversary defect 1) — see _firecrawl_scraper.
+            logger.info(f"[ADAPTER DROP] fanout:scrapedo:{retailer_domain}: FETCH-FAIL status={status}")
         if status in (429, 503) or status == 0:
             record_failure("scrapedo")
         _record_provider_attempt(
@@ -6451,10 +6562,14 @@ class StructuredComparisonService:
                     return _pre_reserve_remaining(
                         _ADAPTER_TIMEOUT + 2.0, _race_deadline)
                 # sitemap adapters (bolo + boutiqaat) — genuine page_scrape_jsonld.
+                # R-W18 (W1-8c) — each family records the bound it actually
+                # waited under (walrus at the call, so call order is unchanged)
+                # so its CONSUME-BOUND drop line names it. Logging only.
+                _sm_bound = 0.0
                 try:
                     if "sitemap" in _prefetched_direct:
                         _sm = await asyncio.wait_for(
-                            _prefetched_direct.pop("sitemap"), timeout=_consume_bound()
+                            _prefetched_direct.pop("sitemap"), timeout=(_sm_bound := _consume_bound())
                         )
                     elif _sitemap_sources_pf and ENABLE_PAGE_SCRAPE:
                         # Per-source timeout wrap (Codex HIGH-4) — slow source → None,
@@ -6477,20 +6592,22 @@ class StructuredComparisonService:
                         ]
                         _sm = await asyncio.wait_for(
                             asyncio.gather(*_sm_coros, return_exceptions=True),
-                            timeout=_consume_bound(),
+                            timeout=(_sm_bound := _consume_bound()),
                         ) if _sm_coros else []
                     else:
                         _sm = []
                 except asyncio.TimeoutError:
+                    logger.info(f"[ADAPTER DROP] sitemap: CONSUME-BOUND after {_sm_bound:.2f}s")
                     _sm = []
                 except Exception as _e:  # noqa: BLE001 — best-effort
                     logger.info(f"[PRICE] bolo adapter gather failed: {_e}")
                     _sm = []
                 # nasser (json_api) — genuine local_bhd.
+                _ja_bound = 0.0
                 try:
                     if "jsonapi" in _prefetched_direct:
                         _ja = await asyncio.wait_for(
-                            _prefetched_direct.pop("jsonapi"), timeout=_consume_bound()
+                            _prefetched_direct.pop("jsonapi"), timeout=(_ja_bound := _consume_bound())
                         )
                     elif _jsonapi_sources_pf and ENABLE_PAGE_SCRAPE:
                         # Per-source timeout wrap (Codex HIGH-4). Codex MEDIUM
@@ -6507,11 +6624,12 @@ class StructuredComparisonService:
                                 ),
                                 return_exceptions=True,
                             ),
-                            timeout=_consume_bound(),
+                            timeout=(_ja_bound := _consume_bound()),
                         )
                     else:
                         _ja = []
                 except asyncio.TimeoutError:
+                    logger.info(f"[ADAPTER DROP] jsonapi: CONSUME-BOUND after {_ja_bound:.2f}s")
                     _ja = []
                 except Exception as _e:  # noqa: BLE001 — best-effort
                     logger.info(f"[PRICE] nasser adapter gather failed: {_e}")
@@ -6524,10 +6642,11 @@ class StructuredComparisonService:
                 # already stamped genuine-vs-converted by its response currency). Inline-
                 # fire if the prefetch was skipped (ENABLE_PAGE_SCRAPE off at kickoff).
                 for _na_key, _na_srcs, _na_fn in _new_adapter_specs:
+                    _na_bound = 0.0
                     try:
                         if _na_key in _prefetched_direct:
                             _na_res = await asyncio.wait_for(
-                                _prefetched_direct.pop(_na_key), timeout=_consume_bound()
+                                _prefetched_direct.pop(_na_key), timeout=(_na_bound := _consume_bound())
                             )
                         elif ENABLE_PAGE_SCRAPE and _na_srcs:
                             _na_res = await asyncio.wait_for(
@@ -6542,11 +6661,12 @@ class StructuredComparisonService:
                                     ),
                                     return_exceptions=True,
                                 ),
-                                timeout=_consume_bound(),
+                                timeout=(_na_bound := _consume_bound()),
                             )
                         else:
                             _na_res = []
                     except asyncio.TimeoutError:
+                        logger.info(f"[ADAPTER DROP] {_na_key}: CONSUME-BOUND after {_na_bound:.2f}s")
                         _na_res = []
                     except Exception as _e:  # noqa: BLE001 — best-effort
                         logger.info(f"[PRICE] {_na_key} adapter gather failed: {_e}")
@@ -7376,16 +7496,27 @@ class StructuredComparisonService:
                         )
                         if not _scrapers:
                             continue  # render wave empty when no URL needs render
+                        _wave_t0 = time.monotonic()  # R-W18 (W1-8b) — per-wave summary
+                        _wave_finished = [0]  # R-W18 fixer — scrapers that returned/raised
                         try:
                             _fan = await asyncio.wait_for(
                                 fan_out_price_lookup(
                                     product={"full_name": full_name, "brand": brand},
-                                    scrapers=_scrapers,
+                                    scrapers=[_count_finished(_s, _wave_finished) for _s in _scrapers],
                                     scraping_mode=scraping_mode,
                                 ),
                                 timeout=_remaining,
                             )
                         except asyncio.TimeoutError:
+                            # R-W18 (W1-8b) — fan_out's own counts are lost on
+                            # this branch (it was cancelled); pending = the wave's
+                            # scrapers that had NOT returned or raised when the
+                            # budget fired (counted by _count_finished).
+                            logger.info(
+                                "[FANOUT] wave=%s TIMEOUT pending=%d elapsed=%.2f",
+                                _wave, len(_scrapers) - _wave_finished[0],
+                                time.monotonic() - _wave_t0,
+                            )
                             logger.info(
                                 "[PRICE] Tier 1.5 %s-wave hit the shared 12s budget for "
                                 "%s; %s", _wave, full_name,
@@ -7396,6 +7527,22 @@ class StructuredComparisonService:
                             logger.warning(f"[PRICE] Tier 1.5 {_wave}-wave failed: {e}")
                             continue
                         _ps_mark(f"fan_out_{_wave}")  # WS2 — per-wave scrape wall
+                        # R-W18 (W1-8b) — ONE grep-stable summary per wave. completed =
+                        # scrapers that returned (None or a value) before the wave
+                        # ended. NOTE: production scrapers swallow their fetch errors
+                        # and return None, so failed stays 0 for them; the per-scraper
+                        # `[ADAPTER DROP] fanout:` lines (FETCH-FAIL for a fetch that
+                        # got no page, ERROR for an escaped bug) are the failure signal.
+                        try:
+                            _fan_failed = int(_fan.get("failed_count") or 0)
+                            _fan_cancelled = int(_fan.get("cancelled_count") or 0)
+                            logger.info(
+                                "[FANOUT] wave=%s completed=%d failed=%d cancelled=%d elapsed=%.2f",
+                                _wave, max(0, len(_scrapers) - _fan_failed - _fan_cancelled),
+                                _fan_failed, _fan_cancelled, time.monotonic() - _wave_t0,
+                            )
+                        except Exception:  # noqa: BLE001 — a log line must never fork the cascade
+                            pass
                         # Fragrance same-size re-selection — RETAIN this wave's
                         # completed candidates (best + alternates) so a later
                         # pair-level reconcile can re-rank them to the COMMON target

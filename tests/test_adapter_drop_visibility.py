@@ -424,11 +424,30 @@ def test_every_timeout_none_call_site_passes_a_label():
     default or a comment containing the name cannot skew the count.
 
     RED at HEAD: 6 unlabelled call sites.
+
+    R-W18 retro tightening (adversary: "only checks that a `label=` keyword is
+    present — `label="adapter"` or one constant label at every call site would
+    pass"): every label must ALSO be non-default and name BOTH its adapter
+    family and its domain as `<family>:<domain>` — a string constant, or an
+    f-string whose family part is a literal or a formatted family key — and
+    the call sites must use at least as many DISTINCT labels as there are
+    adapter families (sitemap, jsonapi, the _new_adapter_specs key), so a
+    single shared constant cannot satisfy the census.
+
+    R-W18 fixer (adversary N06: relabelling the jsonapi call sites
+    'sitemap:nasserpharmacy.com' passed): each label's family part must be the
+    family of the adapter ITS lambda calls — `_sitemap_fetch_coro` -> `sitemap`,
+    `fetch_nasser_price` -> `jsonapi`, the `_na_fn` spec function ->
+    `{_na_key}`. A new call site with an unmapped callee fails the census
+    until it is added to _CALLEE_FAMILY.
     """
     source = _SCS_SOURCE.read_text(encoding="utf-8")
     tree = ast.parse(source)
 
     unlabelled: list[int] = []
+    unnamed: list[tuple[int, str]] = []
+    misfamilied: list[tuple[int, str, str]] = []
+    distinct: set[str] = set()
     total = 0
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
@@ -437,8 +456,17 @@ def test_every_timeout_none_call_site_passes_a_label():
         if not (isinstance(func, ast.Name) and func.id == "_timeout_none"):
             continue
         total += 1
-        if not any(kw.arg == "label" for kw in node.keywords):
+        label = next((kw.value for kw in node.keywords if kw.arg == "label"), None)
+        if label is None:
             unlabelled.append(node.lineno)
+            continue
+        distinct.add(ast.unparse(label))
+        if not _label_names_family_and_domain(label):
+            unnamed.append((node.lineno, ast.unparse(label)))
+        want = _CALLEE_FAMILY.get(_timeout_none_callee(node))
+        got = _label_family(label)
+        if want is None or got != want:
+            misfamilied.append((node.lineno, f"callee={_timeout_none_callee(node)}", f"family={got}"))
 
     assert total > 0, (
         "found no _timeout_none call sites — the census is looking at the "
@@ -448,3 +476,85 @@ def test_every_timeout_none_call_site_passes_a_label():
         f"{len(unlabelled)} of {total} _timeout_none call sites pass no "
         f"label= and would drop adapters anonymously; lines: {unlabelled}"
     )
+    assert unnamed == [], (
+        "every _timeout_none label must be non-default and read "
+        f"'<family>:<domain>'; offending call sites: {unnamed}"
+    )
+    assert len(distinct) >= 3, (
+        "the call sites must name at least the three adapter families "
+        f"(sitemap, jsonapi, the _new_adapter_specs key) distinctly; got {distinct}"
+    )
+    assert misfamilied == [], (
+        "every _timeout_none label must name the family of the adapter its "
+        f"lambda calls; offending call sites: {misfamilied}"
+    )
+
+
+# The adapter family each wrapped callee belongs to (R-W18 fixer census).
+_CALLEE_FAMILY = {
+    "_sitemap_fetch_coro": "sitemap",
+    "fetch_nasser_price": "jsonapi",
+    "_na_fn": "{_na_key}",
+}
+
+
+def _timeout_none_callee(call: ast.Call) -> str | None:
+    """The adapter a `_timeout_none(lambda ...: <callee>(...), ...)` call site
+    wraps. A lambda parameter bound by default to a name (`fn=_na_fn`) resolves
+    to that name."""
+    if not call.args or not isinstance(call.args[0], ast.Lambda):
+        return None
+    lam = call.args[0]
+    body = lam.body
+    if not isinstance(body, ast.Call):
+        return None
+    func = body.func
+    name = func.id if isinstance(func, ast.Name) else (
+        func.attr if isinstance(func, ast.Attribute) else None
+    )
+    params = [a.arg for a in lam.args.args]
+    defaults = dict(zip(params[len(params) - len(lam.args.defaults):], lam.args.defaults))
+    bound = defaults.get(name)
+    if isinstance(bound, ast.Name):
+        return bound.id
+    return name
+
+
+def _label_family(label: ast.expr) -> str | None:
+    """The text of a label before its first ':' — a literal family, or
+    `{<expr>}` for a formatted family part."""
+    if isinstance(label, ast.Constant) and isinstance(label.value, str):
+        return label.value.split(":", 1)[0] if ":" in label.value else None
+    if not isinstance(label, ast.JoinedStr):
+        return None
+    out = ""
+    for part in label.values:
+        if isinstance(part, ast.Constant):
+            if ":" in part.value:
+                return out + part.value.split(":", 1)[0]
+            out += part.value
+        else:
+            out += "{" + ast.unparse(part.value) + "}"
+    return None
+
+
+def _label_names_family_and_domain(label: ast.expr) -> bool:
+    """True iff `label` is a '<family>:<domain>' string constant (never the
+    default 'adapter'), or an f-string with a non-empty family part (literal or
+    formatted) before the first ':' and a non-empty domain part after it."""
+    if isinstance(label, ast.Constant) and isinstance(label.value, str):
+        family, sep, domain = label.value.partition(":")
+        return label.value != "adapter" and bool(sep) and bool(family) and bool(domain)
+    if not isinstance(label, ast.JoinedStr):
+        return False
+    parts = label.values
+    for i, part in enumerate(parts):
+        if isinstance(part, ast.Constant) and ":" in part.value:
+            before = part.value.split(":", 1)[0]
+            after = part.value.split(":", 1)[1]
+            family_ok = bool(before) or (i > 0 and isinstance(parts[i - 1], ast.FormattedValue))
+            domain_ok = bool(after) or (
+                i + 1 < len(parts) and isinstance(parts[i + 1], ast.FormattedValue)
+            )
+            return family_ok and domain_ok
+    return False
