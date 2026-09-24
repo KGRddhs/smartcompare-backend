@@ -1,0 +1,84 @@
+=== sha256 manifest of dirty/untracked files per retro worktree (04:50)
+== sc-r-meter
+b2aed119acdfdb05 *app/api/image_routes.py
+1dddb57ab51224af *app/api/url_routes.py
+7b003ffd6fbd3a43 *app/services/url_extraction_service.py
+9e7fd283e1a23531 *tests/test_paid_route_metering.py
+22e8b1c6cc58a34b *tests/test_retro_w2_1.py
+== sc-r-breaker
+7e73f2ac9fe4eed4 *app/services/api_budget_service.py
+bb58e2d0f71790b2 *tests/test_openai_breaker.py
+c445e6059f565c0f *tests/test_retro_w1_3.py
+== sc-r-client
+77bd160bdbcc0851 *SmartCompareApp/__tests__/authService.bootOptimistic.a3.test.ts
+4197173c39a2b750 *SmartCompareApp/__tests__/authService.logoutRevoke.w1-4.test.ts
+cb703d00ce1fbfd5 *SmartCompareApp/src/services/api.ts
+d465d683dc9b9af2 *SmartCompareApp/src/services/authService.ts
+d5625a64d2efbc96 *SmartCompareApp/__tests__/authService.logoutRefreshFirst.w1-4d.test.ts
+== sc-r-mig
+299f13ee43167c3f *docs/investigations/2026-09-08-session-65-next-units.md
+1f55f48774076e81 *migrations/036_home_savings_aggregate.sql
+2714a0704d8c2dc5 *migrations/037_security_definer_grants_and_rls.sql
+1abd2fb2d95cff61 *migrations/rollback/037_security_definer_grants_and_rls.sql
+908fdeae3f452fa6 *tests/test_migration_037_security_definer_grants.py
+5f170651ff956587 *migrations/040_revoke_cleanup_expired_ratings.sql
+314a8a1d656637ac *migrations/rollback/040_revoke_cleanup_expired_ratings.sql
+d4a0b4a5820ca648 *tests/_retro_r_mig_sql.py
+37d2112e15cb18b7 *tests/test_retro_w1_2b.py
+ec801863567214b5 *tests/test_retro_w1_2c.py
+253d0fd4aa4b6a0d *tests/test_retro_w1_2d.py
+== sc-r-w18
+b2b9bf065808e27e *app/services/structured_comparison_service.py
+c15e4a7a747c926e *tests/test_adapter_drop_visibility.py
+3fb44ae7b4c10ab7 *tests/test_retro_w1_8.py
+== sc-r-w0
+01663fe905759260 *app/services/database_service.py
+6b0724010adbedf2 *app/utils/url_validator.py
+d7378284aef64aa4 *tests/test_url_validator_offloop.py
+c52ad82e51a7d01f *tests/test_url_validator_offloop_hops.py
+3dcd4e6bd03a16eb *tests/test_retro_w0_1.py
+8702c6022f2b8a27 *tests/test_retro_w0_2.py
+== sc-r-auth
+b1cde71d9cfc5354 *app/api/auth_routes.py
+382689869fbac47c *app/services/auth_service.py
+40603437c66893e6 *tests/test_auth_refresh_and_revocation.py
+c52f587338a67853 *tests/test_supabase_client_reuse.py
+6879c27a9c3d28dd *tests/test_retro_w1_4_logout_expired.py
+b60d082f75aab4b2 *tests/test_retro_w1_4_server.py
+0398fe855c586729 *tests/test_retro_w1_9_429.py
+== sc-r-main
+319eb696eae516b3 *app/main.py
+50ea048c63bb1129 *app/services/sentry_service.py
+535918a7aa4b119a *tests/test_retro_w1_1.py
+13f58c8d25616807 *tests/test_retro_w1_7_w1_10.py
+ef682b7df5ea4e08 *tests/test_retro_w1_9.py
+== sc-r-w04
+775ece5c9118cdd3 *tests/test_retro_w0_4.py
+=== sc-r-meter :: tests/test_retro_w2_1.py tests/test_paid_route_metering.py (04:57)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+107 passed, 11 warnings in 68.39s (0:01:08)
+=== sc-r-breaker :: tests/test_retro_w1_3.py tests/test_openai_breaker.py (04:58)
+FAILED tests/test_retro_w1_3.py::test_green_cancel_on_closed_streak_admission_makes_no_release_call
+FAILED tests/test_openai_breaker.py::test_wait_for_timeout_around_the_guard_records_no_failure
+7 failed, 64 passed, 2 warnings in 101.83s (0:01:41)
+=== sc-r-mig :: tests/test_retro_w1_2b.py tests/test_retro_w1_2c.py tests/test_retro_w1_2d.py tests/test_migration_037_security_definer_grants.py tests/test_migration_index_predicate_immutability.py (05:00)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+96 passed, 4 deselected, 1 warning in 42.90s
+=== sc-r-w18 :: tests/test_retro_w1_8.py tests/test_adapter_drop_visibility.py (05:02)
+.................................                                        [100%]
+33 passed in 69.10s (0:01:09)
+=== sc-r-w0 :: guarded runner unit set (05:03)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+59 passed, 21 warnings in 81.59s (0:01:21)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+46 passed, 16 warnings in 84.59s (0:01:24)
+=== sc-r-client :: jest 3 files + tsc (05:08)
+node_modules OK
+Test Suites: 3 passed, 3 total
+Tests:       56 passed, 56 total
+TSC_OK
+=== done 05:11

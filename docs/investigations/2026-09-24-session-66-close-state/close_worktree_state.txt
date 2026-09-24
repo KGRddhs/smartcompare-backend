@@ -1,0 +1,90 @@
+== sc-docs-66       docs/session-66-state                         HEAD=42ef0135 upstream=origin/docs/session-66-state ahead/behind=0/0 dirty=0 | 
+== sc-llm-baseurl   docs/2026-08-17-context-update                HEAD=8574ca5e upstream=origin/docs/2026-08-17-context-update ahead/behind=0/0 dirty=4 | 
+     ?? branch-baseurl.raw.txt
+     ?? branch-baseurl.txt
+     ?? fix-failsafe.raw.txt
+     ?? fix-failsafe.txt
+== sc-pr36          rescue/pr36-gents-ladies                      HEAD=32141817 upstream=origin/rescue/pr36-gents-ladies ahead/behind=0/0 dirty=0 | 
+== sc-pr44          rescue/pr44-base-url                          HEAD=5f2e2278 upstream=origin/rescue/pr44-base-url ahead/behind=0/0 dirty=0 | 
+== sc-r-auth        retro/w1-4-w1-9-auth                          HEAD=1c6f6796 upstream=origin/main ahead/behind=0/19 dirty=7 |  4 files changed, 422 insertions(+), 84 deletions(-)
+      M app/api/auth_routes.py
+      M app/services/auth_service.py
+      M tests/test_auth_refresh_and_revocation.py
+      M tests/test_supabase_client_reuse.py
+     ?? tests/test_retro_w1_4_logout_expired.py
+     ?? tests/test_retro_w1_4_server.py
+     ?? tests/test_retro_w1_9_429.py
+== sc-r-breaker     retro/w1-3-breaker                            HEAD=1c6f6796 upstream=origin/main ahead/behind=0/19 dirty=3 |  2 files changed, 101 insertions(+), 35 deletions(-)
+      M app/services/api_budget_service.py
+      M tests/test_openai_breaker.py
+     ?? tests/test_retro_w1_3.py
+== sc-r-client      retro/w1-4-client-logout                      HEAD=1c6f6796 upstream=origin/main ahead/behind=0/19 dirty=5 |  4 files changed, 242 insertions(+), 29 deletions(-)
+      M SmartCompareApp/__tests__/authService.bootOptimistic.a3.test.ts
+      M SmartCompareApp/__tests__/authService.logoutRevoke.w1-4.test.ts
+      M SmartCompareApp/src/services/api.ts
+      M SmartCompareApp/src/services/authService.ts
+     ?? SmartCompareApp/__tests__/authService.logoutRefreshFirst.w1-4d.test.ts
+== sc-r-main        retro/w1-1-w1-7-w1-9-main                     HEAD=1c6f6796 upstream=origin/main ahead/behind=0/19 dirty=5 |  2 files changed, 109 insertions(+), 43 deletions(-)
+      M app/main.py
+      M app/services/sentry_service.py
+     ?? tests/test_retro_w1_1.py
+     ?? tests/test_retro_w1_7_w1_10.py
+     ?? tests/test_retro_w1_9.py
+== sc-r-meter       retro/w2-1-metering                           HEAD=1c6f6796 upstream=origin/main ahead/behind=0/19 dirty=5 |  4 files changed, 174 insertions(+), 12 deletions(-)
+      M app/api/image_routes.py
+      M app/api/url_routes.py
+      M app/services/url_extraction_service.py
+      M tests/test_paid_route_metering.py
+     ?? tests/test_retro_w2_1.py
+== sc-r-mig         retro/w1-2-migration-037                      HEAD=1c6f6796 upstream=origin/main ahead/behind=0/19 dirty=11 |  5 files changed, 218 insertions(+), 69 deletions(-)
+      M docs/investigations/2026-09-08-session-65-next-units.md
+      M migrations/036_home_savings_aggregate.sql
+      M migrations/037_security_definer_grants_and_rls.sql
+      M migrations/rollback/037_security_definer_grants_and_rls.sql
+      M tests/test_migration_037_security_definer_grants.py
+     ?? migrations/040_revoke_cleanup_expired_ratings.sql
+     ?? migrations/rollback/040_revoke_cleanup_expired_ratings.sql
+     ?? tests/_retro_r_mig_sql.py
+     ?? tests/test_retro_w1_2b.py
+     ?? tests/test_retro_w1_2c.py
+     ?? tests/test_retro_w1_2d.py
+== sc-r-w0          retro/w0-1-w0-2                               HEAD=1c6f6796 upstream=origin/main ahead/behind=0/19 dirty=6 |  4 files changed, 164 insertions(+), 29 deletions(-)
+      M app/services/database_service.py
+      M app/utils/url_validator.py
+      M tests/test_url_validator_offloop.py
+      M tests/test_url_validator_offloop_hops.py
+     ?? tests/test_retro_w0_1.py
+     ?? tests/test_retro_w0_2.py
+== sc-r-w04         retro/w0-4-parse-offload                      HEAD=1c6f6796 upstream=origin/main ahead/behind=0/19 dirty=1 | 
+     ?? tests/test_retro_w0_4.py
+== sc-r-w18         retro/w1-8-adapter-drop                       HEAD=1c6f6796 upstream=origin/main ahead/behind=0/19 dirty=3 |  2 files changed, 151 insertions(+), 15 deletions(-)
+      M app/services/structured_comparison_service.py
+      M tests/test_adapter_drop_visibility.py
+     ?? tests/test_retro_w1_8.py
+== sc-scraper-proof master                                        HEAD=1c6f6796 upstream=origin/main ahead/behind=0/21 dirty=0 | 
+== sc-w0-base                                                     HEAD=2ba3d7d3 upstream=NONE ahead/behind=- dirty=0 | 
+== sc-w0-load       feature/s65-w0-load-foundations               HEAD=5a36d286 upstream=@{u} ahead/behind=- dirty=0 | 
+== sc-w3-ar         feature/s65-w3-11b-arabic-pack                HEAD=f9a6f197 upstream=origin/feature/s65-w3-11b-arabic-pack ahead/behind=0/0 dirty=0 | 
+== sc-w3-ci         feature/s65-w3-13-channel-freshness           HEAD=c7797f2c upstream=origin/feature/s65-w3-13-channel-freshness ahead/behind=0/0 dirty=0 | 
+== sc-w3-consent    feature/s65-w3-16-consent-capture             HEAD=b47b8a57 upstream=origin/feature/s65-w3-16-consent-capture ahead/behind=0/0 dirty=0 | 
+== sc-w3-copy       feature/s65-w3-14-error-copy                  HEAD=811b33d8 upstream=origin/feature/s65-w3-14-error-copy ahead/behind=0/0 dirty=0 | 
+== sc-w3-fp         feature/s65-w3-3-device-fingerprint           HEAD=03f41aa1 upstream=origin/feature/s65-w3-3-device-fingerprint ahead/behind=0/0 dirty=0 | 
+== sc-w3-lucide     feature/s65-w3-9-lucide-imports               HEAD=13c7f562 upstream=origin/feature/s65-w3-9-lucide-imports ahead/behind=0/0 dirty=0 | 
+== sc-w3-native     feature/s65-w3-7-native-bundle                HEAD=26744edc upstream=origin/feature/s65-w3-7-native-bundle ahead/behind=0/0 dirty=0 | 
+== sc-w3-push       feature/s65-w3-15-push-targets                HEAD=530d698b upstream=origin/feature/s65-w3-15-push-targets ahead/behind=0/0 dirty=0 | 
+== sc-w3-pwreset    feature/s65-w3-6-password-reset               HEAD=7efd5200 upstream=origin/feature/s65-w3-6-password-reset ahead/behind=0/0 dirty=0 | 
+== sc-w3-reset      feature/s65-w3-4-unauth-reset                 HEAD=3e755e61 upstream=origin/feature/s65-w3-4-unauth-reset ahead/behind=0/0 dirty=0 | 
+== sc-w4-1          feature/s65-w4-1-shopping-currency-truth      HEAD=5caaaaa2 upstream=origin/feature/s65-w4-1-shopping-currency-truth ahead/behind=0/0 dirty=0 | 
+== sc-w4-10         feature/s65-w4-10-tradeoffs-dedup-parity      HEAD=4af1d18c upstream=origin/feature/s65-w4-10-tradeoffs-dedup-parity ahead/behind=0/0 dirty=0 | 
+== sc-w4-2          feature/s65-w4-2-shopping-url-split           HEAD=6ab9d7ea upstream=origin/main ahead/behind=0/6 dirty=1 | 
+     ?? tests/test_shopping_price_not_self_pending.py
+== sc-w4-3          feature/s65-w4-3-prescoring-showable-guard    HEAD=65278916 upstream=origin/feature/s65-w4-3-prescoring-showable-guard ahead/behind=0/0 dirty=0 | 
+== sc-w4-4          feature/s65-w4-4-honest-partial-scoring       HEAD=10aa6a38 upstream=origin/feature/s65-w4-4-honest-partial-scoring ahead/behind=0/0 dirty=0 | 
+== sc-w4-9          feature/s65-w4-9-error-envelope               HEAD=ef7ea4bd upstream=origin/feature/s65-w4-9-error-envelope ahead/behind=0/0 dirty=0 | 
+--- origin/main:
+4eeb18aa
+4eeb18aa Merge pull request #175 from KGRddhs/feature/s65-w3-11b-arabic-pack
+--- scratch worktrees registered:
+C:/Users/SynAckITPC/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/a47353ce-a0e3-4273-b85d-f21cfa01e031/scratchpad/rauth_green/basewt    1c6f6796 (detached HEAD)
+C:/Users/SynAckITPC/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/a47353ce-a0e3-4273-b85d-f21cfa01e031/scratchpad/rmain_green_base      1c6f6796 (detached HEAD)
+C:/Users/SynAckITPC/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/a47353ce-a0e3-4273-b85d-f21cfa01e031/scratchpad/rmeter_green/base_wt  1c6f6796 (detached HEAD)

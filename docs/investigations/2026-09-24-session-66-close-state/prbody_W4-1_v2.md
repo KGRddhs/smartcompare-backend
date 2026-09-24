@@ -1,0 +1,119 @@
+## W4-1 — the Serper-shopping rung stamps the currency it PARSED and earns `local_bhd` only with host evidence (PO-PRICE-TRUTH-01/02, PO-RECORDED-MEASURED-02)
+
+Flag `ENABLE_SHOPPING_CURRENCY_TRUTH`, **default OFF**, read per call (`shopping_strict_currency_enabled` idiom). Every new branch in both loop bodies is `if shopping_currency_truth_enabled():`, so OFF executes exactly the `ed75dc70` code paths.
+
+**The defect, measured.** `detect_currency` reads only `CURRENCY_SYMBOLS` + the 11-code `CURRENCY_CODES`, never `GCC_CURRENCY_SYMBOLS`, so a GCC display token (`22.500 BD`) returned `None`; the parse fell back to minor unit 2, read the 3-digit tail as a grouping run (22.500 → **22 500 BHD**), and the row was stamped `local_bhd` — genuine, KPI-counted, cached 7 days — whatever host the link pointed at, a `google.com/search` listing URL included. `8.750 KD` shipped as 8 750 BHD `local_bhd`; `TRY 1.299,00` as 1 299 BHD `local_bhd`.
+
+**The fix: three shared helpers, called by BOTH doors** (`extract_price_from_shopping` and the M13-10 stash `_seed_shortcircuit_candidates`) under the same flag — the CD-wave-diffs-03 back-door lesson, and pinned as an asymmetry (disabling only the mirror reddens exactly the stash tests; disabling only the front door reddens exactly the front-door tests).
+
+1. `_shopping_display_currency` — resolves the display token / ISO residue BEFORE the strict check and the parse, so the EXISTING parse gets its minor unit and the EXISTING T2 rule labels/converts it: `22.500 BD` → **22.5 BHD `local_bhd`**, `8.750 KD` → 10.76 BHD `converted_usd`, `250 SR` → 25.07, `32,000 QR` → 3305.6. Called only when `detect_currency` returned `None` (the `R$` letter-dollar collision stays STRICT's job).
+2. `_shopping_unconvertible_foreign_iso` — PENDS a KNOWN non-target ISO code the effective rate table cannot convert (`TRY 1.299,00` with `ENABLE_EXTENDED_FALLBACK_RATES` off; `IQD 1,299` on BOTH extended states, since IQD is in no rate table and is known only through the decimal-precision half of the vocabulary). With EXTENDED on, step 1 resolves TRY and it converts (12.21 `converted_usd`). The vocabulary is the KEYS of both rate tables ∪ `_THREE_DECIMAL_CURRENCIES` ∪ `_ZERO_DECIMAL_CURRENCIES` — reading the extended dict's keys is not converting with it.
+3. `_shopping_bh_host_evidence(link, *, ask_currency, reason_out=None)` — `local_bhd` requires HOST evidence. **Scope (rework ruling R1): this is a BAHRAIN-shelf rule.** A region-AGNOSTIC pair runs on every ask. A missing link (`no_link`, today's `build_retailer_url` search fallback) is not a shelf for ANY region. Neither is a listing URL: `_is_listing_url`, or **any google.com host** (hostname `google.com` or ending `.google.com`, so `google.com/shopping/product/<id>` is included). Both relabel with reason `listing_url`. `_is_listing_url` itself is untouched; W4-2 follow-up 03c owns the showable gate. The rest of the vocabulary runs **only when the ask currency is BHD**, in this order:
+     1. Unparseable host → `no_host`.
+     2. `registry_tier(host) == "global"` → `global_tier` (amazon.com, bh.iherb.com). Here `host` is the parsed hostname: lower-cased, port removed, trailing dot stripped. Both registry lookups receive that hostname, not the raw netloc, so `bh.iherb.com:443`, `bh.iherb.com.` and `www.amazon.com:443/bahrain/x` can no longer miss the global row. `source_router` is untouched.
+     3. **An other-country token in ANY subdomain label or ANY path segment → `other_country`.** The tokens are `sa`/`ksa`/`ae`/`uae`/`kw`/`qa`/`om`/`saudi`/`kuwait`/`qatar`/`oman`/`egypt`/`jordan`, plus `eg`/`jo`/`iq`/`iraq`/`lb`/`lebanon` (talabat/sephora multi-country shapes, measured), plus their `en-`/`ar-` locale forms. Every path segment is checked, not only the first, so `talabat.com/ar/uae/x`, `/ar/kuwait/x`, `/ar/iraq/x`, `/en/uae/x` and `/grocery/uae/x` are caught. The underscore locale spelling `en_sa`/`sa_en` folds to the hyphen form for this check only.
+     4. **BH markers → evidence:** a `.bh` host, a `bahrain.`/`bh.`/`en-bh.`/`ar-bh.` subdomain, or a FIRST path segment of `/en-bh/`, `/bh-en/`, `/bahrain-en/` or `/bahrain/`.
+     5. A bahrain-tier registry row that declares **no** `locale_paths` → evidence (`alosraonline.com`, and `noon.com/p` — the registry's SECOND noon row, measured). A row that **declares** `locale_paths` is a multi-locale store, so its bare host is not a Bahrain shelf. It earns nothing here and falls through to `no_bh_evidence` (`sephora.me/p/x`, `sephora.me/en-us/p/x`, `nasserpharmacy.com/bh-enx/p`). Only 3 of 24 bahrain rows declare them (3 of 117 with the catalog ON): `sephora.me` `/bh-en`, `boutiqaat` `/en-bh` and `nasserpharmacy` `/bh-en`. The previous "earns evidence if the path sits under one of them" half was dead by construction and is removed. A path under a declared locale never reaches this rung: every declared locale's first segment is already a BH path segment, so rung 4 accepts it first. That invariant is pinned in both registry states, so a future row declaring a locale outside the vocabulary reddens the pin.
+     6. Else → `no_bh_evidence`.
+
+   On any classifier error the helper fails toward "no evidence" (`host_classifier_error`). This is pinned for `http://[invalid` and for a raising registry lookup, on both doors and in the canary line. A relabelled row keeps amount, url, retailer and every other key unchanged. What is pinned:
+   - the 23 URL shapes, row by row;
+   - the four R5 rung pins;
+   - the 11 multi-country rows;
+   - the 6 over-rejection controls;
+   - the 2 classifier-error pins;
+   - the lowercase-bhd scope pin;
+   - the four polish-round classes, on both doors: 5 language-prefixed other-country rows plus 2 language-segment controls, 3 port/trailing-dot global rows plus a trailing-dot consistency pin, the google product page on a SAR and on a BHD ask, and 3 locale-row-outside-its-locale rejects plus the 2-state locale invariant.
+   - **Ordering (rework ruling R2):** the other-country rung runs BEFORE the BH-marker rung. A URL that carries a BH marker in one place and an other-country token anywhere else therefore resolves toward NO evidence. Examples: `https://uae.sharafdg.com/en-bh/product/x` and `https://bahrain.sharafdg.com/en-sa/product/x` are both `converted_usd` with reason `other_country`. A contradiction must not mint a genuine label that is cached for 7 days and counted in the KPI. Two checks confirm that neither the reorder nor the every-segment widening moved any existing row. First, the 23-row table is unchanged (tests 10 and 11 pass). Second, the six over-rejection controls are unchanged: `sephora.me/bh-en/p/x`, `boutiqaat.com/en-bh/p/x`, `nasserpharmacy.com/bh-en`, `talabat.com/bahrain/p/x`, `alosraonline.com/x` and `noon.com/p` all stay `local_bhd`, because none of their segments is an other-country token.
+   - **Non-BHD asks past the agnostic pair keep today's label** (`return True`, no reason appended, no host parse, no registry lookup): a SAR ask on `https://ksa.swissarabian.com/products/x` stays `(250.0, 'SAR', 'local_bhd')`. This matters because at `structured_comparison_service.py:6662` a `converted_usd` Tier-1 price is PARKED, so applying the Bahrain vocabulary to every region would have cost every non-Bahrain region its native shopping short-circuit.
+
+**Untouched (must-NOT-touch list held, byte-identity confirms):** `detect_currency`, `parse_price_string`/`parse_money`, `_normalize_currency_code`, `_convert_to_bhd`, `_GCC_SYMBOL_RESIDUE`, `_shopping_foreign_currency_signal`, `shopping_strict_currency_pend`, `is_price_showable`, `_showable_source_methods`, `_GENUINE_BH_SOURCE_METHODS` + the `eval_runner` mirror, `should_cache_price`, the candidate dict key set, the sort, the `title` pop. No new `source_method` string, no new dict key.
+
+### Composition with `ENABLE_SHOPPING_STRICT_CURRENCY` (ruling 1, deliberate and pinned)
+TRUTH resolves the display token FIRST, so with TRUTH ON a resolvable foreign GCC glyph on a BHD ask (`1,399 د.إ`) has `detected_cur='AED'`, STRICT's clause (b) no longer fires and the row CONVERTS (143.26 `converted_usd`) — exactly as `AED 1,399` already does; with TRUTH OFF, STRICT still pends it (M13-09 contract unchanged). STRICT keeps what TRUTH cannot resolve: `R$`, unknown glyphs. Of the review's six cases only A (`22.500 BD`) and F (the google link) had NO remedy in any existing flag — B–E were already pended by STRICT / STRICT+EXTENDED at the shipped defaults (ruling 4: the review row was partly stale).
+
+### Activation order (binding, ruling 7)
+Own window. `ENABLE_EXTENDED_FALLBACK_RATES` with/before this flag → **`ENABLE_SHOPPING_CURRENCY_TRUTH`** → then `ENABLE_SHOPPING_STRICT_CURRENCY` in its own window. **Hard order with W4-2:** this merges WITH or BEFORE W4-2 and flips BEFORE `ENABLE_SHOPPING_DISCOVERY_URL_SPLIT` — today the wrong `local_bhd` on a google-linked row is invisible on the results surface only because `is_price_showable(enforce_correctness=True)` pends it as `non_pdp_url` (test 12 pins that the relabel un-pends nothing), and it becomes visible the moment W4-2 stops pending the link. Latent until a Serper top-up; ARMED on the first cold compare after it — so it merges before any top-up.
+
+### Flag row (for the CLAUDE.md flag table)
+| flag | default | read | effect ON | precondition |
+|---|---|---|---|---|
+| `ENABLE_SHOPPING_CURRENCY_TRUTH` | **OFF** | per call, `price_service.shopping_currency_truth_enabled()` (`os.getenv`, never at import) | On the Serper-shopping tier AND the M13-10 re-selection stash: (1) a GCC display token / ISO residue `detect_currency` cannot see is resolved BEFORE the strict check and the parse, so `22.500 BD` parses as 22.5 not 22 500 and a foreign token converts with a `converted_usd` label; (2) a KNOWN non-target ISO code the effective rate table cannot convert PENDS instead of shipping the raw amount under the target currency; (3) `local_bhd` requires HOST evidence — on EVERY ask a missing link, a listing URL or any google.com link (`google.com/shopping/product/<id>` included) relabels to `converted_usd`, and on a **BHD ask only** so does a global-tier host (matched on the parsed hostname, port and trailing dot removed), an other-country token in any subdomain label or any path segment, a locale-declaring registry row's path outside its Bahrain locale, or an off-registry host with no BH marker. | `ENABLE_EXTENDED_FALLBACK_RATES` with/before it. Own canary window, before `ENABLE_SHOPPING_STRICT_CURRENCY` and before `ENABLE_SHOPPING_DISCOVERY_URL_SPLIT` (W4-2). **`usable_exact_genuine` is expected to DROP.** |
+
+### KPI and canary
+**`usable_exact_genuine` is EXPECTED TO DROP** after the flip (the genuine-BH share falls to the host-evidenced subset — the metric becoming true). Re-take `--kpi usable_exact_genuine` the day it flips. Canary lines (INFO):
+- `[SHOPPING_CURRENCY_TRUTH] relabel local_bhd->converted_usd host=<host> reason=<reason> for <product>` — count by `reason` ∈ {`no_link`, `listing_url`, **`no_host`**, `global_tier`, `other_country`, `no_bh_evidence`, `host_classifier_error`}. `no_host` is what `'https://'`, `'not a url'` and `'javascript:alert(1)'` emit (ruling R4). `no_link` and `listing_url` are the ONLY two reasons that can appear on a non-BHD ask.
+- `[SHOPPING_CURRENCY_TRUTH] pend unconvertible <CODE> for <product>`.
+
+Both lines are caplog-asserted by tests (`reason=listing_url`, `reason=no_host`, and the `IQD` pend), so the vocabulary advertised here is pinned, not prose. A stream of `reason=no_bh_evidence` on a host Ahmed knows is Bahraini is a registry row to add, not a bug. Pre-existing cache rows are NOT relabelled (no migration); the 7 d genuine TTL rolls them.
+
+### Honest limits (measured, not hidden)
+- **Compound price strings defeat step 1** (ruling R3, follow-up `PO-PRICE-TRUTH-01c`). The residue transform is deliberately the M13-09 one (`_shopping_foreign_currency_signal`), unchanged, so it is the WHOLE non-numeric remainder: `'From 22.500 BD'` → residue `FromBD`; `'22.500 BD (was 30 BD)'` → residue `BD(wasBD)`. Neither resolves, so both still parse as **22,500 `local_bhd` with the flag ON**, exactly as at HEAD. `test_r3_compound_price_string_is_a_stated_limit` pins today's value AS a limit so the canary reader is not surprised; it is not the desired value. Tokenising the residue is 01c's job.
+- Latin Omani tokens `RO` / `R.O.` resolve nowhere. `GCC_CURRENCY_SYMBOLS` (must-NOT-touch) excludes `RO` by a documented ruling, and the proof corpus has 0 price-adjacent `RO`/`R.O.` against 86 OMR. `RO 12.500` on an OMR ask still parses 12,500 with the flag ON; the Arabic rial glyph form is fixed (12.5). Pinned as a limit.
+- A BARE three-decimal numeral (`12.500` on a BHD ask) has an empty residue and still parses 12,500 `local_bhd`. Parsing bare strings under the ask currency is not a safe fix: `parse_price_string(1,299, BHD)` = 1.299, measured. Pinned as a limit; a follow-up design call alongside `PO-PRICE-TRUTH-01c`.
+- Step 1 does not fix every GCC price string (the three limits above: compound strings, `RO` / `R.O.`, bare three-decimal numerals). Only ISO-shaped tokens in the known vocabulary pend; `'TL'`, `'zł'`, `'kr'` still ship as the target currency exactly as today (STRICT's non-ASCII catch-all covers the glyph ones when it is on).
+- The host vocabulary is bounded; an off-registry Bahraini `.com` store with no locale marker loses `local_bhd` on the SHOPPING rung only (its page-scrape rungs still earn `page_scrape*`). The fix is a registry row.
+- The other-country vocabulary is bounded in this direction too, although it is now applied to every path segment and every subdomain label. A country token OUTSIDE it (`/pk/`, `/en-us/`) on a bahrain-tier registry host with no `locale_paths` (talabat, extra, noon) still earns `local_bhd`. A path segment that happens to equal a token (a product slug of exactly `sa` or `om`) now relabels. No such shape exists in the table or the corpus-derived pins, but it is the price of "anywhere".
+- The google rule is `google.com` and `*.google.com` only. A Google ccTLD such as `google.com.bh` is a `.bh` host and still earns `local_bhd` on a BHD ask. No such Serper link was measured.
+- Any other Google ccTLD (`www.google.com.sa/shopping/product/...` on a SAR or AED ask) also keeps its label: the region-agnostic listing rule catches `google.com` and `*.google.com` only (recheck minor, follow-up `PO-PRICE-TRUTH-01f`).
+- A trailing-dot host is now the same host as its dot-less form, in both directions. The polish round moved `bolo.bh.` from `no_bh_evidence` to `local_bhd`, matching `bolo.bh`, and this is pinned. `bh.iherb.com.` moved to `global_tier`.
+- Two clauses in step 2 are deliberately DEFENSIVE and unpinned (ruling R5.7): the `residue.isascii()` guard and the final `code != target` comparison, which is dead by construction today because every ask currency is a key of the base 13-rate table and step 1 resolves it first. Both stay as belt-and-braces for a future ask currency outside that table; both are documented in the docstring.
+- The 857 / 1,032 / 1,484 cache numbers are the review's; the cache cannot be read offline here and was not re-measured.
+
+### Follow-ups recorded, NOT built here
+- **`PO-PRICE-TRUTH-01b` — region-aware host evidence for non-BHD asks.** Today a SAR / AED / KWD / QAR / OMR ask keeps its T2 label past the agnostic pair, so a Saudi ask on a UAE host still earns the native label. A region-aware predicate needs the region's own vocabulary (`.sa` / `.ae` / … TLDs, the region's country tokens, the registry's currency field). This unit's ruling is that a Bahrain-shelf rule must not be applied to non-Bahrain regions — not that non-Bahrain regions need no rule.
+- **`PO-PRICE-TRUTH-01c` — tokenise the residue** so a compound price string (`From …`, `… (was …)`) still resolves its currency token. See the honest limit above.
+
+### Product call for Ahmed (ruling 5) — recorded, not decided here
+`converted_usd` is the honest label the codebase HAS for "showable, provenance not a verified Bahrain shelf", but for a native-BHD string on an unverifiable host it is a misnomer, and the client appends the `results.convertedUSD` copy to it (`ResultsContent.tsx:147`, `ResultsScreen.tsx:446`). Options: **(a) accept the label — this unit ships (a)**; (b) a third showable-not-genuine label (touches `_showable_source_methods`, the `eval_runner` mirror and the client enum — its own unit); (c) W4-2 option (a), resolving the merchant PDP so host evidence exists. Related, unchanged: `bh.iherb.com` is registry tier `global`, so its shopping rows are `converted_usd` under the flag while the supplements tier still stamps iHerb `local_bhd` (#52).
+
+### Files
+- `app/services/price_service.py` (+359/-3): `shopping_currency_truth_enabled`, `_shopping_price_residue`, `_shopping_display_currency`, `_shopping_known_currency_codes`, `_shopping_unconvertible_foreign_iso`, four bounded host-vocabulary frozensets, `_shopping_bh_host_evidence(link, *, ask_currency, reason_out)`; two flag-guarded blocks in the `extract_price_from_shopping` loop; `source_method` hoisted to a local (output-identical).
+- `app/services/structured_comparison_service.py` (+46/-3): the import block + two flag-guarded mirror blocks in `_seed_shortcircuit_candidates` (the stash passes its own `currency` as `ask_currency`). Unchanged by the polish round.
+- `tests/test_shopping_currency_truth.py` (new, **166 nodes**).
+
+### Gates
+- All pytest runs below except the comm gate used the pinned venv `.venv-qaren` (Python 3.12.9, pytest 9.1.1, fastapi 0.141.1 = CI's pins). The global Python (3.12.9, pytest 8.2.0, fastapi 0.115.0) differs, so the comm gate head used the GLOBAL interpreter, the one the recorded base `comm-base-W4-1.txt` was captured with. That keeps the two sides of the `comm` comparable.
+- Unit: **166 passed in each of four states:** the flag unset; `ENABLE_SHOPPING_CURRENCY_TRUTH=true`; `ENABLE_BH_GCC_CATALOG_SOURCES=true`; and catalog ON with TRUTH ON. Preserve pins (`test_m13_shopping_strict_currency`, `test_shopping_source_method_t2`, `test_m21_currency_parity`, `test_m13_shortcircuit_stash_parse`): 32 passed. The 30 existing `extract_price_from_shopping` referencing files: 739 passed, 4 deselected.
+- **Mutations — 42, ALL re-run against the FINAL code.** Each run covers the unit file (166 nodes) plus the 4 Preserve pin files (32), so every count below is "N failed of **198**". The harness was `scratchpad/w41pol/mut.py`. For each mutation it takes a sha-verified byte snapshot, applies a unique-anchor replacement (anchor count asserted to be exactly 1), runs the pinned venv, restores the file by byte copy and re-checks the sha. It never runs `git checkout`. The final log line is `FINAL SHA OK`. The counts supersede every earlier round's figures, which were taken at 101, 124 or 148 nodes.
+  - **Polish round (new):**
+    - **P1** the other-country check reads only the first path segment again → 5 red (the five language-prefixed rows).
+    - **P2** `registry_tier` receives the raw link again → 3 red (the port and trailing-dot global rows).
+    - **P2b** the host keeps its trailing dot → 2 red (`bh.iherb.com.` and the `bolo.bh.` consistency pin).
+    - **P3** delete the google.com-host check → 2 red (the SAR and BHD google product rows).
+    - **P4** drop the `locale_paths` reject, so any bahrain row accepts → 6 red (the 3 new rejects plus the 3 locale rows of the multi-country test).
+  - **Rework rulings:**
+    - **R2** BH markers evaluated before other-country → exactly the 2 `test_r2` nodes red (2 failed / 196 passed).
+    - **R1a** drop the BHD scoping → 11 red. These are `test_r1a` on both doors, the 6 helper rows, and the 3 RO-limit rows on OMR asks. The 32 pins stay green.
+    - **R1b** move the agnostic pair, including the google check, after the non-BHD early return → 9 red.
+  - **Rungs:**
+    - **X4** `.bh` TLD → 1 red (`r5.1`).
+    - **X5** BH subdomain label → 1 red (`r5.2`).
+    - **X6** BH path segment → 5 red.
+    - **X7** delete the `_is_listing_url` rung → 1 red (`r5.3`). It was 9 at 148 nodes: the google.com check now also relabels the google search rows, so only the non-google listing pin isolates this rung.
+    - **X8** delete the global rung → 6 red.
+    - **X3** registry rung ahead of other-country → 23 red.
+    - `no_link` → 7 red; `no_host` → 1; `other_country` → 20; fallthrough → 10; registry rung → 6; `host_classifier_error` fail-open → 2.
+    - Other-country subdomain half deleted → 3 red; path half deleted → 17 red.
+  - **Vocabulary and defensive clauses:**
+    - **X16b** drop the `_THREE_DECIMAL_CURRENCIES | _ZERO_DECIMAL_CURRENCIES` half → 3 red.
+    - New country tokens dropped → 7 red.
+    - Underscore fold dropped on both halves → 2 red; on path segments only → 2 red; on labels only → **0 red**. The label fold is unpinned and defensive: a DNS label rarely carries `_`.
+    - BHD-scope `.upper()` → 1 red.
+    - **X9** (`code != target`) and **X10** (`isascii`) → 0 red each, left unpinned as defensive clauses by ruling R5.7.
+  - **Canary lines and door wiring:**
+    - Front relabel `reason=` literal → 7 red; stash relabel `reason=` literal → 5 red.
+    - Front pend code → 1 red; stash pend code → 1 red.
+    - Stash passes `ask_currency="BHD"` → 1 red; front passes it → 4 red.
+  - **Flag gates forced ON:**
+    - Front step 3 → 34 red (2 of them Preserve pins).
+    - Stash step 3 → 1 red.
+    - Front steps 1+2 → 10 red (3 Preserve pins).
+    - Stash steps 1+2 → 3 red (2 Preserve pins).
+    - Ruling 8, force `_shopping_bh_host_evidence` to return True → 58 red.
+  - Every Preserve pin stayed green under every mutation except the four gate-forcing ones, whose job is to prove that the flag-OFF pins bite.
+- Comm gate (304-file set, `comm-set-W4-1-all.txt`, identical shape and the same two `TestPriceReadBypass` deselects — 31 deselected on both sides): base 3 failed / 11 239 passed → head (final, polish round) 2 failed / **11 406 passed** / 45 skipped / 2 xfailed; `comm -13` = empty; both head failures (`test_page_scraping::…test_jsonld_nested_offers_picks_lowest`, `…test_og_meta_extraction`) are base failures listed in `.pre_impl_failures.txt`; `comm -23` = `test_cde2_attributes_catalog_supplement_domain_when_flag_on` only, itself in `.pre_impl_failures.txt` (flaky baseline noise — an adversary saw it fail at head in a sample run).
+- Flag-OFF corpus byte-identity (`scripts/verify_flag_byte_identity.py --proof-root …/sc-w0-load/_proof --flags ENABLE_SHOPPING_CURRENCY_TRUTH`, base → head → base2 from a fresh detached `ed75dc70` scratch worktree, removed afterwards; `results` arrays compared record-by-record, never the OVERALL digest): 1656 records, **0 differing records on all three pairs** (re-run on the final code: each leg `RECORDS n=414 skipped_no_html=6 distinct_queries=362 non_none=825 calls=1656`). **Scope stated plainly (ruling 6):** the harness calls `extract_price_from_html` ONLY; it proves the shared html-spine helpers (`detect_currency`, `parse_price_string`, `_normalize_currency_code`, `_convert_to_bhd`, `_GCC_SYMBOL_RESIDUE`) did not move — i.e. the must-NOT-touch list held — and it can never see `extract_price_from_shopping` or the stash. The rung's flag-OFF identity is pin-carried: tests 2 / 6 / 8 / 9d(OFF) / 11 here, the 30 existing `extract_price_from_shopping` files and the four Preserve pin files.
+- ruff `E9,F63,F7,F82` + `py_compile` clean on both services and the test file. CLAUDE.md flag row (above) + the STRICT composition sentence land in the batch docs PR.
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)

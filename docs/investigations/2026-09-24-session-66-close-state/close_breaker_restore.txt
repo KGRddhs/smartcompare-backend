@@ -1,0 +1,34 @@
+=== candidate green snapshots (sha prefix c26a60ba) under scratchpad:
+c26a60ba9b29dcc9 C:/Users/SYNACK~1/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/a47353ce-a0e3-4273-b85d-f21cfa01e031/scratchpad/rbreaker_adv/abs.green
+c445e6059f565c0f C:/Users/SYNACK~1/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/a47353ce-a0e3-4273-b85d-f21cfa01e031/scratchpad/rbreaker_adv/retro.green
+2a93e607390bdcd3 C:/Users/SYNACK~1/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/a47353ce-a0e3-4273-b85d-f21cfa01e031/scratchpad/rbreaker_adv/scs.base
+bb58e2d0f71790b2 C:/Users/SYNACK~1/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/a47353ce-a0e3-4273-b85d-f21cfa01e031/scratchpad/rbreaker_adv/tob.green
+4b1824bfdd323a9c C:/Users/SYNACK~1/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/a47353ce-a0e3-4273-b85d-f21cfa01e031/scratchpad/rbreaker_green/api_budget_service.py.base
+c26a60ba9b29dcc9 C:/Users/SYNACK~1/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/a47353ce-a0e3-4273-b85d-f21cfa01e031/scratchpad/rbreaker_green/api_budget_service.py.green
+2a93e607390bdcd3 C:/Users/SYNACK~1/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/a47353ce-a0e3-4273-b85d-f21cfa01e031/scratchpad/rbreaker_green/structured_comparison_service.py.base
+b2a2abcb57c96fc3 C:/Users/SYNACK~1/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/a47353ce-a0e3-4273-b85d-f21cfa01e031/scratchpad/rbreaker_green/test_retro_w1_3.py.green
+50a66ee847d44d9a C:/Users/SYNACK~1/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/a47353ce-a0e3-4273-b85d-f21cfa01e031/scratchpad/rmain_green_base/tests/test_api_budget_service.py
+50a66ee847d44d9a C:/Users/SYNACK~1/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/a47353ce-a0e3-4273-b85d-f21cfa01e031/scratchpad/rw0_proto/tests/test_api_budget_service.py
+50a66ee847d44d9a C:/Users/SYNACK~1/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/a47353ce-a0e3-4273-b85d-f21cfa01e031/scratchpad/w43base/tests/test_api_budget_service.py
+50a66ee847d44d9a C:/Users/SYNACK~1/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/a47353ce-a0e3-4273-b85d-f21cfa01e031/scratchpad/w43impl_base/tests/test_api_budget_service.py
+50a66ee847d44d9a C:/Users/SYNACK~1/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/a47353ce-a0e3-4273-b85d-f21cfa01e031/scratchpad/w43impl_no_dedup/tests/test_api_budget_service.py
+50a66ee847d44d9a C:/Users/SYNACK~1/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/a47353ce-a0e3-4273-b85d-f21cfa01e031/scratchpad/w43impl_no_harvest/tests/test_api_budget_service.py
+50a66ee847d44d9a C:/Users/SYNACK~1/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/a47353ce-a0e3-4273-b85d-f21cfa01e031/scratchpad/w43impl_no_stream/tests/test_api_budget_service.py
+50a66ee847d44d9a C:/Users/SYNACK~1/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/a47353ce-a0e3-4273-b85d-f21cfa01e031/scratchpad/w43impl_no_sync/tests/test_api_budget_service.py
+50a66ee847d44d9a C:/Users/SYNACK~1/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/a47353ce-a0e3-4273-b85d-f21cfa01e031/scratchpad/w43repo/tests/test_api_budget_service.py
+50a66ee847d44d9a C:/Users/SYNACK~1/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/a47353ce-a0e3-4273-b85d-f21cfa01e031/scratchpad/w43w41/tests/test_api_budget_service.py
+da08cbee8d356cb8 C:/Users/SYNACK~1/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/a47353ce-a0e3-4273-b85d-f21cfa01e031/scratchpad/w44adv2/scs.base
+green snapshot: C:/Users/SYNACK~1/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/a47353ce-a0e3-4273-b85d-f21cfa01e031/scratchpad/rbreaker_adv/abs.green
+before: 7e73f2ac9fe4eed4
+after:  c26a60ba9b29dcc9 (expect c26a60ba)
+SHA MISMATCH AFTER RESTORE - aborting
+=== restore finish 05:13
+on disk: c26a60ba9b29dcc9 (green = c26a60ba9b29dcc9)
+--- mutant vs green diff:
+989d988
+<         openai_record_failure()
+--- unit files on the green bytes (pinned venv):
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+71 passed, 2 warnings in 39.82s
+committed 7a7dfc24
+pushed origin/retro/w1-3-breaker @ 7a7dfc24
