@@ -34,7 +34,8 @@ a Railway flip needs no restart) adds:
     black-holed host is resolved once instead of once per URL and per hop. A
     verdict is memoised for a ``gaierror``, for a private / loopback /
     link-local / reserved address, and for a timeout whose resolve actually
-    STARTED. Two verdicts are deliberately NEVER memoised:
+    STARTED and ran for most of the bound. Several verdicts are deliberately
+    NEVER memoised:
 
       - **a successful public resolve.** Memoising it converted the guard's
         millisecond-wide DNS-rebinding TOCTOU into a DETERMINISTIC 60 s replay
@@ -58,6 +59,24 @@ a Railway flip needs no restart) adds:
         genuinely slow (memoise — this is the P0's win, and it is kept) versus
         the call merely waited in the queue (fail closed for THIS call, write
         nothing).
+      - **W0-1b: a timeout whose resolve started only just before the
+        deadline.** ``started`` alone is not proof the host is slow: a job that
+        waited in the queue and reached a worker a moment before the caller's
+        bound would otherwise be blacklisted after milliseconds of resolving.
+        ``_resolve`` records ``time.monotonic()`` when it starts, and a timeout
+        is memoised only when that resolve had run for at least
+        ``_TIMEOUT_MEMO_RUN_FRACTION`` (0.75) of the bound by the deadline.
+      - **W0-1b: a transient ``gaierror``.** Only ``EAI_NONAME`` (and
+        ``EAI_NODATA`` where the platform defines it) is a confirmed "no such
+        name". ``EAI_AGAIN`` (resolver SERVFAIL / timeout), ``EAI_FAIL``, a
+        ``gaierror`` with no errno and every other code fail closed for THIS
+        call only and write nothing.
+
+    W0-1b also drops a stale negative: a flag-ON resolve carries a
+    done-callback, and when a resolve that outlived its caller's bound finally
+    returns an ALLOWED public address, any ``False`` memo for that host is
+    removed so the next call re-resolves. It never writes ``True`` (that is the
+    rebinding window above).
   * :func:`_validate_url_offloop_or_sync` — the one helper every ``async def``
     call site uses, so with the flag OFF nothing changes.
 
@@ -197,6 +216,74 @@ def _memo_put(hostname: str, result: bool) -> None:
         _DNS_MEMO[hostname] = (now + _MEMO_TTL_SECONDS, result)
 
 
+# W0-1b: a STARTED resolve must have run for at least this fraction of the
+# bound, by the caller's deadline, before its timeout is memoised as a black
+# hole. Anything less is queue contention, not a slow host.
+_TIMEOUT_MEMO_RUN_FRACTION = 0.75
+
+
+def _gaierror_is_confirmed_negative(exc: BaseException) -> bool:
+    """W0-1b: True only for a definitive "no such name" resolver answer.
+
+    ``EAI_NONAME`` (and ``EAI_NODATA`` where the platform defines it) is the
+    resolver saying the name does not exist: a confirmed negative, worth the
+    60 s memo. ``EAI_AGAIN`` (SERVFAIL / resolver timeout), ``EAI_FAIL``, a
+    ``gaierror`` with no errno and every other code are transient or unknown:
+    they fail CLOSED for the current call only and write nothing, so one
+    resolver hiccup cannot take a storefront off the price path for a minute.
+
+    The constants are read from ``socket`` at CALL time because they are
+    platform values: ``EAI_NONAME`` is -2 on Linux (CI, prod) and 11001 on
+    Windows, where ``EAI_NODATA`` has the same value.
+    """
+    errno = getattr(exc, "errno", None)
+    if errno is None:
+        return False
+    confirmed = {
+        code
+        for code in (
+            getattr(socket, "EAI_NONAME", None),
+            getattr(socket, "EAI_NODATA", None),
+        )
+        if code is not None
+    }
+    return errno in confirmed
+
+
+def _clear_negative_if_resolved_public(fut, hostname: str) -> None:
+    """W0-1b done-callback on a flag-ON resolve's concurrent future.
+
+    When a resolve that outlived its caller's bound (a zombie) finally returns
+    an ALLOWED public address, a ``False`` memo for ``hostname`` is contradicted
+    by the resolver itself, so it is DROPPED and the next call re-resolves.
+    An EMPTY answer is not proof the host resolves (``_addr_infos_allowed([])``
+    is vacuously True), so it drops nothing. Nothing is ever written: a
+    ``True`` memo is the 60 s DNS-rebinding replay window the module docstring
+    forbids. Runs on a resolver-pool thread (or on the loop, when re-invoked
+    after a late memo write) and never raises.
+    """
+    try:
+        if fut.cancelled() or fut.exception() is not None:
+            return
+        with _DNS_MEMO_LOCK:
+            entry = _DNS_MEMO.get(hostname)
+        if entry is None or entry[1] is not False:
+            return
+        addr_infos = fut.result()
+        if not addr_infos or not _addr_infos_allowed(addr_infos, hostname):
+            return
+        with _DNS_MEMO_LOCK:
+            current = _DNS_MEMO.get(hostname)
+            if current is not None and current[1] is False:
+                _DNS_MEMO.pop(hostname, None)
+    except Exception:  # noqa: BLE001 - a pool callback must never raise
+        logger.debug(
+            "[SSRF] resolve done-callback failed for hostname: %s",
+            hostname,
+            exc_info=True,
+        )
+
+
 def _reset_dns_state_for_tests() -> None:
     """Drop the resolver memo. Deliberately does NOT shut the pool down — a
     ``getaddrinfo`` parked in a worker thread cannot be cancelled, so joining it
@@ -266,9 +353,11 @@ def validate_external_url(url: str) -> bool:
 
         try:
             addr_infos = socket.getaddrinfo(hostname, None)
-        except socket.gaierror:
+        except socket.gaierror as exc:
             logger.warning(f"[SSRF] Could not resolve hostname: {hostname}")
-            if memoise:
+            # W0-1b: only a confirmed NXDOMAIN is memoised; EAI_AGAIN and
+            # friends fail closed for THIS call only.
+            if memoise and _gaierror_is_confirmed_negative(exc):
                 _memo_put(hostname, False)
             return False
 
@@ -304,13 +393,20 @@ async def validate_external_url_async(url: str) -> bool:
         ``169.254.169.254`` kept validating True, where base returns False).
         The P0 is entirely about the negative case, so the positive half buys
         little and costs a security regression.
-      * **a timeout whose resolve never STARTED** — ``ThreadPoolExecutor``
-        queues work past its worker count while ``wait_for``'s clock starts at
-        the await, so a queued-only call would otherwise blacklist a host
-        nothing ever looked up (measured: 4 black-holed hosts poisoned 8 of 8
-        healthy storefronts). ``started`` distinguishes a genuinely slow
-        resolver (memoise — the P0's win) from queue contention (fail closed
-        for THIS call only).
+      * **a timeout whose resolve never STARTED, or started too late** —
+        ``ThreadPoolExecutor`` queues work past its worker count while
+        ``wait_for``'s clock starts at the await, so a queued-only call would
+        otherwise blacklist a host nothing ever looked up (measured: 4
+        black-holed hosts poisoned 8 of 8 healthy storefronts). W0-1b: the
+        start time recorded inside ``_resolve`` distinguishes a genuinely slow
+        resolver (ran >= 0.75 of the bound: memoise — the P0's win) from queue
+        contention (fail closed for THIS call only).
+      * **W0-1b: a transient gaierror** — only ``EAI_NONAME`` /
+        ``EAI_NODATA`` is memoised.
+
+    W0-1b: a flag-ON resolve also carries a done-callback that drops a
+    ``False`` memo for the host once a zombie resolve returns an allowed public
+    address (it never writes ``True``).
 
     Only reached under ``ENABLE_OFFLOOP_DNS_RESOLVE``; callers go through
     :func:`_validate_url_offloop_or_sync`.
@@ -338,25 +434,37 @@ async def validate_external_url_async(url: str) -> bool:
         timeout = _dns_resolve_timeout()
         loop = asyncio.get_running_loop()
 
-        # ``started`` fires the moment a pool worker picks the job up. A
-        # ThreadPoolExecutor QUEUES work past its worker count but wait_for's
-        # clock starts at the await, so without this a validation that never
-        # ran would be memoised as a 60 s negative verdict about a host nobody
-        # resolved. ``socket.getaddrinfo`` is looked up at CALL time so tests
-        # that monkeypatch it still take effect.
-        started = threading.Event()
+        # ``started_at`` gets time.monotonic() the moment a pool worker picks
+        # the job up (W0-1b). A ThreadPoolExecutor QUEUES work past its worker
+        # count but wait_for's clock starts at the await, so without this a
+        # validation that never ran -- or that reached a worker just before
+        # the deadline -- would be memoised as a 60 s negative verdict about a
+        # host nobody really resolved. ``socket.getaddrinfo`` is looked up at
+        # CALL time so tests that monkeypatch it still take effect.
+        started_at: List[float] = []
 
         def _resolve():
-            started.set()
+            started_at.append(time.monotonic())
             return socket.getaddrinfo(hostname, None)
 
+        # Submitted directly rather than through loop.run_in_executor so the
+        # CONCURRENT future is in hand for the W0-1b done-callback; wrap_future
+        # + wait_for still cancel a job that is only queued, exactly as
+        # run_in_executor did (run_in_executor is submit + wrap_future).
+        cfut = _dns_pool().submit(_resolve)
+        if memoise:
+            cfut.add_done_callback(
+                lambda f: _clear_negative_if_resolved_public(f, hostname)
+            )
+        deadline = time.monotonic() + timeout
         try:
             addr_infos = await asyncio.wait_for(
-                loop.run_in_executor(_dns_pool(), _resolve),
+                asyncio.wrap_future(cfut, loop=loop),
                 timeout=timeout,
             )
         except (asyncio.TimeoutError, TimeoutError):
-            if started.is_set():
+            ran = (deadline - started_at[0]) if started_at else None
+            if ran is not None and ran >= _TIMEOUT_MEMO_RUN_FRACTION * timeout:
                 # The resolver really is slow / black-holed: this is the P0's
                 # win, so memoise it and stop re-resolving per URL and per hop.
                 logger.warning(
@@ -366,6 +474,24 @@ async def validate_external_url_async(url: str) -> bool:
                 )
                 if memoise:
                     _memo_put(hostname, False)
+                    # The zombie may have returned a public address between
+                    # the deadline and the write above, before this entry
+                    # existed for its callback to drop.
+                    if cfut.done():
+                        _clear_negative_if_resolved_public(cfut, hostname)
+            elif ran is not None:
+                # W0-1b: it started, but only just before the deadline -- it
+                # spent the bound queued behind a saturated pool. Queue
+                # contention is not a verdict about the host: fail closed
+                # for THIS call, record nothing.
+                logger.warning(
+                    "[SSRF] DNS resolve started only %.2fs before the %.1fs "
+                    "bound for hostname: %s (resolver pool saturated; not "
+                    "memoised)",
+                    max(ran, 0.0),
+                    timeout,
+                    hostname,
+                )
             else:
                 # Queued behind a saturated pool and never started: fail closed
                 # for THIS call, but record NOTHING — we know nothing about
@@ -379,9 +505,10 @@ async def validate_external_url_async(url: str) -> bool:
                     hostname,
                 )
             return False
-        except socket.gaierror:
+        except socket.gaierror as exc:
             logger.warning(f"[SSRF] Could not resolve hostname: {hostname}")
-            if memoise:
+            # W0-1b: only a confirmed NXDOMAIN is memoised.
+            if memoise and _gaierror_is_confirmed_negative(exc):
                 _memo_put(hostname, False)
             return False
 
