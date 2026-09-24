@@ -9,7 +9,7 @@ Measured 2026-09-24 ~15:00 local via the Railway CLI (logged in as the account y
 - `railway redeploy --service web --yes` → **`Your trial has expired. Please select a plan to continue using Railway.`** That is the cause.
 - Consequence for the code: `web` has had **no deployment since 2026-09-11 10:26 UTC (PR #162, `fe0298ae`)**. Every merge of sessions 66 and 67 (#163–#196) is on main but has NEVER run in production; the GitHub webhook still reaches the project (`price-warmer` records a `SKIPPED` row per push, correctly, via its watch patterns) but blocked builds create nothing on `web`.
 
-**UPDATE 15:20 local — steps 1 and 2 are DONE:** you subscribed at ~15:18; Railway re-created `web` and `qaren-landing` and I re-issued `railway redeploy` for both; `/health` is 200 on image `fe0298ae` (2026-09-11). What remains here is step 4: current main has to deploy — the docs PR #197 merge is the first push after the plan; if no `BUILDING` row appears on `web` within a minute of it, reconnect the source as described.
+**UPDATE 15:20 local — steps 1 and 2 are DONE:** you subscribed at ~15:18; Railway re-created `web` and `qaren-landing` and I re-issued `railway redeploy` for both; `/health` is 200 on image `fe0298ae` (2026-09-11). **UPDATE 15:25: step 4 is DONE too** — the logout-flag variable change rebuilt `web` from the connected GitHub source at current main `dff65210` (deployment `2c4dbf6e`, `/health` 200), so every session-66/67 merge is now in production with `ENABLE_BRIGHTDATA_BUDGET_GATE=true` and `ENABLE_LOGOUT_UPSTREAM_REVOCATION=true`. Nothing remains in this section except watching the first `[auth]` and `[BUDGET]` log lines.
 
 Do, in order:
 
