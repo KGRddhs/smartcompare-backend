@@ -1585,7 +1585,14 @@ async def _extract_price_from_html_maybe_offloaded(
     render legs made before, awaited on a coroutine that never suspends, so the
     parse still runs on the caller's thread and nothing else can interleave."""
     if _price_parse_offload_enabled():
-        return await asyncio.to_thread(
+        # R-W04 — under the flag the parse input is capped at
+        # price_service.PRICE_FETCH_MAX_BYTES (W0-4b; the callers' html_kb
+        # telemetry is computed from the raw body before this) and the parse runs
+        # on the bounded price-parse pool (W0-4d). Resolved at call time.
+        from app.services import price_service as _w04_ps
+        if html:
+            html = html[:_w04_ps.PRICE_FETCH_MAX_BYTES]
+        return await _w04_ps.run_parse_offloaded(
             extract_price_from_html, html, full_name, currency, retailer_domain, url,
         )
     return extract_price_from_html(html, full_name, currency, retailer_domain, url)
@@ -3257,7 +3264,11 @@ class StructuredComparisonService:
         domain = urlparse(url).netloc.replace("www.", "")
         html = await self._curl_fetch_html(url)
         if html:
-            price = extract_price_from_html(html, product_name, currency, domain, url)
+            # R-W04 (W0-4c) — routed through the shared helper: flag OFF it is the
+            # same inline call; flag ON the parse runs on the price-parse pool.
+            price = await _extract_price_from_html_maybe_offloaded(
+                html, product_name, currency, domain, url,
+            )
             if price:
                 return price
             return {"_got_html": True}

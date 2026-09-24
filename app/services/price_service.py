@@ -4319,6 +4319,80 @@ def price_parse_offload_enabled() -> bool:
     )
 
 
+# R-W04 (W0-4b) — the fetch-size cap for the price path under
+# ENABLE_PRICE_PARSE_OFFLOAD: curl_fetch_html and the firecrawl/scrapedo render
+# legs hand at most this many characters to the parse (the same bound
+# curl_fetch_html_same_site has always applied). Flag OFF nothing reads it.
+PRICE_FETCH_MAX_BYTES = 3_000_000
+
+# R-W04 (W0-4d) — the dedicated, bounded price-parse pool. Built lazily on the
+# first flagged parse (flag OFF it never exists); PRICE_PARSE_MAX_WORKERS is read
+# ONCE, when the pool is built, so changing it needs a restart. The asyncio
+# semaphore in front of it is created per event loop (never bound to the first
+# loop that used it) and sized to the pool.
+import threading as _price_parse_threading  # noqa: E402 — kept local to this unit's hunk
+
+_PRICE_PARSE_POOL = None
+_PRICE_PARSE_POOL_LOCK = _price_parse_threading.Lock()
+_PRICE_PARSE_SEMAPHORE_BY_LOOP = None
+
+
+def price_parse_max_workers() -> int:
+    """PRICE_PARSE_MAX_WORKERS: int(value.strip()) clamped to 1..16. Unset, empty,
+    unparsable and non-finite ('inf'/'nan' fail int()) fall back to 4."""
+    raw = (os.getenv("PRICE_PARSE_MAX_WORKERS") or "").strip()
+    if not raw:
+        return 4
+    try:
+        n = int(raw)
+    except (TypeError, ValueError):
+        return 4
+    return max(1, min(16, n))
+
+
+def _get_price_parse_pool():
+    global _PRICE_PARSE_POOL
+    pool = _PRICE_PARSE_POOL
+    if pool is None:
+        with _PRICE_PARSE_POOL_LOCK:
+            if _PRICE_PARSE_POOL is None:
+                import concurrent.futures as _cf
+                _PRICE_PARSE_POOL = _cf.ThreadPoolExecutor(
+                    max_workers=price_parse_max_workers(),
+                    thread_name_prefix="price-parse",
+                )
+            pool = _PRICE_PARSE_POOL
+    return pool
+
+
+def _get_price_parse_semaphore(size: int) -> "asyncio.Semaphore":
+    global _PRICE_PARSE_SEMAPHORE_BY_LOOP
+    loop = asyncio.get_running_loop()
+    held = _PRICE_PARSE_SEMAPHORE_BY_LOOP
+    if held is None or held[0] is not loop or held[1] != size:
+        held = (loop, size, asyncio.Semaphore(size))
+        _PRICE_PARSE_SEMAPHORE_BY_LOOP = held
+    return held[2]
+
+
+async def run_parse_offloaded(fn, *args, **kwargs):
+    """Run the pure-sync parse ``fn(*args, **kwargs)`` on the price-parse pool.
+
+    The semaphore is acquired BEFORE the job is submitted, so queued parses wait
+    in asyncio (cheap, cancellable) rather than piling up in the executor's work
+    queue. The job runs in a COPY of the caller's contextvars context (the
+    asyncio.to_thread semantics): the resolved-category ContextVar the extractors
+    read must reach the worker. Callers only reach this under
+    price_parse_offload_enabled()."""
+    pool = _get_price_parse_pool()
+    sem = _get_price_parse_semaphore(pool._max_workers)
+    async with sem:
+        ctx = _contextvars.copy_context()
+        return await asyncio.get_running_loop().run_in_executor(
+            pool, functools.partial(ctx.run, fn, *args, **kwargs),
+        )
+
+
 def showable_name_identity_enabled() -> bool:
     """True iff W4-5 (PO-PRICE-TRUTH-04) is active (default OFF).
 
@@ -14650,6 +14724,10 @@ async def curl_fetch_html(url: str) -> Optional[str]:
             domain = urlparse(url).netloc.replace("www.", "")
             logger.info(f"[PRICE] Page scrape: HTTP {resp.status_code} for {domain}")
             return None
+        if price_parse_offload_enabled():
+            # R-W04 (W0-4b) — bound the page handed to the parse, mirroring
+            # curl_fetch_html_same_site. Flag OFF: the whole body, as before.
+            return resp.text[:PRICE_FETCH_MAX_BYTES]
         return resp.text
     except Exception as e:
         logger.warning(f"[PRICE] curl_cffi fetch failed for {url}: {e}")
@@ -14798,7 +14876,7 @@ async def fetch_page_price(
         # so a monkeypatched `price_service.extract_price_from_html` is still the
         # thing that runs. Flag OFF: the inline call below, untouched.
         if price_parse_offload_enabled():
-            price = await asyncio.to_thread(
+            price = await run_parse_offloaded(
                 extract_price_from_html,
                 html, product_name, currency, domain, url, **_extract_kwargs,
             )
@@ -15682,54 +15760,63 @@ async def fetch_bolo_price(
     if not html:
         return None
 
-    parsed = _bolo_jsonld_main_price(html, product_name, currency)
-    if not parsed:
-        # The Nuxt-"price" fallback has NO product-name validation. Only use it
-        # when the PDP has NO JSON-LD Product node — if a Product node exists but
-        # _bolo_jsonld_main_price returned None, the JSON-LD is authoritative (the
-        # product mismatched the query, or had no BHD offer), so Nuxt would
-        # attribute the WRONG product's price (Wave-3 reviewer ISSUE 1, no-fab).
-        if _bolo_has_jsonld_product(html):
+    # R-W04 (W0-4c) — everything below is pure-sync parsing (soups, JSON-LD, size
+    # stamp, showable + content-safety guards). Under ENABLE_PRICE_PARSE_OFFLOAD it
+    # runs as ONE job on the bounded price-parse pool; flag OFF the same block runs
+    # inline on the caller's thread, exactly as before. Module globals resolve at
+    # call time inside the block.
+    def _w04_parse_block():
+        parsed = _bolo_jsonld_main_price(html, product_name, currency)
+        if not parsed:
+            # The Nuxt-"price" fallback has NO product-name validation. Only use it
+            # when the PDP has NO JSON-LD Product node — if a Product node exists but
+            # _bolo_jsonld_main_price returned None, the JSON-LD is authoritative (the
+            # product mismatched the query, or had no BHD offer), so Nuxt would
+            # attribute the WRONG product's price (Wave-3 reviewer ISSUE 1, no-fab).
+            if _bolo_has_jsonld_product(html):
+                return None
+            parsed = _bolo_nuxt_main_price(html, currency)
+        if not parsed or not parsed.get("amount"):
             return None
-        parsed = _bolo_nuxt_main_price(html, currency)
-    if not parsed or not parsed.get("amount"):
-        return None
 
-    from bs4 import BeautifulSoup
-    soup = BeautifulSoup(html, "html.parser")
-    listing_name = parsed.get("name") or ""
-    price: Dict[str, Any] = {
-        "amount": parsed["amount"],
-        "currency": parsed.get("currency", currency),
-        "retailer": "bolo.bh",
-        "url": pdp_url,
-        "in_stock": parsed.get("in_stock", True),
-        "confidence": 1.0,
-        "estimated": False,
-        "source_method": "page_scrape_jsonld",
-        "title": listing_name,
-    }
-    # frag-size-capture — carry the real listing size (ml/oz) for fragrance pair
-    # fairness; no-op for non-fragrance. Uses the PDP JSON-LD name / og:title /
-    # page <title> like extract_price_from_html does.
-    _stamp_listing_size(price, product_name, soup, jsonld_name=listing_name)
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(html, "html.parser")
+        listing_name = parsed.get("name") or ""
+        price: Dict[str, Any] = {
+            "amount": parsed["amount"],
+            "currency": parsed.get("currency", currency),
+            "retailer": "bolo.bh",
+            "url": pdp_url,
+            "in_stock": parsed.get("in_stock", True),
+            "confidence": 1.0,
+            "estimated": False,
+            "source_method": "page_scrape_jsonld",
+            "title": listing_name,
+        }
+        # frag-size-capture — carry the real listing size (ml/oz) for fragrance pair
+        # fairness; no-op for non-fragrance. Uses the PDP JSON-LD name / og:title /
+        # page <title> like extract_price_from_html does.
+        _stamp_listing_size(price, product_name, soup, jsonld_name=listing_name)
 
-    # The showable accuracy guards (sample/implausible-low/high) still bite — a
-    # bolo decant under the fragrance floor must PEND, not show.
-    if not is_price_showable(product_name, price):
-        return None
+        # The showable accuracy guards (sample/implausible-low/high) still bite — a
+        # bolo decant under the fragrance floor must PEND, not show.
+        if not is_price_showable(product_name, price):
+            return None
 
-    # L2 content safety — drop a candidate whose surface trips the blocklist.
-    from app.services.content_safety_service import get_content_safety_service
-    _surface = f"{listing_name} bolo.bh {product_name}"
-    if not get_content_safety_service().is_text_safe(_surface):
-        logger.info("[content_safety] L2 dropped bolo candidate for %s", product_name)
-        return None
-    logger.info(
-        "[PRICE] bolo.bh genuine: %s %s for '%s' (%s)",
-        price["currency"], price["amount"], product_name, pdp_url,
-    )
-    return price
+        # L2 content safety — drop a candidate whose surface trips the blocklist.
+        from app.services.content_safety_service import get_content_safety_service
+        _surface = f"{listing_name} bolo.bh {product_name}"
+        if not get_content_safety_service().is_text_safe(_surface):
+            logger.info("[content_safety] L2 dropped bolo candidate for %s", product_name)
+            return None
+        logger.info(
+            "[PRICE] bolo.bh genuine: %s %s for '%s' (%s)",
+            price["currency"], price["amount"], product_name, pdp_url,
+        )
+        return price
+    if price_parse_offload_enabled():
+        return await run_parse_offloaded(_w04_parse_block)
+    return _w04_parse_block()
 
 
 # ============================================================================
@@ -15788,46 +15875,55 @@ async def fetch_boutiqaat_price(
     if not html:
         return None
 
-    # boutiqaat ships a FLAT @type:Product JSON-LD (no @graph). _bolo_jsonld_main_price
-    # handles that via its `[data]` branch + the same numbers/variant validation.
-    parsed = _bolo_jsonld_main_price(html, product_name, currency)
-    if not parsed or not parsed.get("amount"):
-        return None  # Organization-only / no offer (per-SKU gap) → honest None
+    # R-W04 (W0-4c) — everything below is pure-sync parsing (soups, JSON-LD, size
+    # stamp, showable + content-safety guards). Under ENABLE_PRICE_PARSE_OFFLOAD it
+    # runs as ONE job on the bounded price-parse pool; flag OFF the same block runs
+    # inline on the caller's thread, exactly as before. Module globals resolve at
+    # call time inside the block.
+    def _w04_parse_block():
+        # boutiqaat ships a FLAT @type:Product JSON-LD (no @graph). _bolo_jsonld_main_price
+        # handles that via its `[data]` branch + the same numbers/variant validation.
+        parsed = _bolo_jsonld_main_price(html, product_name, currency)
+        if not parsed or not parsed.get("amount"):
+            return None  # Organization-only / no offer (per-SKU gap) → honest None
 
-    from bs4 import BeautifulSoup
-    soup = BeautifulSoup(html, "html.parser")
-    listing_name = parsed.get("name") or ""
-    price: Dict[str, Any] = {
-        "amount": parsed["amount"],
-        "currency": parsed.get("currency", currency),
-        "retailer": "boutiqaat.com",
-        "url": pdp_url,
-        "in_stock": parsed.get("in_stock", True),
-        "confidence": 1.0,
-        "estimated": False,
-        "source_method": "page_scrape_jsonld",
-        "title": listing_name,
-    }
-    # frag-size-capture — carry the real listing size (ml/oz) for fragrance pair
-    # fairness; no-op for non-fragrance. Same as bolo / extract_price_from_html.
-    _stamp_listing_size(price, product_name, soup, jsonld_name=listing_name)
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(html, "html.parser")
+        listing_name = parsed.get("name") or ""
+        price: Dict[str, Any] = {
+            "amount": parsed["amount"],
+            "currency": parsed.get("currency", currency),
+            "retailer": "boutiqaat.com",
+            "url": pdp_url,
+            "in_stock": parsed.get("in_stock", True),
+            "confidence": 1.0,
+            "estimated": False,
+            "source_method": "page_scrape_jsonld",
+            "title": listing_name,
+        }
+        # frag-size-capture — carry the real listing size (ml/oz) for fragrance pair
+        # fairness; no-op for non-fragrance. Same as bolo / extract_price_from_html.
+        _stamp_listing_size(price, product_name, soup, jsonld_name=listing_name)
 
-    # The showable accuracy guards (sample/implausible-low/high) still bite — a
-    # boutiqaat decant under the fragrance floor must PEND, not show.
-    if not is_price_showable(product_name, price):
-        return None
+        # The showable accuracy guards (sample/implausible-low/high) still bite — a
+        # boutiqaat decant under the fragrance floor must PEND, not show.
+        if not is_price_showable(product_name, price):
+            return None
 
-    # L2 content safety — drop a candidate whose surface trips the blocklist.
-    from app.services.content_safety_service import get_content_safety_service
-    _surface = f"{listing_name} boutiqaat.com {product_name}"
-    if not get_content_safety_service().is_text_safe(_surface):
-        logger.info("[content_safety] L2 dropped boutiqaat candidate for %s", product_name)
-        return None
-    logger.info(
-        "[PRICE] boutiqaat.com genuine: %s %s for '%s' (%s)",
-        price["currency"], price["amount"], product_name, pdp_url,
-    )
-    return price
+        # L2 content safety — drop a candidate whose surface trips the blocklist.
+        from app.services.content_safety_service import get_content_safety_service
+        _surface = f"{listing_name} boutiqaat.com {product_name}"
+        if not get_content_safety_service().is_text_safe(_surface):
+            logger.info("[content_safety] L2 dropped boutiqaat candidate for %s", product_name)
+            return None
+        logger.info(
+            "[PRICE] boutiqaat.com genuine: %s %s for '%s' (%s)",
+            price["currency"], price["amount"], product_name, pdp_url,
+        )
+        return price
+    if price_parse_offload_enabled():
+        return await run_parse_offloaded(_w04_parse_block)
+    return _w04_parse_block()
 
 
 # ============================================================================
@@ -16288,287 +16384,296 @@ async def fetch_iherb_price(
         if resp.status_code != 200:
             return None
         page = resp.text
-        soup = BeautifulSoup(page, 'html.parser')
-        # #52 — one flag read, one call, before either card loop. OFF, every
-        # `if _currency_signal_gate` below is a False literal and no currency
-        # marker is ever looked at.
-        _currency_signal_gate = iherb_page_currency_enabled()
-        cards = soup.select('a[data-ga-brand-name][data-ga-discount-price][title]')
-        products = []
-        for card in cards:
-            item_brand = card.get('data-ga-brand-name', '')
-            price_str = card.get('data-ga-discount-price', '')
-            title = card.get('title', '')
-            href = card.get('href', '')
-            if not price_str:
-                continue
-            rating_str = card.get('data-ga-rating', '')
-            review_count_str = card.get('data-ga-review-count', '')
-            rating = None
-            review_count = None
-            try:
-                if rating_str:
-                    rating = float(rating_str)
-                    if rating <= 0 or rating > 5:
-                        rating = None
-            except (ValueError, TypeError):
-                pass
-            try:
-                if review_count_str:
-                    review_count = int(review_count_str)
-            except (ValueError, TypeError):
-                pass
-            # L2 content safety — iHerb entry point (Bundle B, team-lead
-            # expansion of spec sec 5.2). Per-card filter so unsafe items
-            # never enter the brand-match / best-pick pipeline below.
-            from app.services.content_safety_service import get_content_safety_service
-            if not get_content_safety_service().is_text_safe(f"{item_brand} {title}"):
-                continue
-            products.append({
-                "url": href if href.startswith("http") else f"https://{region_code}.iherb.com{href}",
-                "brand": item_brand,
-                "price": float(price_str),
-                "title": title,
-                "rating": rating,
-                "review_count": review_count,
-                # #52 — the card's own currency claim, carried alongside its
-                # price so the stamp below is about THIS card, not the page's
-                # average. Never leaves the function; the returned dict is built
-                # explicitly from named keys.
-                "currency_token": _iherb_card_currency_token(card) if _currency_signal_gate else None,
-            })
-
-        # F2.2 — schema.org microdata fallback. When iHerb drops/renames the
-        # proprietary data-ga-* anchor attributes the selector above yields
-        # zero cards; the standards-based `meta[itemprop="price"]` markers
-        # (one per `div.product-inner` card) survive. Parsing them here keeps
-        # the price local instead of falling through to the caller's
-        # Firecrawl/Scrape.do fan-out (the 5-15s cost). Only runs on a GA-card
-        # miss, so the GA path stays authoritative (no behaviour change when
-        # cards are present).
-        if not products:
-            for card in soup.select("div.product-inner"):
-                price_meta = card.select_one('meta[itemprop="price"]')
-                if price_meta is None:
-                    continue
-                price_str = (price_meta.get("content") or "").strip()
+        # R-W04 (W0-4c) — everything below is pure-sync parsing (soups, JSON-LD, size
+        # stamp, showable + content-safety guards). Under ENABLE_PRICE_PARSE_OFFLOAD it
+        # runs as ONE job on the bounded price-parse pool; flag OFF the same block runs
+        # inline on the caller's thread, exactly as before. Module globals resolve at
+        # call time inside the block.
+        def _w04_parse_block():
+            soup = BeautifulSoup(page, 'html.parser')
+            # #52 — one flag read, one call, before either card loop. OFF, every
+            # `if _currency_signal_gate` below is a False literal and no currency
+            # marker is ever looked at.
+            _currency_signal_gate = iherb_page_currency_enabled()
+            cards = soup.select('a[data-ga-brand-name][data-ga-discount-price][title]')
+            products = []
+            for card in cards:
+                item_brand = card.get('data-ga-brand-name', '')
+                price_str = card.get('data-ga-discount-price', '')
+                title = card.get('title', '')
+                href = card.get('href', '')
                 if not price_str:
                     continue
-                try:
-                    price_val = float(price_str)
-                except (ValueError, TypeError):
-                    continue
-                anchor = card.select_one('a[href*="/pr/"]') or card.select_one("a[title]")
-                href = anchor.get("href", "") if anchor else ""
-                name_node = card.select_one('[itemprop="name"]')
-                if name_node is not None:
-                    title = (name_node.get("content") or name_node.get_text(strip=True) or "")
-                elif anchor is not None:
-                    title = anchor.get("title", "") or anchor.get_text(strip=True)
-                else:
-                    title = ""
-                title = title.strip()
-                if not title:
-                    continue
-                # iHerb titles are "Brand, rest...": derive brand from the head
-                # so the existing brand-match logic below works identically to
-                # the GA path (which carries data-ga-brand-name).
-                item_brand = title.split(",", 1)[0].strip()
+                rating_str = card.get('data-ga-rating', '')
+                review_count_str = card.get('data-ga-review-count', '')
                 rating = None
                 review_count = None
-                rating_node = card.select_one("[data-rating]")
-                if rating_node is not None:
-                    try:
-                        rv = float(rating_node.get("data-rating", ""))
-                        rating = rv if 0 < rv <= 5 else None
-                    except (ValueError, TypeError):
-                        pass
-                    try:
-                        review_count = int(rating_node.get("data-review-count", ""))
-                    except (ValueError, TypeError):
-                        pass
+                try:
+                    if rating_str:
+                        rating = float(rating_str)
+                        if rating <= 0 or rating > 5:
+                            rating = None
+                except (ValueError, TypeError):
+                    pass
+                try:
+                    if review_count_str:
+                        review_count = int(review_count_str)
+                except (ValueError, TypeError):
+                    pass
+                # L2 content safety — iHerb entry point (Bundle B, team-lead
+                # expansion of spec sec 5.2). Per-card filter so unsafe items
+                # never enter the brand-match / best-pick pipeline below.
                 from app.services.content_safety_service import get_content_safety_service
                 if not get_content_safety_service().is_text_safe(f"{item_brand} {title}"):
                     continue
                 products.append({
                     "url": href if href.startswith("http") else f"https://{region_code}.iherb.com{href}",
                     "brand": item_brand,
-                    "price": price_val,
+                    "price": float(price_str),
                     "title": title,
                     "rating": rating,
                     "review_count": review_count,
-                    # #52 — the sibling `meta[itemprop="priceCurrency"]` this
-                    # fallback was already standing next to and never read.
+                    # #52 — the card's own currency claim, carried alongside its
+                    # price so the stamp below is about THIS card, not the page's
+                    # average. Never leaves the function; the returned dict is built
+                    # explicitly from named keys.
                     "currency_token": _iherb_card_currency_token(card) if _currency_signal_gate else None,
                 })
 
-        if not products:
-            return None
+            # F2.2 — schema.org microdata fallback. When iHerb drops/renames the
+            # proprietary data-ga-* anchor attributes the selector above yields
+            # zero cards; the standards-based `meta[itemprop="price"]` markers
+            # (one per `div.product-inner` card) survive. Parsing them here keeps
+            # the price local instead of falling through to the caller's
+            # Firecrawl/Scrape.do fan-out (the 5-15s cost). Only runs on a GA-card
+            # miss, so the GA path stays authoritative (no behaviour change when
+            # cards are present).
+            if not products:
+                for card in soup.select("div.product-inner"):
+                    price_meta = card.select_one('meta[itemprop="price"]')
+                    if price_meta is None:
+                        continue
+                    price_str = (price_meta.get("content") or "").strip()
+                    if not price_str:
+                        continue
+                    try:
+                        price_val = float(price_str)
+                    except (ValueError, TypeError):
+                        continue
+                    anchor = card.select_one('a[href*="/pr/"]') or card.select_one("a[title]")
+                    href = anchor.get("href", "") if anchor else ""
+                    name_node = card.select_one('[itemprop="name"]')
+                    if name_node is not None:
+                        title = (name_node.get("content") or name_node.get_text(strip=True) or "")
+                    elif anchor is not None:
+                        title = anchor.get("title", "") or anchor.get_text(strip=True)
+                    else:
+                        title = ""
+                    title = title.strip()
+                    if not title:
+                        continue
+                    # iHerb titles are "Brand, rest...": derive brand from the head
+                    # so the existing brand-match logic below works identically to
+                    # the GA path (which carries data-ga-brand-name).
+                    item_brand = title.split(",", 1)[0].strip()
+                    rating = None
+                    review_count = None
+                    rating_node = card.select_one("[data-rating]")
+                    if rating_node is not None:
+                        try:
+                            rv = float(rating_node.get("data-rating", ""))
+                            rating = rv if 0 < rv <= 5 else None
+                        except (ValueError, TypeError):
+                            pass
+                        try:
+                            review_count = int(rating_node.get("data-review-count", ""))
+                        except (ValueError, TypeError):
+                            pass
+                    from app.services.content_safety_service import get_content_safety_service
+                    if not get_content_safety_service().is_text_safe(f"{item_brand} {title}"):
+                        continue
+                    products.append({
+                        "url": href if href.startswith("http") else f"https://{region_code}.iherb.com{href}",
+                        "brand": item_brand,
+                        "price": price_val,
+                        "title": title,
+                        "rating": rating,
+                        "review_count": review_count,
+                        # #52 — the sibling `meta[itemprop="priceCurrency"]` this
+                        # fallback was already standing next to and never read.
+                        "currency_token": _iherb_card_currency_token(card) if _currency_signal_gate else None,
+                    })
 
-        brand_lower = brand.lower()
-        name_words = normalize_words(full_name)
-        brand_matches = []
-        for p in products:
-            if p["brand"].lower() != brand_lower and brand_lower not in p["brand"].lower():
-                continue
-            brand_matches.append(p)
-        if not brand_matches:
-            brand_matches = [p for p in products if brand_lower in p["title"].lower()]
-
-        # CORRECTNESS (B1) — the requested SKU may be ABSENT from the iHerb results
-        # while a same-brand DIFFERENT product is present (Solgar D3 5000IU query ->
-        # only Solgar Magnesium Citrate on the page). The legacy best-overlap fallback
-        # had NO threshold, so it shipped that wrong product's price. Gate brand-matches
-        # through the shared identity gate; a miss returns None (pend), never a
-        # same-brand flanker. No-op when the rollback flag is OFF (legacy pick below).
-        if exact_gate_enabled():
-            exact = [
-                p for p in brand_matches
-                if _selection_match(full_name, p["title"], "supplements",
-                                    candidate_brand=p.get("brand", ""))
-            ]
-            if not exact:
+            if not products:
                 return None
-            # Among identity-matched cards prefer a full name-subset match, else the
-            # first (same identity); never a cheaper NON-matching card.
-            best = next(
-                (p for p in exact if name_words.issubset(normalize_words(p["title"]))),
-                exact[0],
-            )
-        else:
-            best = None
-            full_matches = [p for p in brand_matches
-                            if name_words.issubset(normalize_words(p["title"]))]
-            if full_matches:
-                best = full_matches[0]
-            else:
-                best_score = -1
-                for p in brand_matches:
-                    title_words = normalize_words(p["title"])
-                    overlap = len(name_words & title_words)
-                    if numbers_match(full_name, p["title"]):
-                        overlap += 2
-                    if overlap > best_score or (overlap == best_score and best and p["price"] < best["price"]):
-                        best_score = overlap
-                        best = p
-            if not best:
-                return None
 
-        # S3-genuine (team-lead 2026-06-14) — the regional iHerb storefront
-        # ({region_code}.iherb.com) serves its data-ga-discount-price NATIVELY in
-        # the region currency (bh.iherb.com → BHD). A native-BHD price is GENUINE
-        # → stamp local_bhd, NOT converted_usd. Labeling it converted_usd
-        # undercounts the genuine-BH-price-share (a real BHD price miscounted as a
-        # conversion). Rule: original_currency == region currency → local_bhd;
-        # only a genuinely-foreign-origin price is converted_usd.
-        #
-        # #52 — that rule was IMPLEMENTED as `_origin = currency` followed by
-        # `str(_origin).upper() == str(currency).upper()`: a variable compared to
-        # itself, so the answer was True for every page iHerb has ever served and
-        # the else-branch was unreachable. The function read no currency field at
-        # all — not the GA cards', not the microdata fallback's sibling
-        # `priceCurrency` — so "the storefront prices in the region currency" was
-        # an ASSUMPTION wearing a check's clothing, and a USD page would have
-        # shipped 3.852 USD as 3.852 "BHD" with the genuine stamp: 7-day TTL, the
-        # genuine authority tier in `_select_best`, a genuine-BH-share KPI slot.
-        #
-        # Behind ENABLE_IHERB_PAGE_CURRENCY the answer comes from a signal the
-        # page actually publishes. Flag OFF the block below is skipped whole and
-        # the three values seeded here are exactly the pre-#52 ones.
-        _amount = best["price"]
-        _origin = currency
-        _genuine_bh = True
-        if _currency_signal_gate:
-            _ccy_scope, _ccy_signal = _iherb_currency_signal(best.get("currency_token"), soup)
-            _ask_ccy = iso_currency_label(currency) or str(currency or "").upper()
-            if _ccy_signal is _CURRENCY_CONTRADICTION:
-                # A page that declares two different currencies has SAID
-                # something — it just cannot be read. That is the SAME state as an
-                # unreadable card token (the last arm, which pends), not the
-                # silent-page state (the next arm, which assumes); routing it to
-                # silence is what shipped a genuine `local_bhd` stamp on an
-                # unconverted amount off a mixed-currency results page. There is
-                # no honest number to pick out of a contradiction, so ship none.
-                logger.info(
-                    "[PRICE] iHerb pend: page declares two or more currencies for '%s'",
-                    full_name[:60],
+            brand_lower = brand.lower()
+            name_words = normalize_words(full_name)
+            brand_matches = []
+            for p in products:
+                if p["brand"].lower() != brand_lower and brand_lower not in p["brand"].lower():
+                    continue
+                brand_matches.append(p)
+            if not brand_matches:
+                brand_matches = [p for p in products if brand_lower in p["title"].lower()]
+
+            # CORRECTNESS (B1) — the requested SKU may be ABSENT from the iHerb results
+            # while a same-brand DIFFERENT product is present (Solgar D3 5000IU query ->
+            # only Solgar Magnesium Citrate on the page). The legacy best-overlap fallback
+            # had NO threshold, so it shipped that wrong product's price. Gate brand-matches
+            # through the shared identity gate; a miss returns None (pend), never a
+            # same-brand flanker. No-op when the rollback flag is OFF (legacy pick below).
+            if exact_gate_enabled():
+                exact = [
+                    p for p in brand_matches
+                    if _selection_match(full_name, p["title"], "supplements",
+                                        candidate_brand=p.get("brand", ""))
+                ]
+                if not exact:
+                    return None
+                # Among identity-matched cards prefer a full name-subset match, else the
+                # first (same identity); never a cheaper NON-matching card.
+                best = next(
+                    (p for p in exact if name_words.issubset(normalize_words(p["title"]))),
+                    exact[0],
                 )
-                return None
-            if _ccy_signal is None:
-                # THE ASSUMPTION, and this is now the ONLY place it lives: a page
-                # that declares no currency anywhere is taken to price in the
-                # currency its regional storefront exists to serve. Deliberately
-                # not a pend — the GA cards iHerb serves today carry no currency
-                # marker at all (tests/fixtures/iherb_ga_cards.html), so pending
-                # here would trade a mislabel nobody has observed for losing
-                # every supplement price the adapter currently captures.
-                pass
-            elif _ccy_signal == _ask_ccy:
-                # The page agrees with the storefront. Genuine, unconverted. True
-                # of both scopes: a DOCUMENT-level code that matches the ask only
-                # ever CONFIRMS the assumption already being made, so it cannot
-                # move a number and needs no scoping argument.
-                pass
-            elif _ccy_scope != _CCY_SCOPE_CARD:
-                # A foreign (or unreadable) code that is NOT attached to the card
-                # being shipped. Do NOT convert on it: `_page_currency_evidence`
-                # answers with the first og/product meta or the first JSON-LD
-                # `priceCurrency` ANYWHERE on a MULTI-PRODUCT search page, so a
-                # canonical document-level USD on a template whose cards price in
-                # BHD would multiply every genuine BHD supplement price by 0.376
-                # — a 62%-low number, strictly worse than the mislabel #52 exists
-                # to fix. Document evidence gets exactly two powers: confirm
-                # (above) or pend (here).
-                logger.info(
-                    "[PRICE] iHerb pend: document-level currency %s disagrees with %s "
-                    "and is not scoped to the chosen card for '%s'",
-                    _ccy_signal, _ask_ccy, full_name[:60],
-                )
-                return None
             else:
-                # A real foreign denomination, or a token nothing can read —
-                # declared BY THE CHOSEN CARD, which is what licenses touching
-                # that card's amount at all (the document-scoped case pended
-                # above). `_convert_to_bhd` only ever targets BHD, and the shared
-                # `is_convertible` gate is the SAME effective table it converts
-                # against (so ENABLE_EXTENDED_FALLBACK_RATES widens both together
-                # — asking FALLBACK_RATES directly would pend a currency the
-                # converter can in fact handle). Either miss means there is no
-                # honest number to ship, so ship none: a foreign figure wearing
-                # the region-currency label is the BLOCKER-4 defect exactly.
-                from app.services.exchange_rate_service import is_convertible
-                if _ask_ccy != "BHD" or not is_convertible(_ccy_signal):
+                best = None
+                full_matches = [p for p in brand_matches
+                                if name_words.issubset(normalize_words(p["title"]))]
+                if full_matches:
+                    best = full_matches[0]
+                else:
+                    best_score = -1
+                    for p in brand_matches:
+                        title_words = normalize_words(p["title"])
+                        overlap = len(name_words & title_words)
+                        if numbers_match(full_name, p["title"]):
+                            overlap += 2
+                        if overlap > best_score or (overlap == best_score and best and p["price"] < best["price"]):
+                            best_score = overlap
+                            best = p
+                if not best:
+                    return None
+
+            # S3-genuine (team-lead 2026-06-14) — the regional iHerb storefront
+            # ({region_code}.iherb.com) serves its data-ga-discount-price NATIVELY in
+            # the region currency (bh.iherb.com → BHD). A native-BHD price is GENUINE
+            # → stamp local_bhd, NOT converted_usd. Labeling it converted_usd
+            # undercounts the genuine-BH-price-share (a real BHD price miscounted as a
+            # conversion). Rule: original_currency == region currency → local_bhd;
+            # only a genuinely-foreign-origin price is converted_usd.
+            #
+            # #52 — that rule was IMPLEMENTED as `_origin = currency` followed by
+            # `str(_origin).upper() == str(currency).upper()`: a variable compared to
+            # itself, so the answer was True for every page iHerb has ever served and
+            # the else-branch was unreachable. The function read no currency field at
+            # all — not the GA cards', not the microdata fallback's sibling
+            # `priceCurrency` — so "the storefront prices in the region currency" was
+            # an ASSUMPTION wearing a check's clothing, and a USD page would have
+            # shipped 3.852 USD as 3.852 "BHD" with the genuine stamp: 7-day TTL, the
+            # genuine authority tier in `_select_best`, a genuine-BH-share KPI slot.
+            #
+            # Behind ENABLE_IHERB_PAGE_CURRENCY the answer comes from a signal the
+            # page actually publishes. Flag OFF the block below is skipped whole and
+            # the three values seeded here are exactly the pre-#52 ones.
+            _amount = best["price"]
+            _origin = currency
+            _genuine_bh = True
+            if _currency_signal_gate:
+                _ccy_scope, _ccy_signal = _iherb_currency_signal(best.get("currency_token"), soup)
+                _ask_ccy = iso_currency_label(currency) or str(currency or "").upper()
+                if _ccy_signal is _CURRENCY_CONTRADICTION:
+                    # A page that declares two different currencies has SAID
+                    # something — it just cannot be read. That is the SAME state as an
+                    # unreadable card token (the last arm, which pends), not the
+                    # silent-page state (the next arm, which assumes); routing it to
+                    # silence is what shipped a genuine `local_bhd` stamp on an
+                    # unconverted amount off a mixed-currency results page. There is
+                    # no honest number to pick out of a contradiction, so ship none.
                     logger.info(
-                        "[PRICE] iHerb pend: page currency %s is not expressible in %s for '%s'",
+                        "[PRICE] iHerb pend: page declares two or more currencies for '%s'",
+                        full_name[:60],
+                    )
+                    return None
+                if _ccy_signal is None:
+                    # THE ASSUMPTION, and this is now the ONLY place it lives: a page
+                    # that declares no currency anywhere is taken to price in the
+                    # currency its regional storefront exists to serve. Deliberately
+                    # not a pend — the GA cards iHerb serves today carry no currency
+                    # marker at all (tests/fixtures/iherb_ga_cards.html), so pending
+                    # here would trade a mislabel nobody has observed for losing
+                    # every supplement price the adapter currently captures.
+                    pass
+                elif _ccy_signal == _ask_ccy:
+                    # The page agrees with the storefront. Genuine, unconverted. True
+                    # of both scopes: a DOCUMENT-level code that matches the ask only
+                    # ever CONFIRMS the assumption already being made, so it cannot
+                    # move a number and needs no scoping argument.
+                    pass
+                elif _ccy_scope != _CCY_SCOPE_CARD:
+                    # A foreign (or unreadable) code that is NOT attached to the card
+                    # being shipped. Do NOT convert on it: `_page_currency_evidence`
+                    # answers with the first og/product meta or the first JSON-LD
+                    # `priceCurrency` ANYWHERE on a MULTI-PRODUCT search page, so a
+                    # canonical document-level USD on a template whose cards price in
+                    # BHD would multiply every genuine BHD supplement price by 0.376
+                    # — a 62%-low number, strictly worse than the mislabel #52 exists
+                    # to fix. Document evidence gets exactly two powers: confirm
+                    # (above) or pend (here).
+                    logger.info(
+                        "[PRICE] iHerb pend: document-level currency %s disagrees with %s "
+                        "and is not scoped to the chosen card for '%s'",
                         _ccy_signal, _ask_ccy, full_name[:60],
                     )
                     return None
-                _amount = round(_convert_to_bhd(float(_amount), _ccy_signal), 3)
-                if not _amount or _amount <= 0:
-                    return None
-                # `_origin` is now read off the CARD — the whole point of #52,
-                # and the only scope narrow enough to justify a conversion.
-                # `converted_usd` is the module's literal for "not a native shelf
-                # price", which keeps it out of the genuine TTL/authority/KPI paths.
-                _origin = _ccy_signal
-                _genuine_bh = False
-        return {
-            "amount": _amount,
-            "original_currency": _origin,
-            "currency": currency,
-            "retailer": "iHerb",
-            "url": best["url"],
-            # B1 — keep the matched product title so the chokepoint + cache-write
-            # guard can re-verify identity (it was stripped before, hiding wrong picks).
-            "title": best.get("title", ""),
-            "in_stock": True,
-            "confidence": 1.0,
-            "estimated": False,
-            "_cached": False,
-            "iherb_rating": best.get("rating"),
-            "iherb_review_count": best.get("review_count"),
-            "source_method": "local_bhd" if _genuine_bh else "converted_usd",
-        }
+                else:
+                    # A real foreign denomination, or a token nothing can read —
+                    # declared BY THE CHOSEN CARD, which is what licenses touching
+                    # that card's amount at all (the document-scoped case pended
+                    # above). `_convert_to_bhd` only ever targets BHD, and the shared
+                    # `is_convertible` gate is the SAME effective table it converts
+                    # against (so ENABLE_EXTENDED_FALLBACK_RATES widens both together
+                    # — asking FALLBACK_RATES directly would pend a currency the
+                    # converter can in fact handle). Either miss means there is no
+                    # honest number to ship, so ship none: a foreign figure wearing
+                    # the region-currency label is the BLOCKER-4 defect exactly.
+                    from app.services.exchange_rate_service import is_convertible
+                    if _ask_ccy != "BHD" or not is_convertible(_ccy_signal):
+                        logger.info(
+                            "[PRICE] iHerb pend: page currency %s is not expressible in %s for '%s'",
+                            _ccy_signal, _ask_ccy, full_name[:60],
+                        )
+                        return None
+                    _amount = round(_convert_to_bhd(float(_amount), _ccy_signal), 3)
+                    if not _amount or _amount <= 0:
+                        return None
+                    # `_origin` is now read off the CARD — the whole point of #52,
+                    # and the only scope narrow enough to justify a conversion.
+                    # `converted_usd` is the module's literal for "not a native shelf
+                    # price", which keeps it out of the genuine TTL/authority/KPI paths.
+                    _origin = _ccy_signal
+                    _genuine_bh = False
+            return {
+                "amount": _amount,
+                "original_currency": _origin,
+                "currency": currency,
+                "retailer": "iHerb",
+                "url": best["url"],
+                # B1 — keep the matched product title so the chokepoint + cache-write
+                # guard can re-verify identity (it was stripped before, hiding wrong picks).
+                "title": best.get("title", ""),
+                "in_stock": True,
+                "confidence": 1.0,
+                "estimated": False,
+                "_cached": False,
+                "iherb_rating": best.get("rating"),
+                "iherb_review_count": best.get("review_count"),
+                "source_method": "local_bhd" if _genuine_bh else "converted_usd",
+            }
+        if price_parse_offload_enabled():
+            return await run_parse_offloaded(_w04_parse_block)
+        return _w04_parse_block()
     except Exception as e:
         logger.warning(f"[PRICE] iHerb direct fetch failed: {e}")
         return None
@@ -16641,9 +16746,17 @@ async def _try_pharmacy_urls(
                 if resp.status_code != 200:
                     continue
 
-                price_data = extract_jsonld_price(
-                    resp.text, brand, currency, query_name=full_name,
-                )
+                if price_parse_offload_enabled():
+                    # R-W04 (W0-4c) — the JSON-LD soup runs on the bounded
+                    # price-parse pool; flag OFF the inline call below, unchanged.
+                    price_data = await run_parse_offloaded(
+                        extract_jsonld_price,
+                        resp.text, brand, currency, query_name=full_name,
+                    )
+                else:
+                    price_data = extract_jsonld_price(
+                        resp.text, brand, currency, query_name=full_name,
+                    )
                 if price_data:
                     # L2 content safety — pharmacy JSON-LD entry point
                     # (Bundle B, team-lead expansion of spec sec 5.2).

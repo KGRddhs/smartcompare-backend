@@ -32,6 +32,14 @@ USAGE
 
     # Then diff the printed "OVERALL SHA256" between base and head runs.
 
+    # Flag-ON result neutrality (R-W04): sweep once with the flag forced OFF,
+    # then with it forced ON, comparing the results arrays (the OVERALL digests
+    # differ by construction, since the flag lists are part of the payload):
+    python scripts/verify_flag_byte_identity.py --proof-root ... \
+        --flags ENABLE_X --out off.json
+    python scripts/verify_flag_byte_identity.py --proof-root ... \
+        --flags-on ENABLE_X --compare off.json
+
 MANIFEST CONTRACT (per row): ``url`` is required. The HTML body is resolved,
 in order: an explicit ``path``/``html_path`` field; ``<html-dir>/<sha1(
 'curl_cffi|'+url)>.html`` (the Gulf sweep convention); ``<html-dir>/<sha1(
@@ -233,6 +241,7 @@ def run_harness(
     records: List[Dict[str, Any]],
     flags: List[str],
     skipped_no_html: int = 0,
+    flags_on: Optional[List[str]] = None,
 ) -> Tuple[Dict[str, Any], str]:
     """Run the extraction sweep; return (payload, overall_sha256).
 
@@ -240,10 +249,16 @@ def run_harness(
     environment values are restored afterwards), and the exact-price gate is
     swept over both modes. Each page runs TWO currency legs — its own page
     currency and the BHD ask — because currency-relabel regressions only show
-    on the leg where ask and page disagree."""
+    on the leg where ask and page disagree.
+
+    R-W04: every flag in ``flags_on`` is forced ``"true"`` for the sweep and
+    restored afterwards (an unset flag is unset again). Only then does the
+    payload carry a ``flags_forced_on`` key; without it the payload keeps
+    exactly its historical keys, so every recorded OVERALL digest reproduces."""
     from app.services.price_service import extract_price_from_html
 
-    pinned = list(flags) + ["ENABLE_EXACT_PRICE_GATE"]
+    flags_on = list(flags_on or [])
+    pinned = list(flags) + flags_on + ["ENABLE_EXACT_PRICE_GATE"]
     saved = {name: os.environ.get(name) for name in pinned}
     payload: Dict[str, Any] = {
         "n_records": len(records),
@@ -251,9 +266,13 @@ def run_harness(
         "flags_forced_off": sorted(flags),
         "results": [],
     }
+    if flags_on:
+        payload["flags_forced_on"] = sorted(flags_on)
     try:
         for name in flags:
             os.environ[name] = "false"
+        for name in flags_on:
+            os.environ[name] = "true"
         for gate in GATE_MODES:
             os.environ["ENABLE_EXACT_PRICE_GATE"] = gate
             for rec in records:
@@ -299,6 +318,51 @@ def run_harness(
     return payload, hashlib.sha256(blob.encode("utf-8")).hexdigest()
 
 
+def results_sha256(results: List[Dict[str, Any]]) -> str:
+    """SHA-256 of the results array alone (independent of the flag lists, so a
+    flag-ON sweep and a flag-OFF sweep of the same code can be compared)."""
+    blob = json.dumps(results, sort_keys=True, ensure_ascii=True)
+    return hashlib.sha256(blob.encode("utf-8")).hexdigest()
+
+
+def compare_results(
+    mine: List[Dict[str, Any]], theirs: List[Dict[str, Any]], max_shown: int = 5,
+) -> Tuple[bool, List[str]]:
+    """(equal, report lines): both results digests, their equality, the count of
+    differing records (keyed on corpus/url/gate/leg plus the occurrence number,
+    because a manifest can list one url twice; either side missing counts) and
+    the first ``max_shown`` of them."""
+    a, b = results_sha256(mine), results_sha256(theirs)
+
+    def keyed(results: List[Dict[str, Any]]) -> Dict[Tuple[Any, ...], Dict[str, Any]]:
+        seen: Dict[Tuple[Any, ...], int] = {}
+        out: Dict[Tuple[Any, ...], Dict[str, Any]] = {}
+        for r in results:
+            base = (r.get("corpus"), r.get("url"), r.get("gate"), r.get("leg"))
+            n = seen.get(base, 0)
+            seen[base] = n + 1
+            out[base + (n,)] = r
+        return out
+
+    mine_by, theirs_by = keyed(mine), keyed(theirs)
+    keys = sorted(set(mine_by) | set(theirs_by), key=lambda k: tuple(str(x) for x in k))
+    diffs = [k for k in keys if mine_by.get(k) != theirs_by.get(k)]
+    lines = [
+        "RESULTS SHA256 this=%s other=%s equal=%s" % (a, b, a == b),
+        "DIFFERING RECORDS %d of %d" % (len(diffs), len(keys)),
+    ]
+    for k in diffs[:max_shown]:
+        mine_r, theirs_r = mine_by.get(k), theirs_by.get(k)
+        lines.append("DIFF corpus=%s url=%s gate=%s leg=%s occurrence=%s" % k)
+        for label, rec in (("this", mine_r), ("other", theirs_r)):
+            shown = "MISSING" if rec is None else json.dumps(
+                {"result": rec.get("result"), "error": rec.get("error")},
+                sort_keys=True, ensure_ascii=True,
+            )[:400]
+            lines.append("  %s: %s" % (label, shown))
+    return a == b, lines
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--corpus", action="append", default=[],
@@ -314,9 +378,23 @@ def main(argv: Optional[List[str]] = None) -> int:
                         help="smoke mode: only the first N records (manifest "
                              "order, deterministic); 0 = all")
     parser.add_argument("--out", default=None, help="write the full payload JSON here")
+    parser.add_argument("--flags-on", default="",
+                        help="comma-separated flags to force ON ('true') for the sweep; "
+                             "each is restored to its prior value (or unset) afterwards")
+    parser.add_argument("--compare", default=None,
+                        help="another run's --out payload: print the results-array "
+                             "SHA-256 of both, their equality and the first differing "
+                             "records (exit 1 when they differ)")
+    parser.add_argument("--compare-max", type=int, default=5,
+                        help="how many differing records --compare prints (default 5)")
     args = parser.parse_args(argv)
 
     flags = [f.strip() for f in args.flags.split(",") if f.strip()]
+    flags_on = [f.strip() for f in args.flags_on.split(",") if f.strip()]
+    both = sorted(set(flags) & set(flags_on))
+    if both:
+        print("ERROR: flag(s) named in both --flags and --flags-on: %s" % ", ".join(both))
+        return 2
     # Pin the environment BEFORE the app import so even an import-time flag
     # read (none exist today, by repo convention) cannot leak ON state.
     for name in flags:
@@ -350,7 +428,8 @@ def main(argv: Optional[List[str]] = None) -> int:
               "failure). Fix the manifest/derivation." % next(iter(queries)))
         return 2
 
-    payload, digest = run_harness(records, flags, skipped_no_html=skipped)
+    payload, digest = run_harness(records, flags, skipped_no_html=skipped,
+                                  flags_on=flags_on)
     if args.out:
         with open(args.out, "w", encoding="utf-8") as fh:
             fh.write(json.dumps(payload, sort_keys=True, ensure_ascii=True, indent=1))
@@ -358,6 +437,15 @@ def main(argv: Optional[List[str]] = None) -> int:
           % (len(records), skipped, payload["distinct_queries"],
              payload["non_none_extractions"], len(payload["results"])))
     print("OVERALL SHA256 " + digest)
+    if args.compare:
+        with open(args.compare, encoding="utf-8") as fh:
+            other = json.load(fh)
+        equal, lines = compare_results(
+            payload["results"], other.get("results", []), max_shown=args.compare_max,
+        )
+        for line in lines:
+            print(line)
+        return 0 if equal else 1
     return 0
 
 
