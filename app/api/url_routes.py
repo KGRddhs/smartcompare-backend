@@ -26,6 +26,9 @@ from app.api.auth_routes import get_optional_user
 # W2-1: ONE definition of the flag for the whole unit (see the helper's
 # docstring in text_routes). url_routes deliberately does not re-parse the env.
 from app.api.text_routes import paid_route_metering_enabled
+# R-METER (W2-1c): the text route's failure-code -> wire mapping, shared so a
+# failed URL verdict surfaces exactly like a failed text comparison.
+from app.api.text_routes import _surface_comparison_failure
 from app.services.feedback_service import save_comparison_and_track_cohort
 from app.services.usage_service import (
     consume_comparison_credit,
@@ -105,13 +108,24 @@ async def _compare_urls_metered(
         raise
 
     if not result.get("success"):
-        # The `<2 products` exit. Refund BEFORE raising -- the M13-37 lesson:
+        # The `<2 products` and failed-verdict (R-METER W2-1c) exits. Refund
+        # BEFORE raising -- the M13-37 lesson:
         # a refund placed after a call that raises is unreachable dead code.
         if usage_consumed and user_id:
             fire_and_forget(
                 refund_comparison_credit(user_id),
                 label="usage_refund.url.compare.failure",
             )
+        # R-METER (W2-1c): only a CODED failure (the failed-verdict
+        # LLM_UNAVAILABLE result) rides the text route's mapping, which raises
+        # the structured `{code, error}` 503 the error handler lifts to the top
+        # level. A code-less result (the `<2 products` exit) keeps main's bare-
+        # string 400 below, byte-identical: W4-9's codeless allowlist in that
+        # mapping would redact its message to INTERNAL_ERROR.
+        if result.get("code"):
+            surfaced = _surface_comparison_failure(result)
+            if surfaced is not None:
+                return surfaced
         raise HTTPException(
             status_code=400,
             detail=result.get("error", "Comparison failed")

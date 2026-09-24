@@ -506,11 +506,16 @@ def test_url_compare_post_returns_success_on_extracted_pair(
     500s because compare_from_urls (:583) never unpacks generate_comparison's
     2-tuple and then calls .get() on it at :591.
 
-    This node drives the REAL generate_comparison -- only ``get_client`` is
-    stubbed, so the genuine `:2547` return path executes -- and it runs with the
-    metering flag OFF on purpose: the unpack is an UNFLAGGED defect fix, so a
-    flag-OFF deployment must serve a real comparison too."""
-    _stub_url_leaves(monkeypatch, real_generate=True)
+    It runs with the metering flag OFF on purpose: the unpack is an UNFLAGGED
+    defect fix, so a flag-OFF deployment must serve a real comparison too.
+
+    R-METER (W2-1c): this node used to drive the REAL generate_comparison's
+    offline except-branch (get_client raising) and so certified the
+    fabricated-winner / str(e)-leak body as a success. It now feeds the real
+    SUCCESS shape, ``REAL_GENERATE_COMPARISON_RETURN`` (a genuine 2-tuple), so
+    it still pins the unpack; the failed-verdict case is pinned the other way
+    round in tests/test_retro_w2_1.py."""
+    _stub_url_leaves(monkeypatch)
 
     resp = _post_compare(client)
 
@@ -530,8 +535,9 @@ def test_url_compare_post_returns_success_on_extracted_pair(
 def test_url_compare_get_returns_success_on_extracted_pair(
     monkeypatch, client, flag_off
 ):
-    """RED: same defect on the GET twin (url_routes.py:184)."""
-    _stub_url_leaves(monkeypatch, real_generate=True)
+    """RED: same defect on the GET twin (url_routes.py:184). R-METER: fed the
+    real success 2-tuple, not the except-branch (see the POST twin)."""
+    _stub_url_leaves(monkeypatch)
 
     resp = client.get(
         "/api/v1/url/compare",
