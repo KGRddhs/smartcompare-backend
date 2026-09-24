@@ -540,8 +540,12 @@ describe('background refresh outcomes (A3)', () => {
     await settleBackground();
     expect(mockPost).toHaveBeenCalledTimes(1); // positive control: in flight
 
-    await authService.logout();
-    expect(await SecureStore.getItemAsync(TOKEN_KEY)).toBeNull();
+    // W1-4d — logout now waits (bounded) for an in-flight refresh before it
+    // posts, so the refresh lands while logout is PENDING. The epoch is
+    // bumped at the start of logout, so the landing is still "after the
+    // logout": the assertions below are unchanged.
+    const loggingOut = authService.logout();
+    await settleBackground();
 
     post.resolve({
       data: {
@@ -550,6 +554,8 @@ describe('background refresh outcomes (A3)', () => {
         user: FRESH_USER,
       },
     });
+    await loggingOut;
+    expect(await SecureStore.getItemAsync(TOKEN_KEY)).toBeNull();
     await settleBackground();
 
     expect(await SecureStore.getItemAsync(TOKEN_KEY)).toBeNull();

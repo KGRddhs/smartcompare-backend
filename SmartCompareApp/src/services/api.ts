@@ -177,6 +177,19 @@ export function getOrStartRefresh(): Promise<RefreshResult> {
   return refreshPromise;
 }
 
+/**
+ * W1-4d — READ-ONLY view of the refresh singleton: the in-flight
+ * POST /api/v1/auth/refresh Promise, or null when none is open. It never
+ * starts a refresh (that is getOrStartRefresh's job). authService.logout()
+ * uses it to let a refresh that is already on the wire land before it
+ * presents a session to /auth/logout — a caller that wants to stop
+ * WAITING races this Promise; the refresh itself still runs to completion
+ * (P-A3).
+ */
+export function getInFlightRefresh(): Promise<RefreshResult> | null {
+  return refreshPromise;
+}
+
 /** Test-only: clear the in-flight refresh Promise. Do NOT call in production. */
 export function __resetRefreshMutex(): void {
   refreshPromise = null;

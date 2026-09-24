@@ -50,7 +50,7 @@ function getCrypto() {
   }
   return Crypto;
 }
-import api, { API_BASE_URL, getOrStartRefresh } from './api';
+import api, { API_BASE_URL, getInFlightRefresh, getOrStartRefresh } from './api';
 import { getDeviceFingerprint } from './deviceFingerprint';
 
 /**
@@ -235,29 +235,88 @@ export async function login(email: string, password: string): Promise<AuthRespon
 /**
  * Logout user
  *
- * S65 W1-4 (client half) — the Bearer alone only tells the server WHICH
- * user is leaving; Supabase revokes a session by its REFRESH token, so a
- * logout that sends no refresh token leaves the stored one valid until it
- * expires on its own. Hand the server the token it must revoke, in the
- * optional `refresh_token` body field the backend added in PR #139
- * (revoked upstream only when ENABLE_LOGOUT_UPSTREAM_REVOCATION is on;
- * ignored otherwise). With nothing stored — or if the SecureStore read
- * fails — the body stays `{}`, byte-for-byte today's request, so the
- * server takes its existing path. The value is NEVER logged or sent to
- * Sentry: it is a live credential until the server revokes it.
+ * S65 W1-4 (client half) — hand the server the stored refresh token in the
+ * optional `refresh_token` body field the backend added in PR #139 (used
+ * upstream only when ENABLE_LOGOUT_UPSTREAM_REVOCATION is on; ignored
+ * otherwise). With nothing stored — or if the SecureStore read fails — the
+ * body stays `{}`, byte-for-byte today's request, so the server takes its
+ * existing path. The value is NEVER logged or sent to Sentry: it is a live
+ * credential until the server revokes it. (Retro W1-4, measured: on the
+ * valid-access-token path Supabase revokes by the JWT's session, so the
+ * refresh-token VALUE only matters on the expired/in-flight paths below.)
+ *
+ * W1-4d — the server authenticates this POST with the Bearer BEFORE it
+ * revokes anything, and /auth/logout is on the 401 interceptor's
+ * skip-refresh list, so an expired or stale Bearer revokes nothing. So,
+ * before posting:
+ *   1. the session epoch is bumped FIRST (P-A3): a refresh already in
+ *      flight that lands from here on neither writes storage nor fires
+ *      onSessionRefreshed — its rotated pair is handed to this logout in
+ *      memory instead, and only if it was sent under the session this
+ *      logout ends (see refreshSession's epoch guard);
+ *   2. an in-flight refresh is awaited, bounded by LOGOUT_REFRESH_WAIT_MS
+ *      so a black-holed refresh can never hold the logout tap;
+ *   3. if the access token's JWT `exp` has passed (payload decoded WITHOUT
+ *      verification; a malformed token or one with no numeric `exp` is
+ *      expired-UNKNOWN and is sent as today), ONE refresh is started and
+ *      awaited under the same bound;
+ *   4. the local session is cleared, then exactly ONE POST goes out
+ *      carrying the freshest pair held in memory (the request interceptor
+ *      stamps the STORED token over an explicit header while one is stored,
+ *      so the clear is what lets the in-memory pair reach the wire). No
+ *      retry loop; clearSession also stays in `finally`.
+ * Every step of the preparation swallows its own errors: at worst the
+ * stored pair is sent, exactly as before.
  */
 export async function logout(): Promise<void> {
+  // The handoff is keyed to the session generation THIS logout ends (the
+  // epoch before its bump): only a refresh that went out under that
+  // generation may hand its pair here, never one from an earlier session.
+  const handoff: LogoutHandoff = { epoch: sessionEpoch, pair: null };
+  logoutHandoffs.add(handoff);
+  // P-A3 — bump BEFORE any await (see refreshSession's epoch guard).
+  sessionEpoch += 1;
   try {
-    const token = await getToken();
+    let token: string | null = null;
+    let handedOffRefresh: string | null = null;
+    try {
+      let refreshStillInFlight = false;
+      const inflight = getInFlightRefresh();
+      if (inflight) {
+        refreshStillInFlight = !(await settlesWithinLogoutBound(inflight));
+      }
+      if (handoff.pair) {
+        token = handoff.pair.access;
+        handedOffRefresh = handoff.pair.refresh;
+      } else {
+        token = await getToken();
+        if (token && !refreshStillInFlight && isJwtExpired(token)) {
+          // One refresh, started after the epoch bump, so it persists the
+          // rotated pair normally; read it back below.
+          await settlesWithinLogoutBound(getOrStartRefresh());
+          token = await getToken();
+        }
+      }
+    } catch {
+      // Never let the refresh-first preparation cost the server call.
+      if (!token) token = await getToken();
+    }
     if (token) {
       // A SecureStore read failure must never cost us the server call:
       // degrade to today's empty body rather than skipping the POST.
-      let refreshToken: string | null = null;
-      try {
-        refreshToken = await SecureStore.getItemAsync(REFRESH_TOKEN_KEY);
-      } catch {
-        refreshToken = null;
+      let refreshToken: string | null = handedOffRefresh;
+      if (!refreshToken) {
+        try {
+          refreshToken = await SecureStore.getItemAsync(REFRESH_TOKEN_KEY);
+        } catch {
+          refreshToken = null;
+        }
       }
+      // W1-4d — end the local session BEFORE the POST: the request
+      // interceptor stamps the STORED token over the explicit header below
+      // while one is stored, and the pair we hold may be fresher than
+      // storage (handed off by a refresh that landed after the epoch bump).
+      await clearSession();
       // Try to logout on server, but don't fail if it doesn't work
       try {
         await api.post('/api/v1/auth/logout', refreshToken ? { refresh_token: refreshToken } : {}, {
@@ -271,6 +330,7 @@ export async function logout(): Promise<void> {
   } catch (error) {
     if (__DEV__) console.error('Logout error:', error);
   } finally {
+    logoutHandoffs.delete(handoff);
     // Always clear local storage
     await clearSession();
     // M18 MB-flows-04 — a user-initiated logout is the account-switch
@@ -303,6 +363,89 @@ export async function logout(): Promise<void> {
  * logout tap can land mid-flight.
  */
 let sessionEpoch = 0;
+
+/**
+ * W1-4d — while a logout is preparing, a refresh that lands after its
+ * epoch bump hands its rotated pair HERE (memory only) instead of to
+ * storage, so the logout can present the pair the server now considers
+ * live. Each preparing logout registers its own handoff, keyed by the
+ * epoch it ends; a refresh fills only the handoff whose epoch equals the
+ * epoch the refresh was sent under, so a refresh from an EARLIER session
+ * (e.g. one hung across logout -> login(B) -> logout) can never hand its
+ * pair to a later logout. Empty whenever no logout is preparing, so every
+ * other path is unchanged; each logout removes its own entry in `finally`.
+ */
+type LogoutHandoff = {
+  epoch: number;
+  pair: { access: string; refresh: string | null } | null;
+};
+const logoutHandoffs = new Set<LogoutHandoff>();
+
+/** Test-only: how many logouts currently hold a handoff. Do NOT call in production. */
+export function __pendingLogoutHandoffCount(): number {
+  return logoutHandoffs.size;
+}
+
+/** W1-4d — the most a logout tap waits for a refresh (never the request). */
+const LOGOUT_REFRESH_WAIT_MS = 5000;
+
+/** Resolves true if `p` settles (either way) within the bound, else false. */
+async function settlesWithinLogoutBound(p: Promise<unknown>): Promise<boolean> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const bound = new Promise<false>((resolve) => {
+    timer = setTimeout(() => resolve(false), LOGOUT_REFRESH_WAIT_MS);
+  });
+  try {
+    return await Promise.race([
+      p.then(
+        () => true,
+        () => true,
+      ),
+      bound,
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
+const B64URL = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+
+/** Base64url -> byte string, or null on any invalid input. No atob/Buffer. */
+function decodeBase64Url(s: string): string | null {
+  if (s.length % 4 === 1) return null;
+  let bits = 0;
+  let value = 0;
+  let out = '';
+  for (let i = 0; i < s.length; i += 1) {
+    const idx = B64URL.indexOf(s[i]);
+    if (idx < 0) return null;
+    value = (value << 6) | idx;
+    bits += 6;
+    if (bits >= 8) {
+      bits -= 8;
+      out += String.fromCharCode((value >> bits) & 0xff);
+    }
+  }
+  return out;
+}
+
+/**
+ * W1-4d — true only when `token` is a three-segment JWT whose payload
+ * decodes (WITHOUT verification — the server verifies) to a numeric `exp`
+ * (seconds) that has passed. Anything else is expired-UNKNOWN -> false.
+ */
+function isJwtExpired(token: string): boolean {
+  const parts = token.split('.');
+  if (parts.length !== 3) return false;
+  const json = decodeBase64Url(parts[1]);
+  if (json === null) return false;
+  try {
+    const exp = JSON.parse(json)?.exp;
+    return typeof exp === 'number' && Number.isFinite(exp) && exp * 1000 <= Date.now();
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Refresh session - with graceful error handling
@@ -338,6 +481,18 @@ export async function refreshSession(): Promise<AuthResponse> {
       // re-persist a session the user already ended. `sessionInvalid` is
       // deliberately absent: nothing is wrong with the session state the
       // app is already in.
+      // W1-4d — a logout that is still preparing gets the rotated pair in
+      // memory (never storage), so it can revoke the session the server
+      // just rotated instead of presenting the spent one.
+      if (response.data?.success && response.data.session?.access_token) {
+        const pair = {
+          access: response.data.session.access_token,
+          refresh: response.data.session.refresh_token || refreshToken,
+        };
+        logoutHandoffs.forEach((h) => {
+          if (h.epoch === epochAtRequest) h.pair = pair;
+        });
+      }
       return { success: false, error: 'Session ended during refresh' };
     }
 
