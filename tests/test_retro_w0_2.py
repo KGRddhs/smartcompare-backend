@@ -690,20 +690,40 @@ def _recording_create_client(calls: List[Tuple[tuple, dict]]):
     return _record
 
 
+def _assert_flag_off_anon_construction(calls: List[Tuple[tuple, dict]], n: int) -> None:
+    """R-AUTH W1-4c (merged after this pin was written, unflagged by ruling) makes
+    ``get_auth_client()`` ALWAYS pass ``options=ClientOptions(auto_refresh_token=False,
+    persist_session=False)`` so a server client never auto-refreshes; with the reuse
+    flag OFF that is now the base construction: positional (URL, ANON_KEY), the
+    ``options`` keyword ONLY, no injected transport, both auth flags False."""
+    assert len(calls) == n, calls
+    for args, kwargs in calls:
+        assert args == (FAKE_URL, FAKE_ANON), calls
+        assert set(kwargs) == {"options"}, (
+            f"flag-OFF get_auth_client() changed its construction: {calls!r}"
+        )
+        opts = kwargs["options"]
+        assert getattr(opts, "httpx_client", None) is None, (
+            f"flag-OFF anon client construction injects a transport: {calls!r}"
+        )
+        assert opts.auto_refresh_token is False and opts.persist_session is False, (
+            f"flag-OFF anon client lost the W1-4c no-auto-refresh options: {calls!r}"
+        )
+
+
 def test_pin_flag_off_anon_client_is_the_bare_base_construction():
     """PIN (green today) -- kills M13: with the flag OFF,
     ``auth_service.get_auth_client()`` is exactly base: ONE positional
-    ``create_client(URL, ANON_KEY)`` with NO keyword at all, a fresh client per
-    call, and the shared transport is never built."""
+    ``create_client(URL, ANON_KEY)`` with only the W1-4c ``options`` keyword
+    (auto_refresh_token=False, persist_session=False, no httpx_client), a fresh
+    client per call, and the shared transport is never built."""
     assert FLAG not in os.environ
     calls: List[Tuple[tuple, dict]] = []
     with patch("app.services.auth_service.create_client", new=_recording_create_client(calls)), \
          patch("app.services.database_service.create_client", new=_recording_create_client(calls)):
         auth_service.get_auth_client()
         auth_service.get_auth_client()
-    assert calls == [((FAKE_URL, FAKE_ANON), {}), ((FAKE_URL, FAKE_ANON), {})], (
-        f"flag-OFF get_auth_client() changed its construction: {calls!r}"
-    )
+    _assert_flag_off_anon_construction(calls, 2)
     assert database_service._SHARED_HTTPX is None, (
         "flag OFF built the shared transport"
     )
@@ -754,7 +774,8 @@ def test_pin_flag_off_after_on_rolls_anon_and_user_clients_back(monkeypatch):
          patch("app.services.database_service.create_client", new=_recording_create_client(calls)):
         auth_service.get_auth_client()
         database_service.get_user_supabase_client("tok")
-    assert calls == [((FAKE_URL, FAKE_ANON), {}), ((FAKE_URL, FAKE_ANON), {})], calls
+    _assert_flag_off_anon_construction(calls[:1], 1)
+    assert calls[1] == ((FAKE_URL, FAKE_ANON), {}), calls
 
     anon = auth_service.get_auth_client()
     user = database_service.get_user_supabase_client("tok")
