@@ -1,0 +1,35 @@
+## W3-14 — error copy the user can act on: catalog copy by code on every settings surface, a privacy opt-out a no-priorities user can reach, and rate-limit seconds on Home (client OTA-gated + one additive backend route)
+
+### Defects (MB-NETWORK-CONTRACT-05/-06 and the copy findings, measured at base b63a8368)
+- `UserPreferencesRequest.priorities` is `min_length=1`, so a user WITHOUT priorities had NO body that could flip `ai_sharing_enabled` (the PDPL opt-out) or the notifications master: every `PUT /preferences` 422'd, and the client's answer (F-S1.5i surface C) was to DISABLE the toggles — the privacy control was unreachable.
+- Profile toggles, the password modal, EditProfile delete and Results demographics rendered `parseApiError(err).message` — the backend's English sentence or the raw axios string — including on 429s from the 1/5/10-minute limiters and the 900 s `ACCOUNT_LOCKED` lockout.
+- Home's rate-limit alert told the user to retype ("try with brand or model") and ignored the `retry_after_seconds` every backend 429 carries since W1-9.
+- Results' load-failure classifier read a rate-limit 429 as "No comparison loaded".
+
+### Backend (unflagged, additive)
+`PUT /api/v1/auth/preference-toggles` (10/min, auth required): body `{ai_sharing_enabled?, notifications_enabled?}` with at least one key; read-modify-writes `users.preferences` touching ONLY the provided key(s) through the user-scoped Supabase client (RLS enforces row ownership) — never `priorities`, `_sources`, `notification_types`, `preferences_completed`, never via `save_user_preferences`; a storage failure is a 500 with `code INTERNAL_ERROR`. `PUT /preferences` and its `min_length=1` are untouched. Tests: `tests/test_auth_preference_toggles_w314.py` (18 nodes on the REAL app, zero-network fixture, both Supabase factories patched: writes on an empty row, key isolation, 422 on an empty body, 401 without auth, the 429 envelope with `Retry-After` at call 11, the user client — never the admin — carries the write).
+
+### Client (OTA-gated)
+- `services/errorCopy.settingsErrorKey(code, fallbackKey)`: `RATE_LIMITED` → `common.errors.rateLimited`, `ACCOUNT_LOCKED` → `common.errors.locked`, everything else (including a codeless transport failure) → the caller's own fallback key. Total by construction, so no settings branch can render `parseApiError(...).message`. `friendlyErrorKey` (Home/compare) is untouched.
+- `ProfileScreen`: the two masters save through `putPreferenceToggles`; the F-S1.5i priorities gate is removed (plain hosts, masters always usable); the three re-engagement sub-toggles render only after a GET returned a stored row (`prefsRowLoaded`) so a sub flip can never write default-ON values over stored opt-outs; every error is catalog copy by code; the `!result.success` arms roll back (pinned). Password modal: the two 429 codes get catalog copy, the 400 arm keeps the backend sentence on purpose ("Current password is incorrect" is the actionable information).
+- `EditProfileScreen` delete alert and `ResultsScreen` demographics error: catalog copy by code.
+- `api.parseApiError` gains `retryAfterSeconds` (mirrors `error_handler._detail_retry_after`: positive integer only, key ABSENT otherwise so every existing `{message, code}` consumer sees the exact object it saw before). `HomeScreen` passes it as `count` into `home.errors.rateLimited_*` (en + ar plural families, zero/one/two/few/many/other); absent → i18next renders the base key, i.e. today's sentence.
+- `failureClassification`: an HTTP 429 that is NOT `USAGE_LIMIT` classifies as `timeout` (a WAIT), below the paywall row so a metering 429 still routes to the Paywall.
+- i18n: 8 new keys in each catalog (set-equal).
+
+### Declared narrowing of spec R5(iii) / §9.7
+The three re-engagement sub-toggles are visible after the first stored preferences row; a fresh account sees the two masters until its first master flip. `getPreferences()` returns `null` both for a `{}` row and for any failed read (the retained F-S1.5i surface-A coercion, `api.ts:455-472`), so the call site cannot tell "empty row" from "read failed" without an api.ts change; the subs therefore stay hidden on every null read. Not a regression against BASE (which also hid them). Device checklist: "the three re-engagement sub-toggles visible after the first stored preferences row; a fresh account sees the two masters until its first flip". Follow-up `PO-PREFS-01`: make `getPreferences` return a tagged result (row / empty / error).
+
+### Tests and evidence
+- Client: 7 new suites / 97 nodes (`ProfileScreen.toggles.w314`, `HomeScreen.rateLimitedSeconds.w314`, `EditProfileScreen.deleteCopy.w314`, `ResultsScreen.demographicsCopy.w314`, `api.networkMatrix.w314`, `api.parseApiError.retryAfter.w314`, `errorCopy.w314`); `ProfileScreen.togglesGated.test.tsx` deleted — each of its 8 cases names its successor pin (case (4) → `toggles.w314` "getPreferences → null: the notifications master is ENABLED and a flip PUTs exactly {notifications_enabled:false}", mutation N14 1 red of 55). Neighbours: the 17 remaining spec suites 225 passed / 8 todo; `api.refreshInterceptor` 15.
+- Full jest `--maxWorkers=25%`: 287 passed / 3 skipped of 290 suites, 2841 passed / 13 skipped / 13 todo, 44/44 snapshots = baseline (281 / 2752 / 44) − togglesGated (1 suite, 8 tests) + the unit's 7 suites / 97 tests. tsc 5.9.3 clean; eslint 0 errors (74 warnings on the 7 src files = baseline).
+- Backend (pinned venv): the six-file set 127 passed = 109 in the five named files (test_429_contract 17, test_error_middleware 10, test_auth_ai_sharing_toggle 10, test_personalization 52, test_push_token_endpoint 20) + 18 in the new file; ruff + py_compile clean; the same 18 pass on the drifted global python.
+- Mutation-checked from byte snapshots with sha-verified restores across green, adversary (DEFECTIVE r0 → fixed), re-review SOUND, polish and recheck SOUND: every client arm (N1-N15: catch rollbacks, master/sub write isolation, retryAfter parsing, code routing, classifier order) and every backend branch (B1-B6: limiter, RMW, key isolation, exception → 500, validator, user-vs-admin client — B6 reddens on a mock assertion with zero network attempts) kills a named test.
+
+### Review trail
+Red (8 files) → Fable red gate → green → adversary DEFECTIVE (major: sub-toggles could write from unknown stored values) → fix (`prefsRowLoaded`) → re-review SOUND (4 minors) → polish (null-read master pin, rollback pins, R7 source pin requires `parseApiError(err).code`, zero-network backend fixture) → recheck SOUND (the declared narrowing above, text only) → Fable diff review.
+
+### Activation
+Client-only change plus one additive backend route; phones on 97b5f15 keep working (they never call the new route). The OTA (`eas update --branch preview --clear-cache`) is Ahmed's lever. No flag. Device walkthrough after the OTA: a no-priorities account flips AI sharing OFF; a 429 on Home shows the seconds sentence in Arabic plurals (0/1/2/3/11).
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)

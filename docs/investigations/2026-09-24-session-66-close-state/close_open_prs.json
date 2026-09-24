@@ -1,0 +1,42 @@
+[
+ {
+  "number": 175,
+  "head": "feature/s65-w3-11b-arabic-pack",
+  "sha": "f9a6f197",
+  "title": "feat(mobile): W3-11bcd Arabic pack - one digit policy, ISO minor-unit prices, catalog rela",
+  "created": "2026-09-23T23:13:33Z",
+  "draft": false
+ },
+ {
+  "number": 44,
+  "head": "fix/llm-base-url-failsafe",
+  "sha": "93001901",
+  "title": "fix(llm): make the OPENAI_BASE_URL guard actually fail safe",
+  "created": "2026-08-18T12:41:28Z",
+  "draft": false
+ },
+ {
+  "number": 42,
+  "head": "feature/owned-discovery-phase1",
+  "sha": "0f426ad4",
+  "title": "feat(discovery): owned Serper-free discovery for 62 verified catalog sources",
+  "created": "2026-08-17T12:31:46Z",
+  "draft": false
+ },
+ {
+  "number": 39,
+  "head": "feature/cache-write-accuracy-guards",
+  "sha": "ff538931",
+  "title": "fix(price): cache-write accuracy-guard parity + supplement dose cache-key",
+  "created": "2026-07-08T11:30:04Z",
+  "draft": false
+ },
+ {
+  "number": 36,
+  "head": "feature/gents-ladies-gender-leak",
+  "sha": "047d18e8",
+  "title": "fix(price): gents/ladies wrong-gender leak (pronoun-decoupled)",
+  "created": "2026-07-08T11:07:05Z",
+  "draft": false
+ }
+]
