@@ -1,0 +1,32 @@
+fix(auth): #198 - expected client 4xx log as a TYPE-only WARNING; generic auth errors never log str(e)
+
+_categorize_auth_error's generic branch logged f"Auth error in {context}: {e}" at ERROR for
+every failure, so an invalid refresh token or bad credentials became a Sentry error issue (the
+2026-09-24 14:07 UTC event was an orchestrator curl probe), and the raw exception text - which
+an auth SDK exception can carry a credential in - shipped to Sentry with it.
+
+- _is_expected_client_auth_error: the R11 carve-out first (AuthSessionMissingError and the
+  server-side wordings "invalid api key", "no api key found", "not allowed", "not_admin",
+  "is disabled", "are disabled" stay ERROR - a wrong Supabase key must still page), then an
+  int .status in 400..499 except 429 = expected client, else the measured gotrue fragment
+  tuple for status-less re-wrapped exceptions (complete_password_recovery's Exception(str(e))).
+- expected client -> WARNING "[auth] <ctx> rejected upstream: <Type> status=<s>" (a Sentry
+  breadcrumb); everything else -> ERROR "Auth error in <ctx>: <Type>" (an event). Both lines
+  pre-formatted with NO record args so Sentry groups per (context, type); no str(e), no exc_info.
+- every returned dict is byte-identical, including the kept B4-BE-DIAG social_login response
+  (its two red-by-choice baseline nodes fail before and after for that reason only).
+- tests/test_auth_error_log_hygiene.py (69 nodes: caplog pins per context, credential-in-
+  argument rows, the Sentry LoggingIntegration default, every tuple entry pinned) and the
+  password-reset pin rewritten to the type-only contract.
+
+Unflagged by ruling (log hygiene; the R-AUTH type-only rule - no legitimate reader of the old
+line). Gates: unit files 111 passed in the default state and with the adjacent auth flags ON;
+55-row mutation table from byte snapshots, all killed; CI-order set (27 files, one process)
+772 passed / 2 deselected / 0 failed; ruff E9,F63,F7,F82 + py_compile clean; two adversary
+rounds SOUND on these bytes. Stated limit: complete_password_recovery's re-wrap drops the SDK
+status, so that path classifies by message only (follow-up). Canary after deploy: one
+invalid-refresh probe -> 401 body unchanged and NO new Sentry issue.
+
+Closes #198
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
