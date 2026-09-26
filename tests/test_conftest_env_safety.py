@@ -218,6 +218,7 @@ def test_sentinel_hosts_are_reserved_names():
         )
 
 
+@pytest.mark.allow_network  # resolving the reserved name IS the point (#184 netguard)
 def test_sentinel_hosts_really_do_not_resolve_here():
     """The reserved name must also be un-resolvable ON THIS MACHINE.
 

@@ -765,7 +765,10 @@ def _run_sync(monkeypatch, *, url, region="bahrain", stop_at_scoring=True):
 
     monkeypatch.setattr(service, "_fetch_product_data", _fake_fetch)
 
-    real_service = _ss.get_scoring_service()
+    # A PRIVATE instance, never the singleton (#186): monkeypatch.setattr on an
+    # INSTANCE undoes by setting the bound method it read, which then shadows
+    # ScoringService.compute_scores on that instance for the rest of the process.
+    real_service = _ss.ScoringService()
     real_compute = real_service.compute_scores
     holder = {}
 

@@ -9,6 +9,13 @@ on:
 jobs:
   backend-tests:
     runs-on: ubuntu-latest
+    # #207 (R22a): tiktoken's BPE download cache, shared by the warm step and pytest.
+    # Job-level so every step sees the same directory. It cannot be
+    # ${{ runner.temp }}: the `runner` context is not available in a job's `env:`
+    # (github / needs / strategy / matrix / vars / secrets / inputs only), so the
+    # directory sits beside the checkout instead, outside the repository tree.
+    env:
+      TIKTOKEN_CACHE_DIR: ${{ github.workspace }}/../tiktoken-cache
     steps:
       - uses: actions/checkout@v4
 
@@ -50,6 +57,15 @@ jobs:
           find app -name "*.py" -exec python -m py_compile {} +
           echo "All Python files pass syntax check"
 
+      # #207 (R22a): pytest runs under the netguard, so a cold tiktoken cache cannot be
+      # filled from inside a test (it killed collection on test_prompt_caching.py).
+      # Fill it here, with network, right before "Run unit tests"; tests/_tokenizer.py
+      # fails loudly in CI if this step ever stops running. Both models resolve to
+      # o200k_base. tests/test_hermeticity_pins.py pins this step and its position.
+      - name: Warm tiktoken cache
+        run: |
+          python -c "import tiktoken; tiktoken.encoding_for_model('gpt-4o-mini'); tiktoken.encoding_for_model('gpt-4o')"
+
       # -rxX surfaces the xfail/xpass summary. tests/test_value_math.py carries a
       # module-level xfail for its 35 RED-by-design Bundle C v1.1 stubs; -rX makes
       # it loud the day they start XPASSing (i.e. the implementation landed and the
@@ -90,7 +106,11 @@ jobs:
       # To retire a baseline node: fix it, then re-capture the file (see its
       # header) — never hand-add a --deselect below.
       # tests/test_ci_gates.py pins this step's coupling to the baseline file.
+      # #184: tests/conftest.py installs the netguard (tests/_netguard.py); this env
+      # makes it write the per-test attempt report the ratchet step below reads.
       - name: Run unit tests
+        env:
+          QAREN_NETGUARD_REPORT: ${{ runner.temp }}/netguard_report.json
         run: |
           DESELECT=$(grep -vE '^\s*(#|$)' tests/.pre_impl_failures.txt | sed 's/^/--deselect=/' | tr '\n' ' ')
           python -m pytest tests/ -v \
@@ -103,6 +123,14 @@ jobs:
             --cov-fail-under=83 \
             --tb=short \
             $DESELECT
+
+      # #184: fails on a NEW test that attempts real egress (not in the generated
+      # tests/.network_attempt_baseline.txt); a new sentinel-only / ip-literal-only
+      # node is a WARNING. A plain following step on purpose: when the test step
+      # fails the job is already red, so `if: always()` would add nothing.
+      - name: Network-attempt ratchet
+        run: |
+          python scripts/netguard_ratchet.py "$RUNNER_TEMP/netguard_report.json" tests/.network_attempt_baseline.txt
 
   # NOT AUTOMATICALLY REQUIRED. Adding a job to this file does not make it a
   # required status check: until branch protection on `main` lists

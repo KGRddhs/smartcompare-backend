@@ -41,6 +41,7 @@ markers = [
     "integration: tests calling live Railway production API",
     "live_unit: unit tests that call live external services (iHerb, Serper, OpenAI)",
     "bench: latency/throughput benchmarks against live Railway (gated by BENCH=1 env)",
+    "allow_network: lifts the tests/_netguard.py network guard for this one test (#184) -- only where reaching the network IS the point of the test",
     "live_prod: live tests whose HTTP target is the PRODUCTION deployment (web-production-58776) or the production Supabase L2 — they make the prod server write to the production price cache and L2 price rows, so the scheduled .github/workflows/live-suite.yml run excludes them via -m \"live_unit and not live_prod\" (#49)",
 ]
 

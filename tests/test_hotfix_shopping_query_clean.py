@@ -104,10 +104,10 @@ class TestSearchProductPricesIntegration:
 
     @pytest.mark.asyncio
     async def test_cleaner_runs_before_serper_call(self, monkeypatch):
-        monkeypatch.setenv("SERPER_API_KEY", "test-key")
-        import importlib
         from app.services import serper_service
-        importlib.reload(serper_service)
+        # #183: patch the module global (undone at teardown) instead of
+        # setenv + importlib.reload, which left the fake key in the module.
+        monkeypatch.setattr(serper_service, "SERPER_API_KEY", "test-key")
 
         observed_queries = []
 
@@ -133,10 +133,10 @@ class TestSearchProductPricesIntegration:
 
     @pytest.mark.asyncio
     async def test_clean_query_passes_through_unchanged(self, monkeypatch):
-        monkeypatch.setenv("SERPER_API_KEY", "test-key")
-        import importlib
         from app.services import serper_service
-        importlib.reload(serper_service)
+        # #183: patch the module global (undone at teardown) instead of
+        # setenv + importlib.reload, which left the fake key in the module.
+        monkeypatch.setattr(serper_service, "SERPER_API_KEY", "test-key")
 
         observed_queries = []
 
@@ -163,11 +163,11 @@ class TestSearchProductPricesIntegration:
 
         #60 made the gl=<gcc> primary opt-in, so this two-leg scenario is
         reached via the SERPER_SHOPPING_PRIMARY_COUNTRIES rollback flip."""
-        monkeypatch.setenv("SERPER_API_KEY", "test-key")
         monkeypatch.setenv("SERPER_SHOPPING_PRIMARY_COUNTRIES", "bh")
-        import importlib
         from app.services import serper_service
-        importlib.reload(serper_service)
+        # #183: patch the module global (undone at teardown) instead of
+        # setenv + importlib.reload, which left the fake key in the module.
+        monkeypatch.setattr(serper_service, "SERPER_API_KEY", "test-key")
 
         observed_queries = []
 
