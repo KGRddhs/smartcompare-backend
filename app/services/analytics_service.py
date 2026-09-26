@@ -4,23 +4,36 @@ from collections import Counter
 from datetime import datetime, timezone, timedelta
 from typing import Dict, List
 
-from app.services.database_service import get_supabase_client
+from app.services.database_service import (
+    get_supabase_client,
+    search_log_synthetic_marker_enabled,
+)
 
 logger = logging.getLogger(__name__)
+
+
+def _drop_synthetic(records, marker):
+    """W4-13 flag 2: drop rows whose is_synthetic IS TRUE; NULL (written before
+    the flip / legacy) and False rows are KEPT -- `is not True`, never falsy."""
+    if not marker:
+        return records, 0
+    kept = [r for r in records if r.get("is_synthetic") is not True]
+    return kept, len(records) - len(kept)
 
 
 async def get_daily_stats(days: int = 30) -> Dict:
     """Comparison count, cost, errors aggregated by day."""
     try:
         client = get_supabase_client()
+        marker = search_log_synthetic_marker_enabled()
         since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
         response = (
             client.table("search_logs")
-            .select("success, cost, duration_ms, created_at")
+            .select("success, cost, duration_ms, created_at" + (", is_synthetic" if marker else ""))
             .gte("created_at", since)
             .execute()
         )
-        records = response.data or []
+        records, excluded = _drop_synthetic(response.data or [], marker)
 
         total = len(records)
         successes = sum(1 for r in records if r.get("success"))
@@ -46,6 +59,7 @@ async def get_daily_stats(days: int = 30) -> Dict:
             "avg_duration_ms": round(avg_duration),
             "daily_breakdown": dict(sorted(daily.items())),
             "period_days": days,
+            **({"synthetic_excluded": excluded} if marker else {}),
         }
     except Exception as e:
         logger.error(f"Error getting daily stats: {e}")
@@ -60,12 +74,13 @@ async def get_popular_queries(limit: int = 20) -> List[Dict]:
     """Top queries ranked by frequency."""
     try:
         client = get_supabase_client()
+        marker = search_log_synthetic_marker_enabled()
         response = (
             client.table("search_logs")
-            .select("query, input_type")
+            .select("query, input_type" + (", is_synthetic" if marker else ""))
             .execute()
         )
-        records = response.data or []
+        records, _excluded = _drop_synthetic(response.data or [], marker)
 
         counter = Counter(r.get("query", "") for r in records if r.get("query"))
         return [
@@ -81,14 +96,15 @@ async def get_cost_trends(days: int = 30) -> Dict:
     """Cost aggregation — total, average, trend by day."""
     try:
         client = get_supabase_client()
+        marker = search_log_synthetic_marker_enabled()
         since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
         response = (
             client.table("search_logs")
-            .select("cost, created_at, success")
+            .select("cost, created_at, success" + (", is_synthetic" if marker else ""))
             .gte("created_at", since)
             .execute()
         )
-        records = response.data or []
+        records, excluded = _drop_synthetic(response.data or [], marker)
 
         costs = [float(r.get("cost") or 0) for r in records]
         total = sum(costs)
@@ -107,6 +123,7 @@ async def get_cost_trends(days: int = 30) -> Dict:
             "comparison_count": len(records),
             "daily_costs": {k: round(v, 4) for k, v in sorted(daily_cost.items())},
             "period_days": days,
+            **({"synthetic_excluded": excluded} if marker else {}),
         }
     except Exception as e:
         logger.error(f"Error getting cost trends: {e}")
@@ -120,14 +137,15 @@ async def get_error_stats(days: int = 7) -> Dict:
     """Error rate and common error messages."""
     try:
         client = get_supabase_client()
+        marker = search_log_synthetic_marker_enabled()
         since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
         response = (
             client.table("search_logs")
-            .select("success, error_message, created_at")
+            .select("success, error_message, created_at" + (", is_synthetic" if marker else ""))
             .gte("created_at", since)
             .execute()
         )
-        records = response.data or []
+        records, excluded = _drop_synthetic(response.data or [], marker)
 
         total = len(records)
         errors = [r for r in records if not r.get("success")]
@@ -146,6 +164,7 @@ async def get_error_stats(days: int = 7) -> Dict:
                 for msg, c in error_messages.most_common(10)
             ],
             "period_days": days,
+            **({"synthetic_excluded": excluded} if marker else {}),
         }
     except Exception as e:
         logger.error(f"Error getting error stats: {e}")

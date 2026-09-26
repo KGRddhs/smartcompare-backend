@@ -1207,6 +1207,16 @@ def aggregate(graded: List[GradedQuery]) -> EvalReport:
     )
 
 
+def synthetic_traffic_headers() -> Dict[str, str]:
+    """W4-13: mark this harness's requests synthetic in search_logs.
+
+    Returns {"X-Qaren-Synthetic": <SEARCH_LOG_SYNTHETIC_TOKEN>} when the token
+    is set, else {} -- so with the token unset the requests are byte-identical.
+    The value is a secret: never print or log it."""
+    tok = os.getenv("SEARCH_LOG_SYNTHETIC_TOKEN", "")
+    return {"X-Qaren-Synthetic": tok} if tok else {}
+
+
 async def run_eval(
     queries: List[Dict[str, Any]],
     *,
@@ -1226,6 +1236,9 @@ async def run_eval(
     client_kwargs: Dict[str, Any] = {"base_url": base_url}
     if transport is not None:
         client_kwargs["transport"] = transport
+    _synthetic = synthetic_traffic_headers()
+    if _synthetic:
+        client_kwargs["headers"] = _synthetic
 
     async with httpx.AsyncClient(**client_kwargs) as client:
         async def _one(record: Dict[str, Any]) -> GradedQuery:

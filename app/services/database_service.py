@@ -11,6 +11,7 @@ ENABLE_SUPABASE_CLIENT_REUSE: this module also owns the ONE shared
 `build_supabase_client_options` for the design and its two deliberate
 consequences.
 """
+import hmac
 import logging
 import os
 import threading
@@ -701,6 +702,48 @@ async def get_user_comparison_count(user_id: str, access_token: Optional[str] = 
 # Search Logging Functions
 # ============================================
 
+def search_log_truth_enabled() -> bool:
+    """W4-13 flag 1 (`ENABLE_SEARCH_LOG_TRUTH`, default OFF, read PER CALL).
+
+    ON: search_logs rows record what happened -- failure rows carry the
+    orchestrator's cost, a delivered partial is marked, the stream's
+    success:False terminals / abandoned streams and /url/compare + /text/quick
+    write rows. OFF: every call site passes exactly today's kwargs. Never
+    changes a response, a status, metering or a refund. No precondition.
+    """
+    return os.getenv("ENABLE_SEARCH_LOG_TRUTH", "").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
+def search_log_synthetic_marker_enabled() -> bool:
+    """W4-13 flag 2 (`ENABLE_SEARCH_LOG_SYNTHETIC_MARKER`, default OFF, read
+    PER CALL). ON: `log_search` writes `is_synthetic` and the admin readers
+    skip `is_synthetic IS TRUE` rows. HARD PRECONDITION: migration 042 APPLIED
+    (the insert names the column; `log_search` swallows the failure)."""
+    return os.getenv("ENABLE_SEARCH_LOG_SYNTHETIC_MARKER", "").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
+def _is_synthetic_request(request) -> bool:
+    """True iff `SEARCH_LOG_SYNTHETIC_TOKEN` AND the `X-Qaren-Synthetic` header
+    are BOTH non-empty and equal (ruling C2: `compare_digest(b'', b'')` is True,
+    so the emptiness guards run BEFORE the compare). Bytes compare with
+    surrogateescape, as `admin_routes.verify_admin_key` does: a `str` compare
+    raises TypeError on a non-ASCII header. Deliberately no broad except
+    (ruling C11) -- this path cannot raise. The token is never logged."""
+    token = os.getenv("SEARCH_LOG_SYNTHETIC_TOKEN", "")
+    headers = getattr(request, "headers", None)
+    header = (headers.get("x-qaren-synthetic") if headers is not None else None) or ""
+    if not token or not header:
+        return False
+    return hmac.compare_digest(
+        header.encode("utf-8", errors="surrogateescape"),
+        token.encode("utf-8", errors="surrogateescape"),
+    )
+
+
 async def log_search(
     query: str,
     input_type: str = "text",
@@ -710,6 +753,7 @@ async def log_search(
     error_message: Optional[str] = None,
     cost: float = 0.0,
     duration_ms: int = 0,
+    is_synthetic: Optional[bool] = None,
 ) -> None:
     """
     Log a search/comparison request for analytics. Fire-and-forget.
@@ -723,6 +767,8 @@ async def log_search(
         error_message: Error message if failed
         cost: Total API cost in USD
         duration_ms: Request duration in milliseconds
+        is_synthetic: W4-13 caller classification; written ONLY when not None
+            AND ENABLE_SEARCH_LOG_SYNTHETIC_MARKER is ON (042 applied)
     """
     try:
         client = get_supabase_client()
@@ -738,6 +784,8 @@ async def log_search(
             record["user_id"] = user_id
         if error_message:
             record["error_message"] = error_message
+        if is_synthetic is not None and search_log_synthetic_marker_enabled():
+            record["is_synthetic"] = bool(is_synthetic)
 
         # #115 — fire-and-forget but still loop-stalling: this is one of the two
         # highest-frequency request-path writes. run_db offloads under

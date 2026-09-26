@@ -1,0 +1,1302 @@
+{
+ "_meta": {
+  "canonical_form": "json.dumps(records, sort_keys=True, ensure_ascii=True, default=str); duration_ms -> '<int>'; fixed X-Request-ID",
+  "compare": "record by record (tests/test_w4_13_flag_off_ledger.py); the sha is a secondary integrity check, never the assertion",
+  "generator": "tests/fixtures/_gen_w4_13_flag_off_ledger.py",
+  "recorded_at": "ac887e2d (= 61585c58 + the auth-only #202; the pre-unit base) - detached scratch worktree, flags + token unset, 2026-09-26; re-recorded 2026-09-27 (fix round 4: the inserts scenario now drives the real log_search); re-recorded 2026-09-27 (fix round 5, rulings R14/R15: +3 refund-firing scenarios, camera labels unwound)",
+  "records_sha256": "019611dac3e3fcd2b7d03bf25baf46fa6d81c6010a2b6e656c0c934841486c7c",
+  "rule": "flag OFF is byte-identical to the pre-unit kwargs at every log_search site (ENABLE_SEARCH_LOG_TRUTH, ENABLE_SEARCH_LOG_SYNTHETIC_MARKER and SEARCH_LOG_SYNTHETIC_TOKEN unset)",
+  "scenarios": 45,
+  "unit": "W4-13 flag-OFF call ledger (spec gate 5 / ruling C7; committed by ruling R10)"
+ },
+ "records": [
+  {
+   "body": {
+    "code": "INSUFFICIENT_DATA",
+    "error": "Comparison data was incomplete - choose different products.",
+    "request_id": "w4-13-fixed-request-id",
+    "success": false
+   },
+   "calls": [
+    {
+     "duration_ms": "<int>",
+     "error_message": "Comparison data was incomplete - choose different products.",
+     "input_type": "text",
+     "query": "a vs b",
+     "success": false,
+     "user_id": null
+    }
+   ],
+   "labels": [
+    "log_search.text.post.failure"
+   ],
+   "scenario": "post.insufficient",
+   "status": 400
+  },
+  {
+   "body": {
+    "code": "INSUFFICIENT_DATA",
+    "error": "Comparison data was incomplete - choose different products.",
+    "request_id": "w4-13-fixed-request-id",
+    "success": false
+   },
+   "calls": [
+    {
+     "duration_ms": "<int>",
+     "error_message": "Comparison data was incomplete - choose different products.",
+     "input_type": "text",
+     "query": "a vs b",
+     "success": false,
+     "user_id": "w4-13-user"
+    }
+   ],
+   "labels": [
+    "log_search.text.post.failure",
+    "usage_refund.text.post"
+   ],
+   "scenario": "post.insufficient.authed",
+   "status": 400
+  },
+  {
+   "body": {
+    "code": "TIMEOUT",
+    "error": "Still gathering prices \u2014 give it another tap in a moment.",
+    "request_id": "w4-13-fixed-request-id",
+    "success": false
+   },
+   "calls": [
+    {
+     "duration_ms": "<int>",
+     "error_message": "Still gathering prices \u2014 give it another tap in a moment.",
+     "input_type": "text",
+     "query": "a vs b",
+     "success": false,
+     "user_id": null
+    }
+   ],
+   "labels": [
+    "log_search.text.post.failure"
+   ],
+   "scenario": "post.timeout",
+   "status": 503
+  },
+  {
+   "body": {
+    "code": "TIMEOUT",
+    "error": "Still gathering prices \u2014 give it another tap in a moment.",
+    "request_id": "w4-13-fixed-request-id",
+    "success": false
+   },
+   "calls": [
+    {
+     "duration_ms": "<int>",
+     "error_message": "Still gathering prices \u2014 give it another tap in a moment.",
+     "input_type": "text",
+     "query": "a vs b",
+     "success": false,
+     "user_id": "w4-13-user"
+    }
+   ],
+   "labels": [
+    "log_search.text.post.failure",
+    "usage_refund.text.post"
+   ],
+   "scenario": "post.timeout.authed",
+   "status": 503
+  },
+  {
+   "body": {
+    "metadata": {
+     "partial": true,
+     "partial_stage": "post_gather",
+     "total_cost": 0.02
+    },
+    "products": [
+     {
+      "brand": "A",
+      "name": "1"
+     },
+     {
+      "brand": "B",
+      "name": "2"
+     }
+    ],
+    "success": true
+   },
+   "calls": [
+    {
+     "cost": 0.02,
+     "duration_ms": "<int>",
+     "input_type": "text",
+     "products_found": [
+      "A 1",
+      "B 2"
+     ],
+     "query": "a vs b",
+     "success": true,
+     "user_id": null
+    }
+   ],
+   "labels": [
+    "log_search.text.post.success"
+   ],
+   "scenario": "post.partial",
+   "status": 200
+  },
+  {
+   "body": {
+    "metadata": {
+     "partial": true,
+     "partial_stage": "post_gather",
+     "total_cost": 0.02
+    },
+    "products": [
+     {
+      "brand": "A",
+      "name": "1"
+     },
+     {
+      "brand": "B",
+      "name": "2"
+     }
+    ],
+    "success": true
+   },
+   "calls": [
+    {
+     "cost": 0.02,
+     "duration_ms": "<int>",
+     "input_type": "text",
+     "products_found": [
+      "A 1",
+      "B 2"
+     ],
+     "query": "a vs b",
+     "success": true,
+     "user_id": "w4-13-user"
+    }
+   ],
+   "labels": [
+    "log_search.text.post.success",
+    "save_comparison.text.post",
+    "record_lifetime.text.post"
+   ],
+   "scenario": "post.partial.authed",
+   "status": 200
+  },
+  {
+   "body": {
+    "metadata": {
+     "total_cost": 0.01
+    },
+    "products": [
+     {
+      "brand": "A",
+      "name": "1"
+     },
+     {
+      "brand": "B",
+      "name": "2"
+     }
+    ],
+    "success": true
+   },
+   "calls": [
+    {
+     "cost": 0.01,
+     "duration_ms": "<int>",
+     "input_type": "text",
+     "products_found": [
+      "A 1",
+      "B 2"
+     ],
+     "query": "a vs b",
+     "success": true,
+     "user_id": null
+    }
+   ],
+   "labels": [
+    "log_search.text.post.success"
+   ],
+   "scenario": "post.delivered",
+   "status": 200
+  },
+  {
+   "body": {
+    "metadata": {
+     "total_cost": 0.01
+    },
+    "products": [
+     {
+      "brand": "A",
+      "name": "1"
+     },
+     {
+      "brand": "B",
+      "name": "2"
+     }
+    ],
+    "success": true
+   },
+   "calls": [
+    {
+     "cost": 0.01,
+     "duration_ms": "<int>",
+     "input_type": "text",
+     "products_found": [
+      "A 1",
+      "B 2"
+     ],
+     "query": "a vs b",
+     "success": true,
+     "user_id": "w4-13-user"
+    }
+   ],
+   "labels": [
+    "log_search.text.post.success",
+    "save_comparison.text.post",
+    "record_lifetime.text.post"
+   ],
+   "scenario": "post.delivered.authed",
+   "status": 200
+  },
+  {
+   "body": {
+    "code": "INSUFFICIENT_DATA",
+    "error": "Comparison data was incomplete - choose different products.",
+    "request_id": "w4-13-fixed-request-id",
+    "success": false
+   },
+   "calls": [
+    {
+     "duration_ms": "<int>",
+     "error_message": "Comparison data was incomplete - choose different products.",
+     "input_type": "text",
+     "query": "a vs b",
+     "success": false,
+     "user_id": null
+    }
+   ],
+   "labels": [
+    "log_search.text.get.failure"
+   ],
+   "scenario": "get.insufficient",
+   "status": 400
+  },
+  {
+   "body": {
+    "code": "INSUFFICIENT_DATA",
+    "error": "Comparison data was incomplete - choose different products.",
+    "request_id": "w4-13-fixed-request-id",
+    "success": false
+   },
+   "calls": [
+    {
+     "duration_ms": "<int>",
+     "error_message": "Comparison data was incomplete - choose different products.",
+     "input_type": "text",
+     "query": "a vs b",
+     "success": false,
+     "user_id": "w4-13-user"
+    }
+   ],
+   "labels": [
+    "log_search.text.get.failure",
+    "usage_refund.text.get"
+   ],
+   "scenario": "get.insufficient.authed",
+   "status": 400
+  },
+  {
+   "body": {
+    "code": "TIMEOUT",
+    "error": "Still gathering prices \u2014 give it another tap in a moment.",
+    "request_id": "w4-13-fixed-request-id",
+    "success": false
+   },
+   "calls": [
+    {
+     "duration_ms": "<int>",
+     "error_message": "Still gathering prices \u2014 give it another tap in a moment.",
+     "input_type": "text",
+     "query": "a vs b",
+     "success": false,
+     "user_id": null
+    }
+   ],
+   "labels": [
+    "log_search.text.get.failure"
+   ],
+   "scenario": "get.timeout",
+   "status": 503
+  },
+  {
+   "body": {
+    "code": "TIMEOUT",
+    "error": "Still gathering prices \u2014 give it another tap in a moment.",
+    "request_id": "w4-13-fixed-request-id",
+    "success": false
+   },
+   "calls": [
+    {
+     "duration_ms": "<int>",
+     "error_message": "Still gathering prices \u2014 give it another tap in a moment.",
+     "input_type": "text",
+     "query": "a vs b",
+     "success": false,
+     "user_id": "w4-13-user"
+    }
+   ],
+   "labels": [
+    "log_search.text.get.failure",
+    "usage_refund.text.get"
+   ],
+   "scenario": "get.timeout.authed",
+   "status": 503
+  },
+  {
+   "body": {
+    "metadata": {
+     "partial": true,
+     "partial_stage": "post_gather",
+     "total_cost": 0.02
+    },
+    "products": [
+     {
+      "brand": "A",
+      "name": "1"
+     },
+     {
+      "brand": "B",
+      "name": "2"
+     }
+    ],
+    "success": true
+   },
+   "calls": [
+    {
+     "cost": 0.02,
+     "duration_ms": "<int>",
+     "input_type": "text",
+     "products_found": [
+      "A 1",
+      "B 2"
+     ],
+     "query": "a vs b",
+     "success": true,
+     "user_id": null
+    }
+   ],
+   "labels": [
+    "log_search.text.get.success"
+   ],
+   "scenario": "get.partial",
+   "status": 200
+  },
+  {
+   "body": {
+    "metadata": {
+     "partial": true,
+     "partial_stage": "post_gather",
+     "total_cost": 0.02
+    },
+    "products": [
+     {
+      "brand": "A",
+      "name": "1"
+     },
+     {
+      "brand": "B",
+      "name": "2"
+     }
+    ],
+    "success": true
+   },
+   "calls": [
+    {
+     "cost": 0.02,
+     "duration_ms": "<int>",
+     "input_type": "text",
+     "products_found": [
+      "A 1",
+      "B 2"
+     ],
+     "query": "a vs b",
+     "success": true,
+     "user_id": "w4-13-user"
+    }
+   ],
+   "labels": [
+    "log_search.text.get.success",
+    "save_comparison.text.get",
+    "record_lifetime.text.get"
+   ],
+   "scenario": "get.partial.authed",
+   "status": 200
+  },
+  {
+   "body": {
+    "metadata": {
+     "total_cost": 0.01
+    },
+    "products": [
+     {
+      "brand": "A",
+      "name": "1"
+     },
+     {
+      "brand": "B",
+      "name": "2"
+     }
+    ],
+    "success": true
+   },
+   "calls": [
+    {
+     "cost": 0.01,
+     "duration_ms": "<int>",
+     "input_type": "text",
+     "products_found": [
+      "A 1",
+      "B 2"
+     ],
+     "query": "a vs b",
+     "success": true,
+     "user_id": null
+    }
+   ],
+   "labels": [
+    "log_search.text.get.success"
+   ],
+   "scenario": "get.delivered",
+   "status": 200
+  },
+  {
+   "body": {
+    "metadata": {
+     "total_cost": 0.01
+    },
+    "products": [
+     {
+      "brand": "A",
+      "name": "1"
+     },
+     {
+      "brand": "B",
+      "name": "2"
+     }
+    ],
+    "success": true
+   },
+   "calls": [
+    {
+     "cost": 0.01,
+     "duration_ms": "<int>",
+     "input_type": "text",
+     "products_found": [
+      "A 1",
+      "B 2"
+     ],
+     "query": "a vs b",
+     "success": true,
+     "user_id": "w4-13-user"
+    }
+   ],
+   "labels": [
+    "log_search.text.get.success",
+    "save_comparison.text.get",
+    "record_lifetime.text.get"
+   ],
+   "scenario": "get.delivered.authed",
+   "status": 200
+  },
+  {
+   "calls": [
+    {
+     "cost": 0.01,
+     "duration_ms": "<int>",
+     "input_type": "text_stream",
+     "products_found": [
+      "A 1",
+      "B 2"
+     ],
+     "query": "A vs B",
+     "success": true,
+     "user_id": null
+    }
+   ],
+   "labels": [
+    "log_search.text_stream.success"
+   ],
+   "raised": null,
+   "scenario": "stream.delivered",
+   "sse": [
+    "event: status\ndata: {}\n\n",
+    "event: settle_complete\ndata: {\"success\": true, \"products\": [{\"brand\": \"A\", \"name\": \"1\"}, {\"brand\": \"B\", \"name\": \"2\"}], \"metadata\": {\"total_cost\": 0.01}}\n\n",
+    "event: complete\ndata: {\"success\": true, \"products\": [{\"brand\": \"A\", \"name\": \"1\"}, {\"brand\": \"B\", \"name\": \"2\"}], \"metadata\": {\"total_cost\": 0.01}}\n\n"
+   ]
+  },
+  {
+   "calls": [
+    {
+     "cost": 0.02,
+     "duration_ms": "<int>",
+     "input_type": "text_stream",
+     "products_found": [
+      "A 1",
+      "B 2"
+     ],
+     "query": "A vs B",
+     "success": true,
+     "user_id": null
+    }
+   ],
+   "labels": [
+    "log_search.text_stream.success"
+   ],
+   "raised": null,
+   "scenario": "stream.partial",
+   "sse": [
+    "event: status\ndata: {}\n\n",
+    "event: settle_complete\ndata: {\"success\": true, \"products\": [{\"brand\": \"A\", \"name\": \"1\"}, {\"brand\": \"B\", \"name\": \"2\"}], \"metadata\": {\"partial\": true, \"partial_stage\": \"post_gather\", \"total_cost\": 0.02}}\n\n",
+    "event: complete\ndata: {\"success\": true, \"products\": [{\"brand\": \"A\", \"name\": \"1\"}, {\"brand\": \"B\", \"name\": \"2\"}], \"metadata\": {\"partial\": true, \"partial_stage\": \"post_gather\", \"total_cost\": 0.02}}\n\n"
+   ]
+  },
+  {
+   "calls": [
+    {
+     "cost": 0,
+     "duration_ms": "<int>",
+     "input_type": "text_stream",
+     "products_found": [],
+     "query": "A vs B",
+     "success": true,
+     "user_id": null
+    }
+   ],
+   "labels": [
+    "log_search.text_stream.success"
+   ],
+   "raised": null,
+   "scenario": "stream.stream_timeout",
+   "sse": [
+    "event: status\ndata: {}\n\n",
+    "event: settle_complete\ndata: {\"success\": false, \"error\": \"The comparison took too long.\", \"code\": \"STREAM_TIMEOUT\", \"partial\": true, \"elapsed_seconds\": 30.1, \"total_cost\": 0.03, \"api_calls\": 4}\n\n",
+    "event: complete\ndata: {\"success\": false, \"error\": \"The comparison took too long.\", \"code\": \"STREAM_TIMEOUT\", \"partial\": true, \"elapsed_seconds\": 30.1, \"total_cost\": 0.03, \"api_calls\": 4}\n\n"
+   ]
+  },
+  {
+   "calls": [
+    {
+     "cost": 0,
+     "duration_ms": "<int>",
+     "input_type": "text_stream",
+     "products_found": [],
+     "query": "A vs B",
+     "success": true,
+     "user_id": null
+    }
+   ],
+   "labels": [
+    "log_search.text_stream.success"
+   ],
+   "raised": null,
+   "scenario": "stream.insufficient_terminal",
+   "sse": [
+    "event: status\ndata: {}\n\n",
+    "event: settle_complete\ndata: {\"success\": false, \"code\": \"INSUFFICIENT_DATA\", \"error\": \"Comparison data was incomplete - choose different products.\", \"elapsed_seconds\": 30.0, \"total_cost\": 0.017, \"api_calls\": 3}\n\n",
+    "event: complete\ndata: {\"success\": false, \"code\": \"INSUFFICIENT_DATA\", \"error\": \"Comparison data was incomplete - choose different products.\", \"elapsed_seconds\": 30.0, \"total_cost\": 0.017, \"api_calls\": 3}\n\n"
+   ]
+  },
+  {
+   "calls": [
+    {
+     "cost": 0,
+     "duration_ms": "<int>",
+     "input_type": "text_stream",
+     "products_found": [],
+     "query": "A vs B",
+     "success": true,
+     "user_id": null
+    }
+   ],
+   "labels": [
+    "log_search.text_stream.success"
+   ],
+   "raised": null,
+   "scenario": "stream.moderation_refusal",
+   "sse": [
+    "event: status\ndata: {}\n\n",
+    "event: settle_complete\ndata: {\"success\": false, \"code\": \"CONTENT_UNAVAILABLE\", \"error\": \"We don't compare this category\", \"layer\": \"moderation_api\"}\n\n",
+    "event: complete\ndata: {\"success\": false, \"code\": \"CONTENT_UNAVAILABLE\", \"error\": \"We don't compare this category\", \"layer\": \"moderation_api\"}\n\n"
+   ]
+  },
+  {
+   "calls": [
+    {
+     "duration_ms": "<int>",
+     "error_message": "Streaming comparison failed",
+     "input_type": "text_stream",
+     "query": "A vs B",
+     "success": false,
+     "user_id": null
+    }
+   ],
+   "labels": [
+    "log_search.text_stream.failure"
+   ],
+   "raised": null,
+   "scenario": "stream.error_event",
+   "sse": [
+    "event: status\ndata: {}\n\n",
+    "event: error\ndata: {\"success\": false, \"code\": \"INTERNAL_ERROR\", \"error\": \"Something went wrong on our side \\u2014 give it another tap in a moment.\", \"total_cost\": 0.04, \"request_id\": \"unknown\"}\n\n"
+   ]
+  },
+  {
+   "calls": [
+    {
+     "duration_ms": "<int>",
+     "error_message": "Streaming comparison failed",
+     "input_type": "text_stream",
+     "query": "A vs B",
+     "success": false,
+     "user_id": "w4-13-user"
+    }
+   ],
+   "labels": [
+    "log_search.text_stream.failure",
+    "usage_refund.text_stream"
+   ],
+   "raised": null,
+   "scenario": "stream.error_event.authed_consumed",
+   "sse": [
+    "event: status\ndata: {}\n\n",
+    "event: error\ndata: {\"success\": false, \"code\": \"INTERNAL_ERROR\", \"error\": \"Something went wrong on our side \\u2014 give it another tap in a moment.\", \"total_cost\": 0.04, \"request_id\": \"unknown\"}\n\n"
+   ]
+  },
+  {
+   "calls": [],
+   "labels": [],
+   "raised": null,
+   "scenario": "stream.preverdict_anon",
+   "sse": []
+  },
+  {
+   "calls": [],
+   "labels": [
+    "usage_refund.text_stream.incomplete"
+   ],
+   "raised": null,
+   "scenario": "stream.preverdict_authed_consumed",
+   "sse": []
+  },
+  {
+   "calls": [],
+   "labels": [],
+   "raised": "RuntimeError",
+   "scenario": "stream.midstream_raise",
+   "sse": [
+    "event: status\ndata: {}\n\n"
+   ]
+  },
+  {
+   "body": {
+    "action": "comparison",
+    "metadata": {
+     "identified_products": [
+      {
+       "brand": "B0",
+       "name": "N0"
+      },
+      {
+       "brand": "B1",
+       "name": "N1"
+      }
+     ],
+     "input_method": "camera",
+     "total_cost": 0.013,
+     "vision_cost": 0.003
+    },
+    "products": [
+     {
+      "brand": "A",
+      "name": "1"
+     },
+     {
+      "brand": "B",
+      "name": "2"
+     }
+    ],
+    "success": true
+   },
+   "calls": [
+    {
+     "cost": 0.013,
+     "duration_ms": "<int>",
+     "input_type": "camera",
+     "products_found": [
+      "B0 N0",
+      "B1 N1"
+     ],
+     "query": "B0 N0 vs B1 N1",
+     "success": true,
+     "user_id": null
+    }
+   ],
+   "labels": [
+    "log_search.camera.success"
+   ],
+   "scenario": "camera.delivered.meter_False",
+   "status": 200
+  },
+  {
+   "body": {
+    "action": "comparison",
+    "api_calls": 3,
+    "code": "INSUFFICIENT_DATA",
+    "elapsed_seconds": 30.0,
+    "error": "Comparison data was incomplete - choose different products.",
+    "metadata": {
+     "identified_products": [
+      {
+       "brand": "B0",
+       "name": "N0"
+      },
+      {
+       "brand": "B1",
+       "name": "N1"
+      }
+     ],
+     "input_method": "camera",
+     "vision_cost": 0.003
+    },
+    "success": false,
+    "total_cost": 0.017
+   },
+   "calls": [
+    {
+     "cost": 0,
+     "duration_ms": "<int>",
+     "input_type": "camera",
+     "products_found": [
+      "B0 N0",
+      "B1 N1"
+     ],
+     "query": "B0 N0 vs B1 N1",
+     "success": true,
+     "user_id": null
+    }
+   ],
+   "labels": [
+    "log_search.camera.success"
+   ],
+   "scenario": "camera.insufficient.meter_False",
+   "status": 200
+  },
+  {
+   "body": {
+    "action": "comparison",
+    "metadata": {
+     "identified_products": [
+      {
+       "brand": "B0",
+       "name": "N0"
+      },
+      {
+       "brand": "B1",
+       "name": "N1"
+      }
+     ],
+     "input_method": "camera",
+     "total_cost": 0.013,
+     "vision_cost": 0.003
+    },
+    "products": [
+     {
+      "brand": "A",
+      "name": "1"
+     },
+     {
+      "brand": "B",
+      "name": "2"
+     }
+    ],
+    "success": true
+   },
+   "calls": [
+    {
+     "cost": 0.013,
+     "duration_ms": "<int>",
+     "input_type": "camera",
+     "products_found": [
+      "B0 N0",
+      "B1 N1"
+     ],
+     "query": "B0 N0 vs B1 N1",
+     "success": true,
+     "user_id": null
+    }
+   ],
+   "labels": [
+    "log_search.camera.success"
+   ],
+   "scenario": "camera.delivered.meter_True",
+   "status": 200
+  },
+  {
+   "body": {
+    "action": "comparison",
+    "api_calls": 3,
+    "code": "INSUFFICIENT_DATA",
+    "elapsed_seconds": 30.0,
+    "error": "Comparison data was incomplete - choose different products.",
+    "metadata": {
+     "identified_products": [
+      {
+       "brand": "B0",
+       "name": "N0"
+      },
+      {
+       "brand": "B1",
+       "name": "N1"
+      }
+     ],
+     "input_method": "camera",
+     "vision_cost": 0.003
+    },
+    "success": false,
+    "total_cost": 0.017
+   },
+   "calls": [
+    {
+     "cost": 0,
+     "duration_ms": "<int>",
+     "error_message": "INSUFFICIENT_DATA",
+     "input_type": "camera",
+     "products_found": [
+      "B0 N0",
+      "B1 N1"
+     ],
+     "query": "B0 N0 vs B1 N1",
+     "success": false,
+     "user_id": null
+    }
+   ],
+   "labels": [
+    "log_search.camera.unsuccessful"
+   ],
+   "scenario": "camera.insufficient.meter_True",
+   "status": 200
+  },
+  {
+   "body": {
+    "action": "comparison_failed",
+    "code": "INTERNAL_ERROR",
+    "error": "Products identified \u2014 comparing them is unavailable right now.",
+    "message": "Products identified but comparison failed. You can compare them via text.",
+    "products": [
+     {
+      "brand": "B0",
+      "name": "N0"
+     },
+     {
+      "brand": "B1",
+      "name": "N1"
+     }
+    ],
+    "request_id": "w4-13-fixed-request-id",
+    "success": false,
+    "vision_cost": 0.003
+   },
+   "calls": [
+    {
+     "duration_ms": "<int>",
+     "error_message": "retro W2-1 probe: comparison unavailable",
+     "input_type": "camera",
+     "products_found": [
+      "B0 N0",
+      "B1 N1"
+     ],
+     "query": "B0 N0 vs B1 N1",
+     "success": false,
+     "user_id": null
+    }
+   ],
+   "labels": [
+    "log_search.camera.failure"
+   ],
+   "scenario": "camera.raise",
+   "status": 200
+  },
+  {
+   "body": {
+    "action": "comparison",
+    "api_calls": 3,
+    "code": "INSUFFICIENT_DATA",
+    "elapsed_seconds": 30.0,
+    "error": "Comparison data was incomplete - choose different products.",
+    "metadata": {
+     "identified_products": [
+      {
+       "brand": "B0",
+       "name": "N0"
+      },
+      {
+       "brand": "B1",
+       "name": "N1"
+      }
+     ],
+     "input_method": "camera",
+     "vision_cost": 0.003
+    },
+    "success": false,
+    "total_cost": 0.017
+   },
+   "calls": [
+    {
+     "cost": 0,
+     "duration_ms": "<int>",
+     "error_message": "INSUFFICIENT_DATA",
+     "input_type": "camera",
+     "products_found": [
+      "B0 N0",
+      "B1 N1"
+     ],
+     "query": "B0 N0 vs B1 N1",
+     "success": false,
+     "user_id": "w4-13-user"
+    }
+   ],
+   "labels": [
+    "log_search.camera.unsuccessful",
+    "usage_refund.image.comparison_unsuccessful"
+   ],
+   "scenario": "camera.insufficient.meter_True.authed",
+   "status": 200
+  },
+  {
+   "body": {
+    "action": "comparison_failed",
+    "code": "INTERNAL_ERROR",
+    "error": "Products identified \u2014 comparing them is unavailable right now.",
+    "message": "Products identified but comparison failed. You can compare them via text.",
+    "products": [
+     {
+      "brand": "B0",
+      "name": "N0"
+     },
+     {
+      "brand": "B1",
+      "name": "N1"
+     }
+    ],
+    "request_id": "w4-13-fixed-request-id",
+    "success": false,
+    "vision_cost": 0.003
+   },
+   "calls": [
+    {
+     "duration_ms": "<int>",
+     "error_message": "retro W2-1 probe: comparison unavailable",
+     "input_type": "camera",
+     "products_found": [
+      "B0 N0",
+      "B1 N1"
+     ],
+     "query": "B0 N0 vs B1 N1",
+     "success": false,
+     "user_id": "w4-13-user"
+    }
+   ],
+   "labels": [
+    "log_search.camera.failure",
+    "usage_refund.image.comparison_failed"
+   ],
+   "scenario": "camera.raise.meter_True.authed",
+   "status": 200
+  },
+  {
+   "body": {
+    "category_used": "other",
+    "comparison": {},
+    "key_differences": [],
+    "products": [
+     {
+      "brand": "Ab",
+      "name": "one"
+     },
+     {
+      "brand": "",
+      "name": "two"
+     }
+    ],
+    "recommendation": "",
+    "source_urls": [
+     "https://x.test/a",
+     "https://x.test/b"
+    ],
+    "success": true,
+    "winner_index": 0
+   },
+   "calls": [],
+   "labels": [],
+   "scenario": "url.success",
+   "status": 200
+  },
+  {
+   "body": {
+    "code": "BAD_REQUEST",
+    "error": "Could not extract both products",
+    "request_id": "w4-13-fixed-request-id",
+    "success": false
+   },
+   "calls": [],
+   "labels": [],
+   "scenario": "url.few",
+   "status": 400
+  },
+  {
+   "body": {
+    "code": "LLM_UNAVAILABLE",
+    "error": "Still warming up the comparison engine \u2014 give it another tap in a moment.",
+    "request_id": "w4-13-fixed-request-id",
+    "success": false
+   },
+   "calls": [],
+   "labels": [],
+   "scenario": "url.llm",
+   "status": 503
+  },
+  {
+   "body": {
+    "code": "SERVER_ERROR",
+    "error": "Internal server error",
+    "request_id": "w4-13-fixed-request-id",
+    "success": false
+   },
+   "calls": [],
+   "labels": [],
+   "scenario": "url.raise",
+   "status": 500
+  },
+  {
+   "body": {
+    "code": "BAD_REQUEST",
+    "error": "URL blocked by security policy",
+    "request_id": "w4-13-fixed-request-id",
+    "success": false
+   },
+   "calls": [],
+   "labels": [],
+   "scenario": "url.ssrf",
+   "status": 400
+  },
+  {
+   "body": {
+    "metadata": {
+     "total_cost": 0.01
+    },
+    "products": [
+     {
+      "brand": "A",
+      "name": "1"
+     },
+     {
+      "brand": "B",
+      "name": "2"
+     }
+    ],
+    "success": true
+   },
+   "calls": [],
+   "labels": [],
+   "scenario": "quick.success",
+   "status": 200
+  },
+  {
+   "body": {
+    "code": "BAD_REQUEST",
+    "error": "Comparison data was incomplete - choose different products.",
+    "request_id": "w4-13-fixed-request-id",
+    "success": false
+   },
+   "calls": [],
+   "labels": [],
+   "scenario": "quick.failure",
+   "status": 400
+  },
+  {
+   "body": {
+    "code": "SERVER_ERROR",
+    "error": "Internal server error",
+    "request_id": "w4-13-fixed-request-id",
+    "success": false
+   },
+   "calls": [],
+   "labels": [],
+   "scenario": "quick.raise",
+   "status": 500
+  },
+  {
+   "out": {
+    "cost": {
+     "avg_cost_per_comparison": 0.002,
+     "comparison_count": 12,
+     "daily_costs": {
+      "2026-09-01": 0.024
+     },
+     "period_days": 30,
+     "total_cost": 0.024
+    },
+    "daily": {
+     "avg_duration_ms": 3667,
+     "daily_breakdown": {
+      "2026-09-01": 12
+     },
+     "error_count": 0,
+     "period_days": 30,
+     "success_count": 12,
+     "total_comparisons": 12,
+     "total_cost": 0.024
+    },
+    "errors": {
+     "common_errors": [],
+     "error_count": 0,
+     "error_rate": 0.0,
+     "period_days": 7,
+     "total_requests": 12
+    },
+    "popular": [
+     {
+      "count": 10,
+      "query": "product1 vs product2"
+     },
+     {
+      "count": 2,
+      "query": "macbook air m3 vs dell xps 13"
+     }
+    ],
+    "selects": [
+     "success, cost, duration_ms, created_at",
+     "query, input_type",
+     "cost, created_at, success",
+     "success, error_message, created_at"
+    ]
+   },
+   "scenario": "readers"
+  },
+  {
+   "out": {
+    "cost": {
+     "avg_cost_per_comparison": 0.002,
+     "comparison_count": 12,
+     "daily_costs": {
+      "2026-09-01": 0.024
+     },
+     "period_days": 30,
+     "total_cost": 0.024
+    },
+    "daily": {
+     "avg_duration_ms": 3667,
+     "daily_breakdown": {
+      "2026-09-01": 12
+     },
+     "error_count": 10,
+     "period_days": 30,
+     "success_count": 2,
+     "total_comparisons": 12,
+     "total_cost": 0.024
+    },
+    "errors": {
+     "common_errors": [
+      {
+       "count": 10,
+       "message": "blocked"
+      }
+     ],
+     "error_count": 10,
+     "error_rate": 0.833,
+     "period_days": 7,
+     "total_requests": 12
+    },
+    "popular": [
+     {
+      "count": 10,
+      "query": "something"
+     },
+     {
+      "count": 2,
+      "query": "macbook air m3 vs dell xps 13"
+     }
+    ],
+    "selects": [
+     "success, cost, duration_ms, created_at",
+     "query, input_type",
+     "cost, created_at, success",
+     "success, error_message, created_at"
+    ]
+   },
+   "scenario": "readers.failing"
+  },
+  {
+   "records": [
+    {
+     "cost": 0.0,
+     "duration_ms": 5,
+     "error_message": "x",
+     "input_type": "text",
+     "products_found": [],
+     "query": "q",
+     "success": false
+    },
+    {
+     "cost": 0.01,
+     "duration_ms": 7,
+     "input_type": "text",
+     "products_found": [],
+     "query": "q2",
+     "success": true,
+     "user_id": "u1"
+    },
+    {
+     "cost": 0.0,
+     "duration_ms": 0,
+     "input_type": "camera",
+     "products_found": [
+      "a"
+     ],
+     "query": "q3",
+     "success": true
+    },
+    {
+     "cost": 0.02,
+     "duration_ms": 9,
+     "input_type": "text_stream",
+     "products_found": [],
+     "query": "q4",
+     "success": true
+    }
+   ],
+   "scenario": "inserts"
+  },
+  {
+   "headers": [
+    {
+     "accept": "*/*",
+     "accept-encoding": "gzip, deflate",
+     "connection": "keep-alive",
+     "host": "test",
+     "user-agent": "python-httpx/0.28.1"
+    },
+    {
+     "accept": "*/*",
+     "accept-encoding": "gzip, deflate",
+     "connection": "keep-alive",
+     "host": "test",
+     "user-agent": "python-httpx/0.28.1"
+    }
+   ],
+   "scenario": "eval_headers"
+  }
+ ]
+}

@@ -19,7 +19,7 @@ from fastapi import APIRouter, UploadFile, File, HTTPException, Query, Depends, 
 from app.services.openai_service import identify_products
 from app.services.structured_comparison_service import StructuredComparisonService
 from app.api.auth_routes import get_optional_user
-from app.services.database_service import log_search, save_comparison
+from app.services.database_service import log_search, save_comparison, search_log_truth_enabled
 from app.services.feedback_service import save_comparison_and_track_cohort
 from app.middleware.rate_limiter import limiter
 from app.services.usage_service import (
@@ -35,6 +35,12 @@ from app.services.usage_service import (
 # W2-1: ONE definition of the flag for the whole unit (see the helper's
 # docstring). image_routes/url_routes deliberately do not re-parse the env.
 from app.api.text_routes import paid_route_metering_enabled
+# W4-13: the search_logs row builders + the flag-2 splat, one definition each.
+from app.api.text_routes import (
+    _log_cost_value,
+    _partial_log_note,
+    _search_log_synthetic_kwargs,
+)
 from app.utils.async_utils import fire_and_forget
 
 logger = logging.getLogger(__name__)
@@ -45,6 +51,23 @@ logger = logging.getLogger(__name__)
 # error: str(e)}`, and str(e) of an OpenAI client error carries the masked key
 # tail, org and quota text -- so that string must never reach the client.
 CAMERA_UNSUCCESSFUL_CONSTANT_ERROR = "comparison unavailable"
+
+
+def _camera_log_cost(result, vision_cost) -> float:
+    """W4-13 T6 (ruling C9 + R3), three rungs, total over any input (C3):
+      1. top-level `total_cost` (finite, >= 0) + vision_cost -- no double count;
+      2. else `metadata.total_cost` AS-IS (this route already added vision);
+      3. else vision_cost alone (the vision call was paid; never 0.0 when it
+         is known)."""
+    v = _log_cost_value(vision_cost) or 0.0
+    top = _log_cost_value(result.get("total_cost")) if isinstance(result, dict) else None
+    if top is not None:
+        return round(top + v, 6)
+    md = result.get("metadata") if isinstance(result, dict) else None
+    m = _log_cost_value(md.get("total_cost")) if isinstance(md, dict) else None
+    if m is not None:
+        return m
+    return round(v, 6)
 
 
 def camera_failure_envelope_enabled() -> bool:
@@ -385,6 +408,8 @@ async def identify_and_compare(
     query_hash = hashlib.sha256(query.encode("utf-8")).hexdigest()[:12]
     logger.info(f"[IMAGE] Auto-comparing: query_hash={query_hash} length={len(query)}")
 
+    _truth = search_log_truth_enabled()
+    _syn = _search_log_synthetic_kwargs(request)
     try:
         service = StructuredComparisonService()
         result = await service.compare_from_text(query, region=region, vision_products=products, nocache=nocache)
@@ -430,18 +455,31 @@ async def identify_and_compare(
             # Non-delivery exit 7 (R-METER W2-1b): the comparison ran and
             # returned a failure. The body is still decided by the envelope
             # flag below, so metering ON alone moves the accounting only.
-            fire_and_forget(
-                log_search(
-                    query=query, input_type="camera", user_id=user_id,
-                    products_found=product_names, success=False,
-                    error_message=result.get("code") or CAMERA_UNSUCCESSFUL_CONSTANT_ERROR,
-                    cost=result.get("metadata", {}).get("total_cost", 0),
-                    duration_ms=duration_ms,
-                ),
-                label="log_search.camera.unsuccessful",
-            )
+            if not _truth:
+                fire_and_forget(
+                    log_search(
+                        query=query, input_type="camera", user_id=user_id,
+                        products_found=product_names, success=False,
+                        error_message=result.get("code") or CAMERA_UNSUCCESSFUL_CONSTANT_ERROR,
+                        cost=result.get("metadata", {}).get("total_cost", 0),
+                        duration_ms=duration_ms, **_syn,
+                    ),
+                    label="log_search.camera.unsuccessful",
+                )
             _refund_reserved_credit("usage_refund.image.comparison_unsuccessful")
             _refund_anon_credit("usage_refund.image.anon.comparison_unsuccessful")
+            if _truth:
+                # W4-13 T6: the real cost (C9/R3), AFTER the refunds (C3/R2).
+                fire_and_forget(
+                    log_search(
+                        query=query, input_type="camera", user_id=user_id,
+                        products_found=product_names, success=False,
+                        error_message=result.get("code") or CAMERA_UNSUCCESSFUL_CONSTANT_ERROR,
+                        cost=_camera_log_cost(result, vision_cost),
+                        duration_ms=duration_ms, **_syn,
+                    ),
+                    label="log_search.camera.unsuccessful",
+                )
             if camera_failure_envelope_enabled():
                 return _camera_failure_envelope(result, request, products, vision_cost)
             return result
@@ -453,8 +491,13 @@ async def identify_and_compare(
             log_search(
                 query=query, input_type="camera", user_id=user_id,
                 products_found=product_names, success=True,
-                cost=result.get("metadata", {}).get("total_cost", 0),
+                cost=(
+                    _camera_log_cost(result, vision_cost)
+                    if _truth and comparison_unsuccessful
+                    else result.get("metadata", {}).get("total_cost", 0)
+                ),
                 duration_ms=duration_ms,
+                **(_partial_log_note(result) if _truth else {}), **_syn,
             ),
             label="log_search.camera.success",
         )
@@ -493,19 +536,36 @@ async def identify_and_compare(
         duration_ms = int((time.time() - start_time) * 1000)
         # Bundle D 2.B.6 WRAP: failure-path log is doubly important; silent
         # fail here = no record of why the camera flow crashed.
-        fire_and_forget(
-            log_search(
-                query=query, input_type="camera",
-                user_id=user.get("id") if user else None,
-                products_found=product_names, success=False,
-                error_message=str(e), duration_ms=duration_ms,
-            ),
-            label="log_search.camera.failure",
-        )
+        if not _truth:
+            fire_and_forget(
+                log_search(
+                    query=query, input_type="camera",
+                    user_id=user.get("id") if user else None,
+                    products_found=product_names, success=False,
+                    error_message=str(e), duration_ms=duration_ms, **_syn,
+                ),
+                label="log_search.camera.failure",
+            )
 
         # Non-delivery exit 6 of 6.
         _refund_reserved_credit("usage_refund.image.comparison_failed")
         _refund_anon_credit("usage_refund.image.anon.comparison_failed")
+        if _truth:
+            # W4-13 T7: vision_cost only (the comparison's own spend is
+            # unknowable on a raise), AFTER the refunds (C3/R2). Post-green
+            # ruling R9(b): R1's floor covers this row -- a constant, never
+            # str(e) (flag OFF keeps today's str(e), the leak the flag closes).
+            fire_and_forget(
+                log_search(
+                    query=query, input_type="camera",
+                    user_id=user.get("id") if user else None,
+                    products_found=product_names, success=False,
+                    error_message="camera_exception",
+                    cost=round(_log_cost_value(vision_cost) or 0.0, 6),
+                    duration_ms=duration_ms, **_syn,
+                ),
+                label="log_search.camera.failure",
+            )
 
         # M13-26: never surface str(e) to the client — it embeds hostnames, table
         # names, Postgres codes and upstream URLs. Return the unified error

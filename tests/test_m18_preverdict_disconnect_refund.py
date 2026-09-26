@@ -276,7 +276,13 @@ async def test_refund_survives_an_aclose_that_raises(monkeypatch, flag_on):
     other session put it last in the `finally`, which is equally safe. This test
     pins the PROPERTY rather than either placement, so a future refactor that
     moves the close cannot silently reintroduce the hazard. Both flag states,
-    because the close is reachable in one and the unwind happens in both."""
+    because the close is reachable in one and the unwind happens in both.
+
+    W4-13 (Fable ruling Q1): this is the FLAG-OFF pin of ENABLE_SEARCH_LOG_TRUTH
+    -- its `not any(log_search)` holds only with that flag unset, so the flag is
+    deleted here explicitly; the flag-ON twin (exactly one failure row, AFTER the
+    refund) lives in tests/test_w4_13_measurement_truth.py."""
+    monkeypatch.delenv("ENABLE_SEARCH_LOG_TRUTH", raising=False)
     if flag_on:
         monkeypatch.setenv("ENABLE_PREVERDICT_DISCONNECT_ABORT", "true")
     else:
