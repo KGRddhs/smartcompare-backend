@@ -1,0 +1,20 @@
+# #198 UNIT SPEC — expected client 401s are logged at ERROR with str(e) (session 68, written by Fable 2026-09-26; re-created in the state folder from the orchestrator's copy after the worktree was retired)
+
+Base SHA: `61585c58` (= origin/main). Worktree `sc-auth-198`, branch `fix/198-auth-401-log-level` — shipped as PR #202, merge `ac887e2d`.
+UNFLAGGED by ruling: log hygiene with no legitimate reader of the old line (the same class as R-AUTH's type-only `[auth]` lines). Files: `app/services/auth_service.py` (`_categorize_auth_error`) and a NEW `tests/test_auth_error_log_hygiene.py`. No response dict changes anywhere.
+
+## 0. Invariants (binding)
+1. Every RETURNED dict of `_categorize_auth_error` is byte-identical to base in every branch: the three message-matched branches, the transient branch (`_upstream_unavailable_result()`), the generic branch (`{"success": False, "error": "Something went wrong. Please try again later."}`) and the `social_login` B4-BE-DIAG branch (its RESPONSE still carries `str(e)[:300]` — pre-existing, documented as KEPT until Google Sign-In is resolved; two `tests/test_auth_interceptor.py` nodes are red BY CHOICE on it in `tests/.pre_impl_failures.txt` — they must stay red for that reason and for no other).
+2. No log record at any level ever carries `str(e)` from the generic branch. The `refresh_session` transient branch (`[auth] refresh upstream unavailable (transient): <Type>`) is unchanged.
+3. Hunks function-local; CRLF hygiene; no refactor of the categoriser's branch order.
+
+## 1. Design (as shipped, after rulings R1-R13)
+- `_is_expected_client_auth_error(e)`: the R11 carve-out FIRST (`AuthSessionMissingError` by type name; any `_SERVER_SIDE_AUTH_ERROR_TERMS` fragment — "invalid api key", "no api key found", "not allowed", "not_admin", "is disabled", "are disabled" — keeps ERROR), then an int non-bool `.status` in 400..499 except 429 = expected client, else the `_EXPECTED_CLIENT_AUTH_ERROR_TERMS` fragment tuple for status-less re-wrapped exceptions ("invalid refresh token", "refresh token not found", "already used", "invalid jwt", "token is expired", "invalid token", "user not found", "already been registered", "new password should be different", "password should be at least").
+- expected client -> WARNING `[auth] <ctx> rejected upstream: <Type> status=<s>`; otherwise ERROR `Auth error in <ctx>: <Type>`; both PRE-FORMATTED with no record args (R12: Sentry groups per context + type), never `str(e)`, never `exc_info`.
+- Sentry: the auto-enabled LoggingIntegration defaults (sentry-sdk 2.68.1: event_level ERROR) are pinned at source level; a WARNING is a breadcrumb.
+
+## 2. Tests — `tests/test_auth_error_log_hygiene.py` (69 nodes at ship)
+T1 refresh invalid token -> one type-only WARNING, no ERROR, message absent; T2 x9 contexts, status rows + status-less fragment rows; T3 credential in the exception argument never reaches any record (message, args, exc_info, exc_text, extras, stack_info); T4 unexpected exception -> exactly one ERROR with the base prefix, type only; T5 message-matched early returns unchanged and silent; T6 transient branch unchanged (429/5xx stay ERROR/transient); T7 route-level invalid-refresh probe -> 401 base body, zero ERROR records; T8 Sentry LoggingIntegration default event level; T9 social_login DIAG response unchanged; the R11 carve-out rows (each server-side term; carve-out precedes the status rule AND the expected-client fragments); the R12 no-args rows; boundary rows 399/401/430/499/500.
+
+## 3. Gates (as run)
+Unit files 111 passed (default + adjacent auth flags ON); 55-row mutation table from byte snapshots, all killed; CI-order set (27 files, one process) 772 passed / 2 deselected / 0 failed; ruff E9,F63,F7,F82 + py_compile clean; two adversary rounds SOUND on the shipped bytes. Stated limit: `complete_password_recovery`'s re-wrap drops the SDK status (issue #203). Canary run 2026-09-26 ~06:50 local on the fresh `ac887e2d` process: invalid-refresh probe -> 401 with the base body; the Sentry half is Ahmed's to confirm.

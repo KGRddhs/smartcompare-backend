@@ -1,0 +1,14 @@
+attempts total (incl. unattributed): 681 unattributed: 1
+attempting nodes: 196 in files: 52 nodes targeting ONLY *.invalid sentinels: 95
+kinds: {"socket.getaddrinfo": 329, "curl_cffi.Session.request": 136, "socket.create_connection": 215}
+top hosts: [["api.openai.com", 276], ["neutralized.supabase.invalid", 216], ["example.com", 44], ["www.noon.com", 34], ["search.unbxd.io", 22], ["shopalmoayyed.com", 21], ["sonyworld.bh", 21], ["9KHJLG93J1-dsn.algolia.net", 21], ["www.footlocker.com.bh", 7], ["02X7U6O3SI-dsn.algolia.net", 6], ["169.254.169.254", 2], ["oman.sharafdg.com", 1], ["bh.asgharali.com", 1], ["en-bh.ajmal.com", 1], ["alhajisbahrain.com", 1], ["amazon.ae", 1], ["fd00::1", 1], ["10.0.0.1", 1], ["172.16.0.1", 1], ["172.31.255.254", 1], ["192.168.1.1", 1]]
+FAILED/ERROR lines: 4
+  chunk_11.out.txt FAILED tests/test_rate_limiting_complete.py::TestUrlDetectSsrf::test_detect_allows_valid_url
+  chunk_13.out.txt FAILED tests/test_security_hardening.py::TestSSRFProtection::test_valid_external_url_passes
+  chunk_13.out.txt FAILED tests/test_security_hardening.py::TestSSRFProtection::test_valid_http_url_passes
+  chunk_13.out.txt FAILED tests/test_security_hardening.py::TestSecurityIntegration::test_ssrf_protection_integrated
+sentinel (herm_probe) leaking tests: 4
+  ('herm_probe_chunk_06.json', 'tests/test_hotfix_shopping_query_clean.py::TestSearchProductPricesIntegration::test_cleaner_runs_before_serper_call', ['serper_key'])
+  ('herm_probe_chunk_10.json', 'tests/test_platform_router.py::test_does_not_import_price_service', ['app_keys_deleted', 'price_service_module'])
+  ('herm_probe_chunk_10.json', 'tests/test_platform_router.py::test_the_verdict_is_two_named_fields_not_one_string', ['price_service_pkgattr'])
+  ('herm_probe_chunk_10.json', 'tests/test_prescoring_showable_guard.py::test_r1_red_sync_compute_scores_receives_guarded_product_data[True-None]', ['scoring_instance_compute_scores'])
