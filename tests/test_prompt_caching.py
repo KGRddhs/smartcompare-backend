@@ -4,13 +4,15 @@ import logging
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-import tiktoken
 
 from app.services.extraction_service import _build_specs_prompt
+from tests._tokenizer import encoding_for_model_or_skip
 # Add imports for other prompt builders as they exist
 
 
-enc = tiktoken.encoding_for_model("gpt-4o-mini")
+# R22b: never a raw tiktoken fetch inside pytest - a cold cache fails in CI (the
+# 'Warm tiktoken cache' step did not run) and skips this module elsewhere.
+enc = encoding_for_model_or_skip("gpt-4o-mini", module_level=True)
 MIN_CACHEABLE_TOKENS = 1024
 
 

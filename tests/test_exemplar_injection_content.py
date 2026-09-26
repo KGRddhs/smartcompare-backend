@@ -49,14 +49,14 @@ pytest.importorskip(
 from app.services import verdict_exemplar_loader as loader  # noqa: E402
 from app.services.extraction_service import build_verdict_prompt  # noqa: E402
 
-try:
-    import tiktoken  # noqa: E402
-    _ENC = tiktoken.encoding_for_model("gpt-4o")
-    def _toks(s: str) -> int:
-        return len(_ENC.encode(s))
-except Exception:  # pragma: no cover - tiktoken always present in this repo
-    def _toks(s: str) -> int:
-        return len(s) // 4
+from tests._tokenizer import encoding_for_model_or_skip  # noqa: E402
+
+
+def _toks(s: str) -> int:
+    # R22b: resolved in-test through the shared loader, so a cold tiktoken cache
+    # fails the token-budget test in CI and skips it elsewhere; it no longer
+    # degrades silently to a len(s) // 4 estimate the $-gate was never set against.
+    return len(encoding_for_model_or_skip("gpt-4o").encode(s))
 
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent

@@ -188,8 +188,9 @@ class TestFlagOnPrompt:
 
     def test_flag_on_static_prefix_is_still_cacheable(self, flag_on):
         """The >=1024-token auto-caching prefix must survive the flag."""
-        tiktoken = pytest.importorskip("tiktoken")
-        enc = tiktoken.encoding_for_model("gpt-4o-mini")
+        from tests._tokenizer import encoding_for_model_or_skip
+
+        enc = encoding_for_model_or_skip("gpt-4o-mini")  # R22b: fails in CI / skips cold
         p = _build_specs_prompt("Apple", "iPhone 17", "", "electronics", "ctx")
         static = p["system"].split("CATEGORY:")[0]
         assert len(enc.encode(static)) >= 1024
