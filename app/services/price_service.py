@@ -4335,6 +4335,30 @@ import threading as _price_parse_threading  # noqa: E402 — kept local to this 
 _PRICE_PARSE_POOL = None
 _PRICE_PARSE_POOL_LOCK = _price_parse_threading.Lock()
 _PRICE_PARSE_SEMAPHORE_BY_LOOP = None
+# W0-4g — pool counters, mutated only by run_parse_offloaded on the event-loop
+# thread (approximate if several loops share the process; tests only).
+# `waiting` = blocked on the submission semaphore (it was locked at arrival).
+_PRICE_PARSE_STATS = {
+    "jobs_total": 0, "waiting": 0, "running": 0, "peak_waiting": 0, "peak_running": 0,
+}
+
+
+def price_parse_pool_stats() -> Optional[Dict[str, int]]:
+    """W0-4g — a pure read of the price-parse pool: None until the pool exists.
+    `queued` is the executor's own queue depth. It is transiently non-zero on
+    a semaphore hand-off (the next job is submitted before a pool thread has
+    dequeued it), so one sample proves nothing. A queued value that PERSISTS
+    across polls means orphaned parses hold pool threads: a cancelled await (a
+    wait_for cap firing) releases its slot while its parse keeps its thread,
+    and `running` counts awaited jobs only (it under-reports occupancy then)."""
+    pool = _PRICE_PARSE_POOL
+    if pool is None:
+        return None
+    return {
+        "workers": pool._max_workers,
+        "queued": pool._work_queue.qsize(),
+        **_PRICE_PARSE_STATS,
+    }
 
 
 def price_parse_max_workers() -> int:
@@ -4357,10 +4381,12 @@ def _get_price_parse_pool():
         with _PRICE_PARSE_POOL_LOCK:
             if _PRICE_PARSE_POOL is None:
                 import concurrent.futures as _cf
+                n = price_parse_max_workers()
                 _PRICE_PARSE_POOL = _cf.ThreadPoolExecutor(
-                    max_workers=price_parse_max_workers(),
+                    max_workers=n,
                     thread_name_prefix="price-parse",
                 )
+                logger.info("[PRICE-PARSE] pool built workers=%d", n)
             pool = _PRICE_PARSE_POOL
     return pool
 
@@ -4386,11 +4412,31 @@ async def run_parse_offloaded(fn, *args, **kwargs):
     price_parse_offload_enabled()."""
     pool = _get_price_parse_pool()
     sem = _get_price_parse_semaphore(pool._max_workers)
-    async with sem:
+    stats = _PRICE_PARSE_STATS
+    # W0-4g: `waiting` counts only a job that is BLOCKED on the semaphore (no
+    # yield between this check and acquire's fast path on one loop).
+    blocked = sem.locked()
+    if blocked:
+        stats["waiting"] += 1
+        if stats["waiting"] > stats["peak_waiting"]:
+            stats["peak_waiting"] = stats["waiting"]
+    try:
+        await sem.acquire()
+    finally:
+        if blocked:
+            stats["waiting"] -= 1
+    stats["running"] += 1
+    stats["jobs_total"] += 1
+    if stats["running"] > stats["peak_running"]:
+        stats["peak_running"] = stats["running"]
+    try:
         ctx = _contextvars.copy_context()
         return await asyncio.get_running_loop().run_in_executor(
             pool, functools.partial(ctx.run, fn, *args, **kwargs),
         )
+    finally:
+        stats["running"] -= 1
+        sem.release()
 
 
 def showable_name_identity_enabled() -> bool:
@@ -14710,7 +14756,7 @@ def _curl_timeout_for_url(url: str) -> int:
     return PAGE_SCRAPE_TIMEOUT
 
 
-async def curl_fetch_html(url: str) -> Optional[str]:
+async def curl_fetch_html(url: str, *, cap: bool = True) -> Optional[str]:
     """Fetch raw HTML via curl_cffi (no JS rendering)."""
     try:
         from curl_cffi import requests as curl_requests
@@ -14727,7 +14773,8 @@ async def curl_fetch_html(url: str) -> Optional[str]:
         if price_parse_offload_enabled():
             # R-W04 (W0-4b) — bound the page handed to the parse, mirroring
             # curl_fetch_html_same_site. Flag OFF: the whole body, as before.
-            return resp.text[:PRICE_FETCH_MAX_BYTES]
+            # W0-4e: a caller that scans the whole page passes cap=False.
+            return resp.text[:PRICE_FETCH_MAX_BYTES] if cap else resp.text
         return resp.text
     except Exception as e:
         logger.warning(f"[PRICE] curl_cffi fetch failed for {url}: {e}")

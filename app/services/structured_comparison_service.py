@@ -2859,6 +2859,12 @@ def _merge_organic_pdp_harvest(
 # locale-filtered out + waste a call).
 _LAZY_BACKFILL_DOMAINS = ("bahrain.sharafdg.com", "bahrain.microless.com")
 
+# W0-4e2 (ENABLE_PRICE_PARSE_OFFLOAD only): the backfill scans the UNCAPPED search
+# page in slices of _W04_SCAN_CHUNK chars (+ _W04_SCAN_OVERLAP so a match starting
+# near a slice end is still whole), yielding the event loop between slices.
+_W04_SCAN_CHUNK = 1_000_000
+_W04_SCAN_OVERLAP = 65_536
+
 
 async def _lazy_bh_pdp_backfill(
     harvested: List[Tuple[str, str, str, float]],
@@ -2938,12 +2944,29 @@ async def _lazy_bh_pdp_backfill(
         if not pdp_found and search_pages:
             for sp in search_pages[:1]:
                 try:
-                    html = await curl_fetch_html(sp)
+                    # W0-4e: the scan needs the WHOLE search page (never capped).
+                    html = await curl_fetch_html(sp, cap=False)
                 except Exception:  # noqa: BLE001
                     html = None
                 if not html:
                     continue
-                for m in re.findall(r'href=["\'](https?://[^"\']*?/product/[^"\']+)["\']', html, re.IGNORECASE):
+                if _price_parse_offload_enabled():
+                    # W0-4e2: the page is uncapped and re holds the GIL for a
+                    # whole findall (a pool thread would not free the loop), so
+                    # scan it ON the loop in slices and yield after each one.
+                    # A match belongs to the slice it STARTS in (dedupe); the
+                    # overlap keeps one starting near a slice end whole.
+                    _w04_matches = []
+                    _w04_n = len(html)
+                    for _w04_start in range(0, _w04_n, _W04_SCAN_CHUNK):
+                        _w04_end = min(_w04_start + _W04_SCAN_CHUNK + _W04_SCAN_OVERLAP, _w04_n)
+                        for _w04_m in re.finditer(r'href=["\'](https?://[^"\']*?/product/[^"\']+)["\']', html[_w04_start:_w04_end], re.IGNORECASE):
+                            if _w04_start + _w04_m.start() < _w04_start + _W04_SCAN_CHUNK:
+                                _w04_matches.append(_w04_m.group(1))
+                        await asyncio.sleep(0)
+                else:
+                    _w04_matches = re.findall(r'href=["\'](https?://[^"\']*?/product/[^"\']+)["\']', html, re.IGNORECASE)
+                for m in _w04_matches:
                     if bd in m.lower():
                         # title unknown from a bare href — variant-gate on the slug.
                         slug = m.rstrip("/").rsplit("/", 1)[-1].replace("-", " ")

@@ -782,7 +782,7 @@ _DIRECT_ALLOWLIST = frozenset()
 # The reviewer did not name it and the ruling's scope does not list it, so it is allowlisted
 # here and reported to the orchestrator as a scope question. Remove this entry if the
 # orchestrator brings it into scope.
-_TRANSITIVE_ALLOWLIST = frozenset({("url_extraction_service.py", "extract_from_url")})
+_TRANSITIVE_ALLOWLIST = frozenset()
 
 
 def test_w04c_no_async_def_parses_inline_outside_an_offload_call():

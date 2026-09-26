@@ -198,6 +198,7 @@ async def _install_default_executor() -> None:
 # rolling one-minute max is `loop_lag_max_60s_ms` below.)
 import asyncio
 import collections
+import sys
 
 LOOP_LAG_INTERVAL_SECONDS: float = 1.0
 
@@ -246,6 +247,20 @@ def loop_lag_snapshot() -> dict:
         "loop_lag_max_ms": _loop_lag_max_ms,
         "loop_lag_max_60s_ms": _loop_lag_max_60s_ms,
     }
+
+
+def price_parse_pool_snapshot() -> dict:
+    """W0-4g: /health's price_parse_pool key, present only once the pool exists.
+    Reads sys.modules (never an import), so the handler cannot trigger one."""
+    mod = sys.modules.get("app.services.price_service")
+    fn = getattr(mod, "price_parse_pool_stats", None)
+    if fn is None:
+        return {}
+    try:
+        stats = fn()
+    except Exception:  # noqa: BLE001 — /health must never fail
+        return {}
+    return {"price_parse_pool": stats} if stats else {}
 
 
 async def _loop_lag_heartbeat() -> None:
@@ -529,7 +544,8 @@ async def health_check():
     return {
         "status": "healthy",
         "message": "Qaren API is running",
-        **loop_lag_snapshot()
+        **loop_lag_snapshot(),
+        **price_parse_pool_snapshot(),
     }
 
 
