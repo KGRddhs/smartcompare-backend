@@ -146,7 +146,8 @@ def _scrub_request_region(event) -> None:
             headers = event["request"]["headers"]
             if isinstance(headers, dict):
                 for key in list(headers.keys()):
-                    if key.lower() in ("authorization", "x-admin-key", "cookie"):
+                    # W4-13 (ruling D4): X-Qaren-Synthetic carries SEARCH_LOG_SYNTHETIC_TOKEN.
+                    if key.lower() in ("authorization", "x-admin-key", "cookie", "x-qaren-synthetic"):
                         headers[key] = "[REDACTED]"
         # Bundle D Task 1.B.6 (R21) — scrub PII query-string values from request URL
         if isinstance(event["request"].get("url"), str):

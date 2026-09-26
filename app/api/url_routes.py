@@ -2,7 +2,9 @@
 URL Comparison Routes - API endpoints for URL-based product comparisons
 """
 import logging
+import time
 from typing import Dict, Optional
+from urllib.parse import urlsplit
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, HttpUrl
 from starlette.requests import Request
@@ -30,6 +32,13 @@ from app.api.text_routes import paid_route_metering_enabled
 # failed URL verdict surfaces exactly like a failed text comparison.
 from app.api.text_routes import _surface_comparison_failure
 from app.services.feedback_service import save_comparison_and_track_cohort
+# W4-13 T8: by name, so tests patch url_routes.log_search.
+from app.services.database_service import log_search, search_log_truth_enabled
+from app.api.text_routes import (
+    _failure_log_message,
+    _log_products_found,
+    _search_log_synthetic_kwargs,
+)
 from app.services.usage_service import (
     consume_comparison_credit,
     refund_comparison_credit,
@@ -74,12 +83,44 @@ async def _reserve_comparison_credit(user: Optional[Dict]) -> bool:
     return bool(usage_check.get("consumed", False))
 
 
+def _url_log_query(url1, url2) -> str:
+    """W4-13 T8 (ruling R4): each url as scheme + host (+ an explicit port) +
+    path; the query string, the fragment AND the userinfo (`user:pass@`) are
+    DROPPED -- tracking/session tokens and credentials never land in an
+    analytics table. A malformed url gives '' for its half, never a raise."""
+    def _one(u) -> str:
+        try:
+            p = urlsplit(u if isinstance(u, str) else "")
+            _ = p.port  # ValueError on a malformed port
+        except ValueError:
+            return ""
+        if not p.scheme or not p.hostname:
+            return ""
+        return f"{p.scheme}://{p.netloc.rpartition('@')[2]}{p.path}"
+    return f"{_one(url1)} vs {_one(url2)}"
+
+
+# W4-13 T8, post-green ruling R9(a): the '<2 products' exit's message is a
+# route-owned code constant (url_extraction_service.py:596) -- no exception
+# text can reach it -- so the failure ROW logs it verbatim. Every other
+# codeless message still takes the W4-9 floor.
+_URL_FEW_PRODUCTS_MESSAGE = "Could not extract both products"
+
+
+def _url_failure_log_message(result) -> str:
+    if (isinstance(result, dict) and not result.get("code")
+            and result.get("error") == _URL_FEW_PRODUCTS_MESSAGE):
+        return _URL_FEW_PRODUCTS_MESSAGE
+    return _failure_log_message(result) or "Comparison failed"
+
+
 async def _compare_urls_metered(
     url1: str,
     url2: str,
     region: str,
     selected_category: Optional[str],
     user: Optional[Dict],
+    search_log_extra: Optional[Dict] = None,
 ) -> Dict:
     """Run the URL comparison under the freemium gate, then persist it.
 
@@ -94,8 +135,22 @@ async def _compare_urls_metered(
     fire-and-forget `save_comparison_and_track_cohort(input_type="url")` plus
     the Supabase lifetime counter.
     """
+    _start = time.time()
     usage_consumed = await _reserve_comparison_credit(user)
     user_id = user.get("id") if user else None
+    _truth = search_log_truth_enabled()
+
+    def _url_row(label: str, **kw) -> None:
+        # W4-13 T8: every url row is built AFTER its refund and before the
+        # raise/return (ruling C3); only ever called under flag 1.
+        fire_and_forget(
+            log_search(
+                query=_url_log_query(url1, url2), input_type="url", user_id=user_id,
+                duration_ms=int((time.time() - _start) * 1000),
+                **kw, **(search_log_extra or {}),
+            ),
+            label=label,
+        )
 
     try:
         result = await compare_from_urls(url1, url2, region, selected_category)
@@ -105,6 +160,9 @@ async def _compare_urls_metered(
                 refund_comparison_credit(user_id),
                 label="usage_refund.url.compare.exception",
             )
+        if _truth:
+            _url_row("log_search.url.exception", success=False,
+                     error_message="url_compare_exception")  # never str(e)
         raise
 
     if not result.get("success"):
@@ -116,6 +174,11 @@ async def _compare_urls_metered(
                 refund_comparison_credit(user_id),
                 label="usage_refund.url.compare.failure",
             )
+        if _truth:
+            # R1 + R9(a): the route's own '<2 products' literal verbatim; any
+            # other codeless message takes the W4-9 floor.
+            _url_row("log_search.url.failure", success=False,
+                     error_message=_url_failure_log_message(result))
         # R-METER (W2-1c): only a CODED failure (the failed-verdict
         # LLM_UNAVAILABLE result) rides the text route's mapping, which raises
         # the structured `{code, error}` 503 the error handler lifts to the top
@@ -144,6 +207,12 @@ async def _compare_urls_metered(
                 record_lifetime_comparison(user_id, user.get("access_token", "")),
                 label="record_lifetime.url",
             )
+
+    if _truth:
+        _url_row(
+            "log_search.url.success", success=True,
+            products_found=_log_products_found(result),
+        )
 
     return result
 
@@ -289,7 +358,8 @@ async def compare_urls(
         raise HTTPException(status_code=400, detail="URL blocked by security policy")
 
     return await _compare_urls_metered(
-        body.url1, body.url2, body.region, body.selected_category, user
+        body.url1, body.url2, body.region, body.selected_category, user,
+        search_log_extra=_search_log_synthetic_kwargs(request),
     )
 
 
@@ -310,7 +380,8 @@ async def compare_urls_get(
         raise HTTPException(status_code=400, detail="URL blocked by security policy")
 
     return await _compare_urls_metered(
-        url1, url2, region, selected_category, user
+        url1, url2, region, selected_category, user,
+        search_log_extra=_search_log_synthetic_kwargs(request),
     )
 
 

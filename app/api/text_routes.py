@@ -21,7 +21,13 @@ from app.services.structured_comparison_service import (
 from app.api.auth_routes import get_optional_user
 from app.api.admin_routes import verify_admin_key
 from app.services.auth_service import get_user_preferences
-from app.services.database_service import save_comparison, log_search
+from app.services.database_service import (
+    save_comparison,
+    log_search,
+    search_log_truth_enabled,
+    search_log_synthetic_marker_enabled,
+    _is_synthetic_request,
+)
 from app.services.feedback_service import (
     persist_comparison,
     save_comparison_and_track_cohort,
@@ -283,6 +289,91 @@ def _is_codeless_safe_message(msg) -> bool:
     return isinstance(msg, str) and msg in _CODELESS_SAFE_MESSAGES
 
 
+# W4-13 (ENABLE_SEARCH_LOG_TRUTH, flag 1) -- search_logs row builders. Each is
+# TOTAL over any input (ruling C3: a raising builder must never be able to
+# skip a refund) and none is reached with the flag OFF except the flag-2
+# splat below, which is {} when flag 2 is OFF.
+def _log_cost_value(v) -> Optional[float]:
+    """A finite, non-negative int/float (never bool) as a float, else None.
+    An int too large for a float (float(10**400) raises OverflowError) is
+    None too: this builder runs after the refund and before the route's own
+    raise, so it may never replace that exception (C3 totality)."""
+    if isinstance(v, bool) or not isinstance(v, (int, float)):
+        return None
+    try:
+        v = float(v)
+    except OverflowError:
+        return None
+    if not math.isfinite(v) or v < 0:
+        return None
+    return v
+
+
+def _failure_log_cost(obj) -> float:
+    """T1: the TOP-LEVEL `total_cost` every orchestrator failure dict carries,
+    else `metadata.total_cost`, else 0.0 (non-dict, NaN, inf, negative, bool,
+    str -> 0.0)."""
+    if not isinstance(obj, dict):
+        return 0.0
+    top = _log_cost_value(obj.get("total_cost"))
+    if top is not None:
+        return top
+    md = obj.get("metadata")
+    m = _log_cost_value(md.get("total_cost")) if isinstance(md, dict) else None
+    return m if m is not None else 0.0
+
+
+def _failure_log_message(obj) -> Optional[str]:
+    """Ruling R1: a failure row's `error_message` passes the SAME W4-9 codeless
+    floor the response does (`_is_codeless_safe_message` -- no second
+    allowlist). A CODED result logs its message unchanged; a CODELESS one whose
+    message is not a reviewed sentence logs INTERNAL_ERROR_FRIENDLY_MESSAGE,
+    so an exception's str(e) never lands in search_logs. Non-dict -> None."""
+    if not isinstance(obj, dict):
+        return None
+    if obj.get("code"):
+        return obj.get("error")
+    msg = obj.get("error", _DEFAULT_FAILURE_MESSAGE)
+    return msg if _is_codeless_safe_message(msg) else INTERNAL_ERROR_FRIENDLY_MESSAGE
+
+
+def _partial_log_note(result) -> Dict[str, str]:
+    """T2 (ruling Q4): {'error_message': 'partial:<stage>'} for a delivered
+    partial -- `success` stays True (it WAS delivered, metered and saved)."""
+    md = result.get("metadata") if isinstance(result, dict) else None
+    if isinstance(md, dict) and md.get("partial") is True:
+        return {"error_message": "partial:" + str(md.get("partial_stage") or "unknown")}
+    return {}
+
+
+def _log_products_found(result) -> List[str]:
+    """T8/T9 delivery rows: `brand name` per product dict; [] when `products`
+    is not a list (ruling R7: a NEW row builder may never turn a delivered
+    200 into a 500)."""
+    items = result.get("products") if isinstance(result, dict) else None
+    if not isinstance(items, list):
+        return []
+    return [
+        f"{p.get('brand', '')} {p.get('name', '')}".strip()
+        for p in items if isinstance(p, dict)
+    ]
+
+
+def _success_log_cost(result):
+    """T9 delivery row: `metadata.total_cost` as the other success rows read
+    it, else 0 -- total when `metadata` is absent, None or not a dict."""
+    md = result.get("metadata") if isinstance(result, dict) else None
+    return md.get("total_cost", 0) if isinstance(md, dict) else 0
+
+
+def _search_log_synthetic_kwargs(request) -> Dict[str, bool]:
+    """Flag 2 (ENABLE_SEARCH_LOG_SYNTHETIC_MARKER): {} OFF, so no new kwarg
+    reaches `log_search`; ON, the caller's explicit True/False."""
+    if not search_log_synthetic_marker_enabled():
+        return {}
+    return {"is_synthetic": _is_synthetic_request(request)}
+
+
 # WS1 (genuine-bh-latency bundle, D2) — map a non-success comparison result to
 # the right wire surface. Replaces the old blanket `HTTPException(400)` that
 # collapsed EVERY failure code (including TIMEOUT) into BAD_REQUEST.
@@ -425,18 +516,21 @@ async def text_compare(request: Request, body: TextCompareRequest, user: Optiona
 
     duration_ms = int((time.time() - start_time) * 1000)
 
+    _truth = search_log_truth_enabled()
+    _syn = _search_log_synthetic_kwargs(request)
     if not result.get("success"):
         # Log failed search — Bundle D 2.B.6 WRAP: failure-path log; silent
         # fail = no record of why a comparison crashed.
-        fire_and_forget(
-            log_search(
-                query=body.query, input_type="text",
-                user_id=user.get("id") if user else None,
-                success=False, error_message=result.get("error"),
-                duration_ms=duration_ms,
-            ),
-            label="log_search.text.post.failure",
-        )
+        if not _truth:
+            fire_and_forget(
+                log_search(
+                    query=body.query, input_type="text",
+                    user_id=user.get("id") if user else None,
+                    success=False, error_message=result.get("error"),
+                    duration_ms=duration_ms, **_syn,
+                ),
+                label="log_search.text.post.failure",
+            )
         # M13-37: the work failed after the gate reserved a credit — refund it
         # for EVERY failure surface so a failed comparison never burns the user's
         # daily allowance (parity with the legacy record-only-on-success flow).
@@ -448,6 +542,18 @@ async def text_compare(request: Request, body: TextCompareRequest, user: Optiona
             fire_and_forget(
                 refund_comparison_credit(user["id"]),
                 label="usage_refund.text.post",
+            )
+        if _truth:
+            # W4-13 T1 + R1: cost + floored message, AFTER the refund (C3/R2).
+            fire_and_forget(
+                log_search(
+                    query=body.query, input_type="text",
+                    user_id=user.get("id") if user else None,
+                    success=False, error_message=_failure_log_message(result),
+                    cost=_failure_log_cost(result),
+                    duration_ms=duration_ms, **_syn,
+                ),
+                label="log_search.text.post.failure",
             )
         # WS1 (D2) — map the failure code to its proper wire surface
         # (CONTENT_UNAVAILABLE→200 body, TIMEOUT→503, else→400). Replaces the
@@ -472,6 +578,7 @@ async def text_compare(request: Request, body: TextCompareRequest, user: Optiona
             products_found=product_names, success=True,
             cost=result.get("metadata", {}).get("total_cost", 0),
             duration_ms=duration_ms,
+            **(_partial_log_note(result) if _truth else {}), **_syn,
         ),
         label="log_search.text.post.success",
     )
@@ -618,17 +725,20 @@ async def text_compare_get(
 
     duration_ms = int((time.time() - start_time) * 1000)
 
+    _truth = search_log_truth_enabled()
+    _syn = _search_log_synthetic_kwargs(request)
     if not result.get("success"):
         # Bundle D 2.B.6 WRAP: GET-handler failure-path log.
-        fire_and_forget(
-            log_search(
-                query=q, input_type="text",
-                user_id=user.get("id") if user else None,
-                success=False, error_message=result.get("error"),
-                duration_ms=duration_ms,
-            ),
-            label="log_search.text.get.failure",
-        )
+        if not _truth:
+            fire_and_forget(
+                log_search(
+                    query=q, input_type="text",
+                    user_id=user.get("id") if user else None,
+                    success=False, error_message=result.get("error"),
+                    duration_ms=duration_ms, **_syn,
+                ),
+                label="log_search.text.get.failure",
+            )
         # M13-37: refund the gate-reserved credit on a failed comparison — BEFORE
         # _surface_comparison_failure, which RAISES for TIMEOUT/INSUFFICIENT_DATA/
         # generic (only CONTENT_UNAVAILABLE returns a dict), so a refund after it
@@ -637,6 +747,18 @@ async def text_compare_get(
             fire_and_forget(
                 refund_comparison_credit(user["id"]),
                 label="usage_refund.text.get",
+            )
+        if _truth:
+            # W4-13 T1 + R1: cost + floored message, AFTER the refund (C3/R2).
+            fire_and_forget(
+                log_search(
+                    query=q, input_type="text",
+                    user_id=user.get("id") if user else None,
+                    success=False, error_message=_failure_log_message(result),
+                    cost=_failure_log_cost(result),
+                    duration_ms=duration_ms, **_syn,
+                ),
+                label="log_search.text.get.failure",
             )
         # WS1 (D2) — same code→surface mapping as the POST handler. TIMEOUT→503,
         # CONTENT_UNAVAILABLE→200 body, else→400. The old blanket 400 was the
@@ -657,6 +779,7 @@ async def text_compare_get(
             products_found=product_names, success=True,
             cost=result.get("metadata", {}).get("total_cost", 0),
             duration_ms=duration_ms,
+            **(_partial_log_note(result) if _truth else {}), **_syn,
         ),
         label="log_search.text.get.success",
     )
@@ -796,7 +919,11 @@ async def text_compare_stream(
         "settle_complete", "complete", "error",
     }
 
+    _truth = search_log_truth_enabled()
+    _syn = _search_log_synthetic_kwargs(request)
+
     async def event_generator() -> AsyncGenerator[str, None]:
+        error_payload = None  # W4-13 T4: the LAST dict error event
         complete_response = None
         complete_after_client_gone = False
         had_error = False
@@ -904,6 +1031,7 @@ async def text_compare_stream(
                 if event_type == "error":
                     had_error = True
                     if isinstance(data, dict):
+                        error_payload = data
                         # W4-9 R2(d) — SSE floor, symmetric with the sync
                         # `_surface_comparison_failure` allowlist: a CODELESS
                         # error payload whose message is not a reviewed
@@ -954,21 +1082,45 @@ async def text_compare_stream(
             duration_ms = int((time.time() - start_time) * 1000)
 
             if complete_response and not had_error and not complete_after_client_gone:
-                product_names = [
-                    f"{p.get('brand', '')} {p.get('name', '')}".strip()
-                    for p in complete_response.get("products", [])
-                ]
-                # Bundle D 2.B.6 WRAP: post-stream analytics; silent fail = wrong
-                # KPI numbers + missing history rows.
-                fire_and_forget(
-                    log_search(
-                        query=q, input_type="text_stream", user_id=user_id,
-                        products_found=product_names, success=True,
-                        cost=complete_response.get("metadata", {}).get("total_cost", 0),
-                        duration_ms=duration_ms,
-                    ),
-                    label="log_search.text_stream.success",
-                )
+                if (
+                    _truth and isinstance(complete_response, dict)
+                    and complete_response.get("success") is False
+                ):
+                    # W4-13 T3: a success:False TERMINAL payload (STREAM_TIMEOUT /
+                    # INSUFFICIENT_DATA / moderation refusal) is a FAILURE row.
+                    # The billing below is UNCHANGED (CD-wave-diffs-02 = W4-13b).
+                    fire_and_forget(
+                        log_search(
+                            query=q, input_type="text_stream", user_id=user_id,
+                            success=False,
+                            error_message=(
+                                _failure_log_message(complete_response)
+                                or complete_response.get("code")
+                                or "Streaming comparison failed"
+                            ),
+                            cost=_failure_log_cost(complete_response),
+                            duration_ms=duration_ms, **_syn,
+                        ),
+                        label="log_search.text_stream.terminal_failure",
+                    )
+                else:
+                    product_names = [
+                        f"{p.get('brand', '')} {p.get('name', '')}".strip()
+                        for p in complete_response.get("products", [])
+                    ]
+                    # Bundle D 2.B.6 WRAP: post-stream analytics; silent fail = wrong
+                    # KPI numbers + missing history rows.
+                    fire_and_forget(
+                        log_search(
+                            query=q, input_type="text_stream", user_id=user_id,
+                            products_found=product_names, success=True,
+                            cost=complete_response.get("metadata", {}).get("total_cost", 0),
+                            duration_ms=duration_ms,
+                            **(_partial_log_note(complete_response) if _truth else {}),
+                            **_syn,
+                        ),
+                        label="log_search.text_stream.success",
+                    )
                 if user_id:
                     # W3-2. The LABEL is deliberately the same on BOTH arms --
                     # same logical site, and existing tests + log greps key on
@@ -1009,20 +1161,38 @@ async def text_compare_stream(
                     )
             elif had_error:
                 # Bundle D 2.B.6 WRAP: failure-path log on streaming.
-                fire_and_forget(
-                    log_search(
-                        query=q, input_type="text_stream", user_id=user_id,
-                        success=False, error_message="Streaming comparison failed",
-                        duration_ms=duration_ms,
-                    ),
-                    label="log_search.text_stream.failure",
-                )
+                if not _truth:
+                    fire_and_forget(
+                        log_search(
+                            query=q, input_type="text_stream", user_id=user_id,
+                            success=False, error_message="Streaming comparison failed",
+                            duration_ms=duration_ms, **_syn,
+                        ),
+                        label="log_search.text_stream.failure",
+                    )
                 # M13-37: the stream errored after the gate reserved a credit —
                 # refund it so a failed comparison does not burn a daily credit.
                 if usage_consumed and user_id:
                     fire_and_forget(
                         refund_comparison_credit(user_id),
                         label="usage_refund.text_stream",
+                    )
+                if _truth:
+                    # W4-13 T4 + R1: the event's own (already floored) text + its
+                    # cost, AFTER the refund (C3/R2).
+                    _ep_msg = _failure_log_message(error_payload)
+                    fire_and_forget(
+                        log_search(
+                            query=q, input_type="text_stream", user_id=user_id,
+                            success=False,
+                            error_message=(
+                                _ep_msg if isinstance(_ep_msg, str) and _ep_msg
+                                else "Streaming comparison failed"
+                            ),
+                            cost=_failure_log_cost(error_payload),
+                            duration_ms=duration_ms, **_syn,
+                        ),
+                        label="log_search.text_stream.failure",
                     )
             else:
                 # M13-37 parity: no metered final payload and no explicit error
@@ -1037,6 +1207,22 @@ async def text_compare_stream(
                     fire_and_forget(
                         refund_comparison_credit(user_id),
                         label="usage_refund.text_stream.incomplete",
+                    )
+                if _truth:
+                    # W4-13 T5: ONE failure row, keyed on client_gone (C4), AFTER
+                    # the refund (C3). Runs on CancelledError/GeneratorExit too.
+                    fire_and_forget(
+                        log_search(
+                            query=q, input_type="text_stream", user_id=user_id,
+                            success=False,
+                            error_message=(
+                                "client_gone_before_complete" if client_gone
+                                else "stream_incomplete"
+                            ),
+                            cost=_failure_log_cost(complete_response or {}),
+                            duration_ms=duration_ms, **_syn,
+                        ),
+                        label="log_search.text_stream.incomplete",
                     )
 
     return StreamingResponse(
@@ -1085,17 +1271,45 @@ async def quick_compare(request: Request, body: QuickCompareRequest):
                 )
 
     query = f"{body.product1} vs {body.product2}"
+    _start = time.time()
+    _truth = search_log_truth_enabled()
 
     service = get_comparison_service()
-    result = await service.compare_from_text(
-        query=query,
-        region=body.region,
-        include_specs=True,
-        include_reviews=True,
-        include_pros_cons=True
-    )
+    try:
+        result = await service.compare_from_text(
+            query=query,
+            region=body.region,
+            include_specs=True,
+            include_reviews=True,
+            include_pros_cons=True
+        )
+    except Exception:
+        if _truth:
+            # W4-13 T9: a constant, never str(e).
+            fire_and_forget(
+                log_search(
+                    query=query, input_type="text", success=False,
+                    error_message="quick_compare_exception", cost=0.0,
+                    duration_ms=int((time.time() - _start) * 1000),
+                    **_search_log_synthetic_kwargs(request),
+                ),
+                label="log_search.text.quick.exception",
+            )
+        raise
 
     if not result.get("success"):
+        if _truth:
+            # W4-13 T9 + R1: cost + the W4-9-floored message.
+            fire_and_forget(
+                log_search(
+                    query=query, input_type="text", success=False,
+                    error_message=_failure_log_message(result),
+                    cost=_failure_log_cost(result),
+                    duration_ms=int((time.time() - _start) * 1000),
+                    **_search_log_synthetic_kwargs(request),
+                ),
+                label="log_search.text.quick.failure",
+            )
         raise HTTPException(
             status_code=400,
             detail=result.get("error", "Comparison failed")
@@ -1103,6 +1317,21 @@ async def quick_compare(request: Request, body: QuickCompareRequest):
 
     if device_fp:
         fire_and_forget(record_anon_comparison(device_fp), label="record_anon.quick")
+
+    if _truth:
+        # W4-13 T9: the delivery row, after the metering above.
+        fire_and_forget(
+            log_search(
+                query=query, input_type="text",
+                products_found=_log_products_found(result),
+                success=True,
+                cost=_success_log_cost(result),
+                duration_ms=int((time.time() - _start) * 1000),
+                **_partial_log_note(result),
+                **_search_log_synthetic_kwargs(request),
+            ),
+            label="log_search.text.quick.success",
+        )
 
     return result
 
