@@ -540,9 +540,10 @@ async def test_a_failure_after_the_gate_is_scrubbed_and_does_not_burn_the_token(
     monkeypatch, caplog
 ):
     """The OUTER catch-all: the admin write raises with the bearer in its text.
-    ``_categorize_auth_error`` logs ``str(e)`` at ERROR on its generic arm, so
-    the exception must be scrubbed before it gets there; and a failed write
-    must not blacklist the user's still-unspent link."""
+    ``_categorize_auth_error`` logs only the exception TYPE at ERROR on its
+    generic arm (#198), so no exception text reaches the logs; the scrub still
+    protects the response; and a failed write must not blacklist the user's
+    still-unspent link."""
     auth_client = _auth_client_returning_user()
     admin_client = MagicMock()
     admin_client.auth.admin.update_user_by_id.side_effect = Exception(
@@ -556,7 +557,14 @@ async def test_a_failure_after_the_gate_is_scrubbed_and_does_not_burn_the_token(
     assert result["success"] is False
     assert "code" not in result, result  # the route maps this to RECOVERY_FAILED
     assert RECOVERY_TOKEN not in json.dumps(result)
-    assert "policy rejected" in caplog.text, "the generic arm did not log at all"
+    errors = [
+        r for r in caplog.records
+        if r.name == "app.services.auth_service" and r.levelno >= logging.ERROR
+    ]
+    assert [r.getMessage() for r in errors] == [
+        "Auth error in password_recovery: Exception"
+    ], "the generic arm must log exactly one TYPE-only ERROR: " + caplog.text[:300]
+    assert "policy rejected" not in caplog.text, "the exception text reached the logs"
     assert RECOVERY_TOKEN not in caplog.text, (
         "THE RECOVERY TOKEN LEAKED INTO THE LOGS: " + caplog.text[:300]
     )

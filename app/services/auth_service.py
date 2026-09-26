@@ -221,6 +221,55 @@ def _upstream_unavailable_result() -> Dict:
     }
 
 
+# #198 -- the EXPECTED CLIENT class, by exception text, for exceptions that
+# carry no `.status` (complete_password_recovery re-wraps as Exception(str(e))).
+# Lower-case fragments of the gotrue wordings measured on the pinned
+# supabase-auth 2.31.0 (str(e) is the message only, never the code). The three
+# early-return wordings of `_categorize_auth_error` ("invalid login
+# credentials", "user already registered", "email not confirmed") are omitted:
+# they return before the generic branch. Every entry is pinned by a row in
+# tests/test_auth_error_log_hygiene.py.
+_EXPECTED_CLIENT_AUTH_ERROR_TERMS = (
+    "invalid refresh token", "refresh token not found", "already used",
+    "invalid jwt", "token is expired", "invalid token", "user not found",
+    "already been registered", "new password should be different",
+    "password should be at least",
+)
+
+# #198 R11 -- a 4xx that signals a SERVER-SIDE credential or configuration
+# failure is an application error, not a client verdict: it stays ERROR (a
+# Sentry event). Lower-case fragments: Kong's 401 "Invalid API key" / "No API
+# key found in request" (a wrong or missing Supabase key), gotrue's 403
+# not_admin "User not allowed", and gotrue config states ("Signups not allowed
+# for this instance", "Email logins are disabled", "... is disabled"). Every
+# entry is pinned by a row in tests/test_auth_error_log_hygiene.py.
+_SERVER_SIDE_AUTH_ERROR_TERMS = (
+    "invalid api key", "no api key found", "not allowed", "not_admin",
+    "is disabled", "are disabled",
+)
+
+
+def _is_expected_client_auth_error(e: Exception) -> bool:
+    """#198 -- a client verdict (bad/expired token, bad input), not an app error.
+
+    R11 carve-out FIRST: AuthSessionMissingError (our code called the SDK
+    without a session) and any server-side credential/config wording above
+    are never a client verdict, whatever the status. Then an int `.status`
+    (gotrue's AuthApiError / CustomAuthError) decides alone: 4xx except 429
+    (429 and 5xx stay the transient/error class). Only an exception without
+    one falls back to the expected-client message fragments.
+    """
+    error_msg = str(e).lower()
+    if type(e).__name__ == "AuthSessionMissingError":
+        return False
+    if any(term in error_msg for term in _SERVER_SIDE_AUTH_ERROR_TERMS):
+        return False
+    status = getattr(e, "status", None)
+    if isinstance(status, int) and not isinstance(status, bool):
+        return 400 <= status < 500 and status != 429
+    return any(term in error_msg for term in _EXPECTED_CLIENT_AUTH_ERROR_TERMS)
+
+
 def _categorize_auth_error(e: Exception, context: str = "operation") -> Dict:
     """Categorize auth errors into user-friendly messages."""
     error_msg = str(e).lower()
@@ -240,7 +289,18 @@ def _categorize_auth_error(e: Exception, context: str = "operation") -> Dict:
         # ignores unknown keys, and no other branch's shape or message moves.
         return _upstream_unavailable_result()
     else:
-        logger.error(f"Auth error in {context}: {e}")
+        # #198 -- exception TYPE only, never str(e) (an auth SDK exception can
+        # carry a credential), no exc_info. An expected client failure is a
+        # WARNING (a Sentry breadcrumb), anything else an ERROR (an event).
+        # R12: PRE-FORMATTED, no record args, so Sentry's logentry.message
+        # differs per (context, type) and each pair groups as its own issue.
+        if _is_expected_client_auth_error(e):
+            logger.warning(
+                "[auth] " + context + " rejected upstream: " + type(e).__name__
+                + " status=" + str(getattr(e, "status", None))
+            )
+        else:
+            logger.error("Auth error in " + context + ": " + type(e).__name__)
         # Bundle E B4 diagnostic (2026-05-26, Ahmed Sentry-sampling issue):
         # When Sentry sample rate drops the event, we have no way to see the
         # underlying Supabase rejection. Surface the raw exception text in the
