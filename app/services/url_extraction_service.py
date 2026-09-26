@@ -466,11 +466,20 @@ async def extract_from_url(url: str) -> Dict[str, Any]:
     
     # Extract data based on retailer
     if "amazon" in retailer["key"]:
-        raw_data = extract_amazon_data(html, url)
+        _extractor = extract_amazon_data
     elif "noon" in retailer["key"]:
-        raw_data = extract_noon_data(html, url)
+        _extractor = extract_noon_data
     else:
-        raw_data = extract_generic_data(html, url)
+        _extractor = extract_generic_data
+    if _price_parse_offload_enabled():
+        # W0-4f: bounded parse input (the same capped html reaches
+        # extract_with_ai) and the soup-building extractor on the parse pool.
+        # price_service resolved via the package attribute at call time (#185).
+        from app.services import price_service as _w04_ps
+        html = html[:_w04_ps.PRICE_FETCH_MAX_BYTES]
+        raw_data = await _w04_ps.run_parse_offloaded(_extractor, html, url)
+    else:
+        raw_data = _extractor(html, url)
     
     # If insufficient data, use AI extraction
     if not raw_data.get("title") or not raw_data.get("price"):
