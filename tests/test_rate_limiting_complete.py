@@ -123,7 +123,20 @@ class TestUrlDetectSsrf:
         resp = client.get("/api/v1/url/detect?url=http://127.0.0.1/admin")
         assert resp.status_code == 400
 
-    def test_detect_allows_valid_url(self, client):
+    def test_detect_allows_valid_url(self, client, monkeypatch):
+        # #184: the SSRF validator's resolver (socket.getaddrinfo, looked up at call
+        # time) answers a PUBLIC address for amazon.ae offline -- the rule under test
+        # is "resolves to a public address -> allowed"; other hosts stay guarded.
+        import socket
+
+        real = socket.getaddrinfo
+
+        def _resolve(host, port, *args, **kwargs):
+            if host == "amazon.ae":
+                return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", port or 0))]
+            return real(host, port, *args, **kwargs)
+
+        monkeypatch.setattr(socket, "getaddrinfo", _resolve)
         resp = client.post("/api/v1/url/detect", json={"url": "https://amazon.ae/dp/B123"})
         assert resp.status_code == 200
 
