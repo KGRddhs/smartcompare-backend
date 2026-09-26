@@ -315,17 +315,35 @@ def test_makes_no_network_call(monkeypatch):
 
 
 def test_does_not_import_price_service():
-    """Import cycle guard: the router must stay free of price_service."""
+    """Import cycle guard: the router must stay free of price_service.
+
+    Proven in a FRESH interpreter (#185). Deleting price_service from THIS
+    process's sys.modules (and reloading the router) orphaned every by-name
+    binding of it for the rest of the run; a subprocess is the honest proof and
+    leaves this process's modules untouched (pinned below)."""
+    import os
+    import subprocess
     import sys
+    from pathlib import Path
 
-    for mod in [m for m in sys.modules if "price_service" in m]:
-        del sys.modules[mod]
-    import importlib
+    import app.services as services_pkg
 
-    importlib.reload(
-        importlib.import_module("app.services.platform_router")
+    root = Path(__file__).resolve().parent.parent
+    before = (sys.modules.get("app.services.price_service"),
+              getattr(services_pkg, "price_service", None))
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(root)
+    env["PYTHONIOENCODING"] = "utf-8"
+    subprocess.run(
+        [sys.executable, "-c",
+         "import sys, app.services.platform_router as m; "
+         "assert not any('price_service' in k for k in sys.modules), "
+         "sorted(k for k in sys.modules if 'price_service' in k)"],
+        cwd=str(root), env=env, timeout=120, check=True,
     )
-    assert not any("price_service" in m for m in sys.modules)
+    after = (sys.modules.get("app.services.price_service"),
+             getattr(services_pkg, "price_service", None))
+    assert after[0] is before[0] and after[1] is before[1]
 
 
 # ===========================================================================

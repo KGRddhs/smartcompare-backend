@@ -17,6 +17,24 @@ def mock_admin_key():
         yield
 
 
+@pytest.fixture
+def public_dns(monkeypatch):
+    """#184: the validator's resolver (socket.getaddrinfo, looked up at call time by
+    both validators) answers a PUBLIC address for example.com, offline. The rule under
+    test is "resolves to a public address -> allowed"; every other host still goes to
+    the real (network-guarded) resolver."""
+    import socket
+
+    real = socket.getaddrinfo
+
+    def _resolve(host, port, *args, **kwargs):
+        if host == "example.com":
+            return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", port or 0))]
+        return real(host, port, *args, **kwargs)
+
+    monkeypatch.setattr(socket, "getaddrinfo", _resolve)
+
+
 # ============================================
 # SSRF Protection Tests (url_validator.py)
 # ============================================
@@ -24,6 +42,7 @@ def mock_admin_key():
 class TestSSRFProtection:
     """Test SSRF protection in validate_external_url()."""
 
+    @pytest.mark.usefixtures("public_dns")
     def test_valid_external_url_passes(self):
         """Valid external HTTPS URL passes validation."""
         assert validate_external_url("https://example.com/product/123") is True
@@ -37,6 +56,7 @@ class TestSSRFProtection:
         with patch("socket.getaddrinfo", return_value=mock_addr_info):
             assert validate_external_url("https://ounass.bh/product/123") is True
 
+    @pytest.mark.usefixtures("public_dns")
     def test_valid_http_url_passes(self):
         """HTTP (not just HTTPS) URLs are allowed."""
         assert validate_external_url("http://example.com/page") is True
@@ -413,6 +433,7 @@ class TestSecurityIntegration:
             assert resp.status_code == 403
         # All responses should be 403 (can't reliably test timing in unit tests)
 
+    @pytest.mark.usefixtures("public_dns")
     def test_ssrf_protection_integrated(self):
         """SSRF protection is used when fetching external URLs."""
         # This is tested in other modules that use validate_external_url

@@ -28,6 +28,18 @@ load_dotenv(override=True)
 neutralize_credentials()
 install_dotenv_guard()
 
+# Issue #184 (netguard 04c) -- the process-wide network guard, installed HERE at
+# import time: after the credential neutralisation above and before any `app.*`
+# import. Every non-loopback socket / curl_cffi attempt raises NetworkBlocked (an
+# OSError) and is counted per test; `allow_network` lifts it for one test; LIVE=1
+# leaves it uninstalled. `tests/_hermeticity.py` is the teardown sentinel for
+# #183/#185/#186. See those modules and scripts/netguard_ratchet.py.
+pytest.register_assert_rewrite("tests._netguard", "tests._hermeticity")
+from tests import _netguard  # noqa: E402
+
+_netguard.install()
+pytest_plugins = ("tests._netguard", "tests._hermeticity")
+
 # Enable cohort personalization for unit tests so the extraction prompt-block
 # tests exercise the injection path. Tests that need the default-off behaviour
 # (e.g. test_default_flag_state_is_false) call `monkeypatch.delenv()` per-test.

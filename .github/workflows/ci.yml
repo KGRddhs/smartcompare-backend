@@ -90,7 +90,11 @@ jobs:
       # To retire a baseline node: fix it, then re-capture the file (see its
       # header) — never hand-add a --deselect below.
       # tests/test_ci_gates.py pins this step's coupling to the baseline file.
+      # #184: tests/conftest.py installs the netguard (tests/_netguard.py); this env
+      # makes it write the per-test attempt report the ratchet step below reads.
       - name: Run unit tests
+        env:
+          QAREN_NETGUARD_REPORT: ${{ runner.temp }}/netguard_report.json
         run: |
           DESELECT=$(grep -vE '^\s*(#|$)' tests/.pre_impl_failures.txt | sed 's/^/--deselect=/' | tr '\n' ' ')
           python -m pytest tests/ -v \
@@ -103,6 +107,14 @@ jobs:
             --cov-fail-under=83 \
             --tb=short \
             $DESELECT
+
+      # #184: fails on a NEW test that attempts real egress (not in the generated
+      # tests/.network_attempt_baseline.txt); a new sentinel-only / ip-literal-only
+      # node is a WARNING. A plain following step on purpose: when the test step
+      # fails the job is already red, so `if: always()` would add nothing.
+      - name: Network-attempt ratchet
+        run: |
+          python scripts/netguard_ratchet.py "$RUNNER_TEMP/netguard_report.json" tests/.network_attempt_baseline.txt
 
   # NOT AUTOMATICALLY REQUIRED. Adding a job to this file does not make it a
   # required status check: until branch protection on `main` lists
