@@ -24,14 +24,11 @@ import ar from '../../src/i18n/ar.json';
 
 const SUFFIXES = ['_zero', '_one', '_two', '_few', '_many', '_other'] as const;
 
-// Dead — zero callers in src/ (grep `expiresIn` outside src/i18n/ → none).
-// i18next 26.1.0 falls back to ENGLISH for ar counts 0/2/3-10/11-99
-// (measured). Owned by W3-11 14(b): delete or complete, then drop from here.
-const ALLOWLIST_INCOMPLETE = new Set([
-  'referrals.bonus.expiresInDays',
-  'referrals.bonus.expiresInHours',
-  'referrals.bonus.expiresInMinutes',
-]);
+// W4-14 A4 (RED 17): the three referrals.bonus.expiresIn* families were
+// allowlisted here while incomplete (i18next 26.1.0 fell back to ENGLISH for
+// ar counts 0/2/3-10/11-99). W4-14 completes all six Arabic forms (ruling Q5,
+// correction C2), so the allowlist is empty and rule (ii) now covers them.
+const ALLOWLIST_INCOMPLETE = new Set<string>([]);
 
 const REQUIRED_FAMILIES = [
   'time.minutesAgo',

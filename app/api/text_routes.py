@@ -44,6 +44,7 @@ from app.services.usage_service import (
     record_anon_comparison,
 )
 from app.utils.async_utils import fire_and_forget
+from app.services.extraction_service import normalize_output_lang
 
 logger = logging.getLogger(__name__)
 
@@ -244,6 +245,7 @@ class TextCompareRequest(BaseModel):
     include_reviews: bool = True
     include_pros_cons: bool = True
     selected_category: Optional[str] = Field(default=None, max_length=40)
+    lang: Optional[str] = Field(default=None, max_length=8)
 
     @model_validator(mode="after")
     def normalize_shape(self) -> "TextCompareRequest":
@@ -512,6 +514,7 @@ async def text_compare(request: Request, body: TextCompareRequest, user: Optiona
         user_preferences=user_prefs,
         user_id=user.get("id") if user else None,
         explicit_pair=explicit_pair,
+        **({"output_lang": _ol} if (_ol := normalize_output_lang(body.lang)) else {}),
     )
 
     duration_ms = int((time.time() - start_time) * 1000)
@@ -649,6 +652,7 @@ async def text_compare_get(
     pros_cons: bool = Query(True, description="Include pros/cons"),
     nocache: bool = Query(False, description="Bypass cache for fresh data"),
     selected_category: Optional[str] = Query(None, max_length=40, description="User-selected category hint"),
+    lang: Optional[str] = Query(None, max_length=8, description="UI language for generated prose (en|ar)"),
     user: Optional[Dict] = Depends(get_optional_user),
 ):
     """GET version of text comparison for easy testing.
@@ -721,6 +725,7 @@ async def text_compare_get(
         user_preferences=user_prefs,
         user_id=user.get("id") if user else None,
         explicit_pair=explicit_pair,
+        **({"output_lang": _ol} if (_ol := normalize_output_lang(lang)) else {}),
     )
 
     duration_ms = int((time.time() - start_time) * 1000)
@@ -830,6 +835,7 @@ async def text_compare_stream(
     pros_cons: bool = Query(True, description="Include pros/cons"),
     nocache: bool = Query(False, description="Bypass cache for fresh data"),
     selected_category: Optional[str] = Query(None, max_length=40, description="User-selected category hint"),
+    lang: Optional[str] = Query(None, max_length=8, description="UI language for generated prose (en|ar)"),
     user: Optional[Dict] = Depends(get_optional_user),
 ):
     """SSE streaming version of text comparison. Returns Server-Sent Events.
@@ -970,6 +976,7 @@ async def text_compare_stream(
             user_preferences=user_prefs,
             user_id=user.get("id") if user else None,
             explicit_pair=explicit_pair,
+            **({"output_lang": _ol} if (_ol := normalize_output_lang(lang)) else {}),
         )
         try:
             async for event_type, data in _stream:

@@ -4,6 +4,7 @@
  */
 
 import axios from 'axios';
+import i18next from 'i18next';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { ComparisonResult, ImageIdentifyResult, UserPreferences } from '../types';
 import { setupCertificatePinning } from './certificatePinning';
@@ -564,6 +565,11 @@ export interface StreamCallbacks {
   onSettleComplete?: (data: ComparisonResult) => void;
 }
 
+/** W4-14 — the UI language for generated prose, read PER CALL; 'ar' or nothing. */
+function currentOutputLang(): 'ar' | undefined {
+  return (i18next.language || '').toLowerCase().startsWith('ar') ? 'ar' : undefined;
+}
+
 /**
  * Bundle B § 5.1 — dual-shape input. Callers may pass a single query string
  * (legacy `q=` shape) OR `{ product_a, product_b }` so the backend skips
@@ -606,6 +612,7 @@ export function streamComparison(
     // substitute the friendly results.timeout.* copy.
     const runRestCompare = async () => {
       try {
+        const outputLang = currentOutputLang();
         const baseParams: Record<string, any> = {
           region: 'bahrain',
           // catfix CLEANUP-5 — omit selected_category when unset (match the
@@ -616,6 +623,7 @@ export function streamComparison(
             selected_category: options.selected_category,
           }),
           ...(options?.nocache && { nocache: true }),
+          ...(outputLang && { lang: outputLang }),
         };
         // Bundle E S3 hotfix — GET /text/compare now accepts dual-shape (q OR pair).
         // We send the explicit pair so backend skips parse_product_query() for
@@ -758,6 +766,8 @@ export function streamComparison(
         }
         if (options?.nocache) params.set('nocache', 'true');
         if (options?.selected_category) params.set('selected_category', options.selected_category);
+        const outputLang = currentOutputLang();
+        if (outputLang) params.set('lang', outputLang);
 
         const headers: Record<string, string> = { Accept: 'text/event-stream' };
         if (token) headers['Authorization'] = `Bearer ${token}`;

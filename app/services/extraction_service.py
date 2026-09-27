@@ -2268,6 +2268,27 @@ def _gpt_winner_lever_enabled() -> bool:
     )
 
 
+def arabic_verdict_output_enabled() -> bool:
+    """W4-14 flag reader (default OFF), read live per call."""
+    return os.environ.get("ENABLE_ARABIC_VERDICT_OUTPUT", "").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
+
+
+def normalize_output_lang(raw: Any) -> Optional[str]:
+    """W4-14: the UI language for generated prose -> "ar" / "en" / None."""
+    if not isinstance(raw, str):
+        return None
+    s = raw.strip().lower()
+    if not s:
+        return None
+    primary = re.split(r"[-_]", s, maxsplit=1)[0]
+    return primary if primary in ("ar", "en") else None
+
+
+_ARABIC_OUTPUT_DIRECTIVE = '\n\n## Output language\nThe reader of this verdict reads Arabic. Write EVERY human-readable string value in the JSON in Modern Standard Arabic: winner_reason, key_tradeoff, both value_context sentences, both best_for sentences, every item of product_0_pros, product_0_cons, product_1_pros and product_1_cons, every item of specs_comparison, every personalized_insights[].insight, and independent_winner_basis when it is requested.\nKeep EXACTLY as given, never translated or transliterated: every JSON key, the winner_declaration value (the product name), product and brand names, model numbers, units, currency codes, and personalized_insights[].focus_area.\nWrite every number with Western digits (0-9).\nNever write these Arabic words or phrases: \u0623\u0641\u0636\u0644 \u0627\u062e\u062a\u064a\u0627\u0631; \u0627\u0644\u062e\u064a\u0627\u0631 \u0627\u0644\u0623\u0641\u0636\u0644; \u0623\u0641\u0636\u0644 \u062e\u064a\u0627\u0631; \u0627\u0644\u0641\u0627\u0626\u0632; \u0646\u0648\u0635\u064a \u0628\u0640; \u062a\u0639\u0630\u0631; \u0641\u0634\u0644; \u062a\u0642\u062f\u064a\u0631; \u0645\u064f\u0642\u062f\u064e\u0651\u0631.\nEvery other rule above still applies unchanged.'
+
+
 def _build_independent_winner_block() -> str:
     """S3 intervention #2 — instruct the model to ALSO emit an INDEPENDENT winner
     judged purely on the product facts (ignoring the deterministic scores), with
@@ -2476,6 +2497,7 @@ async def generate_comparison(
     category: str = "other",
     demographics_profile: Optional[Dict[str, Any]] = None,
     comparison_quality: str = "normal",
+    output_lang: Optional[str] = None,
 ) -> Tuple[Dict[str, Any], Dict[str, int]]:
     """Generate detailed comparison between two products.
 
@@ -2546,6 +2568,10 @@ If this is a cross-tier comparison, frame it as "different products for differen
         # guardrail). Flag OFF => prompt byte-identical to today.
         if _gpt_winner_lever_enabled():
             system_msg += _build_independent_winner_block()
+
+        if output_lang == "ar" and arabic_verdict_output_enabled():
+            system_msg += _ARABIC_OUTPUT_DIRECTIVE
+            logger.info("[ARABIC_VERDICT_OUTPUT] directive appended category=%s", category)
 
         # User message: product data wrapped in tags. Both rollback-scrubs are
         # composed so a cache-carried review_source_quotes (I2.5) OR
