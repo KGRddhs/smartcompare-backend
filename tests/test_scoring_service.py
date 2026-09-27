@@ -1168,7 +1168,9 @@ class TestTradeoffPairs:
         )
         assert tradeoffs == []
 
-    def test_sweep_with_scores_falls_back_to_loser_strongest(self):
+    def test_sweep_with_scores_falls_back_to_loser_strongest(self, monkeypatch):
+        monkeypatch.delenv("ENABLE_TIE_IS_NOT_MISSING", raising=False)
+        monkeypatch.delenv("ENABLE_VALUE_DIM_PARTIAL_SIGNAL", raising=False)
         service = ScoringService()
         scores = {
             "product_0": {"breakdown": {
@@ -1189,7 +1191,9 @@ class TestTradeoffPairs:
         assert tradeoffs[0]["loser_wins"]["product"] == "Product B"
         assert tradeoffs[0]["loser_wins"]["dimension"] == "value_score"
 
-    def test_sweep_fallback_winner_idx_1(self):
+    def test_sweep_fallback_winner_idx_1(self, monkeypatch):
+        monkeypatch.delenv("ENABLE_TIE_IS_NOT_MISSING", raising=False)
+        monkeypatch.delenv("ENABLE_VALUE_DIM_PARTIAL_SIGNAL", raising=False)
         service = ScoringService()
         winners = {
             "performance_score": {"winner": "Product B", "margin": 15.0},

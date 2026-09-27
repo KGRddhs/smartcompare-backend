@@ -222,9 +222,11 @@ def _control_summary_literal():
 # RED — the regression (tests 1-6 of the spec, plus the end-to-end partial path)
 # ===========================================================================
 
-def test_tradeoffs_non_empty_for_brand_repeating_pair(flag_state):
+def test_tradeoffs_non_empty_for_brand_repeating_pair(flag_state, monkeypatch):
     """[RED 1] The review's `[]`: the production join returns nothing for a
     brand-repeating pair because the winner labels are the raw doubled spelling."""
+    monkeypatch.delenv("ENABLE_TIE_IS_NOT_MISSING", raising=False)
+    monkeypatch.delenv("ENABLE_VALUE_DIM_PARTIAL_SIGNAL", raising=False)
     _, _, to = _tradeoffs(REPEAT())
     assert to != [], "compute_tradeoff_pairs joined raw labels against display names"
     assert len(to) == 1
@@ -261,20 +263,25 @@ def test_dimension_winner_labels_are_drawn_from_display_names(flag_state):
     assert labels <= set(_display_product_names(products)), labels
 
 
-def test_key_tradeoff_prose_is_non_empty_for_brand_repeating_pair():
+def test_key_tradeoff_prose_is_non_empty_for_brand_repeating_pair(monkeypatch):
     """[RED 4] The user-visible string the hard-cap partial path (unflagged)
     and `reconcile_winner_prose` both take from `deterministic_verdict_fields`."""
+    monkeypatch.delenv("ENABLE_TIE_IS_NOT_MISSING", raising=False)
+    monkeypatch.delenv("ENABLE_VALUE_DIM_PARTIAL_SIGNAL", raising=False)
     r, names, to = _tradeoffs(REPEAT())
     fields = deterministic_verdict_fields(r, names, to)
     assert fields["key_tradeoff"] == "Xerjoff Erba Pura stays competitive on longevity."
 
 
-def test_hard_cap_partial_response_ships_runner_up_caption():
+def test_hard_cap_partial_response_ships_runner_up_caption(monkeypatch):
     """[RED 4b] End to end through the REAL hard-cap builder
     (`_build_partial_response`, `scs:3161`) with the stashes the sync path sets:
     the REPEAT pair must ship the same overview winner block, tradeoffs and
     persisted dimension_winners as the CONTROL pair (today: empty
     `key_tradeoff`, `tradeoffs == []`, raw doubled labels in `scoring`)."""
+    monkeypatch.delenv("ENABLE_TIE_IS_NOT_MISSING", raising=False)
+    monkeypatch.delenv("ENABLE_VALUE_DIM_PARTIAL_SIGNAL", raising=False)
+
     def _build(products):
         svc = get_comparison_service()
         svc._partial_build_ctx = {
@@ -302,9 +309,11 @@ def test_hard_cap_partial_response_ships_runner_up_caption():
 
 
 @pytest.mark.parametrize("aspect", ["winner_labels", "tradeoff_len", "key_tradeoff_shape"])
-def test_parity_repeat_vs_control(aspect):
+def test_parity_repeat_vs_control(aspect, monkeypatch):
     """[RED 5] REPEAT and CONTROL have identical display names and identical
     scores, so every name-bearing output must be identical after the fix."""
+    monkeypatch.delenv("ENABLE_TIE_IS_NOT_MISSING", raising=False)
+    monkeypatch.delenv("ENABLE_VALUE_DIM_PARTIAL_SIGNAL", raising=False)
     r_rep, n_rep, to_rep = _tradeoffs(REPEAT())
     r_ctl, n_ctl, to_ctl = _tradeoffs(CONTROL())
     assert n_rep == n_ctl  # precondition: the display spelling is shared
@@ -321,8 +330,10 @@ def test_parity_repeat_vs_control(aspect):
         )
 
 
-def test_mixed_pair_only_one_product_repeats():
+def test_mixed_pair_only_one_product_repeats(monkeypatch):
     """[RED 6] Only product 0 repeats its brand; the join must still pair."""
+    monkeypatch.delenv("ENABLE_TIE_IS_NOT_MISSING", raising=False)
+    monkeypatch.delenv("ENABLE_VALUE_DIM_PARTIAL_SIGNAL", raising=False)
     r, _, to = _tradeoffs(MIXED())
     assert _labels(r["dimension_winners"]) == {"Dior Sauvage"}
     assert len(to) == 1

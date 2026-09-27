@@ -475,6 +475,68 @@ def _missing_dim_renorm_enabled() -> bool:
     )
 
 
+# W4-6a (PO-RUBRIC-01) — ENABLE_VALUE_DIM_PARTIAL_SIGNAL (default OFF). When ON
+# the value dimension leaves the EMITTED `missing_data` list only when every
+# product is priced AND `_spec_missing` is equal across the pair (the same value
+# formula on both sides, ruling R1). Internal missingness reads keep the legacy
+# list, so V moves no arithmetic. Read LIVE per call.
+def _value_dim_partial_signal_enabled() -> bool:
+    import os
+    return os.environ.get("ENABLE_VALUE_DIM_PARTIAL_SIGNAL", "").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
+
+
+# W4-6a (PO-RUBRIC-02) — ENABLE_TIE_IS_NOT_MISSING (default OFF). When ON a B0-A
+# array tie-collapse fires only when the tied signal is SPARSE on every product.
+# Coupled: always False while ENABLE_MISSING_DIM_RENORM is ON (ruling R5 —
+# uncoupled it re-opens the #101 inversion). Read LIVE per call.
+def _tie_is_not_missing_enabled() -> bool:
+    if _missing_dim_renorm_enabled():
+        return False
+    import os
+    return os.environ.get("ENABLE_TIE_IS_NOT_MISSING", "").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
+
+
+# W4-6a T sparsity predicates (ruling R6), on the PRODUCT dict. Each mirrors the
+# raw scorer of its signal (_score_reliability / _score_popularity / _score_specs).
+_SPARSE_FACT_CHECK_BUCKETS = 3
+
+
+def _reliability_sparse(product: Dict[str, Any]) -> bool:
+    fc = product.get("fact_check")
+    if not isinstance(fc, dict):
+        return True
+    total = sum(
+        fc.get(k) or 0
+        for k in ("specs_verified", "specs_likely", "specs_flagged", "specs_unverified")
+    )
+    return total < _SPARSE_FACT_CHECK_BUCKETS
+
+
+def _popularity_sparse(product: Dict[str, Any]) -> bool:
+    try:
+        return not int(product.get("review_count")) > 0
+    except (TypeError, ValueError):
+        return True
+
+
+def _spec_sparse(product: Dict[str, Any], category: str) -> bool:
+    # Ruling R2: with no numeric spec direction (fashion, other) every populated
+    # field is presence credit, so a 1.0 == 1.0 tie is not a measurement.
+    if not HIGHER_IS_BETTER_BY_CATEGORY.get(category) and not LOWER_IS_BETTER_BY_CATEGORY.get(category):
+        return True
+    specs = product.get("specs")
+    if not isinstance(specs, dict):
+        return True
+    schema_key = category if category in CATEGORY_SPEC_SCHEMAS else "other"
+    fields = [f for f in CATEGORY_SPEC_SCHEMAS[schema_key] if f not in NON_SCORING_SPEC_KEYS]
+    populated = sum(1 for f in fields if specs.get(f) and specs.get(f) != "N/A")
+    return populated / len(fields) < CATEGORY_MIN_COVERAGE.get(schema_key, 0.3)
+
+
 # M26 #100 — within a single schema field, a >=10x magnitude gap between two
 # comparable products is overwhelmingly a unit/notation artifact ("5000mAh" vs
 # "Up to 29 hours video playback"; "1 TB" vs "128 GB"), not merit — the same
@@ -1407,6 +1469,18 @@ class ScoringService:
                 )
 
         result_products = {}
+        # W4-6a V (ruling R1): the dims to drop from the EMITTED list; the
+        # legacy lists stay the input of every internal read below.
+        legacy_missing: Dict[str, Optional[List[str]]] = {}
+        value_unstamp = set()
+        if (
+            _value_dim_partial_signal_enabled()
+            and all(not rs.get("_price_missing") for rs in raw_scores)
+            and len({bool(rs.get("_spec_missing")) for rs in raw_scores}) == 1
+        ):
+            sig_map = self._DIMENSION_SIGNAL_MAP.get(category, self._DIMENSION_SIGNAL_MAP["other"])
+            value_unstamp = {d for d in dims if sig_map.get(d) == "value"}
+        value_unstamped_idx = []
         for i, product in enumerate(products_data):
             product_key = f"product_{i}"
             breakdown = normalized[i]
@@ -1426,6 +1500,10 @@ class ScoringService:
 
             # Track which dimensions had missing data
             missing_dims = [dim for dim in dims if raw_scores[i].get(f"_{dim}_missing")]
+            legacy_missing[product_key] = missing_dims if missing_dims else None
+            if value_unstamp & set(missing_dims):
+                missing_dims = [d for d in missing_dims if d not in value_unstamp]
+                value_unstamped_idx.append(i)
 
             result_products[product_key] = {
                 "overall": overall,
@@ -1440,6 +1518,11 @@ class ScoringService:
                 # build_dimensions_v2 / the FE — can stop rendering a
                 # synthetic 50 bar for a cell that was never measured.
                 result_products[product_key]["excluded_dims"] = excluded_dims
+        if value_unstamped_idx:
+            logger.info(
+                "[scoring] W4-6a value dim partial: dim=%s products=%s category=%s",
+                ",".join(sorted(value_unstamp)), value_unstamped_idx, category,
+            )
 
         # S3 L3 v2 — PRICE-AUTHORITY AS A SCORE FACTOR (Ahmed pivot 2026-06-13).
         # "Facts beat estimates" now lives IN the genuine `overall` score, NOT a
@@ -1472,7 +1555,7 @@ class ScoringService:
                 # sentinel is no less honest than exempting it, and relative
                 # order between two all-missing products is unchanged (equal
                 # deltas). Flag OFF keeps the exemption byte-identical.
-                md = result_products[pk].get("missing_data")
+                md = legacy_missing[pk]
                 if md and len(md) >= n_dims and not renorm_enabled:
                     continue
                 delta = _price_authority_delta(products_data[i])
@@ -1498,7 +1581,7 @@ class ScoringService:
             and overalls[0] == overalls[1]
         ):
             missing_counts = [
-                len(result_products[f"product_{i}"].get("missing_data") or [])
+                len(legacy_missing[f"product_{i}"] or [])
                 for i in range(2)
             ]
             if missing_counts[1] < missing_counts[0]:
@@ -2122,11 +2205,27 @@ class ScoringService:
         # (ZERO genuine non-MISSING ties observed across the corpus).
         # Collapse to MISSING_SCORE so downstream silent dim omission
         # (build_dimensions_v2 § A.4.9) fires uniformly.
+        # W4-6a T (ENABLE_TIE_IS_NOT_MISSING): a tie on DENSE evidence is a real
+        # tie and is kept; the collapse fires only when the signal is sparse on
+        # every product. Flag OFF the first branch is never taken.
+        tie_gate = _tie_is_not_missing_enabled()
+        ties_kept: List[str] = []
+        ties_collapsed_sparse: List[str] = []
         if (
             len(reliability_scores) >= 2
             and len(set(reliability_scores)) == 1
             and reliability_scores[0] != MISSING_SCORE
+            and tie_gate
+            and not all(_reliability_sparse(p) for p in products_data)
         ):
+            ties_kept.append("reliability")
+        elif (
+            len(reliability_scores) >= 2
+            and len(set(reliability_scores)) == 1
+            and reliability_scores[0] != MISSING_SCORE
+        ):
+            if tie_gate:
+                ties_collapsed_sparse.append("reliability")
             reliability_scores = [MISSING_SCORE] * len(reliability_scores)
             for rs in raw_scores:
                 rs["_reliability_missing"] = True
@@ -2134,7 +2233,17 @@ class ScoringService:
             len(popularity_scores) >= 2
             and len(set(popularity_scores)) == 1
             and popularity_scores[0] != MISSING_SCORE
+            and tie_gate
+            and not all(_popularity_sparse(p) for p in products_data)
         ):
+            ties_kept.append("popularity")
+        elif (
+            len(popularity_scores) >= 2
+            and len(set(popularity_scores)) == 1
+            and popularity_scores[0] != MISSING_SCORE
+        ):
+            if tie_gate:
+                ties_collapsed_sparse.append("popularity")
             popularity_scores = [MISSING_SCORE] * len(popularity_scores)
             for rs in raw_scores:
                 rs["_popularity_missing"] = True
@@ -2155,10 +2264,30 @@ class ScoringService:
             len(spec_scores) >= 2
             and len(set(spec_scores)) == 1
             and spec_scores[0] != MISSING_SCORE
+            and tie_gate
+            and not all(_spec_sparse(p, category) for p in products_data)
         ):
+            ties_kept.append("spec")
+        elif (
+            len(spec_scores) >= 2
+            and len(set(spec_scores)) == 1
+            and spec_scores[0] != MISSING_SCORE
+        ):
+            if tie_gate:
+                ties_collapsed_sparse.append("spec")
             spec_scores = [MISSING_SCORE] * len(spec_scores)
             for rs in raw_scores:
                 rs["_spec_missing"] = True
+        if ties_kept:
+            logger.info(
+                "[scoring] W4-6a tie kept: signals=%s category=%s",
+                ",".join(ties_kept), category,
+            )
+        if ties_collapsed_sparse:
+            logger.info(
+                "[scoring] W4-6a tie collapsed (sparse): signals=%s category=%s",
+                ",".join(ties_collapsed_sparse), category,
+            )
 
         # Compute spec_secondary: blended spec and review for variety.
         # S3 L3 v2 [gate finding B — THIRD site] — gate missingness on the
@@ -2639,10 +2768,23 @@ class ScoringService:
         winner_breakdown = ((scores.get(winner_key) or {}).get("breakdown") or {})
         if not loser_breakdown:
             return None
+        # W4-6a guard (PO-RUBRIC-08; rulings R3/R14/R15), ON when either W4-6a
+        # flag is: a dim is ELIGIBLE only if it is not in the loser's
+        # missing_data (G), is numeric in the winner's breakdown (G), and the
+        # loser leads it by >= 1.0 — which excludes every dim the winner leads
+        # (G' is the > 5 subset) and every zero-margin claim, before the pick.
+        guard = _value_dim_partial_signal_enabled() or _tie_is_not_missing_enabled()
+        loser_md = (scores.get(loser_key) or {}).get("missing_data") or []
         best_dim = None
         best_val = None
         for dim, val in loser_breakdown.items():
             if not isinstance(val, (int, float)):
+                continue
+            if guard and (
+                dim in loser_md
+                or not isinstance(winner_breakdown.get(dim), (int, float))
+                or round(val - winner_breakdown[dim], 1) < 1.0
+            ):
                 continue
             if best_val is None or val > best_val:
                 best_val = val
