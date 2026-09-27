@@ -35,6 +35,7 @@ import { colors, spacing, typography } from '../../theme';
 import { DimensionBar } from '../primitives/DimensionBar';
 import type { Dimension } from '../../types';
 import { safeDelta } from './_deltaText';
+import { localizedDimensionLabel } from '../../utils/dimensionLabel';
 
 interface DimensionBarsProps {
   dimensions: Dimension[];
@@ -224,7 +225,7 @@ function InsufficientRow({ dimension, testID }: InsufficientRowProps) {
   const { t } = useTranslation();
   return (
     <View style={styles.insufficientRow} testID={testID}>
-      <Text style={styles.label}>{dimension.label}</Text>
+      <Text style={styles.label}>{localizedDimensionLabel(dimension.key, dimension.label, t)}</Text>
       <Text style={styles.insufficientCaption}>
         {t('results.dimensions.limited_data')}
       </Text>
@@ -283,7 +284,8 @@ function DimensionRow({ dimension, winnerIndex, productAName, productBName, test
   // the delta caption — swap a point-math delta for the clean dim label via the
   // shared guard. Applied ONLY when delta_text is non-empty so an absent delta
   // keeps the original behavior (no synthetic label caption appears).
-  const guardedDelta = delta_text ? safeDelta(delta_text, label) : '';
+  const shownLabel = localizedDimensionLabel(key, label, t);
+  const guardedDelta = delta_text ? safeDelta(delta_text, shownLabel) : '';
   const heroDeltaText = isCrossTier
     ? t('results.value.different_tier')
     : guardedDelta;
@@ -310,7 +312,7 @@ function DimensionRow({ dimension, winnerIndex, productAName, productBName, test
           keeps only the dimension label so long names no longer repeat +
           truncate on every bar. */}
       <View style={styles.labelRow}>
-        <Text style={styles.label} numberOfLines={1}>{label}</Text>
+        <Text style={styles.label} numberOfLines={1}>{shownLabel}</Text>
       </View>
       {isHeroDeltaRow && (
         <Text

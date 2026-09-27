@@ -3614,6 +3614,7 @@ class StructuredComparisonService:
         user_preferences: Optional[Dict[str, Any]] = None,
         user_id: Optional[str] = None,
         explicit_pair: Optional[Tuple[str, str]] = None,
+        output_lang: Optional[str] = None,
     ) -> Dict[str, Any]:
         """L2.7 — hard-capped entry point: wraps `_compare_from_text_impl` in
         asyncio.wait_for(STREAM_HARD_CAP_SECONDS) so the non-streaming path
@@ -3662,6 +3663,7 @@ class StructuredComparisonService:
                     user_preferences=user_preferences,
                     user_id=user_id,
                     explicit_pair=explicit_pair,
+                    **({"output_lang": output_lang} if output_lang else {}),
                 ),
                 timeout=STREAM_HARD_CAP_SECONDS,
             )
@@ -3725,6 +3727,7 @@ class StructuredComparisonService:
         user_preferences: Optional[Dict[str, Any]] = None,
         user_id: Optional[str] = None,
         explicit_pair: Optional[Tuple[str, str]] = None,
+        output_lang: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Main entry point for text-based comparisons (post-L2.7 inner impl).
 
@@ -4046,6 +4049,7 @@ class StructuredComparisonService:
                 scores_summary=scores_summary, category=category_used,
                 demographics_profile=demographics_profile,
                 comparison_quality=_verdict_quality,
+                **({"output_lang": output_lang} if output_lang else {}),
             )
             if orchestrator_timings is not None:
                 orchestrator_timings["verdict_ms"] = round((time.perf_counter() - t_verdict) * 1000, 1)
@@ -4063,6 +4067,7 @@ class StructuredComparisonService:
                     user_preferences=user_preferences, scores_summary=scores_summary,
                     category=category_used, demographics_profile=demographics_profile,
                     comparison_quality=_verdict_quality,
+                    **({"output_lang": output_lang} if output_lang else {}),
                 ),
                 pain_workflow_context=scores_summary,
                 stage_timings=orchestrator_timings,
@@ -4280,6 +4285,7 @@ class StructuredComparisonService:
         user_preferences: Optional[Dict[str, Any]] = None,
         user_id: Optional[str] = None,
         explicit_pair: Optional[Tuple[str, str]] = None,
+        output_lang: Optional[str] = None,
     ):
         """Async generator version of compare_from_text that yields partial results."""
         start_time = datetime.now()
@@ -4811,6 +4817,7 @@ class StructuredComparisonService:
                 scores_summary=scores_summary, category=category_used,
                 demographics_profile=demographics_profile,
                 comparison_quality=_verdict_quality,
+                **({"output_lang": output_lang} if output_lang else {}),
             )
             if _full_deadline_on:
                 try:
@@ -4836,6 +4843,7 @@ class StructuredComparisonService:
                     user_preferences=user_preferences, scores_summary=scores_summary,
                     category=category_used, demographics_profile=demographics_profile,
                     comparison_quality=_verdict_quality,
+                    **({"output_lang": output_lang} if output_lang else {}),
                 ),
                 pain_workflow_context=scores_summary,
                 stage_timings=orchestrator_timings,
@@ -8948,6 +8956,7 @@ class StructuredComparisonService:
                 # M18 PO-prompts-02 — the regen keeps the same data-quality
                 # framing as the original verdict (thin data stays hedgeable).
                 comparison_quality=args.get("comparison_quality", "normal"),
+                **({"output_lang": args["output_lang"]} if args.get("output_lang") else {}),
             )
             self._track_gpt_cost(regen_usage)
             return regen_comparison

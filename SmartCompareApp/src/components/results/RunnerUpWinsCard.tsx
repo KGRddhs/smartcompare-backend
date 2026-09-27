@@ -30,6 +30,7 @@ import { useTranslation } from 'react-i18next';
 import { colors, spacing } from '../../theme';
 import type { Product, Dimension } from '../../types';
 import { safeDelta, SCORE_INTERNALS_RE } from './_deltaText';
+import { localizedDimensionLabel } from '../../utils/dimensionLabel';
 
 export interface RunnerUpWinsCardProps {
   products: Product[];
@@ -64,8 +65,11 @@ export function runnerUpWinningDims(
 /** The label/phrase for a winning dim row: qualitative delta_text when it is
  *  NOT raw point-math, otherwise the clean dim label. Never the "+Npt" form.
  *  Delegates to the shared `safeDelta` guard (single source of truth). */
-function dimRowText(d: Dimension): string {
-  return safeDelta(d.delta_text, d.label);
+function dimRowText(
+  d: Dimension,
+  t: (key: string, options?: Record<string, unknown>) => string,
+): string {
+  return safeDelta(d.delta_text, localizedDimensionLabel(d.key, d.label, t));
 }
 
 export function RunnerUpWinsCard({
@@ -114,7 +118,7 @@ export function RunnerUpWinsCard({
             <View key={d.key} style={styles.dimRow} testID={`${testID}-dim-${d.key}`}>
               <Text style={styles.dimBullet}>{'+'}</Text>
               <Text style={styles.dimText} numberOfLines={2}>
-                {dimRowText(d)}
+                {dimRowText(d, t)}
               </Text>
             </View>
           ))}
