@@ -20,6 +20,7 @@ from app.services.model_config import (
     vision_model,
 )
 from app.services import api_budget_service as _llm_breaker
+from app.utils.prompt_sanitizer import sanitize_prompt_input
 
 logger = logging.getLogger(__name__)
 
@@ -264,6 +265,28 @@ EXAMPLES:
     }
 
 
+def _coerce_name_part(value) -> str:
+    """W4-11 (R25): the unflagged name fence never raises. None -> '' (R3), a str
+    stays as is, a list/tuple -> the str() of its items joined by one space, any
+    other scalar -> str(value); only then is it sanitised."""
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, (list, tuple)):
+        return " ".join(str(item) for item in value)
+    return str(value)
+
+
+def _sanitized_full_name(brand, name, variant) -> str:
+    """W4-11 (A, R3, R25): parts coerced to str first, then tags neutralized, controls
+    stripped, whitespace collapsed so a product name can never add a line to (or close
+    a region in) the system prompt."""
+    return " ".join(
+        f"{sanitize_prompt_input(_coerce_name_part(brand))} {sanitize_prompt_input(_coerce_name_part(name))} {sanitize_prompt_input(_coerce_name_part(variant or ''))}".split()
+    )
+
+
 async def extract_specs_targeted(
     brand: str,
     name: str,
@@ -280,10 +303,12 @@ async def extract_specs_targeted(
     if not fields:
         return {}
 
-    fields_json = ",\n    ".join(f'"{f}": null' for f in fields)
-    full_name = f"{brand} {name} {variant or ''}".strip()
+    from app.services.extraction_service import SEARCH_RESULTS_GUARD, _wrap_search_context
 
-    system = f"""Extract these specific fields for {full_name} from the snippets below.
+    fields_json = ",\n    ".join(f'"{f}": null' for f in fields)
+    full_name = _sanitized_full_name(brand, name, variant)
+
+    system = SEARCH_RESULTS_GUARD + "\n\n" + f"""Extract these specific fields for {full_name} from the snippets below.
 Return ONLY valid JSON with these exact keys:
 {{
     {fields_json}
@@ -295,7 +320,7 @@ Rules:
 - NEVER return the literal string 'N/A' - return null instead
 - Use your training data as a fallback when snippets are silent"""
 
-    user = f"SNIPPETS:\n{context}\n\nReturn JSON for: {fields}"
+    user = f"SNIPPETS:\n{_wrap_search_context(context)}\n\nReturn JSON for: {fields}"
 
     try:
         client_local = get_client()
@@ -307,7 +332,7 @@ Rules:
                 {"role": "user", "content": user},
             ],
             response_format={"type": "json_object"},
-            temperature=0.1,
+            **sampling_kwargs(_model, 0.1),
             **token_limit_kwargs(_model, 200),
         )
         _log_cache_telemetry(response, "extract_specs_targeted")
@@ -352,7 +377,7 @@ async def extract_specs_synthesized(
         return {}
 
     fields_json = ",\n    ".join(f'"{f}": null' for f in fields)
-    full_name = f"{brand} {name} {variant or ''}".strip()
+    full_name = _sanitized_full_name(brand, name, variant)
 
     system = f"""You are a product specifications expert. Synthesize these specific fields for {full_name} from your training-data knowledge.
 Return ONLY valid JSON with these exact keys:
@@ -382,7 +407,7 @@ Rules:
                 {"role": "user", "content": user},
             ],
             response_format={"type": "json_object"},
-            temperature=0.1,
+            **sampling_kwargs(_model, 0.1),
             **token_limit_kwargs(_model, 300),
         )
         _log_cache_telemetry(response, "extract_specs_synthesized")
@@ -444,7 +469,7 @@ async def disambiguate_variant_line(
                 {"role": "user", "content": user},
             ],
             response_format={"type": "json_object"},
-            temperature=0,
+            **sampling_kwargs(_model, 0),
             **token_limit_kwargs(_model, 60),
         )
         _log_cache_telemetry(response, "disambiguate_variant_line")

@@ -1,5 +1,7 @@
 """Category-specific prompt personalities for product comparisons."""
 
+import os
+
 CATEGORY_PROMPT_PERSONALITIES = {
     "electronics": {
         "reasoning_style": "Lead with quantifiable differences when the supplied product data carries them. Cite specific specs and performance gaps.",
@@ -78,11 +80,81 @@ TRUST RULES (MANDATORY — apply to ALL comparisons):
 """
 
 
-def build_personality_prompt(category: str) -> str:
-    """Build the category-specific personality section for the comparison prompt."""
-    personality = CATEGORY_PROMPT_PERSONALITIES.get(
-        category, CATEGORY_PROMPT_PERSONALITIES["other"]
+def verdict_prompt_truth_enabled() -> bool:
+    """W4-11 (R1) -- ENABLE_VERDICT_PROMPT_TRUTH, default OFF, read per call."""
+    return os.getenv("ENABLE_VERDICT_PROMPT_TRUTH", "false").strip().lower() in (
+        "true",
+        "1",
+        "yes",
+        "on",
     )
+
+
+def _truth_swap(src: str, old: str, new: str, what: str) -> str:
+    """W4-11 (R11) -- count-checked exact replacement: an edit that breaks the match
+    raises at import instead of silently dropping the TRUTH swap."""
+    n = src.count(old)
+    if n != 1:
+        raise RuntimeError(
+            f"W4-11 TRUTH derivation: {what} matched {n} times (expected 1)"
+        )
+    return src.replace(old, new)
+
+
+# W4-11 (R1/R9) -- ENABLE_VERDICT_PROMPT_TRUTH twins, DERIVED from the untouched OFF
+# objects above (the OFF objects are literally not edited).
+_OFF_RULE_73 = '- NO overconfidence: if data is thin or scores are close (<5 point gap), say "marginally" or "slightly"'
+_TRUTH_RULE_73 = (
+    "- NO overconfidence: when the supplied data is thin or the two products are close, say "
+    '"marginally" or "slightly" -- describe the closeness in plain words, never as a number'
+)
+_OFF_RULE_77 = "- If scores disagree with your intuition, explain why (do not silently ignore scores)"
+_TRUTH_RULE_77 = (
+    "- The winner is set by the supplied scoring context; justify it with the product facts "
+    "that support it, and never mention, quote or allude to the scores themselves"
+)
+
+UNIVERSAL_TRUST_RULES_TRUTH = _truth_swap(
+    _truth_swap(UNIVERSAL_TRUST_RULES, _OFF_RULE_73, _TRUTH_RULE_73, "trust rule :73"),
+    _OFF_RULE_77,
+    _TRUTH_RULE_77,
+    "trust rule :77",
+)
+
+# PO-PROMPTS-10: the #111 evidence conditional in every reasoning_style (electronics
+# already carries it and is kept as is).
+_TRUTH_REASONING_STYLE = {
+    "grocery": "Lead with ingredient quality and nutritional differences when the supplied product data carries them; otherwise lead with what the data does support. Health implications over taste unless products are nutritionally similar.",
+    "supplements": "Lead with ingredient forms and dosages when the supplied product data carries them; otherwise lead with what the data does support. Distinguish clinical doses from marketing doses. Safety first, then efficacy.",
+    "makeup": "Lead with real-world performance (wear time, shade inclusivity, skin compatibility) when the supplied product data carries it; otherwise lead with what the data does support. Specs are secondary to experience.",
+    "skincare": "Lead with active ingredient analysis (what actives, what concentration, what form) when the supplied product data carries it; otherwise lead with what the data does support. Then discuss compatibility and evidence of results.",
+    "haircare": "Lead with hair type compatibility and expected results when the supplied product data carries them; otherwise lead with what the data does support. Ingredients matter but outcomes matter more.",
+    "fragrances": "Lead with scent description and character when the supplied product data carries them; otherwise lead with what the data does support. Longevity and projection are decisive only when the supplied product data states them. Price is secondary to the experience.",
+    "fashion": "Lead with material quality and craftsmanship, then fit and style, when the supplied product data carries them; otherwise lead with what the data does support. For luxury items, brand heritage and authenticity matter.",
+    "other": "Lead with how well each product fulfills its core purpose when the supplied product data shows it; otherwise lead with what the data does support. Balance specs with user reviews when category-specific expertise is limited.",
+}
+if set(_TRUTH_REASONING_STYLE) - set(CATEGORY_PROMPT_PERSONALITIES):
+    raise RuntimeError(
+        "W4-11 TRUTH derivation: unknown category in _TRUTH_REASONING_STYLE"
+    )
+CATEGORY_PROMPT_PERSONALITIES_TRUTH = {
+    cat: dict(p, reasoning_style=_TRUTH_REASONING_STYLE.get(cat, p["reasoning_style"]))
+    for cat, p in CATEGORY_PROMPT_PERSONALITIES.items()
+}
+
+
+def build_personality_prompt(category: str, truth=None) -> str:
+    """Build the category-specific personality section for the comparison prompt.
+
+    W4-11: ``truth`` None reads ENABLE_VERDICT_PROMPT_TRUTH; build_verdict_prompt reads
+    it once and passes it so one verdict never mixes states."""
+    if truth is None:
+        truth = verdict_prompt_truth_enabled()
+    table = (
+        CATEGORY_PROMPT_PERSONALITIES_TRUTH if truth else CATEGORY_PROMPT_PERSONALITIES
+    )
+    rules = UNIVERSAL_TRUST_RULES_TRUTH if truth else UNIVERSAL_TRUST_RULES
+    personality = table.get(category, table["other"])
     return f"""
 ## Comparison Personality (adapt your language and reasoning to this category)
 - Reasoning approach: {personality['reasoning_style']}
@@ -91,5 +163,5 @@ def build_personality_prompt(category: str) -> str:
 - Voice: {personality['comparison_voice']}
 - Context inference: {personality['context_inference']}
 
-{UNIVERSAL_TRUST_RULES}
+{rules}
 """

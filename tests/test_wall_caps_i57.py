@@ -126,5 +126,7 @@ def test_reviews_trim_context_and_tokens():
     source = inspect.getsource(es.extract_reviews)
     assert "search_context[:2500]" in source, "reviews context must be trimmed to 2500"
     assert "search_context[:4000]" not in source, "stale 4000 context must be gone"
-    assert "max_tokens=600" in source, "reviews max_tokens must be 600"
-    assert "max_tokens=1000" not in source, "stale 1000 tokens must be gone from extract_reviews"
+    assert "token_limit_kwargs(_model, 600)" in source, "reviews max_tokens must be 600"  # W4-11 model_config routing
+    assert "max_tokens=1000" not in source and "token_limit_kwargs(_model, 1000)" not in source, (
+        "stale 1000 tokens must be gone from extract_reviews"
+    )  # W4-11: the routed form too (M1 forbids the literal keyword, so that half alone is vacuous)

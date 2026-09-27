@@ -35,7 +35,7 @@ from typing import Any, Dict, List, Optional
 
 from app.services import api_budget_service as _llm_breaker
 from app.services.database_service import get_admin_supabase_client
-from app.services.model_config import critic_model, token_limit_kwargs
+from app.services.model_config import critic_model, sampling_kwargs, token_limit_kwargs
 from app.services.openai_service import get_client
 
 logger = logging.getLogger(__name__)
@@ -179,7 +179,7 @@ async def critique_verdict(
                 {"role": "user", "content": user_msg},
             ],
             **token_limit_kwargs(_model, 150),
-            temperature=0.0,  # deterministic grading
+            **sampling_kwargs(_model, 0.0),  # deterministic grading
             response_format={"type": "json_object"},
         )
 
