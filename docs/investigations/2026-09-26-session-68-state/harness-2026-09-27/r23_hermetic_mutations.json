@@ -1,0 +1,20 @@
+[
+ {
+  "id": "A_ci_warm_if_false",
+  "rc": 1,
+  "summary": [
+   "1 failed, 102 deselected, 1 warning in 1.84s",
+   "FAILED tests/test_hermeticity_pins.py::test_ci_warms_the_tiktoken_cache_before_the_tests"
+  ],
+  "restored_ok": true
+ },
+ {
+  "id": "A_ci_warm_continue_on_error",
+  "rc": 1,
+  "summary": [
+   "1 failed, 102 deselected, 1 warning in 1.78s",
+   "FAILED tests/test_hermeticity_pins.py::test_ci_warms_the_tiktoken_cache_before_the_tests"
+  ],
+  "restored_ok": true
+ }
+]

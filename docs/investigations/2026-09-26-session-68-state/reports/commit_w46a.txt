@@ -1,0 +1,25 @@
+feat(scoring): W4-6a rubric truth - ENABLE_VALUE_DIM_PARTIAL_SIGNAL + ENABLE_TIE_IS_NOT_MISSING, the tradeoff guard rides either flag
+
+Two flags, both default OFF, read per call; only app/services/scoring_service.py
+changes under app/.
+
+- ENABLE_VALUE_DIM_PARTIAL_SIGNAL (V): the value dimension leaves the EMITTED
+  missing_data list only when every product is priced AND _spec_missing is equal
+  across the pair; every internal missingness read keeps the legacy list, so V
+  moves no arithmetic (492 OFF digests base == head == base2; the emitted
+  missing_data is the only output that changes).
+- ENABLE_TIE_IS_NOT_MISSING (T): a B0-A array tie-collapse fires only when the
+  tied signal (reliability / popularity / spec) is SPARSE on every product; a
+  tie on dense evidence is a real tie and is kept. Coupled: always False while
+  ENABLE_MISSING_DIM_RENORM is ON (R5, the #101 inversion). Under T the F4.2
+  always-render fallback no longer fabricates a runner-up strength (7 flag-OFF
+  pins get delenv; RunnerUpWinsCard empty state = a canary item before the flip).
+- The tradeoff guard (PO-RUBRIC-08) rides V OR T: a loser strength is eligible
+  only if it is not in the loser's missing_data, is numeric in the winner's
+  breakdown and the loser leads it by >= 1.0 after rounding to 1 decimal
+  (void-named strengths 2 -> 0, margin < 1 claims 66 -> 0 under any flag).
+- Committed flag-ON golden (tests/fixtures/rubric_truth_flag_on_golden.json) and
+  flag-OFF digests through their generators; 84-node unit file, every pin
+  mutation-checked from byte snapshots across three adversary rounds.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>

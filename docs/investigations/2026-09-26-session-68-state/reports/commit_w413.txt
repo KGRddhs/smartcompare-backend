@@ -1,0 +1,23 @@
+feat(analytics): W4-13 search_logs measurement truth - ENABLE_SEARCH_LOG_TRUTH + ENABLE_SEARCH_LOG_SYNTHETIC_MARKER, migration 042
+
+Flag 1 ENABLE_SEARCH_LOG_TRUTH (default OFF, read per call): search_logs rows
+record what happened - failure rows carry the orchestrator's real cost and a
+message that passed the W4-9 codeless floor (never str(e)); a delivered
+partial is marked partial:<stage>; the stream's success:False terminals,
+errored and abandoned streams write failure rows keyed on client_gone;
+/url/compare and /text/quick write rows (url query = scheme+host+path, no
+userinfo/query/fragment); every new row is built AFTER its refund and every
+builder is total. Flag OFF passes exactly today's kwargs at every site
+(committed 45-scenario flag-OFF ledger, record by record, incl. the
+log-before-refund order at all five reordered sites). No response, status,
+SSE byte, metering or refund changes under either flag.
+
+Flag 2 ENABLE_SEARCH_LOG_SYNTHETIC_MARKER (default OFF; HARD precondition:
+migration 042 applied): X-Qaren-Synthetic == SEARCH_LOG_SYNTHETIC_TOKEN
+(constant-time, emptiness-guarded) -> is_synthetic on the row; the admin
+readers select the column and skip is_synthetic IS TRUE (NULL/False kept);
+Sentry scrubs the header; scripts/eval_runner.py sends it when the token is
+set. migrations/042_search_logs_is_synthetic.sql + rollback with the
+READ COMMITTED census header (pause the eval runner for the apply).
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>

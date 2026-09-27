@@ -1,0 +1,280 @@
+# stall monitor tick 2026-09-26 23:54:58
+spawn_probe_s=0.0 (alarm at 30)
+procs: python=2 node=7 pytest=0
+active workflows: (none listed)
+cpu_load_pct=6
+
+# stall monitor tick 2026-09-27 00:03:14
+spawn_probe_s=0.0 (alarm at 30)
+procs: python=2 node=7 pytest=0
+active workflows: wf_1a906a58-328, wf_a7c536b6-2f3
+  wf_1a906a58-328 fix:HERMETICITY-r6: running elapsed=103s idle=4s bound=7200s 
+  wf_a7c536b6-2f3 adversary:W4-13-r3: running elapsed=76s idle=2s bound=5400s 
+cpu_load_pct=17
+
+# stall monitor tick 2026-09-27 00:13:16
+spawn_probe_s=0.0 (alarm at 30)
+procs: python=10 node=7 pytest=4
+  pytest pid=14204 ppid=29236 age=212s  :: C:/Users/SynAckITPC/Documents/AI/.venv-qaren/Scripts/python.exe -m pytest -p no:cacheprovider -p no:randomly -m "not (live_unit or live_db or integration)" --ti
+  pytest pid=28144 ppid=14204 age=212s  :: "C:\Users\SynAckITPC\AppData\Local\Programs\Python\Python312\python.exe" -m pytest -p no:cacheprovider -p no:randomly -m "not (live_unit or live_db or integrati
+  pytest pid=25772 ppid=16988 age=1s  :: C:/Users/SynAckITPC/Documents/AI/.venv-qaren/Scripts/python.exe -m pytest -p qaren_netguard -p no:cacheprovider -p no:randomly --timeout=120 -m "not (live_unit 
+  pytest pid=27832 ppid=25772 age=1s  :: "C:\Users\SynAckITPC\AppData\Local\Programs\Python\Python312\python.exe" -m pytest -p qaren_netguard -p no:cacheprovider -p no:randomly --timeout=120 -m "not (l
+active workflows: wf_1a906a58-328, wf_a7c536b6-2f3
+  wf_1a906a58-328 fix:HERMETICITY-r6: running elapsed=705s idle=212s bound=7200s 
+  wf_a7c536b6-2f3 adversary:W4-13-r3: running elapsed=678s idle=1s bound=5400s 
+cpu_load_pct=18
+
+# stall monitor tick 2026-09-27 00:23:18
+spawn_probe_s=0.0 (alarm at 30)
+procs: python=8 node=7 pytest=3
+  pytest pid=9076 ppid=32728 age=24s  :: C:/Users/SynAckITPC/Documents/AI/.venv-qaren/Scripts/python.exe -m pytest -p no:cacheprovider -p no:randomly -m "not (live_unit or live_db or integration)" test
+  pytest pid=26832 ppid=9076 age=24s  :: "C:\Users\SynAckITPC\AppData\Local\Programs\Python\Python312\python.exe" -m pytest -p no:cacheprovider -p no:randomly -m "not (live_unit or live_db or integrati
+  pytest pid=5396 ppid=26832 age=3s  :: C:\Users\SynAckITPC\Documents\AI\.venv-qaren\Scripts\python.exe -m pytest -p no:cacheprovider -p no:randomly -m "not (live_unit or live_db or integration)" --ti
+active workflows: wf_1a906a58-328, wf_a7c536b6-2f3
+  wf_1a906a58-328 fix:HERMETICITY-r6: DONE
+  wf_1a906a58-328 adversary:HERMETICITY-r6: running elapsed=131s idle=24s bound=5400s 
+  wf_a7c536b6-2f3 adversary:W4-13-r3: DONE
+  wf_a7c536b6-2f3 fix:W4-13-r4: running elapsed=240s idle=19s bound=7200s 
+cpu_load_pct=94
+
+# stall monitor tick 2026-09-27 00:33:20
+spawn_probe_s=0.0 (alarm at 30)
+procs: python=6 node=7 pytest=2
+  pytest pid=26344 ppid=30820 age=28s  :: C:/Users/SynAckITPC/Documents/AI/.venv-qaren/Scripts/python.exe -m pytest -p qaren_netguard -p no:cacheprovider -p no:randomly --timeout=120 -m "not (live_unit 
+  pytest pid=1944 ppid=26344 age=28s  :: "C:\Users\SynAckITPC\AppData\Local\Programs\Python\Python312\python.exe" -m pytest -p qaren_netguard -p no:cacheprovider -p no:randomly --timeout=120 -m "not (l
+active workflows: wf_1a906a58-328, wf_a7c536b6-2f3
+  wf_1a906a58-328 fix:HERMETICITY-r6: DONE
+  wf_1a906a58-328 adversary:HERMETICITY-r6: running elapsed=733s idle=0s bound=5400s 
+  wf_a7c536b6-2f3 adversary:W4-13-r3: DONE
+  wf_a7c536b6-2f3 fix:W4-13-r4: running elapsed=842s idle=145s bound=7200s 
+cpu_load_pct=7
+
+# stall monitor tick 2026-09-27 00:43:21
+spawn_probe_s=0.0 (alarm at 30)
+procs: python=8 node=7 pytest=2
+  pytest pid=6960 ppid=10596 age=3s  :: C:/Users/SynAckITPC/Documents/AI/.venv-qaren/Scripts/python.exe -m pytest -p qaren_netguard -p no:cacheprovider -p no:randomly --timeout=120 -m "not (live_unit 
+  pytest pid=32980 ppid=6960 age=3s  :: "C:\Users\SynAckITPC\AppData\Local\Programs\Python\Python312\python.exe" -m pytest -p qaren_netguard -p no:cacheprovider -p no:randomly --timeout=120 -m "not (l
+active workflows: wf_1a906a58-328, wf_a7c536b6-2f3
+  wf_1a906a58-328 fix:HERMETICITY-r6: DONE
+  wf_1a906a58-328 adversary:HERMETICITY-r6: DONE
+  wf_1a906a58-328 fix:HERMETICITY-r7: running elapsed=63s idle=0s bound=7200s 
+  wf_a7c536b6-2f3 adversary:W4-13-r3: DONE
+  wf_a7c536b6-2f3 fix:W4-13-r4: DONE
+  wf_a7c536b6-2f3 adversary:W4-13-r4: running elapsed=299s idle=36s bound=5400s 
+cpu_load_pct=26
+
+# stall monitor tick 2026-09-27 00:53:23
+spawn_probe_s=0.0 (alarm at 30)
+procs: python=6 node=7 pytest=2
+  pytest pid=17972 ppid=33588 age=48s  :: C:/Users/SynAckITPC/Documents/AI/.venv-qaren/Scripts/python.exe -m pytest -p qaren_netguard -p no:cacheprovider -p no:randomly --timeout=120 -m "not (live_unit 
+  pytest pid=8488 ppid=17972 age=48s  :: "C:\Users\SynAckITPC\AppData\Local\Programs\Python\Python312\python.exe" -m pytest -p qaren_netguard -p no:cacheprovider -p no:randomly --timeout=120 -m "not (l
+active workflows: wf_1a906a58-328, wf_a7c536b6-2f3
+  wf_1a906a58-328 fix:HERMETICITY-r6: DONE
+  wf_1a906a58-328 adversary:HERMETICITY-r6: DONE
+  wf_1a906a58-328 fix:HERMETICITY-r7: running elapsed=665s idle=0s bound=7200s 
+  wf_a7c536b6-2f3 adversary:W4-13-r3: DONE
+  wf_a7c536b6-2f3 fix:W4-13-r4: DONE
+  wf_a7c536b6-2f3 adversary:W4-13-r4: running elapsed=901s idle=185s bound=5400s 
+cpu_load_pct=8
+
+# stall monitor tick 2026-09-27 01:03:25
+spawn_probe_s=0.0 (alarm at 30)
+procs: python=2 node=7 pytest=0
+active workflows: wf_1a906a58-328, wf_20507079-855
+  wf_1a906a58-328 fix:HERMETICITY-r6: DONE
+  wf_1a906a58-328 adversary:HERMETICITY-r6: DONE
+  wf_1a906a58-328 fix:HERMETICITY-r7: running elapsed=1267s idle=3s bound=7200s 
+  wf_20507079-855 fix:W4-13-r5: running elapsed=222s idle=1s bound=7200s 
+cpu_load_pct=18
+
+# stall monitor tick 2026-09-27 01:13:27
+spawn_probe_s=0.0 (alarm at 30)
+procs: python=2 node=7 pytest=0
+active workflows: wf_1a906a58-328, wf_20507079-855
+  wf_1a906a58-328 fix:HERMETICITY-r6: DONE
+  wf_1a906a58-328 adversary:HERMETICITY-r6: DONE
+  wf_1a906a58-328 fix:HERMETICITY-r7: DONE
+  wf_1a906a58-328 adversary:HERMETICITY-r7: running elapsed=216s idle=40s bound=5400s 
+  wf_20507079-855 fix:W4-13-r5: running elapsed=824s idle=1s bound=7200s 
+cpu_load_pct=65
+
+# stall monitor tick 2026-09-27 01:23:29
+spawn_probe_s=0.0 (alarm at 30)
+procs: python=10 node=7 pytest=4
+  pytest pid=13592 ppid=7120 age=153s  :: C:/Users/SynAckITPC/Documents/AI/.venv-qaren/Scripts/python.exe -m pytest -p no:cacheprovider -p no:randomly tests/test_adapter_extended_rates_gate.py tests/tes
+  pytest pid=19576 ppid=13592 age=153s  :: "C:\Users\SynAckITPC\AppData\Local\Programs\Python\Python312\python.exe" -m pytest -p no:cacheprovider -p no:randomly tests/test_adapter_extended_rates_gate.py 
+  pytest pid=32316 ppid=30128 age=6s  :: C:/Users/SynAckITPC/Documents/AI/.venv-qaren/Scripts/python.exe -m pytest -p qaren_netguard -p no:cacheprovider -p no:randomly --timeout=120 -m "not (live_unit 
+  pytest pid=17804 ppid=32316 age=6s  :: "C:\Users\SynAckITPC\AppData\Local\Programs\Python\Python312\python.exe" -m pytest -p qaren_netguard -p no:cacheprovider -p no:randomly --timeout=120 -m "not (l
+active workflows: wf_1a906a58-328, wf_20507079-855
+  wf_1a906a58-328 fix:HERMETICITY-r6: DONE
+  wf_1a906a58-328 adversary:HERMETICITY-r6: DONE
+  wf_1a906a58-328 fix:HERMETICITY-r7: DONE
+  wf_1a906a58-328 adversary:HERMETICITY-r7: running elapsed=817s idle=153s bound=5400s 
+  wf_20507079-855 fix:W4-13-r5: DONE
+  wf_20507079-855 adversary:W4-13-r5: running elapsed=331s idle=7s bound=5400s 
+cpu_load_pct=65
+
+# stall monitor tick 2026-09-27 01:33:31
+spawn_probe_s=0.0 (alarm at 30)
+procs: python=2 node=7 pytest=0
+active workflows: wf_1a906a58-328, wf_20507079-855
+  wf_1a906a58-328 fix:HERMETICITY-r6: DONE
+  wf_1a906a58-328 adversary:HERMETICITY-r6: DONE
+  wf_1a906a58-328 fix:HERMETICITY-r7: DONE
+  wf_1a906a58-328 adversary:HERMETICITY-r7: DONE
+  wf_20507079-855 fix:W4-13-r5: DONE
+  wf_20507079-855 adversary:W4-13-r5: running elapsed=933s idle=7s bound=5400s 
+cpu_load_pct=35
+
+# stall monitor tick 2026-09-27 01:43:33
+spawn_probe_s=0.0 (alarm at 30)
+procs: python=18 node=7 pytest=6
+  pytest pid=30868 ppid=26340 age=24s  :: C:/Users/SynAckITPC/Documents/AI/.venv-qaren/Scripts/python.exe -m pytest -p qaren_netguard -p no:cacheprovider -p no:randomly -m "not (live_unit or live_db or 
+  pytest pid=1208 ppid=30868 age=24s  :: "C:\Users\SynAckITPC\AppData\Local\Programs\Python\Python312\python.exe" -m pytest -p qaren_netguard -p no:cacheprovider -p no:randomly -m "not (live_unit or li
+  pytest pid=34380 ppid=560 age=8s  :: C:/Users/SynAckITPC/Documents/AI/.venv-qaren/Scripts/python.exe -m pytest -p qaren_netguard -p no:cacheprovider -p no:randomly -m "not (live_unit or live_db or 
+  pytest pid=19976 ppid=34380 age=8s  :: "C:\Users\SynAckITPC\AppData\Local\Programs\Python\Python312\python.exe" -m pytest -p qaren_netguard -p no:cacheprovider -p no:randomly -m "not (live_unit or li
+  pytest pid=23184 ppid=32356 age=5s  :: C:/Users/SynAckITPC/Documents/AI/.venv-qaren/Scripts/python.exe -m pytest -p qaren_netguard -p no:cacheprovider -p no:randomly --timeout=120 -m "not (live_unit 
+  pytest pid=11948 ppid=23184 age=5s  :: "C:\Users\SynAckITPC\AppData\Local\Programs\Python\Python312\python.exe" -m pytest -p qaren_netguard -p no:cacheprovider -p no:randomly --timeout=120 -m "not (l
+active workflows: wf_41e3285c-833, wf_daaf1b22-d85
+  wf_41e3285c-833 fix:W4-12-r4: running elapsed=622s idle=25s bound=7200s 
+  wf_daaf1b22-d85 adversary:W4-6a-r0: running elapsed=131s idle=41s bound=5400s 
+cpu_load_pct=25
+
+# stall monitor tick 2026-09-27 01:53:35
+spawn_probe_s=0.0 (alarm at 30)
+procs: python=16 node=7 pytest=4
+  pytest pid=11628 ppid=5060 age=16s  :: C:/Users/SynAckITPC/Documents/AI/.venv-qaren/Scripts/python.exe -m pytest -p qaren_netguard -p no:cacheprovider -p no:randomly --timeout=120 -m "not (live_unit 
+  pytest pid=32416 ppid=11628 age=16s  :: "C:\Users\SynAckITPC\AppData\Local\Programs\Python\Python312\python.exe" -m pytest -p qaren_netguard -p no:cacheprovider -p no:randomly --timeout=120 -m "not (l
+  pytest pid=3408 ppid=14720 age=7s  :: C:/Users/SynAckITPC/Documents/AI/.venv-qaren/Scripts/python.exe -m pytest -p qaren_netguard -p no:cacheprovider -p no:randomly -m "not (live_unit or live_db or 
+  pytest pid=8524 ppid=3408 age=7s  :: "C:\Users\SynAckITPC\AppData\Local\Programs\Python\Python312\python.exe" -m pytest -p qaren_netguard -p no:cacheprovider -p no:randomly -m "not (live_unit or li
+active workflows: wf_41e3285c-833, wf_daaf1b22-d85
+  wf_41e3285c-833 fix:W4-12-r4: running elapsed=1224s idle=282s bound=7200s 
+  wf_daaf1b22-d85 adversary:W4-6a-r0: running elapsed=733s idle=71s bound=5400s 
+cpu_load_pct=1
+
+# stall monitor tick 2026-09-27 02:03:37
+spawn_probe_s=0.0 (alarm at 30)
+procs: python=6 node=7 pytest=2
+  pytest pid=34544 ppid=27372 age=27s  :: C:/Users/SynAckITPC/Documents/AI/.venv-qaren/Scripts/python.exe -m pytest -p qaren_netguard -p no:cacheprovider -p no:randomly --timeout=120 -m "not (live_unit 
+  pytest pid=22824 ppid=34544 age=27s  :: "C:\Users\SynAckITPC\AppData\Local\Programs\Python\Python312\python.exe" -m pytest -p qaren_netguard -p no:cacheprovider -p no:randomly --timeout=120 -m "not (l
+active workflows: wf_41e3285c-833, wf_daaf1b22-d85
+  wf_41e3285c-833 fix:W4-12-r4: running elapsed=1826s idle=0s bound=7200s 
+  wf_daaf1b22-d85 adversary:W4-6a-r0: running elapsed=1335s idle=60s bound=5400s 
+cpu_load_pct=11
+
+# stall monitor tick 2026-09-27 02:13:39
+spawn_probe_s=0.0 (alarm at 30)
+procs: python=6 node=7 pytest=2
+  pytest pid=15824 ppid=6480 age=22s  :: C:/Users/SynAckITPC/Documents/AI/.venv-qaren/Scripts/python.exe -m pytest -p qaren_netguard -p no:cacheprovider -p no:randomly -m "not (live_unit or live_db or 
+  pytest pid=32704 ppid=15824 age=22s  :: "C:\Users\SynAckITPC\AppData\Local\Programs\Python\Python312\python.exe" -m pytest -p qaren_netguard -p no:cacheprovider -p no:randomly -m "not (live_unit or li
+active workflows: wf_41e3285c-833
+  wf_41e3285c-833 fix:W4-12-r4: running elapsed=2429s idle=211s bound=7200s 
+cpu_load_pct=8
+
+# stall monitor tick 2026-09-27 02:23:41
+spawn_probe_s=0.0 (alarm at 30)
+procs: python=12 node=7 pytest=4
+  pytest pid=4016 ppid=31776 age=48s  :: C:/Users/SynAckITPC/Documents/AI/.venv-qaren/Scripts/python.exe -m pytest -p qaren_netguard -p no:cacheprovider -p no:randomly --timeout=120 -m "not (live_unit 
+  pytest pid=24668 ppid=4016 age=48s  :: "C:\Users\SynAckITPC\AppData\Local\Programs\Python\Python312\python.exe" -m pytest -p qaren_netguard -p no:cacheprovider -p no:randomly --timeout=120 -m "not (l
+  pytest pid=6412 ppid=9392 age=26s  :: C:/Users/SynAckITPC/Documents/AI/.venv-qaren/Scripts/python.exe -m pytest -p qaren_netguard -p no:cacheprovider -p no:randomly -m "not (live_unit or live_db or 
+  pytest pid=27304 ppid=6412 age=26s  :: "C:\Users\SynAckITPC\AppData\Local\Programs\Python\Python312\python.exe" -m pytest -p qaren_netguard -p no:cacheprovider -p no:randomly -m "not (live_unit or li
+active workflows: wf_41e3285c-833, wf_d2435a7e-d0c
+  wf_41e3285c-833 fix:W4-12-r4: DONE
+  wf_41e3285c-833 adversary:W4-12-r4: running elapsed=369s idle=55s bound=5400s 
+  wf_d2435a7e-d0c fix:W4-6a-r1: running elapsed=567s idle=48s bound=7200s 
+cpu_load_pct=7
+
+# stall monitor tick 2026-09-27 02:33:43
+spawn_probe_s=0.0 (alarm at 30)
+procs: python=2 node=7 pytest=0
+active workflows: wf_41e3285c-833, wf_d2435a7e-d0c
+  wf_41e3285c-833 fix:W4-12-r4: DONE
+  wf_41e3285c-833 adversary:W4-12-r4: running elapsed=971s idle=2s bound=5400s 
+  wf_d2435a7e-d0c fix:W4-6a-r1: running elapsed=1169s idle=101s bound=7200s 
+cpu_load_pct=9
+
+# stall monitor tick 2026-09-27 02:43:45
+spawn_probe_s=0.0 (alarm at 30)
+procs: python=12 node=7 pytest=4
+  pytest pid=14276 ppid=32316 age=37s  :: C:/Users/SynAckITPC/Documents/AI/.venv-qaren/Scripts/python.exe -m pytest -p qaren_netguard -p no:cacheprovider -p no:randomly --timeout=120 -m "not (live_unit 
+  pytest pid=20572 ppid=14276 age=37s  :: "C:\Users\SynAckITPC\AppData\Local\Programs\Python\Python312\python.exe" -m pytest -p qaren_netguard -p no:cacheprovider -p no:randomly --timeout=120 -m "not (l
+  pytest pid=20088 ppid=11080 age=17s  :: C:/Users/SynAckITPC/Documents/AI/.venv-qaren/Scripts/python.exe -m pytest -p qaren_netguard -p no:cacheprovider -p no:randomly -m "not (live_unit or live_db or 
+  pytest pid=29884 ppid=20088 age=17s  :: "C:\Users\SynAckITPC\AppData\Local\Programs\Python\Python312\python.exe" -m pytest -p qaren_netguard -p no:cacheprovider -p no:randomly -m "not (live_unit or li
+active workflows: wf_d2435a7e-d0c, wf_4d187cca-1b2
+  wf_d2435a7e-d0c fix:W4-6a-r1: DONE
+  wf_d2435a7e-d0c adversary:W4-6a-r1: running elapsed=567s idle=148s bound=5400s 
+  wf_4d187cca-1b2 fix:W4-12-r5: running elapsed=452s idle=29s bound=7200s 
+cpu_load_pct=12
+
+# stall monitor tick 2026-09-27 02:53:47
+spawn_probe_s=0.0 (alarm at 30)
+procs: python=8 node=7 pytest=2
+  pytest pid=9164 ppid=26756 age=21s  :: C:/Users/SynAckITPC/Documents/AI/.venv-qaren/Scripts/python.exe -m pytest -p qaren_netguard -p no:cacheprovider -p no:randomly -m "not (live_unit or live_db or 
+  pytest pid=2408 ppid=9164 age=21s  :: "C:\Users\SynAckITPC\AppData\Local\Programs\Python\Python312\python.exe" -m pytest -p qaren_netguard -p no:cacheprovider -p no:randomly -m "not (live_unit or li
+active workflows: wf_4d187cca-1b2
+  wf_4d187cca-1b2 fix:W4-12-r5: running elapsed=1054s idle=82s bound=7200s 
+cpu_load_pct=19
+
+# stall monitor tick 2026-09-27 03:03:49
+spawn_probe_s=0.0 (alarm at 30)
+procs: python=10 node=7 pytest=4
+  pytest pid=34376 ppid=9076 age=39s  :: C:/Users/SynAckITPC/Documents/AI/.venv-qaren/Scripts/python.exe -m pytest -p qaren_netguard -p no:cacheprovider -p no:randomly --timeout=120 -m "not (live_unit 
+  pytest pid=31652 ppid=34376 age=39s  :: "C:\Users\SynAckITPC\AppData\Local\Programs\Python\Python312\python.exe" -m pytest -p qaren_netguard -p no:cacheprovider -p no:randomly --timeout=120 -m "not (l
+  pytest pid=33696 ppid=33284 age=22s  :: C:/Users/SynAckITPC/Documents/AI/.venv-qaren/Scripts/python.exe -m pytest -p qaren_netguard -p no:cacheprovider -p no:randomly -m "not (live_unit or live_db or 
+  pytest pid=25744 ppid=33696 age=22s  :: "C:\Users\SynAckITPC\AppData\Local\Programs\Python\Python312\python.exe" -m pytest -p qaren_netguard -p no:cacheprovider -p no:randomly -m "not (live_unit or li
+active workflows: wf_4d187cca-1b2, wf_9b41896f-e97
+  wf_4d187cca-1b2 fix:W4-12-r5: running elapsed=1656s idle=23s bound=7200s 
+  wf_9b41896f-e97 fix:W4-6a-r2: running elapsed=566s idle=150s bound=7200s 
+cpu_load_pct=8
+
+# stall monitor tick 2026-09-27 03:13:51
+spawn_probe_s=0.0 (alarm at 30)
+procs: python=8 node=7 pytest=2
+  pytest pid=30064 ppid=33072 age=1s  :: C:/Users/SynAckITPC/Documents/AI/.venv-qaren/Scripts/python.exe -m pytest -p qaren_netguard -p no:cacheprovider -p no:randomly -m "not (live_unit or live_db or 
+  pytest pid=8508 ppid=30064 age=1s  :: "C:\Users\SynAckITPC\AppData\Local\Programs\Python\Python312\python.exe" -m pytest -p qaren_netguard -p no:cacheprovider -p no:randomly -m "not (live_unit or li
+active workflows: wf_4d187cca-1b2, wf_9b41896f-e97
+  wf_4d187cca-1b2 fix:W4-12-r5: running elapsed=2258s idle=150s bound=7200s 
+  wf_9b41896f-e97 fix:W4-6a-r2: DONE
+  wf_9b41896f-e97 adversary:W4-6a-r2: running elapsed=59s idle=16s bound=5400s 
+cpu_load_pct=26
+
+# stall monitor tick 2026-09-27 03:23:53
+spawn_probe_s=0.0 (alarm at 30)
+procs: python=12 node=7 pytest=4
+  pytest pid=16992 ppid=23128 age=50s  :: C:/Users/SynAckITPC/Documents/AI/.venv-qaren/Scripts/python.exe -m pytest -p qaren_netguard -p no:cacheprovider -p no:randomly --timeout=120 -m "not (live_unit 
+  pytest pid=31064 ppid=16992 age=50s  :: "C:\Users\SynAckITPC\AppData\Local\Programs\Python\Python312\python.exe" -m pytest -p qaren_netguard -p no:cacheprovider -p no:randomly --timeout=120 -m "not (l
+  pytest pid=32352 ppid=22176 age=21s  :: C:/Users/SynAckITPC/Documents/AI/.venv-qaren/Scripts/python.exe -m pytest -p qaren_netguard -p no:cacheprovider -p no:randomly -m "not (live_unit or live_db or 
+  pytest pid=30140 ppid=32352 age=21s  :: "C:\Users\SynAckITPC\AppData\Local\Programs\Python\Python312\python.exe" -m pytest -p qaren_netguard -p no:cacheprovider -p no:randomly -m "not (live_unit or li
+active workflows: wf_4d187cca-1b2, wf_9b41896f-e97
+  wf_4d187cca-1b2 fix:W4-12-r5: DONE
+  wf_4d187cca-1b2 adversary:W4-12-r5: running elapsed=323s idle=112s bound=5400s 
+  wf_9b41896f-e97 fix:W4-6a-r2: DONE
+  wf_9b41896f-e97 adversary:W4-6a-r2: running elapsed=661s idle=217s bound=5400s 
+cpu_load_pct=4
+
+# stall monitor tick 2026-09-27 03:33:55
+spawn_probe_s=0.0 (alarm at 30)
+procs: python=2 node=7 pytest=0
+active workflows: wf_4d187cca-1b2
+  wf_4d187cca-1b2 fix:W4-12-r5: DONE
+  wf_4d187cca-1b2 adversary:W4-12-r5: DONE
+cpu_load_pct=12
+
+# stall monitor tick 2026-09-27 03:43:56
+spawn_probe_s=0.0 (alarm at 30)
+procs: python=12 node=7 pytest=2
+  pytest pid=4108 ppid=26236 age=0s  :: C:/Users/SynAckITPC/Documents/AI/.venv-qaren/Scripts/python.exe -m pytest -p qaren_netguard -p no:cacheprovider -p no:randomly --timeout=120 -m "not (live_unit 
+  pytest pid=33112 ppid=4108 age=0s  :: "C:\Users\SynAckITPC\AppData\Local\Programs\Python\Python312\python.exe" -m pytest -p qaren_netguard -p no:cacheprovider -p no:randomly --timeout=120 -m "not (l
+active workflows: wf_eb71cd06-f9c, wf_8368201c-0d1
+  wf_eb71cd06-f9c fix:W4-8-r1: running elapsed=619s idle=286s bound=7200s 
+  wf_8368201c-0d1 red:W4-11: running elapsed=68s idle=3s bound=5400s 
+cpu_load_pct=12
+
+# stall monitor tick 2026-09-27 03:53:58
+spawn_probe_s=0.0 (alarm at 30)
+procs: python=4 node=7 pytest=0
+active workflows: wf_eb71cd06-f9c, wf_8368201c-0d1
+  wf_eb71cd06-f9c fix:W4-8-r1: running elapsed=1221s idle=4s bound=7200s 
+  wf_8368201c-0d1 red:W4-11: running elapsed=670s idle=1s bound=5400s 
+cpu_load_pct=22
+
