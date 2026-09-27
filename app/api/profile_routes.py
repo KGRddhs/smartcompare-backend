@@ -36,6 +36,7 @@ from app.services.database_service import (
     get_admin_supabase_client,
     get_user_supabase_client,
 )
+from app.services.text_sanitize import dedup_brand_name
 
 logger = logging.getLogger(__name__)
 
@@ -99,8 +100,10 @@ def _extract_product_names(full_response: dict) -> tuple[Optional[str], Optional
     loser_idx = 1 - winner_idx
     winner = products[winner_idx] or {}
     loser = products[loser_idx] or {}
-    winner_name = f"{(winner.get('brand') or '').strip()} {(winner.get('name') or '').strip()}".strip()
-    loser_name = f"{(loser.get('brand') or '').strip()} {(loser.get('name') or '').strip()}".strip()
+    # W4-12 — one display spelling (dedup_brand_name; identical to the old
+    # "{brand} {name}" concat whenever the name does not already carry the brand).
+    winner_name = dedup_brand_name(winner.get("brand"), winner.get("name"))
+    loser_name = dedup_brand_name(loser.get("brand"), loser.get("name"))
     return (winner_name or None, loser_name or None)
 
 

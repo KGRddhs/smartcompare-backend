@@ -516,6 +516,7 @@ def test_10b_pin_flag_off_end_to_end_numbers_hold(monkeypatch, value):
     `return True` left behind) pends both prices and reddens every number below —
     this is the end-to-end half of the default-OFF contract, not only the
     chokepoint's."""
+    monkeypatch.delenv("ENABLE_SINGLE_VERDICT_MARGIN", raising=False)  # W4-12 R5: pins the raw overview margin
     _flag(monkeypatch, value)
     pd = _both_google_numeric()
     assert _guard()(pd) is False

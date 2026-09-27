@@ -496,13 +496,14 @@ class TestHomeSmartPick:
     # -------------------------------------------------------------------------
     # Bundle E B4.3b — JSX-wins extension fields
     # -------------------------------------------------------------------------
-    def test_extension_fields_present_when_data_available(self):
+    def test_extension_fields_present_when_data_available(self, monkeypatch):
         """Per JSX HomeScreen.jsx:438-501, SmartPickCard renders a category
         eyebrow pill, an 'Updated today' chip, per-product `sub` (e.g. '128GB'),
         and a short verdict sentence. Bundle E B4.3b extends the response with
         `category`, `updated_at`, `products[*].sub`, and `verdict_short` —
         populated from the underlying comparison row when present.
         """
+        monkeypatch.delenv("ENABLE_SMART_PICK_VERDICT_CAPTION", raising=False)  # W4-12 R5: declaration caption = flag OFF
         from app.api.auth_routes import get_current_user
         from datetime import datetime, timezone
         app.dependency_overrides[get_current_user] = _fake_user()

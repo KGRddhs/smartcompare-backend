@@ -1430,6 +1430,9 @@ from app.services.response_builder import (
     deterministic_verdict_fields,
     reconcile_winner_prose,
     _honest_partial_scoring_enabled,  # W4-4 — per-call flag reader
+    scrub_verdict_prose,  # W4-12 — the pre-verdict score-internals scrub
+    single_verdict_margin_enabled,  # W4-12 — per-call flag reader
+    _calibrated_gap,  # W4-12 — the pre-nudge calibrated gap
 )
 from app.services.image_service import get_product_image_url
 # B.0 (Bundle B Lane F1) — Bahrain-first source registry. Wires the weighted
@@ -4804,7 +4807,17 @@ class StructuredComparisonService:
             winner_index = reconcile_winner_prose(
                 comparison, scoring_result, product_names, tradeoffs
             )
-            win_margin = scoring_result.get("win_margin", 0)
+            # W4-12 — scrub the shared dict BEFORE the frame goes on the wire, so
+            # the `verdict` frame ships what `complete` ships (the builder's own
+            # call on the same dict is then a no-op that returns False).
+            _verdict_scrubbed = scrub_verdict_prose(comparison, product_names, winner_index)
+            # W4-12 (K12) — read the margin flag ONCE per stream; route it into
+            # the builder so a mid-request flip cannot split verdict/complete.
+            _single_margin_on = single_verdict_margin_enabled()
+            win_margin = (
+                _calibrated_gap(scoring_result) if _single_margin_on
+                else scoring_result.get("win_margin", 0)
+            )
             # Mirror build_comparison_response's `_scrubbed_winner_name_field`
             # fallback: an EMPTY declaration degrades to the product name, never
             # to an empty winner name.
@@ -4854,6 +4867,9 @@ class StructuredComparisonService:
             _crit_meta = self._verdict_critique_metadata()
             if _crit_meta:
                 _metadata_override["_verdict_critique"] = _crit_meta
+            # W4-12 — the pre-verdict scrub emptied the reason (telemetry key).
+            if _verdict_scrubbed:
+                _metadata_override["verdict_scrubbed"] = True
 
             complete_response = build_comparison_response(
                 product_data=product_data,
@@ -4878,6 +4894,7 @@ class StructuredComparisonService:
                 metadata=_metadata_override or None,
                 # Phase 3.1 — cohort proof line (streaming mirror of the sync path).
                 cohort_summary=self._build_cohort_summary(demographics_profile),
+                _single_margin=_single_margin_on,  # W4-12 (K12) — read once above
             )
             # M18 PO-fact-check-10 — Decision 7 notice (additive metadata key).
             complete_response = attach_data_freshness_notice(complete_response)

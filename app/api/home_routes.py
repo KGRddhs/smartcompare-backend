@@ -45,6 +45,7 @@ from app.services.database_service import (
     get_admin_supabase_client,
     get_user_supabase_client,
 )
+from app.services.text_sanitize import dedup_brand_name, strip_score_internals
 from app.utils.db_offload import run_db  # M13-05 / #116 ENABLE_SYNC_DB_OFFLOAD
 
 logger = logging.getLogger(__name__)
@@ -337,6 +338,111 @@ def _truncate_verdict_short(text: str) -> Optional[str]:
     return cutoff[:last_space].rstrip() + "\u2026"
 
 
+def smart_pick_verdict_caption_enabled() -> bool:
+    """W4-12 / PO-VERDICT-TRUTH-08 flag reader (default OFF). Read live so a
+    Railway flip / monkeypatch takes effect without a restart."""
+    return os.environ.get("ENABLE_SMART_PICK_VERDICT_CAPTION", "").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
+
+
+def _norm_caption(text) -> str:
+    """Casefold + collapse whitespace (the caption-vs-name comparison form)."""
+    return " ".join(str(text or "").casefold().split())
+
+
+def _product_name_forms(product) -> set:
+    """The normalised bare `name` and display name (`dedup_brand_name`) of a
+    product; empty forms are dropped."""
+    p = product if isinstance(product, dict) else {}
+    brand = p.get("brand") if isinstance(p.get("brand"), str) else ""
+    name = p.get("name") if isinstance(p.get("name"), str) else ""
+    return {f for f in (_norm_caption(name), _norm_caption(dedup_brand_name(brand, name))) if f}
+
+
+_NAME_TOKEN = re.compile(r"[^\W_]+")
+_PLUS_SIGN = re.compile("(?<=[^\\W_])[+\uff0b]")  # a NAME plus: glued to a letter/digit (R17)
+
+
+def _name_tokens(text) -> str:
+    """W4-12 (R11 + R13 + R17) \u2014 casefolded word tokens joined by single spaces.
+    A "+" (or the fullwidth U+FF0B) GLUED to the preceding letter or digit becomes
+    the token "plus" BEFORE the punctuation drop (R13), so "Galaxy S25+" ->
+    "galaxy s25 plus" and never collapses into "Galaxy S25". A free-standing
+    " + " in prose stays punctuation (R17: "iPad + keyboard" -> "ipad keyboard");
+    every other punctuation mark is dropped."""
+    return " ".join(_NAME_TOKEN.findall(_PLUS_SIGN.sub(" plus ", str(text or "").casefold())))
+
+
+def _product_name_token_forms(product) -> set:
+    """The token form (`_name_tokens`) of a product's bare `name` and display
+    name (`dedup_brand_name`); empty forms are dropped."""
+    p = product if isinstance(product, dict) else {}
+    brand = p.get("brand") if isinstance(p.get("brand"), str) else ""
+    name = p.get("name") if isinstance(p.get("name"), str) else ""
+    return {f for f in (_name_tokens(name), _name_tokens(dedup_brand_name(brand, name))) if f}
+
+
+def _names_only_in(text, loser_forms, winner_forms, shared_forms=()) -> bool:
+    """True iff `text` names a LOSER form and no WINNER form. A form matches on
+    whole tokens only (no letter or digit on either side, so "air" is not in
+    "airy" - R11) and every form is masked LONGEST first (K10); any text that
+    names the winner is kept (R11). The callers pass DISTINGUISHING forms only
+    (R19), so no form reaches here from both sides. SHARED forms are masked in
+    the same longest-first pass but credit NO ONE (R21), so a distinguishing form
+    nested inside a shared one (the loser's bare "Air Fryer XL" inside the display
+    name "Philips Air Fryer XL" both products carry) is not evidence."""
+    sides = {}
+    for f in loser_forms:
+        sides.setdefault(f, set()).add("l")
+    for f in winner_forms:
+        sides.setdefault(f, set()).add("w")  # a shared form names BOTH (R11)
+    for f in shared_forms:
+        sides.setdefault(f, set())  # masked, credits no one (R21)
+    found = set()
+    for form in sorted(sides, key=lambda f: (len(f), f), reverse=True):
+        needle = re.compile(r"(?<![^\W_])%s(?![^\W_])" % re.escape(form))  # whole tokens only (R11)
+        text, hits = needle.subn("\x00", text)
+        if hits:
+            found |= sides[form]
+    return "l" in found and "w" not in found
+
+
+def _names_only_the_loser(text, winner, loser) -> bool:
+    """W4-12 (K10 + R11 + R13 + R19 + R21) \u2014 True iff `text` names the LOSER and NOT the winner.
+
+    Evidence is DISTINGUISHING forms only (R19): a name form whose token form
+    (`_name_tokens`) is also a token form of the other product is SHARED and is
+    evidence for NEITHER side (the bare "Air Fryer" of Ninja and Philips, or
+    "Air Fryer" vs "Air-Fryer"). Shared forms are still MASKED in the longest-first
+    pass and credit no one (R21), so two products that display the SAME name
+    ("Philips Air Fryer XL" as brand '' + name, and as brand "Philips" + name
+    "Air Fryer XL") keep a caption naming that name. Names match on whole TOKENS
+    only (a loser named "Air" does not match inside "Airy") and are masked
+    LONGEST first (K10), so a
+    loser whose name contains the winner's ("Galaxy S25 Ultra" vs "Galaxy S25")
+    counts as the loser only; any caption that names a distinguishing winner form
+    is kept. A glued "+" is the token "plus" (R13/R17), so "Galaxy S25+" and
+    "Galaxy S25" stay two names. Only when NO distinguishing form remains on
+    either side (identical names, or names differing only by punctuation such as
+    "WH-1000XM5" / "WH 1000XM5") does the guard compare the whitespace-normalised,
+    punctuation-KEPT forms (`_product_name_forms`, R13), again distinguishing forms
+    only, shared ones masked (R21): identical names give no evidence (kept), and
+    a punctuation-only name (empty token form) is never evidence (kept)."""
+    tokens = _name_tokens(text)
+    if not tokens:
+        return False
+    loser_forms = _product_name_token_forms(loser)
+    winner_forms = _product_name_token_forms(winner)
+    loser_only, winner_only = loser_forms - winner_forms, winner_forms - loser_forms  # R19
+    if loser_only or winner_only:
+        return _names_only_in(tokens, loser_only, winner_only, loser_forms & winner_forms)  # R21
+    loser_raw = {f for f in _product_name_forms(loser) if _name_tokens(f)}  # R13 safety net
+    winner_raw = {f for f in _product_name_forms(winner) if _name_tokens(f)}
+    return _names_only_in(_norm_caption(text), loser_raw - winner_raw, winner_raw - loser_raw,
+                          loser_raw & winner_raw)  # R21
+
+
 def _extract_product_sub(full_response: dict, product_idx: int) -> Optional[str]:
     """Pull a short sub-label (e.g. '128GB') from a product's spec map.
 
@@ -500,7 +606,30 @@ def _select_smart_pick(
     winner_declaration = (
         ((full.get("overview") or {}).get("winner") or {}).get("declaration")
     )
-    verdict_short = _truncate_verdict_short(winner_declaration)
+    if smart_pick_verdict_caption_enabled():
+        # W4-12 ENABLE_SMART_PICK_VERDICT_CAPTION — factual_verdict.line1, else
+        # the score-scrubbed overview reason, else None (reason_key copy); a
+        # caption that is just the winner's own name is a tautology -> None.
+        _sv2 = full.get("scoring_v2") if isinstance(full.get("scoring_v2"), dict) else {}
+        _fv = _sv2.get("factual_verdict") if isinstance(_sv2.get("factual_verdict"), dict) else {}
+        _line1 = _fv.get("line1")
+        _reason = ((full.get("overview") or {}).get("winner") or {}).get("reason")
+        _stripped_reason = strip_score_internals(_reason) if isinstance(_reason, str) else ""
+        if isinstance(_line1, str) and _line1.strip():
+            _caption = _line1.strip()
+        elif _stripped_reason:
+            _caption = _stripped_reason
+        else:
+            _caption = None
+        if _caption is not None and _norm_caption(_caption) in _product_name_forms(winner):
+            _caption = None
+    else:
+        _caption = winner_declaration
+    verdict_short = _truncate_verdict_short(_caption)
+    # W4-12 (UNFLAGGED) — never caption the winner's tile with ONLY the loser's
+    # name (the card then renders the reason_key copy).
+    if verdict_short is not None and _names_only_the_loser(verdict_short, winner, loser):
+        verdict_short = None
 
     winner_sub = _extract_product_sub(full, winner_idx)
     runner_up_sub = _extract_product_sub(full, loser_idx)
@@ -524,8 +653,10 @@ def _select_smart_pick(
     return {
         # Legacy fields (one release cycle — same pattern as scoring_v2)
         "comparison_id": chosen.get("id"),
-        "winner_name": f"{(winner.get('brand') or '').strip()} {(winner.get('name') or '').strip()}".strip(),
-        "runner_up_name": f"{(loser.get('brand') or '').strip()} {(loser.get('name') or '').strip()}".strip(),
+        # W4-12 — one display spelling (the brand is not doubled when the name
+        # already carries it); identical to the old concat otherwise.
+        "winner_name": dedup_brand_name(winner.get("brand"), winner.get("name")),
+        "runner_up_name": dedup_brand_name(loser.get("brand"), loser.get("name")),
         "winner_price_bhd": _safe_float((winner.get("price") or {}).get("amount")),
         "runner_up_price_bhd": _safe_float((loser.get("price") or {}).get("amount")),
         "reason_key": reason_key,
