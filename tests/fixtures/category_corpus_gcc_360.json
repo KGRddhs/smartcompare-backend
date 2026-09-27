@@ -1,0 +1,1816 @@
+{
+ "categories": [
+  "electronics",
+  "grocery",
+  "supplements",
+  "makeup",
+  "skincare",
+  "haircare",
+  "fragrances",
+  "fashion",
+  "other"
+ ],
+ "rows": [
+  {
+   "idx": 0,
+   "query": "iPhone 16 Pro Max vs Samsung Galaxy S25 Ultra",
+   "truth": "electronics"
+  },
+  {
+   "idx": 1,
+   "query": "ايفون 16 برو ضد سامسونج جالاكسي S25",
+   "truth": "electronics"
+  },
+  {
+   "idx": 2,
+   "query": "MacBook Air M3 or Dell XPS 13",
+   "truth": "electronics"
+  },
+  {
+   "idx": 3,
+   "query": "SM-S928B vs A3108",
+   "truth": "electronics"
+  },
+  {
+   "idx": 4,
+   "query": "LG 55UR78 vs Samsung UE55CU7100",
+   "truth": "electronics"
+  },
+  {
+   "idx": 5,
+   "query": "تلفزيون ال جي 55 بوصة أو سامسونج 55",
+   "truth": "electronics"
+  },
+  {
+   "idx": 6,
+   "query": "Daikin 1.5 ton split AC vs LG DualCool",
+   "truth": "electronics"
+  },
+  {
+   "idx": 7,
+   "query": "مكيف دايكن ضد مكيف جري",
+   "truth": "electronics"
+  },
+  {
+   "idx": 8,
+   "query": "Dyson V15 Detect vs Roborock S8",
+   "truth": "electronics"
+  },
+  {
+   "idx": 9,
+   "query": "Nikai fridge 400L vs Hisense 400L",
+   "truth": "electronics"
+  },
+  {
+   "idx": 10,
+   "query": "غسالة سامسونج 8 كيلو أو ال جي 8 كيلو",
+   "truth": "electronics"
+  },
+  {
+   "idx": 11,
+   "query": "Sony WH-1000XM5 vs Bose QuietComfort Ultra",
+   "truth": "electronics"
+  },
+  {
+   "idx": 12,
+   "query": "PlayStation 5 Slim vs Xbox Series X",
+   "truth": "electronics"
+  },
+  {
+   "idx": 13,
+   "query": "Apple Watch Series 10 vs Galaxy Watch 7",
+   "truth": "electronics"
+  },
+  {
+   "idx": 14,
+   "query": "iPad Air M2 256GB vs Galaxy Tab S10",
+   "truth": "electronics"
+  },
+  {
+   "idx": 15,
+   "query": "Anker 737 powerbank vs Baseus 65W",
+   "truth": "electronics"
+  },
+  {
+   "idx": 16,
+   "query": "Braun Series 9 vs Philips 9000 shaver",
+   "truth": "electronics"
+  },
+  {
+   "idx": 17,
+   "query": "Kenwood kMix vs Bosch MUM5 blender",
+   "truth": "electronics"
+  },
+  {
+   "idx": 18,
+   "query": "Nespresso Vertuo vs Delonghi Dedica",
+   "truth": "electronics"
+  },
+  {
+   "idx": 19,
+   "query": "Samsung Galaxy Z Fold 6 or iPhone 16 Pro",
+   "truth": "electronics"
+  },
+  {
+   "idx": 20,
+   "query": "شاشة سامسونج 65 QLED مقابل سوني برافيا",
+   "truth": "electronics"
+  },
+  {
+   "idx": 21,
+   "query": "Hitachi 2 ton window AC vs Gree window",
+   "truth": "electronics"
+  },
+  {
+   "idx": 22,
+   "query": "iphon 15 vs samsng s24",
+   "truth": "electronics"
+  },
+  {
+   "idx": 23,
+   "query": "Lenovo IdeaPad 3 vs HP 250 G9",
+   "truth": "electronics"
+  },
+  {
+   "idx": 24,
+   "query": "Xiaomi Redmi Note 14 vs Realme 13 Pro",
+   "truth": "electronics"
+  },
+  {
+   "idx": 25,
+   "query": "Huawei MatePad 11.5 vs iPad 10th gen",
+   "truth": "electronics"
+  },
+  {
+   "idx": 26,
+   "query": "Bose Soundlink Flex vs JBL Charge 6",
+   "truth": "electronics"
+  },
+  {
+   "idx": 27,
+   "query": "Panasonic microwave 25L vs Sharp 25L",
+   "truth": "electronics"
+  },
+  {
+   "idx": 28,
+   "query": "لابتوب ديل ضد لابتوب اتش بي",
+   "truth": "electronics"
+  },
+  {
+   "idx": 29,
+   "query": "Midea 12000 BTU vs Gree 12000 BTU",
+   "truth": "electronics"
+  },
+  {
+   "idx": 30,
+   "query": "Philips air fryer XXL vs Ninja Foodi Max",
+   "truth": "electronics"
+  },
+  {
+   "idx": 31,
+   "query": "Samsung 990 Pro 2TB vs WD SN850X 2TB",
+   "truth": "electronics"
+  },
+  {
+   "idx": 32,
+   "query": "AirPods Pro 3 or Galaxy Buds 3 Pro",
+   "truth": "electronics"
+  },
+  {
+   "idx": 33,
+   "query": "Canon EOS R50 vs Sony ZV-E10 II",
+   "truth": "electronics"
+  },
+  {
+   "idx": 34,
+   "query": "ساعة ابل سيريس 10 أو سامسونج جالاكسي واتش",
+   "truth": "electronics"
+  },
+  {
+   "idx": 35,
+   "query": "Tefal steam iron FV9845 vs Philips Azur 8000",
+   "truth": "electronics"
+  },
+  {
+   "idx": 36,
+   "query": "Geepas water heater 50L vs Ariston 50L",
+   "truth": "electronics"
+  },
+  {
+   "idx": 37,
+   "query": "Logitech MX Master 3S vs Razer Basilisk V3",
+   "truth": "electronics"
+  },
+  {
+   "idx": 38,
+   "query": "TCL 65C755 vs Hisense 65U7N",
+   "truth": "electronics"
+  },
+  {
+   "idx": 39,
+   "query": "Samsung A56 vs Redmi Note 14 Pro Plus",
+   "truth": "electronics"
+  },
+  {
+   "idx": 0,
+   "query": "Almarai full fat milk 2L vs Nadec 2L",
+   "truth": "grocery"
+  },
+  {
+   "idx": 1,
+   "query": "المراعي حليب كامل الدسم ضد نادك",
+   "truth": "grocery"
+  },
+  {
+   "idx": 2,
+   "query": "Nido 2.5kg vs Anchor 2.5kg milk powder",
+   "truth": "grocery"
+  },
+  {
+   "idx": 3,
+   "query": "Sunbulah puff pastry vs Americana puff pastry",
+   "truth": "grocery"
+  },
+  {
+   "idx": 4,
+   "query": "سنبلة سمبوسة أو أمريكانا سمبوسة",
+   "truth": "grocery"
+  },
+  {
+   "idx": 5,
+   "query": "Al Wadi hummus vs Al Alali hummus",
+   "truth": "grocery"
+  },
+  {
+   "idx": 6,
+   "query": "Basmati rice Abu Kass 5kg vs India Gate 5kg",
+   "truth": "grocery"
+  },
+  {
+   "idx": 7,
+   "query": "أرز بسمتي ابو كاس 5 كيلو مقابل الشعلان",
+   "truth": "grocery"
+  },
+  {
+   "idx": 8,
+   "query": "Lurpak butter 400g vs President butter 400g",
+   "truth": "grocery"
+  },
+  {
+   "idx": 9,
+   "query": "Nutella 750g or Mars Hazelnut spread 700g",
+   "truth": "grocery"
+  },
+  {
+   "idx": 10,
+   "query": "Barilla spaghetti no.5 vs Al Alali spaghetti",
+   "truth": "grocery"
+  },
+  {
+   "idx": 11,
+   "query": "Rani Float mango vs Vimto original",
+   "truth": "grocery"
+  },
+  {
+   "idx": 12,
+   "query": "زيت زيتون الجوف ضد زيت زيتون بيتر",
+   "truth": "grocery"
+  },
+  {
+   "idx": 13,
+   "query": "Vimto 710ml vs Rani 250ml",
+   "truth": "grocery"
+  },
+  {
+   "idx": 14,
+   "query": "Lays Classic 165g vs Pringles Original 165g",
+   "truth": "grocery"
+  },
+  {
+   "idx": 15,
+   "query": "Al Rabie orange juice 1L vs Almarai juice 1L",
+   "truth": "grocery"
+  },
+  {
+   "idx": 16,
+   "query": "Nescafe Gold 200g vs Davidoff Rich Aroma 100g",
+   "truth": "grocery"
+  },
+  {
+   "idx": 17,
+   "query": "شاي ليبتون 200 كيس أو شاي أحمر الكبوس",
+   "truth": "grocery"
+  },
+  {
+   "idx": 18,
+   "query": "Ahmad Tea Earl Grey vs Twinings Earl Grey",
+   "truth": "grocery"
+  },
+  {
+   "idx": 19,
+   "query": "Baladna laban 1L vs Almarai laban 1L",
+   "truth": "grocery"
+  },
+  {
+   "idx": 20,
+   "query": "Sadia frozen chicken 1kg vs Doux 1kg",
+   "truth": "grocery"
+  },
+  {
+   "idx": 21,
+   "query": "Al Kabeer kofta vs Sunbulah kofta",
+   "truth": "grocery"
+  },
+  {
+   "idx": 22,
+   "query": "عسل السدر اليمني ضد عسل مانوكا",
+   "truth": "grocery"
+  },
+  {
+   "idx": 23,
+   "query": "Quaker oats 1kg vs Nature's Path oats",
+   "truth": "grocery"
+  },
+  {
+   "idx": 24,
+   "query": "Kinder Bueno vs Ferrero Rocher T16",
+   "truth": "grocery"
+  },
+  {
+   "idx": 25,
+   "query": "Tang orange 2kg vs Foster Clarks 2kg",
+   "truth": "grocery"
+  },
+  {
+   "idx": 26,
+   "query": "Dettol surface cleaner 1.5L vs Clorox 1.5L",
+   "truth": "grocery"
+  },
+  {
+   "idx": 27,
+   "query": "Fairy dishwashing liquid 1L vs Persil 1L",
+   "truth": "grocery"
+  },
+  {
+   "idx": 28,
+   "query": "Ariel automatic 5kg vs Tide 5kg",
+   "truth": "grocery"
+  },
+  {
+   "idx": 29,
+   "query": "منظف كلوروكس ضد ديتول",
+   "truth": "grocery"
+  },
+  {
+   "idx": 30,
+   "query": "Pampers Premium Care size 4 vs Huggies size 4",
+   "truth": "grocery"
+  },
+  {
+   "idx": 31,
+   "query": "Nescafe 3in1 30 sticks vs Indomie carton",
+   "truth": "grocery"
+  },
+  {
+   "idx": 32,
+   "query": "Indomie chicken 40 pack vs Maggi noodles 40",
+   "truth": "grocery"
+  },
+  {
+   "idx": 33,
+   "query": "Al Ain water 1.5L 12 pack vs Masafi 1.5L",
+   "truth": "grocery"
+  },
+  {
+   "idx": 34,
+   "query": "ماء العين 1.5 لتر أو مسافي",
+   "truth": "grocery"
+  },
+  {
+   "idx": 35,
+   "query": "Kraft cheddar 200g vs Puck cream cheese 200g",
+   "truth": "grocery"
+  },
+  {
+   "idx": 36,
+   "query": "Nadec long life milk vs Almarai long life",
+   "truth": "grocery"
+  },
+  {
+   "idx": 37,
+   "query": "California Garden fava beans vs Al Alali foul",
+   "truth": "grocery"
+  },
+  {
+   "idx": 38,
+   "query": "cornflaks kellogs vs nestle cornflakes",
+   "truth": "grocery"
+  },
+  {
+   "idx": 39,
+   "query": "Halwa Showaiter vs Halwa Bahraini traditional",
+   "truth": "grocery"
+  },
+  {
+   "idx": 0,
+   "query": "Centrum Men vs One A Day Men multivitamin",
+   "truth": "supplements"
+  },
+  {
+   "idx": 1,
+   "query": "Optimum Nutrition Gold Standard whey 5lb vs Dymatize ISO100",
+   "truth": "supplements"
+  },
+  {
+   "idx": 2,
+   "query": "بروتين واي جولد ستاندرد ضد ايزو 100",
+   "truth": "supplements"
+  },
+  {
+   "idx": 3,
+   "query": "Vitamin D3 5000 IU NOW vs Nature's Bounty D3 5000",
+   "truth": "supplements"
+  },
+  {
+   "idx": 4,
+   "query": "فيتامين د 5000 وحدة ضد فيتامين د 1000",
+   "truth": "supplements"
+  },
+  {
+   "idx": 5,
+   "query": "Ferrous sulfate 65mg tablets vs Ferrofol capsules",
+   "truth": "supplements"
+  },
+  {
+   "idx": 6,
+   "query": "Omega-3 1000mg Nordic Naturals vs Solgar Omega 3",
+   "truth": "supplements"
+  },
+  {
+   "idx": 7,
+   "query": "Collagen powder Vital Proteins vs Neocell 250g",
+   "truth": "supplements"
+  },
+  {
+   "idx": 8,
+   "query": "Centrum Silver vs Pharmaton Vitality",
+   "truth": "supplements"
+  },
+  {
+   "idx": 9,
+   "query": "Panadol Extra 24 tabs vs Adol 500 24 tabs",
+   "truth": "supplements"
+  },
+  {
+   "idx": 10,
+   "query": "بنادول اكسترا ضد ادول 500",
+   "truth": "supplements"
+  },
+  {
+   "idx": 11,
+   "query": "Zinc 50mg NOW vs Solgar Zinc picolinate",
+   "truth": "supplements"
+  },
+  {
+   "idx": 12,
+   "query": "Magnesium glycinate 400mg vs Magnesium citrate 400mg",
+   "truth": "supplements"
+  },
+  {
+   "idx": 13,
+   "query": "Creatine monohydrate 300g vs Creatine HCL 200g",
+   "truth": "supplements"
+  },
+  {
+   "idx": 14,
+   "query": "Nutridrink vs Ensure Plus vanilla",
+   "truth": "supplements"
+  },
+  {
+   "idx": 15,
+   "query": "Bepanthen vs Sudocrem",
+   "truth": "supplements"
+  },
+  {
+   "idx": 16,
+   "query": "Vitamin C 1000mg effervescent vs Redoxon 1000mg",
+   "truth": "supplements"
+  },
+  {
+   "idx": 17,
+   "query": "فيتامين سي فوار ريدوكسون أو سيفيتامين",
+   "truth": "supplements"
+  },
+  {
+   "idx": 18,
+   "query": "Herbalife Formula 1 vs Isagenix shake",
+   "truth": "supplements"
+  },
+  {
+   "idx": 19,
+   "query": "Iron 65 mg tablets vs Iron 18 mg gummies",
+   "truth": "supplements"
+  },
+  {
+   "idx": 20,
+   "query": "Prenatal Elevit vs Pregnacare Plus",
+   "truth": "supplements"
+  },
+  {
+   "idx": 21,
+   "query": "Biotin 10000mcg vs Biotin 5000mcg gummies",
+   "truth": "supplements"
+  },
+  {
+   "idx": 22,
+   "query": "Probiotic 50 billion CFU vs Yakult",
+   "truth": "supplements"
+  },
+  {
+   "idx": 23,
+   "query": "Fish oil 1200mg softgels vs Krill oil 500mg",
+   "truth": "supplements"
+  },
+  {
+   "idx": 24,
+   "query": "Ashwagandha KSM-66 600mg vs Ashwagandha 450mg",
+   "truth": "supplements"
+  },
+  {
+   "idx": 25,
+   "query": "Whey isolate 2kg vs mass gainer 3kg",
+   "truth": "supplements"
+  },
+  {
+   "idx": 26,
+   "query": "MuscleTech NitroTech vs BSN Syntha-6",
+   "truth": "supplements"
+  },
+  {
+   "idx": 27,
+   "query": "حبوب زنك 50 ملغ ضد حبوب مغنيسيوم",
+   "truth": "supplements"
+  },
+  {
+   "idx": 28,
+   "query": "Berocca Performance vs Supradyn",
+   "truth": "supplements"
+  },
+  {
+   "idx": 29,
+   "query": "Vitamin B12 1000mcg sublingual vs B complex",
+   "truth": "supplements"
+  },
+  {
+   "idx": 30,
+   "query": "Glucosamine 1500mg vs Move Free Advanced",
+   "truth": "supplements"
+  },
+  {
+   "idx": 31,
+   "query": "Melatonin 5mg vs Melatonin 10mg gummies",
+   "truth": "supplements"
+  },
+  {
+   "idx": 32,
+   "query": "Nature's Bounty hair skin nails vs Sugarbearhair",
+   "truth": "supplements"
+  },
+  {
+   "idx": 33,
+   "query": "Ensure Gold 850g vs Glucerna 850g",
+   "truth": "supplements"
+  },
+  {
+   "idx": 34,
+   "query": "Pre workout C4 vs Ghost Legend",
+   "truth": "supplements"
+  },
+  {
+   "idx": 35,
+   "query": "Vitamin E 400 IU vs Evion 400",
+   "truth": "supplements"
+  },
+  {
+   "idx": 36,
+   "query": "kollagen powder vs collagn peptides",
+   "truth": "supplements"
+  },
+  {
+   "idx": 37,
+   "query": "Centrum Women 100 tabs or Elevit Women",
+   "truth": "supplements"
+  },
+  {
+   "idx": 38,
+   "query": "Calcium 600 + D3 vs Caltrate 600",
+   "truth": "supplements"
+  },
+  {
+   "idx": 39,
+   "query": "Slimming tea Detox vs Green tea extract 500mg",
+   "truth": "supplements"
+  },
+  {
+   "idx": 0,
+   "query": "Fenty Beauty Pro Filtr vs Estee Lauder Double Wear",
+   "truth": "makeup"
+  },
+  {
+   "idx": 1,
+   "query": "كريم اساس دبل وير ضد فينتي بيوتي",
+   "truth": "makeup"
+  },
+  {
+   "idx": 2,
+   "query": "Maybelline Fit Me 220 vs LOreal Infallible 24H",
+   "truth": "makeup"
+  },
+  {
+   "idx": 3,
+   "query": "MAC Ruby Woo vs Charlotte Tilbury Pillow Talk",
+   "truth": "makeup"
+  },
+  {
+   "idx": 4,
+   "query": "احمر شفاه ماك روبي وو أو ديور 999",
+   "truth": "makeup"
+  },
+  {
+   "idx": 5,
+   "query": "Huda Beauty Nude palette vs Anastasia Soft Glam",
+   "truth": "makeup"
+  },
+  {
+   "idx": 6,
+   "query": "Benefit Hoola bronzer vs NARS Laguna",
+   "truth": "makeup"
+  },
+  {
+   "idx": 7,
+   "query": "Dior Backstage foundation vs Armani Luminous Silk",
+   "truth": "makeup"
+  },
+  {
+   "idx": 8,
+   "query": "Rimmel Stay Matte powder vs Maybelline Fit Me powder",
+   "truth": "makeup"
+  },
+  {
+   "idx": 9,
+   "query": "Essence Lash Princess vs Maybelline Sky High mascara",
+   "truth": "makeup"
+  },
+  {
+   "idx": 10,
+   "query": "مسكارا سكاي هاي ضد لاش برنسيس",
+   "truth": "makeup"
+  },
+  {
+   "idx": 11,
+   "query": "Nars Radiant Creamy concealer vs Tarte Shape Tape",
+   "truth": "makeup"
+  },
+  {
+   "idx": 12,
+   "query": "Bobbi Brown corrector vs Kryolan Dermacolor",
+   "truth": "makeup"
+  },
+  {
+   "idx": 13,
+   "query": "Milani baked blush vs Rare Beauty Soft Pinch",
+   "truth": "makeup"
+  },
+  {
+   "idx": 14,
+   "query": "Urban Decay All Nighter setting spray vs NYX Matte",
+   "truth": "makeup"
+  },
+  {
+   "idx": 15,
+   "query": "Kiko Milano lip liner vs MAC Whirl",
+   "truth": "makeup"
+  },
+  {
+   "idx": 16,
+   "query": "Golden Rose matte lipstick vs Flormar",
+   "truth": "makeup"
+  },
+  {
+   "idx": 17,
+   "query": "Wet n Wild Photo Focus vs Revlon ColorStay",
+   "truth": "makeup"
+  },
+  {
+   "idx": 18,
+   "query": "Too Faced Better Than Sex vs Benefit Theyre Real",
+   "truth": "makeup"
+  },
+  {
+   "idx": 19,
+   "query": "Laura Mercier translucent powder vs Coty Airspun",
+   "truth": "makeup"
+  },
+  {
+   "idx": 20,
+   "query": "بودرة لورا ميرسيه أو بودرة هدى بيوتي",
+   "truth": "makeup"
+  },
+  {
+   "idx": 21,
+   "query": "Makeup Revolution Conceal and Define vs Maybelline",
+   "truth": "makeup"
+  },
+  {
+   "idx": 22,
+   "query": "Sephora Collection Cream Lip Stain vs Nyx Lip Lingerie",
+   "truth": "makeup"
+  },
+  {
+   "idx": 23,
+   "query": "Chanel Les Beiges vs Guerlain Terracotta",
+   "truth": "makeup"
+  },
+  {
+   "idx": 24,
+   "query": "Clinique Even Better foundation vs Lancome Teint Idole",
+   "truth": "makeup"
+  },
+  {
+   "idx": 25,
+   "query": "Bourjois Healthy Mix vs Rimmel Lasting Finish",
+   "truth": "makeup"
+  },
+  {
+   "idx": 26,
+   "query": "Catrice HD Liquid Coverage vs Essence Soft Touch",
+   "truth": "makeup"
+  },
+  {
+   "idx": 27,
+   "query": "Morphe 35O palette vs Huda Beauty Rose Gold",
+   "truth": "makeup"
+  },
+  {
+   "idx": 28,
+   "query": "Inglot AMC gel liner vs Stila Stay All Day",
+   "truth": "makeup"
+  },
+  {
+   "idx": 29,
+   "query": "L.A. Girl Pro Conceal vs Maybelline Instant Age Rewind",
+   "truth": "makeup"
+  },
+  {
+   "idx": 30,
+   "query": "Nabla Cutie palette vs Colourpop Yes Please",
+   "truth": "makeup"
+  },
+  {
+   "idx": 31,
+   "query": "eyeliner stila stay all day or bobbi brown gel",
+   "truth": "makeup"
+  },
+  {
+   "idx": 32,
+   "query": "Fenty Gloss Bomb vs Dior Addict Lip Glow",
+   "truth": "makeup"
+  },
+  {
+   "idx": 33,
+   "query": "فاونديشن ميبيلين فيت مي ضد لوريال انفاليبل",
+   "truth": "makeup"
+  },
+  {
+   "idx": 34,
+   "query": "Pat McGrath Divine Blush vs Rare Beauty blush",
+   "truth": "makeup"
+  },
+  {
+   "idx": 35,
+   "query": "Hourglass Ambient powder vs Charlotte Tilbury Airbrush",
+   "truth": "makeup"
+  },
+  {
+   "idx": 36,
+   "query": "Kylie Cosmetics Matte Liquid vs Huda Liquid Matte",
+   "truth": "makeup"
+  },
+  {
+   "idx": 37,
+   "query": "makup forever ultra hd vs armani luminous",
+   "truth": "makeup"
+  },
+  {
+   "idx": 38,
+   "query": "Nyx Butter Gloss vs Fenty Gloss Bomb Cream",
+   "truth": "makeup"
+  },
+  {
+   "idx": 39,
+   "query": "Yves Saint Laurent Touche Eclat vs Dior Forever Skin",
+   "truth": "makeup"
+  },
+  {
+   "idx": 0,
+   "query": "CeraVe Moisturizing Cream vs Cetaphil Moisturizing Cream",
+   "truth": "skincare"
+  },
+  {
+   "idx": 1,
+   "query": "سيرافي كريم مرطب ضد سيتافيل",
+   "truth": "skincare"
+  },
+  {
+   "idx": 2,
+   "query": "La Roche-Posay Effaclar Duo vs Avene Cleanance",
+   "truth": "skincare"
+  },
+  {
+   "idx": 3,
+   "query": "The Ordinary Niacinamide 10% vs Good Molecules Niacinamide",
+   "truth": "skincare"
+  },
+  {
+   "idx": 4,
+   "query": "Vichy Mineral 89 vs La Roche Posay Hyalu B5",
+   "truth": "skincare"
+  },
+  {
+   "idx": 5,
+   "query": "واقي شمس لاروش بوزيه ضد ايوسيرين",
+   "truth": "skincare"
+  },
+  {
+   "idx": 6,
+   "query": "Eucerin Sun Gel-Cream SPF50+ vs Anthelios UVMune 400",
+   "truth": "skincare"
+  },
+  {
+   "idx": 7,
+   "query": "Bioderma Sensibio H2O vs Garnier Micellar Water",
+   "truth": "skincare"
+  },
+  {
+   "idx": 8,
+   "query": "SkinCeuticals CE Ferulic vs Timeless Vitamin C",
+   "truth": "skincare"
+  },
+  {
+   "idx": 9,
+   "query": "Paulas Choice BHA 2% vs COSRX BHA Blackhead Power",
+   "truth": "skincare"
+  },
+  {
+   "idx": 10,
+   "query": "Neutrogena Hydro Boost vs Nivea Soft",
+   "truth": "skincare"
+  },
+  {
+   "idx": 11,
+   "query": "Olay Regenerist vs LOreal Revitalift",
+   "truth": "skincare"
+  },
+  {
+   "idx": 12,
+   "query": "The Ordinary Retinol 0.5% vs La Roche Retinol B3",
+   "truth": "skincare"
+  },
+  {
+   "idx": 13,
+   "query": "Sunscreen SPF 50 Nivea vs Sunscreen SPF 50 Vichy",
+   "truth": "skincare"
+  },
+  {
+   "idx": 14,
+   "query": "Himalaya neem face wash vs Garnier Pure Active",
+   "truth": "skincare"
+  },
+  {
+   "idx": 15,
+   "query": "غسول هيمالايا ضد غسول جارنييه",
+   "truth": "skincare"
+  },
+  {
+   "idx": 16,
+   "query": "Bio-Oil 200ml vs Palmers Cocoa Butter",
+   "truth": "skincare"
+  },
+  {
+   "idx": 17,
+   "query": "Aveeno Daily Moisturizing vs Cetaphil Daily",
+   "truth": "skincare"
+  },
+  {
+   "idx": 18,
+   "query": "Sesderma Azelac Ru vs Melanostop Mesoestetic",
+   "truth": "skincare"
+  },
+  {
+   "idx": 19,
+   "query": "Skin1004 Centella ampoule vs COSRX Snail 96",
+   "truth": "skincare"
+  },
+  {
+   "idx": 20,
+   "query": "Beauty of Joseon Relief Sun vs Round Lab Birch Juice",
+   "truth": "skincare"
+  },
+  {
+   "idx": 21,
+   "query": "Clinique Moisture Surge vs Laneige Water Bank",
+   "truth": "skincare"
+  },
+  {
+   "idx": 22,
+   "query": "Estee Lauder Advanced Night Repair vs Lancome Genifique",
+   "truth": "skincare"
+  },
+  {
+   "idx": 23,
+   "query": "سيروم فيتامين سي ضد سيروم هيالورونيك",
+   "truth": "skincare"
+  },
+  {
+   "idx": 24,
+   "query": "Nuxe Huile Prodigieuse vs Bio Oil",
+   "truth": "skincare"
+  },
+  {
+   "idx": 25,
+   "query": "Dermalogica Daily Microfoliant vs Tatcha Rice Polish",
+   "truth": "skincare"
+  },
+  {
+   "idx": 26,
+   "query": "Isdin Eryfotona Actinica vs Heliocare 360",
+   "truth": "skincare"
+  },
+  {
+   "idx": 27,
+   "query": "Sebamed clear face gel vs Panoxyl 4%",
+   "truth": "skincare"
+  },
+  {
+   "idx": 28,
+   "query": "Uriage Bariederm vs Cicaplast Baume B5",
+   "truth": "skincare"
+  },
+  {
+   "idx": 29,
+   "query": "Bepanthol Derma vs Cicaplast Baume",
+   "truth": "skincare"
+  },
+  {
+   "idx": 30,
+   "query": "cerav foaming cleanser vs cetaphil gentl cleanser",
+   "truth": "skincare"
+  },
+  {
+   "idx": 31,
+   "query": "Kiehls Ultra Facial Cream vs Clinique Dramatically Different",
+   "truth": "skincare"
+  },
+  {
+   "idx": 32,
+   "query": "Chanel Sublimage vs La Mer Creme de la Mer",
+   "truth": "skincare"
+  },
+  {
+   "idx": 33,
+   "query": "Garnier Vitamin C serum 30ml vs Olay Vitamin C 40ml",
+   "truth": "skincare"
+  },
+  {
+   "idx": 34,
+   "query": "Retinol 1% vs Bakuchiol 1% serum",
+   "truth": "skincare"
+  },
+  {
+   "idx": 35,
+   "query": "Mixa Urea Cica vs Eucerin UreaRepair 10%",
+   "truth": "skincare"
+  },
+  {
+   "idx": 36,
+   "query": "The Inkey List Oat Cleanser vs Simple Kind To Skin",
+   "truth": "skincare"
+  },
+  {
+   "idx": 37,
+   "query": "Medicube Zero pore pad vs Cosrx AHA BHA toner",
+   "truth": "skincare"
+  },
+  {
+   "idx": 38,
+   "query": "Nivea Men Dark Spot vs Garnier Men Turbo Bright",
+   "truth": "skincare"
+  },
+  {
+   "idx": 39,
+   "query": "ماء ميسيلار بيوديرما أو غارنييه",
+   "truth": "skincare"
+  },
+  {
+   "idx": 0,
+   "query": "Kerastase Bain Satin vs LOreal Absolut Repair shampoo",
+   "truth": "haircare"
+  },
+  {
+   "idx": 1,
+   "query": "شامبو كيراستاس ضد شامبو لوريال",
+   "truth": "haircare"
+  },
+  {
+   "idx": 2,
+   "query": "Head and Shoulders Classic 400ml vs Clear Men 400ml",
+   "truth": "haircare"
+  },
+  {
+   "idx": 3,
+   "query": "Olaplex No.3 vs K18 leave-in mask",
+   "truth": "haircare"
+  },
+  {
+   "idx": 4,
+   "query": "Moroccanoil Treatment 100ml vs Argan oil 100ml",
+   "truth": "haircare"
+  },
+  {
+   "idx": 5,
+   "query": "زيت الارغان المغربي ضد زيت جوز الهند",
+   "truth": "haircare"
+  },
+  {
+   "idx": 6,
+   "query": "Pantene Pro-V Repair vs Dove Intensive Repair",
+   "truth": "haircare"
+  },
+  {
+   "idx": 7,
+   "query": "Cantu Shea Butter leave-in vs Shea Moisture Curl Smoothie",
+   "truth": "haircare"
+  },
+  {
+   "idx": 8,
+   "query": "Vatika hair oil vs Dabur Amla oil",
+   "truth": "haircare"
+  },
+  {
+   "idx": 9,
+   "query": "زيت فاتيكا ضد زيت دابر املا",
+   "truth": "haircare"
+  },
+  {
+   "idx": 10,
+   "query": "Nizoral 2% shampoo vs Selsun Blue",
+   "truth": "haircare"
+  },
+  {
+   "idx": 11,
+   "query": "Loreal Elvive Dream Long vs Garnier Ultra Doux",
+   "truth": "haircare"
+  },
+  {
+   "idx": 12,
+   "query": "Redken All Soft vs Kerastase Nutritive",
+   "truth": "haircare"
+  },
+  {
+   "idx": 13,
+   "query": "Batiste dry shampoo vs Colab dry shampoo",
+   "truth": "haircare"
+  },
+  {
+   "idx": 14,
+   "query": "Schwarzkopf Gliss Ultimate Repair vs Syoss Repair",
+   "truth": "haircare"
+  },
+  {
+   "idx": 15,
+   "query": "TRESemme Keratin Smooth vs John Frieda Frizz Ease",
+   "truth": "haircare"
+  },
+  {
+   "idx": 16,
+   "query": "Hair mask Kerastase Masquintense vs Olaplex No.8",
+   "truth": "haircare"
+  },
+  {
+   "idx": 17,
+   "query": "Minoxidil 5% foam vs Regaine 5%",
+   "truth": "haircare"
+  },
+  {
+   "idx": 18,
+   "query": "بخاخ مينوكسيديل 5 بالمئة ضد رجين",
+   "truth": "haircare"
+  },
+  {
+   "idx": 19,
+   "query": "Alpecin Caffeine shampoo vs Plantur 39",
+   "truth": "haircare"
+  },
+  {
+   "idx": 20,
+   "query": "Nioxin System 2 vs Kerastase Genesis",
+   "truth": "haircare"
+  },
+  {
+   "idx": 21,
+   "query": "Aussie 3 Minute Miracle vs Loreal Elvive 8 second",
+   "truth": "haircare"
+  },
+  {
+   "idx": 22,
+   "query": "Cream of Nature vs Cantu conditioner",
+   "truth": "haircare"
+  },
+  {
+   "idx": 23,
+   "query": "Herbal Essences bio renew vs Pantene Miracles",
+   "truth": "haircare"
+  },
+  {
+   "idx": 24,
+   "query": "Wella Invigo vs Matrix Total Results",
+   "truth": "haircare"
+  },
+  {
+   "idx": 25,
+   "query": "Bed Head After Party vs Moroccanoil Glimmer Shine",
+   "truth": "haircare"
+  },
+  {
+   "idx": 26,
+   "query": "Sunsilk Hijab Refresh vs Dove Hijab Fresh shampoo",
+   "truth": "haircare"
+  },
+  {
+   "idx": 27,
+   "query": "شامبو صنسيلك حجاب ضد دوف حجاب",
+   "truth": "haircare"
+  },
+  {
+   "idx": 28,
+   "query": "Keratin treatment Brazilian vs Nanoplastia treatment",
+   "truth": "haircare"
+  },
+  {
+   "idx": 29,
+   "query": "Argan hair serum 50ml vs Coconut hair serum 50ml",
+   "truth": "haircare"
+  },
+  {
+   "idx": 30,
+   "query": "Loreal Professionnel Serie Expert vs Kerastase Chronologiste",
+   "truth": "haircare"
+  },
+  {
+   "idx": 31,
+   "query": "Dabur Vatika black seed oil vs Marnys black seed",
+   "truth": "haircare"
+  },
+  {
+   "idx": 32,
+   "query": "LOreal Excellence hair color 5.0 vs Garnier Olia 5.0",
+   "truth": "haircare"
+  },
+  {
+   "idx": 33,
+   "query": "صبغة لوريال اكسلانس ضد غارنييه اوليا",
+   "truth": "haircare"
+  },
+  {
+   "idx": 34,
+   "query": "shampo hed and shoulder vs clear men",
+   "truth": "haircare"
+  },
+  {
+   "idx": 35,
+   "query": "Aveda Damage Remedy vs Kerastase Resistance",
+   "truth": "haircare"
+  },
+  {
+   "idx": 36,
+   "query": "Curl cream Cantu vs Curl cream Aunt Jackies",
+   "truth": "haircare"
+  },
+  {
+   "idx": 37,
+   "query": "Hask Argan Oil mask vs Garnier Hair Food",
+   "truth": "haircare"
+  },
+  {
+   "idx": 38,
+   "query": "Braun Satin Hair 7 vs Dyson Supersonic",
+   "truth": "haircare"
+  },
+  {
+   "idx": 39,
+   "query": "Nizoral vs Ketoconazole 2% shampoo generic",
+   "truth": "haircare"
+  },
+  {
+   "idx": 0,
+   "query": "Dior Sauvage EDP vs Bleu de Chanel EDP",
+   "truth": "fragrances"
+  },
+  {
+   "idx": 1,
+   "query": "ديور سوفاج ضد بلو دو شانيل",
+   "truth": "fragrances"
+  },
+  {
+   "idx": 2,
+   "query": "Lattafa Khamrah vs Lattafa Asad",
+   "truth": "fragrances"
+  },
+  {
+   "idx": 3,
+   "query": "لطافة خمرة أو لطافة اسد",
+   "truth": "fragrances"
+  },
+  {
+   "idx": 4,
+   "query": "Al Haramain Amber Oud Gold vs Lattafa Oud Mood",
+   "truth": "fragrances"
+  },
+  {
+   "idx": 5,
+   "query": "الحرمين امبر عود ذهبي ضد لطافة عود مود",
+   "truth": "fragrances"
+  },
+  {
+   "idx": 6,
+   "query": "Armaf Club de Nuit Intense Man vs Creed Aventus",
+   "truth": "fragrances"
+  },
+  {
+   "idx": 7,
+   "query": "YSL Black Opium vs Lancome La Vie Est Belle",
+   "truth": "fragrances"
+  },
+  {
+   "idx": 8,
+   "query": "Tom Ford Oud Wood vs Tom Ford Tobacco Vanille",
+   "truth": "fragrances"
+  },
+  {
+   "idx": 9,
+   "query": "Rasasi Hawas vs Afnan 9pm",
+   "truth": "fragrances"
+  },
+  {
+   "idx": 10,
+   "query": "راصاصي هواس ضد افنان 9 بي ام",
+   "truth": "fragrances"
+  },
+  {
+   "idx": 11,
+   "query": "Ajmal Aurum vs Swiss Arabian Shaghaf Oud",
+   "truth": "fragrances"
+  },
+  {
+   "idx": 12,
+   "query": "Arabian Oud Kalemat vs Abdul Samad Al Qurashi Mukhallat",
+   "truth": "fragrances"
+  },
+  {
+   "idx": 13,
+   "query": "العربية للعود كلمات ضد عبدالصمد القرشي",
+   "truth": "fragrances"
+  },
+  {
+   "idx": 14,
+   "query": "Jo Malone Wood Sage and Sea Salt vs Le Labo Santal 33",
+   "truth": "fragrances"
+  },
+  {
+   "idx": 15,
+   "query": "Paco Rabanne 1 Million vs Invictus",
+   "truth": "fragrances"
+  },
+  {
+   "idx": 16,
+   "query": "Versace Eros vs Versace Dylan Blue",
+   "truth": "fragrances"
+  },
+  {
+   "idx": 17,
+   "query": "عطر فيرزاتشي ايروس أو ديلان بلو",
+   "truth": "fragrances"
+  },
+  {
+   "idx": 18,
+   "query": "Bharara King vs Lattafa Badee Al Oud",
+   "truth": "fragrances"
+  },
+  {
+   "idx": 19,
+   "query": "Maison Francis Kurkdjian Baccarat Rouge 540 vs Kayali Vanilla 28",
+   "truth": "fragrances"
+  },
+  {
+   "idx": 20,
+   "query": "Dior Homme Intense 100ml vs Dior Sauvage Elixir 60ml",
+   "truth": "fragrances"
+  },
+  {
+   "idx": 21,
+   "query": "Nishane Hacivat vs Parfums de Marly Layton",
+   "truth": "fragrances"
+  },
+  {
+   "idx": 22,
+   "query": "Montale Intense Cafe vs Mancera Roses Vanille",
+   "truth": "fragrances"
+  },
+  {
+   "idx": 23,
+   "query": "Bath and Body Works Japanese Cherry Blossom vs Victorias Secret Bombshell",
+   "truth": "fragrances"
+  },
+  {
+   "idx": 24,
+   "query": "Zara Red Vanilla vs Zara Vibrant Leather",
+   "truth": "fragrances"
+  },
+  {
+   "idx": 25,
+   "query": "مخلط عود ضد دهن عود كمبودي",
+   "truth": "fragrances"
+  },
+  {
+   "idx": 26,
+   "query": "Dehn al oud Cambodi 3ml vs Dehn al oud Hindi 3ml",
+   "truth": "fragrances"
+  },
+  {
+   "idx": 27,
+   "query": "Ard Al Zaafaran Turathi vs Lattafa Raghba",
+   "truth": "fragrances"
+  },
+  {
+   "idx": 28,
+   "query": "Escentric Molecules Molecule 01 vs Juliette Has a Gun Not a Perfume",
+   "truth": "fragrances"
+  },
+  {
+   "idx": 29,
+   "query": "Chanel No 5 EDP 100ml vs Chanel Coco Mademoiselle 100ml",
+   "truth": "fragrances"
+  },
+  {
+   "idx": 30,
+   "query": "Hugo Boss Bottled vs Davidoff Cool Water",
+   "truth": "fragrances"
+  },
+  {
+   "idx": 31,
+   "query": "Rasasi Daarej vs Rasasi La Yuqawam",
+   "truth": "fragrances"
+  },
+  {
+   "idx": 32,
+   "query": "عطر لطافة يارا ضد عطر لطافة فخار",
+   "truth": "fragrances"
+  },
+  {
+   "idx": 33,
+   "query": "Lattafa Yara vs Lattafa Fakhar",
+   "truth": "fragrances"
+  },
+  {
+   "idx": 34,
+   "query": "Emper Nice Flower vs Fragrance World Khamrah",
+   "truth": "fragrances"
+  },
+  {
+   "idx": 35,
+   "query": "Body spray Adidas Ice Dive vs Nivea Men Fresh",
+   "truth": "fragrances"
+  },
+  {
+   "idx": 36,
+   "query": "dior savage vs blue de chanel",
+   "truth": "fragrances"
+  },
+  {
+   "idx": 37,
+   "query": "Oud Mood Elixir 100ml vs Khamrah Qahwa 100ml",
+   "truth": "fragrances"
+  },
+  {
+   "idx": 38,
+   "query": "Gulf Orchid Sultan vs Ard Al Zaafaran Musk",
+   "truth": "fragrances"
+  },
+  {
+   "idx": 39,
+   "query": "Amouage Interlude Man vs Amouage Reflection Man",
+   "truth": "fragrances"
+  },
+  {
+   "idx": 0,
+   "query": "Nike Air Force 1 vs Adidas Stan Smith",
+   "truth": "fashion"
+  },
+  {
+   "idx": 1,
+   "query": "نايك اير فورس 1 ضد اديداس ستان سميث",
+   "truth": "fashion"
+  },
+  {
+   "idx": 2,
+   "query": "Louis Vuitton Neverfull MM vs Gucci Marmont",
+   "truth": "fashion"
+  },
+  {
+   "idx": 3,
+   "query": "Ray-Ban Aviator vs Oakley Holbrook",
+   "truth": "fashion"
+  },
+  {
+   "idx": 4,
+   "query": "نظارة ريبان ضد اوكلي",
+   "truth": "fashion"
+  },
+  {
+   "idx": 5,
+   "query": "Rolex Submariner vs Omega Seamaster",
+   "truth": "fashion"
+  },
+  {
+   "idx": 6,
+   "query": "Casio G-Shock GA-2100 vs Seiko 5 Sports",
+   "truth": "fashion"
+  },
+  {
+   "idx": 7,
+   "query": "Abaya Nukhbaa vs Abaya Bousquet",
+   "truth": "fashion"
+  },
+  {
+   "idx": 8,
+   "query": "عباية نخبة ضد عباية بوسكيه",
+   "truth": "fashion"
+  },
+  {
+   "idx": 9,
+   "query": "Hijab jersey premium vs hijab chiffon",
+   "truth": "fashion"
+  },
+  {
+   "idx": 10,
+   "query": "حجاب جيرسيه ضد حجاب شيفون",
+   "truth": "fashion"
+  },
+  {
+   "idx": 11,
+   "query": "Shemagh Al Bassam vs Shemagh Al Ameed",
+   "truth": "fashion"
+  },
+  {
+   "idx": 12,
+   "query": "شماغ البسام ضد شماغ العميد",
+   "truth": "fashion"
+  },
+  {
+   "idx": 13,
+   "query": "Thobe Al Khaleej vs Thobe Daffah",
+   "truth": "fashion"
+  },
+  {
+   "idx": 14,
+   "query": "ثوب الخليج أو ثوب دفة",
+   "truth": "fashion"
+  },
+  {
+   "idx": 15,
+   "query": "Zara oversized blazer vs H and M oversized blazer",
+   "truth": "fashion"
+  },
+  {
+   "idx": 16,
+   "query": "Uniqlo Airism T-shirt vs H and M Cotton T-shirt",
+   "truth": "fashion"
+  },
+  {
+   "idx": 17,
+   "query": "Levis 501 vs Wrangler Texas jeans",
+   "truth": "fashion"
+  },
+  {
+   "idx": 18,
+   "query": "Michael Kors Jet Set tote vs Coach Willow tote",
+   "truth": "fashion"
+  },
+  {
+   "idx": 19,
+   "query": "Charles and Keith heels vs Aldo heels",
+   "truth": "fashion"
+  },
+  {
+   "idx": 20,
+   "query": "Skechers Go Walk vs New Balance 574",
+   "truth": "fashion"
+  },
+  {
+   "idx": 21,
+   "query": "Crocs Classic Clog vs Birkenstock Arizona",
+   "truth": "fashion"
+  },
+  {
+   "idx": 22,
+   "query": "Tommy Hilfiger polo vs Ralph Lauren polo",
+   "truth": "fashion"
+  },
+  {
+   "idx": 23,
+   "query": "بشت رجالي فاخر ضد بشت عادي",
+   "truth": "fashion"
+  },
+  {
+   "idx": 24,
+   "query": "Bisht luxury men vs Bisht standard",
+   "truth": "fashion"
+  },
+  {
+   "idx": 25,
+   "query": "Adidas Ultraboost 22 vs Nike Pegasus 41",
+   "truth": "fashion"
+  },
+  {
+   "idx": 26,
+   "query": "Herschel Little America vs Samsonite backpack",
+   "truth": "fashion"
+  },
+  {
+   "idx": 27,
+   "query": "Fossil Gen 6 vs Michael Kors Access",
+   "truth": "fashion"
+  },
+  {
+   "idx": 28,
+   "query": "Swarovski necklace vs Pandora Moments bracelet",
+   "truth": "fashion"
+  },
+  {
+   "idx": 29,
+   "query": "Damas gold bangle 21k vs Malabar gold bangle 21k",
+   "truth": "fashion"
+  },
+  {
+   "idx": 30,
+   "query": "اسواره ذهب داماس 21 ضد ملبار",
+   "truth": "fashion"
+  },
+  {
+   "idx": 31,
+   "query": "Nine West pumps vs Steve Madden pumps",
+   "truth": "fashion"
+  },
+  {
+   "idx": 32,
+   "query": "Cartier Love bracelet vs Van Cleef Alhambra",
+   "truth": "fashion"
+  },
+  {
+   "idx": 33,
+   "query": "Massimo Dutti leather jacket vs Zara leather jacket",
+   "truth": "fashion"
+  },
+  {
+   "idx": 34,
+   "query": "Under Armour HeatGear vs Nike Dri-FIT",
+   "truth": "fashion"
+  },
+  {
+   "idx": 35,
+   "query": "Bata school shoes vs Clarks school shoes",
+   "truth": "fashion"
+  },
+  {
+   "idx": 36,
+   "query": "adidas superstar vs nike air force one",
+   "truth": "fashion"
+  },
+  {
+   "idx": 37,
+   "query": "Kaftan embroidered vs Jalabiya embroidered",
+   "truth": "fashion"
+  },
+  {
+   "idx": 38,
+   "query": "قفطان مطرز ضد جلابية مطرزة",
+   "truth": "fashion"
+  },
+  {
+   "idx": 39,
+   "query": "Tissot PRX vs Longines Hydroconquest",
+   "truth": "fashion"
+  },
+  {
+   "idx": 0,
+   "query": "IKEA Malm bed vs IKEA Hemnes bed",
+   "truth": "other"
+  },
+  {
+   "idx": 1,
+   "query": "Lock and Lock food container 1L vs Tupperware 1L",
+   "truth": "other"
+  },
+  {
+   "idx": 2,
+   "query": "Cast iron skillet Lodge 12 inch vs Tefal 12 inch",
+   "truth": "other"
+  },
+  {
+   "idx": 3,
+   "query": "Toyota Land Cruiser 2025 vs Nissan Patrol 2025",
+   "truth": "other"
+  },
+  {
+   "idx": 4,
+   "query": "تويوتا لاندكروزر 2025 ضد نيسان باترول",
+   "truth": "other"
+  },
+  {
+   "idx": 5,
+   "query": "Michelin Primacy 4 225/65R17 vs Bridgestone Turanza",
+   "truth": "other"
+  },
+  {
+   "idx": 6,
+   "query": "Bosch exhaust silencer vs Walker silencer",
+   "truth": "other"
+  },
+  {
+   "idx": 7,
+   "query": "Home Box sofa 3 seater vs Danube Home sofa",
+   "truth": "other"
+  },
+  {
+   "idx": 8,
+   "query": "Sleep Comfort mattress medium vs Raha mattress",
+   "truth": "other"
+  },
+  {
+   "idx": 9,
+   "query": "مرتبة سليب كومفورت ضد مرتبة راحة",
+   "truth": "other"
+  },
+  {
+   "idx": 10,
+   "query": "Lego Technic 42143 vs Lego Icons 10307",
+   "truth": "other"
+  },
+  {
+   "idx": 11,
+   "query": "Bicycle Trek Marlin 5 vs Giant Talon 3",
+   "truth": "other"
+  },
+  {
+   "idx": 12,
+   "query": "Yoga mat 6mm TPE vs yoga mat 10mm NBR",
+   "truth": "other"
+  },
+  {
+   "idx": 13,
+   "query": "Air purifier Xiaomi 4 Pro vs Coway Airmega",
+   "truth": "other"
+  },
+  {
+   "idx": 14,
+   "query": "Pet food Royal Canin 10kg vs Pedigree 10kg",
+   "truth": "other"
+  },
+  {
+   "idx": 15,
+   "query": "Whiskas 1.2kg vs Friskies 1.2kg cat food",
+   "truth": "other"
+  },
+  {
+   "idx": 16,
+   "query": "Baby stroller Chicco Bravo vs Joie Litetrax",
+   "truth": "other"
+  },
+  {
+   "idx": 17,
+   "query": "Car seat Britax vs Cybex Sirona",
+   "truth": "other"
+  },
+  {
+   "idx": 18,
+   "query": "Camping tent Coleman 4 person vs Quechua 4 person",
+   "truth": "other"
+  },
+  {
+   "idx": 19,
+   "query": "خيمة تخييم 4 اشخاص ضد خيمة 6 اشخاص",
+   "truth": "other"
+  },
+  {
+   "idx": 20,
+   "query": "Water dispenser Aquatech vs Midea dispenser",
+   "truth": "other"
+  },
+  {
+   "idx": 21,
+   "query": "Sewing machine Singer 1409 vs Brother GS2700",
+   "truth": "other"
+  },
+  {
+   "idx": 22,
+   "query": "Drill Bosch GSB 13 RE vs Makita HP1630",
+   "truth": "other"
+  },
+  {
+   "idx": 23,
+   "query": "Paint Jotun Fenomastic vs National Paints emulsion",
+   "truth": "other"
+  },
+  {
+   "idx": 24,
+   "query": "Generator Honda EU22i vs Yamaha EF2200iS",
+   "truth": "other"
+  },
+  {
+   "idx": 25,
+   "query": "Solar panel 550W Jinko vs Longi 550W",
+   "truth": "other"
+  },
+  {
+   "idx": 26,
+   "query": "Office chair Herman Miller Aeron vs Steelcase Leap",
+   "truth": "other"
+  },
+  {
+   "idx": 27,
+   "query": "Mattress topper memory foam vs latex topper",
+   "truth": "other"
+  },
+  {
+   "idx": 28,
+   "query": "Rug 200x300 Turkish vs rug 200x300 Persian",
+   "truth": "other"
+  },
+  {
+   "idx": 29,
+   "query": "سجاد تركي 200x300 ضد سجاد ايراني",
+   "truth": "other"
+  },
+  {
+   "idx": 30,
+   "query": "Gold bar 10g vs gold bar 20g",
+   "truth": "other"
+  },
+  {
+   "idx": 31,
+   "query": "Air ticket Gulf Air vs Emirates Bahrain to Dubai",
+   "truth": "other"
+  },
+  {
+   "idx": 32,
+   "query": "Books Kindle Paperwhite vs Kobo Clara",
+   "truth": "other"
+  },
+  {
+   "idx": 33,
+   "query": "Alarm system Ajax vs Hikvision alarm",
+   "truth": "other"
+  },
+  {
+   "idx": 34,
+   "query": "Water filter 7 stage RO vs 5 stage RO",
+   "truth": "other"
+  },
+  {
+   "idx": 35,
+   "query": "Grass artificial 30mm vs 40mm",
+   "truth": "other"
+  },
+  {
+   "idx": 36,
+   "query": "Curtain blackout 2 panels vs sheer 2 panels",
+   "truth": "other"
+  },
+  {
+   "idx": 37,
+   "query": "Tactical knife Gerber vs Victorinox Swiss knife",
+   "truth": "other"
+  },
+  {
+   "idx": 38,
+   "query": "Shotgun shells 12 gauge Winchester vs Remington",
+   "truth": "other"
+  },
+  {
+   "idx": 39,
+   "query": "ادوات مطبخ تفال ضد ادوات مطبخ برستيج",
+   "truth": "other"
+  }
+ ],
+ "source": "M22 po-categories-i18n lane corpus.py (session f110259b scratchpad/lane/corpus.py, sha256 157b94f6fe0ebaaa7cfffdd80fbddb4889fe9ea1d112402e23b54ecbc4e14eae)"
+}

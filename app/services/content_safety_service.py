@@ -38,6 +38,72 @@ def _test_seeds_enabled() -> bool:
     return os.environ.get("ENABLE_CONTENT_SAFETY_TEST_SEEDS", "false").lower() == "true"
 
 
+def blocklist_precision_v2_enabled() -> bool:
+    """W4-8 Half B (default OFF): select the ``v2`` blocklist lists. Read per
+    call via ``os.getenv`` -- never cached at import or construction."""
+    return os.getenv("ENABLE_BLOCKLIST_PRECISION_V2", "false").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
+def _boundary_alternation(escaped_terms: list[str]) -> re.Pattern:
+    return re.compile(
+        r"(?:^|[\s\W])(" + "|".join(escaped_terms) + r")(?=$|[\s\W])",
+        flags=re.IGNORECASE | re.UNICODE,
+    )
+
+
+class _ExemptingPattern:
+    """W4-8 Half B (ruling R11), the v2 matcher of one category: a token listed
+    in ``v2.exempt`` does not block a text that also contains one of ITS OWN
+    qualifiers (whole token, same boundary / escape / lowercase as the matcher);
+    every other token of the category still blocks, in v1 list order."""
+
+    def __init__(self, full: re.Pattern, terms: list[str],
+                 qualifiers: dict[str, re.Pattern]) -> None:
+        self._full = full
+        self._terms = terms
+        self._qualifiers = qualifiers
+        self._reduced: dict[frozenset, Optional[re.Pattern]] = {}
+        # Multi-word tokens: the only ones that can span a field boundary.
+        self._spanning = [_boundary_alternation([t]) for t in terms
+                          if re.search(r"\s", re.sub(r"\\(.)", r"\1", t, flags=re.DOTALL))]
+
+    def search_fields(self, fields: list[str]):
+        """Ruling R16c (the L2 title + snippet surface): a qualifier exempts a
+        token only when both occur in the SAME field. The tokens are still found
+        over the joined surface (v1 identity): one inside a field is exempted
+        only by a qualifier in that field, and one that spans a field boundary
+        is in no single field, so no qualifier exempts it."""
+        joined = " ".join(fields)
+        if not any(q.search(f) for f in fields for q in self._qualifiers.values()):
+            return self._full.search(joined)
+        for field in fields:
+            m = self.search(field)
+            if m:
+                return m
+        junction = -1
+        for field in fields[:-1]:
+            junction += len(field) + 1
+            for pattern in self._spanning:
+                m = pattern.search(joined)
+                while m is not None and m.start(1) < junction:
+                    if m.end(1) > junction:
+                        return m
+                    m = pattern.search(joined, m.start(1) + 1)
+        return None
+
+    def search(self, haystack: str):
+        exempted = frozenset(t for t, q in self._qualifiers.items() if q.search(haystack))
+        if not exempted:
+            return self._full.search(haystack)
+        if exempted not in self._reduced:
+            kept = [t for t in self._terms if t not in exempted]
+            self._reduced[exempted] = _boundary_alternation(kept) if kept else None
+        pattern = self._reduced[exempted]
+        return pattern.search(haystack) if pattern is not None else None
+
+
 @dataclass(frozen=True)
 class SafetyResult:
     allowed: bool
@@ -49,7 +115,11 @@ class ContentSafetyService:
     def __init__(self) -> None:
         self._categories: dict[str, dict[str, list[str]]] = {}
         self._compiled: dict[str, re.Pattern] = {}
+        self._compiled_v2: dict[str, re.Pattern] = {}
         self._load_blocklist()
+
+    def _patterns(self) -> dict[str, re.Pattern]:
+        return self._compiled_v2 if blocklist_precision_v2_enabled() else self._compiled
 
     def _load_blocklist(self) -> None:
         """Load + compile blocklist ONCE at construction time.
@@ -70,6 +140,29 @@ class ContentSafetyService:
                     r"(?:^|[\s\W])(" + "|".join(terms) + r")(?=$|[\s\W])",
                     flags=re.IGNORECASE | re.UNICODE,
                 )
+        # W4-8 Half B: each "v2" list REPLACES its (category, lang) list; every
+        # other list is the v1 list. Both compiled here, selected per call.
+        # Ruling R11: the v2 lists equal v1; precision comes from v2.exempt.
+        overrides = (doc.get("v2") or {}).get("categories", {})
+        exempt = (doc.get("v2") or {}).get("exempt", {})
+        for cat, lists in self._categories.items():
+            merged = dict(lists)
+            merged.update(overrides.get(cat, {}))
+            terms = [re.escape(t.lower()) for t in merged.get("en", []) + merged.get("ar", [])]
+            if terms:
+                self._compiled_v2[cat] = re.compile(
+                    r"(?:^|[\s\W])(" + "|".join(terms) + r")(?=$|[\s\W])",
+                    flags=re.IGNORECASE | re.UNICODE,
+                )
+                qualifiers = {
+                    re.escape(token.lower()): _boundary_alternation(
+                        [re.escape(q.lower()) for q in quals])
+                    for by_token in exempt.get(cat, {}).values()
+                    for token, quals in by_token.items() if quals
+                }
+                if qualifiers:
+                    self._compiled_v2[cat] = _ExemptingPattern(
+                        self._compiled_v2[cat], terms, qualifiers)
 
     def check_query_intent(self, query: str) -> SafetyResult:
         """L1 — pre-flight blocklist check on raw user query."""
@@ -82,7 +175,7 @@ class ContentSafetyService:
         if _test_seeds_enabled() and _TEST_SENTINEL in query:
             return SafetyResult(allowed=False, reason=_SENTINEL_REASON, blocklist_match=_TEST_SENTINEL)
         haystack = query.lower()
-        for cat, pattern in self._compiled.items():
+        for cat, pattern in self._patterns().items():
             m = pattern.search(haystack)
             if m:
                 return SafetyResult(allowed=False, reason=cat, blocklist_match=m.group(1))
@@ -100,7 +193,7 @@ class ContentSafetyService:
         if not text or not text.strip():
             return True
         haystack = text.lower()
-        for pattern in self._compiled.values():
+        for pattern in self._patterns().values():
             if pattern.search(haystack):
                 return False
         return True
@@ -116,11 +209,18 @@ class ContentSafetyService:
             return []
         safe: list[dict] = []
         dropped = 0
+        patterns = self._patterns()
         for item in items:
             haystack = f"{item.get('title', '')} {item.get('snippet', '')}".lower()
             blocked = False
-            for pattern in self._compiled.values():
-                if pattern.search(haystack):
+            for pattern in patterns.values():
+                if isinstance(pattern, _ExemptingPattern):
+                    # v2 only (ruling R16c): the exemption is decided per field.
+                    hit = pattern.search_fields([f"{item.get('title', '')}".lower(),
+                                                 f"{item.get('snippet', '')}".lower()])
+                else:
+                    hit = pattern.search(haystack)
+                if hit:
                     blocked = True
                     break
             if blocked:

@@ -1,6 +1,6 @@
 {
-  "version": "1",
-  "updated_at": "2026-05-17",
+  "version": "2",
+  "updated_at": "2026-09-27",
   "notes": "Clinical/neutral terms only — see app/services/content_safety_service.py for usage. Bump version when changing categories array shape (not when only adding terms). EN terms use word-boundary matching; AR uses Unicode-aware boundary lookaround. NO term shorter than 3 chars (avoids 'ar' matching 'Mars Bar').",
   "categories": {
     "weapons": {
@@ -111,6 +111,94 @@
         "وسيلة انتحار",
         "تعليمات الانتحار"
       ]
+    }
+  },
+  "v2": {
+    "notes": "ENABLE_BLOCKLIST_PRECISION_V2 (W4-8 Half B, default OFF, read per call): each list here REPLACES its categories.<cat>.<lang> list when the flag is on (ruling R11: every v2 list equals its v1 list); every other list is the v1 list. Under the flag a token listed in exempt.<cat>.<lang> does not block a query that also contains one of ITS qualifiers (whole token); every other token still blocks. Both are compiled at construction and selected per call.",
+    "categories": {
+      "weapons": {
+        "en": [
+          "firearm",
+          "handgun",
+          "ar-15",
+          "ak-47",
+          "ammunition",
+          "silencer",
+          "ghost gun",
+          "assault rifle",
+          "tactical knife",
+          "switchblade",
+          "glock 19",
+          "shotgun shells"
+        ],
+        "ar": [
+          "مسدس",
+          "بندقية",
+          "سلاح ناري",
+          "ذخيرة",
+          "كاتم صوت",
+          "سكين قتالي",
+          "بندقية هجومية"
+        ]
+      },
+      "illegal_drugs": {
+        "ar": [
+          "كوكايين",
+          "هيروين",
+          "ميثامفيتامين",
+          "فنتانيل",
+          "أفيون",
+          "حشيش مخدر",
+          "كريستال ميث"
+        ]
+      }
+    },
+    "exempt": {
+      "weapons": {
+        "en": {
+          "silencer": [
+            "exhaust",
+            "generator",
+            "bosch",
+            "walker",
+            "hilux",
+            "car",
+            "muffler"
+          ],
+          "tactical knife": [
+            "gerber",
+            "victorinox",
+            "leatherman"
+          ]
+        },
+        "ar": {
+          "بندقية": [
+            "ماء",
+            "نيرف",
+            "هواء"
+          ],
+          "كاتم صوت": [
+            "عادم",
+            "مولد"
+          ],
+          "سكين قتالي": [
+            "جربر"
+          ]
+        }
+      },
+      "illegal_drugs": {
+        "ar": {
+          "أفيون": [
+            "عطر",
+            "عطور",
+            "سان لوران",
+            "بلاك",
+            "ysl",
+            "yves saint laurent",
+            "saint laurent"
+          ]
+        }
+      }
     }
   }
 }

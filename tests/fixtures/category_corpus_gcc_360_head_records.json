@@ -1,0 +1,11131 @@
+{
+ "base": "04acb757 (regenerated at HEAD; equal record-for-record to the 61585c58 golden)",
+ "corpus_classification_records": {
+  "C:electronics:00": {
+   "chip": [
+    "electronics",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:electronics:01": {
+   "chip": [
+    "electronics",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:electronics:02": {
+   "chip": [
+    "electronics",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:electronics:03": {
+   "chip": [
+    "electronics",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:electronics:04": {
+   "chip": [
+    "electronics",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:electronics:05": {
+   "chip": [
+    "electronics",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:electronics:06": {
+   "chip": [
+    "electronics",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:electronics:07": {
+   "chip": [
+    "electronics",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:electronics:08": {
+   "chip": [
+    "electronics",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:electronics:09": {
+   "chip": [
+    "electronics",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:electronics:10": {
+   "chip": [
+    "electronics",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:electronics:11": {
+   "chip": [
+    "electronics",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:electronics:12": {
+   "chip": [
+    "electronics",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:electronics:13": {
+   "chip": [
+    "electronics",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:electronics:14": {
+   "chip": [
+    "electronics",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:electronics:15": {
+   "chip": [
+    "electronics",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:electronics:16": {
+   "chip": [
+    "electronics",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:electronics:17": {
+   "chip": [
+    "electronics",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:electronics:18": {
+   "chip": [
+    "electronics",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:electronics:19": {
+   "chip": [
+    "electronics",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:electronics:20": {
+   "chip": [
+    "electronics",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:electronics:21": {
+   "chip": [
+    "electronics",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:electronics:22": {
+   "chip": [
+    "electronics",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:electronics:23": {
+   "chip": [
+    "electronics",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:electronics:24": {
+   "chip": [
+    "electronics",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:electronics:25": {
+   "chip": [
+    "electronics",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:electronics:26": {
+   "chip": [
+    "electronics",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:electronics:27": {
+   "chip": [
+    "electronics",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:electronics:28": {
+   "chip": [
+    "electronics",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:electronics:29": {
+   "chip": [
+    "electronics",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:electronics:30": {
+   "chip": [
+    "electronics",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:electronics:31": {
+   "chip": [
+    "electronics",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:electronics:32": {
+   "chip": [
+    "electronics",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:electronics:33": {
+   "chip": [
+    "electronics",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:electronics:34": {
+   "chip": [
+    "electronics",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:electronics:35": {
+   "chip": [
+    "electronics",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:electronics:36": {
+   "chip": [
+    "electronics",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:electronics:37": {
+   "chip": [
+    "electronics",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:electronics:38": {
+   "chip": [
+    "electronics",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:electronics:39": {
+   "chip": [
+    "electronics",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fashion:00": {
+   "chip": [
+    "fashion",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fashion:01": {
+   "chip": [
+    "fashion",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fashion:02": {
+   "chip": [
+    "fashion",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fashion:03": {
+   "chip": [
+    "fashion",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fashion:04": {
+   "chip": [
+    "fashion",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fashion:05": {
+   "chip": [
+    "fashion",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fashion:06": {
+   "chip": [
+    "fashion",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fashion:07": {
+   "chip": [
+    "fashion",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fashion:08": {
+   "chip": [
+    "fashion",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fashion:09": {
+   "chip": [
+    "fashion",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fashion:10": {
+   "chip": [
+    "fashion",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fashion:11": {
+   "chip": [
+    "fashion",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fashion:12": {
+   "chip": [
+    "fashion",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fashion:13": {
+   "chip": [
+    "fashion",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fashion:14": {
+   "chip": [
+    "fashion",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fashion:15": {
+   "chip": [
+    "fashion",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fashion:16": {
+   "chip": [
+    "fashion",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fashion:17": {
+   "chip": [
+    "fashion",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fashion:18": {
+   "chip": [
+    "fashion",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fashion:19": {
+   "chip": [
+    "fashion",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fashion:20": {
+   "chip": [
+    "fashion",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fashion:21": {
+   "chip": [
+    "fashion",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fashion:22": {
+   "chip": [
+    "fashion",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fashion:23": {
+   "chip": [
+    "fashion",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fashion:24": {
+   "chip": [
+    "fashion",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fashion:25": {
+   "chip": [
+    "fashion",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fashion:26": {
+   "chip": [
+    "fashion",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fashion:27": {
+   "chip": [
+    "fashion",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fashion:28": {
+   "chip": [
+    "fashion",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fashion:29": {
+   "chip": [
+    "fashion",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fashion:30": {
+   "chip": [
+    "fashion",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fashion:31": {
+   "chip": [
+    "fashion",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fashion:32": {
+   "chip": [
+    "fashion",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fashion:33": {
+   "chip": [
+    "fashion",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fashion:34": {
+   "chip": [
+    "fashion",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fashion:35": {
+   "chip": [
+    "fashion",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fashion:36": {
+   "chip": [
+    "fashion",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fashion:37": {
+   "chip": [
+    "fashion",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fashion:38": {
+   "chip": [
+    "fashion",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fashion:39": {
+   "chip": [
+    "fashion",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fragrances:00": {
+   "chip": [
+    "fragrances",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "fragrances",
+   "halves": [
+    "fragrances",
+    "fragrances"
+   ],
+   "nochip": [
+    "fragrances",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fragrances:01": {
+   "chip": [
+    "fragrances",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fragrances:02": {
+   "chip": [
+    "fragrances",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fragrances:03": {
+   "chip": [
+    "fragrances",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fragrances:04": {
+   "chip": [
+    "fragrances",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fragrances:05": {
+   "chip": [
+    "fragrances",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fragrances:06": {
+   "chip": [
+    "fragrances",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fragrances:07": {
+   "chip": [
+    "fragrances",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fragrances:08": {
+   "chip": [
+    "fragrances",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fragrances:09": {
+   "chip": [
+    "fragrances",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fragrances:10": {
+   "chip": [
+    "fragrances",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fragrances:11": {
+   "chip": [
+    "fragrances",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fragrances:12": {
+   "chip": [
+    "fragrances",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fragrances:13": {
+   "chip": [
+    "fragrances",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fragrances:14": {
+   "chip": [
+    "fragrances",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fragrances:15": {
+   "chip": [
+    "fragrances",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fragrances:16": {
+   "chip": [
+    "fragrances",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fragrances:17": {
+   "chip": [
+    "fragrances",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fragrances:18": {
+   "chip": [
+    "fragrances",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fragrances:19": {
+   "chip": [
+    "fragrances",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fragrances:20": {
+   "chip": [
+    "fragrances",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fragrances:21": {
+   "chip": [
+    "fragrances",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fragrances:22": {
+   "chip": [
+    "fragrances",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fragrances:23": {
+   "chip": [
+    "fragrances",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fragrances:24": {
+   "chip": [
+    "fragrances",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fragrances:25": {
+   "chip": [
+    "fragrances",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fragrances:26": {
+   "chip": [
+    "fragrances",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fragrances:27": {
+   "chip": [
+    "fragrances",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fragrances:28": {
+   "chip": [
+    "fragrances",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "fragrances",
+   "halves": [
+    "other",
+    "fragrances"
+   ],
+   "nochip": [
+    "fragrances",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fragrances:29": {
+   "chip": [
+    "fragrances",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "fragrances",
+   "halves": [
+    "fragrances",
+    "other"
+   ],
+   "nochip": [
+    "fragrances",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fragrances:30": {
+   "chip": [
+    "fragrances",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fragrances:31": {
+   "chip": [
+    "fragrances",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fragrances:32": {
+   "chip": [
+    "fragrances",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fragrances:33": {
+   "chip": [
+    "fragrances",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fragrances:34": {
+   "chip": [
+    "fragrances",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "fragrances",
+   "halves": [
+    "other",
+    "fragrances"
+   ],
+   "nochip": [
+    "fragrances",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fragrances:35": {
+   "chip": [
+    "fragrances",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fragrances:36": {
+   "chip": [
+    "fragrances",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fragrances:37": {
+   "chip": [
+    "fragrances",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fragrances:38": {
+   "chip": [
+    "fragrances",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:fragrances:39": {
+   "chip": [
+    "fragrances",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:grocery:00": {
+   "chip": [
+    "grocery",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:grocery:01": {
+   "chip": [
+    "grocery",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:grocery:02": {
+   "chip": [
+    "grocery",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:grocery:03": {
+   "chip": [
+    "grocery",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:grocery:04": {
+   "chip": [
+    "grocery",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:grocery:05": {
+   "chip": [
+    "grocery",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:grocery:06": {
+   "chip": [
+    "grocery",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:grocery:07": {
+   "chip": [
+    "grocery",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:grocery:08": {
+   "chip": [
+    "grocery",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:grocery:09": {
+   "chip": [
+    "grocery",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:grocery:10": {
+   "chip": [
+    "grocery",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:grocery:11": {
+   "chip": [
+    "grocery",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:grocery:12": {
+   "chip": [
+    "grocery",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:grocery:13": {
+   "chip": [
+    "grocery",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:grocery:14": {
+   "chip": [
+    "grocery",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:grocery:15": {
+   "chip": [
+    "grocery",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:grocery:16": {
+   "chip": [
+    "grocery",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:grocery:17": {
+   "chip": [
+    "grocery",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:grocery:18": {
+   "chip": [
+    "grocery",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:grocery:19": {
+   "chip": [
+    "grocery",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:grocery:20": {
+   "chip": [
+    "grocery",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:grocery:21": {
+   "chip": [
+    "grocery",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:grocery:22": {
+   "chip": [
+    "grocery",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:grocery:23": {
+   "chip": [
+    "grocery",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:grocery:24": {
+   "chip": [
+    "grocery",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:grocery:25": {
+   "chip": [
+    "grocery",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:grocery:26": {
+   "chip": [
+    "grocery",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:grocery:27": {
+   "chip": [
+    "grocery",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:grocery:28": {
+   "chip": [
+    "grocery",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:grocery:29": {
+   "chip": [
+    "grocery",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:grocery:30": {
+   "chip": [
+    "grocery",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:grocery:31": {
+   "chip": [
+    "grocery",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:grocery:32": {
+   "chip": [
+    "grocery",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:grocery:33": {
+   "chip": [
+    "grocery",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:grocery:34": {
+   "chip": [
+    "grocery",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:grocery:35": {
+   "chip": [
+    "grocery",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:grocery:36": {
+   "chip": [
+    "grocery",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:grocery:37": {
+   "chip": [
+    "grocery",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:grocery:38": {
+   "chip": [
+    "grocery",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:grocery:39": {
+   "chip": [
+    "grocery",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:haircare:00": {
+   "chip": [
+    "haircare",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:haircare:01": {
+   "chip": [
+    "haircare",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:haircare:02": {
+   "chip": [
+    "haircare",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:haircare:03": {
+   "chip": [
+    "haircare",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:haircare:04": {
+   "chip": [
+    "haircare",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:haircare:05": {
+   "chip": [
+    "haircare",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:haircare:06": {
+   "chip": [
+    "haircare",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:haircare:07": {
+   "chip": [
+    "haircare",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:haircare:08": {
+   "chip": [
+    "haircare",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "haircare",
+   "halves": [
+    "haircare",
+    "other"
+   ],
+   "nochip": [
+    "haircare",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:haircare:09": {
+   "chip": [
+    "haircare",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:haircare:10": {
+   "chip": [
+    "haircare",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:haircare:11": {
+   "chip": [
+    "haircare",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:haircare:12": {
+   "chip": [
+    "haircare",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:haircare:13": {
+   "chip": [
+    "haircare",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:haircare:14": {
+   "chip": [
+    "haircare",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:haircare:15": {
+   "chip": [
+    "haircare",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:haircare:16": {
+   "chip": [
+    "haircare",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "haircare",
+   "halves": [
+    "haircare",
+    "other"
+   ],
+   "nochip": [
+    "haircare",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:haircare:17": {
+   "chip": [
+    "haircare",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:haircare:18": {
+   "chip": [
+    "haircare",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:haircare:19": {
+   "chip": [
+    "haircare",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:haircare:20": {
+   "chip": [
+    "haircare",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:haircare:21": {
+   "chip": [
+    "haircare",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:haircare:22": {
+   "chip": [
+    "haircare",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:haircare:23": {
+   "chip": [
+    "haircare",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:haircare:24": {
+   "chip": [
+    "haircare",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:haircare:25": {
+   "chip": [
+    "haircare",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:haircare:26": {
+   "chip": [
+    "haircare",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:haircare:27": {
+   "chip": [
+    "haircare",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:haircare:28": {
+   "chip": [
+    "haircare",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:haircare:29": {
+   "chip": [
+    "haircare",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "haircare",
+   "halves": [
+    "haircare",
+    "haircare"
+   ],
+   "nochip": [
+    "haircare",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:haircare:30": {
+   "chip": [
+    "haircare",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:haircare:31": {
+   "chip": [
+    "haircare",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:haircare:32": {
+   "chip": [
+    "haircare",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "haircare",
+   "halves": [
+    "haircare",
+    "other"
+   ],
+   "nochip": [
+    "haircare",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:haircare:33": {
+   "chip": [
+    "haircare",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:haircare:34": {
+   "chip": [
+    "haircare",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:haircare:35": {
+   "chip": [
+    "haircare",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:haircare:36": {
+   "chip": [
+    "haircare",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:haircare:37": {
+   "chip": [
+    "haircare",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "haircare",
+   "halves": [
+    "other",
+    "haircare"
+   ],
+   "nochip": [
+    "haircare",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:haircare:38": {
+   "chip": [
+    "haircare",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "haircare",
+   "halves": [
+    "haircare",
+    "other"
+   ],
+   "nochip": [
+    "haircare",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:haircare:39": {
+   "chip": [
+    "haircare",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:makeup:00": {
+   "chip": [
+    "makeup",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:makeup:01": {
+   "chip": [
+    "makeup",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:makeup:02": {
+   "chip": [
+    "makeup",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:makeup:03": {
+   "chip": [
+    "makeup",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:makeup:04": {
+   "chip": [
+    "makeup",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:makeup:05": {
+   "chip": [
+    "makeup",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:makeup:06": {
+   "chip": [
+    "makeup",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:makeup:07": {
+   "chip": [
+    "makeup",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:makeup:08": {
+   "chip": [
+    "makeup",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:makeup:09": {
+   "chip": [
+    "makeup",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:makeup:10": {
+   "chip": [
+    "makeup",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:makeup:11": {
+   "chip": [
+    "makeup",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:makeup:12": {
+   "chip": [
+    "makeup",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:makeup:13": {
+   "chip": [
+    "makeup",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:makeup:14": {
+   "chip": [
+    "makeup",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:makeup:15": {
+   "chip": [
+    "makeup",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:makeup:16": {
+   "chip": [
+    "makeup",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:makeup:17": {
+   "chip": [
+    "makeup",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:makeup:18": {
+   "chip": [
+    "makeup",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:makeup:19": {
+   "chip": [
+    "makeup",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:makeup:20": {
+   "chip": [
+    "makeup",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:makeup:21": {
+   "chip": [
+    "makeup",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "makeup",
+   "halves": [
+    "makeup",
+    "other"
+   ],
+   "nochip": [
+    "makeup",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:makeup:22": {
+   "chip": [
+    "makeup",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:makeup:23": {
+   "chip": [
+    "makeup",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:makeup:24": {
+   "chip": [
+    "makeup",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:makeup:25": {
+   "chip": [
+    "makeup",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:makeup:26": {
+   "chip": [
+    "makeup",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:makeup:27": {
+   "chip": [
+    "makeup",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:makeup:28": {
+   "chip": [
+    "makeup",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:makeup:29": {
+   "chip": [
+    "makeup",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:makeup:30": {
+   "chip": [
+    "makeup",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:makeup:31": {
+   "chip": [
+    "makeup",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:makeup:32": {
+   "chip": [
+    "makeup",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:makeup:33": {
+   "chip": [
+    "makeup",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:makeup:34": {
+   "chip": [
+    "makeup",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:makeup:35": {
+   "chip": [
+    "makeup",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:makeup:36": {
+   "chip": [
+    "makeup",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "makeup",
+   "halves": [
+    "makeup",
+    "other"
+   ],
+   "nochip": [
+    "makeup",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:makeup:37": {
+   "chip": [
+    "makeup",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:makeup:38": {
+   "chip": [
+    "makeup",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:makeup:39": {
+   "chip": [
+    "skincare",
+    true,
+    "makeup"
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "skincare",
+   "halves": [
+    "other",
+    "skincare"
+   ],
+   "nochip": [
+    "skincare",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:other:00": {
+   "chip": [
+    "other",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:other:01": {
+   "chip": [
+    "grocery",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "grocery",
+   "halves": [
+    "grocery",
+    "other"
+   ],
+   "nochip": [
+    "grocery",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:other:02": {
+   "chip": [
+    "other",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:other:03": {
+   "chip": [
+    "other",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:other:04": {
+   "chip": [
+    "other",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:other:05": {
+   "chip": [
+    "other",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:other:06": {
+   "chip": [
+    "other",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:other:07": {
+   "chip": [
+    "other",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:other:08": {
+   "chip": [
+    "other",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:other:09": {
+   "chip": [
+    "other",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:other:10": {
+   "chip": [
+    "other",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:other:11": {
+   "chip": [
+    "other",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:other:12": {
+   "chip": [
+    "other",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:other:13": {
+   "chip": [
+    "other",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:other:14": {
+   "chip": [
+    "grocery",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "grocery",
+   "halves": [
+    "grocery",
+    "other"
+   ],
+   "nochip": [
+    "grocery",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:other:15": {
+   "chip": [
+    "grocery",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "grocery",
+   "halves": [
+    "other",
+    "grocery"
+   ],
+   "nochip": [
+    "grocery",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:other:16": {
+   "chip": [
+    "other",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:other:17": {
+   "chip": [
+    "other",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:other:18": {
+   "chip": [
+    "other",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:other:19": {
+   "chip": [
+    "other",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:other:20": {
+   "chip": [
+    "other",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:other:21": {
+   "chip": [
+    "other",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:other:22": {
+   "chip": [
+    "other",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:other:23": {
+   "chip": [
+    "other",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:other:24": {
+   "chip": [
+    "other",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:other:25": {
+   "chip": [
+    "other",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:other:26": {
+   "chip": [
+    "other",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:other:27": {
+   "chip": [
+    "other",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:other:28": {
+   "chip": [
+    "other",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:other:29": {
+   "chip": [
+    "other",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:other:30": {
+   "chip": [
+    "other",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:other:31": {
+   "chip": [
+    "other",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:other:32": {
+   "chip": [
+    "other",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:other:33": {
+   "chip": [
+    "other",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:other:34": {
+   "chip": [
+    "other",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:other:35": {
+   "chip": [
+    "other",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:other:36": {
+   "chip": [
+    "other",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:other:37": {
+   "chip": [
+    "other",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:other:38": {
+   "chip": [
+    "other",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:other:39": {
+   "chip": [
+    "other",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:skincare:00": {
+   "chip": [
+    "skincare",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:skincare:01": {
+   "chip": [
+    "skincare",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:skincare:02": {
+   "chip": [
+    "skincare",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:skincare:03": {
+   "chip": [
+    "skincare",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:skincare:04": {
+   "chip": [
+    "skincare",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:skincare:05": {
+   "chip": [
+    "skincare",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:skincare:06": {
+   "chip": [
+    "skincare",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:skincare:07": {
+   "chip": [
+    "skincare",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:skincare:08": {
+   "chip": [
+    "supplements",
+    true,
+    "skincare"
+   ],
+   "chip_is_supp": [
+    true,
+    true
+   ],
+   "det": "supplements",
+   "halves": [
+    "other",
+    "supplements"
+   ],
+   "nochip": [
+    "supplements",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    true,
+    true
+   ]
+  },
+  "C:skincare:09": {
+   "chip": [
+    "skincare",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:skincare:10": {
+   "chip": [
+    "skincare",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:skincare:11": {
+   "chip": [
+    "skincare",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:skincare:12": {
+   "chip": [
+    "skincare",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:skincare:13": {
+   "chip": [
+    "skincare",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:skincare:14": {
+   "chip": [
+    "skincare",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:skincare:15": {
+   "chip": [
+    "skincare",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:skincare:16": {
+   "chip": [
+    "skincare",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:skincare:17": {
+   "chip": [
+    "skincare",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:skincare:18": {
+   "chip": [
+    "skincare",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:skincare:19": {
+   "chip": [
+    "skincare",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:skincare:20": {
+   "chip": [
+    "skincare",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:skincare:21": {
+   "chip": [
+    "skincare",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:skincare:22": {
+   "chip": [
+    "skincare",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:skincare:23": {
+   "chip": [
+    "skincare",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:skincare:24": {
+   "chip": [
+    "skincare",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:skincare:25": {
+   "chip": [
+    "skincare",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:skincare:26": {
+   "chip": [
+    "skincare",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:skincare:27": {
+   "chip": [
+    "skincare",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:skincare:28": {
+   "chip": [
+    "skincare",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:skincare:29": {
+   "chip": [
+    "skincare",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:skincare:30": {
+   "chip": [
+    "skincare",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:skincare:31": {
+   "chip": [
+    "skincare",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:skincare:32": {
+   "chip": [
+    "skincare",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:skincare:33": {
+   "chip": [
+    "supplements",
+    true,
+    "skincare"
+   ],
+   "chip_is_supp": [
+    true,
+    true
+   ],
+   "det": "supplements",
+   "halves": [
+    "supplements",
+    "supplements"
+   ],
+   "nochip": [
+    "supplements",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    true,
+    true
+   ]
+  },
+  "C:skincare:34": {
+   "chip": [
+    "skincare",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:skincare:35": {
+   "chip": [
+    "skincare",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:skincare:36": {
+   "chip": [
+    "skincare",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "skincare",
+   "halves": [
+    "other",
+    "skincare"
+   ],
+   "nochip": [
+    "skincare",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:skincare:37": {
+   "chip": [
+    "skincare",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:skincare:38": {
+   "chip": [
+    "skincare",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:skincare:39": {
+   "chip": [
+    "skincare",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:supplements:00": {
+   "chip": [
+    "supplements",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    true,
+    true
+   ],
+   "det": "supplements",
+   "halves": [
+    "supplements",
+    "supplements"
+   ],
+   "nochip": [
+    "supplements",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    true,
+    true
+   ]
+  },
+  "C:supplements:01": {
+   "chip": [
+    "supplements",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    true,
+    true
+   ],
+   "det": "supplements",
+   "halves": [
+    "supplements",
+    "supplements"
+   ],
+   "nochip": [
+    "supplements",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    true,
+    true
+   ]
+  },
+  "C:supplements:02": {
+   "chip": [
+    "supplements",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    true,
+    true
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:supplements:03": {
+   "chip": [
+    "supplements",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    true,
+    true
+   ],
+   "det": "supplements",
+   "halves": [
+    "supplements",
+    "supplements"
+   ],
+   "nochip": [
+    "supplements",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    true,
+    true
+   ]
+  },
+  "C:supplements:04": {
+   "chip": [
+    "supplements",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    true,
+    true
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:supplements:05": {
+   "chip": [
+    "electronics",
+    true,
+    "supplements"
+   ],
+   "chip_is_supp": [
+    false,
+    false
+   ],
+   "det": "electronics",
+   "halves": [
+    "electronics",
+    "other"
+   ],
+   "nochip": [
+    "electronics",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:supplements:06": {
+   "chip": [
+    "supplements",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    true,
+    true
+   ],
+   "det": "supplements",
+   "halves": [
+    "supplements",
+    "supplements"
+   ],
+   "nochip": [
+    "supplements",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    true,
+    true
+   ]
+  },
+  "C:supplements:07": {
+   "chip": [
+    "supplements",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    true,
+    true
+   ],
+   "det": "supplements",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "supplements",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    true,
+    true
+   ]
+  },
+  "C:supplements:08": {
+   "chip": [
+    "supplements",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    true,
+    true
+   ],
+   "det": "supplements",
+   "halves": [
+    "supplements",
+    "other"
+   ],
+   "nochip": [
+    "supplements",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    true,
+    true
+   ]
+  },
+  "C:supplements:09": {
+   "chip": [
+    "supplements",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    true,
+    true
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:supplements:10": {
+   "chip": [
+    "supplements",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    true,
+    true
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:supplements:11": {
+   "chip": [
+    "supplements",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    true,
+    true
+   ],
+   "det": "supplements",
+   "halves": [
+    "supplements",
+    "supplements"
+   ],
+   "nochip": [
+    "supplements",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    true,
+    true
+   ]
+  },
+  "C:supplements:12": {
+   "chip": [
+    "supplements",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    true,
+    true
+   ],
+   "det": "supplements",
+   "halves": [
+    "supplements",
+    "supplements"
+   ],
+   "nochip": [
+    "supplements",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    true,
+    true
+   ]
+  },
+  "C:supplements:13": {
+   "chip": [
+    "supplements",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    true,
+    true
+   ],
+   "det": "supplements",
+   "halves": [
+    "supplements",
+    "supplements"
+   ],
+   "nochip": [
+    "supplements",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    true,
+    true
+   ]
+  },
+  "C:supplements:14": {
+   "chip": [
+    "supplements",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    true,
+    true
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:supplements:15": {
+   "chip": [
+    "supplements",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    true,
+    true
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:supplements:16": {
+   "chip": [
+    "supplements",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    true,
+    true
+   ],
+   "det": "supplements",
+   "halves": [
+    "supplements",
+    "other"
+   ],
+   "nochip": [
+    "supplements",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    true,
+    true
+   ]
+  },
+  "C:supplements:17": {
+   "chip": [
+    "supplements",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    true,
+    true
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:supplements:18": {
+   "chip": [
+    "supplements",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    true,
+    true
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:supplements:19": {
+   "chip": [
+    "supplements",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    true,
+    true
+   ],
+   "det": "supplements",
+   "halves": [
+    "supplements",
+    "supplements"
+   ],
+   "nochip": [
+    "supplements",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    true,
+    true
+   ]
+  },
+  "C:supplements:20": {
+   "chip": [
+    "supplements",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    true,
+    true
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:supplements:21": {
+   "chip": [
+    "supplements",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    true,
+    true
+   ],
+   "det": "supplements",
+   "halves": [
+    "supplements",
+    "supplements"
+   ],
+   "nochip": [
+    "supplements",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    true,
+    true
+   ]
+  },
+  "C:supplements:22": {
+   "chip": [
+    "supplements",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    true,
+    true
+   ],
+   "det": "supplements",
+   "halves": [
+    "supplements",
+    "other"
+   ],
+   "nochip": [
+    "supplements",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    true,
+    true
+   ]
+  },
+  "C:supplements:23": {
+   "chip": [
+    "supplements",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    true,
+    true
+   ],
+   "det": "supplements",
+   "halves": [
+    "supplements",
+    "other"
+   ],
+   "nochip": [
+    "supplements",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    true,
+    true
+   ]
+  },
+  "C:supplements:24": {
+   "chip": [
+    "supplements",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    true,
+    true
+   ],
+   "det": "supplements",
+   "halves": [
+    "supplements",
+    "supplements"
+   ],
+   "nochip": [
+    "supplements",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    true,
+    true
+   ]
+  },
+  "C:supplements:25": {
+   "chip": [
+    "supplements",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    true,
+    true
+   ],
+   "det": "supplements",
+   "halves": [
+    "supplements",
+    "other"
+   ],
+   "nochip": [
+    "supplements",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    true,
+    true
+   ]
+  },
+  "C:supplements:26": {
+   "chip": [
+    "supplements",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    true,
+    true
+   ],
+   "det": "supplements",
+   "halves": [
+    "supplements",
+    "other"
+   ],
+   "nochip": [
+    "supplements",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    true,
+    true
+   ]
+  },
+  "C:supplements:27": {
+   "chip": [
+    "supplements",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    true,
+    true
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:supplements:28": {
+   "chip": [
+    "supplements",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    true,
+    true
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:supplements:29": {
+   "chip": [
+    "supplements",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    true,
+    true
+   ],
+   "det": "supplements",
+   "halves": [
+    "supplements",
+    "other"
+   ],
+   "nochip": [
+    "supplements",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    true,
+    true
+   ]
+  },
+  "C:supplements:30": {
+   "chip": [
+    "supplements",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    true,
+    true
+   ],
+   "det": "supplements",
+   "halves": [
+    "supplements",
+    "other"
+   ],
+   "nochip": [
+    "supplements",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    true,
+    true
+   ]
+  },
+  "C:supplements:31": {
+   "chip": [
+    "supplements",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    true,
+    true
+   ],
+   "det": "supplements",
+   "halves": [
+    "supplements",
+    "supplements"
+   ],
+   "nochip": [
+    "supplements",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    true,
+    true
+   ]
+  },
+  "C:supplements:32": {
+   "chip": [
+    "supplements",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    true,
+    true
+   ],
+   "det": "supplements",
+   "halves": [
+    "supplements",
+    "other"
+   ],
+   "nochip": [
+    "supplements",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    true,
+    true
+   ]
+  },
+  "C:supplements:33": {
+   "chip": [
+    "supplements",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    true,
+    true
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:supplements:34": {
+   "chip": [
+    "supplements",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    true,
+    true
+   ],
+   "det": "supplements",
+   "halves": [
+    "supplements",
+    "other"
+   ],
+   "nochip": [
+    "supplements",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    true,
+    true
+   ]
+  },
+  "C:supplements:35": {
+   "chip": [
+    "supplements",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    true,
+    true
+   ],
+   "det": "supplements",
+   "halves": [
+    "supplements",
+    "other"
+   ],
+   "nochip": [
+    "supplements",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    true,
+    true
+   ]
+  },
+  "C:supplements:36": {
+   "chip": [
+    "supplements",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    true,
+    true
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:supplements:37": {
+   "chip": [
+    "supplements",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    true,
+    true
+   ],
+   "det": "supplements",
+   "halves": [
+    "supplements",
+    "other"
+   ],
+   "nochip": [
+    "supplements",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    true,
+    true
+   ]
+  },
+  "C:supplements:38": {
+   "chip": [
+    "supplements",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    true,
+    true
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  },
+  "C:supplements:39": {
+   "chip": [
+    "supplements",
+    false,
+    null
+   ],
+   "chip_is_supp": [
+    true,
+    true
+   ],
+   "det": "other",
+   "halves": [
+    "other",
+    "other"
+   ],
+   "nochip": [
+    "other",
+    false,
+    null
+   ],
+   "nochip_is_supp": [
+    false,
+    false
+   ]
+  }
+ },
+ "corpus_classification_sha256": "b76fcef9a855248d72d1b7b68c14b9bf77255b51f90edbe3bfdc197c3872ec1d",
+ "l1_corpus_sha256": "3885d2701484167362f2241faa3b50b965b04c1771d149946764ae26d0238a07",
+ "l1_queries": {
+  "BI:00": "opium tincture for sale",
+  "BI:01": "how to grow opium poppy",
+  "BI:02": "raw opium for export",
+  "BI:03": "looking for an opium den",
+  "BI:04": "buy opium",
+  "BI:05": "صبغة الأفيون للبيع",
+  "BI:06": "صبغة أفيون",
+  "BI:07": "زراعة خشخاش الأفيون",
+  "BI:08": "أفيون خام للتصدير",
+  "BI:09": "وكر الأفيون",
+  "BI:10": "وكر أفيون",
+  "BI:11": "شراء أفيون",
+  "BI:12": "gun silencer for sale",
+  "BI:13": "pistol silencer",
+  "BI:14": "rifle silencer",
+  "BI:15": "silencer suppressor",
+  "BI:16": "switchblade knife import",
+  "BI:17": "كاتم صوت مسدس",
+  "BI:18": "كاتم صوت بندقية",
+  "BI:19": "بندقية هجومية",
+  "BI:20": "بندقية صيد",
+  "BI:21": "شراء مسدس",
+  "BI:22": "مسدس جلوك 19",
+  "BI:23": "ذخيرة مسدس",
+  "BI:24": "خشخاش أفيون",
+  "BI:25": "بلاك أفيون",
+  "BL:00": "YSL Black Opium vs Lancome La Vie Est Belle",
+  "BL:01": "عطر أفيون ايف سان لوران",
+  "BL:02": "عطر افيون ايف سان لوران",
+  "BL:03": "عطر الأفيون ايف سان لوران",
+  "BL:04": "بلاك أفيون ايف سان لوران ضد لانكوم لا في است بيل",
+  "BL:05": "بلاك اوبيوم ايف سان لوران",
+  "BL:06": "أفيون ايف سان لوران ضد بلاك أفيون",
+  "BL:07": "Bosch exhaust silencer vs Walker silencer",
+  "BL:08": "Toyota Hilux silencer vs Land Cruiser silencer",
+  "BL:09": "Honda generator silencer box",
+  "BL:10": "Tactical knife Gerber vs Victorinox Swiss knife",
+  "BL:11": "Gerber tactical knife vs Leatherman Wave",
+  "BL:12": "كاتم صوت عادم السيارة بوش ضد ووكر",
+  "BL:13": "كاتم صوت مولد هوندا",
+  "BL:14": "سكين قتالي جربر ضد فيكتورينوكس",
+  "BL:15": "بندقية ماء للأطفال",
+  "BL:16": "بندقية نيرف ضد بندقية ماء",
+  "BL:17": "بندقية هواء ضغط",
+  "BL:18": "مسدس مساج ثيراجن ضد هايبرايس",
+  "BL:19": "مسدس غراء حراري",
+  "BL:20": "مسدس سيليكون",
+  "BL:21": "مسدس ماء",
+  "BL:22": "مسدس حراري بوش",
+  "BL:23": "Theragun massage gun vs Hypervolt",
+  "BL:24": "APC surge suppressor 8 outlet vs Belkin surge protector",
+  "BL:25": "Boss NS-2 noise suppressor pedal",
+  "BL:26": "بذور الخشخاش للخبز"
+ },
+ "l1_verdicts_head": {
+  "BI:00": [
+   false,
+   "illegal_drugs",
+   "opium tincture"
+  ],
+  "BI:01": [
+   false,
+   "illegal_drugs",
+   "opium poppy"
+  ],
+  "BI:02": [
+   false,
+   "illegal_drugs",
+   "raw opium"
+  ],
+  "BI:03": [
+   false,
+   "illegal_drugs",
+   "opium den"
+  ],
+  "BI:04": [
+   true,
+   null,
+   null
+  ],
+  "BI:05": [
+   true,
+   null,
+   null
+  ],
+  "BI:06": [
+   false,
+   "illegal_drugs",
+   "أفيون"
+  ],
+  "BI:07": [
+   true,
+   null,
+   null
+  ],
+  "BI:08": [
+   false,
+   "illegal_drugs",
+   "أفيون"
+  ],
+  "BI:09": [
+   true,
+   null,
+   null
+  ],
+  "BI:10": [
+   false,
+   "illegal_drugs",
+   "أفيون"
+  ],
+  "BI:11": [
+   false,
+   "illegal_drugs",
+   "أفيون"
+  ],
+  "BI:12": [
+   false,
+   "weapons",
+   "silencer"
+  ],
+  "BI:13": [
+   false,
+   "weapons",
+   "silencer"
+  ],
+  "BI:14": [
+   false,
+   "weapons",
+   "silencer"
+  ],
+  "BI:15": [
+   false,
+   "weapons",
+   "silencer"
+  ],
+  "BI:16": [
+   false,
+   "weapons",
+   "switchblade"
+  ],
+  "BI:17": [
+   false,
+   "weapons",
+   "كاتم صوت"
+  ],
+  "BI:18": [
+   false,
+   "weapons",
+   "كاتم صوت"
+  ],
+  "BI:19": [
+   false,
+   "weapons",
+   "بندقية"
+  ],
+  "BI:20": [
+   false,
+   "weapons",
+   "بندقية"
+  ],
+  "BI:21": [
+   false,
+   "weapons",
+   "مسدس"
+  ],
+  "BI:22": [
+   false,
+   "weapons",
+   "مسدس"
+  ],
+  "BI:23": [
+   false,
+   "weapons",
+   "ذخيرة"
+  ],
+  "BI:24": [
+   false,
+   "illegal_drugs",
+   "أفيون"
+  ],
+  "BI:25": [
+   false,
+   "illegal_drugs",
+   "أفيون"
+  ],
+  "BL:00": [
+   true,
+   null,
+   null
+  ],
+  "BL:01": [
+   false,
+   "illegal_drugs",
+   "أفيون"
+  ],
+  "BL:02": [
+   true,
+   null,
+   null
+  ],
+  "BL:03": [
+   true,
+   null,
+   null
+  ],
+  "BL:04": [
+   false,
+   "illegal_drugs",
+   "أفيون"
+  ],
+  "BL:05": [
+   true,
+   null,
+   null
+  ],
+  "BL:06": [
+   false,
+   "illegal_drugs",
+   "أفيون"
+  ],
+  "BL:07": [
+   false,
+   "weapons",
+   "silencer"
+  ],
+  "BL:08": [
+   false,
+   "weapons",
+   "silencer"
+  ],
+  "BL:09": [
+   false,
+   "weapons",
+   "silencer"
+  ],
+  "BL:10": [
+   false,
+   "weapons",
+   "tactical knife"
+  ],
+  "BL:11": [
+   false,
+   "weapons",
+   "tactical knife"
+  ],
+  "BL:12": [
+   false,
+   "weapons",
+   "كاتم صوت"
+  ],
+  "BL:13": [
+   false,
+   "weapons",
+   "كاتم صوت"
+  ],
+  "BL:14": [
+   false,
+   "weapons",
+   "سكين قتالي"
+  ],
+  "BL:15": [
+   false,
+   "weapons",
+   "بندقية"
+  ],
+  "BL:16": [
+   false,
+   "weapons",
+   "بندقية"
+  ],
+  "BL:17": [
+   false,
+   "weapons",
+   "بندقية"
+  ],
+  "BL:18": [
+   false,
+   "weapons",
+   "مسدس"
+  ],
+  "BL:19": [
+   false,
+   "weapons",
+   "مسدس"
+  ],
+  "BL:20": [
+   false,
+   "weapons",
+   "مسدس"
+  ],
+  "BL:21": [
+   false,
+   "weapons",
+   "مسدس"
+  ],
+  "BL:22": [
+   false,
+   "weapons",
+   "مسدس"
+  ],
+  "BL:23": [
+   true,
+   null,
+   null
+  ],
+  "BL:24": [
+   true,
+   null,
+   null
+  ],
+  "BL:25": [
+   true,
+   null,
+   null
+  ],
+  "BL:26": [
+   true,
+   null,
+   null
+  ],
+  "C:electronics:00": [
+   true,
+   null,
+   null
+  ],
+  "C:electronics:01": [
+   true,
+   null,
+   null
+  ],
+  "C:electronics:02": [
+   true,
+   null,
+   null
+  ],
+  "C:electronics:03": [
+   true,
+   null,
+   null
+  ],
+  "C:electronics:04": [
+   true,
+   null,
+   null
+  ],
+  "C:electronics:05": [
+   true,
+   null,
+   null
+  ],
+  "C:electronics:06": [
+   true,
+   null,
+   null
+  ],
+  "C:electronics:07": [
+   true,
+   null,
+   null
+  ],
+  "C:electronics:08": [
+   true,
+   null,
+   null
+  ],
+  "C:electronics:09": [
+   true,
+   null,
+   null
+  ],
+  "C:electronics:10": [
+   true,
+   null,
+   null
+  ],
+  "C:electronics:11": [
+   true,
+   null,
+   null
+  ],
+  "C:electronics:12": [
+   true,
+   null,
+   null
+  ],
+  "C:electronics:13": [
+   true,
+   null,
+   null
+  ],
+  "C:electronics:14": [
+   true,
+   null,
+   null
+  ],
+  "C:electronics:15": [
+   true,
+   null,
+   null
+  ],
+  "C:electronics:16": [
+   true,
+   null,
+   null
+  ],
+  "C:electronics:17": [
+   true,
+   null,
+   null
+  ],
+  "C:electronics:18": [
+   true,
+   null,
+   null
+  ],
+  "C:electronics:19": [
+   true,
+   null,
+   null
+  ],
+  "C:electronics:20": [
+   true,
+   null,
+   null
+  ],
+  "C:electronics:21": [
+   true,
+   null,
+   null
+  ],
+  "C:electronics:22": [
+   true,
+   null,
+   null
+  ],
+  "C:electronics:23": [
+   true,
+   null,
+   null
+  ],
+  "C:electronics:24": [
+   true,
+   null,
+   null
+  ],
+  "C:electronics:25": [
+   true,
+   null,
+   null
+  ],
+  "C:electronics:26": [
+   true,
+   null,
+   null
+  ],
+  "C:electronics:27": [
+   true,
+   null,
+   null
+  ],
+  "C:electronics:28": [
+   true,
+   null,
+   null
+  ],
+  "C:electronics:29": [
+   true,
+   null,
+   null
+  ],
+  "C:electronics:30": [
+   true,
+   null,
+   null
+  ],
+  "C:electronics:31": [
+   true,
+   null,
+   null
+  ],
+  "C:electronics:32": [
+   true,
+   null,
+   null
+  ],
+  "C:electronics:33": [
+   true,
+   null,
+   null
+  ],
+  "C:electronics:34": [
+   true,
+   null,
+   null
+  ],
+  "C:electronics:35": [
+   true,
+   null,
+   null
+  ],
+  "C:electronics:36": [
+   true,
+   null,
+   null
+  ],
+  "C:electronics:37": [
+   true,
+   null,
+   null
+  ],
+  "C:electronics:38": [
+   true,
+   null,
+   null
+  ],
+  "C:electronics:39": [
+   true,
+   null,
+   null
+  ],
+  "C:fashion:00": [
+   true,
+   null,
+   null
+  ],
+  "C:fashion:01": [
+   true,
+   null,
+   null
+  ],
+  "C:fashion:02": [
+   true,
+   null,
+   null
+  ],
+  "C:fashion:03": [
+   true,
+   null,
+   null
+  ],
+  "C:fashion:04": [
+   true,
+   null,
+   null
+  ],
+  "C:fashion:05": [
+   true,
+   null,
+   null
+  ],
+  "C:fashion:06": [
+   true,
+   null,
+   null
+  ],
+  "C:fashion:07": [
+   true,
+   null,
+   null
+  ],
+  "C:fashion:08": [
+   true,
+   null,
+   null
+  ],
+  "C:fashion:09": [
+   true,
+   null,
+   null
+  ],
+  "C:fashion:10": [
+   true,
+   null,
+   null
+  ],
+  "C:fashion:11": [
+   true,
+   null,
+   null
+  ],
+  "C:fashion:12": [
+   true,
+   null,
+   null
+  ],
+  "C:fashion:13": [
+   true,
+   null,
+   null
+  ],
+  "C:fashion:14": [
+   true,
+   null,
+   null
+  ],
+  "C:fashion:15": [
+   true,
+   null,
+   null
+  ],
+  "C:fashion:16": [
+   true,
+   null,
+   null
+  ],
+  "C:fashion:17": [
+   true,
+   null,
+   null
+  ],
+  "C:fashion:18": [
+   true,
+   null,
+   null
+  ],
+  "C:fashion:19": [
+   true,
+   null,
+   null
+  ],
+  "C:fashion:20": [
+   true,
+   null,
+   null
+  ],
+  "C:fashion:21": [
+   true,
+   null,
+   null
+  ],
+  "C:fashion:22": [
+   true,
+   null,
+   null
+  ],
+  "C:fashion:23": [
+   true,
+   null,
+   null
+  ],
+  "C:fashion:24": [
+   true,
+   null,
+   null
+  ],
+  "C:fashion:25": [
+   true,
+   null,
+   null
+  ],
+  "C:fashion:26": [
+   true,
+   null,
+   null
+  ],
+  "C:fashion:27": [
+   true,
+   null,
+   null
+  ],
+  "C:fashion:28": [
+   true,
+   null,
+   null
+  ],
+  "C:fashion:29": [
+   true,
+   null,
+   null
+  ],
+  "C:fashion:30": [
+   true,
+   null,
+   null
+  ],
+  "C:fashion:31": [
+   true,
+   null,
+   null
+  ],
+  "C:fashion:32": [
+   true,
+   null,
+   null
+  ],
+  "C:fashion:33": [
+   true,
+   null,
+   null
+  ],
+  "C:fashion:34": [
+   true,
+   null,
+   null
+  ],
+  "C:fashion:35": [
+   true,
+   null,
+   null
+  ],
+  "C:fashion:36": [
+   true,
+   null,
+   null
+  ],
+  "C:fashion:37": [
+   true,
+   null,
+   null
+  ],
+  "C:fashion:38": [
+   true,
+   null,
+   null
+  ],
+  "C:fashion:39": [
+   true,
+   null,
+   null
+  ],
+  "C:fragrances:00": [
+   true,
+   null,
+   null
+  ],
+  "C:fragrances:01": [
+   true,
+   null,
+   null
+  ],
+  "C:fragrances:02": [
+   true,
+   null,
+   null
+  ],
+  "C:fragrances:03": [
+   true,
+   null,
+   null
+  ],
+  "C:fragrances:04": [
+   true,
+   null,
+   null
+  ],
+  "C:fragrances:05": [
+   true,
+   null,
+   null
+  ],
+  "C:fragrances:06": [
+   true,
+   null,
+   null
+  ],
+  "C:fragrances:07": [
+   true,
+   null,
+   null
+  ],
+  "C:fragrances:08": [
+   true,
+   null,
+   null
+  ],
+  "C:fragrances:09": [
+   true,
+   null,
+   null
+  ],
+  "C:fragrances:10": [
+   true,
+   null,
+   null
+  ],
+  "C:fragrances:11": [
+   true,
+   null,
+   null
+  ],
+  "C:fragrances:12": [
+   true,
+   null,
+   null
+  ],
+  "C:fragrances:13": [
+   true,
+   null,
+   null
+  ],
+  "C:fragrances:14": [
+   true,
+   null,
+   null
+  ],
+  "C:fragrances:15": [
+   true,
+   null,
+   null
+  ],
+  "C:fragrances:16": [
+   true,
+   null,
+   null
+  ],
+  "C:fragrances:17": [
+   true,
+   null,
+   null
+  ],
+  "C:fragrances:18": [
+   true,
+   null,
+   null
+  ],
+  "C:fragrances:19": [
+   true,
+   null,
+   null
+  ],
+  "C:fragrances:20": [
+   true,
+   null,
+   null
+  ],
+  "C:fragrances:21": [
+   true,
+   null,
+   null
+  ],
+  "C:fragrances:22": [
+   true,
+   null,
+   null
+  ],
+  "C:fragrances:23": [
+   true,
+   null,
+   null
+  ],
+  "C:fragrances:24": [
+   true,
+   null,
+   null
+  ],
+  "C:fragrances:25": [
+   true,
+   null,
+   null
+  ],
+  "C:fragrances:26": [
+   true,
+   null,
+   null
+  ],
+  "C:fragrances:27": [
+   true,
+   null,
+   null
+  ],
+  "C:fragrances:28": [
+   true,
+   null,
+   null
+  ],
+  "C:fragrances:29": [
+   true,
+   null,
+   null
+  ],
+  "C:fragrances:30": [
+   true,
+   null,
+   null
+  ],
+  "C:fragrances:31": [
+   true,
+   null,
+   null
+  ],
+  "C:fragrances:32": [
+   true,
+   null,
+   null
+  ],
+  "C:fragrances:33": [
+   true,
+   null,
+   null
+  ],
+  "C:fragrances:34": [
+   true,
+   null,
+   null
+  ],
+  "C:fragrances:35": [
+   true,
+   null,
+   null
+  ],
+  "C:fragrances:36": [
+   true,
+   null,
+   null
+  ],
+  "C:fragrances:37": [
+   true,
+   null,
+   null
+  ],
+  "C:fragrances:38": [
+   true,
+   null,
+   null
+  ],
+  "C:fragrances:39": [
+   true,
+   null,
+   null
+  ],
+  "C:grocery:00": [
+   true,
+   null,
+   null
+  ],
+  "C:grocery:01": [
+   true,
+   null,
+   null
+  ],
+  "C:grocery:02": [
+   true,
+   null,
+   null
+  ],
+  "C:grocery:03": [
+   true,
+   null,
+   null
+  ],
+  "C:grocery:04": [
+   true,
+   null,
+   null
+  ],
+  "C:grocery:05": [
+   true,
+   null,
+   null
+  ],
+  "C:grocery:06": [
+   true,
+   null,
+   null
+  ],
+  "C:grocery:07": [
+   true,
+   null,
+   null
+  ],
+  "C:grocery:08": [
+   true,
+   null,
+   null
+  ],
+  "C:grocery:09": [
+   true,
+   null,
+   null
+  ],
+  "C:grocery:10": [
+   true,
+   null,
+   null
+  ],
+  "C:grocery:11": [
+   true,
+   null,
+   null
+  ],
+  "C:grocery:12": [
+   true,
+   null,
+   null
+  ],
+  "C:grocery:13": [
+   true,
+   null,
+   null
+  ],
+  "C:grocery:14": [
+   true,
+   null,
+   null
+  ],
+  "C:grocery:15": [
+   true,
+   null,
+   null
+  ],
+  "C:grocery:16": [
+   true,
+   null,
+   null
+  ],
+  "C:grocery:17": [
+   true,
+   null,
+   null
+  ],
+  "C:grocery:18": [
+   true,
+   null,
+   null
+  ],
+  "C:grocery:19": [
+   true,
+   null,
+   null
+  ],
+  "C:grocery:20": [
+   true,
+   null,
+   null
+  ],
+  "C:grocery:21": [
+   true,
+   null,
+   null
+  ],
+  "C:grocery:22": [
+   true,
+   null,
+   null
+  ],
+  "C:grocery:23": [
+   true,
+   null,
+   null
+  ],
+  "C:grocery:24": [
+   true,
+   null,
+   null
+  ],
+  "C:grocery:25": [
+   true,
+   null,
+   null
+  ],
+  "C:grocery:26": [
+   true,
+   null,
+   null
+  ],
+  "C:grocery:27": [
+   true,
+   null,
+   null
+  ],
+  "C:grocery:28": [
+   true,
+   null,
+   null
+  ],
+  "C:grocery:29": [
+   true,
+   null,
+   null
+  ],
+  "C:grocery:30": [
+   true,
+   null,
+   null
+  ],
+  "C:grocery:31": [
+   true,
+   null,
+   null
+  ],
+  "C:grocery:32": [
+   true,
+   null,
+   null
+  ],
+  "C:grocery:33": [
+   true,
+   null,
+   null
+  ],
+  "C:grocery:34": [
+   true,
+   null,
+   null
+  ],
+  "C:grocery:35": [
+   true,
+   null,
+   null
+  ],
+  "C:grocery:36": [
+   true,
+   null,
+   null
+  ],
+  "C:grocery:37": [
+   true,
+   null,
+   null
+  ],
+  "C:grocery:38": [
+   true,
+   null,
+   null
+  ],
+  "C:grocery:39": [
+   true,
+   null,
+   null
+  ],
+  "C:haircare:00": [
+   true,
+   null,
+   null
+  ],
+  "C:haircare:01": [
+   true,
+   null,
+   null
+  ],
+  "C:haircare:02": [
+   true,
+   null,
+   null
+  ],
+  "C:haircare:03": [
+   true,
+   null,
+   null
+  ],
+  "C:haircare:04": [
+   true,
+   null,
+   null
+  ],
+  "C:haircare:05": [
+   true,
+   null,
+   null
+  ],
+  "C:haircare:06": [
+   true,
+   null,
+   null
+  ],
+  "C:haircare:07": [
+   true,
+   null,
+   null
+  ],
+  "C:haircare:08": [
+   true,
+   null,
+   null
+  ],
+  "C:haircare:09": [
+   true,
+   null,
+   null
+  ],
+  "C:haircare:10": [
+   true,
+   null,
+   null
+  ],
+  "C:haircare:11": [
+   true,
+   null,
+   null
+  ],
+  "C:haircare:12": [
+   true,
+   null,
+   null
+  ],
+  "C:haircare:13": [
+   true,
+   null,
+   null
+  ],
+  "C:haircare:14": [
+   true,
+   null,
+   null
+  ],
+  "C:haircare:15": [
+   true,
+   null,
+   null
+  ],
+  "C:haircare:16": [
+   true,
+   null,
+   null
+  ],
+  "C:haircare:17": [
+   true,
+   null,
+   null
+  ],
+  "C:haircare:18": [
+   true,
+   null,
+   null
+  ],
+  "C:haircare:19": [
+   true,
+   null,
+   null
+  ],
+  "C:haircare:20": [
+   true,
+   null,
+   null
+  ],
+  "C:haircare:21": [
+   true,
+   null,
+   null
+  ],
+  "C:haircare:22": [
+   true,
+   null,
+   null
+  ],
+  "C:haircare:23": [
+   true,
+   null,
+   null
+  ],
+  "C:haircare:24": [
+   true,
+   null,
+   null
+  ],
+  "C:haircare:25": [
+   true,
+   null,
+   null
+  ],
+  "C:haircare:26": [
+   true,
+   null,
+   null
+  ],
+  "C:haircare:27": [
+   true,
+   null,
+   null
+  ],
+  "C:haircare:28": [
+   true,
+   null,
+   null
+  ],
+  "C:haircare:29": [
+   true,
+   null,
+   null
+  ],
+  "C:haircare:30": [
+   true,
+   null,
+   null
+  ],
+  "C:haircare:31": [
+   true,
+   null,
+   null
+  ],
+  "C:haircare:32": [
+   true,
+   null,
+   null
+  ],
+  "C:haircare:33": [
+   true,
+   null,
+   null
+  ],
+  "C:haircare:34": [
+   true,
+   null,
+   null
+  ],
+  "C:haircare:35": [
+   true,
+   null,
+   null
+  ],
+  "C:haircare:36": [
+   true,
+   null,
+   null
+  ],
+  "C:haircare:37": [
+   true,
+   null,
+   null
+  ],
+  "C:haircare:38": [
+   true,
+   null,
+   null
+  ],
+  "C:haircare:39": [
+   true,
+   null,
+   null
+  ],
+  "C:makeup:00": [
+   true,
+   null,
+   null
+  ],
+  "C:makeup:01": [
+   true,
+   null,
+   null
+  ],
+  "C:makeup:02": [
+   true,
+   null,
+   null
+  ],
+  "C:makeup:03": [
+   true,
+   null,
+   null
+  ],
+  "C:makeup:04": [
+   true,
+   null,
+   null
+  ],
+  "C:makeup:05": [
+   true,
+   null,
+   null
+  ],
+  "C:makeup:06": [
+   true,
+   null,
+   null
+  ],
+  "C:makeup:07": [
+   true,
+   null,
+   null
+  ],
+  "C:makeup:08": [
+   true,
+   null,
+   null
+  ],
+  "C:makeup:09": [
+   true,
+   null,
+   null
+  ],
+  "C:makeup:10": [
+   true,
+   null,
+   null
+  ],
+  "C:makeup:11": [
+   true,
+   null,
+   null
+  ],
+  "C:makeup:12": [
+   true,
+   null,
+   null
+  ],
+  "C:makeup:13": [
+   true,
+   null,
+   null
+  ],
+  "C:makeup:14": [
+   true,
+   null,
+   null
+  ],
+  "C:makeup:15": [
+   true,
+   null,
+   null
+  ],
+  "C:makeup:16": [
+   true,
+   null,
+   null
+  ],
+  "C:makeup:17": [
+   true,
+   null,
+   null
+  ],
+  "C:makeup:18": [
+   true,
+   null,
+   null
+  ],
+  "C:makeup:19": [
+   true,
+   null,
+   null
+  ],
+  "C:makeup:20": [
+   true,
+   null,
+   null
+  ],
+  "C:makeup:21": [
+   true,
+   null,
+   null
+  ],
+  "C:makeup:22": [
+   true,
+   null,
+   null
+  ],
+  "C:makeup:23": [
+   true,
+   null,
+   null
+  ],
+  "C:makeup:24": [
+   true,
+   null,
+   null
+  ],
+  "C:makeup:25": [
+   true,
+   null,
+   null
+  ],
+  "C:makeup:26": [
+   true,
+   null,
+   null
+  ],
+  "C:makeup:27": [
+   true,
+   null,
+   null
+  ],
+  "C:makeup:28": [
+   true,
+   null,
+   null
+  ],
+  "C:makeup:29": [
+   true,
+   null,
+   null
+  ],
+  "C:makeup:30": [
+   true,
+   null,
+   null
+  ],
+  "C:makeup:31": [
+   true,
+   null,
+   null
+  ],
+  "C:makeup:32": [
+   true,
+   null,
+   null
+  ],
+  "C:makeup:33": [
+   true,
+   null,
+   null
+  ],
+  "C:makeup:34": [
+   true,
+   null,
+   null
+  ],
+  "C:makeup:35": [
+   true,
+   null,
+   null
+  ],
+  "C:makeup:36": [
+   true,
+   null,
+   null
+  ],
+  "C:makeup:37": [
+   true,
+   null,
+   null
+  ],
+  "C:makeup:38": [
+   true,
+   null,
+   null
+  ],
+  "C:makeup:39": [
+   true,
+   null,
+   null
+  ],
+  "C:other:00": [
+   true,
+   null,
+   null
+  ],
+  "C:other:01": [
+   true,
+   null,
+   null
+  ],
+  "C:other:02": [
+   true,
+   null,
+   null
+  ],
+  "C:other:03": [
+   true,
+   null,
+   null
+  ],
+  "C:other:04": [
+   true,
+   null,
+   null
+  ],
+  "C:other:05": [
+   true,
+   null,
+   null
+  ],
+  "C:other:06": [
+   false,
+   "weapons",
+   "silencer"
+  ],
+  "C:other:07": [
+   true,
+   null,
+   null
+  ],
+  "C:other:08": [
+   true,
+   null,
+   null
+  ],
+  "C:other:09": [
+   true,
+   null,
+   null
+  ],
+  "C:other:10": [
+   true,
+   null,
+   null
+  ],
+  "C:other:11": [
+   true,
+   null,
+   null
+  ],
+  "C:other:12": [
+   true,
+   null,
+   null
+  ],
+  "C:other:13": [
+   true,
+   null,
+   null
+  ],
+  "C:other:14": [
+   true,
+   null,
+   null
+  ],
+  "C:other:15": [
+   true,
+   null,
+   null
+  ],
+  "C:other:16": [
+   true,
+   null,
+   null
+  ],
+  "C:other:17": [
+   true,
+   null,
+   null
+  ],
+  "C:other:18": [
+   true,
+   null,
+   null
+  ],
+  "C:other:19": [
+   true,
+   null,
+   null
+  ],
+  "C:other:20": [
+   true,
+   null,
+   null
+  ],
+  "C:other:21": [
+   true,
+   null,
+   null
+  ],
+  "C:other:22": [
+   true,
+   null,
+   null
+  ],
+  "C:other:23": [
+   true,
+   null,
+   null
+  ],
+  "C:other:24": [
+   true,
+   null,
+   null
+  ],
+  "C:other:25": [
+   true,
+   null,
+   null
+  ],
+  "C:other:26": [
+   true,
+   null,
+   null
+  ],
+  "C:other:27": [
+   true,
+   null,
+   null
+  ],
+  "C:other:28": [
+   true,
+   null,
+   null
+  ],
+  "C:other:29": [
+   true,
+   null,
+   null
+  ],
+  "C:other:30": [
+   true,
+   null,
+   null
+  ],
+  "C:other:31": [
+   true,
+   null,
+   null
+  ],
+  "C:other:32": [
+   true,
+   null,
+   null
+  ],
+  "C:other:33": [
+   true,
+   null,
+   null
+  ],
+  "C:other:34": [
+   true,
+   null,
+   null
+  ],
+  "C:other:35": [
+   true,
+   null,
+   null
+  ],
+  "C:other:36": [
+   true,
+   null,
+   null
+  ],
+  "C:other:37": [
+   false,
+   "weapons",
+   "tactical knife"
+  ],
+  "C:other:38": [
+   false,
+   "weapons",
+   "shotgun shells"
+  ],
+  "C:other:39": [
+   true,
+   null,
+   null
+  ],
+  "C:skincare:00": [
+   true,
+   null,
+   null
+  ],
+  "C:skincare:01": [
+   true,
+   null,
+   null
+  ],
+  "C:skincare:02": [
+   true,
+   null,
+   null
+  ],
+  "C:skincare:03": [
+   true,
+   null,
+   null
+  ],
+  "C:skincare:04": [
+   true,
+   null,
+   null
+  ],
+  "C:skincare:05": [
+   true,
+   null,
+   null
+  ],
+  "C:skincare:06": [
+   true,
+   null,
+   null
+  ],
+  "C:skincare:07": [
+   true,
+   null,
+   null
+  ],
+  "C:skincare:08": [
+   true,
+   null,
+   null
+  ],
+  "C:skincare:09": [
+   true,
+   null,
+   null
+  ],
+  "C:skincare:10": [
+   true,
+   null,
+   null
+  ],
+  "C:skincare:11": [
+   true,
+   null,
+   null
+  ],
+  "C:skincare:12": [
+   true,
+   null,
+   null
+  ],
+  "C:skincare:13": [
+   true,
+   null,
+   null
+  ],
+  "C:skincare:14": [
+   true,
+   null,
+   null
+  ],
+  "C:skincare:15": [
+   true,
+   null,
+   null
+  ],
+  "C:skincare:16": [
+   true,
+   null,
+   null
+  ],
+  "C:skincare:17": [
+   true,
+   null,
+   null
+  ],
+  "C:skincare:18": [
+   true,
+   null,
+   null
+  ],
+  "C:skincare:19": [
+   true,
+   null,
+   null
+  ],
+  "C:skincare:20": [
+   true,
+   null,
+   null
+  ],
+  "C:skincare:21": [
+   true,
+   null,
+   null
+  ],
+  "C:skincare:22": [
+   true,
+   null,
+   null
+  ],
+  "C:skincare:23": [
+   true,
+   null,
+   null
+  ],
+  "C:skincare:24": [
+   true,
+   null,
+   null
+  ],
+  "C:skincare:25": [
+   true,
+   null,
+   null
+  ],
+  "C:skincare:26": [
+   true,
+   null,
+   null
+  ],
+  "C:skincare:27": [
+   true,
+   null,
+   null
+  ],
+  "C:skincare:28": [
+   true,
+   null,
+   null
+  ],
+  "C:skincare:29": [
+   true,
+   null,
+   null
+  ],
+  "C:skincare:30": [
+   true,
+   null,
+   null
+  ],
+  "C:skincare:31": [
+   true,
+   null,
+   null
+  ],
+  "C:skincare:32": [
+   true,
+   null,
+   null
+  ],
+  "C:skincare:33": [
+   true,
+   null,
+   null
+  ],
+  "C:skincare:34": [
+   true,
+   null,
+   null
+  ],
+  "C:skincare:35": [
+   true,
+   null,
+   null
+  ],
+  "C:skincare:36": [
+   true,
+   null,
+   null
+  ],
+  "C:skincare:37": [
+   true,
+   null,
+   null
+  ],
+  "C:skincare:38": [
+   true,
+   null,
+   null
+  ],
+  "C:skincare:39": [
+   true,
+   null,
+   null
+  ],
+  "C:supplements:00": [
+   true,
+   null,
+   null
+  ],
+  "C:supplements:01": [
+   true,
+   null,
+   null
+  ],
+  "C:supplements:02": [
+   true,
+   null,
+   null
+  ],
+  "C:supplements:03": [
+   true,
+   null,
+   null
+  ],
+  "C:supplements:04": [
+   true,
+   null,
+   null
+  ],
+  "C:supplements:05": [
+   true,
+   null,
+   null
+  ],
+  "C:supplements:06": [
+   true,
+   null,
+   null
+  ],
+  "C:supplements:07": [
+   true,
+   null,
+   null
+  ],
+  "C:supplements:08": [
+   true,
+   null,
+   null
+  ],
+  "C:supplements:09": [
+   true,
+   null,
+   null
+  ],
+  "C:supplements:10": [
+   true,
+   null,
+   null
+  ],
+  "C:supplements:11": [
+   true,
+   null,
+   null
+  ],
+  "C:supplements:12": [
+   true,
+   null,
+   null
+  ],
+  "C:supplements:13": [
+   true,
+   null,
+   null
+  ],
+  "C:supplements:14": [
+   true,
+   null,
+   null
+  ],
+  "C:supplements:15": [
+   true,
+   null,
+   null
+  ],
+  "C:supplements:16": [
+   true,
+   null,
+   null
+  ],
+  "C:supplements:17": [
+   true,
+   null,
+   null
+  ],
+  "C:supplements:18": [
+   true,
+   null,
+   null
+  ],
+  "C:supplements:19": [
+   true,
+   null,
+   null
+  ],
+  "C:supplements:20": [
+   true,
+   null,
+   null
+  ],
+  "C:supplements:21": [
+   true,
+   null,
+   null
+  ],
+  "C:supplements:22": [
+   true,
+   null,
+   null
+  ],
+  "C:supplements:23": [
+   true,
+   null,
+   null
+  ],
+  "C:supplements:24": [
+   true,
+   null,
+   null
+  ],
+  "C:supplements:25": [
+   true,
+   null,
+   null
+  ],
+  "C:supplements:26": [
+   true,
+   null,
+   null
+  ],
+  "C:supplements:27": [
+   true,
+   null,
+   null
+  ],
+  "C:supplements:28": [
+   true,
+   null,
+   null
+  ],
+  "C:supplements:29": [
+   true,
+   null,
+   null
+  ],
+  "C:supplements:30": [
+   true,
+   null,
+   null
+  ],
+  "C:supplements:31": [
+   true,
+   null,
+   null
+  ],
+  "C:supplements:32": [
+   true,
+   null,
+   null
+  ],
+  "C:supplements:33": [
+   true,
+   null,
+   null
+  ],
+  "C:supplements:34": [
+   true,
+   null,
+   null
+  ],
+  "C:supplements:35": [
+   true,
+   null,
+   null
+  ],
+  "C:supplements:36": [
+   true,
+   null,
+   null
+  ],
+  "C:supplements:37": [
+   true,
+   null,
+   null
+  ],
+  "C:supplements:38": [
+   true,
+   null,
+   null
+  ],
+  "C:supplements:39": [
+   true,
+   null,
+   null
+  ]
+ },
+ "l1_verdicts_sha256": "8c8de712de00844c081901b4e1afc628ef5200bfd1ca7b89629bf5d2ea144627",
+ "record_shape": "tests/test_category_token_fix.py::_records (W4-8 spec section 0)"
+}
