@@ -591,6 +591,16 @@ def specs_no_fabrication_enabled() -> bool:
     )
 
 
+def category_token_fix_enabled() -> bool:
+    """W4-8 Half A (default OFF): a pharmacy / household veto on the ambiguous
+    ``tablet`` / ``tablets`` electronics synonym in
+    ``classify_category_from_text``. Read per call via ``os.getenv`` -- never
+    cached at import -- so it flips without a restart."""
+    return os.getenv("ENABLE_CATEGORY_TOKEN_FIX", "false").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
 # M18 PO-prompts-05 — the Serper title/snippet digest is THIRD-PARTY web text
 # (SEO-controllable), so it must sit inside its own explicitly-untrusted
 # region, with a guard sentence in every system prompt that consumes it.
@@ -1226,6 +1236,65 @@ def canonicalize_category(raw: Any) -> str:
     return "other"
 
 
+# W4-8 Half A (ENABLE_CATEGORY_TOKEN_FIX): "tablet(s)" stays electronics unless
+# a veto fires (Fable ruling R2: recall over precision when there is no signal).
+# Household tokens skip the hit (the sweep continues, usually to "other"); a
+# pharmacy signal -- a dose, a pack count, or a pharmacy token -- returns
+# "supplements". _CATEGORY_SYNONYMS is NOT edited: canonicalize_category shares
+# it and must keep "Tablets" -> electronics.
+_AMBIGUOUS_ELECTRONICS_TOKENS = frozenset({"tablet", "tablets"})
+_HOUSEHOLD_TABLET_TOKENS = (
+    "descaling", "dishwasher", "washing machine", "detergent", "chlorine",
+    "denture", "purification",
+)
+_PHARMACY_TABLET_TOKENS = (
+    "effervescent", "chewable", "paracetamol", "ibuprofen", "panadol", "adol",
+    "brufen", "pharmacy", "laxative", "antacid", "flu", "vinegar",
+    "glucose", "dose", "dosage",
+)
+# Rulings R13a / R14a: a dose is ONLY an explicit pharmacy unit next to a number --
+# mg, mcg, ug, micro sign (U+00B5) or Greek mu (U+03BC) + g, iu, ml. NO gram form
+# vetoes, integer or decimal: next to a tablet a number + "g"/"G" is storage, RAM,
+# a network generation, a Wi-Fi band or a G-sensor. A dedicated pattern:
+# price_service.SUPPLEMENT_DOSE_RE reads a bare "g" as a unit. Ruling R15a: the
+# number starts after no letter, digit, "." or "," (a decimal glued to a model
+# code is not a dose). Ruling R16a: a unit followed by a letter is a word, and a
+# unit followed by a digit, with or without a space, is a model code (ML350).
+_TABLET_DOSE_RE = re.compile(
+    r"(?<![a-z0-9.,])\d+(?:[.,]\d+)?\s*(?:mg|mcg|ug|\u00b5g|\u03bcg|iu|ml)(?![a-z]|\s*\d)"
+)
+# Ruling R10: "N tablets" / "N tabs" is a pack count only with pack vocabulary
+# adjacent (before the number, between it and "tablets", or right after) or when
+# N >= 30 -- a year-shaped 1900..2099 is not a count ("best 2026 tablets").
+_TABLET_PACK_WORDS = r"(?:pack(?:\s+of)?|bottle(?:\s+of)?|strip(?:\s+of)?|blister(?:\s+of)?|count|ct|pcs|x)"
+_TABLET_COUNT_RE = re.compile(
+    r"(?<![a-z0-9.])(\d+)\s*(" + _TABLET_PACK_WORDS + r"\s*)?(?:tablets|tabs)(?![a-z0-9])"
+)
+_PACK_BEFORE_RE = re.compile(r"(?<![a-z])" + _TABLET_PACK_WORDS + r"\s*$")
+_PACK_AFTER_RE = re.compile(r"\s*(?:per\s+)?" + _TABLET_PACK_WORDS + r"(?![a-z0-9])")
+
+
+def _is_tablet_pack_count(low: str, m: "re.Match[str]") -> bool:
+    if m.group(2) or _PACK_BEFORE_RE.search(low, 0, m.start()) or _PACK_AFTER_RE.match(low, m.end()):
+        return True
+    n = int(m.group(1))
+    return n >= 30 and not 1900 <= n <= 2099
+
+
+def _tablet_veto(low: str) -> Optional[str]:
+    """``"household"`` / ``"pharmacy"`` / ``None`` for already-lowercased text."""
+    from app.services.price_service import _contains_token
+    if any(_contains_token(low, t) for t in _HOUSEHOLD_TABLET_TOKENS):
+        return "household"
+    if _TABLET_DOSE_RE.search(low):
+        return "pharmacy"
+    if any(_is_tablet_pack_count(low, m) for m in _TABLET_COUNT_RE.finditer(low)):
+        return "pharmacy"
+    if any(_contains_token(low, t) for t in _PHARMACY_TABLET_TOKENS):
+        return "pharmacy"
+    return None
+
+
 def classify_category_from_text(text: str) -> str:
     """Cheap deterministic product-type -> canonical category. $0, no LLM.
 
@@ -1234,6 +1303,11 @@ def classify_category_from_text(text: str) -> str:
     word ("iPhone 15 Pro", "Tom Ford Soleil Neige") returns "other" — the caller
     honors a user chip or escalates to the A2b GPT-mini classifier. We do NOT
     widen the synonym map with brand names (brittle, unbounded).
+
+    W4-8 (ENABLE_CATEGORY_TOKEN_FIX, default OFF, read per call): a hit on the
+    ambiguous "tablet" / "tablets" token is vetoed by ``_tablet_veto`` -- a
+    pharmacy signal returns "supplements", a household token skips the hit --
+    and with no veto it stays "electronics". Flag OFF: the HEAD path.
 
     Pure + deterministic. Returns "other" for None / non-str / empty / unmatched.
     """
@@ -1248,6 +1322,12 @@ def classify_category_from_text(text: str) -> str:
     # Longest synonym first so multi-char tokens win over substrings.
     for token in sorted(_CATEGORY_SYNONYMS, key=len, reverse=True):
         if re.search(rf"\b{re.escape(token)}\b", low):
+            if token in _AMBIGUOUS_ELECTRONICS_TOKENS and category_token_fix_enabled():
+                veto = _tablet_veto(low)
+                if veto == "pharmacy":
+                    return "supplements"
+                if veto == "household":
+                    continue
             return _CATEGORY_SYNONYMS[token]
     return "other"
 
