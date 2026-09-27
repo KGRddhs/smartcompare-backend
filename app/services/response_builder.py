@@ -13,6 +13,7 @@ from app.services.scoring_service import (
     build_dimensions_v2,
     calibrate_score,
     compute_confidence,
+    confidence_single_computation_enabled,
     count_missing_dim_cells,
 )
 from app.services.text_sanitize import has_score_internals, strip_score_internals, scrub_review_summary
@@ -1172,6 +1173,7 @@ def _build_factual_verdict(
 
 def _confidence_legs_and_details(
     product_data: List[Dict[str, Any]],
+    precomputed: Optional[Dict[str, Any]] = None,
 ) -> tuple[Dict[str, str], Dict[str, Dict[str, Any]]]:
     """Lane 1 L1.6 — compute the per-leg confidence + evidence dicts for
     scoring_v2. Wraps the existing `compute_confidence` so callers get
@@ -1182,10 +1184,13 @@ def _confidence_legs_and_details(
     Defensive — never raises. Falls back to all-weak legs + empty detail
     dicts if `compute_confidence` blows up on unexpected input.
     """
-    try:
-        conf = compute_confidence(product_data) or {}
-    except Exception:  # noqa: BLE001 — wrapper must never crash the response
-        conf = {}
+    if precomputed is not None:
+        conf = precomputed  # W4-7 Part B — the builder's single computation
+    else:
+        try:
+            conf = compute_confidence(product_data) or {}
+        except Exception:  # noqa: BLE001 — wrapper must never crash the response
+            conf = {}
 
     legs = conf.get("legs") or {"price": "weak", "reviews": "weak", "specs": "weak"}
 
@@ -1233,6 +1238,7 @@ def _build_scoring_v2(
     *,
     honest_null: bool = True,
     single_margin: bool = False,
+    precomputed_confidence: Optional[Dict[str, Any]] = None,
 ) -> Optional[Dict[str, Any]]:
     """Bundle E § Decision 2 — emit calibrated overall_score + dimensions[].
     Backward-compatible: lives alongside legacy `scoring` key for one release.
@@ -1302,7 +1308,9 @@ def _build_scoring_v2(
     # `overview.confidence` — the upstream `compute_confidence(...)` call
     # in structured_comparison_service already computes the legs + per-
     # leg evidence dicts; we just thread them through.
-    confidence_legs, confidence_details = _confidence_legs_and_details(product_data)
+    confidence_legs, confidence_details = _confidence_legs_and_details(
+        product_data, precomputed=precomputed_confidence,
+    )
     # S3 L3.4 — surface the qualitative winner_evidence the scoring layer
     # produced (L3.2 price authority + L3.3 review density). Always a list of
     # short strings (never coefficients/caps/% per no_backend_internals_in_reveals);
@@ -1720,6 +1728,48 @@ def build_comparison_response(
     except Exception:  # noqa: BLE001 — price-pending must never crash the response
         logger.warning("price-pending normalization skipped", exc_info=True)
 
+    # W4-7 Part B (ENABLE_CONFIDENCE_SINGLE_COMPUTATION) — ONE confidence
+    # computation, AFTER the chokepoint (it sees the price the user sees), with
+    # the identity-matched listing counts (on COPIES) and the REAL cache hit;
+    # emitted verbatim on overview.confidence AND scoring_v2. Flag OFF: None,
+    # the caller's dict ships and scoring_v2 recomputes exactly as before.
+    _single_conf = None
+    if confidence_single_computation_enabled():
+        try:
+            # R25 — a None / absent count (no pool captured: a price-cache hit, a
+            # partial) is UNKNOWN: that product goes in exactly as the flag-OFF
+            # path passes it (today's evidence); a captured count (0 included) rides
+            # the copy as shopping_count.
+            _single_conf = compute_confidence(
+                [{**p, "shopping_count": int(p["_shopping_listing_count"])}
+                 if p.get("_shopping_listing_count") is not None else dict(p)
+                 for p in product_data],
+                cached=_compute_cache_observability(product_data)["cache_hit"],
+            ) or {}
+            # R4/R12 — never High/Medium beside ANY pending shown price (a raw
+            # None price -- the chokepoint degraded -- is no shown price either).
+            if any(p.get("price") is None
+                   or (isinstance(p.get("price"), dict)
+                       and (p["price"].get("unavailable") or p["price"].get("amount") is None))
+                   for p in product_data):
+                _legs = dict(_single_conf.get("legs") or {})
+                if _legs.get("price") in ("strong", "acceptable"):
+                    _legs["price"] = "weak"
+                    _single_conf["legs"] = _legs
+                    _strong = sum(1 for v in _legs.values() if v == "strong")
+                    _single_conf["overall"] = (
+                        "high" if _strong >= 3 else "medium" if _strong >= 2 else "low"
+                    )
+            confidence = _single_conf
+        except Exception as exc:  # noqa: BLE001 — the builder must never raise
+            # R20 — degrade to the flag-OFF path EXACTLY: overview ships the
+            # caller's dict (already {} when None, above), nothing is threaded
+            # and scoring_v2 recomputes on the SHOWN prices itself. One WARNING,
+            # the exception TYPE only (never str(exc), never a traceback).
+            logger.warning("[W4-7] single confidence computation failed: %s",
+                           type(exc).__name__)
+            _single_conf = None
+
     # Task A5 — fail-closed score-internals scrub at the SINGLE chokepoint.
     # Drop any pro/con whose text leaks an internal scoring artifact
     # ("Strong presentation score of 100.", "+18pt longevity", etc.). Mutating
@@ -1992,7 +2042,7 @@ def build_comparison_response(
 
         "scoring_v2": _build_scoring_v2(
             product_data, scoring_result, category_used, winner_index, honest_null=_w44_is_partial,
-            single_margin=_margin_on,
+            single_margin=_margin_on, precomputed_confidence=_single_conf,
         ),
 
         "personalization": {
@@ -2149,6 +2199,9 @@ def build_comparison_response(
         # reads `_cached` was already computed when `result` was built above.
         if isinstance(pd.get("price"), dict):
             pd["price"] = public_price_view(pd["price"])
+        # W4-7 Part B (R5) — the orchestrator's listing-count stash never
+        # reaches the wire (unconditional: a no-op when absent).
+        pd.pop("_shopping_listing_count", None)
     result["products"] = product_data
     # WS-A review-gate fix — the BC `comparison` alias ships in the payload and
     # carried the raw winner_reason/key_tradeoff/winner_declaration (a real leak

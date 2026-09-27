@@ -1049,8 +1049,39 @@ def confidence_factcheck_wiring_enabled() -> bool:
     price_verified=False fires on CORRECT genuine BHD prices compared against
     USD shopping rows and the demotion punishes exactly the prices the
     correctness program produces).
+    W4-7: ENABLE_FACTCHECK_SHOPPING_KEY (Part C) goes immediately BEFORE (2)
+    (otherwise #106 is inert on brand-repeating names), and
+    ENABLE_CITATION_RUBRIC_V2 (#108) is part of the same fact-check truth
+    chain and must be canaried before this flag (PO-FACTCHECK-CONFIDENCE-10).
     """
     return os.getenv("ENABLE_CONFIDENCE_FACTCHECK_WIRING", "").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
+def reliability_unchecked_absence_enabled() -> bool:
+    """W4-7 Part A (default OFF, read PER CALL). Coupled (ruling R2): always False
+    while ENABLE_MISSING_DIM_RENORM is OFF -- a one-sided None on the legacy
+    MISSING_SCORE path would let unchecked beat measured-bad (#101)."""
+    if not _missing_dim_renorm_enabled():
+        return False
+    return os.getenv("ENABLE_RELIABILITY_UNCHECKED_ABSENCE", "").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
+def confidence_single_computation_enabled() -> bool:
+    """W4-7 Part B (default OFF, read PER CALL): the pills read ONE computation,
+    in the builder, after the price-pending chokepoint."""
+    return os.getenv("ENABLE_CONFIDENCE_SINGLE_COMPUTATION", "").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
+def factcheck_shopping_key_enabled() -> bool:
+    """W4-7 Part C (default OFF, read PER CALL): the fact-check readers use the
+    shopping-cache key `_get_price` wrote (`_shopping_cache_key`)."""
+    return os.getenv("ENABLE_FACTCHECK_SHOPPING_KEY", "").strip().lower() in (
         "true", "1", "yes", "on",
     )
 
@@ -2055,6 +2086,12 @@ class ScoringService:
 
         if total == 0:
             return None  # B0-A v2: was `return 0.5` — phantom (30,30) source.
+
+        # W4-7 Part A (ENABLE_RELIABILITY_UNCHECKED_ABSENCE, coupled to
+        # ENABLE_MISSING_DIM_RENORM): an all-unverified fact-check checked
+        # nothing -> ABSENCE, exactly like the empty case. Flag OFF: skipped.
+        if reliability_unchecked_absence_enabled() and verified + likely + flagged == 0:
+            return None
 
         score = (verified * 1.0 + likely * 0.7 + unverified * 0.3 + flagged * 0.0) / total
 
