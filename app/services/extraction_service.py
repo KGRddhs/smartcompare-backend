@@ -4,6 +4,7 @@ Structured Extraction Service - Extract structured product data with optimized p
 from dotenv import load_dotenv
 load_dotenv(override=True)  # Load .env FIRST before anything else
 
+import math
 import os
 import re
 import json
@@ -21,7 +22,11 @@ from app.utils.prompt_sanitizer import (
     sanitize_prompt_input,
     sanitize_untrusted_block,
     check_injection_patterns,
+    neutralize_prompt_tags,
 )
+# W4-11 (R11/R19): module-top import OUTSIDE any try, so a TRUTH-derivation
+# RuntimeError fails this import (and the deploy) instead of being swallowed per call.
+from app.services import prompt_personalities as _pp
 from app.services import api_budget_service as _llm_breaker
 
 logger = logging.getLogger(__name__)
@@ -1053,6 +1058,63 @@ RULES:
 - NEVER mention internal scores, point margins, "/100" values, "overall score", or any "N-point"/"score of N" phrasing in ANY field -- this includes winner_reason, key_tradeoff, winner_declaration, pros, cons, value_context, best_for, specs_comparison (product_0_advantages/product_1_advantages/similar), and personalized_insights. Those internal scores are NEVER shown to the user; cite a concrete product spec or capability instead."""
 
 
+# W4-11 (R1/R9/R10/R11) -- the ENABLE_VERDICT_PROMPT_TRUTH twin of COMPARISON_SYSTEM,
+# derived by count-checked replacement so the OFF constant is literally not edited
+# and a future edit to either swapped sentence fails the import loudly.
+_OFF_CONS_START = "NEVER return empty pros[] or cons[] arrays"
+_OFF_CONS_END = "BECAUSE they want to see them."
+_TRUTH_CONS_SENTENCE = (
+    "NEVER return an empty pros[] array. Return a con ONLY when the supplied product data "
+    "supports it; when the data shows no weakness for a product, an honest empty cons[] is "
+    "correct. A con about MISSING DATA (\"limited information on X\", \"no details on Y\", "
+    "\"no cons noted in reviews\") is NEVER acceptable -- it describes our data, not the product."
+)
+if COMPARISON_SYSTEM.count(_OFF_CONS_START) != 1 or COMPARISON_SYSTEM.count(_OFF_CONS_END) != 1:
+    raise RuntimeError("W4-11 TRUTH derivation: the COMPARISON_SYSTEM cons sentence moved")
+_cons_s = COMPARISON_SYSTEM.index(_OFF_CONS_START)
+_cons_e = COMPARISON_SYSTEM.index(_OFF_CONS_END, _cons_s) + len(_OFF_CONS_END)
+COMPARISON_SYSTEM_TRUTH = _pp._truth_swap(
+    COMPARISON_SYSTEM[:_cons_s] + _TRUTH_CONS_SENTENCE + COMPARISON_SYSTEM[_cons_e:],
+    "4-6 pros, 2-4 cons per product", "4-6 pros and up to 4 cons per product", "cons quota",
+)
+
+# W4-11 (R2/C6) -- the ENABLE_PRICE_FALLBACK_MAY_DECLINE twin of PRICE_FALLBACK_SYSTEM.
+PRICE_FALLBACK_SYSTEM_MAY_DECLINE = PRICE_FALLBACK_SYSTEM
+for _old, _new in (
+    ('"amount": numeric_estimated_price,', '"amount": numeric_estimated_price_or_null,'),
+    ('"confidence": 0.5,', '"confidence": 0.0,'),
+    ("- This is a LAST RESORT -- clearly mark confidence as 0.5",
+     "- This is a LAST RESORT -- set confidence between 0.0 and 0.5, never above 0.5"),
+    ("- NEVER return null for amount -- always provide an estimate",
+     "- Return null for amount when you have no reliable basis for an estimate -- a missing price is better than a wrong one"),
+):
+    PRICE_FALLBACK_SYSTEM_MAY_DECLINE = _pp._truth_swap(
+        PRICE_FALLBACK_SYSTEM_MAY_DECLINE, _old, _new, "price fallback"
+    )
+
+
+def price_fallback_may_decline_enabled() -> bool:
+    """W4-11 (R2) -- ENABLE_PRICE_FALLBACK_MAY_DECLINE, default OFF, read per call."""
+    return os.getenv("ENABLE_PRICE_FALLBACK_MAY_DECLINE", "false").strip().lower() in ("true", "1", "yes", "on")
+
+
+def _coerce_fallback_amount(value):
+    """W4-11 (C6): bool -> None; int/float/str -> float(), kept only if finite and > 0."""
+    if isinstance(value, bool) or value is None:
+        return None
+    try:
+        amount = float(value.strip()) if isinstance(value, str) else float(value)
+    except (TypeError, ValueError, OverflowError):  # OverflowError: a JSON int too big for a float
+        return None
+    if not math.isfinite(amount) or amount <= 0:
+        return None
+    return amount
+
+
+# W4-11 (R18/C10) -- the [VERDICT_TRUTH] canary's data-gap vocabulary (spec 7).
+_DATA_GAP_CON_RE = re.compile(r"(?i)limited information|no details on|no cons noted")
+
+
 # Backward-compatible aliases for tests that import old names
 PRICE_EXTRACTION_PROMPT = PRICE_EXTRACTION_SYSTEM
 PRICE_FALLBACK_PROMPT = PRICE_FALLBACK_SYSTEM
@@ -1232,13 +1294,13 @@ async def classify_category_llm(texts: list) -> str:
         client = get_client()
         response = await asyncio.wait_for(
             _llm_breaker.guarded_llm_create(client,
-                model=standard_model(),
+                model=(_model := standard_model()),
                 messages=[
                     {"role": "system", "content": _CLASSIFY_CATEGORY_LLM_PROMPT},
                     {"role": "user", "content": f"<PRODUCTS>{user_content}</PRODUCTS>"},
                 ],
-                max_tokens=10,
-                temperature=0.0,
+                **token_limit_kwargs(_model, 10),
+                **sampling_kwargs(_model, 0.0),
             ),
             timeout=_CLASSIFY_LLM_TIMEOUT,
         )
@@ -1372,13 +1434,13 @@ async def parse_product_query(query: str) -> Tuple[Dict[str, Any], Dict[str, int
         if check_injection_patterns(query):
             logger.warning(f"Injection pattern detected in query: {query[:100]}")
         response = await _llm_breaker.guarded_llm_create(client,
-            model=standard_model(),
+            model=(_model := standard_model()),
             messages=[
                 {"role": "system", "content": PRODUCT_PARSER_PROMPT},
                 {"role": "user", "content": f"<USER_INPUT>{sanitized_query}</USER_INPUT>"}
             ],
-            max_tokens=500,
-            temperature=0.1,  # Low temperature for consistency
+            **token_limit_kwargs(_model, 500),
+            **sampling_kwargs(_model, 0.1),  # Low temperature for consistency
         )
         
         result = response.choices[0].message.content.strip()
@@ -1430,13 +1492,13 @@ async def extract_specs(
         )
 
         response = await _llm_breaker.guarded_llm_create(client,
-            model=standard_model(),
+            model=(_model := standard_model()),
             messages=[
                 {"role": "system", "content": prompt_parts["system"]},
                 {"role": "user", "content": prompt_parts["user"]}
             ],
-            max_tokens=1000,
-            temperature=0.1,
+            **token_limit_kwargs(_model, 1000),
+            **sampling_kwargs(_model, 0.1),
         )
 
         result = response.choices[0].message.content.strip()
@@ -1589,13 +1651,13 @@ SEARCH CONTEXT:
 {_wrap_search_context(search_context[:2000])}"""
 
         response = await _llm_breaker.guarded_llm_create(client,
-            model=standard_model(),
+            model=(_model := standard_model()),
             messages=[
                 {"role": "system", "content": PRICE_EXTRACTION_SYSTEM},
                 {"role": "user", "content": user_msg}
             ],
-            max_tokens=300,
-            temperature=0.1,
+            **token_limit_kwargs(_model, 300),
+            **sampling_kwargs(_model, 0.1),
         )
         
         result = response.choices[0].message.content.strip()
@@ -1634,14 +1696,18 @@ async def extract_price_from_training_data(
 Product: {s_brand} {s_name} {s_variant}
 Region: {region} ({region_info["currency"]})
 </USER_INPUT>"""
+        _decline = price_fallback_may_decline_enabled()
+        _model = standard_model()
+        _json_mode = {"response_format": {"type": "json_object"}} if _decline else {}
         response = await _llm_breaker.guarded_llm_create(client,
-            model=standard_model(),
+            model=_model,
             messages=[
-                {"role": "system", "content": PRICE_FALLBACK_SYSTEM},
+                {"role": "system", "content": PRICE_FALLBACK_SYSTEM_MAY_DECLINE if _decline else PRICE_FALLBACK_SYSTEM},
                 {"role": "user", "content": user_msg}
             ],
-            max_tokens=200,
-            temperature=0.2,
+            **token_limit_kwargs(_model, 200),
+            **sampling_kwargs(_model, 0 if _decline else 0.2),
+            **_json_mode,
         )
         result = response.choices[0].message.content.strip()
         if result.startswith("```"):
@@ -1654,7 +1720,15 @@ Region: {region} ({region_info["currency"]})
                 "prompt_tokens": response.usage.prompt_tokens,
                 "completion_tokens": response.usage.completion_tokens
             }
-        return json.loads(result), usage
+        parsed_price = json.loads(result)
+        if _decline and isinstance(parsed_price, dict):
+            parsed_price["amount"] = _coerce_fallback_amount(parsed_price.get("amount"))
+            if parsed_price["amount"] is None:
+                # R21: only the sanitised brand + name, whitespace-collapsed so a
+                # newline in the user's own input cannot split or forge a canary line.
+                logger.info("[PRICE_FALLBACK] declined (amount null) for %s %s",
+                            " ".join(s_brand.split()), " ".join(s_name.split()))
+        return parsed_price, usage
     except Exception as e:
         logger.error(f"Price fallback error: {e}")
         return {"amount": None, "currency": region_info["currency"], "error": str(e)}, {"prompt_tokens": 0, "completion_tokens": 0}
@@ -1682,13 +1756,13 @@ SEARCH CONTEXT:
 {_wrap_search_context(search_context[:2500])}"""
 
         response = await _llm_breaker.guarded_llm_create(client,
-            model=standard_model(),
+            model=(_model := standard_model()),
             messages=[
                 {"role": "system", "content": REVIEWS_EXTRACTION_SYSTEM},
                 {"role": "user", "content": user_msg}
             ],
-            max_tokens=600,  # I5 reviews-trim (Decision D, I4 A/B quality-cleared)
-            temperature=0.2,
+            **token_limit_kwargs(_model, 600),  # I5 reviews-trim (Decision D, I4 A/B quality-cleared)
+            **sampling_kwargs(_model, 0.2),
         )
 
         result = response.choices[0].message.content.strip()
@@ -1995,10 +2069,12 @@ def build_verdict_prompt(
         if products:
             first = products[0] or {}
             category = (first.get("category_used") or first.get("category") or "other").strip().lower()
-    base = COMPARISON_SYSTEM
+    # W4-11: read ENABLE_VERDICT_PROMPT_TRUTH ONCE per verdict (through the module
+    # attribute, C5) and pass it down so base and personality never mix states.
+    _truth = _pp.verdict_prompt_truth_enabled()
+    base = COMPARISON_SYSTEM_TRUTH if _truth else COMPARISON_SYSTEM
     try:
-        from app.services.prompt_personalities import build_personality_prompt
-        base += build_personality_prompt(category)
+        base += _pp.build_personality_prompt(category, truth=_truth)
     except Exception:  # noqa: BLE001 — personality helper is best-effort
         pass
 
@@ -2082,8 +2158,8 @@ def _build_review_source_quotes_block(
     def _fmt(quotes: List[Dict[str, Any]]) -> List[str]:
         out = []
         for q in quotes[:3]:
-            domain = (q.get("domain") or "").strip()
-            text = (q.get("text") or "").strip()
+            domain = sanitize_untrusted_block((q.get("domain") or "").strip())
+            text = sanitize_untrusted_block((q.get("text") or "").strip())
             if text:
                 out.append(f'  - ({domain}) "{text}"' if domain else f'  - "{text}"')
         return out
@@ -2196,8 +2272,8 @@ def _build_youtube_signal_block(
 
     def _fmt(sig: Dict[str, Any]) -> str:
         views = _humanize_count(sig.get("total_views", 0))
-        channel = (sig.get("top_channel") or "").strip()
-        title = (sig.get("top_video_title") or "").strip()
+        channel = sanitize_untrusted_block((sig.get("top_channel") or "").strip())
+        title = sanitize_untrusted_block((sig.get("top_video_title") or "").strip())
         n_videos = sig.get("video_count", 0)
         cite = f" — top video by {channel}" if channel else ""
         title_part = f': "{title}"' if title else ""
@@ -2404,13 +2480,13 @@ If this is a cross-tier comparison, frame it as "different products for differen
         _p2 = _verdict_safe_product(_scrub_youtube_signal_if_off(_scrub_consult_quotes_if_off(product2)), category)
         user_msg = f"""<USER_INPUT>
 PRODUCT 1:
-{json.dumps(_p1, indent=2)}
+{neutralize_prompt_tags(json.dumps(_p1, indent=2))}
 
 PRODUCT 2:
-{json.dumps(_p2, indent=2)}
+{neutralize_prompt_tags(json.dumps(_p2, indent=2))}
 
-User's region: {region}
-Primary concern: {concern}
+User's region: {neutralize_prompt_tags(f"{region}")}
+Primary concern: {neutralize_prompt_tags(f"{concern}")}
 </USER_INPUT>"""
 
         # S2 I2.5 (F5) — when the review-source consult ran (flag ON), surface
@@ -2534,6 +2610,20 @@ Primary concern: {concern}
                     list(parsed.keys()),
                     (response.choices[0].message.content or "")[:2000],
                 )
+
+        # W4-11 (R18/C10) -- the ENABLE_VERDICT_PROMPT_TRUTH canary: empty (missing or
+        # []) cons sides and data-gap cons strings (a list of strings, or one bare
+        # string when the model returns cons unlisted); logged ONLY under the flag.
+        if _pp.verdict_prompt_truth_enabled():
+            _cons_empty = _cons_gap = 0
+            for _side in (0, 1):
+                _cons = parsed.get(f"product_{_side}_cons")
+                if not _cons:
+                    _cons_empty += 1
+                elif isinstance(_cons, (list, str)):
+                    _items = [_cons] if isinstance(_cons, str) else _cons
+                    _cons_gap += sum(1 for c in _items if isinstance(c, str) and _DATA_GAP_CON_RE.search(c))
+            logger.info("[VERDICT_TRUTH] cons empty=%d data_gap=%d", _cons_empty, _cons_gap)
 
         # Validate personalized_insights
         has_preferences = user_preferences and any(user_preferences.values())

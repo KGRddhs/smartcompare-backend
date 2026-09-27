@@ -1763,6 +1763,7 @@ def test_w04g_extract_with_ai_prompt_identical_on_vs_off_past_the_4000_char_trun
     for prompt in prompts:
         content = prompt.split("Page Content (truncated):\n", 1)[1]
         content = content.split("\n\nExtract and return ONLY valid JSON:", 1)[0]
+        content = content.removesuffix("\n</SEARCH_RESULTS>")  # W4-11 R13/R16 url fence
         slots.append(content)
     assert [len(s) for s in slots] == [4000, 4000], (
         "the prompt's content slot must be exactly 4,000 chars flag OFF and ON, got %r"

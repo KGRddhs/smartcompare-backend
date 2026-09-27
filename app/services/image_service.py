@@ -37,7 +37,8 @@ import logging
 from typing import Any, Dict, List, Optional
 
 from app.services.api_budget_service import try_consume_serper_image_credit
-from app.services.model_config import standard_model, token_limit_kwargs
+from app.services import api_budget_service as _llm_breaker
+from app.services.model_config import sampling_kwargs, standard_model, token_limit_kwargs
 from app.services.openai_service import get_client
 from app.services.serper_service import search_images
 
@@ -162,19 +163,25 @@ async def extract_image_via_gpt(
         for r in organic_results[:10]
         if isinstance(r, dict)
     )
-    prompt = _TIER3_PROMPT.format(
+    # W4-11 (R13): the third-party link + snippet text sits in ONE <SEARCH_RESULTS>
+    # region (sanitized) under the do-not-follow guard sentence.
+    from app.services.extraction_service import SEARCH_RESULTS_GUARD, _wrap_search_context
+
+    prompt = SEARCH_RESULTS_GUARD + "\n\n" + _TIER3_PROMPT.format(
         product_name=product_name,
-        organic_block=organic_block or "(no results)",
+        organic_block=_wrap_search_context(organic_block) if organic_block else "(no results)",
     )
 
     try:
         client = get_client()
         _model = standard_model()
-        completion = await client.chat.completions.create(
+        # W4-11 (R7): through the W1-3 breaker chokepoint (a bare create with its flag OFF).
+        completion = await _llm_breaker.guarded_llm_create(
+            client,
             model=_model,
             messages=[{"role": "user", "content": prompt}],
             **token_limit_kwargs(_model, 120),
-            temperature=0.1,
+            **sampling_kwargs(_model, 0.1),
         )
         content = (completion.choices[0].message.content or "").strip()
     except Exception as e:

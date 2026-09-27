@@ -16,7 +16,7 @@ from bs4 import BeautifulSoup
 from openai import AsyncOpenAI
 
 from app.services.llm_provider import provider_base_url
-from app.services.model_config import standard_model, token_limit_kwargs
+from app.services.model_config import sampling_kwargs, standard_model, token_limit_kwargs
 
 from app.services.extraction_service import canonicalize_category
 from app.services import api_budget_service as _llm_breaker
@@ -342,10 +342,8 @@ def extract_generic_data(html: str, url: str) -> Dict[str, Any]:
 URL_EXTRACTION_PROMPT = """You are a product data extraction expert. Extract product information from this webpage content.
 
 URL: {url}
-Page Title: {title}
 
-Page Content (truncated):
-{content}
+{page_block}
 
 Extract and return ONLY valid JSON:
 {{
@@ -412,18 +410,26 @@ async def extract_with_ai(url: str, html: str, retailer: Dict) -> Dict[str, Any]
     try:
         client = get_client()
         _model = standard_model()
+        # W4-11 (R13/R20): the fetched page title + text sit in ONE <SEARCH_RESULTS>
+        # region under the guard sentence; the user-supplied URL stays outside the
+        # region, neutralized like the verdict's concern/region.
+        from app.services.extraction_service import SEARCH_RESULTS_GUARD, _wrap_search_context
+        from app.utils.prompt_sanitizer import neutralize_prompt_tags
+
+        page_block = _wrap_search_context(
+            f"Page Title: {title_text}\n\nPage Content (truncated):\n{text_content}"
+        )
         response = await _llm_breaker.guarded_llm_create(client,
             model=_model,
             messages=[{
                 "role": "user",
-                "content": URL_EXTRACTION_PROMPT.format(
-                    url=url,
-                    title=title_text,
-                    content=text_content
+                "content": SEARCH_RESULTS_GUARD + "\n\n" + URL_EXTRACTION_PROMPT.format(
+                    url=neutralize_prompt_tags(f"{url}"),
+                    page_block=page_block,
                 )
             }],
             **token_limit_kwargs(_model, 800),
-            temperature=0.1,
+            **sampling_kwargs(_model, 0.1),
         )
         
         result = response.choices[0].message.content.strip()

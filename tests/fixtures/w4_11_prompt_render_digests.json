@@ -1,0 +1,257 @@
+{
+ "COMPARISON_SYSTEM": "cad0070aa29deb2cfc5d7138f8cde64096b983981eeaa1c005c47dbb0571ebff",
+ "PRICE_FALLBACK_SYSTEM": "5e42585d3b7656005e1e9e1e99e5b634b3726c96833d619bb902e363c8e980b3",
+ "SEARCH_RESULTS_GUARD": "5b8495fdadeb08d385e378a96297f440a44aae87ff2e5eec7679316447429e8b",
+ "UNIVERSAL_TRUST_RULES": "54ae1ad2472bc5f227fac8da7fef13af239b3a171c8cea5acf6b4b072435d97a",
+ "base": "61585c58",
+ "cohort_divergence": {
+  "electronics": {
+   "common_prefix_chars": 9033,
+   "common_prefix_tokens": 1957,
+   "differs": true,
+   "divergence_after_static": true,
+   "static_per_category_chars": 8788
+  },
+  "fashion": {
+   "common_prefix_chars": 8627,
+   "common_prefix_tokens": 1857,
+   "differs": true,
+   "divergence_after_static": true,
+   "static_per_category_chars": 8382
+  },
+  "fragrances": {
+   "common_prefix_chars": 9012,
+   "common_prefix_tokens": 1949,
+   "differs": true,
+   "divergence_after_static": true,
+   "static_per_category_chars": 8767
+  },
+  "grocery": {
+   "common_prefix_chars": 8615,
+   "common_prefix_tokens": 1845,
+   "differs": true,
+   "divergence_after_static": true,
+   "static_per_category_chars": 8370
+  },
+  "haircare": {
+   "common_prefix_chars": 8557,
+   "common_prefix_tokens": 1854,
+   "differs": true,
+   "divergence_after_static": true,
+   "static_per_category_chars": 8312
+  },
+  "makeup": {
+   "common_prefix_chars": 8784,
+   "common_prefix_tokens": 1903,
+   "differs": true,
+   "divergence_after_static": true,
+   "static_per_category_chars": 8539
+  },
+  "other": {
+   "common_prefix_chars": 8487,
+   "common_prefix_tokens": 1819,
+   "differs": true,
+   "divergence_after_static": true,
+   "static_per_category_chars": 8242
+  },
+  "skincare": {
+   "common_prefix_chars": 8613,
+   "common_prefix_tokens": 1851,
+   "differs": true,
+   "divergence_after_static": true,
+   "static_per_category_chars": 8368
+  },
+  "supplements": {
+   "common_prefix_chars": 8546,
+   "common_prefix_tokens": 1852,
+   "differs": true,
+   "divergence_after_static": true,
+   "static_per_category_chars": 8301
+  },
+  "unknowncat": {
+   "common_prefix_chars": 7933,
+   "common_prefix_tokens": 1703,
+   "differs": true,
+   "divergence_after_static": true,
+   "static_per_category_chars": 7688
+  }
+ },
+ "extended_at": "58a86b3c",
+ "image_tier3_kwargs": {
+  "max_tokens": 120,
+  "model": "gpt-4o-mini",
+  "temperature": 0.1
+ },
+ "image_tier3_user": "0bce5931a79948d02b2b926a0c4c07511682dc1ce86f8ce7f841d78d1d2322f1",
+ "personality": {
+  "electronics": "788c0aa9d24b86f1b5e824874de8688ba4079d19870414b046fb6370a170180f",
+  "fashion": "fdd0db4d9e60497cacf2828a6f4b8b52ba4f17f5ba1c1b79f9e6280f42633821",
+  "fragrances": "a7bd8071e276ac3499ccc0a32b9f9c1e9bbba7881c69a35a4d01ce7450e5b3ec",
+  "grocery": "3cdcfc86f437c3147c80c9c7aa2e0a3e803213c6dd105ac345d420d18a6457ef",
+  "haircare": "c457580de3dacc10769b56c1ed208e71084c7b57648601e4d55be169b87f9c17",
+  "makeup": "03aae66ca9faf0c42b86a45ce7a849660e9e1fb6ded19a4f6d5ab430ce2b8fa7",
+  "other": "5888c0e3c47d274e173b7ae86ab62faa8074b599976e603be1db5f7550aa6713",
+  "skincare": "df3e67bdca9f3cab4380467406f1a16b20a3d7b5c6f7f69bb5077d5964fad431",
+  "supplements": "bfe8a1c05cb8d9d4d54d34e76d4b3b877ab680b82f6df9ff90375dc24fc0af6f",
+  "unknowncat": "5888c0e3c47d274e173b7ae86ab62faa8074b599976e603be1db5f7550aa6713"
+ },
+ "price_fallback_kwargs": {
+  "max_tokens": 200,
+  "model": "gpt-4o-mini",
+  "temperature": 0.2
+ },
+ "price_fallback_result": {
+  "amount": 300,
+  "original_currency": "USD"
+ },
+ "price_fallback_user": "eacb36fee7ca65ff464774f29f8d0e3085e4882502eb045381148895b39e47c4",
+ "specs_system_off": {
+  "electronics": "dfd98281d8cd390703c8e021b439d556c094633f240aef3c53a2aa73ffddca91",
+  "fashion": "17d2f63b4d7482dcdad69af6db16eb32f30bc5f70d81e78df0d54b614aa8f2bf",
+  "fragrances": "6a12fb7ec59965066f4c117a2a83e70088d025b9b1258c33023f4730cf9f1a09",
+  "grocery": "8d9876a59bf027219377d7de881c47c76f1524e0571f0058c5c7400f09647e67",
+  "haircare": "e6bb6ab1f6dc1d12cfbb0e87b68c8bb7d3f2949fd79c66ed26657b940053aa6b",
+  "makeup": "3a73b666959a058ac7221de31bc0b0abb67444b203ff20a18e2346becb75a8f9",
+  "other": "e8c68c5a1d4d0c6e035b323d07418746ace4ef55c12b72527be8edf9e1e95e26",
+  "skincare": "20155d11d2968a6b2ff3230ce2e1de9fa2ca67d39b3f736203d3f87a593d53aa",
+  "supplements": "08c4a37a03ecf2d0c49b927e458d4584bfa026d8c4b024dcca23e6cefd3e3d7c"
+ },
+ "specs_system_on": {
+  "electronics": "99efed93c4073969eca2eed42ba6139c7614ac9458eb7178893846d5d917a4cc",
+  "fashion": "9c4eccff80a857c2755ee4a96b7d68d1363c193e3a5985a25294cf7b06ae0603",
+  "fragrances": "f6e0d8e5c9a6f8c8774f05f2c5d56b839bb111cd4c4d19a27d1bc7bb5c892b12",
+  "grocery": "3966d78ab997f6cf0059d48d6f536fd9e3313fa9bc5ba81adfcea55b15030c08",
+  "haircare": "3bf1aadc9f2192f61b30f5fbcc14439061d413a4d88686de6944019dc440d9de",
+  "makeup": "c48b50e1ad3f78c695241f34e1a98322b40b36b35ca7d1aa6231cc82f481e88a",
+  "other": "6f9b998713572804f3cb251d0a7afa0a59920a1039c2ef77e8c9844ae1563adf",
+  "skincare": "b3bc61b4b66011b85886d33e26cdd75ff7a0fe627083b57fd8b0410e04c28845",
+  "supplements": "d6b23e68a1fda9587977250ea876ecf60963da228ada0e853c2b88ef2c163546"
+ },
+ "synth_kwargs": {
+  "max_tokens": 300,
+  "model": "gpt-4o",
+  "response_format": {
+   "type": "json_object"
+  },
+  "temperature": 0.1
+ },
+ "synth_system": "58755e85b6e31e7de51d33c72ba8d65c072e99b2ba99a7a2b9fc651da90df8dd",
+ "targeted_kwargs": {
+  "max_tokens": 200,
+  "model": "gpt-4o-mini",
+  "response_format": {
+   "type": "json_object"
+  },
+  "temperature": 0.1
+ },
+ "targeted_system": "37084572084ea1401034243b3e086d18ff8be0d32da7fb7289bc0d541b03f68f",
+ "targeted_user": "79bc061f39f21d413924c68cafb69cb97cea819264a3f9e6dfe52388fb1d8c6e",
+ "url_extract_kwargs": {
+  "max_tokens": 800,
+  "model": "gpt-4o-mini",
+  "temperature": 0.1
+ },
+ "url_extract_user": "9bbbd748cd75c60ee5ac2f79e5ce6d8a12b96c84fd2e652a262d805667bac059",
+ "verdict_benign_system": "4c192f09708fd9ba4644f8e7da7da3774750e3cec8fc5f059f4c87cbbb79b848",
+ "verdict_benign_user": "d1a66cb8a9f24217e3159918e4e40002b270a0a441dd8581f846ecfbd20a94c2",
+ "verdict_kwargs": {
+  "max_tokens": 1000,
+  "model": "gpt-4o",
+  "response_format": {
+   "type": "json_object"
+  },
+  "temperature": 0
+ },
+ "verdict_system": {
+  "electronics|f2534bh|normal": "06c6bd38aff7ad638b027b9337372583c0cb653088cefbf1ac8d3fb5b2d61e05",
+  "electronics|f2534bh|weak": "c5920b1d285a67b6c6175471dfa9a247ac62647bc4fb7677c671e4cb1ce7216f",
+  "electronics|f2534bh|weird": "f213bb56a6f2eaf8645babd9362087472e23912985e5090e9610bc18a0368e2e",
+  "electronics|m45bh|normal": "99b14588ec6d5e7d1ad9771445439a824b84460f439f7a41b1b6b48c4b27b6ed",
+  "electronics|m45bh|weak": "efe0440912941bee94b907f8a5191f0f4a17afbd99aa7a379a18bbcde263ce96",
+  "electronics|m45bh|weird": "e2a885a82579f4e486639c0f44b6d1f5b4f271f1a00434e42c610102e1def7dd",
+  "electronics|none|normal": "06c6bd38aff7ad638b027b9337372583c0cb653088cefbf1ac8d3fb5b2d61e05",
+  "electronics|none|weak": "c5920b1d285a67b6c6175471dfa9a247ac62647bc4fb7677c671e4cb1ce7216f",
+  "electronics|none|weird": "f213bb56a6f2eaf8645babd9362087472e23912985e5090e9610bc18a0368e2e",
+  "fashion|f2534bh|normal": "5b2b2685929ee02d730770dc1b778d705c9c64522d4bc4082b6081dcd25a1fe1",
+  "fashion|f2534bh|weak": "89e8ce9c62126fb96029ef5b3f6d533f052b8a17b30b8234156065917f71fcac",
+  "fashion|f2534bh|weird": "a4b220e6d0a49e3702d2821829f73c878dbda7dcfc13f463bdfffe996d50d3cf",
+  "fashion|m45bh|normal": "17f6dbe51730712494280d93caee1c7e887da521e7cdbaefc9491a46b821a1c5",
+  "fashion|m45bh|weak": "0a40f041eea02ec6a04ae174a43632f7016eaaca0c660644189492edcfd04703",
+  "fashion|m45bh|weird": "d2464e6b056e8ea3fbb944c069a233a953021d35fae918662934ec7d8d7bda49",
+  "fashion|none|normal": "5b2b2685929ee02d730770dc1b778d705c9c64522d4bc4082b6081dcd25a1fe1",
+  "fashion|none|weak": "89e8ce9c62126fb96029ef5b3f6d533f052b8a17b30b8234156065917f71fcac",
+  "fashion|none|weird": "a4b220e6d0a49e3702d2821829f73c878dbda7dcfc13f463bdfffe996d50d3cf",
+  "fragrances|f2534bh|normal": "5cbfb549b84d9abda51119a91ff11eef861f8edfd9bb596dcc5f580624f7c895",
+  "fragrances|f2534bh|weak": "4343c0e97a4425a2a77b549cd9a82ed6ae4a32f3fff6611a5856f10b67e03e72",
+  "fragrances|f2534bh|weird": "cfdafb9b57534c8791a43e6f24a27701c24db9a0a763ce67f73861207bbc2c24",
+  "fragrances|m45bh|normal": "1bb94086895e3f7eb086a5061c801a8564c83b423b0fed5705ed7d0af2246ad8",
+  "fragrances|m45bh|weak": "80245a4069f74930d0b1392679dd730bd5c5a62e2af919c5b9ddcd8545911e0b",
+  "fragrances|m45bh|weird": "17fe7412b80c604b466e1210775543854482828cb8dc9e9bcdbdbd7508216b78",
+  "fragrances|none|normal": "5cbfb549b84d9abda51119a91ff11eef861f8edfd9bb596dcc5f580624f7c895",
+  "fragrances|none|weak": "4343c0e97a4425a2a77b549cd9a82ed6ae4a32f3fff6611a5856f10b67e03e72",
+  "fragrances|none|weird": "cfdafb9b57534c8791a43e6f24a27701c24db9a0a763ce67f73861207bbc2c24",
+  "grocery|f2534bh|normal": "ea2aba0950f9c9e6655d98ed7c585684a040df6278797802a5a7381215999572",
+  "grocery|f2534bh|weak": "9d2ab71d879043136f1efe7086d5cb948d45ad11443afdd3a3d1ec24c8d7bf39",
+  "grocery|f2534bh|weird": "8d3df9ab5731861a9dd2e1bba74960a377ca3b1e2c4b900a34eda4ac52d501fa",
+  "grocery|m45bh|normal": "e511a862aa38aee733a884cfa833be339e995c4c6df663d957ce3fbc24a24394",
+  "grocery|m45bh|weak": "770745fbfb3bbd8b039ce107c0ed86a592af84bd404bb40bff230216e3cd58ed",
+  "grocery|m45bh|weird": "e1ffb22cd4094562ac0d3a0d809488d809e9648d9c5513358db0dd33545fa4f6",
+  "grocery|none|normal": "ea2aba0950f9c9e6655d98ed7c585684a040df6278797802a5a7381215999572",
+  "grocery|none|weak": "9d2ab71d879043136f1efe7086d5cb948d45ad11443afdd3a3d1ec24c8d7bf39",
+  "grocery|none|weird": "8d3df9ab5731861a9dd2e1bba74960a377ca3b1e2c4b900a34eda4ac52d501fa",
+  "haircare|f2534bh|normal": "930490b41cf784c9e70850fd5e6b2c19d52de16c7ff73a75b34d52d9487bb0e8",
+  "haircare|f2534bh|weak": "45cad556f7b3fbe56bfce175f8c758bb2543d42f63d27c324596b01ca9219049",
+  "haircare|f2534bh|weird": "7be7aad7d87b53e00af292084994a1224d4a872111c9e252d363aee991247223",
+  "haircare|m45bh|normal": "9e7366887c8877b639fc8ae935f5ffc24095020613be3ce56056c8fec565057e",
+  "haircare|m45bh|weak": "ea8e5108c2cff785182b28be891e01ee55525771646664bc5753d3e71f0071d2",
+  "haircare|m45bh|weird": "367dc1d4a55d2a39d2caa561e2d831a74ff23db67e319c28f88537538cbc859d",
+  "haircare|none|normal": "930490b41cf784c9e70850fd5e6b2c19d52de16c7ff73a75b34d52d9487bb0e8",
+  "haircare|none|weak": "45cad556f7b3fbe56bfce175f8c758bb2543d42f63d27c324596b01ca9219049",
+  "haircare|none|weird": "7be7aad7d87b53e00af292084994a1224d4a872111c9e252d363aee991247223",
+  "makeup|f2534bh|normal": "69d6d0690f694a5a4183908910ef35ca81fec29dd510295b827efb8ddb8a0593",
+  "makeup|f2534bh|weak": "6baaf327f4c4bfcfc292ed0120f5ba9b90941a6a7f656dfee61d2878786d2a88",
+  "makeup|f2534bh|weird": "2f6936815a5e7791ccdedf50f3950561fb1ad723b5b1a3ac21a9f422be29fac6",
+  "makeup|m45bh|normal": "a999a4a964627728f4013c321ee700af339e015a7bf847f120889d2f2625b782",
+  "makeup|m45bh|weak": "87d1c877a1cb40d6c54f3f9b389a192ed49935427edacb369b697fc7153c2e5d",
+  "makeup|m45bh|weird": "92cc9da50b9a9158df3b930b4650c2423500258200ac8635b80f3562ac6c4656",
+  "makeup|none|normal": "69d6d0690f694a5a4183908910ef35ca81fec29dd510295b827efb8ddb8a0593",
+  "makeup|none|weak": "6baaf327f4c4bfcfc292ed0120f5ba9b90941a6a7f656dfee61d2878786d2a88",
+  "makeup|none|weird": "2f6936815a5e7791ccdedf50f3950561fb1ad723b5b1a3ac21a9f422be29fac6",
+  "other|f2534bh|normal": "4473ec03968532d96be9bd91c50710090632935d5c7714872c96843311bb7815",
+  "other|f2534bh|weak": "bb3bf68fffb3e4d89fcbb71c3327e64b8a7cecb813220a2eb1a0814946a72da1",
+  "other|f2534bh|weird": "81d2c39caa91cb235a7e407e77fb5cda20a457f8ffb8dce463d6619fff32f75b",
+  "other|m45bh|normal": "b6b6154f38d3cbb527355a1c64f5e27b5bf55b962848d254e410ea3cb482dbe9",
+  "other|m45bh|weak": "6356107f3fc66e67fc5f12f5780bed3b4474daea69638bed78e837536fde8970",
+  "other|m45bh|weird": "d980ceff2aeb3c1896d01f4581c5197c2135256a9e2151e4d806a3e2548403db",
+  "other|none|normal": "4473ec03968532d96be9bd91c50710090632935d5c7714872c96843311bb7815",
+  "other|none|weak": "bb3bf68fffb3e4d89fcbb71c3327e64b8a7cecb813220a2eb1a0814946a72da1",
+  "other|none|weird": "81d2c39caa91cb235a7e407e77fb5cda20a457f8ffb8dce463d6619fff32f75b",
+  "skincare|f2534bh|normal": "b9aa42b515583909ec796e476a7c000885a3024ecc94c1ff0e638a543eb90cf5",
+  "skincare|f2534bh|weak": "55500b71c69487921948992498679d7afdc62e7034a3acb32136ed3ce882f30e",
+  "skincare|f2534bh|weird": "cd8b8463c34b23910b96ccac1f3daa8fdeaec24cf375968148b94614e3c76a47",
+  "skincare|m45bh|normal": "52d442065ae6aa4bdcc44b91ea8f0e8a23e4381d21b4509e464116469b2f5e7b",
+  "skincare|m45bh|weak": "cddefff530eb47b2f3f5fa29b735a5ed8076063057a61d94211aa38d5c6fa9ad",
+  "skincare|m45bh|weird": "6f46e12ea181334b154ae0e0e950f9f8e9b9b6a47d4e3a613c7bf9c0d97641c1",
+  "skincare|none|normal": "b9aa42b515583909ec796e476a7c000885a3024ecc94c1ff0e638a543eb90cf5",
+  "skincare|none|weak": "55500b71c69487921948992498679d7afdc62e7034a3acb32136ed3ce882f30e",
+  "skincare|none|weird": "cd8b8463c34b23910b96ccac1f3daa8fdeaec24cf375968148b94614e3c76a47",
+  "supplements|f2534bh|normal": "ffcdd164a069353b04e1d908ba6adb739e9f2d59362940551cea2ebadd362d2a",
+  "supplements|f2534bh|weak": "9bccf081dff173bf8e62d91e6ba9fa9fe1134fa2a6cbf05444c17e269cd08c02",
+  "supplements|f2534bh|weird": "b6e3fb017e96a16a8b7b7771c6378abc4e5a66cd4c2cceeee1a24fd8836c40f5",
+  "supplements|m45bh|normal": "573cc78cd4bc6fd54c071dab59c6ce6088d51ff81988f17a61fa026c67a7fd1c",
+  "supplements|m45bh|weak": "e81bfa3ca4a4b050917e0a60384eca85f580dd3d1b77010acc4bf3749a3f247e",
+  "supplements|m45bh|weird": "add57a8c3d8200b9157ae848333d24fda9b605652f897ecc54880900a930c8e2",
+  "supplements|none|normal": "ffcdd164a069353b04e1d908ba6adb739e9f2d59362940551cea2ebadd362d2a",
+  "supplements|none|weak": "9bccf081dff173bf8e62d91e6ba9fa9fe1134fa2a6cbf05444c17e269cd08c02",
+  "supplements|none|weird": "b6e3fb017e96a16a8b7b7771c6378abc4e5a66cd4c2cceeee1a24fd8836c40f5",
+  "unknowncat|f2534bh|normal": "2f5422155f8656adfdb07333abe2bdafb85aee0fd59c9b7a057574451dfacca6",
+  "unknowncat|f2534bh|weak": "e765341ccc5e9a739ab1c0eac4b8bf38743cbb0c62996cb2c79f9f162bf4f58f",
+  "unknowncat|f2534bh|weird": "e12ea25cb19acf72514ed6d9c9f2cc2cd58786138c1e4334ae8346198bac4957",
+  "unknowncat|m45bh|normal": "36b850f77f4bc4546c2d9ca3cfa5ec72ada7efce91b8dbeb4bba12ae760b2793",
+  "unknowncat|m45bh|weak": "9b3699897606f6f6319d4ff416f60117089c54628af8bc8e250928ec3175e994",
+  "unknowncat|m45bh|weird": "ea14185f76686312314b826629b9227ec1d71db3b90348e4b5736abd1a5fcdd4",
+  "unknowncat|none|normal": "2f5422155f8656adfdb07333abe2bdafb85aee0fd59c9b7a057574451dfacca6",
+  "unknowncat|none|weak": "e765341ccc5e9a739ab1c0eac4b8bf38743cbb0c62996cb2c79f9f162bf4f58f",
+  "unknowncat|none|weird": "e12ea25cb19acf72514ed6d9c9f2cc2cd58786138c1e4334ae8346198bac4957"
+ }
+}
