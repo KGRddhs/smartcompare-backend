@@ -1,0 +1,496 @@
+diff --git a/SmartCompareApp/src/components/results/DimensionBars.tsx b/SmartCompareApp/src/components/results/DimensionBars.tsx
+index 0895f9c0..5150ff67 100644
+--- a/SmartCompareApp/src/components/results/DimensionBars.tsx
++++ b/SmartCompareApp/src/components/results/DimensionBars.tsx
+@@ -35,6 +35,7 @@ import { colors, spacing, typography } from '../../theme';
+ import { DimensionBar } from '../primitives/DimensionBar';
+ import type { Dimension } from '../../types';
+ import { safeDelta } from './_deltaText';
++import { localizedDimensionLabel } from '../../utils/dimensionLabel';
+ 
+ interface DimensionBarsProps {
+   dimensions: Dimension[];
+@@ -224,7 +225,7 @@ function InsufficientRow({ dimension, testID }: InsufficientRowProps) {
+   const { t } = useTranslation();
+   return (
+     <View style={styles.insufficientRow} testID={testID}>
+-      <Text style={styles.label}>{dimension.label}</Text>
++      <Text style={styles.label}>{localizedDimensionLabel(dimension.key, dimension.label, t)}</Text>
+       <Text style={styles.insufficientCaption}>
+         {t('results.dimensions.limited_data')}
+       </Text>
+@@ -283,7 +284,8 @@ function DimensionRow({ dimension, winnerIndex, productAName, productBName, test
+   // the delta caption — swap a point-math delta for the clean dim label via the
+   // shared guard. Applied ONLY when delta_text is non-empty so an absent delta
+   // keeps the original behavior (no synthetic label caption appears).
+-  const guardedDelta = delta_text ? safeDelta(delta_text, label) : '';
++  const shownLabel = localizedDimensionLabel(key, label, t);
++  const guardedDelta = delta_text ? safeDelta(delta_text, shownLabel) : '';
+   const heroDeltaText = isCrossTier
+     ? t('results.value.different_tier')
+     : guardedDelta;
+@@ -310,7 +312,7 @@ function DimensionRow({ dimension, winnerIndex, productAName, productBName, test
+           keeps only the dimension label so long names no longer repeat +
+           truncate on every bar. */}
+       <View style={styles.labelRow}>
+-        <Text style={styles.label} numberOfLines={1}>{label}</Text>
++        <Text style={styles.label} numberOfLines={1}>{shownLabel}</Text>
+       </View>
+       {isHeroDeltaRow && (
+         <Text
+diff --git a/SmartCompareApp/src/components/results/RunnerUpWinsCard.tsx b/SmartCompareApp/src/components/results/RunnerUpWinsCard.tsx
+index 1ff01680..0591c40d 100644
+--- a/SmartCompareApp/src/components/results/RunnerUpWinsCard.tsx
++++ b/SmartCompareApp/src/components/results/RunnerUpWinsCard.tsx
+@@ -30,6 +30,7 @@ import { useTranslation } from 'react-i18next';
+ import { colors, spacing } from '../../theme';
+ import type { Product, Dimension } from '../../types';
+ import { safeDelta, SCORE_INTERNALS_RE } from './_deltaText';
++import { localizedDimensionLabel } from '../../utils/dimensionLabel';
+ 
+ export interface RunnerUpWinsCardProps {
+   products: Product[];
+@@ -64,8 +65,11 @@ export function runnerUpWinningDims(
+ /** The label/phrase for a winning dim row: qualitative delta_text when it is
+  *  NOT raw point-math, otherwise the clean dim label. Never the "+Npt" form.
+  *  Delegates to the shared `safeDelta` guard (single source of truth). */
+-function dimRowText(d: Dimension): string {
+-  return safeDelta(d.delta_text, d.label);
++function dimRowText(
++  d: Dimension,
++  t: (key: string, options?: Record<string, unknown>) => string,
++): string {
++  return safeDelta(d.delta_text, localizedDimensionLabel(d.key, d.label, t));
+ }
+ 
+ export function RunnerUpWinsCard({
+@@ -114,7 +118,7 @@ export function RunnerUpWinsCard({
+             <View key={d.key} style={styles.dimRow} testID={`${testID}-dim-${d.key}`}>
+               <Text style={styles.dimBullet}>{'+'}</Text>
+               <Text style={styles.dimText} numberOfLines={2}>
+-                {dimRowText(d)}
++                {dimRowText(d, t)}
+               </Text>
+             </View>
+           ))}
+diff --git a/SmartCompareApp/src/i18n/ar.json b/SmartCompareApp/src/i18n/ar.json
+index 61e047f9..272cffde 100644
+--- a/SmartCompareApp/src/i18n/ar.json
++++ b/SmartCompareApp/src/i18n/ar.json
+@@ -192,6 +192,57 @@
+   "results.personalization.arrow_up": "↑ {{dim}}",
+   "results.personalization.arrow_down": "↓ {{dim}}",
+   "results.dimensions.limited_data": "بيانات محدودة",
++  "results.dimension.actives": "المكونات الفعالة",
++  "results.dimension.availability": "التوفر",
++  "results.dimension.build": "التصنيع",
++  "results.dimension.build_quality": "جودة التصنيع",
++  "results.dimension.character": "الطابع",
++  "results.dimension.cpw": "التكلفة لكل استخدام",
++  "results.dimension.craft": "الحرفية",
++  "results.dimension.dietary": "الملاءمة الغذائية",
++  "results.dimension.dosage": "الجرعة",
++  "results.dimension.durability": "المتانة",
++  "results.dimension.ecosystem": "المنظومة",
++  "results.dimension.efficacy": "الفعالية",
++  "results.dimension.evidence": "الأدلة",
++  "results.dimension.feature": "المزايا",
++  "results.dimension.feature_match": "مطابقة المزايا",
++  "results.dimension.finish": "اللمسة النهائية",
++  "results.dimension.fit": "المقاس",
++  "results.dimension.form": "الشكل",
++  "results.dimension.formulation": "التركيبة",
++  "results.dimension.function": "الوظيفة",
++  "results.dimension.futureproof": "مواكبة المستقبل",
++  "results.dimension.hair_match": "ملاءمة الشعر",
++  "results.dimension.heritage": "العراقة",
++  "results.dimension.ingredient": "المكونات",
++  "results.dimension.ingredient_safety": "أمان المكونات",
++  "results.dimension.longevity": "الثبات",
++  "results.dimension.multi_value": "قيمة الاستخدامات المتعددة",
++  "results.dimension.nutrition": "القيمة الغذائية",
++  "results.dimension.perf_value": "الأداء مقابل السعر",
++  "results.dimension.performance": "الأداء",
++  "results.dimension.presentation": "التقديم",
++  "results.dimension.price": "السعر",
++  "results.dimension.projection": "الانتشار",
++  "results.dimension.reliability": "الاعتمادية",
++  "results.dimension.results": "النتائج",
++  "results.dimension.results_value": "النتائج مقابل السعر",
++  "results.dimension.review": "التقييمات",
++  "results.dimension.reviews": "التقييمات",
++  "results.dimension.safety": "الأمان",
++  "results.dimension.scalp": "فروة الرأس",
++  "results.dimension.scent": "الرائحة",
++  "results.dimension.sensory": "الإحساس عند الاستخدام",
++  "results.dimension.serving_value": "قيمة الحصة",
++  "results.dimension.shade": "درجات اللون",
++  "results.dimension.skin_compat": "ملاءمة البشرة",
++  "results.dimension.style": "الطراز",
++  "results.dimension.taste": "الطعم",
++  "results.dimension.trust": "الموثوقية",
++  "results.dimension.value": "القيمة",
++  "results.dimension.versatility": "تعدد الاستخدامات",
++  "results.dimension.wear_value": "قيمة الاستخدام",
+   "results.dimensions.see_full_breakdown": "اعرض التفصيل الكامل",
+   "results.value.different_tier": "فئة مختلفة — مقاسة بمعيار أعلى",
+   "results.reviews.divided": "ملاحظة: آراء المستخدمين منقسمة حول هذا المنتج",
+@@ -918,10 +969,22 @@
+   "referrals.bonus.expiringSoon": "تنتهي قريباً",
+   "referrals.bonus.expiresInDays_one": "تنتهي خلال {{count}} يوم",
+   "referrals.bonus.expiresInDays_other": "تنتهي خلال {{count}} أيام",
++  "referrals.bonus.expiresInDays_zero": "تنتهي اليوم",
++  "referrals.bonus.expiresInDays_two": "تنتهي خلال يومين",
++  "referrals.bonus.expiresInDays_few": "تنتهي خلال {{count}} أيام",
++  "referrals.bonus.expiresInDays_many": "تنتهي خلال {{count}} يومًا",
+   "referrals.bonus.expiresInHours_one": "تنتهي خلال {{count}} ساعة",
+   "referrals.bonus.expiresInHours_other": "تنتهي خلال {{count}} ساعات",
++  "referrals.bonus.expiresInHours_zero": "تنتهي خلال أقل من ساعة",
++  "referrals.bonus.expiresInHours_two": "تنتهي خلال ساعتين",
++  "referrals.bonus.expiresInHours_few": "تنتهي خلال {{count}} ساعات",
++  "referrals.bonus.expiresInHours_many": "تنتهي خلال {{count}} ساعة",
+   "referrals.bonus.expiresInMinutes_one": "تنتهي خلال {{count}} دقيقة",
+   "referrals.bonus.expiresInMinutes_other": "تنتهي خلال {{count}} دقائق",
++  "referrals.bonus.expiresInMinutes_zero": "تنتهي الآن",
++  "referrals.bonus.expiresInMinutes_two": "تنتهي خلال دقيقتين",
++  "referrals.bonus.expiresInMinutes_few": "تنتهي خلال {{count}} دقائق",
++  "referrals.bonus.expiresInMinutes_many": "تنتهي خلال {{count}} دقيقة",
+   "auth.appleFailed": "لم يكتمل تسجيل الدخول عبر Apple",
+   "auth.consent.prefix": "عمري 13 عامًا أو أكثر وأوافق على",
+   "auth.consent.and": " و",
+diff --git a/SmartCompareApp/src/i18n/en.json b/SmartCompareApp/src/i18n/en.json
+index 0e8fda00..40b3d146 100644
+--- a/SmartCompareApp/src/i18n/en.json
++++ b/SmartCompareApp/src/i18n/en.json
+@@ -195,6 +195,57 @@
+   "results.personalization.arrow_up": "↑ {{dim}}",
+   "results.personalization.arrow_down": "↓ {{dim}}",
+   "results.dimensions.limited_data": "Limited data",
++  "results.dimension.actives": "Active ingredients",
++  "results.dimension.availability": "Availability",
++  "results.dimension.build": "Build",
++  "results.dimension.build_quality": "Build quality",
++  "results.dimension.character": "Character",
++  "results.dimension.cpw": "Cost per wear",
++  "results.dimension.craft": "Craftsmanship",
++  "results.dimension.dietary": "Dietary fit",
++  "results.dimension.dosage": "Dosage",
++  "results.dimension.durability": "Durability",
++  "results.dimension.ecosystem": "Ecosystem",
++  "results.dimension.efficacy": "Efficacy",
++  "results.dimension.evidence": "Evidence",
++  "results.dimension.feature": "Features",
++  "results.dimension.feature_match": "Feature match",
++  "results.dimension.finish": "Finish",
++  "results.dimension.fit": "Fit",
++  "results.dimension.form": "Form",
++  "results.dimension.formulation": "Formulation",
++  "results.dimension.function": "Function",
++  "results.dimension.futureproof": "Future-proofing",
++  "results.dimension.hair_match": "Hair match",
++  "results.dimension.heritage": "Heritage",
++  "results.dimension.ingredient": "Ingredients",
++  "results.dimension.ingredient_safety": "Ingredient safety",
++  "results.dimension.longevity": "Longevity",
++  "results.dimension.multi_value": "Multi-use value",
++  "results.dimension.nutrition": "Nutrition",
++  "results.dimension.perf_value": "Performance vs value",
++  "results.dimension.performance": "Performance",
++  "results.dimension.presentation": "Presentation",
++  "results.dimension.price": "Price",
++  "results.dimension.projection": "Projection",
++  "results.dimension.reliability": "Reliability",
++  "results.dimension.results": "Results",
++  "results.dimension.results_value": "Results vs value",
++  "results.dimension.review": "Reviews",
++  "results.dimension.reviews": "Reviews",
++  "results.dimension.safety": "Safety",
++  "results.dimension.scalp": "Scalp",
++  "results.dimension.scent": "Scent",
++  "results.dimension.sensory": "Sensory",
++  "results.dimension.serving_value": "Serving value",
++  "results.dimension.shade": "Shade range",
++  "results.dimension.skin_compat": "Skin compatibility",
++  "results.dimension.style": "Style",
++  "results.dimension.taste": "Taste",
++  "results.dimension.trust": "Trust",
++  "results.dimension.value": "Value",
++  "results.dimension.versatility": "Versatility",
++  "results.dimension.wear_value": "Wear value",
+   "results.dimensions.see_full_breakdown": "See full breakdown",
+   "results.value.different_tier": "Different tier — held to higher bar",
+   "results.reviews.divided": "Note: User opinions are divided on this product",
+@@ -921,10 +972,22 @@
+   "referrals.bonus.expiringSoon": "Expiring soon",
+   "referrals.bonus.expiresInDays_one": "Expires in {{count}} day",
+   "referrals.bonus.expiresInDays_other": "Expires in {{count}} days",
++  "referrals.bonus.expiresInDays_zero": "Expires today",
++  "referrals.bonus.expiresInDays_two": "Expires in 2 days",
++  "referrals.bonus.expiresInDays_few": "Expires in {{count}} days",
++  "referrals.bonus.expiresInDays_many": "Expires in {{count}} days",
+   "referrals.bonus.expiresInHours_one": "Expires in {{count}} hour",
+   "referrals.bonus.expiresInHours_other": "Expires in {{count}} hours",
++  "referrals.bonus.expiresInHours_zero": "Expires within the hour",
++  "referrals.bonus.expiresInHours_two": "Expires in 2 hours",
++  "referrals.bonus.expiresInHours_few": "Expires in {{count}} hours",
++  "referrals.bonus.expiresInHours_many": "Expires in {{count}} hours",
+   "referrals.bonus.expiresInMinutes_one": "Expires in {{count}} minute",
+   "referrals.bonus.expiresInMinutes_other": "Expires in {{count}} minutes",
++  "referrals.bonus.expiresInMinutes_zero": "Expires now",
++  "referrals.bonus.expiresInMinutes_two": "Expires in 2 minutes",
++  "referrals.bonus.expiresInMinutes_few": "Expires in {{count}} minutes",
++  "referrals.bonus.expiresInMinutes_many": "Expires in {{count}} minutes",
+   "auth.appleFailed": "Apple sign-in didn't complete",
+   "auth.consent.prefix": "I am 13 or older and I agree to the",
+   "auth.consent.and": " and ",
+diff --git a/SmartCompareApp/src/services/api.ts b/SmartCompareApp/src/services/api.ts
+index 2b79ec4f..e3c0986e 100644
+--- a/SmartCompareApp/src/services/api.ts
++++ b/SmartCompareApp/src/services/api.ts
+@@ -4,6 +4,7 @@
+  */
+ 
+ import axios from 'axios';
++import i18next from 'i18next';
+ import * as ImageManipulator from 'expo-image-manipulator';
+ import { ComparisonResult, ImageIdentifyResult, UserPreferences } from '../types';
+ import { setupCertificatePinning } from './certificatePinning';
+@@ -569,6 +570,11 @@ export interface StreamCallbacks {
+  * (legacy `q=` shape) OR `{ product_a, product_b }` so the backend skips
+  * `parse_product_query()` for higher-confidence extraction.
+  */
++/** W4-14 — the UI language for generated prose, read PER CALL; 'ar' or nothing. */
++function currentOutputLang(): 'ar' | undefined {
++  return (i18next.language || '').toLowerCase().startsWith('ar') ? 'ar' : undefined;
++}
++
+ export type StreamComparisonInput =
+   | string
+   | { product_a: string; product_b: string };
+@@ -616,6 +622,7 @@ export function streamComparison(
+             selected_category: options.selected_category,
+           }),
+           ...(options?.nocache && { nocache: true }),
++          ...(currentOutputLang() && { lang: currentOutputLang() }),
+         };
+         // Bundle E S3 hotfix — GET /text/compare now accepts dual-shape (q OR pair).
+         // We send the explicit pair so backend skips parse_product_query() for
+@@ -758,6 +765,8 @@ export function streamComparison(
+         }
+         if (options?.nocache) params.set('nocache', 'true');
+         if (options?.selected_category) params.set('selected_category', options.selected_category);
++        const outputLang = currentOutputLang();
++        if (outputLang) params.set('lang', outputLang);
+ 
+         const headers: Record<string, string> = { Accept: 'text/event-stream' };
+         if (token) headers['Authorization'] = `Bearer ${token}`;
+diff --git a/app/api/text_routes.py b/app/api/text_routes.py
+index d27d120d..542f2bd3 100644
+--- a/app/api/text_routes.py
++++ b/app/api/text_routes.py
+@@ -44,6 +44,7 @@ from app.services.usage_service import (
+     record_anon_comparison,
+ )
+ from app.utils.async_utils import fire_and_forget
++from app.services.extraction_service import normalize_output_lang
+ 
+ logger = logging.getLogger(__name__)
+ 
+@@ -244,6 +245,7 @@ class TextCompareRequest(BaseModel):
+     include_reviews: bool = True
+     include_pros_cons: bool = True
+     selected_category: Optional[str] = Field(default=None, max_length=40)
++    lang: Optional[str] = Field(default=None, max_length=8)
+ 
+     @model_validator(mode="after")
+     def normalize_shape(self) -> "TextCompareRequest":
+@@ -512,6 +514,7 @@ async def text_compare(request: Request, body: TextCompareRequest, user: Optiona
+         user_preferences=user_prefs,
+         user_id=user.get("id") if user else None,
+         explicit_pair=explicit_pair,
++        **({"output_lang": _ol} if (_ol := normalize_output_lang(body.lang)) else {}),
+     )
+ 
+     duration_ms = int((time.time() - start_time) * 1000)
+@@ -649,6 +652,7 @@ async def text_compare_get(
+     pros_cons: bool = Query(True, description="Include pros/cons"),
+     nocache: bool = Query(False, description="Bypass cache for fresh data"),
+     selected_category: Optional[str] = Query(None, max_length=40, description="User-selected category hint"),
++    lang: Optional[str] = Query(None, max_length=8, description="UI language for generated prose (en|ar)"),
+     user: Optional[Dict] = Depends(get_optional_user),
+ ):
+     """GET version of text comparison for easy testing.
+@@ -721,6 +725,7 @@ async def text_compare_get(
+         user_preferences=user_prefs,
+         user_id=user.get("id") if user else None,
+         explicit_pair=explicit_pair,
++        **({"output_lang": _ol} if (_ol := normalize_output_lang(lang)) else {}),
+     )
+ 
+     duration_ms = int((time.time() - start_time) * 1000)
+@@ -830,6 +835,7 @@ async def text_compare_stream(
+     pros_cons: bool = Query(True, description="Include pros/cons"),
+     nocache: bool = Query(False, description="Bypass cache for fresh data"),
+     selected_category: Optional[str] = Query(None, max_length=40, description="User-selected category hint"),
++    lang: Optional[str] = Query(None, max_length=8, description="UI language for generated prose (en|ar)"),
+     user: Optional[Dict] = Depends(get_optional_user),
+ ):
+     """SSE streaming version of text comparison. Returns Server-Sent Events.
+@@ -970,6 +976,7 @@ async def text_compare_stream(
+             user_preferences=user_prefs,
+             user_id=user.get("id") if user else None,
+             explicit_pair=explicit_pair,
++            **({"output_lang": _ol} if (_ol := normalize_output_lang(lang)) else {}),
+         )
+         try:
+             async for event_type, data in _stream:
+diff --git a/app/services/extraction_service.py b/app/services/extraction_service.py
+index ff5a5a07..70567ee0 100644
+--- a/app/services/extraction_service.py
++++ b/app/services/extraction_service.py
+@@ -2268,6 +2268,27 @@ def _gpt_winner_lever_enabled() -> bool:
+     )
+ 
+ 
++def arabic_verdict_output_enabled() -> bool:
++    """W4-14 flag reader (default OFF), read live per call."""
++    return os.environ.get("ENABLE_ARABIC_VERDICT_OUTPUT", "").strip().lower() in (
++        "1", "true", "yes", "on",
++    )
++
++
++def normalize_output_lang(raw: Any) -> Optional[str]:
++    """W4-14: the UI language for generated prose -> "ar" / "en" / None."""
++    if not isinstance(raw, str):
++        return None
++    s = raw.strip().lower()
++    if not s:
++        return None
++    primary = re.split(r"[-_]", s, maxsplit=1)[0]
++    return primary if primary in ("ar", "en") else None
++
++
++_ARABIC_OUTPUT_DIRECTIVE = '\n\n## Output language\nThe reader of this verdict reads Arabic. Write EVERY human-readable string value in the JSON in Modern Standard Arabic: winner_reason, key_tradeoff, both value_context sentences, both best_for sentences, every item of product_0_pros, product_0_cons, product_1_pros and product_1_cons, every item of specs_comparison, every personalized_insights[].insight, and independent_winner_basis when it is requested.\nKeep EXACTLY as given, never translated or transliterated: every JSON key, the winner_declaration value (the product name), product and brand names, model numbers, units, currency codes, and personalized_insights[].focus_area.\nWrite every number with Western digits (0-9).\nNever write these Arabic words or phrases: \u0623\u0641\u0636\u0644 \u0627\u062e\u062a\u064a\u0627\u0631; \u0627\u0644\u062e\u064a\u0627\u0631 \u0627\u0644\u0623\u0641\u0636\u0644; \u0623\u0641\u0636\u0644 \u062e\u064a\u0627\u0631; \u0627\u0644\u0641\u0627\u0626\u0632; \u0646\u0648\u0635\u064a \u0628\u0640; \u062a\u0639\u0630\u0631; \u0641\u0634\u0644; \u062a\u0642\u062f\u064a\u0631; \u0645\u064f\u0642\u062f\u064e\u0651\u0631.\nEvery other rule above still applies unchanged.'
++
++
+ def _build_independent_winner_block() -> str:
+     """S3 intervention #2 — instruct the model to ALSO emit an INDEPENDENT winner
+     judged purely on the product facts (ignoring the deterministic scores), with
+@@ -2476,6 +2497,7 @@ async def generate_comparison(
+     category: str = "other",
+     demographics_profile: Optional[Dict[str, Any]] = None,
+     comparison_quality: str = "normal",
++    output_lang: Optional[str] = None,
+ ) -> Tuple[Dict[str, Any], Dict[str, int]]:
+     """Generate detailed comparison between two products.
+ 
+@@ -2547,6 +2569,10 @@ If this is a cross-tier comparison, frame it as "different products for differen
+         if _gpt_winner_lever_enabled():
+             system_msg += _build_independent_winner_block()
+ 
++        if output_lang == "ar" and arabic_verdict_output_enabled():
++            system_msg += _ARABIC_OUTPUT_DIRECTIVE
++            logger.info("[ARABIC_VERDICT_OUTPUT] directive appended category=%s", category)
++
+         # User message: product data wrapped in tags. Both rollback-scrubs are
+         # composed so a cache-carried review_source_quotes (I2.5) OR
+         # youtube_review_signal (S3 L2) is stripped from the json.dumps payload
+diff --git a/app/services/structured_comparison_service.py b/app/services/structured_comparison_service.py
+index 6b771cc9..064a51ca 100644
+--- a/app/services/structured_comparison_service.py
++++ b/app/services/structured_comparison_service.py
+@@ -3614,6 +3614,7 @@ class StructuredComparisonService:
+         user_preferences: Optional[Dict[str, Any]] = None,
+         user_id: Optional[str] = None,
+         explicit_pair: Optional[Tuple[str, str]] = None,
++        output_lang: Optional[str] = None,
+     ) -> Dict[str, Any]:
+         """L2.7 — hard-capped entry point: wraps `_compare_from_text_impl` in
+         asyncio.wait_for(STREAM_HARD_CAP_SECONDS) so the non-streaming path
+@@ -3662,6 +3663,7 @@ class StructuredComparisonService:
+                     user_preferences=user_preferences,
+                     user_id=user_id,
+                     explicit_pair=explicit_pair,
++                    **({"output_lang": output_lang} if output_lang else {}),
+                 ),
+                 timeout=STREAM_HARD_CAP_SECONDS,
+             )
+@@ -3725,6 +3727,7 @@ class StructuredComparisonService:
+         user_preferences: Optional[Dict[str, Any]] = None,
+         user_id: Optional[str] = None,
+         explicit_pair: Optional[Tuple[str, str]] = None,
++        output_lang: Optional[str] = None,
+     ) -> Dict[str, Any]:
+         """Main entry point for text-based comparisons (post-L2.7 inner impl).
+ 
+@@ -4046,6 +4049,7 @@ class StructuredComparisonService:
+                 scores_summary=scores_summary, category=category_used,
+                 demographics_profile=demographics_profile,
+                 comparison_quality=_verdict_quality,
++                **({"output_lang": output_lang} if output_lang else {}),
+             )
+             if orchestrator_timings is not None:
+                 orchestrator_timings["verdict_ms"] = round((time.perf_counter() - t_verdict) * 1000, 1)
+@@ -4063,6 +4067,7 @@ class StructuredComparisonService:
+                     user_preferences=user_preferences, scores_summary=scores_summary,
+                     category=category_used, demographics_profile=demographics_profile,
+                     comparison_quality=_verdict_quality,
++                    **({"output_lang": output_lang} if output_lang else {}),
+                 ),
+                 pain_workflow_context=scores_summary,
+                 stage_timings=orchestrator_timings,
+@@ -4280,6 +4285,7 @@ class StructuredComparisonService:
+         user_preferences: Optional[Dict[str, Any]] = None,
+         user_id: Optional[str] = None,
+         explicit_pair: Optional[Tuple[str, str]] = None,
++        output_lang: Optional[str] = None,
+     ):
+         """Async generator version of compare_from_text that yields partial results."""
+         start_time = datetime.now()
+@@ -4811,6 +4817,7 @@ class StructuredComparisonService:
+                 scores_summary=scores_summary, category=category_used,
+                 demographics_profile=demographics_profile,
+                 comparison_quality=_verdict_quality,
++                **({"output_lang": output_lang} if output_lang else {}),
+             )
+             if _full_deadline_on:
+                 try:
+@@ -4836,6 +4843,7 @@ class StructuredComparisonService:
+                     user_preferences=user_preferences, scores_summary=scores_summary,
+                     category=category_used, demographics_profile=demographics_profile,
+                     comparison_quality=_verdict_quality,
++                    **({"output_lang": output_lang} if output_lang else {}),
+                 ),
+                 pain_workflow_context=scores_summary,
+                 stage_timings=orchestrator_timings,
+@@ -8948,6 +8956,7 @@ class StructuredComparisonService:
+                 # M18 PO-prompts-02 — the regen keeps the same data-quality
+                 # framing as the original verdict (thin data stays hedgeable).
+                 comparison_quality=args.get("comparison_quality", "normal"),
++                **({"output_lang": args["output_lang"]} if args.get("output_lang") else {}),
+             )
+             self._track_gpt_cost(regen_usage)
+             return regen_comparison
+diff --git a/SmartCompareApp/src/utils/dimensionLabel.ts b/SmartCompareApp/src/utils/dimensionLabel.ts
+new file mode 100644
+index 00000000..d735a7bb
+--- /dev/null
++++ b/SmartCompareApp/src/utils/dimensionLabel.ts
+@@ -0,0 +1,17 @@
++/**
++ * W4-14 — a dimension label through the `results.dimension.*` catalog, with the
++ * `localizedCurrency` echo guard: an uncatalogued key, or a t() that echoes the key
++ * (the jest global mock), falls back to the backend label.
++ */
++type TranslateFn = (key: string, options?: Record<string, unknown>) => string;
++
++export function localizedDimensionLabel(
++  key: string | null | undefined,
++  label: string,
++  t: TranslateFn,
++): string {
++  if (!key) return label;
++  const k = `results.dimension.${key}`;
++  const out = t(k, { defaultValue: label });
++  return out === k || typeof out !== 'string' || out.length === 0 ? label : out;
++}

@@ -1,0 +1,72 @@
+feat(W4-14): Arabic on the results surface - dimension labels through the catalog, lang on the compare call, a dark Arabic-verdict directive
+
+Findings PO-CATEGORIES-I18N-04 / -10 / -11 / -12 (-02 is W4-8c #230; -05 is a
+DECISIONS item). Unit base 3985eaac; lands after W4-11 (both edit the verdict
+prompt path).
+
+Client (unflagged, OTA-gated; every EN render byte-identical, pinned):
+- src/utils/dimensionLabel.ts: localizedDimensionLabel(key, label, t) resolves
+  results.dimension.<key> with the localizedCurrency echo guard (a t() that
+  echoes the key, ignores defaultValue, returns a non-string or an empty string,
+  or an uncatalogued key -> the backend label). Routed at DimensionBars'
+  DimensionRow label, InsufficientRow and the point-math safeDelta fallback, and
+  at RunnerUpWinsCard.dimRowText.
+- en.json / ar.json: the 51 results.dimension.* keys (EN = the backend label
+  byte-for-byte; AR = the spec's proposal, native review before the OTA) and the
+  six Arabic CLDR forms of the three referrals.bonus.expiresIn* families with
+  their EN parity twins (_zero/_two without {{count}} in both languages); the
+  three families leave the W3-11 plural-fence allowlist.
+- src/services/api.ts: currentOutputLang() reads the default i18next instance
+  once per request and sends lang=ar (omit-when-unset) on streamComparison's
+  REST params and SSE URL only; EN or unset -> a request byte-identical to today.
+
+Backend - ENABLE_ARABIC_VERDICT_OUTPUT (default OFF, read per call):
+- text_routes: TextCompareRequest.lang (max_length=8 -> 422 when longer) and the
+  lang query param on GET /text/compare and /text/compare/stream;
+  normalize_output_lang keeps the primary subtag ar/en, anything else None; the
+  handlers pass output_lang as a CONDITIONAL kwarg, so a request without lang
+  (every phone before the OTA) makes a service call byte-identical to before.
+- structured_comparison_service: output_lang threaded through compare_from_text,
+  _compare_from_text_impl, compare_from_text_streaming, both generate_comparison
+  calls, both regen_args builders and the self-critique regen - conditional
+  kwargs everywhere.
+- extraction_service: arabic_verdict_output_enabled, normalize_output_lang,
+  _ARABIC_OUTPUT_DIRECTIVE (874 chars: every verdict prose field incl.
+  independent_winner_basis in Modern Standard Arabic; JSON keys, the winner
+  declaration, product/brand names, model numbers, units, currency codes and
+  focus_area kept exactly; Western digits; the nine Arabic banned/scary
+  copy-policy terms forbidden) appended LAST to the verdict system prompt only
+  when output_lang == "ar" and the flag is ON, with the canary line
+  "[ARABIC_VERDICT_OUTPUT] directive appended category=<c>".
+- Flag OFF byte-identical: the 24-cell prompt-capture gate (18 category x prefs
+  x quality cells + 6 demographics cells, both ENABLE_VERDICT_PROMPT_TRUTH
+  states) - system, user, call kwargs BY VALUE and the returned result equal
+  the base for output_lang None/en/ar; flag ON with None/en equal; flag ON + ar
+  == base + DIRECTIVE exactly. The W4-11 render-digest fixture is untouched.
+
+Part C: tests/test_dimension_label_catalog_parity_w414.py, a backend CI test
+reading both client catalogs - every public dimension key localized in both,
+EN equal to the backend label, build_dimensions_v2's 45 reachable keys pinned.
+
+Tests: tests/test_arabic_verdict_output_w414.py (226 nodes in five flag states),
+the parity fence, eight jest suites under __tests__ (dimensionLabels,
+dimensionLabel, DimensionBars.arabicLabels / .globalMockLabel,
+RunnerUpWinsCard.arabicLabels, priceDigits.crossScreen, referralExpiryPlurals,
+api.outputLang) + the tightened pluralFamilies fence; the mutation matrix (21
+red-phase mutants, the green's 27, the three adversary rounds' N/X/C mutants
+and Fable's X4/X2/C3 closing pins) from byte snapshots with sha-verified
+restores; the 261-file comm set at HEAD; the backend and client CI-order sets;
+the full jest suite (44/44 snapshots, no -u); tsc; eslint; the netguard
+ratchet (0 new nodes). Adversary rounds r0/r1/r2 all SOUND; production bytes
+unchanged since the green.
+
+Stated limits: most English prose stays on the Arabic surface (delta_text, the
+factual verdict lines, spec values, review prose, the personalization chip);
+Link mode (/url/compare, a live client caller) and the camera (/image/identify)
+stay English even with the flag ON until W4-14b; compareTextPair (0 callers)
+sends no lang (W4-14e); an Arabic verdict is persisted and re-served to English
+viewers through History/share; the flag stays OFF until W4-14c (Arabic-aware
+guards + English replacement paths), the Arabic max_tokens measurement and the
+device walkthrough.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
