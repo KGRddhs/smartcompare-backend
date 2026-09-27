@@ -58,6 +58,10 @@ from app.services.cache_service import (
 from app.services.drug_database_service import find_matching_drugs, format_drug_context
 from app.utils.db_offload import run_db  # M13-05 / #115 ENABLE_SYNC_DB_OFFLOAD
 from app.services.scoring_service import get_scoring_service, MISSING_SCORE
+from app.services.scoring_service import (  # W4-7 Part B / Part C readers
+    confidence_single_computation_enabled,
+    factcheck_shopping_key_enabled,
+)
 from app.services.api_budget_service import (
     has_budget, record_usage, record_failure, record_success,
     is_circuit_closed,
@@ -1242,6 +1246,96 @@ def _display_product_names(product_data) -> List[str]:
         dedup_brand_name(p.get("brand", ""), p.get("name", ""))
         for p in product_data
     ]
+
+
+def _shopping_cache_key(brand: str, name: str, variant) -> str:
+    """W4-7 Part C.1 -- THE `_get_price` shopping-cache / full_name key (M10 UNIT
+    A3: the size-discriminator carrier). `_get_price` builds its key here; the
+    fact-check readers use it under ENABLE_FACTCHECK_SHOPPING_KEY. Pinned by
+    tests/test_multiplicity_discriminator_policy.py block B."""
+    if variant and variant.lower() in name.lower():
+        return f"{brand} {name}".strip()
+    return f"{brand} {name} {variant or ''}".strip()
+
+
+def _shopping_cache_key_or(brand, name, variant, fallback: str) -> str:
+    """W4-7 (flagged call sites only) -- `_shopping_cache_key`, or `fallback`
+    when the identity is malformed (a non-str variant / a None name raise inside
+    the key expression). `_get_price` keeps calling the raw helper (its own
+    gather contains the raise); `_fetch_product_data` must never newly raise."""
+    try:
+        return _shopping_cache_key(brand, name, variant)
+    except Exception:  # noqa: BLE001 — a flagged read must degrade, never raise
+        return fallback
+
+
+# W4-7 Part B -- the listing count REPLAYS the extractor once per row; every log
+# record that replay emits (``[PRICE] Selected``, ``[PRICE_FILTER_TRACE]``, the
+# W4-1 ``[SHOPPING_CURRENCY_TRUTH]`` and W4-2 ``[SHOPPING_DISCOVERY_URL]`` canary
+# lines, the L2 content-safety line) would be a false or duplicate line in
+# another flag's canary. A ContextVar-scoped filter drops exactly the records
+# created inside the replay: other tasks/threads never see the var set.
+_LISTING_COUNT_REPLAY: "contextvars.ContextVar[bool]" = contextvars.ContextVar(
+    "_w47_listing_count_replay", default=False,
+)
+_LISTING_COUNT_REPLAY_LOGGERS = (
+    "app.services.price_service",
+    "app.services.content_safety_service",
+    "app.services.exchange_rate_service",
+    "app.services.source_router",
+    "app.services.extraction_service",
+)
+
+
+class _ListingCountReplayLogFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        return not _LISTING_COUNT_REPLAY.get()
+
+
+_LISTING_COUNT_REPLAY_FILTER = _ListingCountReplayLogFilter()
+
+
+def _count_identity_matched_rows(key: str, rows, region: str, category) -> int:
+    """W4-7 Part B (ruling R4/R13) -- the honest listing count: the shopping rows
+    the real `extract_price_from_shopping` accepts for this product (identity/
+    title matched, priced), each row judged alone (the pool-level tier filter is
+    NOT replayed -- stated limit). The replay logs NOTHING (the canary lines stay
+    one per real extraction). Never raises."""
+    if not rows:
+        return 0
+    currency = GCC_REGIONS.get(region, GCC_REGIONS["bahrain"])["currency"]
+    for _name in _LISTING_COUNT_REPLAY_LOGGERS:
+        logging.getLogger(_name).addFilter(_LISTING_COUNT_REPLAY_FILTER)  # idempotent
+    n = 0
+    _token = _LISTING_COUNT_REPLAY.set(True)
+    try:
+        for row in rows:
+            try:
+                if extract_price_from_shopping(key, [row], currency, category=category):
+                    n += 1
+            except Exception:  # noqa: BLE001 — a count must never break the fetch
+                continue
+    finally:
+        _LISTING_COUNT_REPLAY.reset(_token)
+    return n
+
+
+def _mark_shopping_pool_captured(service, key: str, captured: bool) -> None:
+    """W4-7 Part B (rulings R28 / R31a) -- flag-ON bookkeeping only. A shopping
+    pool is CAPTURED iff the shopping list returned this request is NON-EMPTY.
+    Every empty pool (a real empty search, a failed or timed-out search, no key
+    or budget, the Tier-1 clamp-timeout substitution) and the supplements
+    branch's synthetic `[]` (no call made; the key stays uncaptured when a later
+    supplements stage overwrites it with a synthetic iHerb rating row) are NOT
+    captured: their keys are kept in a per-service set the stash reads, so their
+    count is None (unknown), never 0. The `_shopping_items_cache` writes
+    themselves are untouched (other readers iterate that list); the last write
+    for a key wins."""
+    uncaptured = service.__dict__.setdefault("_shopping_uncaptured_keys", set())
+    if captured:
+        uncaptured.discard(key)
+    else:
+        uncaptured.add(key)
 
 
 def _product_display_identity(
@@ -5515,7 +5609,9 @@ class StructuredComparisonService:
             # resolver: _clean_specs owns display-stripping and the enriched
             # re-cache still needs the key on the dict.
             citation_confidence = _resolve_citation_confidence(raw_specs, search_snippets)
-            shopping_items = self._shopping_items_cache.get(full_name, [])
+            shopping_items = self._shopping_items_cache.get(
+                _shopping_cache_key_or(brand, name, variant, full_name)
+                if factcheck_shopping_key_enabled() else full_name, [])
             # #108 — full_name feeds the identity fence (flag ON); with the
             # flag OFF the extra argument is ignored, byte-identical.
             shopping_flags = cross_validate_specs_with_shopping(
@@ -5536,7 +5632,15 @@ class StructuredComparisonService:
         # D2 Intervention 1: reviews moved to Phase 1. retailer_ratings is still
         # collected here (after Phase 1 populated shopping_items_cache via
         # _get_price) for downstream verify_review_sentiment + fact-check use.
-        retailer_ratings = collect_retailer_ratings(full_name, self._shopping_items_cache)
+        if factcheck_shopping_key_enabled():
+            # W4-7 Part C — read the rows under the key _get_price wrote; the
+            # rating identity string stays full_name.
+            _fc_key = _shopping_cache_key_or(brand, name, variant, full_name)
+            _fc_view = {full_name: self._shopping_items_cache.get(_fc_key, [])}
+            retailer_ratings = collect_retailer_ratings(full_name, _fc_view)
+        else:
+            _fc_view = None
+            retailer_ratings = collect_retailer_ratings(full_name, self._shopping_items_cache)
 
         phase2_tasks = []
         phase2_keys = []
@@ -5554,7 +5658,8 @@ class StructuredComparisonService:
         async def _rating_with_cap():
             try:
                 return await asyncio.wait_for(
-                    self._get_verified_rating(full_name),
+                    (self._get_verified_rating(full_name) if _fc_view is None
+                     else self._get_verified_rating(full_name, cache_view=_fc_view)),
                     timeout=_PHASE2_RATING_TIMEOUT,
                 )
             except asyncio.TimeoutError:
@@ -5755,8 +5860,28 @@ class StructuredComparisonService:
         else:
             result["_review_verification"] = {"sentiment_consistent": None, "gpt_rating": None, "serper_avg_rating": None, "deviation": None}
 
-        shopping_items = self._shopping_items_cache.get(full_name, [])
+        shopping_items = self._shopping_items_cache.get(
+            _shopping_cache_key_or(brand, name, variant, full_name)
+            if factcheck_shopping_key_enabled() else full_name, [])
         result["_price_verification"] = verify_price(result.get("price"), shopping_items)
+        if confidence_single_computation_enabled():
+            # W4-7 Part B (R4) — the identity-matched listing count under the
+            # _get_price key; popped by the builder before the wire (R5).
+            _lc_key = _shopping_cache_key_or(brand, name, variant, full_name)
+            result["_shopping_listing_count"] = _count_identity_matched_rows(
+                _lc_key, self._shopping_items_cache.get(_lc_key) or [], region, category,
+            )
+            if _lc_key not in self._shopping_items_cache:
+                # R25 — no pool captured for this product this request (a real
+                # price-cache hit writes no rows; a partial never gets here): the
+                # count is UNKNOWN, never 0 — the builder then passes today's
+                # evidence for this product.
+                result["_shopping_listing_count"] = None
+            elif _lc_key in getattr(self, "_shopping_uncaptured_keys", ()):
+                # R28 / R31a — no NON-EMPTY shopping pool was returned for this
+                # product (an empty search whatever its cause, the supplements
+                # `[]`): the count is unknown too, not 0.
+                result.update(_shopping_listing_count=None)
 
         if result.get("reviews") and isinstance(result["reviews"], dict):
             result["reviews"] = clean_review_content(result["reviews"])
@@ -6206,10 +6331,7 @@ class StructuredComparisonService:
         # multi-size page silently reverts to pending (CAPTURE_AMBIGUOUS_PRICE).
         # Pinned by tests/test_multiplicity_discriminator_policy.py block B,
         # which reproduces this assembly verbatim.
-        if variant and variant.lower() in name.lower():
-            full_name = f"{brand} {name}".strip()
-        else:
-            full_name = f"{brand} {name} {variant or ''}".strip()
+        full_name = _shopping_cache_key(brand, name, variant)
 
         # Zyte render-tier (2026-06-26) — OFF-CLOCK luxury-render path. Gated by
         # ENABLE_ZYTE_RENDER (default OFF → NEVER fires on the live request path, so
@@ -6846,6 +6968,9 @@ class StructuredComparisonService:
                 search_results = {"shopping": [], "organic": []}
                 shopping_items = []
                 self._shopping_items_cache[full_name] = []
+                if confidence_single_computation_enabled():
+                    # W4-7 R28 — a synthetic pool: no shopping call was made.
+                    _mark_shopping_pool_captured(self, full_name, False)
             else:
                 if _race_deadline is not None:
                     # Genuine-priority clamp (site A) — never let the Tier-1
@@ -6878,6 +7003,16 @@ class StructuredComparisonService:
                 _ps_mark("serper_shopping")  # WS2 — includes gl=bh + (often) gl=us fallback
                 shopping_items = search_results.get("shopping", [])
                 self._shopping_items_cache[full_name] = shopping_items
+                if confidence_single_computation_enabled():
+                    # W4-7 R31a — captured iff the shopping list returned this
+                    # request is NON-EMPTY. An empty list cannot say whether a
+                    # search really ran (a failed / timed-out search, no key or
+                    # budget, the clamp-timeout substitution all look like a
+                    # real empty 200), so every empty pool is unknown.
+                    _mark_shopping_pool_captured(
+                        self, full_name,
+                        bool(shopping_items),
+                    )
                 # Bundle C v1 hot-fix — always-on log of gl=us fallback activity.
                 # Helps Ahmed/qa see in Railway logs WHY non-supplement queries
                 # still hit estimated despite the A.3.3-fix-2 gl=us fallback.
@@ -8114,9 +8249,12 @@ class StructuredComparisonService:
             track_gpt_cost_fn=self._track_gpt_cost,
         )
 
-    async def _get_verified_rating(self, full_name: str) -> Dict[str, Any]:
-        """Get verified rating."""
-        return await get_verified_rating(full_name, self._shopping_items_cache, track_serper_cost_fn=self._track_serper_cost)
+    async def _get_verified_rating(self, full_name: str, cache_view: Optional[Dict] = None) -> Dict[str, Any]:
+        """Get verified rating. W4-7 Part C: `cache_view` (flag ON) is the
+        {full_name: rows-under-the-_get_price-key} lookup; None = today's cache."""
+        return await get_verified_rating(
+            full_name, self._shopping_items_cache if cache_view is None else cache_view,
+            track_serper_cost_fn=self._track_serper_cost)
 
     async def _smart_fallback_extract(
         self,
