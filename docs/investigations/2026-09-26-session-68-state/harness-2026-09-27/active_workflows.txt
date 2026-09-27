@@ -1,0 +1,12 @@
+# run ids of workflows launched this session (one per line); the stall monitor reads this file
+#DONE wf_1a906a58-328 HERMETICITY round 6 (R22 fix + adversary) launched 2026-09-27 00:0x
+#DONE wf_a7c536b6-2f3 W4-13 adversary r3 (+1 fix round) launched 2026-09-27 00:0x
+#DONE wf_20507079-855 W4-13 fix round 5 (R14-R16) + adversary r5 launched 2026-09-27 01:00
+#DONE wf_41e3285c-833 W4-12 fix round 4 (R19-R20) + adversary r4 launched 2026-09-27 01:33
+#DONE wf_daaf1b22-d85 W4-6a adversary r0 (+1 fix round) launched 2026-09-27 01:41
+#DONE wf_d2435a7e-d0c W4-6a fix r1 (R21-R22 pins) + adversary r1 launched 2026-09-27 02:16
+#DONE wf_4d187cca-1b2 W4-12 fix r5 (R21-R22) + adversary r5 launched 2026-09-27 02:42
+#DONE wf_9b41896f-e97 W4-6a fix r2 (R23 pins) + adversary r2 launched 2026-09-27 03:00
+wf_eb71cd06-f9c W4-8 green resume (fix r1 on the red, R1-R9) + adversary launched 2026-09-27 03:34
+wf_8368201c-0d1 W4-11 red launched 2026-09-27 03:47 (worktree at 58a86b3c)
+wf_57403934-b16 W4-7 red launched 2026-09-27 03:58 (worktree at 15e1fb89)

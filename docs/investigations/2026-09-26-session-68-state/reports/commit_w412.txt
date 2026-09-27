@@ -1,0 +1,26 @@
+feat(verdict): W4-12 display contract - one spelling, one margin, one verdict (ENABLE_SINGLE_VERDICT_MARGIN + ENABLE_SMART_PICK_VERDICT_CAPTION; the score-internals scrub shared with the SSE verdict frame)
+
+Two flags, both default OFF, read per call:
+- ENABLE_SINGLE_VERDICT_MARGIN: scoring_v2.win_margin is the PRE-nudge
+  calibrated gap (ties -> 0) and overview.winner.margin carries the same value;
+  the flag is read ONCE per stream and routed into the builder so the SSE
+  verdict frame and complete can never disagree.
+- ENABLE_SMART_PICK_VERDICT_CAPTION: the home smart-pick caption is
+  factual_verdict.line1, else the score-scrubbed overview reason, else the
+  reason_key copy; a caption that is just the winner's name is a tautology.
+
+Unflagged by ruling (each a defect with no legitimate reader): the SIB-4
+score-internals scrub of every GPT verdict field moves into
+scrub_verdict_prose and runs BEFORE the SSE verdict frame (metadata
+.verdict_scrubbed telemetry, one WARNING per request, own text never
+counted); the review_summary alias and the review praise ship the scrubbed
+copy; winner_name / runner_up_name / profile names use ONE display spelling
+(dedup_brand_name); the winner's tile is never captioned with only the
+loser's name (whole-token matching, longest-first masking, glued '+' is the
+token 'plus', shared forms are masked and credit neither side, the raw
+punctuation-kept fallback only when no distinguishing form remains).
+
+111-node unit file; five adversary rounds; gate 3 base == base2 record by
+record with the enumerated 48/39/19 deltas at head.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>

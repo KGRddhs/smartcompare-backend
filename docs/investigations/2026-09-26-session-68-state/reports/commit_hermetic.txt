@@ -1,0 +1,24 @@
+tests: process-wide network guard (netguard 04c + curl_cffi), teardown hermeticity sentinel, fixes for #183 #185 #186, and the CI tiktoken warm step
+
+Closes #183, #184, #185, #186. Test infrastructure only; git diff --stat -- app/ is empty.
+
+- tests/_netguard.py: process-wide guard installed by tests/conftest.py before any
+  app import - socket connect/getaddrinfo/create_connection, the Windows proactor
+  connect and the four curl_cffi entry points; loopback and IP literals allowed,
+  allow_network marker, LIVE=1 leaves it uninstalled; per-node attribution and a
+  JSON report; scripts/netguard_ratchet.py + tests/.network_attempt_baseline.txt
+  (205 nodes) fail CI only on a NEW egress node.
+- tests/_hermeticity.py: teardown sentinel for the #183 (module-global leak),
+  #185 (sys.modules identity) and #186 (instance-setattr shadow on the scoring
+  singleton, root-caused to pytest monkeypatch undo) classes.
+- The four issues fixed at the source; the SSRF live-DNS tests use a test-side
+  resolver stub.
+- R22 (PR #207 round 1 was red at collection on a cold runner): a job-level
+  TIKTOKEN_CACHE_DIR + a 'Warm tiktoken cache' step before pytest, one shared
+  loader tests/_tokenizer.py (fails under GITHUB_ACTIONS, skips elsewhere) used by
+  the three tiktoken test sites, AST pins against raw loader calls and against
+  import-time calls without module_level=True, and the empty-cache --collect-only
+  reproduction (1 error before, 0 after).
+- tests/test_hermeticity_pins.py: 103 pins, mutation-checked from byte snapshots.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
