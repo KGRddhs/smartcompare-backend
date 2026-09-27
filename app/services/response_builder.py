@@ -75,7 +75,12 @@ def _safe_review_praise(pd: Dict[str, Any]) -> Optional[str]:
     Faithful-Results Phase 5 (Contract 2). Never raises."""
     try:
         from app.services.review_service import build_review_praise
-        return build_review_praise((pd or {}).get("reviews"))
+        rv = (pd or {}).get("reviews")
+        # W4-12 (F2) — the praise is RENDERED; build it from the scrubbed
+        # review_summary (a copy — the caller's reviews dict is never mutated).
+        if isinstance(rv, dict) and isinstance(rv.get("review_summary"), dict):
+            rv = {**rv, "review_summary": scrub_review_summary(rv["review_summary"])}
+        return build_review_praise(rv)
     except Exception:  # noqa: BLE001 — praise is additive; never break the response
         return None
 
@@ -121,6 +126,23 @@ def _honest_partial_scoring_enabled() -> bool:
     )
 
 
+def single_verdict_margin_enabled() -> bool:
+    """W4-12 / PO-VERDICT-TRUTH-14 flag reader (default OFF). Read live so a
+    Railway flip / monkeypatch takes effect without a restart."""
+    return os.environ.get("ENABLE_SINGLE_VERDICT_MARGIN", "").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
+
+
+def _calibrated_gap(scoring_result: Dict[str, Any]) -> int:
+    """W4-12 — the PRE-nudge calibrated gap between the two overall scores
+    (an exact calibrated tie -> 0). Same extraction as `_build_scoring_v2`."""
+    sr = scoring_result or {}
+    raw_a = sr.get("scores", {}).get("product_0", {}).get("overall", 50)
+    raw_b = sr.get("scores", {}).get("product_1", {}).get("overall", 50)
+    return abs(calibrate_score(raw_a) - calibrate_score(raw_b))
+
+
 def _scoring_overall_absent(scoring_result: Dict[str, Any]) -> bool:
     """W4-4 — True when the scorer never produced BOTH products' `overall`, i.e.
     when _build_scoring_v2's `, 50)` defaults would fabricate a score. Pure, no
@@ -146,6 +168,18 @@ def _winner_prose_reconcile_enabled() -> bool:
     surviving reason text is kept."""
     return os.environ.get("ENABLE_WINNER_PROSE_RECONCILE", "").strip().lower() in (
         "1", "true", "yes", "on",
+    )
+
+
+def _deterministic_winner_reasons(winner_name: str) -> tuple:
+    """W4-12 (R8) — the two deterministic winner-reason templates
+    `deterministic_verdict_fields` writes: ("edges ahead" when both overalls
+    are numeric, "leads" otherwise). Single source for that function and for
+    `scrub_verdict_prose`'s own-text exclusion (our replacement text is never
+    counted as a GPT scrub)."""
+    return (
+        f"{winner_name} edges ahead on the overall picture.",
+        f"{winner_name} leads on the overall picture.",
     )
 
 
@@ -180,15 +214,16 @@ def deterministic_verdict_fields(
 
     out = {"winner_declaration": winner_name, "winner_reason": "", "key_tradeoff": ""}
     if winner_name:
+        _edges_ahead, _leads = _deterministic_winner_reasons(winner_name)
         if isinstance(w_overall, (int, float)) and isinstance(l_overall, (int, float)):
             # margin retained for logging ONLY — never surfaced in user-facing text.
             logger.debug(
                 "[PARTIAL_VERDICT] %s qualitative win (margin=%s)",
                 winner_name, round(abs(w_overall - l_overall), 1),
             )
-            out["winner_reason"] = f"{winner_name} edges ahead on the overall picture."
+            out["winner_reason"] = _edges_ahead
         else:
-            out["winner_reason"] = f"{winner_name} leads on the overall picture."
+            out["winner_reason"] = _leads
     if tradeoffs:
         lw = (tradeoffs[0] or {}).get("loser_wins") or {}
         dim = lw.get("dimension")
@@ -305,6 +340,80 @@ def reconcile_winner_prose(
     if comparison.get("winner_reason"):
         comparison["winner_reason"] = _QUALITATIVE_WINNER_REASON(_winner_name)
     return winner_index
+
+
+def scrub_verdict_prose(
+    comparison: Dict[str, Any],
+    product_names: List[str],
+    winner_index: int,
+) -> bool:
+    """W4-12 / PO-VERDICT-TRUTH-03 + -09 — THE fail-closed score-internals scrub
+    of every user-visible GPT verdict field, applied to `comparison` IN PLACE.
+
+    It is the SIB-4 block (value_context / best_for / specs_comparison /
+    personalized_insights) MOVED out of `build_comparison_response`, plus the
+    winner-text write-back (winner_reason -> scrubbed or the qualitative
+    fallback; key_tradeoff / winner_declaration only when the key is present),
+    so the SSE `verdict` frame (scs, right after `reconcile_winner_prose`) and
+    the builder share ONE scrub. Idempotent (`strip_score_internals` is), so the
+    builder's second call on the same dict changes nothing.
+
+    Returns True iff the INCOMING winner_reason was a non-empty string that the
+    strip EMPTIED (the fallback reason is then served) AND that text is not our
+    own: neither the qualitative fallback for the reconciled winner nor the
+    reconcile's deterministic replacement (R8). So a partial strip, a reason the
+    reconcile already replaced, and this helper's own write-back (the builder's
+    second call over a frame the SSE path already scrubbed) are never counted,
+    even when the winner's display name itself trips the strip (e.g.
+    "5-Point Harness"). When True it logs ONE `[VERDICT_SCRUB]` WARNING (no
+    query, no user id) — one line per request."""
+    _vc = comparison.get("value_context")
+    if isinstance(_vc, dict):
+        for _k, _v in list(_vc.items()):
+            if isinstance(_v, str):
+                _vc[_k] = strip_score_internals(_v)
+    elif isinstance(_vc, str):
+        comparison["value_context"] = strip_score_internals(_vc)
+    _bf = comparison.get("best_for")
+    if isinstance(_bf, dict):
+        for _k, _v in list(_bf.items()):
+            if isinstance(_v, str):
+                _bf[_k] = strip_score_internals(_v)
+    _sc = comparison.get("specs_comparison")
+    if isinstance(_sc, dict):
+        for _k, _v in list(_sc.items()):
+            if isinstance(_v, list):
+                _sc[_k] = [s for s in _v if not has_score_internals(s)]
+    _pi = comparison.get("personalized_insights")
+    if isinstance(_pi, list):
+        for _item in _pi:
+            if isinstance(_item, dict) and isinstance(_item.get("insight"), str):
+                _item["insight"] = strip_score_internals(_item["insight"])
+    # Winner text — the builder's exact `_winner_name` / `_scrubbed_*`
+    # expressions, written back (the WS-A alias rule for the optional keys).
+    _winner_name = product_names[winner_index] if product_names else ""
+    _original = comparison.get("winner_reason", "")
+    _stripped = strip_score_internals(_original)
+    comparison["winner_reason"] = _stripped or _QUALITATIVE_WINNER_REASON(_winner_name)
+    if "key_tradeoff" in comparison:
+        comparison["key_tradeoff"] = strip_score_internals(comparison.get("key_tradeoff", "")) or ""
+    if "winner_declaration" in comparison:
+        comparison["winner_declaration"] = (
+            strip_score_internals(comparison.get("winner_declaration", "")) or ""
+        )
+    # R8 — decided from the INCOMING text only; our own fallback / the
+    # reconcile's deterministic replacement is never counted (or logged).
+    _own_texts = (_QUALITATIVE_WINNER_REASON(_winner_name),) + _deterministic_winner_reasons(_winner_name)
+    scrubbed = (
+        isinstance(_original, str) and bool(_original.strip()) and _stripped == ""
+        and _original.strip() not in _own_texts
+    )
+    if scrubbed:
+        logger.warning(
+            "[VERDICT_SCRUB] winner_reason emptied by the score-internals scrub winner=%r dropped=%r",
+            _winner_name, _original[:200],
+        )
+    return scrubbed
 
 
 def _eval_capture_debug_enabled() -> bool:
@@ -1123,6 +1232,7 @@ def _build_scoring_v2(
     winner_index: int,
     *,
     honest_null: bool = True,
+    single_margin: bool = False,
 ) -> Optional[Dict[str, Any]]:
     """Bundle E § Decision 2 — emit calibrated overall_score + dimensions[].
     Backward-compatible: lives alongside legacy `scoring` key for one release.
@@ -1130,7 +1240,12 @@ def _build_scoring_v2(
     W4-4 — with ENABLE_HONEST_PARTIAL_SCORING ON (and `honest_null`), an absent
     `overall` returns None instead of the fabricated 70/69 pair. The builder
     passes `honest_null` only for a partial response (metadata.partial is True);
-    the `len < 2 → {}` guard fires first in both flag states."""
+    the `len < 2 → {}` guard fires first in both flag states.
+
+    W4-12 — `single_margin` (default False, so direct callers keep today's
+    value; the builder passes the ENABLE_SINGLE_VERDICT_MARGIN state) makes
+    `win_margin` the PRE-nudge calibrated gap (ties -> 0). The nudged
+    `overall_score` pair is unchanged (the phones crown from it)."""
     if len(product_data) < 2:
         return {}
     if honest_null and _honest_partial_scoring_enabled() and _scoring_overall_absent(scoring_result):
@@ -1202,7 +1317,9 @@ def _build_scoring_v2(
             "product_b": score_b,
             "winner_idx": winner_index,
         },
-        "win_margin": abs(score_a - score_b),
+        "win_margin": (
+            _calibrated_gap(scoring_result) if single_margin else abs(score_a - score_b)
+        ),
         "dimensions": dimensions,
         "factual_verdict": factual_verdict,
         # S3 L3.4 — qualitative reasons backing the winner pick (price
@@ -1347,6 +1464,7 @@ def build_comparison_response(
     elapsed_seconds: float = 0.0,
     metadata: Optional[Dict[str, Any]] = None,
     cohort_summary: Optional[Dict[str, Any]] = None,
+    _single_margin: Optional[bool] = None,
 ) -> Dict[str, Any]:
     """Build the full structured comparison response.
 
@@ -1372,6 +1490,13 @@ def build_comparison_response(
     match quality via _build_cohort_summary); the builder defensively
     re-validates so a malformed/zero/blank value is OMITTED (the badge hides
     when peer_count <= 0 or governorate is blank).
+
+    W4-12 (K12) — `_single_margin` is PRIVATE: None (the default, every
+    ordinary caller) reads ENABLE_SINGLE_VERDICT_MARGIN once per build;
+    `compare_from_text_streaming` (its only production caller that passes it)
+    reads the flag ONCE per stream and routes the value here, so the SSE
+    `verdict` frame and `complete` can never disagree on the margin. Tests may
+    pass it.
     """
     # Resolve product_data / products alias
     if products is not None and product_data is None:
@@ -1629,28 +1754,11 @@ def build_comparison_response(
     # whole list elements for advantages/similar (pros/cons semantics: an
     # advantage that is purely a number is meaningless once the number is
     # removed). pros/cons are .pop()'d off `comparison` upstream → already safe.
-    _vc = comparison.get("value_context")
-    if isinstance(_vc, dict):
-        for _k, _v in list(_vc.items()):
-            if isinstance(_v, str):
-                _vc[_k] = strip_score_internals(_v)
-    elif isinstance(_vc, str):
-        comparison["value_context"] = strip_score_internals(_vc)
-    _bf = comparison.get("best_for")
-    if isinstance(_bf, dict):
-        for _k, _v in list(_bf.items()):
-            if isinstance(_v, str):
-                _bf[_k] = strip_score_internals(_v)
-    _sc = comparison.get("specs_comparison")
-    if isinstance(_sc, dict):
-        for _k, _v in list(_sc.items()):
-            if isinstance(_v, list):
-                _sc[_k] = [s for s in _v if not has_score_internals(s)]
-    _pi = comparison.get("personalized_insights")
-    if isinstance(_pi, list):
-        for _item in _pi:
-            if isinstance(_item, dict) and isinstance(_item.get("insight"), str):
-                _item["insight"] = strip_score_internals(_item["insight"])
+    # W4-12 — the block MOVED into `scrub_verdict_prose` (shared with the SSE
+    # `verdict` emit), which also writes the scrubbed winner text back; its
+    # return value is the `metadata.verdict_scrubbed` telemetry (written below,
+    # once `result` exists).
+    _verdict_scrubbed = scrub_verdict_prose(comparison, product_names, winner_index)
 
     # Task C3 — fail-closed price-adjective drop (defense-in-depth beside C1/C2).
     # The price-pending normalization above runs FIRST, so a non-showable price
@@ -1727,6 +1835,8 @@ def build_comparison_response(
     # W4-4 (FABLE RED-GATE ruling 1) — the honest-partial null and blanks are
     # SCOPED to partial responses; a non-partial build keeps today's behaviour.
     _w44_is_partial = isinstance(metadata, dict) and metadata.get("partial") is True
+    # W4-12 (K12) — the margin flag is read ONCE per build, or routed in by scs.
+    _margin_on = single_verdict_margin_enabled() if _single_margin is None else bool(_single_margin)
 
     result = {
         "success": True,
@@ -1882,6 +1992,7 @@ def build_comparison_response(
 
         "scoring_v2": _build_scoring_v2(
             product_data, scoring_result, category_used, winner_index, honest_null=_w44_is_partial,
+            single_margin=_margin_on,
         ),
 
         "personalization": {
@@ -1955,6 +2066,15 @@ def build_comparison_response(
     # partial updates — keys not in the override are left untouched.
     if metadata:
         result["metadata"].update(metadata)
+    # W4-12 — scrub telemetry: present (True) only when the strip emptied the
+    # reason on THIS call; absent otherwise (scs routes its own via `metadata`).
+    if _verdict_scrubbed:
+        result["metadata"]["verdict_scrubbed"] = True
+    # W4-12 ENABLE_SINGLE_VERDICT_MARGIN — one margin: the overview carries the
+    # scoring_v2 value, but only when there IS a second margin ({} / None keep
+    # today's raw overview margin).
+    if _margin_on and isinstance(result.get("scoring_v2"), dict) and result["scoring_v2"]:
+        result["overview"]["winner"]["margin"] = result["scoring_v2"]["win_margin"]
 
     # Phase 3.1 — cohort proof line. Attach `cohort_summary` at the response
     # ROOT only when the orchestrator resolved a real cohort match AND the
@@ -2007,6 +2127,13 @@ def build_comparison_response(
         # (FE branches on presence). Built from the reviews the pipeline already
         # has — zero extra API calls; ratings never fabricated.
         pd["review_praise"] = _safe_review_praise(pd)
+        # W4-12 — the alias re-shipped the RAW review_summary (the canonical
+        # projection is scrubbed); ship the scrubbed copy in a NEW dict — the
+        # caller's reviews object may be cache-owned. Placed after the praise
+        # line (convention: both surfaces' praise derive from the same input).
+        _rv = pd.get("reviews")
+        if isinstance(_rv, dict) and isinstance(_rv.get("review_summary"), dict):
+            pd["reviews"] = {**_rv, "review_summary": scrub_review_summary(_rv["review_summary"])}
         if "rating_count" not in pd:
             pd["rating_count"] = pd.get("review_count")
         # Faithful-Results Phase 3.2 (Contract 1) — category_profile: an ordered,

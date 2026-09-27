@@ -494,6 +494,7 @@ def test_04_flag_on_early_buffer_partial_nulls_scoring_v2(monkeypatch, specs_onl
 @pytest.mark.parametrize("flag_value", FLAG_OFF_VALUES)
 def test_05a_pin_flag_off_builder_is_unchanged(monkeypatch, flag_value):
     """PIN (flag-OFF identity). Mutation 'reader returns True' reddens this."""
+    monkeypatch.delenv("ENABLE_SINGLE_VERDICT_MARGIN", raising=False)  # W4-12 R5: pins the margin-flag-OFF value
     _set_flag(monkeypatch, flag_value)
     res = _builder()
     assert res["scoring_v2"]["overall_score"] == FABRICATED_OVERALL
@@ -507,6 +508,7 @@ def test_05a_pin_flag_off_builder_is_unchanged(monkeypatch, flag_value):
 @pytest.mark.parametrize("flag_value", FLAG_OFF_VALUES)
 def test_05b_pin_flag_off_post_gather_partial_is_unchanged(monkeypatch, compute_spy, flag_value):
     """PIN (flag-OFF identity for R1(i)): no compute, scores {}, 70/69, reason kept."""
+    monkeypatch.delenv("ENABLE_SINGLE_VERDICT_MARGIN", raising=False)  # W4-12 R5: pins the margin-flag-OFF value
     _set_flag(monkeypatch, flag_value)
     resp = _build(_post_gather_twin())
     assert compute_spy == [], "flag OFF must not compute scores on the partial path"
@@ -520,6 +522,7 @@ def test_05b_pin_flag_off_post_gather_partial_is_unchanged(monkeypatch, compute_
 @pytest.mark.parametrize("flag_value", FLAG_OFF_VALUES)
 def test_05c_pin_flag_off_early_partial_is_unchanged(monkeypatch, flag_value):
     """PIN (flag-OFF identity for R1(ii)/(iii))."""
+    monkeypatch.delenv("ENABLE_SINGLE_VERDICT_MARGIN", raising=False)  # W4-12 R5: pins the margin-flag-OFF value
     _set_flag(monkeypatch, flag_value)
     resp = _build(_early_twin())
     assert resp["scoring_v2"]["overall_score"] == FABRICATED_OVERALL
@@ -769,6 +772,7 @@ def test_15_pin_non_partial_absent_overall_keeps_calibrated_block(monkeypatch, f
     """PIN. Without it the partial scoping is guarded only by flag-ON runs of
     other files (CI runs flag OFF). Mutation 'honest_null unscoped' reddens the
     flag-ON row."""
+    monkeypatch.delenv("ENABLE_SINGLE_VERDICT_MARGIN", raising=False)  # W4-12 R5: pins the margin-flag-OFF value
     _set_flag(monkeypatch, flag_value)
     res = _builder(partial=False)
     assert isinstance(res["scoring_v2"], dict) and res["scoring_v2"]
