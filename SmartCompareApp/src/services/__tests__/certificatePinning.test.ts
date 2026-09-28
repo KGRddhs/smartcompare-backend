@@ -14,9 +14,11 @@
  */
 
 const mockInitializeSslPinning = jest.fn();
+const mockAddSslPinningErrorListener = jest.fn();
 jest.mock('react-native-ssl-public-key-pinning', () => ({
   initializeSslPinning: (...args: unknown[]) => mockInitializeSslPinning(...args),
   isSslPinningAvailable: () => false,
+  addSslPinningErrorListener: (...args: unknown[]) => mockAddSslPinningErrorListener(...args),
 }));
 
 const mockCaptureMessage = jest.fn();
@@ -54,6 +56,7 @@ describe('setupCertificatePinning', () => {
   beforeEach(() => {
     savedDev = devFlag();
     mockInitializeSslPinning.mockReset().mockResolvedValue(undefined);
+    mockAddSslPinningErrorListener.mockReset().mockReturnValue({ remove: jest.fn() });
     mockCaptureMessage.mockReset();
   });
 
@@ -121,5 +124,129 @@ describe('setupCertificatePinning', () => {
     await setupCertificatePinning();
     await setupCertificatePinning();
     expect(mockInitializeSslPinning).toHaveBeenCalledTimes(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Session 69 U5 (audit BLD-BP-01): the LIVE chain of web-production-58776
+// measured 2026-09-29 is leaf <- Let's Encrypt YE2 <- ISRG Root YE <- ISRG
+// Root X2. Only the ISRG Root X2 pin matched (X1 on devices that end the chain
+// there), and that match disappears the day a phone trusts Root YE directly
+// (path building then stops at Root YE). Every SPKI below was derived from the
+// PEMs on https://letsencrypt.org/certificates/ (certs/gen-y/*.pem); YE2 and
+// Root YE were also cross-checked against the live chain.
+// ---------------------------------------------------------------------------
+const LE_YE2 = 's/tdAOmUzd8syaTuqfgGvFcn6DzA5Cmb+Vby1ST+U3Y=';
+const LE_YE3 = 'ppiiCCS+BOR6GjPE+kiHMb6SAR8jox6QDiyibJwqz84=';
+const LE_YR1 = 'LoMHBotttiDko50Gi13uXW71eIy7LAttI+rYT8wXF4w=';
+const LE_YR2 = 'nWN7PSep5XDQdge5zK24CnCRXHr3KvzhKEGxsdqCX9E=';
+const LE_YR3 = 'UaqofZhLVZrGnpKfiIoCLYMuCJ/026CkErUQG8pLx5k=';
+const ISRG_ROOT_YE = 'sCkq5UWXjg+7mKu9lMhhYF5bGLsy7VI/UNW3tccdR7w=';
+const ISRG_ROOT_YR = 'fk6IOKit1ild5647BH06ujSIq5XbCgqlbYl6ANhhi88=';
+
+describe('setupCertificatePinning — Gen-Y chain coverage (session 69 U5)', () => {
+  const devFlag = () => (globalThis as any).__DEV__;
+  let savedDev: unknown;
+  beforeEach(() => {
+    savedDev = devFlag();
+    mockInitializeSslPinning.mockReset().mockResolvedValue(undefined);
+    mockAddSslPinningErrorListener.mockReset().mockReturnValue({ remove: jest.fn() });
+    mockCaptureMessage.mockReset();
+  });
+  afterEach(() => {
+    (globalThis as any).__DEV__ = savedDev;
+  });
+
+  const hashesOf = async () => {
+    const { setupCertificatePinning } = loadModule();
+    await setupCertificatePinning();
+    return (mockInitializeSslPinning.mock.calls[0][0] as Record<string, any>)[RAILWAY_HOST]
+      .publicKeyHashes as string[];
+  };
+
+  it('pins every certificate of the LIVE chain measured 2026-09-29 (YE2, Root YE, Root X2)', async () => {
+    const hashes = await hashesOf();
+    for (const pin of [LE_YE2, ISRG_ROOT_YE, ISRG_ROOT_X2]) expect(hashes).toContain(pin);
+  });
+
+  it('pins the whole Gen-Y family so any LE rotation inside it keeps the store binary alive', async () => {
+    const hashes = await hashesOf();
+    for (const pin of [LE_YE1, LE_YE2, LE_YE3, LE_YR1, LE_YR2, LE_YR3, ISRG_ROOT_YE, ISRG_ROOT_YR]) {
+      expect(hashes).toContain(pin);
+    }
+  });
+
+  it('is additive: the previous six pins all remain', async () => {
+    const hashes = await hashesOf();
+    for (const pin of [ISRG_ROOT_X2, ISRG_ROOT_X1, LE_YE1, LE_E7, LE_E8, LE_E5]) expect(hashes).toContain(pin);
+    expect(new Set(hashes).size).toBe(hashes.length);
+  });
+
+  it('registers a pin-error listener after a successful init and forwards a mismatch to Sentry', async () => {
+    (globalThis as any).__DEV__ = false;
+    const { setupCertificatePinning } = loadModule();
+    await setupCertificatePinning();
+    expect(mockAddSslPinningErrorListener).toHaveBeenCalledTimes(1);
+    const listener = mockAddSslPinningErrorListener.mock.calls[0][0] as (e: any) => void;
+    listener({ serverHostname: RAILWAY_HOST, message: 'Pin verification failed' });
+    expect(mockCaptureMessage).toHaveBeenCalledTimes(1);
+    const [message, context] = mockCaptureMessage.mock.calls[0];
+    expect(message).toContain('[SECURITY]');
+    expect(message.toLowerCase()).toContain('pin');
+    expect((context as any).level).toBe('error');
+    expect(String((context as any).extra.serverHostname)).toBe(RAILWAY_HOST);
+  });
+
+  it('does not register the listener when init failed (nothing is pinned to report on)', async () => {
+    (globalThis as any).__DEV__ = false;
+    mockInitializeSslPinning.mockRejectedValue(new Error('boom'));
+    const { setupCertificatePinning } = loadModule();
+    await setupCertificatePinning();
+    expect(mockAddSslPinningErrorListener).not.toHaveBeenCalled();
+  });
+
+  it('a listener that throws never breaks the init path, never reports "unpinned", and keeps the init latched', async () => {
+    (globalThis as any).__DEV__ = false;
+    mockAddSslPinningErrorListener.mockImplementation(() => {
+      throw new Error('listener unavailable');
+    });
+    const { setupCertificatePinning } = loadModule();
+    await expect(setupCertificatePinning()).resolves.toBeUndefined();
+    // The inner try/catch must swallow it: a throw reaching the outer catch
+    // would emit a FALSE "session is running unpinned" warning for a session
+    // that IS pinned, and would leave the init un-latched.
+    expect(mockCaptureMessage).not.toHaveBeenCalled();
+    await setupCertificatePinning();
+    expect(mockInitializeSslPinning).toHaveBeenCalledTimes(1);
+  });
+
+  it('the exact pin set is the exported BACKEND_PUBLIC_KEY_HASHES (13 pins, no leaf, no strays)', async () => {
+    const mod = loadModule();
+    await mod.setupCertificatePinning();
+    const hashes = (mockInitializeSslPinning.mock.calls[0][0] as Record<string, any>)[RAILWAY_HOST]
+      .publicKeyHashes as string[];
+    const expected = [
+      ISRG_ROOT_X2, ISRG_ROOT_X1, ISRG_ROOT_YE, ISRG_ROOT_YR,
+      LE_YE2, LE_YE1, LE_YE3, LE_YR1, LE_YR2, LE_YR3,
+      LE_E7, LE_E8, LE_E5,
+    ];
+    expect(new Set(hashes)).toEqual(new Set(expected));
+    expect(hashes).toHaveLength(13);
+    expect([...mod.BACKEND_PUBLIC_KEY_HASHES]).toEqual(hashes);
+    // The leaf measured 2026-09-29 is never pinned.
+    expect(hashes).not.toContain('HLb3HRWGSbybWXPPGKsaL3NwYvwWHrTYTCYU15lfeQ4=');
+  });
+
+  it('an iOS-shaped event (no message) is reported with an empty message, and a second mismatch is not re-reported', async () => {
+    (globalThis as any).__DEV__ = false;
+    const { setupCertificatePinning } = loadModule();
+    await setupCertificatePinning();
+    const listener = mockAddSslPinningErrorListener.mock.calls[0][0] as (e: any) => void;
+    listener({ serverHostname: RAILWAY_HOST });
+    listener({ serverHostname: RAILWAY_HOST, message: 'Certificate pinning failure!' });
+    expect(mockCaptureMessage).toHaveBeenCalledTimes(1);
+    const [, context] = mockCaptureMessage.mock.calls[0];
+    expect((context as any).extra.message).toBe('');
+    expect((context as any).fingerprint).toEqual(['cert-pin-mismatch']);
   });
 });

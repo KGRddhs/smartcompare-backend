@@ -13,7 +13,15 @@ export const initializeSslPinning = async (
 
 export const isSslPinningAvailable = (): boolean => false;
 
+// Session 69 U5: the production module registers a pin-error listener after a
+// successful init; suites that only need the no-op shim get a removable
+// subscription and never see a callback.
+export const addSslPinningErrorListener = (
+  _listener: (error: { serverHostname: string; message?: string }) => void
+): { remove: () => void } => ({ remove: () => undefined });
+
 export default {
   initializeSslPinning,
   isSslPinningAvailable,
+  addSslPinningErrorListener,
 };
