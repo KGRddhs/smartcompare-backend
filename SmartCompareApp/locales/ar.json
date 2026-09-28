@@ -1,0 +1,8 @@
+{
+  "ios": {
+    "CFBundleDisplayName": "ميّز",
+    "NSCameraUsageDescription": "يحتاج ميّز إلى الوصول إلى الكاميرا لتصوير المنتجات ومقارنتها.",
+    "NSPhotoLibraryUsageDescription": "يحتاج ميّز إلى الوصول إلى مكتبة الصور للتعرف على المنتجات من صورك.",
+    "NSMicrophoneUsageDescription": "يستخدم ميّز الكاميرا لتصوير المنتجات فقط، ولا يسجل أي صوت."
+  }
+}

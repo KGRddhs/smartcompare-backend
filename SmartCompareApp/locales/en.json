@@ -1,0 +1,8 @@
+{
+  "ios": {
+    "CFBundleDisplayName": "MYEZ",
+    "NSCameraUsageDescription": "MYEZ needs camera access to photograph products for comparison.",
+    "NSPhotoLibraryUsageDescription": "MYEZ needs photo library access to identify products from your photos.",
+    "NSMicrophoneUsageDescription": "MYEZ only uses the camera to photograph products. Audio is never recorded."
+  }
+}
