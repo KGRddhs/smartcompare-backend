@@ -63,7 +63,12 @@ def get_client() -> AsyncOpenAI:
     if _client is None:
         from app.services.model_config import openai_max_retries
         api_key = os.getenv("OPENAI_API_KEY")
-        logger.info(f"Initializing OpenAI client with key ending in: ...{api_key[-10:] if api_key else 'NONE'}")
+        # Session 69 U1 (PRD-BP-02): never write key material to the logs —
+        # presence only. The old line carried the key's last ten characters.
+        logger.info(
+            "Initializing OpenAI client (OPENAI_API_KEY %s)",
+            "configured" if api_key else "missing",
+        )
         _client = AsyncOpenAI(
             api_key=api_key,
             base_url=provider_base_url(),
