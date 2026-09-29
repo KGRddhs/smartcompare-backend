@@ -137,7 +137,8 @@ describe('ProfileScreen S3 integration — initial render', () => {
     const rendered = render(<ProfileScreen {...props} />);
     expect(rendered.getByTestId('profile-header-settings')).toBeTruthy();
     expect(rendered.getByTestId('profile-row-edit')).toBeTruthy();
-    expect(rendered.getByTestId('profile-row-upgrade')).toBeTruthy();
+    // S69 U2: the "Upgrade to Premium" row is gone (no subscription is sold).
+    expect(rendered.queryByTestId('profile-row-upgrade')).toBeNull();
     expect(rendered.getByTestId('profile-row-password')).toBeTruthy();
     expect(rendered.getByTestId('profile-row-language')).toBeTruthy();
     expect(rendered.getByTestId('profile-row-privacy')).toBeTruthy();
@@ -180,11 +181,11 @@ describe('ProfileScreen S3 integration — row navigation', () => {
     expect(props.navigation.navigate).toHaveBeenCalledWith('EditProfile');
   });
 
-  it('Upgrade row navigates to Paywall', () => {
+  it('S69 U2: Profile has no upgrade row and never opens Paywall', () => {
     const props = makeProps();
     const rendered = render(<ProfileScreen {...props} />);
-    fireEvent.press(rendered.getByTestId('profile-row-upgrade'));
-    expect(props.navigation.navigate).toHaveBeenCalledWith('Paywall');
+    expect(rendered.queryByTestId('profile-row-upgrade')).toBeNull();
+    expect(props.navigation.navigate).not.toHaveBeenCalledWith('Paywall');
   });
 
   it('Privacy + Terms rows navigate to Legal with the right doc param', () => {

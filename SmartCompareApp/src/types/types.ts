@@ -606,14 +606,18 @@ export type RootStackParamList = {
   // Bundle B/C/D — Cal-AI-style fullscreen camera modal launched from
   // HomeScreen's "Scan" mode chip. See plan § Task 1.8.
   ScanCamera: undefined;
-  // Freemium gate — opened when a USAGE_LIMIT response fires from any
-  // compare path, or when canCompare=false UI elements (chip/banner) are
-  // tapped. initialUsage is the parsed USAGE_LIMIT detail (skips the
-  // first /usage/status fetch when present).
+  // Honest limit sheet (S69 U2; route name kept) — opened when a
+  // USAGE_LIMIT response fires from any compare path, or when the header
+  // counter / PaywallBanner is tapped. initialUsage is the 429 body the
+  // caller received: after app/middleware/error_handler.py rebuilds it, that
+  // is only { success, error: "... (daily_limit)", code, request_id }, so the
+  // screen always fetches /usage/status and uses these fields as fallbacks.
   Paywall: {
     initialUsage?: {
       tier?: string;
       reason?: string;
+      error?: string;
+      code?: string;
       remaining?: { daily: number; monthly: number; lifetime_free: number };
     };
   } | undefined;
