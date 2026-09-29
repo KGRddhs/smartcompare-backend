@@ -47,8 +47,11 @@ const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v));
 
 const RECORD_AUDIO = 'android.permission.RECORD_AUDIO';
 const CAMERA = 'android.permission.CAMERA';
-const CAMERA_PURPOSE = 'Qaren needs camera access to photograph products for comparison.';
-const PHOTOS_PURPOSE = 'Qaren needs photo library access to identify products from your photos.';
+const CAMERA_PURPOSE = 'MYEZ needs camera access to photograph products for comparison.';
+const PHOTOS_PURPOSE = 'MYEZ needs photo library access to identify products from your photos.';
+// Session 69 U4a R2 (EXPO-07): the honest microphone purpose string, carried by
+// BOTH the expo-camera and expo-image-picker entries (spec review Q1 option a).
+const MIC_PURPOSE = 'MYEZ only uses the camera to photograph products. Audio is never recorded.';
 
 function pluginOptions(expo: AnyConfig, name: string): Record<string, unknown> | undefined {
   const entry = (expo.plugins as unknown[]).find((p) =>
@@ -129,7 +132,7 @@ function expectRecordAudioOnlyBlocked(usesPermission: Record<string, string>[]):
 // ===========================================================================
 // (a) microphone — MB-TWO-LEVER-RELEASE-02
 // ===========================================================================
-describe('W3-7 (a) no microphone on either platform', () => {
+describe('W3-7 (a) microphone: never requested on Android; honest purpose string on iOS since U4a', () => {
   it('a1 [SOURCE-SHAPE PIN, no compiled-output consequence — ruling R3] android.permissions does not list RECORD_AUDIO', () => {
     // Once expo-image-picker's microphonePermission:false lands,
     // @expo/config-plugins build/android/Permissions.js:52-55
@@ -137,19 +140,27 @@ describe('W3-7 (a) no microphone on either platform', () => {
     // config.android.permissions at registration time, so re-adding the
     // string changes neither Info.plist nor the manifest (mutation M1). This
     // pin keeps the committed source honest; it is NOT behavioural coverage.
+    // Since U4a the picker carries a string, not false, so that registration-
+    // time strip no longer happens; android.blockedPermissions (a2) is what
+    // blocks RECORD_AUDIO, and a7b proves it is the only guard.
     expect(loadExpo().android.permissions).not.toContain(RECORD_AUDIO);
   });
 
   it('a2 android.blockedPermissions contains RECORD_AUDIO (scope beyond the finding — ruling R5)', () => {
     // Schema key: @expo/config-types build/ExpoConfig.d.ts:657; consumed by
     // AndroidConfig.Permissions.withInternalBlockedPermissions. A plugin-
-    // independent second guard on Android. a7b isolates the plugin lever so
-    // this belt cannot hide whether the braces work.
+    // independent second guard on Android. Since U4a (both plugins carry the
+    // honest string) it is the ONLY Android guard; a7b proves that.
     expect(loadExpo().android.blockedPermissions).toContain(RECORD_AUDIO);
   });
 
-  it('a3a expo-camera entry: microphonePermission === false (behavioural — dropping it reddens a6 + a8)', () => {
-    expect(pluginOptions(loadExpo(), 'expo-camera')?.microphonePermission).toBe(false);
+  it('a3a [FLIPPED by U4a R2] expo-camera entry: microphonePermission is the honest purpose string (was false)', () => {
+    // Session 69 U4a (EXPO-07): the installed expo-camera binary still links
+    // the AVCaptureDevice audio API (expo-camera/ios/Common/
+    // CameraPermissionsRequester.swift:106-113), so the build ships a purpose
+    // string instead of deleting the key. Both plugins carry the SAME string
+    // (spec review Q1 option a), so the iOS output is order-independent (a8, u3).
+    expect(pluginOptions(loadExpo(), 'expo-camera')?.microphonePermission).toBe(MIC_PURPOSE);
   });
 
   it('a3b [SELF-DOCUMENTING PIN — ruling R4] expo-camera entry: recordAudioAndroid === false', () => {
@@ -162,10 +173,13 @@ describe('W3-7 (a) no microphone on either platform', () => {
     expect(pluginOptions(loadExpo(), 'expo-camera')?.recordAudioAndroid).toBe(false);
   });
 
-  it('a4 expo-image-picker entry: microphonePermission === false', () => {
+  it('a4 [FLIPPED by U4a R2] expo-image-picker entry: microphonePermission is the honest purpose string (was false)', () => {
     // NOT cameraPermission:false — withImagePicker.js:41 would then BLOCK
     // android.permission.CAMERA, which the app needs (a5 / a7 pin CAMERA).
-    expect(pluginOptions(loadExpo(), 'expo-image-picker')?.microphonePermission).toBe(false);
+    // Consequence of the string (withImagePicker.js:34-36 adds RECORD_AUDIO for
+    // any value other than the literal false; :39-42 blocks only on false):
+    // android.blockedPermissions (a2) becomes the only Android guard — a7b.
+    expect(pluginOptions(loadExpo(), 'expo-image-picker')?.microphonePermission).toBe(MIC_PURPOSE);
   });
 
   it('a5 [PRESERVE] CAMERA is requested and both purpose strings are unchanged', () => {
@@ -175,11 +189,11 @@ describe('W3-7 (a) no microphone on either platform', () => {
     expect(pluginOptions(expo, 'expo-image-picker')?.photosPermission).toBe(PHOTOS_PURPOSE);
   });
 
-  it('a6 executed plugins: Info.plist has NO NSMicrophoneUsageDescription; camera + photos strings intact', async () => {
+  it('a6 [FLIPPED by U4a R2] executed plugins: Info.plist NSMicrophoneUsageDescription is the honest string (was absent); camera + photos strings intact', async () => {
     const { plist } = await compile(loadExpo());
     expect(plist.NSCameraUsageDescription).toBe(CAMERA_PURPOSE);
     expect(plist.NSPhotoLibraryUsageDescription).toBe(PHOTOS_PURPOSE);
-    expect(plist.NSMicrophoneUsageDescription).toBeUndefined();
+    expect(plist.NSMicrophoneUsageDescription).toBe(MIC_PURPOSE);
   });
 
   it('a7 executed plugins: RECORD_AUDIO appears ONLY as a tools:node="remove" block; CAMERA is a plain request', async () => {
@@ -188,16 +202,20 @@ describe('W3-7 (a) no microphone on either platform', () => {
     expectRecordAudioOnlyBlocked(usesPermission);
   });
 
-  it('a7b [ruling R2, mandatory] with android.blockedPermissions DELETED the plugin lever alone still blocks RECORD_AUDIO', async () => {
-    // Mutation: drop expo-image-picker.microphonePermission:false. blockedPermissions
-    // and the picker opt-out are mutually redundant (each alone emits
-    // tools:node="remove"), so a7 survives every single-element mutation; this
-    // assertion isolates the plugin lever from the app.json lever.
+  it('a7b [FLIPPED by U4a R2 — spec review Q1(a)] with android.blockedPermissions DELETED, RECORD_AUDIO becomes a plain request: blockedPermissions is the single load-bearing Android guard', async () => {
+    // Before U4a the picker's microphonePermission:false emitted its own
+    // tools:node="remove" (withImagePicker.js:39-42), so the two levers were
+    // mutually redundant and this test isolated the plugin lever. With the
+    // honest string on the picker, :34-36 ADDS RECORD_AUDIO and nothing on the
+    // plugin side blocks it (spec review correction 3). a2 pins the guard; this
+    // test proves it is the only one, so deleting it must surface the request.
     const expo = clone(loadExpo());
     delete expo.android.blockedPermissions;
     const { usesPermission } = await compile(expo);
     expect(usesPermission).toContainEqual({ 'android:name': CAMERA });
-    expectRecordAudioOnlyBlocked(usesPermission);
+    expect(usesPermission.filter((p) => p['android:name'] === RECORD_AUDIO)).toEqual([
+      { 'android:name': RECORD_AUDIO },
+    ]);
   });
 
   it('a8 executed output is plugin-ORDER independent (half-fixes C/D are order-dependent)', async () => {
@@ -782,5 +800,353 @@ describe('W3-7 (e) runtime pin and preserved config', () => {
     const expo = loadExpo();
     expect(expo.updates.url).toBe('https://u.expo.dev/387a4fcb-76f6-4857-a2fb-39482ca4bd40');
     expect(expo.extra.eas.projectId).toBe('387a4fcb-76f6-4857-a2fb-39482ca4bd40');
+  });
+});
+
+// ===========================================================================
+// Session 69 U4a — native config for the first App Store build
+// ===========================================================================
+// Findings EXPO-04 / SA-03 / BLD-BP-09 (iPad), EXPO-07 (microphone string —
+// flipped in place in (a): a3a, a4, a6, a7b), EXPO-08 (Face ID string),
+// EXPO-10 / SA-10 (Arabic bundle localization), PM-5 / PM-6 (privacy manifest).
+// Spec: docs/investigations/2026-09-29-session-69-state/U4A_NATIVE_CONFIG_SPEC.md
+// plus the spec review's corrections 1-16 (binding where they correct the spec).
+//
+// Native-only: none of this reaches phones by `eas update`. Verified the same
+// way as (a): the INSTALLED plugins run in-process over an in-memory copy of
+// app.json with `introspect: true`; nothing is written. Two facts are not
+// visible to Info.plist introspection at all and are asserted through the
+// installed read-only helpers instead (spec review corrections 1, 8, 15):
+// the device family is the pbxproj TARGETED_DEVICE_FAMILY
+// (IOSConfig.DeviceFamily.getDeviceFamilies), and the .lproj/InfoPlist.strings
+// wiring is a withXcodeProject mod (ios/Locales.js), so the locale files are
+// checked through utils/locales.getResolvedLocalesAsync, which only reads.
+describe('session 69 U4a', () => {
+  const LOCALES_DIR = path.join(APP, 'locales');
+  const COPY_POLICY = path.join(APP, 'src', 'i18n', '.copy-policy.json');
+  const INVENTORY_DOC = path.join(REPO, 'docs', 'privacy-data-inventory.md');
+  const LOCALE_KEYS = [
+    'CFBundleDisplayName',
+    'NSCameraUsageDescription',
+    'NSMicrophoneUsageDescription',
+    'NSPhotoLibraryUsageDescription',
+  ];
+  const AR_DISPLAY_NAME = 'ميّز'; // MYEZ (Ahmed, 2026-09-30); the in-app catalog follows in unit U-R
+  // Arabic harakat, tanwin, shadda and sukun (U+064B..U+0652) — the copy rule
+  // is "no diacritics".
+  const AR_DIACRITICS = /[\u064B-\u0652]/;
+  // Base MainActivity configChanges of the installed introspection template
+  // (@expo/config-plugins build/plugins/withAndroidBaseMods.js:81).
+  const TEMPLATE_CONFIG_CHANGES = 'keyboard|keyboardHidden|orientation|screenSize|screenLayout|uiMode';
+  const SECURE_STORE_BACKUP_RULES = '@xml/secure_store_backup_rules';
+  const SECURE_STORE_EXTRACTION_RULES = '@xml/secure_store_data_extraction_rules';
+  const T = (id: string) => `NSPrivacyCollectedDataType${id}`;
+  const PURPOSE = (id: string) => `NSPrivacyCollectedDataTypePurpose${id}`;
+
+  /**
+   * The props Expo hands a plugin (withStaticPlugin): the second element of an
+   * array entry, `undefined` for a bare string. Not `pluginOptions`, which
+   * returns {} for a bare string: expo-localization's default options
+   * `{ allowDynamicLocaleChangesAndroid: true }` apply ONLY to undefined
+   * (withExpoLocalization.js:106-108), so {} would misstate today's behaviour.
+   */
+  function rawPluginProps(expo: AnyConfig, name: string): unknown {
+    const entry = (expo.plugins as unknown[]).find((p) =>
+      Array.isArray(p) ? p[0] === name : p === name,
+    );
+    return Array.isArray(entry) ? entry[1] : undefined;
+  }
+
+  interface NativeOut {
+    plist: Record<string, unknown>;
+    mainApplication: Record<string, string>;
+    mainActivity: Record<string, string>;
+    usesPermission: Record<string, string>[];
+  }
+
+  /**
+   * Runs, in app.json order, the installed expo-secure-store, expo-localization,
+   * expo-camera and expo-image-picker plugins, then the iPad full-screen
+   * Info.plist plugin and the two Android permission base mods, and evaluates
+   * the `ios.infoPlist` and `android.manifest` mod chains once each. The
+   * Info.plist starts from the config's static `ios.infoPlist`, exactly as the
+   * introspection base mod merges it (withIosBaseMods.js:301-305) — that is how
+   * expo-localization's CFBundleLocalizations (set on the static object,
+   * withExpoLocalization.js:29-31) reaches the plist. The fake manifest carries
+   * the .MainApplication / .MainActivity nodes getMainApplicationOrThrow /
+   * getMainActivityOrThrow assert on (spec review correction 7). Dangerous,
+   * strings and gradle mods are never evaluated: nothing touches the disk.
+   */
+  async function compileNative(expo: AnyConfig): Promise<NativeOut> {
+    const { AndroidConfig, IOSConfig } = reqFromApp('expo/config-plugins');
+    const PLUGINS: Record<string, AnyConfig> = {
+      'expo-secure-store': reqFromApp('expo-secure-store/app.plugin.js').default,
+      'expo-localization': reqFromApp('expo-localization/app.plugin.js').default,
+      'expo-camera': reqFromApp('expo-camera/app.plugin.js').default,
+      'expo-image-picker': reqFromApp('expo-image-picker/app.plugin.js').default,
+    };
+    let config: AnyConfig = clone(expo);
+    config._internal = { projectRoot: APP, isDebug: false };
+    for (const entry of expo.plugins as unknown[]) {
+      const name = (Array.isArray(entry) ? entry[0] : entry) as string;
+      if (PLUGINS[name]) config = PLUGINS[name](config, rawPluginProps(expo, name));
+    }
+    config = IOSConfig.RequiresFullScreen.withRequiresFullScreen(config);
+    config = AndroidConfig.Permissions.withInternalBlockedPermissions(config);
+    config = AndroidConfig.Permissions.withPermissions(config);
+
+    const modRequest = { projectRoot: APP, platformProjectRoot: APP, projectName: 'Qaren', introspect: true };
+    const ios = await config.mods.ios.infoPlist({
+      ...config,
+      modRequest: { ...modRequest, platform: 'ios', modName: 'infoPlist' },
+      modResults: { ...(config.ios?.infoPlist ?? {}) },
+    });
+    const android = await config.mods.android.manifest({
+      ...config,
+      modRequest: { ...modRequest, platform: 'android', modName: 'manifest' },
+      modResults: {
+        manifest: {
+          $: { 'xmlns:android': 'http://schemas.android.com/apk/res/android' },
+          'uses-permission': [],
+          application: [
+            {
+              $: { 'android:name': '.MainApplication' },
+              activity: [
+                { $: { 'android:name': '.MainActivity', 'android:configChanges': TEMPLATE_CONFIG_CHANGES } },
+              ],
+            },
+          ],
+        },
+      },
+    });
+    const application = android.modResults.manifest.application[0];
+    return {
+      plist: ios.modResults,
+      mainApplication: application.$,
+      mainActivity: application.activity[0].$,
+      usesPermission: android.modResults.manifest['uses-permission'].map(
+        (u: { $: Record<string, string> }) => u.$,
+      ),
+    };
+  }
+
+  const readLocale = (lang: 'en' | 'ar'): AnyConfig => readJson(path.join(LOCALES_DIR, `${lang}.json`));
+  const collected = (): AnyConfig[] => loadExpo().ios.privacyManifests.NSPrivacyCollectedDataTypes;
+  const entryOf = (id: string): AnyConfig | undefined =>
+    collected().find((e) => e.NSPrivacyCollectedDataType === T(id));
+  const inventoryRow = (md: string, id: string): string | undefined =>
+    md.split(/\r?\n/).find((l) => /^\|\s*\d+\s*\|/.test(l) && l.includes(`| \`${id}\` |`));
+
+  // ---- R1: iPhone only ----------------------------------------------------
+
+  it('u1 [R1 / D1 option A] ios.supportsTablet is false and the installed getDeviceFamilies resolves iPhone only ([1])', () => {
+    // TARGETED_DEVICE_FAMILY is a pbxproj setting written by a withXcodeProject
+    // mod (ios/DeviceFamily.js:25-31), which introspection never runs, so the
+    // family is read through the installed resolver (spec review correction 1).
+    const { IOSConfig } = reqFromApp('expo/config-plugins');
+    const expo = loadExpo();
+    expect(expo.ios.supportsTablet).toBe(false);
+    expect(IOSConfig.DeviceFamily.getDeviceFamilies(expo)).toEqual([1]);
+  });
+
+  it('u2 [R1] executed withRequiresFullScreen: Info.plist carries no UISupportedInterfaceOrientations~ipad entry', async () => {
+    // ios/RequiresFullScreen.js:59-66 adds the four iPad orientations only
+    // while tablet support is on. UIRequiresFullScreen:false is still emitted
+    // either way (harmless) and is deliberately not asserted.
+    const { plist } = await compileNative(loadExpo());
+    expect(plist['UISupportedInterfaceOrientations~ipad']).toBeUndefined();
+  });
+
+  // ---- R2: the honest microphone string, order-independent -----------------
+
+  it('u3 [R2] executed plugins in BOTH registration orders: NSMicrophoneUsageDescription is the honest string', async () => {
+    // Q1 option a: the string on BOTH plugins. With it on one plugin and false
+    // on the other the key survives only in one order (ios/Permissions.js:30-32
+    // deletes on false, and the later-registered infoPlist mod runs first —
+    // spec review correction 4).
+    const expo = loadExpo();
+    const forward = await compile(expo, FORWARD);
+    const reversed = await compile(expo, REVERSED);
+    expect(forward.plist.NSMicrophoneUsageDescription).toBe(MIC_PURPOSE);
+    expect(reversed.plist.NSMicrophoneUsageDescription).toBe(MIC_PURPOSE);
+  });
+
+  // ---- R3: no Face ID purpose string ---------------------------------------
+
+  it('u4 [R3] expo-secure-store entry: faceIDPermission === false and the Android backup half is not switched off', () => {
+    // expo-secure-store is the only installed plugin that emits the key
+    // (withSecureStore.js:7,10-13, spec review correction 6); the app never
+    // uses biometrics. configureAndroidBackup must stay at its default (true,
+    // withSecureStore.js:8) — this unit changes the iOS half only.
+    const opts = rawPluginProps(loadExpo(), 'expo-secure-store') as Record<string, unknown> | undefined;
+    expect(opts?.configureAndroidBackup).not.toBe(false);
+    expect(opts?.faceIDPermission).toBe(false);
+  });
+
+  it('u5 [R3] executed plugins: Info.plist has no NSFaceIDUsageDescription; secure-store backup rules still reach .MainApplication', async () => {
+    const { plist, mainApplication } = await compileNative(loadExpo());
+    // Preserve: the Android half is unchanged.
+    expect(mainApplication['android:fullBackupContent']).toBe(SECURE_STORE_BACKUP_RULES);
+    expect(mainApplication['android:dataExtractionRules']).toBe(SECURE_STORE_EXTRACTION_RULES);
+    // R3: applyPermissions deletes the key on the literal false
+    // (ios/Permissions.js:30-32).
+    expect(plist.NSFaceIDUsageDescription).toBeUndefined();
+  });
+
+  // ---- R4: Arabic bundle localization --------------------------------------
+
+  it('u6 [R4] expo-localization entry: supportedLocales { ios: ["en", "ar"] } only, and allowDynamicLocaleChangesAndroid stays true', () => {
+    // iOS only (spec review correction 10 / Q3): an `android` half would add
+    // android:localeConfig, a locales_config.xml dangerous mod and a gradle
+    // resourceConfigurations edit (withExpoLocalization.js:48-84).
+    // allowDynamicLocaleChangesAndroid must be passed explicitly: passing ANY
+    // options object drops the default (withExpoLocalization.js:106-108,
+    // spec review correction 9).
+    const opts = rawPluginProps(loadExpo(), 'expo-localization') as Record<string, unknown> | undefined;
+    expect(opts?.supportedLocales).toEqual({ ios: ['en', 'ar'] });
+    expect(opts?.allowDynamicLocaleChangesAndroid).toBe(true);
+  });
+
+  it('u7 [R4] executed expo-localization: CFBundleLocalizations is ["en", "ar"]; MainActivity keeps |locale|layoutDirection and the app gets no android:localeConfig', async () => {
+    const { plist, mainApplication, mainActivity } = await compileNative(loadExpo());
+    // Preserve (correction 9 / 10): today's Android behaviour.
+    expect(mainActivity['android:configChanges']).toBe(`${TEMPLATE_CONFIG_CHANGES}|locale|layoutDirection`);
+    expect(mainApplication['android:localeConfig']).toBeUndefined();
+    // R4: withExpoLocalization.js:11-14,29-31.
+    expect(plist.CFBundleLocalizations).toEqual(['en', 'ar']);
+  });
+
+  it('u8 [R4] expo.locales wires en and ar to ./locales/{en,ar}.json', () => {
+    expect(loadExpo().locales).toEqual({ en: './locales/en.json', ar: './locales/ar.json' });
+  });
+
+  it('u9 [R4] locales/en.json and locales/ar.json parse and nest exactly the four keys under "ios"; every value is InfoPlist.strings-safe', () => {
+    // Top-level keys go to BOTH platforms (utils/locales.js:46-65) and Android
+    // withLocales would write them as values-b+<lang>/strings.xml junk, so
+    // "ios" is the only top-level key (spec review correction 11).
+    // ios/Locales.js:82 writes values unescaped: no `"` and no `\`.
+    for (const lang of ['en', 'ar'] as const) {
+      const file = readLocale(lang);
+      expect({ lang, top: Object.keys(file).sort() }).toEqual({ lang, top: ['ios'] });
+      expect({ lang, keys: Object.keys(file.ios).sort() }).toEqual({ lang, keys: LOCALE_KEYS });
+      for (const key of LOCALE_KEYS) {
+        const value = file.ios[key];
+        expect({ lang, key, isString: typeof value === 'string' && value.trim().length > 0 }).toEqual({
+          lang,
+          key,
+          isString: true,
+        });
+        expect({ lang, key, unsafe: /["\\]/.test(value) }).toEqual({ lang, key, unsafe: false });
+      }
+    }
+  });
+
+  it('u10 [R4] locales/en.json equals the shipped English strings: display name = expo.name, camera / photos / microphone = the plugin purpose strings', () => {
+    const en = readLocale('en').ios;
+    const expo = loadExpo();
+    expect(en.CFBundleDisplayName).toBe('MYEZ');
+    expect(en.CFBundleDisplayName).toBe(expo.name);
+    // No drift between the English .lproj strings and the plugin options
+    // (spec review correction 11).
+    expect(en.NSCameraUsageDescription).toBe(CAMERA_PURPOSE);
+    expect(en.NSCameraUsageDescription).toBe(pluginOptions(expo, 'expo-camera')?.cameraPermission);
+    expect(en.NSPhotoLibraryUsageDescription).toBe(PHOTOS_PURPOSE);
+    expect(en.NSPhotoLibraryUsageDescription).toBe(pluginOptions(expo, 'expo-image-picker')?.photosPermission);
+    expect(en.NSMicrophoneUsageDescription).toBe(MIC_PURPOSE);
+    expect(en.NSMicrophoneUsageDescription).toBe(pluginOptions(expo, 'expo-camera')?.microphonePermission);
+    expect(en.NSMicrophoneUsageDescription).toBe(pluginOptions(expo, 'expo-image-picker')?.microphonePermission);
+  });
+
+  it('u11 [R4] locales/ar.json: display name ميّز; Arabic purpose strings with no Latin letters, no diacritics, none of the copy-policy banned or scary terms', () => {
+    // src/i18n/ar.json is the only file __tests__/copy-policy.test.ts reads, so
+    // this file is fenced here (spec review correction 12).
+    const ar = readLocale('ar').ios;
+    const en = readLocale('en').ios;
+    const policy = readJson(COPY_POLICY);
+    expect(ar.CFBundleDisplayName).toBe(AR_DISPLAY_NAME);
+    // The brand spelling the in-app Arabic catalog already uses.
+    // The in-app catalog still says قارن until unit U-R renames it; the display name is pinned on the locale file above.
+    for (const key of LOCALE_KEYS) {
+      const value: string = ar[key];
+      // The brand name carries a deliberate shadda (ميّز, decision D13); the no-diacritics rule
+      // applies to everything else in the string.
+      const withoutBrand = value.split(AR_DISPLAY_NAME).join('');
+      expect({ key, diacritics: AR_DIACRITICS.test(withoutBrand) }).toEqual({ key, diacritics: false });
+      for (const rule of policy.banned_ar as { pattern: string; label: string }[]) {
+        expect({ key, banned: rule.label, hit: new RegExp(rule.pattern).test(value) }).toEqual({
+          key,
+          banned: rule.label,
+          hit: false,
+        });
+      }
+      for (const term of policy.scary_vocab_ar as string[]) {
+        expect({ key, scary: term, hit: value.includes(term) }).toEqual({ key, scary: term, hit: false });
+      }
+    }
+    for (const key of LOCALE_KEYS.filter((k) => k !== 'CFBundleDisplayName')) {
+      const value: string = ar[key];
+      expect({ key, arabic: /[\u0621-\u064A]/.test(value), latin: /[A-Za-z]/.test(value) }).toEqual({
+        key,
+        arabic: true,
+        latin: false,
+      });
+      expect(value).not.toBe(en[key]);
+    }
+  });
+
+  it('u12 [R4] getResolvedLocalesAsync (read-only): iOS resolves en and ar with the four keys; Android resolves no strings', async () => {
+    // The .lproj/InfoPlist.strings writer (ios/Locales.js:45-53,69-85) is a
+    // withXcodeProject mod that introspection never runs and that writes to
+    // disk, so only its read-only resolver is executed here (correction 8).
+    const { getResolvedLocalesAsync } = reqFromApp('@expo/config-plugins/build/utils/locales');
+    const locales = loadExpo().locales ?? {};
+    const ios = await getResolvedLocalesAsync(APP, locales, 'ios');
+    expect(Object.keys(ios).sort()).toEqual(['ar', 'en']);
+    expect(Object.keys(ios.en).sort()).toEqual(LOCALE_KEYS);
+    expect(Object.keys(ios.ar).sort()).toEqual(LOCALE_KEYS);
+    expect(ios.ar.CFBundleDisplayName).toBe(AR_DISPLAY_NAME);
+    const android = await getResolvedLocalesAsync(APP, locales, 'android');
+    expect(android).toEqual({ en: {}, ar: {} });
+  });
+
+  // ---- R5: privacy manifest ------------------------------------------------
+
+  it('u13 [R5] the privacy manifest declares CustomerSupport: Linked true, Tracking false, purpose AppFunctionality', () => {
+    expect(entryOf('CustomerSupport')).toEqual({
+      NSPrivacyCollectedDataType: T('CustomerSupport'),
+      NSPrivacyCollectedDataTypeLinked: true,
+      NSPrivacyCollectedDataTypeTracking: false,
+      NSPrivacyCollectedDataTypePurposes: [PURPOSE('AppFunctionality')],
+    });
+  });
+
+  it('u14 [R5] SearchHistory and ProductInteraction add ProductPersonalization and keep their existing purposes', () => {
+    // Spec review Q5: the green must cite the backend personalization consumer
+    // of each type in the inventory row; if none exists this half of R5 is
+    // dropped and this test changes with it.
+    const search = entryOf('SearchHistory');
+    const interaction = entryOf('ProductInteraction');
+    expect(search?.NSPrivacyCollectedDataTypePurposes).toContain(PURPOSE('AppFunctionality'));
+    expect(interaction?.NSPrivacyCollectedDataTypePurposes).toContain(PURPOSE('Analytics'));
+    expect(search?.NSPrivacyCollectedDataTypePurposes).toContain(PURPOSE('ProductPersonalization'));
+    expect(interaction?.NSPrivacyCollectedDataTypePurposes).toContain(PURPOSE('ProductPersonalization'));
+  });
+
+  it('u15 [R5] inventory doc: a CustomerSupport row cites the Contact Us form, and the OtherUserContent row no longer does', () => {
+    // Spec review correction 14 / Q4: the Contact Us form
+    // (ContactUsScreen.tsx:85-96) is declared once, under CustomerSupport.
+    // c3 / c5 keep the table and the JSON fence equal to app.json.
+    const md = fs.readFileSync(INVENTORY_DOC, 'utf8');
+    const support = inventoryRow(md, 'CustomerSupport');
+    expect(support).toBeDefined();
+    expect(support).toContain('ContactUsScreen.tsx');
+    expect(inventoryRow(md, 'OtherUserContent')).not.toContain('ContactUsScreen.tsx');
+  });
+
+  it('u16 [R2] inventory doc no longer claims there is no NSMicrophoneUsageDescription on iOS', () => {
+    // docs/privacy-data-inventory.md "Not collected" > Audio (spec review
+    // correction 5). Line wraps are normalised before matching.
+    const md = fs.readFileSync(INVENTORY_DOC, 'utf8').replace(/\s+/g, ' ');
+    expect(md).not.toMatch(/there is no `NSMicrophoneUsageDescription` on iOS/);
   });
 });

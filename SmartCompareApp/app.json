@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Qaren",
+    "name": "MYEZ",
     "slug": "qaren",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -13,9 +13,13 @@
       "backgroundColor": "#ffffff"
     },
     "scheme": "qaren",
+    "locales": {
+      "en": "./locales/en.json",
+      "ar": "./locales/ar.json"
+    },
     "ios": {
       "bundleIdentifier": "com.qaren.app",
-      "supportsTablet": true,
+      "supportsTablet": false,
       "usesAppleSignIn": true,
       "associatedDomains": ["applinks:qaren.app"],
       "privacyManifests": {
@@ -52,7 +56,10 @@
             "NSPrivacyCollectedDataType": "NSPrivacyCollectedDataTypeSearchHistory",
             "NSPrivacyCollectedDataTypeLinked": true,
             "NSPrivacyCollectedDataTypeTracking": false,
-            "NSPrivacyCollectedDataTypePurposes": ["NSPrivacyCollectedDataTypePurposeAppFunctionality"]
+            "NSPrivacyCollectedDataTypePurposes": [
+              "NSPrivacyCollectedDataTypePurposeAppFunctionality",
+              "NSPrivacyCollectedDataTypePurposeProductPersonalization"
+            ]
           },
           {
             "NSPrivacyCollectedDataType": "NSPrivacyCollectedDataTypeUserID",
@@ -73,7 +80,10 @@
             "NSPrivacyCollectedDataType": "NSPrivacyCollectedDataTypeProductInteraction",
             "NSPrivacyCollectedDataTypeLinked": true,
             "NSPrivacyCollectedDataTypeTracking": false,
-            "NSPrivacyCollectedDataTypePurposes": ["NSPrivacyCollectedDataTypePurposeAnalytics"]
+            "NSPrivacyCollectedDataTypePurposes": [
+              "NSPrivacyCollectedDataTypePurposeAnalytics",
+              "NSPrivacyCollectedDataTypePurposeProductPersonalization"
+            ]
           },
           {
             "NSPrivacyCollectedDataType": "NSPrivacyCollectedDataTypeCrashData",
@@ -104,6 +114,12 @@
               "NSPrivacyCollectedDataTypePurposeProductPersonalization",
               "NSPrivacyCollectedDataTypePurposeAppFunctionality"
             ]
+          },
+          {
+            "NSPrivacyCollectedDataType": "NSPrivacyCollectedDataTypeCustomerSupport",
+            "NSPrivacyCollectedDataTypeLinked": true,
+            "NSPrivacyCollectedDataTypeTracking": false,
+            "NSPrivacyCollectedDataTypePurposes": ["NSPrivacyCollectedDataTypePurposeAppFunctionality"]
           }
         ],
         "NSPrivacyAccessedAPITypes": [
@@ -175,21 +191,34 @@
           ]
         }
       ],
-      "expo-secure-store",
-      "expo-localization",
+      [
+        "expo-secure-store",
+        {
+          "faceIDPermission": false
+        }
+      ],
+      [
+        "expo-localization",
+        {
+          "supportedLocales": {
+            "ios": ["en", "ar"]
+          },
+          "allowDynamicLocaleChangesAndroid": true
+        }
+      ],
       [
         "expo-camera",
         {
-          "cameraPermission": "Qaren needs camera access to photograph products for comparison.",
-          "microphonePermission": false,
+          "cameraPermission": "MYEZ needs camera access to photograph products for comparison.",
+          "microphonePermission": "MYEZ only uses the camera to photograph products. Audio is never recorded.",
           "recordAudioAndroid": false
         }
       ],
       [
         "expo-image-picker",
         {
-          "photosPermission": "Qaren needs photo library access to identify products from your photos.",
-          "microphonePermission": false
+          "photosPermission": "MYEZ needs photo library access to identify products from your photos.",
+          "microphonePermission": "MYEZ only uses the camera to photograph products. Audio is never recorded."
         }
       ],
       [
