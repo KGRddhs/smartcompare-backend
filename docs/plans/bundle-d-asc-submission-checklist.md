@@ -13,27 +13,30 @@ Phase 3 Task 3.N.2 (`eas submit --profile production --platform ios --latest` �
 
 | # | Field | Char limit | Draft | Ahmed sign-off |
 |---|---|---|---|---|
-| 1 | App Name (listing title) | 30 | **Qaren — Compare Smart** (20 chars) | ☐ |
+| 1 | App Name (listing title) | 30 | **MYEZ — Compare Smart** (20 chars; the app was renamed MYEZ / ميّز on 2026-09-30 — session 69) | ☐ |
 | 2 | Subtitle | 30 | **Smart Compare for the GCC** (24 chars) — or — **Compare products instantly** (26 chars) | ☐ |
 | 3 | Promotional Text | 170 | see § Metadata draft | ☐ |
 | 4 | Description | 4000 | see § Metadata draft | ☐ |
 | 5 | Keywords (comma-sep) | 100 | see § Metadata draft | ☐ |
-| 6 | Privacy Policy URL | — | `https://qaren.app/privacy.html` (post-Vercel-cutover) OR Railway endpoint as fallback (see § fallback) | ☐ |
-| 7 | Support URL | — | `https://qaren.app/support` (post-Vercel-cutover) OR Ahmed Gmail mailto: as fallback | ☐ |
-| 8 | Marketing URL (optional) | — | `https://qaren.app/` OR LEAVE BLANK | ☐ |
+| 6 | Privacy Policy URL | — | `https://qaren-landing-production.up.railway.app/privacy.html` (AR: `/ar/privacy.html`). **Not** `qaren.app` — it returns Cloudflare 522 (measured 2026-09-29, LL-7 / SA-07) and the `/api/v1/legal/*` endpoint returns JSON, which Apple rejects as a policy page. Paste only after U8 removes the DRAFT banner. | ☐ |
+| 7 | Support URL | — | `https://qaren-landing-production.up.railway.app/support` (AR: `/ar/support`). A `mailto:` is not a valid support URL (SA-07). | ☐ |
+| 8 | Marketing URL (optional) | — | LEAVE BLANK until `qaren.app` is attached to the landing service (LL-7). | ☐ |
 | 9 | Copyright | — | `© 2026 Qaren` — placeholder until legal entity name decided (one of the 25 DECISIONS REQUIRED items in `docs/plans/2026-05-06-tos-fact-base.md`) | ☐ |
 | 10 | Primary Category | — | Shopping | ☐ |
 | 11 | Secondary Category (optional) | — | Lifestyle | ☐ |
-| 12 | Age Rating | — | 12+ (per CLAUDE.md "Age policy locked: 13+ general audience"; Apple's 12+ rating maps to "13+ general audience" — do NOT enroll in Kids/Families) | ☐ |
+| 12 | Age Rating | — | **13+ via "Override to Higher Age Rating"** (LL-8: Apple's scale is now 4+ / 9+ / 13+ / 16+ / 18+ — "12+" no longer exists). Answer the questionnaire truthfully (Health or Wellness Topics: yes, the app compares supplements; no UGC, no messaging, no ads, no gambling), answer **Age Assurance: No** (the "I am 13 or older" checkbox is not age assurance), then override to 13+ to match the ToS minimum age. Do NOT enroll in Kids/Families. | ☐ |
 | 13 | Content Advisory (within age rating) | — | None of the optional flags apply (no gambling, no profanity, no mature themes) — leave all toggles OFF | ☐ |
 | 14 | Demographics | — | Audience: 13+; Languages: English, Arabic | ☐ |
 | 15 | Pricing | — | Free | ☐ |
 | 16 | Availability (countries) | — | Bahrain, Saudi Arabia, UAE, Kuwait, Qatar, Oman (the 6 GCC countries from CLAUDE.md project purpose). Optionally extend to all of MENA later. | ☐ |
-| 17 | App Privacy (Nutrition Labels) | — | See `docs/plans/bundle-d-asc-privacy-nutrition-labels-draft.md` (commit `5b24dee` + correction `8101248`) | ☐ |
+| 17 | App Privacy (Nutrition Labels) | — | Fill row by row from **`docs/privacy-data-inventory.md`** (the current source: a jest test deep-equals it to the `app.json` privacy manifest). The May draft `bundle-d-asc-privacy-nutrition-labels-draft.md` is SUPERSEDED (PM-4: it has no Name row and disagrees with the manifest). Tracking = No. | ☐ |
 
 ---
 
 ## Metadata draft
+
+> **SUPERSEDED 2026-09-29 (SA-04 / LL-11):** the description and promotional text below advertise features that are not shipped or not on ("in seconds", "COMING SOON", cohort insights, "authorized retailers"). Paste the listing text from `docs/investigations/2026-09-29-session-69-state/APP_STORE_LAUNCH_RUNBOOK.md` §6 instead (EN + AR); the AR description draft is in that session's scratchpad `sa/ar_description.txt`.
+
 
 ### Promotional Text (170-char limit — editable any time without resubmitting binary)
 
@@ -88,7 +91,10 @@ Questions, suggestions, or want to report a bug? Email us at support@qaren.app.
 
 ~1950 chars. Well under the 4000-char limit. Easy to extend later.
 
-### Keywords (100-char limit, comma-separated)
+### Keywords (100-**byte** limit, comma-separated — Arabic keywords are counted in UTF-8 bytes, roughly two per letter)
+
+> **SUPERSEDED 2026-09-29 (SA-09):** each keyword must be longer than 2 characters (`AI` is invalid) and words already in the name are wasted. Use the runbook §6 list — `prices,shopping,fragrance,perfume,phone,supplements,skincare,GCC,Bahrain,Saudi,UAE,Kuwait,Qatar` (95 bytes) — and the AR list there (95 bytes). Keep brand and retailer names out (2.3.7).
+
 
 ```
 compare,GCC,Bahrain,Saudi,UAE,Kuwait,Qatar,Oman,shopping,products,reviews,prices,smart,AI,verdict
@@ -172,7 +178,7 @@ Reason code rationale:
 
 **`NSPrivacyCollectedDataTypes`** — Apple primarily reads this from the App Privacy Nutrition Labels (Task 3.N.3 doc) entered via ASC web UI, not from the manifest file. Can be omitted from app.json.
 
-**Recommended Phase 2/3 commit (separate from this checklist):** add the `privacyManifests` block to `app.json`. Will trigger Expo prebuild to write `ios/Qaren/PrivacyInfo.xcprivacy` during the next EAS build. **CAUTION:** EXACT reason codes need verification against actual code usage; some Expo SDK 54 packages auto-add to the manifest at prebuild time and may conflict with manual entries. Recommend a separate commit AFTER the first EAS preview build (Task 2.N.1) so we can inspect the generated `PrivacyInfo.xcprivacy` and confirm what's already included. Filed as new task 40.
+**DONE (W3-7 #170, extended by #254 — CustomerSupport + ProductPersonalization purposes):** the `privacyManifests` block is in `app.json` and `docs/privacy-data-inventory.md` mirrors it. Original note: add the `privacyManifests` block to `app.json`. Will trigger Expo prebuild to write `ios/Qaren/PrivacyInfo.xcprivacy` during the next EAS build. **CAUTION:** EXACT reason codes need verification against actual code usage; some Expo SDK 54 packages auto-add to the manifest at prebuild time and may conflict with manual entries. Recommend a separate commit AFTER the first EAS preview build (Task 2.N.1) so we can inspect the generated `PrivacyInfo.xcprivacy` and confirm what's already included. Filed as new task 40.
 
 ---
 
@@ -209,9 +215,9 @@ First production build will be marketing version `1.0.0` build `1`. Subsequent b
 ## Screenshots
 
 Apple requires:
-- 6.7" iPhone (e.g., iPhone 15 Pro Max, 1290×2796) — 1-10 screenshots, minimum 1
+- 6.9" iPhone (e.g., iPhone 16 Pro Max, 1320×2868) — 1-10 screenshots, minimum 1 (SA-01: ASC accepts 6.9" or 6.5" for the first submission; 6.7" is no longer a required size)
 - 6.5" iPhone (e.g., iPhone 11 Pro Max, 1242×2688) — alternative to 6.7", recommended both
-- iPad Pro 12.9" (2048×2732) — required if `ios.supportsTablet: true` in app.json (it IS true per `app.json:18`)
+- iPad 13" (2064×2752) — NOT required: `ios.supportsTablet` is `false` since #254 (launch decision D1-A, 2026-09-30); iPad review testing can still happen in compatibility mode
 - App Preview videos optional (15-30s)
 
 **Action item for Ahmed:** capture screenshots from the EAS preview build (Task 2.N.1). Need at minimum:

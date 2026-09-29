@@ -1,4 +1,4 @@
-# Qaren iOS: App Store launch runbook
+# MYEZ iOS: App Store launch runbook
 
 Repo `smartcompare` main `eed4ee10`, written 2026-09-29. Two finding sets both used the `BP-` prefix. In this runbook, **BLD-BP-xx** means the build-pipeline findings and **PRD-BP-xx** means the backend-prod findings. All other ids are as filed. When findings were merged, the row takes the highest `severity_final` among them.
 
@@ -172,7 +172,7 @@ Nothing iOS has ever been signed for the App Store. There has been no production
    * Record the Key ID and Issuer ID.
 2. App Store Connect → Apps → **+ New App**:
    * iOS
-   * name `Qaren — Compare Smart` (or `Qaren`); this also checks the name is free
+   * name `MYEZ — Compare Smart` (or `MYEZ`); this also checks the name is free
    * primary language English
    * bundle ID `com.qaren.app`
    * SKU `qaren-ios`
@@ -301,7 +301,7 @@ Optional: in the EAS dashboard, add a plain `SENTRY_ALLOW_FAILURE=true` to the *
 
 | Field | EN | AR (ar-SA localization; native review required) |
 |---|---|---|
-| Name (≤30) | `Qaren — Compare Smart` (21). Reserve it by creating the record. | `قارن - مقارنة المنتجات` (22). Alternative: `قارن: قرار شراء أذكى` |
+| Name (≤30) | `MYEZ — Compare Smart` (20). Reserve it by creating the record. | `ميّز - مقارنة المنتجات` (22). Alternative: `ميّز: قرار شراء أذكى` |
 | Subtitle (≤30) | `Two products. One clear pick.` (29) | `قارن منتجين واحصل على حكم واضح` (30) |
 | Promotional text (≤170) | `Type or photograph two products and get a clear verdict built from specs, reviews and GCC retailer prices. Prices are live; we always show how confident we are.` (160) | `اكتب منتجين أو صوّرهما، واحصل على حكم واضح مبني على المواصفات والتقييمات وأسعار المتاجر في الخليج. الأسعار حية وقد تتغير، ونبيّن لك مستوى الثقة دائماً.` (151) |
 | Keywords (≤100 **bytes**) | `prices,shopping,fragrance,perfume,phone,supplements,skincare,GCC,Bahrain,Saudi,UAE,Kuwait,Qatar` (95 bytes; adds Oman only if room is freed) | `مقارنة,أسعار,تسوق,عطور,جوال,مكملات,البحرين,السعودية` (95 bytes) |
@@ -325,7 +325,7 @@ Optional: in the EAS dashboard, add a plain `SENTRY_ALLOW_FAILURE=true` to the *
 **Description (EN).** About 1,500 characters. No COMING SOON section, no "authorized retailers", no "in seconds" (SA-04, LL-11).
 
 ```
-Qaren helps you choose between two products with confidence. Type two product names or photograph them, and we gather specs, reviews and prices from retailers serving the GCC, then give you a clear verdict: which one fits you better, why, and where the other one wins.
+MYEZ helps you choose between two products with confidence. Type two product names or photograph them, and we gather specs, reviews and prices from retailers serving the GCC, then give you a clear verdict: which one fits you better, why, and where the other one wins.
 
 WHAT YOU GET
 • A clear verdict instead of a long spec sheet: the winner, the reason, and where the runner-up is stronger.
@@ -344,7 +344,7 @@ Available in English and Arabic with full right-to-left support.
 YOUR PRIVACY
 Your searches and photos are processed by OpenAI to generate comparisons. We don't sell your data, we don't track you across other apps, and we show no third-party ads. You can delete your account and its data from inside the app at any time.
 
-Note: Qaren is a decision aid. Information is gathered from public sources and may not always be accurate — check the price with the retailer before you buy.
+Note: MYEZ is a decision aid. Information is gathered from public sources and may not always be accurate — check the price with the retailer before you buy.
 
 Support: support@qaren.app
 ```
@@ -356,7 +356,7 @@ Support: support@qaren.app
 ```
 Demo account: <REVIEW EMAIL> / <REVIEW PASSWORD> (premium tier). Sign in with Apple and Google are also available.
 Sign-in is required because the account holds saved comparison history, personalization preferences and a per-account usage quota.
-Qaren compares two products. On Home, type two products, e.g. "<PAIR THAT PASSED WARM-UP>", or use Scan to photograph two products (you can also pick two photos from the library). A comparison usually takes 20–40 seconds while we gather specs, reviews and live prices.
+MYEZ compares two products. On Home, type two products, e.g. "<PAIR THAT PASSED WARM-UP>", or use Scan to photograph two products (you can also pick two photos from the library). A comparison usually takes 20–40 seconds while we gather specs, reviews and live prices.
 Results currently use the Bahrain market; prices are shown in Bahraini Dinar (BHD). Prices are fetched live from retailers serving the GCC and change over time; some are labelled estimated.
 Queries and photos are processed by OpenAI to generate the comparison; users are asked for permission before the first comparison.
 Account deletion: Profile tab → gear icon → Edit profile → Delete account.
