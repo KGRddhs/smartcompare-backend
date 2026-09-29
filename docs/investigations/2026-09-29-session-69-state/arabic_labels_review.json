@@ -1,0 +1,1518 @@
+{
+ "synth": {
+  "rows": [
+   {
+    "key": "actives",
+    "current_ar": "المكونات الفعالة",
+    "final_ar": "المكونات الفعالة",
+    "changed": false,
+    "rationale": "All three lenses (shopper, localization editor, domain) keep it as the standard Sephora ME / Nice One term.",
+    "char_count": 16
+   },
+   {
+    "key": "availability",
+    "current_ar": "التوفر",
+    "final_ar": "التوفر",
+    "changed": false,
+    "rationale": "All three lenses keep it as the standard e-commerce term.",
+    "char_count": 6
+   },
+   {
+    "key": "build",
+    "current_ar": "التصنيع",
+    "final_ar": "التصنيع",
+    "changed": false,
+    "rationale": "All three lenses keep it; the domain lens notes it may look redundant next to build_quality, but that is a backend question, not a translation one.",
+    "char_count": 7
+   },
+   {
+    "key": "build_quality",
+    "current_ar": "جودة التصنيع",
+    "final_ar": "جودة التصنيع",
+    "changed": false,
+    "rationale": "All three lenses keep it as the standard spec-sheet phrase, and it is the only 'quality' label (quality = جودة).",
+    "char_count": 12
+   },
+   {
+    "key": "character",
+    "current_ar": "الطابع",
+    "final_ar": "الطابع",
+    "changed": false,
+    "rationale": "All three lenses keep it as the idiomatic word for a fragrance's character.",
+    "char_count": 6
+   },
+   {
+    "key": "cpw",
+    "current_ar": "التكلفة لكل استخدام",
+    "final_ar": "التكلفة لكل استخدام",
+    "changed": false,
+    "rationale": "The shopper and editor lenses keep it; only the domain lens suggests ارتداء, as a non-blocking 'awkward' note, so it stays and is flagged for Ahmed.",
+    "char_count": 19
+   },
+   {
+    "key": "craft",
+    "current_ar": "الحرفية",
+    "final_ar": "الحرفية",
+    "changed": false,
+    "rationale": "All three lenses keep it as common Gulf retail wording for craftsmanship.",
+    "char_count": 7
+   },
+   {
+    "key": "dietary",
+    "current_ar": "الملاءمة الغذائية",
+    "final_ar": "ملاءمة النظام الغذائي",
+    "changed": true,
+    "rationale": "All three lenses independently propose this wording: the current label reads as vague nutritional adequacy and sits close to القيمة الغذائية, while the new one names diet fit (vegan, halal, keto) and joins the ملاءمة family.",
+    "char_count": 21
+   },
+   {
+    "key": "dosage",
+    "current_ar": "الجرعة",
+    "final_ar": "الجرعة",
+    "changed": false,
+    "rationale": "All three lenses keep it as the standard supplement term.",
+    "char_count": 6
+   },
+   {
+    "key": "durability",
+    "current_ar": "المتانة",
+    "final_ar": "المتانة",
+    "changed": false,
+    "rationale": "All three lenses keep it as the standard term.",
+    "char_count": 7
+   },
+   {
+    "key": "ecosystem",
+    "current_ar": "المنظومة",
+    "final_ar": "المنظومة",
+    "changed": false,
+    "rationale": "The editor and domain lenses keep it (as in منظومة آبل, and it avoids the environmental reading of النظام البيئي); only the shopper lens calls it opaque ('awkward'), so it stays and is flagged.",
+    "char_count": 8
+   },
+   {
+    "key": "efficacy",
+    "current_ar": "الفعالية",
+    "final_ar": "الفعالية",
+    "changed": false,
+    "rationale": "All three lenses keep it as the standard term.",
+    "char_count": 8
+   },
+   {
+    "key": "evidence",
+    "current_ar": "الأدلة",
+    "final_ar": "الأدلة العلمية",
+    "changed": true,
+    "rationale": "All three lenses independently propose this wording: bare الأدلة reads as legal or forensic proof, and the qualifier makes the supplement meaning (scientific backing) instant.",
+    "char_count": 14
+   },
+   {
+    "key": "feature",
+    "current_ar": "المزايا",
+    "final_ar": "المزايا",
+    "changed": false,
+    "rationale": "All three lenses keep it as the standard term for features.",
+    "char_count": 7
+   },
+   {
+    "key": "feature_match",
+    "current_ar": "مطابقة المزايا",
+    "final_ar": "ملاءمة المزايا",
+    "changed": true,
+    "rationale": "The shopper lens rates it 'wrong' (on a comparison screen مطابقة can read as 'the features are identical'), and the brief requires one word for 'match' across the family (hair_match = ملاءمة الشعر), so it moves to ملاءمة; the editor and domain lenses preferred مطابقة, so this is flagged.",
+    "char_count": 14
+   },
+   {
+    "key": "finish",
+    "current_ar": "اللمسة النهائية",
+    "final_ar": "اللمسة النهائية",
+    "changed": false,
+    "rationale": "All three lenses keep it as the established Arabic makeup-finish term.",
+    "char_count": 15
+   },
+   {
+    "key": "fit",
+    "current_ar": "المقاس",
+    "final_ar": "المقاس",
+    "changed": false,
+    "rationale": "All three lenses keep it; Gulf fashion shoppers read المقاس as fit and true-to-size.",
+    "char_count": 6
+   },
+   {
+    "key": "form",
+    "current_ar": "الشكل",
+    "final_ar": "الشكل",
+    "changed": false,
+    "rationale": "All three lenses keep it as a neutral term that works across categories.",
+    "char_count": 5
+   },
+   {
+    "key": "formulation",
+    "current_ar": "التركيبة",
+    "final_ar": "التركيبة",
+    "changed": false,
+    "rationale": "All three lenses keep it as the standard beauty and supplement term.",
+    "char_count": 8
+   },
+   {
+    "key": "function",
+    "current_ar": "الوظيفة",
+    "final_ar": "الوظيفة",
+    "changed": false,
+    "rationale": "The editor and domain lenses keep it; only the shopper lens flags the 'job/employment' reading ('awkward') and proposes الجانب العملي, so it stays and is flagged.",
+    "char_count": 7
+   },
+   {
+    "key": "futureproof",
+    "current_ar": "مواكبة المستقبل",
+    "final_ar": "مواكبة المستقبل",
+    "changed": false,
+    "rationale": "All three lenses keep it as idiomatic wording in Arabic tech coverage.",
+    "char_count": 15
+   },
+   {
+    "key": "hair_match",
+    "current_ar": "ملاءمة الشعر",
+    "final_ar": "ملاءمة الشعر",
+    "changed": false,
+    "rationale": "All three lenses keep it, and it anchors the single 'match' word (ملاءمة) alongside skin_compat.",
+    "char_count": 12
+   },
+   {
+    "key": "heritage",
+    "current_ar": "العراقة",
+    "final_ar": "العراقة",
+    "changed": false,
+    "rationale": "All three lenses keep it as the natural word for a perfume house's heritage.",
+    "char_count": 7
+   },
+   {
+    "key": "ingredient",
+    "current_ar": "المكونات",
+    "final_ar": "المكونات",
+    "changed": false,
+    "rationale": "All three lenses keep it as the standard term.",
+    "char_count": 8
+   },
+   {
+    "key": "ingredient_safety",
+    "current_ar": "أمان المكونات",
+    "final_ar": "أمان المكونات",
+    "changed": false,
+    "rationale": "All three lenses keep it, and it is consistent with the single 'safety' word (الأمان).",
+    "char_count": 13
+   },
+   {
+    "key": "longevity",
+    "current_ar": "الثبات",
+    "final_ar": "الثبات",
+    "changed": false,
+    "rationale": "All three lenses keep it as exactly the Gulf fragrance-community term.",
+    "char_count": 6
+   },
+   {
+    "key": "multi_value",
+    "current_ar": "قيمة الاستخدامات المتعددة",
+    "final_ar": "قيمة تعدد الاستخدامات",
+    "changed": true,
+    "rationale": "All three lenses flag it 'too_long': the current label measures 25 characters, over the 21 target. The new label is 21, reuses the versatility wording and keeps the قيمة value word.",
+    "char_count": 21
+   },
+   {
+    "key": "nutrition",
+    "current_ar": "القيمة الغذائية",
+    "final_ar": "القيمة الغذائية",
+    "changed": false,
+    "rationale": "All three lenses keep it as the fixed food-label phrase.",
+    "char_count": 15
+   },
+   {
+    "key": "perf_value",
+    "current_ar": "الأداء مقابل السعر",
+    "final_ar": "الأداء مقابل السعر",
+    "changed": false,
+    "rationale": "All three lenses keep it as the idiomatic price-to-performance phrase. The 'X vs value' keys deliberately use مقابل السعر, which all three lenses accept.",
+    "char_count": 18
+   },
+   {
+    "key": "performance",
+    "current_ar": "الأداء",
+    "final_ar": "الأداء",
+    "changed": false,
+    "rationale": "All three lenses keep it as the standard term.",
+    "char_count": 6
+   },
+   {
+    "key": "presentation",
+    "current_ar": "التقديم",
+    "final_ar": "المظهر والتغليف",
+    "changed": true,
+    "rationale": "All three lenses reject التقديم because it reads as 'serving' or 'submission' (the shopper and domain lenses rate it 'wrong'). The word order follows the editor and domain lenses, 2 against 1 for the shopper lens's التغليف والمظهر.",
+    "char_count": 15
+   },
+   {
+    "key": "price",
+    "current_ar": "السعر",
+    "final_ar": "السعر",
+    "changed": false,
+    "rationale": "All three lenses keep it as the standard term.",
+    "char_count": 5
+   },
+   {
+    "key": "projection",
+    "current_ar": "الانتشار",
+    "final_ar": "الانتشار",
+    "changed": false,
+    "rationale": "All three lenses keep it as the MSA fragrance term, deliberately avoiding the colloquial الفوحان.",
+    "char_count": 8
+   },
+   {
+    "key": "reliability",
+    "current_ar": "الاعتمادية",
+    "final_ar": "الاعتمادية",
+    "changed": false,
+    "rationale": "All three lenses keep it as the Gulf tech term, distinct from trust (الموثوقية).",
+    "char_count": 10
+   },
+   {
+    "key": "results",
+    "current_ar": "النتائج",
+    "final_ar": "النتائج",
+    "changed": false,
+    "rationale": "All three lenses keep it as clear wording.",
+    "char_count": 7
+   },
+   {
+    "key": "results_value",
+    "current_ar": "النتائج مقابل السعر",
+    "final_ar": "النتائج مقابل السعر",
+    "changed": false,
+    "rationale": "All three lenses keep it, consistent with perf_value's مقابل السعر.",
+    "char_count": 19
+   },
+   {
+    "key": "review",
+    "current_ar": "التقييمات",
+    "final_ar": "التقييمات",
+    "changed": false,
+    "rationale": "All three lenses keep it as the Noon / Amazon.sa term. It is deliberately identical to reviews because the two keys are synonyms.",
+    "char_count": 9
+   },
+   {
+    "key": "reviews",
+    "current_ar": "التقييمات",
+    "final_ar": "التقييمات",
+    "changed": false,
+    "rationale": "All three lenses keep it as the Noon / Amazon.sa term.",
+    "char_count": 9
+   },
+   {
+    "key": "safety",
+    "current_ar": "الأمان",
+    "final_ar": "الأمان",
+    "changed": false,
+    "rationale": "All three lenses keep it as the single 'safety' word shared with ingredient_safety.",
+    "char_count": 6
+   },
+   {
+    "key": "scalp",
+    "current_ar": "فروة الرأس",
+    "final_ar": "فروة الرأس",
+    "changed": false,
+    "rationale": "All three lenses keep it as the correct haircare term, as terse as the English.",
+    "char_count": 10
+   },
+   {
+    "key": "scent",
+    "current_ar": "الرائحة",
+    "final_ar": "الرائحة",
+    "changed": false,
+    "rationale": "All three lenses keep it as the standard term.",
+    "char_count": 7
+   },
+   {
+    "key": "sensory",
+    "current_ar": "الإحساس عند الاستخدام",
+    "final_ar": "التجربة الحسية",
+    "changed": true,
+    "rationale": "All three lenses call the current label a clunky calque sitting at the 21-character limit. The new label is the established nominal cosmetics term and drops to 14 characters; the editor and domain lenses chose it, 2 against 1 for the shopper lens's الملمس والإحساس.",
+    "char_count": 14
+   },
+   {
+    "key": "serving_value",
+    "current_ar": "قيمة الحصة",
+    "final_ar": "القيمة لكل حصة",
+    "changed": true,
+    "rationale": "All three lenses flag that قيمة الحصة reads as the nutritional content of a serving (the shopper and editor lenses rate it 'wrong'). The new label follows the editor and domain lenses and keeps the one 'value' word (قيمة); the shopper lens's التكلفة لكل حصة is flagged for Ahmed.",
+    "char_count": 14
+   },
+   {
+    "key": "shade",
+    "current_ar": "درجات اللون",
+    "final_ar": "درجات اللون",
+    "changed": false,
+    "rationale": "All three lenses keep it as the standard shade-range term.",
+    "char_count": 11
+   },
+   {
+    "key": "skin_compat",
+    "current_ar": "ملاءمة البشرة",
+    "final_ar": "ملاءمة البشرة",
+    "changed": false,
+    "rationale": "All three lenses keep it, and it anchors the ملاءمة family.",
+    "char_count": 13
+   },
+   {
+    "key": "style",
+    "current_ar": "الطراز",
+    "final_ar": "التصميم",
+    "changed": true,
+    "rationale": "The shopper and domain lenses both say الطراز sounds architectural or dated, while Gulf fashion retail says التصميم. It does not collide with التصنيع (build) or المظهر والتغليف (presentation). The editor lens would keep الطراز.",
+    "char_count": 7
+   },
+   {
+    "key": "taste",
+    "current_ar": "الطعم",
+    "final_ar": "الطعم",
+    "changed": false,
+    "rationale": "All three lenses keep it as the standard term.",
+    "char_count": 5
+   },
+   {
+    "key": "trust",
+    "current_ar": "الموثوقية",
+    "final_ar": "الموثوقية",
+    "changed": false,
+    "rationale": "All three lenses keep it, distinct from reliability (الاعتمادية).",
+    "char_count": 9
+   },
+   {
+    "key": "value",
+    "current_ar": "القيمة",
+    "final_ar": "القيمة",
+    "changed": false,
+    "rationale": "The editor and domain lenses keep it as the anchor of the 'value' family. Only the shopper lens ('inconsistent') proposes القيمة مقابل السعر, so it stays and is flagged.",
+    "char_count": 6
+   },
+   {
+    "key": "versatility",
+    "current_ar": "تعدد الاستخدامات",
+    "final_ar": "تعدد الاستخدامات",
+    "changed": false,
+    "rationale": "All three lenses keep it, and multi_value now reuses this wording.",
+    "char_count": 16
+   },
+   {
+    "key": "wear_value",
+    "current_ar": "قيمة الاستخدام",
+    "final_ar": "قيمة الاستخدام",
+    "changed": false,
+    "rationale": "The shopper and editor lenses keep it, consistent with cpw's استخدام. Only the domain lens ('inconsistent') proposes قيمة الارتداء, together with its cpw change, so it stays and is flagged.",
+    "char_count": 14
+   }
+  ],
+  "disagreements": [
+   "feature_match: CHANGED to ملاءمة المزايا on the shopper lens's 'wrong' verdict (on a comparison screen مطابقة can read as 'identical features') plus the brief's rule of one word for 'match' (hair_match already uses ملاءمة). The editor and domain lenses would keep مطابقة المزايا, and the editor deliberately split ملاءمة (suits the user) from مطابقة (matches the spec). Ahmed: accept the change (A) or revert to مطابقة المزايا (B).",
+   "serving_value: all three lenses change it, but they split on the head word. The editor and domain lenses give القيمة لكل حصة (chosen, keeps the 'value' family); the shopper lens gives التكلفة لكل حصة ('cost per serving', parallel to cpw's التكلفة لكل استخدام). The right answer depends on what the backend actually scores: if the dimension is price per serving (lower is better), التكلفة لكل حصة is more accurate.",
+   "value: the shopper lens ('inconsistent') wants القيمة مقابل السعر so that bare القيمة is not ambiguous next to a number and does not sit close to القيمة الغذائية. The editor and domain lenses keep القيمة as the family anchor. Kept; a change would push value to 18 characters.",
+   "cpw and wear_value: the domain lens wants ارتداء ('wearing') instead of استخدام ('use') for these two fashion metrics (التكلفة لكل ارتداء, 18 characters; قيمة الارتداء, 13 characters). The other two lenses keep استخدام for consistency with versatility and multi_value. Kept. If Ahmed prefers ارتداء, both keys must change together.",
+   "style: CHANGED to التصميم (shopper and domain lenses); the editor lens would keep الطراز.",
+   "presentation: all three lenses agree التقديم is wrong but disagree on word order. المظهر والتغليف was chosen (2 lenses) over التغليف والمظهر (shopper lens).",
+   "sensory: all three lenses change it. التجربة الحسية was chosen (2 lenses) over الملمس والإحساس (shopper lens).",
+   "ecosystem: only the shopper lens ('awkward') wants التكامل مع الأجهزة. The others prefer المنظومة (as in منظومة آبل). Kept.",
+   "function: only the shopper lens ('awkward') wants الجانب العملي, to avoid the 'job/employment' reading of الوظيفة. Kept.",
+   "build vs build_quality (domain lens note): if the backend can ever show both on one electronics comparison, التصنيع and جودة التصنيع will look redundant. This is a backend question, not a translation one."
+  ],
+  "summary": "Final table: 9 of the 51 labels change and 42 stay as they are. The changes are dietary, evidence, feature_match, multi_value, presentation, sensory, serving_value and style.\n\n- Six changes have all three reviewers agreeing (dietary, evidence, multi_value, presentation, sensory, serving_value).\n- style changes because two of the three reviewers proposed it.\n- feature_match changes on one 'wrong' verdict plus the brief's one-word-per-family rule.\n\nThe families end up as follows:\n- value: قيمة / القيمة for the value and '_value' keys (value, nutrition, serving_value, multi_value, wear_value). perf_value and results_value deliberately use 'مقابل السعر', and all three reviewers accept that.\n- match: ملاءمة for skin_compat, hair_match, dietary and feature_match.\n- safety: الأمان for safety and ingredient_safety.\n- quality: جودة, used only in build_quality.\n\nLengths, counted with Python len() in C:\\Users\\SYNACK~1\\AppData\\Local\\Temp\\claude\\C--Users-SynAckITPC-Documents-AI\\0317e00d-076e-4bbc-b1e2-b9eeb7dc8fe7\\scratchpad\\ar_final.json:\n- The longest final labels are dietary and multi_value at 21 characters each. Nothing exceeds 21.\n- The old multi_value actually measured 25 characters, not 24 as two reviewers wrote.\n- sensory drops from 21 to 14 characters.\n\nOther checks:\n- No final value is بيانات محدودة (the limited_data label), and none carries diacritics.\n- The only duplicate is review and reviews, which is intended.\n- English values are untouched.\n\nAhmed's main open calls:\n- feature_match: ملاءمة or مطابقة.\n- serving_value: 'value per serving' or 'cost per serving'. This depends on what the backend actually scores.\n- The single-reviewer proposals for value, cpw/wear_value (ارتداء), ecosystem and function, which were all kept."
+ },
+ "reviews": [
+  {
+   "reviewer_lens": "Professional Arabic localization editor (MSA, app UI strings, Apple/Google HIG Arabic style): grammar, definiteness, nominal form, consistency across shared words, and length on a single RTL line beside a score.",
+   "verdicts": [
+    {
+     "key": "actives",
+     "keep": true,
+     "proposed_ar": "المكونات الفعالة",
+     "reason": "Standard skincare retail term.",
+     "severity": "fine"
+    },
+    {
+     "key": "availability",
+     "keep": true,
+     "proposed_ar": "التوفر",
+     "reason": "Clear and standard.",
+     "severity": "fine"
+    },
+    {
+     "key": "build",
+     "keep": true,
+     "proposed_ar": "التصنيع",
+     "reason": "Reads as build/manufacture quality and pairs with جودة التصنيع.",
+     "severity": "fine"
+    },
+    {
+     "key": "build_quality",
+     "keep": true,
+     "proposed_ar": "جودة التصنيع",
+     "reason": "Standard electronics term.",
+     "severity": "fine"
+    },
+    {
+     "key": "character",
+     "keep": true,
+     "proposed_ar": "الطابع",
+     "reason": "Idiomatic for a fragrance's character.",
+     "severity": "fine"
+    },
+    {
+     "key": "cpw",
+     "keep": true,
+     "proposed_ar": "التكلفة لكل استخدام",
+     "reason": "Clear, and within the length limit.",
+     "severity": "fine"
+    },
+    {
+     "key": "craft",
+     "keep": true,
+     "proposed_ar": "الحرفية",
+     "reason": "Common MSA for craftsmanship.",
+     "severity": "fine"
+    },
+    {
+     "key": "dietary",
+     "keep": false,
+     "proposed_ar": "ملاءمة النظام الغذائي",
+     "reason": "الملاءمة الغذائية is vague (it can read as nutritional adequacy); naming the diet says 'fits your diet' and matches the ملاءمة + noun pattern of ملاءمة البشرة and ملاءمة الشعر (21 chars).",
+     "severity": "awkward"
+    },
+    {
+     "key": "dosage",
+     "keep": true,
+     "proposed_ar": "الجرعة",
+     "reason": "Standard.",
+     "severity": "fine"
+    },
+    {
+     "key": "durability",
+     "keep": true,
+     "proposed_ar": "المتانة",
+     "reason": "Standard.",
+     "severity": "fine"
+    },
+    {
+     "key": "ecosystem",
+     "keep": true,
+     "proposed_ar": "المنظومة",
+     "reason": "Acceptable tech usage, and it avoids the environmental reading of النظام البيئي.",
+     "severity": "fine"
+    },
+    {
+     "key": "efficacy",
+     "keep": true,
+     "proposed_ar": "الفعالية",
+     "reason": "Standard.",
+     "severity": "fine"
+    },
+    {
+     "key": "evidence",
+     "keep": false,
+     "proposed_ar": "الأدلة العلمية",
+     "reason": "On its own, الأدلة reads as generic 'proofs'; for supplements the dimension means scientific backing, and the qualifier makes that clear at a glance.",
+     "severity": "awkward"
+    },
+    {
+     "key": "feature",
+     "keep": true,
+     "proposed_ar": "المزايا",
+     "reason": "Standard.",
+     "severity": "fine"
+    },
+    {
+     "key": "feature_match",
+     "keep": true,
+     "proposed_ar": "مطابقة المزايا",
+     "reason": "مطابقة is the right word for features that match a request.",
+     "severity": "fine"
+    },
+    {
+     "key": "finish",
+     "keep": true,
+     "proposed_ar": "اللمسة النهائية",
+     "reason": "The established Arabic makeup term.",
+     "severity": "fine"
+    },
+    {
+     "key": "fit",
+     "keep": true,
+     "proposed_ar": "المقاس",
+     "reason": "What Gulf fashion retail uses for fit.",
+     "severity": "fine"
+    },
+    {
+     "key": "form",
+     "keep": true,
+     "proposed_ar": "الشكل",
+     "reason": "General enough for a key shared across categories.",
+     "severity": "fine"
+    },
+    {
+     "key": "formulation",
+     "keep": true,
+     "proposed_ar": "التركيبة",
+     "reason": "Standard.",
+     "severity": "fine"
+    },
+    {
+     "key": "function",
+     "keep": true,
+     "proposed_ar": "الوظيفة",
+     "reason": "Clear.",
+     "severity": "fine"
+    },
+    {
+     "key": "futureproof",
+     "keep": true,
+     "proposed_ar": "مواكبة المستقبل",
+     "reason": "Idiomatic and short.",
+     "severity": "fine"
+    },
+    {
+     "key": "hair_match",
+     "keep": true,
+     "proposed_ar": "ملاءمة الشعر",
+     "reason": "Understood as suitability for your hair, and parallel to ملاءمة البشرة.",
+     "severity": "fine"
+    },
+    {
+     "key": "heritage",
+     "keep": true,
+     "proposed_ar": "العراقة",
+     "reason": "Idiomatic for a fragrance house's heritage.",
+     "severity": "fine"
+    },
+    {
+     "key": "ingredient",
+     "keep": true,
+     "proposed_ar": "المكونات",
+     "reason": "Standard.",
+     "severity": "fine"
+    },
+    {
+     "key": "ingredient_safety",
+     "keep": true,
+     "proposed_ar": "أمان المكونات",
+     "reason": "Clear, and consistent with الأمان.",
+     "severity": "fine"
+    },
+    {
+     "key": "longevity",
+     "keep": true,
+     "proposed_ar": "الثبات",
+     "reason": "The standard perfume term.",
+     "severity": "fine"
+    },
+    {
+     "key": "multi_value",
+     "keep": false,
+     "proposed_ar": "قيمة تعدد الاستخدامات",
+     "reason": "The current value is 25 chars, over the 21-char line; this version fits in 21 and reuses the تعدد الاستخدامات wording of versatility.",
+     "severity": "too_long"
+    },
+    {
+     "key": "nutrition",
+     "keep": true,
+     "proposed_ar": "القيمة الغذائية",
+     "reason": "Standard label term.",
+     "severity": "fine"
+    },
+    {
+     "key": "perf_value",
+     "keep": true,
+     "proposed_ar": "الأداء مقابل السعر",
+     "reason": "The idiomatic Arabic for performance for the money; مقابل القيمة would read less clearly.",
+     "severity": "fine"
+    },
+    {
+     "key": "performance",
+     "keep": true,
+     "proposed_ar": "الأداء",
+     "reason": "Standard.",
+     "severity": "fine"
+    },
+    {
+     "key": "presentation",
+     "keep": false,
+     "proposed_ar": "المظهر والتغليف",
+     "reason": "التقديم reads as serving or submission; next to a perfume or beauty score, the dimension is really the look and packaging.",
+     "severity": "awkward"
+    },
+    {
+     "key": "price",
+     "keep": true,
+     "proposed_ar": "السعر",
+     "reason": "Standard.",
+     "severity": "fine"
+    },
+    {
+     "key": "projection",
+     "keep": true,
+     "proposed_ar": "الانتشار",
+     "reason": "The standard perfume term.",
+     "severity": "fine"
+    },
+    {
+     "key": "reliability",
+     "keep": true,
+     "proposed_ar": "الاعتمادية",
+     "reason": "Common Gulf tech term, and distinct from الموثوقية (trust).",
+     "severity": "fine"
+    },
+    {
+     "key": "results",
+     "keep": true,
+     "proposed_ar": "النتائج",
+     "reason": "Standard.",
+     "severity": "fine"
+    },
+    {
+     "key": "results_value",
+     "keep": true,
+     "proposed_ar": "النتائج مقابل السعر",
+     "reason": "Consistent with perf_value.",
+     "severity": "fine"
+    },
+    {
+     "key": "review",
+     "keep": true,
+     "proposed_ar": "التقييمات",
+     "reason": "What Gulf apps use for reviews.",
+     "severity": "fine"
+    },
+    {
+     "key": "reviews",
+     "keep": true,
+     "proposed_ar": "التقييمات",
+     "reason": "Same as review, which is correct because they are synonyms.",
+     "severity": "fine"
+    },
+    {
+     "key": "safety",
+     "keep": true,
+     "proposed_ar": "الأمان",
+     "reason": "Standard.",
+     "severity": "fine"
+    },
+    {
+     "key": "scalp",
+     "keep": true,
+     "proposed_ar": "فروة الرأس",
+     "reason": "Matches the bare English label.",
+     "severity": "fine"
+    },
+    {
+     "key": "scent",
+     "keep": true,
+     "proposed_ar": "الرائحة",
+     "reason": "Standard.",
+     "severity": "fine"
+    },
+    {
+     "key": "sensory",
+     "keep": false,
+     "proposed_ar": "التجربة الحسية",
+     "reason": "الإحساس عند الاستخدام is a clumsy phrase sitting at the 21-char limit; التجربة الحسية is the established nominal term and reads in one glance (14 chars).",
+     "severity": "awkward"
+    },
+    {
+     "key": "serving_value",
+     "keep": false,
+     "proposed_ar": "القيمة لكل حصة",
+     "reason": "قيمة الحصة can be misread as the nutritional amount of a portion, which collides with القيمة الغذائية; لكل حصة makes 'value per serving' explicit.",
+     "severity": "wrong"
+    },
+    {
+     "key": "shade",
+     "keep": true,
+     "proposed_ar": "درجات اللون",
+     "reason": "Clear for shade range.",
+     "severity": "fine"
+    },
+    {
+     "key": "skin_compat",
+     "keep": true,
+     "proposed_ar": "ملاءمة البشرة",
+     "reason": "Understood as suitability for your skin.",
+     "severity": "fine"
+    },
+    {
+     "key": "style",
+     "keep": true,
+     "proposed_ar": "الطراز",
+     "reason": "Acceptable MSA for style.",
+     "severity": "fine"
+    },
+    {
+     "key": "taste",
+     "keep": true,
+     "proposed_ar": "الطعم",
+     "reason": "Standard.",
+     "severity": "fine"
+    },
+    {
+     "key": "trust",
+     "keep": true,
+     "proposed_ar": "الموثوقية",
+     "reason": "Standard.",
+     "severity": "fine"
+    },
+    {
+     "key": "value",
+     "keep": true,
+     "proposed_ar": "القيمة",
+     "reason": "Standard, and the anchor word for the value family.",
+     "severity": "fine"
+    },
+    {
+     "key": "versatility",
+     "keep": true,
+     "proposed_ar": "تعدد الاستخدامات",
+     "reason": "Standard.",
+     "severity": "fine"
+    },
+    {
+     "key": "wear_value",
+     "keep": true,
+     "proposed_ar": "قيمة الاستخدام",
+     "reason": "Clear, and consistent with cpw's استخدام.",
+     "severity": "fine"
+    }
+   ],
+   "family_notes": "Six changes out of 51 (dietary, evidence, multi_value, presentation, sensory, serving_value). The longest label is now 21 chars (ملاءمة النظام الغذائي, which exactly hits the limit, as does multi_value), and none of the others is longer than the 19-char التكلفة لكل استخدام. Sensory is down to 14 chars, so it is no longer the longest label. Value family: the standalone and compound 'value' labels use القيمة (value, nutrition, serving_value, multi_value, wear_value). perf_value and results_value deliberately keep 'مقابل السعر' because the English 'X vs value' means X for the money, and مقابل القيمة would read worse. Match family: ملاءمة for suitability to the user (skin, hair, diet) and مطابقة for spec matching (feature_match). Safety family: الأمان is used throughout (safety, ingredient_safety). Use-words: استخدام is used for cpw, wear_value, versatility and multi_value, all consistently. None of the proposals collide with results.dimensions.limited_data (بيانات محدودة). No diacritics are used and every label is a nominal form."
+  },
+  {
+   "reviewer_lens": "Domain reviewer for vertical terminology: perfumery, cosmetics and skincare, supplements and nutrition, electronics reviews, and fashion. Register is Gulf retail Modern Standard Arabic, using noun forms and no diacritics.",
+   "verdicts": [
+    {
+     "key": "actives",
+     "keep": true,
+     "proposed_ar": "المكونات الفعالة",
+     "reason": "This is the standard cosmetics retail term for active ingredients.",
+     "severity": "fine"
+    },
+    {
+     "key": "availability",
+     "keep": true,
+     "proposed_ar": "التوفر",
+     "reason": "It is clear and standard in e-commerce.",
+     "severity": "fine"
+    },
+    {
+     "key": "build",
+     "keep": true,
+     "proposed_ar": "التصنيع",
+     "reason": "It is an acceptable short form for build in electronics and sits next to the build_quality label.",
+     "severity": "fine"
+    },
+    {
+     "key": "build_quality",
+     "keep": true,
+     "proposed_ar": "جودة التصنيع",
+     "reason": "This is the established term in Arabic tech reviews.",
+     "severity": "fine"
+    },
+    {
+     "key": "character",
+     "keep": true,
+     "proposed_ar": "الطابع",
+     "reason": "It is the usual way to describe a fragrance's character in Arabic retail.",
+     "severity": "fine"
+    },
+    {
+     "key": "cpw",
+     "keep": false,
+     "proposed_ar": "التكلفة لكل ارتداء",
+     "reason": "This is a fashion metric, and ارتداء (wearing) is the exact sense of 'wear', while استخدام (use) is generic and blurs it with the other per-use metrics.",
+     "severity": "awkward"
+    },
+    {
+     "key": "craft",
+     "keep": true,
+     "proposed_ar": "الحرفية",
+     "reason": "It is common in Gulf luxury and fashion retail for craftsmanship.",
+     "severity": "fine"
+    },
+    {
+     "key": "dietary",
+     "keep": false,
+     "proposed_ar": "ملاءمة النظام الغذائي",
+     "reason": "الملاءمة الغذائية reads as 'nutritional suitability' and gets confused with nutrition (القيمة الغذائية), while the dimension is about fitting a diet such as vegan, halal or gluten-free.",
+     "severity": "awkward"
+    },
+    {
+     "key": "dosage",
+     "keep": true,
+     "proposed_ar": "الجرعة",
+     "reason": "This is the standard supplement term.",
+     "severity": "fine"
+    },
+    {
+     "key": "durability",
+     "keep": true,
+     "proposed_ar": "المتانة",
+     "reason": "This is the standard term.",
+     "severity": "fine"
+    },
+    {
+     "key": "ecosystem",
+     "keep": true,
+     "proposed_ar": "المنظومة",
+     "reason": "It is better than the calque النظام البيئي, which reads as 'environment', and it is used in Arabic tech coverage (for example منظومة آبل).",
+     "severity": "fine"
+    },
+    {
+     "key": "efficacy",
+     "keep": true,
+     "proposed_ar": "الفعالية",
+     "reason": "This is the standard term, and it matches actives.",
+     "severity": "fine"
+    },
+    {
+     "key": "evidence",
+     "keep": false,
+     "proposed_ar": "الأدلة العلمية",
+     "reason": "الأدلة on its own is vague on a score row ('evidence of what?'), and supplement retail says الأدلة العلمية (scientific evidence).",
+     "severity": "awkward"
+    },
+    {
+     "key": "feature",
+     "keep": true,
+     "proposed_ar": "المزايا",
+     "reason": "It is clear and standard for features.",
+     "severity": "fine"
+    },
+    {
+     "key": "feature_match",
+     "keep": true,
+     "proposed_ar": "مطابقة المزايا",
+     "reason": "It reads naturally as 'features match your needs'.",
+     "severity": "fine"
+    },
+    {
+     "key": "finish",
+     "keep": true,
+     "proposed_ar": "اللمسة النهائية",
+     "reason": "This is the established Arabic beauty retail term for matte, dewy and similar finishes.",
+     "severity": "fine"
+    },
+    {
+     "key": "fit",
+     "keep": true,
+     "proposed_ar": "المقاس",
+     "reason": "Gulf shoppers read المقاس as 'fit and true to size'. القصة would shift the meaning to cut and style.",
+     "severity": "fine"
+    },
+    {
+     "key": "form",
+     "keep": true,
+     "proposed_ar": "الشكل",
+     "reason": "It is a neutral term that works across the shared categories.",
+     "severity": "fine"
+    },
+    {
+     "key": "formulation",
+     "keep": true,
+     "proposed_ar": "التركيبة",
+     "reason": "This is the standard cosmetics and supplements term.",
+     "severity": "fine"
+    },
+    {
+     "key": "function",
+     "keep": true,
+     "proposed_ar": "الوظيفة",
+     "reason": "It is clear.",
+     "severity": "fine"
+    },
+    {
+     "key": "futureproof",
+     "keep": true,
+     "proposed_ar": "مواكبة المستقبل",
+     "reason": "It is idiomatic in Arabic tech reviews and fits the width limit.",
+     "severity": "fine"
+    },
+    {
+     "key": "hair_match",
+     "keep": true,
+     "proposed_ar": "ملاءمة الشعر",
+     "reason": "It is clear and parallels skin_compat.",
+     "severity": "fine"
+    },
+    {
+     "key": "heritage",
+     "keep": true,
+     "proposed_ar": "العراقة",
+     "reason": "This is the usual word for a fragrance house's heritage.",
+     "severity": "fine"
+    },
+    {
+     "key": "ingredient",
+     "keep": true,
+     "proposed_ar": "المكونات",
+     "reason": "This is the standard term.",
+     "severity": "fine"
+    },
+    {
+     "key": "ingredient_safety",
+     "keep": true,
+     "proposed_ar": "أمان المكونات",
+     "reason": "It is clear and consistent with safety.",
+     "severity": "fine"
+    },
+    {
+     "key": "longevity",
+     "keep": true,
+     "proposed_ar": "الثبات",
+     "reason": "This is exactly the term Gulf fragrance retail uses.",
+     "severity": "fine"
+    },
+    {
+     "key": "multi_value",
+     "keep": false,
+     "proposed_ar": "قيمة تعدد الاستخدامات",
+     "reason": "The current label is 24 characters, over the 21 reachable today. The proposal is 21 and reuses the wording of versatility (تعدد الاستخدامات) for consistency.",
+     "severity": "too_long"
+    },
+    {
+     "key": "nutrition",
+     "keep": true,
+     "proposed_ar": "القيمة الغذائية",
+     "reason": "This is the standard wording on grocery labels.",
+     "severity": "fine"
+    },
+    {
+     "key": "perf_value",
+     "keep": true,
+     "proposed_ar": "الأداء مقابل السعر",
+     "reason": "This is the idiomatic Arabic phrase for price and performance, and it is consistent with results_value.",
+     "severity": "fine"
+    },
+    {
+     "key": "performance",
+     "keep": true,
+     "proposed_ar": "الأداء",
+     "reason": "This is the standard term.",
+     "severity": "fine"
+    },
+    {
+     "key": "presentation",
+     "keep": false,
+     "proposed_ar": "المظهر والتغليف",
+     "reason": "التقديم reads as 'serving' or 'submission'. In fragrance and beauty retail, presentation means the look of the bottle and its packaging.",
+     "severity": "wrong"
+    },
+    {
+     "key": "price",
+     "keep": true,
+     "proposed_ar": "السعر",
+     "reason": "This is the standard term.",
+     "severity": "fine"
+    },
+    {
+     "key": "projection",
+     "keep": true,
+     "proposed_ar": "الانتشار",
+     "reason": "It is the Modern Standard Arabic term used in Gulf fragrance retail. فوحان leans colloquial.",
+     "severity": "fine"
+    },
+    {
+     "key": "reliability",
+     "keep": true,
+     "proposed_ar": "الاعتمادية",
+     "reason": "It is the standard term in Gulf tech and stays distinct from trust (الموثوقية).",
+     "severity": "fine"
+    },
+    {
+     "key": "results",
+     "keep": true,
+     "proposed_ar": "النتائج",
+     "reason": "It is clear.",
+     "severity": "fine"
+    },
+    {
+     "key": "results_value",
+     "keep": true,
+     "proposed_ar": "النتائج مقابل السعر",
+     "reason": "It is idiomatic and consistent with perf_value.",
+     "severity": "fine"
+    },
+    {
+     "key": "review",
+     "keep": true,
+     "proposed_ar": "التقييمات",
+     "reason": "This is the standard e-commerce term, identical to reviews.",
+     "severity": "fine"
+    },
+    {
+     "key": "reviews",
+     "keep": true,
+     "proposed_ar": "التقييمات",
+     "reason": "This is the standard e-commerce term.",
+     "severity": "fine"
+    },
+    {
+     "key": "safety",
+     "keep": true,
+     "proposed_ar": "الأمان",
+     "reason": "This is the standard term.",
+     "severity": "fine"
+    },
+    {
+     "key": "scalp",
+     "keep": true,
+     "proposed_ar": "فروة الرأس",
+     "reason": "This is the correct haircare term.",
+     "severity": "fine"
+    },
+    {
+     "key": "scent",
+     "keep": true,
+     "proposed_ar": "الرائحة",
+     "reason": "It is clear.",
+     "severity": "fine"
+    },
+    {
+     "key": "sensory",
+     "keep": false,
+     "proposed_ar": "التجربة الحسية",
+     "reason": "التجربة الحسية is the established cosmetics term for texture, feel and smell. It is also 14 characters instead of 21, which makes it the longest label no longer.",
+     "severity": "awkward"
+    },
+    {
+     "key": "serving_value",
+     "keep": false,
+     "proposed_ar": "القيمة لكل حصة",
+     "reason": "قيمة الحصة can be read as the nutritional value of a serving. 'Per serving' makes the value-for-money meaning clear.",
+     "severity": "awkward"
+    },
+    {
+     "key": "shade",
+     "keep": true,
+     "proposed_ar": "درجات اللون",
+     "reason": "This is the standard beauty retail term for shade range.",
+     "severity": "fine"
+    },
+    {
+     "key": "skin_compat",
+     "keep": true,
+     "proposed_ar": "ملاءمة البشرة",
+     "reason": "This is the standard skincare term.",
+     "severity": "fine"
+    },
+    {
+     "key": "style",
+     "keep": false,
+     "proposed_ar": "التصميم",
+     "reason": "الطراز sounds architectural or old-fashioned in fashion retail. Shoppers read التصميم (design) faster for a garment's style.",
+     "severity": "awkward"
+    },
+    {
+     "key": "taste",
+     "keep": true,
+     "proposed_ar": "الطعم",
+     "reason": "This is the standard term.",
+     "severity": "fine"
+    },
+    {
+     "key": "trust",
+     "keep": true,
+     "proposed_ar": "الموثوقية",
+     "reason": "This is the standard term, and it is distinct from reliability.",
+     "severity": "fine"
+    },
+    {
+     "key": "value",
+     "keep": true,
+     "proposed_ar": "القيمة",
+     "reason": "It is the anchor word for the whole value family.",
+     "severity": "fine"
+    },
+    {
+     "key": "versatility",
+     "keep": true,
+     "proposed_ar": "تعدد الاستخدامات",
+     "reason": "This is the standard term.",
+     "severity": "fine"
+    },
+    {
+     "key": "wear_value",
+     "keep": false,
+     "proposed_ar": "قيمة الارتداء",
+     "reason": "This is a fashion metric. ارتداء is the precise sense of 'wear' and pairs with the proposed cpw label.",
+     "severity": "inconsistent"
+    }
+   ],
+   "family_notes": "I propose changing 9 of the 51 labels and keeping the other 42.\n\n- **Value family:** the 'X vs value' keys (perf_value, results_value) use مقابل السعر, the idiomatic price-performance phrase. The '_value' keys (serving_value, wear_value, multi_value) keep قيمة, and value = القيمة is the anchor. This split is deliberate and readable.\n- **Fashion:** 'wear' becomes ارتداء in both cpw and wear_value, so the two fashion metrics match. Fit stays المقاس.\n- **Trust vs reliability:** trust stays الموثوقية and reliability stays الاعتمادية, so the two never share a word.\n- **Clash with limited_data:** none of the labels collides with results.dimensions.limited_data (بيانات محدودة).\n- **Widths:** after the changes the longest labels are 21 characters (multi_value and dietary). sensory drops from 21 to 14.\n- **Diacritics:** there are none in any proposed label.\n- **Build vs build_quality:** if the backend can ever show both on one electronics comparison, التصنيع and جودة التصنيع will look redundant. That is a backend question, not a translation one."
+  },
+  {
+   "reviewer_lens": "Native Gulf (Bahrain/Saudi) Arabic shopper reading Noon, Amazon.sa, Namshi, Nice One and Sephora ME spec sheets. Each label is judged on how fast it reads next to a score in a one-line RTL row, and on whether it sounds like a word-for-word English calque.",
+   "verdicts": [
+    {
+     "key": "actives",
+     "keep": true,
+     "proposed_ar": "المكونات الفعالة",
+     "reason": "This is the standard Sephora ME / Nice One term for actives.",
+     "severity": "fine"
+    },
+    {
+     "key": "availability",
+     "keep": true,
+     "proposed_ar": "التوفر",
+     "reason": "Clear, standard retail term.",
+     "severity": "fine"
+    },
+    {
+     "key": "build",
+     "keep": true,
+     "proposed_ar": "التصنيع",
+     "reason": "Understood as construction in electronics and sits well beside build_quality.",
+     "severity": "fine"
+    },
+    {
+     "key": "build_quality",
+     "keep": true,
+     "proposed_ar": "جودة التصنيع",
+     "reason": "This is the standard spec-sheet phrase.",
+     "severity": "fine"
+    },
+    {
+     "key": "character",
+     "keep": true,
+     "proposed_ar": "الطابع",
+     "reason": "Reads naturally for a fragrance's character in Arabic perfume reviews.",
+     "severity": "fine"
+    },
+    {
+     "key": "cpw",
+     "keep": true,
+     "proposed_ar": "التكلفة لكل استخدام",
+     "reason": "Clear and within the length limit, and it anchors the 'لكل' family.",
+     "severity": "fine"
+    },
+    {
+     "key": "craft",
+     "keep": true,
+     "proposed_ar": "الحرفية",
+     "reason": "Common in Gulf fashion marketing for craftsmanship ('حرفية عالية').",
+     "severity": "fine"
+    },
+    {
+     "key": "dietary",
+     "keep": false,
+     "proposed_ar": "ملاءمة النظام الغذائي",
+     "reason": "'الملاءمة الغذائية' reads as vague nutritional suitability, but the label means fit with a diet (keto, vegan, halal), which naming 'النظام الغذائي' makes clear.",
+     "severity": "awkward"
+    },
+    {
+     "key": "dosage",
+     "keep": true,
+     "proposed_ar": "الجرعة",
+     "reason": "Standard pharmacy and supplement term.",
+     "severity": "fine"
+    },
+    {
+     "key": "durability",
+     "keep": true,
+     "proposed_ar": "المتانة",
+     "reason": "Standard term.",
+     "severity": "fine"
+    },
+    {
+     "key": "ecosystem",
+     "keep": false,
+     "proposed_ar": "التكامل مع الأجهزة",
+     "reason": "'المنظومة' on its own next to a score is opaque to a shopper, while 'integration with your devices' says what the dimension actually measures.",
+     "severity": "awkward"
+    },
+    {
+     "key": "efficacy",
+     "keep": true,
+     "proposed_ar": "الفعالية",
+     "reason": "Standard term.",
+     "severity": "fine"
+    },
+    {
+     "key": "evidence",
+     "keep": false,
+     "proposed_ar": "الأدلة العلمية",
+     "reason": "Bare 'الأدلة' sounds legal or forensic, and adding 'العلمية' makes the supplement meaning instant.",
+     "severity": "awkward"
+    },
+    {
+     "key": "feature",
+     "keep": true,
+     "proposed_ar": "المزايا",
+     "reason": "Standard retail term for features.",
+     "severity": "fine"
+    },
+    {
+     "key": "feature_match",
+     "keep": false,
+     "proposed_ar": "ملاءمة المزايا",
+     "reason": "In a comparison screen 'مطابقة المزايا' can read as 'the features are identical'; 'ملاءمة' means fit to your needs and matches hair_match and skin_compat.",
+     "severity": "wrong"
+    },
+    {
+     "key": "finish",
+     "keep": true,
+     "proposed_ar": "اللمسة النهائية",
+     "reason": "This is the term Sephora ME uses for makeup finish.",
+     "severity": "fine"
+    },
+    {
+     "key": "fit",
+     "keep": true,
+     "proposed_ar": "المقاس",
+     "reason": "Namshi shoppers read 'المقاس' as sizing and fit accuracy.",
+     "severity": "fine"
+    },
+    {
+     "key": "form",
+     "keep": true,
+     "proposed_ar": "الشكل",
+     "reason": "Acceptable as a short shared label (capsule or powder, design form).",
+     "severity": "fine"
+    },
+    {
+     "key": "formulation",
+     "keep": true,
+     "proposed_ar": "التركيبة",
+     "reason": "Standard beauty and supplement term.",
+     "severity": "fine"
+    },
+    {
+     "key": "function",
+     "keep": false,
+     "proposed_ar": "الجانب العملي",
+     "reason": "Standalone 'الوظيفة' reads first as 'job/employment' to a Gulf reader, while 'الجانب العملي' reads as practicality and does not collide with 'الأداء'.",
+     "severity": "awkward"
+    },
+    {
+     "key": "futureproof",
+     "keep": true,
+     "proposed_ar": "مواكبة المستقبل",
+     "reason": "Common and understood in Arabic tech coverage.",
+     "severity": "fine"
+    },
+    {
+     "key": "hair_match",
+     "keep": true,
+     "proposed_ar": "ملاءمة الشعر",
+     "reason": "Clear, and it matches skin_compat in form.",
+     "severity": "fine"
+    },
+    {
+     "key": "heritage",
+     "keep": true,
+     "proposed_ar": "العراقة",
+     "reason": "This is the natural word for brand heritage in perfumery.",
+     "severity": "fine"
+    },
+    {
+     "key": "ingredient",
+     "keep": true,
+     "proposed_ar": "المكونات",
+     "reason": "Standard term.",
+     "severity": "fine"
+    },
+    {
+     "key": "ingredient_safety",
+     "keep": true,
+     "proposed_ar": "أمان المكونات",
+     "reason": "Clear, and consistent with safety = الأمان.",
+     "severity": "fine"
+    },
+    {
+     "key": "longevity",
+     "keep": true,
+     "proposed_ar": "الثبات",
+     "reason": "This is exactly the Gulf fragrance-community term.",
+     "severity": "fine"
+    },
+    {
+     "key": "multi_value",
+     "keep": false,
+     "proposed_ar": "قيمة تعدد الاستخدامات",
+     "reason": "The current value is 24 characters, over the 21-character target, and reads as a calque; the new form fits in 21 and reuses the versatility wording 'تعدد الاستخدامات'.",
+     "severity": "too_long"
+    },
+    {
+     "key": "nutrition",
+     "keep": true,
+     "proposed_ar": "القيمة الغذائية",
+     "reason": "This is the fixed phrase printed on food labels.",
+     "severity": "fine"
+    },
+    {
+     "key": "perf_value",
+     "keep": true,
+     "proposed_ar": "الأداء مقابل السعر",
+     "reason": "This is the natural price-to-performance phrase and anchors the 'مقابل السعر' family.",
+     "severity": "fine"
+    },
+    {
+     "key": "performance",
+     "keep": true,
+     "proposed_ar": "الأداء",
+     "reason": "Standard term.",
+     "severity": "fine"
+    },
+    {
+     "key": "presentation",
+     "keep": false,
+     "proposed_ar": "التغليف والمظهر",
+     "reason": "'التقديم' reads as 'submission' or 'serving'; for fragrance and beauty, presentation means the packaging and look.",
+     "severity": "wrong"
+    },
+    {
+     "key": "price",
+     "keep": true,
+     "proposed_ar": "السعر",
+     "reason": "Standard term.",
+     "severity": "fine"
+    },
+    {
+     "key": "projection",
+     "keep": true,
+     "proposed_ar": "الانتشار",
+     "reason": "The standard fragrance term in Modern Standard Arabic (the Gulf colloquial 'الفوحان' is avoided on purpose).",
+     "severity": "fine"
+    },
+    {
+     "key": "reliability",
+     "keep": true,
+     "proposed_ar": "الاعتمادية",
+     "reason": "Common in Gulf tech retail and distinct from trust.",
+     "severity": "fine"
+    },
+    {
+     "key": "results",
+     "keep": true,
+     "proposed_ar": "النتائج",
+     "reason": "Clear.",
+     "severity": "fine"
+    },
+    {
+     "key": "results_value",
+     "keep": true,
+     "proposed_ar": "النتائج مقابل السعر",
+     "reason": "Consistent with the 'مقابل السعر' family.",
+     "severity": "fine"
+    },
+    {
+     "key": "review",
+     "keep": true,
+     "proposed_ar": "التقييمات",
+     "reason": "This is the Noon and Amazon.sa term and is identical to reviews, which is correct.",
+     "severity": "fine"
+    },
+    {
+     "key": "reviews",
+     "keep": true,
+     "proposed_ar": "التقييمات",
+     "reason": "This is the Noon and Amazon.sa term.",
+     "severity": "fine"
+    },
+    {
+     "key": "safety",
+     "keep": true,
+     "proposed_ar": "الأمان",
+     "reason": "Works across electronics and consumables, and is consistent with ingredient_safety.",
+     "severity": "fine"
+    },
+    {
+     "key": "scalp",
+     "keep": true,
+     "proposed_ar": "فروة الرأس",
+     "reason": "Clear, and as terse as the English label.",
+     "severity": "fine"
+    },
+    {
+     "key": "scent",
+     "keep": true,
+     "proposed_ar": "الرائحة",
+     "reason": "Standard term.",
+     "severity": "fine"
+    },
+    {
+     "key": "sensory",
+     "keep": false,
+     "proposed_ar": "الملمس والإحساس",
+     "reason": "'الإحساس عند الاستخدام' is a clunky calque that sits right at the 21-character limit; 'texture and feel' is how a skincare shopper describes sensory quality.",
+     "severity": "awkward"
+    },
+    {
+     "key": "serving_value",
+     "keep": false,
+     "proposed_ar": "التكلفة لكل حصة",
+     "reason": "'قيمة الحصة' reads as the nutritional value of a serving; the label means cost per serving, and this form matches cpw's 'التكلفة لكل استخدام'.",
+     "severity": "wrong"
+    },
+    {
+     "key": "shade",
+     "keep": true,
+     "proposed_ar": "درجات اللون",
+     "reason": "The standard makeup shade-range term.",
+     "severity": "fine"
+    },
+    {
+     "key": "skin_compat",
+     "keep": true,
+     "proposed_ar": "ملاءمة البشرة",
+     "reason": "Clear, and it anchors the 'ملاءمة' family.",
+     "severity": "fine"
+    },
+    {
+     "key": "style",
+     "keep": false,
+     "proposed_ar": "التصميم",
+     "reason": "'الطراز' sounds architectural or period-style; Gulf fashion apps talk about 'التصميم' for an item's style.",
+     "severity": "awkward"
+    },
+    {
+     "key": "taste",
+     "keep": true,
+     "proposed_ar": "الطعم",
+     "reason": "Standard term.",
+     "severity": "fine"
+    },
+    {
+     "key": "trust",
+     "keep": true,
+     "proposed_ar": "الموثوقية",
+     "reason": "Clear and distinct from reliability.",
+     "severity": "fine"
+    },
+    {
+     "key": "value",
+     "keep": false,
+     "proposed_ar": "القيمة مقابل السعر",
+     "reason": "Bare 'القيمة' next to a number is ambiguous (value of what?) and sits close to 'القيمة الغذائية'; 'القيمة مقابل السعر' is the Gulf retail phrase for value for money and matches perf_value and results_value.",
+     "severity": "inconsistent"
+    },
+    {
+     "key": "versatility",
+     "keep": true,
+     "proposed_ar": "تعدد الاستخدامات",
+     "reason": "Natural, and multi_value is built on it.",
+     "severity": "fine"
+    },
+    {
+     "key": "wear_value",
+     "keep": true,
+     "proposed_ar": "قيمة الاستخدام",
+     "reason": "Acceptable for fashion and consistent with multi_value's 'قيمة ...' form.",
+     "severity": "fine"
+    }
+   ],
+   "family_notes": "Of the 51 labels, 11 change and 40 stay as they are. The changes line the labels up in four families.\n\n1) Value for money uses 'X مقابل السعر': value becomes القيمة مقابل السعر, joining perf_value and results_value.\n\n2) Cost per unit uses 'التكلفة لكل ...': cpw stays التكلفة لكل استخدام, and serving_value becomes التكلفة لكل حصة.\n\n3) Fit to the user uses 'ملاءمة ...': skin_compat, hair_match, dietary (now ملاءمة النظام الغذائي) and feature_match (now ملاءمة المزايا, which avoids 'مطابقة' reading as 'identical' in a comparison).\n\n4) Value compounds use 'قيمة ...': wear_value, and multi_value, which becomes قيمة تعدد الاستخدامات to reuse the versatility wording and fit in 21 characters.\n\nAfter these changes, 'القيمة' only ever appears inside a phrase, so bare value no longer sits close to القيمة الغذائية. None of the new values collides with results.dimensions.limited_data. Every proposed value is 21 characters or fewer: the longest are ملاءمة النظام الغذائي and قيمة تعدد الاستخدامات at 21 each, and the old 24-character multi_value is gone. style (التصميم) and presentation (التغليف والمظهر) were chosen so they do not duplicate each other if both show on one screen. English values are untouched."
+  }
+ ]
+}
