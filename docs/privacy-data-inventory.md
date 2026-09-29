@@ -46,6 +46,7 @@ matches `NSPrivacyTracking: false`. There is no ad SDK and no cross-app or cross
 
 Listed so the label is complete:
 
+- **IP address.** Not collected today, on two conditions that must hold at submission time (PM-8): (1) the API is not fronted by Cloudflare — behind it, `_derive_country` would start storing an IP-derived country in `demographics_profile`, which makes **Coarse Location** declarable; (2) `ENABLE_PROXY_AWARE_RATELIMIT` stays OFF — ON, `admin_audit_log.ip_address` would hold the user's real client IP next to `user_id` instead of the Railway edge IP, which Apple counts as collecting IP address. Flip either and re-file the labels first.
 - **Location, precise or coarse.** The region is a hard-coded `'bahrain'` string (`api.ts:240`,
   `:862`). No location API is imported.
 - **Audio.** No audio or microphone API is used anywhere in `src/`, `App.tsx` or `index.ts`.

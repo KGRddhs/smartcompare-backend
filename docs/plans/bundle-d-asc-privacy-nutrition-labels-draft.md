@@ -1,5 +1,7 @@
 # Bundle D — ASC Privacy Nutrition Labels (Draft for Ahmed Approval)
 
+> **SUPERSEDED 2026-09-29 (session 69, audit PM-4).** Fill the ASC App Privacy labels from **`docs/privacy-data-inventory.md`**, which mirrors the enforced `app.json` privacy manifest (a jest test deep-equals the two). This draft predates the manifest, has no Name row although `display_name` is collected, and disagrees with the inventory in several rows. Kept for history only.
+
 **Task:** 3.N.3 — BLOCKING-Ahmed approval before ASC submission
 **Risk:** R13 (App Privacy Nutrition Labels)
 **Date drafted:** 2026-05-23
