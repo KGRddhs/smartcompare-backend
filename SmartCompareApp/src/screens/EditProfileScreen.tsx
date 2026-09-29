@@ -59,6 +59,7 @@ import {
   type User,
 } from '../services/authService';
 import type { RootStackParamList } from '../types';
+import { clearAiConsent } from '../services/aiConsent';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'EditProfile'> & {
   onAccountDeleted?: () => void;
@@ -134,6 +135,9 @@ export default function EditProfileScreen({ navigation, onAccountDeleted }: Prop
             setDeleting(true);
             try {
               await api.delete('/api/v1/auth/account');
+              // S69 U3 R3 — the per-account AI-consent record goes with the
+              // account (clearAiConsent never throws).
+              await clearAiConsent(user?.id ?? null);
               await clearSession();
               onAccountDeleted?.();
             } catch (err) {

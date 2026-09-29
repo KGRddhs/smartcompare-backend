@@ -78,6 +78,11 @@ import HomeEditorialSections from '../components/HomeEditorialSections';
 import { LoadingScreenVariants } from './LoadingScreenVariants';
 import { useComparisonCounter } from '../hooks/useComparisonCounter';
 import { getReferralStatus } from '../services/referralService';
+// S69 U3 — one-time AI-processing consent (App Review 5.1.2(i)). Every path
+// that sends the user's input to OpenAI (text, link, camera) and the camera /
+// photo-picker permission request go through `withAiConsent`.
+import { useAiConsentGate } from '../services/aiConsent';
+import AiConsentSheet from '../components/AiConsentSheet';
 // Lane A-L3 Task L3.7 — wall-time instrumentation. Tracker starts on
 // Compare tap, marks `ttfb` on first SSE event; ResultsScreen continues
 // through `first_card_visible` / `all_cards_visible` / `ready_celebration`
@@ -127,6 +132,13 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
   const compareRunRef = useRef(0);
 
   const { used, total, canCompare, increment } = useComparisonCounter();
+
+  // S69 U3 — the consent gate. The Privacy link closes the sheet first (the
+  // pending action is dropped) and only then opens the Legal modal route, so
+  // it is never presented behind the sheet.
+  const { withAiConsent, sheetProps: aiConsentSheetProps } = useAiConsentGate({
+    onOpenPrivacy: () => navigation.navigate('Legal', { doc: 'privacy' }),
+  });
 
   const [bonusInfo, setBonusInfo] = useState<{
     bonusRemaining: number;
@@ -354,7 +366,13 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
       navigation.navigate('Paywall');
       return;
     }
+    // S69 U3 — nothing (not even the recent-search write, the loader or the
+    // submit event) happens before AI-processing consent. "Not now" leaves
+    // the inputs as they are and dispatches nothing.
+    withAiConsent(() => runTextCompare(productA, productB));
+  };
 
+  const runTextCompare = (productA: string, productB: string) => {
     saveRecentSearch(`${productA} vs ${productB}`);
     setLoading(true);
     setStatusMessage(t('results.loading.finding'));
@@ -502,7 +520,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
 
   // --- URL comparison ---
 
-  const handleUrlCompare = async (urlA: string, urlB: string) => {
+  const handleUrlCompare = (urlA: string, urlB: string) => {
     const url1 = urlA.trim();
     const url2 = urlB.trim();
     if (!url1 || !url2) return;
@@ -510,7 +528,14 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
       navigation.navigate('Paywall');
       return;
     }
+    // S69 U3 — the links (and the page text the server fetches for them) go
+    // to OpenAI, so Link mode waits for consent too.
+    withAiConsent(() => {
+      void runUrlCompare(url1, url2);
+    });
+  };
 
+  const runUrlCompare = async (url1: string, url2: string) => {
     trackEvent('compare_entry_submit', {
       mode: 'url',
       used_paste_split: pasteSplitUsedRef.current,
@@ -692,6 +717,26 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
   const handleScanCtaPress = () => {
     navigation.navigate('ScanCamera');
   };
+  // S69 U3 — the photos taken on ScanCamera are sent to OpenAI, and
+  // ScanCamera is reachable only from Home, so every Home entry to it is
+  // gated: this CTA (the press runs handleScanCtaPress only after consent)
+  // and both preview rows below.
+  const handleScanCtaPressGated = () => {
+    withAiConsent(handleScanCtaPress);
+  };
+
+  // S69 U3 R2 — consent comes BEFORE the OS camera-permission prompt and
+  // before the photo picker opens.
+  const handleRequestCameraPermission = () => {
+    withAiConsent(() => {
+      void requestPermission();
+    });
+  };
+  const handleGalleryFallbackPress = () => {
+    withAiConsent(() => {
+      void pickFromGalleryFallback();
+    });
+  };
 
   const scanCtaLabel = t('home.cta.openCamera', {
     defaultValue: 'Open camera',
@@ -716,12 +761,12 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
             <Camera size={48} color={colors.text.secondary} />
             <Text style={styles.permissionTitle}>{t('home.permission.title')}</Text>
             <Text style={styles.permissionText}>{t('home.permission.body')}</Text>
-            <TouchableOpacity style={styles.permissionButton} onPress={requestPermission}>
+            <TouchableOpacity style={styles.permissionButton} onPress={handleRequestCameraPermission}>
               <Text style={styles.permissionButtonText}>
                 {t('home.permission.cta')}
               </Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.galleryFallback} onPress={pickFromGalleryFallback}>
+            <TouchableOpacity style={styles.galleryFallback} onPress={handleGalleryFallbackPress}>
               <Text style={styles.galleryFallbackText}>
                 {t('home.permission.gallery_link')}
               </Text>
@@ -730,7 +775,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         );
       }
       // JSX-aligned ScanBody preview pattern per HomeScreen.jsx:222-265.
-      const goToScan = () => navigation.navigate('ScanCamera');
+      const goToScan = () => withAiConsent(() => navigation.navigate('ScanCamera'));
       return (
         <View testID="home-scan-preview" style={styles.scanPreview}>
           <TouchableOpacity
@@ -1009,7 +1054,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
           {canCompare && inputMode === 'scan' && cameraPermissionGranted && (
             <TouchableOpacity
               testID="home-compare-cta"
-              onPress={handleScanCtaPress}
+              onPress={handleScanCtaPressGated}
               accessibilityRole="button"
               accessibilityLabel={scanCtaLabel}
               accessibilityState={{ disabled: false }}
@@ -1080,6 +1125,9 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
           </TouchableOpacity>
         </View>
       ) : null}
+
+      {/* S69 U3 — the one-time AI-processing consent sheet. */}
+      <AiConsentSheet {...aiConsentSheetProps} />
     </SafeAreaView>
   );
 }

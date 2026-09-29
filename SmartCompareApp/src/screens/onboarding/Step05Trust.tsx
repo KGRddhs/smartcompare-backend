@@ -10,8 +10,18 @@
  * Trust bridge — pre-empts the "why do you need this?" objection BEFORE
  * we ask for age, gender, etc. The 3 rows mirror the JSX recipe verbatim:
  *   - check    "What we use"          / what's collected
- *   - search   "What's anonymized"    / what gets stripped before training
- *   - X        "What we never share"  / what stays on-device forever
+ *   - search   "What reaches OpenAI"  / what is sent to OpenAI, and what never is
+ *     (S69 U3: retitled from "What's anonymized", which no longer
+ *     described the body)
+ *   - X        "What we never share"  / name and email
+ *
+ * S69 U3 R5 — every sentence here must be true of what the code sends. The
+ * budget tier IS in the verdict prompt (extraction_service.py
+ * _build_preferences_prompt, "Budget level: …"), so it is no longer listed as
+ * never shared, and the subtitle counts two off-limits items, not three. The
+ * old "Your queries help MYEZ get smarter. We strip … first" was a data-use
+ * claim; it now states what is sent to OpenAI. No opt-out is promised (the
+ * Profile AI-sharing toggle routes nothing today, #266).
  *
  * Privacy invariant per qaren-cohort skill: this surface conveys policy,
  * doesn't expose actual signal content. The PrivacyRow primitive owns
@@ -52,7 +62,7 @@ export function Step05Trust({ onNext }: Props) {
         <Text style={styles.subtitle}>
           {t('onboarding.s5.subtitle', {
             defaultValue:
-              'A handful of inputs sharpen the match. Three are off-limits, forever.',
+              'A handful of inputs sharpen the match. Two are off-limits, forever.',
           })}
         </Text>
 
@@ -69,7 +79,7 @@ export function Step05Trust({ onNext }: Props) {
             head={t('onboarding.s5.privacy_use_head', { defaultValue: 'What we use' })}
             body={t('onboarding.s5.privacy_use_body', {
               defaultValue:
-                'Age range, governorate, priorities, budget tier, brand stance — to find peers like you.',
+                'Age range, governorate, priorities, budget tier, brand stance — to find peers like you and tailor each verdict.',
             })}
           />
           <PrivacyRow
@@ -81,10 +91,10 @@ export function Step05Trust({ onNext }: Props) {
                 strokeWidth={3}
               />
             }
-            head={t('onboarding.s5.privacy_anon_head', { defaultValue: "What's anonymized" })}
+            head={t('onboarding.s5.privacy_anon_head', { defaultValue: 'What reaches OpenAI' })}
             body={t('onboarding.s5.privacy_anon_body', {
               defaultValue:
-                'Your queries help MYEZ get smarter. We strip your name, email, and identity first.',
+                'To write each comparison, MYEZ sends OpenAI your product names and preferences such as priorities and budget tier — never your name, email or account.',
             })}
           />
           <PrivacyRow
@@ -96,7 +106,7 @@ export function Step05Trust({ onNext }: Props) {
               defaultValue: 'What we never share',
             })}
             body={t('onboarding.s5.privacy_never_body', {
-              defaultValue: 'Your name. Your email. Your budget. Not now, not ever.',
+              defaultValue: 'Your name. Your email. Not now, not ever.',
             })}
           />
         </View>

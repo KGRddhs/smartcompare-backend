@@ -268,6 +268,26 @@ describe('EditProfileScreen S3 integration — back button + delete flow', () =>
     alertSpy.mockRestore();
   });
 
+  it('S69 U3 R3 — confirming delete clears the AI-processing consent of that account: clearAiConsent(<user id>)', async () => {
+    const { clearAiConsent } = jest.requireMock('../src/services/aiConsent');
+    mockApiDelete.mockResolvedValueOnce({});
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const RN = require('react-native');
+    const alertSpy = jest.spyOn(RN.Alert, 'alert');
+    const props = makeProps();
+    const rendered = render(<EditProfileScreen {...props} />);
+    // Wait for getSavedUser() ({ id: 'u1' }) to land before deleting.
+    await waitFor(() => {
+      expect(rendered.getByText('K')).toBeTruthy();
+    });
+    fireEvent.press(rendered.getByTestId('edit-delete-account-row'));
+    const buttons = alertSpy.mock.calls[0][2] as any[];
+    const destructive = buttons.find((b: any) => b.style === 'destructive');
+    await destructive.onPress();
+    expect(clearAiConsent.mock.calls).toEqual([['u1']]);
+    alertSpy.mockRestore();
+  });
+
   it('Delete API failure path does NOT call onAccountDeleted', async () => {
     mockApiDelete.mockRejectedValueOnce(new Error('500 boom'));
     const RN = require('react-native');
