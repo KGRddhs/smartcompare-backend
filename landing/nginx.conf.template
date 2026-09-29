@@ -51,6 +51,25 @@ server {
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;
     add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
 
+    # Universal-link hand-off (session 69, audit RT-8 / EXPO-06). /c/<share token>,
+    # /r/<invite code> and /q/<quiz token> are the three path families the app
+    # registers as universal links (the AASA above) and as qaren:// deep links.
+    # A browser reaches these paths from a pasted or forwarded link, an in-app
+    # browser, Android (the assetlinks certificate is still a placeholder) or a
+    # phone without the app - and only once qaren.app points at this service
+    # (today it answers a Cloudflare 522). open.html offers the qaren:// hand-off
+    # (and the store link once it exists) instead of the 404 the catch-all
+    # used to return.
+    location ^~ /c/ {
+        try_files /open.html =404;
+    }
+    location ^~ /r/ {
+        try_files /open.html =404;
+    }
+    location ^~ /q/ {
+        try_files /open.html =404;
+    }
+
     # All other paths: serve from root.
     location / {
         try_files $uri $uri.html $uri/ =404;

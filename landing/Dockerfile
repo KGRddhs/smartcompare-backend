@@ -23,6 +23,7 @@ COPY index.html /usr/share/nginx/html/
 COPY privacy.html /usr/share/nginx/html/
 COPY terms.html /usr/share/nginx/html/
 COPY support.html /usr/share/nginx/html/
+COPY open.html /usr/share/nginx/html/
 COPY .well-known /usr/share/nginx/html/.well-known
 
 # Arabic locale mirror — served under /ar/* with RTL layout + Cairo-only fonts.

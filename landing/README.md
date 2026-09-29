@@ -25,6 +25,7 @@ landing/
 ├── privacy.html                                   ← Privacy Policy (HTML render of app/legal/privacy_policy.md post-Qaren-rebrand + post-a23ed51-policy-fix)
 ├── terms.html                                     ← Terms of Service (same source)
 ├── support.html                                   ← Support — meta-refresh to mailto + visible button fallback
+├── open.html                                      ← Universal-link hand-off for /c/<token> /r/<code> /q/<token> (S69): qaren:// button, store link once APP_STORE_URL is filled
 ├── Dockerfile                                     ← nginx:alpine static-serve image for Railway
 ├── nginx.conf.template                            ← envsubst template (binds nginx to $PORT) + headers + .well-known MIME
 ├── railway.toml                                   ← Railway service config (DOCKERFILE builder, /healthz)
@@ -32,6 +33,8 @@ landing/
     ├── apple-app-site-association                 ← AASA, NO file extension, Team ID 8K562M549D substituted
     └── assetlinks.json                            ← Android App Links, cert SHA-256 placeholder
 ```
+
+**Note on `/c/`, `/r/`, `/q/` (session 69, audit RT-8):** nginx serves `open.html` for the three universal-link families (`location ^~ /c/ { try_files /open.html =404; }` etc.), so a shared referral link (`/c/<token>?ref=QR-XXXXXX`, or `/c/?ref=QR-XXXXXX` when the comparison has no share token) lands on a MYEZ page with a `qaren://` hand-off instead of a 404. The page is reachable only once `qaren.app` is attached to this service (it answers a Cloudflare 522 today); `APP_STORE_URL` inside the page is empty until the App Store record exists — fill it and redeploy.
 
 **Note on `/support`:** an HTTP 301/308 redirect with `mailto:` destination does NOT work cross-browser (Chrome/Safari inconsistent, Firefox rejects). Instead, nginx's `location = /support { try_files /support.html =404; }` serves `support.html` directly. The HTML combines `<meta http-equiv="refresh" content="0; url=mailto:support@qaren.app">` immediate-redirect with a visible "Email support@qaren.app" button as the no-redirect fallback. Same behavior as the Vercel `cleanUrls` approach in the archived alternative config.
 
