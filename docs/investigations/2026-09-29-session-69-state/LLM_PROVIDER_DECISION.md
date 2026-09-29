@@ -22,8 +22,8 @@ Production is down for one reason only: the OpenAI organization has no prepaid c
 |---|---|---|
 | Text compare `q=` (`/api/v1/text/compare`, `/text/quick`) | HTTP 400 "Could not identify two products to compare…" (the parse 429 is caught) | Every typed compare fails |
 | SSE stream `/text/compare/stream` | HTTP 200 carrying an SSE `error` event with the same text | Every streamed compare fails |
-| Camera `/api/v1/image/identify` | HTTP 500 "Image analysis failed. Please try again." (`identify_products` does not catch the 429; the credit is refunded) | Every photo compare fails |
-| explicit_pair / vision after the parse | HTTP 200 `success:true`, but degraded: deterministic winner, template reason "{winner} is the stronger overall pick.", blank `key_tradeoff`/`winner_declaration`, and `comparison.error = "verdict generation unavailable"` | Looks like a thin, broken result, not an error [A-C19] |
+| Camera `/api/v1/image/identify` | HTTP 500 "Image analysis failed. Please try again." (`identify_products` does not catch the 429; the credit is refunded) | Every photo compare fails **[SESSION 69 CORRECTION (2026-09-29): since #258 (main 3c5e4ff4) this returns 503 `LLM_UNAVAILABLE` (image_routes.py:303-315; the 500 remains for non-transient errors); the app on main shows the outage copy with Back (phones get it with the next OTA or the store build).]** |
+| explicit_pair / vision after the parse | HTTP 200 `success:true`, but degraded: deterministic winner, template reason "{winner} is the stronger overall pick.", blank `key_tradeoff`/`winner_declaration`, and `comparison.error = "verdict generation unavailable"` | Looks like a thin, broken result, not an error [A-C19]; since #258 the app on main shows `results.degraded.note` and hides the template reason (phones get it with the next OTA or the store build) |
 | `/api/v1/url/compare` | 503 `LLM_UNAVAILABLE` | Fails [A-C19] |
 | L3/L4 moderation | Fails OPEN (safety silently off) | Not visible |
 
@@ -253,10 +253,13 @@ Do not switch provider before App Review.
 **Small companion issues surfaced here** (each an independent fix):
 - (a) `url_extraction_service.get_client` ignores `OPENAI_MAX_RETRIES` [A-C11].
 - (b) No `LLM_UNAVAILABLE` client copy; outages show "try with brand or model" [A-C14].
+  **SESSION 69 CORRECTION (2026-09-29):** FIXED: PR #258, `home.errors.engineUnavailable.*`.
 - (c) Remove the key-suffix INFO log at `extraction_service.py:66` [A-C22].
+  **SESSION 69 CORRECTION (2026-09-29):** FIXED: PR #252, main d6e613a3, deployed.
 - (d) `bundle_d_prod_smoke.py` should assert an uncached real verdict and stop creating prod users [A-C17].
 - (e) The PDPL opt-out routing is dead code; decide whether to implement it or fix the disclosure wording [A-C21].
 - (f) `DAILY_4O_CAP` silent downgrade: log it and size it for 200/day [R-C14].
+  **SESSION 69 CORRECTION (2026-09-29):** filed: (a) #265, (d) #267, (e) #266, (f) #268.
 
 ---
 

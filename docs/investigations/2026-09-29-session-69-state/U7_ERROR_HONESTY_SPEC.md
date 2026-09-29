@@ -1,4 +1,5 @@
 # U7 — error honesty when the engine is down — unit spec (client + one backend seam)
+**SESSION 69 CORRECTION (2026-09-29):** Status: SHIPPED — PR #258, main 3c5e4ff4 (follow-ups #259, #260, #261).
 
 **Session 69, audit findings RT-1 (copy blames the user), BP-04 / A-C14 (LLM_UNAVAILABLE copy), A-C19 (degraded HTTP 200 shown as a normal result), RT-1 camera loop.** Owner: Claude. JavaScript except one optional backend seam.
 

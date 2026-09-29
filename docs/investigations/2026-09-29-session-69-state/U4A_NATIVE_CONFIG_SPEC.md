@@ -1,4 +1,5 @@
 # U4a — native config for the first App Store build (app.json only; no dependency changes) — unit spec
+**SESSION 69 CORRECTION (2026-09-29):** Status: SHIPPED — PR #254, main 386463c3 (native; reaches phones only through the production eas build).
 
 > **RENAME NOTICE (Ahmed, 2026-09-30, binding — supersedes every "Qaren" / "قارن" display string below):** the app is renamed **MYEZ** (Arabic **ميّز**). For THIS unit that means: `expo.name` becomes `"MYEZ"`, `locales/en.json` `CFBundleDisplayName` = `"MYEZ"`, `locales/ar.json` `CFBundleDisplayName` = `"ميّز"`, and every purpose string reads "MYEZ only uses the camera…" / the Arabic equivalent with ميّز. The bundle identifier `com.qaren.app`, the slug `qaren`, the scheme `qaren://` and the EAS project id are UNCHANGED (invisible to users; changing them would orphan the credentials and deep links). A red assertion that pins `Qaren` / `قارن` as the display name is WRONG by this notice: the green agent corrects it, quoting this paragraph as the evidence. Other in-app brand strings (i18n catalogs, legal, landing) are a separate rename unit, not U4a.
 

@@ -1,4 +1,5 @@
 # U6 — sign-in and first-run UX for App Review — unit spec
+**SESSION 69 CORRECTION (2026-09-29):** Status: SHIPPED — PR #269, main f40a44d3.
 
 **Session 69, audit findings LL-10 (Apple button), RT-9 (raw 401 string), RT-12 (push prompt at login), RT-14 (first-launch RTL), RT-7 (trending tap).** Owner: Claude. All JavaScript: rides the production build and any later OTA. Five small, independent changes; one PR; each change has its own red test.
 
