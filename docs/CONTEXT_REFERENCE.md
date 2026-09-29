@@ -1,4 +1,4 @@
-# SmartCompare — Reference Guide (Testing, Deploy, Snippets)
+# MYEZ (ميّز) — Reference Guide (Testing, Deploy, Snippets) (repo: smartcompare; identifiers stay qaren)
 
 # 11. CODE SNIPPETS REFERENCE
 
@@ -80,6 +80,7 @@ def extract_from_json_ld(soup):
 - **URL:** https://github.com/KGRddhs/smartcompare-backend
 - **Branch:** main
 - **Auto-deploy:** Railway watches this repo
+  **SESSION 69 CORRECTION (2026-09-29):** Railway auto-deploys the backend `web` service only; the static landing service `qaren-landing` is NOT redeployed by a merge — run `railway up landing --path-as-root -s qaren-landing -d` from the repo root (ships #257's MYEZ pages and #273's /c/ /r/ /q/ hand-off). `qaren.app` is not attached yet (Cloudflare 522).
 
 ## Deploy Process
 ```powershell
@@ -123,6 +124,7 @@ LOG_LEVEL=INFO                            # Structured logging level (DEBUG/INFO
 - PENDING: Enable Google provider in Supabase Dashboard (Auth → Providers) with Web client ID + secret
 
 # Apple Sign-In (DEFERRED)
+**SESSION 69 CORRECTION (2026-09-29):** (#269) the client ships the NATIVE `AppleAuthenticationButton` via `src/components/AppleSignInButton.tsx` on Login / Register / onboarding Step 16 (HIG / guideline 4.8); `ios.usesAppleSignIn: true`. It reaches users only in the production `eas build`; the open item is the App Store Connect session with Hussain (runbook §3 C: `eas credentials`, capability sync). The Supabase Apple-provider state (below) was not re-verified.
 - Requires active Apple Developer subscription ($99/year)
 - Code is ready in authService.ts and app.json — just needs Apple Dev Portal config
 - Supabase Dashboard: enable Apple provider when ready
@@ -292,7 +294,7 @@ npx expo start
 - [x] Supabase: create `public.users` table with `display_name` column — Done Session 16
 - [ ] Supabase: enable Google provider in dashboard (paste Web client ID + secret)
 - [ ] Apple Developer subscription (needed for Apple Sign-In activation)
-- [ ] Set up Sentry DSN for error tracking
+- [x] Set up Sentry DSN for error tracking — client `@sentry/react-native` `~7.2.0`, DSN → `qaren-rr/react-native`; #253 reports cert-pin mismatches once per session (`fingerprint: cert-pin-mismatch`)
 
 ## Short Term — Code
 - [ ] Apply Figma UI design
@@ -302,9 +304,10 @@ npx expo start
 ## Medium Term
 - [ ] URL input comparison (`/api/v1/url/compare`)
 - [ ] Premium tier with Stripe
+  **SESSION 69 CORRECTION (2026-09-29):** D2-A applied (#255) — the launch build has NO purchase path; the `Paywall` route is an honest free-limit sheet (no prices / trial / Restore; Profile Upgrade row removed; `__tests__/screens/paywall.noSubscriptionUi.s69.test.ts` fence). A paid tier is D2 option B (StoreKit in-app purchase, not Stripe), deferred past v1.
 - [ ] Price alerts
 - [ ] Barcode scanning
-- [ ] Multi-language support
+- [x] Multi-language support — English + Arabic (RTL); native `CFBundleLocalizations` en/ar and the localized display name MYEZ / ميّز via `expo.locales` (#254)
 
 ## Long Term
 - [ ] AI shopping assistant
@@ -316,6 +319,8 @@ npx expo start
 # QUICK START FOR CLAUDE CODE
 
 When starting Claude Code, say:
+
+**SESSION 69 CORRECTION (2026-09-29):** the app is MYEZ / ميّز — identifiers stay qaren/smartcompare; this block is the Session-15 snapshot, a historical record. Resume from CLAUDE.md's newest `## Active runtime (SESSION …)` block and docs/investigations/2026-09-29-session-69-state.md.
 
 ```
 Read docs/CLAUDE_CODE_CONTEXT.md completely. This is SmartCompare - a product

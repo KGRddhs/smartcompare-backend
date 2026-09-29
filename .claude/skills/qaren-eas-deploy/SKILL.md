@@ -1,7 +1,7 @@
 ---
 name: qaren-eas-deploy
 description: Use when shipping OTA updates via eas update, building APKs / iOS bundles via eas build, configuring EAS channels (development / preview / production), bumping expo.version, runtime version policy, two-lever launch model, or when JS-only fixes need to reach testers. Covers Apple Developer ($99/yr) gating.
-last_verified: 2026-07-04
+last_verified: 2026-07-04 (partial re-check 2026-09-29: channels, OTA groups, store-build rules, App Store link; the Apple-subscription gating section was not re-verified)
 update_when_changing:
   - SmartCompareApp/eas.json
   - SmartCompareApp/app.json
@@ -33,9 +33,9 @@ Backend deploys (Railway via `git push origin main`, ~90s) and mobile JS bundle 
 
 - `development` — dev client builds, debug bundle
 - `preview` — internal tester channel
-  - Bundle A baseline group `40719e26`
-  - Bundle E group `d540c1e6-c07c-46d7-ac69-5103dde1fb56` (live, both iOS + Android, runtime 1.0.0)
-- `production` — App Store / Play (not used until Apple Developer subscription active)
+  - Current group: `561d2cba-f374-40e8-866b-3bfe6c7c9c3b` (published 2026-09-24 from main `ab9442ae`, runtime 1.0.0) — every client merge after `ab9442ae` (incl. session 69 #251/#253/#255/#257/#258/#269/#274) is NOT on phones until the next OTA or the store build
+  - (history) Bundle A baseline `40719e26`, Bundle E `d540c1e6-c07c-46d7-ac69-5103dde1fb56` — superseded
+- `production` — App Store / Play: `autoIncrement`, channel `production`, which has NEVER received an update (every OTA so far went to `preview`). Store-build rules (session 69, EXPO-11 / BLD-BP-05): the App Store build runs exactly the JS it was built with, so build it from a main that already contains every fix (`eas build --profile production` then `eas submit`; U10 fills the `submit.production` block once the ASC app id exists); after launch ship JS hotfixes with `eas update --branch production` (never `preview`); bump `expo.version` for every native change and never for a JS-only hotfix. #254's native config (supportsTablet false, locales, purpose strings, privacy manifest) reaches users only in this build; #253's cert pins are OTA-capable but must also be in the store binary.
 
 ## Apple Developer subscription ($99/yr) — gating dependencies
 
@@ -43,6 +43,7 @@ Until subscribed, the following are blocked:
 - iOS production builds
 - TestFlight distribution
 - App Store ID swap in Cloudflare Worker (`idTBD` → real ID)
+  **SESSION 69 CORRECTION (2026-09-29):** (#273) also fill `APP_STORE_URL` in `landing/open.html` (the /c/ /r/ /q/ hand-off page, empty until the App Store record exists) and redeploy the landing (`railway up landing --path-as-root -s qaren-landing -d`).
 - Real-user iOS QA on Bundle E rings/dimension-bars/factual-verdict
 
 ## EAS dev APK + Android emulator storage gotcha (Bundle B/C/D)

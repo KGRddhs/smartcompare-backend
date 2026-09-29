@@ -1,7 +1,7 @@
 ---
 name: qaren-referrals
 description: Use when touching referral invites, share links, /api/v1/referrals/* routes, invite codes (QR-XXXXXX), Loop 1 / Loop 2 flow, redemption chain, abuse detection, device-fingerprint caps, bonus expiry, or referral_invites / referral_redemptions tables. Covers Smart Decision Referrals + Bundle B/C/D lifetime-cap overhaul.
-last_verified: 2026-05-16
+last_verified: 2026-05-16 (partial re-check 2026-09-29: share copy, share-link shape, landing hand-off)
 update_when_changing:
   - app/services/referral_service.py
   - app/services/abuse_detection_service.py
@@ -22,7 +22,7 @@ Virality dual-loop rewards. 4 endpoints under `/api/v1/referrals/*` gated by `EN
 - **Loop 2 chain:** invite → register-with-`invite_id` → `link_invite_to_user` (fire-and-forget) → first comparison → `try_trigger_loop2` → AbuseDetectionService → on pass: redemption, +5 (Free)/+10 (Premium) bonus comparisons, invitee credit, Expo Push. **Bundle B/C/D adds: lifetime device cap check + inviter's `lifetime_invites_consumed` increment on success.**
 - **Re-engagement** (`ENABLE_REENGAGEMENT_PUSHES`, default OFF): daily cron iterates `notifications_enabled` AND `last_comparison_at >= now() - 60d` (1000/run cursor-paginated). Master + per-type sub-toggles in `users.preferences.notification_types`.
 - **Admin:** `/admin/referrals/*` + `/admin/costs/*` (X-Admin-Key, 30/min). Dashboards at `/admin/referrals.html` + `/admin/costs.html` (Chart.js v4.4.1 + SRI, sessionStorage key cache, `escapeHtml` on inline values).
-- **Code redemption is register-only.** `RegisterRequest.invite_code` accepts `^QR-[unambiguous-alphabet]{6}$`; `referral_service.resolve_code_to_invite_id` creates a fresh row with `source='code_redeem'` then routes through `link_invite_to_user`. No post-hoc redeem endpoint. Share copy locked: *"I overthink every purchase. Qaren ends the debate in 30 seconds. Try it: https://qaren.app/r/{code} (or use code {code} in the app)"* — claims decision *closure*, not *correctness*.
+- **Code redemption is register-only.** `RegisterRequest.invite_code` accepts `^QR-[unambiguous-alphabet]{6}$`; `referral_service.resolve_code_to_invite_id` creates a fresh row with `source='code_redeem'` then routes through `link_invite_to_user`. No post-hoc redeem endpoint. Share copy locked (`referrals.share.messageWithLink`): *"I overthink every purchase. MYEZ ends the debate in 30 seconds. Try it: {{link}} (or use code {{code}} in the app)"* — claims decision *closure*, not *correctness*. `{{link}}` is POST /share's `share_link` = `https://qaren.app/c/{share_token}?ref={code}` (`referral_service.py` ~L348); when `comparisons.share_token` is NULL it is the token-less `/c/?ref=QR-…` (issue #272), which the landing `open.html` maps to `qaren://r/<code>` (#273).
 
 ## Bundle B/C/D Referral Hardening (Session 46, Migration 023)
 
@@ -31,6 +31,7 @@ Virality dual-loop rewards. 4 endpoints under `/api/v1/referrals/*` gated by `EN
 - **Share-button disabled at 3 lifetime** with gift-framing copy (`referrals.share.maxReached`).
 - **Bonus expiry: 7 days** for Loop 2 (Loop 1 `deep_review_expires_at` stays at 3 days; existing rows unchanged).
 - **Hybrid DIY install-survival** (Branch.io DROPPED — free tier paywalled to $199/mo): Android Play Install Referrer + iOS clipboard fallback (Apple-review-safe — consent banner BEFORE read) + Cloudflare Worker at `qaren.app/r/{code}`.
+  **SESSION 69 CORRECTION (2026-09-29):** (#273) the landing service now serves `landing/open.html` for `/c/`, `/r/` and `/q/` (nginx `location ^~ … try_files /open.html`), a bilingual MYEZ page that hands off to the `qaren://` deep links `linking.ts` resolves (token-less `/c/?ref=QR-…` → `qaren://r/<code>`); store link hidden until `APP_STORE_URL` is set. Dead until `qaren.app` is attached to the landing service (Cloudflare 522 today) and the landing is redeployed (`railway up landing --path-as-root -s qaren-landing -d`); the Worker still has `idTBD`.
 - **Canonical invite-code regex:** `^QR-[A-HJ-NP-Z2-9]{6}$` shared across `playInstallReferrerService.ts`, `clipboardFallbackService.ts`, `attribution_service.py`, `auth_routes._INVITE_CODE_RE`. Defense-in-depth at every layer.
 - **Abuse detection priority:** `evaluate_invite()` checks SAME_DEVICE > DISPOSABLE_EMAIL > BELOW_REAL_ACTION_THRESHOLD (`elapsed_seconds` proxy from `metadata.elapsed_seconds`, `REAL_ACTION_MIN_SECONDS` env, default 5s).
 

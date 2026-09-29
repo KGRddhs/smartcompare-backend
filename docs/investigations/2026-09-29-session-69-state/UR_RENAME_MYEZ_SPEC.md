@@ -1,4 +1,5 @@
 # U-R — rename the app from Qaren to MYEZ (ميّز) in the client, the health message and the landing — unit spec
+**SESSION 69 CORRECTION (2026-09-29):** Status: SHIPPED — PR #257, main f8c936e2 (eight landing pages, not seven; the brand-key fence is now 28 keys after #274).
 
 **Ahmed, 2026-09-30 (mid-session, binding): "we renamed it to MYEZ."** The pitch-prep memory of 2026-09-27 already records MYEZ (Mayez / ميّز) as the company brand; the app now carries it too. Owner: Claude. JavaScript + static HTML: rides the production build (the display name and purpose strings are native and live in U4a).
 

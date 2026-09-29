@@ -1,4 +1,5 @@
 # U2 — the honest limit sheet (replace the fake subscription paywall) — unit spec
+**SESSION 69 CORRECTION (2026-09-29):** Status: SHIPPED — PR #255, main 5634f49e (2026-09-29).
 
 **Session 69, audit findings LL-2 / RT-2 / SA-05 (all CONFIRMED by two refuters).** Owner: Claude. Decision D2 on the launch runbook: option A (remove the paywall for v1) is the recommended and assumed answer; StoreKit is not in scope.
 

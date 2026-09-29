@@ -1,4 +1,4 @@
-# SmartCompare — Architecture & Design
+# MYEZ (ميّز) — Architecture & Design (repo: smartcompare; identifiers stay qaren: bundle id com.qaren.app, slug qaren, scheme qaren://)
 
 # IMPORTANT: CURRENT DATE CONTEXT
 
@@ -28,9 +28,9 @@ Your training data may be outdated. These products EXIST and are currently on sa
 # 1. PROJECT VISION & GOALS
 
 ## Core Mission
-**"If users still go to Google or ChatGPT after using SmartCompare, we failed."**
+**"If users still go to Google or ChatGPT after using MYEZ, we failed."**
 
-SmartCompare must provide COMPLETE, ACTIONABLE product comparisons with:
+MYEZ (ميّز) must provide COMPLETE, ACTIONABLE product comparisons with:
 - Accurate prices (converted to user's currency)
 - Complete specs (never missing data)
 - Verified ratings (from real sources, not AI-generated)
@@ -209,7 +209,7 @@ smartcompare/
 │   │   └── types/
 │   │       └── index.ts
 │   ├── App.tsx
-│   ├── app.json                         # EAS plugins: expo-camera, expo-image-picker, expo-image-manipulator, google-signin, apple-auth
+│   ├── app.json                         # expo.name MYEZ (slug/scheme qaren, bundle id com.qaren.app); ios.supportsTablet false (D1-A); expo.locales → locales/{en,ar}.json; plugins: expo-font, expo-secure-store (faceIDPermission false), expo-localization (ios en/ar), expo-camera + expo-image-picker (honest microphone string), google-signin, expo-apple-authentication, expo-notifications, expo-build-properties, @sentry/react-native — any change here needs a new eas build
 │   └── package.json
 │
 ├── tests/                               # 39 test files, 809 tests
@@ -415,8 +415,8 @@ Key functions:
 
 Storage keys:
 ```typescript
-const USER_STORAGE_KEY = '@smartcompare_user';
-const TOKEN_STORAGE_KEY = '@smartcompare_token';
+const USER_STORAGE_KEY = '@qaren_user'; // AsyncStorage
+const TOKEN_STORAGE_KEY = 'qaren_token'; // SecureStore — '@' prefix is invalid there
 ```
 
 ## 5.3 AccountScreen (AccountScreen.tsx)

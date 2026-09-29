@@ -1,4 +1,5 @@
 # U3 — third-party AI disclosure and consent (guideline 5.1.2(i)) — unit spec
+**SESSION 69 CORRECTION (2026-09-29):** Status: U3a (R1–R3 + PM-3) SHIPPED — PR #274, main 2ef89e23; the shipped copy names MYEZ, not Qaren. U3b (R4: the toggle, select_client_for_user, policy §11) waits for D3.
 
 **Session 69, audit findings PM-1 / RT-5 (no disclosure or permission before queries and photos go to OpenAI), LL-4 / PM-2 (the "Help improve AI quality" toggle does nothing; UI default OFF vs server default ON; policy §11 promises an opt-out the code cannot honour), PM-3 (onboarding says "we never share your budget" while the budget tier is in the verdict prompt).** Owner: Claude, after Ahmed's decision **D3** (A = do not enrol in OpenAI data sharing, delete §11 and the toggle; B = keep sharing, wire the toggle end-to-end with a second key). The consent sheet (R1–R3) is required under BOTH answers; only R4 depends on D3.
 
