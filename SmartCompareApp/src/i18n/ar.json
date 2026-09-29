@@ -121,6 +121,8 @@
   "home.errors.rateLimited_many": "عدد المقارنات كبير الآن — أمهلها {{count}} ثانية ثم اضغط.",
   "home.errors.rateLimited_other": "عدد المقارنات كبير الآن — أمهلها {{count}} ثانية ثم اضغط.",
   "home.errors.timeout": "ما زلنا نجمع الأسعار — أمهلها لحظة ثم اضغط مجددًا.",
+  "home.errors.engineUnavailable.title": "لحظة واحدة — محرك المقارنة في استراحة قصيرة",
+  "home.errors.engineUnavailable.body": "المقارنات متوقفة مؤقتا. يرجى العودة بعد قليل.",
   "home.loading.cancel_a11y": "إلغاء هذه المقارنة",
   "home.limit.max_title": "هذا يكفي حالياً",
   "home.limit.max_body": "قارن حتى {{max}} منتجات في المرّة.",
@@ -832,6 +834,7 @@
   "results.timeout.body": "نُرتّب أفضل العروض المحلية — أمهلها لحظة ثم اضغط مجددًا.",
   "results.timeout.retry": "اضغط لإعادة المحاولة",
   "results.partial.note": "الأسعار ما زالت تُحدَّث — اضغط للتحديث بعد لحظة.",
+  "results.degraded.note": "الشرح المفصل غير متاح هذه المرة. أما الدرجات والأسعار أدناه فهي حقيقية.",
 
   "register.inviteCode.placeholder": "عندك رمز دعوة؟ (اختياري)",
   "register.inviteCode.accessibility": "رمز الدعوة",

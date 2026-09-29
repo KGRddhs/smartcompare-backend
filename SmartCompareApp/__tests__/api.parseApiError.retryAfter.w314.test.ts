@@ -179,8 +179,15 @@ describe('W3-14 R1 — preserve: the non-envelope branches never carry the field
     expect(parseApiError(err)).toStrictEqual({ message: '', code: 'TIMEOUT' });
   });
 
-  it('codeless edge 502 falls through to the axios string with code null (unchanged)', () => {
+  it('codeless edge 502 falls through to the axios string; S69 U7 tags it GATEWAY_UNAVAILABLE', () => {
+    // S69 U7 R1 (sanctioned amendment, review open question 2): a codeless
+    // 502/504 now carries the synthetic code GATEWAY_UNAVAILABLE so the copy
+    // map can show the engine-unavailable copy. The W3-14 property this
+    // pins is unchanged: no `retryAfterSeconds` key on the non-envelope arm.
     const parsed = parseApiError(axiosError(502, '<html>Bad gateway</html>'));
-    expect(parsed).toStrictEqual({ message: 'Request failed with status code 502', code: null });
+    expect(parsed).toStrictEqual({
+      message: 'Request failed with status code 502',
+      code: 'GATEWAY_UNAVAILABLE',
+    });
   });
 });

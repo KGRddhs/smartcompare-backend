@@ -87,15 +87,17 @@ jest.mock('../src/services/api', () => ({
     if (rawCode === 'TIMEOUT' || rawCode === 'STREAM_TIMEOUT' || (status === 503 && !rawCode)) {
       return { message: '', code: 'TIMEOUT' };
     }
-    if (data?.error) return { message: data.error, code: rawCode };
+    // S69 U7 R1 — mirrors api.ts: a codeless 502/504 is GATEWAY_UNAVAILABLE.
+    const code = rawCode ?? (status === 502 || status === 504 ? 'GATEWAY_UNAVAILABLE' : null);
+    if (data?.error) return { message: data.error, code };
     if (data?.detail) {
       return {
         message: typeof data.detail === 'string' ? data.detail : 'Invalid request',
-        code: rawCode,
+        code,
       };
     }
-    if (error?.message) return { message: error.message, code: rawCode };
-    return { message: 'Something went wrong', code: rawCode };
+    if (error?.message) return { message: error.message, code };
+    return { message: 'Something went wrong', code };
   },
   trackEvent: (...args: any[]) => mockTrackEvent(...args),
   COMPARE_TIMEOUT_MS: 35000,

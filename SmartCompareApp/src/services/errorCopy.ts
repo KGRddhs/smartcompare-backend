@@ -1,4 +1,41 @@
 /**
+ * S69 U7 R1 — the codes that mean "the comparison ENGINE is down", not "your
+ * input was wrong". An OpenAI outage reaches the client as:
+ *   - LLM_UNAVAILABLE — coded 503 (text_routes `_surface_comparison_failure`,
+ *     and the camera route's vision exit since U7 R4);
+ *   - INTERNAL_ERROR — coded 400 (the verdict raised after Phase-1);
+ *   - SERVER_ERROR — 500 from ErrorHandlerMiddleware;
+ *   - GATEWAY_UNAVAILABLE — synthesized by parseApiError for a CODELESS
+ *     502/504 (a Railway edge HTML body; see api.ts).
+ * Before U7 all four fell to the default arm, i.e. the "try with brand or
+ * model" retype nudge under a "give it another tap" title — blaming the
+ * user's input for a server outage. A bare 503 (no code) is NOT here: it is
+ * normalised to TIMEOUT (D2 / MB-contract-09) and keeps the timeout copy.
+ */
+export const ENGINE_UNAVAILABLE_CODES: ReadonlySet<string> = new Set([
+  'LLM_UNAVAILABLE',
+  'INTERNAL_ERROR',
+  'SERVER_ERROR',
+  'GATEWAY_UNAVAILABLE',
+]);
+
+export function isEngineUnavailableCode(code: string | null | undefined): boolean {
+  return typeof code === 'string' && ENGINE_UNAVAILABLE_CODES.has(code);
+}
+
+/**
+ * S69 U7 R1 — the TITLE half of the same contract. Every code keeps the
+ * shared `common.error` title except an engine outage, whose own title does
+ * not invite a retry loop ("give it another tap") while the engine is down.
+ * Total: null / undefined / unknown codes return `common.error`.
+ */
+export function friendlyErrorTitleKey(code: string | null | undefined): string {
+  return isEngineUnavailableCode(code)
+    ? 'home.errors.engineUnavailable.title'
+    : 'common.error';
+}
+
+/**
  * A11 — backend error `code` -> user-facing i18n key.
  *
  * This is the ONE place that decides which sentence a failed comparison
@@ -31,6 +68,10 @@
  * back to a raw string, which is what made the pre-A11 codeless arm leak.
  */
 export function friendlyErrorKey(code: string | null | undefined): string {
+  if (isEngineUnavailableCode(code)) {
+    // S69 U7 R1 — an outage, not the pair: never the retype nudge.
+    return 'home.errors.engineUnavailable.body';
+  }
   switch (code) {
     case 'INSUFFICIENT_DATA':
       // Both products' Phase 1 specs+price came back None — retyping the

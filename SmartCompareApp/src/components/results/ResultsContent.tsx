@@ -70,6 +70,7 @@ import { RevealBurst } from '../hero/RevealBurst';
 import { ResultsAccordion } from './ResultsAccordion';
 import { SCORE_INTERNALS_RE } from './_deltaText';
 import { anyEstimated, isConvertedUsd } from '../../services/sourceMethod';
+import { isDegradedComparison } from '../../services/resultHonesty';
 import { ProductImage } from '../primitives/ProductImage';
 
 type SheetLeg = 'price' | 'reviews' | 'specs' | null;
@@ -162,12 +163,21 @@ export const ResultsContent = React.memo(function ResultsContent({
   // one-liner so a partial compare reads as "still settling," never broken.
   const isPartial = (result as any)?.metadata?.partial === true;
 
+  // S69 U7 R2 — a DEGRADED 200 (the verdict LLM call failed after Phase-1;
+  // `result.comparison.error` is truthy). The winner reason is the template
+  // sentence and every pros/cons list is empty, so neither is presented as
+  // if real: a truth notice replaces the verdict body, and the empty Pros &
+  // Cons row is dropped. FactualVerdict and the dimension bars are
+  // score-derived (verdict_builder.py) and stay. Ruling R-B: a truth notice
+  // about the result itself, not an informational banner.
+  const isDegraded = isDegradedComparison(result);
+
   // Per JSX, verdict body uses recommendation. For new format, overview.winner.reason.
   const isNewFormat = !!(result as any)?.overview?.winner;
   const verdictBody = isNewFormat
     ? (result as any)?.overview?.winner?.reason
     : (result as any)?.recommendation;
-  const verdictCaption = isNewFormat
+  const verdictCaption = isNewFormat && !isDegraded
     ? (result as any)?.overview?.winner?.key_tradeoff
     : null;
 
@@ -353,6 +363,14 @@ export const ResultsContent = React.memo(function ResultsContent({
               {t('results.partial.note')}
             </Text>
           ) : null}
+          {isDegraded ? (
+            <Text
+              testID="results-content-degraded-note"
+              style={styles.partialNote}
+            >
+              {t('results.degraded.note')}
+            </Text>
+          ) : null}
           {/* Faithful-results Phase 2.2 (FE BUG #4): the runner-up caption was
               previously gated INTO the else-branch of `factual_verdict.line1`,
               so whenever the backend emitted a factual verdict (≈ always) the
@@ -367,6 +385,9 @@ export const ResultsContent = React.memo(function ResultsContent({
               line2={scoring_v2.factual_verdict.line2 ?? ''}
               testID="results-content-factual-verdict"
             />
+          ) : isDegraded ? (
+            // S69 U7 R2 — the template winner reason is not a real verdict.
+            null
           ) : typeof verdictBody === 'string' &&
             SCORE_INTERNALS_RE.test(verdictBody) ? (
             // A6 defense-in-depth: drop a verdict body that leaks raw score
@@ -550,6 +571,7 @@ export const ResultsContent = React.memo(function ResultsContent({
             specsProducts={specsProducts}
             specsComparison={specsComparison}
             winnerIndex={winnerIndex}
+            hideProsCons={isDegraded}
             testID="results-content-accordion-inner"
           />
         </Animated.View>

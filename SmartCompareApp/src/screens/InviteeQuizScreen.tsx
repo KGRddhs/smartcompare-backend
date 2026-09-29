@@ -39,6 +39,7 @@ import {
   submitInviteeQuiz,
   ReferralError,
 } from '../services/referralService';
+import { isDegradedComparison } from '../services/resultHonesty';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'InviteeQuiz'>;
 
@@ -147,8 +148,12 @@ export default function InviteeQuizScreen({ navigation, route }: Props) {
       (typeof result?.winner_index === 'number'
         ? result?.products?.[result.winner_index]?.name
         : undefined);
-    const winnerReason: string | undefined =
-      result?.overview?.winner?.reason ?? result?.recommendation;
+    // S69 U7 R2 — a DEGRADED comparison (verdict LLM call failed after
+    // Phase-1; `comparison.error` truthy) carries the template winner reason,
+    // not a real verdict: same gate as ResultsContent, so it is not shown.
+    const winnerReason: string | undefined = isDegradedComparison(result)
+      ? undefined
+      : result?.overview?.winner?.reason ?? result?.recommendation;
 
     // Phase 4 § 4e — match score animates 0→N. M18 MB-contract-10: the
     // backend ships per-product scores at `scoring.scores.product_N.overall`
