@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#10B981">
+  <meta name="description" content="Open this MYEZ link in the app">
+  <meta name="robots" content="noindex, nofollow">
+  <link rel="icon" type="image/png" href="/favicon.png">
+  <title>Open in MYEZ — افتح في ميّز</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Cairo:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    /*
+     * Universal-link hand-off page (session 69, audit RT-8 / EXPO-06).
+     * nginx serves it for /c/<share token>, /r/<invite code> and /q/<quiz
+     * token> — the three path families the app registers as universal links
+     * (.well-known/apple-app-site-association) and as qaren:// deep links
+     * (SmartCompareApp/src/navigation/linking.ts). A browser reaches it from a
+     * pasted or forwarded link, an in-app browser, Android (the assetlinks
+     * certificate is still a placeholder) or a phone without the app — and
+     * only once qaren.app points at this service (today qaren.app answers a
+     * Cloudflare 522, so the page is reachable on the Railway host alone).
+     * It offers the qaren:// hand-off and, once the store link exists, the
+     * download. The referral link the backend builds today has NO share
+     * token (/c/?ref=QR-XXXXXX) — that shape hands off to the Register
+     * screen with the code pre-filled (qaren://r/QR-XXXXXX).
+     */
+    :root {
+      --emerald: #10B981;
+      --emerald-dark: #059669;
+      --ink: #0F172A;
+      --slate-500: #64748B;
+      --slate-200: #E2E8F0;
+      --bg: #FFFFFF;
+      --max-width: 560px;
+    }
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body {
+      margin: 0; padding: 0;
+      font-family: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      color: var(--ink); background: var(--bg); line-height: 1.55;
+      -webkit-font-smoothing: antialiased;
+    }
+    main {
+      max-width: var(--max-width); margin: 0 auto;
+      padding: clamp(2rem, 6vw, 4rem) clamp(1.5rem, 5vw, 3rem);
+      min-height: 100vh; display: flex; flex-direction: column; justify-content: center;
+    }
+    .brand { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 2.5rem; text-decoration: none; color: var(--ink); }
+    .brand-mark { width: 36px; height: 36px; border-radius: 9px; background: linear-gradient(135deg, var(--emerald), var(--emerald-dark)); display: grid; place-items: center; }
+    .brand-mark svg { width: 20px; height: 20px; stroke: white; stroke-width: 2; fill: none; }
+    .brand-name { font-weight: 700; font-size: 1.05rem; letter-spacing: 0.02em; }
+    .brand-ar { font-family: 'Cairo', sans-serif; font-weight: 700; color: var(--slate-500); margin-inline-start: 0.35rem; }
+    section { margin-bottom: 2.5rem; }
+    section[lang="ar"] { font-family: 'Cairo', sans-serif; direction: rtl; text-align: right; }
+    h1 { font-size: clamp(1.6rem, 4vw, 2rem); font-weight: 700; line-height: 1.2; margin: 0 0 0.75rem; }
+    h1 .accent { color: var(--emerald); }
+    p { margin: 0 0 1rem; color: var(--slate-500); font-size: 1.02rem; }
+    .actions { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 1.25rem; }
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; min-height: 48px;
+      padding: 0 1.4rem; border-radius: 12px; font-weight: 600; font-size: 1rem;
+      text-decoration: none; border: 1.5px solid var(--slate-200); color: var(--ink); background: var(--bg);
+    }
+    .btn-primary { background: var(--ink); border-color: var(--ink); color: #fff; }
+    .btn-primary:hover { background: #1E293B; }
+    .store-note { font-size: 0.95rem; }
+    [hidden] { display: none !important; }
+    footer { margin-top: auto; padding-top: 2rem; font-size: 0.85rem; color: var(--slate-500); }
+    footer a { color: var(--slate-500); }
+  </style>
+</head>
+<body>
+  <main>
+    <a class="brand" href="/">
+      <div class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="12" cy="12" r="9"></circle>
+          <circle cx="12" cy="12" r="5"></circle>
+        </svg>
+      </div>
+      <span class="brand-name">MYEZ <span class="brand-ar" lang="ar" dir="rtl">ميّز</span></span>
+    </a>
+
+    <section lang="en" dir="ltr" id="en">
+      <h1>Open this link in <span class="accent">MYEZ</span></h1>
+      <p>This link opens in the MYEZ app. If MYEZ is installed on this phone, tap the button below.</p>
+      <div class="actions">
+        <a class="btn btn-primary" id="open-en" href="qaren://">Open in MYEZ</a>
+        <a class="btn" id="store-en" href="#" hidden>Get MYEZ on the App Store</a>
+      </div>
+      <p class="store-note" id="store-note-en">MYEZ is on its way to the App Store. Once it is live, this page will offer the download.</p>
+    </section>
+
+    <section lang="ar" dir="rtl" id="ar">
+      <h1>افتح هذا الرابط في <span class="accent">ميّز</span></h1>
+      <p>يفتح هذا الرابط في تطبيق ميّز. إذا كان التطبيق مثبتا على هذا الهاتف، اضغط الزر أدناه.</p>
+      <div class="actions">
+        <a class="btn btn-primary" id="open-ar" href="qaren://">افتح في ميّز</a>
+        <a class="btn" id="store-ar" href="#" hidden>حمّل ميّز من App Store</a>
+      </div>
+      <p class="store-note" id="store-note-ar">ميّز في طريقه إلى App Store. عندما يصبح متاحا، ستجد رابط التحميل هنا.</p>
+    </section>
+
+    <footer>
+      <a href="/">MYEZ</a> · <a href="/support">Support</a> · <a href="/privacy.html">Privacy</a> · <a href="/ar/">العربية</a>
+    </footer>
+  </main>
+
+  <script>
+    (function () {
+      // The App Store product URL. Empty until the app record exists; Ahmed fills
+      // it (https://apps.apple.com/app/id<ASC APP ID>) and redeploys the landing
+      // service. While empty the download buttons stay hidden and the note shows.
+      var APP_STORE_URL = '';
+
+      // The paths the app's linking config resolves (prefixes 'qaren://' and
+      // 'https://qaren.app'): c/<share token> (+ ?ref=CODE), r/<invite code>,
+      // q/<quiz token>. A referral link whose comparison has no share token
+      // arrives as /c/?ref=QR-XXXXXX — the invite code alone is still useful,
+      // so it hands off to the Register screen (qaren://r/QR-XXXXXX). Anything
+      // else opens the app on its default screen.
+      var FAMILY_RE = /^\/(c|r|q)\/([^/]+)\/?$/;
+      var EMPTY_C_RE = /^\/c\/?$/;
+      var REF_RE = /[?&]ref=([^&#]*)/;
+      var INVITE_CODE_RE = /^QR-[A-HJ-NP-Z2-9]{6}$/;
+
+      function handoffTarget(pathname, search) {
+        var path = pathname || '/';
+        var query = search || '';
+        var m = FAMILY_RE.exec(path);
+        if (m) { return 'qaren://' + m[1] + '/' + m[2] + query; }
+        if (EMPTY_C_RE.test(path)) {
+          var r = REF_RE.exec(query);
+          var code = r ? decodeURIComponent(r[1]).toUpperCase() : '';
+          if (INVITE_CODE_RE.test(code)) { return 'qaren://r/' + code; }
+        }
+        return 'qaren://';
+      }
+      window.__myezHandoff = handoffTarget;
+
+      var target = handoffTarget(window.location.pathname, window.location.search);
+      ['open-en', 'open-ar'].forEach(function (id) {
+        var a = document.getElementById(id);
+        if (a) { a.setAttribute('href', target); }
+      });
+
+      if (APP_STORE_URL) {
+        ['store-en', 'store-ar'].forEach(function (id) {
+          var a = document.getElementById(id);
+          if (a) { a.setAttribute('href', APP_STORE_URL); a.removeAttribute('hidden'); }
+        });
+        ['store-note-en', 'store-note-ar'].forEach(function (id) {
+          var p = document.getElementById(id);
+          if (p) { p.setAttribute('hidden', ''); }
+        });
+      }
+
+      // Arabic browsers read the Arabic block first; the English block stays.
+      var lang = (navigator.language || '').toLowerCase();
+      if (lang.indexOf('ar') === 0) {
+        var main = document.querySelector('main');
+        var ar = document.getElementById('ar');
+        var en = document.getElementById('en');
+        if (main && ar && en) {
+          main.insertBefore(ar, en);
+          document.documentElement.setAttribute('lang', 'ar');
+          document.title = 'افتح في ميّز — Open in MYEZ';
+        }
+      }
+    })();
+  </script>
+</body>
+</html>

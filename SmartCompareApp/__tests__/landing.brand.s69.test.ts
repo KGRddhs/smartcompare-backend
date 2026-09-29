@@ -34,6 +34,7 @@ const PAGES = [
   'privacy.html',
   'support.html',
   'terms.html',
+  'open.html', // S69 hand-off page for /c/ /r/ /q/ (universal-link fallback)
   'ar/index.html',
   'ar/privacy.html',
   'ar/support.html',
@@ -58,6 +59,7 @@ const ADDRESS_COUNTS: Record<string, number> = {
   'privacy.html': 7,
   'support.html': 9,
   'terms.html': 7,
+  'open.html': 3, // the two qaren.app mentions in the page's comments + the linking prefix in the script
   'ar/index.html': 8,
   'ar/privacy.html': 7,
   'ar/support.html': 9,
@@ -84,7 +86,7 @@ function lineOf(html: string, index: number): number {
 
 describe('S69 U-R T4 — landing brand fence (MYEZ / ميّز)', () => {
   it('no page carries Latin "Qaren" outside an address (legal body excepted, U8)', () => {
-    // The page set is exactly the eight pages (the spec's "seven" missed ar/support.html).
+    // The page set is exactly the nine pages (the spec's "seven" missed ar/support.html; S69 added open.html).
     const found = [
       ...fs.readdirSync(LANDING).filter((f) => f.endsWith('.html')),
       ...fs
