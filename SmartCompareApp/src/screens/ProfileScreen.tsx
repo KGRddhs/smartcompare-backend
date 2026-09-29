@@ -463,11 +463,6 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
             testID="profile-row-edit"
           />
           <SettingsRow
-            label={t('profile.upgrade', { defaultValue: 'Upgrade to Premium' })}
-            onPress={() => navigation.navigate('Paywall')}
-            testID="profile-row-upgrade"
-          />
-          <SettingsRow
             label={t('profile.changePassword')}
             onPress={() => setPasswordModalVisible(true)}
             testID="profile-row-password"
