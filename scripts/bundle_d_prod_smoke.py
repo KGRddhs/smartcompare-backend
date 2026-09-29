@@ -118,15 +118,17 @@ def _body_must_not_contain(body: Any, needle: str) -> tuple[bool, str]:
     return True, ""  # no content = passes by default
 
 
-def _health_body_qaren_branded(body: Any) -> tuple[bool, str]:
-    """Assert /health response body uses 'Qaren' brand not 'SmartCompare' (R22-tail)."""
+def _health_body_myez_branded(body: Any) -> tuple[bool, str]:
+    """Assert /health response body uses the 'MYEZ' brand (S69 U-R rename) and
+    never an old one ('Qaren', or 'SmartCompare' per R22-tail)."""
     if not isinstance(body, dict):
         return False, f"expected JSON object, got {type(body).__name__}"
     msg = body.get("message", "")
-    if "SmartCompare" in msg:
-        return False, f"FORBIDDEN 'SmartCompare' found in /health.message: {msg!r}"
-    if "Qaren" not in msg:
-        return False, f"expected 'Qaren' in /health.message, got: {msg!r}"
+    for old in ("SmartCompare", "Qaren"):
+        if old in msg:
+            return False, f"FORBIDDEN {old!r} found in /health.message: {msg!r}"
+    if "MYEZ" not in msg:
+        return False, f"expected 'MYEZ' in /health.message, got: {msg!r}"
     return True, ""
 
 
@@ -227,8 +229,8 @@ def run_probes(
         # -----------------------------------------------------
         # 1. /health
         # -----------------------------------------------------
-        r = ProbeResult(name="health (Qaren-branded message R22-tail)", method="GET", path="/health", expected_status=200)
-        _do(r, lambda: client.get(f"{base_url}/health"), shape_check=_health_body_qaren_branded)
+        r = ProbeResult(name="health (MYEZ-branded message, S69 U-R)", method="GET", path="/health", expected_status=200)
+        _do(r, lambda: client.get(f"{base_url}/health"), shape_check=_health_body_myez_branded)
         results.append(r)
 
         # -----------------------------------------------------

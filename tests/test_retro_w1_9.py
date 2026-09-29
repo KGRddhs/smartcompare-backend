@@ -302,7 +302,7 @@ class TestW19cFlagOffIdentity:
         assert resp.status_code == 200
         body = resp.json()
         assert body["status"] == "healthy"
-        assert body["message"] == "Qaren API is running"
+        assert body["message"] == "MYEZ API is running"
         assert "retry-after" not in resp.headers
         assert not any(h.lower().startswith("x-ratelimit") for h in resp.headers)
 

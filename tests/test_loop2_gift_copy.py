@@ -50,7 +50,7 @@ class TestLoop2CopyMentionsExpiry:
     @pytest.mark.asyncio
     async def test_english_copy_includes_invitee_name_and_bonus_amount(self):
         """Plan task 37: body should be 'Your friend just compared something'
-        title + '{name}, your friend just used Qaren. You got X bonus
+        title + '{name}, your friend just used MYEZ. You got X bonus
         comparisons. Expires in 3 days.' body."""
         from app.services.push_service import send_loop2_push
 

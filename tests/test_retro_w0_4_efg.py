@@ -1497,7 +1497,7 @@ def test_w04g_health_has_no_price_parse_pool_key_before_the_pool_exists():
     message byte-unchanged (flag OFF /health is byte-identical to 61585c58)."""
     body = _health_body()
     assert "price_parse_pool" not in body, body
-    assert body.get("status") == "healthy" and body.get("message") == "Qaren API is running", body
+    assert body.get("status") == "healthy" and body.get("message") == "MYEZ API is running", body
     assert set(body) == {"status", "message", "loop_lag_ms", "loop_lag_max_ms",
                          "loop_lag_max_60s_ms"}, sorted(body)
 
@@ -1513,7 +1513,7 @@ def test_w04g_health_carries_price_parse_pool_after_a_flagged_parse(monkeypatch)
         "(keys %r); the canary cannot watch the pool's queue depth" % (sorted(body),)
     )
     assert body["price_parse_pool"] == _AFTER_ONE_PARSE, body["price_parse_pool"]
-    assert body.get("status") == "healthy" and body.get("message") == "Qaren API is running"
+    assert body.get("status") == "healthy" and body.get("message") == "MYEZ API is running"
 
 
 _STATS_ERRORS = {
@@ -1552,7 +1552,7 @@ def test_w04g_health_survives_a_raising_pool_stats_fn(monkeypatch, error):
     body = _health_body()
     assert set(body) == {"status", "message", "loop_lag_ms", "loop_lag_max_ms",
                          "loop_lag_max_60s_ms"}, sorted(body)
-    assert body.get("status") == "healthy" and body.get("message") == "Qaren API is running"
+    assert body.get("status") == "healthy" and body.get("message") == "MYEZ API is running"
 
 
 def _function_body_source(fn):

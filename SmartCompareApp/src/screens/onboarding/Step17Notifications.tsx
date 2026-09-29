@@ -72,7 +72,7 @@ export function Step17Notifications({ onDone }: Props) {
             the push card rendered first which competed with the headline
             for the user's first read. */}
         <View testID="s17-preview" style={styles.previewCard}>
-          <Text style={styles.previewBrand}>Qaren</Text>
+          <Text style={styles.previewBrand}>{t('app.name')}</Text>
           <Text style={styles.previewBody}>
             {t('onboarding.s17.preview_body')}
           </Text>

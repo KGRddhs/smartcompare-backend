@@ -215,7 +215,7 @@ export default function ContactUsScreen({ navigation }: Props) {
           </TouchableOpacity>
 
           <TouchableOpacity
-            onPress={() => Linking.openURL('mailto:support@qaren.app?subject=Qaren%20Support')}
+            onPress={() => Linking.openURL('mailto:support@qaren.app?subject=MYEZ%20Support')}
             style={styles.emailFallback}
             accessibilityRole="link"
           >

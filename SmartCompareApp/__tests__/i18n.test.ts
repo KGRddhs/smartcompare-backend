@@ -35,8 +35,8 @@ describe('i18n translation files', () => {
   });
 
   it('has app name in both languages', () => {
-    expect((en as Record<string, string>)['app.name']).toBe('Qaren');
-    expect((ar as Record<string, string>)['app.name']).toBe('قارن');
+    expect((en as Record<string, string>)['app.name']).toBe('MYEZ');
+    expect((ar as Record<string, string>)['app.name']).toBe('ميّز');
   });
 
   it('has all 9 category keys', () => {

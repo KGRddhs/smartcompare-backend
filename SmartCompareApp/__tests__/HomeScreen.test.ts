@@ -49,7 +49,7 @@ jest.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string, params?: Record<string, any>) => {
       const translations: Record<string, string> = {
-        'app.name': 'Qaren',
+        'app.name': 'MYEZ',
         'home.search.placeholder': 'Search products...',
         'home.scan': 'Scan Product',
         'home.url': 'URL',

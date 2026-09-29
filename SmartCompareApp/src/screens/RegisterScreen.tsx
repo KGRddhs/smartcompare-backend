@@ -282,7 +282,7 @@ export default function RegisterScreen({ navigation, route, onRegisterSuccess }:
       <SafeAreaView style={styles.container}>
         <View style={styles.content}>
           <View style={styles.header}>
-            <Text style={styles.logo}>قارن</Text>
+            <Text style={styles.logo}>{t('app.name')}</Text>
             <Text style={styles.subtitle}>{t('splash.tagline')}</Text>
           </View>
           <View style={styles.form} testID="email-confirmation-card">
@@ -313,7 +313,7 @@ export default function RegisterScreen({ navigation, route, onRegisterSuccess }:
           <View style={styles.content}>
             {/* Header */}
             <View style={styles.header}>
-              <Text style={styles.logo}>قارن</Text>
+              <Text style={styles.logo}>{t('app.name')}</Text>
               <Text style={styles.subtitle}>{t('splash.tagline')}</Text>
             </View>
 
