@@ -68,6 +68,11 @@ interface Props {
   counterTarget?: number;
   counterLabel?: string;
   animated?: boolean;
+  /**
+   * S69 U6 R6b — false omits the counter chip (no number at all). Default
+   * true: every existing caller and snapshot is unchanged.
+   */
+  showCounter?: boolean;
   testID?: string;
 }
 
@@ -126,6 +131,7 @@ export function LoadingRings({
   counterTarget = 2074,
   counterLabel,
   animated = true,
+  showCounter = true,
   testID,
 }: Props) {
   const ring0 = useSharedValue(RING_BASE_R);
@@ -206,10 +212,12 @@ export function LoadingRings({
           <QarenLogo size={Math.round(size * 0.22)} />
         </View>
       </View>
-      <View style={styles.chip} testID="loading-rings-counter-chip">
-        <Text style={styles.chipNumber}>{formatThousands(counter)}</Text>
-        {counterLabel ? <Text style={styles.chipLabel}>{counterLabel}</Text> : null}
-      </View>
+      {showCounter ? (
+        <View style={styles.chip} testID="loading-rings-counter-chip">
+          <Text style={styles.chipNumber}>{formatThousands(counter)}</Text>
+          {counterLabel ? <Text style={styles.chipLabel}>{counterLabel}</Text> : null}
+        </View>
+      ) : null}
     </View>
   );
 }

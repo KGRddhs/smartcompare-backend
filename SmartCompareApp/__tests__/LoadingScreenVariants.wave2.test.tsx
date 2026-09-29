@@ -64,8 +64,9 @@ const EXPECTED_STAGE_KEYS = [
   'loading.stage.locking_match',
 ];
 
+// S69 U6 R6 — 'loading.tip.peer_prioritize' (an uncomputed "73%") left the
+// default rotation; __tests__/honestLoaders.u6.test.tsx pins its absence.
 const EXPECTED_TIP_KEYS = [
-  'loading.tip.peer_prioritize',
   'loading.tip.cross_checks',
   'loading.tip.work_for_you',
   'loading.tip.save_offline',

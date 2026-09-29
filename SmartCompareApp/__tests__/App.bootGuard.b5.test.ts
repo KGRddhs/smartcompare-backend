@@ -62,6 +62,8 @@ type Stubs = {
   setIsLoading: jest.Mock;
   tryRegisterPushToken: jest.Mock;
   I18nManager: { isRTL: boolean; allowRTL: jest.Mock; forceRTL: jest.Mock };
+  // S69 U6 R4 — the RTL block moved into src/i18n/rtlBootstrap.ts.
+  bootstrapRtl: jest.Mock;
 };
 
 function makeStubs(overrides: Partial<Record<keyof Stubs, any>> = {}): Stubs {
@@ -78,6 +80,7 @@ function makeStubs(overrides: Partial<Record<keyof Stubs, any>> = {}): Stubs {
     setIsLoading: jest.fn(),
     tryRegisterPushToken: jest.fn(() => Promise.resolve()),
     I18nManager: { isRTL: false, allowRTL: jest.fn(), forceRTL: jest.fn() },
+    bootstrapRtl: jest.fn(() => Promise.resolve()),
   };
   return Object.assign(stubs, overrides);
 }
@@ -107,6 +110,7 @@ async function runBootBlock(stubs: Stubs): Promise<void> {
     'tryRegisterPushToken',
     'setIsLoading',
     '__DEV__',
+    'bootstrapRtl',
     block
   );
   run(
@@ -122,7 +126,8 @@ async function runBootBlock(stubs: Stubs): Promise<void> {
     stubs.setNeedsPreferences,
     stubs.tryRegisterPushToken,
     stubs.setIsLoading,
-    false // __DEV__ off so a failing step does not print to the test console
+    false, // __DEV__ off so a failing step does not print to the test console
+    stubs.bootstrapRtl
   );
   await settle();
 }
@@ -209,13 +214,19 @@ describe('B5 — App boot releases the splash gate on every path', () => {
   });
 
   it('an Arabic boot still forces RTL before clearing', async () => {
+    // S69 U6 R4 — forcing RTL (and the one-time reload) lives in
+    // bootstrapRtl (pinned in rtlBootstrap.s69.test.tsx); the boot block
+    // hands it the saved language after changeLanguage.
     const stubs = makeStubs({
       getSavedLanguage: jest.fn().mockResolvedValue('ar'),
     });
     await runBootBlock(stubs);
 
     expect(stubs.changeLanguage).toHaveBeenCalledWith('ar');
-    expect(stubs.I18nManager.forceRTL).toHaveBeenCalledWith(true);
+    expect(stubs.bootstrapRtl).toHaveBeenCalledWith('ar');
+    // The rest of boot still ran (a ReferenceError here would have been
+    // swallowed by .catch and skipped auth silently).
+    expect(stubs.initializeAuth).toHaveBeenCalledTimes(1);
     expect(stubs.setIsLoading).toHaveBeenCalledWith(false);
   });
 

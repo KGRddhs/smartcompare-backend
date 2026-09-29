@@ -113,6 +113,9 @@ import {
   shouldShowDemographicsPrompt,
 } from '../services/demographicsTrigger';
 import { getSavedUser } from '../services/authService';
+// S69 U6 R3 (RT-12) — the one-time notifications pre-prompt.
+import { shouldShowPushPrePrompt } from '../services/pushPrePrompt';
+import { PushPrePrompt } from '../components/PushPrePrompt';
 
 type ResultsScreenProps = NativeStackScreenProps<RootStackParamList, 'Results'>;
 
@@ -209,6 +212,13 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
   // Demographics prompt state
   const [demographicsVisible, setDemographicsVisible] = useState(false);
   const [demographicsError, setDemographicsError] = useState<string | null>(null);
+
+  // S69 U6 R3 — notifications pre-prompt (shown at most once, ever).
+  const [pushPrePromptVisible, setPushPrePromptVisible] = useState(false);
+  // The timer below reads the latest result through a ref: the camera path
+  // can still be loading when it fires, and no result means no prompt.
+  const resultRef = useRef(result);
+  resultRef.current = result;
 
   // Referral share sheet state (F2.3 + F2.4)
   const [shareSheetVisible, setShareSheetVisible] = useState(false);
@@ -574,9 +584,20 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
 
   // Demographics bottom-sheet trigger after results render (2s delay).
   // Schedule + dismissal cooldown live in services/demographicsTrigger.
+  //
+  // S69 U6 R3 — the same tick decides the notifications pre-prompt, so the
+  // two sheets never stack: the pre-prompt is considered only when the
+  // demographics sheet is NOT showing on this mount, only for a fresh
+  // compare (a History / Smart-pick re-open carries `comparison_id`), only
+  // once a result is on screen, and only for a signed-in user (the push
+  // token PUT is authenticated). shouldShowPushPrePrompt adds the rest: the
+  // OS was never asked and no answer (here or at onboarding Step 17) is
+  // persisted.
   useEffect(() => {
     let cancelled = false;
+    const openedFromHistory = !!route?.params?.comparison_id;
     const timer = setTimeout(async () => {
+      let demographicsSheetShown = false;
       try {
         const user = await getSavedUser();
         if (!user) return; // anonymous flows don't get the prompt
@@ -589,6 +610,15 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
         });
         if (shouldShow && !cancelled) {
           setDemographicsVisible(true);
+          demographicsSheetShown = true;
+        }
+        if (cancelled || !resultRef.current) return;
+        const showPushPrePrompt = await shouldShowPushPrePrompt({
+          fromHistory: openedFromHistory,
+          demographicsShown: demographicsSheetShown,
+        });
+        if (showPushPrePrompt && !cancelled) {
+          setPushPrePromptVisible(true);
         }
       } catch {
         // best-effort; never block the results screen on this
@@ -598,6 +628,9 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
       cancelled = true;
       clearTimeout(timer);
     };
+    // Mount-only on purpose: one decision per Results mount; the route's
+    // comparison_id is fixed for the life of the screen.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleDemographicsSubmit = async (payload: DemographicsPayload) => {
@@ -705,7 +738,8 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
           <View style={styles.headerButton} />
         </View>
         <View style={styles.loadingRingsContainer}>
-          <LoadingRings size={120} />
+          {/* S69 U6 R6 (App Review 2.3.1) — no nominal 2,074 counter chip. */}
+          <LoadingRings size={120} showCounter={false} />
           <Text style={styles.loadingRingsText}>
             {route?.params?.vision_products
               ? t('results.loading.fromCamera')
@@ -873,6 +907,12 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
         onSubmit={handleDemographicsSubmit}
         onSkip={handleDemographicsSkip}
         errorMessage={demographicsError}
+      />
+
+      {/* S69 U6 R3 — one-time notifications pre-prompt (see the 2s effect). */}
+      <PushPrePrompt
+        visible={pushPrePromptVisible}
+        onClose={() => setPushPrePromptVisible(false)}
       />
 
       {/* F2.4 + F2.5: ShareBottomSheet + Loop 1 reward toast */}

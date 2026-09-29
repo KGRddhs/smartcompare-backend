@@ -55,7 +55,7 @@ const stripAddresses = (s: string) => s.replace(ADDRESS_RE, ' ');
 const countMatches = (s: string, re: RegExp) =>
   (s.match(new RegExp(re.source, re.flags.includes('g') ? re.flags : `${re.flags}g`)) ?? []).length;
 
-/** The 24 Arabic brand keys + the one Latin-in-AR key (review table). */
+/** The 24 Arabic brand keys + the one Latin-in-AR key (review table) + the two U6 pre-prompt keys. */
 const BRAND_KEYS = [
   'app.name',
   'home.savings.count_zero',
@@ -82,6 +82,9 @@ const BRAND_KEYS = [
   'update.required.title',
   'update.required.body',
   'update.required.manual',
+  // S69 U6 R3 — the notifications pre-prompt names the app in its title and body.
+  'notifications.prePrompt.title',
+  'notifications.prePrompt.body',
 ].sort();
 
 /** «قارن» as the verb "compare!" — EN has no brand here; these stay. */
@@ -137,14 +140,14 @@ describe('S69 U-R T1 — catalog brand fence (MYEZ / ميّز)', () => {
     expect(hits).toEqual(VERB_KEYS);
   });
 
-  it('the en values carrying MYEZ are exactly the 25 brand keys', () => {
+  it('the en values carrying MYEZ are exactly the 27 brand keys', () => {
     const keys = Object.keys(EN)
       .filter((k) => /\bMYEZ\b/.test(EN[k]))
       .sort();
     expect(keys).toEqual(BRAND_KEYS);
   });
 
-  it('the ar values carrying standalone «ميّز» are exactly the same 25 brand keys (parity both ways)', () => {
+  it('the ar values carrying standalone «ميّز» are exactly the same 27 brand keys (parity both ways)', () => {
     const keys = Object.keys(AR)
       .filter((k) => MYEZ_AR_WORD.test(AR[k]))
       .sort();

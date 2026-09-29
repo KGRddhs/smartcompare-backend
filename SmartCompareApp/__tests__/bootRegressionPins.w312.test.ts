@@ -98,6 +98,7 @@ describe('W3-12 pin (a) [ALREADY GREEN, REGRESSION PIN] — splash .finally() st
       'tryRegisterPushToken',
       'setIsLoading',
       '__DEV__',
+      'bootstrapRtl',
       extractBootBlock(),
     );
     run(
@@ -114,6 +115,7 @@ describe('W3-12 pin (a) [ALREADY GREEN, REGRESSION PIN] — splash .finally() st
       jest.fn(() => Promise.resolve()),
       setIsLoading,
       false,
+      jest.fn(() => Promise.resolve()), // S69 U6 R4 — bootstrapRtl
     );
     await settle();
     return setIsLoading;

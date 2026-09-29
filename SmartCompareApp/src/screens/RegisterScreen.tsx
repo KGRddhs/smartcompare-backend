@@ -13,7 +13,6 @@ import {
   SafeAreaView,
   KeyboardAvoidingView,
   Platform,
-  ActivityIndicator,
   ScrollView,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
@@ -29,6 +28,8 @@ import { colors, spacing, radii, typography, shadows } from '../theme';
 import { Button } from '../components/Button';
 import { ConsentRow, LegalDoc } from '../components/ConsentRow';
 import { buildConsentPayload } from '../services/consent';
+import { AppleSignInButton } from '../components/AppleSignInButton';
+import { authErrorKey } from '../services/authErrorCopy';
 
 type RegisterScreenProps = NativeStackScreenProps<AuthStackParamList, 'Register'> & {
   onRegisterSuccess: () => void;
@@ -168,6 +169,9 @@ export default function RegisterScreen({ navigation, route, onRegisterSuccess }:
   };
 
   const handleAppleSignIn = async () => {
+    // S69 U6 R1 — the native Apple button has no `disabled` prop, so a
+    // press while any sign-in (or the form) is in flight is a no-op here.
+    if (socialLoading || loading) return;
     if (!consentAccepted) {
       setConsentError(true);
       return;
@@ -265,10 +269,14 @@ export default function RegisterScreen({ navigation, route, onRegisterSuccess }:
           onRegisterSuccess();
         }
       } else {
-        setError(result.error || t('auth.registerFailed'));
+        // S69 U6 R2 (RT-9) — register() returns an i18n KEY (`errorKey`);
+        // the raw `error` text is never rendered.
+        setError(t(authErrorKey(result, 'auth.registerFailed')));
       }
     } catch (err: any) {
-      setError(parseApiError(err).message);
+      // A throw is transport detail — diagnostic only, never user copy.
+      if (__DEV__) console.warn('[RegisterScreen] register threw:', parseApiError(err).message);
+      setError(t('auth.registerFailed'));
     } finally {
       setLoading(false);
     }
@@ -486,19 +494,18 @@ export default function RegisterScreen({ navigation, route, onRegisterSuccess }:
                 loading={socialLoading === 'google'}
               />
 
+              {/* S69 U6 R1 — iOS: the SDK's native "Sign up with Apple"
+                  button (HIG: the system draws the Apple logo). Android /
+                  unavailable: no Apple control at all. */}
               {showApple && (
                 <View style={styles.socialSpacer}>
-                  <TouchableOpacity
-                    style={styles.appleButton}
+                  <AppleSignInButton
+                    testID="register-social-apple"
+                    variant="signUp"
                     onPress={handleAppleSignIn}
+                    loading={socialLoading === 'apple'}
                     disabled={!!socialLoading || loading}
-                  >
-                    {socialLoading === 'apple' ? (
-                      <ActivityIndicator size="small" color="#FFF" />
-                    ) : (
-                      <Text style={styles.appleButtonText}>{t('auth.appleSignIn')}</Text>
-                    )}
-                  </TouchableOpacity>
+                  />
                 </View>
               )}
 
@@ -737,18 +744,5 @@ const styles = StyleSheet.create({
   },
   socialSpacer: {
     marginTop: spacing.sm,
-  },
-  appleButton: {
-    backgroundColor: '#000',
-    borderRadius: radii.button,
-    paddingVertical: spacing.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 48,
-  },
-  appleButtonText: {
-    ...typography.body,
-    fontWeight: '600',
-    color: '#FFF',
   },
 });

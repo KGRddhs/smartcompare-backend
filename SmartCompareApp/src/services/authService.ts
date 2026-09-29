@@ -13,6 +13,7 @@ import {
   SOCIAL_LOGIN_TIMEOUT_MS,
 } from './fetchWithDeadline';
 import type { ConsentPayload } from './consent';
+import { authFailureKey } from './authErrorCopy';
 // Native modules loaded lazily — crashes Expo Go if imported at top level
 let GoogleSignin: any = null;
 let AppleAuthentication: any = null;
@@ -178,17 +179,22 @@ export async function register(
       };
     }
 
-    return {
-      success: false,
-      error: response.data.error || 'Registration failed',
-    };
+    // S69 U6 R2 — a 200 without a user: the body text is never user copy.
+    return authFailure('register', null);
   } catch (error: any) {
     if (__DEV__) console.error('Register error:', error);
-    return {
-      success: false,
-      error: error.response?.data?.detail || error.message || 'Registration failed',
-    };
+    return authFailure('register', error);
   }
+}
+
+/**
+ * S69 U6 R2 (RT-9) — a failed login / register carries an i18n KEY in both
+ * `errorKey` and `error`, never the axios message or the envelope's English
+ * text (see authErrorCopy.ts for the status / code mapping).
+ */
+function authFailure(operation: 'login' | 'register', error: unknown): AuthResponse {
+  const key = authFailureKey(operation, error);
+  return { success: false, error: key, errorKey: key };
 }
 
 /**
@@ -219,16 +225,11 @@ export async function login(email: string, password: string): Promise<AuthRespon
       };
     }
 
-    return {
-      success: false,
-      error: response.data.error || 'Login failed',
-    };
+    // S69 U6 R2 — a 200 without a user: the body text is never user copy.
+    return authFailure('login', null);
   } catch (error: any) {
     if (__DEV__) console.error('Login error:', error);
-    return {
-      success: false,
-      error: error.response?.data?.detail || error.message || 'Login failed',
-    };
+    return authFailure('login', error);
   }
 }
 

@@ -10,7 +10,7 @@
  *   2. Emerald-tint bookmark-glyph hero (72px circle, accentLight bg,
  *      accentDark bookmark SVG)
  *   3. Headline "Save your advisor." + subtitle
- *   4. SocialRow — Apple (iOS only) / Google / Email triplet
+ *   4. Apple (iOS only, SDK native button, own row) + SocialRow Google / Email
  *   5. OrDivider — hairline + uppercase "OR" + hairline
  *   6. Email AuthField (focus-hint pill — orchestrator routes to real
  *      Register screen when user taps "Save my advisor" or the Email
@@ -47,6 +47,7 @@ import { useTranslation } from 'react-i18next';
 import Svg, { Path } from 'react-native-svg';
 import { Mail } from 'lucide-react-native';
 import { colors, spacing, radii } from '../../theme';
+import { AppleSignInButton } from '../../components/AppleSignInButton';
 
 export type AuthMethod = 'apple' | 'google' | 'email';
 
@@ -102,8 +103,11 @@ function SocialGlyph({ provider }: { provider: AuthMethod }) {
   if (provider === 'email') {
     return <Mail size={18} color={colors.text.primary} strokeWidth={2} />;
   }
+  // S69 U6 R1 — Apple never goes through SocialButton: the HIG-required
+  // Apple logo is only ever drawn by the SDK's native button (see
+  // AppleSignInButton in the social row below).
   if (provider === 'apple') {
-    return <Text style={socialStyles.glyphApple}></Text>;
+    return null;
   }
   return <Text style={socialStyles.glyphGoogle}>G</Text>;
 }
@@ -149,16 +153,21 @@ export function Step16Account({
         <Text style={styles.title}>{t('onboarding.s16.title')}</Text>
         <Text style={styles.subtitle}>{t('onboarding.s16.subtitle')}</Text>
 
-        {/* SocialRow — Apple / Google / Email */}
-        <View style={styles.socialRow}>
-          {appleAvailable ? (
-            <SocialButton
+        {/* S69 U6 R1 — Apple on its own full-width row through the SDK's
+            native button (system logo + label, guideline 4.8 / HIG), the
+            same treatment as Login; Google / Email stay in the row below. */}
+        {appleAvailable ? (
+          <View style={styles.appleRow}>
+            <AppleSignInButton
               testID="account-apple"
-              provider="apple"
-              label={t('onboarding.s16.apple')}
+              variant="continue"
               onPress={() => onSelectMethod('apple')}
             />
-          ) : null}
+          </View>
+        ) : null}
+
+        {/* SocialRow — Google / Email */}
+        <View style={styles.socialRow}>
           <SocialButton
             testID="account-google"
             provider="google"
@@ -305,6 +314,9 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     marginBottom: spacing.xl,
   },
+  appleRow: {
+    marginBottom: 8,
+  },
   socialRow: {
     flexDirection: 'row',
     gap: 8,
@@ -394,12 +406,6 @@ const socialStyles = StyleSheet.create({
     fontWeight: '600',
     lineHeight: 13,
     color: colors.text.primary,
-  },
-  glyphApple: {
-    fontSize: 18,
-    lineHeight: 18,
-    color: colors.text.primary,
-    fontWeight: '700',
   },
   glyphGoogle: {
     fontSize: 16,

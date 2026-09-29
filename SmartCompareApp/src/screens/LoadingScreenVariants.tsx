@@ -73,6 +73,13 @@ interface Props {
    */
   counterTarget?: number;
   /**
+   * S69 U6 R6b — false hides the LoadingRings counter chip entirely
+   * (Step14 passes false when it has no real cohort count, rather than
+   * letting the chip fall back to a nominal figure). Default true keeps
+   * every other caller unchanged.
+   */
+  showCounter?: boolean;
+  /**
    * @deprecated F-S2.W3.hotfix — duration is owned by LoadingRings
    * (motion.counterTick = 2400ms) now that the external chip is gone.
    * Kept on the prop interface for back-compat with Step14 wiring
@@ -163,8 +170,10 @@ const DEFAULT_COMPARISON_STAGE_KEYS = [
   { id: '4', key: 'loading.stage.locking_match' },
 ];
 
+// S69 U6 R6 (App Review 2.3.1) — 'loading.tip.peer_prioritize' ("73% of
+// Capital shoppers your age prioritize Quality.") is no longer a default:
+// the 73% is not computed from anything, and every compare loader showed it.
 const DEFAULT_COMPARISON_TIP_KEYS = [
-  'loading.tip.peer_prioritize',
   'loading.tip.cross_checks',
   'loading.tip.work_for_you',
   'loading.tip.save_offline',
@@ -198,6 +207,7 @@ export function LoadingScreenVariants({
   tipIntervalMs,
   cohortFooter,
   counterTarget,
+  showCounter = true,
   // counterDurationMs intentionally accepted-and-unused per
   // F-S2.W3.hotfix deprecation note above; LoadingRings owns the
   // tick duration via motion.counterTick.
@@ -359,6 +369,7 @@ export function LoadingScreenVariants({
           <LoadingRings
             size={240}
             counterTarget={counterTarget}
+            showCounter={showCounter}
             testID="loading-rings"
           />
 

@@ -621,6 +621,31 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     setInputMode(mode);
   };
 
+  // S69 U6 R5 (audit RT-7) — a "Popular comparisons" tap runs THAT pair.
+  // It used to ignore the tapped row and only switch to type mode. Now it
+  // switches to type mode, prefills both inputs (the shell remounts on the
+  // `seq` key, since its initialA / initialB are read once per mount) and
+  // starts the compare through handleTextCompare — the same path the
+  // shell's Compare button takes. Paywall: when !canCompare the first line,
+  // handleModeChange('type'), already navigates to Paywall (and tracks the
+  // banner view), so the early return below only avoids a second
+  // navigate; the compare never starts. (Today the trending rows render
+  // only under `canCompare &&`, so that branch is belt-and-braces.)
+  // A row without two names (or a bare call) only switches mode.
+  const [trendingPrefill, setTrendingPrefill] = useState<{
+    a: string;
+    b: string;
+    seq: number;
+  } | null>(null);
+  const handlePressTrending = (a?: string, b?: string) => {
+    handleModeChange('type');
+    const productA = (a ?? '').trim();
+    const productB = (b ?? '').trim();
+    if (!productA || !productB || !canCompare) return;
+    setTrendingPrefill((prev) => ({ a: productA, b: productB, seq: (prev?.seq ?? 0) + 1 }));
+    handleTextCompare(productA, productB);
+  };
+
   const pickFromGalleryFallback = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
@@ -779,7 +804,11 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     // for the Compare action lives in the shell).
     return (
       <TwoInputShell
+        key={trendingPrefill ? `trending-${trendingPrefill.seq}` : 'two-input'}
         mode={inputMode === 'url' ? 'url' : 'text'}
+        // The prefill seeds the text boxes only; URL mode keeps its own.
+        initialA={inputMode === 'url' ? undefined : trendingPrefill?.a}
+        initialB={inputMode === 'url' ? undefined : trendingPrefill?.b}
         disabled={loading}
         onSubmit={(a, b) => {
           if (inputMode === 'url') handleUrlCompare(a, b);
@@ -1011,9 +1040,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
               setSelectedCategory(cat as any);
               handleModeChange('type');
             }}
-            onPressTrending={() => {
-              handleModeChange('type');
-            }}
+            onPressTrending={handlePressTrending}
           />
         )}
       </ScrollView>
@@ -1031,6 +1058,10 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
             variant="concentric"
             mode="comparison"
             caption={statusMessage || t('results.loading.finding')}
+            // S69 U6 R6 (App Review 2.3.1) — no counter chip: Home has no
+            // real count to show, and LoadingRings' default ticks to a
+            // nominal 2,074.
+            showCounter={false}
             testID="home-loading-screen"
           />
           {/* A4 — the loader's only exit. Bottom-CENTERED on purpose:

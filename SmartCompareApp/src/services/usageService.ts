@@ -72,10 +72,3 @@ export function getUsageLimitDetail(error: any): UsageLimitError | null {
   const payload = _usageLimitPayload(error);
   return payload ? (payload as UsageLimitError) : null;
 }
-
-export function formatUsageMessage(status: UsageStatus): string {
-  if (status.tier === 'free') {
-    return `${status.used.monthly} of ${status.limits.monthly} comparisons used this month`;
-  }
-  return `${status.used.monthly} of ${status.limits.monthly} comparisons used this month (Premium)`;
-}

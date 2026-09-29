@@ -9,6 +9,12 @@
  * Permission gate via expo-notifications. Either path advances to the
  * orchestrator's onComplete via onDone(granted: boolean). The 17-step
  * flow ends here.
+ *
+ * S69 U6 R3 (audit RT-12) — this step IS the in-app pre-prompt for new
+ * users: launch and login no longer ask the OS (pushTokenService only reads
+ * the permission). So a granted Allow registers the push token here — it
+ * used to wait for the next cold launch — and both answers are persisted
+ * (services/pushPrePrompt) so the post-result pre-prompt never asks again.
  */
 
 import React from 'react';
@@ -16,6 +22,7 @@ import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import * as Notifications from 'expo-notifications';
 import { colors, spacing, typography, radii } from '../../theme';
+import { completePushPrePrompt } from '../../services/pushPrePrompt';
 
 interface Props {
   /** Fires after the user picks Allow (with the OS permission result) or Not now. */
@@ -48,17 +55,25 @@ export function Step17Notifications({ onDone }: Props) {
   const { t } = useTranslation();
 
   const handleAllow = async () => {
+    let granted = false;
     try {
       const result = await Notifications.requestPermissionsAsync();
-      onDone(Boolean(result?.granted));
+      granted = Boolean(result?.granted);
     } catch {
       // Best-effort: a denied permission is not an error path. Surface as
       // "not now" to the orchestrator and continue — nothing scary surfaces.
-      onDone(false);
+      granted = false;
     }
+    onDone(granted);
+    // S69 U6 R3 — persist the answer; a grant registers the token now.
+    // Fire-and-forget: never holds the flow, never throws.
+    void completePushPrePrompt('allow', granted);
   };
 
-  const handleNotNow = () => onDone(false);
+  const handleNotNow = () => {
+    onDone(false);
+    void completePushPrePrompt('not_now', false);
+  };
 
   return (
     <View style={styles.container}>
