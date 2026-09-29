@@ -182,13 +182,13 @@ def _loop2_copy(language: str, invitee_display_name: str, bonus: int) -> tuple[s
     if language == "Arabic":
         title = "صديقك قارن منتجاً للتو"
         body = (
-            f"{name}، صديقك استخدم قارن للتو. "
+            f"{name}، صديقك استخدم ميّز للتو. "
             f"حصلت على {bonus} مقارنات إضافية. تنتهي خلال 3 أيام."
         )
     else:
         title = "Your friend just compared something"
         body = (
-            f"{name}, your friend just used Qaren. "
+            f"{name}, your friend just used MYEZ. "
             f"You got {bonus} bonus comparisons. Expires in 3 days."
         )
     return title, body

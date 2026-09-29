@@ -258,16 +258,16 @@ export default function InviteeQuizScreen({ navigation, route }: Props) {
             </View>
             <Text style={styles.signupBody}>{t('referrals.quiz.signupBody')}</Text>
             {/* Soft signup CTA per § 4e — black primary Button, copy
-                "Try Qaren free — 5 comparisons" (defined in i18n). */}
+                "Try MYEZ free — 5 comparisons" (defined in i18n). */}
             <Button
               testID="quiz-signup-cta"
               title={t('referrals.quiz.signupCtaSoft', {
-                defaultValue: 'Try Qaren free — 5 comparisons',
+                defaultValue: 'Try MYEZ free — 5 comparisons',
               })}
               variant="primary"
               onPress={handleSignup}
               accessibilityLabel={t('referrals.quiz.signupCtaSoft', {
-                defaultValue: 'Try Qaren free — 5 comparisons',
+                defaultValue: 'Try MYEZ free — 5 comparisons',
               })}
             />
             <TouchableOpacity

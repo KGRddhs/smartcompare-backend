@@ -84,7 +84,7 @@ export default function ForgotPasswordScreen({ navigation }: ForgotPasswordScree
         <View style={styles.content}>
           {/* Header */}
           <View style={styles.header}>
-            <Text style={styles.logo}>قارن</Text>
+            <Text style={styles.logo}>{t('app.name')}</Text>
           </View>
 
           {/* Form */}

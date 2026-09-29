@@ -16,7 +16,7 @@ jest.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string) => {
       const translations: Record<string, string> = {
-        'app.name': 'Qaren',
+        'app.name': 'MYEZ',
         'splash.tagline': 'Compare smarter',
       };
       return translations[key] || key;
@@ -38,7 +38,7 @@ describe('SplashScreen', () => {
     // EN/AR users see their own locale's brand name.
     const mockOnFinish = jest.fn();
     const { getByText } = render(<SplashScreen onFinish={mockOnFinish} />);
-    expect(getByText('Qaren')).toBeTruthy();
+    expect(getByText('MYEZ')).toBeTruthy();
   });
 
   it('should render the tagline', () => {

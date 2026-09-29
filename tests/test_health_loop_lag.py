@@ -90,7 +90,7 @@ import app.main as app_main
 
 # The current, shipped payload. Additive-only means these survive verbatim.
 _CURRENT_STATUS = "healthy"
-_CURRENT_MESSAGE = "Qaren API is running"
+_CURRENT_MESSAGE = "MYEZ API is running"  # S69 U-R rename
 
 _CONTRACT = (
     "app/main.py must expose the W1-10 loop-lag recorder: "

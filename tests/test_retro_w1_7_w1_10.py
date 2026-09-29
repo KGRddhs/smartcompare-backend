@@ -192,7 +192,7 @@ class TestW110bHealthReadsTheRecorder:
     def test_status_and_message_are_unchanged(self):
         payload = _health()
         assert payload["status"] == "healthy"
-        assert payload["message"] == "Qaren API is running"
+        assert payload["message"] == "MYEZ API is running"
 
 
 class _Stop(Exception):

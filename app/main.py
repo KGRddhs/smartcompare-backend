@@ -536,14 +536,17 @@ async def health_check():
     """Basic health check
 
     Additive only: `status` and `message` keep their exact values (an external
-    uptime check may be string-matching them). The two loop-lag numbers are a
+    uptime check may be string-matching them). The one deliberate change is
+    the S69 U-R brand rename: `message` went from "Qaren API is running" to
+    "MYEZ API is running"; an uptime monitor matching the old text must be
+    updated with that deploy. The two loop-lag numbers are a
     pure dict read of state the heartbeat already wrote -- no await, no I/O.
     This is Railway's deploy healthcheck with a 30 s timeout and must not become
     a thing that can fail.
     """
     return {
         "status": "healthy",
-        "message": "Qaren API is running",
+        "message": "MYEZ API is running",
         **loop_lag_snapshot(),
         **price_parse_pool_snapshot(),
     }

@@ -84,7 +84,7 @@ export function Step05Trust({ onNext }: Props) {
             head={t('onboarding.s5.privacy_anon_head', { defaultValue: "What's anonymized" })}
             body={t('onboarding.s5.privacy_anon_body', {
               defaultValue:
-                'Your queries help Qaren get smarter. We strip your name, email, and identity first.',
+                'Your queries help MYEZ get smarter. We strip your name, email, and identity first.',
             })}
           />
           <PrivacyRow
