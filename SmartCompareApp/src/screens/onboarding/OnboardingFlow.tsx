@@ -599,8 +599,9 @@ function StepContent({
         />
       )}
       {step === 14 && (
+        // S69 U6 R6b — no invented peer count (was a hard-coded 47): the
+        // counter only renders when a real cohort count is passed.
         <Step14Loading
-          cohortPeerCount={47}
           onComplete={onLoadingComplete}
           governorate={data.governorate}
         />

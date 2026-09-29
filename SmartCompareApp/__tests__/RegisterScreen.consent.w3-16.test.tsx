@@ -193,9 +193,11 @@ describe('W3-16 RegisterScreen — consent capture', () => {
   // §5-A.5 (unticked half)
   it('5a. an UNTICKED Apple tap is blocked: signInWithApple() is not called and consent-error renders', async () => {
     const screen = renderScreen();
-    await waitFor(() => expect(screen.getByText('auth.appleSignIn')).toBeTruthy());
+    // S69 U6 R1 — the Apple control is the SDK's native button (no text
+    // child; the system draws its label), reached by its testID.
+    await waitFor(() => expect(screen.getByTestId('register-social-apple')).toBeTruthy());
 
-    fireEvent.press(screen.getByText('auth.appleSignIn'));
+    fireEvent.press(screen.getByTestId('register-social-apple'));
 
     expect(mockSignInWithApple).not.toHaveBeenCalled();
     await waitFor(() => expectConsentErrorCopy(screen));
@@ -204,10 +206,11 @@ describe('W3-16 RegisterScreen — consent capture', () => {
   // §5-A.5 (ticked half)
   it('5b. a TICKED Apple tap passes the consent payload to signInWithApple()', async () => {
     const screen = renderScreen();
-    await waitFor(() => expect(screen.getByText('auth.appleSignIn')).toBeTruthy());
+    // S69 U6 R1 — native Apple button, reached by its testID.
+    await waitFor(() => expect(screen.getByTestId('register-social-apple')).toBeTruthy());
 
     fireEvent.press(screen.getByTestId('consent-checkbox'));
-    fireEvent.press(screen.getByText('auth.appleSignIn'));
+    fireEvent.press(screen.getByTestId('register-social-apple'));
 
     await waitFor(() => expect(mockSignInWithApple).toHaveBeenCalledTimes(1));
     expect(mockSignInWithApple.mock.calls[0]).toEqual([EXPECTED_CONSENT]);

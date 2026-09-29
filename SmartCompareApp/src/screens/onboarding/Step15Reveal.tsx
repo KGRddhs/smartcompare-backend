@@ -11,15 +11,16 @@
  * here per QA § 6 audit (it stays exclusive to ResultsScreen now).
  *
  * New anatomy (top-down per JSX):
- *   1. MatchBadge primitive — 88px emerald-accentLight circle + "92%" +
- *      ✦ sparkle accent + "Strong match" eyebrow.
+ *   1. MatchBadge primitive — 88px emerald-accentLight circle + the match
+ *      percent + ✦ sparkle accent + "Strong match" eyebrow (only when a
+ *      real matchQuality is passed).
  *   2. Headline "Your shopping advisor is ready." + subtitle
  *      "Tuned to your priorities. Trained by your peers."
  *   3. 4× StatBlock 2x2 grid:
  *        a. Top priority (e.g. "Quality") — accent=true (emerald value)
  *        b. Budget tier (e.g. "Mid-range")
- *        c. Peers in {governorate} (e.g. "2,000+")
- *        d. GCC cohort (e.g. "15,000+")
+ *        c. Peers in {governorate} -> "Shoppers like you"
+ *        d. GCC cohort -> "Your age group"
  *   4. CTA "Compare your first product".
  *
  * The 80ms staggered Animated.View wrap stays — the StatBlock primitive
@@ -31,6 +32,13 @@
  *     `profile`. Step15 derives the 4 display values + match percent
  *     itself so callers don't need to compute them. Display lookups
  *     route through t() so EN / AR copy stays localized.
+ *
+ * S69 U6 R6b (App Review 2.3.1) — no invented numbers on this screen:
+ *   - the MatchBadge renders only when a REAL `matchQuality` is passed
+ *     (the old DEFAULT_MATCH_PCT 92 was shown because nothing passes one);
+ *   - the two peer tiles keep their labels and testIDs but state who the
+ *     advisor is tuned to ("Shoppers like you" / "Your age group") instead
+ *     of the nominal "2,000+" / "15,000+" counts nobody measured.
  *
  * Governorate substitution:
  *   - "Peers in {governorate}" label substitutes the localized
@@ -61,7 +69,7 @@ import {
 } from './types';
 
 export interface RevealProfile {
-  /** Numeric match percent for MatchBadge (default 92 per JSX). */
+  /** A REAL match percent; absent -> the MatchBadge is not rendered. */
   matchQuality?: number;
   /** 1-3 of 8 canonical priority keys; first is the display "Top priority". */
   priorities?: string[];
@@ -86,13 +94,6 @@ const FADE_MS = 320;
 // (~600ms) so the reveal sequence reads as theatrical rather than
 // simultaneous overlay.
 const CARDS_START_DELAY_MS = 600;
-const DEFAULT_MATCH_PCT = 92;
-// Per JSX OnboardingReadyScreen.jsx:91-92 — the GCC and per-governorate
-// peer counts are display-only nominal figures. Real cohort population
-// is surfaced by the backend on first comparison, not at onboarding-
-// ready time. Keep these stable so the moment feels confident.
-const PEERS_GOVERNORATE_DISPLAY = '2,000+';
-const PEERS_GCC_DISPLAY = '15,000+';
 
 function StaggeredCardWrap({
   children,
@@ -137,7 +138,10 @@ export function Step15Reveal({ onNext, profile }: Props) {
 
   // Derived display values — Step15 owns the priority + budget i18n
   // lookups so OnboardingFlow keeps passing raw demographic data.
-  const matchPercent = profile.matchQuality ?? DEFAULT_MATCH_PCT;
+  const matchPercent =
+    typeof profile.matchQuality === 'number' && Number.isFinite(profile.matchQuality)
+      ? profile.matchQuality
+      : null;
 
   const topPriorityDisplay = useMemo(() => {
     const first = profile.priorities?.[0];
@@ -169,11 +173,13 @@ export function Step15Reveal({ onNext, profile }: Props) {
   return (
     <View style={styles.container}>
       <View style={styles.hero}>
-        <MatchBadge
-          percent={matchPercent}
-          eyebrow={t('onboarding.s15.match_strong', { defaultValue: 'Strong match' })}
-          testID="s15-match-badge"
-        />
+        {matchPercent !== null ? (
+          <MatchBadge
+            percent={matchPercent}
+            eyebrow={t('onboarding.s15.match_strong', { defaultValue: 'Strong match' })}
+            testID="s15-match-badge"
+          />
+        ) : null}
         <Text style={styles.title} testID="s15-title">
           {t('onboarding.s15.title')}
         </Text>
@@ -216,7 +222,7 @@ export function Step15Reveal({ onNext, profile }: Props) {
             <StatBlock
               testID="stat-peers-in"
               label={peersLabel}
-              value={PEERS_GOVERNORATE_DISPLAY}
+              value={t('onboarding.s15.peers_value', { defaultValue: 'Shoppers like you' })}
             />
           </StaggeredCardWrap>
           <StaggeredCardWrap
@@ -226,7 +232,7 @@ export function Step15Reveal({ onNext, profile }: Props) {
             <StatBlock
               testID="stat-gcc-cohort"
               label={t('onboarding.s15.gcc_cohort', { defaultValue: 'GCC cohort' })}
-              value={PEERS_GCC_DISPLAY}
+              value={t('onboarding.s15.gcc_value', { defaultValue: 'Your age group' })}
             />
           </StaggeredCardWrap>
         </View>

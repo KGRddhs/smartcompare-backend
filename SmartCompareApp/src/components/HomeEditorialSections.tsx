@@ -7,7 +7,7 @@
  *   2. QuickCategories     — 4-tile category grid (static, no backend)
  *   3. SavingsBanner       — dark "This month ~X BHD shopped smarter" banner
  *      (Backend: GET /api/v1/home/savings — hidden when threshold_met=false)
- *   4. TrendingNearYou     — region-aware trending product pairs
+ *   4. TrendingNearYou     — "Popular comparisons": tap runs that pair
  *      (Backend: GET /api/v1/home/trending — auth-optional)
  *
  * Each backend-driven section silently hides on empty_state / threshold-miss /
@@ -305,14 +305,21 @@ export function SavingsBanner() {
 // 4. TrendingNearYou
 // ---------------------------------------------------------------------------
 
+/**
+ * S69 U6 R5 (audit RT-7) — a tap reports the PAIR it shows, (a, b), plus
+ * the row's category tag, so Home can prefill both inputs and run that
+ * comparison. It used to report the composed query string, which Home
+ * ignored (it only switched to type mode).
+ */
+export type OnPressTrending = (a: string, b: string, tag?: string) => void;
+
 interface TrendingNearYouProps {
-  onPressTrending?: (query: string) => void;
+  onPressTrending?: OnPressTrending;
 }
 
 export function TrendingNearYou({ onPressTrending }: TrendingNearYouProps) {
   const { t } = useTranslation();
   const [items, setItems] = useState<HomeTrendingItem[] | null>(null);
-  const [region, setRegion] = useState<string>('bahrain');
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
@@ -321,7 +328,6 @@ export function TrendingNearYou({ onPressTrending }: TrendingNearYouProps) {
       .then((r) => {
         if (!mounted) return;
         setItems(r.trending || []);
-        setRegion(r.region || 'bahrain');
         setLoaded(true);
       })
       .catch(() => {
@@ -338,8 +344,13 @@ export function TrendingNearYou({ onPressTrending }: TrendingNearYouProps) {
 
   // JSX-wins (HomeScreen.jsx:608-650): each row uses category-tag pill
   // (left) + "{a} vs {b}" with INLINE emerald-colored "vs" text (center) +
-  // tabular count + trending arrow (right). The "vs" here is the inline
-  // text variant, NOT the center-positioned pill (dual-VS-pattern rule).
+  // trending arrow (right). The "vs" here is the inline text variant, NOT
+  // the center-positioned pill (dual-VS-pattern rule).
+  //
+  // S69 U6 R5 — the right-hand view count is gone: `count` / `view_count`
+  // come from a hand-written list (data/trending_curated.json), not from
+  // real views, so the section no longer claims "Trending in {region}"
+  // with numbers. It reads "Popular comparisons" (home.trending.title).
   //
   // F-S1.4-B1 fix: Ahmed's device walkthrough showed rows rendering
   // "vs 1247" with the product-name strings MISSING. Root cause: the
@@ -349,9 +360,7 @@ export function TrendingNearYou({ onPressTrending }: TrendingNearYouProps) {
   // the row legible — never render bare " vs " without anchors.
   return (
     <View testID="home-trending" style={styles.section}>
-      <Text style={styles.eyebrow}>
-        {t('home.trending.title', { region: t(`home.region.${region}`, region) })}
-      </Text>
+      <Text style={styles.eyebrow}>{t('home.trending.title')}</Text>
       <View style={styles.trendingList}>
         {items.slice(0, 5).map((it, i) => {
           // Resolve product names: prefer pre-split a/b from the new
@@ -373,13 +382,15 @@ export function TrendingNearYou({ onPressTrending }: TrendingNearYouProps) {
           const hasBothNames = Boolean(nameA && nameB);
           const composedQuery =
             it.query || (hasBothNames ? `${nameA} vs ${nameB}` : (nameA || nameB || ''));
-          const count = typeof it.count === 'number' ? it.count : it.view_count;
           return (
             <TouchableOpacity
               key={`${composedQuery}-${i}`}
               testID="home-trending-item"
               style={styles.trendingItem}
-              onPress={() => onPressTrending?.(composedQuery)}
+              // A row without two names cannot start a comparison; it still
+              // reports what it has so Home can at least open type mode.
+              onPress={() => onPressTrending?.(nameA, nameB, it.tag || undefined)}
+              accessibilityRole="button"
               activeOpacity={0.7}
             >
               {it.tag ? (
@@ -404,7 +415,6 @@ export function TrendingNearYou({ onPressTrending }: TrendingNearYouProps) {
                 )}
               </Text>
               <View style={styles.trendingCount}>
-                <Text style={styles.trendingCountText}>{count}</Text>
                 <TrendingUp size={11} color={colors.text.secondary} />
               </View>
             </TouchableOpacity>
@@ -425,7 +435,7 @@ export function TrendingNearYou({ onPressTrending }: TrendingNearYouProps) {
 interface HomeEditorialSectionsProps {
   onPressVerdict?: (comparisonId: string) => void;
   onPickCategory?: (cat: string) => void;
-  onPressTrending?: (query: string) => void;
+  onPressTrending?: OnPressTrending;
 }
 
 export default function HomeEditorialSections(props: HomeEditorialSectionsProps) {
@@ -759,10 +769,5 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-  },
-  trendingCountText: {
-    ...typography.small,
-    fontWeight: '500',
-    color: colors.text.secondary,
   },
 });

@@ -58,6 +58,11 @@ module.exports = {
     // so suites importing Step17Notifications.tsx / OnboardingFlow.tsx load. B.1 F3.6.
     '^expo-notifications$': '<rootDir>/__mocks__/expo-notifications.ts',
     '^expo-font$': '<rootDir>/__mocks__/expo-font.ts',
+    // S69 U6 R1 — expo-apple-authentication ships untransformed ESM + raw
+    // JSX; LoginScreen / RegisterScreen now render its native
+    // AppleAuthenticationButton, so every suite that renders them needs
+    // this shim (prop-forwarding button, real enum values).
+    '^expo-apple-authentication$': '<rootDir>/__mocks__/expo-apple-authentication.ts',
     // B4 — src/theme/fonts.ts imports each Cairo weight from its own subpath
     // (`@expo-google-fonts/cairo/400Regular`) so Metro only bundles the 3
     // weights we actually load. The mapper must match those subpaths too, or

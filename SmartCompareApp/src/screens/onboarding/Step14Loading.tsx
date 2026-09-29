@@ -13,8 +13,9 @@
  *
  * New anatomy (delegated to LoadingScreenVariants ConcentricVariant):
  *   1. LoadingRings hero (Q + 3 concentric emerald rings expanding).
- *   2. Cohort footer line — "{cohortPeerCount} cohort peers" so the
- *      counter beat is preserved.
+ *   2. Counter chip + "cohort peers refining your match" caption — ONLY
+ *      when a real cohortPeerCount (> 0) is passed (S69 U6 R6b: no
+ *      invented count; the onboarding flow has none to pass today).
  *   3. StageChecklist (region/priorities/peers/calibrate) — auto-
  *      progressing every STAGE_TICK_MS to match the Step13 cadence.
  *      Stage IDs stay aligned with Step13 for perceived continuity.
@@ -43,10 +44,9 @@ const STAGE_TICK_MS = 800;
 const TIP_INTERVAL_MS = 3200;
 // Y.B Bundle D rhythm: counter chip ticks 0 → target over 2.4s per
 // design doc § 3.2 LoadingRings spec + § 3.3 motion.counterTick.
-// COUNTER_FALLBACK_TARGET kicks in when cohortPeerCount is null or 0
-// (e.g. cold-start with no cohort match yet) so the brand beat still
-// lands. 2074 = nominal "trained on N comparisons" figure.
-const COUNTER_FALLBACK_TARGET = 2074;
+// S69 U6 R6b (App Review 2.3.1) — there is no fallback figure any more: a
+// missing / zero cohortPeerCount hides the counter chip and its caption
+// instead of ticking up to a nominal number nobody measured.
 const COUNTER_DURATION_MS = 2400;
 
 const STAGE_IDS = ['region', 'priorities', 'peers', 'calibrate'] as const;
@@ -54,8 +54,8 @@ const STAGE_IDS = ['region', 'priorities', 'peers', 'calibrate'] as const;
 interface Props {
   /** Fires exactly once after `minDurationMs` elapses. */
   onComplete: () => void;
-  /** Cohort peer count to surface in the footer copy. */
-  cohortPeerCount: number;
+  /** A REAL cohort peer count; absent / 0 hides the counter chip. */
+  cohortPeerCount?: number;
   /** Override the floor (default 3200ms per design spec). */
   minDurationMs?: number;
   /** From OnboardingFlow `data.governorate` — falls back to gcc_fallback. */
@@ -118,10 +118,10 @@ export function Step14Loading({
     () => [
       t('onboarding.s14.tip_1', {
         governorate: governorateDisplay,
-        defaultValue: `73% of ${governorateDisplay} shoppers your age prioritize Quality first.`,
+        defaultValue: `Matching you with shoppers your age in ${governorateDisplay}.`,
       }),
       t('onboarding.s14.tip_2', {
-        defaultValue: 'Tuned by 2,074 real GCC purchases.',
+        defaultValue: 'Tuned by real answers from GCC shoppers.',
       }),
       t('onboarding.s14.tip_3', {
         defaultValue: 'Calibrating across your priorities.',
@@ -139,13 +139,14 @@ export function Step14Loading({
   // 13/secondary weight. Both anchor the rhythm Ahmed explicitly
   // bookmarked while the StageChecklist + LoadingTipsCarousel additions
   // ride above as the staged readout.
-  const cohortCaption = t('loading.cohort.caption', {
-    defaultValue: 'cohort peers refining your match',
-  });
-  // Counter target falls back to a nominal 2,074 when cohortPeerCount
-  // is missing or zero so the brand beat still lands during cold-start.
-  const counterTarget =
-    cohortPeerCount > 0 ? cohortPeerCount : COUNTER_FALLBACK_TARGET;
+  // S69 U6 R6b — only a real count renders the chip + its caption.
+  const hasRealCount = typeof cohortPeerCount === 'number' && cohortPeerCount > 0;
+  const cohortCaption = hasRealCount
+    ? t('loading.cohort.caption', {
+        defaultValue: 'cohort peers refining your match',
+      })
+    : undefined;
+  const counterTarget = hasRealCount ? cohortPeerCount : undefined;
 
   return (
     <LoadingScreenVariants
@@ -160,6 +161,7 @@ export function Step14Loading({
       // duplicating "N cohort peers helped train this" right below
       // would be redundant.
       counterTarget={counterTarget}
+      showCounter={hasRealCount}
       counterDurationMs={COUNTER_DURATION_MS}
       caption={cohortCaption}
       minDisplayMs={minDurationMs}

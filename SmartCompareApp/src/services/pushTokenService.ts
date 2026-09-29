@@ -1,13 +1,20 @@
 /**
  * Push token registration (F5.4).
  *
- * Asks for permission, fetches the Expo push token, and PUTs it to
- * /api/v1/auth/push-token so Loop 2 + re-engagement-cron can deliver.
- * Idempotent — safe to call on every app launch post-auth. Backend
- * write is RLS-protected.
+ * Fetches the Expo push token and PUTs it to /api/v1/auth/push-token so
+ * Loop 2 + re-engagement-cron can deliver — ONLY when notification
+ * permission is ALREADY granted. Idempotent — safe to call on every app
+ * launch post-auth. Backend write is RLS-protected.
+ *
+ * S69 U6 R3 (audit RT-12, App Review guideline 4.5.4): this function never
+ * shows the system permission prompt. It runs on every authenticated launch
+ * and right after login (App.tsx), where the prompt used to appear with no
+ * explanation. The ask now lives behind an in-app explanation: onboarding
+ * Step 17, or the one-time pre-prompt after a first result
+ * (services/pushPrePrompt.ts), both of which call this after a grant.
  *
  * Graceful degradation:
- *   - User denies permission       → no-op, no token registered
+ *   - Permission not granted       → no-op, no token registered
  *   - expo-notifications unavailable (Expo Go on Android, dev build
  *     missing the module) → swallowed, no crash
  *   - Network failure              → swallowed, no UI noise
@@ -55,16 +62,13 @@ async function doRegister(): Promise<RegisterPushTokenResult> {
     return { registered: false, reason: 'no_module' };
   }
 
-  // 2. Permission check. Don't prompt aggressively — only ask if status
-  //    is undetermined. iOS will throw on a second prompt anyway; Android
-  //    13+ requires POST_NOTIFICATIONS permission which the OS handles.
+  // 2. Permission check — read only. Undetermined or denied means no token;
+  //    the in-app pre-prompt (Step 17 / pushPrePrompt) is the only place
+  //    that asks the OS.
   try {
     const existing = await Notifications.getPermissionsAsync();
-    if (existing.status !== 'granted') {
-      const requested = await Notifications.requestPermissionsAsync();
-      if (requested.status !== 'granted') {
-        return { registered: false, reason: 'permission_denied' };
-      }
+    if (existing?.status !== 'granted') {
+      return { registered: false, reason: 'permission_denied' };
     }
   } catch (err) {
     if (__DEV__) console.warn('[pushToken] permission check failed', err);

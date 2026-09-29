@@ -140,14 +140,18 @@ describe('Step14Loading (S2.W3 REWRITE)', () => {
     expect(queryByTestId('loading-counter')).toBeNull();
   });
 
-  it('LoadingRings hero is mounted when cohortPeerCount is zero (cold-start path)', () => {
-    const { getByTestId } = render(
-      <Step14Loading onComplete={jest.fn()} cohortPeerCount={0} />,
-    );
-    // Step14's COUNTER_FALLBACK_TARGET (2074) keeps the brand beat
-    // landing even when the cohort match is empty on cold start —
-    // wiring verified via LoadingRings being mounted.
-    expect(getByTestId('loading-rings-counter-chip')).toBeTruthy();
+  it('with no real cohort count (zero / absent) the rings render WITHOUT a counter chip', () => {
+    // S69 U6 R6b (App Review 2.3.1) — this used to pin a nominal 2,074
+    // fallback ticking up in the chip. No real count now means no number.
+    const zero = render(<Step14Loading onComplete={jest.fn()} cohortPeerCount={0} />);
+    expect(zero.getByTestId('loading-rings')).toBeTruthy();
+    expect(zero.queryByTestId('loading-rings-counter-chip')).toBeNull();
+    expect(zero.queryByTestId('loading-caption')).toBeNull();
+    zero.unmount();
+
+    const absent = render(<Step14Loading onComplete={jest.fn()} />);
+    expect(absent.getByTestId('loading-rings')).toBeTruthy();
+    expect(absent.queryByTestId('loading-rings-counter-chip')).toBeNull();
   });
 
   it('renders the caption with the loading.cohort.caption i18n key (Y.B)', () => {

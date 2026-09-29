@@ -139,14 +139,17 @@ describe('Step15Reveal (S2.W4 REWRITE)', () => {
     expect(onNext).toHaveBeenCalledTimes(1);
   });
 
-  it('defaults match percent to 92 when matchQuality is absent', () => {
-    const { getByText } = render(
+  // S69 U6 R6b (App Review 2.3.1) — this used to pin a DEFAULT 92%, an
+  // invented figure shown because the flow never passes matchQuality. With
+  // no real match quality there is no badge and no percent at all.
+  it('renders no MatchBadge and no percent when matchQuality is absent', () => {
+    const { queryByTestId, queryByText } = render(
       <Step15Reveal
         onNext={jest.fn()}
         profile={{ ...baseProfile, matchQuality: undefined }}
       />,
     );
-    // MatchBadge renders "92%" inside the circle per JSX default.
-    expect(getByText('92%')).toBeTruthy();
+    expect(queryByTestId('s15-match-badge')).toBeNull();
+    expect(queryByText(/%/)).toBeNull();
   });
 });

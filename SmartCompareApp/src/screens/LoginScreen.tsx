@@ -7,8 +7,10 @@
  * Anatomy:
  *   1. Back arrow (top-left, transparent bg)
  *   2. Headline "Welcome back." + "Your advisor and credits are waiting."
- *   3. SocialRow — Apple / Google / Email-only triplet (each 48px tall,
- *      light border, glyph + label)
+ *   3. Social sign-in — iOS: the SDK's native "Continue with Apple" button
+ *      on its own full-width row (S69 U6 R1, HIG: the system draws the
+ *      Apple logo); below it a Google / Email pair (each 48px tall, light
+ *      border, glyph + label)
  *   4. OrDivider — hairline + uppercase "OR" + hairline
  *   5. AuthField pair — Email + Password with focus-thickening border
  *   6. Forgot password? — right-aligned, accentDark muted
@@ -55,13 +57,18 @@ import { ChevronLeft, Mail } from 'lucide-react-native';
 import { DirectionalIcon } from '../components/primitives/DirectionalIcon';
 import { ConsentRow, LegalDoc } from '../components/ConsentRow';
 import { buildConsentPayload } from '../services/consent';
+import { AppleSignInButton } from '../components/AppleSignInButton';
+import { authErrorKey } from '../services/authErrorCopy';
 
 type LoginScreenProps = {
   navigation: NativeStackNavigationProp<AuthStackParamList, 'Login'>;
   onLoginSuccess: () => void;
 };
 
-type SocialProvider = 'apple' | 'google' | 'email';
+// S69 U6 R1 — Apple is no longer a SocialButton: the SDK's native
+// AppleSignInButton draws it (HIG-required logo), so this row only ever
+// holds Google + Email.
+type SocialProvider = 'google' | 'email';
 
 // ---------- SocialRow primitive (local to AuthScreens family) ----------
 interface SocialButtonProps {
@@ -105,16 +112,10 @@ function SocialButton({
 }
 
 function SocialGlyph({ provider }: { provider: SocialProvider }) {
-  // Apple glyph kept as a single unicode bullet — production icon font swap
-  // happens during native build. For now: emoji-free, decorative-text fallback
-  // for Apple (), real lucide for Google (using Mail as placeholder until a
-  // colored Google glyph ships in lucide-react-native — design intent in JSX
-  // is brand color, so a future swap to react-native-svg path can fill in).
+  // Real lucide Mail for Email; Google uses a colored "G" until a brand
+  // glyph ships (a future swap to a react-native-svg path can fill in).
   if (provider === 'email') {
     return <Mail size={18} color={colors.text.primary} strokeWidth={2} />;
-  }
-  if (provider === 'apple') {
-    return <Text style={socialStyles.glyphApple}></Text>;
   }
   // google — use a colored "G" character as placeholder (real brand glyph
   // arrives in S3 polish; functional contract holds).
@@ -258,6 +259,9 @@ export default function LoginScreen({ navigation, onLoginSuccess }: LoginScreenP
   };
 
   const handleAppleSignIn = async () => {
+    // S69 U6 R1 — the native Apple button has no `disabled` prop, so a
+    // press while any sign-in (or the form) is in flight is a no-op here.
+    if (socialLoading || loading) return;
     if (!consentAccepted) {
       setConsentError(true);
       return;
@@ -328,10 +332,15 @@ export default function LoginScreen({ navigation, onLoginSuccess }: LoginScreenP
       if (result.success) {
         onLoginSuccess();
       } else {
-        setError(result.error || t('auth.loginFailed', { defaultValue: 'Sign-in could not complete' }));
+        // S69 U6 R2 (RT-9) — login() returns an i18n KEY (`errorKey`); the
+        // raw `error` text is never rendered (it used to surface axios's
+        // "Request failed with status code 401").
+        setError(t(authErrorKey(result, 'auth.loginFailed')));
       }
     } catch (err: any) {
-      setError(parseApiError(err).message);
+      // A throw is transport detail — diagnostic only, never user copy.
+      if (__DEV__) console.warn('[LoginScreen] login threw:', parseApiError(err).message);
+      setError(t('auth.loginFailed'));
     } finally {
       setLoading(false);
     }
@@ -414,18 +423,23 @@ export default function LoginScreen({ navigation, onLoginSuccess }: LoginScreenP
           disabled={disabled}
         />
 
-        {/* SocialRow — Apple (iOS only), Google, Email */}
-        <View style={styles.socialRow}>
-          {showApple ? (
-            <SocialButton
+        {/* S69 U6 R1 — iOS: the SDK's native "Continue with Apple" button on
+            its own full-width row (a CONTINUE label does not fit a third of
+            the row). Android / unavailable: no Apple control at all. */}
+        {showApple ? (
+          <View style={styles.appleRow}>
+            <AppleSignInButton
               testID="login-social-apple"
-              provider="apple"
-              label={t('auth.appleSignIn', { defaultValue: 'Apple' })}
+              variant="continue"
               onPress={handleAppleSignIn}
               loading={socialLoading === 'apple'}
-              disabled={disabled && socialLoading !== 'apple'}
+              disabled={disabled}
             />
-          ) : null}
+          </View>
+        ) : null}
+
+        {/* SocialRow — Google, Email */}
+        <View style={styles.socialRow}>
           <SocialButton
             testID="login-social-google"
             provider="google"
@@ -578,6 +592,9 @@ const styles = StyleSheet.create({
     color: colors.text.secondary,
     marginBottom: spacing.xl,
   },
+  appleRow: {
+    marginBottom: 8,
+  },
   socialRow: {
     flexDirection: 'row',
     gap: 8,
@@ -691,12 +708,6 @@ const socialStyles = StyleSheet.create({
     fontWeight: '600',
     lineHeight: 13,
     color: colors.text.primary,
-  },
-  glyphApple: {
-    fontSize: 18,
-    lineHeight: 18,
-    color: colors.text.primary,
-    fontWeight: '700',
   },
   glyphGoogle: {
     fontSize: 16,

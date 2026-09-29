@@ -12,7 +12,7 @@
 
 import * as Sentry from '@sentry/react-native';
 import React, { useState, useEffect, useCallback } from 'react';
-import { I18nManager, StyleSheet } from 'react-native';
+import { StyleSheet } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -29,6 +29,9 @@ import { colors, typography } from './src/theme';
 // module inside init(); it resolved to the already-evaluated module, so it
 // bought nothing and only added an await to the boot chain.
 import i18n, { getSavedLanguage } from './src/i18n';
+// S69 U6 R4 (RT-14) — boot-time RTL, with a one-time reload on a direction
+// change so the first Arabic session is laid out right-to-left.
+import { bootstrapRtl } from './src/i18n/rtlBootstrap';
 
 // Screens
 import SplashScreen from './src/screens/SplashScreen';
@@ -189,14 +192,12 @@ function App() {
       .catch(() => { /* never blocks app boot */ });
 
     async function init() {
-      // Set language + RTL before rendering
+      // Set language + RTL before rendering. bootstrapRtl forces the
+      // direction and, when that changes it, reloads the bundle once so the
+      // layout applies now (never throws).
       const lang = await getSavedLanguage();
       await i18n.changeLanguage(lang);
-      const shouldBeRTL = lang === 'ar';
-      if (I18nManager.isRTL !== shouldBeRTL) {
-        I18nManager.allowRTL(true);
-        I18nManager.forceRTL(shouldBeRTL);
-      }
+      await bootstrapRtl(lang);
 
       // Phase 5 Task 47 — resolve stable id for the canary bucket BEFORE
       // any code reads features.ENABLE_NEW_ONBOARDING. Uses persistent
