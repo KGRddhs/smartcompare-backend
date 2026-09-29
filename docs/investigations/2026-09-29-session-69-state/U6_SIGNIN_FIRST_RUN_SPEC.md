@@ -1,0 +1,43 @@
+# U6 — sign-in and first-run UX for App Review — unit spec
+
+**Session 69, audit findings LL-10 (Apple button), RT-9 (raw 401 string), RT-12 (push prompt at login), RT-14 (first-launch RTL), RT-7 (trending tap).** Owner: Claude. All JavaScript: rides the production build and any later OTA. Five small, independent changes; one PR; each change has its own red test.
+
+## 1. Measured base (main `89f2dc6a`, `SmartCompareApp/`)
+
+- **Apple button.** `src/screens/LoginScreen.tsx:116-117`: `SocialGlyph` renders `<Text style={socialStyles.glyphApple}></Text>` (empty; a comment at :108-110 says the glyph swap "happens during native build"), so the Apple row shows only its label; `src/screens/RegisterScreen.tsx:489-499` is a text-only `TouchableOpacity`; the audit also names onboarding Step16. Apple's Human Interface Guidelines require the Apple logo on a Sign in with Apple button; `expo-apple-authentication` (installed, `~8.0.8`) exports `AppleAuthenticationButton` with `AppleAuthenticationButtonType.CONTINUE` / `SIGN_IN` and `AppleAuthenticationButtonStyle.BLACK` / `WHITE_OUTLINE`. `showApple` is computed per screen (`Platform.OS === 'ios'` + availability, :201-212 / :66-77).
+- **Raw 401.** `src/services/authService.ts:224-228` reads `error.response?.data?.detail || error.message`; the backend envelope (`app/middleware/error_handler.py:133-143`) puts the message under `error`, so a wrong password surfaces axios's `Request failed with status code 401`; `LoginScreen.tsx:331` renders `result.error` verbatim. (Register has the same shape.)
+- **Push prompt.** `src/services/pushTokenService.ts:62-64` calls `Notifications.requestPermissionsAsync()` directly; `App.tsx:238,313` runs `tryRegisterPushToken()` on every authenticated launch and right after login — the iOS system prompt appears with no explanation (guideline 4.5.4 for the re-engagement pushes; `ENABLE_REENGAGEMENT_PUSHES` is set on Railway).
+- **First-launch RTL.** `src/i18n/index.ts:17-25` picks `ar` from the device locale; `App.tsx:195-199` calls `I18nManager.forceRTL(true)` without a reload, so the first session on an Arabic device is Arabic text in an LTR layout; the in-app switch (`src/hooks/useLanguage.ts:20-23`) does reload.
+- **Trending tap.** `src/screens/HomeScreen.tsx:1010-1012` ignores the tapped query and only switches to type mode; `src/components/HomeEditorialSections.tsx:382,407` shows a hand-written `view_count` from `data/trending_curated.json` as "Trending in Bahrain".
+
+## 2. Target
+
+R1 **Apple button (LL-10).** On iOS, when `showApple` is true, Login, Register and the onboarding step that offers Apple sign-in render `AppleAuthenticationButton` (`buttonType` CONTINUE on Login/onboarding, SIGN_UP or CONTINUE on Register; `buttonStyle` BLACK on light surfaces; `cornerRadius` matching the app's button radius; full row width, height ≥ 44). The existing consent gate (W3-16: terms/age consent before social sign-in) stays in front of `onPress`. Android/unsupported keeps today's behaviour (no Apple row). The empty glyph and its comment go away.
+R2 **Auth error copy (RT-9).** `login()` / `register()` in `authService.ts` map failures to i18n KEYS, never raw strings: HTTP 401 → `auth.errors.invalid_credentials` ("Email or password doesn't match"), 429 → the existing rate-limit key (`settingsErrorKey` or the app's rate-limit copy), 409/400 with the backend's `code` → the matching existing key when one exists, anything else → `auth.loginFailed` / `auth.registerFailed`. LoginScreen/RegisterScreen render `t(key)`; `result.error` (raw) is never rendered. Both catalogs get the new keys (EN + native MSA AR; copy policy: no "failed", no "try again").
+R3 **Push prompt (RT-12).** `tryRegisterPushToken()` no longer calls `requestPermissionsAsync` on launch or on login. It only registers when permission is ALREADY granted (`getPermissionsAsync`). The request moves behind an in-app pre-prompt shown once, after the first successful compare result renders (ResultsScreen), with copy that says what the notifications are for (price drops on saved comparisons and reminders you can switch off in Profile) and two actions (Allow → system prompt; Not now → persisted, never re-asked automatically). Keep the existing onboarding Step 17 notification opt-in if it already asks — if it does, the pre-prompt only appears when Step 17 was skipped; the spec-review confirms which.
+R4 **First-launch RTL (RT-14).** At boot, when `I18nManager.forceRTL` changes direction AND the persisted flag `rtl_bootstrapped` is unset, persist the flag then `Updates.reloadAsync()` once (wrapped, never throws, no-op in `__DEV__` / when `Updates.isEnabled` is false). The flag is written BEFORE the reload so a crash cannot loop.
+R5 **Trending tap (RT-7).** `onPressTrending(query)` switches to type mode, splits the query on ` vs ` (case-insensitive, trimmed), prefills both inputs and starts the compare through the same path the Compare button uses (respecting `canCompare`). The view counts are not rendered; the section title becomes "Popular comparisons" / «مقارنات شائعة» (keys in both catalogs).
+R6 **Honest counts (from U2's App-Review adversary, 2026-09-30):** (a) `register.benefits.daily` says "5 comparisons per day" in EN and AR while the backend free tier is 3/day (`app/services/usage_service.py:138-143`) — change it to the true number (read `TIER_LIMITS` and mirror it; a backend fence test that greps the catalog value against `TIER_LIMITS['free']['daily']` keeps them equal) and retitle the block "Your account includes"; (b) the hard-coded social-proof counts reachable in onboarding — "15,000+" GCC peers and "2,000+" per governorate (`src/screens/onboarding/Step15Reveal.tsx:94-95`) and "388 GCC shoppers" (`en.json:621,643` and the AR twins) — are the same guideline 2.3.1 class as the paywall's "5,000+": remove the numbers (say "shoppers like you in Bahrain" without a count) unless a real cohort count is available from `cohort_priors.json`, in which case render that number; (c) delete the dead `formatUsageMessage` in `src/services/usageService.ts` (0 callers, still carries "(Premium)") and update the two `deriveTone` comments that name the removed paywall.
+R7 No new dependency; no app.json change; nothing outside `SmartCompareApp/src`, `__tests__`, `src/i18n/*.json` (plus the one backend fence test of R6a under `tests/`).
+R8 **Brand:** every new string says MYEZ / ميّز (the rename unit U-R runs alongside; rebase onto it before the PR).
+
+## 3. Tests (RED at base)
+
+T1 `__tests__/auth/appleButton.s69.test.tsx`: on iOS with `showApple` true, Login and Register render the native `AppleAuthenticationButton` (mock `expo-apple-authentication`; assert the element with its `buttonType`/`buttonStyle` props) and the consent gate still blocks `onPress` when consent is missing; on Android no Apple button.
+T2 `__tests__/auth/authErrorCopy.s69.test.ts`: axios errors with status 401 / 429 / 500 and the backend envelope `{error:'…'}` map to the keys; the raw `error.message` never appears in the returned `error` field; LoginScreen renders the translated key for a 401.
+T3 `__tests__/services/pushPrompt.s69.test.ts(x)`: launch and login do not call `requestPermissionsAsync`; an already-granted permission still registers the token; the pre-prompt appears once after the first result and "Not now" persists.
+T4 `__tests__/rtlBootstrap.s69.test.tsx`: first launch with an Arabic device locale writes the flag and calls `Updates.reloadAsync` once; the second launch does not; an English device never reloads.
+T5 `__tests__/HomeScreen.trending.s69.test.tsx`: tapping a trending card prefills both inputs and starts a compare with (a, b); no count text is rendered; the section title is the new key.
+T6 `__tests__/honestCounts.s69.test.ts(x)` + backend `tests/test_register_benefits_parity_s69.py`: the register benefits value equals `TIER_LIMITS['free']['daily']` in both catalogs; no reachable onboarding string carries a hard-coded shopper count (`/\d[\d,]*\+/` over the onboarding keys and Step15Reveal); `formatUsageMessage` no longer exists.
+
+## 4. Gates
+
+- jest by path `'\.s69\.test|LoginScreen|RegisterScreen|HomeScreen|Results|push|i18nFence'` under `timeout -k 15 900`; the FULL suite (orchestrator) is the arbiter; tsc; eslint by path.
+- `git diff --stat` limited to the files in R6.
+
+## 5. Rulings
+
+- R-A: the Apple button uses the SDK's native view; no custom-drawn logo (HIG compliance is the point).
+- R-B: no new flag; the push pre-prompt state lives in the same storage the consent module uses.
+- R-C: Arabic copy by the green agent, marked for the on-device walkthrough in the PR body.
+- R-D: never `git checkout --`; `node_modules` is a junction; no `npm install`.
