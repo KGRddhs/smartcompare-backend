@@ -124,6 +124,8 @@
   "home.errors.rateLimited_many": "Plenty of compares in flight — give it {{count}} seconds, then tap.",
   "home.errors.rateLimited_other": "Plenty of compares in flight — give it {{count}} seconds, then tap.",
   "home.errors.timeout": "Still gathering prices — give it another tap in a moment.",
+  "home.errors.engineUnavailable.title": "One moment — the comparison engine is resting",
+  "home.errors.engineUnavailable.body": "Comparisons are paused for a moment. Please come back shortly.",
   "home.loading.cancel_a11y": "Cancel this comparison",
   "home.limit.max_title": "That's enough for now",
   "home.limit.max_body": "Compare up to {{max}} products at a time.",
@@ -835,6 +837,7 @@
   "results.timeout.body": "We're lining up the best local listings — give it another tap in a moment.",
   "results.timeout.retry": "Tap to retry",
   "results.partial.note": "Prices are still settling — tap to refresh in a moment.",
+  "results.degraded.note": "The detailed write-up is unavailable this time. The scores and prices below are real.",
 
   "register.inviteCode.placeholder": "Have an invite code? (optional)",
   "register.inviteCode.accessibility": "Invite code",

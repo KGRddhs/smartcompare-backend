@@ -104,7 +104,10 @@ describe('HomeScreen — MB-perf-03/MB-contract-02 (source)', () => {
     // also the call-site anchor for HomeScreen.rateLimitedSeconds.w314.
     const coded =
       HOME.match(
-        /Alert\.alert\(\s*t\('common\.error'\)\s*,\s*t\(\s*friendlyErrorKey\(\s*parsed\.code\s*\)\s*,\s*\{\s*count\s*:\s*parsed\.retryAfterSeconds\s*\}\s*\)\s*,?\s*\)/g,
+        // S69 U7 R1 (sanctioned amendment, review open question 3): the
+        // title is chosen by code too (`friendlyErrorTitleKey`) so an engine
+        // outage gets its own title instead of "give it another tap".
+        /Alert\.alert\(\s*t\(\s*friendlyErrorTitleKey\(\s*parsed\.code\s*\)\s*\)\s*,\s*t\(\s*friendlyErrorKey\(\s*parsed\.code\s*\)\s*,\s*\{\s*count\s*:\s*parsed\.retryAfterSeconds\s*\}\s*\)\s*,?\s*\)/g,
       ) || [];
     // One per compare path: the SSE/text terminal onError and the URL catch.
     expect(coded.length).toBe(2);

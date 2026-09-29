@@ -1,22 +1,18 @@
 /**
- * A11 — HomeScreen renders CODE-derived copy on BOTH compare paths.
+ * S69 U7 R1 — the `success:false` DATA branches of both HomeScreen compare
+ * paths pick their alert TITLE by code.
  *
- * The finding: the text path rendered `error.message` where the URL path
- * rendered `parsed.message`. M21 W2 (`1df95b0`) hardened only the CODED arm
- * of the text path — `parsed.code ? t('home.errors.comparison') :
- * error.message || t('home.errors.comparison')` — which left the codeless
- * arm rendering the raw axios string, and left the URL path's
- * `Alert.alert(t('common.error'), parsed.message)` with no code guard at
- * all. Nothing in the suite pinned this screen's alert copy.
+ * HomeScreen has two alert sites that receive a resolved (not thrown)
+ * `success: false` payload: the SSE `onComplete` terminal (defensive arm —
+ * api.ts dispatchTerminal routes success:false to onError today) and the
+ * sync /url/compare 200 envelope. Both choose the title with
+ * `friendlyErrorTitleKey(code)`; before this pin, reverting either one to
+ * `t('common.error')` ("Hold on — give it another tap.") survived the suite.
+ * An LLM_UNAVAILABLE outage must show the engine-unavailable title + body,
+ * never the retry-loop title.
  *
- * This is a RUNTIME test, not a source-grep: it drives the real SSE
- * `onError` callback and the real URL `catch`, and asserts on the string
- * that actually reaches `Alert.alert`. `t` resolves through the REAL
- * en.json, and `friendlyErrorKey` is the REAL module (only
- * `services/api`'s network surface is mocked), so a regression to
- * `.message` on either path fails here.
- *
- * Harness mirrors HomeScreen.eS3hf.loaderVisibility.test.tsx.
+ * Harness (mocks, helpers) mirrors HomeScreen.errorCopy.a11.test.tsx: `t`
+ * resolves through the REAL en.json and errorCopy is the REAL module.
  */
 
 import React from 'react';
@@ -209,26 +205,6 @@ function makeProps(overrides: any = {}) {
   };
 }
 
-/** An axios rejection exactly as the interceptor hands it to the screen. */
-function axiosError(status: number, data: any): any {
-  const err: any = new Error(`Request failed with status code ${status}`);
-  err.isAxiosError = true;
-  err.response = { status, data };
-  return err;
-}
-
-const INSUFFICIENT_400 = () =>
-  axiosError(400, {
-    success: false,
-    error: 'Not enough product data to compare',
-    code: 'INSUFFICIENT_DATA',
-    request_id: 'req-1',
-  });
-
-// Railway edge 502 with an HTML body: no `error`/`detail` key, so
-// parseApiError falls through to the axios string and `code` is null.
-const EDGE_502 = () => axiosError(502, '<html><body>Bad gateway</body></html>');
-
 beforeEach(() => {
   jest.clearAllMocks();
   mockHealthCheck.mockResolvedValue(true);
@@ -265,141 +241,60 @@ async function submitUrlCompare(rendered: any) {
   });
 }
 
-describe('A11 — text compare (SSE onError)', () => {
-  it('an INSUFFICIENT_DATA 400 shows the dedicated copy, never the axios string', async () => {
+const ENGINE_OUTAGE = {
+  success: false,
+  error: 'Still warming up the comparison engine — give it another tap in a moment.',
+  code: 'LLM_UNAVAILABLE',
+  request_id: 'req-llm',
+};
+
+describe('S69 U7 R1 — success:false data branches use the engine-unavailable title', () => {
+  it('text path: an SSE complete with success:false + LLM_UNAVAILABLE', async () => {
     const RN = require('react-native');
     const alertSpy = jest.spyOn(RN.Alert, 'alert').mockImplementation(() => {});
     const rendered = render(<HomeScreen {...makeProps()} />);
     const handlers = await submitTextCompare(rendered);
 
     await act(async () => {
-      handlers.onError(INSUFFICIENT_400());
+      await handlers.onComplete({ ...ENGINE_OUTAGE });
     });
 
     expect(alertSpy).toHaveBeenCalledTimes(1);
-    const body = alertSpy.mock.calls[0][1];
-    expect(body).toBe(EN['home.errors.insufficientData']);
-    expect(body).not.toMatch(/Request failed with status code/);
-    // Pre-A11 the coded arm collapsed every code onto the generic nudge.
-    expect(body).not.toBe(EN['home.errors.comparison']);
-    alertSpy.mockRestore();
-  });
-
-  it('a CODELESS edge 502 shows catalog copy — the arm that used to leak', async () => {
-    const RN = require('react-native');
-    const alertSpy = jest.spyOn(RN.Alert, 'alert').mockImplementation(() => {});
-    const rendered = render(<HomeScreen {...makeProps()} />);
-    const handlers = await submitTextCompare(rendered);
-
-    await act(async () => {
-      handlers.onError(EDGE_502());
-    });
-
-    const body = alertSpy.mock.calls[0][1];
-    // The exact pre-A11 symptom on this arm.
-    expect(body).not.toBe('Request failed with status code 502');
-    expect(body).not.toMatch(/failed/i);
-    // S69 U7 R1 (sanctioned amendment): an edge 502 is an ENGINE outage —
-    // its own title + body, never the "try with brand or model" nudge.
+    const [title, body] = alertSpy.mock.calls[0];
+    expect(title).toBe(EN['home.errors.engineUnavailable.title']);
+    expect(title).not.toBe(EN['common.error']);
     expect(body).toBe(EN['home.errors.engineUnavailable.body']);
-    expect(alertSpy.mock.calls[0][0]).toBe(EN['home.errors.engineUnavailable.title']);
     alertSpy.mockRestore();
   });
 
-  it('a RATE_LIMITED 429 shows wait guidance, not the retype nudge', async () => {
-    const RN = require('react-native');
-    const alertSpy = jest.spyOn(RN.Alert, 'alert').mockImplementation(() => {});
-    const rendered = render(<HomeScreen {...makeProps()} />);
-    const handlers = await submitTextCompare(rendered);
-
-    await act(async () => {
-      handlers.onError(
-        axiosError(429, {
-          success: false,
-          error: 'Rate limit exceeded: 10 per 1 minute',
-          code: 'RATE_LIMITED',
-        }),
-      );
-    });
-
-    const body = alertSpy.mock.calls[0][1];
-    expect(body).toBe(EN['home.errors.rateLimited']);
-    expect(body).not.toMatch(/per 1 minute/);
-    alertSpy.mockRestore();
-  });
-
-  it('TIMEOUT keeps the established soft copy (no regression)', async () => {
-    const RN = require('react-native');
-    const alertSpy = jest.spyOn(RN.Alert, 'alert').mockImplementation(() => {});
-    const rendered = render(<HomeScreen {...makeProps()} />);
-    const handlers = await submitTextCompare(rendered);
-
-    await act(async () => {
-      handlers.onError(axiosError(503, { success: false, error: 'upstream slow' }));
-    });
-
-    expect(alertSpy.mock.calls[0][1]).toBe(EN['home.errors.timeout']);
-    alertSpy.mockRestore();
-  });
-});
-
-describe('A11 — URL compare (catch) now agrees with the text path', () => {
-  it('an INSUFFICIENT_DATA 400 shows the same dedicated copy', async () => {
-    mockApiPost.mockRejectedValueOnce(INSUFFICIENT_400());
+  it('URL path: a non-stream 200 with success:false + LLM_UNAVAILABLE', async () => {
+    mockApiPost.mockResolvedValueOnce({ data: { ...ENGINE_OUTAGE } });
     const RN = require('react-native');
     const alertSpy = jest.spyOn(RN.Alert, 'alert').mockImplementation(() => {});
     const rendered = render(<HomeScreen {...makeProps()} />);
     await submitUrlCompare(rendered);
 
     await waitFor(() => expect(alertSpy).toHaveBeenCalled());
-    const body = alertSpy.mock.calls[0][1];
-    expect(body).toBe(EN['home.errors.insufficientData']);
-    // Pre-A11 this path rendered `parsed.message` unconditionally, i.e. the
-    // backend's English sentence — English copy for an Arabic user.
-    expect(body).not.toBe('Not enough product data to compare');
+    const [title, body] = alertSpy.mock.calls[0];
+    expect(title).toBe(EN['home.errors.engineUnavailable.title']);
+    expect(title).not.toBe(EN['common.error']);
+    expect(body).toBe(EN['home.errors.engineUnavailable.body']);
     alertSpy.mockRestore();
   });
 
-  it('a CODELESS edge 502 no longer leaks the raw axios string', async () => {
-    mockApiPost.mockRejectedValueOnce(EDGE_502());
+  it('control: a success:false INSUFFICIENT_DATA keeps the shared common.error title', async () => {
+    mockApiPost.mockResolvedValueOnce({
+      data: { success: false, error: 'Not enough product data', code: 'INSUFFICIENT_DATA' },
+    });
     const RN = require('react-native');
     const alertSpy = jest.spyOn(RN.Alert, 'alert').mockImplementation(() => {});
     const rendered = render(<HomeScreen {...makeProps()} />);
     await submitUrlCompare(rendered);
 
     await waitFor(() => expect(alertSpy).toHaveBeenCalled());
-    const body = alertSpy.mock.calls[0][1];
-    // This is the residual the finding wrongly called "the correct path":
-    // `parsed.message` here WAS "Request failed with status code 502".
-    expect(body).not.toBe('Request failed with status code 502');
-    expect(body).not.toMatch(/failed/i);
-    // S69 U7 R1 (sanctioned amendment): an edge 502 is an ENGINE outage —
-    // its own title + body, never the "try with brand or model" nudge.
-    expect(body).toBe(EN['home.errors.engineUnavailable.body']);
-    expect(alertSpy.mock.calls[0][0]).toBe(EN['home.errors.engineUnavailable.title']);
+    const [title, body] = alertSpy.mock.calls[0];
+    expect(title).toBe(EN['common.error']);
+    expect(body).toBe(EN['home.errors.insufficientData']);
     alertSpy.mockRestore();
-  });
-
-  it('both paths resolve the SAME copy for the SAME error (the asymmetry is gone)', async () => {
-    const RN = require('react-native');
-
-    const alertSpyText = jest.spyOn(RN.Alert, 'alert').mockImplementation(() => {});
-    const textRender = render(<HomeScreen {...makeProps()} />);
-    const handlers = await submitTextCompare(textRender);
-    await act(async () => {
-      handlers.onError(INSUFFICIENT_400());
-    });
-    const textBody = alertSpyText.mock.calls[0][1];
-    alertSpyText.mockRestore();
-
-    mockApiPost.mockRejectedValueOnce(INSUFFICIENT_400());
-    const alertSpyUrl = jest.spyOn(RN.Alert, 'alert').mockImplementation(() => {});
-    const urlRender = render(<HomeScreen {...makeProps()} />);
-    await submitUrlCompare(urlRender);
-    await waitFor(() => expect(alertSpyUrl).toHaveBeenCalled());
-    const urlBody = alertSpyUrl.mock.calls[0][1];
-    alertSpyUrl.mockRestore();
-
-    expect(textBody).toBe(urlBody);
   });
 });

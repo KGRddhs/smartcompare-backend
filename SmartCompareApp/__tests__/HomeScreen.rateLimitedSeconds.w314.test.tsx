@@ -251,7 +251,7 @@ async function submitUrlCompare(rendered: any) {
   });
 }
 
-async function textPathBody(err: any): Promise<any> {
+async function textPathBody(err: any, titleKey: string = 'common.error'): Promise<any> {
   const RN = require('react-native');
   const alertSpy = jest.spyOn(RN.Alert, 'alert').mockImplementation(() => {});
   const rendered = render(<HomeScreen {...makeProps()} />);
@@ -260,7 +260,7 @@ async function textPathBody(err: any): Promise<any> {
     handlers.onError(err);
   });
   expect(alertSpy).toHaveBeenCalledTimes(1);
-  expect(alertSpy.mock.calls[0][0]).toBe(EN['common.error']);
+  expect(alertSpy.mock.calls[0][0]).toBe(EN[titleKey]);
   const body = alertSpy.mock.calls[0][1];
   alertSpy.mockRestore();
   return body;
@@ -317,10 +317,18 @@ describe('W3-14 R3 — URL compare (catch, HomeScreen.tsx:573)', () => {
 });
 
 describe('W3-14 R3 — preserve: a non-429 code is unaffected by the count option', () => {
-  it('text path: codeless edge 502 -> home.errors.comparison (no "failed")', async () => {
-    const body = await textPathBody(axiosError(502, '<html>Bad gateway</html>'));
+  it('text path: codeless edge 502 -> the engine-unavailable copy (no "failed")', async () => {
+    // S69 U7 R1 (sanctioned amendment): the real parseApiError tags a
+    // codeless 502 GATEWAY_UNAVAILABLE, which gets the engine-unavailable
+    // title + body instead of the "try with brand or model" default. The
+    // W3-14 property pinned here is unchanged: `count` does not disturb a
+    // non-429 code's sentence.
+    const body = await textPathBody(
+      axiosError(502, '<html>Bad gateway</html>'),
+      'home.errors.engineUnavailable.title',
+    );
     expect(body).not.toMatch(/failed/i);
-    expect(body).toBe(EN['home.errors.comparison']);
+    expect(body).toBe(EN['home.errors.engineUnavailable.body']);
   });
 
   it('URL path: INSUFFICIENT_DATA 400 -> home.errors.insufficientData', async () => {

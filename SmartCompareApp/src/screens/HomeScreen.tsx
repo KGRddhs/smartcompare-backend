@@ -67,7 +67,7 @@ import api from '../services/api';
 // A11 — code->copy map for failed comparisons. Deliberately NOT re-exported
 // from services/api so this stays importable (and testable) without the
 // network surface.
-import { friendlyErrorKey } from '../services/errorCopy';
+import { friendlyErrorKey, friendlyErrorTitleKey } from '../services/errorCopy';
 import { getSavedUser, User } from '../services/authService';
 import { isUsageLimitError, getUsageLimitDetail } from '../services/usageService';
 import CategorySelector from '../components/CategorySelector';
@@ -435,7 +435,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
           } else {
             const isTimeout = data.code === 'TIMEOUT' || data.code === 'STREAM_TIMEOUT';
             Alert.alert(
-              t('common.error'),
+              t(friendlyErrorTitleKey(data.code)),
               isTimeout ? t('home.errors.timeout') : t(friendlyErrorKey(data.code))
             );
           }
@@ -490,8 +490,10 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         // W3-14: a 429 carries `retry_after_seconds`; `count` picks the
         // seconds sentence (home.errors.rateLimited_*). Absent -> undefined
         // -> i18next renders the base key, i.e. exactly today's sentence.
+        // S69 U7 R1 — the title is chosen by code too: an engine outage gets
+        // its own title instead of "give it another tap".
         Alert.alert(
-          t('common.error'),
+          t(friendlyErrorTitleKey(parsed.code)),
           t(friendlyErrorKey(parsed.code), { count: parsed.retryAfterSeconds }),
         );
       },
@@ -560,7 +562,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
           const isTimeout =
             response.data.code === 'TIMEOUT' || response.data.code === 'STREAM_TIMEOUT';
           Alert.alert(
-            t('common.error'),
+            t(friendlyErrorTitleKey(response.data.code)),
             isTimeout ? t('home.errors.timeout') : t(friendlyErrorKey(response.data.code))
           );
         }
@@ -599,8 +601,10 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         // W3-14: a 429 carries `retry_after_seconds`; `count` picks the
         // seconds sentence (home.errors.rateLimited_*). Absent -> undefined
         // -> i18next renders the base key, i.e. exactly today's sentence.
+        // S69 U7 R1 — the title is chosen by code too: an engine outage gets
+        // its own title instead of "give it another tap".
         Alert.alert(
-          t('common.error'),
+          t(friendlyErrorTitleKey(parsed.code)),
           t(friendlyErrorKey(parsed.code), { count: parsed.retryAfterSeconds }),
         );
       }

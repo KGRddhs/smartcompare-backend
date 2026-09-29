@@ -17,7 +17,14 @@ from typing import List, Optional, Dict
 from fastapi import APIRouter, UploadFile, File, HTTPException, Query, Depends, Request
 
 from app.services.openai_service import identify_products
-from app.services.structured_comparison_service import StructuredComparisonService
+from app.services.structured_comparison_service import (
+    LLM_UNAVAILABLE_FRIENDLY_MESSAGE,
+    StructuredComparisonService,
+)
+from app.services.api_budget_service import (
+    LLMUnavailableError,
+    _openai_failure_is_transient,
+)
 from app.api.auth_routes import get_optional_user
 from app.services.database_service import log_search, save_comparison, search_log_truth_enabled
 from app.services.feedback_service import save_comparison_and_track_cohort
@@ -293,6 +300,19 @@ async def identify_and_compare(
         # Non-delivery exit 1 of 6.
         _refund_reserved_credit("usage_refund.image.vision_exception")
         _refund_anon_credit("usage_refund.image.anon.vision_exception")
+        # S69 U7 R4 (unflagged): an LLM OUTAGE is not a server crash. When the
+        # failure is one the preflight breaker itself calls transient (429 incl.
+        # insufficient_quota, connection/timeout, 5xx -- the breaker's own
+        # classifier) or the breaker refused dispatch (LLMUnavailableError),
+        # ship the SAME 503 envelope the text route ships
+        # (text_routes._surface_comparison_failure): code LLM_UNAVAILABLE +
+        # the constant friendly copy. str(e) never reaches the wire. Anything
+        # else keeps the 500 literal below.
+        if isinstance(e, LLMUnavailableError) or _openai_failure_is_transient(e):
+            raise HTTPException(
+                status_code=503,
+                detail={"code": "LLM_UNAVAILABLE", "error": LLM_UNAVAILABLE_FRIENDLY_MESSAGE},
+            )
         raise HTTPException(status_code=500, detail="Image analysis failed. Please try again.")
 
     if vision_result.get("error"):

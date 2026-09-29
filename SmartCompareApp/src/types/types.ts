@@ -136,6 +136,9 @@ export interface CategoryProfile {
 
 export interface Comparison {
   winner_index: number;
+  /** S69 U7 R2 — set (truthy) on a DEGRADED 200: the verdict LLM call failed
+   *  after Phase-1 (extraction_service.generate_comparison). */
+  error?: string;
   winner_reason: string;
   recommendation: string;
   key_differences: string[];

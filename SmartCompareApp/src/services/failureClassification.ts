@@ -59,3 +59,68 @@ export function classifyLoadFailure(err: any): LoadFailureKind {
   if (!err?.response) return 'timeout';
   return 'generic';
 }
+
+/**
+ * S69 U7 R3 — camera-path engine outage.
+ *
+ * `classifyLoadFailure` above sends any 5xx to 'timeout' ("Still gathering
+ * prices" + tap-to-retry). That is right for the History detail fetch and is
+ * left untouched, but on the CAMERA path a 5xx from /image/identify is an
+ * engine outage (OpenAI 429/insufficient_quota, a dropped connection, the
+ * preflight breaker), and tap-to-retry is a loop the user cannot exit while
+ * the engine is down. These two predicates are consulted by the camera path
+ * only, BEFORE the matrix, and route to the engine-unavailable state (the
+ * R1 copy, a back CTA, no retry).
+ *
+ * Kept identical to errorCopy.ENGINE_UNAVAILABLE_CODES minus the synthetic
+ * GATEWAY_UNAVAILABLE (the camera path reads the raw status instead); this
+ * module stays zero-import on purpose (see the header).
+ */
+const CAMERA_ENGINE_OUTAGE_CODES = new Set(['LLM_UNAVAILABLE', 'INTERNAL_ERROR', 'SERVER_ERROR']);
+
+/** A THROWN identify failure that is an engine outage. */
+export function isCameraEngineOutage(err: any): boolean {
+  const status: unknown = err?.response?.status;
+  const code: unknown =
+    err?.response?.data?.code ??
+    err?.response?.data?.detail?.code ??
+    err?.code;
+  // The paywall, the identify watchdog and every other timeout keep their
+  // own rows in the matrix.
+  if (code === 'USAGE_LIMIT' || code === 'TIMEOUT' || code === 'STREAM_TIMEOUT') return false;
+  if (typeof code === 'string' && CAMERA_ENGINE_OUTAGE_CODES.has(code)) return true;
+  // A bare / otherwise-coded 503 stays the D2 retryable TIMEOUT.
+  if (status === 503) return false;
+  return typeof status === 'number' && status >= 500;
+}
+
+/**
+ * A 200 identify RESPONSE that carries an engine outage: either
+ * `action: 'comparison_failed'` (ENABLE_CAMERA_FAILURE_ENVELOPE, or the
+ * route's exit-6 INTERNAL_ERROR), or — envelope flag OFF — an
+ * `action: 'comparison'` whose `success` is false. A comparison_failed
+ * without one of these codes (the cold-compare hard-cap) keeps 'timeout'.
+ */
+export function isCameraEngineOutageResponse(data: any): boolean {
+  const code: unknown = data?.code;
+  if (typeof code !== 'string' || !CAMERA_ENGINE_OUTAGE_CODES.has(code)) return false;
+  if (data?.action === 'comparison_failed') return true;
+  return data?.action === 'comparison' && data?.success === false;
+}
+
+/**
+ * S69 U7 R3 — an UNSUCCESSFUL 200 camera comparison (envelope flag OFF:
+ * `action: 'comparison'` + `success: false`) is a load failure, never a
+ * result. Map its code to the empty-state kind:
+ *   - TIMEOUT / STREAM_TIMEOUT                     -> 'timeout' (tap-to-retry)
+ *   - LLM_UNAVAILABLE / INTERNAL_ERROR / SERVER_ERROR -> 'engine_unavailable'
+ *   - anything else (INSUFFICIENT_DATA, code-less)  -> 'generic'
+ */
+export function classifyUnsuccessfulCameraComparison(
+  data: any,
+): 'timeout' | 'engine_unavailable' | 'generic' {
+  const code: unknown = data?.code;
+  if (code === 'TIMEOUT' || code === 'STREAM_TIMEOUT') return 'timeout';
+  if (typeof code === 'string' && CAMERA_ENGINE_OUTAGE_CODES.has(code)) return 'engine_unavailable';
+  return 'generic';
+}

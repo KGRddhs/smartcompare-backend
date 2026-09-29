@@ -72,6 +72,9 @@ interface ResultsAccordionProps {
   /** Lane A-L3 Task L3.3 — overall winner index. Used to draw the
    *  winner-star (★) prefix on the winning column in the pros/cons grid. */
   winnerIndex?: 0 | 1;
+  /** S69 U7 R2 — a degraded result (verdict LLM call failed) carries empty
+   *  pros/cons lists; drop the row rather than present it as if real. */
+  hideProsCons?: boolean;
   testID?: string;
 }
 
@@ -107,6 +110,7 @@ export const ResultsAccordion = React.memo(function ResultsAccordion({
   specsProducts,
   specsComparison,
   winnerIndex,
+  hideProsCons,
   testID,
 }: ResultsAccordionProps) {
   const { t } = useTranslation();
@@ -230,12 +234,16 @@ export const ResultsAccordion = React.memo(function ResultsAccordion({
         return tail;
       })(),
     },
-    {
-      key: 'proscons',
-      icon: <ListChecks size={18} color={colors.text.secondary} />,
-      label: t('results.accordion.prosConsLabel'),
-      sub: t('results.accordion.prosConsSub'),
-    },
+    ...(hideProsCons
+      ? []
+      : [
+          {
+            key: 'proscons' as AccordionKey,
+            icon: <ListChecks size={18} color={colors.text.secondary} />,
+            label: t('results.accordion.prosConsLabel'),
+            sub: t('results.accordion.prosConsSub'),
+          },
+        ]),
     {
       key: 'specs',
       icon: <BarChart3 size={18} color={colors.text.secondary} />,

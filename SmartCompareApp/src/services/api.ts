@@ -1031,22 +1031,32 @@ export function parseApiError(error: any): {
     return { message: '', code: 'TIMEOUT' };
   }
 
+  // S69 U7 R1 — a CODELESS 502/504 is the edge (Railway) reporting that the
+  // backend did not answer: an outage, not a verdict on the user's input.
+  // Synthesize GATEWAY_UNAVAILABLE so the code->copy map (errorCopy.ts) can
+  // show the engine-unavailable copy instead of the "try with brand or
+  // model" default that `null` gets. A codeless 500/4xx keeps `null`; a
+  // bare 503 was already normalised to TIMEOUT above; a 502/504 that DOES
+  // carry an envelope code keeps that code.
+  const code: string | null =
+    rawCode ?? (status === 502 || status === 504 ? 'GATEWAY_UNAVAILABLE' : null);
+
   if (data?.error) {
-    return withRetryAfter({ message: data.error, code: rawCode }, data);
+    return withRetryAfter({ message: data.error, code }, data);
   }
   if (data?.detail) {
     return withRetryAfter(
       {
         message: typeof data.detail === 'string' ? data.detail : 'Invalid request',
-        code: rawCode,
+        code,
       },
       data,
     );
   }
   if (error?.message) {
-    return { message: error.message, code: rawCode };
+    return { message: error.message, code };
   }
-  return { message: 'Something went wrong', code: rawCode };
+  return { message: 'Something went wrong', code };
 }
 
 // A11 — the code->copy map that every caller of `parseApiError` must use

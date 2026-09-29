@@ -86,7 +86,13 @@ import {
   parseApiError,
   DemographicsPayload,
 } from '../services/api';
-import { classifyLoadFailure } from '../services/failureClassification';
+import { isDegradedComparison } from '../services/resultHonesty';
+import {
+  classifyLoadFailure,
+  classifyUnsuccessfulCameraComparison,
+  isCameraEngineOutage,
+  isCameraEngineOutageResponse,
+} from '../services/failureClassification';
 import { settingsErrorKey } from '../services/errorCopy';
 import { LoadingRings } from '../components/hero/LoadingRings';
 // Faithful-results Phase 2.1 — HeroRings pruned from the render path (the
@@ -148,7 +154,13 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
       !!(route?.params?.comparison_id || route?.params?.vision_products)
   );
   const [loadError, setLoadError] = useState<
-    'not_found' | 'need_more_photos' | 'vision_failed' | 'timeout' | 'generic' | null
+    | 'not_found'
+    | 'need_more_photos'
+    | 'vision_failed'
+    | 'timeout'
+    | 'engine_unavailable'
+    | 'generic'
+    | null
   >(null);
   // Genuine-BH bundle (D2) — bumping this nonce re-arms the fetch effects so
   // the timeout state's tap-to-retry actually re-runs the request in place
@@ -273,7 +285,27 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
         const { identifyFromImages } = await import('../services/api');
         const data: any = await identifyFromImages(visionProducts, 'bahrain');
 
-        if (data?.action === 'comparison') {
+        if (isCameraEngineOutageResponse(data)) {
+          // S69 U7 R3 — the photos WERE identified but the engine is down
+          // (a 200 comparison_failed / success:false comparison carrying
+          // LLM_UNAVAILABLE / INTERNAL_ERROR / SERVER_ERROR). Neither the
+          // tap-to-retry loop nor a failure payload rendered as a result.
+          if (!cancelled) {
+            setLoadError('engine_unavailable');
+            setLoadingResult(false);
+          }
+        } else if (data?.action === 'comparison' && data?.success === false) {
+          // S69 U7 R3 — envelope flag OFF: an unsuccessful comparison arrives
+          // as `action: 'comparison'` + `success: false` (no outage code, or
+          // TIMEOUT / INSUFFICIENT_DATA / a code-less generic). It is a load
+          // failure, never a result: setResult() on it painted the failure
+          // payload as the "not loading" empty screen. The outage codes were
+          // routed above; this maps the rest.
+          if (!cancelled) {
+            setLoadError(classifyUnsuccessfulCameraComparison(data));
+            setLoadingResult(false);
+          }
+        } else if (data?.action === 'comparison') {
           // A17 — camera keeps the full 1.2s brand floor, unchanged.
           const remaining = loadStartedAtRef.current + CAMERA_FLOOR_MS - Date.now();
           if (remaining > 0) {
@@ -325,6 +357,15 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
         // must NEVER blame the user's photos. Timeout-class failures get
         // the soft retryable state; a genuine 4xx rejection gets the
         // neutral generic state (back affordance, no photo-blame).
+        // S69 U7 R3 — a 5xx / LLM_UNAVAILABLE from /image/identify is an
+        // ENGINE outage: the R1 copy with a way back, never the "still
+        // gathering prices" retry loop. Camera-only; the History fetch keeps
+        // the unchanged matrix.
+        if (isCameraEngineOutage(err)) {
+          setLoadError('engine_unavailable');
+          setLoadingResult(false);
+          return;
+        }
         const kind = classifyLoadFailure(err);
         setLoadError(kind === 'timeout' ? 'timeout' : 'generic');
         setLoadingResult(false);
@@ -474,8 +515,13 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
     if (!sharableComparisonId) {
       // Fall back to legacy Share.share when there's no persisted comparison
       // to invite from (e.g. anonymous flows that didn't save).
+      // S69 U7 R2 — a degraded result's `recommendation` is the template
+      // winner reason, not a real verdict: leave it out of the share text.
+      const shareBody = isDegradedComparison(result)
+        ? `Comparing ${products[0]?.name} vs ${products[1]?.name}\n\nWinner: ${winnerName}`
+        : `Comparing ${products[0]?.name} vs ${products[1]?.name}\n\nWinner: ${winnerName}\n\n${recommendation}`;
       Share.share({
-        message: `Comparing ${products[0]?.name} vs ${products[1]?.name}\n\nWinner: ${winnerName}\n\n${recommendation}`,
+        message: shareBody,
       }).catch(() => { /* swallow */ });
       trackEvent('share', { method: 'text_only', cta_variant: ctaVariant });
       return;
@@ -681,6 +727,8 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
     // tap-to-retry CTA that re-runs the fetch in place (handleRetry). All
     // other loadError states keep the established back-to-history affordance.
     const isTimeout = loadError === 'timeout';
+    // S69 U7 R3 — engine outage: its own title + body (R1 copy), back CTA.
+    const isEngineUnavailable = loadError === 'engine_unavailable';
     return (
       <View style={styles.container} testID="results-empty-state">
         <View style={styles.header}>
@@ -703,10 +751,14 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
               ? t('results.emptyState.visionFailed')
               : isTimeout
               ? t('results.timeout.title')
+              : isEngineUnavailable
+              ? t('home.errors.engineUnavailable.title')
               : t('results.emptyState.title')}
           </Text>
           {isTimeout ? (
             <Text style={styles.emptyStateBody}>{t('results.timeout.body')}</Text>
+          ) : isEngineUnavailable ? (
+            <Text style={styles.emptyStateBody}>{t('home.errors.engineUnavailable.body')}</Text>
           ) : null}
           <TouchableOpacity
             onPress={isTimeout ? handleRetry : () => navigation.goBack()}
@@ -715,7 +767,13 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
             testID={isTimeout ? 'results-timeout-retry' : undefined}
           >
             <Text style={styles.emptyStateCtaText}>
-              {isTimeout ? t('results.timeout.retry') : t('results.emptyState.cta')}
+              {isTimeout
+                ? t('results.timeout.retry')
+                : isEngineUnavailable
+                ? // S69 U7 R3 — the camera user did not come from History:
+                  // a neutral "Back", not "Back to history".
+                  t('common.back')
+                : t('results.emptyState.cta')}
             </Text>
           </TouchableOpacity>
         </View>

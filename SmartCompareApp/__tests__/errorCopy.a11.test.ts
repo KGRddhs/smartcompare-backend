@@ -129,14 +129,22 @@ describe('A11 — the codeless residual (no envelope) also gets catalog copy', (
 
   it('parseApiError DOES fall through to the raw axios string (the leak source)', () => {
     const parsed = parseApiError(edge502);
-    expect(parsed.code).toBeNull();
+    // S69 U7 R1 (sanctioned amendment): a codeless 502/504 is tagged with
+    // the synthetic GATEWAY_UNAVAILABLE (was null) so the copy map can tell
+    // an edge outage from a codeless 4xx. The message fall-through below is
+    // unchanged and is still why `.message` is never render input.
+    expect(parsed.code).toBe('GATEWAY_UNAVAILABLE');
     // Documents precisely why `.message` must never be rendered.
     expect(parsed.message).toBe('Request failed with status code 502');
   });
 
   it('a null code still resolves to catalog copy — no branch renders the string', () => {
+    // S69 U7 R1 (sanctioned amendment): the edge 502 now resolves to the
+    // engine-unavailable copy, not the "try with brand or model" default;
+    // a genuinely null code still lands on the default (pinned below).
     const key = friendlyErrorKey(parseApiError(edge502).code);
-    expect(key).toBe('home.errors.comparison');
+    expect(key).toBe('home.errors.engineUnavailable.body');
+    expect(friendlyErrorKey(null)).toBe('home.errors.comparison');
     expect(EN[key]).toBeDefined();
     expect(EN[key]).not.toBe('Request failed with status code 502');
   });
