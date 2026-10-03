@@ -1217,6 +1217,20 @@ def synthetic_traffic_headers() -> Dict[str, str]:
     return {"X-Qaren-Synthetic": tok} if tok else {}
 
 
+def harness_auth_headers() -> Dict[str, str]:
+    """U13 (D9): the admin credential for ENABLE_COMPARE_AUTH_REQUIRED.
+
+    Returns {"X-Admin-Key": <ADMIN_API_KEY>} only when HARNESS_SEND_ADMIN_KEY
+    is truthy (1/true/yes/on) AND ADMIN_API_KEY is non-empty, else {} -- so
+    without the opt-in the requests are byte-identical (ADMIN_API_KEY alone is
+    never enough: test modules set it at import). Never print or log it."""
+    opt_in = os.getenv("HARNESS_SEND_ADMIN_KEY", "").strip().lower()
+    key = os.getenv("ADMIN_API_KEY", "")
+    if opt_in in ("1", "true", "yes", "on") and key:
+        return {"X-Admin-Key": key}
+    return {}
+
+
 async def run_eval(
     queries: List[Dict[str, Any]],
     *,
@@ -1236,9 +1250,9 @@ async def run_eval(
     client_kwargs: Dict[str, Any] = {"base_url": base_url}
     if transport is not None:
         client_kwargs["transport"] = transport
-    _synthetic = synthetic_traffic_headers()
-    if _synthetic:
-        client_kwargs["headers"] = _synthetic
+    _harness_headers = {**synthetic_traffic_headers(), **harness_auth_headers()}
+    if _harness_headers:
+        client_kwargs["headers"] = _harness_headers
 
     async with httpx.AsyncClient(**client_kwargs) as client:
         async def _one(record: Dict[str, Any]) -> GradedQuery:

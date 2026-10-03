@@ -9,6 +9,7 @@
  *   - 6–8 emerald particles emit from center on parabolic fall, fade-out
  *   - Center holds a scale-bounce badge (0 → 1.1 → 1.0 via withSpring
  *     damping=8 stiffness=100; tokens from motion.revealBurst.badgeSpring)
+ *     The badge carries the MYEZ mark (QarenLogo, U4d).
  *   - fireOnce gates the emit: a useRef ensures the particle array is
  *     built ONCE per mount and is stable across re-renders driven by
  *     parent state (analytics fetches, paywall mounting). This is
@@ -47,7 +48,7 @@ import Animated, {
 import type { SharedValue } from 'react-native-reanimated';
 import { colors, spacing } from '../../theme';
 import { motion } from '../../theme/motion';
-import { QaranIcon } from '../../icons/QaranIcon';
+import QarenLogo from '../QarenLogo';
 
 interface Props {
   size?: number;
@@ -239,7 +240,7 @@ export function RevealBurst({
             badgeStyle,
           ]}
         >
-          <QaranIcon size={Math.round(BADGE_R * 1.2)} />
+          <QarenLogo size={BADGE_R} />
         </Animated.View>
       </View>
     </View>

@@ -396,7 +396,13 @@ async def delete_user_data_cascade(user_id: str) -> bool:
         client.rpc("delete_user_cascade", {"target_user_id": user_id}).execute()
         return True
     except Exception as e:
-        logger.error(f"Error in cascade delete for user {user_id}: {e}")
+        # U8b: never format the exception. A PostgREST APIError's str() carries
+        # `details`, which for a constraint violation is "Failing row contains
+        # (...)" -- the user's whole row (email, name, demographics).
+        logger.error(
+            "Error in cascade delete for user %s: %s (sqlstate=%s)",
+            user_id, type(e).__name__, getattr(e, "code", None),
+        )
         raise
 
 

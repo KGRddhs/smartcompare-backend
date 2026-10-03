@@ -3,7 +3,7 @@
  *
  * Top-down per JSX docs/claude-design-handoff/ui_kits/mobile/ProfileScreen.jsx:36-322.
  * Element order inside ScrollView:
- *   1. ProfileHeaderRow  — Q logo + name + dynamic "Capital · GCC" subtitle
+ *   1. ProfileHeaderRow  — MYEZ mark + name + dynamic "Capital · GCC" subtitle
  *                          + 36px circular Settings icon (→ EditProfile)
  *   2. RecentDecisionsRow — marquee of last 3 mini-vs cards (silently hides
  *                           on empty / threshold-miss / network)
@@ -425,7 +425,7 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {/* 1. Header — Q logo + name + region + settings icon */}
+        {/* 1. Header — MYEZ mark + name + region + settings icon */}
         <ProfileHeaderRow />
 
         {/* 2. Recent decisions marquee — F-S1.5f always-render with

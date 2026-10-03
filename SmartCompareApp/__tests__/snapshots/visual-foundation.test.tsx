@@ -21,7 +21,6 @@ import React from 'react';
 import { render } from '@testing-library/react-native';
 import { Button } from '../../src/components/Button';
 import {
-  QaranIcon,
   BackIcon,
   CloseIcon,
   SearchIcon,
@@ -87,10 +86,6 @@ describe('Button variants snapshot', () => {
 });
 
 describe('Icon snapshots — default 24px black', () => {
-  it('QaranIcon default', () => {
-    expect(render(<QaranIcon />).toJSON()).toMatchSnapshot();
-  });
-
   it('BackIcon default', () => {
     expect(render(<BackIcon />).toJSON()).toMatchSnapshot();
   });
@@ -117,12 +112,6 @@ describe('Icon snapshots — default 24px black', () => {
 });
 
 describe('Icon snapshots — emerald accent at 32px', () => {
-  it('QaranIcon emerald 32', () => {
-    expect(
-      render(<QaranIcon size={32} color="#10B981" />).toJSON()
-    ).toMatchSnapshot();
-  });
-
   it('PlusIcon emerald 32', () => {
     expect(
       render(<PlusIcon size={32} color="#10B981" />).toJSON()

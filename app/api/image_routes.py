@@ -42,6 +42,8 @@ from app.services.usage_service import (
 # W2-1: ONE definition of the flag for the whole unit (see the helper's
 # docstring). image_routes/url_routes deliberately do not re-parse the env.
 from app.api.text_routes import paid_route_metering_enabled
+# U13: the paid-route guard, ONE definition in text_routes (R7).
+from app.api.text_routes import require_paid_route_user
 # W4-13: the search_logs row builders + the flag-2 splat, one definition each.
 from app.api.text_routes import (
     _log_cost_value,
@@ -148,7 +150,7 @@ TEMP_DIR = Path("temp_uploads")
 TEMP_DIR.mkdir(exist_ok=True)
 
 
-@router.post("/identify")
+@router.post("/identify", dependencies=[Depends(require_paid_route_user)])
 @limiter.limit("10/minute")
 async def identify_and_compare(
     request: Request,

@@ -1,0 +1,15 @@
+
+---
+
+## Orchestrator gate on the RED tests (BINDING - supersedes everything above where they differ)
+
+Fable orchestrator, session 71, 2026-10-03 09:20 +03. Verdict: **PASS with one change (UG1)**. GREEN may start.
+
+Reviewed: `tests/test_s71_u13_compare_auth_required.py` (sha256 `1849dbfef701cceb...`, 994 lines), `tests/test_s71_u13_harness_auth.py` (`eb33a12da8fb5017...`, 391 lines), `tests/fixtures/s71_u13_flag_off_baseline.json` (`fa72e28fc4b0cd00...`, recorded twice at `eb86075e`, byte-identical, no normalised field). Measured by the RED agent at base and at HEAD: 85 failed / 74 passed over 159 nodes, 0 collection errors, 0 network attempts from either file; every RED fails for its stated reason (the proving line per id is in the RED report); the G3 neighbours pass without the new files (720) and with them only the 85 REDs fail; one mutated fixture record reddens exactly its T17 node. The orchestrator read the env fixture, the recorder, T17, T19, T20/T21 and T23 in the file.
+
+- **UG1 - T23 compares only what the ten routes use.** As written T23 pins the WHOLE application's OpenAPI `components`, so any later unit that adds or changes any model anywhere would redden ten nodes and force a re-record of the fixture that also holds the 30 flag-OFF records; a re-record is exactly how an accidental flag-OFF change would get absorbed. Change: T23 keeps the full-operation comparison per route, and compares `components` restricted to the transitive closure of the `$ref`s reachable from the ten operations, computed the same way on both sides at compare time. The fixture is NOT re-recorded and its bytes do not change. The GREEN agent makes this edit FIRST (only `test_T23_openapi_unchanged` and one small helper), confirms T23 = 10 PIN green before touching `app/`, and reports the new file sha.
+- **UG2 - the RED agent's deviations are accepted:** T18c asserts the envelope text `JSON decode error` (the unified envelope carries no pydantic type string); the two extra deterministic fields in the T17 records; the wider stub set; the vision-stub exit on U6; `ENABLE_REFERRAL_SYSTEM` set in T22a; the stricter assertions.
+- **UG3 - apart from UG1 the three RED files are FROZEN.** A test edit needs a test defect proven by measurement and is reported as a deviation.
+- **UG4 - the fixture is immutable in GREEN.** A GREEN that needs to re-record `s71_u13_flag_off_baseline.json` has changed flag-OFF behaviour and is wrong by definition (R8).
+- **UG5 - the PR text carries:** the flag row; the activation runbook of section 9 as corrected by C9 and UR5 (rotate `ADMIN_API_KEY`, three flags in one window, the anonymous re-probe, then funding); the one non-opt-in harness change (C7); the stated limits L1-L11 with UR13 and UR14; the follow-ups (the camera 401 refresh-and-retry client unit; a per-user limiter key; the live/integration files that will 401; raw query logging at INFO; multipart parsing before the guard; the smoke accounts and their public password).
+- **UG6 - `CLAUDE.md` is the orchestrator's at merge** (R14). No agent edits it.

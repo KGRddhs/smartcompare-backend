@@ -1173,8 +1173,12 @@ async def delete_account(
         await delete_user_account(current_user["id"])
         return {"success": True, "message": "Account and all associated data deleted"}
     except Exception as e:
-        logger.error(f"Account deletion failed for user {current_user['id']}: {e}")
-        raise HTTPException(status_code=500, detail="Account deletion failed")
+        # U8b: the exception TYPE only -- str(e) of a PostgREST APIError carries
+        # the failing row (the user's personal data).
+        logger.error(
+            "Account deletion failed for user %s: %s", current_user["id"], type(e).__name__
+        )
+        raise HTTPException(status_code=500, detail="Account deletion failed") from None
 
 
 @router.post("/resend-verification")

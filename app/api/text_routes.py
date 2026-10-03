@@ -218,6 +218,135 @@ def _paid_route_metering_disabled() -> bool:
 
 
 # ============================================
+# U13: the paid routes require a caller (ENABLE_COMPARE_AUTH_REQUIRED)
+# ============================================
+# Spec: docs/investigations/2026-10-03-session-71-state/U13_COMPARE_AUTH_SPEC.md.
+# The two guards below are attached with the ROUTER decorator's
+# `dependencies=[Depends(...)]` (D1), so they run before the usage gate, the
+# preferences fetch, the anon-fingerprint gate, the DNS/SSRF resolve,
+# `log_search`, every provider leg, schema/query validation (422) and the
+# slowapi check (an anonymous refusal never consumes the shared bucket). Only
+# JSON decoding and multipart parsing precede them (fastapi 0.141.1, L5).
+# Handler signatures and bodies are unchanged. `url_routes` and `image_routes`
+# import these definitions; nothing re-parses the env (R7).
+
+_PAID_AUTH_DETAIL = {"code": "AUTH_REQUIRED", "error": "Sign in to continue."}
+
+# D7 refusal reasons. Logged as constants; never a header, token or path value.
+_PAID_AUTH_NO_CREDENTIAL = "NO_CREDENTIAL"
+_PAID_AUTH_BEARER_REJECTED = "BEARER_REJECTED"
+_PAID_AUTH_ADMIN_KEY_INVALID = "ADMIN_KEY_INVALID"
+_PAID_AUTH_ADMIN_REQUIRED = "ADMIN_REQUIRED"
+
+
+def compare_auth_required_enabled() -> bool:
+    """True iff the ten paid routes refuse an anonymous caller (U13,
+    `ENABLE_COMPARE_AUTH_REQUIRED`, default OFF).
+
+    Flag ON: the six app routes (POST/GET `/text/compare`, GET
+    `/text/compare/stream`, POST/GET `/url/compare`, POST `/image/identify`)
+    need a signed-in user or the admin credential (`X-Admin-Key`); the four
+    routes with no app caller (POST `/text/quick`, GET `/text/prices/{product}`,
+    POST/GET `/url/extract`) need the admin credential. Anything else is a 401
+    `AUTH_REQUIRED` (a wrong admin key a 403 `FORBIDDEN`) before any work.
+
+    Flag OFF: both guards return at once -- no header read, no log, no call.
+
+    Read PER CALL from `os.getenv` (the `price_service.exact_gate_enabled`
+    idiom) so Railway flips it without a restart; never cached at import.
+    """
+    return os.getenv("ENABLE_COMPARE_AUTH_REQUIRED", "").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
+
+
+def _paid_route_label(request: Request) -> str:
+    """`<METHOD> <route template>` for the D7 log line -- the TEMPLATE from
+    `scope["route"]` (e.g. `/api/v1/text/prices/{product}`), never the
+    concrete path, which can carry the caller's product string."""
+    route = request.scope.get("route")
+    template = getattr(route, "path", None)
+    if not isinstance(template, str) or not template:
+        template = "?"
+    return f"{request.method} {template}"
+
+
+def _refuse_paid_route(request: Request, reason: str):
+    """Log the one D7 refusal line and raise the 401 `AUTH_REQUIRED` envelope."""
+    logger.info(
+        "[paid-auth] refused route=%s reason=%s",
+        _paid_route_label(request), reason,
+    )
+    raise HTTPException(status_code=401, detail=dict(_PAID_AUTH_DETAIL))
+
+
+def _admin_credential_passes(request: Request) -> bool:
+    """The admin credential (D3): True on a valid `X-Admin-Key`, False when the
+    header is ABSENT or EMPTY ("no admin attempt" -- the emptiness guard runs
+    before any compare, as `compare_digest(b"", b"")` is True), and the
+    existing 403 `FORBIDDEN` "Invalid admin key" when a non-empty header fails
+    (or `ADMIN_API_KEY` is unset). `verify_admin_key` is reused verbatim
+    (bytes, surrogateescape, `hmac.compare_digest`). The value is read off
+    `request.headers`, never a declared `Header(...)` parameter, so the
+    OpenAPI surface does not change (spec 2.4). Never logged, never echoed."""
+    supplied = request.headers.get("x-admin-key", "")
+    if not supplied:
+        return False
+    try:
+        verify_admin_key(supplied)
+    except HTTPException:
+        logger.info(
+            "[paid-auth] refused route=%s reason=%s",
+            _paid_route_label(request), _PAID_AUTH_ADMIN_KEY_INVALID,
+        )
+        raise
+    logger.info(
+        "[paid-auth] admin credential accepted route=%s",
+        _paid_route_label(request),
+    )
+    return True
+
+
+async def require_paid_route_user(
+    request: Request, user: Optional[Dict] = Depends(get_optional_user)
+) -> Optional[Dict]:
+    """U13 guard for the six app routes (D2). `user` comes from the same
+    `Depends(get_optional_user)` the handlers declare, so the dependency cache
+    keeps it to ONE `verify_token` per request and the OpenAPI parameters do
+    not change.
+
+    Flag ON: a resolved user passes (the admin header is not consulted); else
+    a valid admin credential passes (the route then runs as today's anonymous
+    caller: no usage consumption, no history row); else 401 `AUTH_REQUIRED`.
+    A rejected bearer never downgrades silently (D5): strict OFF it arrives
+    here as None and is refused (`BEARER_REJECTED`); strict ON
+    `get_optional_user` has already raised its own 401."""
+    if not compare_auth_required_enabled():
+        return user
+    if user:
+        return user
+    if _admin_credential_passes(request):
+        return None
+    if request.headers.get("authorization"):
+        _refuse_paid_route(request, _PAID_AUTH_BEARER_REJECTED)
+    _refuse_paid_route(request, _PAID_AUTH_NO_CREDENTIAL)
+
+
+async def require_paid_route_admin(request: Request) -> None:
+    """U13 guard for the four paid routes with no app caller (D2, UR3): only
+    the admin credential passes. It never resolves a bearer (no Supabase
+    call); a bearer-only caller is refused (`ADMIN_REQUIRED`), an empty or
+    absent `X-Admin-Key` is 401, a wrong one 403. Flag OFF: returns at once."""
+    if not compare_auth_required_enabled():
+        return None
+    if _admin_credential_passes(request):
+        return None
+    if request.headers.get("authorization"):
+        _refuse_paid_route(request, _PAID_AUTH_ADMIN_REQUIRED)
+    _refuse_paid_route(request, _PAID_AUTH_NO_CREDENTIAL)
+
+
+# ============================================
 # Request/Response Models
 # ============================================
 
@@ -444,7 +573,7 @@ def _surface_comparison_failure(result: Dict):
 # ============================================
 
 
-@router.post("/compare")
+@router.post("/compare", dependencies=[Depends(require_paid_route_user)])
 @limiter.limit("10/minute")
 async def text_compare(request: Request, body: TextCompareRequest, user: Optional[Dict] = Depends(get_optional_user)):
     """
@@ -639,7 +768,7 @@ async def text_compare(request: Request, body: TextCompareRequest, user: Optiona
     return result
 
 
-@router.get("/compare")
+@router.get("/compare", dependencies=[Depends(require_paid_route_user)])
 @limiter.limit("10/minute")
 async def text_compare_get(
     request: Request,
@@ -822,7 +951,7 @@ async def text_compare_get(
     return result
 
 
-@router.get("/compare/stream")
+@router.get("/compare/stream", dependencies=[Depends(require_paid_route_user)])
 @limiter.limit("10/minute")
 async def text_compare_stream(
     request: Request,
@@ -1243,7 +1372,7 @@ async def text_compare_stream(
     )
 
 
-@router.post("/quick")
+@router.post("/quick", dependencies=[Depends(require_paid_route_admin)])
 @limiter.limit("10/minute")
 async def quick_compare(request: Request, body: QuickCompareRequest):
     """
@@ -1343,7 +1472,7 @@ async def quick_compare(request: Request, body: QuickCompareRequest):
     return result
 
 
-@router.get("/prices/{product}")
+@router.get("/prices/{product}", dependencies=[Depends(require_paid_route_admin)])
 # W2-1 (LS-RATELIMIT-KEY-02 = CR-SECURITY-06), flag-gated so flag OFF is
 # byte-identical. `Limiter(...)` at `rate_limiter.py:125` passes no `key_style`
 # and slowapi's default is `"url"`, so this route's bucket is scoped to

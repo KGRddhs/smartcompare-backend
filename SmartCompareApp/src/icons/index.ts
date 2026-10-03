@@ -1,11 +1,11 @@
 /**
  * Custom icon library for Qaren.
  *
- * Phase 1 (this commit): infrastructure + brand mark.
+ * Phase 1: infrastructure. The brand mark is QarenLogo
+ * (src/components/QarenLogo.tsx), not an icon.
  * Later phases add: ModeIcons, TabIcons, CategoryIcons, StageIcons,
  * CohortIcons, RewardIcons (28 total custom icons per design Section 5a).
  */
-export { QaranIcon } from './QaranIcon';
 export {
   BackIcon,
   CloseIcon,

@@ -23,7 +23,7 @@ import httpx
 from supabase import create_client, Client, ClientOptions
 from supabase_auth.errors import AuthApiError, AuthRetryableError, AuthUnknownError
 
-from app.services.cache_service import redis_client, _redis_offload_enabled
+from app.services.cache_service import delete_cached, redis_client, _redis_offload_enabled
 from app.services.consent_service import (
     TERMS_ACCEPTANCE_REQUIRED,
     TERMS_ACCEPTANCE_REQUIRED_MESSAGE,
@@ -977,11 +977,46 @@ async def save_user_preferences(
         return {"success": False, "error": "Failed to save preferences"}
 
 
+# U8b -- per-user Redis keys whose values are derived from rows the cascade
+# erases. Writers: home_routes.py:205 (6 h), :719 (5 min); profile_routes.py
+# :176, :297, :466 (5 min). Usage/anon/lockout/revocation counters are kept
+# (integers, short TTLs) -- see the U8b spec R4.3.
+DELETED_USER_CACHE_KEY_TEMPLATES: Tuple[str, ...] = (
+    "home:savings:{user_id}",
+    "home:smart_pick:{user_id}",
+    "profile_recent:{user_id}",
+    "monthly_stats:{user_id}",
+    "priorities_weighted:{user_id}",
+)
+
+
+async def _purge_deleted_user_caches(user_id: str) -> None:
+    """U8b -- drop the per-user caches of an erased account. Fail-soft and
+    never raises: a Redis outage must not block a deletion (every key expires
+    within 6 h anyway). ENABLE_ASYNC_REDIS_OFFLOAD dispatches off-loop."""
+    for template in DELETED_USER_CACHE_KEY_TEMPLATES:
+        key = template.format(user_id=user_id)
+        try:
+            if _redis_offload_enabled():
+                await asyncio.to_thread(delete_cached, key)
+            else:
+                delete_cached(key)
+        except Exception as exc:  # noqa: BLE001 -- delete_cached already swallows
+            logger.warning("[AUTH] cache purge failed: %s", type(exc).__name__)
+
+
 async def delete_user_account(user_id: str) -> bool:
-    """Delete user account and all associated data."""
+    """Delete user account and all associated data.
+
+    Order (U8b): the cascade RPC first (if it raises, nothing else runs),
+    then the fail-soft purge of the per-user caches, then the auth delete
+    (if it raises, the exception propagates; a retry is safe because the
+    cascade is idempotent)."""
     from app.services.database_service import delete_user_data_cascade
     # First delete all user data
     await delete_user_data_cascade(user_id)
+    # Then drop the per-user caches derived from the erased rows
+    await _purge_deleted_user_caches(user_id)
     # Then delete the auth user via admin client
     admin = get_admin_client()
     admin.auth.admin.delete_user(user_id)
