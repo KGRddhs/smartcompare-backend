@@ -1,0 +1,17 @@
+# OAI_OBS spec notes (spec agent, started 2026-09-30 03:05 AST)
+- worktree sc-s70-oai HEAD 94c097cda4e3d63562c5e40e444f4965c4a0222d, branch feature/s70-openai-companions, clean
+- venv: py 3.12.9, openai 3.3.1, httpx 0.28.1, httpcore 1.0.9, pytest 9.1.1 (== requirements pins)
+- str(e) measured (measure_str.out): asyncio.TimeoutError -> '' (is builtins.TimeoutError); httpx.ReadTimeout/ConnectTimeout real mapping -> ''; openai.APITimeoutError -> 'Request timed out.'; APIConnectionError -> 'Connection error.'; CancelledError -> ''; HTTPStatusError 429 -> multi-line with URL
+- item1: url_extraction_service.py:29-37 get_client no max_retries; extraction_service.py:60-80 lazy import openai_max_retries
+- item2: model_router_service.py:61-64 downgrade branch; extraction_service.py:2524-2525 verdict model choice; sync metadata override scs ~4144-4184; stream ~4960-4996; generate_comparison callers scs:4045, 4813, 8949 (regen), url_extraction:643
+- item3: serper :665 search_web, :825 shopping; extraction :1711 specs; _safe_exc at scs:330 (cycle: scs imports extraction_service)
+- 03:16-03:19 probes at BASE (scratch worktree oai/base, file tests/test_zz_oai_probe.py): all RED-EXPECTED fail for the right reason; p4 reproduces exact Sentry text '_GatheringFuture exception was never retrieved' future '<_GatheringFuture finished exception=CancelledError()>' (3 hits: occ + bolo sitemap + nasser jsonapi) in both pre-run and in-flight variants
+- fix experiment (done-callback in _cancel_prefetched_direct) in scratch base: p4 x2 + test_adapter_prefetch_hook + test_m13_30 -> 19 passed [pyt] tag=oai-probe-fixexp elapsed=14s status=OK rc=0; scs restored, sha f85a66c7... MATCH
+- cycle: scs imports extraction_service (L24) + serper_service (L41) at top -> module-level import of scs._safe_exc from them = cycle
+- MODULE-REFERENCE union = 245 test files (modref_files.txt)
+- pre-existing: test_adapter_prefetch_hook 2 nodes blocked by netguard (getaddrinfo api.openai.com) + 'Task exception was never retrieved' from its boom_search mocks (test artifact)
+- 03:23 base probes: 11 failed / 15 passed (all RED for right reason) [pyt] tag=oai-probe-base5 elapsed=8s status=FAIL rc=1; outer-cancel (M13-30 finally) variant also leaks
+- 03:23 fix exp 2 (add_done_callback on every entry): 20 passed [pyt] tag=oai-probe-fixexp2 elapsed=11s status=OK rc=0; restored MATCH
+- 03:26 pipeline marker probe at base: 3 RED (key absent; verdict succeeded) [pyt] tag=oai-probe-pipe elapsed=7s status=FAIL rc=1
+- 03:26 marker experiment (usage carrier + self attr + 2 override sites): 5 passed [pyt] tag=oai-probe-markerexp elapsed=8s status=OK rc=0; both files restored MATCH
+- 03:34 spec written: docs/investigations/2026-09-30-session-70-state/OAI_OBS_SPEC.md sha256 e6dfc4344292f2f7e6808af54c3d8e431ce58657deff86d57093ba7584a3813b (48740 B); scratch base worktree removed (git worktree remove --force); probe copies kept here; unit worktree status: only the new state folder untracked
