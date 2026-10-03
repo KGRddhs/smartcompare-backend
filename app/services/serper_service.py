@@ -26,6 +26,11 @@ from app.services.api_budget_service import (
     record_success,
 )
 from app.services.cache_service import _redis_offload_enabled
+# Session 70 OAI_OBS R3.3 — the five search ERROR sites log a CONSTANT
+# %-template with exc_summary(e): an httpx timeout/connect error has an EMPTY
+# str(e), so the f-string lines carried only their prefix (one Sentry issue
+# per exception text, the empty ones unreadable). log_scrub is a leaf.
+from app.services.log_scrub import exc_summary
 
 logger = logging.getLogger(__name__)
 
@@ -662,7 +667,7 @@ async def search_web(
             return response.json()
 
     except Exception as e:
-        logger.error(f"Search error: {e}")
+        logger.error("Search error: %s", exc_summary(e))
         if _brightdata_enabled():
             logger.info("[brightdata] Serper /search failed (%s) — fallback", str(e)[:60])
             return await bd_search_web(query, num_results, country)
@@ -822,7 +827,7 @@ async def _do_serper_shopping(product: str, gl: str) -> Dict[str, Any]:
             )
             return {}
     except Exception as e:
-        logger.error(f"Serper shopping call error (gl={gl}): {e}")
+        logger.error("Serper shopping call error (gl=%s): %s", gl, exc_summary(e))
         return {}
 
 
@@ -1010,7 +1015,7 @@ async def search_price_organic(
             }
 
     except Exception as e:
-        logger.error(f"Price organic search error: {e}")
+        logger.error("Price organic search error: %s", exc_summary(e))
         if _brightdata_enabled():
             logger.info("[brightdata] Serper price-organic failed (%s) — fallback", str(e)[:60])
             return {**(await bd_search_web(search_query, 10, country)), "query": search_query}
@@ -1093,7 +1098,7 @@ async def search_videos(
             return response.json()
 
     except Exception as e:
-        logger.error(f"Video search error: {e}")
+        logger.error("Video search error: %s", exc_summary(e))
         return {"videos": [], "error": str(e)}
 
 
@@ -1170,7 +1175,7 @@ async def search_news(
             return response.json()
 
     except Exception as e:
-        logger.error(f"News search error: {e}")
+        logger.error("News search error: %s", exc_summary(e))
         return {"news": [], "error": str(e)}
 
 

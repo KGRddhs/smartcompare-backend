@@ -74,6 +74,11 @@ from app.services import firecrawl_service, scrapedo_service
 # R-W18 (W1-8c) — the SLOW-MISS threshold keys on the same inner ceiling the
 # adapters clamp to. adapter_timeouts imports nothing from app (no cycle).
 from app.services.adapter_timeouts import adapter_inner_ceiling
+# Session 70 OAI_OBS R3.1 — the R-W18 exception-text scrubber lives in the leaf
+# log_scrub (shared with serper_service / extraction_service, which cannot
+# import this module without a cycle). Re-exported under its old name, so the
+# call sites below and `scs._safe_exc` in tests resolve unchanged.
+from app.services.log_scrub import safe_exc as _safe_exc
 
 
 # WS-G G3 — per-attempt provider TRACE (backend observability ONLY; metadata,
@@ -297,48 +302,23 @@ async def _timeout_none(
     return result
 
 
-# R-W18 (W1-8d) — bound + scrub exception text before it reaches an INFO drop
-# line. LOCAL on purpose: sentry_service._scrub_query_string keeps `api_key=`
-# and never strips URL userinfo (measured), so it cannot be reused here.
-# Every `<scheme>://<token>` (http, https, socks5, ... — a proxy URL is the
-# threat; the scheme quantifier is BOUNDED so a long letter run stays linear) is
-# rewritten by _safe_exc_url: userinfo = everything up to the LAST '@' in the
-# token, so a '@', '/' or ':' inside an unencoded password cannot leak its
-# tail; the whole query string and fragment are dropped; host + path are kept.
-# When the text before that '@' holds a '?' or '#', the '@' may sit in a query
-# (`?email=a@b&k=SECRET`) or in a password (`user:pa?ss@host`) — the two cannot
-# be told apart, so the whole token is replaced by `[redacted]`.
-_SAFE_EXC_URL_RE = re.compile(r"(?i)([a-z][a-z0-9+.\-]{0,15}://)(\S*)")
-_SAFE_EXC_LINEBREAK_RE = re.compile(r"[\r\n\x0b\x0c\x1c-\x1e\x85\u2028\u2029]+")
-_SAFE_EXC_MAX_CHARS = 200
+def _retrieve_prefetch_outcome(fut: "asyncio.Future") -> None:
+    """Done-callback: mark a speculative prefetch gather's outcome retrieved.
 
+    A cancel()-requested _GatheringFuture finishes with
+    set_exception(CancelledError) (CPython gather, even with
+    return_exceptions=True); nothing awaits it after _cancel_prefetched_direct
+    drops it, so asyncio would report 'exception was never retrieved' at GC.
+    Logging-only: no await, no result change.
 
-def _safe_exc_url(m: "re.Match[str]") -> str:
-    scheme, rest = m.group(1), m.group(2)
-    at = rest.rfind("@")
-    if at != -1:
-        if "?" in rest[:at] or "#" in rest[:at]:
-            return scheme + "[redacted]"
-        rest = rest[at + 1:]
-    for sep in ("?", "#"):
-        cut = rest.find(sep)
-        if cut != -1:
-            rest = rest[:cut]
-    return scheme + rest
-
-
-def _safe_exc(exc: BaseException) -> str:
-    """`str(exc)` made safe for a grep-stable INFO line: userinfo and the query
-    string stripped from every http(s) URL, line breaks collapsed to one space,
-    truncated to 200 chars. Scrubs the FULL text before truncating so a cut can
-    never land inside a URL's credentials."""
-    try:
-        text = str(exc)
-    except Exception:  # noqa: BLE001 — a broken __str__ must not break logging
-        return f"<unprintable {type(exc).__name__}>"
-    text = _SAFE_EXC_URL_RE.sub(_safe_exc_url, text)
-    text = _SAFE_EXC_LINEBREAK_RE.sub(" ", text)
-    return text[:_SAFE_EXC_MAX_CHARS]
+    Precondition: every future this is attached to is a gather created with
+    ``return_exceptions=True`` (every ``_prefetched_direct`` entry in
+    ``_get_price``), so a child's exception is already consumed as a result
+    and the ONLY exception this can retrieve is that cancel-requested
+    CancelledError: it never swallows a real error. A cancelled future is
+    skipped (``.exception()`` would raise CancelledError on it)."""
+    if not fut.cancelled():
+        fut.exception()
 
 
 def _count_finished(scraper, box: list):
@@ -3148,6 +3128,13 @@ class StructuredComparisonService:
         self._partial_scoring_result: Optional[Dict[str, Any]] = None
         self._partial_product_names: Optional[List[str]] = None
         self._partial_comparison: Optional[Dict[str, Any]] = None
+        # Session 70 OAI_OBS #268 (R2.5) — True when the SERVED verdict ran on
+        # the standard model instead of the configured verdict model (the
+        # router's daily-cap downgrade or the 429 fallback). Read off
+        # generate_comparison's success usage dict; reset per run; surfaced as
+        # the additive, absent-unless-true metadata.model_downgraded.
+        self._verdict_model_downgraded: bool = False
+        self._regen_model_downgraded: bool = False
         # Launch degradation fix (2026-07-06) — the EARLY identity+specs buffer.
         # Holds each product's `result` dict BY REFERENCE the instant
         # _fetch_product_data builds it (indexed by product position 0/1), so a
@@ -3790,6 +3777,7 @@ class StructuredComparisonService:
         self._partial_scoring_result = None
         self._partial_product_names = None
         self._partial_comparison = None
+        self._verdict_model_downgraded = False  # #268 R2.5 — per-run reset
         # Launch degradation fix (2026-07-06) — reset the early identity+specs
         # buffer to two empty slots so a reused per-request instance never leaks a
         # prior run's stashed products.
@@ -4054,6 +4042,12 @@ class StructuredComparisonService:
             if orchestrator_timings is not None:
                 orchestrator_timings["verdict_ms"] = round((time.perf_counter() - t_verdict) * 1000, 1)
             self._track_gpt_cost(usage)
+            # #268 R2.5 — the verdict ran on the standard model (cap downgrade
+            # or 429 fallback), as marked on generate_comparison's success
+            # usage dict (R2.4).
+            self._verdict_model_downgraded = (
+                isinstance(usage, dict) and usage.get("model_downgraded") is True
+            )
 
             # I3.1 — optional self-critique pass (flag-gated OFF; no-op in prod
             # until ENABLE_SELF_CRITIQUE flips). May regenerate the verdict ONCE
@@ -4160,6 +4154,10 @@ class StructuredComparisonService:
             _crit_meta = self._verdict_critique_metadata()
             if _crit_meta:
                 _metadata_override["_verdict_critique"] = _crit_meta
+            # #268 R2.7 / C8 — additive, absent-unless-true (verdict_scrubbed
+            # precedent): the served verdict ran on the standard model.
+            if getattr(self, "_verdict_model_downgraded", False):
+                _metadata_override["model_downgraded"] = True
 
             result = build_comparison_response(
                 product_data=product_data,
@@ -4396,6 +4394,7 @@ class StructuredComparisonService:
         self._partial_scoring_result = None
         self._partial_product_names = None
         self._partial_comparison = None
+        self._verdict_model_downgraded = False  # #268 R2.5 — per-run reset
         self._early_specs_buffer = [None, None]
 
         # L1 content safety pre-filter (spec sec 5.2). Same gate as sync path —
@@ -4831,6 +4830,10 @@ class StructuredComparisonService:
             if orchestrator_timings is not None:
                 orchestrator_timings["verdict_ms"] = round((time.perf_counter() - t_verdict) * 1000, 1)
             self._track_gpt_cost(usage)
+            # #268 R2.5 — same carrier read as the sync path.
+            self._verdict_model_downgraded = (
+                isinstance(usage, dict) and usage.get("model_downgraded") is True
+            )
 
             # I3.1 — optional self-critique pass (flag-gated OFF; no-op in prod).
             # Same flow as the sync path; may regenerate the verdict ONCE.
@@ -4972,6 +4975,10 @@ class StructuredComparisonService:
             # W4-12 — the pre-verdict scrub emptied the reason (telemetry key).
             if _verdict_scrubbed:
                 _metadata_override["verdict_scrubbed"] = True
+            # #268 R2.7 / C8 — additive, absent-unless-true: the served verdict
+            # ran on the standard model (same key as the sync build).
+            if getattr(self, "_verdict_model_downgraded", False):
+                _metadata_override["model_downgraded"] = True
 
             complete_response = build_comparison_response(
                 product_data=product_data,
@@ -6700,10 +6707,18 @@ class StructuredComparisonService:
         def _cancel_prefetched_direct():
             """Cancel the speculative FREE direct fetches (genuine Tier-1 short-
             circuit / no-escalation) so no orphan HTTP GETs survive. No Serper
-            budget impact — these are free /products.json + Algolia calls."""
+            budget impact — these are free /products.json + Algolia calls.
+
+            Session 70 OAI_OBS R4.2: every entry also gets
+            _retrieve_prefetch_outcome as a done-callback, so a cancelled
+            gather's CancelledError is retrieved instead of reported as
+            "_GatheringFuture exception was never retrieved" at GC once
+            clear() drops the last reference. Nothing is awaited; which
+            futures are cancelled, and when, is unchanged."""
             for _task in _prefetched_direct.values():
                 if not _task.done():
                     _task.cancel()
+                _task.add_done_callback(_retrieve_prefetch_outcome)
             _prefetched_direct.clear()
 
         try:
@@ -8931,6 +8946,9 @@ class StructuredComparisonService:
         from app.services import verdict_critique_service as _vcs
 
         self._verdict_critique_outcome = None
+        # #268 R2.6 — the regen verdict's own marker; it replaces the
+        # original's only when the regenerated verdict is the one served.
+        self._regen_model_downgraded = False
         if not _vcs.is_self_critique_enabled():
             return comparison
 
@@ -8959,6 +8977,9 @@ class StructuredComparisonService:
                 **({"output_lang": args["output_lang"]} if args.get("output_lang") else {}),
             )
             self._track_gpt_cost(regen_usage)
+            self._regen_model_downgraded = (
+                isinstance(regen_usage, dict) and regen_usage.get("model_downgraded") is True
+            )
             return regen_comparison
 
         t_crit = time.perf_counter() if stage_timings is not None else None
@@ -8993,6 +9014,11 @@ class StructuredComparisonService:
             self._track_gpt_cost(outcome.critique_usage)
 
         self._verdict_critique_outcome = outcome
+        # #268 R2.6 — the served verdict decides the marker: a regenerated
+        # verdict carries its own value; a rejected/failed regen (and the 8 s
+        # timeout above) keeps the original verdict's.
+        if outcome.regenerated is True:
+            self._verdict_model_downgraded = self._regen_model_downgraded
         return outcome.final_comparison
 
     def _verdict_critique_metadata(self) -> Optional[Dict[str, Any]]:

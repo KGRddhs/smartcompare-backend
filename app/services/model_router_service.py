@@ -15,6 +15,8 @@ Reads are best-effort: when Redis is unavailable we fail-open and assume
 from __future__ import annotations
 
 import logging
+import math
+import os
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -43,6 +45,28 @@ class ModelRouterService:
     # 36h TTL on the counter so a stale day's key auto-expires.
     _COUNTER_TTL: int = 36 * 3600
 
+    def daily_4o_cap(self) -> int:
+        """The daily verdict-model token cap the router uses (#268).
+
+        Reads env ``DAILY_4O_CAP`` on EVERY call (never cached), so a Railway
+        change applies on the next verdict without a restart. Unset, blank,
+        unparsable, non-finite (``float()`` accepts ``inf``/``nan``) and values
+        below 1 (``0.5`` would truncate to 0 and divide by zero) all fall back
+        to the class constant ``DAILY_4O_CAP``; otherwise ``int(float(raw))``
+        (so ``2000000``, ``2e6`` and ``2_000_000`` are accepted, while
+        ``2,000,000`` and hex fall back). Never raises.
+        """
+        raw = os.environ.get("DAILY_4O_CAP")
+        if raw is None or not raw.strip():
+            return self.DAILY_4O_CAP
+        try:
+            value = float(raw.strip())
+        except ValueError:
+            return self.DAILY_4O_CAP
+        if not math.isfinite(value) or value < 1:
+            return self.DAILY_4O_CAP
+        return int(value)
+
     async def get_model(self, priority: str = "standard") -> str:
         """Choose the verdict model vs the standard model for the next call.
 
@@ -52,15 +76,27 @@ class ModelRouterService:
         priority:
           - ``standard`` (default) — always returns the standard model.
           - ``high`` — returns the verdict model while daily usage is below
-            ``SWITCH_THRESHOLD`` of ``DAILY_4O_CAP``; returns the standard
-            model once usage hits or exceeds the threshold.
+            ``SWITCH_THRESHOLD`` of ``daily_4o_cap()`` (env ``DAILY_4O_CAP``,
+            default the class constant); returns the standard model once usage
+            hits or exceeds the threshold, and logs exactly ONE INFO line
+            ``[MODEL_ROUTER] 4o cap reached: ...`` per such decision.
+
+        Redis down: a failed counter read counts as 0 usage, so the verdict
+        stays on the verdict model (fail-open) and cap protection is lost until
+        Redis returns.
         """
         if priority != "high":
             return standard_model()
 
         used = await self._get_4o_usage_today()
-        if used / self.DAILY_4O_CAP >= self.SWITCH_THRESHOLD:
-            return standard_model()
+        cap = self.daily_4o_cap()
+        if used / cap >= self.SWITCH_THRESHOLD:
+            routed = standard_model()
+            logger.info(
+                "[MODEL_ROUTER] 4o cap reached: routing verdict to %s (used=%d cap=%d threshold=%.2f)",
+                routed, used, cap, self.SWITCH_THRESHOLD,
+            )
+            return routed
         return verdict_model()
 
     async def record_usage(self, model: str, tokens_used: int) -> None:

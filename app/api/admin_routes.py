@@ -874,7 +874,9 @@ async def costs_gauges(request: Request, _=Depends(verify_admin_key)):
     except Exception as exc:  # noqa: BLE001
         logger.warning(f"[ADMIN] 4o usage read failed: {exc}")
 
-    openai_4o_cap = ModelRouterService.DAILY_4O_CAP
+    # #268 — the cap the router actually uses (env DAILY_4O_CAP, per call;
+    # the class constant when unset or invalid).
+    openai_4o_cap = ModelRouterService().daily_4o_cap()
 
     scraper_summary: dict = {}
     try:
