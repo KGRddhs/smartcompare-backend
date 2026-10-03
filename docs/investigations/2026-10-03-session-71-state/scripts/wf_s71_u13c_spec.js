@@ -1,0 +1,49 @@
+export const meta = {
+  name: 's71-u13c-spec',
+  description: 'Session 71 U13c spec (read-and-measure, Opus): issue #298, the camera /image/identify client path has no 401 refresh-and-retry, so with ENABLE_COMPARE_AUTH_REQUIRED on (active in production since 14:23) an expired token shows the generic camera error; measure the client path and the axios interceptor contract, write the spec, then an adversarial spec review',
+  phases: [
+    { title: 'Spec', detail: 'measure the camera upload path, the interceptor refresh contract, the existing tests; write the spec', model: 'opus' },
+    { title: 'Review', detail: 'adversarial spec review, binding corrections', model: 'opus' },
+  ],
+}
+const SP = 'C:/Users/SYNACK~1/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/3ffde5dd-0e09-4243-bf73-02955e287dff/scratchpad'
+const RULES = SP + '/s70-common.txt'
+const WT = 'C:/Users/SynAckITPC/Documents/AI/sc-s70-u4b'
+const APPDIR = WT + '/SmartCompareApp'
+const NOTES = SP + '/u13c'
+const SPEC = NOTES + '/U13C_CAMERA_401_SPEC.md'
+const BASE = '72b13bc5'
+
+const CONTEXT = [
+  'CLIENT UNIT U13c of the MYEZ Apple launch lane (repo smartcompare; React Native / Expo SDK 54 app in SmartCompareApp/). Worktree ' + WT + ' (branch feature/s71-u13c-camera-401, HEAD = main ' + BASE + ', clean; it has its OWN real node_modules matching the lock: never install anything). Today is 2026-10-03 (session 71). Backend unit U13 is MERGED (#297) and ACTIVE in production since 14:23 today: the paid routes, including POST /api/v1/image/identify, refuse a caller without a valid bearer with 401 {"success":false,"code":"AUTH_REQUIRED","error":"Sign in to continue."}. The text and URL compares go through the axios instance whose response interceptor refreshes the session once on a 401 and retries (src/services/api.ts, the single-flight refreshSession contract with its P-A3 rules); the camera upload is a raw fetch with no 401 handling (issue #298 in ' + NOTES + '/issue_298.md), so an expired access token on the camera path shows the generic camera error until some other axios call refreshes the token. It must merge before the production store build.',
+  'WHERE YOU MEASURE: the worktree above, READ-AND-MEASURE only: never write, create or delete a file inside it (no git writes, no npm, no jest -u). jest MAY be run by path from ' + APPDIR + ' as a SUBSET only: timeout -k 15 600 node node_modules/jest/bin/jest.js --ci <paths>. Write ONLY under ' + NOTES + ' (it exists): the spec ' + SPEC + ', a running notes.md, scratch probes (a scratch test may be run with --roots pointing at your folder and --modulePaths at the app node_modules).',
+  'Read the agent rules file FIRST and obey it: ' + RULES + ' (the client-gate rules apply). Never touch the network, Railway, Supabase, EAS or any credential.',
+  'BINDING SCOPE: (S1) On a 401 from /image/identify, refresh the session ONCE through the SAME single-flight refreshSession() the axios interceptor uses (never a second refresh path, never a parallel refresh: P-A3 and the single-use refresh token), then retry the upload ONCE with the new token; a second 401, or a failed refresh, surfaces the sign-in state the rest of the app uses on auth loss (measure what that is: clearSession + the auth event / navigation), never the generic camera error. (S2) Any other status keeps the existing handling byte-for-byte (the failure classification, the comparison_failed envelope of W2-1b, timeouts). (S3) The retry re-sends the same multipart body (measure whether the FormData / file URI can be re-sent on React Native fetch, or must be rebuilt). (S4) OTA-capable, no native dependency, no change to app.json, eas.json, package.json or the lock. (S5) No snapshot changes. (S6) Tests: a unit test on the camera service (401 then 200 -> exactly one refresh and one retry with the new bearer; 401 twice -> the sign-in state, exactly one refresh, no third request; refresh failure -> sign-in state, no retry; 200 first -> no refresh; 500 / network error -> existing handling, no refresh), and whatever integration test pins the ResultsScreen / camera flow today.',
+].join('\n')
+
+const SPEC_SCHEMA = { type: 'object', required: ['spec_path', 'spec_sha256', 'base_sha', 'open_questions', 'summary'], properties: {
+  spec_path: { type: 'string' }, spec_sha256: { type: 'string' }, base_sha: { type: 'string' },
+  open_questions: { type: 'array', items: { type: 'string' } }, summary: { type: 'string' } } }
+const REVIEW_SCHEMA = { type: 'object', required: ['verdict', 'corrections', 'spec_sha256_after', 'summary'], properties: {
+  verdict: { type: 'string', enum: ['APPROVED', 'APPROVED_WITH_CORRECTIONS', 'REJECTED'] },
+  corrections: { type: 'array', items: { type: 'string' } }, spec_sha256_after: { type: 'string' }, summary: { type: 'string' } } }
+
+phase('Spec')
+const spec = await agent([
+  'ROLE: spec writer (read-and-measure only). You are an Opus implementation-planning agent; the Fable orchestrator will rule on your open questions and gate the spec before any test is written.',
+  CONTEXT,
+  'TASK: measure everything U13c touches and write the spec to ' + SPEC + '. Every factual claim carries the command you ran and an output excerpt; line numbers are anchors, also name the symbol. REQUIRED SECTIONS: 1. Base (git rev-parse HEAD, status clean). 2. Measured facts: (a) the camera upload path in full: where /image/identify is called (src/services/api.ts and any screen), how the bearer is attached, the fetch options, timeouts, the AbortController, how the response is classified (failureClassification.ts) and what the user sees for a 401 today (trace to the screen copy and i18n key); (b) the axios interceptor contract: refreshSession() single flight, the P-A3 rules, what happens to the session on a failed refresh (clearSession, events, navigation), how other callers get a retried request, and whether the camera fetch can call the same helpers (the require pattern at api.ts:114); (c) what the backend returns today on the camera route for a missing / expired / wrong bearer (read app/api/text_routes.py require_paid_route_user and image_routes.py: 401 AUTH_REQUIRED before multipart work? measure in the U13 tests which stage parses the body) and the 429 USAGE_LIMIT and comparison_failed envelopes the client already handles; (d) React Native fetch and FormData re-send: can the same FormData instance be sent twice (measure in jest with the repo mocks, and read node_modules/react-native/Libraries/Network/FormData.js and the fetch polyfill), or must the body be rebuilt from the file URI; (e) every existing test that covers the camera path (grep image/identify, identifyProducts, uploadImage, the camera screen tests, failureClassification tests) and which would break; (f) the Sentry / analytics breadcrumbs on this path (nothing may log the token). 3. Requirements R1..Rn (numbered, testable). 4. Files to touch and files that MUST NOT change. 5. Test list: RED tests (file, name, what each asserts, why red at base for the right reason), PIN tests, at least seven named mutants (no retry; two retries; a retry without the new token; a refresh on 500; a parallel refresh outside the single flight; the generic error on the second 401; the token logged). 6. GREEN gates with exact commands (unit files, the FULL jest suite with the expected totals derived from base: today 357 passed of 360 suites, 3,485 tests, 42 snapshots; tsc; eslint by path; the no-snapshot and untouched-file gates). 7. Risks and stated limits (what only a device shows). 8. Open questions with RECOMMENDATIONS.',
+  'Keep the spec precise and concise. Return the spec path, its sha256, the base sha, your open questions and a short summary. Budget: 90 minutes from your first tool call.',
+].join('\n'), { label: 'u13c:spec', phase: 'Spec', schema: SPEC_SCHEMA, model: 'opus' })
+
+phase('Review')
+const review = await agent([
+  'ROLE: ADVERSARIAL spec reviewer (Opus). Your job is to REFUTE claims in the spec, not to confirm them. Read-and-measure only: the same rules as the writer; your ONLY write outside your scratch notes is APPENDING one section to the spec file. Keep your notes under ' + NOTES + '/review (create it).',
+  CONTEXT,
+  'The spec is ' + SPEC + ' (sha256 reported by its writer: ' + (spec ? spec.spec_sha256 : 'unknown - the writer returned nothing; if the file is missing or incomplete, say REJECTED and list what is missing') + ').',
+  'Re-measure EVERY factual claim with your own commands: the camera call site and its 401 handling today; the interceptor single-flight contract and what a second caller gets while a refresh is in flight (can the camera retry race the interceptor and spend the single-use refresh token twice?); the session-loss path (what the app does on a failed refresh and whether a camera caller can trigger it twice); the FormData re-send claim (measure it); the backend 401 timing (does the multipart body get parsed before the guard, which matters for the retry cost); every test that would break; the RED tests (would each really fail at base for the stated reason; would a PIN fail at base); mutants the list would not kill (a retry that reuses the OLD token; a refresh triggered on 403; a retry loop on repeated 401; the retry sending an empty body; a token in a breadcrumb).',
+  'Writer open questions: ' + JSON.stringify(spec ? spec.open_questions : []),
+  'Append a section titled exactly "## Review corrections (BINDING - supersede the body)" to the spec with numbered corrections, each with its measurement (command and output excerpt). Answer each writer open question with a RECOMMENDATION. Return the verdict, the corrections as short strings, the spec sha256 after your edit, and a summary. Budget: 90 minutes from your first tool call.',
+].join('\n'), { label: 'u13c:spec-review', phase: 'Review', schema: REVIEW_SCHEMA, model: 'opus' })
+
+return { spec, review }
