@@ -33,12 +33,15 @@ describe('SplashScreen', () => {
     jest.useRealTimers();
   });
 
-  it('should render the wordmark via i18n (no longer a hardcoded Arabic glyph)', () => {
-    // Bundle B/C/D Task 2.10 — splash header now uses t('app.name') so
-    // EN/AR users see their own locale's brand name.
+  it('E1 does not render the app name beside the mark (D1)', () => {
+    // U4c D1 (spec 2026-10-03-session-71-state/U4C_INAPP_MARK_SPEC.md §5 E1):
+    // the splash shows the MYEZ mark alone; the t('app.name') wordmark that
+    // used to sit beside it is removed. The tagline stays (next case).
     const mockOnFinish = jest.fn();
-    const { getByText } = render(<SplashScreen onFinish={mockOnFinish} />);
-    expect(getByText('MYEZ')).toBeTruthy();
+    const { queryByText } = render(<SplashScreen onFinish={mockOnFinish} />);
+    // queryByText('MYEZ') must be null; its children are read so a red
+    // names the rendered text instead of dumping the fiber.
+    expect(queryByText('MYEZ')?.props.children ?? null).toBeNull();
   });
 
   it('should render the tagline', () => {

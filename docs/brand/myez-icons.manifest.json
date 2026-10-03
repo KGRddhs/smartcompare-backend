@@ -1,4 +1,44 @@
 {
+  "mark_geometry": {
+    "ink_bbox_master_px": [
+      483,
+      399,
+      1629,
+      1641
+    ],
+    "mark_square_master_px": [
+      435,
+      399,
+      1242
+    ],
+    "master_px": 2048,
+    "splash_canvas_px": 1024,
+    "splash_mark_px": 549,
+    "splash_offset_px": 237
+  },
+  "mark_outputs": {
+    "SmartCompareApp/assets/brand/myez-mark.png": {
+      "height": 128,
+      "mode": "RGBA",
+      "pixels_sha256": "0129d00820d78baa910ec8f50515d6cfd4ca6189283b320e51fee7f2a0f8a624",
+      "sha256": "dc77ee4caed1144c9c49bd40ce48a2d4eeb264af30e4d2b64737a186bd66d5ce",
+      "width": 128
+    },
+    "SmartCompareApp/assets/brand/myez-mark@2x.png": {
+      "height": 256,
+      "mode": "RGBA",
+      "pixels_sha256": "32f7c08105b36b0f1a292dba54d0925327d0ba6a31ff7686bf7f31f553a1702d",
+      "sha256": "5b00db3aa4e357404dd02f4ee0ac8fa8207b7af2bdefc62b5f570753ebd21801",
+      "width": 256
+    },
+    "SmartCompareApp/assets/brand/myez-mark@3x.png": {
+      "height": 384,
+      "mode": "RGBA",
+      "pixels_sha256": "a06dbd98fb11d3559ef6b2b2482ca3fbce185bdf5a9c683a96735fe26777d867",
+      "sha256": "61091aa460291c4bfeec85969fcd2ad7fb32ebdd2f7429d0a6c0e2107ac06eaa",
+      "width": 384
+    }
+  },
   "master": {
     "path": "docs/brand/myez-icon-master-2048.png",
     "sha256": "70b2f8264d7eb07dbfe7627d332d991dc68429f3440615751bf99eacc05a4b41"

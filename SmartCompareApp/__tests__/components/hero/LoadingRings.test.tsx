@@ -12,15 +12,43 @@ describe('LoadingRings', () => {
     expect(UNSAFE_root.findAllByType('Svg' as any).length).toBeGreaterThan(0);
   });
 
-  it('renders the central Q-logo brand mark via QaranIcon', () => {
-    const { UNSAFE_root } = render(<LoadingRings />);
-    // QaranIcon renders Circle elements; just verify SOMEthing with the
-    // brand black or emerald color is present in the central area.
-    const centerLogo = UNSAFE_root.findAll(
-      (n: any) =>
-        typeof n.type === 'string' && n.props?.testID === 'loading-rings-logo'
+  it('F1 the central brand mark is ONE host Image sized 0.22 of the rings (320 -> 70, 240 -> 53, 120 -> 26)', () => {
+    // U4c (spec 2026-10-03-session-71-state/U4C_INAPP_MARK_SPEC.md §5 F1):
+    // QarenLogo is now the bundled MYEZ mark PNG, a single RN Image, at
+    // Math.round(size * 0.22) inside the static `loading-rings-logo` centre.
+    const flatten = (style: unknown): Record<string, unknown> =>
+      Array.isArray(style)
+        ? style.reduce<Record<string, unknown>>((acc, s) => ({ ...acc, ...flatten(s) }), {})
+        : style && typeof style === 'object'
+          ? { ...(style as Record<string, unknown>) }
+          : {};
+    const cases: [number, number][] = [
+      [320, 70],
+      [240, 53],
+      [120, 26],
+    ];
+    const got = cases.map(([size]) => {
+      const { UNSAFE_root, unmount } = render(<LoadingRings size={size} />);
+      const centre = UNSAFE_root.findAll(
+        (n: any) =>
+          typeof n.type === 'string' && n.props?.testID === 'loading-rings-logo'
+      );
+      const images = centre.length === 1 ? centre[0].findAll((n: any) => n.type === 'Image') : [];
+      const svgs = centre.length === 1 ? centre[0].findAll((n: any) => n.type === 'Svg') : [];
+      const style = images.length === 1 ? flatten(images[0].props.style) : {};
+      unmount();
+      return {
+        size,
+        centres: centre.length,
+        images: images.length,
+        svgs: svgs.length,
+        width: style.width,
+        height: style.height,
+      };
+    });
+    expect(got).toEqual(
+      cases.map(([size, px]) => ({ size, centres: 1, images: 1, svgs: 0, width: px, height: px }))
     );
-    expect(centerLogo.length).toBeGreaterThan(0);
   });
 
   it('renders 3 expanding emerald rings', () => {
