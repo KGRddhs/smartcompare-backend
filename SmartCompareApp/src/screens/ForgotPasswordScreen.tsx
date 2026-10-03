@@ -23,6 +23,7 @@ import { parseApiError } from '../services/api';
 import { AuthStackParamList } from '../types';
 import { colors, spacing, radii, typography, shadows } from '../theme';
 import { Button } from '../components/Button';
+import QarenLogo from '../components/QarenLogo';
 
 type ForgotPasswordScreenProps = {
   navigation: NativeStackNavigationProp<AuthStackParamList, 'ForgotPassword'>;
@@ -84,7 +85,7 @@ export default function ForgotPasswordScreen({ navigation }: ForgotPasswordScree
         <View style={styles.content}>
           {/* Header */}
           <View style={styles.header}>
-            <Text style={styles.logo}>{t('app.name')}</Text>
+            <QarenLogo size={56} />
           </View>
 
           {/* Form */}
@@ -152,11 +153,6 @@ const styles = StyleSheet.create({
   header: {
     alignItems: 'center',
     marginBottom: spacing['2xl'],
-  },
-  logo: {
-    fontSize: 36,
-    fontWeight: '700',
-    color: colors.text.primary,
   },
   form: {
     backgroundColor: colors.bg.primary,

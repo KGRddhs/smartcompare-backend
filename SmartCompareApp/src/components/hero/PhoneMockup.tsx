@@ -13,7 +13,7 @@
  *   - Pure black gradient (matches app icon) with subtle highlight
  *   - Two product cards on the screen — second one bears the winner
  *     badge and emerald glow ring
- *   - White circular Q-mark on the home indicator area
+ *   - Home-indicator bar and camera-notch dot on the bezel (no brand mark)
  *
  * When the designer hands off the Figma SVG, swap the inline JSX for
  * an SVG file import or paste the optimised paths into this component.
