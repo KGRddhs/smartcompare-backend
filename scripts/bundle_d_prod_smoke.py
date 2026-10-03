@@ -46,6 +46,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 from dataclasses import dataclass, field
@@ -57,6 +58,18 @@ import httpx
 
 DEFAULT_BASE_URL = "https://web-production-58776.up.railway.app"
 SMOKE_TIMEOUT_SECONDS = 60.0  # generous — /text/compare can take ~25s cold
+
+
+def _harness_auth_headers() -> dict[str, str]:
+    """U13 (D9): {"X-Admin-Key": <ADMIN_API_KEY>} only when HARNESS_SEND_ADMIN_KEY
+    is truthy (1/true/yes/on) AND ADMIN_API_KEY is non-empty, else {}. Probe 12
+    uses it only when the login probe produced no user token. Never print or
+    log the value."""
+    opt_in = os.getenv("HARNESS_SEND_ADMIN_KEY", "").strip().lower()
+    key = os.getenv("ADMIN_API_KEY", "")
+    if opt_in in ("1", "true", "yes", "on") and key:
+        return {"X-Admin-Key": key}
+    return {}
 
 
 # ============================================
@@ -456,6 +469,14 @@ def run_probes(
             method="GET", path="/api/v1/text/compare",
             expected_status=200,
         )
+        # U13 (C7): the user token from the login probe when there is one --
+        # the app's own path and the ONE non-opt-in harness change (a signed-in
+        # compare spends one credit of the throwaway account and writes its
+        # history row) -- else the opt-in admin header, else no credential.
+        if derived_token is not None:
+            compare_headers = {"Authorization": f"Bearer {derived_token}"}
+        else:
+            compare_headers = _harness_auth_headers()
         _do(
             r,
             lambda: client.get(
@@ -465,6 +486,7 @@ def run_probes(
                     "region": "bahrain",
                     "nocache": "false",
                 },
+                **({"headers": compare_headers} if compare_headers else {}),
             ),
             shape_check=lambda b: _body_has_keys(b, "success", "products", "metadata"),
         )

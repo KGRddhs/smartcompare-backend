@@ -28,6 +28,8 @@ from app.api.auth_routes import get_optional_user
 # W2-1: ONE definition of the flag for the whole unit (see the helper's
 # docstring in text_routes). url_routes deliberately does not re-parse the env.
 from app.api.text_routes import paid_route_metering_enabled
+# U13: the paid-route guards, ONE definition each in text_routes (R7).
+from app.api.text_routes import require_paid_route_admin, require_paid_route_user
 # R-METER (W2-1c): the text route's failure-code -> wire mapping, shared so a
 # failed URL verdict surfaces exactly like a failed text comparison.
 from app.api.text_routes import _surface_comparison_failure
@@ -268,7 +270,7 @@ async def list_supported_retailers():
     }
 
 
-@router.post("/extract")
+@router.post("/extract", dependencies=[Depends(require_paid_route_admin)])
 @limiter.limit("10/minute")
 async def extract_product(request: Request, body: URLExtractRequest):
     """
@@ -305,7 +307,7 @@ async def extract_product(request: Request, body: URLExtractRequest):
     return result
 
 
-@router.get("/extract")
+@router.get("/extract", dependencies=[Depends(require_paid_route_admin)])
 @limiter.limit("10/minute")
 async def extract_product_get(
     request: Request,
@@ -326,7 +328,7 @@ async def extract_product_get(
     return result
 
 
-@router.post("/compare")
+@router.post("/compare", dependencies=[Depends(require_paid_route_user)])
 @limiter.limit("10/minute")
 async def compare_urls(
     request: Request,
@@ -363,7 +365,7 @@ async def compare_urls(
     )
 
 
-@router.get("/compare")
+@router.get("/compare", dependencies=[Depends(require_paid_route_user)])
 @limiter.limit("10/minute")
 async def compare_urls_get(
     request: Request,

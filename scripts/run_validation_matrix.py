@@ -21,6 +21,7 @@ import argparse
 import dataclasses
 import datetime as _dt
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -174,15 +175,34 @@ def _weighted(price: float, specs: float, winner: float, factual: float, weights
     )
 
 
+def _harness_auth_headers() -> Dict[str, str]:
+    """U13 (D9): {"X-Admin-Key": <ADMIN_API_KEY>} only when HARNESS_SEND_ADMIN_KEY
+    is truthy (1/true/yes/on) AND ADMIN_API_KEY is non-empty, else {} (requests
+    byte-identical to before). Never print or log the value."""
+    opt_in = os.getenv("HARNESS_SEND_ADMIN_KEY", "").strip().lower()
+    key = os.getenv("ADMIN_API_KEY", "")
+    if opt_in in ("1", "true", "yes", "on") and key:
+        return {"X-Admin-Key": key}
+    return {}
+
+
 def run_query(base_url: str, query_record: Dict[str, Any], weights: Dict[str, float], tolerance_pct: float, timeout_s: float) -> QueryResult:
     url = f"{base_url}/api/v1/text/compare"
     params = {"q": query_record["query"], "region": query_record["region"], "nocache": "true"}
+    get_kwargs: Dict[str, Any] = {"params": params, "timeout": timeout_s}
+    auth_headers = _harness_auth_headers()
+    if auth_headers:
+        get_kwargs["headers"] = auth_headers
+        # requests strips only Authorization on a cross-host redirect; it would
+        # forward X-Admin-Key to the redirect target. Never follow one while the
+        # admin credential is attached (a 3xx then reports http_3xx).
+        get_kwargs["allow_redirects"] = False
     start = time.time()
     http_status = 0
     error: Optional[str] = None
     response_json: Dict[str, Any] = {}
     try:
-        resp = requests.get(url, params=params, timeout=timeout_s)
+        resp = requests.get(url, **get_kwargs)
         http_status = resp.status_code
         if resp.status_code == 200:
             response_json = resp.json()
