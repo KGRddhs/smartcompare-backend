@@ -28,6 +28,10 @@ from app.utils.prompt_sanitizer import (
 # RuntimeError fails this import (and the deploy) instead of being swallowed per call.
 from app.services import prompt_personalities as _pp
 from app.services import api_budget_service as _llm_breaker
+# Session 70 OAI_OBS R3.3 / C1 — extract_specs / extract_price /
+# extract_price_from_training_data log a CONSTANT %-template with
+# exc_summary(e) (the type survives an empty str(e)). log_scrub is a leaf.
+from app.services.log_scrub import exc_summary
 
 logger = logging.getLogger(__name__)
 
@@ -1708,7 +1712,7 @@ async def extract_specs(
         return cleaned, usage
 
     except Exception as e:
-        logger.error(f"Specs extraction error: {e}")
+        logger.error("Specs extraction error: %s", exc_summary(e))
         return {"brand": brand, "model": name, "error": str(e)}, {"prompt_tokens": 0, "completion_tokens": 0}
 
 
@@ -1760,7 +1764,7 @@ SEARCH CONTEXT:
         return json.loads(result), usage
 
     except Exception as e:
-        logger.error(f"Price extraction error: {e}")
+        logger.error("Price extraction error: %s", exc_summary(e))
         return {"amount": None, "currency": region_info["currency"], "error": str(e)}, {"prompt_tokens": 0, "completion_tokens": 0}
 
 
@@ -1815,7 +1819,7 @@ Region: {region} ({region_info["currency"]})
                             " ".join(s_brand.split()), " ".join(s_name.split()))
         return parsed_price, usage
     except Exception as e:
-        logger.error(f"Price fallback error: {e}")
+        logger.error("Price fallback error: %s", exc_summary(e))
         return {"amount": None, "currency": region_info["currency"], "error": str(e)}, {"prompt_tokens": 0, "completion_tokens": 0}
 
 
@@ -2753,6 +2757,15 @@ Primary concern: {neutralize_prompt_tags(f"{concern}")}
                 "prompt_tokens": response.usage.prompt_tokens,
                 "completion_tokens": response.usage.completion_tokens
             }
+        # #268 (OQ1) — additive, absent-unless-true marker: this SUCCESSFUL
+        # verdict ran on the standard model instead of the configured verdict
+        # model (the router's daily-cap downgrade OR the 429/rate/quota
+        # fallback above). ``verdict_model`` is the local id the call ran on;
+        # it shadows model_config.verdict_model, hence the alias.
+        from app.services.model_config import verdict_model as _configured_verdict_model
+        _standard = standard_model()
+        if verdict_model == _standard and _standard != _configured_verdict_model():
+            usage["model_downgraded"] = True
         return parsed, usage
 
     except Exception as e:

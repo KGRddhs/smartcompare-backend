@@ -29,10 +29,15 @@ _client = None
 def get_client() -> AsyncOpenAI:
     global _client
     if _client is None:
+        from app.services.model_config import openai_max_retries
         _client = AsyncOpenAI(
             api_key=os.getenv("OPENAI_API_KEY"),
             base_url=provider_base_url(),
             timeout=httpx.Timeout(120.0, connect=30.0),
+            # #265 (A-C11) — OPENAI_MAX_RETRIES (default 2 == SDK default), read
+            # at first construction and cached with the client, exactly like
+            # extraction_service.get_client.
+            max_retries=openai_max_retries(),
         )
     return _client
 
