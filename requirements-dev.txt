@@ -152,7 +152,7 @@ typing-extensions==4.16.0 ; python_full_version < '3.13'
     #   -c requirements.txt
     #   cyclonedx-python-lib
     #   pytest-asyncio
-urllib3==2.7.0
+urllib3==2.8.0
     # via
     #   -c requirements.txt
     #   requests
