@@ -26,6 +26,7 @@ import { tryReadClipboardForInviteCode } from '../services/clipboardFallbackServ
 import { AuthStackParamList } from '../types';
 import { colors, spacing, radii, typography, shadows } from '../theme';
 import { Button } from '../components/Button';
+import QarenLogo from '../components/QarenLogo';
 import { ConsentRow, LegalDoc } from '../components/ConsentRow';
 import { buildConsentPayload } from '../services/consent';
 import { AppleSignInButton } from '../components/AppleSignInButton';
@@ -290,7 +291,7 @@ export default function RegisterScreen({ navigation, route, onRegisterSuccess }:
       <SafeAreaView style={styles.container}>
         <View style={styles.content}>
           <View style={styles.header}>
-            <Text style={styles.logo}>{t('app.name')}</Text>
+            <QarenLogo size={56} />
             <Text style={styles.subtitle}>{t('splash.tagline')}</Text>
           </View>
           <View style={styles.form} testID="email-confirmation-card">
@@ -321,7 +322,7 @@ export default function RegisterScreen({ navigation, route, onRegisterSuccess }:
           <View style={styles.content}>
             {/* Header */}
             <View style={styles.header}>
-              <Text style={styles.logo}>{t('app.name')}</Text>
+              <QarenLogo size={56} />
               <Text style={styles.subtitle}>{t('splash.tagline')}</Text>
             </View>
 
@@ -552,11 +553,6 @@ const styles = StyleSheet.create({
   header: {
     alignItems: 'center',
     marginBottom: spacing['2xl'],
-  },
-  logo: {
-    fontSize: 36,
-    fontWeight: '700',
-    color: colors.text.primary,
   },
   subtitle: {
     ...typography.caption,

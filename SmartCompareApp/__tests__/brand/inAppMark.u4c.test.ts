@@ -97,12 +97,15 @@ const COMMITTED_MASTER = {
   sha256: '70b2f8264d7eb07dbfe7627d332d991dc68429f3440615751bf99eacc05a4b41',
 };
 
-/** The six sites of §2b, relative to src/ (R5). */
+/** The nine sites of §2b, relative to src/ (R5). */
 const SITE_FILES = [
   'components/hero/LoadingRings.tsx',
+  'components/hero/RevealBurst.tsx',
+  'screens/ForgotPasswordScreen.tsx',
   'screens/HistoryScreen.tsx',
   'screens/HomeScreen.tsx',
   'screens/ProfileScreen.tsx',
+  'screens/RegisterScreen.tsx',
   'screens/SplashScreen.tsx',
   'screens/onboarding/Step01Welcome.tsx',
 ];
@@ -392,7 +395,7 @@ describe('U4c in-app mark — assets and manifest', () => {
 });
 
 describe('U4c in-app mark — the six sites (AST over src/)', () => {
-  it('B8 [PIN] exactly the six site files import QarenLogo', () => {
+  it('B8 [PIN] exactly the nine site files import QarenLogo', () => {
     const importers = listSources(SRC)
       .filter((file) => moduleSpecifiers(parse(file)).some((s) => /(^|\/)QarenLogo$/.test(s)))
       .map(rel)
@@ -400,7 +403,7 @@ describe('U4c in-app mark — the six sites (AST over src/)', () => {
     expect(importers).toEqual(SITE_FILES);
   });
 
-  it('B9 every <QarenLogo> size: Home 28, Profile 28, History 24, Welcome 40, LoadingRings Math.round(size * 0.22), Splash not a numeric literal', () => {
+  it('B9 every <QarenLogo> size: Home 28, Profile 28, History 24, Welcome 40, LoadingRings Math.round(size * 0.22), Splash not a numeric literal, RevealBurst BADGE_R, Register 56 x2, ForgotPassword 56', () => {
     const got: Record<string, string[]> = {};
     for (const file of listSources(SRC)) {
       const sf = parse(file);
@@ -419,9 +422,12 @@ describe('U4c in-app mark — the six sites (AST over src/)', () => {
     }
     expect(got).toEqual({
       'components/hero/LoadingRings.tsx': ['expression:Math.round(size * 0.22)'],
+      'components/hero/RevealBurst.tsx': ['expression:BADGE_R'],
+      'screens/ForgotPasswordScreen.tsx': ['numeric:56'],
       'screens/HistoryScreen.tsx': ['numeric:24'],
       'screens/HomeScreen.tsx': ['numeric:28'],
       'screens/ProfileScreen.tsx': ['numeric:28'],
+      'screens/RegisterScreen.tsx': ['numeric:56', 'numeric:56'],
       'screens/SplashScreen.tsx': [expect.not.stringMatching(/^numeric:/)],
       'screens/onboarding/Step01Welcome.tsx': ['numeric:40'],
     });

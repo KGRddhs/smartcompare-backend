@@ -59,8 +59,8 @@ export const CloseIcon = makeIcon((c) => (
   />
 ));
 
-// ── SearchIcon ── chunky filled magnifier (similar grammar to QaranIcon
-// but heavier; QaranIcon stays an outlined ring as a brand mark).
+// ── SearchIcon ── chunky filled magnifier (a plain search glyph, not a
+// brand mark).
 export const SearchIcon = makeIcon((c) => (
   <Path
     d="M10 3.5a6.5 6.5 0 1 0 4.05 11.6l4.42 4.42a1.5 1.5 0 1 0 2.13-2.12l-4.43-4.43A6.5 6.5 0 0 0 10 3.5zm0 3a3.5 3.5 0 1 1 0 7 3.5 3.5 0 0 1 0-7z"

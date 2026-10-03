@@ -140,36 +140,23 @@ exports[`RevealBurst hero renders default snapshot 1`] = `
       }
       testID="reveal-burst-badge"
     >
-      <Svg
-        fill="none"
-        height={67}
-        viewBox="0 0 24 24"
-        width={67}
-      >
-        <Circle
-          cx="10"
-          cy="10"
-          fill="none"
-          r="6"
-          stroke="#0A0A0B"
-          strokeWidth={6.979166666666667}
-        />
-        <Line
-          stroke="#0A0A0B"
-          strokeLinecap="round"
-          strokeWidth={6.979166666666667}
-          x1="14.2"
-          x2="20"
-          y1="14.2"
-          y2="20"
-        />
-        <Circle
-          cx="20"
-          cy="20"
-          fill="#0A0A0B"
-          r={4.1875}
-        />
-      </Svg>
+      <Image
+        accessibilityElementsHidden={true}
+        fadeDuration={0}
+        importantForAccessibility="no-hide-descendants"
+        resizeMode="contain"
+        source={
+          {
+            "default": 0,
+          }
+        }
+        style={
+          {
+            "height": 56,
+            "width": 56,
+          }
+        }
+      />
     </View>
   </View>
 </View>
@@ -339,36 +326,23 @@ exports[`RevealBurst hero renders with custom particle count 1`] = `
       }
       testID="reveal-burst-badge"
     >
-      <Svg
-        fill="none"
-        height={67}
-        viewBox="0 0 24 24"
-        width={67}
-      >
-        <Circle
-          cx="10"
-          cy="10"
-          fill="none"
-          r="6"
-          stroke="#0A0A0B"
-          strokeWidth={6.979166666666667}
-        />
-        <Line
-          stroke="#0A0A0B"
-          strokeLinecap="round"
-          strokeWidth={6.979166666666667}
-          x1="14.2"
-          x2="20"
-          y1="14.2"
-          y2="20"
-        />
-        <Circle
-          cx="20"
-          cy="20"
-          fill="#0A0A0B"
-          r={4.1875}
-        />
-      </Svg>
+      <Image
+        accessibilityElementsHidden={true}
+        fadeDuration={0}
+        importantForAccessibility="no-hide-descendants"
+        resizeMode="contain"
+        source={
+          {
+            "default": 0,
+          }
+        }
+        style={
+          {
+            "height": 56,
+            "width": 56,
+          }
+        }
+      />
     </View>
   </View>
 </View>
