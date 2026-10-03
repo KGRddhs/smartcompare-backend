@@ -191,6 +191,7 @@ Nothing iOS has ever been signed for the App Store. There has been no production
 
 ### D. Builds (after Claude's U2–U8 are merged): §5
 **SESSION 69 CORRECTION (2026-09-29):** at the close: U2, U3a, U4a, U5, U6 and U7 merged; U3b (D3), U4b (logo file) and U8 (legal inputs) still gate the production build.
+**SESSION 71 NOTE (2026-10-03):** U4b (#279) and U4c (#288) are merged. The launcher icon and the native launch screen change only with a NEW binary: a phone that carried an earlier build keeps the old icon and a cached launch screen until that binary is installed, so delete the old app from the two test iPhones before installing the next preview or production build. The JS-side mark (U4c) arrives by OTA but must also be embedded in the store build (`eas build` from a main that contains #288). U3b (D3) and U8 (the legal inputs) still gate the production build; U4d (#283, the reveal glyph) should land before it.
 
 1. Run the preview build, then a smoke test on the 2 registered iPhones:
    * Apple and Google sign-in
