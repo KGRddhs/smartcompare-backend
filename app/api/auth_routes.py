@@ -1178,7 +1178,7 @@ async def delete_account(
         logger.error(
             "Account deletion failed for user %s: %s", current_user["id"], type(e).__name__
         )
-        raise HTTPException(status_code=500, detail="Account deletion failed")
+        raise HTTPException(status_code=500, detail="Account deletion failed") from None
 
 
 @router.post("/resend-verification")
