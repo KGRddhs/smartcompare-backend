@@ -49,8 +49,9 @@ Read this file first after any compaction or in a new session. Everything here w
 - Follow-ups to file at merge: the client's `@qaren_recent_searches` surviving deletion and logout; an audit-log retention window.
 - Next: Fable gate on the RED tests → Opus GREEN (separate launch, with the PostgreSQL 18 single-user gate) → adversaries → diff review → PR → Ahmed runs PRECHECK, then the one-paste.
 
-### T0b — unit spec written by the orchestrator: `T0B_REPO_TOOLING_SPEC.md` (DRAFT)
-- Next: an Opus adversarial spec review (measures the six open questions), orchestrator rulings, then RED. Base = main `eb86075e` or later. `.mcp.json` stays unchanged until Ahmed applies batch A.
+### T0b — repo tooling (audit batch C); adversarial spec review running: `wf_97fb5fb8-2ff` (task `w1gopvopq`, launched 09:46)
+- Worktree `sc-s71-t0b` (branch `feature/s71-t0b-repo-tooling` from `eb86075e`). Draft spec by the orchestrator: `T0B_REPO_TOOLING_SPEC.md` (copied into the worktree, untracked). The reviewer measures the six open questions (gitleaks invocation, tracked `.env`-like files, PyYAML, ESLint on staged content, the CI job, POSIX sh) and appends binding corrections.
+- Next: orchestrator rulings → Opus RED → gate → GREEN. `.mcp.json` stays unchanged until Ahmed applies batch A.
 
 ## 4. Queue (after the above)
 1. **U4c** in-app MYEZ mark (after U4b merges; a stopped agent left notes + a prototype in scratchpad `u4c/`). Ahmed approved: drop the app-name text beside the mark; splash mark starts at the launch position and full opacity; ONE `jest -u` on the `LoadingRings` snapshot file with a reviewed diff. Keep the `QarenLogo.tsx` path; RN `Image` with `@1x/@2x/@3x` PNGs from the U4b renderer.
