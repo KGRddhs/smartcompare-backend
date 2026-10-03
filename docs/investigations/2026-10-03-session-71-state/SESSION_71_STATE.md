@@ -1,4 +1,4 @@
-# Session 71 — resume state (written 2026-10-03 ~07:57 AST, before context compaction; updated 08:19 after the U4b PR)
+# Session 71 — resume state (written 2026-10-03 ~07:57 AST, before context compaction; updated 08:30 after the U4b merge)
 
 Read this file first after any compaction or in a new session. Everything here was measured or decided in session 71. Companion files in this folder: `IMPLEMENTATION_PLAN.md` (approved), `CONFIG_AUDIT_PLAN.md`, `RESEARCH_DIGEST.md`, `FABLE_REVIEW_RED_U4B.md`, `FABLE_REVIEW_RED_OAI.md`, `TRAFFIC_FINDING_2026-10-02.md`, `ledger.md`.
 
@@ -10,7 +10,7 @@ Read this file first after any compaction or in a new session. Everything here w
 - Nothing flips in production without Ahmed's explicit word. Railway variables by NAME only. Never print secrets.
 
 ## 2. Where things are
-- **main `4bd5a09f`** = #278 (`5ed4f459`: `pyjwt 2.15.1`, `urllib3 2.8.0`, pip-audit clean) + #277 (session-70 docs + both specs with rulings). Railway `web` deployment `491ee9b0` SUCCESS on `4bd5a09f`. `/health` 200. **OpenAI still 429 `credit_balance_exhausted`.** Serper 200, Firecrawl 1,025, Scrape.do 1,000/1,000.
+- **main `eb86075e`** = #279 (U4b, merged 08:28) on top of `4bd5a09f` = #278 (`5ed4f459`: `pyjwt 2.15.1`, `urllib3 2.8.0`, pip-audit clean) + #277 (session-70 docs + both specs with rulings). Railway `web` deployment `491ee9b0` SUCCESS on `4bd5a09f`. `/health` 200. **OpenAI still 429 `credit_balance_exhausted`.** Serper 200, Firecrawl 1,025, Scrape.do 1,000/1,000.
 - **Docs branch** `docs/session-71-checkpoint` (worktree `sc-docs-70`), pushed; this folder lives there. No PR opened yet — open one at the next checkpoint.
 - **Scratchpad** (session-temporary): `C:/Users/SYNACK~1/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/3ffde5dd-0e09-4243-bf73-02955e287dff/scratchpad` — `harness/` (`pyt.py`, `stall_monitor.py` STOPPED at 08:04 when its 2-hour background limit ended; not restartable, so check agent liveness by hand from the workflow journals at each re-invocation, `pr_rest.py`, `issue_rest.py`, `ci_logs.py`, `active_workflows.txt`), `s70-common.txt` (agent rules), `wf_s71_*.js` (workflow scripts), `snap_pre_ff/` (byte copies of RED files), `traffic/` (Railway HTTP + app logs), `ledger_s71.md`.
 - Pinned venv `C:/Users/SynAckITPC/Documents/AI/.venv-qaren` matches the new lock.
@@ -18,11 +18,11 @@ Read this file first after any compaction or in a new session. Everything here w
 
 ## 3. Units in flight
 
-### U4b — icons + Expo SDK 54 bumps + gesture-handler removal + CI split — **PR #279 OPEN** (branch `feature/s70-u4b-icons-deps`, commit `de66a25f`, worktree `sc-s70-u4b` clean)
-- Workflow `wf_053464cc-8cd` finished ~08:10: GREEN, app-review adversary SOUND, engineering adversary found ONE defect (a duplicate `expo-constants`: root 18.0.13 linked natively + nested 18.0.14). The fix agent ran `CI=1 npm update expo-constants` → one 18.0.14 copy, lock `85445af4…`, and re-ran every gate green (W3-7 58/58; full jest 351 suites / 3,448 passed / 44 snapshots; tsc 0; eslint clean, 148 warnings = base; duplicate scan 0; autolinking verify OK; offline check rc 0; renderer `--check` rc 0; iOS `export:embed` OK; npm 10 `ci --dry-run` OK; G11 178 passed).
-- Orchestrator gate (08:10–08:15): all 15 file shas equal the fix report; the test file differs from the gated RED only by the two RQ19 name trims; ONLINE `CI=1 npx expo install --check` rc 0 with no write; `npx expo-doctor` 18/18; diff review of `ci.yml`, `package.json`, the renderer, the PNG helper, the runbook line and the allowlist line. The one new transitive package, `agent-cli-detector 0.1.7`, is a build-time dependency of `@expo/cli 54.0.27` from the Expo org with no install script.
-- PR body = scratchpad `u4b/pr/pr_body.md` (the 13-row version set, correction 4 verbatim, limits). Read `get_status` once per re-invocation; never poll.
-- **Owed:** merge on five green checks (FULL jest again only if a rebase is needed) → file three follow-up issues (U4c; the RQ5 icon variants + Android legacy splash sizing; a CI step for `render_myez_icons.py --check` with a splash-position pin) → the CLAUDE.md blocker #1 line and the runbook fresh-install note in the docs PR → remove the worktree (it has a REAL `node_modules`, no junction) → the U4c spec.
+### U4b — MERGED 08:28 as PR #279 → main `eb86075e` (commit `de66a25f`)
+- Gates, adversaries, the fix and the orchestrator review are in the PR body (`pr/PR_279_U4B_BODY.md`) and the ledger. Follow-up issues: #280 (U4c), #281 (RQ5 icon variants + Android splash sizing), #282 (CI `render_myez_icons.py --check`, splash-position and toggle pins).
+- Railway `web` deployment `e3ef5cfb` was BUILDING for `eb86075e` at 08:29: verify SUCCESS and `/health` 200 at the next re-invocation.
+- Owed in the docs PR: the CLAUDE.md blocker #1 line (launcher art done; the in-app glyph is #280) and the runbook fresh-install note (a phone that had the old build can show the cached launch screen until reinstall).
+- Worktree `sc-s70-u4b` is KEPT: it has a real `node_modules` that matches the new lock, and U4c is built in it on a new branch from main. The U4c spec agent measures in it read-only.
 
 ### OAI/observability — #265, #268, 8 log sites, gather future (worktree `sc-s70-oai`, HEAD `4bd5a09f`, uncommitted)
 - RED DONE by Opus (`wf_15d14c45-c54`), Fable gate PASS. Test shas: url `107b7b79…`, exc_summary `b714ba46…`, prefetch `2c9e279b…`, router `f905b305…`; 116 nodes = 60 RED / 56 PIN.
@@ -33,6 +33,15 @@ Read this file first after any compaction or in a new session. Everything here w
 - Why: `TRAFFIC_FINDING_2026-10-02.md` — 322 anonymous `/text/compare` calls from 155 rotating datacenter IPs on 2026-10-02, 51/min peak, no 429; the repo is public. Ahmed: "not sure" it was his → treat as third-party; **build U13 first, then fund OpenAI**.
 - Spec + adversarial review workflow `wf_b52ebf22-121` (task `ws092cf7t`) launched 07:54 (script `wf_s71_u13_spec.js`; copies of every session-71 workflow script and the agent rules are in this folder's `scripts/`; spec path `sc-s71-u13/docs/investigations/2026-10-03-session-71-state/U13_COMPARE_AUTH_SPEC.md`). Then: Fable rulings → Opus RED → gate → GREEN → adversaries → diff review → PR → deploy → smoke → **Ahmed sets the flag** → anonymous re-probe = 401 → only then the top-up.
 - Design intent: ONE default-OFF flag (suggested `ENABLE_COMPARE_AUTH_REQUIRED`), a single dependency refusing anonymous callers with 401 `AUTH_REQUIRED` before any provider work/metering/log write; an explicit credential for the repo's own harness scripts; expired bearer = a 401 the client refreshes on; flag OFF byte-identical.
+
+### U4c — spec + adversarial review running: `wf_74e3ca0c-880` (task `wr7s1494l`, script `scripts/wf_s71_u4c_spec2.js`, launched 08:22)
+- Opus spec writer then Opus reviewer; they measure read-only in `sc-s70-u4b`; the spec lands in scratchpad `u4c2/U4C_INAPP_MARK_SPEC.md`. The three design calls Ahmed approved are binding inputs. Then: orchestrator rulings → branch `feature/s71-u4c-inapp-mark` from main in `sc-s70-u4b` → Opus RED → gate → GREEN.
+
+### U8b — spec + adversarial review running: `wf_6f7a8d33-23e` (task `wu5sr9nv1`, script `scripts/wf_s71_u8b_spec.js`, launched 08:29)
+- Worktree `sc-s71-u8b` (branch `feature/s71-u8b-account-deletion` from `eb86075e`). Measured before launch: `delete_user_cascade` (migration 025 body) keeps the `users` row and clears only preferences, behaviour profile, push token and fingerprint; email, display name, demographics, attribution and consent columns stay. Spec path `sc-s71-u8b/docs/investigations/2026-10-03-session-71-state/U8B_ACCOUNT_DELETION_SPEC.md`.
+
+### T0b — unit spec written by the orchestrator: `T0B_REPO_TOOLING_SPEC.md` (DRAFT)
+- Next: an Opus adversarial spec review (measures the six open questions), orchestrator rulings, then RED. Base = main `eb86075e` or later. `.mcp.json` stays unchanged until Ahmed applies batch A.
 
 ## 4. Queue (after the above)
 1. **U4c** in-app MYEZ mark (after U4b merges; a stopped agent left notes + a prototype in scratchpad `u4c/`). Ahmed approved: drop the app-name text beside the mark; splash mark starts at the launch position and full opacity; ONE `jest -u` on the `LoadingRings` snapshot file with a reviewed diff. Keep the `QarenLogo.tsx` path; RN `Image` with `@1x/@2x/@3x` PNGs from the U4b renderer.
