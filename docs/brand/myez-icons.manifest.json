@@ -1,0 +1,46 @@
+{
+  "master": {
+    "path": "docs/brand/myez-icon-master-2048.png",
+    "sha256": "70b2f8264d7eb07dbfe7627d332d991dc68429f3440615751bf99eacc05a4b41"
+  },
+  "outputs": {
+    "SmartCompareApp/assets/adaptive-icon.png": {
+      "height": 1024,
+      "mode": "RGBA",
+      "pixels_sha256": "a63c86c3e8f077063bcc603bb6de62eb531a8361419db41f92923fb5e646735b",
+      "sha256": "b336b66be61f3c72a23404f201fdcb444f78aa2d9e8d5974069b306f26cb89ce",
+      "width": 1024
+    },
+    "SmartCompareApp/assets/favicon.png": {
+      "height": 48,
+      "mode": "RGBA",
+      "pixels_sha256": "7627680f1f4c635a40214d9d7f94fda643bfcea8390d405382f3cd0b23c2e655",
+      "sha256": "3d225c46961f8d45a0faa2828a41b7b4e355607971f4e060091ae52e8b21d4d5",
+      "width": 48
+    },
+    "SmartCompareApp/assets/icon.png": {
+      "height": 1024,
+      "mode": "RGB",
+      "pixels_sha256": "0453bb5b1b8cff0f4e906325656655559988bc6a06be0a2d20b30806f08dbd93",
+      "sha256": "2530d5b33098dac3b2aa417982c506d8b93e2bbe5b07d387d78eabc52edc5834",
+      "width": 1024
+    },
+    "SmartCompareApp/assets/splash-icon.png": {
+      "height": 1024,
+      "mode": "RGBA",
+      "pixels_sha256": "35ab76cc17743108d670ff82092f78eef442636fe1a4cf55def018b52cd706db",
+      "sha256": "bf8df272011f8c374bbdd1b681c892a238fa487ad62dfa9df5e84cbb953976b7",
+      "width": 1024
+    }
+  },
+  "params": {
+    "adaptive_margin_px": 8,
+    "canvas": 1024,
+    "favicon_px": 48,
+    "safe_radius_px": 312.889,
+    "splash_ink_width_fraction": 0.3,
+    "tile_white": "#ffffff"
+  },
+  "pillow": "12.3.0",
+  "renderer": "scripts/render_myez_icons.py"
+}

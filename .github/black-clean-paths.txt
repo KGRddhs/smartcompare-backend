@@ -41,6 +41,7 @@ app/services/prompt_personalities.py
 app/utils/__init__.py
 scripts/__init__.py
 scripts/check_channel_freshness.py
+scripts/render_myez_icons.py
 tests/__init__.py
 tests/_route_introspection.py
 tests/fixtures/lane1/__init__.py

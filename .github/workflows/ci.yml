@@ -301,11 +301,37 @@ jobs:
       - name: TypeScript type check
         run: cd SmartCompareApp && npx tsc --noEmit
 
-      # S69 U9 (BLD-BP-08) — reports Expo SDK / native-package version drift
-      # (the 7 patch bumps U4b owes) WITHOUT blocking; `expo install --check`
-      # exits 1 on drift and never writes. Ratchet to blocking once U4b lands
-      # and the step reads clean.
-      - name: Expo dependency drift (non-blocking)
+      # S69 U9 (BLD-BP-08) — RATCHETED in session 70 U4b (spec R10, ruling RQ3:
+      # split) once the SDK-54 patch bumps landed and the check read clean;
+      # react-native-svg is excluded on purpose (expo.install.exclude in
+      # SmartCompareApp/package.json). `expo install --check` exits 1 on drift.
+      #
+      # BLOCKING — the lockfile step. EXPO_OFFLINE=1 compares what `npm ci`
+      # installed from package-lock.json with the INSTALLED expo's own
+      # bundledNativeModules.json: deterministic, it moves only when the repo
+      # does, so it catches every drift a PR can introduce. Blind spot: that
+      # file has no `expo` key and none of the remote-only related packages
+      # (babel-preset-expo, typescript, jest, @types/*), so expo itself is
+      # guarded by jest (nativeBundle.w37 k1/k2) and babel-preset-expo only by
+      # the lock review a bump unit does (U4b spec correction 11).
+      #
+      # REPORT-ONLY — the SDK patch step. Online, the expected versions come
+      # from the Expo versions API, not the lockfile: they move on Expo's
+      # schedule (a new SDK-54 patch release reddens an unchanged main — the
+      # signal to run the next bump unit) and an Expo API error fails the step,
+      # so it never blocks. A network-level failure makes the CLI fall back to
+      # offline mode silently: a run counts as online-verified only when its
+      # log lacks "Dependency validation is unreliable in offline-mode" and
+      # "Networking has been disabled".
+      #
+      # CI sets CI=true and has no TTY, so here the check only reports. Run it
+      # locally as `CI=1 npx expo install --check`: in an interactive terminal
+      # it offers "Fix dependencies?" (default Yes) and rewrites package.json
+      # and package-lock.json.
+      - name: Expo dependency drift (lockfile)
+        run: cd SmartCompareApp && EXPO_OFFLINE=1 npx expo install --check
+
+      - name: Expo SDK patch drift (report-only)
         continue-on-error: true
         run: cd SmartCompareApp && npx expo install --check
 
