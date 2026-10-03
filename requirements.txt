@@ -120,7 +120,7 @@ pydantic-core==2.46.4
     # via pydantic
 pydantic-settings==2.15.0
     # via -r requirements.in
-pyjwt==2.13.0
+pyjwt==2.15.1
     # via supabase-auth
 python-dotenv==1.2.3
     # via
@@ -185,7 +185,7 @@ typing-inspection==0.4.4
     #   pydantic-settings
 upstash-redis==1.7.0
     # via -r requirements.in
-urllib3==2.7.0
+urllib3==2.8.0
     # via
     #   requests
     #   sentry-sdk
