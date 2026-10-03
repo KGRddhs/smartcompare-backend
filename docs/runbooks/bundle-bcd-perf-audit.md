@@ -107,6 +107,8 @@ Net JS bundle add from Bundle B/C/D: **~60 KB** (back-of-envelope). All three ar
 | `react-native-screens` | ✗ false positive — required by `@react-navigation/native-stack` at native-link time | **Keep** |
 | `react-native-vector-icons` | ✗ false positive — referenced from `src/types/react-native-vector-icons.d.ts` (type-only) and `src/services/api.ts`. Used in some legacy chip iconography | **Keep** for now; revisit when Bundle A's lucide-only rule fully replaces vector-icons. |
 
+**SESSION 70 CORRECTION (2026-09-30):** the react-native-gesture-handler row is wrong — a walk of all 1,067 installed manifests found only devDependencies edges (no @react-navigation dependency or peer), and U4b removed the package (npm uninstall + lock).
+
 **Action this commit:** none (per task rule "verify with frontend-bcd's knowledge first").
 
 **Action follow-up runbook:** open a separate dead-deps cleanup PR after Bundle B/C/D merges, gated on:

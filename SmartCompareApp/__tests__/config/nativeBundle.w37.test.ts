@@ -28,12 +28,21 @@
  * expo-camera/android/src/main/AndroidManifest.xml:3) only runs in a real
  * build — these tests assert the `tools:node="remove"` attribute that
  * @expo/config-plugins emits, not Gradle's behaviour.
+ *
+ * Session 70 U4b (docs/investigations/2026-09-30-session-70-state/
+ * U4B_ICONS_DEPS_SPEC.md + its binding review corrections) closes (b) with the
+ * MYEZ art — pinned by PNG header and PIXELS through the inline decoder
+ * __tests__/helpers/pngDecode.ts (R9; Node's zlib, no dependency) — closes (d)
+ * by removing react-native-gesture-handler, and adds the Expo SDK 54
+ * patch-level block (k1-k6) after the U4a block.
  */
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import * as ts from 'typescript';
+import * as zlib from 'zlib';
+import { PNG_SIGNATURE, decodePng, pngChunks, readIhdr, type DecodedPng, type PngIhdr } from '../helpers/pngDecode';
 
 type AnyConfig = any;
 
@@ -43,6 +52,11 @@ const REPO = path.resolve(APP, '..');
 const readJson = (p: string): AnyConfig => JSON.parse(fs.readFileSync(p, 'utf8'));
 const loadExpo = (): AnyConfig => readJson(path.join(APP, 'app.json')).expo;
 const loadPkg = (): AnyConfig => readJson(path.join(APP, 'package.json'));
+const loadLock = (): AnyConfig => readJson(path.join(APP, 'package-lock.json'));
+const installedVersion = (name: string): string | undefined => {
+  const p = path.join(APP, 'node_modules', ...name.split('/'), 'package.json');
+  return fs.existsSync(p) ? (readJson(p).version as string) : undefined;
+};
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v));
 
 const RECORD_AUDIO = 'android.permission.RECORD_AUDIO';
@@ -243,26 +257,29 @@ describe('W3-7 (b) launcher art', () => {
     icon: '74c64047eb557b1341bba7a2831eedde9ddb705e6451a9ad9f5552bf558f13de',
     splashAndAdaptive: '5f4c0a732b6325bf4071d9124d2ae67e037cb24fcc9c482ef82bea742109a3b8',
   };
-  const sha256 = (file: string): string =>
-    crypto.createHash('sha256').update(fs.readFileSync(path.join(APP, 'assets', file))).digest('hex');
+  // The Expo template favicon (48x48 grey+alpha, interlaced) as committed at
+  // base 94c097cd — never part of RECORDED_2026_05_24; pinned by b6.
+  const RECORDED_BASE_94C097CD = {
+    favicon: '24272cdaeff82cc5facdaccd982a6f05b60c4504704bbf94c19a6388659880bb',
+  };
+  const sha256Of = (bytes: Uint8Array): string => crypto.createHash('sha256').update(bytes).digest('hex');
+  const assetBytes = (file: string): Buffer => fs.readFileSync(path.join(APP, 'assets', file));
+  const sha256 = (file: string): string => sha256Of(assetBytes(file));
 
-  // AHMED: flip to true once assets/{icon,splash-icon,adaptive-icon}.png are
-  // re-rendered (CLAUDE.md App-Store blocker #1 / bundle-d-followups ICN-0001).
-  const ICON_ART_SUPPLIED = false;
+  // Session 70 U4b (spec R1/R2): the art is rendered from docs/brand/myez-icon-master-2048.png by scripts/render_myez_icons.py.
+  const ICON_ART_SUPPLIED = true;
   const itArt = ICON_ART_SUPPLIED ? it : it.skip;
 
-  itArt('b1 icon.png differs from the SHA-256 recorded on 2026-05-24 (AHMED: supply art — CLAUDE.md blocker #1 / bundle-d-followups ICN-0001)', () => {
+  itArt('b1 icon.png differs from the SHA-256 recorded on 2026-05-24', () => {
     expect(sha256('icon.png')).not.toBe(RECORDED_2026_05_24.icon);
   });
 
-  itArt('b2 splash-icon.png and adaptive-icon.png differ from the SHA-256 recorded on 2026-05-24 and from each other (AHMED: supply art — CLAUDE.md blocker #1 / bundle-d-followups ICN-0001)', () => {
+  itArt('b2 splash-icon.png and adaptive-icon.png differ from the SHA-256 recorded on 2026-05-24 and from each other', () => {
     expect(sha256('splash-icon.png')).not.toBe(RECORDED_2026_05_24.splashAndAdaptive);
     expect(sha256('adaptive-icon.png')).not.toBe(RECORDED_2026_05_24.splashAndAdaptive);
     // The reproducible placeholder signal: no custom render is byte-identical.
     expect(sha256('splash-icon.png')).not.toBe(sha256('adaptive-icon.png'));
   });
-
-  it.todo('b3-todo flip ICON_ART_SUPPLIED once assets/ are re-rendered');
 
   it('b3 [PRESERVE] the three launcher PNGs exist, are PNGs, and app.json points at them', () => {
     const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
@@ -274,6 +291,315 @@ describe('W3-7 (b) launcher art', () => {
     expect(expo.icon).toBe('./assets/icon.png');
     expect(expo.splash.image).toBe('./assets/splash-icon.png');
     expect(expo.android.adaptiveIcon.foregroundImage).toBe('./assets/adaptive-icon.png');
+  });
+
+  // ---- Session 70 U4b: the MYEZ art, pinned by PNG header and PIXELS --------
+  // Pixel pins run through __tests__/helpers/pngDecode.ts (spec R9). The IHDR
+  // is asserted BEFORE any decode so a wrong colour type names itself instead
+  // of surfacing as a decoder error. Thresholds come from the prototype render
+  // (spec §4.4); the exact committed bytes are pinned by the manifest (b7).
+  const BRAND_DIR = path.join(REPO, 'docs', 'brand');
+  const MASTER_PNG = path.join(BRAND_DIR, 'myez-icon-master-2048.png');
+  const MANIFEST = path.join(BRAND_DIR, 'myez-icons.manifest.json');
+  const RENDERER = path.join(REPO, 'scripts', 'render_myez_icons.py');
+  const MASTER_SHA256 = '70b2f8264d7eb07dbfe7627d332d991dc68429f3440615751bf99eacc05a4b41';
+  const CANVAS = 1024;
+  // Android adaptive icon: the 66 dp safe circle on the 108 dp canvas.
+  const SAFE_RADIUS = (CANVAS * 33) / 108;
+  const ihdr = (width: number, height: number, colorType: 2 | 6): PngIhdr => ({
+    width,
+    height,
+    bitDepth: 8,
+    colorType,
+    interlace: 0,
+  });
+  const chunkTypes = (bytes: Buffer): string[] => pngChunks(bytes).map((c) => c.type);
+  const isEmerald = (r: number, g: number, b: number): boolean => g > r + 60 && g > b + 20;
+  const isNearBlack = (r: number, g: number, b: number): boolean => Math.max(r, g, b) < 40;
+  const px = (img: DecodedPng, x: number, y: number): number[] => {
+    const i = (y * img.width + x) * img.channels;
+    return Array.from(img.pixels.subarray(i, i + img.channels));
+  };
+  const corners = (img: DecodedPng): number[][] => [
+    px(img, 0, 0),
+    px(img, img.width - 1, 0),
+    px(img, 0, img.height - 1),
+    px(img, img.width - 1, img.height - 1),
+  ];
+  /** Width of the bounding box of every pixel with alpha > 0 (RGBA only). */
+  const alphaBboxWidth = (img: DecodedPng): number => {
+    expect(img.channels).toBe(4);
+    let minX = img.width;
+    let maxX = -1;
+    for (let y = 0; y < img.height; y++) {
+      for (let x = 0; x < img.width; x++) {
+        if (img.pixels[(y * img.width + x) * 4 + 3] > 0) {
+          if (x < minX) minX = x;
+          if (x > maxX) maxX = x;
+        }
+      }
+    }
+    expect(maxX).toBeGreaterThanOrEqual(0);
+    return maxX - minX + 1;
+  };
+
+  it('b4 icon.png is a 1024x1024 8-bit truecolour PNG with no alpha channel and no tRNS', () => {
+    // The master's transparent corners are flattened onto the tile white
+    // (spec R3): iOS applies its own mask, and App Store Connect wants opaque.
+    const bytes = assetBytes('icon.png');
+    expect(readIhdr(bytes)).toEqual(ihdr(CANVAS, CANVAS, 2));
+    expect(chunkTypes(bytes)).not.toContain('tRNS');
+  });
+
+  it('b5 adaptive-icon.png and splash-icon.png are 1024x1024 8-bit RGBA PNGs', () => {
+    for (const file of ['adaptive-icon.png', 'splash-icon.png']) {
+      expect({ file, ihdr: readIhdr(assetBytes(file)) }).toEqual({ file, ihdr: ihdr(CANVAS, CANVAS, 6) });
+    }
+  });
+
+  it('b6 favicon.png (web.favicon) is a 48x48 8-bit RGBA PNG and differs from the favicon recorded at base 94c097cd', () => {
+    const bytes = assetBytes('favicon.png');
+    expect(readIhdr(bytes)).toEqual(ihdr(48, 48, 6));
+    expect(sha256Of(bytes)).not.toBe(RECORDED_BASE_94C097CD.favicon);
+  });
+
+  it("b7 the four PNGs are the committed renderer's output (docs/brand/myez-icons.manifest.json)", () => {
+    // spec R4 / §4.5: the manifest pins the committed bytes AND Pillow's
+    // `Image.tobytes()` of each file — the latter is what the inline decoder
+    // returns, so this cross-checks the decoder against Pillow on four real
+    // adaptive-filtered files.
+    expect({ manifest: MANIFEST, exists: fs.existsSync(MANIFEST) }).toEqual({ manifest: MANIFEST, exists: true });
+    const manifest = readJson(MANIFEST);
+    expect(manifest.renderer).toBe('scripts/render_myez_icons.py');
+    expect(manifest.master.path).toBe('docs/brand/myez-icon-master-2048.png');
+    expect(manifest.master.sha256).toBe(sha256Of(fs.readFileSync(MASTER_PNG)));
+    const outputs = ['adaptive-icon.png', 'favicon.png', 'icon.png', 'splash-icon.png'];
+    expect(Object.keys(manifest.outputs).sort()).toEqual(outputs.map((f) => `SmartCompareApp/assets/${f}`));
+    for (const file of outputs) {
+      const entry = manifest.outputs[`SmartCompareApp/assets/${file}`];
+      const bytes = assetBytes(file);
+      const header = readIhdr(bytes);
+      const decoded = decodePng(bytes);
+      expect({ file, sha256: sha256Of(bytes) }).toEqual({ file, sha256: entry.sha256 });
+      expect({ file, pixels_sha256: sha256Of(decoded.pixels) }).toEqual({ file, pixels_sha256: entry.pixels_sha256 });
+      expect({ file, width: decoded.width, height: decoded.height }).toEqual({
+        file,
+        width: entry.width,
+        height: entry.height,
+      });
+      expect({ file, width: header.width, height: header.height }).toEqual({
+        file,
+        width: entry.width,
+        height: entry.height,
+      });
+      // Pillow's mode <-> the PNG colour type <-> the decoder's channel count.
+      expect({ file, mode: entry.mode, colorType: header.colorType, channels: decoded.channels }).toEqual(
+        entry.mode === 'RGB'
+          ? { file, mode: 'RGB', colorType: 2, channels: 3 }
+          : { file, mode: 'RGBA', colorType: 6, channels: 4 },
+      );
+    }
+  });
+
+  it('b8 icon.png pixels: tile-white corners and the MYEZ mark (not the grey template)', () => {
+    const bytes = assetBytes('icon.png');
+    expect(readIhdr(bytes)).toEqual(ihdr(CANVAS, CANVAS, 2));
+    const img = decodePng(bytes);
+    expect(corners(img)).toEqual([
+      [255, 255, 255],
+      [255, 255, 255],
+      [255, 255, 255],
+      [255, 255, 255],
+    ]);
+    let emerald = 0;
+    let nearBlack = 0;
+    for (let i = 0; i < img.pixels.length; i += 3) {
+      const r = img.pixels[i];
+      const g = img.pixels[i + 1];
+      const b = img.pixels[i + 2];
+      if (isEmerald(r, g, b)) emerald++;
+      if (isNearBlack(r, g, b)) nearBlack++;
+    }
+    // Prototype: 3,524 emerald (#10B981 dot) and 151,892 near-black (the
+    // MY/EZ ink) pixels; the grey template has 0 of each (spec §1.15, §4.4).
+    expect(emerald).toBeGreaterThanOrEqual(2000);
+    expect(nearBlack).toBeGreaterThanOrEqual(100000);
+  });
+
+  it('b9 adaptive-icon.png pixels: transparent corners, every inked pixel inside the Android 66 dp safe circle', () => {
+    const bytes = assetBytes('adaptive-icon.png');
+    expect(readIhdr(bytes)).toEqual(ihdr(CANVAS, CANVAS, 6));
+    const img = decodePng(bytes);
+    expect(corners(img).map((c) => c[3])).toEqual([0, 0, 0, 0]);
+    const centre = (CANVAS - 1) / 2; // 511.5 — distances between pixel centres
+    let maxRadius = 0;
+    let opaque = 0;
+    let emeraldOpaque = 0;
+    for (let y = 0; y < img.height; y++) {
+      for (let x = 0; x < img.width; x++) {
+        const i = (y * img.width + x) * 4;
+        const a = img.pixels[i + 3];
+        if (a === 0) continue;
+        const d = Math.hypot(x - centre, y - centre);
+        if (d > maxRadius) maxRadius = d;
+        if (a >= 128) {
+          opaque++;
+          if (isEmerald(img.pixels[i], img.pixels[i + 1], img.pixels[i + 2])) emeraldOpaque++;
+        }
+      }
+    }
+    // Prototype: max radius 305.57 px (8 px inside the 312.89 px safe circle),
+    // 77,320 px at alpha >= 128, 1,716 of them emerald (spec §4.4, §5).
+    expect(maxRadius).toBeLessThanOrEqual(SAFE_RADIUS);
+    expect(opaque).toBeGreaterThanOrEqual(40000);
+    expect(emeraldOpaque).toBeGreaterThanOrEqual(1000);
+  });
+
+  it('b10 splash-icon.png pixels: transparent background, wordmark at ~30% of the canvas width, narrower than the adaptive mark', () => {
+    const bytes = assetBytes('splash-icon.png');
+    expect(readIhdr(bytes)).toEqual(ihdr(CANVAS, CANVAS, 6));
+    const img = decodePng(bytes);
+    expect(corners(img).map((c) => c[3])).toEqual([0, 0, 0, 0]);
+    let transparent = 0;
+    for (let i = 3; i < img.pixels.length; i += 4) if (img.pixels[i] === 0) transparent++;
+    // Prototype: 95.2 % transparent; alpha bbox width 312 px = 30.5 % of the
+    // canvas (spec §4.4) — drawn full-screen-width by the legacy iOS splash
+    // path, that is 112–132 pt on 375–440 pt iPhones (spec §1.10, R3).
+    expect(transparent / (img.width * img.height)).toBeGreaterThanOrEqual(0.9);
+    const width = alphaBboxWidth(img);
+    expect(width).toBeGreaterThanOrEqual(0.28 * CANVAS);
+    expect(width).toBeLessThanOrEqual(0.33 * CANVAS);
+    // The adaptive foreground fills the safe circle; the splash wordmark is
+    // the smaller of the two renders (prototype 312 px vs 407 px).
+    const adaptive = assetBytes('adaptive-icon.png');
+    expect(readIhdr(adaptive)).toEqual(ihdr(CANVAS, CANVAS, 6));
+    expect(width).toBeLessThan(alphaBboxWidth(decodePng(adaptive)));
+  });
+
+  it('b11 [PRESERVE] the white the transparent art is composited over', () => {
+    // adaptive-icon.png and splash-icon.png carry the ink as colour-to-alpha
+    // over a REMOVED white tile (spec §4.3 step 3, §7): they are correct only
+    // over #ffffff, which is what both app.json fields already say.
+    const expo = loadExpo();
+    expect(expo.android.adaptiveIcon.backgroundColor).toBe('#ffffff');
+    expect(expo.splash.backgroundColor).toBe('#ffffff');
+    expect(expo.splash.resizeMode).toBe('contain');
+    expect(expo.web.favicon).toBe('./assets/favicon.png');
+  });
+
+  it('b12 [HARNESS] the inline PNG decoder round-trips all five filter types and refuses what it cannot read', () => {
+    // Proves the harness BEFORE any art exists (spec review correction 13):
+    // a PNG is hand-assembled here — forward-filtered rows, zlib.deflateSync,
+    // raw chunks with a junk CRC (the decoder skips it, R9) — and must decode
+    // to the source pixels exactly.
+    const chunk = (type: string, data: Buffer): Buffer => {
+      const length = Buffer.alloc(4);
+      length.writeUInt32BE(data.length, 0);
+      return Buffer.concat([length, Buffer.from(type, 'latin1'), data, Buffer.from([0xde, 0xad, 0xbe, 0xef])]);
+    };
+    const ihdrChunk = (width: number, height: number, bitDepth: number, colorType: number, interlace: number): Buffer => {
+      const d = Buffer.alloc(13);
+      d.writeUInt32BE(width, 0);
+      d.writeUInt32BE(height, 4);
+      d[8] = bitDepth;
+      d[9] = colorType;
+      d[10] = 0; // compression
+      d[11] = 0; // filter method
+      d[12] = interlace;
+      return chunk('IHDR', d);
+    };
+    const paeth = (a: number, b: number, c: number): number => {
+      const p = a + b - c;
+      const pa = Math.abs(p - a);
+      const pb = Math.abs(p - b);
+      const pc = Math.abs(p - c);
+      if (pa <= pb && pa <= pc) return a;
+      return pb <= pc ? b : c;
+    };
+    /** Forward-filters `pixels` (row-major, `channels` bytes each) as an encoder would, one filter type per row. */
+    const filterRows = (pixels: Uint8Array, width: number, height: number, channels: number, filters: number[]): Buffer => {
+      const stride = width * channels;
+      const out = Buffer.alloc(height * (stride + 1));
+      for (let y = 0; y < height; y++) {
+        const f = filters[y % filters.length];
+        out[y * (stride + 1)] = f;
+        for (let x = 0; x < stride; x++) {
+          const raw = pixels[y * stride + x];
+          const a = x >= channels ? pixels[y * stride + x - channels] : 0;
+          const b = y > 0 ? pixels[(y - 1) * stride + x] : 0;
+          const c = x >= channels && y > 0 ? pixels[(y - 1) * stride + x - channels] : 0;
+          const predictors = [0, a, b, (a + b) >> 1, paeth(a, b, c)];
+          out[y * (stride + 1) + 1 + x] = (raw - predictors[f]) & 0xff;
+        }
+      }
+      return out;
+    };
+    const png = (width: number, height: number, colorType: number, bitDepth: number, interlace: number, idat: Buffer[]): Buffer =>
+      Buffer.concat([
+        PNG_SIGNATURE,
+        ihdrChunk(width, height, bitDepth, colorType, interlace),
+        ...idat.map((d) => chunk('IDAT', d)),
+        chunk('IEND', Buffer.alloc(0)),
+      ]);
+
+    // 3 x 5 RGBA; rows filtered None / Sub / Up / Average / Paeth in turn; the
+    // deflate stream split across TWO IDAT chunks (the committed master carries
+    // 37 — concatenation is load-bearing, spec review correction 1).
+    const width = 3;
+    const height = 5;
+    const channels = 4;
+    const source = new Uint8Array(width * height * channels);
+    for (let i = 0; i < source.length; i++) source[i] = (i * i * 7 + i * 29 + 5) & 0xff;
+    const deflated = zlib.deflateSync(filterRows(source, width, height, channels, [0, 1, 2, 3, 4]));
+    const split = Math.floor(deflated.length / 2);
+    const rgba = png(width, height, 6, 8, 0, [deflated.subarray(0, split), deflated.subarray(split)]);
+    expect(pngChunks(rgba).map((c) => c.type)).toEqual(['IHDR', 'IDAT', 'IDAT', 'IEND']);
+    expect(readIhdr(rgba)).toEqual(ihdr(width, height, 6));
+    const decoded = decodePng(rgba);
+    expect({ width: decoded.width, height: decoded.height, channels: decoded.channels }).toEqual({
+      width,
+      height,
+      channels,
+    });
+    expect(Array.from(decoded.pixels)).toEqual(Array.from(source));
+
+    // 1 x 1 RGB (three channels, bpp 3).
+    const rgb = png(1, 1, 2, 8, 0, [zlib.deflateSync(Buffer.from([0, 10, 200, 30]))]);
+    expect(decodePng(rgb)).toEqual({ width: 1, height: 1, channels: 3, pixels: new Uint8Array([10, 200, 30]) });
+
+    // Refused shapes are rejected on the IHDR, before any IDAT is inflated.
+    const idat = [zlib.deflateSync(Buffer.from([0, 0, 0, 0, 0]))];
+    expect(() => decodePng(png(1, 1, 3, 8, 0, idat))).toThrow(/pngDecode: unsupported colorType 3/);
+    expect(() => decodePng(png(1, 1, 6, 16, 0, idat))).toThrow(/pngDecode: unsupported bitDepth 16/);
+    expect(() => decodePng(png(1, 1, 6, 8, 1, idat))).toThrow(/pngDecode: unsupported interlace 1/);
+    expect(() => readIhdr(Buffer.from('not a png at all', 'latin1'))).toThrow(/pngDecode: bad signature/);
+  });
+
+  it('b13 the MYEZ master is committed with its recorded SHA-256', () => {
+    // spec R1: a byte copy of Ahmed's original MYEZ-icon-white-2048.png
+    // (decision D4); 2048x2048 RGBA, the full-bleed white tile with the mark.
+    expect({ master: MASTER_PNG, exists: fs.existsSync(MASTER_PNG) }).toEqual({ master: MASTER_PNG, exists: true });
+    const bytes = fs.readFileSync(MASTER_PNG);
+    expect(sha256Of(bytes)).toBe(MASTER_SHA256);
+    expect(readIhdr(bytes)).toEqual(ihdr(2048, 2048, 6));
+  });
+
+  it('b14 [SOURCE-SHAPE] scripts/render_myez_icons.py exists, pins the master SHA-256 and writes the four launcher files', () => {
+    // spec R2 / ruling RQ6: the renderer lives under scripts/ (CI ruff + black
+    // cover it) and is the ONLY writer of the four assets — never hand-edited.
+    expect({ renderer: RENDERER, exists: fs.existsSync(RENDERER) }).toEqual({ renderer: RENDERER, exists: true });
+    const text = fs.readFileSync(RENDERER, 'utf8');
+    const needles = [
+      MASTER_SHA256,
+      'docs/brand/myez-icon-master-2048.png',
+      'icon.png',
+      'adaptive-icon.png',
+      'splash-icon.png',
+      'favicon.png',
+    ];
+    for (const needle of needles) {
+      expect({ needle, found: text.includes(needle) }).toEqual({ needle, found: true });
+    }
   });
 });
 
@@ -450,12 +776,13 @@ describe('W3-7 (d) runtime dependencies are imported, justified, or pending remo
   /**
    * Ruling R7 — BINDING: exactly these three fields. A devDependencies edge of
    * an installed library is that library's own test tooling and is never a
-   * reason to ship a native module. Three devDependency decoys exist for
+   * reason to ship a native module. Three devDependency decoys existed for
    * react-native-gesture-handler (measured 2026-09-11 over 898 installed
-   * package.json files): @testing-library/react-native@13.3.3,
-   * react-native-reanimated@4.1.7 and react-native-screens@4.16.0, each
-   * :: devDependencies. Adding 'devDependencies' here would justify the orphan
-   * and silently delete this unit's headline test.
+   * package.json files, before session 70 U4b removed the package):
+   * @testing-library/react-native@13.3.3, react-native-reanimated@4.1.7 and
+   * react-native-screens@4.16.0, each :: devDependencies. Adding
+   * 'devDependencies' here would have justified that orphan and silently
+   * deleted this unit's headline test — and would do the same for the next one.
    */
   const EDGE_FIELDS = ['dependencies', 'peerDependencies', 'optionalDependencies'] as const;
 
@@ -466,7 +793,7 @@ describe('W3-7 (d) runtime dependencies are imported, justified, or pending remo
    * wording includes __tests__; an import inside a test suite — top-level
    * __tests__/ OR a co-located src/**\/__tests__/ — is not a reason to ship a
    * native module into every EAS build. Measured: the outcome is identical
-   * either way (react-native-gesture-handler has 0 test imports; the only
+   * either way (react-native-gesture-handler had 0 test imports; the only
    * zero-src dep with a test import is babel-preset-expo, already justified;
    * excluding the 9 files under src/**\/__tests__ removes no dependency from
    * the imported set — 36 of 43 imported with and without them).
@@ -501,18 +828,7 @@ describe('W3-7 (d) runtime dependencies are imported, justified, or pending remo
    * if the package is ever imported.
    */
   const PENDING_REMOVAL: Record<string, string> = {
-    // MB-SAFE-HYGIENE-06, measured at b63a8368: 0 imports in src/, App.tsx,
-    // index.ts (and 0 imports in __tests__/ — this file names it only as
-    // data); a walk of every installed package.json (1,067 incl. nested
-    // node_modules) finds no dependencies/peerDependencies/
-    // optionalDependencies edge — the only edges are the three
-    // devDependencies decoys named in EDGE_FIELDS' docstring — so no
-    // transitive runtime need exists; package-lock.json references it only as a
-    // ROOT dependency (:45) and its own entry. The navigators the app imports
-    // (@react-navigation/native-stack, bottom-tabs) peer on
-    // react-native-screens + react-native-safe-area-context, NOT on it.
-    'react-native-gesture-handler':
-      'orphan native module (0 app imports, 0 installed runtime/peer edges) — AHMED: npm uninstall + commit package-lock.json, then delete this entry',
+    // react-native-gesture-handler was removed in session 70 U4b (npm uninstall + lock).
   };
 
   // App source only (ruling R11): src/** minus every `__tests__` / `__mocks__`
@@ -747,10 +1063,6 @@ describe('W3-7 (d) runtime dependencies are imported, justified, or pending remo
     expect(() => expectPendingDeclared(fxPkg, { 'fx-uninstalled': 'fixture' })).toThrow(/fx-uninstalled/);
   });
 
-  it.todo(
-    'd3 AHMED: npm uninstall react-native-gesture-handler, commit package-lock.json, delete the PENDING_REMOVAL entry, then eas build',
-  );
-
   it('d4 PENDING_REMOVAL names stay unused: zero app imports and no installed runtime dependency declares them', () => {
     expectPendingUnused(APP, loadPkg(), PENDING_REMOVAL);
     // Fixture: both halves redden the same check — an imported pending name,
@@ -758,6 +1070,30 @@ describe('W3-7 (d) runtime dependencies are imported, justified, or pending remo
     expectPendingUnused(fxRoot, fxPkg, { 'fx-orphan': 'fixture' });
     expect(() => expectPendingUnused(fxRoot, fxPkg, { 'fx-used': 'fixture' })).toThrow(/fx-used/);
     expect(() => expectPendingUnused(fxRoot, fxPkg, { 'fx-peer': 'fixture' })).toThrow(/fx-used:peerDependencies/);
+  });
+
+  it('d5 react-native-gesture-handler is removed from package.json, package-lock.json and node_modules', () => {
+    // Session 70 U4b: the orphan PENDING_REMOVAL used to carry is gone for
+    // good — `npm uninstall` + the committed lock (spec R6/R7; its only lock
+    // dependents, @egjs/hammerjs and @types/hammerjs, leave with it — P8).
+    // With PENDING_REMOVAL empty, d2/d4's real-app halves are vacuous by design
+    // (spec review correction 13); this is the pin that replaces them.
+    const name = 'react-native-gesture-handler';
+    const pkg = loadPkg();
+    const lock = loadLock();
+    expect({
+      dependencies: pkg.dependencies?.[name],
+      devDependencies: pkg.devDependencies?.[name],
+      lockRootDependencies: lock.packages['']?.dependencies?.[name],
+      lockPackage: lock.packages[`node_modules/${name}`]?.version,
+      installed: fs.existsSync(path.join(APP, 'node_modules', name)),
+    }).toEqual({
+      dependencies: undefined,
+      devDependencies: undefined,
+      lockRootDependencies: undefined,
+      lockPackage: undefined,
+      installed: false,
+    });
   });
 });
 
@@ -775,6 +1111,17 @@ describe('W3-7 (e) runtime pin and preserved config', () => {
     // release commit must not assume app.json `version` alone drives it.
     // W3-7's app.json edits (permissions, plugin options, blockedPermissions,
     // privacyManifests) are runtimeVersion-neutral.
+    // U4b (session 70) moved native patch versions without moving expo.version
+    // — measured JS-compatible with the 1.0.0 preview binary (spec §1.3); those
+    // native fixes reach testers only through a new build. The executable rule
+    // (spec review correction 4, ruling RQ2): Before the first `eas update
+    // --branch preview` from a main that contains U4b: (a) `npm ls` shows
+    // exactly the version set recorded in the U4b PR body; (b) diff `@expo/cli`
+    // `build/src/export/**` (the code `eas update` runs; not diffed in §1.3,
+    // see §7) between 54.0.24 and the installed version, or smoke-test that OTA
+    // on one tester device before announcing it; (c) any later expo-package
+    // bump repeats (a)–(b) or bumps `expo.version`. From the first production
+    // build on, every native change bumps `expo.version`.
     const expo = loadExpo();
     expect(expo.runtimeVersion).toEqual({ policy: 'appVersion' });
     expect(expo.version).toBe('1.0.0');
@@ -1148,5 +1495,181 @@ describe('session 69 U4a', () => {
     // correction 5). Line wraps are normalised before matching.
     const md = fs.readFileSync(INVENTORY_DOC, 'utf8').replace(/\s+/g, ' ');
     expect(md).not.toMatch(/there is no `NSMicrophoneUsageDescription` on iOS/);
+  });
+});
+
+// ===========================================================================
+// Session 70 U4b — Expo SDK 54 patch level with one deliberate exclusion
+// ===========================================================================
+// Spec: docs/investigations/2026-09-30-session-70-state/U4B_ICONS_DEPS_SPEC.md
+// with its binding review corrections and the session-71 orchestrator rulings
+// (RQ1 ALIGN eslint-config-expo to ~10.0.0, RQ3 split the CI step). NATIVE:
+// the patch bumps and the gesture-handler removal (d5) reach users only
+// through `eas build`. `npx expo install --check` compares the installed
+// packages with the Expo API's expected map ONLINE and with the installed
+// expo's own bundledNativeModules.json OFFLINE (EXPO_OFFLINE=1): k5 is the
+// offline check's in-jest twin, k6 pins the CI split (blocking offline step,
+// report-only online step). react-native-svg is excluded on purpose (k3): SDK
+// 54 bundles exact 15.12.1 while the preview binary already runs 15.15.5 and
+// a downgrade would be a native change nobody asked for (spec §1.5).
+describe('session 70 U4b — Expo SDK 54 patch level with one deliberate exclusion', () => {
+  const CI_YML = path.join(REPO, '.github', 'workflows', 'ci.yml');
+  const BUNDLED = path.join(APP, 'node_modules', 'expo', 'bundledNativeModules.json');
+  const EXCLUDE = ['react-native-svg'];
+  // The SDK-54 patch level `expo install --check` expected on 2026-09-30 and
+  // again on 2026-10-03 (spec §1.1, ruling RQ8: the registry's newest).
+  const SDK54_TARGETS: Record<string, string> = {
+    expo: '54.0.37',
+    'expo-font': '14.0.12',
+    'expo-localization': '17.0.9',
+    'expo-screen-capture': '8.0.10',
+    'expo-updates': '29.0.20',
+  };
+  const OFFLINE_RUN = 'cd SmartCompareApp && EXPO_OFFLINE=1 npx expo install --check';
+  const ONLINE_RUN = 'cd SmartCompareApp && npx expo install --check';
+
+  type Semver = [number, number, number];
+  const parseSemver = (v: string | undefined): Semver | null => {
+    const m = /^(\d+)\.(\d+)\.(\d+)$/.exec(v ?? '');
+    return m === null ? null : [Number(m[1]), Number(m[2]), Number(m[3])];
+  };
+  const cmp = (a: Semver, b: Semver): number => a[0] - b[0] || a[1] - b[1] || a[2] - b[2];
+  /** `version` has `target`'s major.minor and a patch at or above it. */
+  const atOrAbovePatch = (version: string | undefined, target: string): boolean => {
+    const have = parseSemver(version);
+    const want = parseSemver(target);
+    return have !== null && want !== null && have[0] === want[0] && have[1] === want[1] && have[2] >= want[2];
+  };
+  /** A declared `~x.y.z` range whose x.y.z is at or above `target`'s patch. */
+  const tildeAtOrAbove = (declared: string | undefined, target: string): boolean =>
+    typeof declared === 'string' && declared.startsWith('~') && atOrAbovePatch(declared.slice(1), target);
+  /**
+   * The range forms bundledNativeModules.json uses: exact `x.y.z`, `~x.y.z`
+   * (same major.minor, patch >=) and `^x.y.z` (same major, >= x.y.z; a 0.y.z
+   * caret pins the minor like a tilde). Any other form is reported by name,
+   * never guessed at.
+   */
+  const satisfies = (installed: string, range: string): boolean | 'unsupported range' => {
+    const m = /^([~^]?)(\d+\.\d+\.\d+)$/.exec(range);
+    if (m === null) return 'unsupported range';
+    const have = parseSemver(installed);
+    const want = parseSemver(m[2]);
+    if (have === null || want === null) return false;
+    if (m[1] === '') return cmp(have, want) === 0;
+    if (m[1] === '~' || want[0] === 0) return atOrAbovePatch(installed, m[2]);
+    return have[0] === want[0] && cmp(have, want) >= 0;
+  };
+  const lockVersion = (name: string): string | undefined =>
+    loadLock().packages[`node_modules/${name}`]?.version as string | undefined;
+  // An `expo.install.exclude` entry may carry a range (`name@range`,
+  // @expo/cli validateDependenciesVersions.js); only the name matters here.
+  const excludedName = (entry: string): string =>
+    entry.lastIndexOf('@') > 0 ? entry.slice(0, entry.lastIndexOf('@')) : entry;
+
+  it('k1 package.json declares the five SDK-54 packages at or above the patch expo install --check expects', () => {
+    const deps = loadPkg().dependencies;
+    const rows = Object.entries(SDK54_TARGETS).map(([name, target]) => {
+      const declared: string | undefined = deps[name];
+      return { name, target, declared, ok: tildeAtOrAbove(declared, target) };
+    });
+    expect(rows).toEqual(rows.map((r) => ({ ...r, ok: true })));
+  });
+
+  it('k2 package-lock.json and node_modules resolve the five packages at or above those patches', () => {
+    const rows = Object.entries(SDK54_TARGETS).map(([name, target]) => {
+      const lock = lockVersion(name);
+      const installed = installedVersion(name);
+      return { name, target, lock, installed, ok: atOrAbovePatch(lock, target) && atOrAbovePatch(installed, target) };
+    });
+    expect(rows).toEqual(rows.map((r) => ({ ...r, ok: true })));
+  });
+
+  it('k3 expo.install.exclude is exactly ["react-native-svg"]', () => {
+    // spec R6: the ONE new top-level key, added BEFORE any `expo install` runs
+    // (P1) so every later install honours it. eslint-config-expo is aligned
+    // (k4), not excluded (ruling RQ1).
+    expect(loadPkg().expo).toEqual({ install: { exclude: EXCLUDE } });
+  });
+
+  it('k4 eslint-config-expo is on the SDK-54 line (~10.0.x) in package.json, the lock and node_modules', () => {
+    // Ruling RQ1 (ALIGN): the 10.0.0 and 55.0.1 tarballs differ in package.json
+    // only — version, gitHead and the eslint-plugin-expo range, which the
+    // installed 1.0.3 satisfies either way (spec §1.4) — so aligning changes
+    // zero lint rules; eslint.config.js keeps `require('eslint-config-expo/flat')`.
+    const name = 'eslint-config-expo';
+    const pkg = loadPkg();
+    expect({
+      declared: pkg.devDependencies?.[name],
+      runtime: pkg.dependencies?.[name],
+      lock: lockVersion(name),
+      installed: installedVersion(name),
+    }).toEqual({
+      declared: expect.stringMatching(/^~10\.0\.\d+$/),
+      runtime: undefined,
+      lock: expect.stringMatching(/^10\.0\.\d+$/),
+      installed: expect.stringMatching(/^10\.0\.\d+$/),
+    });
+  });
+
+  it('k5 offline expo-install consistency: every declared package the installed expo bundles satisfies its bundled range, apart from expo.install.exclude', () => {
+    // The in-jest twin of `EXPO_OFFLINE=1 npx expo install --check` (spec
+    // §1.1): the INSTALLED versions against the INSTALLED expo's
+    // bundledNativeModules.json, honouring expo.install.exclude the way
+    // @expo/cli checkPackages.js / validateDependenciesVersions.js do.
+    const pkg = loadPkg();
+    const bundled: Record<string, string> = readJson(BUNDLED);
+    const excluded = ((pkg.expo?.install?.exclude ?? []) as string[]).map(excludedName);
+    // An exclusion that names nothing the bundle lists would be a typo, not a decision.
+    for (const name of excluded) {
+      expect({ excluded: name, bundled: bundled[name] }).toEqual({ excluded: name, bundled: expect.any(String) });
+    }
+    const declared = [...Object.keys(pkg.dependencies ?? {}), ...Object.keys(pkg.devDependencies ?? {})];
+    const checked: { name: string; installed: string | undefined; bundled: string; verdict: boolean | 'unsupported range' }[] = [];
+    for (const name of declared) {
+      const range = bundled[name];
+      if (range === undefined || excluded.includes(name)) continue;
+      const installed = installedVersion(name);
+      checked.push({ name, installed, bundled: range, verdict: installed === undefined ? false : satisfies(installed, range) });
+    }
+    expect(checked.length).toBeGreaterThan(0);
+    expect(checked.filter((c) => c.verdict !== true)).toEqual([]);
+  });
+
+  it('k6 CI: the frontend-tests expo install --check step is blocking and no longer named non-blocking (Q3 = B: the EXPO_OFFLINE=1 lockfile step blocks; the online step stays report-only)', () => {
+    // Ruling RQ3 / spec R10 (option B): a text parse of ci.yml — the YAML is
+    // split on /\r?\n/ (the file checks out CRLF on Windows), the job runs from
+    // `  frontend-tests:` to the next line at indent 2, a step runs from its
+    // `      - ` to the next one. The online map moves on Expo's schedule and
+    // on API outages (spec §1.1), so only the offline (lockfile) step may block.
+    const lines = fs.readFileSync(CI_YML, 'utf8').split(/\r?\n/);
+    const jobStart = lines.findIndex((l) => l === '  frontend-tests:');
+    expect(jobStart).toBeGreaterThanOrEqual(0);
+    const after = lines.findIndex((l, i) => i > jobStart && /^  \S/.test(l));
+    const job = lines.slice(jobStart, after === -1 ? lines.length : after);
+    const stepsAt = job.findIndex((l) => l === '    steps:');
+    expect(stepsAt).toBeGreaterThan(0);
+    // No job-level continue-on-error either.
+    expect(job.slice(0, stepsAt).filter((l) => l.includes('continue-on-error'))).toEqual([]);
+    const starts = job.map((l, i) => (/^      - /.test(l) ? i : -1)).filter((i) => i >= 0);
+    const steps = starts.map((start, k) => {
+      const block = job.slice(start, k + 1 < starts.length ? starts[k + 1] : job.length);
+      const field = (key: string): string | undefined => {
+        const re = new RegExp(`^\\s+(?:- )?${key}: (.*)$`);
+        const hit = block.map((l) => re.exec(l)).find((m) => m !== null);
+        return hit ? hit[1].trim() : undefined;
+      };
+      return { name: field('name'), run: field('run'), continueOnError: field('continue-on-error') };
+    });
+    expect(steps.filter((s) => s.name === 'Expo dependency drift (non-blocking)')).toEqual([]);
+    expect(steps.filter((s) => s.run === OFFLINE_RUN)).toEqual([
+      { name: 'Expo dependency drift (lockfile)', run: OFFLINE_RUN, continueOnError: undefined },
+    ]);
+    expect(steps.filter((s) => s.run === ONLINE_RUN)).toEqual([
+      { name: 'Expo SDK patch drift (report-only)', run: ONLINE_RUN, continueOnError: 'true' },
+    ]);
+    // The blocking step first, the report-only step after it (R10 "followed by").
+    const at = (name: string): number => steps.findIndex((s) => s.name === name);
+    expect(at('Expo dependency drift (lockfile)')).toBeGreaterThanOrEqual(0);
+    expect(at('Expo dependency drift (lockfile)')).toBeLessThan(at('Expo SDK patch drift (report-only)'));
   });
 });
