@@ -294,19 +294,40 @@ export async function identifyFromImages(
   // soft retryable state.
   const controller = new AbortController();
   const abortTimer = setTimeout(() => controller.abort(), IDENTIFY_TIMEOUT_MS);
+  // S71 U13c: built once, reused by the one retry below.
+  const identifyUrl = `${API_BASE_URL}/api/v1/image/identify?region=${encodeURIComponent(region)}`;
   try {
-  const response = await fetch(
-    `${API_BASE_URL}/api/v1/image/identify?region=${encodeURIComponent(region)}`,
-    {
-      method: 'POST',
-      body: formData,
-      headers,
-      signal: controller.signal,
+  let response = await fetch(identifyUrl, {
+    method: 'POST',
+    body: formData,
+    headers,
+    signal: controller.signal,
+  });
+
+  // S71 U13c: this raw fetch never meets the axios 401 interceptor, so an
+  // expired bearer (401 AUTH_REQUIRED since U13) gets the same treatment
+  // here: ONE refresh through the shared single flight, then ONE retry with
+  // the same URL, the same FormData, the same deadline signal and the new
+  // bearer. A failed refresh sends nothing more and throws the FIRST 401
+  // below; its body was read here already (a fetch body reads only once).
+  let unretriedAuthBody: string | null = null;
+  if (response.status === 401) {
+    const firstAuthBody = await response.text();
+    const refreshedToken = await waitForIdentifyRefresh(controller.signal);
+    if (refreshedToken) {
+      response = await fetch(identifyUrl, {
+        method: 'POST',
+        body: formData,
+        headers: { Authorization: `Bearer ${refreshedToken}` },
+        signal: controller.signal,
+      });
+    } else {
+      unretriedAuthBody = firstAuthBody;
     }
-  );
+  }
 
   if (!response.ok) {
-    const errorText = await response.text();
+    const errorText = unretriedAuthBody ?? (await response.text());
 
     // H3: detect USAGE_LIMIT on the camera path (raw fetch — no axios
     // interceptor here). Backend returns the same shapes as axios
@@ -371,6 +392,46 @@ export async function identifyFromImages(
   } finally {
     clearTimeout(abortTimer);
   }
+}
+
+/**
+ * S71 U13c: the camera's wait for its one token refresh after a 401.
+ *
+ * Joins the shared single flight (getOrStartRefresh, zero arguments) and
+ * races only the WAIT against the identify deadline signal (P-A3): the
+ * signal never reaches the refresh, which runs to completion and stores or
+ * clears the session itself, whatever happens to this call.
+ *
+ * Resolves the new access token, or null when the refresh produced none.
+ * A refresh rejection also resolves null: its status belongs to
+ * /auth/refresh, never to the camera, and the caller throws the first 401
+ * instead. Rejects with an AbortError when the deadline fires first, which
+ * identifyFromImages maps to TIMEOUT with nothing re-sent. The abort
+ * listener is removed as soon as the race settles, and a refresh that
+ * settles after a lost race is still handled here (no unhandled rejection).
+ */
+function waitForIdentifyRefresh(signal: AbortSignal): Promise<string | null> {
+  return new Promise<string | null>((resolve, reject) => {
+    const onAbort = () => {
+      signal.removeEventListener('abort', onAbort);
+      reject(Object.assign(new Error('Aborted'), { name: 'AbortError' }));
+    };
+    getOrStartRefresh().then(
+      (result) => {
+        signal.removeEventListener('abort', onAbort);
+        resolve(result?.success && result.token ? result.token : null);
+      },
+      () => {
+        signal.removeEventListener('abort', onAbort);
+        resolve(null);
+      }
+    );
+    if (signal.aborted) {
+      onAbort();
+    } else {
+      signal.addEventListener('abort', onAbort);
+    }
+  });
 }
 
 /**
