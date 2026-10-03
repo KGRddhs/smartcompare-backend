@@ -1,4 +1,6 @@
-"""Render the MYEZ launcher art from the committed master (session 70 U4b).
+"""Render the MYEZ launcher art and in-app mark from the committed master.
+
+Session 70 U4b (the four launcher files) and session 71 U4c (the in-app mark).
 
 Input: ``docs/brand/myez-icon-master-2048.png`` -- Ahmed's original 2048x2048
 RGBA master (decision D4): a full-bleed white rounded tile carrying the black
@@ -18,12 +20,26 @@ Outputs, the four files ``SmartCompareApp/app.json`` points at:
   * ``SmartCompareApp/assets/favicon.png`` -- 48x48 RGBA: the rounded tile with
     its transparent corners (``web.favicon``).
 
+and the in-app mark ``src/components/QarenLogo.tsx`` draws (U4c), three
+scales of one image that React Native picks from by pixel density:
+
+  * ``SmartCompareApp/assets/brand/myez-mark.png`` -- 128x128 RGBA,
+  * ``SmartCompareApp/assets/brand/myez-mark@2x.png`` -- 256x256 RGBA,
+  * ``SmartCompareApp/assets/brand/myez-mark@3x.png`` -- 384x384 RGBA:
+    the same white-removed mark cropped to its ink box and padded, centred,
+    to a transparent square, then scaled down.
+
 plus the manifest ``docs/brand/myez-icons.manifest.json``: the master SHA-256,
 the Pillow version, the parameters, and per output the file SHA-256, the
 SHA-256 of the decoded pixels (``Image.tobytes()`` in the file's own mode),
-width, height and mode. JSON, sorted keys, 2-space indent, LF, no timestamps.
+width, height and mode -- the four launcher rows under ``outputs``, the three
+mark rows under ``mark_outputs`` -- and ``mark_geometry``: the ink box and the
+mark square in master pixels and the splash placement (canvas, scaled master
+side, offset) that ``SmartCompareApp/src/utils/splashMarkLayout.ts`` mirrors
+so the JS splash mark lands on the native launch-screen pixels. JSON, sorted
+keys, 2-space indent, LF, no timestamps.
 
-The two transparent renders carry the ink as colour-to-alpha over a REMOVED
+The transparent renders carry the ink as colour-to-alpha over a REMOVED
 white tile: they are correct only over #ffffff, which is what
 ``android.adaptiveIcon.backgroundColor`` and ``splash.backgroundColor`` say.
 The composition keeps the master's own offset (the ink sits 32 px right of the
@@ -45,7 +61,8 @@ failed (master SHA-256 or header, or an unpinned Pillow without
 
 Pure stdlib + Pillow; no network, no randomness, no timestamps.
 Spec: docs/investigations/2026-09-30-session-70-state/U4B_ICONS_DEPS_SPEC.md
-section 4 (and its binding review corrections 9 and 10).
+section 4 (and its binding review corrections 9 and 10); the mark outputs:
+docs/investigations/2026-10-03-session-71-state/U4C_INAPP_MARK_SPEC.md 2h.
 """
 
 from __future__ import annotations
@@ -76,6 +93,15 @@ ADAPTIVE = "adaptive-icon.png"
 SPLASH = "splash-icon.png"
 FAVICON_NAME = "favicon.png"
 OUTPUT_NAMES = (ADAPTIVE, FAVICON_NAME, ICON, SPLASH)
+# The in-app mark (U4c): one image at React Native's 1x / @2x / @3x scales.
+# Kept OUT of OUTPUT_NAMES and the manifest's ``outputs`` (which pin exactly
+# the four launcher files); they ride ``mark_outputs`` instead.
+MARK_SIZES = (
+    ("brand/myez-mark.png", 128),
+    ("brand/myez-mark@2x.png", 256),
+    ("brand/myez-mark@3x.png", 384),
+)
+MARK_NAMES = tuple(name for name, _side in MARK_SIZES)
 
 # = requirements-dev.txt; another Pillow needs --any-pillow (a deliberate
 # re-baseline -- the manifest records the version actually used).
@@ -206,18 +232,44 @@ def ink_radius(mark: Image.Image) -> float:
     return best
 
 
+def placement(side: int, scale: float) -> tuple[int, int]:
+    """(scaled side, offset) of a ``side``-px square scaled and centred on CANVAS."""
+    size = round(side * scale)
+    return size, (CANVAS - size) // 2
+
+
 def place_scaled(mark: Image.Image, scale: float) -> Image.Image:
     """The full-canvas mark scaled about its centre onto a transparent canvas."""
-    size = round(mark.size[0] * scale)
+    size, offset = placement(mark.size[0], scale)
     scaled = mark.resize((size, size), RESAMPLE)
     out = Image.new("RGBA", (CANVAS, CANVAS), (0, 0, 0, 0))
-    offset = (CANVAS - size) // 2
     out.alpha_composite(scaled, (offset, offset))
     return out
 
 
-def render(master: Image.Image) -> dict[str, Image.Image]:
-    """The four outputs, keyed by file name (spec section 4.3)."""
+def mark_square(
+    mark: Image.Image, bbox: tuple[int, int, int, int]
+) -> tuple[Image.Image, list[int]]:
+    """The mark's ink box padded, centred, to a transparent square (U4c).
+
+    Returns the square and ``[x0, y0, side]``: its origin and side in master
+    pixels. ``paste`` is an exact copy of the cropped pixels.
+    """
+    left, top, right, bottom = bbox
+    width, height = right - left, bottom - top
+    side = max(width, height)
+    pad_x, pad_y = (side - width) // 2, (side - height) // 2
+    square = Image.new("RGBA", (side, side), (0, 0, 0, 0))
+    square.paste(mark.crop(bbox), (pad_x, pad_y))
+    return square, [left - pad_x, top - pad_y, side]
+
+
+def render(master: Image.Image) -> tuple[dict[str, Image.Image], dict]:
+    """The seven outputs keyed by name, and the manifest's ``mark_geometry``.
+
+    The four launcher files follow U4B spec section 4.3; the three mark
+    scales and the geometry follow U4C spec section 2h.
+    """
     base = Image.new("RGBA", master.size, TILE_WHITE + (255,))
     base.alpha_composite(master)
     icon = base.convert("RGB").resize((CANVAS, CANVAS), RESAMPLE)
@@ -227,13 +279,31 @@ def render(master: Image.Image) -> dict[str, Image.Image]:
     adaptive_scale = (SAFE_RADIUS - ADAPTIVE_MARGIN) / ink_radius(mark)
     adaptive = place_scaled(mark, adaptive_scale)
 
-    left, _top, right, _bottom = mark.getchannel("A").getbbox()
+    bbox = mark.getchannel("A").getbbox()
+    left, _top, right, _bottom = bbox
     splash_scale = SPLASH_INK_WIDTH_FRACTION * CANVAS / (right - left)
     splash = place_scaled(mark, splash_scale)
 
     favicon = master.resize((FAVICON, FAVICON), RESAMPLE)
 
-    return {ICON: icon, ADAPTIVE: adaptive, SPLASH: splash, FAVICON_NAME: favicon}
+    images = {ICON: icon, ADAPTIVE: adaptive, SPLASH: splash, FAVICON_NAME: favicon}
+
+    square, square_master_px = mark_square(mark, bbox)
+    for name, side in MARK_SIZES:
+        images[name] = square.resize((side, side), RESAMPLE)
+
+    # The same arithmetic place_scaled used for the splash: the side the
+    # 2048-px mark canvas is scaled to and its offset on the 1024 canvas.
+    splash_mark_px, splash_offset_px = placement(mark.size[0], splash_scale)
+    geometry = {
+        "ink_bbox_master_px": list(bbox),
+        "mark_square_master_px": square_master_px,
+        "master_px": master.size[0],
+        "splash_canvas_px": CANVAS,
+        "splash_mark_px": splash_mark_px,
+        "splash_offset_px": splash_offset_px,
+    }
+    return images, geometry
 
 
 def encode_png(img: Image.Image) -> bytes:
@@ -256,20 +326,27 @@ def output_rel(name: str) -> str:
     return f"{ASSETS_REL}/{name}"
 
 
-def build_manifest(images: dict[str, Image.Image], file_sha256: dict[str, str]) -> dict:
-    outputs = {}
-    for name in OUTPUT_NAMES:
-        img = images[name]
-        outputs[output_rel(name)] = {
-            "height": img.size[1],
-            "mode": img.mode,
-            "pixels_sha256": sha256_hex(img.tobytes()),
-            "sha256": file_sha256[name],
-            "width": img.size[0],
-        }
+def build_manifest(
+    images: dict[str, Image.Image], file_sha256: dict[str, str], geometry: dict
+) -> dict:
+    def rows(names: tuple[str, ...]) -> dict:
+        out = {}
+        for name in names:
+            img = images[name]
+            out[output_rel(name)] = {
+                "height": img.size[1],
+                "mode": img.mode,
+                "pixels_sha256": sha256_hex(img.tobytes()),
+                "sha256": file_sha256[name],
+                "width": img.size[0],
+            }
+        return out
+
     return {
+        "mark_geometry": geometry,
+        "mark_outputs": rows(MARK_NAMES),
         "master": {"path": MASTER_REL, "sha256": MASTER_SHA256},
-        "outputs": outputs,
+        "outputs": rows(OUTPUT_NAMES),
         "params": {
             "adaptive_margin_px": ADAPTIVE_MARGIN,
             "canvas": CANVAS,
@@ -288,11 +365,12 @@ def manifest_text(manifest: dict) -> str:
 
 
 def write_outputs(images: dict[str, Image.Image], out_dir: Path) -> dict[str, str]:
-    out_dir.mkdir(parents=True, exist_ok=True)
     file_sha256 = {}
-    for name in OUTPUT_NAMES:
+    for name in OUTPUT_NAMES + MARK_NAMES:
         data = encode_png(images[name])
-        (out_dir / name).write_bytes(data)
+        path = out_dir / name
+        path.parent.mkdir(parents=True, exist_ok=True)  # brand/ for the mark
+        path.write_bytes(data)
         file_sha256[name] = sha256_hex(data)
         img = images[name]
         size = f"{img.size[0]}x{img.size[1]}"
@@ -300,11 +378,11 @@ def write_outputs(images: dict[str, Image.Image], out_dir: Path) -> dict[str, st
     return file_sha256
 
 
-def check(images: dict[str, Image.Image]) -> list[str]:
+def check(images: dict[str, Image.Image], geometry: dict) -> list[str]:
     """Every difference between the committed files and a fresh render."""
     problems = []
     file_sha256 = {}
-    for name in OUTPUT_NAMES:
+    for name in OUTPUT_NAMES + MARK_NAMES:
         rel = output_rel(name)
         path = REPO / rel
         if not path.is_file():
@@ -326,7 +404,7 @@ def check(images: dict[str, Image.Image]) -> list[str]:
             size = f"{fresh.size[0]}x{fresh.size[1]}"
             print(f"{name} {fresh.mode} {size} pixels match")
     path = REPO / MANIFEST_REL
-    expected = build_manifest(images, file_sha256)
+    expected = build_manifest(images, file_sha256, geometry)
     if not path.is_file():
         problems.append(f"{MANIFEST_REL}: missing")
     elif json.loads(path.read_text(encoding="utf-8")) != expected:
@@ -360,10 +438,10 @@ def main(argv: list[str] | None = None) -> int:
     except PreconditionError as exc:
         print(str(exc), file=sys.stderr)
         return 2
-    images = render(master)
+    images, geometry = render(master)
 
     if args.check:
-        problems = check(images)
+        problems = check(images, geometry)
         for problem in problems:
             print(f"MISMATCH {problem}")
         return 1 if problems else 0
@@ -371,7 +449,7 @@ def main(argv: list[str] | None = None) -> int:
         write_outputs(images, args.out_dir)
         return 0
     file_sha256 = write_outputs(images, REPO / ASSETS_REL)
-    text = manifest_text(build_manifest(images, file_sha256))
+    text = manifest_text(build_manifest(images, file_sha256, geometry))
     with open(REPO / MANIFEST_REL, "w", encoding="utf-8", newline="\n") as handle:
         handle.write(text)
     print(f"{Path(MANIFEST_REL).name} {sha256_hex(text.encode('utf-8'))}")

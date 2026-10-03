@@ -3,7 +3,8 @@
  *
  * REWRITTEN top-down per docs/claude-design-handoff/ui_kits/mobile/
  * HomeScreen.jsx (1-717). Element order:
- *   1. Header        — QarenLogo + "Qaren" word + HeaderCounter pill
+ *   1. Header        — QarenLogo (the MYEZ mark alone; U4c D1 dropped
+ *                      the app-name word beside it) + HeaderCounter pill
  *                      [JSX:674-683]
  *   2. Hero          — "Compare anything." 600/16 [JSX:685-691]
  *   3. CategoryStrip — horizontal scroll of 5 cats [JSX:693, 391-432]
@@ -894,11 +895,11 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* 1. Header — Q logo + Qaren wordmark + HeaderCounter pill */}
+      {/* 1. Header — the MYEZ mark + HeaderCounter pill. U4c D1: the mark
+          stands alone, with no app-name text beside it. */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <QarenLogo size={28} />
-          <Text style={[styles.logo, styles.logoSpaced]}>{t('app.name')}</Text>
         </View>
         {/* M13-14: the header counter pill renders UNCONDITIONALLY — it is
             NOT under the `canCompare` guard. A paywalled user (canCompare
@@ -1203,14 +1204,6 @@ const styles = StyleSheet.create({
   headerLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-  },
-  logo: {
-    ...typography.title,
-    fontWeight: '700',
-    color: colors.text.primary,
-  },
-  logoSpaced: {
-    marginStart: spacing.sm,
   },
   headerCounter: {
     flexDirection: 'row',

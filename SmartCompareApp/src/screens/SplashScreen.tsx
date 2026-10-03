@@ -1,15 +1,15 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet, Dimensions, I18nManager } from 'react-native';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withTiming,
   withDelay,
-  Easing,
 } from 'react-native-reanimated';
 import { useTranslation } from 'react-i18next';
 import { colors, typography, spacing } from '../theme';
 import QarenLogo from '../components/QarenLogo';
+import { splashMarkLayout } from '../utils/splashMarkLayout';
 
 /**
  * A5 — the brand moment is a FLOOR, not a fixed toll.
@@ -40,8 +40,6 @@ interface SplashScreenProps {
 
 export default function SplashScreen({ onFinish, ready = false }: SplashScreenProps) {
   const { t } = useTranslation();
-  const logoOpacity = useSharedValue(0);
-  const logoScale = useSharedValue(0.8);
   const taglineOpacity = useSharedValue(0);
   const [minElapsed, setMinElapsed] = useState(false);
 
@@ -60,13 +58,10 @@ export default function SplashScreen({ onFinish, ready = false }: SplashScreenPr
   }, []);
 
   useEffect(() => {
-    // Logo fades in + scales up
-    logoOpacity.value = withTiming(1, { duration: 400, easing: Easing.out(Easing.ease) });
-    logoScale.value = withTiming(1, { duration: 400, easing: Easing.out(Easing.ease) });
-
-    // Tagline fades in after 200ms
+    // Only the tagline animates (D2): it fades in after 200ms. The mark is
+    // drawn at full opacity from the first frame (see the render below).
     taglineOpacity.value = withDelay(200, withTiming(1, { duration: 400 }));
-  }, [logoOpacity, logoScale, taglineOpacity]);
+  }, [taglineOpacity]);
 
   // Deliberately its OWN effect, keyed only on the stable `finishOnce`: the
   // two clocks must be armed EXACTLY once at mount. Sharing the animation
@@ -88,31 +83,45 @@ export default function SplashScreen({ onFinish, ready = false }: SplashScreenPr
     if (ready && minElapsed) finishOnce();
   }, [ready, minElapsed, finishOnce]);
 
-  const logoStyle = useAnimatedStyle(() => ({
-    opacity: logoOpacity.value,
-    transform: [{ scale: logoScale.value }],
-  }));
-
   const taglineStyle = useAnimatedStyle(() => ({
     opacity: taglineOpacity.value,
   }));
 
+  // U4c D2 — the hand-off from the native launch screen. The iOS launch
+  // storyboard draws splash-icon.png aspect-fit across the whole window
+  // (App.tsx renders this screen bare at the root, so it fills the window
+  // too); the JS mark starts on exactly those pixels, at full opacity and
+  // not animated, so nothing jumps or fades when the JS splash takes over.
+  // D1: the mark stands alone, no app name beside it.
+  const { width, height } = Dimensions.get('window');
+  const mark = splashMarkLayout({ width, height });
+  // React Native swaps left and right under RTL by default (the app forces
+  // RTL for Arabic and never calls swapLeftAndRightInRTL(false)), so a
+  // physical `left` would land at width - left - size; the launch screen is
+  // never mirrored, so pre-mirror it. Read HERE, at render time, never in a
+  // module-scope StyleSheet or constant: a module-scope value is frozen at
+  // import, before the direction is known.
+  const mirrored = I18nManager.isRTL && I18nManager.doLeftAndRightSwapInRTL !== false;
+  const markLeft = mirrored ? width - mark.left - mark.size : mark.left;
+
   return (
     <View style={styles.container}>
-      {/* Bundle B/C/D Task 2.10 — glyph + wordmark together. The wordmark
-          now reads from i18n so EN testers see "Qaren" not "قارن". */}
-      {/* Bundle D Claude-Design (option small, Task 2.F.2 screen 8):
-          hero-scale lens glyph (56→128) per SplashScreen.jsx QarenLensGlyph
-          — splash is the brand moment, so the logo gets the visual weight.
-          Wordmark fontSize 48→40 + tightened letterSpacing matches the
-          Claude-Design "Qaren" wordmark proportions (h1 700 40px/1
-          letter-spacing: -0.8px). Vertical stack instead of horizontal
-          row mirrors the JSX brand-moment composition. */}
-      <Animated.View style={[styles.brandStack, logoStyle]}>
-        <QarenLogo size={128} />
-        <Animated.Text style={styles.logo}>{t('app.name')}</Animated.Text>
-      </Animated.View>
-      <Animated.Text style={[styles.tagline, taglineStyle]}>
+      <View
+        testID="splash-mark"
+        pointerEvents="none"
+        style={{
+          position: 'absolute',
+          left: markLeft,
+          top: mark.top,
+          width: mark.size,
+          height: mark.size,
+        }}
+      >
+        <QarenLogo size={mark.size} />
+      </View>
+      <Animated.Text
+        style={[styles.tagline, { top: mark.top + mark.size + spacing.lg }, taglineStyle]}
+      >
         {t('splash.tagline')}
       </Animated.Text>
     </View>
@@ -123,23 +132,14 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.bg.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: spacing.lg,
   },
-  // Stacked composition (logo above wordmark) per Claude-Design splash.
-  // RTL-safe: alignItems centers in both directions.
-  brandStack: {
-    alignItems: 'center',
-    gap: spacing.base,
-  },
-  logo: {
-    fontSize: 40,
-    fontWeight: '700',
-    color: colors.text.primary,
-    letterSpacing: -0.8,
-  },
+  // The only animated element (D2). Placed under the mark, centred on the
+  // screen; left 0 / right 0 is symmetric, so RTL needs no compensation.
   tagline: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    textAlign: 'center',
     ...typography.body,
     color: colors.text.secondary,
   },
