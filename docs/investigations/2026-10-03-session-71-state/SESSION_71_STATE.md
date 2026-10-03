@@ -1,4 +1,4 @@
-# Session 71 — resume state (written 2026-10-03 ~07:57 AST, before context compaction; updated 09:33: U13 GREEN, U4c RED and U8b RED running)
+# Session 71 — resume state (written 2026-10-03 ~07:57 AST, before context compaction; updated 09:45: PR #285 open; U13 GREEN, U4c GREEN and U8b RED running)
 
 Read this file first after any compaction or in a new session. Everything here was measured or decided in session 71. Companion files in this folder: `IMPLEMENTATION_PLAN.md` (approved), `CONFIG_AUDIT_PLAN.md`, `RESEARCH_DIGEST.md`, `FABLE_REVIEW_RED_U4B.md`, `FABLE_REVIEW_RED_OAI.md`, `TRAFFIC_FINDING_2026-10-02.md`, `ledger.md`.
 
@@ -6,7 +6,7 @@ Read this file first after any compaction or in a new session. Everything here w
 - Run under `/synack-build-orchestrator`. **Fable (main session) orchestrates, plans, reviews. EVERY agent is Opus** (`model: 'opus'` on every `agent()` and Agent call), in workflows.
 - Per unit: Opus RED → **Fable gate on spec + tests** → Opus GREEN → two Opus adversaries → Opus fix → **Fable diff review** → gates → commit → PR → five required checks → merge. RED and GREEN are separate workflow launches.
 - PRD = `docs/investigations/2026-09-29-session-69-state/APP_STORE_LAUNCH_RUNBOOK.md` + `…/2026-09-29-session-69-state.md`. Scope additions need Ahmed's call.
-- GitHub through `harness/pr_rest.py` / `issue_rest.py` (repo `KGRddhs/smartcompare-backend`; `gh` dies on this box). Never poll CI in a loop; read status once when re-invoked. The session is bound to PR #279 (U4b) through the app PR monitor (`get_status`); #278 and #277 are merged.
+- GitHub through `harness/pr_rest.py` / `issue_rest.py` (repo `KGRddhs/smartcompare-backend`; `gh` dies on this box). Never poll CI in a loop; read status once when re-invoked. The session is bound to PR #285 (OAI) through the app PR monitor (`get_status`); #279, #278 and #277 are merged.
 - Nothing flips in production without Ahmed's explicit word. Railway variables by NAME only. Never print secrets.
 
 ## 2. Where things are
@@ -24,10 +24,9 @@ Read this file first after any compaction or in a new session. Everything here w
 - Owed in the docs PR: the CLAUDE.md blocker #1 line (launcher art done; the in-app glyph is #280) and the runbook fresh-install note (a phone that had the old build can show the cached launch screen until reinstall).
 - Worktree `sc-s70-u4b` is KEPT: it has a real `node_modules` that matches the new lock, and U4c is built in it on a new branch from main. The U4c spec agent measures in it read-only.
 
-### OAI/observability — #265, #268, 8 log sites, gather future (worktree `sc-s70-oai`, HEAD `4bd5a09f`, uncommitted)
-- RED DONE by Opus (`wf_15d14c45-c54`), Fable gate PASS. Test shas: url `107b7b79…`, exc_summary `b714ba46…`, prefetch `2c9e279b…`, router `f905b305…`; 116 nodes = 60 RED / 56 PIN.
-- GREEN workflow `wf_31aee254-a83` (task `wx03kqwr4`, script `wf_s71_oai_green.js`): green → correctness + regression adversaries → fix. Started 07:40.
-- **Then (orchestrator):** sha-check; Fable diff review; Railway `web` variable NAMES check that `DAILY_4O_CAP` is absent (C7); commit; PR (pr_text from the report; no contextvar rationale); at merge edit CLAUDE.md (the `model_router_service.py` line ~169, "all four AsyncOpenAI" → five ~351, retire the #265 correction ~352 with a dated line — re-anchor by text); file follow-ups (`cache_service._redis_get` empty-text ERROR log; discovery prefetch Task noise; #226 stays); after deploy check Sentry: one accumulating issue per template titled `<prefix><TypeName>`, then resolve the old per-text issues.
+### OAI/observability — **PR #285 OPEN** (branch `feature/s70-openai-companions`, commit `e9f432c1` on `eb86075e`, worktree `sc-s70-oai` clean)
+- #265, #268, eight typed error-log sites through the new leaf `app/services/log_scrub.py`, the prefetch-gather done-callback, the runbook section. Both adversaries SOUND; fix round applied; orchestrator diff review done; spec addendum OR16–OR21 (the `exc_summary` scrub order is URL scrub first). Post-ff verification: 500 passed. C7 measured: `DAILY_4O_CAP` absent on Railway `web`. PR body copy: `pr/PR_285_OAI_BODY.md`.
+- **Owed:** merge on green (read `get_status`; never poll) → verify the Railway deploy + `/health` → CLAUDE.md lines in the docs PR (the `model_router_service` line, "all four AsyncOpenAI" → five, retire the #265 correction, the Sentry one-issue-per-template note) → follow-up issues (the quadratic JWT pattern in `sentry_service`; `cache_service._redis_get` empty-text ERROR + blocking read; discovery prefetch Task noise; the known redaction gaps) → after deploy, check Sentry for one accumulating issue per template and resolve the old per-text issues → remove the worktree.
 
 ### U13 — paid routes require a caller; GREEN running: `wf_8f9f3ab5-2fb` (task `w9mmqc053`, script `scripts/wf_s71_u13_green.js`, launched 09:21)
 - Worktree `sc-s71-u13` (branch `feature/s71-u13-compare-auth-required`, HEAD `eb86075e`). Spec in that worktree (untracked until the unit commit; sha256 `df62ebe3…`): body + corrections C1–C11 + rulings UR1–UR15 + the RED gate UG1–UG6 (copies: `FABLE_RULINGS_U13.md`, `FABLE_REVIEW_RED_U13.md`).
@@ -36,11 +35,11 @@ Read this file first after any compaction or in a new session. Everything here w
 - **Activation is Ahmed's and is THREE flags in one window, before funding OpenAI:** `ENABLE_COMPARE_AUTH_REQUIRED`, `ENABLE_PAID_ROUTE_METERING`, `ENABLE_CAMERA_FAILURE_ENVELOPE`; precondition: rotate `ADMIN_API_KEY`. Residual: free-tier credits of self-registered accounts.
 - **Then (orchestrator):** sha-check against the fix report; Fable diff review; commit (spec + tests + code); PR; CLAUDE.md flag row and curl/Serper-probe notes at merge (R14); file the follow-ups (U13c camera retry, per-user limiter key, live tests that will 401, raw query logging, multipart parse before the guard, smoke accounts); deploy check; hand Ahmed the runbook.
 
-### U4c — in-app MYEZ mark; RED running: `wf_1819c70c-1f2` (task `wdri242is`, script `scripts/wf_s71_u4c_red.js`, launched 09:19)
-- Worktree `sc-s70-u4b`, branch `feature/s71-u4c-inapp-mark` from `eb86075e` (real `node_modules`). Spec in that worktree: `docs/investigations/2026-10-03-session-71-state/U4C_INAPP_MARK_SPEC.md` (sha256 `4761bf07…`): body + 12 review corrections + rulings UR1–UR15 (copy: `FABLE_RULINGS_U4C.md`).
-- Decided: sizes 128/256/384; RN `Image` with a static require; drop the app-name text beside the mark on Splash and Home; splash mark at the launch position, full opacity, with an RTL compensation computed at render time; `fadeDuration={0}`; manifest keys `mark_outputs` + `mark_geometry`; ONE `jest -u` on the `LoadingRings` file by GREEN (expected sha `7d22d544…`).
-- OUT, issue #283: the `QaranIcon` Q-magnifier in the winner reveal (needs Ahmed's OK for two more snapshot files) and the text-only logos on ForgotPassword/Register. Device checks owed before the production build: the white gap before the first JS frame, the one-frame image decode, the 2 pt Home header shift.
-- Next: Fable gate on the RED tests → Opus GREEN (separate launch) → adversaries → diff review → PR.
+### U4c — in-app MYEZ mark; GREEN running: `wf_00126194-212` (task `w24vy9enl`, script `scripts/wf_s71_u4c_green.js`, launched 09:44)
+- Worktree `sc-s70-u4b`, branch `feature/s71-u4c-inapp-mark` from `eb86075e` (real `node_modules`). Spec in that worktree (untracked until the unit commit; sha256 `ee3ebb39…`): body + 12 corrections + rulings UR1–UR15 + the RED gate UG1–UG5 (copies: `FABLE_RULINGS_U4C.md`, `FABLE_REVIEW_RED_U4C.md`).
+- RED (Opus, `wf_1819c70c-1f2`) gated PASS 09:44, no change: six test files (prefixes `d9241b8c`, `c23f00d8`, `061dfb08`, `ca1d7280`, `4993e2cf`, `85bfc54f`), 27 REDs. GREEN target: 354 suites, 3473 passed / 3499 total, 44 snapshots, after the ONE authorised `jest -u` on the LoadingRings file (expected `.snap` sha `7d22d544…`).
+- OUT, issue #283: the `QaranIcon` Q-magnifier in the winner reveal and the text-only logos on ForgotPassword/Register. Device checks owed before the production build: white gap before the first JS frame, one-frame image decode, 2 pt Home header shift, the Arabic hand-off.
+- **Then (orchestrator):** sha-check, read the snapshot diff and the code diff, commit (spec + tests + code + assets + manifest), PR, FULL jest only if a rebase is needed, merge on green.
 
 ### U8b — account deletion erases everything; RED running: `wf_b60a0e1b-48d` (task `wz3r8cutt`, script `scripts/wf_s71_u8b_red.js`, launched 09:32)
 - Worktree `sc-s71-u8b` (branch `feature/s71-u8b-account-deletion`, HEAD `eb86075e`). Spec in that worktree (untracked until the unit commit; sha256 `d9dbc64a…`): body + corrections C1–C14 + rulings UR1–UR15 (copy: `FABLE_RULINGS_U8B.md`).
