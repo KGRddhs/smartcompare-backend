@@ -935,7 +935,7 @@ export default function HistoryScreen({ navigation, onLogout }: HistoryScreenPro
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        {/* Bundle B/C/D Task 2.10 — brand glyph leading the screen title. */}
+        {/* Bundle B/C/D Task 2.10 — the MYEZ mark (QarenLogo) leading the screen title. */}
         <QarenLogo size={24} />
         <Text style={[styles.headerTitle, styles.headerTitleSpaced]}>
           {t('history.title')}
@@ -1026,10 +1026,9 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.bg.primary,
   },
-  // Bundle D Claude-Design (option small, Task 2.F.2 screen 4): header
-  // alignment tweak — `alignItems: 'baseline'` so the QarenLogo glyph
-  // base-aligns with the display-type title (vs. center which had the
-  // glyph optically floating above the title cap-height).
+  // Bundle D Claude-Design (option small, Task 2.F.2 screen 4): the MYEZ
+  // mark (QarenLogo, an image) and the display-type title are centre-
+  // aligned in the header row (alignItems: 'center').
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1041,7 +1040,7 @@ const styles = StyleSheet.create({
     ...typography.display,
     color: colors.text.primary,
   },
-  // Bundle B/C/D Task 2.10 — RTL-safe spacer between the QarenLogo glyph
+  // Bundle B/C/D Task 2.10 — RTL-safe spacer between the MYEZ mark (QarenLogo)
   // and the screen-title text.
   headerTitleSpaced: {
     marginStart: spacing.sm,
