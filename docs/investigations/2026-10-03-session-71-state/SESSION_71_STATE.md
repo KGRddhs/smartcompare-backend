@@ -1,4 +1,4 @@
-# Session 71 — resume state (written 2026-10-03 ~07:57 AST, before context compaction; updated 09:22: U13 GREEN and U4c RED running)
+# Session 71 — resume state (written 2026-10-03 ~07:57 AST, before context compaction; updated 09:33: U13 GREEN, U4c RED and U8b RED running)
 
 Read this file first after any compaction or in a new session. Everything here was measured or decided in session 71. Companion files in this folder: `IMPLEMENTATION_PLAN.md` (approved), `CONFIG_AUDIT_PLAN.md`, `RESEARCH_DIGEST.md`, `FABLE_REVIEW_RED_U4B.md`, `FABLE_REVIEW_RED_OAI.md`, `TRAFFIC_FINDING_2026-10-02.md`, `ledger.md`.
 
@@ -42,8 +42,13 @@ Read this file first after any compaction or in a new session. Everything here w
 - OUT, issue #283: the `QaranIcon` Q-magnifier in the winner reveal (needs Ahmed's OK for two more snapshot files) and the text-only logos on ForgotPassword/Register. Device checks owed before the production build: the white gap before the first JS frame, the one-frame image decode, the 2 pt Home header shift.
 - Next: Fable gate on the RED tests → Opus GREEN (separate launch) → adversaries → diff review → PR.
 
-### U8b — spec + adversarial review running: `wf_6f7a8d33-23e` (task `wu5sr9nv1`, script `scripts/wf_s71_u8b_spec.js`, launched 08:29)
-- Worktree `sc-s71-u8b` (branch `feature/s71-u8b-account-deletion` from `eb86075e`). Measured before launch: `delete_user_cascade` (migration 025 body) keeps the `users` row and clears only preferences, behaviour profile, push token and fingerprint; email, display name, demographics, attribution and consent columns stay. Spec path `sc-s71-u8b/docs/investigations/2026-10-03-session-71-state/U8B_ACCOUNT_DELETION_SPEC.md`.
+### U8b — account deletion erases everything; RED running: `wf_b60a0e1b-48d` (task `wz3r8cutt`, script `scripts/wf_s71_u8b_red.js`, launched 09:32)
+- Worktree `sc-s71-u8b` (branch `feature/s71-u8b-account-deletion`, HEAD `eb86075e`). Spec in that worktree (untracked until the unit commit; sha256 `d9dbc64a…`): body + corrections C1–C14 + rulings UR1–UR15 (copy: `FABLE_RULINGS_U8B.md`).
+- Design: migration `043_delete_user_cascade_full_erasure.sql` (11 deletes, the audit-log IP nulled, a 25-column tombstone of the kept `users` row, guard + assert blocks with the nil-uuid dry run inside the transaction, REVOKE after CREATE, no restated GRANT) + rollback + a static CI fence (every users column and user-referencing table is cleared or on a justified KEEP list) + backend R6 (purge 5 per-user cache keys) and R7 (no exception text in the deletion log lines) + four one-paste files Ahmed applies (PRECHECK, ONE_PASTE, POSTCHECK, optional BACKFILL).
+- Live metadata measured 09:30 (names only): `users` = the spec's 27 columns; `governorate` absent (issue #284); the three NOT NULL columns take 0 / false / 0.
+- Privacy defaults Ahmed may change before applying 043: audit-log IP nulled (rows kept), consent columns erased, free quota resets on delete-and-re-register.
+- Follow-ups to file at merge: the client's `@qaren_recent_searches` surviving deletion and logout; an audit-log retention window.
+- Next: Fable gate on the RED tests → Opus GREEN (separate launch, with the PostgreSQL 18 single-user gate) → adversaries → diff review → PR → Ahmed runs PRECHECK, then the one-paste.
 
 ### T0b — unit spec written by the orchestrator: `T0B_REPO_TOOLING_SPEC.md` (DRAFT)
 - Next: an Opus adversarial spec review (measures the six open questions), orchestrator rulings, then RED. Base = main `eb86075e` or later. `.mcp.json` stays unchanged until Ahmed applies batch A.
