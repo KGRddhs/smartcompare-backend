@@ -1,4 +1,4 @@
-"""issue_more.py get <n> <out-file> | comment <n> <body-file>  -- via pr_rest api()."""
+"""issue_more.py get <n> <out-file> | comment <n> <body-file> | close <n> <body-file>  -- via pr_rest api()."""
 import sys
 from pr_rest import api, REPO
 
@@ -16,6 +16,12 @@ def main():
         if st != 201:
             raise SystemExit(f"comment failed status={st} {str(res)[:300]}")
         print("commented", res["html_url"])
+    elif len(a) == 3 and a[0] == "close":
+        body = open(a[2], encoding="utf-8").read()
+        st, res = api("POST", f"/repos/{REPO}/issues/{a[1]}/comments", {"body": body})
+        print("comment", st)
+        st, res = api("PATCH", f"/repos/{REPO}/issues/{a[1]}", {"state": "closed"})
+        print("closed", a[1], st, res.get("state") if isinstance(res, dict) else str(res)[:120])
     else:
         raise SystemExit(__doc__)
 
