@@ -1393,3 +1393,186 @@ def test_canary_runbook_publishes_to_the_channel_with_devices():
     assert (
         "never `--branch production`" in claude_md
     ), "CLAUDE.md no longer carries the `never --branch production` rule the runbook mirrors"
+
+
+# ---------------------------------------------------------------------------
+# T0b Phase A - static pins on the text of .githooks/pre-commit
+# ---------------------------------------------------------------------------
+# The hook's behaviour is exercised in tests/test_precommit_hook.py (a tmp repo
+# per scenario, under sh and dash). These pins hold the exact lines that must
+# not drift and the relative order of the steps, so a later phase can ADD a
+# step without weakening any of them. They never pin the number of steps.
+
+PRE_COMMIT_HOOK = REPO_ROOT / ".githooks" / "pre-commit"
+
+# PIN: the four existing credential branches and the pipeline that feeds them,
+# byte-equal (the new branches go in a SEPARATE grep, spec correction 6).
+HOOK_CREDENTIAL_PIPE = (
+    "if git diff --cached -U0 | grep -E '^\\+' | grep -Ev '^\\+\\+\\+' | \\"
+)
+HOOK_CREDENTIAL_GREP = (
+    "   grep -qE '(\\bsk-[A-Za-z0-9_-]{20,}|AKIA[0-9A-Z]{16}|xox[baprs]-[A-Za-z0-9-]{10,}"
+    "|-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----)'; then"
+)
+HOOK_CREDENTIAL_FAIL = '  fail "staged diff contains what looks like a credential'
+# PIN: the sqlfluff invocation (correction 13; tests/test_sqlfluff_config.py
+# pins the UTF-8 rule, this pins the whole line).
+HOOK_SQLFLUFF_LINE = (
+    "    PYTHONIOENCODING=utf-8 sqlfluff lint --dialect postgres $SQL_FILES"
+    ' || fail "sqlfluff failed on staged migrations"'
+)
+
+# The two new credential shapes (correction 6), as they appear inside the
+# hook's single-quoted ERE.
+HOOK_JWT_RE = "eyJ[A-Za-z0-9_-]{7,}\\.[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}"
+HOOK_CREDURL_RE = "[A-Za-z][A-Za-z0-9+.-]*://[^/[:space:]:@]+:[^/[:space:]@]{12,}@"
+HOOK_NESTED_ENV_RE = "(^|/)\\.env(\\..*)?$"
+
+# The messages the GREEN hook prints (the same strings as the constants in
+# tests/test_precommit_hook.py; every one ASCII and free of "sqlfluff lint").
+HOOK_MSG_NEW_SHAPES = "staged diff contains a JWT or a credentialed URL"
+HOOK_MSG_ENV_VALUE = "staged diff contains the value of .env variable(s):"
+HOOK_MSG_SKILL = "skill frontmatter check failed:"
+HOOK_MSG_BLACK_MISSING = "WARNING black not installed"
+HOOK_MSG_YAML_MISSING = "WARNING PyYAML not importable"
+HOOK_MSG_STAGED_READ = "could not read the staged content of"
+
+
+def _hook_text() -> str:
+    return PRE_COMMIT_HOOK.read_bytes().decode("utf-8").replace("\r\n", "\n")
+
+
+def _hook_code() -> list:
+    """Non-comment LOGICAL lines (backslash continuations joined)."""
+    joined = _hook_text().replace("\\\n", " ")
+    lines = [ln for ln in joined.split("\n") if ln.strip()]
+    return [ln for ln in lines if not ln.lstrip().startswith("#")]
+
+
+def _first_index(lines: list, needle: str) -> int:
+    for i, ln in enumerate(lines):
+        if needle in ln:
+            return i
+    raise AssertionError("the hook has no non-comment line containing %r" % needle)
+
+
+def test_hook_keeps_the_four_credential_branches_byte_equal():
+    lines = _hook_text().split("\n")
+    assert HOOK_CREDENTIAL_GREP in lines, "the four-branch credential grep changed"
+    i = lines.index(HOOK_CREDENTIAL_GREP)
+    assert lines[i - 1] == HOOK_CREDENTIAL_PIPE, "the credential pipeline changed"
+    assert lines[i + 1].startswith(HOOK_CREDENTIAL_FAIL), "the refusal text changed"
+
+
+def test_hook_keeps_the_sqlfluff_invocation_byte_equal():
+    lines = _hook_text().split("\n")
+    assert HOOK_SQLFLUFF_LINE in lines, "the sqlfluff invocation line changed"
+
+
+def test_hook_greps_jwt_and_credentialed_url_after_the_existing_branches():
+    code = _hook_code()
+    for regex in (HOOK_JWT_RE, HOOK_CREDURL_RE):
+        found = any(regex in ln for ln in code)
+        assert found, "the hook has no grep for %r (correction 6)" % regex
+    four = [ln for ln in code if "AKIA[0-9A-Z]{16}" in ln]
+    mixed = [ln for ln in four if HOOK_JWT_RE in ln or HOOK_CREDURL_RE in ln]
+    assert not mixed, "the new branches must be a SEPARATE grep (correction 6)"
+    # TR4: the new refusal follows the existing credential grep.
+    new_fail = _first_index(code, 'fail "' + HOOK_MSG_NEW_SHAPES)
+    assert _first_index(code, "AKIA[0-9A-Z]{16}") < new_fail
+
+
+def test_hook_staged_file_lists_include_renames():
+    code = _hook_code()
+    lists = [ln for ln in code if "--cached" in ln and "--name-only" in ln]
+    lists = [ln for ln in lists if not ln.lstrip().startswith("SQL_FILES=")]
+    assert lists, "no staged-file list found in the hook"
+    bad = [ln.strip() for ln in lists if "--diff-filter=ACMR" not in ln]
+    assert not bad, "lists without --diff-filter=ACMR (correction 7): %s" % bad
+    assert any("'*.py'" in ln for ln in lists), "the python file list is missing"
+    assert any("SKILL.md" in ln for ln in lists), "the SKILL.md list is missing"
+    env_lists = [ln for ln in lists if HOOK_NESTED_ENV_RE in ln]
+    assert env_lists, "the .env refusal must read an ACMR name list"
+
+
+def test_hook_env_refusal_covers_nested_paths():
+    code = _hook_code()
+    i = _first_index(code, HOOK_NESTED_ENV_RE)
+    assert "grep" in code[i]
+    assert 'fail ".env must never be committed"' in _hook_text()
+    assert i < _first_index(code, "sqlfluff lint"), ".env refusal after sqlfluff"
+
+
+def test_hook_reads_staged_blobs_from_a_cleaned_temp_dir():
+    code = _hook_code()
+    blob = "\n".join(code)
+    for needle in (
+        "mktemp -d",
+        "qaren-precommit.$$",
+        'rm -rf -- "$TMP"',
+        '[ -n "$TMP" ] && [ -d "$TMP" ]',
+        "core.quotePath=false",
+        "while IFS= read -r",
+        'fail "' + HOOK_MSG_STAGED_READ,
+    ):
+        assert needle in blob, "materialisation lacks %r (correction 8)" % needle
+    traps = [ln for ln in code if ln.lstrip().startswith("trap ")]
+    trapped = " ".join(traps).split()
+    missing = [s for s in ("EXIT", "INT", "TERM", "HUP") if s not in trapped]
+    assert not missing, "the cleanup trap does not cover %s: %s" % (missing, traps)
+    assert "checkout-index --prefix=" in blob or 'git show ":' in blob
+    assert "checkout-index --temp" not in blob, "--temp writes into the repo root"
+    assert "git stash" not in blob
+    ruff = [ln for ln in code if "ruff check" in ln and "E9,F63,F7,F82" in ln]
+    assert ruff and all("--config" in ln and "--no-cache" in ln for ln in ruff), ruff
+    black = [ln for ln in code if "-m black" in ln and "--check" in ln]
+    assert black and all("--config" in ln for ln in black), black
+    compile_lines = [ln for ln in code if "py_compile" in ln]
+    split = [ln for ln in compile_lines if "$PY_FILES" in ln]
+    assert not split, "py_compile must not word-split $PY_FILES: %s" % split
+
+
+def test_hook_warns_when_black_is_missing():
+    blob = "\n".join(_hook_code())
+    assert "python -m black --version" in blob, "presence test (correction 15)"
+    assert "pre-commit: " + HOOK_MSG_BLACK_MISSING in blob
+
+
+def test_hook_checks_staged_skill_frontmatter_between_python_and_sql():
+    code = _hook_code()
+    blob = "\n".join(code)
+    assert "yaml.safe_load" in blob
+    assert 'fail "' + HOOK_MSG_SKILL in blob
+    assert "pre-commit: " + HOOK_MSG_YAML_MISSING in blob
+    black_step = _first_index(code, "-m black")
+    skill = _first_index(code, 'fail "' + HOOK_MSG_SKILL)
+    sql = _first_index(code, "sqlfluff lint")
+    assert black_step < skill < sql, "TR4: SKILL.md step after python, before sql"
+
+
+def _regex_names(code: list, regex: str) -> list:
+    """Shell variables whose assignment carries ``regex``."""
+    names = []
+    for ln in code:
+        m = re.match(r"\s*([A-Za-z_][A-Za-z0-9_]*)=", ln)
+        if m and regex in ln:
+            names.append(m.group(1))
+    return names
+
+
+def test_hook_fixed_string_pass_is_xtrace_guarded_and_follows_the_new_branches():
+    code = _hook_code()
+    guard = _first_index(code, "{ set +x; } 2>/dev/null")
+    msg = _first_index(code, HOOK_MSG_ENV_VALUE)
+    new_fail = _first_index(code, 'fail "' + HOOK_MSG_NEW_SHAPES)
+    assert new_fail < guard < msg, "TR4: fixed-string pass after the new branches"
+    section = "\n".join(code[guard : msg + 1])
+    for word in ("KEY", "TOKEN", "SECRET", "PASS", "PWD", "CREDENTIAL", "PRIVATE"):
+        assert word in section, "the .env NAME filter lacks %s (TR5)" % word
+    assert "16" in section, "the minimum value length (16) is not in the section"
+    assert "--git-common-dir" in section, "no common-dir .env fallback (correction 10)"
+    refs = [HOOK_CREDURL_RE]
+    for name in _regex_names(code, HOOK_CREDURL_RE):
+        refs += ["$" + name, "${" + name + "}"]
+    used = [r for r in refs if r in section]
+    assert used, "credentialed-URL values must match whatever the NAME (TR5)"
