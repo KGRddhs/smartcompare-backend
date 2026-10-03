@@ -3,9 +3,13 @@ LLM calls (3 uncached compares + 1 stream). Never prints secrets. Exit 0 iff eve
 
   python docs/investigations/2026-09-29-session-69-state/verify_after_credits.py
   python ... --base https://web-production-58776.up.railway.app --pairs "A vs B" "C vs D"
+
+With ENABLE_COMPARE_AUTH_REQUIRED on (U13) the compare routes need a caller: run it as
+  railway run -s web -- env HARNESS_SEND_ADMIN_KEY=1 python <this file>
+so X-Admin-Key is injected from the environment (never typed, never printed).
 """
 from __future__ import annotations
-import argparse, json, sys, time
+import argparse, json, os, sys, time
 import httpx
 
 DEFAULT_BASE = "https://web-production-58776.up.railway.app"
@@ -42,11 +46,21 @@ def probe_stream(client: httpx.Client, base: str, q: str) -> dict:
                 events += 1; last = line[:120]
     return {"q": q, "http": r.status_code, "events": events, "last": last, "ms": int((time.time() - t) * 1000)}
 
+def _harness_auth_headers() -> dict:
+    """U13 (D9): {"X-Admin-Key": <ADMIN_API_KEY>} only when HARNESS_SEND_ADMIN_KEY is truthy
+    (1/true/yes/on) AND ADMIN_API_KEY is non-empty, else {}. Never print or log the value."""
+    opt_in = os.getenv("HARNESS_SEND_ADMIN_KEY", "").strip().lower()
+    key = os.getenv("ADMIN_API_KEY", "")
+    if opt_in in ("1", "true", "yes", "on") and key:
+        return {"X-Admin-Key": key}
+    return {}
+
 def main() -> int:
     ap = argparse.ArgumentParser(); ap.add_argument("--base", default=DEFAULT_BASE); ap.add_argument("--pairs", nargs="*", default=DEFAULT_PAIRS)
     a = ap.parse_args()
     ok = True
-    with httpx.Client(timeout=150) as c:
+    auth = _harness_auth_headers()
+    with (httpx.Client(timeout=150, headers=auth) if auth else httpx.Client(timeout=150)) as c:
         h = c.get(f"{a.base}/health"); print("health", h.status_code, h.text[:80]); ok &= h.status_code == 200
         for q in a.pairs:
             res = probe_compare(c, a.base, q); print(json.dumps(res, ensure_ascii=False))

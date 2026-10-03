@@ -55,6 +55,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -143,6 +144,17 @@ async def _run_one(client: httpx.AsyncClient, base_url: str, entry: Dict[str, An
     return out
 
 
+def _harness_auth_headers() -> Dict[str, str]:
+    """U13 (D9): {"X-Admin-Key": <ADMIN_API_KEY>} only when HARNESS_SEND_ADMIN_KEY
+    is truthy (1/true/yes/on) AND ADMIN_API_KEY is non-empty, else {} (requests
+    byte-identical to before). Never print or log the value."""
+    opt_in = os.getenv("HARNESS_SEND_ADMIN_KEY", "").strip().lower()
+    key = os.getenv("ADMIN_API_KEY", "")
+    if opt_in in ("1", "true", "yes", "on") and key:
+        return {"X-Admin-Key": key}
+    return {}
+
+
 async def _main_async(args: argparse.Namespace) -> int:
     matrix = json.loads(Path(args.matrix).read_text(encoding="utf-8"))
     queries = matrix["queries"]
@@ -153,7 +165,9 @@ async def _main_async(args: argparse.Namespace) -> int:
     sem = asyncio.Semaphore(args.concurrency)
     results: List[Dict[str, Any]] = []
 
-    async with httpx.AsyncClient() as client:
+    auth_headers = _harness_auth_headers()
+    async with (httpx.AsyncClient(headers=auth_headers) if auth_headers
+                else httpx.AsyncClient()) as client:
         async def _guarded(entry):
             async with sem:
                 res = await _run_one(client, args.base_url, entry, nocache, args.timeout)
