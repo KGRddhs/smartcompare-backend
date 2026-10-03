@@ -1,0 +1,2692 @@
+{
+  "_meta": {
+    "normalised_fields": {},
+    "recorded_at": "eb86075ed1f9c65716118ae5567898d01b16a27a",
+    "recorder": "tests/test_s71_u13_compare_auth_required.py::record_flag_off_baseline",
+    "records": 30,
+    "rule": "U13 flag OFF (ENABLE_COMPARE_AUTH_REQUIRED, ENABLE_STRICT_OPTIONAL_AUTH, ENABLE_PAID_ROUTE_METERING unset) is byte-identical per route for anonymous, valid-bearer and rejected-bearer callers; the ten operations and components of the OpenAPI schema are unchanged",
+    "spec": "docs/investigations/2026-10-03-session-71-state/U13_COMPARE_AUTH_SPEC.md"
+  },
+  "flag_off_records": [
+    {
+      "body": {
+        "json": {
+          "metadata": {
+            "total_cost": 0.0
+          },
+          "products": [
+            {
+              "brand": "U13",
+              "name": "alpha"
+            },
+            {
+              "brand": "U13",
+              "name": "beta"
+            }
+          ],
+          "success": true
+        }
+      },
+      "content_type": "application/json",
+      "fire_and_forget_labels": [
+        "log_search.text.post.success"
+      ],
+      "route": "POST /api/v1/text/compare",
+      "scenario": "U1.anonymous",
+      "status": 200,
+      "stub_calls": {
+        "text_routes.compare_from_text": 1,
+        "text_routes.fire_and_forget": 1,
+        "text_routes.get_comparison_service": 1,
+        "text_routes.log_search": 1
+      },
+      "verify_token_awaits": 0
+    },
+    {
+      "body": {
+        "json": {
+          "metadata": {
+            "total_cost": 0.0
+          },
+          "products": [
+            {
+              "brand": "U13",
+              "name": "alpha"
+            },
+            {
+              "brand": "U13",
+              "name": "beta"
+            }
+          ],
+          "success": true
+        }
+      },
+      "content_type": "application/json",
+      "fire_and_forget_labels": [
+        "log_search.text.post.success",
+        "save_comparison.text.post",
+        "record_lifetime.text.post"
+      ],
+      "route": "POST /api/v1/text/compare",
+      "scenario": "U1.valid_bearer",
+      "status": 200,
+      "stub_calls": {
+        "text_routes.compare_from_text": 1,
+        "text_routes.consume_comparison_credit": 1,
+        "text_routes.fire_and_forget": 3,
+        "text_routes.get_comparison_service": 1,
+        "text_routes.get_user_preferences": 1,
+        "text_routes.log_search": 1,
+        "text_routes.record_lifetime_comparison": 1,
+        "text_routes.save_comparison_and_track_cohort": 1
+      },
+      "verify_token_awaits": 1
+    },
+    {
+      "body": {
+        "json": {
+          "metadata": {
+            "total_cost": 0.0
+          },
+          "products": [
+            {
+              "brand": "U13",
+              "name": "alpha"
+            },
+            {
+              "brand": "U13",
+              "name": "beta"
+            }
+          ],
+          "success": true
+        }
+      },
+      "content_type": "application/json",
+      "fire_and_forget_labels": [
+        "log_search.text.post.success"
+      ],
+      "route": "POST /api/v1/text/compare",
+      "scenario": "U1.rejected_bearer",
+      "status": 200,
+      "stub_calls": {
+        "text_routes.compare_from_text": 1,
+        "text_routes.fire_and_forget": 1,
+        "text_routes.get_comparison_service": 1,
+        "text_routes.log_search": 1
+      },
+      "verify_token_awaits": 1
+    },
+    {
+      "body": {
+        "json": {
+          "metadata": {
+            "total_cost": 0.0
+          },
+          "products": [
+            {
+              "brand": "U13",
+              "name": "alpha"
+            },
+            {
+              "brand": "U13",
+              "name": "beta"
+            }
+          ],
+          "success": true
+        }
+      },
+      "content_type": "application/json",
+      "fire_and_forget_labels": [
+        "log_search.text.get.success"
+      ],
+      "route": "GET /api/v1/text/compare",
+      "scenario": "U2.anonymous",
+      "status": 200,
+      "stub_calls": {
+        "text_routes.compare_from_text": 1,
+        "text_routes.fire_and_forget": 1,
+        "text_routes.get_comparison_service": 1,
+        "text_routes.log_search": 1
+      },
+      "verify_token_awaits": 0
+    },
+    {
+      "body": {
+        "json": {
+          "metadata": {
+            "total_cost": 0.0
+          },
+          "products": [
+            {
+              "brand": "U13",
+              "name": "alpha"
+            },
+            {
+              "brand": "U13",
+              "name": "beta"
+            }
+          ],
+          "success": true
+        }
+      },
+      "content_type": "application/json",
+      "fire_and_forget_labels": [
+        "log_search.text.get.success",
+        "save_comparison.text.get",
+        "record_lifetime.text.get"
+      ],
+      "route": "GET /api/v1/text/compare",
+      "scenario": "U2.valid_bearer",
+      "status": 200,
+      "stub_calls": {
+        "text_routes.compare_from_text": 1,
+        "text_routes.consume_comparison_credit": 1,
+        "text_routes.fire_and_forget": 3,
+        "text_routes.get_comparison_service": 1,
+        "text_routes.get_user_preferences": 1,
+        "text_routes.log_search": 1,
+        "text_routes.record_lifetime_comparison": 1,
+        "text_routes.save_comparison_and_track_cohort": 1
+      },
+      "verify_token_awaits": 1
+    },
+    {
+      "body": {
+        "json": {
+          "metadata": {
+            "total_cost": 0.0
+          },
+          "products": [
+            {
+              "brand": "U13",
+              "name": "alpha"
+            },
+            {
+              "brand": "U13",
+              "name": "beta"
+            }
+          ],
+          "success": true
+        }
+      },
+      "content_type": "application/json",
+      "fire_and_forget_labels": [
+        "log_search.text.get.success"
+      ],
+      "route": "GET /api/v1/text/compare",
+      "scenario": "U2.rejected_bearer",
+      "status": 200,
+      "stub_calls": {
+        "text_routes.compare_from_text": 1,
+        "text_routes.fire_and_forget": 1,
+        "text_routes.get_comparison_service": 1,
+        "text_routes.log_search": 1
+      },
+      "verify_token_awaits": 1
+    },
+    {
+      "body": {
+        "text": "event: status\ndata: {\"stage\": \"u13\", \"progress\": 10}\n\nevent: complete\ndata: {\"success\": true, \"products\": [{\"brand\": \"U13\", \"name\": \"alpha\"}, {\"brand\": \"U13\", \"name\": \"beta\"}], \"metadata\": {\"total_cost\": 0.0}}\n\n"
+      },
+      "content_type": "text/event-stream; charset=utf-8",
+      "fire_and_forget_labels": [
+        "log_search.text_stream.success"
+      ],
+      "route": "GET /api/v1/text/compare/stream",
+      "scenario": "U3.anonymous",
+      "status": 200,
+      "stub_calls": {
+        "text_routes.compare_from_text_streaming": 1,
+        "text_routes.fire_and_forget": 1,
+        "text_routes.get_comparison_service": 1,
+        "text_routes.log_search": 1
+      },
+      "verify_token_awaits": 0
+    },
+    {
+      "body": {
+        "text": "event: status\ndata: {\"stage\": \"u13\", \"progress\": 10}\n\nevent: complete\ndata: {\"success\": true, \"products\": [{\"brand\": \"U13\", \"name\": \"alpha\"}, {\"brand\": \"U13\", \"name\": \"beta\"}], \"metadata\": {\"total_cost\": 0.0}}\n\n"
+      },
+      "content_type": "text/event-stream; charset=utf-8",
+      "fire_and_forget_labels": [
+        "log_search.text_stream.success",
+        "save_comparison.text_stream",
+        "record_lifetime.text_stream"
+      ],
+      "route": "GET /api/v1/text/compare/stream",
+      "scenario": "U3.valid_bearer",
+      "status": 200,
+      "stub_calls": {
+        "text_routes.compare_from_text_streaming": 1,
+        "text_routes.consume_comparison_credit": 1,
+        "text_routes.fire_and_forget": 3,
+        "text_routes.get_comparison_service": 1,
+        "text_routes.get_user_preferences": 1,
+        "text_routes.log_search": 1,
+        "text_routes.record_lifetime_comparison": 1,
+        "text_routes.save_comparison_and_track_cohort": 1
+      },
+      "verify_token_awaits": 1
+    },
+    {
+      "body": {
+        "text": "event: status\ndata: {\"stage\": \"u13\", \"progress\": 10}\n\nevent: complete\ndata: {\"success\": true, \"products\": [{\"brand\": \"U13\", \"name\": \"alpha\"}, {\"brand\": \"U13\", \"name\": \"beta\"}], \"metadata\": {\"total_cost\": 0.0}}\n\n"
+      },
+      "content_type": "text/event-stream; charset=utf-8",
+      "fire_and_forget_labels": [
+        "log_search.text_stream.success"
+      ],
+      "route": "GET /api/v1/text/compare/stream",
+      "scenario": "U3.rejected_bearer",
+      "status": 200,
+      "stub_calls": {
+        "text_routes.compare_from_text_streaming": 1,
+        "text_routes.fire_and_forget": 1,
+        "text_routes.get_comparison_service": 1,
+        "text_routes.log_search": 1
+      },
+      "verify_token_awaits": 1
+    },
+    {
+      "body": {
+        "json": {
+          "metadata": {
+            "total_cost": 0.0
+          },
+          "products": [
+            {
+              "brand": "U13",
+              "name": "one"
+            },
+            {
+              "brand": "U13",
+              "name": "two"
+            }
+          ],
+          "success": true
+        }
+      },
+      "content_type": "application/json",
+      "fire_and_forget_labels": [],
+      "route": "POST /api/v1/url/compare",
+      "scenario": "U4.anonymous",
+      "status": 200,
+      "stub_calls": {
+        "url_routes._validate_url_offloop_or_sync": 2,
+        "url_routes.compare_from_urls": 1
+      },
+      "verify_token_awaits": 0
+    },
+    {
+      "body": {
+        "json": {
+          "metadata": {
+            "total_cost": 0.0
+          },
+          "products": [
+            {
+              "brand": "U13",
+              "name": "one"
+            },
+            {
+              "brand": "U13",
+              "name": "two"
+            }
+          ],
+          "success": true
+        }
+      },
+      "content_type": "application/json",
+      "fire_and_forget_labels": [],
+      "route": "POST /api/v1/url/compare",
+      "scenario": "U4.valid_bearer",
+      "status": 200,
+      "stub_calls": {
+        "url_routes._validate_url_offloop_or_sync": 2,
+        "url_routes.compare_from_urls": 1
+      },
+      "verify_token_awaits": 1
+    },
+    {
+      "body": {
+        "json": {
+          "metadata": {
+            "total_cost": 0.0
+          },
+          "products": [
+            {
+              "brand": "U13",
+              "name": "one"
+            },
+            {
+              "brand": "U13",
+              "name": "two"
+            }
+          ],
+          "success": true
+        }
+      },
+      "content_type": "application/json",
+      "fire_and_forget_labels": [],
+      "route": "POST /api/v1/url/compare",
+      "scenario": "U4.rejected_bearer",
+      "status": 200,
+      "stub_calls": {
+        "url_routes._validate_url_offloop_or_sync": 2,
+        "url_routes.compare_from_urls": 1
+      },
+      "verify_token_awaits": 1
+    },
+    {
+      "body": {
+        "json": {
+          "metadata": {
+            "total_cost": 0.0
+          },
+          "products": [
+            {
+              "brand": "U13",
+              "name": "one"
+            },
+            {
+              "brand": "U13",
+              "name": "two"
+            }
+          ],
+          "success": true
+        }
+      },
+      "content_type": "application/json",
+      "fire_and_forget_labels": [],
+      "route": "GET /api/v1/url/compare",
+      "scenario": "U5.anonymous",
+      "status": 200,
+      "stub_calls": {
+        "url_routes._validate_url_offloop_or_sync": 2,
+        "url_routes.compare_from_urls": 1
+      },
+      "verify_token_awaits": 0
+    },
+    {
+      "body": {
+        "json": {
+          "metadata": {
+            "total_cost": 0.0
+          },
+          "products": [
+            {
+              "brand": "U13",
+              "name": "one"
+            },
+            {
+              "brand": "U13",
+              "name": "two"
+            }
+          ],
+          "success": true
+        }
+      },
+      "content_type": "application/json",
+      "fire_and_forget_labels": [],
+      "route": "GET /api/v1/url/compare",
+      "scenario": "U5.valid_bearer",
+      "status": 200,
+      "stub_calls": {
+        "url_routes._validate_url_offloop_or_sync": 2,
+        "url_routes.compare_from_urls": 1
+      },
+      "verify_token_awaits": 1
+    },
+    {
+      "body": {
+        "json": {
+          "metadata": {
+            "total_cost": 0.0
+          },
+          "products": [
+            {
+              "brand": "U13",
+              "name": "one"
+            },
+            {
+              "brand": "U13",
+              "name": "two"
+            }
+          ],
+          "success": true
+        }
+      },
+      "content_type": "application/json",
+      "fire_and_forget_labels": [],
+      "route": "GET /api/v1/url/compare",
+      "scenario": "U5.rejected_bearer",
+      "status": 200,
+      "stub_calls": {
+        "url_routes._validate_url_offloop_or_sync": 2,
+        "url_routes.compare_from_urls": 1
+      },
+      "verify_token_awaits": 1
+    },
+    {
+      "body": {
+        "json": {
+          "action": "error",
+          "error": "Could not identify products in the image. Please try a clearer photo.",
+          "success": false,
+          "vision_cost": 0.0
+        }
+      },
+      "content_type": "application/json",
+      "fire_and_forget_labels": [],
+      "route": "POST /api/v1/image/identify",
+      "scenario": "U6.anonymous",
+      "status": 200,
+      "stub_calls": {
+        "image_routes.identify_products": 1
+      },
+      "verify_token_awaits": 0
+    },
+    {
+      "body": {
+        "json": {
+          "action": "error",
+          "error": "Could not identify products in the image. Please try a clearer photo.",
+          "success": false,
+          "vision_cost": 0.0
+        }
+      },
+      "content_type": "application/json",
+      "fire_and_forget_labels": [],
+      "route": "POST /api/v1/image/identify",
+      "scenario": "U6.valid_bearer",
+      "status": 200,
+      "stub_calls": {
+        "image_routes.identify_products": 1
+      },
+      "verify_token_awaits": 1
+    },
+    {
+      "body": {
+        "json": {
+          "action": "error",
+          "error": "Could not identify products in the image. Please try a clearer photo.",
+          "success": false,
+          "vision_cost": 0.0
+        }
+      },
+      "content_type": "application/json",
+      "fire_and_forget_labels": [],
+      "route": "POST /api/v1/image/identify",
+      "scenario": "U6.rejected_bearer",
+      "status": 200,
+      "stub_calls": {
+        "image_routes.identify_products": 1
+      },
+      "verify_token_awaits": 1
+    },
+    {
+      "body": {
+        "json": {
+          "metadata": {
+            "total_cost": 0.0
+          },
+          "products": [
+            {
+              "brand": "U13",
+              "name": "alpha"
+            },
+            {
+              "brand": "U13",
+              "name": "beta"
+            }
+          ],
+          "success": true
+        }
+      },
+      "content_type": "application/json",
+      "fire_and_forget_labels": [],
+      "route": "POST /api/v1/text/quick",
+      "scenario": "A1.anonymous",
+      "status": 200,
+      "stub_calls": {
+        "text_routes.compare_from_text": 1,
+        "text_routes.get_comparison_service": 1
+      },
+      "verify_token_awaits": 0
+    },
+    {
+      "body": {
+        "json": {
+          "metadata": {
+            "total_cost": 0.0
+          },
+          "products": [
+            {
+              "brand": "U13",
+              "name": "alpha"
+            },
+            {
+              "brand": "U13",
+              "name": "beta"
+            }
+          ],
+          "success": true
+        }
+      },
+      "content_type": "application/json",
+      "fire_and_forget_labels": [],
+      "route": "POST /api/v1/text/quick",
+      "scenario": "A1.valid_bearer",
+      "status": 200,
+      "stub_calls": {
+        "text_routes.compare_from_text": 1,
+        "text_routes.get_comparison_service": 1
+      },
+      "verify_token_awaits": 0
+    },
+    {
+      "body": {
+        "json": {
+          "metadata": {
+            "total_cost": 0.0
+          },
+          "products": [
+            {
+              "brand": "U13",
+              "name": "alpha"
+            },
+            {
+              "brand": "U13",
+              "name": "beta"
+            }
+          ],
+          "success": true
+        }
+      },
+      "content_type": "application/json",
+      "fire_and_forget_labels": [],
+      "route": "POST /api/v1/text/quick",
+      "scenario": "A1.rejected_bearer",
+      "status": 200,
+      "stub_calls": {
+        "text_routes.compare_from_text": 1,
+        "text_routes.get_comparison_service": 1
+      },
+      "verify_token_awaits": 0
+    },
+    {
+      "body": {
+        "json": {
+          "prices": {
+            "bahrain": null
+          },
+          "product": "U13-PRODUCT",
+          "search_query": "U13-PRODUCT",
+          "u13": "regional-prices-stub",
+          "variant": null
+        }
+      },
+      "content_type": "application/json",
+      "fire_and_forget_labels": [],
+      "route": "GET /api/v1/text/prices/{product}",
+      "scenario": "A2.anonymous",
+      "status": 200,
+      "stub_calls": {
+        "text_routes.get_regional_prices": 1
+      },
+      "verify_token_awaits": 0
+    },
+    {
+      "body": {
+        "json": {
+          "prices": {
+            "bahrain": null
+          },
+          "product": "U13-PRODUCT",
+          "search_query": "U13-PRODUCT",
+          "u13": "regional-prices-stub",
+          "variant": null
+        }
+      },
+      "content_type": "application/json",
+      "fire_and_forget_labels": [],
+      "route": "GET /api/v1/text/prices/{product}",
+      "scenario": "A2.valid_bearer",
+      "status": 200,
+      "stub_calls": {
+        "text_routes.get_regional_prices": 1
+      },
+      "verify_token_awaits": 0
+    },
+    {
+      "body": {
+        "json": {
+          "prices": {
+            "bahrain": null
+          },
+          "product": "U13-PRODUCT",
+          "search_query": "U13-PRODUCT",
+          "u13": "regional-prices-stub",
+          "variant": null
+        }
+      },
+      "content_type": "application/json",
+      "fire_and_forget_labels": [],
+      "route": "GET /api/v1/text/prices/{product}",
+      "scenario": "A2.rejected_bearer",
+      "status": 200,
+      "stub_calls": {
+        "text_routes.get_regional_prices": 1
+      },
+      "verify_token_awaits": 0
+    },
+    {
+      "body": {
+        "json": {
+          "product": {
+            "brand": "U13",
+            "name": "one"
+          },
+          "success": true
+        }
+      },
+      "content_type": "application/json",
+      "fire_and_forget_labels": [],
+      "route": "POST /api/v1/url/extract",
+      "scenario": "A3.anonymous",
+      "status": 200,
+      "stub_calls": {
+        "url_routes._validate_url_offloop_or_sync": 1,
+        "url_routes.extract_from_url": 1
+      },
+      "verify_token_awaits": 0
+    },
+    {
+      "body": {
+        "json": {
+          "product": {
+            "brand": "U13",
+            "name": "one"
+          },
+          "success": true
+        }
+      },
+      "content_type": "application/json",
+      "fire_and_forget_labels": [],
+      "route": "POST /api/v1/url/extract",
+      "scenario": "A3.valid_bearer",
+      "status": 200,
+      "stub_calls": {
+        "url_routes._validate_url_offloop_or_sync": 1,
+        "url_routes.extract_from_url": 1
+      },
+      "verify_token_awaits": 0
+    },
+    {
+      "body": {
+        "json": {
+          "product": {
+            "brand": "U13",
+            "name": "one"
+          },
+          "success": true
+        }
+      },
+      "content_type": "application/json",
+      "fire_and_forget_labels": [],
+      "route": "POST /api/v1/url/extract",
+      "scenario": "A3.rejected_bearer",
+      "status": 200,
+      "stub_calls": {
+        "url_routes._validate_url_offloop_or_sync": 1,
+        "url_routes.extract_from_url": 1
+      },
+      "verify_token_awaits": 0
+    },
+    {
+      "body": {
+        "json": {
+          "product": {
+            "brand": "U13",
+            "name": "one"
+          },
+          "success": true
+        }
+      },
+      "content_type": "application/json",
+      "fire_and_forget_labels": [],
+      "route": "GET /api/v1/url/extract",
+      "scenario": "A4.anonymous",
+      "status": 200,
+      "stub_calls": {
+        "url_routes._validate_url_offloop_or_sync": 1,
+        "url_routes.extract_from_url": 1
+      },
+      "verify_token_awaits": 0
+    },
+    {
+      "body": {
+        "json": {
+          "product": {
+            "brand": "U13",
+            "name": "one"
+          },
+          "success": true
+        }
+      },
+      "content_type": "application/json",
+      "fire_and_forget_labels": [],
+      "route": "GET /api/v1/url/extract",
+      "scenario": "A4.valid_bearer",
+      "status": 200,
+      "stub_calls": {
+        "url_routes._validate_url_offloop_or_sync": 1,
+        "url_routes.extract_from_url": 1
+      },
+      "verify_token_awaits": 0
+    },
+    {
+      "body": {
+        "json": {
+          "product": {
+            "brand": "U13",
+            "name": "one"
+          },
+          "success": true
+        }
+      },
+      "content_type": "application/json",
+      "fire_and_forget_labels": [],
+      "route": "GET /api/v1/url/extract",
+      "scenario": "A4.rejected_bearer",
+      "status": 200,
+      "stub_calls": {
+        "url_routes._validate_url_offloop_or_sync": 1,
+        "url_routes.extract_from_url": 1
+      },
+      "verify_token_awaits": 0
+    }
+  ],
+  "openapi": {
+    "components": {
+      "schemas": {
+        "AttributionBody": {
+          "description": "Request payload for POST /attribution. Onboarding step 11\n(\"Where did you hear about us?\") \u2014 single source enum.\n\nPydantic Literal rejects unknown values with HTTP 422. The DB CHECK\nconstraint from migration 019 mirrors this enum as defense-in-depth.",
+          "properties": {
+            "source": {
+              "enum": [
+                "friend",
+                "instagram",
+                "tiktok",
+                "app_store",
+                "google",
+                "other"
+              ],
+              "title": "Source",
+              "type": "string"
+            }
+          },
+          "required": [
+            "source"
+          ],
+          "title": "AttributionBody",
+          "type": "object"
+        },
+        "AuthResponse": {
+          "properties": {
+            "error": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error"
+            },
+            "message": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Message"
+            },
+            "session": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Session"
+            },
+            "success": {
+              "title": "Success",
+              "type": "boolean"
+            },
+            "user": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "User"
+            }
+          },
+          "required": [
+            "success"
+          ],
+          "title": "AuthResponse",
+          "type": "object"
+        },
+        "Body_identify_and_compare_api_v1_image_identify_post": {
+          "properties": {
+            "images": {
+              "description": "1-4 product images",
+              "items": {
+                "contentMediaType": "application/octet-stream",
+                "type": "string"
+              },
+              "title": "Images",
+              "type": "array"
+            }
+          },
+          "required": [
+            "images"
+          ],
+          "title": "Body_identify_and_compare_api_v1_image_identify_post",
+          "type": "object"
+        },
+        "ChangePasswordRequest": {
+          "properties": {
+            "current_password": {
+              "title": "Current Password",
+              "type": "string"
+            },
+            "new_password": {
+              "minLength": 10,
+              "title": "New Password",
+              "type": "string"
+            }
+          },
+          "required": [
+            "current_password",
+            "new_password"
+          ],
+          "title": "ChangePasswordRequest",
+          "type": "object"
+        },
+        "DemographicsBody": {
+          "description": "Request payload for PUT /demographics. All 5 fields optional.\n\n`language` and `country` are auto-derived server-side when missing\n(Accept-Language \u2192 language; CF-IPCountry \u2192 country).",
+          "properties": {
+            "age_group": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Age Group"
+            },
+            "country": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Country"
+            },
+            "gender": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Gender"
+            },
+            "governorate": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Governorate"
+            },
+            "language": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Language"
+            }
+          },
+          "title": "DemographicsBody",
+          "type": "object"
+        },
+        "EventBatchRequest": {
+          "properties": {
+            "events": {
+              "items": {
+                "$ref": "#/components/schemas/EventItem"
+              },
+              "maxItems": 50,
+              "title": "Events",
+              "type": "array"
+            }
+          },
+          "required": [
+            "events"
+          ],
+          "title": "EventBatchRequest",
+          "type": "object"
+        },
+        "EventItem": {
+          "properties": {
+            "comparison_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Comparison Id"
+            },
+            "event_data": {
+              "additionalProperties": true,
+              "title": "Event Data",
+              "type": "object"
+            },
+            "event_type": {
+              "title": "Event Type",
+              "type": "string"
+            }
+          },
+          "required": [
+            "event_type"
+          ],
+          "title": "EventItem",
+          "type": "object"
+        },
+        "FeedbackRequest": {
+          "properties": {
+            "change_suggestion": {
+              "anyOf": [
+                {
+                  "maxLength": 1000,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Change Suggestion"
+            },
+            "comparison_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Comparison Id"
+            },
+            "mattered_most": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Mattered Most",
+              "type": "array"
+            },
+            "useful": {
+              "title": "Useful",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "useful"
+          ],
+          "title": "FeedbackRequest",
+          "type": "object"
+        },
+        "HTTPValidationError": {
+          "properties": {
+            "detail": {
+              "items": {
+                "$ref": "#/components/schemas/ValidationError"
+              },
+              "title": "Detail",
+              "type": "array"
+            }
+          },
+          "title": "HTTPValidationError",
+          "type": "object"
+        },
+        "InviteeQuizRequest": {
+          "properties": {
+            "brand_attitude": {
+              "maxLength": 64,
+              "minLength": 1,
+              "title": "Brand Attitude",
+              "type": "string"
+            },
+            "budget": {
+              "maxLength": 32,
+              "minLength": 1,
+              "title": "Budget",
+              "type": "string"
+            },
+            "non_negotiable": {
+              "anyOf": [
+                {
+                  "maxLength": 256,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Non Negotiable"
+            },
+            "priority": {
+              "maxLength": 64,
+              "minLength": 1,
+              "title": "Priority",
+              "type": "string"
+            }
+          },
+          "required": [
+            "priority",
+            "budget",
+            "brand_attitude"
+          ],
+          "title": "InviteeQuizRequest",
+          "type": "object"
+        },
+        "LoginRequest": {
+          "properties": {
+            "email": {
+              "format": "email",
+              "title": "Email",
+              "type": "string"
+            },
+            "password": {
+              "title": "Password",
+              "type": "string"
+            }
+          },
+          "required": [
+            "email",
+            "password"
+          ],
+          "title": "LoginRequest",
+          "type": "object"
+        },
+        "LogoutRequest": {
+          "description": "W1-4 -- OPTIONAL logout body.\n\nSending the refresh token is a CLIENT change that reaches devices only with\nthe next OTA, so every field is optional and a request with no body at all\n(today's shape) stays valid and takes today's exact path.",
+          "properties": {
+            "refresh_token": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Refresh Token"
+            }
+          },
+          "title": "LogoutRequest",
+          "type": "object"
+        },
+        "PasswordRecoveryRequest": {
+          "description": "W3-6 -- the recovery access token IS the credential (no auth dependency).",
+          "properties": {
+            "access_token": {
+              "maxLength": 4096,
+              "minLength": 20,
+              "title": "Access Token",
+              "type": "string"
+            },
+            "new_password": {
+              "minLength": 10,
+              "title": "New Password",
+              "type": "string"
+            }
+          },
+          "required": [
+            "access_token",
+            "new_password"
+          ],
+          "title": "PasswordRecoveryRequest",
+          "type": "object"
+        },
+        "PasswordResetRequest": {
+          "properties": {
+            "email": {
+              "format": "email",
+              "title": "Email",
+              "type": "string"
+            }
+          },
+          "required": [
+            "email"
+          ],
+          "title": "PasswordResetRequest",
+          "type": "object"
+        },
+        "PreferenceTogglesBody": {
+          "description": "W3-14 -- body for ``PUT /preference-toggles``.\n\nThe two master toggles only. Unlike ``UserPreferencesRequest`` there is\nNO ``priorities`` requirement, so a user without priorities can still\nexercise the AI-sharing (PDPL) opt-out and the notifications master.\nAt least one key must be provided.",
+          "properties": {
+            "ai_sharing_enabled": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ai Sharing Enabled"
+            },
+            "notifications_enabled": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Notifications Enabled"
+            }
+          },
+          "title": "PreferenceTogglesBody",
+          "type": "object"
+        },
+        "PushTokenBody": {
+          "description": "Body for PUT /api/v1/auth/push-token. The Expo token format is\n``ExponentPushToken[XXXXX...]`` \u2014 about 40 chars typical, capped at\n256 to leave headroom for future Expo token formats.",
+          "properties": {
+            "expo_push_token": {
+              "maxLength": 256,
+              "minLength": 1,
+              "title": "Expo Push Token",
+              "type": "string"
+            }
+          },
+          "required": [
+            "expo_push_token"
+          ],
+          "title": "PushTokenBody",
+          "type": "object"
+        },
+        "QuickCompareRequest": {
+          "description": "Quick comparison with just product names",
+          "properties": {
+            "product1": {
+              "title": "Product1",
+              "type": "string"
+            },
+            "product2": {
+              "title": "Product2",
+              "type": "string"
+            },
+            "region": {
+              "default": "bahrain",
+              "title": "Region",
+              "type": "string"
+            }
+          },
+          "required": [
+            "product1",
+            "product2"
+          ],
+          "title": "QuickCompareRequest",
+          "type": "object"
+        },
+        "ReengagementSubsBody": {
+          "description": "Body for PUT /api/v1/auth/reengagement-subs. All 3 toggles required.\n\nMaps to the 3 detectors in `reengagement_service.py`. Updates ONLY\nthe `users.preferences.notification_types` sub-dict \u2014 does NOT touch\nother preference fields (priorities, budget, lifestyle, brand_attitude,\nai_sharing_enabled, notifications_enabled).",
+          "properties": {
+            "decision_insights": {
+              "title": "Decision Insights",
+              "type": "boolean"
+            },
+            "decision_retrospectives": {
+              "title": "Decision Retrospectives",
+              "type": "boolean"
+            },
+            "peer_decision_updates": {
+              "title": "Peer Decision Updates",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "decision_insights",
+            "peer_decision_updates",
+            "decision_retrospectives"
+          ],
+          "title": "ReengagementSubsBody",
+          "type": "object"
+        },
+        "RefreshRequest": {
+          "properties": {
+            "refresh_token": {
+              "title": "Refresh Token",
+              "type": "string"
+            }
+          },
+          "required": [
+            "refresh_token"
+          ],
+          "title": "RefreshRequest",
+          "type": "object"
+        },
+        "RegisterRequest": {
+          "properties": {
+            "age_attested": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Age Attested"
+            },
+            "email": {
+              "format": "email",
+              "title": "Email",
+              "type": "string"
+            },
+            "invite_code": {
+              "anyOf": [
+                {
+                  "maxLength": 16,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Invite Code"
+            },
+            "invite_id": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Invite Id"
+            },
+            "password": {
+              "minLength": 10,
+              "title": "Password",
+              "type": "string"
+            },
+            "terms_accepted": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Terms Accepted"
+            },
+            "terms_version": {
+              "anyOf": [
+                {
+                  "maxLength": 32,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Terms Version"
+            }
+          },
+          "required": [
+            "email",
+            "password"
+          ],
+          "title": "RegisterRequest",
+          "type": "object"
+        },
+        "ShareRequest": {
+          "description": "Per design 3.3 + must-fix #4: privacy toggles are FLAT fields on the\nrequest. The optional ``privacy`` dict is accepted as a back-compat\nconvenience for frontend builds that haven't migrated to flat yet \u2014\nits keys merge into the flat fields (flat values still win when both\nare supplied). show_budget is locked OFF (PDF #8).\n\n``extra='ignore'`` (per qa-referral refinement): silently drop unknown\nfields so a malicious client can't propagate ``show_budget=True`` AND\nkeep the API forward-compatible if frontend sends extra debugging\nfields. ``extra='forbid'`` would 422 on any future field we haven't\nshipped yet \u2014 worse failure mode. The PDF #8 trust invariant holds\neither way: ``show_budget`` never reaches model attributes / DB /\ninvitee view.",
+          "properties": {
+            "comparison_id": {
+              "maxLength": 128,
+              "minLength": 1,
+              "title": "Comparison Id",
+              "type": "string"
+            },
+            "device_fingerprint_hash": {
+              "anyOf": [
+                {
+                  "pattern": "^[a-f0-9]{64}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Device Fingerprint Hash"
+            },
+            "privacy": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Privacy"
+            },
+            "share_target": {
+              "enum": [
+                "whatsapp",
+                "copy",
+                "x",
+                "telegram",
+                "snapchat",
+                "other"
+              ],
+              "title": "Share Target",
+              "type": "string"
+            },
+            "show_name": {
+              "default": true,
+              "title": "Show Name",
+              "type": "boolean"
+            },
+            "show_reasons": {
+              "default": true,
+              "title": "Show Reasons",
+              "type": "boolean"
+            },
+            "show_result": {
+              "default": true,
+              "title": "Show Result",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "comparison_id",
+            "share_target"
+          ],
+          "title": "ShareRequest",
+          "type": "object"
+        },
+        "SocialLoginRequest": {
+          "properties": {
+            "age_attested": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Age Attested"
+            },
+            "id_token": {
+              "title": "Id Token",
+              "type": "string"
+            },
+            "nonce": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Nonce"
+            },
+            "provider": {
+              "enum": [
+                "google",
+                "apple"
+              ],
+              "title": "Provider",
+              "type": "string"
+            },
+            "terms_accepted": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Terms Accepted"
+            },
+            "terms_version": {
+              "anyOf": [
+                {
+                  "maxLength": 32,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Terms Version"
+            }
+          },
+          "required": [
+            "provider",
+            "id_token"
+          ],
+          "title": "SocialLoginRequest",
+          "type": "object"
+        },
+        "TextCompareRequest": {
+          "description": "Request for text-based comparison.\n\nAccepts two shapes (dual-shape Pydantic pattern, spec \u00a7 5.1):\n  - Legacy: {\"query\": \"iPhone 15 vs Galaxy S24\"}\n  - New:    {\"product_a\": \"iPhone 15\", \"product_b\": \"Galaxy S24\"}\n\nSending both or neither raises 422. When product_a + product_b are\nprovided, they are concatenated into `query` so the rest of the\nhandler is shape-agnostic; the explicit pair is also surfaced via\na separate kwarg to skip parse_product_query() downstream.",
+          "properties": {
+            "include_pros_cons": {
+              "default": true,
+              "title": "Include Pros Cons",
+              "type": "boolean"
+            },
+            "include_reviews": {
+              "default": true,
+              "title": "Include Reviews",
+              "type": "boolean"
+            },
+            "include_specs": {
+              "default": true,
+              "title": "Include Specs",
+              "type": "boolean"
+            },
+            "lang": {
+              "anyOf": [
+                {
+                  "maxLength": 8,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Lang"
+            },
+            "product_a": {
+              "anyOf": [
+                {
+                  "maxLength": 80,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Product A"
+            },
+            "product_b": {
+              "anyOf": [
+                {
+                  "maxLength": 80,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Product B"
+            },
+            "query": {
+              "anyOf": [
+                {
+                  "maxLength": 500,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Query"
+            },
+            "region": {
+              "default": "bahrain",
+              "maxLength": 20,
+              "title": "Region",
+              "type": "string"
+            },
+            "selected_category": {
+              "anyOf": [
+                {
+                  "maxLength": 40,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Selected Category"
+            }
+          },
+          "title": "TextCompareRequest",
+          "type": "object"
+        },
+        "URLCompareRequest": {
+          "description": "Request to compare products from URLs",
+          "properties": {
+            "region": {
+              "default": "bahrain",
+              "title": "Region",
+              "type": "string"
+            },
+            "selected_category": {
+              "anyOf": [
+                {
+                  "maxLength": 40,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "User-selected category hint",
+              "title": "Selected Category"
+            },
+            "url1": {
+              "title": "Url1",
+              "type": "string"
+            },
+            "url2": {
+              "title": "Url2",
+              "type": "string"
+            }
+          },
+          "required": [
+            "url1",
+            "url2"
+          ],
+          "title": "URLCompareRequest",
+          "type": "object"
+        },
+        "URLExtractRequest": {
+          "description": "Request to extract product from URL",
+          "properties": {
+            "url": {
+              "title": "Url",
+              "type": "string"
+            }
+          },
+          "required": [
+            "url"
+          ],
+          "title": "URLExtractRequest",
+          "type": "object"
+        },
+        "UpdateEmailRequest": {
+          "properties": {
+            "current_password": {
+              "minLength": 1,
+              "title": "Current Password",
+              "type": "string"
+            },
+            "new_email": {
+              "format": "email",
+              "title": "New Email",
+              "type": "string"
+            }
+          },
+          "required": [
+            "new_email",
+            "current_password"
+          ],
+          "title": "UpdateEmailRequest",
+          "type": "object"
+        },
+        "UpdateProfileRequest": {
+          "properties": {
+            "display_name": {
+              "maxLength": 100,
+              "minLength": 2,
+              "title": "Display Name",
+              "type": "string"
+            }
+          },
+          "required": [
+            "display_name"
+          ],
+          "title": "UpdateProfileRequest",
+          "type": "object"
+        },
+        "UserPreferencesRequest": {
+          "properties": {
+            "ai_sharing_enabled": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ai Sharing Enabled"
+            },
+            "brand_attitude": {
+              "title": "Brand Attitude",
+              "type": "string"
+            },
+            "budget": {
+              "title": "Budget",
+              "type": "string"
+            },
+            "lifestyle": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Lifestyle",
+              "type": "array"
+            },
+            "notification_types": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Notification Types"
+            },
+            "notifications_enabled": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Notifications Enabled"
+            },
+            "priorities": {
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 3,
+              "minItems": 1,
+              "title": "Priorities",
+              "type": "array"
+            }
+          },
+          "required": [
+            "priorities",
+            "budget",
+            "brand_attitude"
+          ],
+          "title": "UserPreferencesRequest",
+          "type": "object"
+        },
+        "ValidationError": {
+          "properties": {
+            "ctx": {
+              "title": "Context",
+              "type": "object"
+            },
+            "input": {
+              "title": "Input"
+            },
+            "loc": {
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "integer"
+                  }
+                ]
+              },
+              "title": "Location",
+              "type": "array"
+            },
+            "msg": {
+              "title": "Message",
+              "type": "string"
+            },
+            "type": {
+              "title": "Error Type",
+              "type": "string"
+            }
+          },
+          "required": [
+            "loc",
+            "msg",
+            "type"
+          ],
+          "title": "ValidationError",
+          "type": "object"
+        }
+      }
+    },
+    "operations": {
+      "GET /api/v1/text/compare": {
+        "description": "GET version of text comparison for easy testing.\n\nDual-shape (Bundle B \u00a7 5.1) \u2014 matches the POST + streaming endpoints:\n  - ?q=iPhone+15+vs+Galaxy+S24                     (legacy single-string)\n  - ?product_a=iPhone+15&product_b=Galaxy+S24      (Bundle B pair)\nSending both or neither raises 422. When the pair is provided, q is\nsynthesized as \"{product_a} vs {product_b}\" so the orchestrator stays\nshape-agnostic.",
+        "operationId": "text_compare_get_api_v1_text_compare_get",
+        "parameters": [
+          {
+            "description": "Legacy single-string query, e.g., 'iPhone 15 vs S24'",
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 500,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Legacy single-string query, e.g., 'iPhone 15 vs S24'",
+              "title": "Q"
+            }
+          },
+          {
+            "description": "Bundle B: explicit first product, paired with product_b",
+            "in": "query",
+            "name": "product_a",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 80,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Bundle B: explicit first product, paired with product_b",
+              "title": "Product A"
+            }
+          },
+          {
+            "description": "Bundle B: explicit second product, paired with product_a",
+            "in": "query",
+            "name": "product_b",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 80,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Bundle B: explicit second product, paired with product_a",
+              "title": "Product B"
+            }
+          },
+          {
+            "description": "GCC region for pricing",
+            "in": "query",
+            "name": "region",
+            "required": false,
+            "schema": {
+              "default": "bahrain",
+              "description": "GCC region for pricing",
+              "maxLength": 20,
+              "title": "Region",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Include specifications",
+            "in": "query",
+            "name": "specs",
+            "required": false,
+            "schema": {
+              "default": true,
+              "description": "Include specifications",
+              "title": "Specs",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Include reviews",
+            "in": "query",
+            "name": "reviews",
+            "required": false,
+            "schema": {
+              "default": true,
+              "description": "Include reviews",
+              "title": "Reviews",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Include pros/cons",
+            "in": "query",
+            "name": "pros_cons",
+            "required": false,
+            "schema": {
+              "default": true,
+              "description": "Include pros/cons",
+              "title": "Pros Cons",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Bypass cache for fresh data",
+            "in": "query",
+            "name": "nocache",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Bypass cache for fresh data",
+              "title": "Nocache",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "User-selected category hint",
+            "in": "query",
+            "name": "selected_category",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 40,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "User-selected category hint",
+              "title": "Selected Category"
+            }
+          },
+          {
+            "description": "UI language for generated prose (en|ar)",
+            "in": "query",
+            "name": "lang",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 8,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "UI language for generated prose (en|ar)",
+              "title": "Lang"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Text Compare Get",
+        "tags": [
+          "text-comparison"
+        ]
+      },
+      "GET /api/v1/text/compare/stream": {
+        "description": "SSE streaming version of text comparison. Returns Server-Sent Events.\n\nDual-shape (Bundle B sec 5.1) \u2014 same mutual-exclusion rules as POST /compare:\n  - ?q=iPhone+15+vs+Galaxy+S24                     (legacy single-string)\n  - ?product_a=iPhone+15&product_b=Galaxy+S24      (Bundle B pair)\nBoth shapes hit L1 + L3 identically. Pair shape forwards explicit_pair\nso the service skips parse_product_query().",
+        "operationId": "text_compare_stream_api_v1_text_compare_stream_get",
+        "parameters": [
+          {
+            "description": "Legacy single-string query, e.g., 'iPhone 15 vs S24'",
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 500,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Legacy single-string query, e.g., 'iPhone 15 vs S24'",
+              "title": "Q"
+            }
+          },
+          {
+            "description": "Bundle B: explicit first product, paired with product_b",
+            "in": "query",
+            "name": "product_a",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 80,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Bundle B: explicit first product, paired with product_b",
+              "title": "Product A"
+            }
+          },
+          {
+            "description": "Bundle B: explicit second product, paired with product_a",
+            "in": "query",
+            "name": "product_b",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 80,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Bundle B: explicit second product, paired with product_a",
+              "title": "Product B"
+            }
+          },
+          {
+            "description": "GCC region for pricing",
+            "in": "query",
+            "name": "region",
+            "required": false,
+            "schema": {
+              "default": "bahrain",
+              "description": "GCC region for pricing",
+              "maxLength": 20,
+              "title": "Region",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Include specifications",
+            "in": "query",
+            "name": "specs",
+            "required": false,
+            "schema": {
+              "default": true,
+              "description": "Include specifications",
+              "title": "Specs",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Include reviews",
+            "in": "query",
+            "name": "reviews",
+            "required": false,
+            "schema": {
+              "default": true,
+              "description": "Include reviews",
+              "title": "Reviews",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Include pros/cons",
+            "in": "query",
+            "name": "pros_cons",
+            "required": false,
+            "schema": {
+              "default": true,
+              "description": "Include pros/cons",
+              "title": "Pros Cons",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Bypass cache for fresh data",
+            "in": "query",
+            "name": "nocache",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Bypass cache for fresh data",
+              "title": "Nocache",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "User-selected category hint",
+            "in": "query",
+            "name": "selected_category",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 40,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "User-selected category hint",
+              "title": "Selected Category"
+            }
+          },
+          {
+            "description": "UI language for generated prose (en|ar)",
+            "in": "query",
+            "name": "lang",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 8,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "UI language for generated prose (en|ar)",
+              "title": "Lang"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Text Compare Stream",
+        "tags": [
+          "text-comparison"
+        ]
+      },
+      "GET /api/v1/text/prices/{product}": {
+        "description": "Get prices for a product across all GCC regions.\n\nExample: /api/v1/text/prices/iPhone%2015%20Pro?variant=256GB\n\nReturns prices in: Bahrain, Saudi Arabia, UAE, Kuwait, Qatar, Oman",
+        "operationId": "get_gcc_prices_api_v1_text_prices__product__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "product",
+            "required": true,
+            "schema": {
+              "maxLength": 100,
+              "title": "Product",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Product variant, e.g., '256GB'",
+            "in": "query",
+            "name": "variant",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 50,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Product variant, e.g., '256GB'",
+              "title": "Variant"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Gcc Prices",
+        "tags": [
+          "text-comparison"
+        ]
+      },
+      "GET /api/v1/url/compare": {
+        "description": "GET version of compare for easy testing.",
+        "operationId": "compare_urls_get_api_v1_url_compare_get",
+        "parameters": [
+          {
+            "description": "First product URL",
+            "in": "query",
+            "name": "url1",
+            "required": true,
+            "schema": {
+              "description": "First product URL",
+              "title": "Url1",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Second product URL",
+            "in": "query",
+            "name": "url2",
+            "required": true,
+            "schema": {
+              "description": "Second product URL",
+              "title": "Url2",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Region for pricing context",
+            "in": "query",
+            "name": "region",
+            "required": false,
+            "schema": {
+              "default": "bahrain",
+              "description": "Region for pricing context",
+              "title": "Region",
+              "type": "string"
+            }
+          },
+          {
+            "description": "User-selected category hint",
+            "in": "query",
+            "name": "selected_category",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 40,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "User-selected category hint",
+              "title": "Selected Category"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Compare Urls Get",
+        "tags": [
+          "url-comparison"
+        ]
+      },
+      "GET /api/v1/url/extract": {
+        "description": "GET version of extract for easy testing.",
+        "operationId": "extract_product_get_api_v1_url_extract_get",
+        "parameters": [
+          {
+            "description": "Product URL to extract",
+            "in": "query",
+            "name": "url",
+            "required": true,
+            "schema": {
+              "description": "Product URL to extract",
+              "title": "Url",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Extract Product Get",
+        "tags": [
+          "url-comparison"
+        ]
+      },
+      "POST /api/v1/image/identify": {
+        "description": "Identify products from uploaded images, then compare if 2+ found.\n\nReturns one of:\n  - action=\"need_second_product\" + products[] (1 product identified)\n  - action=\"comparison\" + full ComparisonResult (2+ products identified)\n  - action=\"error\" (0 products or processing failure)",
+        "operationId": "identify_and_compare_api_v1_image_identify_post",
+        "parameters": [
+          {
+            "description": "Region for price search",
+            "in": "query",
+            "name": "region",
+            "required": false,
+            "schema": {
+              "default": "bahrain",
+              "description": "Region for price search",
+              "title": "Region",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Bypass price/spec cache",
+            "in": "query",
+            "name": "nocache",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Bypass price/spec cache",
+              "title": "Nocache",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_identify_and_compare_api_v1_image_identify_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Identify And Compare",
+        "tags": [
+          "image-comparison"
+        ]
+      },
+      "POST /api/v1/text/compare": {
+        "description": "Compare products from natural language query.\n\nExamples:\n- \"iPhone 15 vs Galaxy S24\"\n- \"compare Nido milk with Almarai\"\n- \"MacBook Air M3 vs Dell XPS 13\"\n\nReturns structured comparison with:\n- Product specs\n- Regional prices (GCC)\n- Reviews summary\n- Pros/cons\n- Winner recommendation",
+        "operationId": "text_compare_api_v1_text_compare_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TextCompareRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Text Compare",
+        "tags": [
+          "text-comparison"
+        ]
+      },
+      "POST /api/v1/text/quick": {
+        "description": "Quick comparison when you already know both product names.\n\nExample:\n{\n    \"product1\": \"iPhone 15 Pro\",\n    \"product2\": \"Samsung Galaxy S24 Ultra\",\n    \"region\": \"bahrain\"\n}",
+        "operationId": "quick_compare_api_v1_text_quick_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuickCompareRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Quick Compare",
+        "tags": [
+          "text-comparison"
+        ]
+      },
+      "POST /api/v1/url/compare": {
+        "description": "Compare two products from their URLs.\n\nExample:\n{\n    \"url1\": \"https://amazon.ae/dp/B0CHX1W1XY\",\n    \"url2\": \"https://noon.com/uae-en/samsung-galaxy-s24/N123456\",\n    \"region\": \"bahrain\"\n}\n\nReturns full comparison with:\n- Extracted product data for both\n- Price comparison\n- Specs comparison\n- Winner recommendation\n- Key differences",
+        "operationId": "compare_urls_api_v1_url_compare_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/URLCompareRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Compare Urls",
+        "tags": [
+          "url-comparison"
+        ]
+      },
+      "POST /api/v1/url/extract": {
+        "description": "Extract product information from a single URL.\n\nSupports major GCC retailers:\n- Amazon (amazon.ae, amazon.sa)\n- Noon (noon.com)\n- Carrefour\n- Sharaf DG\n- Lulu Hypermarket\n- And more...\n\nReturns structured product data including:\n- Brand, name, variant\n- Price and currency\n- Specifications\n- Reviews/ratings\n- Images",
+        "operationId": "extract_product_api_v1_url_extract_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/URLExtractRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Extract Product",
+        "tags": [
+          "url-comparison"
+        ]
+      }
+    }
+  }
+}
