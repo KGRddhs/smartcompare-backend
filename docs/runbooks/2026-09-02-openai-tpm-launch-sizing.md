@@ -72,7 +72,7 @@ byte-identical to the pre-#117 behaviour):
 
 | Env | Default | Meaning |
 |---|---|---|
-| `OPENAI_MAX_RETRIES` | `2` (== SDK default) | SDK retry ceiling for all four AsyncOpenAI constructions (`openai_service.py` module client + both per-project clients, `extraction_service.get_client`) |
+| `OPENAI_MAX_RETRIES` | `2` (== SDK default) | SDK retry ceiling for all five AsyncOpenAI constructions (`openai_service.py` module client + both per-project clients, `extraction_service.get_client`, `url_extraction_service.get_client` — the last added by #265, session 70) |
 | `OPENAI_FALLBACK_MAX_RETRIES` | inherits `OPENAI_MAX_RETRIES` | Ceiling for the verdict chain's 429 fallback onto the standard model (`extraction_service`, applied per call via `with_options`) |
 
 The explicit worst-case attempt count is
@@ -86,11 +86,18 @@ OPENAI_MAX_RETRIES=1            # 2 attempts per call — one genuine retry for 
 OPENAI_FALLBACK_MAX_RETRIES=0   # the fallback never retries into a saturated mini budget
 ```
 
-⇒ worst-case chain = **3 attempts** (down from 6). Note the module-level
-`openai_service.client` reads the knob at import — a Railway change reaches it
-on the next restart; the lazily-built clients and the per-call fallback pick
-it up without one. The SDK honours a 429's `Retry-After` header on the
-retries it does make; capping retries does not change that.
+⇒ worst-case chain = **3 attempts** (down from 6). Note that
+`OPENAI_MAX_RETRIES` is read when each client is BUILT, never per call: the
+module-level `openai_service.client` reads it at import, and the lazily-built
+clients (`openai_service`'s per-project clients, `extraction_service.get_client`
+and `url_extraction_service.get_client`) read it once, at first construction,
+and cache it for the life of the process. A Railway change therefore reaches
+all five on the next restart or redeploy (corrected in session 71; this
+sentence used to say the lazily-built clients pick it up without one). Only the
+per-call fallback ceiling (`OPENAI_FALLBACK_MAX_RETRIES`, or the
+`OPENAI_MAX_RETRIES` it inherits when unset, applied via `with_options`) is
+re-read on every fallback call. The SDK honours a 429's `Retry-After` header on
+the retries it does make; capping retries does not change that.
 
 ## 4. Activation preconditions (pair with re-funding — no new code)
 
@@ -121,3 +128,98 @@ retries it does make; capping retries does not change that.
   environment with its own Upstash, its own Supabase, its own OpenAI project
   and budget, and Ahmed's explicit GO — the point of this arithmetic is to
   avoid discovering the ceiling by paying for it.
+
+## 6. Daily gpt-4o cap (`DAILY_4O_CAP`, #268)
+
+**Status:** the env read ships with the session-70 OAI_OBS unit. Unset in
+production = today's routing (the class constant, 1,000,000). Choosing a value
+is **Ahmed's decision and his env action**; this unit sets nothing on Railway.
+Every number in this section is **MODELLED** unless it says otherwise.
+
+**How the router uses it.** `ModelRouterService.get_model(priority="high")`
+reads `DAILY_4O_CAP` on every call (`daily_4o_cap()`; no restart needed) and
+routes the verdict to the standard model once today's counter reaches
+`SWITCH_THRESHOLD` (0.80) of the cap. Each such decision logs one INFO line,
+and the response carries `metadata.model_downgraded: true`.
+
+**What the counter counts.**
+- `response.usage.total_tokens` of each verdict API call that RETURNED a
+  response on the configured verdict model: `record_usage` filters on
+  `model_config.verdict_model()` (`model_router_service.record_usage`, called
+  from `extraction_service.generate_comparison`).
+- "Returned" is the bar, not "parsed": `record_usage` runs before the JSON
+  parse, so a response that later fails to parse is still counted.
+- It does NOT count the Tier-3 spec synthesis call. That call is routed by the
+  same `get_model("high")` (`structured_comparison_service`, `_synth_call`;
+  `max_tokens` 300 in `openai_service.extract_specs_synthesized`; up to 2 per
+  compare) and runs on gpt-4o below the threshold, but it is never recorded.
+  **The cap bounds verdict tokens, not total gpt-4o tokens** — real gpt-4o
+  spend is higher than the counter.
+- Keys roll over at 00:00 UTC (`openai:4o:tokens:<UTC date>`).
+
+**Per-verdict tokens (MODELLED).** Prompt 5,498–5,942 tokens (the offline
+count in the §2 correction); completion bounded by `max_tokens=1000`, real
+size UNMEASURED. That is roughly **5.5k–6.9k counted tokens per verdict**
+(MODELLED).
+
+**Shipped default (MODELLED).** `1,000,000 × 0.80 = 800,000` counted tokens,
+reached at about **116–145 verdicts per UTC day** (MODELLED; matches the
+session-69 decision memo's R-C14).
+
+**~200 verdicts/day (MODELLED).** `200 × ~6.9k ≈ 1.38M` tokens needs
+`cap ≥ 1.38M / 0.80 ≈ 1.73M`. Suggested setting: `DAILY_4O_CAP=2000000`,
+which puts the threshold at 1.6M — about **232–290 verdicts per day**
+(MODELLED). If `ENABLE_SELF_CRITIQUE` is ever turned on, a regenerated
+verdict spends a second verdict-model call; size the cap for it.
+
+**Read before choosing a value (decision inputs, UNMEASURED for this org).**
+- The router's own purpose is to "never fall off the data-sharing free tier
+  mid-day" (module docstring). OpenAI's complimentary gpt-4o allowance under
+  data sharing is **tier-dependent: 250K tokens/day on usage Tiers 1–2, 1M
+  tokens/day on Tiers 3–5**, shared across the large-model group and across
+  the organisation's projects; overage bills at list price; it resets at
+  00:00 UTC. **This org's usage tier and whether it is enrolled in data
+  sharing at all are UNMEASURED** — Ahmed reads both in the OpenAI dashboard
+  before choosing. Do not assume 1M.
+- Paid tokens above the allowance: the shipped default already lets up to
+  800K counted verdict tokens through per UTC day, which is above a 250K
+  (Tier 1–2) allowance. `DAILY_4O_CAP=2000000` lets up to 1.6M through, which
+  is above even a 1M allowance, so the excess bills at list price (MODELLED).
+- The daily dollar cost of the chosen cap must be read from OpenAI's pricing
+  page when the value is set. It is not stated here.
+
+**Operator trap — write digits only.** `DAILY_4O_CAP=2000000`. `2e6` and
+`2_000_000` are also accepted (Python `float()` accepts them; measured).
+`2,000,000` (commas), hex (`0x…`), a blank value, `inf`, `nan` and anything
+below 1 are rejected and **silently fall back to 1,000,000**. After setting the
+value, verify it: `GET /api/v1/admin/costs/gauges` → `openai_4o_today.cap`
+(the gauge reports the cap the router uses), or the `cap=` field of the INFO
+line below.
+
+**Limits.**
+- Overshoot: the counter is incremented after each call returns, so
+  concurrent in-flight verdicts can overshoot the threshold by about
+  (concurrency × ~6.9k) tokens (MODELLED).
+- TPM-blind: the cap is a daily spend guard. It does not protect the
+  per-minute wall (§2).
+- Redis down: a failed counter read counts as 0, so every verdict runs on the
+  verdict model and cap protection is lost until Redis returns; the increment
+  is best-effort too.
+
+**Observability.**
+- The INFO line in the Railway logs, one per downgrade decision:
+  `[MODEL_ROUTER] 4o cap reached: routing verdict to <standard model> (used=<n> cap=<n> threshold=0.80)`.
+  It also fires for the Tier-3 synthesis `get_model("high")` call, whose line
+  also says "routing verdict", so **line counts overstate downgraded
+  verdicts**.
+- Count `metadata.model_downgraded: true` on responses instead. The key is a
+  bare boolean, present only when true, on the full sync body and the SSE
+  `settle_complete` / `complete` events (never on a partial response or on
+  `/api/v1/url/compare`). It is set for BOTH the cap downgrade and the
+  existing 429/rate/quota fallback onto the standard model; the two are told
+  apart only in the logs (the INFO line above vs the WARNING
+  `[model_router] … rate-limited mid-call; falling back to …`).
+- Stated limit: the fallback trigger is a substring test on `'429'` / `'rate'`
+  / `'quota'`, and `'rate'` also matches words such as "generate", so the
+  marker can mark a verdict that fell back after a non-429 failure.
+  Pre-existing; not changed here.

@@ -1,64 +1,42 @@
 /**
- * QarenLogo — brand-glyph SVG.
- * Spec: docs/plans/2026-05-12-bundle-bcd-consolidated.md § Task 2.10
+ * QarenLogo — the in-app MYEZ mark (session 71, unit U4c).
+ * Spec: docs/investigations/2026-10-03-session-71-state/U4C_INAPP_MARK_SPEC.md
  *
- * A simple Q-with-tail mark plus an emerald accent dot at the top-right
- * of the ring. The accent dot is the Bundle A signal-color "one drop"
- * rule made literal — the rest of the app stays monochrome black/white
- * unless something earns the emerald (winner reveal, success tick,
- * cohort accent).
+ * Draws Ahmed's MYEZ logo (the black MY/EZ wordmark and the emerald dot)
+ * as ONE bundled PNG, so the app shows the same mark as the launcher icon.
+ * The three scales assets/brand/myez-mark.png, @2x and @3x are rendered from
+ * the committed master by scripts/render_myez_icons.py — never hand-edit
+ * them. The component keeps its name and path (identifiers stay `qaren`).
  *
- * Replaces the plain text "Qaren" header in Home / Profile / History /
- * Splash. Pre-launch ships glyph + wordmark together; glyph-only is a
- * later iteration once recognition lands.
+ * The PNG carries its own colours: there is no colour prop and no tint. Its
+ * transparency is exact over white, which is what every current site has.
+ *
+ * `fadeDuration={0}`: Android fades a non-resource image in over 300 ms, and
+ * an asset delivered by an OTA update is a file, not a resource. iOS
+ * ignores the prop.
  */
 import React from 'react';
-import Svg, { Circle, Path, G } from 'react-native-svg';
-import { colors } from '../theme';
+import { Image } from 'react-native';
+
+// Module scope: the require is resolved once and Metro bundles every scale.
+const MARK = require('../../assets/brand/myez-mark.png');
 
 type Props = {
   size?: number;
-  color?: string;
 };
 
-export default function QarenLogo({
-  size = 32,
-  color = colors.text.primary,
-}: Props) {
+export default function QarenLogo({ size = 32 }: Props) {
   return (
-    // qa-bcd a11y review (Task #35) — the glyph always sits beside the
-    // visible wordmark <Text>{t('app.name')}</Text>. Hide it from
-    // VoiceOver/TalkBack so the wordmark speaks for the pair and the
-    // user doesn't hear "image" twice. Matches the decorative-overlay
-    // pattern used in ScannerReticle.
-    <Svg
-      width={size}
-      height={size}
-      viewBox="0 0 32 32"
-      fill="none"
+    // Decorative, hidden from VoiceOver/TalkBack exactly as the old glyph
+    // was: the mark has no label, and any title beside it speaks for the
+    // screen. Matches the decorative-overlay pattern used in ScannerReticle.
+    <Image
+      source={MARK}
+      style={{ width: size, height: size }}
+      resizeMode="contain"
+      fadeDuration={0}
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants"
-    >
-      <G>
-        {/* Q-ring */}
-        <Circle
-          cx={16}
-          cy={16}
-          r={13}
-          stroke={color}
-          strokeWidth={2.5}
-          fill="none"
-        />
-        {/* Q-tail */}
-        <Path
-          d="M22 22 L27 27"
-          stroke={color}
-          strokeWidth={2.5}
-          strokeLinecap="round"
-        />
-        {/* Emerald accent dot — Bundle A signal-color anchor. */}
-        <Circle cx={22} cy={11} r={2} fill={colors.accent} />
-      </G>
-    </Svg>
+    />
   );
 }
