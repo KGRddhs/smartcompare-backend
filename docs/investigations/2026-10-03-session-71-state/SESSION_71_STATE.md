@@ -1,4 +1,4 @@
-# Session 71 — resume state (written 2026-10-03 ~07:57 AST, before context compaction; updated 09:45: PR #285 open; U13 GREEN, U4c GREEN and U8b RED running)
+# Session 71 — resume state (written 2026-10-03 ~07:57 AST, before context compaction; updated 10:08: #285 merged; U13 adversaries, U4c GREEN and the T0b review running; U8b GREEN held for load)
 
 Read this file first after any compaction or in a new session. Everything here was measured or decided in session 71. Companion files in this folder: `IMPLEMENTATION_PLAN.md` (approved), `CONFIG_AUDIT_PLAN.md`, `RESEARCH_DIGEST.md`, `FABLE_REVIEW_RED_U4B.md`, `FABLE_REVIEW_RED_OAI.md`, `TRAFFIC_FINDING_2026-10-02.md`, `ledger.md`.
 
@@ -6,11 +6,11 @@ Read this file first after any compaction or in a new session. Everything here w
 - Run under `/synack-build-orchestrator`. **Fable (main session) orchestrates, plans, reviews. EVERY agent is Opus** (`model: 'opus'` on every `agent()` and Agent call), in workflows.
 - Per unit: Opus RED → **Fable gate on spec + tests** → Opus GREEN → two Opus adversaries → Opus fix → **Fable diff review** → gates → commit → PR → five required checks → merge. RED and GREEN are separate workflow launches.
 - PRD = `docs/investigations/2026-09-29-session-69-state/APP_STORE_LAUNCH_RUNBOOK.md` + `…/2026-09-29-session-69-state.md`. Scope additions need Ahmed's call.
-- GitHub through `harness/pr_rest.py` / `issue_rest.py` (repo `KGRddhs/smartcompare-backend`; `gh` dies on this box). Never poll CI in a loop; read status once when re-invoked. The session is bound to PR #285 (OAI) through the app PR monitor (`get_status`); #279, #278 and #277 are merged.
+- GitHub through `harness/pr_rest.py` / `issue_rest.py` (repo `KGRddhs/smartcompare-backend`; `gh` dies on this box). Never poll CI in a loop; read status once when re-invoked. PRs #285, #279, #278 and #277 are merged; bind each new PR to the app PR monitor (`bind_pr`, then `get_status`).
 - Nothing flips in production without Ahmed's explicit word. Railway variables by NAME only. Never print secrets.
 
 ## 2. Where things are
-- **main `eb86075e`** = #279 (U4b, merged 08:28) on top of `4bd5a09f` = #278 (`5ed4f459`: `pyjwt 2.15.1`, `urllib3 2.8.0`, pip-audit clean) + #277 (session-70 docs + both specs with rulings). Railway `web` deployment `491ee9b0` SUCCESS on `4bd5a09f`. `/health` 200. **OpenAI still 429 `credit_balance_exhausted`.** Serper 200, Firecrawl 1,025, Scrape.do 1,000/1,000.
+- **main `ca604e0a`** = #285 (OAI/obs, merged 10:02) on `eb86075e` = #279 (U4b, merged 08:28) on `4bd5a09f` = #278 (`5ed4f459`: `pyjwt 2.15.1`, `urllib3 2.8.0`, pip-audit clean) + #277 (session-70 docs + both specs with rulings). Railway `web` deployment `491ee9b0` SUCCESS on `4bd5a09f`. `/health` 200. **OpenAI still 429 `credit_balance_exhausted`.** Serper 200, Firecrawl 1,025, Scrape.do 1,000/1,000.
 - **Docs branch** `docs/session-71-checkpoint` (worktree `sc-docs-70`), pushed; this folder lives there. No PR opened yet — open one at the next checkpoint.
 - **Scratchpad** (session-temporary): `C:/Users/SYNACK~1/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/3ffde5dd-0e09-4243-bf73-02955e287dff/scratchpad` — `harness/` (`pyt.py`, `stall_monitor.py` STOPPED at 08:04 when its 2-hour background limit ended; not restartable, so check agent liveness by hand from the workflow journals at each re-invocation, `pr_rest.py`, `issue_rest.py`, `ci_logs.py`, `active_workflows.txt`), `s70-common.txt` (agent rules), `wf_s71_*.js` (workflow scripts), `snap_pre_ff/` (byte copies of RED files), `traffic/` (Railway HTTP + app logs), `ledger_s71.md`.
 - Pinned venv `C:/Users/SynAckITPC/Documents/AI/.venv-qaren` matches the new lock.
@@ -24,9 +24,9 @@ Read this file first after any compaction or in a new session. Everything here w
 - Owed in the docs PR: the CLAUDE.md blocker #1 line (launcher art done; the in-app glyph is #280) and the runbook fresh-install note (a phone that had the old build can show the cached launch screen until reinstall).
 - Worktree `sc-s70-u4b` is KEPT: it has a real `node_modules` that matches the new lock, and U4c is built in it on a new branch from main. The U4c spec agent measures in it read-only.
 
-### OAI/observability — **PR #285 OPEN** (branch `feature/s70-openai-companions`, commit `e9f432c1` on `eb86075e`, worktree `sc-s70-oai` clean)
-- #265, #268, eight typed error-log sites through the new leaf `app/services/log_scrub.py`, the prefetch-gather done-callback, the runbook section. Both adversaries SOUND; fix round applied; orchestrator diff review done; spec addendum OR16–OR21 (the `exc_summary` scrub order is URL scrub first). Post-ff verification: 500 passed. C7 measured: `DAILY_4O_CAP` absent on Railway `web`. PR body copy: `pr/PR_285_OAI_BODY.md`.
-- **Owed:** merge on green (read `get_status`; never poll) → verify the Railway deploy + `/health` → CLAUDE.md lines in the docs PR (the `model_router_service` line, "all four AsyncOpenAI" → five, retire the #265 correction, the Sentry one-issue-per-template note) → follow-up issues (the quadratic JWT pattern in `sentry_service`; `cache_service._redis_get` empty-text ERROR + blocking read; discovery prefetch Task noise; the known redaction gaps) → after deploy, check Sentry for one accumulating issue per template and resolve the old per-text issues → remove the worktree.
+### OAI/observability — MERGED 10:02 as PR #285 → main `ca604e0a` (deployed, `/health` 200)
+- #265 and #268 closed; follow-ups #286, #287 filed; worktree removed. PR body copy: `pr/PR_285_OAI_BODY.md`.
+- Still owed: the CLAUDE.md lines in the docs PR (the `model_router_service` line, "all four AsyncOpenAI" → five, retire the #265 correction, the one-issue-per-template Sentry note); the Sentry check once real compares produce events at the eight sites.
 
 ### U13 — paid routes require a caller; GREEN running: `wf_8f9f3ab5-2fb` (task `w9mmqc053`, script `scripts/wf_s71_u13_green.js`, launched 09:21)
 - Worktree `sc-s71-u13` (branch `feature/s71-u13-compare-auth-required`, HEAD `eb86075e`). Spec in that worktree (untracked until the unit commit; sha256 `df62ebe3…`): body + corrections C1–C11 + rulings UR1–UR15 + the RED gate UG1–UG6 (copies: `FABLE_RULINGS_U13.md`, `FABLE_REVIEW_RED_U13.md`).
@@ -41,13 +41,11 @@ Read this file first after any compaction or in a new session. Everything here w
 - OUT, issue #283: the `QaranIcon` Q-magnifier in the winner reveal and the text-only logos on ForgotPassword/Register. Device checks owed before the production build: white gap before the first JS frame, one-frame image decode, 2 pt Home header shift, the Arabic hand-off.
 - **Then (orchestrator):** sha-check, read the snapshot diff and the code diff, commit (spec + tests + code + assets + manifest), PR, FULL jest only if a rebase is needed, merge on green.
 
-### U8b — account deletion erases everything; RED running: `wf_b60a0e1b-48d` (task `wz3r8cutt`, script `scripts/wf_s71_u8b_red.js`, launched 09:32)
-- Worktree `sc-s71-u8b` (branch `feature/s71-u8b-account-deletion`, HEAD `eb86075e`). Spec in that worktree (untracked until the unit commit; sha256 `d9dbc64a…`): body + corrections C1–C14 + rulings UR1–UR15 (copy: `FABLE_RULINGS_U8B.md`).
-- Design: migration `043_delete_user_cascade_full_erasure.sql` (11 deletes, the audit-log IP nulled, a 25-column tombstone of the kept `users` row, guard + assert blocks with the nil-uuid dry run inside the transaction, REVOKE after CREATE, no restated GRANT) + rollback + a static CI fence (every users column and user-referencing table is cleared or on a justified KEEP list) + backend R6 (purge 5 per-user cache keys) and R7 (no exception text in the deletion log lines) + four one-paste files Ahmed applies (PRECHECK, ONE_PASTE, POSTCHECK, optional BACKFILL).
-- Live metadata measured 09:30 (names only): `users` = the spec's 27 columns; `governorate` absent (issue #284); the three NOT NULL columns take 0 / false / 0.
-- Privacy defaults Ahmed may change before applying 043: audit-log IP nulled (rows kept), consent columns erased, free quota resets on delete-and-re-register.
-- Follow-ups to file at merge: the client's `@qaren_recent_searches` surviving deletion and logout; an audit-log retention window.
-- Next: Fable gate on the RED tests → Opus GREEN (separate launch, with the PostgreSQL 18 single-user gate) → adversaries → diff review → PR → Ahmed runs PRECHECK, then the one-paste.
+### U8b — account deletion erases everything; RED gated PASS; **GREEN NOT YET LAUNCHED (held for box load at 10:05)**
+- Worktree `sc-s71-u8b` (branch `feature/s71-u8b-account-deletion`, HEAD `ca604e0a` after the fast-forward). Spec in that worktree (untracked until the unit commit; sha256 `848afcbb…`): body + corrections C1–C14 + rulings UR1–UR15 + the RED gate UG1–UG6 (copies: `FABLE_RULINGS_U8B.md`, `FABLE_REVIEW_RED_U8B.md`).
+- RED (Opus, `wf_b60a0e1b-48d`): `tests/test_migration_043_delete_user_cascade.py` `4f8d7dad…`, `tests/test_account_deletion_u8b.py` `846f34e8…`; 35 RED / 26 PIN; frozen copies in scratchpad `u8b/red_frozen`.
+- **Launch next:** `Workflow({scriptPath: scratchpad/wf_s71_u8b_green.js})` (copy in `scripts/`) as soon as one gate-heavy workflow finishes and the spawn probe is back near 0.5 s. GREEN includes the mandatory PostgreSQL 18 single-user run.
+- Privacy defaults Ahmed may change before applying 043: audit-log IP nulled (rows kept), consent columns erased, free quota resets on delete-and-re-register. Follow-ups to file at merge: the client's `@qaren_recent_searches`; an audit-log retention window.
 
 ### T0b — repo tooling (audit batch C); adversarial spec review running: `wf_97fb5fb8-2ff` (task `w1gopvopq`, launched 09:46)
 - Worktree `sc-s71-t0b` (branch `feature/s71-t0b-repo-tooling` from `eb86075e`). Draft spec by the orchestrator: `T0B_REPO_TOOLING_SPEC.md` (copied into the worktree, untracked). The reviewer measures the six open questions (gitleaks invocation, tracked `.env`-like files, PyYAML, ESLint on staged content, the CI job, POSIX sh) and appends binding corrections.
