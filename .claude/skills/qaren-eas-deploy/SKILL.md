@@ -1,7 +1,7 @@
 ---
 name: qaren-eas-deploy
 description: Use when shipping OTA updates via eas update, building APKs / iOS bundles via eas build, configuring EAS channels (development / preview / production), bumping expo.version, runtime version policy, two-lever launch model, or when JS-only fixes need to reach testers. Covers Apple Developer ($99/yr) gating.
-last_verified: 2026-07-04 (partial re-check 2026-09-29: channels, OTA groups, store-build rules, App Store link; the Apple-subscription gating section was not re-verified)
+last_verified: "2026-07-04 (partial re-check 2026-09-29: channels, OTA groups, store-build rules, App Store link; the Apple-subscription gating section was not re-verified)"
 update_when_changing:
   - SmartCompareApp/eas.json
   - SmartCompareApp/app.json

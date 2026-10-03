@@ -72,3 +72,4 @@ data/surveys/*.csv
 .qa-*/
 .agents/
 .codex/
+.claude/settings.local.json

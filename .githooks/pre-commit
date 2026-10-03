@@ -7,22 +7,105 @@ set -u
 
 fail() { echo "pre-commit: $1" >&2; exit 1; }
 
-# Staged python files (added/copied/modified only — deletions excluded)
-PY_FILES=$(git diff --cached --name-only --diff-filter=ACM -- '*.py')
+TOP=$(git rev-parse --show-toplevel) || fail "not inside a git work tree"
+
+# Staged python files (added/copied/modified/renamed - deletions excluded).
+# Renames (R) count: a `git mv` that also edits the file must be checked.
+# core.quotePath=false keeps a non-ASCII path as raw bytes instead of a
+# C-quoted string, so every listed path names a real file.
+PY_FILES=$(git -c core.quotePath=false diff --cached --name-only --diff-filter=ACMR -- '*.py')
 SQL_FILES=$(git diff --cached --name-only --diff-filter=ACM -- 'migrations/*.sql')
+
+NL=$(printf '\nx')
+NL=${NL%x}
+
+# The Python checks (1-3) and the skill check (4c) read the STAGED blob of each
+# file, never the working tree: a commit records the index, so an error that
+# is staged but already fixed in the working copy must still fail, and a
+# staged-clean file whose working copy is broken must pass. The blobs are
+# written with git checkout-index --prefix into a private temp dir (never into
+# the repo root, never through a stash) that the traps remove on every exit.
+# A path whose blob cannot be written refuses the commit; no file is skipped.
+# Tool messages therefore name the temp copy: the part after the temp dir is
+# the repo path. The sqlfluff step (5) still reads the working tree.
+TMP=""
+cleanup() {
+  if [ -n "$TMP" ] && [ -d "$TMP" ]; then rm -rf -- "$TMP"; fi
+}
+trap cleanup EXIT
+trap 'cleanup; exit 1' INT TERM HUP
+
+# materialise LIST: write the staged blob of every path in LIST (one
+# repo-relative path per line) to $TMP/<path>, creating $TMP on first use.
+materialise() {
+  if [ -z "$TMP" ]; then
+    TMP=$(mktemp -d 2>/dev/null) || TMP=""
+    if [ -z "$TMP" ]; then
+      TMP="${TMPDIR:-/tmp}/qaren-precommit.$$"
+      mkdir "$TMP" || { TMP=""; fail "could not create a temp dir for the staged content"; }
+    fi
+  fi
+  printf '%s\n' "$1" | git checkout-index --prefix="$TMP/" --stdin ||
+    fail "could not read the staged content of the path(s) named above"
+  while IFS= read -r _f; do
+    [ -n "$_f" ] || continue
+    [ -f "$TMP/$_f" ] || fail "could not read the staged content of $_f"
+  done <<EOF
+$1
+EOF
+}
+
+# run_tool TOOL FILE...: one call of one Python check over staged copies.
+# --config names the repo's pyproject.toml because the copies sit outside the
+# repo, where ruff and black would otherwise find no settings file.
+run_tool() {
+  _tool=$1
+  shift
+  case $_tool in
+    compile) python -m py_compile "$@" ;;
+    ruff) ruff check --select E9,F63,F7,F82 --no-cache --config "$TOP/pyproject.toml" "$@" ;;
+    black) python -m black --check --config "$TOP/pyproject.toml" "$@" ;;
+    *) return 2 ;;
+  esac
+}
+
+# in_batches TOOL LIST: run_tool TOOL over the staged copy of every path in
+# LIST, at most 64 paths per call. A Windows command line tops out near 32k
+# characters (one call over ~1,000 long paths failed with WinError 206).
+in_batches() {
+  _batch_tool=$1
+  _batch_list=$2
+  set --
+  while IFS= read -r _f; do
+    [ -n "$_f" ] || continue
+    set -- "$@" "$TMP/$_f"
+    if [ $# -ge 64 ]; then
+      run_tool "$_batch_tool" "$@" || return 1
+      set --
+    fi
+  done <<EOF
+$_batch_list
+EOF
+  if [ $# -gt 0 ]; then
+    run_tool "$_batch_tool" "$@" || return 1
+  fi
+  return 0
+}
+
+if [ -n "$PY_FILES" ]; then
+  materialise "$PY_FILES"
+fi
 
 # 1. Syntax: every staged .py must compile.
 if [ -n "$PY_FILES" ]; then
-  # shellcheck disable=SC2086
-  python -m py_compile $PY_FILES || fail "python syntax error in staged files"
+  in_batches compile "$PY_FILES" || fail "python syntax error in staged files"
 fi
 
 # 2. Ruff blocking tier — real-bug classes only (undefined names, syntax,
 #    comparison-to-literal misuse). Repo-wide fuller ruleset stays report-only in CI.
 if [ -n "$PY_FILES" ]; then
   if command -v ruff >/dev/null 2>&1; then
-    # shellcheck disable=SC2086
-    ruff check --select E9,F63,F7,F82 --no-cache $PY_FILES || fail "ruff blocking tier failed"
+    in_batches ruff "$PY_FILES" || fail "ruff blocking tier failed"
   else
     echo "pre-commit: WARNING ruff not installed — blocking tier skipped (pip install -r requirements-dev.txt)" >&2
   fi
@@ -30,16 +113,26 @@ fi
 
 # 3. Black — only files on the CI allowlist ratchet (.github/black-clean-paths.txt),
 #    intersected with what is staged. Mirrors the blocking CI step exactly.
+#    A staged path is matched against the allowlist as a whole line (its
+#    ORIGINAL repo path), then black checks the staged copy. Presence is
+#    tested with the interpreter that runs black; a missing black is a
+#    WARNING, never a silent skip.
 if [ -n "$PY_FILES" ] && [ -f .github/black-clean-paths.txt ]; then
   ALLOW=$(grep -v -e '^[[:space:]]*#' -e '^[[:space:]]*$' .github/black-clean-paths.txt | tr -d '\r')
   STAGED_ALLOWED=""
-  for f in $PY_FILES; do
-    echo "$ALLOW" | grep -qx "$f" && STAGED_ALLOWED="$STAGED_ALLOWED $f"
-  done
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    case "$NL$ALLOW$NL" in
+      *"$NL$f$NL"*) STAGED_ALLOWED="$STAGED_ALLOWED$f$NL" ;;
+    esac
+  done <<EOF
+$PY_FILES
+EOF
   if [ -n "$STAGED_ALLOWED" ]; then
-    if command -v black >/dev/null 2>&1; then
-      # shellcheck disable=SC2086
-      python -m black --check $STAGED_ALLOWED || fail "black allowlist check failed (run: python -m black <file>)"
+    if python -m black --version >/dev/null 2>&1; then
+      in_batches black "$STAGED_ALLOWED" || fail "black allowlist check failed (run: python -m black <file>)"
+    else
+      echo "pre-commit: WARNING black not installed - allowlist check skipped (pip install -r requirements-dev.txt)" >&2
     fi
   fi
 fi
@@ -58,8 +151,232 @@ if git diff --cached -U0 | grep -E '^\+' | grep -Ev '^\+\+\+' | \
    grep -qE '(\bsk-[A-Za-z0-9_-]{20,}|AKIA[0-9A-Z]{16}|xox[baprs]-[A-Za-z0-9-]{10,}|-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----)'; then
   fail "staged diff contains what looks like a credential — remove it (keys live only in gitignored .env)"
 fi
-if git diff --cached --name-only --diff-filter=ACM | grep -qxE '\.env(\..*)?'; then
+
+# 4a. Two more credential shapes (spec T0b R1.1, correction 6), in a grep of
+#     their own so the four-branch line above stays byte-equal: a JWT (three
+#     base64url segments, the first starting with eyJ) and a credentialed URL
+#     (scheme, ://, user, :, a password of 12 or more characters, @). Shorter
+#     passwords are left alone: they are the fixtures of this repo's URL
+#     redaction tests on reserved .test and .example hosts. --no-color and
+#     --no-ext-diff stop a user's color.ui=always or diff.external from hiding
+#     the added lines from the pattern.
+#     ADDED_LINES_AWK keeps the added lines of the diff and nothing else: a
+#     file's header (diff --git ... up to its first @@ hunk line) is skipped as
+#     a block, so an added line whose CONTENT starts with "++" is still
+#     scanned (a '^\+\+\+' filter drops it; the four-branch pipeline above is
+#     pinned byte-equal and keeps that hole).
+ADDED_LINES_AWK='/^diff --git /{h=1; next} /^@@/{h=0; next} !h && /^[+]/'
+JWT_RE='eyJ[A-Za-z0-9_-]{7,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}'
+CREDURL_RE='[A-Za-z][A-Za-z0-9+.-]*://[^/[:space:]:@]+:[^/[:space:]@]{12,}@'
+if git diff --cached --no-color --no-ext-diff -U0 | awk "$ADDED_LINES_AWK" | \
+   grep -qE -e "$JWT_RE" -e "$CREDURL_RE"; then
+  fail "staged diff contains a JWT or a credentialed URL - remove it (keys live only in gitignored .env)"
+fi
+
+# The .env refusal covers nested paths (sub/.env, app/.env.local) as well as
+# the root one, and renames: a `git mv x .env` is an R entry, which the old
+# ACM filter let through. -z stops git from C-quoting an unusual path, which
+# would hide it from the anchored pattern. -i: on a case-insensitive file
+# system (Windows, macOS) a staged .Env is the same file as .env.
+if git diff --cached --name-only -z --diff-filter=ACMR | tr '\0' '\n' | grep -qiE '(^|/)\.env(\..*)?$'; then
   fail ".env must never be committed"
+fi
+
+# 4b. Fixed-string pass over the .env VALUES (spec T0b R1.3, correction 10,
+#     rulings TR5 and TF1). An entry counts when its upper-cased NAME contains
+#     one of the credential words below, or when its value is itself a
+#     credentialed URL whatever the NAME; a value of 16 or more characters
+#     found in a staged added line refuses the commit, and only the NAMES are
+#     printed. No value reaches a process argv, a temp file, stdout or stderr:
+#     the file is read with the shell's own read, every counted entry goes
+#     into ONE pipe through the printf built-in, the credentialed-URL test gets
+#     the value on grep's stdin (a pipe, not argv), the containment test is
+#     awk's index() on values awk read from that same pipe, and xtrace is
+#     switched off first so `sh -x` cannot echo a value. The staged diff never
+#     sits in a shell variable: dash overflows its stack on a case pattern over
+#     a string of about 1 MB, which killed the hook with no message (ruling
+#     TF1). A linked worktree (every sc-* agent worktree) has no .env of its
+#     own, so the main checkout's one, next to the common git dir, is read.
+#     No .env: the pass is skipped silently.
+
+# to_upper WORD: set UPPER to WORD upper-cased, with shell built-ins only
+# (a subprocess per .env line would cost seconds on Windows).
+CASE_PAIRS=aAbBcCdDeEfFgGhHiIjJkKlLmMnNoOpPqQrRsStTuUvVwWxXyYzZ
+to_upper() {
+  UPPER=""
+  _rest=$1
+  while [ -n "$_rest" ]; do
+    _next=${_rest#?}
+    _ch=${_rest%"$_next"}
+    _rest=$_next
+    case $_ch in
+      [abcdefghijklmnopqrstuvwxyz])
+        _pair=${CASE_PAIRS#*"$_ch"}
+        _ch=${_pair%"${_pair#?}"}
+        ;;
+    esac
+    UPPER=$UPPER$_ch
+  done
+}
+
+# ENV_MATCH_AWK reads ONE stream: the counted .env entries as tagged lines
+# (N then the NAME, V then the VALUE), one E line, the staged diff, then one
+# Z line that is written only when git diff succeeded. It keeps the values in
+# memory, takes the added lines of the diff the way ADDED_LINES_AWK does (a
+# file header, diff --git up to its first @@ hunk line, is skipped as a
+# block), tests each value with index() - a literal substring test, no
+# pattern and no escape processing, because the values arrive as input lines,
+# not as program text or -v arguments - and prints the NAMES of the values it
+# found, never a value. A stream that does not end with the Z line means the
+# left side of the pipe died (the .env parse or git diff): awk then exits 2,
+# so the check refuses the commit instead of passing on a partial stream. No
+# diff line is ever a bare Z: git starts each one with a +, -, space, \, @@
+# or a header word.
+ENV_MATCH_AWK='
+mode == 0 {
+  tag = substr($0, 1, 1)
+  if (tag == "N") { n++; name[n] = substr($0, 2); next }
+  if (tag == "V") { val[n] = substr($0, 2); next }
+  mode = 1
+  next
+}
+{ last = $0 }
+/^diff --git /{ h = 1; next }
+/^@@/{ h = 0; next }
+!h && /^[+]/ {
+  line = substr($0, 2)
+  for (i = 1; i <= n; i++) if (!(i in hit) && index(line, val[i])) hit[i] = 1
+}
+END {
+  if (last != "Z") exit 2
+  for (i = 1; i <= n; i++) if (i in hit) printf " %s", name[i]
+}
+'
+
+HOOK_XTRACE=""
+case $- in *x*) HOOK_XTRACE=1 ;; esac
+{ set +x; } 2>/dev/null
+# allexport (sh -a, or SHELLOPTS=allexport for bash) would export every
+# variable the parse assigns, putting .env values into the ENVIRONMENT of
+# the grep and git processes below: it is off for the section too.
+HOOK_ALLEXPORT=""
+case $- in *a*) HOOK_ALLEXPORT=1 ;; esac
+set +a
+ENV_FILE="$TOP/.env"
+if [ ! -f "$ENV_FILE" ]; then
+  COMMON_DIR=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || COMMON_DIR=""
+  if [ -n "$COMMON_DIR" ]; then ENV_FILE="$COMMON_DIR/../.env"; fi
+fi
+# env_entries: write every counted entry of $ENV_FILE to stdout as an N line
+# (the NAME) and a V line (the VALUE), with the printf built-in only. It is
+# called on the left of the pipe into ENV_MATCH_AWK below, never elsewhere.
+env_entries() {
+  # Blanks are spaces AND tabs, as dotenv parsers read them: KEY=<tab>value
+  # and value<tab># comment both give "value".
+  while IFS= read -r env_line || [ -n "$env_line" ]; do
+    env_line=${env_line%"$CR"}
+    env_line=${env_line#"${env_line%%[![:blank:]]*}"}
+    case $env_line in ''|'#'*) continue ;; esac
+    case $env_line in
+      export[[:blank:]]*)
+        env_line=${env_line#export}
+        env_line=${env_line#"${env_line%%[![:blank:]]*}"}
+        ;;
+    esac
+    case $env_line in *=*) ;; *) continue ;; esac
+    env_name=${env_line%%=*}
+    env_name=${env_name%"${env_name##*[![:blank:]]}"}
+    env_value=${env_line#*=}
+    env_value=${env_value#"${env_value%%[![:blank:]]*}"}
+    case $env_value in
+      \"*) env_value=${env_value#\"}; env_value=${env_value%%\"*} ;;
+      \'*) env_value=${env_value#\'}; env_value=${env_value%%\'*} ;;
+      *) env_value=${env_value%%[[:blank:]]#*}; env_value=${env_value%"${env_value##*[![:blank:]]}"} ;;
+    esac
+    [ ${#env_value} -ge 16 ] || continue
+    to_upper "$env_name"
+    case $UPPER in
+      *KEY*|*TOKEN*|*SECRET*|*PASS*|*PWD*|*CREDENTIAL*|*PRIVATE*) ;;
+      *)
+        case $env_value in *://*@*) ;; *) continue ;; esac
+        printf '%s\n' "$env_value" | grep -qE "$CREDURL_RE" || continue
+        ;;
+    esac
+    # A line with no NAME (=value) is still counted when its value is a
+    # credentialed URL; the refusal then names it (unnamed).
+    printf 'N%s\nV%s\n' "${env_name:-(unnamed)}" "$env_value"
+  done < "$ENV_FILE"
+}
+if [ -f "$ENV_FILE" ] && [ ! -r "$ENV_FILE" ]; then
+  echo "pre-commit: WARNING $ENV_FILE is not readable - .env value check skipped" >&2
+elif [ -f "$ENV_FILE" ]; then
+  CR=$(printf '\r')
+  # The pipe carries the entries, the E line, the staged diff, then the Z line
+  # (only after a successful git diff). awk's exit status is the pipeline's:
+  # a failed awk, or a stream with no Z line (awk exits 2), refuses the
+  # commit rather than let the check pass unrun. C locale: index() compares
+  # bytes.
+  ENV_HITS=$(
+    {
+      env_entries
+      printf 'E\n'
+      git diff --cached --no-color --no-ext-diff -U0 && printf 'Z\n'
+    } | LC_ALL=C awk "$ENV_MATCH_AWK"
+  ) || fail "could not run the .env value check (the .env parse, git diff or awk failed)"
+  if [ -n "$ENV_HITS" ]; then
+    fail "staged diff contains the value of .env variable(s):$ENV_HITS"
+  fi
+fi
+if [ -n "$HOOK_ALLEXPORT" ]; then set -a; fi
+if [ -n "$HOOK_XTRACE" ]; then set -x; fi
+
+# 4c. Skill frontmatter (spec T0b R3.2). The STAGED blob of every staged
+#     .claude/skills/*/SKILL.md must open with a YAML block that
+#     yaml.safe_load parses into a mapping with a non-empty name and
+#     description: a bare ": " inside an unquoted value breaks the parse, and
+#     a skill whose frontmatter does not parse is never discovered.
+#     tests/test_skill_frontmatter.py is the CI half. Skipped with a WARNING
+#     when the hook's python cannot import PyYAML. It runs AFTER the secret
+#     checks (4, 4a, 4b), so a credential or a .env value on a frontmatter
+#     line is refused before the parse, and a parse error is reported by its
+#     problem and file position only (PyYAML's own message quotes the line).
+SKILL_FILES=$(git -c core.quotePath=false diff --cached --name-only --diff-filter=ACMR -- '.claude/skills/*/SKILL.md')
+if [ -n "$SKILL_FILES" ]; then
+  if python -c 'import yaml' >/dev/null 2>&1; then
+    materialise "$SKILL_FILES"
+    SKILL_CHECK_PY='
+import re
+import sys
+import yaml
+text = open(sys.argv[1], "rb").read().decode("utf-8").replace("\r\n", "\n")
+match = re.match(r"\A---\n(.*?)\n---\n", text, re.S)
+if not match:
+    sys.exit("no frontmatter block (a --- line, the YAML, a --- line) at the top")
+try:
+    data = yaml.safe_load(match.group(1))
+except yaml.YAMLError as exc:
+    problem = getattr(exc, "problem", None) or type(exc).__name__
+    mark = getattr(exc, "problem_mark", None)
+    where = ""
+    if mark is not None:
+        where = " at line %d, column %d" % (mark.line + 2, mark.column + 1)
+    sys.exit("frontmatter does not parse: " + str(problem) + where)
+if not isinstance(data, dict):
+    sys.exit("frontmatter is not a mapping")
+for key in ("name", "description"):
+    value = data.get(key)
+    if not (isinstance(value, str) and value.strip()):
+        sys.exit("frontmatter has no non-empty " + key)
+'
+    while IFS= read -r f; do
+      [ -n "$f" ] || continue
+      python -c "$SKILL_CHECK_PY" "$TMP/$f" || fail "skill frontmatter check failed: $f"
+    done <<EOF
+$SKILL_FILES
+EOF
+  else
+    echo "pre-commit: WARNING PyYAML not importable - skill frontmatter check skipped" >&2
+  fi
 fi
 
 # 5. SQL migrations — lint staged migration files when sqlfluff is available.
