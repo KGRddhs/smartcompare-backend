@@ -1,7 +1,7 @@
 ---
 name: qaren-referrals
 description: Use when touching referral invites, share links, /api/v1/referrals/* routes, invite codes (QR-XXXXXX), Loop 1 / Loop 2 flow, redemption chain, abuse detection, device-fingerprint caps, bonus expiry, or referral_invites / referral_redemptions tables. Covers Smart Decision Referrals + Bundle B/C/D lifetime-cap overhaul.
-last_verified: 2026-05-16 (partial re-check 2026-09-29: share copy, share-link shape, landing hand-off)
+last_verified: "2026-05-16 (partial re-check 2026-09-29: share copy, share-link shape, landing hand-off)"
 update_when_changing:
   - app/services/referral_service.py
   - app/services/abuse_detection_service.py

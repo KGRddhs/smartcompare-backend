@@ -112,7 +112,9 @@ import {
   recordSubmission,
   shouldShowDemographicsPrompt,
 } from '../services/demographicsTrigger';
-import { getSavedUser } from '../services/authService';
+import { getSavedUser, clearSession } from '../services/authService';
+// S71 U13c: the camera sign-in CTA hands a dead session to App's listener.
+import { emitSessionInvalid } from '../services/sessionEvents';
 // S69 U6 R3 (RT-12) — the one-time notifications pre-prompt.
 import { shouldShowPushPrePrompt } from '../services/pushPrePrompt';
 import { PushPrePrompt } from '../components/PushPrePrompt';
@@ -162,6 +164,7 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
     | 'vision_failed'
     | 'timeout'
     | 'engine_unavailable'
+    | 'auth'
     | 'generic'
     | null
   >(null);
@@ -377,7 +380,12 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
           return;
         }
         const kind = classifyLoadFailure(err);
-        setLoadError(kind === 'timeout' ? 'timeout' : 'generic');
+        // S71 U13c — a 401 from identifyFromImages (its one retry answered
+        // 401 again, or its one refresh failed and nothing was re-sent) shows
+        // the camera-only sign-in state, never "No comparison loaded". A
+        // transient refresh failure can leave a valid session behind (spec
+        // L4): the user decides with the Sign In button (UR1/UR2).
+        setLoadError(kind === 'timeout' ? 'timeout' : kind === 'auth' ? 'auth' : 'generic');
         setLoadingResult(false);
       }
     })();
@@ -763,6 +771,15 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
     const isTimeout = loadError === 'timeout';
     // S69 U7 R3 — engine outage: its own title + body (R1 copy), back CTA.
     const isEngineUnavailable = loadError === 'engine_unavailable';
+    // S71 U13c — camera sign-in state: the one retry answered 401 again, or
+    // the one refresh failed and nothing was re-sent (UR1/UR2).
+    // The CTA mirrors HistoryScreen's: clear the stored session, then tell
+    // App's listener, which swaps to the Auth stack (no onLogout prop here).
+    const isAuth = loadError === 'auth';
+    const handleSignIn = async () => {
+      await clearSession();
+      emitSessionInvalid();
+    };
     return (
       <View style={styles.container} testID="results-empty-state">
         <View style={styles.header}>
@@ -774,7 +791,10 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
           <View style={{ flex: 1 }} />
           <View style={styles.headerButton} />
         </View>
-        <View style={styles.emptyStateContainer} testID={isTimeout ? 'results-timeout-state' : undefined}>
+        <View
+          style={styles.emptyStateContainer}
+          testID={isTimeout ? 'results-timeout-state' : isAuth ? 'results-auth-state' : undefined}
+        >
           <AlertCircle size={48} color={colors.text.secondary} />
           <Text style={styles.emptyStateTitle}>
             {loadError === 'not_found'
@@ -787,6 +807,8 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
               ? t('results.timeout.title')
               : isEngineUnavailable
               ? t('home.errors.engineUnavailable.title')
+              : isAuth
+              ? t('common.signInRequired')
               : t('results.emptyState.title')}
           </Text>
           {isTimeout ? (
@@ -795,14 +817,16 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
             <Text style={styles.emptyStateBody}>{t('home.errors.engineUnavailable.body')}</Text>
           ) : null}
           <TouchableOpacity
-            onPress={isTimeout ? handleRetry : () => navigation.goBack()}
+            onPress={isTimeout ? handleRetry : isAuth ? handleSignIn : () => navigation.goBack()}
             style={styles.emptyStateCta}
             accessibilityRole="button"
-            testID={isTimeout ? 'results-timeout-retry' : undefined}
+            testID={isTimeout ? 'results-timeout-retry' : isAuth ? 'results-auth-signin' : undefined}
           >
             <Text style={styles.emptyStateCtaText}>
               {isTimeout
                 ? t('results.timeout.retry')
+                : isAuth
+                ? t('auth.signIn')
                 : isEngineUnavailable
                 ? // S69 U7 R3 — the camera user did not come from History:
                   // a neutral "Back", not "Back to history".

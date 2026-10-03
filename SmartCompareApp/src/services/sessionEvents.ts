@@ -13,11 +13,19 @@
  * NOT emitted from clearSession() itself: handleLogout calls
  * clearSession, and emitting there would re-enter the logout path
  * (listener -> logout -> clearSession -> emit -> listener ...).
- * There is exactly ONE emission site: api.ts/performRefresh. A3 briefly
- * added a second one in authService/runBootRefresh, but the background
- * boot refresh now shares api.ts's refresh singleton, so a dead session
- * discovered by the boot refresh and by a concurrent 401 is one
+ * There is exactly ONE automatic emission site: api.ts/performRefresh. A3
+ * briefly added a second one in authService/runBootRefresh, but the
+ * background boot refresh now shares api.ts's refresh singleton, so a dead
+ * session discovered by the boot refresh and by a concurrent 401 is one
  * performRefresh call and therefore one emit — never two, never zero.
+ *
+ * S71 U13c adds a second, USER-INITIATED site: the camera sign-in CTA in
+ * ResultsScreen (shown when /image/identify answers 401 again after its one
+ * refresh + retry, or when that refresh fails and nothing is re-sent)
+ * awaits clearSession() and then emits, mirroring HistoryScreen's sign-in
+ * button, because Results gets no onLogout prop.
+ * It fires only on that tap, never from a network path, so the "one emit
+ * per dead session" rule above still holds for every automatic path.
  */
 
 type SessionInvalidListener = () => void;
