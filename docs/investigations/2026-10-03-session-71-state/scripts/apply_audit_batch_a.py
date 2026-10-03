@@ -103,21 +103,27 @@ ENV = {
 }
 
 
-def plan(settings: dict, with_codex: bool) -> tuple[dict, list[str]]:
-    """The merged settings and a human-readable list of what moves."""
+def plan(settings: dict, with_codex: bool, skip_deny: bool = False) -> tuple[dict, list[str]]:
+    """The merged settings and a human-readable list of what moves.
+
+    ``skip_deny`` leaves the ``permissions`` block untouched (not even created):
+    the agent may run the plugin and env part on the owner's request, while the
+    permission rules stay the owner's to apply.
+    """
     out = json.loads(json.dumps(settings))  # deep copy, order kept
     lines: list[str] = []
 
-    permissions = out.setdefault("permissions", {})
-    if not isinstance(permissions, dict):
-        raise SystemExit("settings.permissions is not an object; edit it by hand")
-    deny = permissions.setdefault("deny", [])
-    if not isinstance(deny, list):
-        raise SystemExit("settings.permissions.deny is not a list; edit it by hand")
-    for rule in DENY:
-        if rule not in deny:
-            deny.append(rule)
-            lines.append(f"deny      + {rule}")
+    if not skip_deny:
+        permissions = out.setdefault("permissions", {})
+        if not isinstance(permissions, dict):
+            raise SystemExit("settings.permissions is not an object; edit it by hand")
+        deny = permissions.setdefault("deny", [])
+        if not isinstance(deny, list):
+            raise SystemExit("settings.permissions.deny is not a list; edit it by hand")
+        for rule in DENY:
+            if rule not in deny:
+                deny.append(rule)
+                lines.append(f"deny      + {rule}")
 
     plugins = out.setdefault("enabledPlugins", {})
     if not isinstance(plugins, dict):
@@ -151,6 +157,11 @@ def main(argv: list[str] | None = None) -> int:
     mode.add_argument("--apply", action="store_true", help="backup, then write")
     mode.add_argument("--restore", action="store_true", help="restore the newest backup")
     parser.add_argument("--with-codex", action="store_true", help="also disable the codex plugin")
+    parser.add_argument(
+        "--skip-deny",
+        action="store_true",
+        help="plugins and env only; leave the permissions block untouched",
+    )
     args = parser.parse_args(argv)
 
     if args.restore:
@@ -175,7 +186,7 @@ def main(argv: list[str] | None = None) -> int:
         print("settings.json is not an object; nothing changed", file=sys.stderr)
         return 1
 
-    merged, lines = plan(settings, args.with_codex)
+    merged, lines = plan(settings, args.with_codex, args.skip_deny)
     if not lines:
         print("batch A is already applied; nothing to change")
         return 0
