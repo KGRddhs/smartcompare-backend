@@ -545,7 +545,11 @@ def test_route_level_invalid_refresh_probe_creates_no_error_record(caplog, monke
 # ===========================================================================
 # T8 PIN -- the Sentry logging integration keeps ERROR as its event level
 # ===========================================================================
-def test_sentry_logging_integration_keeps_error_as_the_event_level():
+def test_sentry_logging_integration_keeps_error_as_the_event_level(monkeypatch):
+    import ast
+    import importlib
+
+    import sentry_sdk
     import sentry_sdk.integrations as sentry_integrations
     from sentry_sdk.integrations import logging as sentry_logging
 
@@ -556,10 +560,12 @@ def test_sentry_logging_integration_keeps_error_as_the_event_level():
     assert signature.parameters["level"].default <= logging.WARNING
     assert "sentry_sdk.integrations.logging.LoggingIntegration" in sentry_integrations._DEFAULT_INTEGRATIONS
 
-    # This repo never overrides it: no LoggingIntegration(...) anywhere in app/,
-    # the default integrations are never switched off, logging is never disabled.
+    # The default integrations are never switched off and logging is never
+    # disabled; exactly ONE LoggingIntegration(...) exists under app/ -- the
+    # U8d R7 instance in sentry_service (ruling UF1) -- and it sets no event_level.
     app_dir = os.path.dirname(os.path.dirname(os.path.abspath(auth_service.__file__)))
     offenders = []
+    constructions = []
     for root, _dirs, files in os.walk(app_dir):
         for name in files:
             if not name.endswith(".py"):
@@ -567,17 +573,43 @@ def test_sentry_logging_integration_keeps_error_as_the_event_level():
             path = os.path.join(root, name)
             with open(path, encoding="utf-8") as fh:
                 text = fh.read()
-            for pattern in (r"LoggingIntegration\s*\(", r"default_integrations\s*=\s*False",
+            for pattern in (r"default_integrations\s*=\s*False",
                             r"disabled_integrations\s*=", r"ignore_logger\s*\("):
                 if re.search(pattern, text):
                     offenders.append(os.path.relpath(path, app_dir) + ": " + pattern)
+            constructions += [os.path.relpath(path, app_dir)] * len(re.findall(r"LoggingIntegration\s*\(", text))
     assert offenders == [], "Sentry logging overridden: " + repr(offenders)
+    sentry_rel = os.path.join("services", "sentry_service.py")
+    assert constructions == [sentry_rel], "LoggingIntegration(...) under app/: " + repr(constructions)
 
-    sentry_path = os.path.join(app_dir, "services", "sentry_service.py")
+    sentry_path = os.path.join(app_dir, sentry_rel)
     with open(sentry_path, encoding="utf-8") as fh:
         source = fh.read()
     assert "sentry_sdk.init(" in source
     assert "event_level" not in source, "sentry_service must not set an event_level"
+    calls = [node for node in ast.walk(ast.parse(source)) if isinstance(node, ast.Call)
+             and getattr(node.func, "id", getattr(node.func, "attr", None)) == "LoggingIntegration"]
+    assert len(calls) == 1, [ast.unparse(c) for c in calls]
+    assert len(calls[0].args) <= 1 and all(
+        kw.arg not in (None, "event_level") for kw in calls[0].keywords), ast.unparse(calls[0])
+
+    # Measured: the instance the REAL init_sentry() (resolved through the module
+    # at call time) hands to a recording sentry_sdk.init -- breadcrumb level
+    # ERROR, event level ERROR. No SDK client is installed.
+    ss = importlib.import_module("app.services.sentry_service")
+    recorded = []
+    monkeypatch.setattr(sentry_sdk, "init", lambda *a, **kw: recorded.append(kw))
+    li_cls = sentry_logging.LoggingIntegration
+    monkeypatch.setattr(li_cls, "capture_sentry_logs", li_cls.capture_sentry_logs)
+    if hasattr(ss, "_INFRA_HOSTS"):
+        monkeypatch.setattr(ss, "_INFRA_HOSTS", ss._INFRA_HOSTS)
+    monkeypatch.setenv("SENTRY_DSN", "https://public" + "@" + "o0.ingest.example.invalid/1")
+    ss.init_sentry()
+    assert len(recorded) == 1, "init_sentry must call sentry_sdk.init exactly once"
+    instances = [i for i in (recorded[0].get("integrations") or []) if type(i).__name__ == "LoggingIntegration"]
+    assert len(instances) == 1, repr(recorded[0].get("integrations"))
+    levels = (instances[0]._breadcrumb_handler.level, instances[0]._handler.level)
+    assert levels == (logging.ERROR, logging.ERROR), levels
 
 
 # ===========================================================================

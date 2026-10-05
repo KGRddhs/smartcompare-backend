@@ -1,8 +1,10 @@
 """Sentry integration -- error monitoring and performance tracing."""
 import os
 import re
+import sys
 import copy
 import logging
+from urllib.parse import urlsplit
 
 logger = logging.getLogger(__name__)
 
@@ -30,28 +32,69 @@ _SENSITIVE_PATTERNS = [
 # `?token=` is already covered by the `_scrub_dict` key-name denylist below,
 # but the wholesale `[a-f0-9]{32,}` token pattern also catches hex tokens that
 # leak into URLs.
-_QUERY_STRING_PII_PARAMS = ("q", "query", "email", "search", "text")
+#
+# U8d R4' (review correction 1, SR7): the SDK URL-DECODES the query string
+# before before_send, so a user value holding an encoded `&` or `#` ("Dolce &
+# Gabbana") splits into parts the old `[^&#]*` value pattern never reached. A
+# query string is now REBUILT part by part: a PII key keeps its name with the
+# value [QUERY_REDACTED]; a bookkeeping key is kept verbatim only when its
+# value fully matches that key's grammar; every other part (a decoded remnant
+# of a user value, an unknown key, an off-grammar value) is DROPPED, so a new
+# user-content parameter fails closed instead of leaking.
+_QUERY_STRING_PII_PARAMS = (
+    "q", "query", "email", "search", "text", "product_a", "product_b", "url", "url1", "url2",
+)
+_QUERY_STRING_BOOKKEEPING_GRAMMAR = {
+    "nocache": re.compile(r"(?i:true|false|1|0)"),
+    "limit": re.compile(r"[0-9]{1,9}"),
+    "offset": re.compile(r"[0-9]{1,9}"),
+    "sort": re.compile(r"(?i:asc|desc)"),
+    # The six GCC_REGIONS keys (extraction_service); any other word is dropped.
+    "region": re.compile(r"(?:bahrain|saudi_arabia|uae|kuwait|qatar|oman)"),
+    "lang": re.compile(r"[a-z]{2}(?:[-_][A-Za-z]{2})?"),
+}
+# Only for a string with no `?` (a URL never carries its query there); the
+# Bundle D R21 value pattern, kept for that shape.
 _QUERY_STRING_SCRUB_PATTERN = re.compile(
     r"(?<=[?&])(" + "|".join(_QUERY_STRING_PII_PARAMS) + r")=[^&#]*",
     re.IGNORECASE,
 )
 
 
-def _scrub_query_string(url: str) -> str:
-    """Replace PII-carrying query-string values with [QUERY_REDACTED].
+def _scrub_query_part(qs: str) -> str:
+    """R4': rebuild a decoded query string (no leading `?`) from its kept
+    parts, then run the secret patterns over the result."""
+    kept = []
+    for part in qs.split("&"):
+        key, sep, value = part.partition("=")
+        if not sep:
+            continue
+        if key.lower() in _QUERY_STRING_PII_PARAMS:
+            kept.append(key + "=[QUERY_REDACTED]")
+            continue
+        grammar = _QUERY_STRING_BOOKKEEPING_GRAMMAR.get(key)
+        if grammar is not None and grammar.fullmatch(value):
+            kept.append(part)
+    return _scrub_string("&".join(kept))
 
-    Bundle D R21: regex is targeted (matches `?q=`, `?query=`, `?email=`,
-    `?search=`, `?text=`) so legitimate non-PII params like `?nocache=true`
-    or `?limit=20` round-trip untouched. Existing `?token=` handling lives
-    in `_scrub_dict` (key-name denylist) and the wholesale hex pattern.
+
+def _scrub_query_string(url: str) -> str:
+    """Rebuild the query part of a URL with R4' (`?q=`, `?product_a=`, ...
+    redacted, bookkeeping like `?nocache=true` or `?limit=20` kept, anything
+    else dropped). Existing `?token=` handling also lives in `_scrub_dict`
+    (key-name denylist) and the wholesale hex pattern.
     """
-    if not url:
+    if not url or not isinstance(url, str):
         return url
-    if "?" not in url and "=" not in url:
-        # Neither a full URL with query string NOR a raw query_string field —
-        # nothing to scrub.
-        return url
-    return _QUERY_STRING_SCRUB_PATTERN.sub(r"\1=[QUERY_REDACTED]", url)
+    if "?" not in url:
+        if "=" not in url:
+            # Neither a full URL with query string NOR a raw query_string field —
+            # nothing to scrub.
+            return url
+        return _QUERY_STRING_SCRUB_PATTERN.sub(r"\1=[QUERY_REDACTED]", url)
+    base, _, query = url.partition("?")
+    query = _scrub_query_part(query)
+    return base + "?" + query if query else base
 
 
 def _scrub_raw_query_string(qs: str) -> str:
@@ -60,13 +103,7 @@ def _scrub_raw_query_string(qs: str) -> str:
     Bundle D R21 follow-up (Frontend cross-QA `c12a7c6` review): modern
     sentry-python populates `event.request.query_string` separately from
     `event.request.url` — a string like `q=foo&search=bar` with no `?`
-    prefix. The lookbehind in `_QUERY_STRING_SCRUB_PATTERN` requires `?`
-    or `&` immediately before the param name, so the very first param
-    of a raw query_string would slip through `_scrub_query_string`.
-
-    Fix: normalize by prepending `?` before regex application, then
-    strip the prepended char back off when returning. Lookbehind now
-    matches uniformly across both shapes.
+    prefix. U8d R4': the same part-by-part rebuild as the query part of a URL.
     """
     if not qs:
         return qs
@@ -78,10 +115,7 @@ def _scrub_raw_query_string(qs: str) -> str:
             return qs
     if not isinstance(qs, str):
         return qs
-    normalized = "?" + qs
-    scrubbed = _QUERY_STRING_SCRUB_PATTERN.sub(r"\1=[QUERY_REDACTED]", normalized)
-    # Strip the prepended `?` back off — caller stores raw query_string.
-    return scrubbed[1:] if scrubbed.startswith("?") else scrubbed
+    return _scrub_query_part(qs)
 
 # Key-name denylist (case-insensitive substring match). When _scrub_dict
 # encounters a string value under a key matching one of these, the whole
@@ -133,6 +167,274 @@ def _scrub_dict(data: dict) -> dict:
     return scrubbed
 
 
+# U8d R10 (review correction 3): every request header outside this allowlist
+# ships "[Filtered]" -- the device fingerprint, client-IP headers the SDK does
+# not filter (cf-connecting-ip, true-client-ip, forwarded, ...) and anything
+# custom. The [REDACTED] names below keep their marker.
+_REQUEST_HEADER_ALLOWLIST = frozenset({
+    "host", "user-agent", "accept", "accept-encoding", "accept-language",
+    "content-type", "content-length", "connection", "x-request-id",
+})
+
+# U8d R6: the capability token in a share / referral-invite path.
+_CAPABILITY_PATH_RE = re.compile(r"(/api/v1/(?:share|referrals/invite)/)[^/?#]+")
+# U8d R6 (FIX A5): GET /api/v1/text/prices/{product} carries the product query
+# in its PATH -- the only free-text path parameter in app/api -- so the whole
+# rest of the path is replaced (a decoded '#', '?' or '/' may be product text).
+_FREE_TEXT_PATH_RE = re.compile(r"(/api/v1/text/prices/).+", re.DOTALL)
+
+# U8d R5 (review correction 4): an outbound URL keeps scheme + host only; the
+# path stays for these infrastructure hosts (triage). init_sentry adds the
+# SUPABASE_URL and UPSTASH_REDIS_URL hosts once.
+_INFRA_HOSTS_FIXED = ("api.openai.com", "google.serper.dev")
+_INFRA_HOSTS = frozenset(_INFRA_HOSTS_FIXED)
+
+# U8d R2: the handled-exception texts a log template may carry.
+_HANDLED_TEXT_MIN_CHARS = 4
+_HANDLED_CHAIN_MAX = 10
+# SR3 (R11): no pattern scrub ever sees more than this much of one exception's
+# text; a longer text is matched by its str / repr forms through plain string
+# operations only.
+_HANDLED_TEXT_SCRUB_CAP = 16384
+
+
+def _fail_safe(rule, *args) -> None:
+    """Run one U8d rule. An error inside it leaves the event to the scrub that
+    ran before U8d; a scrub rule never raises and never drops an event."""
+    try:
+        rule(*args)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _scrub_capability_path(value):
+    if isinstance(value, str):
+        value = _CAPABILITY_PATH_RE.sub(r"\1[token]", value)
+        return _FREE_TEXT_PATH_RE.sub(r"\1[product]", value)
+    return value
+
+
+def _exception_chain(exc) -> list:
+    """exc, then its __cause__ (else __context__), at most 10 links, cycle-safe."""
+    chain = []
+    while isinstance(exc, BaseException) and len(chain) < _HANDLED_CHAIN_MAX:
+        if any(exc is seen for seen in chain):
+            break
+        chain.append(exc)
+        exc = exc.__cause__ if exc.__cause__ is not None else exc.__context__
+    return chain
+
+
+def _handled_text_forms(exc) -> list:
+    """str(exc), repr(exc), safe_exc(exc) and the text part of exc_summary(exc).
+    A broken __str__ / __repr__ is skipped, never raised."""
+    forms = []
+    try:
+        forms.append(repr(exc))
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        text = str(exc)
+    except Exception:  # noqa: BLE001
+        return forms
+    forms.append(text)
+    try:
+        # Lazy: log_scrub imports this module at its top.
+        from app.services import log_scrub
+
+        # safe_exc(exc), derived from at most 16,384 characters (SR3).
+        forms.append(log_scrub._scrub_text(text[:_HANDLED_TEXT_SCRUB_CAP]))
+        # exc_summary cuts its own input at 16,384 characters (SR3).
+        forms.append(log_scrub.exc_summary(exc).partition(": ")[2])
+    except Exception:  # noqa: BLE001
+        pass
+    return forms
+
+
+def _handled_texts(hint) -> list:
+    """R2: (text, "<TypeName>") for every exception currently handled --
+    the chains of sys.exc_info(), hint["log_record"].exc_info and
+    hint["exc_info"] -- each text at least 4 characters, longest first."""
+    roots = [sys.exc_info()[1]]
+    if isinstance(hint, dict):
+        record_exc_info = getattr(hint.get("log_record"), "exc_info", None)
+        for exc_info in (record_exc_info, hint.get("exc_info")):
+            if isinstance(exc_info, tuple) and len(exc_info) > 1:
+                roots.append(exc_info[1])
+    seen = []
+    pairs = {}
+    for root in roots:
+        for exc in _exception_chain(root):
+            if any(exc is s for s in seen):
+                continue
+            seen.append(exc)
+            placeholder = "<" + type(exc).__name__ + ">"
+            for text in _handled_text_forms(exc):
+                if isinstance(text, str) and len(text) >= _HANDLED_TEXT_MIN_CHARS:
+                    pairs.setdefault(text, placeholder)
+    return sorted(pairs.items(), key=lambda pair: -len(pair[0]))
+
+
+def _redact_handled(value, texts):
+    """Replace each occurrence of a handled text in value by its "<TypeName>"
+    (plain string operations, longest text first; a placeholder already put in
+    is never rewritten by a later, shorter text)."""
+    if not texts or not isinstance(value, str):
+        return value
+    segments = [(value, False)]
+    for text, placeholder in texts:
+        rebuilt = []
+        for segment, done in segments:
+            if done or text not in segment:
+                rebuilt.append((segment, done))
+                continue
+            for i, piece in enumerate(segment.split(text)):
+                if i:
+                    rebuilt.append((placeholder, True))
+                if piece:
+                    rebuilt.append((piece, False))
+        segments = rebuilt
+    return "".join(segment for segment, _ in segments)
+
+
+def _redact_handled_param(param, texts):
+    """A logentry param: a non-string, non-scalar param is rendered with repr
+    first, so an exception object passed as a %-argument is matched too."""
+    if param is None or isinstance(param, (bool, int, float)):
+        return param
+    if not isinstance(param, str):
+        try:
+            param = repr(param)
+        except Exception:  # noqa: BLE001 -- left to the SDK's own safe repr
+            return param
+    return _redact_handled(param, texts)
+
+
+def _outbound_url(url):
+    """R5: scheme + host of an outbound URL (+ the path for an infra host);
+    never userinfo, query or fragment. Unparseable -> "[Filtered]"."""
+    if not isinstance(url, str) or not url:
+        return url
+    try:
+        parts = urlsplit(url)
+        host = parts.hostname
+    except ValueError:
+        return "[Filtered]"
+    if not parts.scheme or not host:
+        return "[Filtered]"
+    origin = parts.scheme + "://" + parts.netloc.rpartition("@")[2]
+    return origin + parts.path if host in _INFRA_HOSTS else origin
+
+
+def _outbound_description(description):
+    """R5: an http span description "METHOD URL" keeps METHOD + _outbound_url."""
+    if not isinstance(description, str):
+        return description
+    method, sep, target = description.partition(" ")
+    if sep and "://" in target:
+        return method + " " + _outbound_url(target)
+    return description.split("?", 1)[0]
+
+
+def _scrub_outbound_http_data(data) -> None:
+    """R5 on an http span's / http breadcrumb's data: http.query keeps its keys
+    with every value "[Filtered]", a fragment is "[Filtered]", url per
+    _outbound_url. Nothing else in data is touched (review correction 5)."""
+    if not isinstance(data, dict):
+        return
+    query = data.get("http.query")
+    if isinstance(query, str) and query:
+        data["http.query"] = "&".join(
+            part.partition("=")[0] + "=[Filtered]" if "=" in part else "[Filtered]"
+            for part in query.split("&")
+        )
+    if data.get("http.fragment"):
+        data["http.fragment"] = "[Filtered]"
+    if "url" in data:
+        data["url"] = _outbound_url(data["url"])
+
+
+def _is_http_breadcrumb(crumb) -> bool:
+    return crumb.get("type") == "http" or crumb.get("category") == "httplib"
+
+
+def _blank_exception_values(event) -> None:
+    """R1: every exception value loses its text (type, module, mechanism and
+    stacktrace stay), except an HTTPException, whose value is our own detail."""
+    exception = event.get("exception")
+    if not isinstance(exception, dict):
+        return
+    for exc in exception.get("values") or []:
+        if isinstance(exc, dict) and "value" in exc and exc.get("type") != "HTTPException":
+            exc["value"] = ""
+
+
+def _event_breadcrumbs(event) -> list:
+    breadcrumbs = event.get("breadcrumbs")
+    if not isinstance(breadcrumbs, dict):
+        return []
+    return [crumb for crumb in breadcrumbs.get("values") or [] if isinstance(crumb, dict)]
+
+
+def _redact_event_texts(event, hint) -> None:
+    """R2 on an event: logentry message / formatted / params and breadcrumb
+    messages."""
+    texts = _handled_texts(hint)
+    if not texts:
+        return
+    logentry = event.get("logentry")
+    if isinstance(logentry, dict):
+        for key in ("message", "formatted"):
+            if isinstance(logentry.get(key), str):
+                logentry[key] = _redact_handled(logentry[key], texts)
+        params = logentry.get("params")
+        if isinstance(params, dict):
+            logentry["params"] = {k: _redact_handled_param(v, texts) for k, v in params.items()}
+        elif isinstance(params, (list, tuple)):
+            logentry["params"] = [_redact_handled_param(p, texts) for p in params]
+    for crumb in _event_breadcrumbs(event):
+        if isinstance(crumb.get("message"), str):
+            crumb["message"] = _redact_handled(crumb["message"], texts)
+
+
+def _scrub_breadcrumb_path(crumb) -> None:
+    """R6 on a breadcrumb's data.path (FIX A9: the logging integration copies a
+    record's extras into its breadcrumb's data, and ErrorHandlerMiddleware's
+    ERROR line passes extra path=request.url.path)."""
+    data = crumb.get("data")
+    if isinstance(data, dict) and "path" in data:
+        data["path"] = _scrub_capability_path(data["path"])
+
+
+def _scrub_event_outbound_and_paths(event) -> None:
+    """R5 on an event's http breadcrumbs, R6 on extra.path and crumb data.path."""
+    for crumb in _event_breadcrumbs(event):
+        _scrub_breadcrumb_path(crumb)
+        if _is_http_breadcrumb(crumb):
+            _scrub_outbound_http_data(crumb.get("data"))
+    extra = event.get("extra")
+    if isinstance(extra, dict) and "path" in extra:
+        extra["path"] = _scrub_capability_path(extra["path"])
+
+
+def _scrub_outbound_spans(event) -> None:
+    """R5 on a transaction's http spans (description, url, http.query)."""
+    for span in event.get("spans") or []:
+        if isinstance(span, dict) and str(span.get("op") or "").startswith("http"):
+            _scrub_outbound_http_data(span.get("data"))
+            if "description" in span:
+                span["description"] = _outbound_description(span["description"])
+
+
+def _redact_breadcrumb(breadcrumb, hint) -> None:
+    """R5 on an http breadcrumb and R2 on a breadcrumb message (before_breadcrumb
+    runs inside the except arm the log line was written in)."""
+    if _is_http_breadcrumb(breadcrumb):
+        _scrub_outbound_http_data(breadcrumb.get("data"))
+    if isinstance(breadcrumb.get("message"), str):
+        breadcrumb["message"] = _redact_handled(breadcrumb["message"], _handled_texts(hint))
+
+
 def _scrub_request_region(event) -> None:
     """Scrub ``event["request"]`` in place: secret headers, PII query strings,
     body and cookies.
@@ -140,6 +442,8 @@ def _scrub_request_region(event) -> None:
     W1-1b: ONE helper shared by ``_before_send`` (error events) and
     ``_before_send_transaction`` (performance transactions) so the two hooks
     can never drift apart on what leaves the process in the request region.
+    U8d adds R10 (header allowlist), R4' (query strings), R6 (capability path
+    tokens) and R3's belt (no body) here, so both hooks get them.
     """
     if "request" in event:
         if "headers" in event["request"]:
@@ -149,16 +453,16 @@ def _scrub_request_region(event) -> None:
                     # W4-13 (ruling D4): X-Qaren-Synthetic carries SEARCH_LOG_SYNTHETIC_TOKEN.
                     if key.lower() in ("authorization", "x-admin-key", "cookie", "x-qaren-synthetic"):
                         headers[key] = "[REDACTED]"
+                    elif key.lower() not in _REQUEST_HEADER_ALLOWLIST:
+                        headers[key] = "[Filtered]"
         # Bundle D Task 1.B.6 (R21) — scrub PII query-string values from request URL
         if isinstance(event["request"].get("url"), str):
-            event["request"]["url"] = _scrub_query_string(event["request"]["url"])
+            event["request"]["url"] = _scrub_capability_path(_scrub_query_string(event["request"]["url"]))
         # Bundle D R21 follow-up (Frontend cross-QA review on c12a7c6):
         # modern sentry-python FastAPI/Starlette integrations populate
         # `request.query_string` separately as raw `key=val&key2=val2`
-        # (no leading `?`). The lookbehind in _QUERY_STRING_SCRUB_PATTERN
-        # would miss the first param of a raw query_string, so route it
-        # through _scrub_raw_query_string which normalizes by prepending
-        # `?` before regex application.
+        # (no leading `?`), so route it through _scrub_raw_query_string (U8d
+        # R4': the same part-by-part rebuild as the query part of a URL).
         raw_qs = event["request"].get("query_string")
         if raw_qs is not None:
             event["request"]["query_string"] = _scrub_raw_query_string(raw_qs)
@@ -170,6 +474,10 @@ def _scrub_request_region(event) -> None:
                 event["request"][_req_key] = _scrub_dict(_req_val)
             elif isinstance(_req_val, str):
                 event["request"][_req_key] = _scrub_string(_req_val)
+        # U8d R3: the belt to max_request_body_size="never" -- a body that
+        # reached the event anyway never leaves the process.
+        if "data" in event["request"]:
+            event["request"]["data"] = "[Filtered]"
 
 
 def _before_send_transaction(event, hint):
@@ -183,7 +491,9 @@ def _before_send_transaction(event, hint):
     the trace ids, spans and contexts are left alone (a rewritten trace_id
     orphans the trace), and the 503 drop is NOT applied -- that drop exists to
     keep deliberate 503s out of the ERROR stream, not the performance stream.
+    U8d R5: outbound http spans lose their query values and user URL paths.
     """
+    _fail_safe(_scrub_outbound_spans, event)
     _scrub_request_region(event)
     return event
 
@@ -208,6 +518,12 @@ def _before_send(event, hint):
             return None
     except (TypeError, ValueError):
         pass
+    # U8d (review correction 6): R1 and R2 run BEFORE every pattern pass below,
+    # so a pattern replacement inside an exception text can never break R2's
+    # exact match and leave the rest of the text behind.
+    _fail_safe(_blank_exception_values, event)
+    _fail_safe(_redact_event_texts, event, hint)
+    _fail_safe(_scrub_event_outbound_and_paths, event)
     # Scrub exception values
     if "exception" in event:
         for exc in event["exception"].get("values", []):
@@ -266,7 +582,11 @@ def _before_send(event, hint):
 
 
 def _strip_tokens_from_breadcrumb(breadcrumb, hint):
-    """Redact tokens + PII query strings from Sentry breadcrumb URLs."""
+    """Redact tokens + PII query strings from Sentry breadcrumb URLs; U8d R2
+    (handled exception text) and R5 (outbound http data) first, and R6 on
+    data.path (its own fail-safe rule, so a failing R2 never skips it)."""
+    _fail_safe(_scrub_breadcrumb_path, breadcrumb)
+    _fail_safe(_redact_breadcrumb, breadcrumb, hint)
     if breadcrumb.get("data") and isinstance(breadcrumb["data"], dict):
         url = breadcrumb["data"].get("url", "")
         if url:
@@ -278,8 +598,24 @@ def _strip_tokens_from_breadcrumb(breadcrumb, hint):
     return breadcrumb
 
 
+def _infra_hosts_from_env() -> frozenset:
+    """R5: the infrastructure hosts whose outbound URL path stays readable --
+    the fixed provider hosts plus the HOST NAMES of SUPABASE_URL and
+    UPSTASH_REDIS_URL (never a URL, a path or a credential)."""
+    hosts = set(_INFRA_HOSTS_FIXED)
+    for name in ("SUPABASE_URL", "UPSTASH_REDIS_URL"):
+        try:
+            host = urlsplit(os.getenv(name, "")).hostname
+        except ValueError:
+            host = None
+        if host:
+            hosts.add(host)
+    return frozenset(hosts)
+
+
 def init_sentry():
     """Initialize Sentry SDK. No-op if SENTRY_DSN not set."""
+    global _INFRA_HOSTS
     dsn = os.getenv("SENTRY_DSN", "")
     if not dsn:
         logger.info("SENTRY_DSN not set -- Sentry disabled")
@@ -289,6 +625,9 @@ def init_sentry():
         import sentry_sdk
         from sentry_sdk.integrations.fastapi import FastApiIntegration
         from sentry_sdk.integrations.starlette import StarletteIntegration
+        from sentry_sdk.integrations.logging import LoggingIntegration
+
+        _INFRA_HOSTS = _infra_hosts_from_env()
 
         # Capture 5xx as failed requests EXCEPT 503 — in this app a 503 is only
         # ever returned deliberately (TIMEOUT graceful-timeout from the
@@ -296,18 +635,35 @@ def init_sentry():
         # expected transient, not a bug. Keeping it in Sentry floods the error
         # stream and buries real 500s. Real crashes surface as 500 and are kept.
         _captured_5xx = frozenset(range(500, 600)) - {503}
+        integrations = [
+            FastApiIntegration(
+                transaction_style="endpoint",
+                failed_request_status_codes=_captured_5xx,
+            ),
+            StarletteIntegration(
+                transaction_style="endpoint",
+                failed_request_status_codes=_captured_5xx,
+            ),
+            # U8d R7 (SR2, Q4): only ERROR log lines become breadcrumbs, so
+            # no INFO / WARNING line (user queries, product names, URLs,
+            # exception text) reaches an event. The event level stays the
+            # SDK default, ERROR.
+            LoggingIntegration(level=logging.ERROR),
+        ]
+        # U8d SR8: prompts and completions never leave the process, even if
+        # send_default_pii is ever turned on. FIX B4: its own try -- sentry_sdk
+        # raises DidNotEnable on this import when openai cannot load, and that
+        # must not disable Sentry (an integration that cannot load cannot send
+        # prompts either; the SDK's own auto-enable skips it the same way).
+        try:
+            from sentry_sdk.integrations.openai import OpenAIIntegration
+
+            integrations.append(OpenAIIntegration(include_prompts=False))
+        except Exception:  # noqa: BLE001
+            pass
         sentry_sdk.init(
             dsn=dsn,
-            integrations=[
-                FastApiIntegration(
-                    transaction_style="endpoint",
-                    failed_request_status_codes=_captured_5xx,
-                ),
-                StarletteIntegration(
-                    transaction_style="endpoint",
-                    failed_request_status_codes=_captured_5xx,
-                ),
-            ],
+            integrations=integrations,
             traces_sample_rate=0.1,
             environment=os.getenv("RAILWAY_ENVIRONMENT", "development"),
             release=os.getenv("RAILWAY_GIT_COMMIT_SHA", "unknown"),
@@ -323,6 +679,13 @@ def init_sentry():
             # what actually identifies a crash. Deliberate trade: stack traces
             # lose local variables, which costs debuggability.
             include_local_variables=False,
+            # U8d R3: the SDK never reads a request body (the request-region
+            # belt filters any body that arrives anyway).
+            max_request_body_size="never",
+            # U8d R12 (SR4): no sentry-trace / baggage header (public key,
+            # transaction name, release) to any outbound host; the backend
+            # calls no Sentry-instrumented service of ours.
+            trace_propagation_targets=[],
             before_send=_before_send,
             # W1-1b: transactions never pass through before_send.
             before_send_transaction=_before_send_transaction,
