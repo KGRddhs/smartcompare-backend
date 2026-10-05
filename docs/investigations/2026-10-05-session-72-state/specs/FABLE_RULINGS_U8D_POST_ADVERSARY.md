@@ -1,4 +1,4 @@
-# U8d (issue #311) - orchestrator rulings after the adversaries (BINDING, 2026-10-05 18:40 AST)
+# U8d (issue #311) - orchestrator rulings after the adversaries (BINDING, 2026-10-05 18:33 AST)
 
 They supersede everything earlier where they differ. State before them: GREEN done; adversary A (privacy) SOUND_WITH_MINORS (A1-A10); adversary B (engineering) DEFECTIVE on test strength (B1, B2 blocking: two R2 forms and the chain walk were not pinned; B3 major: the fail-safe was not pinned) plus minors; the fix round FIXED A2, A3, A5, A9, B1, B2, B3, B4, B6, B7, B8 with 36 appended nodes (each proven red first, each adversary mutant killed), stated A6, A7, A8, B5, B9, B10, B11 as limits, and left A1, A4, A10 for a ruling. Gates after the fix round: G1 268 passed, the child file three times green, G2 608 passed, G5 clean; G3 head has ONE head-only failure (A1).
 
