@@ -1,4 +1,4 @@
-# T0b Phase B - orchestrator rulings after the adversaries (BINDING, 2026-10-05 21:10 AST)
+# T0b Phase B - orchestrator rulings after the adversaries (BINDING, 2026-10-05 21:03 AST)
 
 They supersede everything earlier where they differ. State before them: GREEN done (hook `fa180f13...`); adversary A (additivity) DEFECTIVE on A1 (blocking: the four-branch check lost content revealed by `diff.external` / a `diff.<driver>.command`), A2, A3 (major); adversary B (shell security) DEFECTIVE on B1 (blocking: gitleaks exits 0 after logging an error when its own git call writes to stderr, and the hook trusted the exit code), B2, B3 (major). The fix round (hook `edd1b6fe...`, ci.yml `3b4b3ed2...`, a new test file of 64 nodes, 29 of 29 mutants killed) FIXED A1, A2 (CI half), A3, A4, B2, B3, B5, B6, B7, stated A5, A6, B4 as limits, and left B1, the hook half of A2, and three questions for a ruling. Not measured in that round: the full-file runs with gitleaks stripped from PATH.
 
