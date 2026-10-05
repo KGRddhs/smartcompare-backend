@@ -132,7 +132,14 @@ async def fetch_page(url: str) -> Optional[str]:
             logger.warning(f"[SSRF] Too many redirects for {url}")
             return None
     except Exception as e:
-        logger.error(f"Failed to fetch URL {url}: {e}")
+        # U8d R8 / UG2: the user's URL path and query never reach the log line
+        # (and so Sentry) -- the host and the exception TYPE only; str(e) of an
+        # httpx.HTTPStatusError carries the full URL.
+        try:
+            host = urlparse(url).hostname
+        except ValueError:
+            host = None
+        logger.error(f"Failed to fetch URL host {host}: {type(e).__name__}")
         return None
 
 
