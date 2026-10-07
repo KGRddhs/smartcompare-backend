@@ -161,10 +161,15 @@ def d1_bulk_text_without_the_value_passes_with_no_message(
     _write_env(r, ["FAKE_BULK_KEY=" + V_BULK, "FAKE_OTHER_SECRET=" + V_OTHER])
     r.stage("docs/bulk.txt", _bulk_text())
     run = r.run_hook(shell)
-    assert run.rc == 0 and run.hook_messages() == [], (
-        "expected rc 0 and no hook message on ~1.2 MB of staged text; %s"
-        % run.explain()
+    assert run.rc == 0 and run.refusals() == [], (
+        "expected rc 0 and no refusal on ~1.2 MB of staged text; %s" % run.explain()
     )
+    others = [
+        m
+        for m in run.hook_messages()
+        if not m.startswith(PREFIX + "WARNING gitleaks not installed")
+    ]
+    assert others == [], "a hook message other than the gitleaks WARNING: %r" % others
     for value in (V_BULK, V_OTHER):
         _assert_no_piece(run, value, "a .env value")
 
@@ -310,7 +315,7 @@ def r3_failed_git_diff_refuses_the_commit(r: HookRepo, shell: str) -> None:
     _write_env(r, ["FAKE_BULK_KEY=" + V_BULK])
     r.stage("cfg.txt", "a = " + V_BULK + "\n")
     run = r.run_hook(shell, env=env)
-    _assert_refused(run, MSG_ENV_CHECK_FAILED)
+    _assert_refused(run, "could not read the staged diff")
     _assert_no_piece(run, V_BULK, "a .env value")
 
 
