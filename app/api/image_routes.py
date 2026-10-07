@@ -318,7 +318,9 @@ async def identify_and_compare(
         raise HTTPException(status_code=500, detail="Image analysis failed. Please try again.")
 
     if vision_result.get("error"):
-        logger.error(f"[IMAGE] Vision parse error: {vision_result['error']}")
+        # U8d R8: an ERROR line outside any except arm is a Sentry event the
+        # hook cannot match -- a constant template, no model output.
+        logger.error("[IMAGE] Vision parse error")
         if vision_result.get("raw_response"):
             logger.debug(f"[IMAGE] Raw response (server-only): {vision_result['raw_response']}")
         # Non-delivery exit 2 of 6.

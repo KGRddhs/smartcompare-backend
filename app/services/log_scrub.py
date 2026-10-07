@@ -9,9 +9,10 @@ Two public helpers:
 - ``exc_summary(exc)`` -- ``"<TypeName>: <scrubbed text>"``, or the bare
   ``<TypeName>`` when the text is empty. An httpx transport timeout or a
   no-arg ``TimeoutError()`` has an EMPTY ``str(e)``, so an f-string log line
-  carried only its prefix (the empty-message Sentry issues). The text is
-  scrubbed with the R-W18 URL scrub and then the Sentry key patterns
-  (``sentry_service._scrub_string``), both over the FULL text, before the cut.
+  carried only its prefix (the empty-message Sentry issues). The text is cut
+  to its first 16,384 characters (U8d SR3), then scrubbed with the R-W18 URL
+  scrub and the Sentry key patterns (``sentry_service._scrub_string``), before
+  the 200-character cut.
 
 This module is a LEAF: its only imports are ``re`` and
 ``sentry_service._scrub_string`` (stdlib-only at its top), so
@@ -36,6 +37,9 @@ from app.services.sentry_service import _scrub_string
 _SAFE_EXC_URL_RE = re.compile(r"(?i)([a-z][a-z0-9+.\-]{0,15}://)(\S*)")
 _SAFE_EXC_LINEBREAK_RE = re.compile(r"[\r\n\x0b\x0c\x1c-\x1e\x85\u2028\u2029]+")
 _SAFE_EXC_MAX_CHARS = 200
+# U8d SR3 (#321 PER-6): exc_summary scrubs at most this many characters of
+# str(exc); the key patterns are quadratic on long text (5.25 s at 368 KB).
+_EXC_SUMMARY_SCRUB_CAP = 16384
 
 
 def _safe_exc_url(m: "re.Match[str]") -> str:
@@ -77,9 +81,10 @@ def exc_summary(exc: BaseException) -> str:
     argument: ``"ReadTimeout"`` when ``str(exc)`` is empty or whitespace,
     otherwise ``"ValueError: bad"``.
 
-    Scrub order: the R-W18 URL scrub (userinfo, query, fragment) and then the
-    Sentry key shapes (``_scrub_string``: JWT, ``sk-proj-`` keys, ``fc-``
-    keys, 32+ hex tokens, ``Bearer`` tokens), both on the FULL text; then the
+    Scrub order: the text is cut to its first 16,384 characters (U8d SR3);
+    then the R-W18 URL scrub (userinfo, query, fragment) and the Sentry key
+    shapes (``_scrub_string``: JWT, ``sk-proj-`` keys, ``fc-`` keys, 32+ hex
+    tokens, ``Bearer`` tokens), both on that text; then the
     line-break collapse, leading whitespace dropped, and the 200-character
     cut LAST, so a cut can never land inside a credential. The URL scrub goes
     FIRST because a key-shape replacement can swallow the scheme of a URL
@@ -96,6 +101,7 @@ def exc_summary(exc: BaseException) -> str:
         text = str(exc)
     except Exception:  # noqa: BLE001 — a broken __str__ must not break logging
         return f"<unprintable {name}>"
+    text = text[:_EXC_SUMMARY_SCRUB_CAP]
     text = _SAFE_EXC_URL_RE.sub(_safe_exc_url, text)
     text = _scrub_string(text)
     text = _SAFE_EXC_LINEBREAK_RE.sub(" ", text).lstrip()

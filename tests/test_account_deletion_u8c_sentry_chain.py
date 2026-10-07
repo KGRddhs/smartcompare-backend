@@ -41,8 +41,8 @@ time, passed by ENVIRONMENT (never argv: ArgvIntegration copies sys.argv into
 events); none is a substring of the user id, the bearer token, the route, a
 module name or the worktree path, and none matches a scrubber pattern of
 ``app/services/sentry_service.py`` (no long hex, no JWT, no key prefix, no
-token after the word Bearer). PIN 7 is the positive control: the sentinels
-survive the real ``before_send`` when they ARE in an exception value, so a
+token after the word Bearer). PIN 7 is the positive control (U8d UG1): the
+sentinels survive the real ``before_send`` in the event ``extra``, so a
 GREEN result cannot be a scrubbed-away false negative. PIN 4 is the negative
 control (C4/UR8): the success path trips no flag.
 
@@ -255,13 +255,13 @@ for name in ("httpx", "authapi", "runtime", "apierror", "success"):
         "items": [describe(kind, raw) for kind, raw in ITEMS],
     }
 
-# Positive control (C4): the sentinels in an exception value survive the REAL
-# before_send, so a clean sweep can never be a scrubbed-away false negative.
+# Positive control (C4; U8d UG1): the sentinels survive the REAL before_send in
+# a region no scrub rule blanks (the event extra -- U8d R1 empties every
+# exception value), so a clean sweep can never be a scrubbed-away false negative.
 ITEMS.clear()
-try:
-    raise RuntimeError("u8c control %s %s %s %s" % (SENT, EMAIL, HOST, OWNER))
-except RuntimeError:
-    sentry_sdk.capture_exception()
+with sentry_sdk.new_scope() as _scope:
+    _scope.set_extra("u8c_control", "u8c control %s %s %s %s" % (SENT, EMAIL, HOST, OWNER))
+    sentry_sdk.capture_message("u8c positive control")
 sentry_sdk.flush()
 CONTROL = [describe(kind, raw) for kind, raw in ITEMS]
 
@@ -443,7 +443,8 @@ class TestU8cSentryChain:
             assert "transaction" in kinds, (name, kinds)
 
     def test_u8c_pin7_sentinels_survive_the_real_scrubber(self, u8c_child):
-        """C4 positive control: an exception whose value carries every
+        """C4 positive control (U8d UG1: it rides the event extra, because U8d
+        R1 empties every exception value): an event whose extra carries every
         sentinel, captured through the real before_send, still carries each of
         them, so none matches a scrubber pattern and a clean sweep is real."""
         assert "fatal" not in u8c_child, u8c_child
@@ -452,7 +453,7 @@ class TestU8cSentryChain:
         leak = control[0]["leak"]
         missing = sorted(k for k in ("sent", "email", "host", "owner") if not leak[k])
         assert missing == [], (
-            f"the real scrubber removed sentinel(s) {missing} from an exception "
-            f"value: the leak sweep can no longer see them, choose sentinels "
+            f"the real scrubber removed sentinel(s) {missing} from the event "
+            f"extra: the leak sweep can no longer see them, choose sentinels "
             f"no pattern of app/services/sentry_service.py matches"
         )

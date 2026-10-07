@@ -3667,9 +3667,11 @@ class StructuredComparisonService:
                     )
                     return partial
                 except Exception as e:  # noqa: BLE001 — fall through to graceful error
+                    # U8d R8 / UF3: an ERROR line is a Sentry event -- the
+                    # query's length only, never its text or a hash of it.
                     logger.error(
-                        "[L2.7] partial build failed after hard-cap for query=%r: %s",
-                        query, e, exc_info=True,
+                        "[L2.7] partial build failed after hard-cap for query length=%d: %s",
+                        len(query), e, exc_info=True,
                     )
             # No usable data (or partial build failed) — INSUFFICIENT_DATA when
             # we at least resolved the products; else the friendly TIMEOUT body
@@ -4350,9 +4352,10 @@ class StructuredComparisonService:
                     yield ("complete", _partial)
                     return
                 except Exception:  # noqa: BLE001 — fall through to STREAM_TIMEOUT
+                    # U8d R8 / UF3: the query's length only, never its text or a hash.
                     logger.error(
-                        "[stream] tail-deadline partial build failed for %r",
-                        query, exc_info=True,
+                        "[stream] tail-deadline partial build failed for query length=%d",
+                        len(query), exc_info=True,
                     )
             partial_response = {
                 "success": False,
@@ -4563,9 +4566,10 @@ class StructuredComparisonService:
                         yield ("complete", _partial)
                         return
                     except Exception as _pe:  # noqa: BLE001 — fall through to STREAM_TIMEOUT
+                        # U8d R8 / UF3: the query's length only, never its text or a hash.
                         logger.error(
-                            "[stream] partial build failed after hard-cap for %r: %s",
-                            query, _pe, exc_info=True,
+                            "[stream] partial build failed after hard-cap for query length=%d: %s",
+                            len(query), _pe, exc_info=True,
                         )
                 # WS1 (D2) — STREAM_TIMEOUT keeps its distinct code (the FE SSE
                 # error branch handles both TIMEOUT and STREAM_TIMEOUT), but the
@@ -5530,7 +5534,9 @@ class StructuredComparisonService:
                 )
                 result[key] = self._price_fallback_on_miss(key, full_name, category)
             elif isinstance(phase1_results[i], Exception):
-                logger.error(f"Error fetching {key}: {phase1_results[i]}")
+                # U8d R8: outside any except arm, so the Sentry hook cannot
+                # match the gathered exception's text -- log its TYPE only.
+                logger.error("Error fetching %s: %s", key, type(phase1_results[i]).__name__)
                 result[key] = self._price_fallback_on_miss(key, full_name, category)
             else:
                 result[key] = phase1_results[i]
@@ -5840,7 +5846,8 @@ class StructuredComparisonService:
             if key == "_smart_fallback":
                 continue  # Handled in the smart-fallback merge block above
             if isinstance(phase2_results[i], Exception):
-                logger.error(f"Error fetching {key}: {phase2_results[i]}")
+                # U8d R8: outside any except arm -- the TYPE only.
+                logger.error("Error fetching %s: %s", key, type(phase2_results[i]).__name__)
                 continue
             if key == "_rating_data":
                 rating_data = phase2_results[i]
