@@ -4,6 +4,18 @@
 
 ---
 
+# SESSION 72 — the Apple launch lane: readiness audit, the Sentry unit merged, secret scanning in review — 2026-10-05 (saved 23:30 before a scheduled shutdown); main `1156f03c`
+
+**State folder:** `docs/investigations/2026-10-05-session-72-state/` (`NEXT_SESSION_PROMPT.md`, `ledger.md`, `IMPLEMENTATION_PLAN_S72.md`, `readiness/`, `specs/`, `scripts/`, `pr/`, `issues/`). Every agent ran on `claude-opus-5-5`; Fable orchestrated.
+
+- **Step 1 + Step 3 (read-only, 7 agents):** the config-audit delta, backend / client readiness, a triage of the 97 open issues, one launch punch list, two critics (App Review lens, engineering lens). Verdict: not submittable today; seven hard stops, most of them owner inputs. New defects found and re-derived in code: the Share sheet's non-existent reward and placeholder link, the anonymous `/url/detect` DNS path, a canary script that passes on a degraded result, the referral push's email-prefix fallback, no `store=False` on OpenAI calls, CLAUDE.md telling agents to copy `.env`.
+- **Step 4:** `IMPLEMENTATION_PLAN_S72.md` (the corrected critical path, three waves of units, the changed decision defaults). Seven new units wait for Ahmed's approval; the legal unit U8 has a spec, a one-page input form and 28 binding review corrections.
+- **U8d (#311) MERGED as #325 (`1156f03c`), live 21:02:** Sentry receives exception types and scrubbed templates, not exception text, request bodies, query text, device or IP headers, or the path of a pasted link. Loop: spec -> review (14 corrections) -> rulings -> RED (121 failing / 110 pins) -> gate -> GREEN -> a privacy adversary and an engineering adversary (the second found three unpinned behaviours) -> fix (36 nodes) -> rulings -> fix -> a final adversary on the exact bytes -> fix (tests only) -> diff review -> PR. Follow-up #324.
+- **T0b Phase B (secret scanning) NOT merged:** RED gated, GREEN built, both adversaries DEFECTIVE (the four-branch check lost content shown through an external diff tool; gitleaks 8.30.1 exits 0 after logging an error and the hook trusted the exit code; the CI job could go green without scanning), two fix rounds, the final adversary running at the save. The unit is uncommitted in `sc-s71-t0b`; a verified snapshot of the post-fix-2 bytes is in `C:/Users/SynAckITPC/Documents/AI/_s72_t0b_b_snapshot_fix2/`.
+- **Budget:** the weekly Fable limit reached 97 % at 23:08 (it resets 2026-10-07 16:00 AST); the session was saved on Ahmed's request and the PC shut down at 00:40.
+
+---
+
 # SESSION 71 — the Apple launch lane under `/synack-build-orchestrator`: twelve PRs merged, U13 activated in production — 2026-10-03 (ended 23:11); main `c60926f8` + the close docs PR
 
 **Process (Ahmed, binding from this session):** Fable orchestrates, plans, gates and reviews; every workflow agent is Opus; per unit: Opus spec → Opus adversarial spec review → Fable rulings → Opus RED → Fable gate → Opus GREEN → two Opus adversaries → fix → Fable diff review → commit → PR → merge on six green checks. Every ruling, gate record, workflow script, PR body and issue bundle is in `docs/investigations/2026-10-03-session-71-state/` (`SESSION_71_STATE.md` section 0 = the close checklist; `ledger.md` = the hour-by-hour record; `NEXT_SESSION_PROMPT.md` = session 72's paste).

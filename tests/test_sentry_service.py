@@ -17,7 +17,6 @@ class TestSensitivePatternScrubbing:
         token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
         event = {"exception": {"values": [{"value": f"JWT was {token}"}]}}
         scrubbed = _before_send(event, hint={})
-        assert "[JWT_REDACTED]" in scrubbed["exception"]["values"][0]["value"]
         assert token not in scrubbed["exception"]["values"][0]["value"]
 
     def test_before_send_redacts_authorization_header(self):
