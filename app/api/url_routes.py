@@ -387,7 +387,11 @@ async def compare_urls_get(
     )
 
 
-@router.post("/detect")
+# U13e (EO-01, W0 = guard): no app caller, not paid; extends the admin set to six verbs. The
+# anonymous half of EO-01 is closed while ENABLE_COMPARE_AUTH_REQUIRED is on (refused before the
+# SSRF guard resolves DNS on the loop); the signed-in half (POST/GET /url/compare) stays until
+# ENABLE_OFFLOOP_DNS_RESOLVE.
+@router.post("/detect", dependencies=[Depends(require_paid_route_admin)])
 @limiter.limit("20/minute")
 async def detect_retailer_endpoint(request: Request, body: URLExtractRequest):
     """
@@ -407,7 +411,7 @@ async def detect_retailer_endpoint(request: Request, body: URLExtractRequest):
     }
 
 
-@router.get("/detect")
+@router.get("/detect", dependencies=[Depends(require_paid_route_admin)])
 @limiter.limit("20/minute")
 async def detect_retailer_get(
     request: Request,
