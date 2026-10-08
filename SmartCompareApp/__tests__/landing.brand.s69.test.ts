@@ -18,11 +18,15 @@
  * by the word that follows. The Arabic word boundary is explicit (JS \b
  * ignores Arabic letters), so «مقارنة» / «المقارنات» never trip the fence.
  *
- * Legal pages (privacy/terms, both languages): landing/README.md says their
- * body is a render of app/legal/*.md, which unit U8 rewrites. Per the review's
- * Q5 recommendation this unit renames the page CHROME only — <head> (title,
- * meta), the brand wordmark, the subtitle line and the footer — and leaves the
- * body paragraphs / list items to U8 so web and in-app legal text stay in step.
+ * Legal pages (privacy/terms, both languages): since unit U8 the fence covers
+ * the WHOLE page — chrome AND body. S69 renamed only the chrome and left the
+ * body paragraphs / list items to U8; U8 (rulings UL1, UL17) renders the body
+ * from app/legal/*.md (scripts/render_legal_landing.py) with the MYEZ brand,
+ * so the former LEGAL exemption is gone. Addresses are still stripped first.
+ * ADDRESS_COUNTS changed for the four legal pages only (ruling UG20): 7 -> 5 on
+ * privacy, terms, ar/privacy and ar/terms (the hand-written body contact line
+ * is now rendered from the markdown with an e-mail placeholder); the support
+ * pages, the index pages and open.html keep their base counts.
  */
 import * as fs from 'fs';
 import * as path from 'path';
@@ -40,7 +44,6 @@ const PAGES = [
   'ar/support.html',
   'ar/terms.html',
 ];
-const LEGAL = new Set(['privacy.html', 'terms.html', 'ar/privacy.html', 'ar/terms.html']);
 
 const MYEZ_AR = 'ميّز'; // ميّز
 const OLD_AR = 'قارن'; // قارن
@@ -56,28 +59,26 @@ const ADDRESS_RE =
 /** Base e3f87b8b counts of `qaren.app` per page — every address must survive. */
 const ADDRESS_COUNTS: Record<string, number> = {
   'index.html': 8,
-  'privacy.html': 7,
-  'support.html': 9,
-  'terms.html': 7,
+  // U8 (UG20): the four legal pages keep their 4 head links (canonical + 3 hreflang) and the
+  // footer support@ mailto = 5. The body's hand-written contact line (2 per page: the mailto href
+  // + its text; privacy@ on privacy, legal@ on terms) is now rendered from app/legal/*.md, where
+  // the address is <PLACEHOLDER:PRIVACY_EMAIL> / <PLACEHOLDER:SUPPORT_EMAIL> (legal@ dropped, C29).
+  // The fill-in commit re-counts these when the placeholders become addresses.
+  'privacy.html': 5,
+  'support.html': 9, // unchanged by U8: the rendered contact region carries <PLACEHOLDER:SUPPORT_EMAIL>
+  'terms.html': 5,
   'open.html': 3, // the two qaren.app mentions in the page's comments + the linking prefix in the script
   'ar/index.html': 8,
-  'ar/privacy.html': 7,
-  'ar/support.html': 9,
-  'ar/terms.html': 7,
+  'ar/privacy.html': 5,
+  'ar/support.html': 9, // unchanged by U8, as support.html
+  'ar/terms.html': 5,
 };
 
 const read = (rel: string) => fs.readFileSync(path.join(LANDING, rel), 'utf8');
 
-/** Text in scope for the fence: addresses stripped; legal body left to U8. */
+/** Text in scope for the fence: the whole page (legal body included since U8), addresses stripped. */
 function scoped(rel: string): string {
-  let html = read(rel);
-  if (LEGAL.has(rel)) {
-    html = html
-      // `(?=[\s>])` keeps <link …>, <path …> etc. from matching as <li> / <p>.
-      .replace(/<p(?=[\s>])(?![^>]*class="subtitle")[^>]*>[\s\S]*?<\/p>/g, ' ')
-      .replace(/<li(?=[\s>])[^>]*>[\s\S]*?<\/li>/g, ' ');
-  }
-  return html.replace(ADDRESS_RE, ' ');
+  return read(rel).replace(ADDRESS_RE, ' ');
 }
 
 function lineOf(html: string, index: number): number {
@@ -85,7 +86,7 @@ function lineOf(html: string, index: number): number {
 }
 
 describe('S69 U-R T4 — landing brand fence (MYEZ / ميّز)', () => {
-  it('no page carries Latin "Qaren" outside an address (legal body excepted, U8)', () => {
+  it('no page carries Latin "Qaren" outside an address (legal body included, U8)', () => {
     // The page set is exactly the nine pages (the spec's "seven" missed ar/support.html; S69 added open.html).
     const found = [
       ...fs.readdirSync(LANDING).filter((f) => f.endsWith('.html')),

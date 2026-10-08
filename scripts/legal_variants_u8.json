@@ -1,0 +1,188 @@
+{
+  "_comment": "U8 legal text variants (rulings UL9, UG3). Read by scripts/fill_in_legal.py with the answers in tests/fixtures/legal_fill_in_u8.json. Nothing in the app reads this file. Two mechanisms. FORKS: the committed markdown carries the recommended variant inline; the fill-in finds whichever variant of the fork is present (exactly once, as raw text or already filled in) and puts the selected variant in its place. CLAUSES: the markdown carries a placeholder token whose text the fill-in derives from an answer; the token's key in the data file stays null. Texts are keyed by language ('en', 'ar'; every Arabic text is marked for native review, D11), then by document ('privacy', 'terms', 'support', or '*' for every document that uses the token), then by the answer value: true/false for booleans, on/off for flags, the enum value for enums, nonempty/empty for strings ({value} is replaced by the string). A variant text may contain other placeholder tokens; they are filled from the data file afterwards. Language-specific values have an _AR twin key for the Arabic documents (for example WITHDRAW_PATH and WITHDRAW_PATH_AR). Polish round (UP4): an 'if_null' value stands for a null answer, which is then not reported missing (null is that answer's documented default); an 'answer' of the form {'all_end_with': [paths], 'suffix': s} is true when every path's value ends with s; a fork may have ONE empty variant, which counts as present when no other variant is (it cannot be located, so a fork filled with it can only keep it; restore the pre-fill markdown to select another); since fix P1 no fork uses these two forms. The Cloudflare line of privacy section 5 is plain text in the committed markdown, never a fork or clause (fix P1, 2026-10-08, amends UP4 A12(b)): the landing pages publish support@qaren.app outside the legal regions, so email to a qaren.app address passes through Cloudflare whichever addresses the fill-in records, and T7a names Cloudflare unconditionally (UG7).",
+  "schema": 1,
+  "forks": {
+    "d5_identity": {
+      "answer": "d5",
+      "inline": "A",
+      "docs": ["privacy", "terms", "support"],
+      "en": {
+        "A": "<PLACEHOLDER:CONTROLLER_NAME><PLACEHOLDER:TRADE_NAME_CLAUSE>, <PLACEHOLDER:POSTAL_ADDRESS>",
+        "B": "<PLACEHOLDER:CONTROLLER_NAME><PLACEHOLDER:TRADE_NAME_CLAUSE> (commercial registration number <PLACEHOLDER:CR_NUMBER>), <PLACEHOLDER:POSTAL_ADDRESS>"
+      },
+      "ar": {
+        "A": "<PLACEHOLDER:CONTROLLER_NAME><PLACEHOLDER:TRADE_NAME_CLAUSE>، <PLACEHOLDER:POSTAL_ADDRESS>",
+        "B": "<PLACEHOLDER:CONTROLLER_NAME><PLACEHOLDER:TRADE_NAME_CLAUSE> (السجل التجاري رقم <PLACEHOLDER:CR_NUMBER>)، <PLACEHOLDER:POSTAL_ADDRESS>"
+      }
+    },
+    "d3_training": {
+      "answer": "d3",
+      "inline": "A",
+      "docs": ["privacy"],
+      "en": {
+        "A": "OpenAI does not use data sent to its API to train its models unless the developer opts in, and we have not opted in.",
+        "B": "OpenAI does not use data sent to its API to train its models unless the developer opts in. Separately, and only if you turn on \"Help improve AI quality\", we let OpenAI use your comparison queries to improve its models. This is off unless you turn it on, and turning it off stops future sharing. Data you share this way is governed by OpenAI's terms rather than the 30-day limit below."
+      },
+      "ar": {
+        "A": "لا تستخدم OpenAI البيانات المرسلة إلى واجهة برمجة التطبيقات (API) الخاصة بها لتدريب نماذجها إلا إذا وافق المطوّر على ذلك، ولم نوافق نحن على ذلك.",
+        "B": "لا تستخدم OpenAI البيانات المرسلة إلى واجهة برمجة التطبيقات (API) الخاصة بها لتدريب نماذجها إلا إذا وافق المطوّر على ذلك. وبشكل منفصل، وفقط إذا فعّلت خيار «ساعد في تحسين الذكاء الاصطناعي»، نسمح لشركة OpenAI باستخدام استفسارات مقارناتك لتحسين نماذجها. هذا الخيار متوقف ما لم تفعّله، وإيقافه يوقف المشاركة من بعده. وتخضع البيانات التي تشاركها بهذه الطريقة لشروط OpenAI بدلًا من حدّ الثلاثين يومًا المذكور أدناه."
+      }
+    },
+    "openai_retention": {
+      "answer": "openai_store_pinned",
+      "inline": "true",
+      "docs": ["privacy"],
+      "en": {
+        "true": "OpenAI may keep data sent to its API in abuse-monitoring logs for up to 30 days.",
+        "false": "OpenAI's handling of data sent to its API is governed by its API terms."
+      },
+      "ar": {
+        "true": "قد تحتفظ OpenAI بالبيانات المرسلة إلى واجهة برمجة التطبيقات (API) الخاصة بها في سجلات مراقبة إساءة الاستخدام لمدة تصل إلى 30 يومًا.",
+        "false": "تخضع طريقة تعامل OpenAI مع البيانات المرسلة إلى واجهة برمجة التطبيقات (API) الخاصة بها لشروط استخدام تلك الواجهة لديها."
+      }
+    },
+    "territories_complaints": {
+      "answer": "territories",
+      "inline": "gcc",
+      "docs": ["privacy"],
+      "en": {
+        "gcc": "If you are not satisfied with our answer, you can complain to the Personal Data Protection Authority of Bahrain (https://www.pdp.gov.bh) or, if you live in Saudi Arabia, to the Saudi Data and AI Authority (SDAIA).",
+        "bahrain": "If you are not satisfied with our answer, you can complain to the Personal Data Protection Authority of Bahrain (https://www.pdp.gov.bh)."
+      },
+      "ar": {
+        "gcc": "إذا لم تكن راضيًا عن ردنا، يمكنك تقديم شكوى إلى هيئة حماية البيانات الشخصية في البحرين (https://www.pdp.gov.bh) أو، إذا كنت تقيم في المملكة العربية السعودية، إلى الهيئة السعودية للبيانات والذكاء الاصطناعي (سدايا).",
+        "bahrain": "إذا لم تكن راضيًا عن ردنا، يمكنك تقديم شكوى إلى هيئة حماية البيانات الشخصية في البحرين (https://www.pdp.gov.bh)."
+      }
+    },
+    "legal_basis": {
+      "answer": "counsel_review",
+      "inline": "false",
+      "docs": ["privacy"],
+      "en": {
+        "false": "- **To provide the App under our agreement with you (the Terms of Service):** your account, your comparisons (including sending them to OpenAI to produce the result), your history and the security of the App.\n- **With your consent:** your optional profile answers, notifications and your answer about how you heard about us. You can withdraw your consent at any time (section 10).\n- **The permission the App asks for before your first comparison** is the permission Apple requires before an app shares data with a third-party AI service (section 4).",
+        "true": "<PLACEHOLDER:LEGAL_BASIS_COUNSEL>"
+      },
+      "ar": {
+        "false": "- **لتقديم التطبيق بموجب اتفاقنا معك (شروط الاستخدام):** حسابك، ومقارناتك (بما في ذلك إرسالها إلى OpenAI لإنتاج النتيجة)، وسجلك، وأمان التطبيق.\n- **بموافقتك:** إجابات ملفك الشخصي الاختيارية، والإشعارات، وإجابتك عن كيف عرفت عنا. يمكنك سحب موافقتك في أي وقت (القسم 10).\n- **الإذن الذي يطلبه التطبيق قبل مقارنتك الأولى** هو الإذن الذي تشترطه Apple قبل أن يشارك أي تطبيق بيانات مع خدمة ذكاء اصطناعي تابعة لطرف ثالث (القسم 4).",
+        "true": "<PLACEHOLDER:LEGAL_BASIS_COUNSEL_AR>"
+      }
+    },
+    "referral_push_name": {
+      "answer": "placeholders.REFERRAL_PUSH_DISPLAY_NAME_ONLY",
+      "if_null": "false",
+      "inline": "true",
+      "docs": ["privacy", "terms"],
+      "en": {
+        "true": "If you joined through a friend's invite, the notification we send that friend can show your display name.",
+        "false": "If you joined through a friend's invite, the notification we send that friend can show your display name or the first part of your email address."
+      },
+      "ar": {
+        "true": "وإذا انضممت عبر دعوة من صديق، فقد يظهر اسمك المعروض في الإشعار الذي نرسله إلى ذلك الصديق.",
+        "false": "وإذا انضممت عبر دعوة من صديق، فقد يظهر اسمك المعروض أو الجزء الأول من عنوان بريدك الإلكتروني في الإشعار الذي نرسله إلى ذلك الصديق."
+      }
+    }
+  },
+  "clauses": {
+    "TRADE_NAME_CLAUSE": {
+      "answer": "trade_name",
+      "en": {
+        "*": {"nonempty": ", trading as {value}", "empty": ""}
+      },
+      "ar": {
+        "*": {"nonempty": "، تحت الاسم التجاري {value}", "empty": ""}
+      }
+    },
+    "MINORS_CLAUSE": {
+      "answer": "minors_clause",
+      "en": {
+        "privacy": {"true": " If you are under the age of majority where you live, a parent or guardian must agree to this policy and to our Terms of Service for you.", "false": ""},
+        "terms": {"true": " If you are under the age of majority where you live, a parent or guardian must agree to these Terms for you.", "false": ""}
+      },
+      "ar": {
+        "privacy": {"true": " وإذا كنت دون سن الرشد في مكان إقامتك، فيجب أن يوافق أحد والديك أو وليّ أمرك على هذه السياسة وعلى شروط الاستخدام نيابةً عنك.", "false": ""},
+        "terms": {"true": " وإذا كنت دون سن الرشد في مكان إقامتك، فيجب أن يوافق أحد والديك أو وليّ أمرك على هذه الشروط نيابةً عنك.", "false": ""}
+      }
+    },
+    "YOUTUBE_CLAUSE": {
+      "answer": "flags.ENABLE_YOUTUBE_SOURCE",
+      "en": {
+        "privacy": {"on": "; YouTube (Google) receives product names when we look for review videos", "off": ""}
+      },
+      "ar": {
+        "privacy": {"on": "؛ وتتلقى YouTube (من Google) أسماء المنتجات عندما نبحث عن مقاطع فيديو للمراجعات", "off": ""}
+      }
+    },
+    "INAPP_NOTIF_CLAUSE": {
+      "answer": "inapp_notif_clause",
+      "en": {
+        "*": {
+          "false": "The notification switch in the App stops reminders; to stop all notifications, use your iPhone's Settings.",
+          "true": "You can stop all notifications with the notification switch in the App or in your iPhone's Settings."
+        }
+      },
+      "ar": {
+        "*": {
+          "false": "يوقف مفتاح الإشعارات في التطبيق التذكيرات؛ ولإيقاف جميع الإشعارات، استخدم إعدادات جهاز iPhone.",
+          "true": "يمكنك إيقاف جميع الإشعارات من مفتاح الإشعارات في التطبيق أو من إعدادات جهاز iPhone."
+        }
+      }
+    },
+    "HOSTING_REGIONS_CLAUSE": {
+      "answer": {"en": "placeholders.HOSTING_REGIONS", "ar": "placeholders.HOSTING_REGIONS_AR"},
+      "en": {
+        "privacy": {"nonempty": ", and in {value} (our database, hosting and temporary-storage providers)", "empty": ""}
+      },
+      "ar": {
+        "privacy": {"nonempty": "، وفي {value} (مزوّدو قاعدة البيانات والاستضافة والتخزين المؤقت لدينا)", "empty": ""}
+      }
+    },
+    "DPO_CONTACT": {
+      "answer": {"en": "placeholders.DPO_CONTACT_DETAILS", "ar": "placeholders.DPO_CONTACT_DETAILS_AR"},
+      "if_null": "",
+      "en": {
+        "privacy": {"nonempty": ", or our data protection officer, {value}", "empty": ""}
+      },
+      "ar": {
+        "privacy": {"nonempty": "، أو مسؤول حماية البيانات لدينا، {value}", "empty": ""}
+      }
+    },
+    "TRANSFER_BASIS": {
+      "answer": "counsel_review",
+      "en": {
+        "privacy": {
+          "false": "We transfer data only to providers that are required by contract to protect it.",
+          "true": "<PLACEHOLDER:TRANSFER_BASIS_COUNSEL>"
+        }
+      },
+      "ar": {
+        "privacy": {
+          "false": "لا ننقل البيانات إلا إلى مزوّدين ملزَمين تعاقديًا بحمايتها.",
+          "true": "<PLACEHOLDER:TRANSFER_BASIS_COUNSEL_AR>"
+        }
+      }
+    },
+    "DELETION_SECTION": {
+      "answer": "deletion_variant",
+      "en": {
+        "privacy": {
+          "043": "When you delete your account (Profile, then the settings icon, then Edit profile, then Delete account), we immediately and permanently delete from our servers your comparisons and the links you shared, your searches, feedback, usage, referral and in-app activity records and your preference history, and we erase your email address, name, sign-in provider, demographic answers, referral code, notification token, device identifier, preferences, consent records and other profile details from your account record. We keep only a de-identified record (a random account number, the date the account was created and the date it was erased) and security logs linked to that number with your IP address removed: sign-in events, referral-abuse checks and, if you joined with an invite code, the record of that redemption (which keeps the inviter's code). Short-lived usage counters keyed by that number (how many comparisons were used today and this month) expire within about 32 days. Records of failed sign-in attempts and lockouts are not linked to your account and keep the IP address (and, for lockouts, a one-way hash of the email address) for <PLACEHOLDER:SECURITY_LOG_RETENTION>. If your account redeemed an invite, that invite and its redemption are removed too, including the bonus the inviter received from it. Copies in our backups and service logs (including our hosting, error-monitoring and sign-in providers' logs) expire on those systems' schedules.",
+          "old": "When you delete your account (Profile, then the settings icon, then Edit profile, then Delete account), we delete from our servers your comparisons, searches, feedback, in-app activity, usage records and the invites you sent or used, and your sign-in account, and we remove your preferences, behaviour profile, notification token and device identifier from your profile. Your email address, name, sign-in provider, optional profile answers, referral code and rewards, comparison totals, consent records, your answer about how you heard about us, your preference history, the record of reminders we sent you and the IP addresses in your security records remain in our database after the deletion. You can ask us to erase them (section 10). Copies in our backups and service logs (including our hosting, error-monitoring and sign-in providers' logs) expire on those systems' schedules."
+        },
+        "terms": {
+          "043": "You can delete your account in the App at any time (Profile, then the settings icon, then Edit profile, then Delete account). Deleting your account erases your account data from our servers; our Privacy Policy describes the de-identified record and the security logs we keep.",
+          "old": "You can delete your account in the App at any time (Profile, then the settings icon, then Edit profile, then Delete account). Deleting your account deletes your comparisons and activity, but some account details remain in our database; our Privacy Policy describes what is deleted, what is kept and how to ask us to erase the rest."
+        }
+      },
+      "ar": {
+        "privacy": {
+          "043": "عندما تحذف حسابك (الملف الشخصي، ثم أيقونة الإعدادات، ثم «تعديل الملف»، ثم «حذف الحساب»)، نحذف فورًا وبشكل نهائي من خوادمنا مقارناتك والروابط التي شاركتها، وسجلات عمليات البحث والملاحظات والاستخدام والإحالات والنشاط داخل التطبيق، وسجل تفضيلاتك، ونمحو من سجل حسابك عنوان بريدك الإلكتروني واسمك ومزوّد تسجيل الدخول وإجاباتك الديموغرافية ورمز الإحالة ورمز الإشعارات ومعرّف الجهاز والتفضيلات وسجلات الموافقة وغيرها من تفاصيل الملف الشخصي. لا نحتفظ إلا بسجل منزوع الهوية (رقم حساب عشوائي، وتاريخ إنشاء الحساب، وتاريخ محوه) وبسجلات أمان مرتبطة بذلك الرقم بعد إزالة عنوان IP الخاص بك منها: أحداث تسجيل الدخول، وعمليات التحقق من إساءة استخدام الإحالات، وإذا انضممت برمز دعوة، سجل استخدام ذلك الرمز (الذي يحتفظ برمز صاحب الدعوة). وتنتهي صلاحية عدادات الاستخدام قصيرة العمر المرتبطة بذلك الرقم (عدد المقارنات المستخدمة اليوم وهذا الشهر) خلال 32 يومًا تقريبًا. أما سجلات محاولات تسجيل الدخول غير الناجحة وحالات قفل الحساب فهي غير مرتبطة بحسابك، وتحتفظ بعنوان IP (وبقيمة تجزئة أحادية الاتجاه لعنوان البريد الإلكتروني في حالات القفل) لمدة <PLACEHOLDER:SECURITY_LOG_RETENTION_AR>. وإذا كان حسابك قد استخدم دعوة، فتُزال تلك الدعوة وسجل استخدامها أيضًا، بما في ذلك المكافأة التي حصل عليها صاحب الدعوة منها. أما النسخ الموجودة في نسخنا الاحتياطية وسجلات خدماتنا (بما في ذلك سجلات مزوّدي الاستضافة ومراقبة الأخطاء وتسجيل الدخول لدينا) فتنتهي صلاحيتها وفق الجداول الزمنية لتلك الأنظمة.",
+          "old": "عندما تحذف حسابك (الملف الشخصي، ثم أيقونة الإعدادات، ثم «تعديل الملف»، ثم «حذف الحساب»)، نحذف من خوادمنا مقارناتك وعمليات بحثك وملاحظاتك ونشاطك داخل التطبيق وسجلات استخدامك والدعوات التي أرسلتها أو استخدمتها، وحساب تسجيل الدخول الخاص بك، ونزيل من ملفك الشخصي تفضيلاتك وملف السلوك ورمز الإشعارات ومعرّف الجهاز. ويبقى في قاعدة بياناتنا بعد الحذف عنوان بريدك الإلكتروني واسمك ومزوّد تسجيل الدخول وإجابات ملفك الشخصي الاختيارية ورمز الإحالة والمكافآت وإجمالي المقارنات وسجلات الموافقة وإجابتك عن كيف عرفت عنا وسجل تفضيلاتك وسجل التذكيرات التي أرسلناها إليك وعناوين IP في سجلات الأمان الخاصة بك. ويمكنك أن تطلب منا محوها (القسم 10). أما النسخ الموجودة في نسخنا الاحتياطية وسجلات خدماتنا (بما في ذلك سجلات مزوّدي الاستضافة ومراقبة الأخطاء وتسجيل الدخول لدينا) فتنتهي صلاحيتها وفق الجداول الزمنية لتلك الأنظمة."
+        },
+        "terms": {
+          "043": "يمكنك حذف حسابك في التطبيق في أي وقت (الملف الشخصي، ثم أيقونة الإعدادات، ثم «تعديل الملف»، ثم «حذف الحساب»). يؤدي حذف حسابك إلى محو بيانات حسابك من خوادمنا؛ وتوضّح سياسة الخصوصية السجل منزوع الهوية وسجلات الأمان التي نحتفظ بها.",
+          "old": "يمكنك حذف حسابك في التطبيق في أي وقت (الملف الشخصي، ثم أيقونة الإعدادات، ثم «تعديل الملف»، ثم «حذف الحساب»). يؤدي حذف حسابك إلى حذف مقارناتك ونشاطك، لكن بعض تفاصيل الحساب تبقى في قاعدة بياناتنا؛ وتوضّح سياسة الخصوصية ما يُحذف وما يُحتفظ به وكيفية مطالبتنا بمحو الباقي."
+        }
+      }
+    }
+  }
+}

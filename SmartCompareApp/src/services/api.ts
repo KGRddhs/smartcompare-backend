@@ -18,6 +18,10 @@ import { emitSessionInvalid } from './sessionEvents';
 // IMPORTANT: Change this to your computer's local IP
 // Find your IP: ipconfig (Windows) or ifconfig (Mac/Linux)
 export const API_BASE_URL = 'https://web-production-58776.up.railway.app';
+// U8 (UL5): the static landing service that serves the legal pages (LegalScreen's
+// error-state link). qaren.app is not attached to it yet; when it is, this value
+// and __tests__/legal/legalScreenLang.u8.test.tsx move together. No trailing slash.
+export const LANDING_BASE_URL = 'https://qaren-landing-production.up.railway.app';
 
 // Initialize certificate pinning (no-op in Expo Go, active in dev/prod builds)
 setupCertificatePinning();
