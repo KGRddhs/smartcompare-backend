@@ -233,6 +233,9 @@ class HookRepo:
         self.root.mkdir()
         self.git("init", "-q")
         self.write(".githooks/pre-commit", HOOK.read_bytes().replace(b"\r\n", b"\n"))
+        # git ignores a hook that is not executable (Linux CI): the mode must be in
+        # the first commit too, so a linked worktree checks the copy out executable.
+        os.chmod(self.root / ".githooks" / "pre-commit", 0o755)
         self.write("pyproject.toml", '[tool.ruff]\ntarget-version = "py312"\n')
         self.write(
             ".github/black-clean-paths.txt", "# allowlist of the tmp repo\nfmt.py\n"
