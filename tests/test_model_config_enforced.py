@@ -263,7 +263,8 @@ async def test_shipped_ids_kwargs_unchanged(monkeypatch, site):
     kwargs it sends today (routing through sampling_kwargs/token_limit_kwargs is
     byte-identical on the ids that resolve today)."""
     kw = await _call(monkeypatch, site)
-    assert kw == SHIPPED[site]
+    # U3c: guarded_llm_create adds store=False to every dispatch (hard override, ruling R1).
+    assert kw == {**SHIPPED[site], "store": False}
 
 
 def test_resolved_models_unchanged():

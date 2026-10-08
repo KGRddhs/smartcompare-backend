@@ -759,7 +759,7 @@ class ReferralService:
         try:
             resp = (
                 self.client.table("users")
-                .select("id, email, subscription_tier")
+                .select("id, email, subscription_tier, display_name")
                 .eq("id", invitee_user_id)
                 .single()
                 .execute()
@@ -923,11 +923,10 @@ class ReferralService:
         try:
             from app.services.push_service import send_loop2_push
 
-            display = (
-                invitee.get("display_name")
-                or (invitee.get("email") or "").split("@")[0]
-                or "A friend"
-            )
+            # U3c (privacy): the invitee's chosen display name or nothing.
+            # Never derived from the email; push_service localises the
+            # nameless copy.
+            display = (invitee.get("display_name") or "").strip()
             await send_loop2_push(
                 referrer_user_id=referrer_user_id,
                 invitee_display_name=display,
