@@ -1,0 +1,3133 @@
+[
+ {
+  "name": "sk_txt",
+  "base_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 5.2
+  },
+  "base_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 5.6
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 10.4
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 12.0
+  }
+ },
+ {
+  "name": "xox_md",
+  "base_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 5.3
+  },
+  "base_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 5.0
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 10.4
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 12.5
+  }
+ },
+ {
+  "name": "pk_pem",
+  "base_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 5.7
+  },
+  "base_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 5.6
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 10.5
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 11.9
+  }
+ },
+ {
+  "name": "jwt_md",
+  "base_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains a JWT or a credentialed URL - remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 7.6
+  },
+  "base_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains a JWT or a credentialed URL - remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 8.6
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains a JWT or a credentialed URL - remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 12.3
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains a JWT or a credentialed URL - remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 11.0
+  }
+ },
+ {
+  "name": "credurl_txt",
+  "base_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains a JWT or a credentialed URL - remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 7.8
+  },
+  "base_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains a JWT or a credentialed URL - remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 9.9
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains a JWT or a credentialed URL - remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 11.7
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains a JWT or a credentialed URL - remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 11.6
+  }
+ },
+ {
+  "name": "plusplus_content_akia",
+  "base_sh": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 12.4
+  },
+  "base_dash": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 11.8
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 9.8
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 10.4
+  }
+ },
+ {
+  "name": "crlf_akia",
+  "base_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 4.6
+  },
+  "base_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 3.8
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 9.7
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 10.7
+  }
+ },
+ {
+  "name": "long_line_akia",
+  "base_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 5.1
+  },
+  "base_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 3.9
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 10.3
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 10.3
+  }
+ },
+ {
+  "name": "many_files_akia_last",
+  "base_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 5.7
+  },
+  "base_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 5.8
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 12.0
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 11.7
+  }
+ },
+ {
+  "name": "nonascii_path_akia",
+  "base_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 6.5
+  },
+  "base_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 5.6
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 9.5
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 8.3
+  }
+ },
+ {
+  "name": "noprefix_akia",
+  "base_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 6.1
+  },
+  "base_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 5.1
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 10.4
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 9.0
+  }
+ },
+ {
+  "name": "deleted_line_only",
+  "base_sh": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 10.5
+  },
+  "base_dash": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 8.5
+  },
+  "new_sh": {
+   "rc": 0,
+   "out": "pre-commit: WARNING gitleaks not installed - secret scan skipped (CI runs it)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 21.8
+  },
+  "new_dash": {
+   "rc": 0,
+   "out": "pre-commit: WARNING gitleaks not installed - secret scan skipped (CI runs it)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 20.4
+  }
+ },
+ {
+  "name": "png_magic_with_akia_inside",
+  "base_sh": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 11.6
+  },
+  "base_dash": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 10.7
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 11.9
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 11.0
+  }
+ },
+ {
+  "name": "env_value_dead_awk",
+  "base_sh": {
+   "rc": 1,
+   "out": "pre-commit: could not run the .env value check (the .env parse, git diff or awk failed)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 11.9
+  },
+  "base_dash": {
+   "rc": 1,
+   "out": "pre-commit: could not run the .env value check (the .env parse, git diff or awk failed)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 9.5
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "pre-commit: could not run the .env value check (the .env parse, git diff or awk failed)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 25.2
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "pre-commit: could not run the .env value check (the .env parse, git diff or awk failed)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 24.8
+  }
+ },
+ {
+  "name": "env_value_textconv_only",
+  "base_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains the value of .env variable(s): MY_API_KEY\n",
+   "leaked": [],
+   "left": [],
+   "sec": 14.9
+  },
+  "base_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains the value of .env variable(s): MY_API_KEY\n",
+   "leaked": [],
+   "left": [],
+   "sec": 16.1
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains the value of .env variable(s): MY_API_KEY\n",
+   "leaked": [],
+   "left": [],
+   "sec": 28.5
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains the value of .env variable(s): MY_API_KEY\n",
+   "leaked": [],
+   "left": [],
+   "sec": 28.6
+  }
+ },
+ {
+  "name": "env_present_clean",
+  "base_sh": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 12.6
+  },
+  "base_dash": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 14.5
+  },
+  "new_sh": {
+   "rc": 0,
+   "out": "pre-commit: WARNING gitleaks not installed - secret scan skipped (CI runs it)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 29.9
+  },
+  "new_dash": {
+   "rc": 0,
+   "out": "pre-commit: WARNING gitleaks not installed - secret scan skipped (CI runs it)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 28.1
+  }
+ },
+ {
+  "name": "dotenv_local_staged",
+  "base_sh": {
+   "rc": 1,
+   "out": "pre-commit: .env must never be committed\n",
+   "leaked": [],
+   "left": [],
+   "sec": 14.9
+  },
+  "base_dash": {
+   "rc": 1,
+   "out": "pre-commit: .env must never be committed\n",
+   "leaked": [],
+   "left": [],
+   "sec": 10.4
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "pre-commit: .env must never be committed\n",
+   "leaked": [],
+   "left": [],
+   "sec": 26.9
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "pre-commit: .env must never be committed\n",
+   "leaked": [],
+   "left": [],
+   "sec": 26.7
+  }
+ },
+ {
+  "name": "env_lower_name_value",
+  "base_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains the value of .env variable(s): my_token\n",
+   "leaked": [],
+   "left": [],
+   "sec": 16.4
+  },
+  "base_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains the value of .env variable(s): my_token\n",
+   "leaked": [],
+   "left": [],
+   "sec": 14.1
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains the value of .env variable(s): my_token\n",
+   "leaked": [],
+   "left": [],
+   "sec": 31.3
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains the value of .env variable(s): my_token\n",
+   "leaked": [],
+   "left": [],
+   "sec": 33.7
+  }
+ },
+ {
+  "name": "dotenv_rename",
+  "base_sh": {
+   "rc": 1,
+   "out": "pre-commit: .env must never be committed\n",
+   "leaked": [],
+   "left": [],
+   "sec": 11.3
+  },
+  "base_dash": {
+   "rc": 1,
+   "out": "pre-commit: .env must never be committed\n",
+   "leaked": [],
+   "left": [],
+   "sec": 13.9
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "pre-commit: .env must never be committed\n",
+   "leaked": [],
+   "left": [],
+   "sec": 32.2
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "pre-commit: .env must never be committed\n",
+   "leaked": [],
+   "left": [],
+   "sec": 18.8
+  }
+ },
+ {
+  "name": "py_syntax_error_with_akia",
+  "base_sh": {
+   "rc": 1,
+   "out": "  File \"C:/Users/SYNACK~1/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/d376cb56-c600-4d76-bfdb-9e15feff0cdc/scratchpad/t0b_b/adv5/s96829/py_syntax_error_with_akia/tmp/tmp.sggWT285hF/a.py\", line 1\r\n    def f(:\r\n          ^\r\nSyntaxError: invalid syntax\r\npre-commit: python syntax error in staged files\n",
+   "leaked": [],
+   "left": [],
+   "sec": 10.2
+  },
+  "base_dash": {
+   "rc": 1,
+   "out": "  File \"C:/Users/SYNACK~1/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/d376cb56-c600-4d76-bfdb-9e15feff0cdc/scratchpad/t0b_b/adv5/s96829/py_syntax_error_with_akia/tmp/tmp.KxZQSdxxkn/a.py\", line 1\r\n    def f(:\r\n          ^\r\nSyntaxError: invalid syntax\r\npre-commit: python syntax error in staged files\n",
+   "leaked": [],
+   "left": [],
+   "sec": 8.0
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 13.7
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 12.7
+  }
+ },
+ {
+  "name": "py_syntax_error",
+  "base_sh": {
+   "rc": 1,
+   "out": "  File \"C:/Users/SYNACK~1/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/d376cb56-c600-4d76-bfdb-9e15feff0cdc/scratchpad/t0b_b/adv5/s96829/py_syntax_error/tmp/tmp.MnCMReLKju/a.py\", line 1\r\n    def f(:\r\n          ^\r\nSyntaxError: invalid syntax\r\npre-commit: python syntax error in staged files\n",
+   "leaked": [],
+   "left": [],
+   "sec": 8.7
+  },
+  "base_dash": {
+   "rc": 1,
+   "out": "  File \"C:/Users/SYNACK~1/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/d376cb56-c600-4d76-bfdb-9e15feff0cdc/scratchpad/t0b_b/adv5/s96829/py_syntax_error/tmp/tmp.B6k2D4xQez/a.py\", line 1\r\n    def f(:\r\n          ^\r\nSyntaxError: invalid syntax\r\npre-commit: python syntax error in staged files\n",
+   "leaked": [],
+   "left": [],
+   "sec": 9.1
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "pre-commit: WARNING gitleaks not installed - secret scan skipped (CI runs it)\n  File \"C:/Users/SYNACK~1/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/d376cb56-c600-4d76-bfdb-9e15feff0cdc/scratchpad/t0b_b/adv5/s96829/py_syntax_error/tmp/tmp.DXfYw6ykqb/a.py\", line 1\r\n    def f(:\r\n          ^\r\nSyntaxError: invalid syntax\r\npre-commit: python syntax error in staged files\n",
+   "leaked": [],
+   "left": [],
+   "sec": 28.6
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "pre-commit: WARNING gitleaks not installed - secret scan skipped (CI runs it)\n  File \"C:/Users/SYNACK~1/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/d376cb56-c600-4d76-bfdb-9e15feff0cdc/scratchpad/t0b_b/adv5/s96829/py_syntax_error/tmp/tmp.CJlcww6bCN/a.py\", line 1\r\n    def f(:\r\n          ^\r\nSyntaxError: invalid syntax\r\npre-commit: python syntax error in staged files\n",
+   "leaked": [],
+   "left": [],
+   "sec": 27.5
+  }
+ },
+ {
+  "name": "ruff_undefined_name",
+  "base_sh": {
+   "rc": 1,
+   "out": "o/pyproject.toml' for '--config <CONFIG_OPTION>'\n\n  tip: A `--config` flag must either be a path to a `.toml` configuration file\n       or a TOML `<KEY> = <VALUE>` pair overriding a specific configuration\n       option\n\nIt looks like you were trying to pass a path to a configuration file.\nThe path `C:/Users/SynAckITPC/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/d376cb56-c600-4d76-bfdb-9e15feff0cdc/scratchpad/t0b_b/adv5/s96829/ruff_undefined_name/repo/pyproject.toml` does not point to a configuration file\n\nFor more information, try '--help'.\npre-commit: ruff blocking tier failed\n",
+   "leaked": [],
+   "left": [],
+   "sec": 10.0
+  },
+  "base_dash": {
+   "rc": 1,
+   "out": "o/pyproject.toml' for '--config <CONFIG_OPTION>'\n\n  tip: A `--config` flag must either be a path to a `.toml` configuration file\n       or a TOML `<KEY> = <VALUE>` pair overriding a specific configuration\n       option\n\nIt looks like you were trying to pass a path to a configuration file.\nThe path `C:/Users/SynAckITPC/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/d376cb56-c600-4d76-bfdb-9e15feff0cdc/scratchpad/t0b_b/adv5/s96829/ruff_undefined_name/repo/pyproject.toml` does not point to a configuration file\n\nFor more information, try '--help'.\npre-commit: ruff blocking tier failed\n",
+   "leaked": [],
+   "left": [],
+   "sec": 14.4
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "o/pyproject.toml' for '--config <CONFIG_OPTION>'\n\n  tip: A `--config` flag must either be a path to a `.toml` configuration file\n       or a TOML `<KEY> = <VALUE>` pair overriding a specific configuration\n       option\n\nIt looks like you were trying to pass a path to a configuration file.\nThe path `C:/Users/SynAckITPC/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/d376cb56-c600-4d76-bfdb-9e15feff0cdc/scratchpad/t0b_b/adv5/s96829/ruff_undefined_name/repo/pyproject.toml` does not point to a configuration file\n\nFor more information, try '--help'.\npre-commit: ruff blocking tier failed\n",
+   "leaked": [],
+   "left": [],
+   "sec": 32.0
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "o/pyproject.toml' for '--config <CONFIG_OPTION>'\n\n  tip: A `--config` flag must either be a path to a `.toml` configuration file\n       or a TOML `<KEY> = <VALUE>` pair overriding a specific configuration\n       option\n\nIt looks like you were trying to pass a path to a configuration file.\nThe path `C:/Users/SynAckITPC/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/d376cb56-c600-4d76-bfdb-9e15feff0cdc/scratchpad/t0b_b/adv5/s96829/ruff_undefined_name/repo/pyproject.toml` does not point to a configuration file\n\nFor more information, try '--help'.\npre-commit: ruff blocking tier failed\n",
+   "leaked": [],
+   "left": [],
+   "sec": 28.3
+  }
+ },
+ {
+  "name": "black_allowlisted_unformatted",
+  "base_sh": {
+   "rc": 1,
+   "out": "ct.toml' for '--config <CONFIG_OPTION>'\n\n  tip: A `--config` flag must either be a path to a `.toml` configuration file\n       or a TOML `<KEY> = <VALUE>` pair overriding a specific configuration\n       option\n\nIt looks like you were trying to pass a path to a configuration file.\nThe path `C:/Users/SynAckITPC/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/d376cb56-c600-4d76-bfdb-9e15feff0cdc/scratchpad/t0b_b/adv5/s96829/black_allowlisted_unformatte/repo/pyproject.toml` does not point to a configuration file\n\nFor more information, try '--help'.\npre-commit: ruff blocking tier failed\n",
+   "leaked": [],
+   "left": [],
+   "sec": 13.4
+  },
+  "base_dash": {
+   "rc": 1,
+   "out": "ct.toml' for '--config <CONFIG_OPTION>'\n\n  tip: A `--config` flag must either be a path to a `.toml` configuration file\n       or a TOML `<KEY> = <VALUE>` pair overriding a specific configuration\n       option\n\nIt looks like you were trying to pass a path to a configuration file.\nThe path `C:/Users/SynAckITPC/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/d376cb56-c600-4d76-bfdb-9e15feff0cdc/scratchpad/t0b_b/adv5/s96829/black_allowlisted_unformatte/repo/pyproject.toml` does not point to a configuration file\n\nFor more information, try '--help'.\npre-commit: ruff blocking tier failed\n",
+   "leaked": [],
+   "left": [],
+   "sec": 9.1
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "ct.toml' for '--config <CONFIG_OPTION>'\n\n  tip: A `--config` flag must either be a path to a `.toml` configuration file\n       or a TOML `<KEY> = <VALUE>` pair overriding a specific configuration\n       option\n\nIt looks like you were trying to pass a path to a configuration file.\nThe path `C:/Users/SynAckITPC/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/d376cb56-c600-4d76-bfdb-9e15feff0cdc/scratchpad/t0b_b/adv5/s96829/black_allowlisted_unformatte/repo/pyproject.toml` does not point to a configuration file\n\nFor more information, try '--help'.\npre-commit: ruff blocking tier failed\n",
+   "leaked": [],
+   "left": [],
+   "sec": 35.0
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "ct.toml' for '--config <CONFIG_OPTION>'\n\n  tip: A `--config` flag must either be a path to a `.toml` configuration file\n       or a TOML `<KEY> = <VALUE>` pair overriding a specific configuration\n       option\n\nIt looks like you were trying to pass a path to a configuration file.\nThe path `C:/Users/SynAckITPC/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/d376cb56-c600-4d76-bfdb-9e15feff0cdc/scratchpad/t0b_b/adv5/s96829/black_allowlisted_unformatte/repo/pyproject.toml` does not point to a configuration file\n\nFor more information, try '--help'.\npre-commit: ruff blocking tier failed\n",
+   "leaked": [],
+   "left": [],
+   "sec": 52.0
+  }
+ },
+ {
+  "name": "skill_frontmatter_bad",
+  "base_sh": {
+   "rc": 1,
+   "out": "frontmatter does not parse: mapping values are not allowed here at line 3, column 15\r\npre-commit: skill frontmatter check failed: .claude/skills/x/SKILL.md\n",
+   "leaked": [],
+   "left": [],
+   "sec": 25.5
+  },
+  "base_dash": {
+   "rc": 1,
+   "out": "frontmatter does not parse: mapping values are not allowed here at line 3, column 15\r\npre-commit: skill frontmatter check failed: .claude/skills/x/SKILL.md\n",
+   "leaked": [],
+   "left": [],
+   "sec": 26.6
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "pre-commit: WARNING gitleaks not installed - secret scan skipped (CI runs it)\nfrontmatter does not parse: mapping values are not allowed here at line 3, column 15\r\npre-commit: skill frontmatter check failed: .claude/skills/x/SKILL.md\n",
+   "leaked": [],
+   "left": [],
+   "sec": 57.2
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "pre-commit: WARNING gitleaks not installed - secret scan skipped (CI runs it)\nfrontmatter does not parse: mapping values are not allowed here at line 3, column 15\r\npre-commit: skill frontmatter check failed: .claude/skills/x/SKILL.md\n",
+   "leaked": [],
+   "left": [],
+   "sec": 45.6
+  }
+ },
+ {
+  "name": "tmpdir_missing_clean",
+  "base_sh": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 20.2
+  },
+  "base_dash": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 26.2
+  },
+  "new_sh": {
+   "rc": 0,
+   "out": "pre-commit: WARNING gitleaks not installed - secret scan skipped (CI runs it)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 45.4
+  },
+  "new_dash": {
+   "rc": 0,
+   "out": "pre-commit: WARNING gitleaks not installed - secret scan skipped (CI runs it)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 45.3
+  }
+ },
+ {
+  "name": "tmpdir_missing_py",
+  "base_sh": {
+   "rc": 1,
+   "out": "mkdir: cannot create directory '/tmp/claude/C--Users-SynAckITPC-Documents-AI/d376cb56-c600-4d76-bfdb-9e15feff0cdc/scratchpad/t0b_b/adv5/s96829/tmpdir_missing_py/no_such_dir/qaren-precommit.35545': No such file or directory\npre-commit: could not create a temp dir for the staged content\n",
+   "leaked": [],
+   "left": [],
+   "sec": 12.3
+  },
+  "base_dash": {
+   "rc": 1,
+   "out": "mkdir: cannot create directory '/tmp/claude/C--Users-SynAckITPC-Documents-AI/d376cb56-c600-4d76-bfdb-9e15feff0cdc/scratchpad/t0b_b/adv5/s96829/tmpdir_missing_py/no_such_dir/qaren-precommit.35602': No such file or directory\npre-commit: could not create a temp dir for the staged content\n",
+   "leaked": [],
+   "left": [],
+   "sec": 9.0
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "epo/pyproject.toml' for '--config <CONFIG_OPTION>'\n\n  tip: A `--config` flag must either be a path to a `.toml` configuration file\n       or a TOML `<KEY> = <VALUE>` pair overriding a specific configuration\n       option\n\nIt looks like you were trying to pass a path to a configuration file.\nThe path `C:/Users/SynAckITPC/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/d376cb56-c600-4d76-bfdb-9e15feff0cdc/scratchpad/t0b_b/adv5/s96829/tmpdir_missing_py/repo/pyproject.toml` does not point to a configuration file\n\nFor more information, try '--help'.\npre-commit: ruff blocking tier failed\n",
+   "leaked": [],
+   "left": [],
+   "sec": 53.6
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "epo/pyproject.toml' for '--config <CONFIG_OPTION>'\n\n  tip: A `--config` flag must either be a path to a `.toml` configuration file\n       or a TOML `<KEY> = <VALUE>` pair overriding a specific configuration\n       option\n\nIt looks like you were trying to pass a path to a configuration file.\nThe path `C:/Users/SynAckITPC/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/d376cb56-c600-4d76-bfdb-9e15feff0cdc/scratchpad/t0b_b/adv5/s96829/tmpdir_missing_py/repo/pyproject.toml` does not point to a configuration file\n\nFor more information, try '--help'.\npre-commit: ruff blocking tier failed\n",
+   "leaked": [],
+   "left": [],
+   "sec": 42.1
+  }
+ },
+ {
+  "name": "tmpdir_missing_akia",
+  "base_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 11.5
+  },
+  "base_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 7.3
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 25.0
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 17.1
+  }
+ },
+ {
+  "name": "upper_png_docs",
+  "base_sh": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 16.7
+  },
+  "base_dash": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 17.3
+  },
+  "new_sh": {
+   "rc": 0,
+   "out": "pre-commit: WARNING gitleaks not installed - secret scan skipped (CI runs it)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 36.2
+  },
+  "new_dash": {
+   "rc": 0,
+   "out": "pre-commit: WARNING gitleaks not installed - secret scan skipped (CI runs it)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 34.0
+  }
+ },
+ {
+  "name": "mixed_case_jpeg_docs",
+  "base_sh": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 16.4
+  },
+  "base_dash": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 13.7
+  },
+  "new_sh": {
+   "rc": 0,
+   "out": "pre-commit: WARNING gitleaks not installed - secret scan skipped (CI runs it)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 37.5
+  },
+  "new_dash": {
+   "rc": 0,
+   "out": "pre-commit: WARNING gitleaks not installed - secret scan skipped (CI runs it)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 42.5
+  }
+ },
+ {
+  "name": "upper_png_bad_magic",
+  "base_sh": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 14.9
+  },
+  "base_dash": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 14.7
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged file is binary to git and not a known asset path: docs/x.PNG (its first bytes are not those of its extension) - convert it to text, or add the path to the allowlist in .githooks/pre-commit in its own commit\n",
+   "leaked": [],
+   "left": [],
+   "sec": 33.0
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged file is binary to git and not a known asset path: docs/x.PNG (its first bytes are not those of its extension) - convert it to text, or add the path to the allowlist in .githooks/pre-commit in its own commit\n",
+   "leaked": [],
+   "left": [],
+   "sec": 37.1
+  }
+ },
+ {
+  "name": "docs_ttf",
+  "base_sh": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 20.2
+  },
+  "base_dash": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 21.7
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged file is binary to git and not a known asset path: docs/x.ttf - convert it to text, or add the path to the allowlist in .githooks/pre-commit in its own commit\n",
+   "leaked": [],
+   "left": [],
+   "sec": 33.8
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged file is binary to git and not a known asset path: docs/x.ttf - convert it to text, or add the path to the allowlist in .githooks/pre-commit in its own commit\n",
+   "leaked": [],
+   "left": [],
+   "sec": 31.9
+  }
+ },
+ {
+  "name": "utf16_txt",
+  "base_sh": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 21.3
+  },
+  "base_dash": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 18.1
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged file is binary to git and not a known asset path: data/u.txt - convert it to text, or add the path to the allowlist in .githooks/pre-commit in its own commit\n",
+   "leaked": [],
+   "left": [],
+   "sec": 36.4
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged file is binary to git and not a known asset path: data/u.txt - convert it to text, or add the path to the allowlist in .githooks/pre-commit in its own commit\n",
+   "leaked": [],
+   "left": [],
+   "sec": 33.3
+  }
+ },
+ {
+  "name": "assets_upper_ttf",
+  "base_sh": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 18.8
+  },
+  "base_dash": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 19.0
+  },
+  "new_sh": {
+   "rc": 0,
+   "out": "pre-commit: WARNING gitleaks not installed - secret scan skipped (CI runs it)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 46.0
+  },
+  "new_dash": {
+   "rc": 0,
+   "out": "pre-commit: WARNING gitleaks not installed - secret scan skipped (CI runs it)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 36.9
+  }
+ },
+ {
+  "name": "typechange_symlink_to_akia",
+  "base_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 11.5
+  },
+  "base_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 9.3
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 21.7
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 12.5
+  }
+ },
+ {
+  "name": "rename_with_akia_edit",
+  "base_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 7.7
+  },
+  "base_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 7.8
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 13.9
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 18.0
+  }
+ },
+ {
+  "name": "typechange_symlink_to_binary",
+  "base_sh": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 14.2
+  },
+  "base_dash": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 14.6
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged file is binary to git and not a known asset path: lnk - convert it to text, or add the path to the allowlist in .githooks/pre-commit in its own commit\n",
+   "leaked": [],
+   "left": [],
+   "sec": 29.7
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged file is binary to git and not a known asset path: lnk - convert it to text, or add the path to the allowlist in .githooks/pre-commit in its own commit\n",
+   "leaked": [],
+   "left": [],
+   "sec": 32.6
+  }
+ },
+ {
+  "name": "tracked_binary_pure_rename",
+  "base_sh": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 15.1
+  },
+  "base_dash": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 15.5
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged file is binary to git and not a known asset path: data/y.bin - convert it to text, or add the path to the allowlist in .githooks/pre-commit in its own commit\n",
+   "leaked": [],
+   "left": [],
+   "sec": 37.4
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged file is binary to git and not a known asset path: data/y.bin - convert it to text, or add the path to the allowlist in .githooks/pre-commit in its own commit\n",
+   "leaked": [],
+   "left": [],
+   "sec": 34.0
+  }
+ },
+ {
+  "name": "tracked_binary_mode_change",
+  "base_sh": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 22.1
+  },
+  "base_dash": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 17.8
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged file is binary to git and not a known asset path: data/x.bin - convert it to text, or add the path to the allowlist in .githooks/pre-commit in its own commit\n",
+   "leaked": [],
+   "left": [],
+   "sec": 32.5
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged file is binary to git and not a known asset path: data/x.bin - convert it to text, or add the path to the allowlist in .githooks/pre-commit in its own commit\n",
+   "leaked": [],
+   "left": [],
+   "sec": 30.4
+  }
+ },
+ {
+  "name": "neg_diff_attr_akia",
+  "base_sh": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 16.7
+  },
+  "base_dash": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 16.5
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 17.4
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 11.9
+  }
+ },
+ {
+  "name": "tracked_png_modified_in_allowlist",
+  "base_sh": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 19.4
+  },
+  "base_dash": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 15.9
+  },
+  "new_sh": {
+   "rc": 0,
+   "out": "pre-commit: WARNING gitleaks not installed - secret scan skipped (CI runs it)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 37.1
+  },
+  "new_dash": {
+   "rc": 0,
+   "out": "pre-commit: WARNING gitleaks not installed - secret scan skipped (CI runs it)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 34.4
+  }
+ },
+ {
+  "name": "staged_then_worktree_fixed_akia",
+  "base_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 6.9
+  },
+  "base_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 9.0
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 20.9
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 17.0
+  }
+ },
+ {
+  "name": "gitleaks_absent_ghp",
+  "base_sh": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 19.6
+  },
+  "base_dash": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 15.8
+  },
+  "new_sh": {
+   "rc": 0,
+   "out": "pre-commit: WARNING gitleaks not installed - secret scan skipped (CI runs it)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 41.5
+  },
+  "new_dash": {
+   "rc": 0,
+   "out": "pre-commit: WARNING gitleaks not installed - secret scan skipped (CI runs it)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 33.7
+  }
+ },
+ {
+  "name": "da_textattr_nul_line_then_akia",
+  "base_sh": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 23.6
+  },
+  "base_dash": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 17.3
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 22.5
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 18.1
+  }
+ },
+ {
+  "name": "da_textattr_nul_same_line_akia",
+  "base_sh": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 17.4
+  },
+  "base_dash": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 20.9
+  },
+  "new_sh": {
+   "rc": 0,
+   "out": "pre-commit: WARNING gitleaks not installed - secret scan skipped (CI runs it)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 41.9
+  },
+  "new_dash": {
+   "rc": 0,
+   "out": "pre-commit: WARNING gitleaks not installed - secret scan skipped (CI runs it)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 29.7
+  }
+ },
+ {
+  "name": "wa_textattr_nul_same_line_akia",
+  "base_sh": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 17.3
+  },
+  "base_dash": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 12.2
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 12.6
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 12.9
+  }
+ },
+ {
+  "name": "da_utf8_ff_earlier_line_akia",
+  "base_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 8.2
+  },
+  "base_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 6.0
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 16.0
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 15.4
+  }
+ },
+ {
+  "name": "da_utf8_ff_same_line_akia",
+  "base_sh": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 12.0
+  },
+  "base_dash": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 11.9
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 16.0
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 16.4
+  }
+ },
+ {
+  "name": "da_crlf_akia",
+  "base_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 10.2
+  },
+  "base_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 6.7
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 28.8
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 22.1
+  }
+ },
+ {
+  "name": "da_long_line_akia",
+  "base_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 10.4
+  },
+  "base_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 11.9
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 28.0
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 18.0
+  }
+ },
+ {
+  "name": "da_plusplus_akia",
+  "base_sh": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 21.2
+  },
+  "base_dash": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 19.9
+  },
+  "new_sh": {
+   "rc": 0,
+   "out": "pre-commit: WARNING gitleaks not installed - secret scan skipped (CI runs it)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 33.2
+  },
+  "new_dash": {
+   "rc": 0,
+   "out": "pre-commit: WARNING gitleaks not installed - secret scan skipped (CI runs it)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 32.4
+  }
+ },
+ {
+  "name": "da_noprefix_akia",
+  "base_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 9.3
+  },
+  "base_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 7.3
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 21.3
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 24.5
+  }
+ },
+ {
+  "name": "da_rename_edit_akia",
+  "base_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 7.3
+  },
+  "base_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 9.9
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 26.6
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 23.4
+  }
+ },
+ {
+  "name": "da_ext_reveal_akia",
+  "base_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 15.2
+  },
+  "base_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 12.5
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 42.9
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 31.3
+  }
+ },
+ {
+  "name": "da_deleted_line_akia",
+  "base_sh": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 19.6
+  },
+  "base_dash": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 17.9
+  },
+  "new_sh": {
+   "rc": 0,
+   "out": "pre-commit: WARNING gitleaks not installed - secret scan skipped (CI runs it)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 50.5
+  },
+  "new_dash": {
+   "rc": 0,
+   "out": "pre-commit: WARNING gitleaks not installed - secret scan skipped (CI runs it)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 38.8
+  }
+ },
+ {
+  "name": "da_ext_reveal_ff_same_line_utf8",
+  "base_sh": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 26.4
+  },
+  "base_dash": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 26.3
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 34.4
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 25.4
+  }
+ },
+ {
+  "name": "da_ext_empty_akia",
+  "base_sh": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 21.3
+  },
+  "base_dash": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 15.1
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 31.7
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 31.1
+  }
+ },
+ {
+  "name": "da_textconv_hide_akia",
+  "base_sh": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 18.9
+  },
+  "base_dash": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 18.1
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 32.9
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 26.2
+  }
+ },
+ {
+  "name": "da_textconv_reveal_jwt",
+  "base_sh": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 25.0
+  },
+  "base_dash": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 29.8
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains a JWT or a credentialed URL - remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 41.1
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains a JWT or a credentialed URL - remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 37.1
+  }
+ },
+ {
+  "name": "da_color_ui_always_akia",
+  "base_sh": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 26.3
+  },
+  "base_dash": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 21.3
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 26.8
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 26.5
+  }
+ },
+ {
+  "name": "da_png_then_credurl",
+  "base_sh": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 22.7
+  },
+  "base_dash": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 19.2
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains a JWT or a credentialed URL - remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 34.4
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains a JWT or a credentialed URL - remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 33.9
+  }
+ },
+ {
+  "name": "da_png_then_xox_sk",
+  "base_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 10.9
+  },
+  "base_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 12.0
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 26.7
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 40.5
+  }
+ },
+ {
+  "name": "da_dead_tr_akia",
+  "base_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 22.3
+  },
+  "base_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 16.7
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 41.4
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 27.1
+  }
+ },
+ {
+  "name": "dead_tr_only_akia",
+  "base_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 16.8
+  },
+  "base_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 15.0
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 25.8
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 24.6
+  }
+ },
+ {
+  "name": "da_env_value_after_png",
+  "base_sh": {
+   "rc": 1,
+   "out": "pre-commit: could not run the .env value check (the .env parse, git diff or awk failed)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 27.1
+  },
+  "base_dash": {
+   "rc": 1,
+   "out": "pre-commit: could not run the .env value check (the .env parse, git diff or awk failed)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 31.4
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "pre-commit: could not run the .env value check (the .env parse, git diff or awk failed)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 65.5
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "pre-commit: could not run the .env value check (the .env parse, git diff or awk failed)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 56.6
+  }
+ },
+ {
+  "name": "dead_tr_only_dotenv",
+  "base_sh": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 33.6
+  },
+  "base_dash": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 33.0
+  },
+  "new_sh": {
+   "rc": 0,
+   "out": "pre-commit: WARNING gitleaks not installed - secret scan skipped (CI runs it)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 64.8
+  },
+  "new_dash": {
+   "rc": 0,
+   "out": "pre-commit: WARNING gitleaks not installed - secret scan skipped (CI runs it)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 57.6
+  }
+ },
+ {
+  "name": "dead_grep_akia",
+  "base_sh": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 34.0
+  },
+  "base_dash": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 37.2
+  },
+  "new_sh": {
+   "rc": 0,
+   "out": "pre-commit: WARNING gitleaks not installed - secret scan skipped (CI runs it)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 70.6
+  },
+  "new_dash": {
+   "rc": 0,
+   "out": "pre-commit: WARNING gitleaks not installed - secret scan skipped (CI runs it)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 65.0
+  }
+ },
+ {
+  "name": "da_utf16_key_png_magic",
+  "base_sh": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 41.9
+  },
+  "base_dash": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 33.5
+  },
+  "new_sh": {
+   "rc": 0,
+   "out": "pre-commit: WARNING gitleaks not installed - secret scan skipped (CI runs it)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 63.0
+  },
+  "new_dash": {
+   "rc": 0,
+   "out": "pre-commit: WARNING gitleaks not installed - secret scan skipped (CI runs it)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 68.3
+  }
+ },
+ {
+  "name": "wa_png_with_plus_akia_after_nul",
+  "base_sh": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 32.4
+  },
+  "base_dash": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 32.1
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 36.2
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 25.3
+  }
+ },
+ {
+  "name": "wa_clean_png_ttf_utf8",
+  "base_sh": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 30.9
+  },
+  "base_dash": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 32.2
+  },
+  "new_sh": {
+   "rc": 0,
+   "out": "pre-commit: WARNING gitleaks not installed - secret scan skipped (CI runs it)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 65.7
+  },
+  "new_dash": {
+   "rc": 0,
+   "out": "pre-commit: WARNING gitleaks not installed - secret scan skipped (CI runs it)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 66.0
+  }
+ },
+ {
+  "name": "wa_clean_invalid_utf8_text",
+  "base_sh": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 36.4
+  },
+  "base_dash": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 21.4
+  },
+  "new_sh": {
+   "rc": 0,
+   "out": "pre-commit: WARNING gitleaks not installed - secret scan skipped (CI runs it)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 58.6
+  },
+  "new_dash": {
+   "rc": 0,
+   "out": "pre-commit: WARNING gitleaks not installed - secret scan skipped (CI runs it)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 59.8
+  }
+ },
+ {
+  "name": "wa_honest_plus_lines",
+  "base_sh": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 30.5
+  },
+  "base_dash": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 26.9
+  },
+  "new_sh": {
+   "rc": 0,
+   "out": "pre-commit: WARNING gitleaks not installed - secret scan skipped (CI runs it)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 65.1
+  },
+  "new_dash": {
+   "rc": 0,
+   "out": "pre-commit: WARNING gitleaks not installed - secret scan skipped (CI runs it)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 55.9
+  }
+ },
+ {
+  "name": "wa_sk_musk_slug",
+  "base_sh": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 27.9
+  },
+  "base_dash": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 26.8
+  },
+  "new_sh": {
+   "rc": 0,
+   "out": "pre-commit: WARNING gitleaks not installed - secret scan skipped (CI runs it)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 57.6
+  },
+  "new_dash": {
+   "rc": 0,
+   "out": "pre-commit: WARNING gitleaks not installed - secret scan skipped (CI runs it)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 52.4
+  }
+ },
+ {
+  "name": "clean_commit",
+  "base_sh": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 28.7
+  },
+  "base_dash": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 29.9
+  },
+  "new_sh": {
+   "rc": 0,
+   "out": "pre-commit: WARNING gitleaks not installed - secret scan skipped (CI runs it)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 60.6
+  },
+  "new_dash": {
+   "rc": 0,
+   "out": "pre-commit: WARNING gitleaks not installed - secret scan skipped (CI runs it)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 46.3
+  }
+ },
+ {
+  "name": "akia_py",
+  "base_sh": {
+   "rc": 1,
+   "out": "/akia_py/repo/pyproject.toml' for '--config <CONFIG_OPTION>'\n\n  tip: A `--config` flag must either be a path to a `.toml` configuration file\n       or a TOML `<KEY> = <VALUE>` pair overriding a specific configuration\n       option\n\nIt looks like you were trying to pass a path to a configuration file.\nThe path `C:/Users/SynAckITPC/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/d376cb56-c600-4d76-bfdb-9e15feff0cdc/scratchpad/t0b_b/adv5/s96829/akia_py/repo/pyproject.toml` does not point to a configuration file\n\nFor more information, try '--help'.\npre-commit: ruff blocking tier failed\n",
+   "leaked": [],
+   "left": [],
+   "sec": 27.7
+  },
+  "base_dash": {
+   "rc": 1,
+   "out": "/akia_py/repo/pyproject.toml' for '--config <CONFIG_OPTION>'\n\n  tip: A `--config` flag must either be a path to a `.toml` configuration file\n       or a TOML `<KEY> = <VALUE>` pair overriding a specific configuration\n       option\n\nIt looks like you were trying to pass a path to a configuration file.\nThe path `C:/Users/SynAckITPC/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/d376cb56-c600-4d76-bfdb-9e15feff0cdc/scratchpad/t0b_b/adv5/s96829/akia_py/repo/pyproject.toml` does not point to a configuration file\n\nFor more information, try '--help'.\npre-commit: ruff blocking tier failed\n",
+   "leaked": [],
+   "left": [],
+   "sec": 20.0
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 26.6
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 15.7
+  }
+ },
+ {
+  "name": "color_ui_always_akia",
+  "base_sh": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 22.3
+  },
+  "base_dash": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 23.3
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 22.4
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 26.0
+  }
+ },
+ {
+  "name": "color_diff_always_akia",
+  "base_sh": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 27.2
+  },
+  "base_dash": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 20.9
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 26.2
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 28.3
+  }
+ },
+ {
+  "name": "color_ui_always_jwt",
+  "base_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains a JWT or a credentialed URL - remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 17.5
+  },
+  "base_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains a JWT or a credentialed URL - remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 13.9
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains a JWT or a credentialed URL - remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 29.0
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains a JWT or a credentialed URL - remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 29.0
+  }
+ },
+ {
+  "name": "textconv_reveal_akia",
+  "base_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 13.8
+  },
+  "base_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 13.7
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 37.5
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 26.7
+  }
+ },
+ {
+  "name": "textconv_fail_clean",
+  "base_sh": {
+   "rc": 0,
+   "out": "fatal: unable to read files to diff\nfatal: unable to read files to diff\n",
+   "leaked": [],
+   "left": [],
+   "sec": 33.5
+  },
+  "base_dash": {
+   "rc": 0,
+   "out": "fatal: unable to read files to diff\nfatal: unable to read files to diff\n",
+   "leaked": [],
+   "left": [],
+   "sec": 26.9
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "fatal: unable to read files to diff\npre-commit: could not read the staged diff (git diff failed)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 21.2
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "fatal: unable to read files to diff\npre-commit: could not read the staged diff (git diff failed)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 17.6
+  }
+ },
+ {
+  "name": "textconv_mask_akia",
+  "base_sh": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 28.4
+  },
+  "base_dash": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 24.4
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 28.3
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 28.2
+  }
+ },
+ {
+  "name": "ext_env_reveal_akia",
+  "base_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 15.6
+  },
+  "base_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 14.8
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 33.3
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 32.8
+  }
+ },
+ {
+  "name": "ext_cfg_reveal_akia",
+  "base_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 16.4
+  },
+  "base_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 18.8
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 34.6
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 32.5
+  }
+ },
+ {
+  "name": "ext_driver_reveal_akia",
+  "base_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 17.6
+  },
+  "base_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 18.8
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 33.1
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 28.6
+  }
+ },
+ {
+  "name": "ext_reveal_after_trailing_empty",
+  "base_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 20.7
+  },
+  "base_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 18.6
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 30.3
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 29.4
+  }
+ },
+ {
+  "name": "ext_reveal_sk_with_driver_and_png",
+  "base_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 18.5
+  },
+  "base_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 18.8
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 34.4
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 31.4
+  }
+ },
+ {
+  "name": "ext_reveal_jwt",
+  "base_sh": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 29.1
+  },
+  "base_dash": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 28.9
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains a JWT or a credentialed URL - remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 34.1
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains a JWT or a credentialed URL - remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 31.1
+  }
+ },
+ {
+  "name": "ext_mask_akia",
+  "base_sh": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 27.5
+  },
+  "base_dash": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 26.7
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 38.0
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 30.1
+  }
+ },
+ {
+  "name": "ext_fail_after_akia",
+  "base_sh": {
+   "rc": 1,
+   "out": "fatal: external diff died, stopping at s.enc\npre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 23.1
+  },
+  "base_dash": {
+   "rc": 1,
+   "out": "fatal: external diff died, stopping at s.enc\npre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 20.7
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "fatal: external diff died, stopping at s.enc\npre-commit: could not read the staged diff (git diff failed)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 34.4
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "fatal: external diff died, stopping at s.enc\npre-commit: could not read the staged diff (git diff failed)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 22.4
+  }
+ },
+ {
+  "name": "ext_fail_silent_clean",
+  "base_sh": {
+   "rc": 0,
+   "out": "fatal: external diff died, stopping at s.txt\n",
+   "leaked": [],
+   "left": [],
+   "sec": 33.2
+  },
+  "base_dash": {
+   "rc": 0,
+   "out": "fatal: external diff died, stopping at s.txt\n",
+   "leaked": [],
+   "left": [],
+   "sec": 27.4
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "fatal: external diff died, stopping at s.txt\npre-commit: could not read the staged diff (git diff failed)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 23.5
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "fatal: external diff died, stopping at s.txt\npre-commit: could not read the staged diff (git diff failed)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 28.3
+  }
+ },
+ {
+  "name": "ext_prints_header_then_akia",
+  "base_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 23.5
+  },
+  "base_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 15.5
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 35.7
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 36.7
+  }
+ },
+ {
+  "name": "dead_awk_akia",
+  "base_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 16.5
+  },
+  "base_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 12.4
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 40.1
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 34.5
+  }
+ },
+ {
+  "name": "ext_prints_plus3_akia",
+  "base_sh": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 37.3
+  },
+  "base_dash": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 28.7
+  },
+  "new_sh": {
+   "rc": 0,
+   "out": "pre-commit: WARNING gitleaks not installed - secret scan skipped (CI runs it)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 66.7
+  },
+  "new_dash": {
+   "rc": 0,
+   "out": "pre-commit: WARNING gitleaks not installed - secret scan skipped (CI runs it)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 66.2
+  }
+ },
+ {
+  "name": "dead_awk_akia_after_png",
+  "base_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 16.5
+  },
+  "base_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 16.5
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 43.1
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 37.4
+  }
+ },
+ {
+  "name": "dead_awk_akia_after_ttf_assets",
+  "base_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 20.1
+  },
+  "base_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 13.9
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 40.5
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 37.5
+  }
+ },
+ {
+  "name": "dead_awk_pk_after_png",
+  "base_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 16.0
+  },
+  "base_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 15.4
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 44.1
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 44.9
+  }
+ },
+ {
+  "name": "file_dead_awk_akia",
+  "base_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 19.4
+  },
+  "base_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 16.5
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 43.9
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 35.8
+  }
+ },
+ {
+  "name": "file_dead_awk_akia_with_env",
+  "base_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 20.7
+  },
+  "base_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 15.6
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 38.0
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 39.5
+  }
+ },
+ {
+  "name": "utf8_locale_png_then_akia",
+  "base_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 16.2
+  },
+  "base_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 16.8
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 33.1
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 24.6
+  }
+ },
+ {
+  "name": "utf8_locale_png_then_jwt",
+  "base_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains a JWT or a credentialed URL - remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 20.9
+  },
+  "base_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains a JWT or a credentialed URL - remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 18.6
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains a JWT or a credentialed URL - remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 30.3
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains a JWT or a credentialed URL - remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 25.2
+  }
+ },
+ {
+  "name": "env_value_in_diff",
+  "base_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains the value of .env variable(s): MY_API_KEY\n",
+   "leaked": [],
+   "left": [],
+   "sec": 28.8
+  },
+  "base_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains the value of .env variable(s): MY_API_KEY\n",
+   "leaked": [],
+   "left": [],
+   "sec": 27.6
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains the value of .env variable(s): MY_API_KEY\n",
+   "leaked": [],
+   "left": [],
+   "sec": 43.4
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains the value of .env variable(s): MY_API_KEY\n",
+   "leaked": [],
+   "left": [],
+   "sec": 40.9
+  }
+ },
+ {
+  "name": "env_value_ext_only",
+  "base_sh": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 35.1
+  },
+  "base_dash": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 26.9
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains the value of .env variable(s): MY_API_KEY\n",
+   "leaked": [],
+   "left": [],
+   "sec": 49.1
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains the value of .env variable(s): MY_API_KEY\n",
+   "leaked": [],
+   "left": [],
+   "sec": 34.5
+  }
+ }
+]

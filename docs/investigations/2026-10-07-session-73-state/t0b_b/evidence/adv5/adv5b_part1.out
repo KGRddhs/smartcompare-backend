@@ -1,0 +1,30 @@
+shim_err0_sh                                 {'rc': 1, 'want': 1, 'msg': ['pre-commit: gitleaks refused the staged changes (it logged an error and exited 0, so it may have scanned nothing: run gitleaks git --pre-commit --staged by hand)'], 'left': [], 'nocolor': True, 'config_given': True}
+shim_err0_dash                               {'rc': 1, 'want': 1, 'msg': ['pre-commit: gitleaks refused the staged changes (it logged an error and exited 0, so it may have scanned nothing: run gitleaks git --pre-commit --staged by hand)'], 'left': [], 'nocolor': True, 'config_given': True}
+shim_infwrn0_sh                              {'rc': 0, 'want': 0, 'msg': [], 'left': [], 'nocolor': True, 'config_given': True}
+shim_infwrn0_dash                            {'rc': 0, 'want': 0, 'msg': [], 'left': [], 'nocolor': True, 'config_given': True}
+shim_rc1report_sh                            {'rc': 1, 'want': 1, 'msg': ['pre-commit: gitleaks refused the staged changes (rule id and place above)'], 'left': [], 'nocolor': True, 'config_given': True}
+shim_rc1report_dash                          {'rc': 1, 'want': 1, 'msg': ['pre-commit: gitleaks refused the staged changes (rule id and place above)'], 'left': [], 'nocolor': True, 'config_given': True}
+shim_rc1empty_sh                             {'rc': 1, 'want': 1, 'msg': ['pre-commit: gitleaks refused the staged changes (it exited non-zero with no finding report: a broken .gitleaks.toml, or a gitleaks other than 8.30.1)'], 'left': [], 'nocolor': True, 'config_given': True}
+shim_rc1empty_dash                           {'rc': 1, 'want': 1, 'msg': ['pre-commit: gitleaks refused the staged changes (it exited non-zero with no finding report: a broken .gitleaks.toml, or a gitleaks other than 8.30.1)'], 'left': [], 'nocolor': True, 'config_given': True}
+shim_rc2_sh                                  {'rc': 1, 'want': 1, 'msg': ['pre-commit: gitleaks refused the staged changes (it exited non-zero with no finding report: a broken .gitleaks.toml, or a gitleaks other than 8.30.1)'], 'left': [], 'nocolor': True, 'config_given': True}
+shim_rc2_dash                                {'rc': 1, 'want': 1, 'msg': ['pre-commit: gitleaks refused the staged changes (it exited non-zero with no finding report: a broken .gitleaks.toml, or a gitleaks other than 8.30.1)'], 'left': [], 'nocolor': True, 'config_given': True}
+shim_colorerr0_sh                            {'rc': 0, 'want': 'limit', 'msg': [], 'left': [], 'nocolor': True, 'config_given': True}
+shim_colorerr0_dash                          {'rc': 0, 'want': 'limit', 'msg': [], 'left': [], 'nocolor': True, 'config_given': True}
+shim_errstdout0_sh                           {'rc': 0, 'want': 'limit', 'msg': [], 'left': [], 'nocolor': True, 'config_given': True}
+shim_errstdout0_dash                         {'rc': 0, 'want': 'limit', 'msg': [], 'left': [], 'nocolor': True, 'config_given': True}
+Traceback (most recent call last):
+  File "C:\Users\SynAckITPC\AppData\Local\Temp\claude\C--Users-SynAckITPC-Documents-AI\d376cb56-c600-4d76-bfdb-9e15feff0cdc\scratchpad\t0b_b\adv5\adv5b.py", line 287, in <module>
+    main()
+  File "C:\Users\SynAckITPC\AppData\Local\Temp\claude\C--Users-SynAckITPC-Documents-AI\d376cb56-c600-4d76-bfdb-9e15feff0cdc\scratchpad\t0b_b\adv5\adv5b.py", line 283, in main
+    globals()["part_" + part]()
+  File "C:\Users\SynAckITPC\AppData\Local\Temp\claude\C--Users-SynAckITPC-Documents-AI\d376cb56-c600-4d76-bfdb-9e15feff0cdc\scratchpad\t0b_b\adv5\adv5b.py", line 85, in part_shims
+    res, cfg, argv, genv = shim_case("infwrn0", head_cfg=head, worktree_cfg=HOSTILE)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\SynAckITPC\AppData\Local\Temp\claude\C--Users-SynAckITPC-Documents-AI\d376cb56-c600-4d76-bfdb-9e15feff0cdc\scratchpad\t0b_b\adv5\adv5b.py", line 59, in shim_case
+    r = Repo("g_%s_%s_%s" % (mode, "h" if head_cfg else "n", shell), head_config=head_cfg)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users/SYNACK~1/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/2979ae70-049c-4e99-87ac-061e7d245fff/scratchpad/t0b_b/adv-final\adv.py", line 80, in __init__
+    os.makedirs(self.root)
+  File "<frozen os>", line 225, in makedirs
+FileExistsError: [WinError 183] Cannot create a file when that file already exists: 'C:/Users/SYNACK~1/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/d376cb56-c600-4d76-bfdb-9e15feff0cdc/scratchpad/t0b_b/adv5/s97286/g_infwrn0_n_sh/repo'
+EXIT 1

@@ -1,0 +1,133 @@
+{
+ "verdict": "DEFECTIVE",
+ "findings": [
+  {
+   "id": "B1",
+   "severity": "major",
+   "title": "fill_in_legal.py exits 0 without applying a value that was changed after a fill; the data file and the published text then disagree",
+   "evidence": "probe_fill2.txt (temp copies, adv-a sample_043_gcc_b): ran a full fill (rc0), then changed one value and re-ran. SUPPORT_EMAIL, PRIVACY_EMAIL, WITHDRAW_PATH, GOVERNING_LAW, minors_clause and inapp_notif_clause each gave rc=0, no output and 0 files changed, and the new value appears in no document. The cause: _substitute (scripts/fill_in_legal.py:212) only replaces <PLACEHOLDER:X> tokens, and those are gone after the first fill. Values inside a fork variant (CONTROLLER_NAME, POSTAL_ADDRESS, trade_name) fail loudly instead, with rc3 and the misleading message 'fork d5_identity (ar, privacy): expected exactly one variant in the text, found none'. Nothing in the suite compares the data-file values with the documents: T2 checks only that no tokens remain. Realistic path: the native AR review (a UL3 merge gate) corrects WITHDRAW_PATH_AR or GOVERNING_LAW_AR after the fill-in, the orchestrator re-runs, gets rc0, and the unreviewed wording ships while the data file records the reviewed one. GREEN-EN's stated limit covers only derived clauses, not plain placeholders.",
+   "fix": "Add a post-condition in plan() after filling. Every placeholder key with a non-empty value must appear in at least one filled output document (an AR document for keys ending in _AR). Otherwise raise FillInError: '<KEY>: value not in the documents (already filled? restore the pre-fill markdown from git, or set it null if no selected variant uses it)'. Measured as feasible: after a normal fill, all 16 non-empty sample values are present (probe_postcheck). Give the 'found none' fork error the same hint."
+  },
+  {
+   "id": "B2",
+   "severity": "minor",
+   "title": "The fill-in writes the six markdown files and only then finds that a landing page cannot be rendered",
+   "evidence": "probe_fill.txt P3: landing/support.html without its end marker. run() (fill_in_legal.py:344-349) writes all six .md files ('wrote: ...'). renderer.write_regions then raises LegalRenderError. main() catches only FillInError (:365), so the run ends with a traceback, rc 1, filled markdown and stale pages. This contradicts the docstring ('It writes NOTHING while ... any document or variant is inconsistent'). A locked file part-way through the write loop leaves a similar mixed state. T5 and T2 turn red on the result and a re-run heals it, so the defect is recoverable.",
+   "fix": "Before the first write_bytes in run(), check each page: for page in renderer.SOURCES: renderer._split_page((repo_root/page).read_bytes().decode('utf-8'), page). In main, catch (FillInError, renderer.LegalRenderError), or load the renderer first and catch its error class."
+  },
+  {
+   "id": "B3",
+   "severity": "minor",
+   "title": "Renderer link safety, the marker-count check and the write path are not covered by any test",
+   "evidence": "Own mutants against tests/test_legal_docs_u8.py + test_legal_routes.py + test_consent_capture_w3_16.py, each SURVIVED with T2 as the only red: PM01 (the _SAFE_HREF check removed, so javascript: links render), PM02 (href not escaped), PM05 (_split_page accepts two marker pairs), PM06 (an LF region in a CRLF page), PM07 (write_regions writes the old bytes). T5 compares the committed regions with the same renderer's output and probes only text escaping. The documents contain no links today, but *_COUNSEL values may contain [ ] ( ) (_FORBIDDEN_IN_COUNSEL_VALUE allows them). The current behaviour is correct (probe_render.txt: javascript:/data:/quote/< hrefs render as escaped literal text; idempotent; chrome bytes equal; 0/2 marker pairs raise); it is just unpinned.",
+   "fix": "For the fix round, if the orchestrator allows test edits, add one PIN node. (a) render_markdown('[x](javascript:alert(1)) [y](https://a.example/?a=1&b=2)') contains no 'href=\"javascript' and does contain 'href=\"https://a.example/?a=1&amp;b=2\"'. (b) write_regions on a tmp copy of the six pages and sources: a second call returns [], bytes outside the region are unchanged, and a CRLF page has no bare LF. (c) a page with two marker pairs raises LegalRenderError."
+  },
+  {
+   "id": "B4",
+   "severity": "minor",
+   "title": "No test in the suite runs scripts/fill_in_legal.py, the tool that will produce the publication commit",
+   "evidence": "PM09 (writes despite missing answers), PM10 (_check_value disabled) and PM11 (bool fork key inverted) all SURVIVED, with T2 as the only red. GREEN-EN's 31-check fillin_check.py lives in the scratchpad, not in the repo. The post-fill checks (T2, T5, T8, T11) catch some wrong outputs but not wrong values (see B1).",
+   "fix": "Commit a tmp-copy test of the fill-in. It should cover: all-null gives rc 2 and writes nothing; synthetic complete answers give rc 0, no PLACEHOLDER, first dates unchanged and a second run that changes nothing; a value with markup or a token gives rc 3; flipping d3 changes the fork text. Add the B1 post-condition case once it exists."
+  },
+  {
+   "id": "B5",
+   "severity": "minor",
+   "title": "An empty string is refused for a value only an unselected variant uses, with a false message",
+   "evidence": "probe_fill.txt P13: CR_NUMBER '' with d5=A, and LEGAL_BASIS_COUNSEL(_AR) / TRANSFER_BASIS_COUNSEL(_AR) '' with counsel_review=false, give rc3 '<KEY> is empty but the documents use it'. null is accepted (P13b). The cause: _apply_fork computes the filled form of every variant through _filled -> _substitute (:228-229), which raises for '' even when the variant is not selected. The fixture comment invites '' ('CR_NUMBER (d5 B only)', 'counsel ... needed only when counsel_review is true'). A10's AR counsel refusal reaches the user through the same path.",
+   "fix": "In _filled (fill_in_legal.py:233), catch FillInError and return None: a variant whose values cannot be filled cannot be the one in the text. Validation of the selected text stays in fill()."
+  },
+  {
+   "id": "B6",
+   "severity": "minor",
+   "title": "The renderer silently mis-renders markdown outside its subset; counsel values may introduce such markdown, and the App renders it differently",
+   "evidence": "probe_render.txt: 'Intro\\n1. first\\n2. second' becomes one <p>; a nested '  - b' is flattened into a sibling item; a continuation line after an item is split off as a separate <p>; '**see [x](u) now**' keeps literal '**'; '## C# and F#' renders as 'C# and F'; a UTF-8 BOM turns the h1 into a <p> (_read_source uses utf-8, not utf-8-sig); '**a *b** c*' produces mis-nested strong/em. LegalScreen's markdown-it (react-native-markdown-display, typographer true) renders these as lists, so the web and App versions diverge. None of these constructs is in the six sources today (scan_md.txt: 0 hits). *_COUNSEL values may span lines and use markdown (fill_in_legal.py:77), and T5 cannot detect the problem because it compares the renderer with itself. There is no escaping impact: only <strong>/<em> are ever inserted.",
+   "fix": "Make _blocks (render_legal_landing.py:110) raise LegalRenderError on a line outside the subset: numbered or star/plus bullets, an indented '- ', '>', a '|' row, '#{4,}', a horizontal rule, or a non-item line directly after an item. Read sources with utf-8-sig. Alternatively, reject those patterns in _check_value for counsel keys."
+  },
+  {
+   "id": "B7",
+   "severity": "note",
+   "title": "render_legal_landing --check prints a traceback on a missing page",
+   "evidence": "probe_render.txt: stale_regions (render_legal_landing.py:259) calls read_bytes on a missing page, which raises FileNotFoundError, not LegalRenderError, so main() (:281) does not catch it and --check does not exit 2.",
+   "fix": "In stale_regions, before reading: if not (repo_root / page).is_file(): raise LegalRenderError(f'page missing: {page}')."
+  },
+  {
+   "id": "B8",
+   "severity": "note",
+   "title": "The '_' subtag split in the route is untested",
+   "evidence": "PM12 (_LANG_SUBTAG_SEP '[-_]' -> '-', legal_routes.py:14) SURVIVED. AR_LANG_VALUES (tests/test_legal_docs_u8.py:1230) has no 'ar_SA'. UG11 waived the assertion, so this only records an unpinned line. Route probes over 24 hostile values (../, %2e, NUL, 70+ characters, Arabic/Cyrillic look-alikes, None, int) reach only the four legal filenames; reading outside app/legal is impossible by construction.",
+   "fix": "Optional: add 'ar_SA' to AR_LANG_VALUES in a later round."
+  },
+  {
+   "id": "B9",
+   "severity": "note",
+   "title": "Two client lines are unpinned: the openURL rejection handler and the AR catalog value",
+   "evidence": "CM04 (Linking.openURL(webUrl).catch removed, LegalScreen.tsx:92) SURVIVED. CM08 (the ar.json legal.error.openWeb value replaced by the English string) SURVIVED across 14 suites / 147 tests. No client fence catches an untranslated AR value; the native review (D11) is the only guard.",
+   "fix": "Optional: a T10 case with openURL rejecting (no unhandled rejection). For CM08, rely on the D11 native review list."
+  },
+  {
+   "id": "B10",
+   "severity": "note",
+   "title": "LegalScreen keeps the previous language's document when a language-change refetch fails",
+   "evidence": "load() (LegalScreen.tsx:67-87) never clears content. When lang changes, the fetch fails and the new language has no cache, errorKey is set but hidden (the error block needs !content), so the other language's text stays on screen with no banner. Reasoned from the code, not measured. In practice it is hard to reach: language is changed on Profile, and Legal is popped first.",
+   "fix": "Optional: setContent(null) at the start of load when lang differs from the last loaded language, or render the screen with key={lang}."
+  },
+  {
+   "id": "B11",
+   "severity": "note",
+   "title": "Deploy order: the backend must serve ?lang before the OTA ships",
+   "evidence": "An older backend ignores the unknown lang query parameter (FastAPI) and returns English. A new client then caches that English (or a DRAFT, if served) under legal_cache_{doc}_ar. Online fetches self-heal; only offline views are affected.",
+   "fix": "In the PR body: deploy the backend (Railway) before or together with the EAS update."
+  }
+ ],
+ "reproduced": [
+  "Re-hash FIRST at 23:41 and LAST at 00:15: 28/28 files equal the latest GREEN report hashes; git diff --stat equals --ignore-cr-at-eol (16 files, 676+/479-); git status 27 entries; HEAD 1156f03c",
+  "Backend unit gate: [pyt] tag=u8-advB-unit start=2026-10-07 23:55:51 end=2026-10-07 23:56:03 elapsed=12s bound=600s status=FAIL rc=1 (1 failed = test_t2_no_unresolved_placeholder only, 57 passed)",
+  "Comm gate (detached scratch worktree adv-b/base_wt at 1156f03c, since removed; 18-file set identical at BASE and HEAD, test_legal_docs_u8.py excluded): [pyt] tag=u8-advB-comm-base elapsed=29s status=OK rc=0, 1628 passed / [pyt] tag=u8-advB-comm-head elapsed=44s status=OK rc=0, 1628 passed; comm -13 empty; netguard lines 27/27",
+  "OpenAPI pins: [pyt] tag=u8-advB-openapi elapsed=5s status=OK rc=0 (test_s71_u13_compare_auth_required.py + test_m13_21_openapi_gated.py, 141 passed)",
+  "Client: jest 29.7.0 subset (legal + LegalScreen + i18n): 14 suites, 147 passed. FULL suite rc0: 360 passed / 3 skipped, 3533 tests passed, 42 snapshots passed (0 written). tsc 5.9.3 rc0 with no output. eslint v9.39.4 on the changed files + legalScreenLang.u8: 0 errors, 13 warnings (pre-existing, as GREEN-client reported)",
+  "render_legal_landing.py --check rc0. Both scripts import only the standard library. ruff E9,F63,F7,F82: all checks passed. py_compile ok (__pycache__ is gitignored; git status unchanged)",
+  "Secret-shape scan (sk-, AKIA, JWT, scheme://user:pass@, PEM, ghp_, xox, AIza, sbp_) over git diff plus the untracked files: 0 hits. No .snap or .env in the diff",
+  "Chrome outside the region vs base (chrome_diff.txt): only the .draft-notice CSS rule removed on the 4 legal pages; support pages gain only the region and blank lines",
+  "Renderer probes (probe_render.txt): no escaping hole; idempotent; chrome byte-equal after rewrite; 0 or 2 marker pairs raise LegalRenderError and nothing is written",
+  "Fill-in probes (probe_fill*.txt, temp copies): all-null rc2 with nothing written; full fill rc0 with 0 PLACEHOLDER left, first dates unchanged and a stable second run; invalid enum/type/flag/extra key/lower-case key/derived-key value/token without key/malformed token/non-object all rc3 with nothing written; B1 and B2 reproduced; fork re-selection after a fill works for territories, openai_store_pinned and d5 A->B",
+  "Adversary A code citations verified: A1 (sentry.ts:37 client query rung q|query|email|search|text vs sentry_service.py:44-46; api.ts:696-704 product_a/product_b GET; ResultsScreen.tsx:493 tracker.report -> wallTimeInstrumentation.ts:106 captureMessage); A2 (ProductImage.tsx:101); A3 (auth_routes.py:659-667 invite_code_redeemed with user_id + IP); A5 (price_service.py is_price_showable excludes estimated); A7 (auth_routes.py:1494-1512); A10 reproduced (LEGAL_BASIS_COUNSEL_AR and TRANSFER_BASIS_COUNSEL_AR '- **x:** y' REFUSED, the EN key accepted)"
+ ],
+ "not_checked": [
+  "Legal truth and AR fidelity of the text (adversary A's domain), except the code facts behind A1, A2, A3, A5, A7 and A10",
+  "Semantic completeness of processors.json beyond the green T7/T7a/T7b/T7c nodes",
+  "On-device rendering (React Native markdown in RTL) and the landing pages in a real browser; RN Sentry SDK defaults (A1 d) not measured",
+  "Linux CI line-ending behaviour (reasoned only: T5 normalises CRLF, git autocrlf normalises on commit)",
+  "The test-docstring mutation matrix M01-M16 (GREEN-EN ran it); not re-run",
+  "Railway or landing deployment state, flag values, OpenAI org settings (forbidden or out of scope)",
+  "The temp probe copies (adv-b/advb_fill_*, advb_render_*) are left in my notes folder because the rules forbid recursive deletes; nothing was written to the unit worktree"
+ ],
+ "worktree_sha_check": "FIRST (23:41) and LAST (00:15): 28/28 files hashed with sha256 equal the latest GREEN report values, 0 mismatches (adv-b/rehash_first.txt, adv-b/rehash_last.txt). HEAD 1156f03c; git status 27 entries before and after; git diff --stat equals --ignore-cr-at-eol (16 files, 676+/479-). Each of the 25 mutant restores was sha256-verified against its byte-copy snapshot (mut_snap/). The scratch base worktree adv-b/base_wt was removed with git worktree remove --force (0 adv-b entries left in git worktree list). I wrote nothing to sc-s70-u4b.",
+ "summary": "Engineering verdict on U8 GREEN: DEFECTIVE. I found one major defect and no blocking one of my own. Adversary A's blocking A1 stands: I confirmed the code facts behind it.\n\n**Major (B1).** Re-running scripts/fill_in_legal.py after a fill with a corrected value returns 0 and changes nothing. This holds for the emails, WITHDRAW_PATH, GOVERNING_LAW and the derived booleans. Values inside a fork variant fail with a misleading 'found none' instead. Nothing cross-checks the data file against the documents, so a value corrected by the AR native review could ship unapplied. A value-presence post-condition fixes it; I measured it as feasible on a normal fill.\n\n**Minors.**\n- B2: a renderer error after the markdown writes leaves the markdown filled and the pages stale, with an uncaught LegalRenderError.\n- B3 and B4: the renderer's link safety and write path, and the whole fill-in script, have no test in the suite.\n- B5: an empty string for a value only an unselected variant uses is refused, with a false message.\n- B6: markdown outside the renderer's subset (numbered lines, nested items, continuation lines, BOM) is mis-rendered without an error. Counsel values may bring it in; none is in today's sources.\n\n**Notes:** B7-B11.\n\n**What held up:**\n- Renderer: no escaping hole; idempotent; chrome unchanged outside the region; 0 or 2 marker pairs refused.\n- Fill-in: refuses every null and every invalid value, never moves the date anchors, and a second run is stable.\n- Route: 24 hostile lang values reach only the four legal filenames.\n- Client: per-language cache keys are isolated and the pre-U8 key is never read.\n- Gates: comm gate with comm -13 empty (1628 = 1628); OpenAPI pins 141 passed; full jest 3533 passed; tsc and eslint clean; no secret-shaped literals.\n\n**Mutants (25 own):** 14 killed, 11 survived. Survivors: PM01, PM02, PM05, PM06, PM07, PM09, PM10, PM11, PM12, CM04, CM08; each survivor's finding names the node to add. Notes: C:/Users/SYNACK~1/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/d376cb56-c600-4d76-bfdb-9e15feff0cdc/scratchpad/u8/adv-b/notes.md",
+ "mutants": [
+  "PM01 render _SAFE_HREF check removed -> SURVIVED (add a link-probe PIN)",
+  "PM02 render href not html-escaped -> SURVIVED (same PIN)",
+  "PM03 render _escape quote=True -> KILLED by test_t5_landing_regions_match_markdown_render",
+  "PM04 render front-matter subtitle class dropped -> KILLED by T5",
+  "PM05 render _split_page accepts more than one marker pair -> SURVIVED (add a two-pair refusal PIN)",
+  "PM06 render region not converted to the page's CRLF -> SURVIVED (add a write_regions round-trip PIN)",
+  "PM07 render write_regions writes the old bytes -> SURVIVED (same round-trip PIN)",
+  "PM08 render headings limited to levels 1-2 -> KILLED by T5",
+  "PM09 fill-in writes despite missing answers -> SURVIVED (add a fill-in tmp-copy test)",
+  "PM10 fill-in _check_value disabled -> SURVIVED (same)",
+  "PM11 fill-in bool fork key inverted -> SURVIVED (same)",
+  "PM12 route subtag split on '-' only -> SURVIVED (add 'ar_SA' to AR_LANG_VALUES; UG11 waived)",
+  "PM13 route .strip() removed -> KILLED by test_t9_lang_ar_serves_arabic_documents",
+  "PM14 route terms default lang 'ar' -> KILLED by test_t9_default_lang_serves_english_and_terms_version, test_t9_handlers_callable_without_arguments, test_terms_referral_section_matches_migration_023_policy",
+  "PM15 route _LANG_MAX_CHARS 8 -> 2 -> KILLED by test_t9_unknown_or_english_lang_serves_english ('arabic')",
+  "CM01 LegalScreen startsWith('ar') -> === 'ar' -> KILLED by legalScreenLang.u8 (ar-BH cases)",
+  "CM02 offline path reads the pre-U8 key -> KILLED by LegalScreen.test.tsx + legalScreenLang.u8",
+  "CM03 link label key missing -> KILLED by __tests__/i18n/no-missing-referenced-keys.test.ts",
+  "CM04 openURL .catch removed -> SURVIVED (add a rejecting-openURL case)",
+  "CM05 link role 'button' -> KILLED by legalScreenLang.u8 (error-state link)",
+  "CM06 lang param fixed to 'en' -> KILLED by legalScreenLang.u8",
+  "CM07 en.json legal.error.openWeb removed -> KILLED by i18n.test.ts, brand.myez.s69, no-deleted-keys, no-missing-referenced-keys",
+  "CM08 ar.json value replaced by the English text -> SURVIVED (no untranslated-AR fence; D11 native review)",
+  "CM09 LANDING_BASE_URL with a trailing slash -> KILLED by legalScreenLang.u8 constant test",
+  "CM10 'ar/' page prefix dropped -> KILLED by legalScreenLang.u8 (AR link cases)"
+ ]
+}

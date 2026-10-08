@@ -1,0 +1,23 @@
+feat(tooling): T0b Phase B - secret scanning in the pre-commit hook and in CI
+
+Closes #315 and #316 and the Phase B half of spec T0b (R1.2, R1.4, R2.4, R5).
+
+- .githooks/pre-commit: the staged diff is read once into a private temp dir
+  (raw, textconv and external-diff views); steps 4 / 4a read it through awk
+  with an unconditional grep backstop; a binary refusal with a magic-byte
+  asset allowlist (#315); the .env value pass reads the same file; a gitleaks
+  pass with an always-explicit config, the colour override, the ERR-line rule
+  and a redacted template report; the Python checks run after every secret
+  check; ESLint on staged client content in batches of 64.
+- .gitleaks.toml: default rules plus ten narrow allowlists.
+- .github/workflows/ci.yml: the secret-scan job (gitleaks 8.30.1 pinned by
+  sha256, both range ends checked, --no-color, ERR line and findings fail).
+- tests: test_precommit_hook_phase_b.py (frozen), test_secret_scan_static.py,
+  test_gitleaks_config.py, test_precommit_hook_phase_b_round2.py (121 nodes
+  over four fix rounds), the TB2 amendments of test_ci_gates.py and
+  test_precommit_hook_round2.py.
+
+Rulings TB1-TB14, TBG1-TBG8, TBF1-TBF25; adversary rounds A, B, final (x2)
+and round 5 (SOUND_WITH_MINORS on these bytes).
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>

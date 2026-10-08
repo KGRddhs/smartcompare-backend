@@ -1,0 +1,19 @@
+ruled_utf8        base  sh    rc=1 FOUR
+ruled_utf8        base  dash  rc=1 FOUR
+ruled_utf8        cur   sh    rc=1 FOUR
+ruled_utf8        cur   dash  rc=1 FOUR
+ruled_utf8        m4    sh    rc=1 FOUR
+ruled_utf8        m4    dash  rc=1 FOUR
+sameline_utf8     base  sh    rc=0 -
+sameline_utf8     base  dash  rc=0 -
+sameline_utf8     cur   sh    rc=1 FOUR
+sameline_utf8     cur   dash  rc=1 FOUR
+sameline_utf8     m4    sh    rc=0 -
+sameline_utf8     m4    dash  rc=0 -
+sameline_default  base  sh    rc=1 FOUR
+sameline_default  base  dash  rc=1 FOUR
+sameline_default  cur   sh    rc=1 FOUR
+sameline_default  cur   dash  rc=1 FOUR
+sameline_default  m4    sh    rc=1 FOUR
+sameline_default  m4    dash  rc=1 FOUR
+variants sha: {'cur': '103d7519555d', 'm4': '4f7b74b09016', 'base': 'de0a4bd85ad7'}

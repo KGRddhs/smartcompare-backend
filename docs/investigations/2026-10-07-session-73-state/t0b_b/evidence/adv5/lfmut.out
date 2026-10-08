@@ -1,0 +1,9 @@
+{"mutant": "m4_lc_all_dropped", "scen": "da_utf8_ff_same_line_akia", "cur_sh": 1, "base_sh": 0, "mut_sh": 0, "mut_leak_sh": [], "mut_dash": 0, "mut_leak_dash": [], "verdict": "KILLED-BY-SCENARIO"}
+Traceback (most recent call last):
+  File "C:\Users\SynAckITPC\AppData\Local\Temp\claude\C--Users-SynAckITPC-Documents-AI\d376cb56-c600-4d76-bfdb-9e15feff0cdc\scratchpad\t0b_b\adv5\lfmut.py", line 99, in <module>
+    main()
+  File "C:\Users\SynAckITPC\AppData\Local\Temp\claude\C--Users-SynAckITPC-Documents-AI\d376cb56-c600-4d76-bfdb-9e15feff0cdc\scratchpad\t0b_b\adv5\lfmut.py", line 82, in main
+    extra = adv.SCEN[sc](r) or {}
+            ~~~~~~~~^^^^
+KeyError: 'f1x'
+LFMUT EXIT 1

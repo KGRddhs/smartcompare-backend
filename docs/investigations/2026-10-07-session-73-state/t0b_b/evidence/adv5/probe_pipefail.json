@@ -1,0 +1,38 @@
+[
+ {
+  "case": "big_first_line_akia",
+  "dead_awk": false,
+  "base_plain": 1,
+  "leak": [],
+  "base_pf": 0,
+  "new_plain": 1,
+  "new_pf": 0
+ },
+ {
+  "case": "big_first_line_akia",
+  "dead_awk": true,
+  "base_plain": 1,
+  "leak": [],
+  "base_pf": 0,
+  "new_plain": 1,
+  "new_pf": 0
+ },
+ {
+  "case": "small_akia",
+  "dead_awk": false,
+  "base_plain": 1,
+  "leak": [],
+  "base_pf": 1,
+  "new_plain": 1,
+  "new_pf": 1
+ },
+ {
+  "case": "small_akia",
+  "dead_awk": true,
+  "base_plain": 1,
+  "leak": [],
+  "base_pf": 1,
+  "new_plain": 1,
+  "new_pf": 1
+ }
+]
