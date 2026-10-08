@@ -16,7 +16,8 @@ Railway redeploys `web`. Tell Claude "key rotated" (never the value).
 
 ## 2. Smoke the credentials while the flag is still OFF (no LLM spend)
 ```bash
-railway run -s web -- env HARNESS_SEND_ADMIN_KEY=1 python docs/investigations/2026-09-29-session-69-state/verify_after_credits.py --pairs "iPhone 15 vs Galaxy S24"
+# Moved 2026-10-08 (BE-HARNESS): the canary is now scripts/verify_after_credits.py (opt in with --send-admin-key); the docs copy is removed at this commit.
+railway run -s web -- python scripts/verify_after_credits.py --send-admin-key --pairs "iPhone 15 vs Galaxy S24"
 ```
 Expected: the compare line shows an HTTP status that is NOT 401 and NOT 403 (the compare itself still fails while OpenAI is unfunded; only the status matters). Also open the app on a phone, sign in, run one compare: it fails for OpenAI, not for auth.
 
