@@ -35,16 +35,38 @@ cleanup() {
 trap cleanup EXIT
 trap 'cleanup; exit 1' INT TERM HUP
 
-# materialise LIST: write the staged blob of every path in LIST (one
-# repo-relative path per line) to $TMP/<path>, creating $TMP on first use.
-materialise() {
+# make_tmp: create the private temp dir $TMP once (the staged diff of 4-pre,
+# the gitleaks report and config copy, the staged blobs all live in it).
+# Without mktemp (or with a TMPDIR that does not exist) the fallback is
+# qaren-precommit.<pid> under TMPDIR or /tmp, then under the git dir, which
+# already holds every staged blob as an object; created under umask 077, so
+# the staged content is never readable by other users (umask 022 gave 755).
+make_tmp() {
   if [ -z "$TMP" ]; then
     TMP=$(mktemp -d 2>/dev/null) || TMP=""
     if [ -z "$TMP" ]; then
-      TMP="${TMPDIR:-/tmp}/qaren-precommit.$$"
-      mkdir "$TMP" || { TMP=""; fail "could not create a temp dir for the staged content"; }
+      # $TMP is set only once the dir is ours, so a trap never removes a
+      # directory this run did not create.
+      # umask 077 in a subshell, not mkdir -m 700: MSYS mkdir -m fails its
+      # chmod on NTFS under .git (measured) and leaves the dir behind.
+      _tmp="${TMPDIR:-/tmp}/qaren-precommit.$$"
+      if (umask 077 && mkdir "$_tmp") 2>/dev/null; then
+        TMP=$_tmp
+      else
+        _tmp=$(git rev-parse --absolute-git-dir 2>/dev/null) || _tmp=""
+        [ -n "$_tmp" ] || fail "could not create a temp dir for the staged content"
+        (umask 077 && mkdir "$_tmp/qaren-precommit.$$") ||
+          fail "could not create a temp dir for the staged content"
+        TMP="$_tmp/qaren-precommit.$$"
+      fi
     fi
   fi
+}
+
+# materialise LIST: write the staged blob of every path in LIST (one
+# repo-relative path per line) to $TMP/<path>, creating $TMP on first use.
+materialise() {
+  make_tmp
   printf '%s\n' "$1" | git checkout-index --prefix="$TMP/" --stdin ||
     fail "could not read the staged content of the path(s) named above"
   while IFS= read -r _f; do
@@ -92,50 +114,51 @@ EOF
   return 0
 }
 
-if [ -n "$PY_FILES" ]; then
-  materialise "$PY_FILES"
+# 4-pre. The staged diff, read ONCE into the private temp dir (Phase B: issues
+#     #315 and #316, ruling TF7). Steps 4, 4a and 4b all read this one file,
+#     so one status check covers all three: a failed git diff refuses the
+#     commit here, before any of them could pass on a partial or empty diff.
+#     The file carries two views of the same patch, raw first, then textconv.
+#     --no-color and --no-ext-diff stop a user's color.ui=always or
+#     diff.external from hiding the added lines; --text (after -U0) prints the
+#     lines of a file git treats as binary (a NUL byte, a -diff attribute);
+#     --no-textconv prints the bytes a textconv driver would hide, and the
+#     --textconv view keeps what a driver reveals (the old porcelain diff
+#     applied textconv, so a raw view alone would be blind to it). A textconv
+#     command that fails therefore refuses the commit as well.
+#     Every secret check (4 to 4g) runs BEFORE the Python checks (1 to 3):
+#     py_compile and ruff echo the offending source line, so a syntax error on
+#     a line holding a key printed the key before any secret check had run.
+make_tmp
+STAGED_DIFF="$TMP/staged.diff"
+{
+  git diff --cached --no-color --no-ext-diff -U0 --text --no-textconv &&
+    git diff --cached --no-color --no-ext-diff -U0 --text --textconv
+} > "$STAGED_DIFF" ||
+  fail "could not read the staged diff (git diff failed)"
+# A third view keeps what the old step-4 line read and the two views above
+# cannot show: the porcelain diff with a user's external diff allowed
+# (diff.external, GIT_EXTERNAL_DIFF, a diff.<driver>.command), whose tool may
+# print the decoded content as + lines (fix round, finding A1; the old line
+# was `git diff --cached -U0 | grep -E '^\+' | grep -Ev '^\+\+\+'`). Its
+# status is checked like the other two, so a failing external diff refuses
+# the commit, as a failing textconv does. Only that old selection of its
+# lines is appended, after an @@ line: git prints no header for an external
+# tool's output, so a file header left open by the views above (an empty
+# file has no hunk) cannot hide those lines from the readers below.
+if ! git diff --cached --no-color --ext-diff -U0 > "$TMP/staged.ext"; then
+  fail "could not read the staged diff (git diff failed)"
 fi
-
-# 1. Syntax: every staged .py must compile.
-if [ -n "$PY_FILES" ]; then
-  in_batches compile "$PY_FILES" || fail "python syntax error in staged files"
-fi
-
-# 2. Ruff blocking tier — real-bug classes only (undefined names, syntax,
-#    comparison-to-literal misuse). Repo-wide fuller ruleset stays report-only in CI.
-if [ -n "$PY_FILES" ]; then
-  if command -v ruff >/dev/null 2>&1; then
-    in_batches ruff "$PY_FILES" || fail "ruff blocking tier failed"
-  else
-    echo "pre-commit: WARNING ruff not installed — blocking tier skipped (pip install -r requirements-dev.txt)" >&2
-  fi
-fi
-
-# 3. Black — only files on the CI allowlist ratchet (.github/black-clean-paths.txt),
-#    intersected with what is staged. Mirrors the blocking CI step exactly.
-#    A staged path is matched against the allowlist as a whole line (its
-#    ORIGINAL repo path), then black checks the staged copy. Presence is
-#    tested with the interpreter that runs black; a missing black is a
-#    WARNING, never a silent skip.
-if [ -n "$PY_FILES" ] && [ -f .github/black-clean-paths.txt ]; then
-  ALLOW=$(grep -v -e '^[[:space:]]*#' -e '^[[:space:]]*$' .github/black-clean-paths.txt | tr -d '\r')
-  STAGED_ALLOWED=""
-  while IFS= read -r f; do
-    [ -n "$f" ] || continue
-    case "$NL$ALLOW$NL" in
-      *"$NL$f$NL"*) STAGED_ALLOWED="$STAGED_ALLOWED$f$NL" ;;
-    esac
-  done <<EOF
-$PY_FILES
-EOF
-  if [ -n "$STAGED_ALLOWED" ]; then
-    if python -m black --version >/dev/null 2>&1; then
-      in_batches black "$STAGED_ALLOWED" || fail "black allowlist check failed (run: python -m black <file>)"
-    else
-      echo "pre-commit: WARNING black not installed - allowlist check skipped (pip install -r requirements-dev.txt)" >&2
-    fi
-  fi
-fi
+{
+  printf '@@ external-diff view\n'
+  grep -E '^\+' "$TMP/staged.ext" | grep -Ev '^\+\+\+'
+} >> "$STAGED_DIFF"
+# ADDED_LINES_AWK keeps the added lines of the diff and nothing else: a file's
+# header (diff --git ... up to its first @@ hunk line) is skipped as a block,
+# so an added line whose CONTENT starts with "++" is still scanned (the old
+# '^\+\+\+' filter of step 4 dropped it). Steps 4 and 4a do not rest on awk
+# alone: the grep backstop after 4a runs on every commit (findings B3, F1).
+ADDED_LINES_AWK='/^diff --git /{h=1; next} /^@@/{h=0; next} !h && /^[+]/'
 
 # 4. Secrets guard — block obvious credentials in the staged diff.
 #    Patterns are deliberately narrow (real key shapes) to avoid false positives.
@@ -147,7 +170,11 @@ fi
 #    credential. \b costs no real detection — an actual key is always preceded
 #    by whitespace, a quote, `=` or the diff's own `+`, all of which are word
 #    boundaries — and it removes a class that will recur ("white-musk-...").
-if git diff --cached -U0 | grep -E '^\+' | grep -Ev '^\+\+\+' | \
+#    The patterns read the added lines of the staged-diff file (4-pre), so
+#    color.ui=always and diff.external no longer hide them (#316) and an
+#    added line starting with "++" is scanned; the grep line is pinned
+#    byte-equal.
+if awk "$ADDED_LINES_AWK" "$STAGED_DIFF" | \
    grep -qE '(\bsk-[A-Za-z0-9_-]{20,}|AKIA[0-9A-Z]{16}|xox[baprs]-[A-Za-z0-9-]{10,}|-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----)'; then
   fail "staged diff contains what looks like a credential — remove it (keys live only in gitignored .env)"
 fi
@@ -157,18 +184,39 @@ fi
 #     base64url segments, the first starting with eyJ) and a credentialed URL
 #     (scheme, ://, user, :, a password of 12 or more characters, @). Shorter
 #     passwords are left alone: they are the fixtures of this repo's URL
-#     redaction tests on reserved .test and .example hosts. --no-color and
-#     --no-ext-diff stop a user's color.ui=always or diff.external from hiding
-#     the added lines from the pattern.
-#     ADDED_LINES_AWK keeps the added lines of the diff and nothing else: a
-#     file's header (diff --git ... up to its first @@ hunk line) is skipped as
-#     a block, so an added line whose CONTENT starts with "++" is still
-#     scanned (a '^\+\+\+' filter drops it; the four-branch pipeline above is
-#     pinned byte-equal and keeps that hole).
-ADDED_LINES_AWK='/^diff --git /{h=1; next} /^@@/{h=0; next} !h && /^[+]/'
+#     redaction tests on reserved .test and .example hosts. Like step 4, the
+#     grep reads the added lines of the staged-diff file (4-pre).
 JWT_RE='eyJ[A-Za-z0-9_-]{7,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}'
 CREDURL_RE='[A-Za-z][A-Za-z0-9+.-]*://[^/[:space:]:@]+:[^/[:space:]@]{12,}@'
-if git diff --cached --no-color --no-ext-diff -U0 | awk "$ADDED_LINES_AWK" | \
+if awk "$ADDED_LINES_AWK" "$STAGED_DIFF" | \
+   grep -qE -e "$JWT_RE" -e "$CREDURL_RE"; then
+  fail "staged diff contains a JWT or a credentialed URL - remove it (keys live only in gitignored .env)"
+fi
+
+# The grep backstop of steps 4 and 4a (findings B3 and F1), on EVERY commit,
+# whatever awk does: a missing or dead awk, or one that reads stdin but
+# fails on a file, hands the two readers above an empty stream. It is the
+# old step-4 line: its selection of added lines ('^\+' and not '^\+\+\+', no
+# header state), its patterns and its refusals. It reads the porcelain view
+# the old line read (staged.ext of 4-pre, color off; no --text, so a staged
+# image or font is one "Binary files ... differ" line), then the
+# staged-diff file with every NUL turned into a line break: on a NUL, grep
+# prints "Binary file ... matches" in place of every line, which hid the
+# lines of all later files. A NUL becomes a break, not nothing, so UTF-16
+# text is not joined into ASCII here (the binary refusal 4e owns it), and
+# LC_ALL=C keeps grep, under a UTF-8 locale, from dropping a line that holds
+# an invalid UTF-8 byte. With awk working, the readers above see the same
+# lines, so this refuses nothing they pass, except external-diff lines the
+# grep of 4-pre dropped on an invalid byte.
+if { LC_ALL=C grep -E '^\+' "$TMP/staged.ext"
+     LC_ALL=C tr '\000' '\n' < "$STAGED_DIFF" | LC_ALL=C grep -E '^\+'
+   } | LC_ALL=C grep -Ev '^\+\+\+' | \
+   grep -qE '(\bsk-[A-Za-z0-9_-]{20,}|AKIA[0-9A-Z]{16}|xox[baprs]-[A-Za-z0-9-]{10,}|-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----)'; then
+  fail "staged diff contains what looks like a credential — remove it (keys live only in gitignored .env)"
+fi
+if { LC_ALL=C grep -E '^\+' "$TMP/staged.ext"
+     LC_ALL=C tr '\000' '\n' < "$STAGED_DIFF" | LC_ALL=C grep -E '^\+'
+   } | LC_ALL=C grep -Ev '^\+\+\+' | \
    grep -qE -e "$JWT_RE" -e "$CREDURL_RE"; then
   fail "staged diff contains a JWT or a credentialed URL - remove it (keys live only in gitignored .env)"
 fi
@@ -181,6 +229,65 @@ fi
 if git diff --cached --name-only -z --diff-filter=ACMR | tr '\0' '\n' | grep -qiE '(^|/)\.env(\..*)?$'; then
   fail ".env must never be committed"
 fi
+
+# 4e. Binary refusal (issue #315, ruling TB3). A staged file git treats as
+#     binary (a NUL byte, UTF-16, a -diff or binary attribute) is refused
+#     unless its path is a known asset path AND it starts with the magic bytes
+#     of its extension. Its text reaches the regex checks only as far as
+#     --text exposes ASCII runs (UTF-16 never: a NUL sits between every two
+#     characters), and gitleaks 8.30.1 finds nothing in NUL, UTF-16 or
+#     attribute-binary content (measured). numstat prints such a file as
+#     -<TAB>-<TAB><path>: --no-textconv stops a driver from masking that,
+#     --no-renames lists a rename as an add of its new path, ACMRT leaves
+#     deletions out (T: a symlink replaced by a file is new content too), and
+#     a path git C-quotes (a TAB, a quote or a newline in it) matches no row
+#     and is refused. The extension is compared in lower case (an iPhone
+#     export is IMG_0001.PNG). The rows are per directory and
+#     extension: the 58 binaries tracked at 845ece15 (png, jpeg, ttf) match
+#     them, images under docs/ and SmartCompareApp/assets/ (session
+#     screenshots, store art) pass, and PDF, archives, office files, databases
+#     and executables never do (text-bearing containers no regex can read). The
+#     magic bytes stop a UTF-16 or NUL dump renamed to x.png.
+BIN_LIST=$(git -c core.quotePath=false diff --cached --numstat --no-textconv --no-renames --diff-filter=ACMRT) ||
+  fail "could not list the staged files for the binary check"
+TAB=$(printf '\t')
+while IFS= read -r _ns; do
+  case $_ns in
+    "-$TAB-$TAB"*) ;;
+    *) continue ;;
+  esac
+  _bin=${_ns#"-$TAB-$TAB"}
+  # _cmp is the path with a known image or font extension in lower case;
+  # the rows and the magic bytes are matched on it, the messages name $_bin.
+  _cmp=$_bin
+  case $_bin in
+    *.[Pp][Nn][Gg]) _cmp=${_bin%.*}.png ;;
+    *.[Jj][Pp][Gg]) _cmp=${_bin%.*}.jpg ;;
+    *.[Jj][Pp][Ee][Gg]) _cmp=${_bin%.*}.jpeg ;;
+    *.[Gg][Ii][Ff]) _cmp=${_bin%.*}.gif ;;
+    *.[Ww][Ee][Bb][Pp]) _cmp=${_bin%.*}.webp ;;
+    *.[Tt][Tt][Ff]) _cmp=${_bin%.*}.ttf ;;
+    *.[Oo][Tt][Ff]) _cmp=${_bin%.*}.otf ;;
+  esac
+  case $_cmp in
+    app/static/*.png|docs/*.png|docs/*.jpg|docs/*.jpeg|docs/*.gif|docs/*.webp) ;;
+    SmartCompareApp/assets/*.png|SmartCompareApp/assets/*.jpg|SmartCompareApp/assets/*.jpeg) ;;
+    SmartCompareApp/assets/*.gif|SmartCompareApp/assets/*.webp) ;;
+    SmartCompareApp/assets/*.ttf|SmartCompareApp/assets/*.otf) ;;
+    test_images/*.jpeg|docs/claude-design-handoff/fonts/*.ttf) ;;
+    *) fail "staged file is binary to git and not a known asset path: $_bin - convert it to text, or add the path to the allowlist in .githooks/pre-commit in its own commit" ;;
+  esac
+  # The row matched, so the text after the last dot IS its extension; the
+  # head is hex digits only, so the colon cannot be forged by a file name.
+  _head=$(git cat-file blob ":$_bin" | od -An -tx1 -N12 | tr -d ' \n')
+  case ${_cmp##*.}:$_head in
+    png:89504e470d0a1a0a*|jpg:ffd8ff*|jpeg:ffd8ff*|gif:474946383[79]61*) ;;
+    webp:52494646????????57454250*|ttf:00010000*|ttf:74727565*|otf:4f54544f*) ;;
+    *) fail "staged file is binary to git and not a known asset path: $_bin (its first bytes are not those of its extension) - convert it to text, or add the path to the allowlist in .githooks/pre-commit in its own commit" ;;
+  esac
+done <<EOF
+$BIN_LIST
+EOF
 
 # 4b. Fixed-string pass over the .env VALUES (spec T0b R1.3, correction 10,
 #     rulings TR5 and TF1). An entry counts when its upper-cased NAME contains
@@ -221,14 +328,15 @@ to_upper() {
 
 # ENV_MATCH_AWK reads ONE stream: the counted .env entries as tagged lines
 # (N then the NAME, V then the VALUE), one E line, the staged diff, then one
-# Z line that is written only when git diff succeeded. It keeps the values in
+# Z line that is written only when the staged-diff file was read whole (the
+# file of 4-pre, through cat). It keeps the values in
 # memory, takes the added lines of the diff the way ADDED_LINES_AWK does (a
 # file header, diff --git up to its first @@ hunk line, is skipped as a
 # block), tests each value with index() - a literal substring test, no
 # pattern and no escape processing, because the values arrive as input lines,
 # not as program text or -v arguments - and prints the NAMES of the values it
 # found, never a value. A stream that does not end with the Z line means the
-# left side of the pipe died (the .env parse or git diff): awk then exits 2,
+# left side of the pipe died (the .env parse or the read): awk then exits 2,
 # so the check refuses the commit instead of passing on a partial stream. No
 # diff line is ever a bare Z: git starts each one with a +, -, space, \, @@
 # or a header word.
@@ -312,7 +420,9 @@ if [ -f "$ENV_FILE" ] && [ ! -r "$ENV_FILE" ]; then
 elif [ -f "$ENV_FILE" ]; then
   CR=$(printf '\r')
   # The pipe carries the entries, the E line, the staged diff, then the Z line
-  # (only after a successful git diff). awk's exit status is the pipeline's:
+  # (only after cat read the whole staged-diff file; cat is a separate process
+  # started after the parse, and allexport is off, so no value reaches its
+  # environment). awk's exit status is the pipeline's:
   # a failed awk, or a stream with no Z line (awk exits 2), refuses the
   # commit rather than let the check pass unrun. C locale: index() compares
   # bytes.
@@ -320,7 +430,7 @@ elif [ -f "$ENV_FILE" ]; then
     {
       env_entries
       printf 'E\n'
-      git diff --cached --no-color --no-ext-diff -U0 && printf 'Z\n'
+      cat "$STAGED_DIFF" && printf 'Z\n'
     } | LC_ALL=C awk "$ENV_MATCH_AWK"
   ) || fail "could not run the .env value check (the .env parse, git diff or awk failed)"
   if [ -n "$ENV_HITS" ]; then
@@ -330,6 +440,112 @@ fi
 if [ -n "$HOOK_ALLEXPORT" ]; then set -a; fi
 if [ -n "$HOOK_XTRACE" ]; then set -x; fi
 
+# 4g. gitleaks over the staged changes (spec T0b R1.2, correction 1), the last
+#     secret check. Absent: one WARNING and the commit proceeds (CI's
+#     secret-scan job is the mandatory scan). Present: ANY non-zero exit
+#     refuses (a finding, a broken config), and so does an exit 0 with an
+#     ERR line on its stderr (ruling TBF1, finding B1): 8.30.1 logs ERR and
+#     exits 0 when its own git diff writes to stderr (a noisy textconv
+#     driver, measured), having scanned nothing for the whole commit. Its
+#     stderr goes to the temp dir and is tested like CI's secret-scan job
+#     tests its log (' ERR '); the INF and WRN lines it writes on every run
+#     at the default level never refuse (measured), and the file is never
+#     printed (an ERR line quotes git's own stderr). --no-color: 8.30.1
+#     colours the log level even into a file, which hides ' ERR ' (measured).
+#     Measured on 8.30.1: --pre-commit alone scans the UNSTAGED diff, so
+#     --staged is load-bearing; GITLEAKS_CONFIG and GITLEAKS_CONFIG_TOML
+#     outrank --config and the repo file, so both are blanked for the call;
+#     gitleaks finds nothing under color.ui=always or color.diff=always (repo
+#     config or git -c), so color is forced off through GIT_CONFIG_COUNT for
+#     its own git diff; a gitleaks:allow comment silences a finding unless
+#     --ignore-gitleaks-allow is given. --config is ALWAYS given (ruling
+#     TBF2): a copy of HEAD:.gitleaks.toml, or, when HEAD has none (e.g. the
+#     commit that adds it), a file holding only the default rules, because
+#     without --config gitleaks loads the work tree's .gitleaks.toml itself;
+#     never the working-tree file, so a change cannot widen the allowlist
+#     that judges it. A .gitleaksignore in the work tree root is refused
+#     because gitleaks would honour it. The report is a template of rule id,
+#     file and line, never content (-v would print the redacted line).
+if command -v gitleaks >/dev/null 2>&1; then
+  printf '%s\n' '{{ range . }}{{ .RuleID }} {{ .File }}:{{ .StartLine }}' '{{ end }}' > "$TMP/gitleaks.tmpl" ||
+    fail "could not write the gitleaks report template"
+  if [ -e "$TOP/.gitleaksignore" ]; then
+    fail "a .gitleaksignore would silence gitleaks; remove it"
+  fi
+  set --
+  if git cat-file -e "HEAD:.gitleaks.toml" 2>/dev/null; then
+    git show "HEAD:.gitleaks.toml" > "$TMP/gitleaks.toml" ||
+      fail "could not read .gitleaks.toml from HEAD for gitleaks"
+  else
+    printf '[extend]\nuseDefault = true\n' > "$TMP/gitleaks.toml" ||
+      fail "could not write the default-rules config for gitleaks"
+  fi
+  set -- --config "$TMP/gitleaks.toml"
+  if ! GITLEAKS_CONFIG= GITLEAKS_CONFIG_TOML= GIT_CONFIG_COUNT=2 \
+       GIT_CONFIG_KEY_0=color.ui GIT_CONFIG_VALUE_0=never \
+       GIT_CONFIG_KEY_1=color.diff GIT_CONFIG_VALUE_1=never \
+       gitleaks git --pre-commit --staged --redact --no-banner --no-color \
+       --log-level error --ignore-gitleaks-allow "$@" \
+       --report-format template --report-template "$TMP/gitleaks.tmpl" \
+       --report-path "$TMP/gitleaks.txt" "$TOP" >/dev/null 2>"$TMP/gitleaks.err"; then
+    if [ -s "$TMP/gitleaks.txt" ]; then
+      cat "$TMP/gitleaks.txt" >&2
+      fail "gitleaks refused the staged changes (rule id and place above)"
+    fi
+    fail "gitleaks refused the staged changes (it exited non-zero with no finding report: a broken .gitleaks.toml, or a gitleaks other than 8.30.1)"
+  fi
+  if grep -q ' ERR ' "$TMP/gitleaks.err"; then
+    fail "gitleaks refused the staged changes (it logged an error and exited 0, so it may have scanned nothing: run gitleaks git --pre-commit --staged by hand)"
+  fi
+else
+  echo "pre-commit: WARNING gitleaks not installed - secret scan skipped (CI runs it)" >&2
+fi
+
+if [ -n "$PY_FILES" ]; then
+  materialise "$PY_FILES"
+fi
+
+# 1. Syntax: every staged .py must compile.
+if [ -n "$PY_FILES" ]; then
+  in_batches compile "$PY_FILES" || fail "python syntax error in staged files"
+fi
+
+# 2. Ruff blocking tier — real-bug classes only (undefined names, syntax,
+#    comparison-to-literal misuse). Repo-wide fuller ruleset stays report-only in CI.
+if [ -n "$PY_FILES" ]; then
+  if command -v ruff >/dev/null 2>&1; then
+    in_batches ruff "$PY_FILES" || fail "ruff blocking tier failed"
+  else
+    echo "pre-commit: WARNING ruff not installed — blocking tier skipped (pip install -r requirements-dev.txt)" >&2
+  fi
+fi
+
+# 3. Black — only files on the CI allowlist ratchet (.github/black-clean-paths.txt),
+#    intersected with what is staged. Mirrors the blocking CI step exactly.
+#    A staged path is matched against the allowlist as a whole line (its
+#    ORIGINAL repo path), then black checks the staged copy. Presence is
+#    tested with the interpreter that runs black; a missing black is a
+#    WARNING, never a silent skip.
+if [ -n "$PY_FILES" ] && [ -f .github/black-clean-paths.txt ]; then
+  ALLOW=$(grep -v -e '^[[:space:]]*#' -e '^[[:space:]]*$' .github/black-clean-paths.txt | tr -d '\r')
+  STAGED_ALLOWED=""
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    case "$NL$ALLOW$NL" in
+      *"$NL$f$NL"*) STAGED_ALLOWED="$STAGED_ALLOWED$f$NL" ;;
+    esac
+  done <<EOF
+$PY_FILES
+EOF
+  if [ -n "$STAGED_ALLOWED" ]; then
+    if python -m black --version >/dev/null 2>&1; then
+      in_batches black "$STAGED_ALLOWED" || fail "black allowlist check failed (run: python -m black <file>)"
+    else
+      echo "pre-commit: WARNING black not installed - allowlist check skipped (pip install -r requirements-dev.txt)" >&2
+    fi
+  fi
+fi
+
 # 4c. Skill frontmatter (spec T0b R3.2). The STAGED blob of every staged
 #     .claude/skills/*/SKILL.md must open with a YAML block that
 #     yaml.safe_load parses into a mapping with a non-empty name and
@@ -337,7 +553,7 @@ if [ -n "$HOOK_XTRACE" ]; then set -x; fi
 #     a skill whose frontmatter does not parse is never discovered.
 #     tests/test_skill_frontmatter.py is the CI half. Skipped with a WARNING
 #     when the hook's python cannot import PyYAML. It runs AFTER the secret
-#     checks (4, 4a, 4b), so a credential or a .env value on a frontmatter
+#     checks (4 to 4g), so a credential or a .env value on a frontmatter
 #     line is refused before the parse, and a parse error is reported by its
 #     problem and file position only (PyYAML's own message quotes the line).
 SKILL_FILES=$(git -c core.quotePath=false diff --cached --name-only --diff-filter=ACMR -- '.claude/skills/*/SKILL.md')
@@ -399,6 +615,76 @@ if [ -n "$SQL_FILES" ]; then
     PYTHONIOENCODING=utf-8 sqlfluff lint --dialect postgres $SQL_FILES || fail "sqlfluff failed on staged migrations"
   else
     echo "pre-commit: NOTE sqlfluff not installed — staged migrations not linted" >&2
+  fi
+fi
+
+# 6. ESLint on the STAGED content of SmartCompareApp/src/*.ts(x) (spec T0b
+#    R2.4, correction 9), with the project's own eslint by path, run from
+#    SmartCompareApp/ where the flat config resolves (measured: a copy linted
+#    from outside SmartCompareApp/ is "outside of base path" and passes).
+#    Exit 1 (errors) and exit 2 (a crash or a config error) refuse; warnings
+#    never do (the tree carries about 150). A file with no unstaged change has
+#    a working copy equal to its staged blob, so all such files are linted by
+#    path in ONE process (each eslint process costs about 2 s to start here),
+#    at most 64 paths per call like the Python steps (ruling TBF5 c: a
+#    Windows command line tops out near 32k characters).
+#    A partially staged file goes through --stdin under its
+#    SmartCompareApp-relative name (rules are scoped by path, e.g. the i18n
+#    literal rule to src/screens), one process each, fed from its blob
+#    written to the temp dir first, so a failed read refuses instead of
+#    linting an empty stdin. More than 10 partially staged files: their
+#    working copies join the by-path process, with a NOTE. No node, or no
+#    SmartCompareApp/node_modules (every agent worktree, CI's backend job):
+#    one NOTE when a client file is staged, and the commit proceeds.
+ESLINT_FILES=$(git -c core.quotePath=false diff --cached --name-only --diff-filter=ACMR -- 'SmartCompareApp/src/*.ts' 'SmartCompareApp/src/*.tsx')
+if [ -n "$ESLINT_FILES" ]; then
+  if [ -f "$TOP/SmartCompareApp/node_modules/eslint/bin/eslint.js" ] && command -v node >/dev/null 2>&1; then
+    ESLINT_DIRTY=$(git -c core.quotePath=false diff --name-only -- 'SmartCompareApp/src/*.ts' 'SmartCompareApp/src/*.tsx') ||
+      fail "could not list the unstaged client files for eslint"
+    ESLINT_CLEAN=""
+    ESLINT_PARTIAL=""
+    ESLINT_NPARTIAL=0
+    while IFS= read -r f; do
+      [ -n "$f" ] || continue
+      case "$NL$ESLINT_DIRTY$NL" in
+        *"$NL$f$NL"*) ESLINT_PARTIAL="$ESLINT_PARTIAL$f$NL"; ESLINT_NPARTIAL=$((ESLINT_NPARTIAL + 1)) ;;
+        *) ESLINT_CLEAN="$ESLINT_CLEAN$f$NL" ;;
+      esac
+    done <<EOF
+$ESLINT_FILES
+EOF
+    if [ "$ESLINT_NPARTIAL" -gt 10 ]; then
+      echo "pre-commit: NOTE more than 10 partially staged client files - eslint read their working copies" >&2
+      ESLINT_CLEAN="$ESLINT_CLEAN$ESLINT_PARTIAL"
+      ESLINT_PARTIAL=""
+    fi
+    set --
+    while IFS= read -r f; do
+      [ -n "$f" ] || continue
+      set -- "$@" "${f#SmartCompareApp/}"
+      if [ $# -ge 64 ]; then
+        (cd "$TOP/SmartCompareApp" && node node_modules/eslint/bin/eslint.js -- "$@") ||
+          fail "eslint found errors in staged client files"
+        set --
+      fi
+    done <<EOF
+$ESLINT_CLEAN
+EOF
+    if [ $# -gt 0 ]; then
+      (cd "$TOP/SmartCompareApp" && node node_modules/eslint/bin/eslint.js -- "$@") ||
+        fail "eslint found errors in staged client files"
+    fi
+    while IFS= read -r f; do
+      [ -n "$f" ] || continue
+      git show ":$f" > "$TMP/eslint.stdin" ||
+        fail "could not read the staged content of $f"
+      (cd "$TOP/SmartCompareApp" && node node_modules/eslint/bin/eslint.js --stdin --stdin-filename "${f#SmartCompareApp/}") < "$TMP/eslint.stdin" ||
+        fail "eslint found errors in the staged content of $f"
+    done <<EOF
+$ESLINT_PARTIAL
+EOF
+  else
+    echo "pre-commit: NOTE eslint not available (no node or no SmartCompareApp/node_modules) - staged client files not linted" >&2
   fi
 fi
 
