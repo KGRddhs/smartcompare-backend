@@ -491,3 +491,96 @@ jobs:
             --list-json "$RUNNER_TEMP/preview-list.json" \
             --view-json "$RUNNER_TEMP/preview-group.json" \
             --main origin/main --max-behind 1
+
+  # Secret scan of the commits this event adds (spec T0b R5, review corrections
+  # 4, 5 and 11, rulings TB6 and TB8). This job is DETECTION, not prevention:
+  # the repository is public, so a secret in a pushed branch is world-readable
+  # before this job runs. A red secret-scan means ROTATE THE KEY FIRST, then
+  # rewrite the branch. The pre-commit hook (.githooks/pre-commit) is the
+  # prevention layer.
+  # Range: a pull_request scans base.sha..head.sha (the PR's own commits); a
+  # push scans before..sha, or only the pushed commit when `before` is the
+  # all-zero sha (a new branch). On a push origin/main..HEAD would be empty,
+  # which is why the event's own shas are used. History before the range is
+  # not scanned.
+  # The config is read from the BASE of the range (the PR base, or the
+  # pre-push commit), so a change cannot widen the allowlist that judges it;
+  # with no .gitleaks.toml there the default rules are written out and passed
+  # (without --config gitleaks loads the SCANNED tree's own file, measured).
+  # A tracked .gitleaksignore fails the job (gitleaks honours one in the
+  # scanned directory, measured), and so does a range end missing from the
+  # clone or an ERR line: gitleaks then scans nothing and exits 0 (measured;
+  # --no-color, because 8.30.1 colours the level even into a file).
+  # The tarball is checked against the sha256 the orchestrator read from the
+  # v8.30.1 release's own gitleaks_8.30.1_checksums.txt: a same-origin
+  # checksum proves integrity in transit, not authenticity.
+  secret-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # both ends of the range must be in the clone; depth 1 has neither
+
+      - name: Install gitleaks 8.30.1 (release tarball, sha256-verified)
+        run: |
+          curl -sSfL --retry 3 -o "$RUNNER_TEMP/gitleaks.tgz" \
+            https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz
+          echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  $RUNNER_TEMP/gitleaks.tgz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/gitleaks.tgz" -C "$RUNNER_TEMP" gitleaks
+          test "$("$RUNNER_TEMP/gitleaks" version)" = "8.30.1"
+
+      - name: gitleaks over the commits of this event (redacted)
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PUSH_SHA: ${{ github.sha }}
+        run: |
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            CFG_REV="$PR_BASE"
+            RANGE="$PR_BASE..$PR_HEAD"
+            ENDS="$PR_BASE $PR_HEAD"
+          elif [ "$PUSH_BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            CFG_REV=""
+            RANGE="-1 $PUSH_SHA"
+            ENDS="$PUSH_SHA"
+          else
+            CFG_REV="$PUSH_BEFORE"
+            RANGE="$PUSH_BEFORE..$PUSH_SHA"
+            ENDS="$PUSH_BEFORE $PUSH_SHA"
+          fi
+          for end in $ENDS; do
+            if ! git cat-file -e "$end^{commit}" 2>/dev/null; then
+              echo "::error::range end $end is not in the clone (a force push?): nothing was scanned"
+              exit 1
+            fi
+          done
+          if [ -n "$(git ls-files -- .gitleaksignore)" ]; then
+            echo "a tracked .gitleaksignore would silence this scan; remove it"
+            exit 1
+          fi
+          if [ -n "$CFG_REV" ] && git cat-file -e "$CFG_REV:.gitleaks.toml" 2>/dev/null; then
+            git show "$CFG_REV:.gitleaks.toml" > "$RUNNER_TEMP/gitleaks.toml"
+            CFG_FROM="$CFG_REV"
+          else
+            printf '[extend]\nuseDefault = true\n' > "$RUNNER_TEMP/gitleaks.toml"
+            CFG_FROM="the default rules"
+          fi
+          echo "secret-scan range: $RANGE (config from $CFG_FROM)"
+          rc=0
+          "$RUNNER_TEMP/gitleaks" git --log-opts="$RANGE" --redact --no-banner --no-color -v \
+            --exit-code 1 --ignore-gitleaks-allow --config "$RUNNER_TEMP/gitleaks.toml" . \
+            > "$RUNNER_TEMP/gitleaks.log" 2>&1 || rc=$?
+          cat "$RUNNER_TEMP/gitleaks.log"
+          if grep -q ' ERR ' "$RUNNER_TEMP/gitleaks.log"; then
+            echo "::error::gitleaks logged an error, so the range was not scanned reliably"
+            exit 1
+          fi
+          if [ "$rc" -ne 0 ]; then
+            echo "::error::secret-scan found a credential - ROTATE THE KEY FIRST, then rewrite the branch"
+            exit "$rc"
+          fi

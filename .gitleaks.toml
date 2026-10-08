@@ -1,0 +1,101 @@
+# .gitleaks.toml - repo config for gitleaks 8.30.x (T0b Phase B: spec R1.4,
+# review corrections 2 and 3, rulings TB4 and TB5).
+#
+# [extend] useDefault = true MUST stay the first table: a config without it
+# REPLACES the default ruleset and scans with no rules at all (measured on
+# 8.30.1: rc=0 on a staged JWT). Every allowlist below names ONE benign shape,
+# by a regex on the rule's match (the keyword context plus the value) or on
+# the secret value itself, and says why it is benign. There is NO path
+# allowlist on docs/investigations/: agent reports are where production
+# secrets were dumped before (CLAUDE.md principle 10), so that tree is scanned
+# like any other. The two path entries are AND-scoped: one file for the
+# password shape, and tests/fixtures/ for three public-client-key rules only.
+#
+# Who reads this file: the pre-commit hook passes gitleaks a copy of
+# HEAD:.gitleaks.toml, and CI's secret-scan job reads the copy at the BASE of
+# the range it scans, so a change to this file judges the commits AFTER it,
+# never the commit that makes it. Widen it in its own PR.
+
+title = "smartcompare gitleaks config"
+
+[extend]
+useDefault = true
+
+# A sha256 file digest printed after a file name: agent reports list
+# "<file>.<ext>: <64 hex>" (also "= ", ", " and the JSON ["<file>", "<hex>"]
+# pair). The anchor is a real file extension right before the separator, so a
+# bare 64-hex value (the shape of a rotated ADMIN_API_KEY) and an attribute
+# such as self.token = "<64 hex>" are still reported (review correction 2).
+[[allowlists]]
+description = "sha256 digest that follows a file name (file-hash lists in reports)"
+regexTarget = "match"
+regexes = ['''[\w-]\.(?:py|pyi|ts|tsx|js|jsx|mjs|cjs|json|md|sql|txt|ya?ml|toml|sh|ps1|html?|css|png|jpe?g|webp|ttf|lock|snap|csv|log|out|diff|patch|xml|svg)"?\s*[:=,]\s*"?[0-9a-f]{64}\b''']
+
+# The OpenAI 401 text "Incorrect API key provided: sk-..." quoted by tests and
+# agent reports with a SHORT fake key. Only keys shorter than the hook's own
+# sk- floor (20 or more characters after "sk-") are allowed, so a real key
+# pasted into that sentence is still reported.
+[[allowlists]]
+description = "OpenAI error text quoting a fake sk- key shorter than a real one"
+regexTarget = "match"
+regexes = ['''API key provided: sk-[A-Za-z0-9_-]{0,19}(?:[^A-Za-z0-9_-]|$)''']
+
+# The "new_password": "<value>" fixtures of the 429 lockout tests, in that ONE
+# file (condition AND: the path AND the shape; review correction 3). A new
+# password fixture is built at runtime, or gets its own entry in its own PR.
+[[allowlists]]
+description = "password fixtures of tests/test_retro_w1_9_429.py only"
+condition = "AND"
+paths = ['''^tests/test_retro_w1_9_429\.py$''']
+regexTarget = "match"
+regexes = ['''(?i)(?:new_|current_|old_)?password"\s*:\s*"''']
+
+# A login-response example in a spec table: {"access_token":"<fixture>"} with a
+# value of 20 characters or fewer. A real Supabase access token is a JWT of
+# hundreds of characters (the jwt rule and the hook's JWT branch still fire).
+[[allowlists]]
+description = "short access_token fixture in a documented login response"
+regexTarget = "match"
+regexes = ['''access_token"\s*:\s*"[^"\s]{1,20}"''']
+
+# Workflow scripts (docs/investigations/*/scripts/*.js) name each agent row
+# with a short kebab-case id: { key: 'expo-sdk54-u4b', ... }. At most 20
+# characters, so a UUID (36) or any provider key (32 or more) is still
+# reported.
+[[allowlists]]
+description = "short id in a workflow script row ({ key: '<id of 20 chars or fewer>' })"
+regexTarget = "match"
+regexes = ['''\bkey:\s*'[A-Za-z0-9-]{1,20}'$''']
+
+# Values that are code, not credentials. These test the SECRET (the default
+# target), which is narrower than the match: a real value next to the same
+# keyword is still reported. A pytest function name; an UPPER_SNAKE constant
+# set to a small integer; a lower_snake name set to a Python literal.
+[[allowlists]]
+description = "pytest node or function name quoted in a report (test_...)"
+regexes = ['''^test_[a-z0-9]+(?:_[a-z0-9]+)+$''']
+
+[[allowlists]]
+description = "UPPER_SNAKE constant assigned a small integer in prose (NAME=3)"
+regexes = ['''^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+=[0-9]{1,6}$''']
+
+[[allowlists]]
+description = "lower_snake name assigned a Python literal in prose (name=True.)"
+regexes = ['''^[a-z][a-z0-9]*(?:_[a-z0-9]+)+=(?:True|False|None)\.?$''']
+
+# A secret that is already masked or truncated is not a secret: REDACTED, a
+# run of stars, or an ellipsis inside the value.
+[[allowlists]]
+description = "already-redacted or truncated values (REDACTED, ***, ...)"
+regexes = ['''REDACTED''', '''\*{3,}''', '''\.\.\.''']
+
+# Third-party pages captured as test fixtures embed the site's PUBLIC client
+# keys (search, maps, analytics). Only the three public-client-key rules are
+# lifted, and only under tests/fixtures/ (ruling TB5); the jwt rule stays
+# active there, and the hook's own .env value pass still refuses any of OUR
+# values in a fixture, whatever its shape.
+[[allowlists]]
+description = "public client keys in third-party pages captured under tests/fixtures/ (TB5)"
+condition = "AND"
+paths = ['''^tests/fixtures/''']
+targetRules = ["generic-api-key", "gcp-api-key", "algolia-api-key"]

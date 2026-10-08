@@ -1407,8 +1407,13 @@ PRE_COMMIT_HOOK = REPO_ROOT / ".githooks" / "pre-commit"
 
 # PIN: the four existing credential branches and the pipeline that feeds them,
 # byte-equal (the new branches go in a SEPARATE grep, spec correction 6).
-HOOK_CREDENTIAL_PIPE = (
-    "if git diff --cached -U0 | grep -E '^\\+' | grep -Ev '^\\+\\+\\+' | \\"
+HOOK_CREDENTIAL_PIPE = 'if awk "$ADDED_LINES_AWK" "$STAGED_DIFF" | \\'
+# Ruling TB2 (Phase B): the staged diff is read ONCE, raw view then textconv.
+HOOK_STAGED_DIFF_RAW = (
+    "git diff --cached --no-color --no-ext-diff -U0 --text --no-textconv &&"
+)
+HOOK_STAGED_DIFF_TEXTCONV = (
+    "git diff --cached --no-color --no-ext-diff -U0 --text --textconv"
 )
 HOOK_CREDENTIAL_GREP = (
     "   grep -qE '(\\bsk-[A-Za-z0-9_-]{20,}|AKIA[0-9A-Z]{16}|xox[baprs]-[A-Za-z0-9-]{10,}"
@@ -1462,6 +1467,13 @@ def test_hook_keeps_the_four_credential_branches_byte_equal():
     i = lines.index(HOOK_CREDENTIAL_GREP)
     assert lines[i - 1] == HOOK_CREDENTIAL_PIPE, "the credential pipeline changed"
     assert lines[i + 1].startswith(HOOK_CREDENTIAL_FAIL), "the refusal text changed"
+    stripped = [ln.strip() for ln in lines]
+    assert HOOK_STAGED_DIFF_RAW in stripped, "the raw staged-diff line changed"
+    j = stripped.index(HOOK_STAGED_DIFF_RAW)
+    assert (
+        stripped[j + 1] == HOOK_STAGED_DIFF_TEXTCONV
+    ), "the textconv diff line changed"
+    assert j < i, "the staged diff must be read before the credential grep"
 
 
 def test_hook_keeps_the_sqlfluff_invocation_byte_equal():
