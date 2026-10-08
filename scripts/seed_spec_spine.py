@@ -387,6 +387,7 @@ async def extract_spine_specs(
             ],
             max_tokens=900,
             temperature=0.1,
+            store=False,  # U3c: never a stored completion
         )
         raw_text = (response.choices[0].message.content or "").strip()
         if raw_text.startswith("```"):

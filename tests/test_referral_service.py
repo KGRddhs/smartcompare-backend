@@ -1008,8 +1008,8 @@ class TestLoop2HelperCoverage:
         kwargs = mock_push.call_args.kwargs
         assert kwargs["referrer_user_id"] == "ref-1"
         assert kwargs["bonus_amount"] == 5
-        # Display name extracted from email local part
-        assert kwargs["invitee_display_name"] == "sara"
+        # U3c: the email local part is never sent; no display name -> nameless push
+        assert kwargs["invitee_display_name"] == ""
 
     @pytest.mark.asyncio
     async def test_send_loop2_push_swallows_errors(self):

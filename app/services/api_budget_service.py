@@ -4,6 +4,7 @@ Uses cache_service helpers (_redis_get, _redis_set, _redis_incr, _redis_expire)
 for Redis access. Gracefully degrades if Redis is unavailable.
 """
 import asyncio
+import collections.abc
 import json
 import os
 import time
@@ -962,7 +963,17 @@ async def guarded_llm_create(client, **kwargs):
     (structured_comparison_service.compare_from_text and
     compare_from_text_streaming), because a check here alone saves the LLM call
     and still pays for all the scraping, which is the entire cost being attacked.
+
+    U3c (privacy, unconditional, no flag): every chat completion is sent with
+    store=False on both branches, overriding any caller value, so none becomes a
+    stored completion (dashboard Logs); an extra_body "store" entry is forced to
+    False too (the SDK merges extra_body over the body). The organisation
+    data-sharing setting (OA2) is separate and unaffected (OA3).
     """
+    kwargs["store"] = False
+    eb = kwargs.get("extra_body")
+    if isinstance(eb, collections.abc.Mapping) and "store" in eb:
+        kwargs["extra_body"] = {**eb, "store": False}
     if not llm_preflight_breaker_enabled():
         return await client.chat.completions.create(**kwargs)
     admitted, outcome_matters, probe = _openai_dispatch_admission()
