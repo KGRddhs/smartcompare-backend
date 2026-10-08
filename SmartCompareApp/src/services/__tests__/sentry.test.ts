@@ -116,7 +116,7 @@ describe('scrubBeforeSend', () => {
       },
     };
     const out = scrubBeforeSend(event, {});
-    expect(out.exception.values[0].value).toBe('Auth failed with token [JWT_REDACTED]');
+    expect([out.exception.values[0].type, out.exception.values[0].value]).toEqual(['Error', '']);
   });
 
   // M18 MB-security-01 — THE shape production events actually have:
@@ -278,5 +278,196 @@ describe('initSentry hook registration', () => {
     expect(opts.beforeBreadcrumb).toBe(scrubBeforeBreadcrumb);
     expect(opts.beforeSendTransaction).toBe(scrubBeforeSendTransaction);
     expect(opts.sendDefaultPii).toBe(false);
+  });
+});
+
+// S74 CLIENT-TRUTH (ruling UP1, FABLE_RULINGS_CLIENT_TRUTH.md CT9/CT11/CT12) -
+// client parity with app/services/sentry_service.py: the query rung carries
+// the backend's ten _QUERY_STRING_PII_PARAMS names in order (the client REST
+// compare sends product_a / product_b as query params, api.ts:692-705), and
+// scrubBeforeSend blanks every exception value except three axios-generated
+// shapes matched whole, and scrubs event.message and the string values of
+// event.extra (the B4-DIAG captureMessage sites, authService.ts:878/960/985/997).
+// Every sentinel is built at runtime; no credential-shaped literal.
+const ctFs: typeof import('fs') = jest.requireActual('fs');
+const ctPath: typeof import('path') = jest.requireActual('path');
+const ctEmail = () => 'shopper' + '@' + 'example.test';
+const ctBearer = () => 'Bear' + 'er ' + 'abc' + '.def123';
+
+describe('S74 CLIENT-TRUTH query rung parity (UP1)', () => {
+  it('CT-Y1: product_a / product_b compare params are redacted; nocache is kept', () => {
+    const url =
+      'https://x.test/api/v1/text/compare?product_a=iPhone%2015&product_b=Galaxy%20S24&nocache=true';
+    expect(scrubString(url)).toBe(
+      'https://x.test/api/v1/text/compare?product_a=[QUERY_REDACTED]&product_b=[QUERY_REDACTED]&nocache=true',
+    );
+  });
+
+  it('CT-Y2: url / url1 / url2 params are redacted', () => {
+    const url =
+      'https://x.test/api/v1/url/compare?url=https%3A%2F%2Fshop.test%2Fp%2F1&url1=https%3A%2F%2Fa.test%2Fx&url2=https%3A%2F%2Fb.test%2Fy';
+    expect(scrubString(url)).toBe(
+      'https://x.test/api/v1/url/compare?url=[QUERY_REDACTED]&url1=[QUERY_REDACTED]&url2=[QUERY_REDACTED]',
+    );
+  });
+
+  it('CT-Y2 GUARD: params that merely start with a listed name stay untouched (urls / product_a_id)', () => {
+    const url = 'https://x.test/a?urls=keep&product_a_id=keep';
+    expect(scrubString(url)).toBe(url);
+  });
+
+  it('CT-Y3: the rung names (U8 parser regex over sentry.ts) equal the backend _QUERY_STRING_PII_PARAMS tuple, in order', () => {
+    const src = ctFs.readFileSync(ctPath.resolve(__dirname, '../sentry.ts'), 'utf8');
+    const rung = src.match(/\[\?&\]\(\?:([A-Za-z0-9_|]+)\)/);
+    const py = ctFs.readFileSync(
+      ctPath.resolve(__dirname, '../../../../app/services/sentry_service.py'),
+      'utf8',
+    );
+    const tuple = py.match(/_QUERY_STRING_PII_PARAMS\s*=\s*\(([^)]*)\)/);
+    expect(rung).not.toBeNull();
+    expect(tuple).not.toBeNull();
+    const backend = Array.from((tuple as RegExpMatchArray)[1].matchAll(/"([^"]+)"/g)).map((m) => m[1]);
+    expect(backend.length).toBeGreaterThanOrEqual(10);
+    expect((rung as RegExpMatchArray)[1].split('|')).toEqual(backend);
+  });
+
+  it('CT-Y5: beforeBreadcrumb redacts product_a / product_b on an XHR crumb data.url', () => {
+    const crumb: any = {
+      category: 'xhr',
+      data: {
+        url: 'https://x.test/api/v1/text/compare?product_a=Vitamin%20D3&product_b=Omega%203',
+        method: 'GET',
+        status_code: 200,
+      },
+    };
+    const out = scrubBeforeBreadcrumb(crumb, {});
+    expect(out.data.url).toBe(
+      'https://x.test/api/v1/text/compare?product_a=[QUERY_REDACTED]&product_b=[QUERY_REDACTED]',
+    );
+    expect(out.data.method).toBe('GET');
+    expect(out.data.status_code).toBe(200);
+  });
+});
+
+describe('S74 CLIENT-TRUTH scrubBeforeSend exception values, message and extra (UP1 R1, CT11, CT12)', () => {
+  const frames = () => [
+    { filename: 'app:///index.android.bundle', function: 'compare', lineno: 1, colno: 2345 },
+  ];
+
+  it('CT-Y4: every non-allowlisted exception value is blanked; type, mechanism and stacktrace are kept; the breadcrumb scrub is unchanged', () => {
+    const event: any = {
+      exception: {
+        values: [
+          {
+            type: 'Error',
+            value: 'Compare failed for ' + ctEmail() + ' query iPhone 15 vs Galaxy S24',
+            mechanism: { type: 'onunhandledrejection', handled: false },
+            stacktrace: { frames: frames() },
+          },
+          { type: 'TypeError', value: "undefined is not an object (evaluating 'r.price.amount')" },
+        ],
+      },
+      breadcrumbs: [{ message: 'Sending ' + ctBearer() + ' to backend', data: {} }],
+    };
+    const out = scrubBeforeSend(event, {});
+    expect(out.exception.values.map((v: any) => v.value)).toEqual(['', '']);
+    expect(out.exception.values.map((v: any) => v.type)).toEqual(['Error', 'TypeError']);
+    expect(out.exception.values[0].mechanism).toEqual({ type: 'onunhandledrejection', handled: false });
+    expect(out.exception.values[0].stacktrace).toEqual({ frames: frames() });
+    expect(out.breadcrumbs[0].message).toBe('Sending Bearer [REDACTED] to backend');
+  });
+
+  it('CT11 GUARD: the three axios-generated shapes are kept verbatim', () => {
+    const kept = ['Request failed with status code 500', 'Network Error', 'timeout of 15000ms exceeded'];
+    const event: any = {
+      exception: { values: kept.map((value) => ({ type: 'AxiosError', value })) },
+    };
+    const out = scrubBeforeSend(event, {});
+    expect(out.exception.values.map((v: any) => v.value)).toEqual(kept);
+  });
+
+  it('CT11: a PII-bearing value and the near-misses of the allowlist are blanked (matched whole)', () => {
+    const values = [
+      'Lookup failed for ' + ctEmail(),
+      'Network Error: ' + 'x',
+      'Request failed with status code ' + '5000',
+      'Request failed with status code 500 for ' + ctEmail(),
+      'timeout of ms exceeded',
+      'timeout of 15000ms exceeded at https://x.test/a?q=' + 'private+wish',
+    ];
+    const event: any = {
+      exception: { values: values.map((value) => ({ type: 'Error', value })) },
+    };
+    const out = scrubBeforeSend(event, {});
+    expect(out.exception.values.map((v: any) => v.value)).toEqual(values.map(() => ''));
+  });
+
+  it('CT12: event.message and every string value of event.extra get the scrub patterns; non-strings are untouched', () => {
+    const event: any = {
+      message:
+        'b4_diag sign-in failed with ' +
+        ctBearer() +
+        ' at https://x.test/api/v1/text/compare?q=' +
+        'private+wish',
+      extra: {
+        errMessage: 'Request failed for https://x.test/a?email=' + 'me%40example.test',
+        server_error: 'upstream said ' + ctBearer(),
+        attempt: 2,
+        retried: true,
+        note: null,
+      },
+    };
+    const out = scrubBeforeSend(event, {});
+    expect(out.message).toBe(
+      'b4_diag sign-in failed with Bearer [REDACTED] at https://x.test/api/v1/text/compare?q=[QUERY_REDACTED]',
+    );
+    expect(out.extra.errMessage).toBe('Request failed for https://x.test/a?email=[QUERY_REDACTED]');
+    expect(out.extra.server_error).toBe('upstream said Bearer [REDACTED]');
+    expect(out.extra.attempt).toBe(2);
+    expect(out.extra.retried).toBe(true);
+    expect(out.extra.note).toBeNull();
+  });
+});
+
+describe('S74 CLIENT-TRUTH allowlist near-misses (ruling G6: matched whole, case-sensitive, untrimmed)', () => {
+  const blankedValues = (values: string[]) => {
+    const event: any = {
+      exception: { values: values.map((value) => ({ type: 'AxiosError', value })) },
+    };
+    return scrubBeforeSend(event, {}).exception.values.map((v: any) => v.value);
+  };
+
+  it('G6: a trailing-whitespace variant of an allowlisted shape is blanked', () => {
+    const values = [
+      'Network Error' + ' ',
+      'Request failed with status code 500' + '\n',
+      'timeout of 15000ms exceeded' + '\t',
+    ];
+    expect(blankedValues(values)).toEqual(values.map(() => ''));
+  });
+
+  it('G6: a case variant of an allowlisted shape is blanked', () => {
+    const values = [
+      'network error',
+      'NETWORK ERROR',
+      'request failed with status code 500',
+      'Timeout of 15000ms exceeded',
+    ];
+    expect(blankedValues(values)).toEqual(values.map(() => ''));
+  });
+});
+
+describe('S74 CLIENT-TRUTH allowlist prefix near-misses (ruling Y6: anchored at the start)', () => {
+  it('Y6: an allowlisted shape with any text before it is blanked', () => {
+    const values = [
+      'x ' + 'Network Error',
+      ctEmail() + ' ' + 'Request failed with status code ' + '500',
+      'a ' + 'timeout of 1ms exceeded',
+    ];
+    const event: any = {
+      exception: { values: values.map((value) => ({ type: 'AxiosError', value })) },
+    };
+    const out = scrubBeforeSend(event, {});
+    expect(out.exception.values.map((v: any) => v.value)).toEqual(values.map(() => ''));
   });
 });
