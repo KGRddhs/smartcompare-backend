@@ -1,0 +1,3 @@
+{"mutant": "bs1_sk_dropped", "k": "(b3_ or f1_) and not dash", "files": ["tests/test_precommit_hook_phase_b_round2.py"], "mutant_sha": "e98335c19809", "pyt": ["[pyt] tag=adv5_m_bs1_sk_dropped start=2026-10-07 22:02:37 end=2026-10-07 22:12:43 elapsed=605s bound=600s status=TIMEOUT rc=124 log=C:\\Users\\SYNACK~1\\AppData\\Local\\Temp\\claude\\C--Users-SynAckITPC-Documents-AI\\d376cb56-c600-4d76-bfdb-9e15feff0cdc\\scratchpad\\t0b_b\\adv5\\m_bs1_sk_dropped.log"], "failed": [], "summary": [], "rc": 124, "restored_sha": "4e9a583c7657", "restore_ok": true, "sec": 608}
+EXIT 0
+4e9a583c76575fe774312152cdf2b53759719c203473325599c9b9fbb3ed4e3b *C:/Users/SynAckITPC/Documents/AI/sc-s71-t0b/.githooks/pre-commit

@@ -1,0 +1,10 @@
+207,210c207,210
+< # LC_ALL=C keeps an invalid UTF-8 byte from making grep do the same. With
+< # awk working, the readers above see the same lines, so this refuses nothing
+< # they pass, except external-diff lines the grep of 4-pre dropped on an
+< # invalid byte.
+---
+> # LC_ALL=C keeps grep, under a UTF-8 locale, from dropping a line that holds
+> # an invalid UTF-8 byte. With awk working, the readers above see the same
+> # lines, so this refuses nothing they pass, except external-diff lines the
+> # grep of 4-pre dropped on an invalid byte.

@@ -1,0 +1,2 @@
+['(plain)'] ['PARAMS=set', 'plain=', 'override=never']
+['-c', 'color.ui=always'] ['PARAMS=set', 'plain=always', 'override=always']

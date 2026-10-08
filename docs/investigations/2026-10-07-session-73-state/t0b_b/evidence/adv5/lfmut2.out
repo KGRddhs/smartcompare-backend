@@ -1,0 +1,13 @@
+{"mutant": "m1_ext_reader_dropped", "scen": "da_ext_reveal_ff_same_line_utf8", "cur_sh": 1, "base_sh": 0, "mut_sh": 0, "mut_leak_sh": [], "mut_dash": 0, "mut_leak_dash": [], "verdict": "KILLED-BY-SCENARIO"}
+{"mutant": "m2_tr_reader_dropped", "scen": "da_textconv_hide_akia", "cur_sh": 1, "base_sh": 0, "mut_sh": 0, "mut_leak_sh": [], "mut_dash": 0, "mut_leak_dash": [], "verdict": "KILLED-BY-SCENARIO"}
+{"mutant": "bs1_sk_dropped", "scen": "da_sk_only", "cur_sh": 1, "base_sh": 1, "mut_sh": 0, "mut_leak_sh": [], "mut_dash": 0, "mut_leak_dash": [], "verdict": "KILLED-BY-SCENARIO"}
+{"mutant": "bs1_xox_dropped", "scen": "da_xox_only", "cur_sh": 1, "base_sh": 1, "mut_sh": 0, "mut_leak_sh": [], "mut_dash": 0, "mut_leak_dash": [], "verdict": "KILLED-BY-SCENARIO"}
+{"mutant": "bs2_credurl_dropped", "scen": "da_credurl_only", "cur_sh": 1, "base_sh": 0, "mut_sh": 0, "mut_leak_sh": [], "mut_dash": 0, "mut_leak_dash": [], "verdict": "KILLED-BY-SCENARIO"}
+{"mutant": "bs_deleted_lines_too", "scen": "deleted_line_only", "cur_sh": 0, "base_sh": 0, "mut_sh": 1, "mut_leak_sh": [], "mut_dash": 1, "mut_leak_dash": [], "verdict": "KILLED-BY-SCENARIO"}
+{"mutant": "bs_plus3_filter_dropped", "scen": "wa_sk_learn_path_header", "cur_sh": 0, "base_sh": 0, "mut_sh": 1, "mut_leak_sh": [], "mut_dash": 1, "mut_leak_dash": [], "verdict": "KILLED-BY-SCENARIO"}
+{"mutant": "bs_plus3_filter_dropped", "scen": "plusplus_content_akia", "cur_sh": 1, "base_sh": 0, "mut_sh": 1, "mut_leak_sh": [], "mut_dash": 1, "mut_leak_dash": [], "verdict": "same"}
+{"mutant": "bs_ext_reader_lc_dropped", "scen": "da_ext_reveal_ff_same_line_utf8", "cur_sh": 1, "base_sh": 0, "mut_sh": 0, "mut_leak_sh": [], "mut_dash": 0, "mut_leak_dash": [], "verdict": "KILLED-BY-SCENARIO"}
+{"mutant": "bs_tr_nul_to_space", "scen": "da_textattr_nul_same_line_akia", "cur_sh": 0, "base_sh": 0, "mut_sh": 1, "mut_leak_sh": [], "mut_dash": 1, "mut_leak_dash": [], "verdict": "KILLED-BY-SCENARIO"}
+{"mutant": "bs_tr_nul_to_space", "scen": "utf16_txt", "cur_sh": 1, "base_sh": 0, "mut_sh": 1, "mut_leak_sh": [], "mut_dash": 1, "mut_leak_dash": [], "verdict": "same"}
+{"mutant": "bs_reads_only_ext_block", "scen": "dead_awk_akia_after_png", "cur_sh": 1, "base_sh": 1, "mut_sh": 1, "mut_leak_sh": [], "mut_dash": 1, "mut_leak_dash": [], "verdict": "same"}
+LFMUT EXIT 0

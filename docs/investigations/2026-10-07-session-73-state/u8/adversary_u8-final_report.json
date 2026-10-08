@@ -1,0 +1,85 @@
+{
+ "verdict": "SOUND_WITH_MINORS",
+ "findings": [
+  {
+   "id": "F1",
+   "severity": "minor",
+   "title": "B1 is not fully fixed: when a value is changed to '' after a fill, the script exits 0 and the old text stays in the policy (the stated limit says HOSTING_REGIONS is covered, but it is not)",
+   "evidence": "probe_refill.py on temp copies in the notes folder (none in the worktree): a full fill (rc0), then one change, then a --dry-run. HOSTING_REGIONS 'Ireland' -> '' (and _AR -> ''): rc0, no output; the policy still says ', and in Ireland (our database, hosting and temporary-storage providers)'. The fill-in data comment documents '' as a legitimate value ('' when unknown). PRIVACY_EMAIL -> '': rc0, the old email stays, although a first fill refuses '' ('is empty but the documents use it'). Cause: scripts/fill_in_legal.py clause_problems() skips every {value} table (the 'any(\"{value}\" in str(t) ...)' line, file line 294), and _unapplied_values() skips empty values ('not value.strip()', line 354). The fix report's stated limit says 'HOSTING_REGIONS_CLAUSE ... caught through ... the HOSTING_REGIONS placeholder check'. That holds only when one non-empty value is changed to another. The realistic B1 path is fixed: a native-review change to WITHDRAW_PATH_AR or GOVERNING_LAW_AR that is not a substring of the old value exits 3 (6 parametrized nodes plus my probes: ANON_LOG_RETENTION rc3, deletion 043->old rc3; a territories re-select rc0 writes correctly; the same data rc0 with no change).",
+   "fix": "In clause_problems, when a {value} table's selected key is 'empty', require the literal tail of the 'nonempty' variant (variant.split('{value}', 1)[1], e.g. ' (our database, hosting and temporary-storage providers)') to be absent from that language's documents. In _unapplied_values, refuse '' for every key except HOSTING_REGIONS / HOSTING_REGIONS_AR, which matches what a first fill already enforces. Append one parametrized case (HOSTING_REGIONS -> '') to the B1 nodes, and correct the stated limit."
+  },
+  {
+   "id": "F2",
+   "severity": "minor",
+   "title": "Test strength: the A3 retention fix is pinned in EN only, so the AR linked-security line can fall back to the A3 defect with every content node green",
+   "evidence": "Mutant MA1b (mutant_rendered.py): in privacy_policy_ar.md s8, the value of the linked-to-your-account security line is replaced by '<PLACEHOLDER:SECURITY_LOG_RETENTION_AR>.', which is the A3 defect in AR only. The landing regions are then re-rendered, as any real edit would be. Result: SURVIVED. [pyt] tag=advf-MA1b elapsed=7s status=FAIL rc=1, 1 failed (T2 only) / 57 passed over test_legal_docs_u8.py + test_legal_routes.py; restore sha-verified. Without the re-render (MA1), only test_t5_landing_regions_match_markdown_render failed, which is a byte-equality kill, not a content kill. Cause: test_fix_a3_security_record_retention_is_scoped checks the linked line's value ('as long as your account exists') only in the en_linked block. For AR it checks labels only. test_fix_a4 does not fire because the mutated value no longer contains the AR word for 'your account'.",
+   "fix": "Add the AR twin to test_fix_a3: the AR linked bullet's value must contain the \\u-escaped form of 'ما دام حسابك موجودًا'. A language-neutral alternative: no linked IP bullet may carry a <PLACEHOLDER:SECURITY_LOG_RETENTION token, and the unlinked bullet must."
+  },
+  {
+   "id": "F3",
+   "severity": "minor",
+   "title": "Policy s13: the App's performance traces are not named, although they carry the same request addresses (and product names) as its error reports",
+   "evidence": "SmartCompareApp/src/services/sentry.ts:237 sets tracesSampleRate: 0.1. scrubBeforeSendTransaction (sentry.ts:178-200) applies only the same query rung (line 37: q|query|email|search|text), so the http.client span descriptions keep product_a/product_b from GET /api/v1/text/compare (api.ts:696-705). Policy s5: 'Sentry: error and performance reports from our servers and from the App (section 13)'. In s13, the paragraph opens 'Error reports are set up ...'; the new sentence says 'Reports from the App can include ...'; the last sentence covers only 'Performance traces from our servers'. 'Reports' can be read as covering traces, but in context it reads as error reports. The AR text has the same gap. This was read from code; nothing was measured on a device.",
+   "fix": "Add one sentence after the App sentence. EN: 'Performance traces from the App record the same request addresses.' AR: 'وتسجّل تتبعات الأداء الواردة من التطبيق عناوين الطلبات نفسها.' (for the native review). The FIX_A1 markers stay valid; re-render both privacy pages."
+  },
+  {
+   "id": "F4",
+   "severity": "note",
+   "title": "Process: 17 nodes and their helpers were appended to tests/test_legal_docs_u8.py, outside the test-file edits the gate authorises",
+   "evidence": "This round's rule (3), with UG13, allows only the three AR constants in this file ('nothing else in any test file'). The fix round appended 17 nodes plus helpers (_fix_section, _sentences, BULLET, FIX_A*_EN/AR, _filled_copy, REFILL_HINT). Measured: the first 68202 bytes are byte-identical to the fix round's start snapshot (sha d8b461a6); the file is pure ASCII and LF; the UG13 constants are untouched. fix/notes.md line 14 records the append but cites no authorisation, and I could not see the fix brief.",
+   "fix": "The orchestrator accepts or rejects the appended block explicitly in the Fable diff review. If it is rejected, move the nodes to a new file, for example tests/test_legal_docs_u8_fix.py; they depend only on module-level helpers of this file."
+  },
+  {
+   "id": "F5",
+   "severity": "note",
+   "title": "A2 wording may not cover product images served from Google's thumbnail servers (NOT VERIFIED)",
+   "evidence": "app/services/image_service.py:72 sets _ORGANIC_IMAGE_KEYS = imageUrl, thumbnailUrl, thumbnail, image. It is used for Serper organic results (:96-104) and for the inline images pack (:106-117, commented 'often a thumbnail'). Serper thumbnails are commonly Google-hosted, in which case Google would receive the device IP. Policy s5's Google row says 'only if you use Google Sign-In', and s6 says 'the retailer or image website that published them'. NOT VERIFIED: no network, and no local fixture carries such a host (grep for encrypted-tbn / gstatic: 0 hits).",
+   "fix": "If production image_url values are measured on Google hosts, change s6 (EN and AR) to '... from the retailer, image or search-engine website that published them ...'. Otherwise no change."
+  }
+ ],
+ "reproduced": [
+  "Rehash at start and at end: all 28 files named in the fix report match its sha256 values (0 mismatches; start_hashes.json and end_hashes.json in the notes folder). The fix round's snap_start bytes match its start_hashes (privacy en/ar 080a2879/dec30488, fill_in fa55ed76, test d8b461a6).",
+  "Backend: [pyt] tag=advf-backend start=2026-10-08 01:00:45 end=2026-10-08 01:01:24 elapsed=38s bound=600s status=FAIL rc=1 (test_legal_docs_u8.py, test_legal_routes.py, test_consent_capture_w3_16.py, test_landing_fallback_pages_s69.py). Only test_t2_no_unresolved_placeholder failed; 85 passed; netguard blocked 0. This equals the fix report and UG22's expected set.",
+  "Client: jest 29.7.0 subset (__tests__/legal, LegalScreen, landing.brand.s69, i18n, consent) rc0: 19 suites / 186 tests passed, 0 snapshots. tsc 5.9.3 --noEmit rc0 with empty output. node_modules/@babel/core and .bin/jest are present.",
+  "render_legal_landing.py --check rc0. git diff --stat equals git diff --ignore-cr-at-eol --stat: 16 files, 679+/479-. The landing/privacy.html diff against the fix start has 3 hunks (s6, s8, s13), all inside the region. git ls-files --eol shows the EN md and both privacy pages i/lf w/crlf.",
+  "ruff --select E9,F63,F7,F82 on fill_in_legal.py and test_legal_docs_u8.py: All checks passed. Test file: prefix byte-identical, pure ASCII, 0 CRLF.",
+  "Git status: the same 27 entries, no .snap, HEAD 1156f03c.",
+  "A1 re-measured: sentry.ts:37 rung lacks product_a/product_b; api.ts:696-705 GET params product_a/product_b; sendDefaultPii false (sentry.ts:236); no Sentry.setUser anywhere in src; the wall_time event carries only wall_time.*_ms tags. The new EN and AR s13 sentences are true as read from code. FIXED (residual F3).",
+  "A2 re-measured: ProductImage.tsx:101 is the only remote image load in the App (a grep for source={{ and http literals in src finds only ImageSlotRow/ScanCamera local uris). The s6 sentence is in EN and AR; the retailer row of processors.json lists ProductImage.tsx. FIXED (note F5).",
+  "A3 re-measured: auth_routes.py:689/1066 brute_force_lockout and :712 login_failed have no user_id; :660 invite_code_redeemed and :729 login_success have user_id + IP; referral abuse rows (referral_service.py:669/688) have user_id and no IP; content_blocked has neither. The split is true. D-NEW s9 explains what happens to linked logs (kept, IP removed). FIXED (test gap F2).",
+  "A4 re-measured: the s8 bullets point to s9 in EN and AR. Migration 025 has 0 re_engagement_events references, so D-OLD correctly lists the reminders (EN and AR); 043:196 deletes them. FIXED.",
+  "B1 re-measured: probe_combos.py ran plan() read-only over 2048 answer combinations on the pristine markdown. First fill: 0 false refusals; the by-design refusals are only CR_NUMBER (d5 A) and the four *_COUNSEL keys (counsel_review false), matching Q3; the documents were unchanged. probe_refill.py (temp copies): changed values and answers exit 3; the residual is in F1. FIXED for the realistic path.",
+  "EN/AR agreement of every changed sentence (s6 picture sentence; s8 bullets 1-4; s13 servers / App / traces; D-OLD reminders): checked side by side, each AR sentence carries the same claims. The new AR strings pass test_ar_legal_text_follows_copy_policy and T1 (backend run above).",
+  "My own mutants: 15. 14 KILLED, and the killing node was executed for each: MA2 / MA5 by test_fix_a1; MA3 / MA6 by test_fix_a2; MA4 by test_fix_a4; MB1 by test_fix_b1 clause[inapp_notif_clause]; MB2 / MB3 / MB5 / MB6 by the B1 value + clause + PIN nodes; MB4 by test_fix_b1 fork remedy; MB7 / MB8 by test_fix_b1 value[...]. MA1 was killed only by T5 byte-equality. MA1b SURVIVED (F2). Every restore was sha256-verified (15/15); results are in mutants_results.txt."
+ ],
+ "not_checked": [
+  "The full jest suite and eslint were not re-run: no client file changed in the fix round (hashes equal to the GREEN reports), and the subset plus tsc were re-run.",
+  "Device-side Sentry behaviour was not checked: device name, IP inference with sendDefaultPii false, and the SDK installation id in App events. This needs a device or the Sentry dashboard, both forbidden.",
+  "Whether Serper or GPT image_url values are on Google hosts was not checked (F5); this needs the network.",
+  "The comm gate was not run (no app/ module changed in the fix round).",
+  "I could not see the fix brief, so I do not know whether it authorised appending test nodes (F4).",
+  "The native Arabic review of the new AR strings (D11) is not an agent task.",
+  "Railway log retention and client-IP logging: not checked (unchanged NOT VERIFIED).",
+  "Only the fix round's changes are in scope; GREEN-era text outside s6/s8/s13/D-OLD and the adversaries' untouched minors (F-COUNSEL-AR, B2, B3/B4, F-REENG, etc.) were not re-reviewed."
+ ],
+ "worktree_sha_check": "First and last rehash of all 28 files in the fix report: 0 mismatches at both points; every file equals the fix report's final sha256. Examples: privacy_policy.md ea6b2819, privacy_policy_ar.md 31853e08, fill_in_legal.py e092b28f, test_legal_docs_u8.py 07fe197c, landing/privacy.html f209f3a9, landing/ar/privacy.html e81f5ca0. Files: start_hashes.json and end_hashes.json in C:/Users/SYNACK~1/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/d376cb56-c600-4d76-bfdb-9e15feff0cdc/scratchpad/u8/adv-final. HEAD 1156f03c with the same 27 status entries. I wrote no file in the worktree; every mutant was restored from a byte copy and sha256-verified (15/15). The ignored scripts/__pycache__ pyc files date from 00:11 and 00:35, before this run.",
+ "summary": "The fix round holds on the exact bytes. A1 (blocking) and A2-A4 are fixed. The new EN/AR sentences in s6, s8 and s13, and the D-OLD reminder item, match the code as read (sentry.ts, api.ts, ProductImage.tsx, auth_routes.py, migrations 025/043), and each AR sentence agrees with its EN twin. B1 is fixed for the path the finding described. A value changed after a fill now exits 3 and writes nothing; a clause answer changed after a fill is refused. An exhaustive read-only probe over 2048 answer combinations found no false refusal on a first fill.\n\nAll claimed gates reproduce:\n- backend: T2 is the only red, 85 passed;\n- jest subset: 19/186 passed;\n- tsc and render --check: clean;\n- diff --stat equals --ignore-cr-at-eol: 679+/479-;\n- the test file is append-only and pure ASCII.\n\nOf my 15 mutants, 14 were killed by nodes that ran.\n\nThree minors and two notes remain:\n- **F1:** a value changed to '' after a fill still exits 0. HOSTING_REGIONS non-empty -> '' leaves the old region in the policy, which contradicts the fix's stated limit.\n- **F2:** the AR half of A3 is unpinned. The AR linked-security line can fall back to the retention placeholder with all content nodes green (MA1b survived).\n- **F3:** s13 does not name the App's 10%-sampled performance traces, which carry the same request URLs.\n- **F4 (note):** the appended test block falls outside the gate's authorised test edits and needs explicit acceptance.\n- **F5 (note, not verified):** product images may load from Google's thumbnail servers.\n\nNothing is blocking or major. Notes folder: C:/Users/SYNACK~1/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/d376cb56-c600-4d76-bfdb-9e15feff0cdc/scratchpad/u8/adv-final (notes.md, probe_combos.*, probe_refill.*, mutants.py, mutant_rendered.py, mutants_results.txt, mut_*.log, pyt_backend.log, jest_subset.log, tsc.log). I wrote no file in the worktree.",
+ "mutants": [
+  "MA1_ar_linked_security_value_to_retention_placeholder: KILLED only by test_t5_landing_regions_match_markdown_render (byte-equality, not content)",
+  "MA1b_ar_linked_value_placeholder_rerendered (AR md + landing re-rendered): SURVIVED -> F2",
+  "MA2_en_s13_from_our_servers_dropped: KILLED by test_fix_a1_sentry_sentence_scoped_to_servers_and_app_reports_disclosed",
+  "MA3_ar_s6_device_ip_marker_changed: KILLED by test_fix_a2_device_loaded_product_images_disclosed",
+  "MA4_en_s8_usage_counter_section9_dropped: KILLED by test_fix_a4_retention_lines_defer_to_the_deletion_section",
+  "MA5_ar_s13_traces_scope_dropped: KILLED by test_fix_a1_sentry_sentence_scoped_to_servers_and_app_reports_disclosed",
+  "MA6_processors_productimage_moved_to_sentry_row: KILLED by test_fix_a2_device_loaded_product_images_disclosed",
+  "MB1_clause_star_tables_unchecked (doc_key == d): KILLED by test_fix_b1_fill_in_refuses_a_clause_answer_changed_after_a_fill[inapp_notif_clause]",
+  "MB2_postcheck_never_runs (if False): KILLED by 10 B1 nodes (value x6, clause x4)",
+  "MB3_lang_texts_swapped (lng != lang): KILLED by 12 B1 nodes incl. the rerun PIN",
+  "MB4_fork_hint_inverted: KILLED by test_fix_b1_fill_in_names_the_remedy_when_a_fork_value_changed",
+  "MB5_selected_is_first_key: KILLED by 12 B1 nodes incl. the rerun PIN",
+  "MB6_only_en_docs_recorded: KILLED by 12 B1 nodes incl. the rerun PIN",
+  "MB7_single_problem_ignored (len(problems) > 1): KILLED by test_fix_b1_fill_in_refuses_a_value_changed_after_a_fill[GOVERNING_LAW_AR|PRIVACY_EMAIL|SUPPORT_EMAIL|WITHDRAW_PATH|WITHDRAW_PATH_AR]",
+  "MB8_value_skip_ignores_strip (value[:6] prefix): KILLED by test_fix_b1_fill_in_refuses_a_value_changed_after_a_fill (6 params)",
+  "Totals: 15 run, 14 killed, 1 survived; every restore sha256-verified; one mutant at a time, bounded runner per mutant (bound 600 s)"
+ ]
+}

@@ -1,0 +1,95 @@
+[
+ {
+  "name": "dead_awk_akia_after_png",
+  "base_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 5.8
+  },
+  "base_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 5.3
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 14.0
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 14.6
+  }
+ },
+ {
+  "name": "da_utf8_ff_same_line_akia",
+  "base_sh": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 9.7
+  },
+  "base_dash": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 9.7
+  },
+  "new_sh": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 13.6
+  },
+  "new_dash": {
+   "rc": 1,
+   "out": "pre-commit: staged diff contains what looks like a credential \u2014 remove it (keys live only in gitignored .env)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 12.1
+  }
+ },
+ {
+  "name": "clean_commit",
+  "base_sh": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 10.3
+  },
+  "base_dash": {
+   "rc": 0,
+   "out": "",
+   "leaked": [],
+   "left": [],
+   "sec": 9.8
+  },
+  "new_sh": {
+   "rc": 0,
+   "out": "pre-commit: WARNING gitleaks not installed - secret scan skipped (CI runs it)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 22.4
+  },
+  "new_dash": {
+   "rc": 0,
+   "out": "pre-commit: WARNING gitleaks not installed - secret scan skipped (CI runs it)\n",
+   "leaked": [],
+   "left": [],
+   "sec": 10.1
+  }
+ }
+]

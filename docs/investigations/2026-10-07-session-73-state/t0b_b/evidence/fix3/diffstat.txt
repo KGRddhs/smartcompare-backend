@@ -1,0 +1,5 @@
+ .githooks/pre-commit                | 414 ++++++++++++++++++++++++++++++------
+ .github/workflows/ci.yml            |  93 ++++++++
+ tests/test_ci_gates.py              |  16 +-
+ tests/test_precommit_hook_round2.py |  13 +-
+ 4 files changed, 466 insertions(+), 70 deletions(-)

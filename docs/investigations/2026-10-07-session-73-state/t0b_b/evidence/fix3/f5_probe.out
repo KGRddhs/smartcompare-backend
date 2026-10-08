@@ -1,0 +1,2 @@
+control_plain_commit       rc=1 committed=False 9.5s first_msg=pre-commit: gitleaks refused the staged changes (rule id and place above)
+probe_c_color_ui_always    rc=1 committed=False 9.2s first_msg=pre-commit: gitleaks refused the staged changes (rule id and place above)
