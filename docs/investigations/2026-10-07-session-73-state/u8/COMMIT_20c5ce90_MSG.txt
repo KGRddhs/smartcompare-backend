@@ -1,0 +1,27 @@
+feat(legal): U8 - privacy policy and terms of service redrafted from the code truth table, on placeholders (EN + AR)
+
+LAUNCH BLOCKER unit U8, session 73. NOT mergeable yet: every fact only the
+owner can give is a <PLACEHOLDER:ID> token (test T2 is red by design until
+the fill-in commit) and the twelve date anchors stay at 2026-03-26.
+
+- app/legal/privacy_policy.md (16 sections) and terms_of_service.md (17):
+  rewritten from the data-flow truth table with every review correction and
+  the rulings UL1-UL20 / UG1-UG22 / UP1-UP13; Arabic twins *_ar.md translated
+  sentence by sentence (native review owed); support_contact(.md/_ar.md).
+- scripts/render_legal_landing.py: stdlib renderer of the six landing legal
+  regions (legal:begin/end markers; .draft-notice removed); scripts/
+  fill_in_legal.py + legal_variants_u8.json + tests/fixtures/
+  legal_fill_in_u8.json: the fill-in machinery (forks, derived clauses,
+  refusals, exit codes); app/legal/processors.json: the processor manifest.
+- app/api/legal_routes.py: ?lang=ar serves the Arabic documents.
+- SmartCompareApp: LegalScreen requests the UI language, caches per
+  language, links to the landing page on failure; LANDING_BASE_URL;
+  legal.error.openWeb.
+- tests: test_legal_docs_u8.py (47 nodes), test_legal_docs_u8_polish.py
+  (68), legalScreenLang.u8.test.tsx (32), the amended LegalScreen,
+  landing.brand.s69 and test_legal_routes pins.
+
+Rounds: RED gate, GREEN EN/AR/client, adversary A (legal truth) and B
+(engineering), fix, final adversary, polish, polish adversary, fix P1.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>

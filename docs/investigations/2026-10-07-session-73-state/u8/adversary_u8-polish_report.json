@@ -1,0 +1,110 @@
+{
+ "verdict": "SOUND_WITH_ONE_MAJOR (P1 major; P2-P5 minor; N1-N5 notes). Every UP4 and UP8 item is applied in both EN and AR. The 13 new or changed sentences match the code. The probe ran 230 legitimate random answer combinations with no failure. The renderer refusals fire on all 15 out-of-subset constructs and on none of the six real sources. The backend gives exactly one red (T2), and the full jest suite, tsc and eslint all match the polish report. I executed 19 of my own mutants: 12 were killed and 7 survived (two of those are equivalent).",
+ "findings": [
+  {
+   "id": "P1",
+   "severity": "major",
+   "title": "The Cloudflare line is derived from 'both mailboxes end in @qaren.app', so the fill-in removes a real recipient while the policy and the landing pages still publish @qaren.app addresses (rc 0; only T7a catches it later)",
+   "evidence": "scripts/legal_variants_u8.json forks.cloudflare_clause takes the answer {all_end_with: [PRIVACY_EMAIL, SUPPORT_EMAIL], suffix '@qaren.app'}. fill_in_legal.py _answer returns all(...). This follows the literal text of UP4 A12(b). Probe probe_fill3.py (scratch copy) with PRIVACY_EMAIL privacy@qaren.app and SUPPORT_EMAIL help@gmail.com: rc 0 and the '- **Cloudflare:**' line is gone. The same policy says 'Contact: privacy@qaren.app' in s1 and s16. The landing chrome outside the regions hard-codes support@qaren.app 5 times on support.html (lines 9 meta refresh, 199 CTA, 204, 207), plus the footer of privacy.html:326 and terms.html:264, and once or more on each AR page. Mail sent to any of these addresses still passes through Cloudflare. probe_fill.py hit this case in 107 of 230 combinations: a qaren.app mailbox is published but the Cloudflare line is removed. A subdomain address (privacy@mail.qaren.app) also removes it. The published policy then omits a recipient of user email. The only backstop is T7a: SPEC_RECIPIENTS_EN includes Cloudflare (test_legal_docs_u8.py:781-784), so T7a turns red at the fill-in commit. That is the conflict the polish report raises as Q3. test_polish_a12b pins the 'both' behaviour, because it asserts the line is gone for privacy@qaren.app with help@example.com.",
+   "fix": "This needs an amendment to the ruling (UP4 A12(b) as written produces the false omission). While the landing chrome hard-codes support@qaren.app, keep the Cloudflare line unconditional: make the fork's answer constant true, or drop the fork and restore the plain line. At the least, derive it as 'any address ends in @qaren.app'. Change test_polish_a12b (this round's own uncommitted node) or append a node for the mixed case. This also settles Q3: T7a never turns red at the fill-in."
+  },
+  {
+   "id": "P2",
+   "severity": "minor",
+   "title": "A DPO contact recorded in only one language is accepted, so the EN and AR policies differ",
+   "evidence": "probe_fill2.py: DPO_CONTACT_DETAILS 'Jane Doe, dpo@example.com' with DPO_CONTACT_DETAILS_AR null gives rc 0. The EN policy names the officer in s1 and s16 and the AR policy does not. The reverse (AR only) also gives rc 0. The cause is the DPO_CONTACT clause's if_null '': null is never reported missing, so a forgotten _AR twin goes through silently. (HOSTING_REGIONS has the same EN/AR asymmetry, which predates this round.)",
+   "fix": "In _answer_placeholder_problems, refuse when exactly one of DPO_CONTACT_DETAILS and DPO_CONTACT_DETAILS_AR is non-null, and append one node."
+  },
+  {
+   "id": "P3",
+   "severity": "minor",
+   "title": "d3 = B with openai_store_pinned = false publishes a dangling reference to 'the 30-day limit below'",
+   "evidence": "probe_fill3.py, privacy.html on the scratch copy, with rc 0: '... turning it off stops future sharing. Data you share this way is governed by OpenAI's terms rather than the 30-day limit below. OpenAI's handling of data sent to its API is governed by its API terms.' No 30-day limit appears below it. In the probe this combination fills with rc 0. The polish report discloses it (Q6 and a stated limit). It cannot be published only if the merge gate requires openai_store_pinned to be true.",
+   "fix": "Refuse d3 'B' with openai_store_pinned false in fill_in_legal.py, or split the A16 tail so the 'rather than the 30-day limit below' clause follows openai_store_pinned. Native review the AR twin."
+  },
+  {
+   "id": "P4",
+   "severity": "minor",
+   "title": "Test strength: five polish behaviours are unpinned (my mutants S1, S2, S3, R1 and T5 survived)",
+   "evidence": "These are pytest runs over tests/test_legal_docs_u8_polish.py (and test_legal_docs_u8.py for T5), each restore sha-verified. S1 (the all_end_with suffix compare made case-sensitive): 62 passed, so 'Privacy@QAREN.app' would silently remove the Cloudflare line. S2 (Arabic-Indic digits dropped from _FIXED_PERIOD): 62 passed. S3 (all AR duration words dropped): 62 passed. R1 (numbered pattern [.)] -> [.] in the renderer): 62 passed. T5 (the AR s3.4 notification-records bullet loses its last phrase, 'and their text', pages re-rendered): 108 passed + T2. The cause is that test_polish_a8 checks only the AR label. My probes show the production behaviour of S1-S3 and R1 is correct today ('١٢ شهرًا', 'سنة واحدة' and '1) one' are all refused).",
+   "fix": "Append these nodes. a12b-style: 'Privacy@QAREN.app' keeps the line. a11-style: AR values with Arabic-Indic digits ('١٢ ...') and the AR word for 'year' are refused while the cleanup is not live. A b6 renderer case 'paren_numbered': '1) first'. An a8 AR assertion on the full bullet text (escaped)."
+  },
+  {
+   "id": "P5",
+   "severity": "minor",
+   "title": "Counsel transfer-basis wording written as '- ' items is accepted and renders the first item inside the s7 paragraph",
+   "evidence": "<PLACEHOLDER:TRANSFER_BASIS> sits mid-paragraph in privacy s7 (privacy_policy.md:97). After A10/B6, every *_COUNSEL(_AR) key may carry top-level '- ' items. probe_fill2/probe_fill.py with TRANSFER_BASIS_COUNSEL '- **SCC:** contracts.\\n- **Adequacy:** none.' gives rc 0, and the filled text is '... Germany (Sentry). - **SCC:** contracts.\\r\\n- **Adequacy:** none.'. Both the landing renderer and the App's CommonMark show a paragraph followed by a one-item list. The output is garbled but the same in both places, and _check_pages cannot catch it.",
+   "fix": "Refuse line breaks in TRANSFER_BASIS_COUNSEL(_AR) (it is inline), or move the token to its own paragraph in EN and AR. Add one node."
+  },
+  {
+   "id": "N1",
+   "severity": "note",
+   "title": "S7 and C3 survived as near-equivalent or equivalent mutants",
+   "evidence": "S7: _check_pages renders the on-disk unfilled source instead of the filled output, and 62 tests pass. Both counsel insertion points (legal_basis at privacy_policy.md:55-57 and TRANSFER_BASIS inline) are bordered by blank lines, and _check_value already refuses each out-of-subset line. So no value that the value checks accept makes a filled source unrenderable: the filled-source render branch of B2 is defence in depth and no node reaches it. C3: removing 'shownLang.current = lang' in the cache branch passes 34 tests. load() runs again only on a lang or endpoint change, when the ref differs anyway.",
+   "fix": "None required. Optionally add a docstring line on the S7 branch saying it is a defensive re-check."
+  },
+  {
+   "id": "N2",
+   "severity": "note",
+   "title": "B10 has no guard against a stale response",
+   "evidence": "LegalScreen.tsx load(): with two language changes inside one request round-trip (en -> ar -> en), the late AR response sets shownLang 'ar' and the AR content while lang is 'en'. If the EN fetch then fails with no cache, errorKey is set but content is non-null, so the AR document stays on screen. The window is narrow (language changes happen in Settings), and this class of bug predates the round.",
+   "fix": "Optional: capture lang in a request id or ref and ignore a response whose lang is no longer current."
+  },
+  {
+   "id": "N3",
+   "severity": "note",
+   "title": "The forced deviations Q1, Q2 and Q4 are confirmed, and the new answers are forced only by the UP6 checklist",
+   "evidence": "test_legal_docs_u8.py:250-252 rejects unknown top-level keys, and :1645 reads _SAMPLE_ANSWERS[key], so the answers have to live under 'placeholders'. T2 (test_legal_docs_u8.py:380-414) reports only tokens left in the documents, null top-level answers and null flags, never a null placeholder-map value. REFERRAL_PUSH_DISPLAY_NAME_ONLY 'true' (the merge gate) and CONTROLLER_COUNTRY are therefore enforced only by the PR checklist. The fixture _comment 'test_t2_no_unresolved_placeholder reports every null' is inaccurate for placeholder-map nulls (text that predates this round). The F5 wording keeps test_fix_a2's marker and carries the claim UP8 ruled.",
+   "fix": "Orchestrator acceptance. If wanted, put the null-answer items in the fill-in commit's gate list."
+  }
+ ],
+ "reproduced": [
+  "START re-hash 02:22: all 29 files of the polish report (its 28 plus the polish test file) match. HEAD 1156f03c; git status shows 28 entries.",
+  "Backend: [pyt] tag=advp-backend5 start=2026-10-08 02:57:05 end=2026-10-08 02:57:36 elapsed=31s bound=600s status=FAIL rc=1. Five files: 1 failed (tests/test_legal_docs_u8.py::test_t2_no_unresolved_placeholder only), 147 passed, netguard blocked 0. This matches the claim.",
+  "jest 29.7.0 subset (__tests__/legal, LegalScreen.test.tsx, landing.brand.s69, i18n, consent): 19 suites, 189 tests passed, 0 snapshots, rc 0.",
+  "jest FULL (LegalScreen.tsx changed in this round) rc 0: 3 suites skipped, 360 passed, 360 of 363 total. Tests: 13 skipped, 13 todo, 3536 passed, 3562 total. Snapshots: 42 passed, 0 written. This matches the claim.",
+  "tsc 5.9.3 --noEmit rc 0 with no output. eslint v9.39.4 on git diff --name-only --relative plus legalScreenLang.u8.test.tsx: rc 0, 13 problems (0 errors, 13 warnings), as claimed.",
+  "Renderer --check on the worktree: rc 0. probe_render.py refuses all 15 out-of-subset constructs: hr ---, ***, '- - -', ___; '1.' and '1)'; '*' and '+' items; space- and tab-indented '- '; '>'; '|'; '####'; a paragraph or heading directly after an item. It accepts the subset positive control and the six real sources. javascript: stays text and https hrefs are escaped with &amp;.",
+  "probe_fill.py: 230 random legitimate answer combinations on scratch copies (all answer keys and flags; four email pairings plus an uppercase domain; DPO null or set; referral null/true/false; cleanup null/true/false with fixed periods only when live; country null, 'Bahrain' or ' bahrain '; hosting '' or Ireland; counsel as a paragraph, a list or two paragraphs). Zero failures. Dry-run rc 0 and writes nothing. Fill rc 0 with no PLACEHOLDER left in the 12 files. A second run is byte-identical and renderer --check gives rc 0. Cloudflare appears if and only if both mailboxes are @qaren.app. The DPO clause appears exactly twice in EN when set and is absent otherwise. The referral variant is correct in the policy and the ToS. Under d5 = B the CR number and the trade name reach the support page, EN and AR. The first 5 lines are unchanged and line endings are kept.",
+  "Post-fill changes in probe_fill.py: a HOSTING_REGIONS pair toggled to or from '', DPO set to null or added, PRIVACY_EMAIL '', CONTROLLER_NAME changed, DPO_AR '' or added, trade_name toggled. Each exits 3 and writes nothing. A SUPPORT_EMAIL change exits 3 with the hint. Fork re-selects: the referral flip gives rc 0 with the correct text and fresh pages (26 cases). The d5 flip gives rc 0 in 18 cases and rc 3 with nothing written in 7.",
+  "Refusals on a first fill (probe_fill2.py): CONTROLLER_COUNTRY 'Kuwait', '' and 'Kingdom of Bahrain' each give rc 3 with the 're-draft sections 7 and 10' message. A fixed retention period with the cleanup null or 'false' gives rc 3 citing UL8 for EN '12 months', EN 'one year', AR Arabic-Indic digits and the AR word for 'year'. REFERRAL 'yes' or 'True' and RETENTION_CLEANUP_LIVE '1' each give rc 3. DPO '' or with markup gives rc 3. CR_NUMBER under d5 = A gives rc 3 (unused value). An empty PRIVACY_EMAIL or WITHDRAW_PATH gives rc 3. Counsel '1. ...' and '- a\\nb' each give rc 3 with the subset message. AR no-fixed-period wording and EN 'as long as your account exists' are accepted (rc 0), and so are formatted EN and AR counsel lists (A10).",
+  "Text truth, re-read at the code sites: A5 ResultsContent.tsx:140 shows 'results.price.pending' ('Pricing lands in an upcoming update.'), and is_price_showable excludes estimated prices. A6: the extraction_service.py prompt says 'fall back to your training data' and sets _source 'training'. A7: auth_routes.py _derive_language (Accept-Language) and _derive_country (payload, then CF-IPCountry, then 'Bahrain'), with onboarding Step02Language and Step04Country. A8: cron_reengagement.py:71 writes content_payload. A9: authService.ts sets no scopes. A14: share_routes.py has no display_name, and referral_service.py:455 sets referrer_display_name (show_name at :164). F3: sentry.ts:238 tracesSampleRate 0.1 and :244 beforeSendTransaction. F5 and A16 wording checked. processors.json's retailer row lists ProductImage.tsx (line 191), and the file exists. Each AR sentence I read carries the same claim as its EN twin.",
+  "Test files: legalScreenLang.u8.test.tsx keeps a byte-identical prefix of the fix bytes (a2f9cb1c, as in fix_u8_report) and has 2508 bytes appended, LF. test_legal_docs_u8.py (07fe197c), test_legal_routes.py, LegalScreen.test.tsx and test_consent_capture_w3_16.py are byte-equal. landing.brand.s69 changes the docstring only (lines 25-29), and the stated counts match ADDRESS_COUNTS.",
+  "git diff --stat equals --ignore-cr-at-eol: 16 files, 695+/480-. The EN md, LegalScreen.tsx, landing.brand.s69 and the six pages are all-CRLF. The AR md, scripts, variants, fixture, polish test and legalScreenLang are all-LF. The scripts and the polish test are ASCII. Credential-shape scan of the polish files: 0 hits.",
+  "Own mutants (adv-polish/mutants.py, run one at a time; each is a byte copy, an edit, the killing nodes executed, a restore and a sha256 check, all 19 restores sha-ok; markdown mutants were re-rendered): KILLED S4 (null cleanup counted as live, by a11), S5 (country not stripped, by a12a[ bahrain ]), S6 (F1 literal min, by a12c), S8 (counsel after_item off, by b6 counsel[line_after_item]), R3 (hr needs four, by b6[horizontal_rule]), T1 (AR ToS s9 A14 reverted, by a14), T2 (AR ToS s2 A6 reverted, by a6), T3 (EN ToS s11 spec reverted, by a6), T4 (AR ToS s6 'indicative' back, by a5), T9 (AR support trade-name token dropped, by a17 + 34 more), T10 (AR referral false variant made equal to true, by 21 nodes), C1 (B10 condition inverted, by the 'B10: after a language change whose fetch fails' case). SURVIVED: S1, S2, S3, R1, T5 (see P4), S7 and C3 (see N1).",
+  "END re-hash at 03:01: 29 of 29 match. git status shows 28 entries; HEAD 1156f03c; nothing committed. Nothing in the worktree changed except the mutants, each restored."
+ ],
+ "not_checked": [
+  "On-device rendering of the new text (RN markdown, RTL) and of the landing pages in a browser.",
+  "Whether GoTrue stores the Google profile picture (A9), and whether production image_url values are Google-hosted (F5). Neither was checked: no network access.",
+  "Whether Cloudflare Email Routing is actually what delivers qaren.app mail. P1 relies on the policy's own claim and on the support@qaren.app chrome in landing/.",
+  "The RenderAfterWriteError branch (an I/O race only) and the renderer-load failure branch of fill_in_legal.run(). I did not exercise either.",
+  "The comm gate (module-reference set at BASE and HEAD). No app/ module changed this round.",
+  "I did not run any mutant on legal_routes.py: it is unchanged this round. B8 was verified by reading the node and from its pass in the five-file run.",
+  "Native Arabic quality: I checked only that each AR sentence carries the same claim. Wording (for example A13's choice between the two Arabic words for 'bodies') is left to the D11 native review.",
+  "No black run, and full ruff was not re-run (I wrote no production code)."
+ ],
+ "worktree_sha_check": "START (02:22) and END (03:01): all 29 files listed in the polish report's files_changed match their sha256 values, with 0 mismatches either time (rehash.py). HEAD 1156f03cba0e; git status shows 28 entries both times. Every one of the 19 mutant restores was sha256-verified against the byte copy taken just before that mutant; for markdown mutants this covered both the source and its re-rendered page. I wrote nothing in the worktree. My files are all in C:/Users/SYNACK~1/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/d376cb56-c600-4d76-bfdb-9e15feff0cdc/scratchpad/u8/adv-polish: notes.md 97e61f6d (written before this run's final line), rehash.py 1aa679aa, probe_fill.py 3594cfb9, probe_fill2.py faad115b, probe_fill3.py e7a43945, probe_render.py 5f19b643, mutants.py ea13af99, mutants_results.txt c024eb11, probe_fill.txt 1f6b67f8, probe_fill2.txt c9dd916f, probe_fill3.txt 600d3de2, probe_render.txt 36a1fdb2. The folder also holds the mut_*.log files, jest_subset.log, jest_full.log, tsc.log, pyt_backend5.log, reports_extract.txt, diff_docs.txt, diff_code.txt, probe/ (the scratch copies) and bak/ (the mutant byte copies).",
+ "summary": "The polish round is sound apart from one major finding. P1 is the major one: ruling UP4 A12(b) derives the Cloudflare line from 'both PRIVACY_EMAIL and SUPPORT_EMAIL end in @qaren.app'. With one mailbox elsewhere, the fill-in exits 0 and removes Cloudflare from the policy, yet the policy itself still publishes privacy@qaren.app and the landing pages hard-code support@qaren.app outside the regions (support.html x5, the privacy and terms footers, the AR pages). The policy then omits a recipient of user email, and only T7a catches it, at the fill-in commit (the polish report's Q3). The fix is to keep the line unconditional while the page chrome hard-codes the mailbox, which needs a ruling amendment and a change to this round's a12b node. Minor findings: P2, an EN-only or AR-only DPO is accepted; P3, d3 = B with the store unpinned leaves a dangling 'the 30-day limit below' (already disclosed as Q6); P4, five unpinned behaviours, shown by surviving mutants S1, S2, S3, R1 and T5, with the nodes to add listed; P5, counsel transfer-basis wording written as list items renders garbled inline. Everything else re-measured as the polish report claims: every UP4 and UP8 item is applied in EN and AR, each new sentence matches the code it describes, 230 legitimate answer combinations fill correctly and idempotently, the F1/B1 refusals and the new refusals fire with clear messages, the 15 renderer refusals fire while the six real sources render, test changes are append-only, the backend gives T2 as the only red with 147 passed, and the full jest suite (3536 passed), tsc and eslint (0 errors) match. Of my 19 executed mutants, 12 were killed and 7 survived, 2 of them equivalent.",
+ "mutants": [
+  "S1_suffix_case_sensitive (fill_in_legal _answer all_end_with without casefold): SURVIVED, 62 passed. Node to add: 'Privacy@QAREN.app' keeps the Cloudflare line.",
+  "S2_no_arabic_indic_digits (_FIXED_PERIOD class [0-9] only): SURVIVED, 62 passed. Node to add: an AR retention value with Arabic-Indic digits is refused while the cleanup is not live.",
+  "S3_no_arabic_duration_words (the AR word alternatives removed from _FIXED_PERIOD): SURVIVED, 62 passed. Node to add: an AR value with the word for 'year' and no digit is refused.",
+  "S4_null_cleanup_counts_as_live (!= 'true' changed to == 'false'): KILLED by test_polish_a11_fixed_retention_period_needs_the_live_cleanup.",
+  "S5_country_no_strip: KILLED by test_polish_a12a_controller_country_must_be_bahrain[ bahrain -0].",
+  "S6_f1_literal_min (max changed to min in clause_problems): KILLED by test_polish_a12c_dpo_contact_clause.",
+  "S7_check_pages_unfilled_source (_check_pages renders the on-disk source): SURVIVED, 62 passed. Near-equivalent (see N1).",
+  "S8_counsel_after_item_off: KILLED by test_polish_b6_counsel_values_outside_the_subset_are_refused[line_after_item].",
+  "R1_numbered_paren_allowed (renderer [.)] changed to [.]): SURVIVED, 62 passed. Node to add: a b6 case '1) first'.",
+  "R3_hr_needs_four ({3,} changed to {4,}): KILLED by test_polish_b6_renderer_refuses_markdown_outside_the_subset[horizontal_rule].",
+  "T1_ar_terms_s9_a14_revert (re-rendered): KILLED by test_polish_a14_display_name_scoped_to_invite_links.",
+  "T2_ar_terms_s2_a6_revert (re-rendered): KILLED by test_polish_a6_specification_source_is_ai_compiled.",
+  "T3_en_terms_s11_spec_revert (re-rendered): KILLED by test_polish_a6_specification_source_is_ai_compiled.",
+  "T4_ar_terms_s6_indicative_back (re-rendered): KILLED by test_polish_a5_no_estimated_price_marking_and_pending_disclosed.",
+  "T5_ar_notification_text_dropped (AR s3.4 bullet loses its last phrase; re-rendered): SURVIVED, 108 passed plus T2. Node to add: an a8 assertion on the full AR bullet.",
+  "T9_ar_support_trade_name_dropped (re-rendered): KILLED by test_polish_a17_support_region_carries_the_identity_fork and 34 more.",
+  "T10_ar_referral_false_reverted_to_true (variants): KILLED by 21 nodes, including b4 and f1.",
+  "C1_b10_condition_inverted (LegalScreen): KILLED by 'B10: after a language change whose fetch fails with no cache, the other language is not shown'.",
+  "C3_b10_cache_branch_keeps_null (LegalScreen): SURVIVED, 34 passed. Equivalent (see N1)."
+ ]
+}

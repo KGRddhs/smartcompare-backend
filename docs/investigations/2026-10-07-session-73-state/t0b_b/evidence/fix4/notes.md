@@ -1,0 +1,22 @@
+# fix4 (round 4 polish) notes
+
+- 22:25 AST start. Budget 2h -> 00:25.
+- START re-hash: all nine OK (hook 4e9a583c... CR=691; ci.yml 05c4ff90... CR=586; round2 test a9383736...; six others = snapshot_fix2 SHA256SUMS).
+- 22:27-22:30 test edits (round-2 file only, Edit tool, LF, ASCII): imports +_cred_url,_sk,_slack; docstring Round 4 F1 wording (TBF14 m4 moved) + new Round 5 section; new class TestPreCommitHookPhaseBRound5 with 9 scenarios x sh/dash = 18 nodes. py_compile ok; ruff E9,F63,F7,F82 clean; black: new code clean (3 pre-existing hunks only).
+- GREEN on current bytes (hook 4e9a583c): [pyt] tag=fix4-r5-green start=2026-10-07 22:30:26 end=2026-10-07 22:33:36 elapsed=190s bound=600s status=OK rc=0 (18 passed, gitleaks present)
+- MUTANTS (mut4.py, edits byte-identical to adv5 LF mutants by size delta; one at a time, restore sha 4e9a583c each): see mut4.jsonl. All 9 FAIL (killed) sh+dash.
+- G1a gl-present r2 sh: [pyt] tag=fix4-gl-r2-sh start=2026-10-07 22:41:06 end=2026-10-07 22:52:47 elapsed=701s bound=1200s status=OK rc=0 (64 passed, 57 deselected); hook at final bytes 19640dc6 (TBF22 comment applied 22:40)
+- G1b gl-present r2 dash: [pyt] tag=fix4-gl-r2-dash start=2026-10-07 22:53:17 end=2026-10-07 23:07:21 elapsed=844s bound=1200s status=OK rc=0 (57 passed, 64 deselected)
+- 23:00-23:08 wrote FOLLOWUP_ISSUE_T0B_B.md and PR_T0B_B_BODY.md
+- 23:08 G2a nogl r2 sh launched (PATH without the WinGet Gitleaks dir; shutil.which(gitleaks)=None).
+- 23:10 FOUND: the new node's path literal "docs/x/sk- learn-integration-notes-2026.md" matches the hook's own \bsk- branch as an ADDED line of the test file -> committing the test file through the new hook would refuse it. Fixed (Edit): path built at runtime ("docs/x/s" + "k-learn-..."). Same runtime value. G1a/G1b and G2a ran on the pre-fix bytes (one line differs); Round5 class + bs_plus3 mutant to be re-run on the final bytes.
+- 23:11 regex scan (hook's 6 shapes) of the final test file: no match. gitleaks 8.30.1 default-rules dir scan of byte copies of the 9 files + 2 drafts: rc=0, empty report; positive control (runtime GitHub-token shape) rc=1 github-pat (control file removed).
+- diff --stat == diff --ignore-cr-at-eol --stat (cmp equal): 4 files, 466 insertions, 70 deletions (unchanged from fix 3; the hook comment rewrap is 4/4 lines inside the same hunk).
+- G2a nogl r2 sh (pre-fix test bytes a line differs): [pyt] tag=fix4-nogl-r2-sh start=2026-10-07 23:07:56 end=2026-10-07 23:23:26 elapsed=929s bound=1200s status=OK rc=0 (58 passed, 6 skipped = gitleaks-only nodes, 57 deselected)
+- G2b nogl r2 dash (final test bytes): [pyt] tag=fix4-nogl-r2-dash start=2026-10-07 23:23:45 end=2026-10-07 23:36:25 elapsed=760s bound=1200s status=OK rc=0 (55 passed, 2 skipped, 64 deselected)
+- R5 final bytes gl: [pyt] tag=fix4-r5-final-gl start=2026-10-07 23:36:45 end=2026-10-07 23:40:51 elapsed=245s bound=600s status=OK rc=0 (18 passed)
+- bs_plus3 mutant on final bytes: [pyt] tag=fix4_m_bs_plus3_filter_dropped start=2026-10-07 23:40:52 end=2026-10-07 23:41:22 elapsed=30s bound=600s status=FAIL rc=1 (2 failed); restore 19640dc6 OK
+- i315 gl: [pyt] tag=fix4-gl-i315 start=2026-10-07 23:41:33 end=2026-10-07 23:48:00 elapsed=386s bound=1200s status=OK rc=0 (24 passed)
+- i315 nogl: [pyt] tag=fix4-nogl-i315 start=2026-10-07 23:48:12 end=2026-10-07 23:53:40 elapsed=328s bound=1200s status=OK rc=0 (24 passed)
+- pins: [pyt] tag=fix4-pins start=2026-10-07 23:53:51 end=2026-10-07 23:56:08 elapsed=137s bound=1200s status=OK rc=0 (261 passed; netguard 22 blocked = the hermeticity pins' own probes)
+- 23:57 final: git status = the same nine paths; HEAD 845ece15; no scratch worktree; no pytest left.

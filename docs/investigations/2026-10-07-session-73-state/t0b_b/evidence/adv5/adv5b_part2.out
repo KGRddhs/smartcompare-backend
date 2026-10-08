@@ -1,0 +1,43 @@
+shim_config_head_none                        {'rc': 0, 'cfg_is_default': True, 'cfg_is_head': False, 'cfg_is_hostile': False}
+shim_config_head_unit                        {'rc': 0, 'cfg_is_default': False, 'cfg_is_head': True, 'cfg_is_hostile': False}
+shim_hostile_GITLEAKS_CONFIG_env             {'rc': 0, 'child_env': 'GITLEAKS_CONFIG_TOML= | GIT_CONFIG_VALUE_1=never | GIT_CONFIG_VALUE_0=never | GIT_CONFIG_COUNT=2 | GITLEAKS_CONFIG= | GIT_CONFIG_KEY_1=color.diff | GIT_CONFIG_KEY_0=color.ui | ', 'cfg_is_head': True}
+xtrace_env_value_sh                          {'rc': 1, 'leaked': []}
+xtrace_staged_akia_sh                        {'rc': 1, 'leaked': []}
+xtrace_binary_head_sh                        {'rc': 1, 'head_hex_in_trace': True}
+xtrace_env_value_dash                        {'rc': 1, 'leaked': []}
+xtrace_staged_akia_dash                      {'rc': 1, 'leaked': []}
+xtrace_binary_head_dash                      {'rc': 1, 'head_hex_in_trace': True}
+signal_TERM_sh                               {'out': 'rc=143\n', 'tmpdir_left': [], 'gitdir_left': []}
+signal_HUP_sh                                {'out': 'rc=129\n', 'tmpdir_left': [], 'gitdir_left': []}
+signal_TERM_dash                             {'out': 'rc=143\nTerminated\n', 'tmpdir_left': [], 'gitdir_left': []}
+signal_HUP_dash                              {'out': 'rc=129\nHangup\n', 'tmpdir_left': [], 'gitdir_left': []}
+ci_pr_clean                                  {'rc': 0, 'ansi_in_log': False, 'plain_ERR': False, 'leaked': [], 'tail': ['secret-scan range is f78bfd67e4e7b4f9abd07bb7394c8e1c7b042ac7..4456712a3b77ed7d06bfd2c800e621d3ced096fd (config from f78bfd67e4e7b4f9abd07bb7394c8e1c7b042ac7)', '9:52PM INF no leaks found']}
+ci_pr_ghp                                    {'rc': 1, 'ansi_in_log': False, 'plain_ERR': False, 'leaked': [], 'tail': ['secret-scan range is 1973869f8b3f00ed6d56652a5ce77275bb9e7ea9..cd6f22fc7cfc2f9e0edab592653bfd834a887742 (config from 1973869f8b3f00ed6d56652a5ce77275bb9e7ea9)', '9:53PM WRN leaks found: 1', '::error::secret-scan found a credential - ROTATE THE KEY FIRST, then rewrite the branch']}
+ci_pr_noisy_textconv_ghp                     {'rc': 1, 'ansi_in_log': False, 'plain_ERR': True, 'leaked': [], 'tail': ['9:53PM ERR [git] driver notice', '9:53PM ERR error="stderr is not empty"', '9:53PM INF no leaks found', '::error::gitleaks logged an error, so the range was not scanned reliably']}
+ci_pr_base_missing                           {'rc': 1, 'ansi_in_log': False, 'plain_ERR': False, 'leaked': [], 'tail': ['::error::range end 1234567890abcdef1234567890abcdef12345678 is not in the clone (a force push?): nothing was scanned']}
+ci_push_ghp                                  {'rc': 1, 'ansi_in_log': False, 'plain_ERR': False, 'leaked': [], 'tail': ['secret-scan range is 520b76a0abd492a44b6ab7f3b566948559d300c1..7af45ea20e7c4f46ebabeb548123175f9729a153 (config from 520b76a0abd492a44b6ab7f3b566948559d300c1)', '9:55PM WRN leaks found: 1', '::error::secret-scan found a credential - ROTATE THE KEY FIRST, then rewrite the branch']}
+ci_pr_head_cfg_widened_ghp                   {'rc': 1, 'ansi_in_log': False, 'plain_ERR': False, 'leaked': [], 'tail': ['secret-scan range is 329f5d54b3767691e4b5755245f358cf1c8f55b1..9e25df70f0c8bc825cd590b85b50bdcae1270b75 (config from 329f5d54b3767691e4b5755245f358cf1c8f55b1)', '9:56PM WRN leaks found: 1', '::error::secret-scan found a credential - ROTATE THE KEY FIRST, then rewrite the branch']}
+real_ghp_head_unit_hostile_wt_sh             {'rc': 1, 'msg': ['github-pat a.txt:1', 'pre-commit: gitleaks refused the staged changes (rule id and place above)'], 'leaked': [], 'left': [], 'sec': 51.5}
+real_ghp_head_unit_hostile_wt_dash           {'rc': 1, 'msg': ['github-pat a.txt:1', 'pre-commit: gitleaks refused the staged changes (rule id and place above)'], 'leaked': [], 'left': [], 'sec': 56.6}
+real_ghp_gitleaks_allow_sh                   {'rc': 1, 'msg': ['github-pat a.txt:1', 'pre-commit: gitleaks refused the staged changes (rule id and place above)'], 'leaked': [], 'left': [], 'sec': 56.7}
+real_ghp_gitleaks_allow_dash                 {'rc': 1, 'msg': ['github-pat a.txt:1', 'pre-commit: gitleaks refused the staged changes (rule id and place above)'], 'leaked': [], 'left': [], 'sec': 52.9}
+real_ghp_gitleaksignore_sh                   {'rc': 1, 'msg': ['pre-commit: a .gitleaksignore would silence gitleaks; remove it'], 'leaked': [], 'left': [], 'sec': 49.3}
+real_ghp_gitleaksignore_dash                 {'rc': 1, 'msg': ['pre-commit: a .gitleaksignore would silence gitleaks; remove it'], 'leaked': [], 'left': [], 'sec': 48.7}
+real_ghp_env_hostile_cfg_sh                  {'rc': 1, 'msg': ['github-pat a.txt:1', 'pre-commit: gitleaks refused the staged changes (rule id and place above)'], 'leaked': [], 'left': [], 'sec': 58.4}
+real_ghp_env_hostile_cfg_dash                {'rc': 1, 'msg': ['github-pat a.txt:1', 'pre-commit: gitleaks refused the staged changes (rule id and place above)'], 'leaked': [], 'left': [], 'sec': 52.3}
+real_clean_upper_png_docs_sh                 {'rc': 0, 'msg': [], 'leaked': [], 'left': [], 'sec': 81.2}
+real_clean_upper_png_docs_dash               {'rc': 0, 'msg': [], 'leaked': [], 'left': [], 'sec': 67.9}
+real_noisy_textconv_clean_sh                 {'rc': 1, 'msg': ['pre-commit: gitleaks refused the staged changes (it logged an error and exited 0, so it may have scanned nothing: run gitleaks git --pre-commit --staged by hand)'], 'leaked': [], 'left': [], 'sec': 81.4}
+real_noisy_textconv_clean_dash               {'rc': 1, 'msg': ['pre-commit: gitleaks refused the staged changes (it logged an error and exited 0, so it may have scanned nothing: run gitleaks git --pre-commit --staged by hand)'], 'leaked': [], 'left': [], 'sec': 83.9}
+real_ghp_repo_color_diff_always_sh           {'rc': 1, 'msg': ['github-pat a.txt:1', 'pre-commit: gitleaks refused the staged changes (rule id and place above)'], 'leaked': [], 'left': [], 'sec': 76.3}
+real_docs_checkpoint_head_unit_sh            {'rc': 0, 'msg': [], 'leaked': [], 'left': [], 'sec': 82.5}
+real_docs_checkpoint_head_unit_dash          {'rc': 0, 'msg': [], 'leaked': [], 'left': [], 'sec': 61.8}
+real_docs_checkpoint_head_none_sh            {'rc': 1, 'msg': ['generic-api-key docs/s72/specs/t0b_b_ref/gitleaks_narrowed.toml:56', 'pre-commit: gitleaks refused the staged changes (rule id and place above)'], 'leaked': [], 'left': [], 'sec': 53.1}
+real_unit_nine_files_head_none_sh            {'rc': 1, 'msg': ['  tip: A `--config` flag must either be a path to a `.toml` configuration file', 'The path `C:/Users/SynAckITPC/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/d376cb56-c600-4d76-bfdb-9e15feff0cdc/scratchpad/t0b_b/adv5/s98382/r_unit_nine_files_head_non/repo/pyproject.toml` does not point to a configuration file', 'pre-commit: ruff blocking tier failed'], 'leaked': [], 'left': [], 'sec': 42.8}
+real_unit_nine_files_head_none_dash          {'rc': 1, 'msg': ['  tip: A `--config` flag must either be a path to a `.toml` configuration file', 'The path `C:/Users/SynAckITPC/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/d376cb56-c600-4d76-bfdb-9e15feff0cdc/scratchpad/t0b_b/adv5/s98382/r_unit_nine_files_head_non/repo/pyproject.toml` does not point to a configuration file', 'pre-commit: ruff blocking tier failed'], 'leaked': [], 'left': [], 'sec': 30.3}
+eslint_70_0                                  {'rc': 0, 'ncalls': 2, 'sizes': [64, 6], 'stdin_calls': 0, 'msg': ['pre-commit: WARNING gitleaks not installed - secret scan skipped (CI runs it)'], 'sec': 31.2}
+eslint_1_1                                   {'rc': 0, 'ncalls': 1, 'sizes': [1], 'stdin_calls': 1, 'msg': ['pre-commit: WARNING gitleaks not installed - secret scan skipped (CI runs it)'], 'sec': 16.8}
+eslint_12_11                                 {'rc': 0, 'ncalls': 1, 'sizes': [12], 'stdin_calls': 0, 'msg': ['pre-commit: WARNING gitleaks not installed - secret scan skipped (CI runs it)', 'pre-commit: NOTE more than 10 partially staged client files - eslint read their working copies'], 'sec': 19.6}
+eslint_129_0                                 {'rc': 0, 'ncalls': 3, 'sizes': [64, 64, 1], 'stdin_calls': 0, 'msg': ['pre-commit: WARNING gitleaks not installed - secret scan skipped (CI runs it)'], 'sec': 16.9}
+eslint_70_3                                  {'rc': 0, 'ncalls': 5, 'sizes': [64, 3, 1, 1, 1], 'stdin_calls': 3, 'msg': ['pre-commit: WARNING gitleaks not installed - secret scan skipped (CI runs it)'], 'sec': 19.0}
+EXIT 0
