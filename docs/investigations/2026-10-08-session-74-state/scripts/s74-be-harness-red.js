@@ -1,0 +1,28 @@
+export const meta = {
+  name: 's74-be-harness-red',
+  description: 'Session 74 unit BE-HARNESS RED phase under the synack-build-orchestrator loop: one Opus RED agent writes tests/test_be_harness.py (hermetic, MockTransport through a module-attribute httpx shim) and the one-line U13 test repoint in worktree sc-s71-t0b, proves RED-A at base and RED-B against the old script in a detached scratch worktree through the bounded runner, touches no production file or script. Fable gates afterwards.',
+  phases: [ { title: 'RED', detail: 'tests first; RED-A at base, RED-B against the old canary; scratch worktree removed' } ],
+}
+const SP = 'C:/Users/SYNACK~1/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/609148ee-5724-4d44-9ca2-c3b84ed07b25/scratchpad'
+const RULES = SP + '/s74-common.txt'
+const WT = 'C:/Users/SynAckITPC/Documents/AI/sc-s71-t0b'
+const SPECS = SP + '/s74-state/specs'
+const NOTES = SP + '/be-harness'
+const SCHEMA = { type: 'object', required: ['files_written', 'pyt_lines', 'gitleaks', 'git_status', 'red_reasons', 'summary'], properties: {
+  files_written: { type: 'array', items: { type: 'string' }, description: '"<path> <sha256>" for every file written or edited, final bytes on disk' },
+  pyt_lines: { type: 'array', items: { type: 'string' }, description: 'every [pyt] summary line verbatim (RED-A and RED-B)' },
+  gitleaks: { type: 'string' }, lint: { type: 'string' }, git_status: { type: 'string' },
+  red_reasons: { type: 'array', items: { type: 'string' }, description: 'per node: RED-A result, RED-B result and the assertion message that proves the reason' },
+  not_measured: { type: 'array', items: { type: 'string' } },
+  questions_for_orchestrator: { type: 'array', items: { type: 'string' } },
+  summary: { type: 'string' } } }
+
+phase('RED')
+const red = await agent([
+  'ROLE: RED agent for unit BE-HARNESS. Notes folder: ' + NOTES + '/red (create it; running notes.md from the first measurement). Budget: 2 hours from your first tool call.',
+  'Worktree ' + WT + ' (branch feature/s74-be-harness = origin/main ' + args.main + ', clean). You MAY write tests/test_be_harness.py and the one-line repoint in tests/test_s71_u13_harness_auth.py (lines 51-52: the SCRIPTS path of the canary becomes scripts/verify_after_credits.py; CRLF kept; check `git ls-files --eol` first) in this worktree only; NO production file, NO script, NO git command in the worktree except the ONE allowed detached scratch worktree under your notes folder for RED-B (`git worktree add --detach <notes>/<name> ' + args.main + '`, removed with `git worktree remove --force` afterwards; no node_modules). Read the agent rules file FIRST and obey it: ' + RULES,
+  'THE SPEC SET, in order of authority (the later wins), read in full: ' + SPECS + '/BE_HARNESS_SPEC.md; ' + SPECS + '/BE_HARNESS_REVIEW.md; ' + SPECS + '/FABLE_RULINGS_BE_HARNESS.md (B1-B16 and the RED instruction: BINDING). The spec notes and probes: ' + NOTES + '/spec/ (probe_old_canary.py, probe_mock_semantics.py) and ' + NOTES + '/review/ (the F1 AST probe of _clean_specs -> _build_specs_rows, the h11 header-text measurement). The five canary logs are the fixture source: ' + SP + '/canary/canary1..5_*.log (fill the fields the logs omit as healthy and label those fixtures "derived" in docstrings).',
+  'DO: (1) write tests/test_be_harness.py (pure ASCII, LF; every node of the spec as amended by B1-B13: the evaluate_compare table incl. the real-row rule B1 with the _SPEC_NA_TOKENS set, the B6 amount rule, the stream rule B2 with BH04b and the first-vs-last node, the exit codes B3 (0/1/3/4/5 and the RESULT: last-line rule), the run rule B4 with BH06[canary1..5] (expected 1,1,1,3,1), the auth and secrecy nodes incl. B7 (ConnectError / LocalProtocolError / ReadTimeout carrying a sentinel built at runtime; the sentinel absent from stdout, stderr and the report; a Client-construction failure -> rc 5), exact path counting B9, the U13 H10 degraded input -> rc 1 B10, the import-surface node B11, the warm-up nodes incl. COLD ONLY B12 and partial_stage reported B13); never a credential-shaped literal (build sentinels by concatenation; the hook greps added lines). (2) the U13 repoint (one line). (3) RED-A at base through the bounded runner (bound 600; tag beh-red-a): every BH node fails with the "absent" message; the U13 H07 x2 and H10 x2 nodes fail with FileNotFoundError on the repointed path; every other U13 node passes; quote the messages. (4) RED-B: the detached scratch worktree at ' + args.main + ' with the docs copy of the OLD canary copied to scripts/verify_after_credits.py and the new test file copied in; run the two files there (tag beh-red-b): the spec\'s assertion-failure list plus BH04b, the first-vs-last node, BH06[canary5], the B6 cases and the B7 nodes are RED on their assertions; BH05, BH10, BH11 and every U13 node are GREEN; warm-up nodes fail on the absent module; quote the messages; remove the scratch worktree and confirm `git worktree list` no longer shows it. (5) gitleaks dir over the new test file with the repo config (rc); py_compile + ruff E9,F63,F7,F82 on the two test files. (6) `git status --porcelain` and `git diff --stat` (the repoint = a 1-2 line diff, no whole-file diff). Return every file with its sha256 and every [pyt] line verbatim.',
+].join('\n'), { label: 'red:be-harness', phase: 'RED', model: 'opus', schema: SCHEMA })
+log('red: ' + (red ? (red.pyt_lines || []).length + ' pyt lines' : 'no result'))
+return { red }
