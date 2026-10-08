@@ -96,21 +96,19 @@ Nothing iOS has ever been signed for the App Store. There has been no production
    * `OPENAI_API_KEY=<new key>`
    * `OPENAI_MAX_RETRIES=1`
    * `OPENAI_FALLBACK_MAX_RETRIES=0`
-8. Canary:
-   * Run `python docs/investigations/2026-09-29-session-69-state/verify_after_credits.py`.
-   * Then run the app-shaped REST compare:
-     ```
-     curl -s -m 60 -G 'https://web-production-58776.up.railway.app/api/v1/text/compare' \
-       --data-urlencode 'product_a=iPhone 15' --data-urlencode 'product_b=Samsung Galaxy S24' \
-       --data-urlencode 'region=bahrain'
-     ```
-   * `success:true` alone does **not** count as a pass (RT-1). A pass requires all of:
-     * no `comparison.error`
-     * `specs` non-empty
-     * at least one price `amount` non-null
-     * pros and cons present
-     * no 429 in the Railway log
-   * Then test one camera compare from the phone.
+8. Canary (signed-in rule: since U13 every anonymous compare returns 401, so the script sends the admin header from the `web` service's environment; nothing is typed or printed):
+   * From the repo root (the clone linked to the Railway project), run:
+     `railway run -s web -- <venv python> scripts/verify_after_credits.py --send-admin-key --report .qa-harness/canary.json`
+     (`<venv python>` = the backend venv's python; in Git Bash the older `env HARNESS_SEND_ADMIN_KEY=1` form works too; `.qa-*/` is git-ignored.)
+   * It checks /health, three uncached compares, the app-shaped `product_a`/`product_b` compare and one stream, prints one line per check and a last `RESULT:` line.
+   * `success:true` alone does **not** count as a pass (RT-1). A pass needs, on every compare: HTTP 200, `success:true`, no `comparison.error`, a winner, at least one real `specs.specs_comparison.rows` entry (an N/A placeholder or a brand/model row does not count), pros and cons on both products, a price `amount` on at least one product and on every product that names a retailer; on the stream: no `error` event, `success:true` on every terminal event, and the first terminal payload passing the same compare rule. A pass also needs no 429 in the Railway log for the run window. The old script read none of the payload fields, so the first run may FAIL where it passed.
+   * Classify the run by its last `RESULT:` line (or the report's `exit` field), never by the shell exit code alone: through the npm `railway run` wrapper every non-zero script exit reads as 1 (measured on @railway/cli 4.40.0: its `bin/railway.js` maps any child failure to exit 1). The line carries the code: `RESULT: PASS` = 0; `RESULT: FAIL fail=0 no_price=<m>` = 3; `RESULT: FAIL fail=<n> ...` or `RESULT: FAIL no_price_in_run ...` = 1; `... setup=<reason>` = 4; `... error=<ClassName>` = 5. No `RESULT:` line = the run did not happen (a usage error or a missing file; 124/137 from `timeout` = the time bound). What to do:
+     * 0 PASS: continue to step 9.
+     * 3 NO PRICE (OpenAI verified, prices thin; at least one price in the run): continue to step 9 and send Claude the lines; FANOUT-STARVE owns the price gap.
+     * 1 FAIL (a broken compare or stream, or no price anywhere in the run), 4 SETUP (a 401/403, a missing or whitespace-padded `ADMIN_API_KEY`, or a `--base` carrying credentials), 5 CRASH: stop and send Claude the lines.
+   * Send Claude the printed lines (or the report file). Never the environment, never `railway variables`.
+   * Check the Railway log for 429s in the run window.
+   * Then test one camera compare from the phone, signed in.
 9. Revoke the old key.
 
 **A2. Supabase** (PRD-BP-07, RT-10)
@@ -211,7 +209,9 @@ Nothing iOS has ever been signed for the App Store. There has been no production
    * Complete onboarding once.
    * Table editor → `users` → `subscription_tier = premium`.
    * Put the password only into App Store Connect. Never in the repo.
-2. **Warm-up (RT-6):** run the six curated pairs twice each, pacing within the 10-per-minute limit:
+2. **Warm-up (RT-6, signed-in rule):** anonymous compares return 401 since U13, so the warm-up runs as the admin caller (unmetered, no history row):
+   `railway run -s web -- <venv python> scripts/review_warmup.py --send-admin-key --report .qa-harness/warmup.json`
+   It runs the six curated pairs below twice (app-shaped `product_a`/`product_b`, region bahrain, filling the caches), sleeping `--pace` seconds between calls (default 10: at most 6 a minute under the 10-a-minute limit), and prints a pass table (pair, run, http, verdict, prices, elapsed) and the lists READY (both runs pass the A1.8 rule), NO PRICE (everything passes but a run has no price amount), FAILED (a run fails), COLD ONLY (the first run failed and the second passed; also under FAILED) and PARTIAL (a run came back partial). Exit codes as in A1 step 8: 0 all READY, 3 no FAILED but some NO PRICE, 1 any FAILED or no price in any compare, 4 setup, 5 crash; no `RESULT:` line = the run did not happen; classify by the `RESULT:` line (or the report's `exit` field), never by the shell exit code alone: through the npm `railway run` wrapper every non-zero exit reads as 1.
    * iPhone 15 / Samsung Galaxy S24
    * Bose QuietComfort Ultra / Sony WH-1000XM5
    * Nivea Soft / Cetaphil Moisturizing Cream
@@ -219,7 +219,7 @@ Nothing iOS has ever been signed for the App Store. There has been no production
    * L'Oreal Revitalift / Olay Regenerist
    * Tom Ford Tobacco Vanille / Creed Aventus. Drop this pair if the result is partial; fragrance spec coverage is thin.
 
-   Put only pairs that pass the A1 assertions into the review notes. Re-warm every 24 h while in review.
+   Put only READY pairs into the review notes (a COLD ONLY pair is your call). Re-warm every 24 h while in review. Send Claude the table, never the environment.
 3. **Screenshots** (SA-01) on the iPhone, using side button + volume up. Shoot 6 real screens:
    * Home with two products entered
    * Results winner card
