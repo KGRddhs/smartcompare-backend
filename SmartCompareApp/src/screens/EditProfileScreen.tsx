@@ -5,7 +5,8 @@
 //   1. Header              — back chevron + centered "Edit Profile" + spacer
 //                            [JSX:23-43]
 //   2. AvatarBlock         — 96x96 circle bg.secondary + 36/700 initial
-//                            + "Photo upload coming soon" caption [JSX:45-63]
+//                            + a caption saying the picture is that initial
+//                            (S74 CLIENT-TRUTH, COPY=A) [JSX:45-63]
 //   3. Eyebrow "Account"   — [JSX:65-74]
 //   4. FormCard            — 2 fields: Display name + Email (or Apple ID mask)
 //                            [JSX:76-87, 173-185]
@@ -60,6 +61,7 @@ import {
 } from '../services/authService';
 import type { RootStackParamList } from '../types';
 import { clearAiConsent } from '../services/aiConsent';
+import { clearRecentSearches } from '../services/recentSearches';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'EditProfile'> & {
   onAccountDeleted?: () => void;
@@ -138,6 +140,9 @@ export default function EditProfileScreen({ navigation, onAccountDeleted }: Prop
               // S69 U3 R3 — the per-account AI-consent record goes with the
               // account (clearAiConsent never throws).
               await clearAiConsent(user?.id ?? null);
+              // S74 CLIENT-TRUTH (#295) — the device copy of the search
+              // history goes too (clearRecentSearches never throws).
+              await clearRecentSearches();
               await clearSession();
               onAccountDeleted?.();
             } catch (err) {

@@ -5,7 +5,7 @@
  * - Winner card with emerald glow ring
  * - Match score animating 0 → N via CounterTicker
  * - "How your answers shaped this" section echoes the user's quiz inputs
- * - Soft signup CTA: "Try MYEZ free — 5 comparisons"
+ * - Soft signup CTA: "Try MYEZ free" (S74 CT4: no comparison count)
  *
  * Uses source-string assertions on InviteeQuizScreen.tsx + i18n catalog
  * because driving the 4Q wizard end-to-end in unit-test land would
@@ -81,8 +81,8 @@ describe('InviteeQuizScreen reveal — i18n catalog', () => {
     }
   });
 
-  it('uses confident copy "Try MYEZ free — 5 comparisons" per § 4e', () => {
+  it('uses confident copy "Try MYEZ free" per section 4e (S74 CT4: no comparison count)', () => {
     // The exact phrasing is the design contract.
-    expect(en).toMatch(/"Try MYEZ free.*5 comparisons"/);
+    expect(en.match(/"referrals\.quiz\.signupCtaSoft":\s*("[^"]*")/)?.[1]).toBe('"Try MYEZ free"');
   });
 });

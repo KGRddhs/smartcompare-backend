@@ -1,16 +1,16 @@
 /**
  * RegisterScreen deferred-code + clipboard fallback — Bundle B/C/D Task 2.12.
  *
- * Verifies the mount-effect priority chain:
+ * Verifies the mount-effect chain:
  *   1. deferredInviteCode.consumeDeferredInviteCode() (Android PIR)
- *   2. clipboardFallbackService.tryReadClipboardForInviteCode() (iOS)
- *      — shows EXPLICIT consent banner; never auto-fills.
+ *      pre-fills and locks the field.
  *
- * Apple-review surface: clipboard read is once-per-mount; consent
- * dialog is mandatory; declining leaves the field empty.
+ * S74 CLIENT-TRUTH (CLIP=A): the iOS clipboard read and its consent banner
+ * were removed from RegisterScreen; the clipboardFallbackService mock stays
+ * so a read, if one ever came back, would be observable here.
  */
 import React from 'react';
-import { render, fireEvent, waitFor, act } from '@testing-library/react-native';
+import { render, waitFor } from '@testing-library/react-native';
 
 jest.mock('react-native-reanimated', () => {
   const RealReact = require('react');
@@ -110,37 +110,6 @@ describe('RegisterScreen — deferred code + clipboard fallback', () => {
     expect(await findByDisplayValue('QR-ATAUX9')).toBeTruthy();
   });
 
-  it('does NOT auto-fill from clipboard; shows consent banner instead', async () => {
-    tryClipboardMock.mockResolvedValue('QR-BBBBBB');
-    const { findByTestId, queryByDisplayValue } = renderScreen();
-    expect(await findByTestId('clipboard-consent-banner')).toBeTruthy();
-    // CRITICAL Apple-review invariant: never pre-fill before consent.
-    expect(queryByDisplayValue('QR-BBBBBB')).toBeNull();
-  });
-
-  it('consent accept sets the invite code', async () => {
-    tryClipboardMock.mockResolvedValue('QR-CCCCCC');
-    const { findByTestId, findByDisplayValue } = renderScreen();
-    const acceptBtn = await findByTestId('clipboard-consent-accept');
-    await act(async () => {
-      fireEvent.press(acceptBtn);
-    });
-    expect(await findByDisplayValue('QR-CCCCCC')).toBeTruthy();
-  });
-
-  it('consent reject dismisses the banner without setting the code', async () => {
-    tryClipboardMock.mockResolvedValue('QR-DDDDDD');
-    const { findByTestId, queryByTestId, queryByDisplayValue } = renderScreen();
-    const rejectBtn = await findByTestId('clipboard-consent-reject');
-    await act(async () => {
-      fireEvent.press(rejectBtn);
-    });
-    await waitFor(() =>
-      expect(queryByTestId('clipboard-consent-banner')).toBeNull()
-    );
-    expect(queryByDisplayValue('QR-DDDDDD')).toBeNull();
-  });
-
   it('does not consult clipboard when a deferred PIR code is already available', async () => {
     consumeDeferredMock.mockReturnValue('QR-EEEEEE');
     renderScreen();
@@ -149,12 +118,5 @@ describe('RegisterScreen — deferred code + clipboard fallback', () => {
       expect(consumeDeferredMock).toHaveBeenCalledTimes(1);
     });
     expect(tryClipboardMock).not.toHaveBeenCalled();
-  });
-
-  it('does not show consent when clipboard contains no QR code', async () => {
-    tryClipboardMock.mockResolvedValue(null);
-    const { queryByTestId } = renderScreen();
-    await waitFor(() => expect(tryClipboardMock).toHaveBeenCalled());
-    expect(queryByTestId('clipboard-consent-banner')).toBeNull();
   });
 });

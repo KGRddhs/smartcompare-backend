@@ -222,6 +222,8 @@ test('#105 — composed lines leak no backend internals (rule #2)', () => {
     // The mock catalog must actually translate — a raw key string here
     // means the composed line proves nothing.
     expect(factText).not.toMatch(/^results\.confidence\./);
+    // S74 CLIENT-TRUTH (ruling Y10): every placeholder is interpolated.
+    expect(factText).not.toContain('{{');
   }
 });
 

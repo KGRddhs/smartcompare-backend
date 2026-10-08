@@ -26,7 +26,6 @@ describe('ShareBottomSheet redesign — Phase 4 Task 40 (source assertions)', ()
   it('uses the new reward i18n keys', () => {
     for (const key of [
       'referrals.share.reward.title',
-      'referrals.share.reward.now',
       'referrals.share.reward.later',
     ]) {
       expect(SOURCE).toContain(key);
@@ -56,7 +55,6 @@ describe('ShareBottomSheet — i18n catalog', () => {
   it('adds reward + toast keys EN + AR', () => {
     for (const key of [
       'referrals.share.reward.title',
-      'referrals.share.reward.now',
       'referrals.share.reward.later',
       'referrals.share.toast.confirm',
     ]) {

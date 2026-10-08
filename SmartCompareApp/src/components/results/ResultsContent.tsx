@@ -70,7 +70,7 @@ import { RevealBurst } from '../hero/RevealBurst';
 import { ResultsAccordion } from './ResultsAccordion';
 import { SCORE_INTERNALS_RE } from './_deltaText';
 import { anyEstimated, isConvertedUsd } from '../../services/sourceMethod';
-import { isDegradedComparison } from '../../services/resultHonesty';
+import { isDegradedComparison, isSupplementComparison } from '../../services/resultHonesty';
 import { ProductImage } from '../primitives/ProductImage';
 
 type SheetLeg = 'price' | 'reviews' | 'specs' | null;
@@ -134,9 +134,10 @@ export const ResultsContent = React.memo(function ResultsContent({
 
   const formatPrice = (price?: Product['price']) => {
     // Phase 4.3 — price-pending: when the backend marks a price
-    // `unavailable` (reason pending_genuine | size_mismatch) we render an
-    // engaging "coming soon" line rather than a number or a bare "N/A".
-    // No "estimated", no scary copy.
+    // `unavailable` (reason pending_genuine | size_mismatch) we render a
+    // plain "no confirmed price yet" line rather than a number or a bare
+    // "N/A" (S74 CLIENT-TRUTH: no app update promise). No "estimated", no
+    // scary copy.
     if (price?.unavailable) return t('results.price.pending');
     if (!price || price.amount === null) return t('results.priceNA');
     // MB-i18n-rtl-02 — currency label follows the app language (AR gets
@@ -171,6 +172,11 @@ export const ResultsContent = React.memo(function ResultsContent({
   // score-derived (verdict_builder.py) and stay. Ruling R-B: a truth notice
   // about the result itself, not an informational banner.
   const isDegraded = isDegradedComparison(result);
+
+  // S74 CLIENT-TRUTH (AR-5, MED=A) — supplements / OTC medicine pairs carry
+  // a "not medical advice" line in the "why" block, fresh or re-opened from
+  // History, independent of partial / degraded.
+  const isSupplement = isSupplementComparison(result, products);
 
   // Per JSX, verdict body uses recommendation. For new format, overview.winner.reason.
   const isNewFormat = !!(result as any)?.overview?.winner;
@@ -369,6 +375,14 @@ export const ResultsContent = React.memo(function ResultsContent({
               style={styles.partialNote}
             >
               {t('results.degraded.note')}
+            </Text>
+          ) : null}
+          {isSupplement ? (
+            <Text
+              testID="results-content-medical-note"
+              style={styles.partialNote}
+            >
+              {t('results.medicalNote')}
             </Text>
           ) : null}
           {/* Faithful-results Phase 2.2 (FE BUG #4): the runner-up caption was

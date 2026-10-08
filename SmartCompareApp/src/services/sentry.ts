@@ -5,7 +5,8 @@
  * so JWTs, OpenAI / Firecrawl API keys, generic long-hex tokens, and
  * Bearer headers are redacted before events leave the device. Sensitive
  * request headers (authorization, x-admin-key, cookie) are also redacted
- * wholesale.
+ * wholesale. Exception values are blanked (the backend's R1) except three
+ * axios-generated shapes (S74 CLIENT-TRUTH, UP1).
  *
  * Follow-ups (NOT in this commit):
  *   - Move the DSN out of source into an EAS env secret
@@ -27,14 +28,17 @@ import * as Sentry from '@sentry/react-native';
 // future providers). Mirrors the backend sentry_service.py changes.
 const SENSITIVE_PATTERNS: Array<[RegExp, string]> = [
   // M18 MB-security-02 — R21 parity with the backend's
-  // _QUERY_STRING_SCRUB_PATTERN (sentry_service.py): the five query-string
-  // params that carry user-typed content (q/query/email/search/text).
-  // FIRST rung, mirroring the backend's "query scrub BEFORE token scrub"
-  // ordering, so `?q=eyJ...` doesn't get half-masked by the JWT pattern
-  // and then leak the rest of the value. Capture-group form (no lookbehind
-  // — Hermes compatibility), so bookkeeping params (?nocache=, ?limit=)
-  // never match.
-  [/([?&](?:q|query|email|search|text))=[^&#]*/gi, '$1=[QUERY_REDACTED]'],
+  // _QUERY_STRING_PII_PARAMS (sentry_service.py): the query-string params
+  // that carry user-typed content, in the backend tuple's order. S74
+  // CLIENT-TRUTH (UP1) added product_a / product_b (the REST compare sends
+  // them as query params) and url / url1 / url2 (parity; the link compare
+  // posts them in a body). Client URLs are axios-encoded, so `[^&#]*` ends
+  // the value. FIRST rung, mirroring the backend's "query scrub BEFORE
+  // token scrub" ordering, so `?q=eyJ...` doesn't get half-masked by the
+  // JWT pattern and then leak the rest of the value. Capture-group form (no
+  // lookbehind — Hermes compatibility), so bookkeeping params (?nocache=,
+  // ?limit=) and longer names (?urls=, ?product_a_id=) never match.
+  [/([?&](?:q|query|email|search|text|product_a|product_b|url|url1|url2))=[^&#]*/gi, '$1=[QUERY_REDACTED]'],
   [/eyJ[A-Za-z0-9_-]{20,}\.eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]+/g, '[JWT_REDACTED]'],
   [/sk-proj-[A-Za-z0-9_-]+/g, '[OPENAI_KEY_REDACTED]'],
   [/fc-[a-f0-9]{20,}/g, '[FIRECRAWL_KEY_REDACTED]'],
@@ -93,14 +97,46 @@ function scrubDict(data: Record<string, unknown>): Record<string, unknown> {
   return scrubbed;
 }
 
+// S74 CLIENT-TRUTH (UP1, ruling CT11) — the only exception values kept: the
+// three axios-generated shapes, matched whole (anchored, case-sensitive,
+// untrimmed). They carry no user content and keep network failures
+// triageable; every other value is blanked.
+const KEPT_EXCEPTION_VALUES: RegExp[] = [
+  /^Request failed with status code \d{3}$/,
+  /^Network Error$/,
+  /^timeout of \d+ms exceeded$/,
+];
+
 export function scrubBeforeSend(event: any, _hint: any): any {
   if (!event) return event;
 
-  // Scrub exception messages.
+  // S74 CLIENT-TRUTH (UP1, R1 parity with the backend's
+  // _blank_exception_values) — exception values are blanked except the
+  // allowlisted shapes above; type, mechanism and stacktrace are kept.
+  // Runs before every other pass.
   if (event.exception && Array.isArray(event.exception.values)) {
     for (const exc of event.exception.values) {
-      if (typeof exc?.value === 'string') {
-        exc.value = scrubString(exc.value);
+      if (
+        typeof exc?.value === 'string' &&
+        !KEPT_EXCEPTION_VALUES.some((re) => re.test(exc.value))
+      ) {
+        exc.value = '';
+      }
+    }
+  }
+
+  // S74 CLIENT-TRUTH (ruling CT12) — captureMessage events (the B4-DIAG
+  // sites in authService.ts) carry raw error text in `message` and `extra`:
+  // run the scrub patterns over the message and every string value of
+  // `extra` (one level; non-strings untouched).
+  if (typeof event.message === 'string') {
+    event.message = scrubString(event.message);
+  }
+  if (event.extra && typeof event.extra === 'object' && !Array.isArray(event.extra)) {
+    const extra = event.extra as Record<string, unknown>;
+    for (const key of Object.keys(extra)) {
+      if (typeof extra[key] === 'string') {
+        extra[key] = scrubString(extra[key] as string);
       }
     }
   }
