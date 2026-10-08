@@ -416,7 +416,8 @@ class _AdminAuthenticatedStaticFiles(StaticFiles):
             return
 
         expected = os.getenv("ADMIN_API_KEY", "")
-        if not expected:
+        # #304: a whitespace-only key counts as unset; the compares below stay raw.
+        if not expected.strip():
             # Misconfigured deploy — refuse to serve admin pages at all.
             await _Response("Admin not configured", status_code=503)(scope, receive, send)
             return

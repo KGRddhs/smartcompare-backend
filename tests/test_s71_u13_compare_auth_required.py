@@ -157,6 +157,7 @@ USER_ROUTES = tuple(r for r in ROUTES if r.kind == "user")
 ADMIN_ROUTES = tuple(r for r in ROUTES if r.kind == "admin")
 ROUTE_BY_KEY = {r.key: r for r in ROUTES}
 ALL_METHOD_PATHS = {f"{r.method} {r.path}" for r in ROUTES}
+U13E_ADMIN_ONLY = frozenset({"GET /api/v1/url/detect", "POST /api/v1/url/detect"})
 
 SCENARIOS = ("anonymous", "valid_bearer", "rejected_bearer")
 SCENARIO_NAMES = tuple(f"{r.key}.{s}" for r in ROUTES for s in SCENARIOS)
@@ -553,10 +554,11 @@ def test_T04_inventory_guard_declared(monkeypatch, route):
 
 def test_T05_inventory_out_of_scope_untouched(monkeypatch):
     """PIN T05: no route outside the ten (incl. referral invite GET / quiz POST,
-    /url/detect x2, /url/retailers, /share/{token}, /home/*, /feedback, /events,
+    /url/retailers, /share/{token}, /home/*, /feedback, /events,
     /legal/*, /app/version, /health, /text/parse, /text/price-kpi, DELETE /text/cache,
     /api/v1/admin/*) has a dependency named require_paid_route_*. Non-vacuous: the
-    route table is visible and the named out-of-scope routes are present."""
+    route table is visible and the named out-of-scope routes are present.
+    (/url/detect x2 is admin-only since U13e: skipped like the ten, kept in must_exist.)"""
     _flags(monkeypatch)
     from app.main import app
     assert_route_table_visible(app)
@@ -579,7 +581,7 @@ def test_T05_inventory_out_of_scope_untouched(monkeypatch):
         if dependant is None:
             continue
         for method in entry.methods:
-            if f"{method} {entry.path}" in ALL_METHOD_PATHS:
+            if f"{method} {entry.path}" in ALL_METHOD_PATHS | U13E_ADMIN_ONLY:
                 continue
             checked += 1
             names = [n for n in _dependant_call_names(dependant)
@@ -935,13 +937,12 @@ def test_T22a_invitee_quiz_stays_anonymous(monkeypatch, client):
     assert resp.status_code == 200 and len(calls) == 1, (resp.status_code, calls)
 
 
-def test_T22b_url_detect_stays_anonymous(monkeypatch, stubs, client):
-    """PIN T22b (UR2): flag ON, GET /url/detect (validator stubbed) is not 401."""
+def test_T22b_url_detect_admin_only_u13e(monkeypatch, stubs, client):
+    """PIN T22b (UR2 superseded by U13e, W0 = guard): flag ON, anonymous GET /url/detect is 401."""
     _flags(monkeypatch, auth=True)
     resp = client.get("/api/v1/url/detect", params={"url": URL1}, headers=_headers())
-    assert resp.status_code != 401, (resp.status_code, resp.text[:300])
-    assert resp.status_code == 200, (resp.status_code, resp.text[:300])
-    assert stubs.count("url_routes._validate_url_offloop_or_sync") == 1, stubs.calls
+    _assert_envelope(resp, 401, "AUTH_REQUIRED", AUTH_TEXT)
+    assert stubs.calls == {}, stubs.calls
 
 
 def _referenced_components(snapshot):

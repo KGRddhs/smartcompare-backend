@@ -49,9 +49,12 @@ def verify_admin_key(x_admin_key: str = Header(default="")):
     An ABSENT header is a 403 like a wrong one (``Header(default="")``): a 422
     tells an unauthenticated caller that the header is the thing being checked,
     and it is a different response shape for the same "you are not an admin".
+
+    #304: a whitespace-only ``ADMIN_API_KEY`` counts as unset (``str.strip``);
+    the compare stays against the raw value, so a padded key fails closed.
     """
     expected = os.getenv("ADMIN_API_KEY", "")
-    if not expected or not hmac.compare_digest(
+    if not expected.strip() or not hmac.compare_digest(
         x_admin_key.encode("utf-8", errors="surrogateescape"),
         expected.encode("utf-8", errors="surrogateescape"),
     ):
