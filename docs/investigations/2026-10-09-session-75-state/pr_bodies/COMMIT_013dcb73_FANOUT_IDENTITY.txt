@@ -1,0 +1,9 @@
+test(fanout): re-record the flag-OFF identity digests at the post-#342 main 6cff57af
+
+The rebase onto 6cff57af moved all nine flag-OFF digests because COST-METER
+(#341) adds metadata.openai to every response; the fixture is re-recorded at
+the new base (detached scratch worktree, no .env, the recorder's dotenv
+neutralisation and socket guard) and the test's base sha and recipe note
+follow. The identity test is green on the rebased tree: head == base.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>

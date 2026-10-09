@@ -1,7 +1,7 @@
 FANOUT-BOUND: bound the compare's adapter fan-out itself (D3 of FANOUT-STARVE, deferred)
 
 ## Context
-FANOUT-STARVE (session 75, PR #<FANOUT_PR>) named and bounded the fan-out's starvation points around the fan-out (executor 96, libuv pool 64, Serper connect 8 s, the unified-search bound, the Phase-2 residual guard, the parse stall guard) and left D3 -- a bound on the fan-out ITSELF -- as the follow-up (spec `docs/investigations/2026-10-09-session-75-state/specs/FANOUT_STARVE_SPEC.md` D3; review items M8, m2, m5; rulings FS-R1..R20).
+FANOUT-STARVE (session 75, PR #344) named and bounded the fan-out's starvation points around the fan-out (executor 96, libuv pool 64, Serper connect 8 s, the unified-search bound, the Phase-2 residual guard, the parse stall guard) and left D3 -- a bound on the fan-out ITSELF -- as the follow-up (spec `docs/investigations/2026-10-09-session-75-state/specs/FANOUT_STARVE_SPEC.md` D3; review items M8, m2, m5; rulings FS-R1..R20).
 
 ## What is still unbounded
 Under `ENABLE_BH_GCC_CATALOG_SOURCES` one compare launches about 30 blocking adapter fetches (15 hosts x 2 products, ledger 2026-10-08 14:24) onto the shared default executor. A second and third concurrent compare multiply that; the 96-thread pool holds three full fan-outs, the fourth queues behind them and its adapters read as TIMEOUT / SLOW-MISS drops (R-W18 lines) although the sources answered. `/health.adapter_executor.queued` (FANOUT-STARVE D1) now shows the queue depth, so the condition is observable before this unit exists.

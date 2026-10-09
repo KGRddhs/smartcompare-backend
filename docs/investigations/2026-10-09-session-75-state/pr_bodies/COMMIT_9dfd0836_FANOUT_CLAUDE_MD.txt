@@ -1,0 +1,11 @@
+docs(claude-md): FANOUT-STARVE lines at merge -- the four flag rows + configuration truth, and the comm-gate rule on source-scanning pins
+
+The SESSION 73 block gains the FANOUT-STARVE bullet (PR #344): the unflagged
+configuration truth (executor 96, Serper connect 8.0 s, the UV_THREADPOOL_SIZE
+start command, the boot and stage lines, the Bright Data ERROR and /health
+keys), the four default-OFF flags with their knobs and effects, the canary
+--form option, the stated limits and the owner's flip rule. The gate rules gain
+the sixth rule: every backend comm set includes the source-scanning pins
+(lesson of PR #341's CI red).
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
