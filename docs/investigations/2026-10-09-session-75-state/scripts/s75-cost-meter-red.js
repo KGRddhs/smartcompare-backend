@@ -1,0 +1,29 @@
+export const meta = {
+  name: 's75-cost-meter-red',
+  description: 'Session 75 unit COST-METER (#66) RED phase under the synack-build-orchestrator loop: one Opus RED agent writes the hermetic cost-meter tests named by the spec (plus the three in-place amendments ruling CM3 allows) in worktree sc-s74-u13e, proves they are RED at main for the right reasons through the bounded runner, touches no production file. Fable gates afterwards.',
+  phases: [ { title: 'RED', detail: 'tests first; RED at base through pyt.py; the three pin files recorded at base' } ],
+}
+const SP = 'C:/Users/SYNACK~1/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/f9970d11-1fa0-400e-9fb3-dd91f335e519/scratchpad'
+const RULES = SP + '/s75-common.txt'
+const WT = 'C:/Users/SynAckITPC/Documents/AI/sc-s74-u13e'
+const SPECS = WT + '/docs/investigations/2026-10-08-session-74-state/specs'
+const NOTES = SP + '/cost-meter'
+const SCHEMA = { type: 'object', required: ['files_written', 'pyt_lines', 'anchor_diff', 'gitleaks', 'git_status', 'red_reasons', 'summary'], properties: {
+  files_written: { type: 'array', items: { type: 'string' }, description: '"<path> <sha256>" for every file written or edited, final bytes on disk' },
+  pyt_lines: { type: 'array', items: { type: 'string' }, description: 'every [pyt] summary line verbatim' },
+  anchor_diff: { type: 'string', description: 'the git diff --stat 49883e84 HEAD -- app tests migrations output and the re-anchored line numbers you used' },
+  gitleaks: { type: 'string' }, lint: { type: 'string' }, git_status: { type: 'string' },
+  red_reasons: { type: 'array', items: { type: 'string' }, description: 'per node: RED result and the assertion or import message that proves the reason' },
+  not_measured: { type: 'array', items: { type: 'string' } },
+  questions_for_orchestrator: { type: 'array', items: { type: 'string' } },
+  summary: { type: 'string' } } }
+
+phase('RED')
+const red = await agent([
+  'ROLE: RED agent for unit COST-METER (#66). Notes folder: ' + NOTES + '/red (create it; running notes.md from the first measurement). Budget: 2 hours from your first tool call.',
+  'Worktree ' + WT + ' (branch feature/s75-cost-meter = origin/main ' + args.main + ', clean, no .env, hooksPath .githooks). You MAY write ONLY the new test file(s) that spec section 4 names and the three in-place amendments ruling CM3 allows in tests/test_cost_dashboard.py (test_supabase_error_graceful, test_zero_comparisons_avg_cost, test_openai_cost_with_data; CRLF kept: check git ls-files --eol first; a whole-file diff is a defect). NO production file, NO script, NO fixture outside tests/, NO git write in the worktree. Read the agent rules file FIRST and obey it: ' + RULES + ' . Read worktree files with bash (cat, sed -n), never the Read tool; write new files into your notes folder first, byte-check them pure ASCII, then cp into the worktree.',
+  'THE SPEC SET, in order of authority (the later wins), read in full: ' + SPECS + '/COST_METER_SPEC.md; ' + SPECS + '/COST_METER_REVIEW.md; ' + SPECS + '/FABLE_RULINGS_COST_METER.md (CM1-CM14, BINDING: the cm08 fixture off the rounding boundary (CM1), the paging contract (CM2), get_supabase_client kept and the three nodes amended in place (CM3), the end-to-end pins cm13/cm14 with the ledger-start mutants (CM4), the JSON-path admin select through the db offload helper with the blob fallback (CM5), the truthful labels (CM6), EXACT price-table keys with None for unknown ids (CM7), None cached_tokens = 0 (CM8), the camera identify call recorded (CM9), the recorder logs the exception TYPE NAME only (CM10), the public share view strips metadata.openai (CM11), fmtUsd / openai_list_usd (CM12)). The spec was anchored at 49883e84; main has since taken U13e (#337) and BE-HARNESS (#338).',
+  'DO, in this order: (1) `git -C ' + WT + ' diff --stat 49883e84 HEAD -- app tests migrations` and re-anchor every line number the spec cites for the files it touches (api_budget_service.guarded_llm_create, response_builder, structured_comparison_service dispatch sites, admin_routes /admin/costs, image_routes, the share route, openai_service) when the diff is non-empty; record the re-anchors in notes.md and in anchor_diff. (2) Write the test file(s): pure ASCII, LF; every node cm01-cm14 as amended by CM1-CM12, each docstring naming its spec row; every expected cost value re-derived in Python on the pinned venv from the CM7 table (write the arithmetic in the docstring); mutants named in CM4 as comments on the nodes that must kill them; never a credential-shaped literal (build any sentinel by concatenation; the hook greps added lines); fixtures in-file or under tests/fixtures/ only if the spec names a fixture file. (3) The three CM3 amendments in place in tests/test_cost_dashboard.py. (4) RED-A at base through the bounded runner (bound 600; tag cm-red-a): the new file(s) plus tests/test_cost_dashboard.py; every cm node must fail with an ImportError / AttributeError on the absent module or function, or on the pinned-defect assertion (quote the message); a node that PASSES at main is a tautology: rewrite it or report it. (5) Baseline of the pin files that GREEN runs first (CM14): tests/test_u3c_store_false_pin.py tests/test_openai_breaker.py tests/test_retro_w1_3.py through the runner (bound 600; tag cm-base-pins): record pass counts. (6) gitleaks dir over the new file(s) with the repo config (rc only); py_compile + ruff --select E9,F63,F7,F82 on every test file you touched. (7) `git status --porcelain` and `git diff --stat` (the CM3 amendments = a few lines, no whole-file diff). Return every file with its sha256, every [pyt] line verbatim, and per-node RED reasons.',
+].join('\n'), { label: 'red:cost-meter', phase: 'RED', model: 'opus', schema: SCHEMA })
+log('red: ' + (red ? (red.pyt_lines || []).length + ' pyt lines' : 'no result'))
+return { red }
