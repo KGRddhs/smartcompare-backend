@@ -25,6 +25,11 @@
  * with the REAL `parseApiError` and the REAL en.json through `t`).
  * ToggleRow exposes accessibilityRole="switch", accessibilityState
  * {checked, disabled}, accessibilityLabel = label (ToggleRow.tsx:44-46).
+ *
+ * S75 U3b (decision D3 = C, 2026-10-08): the AI-sharing row is REMOVED (no
+ * per-user AI-sharing control exists any more), so the AI describes are gone,
+ * mount() waits on the notifications master, the switch counts are 4 / 1 and
+ * every index shifted by -1 (master [0], subs [1..3]).
  */
 import React from 'react';
 import { Switch } from 'react-native';
@@ -110,13 +115,14 @@ function makeProps() {
   return { navigation: { goBack: jest.fn(), navigate: jest.fn() }, onLogout: jest.fn() };
 }
 
-const AI_LABEL = EN['profile.aiSharing.title']; // "Help improve AI quality"
+// S75 U3b (decision D3 = C): the AI-sharing row is gone, so mount() waits on the
+// notifications master instead.
+const MASTER_LABEL = EN['profile.notifs.master.title']; // "Smart Decision Notifications"
 const SUB_LABELS = [
   EN['profile.notifs.insight'],
   EN['profile.notifs.cohort'],
   EN['profile.notifs.retrospective'],
 ];
-const GATE_CAPTION = 'Pick your priorities first';
 
 // A user WITH priorities: the F-S1.5i gate is open today, so the error rows
 // below redden on the RAW STRING, not on the gate.
@@ -125,7 +131,6 @@ const FULL_PREFS = {
   budget: 'mid',
   lifestyle: [],
   brand_attitude: 'best_of_both',
-  ai_sharing_enabled: false,
   notifications_enabled: true,
   notification_types: {},
 };
@@ -137,23 +142,9 @@ function axiosError(status: number, data: any): any {
   return err;
 }
 
-const VALIDATION_422 = () =>
-  axiosError(422, {
-    success: false,
-    error: 'Validation error: body → lifestyle → 0: Input should be ...',
-    code: 'VALIDATION_ERROR',
-    request_id: 'r3',
-  });
-const SAVE_400 = () =>
-  axiosError(400, {
-    success: false,
-    error: 'Failed to save preferences',
-    code: 'BAD_REQUEST',
-    request_id: 'r4',
-  });
+// S75 U3b: VALIDATION_422 / SAVE_400 / STARLETTE_404 / GATE_CAPTION left with
+// the deleted AI-toggle describes (their only users).
 const TRANSPORT_502 = () => new Error('Request failed with status code 502');
-// OTA'd client vs a backend WITHOUT the new route: Starlette's bare 404.
-const STARLETTE_404 = () => ({ response: { status: 404, data: { detail: 'Not Found' } } });
 const RATE_LIMITED_429 = () =>
   axiosError(429, {
     success: false,
@@ -170,7 +161,6 @@ const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 /** Every Text node that is an error line (a raw leak OR one of the catalog error sentences). */
 function errorLines(rendered: any): string[] {
   const catalogErrors = [
-    EN['profile.aiSharing.errorSave'],
     EN['profile.notifs.errorSave'],
     EN['common.errors.rateLimited'],
     EN['common.errors.locked'],
@@ -185,7 +175,7 @@ async function mount(prefs: any) {
   mockGetPreferences.mockResolvedValue(prefs);
   const rendered = render(<ProfileScreen {...makeProps()} />);
   await waitFor(() => expect(mockGetPreferences).toHaveBeenCalled());
-  await waitFor(() => expect(rendered.getByLabelText(AI_LABEL)).toBeTruthy());
+  await waitFor(() => expect(rendered.getByLabelText(MASTER_LABEL)).toBeTruthy());
   return rendered;
 }
 
@@ -195,54 +185,39 @@ beforeEach(() => {
   mockGetCohortProfile.mockResolvedValue({ display: { governorate: 'Capital' } });
   mockPutPreferenceToggles.mockResolvedValue({
     success: true,
-    ai_sharing_enabled: true,
     notifications_enabled: null,
   });
   mockSavePreferences.mockResolvedValue({ success: true });
   mockPutReengagementSubs.mockResolvedValue({ success: true, notification_types: {} });
 });
 
-describe('W3-14 R5 (i)/(ii) — the AI-sharing opt-out works with NO priorities', () => {
-  it.each([
-    ['(i) getPreferences -> null', null],
-    ['(ii) toggle-only row, no priorities', { ai_sharing_enabled: false, notification_types: {} }],
-  ])('%s: switch enabled, one PUT to /preference-toggles with exactly {ai_sharing_enabled:true}', async (_l, prefs) => {
-    const rendered = await mount(prefs);
-    expect(rendered.getByLabelText(AI_LABEL).props.accessibilityState.disabled).toBe(false);
-
-    fireEvent(rendered.UNSAFE_getAllByType(Switch)[0], 'valueChange', true);
-    await waitFor(() => expect(mockPutPreferenceToggles).toHaveBeenCalledTimes(1));
-    expect(mockPutPreferenceToggles.mock.calls[0][0]).toStrictEqual({ ai_sharing_enabled: true });
-    expect(mockSavePreferences).not.toHaveBeenCalled();
-    expect(rendered.queryAllByText(GATE_CAPTION).length).toBe(0);
-  });
-});
-
+// S75 U3b (decision D3 = C): the R5 (i)/(ii) AI-sharing describe is deleted with
+// the toggle (there is no per-user AI-sharing control any more); the
+// notifications master is now Switch[0] and the three subs are [1..3].
 describe('W3-14 R5 (iii) — notifications master + sub-toggles with NO priorities (ruling R-9 order)', () => {
-  it('(iii-a) 5 switches, subs enabled; THEN (iii-b) master off -> exactly {notifications_enabled:false}, subs unmount', async () => {
+  it('(iii-a) 4 switches, subs enabled; THEN (iii-b) master off -> exactly {notifications_enabled:false}, subs unmount', async () => {
     mockPutPreferenceToggles.mockResolvedValue({
       success: true,
-      ai_sharing_enabled: null,
       notifications_enabled: false,
     });
     // A server row WITHOUT priorities (the fixture R-9 names: "no
     // priorities"). NOT `null`: a null read is either a failed/pending GET or
     // a `{}` row, so the stored notification_types are unknown and the subs
     // stay hidden (see the fixer rows below).
-    const rendered = await mount({ ai_sharing_enabled: false, notification_types: {} });
+    const rendered = await mount({ notification_types: {} });
 
     // (iii-a) — the master starts ON (`notifications_enabled !== false`, :233).
-    expect(rendered.UNSAFE_getAllByType(Switch).length).toBe(5);
+    expect(rendered.UNSAFE_getAllByType(Switch).length).toBe(4);
     for (const label of SUB_LABELS) {
       expect(rendered.getByLabelText(label).props.accessibilityState.disabled).toBe(false);
     }
 
     // (iii-b)
-    fireEvent(rendered.UNSAFE_getAllByType(Switch)[1], 'valueChange', false);
+    fireEvent(rendered.UNSAFE_getAllByType(Switch)[0], 'valueChange', false);
     await waitFor(() => expect(mockPutPreferenceToggles).toHaveBeenCalledTimes(1));
     expect(mockPutPreferenceToggles.mock.calls[0][0]).toStrictEqual({ notifications_enabled: false });
     expect(mockSavePreferences).not.toHaveBeenCalled();
-    await waitFor(() => expect(rendered.UNSAFE_getAllByType(Switch).length).toBe(2));
+    await waitFor(() => expect(rendered.UNSAFE_getAllByType(Switch).length).toBe(1));
   });
 });
 
@@ -256,10 +231,10 @@ describe('W3-14 R5 (iii) — notifications master + sub-toggles with NO prioriti
 // render ONLY after a GET that returned a row; the two masters stay usable
 // (single-key RMW writes on /preference-toggles, R5 (i)).
 describe('W3-14 fixer — sub-toggles never write from unknown stored values', () => {
-  it('getPreferences -> null: masters live, subs NOT rendered (2 switches), no /reengagement-subs write', async () => {
+  it('getPreferences -> null: master live, subs NOT rendered (1 switch), no /reengagement-subs write', async () => {
     const rendered = await mount(null);
-    expect(rendered.getByLabelText(AI_LABEL).props.accessibilityState.disabled).toBe(false);
-    expect(rendered.UNSAFE_getAllByType(Switch).length).toBe(2);
+    expect(rendered.getByLabelText(MASTER_LABEL).props.accessibilityState.disabled).toBe(false);
+    expect(rendered.UNSAFE_getAllByType(Switch).length).toBe(1);
     for (const label of SUB_LABELS) {
       expect(rendered.queryAllByLabelText(label).length).toBe(0);
     }
@@ -268,10 +243,11 @@ describe('W3-14 fixer — sub-toggles never write from unknown stored values', (
 
   it('getPreferences -> null, THEN a successful master save: subs stay hidden (their stored values are still unknown)', async () => {
     const rendered = await mount(null);
+    // S75 U3b: [0] is the notifications master; a save that keeps it ON must not reveal the subs.
     fireEvent(rendered.UNSAFE_getAllByType(Switch)[0], 'valueChange', true);
     await waitFor(() => expect(mockPutPreferenceToggles).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(rendered.UNSAFE_getAllByType(Switch)[0].props.value).toBe(true));
-    expect(rendered.UNSAFE_getAllByType(Switch).length).toBe(2);
+    expect(rendered.UNSAFE_getAllByType(Switch).length).toBe(1);
     expect(mockPutReengagementSubs).not.toHaveBeenCalled();
   });
 
@@ -281,14 +257,13 @@ describe('W3-14 fixer — sub-toggles never write from unknown stored values', (
   it('getPreferences -> null: the notifications master is ENABLED and a flip PUTs exactly {notifications_enabled:false}', async () => {
     mockPutPreferenceToggles.mockResolvedValue({
       success: true,
-      ai_sharing_enabled: null,
       notifications_enabled: false,
     });
     const rendered = await mount(null);
     const master = rendered.getByLabelText(EN['profile.notifs.master.title']);
     expect(master.props.accessibilityState.disabled).toBe(false);
 
-    fireEvent(rendered.UNSAFE_getAllByType(Switch)[1], 'valueChange', false);
+    fireEvent(rendered.UNSAFE_getAllByType(Switch)[0], 'valueChange', false);
     await waitFor(() => expect(mockPutPreferenceToggles).toHaveBeenCalledTimes(1));
     expect(mockPutPreferenceToggles.mock.calls[0][0]).toStrictEqual({ notifications_enabled: false });
     expect(mockSavePreferences).not.toHaveBeenCalled();
@@ -298,18 +273,17 @@ describe('W3-14 fixer — sub-toggles never write from unknown stored values', (
     mockGetPreferences.mockReturnValue(new Promise(() => {}));
     const rendered = render(<ProfileScreen {...makeProps()} />);
     await waitFor(() => expect(mockGetPreferences).toHaveBeenCalled());
-    await waitFor(() => expect(rendered.getByLabelText(AI_LABEL)).toBeTruthy());
-    expect(rendered.UNSAFE_getAllByType(Switch).length).toBe(2);
+    await waitFor(() => expect(rendered.getByLabelText(MASTER_LABEL)).toBeTruthy());
+    expect(rendered.UNSAFE_getAllByType(Switch).length).toBe(1);
   });
 
   it('a row that stores one sub OFF: flipping another sub writes the stored OFF back, not a default ON', async () => {
     const rendered = await mount({
-      ai_sharing_enabled: false,
       notification_types: { decision_insight: false },
     });
-    expect(rendered.UNSAFE_getAllByType(Switch).length).toBe(5);
-    // Switch[3] = cohort_curiosity ("peer_decision_updates").
-    fireEvent(rendered.UNSAFE_getAllByType(Switch)[3], 'valueChange', false);
+    expect(rendered.UNSAFE_getAllByType(Switch).length).toBe(4);
+    // Switch[2] = cohort_curiosity ("peer_decision_updates") (S75 U3b: indices shifted by -1).
+    fireEvent(rendered.UNSAFE_getAllByType(Switch)[2], 'valueChange', false);
     await waitFor(() => expect(mockPutReengagementSubs).toHaveBeenCalledTimes(1));
     expect(mockPutReengagementSubs.mock.calls[0][0]).toStrictEqual({
       decision_insights: false,
@@ -319,81 +293,22 @@ describe('W3-14 fixer — sub-toggles never write from unknown stored values', (
   });
 });
 
-describe('W3-14 R5 (iv) — AI toggle failures render catalog copy and roll back', () => {
-  it.each([
-    ['422 VALIDATION_ERROR envelope', VALIDATION_422],
-    ['400 "Failed to save preferences" envelope', SAVE_400],
-    ['codeless transport 502', TRANSPORT_502],
-    ['bare Starlette 404 (backend without the route)', STARLETTE_404],
-  ])('%s -> profile.aiSharing.errorSave, switch back to OFF', async (_l, makeErr) => {
-    // Both savers reject identically, so today's savePreferences path shows
-    // what it renders (the raw string) and the fixed path is judged the same way.
-    mockPutPreferenceToggles.mockRejectedValue(makeErr());
-    mockSavePreferences.mockRejectedValue(makeErr());
-    const rendered = await mount({ ...FULL_PREFS });
-
-    fireEvent(rendered.UNSAFE_getAllByType(Switch)[0], 'valueChange', true);
-    await waitFor(() => expect(errorLines(rendered).length).toBeGreaterThan(0));
-    const [line] = errorLines(rendered);
-    expect(line).not.toMatch(RAW);
-    expect(line).toBe(EN['profile.aiSharing.errorSave']);
-    expect(rendered.UNSAFE_getAllByType(Switch)[0].props.value).toBe(false);
-    expect(mockPutPreferenceToggles).toHaveBeenCalledTimes(1);
-    expect(mockSavePreferences).not.toHaveBeenCalled();
-  });
-
-  it('bare 404 with NO priorities (the R-17 compatibility row): neutral copy + rollback', async () => {
-    mockPutPreferenceToggles.mockRejectedValue(STARLETTE_404());
-    const rendered = await mount(null);
-    expect(rendered.getByLabelText(AI_LABEL).props.accessibilityState.disabled).toBe(false);
-
-    fireEvent(rendered.UNSAFE_getAllByType(Switch)[0], 'valueChange', true);
-    await waitFor(() => expect(errorLines(rendered).length).toBeGreaterThan(0));
-    const [line] = errorLines(rendered);
-    expect(line).not.toMatch(RAW);
-    expect(line).toBe(EN['profile.aiSharing.errorSave']);
-    expect(rendered.UNSAFE_getAllByType(Switch)[0].props.value).toBe(false);
-  });
-});
-
+// S75 U3b: the R5 (iv) "AI toggle failures" describe and the two AI nodes of
+// R5 (v) are deleted with the toggle; the notifications nodes below stay and
+// address the master as Switch[0].
 describe('W3-14 R5 (v) — rate-limit copy and the `result.error ||` arm', () => {
-  it('AI toggle rejects RATE_LIMITED -> common.errors.rateLimited', async () => {
-    mockPutPreferenceToggles.mockRejectedValue(RATE_LIMITED_429());
-    mockSavePreferences.mockRejectedValue(RATE_LIMITED_429());
-    const rendered = await mount({ ...FULL_PREFS });
-
-    fireEvent(rendered.UNSAFE_getAllByType(Switch)[0], 'valueChange', true);
-    await waitFor(() => expect(errorLines(rendered).length).toBeGreaterThan(0));
-    const [line] = errorLines(rendered);
-    expect(line).not.toMatch(RAW);
-    expect(line).toBe(EN['common.errors.rateLimited']);
-    expect(rendered.UNSAFE_getAllByType(Switch)[0].props.value).toBe(false);
-  });
-
-  it('AI toggle resolves {success:false, error:"oops"} -> profile.aiSharing.errorSave, never "oops"', async () => {
-    mockPutPreferenceToggles.mockResolvedValue({ success: false, error: 'oops' });
-    mockSavePreferences.mockResolvedValue({ success: false, error: 'oops' });
-    const rendered = await mount({ ...FULL_PREFS });
-
-    fireEvent(rendered.UNSAFE_getAllByType(Switch)[0], 'valueChange', true);
-    await waitFor(() => expect(errorLines(rendered).length).toBeGreaterThan(0));
-    const [line] = errorLines(rendered);
-    expect(line).not.toMatch(/oops/);
-    expect(line).toBe(EN['profile.aiSharing.errorSave']);
-  });
-
   it('notifications master rejects a codeless 502 -> profile.notifs.errorSave', async () => {
     mockPutPreferenceToggles.mockRejectedValue(TRANSPORT_502());
     mockSavePreferences.mockRejectedValue(TRANSPORT_502());
     const rendered = await mount({ ...FULL_PREFS });
 
-    fireEvent(rendered.UNSAFE_getAllByType(Switch)[1], 'valueChange', false);
+    fireEvent(rendered.UNSAFE_getAllByType(Switch)[0], 'valueChange', false);
     await waitFor(() => expect(errorLines(rendered).length).toBeGreaterThan(0));
     const [line] = errorLines(rendered);
     expect(line).not.toMatch(RAW);
     expect(line).toBe(EN['profile.notifs.errorSave']);
     // Rolled back: master ON again, so the three subs are back.
-    expect(rendered.UNSAFE_getAllByType(Switch).length).toBe(5);
+    expect(rendered.UNSAFE_getAllByType(Switch).length).toBe(4);
   });
 
   // Fixer (adversary minor #2): the master catch routes on the PARSED code.
@@ -401,12 +316,12 @@ describe('W3-14 R5 (v) — rate-limit copy and the `result.error ||` arm', () =>
     mockPutPreferenceToggles.mockRejectedValue(RATE_LIMITED_429());
     const rendered = await mount({ ...FULL_PREFS });
 
-    fireEvent(rendered.UNSAFE_getAllByType(Switch)[1], 'valueChange', false);
+    fireEvent(rendered.UNSAFE_getAllByType(Switch)[0], 'valueChange', false);
     await waitFor(() => expect(errorLines(rendered).length).toBeGreaterThan(0));
     const [line] = errorLines(rendered);
     expect(line).not.toMatch(RAW);
     expect(line).toBe(EN['common.errors.rateLimited']);
-    expect(rendered.UNSAFE_getAllByType(Switch)[1].props.value).toBe(true);
+    expect(rendered.UNSAFE_getAllByType(Switch)[0].props.value).toBe(true);
   });
 
   it('notifications master resolves {success:false, error:"Failed to update ..."} -> profile.notifs.errorSave', async () => {
@@ -415,7 +330,7 @@ describe('W3-14 R5 (v) — rate-limit copy and the `result.error ||` arm', () =>
     mockSavePreferences.mockResolvedValue(body);
     const rendered = await mount({ ...FULL_PREFS });
 
-    fireEvent(rendered.UNSAFE_getAllByType(Switch)[1], 'valueChange', false);
+    fireEvent(rendered.UNSAFE_getAllByType(Switch)[0], 'valueChange', false);
     await waitFor(() => expect(errorLines(rendered).length).toBeGreaterThan(0));
     const [line] = errorLines(rendered);
     expect(line).not.toMatch(RAW);
@@ -427,14 +342,14 @@ describe('W3-14 R5 (v) — rate-limit copy and the `result.error ||` arm', () =>
   it('notifications master resolves {success:false}: rolled back to ON, the three subs return', async () => {
     mockPutPreferenceToggles.mockResolvedValue({ success: false, error: 'oops' });
     const rendered = await mount({ ...FULL_PREFS });
-    expect(rendered.UNSAFE_getAllByType(Switch).length).toBe(5);
+    expect(rendered.UNSAFE_getAllByType(Switch).length).toBe(4);
 
-    fireEvent(rendered.UNSAFE_getAllByType(Switch)[1], 'valueChange', false);
+    fireEvent(rendered.UNSAFE_getAllByType(Switch)[0], 'valueChange', false);
     await waitFor(() => expect(mockPutPreferenceToggles).toHaveBeenCalledTimes(1));
     expect(mockPutPreferenceToggles.mock.calls[0][0]).toStrictEqual({ notifications_enabled: false });
     await waitFor(() => expect(errorLines(rendered).length).toBeGreaterThan(0));
-    expect(rendered.UNSAFE_getAllByType(Switch)[1].props.value).toBe(true);
-    expect(rendered.UNSAFE_getAllByType(Switch).length).toBe(5);
+    expect(rendered.UNSAFE_getAllByType(Switch)[0].props.value).toBe(true);
+    expect(rendered.UNSAFE_getAllByType(Switch).length).toBe(4);
   });
 });
 
@@ -445,7 +360,7 @@ describe('W3-14 R5 (vi) — sub-toggle (PUT /reengagement-subs) failures', () =>
     mockPutReengagementSubs.mockRejectedValue(RATE_LIMITED_429());
     const rendered = await mount({ ...FULL_PREFS });
 
-    fireEvent(rendered.UNSAFE_getAllByType(Switch)[2], 'valueChange', false);
+    fireEvent(rendered.UNSAFE_getAllByType(Switch)[1], 'valueChange', false);
     await waitFor(() => expect(alertSpy).toHaveBeenCalledTimes(1));
     expect(alertSpy.mock.calls[0][0]).toBe(EN['profile.notifs.errorTitle']);
     const alertBody = alertSpy.mock.calls[0][1];
@@ -465,7 +380,7 @@ describe('W3-14 R5 (vi) — sub-toggle (PUT /reengagement-subs) failures', () =>
     });
     const rendered = await mount({ ...FULL_PREFS });
 
-    fireEvent(rendered.UNSAFE_getAllByType(Switch)[2], 'valueChange', false);
+    fireEvent(rendered.UNSAFE_getAllByType(Switch)[1], 'valueChange', false);
     await waitFor(() => expect(alertSpy).toHaveBeenCalledTimes(1));
     const alertBody = alertSpy.mock.calls[0][1];
     expect(alertBody).not.toMatch(RAW);
@@ -523,7 +438,7 @@ describe('W3-14 — password modal catch', () => {
 describe('W3-14 R5 — preserve: sub-toggles still use /reengagement-subs with plural keys', () => {
   it('a sub flip sends the three plural keys and never touches the master routes', async () => {
     const rendered = await mount({ ...FULL_PREFS });
-    fireEvent(rendered.UNSAFE_getAllByType(Switch)[2], 'valueChange', false);
+    fireEvent(rendered.UNSAFE_getAllByType(Switch)[1], 'valueChange', false);
     await waitFor(() => expect(mockPutReengagementSubs).toHaveBeenCalledTimes(1));
     expect(mockPutReengagementSubs.mock.calls[0][0]).toStrictEqual({
       decision_insights: false,

@@ -21,7 +21,7 @@
  * never shared, and the subtitle counts two off-limits items, not three. The
  * old "Your queries help MYEZ get smarter. We strip … first" was a data-use
  * claim; it now states what is sent to OpenAI. No opt-out is promised (the
- * Profile AI-sharing toggle routes nothing today, #266).
+ * organisation shares data with OpenAI, decision D3 = C; no per-user opt-out).
  *
  * Privacy invariant per qaren-cohort skill: this surface conveys policy,
  * doesn't expose actual signal content. The PrivacyRow primitive owns

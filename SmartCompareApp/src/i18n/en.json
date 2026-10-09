@@ -428,9 +428,6 @@
   "profile.demographicsCta": "Tell us about you",
 
   "profile.section.privacy": "Privacy",
-  "profile.aiSharing.title": "Help improve AI quality",
-  "profile.aiSharing.subtitle": "Share your queries to make MYEZ smarter. We never share your name, age, or identity.",
-  "profile.aiSharing.errorSave": "Hold on — your setting didn't save. Tap to retry.",
 
   "referrals.share.title": "Send a smart shortcut",
   "referrals.share.subtitle": "What your friend gets",
@@ -702,7 +699,7 @@
   "notifications.prePrompt.allow": "Allow notifications",
   "notifications.prePrompt.notNow": "Not now",
   "aiConsent.title": "Your comparison is written with AI",
-  "aiConsent.body": "To identify the products and write your comparison, MYEZ sends OpenAI the product names, links (with the text of those pages) or photos you take or pick. It may also send the preferences on your profile (including ones suggested from your onboarding answers), such as priorities and budget level, and your country, language and area. Your name, email and account details are not sent.",
+  "aiConsent.body": "To identify the products and write your comparison, MYEZ sends OpenAI the product names, links (with the text of those pages) or photos you take or pick. It may also send the preferences on your profile (including ones suggested from your onboarding answers), such as priorities and budget level, and your country, language and area. OpenAI may use these inputs and the outputs it generates from them to identify usage patterns, measure model quality and inform the evaluation and training of its models. Your name, email and account details are not sent.",
   "aiConsent.link": "Read more in the Privacy Policy",
   "aiConsent.agree": "Agree and continue",
   "aiConsent.notNow": "Not now",
