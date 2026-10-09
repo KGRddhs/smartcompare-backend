@@ -27,3 +27,6 @@ A second lesson from this session: COST-METER's CI went red on one test that sca
 ## Issues filed this session
 - #343 U3b follow-ups (the native re-pin of the Arabic sentence, the LISTING-TRUTH copy, the device check, test leftovers).
 - #345 FANOUT-BOUND (the per-compare adapter bound, deferred from FANOUT-STARVE).
+
+## Canary 7a (after the FANOUT-STARVE deploy, every new flag OFF): FAIL, the expected pre-flip baseline
+The boot line proves the deploy (`uvloop=True UV_THREADPOOL_SIZE=64`, 96 adapter workers on `/health`), but every cold compare still runs into the 30 s hard cap: the app-shaped compare reached the verdict stage at 30.3 s with no price, the probe stopped at scoring, the stream completed. That is the picture of canaries 3-6, and it is what the four dark flags exist for. **Your flips, one per canary window, re-running `run_canary.sh canary7b` after each:** `ENABLE_PHASE2_RESIDUAL_GUARD=true` first (it stops a compare from dying at the cap during Phase 2), then `ENABLE_UNIFIED_SEARCH_BOUND=true`, then `ENABLE_PARSE_PRESPLIT=true` and `ENABLE_PARSE_BUDGET=true`. If the canary still fails after all four, the next unit is #345 FANOUT-BOUND (the per-compare adapter bound).
