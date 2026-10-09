@@ -1,5 +1,6 @@
 """Admin routes — analytics endpoints protected by API key."""
 import hmac
+import math
 import os
 import logging
 from datetime import datetime, timedelta, timezone
@@ -17,6 +18,8 @@ from app.services.cache_service import (
 )
 from app.services.database_service import get_supabase_client, get_admin_supabase_client
 from app.services.model_config import standard_model, verdict_model
+from app.services.openai_pricing import PRICE_TABLE_AS_OF  # COST-METER (#66)
+from app.utils.db_offload import run_db  # COST-METER (#66) G4: never a blocking .execute() on the loop
 from app.middleware.rate_limiter import limiter
 from app.services.analytics_service import (
     get_daily_stats,
@@ -117,41 +120,245 @@ async def product_stats(
     return await get_product_stats(limit)
 
 
+# COST-METER (#66, S74/S75) -- the OpenAI figure the two cost endpoints report.
+# Every comparison persisted since the unit carries
+# ``full_response.metadata.openai`` (openai_pricing.summarize_openai_ledger:
+# model ids, token counts, LIST-PRICE USD recorded at guarded_llm_create). The
+# read pages through PostgREST with the JSON-path column selection (CM5) so the
+# full_response blob is never transferred, falls back to the blob shape when
+# the path is rejected, runs every .execute() through the db offload helper
+# (G4) and sums ONLY rows that recorded a cost: unknown is null, never 0 (the
+# defect this unit fixes: the old read selected a non-existent `metadata`
+# column and reported 0 for every month).
+OPENAI_COST_NOTE = (
+    "List price over persisted comparisons only; excludes Link-mode compares "
+    "(never persisted today, issue #340), failed compares and calls cancelled "
+    "by the hard cap or retried by the SDK. OpenAI applies its free daily "
+    "allowance on its side (organisation data sharing ON since 2026-10-08, "
+    "decision D3 = C), so this figure is not a bill."
+)
+OPENAI_COST_SOURCE = "comparisons.full_response.metadata.openai"
+_OPENAI_PAGE = 1000
+_OPENAI_MAX_PAGES = 10
+_OPENAI_SELECT_JSON_PATH = "id,created_at,full_response->metadata->openai"
+_OPENAI_SELECT_BLOB = "id,created_at,full_response"
+
+
+def _openai_of_row(row, shape):
+    """The row's metadata.openai value in either select shape (None when absent)."""
+    if shape == "json":
+        return row.get("openai")
+    full = row.get("full_response")
+    meta = full.get("metadata") if isinstance(full, dict) else None
+    return meta.get("openai") if isinstance(meta, dict) else None
+
+
+async def _openai_rows(client, since_iso):
+    """Page the comparisons created since ``since_iso``: ordered by created_at
+    ASCENDING then id, page i = ``.range(i*1000, i*1000 + 999)`` (inclusive
+    ends), a page is full at >= 1000 rows, at most 10 pages, rows
+    de-duplicated by id across pages (CM2). Returns ``(rows, truncated)``
+    with rows as ``{"id", "created_at", "openai"}``; raises when the client
+    raises (the callers read that as unknown, never as 0)."""
+    rows = []
+    seen = set()
+    shape = "json"
+    page = 0
+    while page < _OPENAI_MAX_PAGES:
+        lo = page * _OPENAI_PAGE
+        hi = lo + _OPENAI_PAGE - 1
+        select = _OPENAI_SELECT_JSON_PATH if shape == "json" else _OPENAI_SELECT_BLOB
+
+        def _fetch(select=select, lo=lo, hi=hi):
+            return (
+                client.table("comparisons")
+                .select(select)
+                .gte("created_at", since_iso)
+                .order("created_at")
+                .order("id")
+                .range(lo, hi)
+                .execute()
+            )
+
+        try:
+            result = await run_db(_fetch)
+        except Exception as exc:  # noqa: BLE001
+            if shape != "json":
+                raise
+            # CM5: PostgREST rejected the JSON-path selection -> the blob shape
+            # for this and every later page; the exception TYPE only (U8d).
+            logger.warning(
+                "[ADMIN] openai JSON-path select rejected (%s); falling back to the blob select",
+                type(exc).__name__,
+            )
+            shape = "blob"
+            continue
+        data = result.data or []
+        for row in data:
+            rid = row.get("id")
+            if rid is not None:
+                if rid in seen:
+                    continue
+                seen.add(rid)
+            rows.append({
+                "id": rid,
+                "created_at": row.get("created_at") or "",
+                "openai": _openai_of_row(row, shape),
+            })
+        page += 1
+        if len(data) < _OPENAI_PAGE:
+            return rows, False
+    return rows, True
+
+
+def _recorded_cost(openai):
+    """The finite non-negative cost_usd of a metadata.openai dict, else None."""
+    if not isinstance(openai, dict):
+        return None
+    cost = openai.get("cost_usd")
+    if isinstance(cost, bool) or not isinstance(cost, (int, float)):
+        return None
+    if not math.isfinite(cost) or cost < 0:
+        return None
+    return float(cost)
+
+
+def _int_field(obj, key):
+    value = obj.get(key) if isinstance(obj, dict) else None
+    return value if isinstance(value, int) and not isinstance(value, bool) else 0
+
+
+def _aggregate_openai(rows, truncated=False):
+    """Sum metadata.openai over the paged rows. A row with a finite
+    non-negative cost_usd is rows_with_cost; any other row is
+    rows_without_cost. Independently of cost presence, a row whose own
+    summary says cost_complete False is rows_partial (X2: an ALL-unpriced
+    compare is both rows_without_cost and rows_partial). cost_usd is None
+    when no row recorded a cost; today_usd is None when no row created today
+    did. cost_complete is ALWAYS present: None when no row recorded a cost
+    (unknown), False when any row is partial (cost_usd is then a LOWER
+    BOUND), else True."""
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    rows = rows or []
+    with_cost = partial = without = 0
+    total = 0.0
+    today_total = None
+    by_day = {}
+    calls = prompt = cached = completion = 0
+    by_model = {}
+    for row in rows:
+        openai = row.get("openai")
+        cost = _recorded_cost(openai)
+        if cost is None:
+            without += 1
+        else:
+            with_cost += 1
+            total += cost
+            day = (row.get("created_at") or "")[:10]
+            by_day[day] = by_day.get(day, 0.0) + cost
+            if day == today:
+                today_total = (today_total or 0.0) + cost
+        if isinstance(openai, dict):
+            if openai.get("cost_complete") is False:
+                partial += 1
+            calls += _int_field(openai, "calls")
+            prompt += _int_field(openai, "prompt_tokens")
+            cached += _int_field(openai, "cached_tokens")
+            completion += _int_field(openai, "completion_tokens")
+            models = openai.get("by_model")
+            if isinstance(models, dict):
+                for model, entry in models.items():
+                    target = by_model.setdefault(str(model), {"calls": 0, "cost_usd": None})
+                    target["calls"] += _int_field(entry, "calls")
+                    model_cost = _recorded_cost(entry)
+                    if model_cost is not None:
+                        target["cost_usd"] = round((target["cost_usd"] or 0.0) + model_cost, 6)
+    if with_cost == 0:
+        cost_complete = None
+    elif partial > 0:
+        cost_complete = False
+    else:
+        cost_complete = True
+    out = {
+        "cost_usd": round(total, 6) if with_cost > 0 else None,
+        "today_usd": round(today_total, 6) if today_total is not None else None,
+        "by_day": {day: round(usd, 6) for day, usd in sorted(by_day.items())},
+        "rows": len(rows),
+        "rows_with_cost": with_cost,
+        "rows_partial": partial,
+        "rows_without_cost": without,
+        "cost_complete": cost_complete,
+        "truncated": bool(truncated),
+        "calls": calls,
+        "prompt_tokens": prompt,
+        "cached_tokens": cached,
+        "completion_tokens": completion,
+        "by_model": by_model,
+        "basis": "list_price",
+        "price_table_as_of": PRICE_TABLE_AS_OF,
+        "note": OPENAI_COST_NOTE,
+        "source": OPENAI_COST_SOURCE,
+    }
+    return out
+
+
 @router.get("/costs")
 @limiter.limit("30/minute")
 async def api_costs(request: Request, _=Depends(verify_admin_key)):
-    """API cost dashboard — provider budgets, circuit breakers, monthly spend."""
+    """API cost dashboard -- provider budgets, circuit breakers, monthly spend.
+
+    COST-METER (#66): ``openai`` is the LIST-PRICE sum of the usage recorded per
+    comparison (``metadata.openai``) over this UTC month's persisted rows --
+    null when nothing is recorded (no rows, legacy rows only, no client, a
+    Supabase error), never 0; ``openai.cost_complete`` is always present
+    (None unknown, False a lower bound, True complete; X2);
+    ``avg_cost_per_comparison`` averages over the rows WITH a recorded cost
+    (partial rows included); ``estimated_monthly_total`` is fixed +
+    month-to-date, not a projection (names kept, meaning stated, CM6).
+    """
     summary = get_usage_summary()
 
     month_start = datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0).isoformat()
 
-    # OpenAI cost: sum from comparisons table this month
-    openai_cost = 0.0
+    # One Supabase client serves both the paged read and the count query (CM3).
+    supabase = None
     try:
         supabase = get_supabase_client()
-        if supabase:
-            result = supabase.table("comparisons").select("metadata").gte("created_at", month_start).execute()
-            for row in (result.data or []):
-                meta = row.get("metadata") or {}
-                openai_cost += meta.get("total_cost", 0)
-    except Exception as e:
-        logger.warning(f"[ADMIN] Failed to fetch OpenAI costs: {e}")
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[ADMIN] Supabase client unavailable for the cost read: %s", type(e).__name__)
+
+    openai_rows = None
+    openai_truncated = False
+    if supabase:
+        try:
+            openai_rows, openai_truncated = await _openai_rows(supabase, month_start)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("[ADMIN] Failed to fetch OpenAI costs: %s", type(e).__name__)
+    openai = _aggregate_openai(openai_rows, openai_truncated)
+    openai_cost = openai["cost_usd"]
 
     # Comparison count this month
     comp_count = 0
     try:
-        supabase = get_supabase_client()
         if supabase:
-            result = supabase.table("comparisons").select("id", count="exact").gte("created_at", month_start).execute()
+            result = await run_db(
+                lambda: supabase.table("comparisons").select("id", count="exact").gte("created_at", month_start).execute()
+            )
             comp_count = result.count or 0
     except Exception:
         pass
 
-    summary["openai"] = {"cost_usd": round(openai_cost, 4), "source": "comparisons.metadata.total_cost"}
+    summary["openai"] = openai
     summary["comparisons_this_month"] = comp_count
-    summary["avg_cost_per_comparison"] = round(openai_cost / comp_count, 4) if comp_count > 0 else 0
+    summary["avg_cost_per_comparison"] = (
+        round(openai_cost / openai["rows_with_cost"], 6)
+        if openai_cost is not None and openai["rows_with_cost"] > 0
+        else None
+    )
     summary["fixed_costs_monthly"] = 30.00  # Railway $5 + Supabase $25
-    summary["estimated_monthly_total"] = round(summary["fixed_costs_monthly"] + openai_cost, 2)
+    summary["estimated_monthly_total"] = (
+        round(summary["fixed_costs_monthly"] + openai_cost, 2) if openai_cost is not None else None
+    )
     summary["period"] = datetime.now(timezone.utc).strftime("%Y-%m")
 
     # B.0 (Lane F1, F1.6) — Tier 1.5 escalation hit-rate, per-category 7-day
@@ -741,38 +948,24 @@ async def costs_api(
     days: int = Query(30, ge=1, le=90),
     _=Depends(verify_admin_key),
 ):
-    """API costs this month — OpenAI spillover (paid-tier usage), Serper,
-    Firecrawl, Scrape.do. OpenAI is read from comparisons.api_calls when
-    available; scraper budgets from api_budget_service Redis counters."""
+    """API costs over the window: the OpenAI LIST-PRICE figure recorded per
+    persisted comparison (``metadata.openai``, COST-METER #66; null when
+    nothing is recorded, never 0; ``openai_paid_usd`` was RENAMED
+    ``openai_list_usd`` because the old name asserted a billing fact the data
+    cannot carry, CM12; ``cost_complete`` always present, None / False / True
+    as in _aggregate_openai, X2), plus Serper / Firecrawl / Scrape.do budgets
+    from the api_budget_service Redis counters."""
     client = get_admin_supabase_client()
     cutoff_iso = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
 
-    openai_total = 0.0
-    daily_burn: dict[str, float] = {}
-    cost_sample_count = 0
+    openai_rows = None
+    openai_truncated = False
     try:
-        rows = (
-            client.table("comparisons")
-            .select("created_at, full_response")
-            .gte("created_at", cutoff_iso)
-            .limit(2000)
-            .execute()
-            .data
-            or []
-        )
-        for row in rows:
-            cost = ((row.get("full_response") or {}).get("metadata") or {}).get("total_cost") or 0
-            try:
-                cost_f = float(cost)
-            except (TypeError, ValueError):
-                cost_f = 0.0
-            day = (row.get("created_at") or "")[:10]
-            daily_burn[day] = daily_burn.get(day, 0.0) + cost_f
-            openai_total += cost_f
-            if cost_f > 0:
-                cost_sample_count += 1
+        if client:
+            openai_rows, openai_truncated = await _openai_rows(client, cutoff_iso)
     except Exception as exc:  # noqa: BLE001
-        logger.warning(f"[ADMIN] OpenAI cost read failed: {exc}")
+        logger.warning("[ADMIN] OpenAI cost read failed: %s", type(exc).__name__)
+    openai = _aggregate_openai(openai_rows, openai_truncated)
 
     # Scraper / Serper budgets via api_budget_service
     scraper_budgets: dict[str, dict] = {}
@@ -785,19 +978,30 @@ async def costs_api(
     except Exception as exc:  # noqa: BLE001
         logger.warning(f"[ADMIN] scraper budget read failed: {exc}")
 
+    openai_cost = openai["cost_usd"]
     avg_cost_per_request_usd = (
-        round(openai_total / cost_sample_count, 6) if cost_sample_count > 0 else 0.0
+        round(openai_cost / openai["rows_with_cost"], 6)
+        if openai_cost is not None and openai["rows_with_cost"] > 0
+        else None
     )
 
     return {
         "window_days": days,
-        "openai_paid_usd": round(openai_total, 4),
-        "comparisons_with_cost": cost_sample_count,
+        "openai_list_usd": round(openai_cost, 4) if openai_cost is not None else None,
+        "comparisons_with_cost": openai["rows_with_cost"],
         "avg_cost_per_request_usd": avg_cost_per_request_usd,
         "daily_burn": [
             {"day": day, "usd": round(usd, 4)}
-            for day, usd in sorted(daily_burn.items())
+            for day, usd in sorted(openai["by_day"].items())
         ],
+        "rows": openai["rows"],
+        "rows_without_cost": openai["rows_without_cost"],
+        "rows_partial": openai["rows_partial"],
+        "cost_complete": openai["cost_complete"],
+        "truncated": openai["truncated"],
+        "basis": openai["basis"],
+        "price_table_as_of": openai["price_table_as_of"],
+        "note": openai["note"],
         "scrapers": scraper_budgets,
     }
 

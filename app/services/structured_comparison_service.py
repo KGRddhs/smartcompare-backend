@@ -70,6 +70,9 @@ from app.services.api_budget_service import (
     # half-open probe budget belongs to the dispatch chokepoint, never here.
     llm_preflight_breaker_enabled, openai_preflight_allows_compare,
 )
+# COST-METER (#66): the per-request OpenAI usage ledger (bound at each compare
+# entry, recorded at guarded_llm_create, summarised into metadata.openai).
+from app.services.openai_pricing import start_openai_ledger, summarize_openai_ledger
 from app.services import firecrawl_service, scrapedo_service
 # R-W18 (W1-8c) — the SLOW-MISS threshold keys on the same inner ceiling the
 # adapters clamp to. adapter_timeouts imports nothing from app (no cycle).
@@ -3093,6 +3096,7 @@ class StructuredComparisonService:
         self.gpt_calls = 0
         self.serper_calls = 0
         self._shopping_items_cache = {}
+        self._openai_ledger = None  # COST-METER (#66): bound at each compare entry
         # B.0 (Lane F1, F1.4) — per-request Tier 1.5 routing record, keyed by
         # full_name -> {route, source_weight}. Written when a registry/legacy
         # candidate wins the fan_out race; read by the source_trace builder so
@@ -3564,6 +3568,8 @@ class StructuredComparisonService:
             # demographics_profile only if the await landed before the hard cap;
             # absent → None → key omitted (badge hides). Same chokepoint, same gate.
             cohort_summary=self._build_cohort_summary(ctx.get("demographics_profile")),
+            # COST-METER (#66): the calls recorded before the hard cap fired.
+            openai_usage=summarize_openai_ledger(self._openai_ledger),
         )
         # M18 PO-fact-check-10 — Decision 7 notice (additive metadata key).
         return attach_data_freshness_notice(result)
@@ -3729,6 +3735,9 @@ class StructuredComparisonService:
         self.gpt_calls = 0
         self.serper_calls = 0
         self._shopping_items_cache = {}
+        # COST-METER (#66): a FRESH per-request ledger; every task this compare
+        # spawns copies the context and appends into this same list.
+        self._openai_ledger = start_openai_ledger()
 
         # I5.6 lever-2 — bound to None at the top so the outer exception handler
         # can always cancel it (an exception raised before the kickoff line would
@@ -4185,6 +4194,8 @@ class StructuredComparisonService:
                 # Phase 3.1 — cohort proof line. None when no cohort matched /
                 # flag off / governorate or N missing → key omitted, badge hides.
                 cohort_summary=self._build_cohort_summary(demographics_profile),
+                # COST-METER (#66): the per-request OpenAI usage summary.
+                openai_usage=summarize_openai_ledger(self._openai_ledger),
             )
             # M18 PO-fact-check-10 — Decision 7 notice (additive metadata key).
             result = attach_data_freshness_notice(result)
@@ -4294,6 +4305,8 @@ class StructuredComparisonService:
         self.gpt_calls = 0
         self.serper_calls = 0
         self._shopping_items_cache = {}
+        # COST-METER (#66): the streaming entry binds its own fresh ledger.
+        self._openai_ledger = start_openai_ledger()
 
         # W1-3 (ENABLE_LLM_PREFLIGHT_BREAKER, default OFF) — the SAME preflight
         # the non-streaming entry runs, mirrored here because THIS is the entry
@@ -5007,6 +5020,8 @@ class StructuredComparisonService:
                 metadata=_metadata_override or None,
                 # Phase 3.1 — cohort proof line (streaming mirror of the sync path).
                 cohort_summary=self._build_cohort_summary(demographics_profile),
+                # COST-METER (#66): the per-request OpenAI usage summary (streaming mirror).
+                openai_usage=summarize_openai_ledger(self._openai_ledger),
                 _single_margin=_single_margin_on,  # W4-12 (K12) — read once above
             )
             # M18 PO-fact-check-10 — Decision 7 notice (additive metadata key).

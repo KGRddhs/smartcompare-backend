@@ -156,26 +156,30 @@
       ].filter(Boolean).join("");
     }
 
+    // COST-METER (#66): list price, never a bill; null (nothing recorded) renders as n/a, never $0.
+    function fmtUsd(v, dp) {
+      return v == null ? "n/a" : "$" + Number(v).toFixed(dp == null ? 4 : dp);
+    }
+
     function renderApiKpis(api) {
-      const avg = Number(api.avg_cost_per_request_usd || 0);
-      const total = Number(api.openai_paid_usd || 0);
       const count = Number(api.comparisons_with_cost || 0);
+      const without = Number(api.rows_without_cost || 0);
       const days = Number(api.window_days || 30);
       document.getElementById("apiKpis").innerHTML = `
         <div class="card">
-          <div class="kpi-sub">AVG API COST / REQUEST (${days}D)</div>
-          <div class="kpi">$${avg.toFixed(6)}</div>
-          <div class="kpi-sub">across ${count.toLocaleString()} billed comparisons</div>
+          <div class="kpi-sub">AVG OPENAI LIST PRICE / COMPARISON (${days}D)</div>
+          <div class="kpi">${fmtUsd(api.avg_cost_per_request_usd, 6)}</div>
+          <div class="kpi-sub">across ${count.toLocaleString()} comparisons with a recorded cost</div>
         </div>
         <div class="card">
-          <div class="kpi-sub">TOTAL API SPEND (${days}D)</div>
-          <div class="kpi">$${total.toFixed(4)}</div>
-          <div class="kpi-sub">OpenAI paid-tier spillover (free-tier reqs are $0)</div>
+          <div class="kpi-sub">OPENAI LIST-PRICE SPEND (${days}D)</div>
+          <div class="kpi">${fmtUsd(api.openai_list_usd)}</div>
+          <div class="kpi-sub">${api.note || ""}</div>
         </div>
         <div class="card">
-          <div class="kpi-sub">BILLED COMPARISONS (${days}D)</div>
+          <div class="kpi-sub">COMPARISONS WITH A RECORDED COST (${days}D)</div>
           <div class="kpi">${count.toLocaleString()}</div>
-          <div class="kpi-sub">comparisons where total_cost > $0 (i.e. paid-tier path)</div>
+          <div class="kpi-sub">persisted comparisons carrying metadata.openai; ${without.toLocaleString()} without one (n/a, not $0)</div>
         </div>`;
     }
 
@@ -249,7 +253,7 @@
         renderBurn(api);
         renderSubs(subs);
         renderFunctionMap(fm);
-        setMeta(`Last refresh: ${new Date().toLocaleString()} • OpenAI paid (30d): $${(api.openai_paid_usd || 0).toFixed(4)}`);
+        setMeta(`Last refresh: ${new Date().toLocaleString()} | OpenAI list price (30d): ${fmtUsd(api.openai_list_usd)}`);
       } catch (e) {
         showErr(e.message);
         setMeta("Failed to load.");
