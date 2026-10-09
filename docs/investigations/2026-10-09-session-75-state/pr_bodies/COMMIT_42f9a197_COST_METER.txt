@@ -1,0 +1,22 @@
+fix(admin): COST-METER (#66) -- the dashboard's OpenAI figure is a recorded list-price sum, never 0
+
+The two cost endpoints summed a non-existent comparisons.metadata column and
+reported 0 for every month. Every served chat completion is now recorded on a
+per-request ContextVar ledger at guarded_llm_create (both branches: requested
+model id, prompt / cached / completion tokens, EXACT-key list price as of
+2026-10-08; an unknown id prices to null, never 0), summarised into the
+additive metadata.openai on the sync, streaming and hard-cap partial builds;
+the camera route merges its identify call on its own ledger; the public share
+view strips the key. The admin read pages PostgREST with the JSON-path select
+(blob fallback logged by exception type), every execute through run_db,
+ascending created_at then id, 10 x 1000 rows, de-duplicated by id; null means
+nothing recorded; cost_complete is always present (null unknown / false lower
+bound / true); openai_paid_usd is renamed openai_list_usd; costs.html renders
+the endpoint's note and n/a for null.
+
+Rulings CM1-CM14, gate G1-G12, post-adversary X1-X14 (the session 74 and 75
+state folders). Tests: tests/test_cost_meter_s74.py (26 nodes),
+test_cost_dashboard and test_admin_referral_endpoints amended; runbook row 35,
+READINESS_BACKEND RB-35; the CLAUDE.md COST-METER line.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>

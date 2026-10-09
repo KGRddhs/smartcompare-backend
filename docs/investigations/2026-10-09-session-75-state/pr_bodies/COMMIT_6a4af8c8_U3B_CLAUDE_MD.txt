@@ -1,0 +1,12 @@
+docs(claude-md): U3b lines at merge (ruling UB-R21) -- consent v2, the openai_service line, the UB-R4 store-build sentence
+
+The Session 69 client-surfaces paragraph records AI_CONSENT_VERSION 2 and the
+disclosure sentence under D3 = C (no per-user opt-out, the Profile toggle
+gone, the fence re-pin rule); the #266 follow-up line records that
+select_client_for_user and the OPENAI_API_KEY_PRIVATE arm are deleted and
+get_client() takes no argument; the Store-build rules paragraph carries the
+UB-R4 sequencing sentence (no eas update and no store build or submission
+between the U3b merge and PR #330 live); the SESSION 73 block gains the U3b
+bullet (PR #342).
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>

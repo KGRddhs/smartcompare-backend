@@ -1,0 +1,18 @@
+U3B_AR_COPY - session 75 - Arabic strings for U3b (UTF-8, LF). Native review REQUIRED.
+Source tag: [SPEC]. Western digits only (none present). Brand not repeated (brand fence counts).
+
+1) aiConsent.body (ar.json:702 at main 4c0f3c99) - the ONE new sentence, inserted before the final sentence:
+وقد تستخدم OpenAI هذه المدخلات والمخرجات التي تنتجها منها للتعرف على أنماط الاستخدام وقياس جودة النماذج والاستعانة بها في تقييم نماذجها وتدريبها.
+
+2) aiConsent.body (ar.json:702) - the FULL new value (old body with the sentence inserted before the last sentence):
+لتحديد المنتجات وكتابة المقارنة، يرسل ميّز إلى OpenAI أسماء المنتجات أو الروابط (مع نص صفحاتها) أو الصور التي تلتقطها أو تختارها. وقد يرسل أيضا التفضيلات المحفوظة في ملفك الشخصي (ومنها تفضيلات مقترحة بناء على إجاباتك في أسئلة البداية)، مثل الأولويات وفئة الميزانية، وبلدك ولغتك ومنطقتك. وقد تستخدم OpenAI هذه المدخلات والمخرجات التي تنتجها منها للتعرف على أنماط الاستخدام وقياس جودة النماذج والاستعانة بها في تقييم نماذجها وتدريبها. لا يرسل اسمك أو بريدك الإلكتروني أو بيانات حسابك.
+
+3) Removed AR keys (ar.json:428-430), values at main for the record:
+profile.aiSharing.title = ساعد في تحسين الذكاء الاصطناعي
+profile.aiSharing.subtitle = شارك استفساراتك لتحسين ميّز. لا نشارك اسمك أو عمرك أو هويتك.
+profile.aiSharing.errorSave = لحظة — لم يُحفظ الإعداد. اضغط لإعادة المحاولة.
+
+4) EN twin of the new sentence (en.json:705), for the reviewer:
+OpenAI may use these inputs and the outputs it generates from them to identify usage patterns, measure model quality and inform the evaluation and training of its models.
+
+5) Fence sha256 after both edits (EN title, EN body, AR title, AR body joined by LF, utf-8): 372c50484085fa859a576a62367c743365735fab6dda31f336552a4ae2a21a02

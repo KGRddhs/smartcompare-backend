@@ -1,0 +1,11 @@
+test(model-config): allow the COST-METER price table's exact-key model ids in the stray-literal pin (ruling X15)
+
+CI (PR #341, backend-tests) found the five exact-key model-id literals of
+app/services/openai_pricing.py (the LIST-PRICE table, ruling CM7) with
+TestNoStrayModelLiterals, whose allowlist held model_config.py alone. A price
+table names models by definition and dispatches nothing: a model change there
+is a priced / unpriced outcome (cost_complete False), never a routing change,
+so the file joins ALLOWED with the reason in the comment. Test-only; 63 nodes
+of the two files green through the bounded runner.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>

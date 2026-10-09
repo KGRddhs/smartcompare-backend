@@ -1,0 +1,42 @@
+feat(fanout): FANOUT-STARVE -- the fan-out's starvation points named, bounded and observable (four dark flags + configuration truth)
+
+Canaries 3-6 showed the compare starving itself on the single worker: ~30
+blocking adapter fetches against a 40-thread executor, Serper connect budgets
+expiring on uvloop's 4-thread DNS pool, an unbounded unified search on the
+product wall, Phase 2 running into the hard cap, and a Bright Data token that
+expired without one Sentry event.
+
+Unflagged, flag-OFF byte-identical on every response (pinned by the new
+identity fixture recorded at main 4c0f3c99): ADAPTER_EXECUTOR_MAX_WORKERS
+default 40 -> 96; the Serper fail-fast connect default 3.0 -> 8.0 s; the start
+command (railway.json + Procfile, byte-identical) runs
+`exec env UV_THREADPOOL_SIZE="${UV_THREADPOOL_SIZE:-64}" uvicorn ...`; one
+`[loop]` boot line; one `[STAGE] parse done` line per q-form parse; Bright Data
+auth rejection = one all-constant ERROR per process per status (401 / 403)
+naming BRIGHTDATA_API_KEY, the 401/403 WARNING body withheld; /health gains
+adapter_executor {workers, queued} and brightdata_auth {last_status, at}.
+
+Four NEW flags, default OFF, read per call, knobs reject garbage / nan / inf:
+ENABLE_PARSE_PRESPLIT (a clean two-way " vs " query takes the app's
+explicit-pair shape with no parse LLM call), ENABLE_PARSE_BUDGET +
+PARSE_TIMEOUT_SECONDS (8.0; a stall guard on parse_product_query),
+ENABLE_UNIFIED_SEARCH_BOUND + UNIFIED_SEARCH_TIMEOUT_SECONDS (12.0; a timed-out
+search hands an explicit empty payload that is never cached),
+ENABLE_PHASE2_RESIDUAL_GUARD + PHASE2_MIN_RESIDUAL_SECONDS (8.0; skip Phase 2
+near the deadline so the compare reaches a verdict). An LLM parse JSON cannot
+forge the marks: _parse_* keys are stripped and each mark counts only under
+its own flag.
+
+Canary: scripts/verify_after_credits.py --form q|pair|both (default byte for
+byte today's; both = each pair in both forms, every RESULT line suffixed
+q_fail= pair_fail=); run_canary.sh passes --form both, strips a trailing CR
+and classifies the crash line. Runbooks: the Bright Data token renewal
+(history-safe), the launch runbook A1 step 8.
+
+Rulings FS-R1..R20, FG-1..FG-10, FY1-FY30 (the session-75 state folder).
+Tests: tests/test_s75_fanout_starve.py (97 nodes), tests/test_s75_fanout_identity.py
++ tests/fixtures/s75_fanout_identity_digests.json, BH45-BH56 in
+tests/test_be_harness.py; test_shutdown_drain, test_retro_w0_4_efg and
+test_serper_fail_fast amended. FANOUT-BOUND (D3) is the deferred follow-up.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
