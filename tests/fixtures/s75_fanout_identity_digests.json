@@ -1,0 +1,14 @@
+{
+ "base": "6cff57af",
+ "digests": {
+  "rest_pair_full": "fc139ce21be293b91a96164406b4ce59af0c9640f0c90906451d299c2f3821c2",
+  "rest_q_full": "776bfa8de9346752f1c7687de265795f0bcfc15f8b0a3279fc5295f8c7b4fa2b",
+  "rest_q_full_llm_json_carries_private_marks": "776bfa8de9346752f1c7687de265795f0bcfc15f8b0a3279fc5295f8c7b4fa2b",
+  "rest_q_parse_fail_shape": "60753315a2c722a4ab382755c3b282ed501edbcf2da650961db8d766ba222747",
+  "rest_q_partial_gather": "b16d37df86da0f0a36c51433b78def910733510007c74d22125a849ee6d4fb94",
+  "stream_pair_full": "8ee8b7f1b5ea310a00717a3c44d91649adcf16f49ff8378c5e1494f635849c02",
+  "stream_q_full": "aba085b992f14ee63d388518c4acf77e5ff70aa61c77dca118e36daf284f671d",
+  "stream_q_full_llm_json_carries_private_marks": "aba085b992f14ee63d388518c4acf77e5ff70aa61c77dca118e36daf284f671d",
+  "stream_q_partial_gather": "611a4c2701d9e780e7d9a87731881acd1cf3107f73b8e9e7c1d70435fdae5de1"
+ }
+}

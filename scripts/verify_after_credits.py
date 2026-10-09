@@ -15,6 +15,16 @@ anywhere in the run); 3 NO_PRICE (nothing failed, some compare carries no price 
 5 CRASH. An exit code counts only when the last stdout line starts with "RESULT:"; without
 one the run did not happen (2 = an argparse usage error or a missing file).
 Never run it with DEBUG logging for httpx/httpcore: that trace quotes a malformed header value.
+
+--form q|pair|both (FANOUT-STARVE FS-R5 / FG-1 / FG-2, 2026-10-09): the mobile app sends
+the product_a/product_b (pair) form on the stream and on its REST fallback, never q=, so
+`--form pair` runs each curated pair in that app shape and `--form both` runs each pair in
+both forms (the q row first). Rows then carry `form` ("q" | "pair") and their labels end
+in " [q]" / " [pair]"; in pair and both mode the pair rows, the probe and the stream drive
+the exit while the q rows are reported (they drive it too under --strict-q), and every RESULT
+line (setup and crash lines included, FY23) ends " q_fail=<n> pair_fail=<n>" (n = compare
+rows of that form with verdict FAIL), e.g. "RESULT: PASS q_fail=0 pair_fail=0". Without --form (and with `--form q`) the
+exit is today's; without --form the rows, labels and RESULT line are today's byte for byte.
 """
 from __future__ import annotations
 
@@ -315,18 +325,53 @@ def _emit(row) -> None:
     print(json.dumps(row, ensure_ascii=True, sort_keys=True))
 
 
-def _summary(rows):
-    """The RESULT line and exit code; R11: no price amount anywhere in the run fails it (B4)."""
-    fails = sum(1 for row in rows if row["verdict"] == "FAIL")
-    no_price = sum(1 for row in rows if row["verdict"] == "NO_PRICE")
-    priced = any(amount is not None for row in rows for amount in row.get("amounts", ()))
+def _form_rows(rows, form):
+    return [row for row in rows if row.get("kind") == "compare" and row.get("form") == form]
+
+
+def _summary(rows, form=None, strict_q=False):
+    """The RESULT line and exit code; R11: no price amount anywhere in the run fails it (B4).
+    FS-R5 / FG-2: in pair and both mode the q compare rows are reported but do not drive the
+    exit unless --strict-q, and the line always ends " q_fail=<n> pair_fail=<n>"; in q mode
+    (or without --form) every row drives it and the line is today's."""
+    scored = rows
+    if form in ("pair", "both") and not strict_q:
+        scored = [row for row in rows
+                  if not (row.get("kind") == "compare" and row.get("form") == "q")]
+    fails = sum(1 for row in scored if row["verdict"] == "FAIL")
+    no_price = sum(1 for row in scored if row["verdict"] == "NO_PRICE")
+    priced = any(amount is not None for row in scored for amount in row.get("amounts", ()))
     if fails:
-        return "RESULT: FAIL fail=%d no_price=%d" % (fails, no_price), EXIT_FAIL
-    if no_price and not priced:
-        return "RESULT: FAIL no_price_in_run fail=0 no_price=%d" % no_price, EXIT_FAIL
-    if no_price:
-        return "RESULT: FAIL fail=0 no_price=%d" % no_price, EXIT_NO_PRICE
-    return "RESULT: PASS", EXIT_PASS
+        result, code = "RESULT: FAIL fail=%d no_price=%d" % (fails, no_price), EXIT_FAIL
+    elif no_price and not priced:
+        result, code = "RESULT: FAIL no_price_in_run fail=0 no_price=%d" % no_price, EXIT_FAIL
+    elif no_price:
+        result, code = "RESULT: FAIL fail=0 no_price=%d" % no_price, EXIT_NO_PRICE
+    else:
+        result, code = "RESULT: PASS", EXIT_PASS
+    return result + _form_suffix(rows, form), code
+
+
+def _form_suffix(rows, form):
+    """FG-2 / FY23: in pair and both mode EVERY RESULT line -- the summary, a setup refusal
+    and the crash line -- ends " q_fail=<n> pair_fail=<n>" (n = compare rows of that form
+    with verdict FAIL; zeros when no compare row ran); in q mode and without --form the
+    suffix is empty, so the line is today's byte for byte."""
+    if form not in ("pair", "both"):
+        return ""
+    return " q_fail=%d pair_fail=%d" % (
+        sum(1 for row in _form_rows(rows, "q") if row.get("verdict") == "FAIL"),
+        sum(1 for row in _form_rows(rows, "pair") if row.get("verdict") == "FAIL"),
+    )
+
+
+def _split_pair(text):
+    """(A, B) around the FIRST " vs " of a curated pair, both halves stripped and
+    non-empty; None when the text does not split (the pair form needs both halves)."""
+    head, sep, tail = text.partition(" vs ")
+    if not sep or not head.strip() or not tail.strip():
+        return None
+    return head.strip(), tail.strip()
 
 
 def _finish(path, doc, result, code) -> int:
@@ -353,56 +398,89 @@ def _parse_args(argv):
     parser.add_argument("--report", metavar="PATH", help="also write a JSON report to PATH")
     parser.add_argument("--send-admin-key", action="store_true",
                         help="send X-Admin-Key from the environment (as HARNESS_SEND_ADMIN_KEY=1)")
+    parser.add_argument("--form", choices=("q", "pair", "both"), default=None,
+                        help="run each curated pair as a q-form compare (q), as the app-shaped "
+                             "product_a/product_b compare (pair), or both; omitted = today's "
+                             "q rows with bare labels and no form field")
+    parser.add_argument("--strict-q", action="store_true",
+                        help="in pair/both mode the q rows also drive the exit (reported only "
+                             "otherwise)")
     args = parser.parse_args(argv)
     if args.pairs == []:
         parser.error('--pairs needs at least one "A vs B" entry')
+    if args.form in ("pair", "both"):
+        for pair in args.pairs:
+            if _split_pair(pair) is None:
+                parser.error('--form %s needs every pair as "A vs B"' % args.form)
     return args
 
 
-def _run(argv) -> int:
+def _run(argv, state=None) -> int:
     args = _parse_args(argv)
     base = args.base
     doc = {"script": "verify_after_credits.py", "rule": RULE, "base": base, "auth": "none",
            "started_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
            "rows": []}
+    if state is not None:  # FY23: main()'s crash line reads the form and the rows so far
+        state.update({"form": args.form, "rows": doc["rows"]})
+
+    def suffix():  # FY23: the setup lines carry the counts in pair / both mode too
+        return _form_suffix(doc["rows"], args.form)
+
     if "@" in base:
         doc["base"] = None
         print("setup: the --base URL must not carry credentials")
-        return _finish(args.report, doc, "RESULT: FAIL setup=base_userinfo", EXIT_SETUP)
+        return _finish(args.report, doc, "RESULT: FAIL setup=base_userinfo" + suffix(),
+                       EXIT_SETUP)
     opted_in = args.send_admin_key or _env_opt_in()
     key = os.getenv("ADMIN_API_KEY", "")
     if opted_in and not key:
         print("setup: ADMIN_API_KEY is not set in this environment")
-        return _finish(args.report, doc, "RESULT: FAIL setup=admin_variable_missing",
+        return _finish(args.report, doc, "RESULT: FAIL setup=admin_variable_missing" + suffix(),
                        EXIT_SETUP)
     if opted_in and key != key.strip():  # H4: a pasted space/newline (h11 would quote it)
         print("setup: ADMIN_API_KEY carries leading or trailing whitespace, or is blank")
-        return _finish(args.report, doc, "RESULT: FAIL setup=admin_variable_malformed",
-                       EXIT_SETUP)
+        return _finish(args.report, doc,
+                       "RESULT: FAIL setup=admin_variable_malformed" + suffix(), EXIT_SETUP)
     auth = _harness_auth_headers(opt_in=args.send_admin_key)
     doc["auth"] = "admin" if auth else "none"
     rows = doc["rows"]
     product_a, product_b = args.probe
     probe = {"product_a": product_a, "product_b": product_b, "region": "bahrain",
              "nocache": "true"}
-    checks = [("compare", pair, {"q": pair, "nocache": "true", "region": "bahrain"})
-              for pair in args.pairs]
-    checks.append(("probe", product_a + " vs " + product_b, probe))
-    checks.append(("stream", product_a + " vs " + product_b, probe))
+    # FS-R5 / FG-1: no --form = today's q rows (bare labels, no form field); --form q|pair|both
+    # labels every compare row with its form and carries it on the row.
+    forms = {"q": ("q",), "pair": ("pair",), "both": ("q", "pair")}.get(args.form, ("q",))
+    checks = []
+    for pair in args.pairs:
+        for form in forms:
+            if form == "q":
+                params = {"q": pair, "nocache": "true", "region": "bahrain"}
+            else:
+                pair_a, pair_b = _split_pair(pair)
+                params = {"product_a": pair_a, "product_b": pair_b, "region": "bahrain",
+                          "nocache": "true"}
+            label = pair if args.form is None else pair + " [" + form + "]"
+            checks.append(("compare", label, params, None if args.form is None else form))
+    checks.append(("probe", product_a + " vs " + product_b, probe, None))
+    checks.append(("stream", product_a + " vs " + product_b, probe, None))
     client = httpx.Client(timeout=150, headers=auth) if auth else httpx.Client(timeout=150)
     with client:
         rows.append(_health(client, base, args.timeout))
         _emit(rows[-1])
         if rows[-1]["verdict"] == "PASS":
-            for kind, label, params in checks:
+            for kind, label, params, form in checks:
                 row = _check(client, base, kind, label, params, args.timeout)
+                if form is not None:
+                    row["form"] = form
                 rows.append(row)
                 _emit(row)
                 if row["http"] in (401, 403):
                     print(AUTH_HINT)
-                    return _finish(args.report, doc, "RESULT: FAIL setup=auth_%d" % row["http"],
+                    return _finish(args.report, doc,
+                                   "RESULT: FAIL setup=auth_%d" % row["http"] + suffix(),
                                    EXIT_SETUP)
-    result, code = _summary(rows)
+    result, code = _summary(rows, args.form, args.strict_q)
     return _finish(args.report, doc, result, code)
 
 
@@ -413,10 +491,13 @@ def main(argv=None) -> int:
         sys.stdout.reconfigure(line_buffering=True)  # H2: a pipe is block-buffered; flush each row
     except Exception:  # noqa: BLE001 - best effort: a stream without reconfigure keeps working
         pass
+    state = {}
     try:
-        return _run(argv)
+        return _run(argv, state)
     except Exception as exc:  # noqa: BLE001 - the class name only (B7)
-        print("RESULT: FAIL error=%s" % type(exc).__name__)
+        # FY23: in pair / both mode the crash line ends with the counts too.
+        print("RESULT: FAIL error=%s" % type(exc).__name__
+              + _form_suffix(state.get("rows") or [], state.get("form")))
         return EXIT_CRASH
 
 

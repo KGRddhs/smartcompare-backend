@@ -124,7 +124,7 @@ def test_serper_timeout_flag_on_split(monkeypatch):
     t = serper_service._serper_timeout()
     assert isinstance(t, httpx.Timeout)
     assert t.read == 10.0
-    assert t.connect == 3.0
+    assert t.connect == 8.0  # D4 (FANOUT-STARVE, 2026-10-09): connect default 3.0 -> 8.0
 
 
 def test_serper_timeout_flag_on_env_override(monkeypatch):

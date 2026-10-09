@@ -386,15 +386,25 @@ def _serper_float_env(name: str, default: float) -> float:
 
 def _serper_timeout():
     """httpx timeout for Serper calls. Flag OFF -> 15.0 (byte-identical to the
-    pre-fail-fast literal). Flag ON -> a split connect/read budget (conservative
-    canary defaults 3s connect / 10s read, env-tunable via SERPER_CONNECT_TIMEOUT
-    / SERPER_READ_TIMEOUT) so a throttled key aborts fast instead of burning the
+    pre-fail-fast literal). Flag ON -> a split connect/read budget (defaults
+    8s connect / 10s read, env-tunable via SERPER_CONNECT_TIMEOUT /
+    SERPER_READ_TIMEOUT) so a throttled key aborts fast instead of burning the
     full 15s. Keep SERPER_ROTATION_DEADLINE > SERPER_READ_TIMEOUT so a multi-key
-    run still gets >=2 attempts."""
+    run still gets >=2 attempts.
+
+    FANOUT-STARVE D4 (2026-10-09): the connect default moved 3.0 -> 8.0 (web has
+    run SERPER_CONNECT_TIMEOUT=8 since 2026-10-08, so this is configuration
+    truth). httpx's connect budget INCLUDES the getaddrinfo await, and under
+    uvloop that await queues on libuv's 4-thread default pool behind every other
+    httpx lookup of the process (inferred: a 3 s budget expired on queueing, not
+    on the network, canary 3 -> ConnectTimeout -> key rotation -> a 23 s
+    serper_shopping stage). Stated limit: with a 3-key rotation the unbounded
+    unified search can now run 14 s + one attempt (8 + 10) = 32 s instead of
+    27 s worst case; ENABLE_UNIFIED_SEARCH_BOUND (D5) closes that."""
     if not _serper_fail_fast_enabled():
         return 15.0
     read = _serper_float_env("SERPER_READ_TIMEOUT", 10.0)
-    connect = _serper_float_env("SERPER_CONNECT_TIMEOUT", 3.0)
+    connect = _serper_float_env("SERPER_CONNECT_TIMEOUT", 8.0)
     return httpx.Timeout(read, connect=connect)
 
 
