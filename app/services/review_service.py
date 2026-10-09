@@ -40,6 +40,18 @@ logger = logging.getLogger(__name__)
 # Cache TTL
 REVIEWS_CACHE_TTL = 7 * 24 * 60 * 60  # 7 days
 
+# FANOUT-STARVE FY19 (2026-10-09) -- the mark ENABLE_UNIFIED_SEARCH_BOUND (default OFF)
+# puts on the EMPTY payload a timed-out unified search hands the specs / reviews tasks.
+# That context is empty because the search was slow, not because the web has nothing,
+# so nothing extracted from it is ever cached (L1 or L2): a rollback (unset the flag)
+# must leave no empty-context row behind. With the flag OFF the mark never exists.
+UNIFIED_TIMEOUT_MARK = "_unified_timeout"
+
+
+def unified_search_timed_out(search_results: Any) -> bool:
+    """True only for the D5 timeout payload (the mark is the literal True)."""
+    return isinstance(search_results, dict) and search_results.get(UNIFIED_TIMEOUT_MARK) is True
+
 # Category-specific review search terms
 # L2.10 — added 4 missing entries (supplements/fragrances/haircare/other) so
 # every category in CATEGORY_SPEC_SCHEMAS has its own review-search term
@@ -704,7 +716,9 @@ async def get_reviews(
     # lost (PYTHON-FASTAPI-J pattern). After this point the extraction is safe
     # regardless of what the consult does.
     extraction_persisted = False
-    if reviews and not reviews.get("error"):
+    # FY19: a D5 timeout context is never persisted (extraction_persisted stays False,
+    # so the two enriched re-cache writes below are skipped as well).
+    if reviews and not reviews.get("error") and not unified_search_timed_out(search_results):
         set_cached(cache_key, reviews, REVIEWS_CACHE_TTL)
         from app.services.product_data_service import save_reviews
         # M13-33: plain asyncio.create_task swallows exceptions — an RLS denial /

@@ -1831,3 +1831,271 @@ def test_BH23b_canary_docstring_carries_the_debug_logging_caveat():
     mod = _load(CANARY, "canary")
     doc = mod.__doc__ or ""
     assert "DEBUG" in doc and "httpcore" in doc, doc[-300:]
+
+
+# ===========================================================================
+# BH45-BH52  FANOUT-STARVE (session 75, 2026-10-09): the canary `--form` plumbing of
+# FS-R5 (T22) and the runbook A1 step 8 form rule (T23). Appended nodes, RED at main
+# 4c0f3c99 (argparse rejects --form / --strict-q; no `form` row field; no q_fail /
+# pair_fail on the RESULT line; no runbook sentence). Contract fixed here for GREEN
+# where FS-R5 leaves a name open:
+#   * `--form q|pair|both`: each curated pair runs as a `compare` row in the requested
+#     form(s); a pair-form row sends {product_a, product_b, region, nocache} with the pair
+#     text split on its FIRST " vs "; row labels read "<pair> [q]" / "<pair> [pair]";
+#     every compare row carries `form` ("q" | "pair") on stdout and in the --report rows.
+#   * The RESULT line ALWAYS ends " q_fail=<n> pair_fail=<n>" in pair and both mode, zeros
+#     included (FG-2, as corrected by FY14); in q mode and without --form it is today's line
+#     byte for byte (BH05's exact "RESULT: PASS" pin stays green; BH55 pins --form q).
+#   * The exit is driven by the pair rows, the probe and the stream; q rows are reported
+#     and drive the exit only under `--strict-q`.
+#   * The DEFAULT of --form is deliberately NOT pinned here: FS-R5's default `both`
+#     reddens BH07 / BH07b / BH18 / BH24 / BH28 (append-only protected) -- reported to the
+#     orchestrator as a ruling question; every node below passes --form explicitly.
+# ===========================================================================
+FORM_PAIRS = ("Product A vs Product B", "Product C vs Product D")
+PAIR_PARAMS = [{"product_a": "Product A", "product_b": "Product B", "region": "bahrain",
+                "nocache": "true"},
+               {"product_a": "Product C", "product_b": "Product D", "region": "bahrain",
+                "nocache": "true"}]
+Q_PARAMS = [{"q": p, "nocache": "true", "region": "bahrain"} for p in FORM_PAIRS]
+RUNBOOK = (REPO_ROOT / "docs" / "investigations" / "2026-09-29-session-69-state"
+           / "APP_STORE_LAUNCH_RUNBOOK.md")
+
+
+def _params_sorted(rows):
+    return sorted(json.dumps(p, sort_keys=True) for p in rows)
+
+
+def test_BH45_form_both_runs_every_pair_in_both_forms(monkeypatch, capsys):
+    """BH45 (FS-R5 plumbing, T22): --form both -> for each curated pair ONE q request and
+    ONE product_a/product_b request (split on the first " vs "), then the probe and the
+    stream once each; 2 x len(pairs) compare rows whose labels carry [q] / [pair] and
+    whose `form` field matches; health first, probe and stream last; rc 0.
+    RED at main: argparse rejects --form."""
+    run = _drive(monkeypatch, capsys, "canary", _cargs("--form", "both", pairs=FORM_PAIRS),
+                 _routes())
+    _assert_rc(run, 0)
+    assert [s["params"] for s in run.server.of("q")] == Q_PARAMS, run.server.of("q")
+    pair_seen = [s["params"] for s in run.server.of("pair")]
+    assert _params_sorted(pair_seen) == _params_sorted(PAIR_PARAMS + [PROBE_PARAMS]), pair_seen
+    assert len(run.server.compares()) == 2 * len(FORM_PAIRS) + 1
+    assert [s["params"] for s in run.server.of("stream")] == [PROBE_PARAMS]
+    kinds = [r.get("kind") for r in run.rows()]
+    assert kinds[0] == "health" and kinds[-2:] == ["probe", "stream"], kinds
+    rows = run.rows("compare")
+    assert len(rows) == 2 * len(FORM_PAIRS), rows
+    want_labels = sorted([p + " [q]" for p in FORM_PAIRS] + [p + " [pair]" for p in FORM_PAIRS])
+    assert sorted(r.get("label") for r in rows) == want_labels, rows
+    for row in rows:
+        assert row.get("form") in ("q", "pair"), row
+        assert row["label"].endswith("[" + row["form"] + "]"), row
+        assert (row["http"], row["verdict"], row["prices"]) == (200, "PASS", "2/2"), row
+
+
+@pytest.mark.parametrize("form", ["q", "pair"])
+def test_BH46_form_single_runs_only_that_form(monkeypatch, capsys, form):
+    """BH46 (FS-R5, T22): --form q -> only q compare rows (the probe stays the single
+    pair-form request); --form pair -> only pair-form compare rows and NO q request.
+    RED at main: argparse rejects --form."""
+    run = _drive(monkeypatch, capsys, "canary", _cargs("--form", form, pairs=FORM_PAIRS),
+                 _routes())
+    _assert_rc(run, 0)
+    rows = run.rows("compare")
+    assert len(rows) == len(FORM_PAIRS) and all(r.get("form") == form for r in rows), rows
+    assert all(r.get("label", "").endswith("[" + form + "]") for r in rows), rows
+    if form == "q":
+        assert [s["params"] for s in run.server.of("q")] == Q_PARAMS
+        assert [s["params"] for s in run.server.of("pair")] == [PROBE_PARAMS]
+    else:
+        assert run.server.of("q") == [], run.server.of("q")
+        pair_seen = [s["params"] for s in run.server.of("pair")]
+        assert _params_sorted(pair_seen) == _params_sorted(PAIR_PARAMS + [PROBE_PARAMS]), pair_seen
+
+
+def test_BH47_report_rows_carry_the_form_field(monkeypatch, capsys, tmp_path):
+    """BH47 (FS-R5, T22): --form both --report -> every compare row of the report carries
+    `form` matching its label; the section-3 keys stay; rows = 1 + 2 x pairs + 2; the
+    report stays ASCII/LF. RED at main: argparse rejects --form."""
+    report = tmp_path / "canary.json"
+    run = _drive(monkeypatch, capsys, "canary",
+                 _cargs("--form", "both", "--report", str(report), pairs=FORM_PAIRS), _routes())
+    _assert_rc(run, 0)
+    assert report.is_file(), "no report written"
+    raw = report.read_bytes()
+    assert sum(1 for b in raw if b > 127) == 0 and raw.count(b"\r") == 0
+    data = json.loads(raw.decode("ascii"))
+    assert REPORT_KEYS <= set(data), sorted(REPORT_KEYS - set(data))
+    compare_rows = [r for r in data["rows"] if r.get("kind") == "compare"]
+    assert len(compare_rows) == 2 * len(FORM_PAIRS), compare_rows
+    for row in compare_rows:
+        assert COMPARE_ROW_KEYS <= set(row), sorted(COMPARE_ROW_KEYS - set(row))
+        assert row.get("form") in ("q", "pair"), row
+        assert row["label"].endswith("[" + row["form"] + "]"), row
+    assert sorted(r["form"] for r in compare_rows) == (
+        ["pair"] * len(FORM_PAIRS) + ["q"] * len(FORM_PAIRS))
+    assert len(data["rows"]) == 1 + 2 * len(FORM_PAIRS) + 2, len(data["rows"])
+
+
+def test_BH48_q_failures_are_reported_but_do_not_drive_the_exit(monkeypatch, capsys):
+    """BH48 (FS-R5 exit semantics, T22): --form both with degraded q rows and a healthy
+    pair / probe / stream -> rc 0; the q compare rows report verdict FAIL and the pair
+    rows PASS; the RESULT line starts "RESULT: PASS" and carries q_fail=<pairs>
+    pair_fail=0. RED at main: argparse rejects --form."""
+    run = _drive(monkeypatch, capsys, "canary", _cargs("--form", "both", pairs=FORM_PAIRS),
+                 _routes(q=_json(200, _degraded())))
+    _assert_rc(run, 0)
+    q_rows = [r for r in run.rows("compare") if r.get("form") == "q"]
+    assert len(q_rows) == len(FORM_PAIRS) and all(r.get("verdict") == "FAIL" for r in q_rows), (
+        q_rows)
+    pair_rows = [r for r in run.rows("compare") if r.get("form") == "pair"]
+    assert len(pair_rows) == len(FORM_PAIRS) and all(r.get("verdict") == "PASS" for r in pair_rows), (
+        pair_rows)
+    assert run.last.startswith("RESULT: PASS"), ascii(run.last)
+    assert "q_fail=%d" % len(FORM_PAIRS) in run.last and "pair_fail=0" in run.last, ascii(run.last)
+
+
+def test_BH49_strict_q_makes_q_failures_drive_the_exit(monkeypatch, capsys):
+    """BH49 (FS-R5 --strict-q, T22): the BH48 run with --strict-q -> rc 1 and a
+    "RESULT: FAIL ..." line carrying q_fail=<pairs> pair_fail=0.
+    RED at main: argparse rejects --form / --strict-q."""
+    run = _drive(monkeypatch, capsys, "canary",
+                 _cargs("--form", "both", "--strict-q", pairs=FORM_PAIRS),
+                 _routes(q=_json(200, _degraded())))
+    _assert_rc(run, 1)
+    assert run.last.startswith("RESULT: FAIL"), ascii(run.last)
+    assert "q_fail=%d" % len(FORM_PAIRS) in run.last and "pair_fail=0" in run.last, ascii(run.last)
+
+
+def test_BH50_pair_failures_drive_the_exit(monkeypatch, capsys):
+    """BH50 (FS-R5 exit semantics, T22): --form both with the two curated pair-form rows
+    degraded (the probe stays healthy through _by_pair) and healthy q rows -> rc 1, the
+    pair rows FAIL, the probe PASS, and "RESULT: FAIL ..." carries pair_fail=<pairs>
+    q_fail=0. RED at main: argparse rejects --form."""
+    plan = {"Product A": [(200, _degraded())], "Product C": [(200, _degraded())]}
+    run = _drive(monkeypatch, capsys, "canary", _cargs("--form", "both", pairs=FORM_PAIRS),
+                 _routes(pair=_by_pair(plan)))
+    _assert_rc(run, 1)
+    pair_rows = [r for r in run.rows("compare") if r.get("form") == "pair"]
+    assert len(pair_rows) == len(FORM_PAIRS) and all(r.get("verdict") == "FAIL" for r in pair_rows), (
+        pair_rows)
+    probes = run.rows("probe")
+    assert len(probes) == 1 and probes[0].get("verdict") == "PASS", probes
+    assert run.last.startswith("RESULT: FAIL"), ascii(run.last)
+    assert "pair_fail=%d" % len(FORM_PAIRS) in run.last and "q_fail=0" in run.last, ascii(run.last)
+
+
+def test_BH51_form_rejects_an_unknown_value(monkeypatch, capsys):
+    """BH51 (FS-R5, T22): --form x is an argparse CHOICES error: rc 2, stderr names the
+    invalid choice, no request, no client, no RESULT line. RED at main: argparse reports
+    an unrecognized argument instead of an invalid choice."""
+    run = _drive(monkeypatch, capsys, "canary", _cargs("--form", "x", pairs=FORM_PAIRS),
+                 _routes())
+    assert run.rc == 2, "rc %r (last stdout line %s)" % (run.rc, ascii(run.last))
+    assert "invalid choice" in run.err and "--form" in run.err, ascii(run.err[-300:])
+    assert run.server.seen == [] and run.built == [], (run.server.seen, run.built)
+    assert not any(ln.startswith("RESULT:") for ln in run.lines), run.lines[-1:]
+
+
+def test_BH52_runbook_a1_step_8_names_the_form_rule():
+    """BH52 / T23 (FS-R5): the runbook's A1 step 8 block (from the line starting
+    "8. Canary" to the next top-level step) names the `--form` rule and why: the app sends
+    the product_a/product_b (pair) form, so the pair rows, the probe and the stream decide
+    the exit while the q rows are reported. RED at main: the block has no --form sentence."""
+    assert RUNBOOK.is_file(), "missing %s" % RUNBOOK
+    lines = RUNBOOK.read_text(encoding="utf-8").splitlines()
+    start = next((i for i, ln in enumerate(lines) if ln.startswith("8. Canary")), None)
+    assert start is not None, "runbook A1 step 8 ('8. Canary') not found"
+    end = next((i for i in range(start + 1, len(lines)) if re.match(r"^\d+\. ", lines[i])),
+               len(lines))
+    block = "\n".join(lines[start:end])
+    assert "--form" in block, "A1 step 8 does not name the --form rule"
+    lowered = block.lower()
+    assert "product_a" in lowered, "A1 step 8 does not name the product_a/product_b form"
+    assert re.search(r"pair[ -]form", lowered), "A1 step 8 does not say 'pair form'"
+    assert re.search(r"\bapp\b[^.]{0,80}\b(sends|uses)\b", lowered), (
+        "A1 step 8 does not say that the app sends the pair form")
+
+
+# ===========================================================================
+# BH53-BH54  FANOUT-STARVE GREEN additions (FG-1 / FG-2, 2026-10-09): the `--form`
+# DEFAULT is today's run, and the both-mode RESULT line always carries the counts.
+# ===========================================================================
+def test_BH53_no_form_flag_is_todays_run(monkeypatch, capsys):
+    """BH53 GUARD (FG-1): a run WITHOUT --form is today's run byte for byte: one q-form
+    compare row per curated pair with the BARE pair text as its label and NO `form`
+    field, no pair-form compare request (the probe is the only product_a/product_b
+    request), the probe and the stream once each, "RESULT: PASS" exactly, rc 0.
+    Green at main 4c0f3c99 and after D9 (the default is q-form, bare, unsuffixed)."""
+    run = _drive(monkeypatch, capsys, "canary", _cargs(pairs=FORM_PAIRS), _routes())
+    _assert_rc(run, 0)
+    assert [s["params"] for s in run.server.of("q")] == Q_PARAMS, run.server.of("q")
+    assert [s["params"] for s in run.server.of("pair")] == [PROBE_PARAMS], run.server.of("pair")
+    assert len(run.server.compares()) == len(FORM_PAIRS) + 1
+    rows = run.rows("compare")
+    assert [r.get("label") for r in rows] == list(FORM_PAIRS), rows
+    assert all("form" not in r for r in rows), rows
+    kinds = [r.get("kind") for r in run.rows()]
+    assert kinds == ["health", "compare", "compare", "probe", "stream"], kinds
+    assert run.last == "RESULT: PASS", ascii(run.last)
+
+
+def test_BH54_form_both_all_pass_result_line_carries_zero_counts(monkeypatch, capsys):
+    """BH54 (FG-2): --form both on an all-healthy run -> rc 0 and the last stdout line is
+    EXACTLY "RESULT: PASS q_fail=0 pair_fail=0": in pair and both mode the suffix is
+    ALWAYS appended, zeros included, so a reader can tell the mode from the line.
+    RED at the RED bytes (and at main): argparse rejects --form."""
+    run = _drive(monkeypatch, capsys, "canary", _cargs("--form", "both", pairs=FORM_PAIRS),
+                 _routes())
+    _assert_rc(run, 0)
+    assert run.last == "RESULT: PASS q_fail=0 pair_fail=0", ascii(run.last)
+
+
+# ===========================================================================
+# BH55-BH56  FANOUT-STARVE fix round (post-adversary rulings FY14 / FY23, 2026-10-09).
+# ===========================================================================
+def test_BH55_form_q_result_line_is_todays(monkeypatch, capsys):
+    """BH55 (FY14, ENG-m3 / C12): in --form q the RESULT line is byte-identical to today --
+    never a q_fail / pair_fail suffix (FG-2)."""
+    run = _drive(monkeypatch, capsys, "canary", _cargs("--form", "q", pairs=FORM_PAIRS),
+                 _routes())
+    _assert_rc(run, 0)
+    assert run.last == "RESULT: PASS", ascii(run.last)
+
+
+@pytest.mark.parametrize("form", ["pair", "both"])
+def test_BH56_setup_and_crash_lines_carry_the_counts_in_pair_and_both_mode(monkeypatch, capsys,
+                                                                           form):
+    """BH56 (FY23, runtime-truth m4): FG-2's "always" holds for the setup and crash lines too:
+    in pair / both mode `RESULT: FAIL setup=...` and `RESULT: FAIL error=...` end
+    " q_fail=<n> pair_fail=<n>" (zeros when no compare row ran); the exit codes are today's.
+    RED on the GREEN bytes: the setup and crash lines carried no suffix."""
+    run = _drive(monkeypatch, capsys, "canary", _cargs("--form", form, pairs=FORM_PAIRS),
+                 _routes(), opt_in="1", key=None)
+    _assert_rc(run, 4)
+    assert run.server.seen == []
+    assert run.last == "RESULT: FAIL setup=admin_variable_missing q_fail=0 pair_fail=0", (
+        ascii(run.last))
+    exc = RuntimeError("client construction failed")
+    run = _drive(monkeypatch, capsys, "canary", _cargs("--form", form, pairs=FORM_PAIRS),
+                 _routes(), client_error=exc)
+    _assert_rc(run, 5)
+    assert run.last == "RESULT: FAIL error=RuntimeError q_fail=0 pair_fail=0", ascii(run.last)
+    run = _drive(monkeypatch, capsys, "canary", _cargs("--form", form, pairs=FORM_PAIRS),
+                 _routes(q=_json(401, AUTH_401), pair=_json(401, AUTH_401)))
+    _assert_rc(run, 4)
+    assert re.match(r"^RESULT: FAIL setup=auth_401 q_fail=\d+ pair_fail=\d+$", run.last), (
+        ascii(run.last))
+
+
+def test_BH56_no_form_setup_and_crash_lines_are_todays(monkeypatch, capsys):
+    """BH56 GUARD (FY23): without --form (and in q mode) the setup and crash lines stay
+    today's bytes, no suffix."""
+    for extra in ((), ("--form", "q")):
+        run = _drive(monkeypatch, capsys, "canary", _cargs(*extra, pairs=FORM_PAIRS),
+                     _routes(), opt_in="1", key=None)
+        _assert_rc(run, 4)
+        assert run.last == "RESULT: FAIL setup=admin_variable_missing", ascii(run.last)
+        run = _drive(monkeypatch, capsys, "canary", _cargs(*extra, pairs=FORM_PAIRS),
+                     _routes(), client_error=RuntimeError("boom"))
+        _assert_rc(run, 5)
+        assert run.last == "RESULT: FAIL error=RuntimeError", ascii(run.last)

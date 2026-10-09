@@ -11,11 +11,15 @@ lazily-created default pool, sized `min(32, os.cpu_count() + 4)`. That is:
     during an incident cannot tell adapter fetches from DB offload.
 
 Installing an explicit, named, bounded pool makes the ceiling deterministic
-across hosts and observable in a stack dump. Sizing (default 40): a single
-compare fans out up to ~18 adapter fetches concurrently plus a handful of DB /
-Redis offload calls; 40 leaves headroom for ~2 concurrent full fan-outs on the
-single-worker uvicorn without unbounded thread growth. Override with
-ADAPTER_EXECUTOR_MAX_WORKERS for load tuning.
+across hosts and observable in a stack dump. Sizing (default 96, FANOUT-STARVE
+D1 2026-10-09; was 40): under ENABLE_BH_GCC_CATALOG_SOURCES one compare fans
+out about 30 blocking adapter fetches (counted: 15 hosts x 2 products, ledger
+2026-10-08 14:24), each up to the 9 s inner clamp, so 40 threads saturated on
+ONE compare and the SLOW-MISS / TIMEOUT drops were the queue (canary 3: the
+executor raised to 96 took adapter TIMEOUT ~20 -> 0). 96 = three concurrent
+full fan-outs on the single-worker uvicorn plus the sync DB / Redis offload
+class. Override with ADAPTER_EXECUTOR_MAX_WORKERS for load tuning (web sets 96
+since 2026-10-08, so this default is configuration truth, not a change).
 """
 from __future__ import annotations
 
@@ -27,7 +31,11 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_MAX_WORKERS = 40
+_DEFAULT_MAX_WORKERS = 96
+
+# FANOUT-STARVE D1 / FS-R7 -- the pool install_default_executor built, so /health
+# can report it without touching asyncio.get_event_loop(). None until installed.
+_INSTALLED_POOL: Optional[ThreadPoolExecutor] = None
 
 
 def default_executor_size() -> int:
@@ -45,6 +53,7 @@ def install_default_executor(
 ) -> ThreadPoolExecutor:
     """Set an explicitly-sized, named ThreadPoolExecutor as ``loop``'s default
     executor and return it. Call once at app startup on the running loop."""
+    global _INSTALLED_POOL
     if loop is None:
         loop = asyncio.get_event_loop()
     size = default_executor_size()
@@ -53,5 +62,23 @@ def install_default_executor(
         thread_name_prefix="qaren-worker",
     )
     loop.set_default_executor(executor)
+    _INSTALLED_POOL = executor
     logger.info("[executor] default ThreadPoolExecutor installed: max_workers=%d", size)
     return executor
+
+
+def executor_snapshot() -> dict:
+    """FANOUT-STARVE D1 / FS-R7 -- /health's `adapter_executor` key: present iff
+    install_default_executor ran in this process (the W0-4g price_parse_pool
+    precedent). A dict read of the installed pool's private attributes, no I/O;
+    any attribute drift yields {} so /health can never fail on it."""
+    pool = _INSTALLED_POOL
+    if pool is None:
+        return {}
+    try:
+        return {"adapter_executor": {
+            "workers": pool._max_workers,
+            "queued": pool._work_queue.qsize(),
+        }}
+    except Exception:  # noqa: BLE001 -- /health must never fail
+        return {}

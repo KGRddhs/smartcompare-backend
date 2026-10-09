@@ -1,0 +1,14 @@
+{
+ "base": "4c0f3c99",
+ "digests": {
+  "rest_pair_full": "c7b2262ab3aa072010d5a6c75be325275e1a5d147a94cd7f3ed0fdf1bb1f7078",
+  "rest_q_full": "bd4057d3077ae70e2ea7335d8f71e9a708f26d0356c05e395b0aff997a9d54bc",
+  "rest_q_full_llm_json_carries_private_marks": "bd4057d3077ae70e2ea7335d8f71e9a708f26d0356c05e395b0aff997a9d54bc",
+  "rest_q_parse_fail_shape": "d40a5464e07c1c8ac4762efb886a07fc25f812a4138d94b7667faef4faa15d90",
+  "rest_q_partial_gather": "500a43764bb0a9345005bd51238b98b115fb351247352bc3ae83c0e39e0e8c84",
+  "stream_pair_full": "76bc9adb4fcb12445e7d0cfe69481bae7bd572fc922c7d01d20443282fb7d25f",
+  "stream_q_full": "8f24066628eb4391cf861431a5807ea18e091c407b8498bd9b13417f94bd167c",
+  "stream_q_full_llm_json_carries_private_marks": "8f24066628eb4391cf861431a5807ea18e091c407b8498bd9b13417f94bd167c",
+  "stream_q_partial_gather": "2c8f48a570fd397c1c82ce97500ce198262bf9290fa152fe0ad7217bab5bc8fe"
+ }
+}

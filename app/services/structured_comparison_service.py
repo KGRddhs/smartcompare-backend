@@ -10,6 +10,7 @@ Delegates to focused modules:
 import os
 import re
 import json
+import math
 import time
 import asyncio
 import hashlib
@@ -57,6 +58,7 @@ from app.services.cache_service import (
 )
 from app.services.drug_database_service import find_matching_drugs, format_drug_context
 from app.utils.db_offload import run_db  # M13-05 / #115 ENABLE_SYNC_DB_OFFLOAD
+from app.utils.prompt_sanitizer import sanitize_prompt_input  # FANOUT-STARVE FY9 (no cycle)
 from app.services.scoring_service import get_scoring_service, MISSING_SCORE
 from app.services.scoring_service import (  # W4-7 Part B / Part C readers
     confidence_single_computation_enabled,
@@ -1487,6 +1489,8 @@ from app.services.review_service import (
     GARBAGE_PATTERNS,
     NEGATIVE_INDICATORS,
     POSITIVE_INDICATORS,
+    UNIFIED_TIMEOUT_MARK,  # FANOUT-STARVE FY19
+    unified_search_timed_out,  # FANOUT-STARVE FY19
 )
 from app.services.fact_check_service import (
     verify_spec_citations,
@@ -1744,6 +1748,109 @@ def _fan_out_budget_seconds() -> float:
         return float(os.getenv("FAN_OUT_BUDGET_SECONDS", "12.0"))
     except (TypeError, ValueError):
         return 12.0
+
+
+# ---------------------------------------------------------------------------
+# FANOUT-STARVE (session 75, 2026-10-09) -- the three flags and their knobs.
+# Every reader runs PER CALL (the price_service.exact_gate_enabled idiom), never
+# at import, so a Railway flip needs no restart; every knob rejects unset / "" /
+# garbage / non-finite / <= 0 and falls back to its default.
+# ---------------------------------------------------------------------------
+def _flag_on(name: str) -> bool:
+    return os.getenv(name, "").strip().lower() in ("true", "1", "yes", "on")
+
+
+def _float_knob(name: str, default: float) -> float:
+    raw = os.getenv(name)
+    if raw is None or not raw.strip():
+        return default
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return default
+    if not math.isfinite(value) or value <= 0:
+        return default
+    return value
+
+
+def _parse_timeout_seconds() -> float:
+    """FS-R3 (ii): the stall-guard bound on parse_product_query (default 8.0 s)."""
+    return _float_knob("PARSE_TIMEOUT_SECONDS", 8.0)
+
+
+def _unified_search_timeout_seconds() -> float:
+    """D5 / FS-R8: the bound on the unified search (default 12.0 s)."""
+    return _float_knob("UNIFIED_SEARCH_TIMEOUT_SECONDS", 12.0)
+
+
+def _phase2_min_residual_seconds() -> float:
+    """D7 / FS-R4: skip Phase 2 below this residual to the compare deadline (8.0 s)."""
+    return _float_knob("PHASE2_MIN_RESIDUAL_SECONDS", 8.0)
+
+
+_VS_SPLIT_RE = re.compile(r" vs ", re.IGNORECASE)
+
+
+def _split_on_vs(query: str) -> Optional[Tuple[str, str]]:
+    """FS-R3: the two halves of `query` around its FIRST case-insensitive " vs ",
+    stripped, each non-empty before and after sanitize_prompt_input(max 80);
+    None when the query does not split cleanly (the LLM parse runs as today).
+    FY20: a half that still contains " vs " (a three-way string) is not clean either."""
+    parts = _VS_SPLIT_RE.split(query or "", maxsplit=1)
+    if len(parts) != 2:
+        return None
+    left, right = parts[0].strip(), parts[1].strip()
+    if not left or not right:
+        return None
+    if _VS_SPLIT_RE.search(parts[0]) or _VS_SPLIT_RE.search(parts[1]):
+        return None
+    if not sanitize_prompt_input(left, max_length=80) or not sanitize_prompt_input(right, max_length=80):
+        return None
+    return left, right
+
+
+def _explicit_pair_products(halves: Tuple[str, str]) -> List[Dict[str, Any]]:
+    """The explicit-pair product shape of the Step-1 `explicit_pair` branch (brand "",
+    sanitized name, deterministic category, `_explicit` True), shared by the FS-R3
+    pre-split and the stall-guard fallback so the builders cannot drift."""
+    products = []
+    for raw in halves[:2]:
+        safe = sanitize_prompt_input(raw, max_length=80)
+        category = classify_category_from_text(safe)
+        products.append({
+            "brand": "", "name": safe, "variant": None,
+            "category": category, "search_query": safe, "_explicit": True,
+        })
+    return products
+
+
+def _parse_marks(parsed: Any) -> Dict[str, bool]:
+    """FS-R3 m9: the additive metadata marks of a Step-1 result that skipped the LLM
+    (`parse_presplit` / `parse_fallback`); {} for every result the LLM produced.
+    FY3 (belt and braces; the seam already strips any `_parse_*` key the LLM's own
+    JSON carried): a mark counts only while its own flag is on, read per call."""
+    marks: Dict[str, bool] = {}
+    if isinstance(parsed, dict):
+        if parsed.get("_parse_presplit") is True and _flag_on("ENABLE_PARSE_PRESPLIT"):
+            marks["parse_presplit"] = True
+        if parsed.get("_parse_fallback") is True and _flag_on("ENABLE_PARSE_BUDGET"):
+            marks["parse_fallback"] = True
+    return marks
+
+
+def _strip_parse_marks(parsed: Any) -> Any:
+    """FY3: a dict the LLM parse returned never carries a `_parse_*` key past the seam,
+    so only the pre-split / fallback builders can set a mark (a model reply carrying
+    one -- a prompt injection or a hallucination -- moves no response byte). The same
+    object is returned when there is nothing to strip (flag-OFF byte identity)."""
+    if isinstance(parsed, dict) and any(
+        isinstance(key, str) and key.startswith("_parse_") for key in parsed
+    ):
+        return {
+            key: value for key, value in parsed.items()
+            if not (isinstance(key, str) and key.startswith("_parse_"))
+        }
+    return parsed
 
 
 def _genuine_priority_enabled() -> bool:
@@ -3132,6 +3239,12 @@ class StructuredComparisonService:
         self._partial_scoring_result: Optional[Dict[str, Any]] = None
         self._partial_product_names: Optional[List[str]] = None
         self._partial_comparison: Optional[Dict[str, Any]] = None
+        # FANOUT-STARVE D7 (FS-R4) -- the compare deadline both entries record (a
+        # time.monotonic() instant, the clock of the stream deadline) and the
+        # per-run "Phase 2 was skipped" mark the residual guard sets; both are
+        # read only under ENABLE_PHASE2_RESIDUAL_GUARD / by the metadata stamp.
+        self._compare_deadline: Optional[float] = None
+        self._phase2_skipped: bool = False
         # Session 70 OAI_OBS #268 (R2.5) — True when the SERVED verdict ran on
         # the standard model instead of the configured verdict model (the
         # router's daily-cap downgrade or the 429 fallback). Read off
@@ -3572,7 +3685,83 @@ class StructuredComparisonService:
             openai_usage=summarize_openai_ledger(self._openai_ledger),
         )
         # M18 PO-fact-check-10 — Decision 7 notice (additive metadata key).
-        return attach_data_freshness_notice(result)
+        result = attach_data_freshness_notice(result)
+        self._stamp_unit_metadata(result)
+        return result
+
+    def _stamp_unit_metadata(self, response: Dict[str, Any]) -> None:
+        """FANOUT-STARVE (FS-R3 m9 / FS-R4) -- the additive, flag-ON-only metadata keys
+        `parse_presplit` / `parse_fallback` (the Step-1 marks `_parse_with_budget` left
+        in the partial build ctx) and `phase2_skipped` (set by the residual guard).
+        Written post-build on all three paths: the REST success body, the partial
+        builder and the stream complete payload (each call site node-proven; the
+        success paths by tests/test_s75_fanout_identity.py, FY5 / FY25). With every
+        flag OFF no mark exists and no key is written (byte-identical)."""
+        metadata = response.get("metadata")
+        if not isinstance(metadata, dict):
+            return
+        ctx = self._partial_build_ctx or {}
+        for key in ("parse_presplit", "parse_fallback"):
+            if ctx.get(key) is True:
+                metadata[key] = True
+        if self._phase2_skipped:
+            metadata["phase2_skipped"] = True
+
+    async def _parse_with_budget(self, query: str) -> Tuple[Dict[str, Any], Dict[str, int]]:
+        """FANOUT-STARVE D8 (FS-R3, FG-4) -- the ONE Step-1 seam both compare entries
+        call in place of the bare `parse_product_query(query)`.
+
+        (i) ENABLE_PARSE_PRESPLIT (default OFF): a query that splits on its FIRST
+        case-insensitive " vs " into two clean halves takes the explicit-pair shape
+        the app already sends (brand "", sanitized name, keyword category) with NO LLM
+        call; `parsed["_parse_presplit"]` is True. No clean split -> the LLM parse.
+        (ii) ENABLE_PARSE_BUDGET (default OFF), a STALL guard: the LLM parse runs under
+        asyncio.wait_for(PARSE_TIMEOUT_SECONDS, default 8.0); on timeout the same
+        deterministic split (`parsed["_parse_fallback"]` True), or, with no clean
+        split, a products-less dict so the caller ships today's parse-failure body.
+        Both OFF: the bare await, byte-identical, and the knob is never read.
+
+        Returns (parsed, usage) exactly like parse_product_query; usage is {} on the
+        presplit / fallback paths (no LLM ran, so the caller tracks no cost, n5).
+        Stated limit (FG-10): both paths trade the LLM identity (brand, variant,
+        the full-context category) for the app shape under the flag. One INFO
+        `[STAGE] parse done elapsed_ms=<int> mode=llm|presplit|fallback` in every
+        state (logging only; never the query text)."""
+        started = time.monotonic()
+        mode = "llm"
+        usage: Dict[str, int] = {}
+        halves = _split_on_vs(query) if _flag_on("ENABLE_PARSE_PRESPLIT") else None
+        if halves is not None:
+            parsed: Dict[str, Any] = {
+                "products": _explicit_pair_products(halves),
+                "comparison_type": "value", "_parse_presplit": True,
+            }
+            mode = "presplit"
+        elif _flag_on("ENABLE_PARSE_BUDGET"):
+            try:
+                parsed, usage = await asyncio.wait_for(
+                    parse_product_query(query), timeout=_parse_timeout_seconds(),
+                )
+                parsed = _strip_parse_marks(parsed)  # FY3: the marks are the seam's own
+            except asyncio.TimeoutError:
+                usage = {}
+                fallback = _split_on_vs(query)
+                if fallback is not None:
+                    parsed = {
+                        "products": _explicit_pair_products(fallback),
+                        "comparison_type": "value", "_parse_fallback": True,
+                    }
+                else:
+                    parsed = {"products": [], "_parse_fallback": True}
+                mode = "fallback"
+        else:
+            parsed, usage = await parse_product_query(query)
+            parsed = _strip_parse_marks(parsed)  # FY3: the marks are the seam's own
+        logger.info(
+            "[STAGE] parse done elapsed_ms=%d mode=%s",
+            int((time.monotonic() - started) * 1000), mode,
+        )
+        return parsed, usage
 
     def _llm_unavailable_envelope(self) -> Dict[str, Any]:
         """W1-3 — the ONE body both compare entries return when the `openai`
@@ -3744,6 +3933,12 @@ class StructuredComparisonService:
         # otherwise NameError on the cancel in the handler).
         _profile_task = None
 
+        # FANOUT-STARVE D7 (FS-R4) -- the compare deadline the Phase-2 residual guard
+        # reads (under its flag only): the outer wait_for in compare_from_text was
+        # armed with STREAM_HARD_CAP_SECONDS a few microseconds ago.
+        self._compare_deadline = time.monotonic() + STREAM_HARD_CAP_SECONDS
+        self._phase2_skipped = False
+
         # Phase 2A.1 — orchestrator-level stage timings (only allocated when flag is on)
         orchestrator_timings = {} if _debug_timings_enabled() else None
 
@@ -3854,8 +4049,15 @@ class StructuredComparisonService:
             else:
                 query_hash = hashlib.sha256(query.encode("utf-8")).hexdigest()[:12]
                 logger.info(f"Parsing query: query_hash={query_hash} length={len(query)}")
-                parsed, usage = await parse_product_query(query)
-                self._track_gpt_cost(usage)
+                # FANOUT-STARVE D8 (FS-R3): the one Step-1 seam (pre-split, then
+                # the stall guard; both flags OFF = the bare parse). No cost is
+                # tracked when no LLM ran (n5); the marks ride the partial ctx (m9).
+                parsed, usage = await self._parse_with_budget(query)
+                _marks = _parse_marks(parsed)
+                if not _marks:
+                    self._track_gpt_cost(usage)
+                elif self._partial_build_ctx is not None:
+                    self._partial_build_ctx.update(_marks)
 
                 if not parsed.get("products") or len(parsed["products"]) < 2:
                     # W4-9 R2(b): ship `parsed` with ONLY `products` — the
@@ -3874,7 +4076,10 @@ class StructuredComparisonService:
             # must not override it); on explicit_pair / vision the field is only
             # the deterministic stub, so name detection drives. parser_path is
             # True only when neither vision nor explicit_pair was supplied.
-            _parser_path = not (vision_products or explicit_pair)
+            # FS-R3 m1: the pre-split / stall-guard fallback carries the keyword
+            # stub category, never the LLM's word, so it takes the explicit path
+            # (parser_path False) and may escalate to A2b exactly as the app does.
+            _parser_path = not (vision_products or explicit_pair or _parse_marks(parsed))
             category_used, category_switched, original_category = (
                 await _resolve_pair_category(products, selected_category, parser_path=_parser_path)
             )
@@ -4199,6 +4404,7 @@ class StructuredComparisonService:
             )
             # M18 PO-fact-check-10 — Decision 7 notice (additive metadata key).
             result = attach_data_freshness_notice(result)
+            self._stamp_unit_metadata(result)  # FANOUT-STARVE: flag-ON-only keys
             if orchestrator_timings is not None:
                 orchestrator_timings["response_build_ms"] = round((time.perf_counter() - t_build) * 1000, 1)
                 orchestrator_timings["total_ms"] = round(
@@ -4336,6 +4542,10 @@ class StructuredComparisonService:
         # Flag OFF -> this local is unused and the tail stays unbounded (today).
         _full_deadline_on = _full_stream_deadline_enabled()
         _stream_deadline = time.monotonic() + STREAM_HARD_CAP_SECONDS
+        # FANOUT-STARVE D7 (FS-R4) -- the same instant, recorded for the Phase-2
+        # residual guard (read under its flag only).
+        self._compare_deadline = _stream_deadline
+        self._phase2_skipped = False
 
         # I5.6 lever-2 — bound to None at the top so the outer exception handler
         # can always cancel it (mirror of the sync path).
@@ -4472,8 +4682,11 @@ class StructuredComparisonService:
                     })
                 parsed = {"comparison_type": "value"}
             else:
-                parsed, usage = await parse_product_query(query)
-                self._track_gpt_cost(usage)
+                # FANOUT-STARVE D8 (FS-R3, n4): the same Step-1 seam as the REST
+                # entry (the "Parsing query..." status above precedes it).
+                parsed, usage = await self._parse_with_budget(query)
+                if not _parse_marks(parsed):
+                    self._track_gpt_cost(usage)
 
                 if not parsed.get("products") or len(parsed["products"]) < 2:
                     # W4-9 R2(b): `parsed` carries ONLY `products` (mirror of
@@ -4495,7 +4708,8 @@ class StructuredComparisonService:
             # on q=. The resolved category is then stamped onto BOTH per-product dicts
             # so _fetch_product_data -> result["category"] (scoring, spec-schema,
             # category-aware source discovery) keys off the TRUE category.
-            _parser_path = not (vision_products or explicit_pair)
+            # FS-R3 m1: the pre-split / fallback shape takes the explicit path.
+            _parser_path = not (vision_products or explicit_pair or _parse_marks(parsed))
             category_used, category_switched, original_category = (
                 await _resolve_pair_category(products, selected_category, parser_path=_parser_path)
             )
@@ -4517,6 +4731,8 @@ class StructuredComparisonService:
                 "category_used": category_used,
                 "category_switched": category_switched,
                 "original_category": original_category,
+                # FANOUT-STARVE FS-R3 m9: the Step-1 marks ({} with the flags OFF).
+                **_parse_marks(parsed),
             }
 
             # Step 2: Fetch product data
@@ -5026,6 +5242,7 @@ class StructuredComparisonService:
             )
             # M18 PO-fact-check-10 — Decision 7 notice (additive metadata key).
             complete_response = attach_data_freshness_notice(complete_response)
+            self._stamp_unit_metadata(complete_response)  # FANOUT-STARVE: flag-ON-only keys
             if orchestrator_timings is not None:
                 orchestrator_timings["response_build_ms"] = round((time.perf_counter() - t_build) * 1000, 1)
                 orchestrator_timings["total_ms"] = round(
@@ -5405,9 +5622,32 @@ class StructuredComparisonService:
                 reviews_hit = (await _cache_get_async(reviews_key)) if not nocache else None
                 if (include_specs and not specs_hit) or (include_reviews and not reviews_hit):
                     t0 = time.perf_counter() if stage_timings is not None else None
-                    unified_search = await search_web(
-                        f"{search_query} specifications reviews price", num_results=10
-                    )
+                    _unified_query = f"{search_query} specifications reviews price"
+                    if _flag_on("ENABLE_UNIFIED_SEARCH_BOUND"):
+                        # FANOUT-STARVE D5 (FS-R8, default OFF): this await had no bound
+                        # of its own and runs BEFORE specs/reviews launch, so a slow
+                        # Serper rotation (up to 14 s + one attempt) sat on the product
+                        # wall. On timeout the specs/reviews tasks receive an explicit
+                        # EMPTY payload (never None: _get_specs / _get_reviews would
+                        # re-search on None, two more Serper calls per product). Stated
+                        # limit: under the flag the timed-out product's specs are
+                        # extracted from an empty context and its reviews from none.
+                        # FY19: the payload carries UNIFIED_TIMEOUT_MARK so neither
+                        # _get_specs, the enriched re-cache nor get_reviews caches
+                        # anything extracted from it (L1 or L2).
+                        _unified_limit = _unified_search_timeout_seconds()
+                        try:
+                            unified_search = await asyncio.wait_for(
+                                search_web(_unified_query, num_results=10),
+                                timeout=_unified_limit,
+                            )
+                        except asyncio.TimeoutError:
+                            logger.warning(
+                                "[L2.6] unified search timeout (limit %.1fs)", _unified_limit,
+                            )
+                            unified_search = {"organic": [], UNIFIED_TIMEOUT_MARK: True}
+                    else:
+                        unified_search = await search_web(_unified_query, num_results=10)
                     if stage_timings is not None:
                         stage_timings["unified_search_ms"] = round((time.perf_counter() - t0) * 1000, 1)
                     self._track_serper_cost()
@@ -5678,6 +5918,27 @@ class StructuredComparisonService:
             _fc_view = None
             retailer_ratings = collect_retailer_ratings(full_name, self._shopping_items_cache)
 
+        # FANOUT-STARVE D7 (FS-R4) -- ENABLE_PHASE2_RESIDUAL_GUARD (default OFF, per
+        # call): skip Phase 2 (the verified rating + the smart-fallback refill, up
+        # to ~5 s) when the compare deadline both entries record on the instance is
+        # closer than PHASE2_MIN_RESIDUAL_SECONDS (default 8.0), so the product
+        # returns before the cap and the compare reaches post_gather / scoring /
+        # verdict instead of a gather partial. Stated limit: under the flag that
+        # product loses its verified rating and the refill for this request.
+        # OFF: the deadline is never read and Phase 2 runs exactly as today.
+        _phase2_skip = False
+        if _flag_on("ENABLE_PHASE2_RESIDUAL_GUARD"):
+            _deadline = getattr(self, "_compare_deadline", None)
+            if _deadline is not None:
+                _residual = _deadline - time.monotonic()
+                if _residual < _phase2_min_residual_seconds():
+                    _phase2_skip = True
+                    self._phase2_skipped = True
+                    logger.info(
+                        "[L2.6] phase 2 skipped residual=%.1fs product=%d",
+                        _residual, partial_slot if partial_slot is not None else 0,
+                    )
+
         phase2_tasks = []
         phase2_keys = []
 
@@ -5707,8 +5968,9 @@ class StructuredComparisonService:
                 return {"rating": None, "review_count": None,
                         "rating_verified": False, "rating_source": None}
 
-        phase2_tasks.append(_timed_task("rating", _rating_with_cap(), stage_timings))
-        phase2_keys.append("_rating_data")
+        if not _phase2_skip:
+            phase2_tasks.append(_timed_task("rating", _rating_with_cap(), stage_timings))
+            phase2_keys.append("_rating_data")
 
         # Smart-fallback (Bucket A bug 3c): identify critical schema fields still
         # missing after primary extraction. Run a targeted Serper + small GPT
@@ -5731,7 +5993,7 @@ class StructuredComparisonService:
             if specs_so_far.get(f) in (None, "", "N/A")
         ][:6]
         fallback_added = False
-        if missing_critical:
+        if missing_critical and not _phase2_skip:
             phase2_tasks.append(_timed_task("smart_fallback", self._smart_fallback_extract(
                 brand, name, variant, category, missing_critical,
             ), stage_timings))
@@ -5836,7 +6098,8 @@ class StructuredComparisonService:
         #
         # Mirrors the _get_specs write exactly, including the L2 save, and
         # strips the transient keys that must never be persisted.
-        if _specs_enriched_by_fallback:
+        # FY19: nor is their enriched copy (the refill ran over an empty-context base).
+        if _specs_enriched_by_fallback and not unified_search_timed_out(unified_search):
             try:
                 # #107 — extracted helper; strips the same three transient
                 # keys as before and deliberately KEEPS
@@ -6037,7 +6300,8 @@ class StructuredComparisonService:
                     brand, name, _cc_err,
                 )
 
-        if specs and not specs.get("error"):
+        # FY19: specs extracted from a D5 timeout context are never cached (L1 / L2).
+        if specs and not specs.get("error") and not unified_search_timed_out(search_results):
             await _cache_set_async(cache_key, specs, SPECS_CACHE_TTL)
             # Save to L2 DB (fire-and-forget — B0-B Item 4: wrapped per
             # audit convention 2026-05-22 so DB write exceptions WARNING-log
