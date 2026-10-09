@@ -1,0 +1,385 @@
+[
+ {
+  "summary": "U3b GREEN run 2 is done in worktree C:/Users/SynAckITPC/Documents/AI/sc-s74-ct between 18:56 and 19:19, on Opus with no git write. The twelve RED files were re-hashed first and all are intact. The two new files match the full hashes in the task. The ten amended files match the adversary's 18:37 list, and their RED diff numstat is 11 files, +90/-363, the same as the RED gate. The deleted test is still absent. No jest, pytest or mutation process was running and there was no lock. Every file of the stopped run-1 partial was diffed and judged against UB/UG. KEPT as written: en.json and ar.json, verified byte for byte by verify_catalogs.py (only aiConsent.body changed and the three profile.aiSharing keys are gone; 1004/1004 keys; the AR body equals section 2 exactly; the EN body equals HEAD plus the sentence before the final sentence; CRLF, no BOM), plus api.ts, types.ts, openai_service.py, auth_routes.py (the comment and both docstrings per UB-R5) and ProfileScreen.tsx except one line. REDONE to keep changes minimal: the aiConsent.ts version docblock is back to the original one-liner, so only 1 -> 2 changes. The ProfileScreen line 'keyed by code \u2014 never' is back to its HEAD bytes. The AiConsentSheet header carries only the UB-R8 text. The ScrollView testID nobody used is gone (UB-R13: no testID moves). The redundant flexShrink: 1 is gone, because the RN 0.81.5 ScrollView base style already has it. The '(after U3b)' note is gone from inventory row 12 (UB-R9). ADDED: pin node 3 in aiConsentSheetScroll.s75 (a percentage maxHeight on the card and flexGrow 0 on the body scroll). It closes adversary eng's M11, which had survived the run-1 pin file. Fence: the node one-liner gives 372c50484085fa859a576a62367c743365735fab6dda31f336552a4ae2a21a02, the expected hex. UG-10 gates, in order, all green: jest by path 34/34 suites and 425 passed + 8 todo with 0 snapshots; tsc rc 0; eslint 0 errors with 24 warnings that all existed before; pyt status=OK with 315 passed, T23 green, so the UB-R5 docstrings stay; ruff, F401 and py_compile clean; gitleaks clean on 23 files; diff --stat equals --ignore-cr-at-eol (21 files, +146/-482, numstat equal). Insurance FULL jest: 366 suites passed, 3559 tests passed, 42 snapshots, rc 0. Mutants: 34 byte-copy mutants were run under the lock and every restore was sha OK. 30 were caught by a named test node (C11E counted only because eslint gives a no-unused-vars warning; no test catches it). 4 survived: an unused Shield import that no test catches (equivalent), the lazy client's timeout value (B08; HEAD's tests do not pin it either), and two docs-only edits (D02, D03). The lock was released and every file was re-hashed back to its pre-mutation sha. UB-R13 decision: the wrapper stays. My estimate for the EN card on a 375x667 iPhone SE is about 684 pt, which does not fit; this is arithmetic, not a device run.",
+  "files_changed": [
+   "SmartCompareApp/__tests__/ProfileScreen.aiSharingDefault.test.tsx DELETED (RED deletion, unchanged)",
+   "SmartCompareApp/__tests__/ProfileScreen.bundleA.test.tsx bcd3d9ccfa9087826199d29fac4190210106aabbfe1a674148143705507ec3bd",
+   "SmartCompareApp/__tests__/ProfileScreen.bundleE.s3.integration.test.tsx 9879712dfc9c314c4b7afdc945d3f092bdae9834305c75c879eb1cca7d7343d2",
+   "SmartCompareApp/__tests__/ProfileScreen.toggles.w314.test.tsx 8e69773993c88c4a3a35b80c99f730804983e6f210e990d9cd8feaa3ef1cc981",
+   "SmartCompareApp/__tests__/Screens.bundleD.contract.test.ts 3ca552f9e6bc5c833d93f0419a8f4d71c0bf9db7176770668f6029aec9dbf1da",
+   "SmartCompareApp/__tests__/consent/aiConsentVersion.s69.test.ts 6360330bad846f6b8b28a8bbef8fddd924de7d91eeaa54d06c75d5cd38f6ee8b",
+   "SmartCompareApp/__tests__/i18n/brand.myez.s69.test.ts ed73ab55a3120df3229ae56e05774584c2122ada11c1d22e0d5c3ec5044050d0",
+   "SmartCompareApp/__tests__/setup.ts 9579b4b5d6d8e20418d0678be3c5134dd38b3944a1769979f0ba4845f3d1ef2e",
+   "SmartCompareApp/src/components/AiConsentSheet.tsx 6109d62b5648a7c41a163bbe78d2ee257178fe5b3fad7e5a06b885e6e03308bb",
+   "SmartCompareApp/src/i18n/ar.json 02bc70be875d7992dfe6e5095be4ce6e42bb1fcafac3137be4a59038e4a7a17a",
+   "SmartCompareApp/src/i18n/en.json 34429a69f31df9f75d6cc014e28eda954ddda443f750ced04e59847120bfbf74",
+   "SmartCompareApp/src/screens/ProfileScreen.tsx 81815806ffe5518af2da97c274781ef1cc8bf9137b57f2d090212f273c22300c",
+   "SmartCompareApp/src/services/aiConsent.ts a7dc249cb1606d271e7cd01e48a272df2b6c7b7bb91cd366b599d8ee8817b5d1",
+   "SmartCompareApp/src/services/api.ts 374fc999edd29f96c270643f89468169dc2d3b9d2d81f84fcb1527c40a407ddc",
+   "SmartCompareApp/src/types/types.ts fd06e13bdf422c1cdb272aa693c591c3c2c0712322f3d77674739d7d22d73b17",
+   "app/api/auth_routes.py 9789938cd92edf3ab7613bf237d2c3cb0119431cbd4bfe2da75eb185be2b6a88",
+   "app/services/openai_service.py 71bed08aade12000d2be274381022625d812d92c425ff0a506529e3b5ff99acb",
+   "docs/privacy-data-inventory.md b6939fdfea9042e49f7f03c285d5fa23a2e4298f5b6b10b4a7586ce50771f4be",
+   "tests/test_auth_ai_sharing_toggle.py 9dc2087490998419e806f0872eca77b235d432fc77ed572d76a87a7d24a1c363",
+   "tests/test_llm_provider_base_url.py 6d69cbede612a91f871c3d68d2d8a825f3821b0a9001dc52307993d457f472a4",
+   "tests/test_m18_openai_tpm_sizing.py e252199a9bfed504e8d02d6d8c42647169bb0992f221e04572cc9879a6202a38",
+   "SmartCompareApp/__tests__/consent/aiConsentSheetScroll.s75.test.tsx 30776b9b27f74785b7da87284d226717581f479827a36fa830dad7e0f10b4513 (untracked, LF, pure ASCII; GREEN's UB-R13 pin, 3 nodes)",
+   "SmartCompareApp/__tests__/consent/aiConsentV2.s75.test.ts 9e931710fb0ee618525ac634a69b753debb18e733ffe9d3462c063a108e1ec16 (untracked, RED, unchanged)",
+   "tests/test_u3b_sharing_branch_removed.py 1ab11a379471d90870841a14439f0ffb1087ca004a2aeb20d4c2c720b7167037 (untracked, RED, unchanged)",
+   "(notes, not in git status) C:/Users/SYNACK~1/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/f9970d11-1fa0-400e-9fb3-dd91f335e519/scratchpad/u3b/green/notes.md 40e9dfbdac8e3320fa2bda54310f772a87c72d302a8451ec874835a5ee780629; mutants2.py 85a4b666b6c3bc608fd1d113d2be9f9493218c9694c94dfe58ca7647bd2732a4; verify_catalogs.py 4a01cd5d467846971c917d4a902410d0cd3047641cbf6a87d587baad388d5f64; check_static.py 73ac098145ea9386b4e59b8e15416533867130b726058b85487b458d7948fd35; rehash_red.py 94ed3185f79ff6244c413b4b77c31ed5eeb27541af53e22f567072ad67aba840; run-1 notes kept as notes_run1_STOPPED.md"
+  ],
+  "jest_lines": [
+   "BY PATH (spec section-4 list, 19:05:29-19:05:36, jest 29.7.0, rc=0): Test Suites: 34 passed, 34 total",
+   "Tests:       8 todo, 425 passed, 433 total",
+   "Snapshots:   0 total",
+   "Time:        6.926 s, estimated 10 s",
+   "FULL (insurance only; timeout -k 15 1500, 19:17:05-19:17:14, rc=0): Test Suites: 3 skipped, 366 passed, 366 of 369 total",
+   "Tests:       13 skipped, 13 todo, 3559 passed, 3585 total",
+   "Snapshots:   42 passed, 42 total",
+   "Time:        8.757 s",
+   "No .snap file in git status."
+  ],
+  "pyt_lines": [
+   "[pyt] tag=u3b-green2-be start=2026-10-09 19:06:23 end=2026-10-09 19:06:34 elapsed=11s bound=1200s status=OK rc=0 log=C:\\Users\\SYNACK~1\\AppData\\Local\\Temp\\claude\\C--Users-SynAckITPC-Documents-AI\\f9970d11-1fa0-400e-9fb3-dd91f335e519\\scratchpad\\u3b\\green\\u3b-green2-be.log",
+   "====================== 315 passed, 19 warnings in 9.77s =======================",
+   "Files: test_u3b_sharing_branch_removed, test_auth_ai_sharing_toggle, test_llm_provider_base_url, test_backend_cleanup, test_m18_openai_tpm_sizing, test_auth_preference_toggles_w314, test_s71_u13_compare_auth_required (T23 green with the UB-R5 docstrings, so they stand), test_openai_breaker, test_u3c_store_false_pin.",
+   "netguard: 6 egress nodes, all in test_openai_breaker.py and all 6 listed in tests/.network_attempt_baseline.txt; no NEW egress."
+  ],
+  "fence_sha": "372c50484085fa859a576a62367c743365735fab6dda31f336552a4ae2a21a02",
+  "mutants": [
+   "C01 SmartCompareApp/src/services/aiConsent.ts:46 AI_CONSENT_VERSION 2->1 | KILLED by aiConsentV2.s75 'V1 AI_CONSENT_VERSION is 2', V2a/V2b/V2c, 'V6 ... equals the real AI_CONSENT_VERSION' and aiConsentVersion.s69 'the real AI_CONSENT_VERSION and the sha256 ... match the pinned pair' | restore sha256 ok a7dc249cb160",
+   "C02 en.json:702 EN sentence dropped | KILLED by aiConsentV2.s75 'V3 EN body: the sentence appears exactly once...' and the aiConsentVersion.s69 fence | restore ok 34429a69f31d",
+   "C03 en.json:702 EN sentence placed after the final sentence | KILLED by V3 | restore ok 34429a69f31d",
+   "C04 en.json:430 profile.aiSharing.title re-added | KILLED by V7, V8, and i18n.test 'English and Arabic have the same keys' + 'interpolation variables match' | restore ok 34429a69f31d",
+   "C05 ar.json:699 AR sentence (section 1) dropped | KILLED by 'V4 AR body: ... the value is U3B_AR_COPY.txt section 2' and the fence | restore ok 02bc70be875d",
+   "C06 ar.json:427 the 3 HEAD profile.aiSharing.* lines re-added | KILLED by V7, V8, i18n.test 'same keys' | restore ok 02bc70be875d",
+   "C07 ProfileScreen.tsx:472 a 5th ToggleRow host reading ai_sharing_enabled | KILLED by V8, Screens.bundleD 'ProfileScreen no longer reads ai_sharing_enabled (S75 U3b)', ProfileScreen.bundleA 'uses ToggleRow exactly 4 times' | restore ok 81815806ffe5",
+   "C08 ProfileScreen.tsx:141 buildNextPrefs ai_sharing_enabled key re-added | KILLED by V8 + bundleD | restore ok",
+   "C09 ProfileScreen.tsx:105 aiSharingSaving state re-added | KILLED by V8 | restore ok",
+   "C10 ProfileScreen.tsx:279 fallback 'common.error' -> 'profile.aiSharing.errorSave' | KILLED by V8 | restore ok",
+   "C11 ProfileScreen.tsx:52 Shield import re-added (unused) | SURVIVED all jest (V2 + bundleA + bundleD: 65 passed), an equivalent mutant; C11E: eslint flags it only as a WARNING ('53:3 Shield is defined but never used', rc 0) | restore ok",
+   "C18 ProfileScreen.tsx:134 aiSharingEnabled read re-added | KILLED by V8 + bundleD | restore ok",
+   "C19 ProfileScreen.tsx:156 handleAiSharingToggle re-added | KILLED by V8 + bundleD | restore ok",
+   "C12 api.ts:594 PreferenceTogglesBody.ai_sharing_enabled re-added | KILLED by V8 | restore ok 374fc999edd2",
+   "C13 api.ts:599 response ai_sharing_enabled re-added | KILLED by V8 | restore ok 374fc999edd2",
+   "C14 types.ts:557 UserPreferences.ai_sharing_enabled re-added | KILLED by V8 | restore ok fd06e13bdf42",
+   "C15 AiConsentSheet.tsx:53 ScrollView wrapper removed | KILLED by aiConsentSheetScroll.s75 'renders the body Text inside exactly ONE ScrollView (the component ref)', 'keeps the title, the Privacy link and both CTAs outside the ScrollView', 'caps the card at a percentage maxHeight ... (flexGrow 0)' | restore ok 6109d62b5648",
+   "C16 AiConsentSheet.tsx:106 card maxHeight '85%' removed | KILLED by pin node 'caps the card at a percentage maxHeight and keeps the body scroll from growing (flexGrow 0)' | restore ok",
+   "C17 AiConsentSheet.tsx:109 bodyScroll flexGrow 0 removed | KILLED by the same pin node 3 | restore ok",
+   "B01 app/services/openai_service.py:63 select_client_for_user defined again | KILLED by tests/test_u3b_sharing_branch_removed.py::test_b1_no_app_file_names_the_deleted_sharing_branch and ::test_b2a_openai_service_has_no_select_client_for_user ([pyt] mut2-B01 status=FAIL, 2 failed/106 passed) | restore ok 71bed08aade1",
+   "B02 openai_service.py:7 import os re-added | KILLED by tests/test_backend_cleanup.py::TestDeadFunctionsRemoved::test_unused_imports_cleaned ([pyt] mut2-B02 FAIL) | restore ok",
+   "B03 openai_service.py:45 get_client(use_shared_project: bool = True) | KILLED by test_b1 + ::test_b2b_get_client_takes_no_parameter | restore ok",
+   "B04 openai_service.py:61 memo store removed | KILLED by ::test_b3_get_client_memoises_one_client_under_a_dict_cache | restore ok",
+   "B05 openai_service.py:51 memo read bypassed (cached = None) | KILLED by test_b3 | restore ok",
+   "B11 openai_service.py:52 memo hit never returned (if False) | KILLED by test_b3 | restore ok",
+   "B06 openai_service.py:58 max_retries dropped from the lazy client | KILLED by tests/test_m18_openai_tpm_sizing.py::test_per_project_clients_respect_max_retries | restore ok",
+   "B07 openai_service.py:56 base_url dropped | KILLED by tests/test_llm_provider_base_url.py::test_all_client_factories_pass_base_url | restore ok",
+   "B08 openai_service.py:57 timeout 120.0 -> 60.0 | SURVIVED ([pyt] mut2-B08 status=OK, 108 passed); HEAD does not pin this value either (the line is HEAD's shared arm verbatim, dedented 4 spaces) | restore ok",
+   "B09 app/api/auth_routes.py:1429 the validator rejects a body carrying ai_sharing_enabled (the route rejects the old field) | KILLED by tests/test_auth_preference_toggles_w314.py::TestPreferenceTogglesWrites::test_ai_sharing_off_on_empty_preferences_row, ::test_both_keys_in_one_body, ::TestPreferenceTogglesValidation::test_documented_lax_coercions_write_true[yes|on|1] (+3 more; 8 failed) | restore ok 9789938cd92e",
+   "B10 auth_routes.py:219 UserPreferencesRequest.ai_sharing_enabled field removed | KILLED by tests/test_auth_ai_sharing_toggle.py::TestAISharingPreferenceShape::test_preferences_request_accepts_ai_sharing_enabled_field + ::test_preferences_request_accepts_explicit_true | restore ok",
+   "D01 docs/privacy-data-inventory.md:42 stray cell separator in row 12 | KILLED by nativeBundle.w37 'c5 every numbered row of the doc's human table equals the JSON block entry' | restore ok b6939fdfea90",
+   "D02 inventory:44 T-F training bullet removed | SURVIVED (docs prose, no test reads it) | restore ok",
+   "D03 inventory:42 row-12 cell names ai_sharing_enabled again | SURVIVED (c5 never reads cells[2]) | restore ok",
+   "Lock: .qa-mutation.lock 'u3b-green-run2'. It was taken 19:12:53; the run crashed on a cp1252 print right after C07's restore and the lock was left in place. ProfileScreen was sha-verified, then a full re-run went 19:13:31-19:14:57 and released the lock. The extra set ran 19:15:39 and 19:15:59 and crashed twice the same way after C11E's restore (verified sha 81815806); I released the lock by hand, then the clean run went 19:16:26-19:16:42 and released it. Every status file was re-hashed after the runs and equals its pre-mutation bytes. Not mutated, comment/docstring only: the aiConsent.ts header, the api.ts doc comment, the ProfileScreen W3-14 comment, the AiConsentSheet header (UB-R8), the openai_service comment and docstring, and the auth_routes # comment + 2 docstrings. Runtime-equivalent: the _CLIENT_KEY value and the Dict[str, ...] annotation."
+  ],
+  "diff_stat": "21 files changed, 146 insertions(+), 482 deletions(-) (git diff --stat == git diff --stat --ignore-cr-at-eol; numstat equal). Production slice: AiConsentSheet.tsx 14, ar.json 5, en.json 5, ProfileScreen.tsx 49, aiConsent.ts 8, api.ts 13, types.ts 1, auth_routes.py 16, openai_service.py 60, privacy-data-inventory.md 4. Plus 3 untracked new test files.",
+  "git_status_final": " D SmartCompareApp/__tests__/ProfileScreen.aiSharingDefault.test.tsx\n M SmartCompareApp/__tests__/ProfileScreen.bundleA.test.tsx\n M SmartCompareApp/__tests__/ProfileScreen.bundleE.s3.integration.test.tsx\n M SmartCompareApp/__tests__/ProfileScreen.toggles.w314.test.tsx\n M SmartCompareApp/__tests__/Screens.bundleD.contract.test.ts\n M SmartCompareApp/__tests__/consent/aiConsentVersion.s69.test.ts\n M SmartCompareApp/__tests__/i18n/brand.myez.s69.test.ts\n M SmartCompareApp/__tests__/setup.ts\n M SmartCompareApp/src/components/AiConsentSheet.tsx\n M SmartCompareApp/src/i18n/ar.json\n M SmartCompareApp/src/i18n/en.json\n M SmartCompareApp/src/screens/ProfileScreen.tsx\n M SmartCompareApp/src/services/aiConsent.ts\n M SmartCompareApp/src/services/api.ts\n M SmartCompareApp/src/types/types.ts\n M app/api/auth_routes.py\n M app/services/openai_service.py\n M docs/privacy-data-inventory.md\n M tests/test_auth_ai_sharing_toggle.py\n M tests/test_llm_provider_base_url.py\n M tests/test_m18_openai_tpm_sizing.py\n?? SmartCompareApp/__tests__/consent/aiConsentSheetScroll.s75.test.tsx\n?? SmartCompareApp/__tests__/consent/aiConsentV2.s75.test.ts\n?? tests/test_u3b_sharing_branch_removed.py\n(no .qa-mutation.lock; HEAD 4c0f3c99c786f93e3d0fed5ffc94d54f19ea74d5 on feature/s75-u3b-consent-v2; no git write performed; ignored __pycache__ under app/api, app/services, tests from the pytest/py_compile runs)",
+  "stated_limits": [
+   "UB-R4: no OTA (eas update) and no store build or submission may carry U3b's client half before PR #330 (the D3 = C section-4 fork and the section-11 rewrite) is merged AND live on the API. Until then the sheet says the opposite of the policy it links (guideline 5.1.2(i)). The served app/legal/privacy_policy.md section 11 and landing/privacy.html:280 still promise the removed Settings toggle. Under D3 = C, U8's WITHDRAW_PATH = 'Not now' on the consent sheet + account deletion, never a Profile path.",
+   "UB-R14: existing users see the sheet once more (AI_CONSENT_VERSION 2, strict equality) and cannot compare until they agree; 'Not now' blocks the compare exactly as it does for a new user.",
+   "UB-R15: the Arabic sentence ships under the [SPEC] tag and still needs native review. A wording change must re-pin the fence sha and the V4 constants (via gen_v2.py) in ONE edit.",
+   "UB-R17: dead v1 consent records stay in AsyncStorage (the next Agree overwrites them; a user who never agrees again keeps one).",
+   "The inert users.preferences.ai_sharing_enabled field is still accepted by PUT /auth/preference-toggles and PUT /auth/preferences for older bundles, stored and echoed, and read by nothing (B4 pins the reader set to app/api/auth_routes.py).",
+   "UB-R21: the CLAUDE.md lines (consent version 2 and the sentence with no opt-out, the openai_service line, the UB-R4 sequencing sentence) and the native re-pin follow-up are the orchestrator's at merge.",
+   "UB-R13 (amended): the wrapper is pinned by component props in jest, where ScrollView is a host stub with no layout. The fit and overflow figures are arithmetic from the theme, not a device or simulator run. An on-device check is owed: iPhone SE 667 pt, a small Android, Arabic, and large Dynamic Type.",
+   "Mutants not killed by any test (amended): an unused Shield import re-added (equivalent; eslint warns only); the lazy client's timeout=httpx.Timeout(120.0, connect=30.0) (unpinned at HEAD too); the docs-only inventory bullet and row-12 cell content (only the row's cell count is pinned, by nativeBundle.w37 c5).",
+   "Edits with no test detector, comments and docstrings only (amended): the aiConsent.ts header, the api.ts doc comment, the ProfileScreen W3-14 comment, the AiConsentSheet header (UB-R8), the openai_service comment and docstring, and the auth_routes # comment + two docstrings. These docstrings are public OpenAPI/docs text; T23 is green because its closure does not reach these models (adversary eng's M09 survived for that reason).",
+   "The run-1 agent wrote ar.json with a Python script (ar_edit.py), not the Edit tool. I verified the bytes against HEAD line by line: only the 3 key lines were deleted and the body line replaced; CRLF throughout; no BOM; the body equals section 2."
+  ],
+  "questions_for_orchestrator": [
+   "Some comments outside UG-9 are now stale and I left them alone: ProfileScreen.tsx:125-126 ('The two masters stay usable'), ProfileScreen.tsx:466-470 ('the two masters now save ... The hosts are plain Views') and onboarding/Step05Trust.tsx:24 ('the Profile AI-sharing toggle routes nothing today, #266'). Fix them in this PR (comment-only) or file a follow-up?",
+   "B08: no test pins get_client()'s timeout (120 s total / 30 s connect), at HEAD or now. Do you want a pin in a follow-up unit?",
+   "C11: the removed Shield import is caught only by an eslint no-unused-vars warning, not by any test. Is that acceptable?",
+   "UB-R15 says the spec section-6 native-review entry goes into the session-75 native-review list. That file is outside my scope and I did not touch it. Is it yours?",
+   "ar.json was written by run-1's Python script rather than the Edit tool that UB-R19 calls for. Redoing the edit with the Edit tool would produce identical bytes (verified). Do you want it redone anyway?"
+  ],
+  "tsc": "tsc 5.9.3, timeout -k 15 600 node node_modules/typescript/bin/tsc --noEmit (19:05:42-19:05:48): rc=0, 0 output lines.",
+  "eslint": "eslint 9.39.4 by path over the 14 changed/new client .ts/.tsx files (19:05:54-19:05:59): rc=0, 24 problems (0 errors, 24 warnings). By file: toggles.w314 5, bundleE 5, types.ts 7, api.ts 8 (all on untouched lines or rules that predate this change), ProfileScreen.tsx 1 (:86 'user' assigned but never used; it predates this change: HEAD :87 binds it and nothing reads it). The new pin file and aiConsentV2.s75: 0 problems.",
+  "lint": "ruff 0.16.5 --select E9,F63,F7,F82 --no-cache on the 6 changed .py files (openai_service, auth_routes, test_u3b_sharing_branch_removed, test_auth_ai_sharing_toggle, test_llm_provider_base_url, test_m18_openai_tpm_sizing): All checks passed. ruff F401 on openai_service, auth_routes, test_auth_ai_sharing_toggle, test_u3b: All checks passed. py_compile on the same 6 files: rc 0. check_static.py: non-ASCII added = 0 in every edited .py/.ts/.tsx/.md (ar.json's Arabic value is the designed exception); 0 credential-shaped added lines; every edited tracked file is CRLF in the working copy and the 3 new test files are LF.",
+  "gitleaks": "gitleaks 8.30.1, run as `gitleaks dir <file> --config .gitleaks.toml --no-banner --redact --no-color` per file over all 23 existing status files: rc 0 and 0 ' ERR ' lines for every file, each 'no leaks found'.",
+  "sheet_height": "The wrapper is KEPT, with three pin nodes in SmartCompareApp/__tests__/consent/aiConsentSheetScroll.s75.test.tsx (sha 30776b9b...). (1) 'renders the body Text inside exactly ONE ScrollView (the component ref)' is the node UB-R13 requires. (2) 'keeps the title, the Privacy link and both CTAs outside the ScrollView'. (3) 'caps the card at a percentage maxHeight and keeps the body scroll from growing (flexGrow 0)', added in run 2 because adversary eng's M11 (maxHeight removed) survived the run-1 pin file. Production change: AiConsentSheet.tsx card gets maxHeight '85%', and ONE ScrollView (style bodyScroll {flexGrow: 0}, no testID) wraps the body Text only; title, link and CTAs stay outside it. Fit arithmetic, not a device run. Theme: body 16/24, title 20/30, spacing xl 24, 2xl 32, md 12, sm 8. The app is iPhone-only (D1-A), and the smallest height is the iPhone SE at 375x667 pt. Text width is 327 pt at about 41 chars per line, so the 555-char EN body takes about 14 lines, about 336 pt. The fixed parts are about 348 pt: paddings 56, icon 44, title on 2 lines 60, link 24, CTAs 48+8+48, five gaps 60. That totals about 684 pt, which is more than 667, so the sheet does NOT fit without the wrapper. The card is bottom-anchored, so the icon and title would clip at the top. With the cap the card is 567 pt and the body gets about 219 pt (about 9 lines) and scrolls.",
+  "not_measured": [
+   "On-device or simulator rendering of the consent sheet (sheet height, the scroll affordance, Arabic RTL, large Dynamic Type): no device available; jest's ScrollView is a host stub.",
+   "OpenAPI whole-schema diff of the UB-R5 docstring edits: I only measured T23 (green). Adversary eng's 18:45 diff on the same auth_routes.py bytes (sha 9789938c) is their measurement, not mine.",
+   "CI on GitHub (secret-scan, the hook) is not run; no git write.",
+   "The orchestrator's FULL jest run (1500 s) is theirs. I ran one as insurance only."
+  ]
+ },
+ {
+  "verdict": "NO BLOCKING DEFECT. GREEN run-2 bytes are consent-true: every sheet sentence holds against every OpenAI dispatch, the copy promises no control, the fence matches, and the AR value is byte-equal to section 2. There are 2 MAJOR findings: the disclosure sentence sits below the fold on small screens with no scroll cue, and UB-R4 has no mechanical guard (prose only). There are also 4 MINOR findings and 4 notes.",
+  "findings": [
+   {
+    "id": "CT2-M1",
+    "severity": "major",
+    "title": "The new data-use sentence and the 'not sent' sentence are below the fold on a 4.7-inch iPhone (and at larger Dynamic Type), with no scroll cue",
+    "evidence": "AiConsentSheet.tsx: card maxHeight '85%', and ONE ScrollView (bodyScroll {flexGrow:0}, flexShrink 1 from the RN 0.81.5 base style ScrollView.js:1861-1866) wraps the body only. Nothing in src/ calls flashScrollIndicators, sets persistentScrollbar, sets maxFontSizeMultiplier or sets allowFontScaling (grep). app.json supportsTablet:false, so App Review may run the app in iPad compatibility mode. wrap_est.py is a greedy wrap with PIL proxy fonts (arial/segoeui/tahoma, NOT SF Pro, NOT a device) over the theme (body 16/24, title 20/30, padding 24/32, gap 12, icon 44, CTA 48+8+48). iPhone SE 375x667 at default size: card cap 567, fixed parts 348, body viewport 219 pt (9.1 lines). The EN body is 13 lines: the OpenAI-training sentence starts on line 8 and runs to line 11, and the final sentence is on lines 12-13, so the sheet is cut mid-disclosure. The AR body is 12-14 lines and its sentence starts on line 7-9. At Dynamic Type x1.12 the viewport is 7.8 lines and the EN sentence starts on line 9, so it is wholly hidden; this also fails to fit at 375x812. At x1.35 the SE viewport is 3.6-5.9 lines. Agree stays visible throughout, so a user can agree without ever seeing the sentence. CTAs are NOT pushed off with the shipped styles.",
+    "fix": "Keep the wrapper. Make the overflow visible: hold a ScrollView ref and call flashScrollIndicators() when the sheet becomes visible (or add a bottom fade / 'more' hint). Consider maxFontSizeMultiplier on the title, link and CTAs so the body keeps at least about 5 lines at large Dynamic Type. Run the owed device check (iPhone SE 667 pt, EN+AR, large Dynamic Type, iPad compatibility mode). These are component-only edits; no copy or testID moves, so the fence is untouched."
+   },
+   {
+    "id": "CT2-M2",
+    "severity": "major",
+    "title": "UB-R4 is the only thing between main and a sheet/policy contradiction, and it exists only in prose; merging U3b effectively freezes every OTA and store build from main until PR #330 is live",
+    "evidence": "The policy the sheet links (aiConsent.link -> LegalScreen.tsx:33 /api/v1/legal/privacy_policy -> app/legal/privacy_policy.md) is still PRE-U8 (unchanged in the diff). At :84 'What we share' omits photos and links (the sheet now says OpenAI may use them). At :88 it promises 'disable AI sharing in Settings > Privacy > Help improve AI quality', the control this diff deletes. landing/privacy.html:276-280 says the same. The Profile 'Privacy Policy' row opens the same text. UB-R4 appears in GREEN's stated_limits only. No worktree byte carries it: PR body and CLAUDE.md are pending per UB-R21, and the aiConsent.ts header does not mention it. The client half is unflagged and OTA-capable, so after the merge ANY eas update or eas build from main (including unrelated units) ships the contradiction (guideline 5.1.2(i)). Memory says #330 must not merge until the owner provides inputs.",
+    "fix": "Orchestrator: put the UB-R4 sentence in the PR body AND in the CLAUDE.md line at merge, and state the consequence: no OTA or store build from main between the U3b merge and #330 being live. Either hold the U3b merge until #330 is ready, or add a preflight to the qaren-eas-deploy flow that refuses an update while src/services/aiConsent.ts has AI_CONSENT_VERSION = 2 and app/legal/privacy_policy.md still contains 'Help improve AI quality'. Tell U8 that WITHDRAW_PATH = 'Not now' + account deletion (UB-R4)."
+   },
+   {
+    "id": "CT2-m1",
+    "severity": "minor",
+    "title": "The UB-R13 layout pins cannot see three visibility-breaking mutants",
+    "evidence": "mutants_r2.py, byte-copy mutants with every restore sha OK, jest over __tests__/consent: K06 bodyScroll flexShrink:0 SURVIVED (47/47 passed); it lets the card content overflow the cap and the bottom-anchored CTAs go below the screen edge. K07 maxHeight '100%' SURVIVED (node 3 accepts any /^\\d+%$/). K08 ScrollView style [bodyScroll, {maxHeight:0}] SURVIVED (body viewport 0). Jest's ScrollView has no layout, and GREEN's limits already say so.",
+    "fix": "Tighten aiConsentSheetScroll.s75 node 3: the flattened bodyScroll style has no flexShrink 0, no height or maxHeight, and no minHeight above a bound; the card percentage is in [60, 90]. Leave real proof to the device check."
+   },
+   {
+    "id": "CT2-m2",
+    "severity": "minor",
+    "title": "Residual 'Privacy' and 'your call' framing outside the sheet now heads no privacy control",
+    "evidence": "ProfileScreen.tsx:461-465 eyebrow t('profile.section.privacy_notifications') = 'Privacy & notifications' now heads only the notifications ToggleRow. Step05Trust.tsx:55-59 renders 'Your data, your call.' while under D3 = C the only AI-data choice is 'Not now'. Neither string promises a specific control. V5/T1.23 measured 0 opt-out hits in aiConsent.*. register.benefits.* has no control claim. Out of U3b scope (OA2: Step 5 unchanged; only aiConsent.* is fenced).",
+    "fix": "Follow-up copy unit (U8/LISTING-TRUTH): change the eyebrow value to 'Notifications' (the key is pinned by a source regex in bundleE.s3; the value is free) and native-review the Step 5 headline."
+   },
+   {
+    "id": "CT2-m3",
+    "severity": "minor",
+    "title": "Stale comments still describe the removed AI-sharing master",
+    "evidence": "ProfileScreen.tsx:125-126 ('The two masters stay usable'). ProfileScreen.tsx:466-470 ('the two masters now save through the additive /preference-toggles route'). Step05Trust.tsx:23-24 ('the Profile AI-sharing toggle routes nothing today, #266'). Comment-only; no test reads them. GREEN raised the same question.",
+    "fix": "Make the comment-only edits in this PR, or file a follow-up."
+   },
+   {
+    "id": "CT2-m4",
+    "severity": "minor",
+    "title": "Inventory: the bullet is true and Tracking stays false, but the table purposes and anchors do not reflect third-party training",
+    "evidence": "docs/privacy-data-inventory.md: the new bullet correctly says 'Tracking stays false' (matches NSPrivacyTracking false) and routes the App Privacy answer to LISTING-TRUTH. Rows 3, 4 and 12 still list only AppFunctionality/Analytics/ProductPersonalization; no row carries a third-party model-training purpose (Apple 'Other Purposes'), and no row names the URL compare (links + page text) that the bullet attributes to rows 3/4/12. Row 12 anchors were already stale at HEAD: api.ts:996-1002 / :1044 / :478 against the measured :1136 / :1183 / :553. The types.ts:552-562 anchor is correct.",
+    "fix": "LISTING-TRUTH decides whether rows 3/4/12 (and app.json) add OtherPurposes, and refreshes the anchors. Not U3b."
+   },
+   {
+    "id": "CT2-n1",
+    "severity": "note",
+    "title": "Dispatch walk: every sheet sentence is true of the code (EN and AR)",
+    "evidence": "guarded_llm_create callers. openai_service.identify_products (:111-187) sends base64 photos; the client re-encodes to JPEG 1024w via ImageManipulator (api.ts:265-268), so EXIF is dropped (reasoned, not measured). url_extraction_service.extract_with_ai (:395-440) sends the page title, 4000 chars of text and the URL. extraction_service specs and verdict calls send product names and Serper snippets, plus _build_preferences_prompt {priorities, budget, lifestyle, brand_attitude} (:1926-1971), plus the cohort block (Country/Language/Region line + aggregate modal answers, :1974-2057). pain_workflow_loader._cohort_key needs 'nationality', which nothing in app/ produces, so prod uses the global ranking: no derived age/gender signal. verdict_critique_service sends verdict fields + product names (outputs). content_safety_service.moderations sends the typed text. No user=, metadata= or safety_identifier, and no email or name in any dispatch module. Clients: the module client, get_client and the extraction/url lazy clients all use the default key. B1 confirms no OPENAI_API_KEY_PRIVATE in app/.",
+    "fix": "None. Typed free text reaches moderation and the parser verbatim; 'product names' describes the intended input."
+   },
+   {
+    "id": "CT2-n2",
+    "severity": "note",
+    "title": "Version bump complete; record lifecycle correct",
+    "evidence": "hasCurrentAiConsent is strict === (aiConsent.ts). recordAiConsent writes the constant. __tests__/setup.ts:20 is 2 (V6). EditProfileScreen.tsx:142 clearAiConsent removes the key whatever its version. Logout purges only token keys (authService.ts:651-660), so consent is kept per account. No other reader of @qaren_ai_consent_ in src/. grantedRef is per hook instance and resets on reload/OTA. Mutants K05 (any record counts) and K10 (version 3) were KILLED.",
+    "fix": "None."
+   },
+   {
+    "id": "CT2-n3",
+    "severity": "note",
+    "title": "Old bundles keep a working, inert Profile",
+    "evidence": "PUT /auth/preference-toggles still accepts, stores and echoes ai_sharing_enabled (auth_routes.py:1424-1487; the w314 pins are in my 359-pass run). GET /preferences returns the stored dict (:1201-1213). The new client's PUT /preferences (model_dump, :1248-1270) stores ai_sharing_enabled null on the next full save, so an old bundle on a second device would show its dead toggle OFF (`?? false`). B4 pins auth_routes.py as the only reader in app/.",
+    "fix": "None."
+   },
+   {
+    "id": "CT2-n4",
+    "severity": "note",
+    "title": "Catalog and AR checks all clean",
+    "evidence": "From ar_verify2.py, Python only, Arabic never printed. Key diff vs HEAD in both catalogs: exactly the 3 profile.aiSharing.* keys removed, only aiConsent.body changed, 1004/1004. AR body == U3B_AR_COPY.txt section 2 == HEAD AR body with section 1 inserted before HEAD's final sentence; section 1 appears once; 3 '. ' separators. Brand token: 1 in the body, 0 in the sentence. Diacritics outside the brand token: 0. ASCII digits 0, Arabic-Indic digits 0. Latin letters only in 'OpenAI' x2. No tatweel, zero-width, bidi or BOM. The 4 spec opt-out words and T1.23's OPT_OUT_AR: 0 hits. EN == HEAD + sentence before the final sentence (555 chars). Title, link, agree and notNow unchanged. Both catalogs CRLF-only, no BOM.",
+    "fix": "None. Native AR review still owed (UB-R15)."
+   }
+  ],
+  "reproduced": [
+   "FIRST re-hash 19:21 (rehash2.py): 23/23 GREEN-report files match their full sha256; ProfileScreen.aiSharingDefault.test.tsx absent; no lock; HEAD 4c0f3c99c786f93e3d0fed5ffc94d54f19ea74d5 on feature/s75-u3b-consent-v2; git diff --stat == --ignore-cr-at-eol (21 files, +146/-482), numstat equal.",
+   "Fence: the node one-liner from aiConsentVersion.s69.test.ts header (node v24.11.1, run from SmartCompareApp/) = 372c50484085fa859a576a62367c743365735fab6dda31f336552a4ae2a21a02; the Python recomputation gives the same hex; equals the PINNED pair.",
+   "Tool versions through the junction: jest 29.7.0, tsc 5.9.3, eslint 9.39.4, react-native 0.81.5; node_modules/@babel/core and .bin/jest present; coreutils timeout 8.32.",
+   "jest by path (spec section-4 list + EditProfileScreen.bundleE.s3.integration) under the lock, 19:30:17-19:30:25, rc 0.",
+   "10 byte-copy mutants 19:31:42-19:32:49 under lock 'adv-consent-truth-r2', every restore sha256 OK (34429a69f31d / 02bc70be875d / a7dc249cb160 / 6109d62b5648); the lock was removed at 19:33. K01 EN 'and training' dropped: KILLED by the s69 fence + V3. K02 AR sentence missing one char: KILLED by the fence + V4. K03 EN 'You can turn this off in Settings.' added: KILLED by the fence, V3, V5 and T1.23. K04 fatha inserted in the AR sentence: KILLED by the fence, V4 and T1.24. K05 hasCurrentAiConsent = record !== null: KILLED by V2a, V2b and T1.6. K06 bodyScroll flexShrink 0: SURVIVED. K07 maxHeight 100%: SURVIVED. K08 ScrollView maxHeight 0: SURVIVED. K09 body Text renders aiConsent.title: KILLED by scroll pin nodes 1+2 and T1.19. K10 AI_CONSENT_VERSION 3: KILLED by the fence, V1, V2b, V2c and V6.",
+   "Backend through the bounded runner: the 9 GREEN files + test_push_token_endpoint + test_conftest_env_safety (see pyt_lines); netguard 6 nodes / 121 attempts, all test_openai_breaker baseline.",
+   "tsc --noEmit rc 0, 0 lines (19:33:57-19:34:03). eslint over the 12 modified + 2 new client .ts/.tsx files: rc 0, 24 problems (0 errors, 24 warnings), identical to GREEN; ProfileScreen :86 'user' is pre-existing.",
+   "gitleaks 8.30.1 dir --config .gitleaks.toml --redact on en.json, ar.json, AiConsentSheet.tsx, both new jest files, the new pytest file, openai_service.py, auth_routes.py and the inventory: rc 0, 'no leaks found' on each. 0 credential-shaped strings on added lines or in the 3 new files. The 3 new test files have 0 bytes >127 and are LF. Non-ASCII on changed lines is only pre-existing literals (inventory row-12 arrows; the brand.myez it-name) plus the AR body.",
+   "Policy check: app/legal/privacy_policy.md:80-88 and landing/privacy.html:276-280 unchanged and PRE-U8 (opt-out via Settings promised; photos and links absent from 'What we share').",
+   "LAST re-hash 19:36:50: 23/23 match, deletion intact, no lock, 24 status entries, diff stat 21 files +146/-482 == --ignore-cr-at-eol."
+  ],
+  "not_checked": [
+   "On-device or simulator rendering of the sheet (iPhone SE 667 pt, iPad compatibility mode, Arabic RTL, large Dynamic Type). The fold figures in CT2-M1 come from proxy fonts (Arial/Segoe UI/Tahoma via PIL), not SF Pro, and from the Yoga behaviour as reasoned, not measured.",
+   "Whether App Review runs this iPhone-only app on iPad at a 375x667 or a 375x812 compatibility size.",
+   "The OpenAI org-level sharing setting itself (owner fact OA2/D3) and the production LLM_PROVIDER base_url env. If a non-OpenAI provider were configured, 'sends OpenAI' would be false. Production is never probed.",
+   "The FULL jest suite (GREEN ran one as insurance; the orchestrator's is pending) and GitHub CI (secret-scan, hook).",
+   "EXIF removal by expo-image-manipulator is reasoned from the re-encode, not measured.",
+   "Operator scripts under scripts/ that reference OpenAI (eval, probes, seeders): not on the compare path; not walked in depth.",
+   "Native Arabic review of the new sentence (UB-R15)."
+  ],
+  "worktree_sha_check": "FIRST (19:21) and LAST (19:36:50) re-hash with rehash2.py: all 23 files of the GREEN report match their reported full sha256 (bcd3d9cc, 9879712d, 8e697739, 3ca552f9, 6360330b, ed73ab55, 9579b4b5, 6109d62b, 02bc70be, 34429a69, 81815806, a7dc249c, 374fc999, fd06e13b, 9789938c, 71bed08a, b6939fdf, 9dc20874, 6d69cbed, e2521999, 30776b9b, 9e931710, 1ab11a37). ProfileScreen.aiSharingDefault.test.tsx is still deleted. No .qa-mutation.lock is left. HEAD is 4c0f3c99. 24 status entries. The diff stat is identical with and without --ignore-cr-at-eol. I changed nothing in the worktree except 10 byte-copy mutants, each restored and sha-verified, plus the lock file, which I created and removed.",
+  "summary": "Adversary (consent-truth), round 2, on the GREEN run-2 bytes in sc-s74-ct, 19:20-19:37 AST. No git write.\n\n**Verdict: no blocking defect.**\n- **Consent truth:** every sheet sentence is true of the code, in EN and AR. Checked against every OpenAI dispatch:\n  - photos, page title + text + URL, product names and snippets\n  - the preferences {priorities, budget, lifestyle, brand_attitude}\n  - the cohort Country/Language/Region line with aggregate answers (the pain-workflow cohort key needs 'nationality', which nothing in app/ produces, so prod uses the global ranking)\n  - verdict outputs and moderation text\n  - no name, email or user= parameter anywhere.\n- **Copy:** nothing in the sheet promises a control.\n- **Catalogs:** both catalogs changed only as specified. The AR body is byte-equal to section 2, with 0 diacritics outside the brand token, no digits and no opt-out word.\n- **Fence:** the node one-liner gives 372c5048..., the pinned value.\n- **Version bump:** complete. Strict equality, the setup.ts mock is 2, account deletion clears the record, logout keeps it. Old bundles stay accepted and inert.\n- **Gates:**\n  - jest by path: 35/35 suites, 442 passed, 0 snapshots\n  - pytest: OK, 359 passed\n  - tsc: rc 0\n  - eslint: 0 errors\n  - gitleaks: clean\n\n**Mutants:** 10 byte-copy mutants, every restore sha OK. 7 were killed by named nodes: the copy, AR, opt-out and version mutants, and the body-render mutant. 3 layout mutants survived, because jest has no layout: flexShrink 0, maxHeight 100% and a 0-height viewport.\n\n**MAJOR**\n- **(M1)** On a 4.7-inch iPhone the 85% cap leaves the body about 9 lines. The OpenAI-training sentence (lines 8-11) and the 'not sent' sentence (lines 12-13) are below the fold, and nothing signals that the body scrolls. The same happens on more devices at larger Dynamic Type. The CTAs stay reachable. This is proxy-font arithmetic, not a device run.\n- **(M2)** UB-R4 is prose only. The policy the sheet links still promises the deleted Settings toggle and leaves photos and links out of 'What we share'. After the merge, any OTA or store build from main ships that contradiction until PR #330 is live.\n\n**MINOR**\n- The pins cannot see the surviving layout mutants.\n- The 'Privacy & notifications' eyebrow and the 'Your data, your call.' headline now head no privacy control.\n- Three stale comments still describe the removed toggle.\n- The inventory table's purposes and anchors for rows 3, 4 and 12 are for LISTING-TRUTH to fix.\n\n**Files written**, all in C:/Users/SYNACK~1/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/f9970d11-1fa0-400e-9fb3-dd91f335e519/scratchpad/u3b/adv-consent-truth/, with sha256:\n- notes2.md b08a2ccb088818a1baeeeaf27d4324c5cd20fc1ad3b1344fe97096b32f77bb40\n- rehash2.py dc8b398230bfbcfbc579d4108f71ec9f11252aea0e34679b16a35dabb5d912cb\n- ar_verify2.py d68f3162102df169d05e052a6797d27e8cf690bf9ffd9dc2e96f4d28c39d9c6b\n- wrap_est.py f946c59bd44fc9a46794c40b4eee52ba151c12389005fe4fd9ba03c8c5f06605\n- mutants_r2.py fdcdd567c88b7a87e9e07edc389af6d5b797051c3bfb176d44030e63f1311df4\n- mutants_r2_rows.json 21771cb844f85c431e51b6820f41d9d850536e8621c11bf3c7c72ac2d20acce1\n- mutants_r2_run.log 55f1643aa0b3aadd7398082d5e6da057b67b4a9615bee41d8301cded5db21d1f\n- jest_bypath2.log 846239656afcc24ecb43164970f17940962db698d7ab80b007898e77da8bbb09\n- adv-ct2-be.log 2ce017fb2bba7cd7387bd6f9c23885a97c6015a184f17f4f318a404390687878\n- eslint2.log b387e24c8304a982d93c0b8ccb8f772e01ae1eff455561c2b0d900b6618216d7\n- tsc2.log (empty) e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\n- lock.txt d9fd6c0b272160b79093a66a2a61595e3fca3936d79a8128299a954301686018\n- added_lines.txt ada6497cea4d2d973056d022ffe69a328934174838351f237958a10b6d8f5a2a\n- gl2.tmp a39695d881970e5183481a5f3918400198072ffc67ffb9679c3db9f37a179ea6\n- mut_snap_r2/: 10 snapshot copies",
+  "jest_lines": [
+   "BY PATH (spec section-4 list + __tests__/EditProfileScreen.bundleE.s3.integration.test.tsx; jest 29.7.0; timeout -k 15 600; 19:30:17-19:30:25; rc=0): Test Suites: 35 passed, 35 total",
+   "Tests:       8 todo, 442 passed, 450 total",
+   "Snapshots:   0 total",
+   "Time:        6.846 s, estimated 7 s",
+   "Mutant runs (jest --json over __tests__/consent, or consent+i18n+copy-policy for K03/K04): K01 suites 2F/4P tests 2F/45P; K02 2F/4P 2F/45P; K03 3F/16P 4F/164P; K04 3F/16P 3F/165P; K05 2F/4P 3F/44P; K06 0F/6P 0F/47P (SURVIVED); K07 0F/6P 0F/47P (SURVIVED); K08 0F/6P 0F/47P (SURVIVED); K09 2F/4P 3F/44P; K10 2F/4P 5F/42P"
+  ],
+  "pyt_lines": [
+   "[pyt] tag=adv-ct2-be start=2026-10-09 19:33:19 end=2026-10-09 19:33:42 elapsed=23s bound=1200s status=OK rc=0 log=C:\\Users\\SYNACK~1\\AppData\\Local\\Temp\\claude\\C--Users-SynAckITPC-Documents-AI\\f9970d11-1fa0-400e-9fb3-dd91f335e519\\scratchpad\\u3b\\adv-consent-truth\\adv-ct2-be.log",
+   "========= 359 passed, 1 skipped, 2 deselected, 19 warnings in 21.66s ==========",
+   "Files: test_u3b_sharing_branch_removed, test_auth_ai_sharing_toggle, test_llm_provider_base_url, test_backend_cleanup, test_m18_openai_tpm_sizing, test_auth_preference_toggles_w314, test_s71_u13_compare_auth_required, test_openai_breaker, test_u3c_store_false_pin, test_push_token_endpoint, test_conftest_env_safety",
+   "[netguard] blocked 121 attempt(s) from 6 node(s) (all test_openai_breaker, the known baseline)"
+  ],
+  "mutants": [
+   "K01 en.json 'inform the evaluation and training of its models.' -> 'inform the evaluation of its models.' | KILLED: aiConsentVersion.s69 fence + aiConsentV2.s75 V3 | restore sha OK 34429a69f31d",
+   "K02 ar.json the AR sentence (section 1) missing its first char | KILLED: s69 fence + V4 | restore OK 02bc70be875d",
+   "K03 en.json ' You can turn this off in Settings.' inserted before the final sentence | KILLED: fence, V3, V5, aiProcessingConsent.s69 T1.23 | restore OK 34429a69f31d",
+   "K04 ar.json U+064E inserted after the AR sentence's first char | KILLED: fence, V4, T1.24 (diacritics) | restore OK 02bc70be875d",
+   "K05 aiConsent.ts hasCurrentAiConsent -> 'return record !== null;' | KILLED: V2a, V2b, T1.6 | restore OK a7dc249cb160",
+   "K06 AiConsentSheet.tsx bodyScroll + flexShrink: 0 | SURVIVED (47/47); real effect: body cannot shrink and the CTAs can overflow below the bottom edge | restore OK 6109d62b5648",
+   "K07 AiConsentSheet.tsx maxHeight '85%' -> '100%' | SURVIVED (pin accepts any percentage) | restore OK 6109d62b5648",
+   "K08 AiConsentSheet.tsx ScrollView style [bodyScroll, {maxHeight: 0}] | SURVIVED (no layout in jest) | restore OK 6109d62b5648",
+   "K09 AiConsentSheet.tsx body Text renders t('aiConsent.title') | KILLED: aiConsentSheetScroll.s75 nodes 1+2, T1.19 | restore OK 6109d62b5648",
+   "K10 aiConsent.ts AI_CONSENT_VERSION 2 -> 3 | KILLED: s69 fence, V1, V2b, V2c, V6 | restore OK a7dc249cb160",
+   "Lock .qa-mutation.lock 'adv-consent-truth-r2' taken 19:30:17, removed 19:33:12; snapshots in mut_snap_r2/ (none left in the worktree)."
+  ]
+ },
+ {
+  "verdict": "PASS WITH FINDINGS. 0 blocking, 1 major, 4 minor, 5 notes. Every gate I measured on GREEN run-2's exact bytes is green: full jest, tsc, eslint, the backend set plus 103 more backend files, gitleaks and the fence. 16 of my 18 byte-copy mutants were killed by a named node and the 2 survivors are test gaps, not defects. The major finding (M1) is a design trade-off in the UB-R13 sheet wrapper at accessibility text sizes. It comes from arithmetic, not a device run, and needs an orchestrator ruling before merge.",
+  "findings": [
+   {
+    "id": "M1",
+    "severity": "major",
+    "title": "UB-R13 card cap can push the consent CTAs off-screen at iOS accessibility text sizes (Agree unreachable at AX4+ on a 667-pt iPhone SE)",
+    "evidence": "SmartCompareApp/src/components/AiConsentSheet.tsx: the card gets maxHeight '85%' and only the body ScrollView can shrink. The ScrollView base style is flexGrow 1 / flexShrink 1 (verified in RN 0.81.5 ScrollView.js:1861-1863), bodyScroll sets flexGrow 0, and the title, link and both CTAs default to flexShrink 0. src/ has no maxFontSizeMultiplier or allowFontScaling cap anywhere (grep). The backdrop has justifyContent flex-end, so the card is anchored to the bottom of the screen. Arithmetic (not a device run) on the SE at 375x667: content width 327, cap 567 pt, title 20/30, link and CTA labels 16/24 semibold at about 0.55 em per character, CTA minHeight 48. The fixed parts measure 348 pt at scale 1 (the same as GREEN's figure). At AX2 (1.94) they are about 532 pt, which leaves a body window of about 35 pt, less than one line. At AX3 (2.35) they are about 662 pt, so about 95 pt overflows below the card bottom, which is the screen bottom: 'Not now' is off-screen. At AX4 (2.76) they are about 896 pt and overflow by about 329 pt: 'Agree and continue' is off-screen too, so a sighted large-text user cannot consent and the compare is blocked. On an 844-pt phone (cap 717) the same happens about one step later (AX4/AX5). Without the cap, the bottom-anchored card grows upward: the title is clipped but both CTAs stay on screen. So the wrapper fixes the default-size SE clipping that GREEN computed (684 pt) and trades it for unreachable CTAs at the largest sizes. Pin node 3 ('caps the card at a percentage maxHeight ...') locks this exact design in.",
+    "fix": "Keep the CTAs reachable at every scale. Preferred: remove the card maxHeight and cap the ScrollView itself with a number from useWindowDimensions (for example bodyScroll maxHeight = round(0.4 * height), with flexGrow 0). The card then stays bottom-anchored and grows upward when the fixed parts are large, and the body still scrolls at normal sizes. Alternatively, set maxFontSizeMultiplier (about 1.5-2) on the sheet's title, link and CTA labels. Either way, re-pin GREEN's node 3 (a GREEN pin, not a RED node) and add the AX3-AX5 sizes to the on-device check UB-R13 already owes."
+   },
+   {
+    "id": "m1",
+    "severity": "minor",
+    "title": "On the smallest iPhone the new OpenAI training sentence sits mostly below the fold of a ScrollView that shows no scroll affordance",
+    "evidence": "Default text size, iPhone SE: the body window is 567 - 348 = about 219 pt, about 9.1 lines at a 24-pt line height. Wrapping the 555-character EN body (334 characters before the sentence) at 41 characters per line gives 14 lines with the sentence starting on line 9. At 38 characters per line it is 16 lines with the sentence starting on line 11. AiConsentSheet.tsx renders <ScrollView style={styles.bodyScroll}> with no ref, no flashScrollIndicators() and no persistentScrollbar, so iOS shows no indicator until the user scrolls. 'Agree and continue' is visible and tappable while the disclosure added by D3 = C is still hidden. This is arithmetic, not a device run; it is the consent-truth adversary's lens too.",
+    "fix": "Hold a ScrollView ref and call flashScrollIndicators() when the sheet becomes visible (a useEffect on visible), and/or set persistentScrollbar on Android. Check it in the on-device run UB-R13 owes. M1's fix (a numeric cap on the ScrollView) does not remove this need on the SE."
+   },
+   {
+    "id": "m2",
+    "severity": "minor",
+    "title": "Test gap: the OpenAPI docstring can go back to the 'AI-sharing (PDPL) opt-out' wording with every test green (mutant B17 SURVIVED)",
+    "evidence": "Byte-copy mutant B17 put HEAD's PreferenceTogglesBody docstring back in app/api/auth_routes.py ('exercise the AI-sharing (PDPL) opt-out ...'). [pyt] tag=adv-r2-B17 status=OK rc=0, 266 passed: test_u3b, backend_cleanup, w314, ai_sharing_toggle, base_url, m18 and s71_u13. I measured whether app.openapi() moved with openapi_diff.py, which imports tests.conftest first and then calls the test module's _openapi_snapshot(), and compared it against tests/fixtures/s71_u13_flag_off_baseline.json. Exactly one path differs: /components/schemas/PreferenceTogglesBody/description (the UB-R5 edit). The fixture records only the 10 ROUTES operations plus components (test_s71_u13_compare_auth_required.py:441-453), so the PUT /api/v1/auth/preference-toggles operation description, which UB-R5 also changed, appears nowhere in the fixture. That part is reasoned from FastAPI turning the docstring into the operation description; I did not measure it. T23's closure is 7 components, does not reach these models, and is green.",
+    "fix": "Add a B5 node to tests/test_u3b_sharing_branch_removed.py. It builds a fresh app.openapi() (save, clear and restore app.openapi_schema, as _openapi_snapshot does) and asserts that /opt.?out|PDPL/i matches neither components.schemas.PreferenceTogglesBody.description nor paths['/api/v1/auth/preference-toggles']['put']['description']. It would kill B17."
+   },
+   {
+    "id": "m3",
+    "severity": "minor",
+    "title": "Test gap: the B1 grep fence can be evaded, letting a private-key arm come back without the literal env-var name (mutant B12E SURVIVED)",
+    "evidence": "Mutant B12E re-added 'import os' and put api_key=os.environ.get(\"OPENAI_API_KEY\" + \"_PRIVATE\") or None into get_client()'s AsyncOpenAI(...). [pyt] tag=adv-r2-B12E status=OK rc=0, 266 passed. The plain form B12 (the literal name) was killed by test_b1_no_app_file_names_the_deleted_sharing_branch. B3's _Spy accepts **kw and records only the instance, so it never looks at the constructor kwargs. test_backend_cleanup passes because os is now used.",
+    "fix": "Have B3's spy record kwargs and add assert 'api_key' not in kw (get_client must let the SDK read OPENAI_API_KEY). Optionally also assert kw['max_retries'] and kw['timeout'] == httpx.Timeout(120.0, connect=30.0); that would also close GREEN's surviving B08."
+   },
+   {
+    "id": "m4",
+    "severity": "minor",
+    "title": "Comments outside UG-9 that are now stale (comment-only, nothing behaves differently)",
+    "evidence": "SmartCompareApp/src/screens/ProfileScreen.tsx:125-126 'The two masters stay usable: /preference-toggles writes only the key the user flipped' and :466-470 'the two masters now save through the additive /preference-toggles route ... The hosts are plain Views'. SmartCompareApp/src/screens/onboarding/Step05Trust.tsx:24 'No opt-out is promised (the Profile AI-sharing toggle routes nothing today, #266)'. tests/_env_safety.py:116 'the PDPL opt-out key falls back to the shared client when absent' (the name list at :117 must stay). tests/test_backend_cleanup.py:175-182, a docstring saying os 'became load-bearing again (the OPENAI_API_KEY_PRIVATE split reads os.getenv ...)'; the assertion is now vacuously green because openai_service.py has no 'os' token at all. GREEN already raised the first three.",
+    "fix": "Either a comment-only edit in this PR (orchestrator's call, since these are outside UG-9) or a follow-up issue; behaviour and tests are unaffected."
+   },
+   {
+    "id": "n1",
+    "severity": "note",
+    "title": "The served legal text still promises the removed control; the guard is process-only (UB-R4)",
+    "evidence": "app/legal/privacy_policy.md:88 (served through GET /api/v1/legal/privacy_policy, which the consent sheet links) and landing/privacy.html:280 still say 'you can disable AI sharing in Settings'. The 'Privacy & notifications' eyebrow (profile.section.privacy_notifications, ProfileScreen) now heads only notification toggles. No test or hook stops an `eas update` or store build from main after the merge; UB-R4 is the only gate. Per the rulings this is U8 PR #330's scope, so I do not count it as a defect of this diff.",
+    "fix": "Keep UB-R4 in the PR body and the CLAUDE.md line at merge. Consider retitling the eyebrow to just 'Notifications' in a follow-up (a new catalog key, outside U3b)."
+   },
+   {
+    "id": "n2",
+    "severity": "note",
+    "title": "The row-12 api.ts anchors in the inventory were already wrong at HEAD",
+    "evidence": "docs/privacy-data-inventory.md row 12 cites api.ts:996-1002 (demographics), :1044 (PUT demographics) and api.ts:478 (PUT preferences). At HEAD and now those lines are the events helper and a compare timeout. The real lines are PUT /api/v1/auth/preferences at api.ts:553 and PUT /api/v1/auth/demographics at :1183 (HEAD :1184). GREEN's UB-R9 edit fixed only the types.ts range, and 552-562 is verified correct. nativeBundle.w37 c5 never reads cells[2].",
+    "fix": "Follow-up docs fix; not U3b's regression."
+   },
+   {
+    "id": "n3",
+    "severity": "note",
+    "title": "Two test_prompt_truth teardown errors on this box are pre-existing (environment), not U3b",
+    "evidence": "Blast chunk 01: tests/test_prompt_truth.py::test_truth_on_prefix_static_and_cacheable and ::test_render_digests_match_base_except_the_fence ERROR at teardown. The netguard caught a getaddrinfo to openaipublic.blob.core.windows.net (a cold tiktoken BPE cache). Reproduced at base 4c0f3c99 in a detached scratch worktree under my notes folder, removed afterwards: [pyt] tag=adv-r2-base-prompt-truth status=FAIL, 31 passed, 2 errors. CI warms the tiktoken cache (ci.yml:12,:60).",
+    "fix": "None for U3b."
+   },
+   {
+    "id": "n4",
+    "severity": "note",
+    "title": "CI's backend coverage floor is not measured",
+    "evidence": "ci.yml runs pytest tests/ with --cov-fail-under and one point of margin (ci.yml:76-81). The diff deletes covered production lines (select_client_for_user and the private arm, about 30 lines) together with the tests that covered them. The effect on the total percentage should be negligible, but I did not run coverage.",
+    "fix": "Watch the CI coverage line on the PR."
+   },
+   {
+    "id": "n5",
+    "severity": "note",
+    "title": "Old bundles keep writing the inert field; the round trip is pinned",
+    "evidence": "PUT /auth/preference-toggles still accepts, stores and echoes ai_sharing_enabled (auth_routes.py:1424, :1466, :1487). My mutants confirm the pins: B15 (the field type set to None, so any value is rejected) was KILLED by 8 w314 nodes, and B16 (accepted but not stored) was KILLED by 6 w314 nodes, including test_ai_sharing_off_on_empty_preferences_row and test_documented_lax_coercions_write_true[yes|on|1]. B4 limits the app/ files naming the field to auth_routes.py; B13 (routing reinstated under a new name) was KILLED by B4.",
+    "fix": "None."
+   }
+  ],
+  "reproduced": [
+   "FIRST re-hash at 19:21:01: all 23 files listed in the GREEN report match their sha256 (rehash.py, 0 mismatches). ProfileScreen.aiSharingDefault.test.tsx is absent. There was no .qa-mutation.lock.",
+   "The RED set is intact. aiConsentV2.s75.test.ts (9e931710...) and test_u3b_sharing_branch_removed.py (1ab11a37...) are byte-equal to the copies in scratchpad/u3b/red/. The numstat of the 11 RED test files is +90/-363, equal to the RED gate record.",
+   "git diff --stat equals git diff --stat --ignore-cr-at-eol: 21 files, +146/-482, and the per-file numstat is identical. Every changed tracked file is i/lf w/crlf, with no mixed endings and no BOM. The 3 untracked files are LF with 0 non-ASCII bytes. No .snap file is in the diff or the status.",
+   "Added lines contain no credential-shaped string (regex scan for sk-/AKIA/JWT/scheme://user:pass@). gitleaks 8.30.1 `dir --config .gitleaks.toml` over all 23 changed or new files: 0 hits. The only non-ASCII added lines are the brand.myez RED line (existing text), the ar.json body (by design) and inventory row 12 (the two arrows that are already there).",
+   "Fence: the node one-liner from aiConsentVersion.s69.test.ts (node v24.11.1, run from SmartCompareApp/) gives 372c50484085fa859a576a62367c743365735fab6dda31f336552a4ae2a21a02, the expected hex. Python gives the same.",
+   "Catalogs have 1004/1004 keys with equal key sets. The removed keys are exactly profile.aiSharing.{title,subtitle,errorSave} in EN and AR, and the only changed value is aiConsent.body. The EN body is 555 characters and equals HEAD with the sentence inserted before the final sentence. The AR body (482 characters) equals U3B_AR_COPY.txt section 2 and equals HEAD with section 1 inserted. Compared in Python; no Arabic was printed by that check.",
+   "FULL jest under the lock, 19:22:55-19:23:04, rc 0. Suites: 366 passed, 3 skipped (366 of 369). Tests: 3559 passed, 13 skipped, 13 todo (3585 total). Snapshots: 42 passed. This is the same as GREEN's insurance run.",
+   "tsc 5.9.3 --noEmit: rc 0, 0 output lines. eslint 9.39.4 by path over the 14 changed or new .ts/.tsx files: rc 0, 24 problems (0 errors, 24 warnings). ProfileScreen.tsx has one warning, at :86 ('user' unused), which already exists at HEAD.",
+   "Backend set through the bounded runner, all 9 files including test_s71_u13_compare_auth_required.py (T23): 315 passed. The OpenAPI diff of the live schema against the fixture shows exactly 1 differing path, components/schemas/PreferenceTogglesBody/description (UB-R5). T23's closure is 7 components and excludes it.",
+   "Repo-wide grep. get_client( with an argument: 0 code hits; the only hits are prose in docs/plans/2026-05-05-smart-referral-system.md:381-382, docs/plans/2026-05-06-tos-evidence/agent-a-report.md:92 and docs/investigations JSON. select_client_for_user / OPENAI_API_KEY_PRIVATE / use_shared_project outside app/: CODE in tests/_env_safety.py:117 and tests/test_conftest_env_safety.py:72 (guard name lists, keep) and the B1 fence itself; PROSE in tests/test_auth_ai_sharing_toggle.py:4, tests/test_backend_cleanup.py:178, tests/.pre_impl_failures.txt:30, CLAUDE.md:19,:560, docs/CONTEXT_SESSION_LOG.md:41,:67, docs/plans/* and docs/investigations/*. scripts/: 0. app/: 0. No test or script references openai_service.os or the removed attributes.",
+   "import os removal: openai_service.py contains no 'os' token at all, so no other os.<attr> use exists. ruff 0.16.5 E9,F63,F7,F82: pass. F401/F811/F841: one hit, F841 at auth_routes.py:1008, outside the hunks and already at HEAD. py_compile passes on all 6 changed .py files.",
+   "Backend blast radius: 103 more test files that import or name openai_service, auth_routes, get_client or ai_sharing, plus the 5 OpenAPI tests, in 5 chunks. Chunk 00 has 5 failures, all listed in tests/.pre_impl_failures.txt. Chunk 01 has 2 test_prompt_truth teardown errors, reproduced at base 4c0f3c99. Chunks 02, 03 and 04 are OK.",
+   "18 byte-copy mutants under the mutation lock (waited 19:30:48-19:33:18 behind adv-consent-truth-r2, held 19:33:18-19:35:12, then released). Every restore was sha256-verified.",
+   "LAST re-hash at 19:46:31: 23/23 OK, the deleted file absent, no lock, diff stat unchanged, HEAD 4c0f3c99c786f93e3d0fed5ffc94d54f19ea74d5."
+  ],
+  "not_checked": [
+   "On-device or simulator rendering of the consent sheet: SE 667 pt, Dynamic Type AX1-AX5, Arabic RTL and the scroll indicator. The M1 and m1 figures are arithmetic from the theme with an assumed glyph width of about 0.55 em, and no JS Yoga build is available in node_modules to compute the layout.",
+   "Whether the PUT /api/v1/auth/preference-toggles operation description changed in app.openapi(). The fixture does not record that path; the change is inferred from FastAPI turning the docstring into the operation description.",
+   "The whole backend tests/ directory: I ran 112 files (the 9-file set plus 103 related files), not the full CI run. The CI coverage floor was not measured.",
+   "CI on GitHub (the seven checks, the secret-scan job, the pre-commit hook) was not run, and I made no git write apart from the detached base scratch worktree, which I removed.",
+   "The proposed B5 and B3-kwargs nodes (m2, m3) were not written or executed. Writing them into the worktree was outside my role.",
+   "Copy truth and the Arabic wording: that is the other adversary's lens. I checked only byte equality with section 2, sentence placement and the fence.",
+   "OTA / eas update and store build sequencing (UB-R4) is process only and was not verified.",
+   "Disclosure: one grep printed about 40 characters of the start of the ar.json:699 aiConsent.body value to the console. That was not intended; it caused no crash and nothing was written."
+  ],
+  "worktree_sha_check": "FIRST (19:21:01) and LAST (19:46:31): all 23 files in the GREEN report match their reported sha256. That covers the 20 modified tracked files (bundleA bcd3d9cc, bundleE.s3 9879712d, toggles.w314 8e697739, bundleD 3ca552f9, aiConsentVersion.s69 6360330b, brand.myez ed73ab55, setup.ts 9579b4b5, AiConsentSheet 6109d62b, ar.json 02bc70be, en.json 34429a69, ProfileScreen 81815806, aiConsent.ts a7dc249c, api.ts 374fc999, types.ts fd06e13b, auth_routes 9789938c, openai_service 71bed08a, inventory b6939fdf, test_auth_ai_sharing_toggle 9dc20874, test_llm_provider_base_url 6d69cbed, test_m18 e252199a) and the 3 untracked files (aiConsentSheetScroll 30776b9b, aiConsentV2 9e931710, test_u3b 1ab11a37). ProfileScreen.aiSharingDefault.test.tsx is absent and there is no .qa-mutation.lock. git status shows 24 entries, the same as the GREEN report, and the diff stat is unchanged (21 files, +146/-482, equal with --ignore-cr-at-eol). HEAD is 4c0f3c99c786f93e3d0fed5ffc94d54f19ea74d5. My restores rewrote the mtimes of aiConsent.ts, en.json, ar.json, ProfileScreen.tsx, AiConsentSheet.tsx, openai_service.py and auth_routes.py; their bytes are identical and sha-verified. Files I wrote, all in C:/Users/SYNACK~1/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/f9970d11-1fa0-400e-9fb3-dd91f335e519/scratchpad/u3b/adv-eng/r2/ (nothing in the worktree): notes.md 4fb304c085cbdfe7b13efa45ee52e93023eb23643a51be674b486dda42d3dc47, mutants.py 322f839e8682e747f24e4685b0d0eb2905d8c5fefe76ef725a0da69a854eda1a, static.py 2b39c1c4e2c867441ec7373827fb7976971e4233fbca1a9a45632a7b6b300596, rehash.py 5b79e086c77063329fd8f8c4e30d11217c9f4e6a4e2eed417ebca30042dcff35, dryrun.py af09b7d368d6fe8d641efbda7cabade79b5f1c02ad6171753e1b7183bc88f384, openapi_diff.py 2d7dccf3831f21c5f4396a72750b870279c788c738cfae55fb30dde68d536809 (copied from the run-1 adversary's script), mutants_run.log 4993d81c7383f15a9b61e6ef7abafc75e3b17fa18e447d3ad89b82ad1f5683e2, full-jest.log 7c28d681f3fa6f7e686aa2a45c8de09bde88c93837395153d91b1d92a20afc4d, adv-eng-r2-be.log 2ab77f8da6d0dcbd5249442f88bd896c3daf519a198f0d3a49b2aee89901938f, plus the per-mutant mut-*.json/out/log files, the blast-*.log files, mut_snap/ byte copies, tsc.log, eslint.log and gitleaks.log.",
+  "summary": "I reviewed U3b on GREEN run-2's exact bytes in sc-s74-ct (HEAD 4c0f3c99), from 19:20:15 to 19:47, and changed nothing in the worktree. The 23 files hash identically at the first and last check, and the RED set is intact (the new files match their red/ copies and the 11 test files show +90/-363). The diff passes every engineering check I ran:\n- The fence sha re-derived with the node one-liner equals 372c5048...1a02.\n- The catalogs are 1004/1004; only aiConsent.body changed and the 3 profile.aiSharing keys are gone.\n- CRLF and LF are intact per file, there is no .snap, no credential shape, and gitleaks finds nothing.\n- Full jest: 366 suites and 3559 tests passed, 42 snapshots.\n- tsc rc 0; eslint 0 errors.\n- The backend set is 315 passed (T23 green), plus 103 related backend files whose only failures are pre-existing (the baseline list, and test_prompt_truth's tiktoken errors, which also fail at base).\n- Repo greps find no code caller of get_client with an argument and no os use left in openai_service.py.\n\nOf my 18 byte-copy mutants under the lock, 16 were killed by named nodes:\n- the version left at 1;\n- v1 records still counting;\n- the EN sentence after the final sentence;\n- the AR sentence missing;\n- a one-word EN change;\n- a 5th toggle host;\n- a stale t('profile.aiSharing.title');\n- the master save still sending ai_sharing_enabled;\n- the title inside the ScrollView;\n- an absolute maxHeight;\n- the ScrollView removed;\n- the private arm with the env name written out;\n- per-user routing under a new name;\n- a renamed get_client parameter;\n- the route rejecting the field;\n- the route not storing the field.\n\nTwo survived. B17, the docstring still saying opt-out: add an OpenAPI B5 node. B12E, the private arm with the env name built by concatenation: add an api_key check to B3's kwargs.\n\nThere are no blocking findings. The one major finding is that the UB-R13 card cap (maxHeight 85%, with only the body able to shrink) plausibly pushes 'Not now' (AX3) and 'Agree and continue' (AX4) off-screen on a 667-pt iPhone SE at accessibility text sizes. Without the cap they stay on screen, and nothing in src caps font scaling. That is arithmetic, not a device run. The recommended fix is to cap the ScrollView with a number from useWindowDimensions, or to set maxFontSizeMultiplier on the fixed texts. A minor related point: at default size on the SE, the new OpenAI sentence starts around wrapped line 9-11 of a body window about 9 lines tall, with no scroll affordance; flashScrollIndicators fixes that. The other minors are stale comments. The notes record that the legal text still promises the toggle (UB-R4, process-only), that row 12's api.ts anchors were already wrong at HEAD, and that the coverage floor was not measured.",
+  "jest_lines": [
+   "jest 29.7.0 (node v24.11.1, tsc 5.9.3, eslint 9.39.4). FULL suite under the mutation lock, 19:22:55-19:23:04, timeout -k 15 1500 node node_modules/jest/bin/jest.js --ci, rc=0:",
+   "Test Suites: 3 skipped, 366 passed, 366 of 369 total",
+   "Tests:       13 skipped, 13 todo, 3559 passed, 3585 total",
+   "Snapshots:   42 passed, 42 total",
+   "Time:        8.649 s",
+   "Includes PASS __tests__/consent/aiConsentSheetScroll.s75.test.tsx, aiConsentV2.s75.test.ts, aiConsentVersion.s69.test.ts, aiProcessingConsent.s69.test.tsx, ProfileScreen.toggles.w314, bundleE.s3.integration, bundleA, Screens.bundleD, i18n/brand.myez.s69.",
+   "tsc --noEmit 19:23:18-19:23:23 rc=0 (0 lines); eslint by path over 14 files 19:23:24-19:23:29 rc=0: 24 problems (0 errors, 24 warnings)."
+  ],
+  "pyt_lines": [
+   "[pyt] tag=adv-eng-r2-be start=2026-10-09 19:23:42 end=2026-10-09 19:23:53 elapsed=11s bound=1200s status=OK rc=0 | 315 passed, 19 warnings in 9.87s (u3b, auth_ai_sharing_toggle, llm_provider_base_url, backend_cleanup, m18, w314, s71_u13 T23, openai_breaker, u3c_store_false_pin)",
+   "[pyt] tag=adv-r2-blast-00 start=2026-10-09 19:36:07 end=2026-10-09 19:36:37 elapsed=29s bound=1200s status=FAIL rc=1 | 5 failed, 773 passed, 1 skipped, 3 deselected (all 5 in tests/.pre_impl_failures.txt: test_auth_interceptor x2, test_camera_vision TestIdentifyProductsMocked x3)",
+   "[pyt] tag=adv-r2-blast-01 start=2026-10-09 19:36:37 end=2026-10-09 19:37:03 elapsed=26s bound=1200s status=FAIL rc=1 | 555 passed, 4 skipped, 1 xfailed, 2 errors (test_prompt_truth teardown netguard: tiktoken fetch)",
+   "[pyt] tag=adv-r2-base-prompt-truth start=2026-10-09 19:41:28 end=2026-10-09 19:41:31 elapsed=3s bound=600s status=FAIL rc=1 | at BASE 4c0f3c99 (detached scratch worktree, since removed): 31 passed, 2 skipped, 1 xfailed, 2 errors (the same 2 nodes, so the errors are pre-existing)",
+   "[pyt] tag=adv-r2-blast-02 start=2026-10-09 19:37:19 end=2026-10-09 19:39:56 elapsed=157s bound=1200s status=OK rc=0 | 1050 passed, 1 skipped",
+   "[pyt] tag=adv-r2-blast-03 start=2026-10-09 19:39:57 end=2026-10-09 19:40:55 elapsed=59s bound=1200s status=OK rc=0 | 989 passed, 2 skipped, 4 deselected",
+   "[pyt] tag=adv-r2-blast-04 start=2026-10-09 19:40:55 end=2026-10-09 19:41:14 elapsed=18s bound=1200s status=OK rc=0 | 82 passed",
+   "[pyt] mutants: adv-r2-B12 FAIL (1 failed/265), adv-r2-B12E OK (266 passed, SURVIVED), adv-r2-B13 FAIL (1 failed), adv-r2-B14 FAIL (1 failed), adv-r2-B15 FAIL (8 failed), adv-r2-B16 FAIL (6 failed), adv-r2-B17 OK (266 passed, SURVIVED); each bound=600s, 7-8 s elapsed"
+  ],
+  "mutants": [
+   "A01 aiConsent.ts:46 AI_CONSENT_VERSION 2->1 | KILLED: aiConsentV2.s75 'V1 AI_CONSENT_VERSION is 2', V2a, V2b, V2c, 'V6 ... equals the real AI_CONSENT_VERSION', and aiConsentVersion.s69 'the real AI_CONSENT_VERSION and the sha256 ... match the pinned pair' | restore sha a7dc249cb160 OK",
+   "A02 aiConsent.ts:76 `record.version === AI_CONSENT_VERSION` -> `record.version >= 1` (a v1 record still counts) | KILLED: V2a, V2b, and aiProcessingConsent.s69 'T1.6 a stored consent of an OLDER version asks again and dispatches nothing' | restore OK",
+   "A03 en.json:702 EN sentence placed AFTER the final sentence | KILLED: 'V3 EN body: the sentence appears exactly once, immediately precedes the final sentence ...' and the s69 fence | restore 34429a69f31d OK",
+   "A04 ar.json:699 aiConsent.body set back to HEAD (the AR sentence missing) | KILLED: 'V4 AR body: ... the value is U3B_AR_COPY.txt section 2' and the s69 fence | restore 02bc70be875d OK",
+   "A05 en.json:702 'may use' -> 'can use' with the version kept | KILLED: V3 and the s69 fence | restore OK",
+   "A06 ProfileScreen.tsx:472 a 5th ToggleRow host left in place (label profile.notifs.master.title, no aiSharing tokens) | KILLED (19 failed): bundleA 'uses ToggleRow exactly 4 times (notifications master + 3 subs; no AI-sharing row)', toggles.w314 '(iii-a) 4 switches ... (iii-b) master off -> exactly {notifications_enabled:false}' and the fixer nodes, bundleE.s3 'Notifications master toggle reaches putPreferenceToggles with expected payload' | restore 81815806ffe5 OK",
+   "A07 ProfileScreen.tsx:106 a stale `const staleAiTitle = t('profile.aiSharing.title')` | KILLED: 'V8 no file under src/ ... contains ai_sharing_enabled or aiSharing' and no-missing-referenced-keys 'M13-15 every literal t() key referenced in src/ exists in en.json' | restore OK",
+   "A08 ProfileScreen.tsx:164 the master save sends {notifications_enabled, ai_sharing_enabled: true} | KILLED: V8; toggles.w314 '(iii-b) ... exactly {notifications_enabled:false}', 'a flip PUTs exactly {notifications_enabled:false}', 'resolves {success:false}: rolled back'; bundleE.s3 'the notifications master saves' | restore OK",
+   "A09 AiConsentSheet.tsx:50 the title moved INSIDE the ScrollView | KILLED: aiConsentSheetScroll 'renders the body Text inside exactly ONE ScrollView' and 'keeps the title, the Privacy link and both CTAs outside the ScrollView' | restore 6109d62b5648 OK",
+   "A10 AiConsentSheet.tsx:106 maxHeight '85%' -> 600 (absolute) | KILLED: aiConsentSheetScroll 'caps the card at a percentage maxHeight and keeps the body scroll from growing (flexGrow 0)' | restore OK",
+   "A11 AiConsentSheet.tsx:53 the ScrollView wrapper removed (UB-R20) | KILLED: all 3 aiConsentSheetScroll nodes | restore OK",
+   "B12 openai_service.py private-key arm reinstated (import os + api_key=os.environ.get(\"OPENAI_API_KEY_PRIVATE\") or None) | KILLED: tests/test_u3b_sharing_branch_removed.py::test_b1_no_app_file_names_the_deleted_sharing_branch | restore 71bed08aade1 OK",
+   "B12E the same with the env name concatenated (\"OPENAI_API_KEY\" + \"_PRIVATE\") | SURVIVED (266 passed). Node to add: B3's spy records kwargs and asserts 'api_key' not in kw | restore OK",
+   "B13 openai_service.py per-user routing reinstated under a NEW name (client_for_prefs reading prefs.get(\"ai_sharing_enabled\")) | KILLED: ::test_b4_only_the_route_names_the_inert_preference_field | restore OK",
+   "B14 openai_service.py `def get_client(private: bool = False)` (the parameter back under a new name) | KILLED: ::test_b2b_get_client_takes_no_parameter | restore OK",
+   "B15 auth_routes.py:1424 PreferenceTogglesBody.ai_sharing_enabled typed None (the route rejects the old field) | KILLED (8): test_auth_preference_toggles_w314.py::TestPreferenceTogglesWrites::test_ai_sharing_off_on_empty_preferences_row, ::test_both_keys_in_one_body, ::test_null_preferences_column_is_treated_as_empty, ::TestPreferenceTogglesValidation::test_documented_lax_coercions_write_true[yes|on|1], ::TestPreferenceTogglesFailureModes x2 | restore 9789938cd92e OK",
+   "B16 auth_routes.py:1466 the RMW loop no longer stores ai_sharing_enabled (accepted, dropped) | KILLED (6): the same Writes nodes and lax_coercions[yes|on|1] | restore OK",
+   "B17 auth_routes.py PreferenceTogglesBody docstring back to HEAD ('exercise the AI-sharing (PDPL) opt-out') | SURVIVED (266 passed, T23 included). Node to add: B5 asserting a fresh app.openapi() PreferenceTogglesBody description and the PUT /api/v1/auth/preference-toggles description do not match /opt.?out|PDPL/i | restore OK",
+   "Lock: .qa-mutation.lock 'adv-eng-r2'. I waited 19:30:48-19:33:18 while adv-consent-truth-r2 held it, then held it 19:33:18-19:35:12 and released it. The full-jest run took and released it separately (19:22:55-19:23:04). Every restore was a shutil.copyfile from a byte snapshot followed by a sha256 compare, and all 18 were OK."
+  ]
+ }
+]
