@@ -1472,6 +1472,7 @@ def build_comparison_response(
     elapsed_seconds: float = 0.0,
     metadata: Optional[Dict[str, Any]] = None,
     cohort_summary: Optional[Dict[str, Any]] = None,
+    openai_usage: Optional[Dict[str, Any]] = None,
     _single_margin: Optional[bool] = None,
 ) -> Dict[str, Any]:
     """Build the full structured comparison response.
@@ -2114,6 +2115,13 @@ def build_comparison_response(
     # like `comparison_quality` directly without unpicking the full
     # positional spec. Same merge pattern as Pydantic model_dump-style
     # partial updates — keys not in the override are left untouched.
+    # COST-METER (#66) -- the per-request OpenAI usage summary (model ids,
+    # token counts, list-price USD; openai_pricing.summarize_openai_ledger),
+    # additive and absent-unless-present (the model_downgraded precedent),
+    # written BEFORE the override merge so a caller's metadata={"openai": ...}
+    # wins. metadata.total_cost is untouched (it is NOT an OpenAI figure).
+    if openai_usage is not None:
+        result["metadata"]["openai"] = openai_usage
     if metadata:
         result["metadata"].update(metadata)
     # W4-12 — scrub telemetry: present (True) only when the strip emptied the

@@ -13,6 +13,8 @@ from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 
 from app.services.cache_service import _redis_get, _redis_set, _redis_incr, _redis_expire
+# COST-METER (#66): the stdlib-only usage-ledger leaf (no cycle: it imports nothing from app).
+from app.services.openai_pricing import record_openai_response
 
 logger = logging.getLogger(__name__)
 
@@ -969,13 +971,20 @@ async def guarded_llm_create(client, **kwargs):
     stored completion (dashboard Logs); an extra_body "store" entry is forced to
     False too (the SDK merges extra_body over the body). The organisation
     data-sharing setting (OA2) is separate and unaffected (OA3).
+
+    COST-METER (#66): every SERVED response is recorded on the per-request
+    usage ledger on both branches (openai_pricing.record_openai_response: the
+    requested model id, the token counts and the list price; a raising create
+    records nothing, and the recorder never raises).
     """
     kwargs["store"] = False
     eb = kwargs.get("extra_body")
     if isinstance(eb, collections.abc.Mapping) and "store" in eb:
         kwargs["extra_body"] = {**eb, "store": False}
     if not llm_preflight_breaker_enabled():
-        return await client.chat.completions.create(**kwargs)
+        response = await client.chat.completions.create(**kwargs)
+        record_openai_response(kwargs.get("model"), response)
+        return response
     admitted, outcome_matters, probe = _openai_dispatch_admission()
     if not admitted:
         raise LLMUnavailableError(
@@ -1020,6 +1029,7 @@ async def guarded_llm_create(client, **kwargs):
         if probe:
             openai_release_half_open_probe()
         raise
+    record_openai_response(kwargs.get("model"), response)
     if outcome_matters:
         openai_record_success()
     return response

@@ -17,6 +17,13 @@ from typing import List, Optional, Dict
 from fastapi import APIRouter, UploadFile, File, HTTPException, Query, Depends, Request
 
 from app.services.openai_service import identify_products
+# COST-METER (#66) CM9 / G5: the camera identify call is recorded on the
+# route's OWN ledger and merged with the compare's summary.
+from app.services.openai_pricing import (
+    merge_openai_summaries,
+    start_openai_ledger,
+    summarize_openai_ledger,
+)
 from app.services.structured_comparison_service import (
     LLM_UNAVAILABLE_FRIENDLY_MESSAGE,
     StructuredComparisonService,
@@ -295,6 +302,10 @@ async def identify_and_compare(
         usage_consumed = usage_check.get("consumed", False)
 
     # Step 1: Vision identification (single GPT call for all images)
+    # COST-METER (#66) CM9: identify runs BEFORE the compare binds its own
+    # fresh ledger, so this route keeps ITS OWN list (G5) and merges the two
+    # summaries into metadata.openai once the compare has returned.
+    vision_ledger = start_openai_ledger()
     try:
         vision_result = await identify_products(image_data_list)
     except Exception as e:
@@ -456,6 +467,18 @@ async def identify_and_compare(
         )
 
         # Inject vision metadata
+        # COST-METER (#66) G5: the vision entries + the compare's own
+        # metadata.openai (the compare's ledger only), merged into ONE key.
+        # Attached only when something was recorded -- the compare's own
+        # summary or at least one vision dispatch (identify_products always
+        # dispatches in production; a stubbed identify records nothing and the
+        # W2-1 camera body pins stay byte-identical).
+        vision_openai = summarize_openai_ledger(vision_ledger)
+        compare_openai = (
+            result["metadata"].get("openai") if isinstance(result.get("metadata"), dict) else None
+        )
+        merged_openai = merge_openai_summaries(vision_openai, compare_openai)
+        recorded_openai = compare_openai is not None or (vision_openai or {}).get("calls", 0) > 0
         if result.get("metadata"):
             result["metadata"]["input_method"] = "camera"
             result["metadata"]["vision_cost"] = vision_cost
@@ -469,6 +492,8 @@ async def identify_and_compare(
                 "vision_cost": vision_cost,
                 "identified_products": products,
             }
+        if merged_openai is not None and recorded_openai:
+            result["metadata"]["openai"] = merged_openai
 
         result["action"] = "comparison"
 

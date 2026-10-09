@@ -61,13 +61,27 @@ async def view_shared_comparison(
     if not comparison:
         raise HTTPException(status_code=404, detail="Shared comparison not found")
 
+    full_response = comparison.get("full_response")
+    # COST-METER (#66) CM11: the PUBLIC view strips metadata.openai (model ids,
+    # token counts, list-price USD); the owner's views keep it, as
+    # metadata.total_cost ships today. A copy, never the stored dict mutated.
+    if (
+        isinstance(full_response, dict)
+        and isinstance(full_response.get("metadata"), dict)
+        and "openai" in full_response["metadata"]
+    ):
+        full_response = {
+            **full_response,
+            "metadata": {k: v for k, v in full_response["metadata"].items() if k != "openai"},
+        }
+
     return {
         "success": True,
         "comparison": {
             "query": comparison.get("query"),
             "product_names": comparison.get("product_names", []),
             "input_type": comparison.get("input_type", "text"),
-            "full_response": comparison.get("full_response"),
+            "full_response": full_response,
             "created_at": comparison.get("created_at"),
         },
     }
