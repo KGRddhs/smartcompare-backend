@@ -1,0 +1,488 @@
+{
+ "green": {
+  "summary": "GREEN-2 for FANOUT-STARVE, worktree C:/Users/SynAckITPC/Documents/AI/sc-s71-t0b. Started 19:49:31 AST and stopped at about 20:23, inside the 2-hour budget. FG-7 is done in full: D1, D2, D4, D5, D6, D7, D8, D9, the FG-5 second pin and the Bright Data runbook. No git write was made in the worktree.\n\n**RED re-hash.** The three files that had to match do match: test_s75_fanout_starve.py 2f968399, test_shutdown_drain.py aa934d6f, test_serper_fail_fast.py 59782f42. test_be_harness.py and test_retro_w0_4_efg.py differ, as the task said they would; the cause is the earlier GREEN agent's BH53/BH54 and FG-5 hunks. I reviewed both hunks against FG-1, FG-2 and FG-5 and kept them. Both were proven red-first here: R1 and R2 in the mutant table.\n\n**The earlier agent's partial edits.** I diffed every hunk against FG-7 and FG-4. I kept them all except three, which I redid or fixed:\n- **brightdata_service non-200 branch:** redone as ONE WARNING in today's shape. For 401/403 the body text is replaced by the literal \"auth rejected (body withheld)\", and there is no longer a duplicated warning-plus-return.\n- **verify_after_credits._summary:** q rows are now excluded by a predicate rather than by dict-equality membership.\n- **Real defect fixed in run_canary.sh.** The fallback classification matched `\"RESULT: PASS\"` exactly. That would have read the both-mode line `RESULT: PASS q_fail=0 pair_fail=0` as FAIL. It now matches `\"RESULT: PASS\"|\"RESULT: PASS \"*`. I proved this on the real bytes with case_proof.py; the inherited pattern, run from a copy, gives FAIL.\n\n**Gates (FG-8, in order).**\n1. tests/test_s75_fanout_starve.py alone: 58 passed, 2 failed (T6, T12). Both failures are RED-file defects that no production code can satisfy, so I did not change those RED nodes:\n   - **T6:** the node runs `import app.main` inside itself. That import calls configure_logging(), whose root_logger.handlers.clear() removes caplog's handler, so the node captures zero records (it reports 'INFO lines seen: []'). The `[loop]` line is in fact emitted (it appears in captured stdout), and T6 passes in CI order once app.main has been imported earlier.\n   - **T12:** the _bd_client helper (test_s75:184-198) re-reads httpx.AsyncClient on every call. After the first monkeypatch that attribute is the previous factory, which ignores the new transport, so the 403 and 402 legs are answered 401. It fails at :484 in every order, including CI order.\n   - probe_t6_t12.py (in the notes folder, not a repo node) runs both node bodies verbatim with only the test-side defect corrected: green.\n2. The four amended files: 361 passed.\n3. The pin files of the touched modules: 276 passed.\n4. Comm set: 152 files. The first 120 ran in 5 chunks of 24. The only branch-only-NEW failure is the T12 RED defect; 32 files were NOT MEASURED (details in comm_gate).\n5. Netguard ratchet: exit 0, 0 attempting nodes.\n6. py_compile and ruff are clean, gitleaks finds nothing, `git diff --stat` equals `--ignore-cr-at-eol`, there are 0 non-ASCII and 0 sk-shaped added lines, and the start command is proven through `sh -c`.\n\n**Mutants (FG-9).** Every FG-9 mutant plus 31 more was KILLED by a named node, each with a byte-copy restore and sha256 OK, under the lock. That is 49 kills and 2 red-first proofs. Two production lines survived the RED nodes: the REST call-site cost skip and the REST deadline recording. I wrote probe_entries.py, which kills them and five further entry-path mutants. All 16 changed files were sha-identical to the pre-mutation snapshot afterwards. The base scratch worktree was removed with `git worktree remove --force`.\n\n**Blocking for the PR:** T12 will keep CI backend-tests red until the orchestrator amends the RED helper (question 1).\n\nNotes and all logs: C:/Users/SYNACK~1/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/f9970d11-1fa0-400e-9fb3-dd91f335e519/scratchpad/fanout-starve/green/ (notes.md, mutants_out.txt, mut.py, probe_t6_t12.py, probe_entries.py, startcmd_proof.txt, case_proof.py).",
+  "files_changed": [
+   "Procfile 0fd1a8267f5da7f5b378b96243f01ddd65e9c2921ea47440775abc90c32be35b",
+   "app/main.py d138ec9c9120d05e1ba9b4034e3f95bd566c1e3533fcdbd7ee4428863382aa0e",
+   "app/services/brightdata_service.py 77a003a9c0a7bc967e485874f1358756a551882cdbd390906c7d696b3b49cf2c",
+   "app/services/serper_service.py 694ad4ed71d935ad802fb45c0a4f08f595eaf6ee4736fc4422fad4d76429500c",
+   "app/services/structured_comparison_service.py 18528b29297d1b5619744634edd87ed4c34ed55b5cf8eb1068131db814ae0df6",
+   "app/utils/executor.py 2c497ce2080380e31554037ea032000a8797a96d93af3940fa0a5096cf9eaaf4",
+   "docs/investigations/2026-09-29-session-69-state/APP_STORE_LAUNCH_RUNBOOK.md 1d64309eb1522ed693f4b56e98368acb036937ffe1a2cb82b3cc61a82fc0dd33",
+   "docs/investigations/2026-10-08-session-74-state/canary/run_canary.sh e0ac3bf9cbb95ceef7bbf7394e8a7c7f0badef1bd610edbcf5ac72c9315520ab",
+   "railway.json 1342087cff9efc908e555ec5a709265ac315a690144cbd9673e10dc8bc15ee7a",
+   "scripts/verify_after_credits.py cb5b497c1239eefb7d65c316428b934e1739201969653388198bc986f6997193",
+   "tests/test_be_harness.py b72d65dd92388644ef52e1d0f89c057d77681c67473677787cfe75419f59a3d4",
+   "tests/test_retro_w0_4_efg.py fefcd385dc5642927e4ec93b85d4c3c4e374182dc745dc64c7b41399d167c7cd",
+   "tests/test_serper_fail_fast.py 59782f4274a1e851093349df67c5a5e004baa07643d8eed91dc74c42cae3843b",
+   "tests/test_shutdown_drain.py aa934d6f0265fbf20790f5e363b9d500347cfc13c0a99d3c4e1283815ab5c587",
+   "docs/runbooks/brightdata-token-renewal.md e95340f2e4098cf86342988fbc4ec476b9193d03d2a73007107cc05ab6ea2b89",
+   "tests/test_s75_fanout_starve.py 2f9683999bfafa57b778615382982c456569887003bc26eac75e002e3f3eefab"
+  ],
+  "pyt_lines": [
+   "[pyt] tag=fs-g2-a0 start=2026-10-09 19:56:20 end=2026-10-09 19:56:25 elapsed=5s bound=600s status=FAIL rc=1  (inherited tree, gate-1 file: 2 failed / 58 passed; T6, T12)",
+   "[pyt] tag=fs-g2-g1 start=2026-10-09 19:57:37 end=2026-10-09 19:57:42 elapsed=5s bound=600s status=FAIL rc=1  (gate 1 after my edits: 2 failed / 58 passed; T6, T12 = RED defects)",
+   "[pyt] tag=fs-g2-probe start=2026-10-09 19:58:55 end=2026-10-09 19:58:59 elapsed=4s bound=600s status=OK rc=0  (probe_t6_t12.py: 2 passed)",
+   "[pyt] tag=fs-g2-g2 start=2026-10-09 19:59:07 end=2026-10-09 19:59:17 elapsed=10s bound=1200s status=OK rc=0  (gate 2: 361 passed)",
+   "[pyt] tag=fs-g2-g3 start=2026-10-09 20:00:06 end=2026-10-09 20:00:29 elapsed=23s bound=1200s status=OK rc=0  (gate 3: 276 passed)",
+   "[pyt] tag=fs-g2-head-00 start=2026-10-09 20:01:17 end=2026-10-09 20:02:18 elapsed=61s bound=1200s status=FAIL rc=1  (5 failed / 1558 passed)",
+   "[pyt] tag=fs-g2-head-01 start=2026-10-09 20:02:18 end=2026-10-09 20:03:43 elapsed=85s bound=1200s status=OK rc=0  (561 passed, 2 skipped)",
+   "[pyt] tag=fs-g2-head-02 start=2026-10-09 20:03:49 end=2026-10-09 20:04:20 elapsed=30s bound=1200s status=OK rc=0  (223 passed)",
+   "[pyt] tag=fs-g2-head-03 start=2026-10-09 20:04:20 end=2026-10-09 20:04:58 elapsed=38s bound=1200s status=OK rc=0  (425 passed, 1 skipped)",
+   "[pyt] tag=fs-g2-head-04 start=2026-10-09 20:05:06 end=2026-10-09 20:07:42 elapsed=157s bound=1200s status=FAIL rc=1  (1 failed = T12 / 1375 passed)",
+   "[pyt] tag=fs-g2-base-00 start=2026-10-09 20:07:42 end=2026-10-09 20:08:45 elapsed=63s bound=1200s status=FAIL rc=1  (5 failed / 1547 passed; same 5 as head-00)",
+   "[pyt] tag=fs-g2-ratchet start=2026-10-09 20:09:20 end=2026-10-09 20:09:33 elapsed=12s bound=1200s status=FAIL rc=1  (unit files with QAREN_NETGUARD_REPORT; only failure T12)",
+   "[pyt] tag=fs-g2-probe2 start=2026-10-09 20:16:33 end=2026-10-09 20:16:39 elapsed=6s bound=600s status=OK rc=0  (probe_entries.py: 5 passed)",
+   "[pyt] tag=fs-g2-probe3 start=2026-10-09 20:18:02 end=2026-10-09 20:18:08 elapsed=6s bound=600s status=OK rc=0  (probe_entries.py: 6 passed)",
+   "[pyt] tag=fs-g2-probe4 start=2026-10-09 20:19:01 end=2026-10-09 20:19:05 elapsed=4s bound=600s status=OK rc=0  (probe_t6_t12.py: 3 passed)",
+   "[pyt] tag=fs-g2-final1 start=2026-10-09 20:20:50 end=2026-10-09 20:20:55 elapsed=5s bound=600s status=FAIL rc=1  (post-mutation gate 1: 2 failed / 58 passed; T6, T12)",
+   "[pyt] tag=fs-g2-final2 start=2026-10-09 20:20:55 end=2026-10-09 20:21:05 elapsed=10s bound=1200s status=OK rc=0  (post-mutation gate 2: 361 passed)",
+   "[pyt] tag=fs-g2-final-probes start=2026-10-09 20:21:05 end=2026-10-09 20:21:12 elapsed=7s bound=600s status=OK rc=0  (both probe files: 9 passed)"
+  ],
+  "mutants": [
+   "M01 app/utils/executor.py:34 _DEFAULT_MAX_WORKERS 96->40 | killed by tests/test_s75_fanout_starve.py::test_T1_executor_default_is_96[unset] (+5 params) and ::test_T2_install_log_names_96 | restore sha256 ok",
+   "M02 app/utils/executor.py:65 `_INSTALLED_POOL = executor` deleted | killed by ::test_T13_health_carries_adapter_executor_and_brightdata_auth_after_a_401 and tests/test_retro_w0_4_efg.py::test_w04g_health_has_no_price_parse_pool_key_before_the_pool_exists | restore ok",
+   "M03 Procfile:1 env prefix dropped (Procfile only) | killed by ::test_T3_start_command_carries_the_uv_threadpool_env_prefix[Procfile-_procfile_command], ::test_T3_pin_start_commands_are_byte_identical, tests/test_shutdown_drain.py::test_both_start_commands_begin_with_exec[Procfile-_procfile_web_command] | restore ok",
+   "M26 railway.json:7 env prefix dropped (railway.json only) | killed by ::test_T3_start_command_carries_the_uv_threadpool_env_prefix[railway.json-_railway_command], ::test_T3_pin_start_commands_are_byte_identical, test_shutdown_drain.py::test_both_start_commands_begin_with_exec[railway.json-_railway_start_command] | restore ok",
+   "M04 app/main.py:192 [loop] startup handler never registered | killed by probe_t6_t12.py::test_probe_T6_with_app_main_imported_at_collection (the RED T6 is red in a solo run anyway: test defect) | restore ok",
+   "M46 app/main.py:199 uvloop expression -> True | killed by probe test_probe_T6_with_app_main_imported_at_collection | restore ok",
+   "M47 app/main.py:200 UV value -> constant 'unset' | killed by probe test_probe_T6_reports_the_env_value_when_set | restore ok",
+   "M05 app/services/serper_service.py:407 connect default 8.0->3.0 | killed by ::test_T11_serper_connect_default_is_8 and tests/test_serper_fail_fast.py::test_serper_timeout_flag_on_split | restore ok",
+   "M06 app/services/brightdata_service.py:75 once-per-status latch removed (ERROR on every 401) | killed by probe test_probe_T12_with_a_fixed_helper | restore ok",
+   "M07 app/services/brightdata_service.py:176 401 WARNING keeps resp.text | killed by probe test_probe_T12_with_a_fixed_helper | restore ok",
+   "M08 app/services/brightdata_service.py:71 _AUTH_LAST never written | killed by ::test_T13_health_carries_adapter_executor_and_brightdata_auth_after_a_401 | restore ok",
+   "M27 brightdata_service.py:80 ERROR no longer names BRIGHTDATA_API_KEY | killed by probe test_probe_T12_with_a_fixed_helper | restore ok",
+   "M28 brightdata_service.py:77 latch adds 401 instead of status (403 ERRORs twice) | killed by probe test_probe_T12_with_a_fixed_helper | restore ok",
+   "M29 brightdata_service.py:171 403 not an auth rejection | killed by probe test_probe_T12_with_a_fixed_helper | restore ok",
+   "M48 brightdata_service.py:65 reset seam leaves _AUTH_LAST | killed by ::test_T13_health_carries_adapter_executor_and_brightdata_auth_after_a_401 | restore ok",
+   "M49 brightdata_service.py:73 'at' not ISO-UTC | killed by ::test_T13_health_carries_adapter_executor_and_brightdata_auth_after_a_401 | restore ok",
+   "M24 app/main.py:600 **brightdata_auth_health_snapshot() spread removed | killed by ::test_T13_health_carries_adapter_executor_and_brightdata_auth_after_a_401 | restore ok",
+   "M50 app/main.py:599 **adapter_executor_snapshot() spread removed | killed by ::test_T13_... and test_retro_w0_4_efg.py::test_w04g_health_has_no_price_parse_pool_key_before_the_pool_exists | restore ok",
+   "M25 app/utils/executor.py:81 queued -> -1 | killed by ::test_T13_health_carries_adapter_executor_and_brightdata_auth_after_a_401 | restore ok",
+   "M09 structured_comparison_service.py:3705 pre-split runs with ENABLE_PARSE_PRESPLIT OFF | killed by ::test_T17_presplit_falls_through_to_the_llm_parse[off] | restore ok",
+   "M10 scs:3711 pre-split makes the LLM call anyway | killed by ::test_T17_presplit_on_builds_the_explicit_shape_without_the_llm (+REST, +stream) | restore ok",
+   "M11 scs:4048 parser_path True on the REST pre-split path | killed by ::test_T17_presplit_rest_entry_parser_path_false_and_metadata | restore ok",
+   "M11b scs:4674 parser_path True on the stream pre-split path | killed by ::test_T17_presplit_stream_entry_takes_the_same_path | restore ok",
+   "M12 scs:3719 stall guard without the deterministic fallback | killed by ::test_T14_stall_guard_on_falls_back_to_the_explicit_shape | restore ok",
+   "M13 scs:3728 stall-guard OFF branch reads the knob (wait_for) | killed by ::test_T14_stall_guard_off_awaits_the_parse_to_completion | restore ok",
+   "M30 scs:3726 no-vs stall fallback carries 2 products | killed by ::test_T14_stall_guard_on_without_vs_keeps_the_parse_failure_shape | restore ok",
+   "M34 scs:1785 split regex case-sensitive | killed by ::test_T14_stall_guard_on_falls_back_to_the_explicit_shape | restore ok",
+   "M22 scs:1765 knob accepts nan/inf | killed by ::test_T14_parse_timeout_knob_hygiene[nan|inf], ::test_T16_unified_timeout_knob_hygiene[nan|inf], ::test_T18_phase2_residual_knob_hygiene[nan|inf] | restore ok",
+   "M23 scs:3731 [STAGE] text drifts | killed by ::test_T15_stage_parse_line_in_both_flag_states[off|on] | restore ok",
+   "M14 scs:5606 D5 timeout hands None instead of {organic: []} | killed by ::test_T16_unified_bound_on_hands_the_empty_payload_once | restore ok",
+   "M20 scs:5587 D5 flag gate -> True | killed by ::test_T16_unified_bound_off_awaits_search_web_bare | restore ok",
+   "M15 scs:5887 Phase-2 guard reads _compare_deadline with the flag OFF | killed by ::test_T18_phase2_residual_guard[off] | restore ok",
+   "M16 scs:5892 guard skips at a 100 s residual | killed by ::test_T18_phase2_residual_guard[runs] | restore ok",
+   "M21 scs:3661 _build_partial_response never calls _stamp_unit_metadata | killed by ::test_T17_presplit_rest_entry_parser_path_false_and_metadata and ::test_T18_phase2_residual_guard[skip] | restore ok",
+   "M31 scs:1825 _parse_marks ignores _parse_presplit | killed by ::test_T17_presplit_rest_entry_... and ::test_T17_presplit_stream_entry_takes_the_same_path | restore ok",
+   "M38 scs:4026 REST marks never reach the partial ctx | killed by ::test_T17_presplit_rest_entry_parser_path_false_and_metadata | restore ok",
+   "M32 scs:4024 REST call site tracks GPT cost on the pre-split path | SURVIVED every RED node -> M32b killed by probe_entries.py::test_probe_rest_entry_cost_and_deadline[on] | restore ok",
+   "M33 scs:3906 REST entry never records _compare_deadline | SURVIVED every RED node -> M33b killed by probe_entries.py::test_probe_rest_entry_cost_and_deadline[on|off] | restore ok",
+   "M35 scs:4510 stream entry never records _compare_deadline | killed by probe test_probe_stream_entry_cost_and_deadline[on|off] | restore ok",
+   "M36 scs:4651 stream call site tracks GPT cost on the pre-split path | killed by probe test_probe_stream_entry_cost_and_deadline[on] | restore ok",
+   "M37 scs:3906 REST never resets _phase2_skipped | killed by probe test_probe_rest_entry_resets_phase2_skipped | restore ok",
+   "M39 scs:4697 stream ctx drops **_parse_marks(parsed) | killed by probe test_probe_stream_partial_carries_the_presplit_mark_and_resets_phase2 | restore ok",
+   "M40 scs:4510 stream never resets _phase2_skipped | killed by probe test_probe_stream_partial_carries_the_presplit_mark_and_resets_phase2 | restore ok",
+   "M17 scripts/verify_after_credits.py:393 --form default None->'both' | killed by tests/test_be_harness.py::test_BH53_no_form_flag_is_todays_run | restore ok",
+   "M18 verify_after_credits.py:352 suffix only in pair mode (omitted in both) | killed by ::test_BH54_form_both_all_pass_result_line_carries_zero_counts | restore ok",
+   "M19 verify_after_credits.py:340 pair rows excluded from the exit | killed by ::test_BH50_pair_failures_drive_the_exit | restore ok",
+   "M41 verify_after_credits.py:459 row['form'] never set | killed by ::test_BH45_form_both_runs_every_pair_in_both_forms and ::test_BH47_report_rows_carry_the_form_field | restore ok",
+   "M42 verify_after_credits.py:448 label without [form] | killed by ::test_BH45_form_both_runs_every_pair_in_both_forms | restore ok",
+   "M44 verify_after_credits.py:438 --form ignored | killed by ::test_BH45_... and ::test_BH46_form_single_runs_only_that_form[pair] | restore ok",
+   "R1 (red-first) scripts/verify_after_credits.py replaced by its base 4c0f3c99 bytes | ::test_BH54_form_both_all_pass_result_line_carries_zero_counts RED, ::test_BH53_no_form_flag_is_todays_run GREEN (GUARD) | restore ok",
+   "R2 (FG-5 red-first) tests/test_retro_w0_4_efg.py:1571 the ORIGINAL exact key-set pin restored on the GREEN production bytes | ::test_w04g_health_survives_a_raising_pool_stats_fn RED x5 params | restore ok",
+   "run_canary.sh case fix (not pytest): case_proof.py on the real bytes -> 'RESULT: PASS q_fail=0 pair_fail=0' = PASS; the inherited exact pattern (a byte copy in the notes folder, worktree untouched) -> FAIL",
+   "Final: all 16 changed files sha256sum -c OK against pre_mutation_SHA256SUMS.txt; .qa-mutation.lock released (both windows)."
+  ],
+  "ratchet": "Report: <notes>/g2_netguard_report.json, built by setting QAREN_NETGUARD_REPORT on the bounded run of the unit files (test_s75_fanout_starve.py, test_shutdown_drain.py, test_retro_w0_4_efg.py, test_serper_fail_fast.py, test_be_harness.py; [pyt] tag=fs-g2-ratchet, whose only failure is T12). The report shows {blocked 0, nodes {}, classes {}}. `python scripts/netguard_ratchet.py <report> tests/.network_attempt_baseline.txt` returned rc=0 with \"[netguard-ratchet] OK: 0 attempting node(s), baseline 205\". The only other output was shrink lines for baseline nodes that are not in this subset. No new node attempted the network, so nothing needed stubbing; T6 and T13 drive the real lifespan with no egress. The baseline was not regenerated. Gate 3 printed six egress/sentinel lines, from test_openai_breaker and test_retro_w1_3. I grep-confirmed three of those node ids in tests/.network_attempt_baseline.txt; the other three were not grepped one by one.",
+  "comm_gate": "- **File set:** the FG-8 grep -lF union over tests/ for app.utils.executor | serper_service | brightdata_service | app.main | /health | _fetch_product_data( | parse_product_query | compare_from_text( | compare_from_text_streaming(, keeping test_*.py only, in LC_ALL=C (CI) order. That gives 152 files. They exceed 120, so the first 120 ran in 5 chunks of 24 (bound 1200 each).\n- **HEAD results:**\n  - chunk 00: 5 failed / 1558 passed\n  - chunk 01: 0 / 561\n  - chunk 02: 0 / 223\n  - chunk 03: 0 / 425\n  - chunk 04: 1 / 1375\n- **Base results** (detached scratch worktree at 4c0f3c99, no node_modules, removed afterwards): chunk 00 = 5 failed / 1547 passed. The failures are the same five nodes: test_auth_interceptor x2 and camera_vision x3, all listed in tests/.pre_impl_failures.txt. comm -13 of chunk 00 is EMPTY.\n- **Base runs skipped:** chunks 01-03 failed nothing at HEAD, so they cannot contain a NEW failure. Chunk 04's only HEAD failure is in a HEAD-only file.\n- **branch-only-NEW:** exactly ONE node, tests/test_s75_fanout_starve.py::test_T12_brightdata_401_is_one_error_event_without_secrets. It is the RED-file defect described in the summary (the _bd_client helper), not a production regression; the probe with the helper corrected is green. T6 PASSED in CI order (chunk 04).\n- **NOT MEASURED (32 files):** test_serper_budget_gate, test_serper_fail_fast*, test_serper_gcc_fallback, test_serper_multikey_failover, test_serper_record_usage, test_settle_window_orchestration, test_share_routes, test_shutdown_drain*, test_singleton_state, test_smart_fallback, test_social_login_device_fingerprint, test_social_login_smoke, test_specs_refill_no_fabrication, test_sse_settle_window, test_stage_timings, test_start_command*, test_streaming, test_supabase_client_reuse, test_text_error_envelope_no_raw_exception, test_text_routes_error_mapping, test_tier2_spec_fallback, test_timeout_partial_integration*, test_two_input_shape, test_u13e_url_detect_guard, test_url_validator_offloop, test_version_routes, test_w49_extraction_catch_redaction, test_w4_12_display_contract, test_w4_13_measurement_truth, test_w4_7_confidence_single_computation, test_w4_7_factcheck_shopping_key, test_winner_prose_reconciliation. The four marked * did run, green, in gates 2/3.\n- **Scope limit:** FG-8's grep does not name structured_comparison_service. Test files that reference scs without calling those functions are therefore outside the set.",
+  "diff_stat": "`git diff --stat`:\n- Procfile | 2 +-\n- app/main.py | 48 ++++\n- app/services/brightdata_service.py | 48 +++-\n- app/services/serper_service.py | 20 +-\n- app/services/structured_comparison_service.py | 261 ++++++++++++++++++++-\n- app/utils/executor.py | 39 ++-\n- .../APP_STORE_LAUNCH_RUNBOOK.md | 3 +-\n- .../canary/run_canary.sh | 7 +-\n- railway.json | 2 +-\n- scripts/verify_after_credits.py | 96 ++++++--\n- tests/test_be_harness.py | 216 +++++++++++++++++\n- tests/test_retro_w0_4_efg.py | 38 ++-\n- tests/test_serper_fail_fast.py | 2 +-\n- tests/test_shutdown_drain.py | 31 ++-\n\nTotal: 14 files changed, 755 insertions(+), 58 deletions(-). This is identical to `git diff --stat --ignore-cr-at-eol`, so there is no whole-file diff. Two new untracked files are not counted: docs/runbooks/brightdata-token-renewal.md (2820 bytes) and tests/test_s75_fanout_starve.py (46900 bytes); both are pure ASCII and LF.",
+  "git_status_final": "```\n M Procfile\n M app/main.py\n M app/services/brightdata_service.py\n M app/services/serper_service.py\n M app/services/structured_comparison_service.py\n M app/utils/executor.py\n M docs/investigations/2026-09-29-session-69-state/APP_STORE_LAUNCH_RUNBOOK.md\n M docs/investigations/2026-10-08-session-74-state/canary/run_canary.sh\n M railway.json\n M scripts/verify_after_credits.py\n M tests/test_be_harness.py\n M tests/test_retro_w0_4_efg.py\n M tests/test_serper_fail_fast.py\n M tests/test_shutdown_drain.py\n?? docs/runbooks/brightdata-token-renewal.md\n?? tests/test_s75_fanout_starve.py\n```\nHEAD is 4c0f3c99 on feature/s75-fanout-starve. No .qa-mutation.lock remains. The base scratch worktree is deregistered.",
+  "gitleaks": "gitleaks 8.30.1, run as `gitleaks dir <file> --config .gitleaks.toml --redact --no-color` on all 16 changed files. Every file returned rc=0, \"no leaks found\" and 0 ERR lines. run_canary.sh was re-scanned after the case fix: no leaks. An added-line check (diffcheck.py) found 0 non-ASCII added lines and 0 lines matching \\bsk-[A-Za-z0-9_-]{20,}. The new runbook and the new test file each have 0 bytes >127, 0 CR and 0 sk-shaped strings.",
+  "lint": "py_compile OK and `ruff check --select E9,F63,F7,F82 --no-cache` reported \"All checks passed!\" (rc 0) on the 11 changed .py files: app/main.py, brightdata_service, serper_service, structured_comparison_service, executor, scripts/verify_after_credits.py, test_be_harness, test_retro_w0_4_efg, test_serper_fail_fast, test_shutdown_drain, test_s75_fanout_starve. run_canary.sh passes `bash -n` in its LF form. `git ls-files --eol` shows i/lf w/crlf for every tracked changed file, including Procfile, railway.json, the runbook and run_canary.sh; all edits went through the Edit tool, which preserved CRLF.",
+  "start_command_proof": "startcmd_proof.py read both start commands. railway.json deploy.startCommand (JSON-decoded) and Procfile web: are byte_equal=True:\n\n`exec env UV_THREADPOOL_SIZE=\"${UV_THREADPOOL_SIZE:-64}\" uvicorn app.main:app --host 0.0.0.0 --port $PORT --timeout-graceful-shutdown 20 --limit-concurrency \"${UVICORN_LIMIT_CONCURRENCY:-512}\"`\n\nEach command ran through `sh -c` (/usr/bin/sh, coreutils /usr/bin/env) with PORT=8123 and a fake `uvicorn` (notes/fakebin2/uvicorn) first on PATH; the fake prints its argv and the variable. Both files gave the same result:\n- UV unset: rc=0, argc=9 [app.main:app] [--host] [0.0.0.0] [--port] [8123] [--timeout-graceful-shutdown] [20] [--limit-concurrency] [512], UV_THREADPOOL_SIZE=[64]\n- UV='32': same argv, UV_THREADPOOL_SIZE=[32]\n- UV='': same argv, UV_THREADPOOL_SIZE=[64]\n\nThe base 4c0f3c99 command (`exec uvicorn ...`) gives the identical 9-token argv with UV_THREADPOOL_SIZE=[<unset>]. So the quoting holds, the env override wins, and an empty value falls back to 64. Full output: notes/startcmd_proof.txt.",
+  "not_measured": [
+   "Comm set: 32 of 152 files not run in the comm gate (listed in comm_gate; 4 of them ran green in gates 2/3).",
+   "Comm base runs for chunks 01-04 were skipped: HEAD chunks 01-03 had no failures, and chunk 04's only failure is in a HEAD-only file.",
+   "Unproven by any node or probe: `_stamp_unit_metadata` on the REST SUCCESS body (scs ~4372) and on the stream FULL complete payload (scs ~5206). Driving them needs a full successful pipeline. The partial-path call sites are proven (M21, M39).",
+   "Unproven: verify_after_credits `_split_pair` returning None plus the `parser.error` for an unsplittable pair under --form pair|both. Defensive `except` branches in main._module_snapshot and executor.executor_snapshot.",
+   "The uvloop=True branch of the [loop] line and libuv's actual pool size cannot be measured here (uvloop is absent on the pinned venv). Proof is the first-deploy boot line.",
+   "Whether the Nixpacks image has coreutils `env` on PATH (Q2) is unverified. Only Git Bash `env` was measured.",
+   "T6 and T12 as written cannot pass a solo run of the unit file (RED test defects). Their production contract is proven only through the notes-folder probes.",
+   "The runbook text and the new brightdata runbook: content checked against CLAUDE.md:341 (zone serp_api1, budget gate since 2026-09-24, `railway redeploy -s price-warmer`) and api_budget_service.py:603. No live verification."
+  ],
+  "stated_limits": [
+   "Flag-OFF byte identity holds for every response byte. Correction to FG-10: there are FOUR new flags, not three: ENABLE_PARSE_PRESPLIT, ENABLE_PARSE_BUDGET (stall guard, knob PARSE_TIMEOUT_SECONDS 8.0), ENABLE_UNIFIED_SEARCH_BOUND (knob UNIFIED_SEARCH_TIMEOUT_SECONDS 12.0) and ENABLE_PHASE2_RESIDUAL_GUARD (knob PHASE2_MIN_RESIDUAL_SECONDS 8.0). All default OFF and are read per call. One adversarial exception, not closed (question 3): an LLM parse whose JSON itself carries `_parse_presplit` or `_parse_fallback` = true is honoured as a mark even with the flags OFF.",
+   "The unflagged changes are configuration truth plus logging/observability:\n- executor default 40 -> 96;\n- Serper fail-fast connect default 3.0 -> 8.0;\n- start-command `env UV_THREADPOOL_SIZE=\"${UV_THREADPOOL_SIZE:-64}\"` prefix;\n- one `[loop] class=... uvloop=... UV_THREADPOOL_SIZE=...` INFO at startup;\n- one `[STAGE] parse done elapsed_ms=<int> mode=llm|presplit|fallback` INFO per q-form parse (none on the explicit or vision paths);\n- Bright Data: one ERROR per process per status (401/403) naming BRIGHTDATA_API_KEY, which becomes one Sentry event; the 401/403 WARNING body is withheld;\n- /health gains `adapter_executor` {workers, queued} on every process that installed the pool, and `brightdata_auth` {last_status, at} only after a 401/403. The endpoint is public, so this exposure is deliberate (n6).",
+   "The libuv pool size takes effect only through the start command. It is proven by the boot line on the first deploy. If coreutils `env` were missing from the image, the Railway healthcheck gate would keep the previous deployment; rollback is the one-line revert.",
+   "price-warmer (FS-R9): D1 has no effect there (no install_default_executor on that service). D4 reaches the warmer only when its cron runs; ENABLE_PRICE_CACHE_WARMER=false comes from the dated CLAUDE.md state and is an assumption, not a measurement. D6's 'once per process' means once per warmer run.",
+   "Under ENABLE_PARSE_PRESPLIT, q-form compares take the app shape: brand \"\", keyword category, parser_path False (so A2b may escalate), no parse LLM call and no parse cost. Under ENABLE_PARSE_BUDGET, the timeout fallback loses the LLM identity, and a query with no ' vs ' ships today's parse-failure body.",
+   "Under ENABLE_PHASE2_RESIDUAL_GUARD, a product within PHASE2_MIN_RESIDUAL_SECONDS of the compare deadline loses its verified rating and the smart-fallback refill. metadata.phase2_skipped is per compare: true if either product skipped. The REST deadline is recorded a few microseconds after the outer wait_for was armed.",
+   "Under ENABLE_UNIFIED_SEARCH_BOUND, a timed-out product's specs are extracted from an empty context and its reviews from none. Its Serper call is still counted in cost (it was sent). D4 widens the unbounded unified search from 27 s to 32 s worst case with the flag OFF.",
+   "The canary's --form default stays q, byte-identical to today. run_canary.sh passes --form both; its fallback RESULT classification now accepts the suffixed PASS line. In pair and both mode the RESULT line always carries ' q_fail=<n> pair_fail=<n>'. run_canary.sh points at sc-docs-70's copy of verify_after_credits.py, which must be at or after this unit's merge, or --form is an argparse usage error.",
+   "FANOUT-BOUND (D3, M8, m2, m5) is the deferred follow-up. The owner's W0-1 call (ENABLE_OFFLOOP_DNS_RESOLVE) stands.",
+   "The RED file as committed has two test defects (T6 order-dependent; T12 fails in every order). Production satisfies both contracts (probe_t6_t12.py), but CI backend-tests stays red on T12 until the RED helper is amended."
+  ],
+  "questions_for_orchestrator": [
+   "1 (BLOCKING CI). T12's helper `_bd_client` (test_s75_fanout_starve.py:184-198) re-reads `httpx.AsyncClient` on every call. From the second call that attribute is the previous factory, so the 403/402 legs get 401. Proposed one-hunk RED amendment: capture `_REAL_ASYNC_CLIENT = httpx.AsyncClient` once at module import and use it inside `factory`. notes/probe_t6_t12.py::test_probe_T12_with_a_fixed_helper is exactly that change, and it is green on the GREEN bytes. Do you rule the amendment, and who writes it?",
+   "2. T6 (test_s75_fanout_starve.py:390-410) imports app.main inside the node. configure_logging()'s `root_logger.handlers.clear()` then removes caplog's handler, so a solo run captures nothing; in CI order it passes. Proposed amendment: import app.main at module scope (after the OPENAI_API_KEY setdefault), or re-attach `caplog.handler` to the root logger after the import. The probe shows the module-scope fix is green.",
+   "3. `_parse_marks` (scs ~1818) trusts keys in the LLM parse dict. With every flag OFF, a parse JSON carrying `\"_parse_presplit\": true` would set parser_path False, skip that parse's cost tracking, and add `metadata.parse_presplit` (a response byte). Proposed fix: honour each mark only when its own flag is ON (or strip the two keys from LLM results in `_parse_with_budget`), plus one node. I did not implement it: no existing RED node can kill its mutant, and BH53/BH54 are the only nodes I may add. Rule it for the fix round?",
+   "4. Six notes-folder probe nodes (probe_entries.py) kill mutants that no RED node reaches:\n- REST and stream `_compare_deadline` recording;\n- the call-site `_track_gpt_cost` skip on pre-split (REST and stream);\n- the per-run `_phase2_skipped` resets;\n- the stream ctx marks.\nOne more (probe_t6_t12.py) covers the UV value branch of the [loop] line. Should they be promoted into tests/test_s75_fanout_starve.py as repo nodes (adversary-reviewed)?",
+   "5. Two production lines remain without any killing node: `_stamp_unit_metadata` on the REST success body and on the stream full complete payload. A full-pipeline node is needed. Accept as a stated limit, or schedule a node?",
+   "6. APP_STORE_LAUNCH_RUNBOOK A1 step 8 still says 'three uncached compares'. The recipe now passes --form both, which runs six compare rows plus the probe and the stream. The added form-rule bullet explains it, but should that sentence be reworded in the same PR?"
+  ]
+ },
+ "adversary:fanout-eng": {
+  "verdict": "NOT READY TO MERGE: 2 blocking, 4 major, 3 minor, 5 notes. The production diff is sound at flag OFF for normal model output. Two things block. First, T12 fails in every order, so CI backend-tests goes red. Second, the parse marks are read from the LLM's own JSON, so a response byte can change with every flag OFF. Two more nodes are order-dependent: T6 (already known) and T13 (new). GREEN's T13-attributed kills M08, M24 and M49 were therefore spurious; I re-proved all three. All 16 files are sha-identical at the start and the end. Every mutant was restored and its sha256 matched.",
+  "findings": [
+   {
+    "id": "ENG-B1",
+    "severity": "blocking",
+    "title": "T12 is red in every order (CI backend-tests red), and because of it no working repo node protects the Bright Data log hygiene",
+    "evidence": "adv-g1: tests/test_s75_fanout_starve.py::test_T12 FAILED at :484. The 403 leg is answered 401, so there is 1 ERROR record, not 2. adv-comm-04 (CI order): T12 is the only failure (1 failed / 1375 passed). Root cause: _bd_client (test_s75:185-198) reads httpx.AsyncClient on every call. After the first monkeypatch that attribute is the previous factory, which ignores the new transport. Blast radius: T12 is red with or without a mutant, so it kills nothing. The Bright Data mutants are killed only by notes-folder probes. Mine: B01 (latch keyed on 'any status': a 403 after a 401 is silent), B02 (_AUTH_LAST written only on a status's first rejection), B03 (402 treated as an auth rejection), B04 (zone in the ERROR message). GREEN's: M06, M07, M27, M28, M29. With the helper fixed (GREEN probe_t6_t12.py, re-run as adv-gprobes: 3 passed), B03 and B04 are killed. B01 and B02 are killed by adv_probe.py::test_adv_bd_one_error_per_status and ::test_adv_bd_snapshot_tracks_the_latest_auth_status.",
+    "fix": "One RED hunk: capture _REAL_ASYNC_CLIENT = httpx.AsyncClient at module scope and use it inside factory (GREEN Q1). Then promote two nodes into the repo: test_adv_bd_one_error_per_status (401,401,403,403 gives exactly 2 ERRORs, status=401 then status=403) and test_adv_bd_snapshot_tracks_the_latest_auth_status (401,403,401,402 gives last_status 401,403,401,401)."
+   },
+   {
+    "id": "ENG-B2",
+    "severity": "blocking",
+    "title": "Flag-OFF response byte moves: _parse_marks honours _parse_presplit / _parse_fallback keys that come from the LLM's own JSON",
+    "evidence": "parse_product_query returns json.loads(model output) unfiltered (extraction_service.py:1548). _parse_marks (scs ~1818) reads the two keys from any dict, and both entries feed it the LLM result. adv_defects.py ran with every new flag OFF and an LLM stub returning LLM_PARSED plus one key. Result: 2 FAILED (adv-defects0). The partial carries metadata.parse_presplit=true (or parse_fallback=true). The same path flips parser_path to False (A2b escalation) and skips _track_gpt_cost (the parse goes unmetered). The trigger needs the model to emit an underscore key (a user prompt injection or a hallucination), so the practical impact is low. It still breaks FG-10's 'every response byte' claim, which is the rubric's blocking class. GREEN disclosed this as Q3 but left it open.",
+    "fix": "In _parse_with_budget, on both LLM branches (the bare await and the wait_for), return a copy of the LLM dict without '_parse_presplit' and '_parse_fallback', so that only the presplit and fallback builders can set the marks. This keeps the FG-4 contract, and T14/T17 stay green. Promote adv_defects.py::test_defect_flags_off_llm_supplied_mark_is_not_honoured[both] as a repo node, red first on the current bytes. Add the stream twin."
+   },
+   {
+    "id": "ENG-M1",
+    "severity": "major",
+    "title": "T13 fails SOLO on the GREEN bytes (new; order-dependent like T6), so GREEN's M08 / M24 / M49 kills were spurious",
+    "evidence": "adv-t13-solo (-k T13, unmutated bytes): FAILED at :524 'brightdata_auth' in body. adv-t12t13 fails the same way. The mechanism: T13 imports app.main inside the node, after the bd_env fixture has set BRIGHTDATA_API_KEY. app/main.py:11 load_dotenv(override=True) then fires the dotenv guard (tests/conftest.py:16-29, install_dotenv_guard), which re-neutralizes credentials. The key is deleted, so bd_search_web returns before any HTTP call and no 401 is recorded; the stdout shows no [brightdata] line at all. T13 passes in file order (T6 imports app.main first) and in CI order (adv-comm-04). GREEN's mutant logs fs-mut-M08, M24 and M49 show the identical :524 failure, so those kills prove nothing. I re-proved them with adv_probe_t13.py, which imports app.main at collection: D08 snapshot never written, D24 /health spread removed and D49 'at' not ISO-UTC were all KILLED (adv-mut-D08-1, D24-1, D49-1). The probe is green unmutated (adv-t13probe0).",
+    "fix": "Import app.main at module scope in tests/test_s75_fanout_starve.py, after the OPENAI_API_KEY setdefault. This is GREEN's Q2 option (a), and it fixes T6 AND T13. Option (b), re-attaching caplog.handler, fixes T6 only. Then re-run GREEN's M08, M24 and M49 against the amended T13 alone."
+   },
+   {
+    "id": "ENG-M2",
+    "severity": "major",
+    "title": "T6 is non-hermetic: it fails in a solo run (confirmed)",
+    "evidence": "adv-t6-solo and adv-g1 both fail at :405 with 'INFO lines seen: []'. configure_logging() clears the root handlers, and caplog's handler goes with them. T6 passes in CI order (adv-comm-04) and in adv-ratchet, where an earlier collected file imported app.main. The production line itself is proven: the [loop] line appears in T13's stdout and GREEN's probe_t6_t12 passes (adv-gprobes).",
+    "fix": "The same module-scope import as ENG-M1."
+   },
+   {
+    "id": "ENG-M3",
+    "severity": "major",
+    "title": "No repo node pins that a compare response has NO parse_presplit / parse_fallback key with the flags OFF",
+    "evidence": "Mutant C09 (structured_comparison_service.py:3676): _stamp_unit_metadata writes metadata[key] = ctx.get(key) is True, which puts both keys (False) on EVERY response with the flags OFF. Run against the RED file plus test_partial_response_no_fabricated_scores, test_compare_timeout_graceful, test_timeout_partial_integration and test_partial_specs_stash_on_price_timeout, it SURVIVED: 193 passed, and the only failure is the pre-existing T12 (adv-mut-C09-0). It is killed by adv_probe.py::test_adv_flags_off_rest_partial_has_no_unit_keys (adv-mut-C09-1). T18[off] pins only the phase2_skipped absence.",
+    "fix": "Promote test_adv_flags_off_rest_partial_has_no_unit_keys, which checks through compare_from_text that the three keys are absent and parser_path is True. Add the stream twin."
+   },
+   {
+    "id": "ENG-M4",
+    "severity": "major",
+    "title": "The stall-guard fallback contract at the entry, and the REST deadline clock, have no RED node",
+    "evidence": "C05 (scs:1827) drops the parse_fallback mark. The effect is parser_path True, no metadata.parse_fallback, and the cost path taken on the fallback. It SURVIVED T14 and T17 (17 passed) and is killed by adv_probe::test_adv_fallback_rest_entry_parser_path_false_and_metadata. C08b (scs:3906) has the REST entry record _compare_deadline on time.time(), so the guard never fires. It SURVIVED T17 and T18 and is killed by adv_probe::test_adv_rest_deadline_on_the_monotonic_clock. FG-9 pins parser_path only on the pre-split path.",
+    "fix": "Promote both probe nodes, together with GREEN's probe_entries.py (GREEN Q4; it re-ran 6 passed as adv-gprobes2)."
+   },
+   {
+    "id": "ENG-m1",
+    "severity": "minor",
+    "title": "The pre-split rule edges are unpinned: first-vs, spaced-vs, and a half that sanitizes to empty",
+    "evidence": "Each survived RED -k 'T14 or T17' (17 passed) and was killed by adv_probe: C02 split on the LAST ' vs ' (scs:1792), killed by test_adv_presplit_splits_on_the_first_vs; C03 regex \\s*vs\\.?\\s* (scs:1785), killed by test_adv_presplit_needs_a_spaced_vs[nospace|vsdot]; C04 the sanitize-empty check removed (scs:1799), killed by test_adv_presplit_half_that_sanitizes_to_empty_falls_through. These only matter with the flag ON.",
+    "fix": "Promote the three probe nodes into T17."
+   },
+   {
+    "id": "ENG-m2",
+    "severity": "minor",
+    "title": "Executor: a stale pool after a second install is unpinned, and the w04g first pin leaks a shut-down pool into the module global",
+    "evidence": "A01 (executor.py:65, _INSTALLED_POOL = _INSTALLED_POOL or executor) SURVIVED T13, T2 and w04g_health (10 passed). It is killed by adv_probe::test_adv_executor_second_install_updates_the_snapshot. The retro first pin (test_retro_w0_4_efg.py:1505-1510) installs on a throwaway loop and closes it. That leaves _INSTALLED_POOL pointing at a shut-down pool for the rest of the session: queued then reads 1, which is shutdown()'s wake-up sentinel (measured in adv-probe0).",
+    "fix": "Promote the probe node. In the retro pin, monkeypatch.setattr(executor, '_INSTALLED_POOL', None) before the install, so the global is restored afterwards."
+   },
+   {
+    "id": "ENG-m3",
+    "severity": "minor",
+    "title": "FG-2's '--form q line is byte-identical' is unpinned, and the BH45-52 comment block is stale",
+    "evidence": "C12 (verify_after_credits.py:352) appends the suffix in q mode too. It SURVIVED BH4x/BH5x (38 passed) and is killed by adv_probe::test_adv_form_q_result_line_is_todays ('RESULT: PASS q_fail=0 pair_fail=0' != 'RESULT: PASS'). The BH45-52 header comment still says the suffix is omitted when both counts are zero, which contradicts FG-2.",
+    "fix": "Add the --form q exact-line node. Correct the comment to FG-2's wording."
+   },
+   {
+    "id": "ENG-n1",
+    "severity": "note",
+    "title": "C06: a stall guard that catches every Exception is near-equivalent today",
+    "evidence": "except asyncio.TimeoutError -> except Exception (scs:3717) SURVIVED T14 and is killed by adv_probe::test_adv_stall_guard_lets_a_non_timeout_error_through. parse_product_query swallows every Exception itself (extraction_service.py:1550), so production behaviour is the same today.",
+    "fix": "Optional: promote the node."
+   },
+   {
+    "id": "ENG-n2",
+    "severity": "note",
+    "title": "Cost truth is asymmetric under the flags",
+    "evidence": "On a stall-guard timeout the OpenAI request was already dispatched (it is cancelled; guarded_llm_create records no breaker failure on CancelledError, api_budget_service.py:986), but usage={} so nothing is metered (ruled by n5). D5 does count the timed-out Serper call. Cancellation is clean: serper_service has no CancelledError or BaseException handler, and the review and specs consumers re-search only when given None (review_service get_reviews :35, scs _get_specs :31), so {'organic': []} triggers no extra search.",
+    "fix": "State the asymmetry in the PR body."
+   },
+   {
+    "id": "ENG-n3",
+    "severity": "note",
+    "title": "FS-R13 docstring wording",
+    "evidence": "m7 is present: 'inferred: a 3 s budget expired on queueing' in serper_service and 'counted: 15 hosts x 2 products' in the executor docstring. m8 is present: the ERROR reads 'every fallback call fails with %d until BRIGHTDATA_API_KEY is renewed (owner)'. The m6 wording ('47 call sites'; spec_spine 'on the compare path when ENABLE_SPEC_SPINE is on') appears in no changed file: D3 was deferred, so there is no code for it to sit in.",
+    "fix": "Carry m6 into the FANOUT-BOUND brief."
+   },
+   {
+    "id": "ENG-n4",
+    "severity": "note",
+    "title": "run_canary.sh fallback classifier and CRLF",
+    "evidence": "On Windows, a Python process writing to a pipe emits \\r\\n. The 'RESULT: PASS '* arm still matches the suffixed line the wrapper always produces (--form both). A bare 'RESULT: PASS\\r' would fall through to FAIL. That case predates this unit, and it applies only when the report has no exit field. Not measured.",
+    "fix": "Optional: strip \\r from $result before the case statement."
+   },
+   {
+    "id": "ENG-n5",
+    "severity": "note",
+    "title": "The new runbook puts the token on a shell command line",
+    "evidence": "docs/runbooks/brightdata-token-renewal.md step 2: `railway variables -s web --set BRIGHTDATA_API_KEY=<new token>` leaves the value in the shell history.",
+    "fix": "Add a history-safe entry: a leading-space command with HISTCONTROL=ignorespace, or read the value from stdin."
+   }
+  ],
+  "reproduced": [
+   "The 16 GREEN-report sha256 values match exactly (20:25 and 20:49).",
+   "git diff --stat equals --ignore-cr-at-eol: 14 files, +755/-58. Every tracked changed file, including Procfile, railway.json, the runbook and run_canary.sh, is i/lf w/crlf with CR count == LF count. The 2 new files are LF and pure ASCII.",
+   "0 non-ASCII added lines. The only credential-shape hit (sk-, AKIA, eyJ, scheme://user:pass@) in the added lines is the existing wrapper filter regex.",
+   "gitleaks 8.30.1 dir with .gitleaks.toml: no leaks on all 16 files. py_compile OK. ruff E9,F63,F7,F82: All checks passed!",
+   "Gate 1 (adv-g1): 2 failed / 58 passed, the failures being T6 and T12, as GREEN said.",
+   "Gate 2 plus tests/test_start_command.py (adv-g2): 369 passed. The start-command pins and test_shutdown_drain.py are all green.",
+   "Comm set recomputed: 152 files, identical to GREEN's g2_comm_tests.txt. Chunk 00 at HEAD: 5 failed / 1558 passed, the same 5 nodes, all in tests/.pre_impl_failures.txt (lines 79-83). Chunk 04 at HEAD: 1 failed (T12) / 1375 passed.",
+   "Netguard ratchet on a fresh report of the 5 unit files: blocked 0, nodes {}, classes {}. scripts/netguard_ratchet.py returned rc=0, '[netguard-ratchet] OK: 0 attempting node(s), baseline 205'. T6 and T13 drive the real lifespan; no node attempted egress.",
+   "Start command through /usr/bin/sh -c with a fake uvicorn first on PATH: railway.json == Procfile, and the argv (argc=9) is identical to base 4c0f3c99. UV unset -> 64, '32' -> 32, '' -> 64; base unset -> <unset>.",
+   "FG-5 red-first done independently (R2): the original exact pin on the GREEN bytes gives 5 failed in test_w04g_health_survives_a_raising_pool_stats_fn.",
+   "GREEN's probes re-run on the GREEN bytes: probe_t6_t12 3 passed, probe_entries 6 passed.",
+   "The production mechanics I checked hold. The service is per-request (get_comparison_service, scs:9416), so the instance deadline and marks are not shared. _partial_build_ctx is seeded (scs:3940) before Step 1, so the REST marks reach the partial and the success stamp. The Phase-2 skip creates no orphan coroutine. The empty unified payload causes no re-search."
+  ],
+  "not_checked": [
+   "Comm chunks 01-03 at HEAD (GREEN: 0 failures) and the 32 NOT MEASURED comm files. Base runs: I created no base worktree.",
+   "GREEN's mutants M01-M50 were not re-run, except the re-proofs D08, D24 and D49 and R2. The other T13-attributed kills are genuine: they fail at earlier lines (:512 / :513 / :518), as seen in GREEN's logs.",
+   "The stall-guard fallback and the flag-OFF mark leak through the STREAM entry: only the REST entry was probed (the code path is symmetric: scs:4651, :4674, :4697).",
+   "CI coverage gate --cov-fail-under=83 (ci.yml:122) with the new lines, and CI under any random-order plugin.",
+   "uvloop=True branch, the libuv pool size in effect, and coreutils env in the Nixpacks image (Q2): only Git Bash /usr/bin/sh and /usr/bin/env were measured.",
+   "verify_after_credits: the _split_pair None case and parser.error under --form pair|both.",
+   "Production env values and the canary itself (no network, no Railway).",
+   "Disclosure: my first sh -c attempt used a C:/ PATH entry, which missed the fake binary, and ran the global uvicorn.exe 3 times. The real app import crashed at OpenAI client init (no key in env). There was no network and nothing printed beyond the traceback. load_dotenv ran in that process (no .env reached it, judging by the missing-key crash); I opened and printed no .env."
+  ],
+  "worktree_sha_check": "FIRST 20:25: 16/16 OK against the GREEN report's hashes (sha256sum -c of expected_sha.txt). LAST 20:49: 16/16 OK. Every mutant restore was sha256-identical (A01..C13, D08/D24/D49, R2), and every gate printed 'sha16 before=OK after=OK'. git status is unchanged (14 M + 2 ??), HEAD is 4c0f3c99, no .qa-mutation.lock remains (mine was released at 20:39 and again at 20:49), and I created no git worktree.",
+  "summary": "I ran 21 own byte-copy mutants plus 3 re-proofs and the FG-5 red-first check, all under my mutation lock with a sha256-checked restore each time.\n- **RED nodes executed and killed 8:** A02, C01, C07, C07b, C08, C10, C11, C13.\n- **Survived every RED node, killed only by my notes-folder probes (13):** A01, B01, B02, B03, B04, C02, C03, C04, C05, C06, C08b, C09, C12.\n\n**Blocking:**\n- **T12 is red in every order, so CI is red.** Because T12 fails with or without a mutant, all Bright Data log-hygiene mutants are unguarded by any working repo node.\n- **Flag-OFF response byte move.** The parse marks are trusted from the LLM's own JSON: with every flag OFF, a model reply carrying `_parse_presplit` (or `_parse_fallback`) puts `metadata.parse_presplit` (or `parse_fallback`) on the response, flips parser_path and skips the parse cost. adv_defects shows this: 2 FAILED.\n\n**Major:**\n- **T13 fails solo (new).** It imports app.main inside the node, and the dotenv guard then deletes the Bright Data key. This makes GREEN's M08, M24 and M49 kills spurious; I re-proved all three with a collection-time-import probe.\n- **T6 fails solo (known).** One module-scope `import app.main` fixes both T6 and T13.\n- **Flag-OFF metadata keys unpinned.** No node pins that the flag-OFF partial carries no parse_presplit / parse_fallback keys (C09 survives 193 nodes).\n- **Stall-guard fallback and REST deadline clock unpinned at the entry** (C05, C08b).\n\n**Everything else holds:**\n- Gates 1 and 2 match GREEN; test_start_command.py and test_shutdown_drain.py are green.\n- Comm chunks 00 and 04 match at HEAD.\n- The netguard ratchet is OK with 0 attempting nodes.\n- The `sh -c` start-command proof matches base argv.\n- CRLF/LF, ASCII, gitleaks, ruff and py_compile are clean.\n- m7 and m8 wording is present; m6 has no code to sit in (D3 deferred).\n\nFiles I wrote, all in C:/Users/SYNACK~1/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/f9970d11-1fa0-400e-9fb3-dd91f335e519/scratchpad/fanout-starve/adv-eng/:\n- adv_probe.py eacb07a5b207bd70aa0d294d78acca57675075ebd4fdbe6fc25e08b60b4612db\n- adv_probe_t13.py 596efa5371ffc61b5bcaaa722c6b2ee7b7a422c2d0f8a4496a0b7c3d6f09276d\n- adv_defects.py 491aa6f734e823555620ea8e7e7aa4086e1dedcaa9e163abdfa892ad0cedf570\n- adv_mut.py 10553132f148e066dc5f48d26528c4423cc3ef4283311a8964a9cedcf7776b8f\n- notes.md 24dafdddb12df5280f0514de1afd115de79037152b4dc500265372826c004943\n- expected_sha.txt ad0b8d258b7458f5ea774c216229fc7ceecb5237bdb3f1adb1d094f1d9065c33\n- fakebin/uvicorn a7c61a1b46a721b54e9c0d369455843662fa3def46c62677af15ebdde7798d35\n- comm_mine.txt edca99b7e384e3d3d61a29d4d7a7aa3416e32523bd9d9d6973d2289f88b13068\n- full.diff, plus the logs and mutants_out_1..4.txt.\n\nNothing was written in the worktree beyond restored mutants (plus untracked __pycache__ files from py_compile).",
+  "pyt_lines": [
+   "[pyt] tag=adv-g1 start=2026-10-09 20:33:24 end=2026-10-09 20:33:29 elapsed=5s bound=600s status=FAIL rc=1 (2 failed, 58 passed: T6, T12)",
+   "[pyt] tag=adv-probe0 start=2026-10-09 20:33:40 end=2026-10-09 20:33:46 elapsed=6s bound=600s status=FAIL rc=1 (1 failed, 13 passed: my probe assumed queued=0 on a closed-loop pool; fixed)",
+   "[pyt] tag=adv-defects0 start=2026-10-09 20:33:46 end=2026-10-09 20:33:51 elapsed=5s bound=600s status=FAIL rc=1 (2 failed = ENG-B2 demonstrated)",
+   "[pyt] tag=adv-probe1 start=2026-10-09 20:34:08 end=2026-10-09 20:34:13 elapsed=5s bound=600s status=OK rc=0 (14 passed)",
+   "[pyt] tag=adv-t13-solo start=2026-10-09 20:36:00 end=2026-10-09 20:36:07 elapsed=7s bound=600s status=FAIL rc=1 (T13 solo FAILED :524 on unmutated bytes)",
+   "[pyt] tag=adv-t12t13 start=2026-10-09 20:36:07 end=2026-10-09 20:36:11 elapsed=4s bound=600s status=FAIL rc=1 (2 failed)",
+   "[pyt] tag=adv-t13probe0 start=2026-10-09 20:37:00 end=2026-10-09 20:37:04 elapsed=4s bound=600s status=OK rc=0 (1 passed)",
+   "[pyt] tag=adv-g2 start=2026-10-09 20:40:14 end=2026-10-09 20:40:24 elapsed=10s bound=1200s status=OK rc=0 (369 passed: shutdown_drain, retro_w0_4_efg, serper_fail_fast, be_harness, start_command)",
+   "[pyt] tag=adv-comm-00 start=2026-10-09 20:40:30 end=2026-10-09 20:41:32 elapsed=62s bound=1200s status=FAIL rc=1 (5 failed = pre_impl auth_interceptor x2 + camera_vision x3, 1558 passed)",
+   "[pyt] tag=adv-comm-04 start=2026-10-09 20:41:38 end=2026-10-09 20:44:11 elapsed=153s bound=1200s status=FAIL rc=1 (1 failed = T12, 1375 passed)",
+   "[pyt] tag=adv-ratchet start=2026-10-09 20:44:23 end=2026-10-09 20:44:35 elapsed=12s bound=1200s status=FAIL rc=1 (1 failed = T12, 420 passed; netguard blocked 0)",
+   "[pyt] tag=adv-mut-R2-0 start=2026-10-09 20:46:40 end=2026-10-09 20:46:43 elapsed=4s bound=600s status=FAIL rc=1 (5 failed: FG-5 red-first)",
+   "[pyt] tag=adv-gprobes start=2026-10-09 20:49:21 end=2026-10-09 20:49:25 elapsed=4s bound=600s status=OK rc=0 (GREEN probe_t6_t12: 3 passed)",
+   "[pyt] tag=adv-gprobes2 start=2026-10-09 20:49:25 end=2026-10-09 20:49:31 elapsed=6s bound=600s status=OK rc=0 (GREEN probe_entries: 6 passed)",
+   "[pyt] tag=adv-t6-solo start=2026-10-09 20:49:31 end=2026-10-09 20:49:35 elapsed=4s bound=600s status=FAIL rc=1 (T6 solo FAILED)",
+   "Mutant runs, 20:34:20-20:39:00, all bound=600s: adv-mut-A01-0 OK / A01-1 FAIL; A02-0 FAIL / A02-1 FAIL; B01-0 FAIL(T12/T13 pre-existing) / B01-1 FAIL; B02-0 FAIL(pre-existing) / B02-1 FAIL; B03-0 FAIL(pre-existing) / B03-1 FAIL / B03-2 FAIL; B04-0 FAIL(T12) / B04-1 FAIL; C01-0 FAIL; C02-0 OK / C02-1 FAIL; C03-0 OK / C03-1 FAIL; C04-0 OK / C04-1 FAIL; C05-0 OK / C05-1 FAIL; C06-0 OK / C06-1 FAIL; C07-0 FAIL; C07b-0 FAIL; C08-0 FAIL; C08b-0 OK / C08b-1 FAIL; C09-0 FAIL(only T12; 193 passed) / C09-1 FAIL; C10-0 FAIL; C11-0 FAIL; C12-0 OK / C12-1 FAIL; C13-0 FAIL; D08-0 FAIL(spurious :524) / D08-1 FAIL; D24-0 FAIL(spurious) / D24-1 FAIL; D49-0 FAIL(spurious) / D49-1 FAIL. Full [pyt] lines are in the notes-folder mutants_out_1..4.txt."
+  ],
+  "mutants": [
+   "A01 app/utils/executor.py:65 module global keeps the FIRST pool after a second install | RED T13/T2/w04g: 10 passed (SURVIVED) | KILLED by adv_probe::test_adv_executor_second_install_updates_the_snapshot | restore sha256 ok",
+   "A02 app/utils/executor.py:75 executor_snapshot reads asyncio.get_event_loop() | KILLED by tests/test_retro_w0_4_efg.py::test_w04g_health_has_no_price_parse_pool_key_before_the_pool_exists (+ adv_probe::test_adv_executor_snapshot_reads_the_module_global_not_the_loop) | ok",
+   "B01 app/services/brightdata_service.py:75 latch keyed on 'any status' (a 403 after a 401 is silent) | RED: T12/T13 red regardless (no valid kill) | KILLED by adv_probe::test_adv_bd_one_error_per_status | ok",
+   "B02 brightdata_service.py:71 _AUTH_LAST written only on a status's first rejection | RED: no valid kill | KILLED by adv_probe::test_adv_bd_snapshot_tracks_the_latest_auth_status | ok",
+   "B03 brightdata_service.py:172 every non-200 (402) treated as an auth rejection | RED: no valid kill | KILLED by adv_probe::test_adv_bd_snapshot_tracks_the_latest_auth_status and GREEN probe_t6_t12::test_probe_T12_with_a_fixed_helper | ok",
+   "B04 brightdata_service.py:79 ERROR message carries the zone | RED T12 red regardless | KILLED by GREEN probe_t6_t12::test_probe_T12_with_a_fixed_helper ('zone_x7q' in message) | ok",
+   "C01 scs:1765 _float_knob accepts inf (nan still rejected) | KILLED by test_s75::test_T14_parse_timeout_knob_hygiene[inf], ::test_T16_unified_timeout_knob_hygiene[inf], ::test_T18_phase2_residual_knob_hygiene[inf] | ok",
+   "C02 scs:1792 pre-split splits on the LAST ' vs ' | RED T14/T17 17 passed (SURVIVED) | KILLED by adv_probe::test_adv_presplit_splits_on_the_first_vs | ok",
+   "C03 scs:1785 split regex \\s*vs\\.?\\s* ('vs' without spaces) | RED SURVIVED | KILLED by adv_probe::test_adv_presplit_needs_a_spaced_vs[nospace|vsdot] | ok",
+   "C04 scs:1799 a half that sanitizes to empty still splits | RED SURVIVED | KILLED by adv_probe::test_adv_presplit_half_that_sanitizes_to_empty_falls_through | ok",
+   "C05 scs:1827 _parse_marks drops parse_fallback (parser_path True, no metadata, cost on fallback) | RED SURVIVED | KILLED by adv_probe::test_adv_fallback_rest_entry_parser_path_false_and_metadata | ok",
+   "C06 scs:3717 stall guard catches Exception, not TimeoutError | RED SURVIVED | KILLED by adv_probe::test_adv_stall_guard_lets_a_non_timeout_error_through | ok",
+   "C07 scs:5596 unified bound reads PARSE_TIMEOUT_SECONDS | KILLED by test_s75::test_T16_unified_bound_on_hands_the_empty_payload_once | ok",
+   "C07b scs:5606 unified-bound timeout leaves unified_search None | KILLED by test_s75::test_T16_unified_bound_on_hands_the_empty_payload_once | ok",
+   "C08 scs:5891 Phase-2 residual computed against time.time() | KILLED by test_s75::test_T18_phase2_residual_guard[runs] | ok",
+   "C08b scs:3906 REST entry records _compare_deadline on time.time() | RED T17/T18 SURVIVED | KILLED by adv_probe::test_adv_rest_deadline_on_the_monotonic_clock | ok",
+   "C09 scs:3676 metadata.parse_presplit/parse_fallback written (False) with the flags OFF | RED + 4 partial pin files: 193 passed, only T12 (SURVIVED) | KILLED by adv_probe::test_adv_flags_off_rest_partial_has_no_unit_keys | ok",
+   "C10 scripts/verify_after_credits.py:438 --form pair still sends q rows | KILLED by tests/test_be_harness.py::test_BH46_form_single_runs_only_that_form[pair] | ok",
+   "C11 verify_after_credits.py:338 --strict-q ignored | KILLED by test_be_harness.py::test_BH49_strict_q_makes_q_failures_drive_the_exit | ok",
+   "C12 verify_after_credits.py:352 RESULT suffix in --form q | RED BH4x/BH5x 38 passed (SURVIVED) | KILLED by adv_probe::test_adv_form_q_result_line_is_todays | ok",
+   "C13 scs:3731 [STAGE] line carries the query text | KILLED by test_s75::test_T15_stage_parse_line_in_both_flag_states[off] and [on] | ok",
+   "D08 (re-proof of GREEN M08) brightdata_service.py:71 snapshot never written | the RED T13 solo failure is spurious | KILLED by adv_probe_t13::test_probe_T13_with_app_main_imported_at_collection | ok",
+   "D24 (re-proof of GREEN M24) app/main.py:600 brightdata_auth spread removed | KILLED by adv_probe_t13::test_probe_T13_with_app_main_imported_at_collection | ok",
+   "D49 (re-proof of GREEN M49) brightdata_service.py:73 'at' not ISO-UTC | KILLED by adv_probe_t13::test_probe_T13_with_app_main_imported_at_collection | ok",
+   "R2 (FG-5 red-first) tests/test_retro_w0_4_efg.py:1576 original exact pin restored on the GREEN bytes | test_w04g_health_survives_a_raising_pool_stats_fn RED x5 params | ok"
+  ]
+ },
+ "adversary:fanout-runtime-truth": {
+  "verdict": "NOT READY TO MERGE. There are 4 blocking findings: (1) a NEW CI-red existing test that the GREEN comm gate missed; (2) flag-OFF compare bytes move when the LLM parse JSON carries the private marks; (3) T12 is CI-red because of the RED helper; (4) T6 is order-dependent. There is also 1 major finding (the D5 timeout durably caches empty-context specs), plus 5 minor findings and 6 notes. On honest inputs the runtime truth otherwise holds: with every flag OFF, base and head are byte-identical across 7 full-pipeline scenarios; the start command boots identically under sh and dash; the Bright Data path produces exactly one Sentry event per status and leaks no secret; the health snapshot never raises or blocks.",
+  "findings": [
+   {
+    "id": "B1",
+    "severity": "blocking",
+    "title": "U8d R8 Sentry pin goes CI-red at head (new auth-rejected ERROR has a non-allowlisted argument); the GREEN comm gate missed it",
+    "evidence": "tests/test_sentry_channels_u8d_unit.py:919 TestR8SourceLines::test_u8d_pin_r8_no_other_outside_except_error_line fails at head with offender ('app/services/brightdata_service.py', 78, '[brightdata] auth rejected status=%d ...'). The new _note_auth_rejected logger.error is outside any except block and passes `status` twice. `status` is in neither _ID_NAMES (test :777) nor _SITE_NAMES (:779). Base b at 4c0f3c99: 141 passed ([pyt] adv-rt-u8d-base OK). Head: 1 failed, 140 passed ([pyt] adv-rt-u8d-head FAIL). The node is not in tests/.pre_impl_failures.txt, so CI backend-tests is red independently of T12. Why GREEN missed it: the file references only `structured_comparison_service`, and the FG-8 grep never named that module. I built the module-reference set (structured_comparison_service, verify_after_credits, executor, brightdata_service, serper_service, railway.json, Procfile): 192 files, 113 of them outside GREEN's 152-file set. I ran all 113 at head in 5 chunks of 23 files or fewer (mx-0..mx-4). This is the only NEW failure; the other two failures are the baselined test_page_scraping x2 (.pre_impl_failures.txt:85-86). GREEN's comm-gate claim 'branch-only-NEW: exactly ONE node (T12)' is therefore false.",
+    "fix": "Production-only; no test change. Replace the parameterised call with two all-constant calls: `if status == 401: logger.error(\"[brightdata] auth rejected status=401 type=HTTPStatusError -- every fallback call fails with 401 until BRIGHTDATA_API_KEY is renewed (owner)\")`, else the same message for 403. Proven on a private sha-verified snapshot (u8d_fixproof.py): R8 offenders become [], and bd_probe still gives 2 Sentry events with no sentinel; snapshot restored, sha ok. Re-target GREEN's mutants M27/M28. Widening the U8d allowlist instead would loosen a privacy pin, so it would need a ruling. Re-run the 192-file module-reference set after the fix."
+   },
+   {
+    "id": "B2",
+    "severity": "blocking",
+    "title": "Flag-OFF compare response bytes move when the LLM parse JSON carries _parse_presplit/_parse_fallback (_parse_marks trusts LLM keys)",
+    "evidence": "parse_product_query returns the raw `json.loads(result)` (extraction_service.py:1549). _parse_marks (scs:1820) honours both keys with no flag check. Its consumers: scs:4023-4027 (skips _track_gpt_cost and writes the ctx marks), :4049 and :4675 (parser_path False, so A2b escalation becomes reachable), :4651 (stream cost skip), :4698 (stream ctx), and _stamp_unit_metadata :3665. ident_probe.py ran with flags OFF, base x2 vs head x2, through the REAL _fetch_product_data with every network leaf faked and a socket guard. The 7 honest scenarios (REST q full, REST pair full, REST partial at gather, stream q/pair full, stream partial, parse shape) are byte-identical apart from volatile clocks; the only log delta is +1 INFO `[STAGE] parse done`. In the injected scenario the head body moves: metadata.api_calls 4->3, gpt_calls 2->1, total_cost 0.002048->0.002003; it gains metadata.parse_presplit and metadata.parse_fallback (REST body and both stream terminal events); parser_path goes True->False. Precondition: the user's text reaches the parser prompt (sanitized, inside <USER_INPUT>), so a prompt-injected or accidental key is enough. No live LLM call was made. This is the GREEN's open question 3; its FG-10 sentence 'flag-OFF byte identity holds for every response byte' is false for this input class.",
+    "fix": "In _parse_with_budget, strip both keys from any LLM-produced parse before the [STAGE] log: `if mode == \"llm\" and isinstance(parsed, dict): parsed.pop(\"_parse_presplit\", None); parsed.pop(\"_parse_fallback\", None)`. Proven on the snapshot (fixproof.py): all 9 flag-OFF scenarios, the injected one included, are identical to base, and the flag-ON marks are kept (presplit parse_presplit True, stall parse_fallback True); restore sha ok. Add one node (flags OFF, an LLM stub returning the keys -> no metadata key, cost tracked, parser_path True). That node needs an orchestrator ruling, because BH53/BH54 are the only nodes GREEN may add."
+   },
+   {
+    "id": "B3",
+    "severity": "blocking",
+    "title": "T12 is CI-red in every order (RED-file helper defect, known)",
+    "evidence": "In tests/test_s75_fanout_starve.py:185-199, _bd_client reads `real_client = httpx.AsyncClient` (:188) on every call. The second monkeypatch therefore wraps the previous factory, which ignores the new transport, so the 403 and 402 legs are answered 401 and the node fails at :484. [pyt] adv-rt-g1b (the 5 unit and amended files): 420 passed, 1 failed (T12). The production contract is proven independently by bd_probe.py, using the app's real init_sentry with a capturing transport: 8 rejections [401,401,403,403,402,500,401,403] give exactly 2 events (401, 403), and no event contains the query, body, zone or key. Base: 0 events.",
+    "fix": "Orchestrator RED amendment: capture the real httpx.AsyncClient once at module import and use it inside `factory` (GREEN Q1). The GREEN's probe_t6_t12.py already encodes that change."
+   },
+   {
+    "id": "B4",
+    "severity": "blocking",
+    "title": "T6 is order-dependent (non-hermetic node); green only when another collected file imports app.main",
+    "evidence": "tests/test_s75_fanout_starve.py:393 imports app.main inside the node. app/main.py:15 then runs configure_logging, whose app/middleware/logging_config.py:39 `root_logger.handlers.clear()` removes caplog's handler. Run alone the node is red ([pyt] adv-rt-g1, 2 failed: T6, T12). With other files collected it is green ([pyt] adv-rt-g1b), because a collected module imports app.main at collection time, before the handler exists. CI collects all of tests/, so CI stays green.",
+    "fix": "RED amendment (GREEN Q2): import app.main at module scope after the OPENAI_API_KEY setdefault, or re-attach caplog.handler to the root logger after the import."
+   },
+   {
+    "id": "M1",
+    "severity": "major",
+    "title": "D5 flag ON: a unified-search timeout durably caches empty-context specs (L1 7 d + L2 DB); 'rollback = unset' does not undo it",
+    "evidence": "scs:5606 hands {\"organic\": []} to _get_specs, which formats an empty context and then caches the specs at scs:6261 (L1, SPECS_CACHE_TTL 604800) plus save_specs (L2). d5_cache_probe.py (flag ON, knob 0.05, nocache False, a hanging search_web) measured: ONE unified search was started (no re-search, so FS-R8 holds); the specs context was ''; L1 was written with key specs:..., ttl 604800; save_specs was called. Today's Serper-failure payload ({\"organic\": [], \"error\": ...}) already has the same class of behaviour. D5 adds a new trigger: a search that is slow but would have succeeded. FG-10's stated limit and the W3 flip plan (rollback = unset) omit the durable write.",
+    "fix": "State it in the PR body and the W3 window together with a purge recipe. Or mark the timeout payload (e.g. `_unified_timeout: True`) and skip the _get_specs/_get_reviews cache writes when the mark is present (flag ON only), plus one node."
+   },
+   {
+    "id": "m1",
+    "severity": "minor",
+    "title": "Pre-split halves are not app-shaped on non-clean q text",
+    "evidence": "_split_on_vs (scs:1785, first ' vs '): 'Tom Ford Oud Wood vs Creed Aventus vs Dior Sauvage' -> ('Tom Ford Oud Wood', 'Creed Aventus vs Dior Sauvage'); 'Compare iPhone 15 vs Galaxy S24' -> ('Compare iPhone 15', 'Galaxy S24'); 'iPhone 15 vs Galaxy S24 (256GB) - which is better?' -> the second half carries the question. On these inputs the LLM path would keep the first two clean products. This follows the spec ('first vs'), but FG-10 does not state it.",
+    "fix": "Fall through to the LLM when a half itself contains ' vs ', and state the remaining cases in FG-10."
+   },
+   {
+    "id": "m2",
+    "severity": "minor",
+    "title": "Bright Data runbook says the breaker trips after four failures; the code trips at three",
+    "evidence": "docs/runbooks/brightdata-token-renewal.md:13 says 'after four failures'. In the code, CB_FAILURE_THRESHOLD = 3 (api_budget_service.py:273), and the trip at >= 3 is logged as 'TRIPPED after 3 failures' (:599-603).",
+    "fix": "Change 'four' to 'three' (or 'N')."
+   },
+   {
+    "id": "m3",
+    "severity": "minor",
+    "title": "Sentences next to the A1.8 runbook paragraph are stale under --form both",
+    "evidence": "APP_STORE_LAUNCH_RUNBOOK.md:103 says 'three uncached compares' (both mode runs six). :105 says 'A pass needs, on every compare', but q rows do not count in both mode. :106 lists 'RESULT: PASS = 0' without the suffixed form. The new form-rule bullet itself is accurate (checked against the script, run_canary.sh and api.ts).",
+    "fix": "Reword those three sentences in the same PR (GREEN Q6)."
+   },
+   {
+    "id": "m4",
+    "severity": "minor",
+    "title": "FG-2 'suffix ALWAYS appended' is not honoured on setup and crash RESULT lines",
+    "evidence": "verify_after_credits.py:465 `RESULT: FAIL setup=auth_%d`, the setup exits at :419-428 and the `RESULT: FAIL error=<ClassName>` crash line carry no q_fail/pair_fail suffix in pair or both mode. run_canary.sh classifies these lines by `setup=`/`crash`, so the classification is safe, but the mode cannot be read from them.",
+    "fix": "Append the suffix (zeros) in pair/both mode, or state the exception."
+   },
+   {
+    "id": "m5",
+    "severity": "minor",
+    "title": "Stall guard: the timed-out parse was dispatched but its cost is never tracked",
+    "evidence": "In the flag-ON probe (ENABLE_PARSE_BUDGET, knob 0.05, parse 1 s): parse_calls 1, track_gpt 1 (the verdict only), gpt_calls 1 (equal to the pair path, so the ruling 'no _track_gpt_cost' holds). The cancelled OpenAI request may still be billed, so total_cost under-counts real spend under the flag.",
+    "fix": "State it in FG-10."
+   },
+   {
+    "id": "n1",
+    "severity": "note",
+    "title": "Phase-2 guard semantics measured; Tier-2/Tier-3 stay on the product wall",
+    "evidence": "Full pipeline with the guard always skipping: REST success body and stream complete payload with metadata.phase2_skipped True, no new stage, rating unverified (3.8). Cap hit during the verdict: partial_stage 'scoring' plus phase2_skipped. Tier 2 (scs:6005, about 4 s wall) and Tier 3 still run after a skip, and skipping the smart-fallback leaves more blanks for Tier 2. The lever saves at most the Phase-2 wall (about 5 s).",
+    "fix": "State it in the W5 window."
+   },
+   {
+    "id": "n2",
+    "severity": "note",
+    "title": "Cosmetic rounding in the D5 WARNING",
+    "evidence": "The scs:5604 format '%.1fs' prints a 0.05 knob as '(limit 0.1s)'.",
+    "fix": "Use %.2f, or leave as is."
+   },
+   {
+    "id": "n3",
+    "severity": "note",
+    "title": "Canary pair rows match the probe exactly; both-mode PASS with every q row failing is reachable and intended",
+    "evidence": "Pair rows send GET /api/v1/text/compare with {product_a, product_b, region: bahrain, nocache: true}, the probe dict exactly, with halves stripped like the app's .trim(). The app's stream also sends lang and selected_category when set, and nocache only on a forced refresh; its REST fallback is POST JSON. On synthetic rows _summary(both) with 3 q rows FAIL (partial at gather) and pair rows PASS returns 'RESULT: PASS q_fail=3 pair_fail=0', rc 0. That is FS-R1(b). _split_pair is case-sensitive (verify_after_credits.py:363); the server pre-split is not.",
+    "fix": "None needed."
+   },
+   {
+    "id": "n4",
+    "severity": "note",
+    "title": "Health snapshot never raises or blocks",
+    "evidence": "Under a corrupted state (object() pool, garbage _AUTH_LAST, module missing from sys.modules) the snapshots return {}. With 200 x 0.3 s jobs queued on 96 workers they take 0.008-0.016 ms, and health_check() takes 0.014 ms. After pool.shutdown() 'queued': 1 is the shutdown sentinel.",
+    "fix": "None needed."
+   },
+   {
+    "id": "n5",
+    "severity": "note",
+    "title": "Start command proven equal to base under sh and dash",
+    "evidence": "startcmd.py ran with a fake uvicorn first on PATH. Under sh (bash 5.2 msys) and /usr/bin/dash, head argv equals base argv in every case. UV unset -> 64, '32' -> 32, '' -> 64; '8 9' is passed verbatim (libuv would atoi it). PORT unset drops one token in base and head alike. shell_pid == child_pid, so the exec chain keeps the PID (MSYS model). The [loop] line reports the env value, not libuv's effective pool.",
+    "fix": "None needed."
+   },
+   {
+    "id": "n6",
+    "severity": "note",
+    "title": "Sentry grouping",
+    "evidence": "With GREEN's template both statuses group into one Sentry issue (same message template, params differ). The B1 constant-string fix gives one issue per status.",
+    "fix": "Mention it in the runbook if relevant."
+   }
+  ],
+  "reproduced": [
+   "Re-hash at start (20:25) and end (21:05): all 16 GREEN-report files byte-identical to the report; HEAD 4c0f3c99; status 14 M + 2 ??.",
+   "Flag-OFF identity via ident_probe.py: base 4c0f3c99 (detached b) x2 vs head x2 (the head runs after 20:33 used a private sha-verified snapshot h, because ADV-ENG held the lock). REST q full, REST pair full, REST partial at gather, stream q full, stream pair full, stream partial at gather and the parse shape: 0 non-volatile payload, cost, search-argument and fetch-product diffs. Volatile paths were found by diffing two runs of the same tree. The only log delta is +1 INFO [STAGE] parse done mode=llm per q parse.",
+   "Flag-OFF break with LLM JSON carrying the private marks (REST and stream): metadata api_calls/gpt_calls/total_cost move, parse_presplit/parse_fallback appear, parser_path flips (B2).",
+   "The probe is sensitive to the OFF branches (5 mutants on the private snapshot, all KILLED): X1 D5-OFF num_results, X2 Phase-2-OFF rating, X3 OFF parse usage, X4 REST success stamp, X5 stream complete stamp. X4 and X5 are the two lines GREEN reported as unproven.",
+   "Pre-split products dict-equal to the explicit_pair products (category and _explicit included) on REST, stream and an odd input (case, spaces, a region tag, over 80 chars); the full payload differs only by metadata.parse_presplit; no LLM parse call; cost equal to the pair path.",
+   "Stall-guard fallback: explicit products; parse cost not tracked; gpt_calls 1 (the verdict only).",
+   "Phase-2 skip semantics: success plus phase2_skipped on REST and stream; cap during the verdict gives partial_stage 'scoring' plus phase2_skipped.",
+   "Start command through sh and dash with argv and env printed: identical argv to base; UV default, override and empty handled.",
+   "Bright Data with the real init_sentry and a capturing transport: 2 events for 8 rejections (one per status); no query, body, zone or key in any event; zone and key on no log line at any level; query only on the WARNING (shape kept by spec D6); body only on 402/500 WARNINGs (as at base). Base: 0 events.",
+   "D5 timeout: one unified search, empty specs context, L1 7 d plus L2 write (M1).",
+   "Health snapshots: no raise under corrupted state, sub-0.02 ms under a saturated pool.",
+   "Canary _summary semantics in q, pair and both modes, with and without --strict-q; _split_pair edge cases.",
+   "GREEN's 32 NOT MEASURED comm files: 1016 passed, 1 skipped; netguard ratchet OK (75 attempting nodes, baseline 205).",
+   "113 module-reference files outside GREEN's set: 1 NEW failure (the U8d R8 pin, green at base), 2 baselined (test_page_scraping).",
+   "20 source-scanning tests plus 2 path-referencing tests: only test_prompt_truth's 2 teardown errors (tiktoken egress), identical at base, so environmental.",
+   "Two egress nodes outside the netguard baseline (specs_no_fabrication tiktoken; supplement_branch musclepumpqa) egress identically at base.",
+   "T6 is red alone and green when collected with app.main importers; T12 is red in every run (B3, B4).",
+   "Candidate fixes proven on the private snapshot with restore and sha check: the B2 3-line strip (OFF identity restored, ON marks kept) and the B1 constant-ERROR split (R8 offenders [], still 2 Sentry events)."
+  ],
+  "not_checked": [
+   "The Nixpacks image: which /bin/sh Railway uses, whether coreutils `env` is on PATH, and how Railway invokes startCommand. Only Git Bash sh and MSYS dash were measured.",
+   "libuv's effective pool size and the uvloop=True branch of the [loop] line (uvloop is absent on the pinned venv).",
+   "Whether gpt-4o-mini actually emits _parse_presplit/_parse_fallback under prompt injection; no live LLM call was made.",
+   "Real Sentry ingestion and issue grouping (a capturing transport was used, not the DSN).",
+   "The full free-tier suite in CI order. Measured: the unit and amended files, GREEN's 32 NOT MEASURED files, 113 module-reference files, 20 source scanners and 2 path-referencing files. About 250 other files were not run. The precommit hook test files were not run.",
+   "The coverage floor (--cov-fail-under=83) after +260 scs lines.",
+   "The vision-path flag-OFF identity (code read only); the stall guard on the stream entry (code read only); the D5 reviews cache write (only the specs write was measured).",
+   "price-warmer behaviour (FS-R9 assumption stands).",
+   "T6 inside a real CI full collection (inferred from collection-time imports and the 5-file run)."
+  ],
+  "worktree_sha_check": "START 20:25 and END 21:05: all 16 GREEN-report files byte-identical to the report (Procfile 0fd1a826, app/main.py d138ec9c, brightdata_service 77a003a9, serper_service 694ad4ed, scs 18528b29, executor 2c497ce2, APP_STORE_LAUNCH_RUNBOOK 1d64309e, run_canary.sh e0ac3bf9, railway.json 1342087c, verify_after_credits cb5b497c, test_be_harness b72d65dd, test_retro_w0_4_efg fefcd385, test_serper_fail_fast 59782f42, test_shutdown_drain aa934d6f, brightdata-token-renewal.md e95340f2, test_s75_fanout_starve 2f968399; final_sums.txt == green_sums.txt). HEAD 4c0f3c99; git status 14 M + 2 ??; no .qa-mutation.lock at the end. I made no write in the worktree and took no lock: every mutant ran on a private snapshot <notes>/h (base copy plus the 8 changed production files, sha-verified, restored after each mutant). ADV-ENG held the lock from 20:33:23 to about 20:45 and again around 20:49. Two of my pytest runs overlapped that window (adv-rt-g1, adv-rt-comm-a); both are discarded and were re-run lock-free (adv-rt-g1b, adv-rt-comm-a-2). The only git write was the detached scratch worktree <notes>/b. The first add failed on 'Filename too long' and git cleaned it up; it was re-added with -c core.longpaths=true and removed with `git worktree remove --force`. It had no node_modules, and `git worktree list` shows no entry left.",
+  "summary": "I am the runtime-truth adversary for FANOUT-STARVE (sc-s71-t0b, HEAD 4c0f3c99 plus the uncommitted GREEN). I worked from 20:24:54 to 21:06, inside the 90-minute budget.\n\n**Verdict: not ready to merge (4 blocking, 1 major, 5 minor, 6 notes).**\n\n**Blocking findings:**\n- **B1: an existing test the comm gate missed now fails.** D6's new `logger.error` (brightdata_service.py:78) passes `status` as an argument, which reddens the U8d R8 Sentry pin at tests/test_sentry_channels_u8d_unit.py:919. The pin is green at base (141 passed) and red at head (1 failed). GREEN's FG-8 grep never named structured_comparison_service, so 113 module-reference files sat outside its set; I ran them all. This pin is the only new failure, so GREEN's claim that T12 is the only branch-only-new node is false. The fix is production-only: two all-constant ERROR calls. It is proven on a private snapshot.\n- **B2: flag-OFF compare bytes move under one input class.** `_parse_marks` trusts keys inside the LLM parse JSON. If that JSON carries `_parse_presplit` or `_parse_fallback`, then with every flag OFF metadata.gpt_calls, api_calls and total_cost move, two metadata keys appear, and parser_path flips. A 3-line strip inside `_parse_with_budget` restores identity; it is proven on the snapshot.\n- **B3: T12 fails in every order** (RED helper defect, already known).\n- **B4: T6 is order-dependent** (non-hermetic; green in CI's full collection).\n\n**Major:** with D5 ON, a unified-search timeout writes empty-context specs to L1 (7 days) and L2. Unsetting the flag does not undo this, and neither FG-10 nor the flip plan says so.\n\n**What holds on honest inputs:**\n- **Flag-OFF identity:** 7 full-pipeline REST and stream scenarios are byte-identical base vs head. The probe kills 5 branch mutants, including the two stamp sites GREEN left unproven.\n- **Pre-split:** its products are dict-equal to the explicit_pair products.\n- **No parse cost on the skip paths:** neither the pre-split nor the stall fallback tracks parse cost.\n- **Phase-2 skip:** it adds no new stage. A skip reports phase2_skipped, and the partial stage stays scoring when the cap hits during the verdict.\n- **Start command:** argv equals base under sh and dash.\n- **Bright Data:** exactly 1 Sentry event per status, with no secret or body in any event or ERROR line.\n- **Health snapshot:** it never raises or blocks.\n- **Canary:** semantics match FS-R1.\n- **GREEN's 32 not-measured comm files:** green, and the ratchet is OK.\n\n**[pyt] lines:** g1 (under ADV-ENG's lock, discarded), g1b, comm-a (discarded), comm-b-2, comm-a-2, ratchet, mx-0..4, u8d-base, u8d-head, scan, ptruth-base, egress-base, pathrefs.\n\n**Notes and files:** everything is in C:/Users/SYNACK~1/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/f9970d11-1fa0-400e-9fb3-dd91f335e519/scratchpad/fanout-starve/adv-runtime-truth/. Files I wrote (sha256):\n- notes.md c5097d27\n- ident_probe.py 8be2f45b\n- jdiff.py 98b330da\n- on_report.py bce3f317\n- startcmd.py c3fe710f\n- fakebin/uvicorn d169638a\n- bd_probe.py de550188\n- d5_cache_probe.py 3ea14b03\n- health_probe.py e7c65538\n- mut_h.py 3d198e84\n- fixproof.py afb1fca1\n- u8d_fixproof.py af0d671b\n\nAll of them are pure ASCII.",
+  "pyt_lines": [
+   "[pyt] tag=adv-rt-g1 start=2026-10-09 20:35:35 end=2026-10-09 20:35:41 elapsed=5s bound=600s status=FAIL rc=1 (unit file alone: 58 passed, T6 + T12 failed; ran while ADV-ENG held the lock -> superseded by g1b)",
+   "[pyt] tag=adv-rt-g1b start=2026-10-09 20:46:04 end=2026-10-09 20:46:16 elapsed=12s bound=600s status=FAIL rc=1 (test_s75 + shutdown_drain + retro_w0_4_efg + serper_fail_fast + be_harness: 420 passed, 1 failed = T12)",
+   "[pyt] tag=adv-rt-comm-a start=2026-10-09 20:49:19 end=2026-10-09 20:50:02 elapsed=44s bound=1200s status=OK rc=0 (under ADV-ENG lock: discarded)",
+   "[pyt] tag=adv-rt-comm-b-2 start=2026-10-09 20:50:30 end=2026-10-09 20:51:30 elapsed=60s bound=1200s status=OK rc=0 (GREEN's NOT MEASURED files 17-32: 828 passed)",
+   "[pyt] tag=adv-rt-comm-a-2 start=2026-10-09 20:51:30 end=2026-10-09 20:52:13 elapsed=43s bound=1200s status=OK rc=0 (files 1-16: 188 passed, 1 skipped)",
+   "[pyt] tag=adv-rt-ratchet start=2026-10-09 20:52:34 end=2026-10-09 20:54:13 elapsed=99s bound=1200s status=OK rc=0 (32 files with QAREN_NETGUARD_REPORT: 1016 passed; netguard_ratchet OK 75 attempting nodes, baseline 205)",
+   "[pyt] tag=adv-rt-mx-0 start=2026-10-09 20:59:06 end=2026-10-09 20:59:32 elapsed=26s bound=1200s status=OK rc=0 (362 passed)",
+   "[pyt] tag=adv-rt-mx-1 start=2026-10-09 20:59:32 end=2026-10-09 20:59:52 elapsed=20s bound=1200s status=OK rc=0 (1604 passed)",
+   "[pyt] tag=adv-rt-mx-2 start=2026-10-09 20:59:59 end=2026-10-09 21:00:15 elapsed=16s bound=1200s status=FAIL rc=1 (2 failed = test_page_scraping x2, baselined; 580 passed)",
+   "[pyt] tag=adv-rt-mx-3 start=2026-10-09 21:00:15 end=2026-10-09 21:00:54 elapsed=38s bound=1200s status=FAIL rc=1 (1 failed = U8d R8 pin, NEW; 741 passed)",
+   "[pyt] tag=adv-rt-mx-4 start=2026-10-09 21:00:54 end=2026-10-09 21:01:11 elapsed=17s bound=1200s status=OK rc=0 (491 passed)",
+   "[pyt] tag=adv-rt-u8d-base start=2026-10-09 21:01:35 end=2026-10-09 21:01:44 elapsed=9s bound=600s status=OK rc=0 (base b: 141 passed)",
+   "[pyt] tag=adv-rt-u8d-head start=2026-10-09 21:01:54 end=2026-10-09 21:02:03 elapsed=10s bound=600s status=FAIL rc=1 (1 failed, 140 passed)",
+   "[pyt] tag=adv-rt-scan start=2026-10-09 21:03:14 end=2026-10-09 21:03:32 elapsed=18s bound=1200s status=FAIL rc=1 (20 source scanners: 1158 passed, 2 errors = test_prompt_truth teardown tiktoken egress)",
+   "[pyt] tag=adv-rt-ptruth-base start=2026-10-09 21:03:53 end=2026-10-09 21:03:56 elapsed=3s bound=600s status=FAIL rc=1 (base: same 2 errors -> environmental)",
+   "[pyt] tag=adv-rt-egress-base start=2026-10-09 21:04:18 end=2026-10-09 21:04:21 elapsed=3s bound=600s status=OK rc=0 (the 2 unbaselined egress nodes egress identically at base)",
+   "[pyt] tag=adv-rt-pathrefs start=2026-10-09 21:04:57 end=2026-10-09 21:04:59 elapsed=3s bound=600s status=OK rc=0 (31 passed)"
+  ],
+  "mutants": [
+   "X1 (private snapshot h) scs:5608 D5-OFF branch search_web num_results 10->5 | KILLED by ident_probe (searches[*][1] differ on rest_q_full, stream_q_full, rest_pair_full) | restore sha256 ok",
+   "X2 (h) scs:5929 `if not _phase2_skip:` -> `if False:` (the OFF Phase-2 never schedules the rating) | KILLED (overview.products[*].rating/review_count, scoring_v2.dimensions, stream products differ) | restore ok",
+   "X3 (h) scs:3729 OFF parse branch drops usage | KILLED (metadata.total_cost and cost[0] differ, REST and stream) | restore ok",
+   "X4 (h) scs:4372 REST success `_stamp_unit_metadata` removed | KILLED (flag-ON presplit success body loses metadata.parse_presplit) | restore ok; this is one of the two lines GREEN reported as unproven",
+   "X5 (h) scs:5206 stream complete `_stamp_unit_metadata` removed | KILLED (complete metadata.parse_presplit None) | restore ok; the other line GREEN reported as unproven",
+   "FIX-PROOF B2 (h) 3-line strip of the LLM marks in _parse_with_budget: 9/9 OFF scenarios equal to base (the injected one included); ON marks kept | restore ok",
+   "FIX-PROOF B1 (h) brightdata_service:78 parameterised ERROR -> two constant ERROR calls: U8d R8 offenders [] ; bd_probe still 2 events, no sentinel | restore ok",
+   "Final: snapshot h scs 18528b29 / brightdata 77a003a9 (the GREEN bytes); the worktree was never mutated."
+  ]
+ }
+}
