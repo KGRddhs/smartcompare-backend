@@ -4,7 +4,8 @@
  * The one-time AI-processing disclosure shown before the first compare (text,
  * link or camera) and before the camera / photo-picker permission request.
  * It names what MYEZ sends to OpenAI and what it does not; it promises no
- * opt-out (the Profile AI-sharing toggle routes nothing today, #266).
+ * opt-out (the organisation shares data with OpenAI, decision D3 = C; there
+ * is no per-user opt-out).
  *
  * State and the decision live in `useAiConsentGate` (services/aiConsent.ts);
  * this component only renders. Three actions:
@@ -16,12 +17,29 @@
  *     then the in-app Legal screen opens — never behind the sheet.
  */
 
-import React from 'react';
-import { Modal, View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import {
+  Modal,
+  ScrollView,
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  useWindowDimensions,
+} from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { Sparkles } from 'lucide-react-native';
 import { colors, spacing, radii, typography } from '../theme';
 import type { AiConsentSheetProps } from '../services/aiConsent';
+
+// UY1: the title, the Privacy link and both CTA labels cap their font scaling
+// so they stay on screen at the largest Dynamic Type sizes; the body keeps its
+// full scaling inside its scroll.
+const FIXED_TEXT_MAX_FONT_SCALE = 1.6;
+// UY1: the body scroll is capped at this fraction of the window height (a
+// number, not a percentage on the card), so the bottom-anchored card grows
+// upward instead of pushing the CTAs below the screen edge.
+const BODY_MAX_HEIGHT_FRACTION = 0.4;
 
 export default function AiConsentSheet({
   visible,
@@ -32,6 +50,17 @@ export default function AiConsentSheet({
   onDismiss,
 }: AiConsentSheetProps) {
   const { t } = useTranslation();
+  const { height: windowHeight } = useWindowDimensions();
+  const bodyMaxHeight = Math.round(BODY_MAX_HEIGHT_FRACTION * windowHeight);
+  const bodyScrollRef = useRef<ScrollView>(null);
+
+  // The body can run below the fold: flash the scroll indicators once each
+  // time the sheet becomes visible (iOS shows none until the user scrolls).
+  useEffect(() => {
+    if (visible) {
+      bodyScrollRef.current?.flashScrollIndicators();
+    }
+  }, [visible]);
 
   return (
     <Modal
@@ -46,13 +75,25 @@ export default function AiConsentSheet({
           <View style={styles.iconWrap}>
             <Sparkles size={22} color={colors.accentDark} strokeWidth={2} />
           </View>
-          <Text style={styles.title} accessibilityRole="header">
+          <Text
+            style={styles.title}
+            accessibilityRole="header"
+            maxFontSizeMultiplier={FIXED_TEXT_MAX_FONT_SCALE}
+          >
             {t('aiConsent.title')}
           </Text>
-          <Text style={styles.body}>{t('aiConsent.body')}</Text>
+          {/* persistentScrollbar is Android-only (iOS ignores it). */}
+          <ScrollView
+            ref={bodyScrollRef}
+            style={[styles.bodyScroll, { maxHeight: bodyMaxHeight }]}
+            persistentScrollbar
+          >
+            <Text style={styles.body}>{t('aiConsent.body')}</Text>
+          </ScrollView>
           <Text
             testID="ai-consent-privacy-link"
             style={styles.link}
+            maxFontSizeMultiplier={FIXED_TEXT_MAX_FONT_SCALE}
             onPress={busy ? undefined : onOpenPrivacy}
             accessibilityRole="link"
             accessibilityState={{ disabled: busy }}
@@ -67,7 +108,9 @@ export default function AiConsentSheet({
             accessibilityState={{ disabled: busy, busy }}
             style={[styles.cta, styles.ctaPrimary]}
           >
-            <Text style={styles.ctaPrimaryLabel}>{t('aiConsent.agree')}</Text>
+            <Text style={styles.ctaPrimaryLabel} maxFontSizeMultiplier={FIXED_TEXT_MAX_FONT_SCALE}>
+              {t('aiConsent.agree')}
+            </Text>
           </TouchableOpacity>
           <TouchableOpacity
             testID="ai-consent-not-now"
@@ -77,7 +120,9 @@ export default function AiConsentSheet({
             accessibilityState={{ disabled: busy }}
             style={styles.cta}
           >
-            <Text style={styles.ctaSecondaryLabel}>{t('aiConsent.notNow')}</Text>
+            <Text style={styles.ctaSecondaryLabel} maxFontSizeMultiplier={FIXED_TEXT_MAX_FONT_SCALE}>
+              {t('aiConsent.notNow')}
+            </Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -99,6 +144,11 @@ const styles = StyleSheet.create({
     paddingTop: spacing.xl,
     paddingBottom: spacing['2xl'],
     gap: spacing.md,
+  },
+  // UB-R13 / UY1: the body scrolls; its maxHeight is set inline from the
+  // window height (no percentage cap on the card).
+  bodyScroll: {
+    flexGrow: 0,
   },
   iconWrap: {
     width: 44,

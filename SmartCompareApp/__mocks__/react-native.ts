@@ -17,6 +17,9 @@ export const Image = ({ source, ...props }: any) =>
   createElement('Image', { ...props, source });
 export const TouchableOpacity = ({ children, onPress, disabled, ...props }: any) =>
   createElement('View', { ...props, onPress, disabled, accessible: true }, children);
+// Pre-existing at main 4c0f3c99 (react/display-name on this forwardRef); silenced
+// because U3b's UY1 export puts this file in the changed-files eslint gate.
+// eslint-disable-next-line react/display-name
 export const TextInput = React.forwardRef(({ ...props }: any, ref: any) =>
   createElement('TextInput', { ...props, ref }));
 export const SafeAreaView = createHostComponent('View');
@@ -73,6 +76,11 @@ export const Dimensions = {
   get: (_dim: 'window' | 'screen') => ({ width: 390, height: 844, scale: 2, fontScale: 1 }),
   addEventListener: jest.fn(() => ({ remove: jest.fn() })),
 };
+
+// S75 U3b UY1 - AiConsentSheet caps its body scroll with a number derived
+// from the window height. Reads the same mocked window as Dimensions.get; a
+// test that needs another height spies on this export.
+export const useWindowDimensions = () => Dimensions.get('window');
 
 export const StyleSheet = {
   create: <T extends Record<string, any>>(styles: T): T => styles,
@@ -173,6 +181,7 @@ export default {
   ActivityIndicator,
   Platform,
   Dimensions,
+  useWindowDimensions,
   StyleSheet,
   I18nManager,
   AppState,

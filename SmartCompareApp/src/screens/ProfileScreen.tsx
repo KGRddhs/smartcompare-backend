@@ -50,7 +50,6 @@ import {
   Bell,
   ChevronRight,
   Settings,
-  Shield,
 } from 'lucide-react-native';
 import { colors, spacing, radii, typography } from '../theme';
 import { useLanguage } from '../hooks/useLanguage';
@@ -103,8 +102,6 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
 
   // Preferences (round-trips through PUT /preferences)
   const [preferences, setPreferences] = useState<UserPreferences | null>(null);
-  const [aiSharingSaving, setAiSharingSaving] = useState(false);
-  const [aiSharingError, setAiSharingError] = useState('');
   const [notifsSaving, setNotifsSaving] = useState(false);
   const [notifsError, setNotifsError] = useState('');
 
@@ -125,8 +122,8 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
   // first resolve — in all three the stored notification_types are unknown.
   // PUT /reengagement-subs overwrites all three sub keys, so the subs render
   // only when this is true (a sub flip must never write default-ON values
-  // over categories the user opted out of). The two masters stay usable:
-  // /preference-toggles writes only the key the user flipped.
+  // over categories the user opted out of). The notifications master stays
+  // usable: /preference-toggles writes only the key the user flipped.
   const [prefsRowLoaded, setPrefsRowLoaded] = useState(false);
 
   const loadPreferences = async () => {
@@ -135,10 +132,6 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
     setPrefsRowLoaded(p !== null);
   };
 
-  // Default OFF when undefined (Bundle D 1.F.6, R23). App-Store privacy
-  // requires AI data sharing to be opt-IN.
-  const aiSharingEnabled = preferences?.ai_sharing_enabled ?? false;
-
   const buildNextPrefs = (override: Partial<UserPreferences>): UserPreferences => {
     const previous = preferences;
     return {
@@ -146,41 +139,18 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
       budget: previous?.budget ?? 'mid',
       lifestyle: previous?.lifestyle ?? [],
       brand_attitude: previous?.brand_attitude ?? 'best_of_both',
-      ai_sharing_enabled: previous?.ai_sharing_enabled,
       notifications_enabled: previous?.notifications_enabled,
       notification_types: previous?.notification_types,
       ...override,
     };
   };
 
-  // W3-14 — the two masters go to PUT /api/v1/auth/preference-toggles,
+  // W3-14: the notifications master goes to PUT /api/v1/auth/preference-toggles,
   // which (unlike /preferences) has no `priorities` requirement, so a user
-  // WITHOUT priorities can exercise the AI-sharing opt-out. Every error
+  // WITHOUT priorities can still flip it (S75 U3b, decision D3 = C: the
+  // AI-sharing master is gone and there is no per-user opt-out). Every error
   // render is catalog copy keyed by code — never the backend's English
   // `error` string nor the raw axios message.
-  const handleAiSharingToggle = async (value: boolean) => {
-    if (aiSharingSaving) return;
-    setAiSharingError('');
-    const previous = preferences;
-    const next = buildNextPrefs({ ai_sharing_enabled: value });
-    setPreferences(next);
-    setAiSharingSaving(true);
-    try {
-      const result = await putPreferenceToggles({ ai_sharing_enabled: value });
-      if (!result.success) {
-        setPreferences(previous);
-        setAiSharingError(t(settingsErrorKey(null, 'profile.aiSharing.errorSave')));
-      }
-    } catch (err: any) {
-      setPreferences(previous);
-      setAiSharingError(
-        t(settingsErrorKey(parseApiError(err).code, 'profile.aiSharing.errorSave')),
-      );
-    } finally {
-      setAiSharingSaving(false);
-    }
-  };
-
   // F5.4 — notifications master toggle ONLY. Sub-toggles route through
   // handleSubToggle → PUT /reengagement-subs.
   const handleNotificationsToggle = async (value: boolean) => {
@@ -306,7 +276,7 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
       const parsed = parseApiError(err);
       setPasswordError(
         parsed.code === 'RATE_LIMITED' || parsed.code === 'ACCOUNT_LOCKED'
-          ? t(settingsErrorKey(parsed.code, 'profile.aiSharing.errorSave'))
+          ? t(settingsErrorKey(parsed.code, 'common.error'))
           : parsed.message,
       );
     } finally {
@@ -495,21 +465,10 @@ export default function ProfileScreen({ navigation, onLogout }: ProfileScreenPro
             })}
           </SettingsEyebrow>
           {/* W3-14: the F-S1.5i priorities gate (dbf152d9, surface C) is
-              removed — the two masters now save through the additive
-              /preference-toggles route, which has no priorities
+              removed — the notifications master now saves through the
+              additive /preference-toggles route, which has no priorities
               requirement, and the sub-toggles' /reengagement-subs route
               never touched priorities. The hosts are plain Views. */}
-          <View style={styles.flatRowToggleHost}>
-            <ToggleRow
-              icon={<Shield size={18} color={colors.text.secondary} />}
-              label={t('profile.aiSharing.title')}
-              subtitle={t('profile.aiSharing.subtitle')}
-              value={aiSharingEnabled}
-              onValueChange={handleAiSharingToggle}
-              disabled={aiSharingSaving}
-            />
-            {aiSharingError ? <Text style={styles.errorText}>{aiSharingError}</Text> : null}
-          </View>
           <View style={[styles.flatRowToggleHost, styles.flatRowToggleHostLast]}>
             <ToggleRow
               icon={<Bell size={18} color={colors.text.secondary} />}

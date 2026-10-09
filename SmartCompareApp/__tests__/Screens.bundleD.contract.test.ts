@@ -148,9 +148,11 @@ describe('Bundle D contract — ProfileScreen', () => {
     expect(SRC).toMatch(/handleSubToggle[\s\S]{0,2500}setPreferences\(\s*previous/);
   });
 
-  it('ai_sharing_enabled defaults OFF when undefined (R23 invariant)', () => {
-    expect(SRC).toMatch(/ai_sharing_enabled\s*\?\?\s*false/);
-    expect(SRC).not.toMatch(/ai_sharing_enabled\s*!==\s*false/);
+  // S75 U3b (decision D3 = C): INVERTED. The R23 "defaults OFF" pin guarded a
+  // toggle that routed nothing (#266); the toggle, its state and its key are
+  // removed, so ProfileScreen must not read ai_sharing_enabled at all.
+  it('ProfileScreen no longer reads ai_sharing_enabled (S75 U3b)', () => {
+    expect(SRC).not.toMatch(/ai_sharing_enabled/);
   });
 
   it('Edit style profile navigates to EditPreferences (Bundle E F-S1.5c c.2.i ruling)', () => {

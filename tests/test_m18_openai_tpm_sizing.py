@@ -112,8 +112,8 @@ def test_per_project_clients_respect_max_retries(monkeypatch):
     saved = dict(osvc._client_cache)
     osvc._client_cache.clear()
     try:
-        assert osvc.get_client(True).max_retries == 1
-        assert osvc.get_client(False).max_retries == 1
+        # U3b (D3 = C): get_client() takes no argument; one memoised client.
+        assert osvc.get_client().max_retries == 1
     finally:
         osvc._client_cache.clear()
         osvc._client_cache.update(saved)
