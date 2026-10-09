@@ -31,7 +31,8 @@ and tighten `_map_bd_organic` / `_map_bd_shopping` if a field differs.
 import asyncio
 import logging
 import os
-from typing import Any, Dict, List, Optional
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional, Set
 from urllib.parse import urlencode
 
 import httpx
@@ -45,6 +46,53 @@ from app.services.adapter_timeouts import adapter_timeout
 # sat ABOVE the 15s _PRICE_RACE_TIMEOUT, so the Serper-depletion fallback could
 # only ever return after the race had cancelled. Clamp under the race.
 _TIMEOUT = adapter_timeout(20.0)
+
+# FANOUT-STARVE D6 (F3, 2026-10-09) -- auth-rejection observability. The token
+# expired in production (canary 6: every fallback call answered 401) and nothing
+# reached Sentry because the non-200 branch below logs at WARNING and the U8d
+# policy captures ERROR only. One ERROR per process PER STATUS (401 / 403) names
+# the variable to renew; the message never carries the query, the response body,
+# the zone or the key. The last rejection feeds /health as `brightdata_auth`
+# (status code + UTC timestamp only; deliberate on the public endpoint, n6).
+# "Once per process" is once per warmer run on `price-warmer` (FS-R9).
+_AUTH_ERROR_SEEN: Set[int] = set()
+_AUTH_LAST: Optional[Dict[str, Any]] = None
+
+
+def _reset_brightdata_auth_state() -> None:
+    """Test seam: forget the once-per-process ERROR latch and the snapshot."""
+    global _AUTH_LAST
+    _AUTH_ERROR_SEEN.clear()
+    _AUTH_LAST = None
+
+
+def _note_auth_rejected(status: int) -> None:
+    global _AUTH_LAST
+    _AUTH_LAST = {
+        "last_status": status,
+        "at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    }
+    if status in _AUTH_ERROR_SEEN:
+        return
+    _AUTH_ERROR_SEEN.add(status)
+    # FY18: two ALL-CONSTANT messages (no argument at all), so the U8d R8 source-line
+    # pin (tests/test_sentry_channels_u8d_unit.py) holds and Sentry groups ONE issue per
+    # status. The caller passes only 401 or 403.
+    if status == 401:
+        logger.error(
+            "[brightdata] auth rejected status=401 type=HTTPStatusError -- every fallback "
+            "call fails with 401 until BRIGHTDATA_API_KEY is renewed (owner)"
+        )
+    else:
+        logger.error(
+            "[brightdata] auth rejected status=403 type=HTTPStatusError -- every fallback "
+            "call fails with 403 until BRIGHTDATA_API_KEY is renewed (owner)"
+        )
+
+
+def brightdata_auth_snapshot() -> Dict[str, Any]:
+    """/health's `brightdata_auth` key, present only after a 401/403 in this process."""
+    return {"brightdata_auth": dict(_AUTH_LAST)} if _AUTH_LAST else {}
 
 
 def _brightdata_enabled() -> bool:
@@ -127,9 +175,13 @@ async def _bd_post(query: str, *, country: str, num: int, shopping: bool) -> Opt
                 json=payload,
             )
         if resp.status_code != 200:
+            # D6: a 401/403 body is not needed and must not reach any sink.
+            auth_rejected = resp.status_code in (401, 403)
+            if auth_rejected:
+                _note_auth_rejected(resp.status_code)
             logger.warning(
                 "[brightdata] HTTP %s for %r: %s", resp.status_code, query[:60],
-                (resp.text or "")[:200],
+                "auth rejected (body withheld)" if auth_rejected else (resp.text or "")[:200],
             )
             return None
         # format:raw + brd_json=1 returns the PARSED Google SERP as JSON text.

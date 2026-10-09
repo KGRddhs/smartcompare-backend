@@ -846,13 +846,38 @@ def test_both_start_commands_begin_with_exec(source, reader):
     costs nothing (argv is byte-identical with and without it, measured through
     ``sh -c``) and removes a dependency on Nix-image shell behaviour that cannot
     be observed from here. This test exists so nobody drops it while tidying.
+
+    FS-R6 (FANOUT-STARVE, 2026-10-09): D2 puts ``env UV_THREADPOOL_SIZE="${UV_
+    THREADPOOL_SIZE:-64}"`` between ``exec`` and ``uvicorn`` (libuv reads the
+    variable at its first threadpool use, so the start command is the one
+    placement provably before the interpreter). ``exec`` stays first; every
+    token strictly between ``exec`` and ``uvicorn`` is ``env`` or a NAME=value
+    assignment; and the prefix must be present (RED at main 4c0f3c99: the
+    tokens are ``exec uvicorn ...`` with nothing between).
     """
     command = reader()
-    assert command.startswith("exec "), (
+    tokens = command.split()
+    assert tokens and tokens[0] == "exec", (
         f"{source} start command does not begin with 'exec '; got {command!r}"
     )
-    assert command.split()[1] == "uvicorn", (
-        f"{source} start command must be 'exec uvicorn ...'; got {command!r}"
+    assert "uvicorn" in tokens, (
+        f"{source} start command carries no 'uvicorn' token; got {command!r}"
+    )
+    between = tokens[1:tokens.index("uvicorn")]
+
+    def _is_env_assignment(token):
+        name, sep, _value = token.partition("=")
+        return bool(sep) and bool(name) and (name[0].isupper() or name[0] == "_") and all(
+            ch.isupper() or ch.isdigit() or ch == "_" for ch in name
+        )
+
+    assert all(t == "env" or _is_env_assignment(t) for t in between), (
+        f"{source} start command carries a token between 'exec' and 'uvicorn' that is "
+        f"neither 'env' nor a NAME=value assignment; got {command!r}"
+    )
+    assert "env" in between and any(t.startswith("UV_THREADPOOL_SIZE=") for t in between), (
+        f"{source} start command (D2, FS-R6) carries no 'env UV_THREADPOOL_SIZE=...' prefix "
+        f"between 'exec' and 'uvicorn'; got {command!r}"
     )
 
 

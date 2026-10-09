@@ -554,7 +554,6 @@ export interface UserPreferences {
   budget: BudgetValue;
   lifestyle: string[];
   brand_attitude: 'brand_loyal' | 'function_first' | 'best_of_both';
-  ai_sharing_enabled?: boolean;
   // F5.4 — re-engagement notification preferences. Master + 3 sub-toggles.
   // Missing keys default to ON server-side (matches re-engagement-cron
   // eligibility filter from design 9.2).

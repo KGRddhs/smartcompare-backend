@@ -29,9 +29,11 @@ jest.mock('../../src/services/authService', () => ({ getSavedUser: jest.fn() }))
 const EN: Record<string, string> = require('../../src/i18n/en.json');
 const AR: Record<string, string> = require('../../src/i18n/ar.json');
 
+// S75 U3b (decision D3 = C): the body gained the OpenAI data-use sentence in
+// EN and AR (a MATERIAL change), so the version is 2 and the digest is re-recorded.
 const PINNED = {
-  version: 1,
-  sha256: 'cafab3ffe656d44c03ac82120b40514278c8337e29e632d0f6bb57e9b5c95ae2',
+  version: 2,
+  sha256: '372c50484085fa859a576a62367c743365735fab6dda31f336552a4ae2a21a02',
 };
 
 function consentCopyDigest(): string {

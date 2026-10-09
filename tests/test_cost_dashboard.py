@@ -84,7 +84,9 @@ class TestCostDashboard:
              patch("app.api.admin_routes.get_supabase_client", return_value=None):
             resp = client.get("/api/v1/admin/costs", headers={"X-Admin-Key": ADMIN_KEY})
             data = resp.json()
-            assert data["avg_cost_per_comparison"] == 0
+            # COST-METER (#66, S74/S75) ruling CM3 / spec 4.2: no comparison
+            # recorded a cost -> null, never 0 (the 0 pinned the defect).
+            assert data["avg_cost_per_comparison"] is None
             assert data["comparisons_this_month"] == 0
 
     def test_supabase_error_graceful(self):
@@ -99,7 +101,9 @@ class TestCostDashboard:
             resp = client.get("/api/v1/admin/costs", headers={"X-Admin-Key": ADMIN_KEY})
             assert resp.status_code == 200
             data = resp.json()
-            assert data["openai"]["cost_usd"] == 0
+            # COST-METER (#66, S74/S75) ruling CM3 / spec 4.2: a Supabase error
+            # means nothing is known -> null, never 0 (the 0 pinned the defect).
+            assert data["openai"]["cost_usd"] is None
 
     def test_period_format(self):
         mock_summary = {
@@ -189,41 +193,61 @@ class TestCostDashboard:
             assert data["serper_burn"] == {}
 
     def test_openai_cost_with_data(self):
-        """When Supabase returns comparison data, costs are summed."""
+        """When Supabase returns comparison data, costs are summed.
+
+        COST-METER (#66, S74/S75) amendment, ruling CM3 / spec 4.2: the rows
+        carry ``full_response.metadata.openai`` (the JSON-path select answers
+        with the key ``openai``; the blob select with ``full_response``), the
+        chain gains ``.order().range()``, and the expectations are list-price
+        sums: gpt-4o 1000/400/200 = 0.004 plus gpt-4o-mini same tokens =
+        0.00024 -> cost_usd 0.00424, comparisons_this_month 2,
+        avg_cost_per_comparison round(0.00424 / 2, 6) = 0.00212.
+        """
         mock_summary = {
             "providers": {}, "circuit_breakers": {},
         }
-        mock_supabase = MagicMock()
-        # First call: metadata query
-        mock_result_meta = MagicMock()
-        mock_result_meta.data = [
-            {"metadata": {"total_cost": 0.01}},
-            {"metadata": {"total_cost": 0.015}},
+        openai_rows = [
+            {"cost_usd": 0.004, "cost_complete": True},
+            {"cost_usd": 0.00024, "cost_complete": True},
         ]
-        # Second call: count query
         mock_result_count = MagicMock()
         mock_result_count.data = []
         mock_result_count.count = 2
 
         mock_table = MagicMock()
-        call_count = {"n": 0}
+
         def select_side_effect(*args, **kwargs):
-            call_count["n"] += 1
-            mock_gte = MagicMock()
-            if call_count["n"] == 1:
-                mock_gte.execute.return_value = mock_result_meta
+            chain = MagicMock()
+            for name in ("gte", "lte", "lt", "eq", "order", "range", "limit"):
+                getattr(chain, name).return_value = chain
+            if kwargs.get("count"):
+                chain.execute.return_value = mock_result_count
+                return chain
+            selected = " ".join(str(a) for a in args)
+            result = MagicMock()
+            if "->" in selected:
+                result.data = [
+                    {"id": f"r{i}", "created_at": "2026-10-09T10:00:00+00:00", "openai": row}
+                    for i, row in enumerate(openai_rows)
+                ]
+            elif "full_response" in selected:
+                result.data = [
+                    {"id": f"r{i}", "created_at": "2026-10-09T10:00:00+00:00",
+                     "full_response": {"metadata": {"openai": row}}}
+                    for i, row in enumerate(openai_rows)
+                ]
             else:
-                mock_gte.execute.return_value = mock_result_count
-            mock_select = MagicMock()
-            mock_select.gte.return_value = mock_gte
-            return mock_select
+                result.data = []
+            chain.execute.return_value = result
+            return chain
         mock_table.select.side_effect = select_side_effect
+        mock_supabase = MagicMock()
         mock_supabase.table.return_value = mock_table
 
         with patch("app.api.admin_routes.get_usage_summary", return_value=mock_summary), \
              patch("app.api.admin_routes.get_supabase_client", return_value=mock_supabase):
             resp = client.get("/api/v1/admin/costs", headers={"X-Admin-Key": ADMIN_KEY})
             data = resp.json()
-            assert data["openai"]["cost_usd"] == 0.025
+            assert data["openai"]["cost_usd"] == 0.00424
             assert data["comparisons_this_month"] == 2
-            assert data["avg_cost_per_comparison"] == 0.0125
+            assert data["avg_cost_per_comparison"] == 0.00212

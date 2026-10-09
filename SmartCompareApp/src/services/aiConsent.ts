@@ -31,8 +31,10 @@
  * clashes with the sheet's own dismissal.
  *
  * The sheet copy must stay true of what the code sends — see the aiConsent.*
- * keys and the evidence in the U3 PR. It must NOT promise an opt-out: the
- * Profile AI-sharing toggle routes nothing today (#266).
+ * keys and the evidence in the U3 PR. It must NOT promise an opt-out: under
+ * decision D3 = C (S75 U3b) the organisation shares the compare inputs and
+ * outputs with OpenAI, the body discloses that in one sentence, and there is
+ * no per-user AI-sharing control (the Profile toggle is gone).
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -41,7 +43,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getSavedUser } from './authService';
 
 /** Bump to re-ask every user once (e.g. when the disclosure changes). */
-export const AI_CONSENT_VERSION = 1;
+export const AI_CONSENT_VERSION = 2;
 
 export const AI_CONSENT_KEY_PREFIX = '@qaren_ai_consent_';
 

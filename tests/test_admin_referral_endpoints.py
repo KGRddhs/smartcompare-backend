@@ -225,19 +225,48 @@ class TestCostsSubscriptions:
 
 class TestCostsApi:
     def test_returns_openai_total_and_daily_burn(self):
+        """COST-METER (#66, S74/S75) amendment, ruling G2 / spec 4.2: the two
+        rows carry ``full_response.metadata.openai`` (list-price, complete),
+        the chain accepts the JSON-path select, the blob select and the count
+        select through ``.gte().lte().order().range().execute()``, and the
+        total is ``openai_list_usd`` (``openai_paid_usd`` is gone: the old
+        name asserted a billing fact the data cannot carry, CM12)."""
+        rows = [
+            ("r1", "2026-05-04T10:00:00Z", {"cost_usd": 0.0086, "cost_complete": True}),
+            ("r2", "2026-05-05T11:00:00Z", {"cost_usd": 0.0019, "cost_complete": True}),
+        ]
+        mock_table = MagicMock()
+
+        def select_side_effect(*args, **kwargs):
+            chain = MagicMock()
+            for name in ("gte", "lte", "lt", "eq", "order", "range", "limit"):
+                getattr(chain, name).return_value = chain
+            result = MagicMock()
+            if kwargs.get("count"):
+                result.data = []
+                result.count = len(rows)
+                chain.execute.return_value = result
+                return chain
+            selected = " ".join(str(a) for a in args)
+            if "->" in selected:
+                result.data = [
+                    {"id": rid, "created_at": created, "openai": openai}
+                    for rid, created, openai in rows
+                ]
+            elif "full_response" in selected:
+                result.data = [
+                    {"id": rid, "created_at": created,
+                     "full_response": {"metadata": {"openai": openai}}}
+                    for rid, created, openai in rows
+                ]
+            else:
+                result.data = []
+            chain.execute.return_value = result
+            return chain
+
+        mock_table.select.side_effect = select_side_effect
         client_mock = MagicMock()
-        client_mock.table.return_value.select.return_value.gte.return_value.limit.return_value.execute.return_value = MagicMock(
-            data=[
-                {
-                    "created_at": "2026-05-04T10:00:00Z",
-                    "full_response": {"metadata": {"total_cost": 0.0086}},
-                },
-                {
-                    "created_at": "2026-05-05T11:00:00Z",
-                    "full_response": {"metadata": {"total_cost": 0.0019}},
-                },
-            ]
-        )
+        client_mock.table.return_value = mock_table
 
         with patch(
             "app.api.admin_routes.get_admin_supabase_client",
@@ -254,7 +283,8 @@ class TestCostsApi:
             )
         assert resp.status_code == 200
         body = resp.json()
-        assert body["openai_paid_usd"] > 0
+        assert body["openai_list_usd"] > 0
+        assert "openai_paid_usd" not in body
         assert len(body["daily_burn"]) == 2
         assert body["scrapers"]["firecrawl"]["used"] == 12
 
