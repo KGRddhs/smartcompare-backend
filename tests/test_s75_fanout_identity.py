@@ -1,4 +1,4 @@
-"""FANOUT-STARVE (session 75, 2026-10-09) -- flag-OFF compare identity against main 4c0f3c99.
+"""FANOUT-STARVE (session 75, 2026-10-09) -- flag-OFF compare identity against main 6cff57af.
 
 Ruling FY25 (post-adversary, closes FY5): the runtime-truth adversary's ident_probe.py, made a
 repo test. Seven flag-OFF scenarios (REST q full, REST pair full, REST partial at gather,
@@ -9,8 +9,8 @@ faked (the LLM parse and verdict, the unified search, specs / price / reviews / 
 refill tiers, the image). Each scenario's observable result -- the response bytes (or the
 stream's event list), the cost counters, the searches issued, the products fetched and the
 category-resolution calls -- is normalised (the clock fields dropped) and hashed; the
-digests must equal the ones recorded at main 4c0f3c99 in
-tests/fixtures/s75_fanout_identity_digests.json (re-record: run this file as a script at the
+digests must equal the ones recorded at main 6cff57af in
+tests/fixtures/s75_fanout_identity_digests.json (re-record at EVERY rebase onto a main that changes response bytes -- e.g. COST-METER added metadata.openai -- run this file as a script at the
 base sha, `python -m tests.test_s75_fanout_identity <out.json>`). Flag-ON nodes pin the
 success-path stamps the partial-path nodes cannot reach (FY5): metadata.parse_presplit and
 metadata.phase2_skipped on the REST success body and on the stream `complete` payload.
@@ -269,12 +269,12 @@ async def _all_digests():
 
 def test_FY25_flag_off_compare_identity_matches_main():
     """FY25 / FY5: with every unit flag OFF the nine scenarios' normalised digests equal the
-    ones recorded at main 4c0f3c99 (the injected-marks scenarios included: an LLM JSON
+    ones recorded at main 6cff57af (the injected-marks scenarios included: an LLM JSON
     carrying a private mark moves no byte, FY3)."""
     want = json.loads(FIXTURE.read_text(encoding="ascii"))["digests"]
     got = asyncio.run(_all_digests())
     moved = sorted(name for name in SCENARIOS if got.get(name) != want.get(name))
-    assert moved == [], "FY25: flag-OFF scenarios moved against main 4c0f3c99: %r" % (moved,)
+    assert moved == [], "FY25: flag-OFF scenarios moved against main 6cff57af: %r" % (moved,)
 
 
 def _complete(events):
@@ -317,6 +317,6 @@ def test_FY25_phase2_skip_marks_the_rest_success_and_stream_complete():
 if __name__ == "__main__":  # pragma: no cover - the recorder (run at the base sha)
     digests = asyncio.run(_all_digests())
     with open(sys.argv[1], "w", encoding="ascii", newline="\n") as handle:
-        json.dump({"base": "4c0f3c99", "digests": digests}, handle, indent=1, sort_keys=True)
+        json.dump({"base": "6cff57af", "digests": digests}, handle, indent=1, sort_keys=True)
         handle.write("\n")
     print("wrote", sys.argv[1], len(digests))
