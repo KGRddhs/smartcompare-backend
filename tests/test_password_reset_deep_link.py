@@ -131,14 +131,14 @@ async def test_flag_on_sends_the_default_app_redirect(monkeypatch):
 async def test_flag_on_honours_the_redirect_knob(monkeypatch):
     """The knob is what will switch to the universal link with no code change."""
     monkeypatch.setenv(FLAG, "true")
-    monkeypatch.setenv(KNOB, "https://qaren.app/reset-password")
+    monkeypatch.setenv(KNOB, "https://getmyez.com/reset-password")
 
     mock_client = MagicMock()
     with patch.object(auth_service, "get_auth_client", return_value=mock_client):
         await auth_service.request_password_reset("u@t.com")
 
     mock_client.auth.reset_password_email.assert_called_once_with(
-        "u@t.com", {"redirect_to": "https://qaren.app/reset-password"}
+        "u@t.com", {"redirect_to": "https://getmyez.com/reset-password"}
     )
 
 
@@ -662,8 +662,8 @@ def test_both_predicates_are_read_per_call_never_cached_at_import(monkeypatch):
     monkeypatch.delenv(KNOB, raising=False)
     assert auth_service.password_reset_redirect_url() == DEFAULT_REDIRECT
 
-    monkeypatch.setenv(KNOB, "https://qaren.app/reset-password")
-    assert auth_service.password_reset_redirect_url() == "https://qaren.app/reset-password"
+    monkeypatch.setenv(KNOB, "https://getmyez.com/reset-password")
+    assert auth_service.password_reset_redirect_url() == "https://getmyez.com/reset-password"
 
     monkeypatch.setenv(KNOB, "   ")
     assert auth_service.password_reset_redirect_url() == DEFAULT_REDIRECT

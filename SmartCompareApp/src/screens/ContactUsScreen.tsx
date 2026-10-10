@@ -55,6 +55,9 @@ const BACKEND_MAX_CHANGE_SUGGESTION = 1000;
 const MAX_MESSAGE =
   BACKEND_MAX_CHANGE_SUGGESTION - ('[Suggestion] '.length + MAX_SUBJECT + '\n\n'.length);
 const RATE_LIMIT_MS = 30_000;
+// S76 DOMAIN-MYEZ: the support mailbox (owner decision 2026-10-10). The one place
+// this screen names it; the email fallback builds its mailto from it.
+const SUPPORT_EMAIL = 'support@getmyez.com';
 
 export default function ContactUsScreen({ navigation }: Props) {
   const { t } = useTranslation();
@@ -215,7 +218,7 @@ export default function ContactUsScreen({ navigation }: Props) {
           </TouchableOpacity>
 
           <TouchableOpacity
-            onPress={() => Linking.openURL('mailto:support@qaren.app?subject=MYEZ%20Support')}
+            onPress={() => Linking.openURL(`mailto:${SUPPORT_EMAIL}?subject=MYEZ%20Support`)}
             style={styles.emailFallback}
             accessibilityRole="link"
           >

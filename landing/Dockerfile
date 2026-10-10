@@ -24,6 +24,8 @@ COPY privacy.html /usr/share/nginx/html/
 COPY terms.html /usr/share/nginx/html/
 COPY support.html /usr/share/nginx/html/
 COPY open.html /usr/share/nginx/html/
+# Crawler info page served at /bot (session 76): the URL our robots User-Agent names.
+COPY bot /usr/share/nginx/html/bot
 COPY .well-known /usr/share/nginx/html/.well-known
 
 # Arabic locale mirror — served under /ar/* with RTL layout + Cairo-only fonts.

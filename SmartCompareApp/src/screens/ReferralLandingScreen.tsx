@@ -2,7 +2,7 @@
  * ReferralLandingScreen (F3.2)
  *
  * Invitee landing page — opens from a deep link or web URL of the form
- * `qaren.app/c/{share_token}?ref={referrer_code}`. NO signup gate before
+ * `getmyez.com/c/{share_token}?ref={referrer_code}`. NO signup gate before
  * the quiz (PDF #6 — gradual commitment).
  *
  * Calls GET /api/v1/referrals/invite/{token}?ref={code} on mount and

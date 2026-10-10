@@ -43,6 +43,13 @@ server {
         try_files /ar/support.html =404;
     }
 
+    # /bot -> the crawler info page (session 76, DG4). The named User-Agent our
+    # robots.txt reads send (app/services/sitemap_discovery_service.py _ROBOTS_UA,
+    # mirrored by scripts/resolve_search_descriptors.py USER_AGENT) points here.
+    location = /bot {
+        try_files /bot/index.html =404;
+    }
+
     # Global security headers — matches vercel.json.alternative + iOS WKWebView
     # expectations.
     add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
@@ -56,10 +63,10 @@ server {
     # registers as universal links (the AASA above) and as qaren:// deep links.
     # A browser reaches these paths from a pasted or forwarded link, an in-app
     # browser, Android (the assetlinks certificate is still a placeholder) or a
-    # phone without the app - and only once qaren.app points at this service
-    # (today it answers a Cloudflare 522). open.html offers the qaren:// hand-off
-    # (and the store link once it exists) instead of the 404 the catch-all
-    # used to return.
+    # phone without the app - and only once getmyez.com points at this service
+    # (on 2026-10-10 it still served an unrelated page). open.html offers the
+    # qaren:// hand-off (and the store link once it exists) instead of the 404
+    # the catch-all used to return.
     location ^~ /c/ {
         try_files /open.html =404;
     }
@@ -88,4 +95,15 @@ server {
         access_log off;
         try_files $uri =404;
     }
+}
+
+# www.getmyez.com -> the apex (session 76, DG3). Universal links and the AASA are
+# claimed for the apex only, so www answers a permanent redirect and serves nothing
+# itself. Keep this block AFTER the catch-all server above: nginx's default server
+# for a listen socket is the first block that declares it, and every other Host
+# (the Railway host, the apex) must keep reaching the catch-all.
+server {
+    listen ${PORT};
+    server_name www.getmyez.com;
+    return 301 https://getmyez.com$request_uri;
 }

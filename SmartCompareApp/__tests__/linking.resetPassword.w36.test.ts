@@ -158,6 +158,6 @@ describe('preserve — the existing deep links resolve exactly as before the mov
   });
 
   it('both prefixes survive the move — the universal-link prefix is not dropped', () => {
-    expect(linking.prefixes).toEqual(['qaren://', 'https://qaren.app']);
+    expect(linking.prefixes).toEqual(['qaren://', 'https://getmyez.com']);
   });
 });

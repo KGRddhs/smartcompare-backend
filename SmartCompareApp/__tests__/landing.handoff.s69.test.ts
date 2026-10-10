@@ -5,7 +5,7 @@
  * and /q/<quiz token>. Its inline script rewrites the two "Open in MYEZ"
  * buttons to the qaren:// deep link the app's linking config resolves
  * (src/navigation/linking.ts: c/:share_token, r/:code, q/:share_token,
- * prefixes 'qaren://' + 'https://qaren.app'). The static pytest pins the
+ * prefixes 'qaren://' + 'https://getmyez.com'). The static pytest pins the
  * page's structure; this suite runs the script in a stub DOM and pins the
  * behaviour, so a wrong regex, a swapped group or a missed button reddens.
  *

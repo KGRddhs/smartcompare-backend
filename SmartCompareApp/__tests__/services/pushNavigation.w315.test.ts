@@ -247,19 +247,19 @@ describe('W3-15 P4 — guards', () => {
     expect(h.resetRoot).not.toHaveBeenCalled();
   });
 
-  // P4f — the HOST BOUNDARY after `https://qaren.app`. A bare prefix match
-  // accepts `https://qaren.appcomparison/abc` (host `qaren.appcomparison`)
+  // P4f — the HOST BOUNDARY after `https://getmyez.com`. A bare prefix match
+  // accepts `https://getmyez.comcomparison/abc` (host `getmyez.comcomparison`)
   // and dispatches NAVIGATE Results{comparison_id:'abc'}. Mutation: drop the
   // boundary check in pathFromPushUrl -> this test (and P9b) go red.
-  it('P4f: a host that merely STARTS with qaren.app is foreign, and is never navigated', () => {
+  it('P4f: a host that merely STARTS with getmyez.com is foreign, and is never navigated', () => {
     const h = load();
     h.isReady.mockReturnValue(true as never);
 
     const foreign = [
-      'https://qaren.appcomparison/abc',
-      'https://qaren.app.evil.com/comparison/abc',
-      'https://evil.com/qaren.app/comparison/abc',
-      'https://qaren.app@evil.com/comparison/abc',
+      'https://getmyez.comcomparison/abc',
+      'https://getmyez.com.evil.com/comparison/abc',
+      'https://evil.com/getmyez.com/comparison/abc',
+      'https://getmyez.com@evil.com/comparison/abc',
     ];
     foreign.forEach((url, i) => {
       expect({ url, handled: h.mod.handlePushResponse(makeResponse(url, { identifier: `f${i}` })) }).toEqual({
@@ -273,7 +273,7 @@ describe('W3-15 P4 — guards', () => {
     expect(h.resetRoot).not.toHaveBeenCalled();
 
     // Positive control: the same path on the real host still navigates.
-    const own = makeResponse('https://qaren.app/comparison/abc?banner=insight', { identifier: 'own' });
+    const own = makeResponse('https://getmyez.com/comparison/abc?banner=insight', { identifier: 'own' });
     expect(h.mod.handlePushResponse(own)).toBe(true);
     expect(h.dispatch).toHaveBeenCalledTimes(1);
     expect(h.dispatch.mock.calls[0][0]).toEqual(NAVIGATE_RESULTS);
@@ -456,7 +456,7 @@ describe('W3-15 P9 — pathFromPushUrl', () => {
     const h = load();
 
     expect(h.mod.pathFromPushUrl('qaren://profile/referrals')).toBe('profile/referrals');
-    expect(h.mod.pathFromPushUrl('https://qaren.app/c/T')).toBe('c/T');
+    expect(h.mod.pathFromPushUrl('https://getmyez.com/c/T')).toBe('c/T');
     expect(h.mod.pathFromPushUrl('QAREN://x')).toBe('x');
     expect(h.mod.pathFromPushUrl('mailto:x')).toBeUndefined();
     // Non-strings (NotificationContent.data values are `unknown`) never throw.
@@ -477,15 +477,15 @@ describe('W3-15 P9 — pathFromPushUrl', () => {
     const prefixes = h.linking.prefixes;
 
     const table: [string, string | undefined][] = [
-      ['https://qaren.appcomparison/abc', undefined],
-      ['https://qaren.app.evil.com/x', undefined],
-      ['https://evil.com/qaren.app/x', undefined],
-      ['https://qaren.app@evil.com/x', undefined],
-      ['https://qaren.app:8443/x', undefined],
+      ['https://getmyez.comcomparison/abc', undefined],
+      ['https://getmyez.com.evil.com/x', undefined],
+      ['https://evil.com/getmyez.com/x', undefined],
+      ['https://getmyez.com@evil.com/x', undefined],
+      ['https://getmyez.com:8443/x', undefined],
       ['qaren://', ''],
-      ['https://qaren.app', ''],
-      ['https://qaren.app/comparison/abc', 'comparison/abc'],
-      ['https://qaren.app?code=QR-1', '?code=QR-1'],
+      ['https://getmyez.com', ''],
+      ['https://getmyez.com/comparison/abc', 'comparison/abc'],
+      ['https://getmyez.com?code=QR-1', '?code=QR-1'],
       ['qaren://comparison/abc', 'comparison/abc'],
     ];
     for (const [url, expected] of table) {

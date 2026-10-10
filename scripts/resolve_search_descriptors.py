@@ -77,7 +77,7 @@ MIN_THROTTLE_SECONDS = 2.0
 #: Per-request timeout, seconds.
 FETCH_TIMEOUT = 20
 #: The named product token we identify as (see rule 1 above).
-USER_AGENT = "%s/1.0 (+https://qaren.app/bot; contact: kingzatel@gmail.com)" % (
+USER_AGENT = "%s/1.0 (+https://getmyez.com/bot; contact: kingzatel@gmail.com)" % (
     robots_eval.NAMED_AGENT
 )
 
