@@ -636,7 +636,7 @@ export type AuthStackParamList = {
   // quiz soft-signup CTA (F3.5) — forwarded to /auth/register so the
   // backend links redeemed_by_user_id on the pending referral invite.
   // `code` arrives via deep link (qaren://redeem?code=QR-XXXXXX or
-  // qaren.app/r/QR-XXXXXX) and pre-fills the invite-code field on Register.
+  // getmyez.com/r/QR-XXXXXX) and pre-fills the invite-code field on Register.
   Register: { invite_id?: string; code?: string } | undefined;
   ForgotPassword: undefined;
   // W3-6 — reached from the qaren://reset-password recovery link. Takes NO

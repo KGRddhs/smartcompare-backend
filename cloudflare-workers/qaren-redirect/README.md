@@ -1,5 +1,14 @@
 # qaren-redirect — install-survival Worker
 
+> **RETIRED 2026-10-10 -- do not deploy.** The product domain moved to getmyez.com and
+> qaren.app is retired (owner decision 2026-10-10). Reasons: (1) the Worker's only route,
+> `qaren.app/r/*`, is on the retired zone; (2) re-pointed at `getmyez.com/r/*` it would
+> intercept `/r/*` before the Railway landing and shadow the tested `open.html` hand-off,
+> giving `/r/` and `/c/` two different behaviours; (3) its store targets are wrong or
+> placeholders (`PLAY_STORE_PACKAGE = 'com.kersher2.qaren'` does not match the app's
+> package, `APP_STORE_ID = 'idTBD'`); (4) the backend builds `/c/` links, not `/r/`.
+> The route in `wrangler.toml` is commented out; the body below is kept as history.
+
 `qaren.app/r/{code}` → device-aware redirect. Replaces the dropped
 Branch.io SDK (free tier was paywalled). See
 `docs/plans/2026-05-12-bundle-bcd-consolidated-design.md` § 4.1.

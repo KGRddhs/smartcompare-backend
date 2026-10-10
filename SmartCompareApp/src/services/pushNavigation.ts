@@ -83,11 +83,11 @@ let handlerInstalled = false;
  * note that this is MORE lenient than `extractPathFromURL` 7.2.4, which is
  * case-sensitive.
  *
- * HOST BOUNDARY. A prefix that ends in a host (`https://qaren.app`) matches
+ * HOST BOUNDARY. A prefix that ends in a host (`https://getmyez.com`) matches
  * only when the host ends right there — end of string, `/`, `?` or `#` — the
  * same `(?=$|[/?#])` lookahead `extractPathFromURL.js` 7.2.4 appends. Without
- * it `https://qaren.appcomparison/abc` (host `qaren.appcomparison`) and
- * `https://qaren.app.evil.com/x` would be navigated. A prefix that already
+ * it `https://getmyez.comcomparison/abc` (host `getmyez.comcomparison`) and
+ * `https://getmyez.com.evil.com/x` would be navigated. A prefix that already
  * ends in `/` (`qaren://`) carries no host of its own and needs no boundary,
  * again as in `extractPathFromURL`. Returns `undefined` for anything that does
  * not belong to this app, which is what makes a foreign-origin `data.url`

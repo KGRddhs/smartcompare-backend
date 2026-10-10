@@ -1,12 +1,12 @@
 """Session 69 — the landing site's universal-link hand-off page (audit RT-8 / EXPO-06).
 
-The backend builds every referral link on ``https://qaren.app/c/<share token>?ref=<code>``
+The backend builds every referral link on ``https://getmyez.com/c/<share token>?ref=<code>``
 (``app/services/referral_service.py`` ``APP_BASE_URL``; the share token is the comparison
 row's, which is NULL unless ``POST /share/{id}`` created one — so the live shape is usually
 ``/c/?ref=QR-XXXXXX``), and the app registers ``/c/*``, ``/r/*`` and ``/q/*`` as universal
 links (``landing/.well-known/apple-app-site-association``) and as ``qaren://`` deep links
 (``SmartCompareApp/src/navigation/linking.ts``). Before this unit the landing nginx served a
-404 for all three families. Today ``qaren.app`` itself answers a Cloudflare 522, so the page is
+404 for all three families. On 2026-10-10 ``getmyez.com`` still served an unrelated page, so the page is
 reachable only on the Railway landing host until Ahmed attaches the domain (runbook row 12).
 
 This file pins the STATIC contract (nginx, Dockerfile, the page's structure and safety). The

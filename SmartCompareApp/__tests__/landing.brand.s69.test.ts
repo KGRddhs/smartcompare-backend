@@ -120,9 +120,9 @@ describe('S69 U-R T4 — landing brand fence (MYEZ / ميّز)', () => {
   });
 
   it('every <title> names the brand: MYEZ (en pages) / «ميّز» (ar pages), addresses kept', () => {
-    // R-B / D14: every qaren.app address survives (the old address is kept).
+    // R-B / D14: every address survives (S76: re-hosted on getmyez.com, owner decision 2026-10-10).
     for (const rel of PAGES) {
-      const n = (read(rel).match(/qaren\.app/g) ?? []).length;
+      const n = (read(rel).match(/qaren\.app|getmyez\.com/g) ?? []).length;
       expect({ rel, n }).toEqual({ rel, n: ADDRESS_COUNTS[rel] });
     }
     for (const rel of PAGES) {

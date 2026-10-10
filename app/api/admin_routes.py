@@ -919,7 +919,7 @@ _FIXED_SUBSCRIPTIONS = [
     {"line": "Railway Hobby", "monthly_usd": 5.0, "notes": "Backend hosting"},
     {"line": "Railway usage", "monthly_usd": 3.5, "notes": "Variable, ~$2-5/mo at low volume"},
     {"line": "Apple Developer", "monthly_usd": 8.25, "notes": "$99/yr, due Sep 2026"},
-    {"line": "Domain (qaren.app)", "monthly_usd": 1.5, "notes": "$18/yr"},
+    {"line": "Domain (getmyez.com)", "monthly_usd": 1.5, "notes": "$18/yr"},
     {"line": "Supabase", "monthly_usd": 0.0, "notes": "Free tier; $25 once over 5K comparisons/day"},
     {"line": "Upstash Redis", "monthly_usd": 0.0, "notes": "Free tier; $5-30 PAYG over ~800/day"},
     {"line": "Sentry", "monthly_usd": 0.0, "notes": "Free tier (5K errors/mo)"},

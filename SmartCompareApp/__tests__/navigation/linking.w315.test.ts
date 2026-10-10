@@ -151,9 +151,9 @@ describe('W3-15 L6-L9 — PINS: the live client-authored deep links are byte-ide
   });
 
   it('L9b: https:// prefix resolves the same shapes (both prefixes preserved)', () => {
-    expect(resolve('https://qaren.app/c/TOK1?ref=QR-1')).toBeDefined();
+    expect(resolve('https://getmyez.com/c/TOK1?ref=QR-1')).toBeDefined();
     const cfg = linking as LinkingOptions<any>;
-    expect(cfg.prefixes).toEqual(['qaren://', 'https://qaren.app']);
+    expect(cfg.prefixes).toEqual(['qaren://', 'https://getmyez.com']);
   });
 });
 

@@ -15,7 +15,7 @@ Exit code: 0 if all probes pass, 1 if any fail. Safe to wire into a
 post-deploy CI hook.
 
 Throwaway test user creds:
-- Email: bundle-d-smoke-<timestamp>@qaren.app (uniquely-generated each run)
+- Email: bundle-d-smoke-<timestamp>@<SMOKE_EMAIL_DOMAIN> (uniquely-generated each run)
 - Password: BundleD-Smoke-2026-05-23!  (10+ chars, 1 upper/lower/digit/symbol)
 The register probe creates a user the first time. Subsequent runs that
 hit the same minute would fail the email-already-exists check — that's
@@ -58,6 +58,10 @@ import httpx
 
 DEFAULT_BASE_URL = "https://web-production-58776.up.railway.app"
 SMOKE_TIMEOUT_SECONDS = 60.0  # generous — /text/compare can take ~25s cold
+# The register probe signs real throwaway users up on a domain we own (getmyez.com, owner
+# decision 2026-10-10). Never the retired product domain: a stranger could re-register it
+# and receive the smoke users' confirmation mails.
+SMOKE_EMAIL_DOMAIN = "getmyez.com"
 
 
 def _harness_auth_headers() -> dict[str, str]:
@@ -174,7 +178,7 @@ def run_probes(
 ) -> list[ProbeResult]:
     """Run all probes against `base_url`, returning a list of results."""
     timestamp = int(time.time())
-    test_email = f"bundle-d-smoke-{timestamp}@qaren.app"
+    test_email = f"bundle-d-smoke-{timestamp}@{SMOKE_EMAIL_DOMAIN}"
     test_password = "BundleD-Smoke-2026-05-23!"
 
     results: list[ProbeResult] = []

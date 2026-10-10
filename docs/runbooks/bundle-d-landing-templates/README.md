@@ -8,7 +8,7 @@
 
 ### `apple-app-site-association.json`
 Universal Links AASA file. **MUST be served at:**
-- Path: `https://qaren.app/.well-known/apple-app-site-association`
+- Path: `https://getmyez.com/.well-known/apple-app-site-association`
 - **NO `.json` extension** in URL (Apple's CDN looks for the extensionless path)
 - `Content-Type: application/json` (Vercel header override required)
 
@@ -24,7 +24,7 @@ Paths `/r/*` `/c/*` `/q/*` match existing app.json wiring:
 
 ### `assetlinks.json`
 Android Digital Asset Links. **MUST be served at:**
-- Path: `https://qaren.app/.well-known/assetlinks.json`
+- Path: `https://getmyez.com/.well-known/assetlinks.json`
 - Path INCLUDES `.json` extension (Google convention, unlike Apple)
 - `Content-Type: application/json`
 
@@ -71,11 +71,11 @@ Package name `com.qaren.app` matches `app.json:23` `android.package`. Confirmed 
 6. Once green on preview URL, flip DNS A/AAAA to Vercel (TTL 300s per R24).
 7. Validate Apple CDN cached the new AASA (may take 24h):
    ```bash
-   curl -i https://app-site-association.cdn-apple.com/a/v1/qaren.app
+   curl -i https://app-site-association.cdn-apple.com/a/v1/getmyez.com
    ```
 
 ## Why these files matter
 
-- **AASA on iOS:** without it, when Mobile Safari sees `https://qaren.app/r/QR-ABC123`, it WILL NOT open the Qaren app — it'll just load the URL in Safari. AASA tells iOS "the Qaren app claims these paths."
+- **AASA on iOS:** without it, when Mobile Safari sees `https://getmyez.com/r/QR-ABC123`, it WILL NOT open the Qaren app — it'll just load the URL in Safari. AASA tells iOS "the Qaren app claims these paths."
 - **assetlinks.json on Android:** without it, Chrome on Android shows a disambiguation prompt ("Open in Qaren / Open in Chrome") on every link tap, breaking the deep-link UX. With it, the app opens directly.
-- **App-side wiring already in place:** `app.json:20` `applinks:qaren.app` + Android intent filters at `app.json:30-46`. The native side trusts these files at the verified domain.
+- **App-side wiring already in place:** `app.json:20` `applinks:getmyez.com` + Android intent filters at `app.json:30-46`. The native side trusts these files at the verified domain.

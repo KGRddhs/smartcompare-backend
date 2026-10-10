@@ -1,3 +1,8 @@
+# RETIRED 2026-10-10 with qaren.app -- do not deploy.
+# The product domain moved to getmyez.com (owner decision 2026-10-10). The only route
+# was on the retired zone; re-pointed at getmyez.com/r/* it would shadow the landing's
+# open.html hand-off. The route is commented out so an accidental `wrangler deploy`
+# binds no route. The code is kept as history (README.md).
 name = "qaren-redirect"
 main = "src/index.ts"
 compatibility_date = "2026-05-12"
@@ -6,9 +11,9 @@ compatibility_date = "2026-05-12"
 # Routes (zone_name), NOT Custom Domains (which forbid wildcards/paths).
 # `qaren.app` must be on Cloudflare DNS (already wired).
 # Run `wrangler login` then `wrangler deploy` to publish.
-routes = [
-  { pattern = "qaren.app/r/*", zone_name = "qaren.app" },
-]
+# routes = [
+#   { pattern = "qaren.app/r/*", zone_name = "qaren.app" },
+# ]
 
 # Logging is fine on the free plan; keep observability cheap.
 [observability]
