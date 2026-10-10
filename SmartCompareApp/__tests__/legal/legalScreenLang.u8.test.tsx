@@ -42,7 +42,7 @@ import { Linking } from 'react-native';
 // mock* variable lazily, so the screen may be imported here.
 import LegalScreen from '../../src/screens/LegalScreen';
 
-/** The Railway landing host (qaren.app is not attached yet; UL5). */
+/** The Railway landing host (getmyez.com does not serve the legal pages yet; UL5). */
 const LANDING = 'https://qaren-landing-production.up.railway.app';
 
 /** One UI language drives both possible sources (hook and singleton). */

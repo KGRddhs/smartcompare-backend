@@ -40,6 +40,12 @@ FIX round 3 rulings UF10-UF13 after the final adversary 2: (j) gains the s3.6 Op
 (UF11); (k) gains the share verb for advertisers / data brokers / partners and "data ... about you" (UF13,
 the adversary's probes X1 and X2); (n) matches the UF10 service-providers sentence and pins the sentence that
 retailer websites and the sign-in providers Apple and Google act under their own terms (UF10).
+FIX round 4 rulings UF14, UF21, UF22 after the final adversary 3: (i) pins the UF14 derived-data sentences (the
+de-identified comparison data and aggregated or anonymised statistics are ours; only aggregated or anonymised
+statistics are shared, licensed or sold) and retires "license or sell that comparison and preference data"; (k)
+gains give / provide / disclose, buy, third parties for marketing or advertising, and "... that identifies you"
+(UF21, the adversary's Y1-Y4, EN and AR twins); (n) counts the unqualified providers claim over the whole privacy
+document and catches the adversary's X3 (UF22).
 
 THE T8 RULE FOR d3 = C (replaces, for C only, the D3 = A rule "none of opt out / Help improve
 AI quality / Data Sharing Program"): privacy section 4 matches every pattern of
@@ -533,14 +539,23 @@ TERMS_LICENCE_EN = (
     "de-identified comparison and preference datasets, and to obtain comparisons from our AI provider as our "
     "Privacy Policy describes."
 )
+# FIX round 4 (UF14; the owner: "comparison data and preference data, never personal"): ownership attaches to the
+# de-identified compilation and to the aggregated or anonymised statistics, and only aggregated or anonymised
+# statistics are shared, licensed or sold (matching privacy s2).
 TERMS_DERIVED_EN = (
-    "We own MYEZ's comparison data (the search queries, the products compared, the verdicts and scores, and the "
-    "prices gathered), which we de-identify before any such use, and the preference and usage statistics we "
-    "derive in aggregated or anonymised form, and we may use, license or sell that comparison and preference "
-    "data to third parties; none of it identifies you, and your personal data is never sold."
+    "We own the de-identified comparison data that MYEZ compiles (the products compared, the verdicts and scores, "
+    "the prices gathered and de-identified search queries) and the preference and usage statistics we derive from "
+    "it in aggregated or anonymised form. We may use this data to operate and improve MYEZ, and we may share, "
+    "license or sell aggregated or anonymised statistics derived from it (for example price trends or category "
+    "popularity) to third parties; none of it identifies you, and your personal data is never sold."
 )
-# Wording FIX round 2 retired (UF6 b, d); neither may come back.
-TERMS_RETIRED_EN = ("Your comparison history is yours and", "stripped of anything that identifies you")
+# Retired wording (FIX round 2 UF6 b, d; FIX round 4 UF14: the comparison and preference data itself is no longer
+# the sale object); none may come back.
+TERMS_RETIRED_EN = (
+    "Your comparison history is yours and",
+    "stripped of anything that identifies you",
+    "license or sell that comparison and preference data",
+)
 # Privacy section 2 (UF7: the "not sold" statement points at section 4 for OpenAI), 3.6 (UF6 c) and 9 (UF6 e).
 PRIVACY_NOT_SOLD_EN = "We do not sell your personal data"
 PRIVACY_S2_EN = (
@@ -582,6 +597,12 @@ TERMS_AR = "app/legal/terms_of_service_ar.md"
 # 'ank) is a user's own item too (the adversary's probe X2); and under any trigger the verb share (AR the
 # root sh-r-k: nusharik, musharaka) is a claim word when the clause names advertisers, data brokers or
 # partners as the recipient (probe X1). "We do not share it with data brokers or advertisers" passes (negated).
+# FIX round 4 (UF21, the final adversary 3's probes Y1-Y4): (4) a clause about "data / information / details that
+# identifies you" (AR bayanat / ma'lumat allati tuhaddid huwiyyatak) names a user's own item too (Y4); buy (AR
+# yashtari, shira') is a sale word, a sale seen from the buyer's side (Y2); give, provide and disclose (AR nu'ti,
+# nuqaddim, nuzawwid, nafsah, nakshif) count like share when the clause names a recipient and like transfer when
+# the clause is for value (Y1); "third parties" (AR atraf thalitha) is a recipient when the clause names marketing
+# or advertising (Y3). "None of it identifies you" and "statistics that cannot identify you" pass.
 CLAUSE_SPLIT = re.compile("[.;!?\n\u061b\u061f]")
 PERSONAL_DATA_EN = re.compile(r"(?i)\bpersonal\s+(?:data|information)\b")
 USER_ITEM_EN = re.compile(
@@ -591,11 +612,12 @@ USER_ITEM_EN = re.compile(
 )
 SALE_OR_OWN_EN = re.compile(
     r"(?i)^(?:re)?(?:sell|sells|selling|sold|sale|sales|licen[cs]e[sd]?|licensing|own|owns|owned|ownership"
-    r"|belongs?|belonging|property|monetis\w*|monetiz\w*|trade[sd]?|trading|rent|rents|rented|renting|rental)$"
+    r"|belongs?|belonging|property|monetis\w*|monetiz\w*|trade[sd]?|trading|rent|rents|rented|renting|rental"
+    r"|buy|buys|buying|bought)$"
 )
 SALE_EN = re.compile(
     r"(?i)^(?:re)?(?:sell|sells|selling|sold|sale|sales|license[sd]?|licensing|monetis\w*|monetiz\w*"
-    r"|trade[sd]?|trading|rent|rents|rented|renting|rental)$"
+    r"|trade[sd]?|trading|rent|rents|rented|renting|rental|buy|buys|buying|bought)$"
 )
 TRANSFER_EN = re.compile(r"(?i)^transfer(?:s|red|ring)?$")
 FOR_VALUE_EN = re.compile(
@@ -606,6 +628,17 @@ NEGATORS_EN = frozenset(("not", "never", "no", "none", "don't", "doesn't", "won'
 SHARE_EN = re.compile(r"(?i)^shar(?:e|es|ed|ing)$")
 RECIPIENT_EN = re.compile(r"(?i)\b(?:advertisers?|data\s+brokers?|partners?)\b")
 ABOUT_YOU_EN = re.compile(r"(?i)\b(?:data|information|details)\b(?:\s+[\w'-]+){0,4}?\s+about\s+you\b")
+# FIX round 4 (UF21): give / provide / disclose, third parties for marketing or advertising, "... that identifies you".
+GIVE_EN = re.compile(
+    r"(?i)^(?:give|gives|giving|gave|given|provide|provides|provided|providing|disclose|discloses|disclosed"
+    r"|disclosing)$"
+)
+THIRD_PARTIES_EN = re.compile(r"(?i)\bthird[\s-]+part(?:y|ies)\b")
+MARKETING_EN = re.compile(r"(?i)\b(?:marketing|advertis\w*|ads?)\b")
+IDENTIFIES_YOU_EN = re.compile(
+    r"(?i)\b(?:data|information|details)\s+(?:that|which)\s+(?:(?:can|could|may|might|will|would)\s+)?"
+    r"(?:identif(?:y|ies)|reveals?)\s+you\b"
+)
 # AR (after dropping the harakat and the tatweel): bayanat<suffix> (al)shakhsi = personal data.
 AR_MARKS = re.compile("[\u0640\u064b-\u065f\u0670]")
 PERSONAL_DATA_AR = re.compile("\u0628\u064a\u0627\u0646\u0627\u062a\\S*\\s+(?:\u0627\u0644)?\u0634\u062e\u0635\u064a")
@@ -615,11 +648,13 @@ USER_ITEM_AR = re.compile(
     "(?:\u0628\u064a\u0627\u0646\u0627\u062a|\u0645\u0639\u0644\u0648\u0645\u0627\u062a|\u062a\u0641\u0636\u064a\u0644\u0627\u062a|\u0645\u0642\u0627\u0631\u0646\u0627\u062a|\u0645\u0642\u0627\u0631\u0646\u062a|\u0628\u062d\u062b|\u0635\u0648\u0631|\u0628\u0631\u064a\u062f|\u0627\u0633\u0645|\u0645\u0644\u0641|\u062d\u0633\u0627\u0628|\u0625\u062c\u0627\u0628\u0627\u062a|\u0633\u062c\u0644|\u0645\u0644\u0627\u062d\u0638\u0627\u062a|\u0631\u0633\u0627\u0626\u0644|\u0631\u0648\u0627\u0628\u0637)\u0643(?![\u0621-\u064a])"
 )
 # sell: bay' (not in tabi'a, rabi'), ba' (not in ittiba', tiba'a, ishba'); trade: yatajir / natajir / tatajir,
-# ittijar, mutajara (not matajir, stores); rent: ta'jir, yu'ajjir, ijar, isti'jar.
+# ittijar, mutajara (not matajir, stores); rent: ta'jir, yu'ajjir, ijar, isti'jar; FIX round 4 (UF21) buy:
+# yashtari / nashtari / tashtari (-un), ishtara, shira' (not mushtarik, ishtirak).
 SALE_AR = (
     "(?<![\u0637\u0631])\u0628\u064a\u0639|(?<!\u0627\u062a)(?<![\u0637\u0634])\u0628\u0627\u0639"
     "|\u064a\u062a\u0627\u062c\u0631|\u0646\u062a\u0627\u062c\u0631|\u062a\u062a\u0627\u062c\u0631|\u0627\u062a\u062c\u0627\u0631|\u0645\u062a\u0627\u062c\u0631\u0629"
     "|\u062a\u0623\u062c\u064a\u0631|\u0624\u062c\u0631|\u0625\u064a\u062c\u0627\u0631|\u0627\u0633\u062a\u0626\u062c\u0627\u0631"
+    "|[\u064a\u0646\u062a]\u0634\u062a\u0631(?:\u064a|\u0648\u0646|\u0649)|\u0627\u0634\u062a\u0631\u0649|\u0634\u0631\u0627\u0621"
 )
 SALE_ONLY_AR = re.compile(SALE_AR)
 # + rakhs / rakhis (licence), mlk not in mamlaka (own), mamluk (owned).
@@ -634,6 +669,24 @@ NEGATORS_AR = frozenset(("\u0644\u0627", "\u0644\u0646", "\u0644\u0645", "\u0644
 SHARE_AR = re.compile("\u0634\u0627\u0631\u0643")
 RECIPIENT_AR = re.compile("\u0645\u0639\u0644\u0646|\u0648\u0633\u0637\u0627\u0621 \u0627\u0644\u0628\u064a\u0627\u0646\u0627\u062a|\u0634\u0631\u0643\u0627\u0621|\u0634\u0631\u0643\u0627\u0626")
 ABOUT_YOU_AR = re.compile("(?:\u0628\u064a\u0627\u0646\u0627\u062a|\u0645\u0639\u0644\u0648\u0645\u0627\u062a)(?:\\s+\\S+){0,4}?\\s+\u0639\u0646\u0643(?![\u0621-\u064a])")
+# FIX round 4 (UF21): give nu'ti / yu'ti / tu'ti / a'ta (not ta'til, disabling), i'ta'; provide nuqaddim / yuqaddim,
+# taqdim, nuzawwid / yuzawwid, tazwid; disclose (i)fsah, kashf. Third parties: atraf thalitha, (al)tarf (al)thalith;
+# marketing / advertising: taswiq, i'lan, di'a'i, di'aya. "Data / information that identifies you": bayanat /
+# ma'lumat allati / alladhi (qad) tuhaddid / takshif huwiyyatak (not "la yumkin an tuhaddid": no relative pronoun).
+GIVE_AR = re.compile(
+    "[\u0646\u064a\u062a\u0623]\u0639\u0637(?:\u064a|\u0649)(?!\u0644)|\u0625\u0639\u0637\u0627\u0621|\u0627\u0639\u0637\u0627\u0621"
+    "|\u0646\u0642\u062f\u0645|\u064a\u0642\u062f\u0645|\u062a\u0642\u062f\u064a\u0645|\u0646\u0632\u0648\u062f|\u064a\u0632\u0648\u062f|\u062a\u0632\u0648\u064a\u062f"
+    "|\u0641\u0635\u062d|\u0643\u0634\u0641"
+)
+THIRD_PARTIES_AR = re.compile(
+    "\u0623\u0637\u0631\u0627\u0641 \u062b\u0627\u0644\u062b\u0629|\u0627\u0644\u0623\u0637\u0631\u0627\u0641 \u0627\u0644\u062b\u0627\u0644\u062b\u0629"
+    "|\u0637\u0631\u0641 \u062b\u0627\u0644\u062b|\u0627\u0644\u0637\u0631\u0641 \u0627\u0644\u062b\u0627\u0644\u062b"
+)
+MARKETING_AR = re.compile("\u062a\u0633\u0648\u064a\u0642|\u0625\u0639\u0644\u0627\u0646|\u0627\u0639\u0644\u0627\u0646|\u062f\u0639\u0627\u0626\u064a|\u062f\u0639\u0627\u064a\u0629")
+IDENTIFIES_YOU_AR = re.compile(
+    "(?:\u0628\u064a\u0627\u0646\u0627\u062a|\u0645\u0639\u0644\u0648\u0645\u0627\u062a)\\S*\\s+(?:\u0627\u0644\u062a\u064a|\u0627\u0644\u0630\u064a)\\s+(?:\u0642\u062f\\s+)?"
+    "(?:\u062a\u062d\u062f\u062f|\u064a\u062d\u062f\u062f|\u062a\u0643\u0634\u0641|\u064a\u0643\u0634\u0641)\\s+\u0647\u0648\u064a\u062a\u0643"
+)
 # Control sentences for the EN scan (the AR controls are the fixture's ug12_ar.flagged / accepted).
 EN_FLAGGED = (
     "We may sell your personal data to third parties.",
@@ -651,6 +704,14 @@ EN_FLAGGED = (
     "We may share your search history with advertisers.",
     "We may sell the data we collect about you to data brokers.",
     "We may share your personal data with partners.",
+    # FIX round 4 (UF21): the final adversary 3's probes Y1-Y4 (give for a fee, buy, share with third parties for
+    # their marketing, information that identifies you), then provide and disclose to a listed recipient.
+    "We may give your email address to advertisers for a fee.",
+    "Advertisers may buy your search history from us.",
+    "We may share your personal data with third parties for their marketing.",
+    "We may sell information that identifies you.",
+    "We may provide your search history to data brokers.",
+    "We may disclose your personal data to third parties for advertising.",
 )
 EN_ACCEPTED = (
     PRIVACY_NOT_SOLD_EN + ", we do not show third-party ads and we do not track you.",
@@ -664,6 +725,12 @@ EN_ACCEPTED = (
     "Apple shares your email address, or a private relay address, with us.",
     "People who open an invite link you share can also see your display name.",
     "We never share your personal data with partners.",
+    # FIX round 4 (UF21): provide with no listed recipient and no value, a negated give or disclose, and statistics
+    # that cannot identify you, pass.
+    "We provide your queries to our AI provider to produce the comparison.",
+    "We never give your personal data to advertisers.",
+    "We may share aggregated statistics that cannot identify you with third parties for their marketing.",
+    "We do not disclose your personal data to third parties for marketing.",
 )
 
 
@@ -677,6 +744,28 @@ def _fix2_ar():
 
 def _fix3_ar():
     return _fixture()["fix3_ar"]
+
+
+def _fix4_ar():
+    return _fixture()["fix4_ar"]
+
+
+def _share_en(token):
+    """UF13 + UF21: share, give, provide, disclose (a claim when the clause names a recipient)."""
+    return SHARE_EN.match(token) or GIVE_EN.match(token)
+
+
+def _transfer_en(token):
+    """UF8 + UF21: transfer, give, provide, disclose (a claim when the clause is for value)."""
+    return TRANSFER_EN.match(token) or GIVE_EN.match(token)
+
+
+def _share_ar(token):
+    return SHARE_AR.search(token) or GIVE_AR.search(token)
+
+
+def _transfer_ar(token):
+    return TRANSFER_AR.search(token) or GIVE_AR.search(token)
 
 
 def _negated_ar(token):
@@ -695,7 +784,8 @@ def _clause_claims(tokens, words, transfer, for_value, negated):
 
 
 def _with_share(words, share, recipient):
-    """UF13: the claim words, plus the share verb when the clause names an advertiser, broker or partner."""
+    """UF13 + UF21: the claim words, plus the share verbs (share; give, provide, disclose) when the clause names a
+    recipient: an advertiser, a data broker or a partner, or third parties for marketing or advertising."""
     if not recipient:
         return words
     return lambda token: words(token) or share(token)
@@ -707,18 +797,20 @@ def _personal_data_claims(text):
     claims = []
     for clause in CLAUSE_SPLIT.split(AR_MARKS.sub("", text)):
         personal = PERSONAL_DATA_EN.search(clause)
-        item = USER_ITEM_EN.search(clause) or ABOUT_YOU_EN.search(clause)
+        item = USER_ITEM_EN.search(clause) or ABOUT_YOU_EN.search(clause) or IDENTIFIES_YOU_EN.search(clause)
         if personal or item:
             tokens = [t.strip(",()*:\"").lower() for t in clause.split()]
-            words = _with_share((SALE_OR_OWN_EN if personal else SALE_EN).match, SHARE_EN.match, RECIPIENT_EN.search(clause))
-            if _clause_claims(tokens, words, TRANSFER_EN.match, FOR_VALUE_EN.search(clause), lambda w: NEGATORS_EN.intersection(w)):
+            recipient = RECIPIENT_EN.search(clause) or (THIRD_PARTIES_EN.search(clause) and MARKETING_EN.search(clause))
+            words = _with_share((SALE_OR_OWN_EN if personal else SALE_EN).match, _share_en, recipient)
+            if _clause_claims(tokens, words, _transfer_en, FOR_VALUE_EN.search(clause), lambda w: NEGATORS_EN.intersection(w)):
                 claims.append(clause.strip())
                 continue
         personal = PERSONAL_DATA_AR.search(clause)
-        item = USER_ITEM_AR.search(clause) or ABOUT_YOU_AR.search(clause)
+        item = USER_ITEM_AR.search(clause) or ABOUT_YOU_AR.search(clause) or IDENTIFIES_YOU_AR.search(clause)
         if personal or item:
-            words = _with_share((SALE_OR_OWN_AR if personal else SALE_ONLY_AR).search, SHARE_AR.search, RECIPIENT_AR.search(clause))
-            if _clause_claims(clause.split(), words, TRANSFER_AR.search, FOR_VALUE_AR.search(clause), lambda w: any(_negated_ar(t) for t in w)):
+            recipient = RECIPIENT_AR.search(clause) or (THIRD_PARTIES_AR.search(clause) and MARKETING_AR.search(clause))
+            words = _with_share((SALE_OR_OWN_AR if personal else SALE_ONLY_AR).search, _share_ar, recipient)
+            if _clause_claims(clause.split(), words, _transfer_ar, FOR_VALUE_AR.search(clause), lambda w: any(_negated_ar(t) for t in w)):
                 claims.append(clause.strip())
     return claims
 
@@ -732,10 +824,10 @@ def test_d3c_i_terms_grant_the_licence_and_own_only_derived_data():
     """(i) UG12 + UF6: terms section 8, EN and AR, carries the history sentence (the account's comparison history
     is the user's to view, share and delete), the licence sentence (queries, photos, links, feedback and
     preferences, to operate, secure and improve the service, to create de-identified comparison and preference
-    datasets and to obtain comparisons from our AI provider) and the derived-data sentence (the comparison data,
-    which we de-identify before any such use, and the aggregated or anonymised preference and usage statistics are
-    ours to use, license or sell; none of it identifies a user; personal data is never sold), each once and in
-    that order; the retired wording is gone."""
+    datasets and to obtain comparisons from our AI provider) and the derived-data sentences (UF14: the
+    de-identified comparison data and the aggregated or anonymised preference and usage statistics are ours; only
+    aggregated or anonymised statistics derived from them are shared, licensed or sold; none of it identifies a
+    user; personal data is never sold), each once and in that order; the retired wording is gone."""
     ar = _ug12_ar()
     problems = []
     for rel, history, licence, derived, retired in (
@@ -791,11 +883,13 @@ def test_d3c_j_privacy_keeps_not_sold_and_adds_the_aggregated_sentence():
 
 
 def test_d3c_k_personal_data_claim_scan_positive_control():
-    """(k) PIN: the scan flags every control claim (EN and AR, the final adversary's P2b and P7 among them) and
-    spares the negated or neutral forms the documents use."""
-    ar, fx3 = _ug12_ar(), _fix3_ar()
-    missed = [_esc(s) for s in EN_FLAGGED + tuple(ar["flagged"]) + tuple(fx3["flagged"]) if not _personal_data_claims(s)]
-    spurious = [_esc(s) for s in EN_ACCEPTED + tuple(ar["accepted"]) + tuple(fx3["accepted"]) if _personal_data_claims(s)]
+    """(k) PIN: the scan flags every control claim (EN and AR, the final adversaries' P2b, P7, X1, X2 and Y1-Y4
+    among them) and spares the negated or neutral forms the documents use."""
+    ar, fx3, fx4 = _ug12_ar(), _fix3_ar(), _fix4_ar()
+    flagged = EN_FLAGGED + tuple(ar["flagged"]) + tuple(fx3["flagged"]) + tuple(fx4["flagged"])
+    accepted = EN_ACCEPTED + tuple(ar["accepted"]) + tuple(fx3["accepted"]) + tuple(fx4["accepted"])
+    missed = [_esc(s) for s in flagged if not _personal_data_claims(s)]
+    spurious = [_esc(s) for s in accepted if _personal_data_claims(s)]
     assert not missed, f"the scan misses: {missed}"
     assert not spurious, f"the scan flags a negated or neutral sentence: {spurious}"
     # The UG12 / UF6 / UF7 sentences themselves pass the scan.
@@ -850,6 +944,9 @@ S5_CARVEOUT_EN = (
     "service to us, and we require each of them to protect it at least as well as this policy does."
 )
 S5_OWN_TERMS_EN = "Retailer websites (section 6) and the sign-in providers Apple and Google act under their own terms."
+# FIX round 4 (UF22): the final adversary 3's probe X3, the unqualified providers claim added OUTSIDE s5 (AR twin:
+# the fixture's fix4_ar.x3).
+X3_EN = "Each provider processes data only to provide its service to us."
 RENDERED_SECTION = r"(?s)<h2\b[^>]*>\s*{n}\.(.*?)(?=<h2\b|\Z)"
 
 
@@ -950,12 +1047,24 @@ def test_d3c_m_hosting_regions_clause_names_only_the_measured_roles(tmp_path):
 
 
 def _carveout_problems(rel, text, core, carveout, flags):
-    """s5 of `text` (markdown) carries the carve-out, and every providers-only claim in s5 is the carved-out one."""
-    section = _section(text, 5) or ""
-    claims = len(re.findall(re.escape(core), section, flags))
-    carved = len(re.findall(re.escape(carveout), section, flags))
-    if carved < 1 or claims != carved:
-        return [f"{rel} s5: {claims} providers-only claim(s), {carved} carved out for OpenAI"]
+    """s5 of `text` (markdown) carries the carve-out, and (UF22) every providers-only claim in the WHOLE document,
+    not only in s5, is the carved-out one."""
+    in_s5 = len(re.findall(re.escape(carveout), _section(text, 5) or "", flags))
+    claims = len(re.findall(re.escape(core), text, flags))
+    carved = len(re.findall(re.escape(carveout), text, flags))
+    if in_s5 < 1 or claims != carved:
+        return [f"{rel}: {claims} providers-only claim(s) in the document, {carved} carved out for OpenAI, {in_s5} in s5"]
+    return []
+
+
+def _rendered_carveout_problems(rel, rendered, core, carveout, flags):
+    """The rendered page: s5 carries the carve-out, and (UF22) the whole page has no other providers-only claim."""
+    match = re.search(RENDERED_SECTION.format(n=5), rendered)
+    rendered_s5 = match.group(1) if match else ""
+    claims = len(re.findall(re.escape(core), rendered, flags))
+    carved = len(re.findall(re.escape(carveout), rendered, flags))
+    if claims != carved or carveout.split()[0] not in rendered_s5:
+        return [f"{rel}: the rendered page is not carved out ({claims} claim(s), {carved} carved out)"]
     return []
 
 
@@ -966,7 +1075,9 @@ def test_d3c_n_providers_sentence_carves_out_openai(tmp_path, d3):
     rendered), every "only to provide its service" claim in s5 is that sentence, and the next sentence says
     retailer websites (section 6) and the sign-in providers Apple and Google act under their own terms (once,
     after the carve-out). With d3 "C" section 4 carries the C paragraph (OpenAI's data-sharing programme), so the
-    carve-out is what keeps s5 true; with d3 "A" it is present and harmless."""
+    carve-out is what keeps s5 true; with d3 "A" it is present and harmless. FIX round 4 (UF22): the providers-only
+    count runs over the WHOLE document (markdown and rendered), and the final adversary 3's X3 (the claim added in
+    s6) is a positive control, EN and AR."""
     fx = _fix2_ar()
     own_terms = {"en": S5_OWN_TERMS_EN, "ar": _fix3_ar()["s5_own_terms"]}
     texts = _filled(tmp_path, f"n_{d3}", d3=d3)
@@ -988,9 +1099,19 @@ def test_d3c_n_providers_sentence_carves_out_openai(tmp_path, d3):
         rendered_s5 = match.group(1) if match else ""
         if own_terms[lang] not in rendered_s5:
             problems.append(f"{rel}: the rendered s5 lacks the own-terms sentence (UF10)")
-        if len(re.findall(re.escape(core), rendered_s5, flags)) != len(re.findall(re.escape(carveout), rendered_s5, flags)) or carveout.split()[0] not in rendered_s5:
-            problems.append(f"{rel}: the rendered s5 is not carved out")
+        problems += _rendered_carveout_problems(rel, rendered, core, carveout, flags)
         own = _d3_fork()[lang][d3]
         if own not in (_section(text, 4) or ""):
             problems.append(f"{rel} s4: the d3 {d3} paragraph is not selected")
+        # UF22 positive control (X3): the unqualified claim appended to s6 is caught, markdown and rendered.
+        s6 = _section(text, 6) or ""
+        if not s6 or text.count(s6) != 1:
+            problems.append(f"{rel}: X3 control: section 6 is not locatable")
+            continue
+        x3 = {"en": X3_EN, "ar": _fix4_ar()["x3"]}[lang]
+        mutant = text.replace(s6, s6 + x3 + "\n\n", 1)
+        if not _carveout_problems(rel, mutant, core, carveout, flags):
+            problems.append(f"{rel}: X3 control (an unqualified providers claim in s6) is not caught in the markdown")
+        if not _rendered_carveout_problems(rel, html.unescape(renderer.render_markdown(mutant)), core, carveout, flags):
+            problems.append(f"{rel}: X3 control is not caught in the rendered page")
     assert not problems, [_esc(p) for p in problems]

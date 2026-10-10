@@ -352,14 +352,19 @@ def test_polish_b3_renderer_link_safety_marker_pairs_and_write_round_trip(tmp_pa
     _copy_tree(tmp_path, SOURCES + PAGES)
     before = {p: (tmp_path / p).read_bytes() for p in PAGES}
     source = tmp_path / PRIVACY_EN
-    source.write_bytes(source.read_bytes() + b"\r\nAppended paragraph for the round trip.\r\n")
+    src_nl = b"\r\n" if b"\r\n" in source.read_bytes() else b"\n"
+    source.write_bytes(source.read_bytes() + src_nl + b"Appended paragraph for the round trip." + src_nl)
     assert r.write_regions(tmp_path) == ["landing/privacy.html"]
     assert r.write_regions(tmp_path) == []
     after = (tmp_path / "landing/privacy.html").read_bytes()
     head, _, tail = r._split_page(before["landing/privacy.html"].decode("utf-8"), "p")
     new_head, region, new_tail = r._split_page(after.decode("utf-8"), "p")
     assert (new_head, new_tail) == (head, tail) and "Appended paragraph for the round trip." in region
-    assert b"\r\n" in after and after.count(b"\n") == after.count(b"\r\n"), "bare LF in a CRLF page"
+    # the page keeps its own line endings: CRLF on a Windows checkout (core.autocrlf), LF on the Linux CI
+    if b"\r\n" in before["landing/privacy.html"]:
+        assert after.count(b"\n") == after.count(b"\r\n"), "bare LF in a CRLF page"
+    else:
+        assert b"\r" not in after, "CR in an LF page"
     assert all((tmp_path / p).read_bytes() == before[p] for p in PAGES if p != "landing/privacy.html")
 
 

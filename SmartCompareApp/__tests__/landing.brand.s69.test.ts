@@ -56,22 +56,21 @@ const MYEZ_AR_WORD = wordRe(MYEZ_AR);
 const ADDRESS_RE =
   /qaren:\/\/[\w/.-]*|[\w.+-]*@qaren\.app|(?:https?:\/\/)?(?:[\w-]+\.)*qaren\.app(?:\/[\w/.%-]*)?/gi;
 
-/** Base e3f87b8b counts of `qaren.app` per page — every address must survive. */
+/** Address counts per page (every address moved to getmyez.com on 2026-10-10) — every address must survive. */
 const ADDRESS_COUNTS: Record<string, number> = {
   'index.html': 8,
   // U8 (UG20): the four legal pages keep their 4 head links (canonical + 3 hreflang) and the
-  // footer support@ mailto = 5. The body's hand-written contact line (2 per page: the mailto href
-  // + its text; privacy@ on privacy, legal@ on terms) is now rendered from app/legal/*.md, where
-  // the address is <PLACEHOLDER:PRIVACY_EMAIL> / <PLACEHOLDER:SUPPORT_EMAIL> (legal@ dropped, C29).
-  // The fill-in commit re-counts these when the placeholders become addresses.
-  'privacy.html': 5,
-  'support.html': 9, // unchanged by U8: the rendered contact region carries <PLACEHOLDER:SUPPORT_EMAIL>
-  'terms.html': 5,
+  // footer support@ mailto = 5. The body's contact lines are rendered from app/legal/*.md; the
+  // fill-in (2026-10-11) recorded privacy@getmyez.com and support@getmyez.com, so the counts
+  // below are re-measured on the filled pages (every address on these pages is on getmyez.com).
+  'privacy.html': 10,
+  'support.html': 10,
+  'terms.html': 6,
   'open.html': 3, // the two qaren.app mentions in the page's comments + the linking prefix in the script
   'ar/index.html': 8,
-  'ar/privacy.html': 5,
-  'ar/support.html': 9, // unchanged by U8, as support.html
-  'ar/terms.html': 5,
+  'ar/privacy.html': 10,
+  'ar/support.html': 10,
+  'ar/terms.html': 6,
 };
 
 const read = (rel: string) => fs.readFileSync(path.join(LANDING, rel), 'utf8');
