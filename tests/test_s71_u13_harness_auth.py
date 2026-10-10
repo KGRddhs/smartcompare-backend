@@ -48,8 +48,7 @@ SCRIPTS = {
     "run_validation_matrix": REPO_ROOT / "scripts" / "run_validation_matrix.py",
     "bias_matrix_probe": REPO_ROOT / "scripts" / "bias_matrix_probe.py",
     "bundle_d_prod_smoke": REPO_ROOT / "scripts" / "bundle_d_prod_smoke.py",
-    "verify_after_credits": (REPO_ROOT / "docs" / "investigations"
-                             / "2026-09-29-session-69-state" / "verify_after_credits.py"),
+    "verify_after_credits": REPO_ROOT / "scripts" / "verify_after_credits.py",
 }
 # D9: eval_runner exposes harness_auth_headers() (run_eval -> cron_eval_nightly); each
 # standalone script carries its own private _harness_auth_headers().

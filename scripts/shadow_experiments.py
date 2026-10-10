@@ -991,6 +991,7 @@ async def _create_with_retry(client, **kwargs):
     the Retry-After hint when the SDK exposes it; otherwise exponential."""
     import random
 
+    kwargs["store"] = False  # U3c: never a stored completion
     delay = 2.0
     last_exc: Optional[Exception] = None
     for attempt in range(_MAX_RETRIES):

@@ -1,0 +1,4 @@
+no_params                          rc=1 rules=['github-pat']
+params_always                      rc=0 rules=[]
+params_always_plus_override        rc=1 rules=['github-pat']
+repo_config_always_plus_override   rc=1 rules=['github-pat']

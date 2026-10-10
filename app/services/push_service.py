@@ -175,20 +175,26 @@ def _loop2_copy(language: str, invitee_display_name: str, bonus: int) -> tuple[s
 
     Gift-framing copy per plan task 37 + design 4f: title celebrates the
     invitee's action; body names the referrer, attributes the gift, and
-    surfaces the 3-day expiry deadline so the bonus has urgency without
-    alarm.
+    surfaces the expiry deadline (referral_service.BONUS_EXPIRY_DAYS) so the
+    bonus has urgency without alarm.
     """
-    name = invitee_display_name or "Your friend"
+    from app.services.referral_service import BONUS_EXPIRY_DAYS
+
+    # U3c: no name -> a nameless body in the referrer's language (never an
+    # English fallback inside the Arabic copy, never a name derived from email).
+    name = (invitee_display_name or "").strip()
     if language == "Arabic":
         title = "صديقك قارن منتجاً للتو"
+        lead = f"{name}، " if name else ""
         body = (
-            f"{name}، صديقك استخدم ميّز للتو. "
-            f"حصلت على {bonus} مقارنات إضافية. تنتهي خلال 3 أيام."
+            f"{lead}صديقك استخدم ميّز للتو. "
+            f"حصلت على {bonus} مقارنات إضافية. تنتهي خلال {BONUS_EXPIRY_DAYS} أيام."
         )
     else:
         title = "Your friend just compared something"
+        lead = f"{name}, your friend" if name else "Your friend"
         body = (
-            f"{name}, your friend just used MYEZ. "
-            f"You got {bonus} bonus comparisons. Expires in 3 days."
+            f"{lead} just used MYEZ. "
+            f"You got {bonus} bonus comparisons. Expires in {BONUS_EXPIRY_DAYS} days."
         )
     return title, body

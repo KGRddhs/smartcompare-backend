@@ -1,0 +1,103 @@
+akia_py                              base=1/1 new=1/1  | pre-commit: staged diff contains what looks like a credential — remove it (keys live only 
+assets_upper_ttf                     base=0/0 new=0/0  | pre-commit: WARNING gitleaks not installed - secret scan skipped (CI runs it)
+black_allowlisted_unformatted        base=1/1 new=1/1  | pre-commit: ruff blocking tier failed
+clean_commit                         base=0/0 new=0/0  | pre-commit: WARNING gitleaks not installed - secret scan skipped (CI runs it)
+color_diff_always_akia               base=0/0 new=1/1  NEW-REFUSAL | pre-commit: staged diff contains what looks like a credential — remove it (keys live only 
+color_ui_always_akia                 base=0/0 new=1/1  NEW-REFUSAL | pre-commit: staged diff contains what looks like a credential — remove it (keys live only 
+color_ui_always_jwt                  base=1/1 new=1/1  | pre-commit: staged diff contains a JWT or a credentialed URL - remove it (keys live only i
+credurl_txt                          base=1/1 new=1/1  | pre-commit: staged diff contains a JWT or a credentialed URL - remove it (keys live only i
+crlf_akia                            base=1/1 new=1/1  | pre-commit: staged diff contains what looks like a credential — remove it (keys live only 
+da_color_ui_always_akia              base=0/0 new=1/1  NEW-REFUSAL | pre-commit: staged diff contains what looks like a credential — remove it (keys live only 
+da_crlf_akia                         base=1/1 new=1/1  | pre-commit: staged diff contains what looks like a credential — remove it (keys live only 
+da_dead_tr_akia                      base=1/1 new=1/1  | pre-commit: staged diff contains what looks like a credential — remove it (keys live only 
+da_deleted_line_akia                 base=0/0 new=0/0  | pre-commit: WARNING gitleaks not installed - secret scan skipped (CI runs it)
+da_env_value_after_png               base=1/1 new=1/1  | pre-commit: could not run the .env value check (the .env parse, git diff or awk failed)
+da_ext_empty_akia                    base=0/0 new=1/1  NEW-REFUSAL | pre-commit: staged diff contains what looks like a credential — remove it (keys live only 
+da_ext_reveal_akia                   base=1/1 new=1/1  | pre-commit: staged diff contains what looks like a credential — remove it (keys live only 
+da_ext_reveal_ff_same_line_utf8      base=0/0 new=1/1  NEW-REFUSAL | pre-commit: staged diff contains what looks like a credential — remove it (keys live only 
+da_long_line_akia                    base=1/1 new=1/1  | pre-commit: staged diff contains what looks like a credential — remove it (keys live only 
+da_noprefix_akia                     base=1/1 new=1/1  | pre-commit: staged diff contains what looks like a credential — remove it (keys live only 
+da_plusplus_akia                     base=0/0 new=0/0  | pre-commit: WARNING gitleaks not installed - secret scan skipped (CI runs it)
+da_png_then_credurl                  base=0/0 new=1/1  NEW-REFUSAL | pre-commit: staged diff contains a JWT or a credentialed URL - remove it (keys live only i
+da_png_then_xox_sk                   base=1/1 new=1/1  | pre-commit: staged diff contains what looks like a credential — remove it (keys live only 
+da_rename_edit_akia                  base=1/1 new=1/1  | pre-commit: staged diff contains what looks like a credential — remove it (keys live only 
+da_textattr_nul_line_then_akia       base=0/0 new=1/1  NEW-REFUSAL | pre-commit: staged diff contains what looks like a credential — remove it (keys live only 
+da_textattr_nul_same_line_akia       base=0/0 new=0/0  | pre-commit: WARNING gitleaks not installed - secret scan skipped (CI runs it)
+da_textconv_hide_akia                base=0/0 new=1/1  NEW-REFUSAL | pre-commit: staged diff contains what looks like a credential — remove it (keys live only 
+da_textconv_reveal_jwt               base=0/0 new=1/1  NEW-REFUSAL | pre-commit: staged diff contains a JWT or a credentialed URL - remove it (keys live only i
+da_utf16_key_png_magic               base=0/0 new=0/0  | pre-commit: WARNING gitleaks not installed - secret scan skipped (CI runs it)
+da_utf8_ff_earlier_line_akia         base=1/1 new=1/1  | pre-commit: staged diff contains what looks like a credential — remove it (keys live only 
+da_utf8_ff_same_line_akia            base=0/0 new=1/1  NEW-REFUSAL | pre-commit: staged diff contains what looks like a credential — remove it (keys live only 
+dead_awk_akia                        base=1/1 new=1/1  | pre-commit: staged diff contains what looks like a credential — remove it (keys live only 
+dead_awk_akia_after_png              base=1/1 new=1/1  | pre-commit: staged diff contains what looks like a credential — remove it (keys live only 
+dead_awk_akia_after_ttf_assets       base=1/1 new=1/1  | pre-commit: staged diff contains what looks like a credential — remove it (keys live only 
+dead_awk_pk_after_png                base=1/1 new=1/1  | pre-commit: staged diff contains what looks like a credential — remove it (keys live only 
+dead_grep_akia                       base=0/0 new=0/0  | pre-commit: WARNING gitleaks not installed - secret scan skipped (CI runs it)
+dead_tr_only_akia                    base=1/1 new=1/1  | pre-commit: staged diff contains what looks like a credential — remove it (keys live only 
+dead_tr_only_dotenv                  base=0/0 new=0/0  | pre-commit: WARNING gitleaks not installed - secret scan skipped (CI runs it)
+deleted_line_only                    base=0/0 new=0/0  | pre-commit: WARNING gitleaks not installed - secret scan skipped (CI runs it)
+docs_ttf                             base=0/0 new=1/1  NEW-REFUSAL | pre-commit: staged file is binary to git and not a known asset path: docs/x.ttf - convert 
+dotenv_local_staged                  base=1/1 new=1/1  | pre-commit: .env must never be committed
+dotenv_rename                        base=1/1 new=1/1  | pre-commit: .env must never be committed
+env_lower_name_value                 base=1/1 new=1/1  | pre-commit: staged diff contains the value of .env variable(s): my_token
+env_present_clean                    base=0/0 new=0/0  | pre-commit: WARNING gitleaks not installed - secret scan skipped (CI runs it)
+env_value_dead_awk                   base=1/1 new=1/1  | pre-commit: could not run the .env value check (the .env parse, git diff or awk failed)
+env_value_ext_only                   base=0/0 new=1/1  NEW-REFUSAL | pre-commit: staged diff contains the value of .env variable(s): MY_API_KEY
+env_value_in_diff                    base=1/1 new=1/1  | pre-commit: staged diff contains the value of .env variable(s): MY_API_KEY
+env_value_textconv_only              base=1/1 new=1/1  | pre-commit: staged diff contains the value of .env variable(s): MY_API_KEY
+ext_cfg_reveal_akia                  base=1/1 new=1/1  | pre-commit: staged diff contains what looks like a credential — remove it (keys live only 
+ext_driver_reveal_akia               base=1/1 new=1/1  | pre-commit: staged diff contains what looks like a credential — remove it (keys live only 
+ext_env_reveal_akia                  base=1/1 new=1/1  | pre-commit: staged diff contains what looks like a credential — remove it (keys live only 
+ext_fail_after_akia                  base=1/1 new=1/1  | pre-commit: could not read the staged diff (git diff failed)
+ext_fail_silent_clean                base=0/0 new=1/1  NEW-REFUSAL | pre-commit: could not read the staged diff (git diff failed)
+ext_mask_akia                        base=0/0 new=1/1  NEW-REFUSAL | pre-commit: staged diff contains what looks like a credential — remove it (keys live only 
+ext_prints_header_then_akia          base=1/1 new=1/1  | pre-commit: staged diff contains what looks like a credential — remove it (keys live only 
+ext_prints_plus3_akia                base=0/0 new=0/0  | pre-commit: WARNING gitleaks not installed - secret scan skipped (CI runs it)
+ext_reveal_after_trailing_empty      base=1/1 new=1/1  | pre-commit: staged diff contains what looks like a credential — remove it (keys live only 
+ext_reveal_jwt                       base=0/0 new=1/1  NEW-REFUSAL | pre-commit: staged diff contains a JWT or a credentialed URL - remove it (keys live only i
+ext_reveal_sk_with_driver_and_png    base=1/1 new=1/1  | pre-commit: staged diff contains what looks like a credential — remove it (keys live only 
+file_dead_awk_akia                   base=1/1 new=1/1  | pre-commit: staged diff contains what looks like a credential — remove it (keys live only 
+file_dead_awk_akia_with_env          base=1/1 new=1/1  | pre-commit: staged diff contains what looks like a credential — remove it (keys live only 
+gitleaks_absent_ghp                  base=0/0 new=0/0  | pre-commit: WARNING gitleaks not installed - secret scan skipped (CI runs it)
+jwt_md                               base=1/1 new=1/1  | pre-commit: staged diff contains a JWT or a credentialed URL - remove it (keys live only i
+long_line_akia                       base=1/1 new=1/1  | pre-commit: staged diff contains what looks like a credential — remove it (keys live only 
+many_files_akia_last                 base=1/1 new=1/1  | pre-commit: staged diff contains what looks like a credential — remove it (keys live only 
+mixed_case_jpeg_docs                 base=0/0 new=0/0  | pre-commit: WARNING gitleaks not installed - secret scan skipped (CI runs it)
+neg_diff_attr_akia                   base=0/0 new=1/1  NEW-REFUSAL | pre-commit: staged diff contains what looks like a credential — remove it (keys live only 
+nonascii_path_akia                   base=1/1 new=1/1  | pre-commit: staged diff contains what looks like a credential — remove it (keys live only 
+noprefix_akia                        base=1/1 new=1/1  | pre-commit: staged diff contains what looks like a credential — remove it (keys live only 
+pk_pem                               base=1/1 new=1/1  | pre-commit: staged diff contains what looks like a credential — remove it (keys live only 
+plusplus_content_akia                base=0/0 new=1/1  NEW-REFUSAL | pre-commit: staged diff contains what looks like a credential — remove it (keys live only 
+png_magic_with_akia_inside           base=0/0 new=1/1  NEW-REFUSAL | pre-commit: staged diff contains what looks like a credential — remove it (keys live only 
+py_syntax_error                      base=1/1 new=1/1  | pre-commit: python syntax error in staged files
+py_syntax_error_with_akia            base=1/1 new=1/1  | pre-commit: staged diff contains what looks like a credential — remove it (keys live only 
+rename_with_akia_edit                base=1/1 new=1/1  | pre-commit: staged diff contains what looks like a credential — remove it (keys live only 
+ruff_undefined_name                  base=1/1 new=1/1  | pre-commit: ruff blocking tier failed
+sk_txt                               base=1/1 new=1/1  | pre-commit: staged diff contains what looks like a credential — remove it (keys live only 
+skill_frontmatter_bad                base=1/1 new=1/1  | pre-commit: skill frontmatter check failed: .claude/skills/x/SKILL.md
+staged_then_worktree_fixed_akia      base=1/1 new=1/1  | pre-commit: staged diff contains what looks like a credential — remove it (keys live only 
+textconv_fail_clean                  base=0/0 new=1/1  NEW-REFUSAL | pre-commit: could not read the staged diff (git diff failed)
+textconv_mask_akia                   base=0/0 new=1/1  NEW-REFUSAL | pre-commit: staged diff contains what looks like a credential — remove it (keys live only 
+textconv_reveal_akia                 base=1/1 new=1/1  | pre-commit: staged diff contains what looks like a credential — remove it (keys live only 
+tmpdir_missing_akia                  base=1/1 new=1/1  | pre-commit: staged diff contains what looks like a credential — remove it (keys live only 
+tmpdir_missing_clean                 base=0/0 new=0/0  | pre-commit: WARNING gitleaks not installed - secret scan skipped (CI runs it)
+tmpdir_missing_py                    base=1/1 new=1/1  | pre-commit: ruff blocking tier failed
+tracked_binary_mode_change           base=0/0 new=1/1  NEW-REFUSAL | pre-commit: staged file is binary to git and not a known asset path: data/x.bin - convert 
+tracked_binary_pure_rename           base=0/0 new=1/1  NEW-REFUSAL | pre-commit: staged file is binary to git and not a known asset path: data/y.bin - convert 
+tracked_png_modified_in_allowlist    base=0/0 new=0/0  | pre-commit: WARNING gitleaks not installed - secret scan skipped (CI runs it)
+typechange_symlink_to_akia           base=1/1 new=1/1  | pre-commit: staged diff contains what looks like a credential — remove it (keys live only 
+typechange_symlink_to_binary         base=0/0 new=1/1  NEW-REFUSAL | pre-commit: staged file is binary to git and not a known asset path: lnk - convert it to t
+upper_png_bad_magic                  base=0/0 new=1/1  NEW-REFUSAL | pre-commit: staged file is binary to git and not a known asset path: docs/x.PNG (its first
+upper_png_docs                       base=0/0 new=0/0  | pre-commit: WARNING gitleaks not installed - secret scan skipped (CI runs it)
+utf16_txt                            base=0/0 new=1/1  NEW-REFUSAL | pre-commit: staged file is binary to git and not a known asset path: data/u.txt - convert 
+utf8_locale_png_then_akia            base=1/1 new=1/1  | pre-commit: staged diff contains what looks like a credential — remove it (keys live only 
+utf8_locale_png_then_jwt             base=1/1 new=1/1  | pre-commit: staged diff contains a JWT or a credentialed URL - remove it (keys live only i
+wa_clean_invalid_utf8_text           base=0/0 new=0/0  | pre-commit: WARNING gitleaks not installed - secret scan skipped (CI runs it)
+wa_clean_png_ttf_utf8                base=0/0 new=0/0  | pre-commit: WARNING gitleaks not installed - secret scan skipped (CI runs it)
+wa_honest_plus_lines                 base=0/0 new=0/0  | pre-commit: WARNING gitleaks not installed - secret scan skipped (CI runs it)
+wa_png_with_plus_akia_after_nul      base=0/0 new=1/1  NEW-REFUSAL | pre-commit: staged diff contains what looks like a credential — remove it (keys live only 
+wa_sk_musk_slug                      base=0/0 new=0/0  | pre-commit: WARNING gitleaks not installed - secret scan skipped (CI runs it)
+wa_textattr_nul_same_line_akia       base=0/0 new=1/1  NEW-REFUSAL | pre-commit: staged diff contains what looks like a credential — remove it (keys live only 
+xox_md                               base=1/1 new=1/1  | pre-commit: staged diff contains what looks like a credential — remove it (keys live only 
+violations: []
+scenarios=101 elapsed=3721s json=C:/Users/SYNACK~1/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/d376cb56-c600-4d76-bfdb-9e15feff0cdc/scratchpad/t0b_b/adv5/adv5_1791396829.json

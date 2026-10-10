@@ -1,0 +1,143 @@
+{
+ "verdict": "DEFECTIVE",
+ "findings": [
+  {
+   "id": "A1",
+   "severity": "blocking",
+   "title": "Policy s13: the UF7 Sentry sentence is presented as covering the App's error reports too, and it is false for them",
+   "evidence": "app/legal/privacy_policy.md s5 ('Sentry: error and performance reports from our servers and from the App (section 13)') and s13 ('Sentry receives exception types, scrubbed message templates ... - not raw exception text, request bodies, credentials, or the content of your searches'); privacy_policy_ar.md s13 says the same. UF7 was written for the backend. In the App, by contrast: (a) SmartCompareApp/src/services/sentry.ts:99-104 keeps exception values and only removes token shapes, so raw exception text is sent. (b) The client query-scrub rung (sentry.ts:28-38) covers only q|query|email|search|text, while the backend list also covers product_a|product_b|url|url1|url2 (app/services/sentry_service.py:44-46). The shipped default compare path is the REST GET /api/v1/text/compare with product_a/product_b params (api.ts:668 comment 'false (shipped default): skip the stream entirely'; api.ts:696-704; the stream at :825-830), so the XHR breadcrumb URL carries the typed product names. (c) ResultsScreen.tsx:493 calls tracker.report(), which runs Sentry.captureMessage('comparison_wall_time') (wallTimeInstrumentation.ts:106) once per comparison, so every comparison sends an event that carries those breadcrumbs. (d) @sentry/react-native 7.2.0 adds device, OS and app context by default. (c) and (d) are read from code and SDK defaults; not measured on a device.",
+   "fix": "Text (EN + AR twin): start the UF7 sentence with 'From our servers, Sentry receives ...' and add after it: 'Reports from the App include the error message, your device model, operating-system and app versions, and a record of recent App activity, including the addresses of the App's requests to our servers, which for a comparison can include the product names; they do not include your name, email or IP address.' Follow-up code fix, a merge-gate precondition outside U8's files: add product_a|product_b|url|url1|url2 to the query rung in sentry.ts so it matches the backend. Once that ships, the 'can include the product names' clause can be dropped."
+  },
+  {
+   "id": "A2",
+   "severity": "major",
+   "title": "Missing data flow: the App loads product images directly from third-party hosts, which receive the device's IP address",
+   "evidence": "SmartCompareApp/src/components/primitives/ProductImage.tsx:101 renders <Image source={{ uri: imageUrl }}>. image_url is a raw third-party URL: og:image, a Serper Images imageUrl or a GPT-suggested URL (app/services/image_service.py:72-90, :137-204, :269); there is no proxy. It is rendered at ResultsContent.tsx:279, HistoryScreen.tsx:214/228, HomeEditorialSections.tsx:127/166 and ProfileEditorialSections.tsx:101/115. Policy s6 says only that retailer requests 'come from our servers' and carry no identity. s5 and the processors.json 'retailers' row (backend modules only) do not mention device-side fetches. Same gap in privacy_policy_ar.md s6.",
+   "fix": "Add to s6 (and the AR twin): 'Product pictures in the App are loaded directly from the retailer or image website that published them, so that website receives your device's IP address and the standard details your device sends with any web request.' Add SmartCompareApp/src/components/primitives/ProductImage.tsx to the modules of the retailers row in app/legal/processors.json."
+  },
+  {
+   "id": "A3",
+   "severity": "major",
+   "title": "s8 sign-in security retention line is unscoped; the planned cleanup covers only records not linked to an account",
+   "evidence": "privacy_policy.md s8: '**Sign-in security records, which can include IP addresses:** <PLACEHOLDER:SECURITY_LOG_RETENTION>'; the AR s8 says the same. SECURITY_LOG_RETENTION answers form item 10, which asks only about records NOT tied to an account. UL8 and review Q9 scope the cleanup (#296 / migration 044) to unlinked rows. Linked rows that carry an IP are written at app/api/auth_routes.py:659-667 (invite_code_redeemed: user_id + IP) and :728-733 (login_success: user_id + IP); no job expires them, so they stay until the account is deleted (under 043 the IP is then nulled; under 025 it is kept). With form 10 = B the published line would promise '12 months' for records kept indefinitely. The D-NEW text already scopes this correctly ('Records of failed sign-in attempts and lockouts are not linked to your account ... for <SECURITY_LOG_RETENTION>').",
+   "fix": "Split the bullet (EN + AR): '**Sign-in security records linked to your account, which can include IP addresses:** as long as your account exists; section 9 explains what happens when you delete it.' and '**Records of failed sign-ins and lockouts, which are not linked to an account and include IP addresses:** <PLACEHOLDER:SECURITY_LOG_RETENTION>.'"
+  },
+  {
+   "id": "A4",
+   "severity": "major",
+   "title": "The D-OLD deletion branch contradicts s8 of the same document",
+   "evidence": "I filled a scratch copy with deletion_variant 'old' (sample_old_all_b2.json; 41 tests passed). In the output, s8 says 'Your account, profile, preferences, optional answers ... : until you delete them or your account' and 'Your total number of comparisons stays with your account until you delete it', while s9 (D-OLD) says 'Your email address, name, sign-in provider, optional profile answers, referral code and rewards, comparison totals, consent records ... your preference history ... remain in our database after the deletion'. Migration 025 indeed keeps them: migrations/025_delete_user_cascade_completeness.sql:56-63 updates only 5 columns. D-OLD also leaves out re_engagement_events: the users row is kept, so the ON DELETE CASCADE never fires and the content_payload with the notification text stays (scripts/cron_reengagement.py:61-110). The AR texts have the same problem. UL3 allows D-OLD to ship if 043 is not applied.",
+   "fix": "End s8 bullets 1 and 2 (EN + AR) with '... until you delete them or your account; section 9 describes what deleting your account removes.' and '... stays with your account; section 9 describes what deleting your account removes.' These read true under both variants. Add 'the record of reminders we sent you' to the D-OLD 'remain' list in scripts/legal_variants_u8.json (EN + AR)."
+  },
+  {
+   "id": "A5",
+   "severity": "minor",
+   "title": "ToS s11 refers to a price marking the App never shows",
+   "evidence": "terms_of_service.md s11: 'Prices marked as estimated are approximations; do not rely on them for a purchase.' The AR twin reads 'الأسعار الموسومة بأنها استرشادية'. In the code, is_price_showable (app/services/price_service.py:1800-1832) excludes source_method 'estimated', so the chokepoint shows those prices as pending. SmartCompareApp/src/services/sourceMethod.ts:13-33 forbids any estimated/indicative/reference wording in the UI. So no price is ever marked estimated.",
+   "fix": "Replace the bullet (EN + AR): '**Prices:** prices come from public sources and may not reflect current retail prices. When we cannot confirm a price, the App shows it as pending instead of a number.' Optionally drop 'estimated' from ToS s6 ('Prices may be converted from another currency or out of date')."
+  },
+  {
+   "id": "A6",
+   "severity": "minor",
+   "title": "ToS overstates where specifications come from",
+   "evidence": "ToS s2: 'It gathers specifications, reviews and prices from public sources'. s11: 'specifications are gathered from several sources and cross-checked'. The AR s11 says the same. With ENABLE_SPECS_NO_FABRICATION off (the code default), the specs prompt says 'fall back to your training data' (app/services/extraction_service.py:650, with _source 'training' at :657). Fact-check results are counters only and do not remove unverified values.",
+   "fix": "Replace the s11 bullet (EN + AR): '**Specifications:** specifications are compiled by AI from search results and, where those say nothing, from the AI model's general knowledge; we compare them with the search results where we can, but we cannot guarantee they are complete or correct.'"
+  },
+  {
+   "id": "A7",
+   "severity": "minor",
+   "title": "Country is not set from device settings",
+   "evidence": "privacy_policy.md s3.3: 'your language and country, which we may set from your device's settings'; the AR s3.3 says the same. Country is the onboarding answer (SmartCompareApp/src/screens/onboarding/Step04Country.tsx). When it is absent, the backend uses the CF-IPCountry header or defaults to 'Bahrain' (app/api/auth_routes.py:1505-1512). Only the language comes from the device (Accept-Language, :1494-1502).",
+   "fix": "'... and your language and country, which you choose during onboarding or which we may set from your device's language and your network location.' (EN + AR)."
+  },
+  {
+   "id": "A8",
+   "severity": "minor",
+   "title": "Reminder notification records are not disclosed in s3",
+   "evidence": "scripts/cron_reengagement.py:61-110 and app/services/reengagement_service.py:139/:287 write re_engagement_events rows: user_id, comparison_id, content_payload (the notification title and body, which contain product names) and delivered_at. Section 3 has no line for these rows. Migration 043 deletes them; 025 keeps them (see A4).",
+   "fix": "Add to s3.4 (EN + AR): '**Notification records:** which reminders we sent you, when, and their text.'"
+  },
+  {
+   "id": "A9",
+   "severity": "minor",
+   "title": "The Google sign-in disclosure omits the profile picture",
+   "evidence": "privacy_policy.md s5: 'Google shares your name and email address with us through its sign-in token.' GoogleSignin.configure at SmartCompareApp/src/services/authService.ts:833-845 sets no scopes, so the library's default profile + email scopes apply and the ID token also carries the picture URL. Whether GoTrue stores it is NOT VERIFIED.",
+   "fix": "'Google shares your name, email address and profile picture with us through its sign-in token.' (EN + AR)."
+  },
+  {
+   "id": "A10",
+   "severity": "minor",
+   "title": "fill_in_legal rejects formatted Arabic counsel wording",
+   "evidence": "scripts/fill_in_legal.py _check_value applies the strict pattern unless key.endswith('_COUNSEL'). LEGAL_BASIS_COUNSEL_AR and TRANSFER_BASIS_COUNSEL_AR end in '_AR', so they get the strict pattern. Reproduced in a scratch copy: an AR value of '- **x:** y' was refused with 'LEGAL_BASIS_COUNSEL_AR: value contains markup, a line break or a placeholder', while the same form is accepted for the EN key. This confirms GREEN-AR Q2.",
+   "fix": "key.endswith(('_COUNSEL', '_COUNSEL_AR'))"
+  },
+  {
+   "id": "A11",
+   "severity": "minor",
+   "title": "Nothing stops the fill-in from publishing a fixed retention period that no code enforces",
+   "evidence": "tests/fixtures/legal_fill_in_u8.json _placeholders_comment gives '12 months' as the example for SECURITY_LOG_RETENTION and ANON_LOG_RETENTION. It does not mention UL8's precondition: a fixed period requires the DEL-FOLLOWUPS cleanup (migration 044) to be merged and its Railway cron registered. Nothing in scripts/ expires these rows today (spec F-A). The 043 fork has such a condition in _answers_comment; retention has none.",
+   "fix": "Extend the comment: 'a fixed period only after the DEL-FOLLOWUPS cleanup (migration 044) is merged and its Railway cron registered (UL8); otherwise \"no fixed period\"'. Optional: an answer key retention_cleanup_live that fill_in_legal checks before accepting a fixed period."
+  },
+  {
+   "id": "A12",
+   "severity": "minor",
+   "title": "Some facts only the owner can give are written as if known, and some answers have no slot in the placeholder map",
+   "evidence": "(a) s7 heading and text ('Transfers outside Bahrain', 'outside Bahrain') and s10's primary complaint authority hard-code Bahrain as the controller's country. Governing law, by contrast, is derived from form 4 (the address country). (b) s5 'Cloudflare: delivers the email you send to our addresses' assumes @qaren.app mailboxes, but form 5 allows another address. (c) C20/UL15 ask about a DPO or data protection guardian, but no token or fork exists to publish a 'yes'. The same applies to the AR documents.",
+   "fix": "Add a fill-in checklist item, or a refusal in fill_in_legal: the controller country must be Bahrain, or else s7 and s10 are re-drafted. Make the Cloudflare line a derived clause that is empty when PRIVACY_EMAIL and SUPPORT_EMAIL are not @qaren.app. Add an optional DPO_CONTACT clause (empty by default) to s1 and s16."
+  },
+  {
+   "id": "A13",
+   "severity": "note",
+   "title": "AR s13 renders 'request bodies' too broadly",
+   "evidence": "privacy_policy_ar.md s13 'ولا محتوى الطلبات' means 'nor the content of requests'. This reads against the 'metadata (method, path, user agent)' listed just before it.",
+   "fix": "Native reviewer: 'ولا متن الطلبات (body)'."
+  },
+  {
+   "id": "A14",
+   "severity": "note",
+   "title": "Display name on shared comparison links is over-disclosed (harmless)",
+   "evidence": "s5 and ToS s9 say people who open a comparison link see your display name. The plain /share GET has no display_name (app/api/share_routes.py); only the invite landing returns referrer_display_name (referral_service.py:406-457), and show_name=False can hide it.",
+   "fix": "Optional: 'People who open an invite link you share see your display name ...'."
+  },
+  {
+   "id": "A15",
+   "severity": "note",
+   "title": "C1 dependency has no data-file switch",
+   "evidence": "referral_service.py:926-929 at 1156f03c still falls back to the invitee's email prefix. The policy and ToS sentence 'the notification we send that friend can show your display name' is true only once U3c lands (UL2/UL3 merge gate). Unlike openai_store_pinned, nothing in the fill-in data records this.",
+   "fix": "Re-check at the merge gate, or add an answer key such as referral_push_display_name_only that switches the sentence to '... your display name or the first part of your email address'."
+  },
+  {
+   "id": "A16",
+   "severity": "note",
+   "title": "Variant combination d3=B with openai_store_pinned=true",
+   "evidence": "The filled text keeps 'OpenAI may keep data sent to its API in abuse-monitoring logs for up to 30 days' next to the B sentence that lets OpenAI use queries to improve its models. For shared data that understates retention.",
+   "fix": "In the d3 B text, add 'Data you share this way is governed by OpenAI's terms rather than the 30-day limit below.'"
+  },
+  {
+   "id": "A17",
+   "severity": "note",
+   "title": "The d5=B identity is not carried to the support region",
+   "evidence": "app/legal/support_contact.md and _ar.md have no d5_identity fork. Under d5=B with a trade name, the support page says 'MYEZ is provided by <name>, <address>' with no trading name and no CR number, while the policy and ToS include both (measured in the scratch fill).",
+   "fix": "Add 'support' to forks.d5_identity.docs and the matching text to support_contact(.md/_ar.md), or state that this difference is deliberate."
+  }
+ ],
+ "reproduced": [
+  "Re-hash FIRST (23:19) and LAST (23:38) of all 28 files the three GREEN reports list (latest hashes): 0 mismatches both times. Notes: .../u8/adv-a/rehash_first.txt and rehash_last.txt.",
+  "Unit worktree gate, read-only run: [pyt] tag=u8-advA-unit start=2026-10-07 23:37:41 end=2026-10-07 23:38:11 elapsed=31s bound=600s status=FAIL rc=1. Only T2 (test_t2_no_unresolved_placeholder) is red; 57 passed over test_legal_docs_u8 + test_legal_routes + test_consent_capture_w3_16; netguard blocked 0.",
+  "Detached scratch worktree at 1156f03c under the notes folder (no node_modules), with the 27 U8 files copied in (sha-equal). Sample answers 043/gcc/A/A, minors on, store pinned, YouTube on: fill_in_legal rc=0, 12 outputs placeholder-free, second run byte-stable (0 of 12 changed). [pyt] tag=u8-advA-fill043 elapsed=23s status=OK rc=0 (41 passed, T2 green).",
+  "Same scratch copy with the alternative branches (old/bahrain/counsel_review true/d3 B/d5 B + trade name/minors off/store false/inapp true/YouTube off): rc=0, placeholder-free. [pyt] tag=u8-advA-fillold elapsed=36s status=OK rc=0 (41 passed). The rendered text showed the A4 contradiction.",
+  "AR counsel defect (A10) reproduced: LEGAL_BASIS_COUNSEL_AR '- **x:** y' was rejected with exit 3. Under d5=A, CR_NUMBER '' is refused ('documents use it') and null is accepted.",
+  "Fill-in output is LF; with core.autocrlf=true, git diff --stat in the scratch copy shows no whole-file rewrite.",
+  "Scratch worktree removed with git worktree remove --force (git worktree list shows 0 adv-a entries). The unit worktree's git status (27 entries) and HEAD 1156f03c are unchanged."
+ ],
+ "not_checked": [
+  "Not measured on a device: the RN SDK 7.2.0 default breadcrumb and device-context behaviour (A1(c)/(d) are from code and SDK defaults). Session 72 recorded zero react-native Sentry events in 30 days, so mobile reporting itself is unverified.",
+  "Client gates (jest/tsc/eslint), LegalScreen behaviour and the ADDRESS_COUNTS change: outside the legal-truth lens and left to adversary B. No mutation harness in this role.",
+  "Whether the backend test-file change is limited to the 3 UG13 constants: no RED snapshot (a7518a29) was available in the scratchpad to diff against.",
+  "Railway log retention and client-IP recording; Supabase Auth email sender; whether GoTrue stores the Google name or picture; hosting regions; the prod states of the 7 flags; Cloudflare Email Routing delivery; the backend Sentry DSN region (taken as EU from the shared org).",
+  "Native Arabic quality beyond sentence-level fidelity and numbering; the 187-string native-review list itself.",
+  "Visual rendering of the six landing regions (T5 byte-equality only)."
+ ],
+ "worktree_sha_check": "FIRST (23:19:xx) and LAST (23:38:57): sha256 of all 28 files listed by the GREEN EN/AR/client reports equal the latest report hashes, 0 mismatches each time. sc-s70-u4b HEAD 1156f03cba0e, git status 27 entries (16 M + 11 ??) unchanged. Nothing written in the worktree. The scratch worktree (notes/wt) was created detached at 1156f03c and removed with git worktree remove --force; no .env anywhere in the notes folder.",
+ "summary": "Verdict DEFECTIVE: 1 blocking, 3 major, 8 minor, 5 notes. The fill-in machinery works: with complete sample answers it produced placeholder-free, byte-stable output in a scratch worktree, and the U8 docs and route tests passed there (T2 green) on both the recommended branch and the alternative branches. The rulings and review corrections (C2-C25, UL1-UL20, UG3/UG12) are applied as written. The twelve anchors and both TERMS_VERSION constants are still 2026-03-26. The AR documents match the EN sentence by sentence.\n\nBlocking (A1): the UF7 Sentry sentence in s13, EN and AR, is presented as covering the App's reports too, and for the App it is false. The client scrubber keeps raw exception text and does not redact the product_a/product_b query parameters that the default REST compare sends. A comparison_wall_time event goes out after every comparison carrying those breadcrumbs.\n\nMajors:\n- A2: the App loads product images straight from third-party hosts, so their IP exposure is undisclosed.\n- A3: the s8 security-log retention line is unscoped, but the planned cleanup removes only records not linked to an account; linked records with IPs would outlive the stated period.\n- A4: the D-OLD branch contradicts s8 of the same document and also leaves out the reminder-notification records.\n\nMinors:\n- A5: ToS s11 describes an 'estimated' price label the UI never shows.\n- A6: the ToS says specifications are gathered from sources and cross-checked, while the specs prompt falls back to the model's training data.\n- A7: country is not set from device settings.\n- A8: reminder notification records are not disclosed.\n- A9: the Google disclosure leaves out the profile picture.\n- A10: the fill-in script refuses formatted Arabic counsel text.\n- A11: nothing guards against filling a fixed retention period before the cleanup job exists.\n- A12: Bahrain and the Cloudflare mail route are hard-coded, and there is no slot for a DPO answer.\n\nApp Review lens:\n- Guideline 5.1.2(i) disclosure and 5.1.1(v) deletion are met, but the deletion text depends on the 043 branch.\n- Guideline 5.1.1(i) is incomplete until A1 and A2 are fixed.\n- Guideline 1.4.1 is covered by ToS s6.\n\nNotes folder: C:/Users/SYNACK~1/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/d376cb56-c600-4d76-bfdb-9e15feff0cdc/scratchpad/u8/adv-a (notes.md, the sample answer files, the pyt logs and the rehash files)."
+}

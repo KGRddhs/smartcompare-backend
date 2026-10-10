@@ -1492,14 +1492,40 @@ def _without_lag(body):
     return {k: v for k, v in body.items() if not k.startswith("loop_lag")}
 
 
-def test_w04g_health_has_no_price_parse_pool_key_before_the_pool_exists():
+def test_w04g_health_has_no_price_parse_pool_key_before_the_pool_exists(monkeypatch):
     """PIN: with no pool built, /health carries no 'price_parse_pool' key and keeps status /
-    message byte-unchanged (flag OFF /health is byte-identical to 61585c58)."""
-    body = _health_body()
+    message byte-unchanged (flag OFF /health is byte-identical to 61585c58).
+
+    FS-R7 (FANOUT-STARVE, 2026-10-09): the exact key set became a SUPERSET pin -- the five
+    W1-10 keys are a subset of the body; `adapter_executor` is allowed and is present iff
+    install_default_executor ran in this process (this node runs it on a throwaway loop so
+    the presence half is deterministic, and /health reads the module global that call
+    writes, never asyncio.get_event_loop()); `brightdata_auth` is absent before a 401.
+    RED at main 4c0f3c99: /health carries no adapter_executor key.
+
+    FY14 (FANOUT-STARVE fix round): the module global is registered with monkeypatch BEFORE
+    the throwaway install, so it is restored afterwards -- the closed loop's shut-down pool
+    (whose queue holds shutdown()'s wake-up sentinel, `queued == 1`) never leaks into a
+    later node's /health."""
+    from app.utils import executor as _executor
+    from app.utils.executor import install_default_executor
+    monkeypatch.setattr(_executor, "_INSTALLED_POOL", None)
+    loop = asyncio.new_event_loop()
+    try:
+        pool = install_default_executor(loop)
+        body = _health_body()
+    finally:
+        loop.close()
     assert "price_parse_pool" not in body, body
     assert body.get("status") == "healthy" and body.get("message") == "MYEZ API is running", body
-    assert set(body) == {"status", "message", "loop_lag_ms", "loop_lag_max_ms",
-                         "loop_lag_max_60s_ms"}, sorted(body)
+    five = {"status", "message", "loop_lag_ms", "loop_lag_max_ms", "loop_lag_max_60s_ms"}
+    assert five <= set(body), sorted(five - set(body))
+    assert set(body) - five <= {"adapter_executor", "brightdata_auth"}, sorted(body)
+    assert "brightdata_auth" not in body, sorted(body)
+    assert "adapter_executor" in body, (
+        "FS-R7: /health lacks `adapter_executor` after install_default_executor ran in this "
+        "process; keys %r" % (sorted(body),))
+    assert body["adapter_executor"].get("workers") == pool._max_workers, body["adapter_executor"]
 
 
 def test_w04g_health_carries_price_parse_pool_after_a_flagged_parse(monkeypatch):
@@ -1550,8 +1576,15 @@ def test_w04g_health_survives_a_raising_pool_stats_fn(monkeypatch, error):
         pytest.fail("W0-4g: price_parse_pool_snapshot() let the stats error escape: %r" % (exc,))
     assert snap == {}, snap
     body = _health_body()
-    assert set(body) == {"status", "message", "loop_lag_ms", "loop_lag_max_ms",
-                         "loop_lag_max_60s_ms"}, sorted(body)
+    # FS-R7 / FG-5 (FANOUT-STARVE, 2026-10-09): the exact key set became the SUPERSET pin
+    # of the node above -- the five W1-10 keys a subset, `adapter_executor` allowed
+    # (present iff install_default_executor ran in this process), `brightdata_auth`
+    # absent before a 401, and still no `price_parse_pool` (the stats fn raised).
+    five = {"status", "message", "loop_lag_ms", "loop_lag_max_ms", "loop_lag_max_60s_ms"}
+    assert five <= set(body), sorted(five - set(body))
+    assert set(body) - five <= {"adapter_executor", "brightdata_auth"}, sorted(body)
+    assert "brightdata_auth" not in body, sorted(body)
+    assert "price_parse_pool" not in body, sorted(body)
     assert body.get("status") == "healthy" and body.get("message") == "MYEZ API is running"
 
 

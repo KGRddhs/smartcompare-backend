@@ -123,7 +123,12 @@ class TestNoStrayModelLiterals:
 
     # model_config.py owns the literals. content_safety_service keeps the
     # moderation id inline only if it also routes through model_config.
-    ALLOWED = {"model_config.py"}
+    # openai_pricing.py (COST-METER #66, ruling CM7) holds the LIST-PRICE
+    # table keyed by the EXACT model id: a price table names models by
+    # definition and dispatches nothing -- a model change there is a
+    # priced / unpriced outcome (cost_complete False), never a routing
+    # change, so it is data, not a stray literal.
+    ALLOWED = {"model_config.py", "openai_pricing.py"}
 
     def test_no_hardcoded_openai_model_ids_in_services(self):
         services = Path(__file__).resolve().parents[1] / "app" / "services"

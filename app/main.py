@@ -182,6 +182,25 @@ async def _install_default_executor() -> None:
     install_default_executor()
 
 
+# FANOUT-STARVE D2 (2026-10-09) -- boot truth line for the event loop. uvicorn
+# auto-selects uvloop when it is importable (Linux: requirements.txt pins it;
+# never on Windows), and under uvloop every httpx getaddrinfo (Serper, OpenAI,
+# Bright Data, Firecrawl, Scrape.do) queues on libuv's threadpool, sized by
+# UV_THREADPOOL_SIZE at its FIRST use (default 4) -- so the start command sets it
+# before the interpreter (railway.json / Procfile) and this line proves what took
+# effect. Logging only; the value is a non-secret integer knob, or "unset".
+@app.on_event("startup")
+async def _log_loop_truth() -> None:
+    import asyncio as _asyncio
+    loop_cls = type(_asyncio.get_running_loop())
+    _logging.getLogger(__name__).info(
+        "[loop] class=%s.%s uvloop=%s UV_THREADPOOL_SIZE=%s",
+        loop_cls.__module__, loop_cls.__qualname__,
+        loop_cls.__module__.split(".", 1)[0] == "uvloop",
+        os.getenv("UV_THREADPOOL_SIZE") or "unset",
+    )
+
+
 # W1-10 (LS-FAILURE-MODES-COST-13 / #81) -- event-loop lag heartbeat.
 #
 # /health returned a static two-key dict, so nothing reported whether the single
@@ -261,6 +280,33 @@ def price_parse_pool_snapshot() -> dict:
     except Exception:  # noqa: BLE001 — /health must never fail
         return {}
     return {"price_parse_pool": stats} if stats else {}
+
+
+def _module_snapshot(module_name: str, fn_name: str) -> dict:
+    """FANOUT-STARVE D1 / D6: one more /health key from a module-level snapshot
+    function, the W0-4g shape -- sys.modules only (never an import), {} when the
+    module or the function is absent or the call raises."""
+    fn = getattr(sys.modules.get(module_name), fn_name, None)
+    if fn is None:
+        return {}
+    try:
+        return fn() or {}
+    except Exception:  # noqa: BLE001 -- /health must never fail
+        return {}
+
+
+def adapter_executor_snapshot() -> dict:
+    """D1 / FS-R7: `adapter_executor` {workers, queued}, present iff
+    install_default_executor ran in this process (it reads the module global that
+    call writes, never asyncio.get_event_loop())."""
+    return _module_snapshot("app.utils.executor", "executor_snapshot")
+
+
+def brightdata_auth_health_snapshot() -> dict:
+    """D6 (F3): `brightdata_auth` {last_status, at}, present only after a 401/403
+    from Bright Data in this process (status code + timestamp only; deliberate on
+    the public /health, n6)."""
+    return _module_snapshot("app.services.brightdata_service", "brightdata_auth_snapshot")
 
 
 async def _loop_lag_heartbeat() -> None:
@@ -416,7 +462,8 @@ class _AdminAuthenticatedStaticFiles(StaticFiles):
             return
 
         expected = os.getenv("ADMIN_API_KEY", "")
-        if not expected:
+        # #304: a whitespace-only key counts as unset; the compares below stay raw.
+        if not expected.strip():
             # Misconfigured deploy — refuse to serve admin pages at all.
             await _Response("Admin not configured", status_code=503)(scope, receive, send)
             return
@@ -549,6 +596,8 @@ async def health_check():
         "message": "MYEZ API is running",
         **loop_lag_snapshot(),
         **price_parse_pool_snapshot(),
+        **adapter_executor_snapshot(),
+        **brightdata_auth_health_snapshot(),
     }
 
 

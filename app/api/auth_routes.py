@@ -214,8 +214,8 @@ class UserPreferencesRequest(BaseModel):
     budget: str
     lifestyle: List[str] = Field(default_factory=list)
     brand_attitude: str
-    # Per-user AI Quality Improvement Program toggle (PDPL opt-out, design 6.1).
-    # None = unset = default ON (data-sharing project). False = opt out (private project).
+    # Accepted for older app bundles and stored unchanged; inert since U3b
+    # (decision D3 = C, 2026-10-08: no per-user AI-sharing control).
     ai_sharing_enabled: Optional[bool] = None
     # F5.4 — re-engagement notifications master toggle. None = unset = default ON
     # (matches re-engagement-cron eligibility filter; pattern from design 9.2).
@@ -1414,10 +1414,11 @@ async def update_reengagement_subs(
 class PreferenceTogglesBody(BaseModel):
     """W3-14 -- body for ``PUT /preference-toggles``.
 
-    The two master toggles only. Unlike ``UserPreferencesRequest`` there is
-    NO ``priorities`` requirement, so a user without priorities can still
-    exercise the AI-sharing (PDPL) opt-out and the notifications master.
-    At least one key must be provided.
+    Unlike ``UserPreferencesRequest`` there is NO ``priorities`` requirement,
+    so a user without priorities can still flip the notifications master.
+    ``ai_sharing_enabled`` is accepted for older app bundles and stored
+    unchanged; it is inert since U3b (decision D3 = C, 2026-10-08: no
+    per-user AI-sharing control). At least one key must be provided.
     """
 
     ai_sharing_enabled: Optional[bool] = None
@@ -1446,6 +1447,9 @@ async def update_preference_toggles(
     key(s) -- never ``priorities``, ``_sources``, ``notification_types`` or
     ``preferences_completed``, and never via ``save_user_preferences``.
     Uses the user-scoped Supabase client so RLS enforces row ownership.
+    ``ai_sharing_enabled`` is accepted for older app bundles and stored
+    unchanged; it is inert since U3b (decision D3 = C, 2026-10-08: no
+    per-user AI-sharing control).
     """
     access_token = current_user.get("access_token")
     client = (

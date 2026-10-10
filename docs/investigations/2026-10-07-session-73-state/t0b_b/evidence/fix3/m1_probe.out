@@ -1,0 +1,13 @@
+extdiff_sameline_utf8 base  sh    rc=0 -
+extdiff_sameline_utf8 base  dash  rc=0 -
+extdiff_sameline_utf8 cur   sh    rc=1 FOUR
+extdiff_sameline_utf8 cur   dash  rc=1 FOUR
+extdiff_sameline_utf8 m1    sh    rc=0 -
+extdiff_sameline_utf8 m1    dash  rc=0 -
+extdiff_sameline_default base  sh    rc=1 FOUR
+extdiff_sameline_default base  dash  rc=1 FOUR
+extdiff_sameline_default cur   sh    rc=1 FOUR
+extdiff_sameline_default cur   dash  rc=1 FOUR
+extdiff_sameline_default m1    sh    rc=1 FOUR
+extdiff_sameline_default m1    dash  rc=1 FOUR
+variants sha: {'cur': '103d7519555d', 'm1': 'fdff3509578d', 'base': 'de0a4bd85ad7'}

@@ -49,7 +49,8 @@ function isNonEmptyString(v: unknown): v is string {
 function priceLines(d: Record<string, unknown>, t: Translate): string[] {
   const lines: string[] = [];
   if (isPositiveNumber(d.sources_count)) {
-    lines.push(t('results.confidence.sheet.price.sources', { n: d.sources_count }));
+    // S74 CLIENT-TRUTH (#239): `count` selects the plural form ("1 retail source").
+    lines.push(t('results.confidence.sheet.price.sources', { count: d.sources_count }));
   }
   // Human labels only — anything unmapped (incl. 'estimated') is omitted:
   // the sheet exists to say what we KNOW, and 'estimated' is forbidden
@@ -70,7 +71,7 @@ function priceLines(d: Record<string, unknown>, t: Translate): string[] {
 function reviewsLines(d: Record<string, unknown>, t: Translate): string[] {
   const lines: string[] = [];
   if (isPositiveNumber(d.review_count)) {
-    lines.push(t('results.confidence.sheet.reviews.count', { n: d.review_count }));
+    lines.push(t('results.confidence.sheet.reviews.count', { count: d.review_count }));
   }
   if (isNonEmptyString(d.source)) {
     lines.push(t('results.confidence.sheet.reviews.source', { source: d.source }));
@@ -84,7 +85,7 @@ function reviewsLines(d: Record<string, unknown>, t: Translate): string[] {
 function specsLines(d: Record<string, unknown>, t: Translate): string[] {
   const lines: string[] = [];
   if (isPositiveNumber(d.citation_count)) {
-    lines.push(t('results.confidence.sheet.specs.citations', { n: d.citation_count }));
+    lines.push(t('results.confidence.sheet.specs.citations', { count: d.citation_count }));
   }
   // verified_pct stays qualitative — printing "60%" would leak a
   // threshold-shaped number (rule #2 guard regex forbids \d+%).

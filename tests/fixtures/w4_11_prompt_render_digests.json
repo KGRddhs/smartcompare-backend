@@ -80,6 +80,7 @@
  "image_tier3_kwargs": {
   "max_tokens": 120,
   "model": "gpt-4o-mini",
+  "store": false,
   "temperature": 0.1
  },
  "image_tier3_user": "0bce5931a79948d02b2b926a0c4c07511682dc1ce86f8ce7f841d78d1d2322f1",
@@ -98,6 +99,7 @@
  "price_fallback_kwargs": {
   "max_tokens": 200,
   "model": "gpt-4o-mini",
+  "store": false,
   "temperature": 0.2
  },
  "price_fallback_result": {
@@ -133,6 +135,7 @@
   "response_format": {
    "type": "json_object"
   },
+  "store": false,
   "temperature": 0.1
  },
  "synth_system": "58755e85b6e31e7de51d33c72ba8d65c072e99b2ba99a7a2b9fc651da90df8dd",
@@ -142,6 +145,7 @@
   "response_format": {
    "type": "json_object"
   },
+  "store": false,
   "temperature": 0.1
  },
  "targeted_system": "37084572084ea1401034243b3e086d18ff8be0d32da7fb7289bc0d541b03f68f",
@@ -149,6 +153,7 @@
  "url_extract_kwargs": {
   "max_tokens": 800,
   "model": "gpt-4o-mini",
+  "store": false,
   "temperature": 0.1
  },
  "url_extract_user": "9bbbd748cd75c60ee5ac2f79e5ce6d8a12b96c84fd2e652a262d805667bac059",
@@ -160,6 +165,7 @@
   "response_format": {
    "type": "json_object"
   },
+  "store": false,
   "temperature": 0
  },
  "verdict_system": {

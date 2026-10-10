@@ -1,0 +1,25 @@
+feat(consent): U3b -- AI consent v2 under D3 = C: the disclosure sentence, the dead Profile toggle removed, the private-key branch deleted
+
+Decision D3 = C (2026-10-08): organisation data sharing with OpenAI stays ON
+and there is no per-user opt-out. The one-time consent sheet (#274) now says
+so: AI_CONSENT_VERSION 1 -> 2 (every user agrees once more), one sentence
+before the final sentence of aiConsent.body (EN; AR under the [SPEC] tag,
+native review owed), fence sha256 of the EN + AR copy pinned. The Profile
+"Help improve AI" toggle, its three catalog keys and the ai_sharing_enabled
+field leave the client; the sheet body scrolls inside a numeric cap from the
+window height with the title, the Privacy link and both CTAs outside it and
+their font scaling capped at 1.6, so Agree / Not now stay reachable at every
+Dynamic Type size. Backend, unflagged: openai_service.get_client() takes no
+parameter, select_client_for_user and the OPENAI_API_KEY_PRIVATE arm are
+deleted; PUT /auth/preference-toggles keeps accepting ai_sharing_enabled
+(inert) for older bundles and its OpenAPI text no longer promises an opt-out;
+docs/privacy-data-inventory.md states the training use.
+
+Sequencing (UB-R4, binding): no eas update and no store build from main
+between this merge and PR #330 (U8 legal) being merged and live.
+
+Rulings UB-R1..R21, UG-1..UG-11, UY1-UY16 (the session-75 state folder).
+Tests: __tests__/consent/aiConsentV2.s75.test.ts, aiConsentSheetScroll.s75.test.tsx,
+tests/test_u3b_sharing_branch_removed.py; 11 suites amended, one deleted.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>

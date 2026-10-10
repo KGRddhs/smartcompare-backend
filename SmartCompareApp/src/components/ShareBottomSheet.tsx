@@ -26,9 +26,9 @@ import {
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { useTranslation } from 'react-i18next';
-import { MessageCircle, Copy as CopyIcon, Send, AtSign, Camera, Sparkles, Gift } from 'lucide-react-native';
+import { MessageCircle, Copy as CopyIcon, Send, AtSign, Camera, Sparkles } from 'lucide-react-native';
 import { colors, spacing, radii, typography } from '../theme';
-import { createShare, ReferralError, ShareTarget, CreateShareResult } from '../services/referralService';
+import { createShare, ShareTarget, CreateShareResult } from '../services/referralService';
 import { getDeviceFingerprint } from '../services/deviceFingerprint';
 
 export interface ShareBottomSheetComparison {
@@ -132,17 +132,11 @@ export default function ShareBottomSheet({
 
   // Bundle A §1.3 — message is generic ("ends the debate in 30 seconds")
   // and product-agnostic. The share_link returned by createShare already
-  // encodes the comparison context server-side. We swap to the comparison-
-  // specific preview only when no link is available yet (initial render).
+  // encodes the comparison context server-side. S74 CLIENT-TRUTH (C2): no
+  // message preview is rendered — the link does not exist until a target is
+  // tapped, and a placeholder link would read as a real one.
   const buildOutgoing = (link: string, code: string) =>
     t('referrals.share.messageWithLink', { link, code });
-
-  // Code is the `?ref=QR-XXXXXX` query on the share_link; surface it for the
-  // preview before the user taps a target (we don't have the link yet).
-  const previewMessage = buildOutgoing(
-    'https://qaren.app/r/QR-XXXXXX',
-    'QR-XXXXXX',
-  );
 
   const togglePrivacy = (key: keyof PrivacyToggles) => {
     try { Haptics.selectionAsync(); } catch {}
@@ -212,14 +206,11 @@ export default function ShareBottomSheet({
         // surface success to the parent so the Loop 1 toast still fires.
         onShared(result);
       }
-    } catch (err) {
+    } catch {
       try { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error); } catch {}
-      const ref = err as ReferralError;
-      if (ref?.code === 'WEEKLY_INVITE_CAP') {
-        setErrorMessage(t('referrals.share.error.weeklyCap'));
-      } else {
-        setErrorMessage(ref?.message ?? t('referrals.share.error.generic'));
-      }
+      // S74 CLIENT-TRUTH (CT7, W3-14 precedent) — always the catalog copy,
+      // never the raw backend / axios message (English on an Arabic UI).
+      setErrorMessage(t('referrals.share.error.generic'));
     } finally {
       setSubmitting(null);
     }
@@ -233,38 +224,35 @@ export default function ShareBottomSheet({
         <View style={styles.sheet} accessibilityViewIsModal>
           <View style={styles.handle} />
           <Text style={styles.title}>{t('referrals.share.title')}</Text>
-          <Text style={styles.subtitle}>{t('referrals.share.subtitle')}</Text>
 
-          {/* Phase 4 § 4e — gamified reward block. Surfaces what the
-              sender unlocks ("+1 Deep Review credit now, +5 if they
-              sign up"). Sits above the privacy toggles so it carries
-              the lift before the user thinks about what to share. */}
-          <View testID="share-reward-block" style={styles.rewardBlock}>
-            <View style={styles.rewardHeader}>
-              <Sparkles size={16} color={colors.accent} />
-              <Text style={styles.rewardTitle}>
-                {t('referrals.share.reward.title', {
-                  defaultValue: "You'll unlock",
-                })}
-              </Text>
+          {/* Phase 4 § 4e — reward block. S74 CLIENT-TRUTH (SHARE=A,
+              CT1/CT2): states only the Loop 2 bonus the backend grants
+              (bonus comparisons for 7 days once an invited friend signs up
+              and runs a first comparison, up to the device lifetime cap)
+              and is hidden at that cap, where no new bonus can fire. Sits
+              above the privacy toggles. */}
+          {!atLifetimeLimit ? (
+            <View testID="share-reward-block" style={styles.rewardBlock}>
+              <View style={styles.rewardHeader}>
+                <Sparkles size={16} color={colors.accent} />
+                <Text style={styles.rewardTitle}>
+                  {t('referrals.share.reward.title', {
+                    defaultValue: "You'll unlock",
+                  })}
+                </Text>
+              </View>
+              <View style={styles.rewardRow}>
+                <Sparkles size={14} color={colors.accent} />
+                <Text style={styles.rewardLine}>
+                  {t('referrals.share.reward.later')}
+                </Text>
+              </View>
             </View>
-            <View style={styles.rewardRow}>
-              <Gift size={14} color={colors.accent} />
-              <Text style={styles.rewardLine}>
-                {t('referrals.share.reward.now', {
-                  defaultValue: '+1 Deep Review credit now',
-                })}
-              </Text>
-            </View>
-            <View style={styles.rewardRow}>
-              <Sparkles size={14} color={colors.accent} />
-              <Text style={styles.rewardLine}>
-                {t('referrals.share.reward.later', {
-                  defaultValue: "+5 comparisons if they sign up",
-                })}
-              </Text>
-            </View>
-          </View>
+          ) : null}
+
+          {/* S74 CLIENT-TRUTH (ruling Y4): "What your friend gets" heads the
+              privacy toggles it describes, after the reward block. */}
+          <Text style={styles.subtitle}>{t('referrals.share.subtitle')}</Text>
 
           {/* Privacy toggles (3 togglable + 1 locked OFF) */}
           <View style={styles.section}>
@@ -314,14 +302,6 @@ export default function ShareBottomSheet({
               />
             </View>
             <Text style={styles.privacyNote}>{t('referrals.share.privacyNote')}</Text>
-          </View>
-
-          {/* Pre-filled message preview */}
-          <View style={styles.messagePreview}>
-            <Text style={styles.messagePreviewLabel}>{t('referrals.share.messagePreview')}</Text>
-            <Text style={styles.messagePreviewText} numberOfLines={4}>
-              {previewMessage}
-            </Text>
           </View>
 
           {/* Bundle B/C/D § 4.3 — gift-thanks banner once the user has
@@ -419,6 +399,7 @@ const styles = StyleSheet.create({
     ...typography.title,
     color: colors.text.primary,
     textAlign: 'center',
+    marginBottom: spacing.md,
   },
   subtitle: {
     ...typography.caption,
@@ -431,8 +412,8 @@ const styles = StyleSheet.create({
     marginBottom: spacing.base,
   },
   /**
-   * Phase 4 § 4e — gamified reward block. Sits between the subtitle
-   * and the privacy toggles. accentLight surface so it reads as a
+   * Phase 4 § 4e — gamified reward block. Sits between the title and
+   * the subtitle that heads the privacy toggles. accentLight surface so it reads as a
    * "rewards card" without competing with the emerald CTAs below.
    */
   rewardBlock: {
@@ -491,21 +472,6 @@ const styles = StyleSheet.create({
     color: colors.text.secondary,
     marginTop: spacing.sm,
     textAlign: 'center',
-  },
-  messagePreview: {
-    backgroundColor: colors.bg.secondary,
-    borderRadius: radii.card,
-    padding: spacing.md,
-    marginBottom: spacing.base,
-  },
-  messagePreviewLabel: {
-    ...typography.small,
-    color: colors.text.secondary,
-    marginBottom: spacing.xs,
-  },
-  messagePreviewText: {
-    ...typography.body,
-    color: colors.text.primary,
   },
   targets: {
     flexDirection: 'row',

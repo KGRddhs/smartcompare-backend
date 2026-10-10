@@ -264,9 +264,8 @@ def test_real_factories_fail_closed_on_a_malformed_value(monkeypatch, net, bad):
     monkeypatch.setattr(osvc, "_client_cache", {}, raising=False)
     monkeypatch.setattr(esvc, "_client", None, raising=False)
     monkeypatch.setattr(usvc, "_client", None, raising=False)
-    clients = [osvc.get_client(use_shared_project=True)]
-    monkeypatch.setattr(osvc, "_client_cache", {}, raising=False)
-    clients += [osvc.get_client(use_shared_project=False), esvc.get_client(), usvc.get_client()]
+    # U3b (D3 = C): get_client() takes no argument (the private arm is gone).
+    clients = [osvc.get_client(), esvc.get_client(), usvc.get_client()]
 
     for client in clients:
         exc = _send_one_request(client.with_options(max_retries=0, timeout=5.0))
@@ -472,13 +471,12 @@ def test_all_client_factories_pass_base_url(monkeypatch):
     monkeypatch.setattr(esvc, "_client", None, raising=False)
     monkeypatch.setattr(usvc, "_client", None, raising=False)
 
-    osvc.get_client(use_shared_project=True)
-    monkeypatch.setattr(osvc, "_client_cache", {}, raising=False)
-    osvc.get_client(use_shared_project=False)
+    # U3b (D3 = C): one get_client() (no private arm), so three factories.
+    osvc.get_client()
     esvc.get_client()
     usvc.get_client()
 
-    assert len(seen) == 4, seen
+    assert len(seen) == 3, seen
     assert all(v == "https://spy.test/v1" for v in seen), seen
 
 

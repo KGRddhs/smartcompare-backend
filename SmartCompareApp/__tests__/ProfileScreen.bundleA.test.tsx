@@ -31,9 +31,11 @@ describe('ProfileScreen — Bundle A Switch→ToggleRow swap (4.9)', () => {
     expect(SOURCE).toMatch(/import\s+ToggleRow\s+from\s+['"]\.\.\/components\/ToggleRow['"]/);
   });
 
-  it('uses ToggleRow at least 5 times (aiSharing + 4 notifications)', () => {
+  // S75 U3b (decision D3 = C): the AI-sharing ToggleRow is gone, so the count is
+  // EXACTLY the notifications master + 3 sub-toggles (ruling UB-R6).
+  it('uses ToggleRow exactly 4 times (notifications master + 3 subs; no AI-sharing row)', () => {
     const matches = SOURCE.match(/<ToggleRow\b/g) ?? [];
-    expect(matches.length).toBeGreaterThanOrEqual(5);
+    expect(matches.length).toBe(4);
   });
 
   it('removes the inline <Switch> rows that ToggleRow replaced', () => {

@@ -588,20 +588,19 @@ export async function putReengagementSubs(
 }
 
 /**
- * W3-14 — the two master toggles (AI-sharing opt-out, notifications) go to a
- * dedicated additive route instead of the full /preferences body, whose
- * `priorities` field is required (min 1) — so a user WITHOUT priorities can
- * still exercise the privacy control. The backend read-modify-writes
- * `users.preferences` touching only the provided key(s). 10/min; auth required.
+ * W3-14: the notifications master toggle goes to a dedicated additive route
+ * instead of the full /preferences body, whose `priorities` field is required
+ * (min 1), so a user WITHOUT priorities can still flip it. The backend
+ * read-modify-writes `users.preferences` touching only the provided key(s).
+ * 10/min; auth required. (S75 U3b, decision D3 = C: the AI-sharing key is
+ * gone from the client; the route still accepts it from older bundles.)
  */
 export interface PreferenceTogglesBody {
-  ai_sharing_enabled?: boolean;
   notifications_enabled?: boolean;
 }
 
 export async function putPreferenceToggles(body: PreferenceTogglesBody): Promise<{
   success: boolean;
-  ai_sharing_enabled?: boolean | null;
   notifications_enabled?: boolean | null;
   error?: string;
 }> {
