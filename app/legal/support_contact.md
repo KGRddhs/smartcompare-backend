@@ -1,3 +1,3 @@
-MYEZ is provided by <PLACEHOLDER:CONTROLLER_NAME><PLACEHOLDER:TRADE_NAME_CLAUSE>, <PLACEHOLDER:POSTAL_ADDRESS>.
+MYEZ is provided by Hussain Aseeri, Block 1020, Street 2052, Home 4769, Hamad Town 1020, Bahrain.
 
-Support email: <PLACEHOLDER:SUPPORT_EMAIL>
+Support email: support@getmyez.com

@@ -16,7 +16,8 @@ variant texts), then:
 
 It writes NOTHING while any answer, flag or required placeholder is null (the
 missing keys are printed, exit code 2) or while any document or variant is
-inconsistent (exit code 3). It is also inconsistent when the filled documents
+inconsistent (exit code 3; so is d3 "B" or "C" with openai_store_pinned
+false, UG5). It is also inconsistent when the filled documents
 do not carry a recorded value or a selected clause text: after a first fill no
 token is left to replace, so a value or answer changed since then would
 otherwise be dropped silently; restore the pre-fill markdown from git and run
@@ -78,7 +79,7 @@ SEVEN_FLAGS = (
 ENUM_ANSWERS = {
     "deletion_variant": ("043", "old"),
     "territories": ("bahrain", "gcc"),
-    "d3": ("A", "B"),
+    "d3": ("A", "B", "C"),
     "d5": ("A", "B"),
 }
 BOOL_ANSWERS = ("counsel_review", "minors_clause", "openai_store_pinned", "inapp_notif_clause")
@@ -128,6 +129,9 @@ _FIXED_PERIOD = re.compile(
 )
 # The only placeholder values that may be an empty string (an unknown region; F1).
 EMPTY_ALLOWED = ("HOSTING_REGIONS", "HOSTING_REGIONS_AR")
+# d3 values whose text says shared data follows OpenAI's terms "rather than the 30-day ... limit
+# below": that limit is the openai_retention sentence only openai_store_pinned true publishes (UG5).
+STORE_PIN_D3 = ("B", "C")
 
 
 class FillInError(Exception):
@@ -199,6 +203,16 @@ def _answer_placeholder_problems(placeholders: dict) -> list:
                     f'placeholders.{RETENTION_CLEANUP_LIVE} "true" once it is, else use no-fixed-period wording'
                 )
     return problems
+
+
+def _store_pin_problem(data: dict):
+    """One line when the selected d3 text would point at a retention sentence that is not published (UG5)."""
+    if data.get("d3") in STORE_PIN_D3 and data.get("openai_store_pinned") is False:
+        return (
+            f"d3 {data['d3']!r} refers to the 30-day limit 'below', which is published only with "
+            "openai_store_pinned true; record true once store=False is pinned on main (U3c) or choose d3 'A' (UG5)"
+        )
+    return None
 
 
 def _lookup(data, path: str):
@@ -503,6 +517,9 @@ def plan(repo_root: Path, data: dict, variants: dict):
     problems = _schema_problems(data)
     if problems:
         raise FillInError("; ".join(problems))
+    store_problem = _store_pin_problem(data)
+    if store_problem:
+        raise FillInError(store_problem)
     missing = {k for k in ANSWER_KEYS if data.get(k) is None}
     missing |= {f"flags.{n}" for n in SEVEN_FLAGS if data["flags"].get(n) is None}
     filler = _Filler(data, variants)

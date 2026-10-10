@@ -49,6 +49,10 @@ VARIANTS = "scripts/legal_variants_u8.json"
 FILL_IN = "tests/fixtures/legal_fill_in_u8.json"
 MANIFEST = "app/legal/processors.json"
 REFILL_HINT = "restore the pre-fill markdown"
+# The six sources BEFORE the fill-in (a committed snapshot). The temp-copy fill-in nodes fill it, not the
+# live sources, so they hold after the fill-in commit too (the live sources then carry no token);
+# test_polish_prefill_snapshot_tracks_the_documents ties it to the live sources.
+PREFILL = "tests/fixtures/legal_prefill_u8"
 
 # Arabic markers (native review, D11).
 AR = {
@@ -74,7 +78,7 @@ AR = {
     "IP": "\u0639\u0646\u0627\u0648\u064a\u0646 IP",
     "LINKED": "\u0627\u0644\u0645\u0631\u062a\u0628\u0637\u0629 \u0628\u062d\u0633\u0627\u0628\u0643",
     "UNLINKED": "\u063a\u064a\u0631 \u0627\u0644\u0645\u0631\u062a\u0628\u0637\u0629 \u0628\u0623\u064a \u062d\u0633\u0627\u0628",
-    "DATE_LINE": "*\u062a\u0627\u0631\u064a\u062e \u0627\u0644\u0633\u0631\u064a\u0627\u0646: 26 \u0645\u0627\u0631\u0633 2026*",
+    "DATE_LINE": "*\u062a\u0627\u0631\u064a\u062e \u0627\u0644\u0633\u0631\u064a\u0627\u0646: 11 \u0623\u0643\u062a\u0648\u0628\u0631 2026*",
 }
 
 # Synthetic answers for the temp-copy fill-in (ASCII or escaped; never a real fact).
@@ -261,11 +265,12 @@ def test_polish_a16_d3_b_names_openai_terms_for_shared_data():
 
 
 def test_polish_a17_support_region_carries_the_identity_fork():
-    """A17: the support sources carry the d5 identity variant, so d5 = B reaches the support page."""
+    """A17: the support sources (before the fill-in) carry the d5 identity variant, so d5 = B reaches the
+    support page."""
     fork = json.loads(_read(VARIANTS))["forks"]["d5_identity"]
     assert "support" in fork["docs"], fork["docs"]
     for rel, lang in ((SUPPORT_EN, "en"), (SUPPORT_AR, "ar")):
-        assert _read(rel).count(fork[lang][fork["inline"]]) == 1, rel
+        assert _read(_prefill(rel)).count(fork[lang][fork["inline"]]) == 1, rel
 
 
 def test_polish_q5_manifest_comment_names_the_app_module():
@@ -289,14 +294,15 @@ def test_polish_f2_security_retention_scope_en_and_ar():
          "as long as your account exists"),
         (PRIVACY_AR, "SECURITY_LOG_RETENTION_AR", AR["IP"], AR["LINKED"], AR["UNLINKED"], AR["F2_LINKED"]),
     ):
-        retention = data.get(key) or f"<PLACEHOLDER:{key}>"
+        # The token until the fill-in runs, the recorded value after (UG11 records the values first).
+        retention = [f"<PLACEHOLDER:{key}>"] + ([data[key]] if data.get(key) else [])
         bullets = [(label, value) for label, value in BULLET.findall(_section(_read(rel), 8)) if ip in label]
         linked_rows = [v for label, v in bullets if linked in label and unlinked not in label]
         unlinked_rows = [v for label, v in bullets if unlinked in label]
         if len(linked_rows) != 1 or forever not in linked_rows[0] or "<PLACEHOLDER:SECURITY_LOG_RETENTION" in linked_rows[0]:
             problems.append(f"{rel} s8: the linked line must say {_esc(forever)!r} and carry no retention token")
-        if len(unlinked_rows) != 1 or retention not in unlinked_rows[0]:
-            problems.append(f"{rel} s8: the unlinked line must carry {_esc(retention)!r}")
+        if len(unlinked_rows) != 1 or not any(r in unlinked_rows[0] for r in retention):
+            problems.append(f"{rel} s8: the unlinked line must carry one of {[_esc(r) for r in retention]!r}")
     assert not problems, problems
 
 
@@ -309,6 +315,28 @@ def _copy_tree(root, rels):
     for rel in rels:
         (root / rel).parent.mkdir(parents=True, exist_ok=True)
         (root / rel).write_bytes((REPO / rel).read_bytes())
+
+
+def _prefill(rel):
+    """The snapshot path of a source (the six sources before the fill-in)."""
+    return f"{PREFILL}/{Path(rel).name}"
+
+
+def _copy_prefill(root):
+    for rel in SOURCES:
+        (root / rel).parent.mkdir(parents=True, exist_ok=True)
+        (root / rel).write_bytes((REPO / _prefill(rel)).read_bytes())
+
+
+def _null_data():
+    """The fill-in data file's shape with every answer, flag and value null (the recorded values are not used)."""
+    data = json.loads(_read(FILL_IN))
+    for key in data:
+        if not key.startswith("_") and key not in ("flags", "placeholders"):
+            data[key] = None
+    data["flags"] = dict.fromkeys(data["flags"])
+    data["placeholders"] = dict.fromkeys(data["placeholders"])
+    return data
 
 
 def test_polish_b3_renderer_link_safety_marker_pairs_and_write_round_trip(tmp_path):
@@ -392,12 +420,14 @@ def test_polish_b7_check_reports_a_missing_page(tmp_path, capsys):
 
 
 class Copy:
-    """A temp copy of the sources, pages and renderer, and a data file the node edits."""
+    """A temp copy of the pre-fill sources (the snapshot), the pages and the renderer, and an all-null data
+    file the node edits (so the node holds before and after the fill-in commit)."""
 
     def __init__(self, tmp_path):
         self.root = tmp_path / "repo"
-        _copy_tree(self.root, SOURCES + PAGES + (RENDERER,))
-        self.data = json.loads(_read(FILL_IN))
+        _copy_tree(self.root, PAGES + (RENDERER,))
+        _copy_prefill(self.root)
+        self.data = _null_data()
         self.data_path = tmp_path / "data.json"
         self.fill = _fill()
 
@@ -434,7 +464,7 @@ def test_polish_b4_fill_in_end_to_end(tmp_path, capsys):
     assert not [rel for rel, b in filled.items() if b"PLACEHOLDER" in b]
     for rel in (PRIVACY_EN, TERMS_EN, PRIVACY_AR, TERMS_AR):
         assert c.text(rel).splitlines()[4] == _read(rel).splitlines()[4]
-    assert c.text(PRIVACY_EN).splitlines()[4] == "*Effective date: March 26, 2026*"
+    assert c.text(PRIVACY_EN).splitlines()[4] == "*Effective date: October 11, 2026*"
     assert c.text(PRIVACY_AR).splitlines()[4] == AR["DATE_LINE"]
     assert c.run(capsys)[0] == 0 and c.snapshot() == filled
     bad = Copy(tmp_path / "markup").complete(SUPPORT_EMAIL="support@qaren.app <b>")
@@ -464,7 +494,9 @@ def test_polish_f1_empty_hosting_regions_first_fill_is_accepted(tmp_path, capsys
     """F1 (PIN): HOSTING_REGIONS '' (unknown) stays a legitimate first answer."""
     c = Copy(tmp_path).complete(HOSTING_REGIONS="", HOSTING_REGIONS_AR="")
     assert c.run(capsys)[0] == 0
-    assert "(our database, hosting and temporary-storage providers)" not in c.text(PRIVACY_EN)
+    # FIX-2 UF3: the clause names only the database and hosting roles (the Upstash region is not measured).
+    assert "(our database and hosting providers)" not in c.text(PRIVACY_EN)
+    assert "temporary-storage" not in c.text(PRIVACY_EN)
 
 
 def test_polish_b2_unrenderable_page_writes_nothing(tmp_path, capsys):
@@ -587,7 +619,7 @@ def test_polish_a15_referral_notification_sentence(tmp_path, capsys, value):
     """A15: 'true' keeps the display-name sentence; 'false' and null publish the email-prefix wording."""
     fork = json.loads(_read(VARIANTS))["forks"]["referral_push_name"]
     for rel, lang in ((PRIVACY_EN, "en"), (TERMS_EN, "en"), (PRIVACY_AR, "ar"), (TERMS_AR, "ar")):
-        assert _read(rel).count(fork[lang]["true"]) == 1, rel
+        assert _read(_prefill(rel)).count(fork[lang]["true"]) == 1, rel
     assert "first part of your email address" in fork["en"]["false"] and AR["A15_FALSE"] in fork["ar"]["false"]
     c = Copy(tmp_path).complete(REFERRAL_PUSH_DISPLAY_NAME_ONLY=value)
     assert c.run(capsys)[0] == 0
@@ -605,7 +637,7 @@ def test_polish_a15_referral_answer_must_be_a_bool_string(tmp_path, capsys):
 
 
 def test_polish_new_answer_keys_are_recorded_null_in_the_fixture():
-    """The polish answers exist in the fill-in data file and stay null until the fill-in commit."""
+    """The polish answers exist in the fill-in data file (null is each one's documented default)."""
     data = json.loads(_read(FILL_IN))
     for key in ("CONTROLLER_COUNTRY", "RETENTION_CLEANUP_LIVE", "REFERRAL_PUSH_DISPLAY_NAME_ONLY",
                 "DPO_CONTACT", "DPO_CONTACT_DETAILS", "DPO_CONTACT_DETAILS_AR"):
@@ -690,3 +722,33 @@ def test_fix2_p1_fill_in_keeps_cloudflare_for_every_address_pair(tmp_path, capsy
         assert c.text(page).count("<strong>Cloudflare:</strong>") == 1, page
     filled = c.snapshot()
     assert c.run(capsys)[0] == 0 and c.snapshot() == filled
+
+
+# ---------------------------------------------------------------------------
+# Pre-fill snapshot (session 76, U8 fill-in GREEN): what the temp-copy nodes fill
+# ---------------------------------------------------------------------------
+
+
+def test_polish_prefill_snapshot_tracks_the_documents(tmp_path):
+    """tests/fixtures/legal_prefill_u8 is the six sources before the fill-in. While the live sources still
+    carry a token they equal it (an edit to a source is an edit to its snapshot); once the fill-in commit
+    has filled them, the fill-in of the snapshot with the committed data reproduces them (line endings
+    aside). So the temp-copy nodes, which fill the snapshot, test the real documents before and after
+    the fill-in commit."""
+    live = {rel: _read(rel).replace("\r\n", "\n") for rel in SOURCES}
+    snap = {rel: _read(_prefill(rel)).replace("\r\n", "\n") for rel in SOURCES}
+    assert all("<PLACEHOLDER:" in snap[rel] for rel in SOURCES), "the snapshot must be the token-bearing sources"
+    if any("<PLACEHOLDER:" in text for text in live.values()):
+        stale = [rel for rel in SOURCES if live[rel] != snap[rel]]
+        assert not stale, f"pre-fill: {stale} differ from {PREFILL}/ (copy the edited source there too)"
+        return
+    root = tmp_path / "repo"
+    _copy_prefill(root)
+    missing, outputs = _fill().plan(root, json.loads(_read(FILL_IN)), json.loads(_read(VARIANTS)))
+    assert not missing, missing
+    filled = {
+        rel: (outputs[rel][0] if rel in outputs else (root / rel).read_bytes()).decode("utf-8").replace("\r\n", "\n")
+        for rel in SOURCES
+    }
+    stale = [rel for rel in SOURCES if filled[rel] != live[rel]]
+    assert not stale, f"post-fill: the fill-in of {PREFILL}/ with {FILL_IN} does not reproduce {stale}"

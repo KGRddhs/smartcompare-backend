@@ -52,7 +52,7 @@ async def get_privacy_policy(lang: str = "en"):
     return {
         "title": "Privacy Policy",
         "content": _read_legal_file(_legal_filename("privacy_policy", lang)),
-        "last_updated": "2026-03-26",
+        "last_updated": "2026-10-11",
     }
 
 
@@ -71,5 +71,5 @@ async def get_terms_of_service(lang: str = "en"):
     return {
         "title": "Terms of Service",
         "content": _read_legal_file(_legal_filename("terms_of_service", lang)),
-        "last_updated": "2026-03-26",
+        "last_updated": "2026-10-11",
     }

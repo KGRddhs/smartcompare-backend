@@ -23,7 +23,8 @@ RED (fail at base, green after GREEN; T2 stays red until the fill-in commit, UL3
   T8   test_t8_policy_ai_section_agrees_with_consent_copy_en
   T8   test_t8_policy_ai_section_agrees_with_consent_copy_ar
   T9   test_t9_lang_ar_serves_arabic_documents
-  T11  test_t11_deletion_text_matches_043_state_en    (base: data file absent, UL17 allows)
+  T11  test_t11_deletion_text_matches_043_state_en    (base: data file absent, UL17 allows; FIX-2 UF5:
+       the 043 text also carries PR #290's branch-A clause; FIX-3 UF12 rewords both markers)
   T11  test_t11_deletion_text_matches_043_state_ar    (base: data file absent, UL17 allows)
   UL12 test_ar_legal_text_follows_copy_policy
 PIN (green at base and after): the positive controls of T1/T2/T3/T6/T7/T8, the T4 page
@@ -45,7 +46,7 @@ not recorded yet" and is reported by T2 (the fill-in commit leaves no null).
   "deletion_variant":    "043" | "old" | null     (UL9; T11 marker iff "043")
   "territories":         "bahrain" | "gcc" | null
   "counsel_review":      true | false | null
-  "d3":                  "A" | "B" | null           (T8 treats null as the drafting default A)
+  "d3":                  "A" | "B" | "C" | null     (T8 treats null as the drafting default A)
   "d5":                  "A" | "B" | null
   "trade_name":          string (may be "") | null
   "minors_clause":       true | false | null
@@ -88,7 +89,7 @@ Apple, Google, Serper, Bright Data, Firecrawl, Scrape.do, Cloudflare). T7c needs
 SmartCompareApp/ module files contain it.
 T7b scan (a strict superset of spec 4.10's module-level ``*_URL`` constants): every
 app/services/**/*.py string literal that is not a docstring and holds an http(s) URL with a
-valid external host (first party ``qaren.app`` and loopback excluded), plus every
+valid external host (first party ``qaren.app`` / ``getmyez.com`` and loopback excluded), plus every
 construction of ``AsyncOpenAI(`` / ``OpenAI(`` / ``create_client(`` / ``Redis(`` /
 ``StrictRedis(`` / ``<redis>.from_url(`` / ``sentry_sdk.init(``. A scanned module must be
 in ``NOT_PERSONAL`` (below, reason >= 40 chars) or in the ``module`` list of a row; unless
@@ -122,8 +123,8 @@ TEXT RULES THE TESTS PIN
 * T6 anchors: the FIRST "<Month> <D>, <YYYY>" in an English file and the FIRST
   "<D> <Gulf month> <YYYY>" (Western digits, ``GULF_MONTHS_AR``) in an Arabic file is that
   file's date anchor; the two route ``last_updated`` values and both ``TERMS_VERSION``
-  literals complete the twelve. Keep the date line first; it stays 2026-03-26 until the
-  fill-in commit (UL3), so it is never a placeholder.
+  literals complete the twelve. Keep the date line first; the twelve move together by hand
+  (UL3, UG7: 2026-10-11), so it is never a placeholder.
 * T1: "message templates" (the UF7 Sentry sentence) is the one allowed use of "template";
   an Arabic rendering of it must use the plural (which does not contain the token).
 * T3: addresses (the landing.brand.s69 ADDRESS_RE) and identifiers (``@qaren_*``,
@@ -234,7 +235,7 @@ SEVEN_FLAGS = (
 _ENUM_ANSWERS = {
     "deletion_variant": ("043", "old"),
     "territories": ("bahrain", "gcc"),
-    "d3": ("A", "B"),
+    "d3": ("A", "B", "C"),
     "d5": ("A", "B"),
 }
 _BOOL_ANSWERS = ("counsel_review", "minors_clause", "openai_store_pinned", "inapp_notif_clause")
@@ -748,7 +749,7 @@ def test_t6_version_anchors_move_together():
 # T7 -- the processor manifest and the policy (UL14, C14)
 # ---------------------------------------------------------------------------
 
-FIRST_PARTY_HOST_SUFFIXES = ("qaren.app",)
+FIRST_PARTY_HOST_SUFFIXES = ("qaren.app", "getmyez.com")
 LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "0.0.0.0"})
 URL_HOST = re.compile(r"https?://([A-Za-z0-9.-]+)")
 VALID_HOST = re.compile(r"^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$")
@@ -892,6 +893,7 @@ def test_t7_scanner_positive_controls():
     assert _scan_source('FOO_API_URL = "https://api.example.net/v1"\n') == ({"api.example.net"}, [])
     assert _scan_source('"""See https://docs.example.org for details."""\nX = 1\n') == (set(), [])
     assert _scan_source('APP_BASE_URL = "https://qaren.app"\nU = "https://...jpg"\n') == (set(), [])
+    assert _scan_source('BASE = "https://getmyez.com"\nR = "https://www.getmyez.com/r/x"\n') == (set(), [])
     assert _scan_source("import sentry_sdk\nsentry_sdk.init(dsn=None)\n")[1] == ["sentry_sdk.init"]
     found = _scan_services()
     expected = {
@@ -1064,6 +1066,14 @@ NOT_SENT_EN = {
 D3_FORBIDDEN_EN = {
     "A": (r"\bopt(?:s|ed|ing)?[\s-]+out\b", r"Help improve AI quality", r"Data Sharing Program"),
     "B": (r"\bopt(?:s|ed|ing)?[\s-]+out\b", r"Data Sharing Program"),
+    # D3 = C (OA2): section 4 names OpenAI's data-sharing programme; only an opt-out or switch promise is false.
+    "C": (
+        r"\bopt(?:s|ed|ing)?[\s-]+out\b",
+        r"Help improve AI quality",
+        r"\bturn(?:s|ed|ing)?\s+(?:it\s+|this\s+|sharing\s+)?on\b",
+        r"\bturn(?:s|ed|ing)?\s+(?:it\s+|this\s+|sharing\s+)?off\b",
+        r"\bstop(?:s|ped|ping)?\s+(?:future\s+)?sharing\b",
+    ),
 }
 # GREEN fills these three (same keys as the EN maps; Arabic regex; native-reviewed, UL12).
 AI_SECTION_KEYWORDS_AR = {
@@ -1095,6 +1105,13 @@ D3_FORBIDDEN_AR = {
     "B": (
         "\u0628\u0631\u0646\u0627\u0645\u062c \u0645\u0634\u0627\u0631\u0643\u0629 \u0627\u0644\u0628\u064a\u0627\u0646\u0627\u062a",
     ),
+    # D3 = C (OA2): the AR C text names the programme, so its name is not forbidden here.
+    "C": (
+        "\u062a\u062d\u0633\u064a\u0646 \u062c\u0648\u062f\u0629 \u0627\u0644\u0630\u0643\u0627\u0621 \u0627\u0644\u0627\u0635\u0637\u0646\u0627\u0639\u064a",  # improve AI quality
+        "\u0633\u0627\u0639\u062f \u0641\u064a \u062a\u062d\u0633\u064a\u0646 \u0627\u0644\u0630\u0643\u0627\u0621 \u0627\u0644\u0627\u0635\u0637\u0646\u0627\u0639\u064a",  # toggle title
+        "\u0625\u0644\u063a\u0627\u0621 \u0627\u0644\u0627\u0634\u062a\u0631\u0627\u0643",  # unsubscribe
+        "\u0627\u0644\u0627\u0646\u0633\u062d\u0627\u0628 \u0645\u0646 \u0627\u0644\u0645\u0634\u0627\u0631\u0643\u0629",  # withdraw from sharing
+    ),
 }
 SENTENCE_SPLIT = re.compile("(?<=[.!?\u061f])\\s+|\\n+")  # U+061F = Arabic question mark
 
@@ -1122,7 +1139,7 @@ def _not_sent_sentence(text, patterns):
 
 def _d3(data):
     value = data.get("d3") if isinstance(data, dict) else None
-    return value if value in ("A", "B") else "A"
+    return value if value in ("A", "B", "C") else "A"
 
 
 def _catalog_value(rel, key):
@@ -1329,9 +1346,18 @@ def test_t9_handlers_callable_without_arguments():
 # ---------------------------------------------------------------------------
 
 # From the PR #290 "Policy statement U8 may use" paragraph (spec 4.2 s9, D-NEW).
-DELETION_DNEW_MARKER_EN = "We keep only a de-identified record"
+# FIX-3 UF12: "only" no longer holds next to the unconditional s9 statistics sentence, so the 043 text says
+# "After deletion we keep a de-identified record" (AR twin below).
+DELETION_DNEW_MARKER_EN = "After deletion we keep a de-identified record"
 # GREEN fills the Arabic marker sentence of its D-NEW translation (native-reviewed).
-DELETION_DNEW_MARKER_AR = "\u0644\u0627 \u0646\u062d\u062a\u0641\u0638 \u0625\u0644\u0627 \u0628\u0633\u062c\u0644 \u0645\u0646\u0632\u0648\u0639 \u0627\u0644\u0647\u0648\u064a\u0629"
+DELETION_DNEW_MARKER_AR = "\u0628\u0639\u062f \u0627\u0644\u062d\u0630\u0641\u060c \u0646\u062d\u062a\u0641\u0638 \u0628\u0633\u062c\u0644 \u0645\u0646\u0632\u0648\u0639 \u0627\u0644\u0647\u0648\u064a\u0629"
+# FIX-2 UF5: PRECHECK 2026-10-10 proved branch A (users_id_fkey ON DELETE CASCADE), so the 043 text carries
+# PR #290's branch-A clause. FIX-3 UF12: the account deletion deletes the sign-in account in the same request
+# (auth_service.py delete_user), so the clause says the stub is removed when we delete the sign-in account at
+# the end of the deletion. The AR marker is the harakat-free twin: "when we delete your sign-in account at
+# the end of the deletion process".
+DELETION_BRANCH_A_MARKER_EN = "which is removed when we delete your sign-in account at the end of the deletion"
+DELETION_BRANCH_A_MARKER_AR = "\u0639\u0646\u062f\u0645\u0627 \u0646\u062d\u0630\u0641 \u062d\u0633\u0627\u0628 \u062a\u0633\u062c\u064a\u0644 \u0627\u0644\u062f\u062e\u0648\u0644 \u0627\u0644\u062e\u0627\u0635 \u0628\u0643 \u0641\u064a \u0646\u0647\u0627\u064a\u0629 \u0639\u0645\u0644\u064a\u0629 \u0627\u0644\u062d\u0630\u0641"
 
 
 def _norm(text):
@@ -1347,25 +1373,29 @@ def _t11_problems(rel, marker, data):
     want = variant == "043"
     if has != want:
         state = "contains" if has else "lacks"
-        return [f"{rel}: {state} the D-NEW marker while deletion_variant is {variant!r}"]
+        return [f"{rel}: {state} the D-NEW marker {_esc(marker[:40])!r} while deletion_variant is {variant!r}"]
     return []
 
 
 def test_t11_deletion_text_matches_043_state_en():
-    """RED: privacy_policy.md carries the D-NEW marker sentence iff deletion_variant == '043'."""
+    """RED: privacy_policy.md carries the D-NEW marker sentence iff deletion_variant == '043', and (FIX-2 UF5)
+    the branch-A clause iff '043'."""
     data = _require_fill_in()
     problems = _t11_problems(MD_EN["privacy"], DELETION_DNEW_MARKER_EN, data)
+    problems += _t11_problems(MD_EN["privacy"], DELETION_BRANCH_A_MARKER_EN, data)
     assert not problems, _report("T11 (en): deletion text vs 043 (UL9, C15):", problems)
 
 
 def test_t11_deletion_text_matches_043_state_ar():
-    """RED: privacy_policy_ar.md carries the AR D-NEW marker iff deletion_variant == '043'."""
+    """RED: privacy_policy_ar.md carries the AR D-NEW marker iff deletion_variant == '043', and (FIX-2 UF5)
+    the AR branch-A clause iff '043'."""
     data = _require_fill_in()
     problems = []
     if not (DELETION_DNEW_MARKER_AR.strip() and re.search(AR_LETTER, DELETION_DNEW_MARKER_AR)):
         problems.append("DELETION_DNEW_MARKER_AR is not filled (GREEN fills it, native-reviewed)")
     else:
         problems += _t11_problems(MD_AR["privacy"], DELETION_DNEW_MARKER_AR, data)
+        problems += _t11_problems(MD_AR["privacy"], DELETION_BRANCH_A_MARKER_AR, data)
     assert not problems, _report("T11 (ar): deletion text vs 043 (UL9, C15):", problems)
 
 

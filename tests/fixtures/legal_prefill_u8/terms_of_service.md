@@ -6,7 +6,7 @@
 
 ## 1. Agreement and who we are
 
-These Terms of Service ("Terms") are an agreement between you and Hussain Aseeri, Block 1020, Street 2052, Home 4769, Hamad Town 1020, Bahrain ("we", "us"), the provider of MYEZ (the "App"). By creating an account or using the App you agree to these Terms. If you do not agree, do not use the App.
+These Terms of Service ("Terms") are an agreement between you and <PLACEHOLDER:CONTROLLER_NAME><PLACEHOLDER:TRADE_NAME_CLAUSE>, <PLACEHOLDER:POSTAL_ADDRESS> ("we", "us"), the provider of MYEZ (the "App"). By creating an account or using the App you agree to these Terms. If you do not agree, do not use the App.
 
 ## 2. The service
 
@@ -14,7 +14,7 @@ MYEZ helps you compare two products. It gathers reviews and prices from public s
 
 ## 3. Eligibility and your account
 
-- You must be at least 13 years old to create an account. If you are under the age of majority where you live, a parent or guardian must agree to these Terms for you.
+- You must be at least 13 years old to create an account.<PLACEHOLDER:MINORS_CLAUSE>
 - You must give accurate information when you create an account.
 - You are responsible for keeping your sign-in details secure.
 - One account per person. Creating accounts by automated means is not allowed.
@@ -45,7 +45,7 @@ Links take you to third-party retailers. We are not responsible for their produc
 
 ## 8. Intellectual property
 
-The App, its design, code and branding belong to the publisher (or are licensed to us). Product information and reviews belong to their owners. Your account's comparison history is yours to view, share and delete, and is handled under our Privacy Policy. You grant us a worldwide, royalty-free licence to use the content you submit to MYEZ (your queries, photos, links, feedback and preferences) to operate, secure and improve the service, to create de-identified comparison and preference datasets, and to obtain comparisons from our AI provider as our Privacy Policy describes. We own MYEZ's comparison data (the search queries, the products compared, the verdicts and scores, and the prices gathered), which we de-identify before any such use, and the preference and usage statistics we derive in aggregated or anonymised form, and we may use, license or sell that comparison and preference data to third parties; none of it identifies you, and your personal data is never sold.
+The App, its design, code and branding belong to <PLACEHOLDER:IP_OWNER> (or are licensed to us). Product information and reviews belong to their owners. Your account's comparison history is yours to view, share and delete, and is handled under our Privacy Policy. You grant us a worldwide, royalty-free licence to use the content you submit to MYEZ (your queries, photos, links, feedback and preferences) to operate, secure and improve the service, to create de-identified comparison and preference datasets, and to obtain comparisons from our AI provider as our Privacy Policy describes. We own MYEZ's comparison data (the search queries, the products compared, the verdicts and scores, and the prices gathered), which we de-identify before any such use, and the preference and usage statistics we derive in aggregated or anonymised form, and we may use, license or sell that comparison and preference data to third parties; none of it identifies you, and your personal data is never sold.
 
 ## 9. Smart Decision Referrals
 
@@ -59,7 +59,7 @@ When you share a MYEZ comparison with a friend, you may earn rewards.
 
 ## 10. Notifications
 
-If you allow notifications, we may send you referral updates (for example when a friend you invited completes their first comparison, or before a referral reward expires) and up to one reminder a week about your past comparisons. We do not send advertising. The notification switch in the App stops reminders; to stop all notifications, use your iPhone's Settings.
+If you allow notifications, we may send you referral updates (for example when a friend you invited completes their first comparison, or before a referral reward expires) and up to one reminder a week about your past comparisons. We do not send advertising. <PLACEHOLDER:INAPP_NOTIF_CLAUSE>
 
 ## 11. Disclaimers
 
@@ -83,7 +83,7 @@ To the maximum extent permitted by law, we are not liable for:
 
 We may suspend or end your access to the App if you break these Terms. When your access ends, your right to use the App ends.
 
-You can delete your account in the App at any time (Profile, then the settings icon, then Delete account). Deleting your account erases your account data from our servers; our Privacy Policy describes the security logs we keep.
+<PLACEHOLDER:DELETION_SECTION>
 
 ## 14. Changes to these Terms
 
@@ -91,7 +91,7 @@ We may change these Terms. If we do, we will update the effective date above and
 
 ## 15. Governing law and disputes
 
-These Terms are governed by the laws of the Kingdom of Bahrain. If a dispute arises, we will first try to resolve it with you informally; if that does not work, the competent courts of the Kingdom of Bahrain will decide it.
+These Terms are governed by the laws of <PLACEHOLDER:GOVERNING_LAW>. If a dispute arises, we will first try to resolve it with you informally; if that does not work, the competent courts of <PLACEHOLDER:GOVERNING_LAW> will decide it.
 
 ## 16. Apple
 
@@ -99,5 +99,5 @@ If you downloaded the App from the Apple App Store, Apple's Licensed Application
 
 ## 17. Contact
 
-- **Questions about these Terms:** support@getmyez.com
-- **Postal address:** Block 1020, Street 2052, Home 4769, Hamad Town 1020, Bahrain
+- **Questions about these Terms:** <PLACEHOLDER:SUPPORT_EMAIL>
+- **Postal address:** <PLACEHOLDER:POSTAL_ADDRESS>
