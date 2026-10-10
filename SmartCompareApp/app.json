@@ -21,7 +21,7 @@
       "bundleIdentifier": "com.qaren.app",
       "supportsTablet": false,
       "usesAppleSignIn": true,
-      "associatedDomains": ["applinks:qaren.app"],
+      "associatedDomains": ["applinks:getmyez.com"],
       "privacyManifests": {
         "NSPrivacyTracking": false,
         "NSPrivacyCollectedDataTypes": [
@@ -159,9 +159,9 @@
           "action": "VIEW",
           "autoVerify": true,
           "data": [
-            { "scheme": "https", "host": "qaren.app", "pathPrefix": "/r/" },
-            { "scheme": "https", "host": "qaren.app", "pathPrefix": "/c/" },
-            { "scheme": "https", "host": "qaren.app", "pathPrefix": "/q/" }
+            { "scheme": "https", "host": "getmyez.com", "pathPrefix": "/r/" },
+            { "scheme": "https", "host": "getmyez.com", "pathPrefix": "/c/" },
+            { "scheme": "https", "host": "getmyez.com", "pathPrefix": "/q/" }
           ],
           "category": ["BROWSABLE", "DEFAULT"]
         },

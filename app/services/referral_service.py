@@ -47,7 +47,7 @@ BONUS_EXPIRY_DAYS = 7
 
 # Default app base URL for invitee landing links. Override at deploy via env.
 # Kept as module attribute so tests/runtime can monkeypatch if needed.
-APP_BASE_URL = "https://qaren.app"
+APP_BASE_URL = "https://getmyez.com"
 
 
 class WeeklyInviteCapExceeded(Exception):

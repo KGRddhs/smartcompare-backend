@@ -3,7 +3,8 @@
 **Status:** DEPLOYED 2026-08-31 to Railway service `qaren-landing` — live at
 https://qaren-landing-production.up.railway.app (full §4 validation battery PASS: all pages
 200 EN+AR, /healthz ok, AASA+assetlinks application/json with appID populated, 5 security
-headers, clean /support). NOT yet on `qaren.app` — remaining: add `qaren.app` + `www.qaren.app`
+headers, clean /support). Product domain: `getmyez.com` (owner decision 2026-10-10; qaren.app is retired).
+NOT yet on `getmyez.com` — remaining: add `getmyez.com` + `www.getmyez.com` (nginx 301s www to the apex)
 under the service's Settings → Domains (Ahmed; the CLI attach was permission-gated), then the
 DNS flip at Cloudflare (§6 below; apex CNAME-flattening works there). Redeploy after edits:
 `railway up landing --path-as-root -s qaren-landing -d` from the repo root.
@@ -12,7 +13,7 @@ DNS flip at Cloudflare (§6 below; apex CNAME-flattening works there). Redeploy 
 
 ## What this is
 
-The static landing site that goes live at `https://qaren.app/` post-Phase-2. Per dispatcher's Phase 2 narrowing: built in Phase 1 idle so Phase 2 collapses to "deploy + DNS cutover" instead of "build + deploy + cutover."
+The static landing site that goes live at `https://getmyez.com/` post-Phase-2. Per dispatcher's Phase 2 narrowing: built in Phase 1 idle so Phase 2 collapses to "deploy + DNS cutover" instead of "build + deploy + cutover."
 
 **Hosting:** Railway (chosen by Ahmed for single-vendor consolidation with the existing FastAPI backend; was Vercel in earlier drafts — see `docs/runbooks/bundle-d-landing-templates/vercel.json.alternative` for the prior config).
 
@@ -26,6 +27,7 @@ landing/
 ├── terms.html                                     ← Terms of Service (same source)
 ├── support.html                                   ← Support — meta-refresh to mailto + visible button fallback
 ├── open.html                                      ← Universal-link hand-off for /c/<token> /r/<code> /q/<token> (S69): qaren:// button, store link once APP_STORE_URL is filled
+├── bot/index.html                                 ← Crawler info page served at /bot (S76): what the MYEZ crawler (QarenBot) reads, robots.txt honoured, support contact
 ├── Dockerfile                                     ← nginx:alpine static-serve image for Railway
 ├── nginx.conf.template                            ← envsubst template (binds nginx to $PORT) + headers + .well-known MIME
 ├── railway.toml                                   ← Railway service config (DOCKERFILE builder, /healthz)
@@ -34,9 +36,11 @@ landing/
     └── assetlinks.json                            ← Android App Links, cert SHA-256 placeholder
 ```
 
-**Note on `/c/`, `/r/`, `/q/` (session 69, audit RT-8):** nginx serves `open.html` for the three universal-link families (`location ^~ /c/ { try_files /open.html =404; }` etc.), so a shared referral link (`/c/<token>?ref=QR-XXXXXX`, or `/c/?ref=QR-XXXXXX` when the comparison has no share token) lands on a MYEZ page with a `qaren://` hand-off instead of a 404. The page is reachable only once `qaren.app` is attached to this service (it answers a Cloudflare 522 today); `APP_STORE_URL` inside the page is empty until the App Store record exists — fill it and redeploy.
+**Note on `/c/`, `/r/`, `/q/` (session 69, audit RT-8):** nginx serves `open.html` for the three universal-link families (`location ^~ /c/ { try_files /open.html =404; }` etc.), so a shared referral link (`/c/<token>?ref=QR-XXXXXX`, or `/c/?ref=QR-XXXXXX` when the comparison has no share token) lands on a MYEZ page with a `qaren://` hand-off instead of a 404. The page is reachable only once `getmyez.com` is attached to this service (on 2026-10-10 it still served an unrelated page); `APP_STORE_URL` inside the page is empty until the App Store record exists — fill it and redeploy.
 
-**Note on `/support`:** an HTTP 301/308 redirect with `mailto:` destination does NOT work cross-browser (Chrome/Safari inconsistent, Firefox rejects). Instead, nginx's `location = /support { try_files /support.html =404; }` serves `support.html` directly. The HTML combines `<meta http-equiv="refresh" content="0; url=mailto:support@qaren.app">` immediate-redirect with a visible "Email support@qaren.app" button as the no-redirect fallback. Same behavior as the Vercel `cleanUrls` approach in the archived alternative config.
+**Note on `/support`:** an HTTP 301/308 redirect with `mailto:` destination does NOT work cross-browser (Chrome/Safari inconsistent, Firefox rejects). Instead, nginx's `location = /support { try_files /support.html =404; }` serves `support.html` directly. The HTML combines `<meta http-equiv="refresh" content="0; url=mailto:support@getmyez.com">` immediate-redirect with a visible "Email support@getmyez.com" button as the no-redirect fallback. Same behavior as the Vercel `cleanUrls` approach in the archived alternative config.
+
+**Note on `www` and `/bot` (session 76):** a second nginx server block 301-redirects `www.getmyez.com` to `https://getmyez.com$request_uri` (universal links and the AASA are claimed for the apex only; the block sits AFTER the catch-all so every other Host keeps reaching the site). `location = /bot` serves `bot/index.html`, the page the crawler's User-Agent names (`QarenBot/1.0 (+https://getmyez.com/bot; ...)`): what it reads, that it honours robots.txt, and the support address.
 
 ## Design notes
 
@@ -105,7 +109,7 @@ curl -sI "$PREV/support" | head -3
 curl -sI "$PREV/support.html" | head -3
 # Expect: both 200 with text/html (nginx try_files: /support → /support.html).
 # /support.html ships a <meta http-equiv="refresh"> to mailto: AND a visible
-# "Email support@qaren.app" button as the no-redirect fallback.
+# "Email support@getmyez.com" button as the no-redirect fallback.
 
 # Security headers smoke
 curl -sI "$PREV/" | grep -iE 'strict-transport|x-frame|x-content|referrer|permissions'
@@ -121,14 +125,14 @@ curl -sI "$PREV/" | grep -iE 'strict-transport|x-frame|x-content|referrer|permis
 
 ### 6. DNS cutover (TTL 300s — R24)
 Per `docs/runbooks/bundle-d-dns-and-hosting.md` § "Phase 2 step-by-step (Railway)." Brief reprise:
-1. Drop existing `qaren.app` DNS records to TTL 300s, 24h ahead.
-2. Railway dashboard → Settings → Domains → add custom domain `qaren.app` (and optionally `www.qaren.app`).
+1. Export the existing `getmyez.com` DNS records (apex/www and any MX/TXT), then drop their TTL to 300s, 24h ahead.
+2. Railway dashboard → Settings → Domains → add custom domain `getmyez.com` (and optionally `www.getmyez.com`; nginx 301-redirects www to the apex).
 3. Railway issues a CNAME target like `qaren-landing-production.up.railway.app` for the apex.
-4. **Apex CNAME limitation:** DNS doesn't strictly allow CNAME at the apex (RFC 1034). Use CNAME-flattening if your DNS host supports it (Cloudflare ALIAS, Vercel apex, Route 53 ALIAS, DNSimple ALIAS). Otherwise CNAME on `www.qaren.app` only + A-record forwarding for apex via Cloudflare-flat / Netlify-style ALIAS.
-5. Wait 5-15 min propagation. `dig +short qaren.app @8.8.8.8`.
+4. **Apex CNAME limitation:** DNS doesn't strictly allow CNAME at the apex (RFC 1034). Use CNAME-flattening if your DNS host supports it (Cloudflare ALIAS, Vercel apex, Route 53 ALIAS, DNSimple ALIAS). Otherwise CNAME on `www.getmyez.com` only + A-record forwarding for apex via Cloudflare-flat / Netlify-style ALIAS.
+5. Wait 5-15 min propagation. `dig +short getmyez.com @8.8.8.8`.
 6. Railway auto-issues a Let's Encrypt cert (5-10 min after DNS resolves).
-7. Validate at apex via `curl -i https://qaren.app/.well-known/apple-app-site-association`.
-8. Validate Apple CDN cached the AASA after ~24h: `curl -i https://app-site-association.cdn-apple.com/a/v1/qaren.app`.
+7. Validate at apex via `curl -i https://getmyez.com/.well-known/apple-app-site-association` (200, application/json, no redirect).
+8. Validate Apple CDN cached the AASA after ~24h: `curl -i https://app-site-association.cdn-apple.com/a/v1/getmyez.com`.
 9. Once stable for 48h, raise TTLs back to 3600s.
 
 ## Pre-deploy substitutions still pending
@@ -139,8 +143,8 @@ Per `docs/runbooks/bundle-d-dns-and-hosting.md` § "Phase 2 step-by-step (Railwa
 ## Known content gaps (NOT blocking preview deploy)
 
 1. ~~Stale referral copy in `terms.html` § 12.~~ **RESOLVED 2026-05-23**: Backend landed `a23ed51 fix(legal): update referral cap to 3 lifetime per device per Migration 023` updating `app/legal/terms_of_service.md` § 12; `landing/terms.html` regenerated to match in commit `6bbe14d`.
-2. **Three new email addresses** the legal docs introduce: `privacy@qaren.app` (Privacy § 12), `legal@qaren.app` (Terms § 14), `support@qaren.app` (already-in-use). Ahmed's A7 ask now covers all three.
-3. ~~Arabic mirror of all 4 HTML pages.~~ **RESOLVED 2026-05-23** — AR mirror landed at `landing/ar/{index,privacy,terms,support}.html` with full RTL layout + Cairo-only font stack (Inter dropped — uses Cairo as the sole sans-serif for AR; Latin fragments like `Qaren` + `support@qaren.app` rendered in Cairo's Latin glyphs). Route choice: `/ar/*` sibling-directory pattern over `Accept-Language` sniffing — user-controlled, crawler-friendly URLs, matches mobile app's manual-locale-switch behavior. Each EN page now has `<link rel="alternate" hreflang="ar">` + footer `العربية` switch; each AR page has the reverse. nginx `location = /ar/support` mirrors the EN clean-URL rule. AASA + assetlinks.json stay locale-agnostic (shared from `/.well-known/`). AR translation notes: tagline "قارن بذكاء" (Compare Smart), H1 "قرارات منتجات أذكى لدول الخليج" (smarter product decisions for the GCC); referral § 12 mirrors backend `a23ed51` policy exactly ("3 دعوات ناجحة لكل جهاز" + "7 أيام"). When Ahmed lands Claude-Design fonts (Arabic font choice may differ from Cairo), reconcile the AR font stack then.
+2. **Mailboxes** (owner decision 2026-10-10): `privacy@getmyez.com` and `support@getmyez.com`; the legal docs' `legal@` address is dropped by U8 (PR #330). Set them up with Cloudflare Email Routing on the getmyez.com zone.
+3. ~~Arabic mirror of all 4 HTML pages.~~ **RESOLVED 2026-05-23** — AR mirror landed at `landing/ar/{index,privacy,terms,support}.html` with full RTL layout + Cairo-only font stack (Inter dropped — uses Cairo as the sole sans-serif for AR; Latin fragments like `Qaren` + `support@getmyez.com` rendered in Cairo's Latin glyphs). Route choice: `/ar/*` sibling-directory pattern over `Accept-Language` sniffing — user-controlled, crawler-friendly URLs, matches mobile app's manual-locale-switch behavior. Each EN page now has `<link rel="alternate" hreflang="ar">` + footer `العربية` switch; each AR page has the reverse. nginx `location = /ar/support` mirrors the EN clean-URL rule. AASA + assetlinks.json stay locale-agnostic (shared from `/.well-known/`). AR translation notes: tagline "قارن بذكاء" (Compare Smart), H1 "قرارات منتجات أذكى لدول الخليج" (smarter product decisions for the GCC); referral § 12 mirrors backend `a23ed51` policy exactly ("3 دعوات ناجحة لكل جهاز" + "7 أيام"). When Ahmed lands Claude-Design fonts (Arabic font choice may differ from Cairo), reconcile the AR font stack then.
 4. **Favicon** — Expo placeholder (no Qaren brand). Same A5 dependency as the asset audit.
 5. **Open Graph image** — not yet shipped. `<meta property="og:image">` missing in `index.html`. Quick win for Phase 2 polish.
 

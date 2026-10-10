@@ -17,7 +17,7 @@
  * would slip past a Latin-only fence. The Arabic word boundary is explicit
  * (JS \b ignores Arabic letters) so «مقارنة» etc. never trip it.
  *
- * Addresses stay on qaren (ruling R-B / D14): `support@qaren.app`,
+ * Addresses are not copy (ruling R-B / D14; S76 moved them to getmyez.com): `support@qaren.app`,
  * `https://qaren.app/…`, `qaren://…` are stripped before matching — but only
  * the address itself, so a `?subject=Qaren%20Support` mailto query (copy) is
  * still caught.
@@ -141,7 +141,11 @@ describe('S69 U-R T2 — no hard-coded Qaren / قارن copy in src', () => {
 
   it('the support mailto keeps its address but its subject says MYEZ', () => {
     const src = fs.readFileSync(path.join(SRC, 'screens', 'ContactUsScreen.tsx'), 'utf8');
-    const mailto = (src.match(/mailto:[^'"`\s]*/) ?? [''])[0];
-    expect(mailto).toBe('mailto:support@qaren.app?subject=MYEZ%20Support');
+    // S76 DOMAIN-MYEZ: the address is support@getmyez.com (owner decision 2026-10-10), held in
+    // ONE constant that the mailto template interpolates.
+    const address = (src.match(/const SUPPORT_EMAIL = '([^']*)'/) ?? ['', ''])[1];
+    expect(address).toBe('support@getmyez.com');
+    const mailto = (src.match(/mailto:[^'"`\s]*/) ?? [''])[0].replace(/\$\{SUPPORT_EMAIL\}/, address);
+    expect(mailto).toBe('mailto:support@getmyez.com?subject=MYEZ%20Support');
   });
 });

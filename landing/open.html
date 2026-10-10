@@ -20,8 +20,9 @@
      * (SmartCompareApp/src/navigation/linking.ts). A browser reaches it from a
      * pasted or forwarded link, an in-app browser, Android (the assetlinks
      * certificate is still a placeholder) or a phone without the app — and
-     * only once qaren.app points at this service (today qaren.app answers a
-     * Cloudflare 522, so the page is reachable on the Railway host alone).
+     * only once getmyez.com points at this service (on 2026-10-10 getmyez.com
+     * still served an unrelated page, so the page is reachable on the Railway
+     * host alone).
      * It offers the qaren:// hand-off and, once the store link exists, the
      * download. The referral link the backend builds today has NO share
      * token (/c/?ref=QR-XXXXXX) — that shape hands off to the Register
@@ -117,7 +118,7 @@
       var APP_STORE_URL = '';
 
       // The paths the app's linking config resolves (prefixes 'qaren://' and
-      // 'https://qaren.app'): c/<share token> (+ ?ref=CODE), r/<invite code>,
+      // 'https://getmyez.com'): c/<share token> (+ ?ref=CODE), r/<invite code>,
       // q/<quiz token>. A referral link whose comparison has no share token
       // arrives as /c/?ref=QR-XXXXXX — the invite code alone is still useful,
       // so it hands off to the Register screen (qaren://r/QR-XXXXXX). Anything

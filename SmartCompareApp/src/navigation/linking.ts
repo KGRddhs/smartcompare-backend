@@ -38,13 +38,13 @@ const RESET_PASSWORD_PATH = /^\/?reset-password(?:[#?]|$)/;
  */
 export const navigationRef = createNavigationContainerRef<RootStackParamList>();
 
-// Deep-link config — qaren.app/c/{token}?ref={code} resolves to
+// Deep-link config — getmyez.com/c/{token}?ref={code} resolves to
 // ReferralLanding pre-auth (gradual commitment per design 3.5/3.6).
-// qaren.app/r/{code} + qaren://r/{code} resolve to Register with the
+// getmyez.com/r/{code} + qaren://r/{code} resolve to Register with the
 // code pre-filled (Bundle A §1.2). qaren://redeem?code={code} is also
 // supported via the getStateFromPath rewrite below.
 export const linking: LinkingOptions<RootStackParamList> = {
-  prefixes: ['qaren://', 'https://qaren.app'],
+  prefixes: ['qaren://', 'https://getmyez.com'],
   config: {
     screens: {
       ReferralLanding: 'c/:share_token',
