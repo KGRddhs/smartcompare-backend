@@ -14,8 +14,8 @@ Pins:
 * T6 (GREEN, ruling DG6) the Cloudflare redirect Worker is retired: RETIRED banners, and no
   active route in wrangler.toml, so an accidental ``wrangler deploy`` binds nothing.
 * T5 a source scan: no file under app/ or scripts/ contains ``qaren.app`` once the KEEP
-  identifier ``com.qaren.app`` is stripped, except the allowlisted legal drafts that PR #330
-  replaces wholesale (this unit never edits them). A retired domain can be re-registered by a
+  identifier ``com.qaren.app`` is stripped. PR #330 (U8) filled the legal drafts with getmyez.com
+  addresses, so the scan covers them too (no allowlist entry left). A retired domain can be re-registered by a
   stranger, so even the prod-smoke throwaway sign-up address moves.
 
 No network, no env, no database: T2 drives the service through the same MagicMock chain as
@@ -35,17 +35,9 @@ WEB = "https://" + HOST
 RETIRED = re.compile(r"qaren\.app", re.IGNORECASE)
 KEEP_IDENTIFIER = re.compile(r"\bcom\.qaren\.app\b")
 
-# Files this unit does not own. Each value is the reason (kept >= 40 characters).
-ALLOWLIST = {
-    "app/legal/privacy_policy.md": (
-        "the pre-U8 legal draft; PR #330 replaces it wholesale and renders its addresses from "
-        "placeholders, so this unit leaves it untouched to avoid a merge conflict"
-    ),
-    "app/legal/terms_of_service.md": (
-        "the pre-U8 legal draft; PR #330 replaces it wholesale and renders its addresses from "
-        "placeholders, so this unit leaves it untouched to avoid a merge conflict"
-    ),
-}
+# Files exempt from the scan, each with its reason (kept >= 40 characters). Empty since PR #330
+# filled the two legal drafts with getmyez.com addresses.
+ALLOWLIST: dict[str, str] = {}
 TEXT_SUFFIXES = {
     ".py", ".md", ".json", ".txt", ".toml", ".yaml", ".yml", ".sql", ".sh", ".ps1",
     ".html", ".cfg", ".ini", ".csv", ".j2", ".tmpl",
