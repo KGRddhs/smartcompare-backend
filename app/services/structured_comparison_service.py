@@ -58,6 +58,7 @@ from app.services.cache_service import (
 )
 from app.services.drug_database_service import find_matching_drugs, format_drug_context
 from app.utils.db_offload import run_db  # M13-05 / #115 ENABLE_SYNC_DB_OFFLOAD
+from app.utils.redis_offloop import run_redis_offloop  # S77 ENABLE_PRICE_PATH_REDIS_OFFLOOP
 from app.utils.prompt_sanitizer import sanitize_prompt_input  # FANOUT-STARVE FY9 (no cycle)
 from app.services.scoring_service import get_scoring_service, MISSING_SCORE
 from app.services.scoring_service import (  # W4-7 Part B / Part C readers
@@ -6583,7 +6584,9 @@ class StructuredComparisonService:
         # Tier-1.5 scrape cascade — the free-tier-survival lever: never re-burn a
         # scrape on a known dead-end. Bypassed on nocache (forced refresh).
         if not price_nocache:
-            neg = get_negative_cache(negative_cache_key(cache_key))
+            # S77 REDIS-OFFLOOP: the sentinel read (and the stamped-domain meta
+            # GETs below) leave the loop under ENABLE_PRICE_PATH_REDIS_OFFLOOP.
+            neg = await run_redis_offloop(get_negative_cache, negative_cache_key(cache_key))
             if neg:
                 # Codex re-review HIGH-3 (read-side invalidation) — a sentinel
                 # written while a `mechanism="sitemap"` index was COLD carries the
@@ -6595,7 +6598,9 @@ class StructuredComparisonService:
                 # the moment the cron warms the index even if the sentinel got the
                 # FULL 30d TTL (cron OFF at write → transient_discovery was False).
                 cold_domains = neg.get("_sitemap_cold_domains")
-                if cold_domains and sitemap_domains_now_built(cold_domains):
+                if cold_domains and await run_redis_offloop(
+                    sitemap_domains_now_built, cold_domains,
+                ):
                     logger.info(
                         "[PRICE] negcache invalidated — sitemap index now built, "
                         "re-resolving for %s %s", brand, name,
@@ -7493,13 +7498,17 @@ class StructuredComparisonService:
                     # during the ~6s shopping wait; the 3s cap is the SAME wall, now
                     # mostly overlapped). Fall back to firing inline if the prefetch
                     # was skipped (ENABLE_PAGE_SCRAPE off / no sources at kickoff).
+                    # S77 RO2 — record the cap the consume waited under (walrus at
+                    # the call, the R-W18 pattern) so the drop line names it.
+                    # Logging only, unflagged.
+                    _shop_bound = 0.0
                     try:
                         # Genuine-priority clamp (site B) — flag-OFF
                         # _pre_reserve_remaining returns the legacy 3.0 unchanged.
                         if "shopify" in _prefetched_direct:
                             shop_results = await asyncio.wait_for(
                                 _prefetched_direct.pop("shopify"),
-                                timeout=_pre_reserve_remaining(3.0, _race_deadline),
+                                timeout=(_shop_bound := _pre_reserve_remaining(3.0, _race_deadline)),
                             )
                         else:
                             shop_results = await asyncio.wait_for(
@@ -7510,9 +7519,10 @@ class StructuredComparisonService:
                                     ),
                                     return_exceptions=True,
                                 ),
-                                timeout=_pre_reserve_remaining(3.0, _race_deadline),
+                                timeout=(_shop_bound := _pre_reserve_remaining(3.0, _race_deadline)),
                             )
                     except asyncio.TimeoutError:
+                        logger.info(f"[ADAPTER DROP] shopify: CONSUME-BOUND after {_shop_bound:.2f}s")
                         shop_results = []
                     except Exception as e:  # noqa: BLE001 — discovery is best-effort
                         logger.warning(f"[PRICE] Shopify discovery failed: {e}")
@@ -7594,14 +7604,17 @@ class StructuredComparisonService:
                     # WS2 — consume the speculative Algolia fetch overlapped with the
                     # serper_shopping wait (same as the Shopify path above). Inline
                     # fallback when the prefetch was skipped.
+                    # S77 RO2 — the cap the consume waited under, for the drop line
+                    # (walrus at the call; logging only, unflagged).
+                    _alg_bound = 0.0
                     try:
                         # Genuine-priority clamp (site B) — flag-OFF the helper
                         # returns _ALGOLIA_TIER2_TIMEOUT (5.0) unchanged.
                         if "algolia" in _prefetched_direct:
                             algolia_results = await asyncio.wait_for(
                                 _prefetched_direct.pop("algolia"),
-                                timeout=_pre_reserve_remaining(
-                                    _ALGOLIA_TIER2_TIMEOUT, _race_deadline),
+                                timeout=(_alg_bound := _pre_reserve_remaining(
+                                    _ALGOLIA_TIER2_TIMEOUT, _race_deadline)),
                             )
                         else:
                             algolia_results = await asyncio.wait_for(
@@ -7612,10 +7625,11 @@ class StructuredComparisonService:
                                     ),
                                     return_exceptions=True,
                                 ),
-                                timeout=_pre_reserve_remaining(
-                                    _ALGOLIA_TIER2_TIMEOUT, _race_deadline),
+                                timeout=(_alg_bound := _pre_reserve_remaining(
+                                    _ALGOLIA_TIER2_TIMEOUT, _race_deadline)),
                             )
                     except asyncio.TimeoutError:
+                        logger.info(f"[ADAPTER DROP] algolia: CONSUME-BOUND after {_alg_bound:.2f}s")
                         algolia_results = []
                     except Exception as e:  # noqa: BLE001 — best-effort
                         logger.info(f"[PRICE] Algolia Tier-2 gather failed: {e}")

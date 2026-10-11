@@ -31,6 +31,7 @@ from app.services.extraction_service import (
 )
 from app.services.serper_service import search_product_prices, search_price_organic, search_web
 from app.services.cache_service import get_cached, set_cached
+from app.utils.redis_offloop import run_redis_offloop
 from app.services.api_budget_service import (
     has_budget, record_usage, record_failure, record_success,
     is_circuit_closed,
@@ -15156,15 +15157,19 @@ async def _fetch_shopify_catalog(domain: str) -> Optional[Dict[str, Any]]:
         return None
 
     cache_key = f"shopify_catalog:{domain}"
-    cached = get_cached(cache_key)
+    # S77 REDIS-OFFLOOP: the 0.3-2.4 MB catalog GET leaves the loop under
+    # ENABLE_PRICE_PATH_REDIS_OFFLOOP (inline, byte-identical, when OFF).
+    cached = await run_redis_offloop(get_cached, cache_key)
     if cached is not None:
         # M2 — a negative sentinel reads back as "known-failed" → None, no fetch.
         if isinstance(cached, dict) and cached.get("_shopify_neg"):
             return None
         return cached if isinstance(cached, dict) else None
 
-    def _negcache():
-        set_cached(cache_key, _SHOPIFY_NEG_SENTINEL, _SHOPIFY_NEG_TTL)
+    async def _negcache():
+        await run_redis_offloop(
+            set_cached, cache_key, _SHOPIFY_NEG_SENTINEL, _SHOPIFY_NEG_TTL, durable=True,
+        )
 
     url = f"https://{domain}{SHOPIFY_PRODUCTS_PATH}"
     try:
@@ -15177,21 +15182,21 @@ async def _fetch_shopify_catalog(domain: str) -> Optional[Dict[str, Any]]:
         )
     except Exception as e:  # noqa: BLE001 — discovery is best-effort
         logger.info(f"[PRICE] Shopify catalog fetch failed for {domain}: {e}")
-        _negcache()
+        await _negcache()
         return None
 
     if resp.status_code != 200:
         logger.info(f"[PRICE] Shopify catalog HTTP {resp.status_code} for {domain}")
-        _negcache()
+        await _negcache()
         return None
     try:
         data = resp.json()
     except Exception:
         # Not a Shopify store (HTML, redirect to a storefront, etc.).
-        _negcache()
+        await _negcache()
         return None
     if not isinstance(data, dict) or "products" not in data:
-        _negcache()
+        await _negcache()
         return None
 
     # M1 — capture the store's REAL base currency (Shopify /meta.json) so the
@@ -15201,7 +15206,7 @@ async def _fetch_shopify_catalog(domain: str) -> Optional[Dict[str, Any]]:
     # hit (no blind BHD). Cached with the catalog (one fetch per domain/6h).
     data["_store_currency"] = await _fetch_shopify_currency(domain)
 
-    set_cached(cache_key, data, _SHOPIFY_CATALOG_TTL)
+    await run_redis_offloop(set_cached, cache_key, data, _SHOPIFY_CATALOG_TTL, durable=True)
     return data
 
 
@@ -15797,7 +15802,7 @@ async def fetch_bolo_price(
     if not ENABLE_PAGE_SCRAPE:
         return None
     from app.services.sitemap_discovery_service import resolve_pdp_via_sitemap
-    pdp_url = resolve_pdp_via_sitemap("bolo.bh", product_name)
+    pdp_url = await run_redis_offloop(resolve_pdp_via_sitemap, "bolo.bh", product_name)
     if not pdp_url:
         return None  # cold/missing index or no match → honest miss, NOT pending
     # Codex HIGH-5: fetch with a redirect-validating same-site fetcher — a
@@ -15912,7 +15917,7 @@ async def fetch_boutiqaat_price(
     if not ENABLE_PAGE_SCRAPE:
         return None
     from app.services.sitemap_discovery_service import resolve_pdp_via_sitemap
-    pdp_url = resolve_pdp_via_sitemap("boutiqaat.com", product_name)
+    pdp_url = await run_redis_offloop(resolve_pdp_via_sitemap, "boutiqaat.com", product_name)
     if not pdp_url:
         return None  # cold/missing index or no match → honest miss, NOT pending
     # Codex HIGH-5: fetch with a redirect-validating same-site fetcher — a

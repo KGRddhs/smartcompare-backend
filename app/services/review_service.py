@@ -17,6 +17,7 @@ from app.services.extraction_service import (
 )
 from app.services.serper_service import search_web
 from app.services.cache_service import get_cached, set_cached, _redis_offload_enabled
+from app.utils.redis_offloop import run_redis_offloop
 from app.services.api_budget_service import has_budget, record_usage
 
 
@@ -675,7 +676,10 @@ async def get_reviews(
     import asyncio
     cache_key = get_reviews_cache_key(brand, name, variant)
 
-    cached = get_cached(cache_key) if not nocache else None
+    # S77 REDIS-OFFLOOP: the L1 read leaves the loop under
+    # ENABLE_PRICE_PATH_REDIS_OFFLOOP. The L2-promotion write below (RO17) and the
+    # post-extraction writes (the F3/G2 ordering) stay inline.
+    cached = (await run_redis_offloop(get_cached, cache_key)) if not nocache else None
     if cached:
         logger.info(f"Reviews cache hit: {cache_key}")
         cached["_cached"] = True
