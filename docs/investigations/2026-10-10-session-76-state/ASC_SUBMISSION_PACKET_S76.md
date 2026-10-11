@@ -1,5 +1,7 @@
 # MYEZ 1.0.0: App Store Connect submission packet (session 76, 2026-10-10)
 
+> **Session 76 close (2026-10-11):** URLs in this packet now point at getmyez.com. They go live only after the owner's domain move (NEXT_SESSION_PROMPT_S77.md step 1); until then https://qaren-landing-production.up.railway.app serves the same files. Build 1.0.0 (2) is attached to version 1.0.0; App Privacy's 13 types are saved (Other Purposes also on Search History and Product Interaction, ruling UF19).
+
 iOS only. Bundle `com.qaren.app`, EAS project owner `kersher2` (projectId `387a4fcb-76f6-4857-a2fb-39482ca4bd40`), Apple team `8K562M549D` (Hussain Aseeri, Individual). Source: repo main `a8f4552b`. Identifiers stay `qaren`; the brand is MYEZ / ميّز (D12 = A, D13 = A).
 
 Tags: **VERIFIED (URL)** = read today on that official page; **VERIFIED (repo)** = read at main `a8f4552b` (file:line); **UNVERIFIED** = not confirmed today (the reason is given). Every field length below was measured with `measure.py` (Python `len` = characters, `.encode("utf-8")` = bytes); the full table is in section 12.
@@ -52,7 +54,7 @@ What the app declares (VERIFIED (repo) `SmartCompareApp/app.json`):
 | Capability | Declared by | Entitlement it generates |
 |---|---|---|
 | Sign in with Apple | `ios.usesAppleSignIn: true` + plugin `expo-apple-authentication` | `com.apple.developer.applesignin` = `["Default"]` (VERIFIED locally: `sc-s70-u4b/SmartCompareApp/node_modules/expo-apple-authentication/plugin/build/withAppleAuthIOS.js:23`) |
-| Associated Domains | `ios.associatedDomains: ["applinks:qaren.app"]` | `com.apple.developer.associated-domains` (`@expo/config-plugins/build/ios/Entitlements.js`) |
+| Associated Domains | `ios.associatedDomains: ["applinks:getmyez.com"]` (PR #347) | `com.apple.developer.associated-domains` (`@expo/config-plugins/build/ios/Entitlements.js`) |
 | Push Notifications | plugin `expo-notifications` (0.32.17) | `aps-environment` (VERIFIED locally: `expo-notifications/plugin/build/withNotificationsIOS.js:11-12`) |
 
 - **EAS syncs these.** "EAS Build automatically synchronizes capabilities on the Apple Developer Console" with the entitlements when `eas build` runs; Sign in with Apple, Associated Domains and Push Notifications are all in the supported list; a capability enabled remotely but missing locally is disabled; opt-out `EXPO_NO_CAPABILITY_SYNC=1`. **VERIFIED** https://docs.expo.dev/build-reference/ios-capabilities/ . So nothing needs ticking by hand on the App ID; do NOT set `EXPO_NO_CAPABILITY_SYNC`.
@@ -175,7 +177,7 @@ Conditions that must still hold when Publish is clicked (inventory PM-8): the AP
 
 <!-- field:EN_PRIVACY_URL -->
 ```
-https://qaren-landing-production.up.railway.app/privacy.html
+https://getmyez.com/privacy.html
 ```
 User Privacy Choices URL: leave empty (optional, VERIFIED same page).
 
@@ -215,7 +217,7 @@ To write each comparison, MYEZ sends the products you type or photograph to Open
 
 Note: MYEZ is a decision aid. Information is gathered from public sources and may not always be accurate.
 
-Support: support@qaren.app
+Support: support@getmyez.com
 ```
 Each claim's anchor: "What we know" = `results.whatWeKnow` / `results.confidence.sheet.title`; gallery = `home.camera.gallery` "Pick from gallery"; priorities = preferences (inventory row 12); share = ShareBottomSheet; medical line = `results.medicalNote` (MED = A); OpenAI sentence = `aiConsent.body` meaning (D3 = C, OA2); no ads / no tracking = `NSPrivacyTracking: false`; deletion = `EditProfileScreen.tsx:266-280`. The last line stays only if `support@qaren.app` delivers (owner test mail, LL-13); otherwise delete the line and the blank line before it (28 characters fewer: 1707).
 
@@ -233,8 +235,8 @@ Why B: results use the Bahrain market only (BE-09); the four other country names
 ### URLs
 | Field | Paste | Measured |
 |---|---|---|
-| Support URL (required) | <!-- field:EN_SUPPORT_URL --> `https://qaren-landing-production.up.railway.app/support` | 55 chars |
-| Marketing URL (optional) | leave **blank** (runbook section 6 and checklist row 8: until `qaren.app` is attached to the landing service) | - |
+| Support URL (required) | <!-- field:EN_SUPPORT_URL --> `https://getmyez.com/support` | 28 chars |
+| Marketing URL (optional) | leave **blank** until getmyez.com serves the landing (then optionally `https://getmyez.com/`) | - |
 | Privacy Policy URL | section 4 (App Privacy page, after #330) | 60 chars |
 
 Support page fact (VERIFIED (repo) `landing/support.html:7-15, :199-207`; nginx `location = /support` -> `/support.html`, `landing/nginx.conf.template:34-35`): it shows `support@qaren.app` and immediately meta-refreshes to `mailto:support@qaren.app`. Apple asks that the Support URL "lead to actual contact information (legal address, email address, telephone number), as may be required by local law": an email is contact information; whether a legal address is "required by local law" for a Bahrain individual is UNVERIFIED (L3 could be added to the page in #330).
@@ -436,7 +438,7 @@ Optional: `SENTRY_ALLOW_FAILURE=true` in the EAS production environment, or conf
 | Review account 1 credentials | ASC 1.0 page -> App Review Information -> Sign-In Information | submission |
 | Review account 2 credentials | the Notes text placeholders (section 6) | - |
 | Review contact first/last name, +973 phone, email | ASC 1.0 page -> App Review Information -> Contact Information | submission |
-| Test mail to `support@`, `privacy@`, `legal@qaren.app` (LL-13) | any mail client | the Support line in the description |
+| Test mail to `support@` and `privacy@getmyez.com` (DONE 2026-10-11: Cloudflare Email Routing to kingzatel@gmail.com, both received) | any mail client | the Support line in the description |
 | Migration **043** (PRECHECK sitting, then ONE_PASTE / POSTCHECK) | Supabase -> SQL editor (files in `2026-10-03-session-71-state/`) | deletion truth ("and its data") |
 | Bright Data token renewal | per `docs/runbooks/brightdata-token-renewal.md` | prices |
 | **FANOUT flips**, one per canary window, `run_canary.sh canary7b` after each: `ENABLE_PHASE2_RESIDUAL_GUARD=true`, then `ENABLE_UNIFIED_SEARCH_BOUND=true`, then `ENABLE_PARSE_PRESPLIT=true` and `ENABLE_PARSE_BUDGET=true` | Railway -> `web` -> Variables (owner) | the "20-40 seconds" line; review |
@@ -491,8 +493,8 @@ Source: the SA-06 draft (`docs/investigations/2026-09-29-session-69-state/appsto
 | Name | <!-- field:AR_NAME --> `ميّز - مقارنة المنتجات` (runbook section 6) | 22 chars / 40 bytes |
 | Name alternative | <!-- field:AR_NAME_ALT --> `ميّز: قرار شراء أذكى` | 20 / 36 |
 | Subtitle | <!-- field:AR_SUBTITLE --> `قارن منتجين واحصل على حكم واضح` (here قارن is the verb "compare", not the old brand; the reviewer confirms it does not read as the old name) | 30 / 55 (at the limit) |
-| Support URL | <!-- field:AR_SUPPORT_URL --> `https://qaren-landing-production.up.railway.app/ar/support` | 58 |
-| Privacy URL (after #330) | <!-- field:AR_PRIVACY_URL --> `https://qaren-landing-production.up.railway.app/ar/privacy.html` | 63 |
+| Support URL | <!-- field:AR_SUPPORT_URL --> `https://getmyez.com/ar/support` | 31 |
+| Privacy URL (after #330) | <!-- field:AR_PRIVACY_URL --> `https://getmyez.com/ar/privacy.html` | 36 |
 
 Promotional text [NEW: SA-06's "prices are live ... we always show the confidence level" removed (BE-03), "Gulf store prices" -> "Bahrain market prices" (BE-09)] (130 chars / 237 bytes):
 <!-- field:AR_PROMO -->
@@ -535,6 +537,6 @@ Description (1433 chars / 2588 bytes). [NEW] lines: the price bullet, the "What 
 
 تنبيه: ميّز أداة مساعدة لاتخاذ القرار، والمعلومات مجمّعة من مصادر عامة وقد لا تكون دقيقة دائماً.
 
-للدعم والاقتراحات: support@qaren.app
+للدعم والاقتراحات: support@getmyez.com
 ```
 The «ما الذي نعرفه» label equals the app's AR value of `results.whatWeKnow`, the Results eyebrow (`ResultsContent.tsx:523`; checked by code point against `SmartCompareApp/src/i18n/ar.json:761` at main); the AR training sentence paraphrases the shipped `aiConsent.body` AR sentence (NATIVE_REVIEW_S75.md) and must keep its meaning.
