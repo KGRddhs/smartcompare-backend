@@ -36,6 +36,7 @@ FIX round 2 rulings UF3-UF8 after the final adversary):
   (l) test_d3c_l_deletion_path_names_the_controls_the_app_shows         UF8 path + the labels check
   (m) test_d3c_m_hosting_regions_clause_names_only_the_measured_roles    UF3 privacy s7 roles
   (n) test_d3c_n_providers_sentence_carves_out_openai[C|A]               UF4 + UF10 privacy s5 carve-out
+  (o) test_d3c_o_ar_privacy_s9_has_no_doubled_period_phrase             UF25: the Arabic review's AR-P1 stays
 FIX round 3 rulings UF10-UF13 after the final adversary 2: (j) gains the s3.6 OpenAI-programme purpose
 (UF11); (k) gains the share verb for advertisers / data brokers / partners and "data ... about you" (UF13,
 the adversary's probes X1 and X2); (n) matches the UF10 service-providers sentence and pins the sentence that
@@ -46,6 +47,11 @@ statistics are shared, licensed or sold) and retires "license or sell that compa
 gains give / provide / disclose, buy, third parties for marketing or advertising, and "... that identifies you"
 (UF21, the adversary's Y1-Y4, EN and AR twins); (n) counts the unqualified providers claim over the whole privacy
 document and catches the adversary's X3 (UF22).
+FIX round 5 rulings UF23-UF25 after the final adversary 4: (i) pins the UF23 AR derived-data sentence (its second
+sentence repeats the noun, so the licence and the sale reach only the statistics; the sentence lives in the
+fixture); (j) pins the UF24 privacy s9 sentence (de-identified comparison data and statistics that cannot identify
+you may be kept after deletion, EN and AR); (o) pins the Arabic review's AR-P1: the doubled-period phrase is gone
+from the AR privacy source and its rendered page, the corrected phrase is in the source (UF25).
 
 THE T8 RULE FOR d3 = C (replaces, for C only, the D3 = A rule "none of opt out / Help improve
 AI quality / Data Sharing Program"): privacy section 4 matches every pattern of
@@ -570,7 +576,7 @@ PRIVACY_PURPOSE_EN = (
     "- **In our legitimate interest in improving and funding the service:** producing de-identified statistics "
     "about comparisons and preferences."
 )
-PRIVACY_S9_EN = "De-identified statistics that cannot identify you may be kept after deletion."
+PRIVACY_S9_EN = "De-identified comparison data and statistics that cannot identify you may be kept after deletion."
 # FIX round 3 (UF11): privacy s3.6 names OpenAI's use under its data-sharing programme with its legal basis.
 PRIVACY_OPENAI_PURPOSE_EN = (
     "- Letting OpenAI use the inputs and outputs of your comparisons under its data-sharing programme, as section 4 "
@@ -750,6 +756,10 @@ def _fix4_ar():
     return _fixture()["fix4_ar"]
 
 
+def _fix5_ar():
+    return _fixture()["fix5_ar"]
+
+
 def _share_en(token):
     """UF13 + UF21: share, give, provide, disclose (a claim when the clause names a recipient)."""
     return SHARE_EN.match(token) or GIVE_EN.match(token)
@@ -852,8 +862,8 @@ def test_d3c_j_privacy_keeps_not_sold_and_adds_the_aggregated_sentence():
     brokers or advertisers, pointing at section 4 for OpenAI, and the aggregated or anonymised statistics sentence
     follows it in the same paragraph, once; section 3.6 names the purpose of producing de-identified statistics
     with its legal basis and (UF11) the purpose of letting OpenAI use the inputs and outputs under its
-    data-sharing programme with its legal basis; section 9 says de-identified statistics may be kept after
-    deletion."""
+    data-sharing programme with its legal basis; section 9 says de-identified comparison data and statistics may
+    be kept after deletion (FIX round 5, UF24)."""
     ar = _ug12_ar()
     ar_openai = _fix3_ar()["privacy_openai_purpose"]
     problems = []
@@ -1115,3 +1125,26 @@ def test_d3c_n_providers_sentence_carves_out_openai(tmp_path, d3):
         if not _rendered_carveout_problems(rel, html.unescape(renderer.render_markdown(mutant)), core, carveout, flags):
             problems.append(f"{rel}: X3 control is not caught in the rendered page")
     assert not problems, [_esc(p) for p in problems]
+
+
+# ---------------------------------------------------------------------------
+# FIX round 5 addition: (o) UF25, the Arabic review's AR-P1 stays applied
+
+
+def test_d3c_o_ar_privacy_s9_has_no_doubled_period_phrase():
+    """(o) UF25 (the Arabic review's AR-P1; the final adversary 4's N4r survived without this pin): the
+    doubled-period phrase (AR-P1 'old' of the Arabic review's corrections: the AR for "for a period" before the
+    SECURITY_LOG_RETENTION_AR value, which carries its own "no fixed period") is absent from the AR privacy source
+    and from its rendered page, and the corrected phrase (AR-P1 'new') is present in the AR privacy source. Both
+    strings live in the fixture (fix5_ar); whitespace is normalised so a line break cannot hide the phrase."""
+    fx = _fix5_ar()
+    old, new = fx["ar_p1_old"], fx["ar_p1_new"]
+    assert old and new and new in old and old != new, "fix5_ar: AR-P1 old must extend new"
+    problems = []
+    for rel in (PRIVACY_AR, "landing/ar/privacy.html"):
+        text = " ".join(html.unescape(_read(rel)).split())
+        if old in text:
+            problems.append(f"{rel}: the doubled-period phrase (AR-P1 old) is back")
+    if new not in " ".join(_read(PRIVACY_AR).split()):
+        problems.append(f"{PRIVACY_AR}: the corrected phrase (AR-P1 new) is missing")
+    assert not problems, problems

@@ -23,10 +23,10 @@
  * body paragraphs / list items to U8; U8 (rulings UL1, UL17) renders the body
  * from app/legal/*.md (scripts/render_legal_landing.py) with the MYEZ brand,
  * so the former LEGAL exemption is gone. Addresses are still stripped first.
- * ADDRESS_COUNTS changed for the four legal pages only (ruling UG20): 7 -> 5 on
- * privacy, terms, ar/privacy and ar/terms (the hand-written body contact line
- * is now rendered from the markdown with an e-mail placeholder); the support
- * pages, the index pages and open.html keep their base counts.
+ * ADDRESS_COUNTS: the four legal pages (privacy, terms, ar/privacy, ar/terms,
+ * whose body contact lines are rendered from app/legal/*.md) and the two
+ * support pages (support, ar/support) were re-counted on the filled pages
+ * (2026-10-11); the index pages and open.html keep their base counts.
  */
 import * as fs from 'fs';
 import * as path from 'path';
@@ -66,7 +66,7 @@ const ADDRESS_COUNTS: Record<string, number> = {
   'privacy.html': 10,
   'support.html': 10,
   'terms.html': 6,
-  'open.html': 3, // the two qaren.app mentions in the page's comments + the linking prefix in the script
+  'open.html': 3, // the three getmyez.com mentions: two in the head comment + the script's linking prefix
   'ar/index.html': 8,
   'ar/privacy.html': 10,
   'ar/support.html': 10,

@@ -113,7 +113,7 @@ Our providers process data outside Bahrain, including in the United States (Open
 
 <PLACEHOLDER:DELETION_SECTION>
 
-De-identified statistics that cannot identify you may be kept after deletion.
+De-identified comparison data and statistics that cannot identify you may be kept after deletion.
 
 ## 10. Your rights
 
