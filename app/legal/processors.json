@@ -1,0 +1,197 @@
+{
+  "_comment": "U8 processor manifest (rulings UL14, UG5-UG7; schema in tests/test_legal_docs_u8.py). Every recipient of user data the code reaches. name_en must appear in app/legal/privacy_policy.md and name_ar in app/legal/privacy_policy_ar.md (T7a); a row with gate_flag is checked only while the fill-in data records that flag 'on'. hosts lists the hosts a row covers (exact or parent domain) and, for client rows, the package or API identifier a grep finds in its SmartCompareApp/ files (T7c). Exactly one row has kind 'retailer': every retailer host is one class (spec P15) and its modules skip the T7b host check. The retailer row also lists one App module, SmartCompareApp/src/components/primitives/ProductImage.tsx: the App loads product pictures directly from the website that published them, so that website receives the device's IP address (policy section 6, adversary A2). Modules that send no personal data are the NOT_PERSONAL allowlist of the test (Frankfurter, Zyte off-clock seed).",
+  "rows": [
+    {
+      "id": "supabase",
+      "name_en": "Supabase",
+      "name_ar": "Supabase",
+      "kind": "processor",
+      "personal_data": true,
+      "module": ["app/services/database_service.py", "app/services/auth_service.py"],
+      "hosts": ["supabase.co"],
+      "gate_flag": null
+    },
+    {
+      "id": "railway",
+      "name_en": "Railway",
+      "name_ar": "Railway",
+      "kind": "hosting",
+      "personal_data": true,
+      "module": [],
+      "hosts": ["railway.app"],
+      "gate_flag": null
+    },
+    {
+      "id": "upstash",
+      "name_en": "Upstash",
+      "name_ar": "Upstash",
+      "kind": "processor",
+      "personal_data": true,
+      "module": ["app/services/cache_service.py"],
+      "hosts": ["upstash.io"],
+      "gate_flag": null
+    },
+    {
+      "id": "sentry",
+      "name_en": "Sentry",
+      "name_ar": "Sentry",
+      "kind": "processor",
+      "personal_data": true,
+      "module": ["app/services/sentry_service.py", "SmartCompareApp/src/services/sentry.ts"],
+      "hosts": ["sentry.io", "@sentry/react-native"],
+      "gate_flag": null
+    },
+    {
+      "id": "openai",
+      "name_en": "OpenAI",
+      "name_ar": "OpenAI",
+      "kind": "processor",
+      "personal_data": true,
+      "module": [
+        "app/services/openai_service.py",
+        "app/services/extraction_service.py",
+        "app/services/url_extraction_service.py",
+        "app/services/llm_provider.py",
+        "app/services/verdict_critique_service.py",
+        "app/services/content_safety_service.py",
+        "app/services/image_service.py"
+      ],
+      "hosts": ["api.openai.com"],
+      "gate_flag": null
+    },
+    {
+      "id": "expo_push",
+      "name_en": "Expo",
+      "name_ar": "Expo",
+      "kind": "push_and_updates",
+      "personal_data": true,
+      "module": ["app/services/push_service.py", "SmartCompareApp/src/services/pushTokenService.ts"],
+      "hosts": ["exp.host", "getExpoPushTokenAsync"],
+      "gate_flag": null
+    },
+    {
+      "id": "eas_update",
+      "name_en": "Expo",
+      "name_ar": "Expo",
+      "kind": "push_and_updates",
+      "personal_data": true,
+      "module": ["SmartCompareApp/app.json"],
+      "hosts": ["u.expo.dev"],
+      "gate_flag": null
+    },
+    {
+      "id": "apple",
+      "name_en": "Apple",
+      "name_ar": "Apple",
+      "kind": "identity_provider",
+      "personal_data": true,
+      "module": ["SmartCompareApp/src/components/AppleSignInButton.tsx"],
+      "hosts": ["expo-apple-authentication"],
+      "gate_flag": null
+    },
+    {
+      "id": "google_sign_in",
+      "name_en": "Google",
+      "name_ar": "Google",
+      "kind": "identity_provider",
+      "personal_data": true,
+      "module": ["SmartCompareApp/src/services/authService.ts"],
+      "hosts": ["@react-native-google-signin/google-signin"],
+      "gate_flag": null
+    },
+    {
+      "id": "google_fonts",
+      "name_en": "Google Fonts",
+      "name_ar": "Google Fonts",
+      "kind": "web_fonts",
+      "personal_data": true,
+      "module": ["landing/privacy.html"],
+      "hosts": ["fonts.googleapis.com", "fonts.gstatic.com"],
+      "gate_flag": null
+    },
+    {
+      "id": "serper",
+      "name_en": "Serper",
+      "name_ar": "Serper",
+      "kind": "search_provider",
+      "personal_data": true,
+      "module": ["app/services/serper_service.py", "app/services/rating_service.py"],
+      "hosts": ["google.serper.dev"],
+      "gate_flag": null
+    },
+    {
+      "id": "bright_data",
+      "name_en": "Bright Data",
+      "name_ar": "Bright Data",
+      "kind": "search_provider",
+      "personal_data": true,
+      "module": ["app/services/brightdata_service.py"],
+      "hosts": ["api.brightdata.com", "www.google.com"],
+      "gate_flag": null
+    },
+    {
+      "id": "firecrawl",
+      "name_en": "Firecrawl",
+      "name_ar": "Firecrawl",
+      "kind": "page_retrieval",
+      "personal_data": true,
+      "module": ["app/services/firecrawl_service.py"],
+      "hosts": ["api.firecrawl.dev"],
+      "gate_flag": null
+    },
+    {
+      "id": "scrapedo",
+      "name_en": "Scrape.do",
+      "name_ar": "Scrape.do",
+      "kind": "page_retrieval",
+      "personal_data": true,
+      "module": ["app/services/scrapedo_service.py"],
+      "hosts": ["api.scrape.do"],
+      "gate_flag": null
+    },
+    {
+      "id": "cloudflare",
+      "name_en": "Cloudflare",
+      "name_ar": "Cloudflare",
+      "kind": "email_routing",
+      "personal_data": true,
+      "module": [],
+      "hosts": [],
+      "gate_flag": null
+    },
+    {
+      "id": "youtube",
+      "name_en": "YouTube",
+      "name_ar": "YouTube",
+      "kind": "video_search",
+      "personal_data": true,
+      "module": ["app/services/youtube_service.py"],
+      "hosts": ["www.googleapis.com", "www.youtube.com"],
+      "gate_flag": "ENABLE_YOUTUBE_SOURCE"
+    },
+    {
+      "id": "retailers",
+      "name_en": "retailer websites",
+      "name_ar": "مواقع المتاجر",
+      "kind": "retailer",
+      "personal_data": true,
+      "module": [
+        "app/services/price_service.py",
+        "app/services/source_router.py",
+        "app/services/noon_service.py",
+        "app/services/occ_service.py",
+        "app/services/rest_json_service.py",
+        "app/services/salla_service.py",
+        "app/services/algolia_service.py",
+        "app/services/unbxd_service.py",
+        "app/services/woocommerce_service.py",
+        "app/services/magento_graphql_service.py",
+        "app/services/shopify_pdp_service.py",
+        "app/services/platform_router.py",
+        "SmartCompareApp/src/components/primitives/ProductImage.tsx"
+      ],
+      "hosts": [],
+      "gate_flag": null
+    }
+  ]
+}

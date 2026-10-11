@@ -1,0 +1,114 @@
+{
+  "_comment": "Non-ASCII expectations for tests/test_legal_docs_u8_d3c.py (decision D3 = C, ruling OA2; session 76). Arabic is machine-drafted MSA for the native review (D11). t8_c_ar: the AR half of the d3 = C keyword rule for privacy section 4 (required: regexes that must all match; forbidden: regexes none of which may match). consent_tail_ar: the AR consent-sheet clause (ar.json aiConsent.body) that the AR C paragraph must restate verbatim, located by its first and last words. ar_programme_name: the AR name of the programme, which the existing T8 node must not forbid under d3 = C. ar_values: synthetic Arabic placeholder values for the temp-copy dry-run (never a real fact). ug12_ar (ruling UG12, FIX round): the AR twins of the terms section 8 licence and derived-data sentences and of the privacy section 2 'not sold' statement and aggregated-statistics sentence ([SPEC], native review owed), and the AR controls of the personal-data claim scan (flagged: must be caught; accepted: must pass). FIX round 2 (UF3-UF8): ug12_ar gains the AR twins of the terms s8 history sentence (UF6 b), the revised licence and derived-data sentences (UF6 a, d), the retired wording, the privacy s2 sentence (UF7), the s3.6 purpose line (UF6 c) and the s9 sentence (UF6 e), and the AR twins of the final adversary's probes P2b and P7; fix2_ar holds the AR deletion path and its retired fragment (UF8), the s7 hosting roles (UF3) and the s5 carve-out (UF4; FIX round 3 UF10: the service-providers sentence, s5_core is the \"only to provide its service\" core). fix3_ar (FIX round 3): the s5 own-terms sentence (UF10), the s3.6 OpenAI-programme purpose line (UF11) and the AR controls of the share verb and the 'about you' trigger (UF13). fix4_ar (FIX round 4): the AR twins of the final adversary 3's probes Y1-Y4 and of the provide and disclose controls (UF21; flagged: must be caught; accepted: must pass) and x3, the AR twin of the unqualified providers claim the (n) node appends to section 6 as its positive control (UF22). FIX round 5 (UF23, UF24): ug12_ar.terms_derived repeats the noun in its second sentence so the licence and the sale can only reach the statistics (UF23), and ug12_ar.privacy_s9 says de-identified comparison data and statistics that cannot identify you may be kept after deletion (UF24). fix5_ar (FIX round 5, UF25): the Arabic review's AR-P1 (session 76): ar_p1_old is the doubled-period phrase that may not come back in the AR privacy source or its rendered page, ar_p1_new the corrected phrase the AR privacy source carries.",
+  "t8_c_ar": {
+    "required": {
+      "names the programme": "برنامج مشاركة البيانات",
+      "OpenAI": "OpenAI",
+      "inputs": "المدخلات",
+      "outputs": "المخرجات",
+      "usage patterns": "أنماط الاستخدام",
+      "model quality": "جودة النماذج",
+      "evaluation and training": "تقييم نماذجها وتدريبها",
+      "governed by OpenAI's terms": "لشروط OpenAI",
+      "abuse monitoring": "مراقبة إساءة الاستخدام",
+      "30 days": "الثلاثين|30"
+    },
+    "forbidden": {
+      "Help improve AI quality (toggle title)": "ساعد في تحسين الذكاء الاصطناعي",
+      "improve AI quality": "تحسين جودة الذكاء الاصطناعي",
+      "opt out / unsubscribe": "إلغاء الاشتراك|الانسحاب من المشاركة",
+      "turn on": "ف[ّ]?ع[ّ]?ل(?:ت|ه|تَ)|تفعيل",
+      "turn off": "إيقاف|أوقف|يوقف|متوقف"
+    }
+  },
+  "consent_tail_ar": {
+    "start": "والمخرجات",
+    "end": "وتدريبها"
+  },
+  "ar_programme_name": "برنامج مشاركة البيانات",
+  "ar_values": {
+    "IP_OWNER_AR": "الناشر",
+    "GOVERNING_LAW_AR": "مملكة البحرين",
+    "WITHDRAW_PATH_AR": "الملف الشخصي، ثم الخصوصية",
+    "SECURITY_LOG_RETENTION_AR": "دون مدة محددة",
+    "ANON_LOG_RETENTION_AR": "دون مدة محددة",
+    "HOSTING_REGIONS_AR": "أيرلندا"
+  },
+  "ug12_ar": {
+    "terms_licence": "وتمنحنا ترخيصًا عالميًا دون مقابل لاستخدام المحتوى الذي ترسله إلى ميّز (عمليات بحثك وصورك وروابطك وملاحظاتك وتفضيلاتك) لتشغيل الخدمة وتأمينها وتحسينها، ولإنشاء مجموعات بيانات منزوعة الهوية عن المقارنات والتفضيلات، وللحصول على المقارنات من مزوّد الذكاء الاصطناعي لدينا على النحو الذي توضّحه سياسة الخصوصية.",
+    "terms_derived": "ونملك بيانات المقارنات منزوعة الهوية التي يجمعها ميّز (المنتجات التي تُقارَن، وخلاصات المقارنة والدرجات، والأسعار التي نجمعها، وعبارات البحث بعد نزع الهوية عنها)، وإحصاءات التفضيلات والاستخدام التي نستخلصها منها في صورة مجمّعة أو مجهولة الهوية. ويجوز لنا استخدام هذه البيانات لتشغيل ميّز وتحسينه، ومشاركة إحصاءات مجمّعة أو مجهولة الهوية مستخلصة منها (مثل اتجاهات الأسعار أو مدى رواج الفئات) مع أطراف ثالثة، وترخيص هذه الإحصاءات أو بيعها لأطراف ثالثة؛ ولا يحدد أي منها هويتك، ولا تُباع بياناتك الشخصية أبدًا.",
+    "privacy_not_sold": "لا نبيع بياناتك الشخصية",
+    "privacy_aggregated": "وقد نشارك أو نبيع إحصاءات مجمّعة أو مجهولة الهوية عن المقارنات والتفضيلات (مثل اتجاهات الأسعار أو مدى رواج الفئات) لا يمكن أن تحدد هويتك.",
+    "flagged": [
+      "قد نبيع بياناتك الشخصية لأطراف ثالثة.",
+      "نملك بياناتك الشخصية.",
+      "ويجوز لنا ترخيص بياناتك الشخصية لشركائنا.",
+      "لا نعرض إعلانات، لكن قد نبيع البيانات الشخصية.",
+      "قد نبيع عمليات بحثك وتفضيلاتك لوسطاء البيانات.",
+      "قد نتاجر ببياناتك الشخصية مع شركائنا.",
+      "قد نؤجّر بياناتك الشخصية للمعلنين.",
+      "قد ننقل بياناتك الشخصية إلى شركائنا مقابل مبلغ مالي."
+    ],
+    "accepted": [
+      "لا نبيع بياناتك الشخصية.",
+      "ولا يحدد أي منها هويتك، ولا تُباع بياناتك الشخصية أبدًا.",
+      "يمكنك تقديم شكوى إلى هيئة حماية البيانات الشخصية أو إلى المملكة.",
+      "لا نبيع بياناتك الشخصية، ولا نشاركها مع وسطاء البيانات أو المعلنين.",
+      "وسجل المقارنات في حسابك ملك لك، تطّلع عليه وتشاركه وتحذفه.",
+      "للعثور على الأسعار، نبحث في مواقع المتاجر العامة عن المنتجات الواردة في مقارنتك.",
+      "وتمنحنا ترخيصًا عالميًا دون مقابل لنقل عمليات بحثك إلى مزوّد الذكاء الاصطناعي."
+    ],
+    "terms_history": "ويحق لك الاطلاع على سجل المقارنات في حسابك ومشاركته وحذفه، ونتعامل معه وفق سياسة الخصوصية.",
+    "terms_retired": [
+      "وسجل مقارناتك ملك لك، ونتعامل",
+      "بعد تجريدها من كل ما يحدد هويتك",
+      "ملك لك، تطّلع",
+      "بيانات المقارنات والتفضيلات هذه أو ترخيصها أو بيعها"
+    ],
+    "privacy_s2": "لا نبيع بياناتك الشخصية، ولا نشاركها مع وسطاء البيانات أو المعلنين؛ ويوضّح القسم 4 ما قد تفعله OpenAI بمدخلات مقارناتك ومخرجاتها.",
+    "privacy_purpose": "- **لمصلحتنا المشروعة في تحسين الخدمة وتمويلها:** إنتاج إحصاءات منزوعة الهوية عن المقارنات والتفضيلات.",
+    "privacy_s9": "وقد نحتفظ بعد الحذف ببيانات مقارنات وإحصاءات منزوعة الهوية لا يمكن أن تحدد هويتك."
+  },
+  "fix2_ar": {
+    "path": "الملف الشخصي، ثم أيقونة الإعدادات، ثم «حذف الحساب»",
+    "path_retired": "ثم «تعديل الملف»",
+    "hosting_roles": "(مزوّدو قاعدة البيانات والاستضافة لدينا)",
+    "temporary_storage": "التخزين المؤقت",
+    "s5_core": "فقط لتقديم خدمته",
+    "s5_carveout": "باستثناء ما يوضّحه القسم 4 بشأن OpenAI، يعالج كل مزوّد من مزوّدي الخدمات لدينا البيانات فقط لتقديم خدمته لنا، ونُلزم كلًّا منهم بحمايتها بمستوى لا يقل عن المستوى الذي تنص عليه هذه السياسة."
+  },
+  "fix3_ar": {
+    "s5_own_terms": "أما مواقع المتاجر (القسم 6) ومزوّدا تسجيل الدخول Apple وGoogle فتعمل وفق شروطها الخاصة.",
+    "privacy_openai_purpose": "- السماح لشركة OpenAI باستخدام مدخلات مقارناتك ومخرجاتها ضمن برنامج مشاركة البيانات لديها، على النحو الذي يوضّحه القسم 4 (الأساس القانوني: الإذن الذي تمنحه قبل مقارنتك الأولى؛ ويكون سحبه على النحو الذي يوضّحه القسم 10).",
+    "flagged": [
+      "قد نشارك سجل بحثك مع المعلنين.",
+      "قد نبيع البيانات التي نجمعها عنك لوسطاء البيانات.",
+      "قد نشارك بياناتك الشخصية مع شركائنا."
+    ],
+    "accepted": [
+      "تشارك Apple معنا عنوان بريدك الإلكتروني أو عنوان ترحيل خاصًا.",
+      "ولا نشارك بياناتك الشخصية مع شركائنا."
+    ]
+  },
+  "fix4_ar": {
+    "flagged": [
+      "قد نعطي عنوان بريدك الإلكتروني للمعلنين مقابل رسوم.",
+      "قد يشتري المعلنون سجل بحثك منا.",
+      "قد نشارك بياناتك الشخصية مع أطراف ثالثة لأغراض التسويق الخاصة بها.",
+      "قد نبيع المعلومات التي تحدد هويتك.",
+      "قد نقدم سجل بحثك إلى وسطاء البيانات.",
+      "قد نفصح عن بياناتك الشخصية لأطراف ثالثة لأغراض إعلانية."
+    ],
+    "accepted": [
+      "نقدم عمليات بحثك إلى مزود الذكاء الاصطناعي لإجراء المقارنة.",
+      "لا نعطي بياناتك الشخصية للمعلنين أبدا.",
+      "قد نشارك إحصاءات مجمعة لا يمكن أن تحدد هويتك مع أطراف ثالثة لأغراض التسويق.",
+      "لا نفصح عن بياناتك الشخصية لأطراف ثالثة لأغراض التسويق."
+    ],
+    "x3": "يعالج كل مزود البيانات فقط لتقديم خدمته لنا."
+  },
+  "fix5_ar": {
+    "ar_p1_old": "لمدة دون مدة محددة",
+    "ar_p1_new": "دون مدة محددة"
+  }
+}

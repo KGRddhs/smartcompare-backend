@@ -9,7 +9,7 @@
  * redrafted Terms land.
  */
 
-export const TERMS_VERSION = '2026-03-26';
+export const TERMS_VERSION = '2026-10-11';
 
 export interface ConsentPayload {
   terms_accepted: true;
