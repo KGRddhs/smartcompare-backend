@@ -1,0 +1,17 @@
+# Migration 043 PRECHECK grid, production smartcompare (qulajmyxdbdkchvecmvc), run 2026-10-10 ~22:30 by the orchestrator in the owner's Supabase session (read-only)
+
+sec 1 users_column: 27 rows (01 id uuid NO; 02 email YES; 03 display_name YES; 04 auth_provider YES default 'email'; 05 subscription_tier YES default 'free'; 06 subscription_expires_at YES; 07 created_at YES now(); 08 updated_at YES now(); 09 preferences YES '{}'; 10 preferences_completed YES false; 11 behavior_profile YES '{}'; 12 lifetime_comparisons_used YES 0; 13 demographics_profile YES; 14 demographics_dismissed_count YES 0; 15 demographics_dismissed_at YES; 16 referral_code YES; 17 referral_bonus_comparisons_this_month NO 0; 18 referral_bonus_reset_at YES (date_trunc month + 1 mon); 19 expo_push_token YES; 20 notifications_enabled NO true; 21 last_comparison_at YES; 22 attribution_source YES; 23 device_fingerprint_hash YES; 24 lifetime_invites_consumed NO 0; 25 terms_accepted_at YES; 26 terms_version YES; 27 age_attested_at YES)
+sec 2 users_constraint: 5 (attribution_source CHECK allows NULL; users_id_fkey FOREIGN KEY (id) REFERENCES auth.users(id) ON DELETE CASCADE = BRANCH A; users_pkey; preferences budget CHECK allows NULL; users_referral_code_key UNIQUE (referral_code), plain = NULLS DISTINCT)
+sec 3 users_index: 6 (4 partial btree indexes, users_pkey, users_referral_code_key unique on referral_code; no expression index)
+sec 4 fk_into_users_auth_or_comparisons: 19; into comparisons: comparison_feedback SET NULL, deep_review_credits.consumed_in_comparison_id SET NULL, pain_workflow_events SET NULL, re_engagement_events SET NULL, referral_invites.comparison_id CASCADE, referral_invites.invitee_first_comparison_id SET NULL, verdict_critiques CASCADE (no NO ACTION / RESTRICT); into users/auth.users only from the 13 tables (comparison_feedback, deep_review_credits, pain_workflow_events, re_engagement_events, referral_invites x2, referral_redemptions x2, user_events, user_preference_history, user_usage, users)
+sec 5 user_ref_column: 17 (admin_audit_log.ip_address, .user_id; comparison_feedback.user_id; comparisons.user_id; deep_review_credits.user_id NO; pain_workflow_events.user_id NO; re_engagement_events.user_id NO; referral_invites.device_fingerprint_hash, .redeemed_by_user_id, .referrer_user_id NO; referral_redemptions.invitee_user_id NO, .referrer_user_id NO; search_logs.user_id; user_events.session_id, .user_id; user_preference_history.user_id NO; user_usage.user_id NO)
+sec 6 function: delete_user_cascade(uuid) secdef=true config=search_path=public owner=postgres acl={postgres=X/postgres,service_role=X/postgres} md5_norm=76e8e2f65e9d5cb3b29c5ab57ab9bf61 (= the 025 body, expected)
+sec 7 execute_privilege: anon false, authenticated false, service_role true
+sec 8 trigger / rule: NO ROWS
+sec 9 count: a users 18; b 0; c 0; d admin_audit_log rows with ip_address whose user has no auth.users row 696; e 0; f comparisons 0, comparison_feedback 0, search_logs 0, user_events 0
+sec 10 cross_user_comparison_refs: 0, 0
+sec 11 table_owner_rls: all 13 owner=postgres relrowsecurity=true relforcerowsecurity=false fn_owner=postgres rolbypassrls=true
+sec 12 nil_uuid_rows: all 15 = 0
+sec 13 auth_audit_log: 0 rows
+
+READING: no STOP (pending the sec-1 nullable=NO check against the 043 SET list for columns 17, 20, 24). Branch A. After ONE_PASTE + POSTCHECK: run APPLY_043_4_BACKFILL_ORPHANS (d = 696 > 0).
