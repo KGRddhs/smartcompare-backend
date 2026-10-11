@@ -8447,12 +8447,7 @@ class StructuredComparisonService:
                     cache_key, converted_fallback, brand, name, variant, region, full_name, category)
                 # Task 1.3 — the FULL genuine-BH cascade ran and missed; this is a
                 # structural dead-end. Record it so the next call skips the cascade.
-                # S77 REDIS-OFFLOOP: the whole sync call leaves the loop under
-                # ENABLE_PRICE_PATH_REDIS_OFFLOOP (durable: it lands even on cancel).
-                await run_redis_offloop(
-                    lambda: self._record_negative_price_cache(cache_key, converted_fallback),
-                    durable=True,
-                )
+                self._record_negative_price_cache(cache_key, converted_fallback)
                 converted_fallback["_cached"] = False
                 # The parked slot now also carries a genuine local_bhd price on a
                 # listing URL (ENABLE_PARK_LISTING_URL_TIER1) — log the ACTUAL
@@ -8529,24 +8524,18 @@ class StructuredComparisonService:
                 # is the same unconditional call with the same arguments in the same
                 # order: byte-identical.
                 if _tier3_persisted:
-                    # S77 REDIS-OFFLOOP: the whole call, arguments included (the
-                    # sitemap_discovery_is_cold meta GETs), runs inside the lambda,
-                    # off the loop under ENABLE_PRICE_PATH_REDIS_OFFLOOP.
-                    await run_redis_offloop(
-                        lambda: self._record_negative_price_cache(
-                            cache_key, price,
-                            guard_rejected=_guard_rejected_this_request,
-                            transient_discovery=sitemap_discovery_is_cold(category),
-                            # R4 — a Serper-outage estimate is TRANSIENT too: the discovery
-                            # tiers all errored, so the cascade ran blind; cap to 24h so the
-                            # outage never freezes the estimate for 30 days.
-                            discovery_degraded=_discovery_degraded,
-                            # Codex re-review HIGH-3 — stamp the RAW cold sitemap domains
-                            # (NOT cron-gated) so a 30d-negcached estimate written while the
-                            # cron was OFF gets read-side-invalidated the moment the index warms.
-                            category=category,
-                        ),
-                        durable=True,
+                    self._record_negative_price_cache(
+                        cache_key, price,
+                        guard_rejected=_guard_rejected_this_request,
+                        transient_discovery=sitemap_discovery_is_cold(category),
+                        # R4 — a Serper-outage estimate is TRANSIENT too: the discovery
+                        # tiers all errored, so the cascade ran blind; cap to 24h so the
+                        # outage never freezes the estimate for 30 days.
+                        discovery_degraded=_discovery_degraded,
+                        # Codex re-review HIGH-3 — stamp the RAW cold sitemap domains
+                        # (NOT cron-gated) so a 30d-negcached estimate written while the
+                        # cron was OFF gets read-side-invalidated the moment the index warms.
+                        category=category,
                     )
                 else:
                     logger.info(

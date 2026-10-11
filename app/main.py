@@ -282,6 +282,23 @@ def price_parse_pool_snapshot() -> dict:
     return {"price_parse_pool": stats} if stats else {}
 
 
+def redis_offloop_pool_snapshot() -> dict:
+    """S77 RO18: /health's redis_offloop_pool key {workers, queued}, present only
+    once the redis-offloop pool exists (ENABLE_PRICE_PATH_REDIS_OFFLOOP was ON at
+    least once in this process). Absent pool, absent module, a non-dict or a
+    raising stats call -> {}, so the body stays the base body. Reads sys.modules
+    (never an import), the W0-4g shape."""
+    mod = sys.modules.get("app.utils.redis_offloop")
+    fn = getattr(mod, "redis_offloop_pool_stats", None)
+    if fn is None:
+        return {}
+    try:
+        stats = fn()
+    except Exception:  # noqa: BLE001 — /health must never fail
+        return {}
+    return {"redis_offloop_pool": stats} if isinstance(stats, dict) else {}
+
+
 def _module_snapshot(module_name: str, fn_name: str) -> dict:
     """FANOUT-STARVE D1 / D6: one more /health key from a module-level snapshot
     function, the W0-4g shape -- sys.modules only (never an import), {} when the
@@ -596,6 +613,7 @@ async def health_check():
         "message": "MYEZ API is running",
         **loop_lag_snapshot(),
         **price_parse_pool_snapshot(),
+        **redis_offloop_pool_snapshot(),
         **adapter_executor_snapshot(),
         **brightdata_auth_health_snapshot(),
     }

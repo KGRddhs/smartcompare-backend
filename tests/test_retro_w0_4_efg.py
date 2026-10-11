@@ -1510,6 +1510,11 @@ def test_w04g_health_has_no_price_parse_pool_key_before_the_pool_exists(monkeypa
     from app.utils import executor as _executor
     from app.utils.executor import install_default_executor
     monkeypatch.setattr(_executor, "_INSTALLED_POOL", None)
+    # S77 RO18: this pin is the /health body WITHOUT a redis-offloop pool; under an
+    # exported ENABLE_PRICE_PATH_REDIS_OFFLOOP an earlier node of this process may
+    # have built one (its key is pinned in tests/test_s77_redis_offloop.py).
+    from app.utils import redis_offloop as _redis_offloop
+    monkeypatch.setattr(_redis_offloop, "_REDIS_OFFLOOP_POOL", None)
     loop = asyncio.new_event_loop()
     try:
         pool = install_default_executor(loop)
@@ -1564,6 +1569,11 @@ def test_w04g_health_survives_a_raising_pool_stats_fn(monkeypatch, error):
     if snapshot is None:
         pytest.fail("W0-4g: app.main has no price_parse_pool_snapshot() (behaviour absent)")
     _one_flagged_parse(monkeypatch)
+    # S77 RO18: this pin is the /health body WITHOUT a redis-offloop pool; under an
+    # exported ENABLE_PRICE_PATH_REDIS_OFFLOOP an earlier node of this process may
+    # have built one (its key is pinned in tests/test_s77_redis_offloop.py).
+    from app.utils import redis_offloop as _redis_offloop
+    monkeypatch.setattr(_redis_offloop, "_REDIS_OFFLOOP_POOL", None)
 
     def raising_stats():
         exc_type, message = _STATS_ERRORS[error]

@@ -2,7 +2,9 @@
 
 Spec: .qa-s77/OFFLOOP_UNIT_SPEC.md (base main 7b224c5a) as amended by the BINDING
 orchestrator rulings .qa-s77/RULINGS_S77_OFFLOOP.md (RO2 log lines, RO6 test list,
-RO15 right-reason RED).
+RO15 right-reason RED) and .qa-s77/RULINGS_S77_OFFLOOP_FIX1.md (RO16 S4b stays
+inline, RO17 the S6 L2-promotion write stays inline, RO18 /health
+``redis_offloop_pool``).
 
 Flag ``ENABLE_PRICE_PATH_REDIS_OFFLOOP`` (default OFF, read PER CALL); knob
 ``REDIS_OFFLOOP_MAX_WORKERS`` (default 16, clamped 1..32, read ONCE when the pool is
@@ -14,9 +16,11 @@ built). The new leaf module ``app/utils/redis_offloop.py`` exposes
 Sites (spec section 1): S1 price_service._fetch_shopify_catalog (catalog GET, neg SET,
 catalog SET); S2 fetch_bolo_price / fetch_boutiqaat_price (resolve_pdp_via_sitemap);
 S3 algolia_service._harvest_config (config GET / SETs); S4a scs._get_price negcache
-read (+ sitemap_domains_now_built); S4b scs._get_price negcache writes (the two
-_record_negative_price_cache terminals, arguments inside a lambda); S6
-review_service.get_reviews L1 read + L2-promotion write.
+read (+ sitemap_domains_now_built); S6 review_service.get_reviews L1 read.
+OUT of the unit (RO16 / RO17, pinned INLINE under both flag states): S4b, the two
+scs._get_price ``_record_negative_price_cache`` terminals (a deferred ``nogenuine:``
+SET could land after a concurrent request's #53 sentinel DELETE), and the S6
+L2-promotion write in get_reviews (the same reorder class).
 
 RO15 contract: the helper module is imported INSIDE each test that needs it
 (``_ro()``), so at base a missing module fails each test individually; the site tests
@@ -42,6 +46,7 @@ import gc
 import importlib
 import logging
 import re
+import sys
 import threading
 import time
 from pathlib import Path
@@ -430,7 +435,34 @@ def _install_converted_terminal(monkeypatch):
     monkeypatch.setattr(scs, "should_negative_cache", lambda p: True)
 
 
-def _install_s4b_fakes(monkeypatch, rec, *, is_cold=False, unbuilt=(), raise_on_set=False):
+class _LoopProbe:
+    """RO16 / RO17 "no suspension" probe. ``arm()`` runs at an anchor on the loop
+    thread and schedules one loop callback; ``check()`` runs at the write and records
+    whether the loop ran that callback in between, i.e. whether the coroutine yielded
+    between the anchor and the write. At base both sections are synchronous after
+    their anchor, so every observation is False. None = the anchor never ran on the
+    loop thread (it ran in a worker), or the write ran before any anchor."""
+
+    def __init__(self):
+        self._flag = None
+        self.observed = []
+
+    def arm(self):
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        flag = {"ran": False}
+        loop.call_soon(flag.__setitem__, "ran", True)
+        self._flag = flag
+
+    def check(self):
+        self.observed.append(None if self._flag is None else self._flag["ran"])
+
+
+def _install_s4b_fakes(
+    monkeypatch, rec, *, is_cold=False, unbuilt=(), raise_on_set=False, probe=None,
+):
     def fake_is_cold(category):
         rec.record("sitemap_discovery_is_cold", (category,))
         return is_cold
@@ -441,6 +473,8 @@ def _install_s4b_fakes(monkeypatch, rec, *, is_cold=False, unbuilt=(), raise_on_
 
     def fake_set(key, value, ttl):
         rec.record("set_negative_cache", (key, value, ttl))
+        if probe is not None:
+            probe.check()
         if raise_on_set:
             raise RuntimeError("s77 negcache write failure")
         return True
@@ -1041,40 +1075,73 @@ async def test_s4a_negcache_read_placement(monkeypatch, flag_on, row):
     _assert_placement(rec, flag_on, loop_thread, f"S4a[{row}]")
 
 
+def _install_persist_anchor(monkeypatch, svc, probe, method):
+    """Arm the probe right after the awaited persist call that precedes a negcache
+    terminal returns (the real method still runs): ``_persist_genuine_price`` for the
+    :8436 converted terminal, ``_persist_tier3_estimate`` for the :8513 Tier-3
+    terminal. At base the nogenuine: write follows it with no await in between."""
+    real = getattr(svc, method)
+
+    async def anchored(*args, **kwargs):
+        out = await real(*args, **kwargs)
+        probe.arm()
+        return out
+
+    monkeypatch.setattr(svc, method, anchored)
+
+
 @pytest.mark.asyncio
 @FLAG_ROWS
 @pytest.mark.parametrize("terminal", ["converted_8436", "tier3_8513"])
-async def test_s4b_negcache_write_placement(monkeypatch, flag_on, terminal):
+async def test_s4b_negcache_write_stays_inline(monkeypatch, flag_on, terminal):
+    """RO16: S4b left the unit. Under BOTH flag states each _record_negative_price_cache
+    terminal runs INLINE exactly as at base 7b224c5a: every fake on the loop thread, no
+    suspension between the awaited persist call that precedes it (_persist_genuine_price
+    at :8436, _persist_tier3_estimate at :8513) and the SET (the section stays
+    loop-atomic, so a concurrent request's #53 sentinel DELETE can never be reordered
+    before it), and
+    the base call shape (at :8513 sitemap_discovery_is_cold evaluated inline as the
+    argument, before sitemap_unbuilt_domains and the SET)."""
     _set_flag(monkeypatch, flag_on)
     loop_thread = threading.current_thread()
     svc = _tier3_harness(monkeypatch)
     rec = _Rec()
-    _install_s4b_fakes(monkeypatch, rec, is_cold=False, unbuilt=())
+    probe = _LoopProbe()
+    _install_s4b_fakes(monkeypatch, rec, is_cold=False, unbuilt=(), probe=probe)
     product = _P_DEFAULT
     if terminal == "converted_8436":
         _install_converted_terminal(monkeypatch)
+        _install_persist_anchor(monkeypatch, svc, probe, "_persist_genuine_price")
         product = _P_CONVERTED
+    else:
+        _install_persist_anchor(monkeypatch, svc, probe, "_persist_tier3_estimate")
     price = await _run_get_price(svc, nocache=True, product=product)
+    neg_key = ps.negative_cache_key(_price_cache_key(product))
     sets = rec.named("set_negative_cache")
     assert len(sets) == 1, rec.shapes()
-    assert sets[0][1][0] == ps.negative_cache_key(_price_cache_key(product))
+    (_n, (key, value, ttl), kwargs, _t) = sets[0]
+    assert key == neg_key and ttl == ps.NEGATIVE_PRICE_CACHE_TTL and kwargs == {}, sets[0]
+    assert "_cached" not in value, "the stored sentinel must still lack _cached"
     if terminal == "converted_8436":
         assert price["source_method"] == "converted_usd", price
-        assert rec.named("sitemap_discovery_is_cold") == []
-        _assert_placement(rec, flag_on, loop_thread, "S4b[:8436]", names={"set_negative_cache"})
+        assert rec.shapes() == [("set_negative_cache", (neg_key, value, ttl), {})]
     else:
         assert price.get("estimated") is True, price
-        assert [n for n, _a, _k in rec.shapes()] == [
-            "sitemap_discovery_is_cold", "sitemap_unbuilt_domains", "set_negative_cache",
+        assert rec.shapes() == [
+            ("sitemap_discovery_is_cold", (P_CAT,), {}),
+            ("sitemap_unbuilt_domains", (P_CAT,), {}),
+            ("set_negative_cache", (neg_key, value, ttl), {}),
         ]
-        _assert_placement(rec, flag_on, loop_thread, "S4b[:8513]")
-        if flag_on:
-            threads = rec.threads()
-            assert all(t is threads[0] for t in threads), (
-                "S4b[:8513]: sitemap_discovery_is_cold (the argument) must be evaluated "
-                "inside the lambda, in the same redis-offloop job as the write: "
-                f"{[t.name for t in threads]}"
-            )
+    for name, _a, _k, t in rec.calls:
+        assert t is loop_thread, (
+            f"S4b[{terminal}]: {name} ran in thread {t.name!r} with the flag "
+            f"{'ON' if flag_on else 'OFF'}; RO16 keeps the negcache terminal inline on "
+            "the event-loop thread (no run_redis_offloop dispatch)"
+        )
+    assert probe.observed == [False], (
+        f"S4b[{terminal}]: the coroutine yielded between the anchor and the "
+        f"nogenuine: SET (observed {probe.observed}); at base the section is loop-atomic"
+    )
 
 
 @pytest.mark.asyncio
@@ -1093,15 +1160,28 @@ async def test_s6_reviews_l1_read_placement(monkeypatch, flag_on):
 
 @pytest.mark.asyncio
 @FLAG_ROWS
-async def test_s6_reviews_l2_promotion_set_placement(monkeypatch, flag_on):
+async def test_s6_reviews_l2_promotion_set_stays_inline(monkeypatch, flag_on):
+    """RO17: the L1 read stays dispatched (pool thread under ON), but the L2-promotion
+    write runs INLINE under both flag states exactly as at base: on the loop thread,
+    no suspension between the awaited get_cached_reviews and the SET, base call shape."""
     _set_flag(monkeypatch, flag_on)
     loop_thread = threading.current_thread()
     rec = _Rec()
+    probe = _LoopProbe()
     monkeypatch.setattr(rs, "get_cached", _fake(rec, "get_cached", result=None))
-    monkeypatch.setattr(rs, "set_cached", _fake(rec, "set_cached", result=True))
+    set_fake = _fake(rec, "set_cached", result=True)
+
+    def probed_set(*args, **kwargs):
+        probe.check()
+        return set_fake(*args, **kwargs)
+
+    def db_hit(*args, **kwargs):
+        probe.arm()
+        return {"summary": "db"}
+
+    monkeypatch.setattr(rs, "set_cached", probed_set)
     monkeypatch.setattr(
-        "app.services.product_data_service.get_cached_reviews",
-        AsyncMock(side_effect=lambda *a, **k: {"summary": "db"}),
+        "app.services.product_data_service.get_cached_reviews", AsyncMock(side_effect=db_hit),
     )
     out = await _get_reviews()
     assert out == {"summary": "db", "_cached": True, "_cache_source": "db"}
@@ -1110,7 +1190,16 @@ async def test_s6_reviews_l2_promotion_set_placement(monkeypatch, flag_on):
         ("get_cached", (key,), {}),
         ("set_cached", (key, {"summary": "db"}, rs.REVIEWS_CACHE_TTL), {}),
     ]
-    _assert_placement(rec, flag_on, loop_thread, "S6 promotion set")
+    _assert_placement(rec, flag_on, loop_thread, "S6 L1 read", names={"get_cached"})
+    (_n, _a, _k, set_thread) = rec.named("set_cached")[0]
+    assert set_thread is loop_thread, (
+        f"S6 promotion: set_cached ran in thread {set_thread.name!r} with the flag "
+        f"{'ON' if flag_on else 'OFF'}; RO17 keeps the L2-promotion write inline"
+    )
+    assert probe.observed == [False], (
+        f"S6 promotion: the coroutine yielded between get_cached_reviews and the L1 "
+        f"promotion SET (observed {probe.observed}); at base the section is loop-atomic"
+    )
 
 
 @pytest.mark.asyncio
@@ -1362,6 +1451,8 @@ async def test_parity_s4a(monkeypatch, row):
 @pytest.mark.asyncio
 @pytest.mark.parametrize("row", ["default_30d", "transient_24h", "stamped_cold_domains"])
 async def test_parity_s4b(monkeypatch, row):
+    loop_thread = threading.current_thread()
+
     async def scenario(mp, rec):
         svc = _tier3_harness(mp)
         _install_s4b_fakes(
@@ -1386,7 +1477,26 @@ async def test_parity_s4b(monkeypatch, row):
         assert value["_sitemap_cold_domains"] == ["bolo.bh"]
     else:
         assert "_sitemap_cold_domains" not in value
-    _assert_parity(out, f"S4b[{row}]")
+    # RO16: equal results and call lists, and under ON every call stays on the loop.
+    _assert_parity_inline(out, f"S4b[{row}]", loop_thread)
+
+
+def _assert_parity_inline(out, what, loop_thread, inline_names=None):
+    """RO16 / RO17: ON == OFF results and call lists; the ``inline_names`` calls (all
+    calls when None) ran on the event-loop thread in BOTH branches."""
+    (r_off, rec_off), (r_on, rec_on) = out[False], out[True]
+    assert r_off == r_on, f"{what}: ON result {r_on!r} != OFF result {r_off!r}"
+    assert rec_on.shapes() == rec_off.shapes(), (
+        f"{what}: ON calls {rec_on.shapes()} != OFF calls {rec_off.shapes()}"
+    )
+    for label, rec_x in (("OFF", rec_off), ("ON", rec_on)):
+        calls = [c for c in rec_x.calls if inline_names is None or c[0] in inline_names]
+        assert calls, f"{what}: no inline call recorded under {label}"
+        for name, _a, _k, t in calls:
+            assert t is loop_thread, (
+                f"{what}: {name} ran in thread {t.name!r} under {label}; it must stay "
+                "inline on the event-loop thread"
+            )
 
 
 @pytest.mark.asyncio
@@ -1416,7 +1526,11 @@ async def test_parity_s6(monkeypatch, row):
             ("get_cached", (key,), {}),
             ("set_cached", (key, {"summary": "db"}, rs.REVIEWS_CACHE_TTL), {}),
         ]
-        _assert_parity(out, "S6[l2_promotion]")
+        # RO17: the L1 read is dispatched under ON; the promotion write stays inline.
+        _assert_parity(out, "S6[l2_promotion]", on_names={"get_cached"})
+        _assert_parity_inline(
+            out, "S6[l2_promotion]", threading.current_thread(), inline_names={"set_cached"},
+        )
     else:
         # nocache: no in-scope call at all in either branch (no GET, no promotion);
         # the only recorded call is the post-extraction :722 write, inline in both.
@@ -1706,14 +1820,16 @@ async def test_exception_parity_set_failopen(monkeypatch, caplog, flag_on):
 @FLAG_ROWS
 async def test_exception_parity_s4b(monkeypatch, flag_on):
     _set_flag(monkeypatch, flag_on)
+    loop_thread = threading.current_thread()
     svc = _tier3_harness(monkeypatch)
     rec = _Rec()
     _install_s4b_fakes(monkeypatch, rec, raise_on_set=True)
     price = await _run_get_price(svc, nocache=True)
     assert price.get("estimated") is True and price.get("amount") == 70.0, price
     assert len(rec.named("set_negative_cache")) == 1
-    if flag_on:
-        _assert_on_threads(rec, "G S4b", names={"set_negative_cache"})
+    # RO16: the swallowed write failure happens inline on the loop in both branches.
+    for name, _a, _k, t in rec.calls:
+        assert t is loop_thread, (name, t.name)
 
 
 # ===========================================================================
@@ -1792,14 +1908,18 @@ _SITE_FUNCS = [
      [("resolve_pdp_via_sitemap", False)], []),
     ("services/algolia_service.py", None, "_harvest_config",
      [("get_cached", False), ("set_cached", True), ("set_cached", True)], []),
+    # RO16: the two S4b terminals are ZERO dispatches; the base direct calls stay
+    # (sitemap_discovery_is_cold evaluated inline as the :8513 call's argument).
     ("services/structured_comparison_service.py", "StructuredComparisonService", "_get_price",
      [("get_negative_cache", False),
-      ("lambda:_record_negative_price_cache", True),
-      ("lambda:_record_negative_price_cache", True),
-      ("sitemap_domains_now_built", False)], []),
+      ("sitemap_domains_now_built", False)],
+     ["_record_negative_price_cache", "_record_negative_price_cache",
+      "sitemap_discovery_is_cold"]),
+    # RO17: 1 dispatch (the L1 read); the base direct set_cached calls stay (the
+    # L2 promotion + the 3 post-extraction writes).
     ("services/review_service.py", None, "get_reviews",
-     [("get_cached", False), ("set_cached", True)],
-     ["set_cached", "set_cached", "set_cached"]),
+     [("get_cached", False)],
+     ["set_cached", "set_cached", "set_cached", "set_cached"]),
 ]
 
 
@@ -1807,9 +1927,10 @@ _SITE_FUNCS = [
     "rel,cls,func,expected,direct", _SITE_FUNCS, ids=[f[2] for f in _SITE_FUNCS],
 )
 def test_source_every_in_scope_site_routes_through_helper(rel, cls, func, expected, direct):
-    """RO6: EXACT per-function dispatch counts (writes durable=True, reads not) and
-    zero direct calls of the wrapped names outside the helper, except the three
-    post-extraction set_cached calls in get_reviews."""
+    """RO6 as amended by RO16 / RO17: EXACT per-function dispatch counts (writes
+    durable=True, reads not) and the EXACT set of direct calls of the wrapped names
+    outside the helper: the two S4b terminals in _get_price, the promotion write and
+    the three post-extraction set_cached calls in get_reviews."""
     fn = _find_function(APP / rel, func, cls)
     dispatches = _helper_dispatches(fn)
     got = sorted((t, d) for t, d, _n in dispatches)
@@ -1848,21 +1969,103 @@ def test_source_negcache_closure_is_async_and_awaited(rel, func, awaited_calls):
     )
 
 
-def test_source_s4b_lambda_evaluates_is_cold_inside():
-    """The :8513 lambda carries sitemap_discovery_is_cold(category) inside its body."""
+def _statement_slot(fn_node, call):
+    """(statement list, index) of the bare expression statement whose value is
+    ``call``; None when the call is not a bare statement (awaited, assigned, nested
+    in a lambda or an argument)."""
+    for node in ast.walk(fn_node):
+        for field in ("body", "orelse", "finalbody"):
+            stmts = getattr(node, field, None)
+            if not isinstance(stmts, list):
+                continue
+            for i, stmt in enumerate(stmts):
+                if isinstance(stmt, ast.Expr) and stmt.value is call:
+                    return stmts, i
+    return None
+
+
+def _names(nodes):
+    return [n.id if isinstance(n, ast.Name) else ast.dump(n) for n in nodes]
+
+
+def test_source_s4b_stays_inline_base_call_shape():
+    """RO16: _get_price passes NO lambda to run_redis_offloop, and both S4b terminals
+    are the base 7b224c5a statements: a bare (not awaited) ``self._record_negative_
+    price_cache(...)`` expression statement with the base arguments, at the base
+    position (:8436 right after the awaited _persist_genuine_price and right before
+    ``converted_fallback["_cached"] = False``; :8513 the first statement of the
+    ``if _tier3_persisted:`` block, ``sitemap_discovery_is_cold(category)`` evaluated
+    inline as its transient_discovery argument)."""
     fn = _find_function(
         APP / "services/structured_comparison_service.py", "_get_price", "StructuredComparisonService",
     )
-    lambdas = [n.args[0] for _t, _d, n in _helper_dispatches(fn) if isinstance(n.args[0], ast.Lambda)]
-    assert len(lambdas) == 2, f"expected the two S4b lambdas, found {len(lambdas)}"
-    with_is_cold = [
-        lam for lam in lambdas
-        if any(isinstance(s, ast.Call) and _call_name(s.func) == "sitemap_discovery_is_cold"
-               for s in ast.walk(lam))
-    ]
-    assert len(with_is_cold) == 1, "exactly one S4b lambda must evaluate sitemap_discovery_is_cold"
-    kwargs = {kw.arg for kw in with_is_cold[0].body.keywords}
-    assert kwargs == {"guard_rejected", "transient_discovery", "discovery_degraded", "category"}, kwargs
+    lambdas = [n for _t, _d, n in _helper_dispatches(fn) if isinstance(n.args[0], ast.Lambda)]
+    assert lambdas == [], f"_get_price still dispatches {len(lambdas)} S4b lambda(s)"
+    calls = [n for n in ast.walk(fn)
+             if isinstance(n, ast.Call) and _call_name(n.func) == "_record_negative_price_cache"]
+    assert len(calls) == 2, f"expected the two base S4b calls, found {len(calls)}"
+    by_arg = {}
+    for call in calls:
+        assert isinstance(call.func, ast.Attribute) and isinstance(call.func.value, ast.Name)
+        assert call.func.value.id == "self", ast.dump(call.func)
+        slot = _statement_slot(fn, call)
+        assert slot is not None, (
+            f"_record_negative_price_cache at line {call.lineno} is not a bare inline "
+            "statement (awaited, wrapped or nested)"
+        )
+        by_arg[_names(call.args)[1]] = (call, slot)
+    assert set(by_arg) == {"converted_fallback", "price"}, sorted(by_arg)
+
+    conv, (stmts, i) = by_arg["converted_fallback"]
+    assert _names(conv.args) == ["cache_key", "converted_fallback"] and conv.keywords == []
+    prev = stmts[i - 1]
+    assert (isinstance(prev, ast.Expr) and isinstance(prev.value, ast.Await)
+            and _call_name(prev.value.value.func) == "_persist_genuine_price"), ast.dump(prev)
+    nxt = stmts[i + 1]
+    assert (isinstance(nxt, ast.Assign) and isinstance(nxt.targets[0], ast.Subscript)
+            and _names([nxt.targets[0].value]) == ["converted_fallback"]
+            and isinstance(nxt.value, ast.Constant) and nxt.value.value is False), ast.dump(nxt)
+
+    tier3, (stmts, i) = by_arg["price"]
+    assert _names(tier3.args) == ["cache_key", "price"]
+    assert i == 0, "the :8513 call must be the first statement of its block"
+    owner = [n for n in ast.walk(fn) if isinstance(n, ast.If) and n.body is stmts]
+    assert len(owner) == 1 and _names([owner[0].test]) == ["_tier3_persisted"], (
+        [ast.dump(o.test) for o in owner]
+    )
+    kw = [(k.arg, k.value) for k in tier3.keywords]
+    assert [a for a, _v in kw] == [
+        "guard_rejected", "transient_discovery", "discovery_degraded", "category",
+    ], [a for a, _v in kw]
+    values = dict(kw)
+    assert _names([values["guard_rejected"]]) == ["_guard_rejected_this_request"]
+    assert _names([values["discovery_degraded"]]) == ["_discovery_degraded"]
+    assert _names([values["category"]]) == ["category"]
+    cold = values["transient_discovery"]
+    assert (isinstance(cold, ast.Call) and _call_name(cold.func) == "sitemap_discovery_is_cold"
+            and isinstance(cold.func, ast.Name) and _names(cold.args) == ["category"]
+            and cold.keywords == []), ast.dump(cold)
+
+
+def test_source_s6_promotion_write_stays_inline_base_call_shape():
+    """RO17: the L2-promotion write in get_reviews is the base statement
+    ``set_cached(cache_key, db_reviews, REVIEWS_CACHE_TTL)``: a bare inline call, the
+    first statement of the ``if db_reviews:`` block, never a run_redis_offloop
+    argument."""
+    fn = _find_function(APP / "services/review_service.py", "get_reviews")
+    for _t, _d, node in _helper_dispatches(fn):
+        for sub in ast.walk(node):
+            assert not (isinstance(sub, ast.Name) and sub.id == "db_reviews"), (
+                "the L2-promotion write is dispatched through run_redis_offloop"
+            )
+    owners = [n for n in ast.walk(fn) if isinstance(n, ast.If) and _names([n.test]) == ["db_reviews"]]
+    assert len(owners) == 1, len(owners)
+    first = owners[0].body[0]
+    assert isinstance(first, ast.Expr) and isinstance(first.value, ast.Call), ast.dump(first)
+    call = first.value
+    assert isinstance(call.func, ast.Name) and call.func.id == "set_cached", ast.dump(call.func)
+    assert _names(call.args) == ["cache_key", "db_reviews", "REVIEWS_CACHE_TTL"]
+    assert call.keywords == []
 
 
 def test_redis_offloop_module_is_a_leaf():
@@ -1995,3 +2198,154 @@ async def test_orchestrator_bahrain_shopify_consume_on_collects_all(monkeypatch,
     drops = [r.getMessage() for r in caplog.records if "shopify: CONSUME-BOUND" in r.getMessage()]
     assert not drops, drops
     assert elapsed < 3.0, f"_get_price took {elapsed:.2f}s"
+
+
+# ===========================================================================
+# I. /health redis_offloop_pool (RO18; the W0-4g price_parse_pool wiring)
+# ===========================================================================
+
+_HEALTH_KEY = "redis_offloop_pool"
+# Every key /health may carry at base 7b224c5a (W1-10 five + the W0-4g / FS-R7 / D6
+# conditional keys): the body without the pool must stay inside this set.
+_BASE_HEALTH_KEYS = {
+    "status", "message", "loop_lag_ms", "loop_lag_max_ms", "loop_lag_max_60s_ms",
+    "price_parse_pool", "adapter_executor", "brightdata_auth",
+}
+
+
+def _app_main():
+    return importlib.import_module("app.main")
+
+
+def _health_body_and_text():
+    from fastapi.testclient import TestClient
+
+    response = TestClient(_app_main().app).get("/health")
+    assert response.status_code == 200, response.status_code
+    return response.json(), response.text
+
+
+def _build_offloop_pool(monkeypatch):
+    """Build the pool the production way: one ON dispatch on a throwaway loop."""
+    ro = _ro()
+    monkeypatch.setenv(FLAG, "true")
+    loop = asyncio.new_event_loop()
+    try:
+        loop.run_until_complete(ro.run_redis_offloop(lambda: None))
+    finally:
+        loop.close()
+    monkeypatch.delenv(FLAG, raising=False)
+    assert ro._REDIS_OFFLOOP_POOL is not None, "precondition: the ON dispatch built the pool"
+    return ro
+
+
+@FLAG_ROWS
+def test_health_has_no_redis_offloop_key_while_the_pool_is_none(monkeypatch, flag_on):
+    """RO18 PIN: with no pool built (stats None) /health is the base body: no
+    ``redis_offloop_pool`` key, no null, nothing named redis_offloop, every key one
+    /health could carry at base, status / message unchanged. Passes at base."""
+    _set_flag(monkeypatch, flag_on)
+    mod = sys.modules.get(HELPER_MOD)
+    if mod is not None:
+        assert getattr(mod, "_REDIS_OFFLOOP_POOL", None) is None
+        assert mod.redis_offloop_pool_stats() is None
+    body, text = _health_body_and_text()
+    assert _HEALTH_KEY not in body, sorted(body)
+    assert "redis_offloop" not in text, text
+    assert set(body) <= _BASE_HEALTH_KEYS, sorted(set(body) - _BASE_HEALTH_KEYS)
+    assert body.get("status") == "healthy" and body.get("message") == "MYEZ API is running"
+
+
+def test_health_carries_redis_offloop_pool_once_the_pool_exists(monkeypatch):
+    """RO18: once a dispatch built the pool, /health carries ``redis_offloop_pool``
+    {"workers": int 16, "queued": int} from redis_offloop_pool_stats()."""
+    ro = _build_offloop_pool(monkeypatch)
+    body, _text = _health_body_and_text()
+    assert _HEALTH_KEY in body, (
+        f"RO18: the redis-offloop pool exists but /health has no {_HEALTH_KEY!r} key "
+        f"(keys {sorted(body)})"
+    )
+    snap = body[_HEALTH_KEY]
+    assert set(snap) == {"workers", "queued"}, snap
+    assert type(snap["workers"]) is int and snap["workers"] == 16, snap
+    assert type(snap["queued"]) is int and snap["queued"] >= 0, snap
+    assert snap == ro.redis_offloop_pool_stats(), (snap, ro.redis_offloop_pool_stats())
+    assert body.get("status") == "healthy" and body.get("message") == "MYEZ API is running"
+    assert set(body) - {_HEALTH_KEY} <= _BASE_HEALTH_KEYS, sorted(body)
+    assert _app_main().redis_offloop_pool_snapshot() == {_HEALTH_KEY: snap}
+
+
+@pytest.mark.parametrize("stats", [None, [], "16", 0], ids=["none", "list", "str", "zero"])
+def test_health_no_key_when_stats_is_not_a_dict(monkeypatch, stats):
+    """RO18: the key is emitted ONLY when redis_offloop_pool_stats() returns a dict;
+    None (executor drift) or any other value leaves /health at the base body."""
+    ro = _build_offloop_pool(monkeypatch)
+    monkeypatch.setattr(ro, "redis_offloop_pool_stats", lambda: stats)
+    assert _app_main().redis_offloop_pool_snapshot() == {}
+    body, text = _health_body_and_text()
+    assert _HEALTH_KEY not in body and "redis_offloop" not in text, sorted(body)
+    assert set(body) <= _BASE_HEALTH_KEYS, sorted(body)
+
+
+_RO18_STATS_ERRORS = {
+    "AttributeError": (AttributeError, "'ThreadPoolExecutor' object has no attribute '_work_queue'"),
+    "TypeError": (TypeError, "'NoneType' object is not subscriptable"),
+    "KeyError": (KeyError, "workers"),
+    "RuntimeError": (RuntimeError, "dictionary changed size during iteration"),
+    "ValueError": (ValueError, "stats unavailable"),
+}
+
+
+@pytest.mark.parametrize("error", sorted(_RO18_STATS_ERRORS))
+def test_health_survives_a_raising_redis_offloop_stats(monkeypatch, error):
+    """RO18: a raising stats call never breaks /health (guarded like its
+    price_parse_pool sibling): the snapshot returns {} for every Exception subclass
+    and /health answers 200 with the base body."""
+    ro = _build_offloop_pool(monkeypatch)
+    snapshot = getattr(_app_main(), "redis_offloop_pool_snapshot", None)
+    assert snapshot is not None, "RO18: app.main has no redis_offloop_pool_snapshot()"
+
+    def raising_stats():
+        exc_type, message = _RO18_STATS_ERRORS[error]
+        raise exc_type(message)
+
+    monkeypatch.setattr(ro, "redis_offloop_pool_stats", raising_stats)
+    try:
+        snap = snapshot()
+    except Exception as exc:  # noqa: BLE001 - the pin reports the escape as a failure
+        pytest.fail(f"RO18: redis_offloop_pool_snapshot() let the stats error escape: {exc!r}")
+    assert snap == {}, snap
+    body, _text = _health_body_and_text()
+    assert _HEALTH_KEY not in body, sorted(body)
+    assert body.get("status") == "healthy" and body.get("message") == "MYEZ API is running"
+
+
+def test_health_snapshot_reads_sys_modules_and_never_imports(monkeypatch):
+    """RO18 (the W0-4g shape): the snapshot reads sys.modules only, so /health can
+    never trigger an import; with the helper module absent it returns {}."""
+    snapshot = getattr(_app_main(), "redis_offloop_pool_snapshot", None)
+    assert snapshot is not None, "RO18: app.main has no redis_offloop_pool_snapshot()"
+    saved = sys.modules.pop(HELPER_MOD, None)
+    try:
+        assert snapshot() == {}
+        assert HELPER_MOD not in sys.modules, "the /health snapshot imported the helper module"
+    finally:
+        sys.modules.pop(HELPER_MOD, None)
+        if saved is not None:
+            sys.modules[HELPER_MOD] = saved
+
+
+def test_health_wires_the_pool_snapshot_after_price_parse_pool():
+    """RO18 position: health_check's returned dict unpacks
+    ``**redis_offloop_pool_snapshot()`` immediately after
+    ``**price_parse_pool_snapshot()`` (the same position style)."""
+    fn = _find_function(APP / "main.py", "health_check")
+    returns = [n for n in ast.walk(fn) if isinstance(n, ast.Return) and isinstance(n.value, ast.Dict)]
+    assert len(returns) == 1, len(returns)
+    spread = [
+        _call_name(v.func) for k, v in zip(returns[0].value.keys, returns[0].value.values)
+        if k is None and isinstance(v, ast.Call)
+    ]
+    assert "redis_offloop_pool_snapshot" in spread, spread
+    i = spread.index("price_parse_pool_snapshot")
+    assert spread[i + 1] == "redis_offloop_pool_snapshot", spread
