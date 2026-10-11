@@ -52,6 +52,11 @@ sentence repeats the noun, so the licence and the sale reach only the statistics
 fixture); (j) pins the UF24 privacy s9 sentence (de-identified comparison data and statistics that cannot identify
 you may be kept after deletion, EN and AR); (o) pins the Arabic review's AR-P1: the doubled-period phrase is gone
 from the AR privacy source and its rendered page, the corrected phrase is in the source (UF25).
+S77 (owner M1 = Option B, 2026-10-11; rulings RL2, RL10, LG4): (i) and (j) pin the general not-sold promise
+("Apart from OpenAI's data-sharing programme described below, we do not sell or otherwise exchange your personal
+data for anything of value ...") followed by the OpenAI exchange disclosure, in terms s8 and privacy s2 (EN and the
+AR twins in the fixture); the bare terms clause "your personal data is never sold" is retired; (n) pins the RL2
+own-terms sentence that names Google as our mailbox provider.
 
 THE T8 RULE FOR d3 = C (replaces, for C only, the D3 = A rule "none of opt out / Help improve
 AI quality / Data Sharing Program"): privacy section 4 matches every pattern of
@@ -553,7 +558,11 @@ TERMS_DERIVED_EN = (
     "the prices gathered and de-identified search queries) and the preference and usage statistics we derive from "
     "it in aggregated or anonymised form. We may use this data to operate and improve MYEZ, and we may share, "
     "license or sell aggregated or anonymised statistics derived from it (for example price trends or category "
-    "popularity) to third parties; none of it identifies you, and your personal data is never sold."
+    "popularity) to third parties; none of it identifies you. Apart from OpenAI's data-sharing programme described "
+    "below, we do not sell or otherwise exchange your personal data for anything of value, and we do not share it "
+    "with data brokers or advertisers. We take part in OpenAI's data-sharing programme, as section 4 of our "
+    "Privacy Policy describes: OpenAI may use the inputs we send it and the outputs it generates from them to "
+    "evaluate and train its models, and in return OpenAI gives us some free use of its service."
 )
 # Retired wording (FIX round 2 UF6 b, d; FIX round 4 UF14: the comparison and preference data itself is no longer
 # the sale object); none may come back.
@@ -561,12 +570,16 @@ TERMS_RETIRED_EN = (
     "Your comparison history is yours and",
     "stripped of anything that identifies you",
     "license or sell that comparison and preference data",
+    "your personal data is never sold",
 )
 # Privacy section 2 (UF7: the "not sold" statement points at section 4 for OpenAI), 3.6 (UF6 c) and 9 (UF6 e).
-PRIVACY_NOT_SOLD_EN = "We do not sell your personal data"
+PRIVACY_NOT_SOLD_EN = "we do not sell or otherwise exchange your personal data for anything of value"
 PRIVACY_S2_EN = (
-    "We do not sell your personal data, and we do not share it with data brokers or advertisers; section 4 "
-    "describes what OpenAI may do with the inputs and outputs of your comparisons."
+    "Apart from OpenAI's data-sharing programme described below, we do not sell or otherwise exchange your "
+    "personal data for anything of value, and we do not share it with data brokers or advertisers. We take part in "
+    "OpenAI's data-sharing programme (section 4): OpenAI may use the inputs we send it and the outputs it "
+    "generates from them to evaluate and train its models, and in return OpenAI gives us some free use of its "
+    "service."
 )
 PRIVACY_AGG_EN = (
     "We may share or sell aggregated or anonymised comparison and preference statistics (for example price "
@@ -837,7 +850,9 @@ def test_d3c_i_terms_grant_the_licence_and_own_only_derived_data():
     datasets and to obtain comparisons from our AI provider) and the derived-data sentences (UF14: the
     de-identified comparison data and the aggregated or anonymised preference and usage statistics are ours; only
     aggregated or anonymised statistics derived from them are shared, licensed or sold; none of it identifies a
-    user; personal data is never sold), each once and in that order; the retired wording is gone."""
+    user; S77 general promise: apart from OpenAI's data-sharing programme, personal data is not sold or otherwise
+    exchanged for anything of value and not shared with data brokers or advertisers, followed by the OpenAI
+    disclosure), each once and in that order; the retired wording (the bare 'never sold' clause) is gone."""
     ar = _ug12_ar()
     problems = []
     for rel, history, licence, derived, retired in (
@@ -858,12 +873,13 @@ def test_d3c_i_terms_grant_the_licence_and_own_only_derived_data():
 
 
 def test_d3c_j_privacy_keeps_not_sold_and_adds_the_aggregated_sentence():
-    """(j) UG12 + UF7 + UF6: privacy, EN and AR. Section 2 says personal data is not sold and not shared with data
-    brokers or advertisers, pointing at section 4 for OpenAI, and the aggregated or anonymised statistics sentence
-    follows it in the same paragraph, once; section 3.6 names the purpose of producing de-identified statistics
-    with its legal basis and (UF11) the purpose of letting OpenAI use the inputs and outputs under its
-    data-sharing programme with its legal basis; section 9 says de-identified comparison data and statistics may
-    be kept after deletion (FIX round 5, UF24)."""
+    """(j) UG12 + UF7 + UF6 + S77: privacy, EN and AR. Section 2 carries the general promise (apart from OpenAI's
+    data-sharing programme described in section 4, personal data is not sold or otherwise exchanged for anything of
+    value and not shared with data brokers or advertisers) and the OpenAI disclosure, and the aggregated or
+    anonymised statistics sentence follows it in the same paragraph, once; section 3.6 names the purpose of
+    producing de-identified statistics with its legal basis and (UF11) the purpose of letting OpenAI use the
+    inputs and outputs under its data-sharing programme with its legal basis; section 9 says de-identified
+    comparison data and statistics may be kept after deletion (FIX round 5, UF24)."""
     ar = _ug12_ar()
     ar_openai = _fix3_ar()["privacy_openai_purpose"]
     problems = []
@@ -953,7 +969,10 @@ S5_CARVEOUT_EN = (
     "Except as section 4 describes for OpenAI, each of our service providers processes data only to provide its "
     "service to us, and we require each of them to protect it at least as well as this policy does."
 )
-S5_OWN_TERMS_EN = "Retailer websites (section 6) and the sign-in providers Apple and Google act under their own terms."
+S5_OWN_TERMS_EN = (
+    "Retailer websites (section 6), the sign-in providers Apple and Google, and Google as our mailbox provider act "
+    "under their own terms."
+)
 # FIX round 4 (UF22): the final adversary 3's probe X3, the unqualified providers claim added OUTSIDE s5 (AR twin:
 # the fixture's fix4_ar.x3).
 X3_EN = "Each provider processes data only to provide its service to us."
