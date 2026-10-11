@@ -160,6 +160,16 @@
       "gate_flag": null
     },
     {
+      "id": "gmail",
+      "name_en": "Google (Gmail)",
+      "name_ar": "Google (Gmail)",
+      "kind": "email_mailbox",
+      "personal_data": true,
+      "module": [],
+      "hosts": [],
+      "gate_flag": null
+    },
+    {
       "id": "youtube",
       "name_en": "YouTube",
       "name_ar": "YouTube",

@@ -63,12 +63,12 @@ const ADDRESS_COUNTS: Record<string, number> = {
   // footer support@ mailto = 5. The body's contact lines are rendered from app/legal/*.md; the
   // fill-in (2026-10-11) recorded privacy@getmyez.com and support@getmyez.com, so the counts
   // below are re-measured on the filled pages (every address on these pages is on getmyez.com).
-  'privacy.html': 10,
+  'privacy.html': 11, // S77 FIX (RF2): privacy s9 names privacy@getmyez.com once more
   'support.html': 10,
   'terms.html': 6,
   'open.html': 3, // the three getmyez.com mentions: two in the head comment + the script's linking prefix
   'ar/index.html': 8,
-  'ar/privacy.html': 10,
+  'ar/privacy.html': 11, // S77 FIX (RF2): the same s9 sentence in Arabic
   'ar/support.html': 10,
   'ar/terms.html': 6,
 };

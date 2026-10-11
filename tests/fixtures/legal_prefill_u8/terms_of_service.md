@@ -21,7 +21,7 @@ MYEZ helps you compare two products. It gathers reviews and prices from public s
 
 ## 4. Free use and limits
 
-Use of MYEZ is free. Each account can run a limited number of comparisons (currently 3 a day and up to 10 a month, after 3 introductory comparisons). We may change these limits. This version of the App sells no subscriptions or in-app purchases.
+Use of MYEZ is free. Each account can run a limited number of comparisons (currently up to 3 a day and up to 10 a month; your first 3 comparisons count toward these limits, and the referral rewards described in section 9 add to the monthly limit). We may change these limits. This version of the App sells no subscriptions or in-app purchases.
 
 ## 5. Acceptable use
 
@@ -45,7 +45,7 @@ Links take you to third-party retailers. We are not responsible for their produc
 
 ## 8. Intellectual property
 
-The App, its design, code and branding belong to <PLACEHOLDER:IP_OWNER> (or are licensed to us). Product information and reviews belong to their owners. Your account's comparison history is yours to view, share and delete, and is handled under our Privacy Policy. You grant us a worldwide, royalty-free licence to use the content you submit to MYEZ (your queries, photos, links, feedback and preferences) to operate, secure and improve the service, to create de-identified comparison and preference datasets, and to obtain comparisons from our AI provider as our Privacy Policy describes. We own the de-identified comparison data that MYEZ compiles (the products compared, the verdicts and scores, the prices gathered and de-identified search queries) and the preference and usage statistics we derive from it in aggregated or anonymised form. We may use this data to operate and improve MYEZ, and we may share, license or sell aggregated or anonymised statistics derived from it (for example price trends or category popularity) to third parties; none of it identifies you, and your personal data is never sold.
+The App, its design, code and branding belong to <PLACEHOLDER:IP_OWNER> (or are licensed to us). Product information and reviews belong to their owners. Your account's comparison history is yours to view, share and delete, and is handled under our Privacy Policy. You grant us a worldwide, royalty-free licence to use the content you submit to MYEZ (your queries, photos, links, feedback and preferences) to operate, secure and improve the service, to create de-identified comparison and preference datasets, and to obtain comparisons from our AI provider as our Privacy Policy describes. We own the de-identified comparison data that MYEZ compiles (the products compared, the verdicts and scores, the prices gathered and de-identified search queries) and the preference and usage statistics we derive from it in aggregated or anonymised form. We may use this data to operate and improve MYEZ, and we may share, license or sell aggregated or anonymised statistics derived from it (for example price trends or category popularity) to third parties; none of it identifies you. Apart from OpenAI's data-sharing programme described below, we do not sell or otherwise exchange your personal data for anything of value, and we do not share it with data brokers or advertisers. We take part in OpenAI's data-sharing programme, as section 4 of our Privacy Policy describes: OpenAI may use the inputs we send it and the outputs it generates from them to evaluate and train its models, and in return OpenAI gives us some free use of its service.
 
 ## 9. Smart Decision Referrals
 

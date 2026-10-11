@@ -672,11 +672,19 @@ def test_polish_b8_underscore_subtag_serves_arabic(value):
 # Fix round 2 (finding P1 of the polish adversary, 2026-10-08; amends UP4 A12(b))
 # ---------------------------------------------------------------------------
 
-P1_LINE_EN = "- **Cloudflare:** delivers the email you send to our addresses."
+P1_LINE_EN = (
+    "- **Cloudflare:** receives the email you send to our addresses and forwards it to our mailbox provider, "
+    "Google (Gmail), which stores it under Google's own terms."
+)
 P1_LINE_AR = (
-    "- **Cloudflare:** \u062a\u0648\u0635\u0644 \u0631\u0633\u0627\u0626\u0644 \u0627\u0644\u0628\u0631\u064a\u062f "
-    "\u0627\u0644\u0625\u0644\u0643\u062a\u0631\u0648\u0646\u064a \u0627\u0644\u062a\u064a \u062a\u0631\u0633\u0644\u0647\u0627 "
-    "\u0625\u0644\u0649 \u0639\u0646\u0627\u0648\u064a\u0646\u0646\u0627."
+    "- **Cloudflare:** \u062a\u062a\u0644\u0642\u0649 \u0631\u0633\u0627\u0626\u0644 "
+    "\u0627\u0644\u0628\u0631\u064a\u062f \u0627\u0644\u0625\u0644\u0643\u062a\u0631\u0648\u0646\u064a "
+    "\u0627\u0644\u062a\u064a \u062a\u0631\u0633\u0644\u0647\u0627 \u0625\u0644\u0649 "
+    "\u0639\u0646\u0627\u0648\u064a\u0646\u0646\u0627 \u0648\u062a\u0639\u064a\u062f "
+    "\u062a\u0648\u062c\u064a\u0647\u0647\u0627 \u0625\u0644\u0649 \u0645\u0632\u0648\u0651\u062f "
+    "\u0635\u0646\u062f\u0648\u0642 \u0628\u0631\u064a\u062f\u0646\u0627\u060c Google (Gmail)\u060c "
+    "\u0627\u0644\u0630\u064a \u064a\u062e\u0632\u0651\u0646\u0647\u0627 \u0648\u0641\u0642 "
+    "\u0634\u0631\u0648\u0637 Google \u0627\u0644\u062e\u0627\u0635\u0629."
 )
 P1_EMAIL_PAIRS = (
     ("privacy@qaren.app", "help@example.com"),

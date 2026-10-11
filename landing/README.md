@@ -27,7 +27,7 @@ landing/
 ├── terms.html                                     ← Terms of Service (same source)
 ├── support.html                                   ← Support — meta-refresh to mailto + visible button fallback
 ├── open.html                                      ← Universal-link hand-off for /c/<token> /r/<code> /q/<token> (S69): qaren:// button, store link once APP_STORE_URL is filled
-├── bot/index.html                                 ← Crawler info page served at /bot (S76): what the MYEZ crawler (QarenBot) reads, robots.txt honoured, support contact
+├── bot/index.html                                 ← Crawler info page served at /bot (S76): how MYEZ looks up prices, the site-discovery crawler (QarenBot) follows robots.txt, support contact (reworded S77)
 ├── Dockerfile                                     ← nginx:alpine static-serve image for Railway
 ├── nginx.conf.template                            ← envsubst template (binds nginx to $PORT) + headers + .well-known MIME
 ├── railway.toml                                   ← Railway service config (DOCKERFILE builder, /healthz)
@@ -40,7 +40,7 @@ landing/
 
 **Note on `/support`:** an HTTP 301/308 redirect with `mailto:` destination does NOT work cross-browser (Chrome/Safari inconsistent, Firefox rejects). Instead, nginx's `location = /support { try_files /support.html =404; }` serves `support.html` directly. The HTML combines `<meta http-equiv="refresh" content="0; url=mailto:support@getmyez.com">` immediate-redirect with a visible "Email support@getmyez.com" button as the no-redirect fallback. Same behavior as the Vercel `cleanUrls` approach in the archived alternative config.
 
-**Note on `www` and `/bot` (session 76):** a second nginx server block 301-redirects `www.getmyez.com` to `https://getmyez.com$request_uri` (universal links and the AASA are claimed for the apex only; the block sits AFTER the catch-all so every other Host keeps reaching the site). `location = /bot` serves `bot/index.html`, the page the crawler's User-Agent names (`QarenBot/1.0 (+https://getmyez.com/bot; ...)`): what it reads, that it honours robots.txt, and the support address.
+**Note on `www` and `/bot` (session 76):** a second nginx server block 301-redirects `www.getmyez.com` to `https://getmyez.com$request_uri` (universal links and the AASA are claimed for the apex only; the block sits AFTER the catch-all so every other Host keeps reaching the site). `location = /bot` serves `bot/index.html`, the page the crawler's User-Agent names (`QarenBot/1.0 (+https://getmyez.com/bot; ...)`): how MYEZ looks up prices, that its site-discovery crawler QarenBot follows robots.txt, and the support address.
 
 ## Design notes
 
@@ -49,7 +49,7 @@ landing/
 - **Visual mark:** inline SVG concentric-circles motif matching `src/components/illustrations/ConcentricMotif.tsx` (the app's brand language). Avoids dependency on `assets/icon.png` which is still an Expo placeholder per asset audit (A5 pending).
 - **Mobile-first:** clamp() responsive type, viewport-fit cover for notch devices, prefers-color-scheme dark variant.
 - **Zero scary copy:** no "couldn't" / "try again" / "Failed to" anywhere. "Coming soon" framed as anticipation, not delay.
-- **App Store + Google Play badges:** present but `pointer-events: none` + opacity 0.6 — visual placeholder only. Wire up real links post-TestFlight Phase 3.
+- **App Store badge:** present but `pointer-events: none` + opacity 0.6 — visual placeholder only. Wire up real links post-TestFlight Phase 3. The Google Play badge was removed in S77: no Android app is planned.
 - **No JavaScript.** Pure HTML+CSS+webfonts. Reduces attack surface; lighthouse scores stay green.
 - **Favicon:** `index.html` references `/favicon.png` — same Expo-placeholder issue as the app icon (A5 blocker). nginx silently 404s the favicon (`log_not_found off`) until A5 resolves so the access logs don't fill with noise. Browsers tolerate missing favicons.
 
