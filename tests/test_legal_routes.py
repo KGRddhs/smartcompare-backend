@@ -78,7 +78,7 @@ class TestLegalRoutes:
         assert response.status_code == 200
         body = response.json()
         assert "content" in body
-        assert "Qaren" in body["content"]
+        assert "MYEZ" in body["content"]
 
     def test_terms_of_service_returns_200_with_markdown_body(self):
         """Bundle D Task 1.B.1 acceptance — frontend calls /terms_of_service not /terms."""
@@ -88,7 +88,7 @@ class TestLegalRoutes:
         assert response.status_code == 200
         body = response.json()
         assert "content" in body
-        assert "Qaren" in body["content"]
+        assert "MYEZ" in body["content"]
 
     def test_legal_content_no_smartcompare_brand_residue(self):
         """Bundle D Task 1.B.7 (R22) acceptance — Qaren-only branding, no SmartCompare leak."""

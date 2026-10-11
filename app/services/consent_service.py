@@ -28,7 +28,7 @@ from typing import Dict, Optional
 
 from fastapi import HTTPException
 
-TERMS_VERSION = "2026-03-26"
+TERMS_VERSION = "2026-10-11"
 
 TERMS_ACCEPTANCE_REQUIRED = "TERMS_ACCEPTANCE_REQUIRED"
 TERMS_ACCEPTANCE_REQUIRED_MESSAGE = "Please accept the Terms and confirm you are 13 or older."

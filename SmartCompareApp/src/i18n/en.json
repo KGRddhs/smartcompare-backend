@@ -881,6 +881,7 @@
   "legal.error.title": "Hold on — this page is taking a moment.",
   "legal.error.retry": "Tap to retry",
   "legal.offline.banner": "Showing offline copy",
+  "legal.error.openWeb": "Open the web version",
 
   "contact.title": "Contact Us",
   "contact.category.label": "Category",
