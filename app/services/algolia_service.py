@@ -35,6 +35,7 @@ from html import unescape as html_unescape
 from typing import Optional, Dict, Any, List
 
 from app.services.cache_service import get_cached, set_cached
+from app.utils.redis_offloop import run_redis_offloop
 from app.services.price_service import (
     strict_title_match,
     _selection_match,
@@ -225,14 +226,17 @@ async def _harvest_config(domain: str) -> Optional[Dict[str, str]]:
         return None
 
     cache_key = f"algolia_config:{domain}"
-    cached = get_cached(cache_key)
+    # S77 REDIS-OFFLOOP: off the loop under ENABLE_PRICE_PATH_REDIS_OFFLOOP.
+    cached = await run_redis_offloop(get_cached, cache_key)
     if cached is not None:
         if isinstance(cached, dict) and cached.get("_algolia_neg"):
             return None
         return cached if isinstance(cached, dict) else None
 
-    def _negcache():
-        set_cached(cache_key, {"_algolia_neg": True}, _CONFIG_CACHE_TTL)
+    async def _negcache():
+        await run_redis_offloop(
+            set_cached, cache_key, {"_algolia_neg": True}, _CONFIG_CACHE_TTL, durable=True,
+        )
 
     store = ALGOLIA_STORES.get(domain, {})
     chunk_pattern = store.get("chunk_pattern", r"static/js/main\.[a-f0-9]+\.chunk\.js")
@@ -248,7 +252,7 @@ async def _harvest_config(domain: str) -> Optional[Dict[str, str]]:
         )
         if page.status_code != 200:
             logger.info("[ALGOLIA] %s landing HTTP %s", domain, page.status_code)
-            _negcache()
+            await _negcache()
             return None
         html = page.text
 
@@ -266,7 +270,7 @@ async def _harvest_config(domain: str) -> Optional[Dict[str, str]]:
                 chunk_js = chunk.text
     except Exception as e:  # noqa: BLE001 — harvest is best-effort
         logger.info("[ALGOLIA] config harvest failed for %s: %s", domain, e)
-        _negcache()
+        await _negcache()
         return None
 
     # The store row's pinned index is applied INSIDE the extraction — BEFORE
@@ -275,10 +279,10 @@ async def _harvest_config(domain: str) -> Optional[Dict[str, str]]:
     # after cfg had already collapsed to None).
     cfg = extract_algolia_config(html, chunk_js, pinned_index=store.get("index"))
     if not cfg:
-        _negcache()
+        await _negcache()
         return None
 
-    set_cached(cache_key, cfg, _CONFIG_CACHE_TTL)
+    await run_redis_offloop(set_cached, cache_key, cfg, _CONFIG_CACHE_TTL, durable=True)
     return cfg
 
 
