@@ -1,6 +1,6 @@
 """Apply the owner's answers to the legal documents (unit U8, rulings UL3, UL9, UG3).
 
-Reads ``tests/fixtures/legal_fill_in_u8.json`` (the answers, the seven flag
+Reads ``tests/fixtures/legal_fill_in_u8.json`` (the answers, the eight flag
 states and the placeholder values) and ``scripts/legal_variants_u8.json`` (the
 variant texts), then:
 
@@ -67,6 +67,7 @@ DOCUMENTS = {
     ("ar", "support"): "app/legal/support_contact_ar.md",
 }
 
+# The name is kept; it holds EIGHT flags since S77 POSTHOG (ruling PG2 added the eighth).
 SEVEN_FLAGS = (
     "ENABLE_YOUTUBE_SOURCE",
     "ENABLE_REENGAGEMENT_PUSHES",
@@ -75,6 +76,7 @@ SEVEN_FLAGS = (
     "ENABLE_FIRECRAWL",
     "ENABLE_SCRAPEDO",
     "ENABLE_BRIGHTDATA_FALLBACK",
+    "ENABLE_POSTHOG_SERVER_CAPTURE",
 )
 ENUM_ANSWERS = {
     "deletion_variant": ("043", "old"),

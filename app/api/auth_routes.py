@@ -66,6 +66,12 @@ from app.services.database_service import (
     get_user_supabase_client,
     get_admin_supabase_client,
 )
+from app.services.product_analytics_service import (  # S77 POSTHOG part B
+    invalidate_analytics_preference,
+    mark_user_deleted,
+    posthog_person_delete_enabled,
+    request_person_deletion,
+)
 from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
@@ -1170,7 +1176,18 @@ async def delete_account(
 ):
     """Delete user account and all associated data (App Store requirement)."""
     try:
+        # S77 B2 (PH4, PR2; ENABLE_POSTHOG_PERSON_DELETE, read per call): no
+        # analytics capture for this user from before the erase on, then ask
+        # PostHog to delete the person and their events off the response path.
+        # Flag OFF: no new call.
+        person_delete = posthog_person_delete_enabled()
+        if person_delete:
+            mark_user_deleted(current_user["id"])
         await delete_user_account(current_user["id"])
+        if person_delete:
+            fire_and_forget(
+                request_person_deletion(current_user["id"]), label="posthog.person_delete",
+            )
         return {"success": True, "message": "Account and all associated data deleted"}
     except Exception as e:
         # U8b: the exception TYPE only -- str(e) of a PostgREST APIError carries
@@ -1418,17 +1435,24 @@ class PreferenceTogglesBody(BaseModel):
     so a user without priorities can still flip the notifications master.
     ``ai_sharing_enabled`` is accepted for older app bundles and stored
     unchanged; it is inert since U3b (decision D3 = C, 2026-10-08: no
-    per-user AI-sharing control). At least one key must be provided.
+    per-user AI-sharing control). ``analytics_enabled`` is the analytics
+    preference (S77): False stops the server-side product analytics events for
+    this account. At least one key must be provided.
     """
 
     ai_sharing_enabled: Optional[bool] = None
     notifications_enabled: Optional[bool] = None
+    analytics_enabled: Optional[bool] = None
 
     @model_validator(mode="after")
     def _at_least_one(self):
-        if self.ai_sharing_enabled is None and self.notifications_enabled is None:
+        if (
+            self.ai_sharing_enabled is None
+            and self.notifications_enabled is None
+            and self.analytics_enabled is None
+        ):
             raise ValueError(
-                "provide ai_sharing_enabled and/or notifications_enabled"
+                "provide ai_sharing_enabled, notifications_enabled and/or analytics_enabled"
             )
         return self
 
@@ -1440,7 +1464,8 @@ async def update_preference_toggles(
     body: PreferenceTogglesBody,
     current_user: dict = Depends(get_current_user),
 ):
-    """Update ``ai_sharing_enabled`` and/or ``notifications_enabled`` only.
+    """Update ``ai_sharing_enabled``, ``notifications_enabled`` and/or
+    ``analytics_enabled`` (the analytics preference, S77) only.
 
     W3-14: additive single-purpose route shaped like ``/reengagement-subs``.
     Reads-modifies-writes ``users.preferences`` touching ONLY the provided
@@ -1463,7 +1488,7 @@ async def update_preference_toggles(
             "id", user_id
         ).single().execute()
         current_prefs = (row_resp.data or {}).get("preferences") or {}
-        for key in ("ai_sharing_enabled", "notifications_enabled"):
+        for key in ("ai_sharing_enabled", "notifications_enabled", "analytics_enabled"):
             value = getattr(body, key)
             if value is not None:
                 current_prefs[key] = value
@@ -1482,11 +1507,17 @@ async def update_preference_toggles(
                 "error": "Failed to update preferences",
             },
         )
-    return {
+    response = {
         "success": True,
         "ai_sharing_enabled": current_prefs.get("ai_sharing_enabled"),
         "notifications_enabled": current_prefs.get("notifications_enabled"),
     }
+    if body.analytics_enabled is not None:
+        # S77 (PG6, PG9): the server capture reads the new value on its next
+        # event; a body without the key keeps today's response byte for byte.
+        invalidate_analytics_preference(user_id)
+        response["analytics_enabled"] = current_prefs.get("analytics_enabled")
+    return response
 
 
 # ============================================

@@ -743,6 +743,7 @@ async def text_compare(request: Request, body: TextCompareRequest, user: Optiona
             fire_and_forget(
                 track_after_persist(
                     comparison_id, full_response=result, user_id=user_id,
+                    input_type="text",
                 ),
                 label="save_comparison.text.post",
             )
@@ -930,6 +931,7 @@ async def text_compare_get(
             fire_and_forget(
                 track_after_persist(
                     comparison_id, full_response=result, user_id=user_id,
+                    input_type="text",
                 ),
                 label="save_comparison.text.get",
             )
@@ -1278,7 +1280,7 @@ async def text_compare_stream(
                         fire_and_forget(
                             track_after_persist(
                                 comparison_id, full_response=complete_response,
-                                user_id=user_id,
+                                user_id=user_id, input_type="text_stream",
                             ),
                             label="save_comparison.text_stream",
                         )

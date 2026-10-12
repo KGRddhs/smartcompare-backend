@@ -11,6 +11,8 @@ anyio==4.14.2
     #   openai
     #   starlette
     #   watchfiles
+backoff==2.2.1
+    # via posthog
 beautifulsoup4==4.15.0
     # via -r requirements.in
 certifi==2026.7.22
@@ -40,6 +42,8 @@ deprecation==2.1.0
     # via
     #   postgrest
     #   storage3
+distro==1.9.0
+    # via posthog
 dnspython==2.8.0
     # via email-validator
 email-validator==2.3.0
@@ -102,6 +106,8 @@ packaging==26.3
     #   limits
 postgrest==2.31.0
     # via supabase
+posthog==7.60.1
+    # via -r requirements.in
 propcache==0.5.2
     # via yarl
 pycparser==3.0 ; implementation_name != 'PyPy'
@@ -138,7 +144,9 @@ redis==8.1.0
 regex==2026.7.19
     # via tiktoken
 requests==2.34.2
-    # via tiktoken
+    # via
+    #   posthog
+    #   tiktoken
 sentry-sdk==2.68.1
     # via -r requirements.in
 slowapi==0.1.10
@@ -173,6 +181,7 @@ typing-extensions==4.16.0
     #   httpx2
     #   limits
     #   openai
+    #   posthog
     #   pydantic
     #   pydantic-core
     #   realtime

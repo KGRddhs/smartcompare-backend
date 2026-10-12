@@ -180,6 +180,16 @@
       "gate_flag": "ENABLE_YOUTUBE_SOURCE"
     },
     {
+      "id": "posthog",
+      "name_en": "PostHog",
+      "name_ar": "PostHog",
+      "kind": "processor",
+      "personal_data": true,
+      "module": ["app/services/product_analytics_service.py"],
+      "hosts": ["posthog.com"],
+      "gate_flag": "ENABLE_POSTHOG_SERVER_CAPTURE"
+    },
+    {
       "id": "retailers",
       "name_en": "retailer websites",
       "name_ar": "مواقع المتاجر",

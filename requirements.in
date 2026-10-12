@@ -25,3 +25,6 @@ lxml>=5.0.0
 curl_cffi>=0.7.0
 slowapi>=0.1.9
 sentry-sdk[fastapi]>=1.40.0
+# S77 POSTHOG part B: server-side product analytics, imported lazily (flag OFF never
+# imports it). Exact pin: the newest release at least 14 days old (ruling PH8 / PR15).
+posthog==7.60.1

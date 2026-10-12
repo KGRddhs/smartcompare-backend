@@ -432,6 +432,37 @@ async def _drain_background_tasks() -> None:
         )
 
 
+# S77 POSTHOG (spec 4.4, ruling PR13): the PostHog client's queue is flushed
+# AFTER the drain above, so the events the draining tasks captured are sent.
+# The window now holds 30 s (drainingSeconds) > 20 s (uvicorn) + 8 s (drain) +
+# 1.0 s (this flush) + 0.25 s (the outer wait_for margin), pinned in
+# tests/test_shutdown_drain.py. The flush runs in a worker thread with its own
+# timeout; the outer bound only frees the event loop and the process can still
+# wait for that thread at exit. No client built in this process (flag OFF) =
+# no-op. A SIGKILL / OOM loses the queue, as it loses the drain.
+POSTHOG_SHUTDOWN_FLUSH_TIMEOUT: float = 1.0
+
+
+@app.on_event("shutdown")
+async def _flush_product_analytics() -> None:
+    """Flush the PostHog queue, bounded; never raises. Reads
+    POSTHOG_SHUTDOWN_FLUSH_TIMEOUT at call time, like DRAIN_TIMEOUT."""
+    from app.services.product_analytics_service import get_existing_client
+
+    client = get_existing_client()
+    if client is None:
+        return
+    timeout = POSTHOG_SHUTDOWN_FLUSH_TIMEOUT
+    try:
+        await asyncio.wait_for(
+            asyncio.to_thread(client.flush, timeout_seconds=timeout), timeout + 0.25,
+        )
+    except Exception as exc:  # noqa: BLE001 -- shutdown must finish
+        _logging.getLogger(__name__).warning(
+            "[POSTHOG] shutdown flush abandoned: %s", type(exc).__name__,
+        )
+
+
 # -- Routes --
 app.include_router(auth_router)      # /api/v1/auth/*
 app.include_router(text_router)      # /api/v1/text/*

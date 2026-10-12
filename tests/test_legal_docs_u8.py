@@ -52,10 +52,10 @@ not recorded yet" and is reported by T2 (the fill-in commit leaves no null).
   "minors_clause":       true | false | null
   "openai_store_pinned": true | false | null        (UL2)
   "inapp_notif_clause":  true | false | null        (UL2/C24: false until #264)
-  "flags":       {exactly the seven names of review Q10 -> "on" | "off" | null}:
+  "flags":       {exactly the eight names (the seven of review Q10 + S77 PG2) -> "on" | "off" | null}:
                  ENABLE_YOUTUBE_SOURCE, ENABLE_REENGAGEMENT_PUSHES, ENABLE_BONUS_EXPIRY_PUSHES,
                  ENABLE_FEWSHOT_ROTATION, ENABLE_FIRECRAWL, ENABLE_SCRAPEDO,
-                 ENABLE_BRIGHTDATA_FALLBACK (recorded by the orchestrator from a names-only
+                 ENABLE_BRIGHTDATA_FALLBACK, ENABLE_POSTHOG_SERVER_CAPTURE (recorded by the orchestrator from a names-only
                  read; never by an agent; null until recorded)
   "placeholders": {"<ID>": string | null}  one key per ``<PLACEHOLDER:ID>`` token used in
                  the four markdown files, the support region source or
@@ -78,9 +78,10 @@ PROCESSOR MANIFEST (UL14, C14) -- app/legal/processors.json (GREEN writes it)
   "hosts":         list of strings: the hosts this row covers (exact or parent domain,
                    e.g. "api.openai.com"); for client rows also the npm package or API
                    identifier a grep finds in the row's client files (T7c)
-  "gate_flag":     null, or one of the seven Q10 flag names. Set it ONLY when the policy
+  "gate_flag":     null, or one of the eight flag names. Set it ONLY when the policy
                    names the recipient conditionally on that flag (today: the YouTube clause,
-                   ENABLE_YOUTUBE_SOURCE); T7a then applies only when the data file records
+                   ENABLE_YOUTUBE_SOURCE; PostHog, ENABLE_POSTHOG_SERVER_CAPTURE, until unit L
+                   adds its text); T7a then applies only when the data file records
                    that flag "on". A recipient the policy names unconditionally carries null.
 T7a also needs a personal-data row (name_en) for each recipient spec 4.2 s5 names
 unconditionally (``SPEC_RECIPIENTS_EN``: Supabase, Railway, Upstash, Sentry, OpenAI, Expo,
@@ -223,6 +224,7 @@ def _absent(rel):
 # Fill-in data file (UL9)
 # ---------------------------------------------------------------------------
 
+# The name is kept; it holds EIGHT flags since S77 POSTHOG (ruling PG2 added the eighth).
 SEVEN_FLAGS = (
     "ENABLE_YOUTUBE_SOURCE",
     "ENABLE_REENGAGEMENT_PUSHES",
@@ -231,6 +233,7 @@ SEVEN_FLAGS = (
     "ENABLE_FIRECRAWL",
     "ENABLE_SCRAPEDO",
     "ENABLE_BRIGHTDATA_FALLBACK",
+    "ENABLE_POSTHOG_SERVER_CAPTURE",
 )
 _ENUM_ANSWERS = {
     "deletion_variant": ("043", "old"),
@@ -961,7 +964,7 @@ def test_t7_processor_manifest_schema():
         if not isinstance(row.get("hosts"), list) or any(not isinstance(h, str) for h in row.get("hosts") or []):
             problems.append(f"{where}: hosts must be a list of strings")
         if row.get("gate_flag") is not None and row.get("gate_flag") not in SEVEN_FLAGS:
-            problems.append(f"{where}: gate_flag must be null or one of the seven Q10 flags")
+            problems.append(f"{where}: gate_flag must be null or one of the eight fill-in flags")
         if row.get("personal_data") is True:
             for rel in modules:
                 if rel in NOT_PERSONAL:

@@ -130,6 +130,10 @@ CREDENTIALS_UNSET = (
     "NASSER_GUEST_TOKEN",
     # Deployed API the eval/bench runners point at.
     "TARGET_BASE_URL",
+    # Product analytics (S77 POSTHOG, ruling PG7) -- absent = no client, no
+    # capture, no person deletion (product_analytics_service reads them per call).
+    "POSTHOG_PROJECT_API_KEY",
+    "POSTHOG_PERSONAL_API_KEY",
 )
 
 #: Variables that must stay PRESENT but must never be real. Both entries here

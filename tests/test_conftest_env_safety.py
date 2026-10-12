@@ -81,6 +81,9 @@ _CONTRACT_UNSET = (
     "ADMIN_API_KEY",
     "NASSER_GUEST_TOKEN",
     "TARGET_BASE_URL",
+    # S77 POSTHOG (ruling PG7): the PostHog project and personal keys.
+    "POSTHOG_PROJECT_API_KEY",
+    "POSTHOG_PERSONAL_API_KEY",
 )
 
 # Variables that must stay PRESENT but unusable, because absence would break a

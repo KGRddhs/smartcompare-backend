@@ -1010,6 +1010,60 @@ def test_the_shutdown_window_arithmetic_holds():
     )
 
 
+# S77 POSTHOG (PR13) -- the arithmetic above is EXTENDED here, never weakened:
+# the PostHog flush handler runs AFTER the drain, so its outer bound joins the sum.
+_POSTHOG_OUTER_MARGIN = 0.25
+
+
+def test_the_shutdown_window_arithmetic_holds_with_the_posthog_flush():
+    """**30 s (Railway) > 20 s (uvicorn) + 8 s (drain) + 1.0 s (PostHog flush)
+    + 0.25 s (the outer wait_for margin).**
+
+    S77 POSTHOG ruling PR13: ``app.main._flush_product_analytics`` is registered
+    after ``_drain_background_tasks`` and runs
+    ``client.flush(timeout_seconds=POSTHOG_SHUTDOWN_FLUSH_TIMEOUT)`` in
+    ``asyncio.to_thread`` under ``wait_for(..., POSTHOG_SHUTDOWN_FLUSH_TIMEOUT +
+    0.25)``. Both lifespan handlers run after uvicorn's request drain, so the
+    Railway window must hold all four numbers. The W1-6 pin above still holds
+    on its own; this one moves the load-bearing sum to include the flush.
+
+    RED at 18121839: app.main.POSTHOG_SHUTDOWN_FLUSH_TIMEOUT does not exist.
+    """
+    drain_timeout = _require_main("DRAIN_TIMEOUT")
+    flush_timeout = _require_main("POSTHOG_SHUTDOWN_FLUSH_TIMEOUT")
+    for name, value in (("DRAIN_TIMEOUT", drain_timeout),
+                        ("POSTHOG_SHUTDOWN_FLUSH_TIMEOUT", flush_timeout)):
+        assert isinstance(value, (int, float)) and not isinstance(value, bool), (
+            f"app.main.{name} must be a number of seconds; got {value!r}"
+        )
+        assert value > 0, f"app.main.{name} must be positive; got {value!r}"
+    assert flush_timeout == 1.0, (
+        f"POSTHOG_SHUTDOWN_FLUSH_TIMEOUT is {flush_timeout!r}; PR13 pins 1.0 s"
+    )
+
+    deploy = _railway_deploy()
+    draining = deploy.get("drainingSeconds")
+    assert draining == _DRAINING_SECONDS, (
+        f"railway.json deploy.drainingSeconds is {draining!r}, expected {_DRAINING_SECONDS}"
+    )
+    graceful_raw = _flag_value(_railway_start_command(), "--timeout-graceful-shutdown")
+    assert graceful_raw is not None, (
+        "railway.json start command carries no --timeout-graceful-shutdown value"
+    )
+    graceful = int(graceful_raw)
+    assert graceful == _GRACEFUL_SHUTDOWN_SECONDS, (
+        f"--timeout-graceful-shutdown is {graceful}, expected {_GRACEFUL_SHUTDOWN_SECONDS}"
+    )
+
+    total = graceful + drain_timeout + flush_timeout + _POSTHOG_OUTER_MARGIN
+    assert draining > total, (
+        f"the shutdown window does not fit: drainingSeconds={draining} is NOT greater "
+        f"than {graceful} + DRAIN_TIMEOUT={drain_timeout} + "
+        f"POSTHOG_SHUTDOWN_FLUSH_TIMEOUT={flush_timeout} + {_POSTHOG_OUTER_MARGIN}. "
+        "Railway would SIGKILL mid-flush and lose the drain's work."
+    )
+
+
 # ---------------------------------------------------------------------------
 # 9 -- preservation pin: fire_and_forget keeps its existing contract
 # ---------------------------------------------------------------------------

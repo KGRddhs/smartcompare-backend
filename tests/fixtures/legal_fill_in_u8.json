@@ -13,6 +13,7 @@
   "minors_clause": true,
   "openai_store_pinned": true,
   "inapp_notif_clause": false,
+  "_s77_posthog_comment": "S77 POSTHOG part B (ruling PG2): ENABLE_POSTHOG_SERVER_CAPTURE is the eighth flag. It is new and set on no service, so it is recorded 'off' with the unit B code; the PostHog row of app/legal/processors.json is gated on it, so the policy need not name PostHog while it is 'off'. Unit L flips it to 'on' and adds the PostHog text in the same PR; activation precondition: 'on' here and that text live before the flag is set on web.",
   "flags": {
     "ENABLE_YOUTUBE_SOURCE": "off",
     "ENABLE_REENGAGEMENT_PUSHES": "off",
@@ -20,7 +21,8 @@
     "ENABLE_FEWSHOT_ROTATION": "off",
     "ENABLE_FIRECRAWL": "on",
     "ENABLE_SCRAPEDO": "on",
-    "ENABLE_BRIGHTDATA_FALLBACK": "on"
+    "ENABLE_BRIGHTDATA_FALLBACK": "on",
+    "ENABLE_POSTHOG_SERVER_CAPTURE": "off"
   },
   "placeholders": {
     "ANON_LOG_RETENTION": "no fixed period",

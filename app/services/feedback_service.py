@@ -8,6 +8,10 @@ from typing import Dict, List, Optional
 from app.services.cache_service import delete_cached, _redis_offload_enabled
 from app.services.database_service import get_supabase_client, save_comparison
 from app.services.model_config import critic_model
+from app.services.product_analytics_service import (  # S77 POSTHOG part B
+    capture_compare_completed,
+    posthog_server_capture_enabled,
+)
 from app.utils.db_offload import run_db  # M13-05 / #115 ENABLE_SYNC_DB_OFFLOAD
 
 
@@ -84,6 +88,7 @@ async def track_after_persist(
     *,
     full_response: Dict,
     user_id: str,
+    input_type: Optional[str] = None,
 ) -> None:
     """W3-2 — the FIRE-AND-FORGET half: the four follow-ups that all need the
     saved row's id. Same set, same order, same falsy-id gate as before the split
@@ -91,8 +96,18 @@ async def track_after_persist(
 
     A falsy `comparison_id` returns immediately: there is no row to track
     against, and a failed save must never bust a valid cache. Errors swallowed.
+
+    S77 POSTHOG (spec 4.3, PR3): with ENABLE_POSTHOG_SERVER_CAPTURE ON, a
+    delivered comparison (`success is True`) is captured as
+    `server_compare_completed` BEFORE the falsy-id return, so an unsaved one is
+    visible with `saved: false`. Flag OFF: no new call. Never raises.
     """
     try:
+        if posthog_server_capture_enabled():
+            await capture_compare_completed(
+                user_id=user_id, comparison_id=comparison_id,
+                full_response=full_response, input_type=input_type,
+            )
         if not comparison_id:
             return
         metadata = full_response.get("metadata") or {}
@@ -160,6 +175,7 @@ async def save_comparison_and_track_cohort(
     )
     await track_after_persist(
         comparison_id, full_response=full_response, user_id=user_id,
+        input_type=input_type,
     )
 
 

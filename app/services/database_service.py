@@ -21,6 +21,10 @@ from datetime import datetime, timezone
 import httpx
 from supabase import create_client, Client, ClientOptions
 
+from app.services.product_analytics_service import (  # S77 POSTHOG part B
+    capture_compare_failed,
+    posthog_server_capture_enabled,
+)
 from app.utils.db_offload import run_db  # M13-05 ENABLE_SYNC_DB_OFFLOAD
 
 logger = logging.getLogger(__name__)
@@ -800,6 +804,14 @@ async def log_search(
     except Exception as e:
         # Never fail the request for logging
         logger.warning(f"Error logging search: {e}", exc_info=True)
+    # S77 POSTHOG (spec 4.3): a signed-in FAILURE row is also captured as
+    # `server_compare_failed` (a coarse error_class, never the message); success
+    # rows capture nothing. Flag OFF: no new call. Never raises.
+    if not success and user_id and posthog_server_capture_enabled():
+        await capture_compare_failed(
+            user_id=user_id, input_type=input_type, query=query,
+            error_message=error_message, duration_ms=duration_ms, cost=cost,
+        )
 
 
 # ============================================
