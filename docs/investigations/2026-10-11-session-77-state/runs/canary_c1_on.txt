@@ -1,0 +1,10 @@
+pair                                           run http verdict                      prices  elapsed
+YSL Y EDP vs Armani Acqua di Gio Profumo         1  200 PASS                            1/2    26.7s
+NARS Radiant Creamy Concealer vs Tarte Shape Tape Concealer   1  200 NO_PRICE                        0/2    28.5s
+Logitech MX Master 3S vs Razer Basilisk V3       1  200 FAIL:no_spec_rows               1/2    30.3s
+READY (1): YSL Y EDP vs Armani Acqua di Gio Profumo
+NO PRICE (1): NARS Radiant Creamy Concealer vs Tarte Shape Tape Concealer
+FAILED (1): Logitech MX Master 3S vs Razer Basilisk V3
+COLD ONLY (0): 
+PARTIAL: Logitech MX Master 3S vs Razer Basilisk V3
+RESULT: FAIL ready=1 no_price=1 failed=1

@@ -1,0 +1,10 @@
+pair                                           run http verdict                      prices  elapsed
+Creed Aventus for Her vs Chanel Chance Eau Tendre   1  200 PASS                            1/2    27.2s
+Charlotte Tilbury Airbrush Flawless Foundation vs Dior Forever Skin Glow   1  200 FAIL:no_pros                    1/2    30.3s
+Apple AirPods Pro 2 vs Samsung Galaxy Buds2 Pro   1  200 PASS                            2/2    27.3s
+READY (2): Creed Aventus for Her vs Chanel Chance Eau Tendre | Apple AirPods Pro 2 vs Samsung Galaxy Buds2 Pro
+NO PRICE (0): 
+FAILED (1): Charlotte Tilbury Airbrush Flawless Foundation vs Dior Forever Skin Glow
+COLD ONLY (0): 
+PARTIAL: Charlotte Tilbury Airbrush Flawless Foundation vs Dior Forever Skin Glow
+RESULT: FAIL ready=2 no_price=0 failed=1

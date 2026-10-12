@@ -1,0 +1,10 @@
+pair                                           run http verdict                      prices  elapsed
+Kindle Paperwhite vs Kobo Clara 2E               1  200 FAIL:no_pros                    0/2    31.2s
+Oral-B iO Series 9 vs Philips Sonicare 9900      1  400 FAIL:http_400                   0/2    33.0s
+Maybelline Sky High Mascara vs L'Oreal Lash Paradise   1  400 FAIL:http_400                   0/2    33.2s
+READY (0): 
+NO PRICE (0): 
+FAILED (3): Kindle Paperwhite vs Kobo Clara 2E | Oral-B iO Series 9 vs Philips Sonicare 9900 | Maybelline Sky High Mascara vs L'Oreal Lash Paradise
+COLD ONLY (0): 
+PARTIAL: Kindle Paperwhite vs Kobo Clara 2E
+RESULT: FAIL ready=0 no_price=0 failed=3

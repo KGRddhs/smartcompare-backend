@@ -1,0 +1,19 @@
+pair                                           run http verdict                      prices  elapsed
+iPhone 15 vs Samsung Galaxy S24                  1  200 PASS                            1/2    29.9s
+Bose QuietComfort Ultra vs Sony WH-1000XM5       1  200 FAIL:no_spec_rows               0/2    31.0s
+Nivea Soft vs Cetaphil Moisturizing Cream        1  200 FAIL:no_spec_rows               0/2    33.3s
+HealthAid Vitamin D3 vs NOW Foods Vitamin D-3    1  200 FAIL:no_pros                    0/2    30.7s
+L'Oreal Revitalift vs Olay Regenerist            1  200 FAIL:no_spec_rows               0/2    30.9s
+Tom Ford Tobacco Vanille vs Creed Aventus        1  200 FAIL:no_pros                    0/2    30.6s
+iPhone 15 vs Samsung Galaxy S24                  2  200 PASS                            1/2    22.9s
+Bose QuietComfort Ultra vs Sony WH-1000XM5       2  200 NO_PRICE                        0/2    30.6s
+Nivea Soft vs Cetaphil Moisturizing Cream        2  200 FAIL:no_spec_rows               0/2    30.9s
+HealthAid Vitamin D3 vs NOW Foods Vitamin D-3    2  200 NO_PRICE                        0/2    27.9s
+L'Oreal Revitalift vs Olay Regenerist            2  200 FAIL:no_pros                    0/2    30.6s
+Tom Ford Tobacco Vanille vs Creed Aventus        2  200 PASS                            1/2    27.9s
+READY (1): iPhone 15 vs Samsung Galaxy S24
+NO PRICE (0): 
+FAILED (5): Bose QuietComfort Ultra vs Sony WH-1000XM5 | Nivea Soft vs Cetaphil Moisturizing Cream | HealthAid Vitamin D3 vs NOW Foods Vitamin D-3 | L'Oreal Revitalift vs Olay Regenerist | Tom Ford Tobacco Vanille vs Creed Aventus
+COLD ONLY (1): Tom Ford Tobacco Vanille vs Creed Aventus
+PARTIAL: Bose QuietComfort Ultra vs Sony WH-1000XM5 | Nivea Soft vs Cetaphil Moisturizing Cream | HealthAid Vitamin D3 vs NOW Foods Vitamin D-3 | L'Oreal Revitalift vs Olay Regenerist | Tom Ford Tobacco Vanille vs Creed Aventus
+RESULT: FAIL ready=1 no_price=0 failed=5

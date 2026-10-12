@@ -1,0 +1,10 @@
+pair                                           run http verdict                      prices  elapsed
+Breville Barista Express vs DeLonghi Dedica      1  200 FAIL:no_spec_rows               0/2    30.5s
+JBL Flip 6 vs Bose SoundLink Flex                1  200 FAIL:no_pros                    0/2    30.5s
+Neutrogena Hydro Boost vs Clinique Moisture Surge   1  200 FAIL:no_pros                    0/2    30.4s
+READY (0): 
+NO PRICE (0): 
+FAILED (3): Breville Barista Express vs DeLonghi Dedica | JBL Flip 6 vs Bose SoundLink Flex | Neutrogena Hydro Boost vs Clinique Moisture Surge
+COLD ONLY (0): 
+PARTIAL: Breville Barista Express vs DeLonghi Dedica | JBL Flip 6 vs Bose SoundLink Flex | Neutrogena Hydro Boost vs Clinique Moisture Surge
+RESULT: FAIL ready=0 no_price=0 failed=3

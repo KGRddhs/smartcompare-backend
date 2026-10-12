@@ -1,0 +1,10 @@
+pair                                           run http verdict                      prices  elapsed
+Dior Sauvage EDP vs Bleu de Chanel EDP           1  200 FAIL:no_spec_rows               1/2    30.8s
+Fenty Beauty Pro Filtr Foundation vs Estee Lauder Double Wear Foundation   1  200 FAIL:no_pros                    1/2    30.6s
+Sony WH-CH720N vs JBL Tune 770NC                 1  200 FAIL:no_pros                    2/2    30.4s
+READY (0): 
+NO PRICE (0): 
+FAILED (3): Dior Sauvage EDP vs Bleu de Chanel EDP | Fenty Beauty Pro Filtr Foundation vs Estee Lauder Double Wear Foundation | Sony WH-CH720N vs JBL Tune 770NC
+COLD ONLY (0): 
+PARTIAL: Dior Sauvage EDP vs Bleu de Chanel EDP | Fenty Beauty Pro Filtr Foundation vs Estee Lauder Double Wear Foundation | Sony WH-CH720N vs JBL Tune 770NC
+RESULT: FAIL ready=0 no_price=0 failed=3

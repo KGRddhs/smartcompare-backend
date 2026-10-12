@@ -1,0 +1,5 @@
+tests/test_auth_interceptor.py::test_sign_in_with_social_exception
+tests/test_auth_interceptor.py::test_social_login_user_insert_fails_gracefully
+tests/test_camera_vision.py::TestIdentifyProductsMocked::test_empty_product_fields_normalized
+tests/test_camera_vision.py::TestIdentifyProductsMocked::test_malformed_response_returns_error
+tests/test_camera_vision.py::TestIdentifyProductsMocked::test_successful_identification
