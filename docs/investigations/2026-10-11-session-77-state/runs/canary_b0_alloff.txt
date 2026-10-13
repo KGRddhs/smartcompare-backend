@@ -1,0 +1,10 @@
+pair                                           run http verdict                      prices  elapsed
+Philips Airfryer XXL vs Ninja Foodi Dual Zone    1  200 FAIL:no_spec_rows               0/2    30.5s
+Garmin Forerunner 265 vs Apple Watch Series 9    1  200 PASS                            1/2    28.4s
+La Roche-Posay Effaclar Duo vs CeraVe Foaming Cleanser   1  200 FAIL:no_spec_rows               0/2    30.4s
+READY (1): Garmin Forerunner 265 vs Apple Watch Series 9
+NO PRICE (0): 
+FAILED (2): Philips Airfryer XXL vs Ninja Foodi Dual Zone | La Roche-Posay Effaclar Duo vs CeraVe Foaming Cleanser
+COLD ONLY (0): 
+PARTIAL: Philips Airfryer XXL vs Ninja Foodi Dual Zone | La Roche-Posay Effaclar Duo vs CeraVe Foaming Cleanser
+RESULT: FAIL ready=1 no_price=0 failed=2

@@ -1,0 +1,55 @@
+{
+ "g4_posthog_modules_after_import_app_main": [],
+ "g4_flag_off_capture_calls": {
+  "posthog_modules": [],
+  "client": "None",
+  "pref_cache_entries": 0
+ },
+ "g5": {
+  "posthog_version": "7.60.1",
+  "first_build_ms_in_to_thread": 97.29,
+  "loop_stall_ms_longest_gap_per_capture": {
+   "n": 1000,
+   "p50": 0.1009,
+   "p99": 0.3663,
+   "max": 1.0185,
+   "mean": 0.1228
+  },
+  "loop_stall_ms_heartbeat_gaps_during_1000_captures": {
+   "n": 13454,
+   "p50": 0.0043,
+   "p99": 0.1637,
+   "max": 1.0185,
+   "mean": 0.0214
+  },
+  "loop_stall_ms_heartbeat_gaps_idle_baseline": {
+   "n": 217030,
+   "p50": 0.0023,
+   "p99": 0.0033,
+   "max": 0.3615,
+   "mean": 0.0023
+  },
+  "property_build_on_loop_ms": {
+   "n": 1000,
+   "p50": 0.0044,
+   "p99": 0.0253,
+   "max": 0.2808,
+   "mean": 0.0054
+  },
+  "capture_compare_completed_wall_ms": {
+   "n": 1000,
+   "p50": 0.2332,
+   "p99": 0.5445,
+   "max": 1.3074,
+   "mean": 0.2523
+  },
+  "flush_ms": 0.36,
+  "capture_ran_on_loop_thread": false,
+  "noop_send_calls": 20,
+  "events_handed_to_noop_send": 1000,
+  "send_ran_on_loop_thread": false,
+  "real_http_attempts": [],
+  "netguard_blocked": 0,
+  "posthog_logger_level": 50
+ }
+}

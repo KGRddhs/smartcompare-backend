@@ -1,0 +1,41 @@
+19:25:41 {"status":"healthy","message":"MYEZ API is running","loop_lag_ms":0.0,"loop_lag_max_ms":4.0000006556510925,"loop_lag_max_60s_ms":4.0000006556510925,"adapter_executor":{"workers":96,"queued":0}} t=0.560281
+19:25:43 {"status":"healthy","message":"MYEZ API is running","loop_lag_ms":0.0,"loop_lag_max_ms":4.0000006556510925,"loop_lag_max_60s_ms":4.0000006556510925,"adapter_executor":{"workers":96,"queued":0}} t=0.523845
+19:25:45  t=5.011702
+ TIMEOUT
+19:25:51  t=5.013674
+ TIMEOUT
+19:25:57  t=5.008450
+ TIMEOUT
+19:26:03 {"status":"healthy","message":"MYEZ API is running","loop_lag_ms":2242.0000061392784,"loop_lag_max_ms":12798.000000417233,"loop_lag_max_60s_ms":12798.000000417233,"adapter_executor":{"workers":96,"queued":0}} t=2.821063
+19:26:07 {"status":"healthy","message":"MYEZ API is running","loop_lag_ms":1707.9999968409538,"loop_lag_max_ms":12798.000000417233,"loop_lag_max_60s_ms":12798.000000417233,"adapter_executor":{"workers":96,"queued":0},"brightdata_auth":{"last_status":401,"at":"2026-10-11T16:26:06Z"}} t=3.491504
+19:26:12 {"status":"healthy","message":"MYEZ API is running","loop_lag_ms":281.0000032186508,"loop_lag_max_ms":12798.000000417233,"loop_lag_max_60s_ms":12798.000000417233,"adapter_executor":{"workers":96,"queued":0},"brightdata_auth":{"last_status":401,"at":"2026-10-11T16:26:06Z"}} t=3.385564
+19:26:16 {"status":"healthy","message":"MYEZ API is running","loop_lag_ms":0.0,"loop_lag_max_ms":12798.000000417233,"loop_lag_max_60s_ms":12798.000000417233,"adapter_executor":{"workers":96,"queued":0},"brightdata_auth":{"last_status":401,"at":"2026-10-11T16:26:06Z"}} t=0.540386
+19:26:18 {"status":"healthy","message":"MYEZ API is running","loop_lag_ms":1.0000020265579224,"loop_lag_max_ms":12798.000000417233,"loop_lag_max_60s_ms":12798.000000417233,"adapter_executor":{"workers":96,"queued":0},"brightdata_auth":{"last_status":401,"at":"2026-10-11T16:26:06Z"}} t=0.634756
+19:26:20 {"status":"healthy","message":"MYEZ API is running","loop_lag_ms":2.99999862909317,"loop_lag_max_ms":12798.000000417233,"loop_lag_max_60s_ms":12798.000000417233,"adapter_executor":{"workers":96,"queued":0},"brightdata_auth":{"last_status":401,"at":"2026-10-11T16:26:06Z"}} t=0.563531
+19:26:21  t=5.006806
+ TIMEOUT
+19:26:27  t=5.014154
+ TIMEOUT
+19:26:33  t=5.013944
+ TIMEOUT
+19:26:40  t=5.009109
+ TIMEOUT
+19:26:46  t=5.014588
+ TIMEOUT
+19:26:52 {"status":"healthy","message":"MYEZ API is running","loop_lag_ms":292.0000031590462,"loop_lag_max_ms":24456.00000023842,"loop_lag_max_60s_ms":24456.00000023842,"adapter_executor":{"workers":96,"queued":0},"brightdata_auth":{"last_status":401,"at":"2026-10-11T16:26:06Z"}} t=1.341185
+19:26:54 {"status":"healthy","message":"MYEZ API is running","loop_lag_ms":192.00000166893005,"loop_lag_max_ms":24456.00000023842,"loop_lag_max_60s_ms":24456.00000023842,"adapter_executor":{"workers":96,"queued":0},"brightdata_auth":{"last_status":401,"at":"2026-10-11T16:26:06Z"}} t=0.953399
+19:26:56 {"status":"healthy","message":"MYEZ API is running","loop_lag_ms":0.0,"loop_lag_max_ms":24456.00000023842,"loop_lag_max_60s_ms":24456.00000023842,"adapter_executor":{"workers":96,"queued":0},"brightdata_auth":{"last_status":401,"at":"2026-10-11T16:26:06Z"}} t=0.510359
+19:26:58 {"status":"healthy","message":"MYEZ API is running","loop_lag_ms":1.0000020265579224,"loop_lag_max_ms":24456.00000023842,"loop_lag_max_60s_ms":24456.00000023842,"adapter_executor":{"workers":96,"queued":0},"brightdata_auth":{"last_status":401,"at":"2026-10-11T16:26:06Z"}} t=0.482555
+19:26:59  t=5.014091
+ TIMEOUT
+19:27:06  t=5.004461
+ TIMEOUT
+19:27:12  t=5.005509
+ TIMEOUT
+19:27:18  t=5.006228
+ TIMEOUT
+19:27:24  t=5.003394
+ TIMEOUT
+19:27:30 {"status":"healthy","message":"MYEZ API is running","loop_lag_ms":741.9999986886978,"loop_lag_max_ms":26366.999998688698,"loop_lag_max_60s_ms":26366.999998688698,"adapter_executor":{"workers":96,"queued":0},"brightdata_auth":{"last_status":401,"at":"2026-10-11T16:26:06Z"}} t=1.330019
+19:27:32 {"status":"healthy","message":"MYEZ API is running","loop_lag_ms":19.00000125169754,"loop_lag_max_ms":26366.999998688698,"loop_lag_max_60s_ms":26366.999998688698,"adapter_executor":{"workers":96,"queued":0},"brightdata_auth":{"last_status":401,"at":"2026-10-11T16:26:06Z"}} t=0.880001
+19:27:34 {"status":"healthy","message":"MYEZ API is running","loop_lag_ms":351.99999809265137,"loop_lag_max_ms":26366.999998688698,"loop_lag_max_60s_ms":26366.999998688698,"adapter_executor":{"workers":96,"queued":0},"brightdata_auth":{"last_status":401,"at":"2026-10-11T16:26:06Z"}} t=0.997206

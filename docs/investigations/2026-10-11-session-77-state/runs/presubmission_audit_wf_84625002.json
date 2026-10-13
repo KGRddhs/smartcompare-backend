@@ -1,0 +1,959 @@
+{
+ "dimensions": [
+  {
+   "key": "review-notes",
+   "result": {
+    "summary": "I audited App Review Information (packet section 6 at 7b224c5a) against the client source and production. The client source is the build under review: git diff --stat eed0f628 7b224c5a -- SmartCompareApp app landing is empty. Five sentences in the notes are false or would mislead a reviewer.\n\n1. \"Scan Product\" is not shown anywhere in the build. The home.scan key has no use outside the i18n files.\n2. The gallery link reads \"Or pick from gallery\", not \"Pick from gallery\". The home.camera.gallery key is not used.\n3. \"On Home, type two products\" leaves out a step. Home opens in Scan mode (HomeScreen.tsx:116), so the reviewer must tap the Type tab first.\n4. The \"raised daily comparison limit\" is false until the owner runs the SQL in finding F06. Premium allows 10 a day and 70 a month (usage_service.py:144-148).\n5. The Bahrain sentence claims prices are gathered from retailers across the GCC. Nothing in this audit backs that.\n\nThe notes also leave out four things:\n- Sign in with Apple only works after the Terms/13+ checkbox is ticked.\n- A new Apple account must answer a 16-screen onboarding before it reaches Home.\n- A new email account may need to confirm its email first.\n- The exact path to account deletion.\n\nThese claims check out:\n- The AI permission sheet's title and button, and that it gates every text, link, scan, camera-permission and gallery path.\n- The gear icon goes to Edit Profile, then Delete account, then the alert's confirm.\n- The Bahrain market and BHD.\n- No in-app purchases, ads or tracking SDKs.\n- 20-40 seconds matches canary 7c (26.9-32.4 s).\n\nTwo things need the owner before submission:\n- The Google button is in this build, and whether it works is still unchecked.\n- Live /health reports Bright Data at status 401, so price coverage is reduced.\n\nready_text holds the corrected Notes: 3032 bytes, all ASCII, placeholders kept. The tier SQL is in finding F06.",
+    "findings": [
+     {
+      "id": "F01",
+      "title": "\"Scan Product\" is not on screen",
+      "severity": "high",
+      "status": "WRONG",
+      "claim": "Packet line 285: \"Or tap Scan Product to photograph two products\".",
+      "evidence": "In SmartCompareApp/src, home.scan (\"Scan Product\", en.json:111) appears only in en.json and ar.json. git grep finds no t('home.scan') in any screen. Home shows a mode segment with Scan / Link / Type tabs (HomeScreen.tsx:1002-1038, en.json:710-712). In Scan mode without camera permission it shows \"Turn on camera\" (home.permission.cta, en.json:715; HomeScreen.tsx:760-764). With permission granted it shows an \"Open camera\" CTA (home.cta.openCamera, en.json:731; HomeScreen.tsx:742-744, 1054-1066). The camera screen has a shutter, a gallery icon button (a11y \"Choose from gallery\", ScanCameraScreen.tsx:525-541) and a \"Compare\" CTA once two photos are taken (home.camera.compareCta, en.json:962; ScanCameraScreen.tsx:436-445).",
+      "fix": "Replace step 3 with: \"Photos: tap the Scan tab, then \\\"Turn on camera\\\" (first time; allow camera access) or \\\"Open camera\\\". Photograph two products with the shutter button, then tap Compare.\" (see ready_text step 5).",
+      "fix_lever": "asc_field"
+     },
+     {
+      "id": "F02",
+      "title": "Gallery label is \"Or pick from gallery\", and it only shows before camera access",
+      "severity": "medium",
+      "status": "WRONG",
+      "claim": "Packet line 285: \"\\\"Pick from gallery\\\" selects photos from the library instead\".",
+      "evidence": "home.camera.gallery \"Pick from gallery\" (en.json:964) is not used in src. The visible text link is home.permission.gallery_link \"Or pick from gallery\" (en.json:716). It renders only on the no-camera-permission card on Home (HomeScreen.tsx:767-774) and on ScanCamera (ScanCameraScreen.tsx:336-346). Once permission is granted, the gallery entry is an icon button next to the shutter (ScanCameraScreen.tsx:533-541). Picking needs two photos (MAX_IMAGES = 2, HomeScreen.tsx:97). One photo shows \"Pick two photos\" (HomeScreen.tsx:695-705).",
+      "fix": "Use: \"To use library photos instead, tap the photo button next to the shutter (or \\\"Or pick from gallery\\\" before camera access is granted) and select two photos.\"",
+      "fix_lever": "asc_field"
+     },
+     {
+      "id": "F03",
+      "title": "Home opens in Scan mode, so the reviewer must tap Type before typing",
+      "severity": "high",
+      "status": "WRONG",
+      "claim": "Packet line 284: \"On Home, type two products ... then tap Compare\".",
+      "evidence": "Home starts with useState<InputMode>('scan') (HomeScreen.tsx:116). The two text boxes and their Compare button render only in the Type/Link modes, through TwoInputShell (HomeScreen.tsx:847-866; TwoInputShell.tsx:616-619, label home.compare.cta \"Compare\", en.json:729). The home tab is labelled \"MYEZ\" (App.tsx:140, app.name), not \"Home\".",
+      "fix": "Step 1 of ready_text: \"On the MYEZ tab (home), the comparison card has three tabs: Scan (selected by default), Link and Type. Tap Type, enter ... then tap Compare.\"",
+      "fix_lever": "asc_field"
+     },
+     {
+      "id": "F04",
+      "title": "AI permission sheet: strings correct, gating confirmed on every compare path",
+      "severity": "info",
+      "status": "OK",
+      "claim": "Packet line 283: before the first comparison or scan, a one-time sheet titled \"Your comparison is written with AI\" with \"Agree and continue\" appears, and without it no comparison runs.",
+      "evidence": "Title, body and Agree button come from aiConsent.title / aiConsent.body / aiConsent.agree (en.json:701-705; AiConsentSheet.tsx:83-124). The body names OpenAI and the training use, and ends \"Your name, email and account details are not sent.\" Every Home entry is wrapped in withAiConsent:\n- text compare: HomeScreen.tsx:373\n- URL compare: :534\n- Open camera CTA: :725-727\n- camera-permission request, before the OS prompt: :731-735\n- gallery fallback: :736-740\n- scan preview rows: :779\n- trending rows, through handleTextCompare: :666-673\n\nScanCamera is reachable only from Home (only navigate('ScanCamera') sites: HomeScreen.tsx:719, :779). Consent is stored per account per device under @qaren_ai_consent_<userId> (aiConsent.ts:9-15, 107-112), so a fresh account on the reviewer's device sees it once. \"Not now\" drops the action (aiConsent.ts:104-112).\n\nCaveat: canCompare is checked before consent (HomeScreen.tsx:366-373), so an account already at its limit sees the limit screen first. This does not apply to premium accounts (useComparisonCounter.ts canCompare = isPremium || ...).",
+      "fix": "Keep the sentence, moved after the Compare tap in ready_text step 2. Reword it to \"starts a comparison, the camera or the photo picker\" so it matches the gated entry points.",
+      "fix_lever": "none"
+     },
+     {
+      "id": "F05",
+      "title": "Account deletion path confirmed, with exact labels",
+      "severity": "low",
+      "status": "OK",
+      "claim": "Packet line 290: Profile tab -> gear icon (top right) -> Delete account (bottom of Edit Profile) -> confirm.",
+      "evidence": "The Profile tab is labelled \"Profile\" (App.tsx:160). The header gear (Settings icon, a11y label \"Settings\") navigates to EditProfile (ProfileScreen.tsx:333-342). EditProfile is a modal (App.tsx EditProfile screen, presentation modal). Its last block is the eyebrow \"Account actions\" with the row \"Delete account\" (EditProfileScreen.tsx:259-281; en.json:926, 930). The alert has title \"Delete account\", message \"Are you sure? This cannot be undone.\" and buttons \"Cancel\" / \"Delete account\" (EditProfileScreen.tsx:127-136; en.json:354, 383). On confirm the app calls DELETE /api/v1/auth/account, clears consent, history and the session, then returns to sign-in (EditProfileScreen.tsx:137-150; App.tsx onAccountDeleted=handleLogout).",
+      "fix": "Use the exact path: \"Profile tab -> gear icon (top right, labelled Settings) -> Edit Profile screen -> scroll to \\\"Account actions\\\" -> \\\"Delete account\\\" -> tap \\\"Delete account\\\" again in the confirmation.\"",
+      "fix_lever": "asc_field"
+     },
+     {
+      "id": "F06",
+      "title": "\"Raised daily comparison limit\" is false until the owner sets subscription_tier = 'premium'",
+      "severity": "high",
+      "status": "RISK",
+      "claim": "Packet line 280: \"Both review accounts have a raised daily comparison limit.\"",
+      "evidence": "How the tier is stored:\n- Column: public.users.subscription_tier TEXT DEFAULT 'free' (migrations/011_security_completion_freemium.sql:28).\n- New users are inserted with 'free' (auth_service.py:405-409, 827-832).\n- No CHECK constraint, FK or enum on the column in any repo migration. The live constraint is UNVERIFIED; run the read-only query below.\n\nLimits:\n- TIER_LIMITS (usage_service.py:138-149): free = lifetime_free 3, daily 3, monthly 10; premium = daily 10, monthly 70.\n- An unknown value falls back to free (usage_service.py:355).\n\nNo tier cache:\n- On every compare, consume_comparison_credit reads the tier straight from public.users through _get_user_tier_info (usage_service.py:350-355, 520-531). The same read serves /usage/status (:719-723).\n- No Redis or LRU cache of the tier exists in app/; grep finds none.\n- Only the usage counters live in Redis, keyed usage:daily:<id>:<UTC date> and usage:monthly:<id>:<UTC month> (usage_service.py:152-159).\n\nClient:\n- useComparisonCounter fetches /usage/status once per Home mount (useComparisonCounter.ts, effect with [] deps).\n- isPremium makes canCompare always true on the client; the server still enforces 10 a day and 70 a month.\n\nAll three compare routes call consume_comparison_credit: text_routes.py:617/833/1019, url_routes.py:74, image_routes.py:289.",
+      "fix": "Owner, Supabase SQL editor, after both accounts are registered, email-confirmed and onboarded:\n\n-- A. read-only check (expect 2 rows, tier 'free', preferences_completed true)\nSELECT id, email, subscription_tier, preferences_completed FROM public.users WHERE lower(email) IN (lower('<REVIEW EMAIL 1>'), lower('<REVIEW EMAIL 2>'));\n-- B. read-only: any live constraint on the column (expect 0 rows)\nSELECT conname, pg_get_constraintdef(oid) FROM pg_constraint WHERE conrelid = 'public.users'::regclass AND pg_get_constraintdef(oid) ILIKE '%subscription_tier%';\n-- C. raise both (expect exactly 2 rows back, both 'premium')\nUPDATE public.users SET subscription_tier = 'premium' WHERE lower(email) IN (lower('<REVIEW EMAIL 1>'), lower('<REVIEW EMAIL 2>')) RETURNING id, email, subscription_tier;\n\nCaching caveats:\n1. No tier cache exists, so the server applies the change on the very next compare.\n2. An already-open app keeps its old canCompare and counter until Home remounts. Sign out and back in, or force-quit and relaunch.\n3. The Redis day/month counters are not reset. Compares the owner runs on these accounts (warm-up, onboarding check) count toward the 10 per day until the UTC day rolls over (03:00 Bahrain time). Do the warm-up with a different account.\n4. Deleting an account resets its tier to 'free' (migration 043:141, :208). Account 2 is the spare.\n\nAfter step C, the notes sentence \"raised limit of 10 comparisons per day\" becomes true.",
+      "fix_lever": "owner_action"
+     },
+     {
+      "id": "F07",
+      "title": "Sign in with Apple needs the consent checkbox first and leads into onboarding",
+      "severity": "medium",
+      "status": "RISK",
+      "claim": "Packet line 280: \"Sign in with Apple is also available; it creates a new account with the standard free allowance.\"",
+      "evidence": "The native Apple button shows on iOS when available (LoginScreen.tsx:212-215, 426-440), with label auth.appleSignIn \"Continue with Apple\" (en.json:368). handleAppleSignIn returns early with a consent error unless the checkbox \"I am 13 or older and I agree to the ...\" is ticked (LoginScreen.tsx:261-268; en.json:999-1001). A first Apple sign-in inserts a public.users row with tier 'free' (auth_service.py:827-832). The free allowance is 3 lifetime-free compares that also bump the daily counter, so 3 on day one, then 3 a day and 10 a month (usage_service.py:138-143, 359-377). A new account has preferences_completed false, so App.tsx shows onboarding before Main (App.tsx needsPreferences branch). The new flow is on at 100% (features.ts:30, 108-110), and for a signed-in user it runs 16 screens with step 16 skipped (OnboardingFlow.tsx:128-131, 208-219, 348-350). These are required: language, country, 1-3 priorities, budget, brand attitude, attribution (OnboardingFlow.tsx:169-191). The last screen offers \"Allow notifications\" / \"Maybe later\" (en.json:689-690).",
+      "fix": "Use the ready_text paragraph: tick the checkbox first; the free allowance is 3 a day and 10 a month; a new account answers a 16-screen first-run questionnaire before Home, with the required answers listed.",
+      "fix_lever": "asc_field"
+     },
+     {
+      "id": "F08",
+      "title": "Google sign-in button ships in build 2; whether it works is unverified",
+      "severity": "medium",
+      "status": "UNVERIFIED",
+      "claim": "Packet line 293: add \"Google sign-in is also available.\" only if the GOO device check passes.",
+      "evidence": "LoginScreen.tsx:441-449 always renders SocialButton \"Continue with Google\" (auth.googleSignIn, en.json:367). It is gated by the same consent checkbox (LoginScreen.tsx:229-233). @react-native-google-signin/google-signin is a dependency (package.json) and is configured in app.json:226-228. This audit did not test it on a device. A reviewer will see and may tap the button whatever the notes say, so a broken Google flow is a guideline 2.1 rejection risk even if the sentence is left out.",
+      "fix": "Owner: test Continue with Google on build 2 (TestFlight) before Add for Review. If it works, the notes may add \"Continue with Google is also available (same checkbox).\" If it fails, fix it before submitting; the notes cannot cover a visible broken button.",
+      "fix_lever": "owner_action"
+     },
+     {
+      "id": "F09",
+      "title": "Bahrain market and BHD confirmed; \"retailers across the GCC\" is unsupported",
+      "severity": "low",
+      "status": "WRONG",
+      "claim": "Packet line 288: \"Prices are in Bahraini Dinar (BHD), gathered from retailers across the GCC, and change over time.\"",
+      "evidence": "Every compare request hardcodes region 'bahrain':\n- text REST: api.ts:681 and :971\n- stream: :824\n- image: :258 and :302\n- vision path: HomeScreen.tsx:562\n\nThe backend maps bahrain to BHD (exchange_rate_service.py:99; extraction_service.py:89; structured_comparison_service.py:1291). This audit found nothing showing the price sources are GCC-wide; the clause is UNVERIFIED.",
+      "fix": "Use: \"Market: results use the Bahrain market. Prices are shown in Bahraini Dinar (BHD) and change over time.\"",
+      "fix_lever": "asc_field"
+     },
+     {
+      "id": "F10",
+      "title": "No in-app purchases, subscriptions, ads or tracking in the binary",
+      "severity": "info",
+      "status": "OK",
+      "claim": "\"This version has no in-app purchases, subscriptions or ads, and does not track users.\"",
+      "evidence": "package.json dependencies list no StoreKit, react-native-iap, expo-in-app-purchases, RevenueCat, AdMob, Facebook, AppsFlyer, Firebase or Amplitude package (git show 7b224c5a:SmartCompareApp/package.json). app.json has no NSUserTrackingUsageDescription and declares NSPrivacyTracking false (app.json:26) with NSPrivacyCollectedDataTypeTracking false on every type (app.json:31-92). git grep for these names in src finds nothing. PaywallScreen only shows limit and refresh copy plus Done (PaywallScreen.tsx:100-176; en.json:373-381); nothing is sold. trackEvent posts first-party events to the app's own API (api.ts:1023). The live privacy policy says \"We do not show third-party ads and we do not track you across other companies' apps\" (GET /api/v1/legal/privacy, 200).",
+      "fix": "Keep the sentence. Optionally add \"The daily-limit screen only explains when free comparisons refresh; nothing is sold.\" so the word \"Paywall\" a reviewer may meet is explained.",
+      "fix_lever": "none"
+     },
+     {
+      "id": "F11",
+      "title": "\"20-40 seconds\" matches canary 7c, but it is one pair, and live health shows event-loop stalls",
+      "severity": "low",
+      "status": "OK",
+      "claim": "\"A comparison usually takes 20-40 seconds\".",
+      "evidence": "Canary 7c PASS (ledger.md:47 at 7b224c5a), pair iPhone 15 vs Samsung Galaxy S24 with the PHASE2 guard and UNIFIED_SEARCH_BOUND on: q compare 26.9 s, pair compare 28.2 s, probe 30.0 s, stream 32.4 s. Live GET /health just now returned 200 with loop_lag_max_60s_ms 10805 and loop_lag_max_ms 14802, so a stall could push one compare past 40 s.",
+      "fix": "Keep \"usually 20-40 seconds\". Use a warm-up READY pair for <PAIR A>/<PAIR B> on the review day.",
+      "fix_lever": "none"
+     },
+     {
+      "id": "F12",
+      "title": "Bright Data returns 401 live: some prices may show \"No confirmed price yet.\"",
+      "severity": "medium",
+      "status": "RISK",
+      "claim": "\"... and a price for each product when one is found.\"",
+      "evidence": "GET https://web-production-58776.up.railway.app/health returned brightdata_auth {last_status: 401, at: 2026-10-11T15:55:27Z}. Canary 7c already had the second product at 1/2 prices (ledger.md:47). The empty-price copy is results.price.pending \"No confirmed price yet.\" (en.json:155). The sentence is hedged, so it stays true, but a reviewer may see missing prices.",
+      "fix": "Owner: renew the Bright Data token (docs/runbooks/brightdata-token-renewal.md), then rerun the warm-up to pick the READY pair. The notes now name the empty-price state so it does not read as a bug.",
+      "fix_lever": "owner_action"
+     },
+     {
+      "id": "F13",
+      "title": "Notes omit email confirmation for new email accounts",
+      "severity": "low",
+      "status": "RISK",
+      "claim": "The notes do not say what a reviewer who registers a new email account will see.",
+      "evidence": "Register handles a confirmation-required sign-up with \"Check your inbox ... Confirm your email, then sign in.\" (en.json:865-867). Login's error copy also points to confirmation (en.json:1009). Whether production Supabase requires email confirmation is UNVERIFIED (no dashboard access). Packet line 437 says \"confirm email if required\".",
+      "fix": "Add: \"New email accounts (Sign Up) may be asked to confirm the email address through a link before signing in.\"",
+      "fix_lever": "asc_field"
+     },
+     {
+      "id": "F14",
+      "title": "Sign in with Apple tokens are not revoked on account deletion",
+      "severity": "medium",
+      "status": "RISK",
+      "claim": "Packet section 5 records SIWA token revocation as U11 = A (after launch).",
+      "evidence": "The delete path calls only DELETE /api/v1/auth/account (EditProfileScreen.tsx:137-150). Apple's account-deletion guidance for apps that offer Sign in with Apple expects token revocation. The Apple page was not fetched in this audit (UNVERIFIED wording). This is not a notes sentence, but a reviewer who tests deletion with an Apple account can raise it.",
+      "fix": "Accept the known risk (owner ruling U11 = A), or schedule the backend revocation before submission. Do not claim revocation in the notes.",
+      "fix_lever": "backend_deploy"
+     },
+     {
+      "id": "F15",
+      "title": "Sign-in and contact fields are consistent with the build",
+      "severity": "info",
+      "status": "OK",
+      "claim": "Packet lines 260-270: Sign-in required Yes; user name and password = review account 1; contact name, +973 phone and a monitored email.",
+      "evidence": "App.tsx shows only the Auth stack until isAuthenticated, so every feature needs sign-in. Login takes an email and password and submits with \"Sign In\" (LoginScreen.tsx:526-532; en.json:366). The support@getmyez.com and privacy@getmyez.com routing works (orchestrator context). The phone-format rule is quoted in the packet from Apple's help page; it was not re-fetched here.",
+      "fix": "Use a monitored inbox, for example support@getmyez.com, as the contact email. Enter the phone as +973 followed by the number.",
+      "fix_lever": "asc_field"
+     }
+    ],
+    "ready_text": "Sign-in is required: the account holds the user's comparison history, preferences and comparison allowance. The app opens on the sign-in screen.\n\nReview account 1: <REVIEW EMAIL 1> / <REVIEW PASSWORD 1>\nReview account 2 (spare, in case account 1 is deleted): <REVIEW EMAIL 2> / <REVIEW PASSWORD 2>\nEnter the email and password and tap Sign In. Both review accounts have already completed the first-run questions and have a raised limit of 10 comparisons per day.\n\nSign in with Apple (\"Continue with Apple\") is also available: first tick the box \"I am 13 or older and I agree to the Terms...\". It creates a new account with the standard free allowance (3 comparisons a day, 10 a month). A new account first answers a short first-run questionnaire (16 screens; language, country, 1-3 priorities, budget, brand preference and how you heard of us must be chosen, the other screens only need Continue, and the notifications screen offers \"Maybe later\").\n\nHow to test:\n1. On the MYEZ tab (home), the comparison card has three tabs: Scan (selected by default), Link and Type. Tap Type, enter \"<PAIR A>\" and \"<PAIR B>\" (a pair that passed our check today), then tap Compare.\n2. The first time an account starts a comparison, the camera or the photo picker on a device, the app shows a one-time sheet \"Your comparison is written with AI\" that names OpenAI and explains what is sent. Tap \"Agree and continue\". \"Not now\" cancels; comparisons cannot run without this agreement.\n3. A comparison usually takes 20-40 seconds while we gather specs, reviews and prices.\n4. Results show the winner, the reasons, \"Where the runner-up wins\", and a price for each product when one is found (otherwise \"No confirmed price yet.\").\n5. Photos: tap the Scan tab, then \"Turn on camera\" (first time; allow camera access) or \"Open camera\". Photograph two products with the shutter button, then tap Compare. To use library photos instead, tap the photo button next to the shutter (or \"Or pick from gallery\" before camera access is granted) and select two photos.\n6. Link compares two product page links, for example from Amazon or Noon.\n\nMarket: results use the Bahrain market. Prices are shown in Bahraini Dinar (BHD) and change over time.\nAI processing: the product names, links (with the text of those pages), photos and the profile preferences named on the permission sheet are sent to OpenAI to write the comparison. OpenAI may use these inputs and its outputs to evaluate and train its models; the permission sheet says so. The user's name, email and account details are not sent.\nNew email accounts (Sign Up) may be asked to confirm the email address through a link before signing in.\nAccount deletion: Profile tab -> gear icon (top right, labelled Settings) -> Edit Profile screen -> scroll to \"Account actions\" -> \"Delete account\" -> tap \"Delete account\" again in the confirmation.\nThis version has no in-app purchases, subscriptions or ads, and does not track users. The daily-limit screen only explains when free comparisons refresh; nothing is sold."
+   },
+   "verdict": {
+    "verdicts": [
+     {
+      "id": "F01",
+      "refuted": false,
+      "corrected_severity": "medium",
+      "reason": "Reproduced. home.scan \"Scan Product\" (en.json:111) is not used as a bare key anywhere in src; only home.scan.preview.* keys are used (HomeScreen.tsx:787-838). Home shows Scan/Link/Type tabs (HomeScreen.tsx:1002-1038; en.json:710-712), \"Turn on camera\" when there is no camera permission (HomeScreen.tsx:758-774), and, once permission is granted, two \"Tap to snap\" rows plus the \"Open camera\" CTA (HomeScreen.tsx:779-844, 1055-1066). The finding leaves out the \"Tap to snap\" rows. I lowered the severity: a visible \"Scan\" tab exists, so a reviewer can still find the photo flow, and a wrong label in the notes is unlikely to cause a rejection on its own."
+     },
+     {
+      "id": "F02",
+      "refuted": false,
+      "corrected_severity": "low",
+      "reason": "Reproduced. home.camera.gallery (en.json:964) is unused in src. The visible link is home.permission.gallery_link \"Or pick from gallery\" (en.json:716), shown only on the no-permission cards (HomeScreen.tsx:770-774; ScanCameraScreen.tsx:336-346). After permission is granted, the gallery entry is an icon with no visible text (ScanCameraScreen.tsx:533-541, a11y \"Choose from gallery\" en.json:969). The fix text is wrong, though. The icon button calls onGalleryPick, which picks ONE photo per tap into the next empty slot (ScanCameraScreen.tsx:209-231), so \"select two photos\" is inaccurate for that path. I lowered the severity because this is a one-word label difference."
+     },
+     {
+      "id": "F03",
+      "refuted": false,
+      "corrected_severity": "medium",
+      "reason": "Reproduced. useState<InputMode>('scan') at HomeScreen.tsx:116, with no restore of a saved mode. TwoInputShell (the text boxes and Compare) renders only outside scan mode (HomeScreen.tsx:847-866). The home tab label is t('app.name') = \"MYEZ\" (App.tsx:140; en.json:2). I lowered the severity from high because the Type tab is visibly labelled one tap away; the notes mislead but do not block review."
+     },
+     {
+      "id": "F04",
+      "refuted": false,
+      "corrected_severity": "info",
+      "reason": "Confirmed.\n- Strings: en.json:701-705.\n- withAiConsent wraps text compare (HomeScreen.tsx:373), URL compare (:534), the Open camera CTA (:725-727), the camera-permission request (:731-735), the gallery fallback (:736-740) and the preview rows (:779).\n- The only navigate('ScanCamera') sites are HomeScreen.tsx:719 and :779.\n- The other navigate('Results') sites pass comparison_id, which opens history and runs no new compare (HistoryScreen.tsx:787/796, ProfileScreen.tsx:412).\n- Consent is stored per user (aiConsent.ts:9-15, 114-119).\n- The canCompare check comes before consent (HomeScreen.tsx:366-373).\n- Client isPremium makes canCompare true (useComparisonCounter.ts:69-82)."
+     },
+     {
+      "id": "F05",
+      "refuted": false,
+      "corrected_severity": "low",
+      "reason": "Confirmed.\n- The gear navigates to EditProfile with a11y label \"Settings\" (ProfileScreen.tsx:334-342).\n- The \"Account actions\" eyebrow and the \"Delete account\" row: EditProfileScreen.tsx:259-281.\n- Alert title, message and buttons: EditProfileScreen.tsx:127-136 (en.json:354, 383, 930).\n- On confirm: DELETE /api/v1/auth/account, then clearAiConsent, clearRecentSearches and clearSession (:137-148).\n\nOne nit on the fix text: \"Settings\" is only an accessibility label with no visible text, so \"labelled Settings\" may mislead a sighted reviewer."
+     },
+     {
+      "id": "F06",
+      "refuted": false,
+      "corrected_severity": "medium",
+      "reason": "Reproduced.\n- TIER_LIMITS: free daily 3 / monthly 10 / lifetime_free 3; premium daily 10 / monthly 70 (usage_service.py:138-149).\n- The tier is read from users on every consume (usage_service.py:350-355, 520-531) and on status (:719-723).\n- The column is TEXT DEFAULT 'free' (migrations/011:28), and no CHECK constraint appears in the repo migrations.\n- Deletion resets the tier to 'free' (migration 043:141, :208).\n\nI lowered the severity from high: the packet already makes this step an owner prerequisite. Line 437 says \"`users.subscription_tier = premium` in the Supabase table editor\", and line 273 says to paste the notes only after the demo accounts exist. The sentence is a gated prerequisite, not an unplanned defect. The SQL is a useful sharpening."
+     },
+     {
+      "id": "F07",
+      "refuted": false,
+      "corrected_severity": "medium",
+      "reason": "Confirmed.\n- handleAppleSignIn returns early without the checkbox (LoginScreen.tsx:258-268), and so does Google (:229-233).\n- The Apple button shows only on iOS when available (:212-216, 426-437).\n- CANARY_NEW_ONBOARDING_PERCENT = 100 is in the build (features.ts:30).\n- NewOnboardingHost hard-codes isAuthenticated={true} (NewOnboardingHost.tsx:153), so AUTHED_STEP_SEQUENCE has 16 steps (OnboardingFlow.tsx:128-131).\n- Required steps 2/4/8/9/10/11: OnboardingFlow.tsx:169-191.\n- Step 17 has \"Allow notifications\" / \"Maybe later\" (Step17Notifications.tsx:146,156; en.json:689-690).\n- Free = 3 lifetime-free compares that bump the daily counter (usage_service.py:357-377), so \"3 a day, 10 a month\" holds."
+     },
+     {
+      "id": "F08",
+      "refuted": false,
+      "corrected_severity": "medium",
+      "reason": "Confirmed.\n- The Google SocialButton renders unconditionally (LoginScreen.tsx:441-449).\n- The dependency @react-native-google-signin/google-signin ^16.1.2 is in package.json.\n- The plugin is configured in app.json:226-228.\n\nWhether the flow works on device is UNVERIFIED, as the finding says. The packet's own GOO item (line 446) covers the device check. The point that leaving the sentence out does not hide a visible button holds."
+     },
+     {
+      "id": "F09",
+      "refuted": false,
+      "corrected_severity": "info",
+      "reason": "The Bahrain/BHD part is confirmed: api.ts:681, :824, :971 and HomeScreen.tsx:562 hardcode region 'bahrain'. The WRONG status is overstated, though. The backend does query non-Bahrain GCC retailers: uae.sharafdg.com (AED), danube.sa (SAR) and nahdionline.com (SAR) in algolia_service.py:107-128, and extraction_service.py:930 cites \"Major GCC retailers (Noon, Jarir, Extra, Sharaf DG, LuLu)\". They are marked genuine:False, and the audit did not show whether they feed displayed prices. The clause is UNVERIFIED rather than shown false. The finding's safer wording is still fine as an edit."
+     },
+     {
+      "id": "F10",
+      "refuted": false,
+      "corrected_severity": "info",
+      "reason": "Confirmed.\n- No IAP, ads or attribution packages in package.json dependencies. The only third-party SDKs are google-signin and @sentry/react-native (crash reporting, not tracking).\n- app.json:26 has NSPrivacyTracking false. NSPrivacyCollectedDataTypeTracking is false 13 times and true 0 times, and there is no NSUserTrackingUsageDescription.\n- The paywall copy only explains limits (en.json:373-381, 734-736).\n- Live /api/v1/legal/privacy returned 200."
+     },
+     {
+      "id": "F11",
+      "refuted": false,
+      "corrected_severity": "low",
+      "reason": "Confirmed. ledger.md:47 at 7b224c5a records canary 7c PASS: q 26.9 s, pair 28.2 s, probe 30.0 s, stream 32.4 s, second product at 1/2 prices. My live GET /health returned 200 with loop_lag_max_ms 14802 and loop_lag_max_60s_ms 6546 (it was 10805 in the finding, so the value fluctuates), and the stall caveat holds."
+     },
+     {
+      "id": "F12",
+      "refuted": false,
+      "corrected_severity": "medium",
+      "reason": "Reproduced. My live GET /health returned brightdata_auth {last_status: 401, at: 2026-10-11T15:55:27Z}. Canary 7c's second product had no price (ledger.md:47). results.price.pending \"No confirmed price yet.\" is en.json:155."
+     },
+     {
+      "id": "F13",
+      "refuted": false,
+      "corrected_severity": "low",
+      "reason": "Confirmed. The copy exists: register.emailConfirmation.* (en.json:865-866) and auth.errors.invalidCredentials (en.json:1009). Whether production requires email confirmation is UNVERIFIED, and the packet (line 437) says \"confirm email if required\". The added hedge sentence is accurate."
+     },
+     {
+      "id": "F14",
+      "refuted": false,
+      "corrected_severity": "low",
+      "reason": "The fact is correct: the delete path only calls DELETE /api/v1/auth/account (EditProfileScreen.tsx:137-148), and the packet records U11 = A (lines 73-75, 250). Two things lower it.\n- Guideline 5.1.1(v) as fetched from developer.apple.com/app-store/review/guidelines/ does not mention token revocation. It only links to a separate account-deletion page, which is outside the allowed fetch list, so the revocation requirement's wording stays UNVERIFIED.\n- It is a known, owner-ruled risk outside the review-notes dimension, and a reviewer cannot see it from the device."
+     },
+     {
+      "id": "F15",
+      "refuted": false,
+      "corrected_severity": "info",
+      "reason": "Confirmed. Signed out, the app shows the Auth stack, whose first screen is Login (App.tsx:103-114, 365-368). The Sign In CTA uses auth.signIn \"Sign In\" (LoginScreen.tsx:520-532; en.json:366). The packet's phone-format quote was not re-fetched (UNVERIFIED here)."
+     }
+    ],
+    "ready_text_ok": false,
+    "ready_text_corrections": "1. The questionnaire paragraph says \"the other screens only need Continue\". The onboarding footer button reads t('onboarding.next') = \"Next\" (OnboardingFlow.tsx:459; en.json:47); \"Continue\" is only the unused defaultValue. Change it to \"the other screens only need Next\".\n\n2. Step 5, \"tap the photo button next to the shutter ... and select two photos\", is wrong. That button calls onGalleryPick, which opens the picker without multi-select and fills ONE empty slot per tap (ScanCameraScreen.tsx:209-231, 533-541). Write: \"tap the photo button next to the shutter once for each product, then tap Compare\".\n\n3. Step 5, the \"Or pick from gallery\" path is different: it selects two photos and goes straight to results with no Compare tap (HomeScreen.tsx:675-693; ScanCameraScreen.tsx:258-273). Suggested wording: \"(before camera access is granted, \\\"Or pick from gallery\\\" lets you select two photos at once and starts the comparison)\".\n\n4. Step 5, optional: with camera access granted, Home's Scan tab also shows two \\\"Tap to snap\\\" rows above \\\"Open camera\\\", and either one opens the camera (HomeScreen.tsx:779-844, 1055-1066).\n\n5. Account deletion, \"gear icon (top right, labelled Settings)\": \"Settings\" is only an accessibility label with no visible text (ProfileScreen.tsx:334-342). Use \"gear icon (top right)\".\n\n6. \"Both review accounts ... have a raised limit of 10 comparisons per day\" is true only after the owner sets users.subscription_tier = 'premium' (usage_service.py:144-148; packet line 437) and onboards both accounts. Keep the sentence, but paste it only after that step.\n\n7. Byte count: I measured 3031 bytes without a trailing newline, all ASCII (finding says 3032), well under the 4000-byte limit.\n\n8. The Bahrain/BHD sentence, the consent-sheet strings, \"Where the runner-up wins\" (en.json:763), \"No confirmed price yet.\" (en.json:155), \"Continue with Apple\" (en.json:368), the checkbox prefix (en.json:999 plus common.terms \\\"Terms\\\" en.json:1029), \"Sign Up\" (en.json:365), \"Account actions\" and \"Delete account\" all match the build."
+   }
+  },
+  {
+   "key": "listing-urls",
+   "result": {
+    "summary": "Read-only audit at 7b224c5a. The client code there is the binary under review: `git diff --stat eed0f628 7b224c5a -- SmartCompareApp app landing` is empty. Live checks were GET-only curl on 2026-10-11.\n\n**Verdict: the listing text is accurate.** One thing blocks submission today: any URL pasted on getmyez.com returns 404. getmyez.com serves the \"PAUSE Fragrance Study\" site, and every path tested there returns 404 text/plain: /privacy.html, /terms.html, /support, /ar/*, /.well-known/apple-app-site-association, /c/, /r/, /q/, /bot. The Railway landing host returns 200 on all the same paths, and the AASA there is application/json.\n\n**Listing text against the binary.**\n- Promotional text and description: every feature claim maps to shipped code. That covers the camera and gallery, \"What we know\", history and share, delete account, the AI consent sheet, the categories and the BHD market.\n- I measured promo at 158 chars, description at 1737 chars / 1749 bytes, keywords B at 98 bytes and review notes at 1851 bytes.\n- No other-platform names, no prices, no speed claims and no accuracy promise. The description even carries a disclaimer.\n- Keywords contain no brand or app names.\n\n**Support and privacy pages.**\n- The live support page shows support@getmyez.com and the postal address.\n- The live privacy policy (effective October 11, 2026) covers all 13 App Privacy types, and its section 4 explains the Other Purposes (OpenAI data sharing).\n- The backend legal routes serve the same dated documents.\n\n**URLs the build opens or shares.**\n- No web page tap inside the app opens getmyez.com.\n- The Legal screen's fallback link uses the Railway host.\n- Contact Us uses mailto:support@getmyez.com, and that mailbox delivers.\n- The getmyez.com links the build emits are the share links (`https://getmyez.com/c/{token}?ref={code}`, from `app/services/referral_service.py:50` and `:348`). All 5 share targets send this link. They are reachable from any result opened from History. Fresh results get them only if ENABLE_COMPARISON_ID_ECHO is on in production; it defaults to OFF and I could not read its production value. Every one of those links returns 404 today.\n- Universal links (`applinks:getmyez.com`) are inactive until the AASA is served on getmyez.com.\n\n**Changing the URLs after approval.** Apple says Privacy Policy URL changes \"release with your next app version\". Support URL editability could not be read (the table's checkmarks do not extract), so it is UNVERIFIED and should be assumed tied to the version. So paste the URLs that work at the moment of submission. The Railway URLs are durable either way.\n\n**Smaller items.**\n- Copyright is still a placeholder in the packet; it should be \"2026 Hussain Aseeri\".\n- Do not use the landing root as Marketing URL: it names Google Play and claims \"authorized retailers\".\n- The support page's instant meta-refresh to mailto: is a minor reviewer-experience risk.\n- Several packet sections are stale. Section 0 predates the #330 merge, the section 4 table lacks UF19 rows 5 and 8, the section 5 support note names qaren.app, and section 12 lists old URL lengths.",
+    "findings": [
+     {
+      "id": "F1",
+      "title": "getmyez.com URLs pasted today would 404 for the reviewer (Privacy Policy, Support, Marketing)",
+      "severity": "blocker",
+      "status": "WRONG",
+      "claim": "Packet section 4 (EN_PRIVACY_URL https://getmyez.com/privacy.html, packet line 180) and section 5 (EN_SUPPORT_URL https://getmyez.com/support, line 238) are the URLs to paste.",
+      "evidence": "curl 2026-10-11: https://getmyez.com/privacy.html, /terms.html, /support, /ar/privacy.html, /ar/terms.html, /ar/support all return 404 text/plain (9 bytes). https://getmyez.com/ returns 200 with <title>PAUSE Fragrance Study</title>. https://www.getmyez.com/privacy.html returns 404. The same paths on https://qaren-landing-production.up.railway.app return 200 text/html. Guideline 5.1.1(i) requires a privacy policy link in the ASC metadata. Guideline 1.5 and the platform-version help page require the Support URL to 'lead to actual contact information'.",
+      "fix": "Paste getmyez.com URLs only after the owner's domain move and after `curl -sI https://getmyez.com/privacy.html` returns 200 with no redirect. Otherwise paste the Railway-host URLs (see ready_text). Those keep working after the move, because the Railway domain stays on the qaren-landing service.",
+      "fix_lever": "asc_field"
+     },
+     {
+      "id": "F2",
+      "title": "Every share link the build sends points to getmyez.com/c/... and returns 404 today",
+      "severity": "high",
+      "status": "WRONG",
+      "claim": "Description bullet 'a way to share a result with friends' (packet line 207) works end to end.",
+      "evidence": "app/services/referral_service.py:50 APP_BASE_URL = \"https://getmyez.com\"; :348 share_link = f\"{APP_BASE_URL}/c/{token}?ref={code}\". SmartCompareApp/src/components/ShareBottomSheet.tsx:67-73 has 5 targets (whatsapp, copy, x, telegram, snapchat), and all send this link (:182-199). The sheet opens when comparisonId exists (ResultsScreen.tsx:532-548): always for results opened from History (:436). Fresh compares get an id only if ENABLE_COMPARISON_ID_ECHO is ON (app/api/text_routes.py:73-75, default OFF; production value UNVERIFIED); otherwise the share is text-only with no URL (ResultsScreen.tsx:533-545). curl https://getmyez.com/c/abc123?ref=QR-ABC123 returns 404; the same path on the Railway host returns 200 (open.html hand-off, landing/nginx.conf.template:70-78). Count of in-app taps that open a getmyez.com web page through Linking.openURL: 0. Count of share actions that emit a getmyez.com URL: 5 targets, and every recipient tap returns 404 until the move.",
+      "fix": "The domain move fixes this with no binary change; the link is built server-side. Until then, avoid share flows in the screenshots and review notes. Optionally make APP_BASE_URL configurable through the backend so it could temporarily point at the Railway host.",
+      "fix_lever": "owner_action"
+     },
+     {
+      "id": "F3",
+      "title": "Universal links inactive: getmyez.com does not serve the AASA",
+      "severity": "medium",
+      "status": "RISK",
+      "claim": "app.json associatedDomains applinks:getmyez.com makes /c/, /r/ and /q/ links open the app.",
+      "evidence": "SmartCompareApp/app.json:24 \"associatedDomains\": [\"applinks:getmyez.com\"]; src/navigation/linking.ts:47 prefixes ['qaren://', 'https://getmyez.com']. curl https://getmyez.com/.well-known/apple-app-site-association returns 404. The Railway host returns 200 application/json with appID 8K562M549D.com.qaren.app and paths /r/*, /c/*, /q/*. Associated domains cannot be verified until the apex serves this file, so share links open in Safari instead of the app.",
+      "fix": "Owner domain move (S77 step 1). Then curl the AASA on the apex. Apple's CDN may take time to pick it up (UNVERIFIED how long). No binary change needed.",
+      "fix_lever": "owner_action"
+     },
+     {
+      "id": "F4",
+      "title": "Privacy Policy URL changes only ship with the next app version; Support URL editability UNVERIFIED",
+      "severity": "high",
+      "status": "RISK",
+      "claim": "The URL can be switched to getmyez.com after approval without a new binary.",
+      "evidence": "https://developer.apple.com/help/app-store-connect/manage-app-information/manage-app-privacy: 'The URLs for your iOS app and macOS app platform ... can be updated if your app is in an editable [app status]' and 'Any changes to the URLs releases with your next app version.' The Support URL is a Platform Version Information property (platform-version-information page). The editable column of https://developer.apple.com/help/app-store-connect/reference/app-information/required-localizable-and-editable-properties did not extract, so post-approval editability is UNVERIFIED. A new App Store version needs a new build.",
+      "fix": "Treat whatever is pasted at submission as fixed until 1.0.1. If the domain is not moved before submission, paste the Railway URLs; they stay valid. Switch to getmyez.com in the 1.0.1 version, which will also carry the LANDING_BASE_URL move.",
+      "fix_lever": "asc_field"
+     },
+     {
+      "id": "F5",
+      "title": "Promotional text, description and keywords are accurate against the build",
+      "severity": "info",
+      "status": "OK",
+      "claim": "Packet section 5 claims are all true in build 2; no other-platform names, no unbacked price, retailer-count, speed or accuracy claims; keywords 100 bytes or fewer with no trademarks.",
+      "evidence": "Anchors at 7b224c5a: en.json:764 results.whatWeKnow rendered at ResultsContent.tsx:517-531 (only when scoring_v2.confidence_legs is present; built in app/services/response_builder.py:1311-1354); en.json:964 home.camera.gallery; en.json:111 home.scan; en.json:930 editProfile.deleteAccount; en.json:701 aiConsent.title; en.json:858 results.medicalNote; categories app/services/extraction_service.py:113-134; ContactUsScreen.tsx:60 support@getmyez.com; app.json NSPrivacyTracking false. Measured: promo 158 chars, description 1737 chars / 1749 bytes (packet says 1735), keywords B 98 bytes and A 95 bytes. The description names no platform and no retailer count. Its only speed reference is none; '20-40 seconds' appears only in the review notes and matches canary 7c (26.9-32.4 s). Accuracy is disclaimed ('may not always be accurate'). OpenAI is named only in the privacy paragraph (guideline 5.1.2(i) disclosure).",
+      "fix": "None. Use keyword set B. 'Prices ... gathered from retailers across the GCC' could not be checked against retailer coverage and is UNVERIFIED but low risk.",
+      "fix_lever": "none"
+     },
+     {
+      "id": "F6",
+      "title": "App Information: name, subtitle, categories and display name are consistent",
+      "severity": "info",
+      "status": "OK",
+      "claim": "Packet section 3: name MYEZ Compare Smart, subtitle 'Two products. One clear pick.', categories Shopping and Lifestyle.",
+      "evidence": "Packet lines 92-111: subtitle 29 chars; name at most 30 chars (guideline 2.3.7). The keywords repeat no word of the name. SmartCompareApp/app.json:3 name MYEZ; locales/en.json CFBundleDisplayName MYEZ. No other-app or platform names. The ASC record name ('MYEZ Compare Smart', per orchestrator context) differs from the packet's em-dash spelling. That is harmless.",
+      "fix": "None.",
+      "fix_lever": "none"
+     },
+     {
+      "id": "F7",
+      "title": "Copyright still a placeholder in the packet; L1 is now known",
+      "severity": "medium",
+      "status": "RISK",
+      "claim": "Packet line 248 EN_COPYRIGHT = '2026 <L1: exact legal name ...>'.",
+      "evidence": "The live privacy policy section 1 and app/legal/privacy_policy.md:9 name the provider as Hussain Aseeri. The platform-version help page says Copyright is required, format '2014 Example, Inc.', and the symbol is added automatically. Whether the ASC field is filled today is UNVERIFIED (not visible to this audit).",
+      "fix": "Set Copyright to `2026 Hussain Aseeri` on the 1.0.0 page before Add for Review.",
+      "fix_lever": "asc_field"
+     },
+     {
+      "id": "F8",
+      "title": "Live support page has contact information (email and postal address)",
+      "severity": "low",
+      "status": "OK",
+      "claim": "The Support URL leads to actual contact information.",
+      "evidence": "https://qaren-landing-production.up.railway.app/support returns 200 (6172 bytes). It shows 'Email support@getmyez.com', 'Or copy the address: support@getmyez.com', and 'MYEZ is provided by Hussain Aseeri, Block 1020, Street 2052, Home 4769, Hamad Town 1020, Bahrain' (support.html lines 199-210). Footer links Privacy, Terms and Arabic all return 200. RISK: line 9 `<meta http-equiv=\"refresh\" content=\"0; url=mailto:support@getmyez.com\">` immediately launches the mail client. On a reviewer device with no mail account this can show a system prompt over the page. The content stays visible, so it is low risk. Email routing works (orchestrator context).",
+      "fix": "Optional: remove or delay the meta refresh in a later landing deploy. The landing redeploy does not need a binary.",
+      "fix_lever": "landing_or_domain"
+     },
+     {
+      "id": "F9",
+      "title": "Live privacy policy consistent with the 13 App Privacy types, including Other Purposes",
+      "severity": "info",
+      "status": "OK",
+      "claim": "The policy content matches App Privacy section 4 (13 types, linked, no tracking, Other Purposes on rows 3, 4, 5, 8 and 12 per UF19).",
+      "evidence": "https://qaren-landing-production.up.railway.app/privacy.html returns 200, 'Effective date: October 11, 2026'. Mapping: Email and Name in s3.1; Photos and Other User Content (names, links, page text) in s3.2 and s4; Customer Support (Contact Us) in s3.2; Search History ('Search records') in s3.2; User ID (account); Device ID and push token in s3.4; Product Interaction ('In-app activity', behaviour profile) in s3.3-3.4; Crash, Performance and Other Diagnostics in s13; Other Data (preferences, demographics) in s3.3. Other Purposes are backed by s4 (OpenAI data-sharing programme: 'identify usage patterns, measure model quality and inform the evaluation and training') and s3.6 (de-identified statistics). No ads and no tracking are stated in s2. Deletion path is in s9 and contact in s16. The manifest has 13 types (app.json NSPrivacyCollectedDataTypes, 13 entries, Tracking false, no Other purpose; native-only differences acknowledged in packet line 152). The backend /api/v1/legal/privacy and /terms (EN and ar) return 200 with 'Effective date: October 11, 2026'. The Legal screen calls /privacy_policy and /terms_of_service, the same handlers per app/api/legal_routes.py:40-61. The policy says country 'may' be set from network location. The API is not behind Cloudflare (response header server: railway-hikari, no cf-ray), so CF-IPCountry (app/api/auth_routes.py:1510-1513) is absent and Coarse Location is correctly not declared (inventory PM-8).",
+      "fix": "None. Keep the API DNS-only (no Cloudflare proxy) while Coarse Location stays undeclared.",
+      "fix_lever": "none"
+     },
+     {
+      "id": "F10",
+      "title": "Legal-screen fallback link and other build base URLs resolve",
+      "severity": "info",
+      "status": "OK",
+      "claim": "LANDING_BASE_URL and the other base URLs in the build are reachable.",
+      "evidence": "SmartCompareApp/src/services/api.ts:20 API_BASE_URL https://web-production-58776.up.railway.app (/health 200); api.ts:24 LANDING_BASE_URL https://qaren-landing-production.up.railway.app. LegalScreen.tsx:68 webUrl gives /privacy.html, /terms.html, /ar/privacy.html and /ar/terms.html, all 200. That link is shown only when the API fails and nothing is cached (:130-139). Other outbound URLs: ContactUsScreen.tsx:221 mailto support@getmyez.com (routing works); ResultsScreen.tsx:589 third-party source URLs; UpdateRequiredScreen.tsx:45 uses backend APP_STORE_URL (app/api/version_routes.py:14) only when force_update is true (production value UNVERIFIED, normally not reachable); share intents x.com and t.me (ShareBottomSheet.tsx:82-85). api.ts:1132 shareComparison (backend share_url on the Railway API host, app/api/share_routes.py:17) has no callers.",
+      "fix": "None for 1.0. Moving LANDING_BASE_URL to getmyez.com is the recorded follow-up (OTA plus the legalScreenLang.u8 pin).",
+      "fix_lever": "none"
+     },
+     {
+      "id": "F11",
+      "title": "Landing root is not suitable as the Marketing URL",
+      "severity": "medium",
+      "status": "RISK",
+      "claim": "Packet line 239: optionally set Marketing URL to https://getmyez.com/ after the move.",
+      "evidence": "Live landing root (and landing/index.html:10, :249, :263 at 7b224c5a): 'Coming soon to the App Store and Google Play', a 'Google Play Soon' badge, 'sourced from authorized retailers across the region', and six country names. Guideline 2.3.10 forbids names of other mobile platforms 'in your app or metadata'. 'Authorized retailers' is unverifiable, and the results use the Bahrain market only (packet BE-09).",
+      "fix": "Leave Marketing URL blank for 1.0 (it is optional), or redeploy the landing first without the Google Play badge and the 'authorized retailers' wording.",
+      "fix_lever": "asc_field"
+     },
+     {
+      "id": "F12",
+      "title": "Packet has stale sections that could mislead the paste step",
+      "severity": "low",
+      "status": "WRONG",
+      "claim": "The packet is current at 7b224c5a.",
+      "evidence": "Section 0 lines 17-18 still say PR #330 is not merged and that no store build is allowed; the S77 handoff lines 7 and 13 say #330 is merged and build 2 is attached. The section 4 table (lines 161 and 164) shows no Other Purposes on Search History and Product Interaction, while header line 3 and UF19 (specs/FABLE_RULINGS_U8_FIX4_S76.md:35) say rows 3, 4, 5, 8 and 12. Section 5 lines 222 and 242 refer to support@qaren.app, but the live page and the build use support@getmyez.com. Section 12 lines 465-468 give URL lengths 55, 60, 58 and 63 from the old Railway URLs; line 240 says 60.",
+      "fix": "Paste from ready_text, not from the packet URL rows. Refresh the packet in the next docs PR.",
+      "fix_lever": "none"
+     },
+     {
+      "id": "F13",
+      "title": "In-app share message claims '30 seconds'",
+      "severity": "low",
+      "status": "RISK",
+      "claim": "en.json:869 referrals.share.messageWithLink: 'MYEZ ends the debate in 30 seconds' (ar.json:866 likewise).",
+      "evidence": "Canary 7c (orchestrator context): compares complete in 26.9-32.4 s, so some take more than 30 s. This is user-generated outgoing text, not store metadata, so guideline 2.3 does not apply directly.",
+      "fix": "Optional future OTA: soften to 'in under a minute'. Not a submission blocker.",
+      "fix_lever": "ota"
+     }
+    ],
+    "ready_text": "URLs to paste in App Store Connect (English only for 1.0, D11 = B). Checked by curl on 2026-10-11.\n\n| ASC field | Case A: getmyez.com moved and verified before submission | Case B: fallback, getmyez.com not moved |\n|---|---|---|\n| App Privacy -> Privacy Policy URL | https://getmyez.com/privacy.html | https://qaren-landing-production.up.railway.app/privacy.html (200 today) |\n| App Privacy -> User Privacy Choices URL | leave empty | leave empty |\n| 1.0.0 page -> Support URL | https://getmyez.com/support | https://qaren-landing-production.up.railway.app/support (200 today; already saved) |\n| 1.0.0 page -> Marketing URL | leave blank (the landing root names Google Play and says \"authorized retailers\") | leave blank |\n| 1.0.0 page -> Copyright | 2026 Hussain Aseeri | 2026 Hussain Aseeri |\n\nCase A gate. All of these must pass before pasting:\n- `curl -sI https://getmyez.com/privacy.html` returns 200 with no redirect.\n- `/support` returns 200.\n- `/.well-known/apple-app-site-association` returns 200 application/json.\n- www returns a 301 to the apex.\n\nToday every one of those paths returns 404 (PAUSE site), so use Case B unless the move lands first.\n\nAfter approval:\n- Apple's manage-app-privacy page says Privacy Policy URL changes \"release with your next app version\". The Support URL is a version-level property and is treated the same way (editability UNVERIFIED).\n- So the Case B URLs stay live through 1.0. Switch to getmyez.com in 1.0.1 together with the LANDING_BASE_URL move.\n- The Railway host URLs keep working after the domain move."
+   },
+   "verdict": {
+    "verdicts": [
+     {
+      "id": "F1",
+      "refuted": false,
+      "corrected_severity": "blocker",
+      "reason": "Reproduced on 2026-10-11. `git diff --stat eed0f628 7b224c5a -- SmartCompareApp app landing` is empty. curl on getmyez.com returns 404 text/plain (9 bytes) for /privacy.html, /support, /terms.html, /ar/privacy.html, /ar/terms.html, /ar/support, the AASA, /c/, /r/, /q/ and /bot. www.getmyez.com/privacy.html is also 404. The apex root is 200 with title 'PAUSE Fragrance Study'. On the Railway landing host, /privacy.html (24017 B), /support (6172 B) and /terms.html return 200 text/html. The packet pastes https://getmyez.com/privacy.html at line 180 and https://getmyez.com/support at line 238. Guideline 5.1.1(i), guideline 2.1(a) ('fully functional URLs') and guideline 1.5 confirm the requirement. This is a blocker only if those URLs are pasted before the move, and the packet and the S77 step 3 say to paste them."
+     },
+     {
+      "id": "F2",
+      "refuted": false,
+      "corrected_severity": "medium",
+      "reason": "The evidence reproduces. referral_service.py:50 has APP_BASE_URL = \"https://getmyez.com\" and :348 builds share_link = f\"{APP_BASE_URL}/c/{quote(token)}?ref={code}\". ShareBottomSheet.tsx:67-73 lists 5 targets, and each sends buildOutgoing(share_link, code) (:182-199). ResultsScreen.tsx:436 sets comparisonId and :532-548 falls back to text-only. The getmyez.com /c/ path returns 404; the Railway /c/ path returns 200. I lowered 'high' to medium for three reasons. The sender's flow completes. The outgoing text carries the referral code as a manual fallback (en.json:869 '(or use code {{code}} in the app)'). The planned owner domain move fixes it server-side with no binary. It also affects only the person who receives a link, not the submission metadata (2.1(a) covers metadata URLs). One nit: api.ts shareComparison is imported in ResultsScreen.tsx:84 but never called, so 'no callers' is right."
+     },
+     {
+      "id": "F3",
+      "refuted": false,
+      "corrected_severity": "medium",
+      "reason": "Reproduced. app.json:24 has associatedDomains ['applinks:getmyez.com'] and linking.ts:47 has prefixes ['qaren://','https://getmyez.com']. The getmyez.com AASA returns 404; the Railway AASA returns 200 application/json (177 B). DOMAIN_MYEZ_SPEC.md:189 requires the apex AASA with no redirect. Medium is fair, though most of the user impact overlaps F2. It does not affect review."
+     },
+     {
+      "id": "F4",
+      "refuted": false,
+      "corrected_severity": "medium",
+      "reason": "The manage-app-privacy page quotes match exactly: the URLs 'can be updated if your app is in an editable app status' and 'Any changes to the URLs releases with your next app version.' The platform-version-information page has no editability wording for Support, Marketing or Copyright, and the symbols in the editable-properties table did not render for me either, so UNVERIFIED is correct. I lowered high to medium. This is a planning constraint, not a defect. Its only harm comes through F1 (pasting a dead URL), and the recommended fallback (Railway URLs, switch in 1.0.1) has no downside."
+     },
+     {
+      "id": "F5",
+      "refuted": false,
+      "corrected_severity": "info",
+      "reason": "Measured from the packet at 7b224c5a: promo 158/158, description 1737 chars / 1749 bytes (the packet says 1735/1747), keywords B 98 bytes, A 95 bytes, subtitle 29, review notes 1851 bytes. All match. The anchors check out: en.json 111 home.scan, 701 aiConsent.title, 764 results.whatWeKnow, 858 results.medicalNote, 930 editProfile.deleteAccount, 964 home.camera.gallery. ResultsContent.tsx:523 renders whatWeKnow. response_builder.py:1311/1350 builds confidence_legs. The extraction_service.py categories match the description. The description has no speed claim; '20-40 seconds' appears only in the review notes (packet line 284). The description carries the disclaimer 'may not always be accurate'. The OK stands."
+     },
+     {
+      "id": "F6",
+      "refuted": false,
+      "corrected_severity": "info",
+      "reason": "Packet lines 86-111: subtitle 29 chars, name 20 chars, Shopping/Lifestyle. app.json:3 has name MYEZ and SmartCompareApp/locales/en.json:3 has CFBundleDisplayName MYEZ. No keyword in B repeats Compare or Smart. The OK stands."
+     },
+     {
+      "id": "F7",
+      "refuted": false,
+      "corrected_severity": "medium",
+      "reason": "Packet line 248 still says `2026 <L1: exact legal name ...>` and line 428 marks L1 OPEN. app/legal/privacy_policy.md:9 and packet line 5 (Apple team 8K562M549D 'Hussain Aseeri, Individual') support 'Hussain Aseeri'. Copyright is a required field per the platform-version page. Caveat: the packet asks for the exact name on the Apple membership, and the policy's spelling is evidence for it, not proof. The owner should confirm the spelling as it appears in the membership."
+     },
+     {
+      "id": "F8",
+      "refuted": false,
+      "corrected_severity": "low",
+      "reason": "Reproduced on the live /support: 200 and 6172 bytes. Line 9 has the meta refresh to mailto:support@getmyez.com. Lines 199-211 show the email and the 'Hussain Aseeri, Block 1020 ... Hamad Town 1020, Bahrain' address. The footer links Privacy, Terms and /ar/support all return 200. nginx.conf.template:30-35 shows the meta refresh is intentional. A minor addition: the page's canonical and hreflang links (lines 11-14) point to getmyez.com/support, which is 404 today. That has no effect on review."
+     },
+     {
+      "id": "F9",
+      "refuted": false,
+      "corrected_severity": "info",
+      "reason": "The live privacy.html shows 'Effective date: October 11, 2026'. It covers search records, Contact Us messages, the device identifier, in-app activity, error/performance reports (section 13 plus Sentry in section 5), and the OpenAI data-sharing programme in section 4 ('identify usage patterns, measure model quality ...'). Section 2 says no ads and no tracking, and section 9 covers deletion. The app.json manifest has 13 types and NSPrivacyTracking false. The backend legal privacy/terms routes in EN and ar return 200, with 'Effective date: October 11, 2026' and last_updated 2026-10-11 (legal_routes.py:40-61). /health sends 'Server: railway-hikari' with no cf-ray, and auth_routes.py:1510-1513 reads cf-ipcountry. The finding's section numbers (s3.2 and so on) are approximate because the live subsections are unnumbered, but the content is there. The OK stands."
+     },
+     {
+      "id": "F10",
+      "refuted": false,
+      "corrected_severity": "info",
+      "reason": "Confirmed: api.ts:20 and :24. LegalScreen.tsx:67 builds webUrl from LANDING_BASE_URL. The open-web link is shown only when errorKey is set and there is no content (:130-139). The /ar pages on the Railway host return 200. ContactUsScreen.tsx:60 and :221 use the mailto. version_routes.py:14 reads APP_STORE_URL (default ''). share_routes.py:17 uses the Railway API host. shareComparison is imported but never invoked. The OK stands."
+     },
+     {
+      "id": "F11",
+      "refuted": false,
+      "corrected_severity": "low",
+      "reason": "Reproduced on the live root and in landing/index.html:10, :249 and :263: 'Coming soon to the App Store and Google Play', a 'Google Play Soon' badge, and 'sourced from authorized retailers across the region'. Guideline 2.3.10 does say 'names ... of other mobile platforms ... in your app or metadata'. I lowered it to low because Marketing URL is optional, and both the packet (line 239) and the ready_text already default to leaving it blank. The risk only appears if someone opts in later."
+     },
+     {
+      "id": "F12",
+      "refuted": false,
+      "corrected_severity": "low",
+      "reason": "Reproduced at 7b224c5a. Lines 17-18 still say #330 is not merged and no store build may be made (UB-R4). Rows 5 and 8 at lines 161 and 164 lack Other Purposes, while header line 3 and UF19 (FABLE_RULINGS_U8_FIX4_S76.md:35) say rows 3, 4, 5, 8 and 12. Lines 222 and 242 name support@qaren.app. Lines 465-468 give 55/60/58/63, and line 240 says 60 chars, against the getmyez URLs of 28 and 32 chars."
+     },
+     {
+      "id": "F13",
+      "refuted": false,
+      "corrected_severity": "low",
+      "reason": "Confirmed: en.json:869 and ar.json:866 say '30 seconds'. This is in-app share text, not store metadata. The timing figure comes from the orchestrator's canary 7c context, which I did not measure. Low and optional are right."
+     }
+    ],
+    "ready_text_ok": false,
+    "ready_text_corrections": "1) Missing step: after setting the Privacy Policy URL, App Privacy must be PUBLISHED. The orchestrator context says it is saved but not published, and S77 step 3 says 'set the Privacy Policy URL ... then Publish'. Add 'then Publish App Privacy (owner attestation)' to the Privacy Policy URL row in both cases. Without it, Add for Review cannot proceed.\n2) 'Today every one of those paths returns 404 (PAUSE site)' is inaccurate for the www check. curl -sI https://www.getmyez.com/ returns 200 OK (the PAUSE page), not 404 and not a 301. Say: 'the apex paths return 404 and www returns 200 PAUSE instead of a 301'. The 301 gate itself is right: landing/nginx.conf.template:100-108 has server_name www.getmyez.com; return 301 https://getmyez.com$request_uri.\n3) Copyright '2026 Hussain Aseeri' should note that L1 asks for the exact legal name on the Apple Developer membership (packet lines 248 and 428, L1 OPEN). The spelling comes from privacy_policy.md:9 and packet line 5. The owner should confirm it matches the membership before pasting.\n4) 'The Railway host URLs keep working after the domain move' is plausible but UNVERIFIED. nginx has server_name _ (nginx.conf.template:7), and the S77 step 1 only adds custom domains to qaren-landing. It holds only if nobody removes the Railway-generated domain or the service. Mark it as a condition.\n5) Optional: say the Case A gate should also grep /privacy.html for 'October 11, 2026' (S77 step 2) and check /support for 'support@getmyez.com'. That confirms the moved apex serves the current landing, not a stale deploy.\n6) Optional: note that the Arabic URLs (/ar/privacy.html, /ar/support) are not pasted for 1.0 under D11 = B. On the Railway host they return 200 if they are ever needed."
+   }
+  },
+  {
+   "key": "review-risk",
+   "result": {
+    "summary": "Read-only App Review risk sweep of MYEZ 1.0.0 build 2 (the client at 7b224c5a; `git diff --stat eed0f628 7b224c5a -- SmartCompareApp app landing` is empty, so this code is the binary under review). It is checked against the live guidelines page (WebFetch on 2026-10-11; the page shows no \"last updated\" date in the text read) and the live endpoints.\n\n**Clean areas:**\n- **3.1.1:** the limit sheet only shows usage counts, a Close and a Done; there is no purchase path or outside link.\n- **4.5.4:** push is not required. The OS prompt fires only from in-app pre-prompts with a \"Maybe later\" choice, and Profile has an opt-out.\n- **4.8:** Sign in with Apple appears next to Google on Login and Register.\n- **5.1.1(i):** the privacy policy is reachable in the app from Profile, Login/Register and the AI consent sheet. The backend serves the 2026-10-11 policy in EN and AR (HTTP 200).\n- **5.1.1(v) deletion:** account deletion works in the app (Profile gear, then Edit Profile, then Delete account).\n- **5.1.2(i):** the OpenAI consent sheet gates every compare and scan path before data leaves the phone, and it names training use.\n- **Photos:** the library uses the out-of-process picker, so no photo permission is ever requested.\n- **Export compliance and age rating:** the export key is set, and the 13+ rating matches the sign-up checkbox and the policy.\n- **Placeholder text:** none is visible. The one \"lands in the next update\" string in en.json is not used by any screen.\n\n**Real risks, in rank order:**\n1. Build 2 has never been run on a device. No TestFlight install is recorded, so native-only paths are untested (certificate pins against today's chain, Sign in with Apple, Google sign-in, camera).\n2. The whole app sits behind a login (5.1.1(v)). The review notes must justify it.\n3. Review-time backend fragility:\n   - The client gives up on a compare after 35 s, while canary 7c compares took 26.9-32.4 s.\n   - /health shows recurring stalls on the server's request-handling loop of 8.1 s and 14.8 s today.\n   - The Bright Data credential returns 401.\n   - OpenAI is prepaid with auto-reload off.\n4. The S77 handoff names the wrong required screenshot size. Apple requires the Dynamic Island (medium) set.\n5. Google sign-in on build 2 is unverified, but its button is always shown.\n6. getmyez.com still returns 404 for /privacy.html, /support and the AASA file, which blocks the Privacy Policy URL and Publish.\n\n**Low-severity items:**\n- The only way to withdraw AI consent is to delete the account.\n- The policy's \"equal protection\" sentence exempts OpenAI.\n- The support page instantly redirects to a mailto: link.\n- There is an unused microphone purpose string.\n- After a permanent camera denial there is no Settings link (the gallery fallback works).\n- The welcome screen shows unattributed testimonial-style quotes.\n- iPad compatibility mode is untested.\n\n**Not measured (UNVERIFIED):** anything on a device, the OpenAI balance today, and the live certificate chain (schannel curl does not print it).",
+    "findings": [
+     {
+      "id": "R1",
+      "title": "Build 2 has never been run on a device before submission (2.1(a))",
+      "severity": "high",
+      "status": "RISK",
+      "claim": "Guideline 2.1(a): \"Make sure your app has been tested on-device for bugs and stability before you submit it ... We will reject incomplete app bundles and binaries that crash or exhibit obvious technical problems.\" Build 2 (EAS a3c3e8b5) went straight from eas build to eas submit and was attached to the version. No install of it is recorded, so the code paths that exist only in the native binary are untested in the store build: certificate pinning against today's chain, the Sign in with Apple entitlement, the Google URL scheme, the camera and notification permission prompts, and Sentry init.",
+      "evidence": "docs/investigations/2026-10-10-session-76-state/ledger.md:70-73 (build started, finished, submitted, processed and attached; no device install line anywhere in the ledger). NEXT_SESSION_PROMPT_S77.md step 6: \"Install build 2 from TestFlight to capture them; this requires a TestFlight internal group, which the owner creates\" (not yet done). SmartCompareApp/src/services/certificatePinning.ts:12-20,59-73 pin set measured 2026-09-29. The current chain could not be re-read today because curl on schannel does not print the issuer: UNVERIFIED.",
+      "fix": "Before Add for Review, the owner creates a TestFlight internal group, installs build 2 on a physical iPhone and runs a 10-minute smoke test:\n- a cold start;\n- sign in with the demo account;\n- one typed compare;\n- Scan, then Pick from gallery;\n- deny camera, then use the gallery fallback;\n- Profile, then Privacy and Terms;\n- Sign in with Apple on a throwaway Apple ID, then delete that account;\n- the Google button.\nCapture the screenshots in the same session.",
+      "fix_lever": "owner_action"
+     },
+     {
+      "id": "R2",
+      "title": "Every feature sits behind a login (5.1.1(v))",
+      "severity": "high",
+      "status": "RISK",
+      "claim": "Guideline 5.1.1(v): \"If your app doesn't include significant account-based features, let people use it without a login.\" Before sign-in, App.tsx renders only the Auth stack, and production refuses anonymous compares (ENABLE_COMPARE_AUTH_REQUIRED). Comparing two products is not obviously account-based, so a reviewer can reject on this. The draft notes give only one sentence of justification.",
+      "evidence": "SmartCompareApp/App.tsx:365-370 (when !isAuthenticated the only screen is Auth); ASC_SUBMISSION_PACKET_S76.md section 6 notes line 1: \"Sign-in is required: the account holds the user's comparison history, preferences and per-account comparison allowance.\" The per-account limits are app/services/usage_service.py:137-148 (free: 3 lifetime, 3 per day, 10 per month).",
+      "fix": "Now: expand the first paragraph of the review notes into the ready_text below. It names the paid per-compare server cost, the per-account allowance, history and the personalised profile, and in-app deletion. If App Review still rejects: build a guest mode with a small allowance tied to the device fingerprint (backend flag plus a client change; the client part is JS-only, so OTA is possible).",
+      "fix_lever": "asc_field"
+     },
+     {
+      "id": "R3",
+      "title": "A compare can hit the 35 s client deadline during review; the server has recurring loop stalls",
+      "severity": "high",
+      "status": "RISK",
+      "claim": "The REST compare that the client uses (SSE is off) gives up at 35 s and shows the \"Still gathering prices\" timeout card. Canary 7c measured 26.9-30.0 s on REST and 32.4 s on stream from inside Railway, which leaves at most about 5 s for a reviewer's network path to the Singapore edge. Today /health reports stalls on the server's request-handling loop large enough to push a compare past the deadline. The draft notes promise \"20-40 seconds\", but the client gives up at 35 s.",
+      "evidence": "SmartCompareApp/src/services/api.ts:47-48 COMPARE_TIMEOUT_MS = 35000; src/config/features.ts:52 ENABLE_EXPO_FETCH_SSE_DEFAULT = false; ledger.md:47 (canary 7c: q 26.9 s, pair 28.2 s, probe 30.0 s, stream 32.4 s). curl GET /health today, three samples:\n- loop_lag_max_ms 14802;\n- loop_lag_max_60s_ms 8124, then 60, then 1;\n- the response header x-railway-edge was sin1.\nen.json:853-855 timeout copy. Packet section 6 notes step 2 says \"20-40 seconds\".",
+      "fix": "Backend: find what causes the 8-15 s stalls before submitting. Run the warm-up and a canary from outside Railway in the hour before Add for Review. Change the notes line to \"usually 25-35 seconds; if a timeout card appears, tap retry once\". Name only a pair that passed the warm-up that day. Optional, as a JS-only OTA: raise COMPARE_TIMEOUT_MS to about 45 s so a slow network path does not fail a compare the server finished.",
+      "fix_lever": "backend_deploy"
+     },
+     {
+      "id": "R4",
+      "title": "Spend and credentials can stop compares mid-review (OpenAI prepaid with auto-reload off; Bright Data token returns 401)",
+      "severity": "medium",
+      "status": "RISK",
+      "claim": "2.1(a) also says \"turn on your back-end service!\". With OpenAI auto-reload off, a zero balance stops every compare. A missing price is not grounds for rejection, but an engine error is. The expired Bright Data token also lowers price coverage, and a Results screen with no price weakens the demo and the screenshots.",
+      "evidence": "docs/investigations/2026-10-08-session-74-state/specs/FABLE_RULINGS_S74_OPENAI.md:5 (OA1): \"with auto-reload OFF the balance reaching $0 stops every compare, so the balance is read daily during review week\". ledger S74 line 16: balance $24.97 on 2026-10-08. curl /health today: \"brightdata_auth\":{\"last_status\":401,\"at\":\"2026-10-11T15:55:27Z\"}. Today's OpenAI balance: UNVERIFIED.",
+      "fix": "The owner reads the OpenAI balance and either turns auto-reload on (with the existing $120 monthly limit) or tops up before submitting. He renews the Bright Data token per docs/runbooks/brightdata-token-renewal.md. The balance is checked daily until approval.",
+      "fix_lever": "owner_action"
+     },
+     {
+      "id": "R5",
+      "title": "The S77 handoff names the wrong required screenshot size",
+      "severity": "medium",
+      "status": "WRONG",
+      "claim": "NEXT_SESSION_PROMPT_S77.md step 6 asks for \"the 6.9-inch or 6.5-inch iPhone set, at minimum\". Apple's current rule requires at least one screenshot for iPhone with Dynamic Island (medium display). Packet section 7 has it right; the handoff is wrong. Uploading only 6.9-inch or 6.5-inch screenshots leaves the required slot empty, and the version cannot be submitted.",
+      "evidence": "WebFetch https://developer.apple.com/help/app-store-connect/reference/app-information/screenshot-specifications: \"To submit your app, you must provide screenshots for the following required display sizes: iPhone: At least one screenshot for iPhone with Dynamic Island (medium display).\" That row accepts 1179 x 2556 or 1206 x 2622. NEXT_SESSION_PROMPT_S77.md step 6 versus ASC_SUBMISSION_PACKET_S76.md section 7 (\"REQUIRED: upload the 1206 x 2622 set\").",
+      "fix": "Follow packet section 7, not the handoff:\n- Upload the 6.3-inch set (1206 x 2622, or a native 1179 x 2556 capture) to the Dynamic Island (medium) slot.\n- Upload the 1320 x 2868 set to the Dynamic Island (large) slot.\n- Show the app in use (2.3.3: \"not merely the title art, login page, or splash screen\").\nCapture from build 2 in TestFlight, and show no consent sheet and no limit sheet.",
+      "fix_lever": "asc_field"
+     },
+     {
+      "id": "R6",
+      "title": "Google sign-in is unverified on build 2 but always shown",
+      "severity": "medium",
+      "status": "UNVERIFIED",
+      "claim": "4.8 is met: Sign in with Apple appears wherever Google does. But Google sign-in has not been checked since session 54 (GOO), and its button shows on iOS with no feature gate. If a reviewer taps it and gets an error, that is a 2.1 \"obvious technical problem\".",
+      "evidence": "SmartCompareApp/src/screens/LoginScreen.tsx:213-215 (Apple only when available), :432 Apple button, :444 Google button (no gate). RegisterScreen.tsx:427 Google, :438 Apple. authService.ts:833-843 (webClientId and iosClientId match the app.json:226-229 iosUrlScheme). Packet section 0: \"Google sign-in unverified since session 54 (GOO = A: hide it if the preview build fails)\". Backend /social-login (app/api/auth_routes.py:1145-1160) checks the token with the sign-in provider, so whether it accepts the iOS client ID cannot be read from the repo: UNVERIFIED.",
+      "fix": "Tap Google in the TestFlight smoke test (R1). If it fails, hide the Google SocialButton on iOS with a JS-only OTA to the production branch before Add for Review, and keep the review notes silent about Google.",
+      "fix_lever": "ota"
+     },
+     {
+      "id": "R7",
+      "title": "Privacy Policy URL empty and App Privacy unpublished until getmyez.com serves the landing",
+      "severity": "medium",
+      "status": "RISK",
+      "claim": "5.1.1(i): \"All apps must include a link to their privacy policy in the App Store Connect metadata field and within the app\". The in-app link already works. The ASC field cannot be filled until the domain moves, because getmyez.com/privacy.html returns 404 today. Submission is blocked until then; if the URL is pasted early, Apple sees a 404.",
+      "evidence": "curl today:\n- https://getmyez.com/privacy.html 404, /support 404, /.well-known/apple-app-site-association 404;\n- getmyez.com <title> is \"PAUSE Fragrance Study\";\n- https://qaren-landing-production.up.railway.app/privacy.html 200 (contains \"October 11, 2026\"), /support 200, AASA 200 application/json.\nThe in-app path is ProfileScreen.tsx:512,517 to LegalScreen.tsx:39-42,79, served by app/api/legal_routes.py:40-41,59-60 (GET /api/v1/legal/privacy 200, 16957 bytes).",
+      "fix": "The owner moves the domain (S77 step 1). Then verify that /privacy.html and /support return 200 on the apex, paste https://getmyez.com/privacy.html, set Support URL to https://getmyez.com/support, and Publish App Privacy. Do not paste a getmyez URL while it still returns 404: ASC says URL changes release with the next version. associatedDomains applinks:getmyez.com (app.json:24) has no review impact, but universal links stay dead until the AASA is served.",
+      "fix_lever": "landing_or_domain"
+     },
+     {
+      "id": "R8",
+      "title": "AI consent can be withdrawn only by deleting the account (5.1.1(ii))",
+      "severity": "low",
+      "status": "RISK",
+      "claim": "5.1.1(ii): \"Apps must also provide the customer with an easily accessible and understandable way to withdraw consent.\" The only withdrawal path for the OpenAI permission is account deletion or an email. Reviewers rarely test this, but it is a textual gap.",
+      "evidence": "src/services/aiConsent.ts:33-37 (\"there is no per-user AI-sharing control (the Profile toggle is gone)\"); clearAiConsent exists at aiConsent.ts:91-98 but is called only on deletion (EditProfileScreen.tsx:63). Privacy policy (GET /api/v1/legal/privacy) s4: \"You can withdraw it at any time by deleting your account in the App ... or by emailing privacy@getmyez.com\".",
+      "fix": "After launch, ship a JS-only OTA that adds a Profile row \"Withdraw AI permission\". It calls clearAiConsent(userId), so the sheet asks again before the next compare. Update the policy sentence to match.",
+      "fix_lever": "ota"
+     },
+     {
+      "id": "R9",
+      "title": "The privacy policy exempts OpenAI from the equal-protection statement (5.1.1(i) second bullet)",
+      "severity": "low",
+      "status": "RISK",
+      "claim": "5.1.1(i) requires the policy to \"Confirm that any third party with whom an app shares user data ... will provide the same or equal protection\". Section 5 of the live policy states this for every provider \"Except as section 4 describes for OpenAI\". The carve-out is honest under D3, but it does not literally meet the clause.",
+      "evidence": "GET https://web-production-58776.up.railway.app/api/v1/legal/privacy, s5: \"Except as section 4 describes for OpenAI, each of our service providers processes data only to provide its service to us, and we require each of them to protect it at least as well as this policy does.\"",
+      "fix": "Legal wording, for the owner and counsel: add that OpenAI is bound by its API data-processing terms to protect the data, with a reference to its own terms. Redeploy the backend legal docs and the landing. Not a submission blocker.",
+      "fix_lever": "backend_deploy"
+     },
+     {
+      "id": "R10",
+      "title": "The Support URL page instantly redirects to mailto:",
+      "severity": "low",
+      "status": "RISK",
+      "claim": "The support page meta-refreshes to mailto:support@getmyez.com after 0 seconds. A reviewer who opens the Support URL in a browser can be bounced into a mail-compose prompt instead of reading a page with contact details. The address is still printed on the page.",
+      "evidence": "curl https://qaren-landing-production.up.railway.app/support: http-equiv=\"refresh\" content=\"0; url=mailto:support@getmyez.com\"; support@getmyez.com appears 4 times. Email routing works (ledger.md 04:11).",
+      "fix": "In the landing, remove the meta refresh and keep a visible mailto link plus the postal address. Redeploy the landing with the domain move.",
+      "fix_lever": "landing_or_domain"
+     },
+     {
+      "id": "R11",
+      "title": "Unused microphone purpose string in the binary",
+      "severity": "low",
+      "status": "RISK",
+      "claim": "NSMicrophoneUsageDescription is generated from two plugin configs even though the app never records audio or requests the microphone. 5.1.1(iii) asks apps to request only relevant data. A declared but unused key is rarely flagged, and the string itself is honest.",
+      "evidence": "app.json:214 and :222 (microphonePermission set on both expo-camera and expo-image-picker); no requestPermissionsAsync for the microphone or audio anywhere in src (git grep shows only the Notifications.requestPermissionsAsync calls at Step17Notifications.tsx:60 and pushPrePrompt.ts:109). Camera string app.json:213 and photos string :221 state a purpose. The photos prompt never fires, because launchImageLibraryAsync (ScanCameraScreen.tsx:214,260) uses the out-of-process picker and no requestMediaLibraryPermissionsAsync exists.",
+      "fix": "In the next binary, set microphonePermission: false on both plugins. Optionally add \"photos are sent to our AI provider to identify the products\" to the camera string.",
+      "fix_lever": "new_binary"
+     },
+     {
+      "id": "R12",
+      "title": "Denied camera: the retry button goes dead after a permanent denial",
+      "severity": "low",
+      "status": "RISK",
+      "claim": "Denied camera does not crash and offers the gallery. But once the user has said Don't Allow, requestPermission no longer prompts, and there is no Open Settings link, so \"Turn on camera\" does nothing.",
+      "evidence": "ScanCameraScreen.tsx:301-350 (the permission pad's CTA calls requestPermission; the gallery fallback is onGalleryPickToResults). No canAskAgain or Linking.openSettings in the file (grep).",
+      "fix": "JS-only OTA: when permission.canAskAgain is false, the CTA calls Linking.openSettings().",
+      "fix_lever": "ota"
+     },
+     {
+      "id": "R13",
+      "title": "Unattributed testimonial-style quotes on the welcome screen",
+      "severity": "low",
+      "status": "RISK",
+      "claim": "Step 1 of onboarding shows three quote cards (\"Picked Galaxy — camera + battery edged out Apple here.\") styled as user testimonials. A reviewer sees them only on a new account (for example via Sign in with Apple), because the demo accounts are pre-onboarded. This is a minor accuracy concern under 2.3.1, not a likely rejection.",
+      "evidence": "src/screens/onboarding/Step01Welcome.tsx:84-104; en.json:535-537. Onboarding is on for everyone: features.ts:30 CANARY_NEW_ONBOARDING_PERCENT = 100.",
+      "fix": "Optional JS-only OTA: reword the quotes as example verdicts (\"Example: ...\") or remove them.",
+      "fix_lever": "ota"
+     },
+     {
+      "id": "R14",
+      "title": "iPad compatibility mode not tested",
+      "severity": "low",
+      "status": "UNVERIFIED",
+      "claim": "2.4.1: \"iPhone apps should run on iPad whenever possible.\" Reviewers may run the iPhone-only binary on an iPad in compatibility mode. It is portrait-only with supportsTablet false, and no iPad-specific code path was found. Layout should be the iPhone window, but nothing has been measured.",
+      "evidence": "app.json:6 \"orientation\": \"portrait\"; app.json:22 \"supportsTablet\": false. Packet section 7 confirms no iPad screenshots are needed. Today's WebFetch of the screenshot specification also says iPad is required only \"if your app supports iPadOS\".",
+      "fix": "If an iPad is available, add one pass of the R1 smoke test on it (sign in, compare, camera). Nothing to change otherwise.",
+      "fix_lever": "none"
+     },
+     {
+      "id": "R15",
+      "title": "Demo accounts and review notes not ready (2.1(a) demo account)",
+      "severity": "high",
+      "status": "RISK",
+      "claim": "2.1(a): \"include demo account info (and turn on your back-end service!) if your app includes a login.\" Sign-in is mandatory, and the notes still contain placeholders. A free account has 3 compares a day, so a reviewer on a free account can hit the limit sheet.",
+      "evidence": "Packet section 6 notes contain <REVIEW EMAIL 1>, <REVIEW PASSWORD 1>, <PAIR A>, <PAIR B>. app/services/usage_service.py:137-148 (free 3 per day / 10 per month; premium 10 per day / 70 per month). NEXT_SESSION_PROMPT_S77.md step 4: account creation is owner-only.",
+      "fix": "The owner sets up two accounts (DEMO = A):\n- Register both, confirm the email, and complete onboarding once so the reviewer skips the 16 steps.\n- Set users.subscription_tier = premium on both, and never write \"premium\" in the notes.\n- Paste account 1 into Sign-In Information. Account 2 and that day's passing pair go into the notes.",
+      "fix_lever": "owner_action"
+     },
+     {
+      "id": "OK1",
+      "title": "3.1.1: the limit sheet has no purchase or outside payment path",
+      "severity": "info",
+      "status": "OK",
+      "claim": "Quoted rule: apps \"may not include buttons, external links, or other calls to action that direct customers to purchasing mechanisms other than in-app purchase\" (3.1.1(a), non-US storefronts). The sheet shows only counts and reset text, with Close and Done. The referral bonus is allowed under 3.2.2(x): \"Apps may otherwise incentivize users to take specific actions within apps\".",
+      "evidence": "src/screens/PaywallScreen.tsx:1-4,100-178 (Clock icon, title, counts, resets, Close and Done only; no Linking or IAP import); en.json:373-381; en.json:734-736 banner CTA \"See details\".",
+      "fix": "None.",
+      "fix_lever": "none"
+     },
+     {
+      "id": "OK2",
+      "title": "5.1.2(i): consent before any data reaches OpenAI",
+      "severity": "info",
+      "status": "OK",
+      "claim": "Quoted rule: \"You must clearly disclose where personal data will be shared with third parties, including with third-party AI, and obtain explicit permission before doing so.\" Every compare and scan entry point runs through withAiConsent. The camera route, and therefore the vision upload, is only reachable through it. The sheet names OpenAI and training use, and has \"Not now\" and a Privacy link.",
+      "evidence": "src/screens/HomeScreen.tsx:140-142,373,534,726,732,737,779 (withAiConsent); ScanCameraScreen.tsx:270,294 are reached only from HomeScreen.tsx:719 and :779, both gated; ResultsScreen.tsx:298-299 identifyFromImages only for vision_products from ScanCamera; services/aiConsent.ts:114-120; en.json:701-705. Minor wording gap: the policy s4 also sends \"general patterns from people whose survey answers are similar to yours\", and the sheet does not say this.",
+      "fix": "Optional: add \"and general preferences of shoppers like you\" to aiConsent.body. Bump AI_CONSENT_VERSION only if the meaning changes.",
+      "fix_lever": "none"
+     },
+     {
+      "id": "OK3",
+      "title": "5.1.1(v) account deletion, and 5.1.1(i) in-app policy link",
+      "severity": "info",
+      "status": "OK",
+      "claim": "An account created in the app can be deleted in the app. The privacy policy is reachable from Profile, Login/Register and the consent sheet, and the backend serves the 2026-10-11 version in EN and AR.",
+      "evidence": "ProfileScreen.tsx:333-342 (gear to EditProfile); EditProfileScreen.tsx:127 handleDeleteAccount, :268 delete row; app/api/auth_routes.py:1163-1179 DELETE /account; ProfileScreen.tsx:512,517; LoginScreen.tsx:226; RegisterScreen.tsx:110; HomeScreen.tsx:141. curl /api/v1/legal/privacy, ?lang=ar and /terms all returned 200, effective date October 11, 2026, controller Hussain Aseeri.",
+      "fix": "None.",
+      "fix_lever": "none"
+     },
+     {
+      "id": "OK4",
+      "title": "4.5.4: push not required; prompt timing",
+      "severity": "info",
+      "status": "OK",
+      "claim": "Quoted rule: \"Push Notifications must not be required for the app to function\". The OS prompt fires only after the user taps Allow, in onboarding step 17 or the post-result pre-prompt, and both offer \"Maybe later\" or \"Not now\". Boot and login only read the permission. Profile has an in-app opt-out.",
+      "evidence": "onboarding/Step17Notifications.tsx:13-17,57-76; services/pushPrePrompt.ts:109; App.tsx:236-239 (tryRegisterPushToken); en.json:521-522,697-700; ProfileScreen.tsx:164,204.",
+      "fix": "None.",
+      "fix_lever": "none"
+     },
+     {
+      "id": "OK5",
+      "title": "4.8 login services, 4.2 minimum functionality, export compliance, 13+ consistency",
+      "severity": "info",
+      "status": "OK",
+      "claim": "Covered:\n- **4.8:** Sign in with Apple is offered wherever Google is.\n- **4.2:** the app is a native camera and text comparison app with history, personalisation and sharing, not a repackaged website.\n- **Export compliance:** ITSAppUsesNonExemptEncryption is false.\n- **13+ rating:** consistent across ASC, the sign-up checkbox and the policy. The onboarding age buckets start at 18-24 but offer \"prefer not to say\", which is cosmetic.\n- **Placeholder text:** none visible. referrals.quiz.placeholder (\"lands in the next update\") exists only in en.json and no screen references it.",
+      "evidence": "LoginScreen.tsx:432/444; RegisterScreen.tsx:427/438; app.json:146; en.json:999 \"I am 13 or older and I agree to the\"; policy s12 \"The App is for people aged 13 and over\"; Step06Age.tsx:21,50-57. `git grep referrals.quiz.placeholder` in src (excluding json and tests) returns nothing. The grep for lorem / TODO / coming soon / test@ in src (excluding tests) found only the you@example.com input placeholder.",
+      "fix": "None.",
+      "fix_lever": "none"
+     },
+     {
+      "id": "OK6",
+      "title": "Cold start offline and the 401 path (code read only)",
+      "severity": "info",
+      "status": "UNVERIFIED",
+      "claim": "Code reading suggests no stuck splash on an offline cold start: the splash gate is released on every path, and auth resolves from the cached user. A dead session routes back to Auth. Not measured on a device.",
+      "evidence": "App.tsx:210-243 (initializeAuth from the cache), :246-269 (finally setIsLoading(false)), :279-286 (onSessionInvalid). LegalScreen.tsx:84-92 falls back to a cached copy or a retry plus a web link.",
+      "fix": "Covered by the R1 smoke test: run one cold start in airplane mode.",
+      "fix_lever": "none"
+     }
+    ],
+    "ready_text": "Replacement for the first paragraph of the App Review notes (packet section 6). It answers guideline 5.1.1(v); the rest of the notes stays as it is:\n\nSign-in is required because MYEZ's features are account-based. Every comparison runs paid AI and retailer-search requests on our servers, so each account has a limited free allowance (3 comparisons a day, 10 a month) that we can only enforce per account. The account also stores the user's comparison history (the History tab), the preference profile that personalises every verdict (priorities, budget level, brand attitude), and invite bonuses. Users can delete the account and its data at any time inside the app: Profile tab -> gear icon (top right) -> Delete account."
+   },
+   "verdict": {
+    "verdicts": [
+     {
+      "id": "R1",
+      "refuted": false,
+      "corrected_severity": "high",
+      "reason": "Reproduced. ledger.md:70 (build started), :72 (finished and submitted) and :73 (processed, attached, 'Ready to Submit' in TestFlight). No line in the S76 ledger records an install of build 2 on a device. The only device mention is the old Ad Hoc profile with 2 devices at :40. NEXT_SESSION_PROMPT_S77.md:38 confirms that a TestFlight install has not happened yet. certificatePinning.ts:12-13 records the chain as measured on 2026-09-29, and :57-75 holds the pin set. 2.1(a) 'tested on-device' quote confirmed by WebFetch. Severity is fair given the pinning outage history noted in the file header."
+     },
+     {
+      "id": "R2",
+      "refuted": false,
+      "corrected_severity": "medium",
+      "reason": "The evidence reproduces. App.tsx:366-370 renders only Auth when !isAuthenticated; Legal, ReferralLanding and InviteeQuiz are hoisted at :478-491, but no compare feature is. The packet notes line 1 and usage_service.py:137-148 (free 3 lifetime, 3/day, 10/month) match. The 5.1.1(v) quote is confirmed. I lower it to medium: the app does have real account-based features (History tab App.tsx:147, a per-account allowance, the preference profile, bonus credits ProfileScreen.tsx:421), and the fix is a notes paste. The 'high' rating assumes a likely rejection that the evidence does not show. Side note for the fix: the backend already has anonymous fingerprint allowance code (usage_service.py:44 check_anon_usage_allowed), so a guest mode is less new work than the finding implies."
+     },
+     {
+      "id": "R3",
+      "refuted": false,
+      "corrected_severity": "medium",
+      "reason": "Partly reproduced:\n- api.ts:48 COMPARE_TIMEOUT_MS = 35000 ('30s server hard cap + margin'), features.ts:52 SSE default false, ledger.md:47 REST 26.9/28.2/30.0 s, en.json:853-855 timeout copy, and packet notes '20-40 seconds': all confirmed.\n- My /health samples: loop_lag_max_ms 14802 and brightdata 401. But loop_lag_max_60s_ms was 2 ms in both samples, so the 8124 ms value could not be reproduced.\n- app/main.py:227 defines loop_lag_max_ms as a high-water mark since process start, so it shows one 14.8 s stall since boot, not 'recurring stalls today'.\n- 'x-railway-edge: sin1' is the edge nearest the requester (this Bahrain box), not the path a US reviewer would take, so the 'reviewer's path to the Singapore edge' framing is wrong.\n- The stream figure (32.4 s) does not apply, because SSE is off.\nThe timeout card is a handled state with a retry. It is a real but overstated risk, so I set it to medium. The notes wording fix ('25-35 s') still stands."
+     },
+     {
+      "id": "R4",
+      "refuted": false,
+      "corrected_severity": "medium",
+      "reason": "Reproduced:\n- FABLE_RULINGS_S74_OPENAI.md line 5 contains 'with auto-reload OFF the balance reaching $0 stops every compare'.\n- S74 ledger.md:16 shows the $24.97 balance.\n- Live /health today: brightdata_auth last_status 401 at 2026-10-11T15:55:27Z.\n- docs/runbooks/brightdata-token-renewal.md exists.\nToday's balance is UNVERIFIED, as the finding says. The '$120 monthly limit' in the fix is not cited and was not verified."
+     },
+     {
+      "id": "R5",
+      "refuted": false,
+      "corrected_severity": "low",
+      "reason": "The discrepancy is real: NEXT_SESSION_PROMPT_S77.md:38 says '6.9-inch or 6.5-inch iPhone set, at minimum', while packet section 7 says the Dynamic Island (medium) slot is required. The WebFetch of screenshot-specifications confirms the 'required display sizes' sentence. But the same page says, on the Dynamic Island (medium) row: 'If screenshots with the accepted sizes aren't provided, scaled screenshots for iPhone with Face ID (large display) are used.' A 6.5-inch-only upload would therefore probably fill the medium slot. Only a 6.9-inch-only upload would leave it empty. So 'the version cannot be submitted' is overstated, and the handoff line itself points readers to packet section 7, which is correct. I lower it to low."
+     },
+     {
+      "id": "R6",
+      "refuted": false,
+      "corrected_severity": "medium",
+      "reason": "Reproduced:\n- LoginScreen.tsx:213-215 sets showApple only on iOS when available. The Google SocialButton (around :443-450) has no gate.\n- RegisterScreen.tsx:424-430 has the Google Button and :438 the Apple button.\n- authService.ts:830-845 sets iosClientId to match app.json:228.\n- auth_routes.py:1146-1149 is /social-login.\n- Packet section 0, line 25, contains 'Google sign-in unverified since session 54 (GOO = A: hide it if the preview build fails)'.\nUNVERIFIED status is appropriate."
+     },
+     {
+      "id": "R7",
+      "refuted": false,
+      "corrected_severity": "medium",
+      "reason": "Reproduced live today:\n- getmyez.com/privacy.html, /support and /.well-known/apple-app-site-association all return 404 (text/plain), and the apex title is 'PAUSE Fragrance Study'.\n- On the Railway landing, privacy.html returns 200 and contains 'October 11, 2026'; /support returns 200; the AASA returns 200 application/json.\n- /api/v1/legal/privacy returns 200 with 16957 bytes.\nOne precision note: the app's LegalScreen.tsx:39-41 calls /api/v1/legal/privacy_policy and /terms_of_service, not /privacy. legal_routes.py:40-41 and :59-60 register both aliases on the same handler, so the evidence holds. The claim 'ASC says URL changes release with the next version' was not verified."
+     },
+     {
+      "id": "R8",
+      "refuted": false,
+      "corrected_severity": "low",
+      "reason": "Reproduced. aiConsent.ts:33-37 says there is no per-user AI-sharing control. clearAiConsent is at aiConsent.ts:91-98, and the live policy says 'withdraw it at any time by deleting your account in the App ... or by emailing privacy@getmyez.com'. The 5.1.1(ii) quote is confirmed by WebFetch. One citation fix: EditProfileScreen.tsx:63 is the import; the only call is at EditProfileScreen.tsx:142, inside the delete flow."
+     },
+     {
+      "id": "R9",
+      "refuted": false,
+      "corrected_severity": "low",
+      "reason": "Reproduced verbatim from live GET /api/v1/legal/privacy: 'Except as section 4 describes for OpenAI, each of our service providers ... protect it at least as well as this policy does.' The 5.1.1(i) 'same or equal protection' bullet is confirmed by WebFetch."
+     },
+     {
+      "id": "R10",
+      "refuted": false,
+      "corrected_severity": "low",
+      "reason": "The meta refresh is reproduced: http-equiv=\"refresh\" content=\"0; url=mailto:support@getmyez.com\" on the live landing /support. One evidence error: support@getmyez.com appears 6 times in today's fetch, not 4. The conclusion is unchanged."
+     },
+     {
+      "id": "R11",
+      "refuted": false,
+      "corrected_severity": "low",
+      "reason": "Reproduced. app.json:214 and :222 hold microphonePermission. git grep over src finds requestPermissionsAsync only at Step17Notifications.tsx:60 and pushPrePrompt.ts:109; the camera requestPermission calls are at HomeScreen.tsx:733 and ScanCameraScreen.tsx:329. No requestMediaLibraryPermissionsAsync exists. launchImageLibraryAsync is called at ScanCameraScreen.tsx:214 and :260, and also at HomeScreen.tsx:676, which the finding omits but which does not change the conclusion."
+     },
+     {
+      "id": "R12",
+      "refuted": false,
+      "corrected_severity": "low",
+      "reason": "Reproduced. In the ScanCameraScreen.tsx permission pad (around :315-345), the CTA's onPress is requestPermission and the gallery link is onGalleryPickToResults. No canAskAgain or openSettings appears anywhere in src. Note: the HomeScreen permission card (HomeScreen.tsx:731-735 and :762-775) has the same gap, which the finding misses, so the OTA fix should cover both screens."
+     },
+     {
+      "id": "R13",
+      "refuted": false,
+      "corrected_severity": "low",
+      "reason": "Reproduced. The quote cards are at Step01Welcome.tsx:84-104, the strings at en.json:535-537, and features.ts:30 sets CANARY_NEW_ONBOARDING_PERCENT = 100."
+     },
+     {
+      "id": "R14",
+      "refuted": false,
+      "corrected_severity": "low",
+      "reason": "Reproduced: app.json:6 is portrait and :22 sets supportsTablet false. The 2.4.1 quote is confirmed by WebFetch. Correctly marked UNVERIFIED."
+     },
+     {
+      "id": "R15",
+      "refuted": false,
+      "corrected_severity": "high",
+      "reason": "Reproduced. Packet section 6 still holds <REVIEW EMAIL 1>, <REVIEW PASSWORD 1>, <PAIR A> and <PAIR B>. NEXT_SESSION_PROMPT_S77.md:36 marks the demo accounts as owner-only. usage_service.py:137-148 has the tier limits. The 2.1(a) demo-account quote is confirmed. This is a hard submission gate, so high is justified."
+     },
+     {
+      "id": "OK1",
+      "refuted": false,
+      "corrected_severity": "info",
+      "reason": "Confirmed. PaywallScreen.tsx imports (:14-22) include no Linking and no IAP; the icons are only X and Clock. The en.json:373-381 limit strings and the :734-736 banner CTA 'See details' match. The 3.1.1(a) and 3.2.2(x) quotes are confirmed by WebFetch."
+     },
+     {
+      "id": "OK2",
+      "refuted": false,
+      "corrected_severity": "info",
+      "reason": "Confirmed. HomeScreen.tsx:373 and :534 wrap the compares in withAiConsent, :726, :732 and :737 wrap scan, camera permission and the gallery fallback, and :779 wraps the scan preview rows. The navigate to ScanCamera exists only at :719, reached only through :726, and at :779. The linking config (linking.ts:47-84) has no ScanCamera route. The aiConsent.body text at en.json:702 matches the claim, and the 5.1.2(i) quote is confirmed. The noted wording gap is real: the live policy s4 mentions 'general patterns from people whose survey answers are similar to yours'."
+     },
+     {
+      "id": "OK3",
+      "refuted": false,
+      "corrected_severity": "info",
+      "reason": "Confirmed:\n- ProfileScreen.tsx:333-342 has the gear button that navigates to EditProfile.\n- EditProfileScreen.tsx:127 is handleDeleteAccount and :266-270 the delete row.\n- Legal is registered on the root navigator outside the auth branches (App.tsx:489-491), so the links from Login and Register resolve while signed out.\n- ProfileScreen.tsx has the Privacy and Terms rows (around :511-518).\n- Live: privacy 200 (16957 bytes), ?lang=ar 200 (26817 bytes), terms 200, 'October 11, 2026' and 'Hussain Aseeri' present.\nThe app requests the /privacy_policy alias, which is the same handler (legal_routes.py:40-41)."
+     },
+     {
+      "id": "OK4",
+      "refuted": false,
+      "corrected_severity": "info",
+      "reason": "Confirmed. Step17Notifications.tsx:57-76 calls requestPermissionsAsync only in handleAllow, and handleNotNow skips it. These are the only two OS prompt calls in src (with pushPrePrompt.ts:109). ProfileScreen.tsx:160-205 holds the notification toggles. The 4.5.4 quote is confirmed."
+     },
+     {
+      "id": "OK5",
+      "refuted": false,
+      "corrected_severity": "info",
+      "reason": "Confirmed:\n- app.json:146 sets ITSAppUsesNonExemptEncryption false.\n- en.json:999 reads 'I am 13 or older and I agree to the'.\n- The live policy contains 'aged 13 and over'.\n- Step06Age.tsx:21 starts at '18-24', with a prefer-not-to-say skip around :50-57.\n- referrals.quiz.placeholder (en.json:475) has no reference in src; only referrals.quiz.brand.* is used in InviteeQuizScreen.tsx."
+     },
+     {
+      "id": "OK6",
+      "refuted": false,
+      "corrected_severity": "info",
+      "reason": "The code read is confirmed. App.tsx:216-237 calls initializeAuth from the cache, :261-268 always runs finally setIsLoading(false), and :279-286 routes onSessionInvalid back to Auth. LegalScreen.tsx:79-92 falls back to the cache or shows an error. It was not measured on a device, so UNVERIFIED is correct."
+     }
+    ],
+    "ready_text_ok": false,
+    "ready_text_corrections": "1. \"that we can only enforce per account\" overstates what the backend does. The backend already has a per-device anonymous allowance (app/services/usage_service.py:44 check_anon_usage_allowed and :128-135 refund_anon_comparison_credit at 7b224c5a), so a per-device allowance is possible, just weaker. Reword to \"that we can reliably enforce only per account (device-based limits are easy to reset)\", or drop the clause.\n2. The deletion path should name the screen the gear opens and the confirm step, to match the rest of the packet notes and EditProfileScreen.tsx:266-270: \"Profile tab -> gear icon (top right) -> Delete account (bottom of the Edit Profile screen) -> confirm\".\n3. \"3 comparisons a day, 10 a month\" is correct for the free tier (usage_service.py:138-142). The tier also has \"lifetime_free\": 3. It is still consistent; but the review accounts will be premium (10 a day, 70 a month) and the notes already say \"raised daily comparison limit\", so do not imply the reviewer is on the free allowance.\n4. \"the preference profile that personalises every verdict\" overclaims for users who skipped onboarding. Say \"personalises verdicts\".\n5. \"invite bonuses\": the bonus-credits tile exists (ProfileScreen.tsx:421), but whether referral bonuses are live in production was not verified. Keep the phrase only if the owner confirms that referrals are on.\n6. The packet's original line 1 should be replaced, not duplicated. After pasting, confirm that the total stays under the 4000-byte notes limit; it does with a wide margin."
+   }
+  }
+ ],
+ "critic": {
+  "summary": "I ran a completeness pass over the three audited dimensions (review notes, listing and URLs, review risk). Everything below was checked read-only at 7b224c5a, plus GET-only checks against the allowed live hosts. `git diff --stat eed0f628 7b224c5a -- SmartCompareApp app landing` is empty, so the source at 7b224c5a is the binary under review.\n\n**Gaps nobody covered:**\n- **Over-the-air (OTA) update channel (C1, high, unverified).** Build 2 runs on runtime 1.0.0 and the `production` channel, with expo-updates checking for updates on every launch. Nobody has confirmed that the production channel serves no update. A stale bundle there would replace the reviewed code on the reviewer's phone.\n- **Forgot password (C2, medium).** The recovery email lands on the API host, because Supabase's Site URL is the API host and `ENABLE_PASSWORD_RESET_DEEP_LINK` is still off. The in-app reset screen is already in build 2.\n- **\"25+ retailers\" claim (C6, medium).** It shows during every compare, on onboarding step 3 and in the results tips. It comes from a design mock and was never measured.\n- **Required \"Where did you hear about us?\" (C7, medium).** New accounts (for example Sign in with Apple) cannot skip this marketing question. It sits badly with guideline 5.1.1(v) and (iii).\n- **Third-party content, guideline 5.2.2 (C8, medium).** Nobody audited it, and the corrected review notes now name Amazon and Noon.\n- **Supabase free plan (C10, medium).** Its spend cap and read-only risk during review are not covered by R4.\n- **Mac and Vision Pro availability (C9, low).** iPhone apps are available on Apple Silicon Macs unless deselected, and the packet never mentions it.\n- **Features missing from the notes (C12, low).** Guideline 2.3.1(a) wants every feature described; History, invites and bonus credits, sharing and notifications are not.\n\n**Corrections to verified findings:**\n- C3: Supabase \"Confirm email\" is measured OFF (S74 ledger:70). The review notes' email-confirmation sentence (F13) should be removed, not hedged.\n- C11: live /health now shows `loop_lag_max_ms` 16190, up from 14802. Since that figure only ever rises, a new stall of at least 14.8 s happened after the R3 verifier's samples. That contradicts the verifier's \"one stall since boot\" reading.\n\n**Unverified claims I closed:**\n- C4: the live TLS chain (leaf, YE2, Root YE, X2, X1) matches the app's pinned keys today.\n- C5: account deletion is a real full erasure in production (migration 043 POSTCHECK passed).\n\n`ready_text` holds the extra pre-submission checklist.",
+  "findings": [
+   {
+    "id": "C1",
+    "title": "Not checked: whether the EAS production channel already serves an OTA update that would replace build 2's code on the reviewer's phone",
+    "severity": "high",
+    "status": "UNVERIFIED",
+    "claim": "All three dimensions assume the reviewer runs the JavaScript embedded in build 2 (the code at 7b224c5a). That holds only if the production channel serves no update for runtime 1.0.0. Nobody has checked this.",
+    "evidence": "- **Build config:** SmartCompareApp/app.json:265-269 sets runtimeVersion policy appVersion (version 1.0.0, app.json:5) and updates.url u.expo.dev. There is no checkAutomatically override, so the expo-updates default applies: check on every launch (UNVERIFIED for expo-updates ~29.0.20, package.json:43).\n- **Channel:** eas.json build.production sets channel \"production\".\n- **OTA ledger:** docs/runbooks/qaren-canary-onboarding.md section 9 (lines 454-462) records only preview-branch publishes, all at runtime 1.0.0. Three older rows have no recorded runtime, and the May 2026 runbook told people to run `eas update --branch production` (docs/investigations/specs/2026-09-23/W3_13_UNIT_SPEC.md:24, :58-68). So an old update on branch production cannot be ruled out.\n- **Mapping not checked:** no doc records `eas channel:view production` or `eas update:list --branch production`. If the channel points at branch preview, build 2 would get update e2bde9c9 (built from 94c097cd, 2026-09-29), which is older than build 2.\n- **Guideline 2.5.2:** apps may not \"download, install, or execute code which introduces or changes features or functionality of the app\".",
+    "fix": "Owner, read-only, in SmartCompareApp: `eas channel:view production` should map to branch production, and `eas update:list --branch production --limit 5` should show no update at runtime 1.0.0. If either check fails, map the channel to an empty branch before Add for Review. Publish nothing to production from submission until approval. A TestFlight install (R1) uses the same channel, so a cold start there shows what the reviewer will get.",
+    "fix_lever": "owner_action"
+   },
+   {
+    "id": "C2",
+    "title": "The visible \"Forgot password?\" flow ends on the API host, not in the app",
+    "severity": "medium",
+    "status": "RISK",
+    "claim": "Nobody walked the reset-password reviewer path. The Login screen always shows \"Forgot password?\". With the deep-link flag off, the recovery email returns to the Supabase Site URL, which is the backend API host, so the reset cannot finish in the app.",
+    "evidence": "- **Visible link:** LoginScreen.tsx:499-507.\n- **Flag off by default:** with ENABLE_PASSWORD_RESET_DEEP_LINK off (the default, app/services/auth_service.py:1032-1043), request_password_reset sends no redirect_to (:1052-1067).\n- **Site URL:** docs/investigations/2026-10-08-session-74-state/ledger.md:71 records Site URL = https://web-production-58776.up.railway.app and Redirect URLs with `qaren://reset-password` added.\n- **Client half already in build 2:** linking.ts:26-32, 59 and 92; ResetPasswordScreen.tsx; passwordRecoveryLink.ts.\n- **Flag never flipped:** the S75 and S76 ledgers and the S77 handoff never mention it. Its production value is UNVERIFIED (Railway not read).\n- **Open precondition:** the AMR claim shape is unmeasured (CLAUDE.md:448). The punch list already calls this issue out (docs/investigations/2026-10-05-session-72-state/readiness/LAUNCH_PUNCH_LIST.md:363).\n- **Rate limits:** Supabase's built-in sender is rate-limited (S74 ledger:71-72).\n- I did not load the API host root (not on the allowed list), so what the user lands on is UNVERIFIED.",
+    "fix": "Owner sets ENABLE_PASSWORD_RESET_DEEP_LINK=true on web; it is read on every call, with no redeploy (auth_service.py:1036-1038). Then run Forgot password once on the TestFlight build with the spare account and check the [auth] password recovery log line. If it fails, set the flag back to false. The flow then stays broken, so keep the notes silent about it.",
+    "fix_lever": "backend_deploy"
+   },
+   {
+    "id": "C3",
+    "title": "Supabase \"Confirm email\" is measured OFF, so the notes' email-confirmation sentence is false and should go",
+    "severity": "low",
+    "status": "WRONG",
+    "claim": "Review-notes F13 left email confirmation UNVERIFIED and added: \"New email accounts (Sign Up) may be asked to confirm the email address through a link before signing in.\"",
+    "evidence": "docs/investigations/2026-10-08-session-74-state/ledger.md:70 records the owner-session reading \"Confirm email\" OFF (SMTP not needed). docs/investigations/2026-10-09-session-75-state/ledger.md:9 repeats it. No later ledger records a change.",
+    "fix": "Remove that sentence from the review-notes ready_text. Also drop \"confirm email if required\" from the demo-account recipe (packet line 437).",
+    "fix_lever": "asc_field"
+   },
+   {
+    "id": "C4",
+    "title": "Certificate pins match today's live backend chain",
+    "severity": "info",
+    "status": "OK",
+    "claim": "R1 left the live certificate chain UNVERIFIED. If the chain had moved, every API call from the store binary would fail.",
+    "evidence": "I ran a Python 3.12 TLS handshake to web-production-58776.up.railway.app (GET /health) and hashed the SPKI of each certificate. Results:\n- leaf *.up.railway.app: notAfter 2026-12-26, not pinned (by design).\n- YE2 s/tdAOmUzd8...: matches LE_YE2_INTERMEDIATE.\n- Root YE sCkq5UWX...: matches ISRG_ROOT_YE.\n- ISRG Root X2 diGVwiVY...: matches.\n- ISRG Root X1 C5+lpZ7t...: matches (verified chain).\nAll four match BACKEND_PUBLIC_KEY_HASHES (SmartCompareApp/src/services/certificatePinning.ts:54-82). The intermediate YE2 is valid to 2028-09-02.",
+    "fix": "None. The device smoke test (R1) still covers the native path.",
+    "fix_lever": "none"
+   },
+   {
+    "id": "C5",
+    "title": "Account deletion fully erases data in production (migration 043 applied)",
+    "severity": "info",
+    "status": "OK",
+    "claim": "The audits checked only the deletion UI path. Guideline 5.1.1(v) needs real deletion, and an earlier critique (S72 CRITIQUE_APP_REVIEW AR-14) said deletion would fall short of Apple's wording while 043 was unapplied.",
+    "evidence": "- **Migration applied:** docs/investigations/2026-10-10-session-76-state/ledger.md:37 says \"043 POSTCHECK PASSED in production\". tests/fixtures/legal_fill_in_u8.json:7 has deletion_variant \"043\".\n- **Code path:** delete_user_account runs the cascade RPC, then the cache purge, then admin.auth.admin.delete_user (app/services/auth_service.py:1008-1022). Route: auth_routes.py:1165-1181.\n- **Live policy:** GET /api/v1/legal/privacy (200, 16957 B) section 9 matches (\"After deletion we keep a de-identified record ... which is removed when we delete your sign-in account\").",
+    "fix": "None.",
+    "fix_lever": "none"
+   },
+   {
+    "id": "C6",
+    "title": "Unmeasured \"25+ retailers\" claim shown on every compare and in onboarding",
+    "severity": "medium",
+    "status": "RISK",
+    "claim": "The listing audit checked only the store description for retailer counts. The binary itself says MYEZ cross-checks 25+ retailers. The S76 packet's own rule removes unbacked numbers (2.3.1), and nothing measures this one.",
+    "evidence": "- **Strings (en.json):**\n  - :279 \"Cross-checking 25+ retailers\" (loading.stage.cross_checking)\n  - :285 and :749 \"MYEZ cross-checks 25+ retailers — never just one.\"\n  - :544 onboarding s3 \"Side-by-side comparisons across 25+ retailers\"\n  - ar.json:746 is the Arabic version.\n- **Where shown:** the compare loader LoadingScreenVariants (HomeScreen.tsx:79) renders the stage list and default tips (LoadingScreenVariants.tsx:166-179). Step03ValueProp.tsx:36 renders s3 to every new account.\n- **Checkmark is on a timer:** the 25+ checkmark lands at a fixed 12.0 s, whatever the server is doing (LoadingScreenVariants.tsx:102-122).\n- **Origin:** a design mock (docs/claude-design-handoff/ui_kits/mobile/LoadingScreen.jsx:42, :56). No doc measures the count.\n- **Precedent:** S69 U6 R6 already removed the unbacked \"73%\" tip for 2.3.1 (LoadingScreenVariants.tsx:173-175).\n- **Live prices:** Bright Data returns 401 live (/health at 16:11Z), and canary 7c priced only 1 of 2 products.\n- **Also unbacked:** the onboarding cohort lines \"Real people. Real buys. Real picks.\" and \"Tuned by real answers from GCC shoppers\" (en.json:631, :657) are cohort claims not checked against cohort data (UNVERIFIED).",
+    "fix": "Reword to a count-free line, for example \"Checking retailer prices\" and \"MYEZ checks several retailers, not just one\". Do the same in ar.json. Ship it either before submission (an OTA to production, checked on TestFlight; do this only together with C1) or as the first post-approval OTA. Keep the loader out of the screenshots.",
+    "fix_lever": "ota"
+   },
+   {
+    "id": "C7",
+    "title": "Required \"Where did you hear about us?\" step blocks new accounts (5.1.1(v)/(iii))",
+    "severity": "medium",
+    "status": "RISK",
+    "claim": "Review-notes F07 listed the required onboarding answers but did not test them against the guidelines. A reviewer who uses Sign in with Apple cannot reach Home without answering a marketing-attribution question.",
+    "evidence": "- **Required in code:** isStepValid case 11 returns Boolean(data.attribution_source) (SmartCompareApp/src/screens/onboarding/OnboardingFlow.tsx:187-188).\n- **Step is in the signed-in flow:** step 11 is in AUTHED_STEP_SEQUENCE (:128-131), and NewOnboardingHost passes isAuthenticated true.\n- **Options:** Friend / Instagram / TikTok / App Store / Google / Somewhere else (en.json:622-628).\n- **Skip copy never shown:** \"Skip anything — and edit later\" (en.json:579, s5.bullet_3) is not rendered by Step05Trust.tsx.\n- **Guideline quotes (WebFetch, guidelines page):**\n  - 5.1.1(v): \"Apps may not require users to enter personal information to function, except when directly relevant to the core functionality of the app or required by law.\"\n  - 5.1.1(iii): \"should only collect and use data that is required to accomplish the relevant task.\"\n- Priorities, budget and brand attitude are arguably core to personalisation; attribution is not.",
+    "fix": "JS-only change: make step 11 optional (isStepValid case 11 returns true, plus a visible Skip). Ship it as an OTA under the C1 rules, or accept the risk for 1.0. The pre-onboarded demo accounts avoid it only on the main path.",
+    "fix_lever": "ota"
+   },
+   {
+    "id": "C8",
+    "title": "Third-party content rights (5.2.1/5.2.2) not audited; the corrected notes now name Amazon and Noon",
+    "severity": "medium",
+    "status": "RISK",
+    "claim": "Packet section 3 (line 112) left the Content Rights answer as an owner legal call. No audit dimension checked guideline 5.2.2. The review-notes ready_text step 6 adds retailer names that the original notes (packet lines 276-292) did not have.",
+    "evidence": "- **Guideline 5.2.2 (WebFetch):** \"ensure that you are specifically permitted to do so under the service's terms of use. Authorization must be provided upon request.\"\n- **Guideline 5.2.1:** \"Don't use protected third-party material such as trademarks...\"\n- **What the backend does:**\n  - fetches retailer data: app/services/noon_service.py; retailer indexes in algolia_service.py:107-128 (sharafdg, danube, nahdionline);\n  - scrapes through Bright Data;\n  - for link compares, extracts the text of the pages the user links (url_extraction_service.py).\n- **What the app shows:** retailer product images (ResultsContent.tsx:279-285).\n- **Notes wording:** ready_text says \"for example from Amazon or Noon\"; packet line 288 does not name them.",
+    "fix": "Use \"Link compares two product page links from online stores\" in the notes, with no retailer names. The owner answers Content Rights (Yes, shows third-party content) on his own legal judgement. Prepare a one-paragraph reply for a 5.2.2 question: prices come from public search results and links go to the retailer. Do not claim partnerships.",
+    "fix_lever": "asc_field"
+   },
+   {
+    "id": "C9",
+    "title": "Apple Silicon Mac availability is on by default and nobody covered it",
+    "severity": "low",
+    "status": "RISK",
+    "claim": "The packet and the three dimensions never mention Pricing and Availability -> iPhone and iPad Apps on Apple Silicon Mac. MYEZ has never run on a Mac (camera scan, Sign in with Apple, pinning).",
+    "evidence": "- **Apple help page** (manage-availability-of-iphone-and-ipad-apps-on-macs-with-apple-silicon): \"Users running macOS 11 or later on Macs with Apple silicon can access iPhone and iPad apps through the Mac App Store, provided no edits are made to the app availability.\" Opt-out: \"Apple Silicon Mac Availability\", deselect \"Make this app available\", then Save.\n- **Packet:** a grep for silicon/vision in ASC_SUBMISSION_PACKET_S76.md has no hits.\n- **Vision Pro:** compatibility-mode availability is UNVERIFIED (not fetched).",
+    "fix": "For 1.0, deselect Mac availability, and visionOS if ASC offers that option. Turn them back on after a Mac test.",
+    "fix_lever": "asc_field"
+   },
+   {
+    "id": "C10",
+    "title": "Supabase free plan (spend cap / read-only mode) is a review-time outage risk that R4 misses",
+    "severity": "medium",
+    "status": "RISK",
+    "claim": "R4 covers OpenAI balance and the Bright Data token. Sign-in and every compare also depend on Supabase, which is on the Free plan with a spend cap.",
+    "evidence": "- **Session 74 ledger:**\n  - :70 org \"LKDR Org\" on the FREE plan.\n  - :72 Billing: \"your projects could become unresponsive or enter read only mode if you exceed the included usage\"; built-in email sender \"has rate limits and is not meant to be used for production apps\".\n- **Session 75 ledger:9:** SB = A (Pro) is still an owner purchase.\n- **Punch list:** LAUNCH_PUNCH_LIST.md:123: \"a Supabase outage is a total compare outage under U13\".\n- Supabase's inactivity and pause rules were not fetched (UNVERIFIED).",
+    "fix": "Owner buys Pro (SB = A) before Add for Review. Otherwise, read the Supabase usage page daily until approval, together with the OpenAI balance.",
+    "fix_lever": "owner_action"
+   },
+   {
+    "id": "C11",
+    "title": "A new event-loop stall happened after the R3 verifier's samples",
+    "severity": "medium",
+    "status": "RISK",
+    "claim": "The R3 verifier lowered the stall risk because loop_lag_max_ms (a high-water mark since boot) showed only one 14.8 s stall.",
+    "evidence": "My GET /health on 2026-10-11 (after 16:11Z) returned:\n- loop_lag_max_ms 16190 (it was 14802 in both earlier samples);\n- loop_lag_max_60s_ms 3;\n- brightdata_auth last_status 401 at 16:11:24Z.\nThe mark only goes up, and a restart would reset it lower. So a stall of at least 14.8 s happened after the verifier's reads, either way. Against the 35 s client timeout (api.ts:47-48) and compares of 26.9-30.0 s, one such stall makes a compare time out.",
+    "fix": "Investigate the stall cause before submitting (R3 fix). Run the warm-up and the pair choice within the hour before Add for Review, and use the notes wording \"if a timeout card appears, tap retry once\".",
+    "fix_lever": "backend_deploy"
+   },
+   {
+    "id": "C12",
+    "title": "Notes do not describe History, invites/bonus credits, sharing or notifications (2.3.1(a))",
+    "severity": "low",
+    "status": "RISK",
+    "claim": "Guideline 2.3.1(a) (WebFetch): \"All new features, functionality, and product changes must be described with specificity in the Notes for Review section\". The corrected notes cover compare, scan, link and deletion only.",
+    "evidence": "- History tab: App.tsx:147.\n- Bonus credits in Profile MonthStrip: ProfileScreen.tsx:421.\n- Share sheet with 5 targets: ShareBottomSheet.tsx:67-73. Its links point to getmyez.com/c/..., which returns 404 today (listing F2).\n- Invite code text: en.json:869.\n- Notification pre-prompts: Step17Notifications.tsx, pushPrePrompt.ts.",
+    "fix": "Add one line: \"Other tabs: History (past comparisons, open and share a result) and Profile (preferences, notification settings, invite code and bonus comparisons, Contact Us).\" Until the domain move, do not invite the reviewer to open a shared link.",
+    "fix_lever": "asc_field"
+   }
+  ],
+  "ready_text": "Extra pre-submission checklist (adds to the three dimensions):\n1. EAS (owner, read-only): run `eas channel:view production` and `eas update:list --branch production --limit 5` in SmartCompareApp. Expect the channel to point at branch production, with no update at runtime 1.0.0. Publish nothing to production from submission until approval, unless the C6 or C7 OTA is published deliberately and checked on TestFlight first.\n2. Railway web (owner): set ENABLE_PASSWORD_RESET_DEEP_LINK=true. Test \"Forgot password?\" on the TestFlight build with the spare account. If the link does not open the app's reset screen, set it back to false.\n3. Review notes:\n   - Delete the \"New email accounts ... confirm\" sentence (Supabase Confirm email is OFF).\n   - Step 6: \"Link compares two product page links from online stores\" (no retailer names).\n   - Add: \"Other tabs: History (past comparisons, open and share a result) and Profile (preferences, notification settings, invite code and bonus comparisons, Contact Us).\"\n4. Pricing and Availability: deselect Apple Silicon Mac availability (and Vision Pro, if offered) for 1.0.\n5. Content Rights: Yes, the app contains third-party content. The rights confirmation is the owner's legal call.\n6. Supabase: buy Pro (SB = A) before Add for Review, or check usage daily with the OpenAI balance.\n7. Optional OTA (C6/C7): remove the \"25+ retailers\" counts (en.json:279, 285, 544, 749, plus ar.json) and make the \"Where did you hear about us?\" step skippable.\n8. On review day: read /health once more. loop_lag_max_ms rose to 16190 today, so pick the pair from a warm-up run in the last hour."
+ }
+}

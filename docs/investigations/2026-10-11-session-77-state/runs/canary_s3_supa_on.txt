@@ -1,0 +1,10 @@
+pair                                           run http verdict                      prices  elapsed
+Jo Malone Wood Sage and Sea Salt vs Maison Margiela Replica Jazz Club   1  200 FAIL:no_pros                    1/2    30.4s
+Rare Beauty Soft Pinch Blush vs Glossier Cloud Paint   1  200 FAIL:no_spec_rows               0/2    30.5s
+Anker 737 Power Bank vs Belkin BoostCharge Pro 20K   1  200 FAIL:no_pros                    0/2    30.9s
+READY (0): 
+NO PRICE (0): 
+FAILED (3): Jo Malone Wood Sage and Sea Salt vs Maison Margiela Replica Jazz Club | Rare Beauty Soft Pinch Blush vs Glossier Cloud Paint | Anker 737 Power Bank vs Belkin BoostCharge Pro 20K
+COLD ONLY (0): 
+PARTIAL: Jo Malone Wood Sage and Sea Salt vs Maison Margiela Replica Jazz Club | Rare Beauty Soft Pinch Blush vs Glossier Cloud Paint | Anker 737 Power Bank vs Belkin BoostCharge Pro 20K
+RESULT: FAIL ready=0 no_price=0 failed=3

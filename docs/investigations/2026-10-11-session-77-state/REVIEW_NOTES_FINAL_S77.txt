@@ -1,0 +1,20 @@
+Sign-in is required because MYEZ's features are account-based. Every comparison runs paid AI and retailer-search requests on our servers, so each account has a limited comparison allowance that we can reliably enforce only per account. The account also stores the user's comparison history (the History tab) and the preference profile that personalises verdicts (priorities, budget level, brand attitude). Users can delete the account and its data at any time inside the app (path below). The app opens on the sign-in screen.
+
+Review account 1: <REVIEW EMAIL 1> / <REVIEW PASSWORD 1>
+Review account 2 (spare, in case account 1 is deleted): <REVIEW EMAIL 2> / <REVIEW PASSWORD 2>
+Enter the email and password and tap Sign In. Both review accounts have already completed the first-run questions and have a raised limit of 10 comparisons per day.
+
+Sign in with Apple ("Continue with Apple") is also available: first tick the box "I am 13 or older and I agree to the Terms...". It creates a new account with the standard free allowance (3 comparisons a day, 10 a month). A new account first answers a short first-run questionnaire (16 screens; language, country, 1-3 priorities, budget, brand preference and how you heard of us must be chosen, the other screens only need Next, and the notifications screen offers "Maybe later").
+
+How to test:
+1. On the MYEZ tab (home), the comparison card has three tabs: Scan (selected by default), Link and Type. Tap Type, enter "<PAIR A>" and "<PAIR B>" (a pair that passed our check today), then tap Compare.
+2. The first time an account starts a comparison, the camera or the photo picker on a device, the app shows a one-time sheet "Your comparison is written with AI" that names OpenAI and explains what is sent. Tap "Agree and continue". "Not now" cancels; comparisons cannot run without this agreement.
+3. A comparison usually takes 20-40 seconds while we gather specs, reviews and prices.
+4. Results show the winner, the reasons, "Where the runner-up wins", and a price for each product when one is found (otherwise "No confirmed price yet.").
+5. Photos: tap the Scan tab, then "Turn on camera" (first time; allow camera access) or "Open camera". Photograph two products with the shutter button, then tap Compare. To use library photos instead, tap the photo button next to the shutter once for each product, then tap Compare (before camera access is granted, "Or pick from gallery" lets you select two photos at once and starts the comparison).
+6. Link compares two product page links from online stores.
+
+Market: results use the Bahrain market. Prices are shown in Bahraini Dinar (BHD) and change over time.
+AI processing: the product names, links (with the text of those pages), photos and the profile preferences named on the permission sheet are sent to OpenAI to write the comparison. OpenAI may use these inputs and its outputs to evaluate and train its models; the permission sheet says so. The user's name, email and account details are not sent.
+Account deletion: Profile tab -> gear icon (top right) -> Edit Profile screen -> scroll to "Account actions" -> "Delete account" -> tap "Delete account" again in the confirmation.
+This version has no in-app purchases, subscriptions or ads, and does not track users. The daily-limit screen only explains when free comparisons refresh; nothing is sold.

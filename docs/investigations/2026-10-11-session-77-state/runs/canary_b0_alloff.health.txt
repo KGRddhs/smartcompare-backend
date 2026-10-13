@@ -1,0 +1,41 @@
+19:09:49 {"status":"healthy","message":"MYEZ API is running","loop_lag_ms":0.0,"loop_lag_max_ms":14802.000000141561,"loop_lag_max_60s_ms":1.9999993965029716,"adapter_executor":{"workers":96,"queued":0},"brightdata_auth":{"last_status":401,"at":"2026-10-11T15:55:27Z"}} t=0.611888
+19:09:51 {"status":"healthy","message":"MYEZ API is running","loop_lag_ms":0.0,"loop_lag_max_ms":14802.000000141561,"loop_lag_max_60s_ms":1.9999993965029716,"adapter_executor":{"workers":96,"queued":0},"brightdata_auth":{"last_status":401,"at":"2026-10-11T15:55:27Z"}} t=0.528218
+19:09:52  t=5.011961
+ TIMEOUT
+19:09:58  t=5.008435
+ TIMEOUT
+19:10:04 {"status":"healthy","message":"MYEZ API is running","loop_lag_ms":133.0000003799796,"loop_lag_max_ms":14802.000000141561,"loop_lag_max_60s_ms":6675.999999977648,"adapter_executor":{"workers":96,"queued":0},"brightdata_auth":{"last_status":401,"at":"2026-10-11T15:55:27Z"}} t=2.523003
+19:10:08 {"status":"healthy","message":"MYEZ API is running","loop_lag_ms":1064.0000002458692,"loop_lag_max_ms":14802.000000141561,"loop_lag_max_60s_ms":6675.999999977648,"adapter_executor":{"workers":96,"queued":0},"brightdata_auth":{"last_status":401,"at":"2026-10-11T15:55:27Z"}} t=3.379322
+19:10:13 {"status":"healthy","message":"MYEZ API is running","loop_lag_ms":1.0000001639127731,"loop_lag_max_ms":14802.000000141561,"loop_lag_max_60s_ms":6675.999999977648,"adapter_executor":{"workers":96,"queued":0},"brightdata_auth":{"last_status":401,"at":"2026-10-11T15:55:27Z"}} t=0.487964
+19:10:14 {"status":"healthy","message":"MYEZ API is running","loop_lag_ms":0.0,"loop_lag_max_ms":14802.000000141561,"loop_lag_max_60s_ms":6675.999999977648,"adapter_executor":{"workers":96,"queued":0},"brightdata_auth":{"last_status":401,"at":"2026-10-11T15:55:27Z"}} t=0.490565
+19:10:16 {"status":"healthy","message":"MYEZ API is running","loop_lag_ms":1302.9999993741512,"loop_lag_max_ms":14802.000000141561,"loop_lag_max_60s_ms":6675.999999977648,"adapter_executor":{"workers":96,"queued":0},"brightdata_auth":{"last_status":401,"at":"2026-10-11T15:55:27Z"}} t=2.611437
+19:10:19 {"status":"healthy","message":"MYEZ API is running","loop_lag_ms":433.9999994263053,"loop_lag_max_ms":14802.000000141561,"loop_lag_max_60s_ms":6675.999999977648,"adapter_executor":{"workers":96,"queued":0},"brightdata_auth":{"last_status":401,"at":"2026-10-11T15:55:27Z"}} t=1.305104
+19:10:22 {"status":"healthy","message":"MYEZ API is running","loop_lag_ms":0.0,"loop_lag_max_ms":14802.000000141561,"loop_lag_max_60s_ms":6675.999999977648,"adapter_executor":{"workers":96,"queued":0},"brightdata_auth":{"last_status":401,"at":"2026-10-11T15:55:27Z"}} t=0.483237
+19:10:24 {"status":"healthy","message":"MYEZ API is running","loop_lag_ms":1.0000001639127731,"loop_lag_max_ms":14802.000000141561,"loop_lag_max_60s_ms":6675.999999977648,"adapter_executor":{"workers":96,"queued":0},"brightdata_auth":{"last_status":401,"at":"2026-10-11T15:55:27Z"}} t=0.493159
+19:10:25 {"status":"healthy","message":"MYEZ API is running","loop_lag_ms":1.0000001639127731,"loop_lag_max_ms":14802.000000141561,"loop_lag_max_60s_ms":6675.999999977648,"adapter_executor":{"workers":96,"queued":0},"brightdata_auth":{"last_status":401,"at":"2026-10-11T15:55:27Z"}} t=0.485090
+19:10:27 {"status":"healthy","message":"MYEZ API is running","loop_lag_ms":0.0,"loop_lag_max_ms":14802.000000141561,"loop_lag_max_60s_ms":6675.999999977648,"adapter_executor":{"workers":96,"queued":0},"brightdata_auth":{"last_status":401,"at":"2026-10-11T15:55:27Z"}} t=0.489893
+19:10:28  t=5.000715
+ TIMEOUT
+19:10:34 {"status":"healthy","message":"MYEZ API is running","loop_lag_ms":115.00000022351742,"loop_lag_max_ms":14802.000000141561,"loop_lag_max_60s_ms":6675.999999977648,"adapter_executor":{"workers":96,"queued":0},"brightdata_auth":{"last_status":401,"at":"2026-10-11T15:55:27Z"}} t=3.766352
+19:10:39  t=5.008000
+ TIMEOUT
+19:10:45 {"status":"healthy","message":"MYEZ API is running","loop_lag_ms":107.00000077486038,"loop_lag_max_ms":14802.000000141561,"loop_lag_max_60s_ms":6675.999999977648,"adapter_executor":{"workers":96,"queued":0},"brightdata_auth":{"last_status":401,"at":"2026-10-11T15:55:27Z"}} t=0.516469
+19:10:47 {"status":"healthy","message":"MYEZ API is running","loop_lag_ms":227.0000008866191,"loop_lag_max_ms":14802.000000141561,"loop_lag_max_60s_ms":6675.999999977648,"adapter_executor":{"workers":96,"queued":0},"brightdata_auth":{"last_status":401,"at":"2026-10-11T15:55:27Z"}} t=0.815775
+19:10:49 {"status":"healthy","message":"MYEZ API is running","loop_lag_ms":392.9999992251396,"loop_lag_max_ms":14802.000000141561,"loop_lag_max_60s_ms":6675.999999977648,"adapter_executor":{"workers":96,"queued":0},"brightdata_auth":{"last_status":401,"at":"2026-10-11T15:55:27Z"}} t=0.635834
+19:10:51 {"status":"healthy","message":"MYEZ API is running","loop_lag_ms":1.0000001639127731,"loop_lag_max_ms":14802.000000141561,"loop_lag_max_60s_ms":6675.999999977648,"adapter_executor":{"workers":96,"queued":0},"brightdata_auth":{"last_status":401,"at":"2026-10-11T15:55:27Z"}} t=0.607016
+19:10:52 {"status":"healthy","message":"MYEZ API is running","loop_lag_ms":1.0000001639127731,"loop_lag_max_ms":14802.000000141561,"loop_lag_max_60s_ms":6675.999999977648,"adapter_executor":{"workers":96,"queued":0},"brightdata_auth":{"last_status":401,"at":"2026-10-11T15:55:27Z"}} t=0.478344
+19:10:54 {"status":"healthy","message":"MYEZ API is running","loop_lag_ms":0.0,"loop_lag_max_ms":14802.000000141561,"loop_lag_max_60s_ms":6675.999999977648,"adapter_executor":{"workers":96,"queued":0},"brightdata_auth":{"last_status":401,"at":"2026-10-11T15:55:27Z"}} t=0.490789
+19:10:56 {"status":"healthy","message":"MYEZ API is running","loop_lag_ms":0.0,"loop_lag_max_ms":14802.000000141561,"loop_lag_max_60s_ms":6675.999999977648,"adapter_executor":{"workers":96,"queued":0},"brightdata_auth":{"last_status":401,"at":"2026-10-11T15:55:27Z"}} t=0.483652
+19:10:57 {"status":"healthy","message":"MYEZ API is running","loop_lag_ms":0.0,"loop_lag_max_ms":14802.000000141561,"loop_lag_max_60s_ms":6675.999999977648,"adapter_executor":{"workers":96,"queued":0},"brightdata_auth":{"last_status":401,"at":"2026-10-11T15:55:27Z"}} t=0.517806
+19:10:59 {"status":"healthy","message":"MYEZ API is running","loop_lag_ms":0.0,"loop_lag_max_ms":14802.000000141561,"loop_lag_max_60s_ms":6675.999999977648,"adapter_executor":{"workers":96,"queued":0},"brightdata_auth":{"last_status":401,"at":"2026-10-11T15:55:27Z"}} t=0.477146
+19:11:00  t=5.009933
+ TIMEOUT
+19:11:07  t=5.006384
+ TIMEOUT
+19:11:13  t=5.003878
+ TIMEOUT
+19:11:19 {"status":"healthy","message":"MYEZ API is running","loop_lag_ms":1126.0000001639128,"loop_lag_max_ms":16190.000000409782,"loop_lag_max_60s_ms":16190.000000409782,"adapter_executor":{"workers":96,"queued":0},"brightdata_auth":{"last_status":401,"at":"2026-10-11T15:55:27Z"}} t=4.701954
+19:11:25 {"status":"healthy","message":"MYEZ API is running","loop_lag_ms":1520.999999716878,"loop_lag_max_ms":16190.000000409782,"loop_lag_max_60s_ms":16190.000000409782,"adapter_executor":{"workers":96,"queued":0},"brightdata_auth":{"last_status":401,"at":"2026-10-11T16:11:24Z"}} t=2.116644
+19:11:28 {"status":"healthy","message":"MYEZ API is running","loop_lag_ms":0.0,"loop_lag_max_ms":16190.000000409782,"loop_lag_max_60s_ms":16190.000000409782,"adapter_executor":{"workers":96,"queued":0},"brightdata_auth":{"last_status":401,"at":"2026-10-11T16:11:24Z"}} t=0.569190
+19:11:29 {"status":"healthy","message":"MYEZ API is running","loop_lag_ms":283.99999998509884,"loop_lag_max_ms":16190.000000409782,"loop_lag_max_60s_ms":16190.000000409782,"adapter_executor":{"workers":96,"queued":0},"brightdata_auth":{"last_status":401,"at":"2026-10-11T16:11:24Z"}} t=0.895010
+19:11:31 {"status":"healthy","message":"MYEZ API is running","loop_lag_ms":0.0,"loop_lag_max_ms":16190.000000409782,"loop_lag_max_60s_ms":16190.000000409782,"adapter_executor":{"workers":96,"queued":0},"brightdata_auth":{"last_status":401,"at":"2026-10-11T16:11:24Z"}} t=1.635861
