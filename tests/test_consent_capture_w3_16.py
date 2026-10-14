@@ -36,7 +36,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 PERSIST_FLAG = "ENABLE_CONSENT_PERSIST"
 REQUIRED_FLAG = "ENABLE_CONSENT_REQUIRED"
-TERMS_VERSION = "2026-10-11"
+TERMS_VERSION = "2026-10-14"  # S78 (LR4, P24): the re-date recipe edits this literal
 REJECTION_CODE = "TERMS_ACCEPTANCE_REQUIRED"
 
 BARE_REGISTER = {"email": "u@example.com", "password": "ValidP@ss123"}

@@ -26,7 +26,8 @@
  * ADDRESS_COUNTS: the four legal pages (privacy, terms, ar/privacy, ar/terms,
  * whose body contact lines are rendered from app/legal/*.md) and the two
  * support pages (support, ar/support) were re-counted on the filled pages
- * (2026-10-11); the index pages and open.html keep their base counts.
+ * (2026-10-11); the index pages keep their base counts; open.html was re-counted
+ * in S78 (fix F4: the head comment that named the host is gone).
  */
 import * as fs from 'fs';
 import * as path from 'path';
@@ -63,14 +64,18 @@ const ADDRESS_COUNTS: Record<string, number> = {
   // footer support@ mailto = 5. The body's contact lines are rendered from app/legal/*.md; the
   // fill-in (2026-10-11) recorded privacy@getmyez.com and support@getmyez.com, so the counts
   // below are re-measured on the filled pages (every address on these pages is on getmyez.com).
-  'privacy.html': 11, // S77 FIX (RF2): privacy s9 names privacy@getmyez.com once more
-  'support.html': 10,
-  'terms.html': 6,
-  'open.html': 3, // the three getmyez.com mentions: two in the head comment + the script's linking prefix
+  // S78 (LR1, LR3, P25; re-measured 2026-10-14 on the filled pages): the interim postal line names
+  // privacy@getmyez.com (privacy s1 + s16, ToS s1 + s19, the support line), privacy s5 adds the
+  // on-request sentence, and ToS v2 names support@ in s7, s13, s15 and s19. A later P.O. Box re-fill
+  // drops the postal mentions (privacy -2, terms -2, support -1): re-measure these six counts then.
+  'privacy.html': 14,
+  'support.html': 11,
+  'terms.html': 13,
+  'open.html': 1, // S78 F4: the script's linking prefix only (the head comment is gone)
   'ar/index.html': 8,
-  'ar/privacy.html': 11, // S77 FIX (RF2): the same s9 sentence in Arabic
-  'ar/support.html': 10,
-  'ar/terms.html': 6,
+  'ar/privacy.html': 14, // S78: the same mentions as privacy.html, in Arabic
+  'ar/support.html': 11,
+  'ar/terms.html': 13,
 };
 
 const read = (rel: string) => fs.readFileSync(path.join(LANDING, rel), 'utf8');

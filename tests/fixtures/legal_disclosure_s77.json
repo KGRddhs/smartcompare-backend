@@ -1,5 +1,5 @@
 {
-  "_comment": "Non-ASCII expectations for tests/test_legal_disclosure_s77.py (unit S77 LEGAL-DISCLOSURE; spec .qa-s77/LEGAL_DISCLOSURE_SPEC.md as amended by the binding rulings RULINGS_S77_LEGAL.md). Values are byte copies of the spec's AR blocks (P2 disclosure sentence, P4, P5G, P5C, T8 disclosure sentence, T4, L2, L3) and of ruling RL2's AR own-terms sentence. RL10 replaces the spec's P2/T8 narrowing with a general promise whose AR twin the GREEN writes, so the AR general promise is pinned by structure (not_sold_head_ar, brokers_ar, advertisers_ar, OpenAI in the same sentence; narrow_qualifier_ar never follows the head); RL3 and RL11 AR twins are pinned by structure too (see the test docstrings). FIX round (rulings RF1-RF2, final adversary): privacy_s7_transfer_ar / privacy_s7_retired_ar are the privacy s7 transfer sentence (TRANSFER_BASIS false; new and retired AR twins) and privacy_s9_email_ar is the s9 email sentence as filled (the snapshot carries <PLACEHOLDER:PRIVACY_EMAIL> in place of the address).",
+  "_comment": "Non-ASCII expectations for tests/test_legal_disclosure_s77.py (unit S77 LEGAL-DISCLOSURE; spec .qa-s77/LEGAL_DISCLOSURE_SPEC.md as amended by the binding rulings RULINGS_S77_LEGAL.md). Values are byte copies of the spec's AR blocks (P2 disclosure sentence, P4, P5G, P5C, T8 disclosure sentence, T4, L2, L3) and of ruling RL2's AR own-terms sentence. RL10 replaces the spec's P2/T8 narrowing with a general promise whose AR twin the GREEN writes, so the AR general promise is pinned by structure (not_sold_head_ar, brokers_ar, advertisers_ar, OpenAI in the same sentence; narrow_qualifier_ar never follows the head); RL3 and RL11 AR twins are pinned by structure too (see the test docstrings). FIX round (rulings RF1-RF2, final adversary): privacy_s7_transfer_ar / privacy_s7_retired_ar are the privacy s7 transfer sentence (TRANSFER_BASIS false; new and retired AR twins) and privacy_s9_email_ar is the s9 email sentence as filled (the snapshot carries <PLACEHOLDER:PRIVACY_EMAIL> in place of the address). S78 (rulings LR3, M5, P14-P16, P19, P20, P23): privacy_s5_google_ar is the sign-in-only Google line; privacy_s5_cloudflare_ar (key name kept) is the 'Our email providers' category line; privacy_s5_own_terms_ar and privacy_s7_transfer_ar name 'our mailbox provider' without a vendor; germany_eu_ar is the AR 'Germany (European Union)' of privacy s7; retired_ar[6:] (appended, no earlier index moves) are the S77 Google, Cloudflare, own-terms, United States parenthesis and transfer sentences this unit retires.",
   "privacy_s2_disclosure_ar": "ونشارك في برنامج مشاركة البيانات لدى OpenAI (القسم 4): إذ قد تستخدم OpenAI المدخلات التي نرسلها إليها والمخرجات التي تنتجها منها لتقييم نماذجها وتدريبها، وفي المقابل تمنحنا OpenAI قدرًا من الاستخدام المجاني لخدمتها.",
   "narrow_promise_ar": "لا نبيع بياناتك الشخصية لوسطاء البيانات أو المعلنين، ولا نشاركها معهم.",
   "not_sold_head_ar": "لا نبيع بياناتك الشخصية",
@@ -10,9 +10,9 @@
   "privacy_s4_anchor_ar": "وينطبق ذلك على كل مقارنة، ولا يوجد في التطبيق إعداد منفصل له.",
   "privacy_s4_exchange_ar": "وفي مقابل هذه المشاركة، تمنحنا OpenAI قدرًا من الاستخدام المجاني لخدمتها.",
   "privacy_s4_photos_ar": "ونرجو أن تصوّر المنتجات فقط، وألا تُدرج في صورك أو عمليات بحثك أشخاصًا أو مستندات أو بطاقات دفع أو أي تفاصيل شخصية أو صحية أخرى.",
-  "privacy_s5_google_ar": "- **Google:** إذا استخدمت تسجيل الدخول عبر Google، تشارك Google معنا اسمك وعنوان بريدك الإلكتروني وصورة ملفك الشخصي عبر رمز تسجيل الدخول الخاص بها. كما تتلقى Google رسائل البريد الإلكتروني التي ترسلها إلى عناويننا (انظر Cloudflare أدناه).",
-  "privacy_s5_cloudflare_ar": "- **Cloudflare:** تتلقى رسائل البريد الإلكتروني التي ترسلها إلى عناويننا وتعيد توجيهها إلى مزوّد صندوق بريدنا، Google (Gmail)، الذي يخزّنها وفق شروط Google الخاصة.",
-  "privacy_s5_own_terms_ar": "أما مواقع المتاجر (القسم 6) ومزوّدا تسجيل الدخول Apple وGoogle، وGoogle بصفتها مزوّد صندوق بريدنا، فتعمل وفق شروطها الخاصة.",
+  "privacy_s5_google_ar": "- **Google:** إذا استخدمت تسجيل الدخول عبر Google، تشارك Google معنا اسمك وعنوان بريدك الإلكتروني وصورة ملفك الشخصي عبر رمز تسجيل الدخول الخاص بها.",
+  "privacy_s5_cloudflare_ar": "- **مزوّدو البريد الإلكتروني لدينا:** تتلقى خدمة لتوجيه البريد الإلكتروني الرسائل التي ترسلها إلى عناويننا وتعيد توجيهها إلى مزوّد صندوق بريدنا، الذي يخزّنها وفق شروطه الخاصة.",
+  "privacy_s5_own_terms_ar": "أما مواقع المتاجر (القسم 6) ومزوّدا تسجيل الدخول Apple وGoogle، ومزوّد صندوق بريدنا، وخدمة الخطوط على الويب التي يستخدمها موقعنا، فتعمل وفق شروطها الخاصة.",
   "terms_s8_identifies_ar": "ولا يحدد أي منها هويتك.",
   "terms_s8_disclosure_ar": "ونشارك في برنامج مشاركة البيانات لدى OpenAI على النحو الذي يوضّحه القسم 4 من سياسة الخصوصية: إذ قد تستخدم OpenAI المدخلات التي نرسلها إليها والمخرجات التي تنتجها منها لتقييم نماذجها وتدريبها، وفي المقابل تمنحنا OpenAI قدرًا من الاستخدام المجاني لخدمتها.",
   "terms_s4_limits_ar": "(حاليًا ما يصل إلى 3 مقارنات في اليوم وما يصل إلى 10 في الشهر؛ وتُحتسب مقارناتك الثلاث الأولى ضمن هذه الحدود، وتُضاف مكافآت الإحالة الموضّحة في القسم 9 إلى الحد الشهري)",
@@ -22,7 +22,12 @@
     "فقط إذا استخدمت تسجيل الدخول عبر Google",
     "توصل رسائل البريد الإلكتروني التي ترسلها إلى عناويننا.",
     "بعد 3 مقارنات تمهيدية",
-    "أما مواقع المتاجر (القسم 6) ومزوّدا تسجيل الدخول Apple وGoogle فتعمل وفق شروطها الخاصة."
+    "أما مواقع المتاجر (القسم 6) ومزوّدا تسجيل الدخول Apple وGoogle فتعمل وفق شروطها الخاصة.",
+    "- **Google:** إذا استخدمت تسجيل الدخول عبر Google، تشارك Google معنا اسمك وعنوان بريدك الإلكتروني وصورة ملفك الشخصي عبر رمز تسجيل الدخول الخاص بها. كما تتلقى Google رسائل البريد الإلكتروني التي ترسلها إلى عناويننا (انظر Cloudflare أدناه).",
+    "- **Cloudflare:** تتلقى رسائل البريد الإلكتروني التي ترسلها إلى عناويننا وتعيد توجيهها إلى مزوّد صندوق بريدنا، Google (Gmail)، الذي يخزّنها وفق شروط Google الخاصة.",
+    "أما مواقع المتاجر (القسم 6) ومزوّدا تسجيل الدخول Apple وGoogle، وGoogle بصفتها مزوّد صندوق بريدنا، فتعمل وفق شروطها الخاصة.",
+    "الولايات المتحدة (OpenAI وGoogle)",
+    "ننقل البيانات إلى مزوّدي الخدمات لدينا، وهم ملزَمون تعاقديًا بحمايتها، وإلى Google بصفتها مزوّد صندوق بريدنا، وهي تتعامل مع رسائل البريد الإلكتروني وفق شروطها الخاصة (القسم 5)."
   ],
   "us_ar": "الولايات المتحدة",
   "email_ar": "البريد الإلكتروني",
@@ -43,7 +48,8 @@
     "بين",
     "بذكاء"
   ],
-  "privacy_s7_transfer_ar": "ننقل البيانات إلى مزوّدي الخدمات لدينا، وهم ملزَمون تعاقديًا بحمايتها، وإلى Google بصفتها مزوّد صندوق بريدنا، وهي تتعامل مع رسائل البريد الإلكتروني وفق شروطها الخاصة (القسم 5).",
+  "privacy_s7_transfer_ar": "ننقل البيانات إلى مزوّدي الخدمات لدينا، وهم ملزَمون تعاقديًا بحمايتها، وإلى مزوّد صندوق بريدنا، الذي يتعامل مع رسائل البريد الإلكتروني وفق شروطه الخاصة (القسم 5).",
   "privacy_s7_retired_ar": "لا ننقل البيانات إلا إلى مزوّدين ملزَمين تعاقديًا بحمايتها.",
-  "privacy_s9_email_ar": "وتبقى رسائل البريد الإلكتروني التي أرسلتها إلى عناويننا في صندوق بريدنا إلى أن نحذفها؛ راسلنا على privacy@getmyez.com إذا أردت حذفها أيضًا."
+  "privacy_s9_email_ar": "وتبقى رسائل البريد الإلكتروني التي أرسلتها إلى عناويننا في صندوق بريدنا إلى أن نحذفها؛ راسلنا على privacy@getmyez.com إذا أردت حذفها أيضًا.",
+  "germany_eu_ar": "ألمانيا (الاتحاد الأوروبي)"
 }

@@ -3,6 +3,8 @@ import re
 from pathlib import Path
 from fastapi import APIRouter
 
+from app.services.consent_service import TERMS_VERSION
+
 router = APIRouter(prefix="/api/v1/legal", tags=["legal"])
 
 LEGAL_DIR = Path(__file__).parent.parent / "legal"
@@ -52,7 +54,7 @@ async def get_privacy_policy(lang: str = "en"):
     return {
         "title": "Privacy Policy",
         "content": _read_legal_file(_legal_filename("privacy_policy", lang)),
-        "last_updated": "2026-10-11",
+        "last_updated": TERMS_VERSION,
     }
 
 
@@ -71,5 +73,5 @@ async def get_terms_of_service(lang: str = "en"):
     return {
         "title": "Terms of Service",
         "content": _read_legal_file(_legal_filename("terms_of_service", lang)),
-        "last_updated": "2026-10-11",
+        "last_updated": TERMS_VERSION,
     }

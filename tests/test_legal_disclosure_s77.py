@@ -101,15 +101,32 @@ PHOTOS_EN = (
     "health details in your photos or searches."
 )
 
+# S78 (LR3, P14-P16): recipients by category. The Google line is sign-in only; the email-routing service and the
+# mailbox provider are one category line; the own-terms sentence names "our mailbox provider" without a vendor.
 P5G_NEW_EN = (
+    "- **Google:** if you use Google Sign-In, Google shares your name, email address and profile picture with us "
+    "through its sign-in token."
+)
+P5C_NEW_EN = (
+    "- **Our email providers:** an email-routing service receives the email you send to our addresses and forwards "
+    "it to our mailbox provider, which stores it under its own terms."
+)
+P5C_LABEL_EN = "Our email providers"
+# S78 fix F3 (legal A3): the web-font service the website uses is named among the own-terms recipients.
+OWN_TERMS_EN = (
+    "Retailer websites (section 6), the sign-in providers Apple and Google, our mailbox provider and the web-font "
+    "service our website uses act under their own terms."
+)
+# The S77 sentences S78 retires (P23).
+P5G_S77_EN = (
     "- **Google:** if you use Google Sign-In, Google shares your name, email address and profile picture with us "
     "through its sign-in token. Google also receives the email you send to our addresses (see Cloudflare below)."
 )
-P5C_NEW_EN = (
+P5C_S77_EN = (
     "- **Cloudflare:** receives the email you send to our addresses and forwards it to our mailbox provider, Google "
     "(Gmail), which stores it under Google's own terms."
 )
-OWN_TERMS_EN = (
+OWN_TERMS_S77_EN = (
     "Retailer websites (section 6), the sign-in providers Apple and Google, and Google as our mailbox provider act "
     "under their own terms."
 )
@@ -129,7 +146,10 @@ T4_NEW_EN = (
 )
 T4_OLD_EN = "after 3 introductory comparisons"
 
-S7_EN = "United States (OpenAI and Google)"
+# S78 (LR3, P19): s7 names countries only, no vendor mapping.
+S7_EN = "including in the United States and Germany (European Union)"
+S7_S77_EN = "United States (OpenAI and Google)"
+S7_VENDORS = ("OpenAI", "Google", "Apple", "Sentry", "Supabase", "Railway", "Upstash", "Gmail", "Cloudflare", "Expo")
 EMAIL_RETENTION_EN = "Email you send to our addresses: kept in our mailbox until we delete it; no fixed period."
 
 RETIRED_EN = (
@@ -140,6 +160,12 @@ RETIRED_EN = (
     T4_OLD_EN,
     OWN_TERMS_OLD_EN,
     "We do not sell your personal data to data brokers or advertisers",
+    # S78 (P23): the S77-era sentences this unit retires.
+    P5G_S77_EN,
+    P5C_S77_EN,
+    OWN_TERMS_S77_EN,
+    S7_S77_EN,
+    "and to Google as our mailbox provider, which handles email under its own terms (section 5).",
 )
 
 # Landing (spec L1, L3, L4).
@@ -175,6 +201,9 @@ ROW_M = {
     "module": [],
     "hosts": [],
     "gate_flag": None,
+    "category_en": "mailbox provider",
+    "category_ar": "\u0645\u0632\u0648\u0651\u062f \u0635\u0646\u062f\u0648\u0642 \u0628\u0631\u064a\u062f\u0646\u0627",
+    "public_name": False,
 }
 
 # The QarenBot emitters measured at 10135306 (spec L3); the price look-up modules never send the name.
@@ -526,7 +555,10 @@ def test_s77_d5_rendered_pages_and_api_serve_the_new_text(lang):
     """D5: the rendered privacy and terms pages (tags dropped, entities unescaped, bold dropped) and the legal route
     payloads (get_privacy_policy / get_terms_of_service with lang) carry every new text of their language whose
     wording is fixed (EN: P2 = RL10, P4, P5G, P5C, RL2, RL3, RL11, T8 = RL10, T4; AR: the spec's disclosure, P4,
-    P5G, P5C, RL2, T8 sentences, T4), and last_updated stays '2026-10-11' (RL1 keep). RED at base."""
+    P5G, P5C, RL2, T8 sentences, T4), and last_updated is consent_service.TERMS_VERSION, later than 2026-10-11 (S78
+    LR4 supersedes RL1; P21). RED at base."""
+    from app.services.consent_service import TERMS_VERSION
+
     problems = []
     for doc, page, expected in (
         ("privacy", PAGE_PRIVACY[lang], _privacy_expected(lang)),
@@ -535,8 +567,8 @@ def test_s77_d5_rendered_pages_and_api_serve_the_new_text(lang):
         rendered = _plain(_read(page))
         body = _api(doc, lang)
         served = _plain(body["content"])
-        if body.get("last_updated") != "2026-10-11":
-            problems.append(f"API {doc} {lang}: last_updated {body.get('last_updated')!r} (RL1 keeps 2026-10-11)")
+        if body.get("last_updated") != TERMS_VERSION or not TERMS_VERSION > "2026-10-11":
+            problems.append(f"API {doc} {lang}: last_updated {body.get('last_updated')!r} (LR4: TERMS_VERSION, after 2026-10-11)")
         for sentence in expected:
             if sentence not in rendered:
                 problems.append(f"{page}: lacks {_esc(sentence[:70])!r}")
@@ -552,9 +584,10 @@ def test_s77_d5_rendered_pages_and_api_serve_the_new_text(lang):
 
 @pytest.mark.parametrize("lang", LANGS)
 def test_s77_d6_privacy_s5_names_google_gmail(lang):
-    """D6: privacy s5 (live and snapshot) carries the new Cloudflare line (P5C) and the new Google line (P5G) exactly
-    once each; 'only if you use Google Sign-In' (AR twin) is gone; the rendered privacy page carries
-    'Google (Gmail)' inside section 5 and '<strong>Cloudflare:</strong>' exactly once. RED at base."""
+    """D6, amended S78 (LR3, P17; node name kept): privacy s5 (live and snapshot) carries the email-providers line
+    (P5C) and the sign-in-only Google line (P5G) exactly once each; 'only if you use Google Sign-In' (AR twin) is
+    gone; the rendered privacy s5 names neither 'Gmail' nor 'Cloudflare', and the page carries
+    '<strong>Our email providers:</strong>' (AR label) exactly once. RED at base."""
     fx = _fx()
     if lang == "en":
         lines, retired = (P5C_NEW_EN, P5G_NEW_EN), "only if you use Google Sign-In"
@@ -569,10 +602,13 @@ def test_s77_d6_privacy_s5_names_google_gmail(lang):
         if retired in text:
             problems.append(f"{where}: the retired 'only if you use Google Sign-In' wording is back")
     page = _read(PAGE_PRIVACY[lang])
-    if "Google (Gmail)" not in _rendered_section(page, 5):
-        problems.append(f"{PAGE_PRIVACY[lang]}: the rendered s5 does not name Google (Gmail)")
-    if page.count("<strong>Cloudflare:</strong>") != 1:
-        problems.append(f"{PAGE_PRIVACY[lang]}: <strong>Cloudflare:</strong> is not there exactly once")
+    rendered_s5 = _rendered_section(page, 5)
+    for name in ("Gmail", "Cloudflare"):
+        if name in rendered_s5:
+            problems.append(f"{PAGE_PRIVACY[lang]}: the rendered s5 names {name} (LR3: by category)")
+    label = P5C_LABEL_EN if lang == "en" else lines[0][len("- **"):lines[0].index(":**")]
+    if page.count(f"<strong>{label}:</strong>") != 1:
+        problems.append(f"{PAGE_PRIVACY[lang]}: <strong>{_esc(label)}:</strong> is not there exactly once")
     assert not problems, [_esc(p) for p in problems]
 
 
@@ -582,17 +618,20 @@ def test_s77_d6_privacy_s5_names_google_gmail(lang):
 
 
 def test_s77_d7_processors_manifest_names_gmail():
-    """D7: app/legal/processors.json has exactly one row with id 'gmail', equal to spec row M (eight keys, exact
-    values), placed directly after the cloudflare row; its name_en / name_ar occur inside section 5 of the EN / AR
-    policy (stricter than T7a). RED at base: no row."""
+    """D7, amended S78 (LR3, P18): app/legal/processors.json has exactly one row with id 'gmail', equal to spec row M
+    (eleven keys since S78, exact values), placed directly after the cloudflare row; its category_en / category_ar
+    occur inside section 5 of the EN / AR policy and its name_en / name_ar in neither policy (stricter than T7a).
+    RED at base: no row."""
     rows = _json(MANIFEST)["rows"]
     ids = [row.get("id") for row in rows]
     assert ids.count("gmail") == 1, f"{MANIFEST}: {ids.count('gmail')} gmail row(s)"
     row = rows[ids.index("gmail")]
     assert row == ROW_M, row
     assert ids.index("gmail") == ids.index("cloudflare") + 1, "the gmail row must follow the cloudflare row"
-    for lang, key in (("en", "name_en"), ("ar", "name_ar")):
-        assert row[key] in _section(_read(PRIVACY[lang]), 5), f"{PRIVACY[lang]} s5 does not name {row[key]!r}"
+    for lang, cat, name in (("en", "category_en", "name_en"), ("ar", "category_ar", "name_ar")):
+        text = _read(PRIVACY[lang])
+        assert row[cat] in _section(text, 5), f"{PRIVACY[lang]} s5 does not describe {_esc(row[cat])!r}"
+        assert row[name] not in text, f"{PRIVACY[lang]} names {row[name]!r} (LR3: by category)"
 
 
 # ---------------------------------------------------------------------------
@@ -845,10 +884,10 @@ def test_s77_d13_privacy_s5_own_terms_names_google_as_mailbox_provider(lang):
 
 @pytest.mark.parametrize("lang", LANGS)
 def test_s77_d14_privacy_s7_names_openai_and_google(lang):
-    """D14 (RL3): privacy s7 (live, snapshot and rendered) names Google next to OpenAI for the United States. EN:
-    'United States (OpenAI and Google)' exactly once and no bare '(OpenAI)'. AR (structure; the GREEN writes the
-    twin): the parenthesis right after the AR 'United States' names both OpenAI and Google, and no bare '(OpenAI)'.
-    RED at base: s7 says '(OpenAI)'."""
+    """D14, amended S78 (LR3, P19; node name kept): privacy s7 (live, snapshot and rendered) names the destination
+    countries without a vendor mapping. EN: S7_EN ('... the United States and Germany (European Union)') exactly
+    once; AR: the AR 'United States' and the fixture's germany_eu_ar; no vendor name and no '(OpenAI' anywhere in
+    s7. RED at base: s7 says '(OpenAI)'."""
     fx = _fx()
     texts = list(_texts_with_snapshot(PRIVACY[lang]))
     sections = [(where, _section(text, 7)) for where, text in texts]
@@ -858,15 +897,17 @@ def test_s77_d14_privacy_s7_names_openai_and_google(lang):
         if not s7.strip():
             problems.append(f"{where}: no section 7")
             continue
-        if "(OpenAI)" in s7:
-            problems.append(f"{where} s7: still names OpenAI alone")
+        if "(OpenAI" in s7:
+            problems.append(f"{where} s7: still maps OpenAI to a country")
+        problems += [f"{where} s7: names {name!r} (LR3)" for name in S7_VENDORS if re.search(r"\b" + name + r"\b", s7)]
         if lang == "en":
             if s7.count(S7_EN) != 1:
                 problems.append(f"{where} s7: {S7_EN!r} is not there exactly once")
             continue
-        match = re.search(re.escape(fx["us_ar"]) + r"\s*\(([^()]*)\)", s7)
-        if not match or "OpenAI" not in match.group(1) or "Google" not in match.group(1):
-            problems.append(f"{where} s7: the AR United States parenthesis does not name OpenAI and Google")
+        if fx["us_ar"] not in s7 or fx["germany_eu_ar"] not in s7:
+            problems.append(f"{where} s7: the AR United States / Germany (European Union) are not named")
+        if re.search(re.escape(fx["us_ar"]) + r"\s*\(", s7):
+            problems.append(f"{where} s7: a parenthesis follows the AR United States")
     assert not problems, [_esc(p) for p in problems]
 
 
@@ -938,9 +979,10 @@ def test_s77_d16_landing_readme_lines_updated():
 # ---------------------------------------------------------------------------
 
 # RF1: privacy s7, the TRANSFER_BASIS 'false' variant (the snapshot carries <PLACEHOLDER:TRANSFER_BASIS>).
+# S78 (LR3, P20): the mailbox provider without a vendor name; the basis is no stronger than RF1's.
 S7_TRANSFER_EN = (
-    "We transfer data to our service providers, which are required by contract to protect it, and to Google as our "
-    "mailbox provider, which handles email under its own terms (section 5)."
+    "We transfer data to our service providers, which are required by contract to protect it, and to our mailbox "
+    "provider, which handles email under its own terms (section 5)."
 )
 S7_TRANSFER_OLD_EN = "We transfer data only to providers that are required by contract to protect it."
 # RF2: privacy s9, plain text (live and snapshot; the snapshot carries the PRIVACY_EMAIL token).
@@ -952,8 +994,10 @@ PRIVACY_ADDRESS = "privacy@getmyez.com"
 PRIVACY_EMAIL_TOKEN = "<PLACEHOLDER:PRIVACY_EMAIL>"
 SITE_ADDRESS_RE = re.compile(r"qaren\.app|getmyez\.com")
 # Mirror of SmartCompareApp/__tests__/landing.brand.s69.test.ts ADDRESS_COUNTS for privacy.html and ar/privacy.html,
-# moved 10 -> 11 by the RF2 sentence (jest cannot run in this worktree).
-PRIVACY_PAGE_ADDRESSES = 11
+# moved 10 -> 11 by the RF2 sentence (jest cannot run in this worktree), and 11 -> 14 by S78 (P22, re-measured
+# 2026-10-14): the interim postal line names privacy@getmyez.com in s1 and s16 and s5 adds the on-request sentence.
+# A later P.O. Box re-fill moves it 14 -> 12 (re-measure then).
+PRIVACY_PAGE_ADDRESSES = 14
 
 
 @pytest.mark.parametrize("lang", LANGS)
@@ -1004,7 +1048,7 @@ def test_s77_d18_privacy_s9_says_email_survives_account_deletion(lang):
     to ask for its deletion. The live s9, the rendered s9 and the API payload carry the sentence (EN exact; AR the
     fixture's privacy_s9_email_ar) exactly once; the snapshot s9 carries it once with <PLACEHOLDER:PRIVACY_EMAIL> in
     place of the address (the fill-in substitutes it). The sentence passes the d3c (k) scan. Both privacy pages now
-    carry 11 site addresses (the pytest mirror of the jest ADDRESS_COUNTS pin, moved 10 -> 11 with this sentence).
+    carry PRIVACY_PAGE_ADDRESSES site addresses (the pytest mirror of the jest ADDRESS_COUNTS pin; 14 since S78).
     RED against the GREEN bytes: the sentence is absent."""
     fx = _fx()
     new = {"en": S9_EMAIL_EN, "ar": fx["privacy_s9_email_ar"]}[lang]

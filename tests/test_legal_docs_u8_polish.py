@@ -78,8 +78,20 @@ AR = {
     "IP": "\u0639\u0646\u0627\u0648\u064a\u0646 IP",
     "LINKED": "\u0627\u0644\u0645\u0631\u062a\u0628\u0637\u0629 \u0628\u062d\u0633\u0627\u0628\u0643",
     "UNLINKED": "\u063a\u064a\u0631 \u0627\u0644\u0645\u0631\u062a\u0628\u0637\u0629 \u0628\u0623\u064a \u062d\u0633\u0627\u0628",
-    "DATE_LINE": "*\u062a\u0627\u0631\u064a\u062e \u0627\u0644\u0633\u0631\u064a\u0627\u0646: 11 \u0623\u0643\u062a\u0648\u0628\u0631 2026*",
 }
+
+
+def _date_lines():
+    """S78 (LR4, P5): the EN / AR effective-date lines built from consent_service.TERMS_VERSION (EN month
+    names; the pinned Gulf month table of tests/test_legal_docs_u8.py, Western digits), so a re-date
+    edits no literal here."""
+    from app.services.consent_service import TERMS_VERSION
+
+    u8 = _load("tests/test_legal_docs_u8.py", "_u8_polish_u8_months")
+    year, month, day = (int(part) for part in TERMS_VERSION.split("-"))
+    en = f"*Effective date: {u8.EN_MONTHS[month - 1]} {day}, {year}*"
+    ar = "*\u062a\u0627\u0631\u064a\u062e \u0627\u0644\u0633\u0631\u064a\u0627\u0646: " + f"{day} {u8.GULF_MONTHS_AR[month - 1]} {year}*"
+    return en, ar
 
 # Synthetic answers for the temp-copy fill-in (ASCII or escaped; never a real fact).
 COMPLETE_ANSWERS = {
@@ -96,6 +108,7 @@ COMPLETE_ANSWERS = {
 COMPLETE_VALUES = {
     "CONTROLLER_NAME": "Sample Publisher",
     "POSTAL_ADDRESS": "Building 1, Road 2, Block 3, Manama, Bahrain",
+    "POSTAL_ADDRESS_AR": "\u0639\u0646\u0648\u0627\u0646 \u062a\u062c\u0631\u064a\u0628\u064a",
     "PRIVACY_EMAIL": "privacy@qaren.app",
     "SUPPORT_EMAIL": "support@qaren.app",
     "IP_OWNER": "the publisher",
@@ -469,8 +482,9 @@ def test_polish_b4_fill_in_end_to_end(tmp_path, capsys):
     assert not [rel for rel, b in filled.items() if b"PLACEHOLDER" in b]
     for rel in (PRIVACY_EN, TERMS_EN, PRIVACY_AR, TERMS_AR):
         assert c.text(rel).splitlines()[4] == _read(rel).splitlines()[4]
-    assert c.text(PRIVACY_EN).splitlines()[4] == "*Effective date: October 11, 2026*"
-    assert c.text(PRIVACY_AR).splitlines()[4] == AR["DATE_LINE"]
+    date_en, date_ar = _date_lines()
+    assert c.text(PRIVACY_EN).splitlines()[4] == date_en
+    assert c.text(PRIVACY_AR).splitlines()[4] == date_ar
     assert c.run(capsys)[0] == 0 and c.snapshot() == filled
     bad = Copy(tmp_path / "markup").complete(SUPPORT_EMAIL="support@qaren.app <b>")
     bad_start = bad.snapshot()
@@ -499,9 +513,10 @@ def test_polish_f1_empty_hosting_regions_first_fill_is_accepted(tmp_path, capsys
     """F1 (PIN): HOSTING_REGIONS '' (unknown) stays a legitimate first answer."""
     c = Copy(tmp_path).complete(HOSTING_REGIONS="", HOSTING_REGIONS_AR="")
     assert c.run(capsys)[0] == 0
-    # FIX-2 UF3: the clause names only the database and hosting roles (the Upstash region is not measured).
+    # FIX-2 UF3, amended S78 (LR3, P10): the clause names countries only; "temporary-storage" is the s5
+    # category label now, so only s7 must not carry it.
     assert "(our database and hosting providers)" not in c.text(PRIVACY_EN)
-    assert "temporary-storage" not in c.text(PRIVACY_EN)
+    assert "temporary-storage" not in _section(c.text(PRIVACY_EN), 7)
 
 
 def test_polish_b2_unrenderable_page_writes_nothing(tmp_path, capsys):
@@ -579,17 +594,17 @@ def test_polish_a12a_controller_country_must_be_bahrain(tmp_path, capsys, value,
 
 
 def test_polish_a12b_cloudflare_line_kept_whatever_the_mailboxes(tmp_path, capsys):
-    """A12(b) as amended by fix P1 (2026-10-08): the Cloudflare line is plain text and stays whatever
-    addresses are recorded (the landing chrome publishes support@qaren.app on every legal page); a
-    changed address after a fill is still refused."""
-    line = "- **Cloudflare:**"
+    """A12(b) as amended by fix P1 (2026-10-08) and S78 (LR3, P7): the email-providers line (formerly the
+    Cloudflare line) is plain text and stays whatever addresses are recorded (the landing chrome
+    publishes the support address on every legal page); a changed address after a fill is still refused."""
+    line_en, line_ar = f"- **{P1_LABEL_EN}:**", f"- **{P1_LABEL_AR}:**"
     kept = Copy(tmp_path / "kept").complete()
     assert kept.run(capsys)[0] == 0
-    assert line in kept.text(PRIVACY_EN) and line in kept.text(PRIVACY_AR)
+    assert line_en in kept.text(PRIVACY_EN) and line_ar in kept.text(PRIVACY_AR)
     mixed = Copy(tmp_path / "mixed").complete(SUPPORT_EMAIL="help@example.com")
     assert mixed.run(capsys)[0] == 0
-    assert line in mixed.text(PRIVACY_EN) and line in mixed.text(PRIVACY_AR)
-    assert "- **Retailer websites:**" in mixed.text(PRIVACY_EN)
+    assert line_en in mixed.text(PRIVACY_EN) and line_ar in mixed.text(PRIVACY_AR)
+    assert "- **The retailer websites and store search services we query:**" in mixed.text(PRIVACY_EN)
     filled = mixed.snapshot()
     assert mixed.run(capsys)[0] == 0 and mixed.snapshot() == filled
     plan = mixed.fill.plan
@@ -672,19 +687,26 @@ def test_polish_b8_underscore_subtag_serves_arabic(value):
 # Fix round 2 (finding P1 of the polish adversary, 2026-10-08; amends UP4 A12(b))
 # ---------------------------------------------------------------------------
 
+# S78 (LR3, P8): the email-routing service and the mailbox provider are one category line now
+# ("Our email providers"); the line is still plain text, never a fork or clause.
+P1_LABEL_EN = "Our email providers"
+P1_LABEL_AR = "\u0645\u0632\u0648\u0651\u062f\u0648 \u0627\u0644\u0628\u0631\u064a\u062f \u0627\u0644\u0625\u0644\u0643\u062a\u0631\u0648\u0646\u064a \u0644\u062f\u064a\u0646\u0627"
 P1_LINE_EN = (
-    "- **Cloudflare:** receives the email you send to our addresses and forwards it to our mailbox provider, "
-    "Google (Gmail), which stores it under Google's own terms."
+    "- **Our email providers:** an email-routing service receives the email you send to our addresses and "
+    "forwards it to our mailbox provider, which stores it under its own terms."
 )
 P1_LINE_AR = (
-    "- **Cloudflare:** \u062a\u062a\u0644\u0642\u0649 \u0631\u0633\u0627\u0626\u0644 "
-    "\u0627\u0644\u0628\u0631\u064a\u062f \u0627\u0644\u0625\u0644\u0643\u062a\u0631\u0648\u0646\u064a "
-    "\u0627\u0644\u062a\u064a \u062a\u0631\u0633\u0644\u0647\u0627 \u0625\u0644\u0649 "
-    "\u0639\u0646\u0627\u0648\u064a\u0646\u0646\u0627 \u0648\u062a\u0639\u064a\u062f "
-    "\u062a\u0648\u062c\u064a\u0647\u0647\u0627 \u0625\u0644\u0649 \u0645\u0632\u0648\u0651\u062f "
-    "\u0635\u0646\u062f\u0648\u0642 \u0628\u0631\u064a\u062f\u0646\u0627\u060c Google (Gmail)\u060c "
-    "\u0627\u0644\u0630\u064a \u064a\u062e\u0632\u0651\u0646\u0647\u0627 \u0648\u0641\u0642 "
-    "\u0634\u0631\u0648\u0637 Google \u0627\u0644\u062e\u0627\u0635\u0629."
+    "- **\u0645\u0632\u0648\u0651\u062f\u0648 \u0627\u0644\u0628\u0631\u064a\u062f \u0627"
+    "\u0644\u0625\u0644\u0643\u062a\u0631\u0648\u0646\u064a \u0644\u062f\u064a\u0646\u0627:**"
+    " \u062a\u062a\u0644\u0642\u0649 \u062e\u062f\u0645\u0629 \u0644\u062a\u0648\u062c\u064a"
+    "\u0647 \u0627\u0644\u0628\u0631\u064a\u062f \u0627\u0644\u0625\u0644\u0643\u062a\u0631"
+    "\u0648\u0646\u064a \u0627\u0644\u0631\u0633\u0627\u0626\u0644 \u0627\u0644\u062a\u064a "
+    "\u062a\u0631\u0633\u0644\u0647\u0627 \u0625\u0644\u0649 \u0639\u0646\u0627\u0648\u064a"
+    "\u0646\u0646\u0627 \u0648\u062a\u0639\u064a\u062f \u062a\u0648\u062c\u064a\u0647\u0647"
+    "\u0627 \u0625\u0644\u0649 \u0645\u0632\u0648\u0651\u062f \u0635\u0646\u062f\u0648\u0642 "
+    "\u0628\u0631\u064a\u062f\u0646\u0627\u060c \u0627\u0644\u0630\u064a \u064a\u062e\u0632"
+    "\u0651\u0646\u0647\u0627 \u0648\u0641\u0642 \u0634\u0631\u0648\u0637\u0647 \u0627\u0644"
+    "\u062e\u0627\u0635\u0629."
 )
 P1_EMAIL_PAIRS = (
     ("privacy@qaren.app", "help@example.com"),
@@ -696,23 +718,24 @@ P1_EMAIL_PAIRS = (
 
 
 def test_fix2_p1_cloudflare_line_is_plain_text_not_derived():
-    """P1: the landing chrome outside the legal regions publishes support@qaren.app on every legal page,
-    so mail to a qaren.app address passes through Cloudflare whatever addresses the fill-in records.
-    The Cloudflare line of privacy s5 is therefore committed plain text (EN + AR, once each), no fork or
-    clause carries it or derives anything from the e-mail addresses, and no comment documents the
-    withdrawn 'both addresses end in @qaren.app' rule."""
+    """P1: the landing chrome outside the legal regions publishes the support address on every legal page,
+    so mail to a first-party address passes through the email-routing service whatever addresses the
+    fill-in records. The email-providers line of privacy s5 (S78, LR3: formerly the Cloudflare line) is
+    therefore committed plain text (EN + AR, once each), no fork or clause carries it or derives anything
+    from the e-mail addresses, and no comment documents the withdrawn 'both addresses end in @qaren.app' rule."""
     variants = json.loads(_read(VARIANTS))
     problems = []
     for kind in ("forks", "clauses"):
         for name, entry in sorted(variants.get(kind, {}).items()):
-            if "Cloudflare" in json.dumps(entry, ensure_ascii=False):
-                problems.append(f"{VARIANTS} {kind}.{name} carries the Cloudflare line")
+            dumped = json.dumps(entry, ensure_ascii=False)
+            if "email providers" in dumped or P1_LABEL_AR in dumped or "Cloudflare" in dumped:
+                problems.append(f"{VARIANTS} {kind}.{name} carries the email-providers line")
             if "_EMAIL" in json.dumps(entry.get("answer")):
                 problems.append(f"{VARIANTS} {kind}.{name} derives its text from an e-mail address")
     for rel, line in ((PRIVACY_EN, P1_LINE_EN), (PRIVACY_AR, P1_LINE_AR)):
         text = _read(rel)
         if text.count(line) != 1 or line not in _section(text, 5):
-            problems.append(f"{rel}: the Cloudflare line is not in section 5 exactly once")
+            problems.append(f"{rel}: the email-providers line is not in section 5 exactly once")
     fixture = json.loads(_read(FILL_IN))
     for where, comment in ((VARIANTS, variants.get("_comment", "")), (FILL_IN, fixture.get("_placeholder_answers_comment", ""))):
         if "cloudflare_clause" in comment or "both end in @qaren.app" in comment:
@@ -723,16 +746,18 @@ def test_fix2_p1_cloudflare_line_is_plain_text_not_derived():
 @pytest.mark.parametrize("privacy_email,support_email", P1_EMAIL_PAIRS)
 def test_fix2_p1_fill_in_keeps_cloudflare_for_every_address_pair(tmp_path, capsys, privacy_email, support_email):
     """P1: a fill-in with any address pair (one or both off qaren.app, a subdomain) exits 0, keeps the
-    Cloudflare line in the EN and AR policy and on both privacy pages, so T7a's SPEC_RECIPIENTS_EN
-    (Cloudflare unconditional, UG7) holds after the fill-in; a second run changes nothing."""
+    email-providers line (S78, LR3; formerly the Cloudflare line) in the EN and AR policy and on both
+    privacy pages, so T7a's SPEC_RECIPIENT_IDS (the email-routing row unconditional, UG7) holds after the
+    fill-in; a second run changes nothing."""
     c = Copy(tmp_path).complete(PRIVACY_EMAIL=privacy_email, SUPPORT_EMAIL=support_email)
     rc, err = c.run(capsys)
     assert rc == 0, err
     en, ar = c.text(PRIVACY_EN), c.text(PRIVACY_AR)
     assert en.count(P1_LINE_EN) == 1 and P1_LINE_EN in _section(en, 5), _section(en, 5)
     assert ar.count(P1_LINE_AR) == 1 and P1_LINE_AR in _section(ar, 5), _esc(_section(ar, 5))
-    for page in ("landing/privacy.html", "landing/ar/privacy.html"):
-        assert c.text(page).count("<strong>Cloudflare:</strong>") == 1, page
+    for page, label in (("landing/privacy.html", P1_LABEL_EN), ("landing/ar/privacy.html", P1_LABEL_AR)):
+        assert c.text(page).count(f"<strong>{label}:</strong>") == 1, page
+        assert "Cloudflare" not in c.text(page), page
     filled = c.snapshot()
     assert c.run(capsys)[0] == 0 and c.snapshot() == filled
 
