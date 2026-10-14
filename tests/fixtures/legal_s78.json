@@ -1,0 +1,496 @@
+{
+  "_comment": "S78-LEGAL RED fixture (tests/test_legal_s78.py). Arabic markers and the retired Arabic sentences live here so the test file stays ASCII. No personal value: home_town_sha256 holds only the sha256 of the normalised Latin town token of the pre-S78 postal value (ruling M6: Latin only), never the token. Every [AR-NEW] Arabic marker below follows the spec section 3 texts as amended by the spec-review rulings (LT1-LT11); the LT5 privacy s15 / ToS s14 sentence, the LT9 precedence sentence and the LT10 carve-out phrase in Arabic are RED drafts (no AR text was ruled) and go on the native-review list.",
+  "activity_ar": "مطوّر تطبيقات يعمل بصفة فردية في مملكة البحرين",
+  "trade_clause_ar": "، ويعمل باسم ",
+  "postal_ar_markers": [
+    "مملكة البحرين",
+    "عند الطلب"
+  ],
+  "postal_address_ar_interim": "مملكة البحرين (عنواننا البريدي متاح عند الطلب عبر privacy@getmyez.com)",
+  "on_request_ar": "وسنخبرك بأسماء مزوّدي الخدمات لدينا عند الطلب عبر privacy@getmyez.com.",
+  "on_request_ar_template": "وسنخبرك بأسماء مزوّدي الخدمات لدينا عند الطلب عبر <PLACEHOLDER:PRIVACY_EMAIL>.",
+  "s5_carveout_ar": "باستثناء ما يوضّحه القسم 4 بشأن OpenAI وما يوضّحه هذا القسم بشأن مزوّد صندوق بريدنا، يعالج",
+  "categories_s5_ar": [
+    "مزوّد قاعدة البيانات وتسجيل الدخول لدينا",
+    "مزوّد الاستضافة لدينا",
+    "مزوّد التخزين المؤقت لدينا",
+    "مزوّد تقارير الأخطاء لدينا",
+    "مزوّد الإشعارات والتحديثات لدينا",
+    "مزوّدو البحث على الويب واسترجاع الصفحات",
+    "مزوّدو البريد الإلكتروني لدينا",
+    "مواقع المتاجر وخدمات البحث في المتاجر التي نستعلم منها"
+  ],
+  "countries_ar": [
+    "الولايات المتحدة",
+    "ألمانيا (الاتحاد الأوروبي)"
+  ],
+  "s7_parentheticals_ar": [
+    "الاتحاد الأوروبي",
+    "القسم 5"
+  ],
+  "s7_role_words_ar": [
+    "قاعدة البيانات",
+    "الاستضافة",
+    "التخزين المؤقت"
+  ],
+  "transfer_ar": "ننقل البيانات إلى مزوّدي الخدمات لدينا، وهم ملزَمون تعاقديًا بحمايتها، وإلى مزوّد صندوق بريدنا، الذي يتعامل مع رسائل البريد الإلكتروني وفق شروطه الخاصة (القسم 5).",
+  "apple_ar": {
+    "item1": [
+      "اتفاق بينك وبيننا فقط، وليست اتفاقًا مع Apple"
+    ],
+    "item3": [
+      "المسؤولون وحدنا عن تقديم أي صيانة أو دعم للتطبيق",
+      "لا تتحمل Apple أي التزام بتقديم أي صيانة أو دعم للتطبيق"
+    ],
+    "item4": [
+      "وستردّ Apple",
+      "لا يقع على Apple أي التزام آخر بالضمان"
+    ],
+    "item5": [
+      "مطالبات المسؤولية عن المنتج",
+      "حماية المستهلك"
+    ],
+    "item6": [
+      "حقوق الملكية الفكرية",
+      "التحقيق في هذا الادعاء والدفاع فيه وتسويته والوفاء به"
+    ],
+    "item7": [
+      "تقرّ وتضمن",
+      "حظر تفرضه حكومة الولايات المتحدة",
+      "«داعمًا للإرهاب»",
+      "للأطراف المحظورة أو المقيّدة"
+    ],
+    "item9": [
+      "شروط لأطراف ثالثة",
+      "مشغّل شبكة الهاتف المحمول"
+    ],
+    "item10": [
+      "أطرافًا ثالثة مستفيدة"
+    ],
+    "precedence": [
+      "«الاتفاقية القياسية»",
+      "وإذا تعارضتا"
+    ]
+  },
+  "carveouts_ar": [
+    "الغش",
+    "الخطأ الجسيم",
+    "الخطأ العمدي",
+    "الوفاة أو الإصابة الشخصية",
+    "لا يسمح لنا القانون"
+  ],
+  "applicable_law_ar": "في الحدود التي يسمح بها القانون المعمول به",
+  "minors_ar": [
+    "أقل من 18 عامًا",
+    "سن الرشد",
+    "أحد والديك أو وليّ أمرك"
+  ],
+  "minors_permission_ar": "بإذن",
+  "tos_markers_ar": {
+    "3": [
+      "13 عامًا"
+    ],
+    "5": [
+      "بوسائل آلية",
+      "عدة حسابات",
+      "التدخل في عمل التطبيق",
+      "بيان صادر عن ميّز"
+    ],
+    "6": [
+      "تحقّق منها لدى المتجر",
+      "المكملات الغذائية",
+      "العناية بالبشرة",
+      "طبيبًا أو صيدليًا",
+      "غير مخصص لحالات الطوارئ"
+    ],
+    "7": [
+      "ليس طرفًا في أي عملية شراء",
+      "لا نتحكم فيها"
+    ],
+    "8": [
+      "OpenAI",
+      "القسم 4 من سياسة الخصوصية",
+      "إلى أصحابها",
+      "إلا للتعريف بالمنتجات"
+    ],
+    "13": [
+      "مراجعة القرار",
+      "«حذف الحساب»",
+      "القسم 9 من سياسة الخصوصية"
+    ],
+    "14": [
+      "جوهريًا",
+      "عند نشره"
+    ],
+    "15": [
+      "القوانين الإلزامية في البلد الذي تقيم فيه"
+    ],
+    "17": [
+      "في الحدود التي يسمح بها القانون",
+      "استخدامك غير القانوني",
+      "للقسم 5"
+    ],
+    "18": [
+      "الاتفاق الكامل",
+      "قابلية الفصل",
+      "عدم التنازل",
+      "نقل الحقوق والالتزامات",
+      "جهة تخلفنا"
+    ]
+  },
+  "tos_forbidden_ar": {
+    "6": [
+      "والتوفر والمواصفات والتقييمات"
+    ],
+    "13": [
+      "محو بيانات حسابك من خوادمنا"
+    ],
+    "14": [
+      "قبل سريانه"
+    ]
+  },
+  "tos_s8_openai_ar": "ومزوّد الذكاء الاصطناعي لدينا هو OpenAI؛ ويبيّن القسم 4 من سياسة الخصوصية ما نرسله إليها، ويطلب التطبيق إذنك قبل مقارنتك الأولى أو أول عملية مسح.",
+  "tos_s13_deletion_ar": "ويوضّح القسم 9 من سياسة الخصوصية ما يزيله حذف حسابك والسجلات التي نحتفظ بها.",
+  "before_effect_ar": "قبل سريانه",
+  "internals_ar": [
+    "وتتطلب الوظائف الإدارية مفتاحًا سريًا",
+    "تثبيت الشهادة"
+  ],
+  "security_ar": [
+    "تُشفَّر البيانات أثناء نقلها",
+    "وحدة التخزين الآمنة"
+  ],
+  "marketing_ar": "وباستثناء التذكيرات الموضحة أعلاه، لا نستخدم بياناتك الشخصية للتسويق المباشر، ولا نشاركها مع غيرنا لأغراض تسويقهم.",
+  "changes_ar": "وإذا كان التغيير جوهريًا، فسنخبرك به أيضًا في التطبيق أو على موقعنا الإلكتروني عند نشره.",
+  "retired_ar": [
+    "كما تتلقى Google رسائل البريد الإلكتروني التي ترسلها إلى عناويننا (انظر Cloudflare أدناه).",
+    "تتلقى رسائل البريد الإلكتروني التي ترسلها إلى عناويننا وتعيد توجيهها إلى مزوّد صندوق بريدنا، Google (Gmail)، الذي يخزّنها وفق شروط Google الخاصة.",
+    "أما مواقع المتاجر (القسم 6) ومزوّدا تسجيل الدخول Apple وGoogle، وGoogle بصفتها مزوّد صندوق بريدنا، فتعمل وفق شروطها الخاصة.",
+    "الولايات المتحدة (OpenAI وGoogle)",
+    "ننقل البيانات إلى مزوّدي الخدمات لدينا، وهم ملزَمون تعاقديًا بحمايتها، وإلى Google بصفتها مزوّد صندوق بريدنا، وهي تتعامل مع رسائل البريد الإلكتروني وفق شروطها الخاصة (القسم 5).",
+    "إذا نزّلت التطبيق من متجر App Store التابع لشركة Apple، فإن اتفاقية ترخيص المستخدم النهائي للتطبيقات المرخّصة من Apple (Licensed Application End User License Agreement) تسري أيضًا، ولا تتحمل Apple مسؤولية التطبيق أو دعمه.",
+    "يؤدي حذف حسابك إلى محو بيانات حسابك من خوادمنا"
+  ],
+  "privacy_headings_en": [
+    "1. Who we are",
+    "2. Summary",
+    "3. What we collect and why",
+    "4. Comparisons made with AI (OpenAI)",
+    "5. Who receives your data",
+    "6. Retailer websites",
+    "7. Transfers outside Bahrain",
+    "8. How long we keep data",
+    "9. Deleting your account",
+    "10. Your rights",
+    "11. Notifications",
+    "12. Children and young people",
+    "13. Security",
+    "14. Data kept on your device",
+    "15. Changes to this policy",
+    "16. Contact"
+  ],
+  "privacy_headings_ar": [
+    "1. من نحن",
+    "2. ملخص",
+    "3. ما نجمعه ولماذا",
+    "4. المقارنات المُعدّة بالذكاء الاصطناعي (OpenAI)",
+    "5. من يتلقى بياناتك",
+    "6. مواقع المتاجر",
+    "7. نقل البيانات إلى خارج البحرين",
+    "8. مدة احتفاظنا بالبيانات",
+    "9. حذف حسابك",
+    "10. حقوقك",
+    "11. الإشعارات",
+    "12. الأطفال واليافعون",
+    "13. الأمان",
+    "14. البيانات المحفوظة على جهازك",
+    "15. التغييرات على هذه السياسة",
+    "16. التواصل"
+  ],
+  "privacy_s8_labels_ar": [
+    "حسابك وملفك الشخصي وتفضيلاتك وإجاباتك الاختيارية ومقارناتك وسجلك وملاحظاتك ورسائلك وسجلات النشاط المرتبطة بحسابك",
+    "عدادات الاستخدام",
+    "سجلات أمان تسجيل الدخول المرتبطة بحسابك، التي قد تتضمن عناوين IP",
+    "سجلات محاولات تسجيل الدخول غير الناجحة وحالات قفل الحساب، غير المرتبطة بأي حساب والتي تتضمن عناوين IP",
+    "عمليات البحث وسجلات النشاط غير المرتبطة بحساب",
+    "رسائل البريد الإلكتروني التي ترسلها إلى عناويننا",
+    "الصور",
+    "عمليات التحقق الأمني قصيرة العمر والنسخ في التخزين المؤقت",
+    "النسخ الاحتياطية وسجلات الخدمات"
+  ],
+  "privacy_s10_labels_ar": [
+    "الاطلاع والحصول على نسخة",
+    "التصحيح",
+    "الحذف والاعتراض والتقييد",
+    "سحب الموافقة",
+    "كيفية تقديم الطلب"
+  ],
+  "privacy_s9_delete_ar": "«حذف الحساب»",
+  "privacy_s12_age_ar": "13 عامًا فأكثر",
+  "manifest_base": {
+    "supabase": {
+      "kind": "processor",
+      "module": [
+        "app/services/database_service.py",
+        "app/services/auth_service.py"
+      ],
+      "hosts": [
+        "supabase.co"
+      ],
+      "gate_flag": null,
+      "personal_data": true
+    },
+    "railway": {
+      "kind": "hosting",
+      "module": [],
+      "hosts": [
+        "railway.app"
+      ],
+      "gate_flag": null,
+      "personal_data": true
+    },
+    "upstash": {
+      "kind": "processor",
+      "module": [
+        "app/services/cache_service.py"
+      ],
+      "hosts": [
+        "upstash.io"
+      ],
+      "gate_flag": null,
+      "personal_data": true
+    },
+    "sentry": {
+      "kind": "processor",
+      "module": [
+        "app/services/sentry_service.py",
+        "SmartCompareApp/src/services/sentry.ts"
+      ],
+      "hosts": [
+        "sentry.io",
+        "@sentry/react-native"
+      ],
+      "gate_flag": null,
+      "personal_data": true
+    },
+    "openai": {
+      "kind": "processor",
+      "module": [
+        "app/services/openai_service.py",
+        "app/services/extraction_service.py",
+        "app/services/url_extraction_service.py",
+        "app/services/llm_provider.py",
+        "app/services/verdict_critique_service.py",
+        "app/services/content_safety_service.py",
+        "app/services/image_service.py"
+      ],
+      "hosts": [
+        "api.openai.com"
+      ],
+      "gate_flag": null,
+      "personal_data": true
+    },
+    "expo_push": {
+      "kind": "push_and_updates",
+      "module": [
+        "app/services/push_service.py",
+        "SmartCompareApp/src/services/pushTokenService.ts"
+      ],
+      "hosts": [
+        "exp.host",
+        "getExpoPushTokenAsync"
+      ],
+      "gate_flag": null,
+      "personal_data": true
+    },
+    "eas_update": {
+      "kind": "push_and_updates",
+      "module": [
+        "SmartCompareApp/app.json"
+      ],
+      "hosts": [
+        "u.expo.dev"
+      ],
+      "gate_flag": null,
+      "personal_data": true
+    },
+    "apple": {
+      "kind": "identity_provider",
+      "module": [
+        "SmartCompareApp/src/components/AppleSignInButton.tsx"
+      ],
+      "hosts": [
+        "expo-apple-authentication"
+      ],
+      "gate_flag": null,
+      "personal_data": true
+    },
+    "google_sign_in": {
+      "kind": "identity_provider",
+      "module": [
+        "SmartCompareApp/src/services/authService.ts"
+      ],
+      "hosts": [
+        "@react-native-google-signin/google-signin"
+      ],
+      "gate_flag": null,
+      "personal_data": true
+    },
+    "google_fonts": {
+      "kind": "web_fonts",
+      "module": [
+        "landing/privacy.html"
+      ],
+      "hosts": [
+        "fonts.googleapis.com",
+        "fonts.gstatic.com"
+      ],
+      "gate_flag": null,
+      "personal_data": true
+    },
+    "serper": {
+      "kind": "search_provider",
+      "module": [
+        "app/services/serper_service.py",
+        "app/services/rating_service.py"
+      ],
+      "hosts": [
+        "google.serper.dev"
+      ],
+      "gate_flag": null,
+      "personal_data": true
+    },
+    "bright_data": {
+      "kind": "search_provider",
+      "module": [
+        "app/services/brightdata_service.py"
+      ],
+      "hosts": [
+        "api.brightdata.com",
+        "www.google.com"
+      ],
+      "gate_flag": null,
+      "personal_data": true
+    },
+    "firecrawl": {
+      "kind": "page_retrieval",
+      "module": [
+        "app/services/firecrawl_service.py"
+      ],
+      "hosts": [
+        "api.firecrawl.dev"
+      ],
+      "gate_flag": null,
+      "personal_data": true
+    },
+    "scrapedo": {
+      "kind": "page_retrieval",
+      "module": [
+        "app/services/scrapedo_service.py"
+      ],
+      "hosts": [
+        "api.scrape.do"
+      ],
+      "gate_flag": null,
+      "personal_data": true
+    },
+    "cloudflare": {
+      "kind": "email_routing",
+      "module": [],
+      "hosts": [],
+      "gate_flag": null,
+      "personal_data": true
+    },
+    "gmail": {
+      "kind": "email_mailbox",
+      "module": [],
+      "hosts": [],
+      "gate_flag": null,
+      "personal_data": true
+    },
+    "youtube": {
+      "kind": "video_search",
+      "module": [
+        "app/services/youtube_service.py"
+      ],
+      "hosts": [
+        "www.googleapis.com",
+        "www.youtube.com"
+      ],
+      "gate_flag": "ENABLE_YOUTUBE_SOURCE",
+      "personal_data": true
+    },
+    "retailers": {
+      "kind": "retailer",
+      "module": [
+        "app/services/price_service.py",
+        "app/services/source_router.py",
+        "app/services/noon_service.py",
+        "app/services/occ_service.py",
+        "app/services/rest_json_service.py",
+        "app/services/salla_service.py",
+        "app/services/algolia_service.py",
+        "app/services/unbxd_service.py",
+        "app/services/woocommerce_service.py",
+        "app/services/magento_graphql_service.py",
+        "app/services/shopify_pdp_service.py",
+        "app/services/platform_router.py",
+        "SmartCompareApp/src/components/primitives/ProductImage.tsx"
+      ],
+      "hosts": [],
+      "gate_flag": null,
+      "personal_data": true
+    }
+  },
+  "bahrain_towns_latin": [
+    "Manama",
+    "Muharraq",
+    "Riffa",
+    "Isa Town",
+    "Hamad Town",
+    "Sitra",
+    "Budaiya",
+    "Jidhafs",
+    "Aali",
+    "Saar",
+    "Zallaq",
+    "Juffair",
+    "Seef",
+    "Adliya",
+    "Hidd",
+    "Arad",
+    "Busaiteen",
+    "Tubli",
+    "Sanabis",
+    "Diraz",
+    "Barbar",
+    "Janabiyah",
+    "Awali",
+    "Askar",
+    "Durrat Al Bahrain",
+    "Amwaj",
+    "Galali",
+    "Salmabad",
+    "Hamala",
+    "Malkiya",
+    "Karzakan",
+    "Dumistan",
+    "Sanad",
+    "Nuwaidrat",
+    "Maameer",
+    "Eker",
+    "Jurdab",
+    "Bilad Al Qadeem",
+    "Gudaibiya",
+    "Hoora",
+    "Umm Al Hassam",
+    "Mahooz",
+    "Karbabad",
+    "Daih",
+    "Sakhir",
+    "Shahrakan",
+    "Sadad",
+    "Dar Kulaib"
+  ],
+  "_bahrain_towns_comment": "Generic list of Bahraini town and area names (public geography, not tied to anyone). R1/R2/R7/R20 refuse any of them in a served legal surface or a postal value: the legal texts name the Kingdom of Bahrain only. Replaces the session-78 RED home-town digest (orchestrator gate, 2026-10-14: a sha256 of a town name is reversible by enumerating Bahraini towns, and this repo is public)."
+}

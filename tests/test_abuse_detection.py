@@ -119,7 +119,7 @@ class TestDisposableEmailDetection:
             "sarah@yahoo.com",
             "person@outlook.com",
             "real@protonmail.com",
-            "ahmeddeniro2100@gmail.com",
+            "firstname.lastname@example.com",
         ],
     )
     def test_legitimate_domains_pass(self, email):

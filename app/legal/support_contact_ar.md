@@ -1,3 +1,3 @@
-مقدّم تطبيق ميّز: Hussain Aseeri، Block 1020, Street 2052, Home 4769, Hamad Town 1020, Bahrain.
+مقدّم تطبيق ميّز: Husain Aseeri، مطوّر تطبيقات يعمل بصفة فردية في مملكة البحرين، ويعمل باسم MYEZ. العنوان البريدي: مملكة البحرين (عنواننا البريدي متاح عند الطلب عبر privacy@getmyez.com).
 
 البريد الإلكتروني للدعم: support@getmyez.com

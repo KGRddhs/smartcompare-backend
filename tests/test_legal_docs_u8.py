@@ -66,8 +66,9 @@ PROCESSOR MANIFEST (UL14, C14) -- app/legal/processors.json (GREEN writes it)
 ------------------------------------------------------------------------------
 ``{"rows": [row, ...]}`` (keys starting with "_" are comments). Each row:
   "id":            non-empty string, unique
-  "name_en":       non-empty string that must appear in privacy_policy.md (T7a)
-  "name_ar":       non-empty string that must appear in privacy_policy_ar.md (T7a; may be Latin)
+  "name_en":       non-empty string: the recipient's name (S78, LR3: in privacy_policy.md only
+                   when public_name is true; otherwise in none of the six legal sources, T7a)
+  "name_ar":       non-empty string, the AR twin of name_en (may be Latin), same rule (T7a)
   "kind":          non-empty string; EXACTLY ONE row has "retailer" (P15: every retailer
                    host is one class; its modules are excluded from the host check of T7b)
   "personal_data": bool
@@ -82,9 +83,14 @@ PROCESSOR MANIFEST (UL14, C14) -- app/legal/processors.json (GREEN writes it)
                    names the recipient conditionally on that flag (today: the YouTube clause,
                    ENABLE_YOUTUBE_SOURCE); T7a then applies only when the data file records
                    that flag "on". A recipient the policy names unconditionally carries null.
-T7a also needs a personal-data row (name_en) for each recipient spec 4.2 s5 names
-unconditionally (``SPEC_RECIPIENTS_EN``: Supabase, Railway, Upstash, Sentry, OpenAI, Expo,
-Apple, Google, Serper, Bright Data, Firecrawl, Scrape.do, Cloudflare). T7c needs, for each
+  "category_en":   non-empty string (S78, LR3): the recipient's category as privacy_policy.md
+                   describes it (e.g. "hosting provider"); must appear there (T7a)
+  "category_ar":   non-empty string, the AR twin; must appear in privacy_policy_ar.md (T7a)
+  "public_name":   bool; true exactly for openai, apple, google_sign_in and retailers (the only
+                   recipients the policy names, LR3)
+T7a also needs a personal-data row for each recipient id spec 4.2 s5 covers unconditionally
+(``SPEC_RECIPIENT_IDS``: supabase, railway, upstash, sentry, openai, expo_push, apple,
+google_sign_in, serper, bright_data, firecrawl, scrapedo, cloudflare, gmail). T7c needs, for each
 ``CLIENT_PROBES`` entry, a row whose ``hosts`` lists the probe's needle and whose
 SmartCompareApp/ module files contain it.
 T7b scan (a strict superset of spec 4.10's module-level ``*_URL`` constants): every
@@ -140,7 +146,8 @@ DRAFT line back in a markdown file -> T1 (and T5); ``.draft-notice`` rule back i
 <style> -> T1; one placeholder left after the fill-in -> T2; "Qaren" in a body paragraph ->
 T3; one AR heading dropped -> T4 (and T5); one landing paragraph hand-edited -> T5;
 ``html.escape`` removed from the renderer -> T5; a non-stdlib import in the renderer -> T5;
-one anchor date changed -> T6; "Bright Data" removed from the policy -> T7a; a module with
+one anchor date changed -> T6; a vendor name (e.g. "Bright Data") added back to the policy, or a
+category label removed from s5 -> T7a; a module with
 ``FOO_API_URL = "https://api.example.net"`` added to app/services -> T7b; the EAS Update row
 removed -> T7c; "opt out" added to section 4 -> T8 en; "similar" removed from section 4 -> T8
 en; lang=ar ignored -> T9 (and T10); ``startswith("ar")`` normalisation -> the unknown-lang
@@ -777,14 +784,20 @@ CLIENT_PROBES = {
     "Expo push token": ("SmartCompareApp/src/services/pushTokenService.ts", "getExpoPushTokenAsync"),
 }
 
-# The recipients spec 4.2 s5 names unconditionally (near-final text, UL10): each is the
-# name_en of a personal-data row, so T7a keeps it in the policy.
-SPEC_RECIPIENTS_EN = (
-    "Supabase", "Railway", "Upstash", "Sentry", "OpenAI", "Expo", "Apple", "Google",
-    "Serper", "Bright Data", "Firecrawl", "Scrape.do", "Cloudflare",
+# The recipients spec 4.2 s5 covers unconditionally (near-final text, UL10; S78 LR3: by category):
+# each is the id of a personal-data row, so T7a keeps its category in the policy.
+SPEC_RECIPIENT_IDS = (
+    "supabase", "railway", "upstash", "sentry", "openai", "expo_push", "apple", "google_sign_in",
+    "serper", "bright_data", "firecrawl", "scrapedo", "cloudflare", "gmail",
 )
+# S78 (LR3): the only recipients the policy names; every other row is described by its category.
+PUBLIC_NAME_IDS = frozenset({"openai", "apple", "google_sign_in", "retailers"})
+SUPPORT_MD = ("app/legal/support_contact.md", "app/legal/support_contact_ar.md")
 
-_ROW_KEYS = ("id", "name_en", "name_ar", "kind", "personal_data", "module", "hosts", "gate_flag")
+_ROW_KEYS = (
+    "id", "name_en", "name_ar", "kind", "personal_data", "module", "hosts", "gate_flag",
+    "category_en", "category_ar", "public_name",
+)
 
 
 def _docstring_ids(tree):
@@ -946,9 +959,13 @@ def test_t7_processor_manifest_schema():
         for key in _ROW_KEYS:
             if key not in row:
                 problems.append(f"{where}: missing {key!r}")
-        for key in ("id", "name_en", "name_ar", "kind"):
+        for key in ("id", "name_en", "name_ar", "kind", "category_en", "category_ar"):
             if not (isinstance(row.get(key), str) and row.get(key).strip()):
                 problems.append(f"{where}: {key} must be a non-empty string")
+        if not isinstance(row.get("public_name"), bool):
+            problems.append(f"{where}: public_name must be a bool (S78, LR3)")
+        elif row.get("public_name") is not (row.get("id") in PUBLIC_NAME_IDS):
+            problems.append(f"{where}: public_name must be true exactly for {sorted(PUBLIC_NAME_IDS)} (LR3)")
         if not isinstance(row.get("personal_data"), bool):
             problems.append(f"{where}: personal_data must be a bool")
         modules = _row_modules(row)
@@ -977,7 +994,12 @@ def test_t7_processor_manifest_schema():
 
 
 def test_t7a_policy_names_every_processor():
-    """RED: every personal-data row (gate open in the data file) is named in both policies."""
+    """RED: every personal-data row (gate open in the data file) is covered by both policies.
+
+    S78 (LR3): the policy describes recipients by category. Each such row's category_en / category_ar
+    is in privacy EN / AR; name_en / name_ar are there too when public_name is true (OpenAI, Apple,
+    Google sign-in, retailer websites) and in NONE of the six legal sources otherwise.
+    """
     rows = _require_manifest()
     data = _require_fill_in()
     problems = []
@@ -985,20 +1007,33 @@ def test_t7a_policy_names_every_processor():
     if ar is None:
         problems.append(_absent(MD_AR["privacy"]))
         ar = ""
+    sources = {rel: _visible(rel) or "" for rel in (*LEGAL_MD, *SUPPORT_MD)}
     personal = [r for r in rows if isinstance(r, dict) and r.get("personal_data") is True]
     for row in personal:
+        rid = row.get("id")
+        name_en, name_ar = row.get("name_en") or "", row.get("name_ar") or ""
+        if row.get("public_name") is not True:
+            for rel, text in sources.items():
+                for name in {name_en, name_ar} - {""}:
+                    if _name_in(name, text):
+                        problems.append(f"{rel}: names {_esc(name)!r} (row {rid!r} is described by category, LR3)")
         if not _gate_open(row, data):
             continue
-        name_en, name_ar = row.get("name_en") or "", row.get("name_ar") or ""
-        if not name_en or not _name_in(name_en, en):
-            problems.append(f"{MD_EN['privacy']}: does not name {name_en!r} (row {row.get('id')!r})")
-        if not name_ar or not _name_in(name_ar, ar):
-            problems.append(f"{MD_AR['privacy']}: does not name {_esc(name_ar)!r} (row {row.get('id')!r})")
-    named = {r.get("name_en") for r in personal}
-    for name in SPEC_RECIPIENTS_EN:
-        if name not in named:
-            problems.append(f"{MANIFEST}: no personal-data row named {name!r} (spec 4.2 s5)")
-    assert not problems, _report("T7a: the policy names every processor (UL14):", problems)
+        cat_en, cat_ar = row.get("category_en") or "", row.get("category_ar") or ""
+        if not cat_en or not _name_in(cat_en, en):
+            problems.append(f"{MD_EN['privacy']}: does not describe {cat_en!r} (row {rid!r})")
+        if not cat_ar or not _name_in(cat_ar, ar):
+            problems.append(f"{MD_AR['privacy']}: does not describe {_esc(cat_ar)!r} (row {rid!r})")
+        if row.get("public_name") is True:
+            if not name_en or not _name_in(name_en, en):
+                problems.append(f"{MD_EN['privacy']}: does not name {name_en!r} (row {rid!r})")
+            if not name_ar or not _name_in(name_ar, ar):
+                problems.append(f"{MD_AR['privacy']}: does not name {_esc(name_ar)!r} (row {rid!r})")
+    covered = {r.get("id") for r in personal}
+    for rid in SPEC_RECIPIENT_IDS:
+        if rid not in covered:
+            problems.append(f"{MANIFEST}: no personal-data row with id {rid!r} (spec 4.2 s5)")
+    assert not problems, _report("T7a: the policy covers every processor (UL14, S78 LR3):", problems)
 
 
 def test_t7b_external_hosts_and_clients_map_to_manifest():
@@ -1360,6 +1395,12 @@ DELETION_BRANCH_A_MARKER_EN = "which is removed when we delete your sign-in acco
 DELETION_BRANCH_A_MARKER_AR = "\u0639\u0646\u062f\u0645\u0627 \u0646\u062d\u0630\u0641 \u062d\u0633\u0627\u0628 \u062a\u0633\u062c\u064a\u0644 \u0627\u0644\u062f\u062e\u0648\u0644 \u0627\u0644\u062e\u0627\u0635 \u0628\u0643 \u0641\u064a \u0646\u0647\u0627\u064a\u0629 \u0639\u0645\u0644\u064a\u0629 \u0627\u0644\u062d\u0630\u0641"
 
 
+# S78 fix F6 (legal A2): the s9 copies sentence names the error-REPORTING provider, the s5 category label (AR: the
+# s5 AR category wording, "hosting, error-reports and sign-in providers"), not "error-monitoring".
+DELETION_PROVIDERS_MARKER_EN = "(including our hosting, error-reporting and sign-in providers' logs)"
+DELETION_PROVIDERS_MARKER_AR = "\u0645\u0632\u0648\u0651\u062f\u064a \u0627\u0644\u0627\u0633\u062a\u0636\u0627\u0641\u0629 \u0648\u062a\u0642\u0627\u0631\u064a\u0631 \u0627\u0644\u0623\u062e\u0637\u0627\u0621 \u0648\u062a\u0633\u062c\u064a\u0644 \u0627\u0644\u062f\u062e\u0648\u0644"
+
+
 def _norm(text):
     return re.sub(r"\s+", " ", text).strip().casefold()
 
@@ -1383,6 +1424,7 @@ def test_t11_deletion_text_matches_043_state_en():
     data = _require_fill_in()
     problems = _t11_problems(MD_EN["privacy"], DELETION_DNEW_MARKER_EN, data)
     problems += _t11_problems(MD_EN["privacy"], DELETION_BRANCH_A_MARKER_EN, data)
+    problems += _t11_problems(MD_EN["privacy"], DELETION_PROVIDERS_MARKER_EN, data)
     assert not problems, _report("T11 (en): deletion text vs 043 (UL9, C15):", problems)
 
 
@@ -1396,6 +1438,7 @@ def test_t11_deletion_text_matches_043_state_ar():
     else:
         problems += _t11_problems(MD_AR["privacy"], DELETION_DNEW_MARKER_AR, data)
         problems += _t11_problems(MD_AR["privacy"], DELETION_BRANCH_A_MARKER_AR, data)
+        problems += _t11_problems(MD_AR["privacy"], DELETION_PROVIDERS_MARKER_AR, data)
     assert not problems, _report("T11 (ar): deletion text vs 043 (UL9, C15):", problems)
 
 
@@ -1479,14 +1522,14 @@ def _sentences(text):
 SENTRY_TS = "SmartCompareApp/src/services/sentry.ts"
 CLIENT_QUERY_RUNG = re.compile(r"\[\?&\]\(\?:([A-Za-z0-9_|]+)\)")
 FIX_A1_EN = {
-    "servers": "From our servers, Sentry receives exception types",
+    "servers": "From our servers, our error-reporting provider receives exception types",
     "traces": "Performance traces from our servers",
     "app": "Reports from the App can include",
     "products": "product names",
 }
 # Arabic markers (native review, D11): the same four statements in privacy_policy_ar.md s13.
 FIX_A1_AR = {
-    "servers": "\u064a\u062a\u0644\u0642\u0649 Sentry \u0645\u0646 \u062e\u0648\u0627\u062f\u0645\u0646\u0627 \u0623\u0646\u0648\u0627\u0639 \u0627\u0644\u0627\u0633\u062a\u062b\u0646\u0627\u0621\u0627\u062a",
+    "servers": "\u064a\u062a\u0644\u0642\u0649 \u0645\u0632\u0648\u0651\u062f \u062a\u0642\u0627\u0631\u064a\u0631 \u0627\u0644\u0623\u062e\u0637\u0627\u0621 \u0644\u062f\u064a\u0646\u0627 \u0645\u0646 \u062e\u0648\u0627\u062f\u0645\u0646\u0627 \u0623\u0646\u0648\u0627\u0639 \u0627\u0644\u0627\u0633\u062a\u062b\u0646\u0627\u0621\u0627\u062a",
     "traces": "\u062a\u062a\u0628\u0639\u0627\u062a \u0627\u0644\u0623\u062f\u0627\u0621 \u0645\u0646 \u062e\u0648\u0627\u062f\u0645\u0646\u0627",
     "app": "\u0627\u0644\u062a\u0642\u0627\u0631\u064a\u0631 \u0627\u0644\u0648\u0627\u0631\u062f\u0629 \u0645\u0646 \u0627\u0644\u062a\u0637\u0628\u064a\u0642",
     "products": "\u0623\u0633\u0645\u0627\u0621 \u0627\u0644\u0645\u0646\u062a\u062c\u0627\u062a",

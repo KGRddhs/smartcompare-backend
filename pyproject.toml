@@ -3,7 +3,7 @@ name = "smartcompare-backend"
 version = "0.1.0"
 description = ""
 authors = [
-    {name = "Ahmed",email = "kingzatel@gmail.com"}
+    {name = "Ahmed",email = "support@getmyez.com"}
 ]
 requires-python = ">=3.12,<4.0"
 dependencies = [

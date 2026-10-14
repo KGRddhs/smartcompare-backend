@@ -12,22 +12,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Cairo:wght@400;600;700&display=swap" rel="stylesheet">
   <style>
-    /*
-     * Universal-link hand-off page (session 69, audit RT-8 / EXPO-06).
-     * nginx serves it for /c/<share token>, /r/<invite code> and /q/<quiz
-     * token> — the three path families the app registers as universal links
-     * (.well-known/apple-app-site-association) and as qaren:// deep links
-     * (SmartCompareApp/src/navigation/linking.ts). A browser reaches it from a
-     * pasted or forwarded link, an in-app browser, Android (the assetlinks
-     * certificate is still a placeholder) or a phone without the app — and
-     * only once getmyez.com points at this service (on 2026-10-10 getmyez.com
-     * still served an unrelated page, so the page is reachable on the Railway
-     * host alone).
-     * It offers the qaren:// hand-off and, once the store link exists, the
-     * download. The referral link the backend builds today has NO share
-     * token (/c/?ref=QR-XXXXXX) — that shape hands off to the Register
-     * screen with the code pre-filled (qaren://r/QR-XXXXXX).
-     */
+    /* Universal-link hand-off page: nginx serves it for the /c/, /r/ and /q/ links the app registers. */
     :root {
       --emerald: #10B981;
       --emerald-dark: #059669;
@@ -112,7 +97,7 @@
 
   <script>
     (function () {
-      // The App Store product URL. Empty until the app record exists; Ahmed fills
+      // The App Store product URL. Empty until the app record exists; the owner fills
       // it (https://apps.apple.com/app/id<ASC APP ID>) and redeploys the landing
       // service. While empty the download buttons stay hidden and the note shows.
       var APP_STORE_URL = '';

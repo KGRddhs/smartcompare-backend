@@ -958,20 +958,29 @@ APP_ENTRY = "SmartCompareApp/App.tsx"
 PROFILE_SCREEN = "SmartCompareApp/src/screens/ProfileScreen.tsx"
 EDIT_PROFILE_SCREEN = "SmartCompareApp/src/screens/EditProfileScreen.tsx"
 NAVIGATE = re.compile(r"navigation\.navigate\('(\w+)'\)")
-# UF3: the roles privacy s7 names next to HOSTING_REGIONS (the Upstash region is not measured).
-HOSTING_CLAUSE_EN = ", and in {value} (our database and hosting providers)"
+# UF3, amended S78 (LR3, M1, P11): privacy s7 names the HOSTING_REGIONS countries only, after a literal that
+# occurs nowhere else in the documents (so an empty value can still be a first answer, polish F1).
+HOSTING_CLAUSE_EN = ", as well as in {value}"
+S7_ROLE_WORDS_EN = re.compile(r"(?i)\b(?:database|hosting|temporary)\b")
+# AR role words: database, hosting (the temporary-storage word is the fixture's fix2_ar.temporary_storage).
+S7_ROLE_WORDS_AR = ("\u0642\u0627\u0639\u062f\u0629 \u0627\u0644\u0628\u064a\u0627\u0646\u0627\u062a", "\u0627\u0644\u0627\u0633\u062a\u0636\u0627\u0641\u0629")
+S7_VENDORS = ("Supabase", "Railway", "Upstash", "Sentry", "Expo", "Cloudflare", "Gmail", "OpenAI", "Google")
 TEMPORARY_STORAGE_EN = re.compile(r"(?i)temporary[- ]storage")
 # UF4 + FIX round 3 (UF10): privacy s5's service-providers sentence carves out OpenAI's data-sharing programme
 # (section 4); every "only to provide its service" claim in s5 must be that sentence, and the next sentence says
 # retailer websites and the sign-in providers Apple and Google act under their own terms.
 S5_CORE_EN = "only to provide its service"
+# S78 (LT10, P12): the carve-out also names our mailbox provider (it is listed among the s5 recipients now and acts
+# under its own terms), and the own-terms sentence names it without a vendor name (LR3).
 S5_CARVEOUT_EN = (
-    "Except as section 4 describes for OpenAI, each of our service providers processes data only to provide its "
-    "service to us, and we require each of them to protect it at least as well as this policy does."
+    "Except as section 4 describes for OpenAI and as this section describes for our mailbox provider, each of our "
+    "service providers processes data only to provide its service to us, and we require each of them to protect it "
+    "at least as well as this policy does."
 )
+# S78 fix F3 (legal A3): the own-terms sentence also names the web-font service the website uses (s5).
 S5_OWN_TERMS_EN = (
-    "Retailer websites (section 6), the sign-in providers Apple and Google, and Google as our mailbox provider act "
-    "under their own terms."
+    "Retailer websites (section 6), the sign-in providers Apple and Google, our mailbox provider and the web-font "
+    "service our website uses act under their own terms."
 )
 # FIX round 4 (UF22): the final adversary 3's probe X3, the unqualified providers claim added OUTSIDE s5 (AR twin:
 # the fixture's fix4_ar.x3).
@@ -1051,27 +1060,35 @@ def test_d3c_l_deletion_path_names_the_controls_the_app_shows(tmp_path):
 
 
 def test_d3c_m_hosting_regions_clause_names_only_the_measured_roles(tmp_path):
-    """(m) UF3: privacy s7 names HOSTING_REGIONS for "our database and hosting providers" only (EN and AR):
-    the Upstash (temporary-storage) region is not measured, so a filled s7 never says temporary storage."""
+    """(m) UF3, amended S78 (LR3, M1, P11): privacy s7 names the HOSTING_REGIONS countries only (EN and AR). The
+    clause is HOSTING_CLAUSE_EN (AR: the fixture's fix2_ar.hosting_roles); a filled s7 carries the regions right
+    after the clause literal, no parenthesis after them, no role word (database, hosting, temporary storage) and
+    no vendor name."""
     fx = _fix2_ar()
     clause = _json(VARIANTS)["clauses"]["HOSTING_REGIONS_CLAUSE"]
     problems = []
     if clause["en"]["privacy"]["nonempty"] != HOSTING_CLAUSE_EN:
         problems.append(f"{VARIANTS}: HOSTING_REGIONS_CLAUSE en is {clause['en']['privacy']['nonempty']!r}")
-    ar_clause = clause["ar"]["privacy"]["nonempty"]
-    if fx["hosting_roles"] not in ar_clause or fx["temporary_storage"] in ar_clause:
-        problems.append(f"{VARIANTS}: HOSTING_REGIONS_CLAUSE ar does not name only the database and hosting roles")
+    if clause["ar"]["privacy"]["nonempty"] != fx["hosting_roles"]:
+        problems.append(f"{VARIANTS}: HOSTING_REGIONS_CLAUSE ar is not the fixture's countries-only clause")
     texts = _filled(tmp_path, "m")
     regions = {"en": COMPLETE_VALUES_EN["HOSTING_REGIONS"], "ar": _fixture()["ar_values"]["HOSTING_REGIONS_AR"]}
-    for lang, rel, roles, storage in (
-        ("en", PRIVACY_EN, "(our database and hosting providers)", TEMPORARY_STORAGE_EN.pattern),
-        ("ar", PRIVACY_AR, fx["hosting_roles"], re.escape(fx["temporary_storage"])),
+    for lang, rel, literal in (
+        ("en", PRIVACY_EN, HOSTING_CLAUSE_EN.split("{value}")[0]),
+        ("ar", PRIVACY_AR, fx["hosting_roles"].split("{value}")[0]),
     ):
         s7 = _section(texts[rel], 7) or ""
-        if f"{regions[lang]} {roles}" not in s7:
-            problems.append(f"filled {rel} s7: the regions are not followed by the database and hosting roles")
-        if re.search(storage, s7):
+        if f"{literal}{regions[lang]}" not in s7:
+            problems.append(f"filled {rel} s7: the regions do not follow the clause literal")
+        if re.search(re.escape(regions[lang]) + r"\s*\(", s7):
+            problems.append(f"filled {rel} s7: a parenthesis follows the regions")
+        if lang == "en" and S7_ROLE_WORDS_EN.search(s7):
+            problems.append(f"filled {rel} s7: names a role ({S7_ROLE_WORDS_EN.search(s7).group(0)!r})")
+        if lang == "ar" and any(word in s7 for word in (*S7_ROLE_WORDS_AR, fx["temporary_storage"])):
+            problems.append(f"filled {rel} s7: names a role")
+        if TEMPORARY_STORAGE_EN.search(s7):
             problems.append(f"filled {rel} s7: names a temporary-storage provider")
+        problems += [f"filled {rel} s7: names {name!r}" for name in S7_VENDORS if re.search(r"\b" + re.escape(name) + r"\b", s7)]
     assert not problems, [_esc(p) for p in problems]
 
 
@@ -1120,7 +1137,7 @@ def test_d3c_n_providers_sentence_carves_out_openai(tmp_path, d3):
         problems += _carveout_problems(rel, text, core, carveout, flags)
         section = _section(text, 5) or ""
         if text.count(own_terms[lang]) != 1 or own_terms[lang] not in section:
-            problems.append(f"{rel} s5: the retailer / Apple / Google own-terms sentence (UF10) is not there once")
+            problems.append(f"{rel} s5: the retailer / Apple / Google / mailbox own-terms sentence (UF10) is not there once")
         elif carveout not in section or section.index(carveout) > section.index(own_terms[lang]):
             problems.append(f"{rel} s5: the own-terms sentence does not follow the service-providers sentence")
         rendered = html.unescape(renderer.render_markdown(text))
