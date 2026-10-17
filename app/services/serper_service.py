@@ -3,7 +3,9 @@ Serper Service - Web search via Serper API (Google Search)
 Enhanced for structured product data extraction
 """
 import asyncio
+import math
 import os
+import threading
 import httpx
 import logging
 from typing import Optional, Dict, Any, List
@@ -124,15 +126,93 @@ def _resolve_serper_keys() -> List[str]:
     return [single] if single else []
 
 
+# S78-SM -- per-process memo of the exhausted-key flag
+# (ENABLE_SERPER_KEY_STATE_MEMO, default OFF, read per call; TTL knob
+# SERPER_KEY_STATE_MEMO_TTL, default 60 s, read per store). Keyed by the Redis
+# flag key (serper:exhausted:<prefix8>), so keys sharing a prefix share one
+# entry exactly as they share one Redis flag. One threading.Lock guards the two
+# dicts and is NEVER held across the Redis GET; a per-flag-key generation,
+# bumped by every mark, drops a read whose GET raced a mark.
+_SERPER_KEY_STATE_MEMO_TTL_ENV = "SERPER_KEY_STATE_MEMO_TTL"
+_DEFAULT_SERPER_KEY_STATE_MEMO_TTL = 60.0
+# redis flag key -> (expires_at_monotonic, exhausted)
+_serper_key_state_memo: Dict[str, tuple] = {}
+# redis flag key -> generation, bumped by every mark (no Redis I/O)
+_serper_key_state_gen: Dict[str, int] = {}
+_serper_key_state_lock = threading.Lock()
+
+
+def _serper_key_state_memo_enabled() -> bool:
+    return os.getenv("ENABLE_SERPER_KEY_STATE_MEMO", "").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
+def _serper_key_state_memo_ttl() -> float:
+    """The memo window in seconds. Unset, unparsable, non-finite or <= 0 -> 60.0."""
+    raw = os.getenv(_SERPER_KEY_STATE_MEMO_TTL_ENV)
+    if raw is None:
+        return _DEFAULT_SERPER_KEY_STATE_MEMO_TTL
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return _DEFAULT_SERPER_KEY_STATE_MEMO_TTL
+    if not math.isfinite(value) or value <= 0:
+        return _DEFAULT_SERPER_KEY_STATE_MEMO_TTL
+    return value
+
+
+def _reset_serper_key_state_memo() -> None:
+    """Test/ops reset of the exhausted-key memo (conftest calls it per test)."""
+    with _serper_key_state_lock:
+        _serper_key_state_memo.clear()
+        _serper_key_state_gen.clear()
+
+
+def _invalidate_serper_key_state(flag_key: str) -> None:
+    """Drop the memo entry for one flag key and bump its generation (no I/O)."""
+    with _serper_key_state_lock:
+        _serper_key_state_memo.pop(flag_key, None)
+        _serper_key_state_gen[flag_key] = _serper_key_state_gen.get(flag_key, 0) + 1
+
+
 def _is_serper_key_exhausted(key: str) -> bool:
     """True if the per-key exhaustion flag is set in Redis. Fail-open: on Redis
     error / unavailability the key is treated as NOT exhausted (do not block a
     healthy key just because Redis is down)."""
+    if _serper_key_state_memo_enabled():
+        return _is_serper_key_exhausted_memoised(key)
     try:
         from app.services.cache_service import _redis_get
         return bool(_redis_get(_SERPER_EXHAUSTED_PREFIX + _serper_key_prefix8(key)))
     except Exception:  # noqa: BLE001
         return False
+
+
+def _is_serper_key_exhausted_memoised(key: str) -> bool:
+    """The flag-ON read: memo hit inside the window, else one GET whose answer
+    (True or False) is stored unless a mark landed during the GET. A raising
+    helper (incl. a non-str key) is fail-open False and is NOT memoised."""
+    try:
+        flag_key = _SERPER_EXHAUSTED_PREFIX + _serper_key_prefix8(key)
+    except Exception:  # noqa: BLE001
+        return False
+    now = _time.monotonic()
+    with _serper_key_state_lock:
+        hit = _serper_key_state_memo.get(flag_key)
+        if hit is not None and now < hit[0]:
+            return hit[1]
+        gen = _serper_key_state_gen.get(flag_key, 0)
+    try:
+        from app.services.cache_service import _redis_get
+        exhausted = bool(_redis_get(flag_key))
+    except Exception:  # noqa: BLE001
+        return False
+    ttl = _serper_key_state_memo_ttl()
+    with _serper_key_state_lock:
+        if _serper_key_state_gen.get(flag_key, 0) == gen:
+            _serper_key_state_memo[flag_key] = (now + ttl, exhausted)
+    return exhausted
 
 
 def _mark_serper_key_exhausted(key: str) -> None:
@@ -143,6 +223,12 @@ def _mark_serper_key_exhausted(key: str) -> None:
     try:
         from app.services.cache_service import _redis_set
         _redis_set(_SERPER_EXHAUSTED_PREFIX + prefix, "1", ex=_SERPER_EXHAUSTED_TTL)
+    except Exception:  # noqa: BLE001
+        pass
+    # S78-SM: invalidate AFTER the SET, in both flag states (a dict op, no I/O);
+    # best-effort like the SET above (SM-COR-1: a non-str key must not raise here).
+    try:
+        _invalidate_serper_key_state(_SERPER_EXHAUSTED_PREFIX + prefix)
     except Exception:  # noqa: BLE001
         pass
     if prefix not in _serper_exhausted_logged:
