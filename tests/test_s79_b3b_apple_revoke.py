@@ -486,7 +486,30 @@ def _assert_no_key_text_in_exception(exc, keys, *raw):
             secrets += [r, "".join(r.split())]
     texts = "\n".join(_exc_chain_texts(exc))
     found = [s for s in secrets if s in texts]
-    assert not found, f"key material in the exception chain: {len(found)} value(s)"
+    if found:  # pytest.fail: the report never echoes the key text (fix ruling FC1)
+        pytest.fail(f"key material in the exception chain: {len(found)} value(s)")
+
+
+def _assert_clean_value_error(exc):
+    """Fix ruling FC1 (kills S3e): the ValueError is raised outside any except
+    block, so it carries no __context__ and no __cause__, and its message is
+    the constant."""
+    assert type(exc) is ValueError, type(exc).__name__
+    assert exc.args == ("unparseable private key",), len(exc.args)
+    assert exc.__context__ is None, type(exc.__context__).__name__
+    assert exc.__cause__ is None, type(exc.__cause__).__name__
+
+
+class _B64Spy:
+    """Fix ruling FC1 (kills S3d): stands in for the module's base64 and
+    counts every b64decode call (delegating to the real one)."""
+
+    def __init__(self):
+        self.calls = 0
+
+    def b64decode(self, *args, **kwargs):
+        self.calls += 1
+        return base64.b64decode(*args, **kwargs)
 
 
 # ---------------------------------------------------------------------------
@@ -552,10 +575,30 @@ def _key_forms(keys):
     }
 
 
+def _bad_key_forms(keys):
+    """Fix ruling FC1 / FC2: key values that must be refused with a clean
+    ValueError. The non-ASCII characters are written as escapes (the file
+    stays pure ASCII); the last form is base64 of an ASCII label line plus
+    the generated PEM, which decodes to non-PEM-first text that IS key
+    material (the second ValueError site)."""
+    pem = keys["pem"]
+    labelled = ("Bag Attributes\n    friendlyName: b3b-label\n" + pem).encode("ascii")
+    return {
+        "bom-pem": "\ufeff" + pem,
+        "smart-quoted-pem": "\u201c" + pem + "\u201d",
+        "zwsp-pem": "\u200b" + pem,
+        "base64-of-labelled-pem": base64.b64encode(labelled).decode("ascii"),
+    }
+
+
+_NON_ASCII_FORMS = ("bom-pem", "smart-quoted-pem", "zwsp-pem")
+
+
 @pytest.mark.parametrize(
     "form",
     ["pem-real-newlines", "pem-literal-backslash-n", "base64", "base64-wrapped-76",
-     "pem-space-joined", "garbage", "rsa"],
+     "pem-space-joined", "garbage", "rsa", "bom-pem", "smart-quoted-pem", "zwsp-pem",
+     "base64-of-labelled-pem"],
 )
 def test_b3b_r3_private_key_forms(monkeypatch, keys, form):
     """R3 (RED: module absent; kills X9, X10): the three accepted key forms
@@ -564,16 +607,39 @@ def test_b3b_r3_private_key_forms(monkeypatch, keys, form):
     garbage -> ValueError, an RSA key -> InvalidKeyError. Fix ruling FB4
     (kills S3): for garbage and RSA, neither the exception from
     build_client_secret nor the one from _normalise_private_key carries
-    key text anywhere in its chain."""
+    key text anywhere in its chain. Fix ruling FC1 / FC2 (kills S3b, S3d,
+    S3e): a BOM-prefixed, smart-quoted or ZWSP-prefixed PEM and the base64
+    of a labelled PEM -> ValueError from both functions, no key text in the
+    chain, no __context__ / __cause__; non-ASCII input is never decoded."""
     siwa = _siwa()
     if form == "garbage":
         _set_config(monkeypatch, "garbage-not-a-pem")
         with pytest.raises(ValueError) as built:
             siwa.build_client_secret(siwa._siwa_config())
         _assert_no_key_text_in_exception(built.value, keys, "garbage-not-a-pem")
+        _assert_clean_value_error(built.value)
         with pytest.raises(ValueError) as normalised:
             siwa._normalise_private_key("garbage-not-a-pem")
         _assert_no_key_text_in_exception(normalised.value, keys, "garbage-not-a-pem")
+        _assert_clean_value_error(normalised.value)
+        return
+    if form in _bad_key_forms(keys):
+        raw = _bad_key_forms(keys)[form]
+        spy = _B64Spy()
+        monkeypatch.setattr(siwa, "base64", spy)
+        _set_config(monkeypatch, raw)
+        with pytest.raises(ValueError) as built:
+            siwa.build_client_secret(siwa._siwa_config())
+        _assert_no_key_text_in_exception(built.value, keys, raw)
+        _assert_clean_value_error(built.value)
+        with pytest.raises(ValueError) as normalised:
+            siwa._normalise_private_key(raw)
+        _assert_no_key_text_in_exception(normalised.value, keys, raw)
+        _assert_clean_value_error(normalised.value)
+        if form in _NON_ASCII_FORMS:
+            assert spy.calls == 0, f"non-ASCII key text was decoded {spy.calls} time(s)"
+        else:
+            assert spy.calls == 2, f"control: the spy saw {spy.calls} decode(s)"
         return
     if form == "rsa":
         _set_config(monkeypatch, keys["rsa"])
@@ -635,21 +701,28 @@ async def test_b3b_r5_exchange_request_is_exact(monkeypatch, keys):
 # R6-R11, R19, R21, R25-R28: social-login
 # ---------------------------------------------------------------------------
 
-def test_b3b_r6_social_login_apple_with_code_stores_the_token(monkeypatch, keys, logs):
+_R6_CODE = "code-" + "9" * 6
+
+
+@pytest.mark.parametrize("sent", ["plain", "padded-code"])
+def test_b3b_r6_social_login_apple_with_code_stores_the_token(monkeypatch, keys, logs, sent):
     """R6 (RED: zero exchange requests, zero upserts; kills X19, X20): flag ON,
     Apple 200 with a matching sub -> 200, body byte-equal to flag OFF, one
     exchange, the admin calls are exactly upsert(payload, on_conflict=user_id)
-    + execute, the stored value is the REFRESH token, one INFO '[SIWA] stored'."""
+    + execute, the stored value is the REFRESH token, one INFO '[SIWA] stored'.
+    Fix ruling FC4 (kills X52): a code sent with surrounding whitespace is
+    exchanged STRIPPED (the exchange form's code equals the bare code)."""
     _set_config(monkeypatch, keys["pem"])
     ok = _apple_ok()
     apple = _Apple([(200, ok)])
     _install_apple(monkeypatch, apple)
-    body = _apple_body()
+    body = _apple_body(code=_R6_CODE if sent == "plain" else "  " + _R6_CODE + " \t")
     resp_on, _, _, _, admin = _social(monkeypatch, body, flag="true")
     resp_off, _, _, _, admin_off = _social(monkeypatch, body, flag=None)
     assert resp_on.status_code == 200, resp_on.text
     assert resp_on.content == resp_off.content
     assert len(apple.requests) == 1, f"exchange requests: {len(apple.requests)}"
+    assert apple.requests[0]["multi"].get("code") == [_R6_CODE], "code not stripped"
     assert len(admin.calls) == 2, admin.calls
     (t1, m1, a1, k1), (t2, m2, a2, k2) = admin.calls
     assert (t1, m1, k1) == (TABLE, "upsert", {"on_conflict": "user_id"}), admin.calls[0]
@@ -1352,7 +1425,11 @@ def test_b3b_r30_apple_client_keeps_tls_defaults():
     positional argument, no ** splat) and never verify, trust_env, proxy or
     proxies; the one module-level _TRANSPORT assignment is the constant None and
     the live value is None (production uses httpx's default transport, TLS
-    verified)."""
+    verified). Fix ruling FC3 (kills S5b): each AsyncClient's transport value
+    is exactly the name _TRANSPORT and its timeout value exactly the name
+    _HTTP_TIMEOUT; no call anywhere in the module (any callee) carries verify,
+    trust_env, proxy or proxies; the module never names AsyncHTTPTransport or
+    HTTPTransport."""
     import ast
 
     assert SIWA_PATH.exists(), "RED: app/services/apple_siwa_service.py is absent"
@@ -1372,6 +1449,25 @@ def test_b3b_r30_apple_client_keeps_tls_defaults():
         assert None not in names, f"line {call.lineno}: a ** splat could carry verify"
         assert set(names) <= {"timeout", "transport"}, f"line {call.lineno}: {names}"
         assert not set(names) & forbidden, f"line {call.lineno}: {names}"
+        values = {k.arg: k.value for k in call.keywords}
+        for kw, expected in (("transport", "_TRANSPORT"), ("timeout", "_HTTP_TIMEOUT")):
+            value = values.get(kw)
+            assert isinstance(value, ast.Name) and value.id == expected, (
+                f"line {call.lineno}: {kw}= is not the bare name {expected}")
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            bad = forbidden & {k.arg for k in node.keywords}
+            assert not bad, f"line {node.lineno}: a call carries {sorted(bad)}"
+    transport_classes = {"AsyncHTTPTransport", "HTTPTransport"}
+    named = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name):
+            named.add(node.id)
+        elif isinstance(node, ast.Attribute):
+            named.add(node.attr)
+        elif isinstance(node, ast.alias):
+            named.update({node.name.rsplit(".", 1)[-1], node.asname or ""})
+    assert not named & transport_classes, sorted(named & transport_classes)
     assigns = []
     for node in tree.body:
         if isinstance(node, ast.Assign):

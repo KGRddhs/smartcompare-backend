@@ -100,16 +100,27 @@ def _siwa_config() -> Optional[Dict[str, str]]:
 
 
 def _normalise_private_key(raw: str) -> str:
-    """The .p8 as PEM text; ValueError (no key material in it) when unparseable."""
+    """The .p8 as PEM text; ValueError (no key material in it) when unparseable.
+
+    Fix ruling FC1: non-ASCII input is refused before any decoding, and every
+    ValueError is raised OUTSIDE an except block, so no __context__ (whose
+    arguments can carry the whole key text) is attached to the raised error.
+    The message never carries input text."""
     text = (raw or "").strip()
+    if not text.isascii():
+        raise ValueError("unparseable private key")
     if text.startswith(_PEM_PREFIX):
         if "\n" not in text and "\\n" in text:
             text = text.replace("\\n", "\n")
         return text
+    decoded = ""
+    unparseable = False
     try:
         decoded = base64.b64decode("".join(text.split()), validate=True).decode("ascii")
     except (binascii.Error, UnicodeDecodeError, ValueError):
-        raise ValueError("unparseable private key") from None
+        unparseable = True
+    if unparseable:
+        raise ValueError("unparseable private key")
     decoded = decoded.strip()
     if not decoded.startswith(_PEM_PREFIX):
         raise ValueError("unparseable private key")
