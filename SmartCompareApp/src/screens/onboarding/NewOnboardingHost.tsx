@@ -29,7 +29,7 @@
  * Each is independent — a failed save in one bucket does not block the others.
  */
 
-import React, { useCallback, useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { OnboardingFlow } from './OnboardingFlow';
 import {
   OnboardingFlowData,
@@ -40,6 +40,20 @@ import {
   persistOnboardingBuckets,
   flushPendingOnboardingDraft,
 } from '../../services/onboardingDraft';
+import {
+  loadOnboardingResume,
+  peekOnboardingResume,
+  clearOnboardingResume,
+  type OnboardingResumeRecord,
+} from '../../services/onboardingResume';
+
+// S79 B3-A C3: queue the resume read at bundle evaluation. App.tsx imports
+// this module statically, so the read starts before init()'s own reads and
+// has usually settled by the time the host mounts. Never rejects; the record
+// is single use (removed on read).
+void loadOnboardingResume();
+
+type ResumeView = { settled: boolean; value: OnboardingResumeRecord | null };
 
 interface Props {
   /** Fired once persistence is best-effort done (never blocks on errors). */
@@ -77,6 +91,28 @@ export function NewOnboardingHost({
   mode = 'full',
   onEditDone,
 }: Props) {
+  // S79 B3-A C3: resume after the language step's RTL reload. Only the full
+  // flow with no explicit initialStep (App.tsx's mount) applies a record;
+  // edit mode never does. Settled record -> mount at its step; settled
+  // null -> today's step 1; not settled yet -> step 1 now, then remount
+  // (key change) at the record's step when the read resolves.
+  const resumeEligible = mode === 'full' && initialStep === undefined;
+  const [resume, setResume] = useState<ResumeView>(() =>
+    resumeEligible ? peekOnboardingResume() : { settled: true, value: null },
+  );
+  const resumeSettled = resume.settled;
+  useEffect(() => {
+    if (resumeSettled) return undefined;
+    let cancelled = false;
+    void loadOnboardingResume().then((value) => {
+      if (!cancelled) setResume({ settled: true, value });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [resumeSettled]);
+  const applied = resumeEligible && resume.settled ? resume.value : null;
+
   // Keep the latest onComplete reachable from the mount-replay effect
   // without re-running the effect when App.tsx passes a fresh closure.
   const onCompleteRef = useRef(onComplete);
@@ -124,6 +160,8 @@ export function NewOnboardingHost({
     // the network is offline. The draft (not the user's patience) is
     // what makes the save survive.
     void persistWithDraft(data);
+    // S79 B3-A C3: a completed flow leaves no resume record behind.
+    void clearOnboardingResume();
     onComplete(data);
   }, [onComplete, mode, onEditDone]);
 
@@ -134,9 +172,10 @@ export function NewOnboardingHost({
 
   return (
     <OnboardingFlow
+      key={applied ? `resume-${applied.step}` : 'fresh'}
       onComplete={handleComplete}
-      initialStep={effectiveInitialStep}
-      initialData={initialData}
+      initialStep={applied ? applied.step : effectiveInitialStep}
+      initialData={applied ? { ...applied.data, ...(initialData ?? {}) } : initialData}
       lastStep={effectiveLastStep}
       // F-S2.step16-skip (task #42): NewOnboardingHost is only mounted
       // by App.tsx's `isAuthenticated && needsPreferences` branch — by

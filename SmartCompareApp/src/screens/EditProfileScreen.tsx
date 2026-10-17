@@ -57,6 +57,7 @@ import {
   getSavedUser,
   clearSession,
   updateSavedUserDisplayName,
+  revokeGoogleAccessBestEffort,
   type User,
 } from '../services/authService';
 import type { RootStackParamList } from '../types';
@@ -144,6 +145,15 @@ export default function EditProfileScreen({ navigation, onAccountDeleted }: Prop
               // history goes too (clearRecentSearches never throws).
               await clearRecentSearches();
               await clearSession();
+              // S79 B3-A C6: revoke the Google grant, best effort, after the
+              // local clears and only after a successful DELETE. Not awaited
+              // (bounded at 3 s inside, never rejects); guarded because a
+              // mocked authService may not export it.
+              try {
+                if (typeof revokeGoogleAccessBestEffort === 'function') void revokeGoogleAccessBestEffort();
+              } catch {
+                // best effort
+              }
               onAccountDeleted?.();
             } catch (err) {
               setDeleting(false);

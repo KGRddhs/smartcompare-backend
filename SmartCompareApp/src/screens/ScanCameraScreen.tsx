@@ -20,6 +20,7 @@ import {
   TouchableOpacity,
   Text,
   Alert,
+  Linking,
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
@@ -82,6 +83,17 @@ export default function ScanCameraScreen({ navigation }: Props) {
   // M13-54: keep requestPermission so the denied branch can actually
   // request access instead of dead-ending on a card with only an X.
   const [permission, requestPermission] = useCameraPermissions();
+  // S79 B3-A C2: the same strict predicate as HomeScreen (status 'denied'
+  // AND canAskAgain false); an object without `status` keeps today's pad.
+  const cameraPermissionStatus: string | undefined = permission?.status;
+  const cameraDenied = cameraPermissionStatus === 'denied' && permission?.canAskAgain === false;
+  const handleOpenSettings = () => {
+    try {
+      void Promise.resolve(Linking.openSettings()).catch(() => undefined);
+    } catch {
+      // never throw from a settings link
+    }
+  };
   const cameraRef = useRef<CameraView>(null);
   const [slots, setSlots] = useState<Slots>(_slotsCache);
   const [flash, setFlash] = useState<FlashMode>('off');
@@ -315,25 +327,42 @@ export default function ScanCameraScreen({ navigation }: Props) {
         <View testID="scan-camera-permission" style={styles.permissionPad}>
           <Camera size={48} color={colors.text.onInverse} />
           <Text style={styles.permissionTitle}>
-            {t('home.permission.title')}
+            {t(cameraDenied ? 'home.permission.denied_title' : 'home.permission.title')}
           </Text>
           <Text style={styles.permissionText}>
-            {t('home.permission.body')}
+            {t(cameraDenied ? 'home.permission.denied_body' : 'home.permission.body')}
           </Text>
           {/* M13-54: the missing CTA. Without this the denied branch was a
               dead end — a card, an X, and nothing else. Mirrors
               HomeScreen.tsx:504-521 (grant CTA + gallery link). */}
-          <TouchableOpacity
-            testID="scan-camera-permission-cta"
-            style={styles.permissionButton}
-            onPress={requestPermission}
-            accessibilityRole="button"
-            accessibilityLabel={t('home.permission.cta')}
-          >
-            <Text style={styles.permissionButtonText}>
-              {t('home.permission.cta')}
-            </Text>
-          </TouchableOpacity>
+          {/* S79 B3-A C2: denied for good (iOS will not prompt again) ->
+              Open Settings replaces the request CTA; the request CTA below
+              stays the single requestPermission reference. */}
+          {cameraDenied ? (
+            <TouchableOpacity
+              testID="scan-camera-permission-open-settings"
+              style={styles.permissionButton}
+              onPress={handleOpenSettings}
+              accessibilityRole="button"
+              accessibilityLabel={t('home.permission.open_settings')}
+            >
+              <Text style={styles.permissionButtonText}>
+                {t('home.permission.open_settings')}
+              </Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              testID="scan-camera-permission-cta"
+              style={styles.permissionButton}
+              onPress={requestPermission}
+              accessibilityRole="button"
+              accessibilityLabel={t('home.permission.cta')}
+            >
+              <Text style={styles.permissionButtonText}>
+                {t('home.permission.cta')}
+              </Text>
+            </TouchableOpacity>
+          )}
           <TouchableOpacity
             testID="scan-camera-permission-gallery"
             style={styles.galleryFallback}
