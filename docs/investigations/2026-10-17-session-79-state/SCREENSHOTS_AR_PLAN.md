@@ -26,4 +26,4 @@ Switch the app to Arabic first: Profile > Language > AR (the app reloads right-t
 
 Honest limit to keep: the comparison write-ups (verdict text, pros and cons, review summaries) are in English even in Arabic mode; the Arabic description must say so, as the English one does.
 
-## Arabic listing texts (to draft and truth-check next): name (30 chars), subtitle (30), description, keywords (100 chars), promotional text (170).
+## Arabic listing texts: draft v1 in `asc_texts_v3/AR_LISTING_v1.txt` (name, subtitle, promotional text, keywords, description; counts inside). Enter them in ASC together with the Arabic screenshots.
