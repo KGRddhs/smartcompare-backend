@@ -45,12 +45,12 @@ COUNTS red_rows=64 pin_rows=21 problems=[]
 [netguard]   tests/test_timeout_partial_integration.py::TestInsufficientDataUnchanged::test_insufficient_data_passthrough [sentinel] socket.create_connection neutralized.supabase.invalid:443
 [netguard]   tests/test_timeout_partial_integration.py::TestStreamingTimeoutD2Contract::test_stream_hardcap_yields_stream_timeout_partial [egress] socket.getaddrinfo api.openai.com:443
 [netguard]   tests/test_timeout_partial_integration.py::TestStreamingTimeoutD2Contract::test_stream_timeout_copy_has_no_forbidden_vocab [egress] socket.getaddrinfo api.openai.com:443
-[pyt] tag=b3a-red-base-commA start=2026-10-17 08:59:25 end=2026-10-17 09:00:25 elapsed=59s bound=1200s status=OK rc=0 log=C:\Users\SYNACK~1\AppData\Local\Temp\claude\C--Users-SynAckITPC-Documents-AI\2dae842f-c924-40f1-bd05-6b610eed0f5f\scratchpad\b3a_red\base_commA.log
+[pyt] tag=b3a-red-base-commA start=2026-10-17 08:59:25 end=2026-10-17 09:00:25 elapsed=59s bound=1200s status=OK rc=0 log=<scratchpad-path>
 [pyt] --- summary lines ---
 ======================= 350 passed, 1 warning in 37.11s =======================
 [hermeticity] sentinel checked 350 test(s)
 [netguard] blocked 0 attempt(s) from 0 node(s)
-[pyt] tag=b3a-red-base-commB start=2026-10-17 09:00:39 end=2026-10-17 09:01:19 elapsed=40s bound=600s status=OK rc=0 log=C:\Users\SYNACK~1\AppData\Local\Temp\claude\C--Users-SynAckITPC-Documents-AI\2dae842f-c924-40f1-bd05-6b610eed0f5f\scratchpad\b3a_red\base_commB.log
+[pyt] tag=b3a-red-base-commB start=2026-10-17 09:00:39 end=2026-10-17 09:01:19 elapsed=40s bound=600s status=OK rc=0 log=<scratchpad-path>
 [jest] tag=b3a-red-proto-verify start=2026-10-17 09:01:36 end=2026-10-17 09:02:39 rc=127
 restore: 24 files compared, mismatches=[]
 differs from snapshot: 0 []
