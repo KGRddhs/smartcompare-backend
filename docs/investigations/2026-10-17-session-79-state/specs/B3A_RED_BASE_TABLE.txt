@@ -1,0 +1,86 @@
+RED failed appleAuthCode        r49 Apple sends the authorization code when present  :: Error: expect(received).toEqual(expected) // deep equality
+PIN passed appleAuthCode        r50 [PIN] undefined code keeps today's bytes
+PIN passed appleAuthCode        r50 [PIN] null code keeps today's bytes
+PIN passed appleAuthCode        r50 [PIN] empty code keeps today's bytes
+PIN passed appleAuthCode        r50 [PIN] non-string code keeps today's bytes
+PIN passed appleAuthCode        r51 [PIN] the code is never logged (console or Sentry), with __DEV__ true
+RED failed nativeStrings        r33 plugin options carry the new purpose strings  :: Error: expect(received).toBe(expected) // Object.is equality
+RED failed nativeStrings        r34 locale files carry the new strings (en == plugin strings, ar == fixture  :: Error: expect(received).toBe(expected) // Object.is equality
+RED failed nativeStrings        r35 executed plugins write them into Info.plist (both plugin orders)  :: Error: expect(received).toEqual(expected) // deep equality
+RED failed nativeStrings        r36 the five label types declare PurposeOther and nothing else moves  :: Error: expect(received).toEqual(expected) // deep equality
+RED failed nativeStrings        r37 the repo-root inventory doc lists Other for the same five rows and its   :: Error: expect(received).toEqual(expected) // deep equality
+PIN passed nativeStrings        r38 [PIN] microphone strings and display names unchanged
+RED failed authNoScreenCapture  r1 the four auth screens neither import nor call expo-screen-capture  :: Error: expect(received).toEqual(expected) // deep equality
+RED failed authNoScreenCapture  r2 no file under src/, App.tsx or index.ts names expo-screen-capture in an   :: Error: expect(received).toEqual(expected) // deep equality
+PIN passed authNoScreenCapture  r3 [PIN] password fields keep secureTextEntry (source counts)
+PIN passed authNoScreenCapture  r3b [PIN] (MR3) the rendered password inputs carry secureTextEntry: true
+PIN passed authNoScreenCapture  r4 [PIN] the dependency stays
+RED failed authNoScreenCapture  r5 ResetPasswordScreen mounts without arming capture protection  :: Error: expect(jest.fn()).not.toHaveBeenCalled()
+RED failed authNoScreenCapture  r5b (MR2) Login mounts without arming capture protection  :: Error: expect(jest.fn()).not.toHaveBeenCalled()
+RED failed authNoScreenCapture  r5b (MR2) Register mounts without arming capture protection  :: Error: expect(jest.fn()).not.toHaveBeenCalled()
+RED failed authNoScreenCapture  r5b (MR2) ForgotPassword mounts without arming capture protection  :: Error: expect(jest.fn()).not.toHaveBeenCalled()
+RED failed honestCopy           r26 the 12 changed values (and the A13 learning values) equal the fixture i  :: Error: expect(received).toEqual(expected) // deep equality
+RED failed honestCopy           r27 the 5 new keys exist in both catalogs with the fixture values; key sets  :: Error: expect(received).toEqual(expected) // deep equality
+RED failed honestCopy           r28 no dishonest claim remains in any EN / AR value  :: Error: expect(received).toEqual(expected) // deep equality
+PIN passed honestCopy           r28b [PIN] the loader keeps the reworded keys in its default rotation (keys
+RED failed honestCopy           r28c (A13) no learning or credits claim remains on the A13 keys (EN)  :: Error: expect(received).toEqual(expected) // deep equality
+RED failed honestCopy           r29 stale defaultValue literals are gone (each equals the new EN value, or   :: Error: expect(received).toEqual(expected) // deep equality
+RED failed honestCopy           r30 the welcome screen labels the quotes as examples, above the first quote  :: Error: Unable to find an element with testID: welcome-examples-label
+PIN passed honestCopy           r31 [PIN] new and changed values respect the copy and brand fences
+RED failed honestCopy           r31b (A8 / MR11) new and changed AR values carry no harakat, shadda or tanw  :: Error: expect(received).toEqual(expected) // deep equality
+RED failed honestCopy           r32 the tailored-pick card shows localised category and time labels (EN)  :: Error: expect(received).toBe(expected) // Object.is equality
+RED failed honestCopy           r32 the tailored-pick card shows localised category and time labels (AR)  :: Error: expect(received).toBe(expected) // Object.is equality
+RED failed googleButton         r39 Login: Apple, then Google on its own full-width row, then Email, then t  :: Error: expect(received).toEqual(expected) // deep equality
+RED failed googleButton         r40 Google shows the official logo, not a typed G (Login)  :: Error: expect(received).toBeTruthy()
+RED failed googleButton         r41 the Google label cannot be clipped by a fixed line height  :: Error: expect(received).toBeGreaterThanOrEqual(expected)
+RED failed googleButton         r42 Register: Apple first, then Google (logo), then the form  :: Error: expect(received).toEqual(expected) // deep equality
+RED failed googleButton         r42b (A7 / MR7) a blocked Create Account brings the consent error into view  :: Error: expect(received).toBeGreaterThanOrEqual(expected)
+RED failed googleButton         r43 Step16Account uses the logo  :: Error: expect(received).toBeTruthy()
+RED failed googleButton         r44 configure no longer asks for offline access; the client ids are unchang  :: Error: expect(received).not.toBe(expected) // Object.is equality
+RED failed googleButton         r45 logout signs out of Google only when a Google session exists, without d  :: Error: expect(jest.fn()).toHaveBeenCalledTimes(expected)
+RED failed googleButton         r45b (MR8) the Google sign-out also fires with no stored token and when the  :: Error: expect(jest.fn()).toHaveBeenCalledTimes(expected)
+RED failed googleButton         r46 revokeGoogleAccessBestEffort is bounded and fail-soft  :: Error: expect(received).toBe(expected) // Object.is equality
+PIN passed googleButton         r48 [PIN] Google request body unchanged: provider, id_token and the consent
+RED failed googleButton         r47 a successful DELETE revokes Google after clearSession and before onAcco  :: Error: expect(received).toEqual(expected) // deep equality
+PIN passed googleButton         r47b [PIN] with the authService mock WITHOUT the export the deletion still 
+RED failed cameraDenied         r6 denied + cannot ask again shows the Settings state  :: Error: expect(received).toEqual(expected) // deep equality
+RED failed cameraDenied         r7 Open Settings opens Settings without consent or a permission request  :: Error: Unable to find an element with testID: home-permission-open-settings
+RED failed cameraDenied         r7b (MR5) a rejecting openSettings is swallowed and the card stays  :: Error: Unable to find an element with testID: home-permission-open-settings
+PIN passed cameraDenied         r8 [PIN] the gallery link in the denied state still goes through consent
+PIN passed cameraDenied         r9 [PIN] not denied keeps today's card: {"granted":false}
+PIN passed cameraDenied         r9 [PIN] not denied keeps today's card: {"granted":false,"status":"undeterm
+PIN passed cameraDenied         r9 [PIN] not denied keeps today's card: {"granted":false,"status":"undeterm
+PIN passed cameraDenied         r9 [PIN] not denied keeps today's card: {"granted":false,"status":"denied",
+RED failed cameraDenied         r10 returning to the app re-checks the permission; never while granted  :: Error: expect(jest.fn()).toHaveBeenCalledTimes(expected)
+RED failed cameraDenied         r10b (MR5) after the permission turns granted, or after unmount, the listen  :: Error: expect(received).toBeGreaterThanOrEqual(expected)
+RED failed cameraDenied         r11 ScanCamera pad has the same denied state  :: Error: expect(received).not.toBeNull()
+RED failed onboardingResume     r12 save then load returns the record once  :: Error: expect(received).not.toBeNull()
+RED failed onboardingResume     r13 an invalid record (older than the TTL) loads as null and is removed  :: Error: expect(received).not.toBeNull()
+RED failed onboardingResume     r13 an invalid record (61 s in the future) loads as null and is removed  :: Error: expect(received).not.toBeNull()
+RED failed onboardingResume     r13 an invalid record (v 2) loads as null and is removed  :: Error: expect(received).not.toBeNull()
+RED failed onboardingResume     r13 an invalid record (step 1) loads as null and is removed  :: Error: expect(received).not.toBeNull()
+RED failed onboardingResume     r13 an invalid record (step 2) loads as null and is removed  :: Error: expect(received).not.toBeNull()
+RED failed onboardingResume     r13 an invalid record (step 16) loads as null and is removed  :: Error: expect(received).not.toBeNull()
+RED failed onboardingResume     r13 an invalid record (step 18) loads as null and is removed  :: Error: expect(received).not.toBeNull()
+RED failed onboardingResume     r13 an invalid record (step 3.5) loads as null and is removed  :: Error: expect(received).not.toBeNull()
+RED failed onboardingResume     r13 an invalid record (language fr) loads as null and is removed  :: Error: expect(received).not.toBeNull()
+RED failed onboardingResume     r13 an invalid record (malformed JSON) loads as null and is removed  :: Error: expect(received).not.toBeNull()
+RED failed onboardingResume     r13 unknown data keys are dropped from a valid record  :: Error: expect(received).not.toBeNull()
+RED failed onboardingResume     r13b (MR6) the TTL boundary: exactly TTL old is valid, TTL + 1 ms is not  :: Error: expect(received).not.toBeNull()
+RED failed onboardingResume     r14 EN to AR: language saved < forceRTL(true) < beforeReload < RTL flag < r  :: Error: expect(jest.fn()).toHaveBeenCalledTimes(expected)
+RED failed onboardingResume     r15 AR to EN: the same order with forceRTL(false) and the ltr flag  :: Error: expect(jest.fn()).toHaveBeenCalledTimes(expected)
+PIN passed onboardingResume     r16 [PIN] no-reload paths call neither beforeReload nor reloadAsync; no opt
+RED failed onboardingResume     r17 a rejecting beforeReload never blocks the reload  :: Error: expect(jest.fn()).toHaveBeenCalledTimes(expected)
+RED failed onboardingResume     r17 a never-settling beforeReload is bounded at 1500 ms  :: Error: expect(jest.fn()).toHaveBeenCalledTimes(expected)
+RED failed onboardingResume     r18 Step02Language forwards beforeReload only when given onBeforeReload  :: Error: expect(received).toBe(expected) // Object.is equality
+RED failed onboardingResume     r19 OnboardingFlow (isAuthenticated=true) writes the step after the languag  :: Error: expect(received).toBe(expected) // Object.is equality
+RED failed onboardingResume     r19 OnboardingFlow (isAuthenticated=false) writes the step after the langua  :: Error: expect(received).toBe(expected) // Object.is equality
+RED failed onboardingResume     r19 OnboardingFlow (isAuthenticated=true) writes the step after the languag  :: Error: expect(received).toBe(expected) // Object.is equality
+RED failed onboardingResume     r20 the host resumes at step 3 with Arabic kept (EN -> AR)  :: Error: expect(received).toBe(expected) // Object.is equality
+RED failed onboardingResume     r20b (MR1) the host resumes at step 3 with English kept (AR -> EN)  :: Error: expect(received).toBe(expected) // Object.is equality
+RED failed onboardingResume     r21 a late-settling preload remounts at the resumed step  :: Error: expect(received).toBe(expected) // Object.is equality
+RED failed onboardingResume     r22 a stale record: step 1 synchronously and the key is removed  :: Error: expect(received).toBeNull()
+PIN passed onboardingResume     r23 [PIN] no record: step 1 renders synchronously
+PIN passed onboardingResume     r24 [PIN] edit mode ignores a settled record
+RED failed onboardingResume     r25 completing the flow clears the record  :: Error: expect(received).toBeNull()
+COUNTS red_rows=64 pin_rows=21 problems=[]
