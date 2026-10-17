@@ -1,0 +1,24 @@
+PURPOSE: MYEZ is a free shopping decision aid, in English and Arabic, for shoppers aged 13+ in Bahrain and the Gulf. The user types, photographs or links two products; MYEZ gathers public specs, reviews and retailer prices and returns one AI-written comparison. The screen recording is attached to our Resolution Center reply.
+
+SIGN-IN: required because each comparison runs paid AI and search requests on our servers, so the allowance is enforced per account; it also holds History and preferences. Review account: the user name and password are in the Sign-In Information fields of App Review Information. It has completed the first-run questionnaire and has a raised daily allowance.
+
+NEW ACCOUNT (to test registration and deletion, so the review account survives): Sign Up, any email address, a password of 10+ characters with an upper-case letter, a lower-case letter and a digit, tick "I am 13 or older and I agree to the Terms and Privacy", Create Account. No email confirmation is needed. A first-run questionnaire follows (16 screens; language, country, 1-3 priorities, budget, brand preference and how you heard of us are required, others need only Next; notifications: "Maybe later"). New accounts: 3 comparisons a day, 10 a month. The header counter (e.g. "0/3 free") counts only the 3 starter comparisons; tap it for comparisons left today.
+
+HOW TO TEST:
+1. MYEZ tab: the card has Scan (default), Link, Type. Tap Type, enter "iPhone 15" and "Samsung Galaxy S24", tap Compare.
+2. The first comparison, camera or photo-picker use shows a one-time sheet "Your comparison is written with AI" that names OpenAI and explains what is sent. "Agree and continue" proceeds; "Not now" cancels.
+3. A comparison usually takes 20-40 seconds. Results: the winner, the reasons, "Where the runner-up wins", a price per product when found (else "No confirmed price yet.").
+4. Photos: Scan > "Turn on camera" (allow access) or "Open camera", photograph two products, tap Compare. Or tap the photo button next to the shutter once per product, then Compare; before camera access, "Or pick from gallery" picks two photos.
+5. Link compares two product page links from stores.
+6. History: past comparisons. Log out: Profile > Log Out > Log Out.
+DELETE ACCOUNT: Profile tab > gear icon (top right) > Edit Profile > Account actions > Delete account > Delete account. The app returns to the sign-in screen.
+
+REGIONS: features are the same everywhere; no geographic restriction. Typed and photo comparisons search prices for Bahrain and show them in Bahraini Dinar (BHD) for all users. A price found only on an international listing is converted to BHD and labelled as converted. Link uses the price on the linked page.
+
+AI PROCESSING: the product names, links (with the text of those pages), photos and the profile preferences named on the sheet are sent to OpenAI to write the comparison. OpenAI may use these inputs and its outputs to evaluate and train its models; the sheet says so. The user's name, email and account details are not sent.
+
+SERVICES: OpenAI API (AI); Supabase (database, sign-in); Sign in with Apple; Google Sign-In; Railway (hosting); Upstash (cache); Serper (search); retailer websites and store search, with Firecrawl and Scrape.do as fallbacks; Expo (updates, push via APNs); Sentry (crash reports). No payment, ad or third-party analytics SDK.
+
+REGULATION: not regulated; no sales, payments, marketplace or affiliate links; the Terms state it is not medical, health or financial advice. It shows public product information only (names, prices, short review excerpts with source names, ratings only when a source publishes one). Images load from the publishing sites or a search engine's image server.
+
+No in-app purchases, subscriptions, ads or tracking; no user content shared between users. The daily-limit screen only explains when comparisons refresh.
