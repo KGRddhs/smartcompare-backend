@@ -185,7 +185,7 @@ export function Step15Reveal({ onNext, profile }: Props) {
         </Text>
         <Text style={styles.subtitle} testID="s15-subtitle">
           {t('onboarding.s15.subtitle', {
-            defaultValue: 'Tuned to your priorities. Trained by your peers.',
+            defaultValue: 'Tuned to your priorities. Informed by a survey of GCC shoppers.',
           })}
         </Text>
       </View>

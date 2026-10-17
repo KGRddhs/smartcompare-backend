@@ -38,6 +38,9 @@ import {
   ScrollView,
   Alert,
   InteractionManager,
+  AppState,
+  Linking,
+  type AppStateStatus,
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
@@ -109,7 +112,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
   const [loading, setLoading] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
 
-  const [permission, requestPermission] = useCameraPermissions();
+  const [permission, requestPermission, getPermission] = useCameraPermissions();
   const [, setRecentSearches] = useState<string[]>([]);
   const recentSearchesRef = useRef<string[]>([]);
 
@@ -707,6 +710,37 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
   };
 
   const cameraPermissionGranted = permission?.granted;
+  // S79 B3-A C2: denied for good = iOS will not show the system prompt again
+  // (status 'denied' AND canAskAgain false). Strict: a permission object
+  // without `status` is NOT denied, so it keeps today's "Turn on camera" card.
+  const cameraPermissionStatus: string | undefined = permission?.status;
+  const cameraDenied = cameraPermissionStatus === 'denied' && permission?.canAskAgain === false;
+  const deniedCardShown = !cameraPermissionGranted && cameraDenied;
+  // While the denied card is shown, re-read the permission once per return
+  // to the foreground (a trip to Settings). The hook's `get` runs only on
+  // mount, so without this the card stays stale. Guarded: older callers and
+  // mocks return a two-element tuple.
+  useEffect(() => {
+    if (!deniedCardShown || typeof getPermission !== 'function') return undefined;
+    let last: AppStateStatus = AppState.currentState;
+    const sub = AppState.addEventListener('change', (next: AppStateStatus) => {
+      if (next === 'active' && last !== 'active') {
+        void Promise.resolve()
+          .then(() => getPermission())
+          .catch(() => undefined);
+      }
+      last = next;
+    });
+    return () => sub.remove();
+  }, [deniedCardShown, getPermission]);
+  // Not wrapped in withAiConsent: opening Settings sends nothing to the AI.
+  const handleOpenSettings = () => {
+    try {
+      void Promise.resolve(Linking.openSettings()).catch(() => undefined);
+    } catch {
+      // never throw from a settings link
+    }
+  };
 
   // Compare CTA gate: scan-only on HomeScreen. Type/Link modes consolidate
   // the Compare button INSIDE TwoInputShell (single source of truth — the
@@ -756,13 +790,28 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     }
 
     if (inputMode === 'scan') {
+      if (!cameraPermissionGranted && cameraDenied) {
+        return (
+          <View style={styles.permissionCard}>
+            <Camera size={48} color={colors.text.secondary} />
+            <Text style={styles.permissionTitle}>{t('home.permission.denied_title')}</Text>
+            <Text style={styles.permissionText}>{t('home.permission.denied_body')}</Text>
+            <TouchableOpacity testID="home-permission-open-settings" style={styles.permissionButton} onPress={handleOpenSettings}>
+              <Text style={styles.permissionButtonText}>{t('home.permission.open_settings')}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.galleryFallback} onPress={handleGalleryFallbackPress}>
+              <Text style={styles.galleryFallbackText}>{t('home.permission.gallery_link')}</Text>
+            </TouchableOpacity>
+          </View>
+        );
+      }
       if (!cameraPermissionGranted) {
         return (
           <View style={styles.permissionCard}>
             <Camera size={48} color={colors.text.secondary} />
             <Text style={styles.permissionTitle}>{t('home.permission.title')}</Text>
             <Text style={styles.permissionText}>{t('home.permission.body')}</Text>
-            <TouchableOpacity style={styles.permissionButton} onPress={handleRequestCameraPermission}>
+            <TouchableOpacity testID="home-permission-cta" style={styles.permissionButton} onPress={handleRequestCameraPermission}>
               <Text style={styles.permissionButtonText}>
                 {t('home.permission.cta')}
               </Text>

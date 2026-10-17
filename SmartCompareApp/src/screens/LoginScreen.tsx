@@ -43,7 +43,6 @@ import {
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { usePreventScreenCapture } from 'expo-screen-capture';
 import {
   login,
   signInWithGoogle,
@@ -58,6 +57,7 @@ import { DirectionalIcon } from '../components/primitives/DirectionalIcon';
 import { ConsentRow, LegalDoc } from '../components/ConsentRow';
 import { buildConsentPayload } from '../services/consent';
 import { AppleSignInButton } from '../components/AppleSignInButton';
+import { GoogleGlyph } from '../components/GoogleGlyph';
 import { authErrorKey } from '../services/authErrorCopy';
 
 type LoginScreenProps = {
@@ -112,14 +112,12 @@ function SocialButton({
 }
 
 function SocialGlyph({ provider }: { provider: SocialProvider }) {
-  // Real lucide Mail for Email; Google uses a colored "G" until a brand
-  // glyph ships (a future swap to a react-native-svg path can fill in).
+  // Real lucide Mail for Email; Google is the official multicolour "G"
+  // (S79 B3-A C6, src/components/GoogleGlyph.tsx).
   if (provider === 'email') {
     return <Mail size={18} color={colors.text.primary} strokeWidth={2} />;
   }
-  // google — use a colored "G" character as placeholder (real brand glyph
-  // arrives in S3 polish; functional contract holds).
-  return <Text style={socialStyles.glyphGoogle}>G</Text>;
+  return <GoogleGlyph />;
 }
 
 // ---------- AuthField (Email + Password) ----------
@@ -191,7 +189,6 @@ function AuthField({
 // ---------- Main screen ----------
 export default function LoginScreen({ navigation, onLoginSuccess }: LoginScreenProps) {
   const { t } = useTranslation();
-  usePreventScreenCapture();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -410,7 +407,7 @@ export default function LoginScreen({ navigation, onLoginSuccess }: LoginScreenP
         </Text>
         <Text style={styles.subtitle}>
           {t('auth.welcomeBackSub', {
-            defaultValue: 'Your advisor and credits are waiting.',
+            defaultValue: 'Sign in to compare any two products.',
           })}
         </Text>
 
@@ -438,8 +435,9 @@ export default function LoginScreen({ navigation, onLoginSuccess }: LoginScreenP
           </View>
         ) : null}
 
-        {/* SocialRow — Google, Email */}
-        <View style={styles.socialRow}>
+        {/* S79 B3-A C6: Google and Email each on their own full-width row
+            under Apple, the same 48 pt height (HIG parity, audit L5-08). */}
+        <View style={styles.socialFullRow}>
           <SocialButton
             testID="login-social-google"
             provider="google"
@@ -448,6 +446,8 @@ export default function LoginScreen({ navigation, onLoginSuccess }: LoginScreenP
             loading={socialLoading === 'google'}
             disabled={disabled && socialLoading !== 'google'}
           />
+        </View>
+        <View style={styles.socialFullRow}>
           <SocialButton
             testID="login-social-email"
             provider="email"
@@ -595,9 +595,9 @@ const styles = StyleSheet.create({
   appleRow: {
     marginBottom: 8,
   },
-  socialRow: {
-    flexDirection: 'row',
-    gap: 8,
+  socialFullRow: {
+    width: '100%',
+    marginBottom: 8,
   },
   orRow: {
     flexDirection: 'row',
@@ -688,7 +688,7 @@ const styles = StyleSheet.create({
 
 const socialStyles = StyleSheet.create({
   btn: {
-    flex: 1,
+    width: '100%',
     minHeight: 48,
     borderRadius: 12,
     backgroundColor: colors.bg.primary,
@@ -703,17 +703,12 @@ const socialStyles = StyleSheet.create({
   btnDisabled: {
     opacity: 0.5,
   },
+  // S79 B3-A C6: no fixed lineHeight (13 / 13 clipped the label at larger
+  // text sizes) and 15 pt to match the full-width row.
   label: {
-    fontSize: 13,
+    fontSize: 15,
     fontWeight: '600',
-    lineHeight: 13,
     color: colors.text.primary,
-  },
-  glyphGoogle: {
-    fontSize: 16,
-    lineHeight: 16,
-    color: '#4285F4',
-    fontWeight: '700',
   },
 });
 

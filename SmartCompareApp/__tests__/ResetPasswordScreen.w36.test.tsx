@@ -31,9 +31,11 @@ jest.mock('react-i18next', () => ({
   }),
 }));
 
-// The screen is a password-entry surface: it must call the screen-capture
-// guard. The shared __mocks__ stub is a plain no-op function, so it is swapped
-// for a spy here to make the call observable.
+// S79 B3-A (pin change PC1, gate note GA1): the screen no longer blocks
+// screen capture (App Review 2.1 asked for a recording of the auth flows,
+// which the block turned black); the password fields keep secureTextEntry.
+// The shared __mocks__ stub is a plain no-op function, so it is swapped for a
+// spy here to make a (now forbidden) call observable.
 jest.mock('expo-screen-capture', () => ({
   usePreventScreenCapture: jest.fn(),
 }));
@@ -156,9 +158,9 @@ describe('with a recovery token in the slot', () => {
     expect(mockNavigation.navigate).not.toHaveBeenCalled();
   });
 
-  it('arms the screen-capture guard on mount (a new password is typed here)', () => {
+  it('does not block screen capture (B3-A)', () => {
     renderScreen();
-    expect(usePreventScreenCapture).toHaveBeenCalled();
+    expect(usePreventScreenCapture).not.toHaveBeenCalled();
   });
 
   it('consumes the slot on mount — the token is not left parked for a second reader', () => {

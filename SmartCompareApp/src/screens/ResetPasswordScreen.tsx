@@ -27,7 +27,6 @@ import {
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { usePreventScreenCapture } from 'expo-screen-capture';
 import { completePasswordRecovery } from '../services/authService';
 import { parseApiError } from '../services/api';
 import { consumePendingRecovery } from '../services/passwordRecoveryLink';
@@ -51,7 +50,6 @@ function isWeakPassword(password: string): boolean {
 
 export default function ResetPasswordScreen({ navigation }: ResetPasswordScreenProps) {
   const { t } = useTranslation();
-  usePreventScreenCapture();
   const [recovery] = useState(() => consumePendingRecovery());
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
