@@ -51,11 +51,13 @@ from app.services.auth_service import (
     get_user_preferences,
     save_user_preferences,
     delete_user_account,
+    store_apple_refresh_token,
     resend_verification_email,
     check_account_locked,
     track_failed_login,
     clear_failed_logins,
 )
+from app.services.apple_siwa_service import apple_token_revocation_enabled
 from app.services.audit_service import log_audit_event
 from app.services.cohort_service import get_cohort_service
 from app.utils.async_utils import fire_and_forget
@@ -302,6 +304,15 @@ class SocialLoginRequest(BaseModel):
     terms_accepted: Optional[bool] = None
     terms_version: Optional[str] = Field(default=None, max_length=32)
     age_attested: Optional[bool] = None
+    # B3-B: the Apple authorizationCode (B3-A clients send it for Apple only).
+    # OPTIONAL, no max_length; any non-str value becomes None so every body the
+    # base accepted is still accepted with the same response (ruling Q11).
+    authorization_code: Optional[str] = None
+
+    @field_validator("authorization_code", mode="before")
+    @classmethod
+    def _authorization_code_str_or_none(cls, value):
+        return value if isinstance(value, str) else None
 
 
 class AuthResponse(BaseModel):
@@ -1159,6 +1170,14 @@ async def social_login(request: Request, body: SocialLoginRequest):
     # response body is byte-equal in both flag states.
     if social_device_fingerprint_enabled():
         _apply_social_device_fingerprint(request, (result.get("user") or {}).get("id"))
+    # B3-B: additive, default OFF, read per call. After the 401 / consent raises
+    # (a rejected login exchanges nothing) and after W3-3; store_apple_refresh_token
+    # never raises and `result` is returned unchanged, so the body is byte-equal
+    # in both flag states.
+    if apple_token_revocation_enabled() and body.provider == "apple" and body.authorization_code:
+        await store_apple_refresh_token(
+            (result.get("user") or {}).get("id"), body.authorization_code, body.id_token
+        )
     return result
 
 

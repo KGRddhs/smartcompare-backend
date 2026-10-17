@@ -102,6 +102,11 @@ KEEP_TABLE_COLUMNS: dict[tuple[str, str], str] = {
         "are kept for fraud and abuse forensics; the key is the stub's random uuid, "
         "and 043 sets ip_address to NULL on these rows."
     ),
+    ("apple_siwa_tokens", "user_id"): (
+        "B3-B (044): the Apple refresh-token row is read before the cascade and "
+        "revoked at Apple by delete_user_account; it is removed by its FK to "
+        "auth.users ON DELETE CASCADE on the auth delete, not by the cascade (ruling Q1)."
+    ),
 }
 
 # C5(d): false positives of the widened personal-name regex (measured empty).
@@ -141,13 +146,13 @@ KNOWN_USERS_COLUMNS = frozenset(
     {"id", "created_at"} | set(EXPECTED_TOMBSTONE)
 )
 
-# Section 2b: the 12 user-referencing tables.
+# Section 2b: the 12 user-referencing tables, + apple_siwa_tokens (B3-B, 044).
 KNOWN_USER_TABLES = frozenset(
     {
         "comparisons", "comparison_feedback", "user_events", "search_logs",
         "user_usage", "admin_audit_log", "referral_invites", "referral_redemptions",
         "deep_review_credits", "re_engagement_events", "pain_workflow_events",
-        "user_preference_history",
+        "user_preference_history", "apple_siwa_tokens",
     }
 )
 
@@ -1005,13 +1010,16 @@ def test_precheck_carries_the_c1_c2_c9_sections():
     for word in ("nil_uuid_rows", "cross_user_comparison_refs", "pg_trigger",
                  "relrowsecurity", "relforcerowsecurity", "rolbypassrls", NIL_UUID):
         assert word in low, f"PRECHECK lacks {word!r}"
-    for t in sorted(KNOWN_USER_TABLES | {"users"}):
+    # B3-B (gate ruling GB1, E5): the 043 PRECHECK is a historical one-paste
+    # file that predates 044, so apple_siwa_tokens is not expected in it.
+    precheck_tables = KNOWN_USER_TABLES - {"apple_siwa_tokens"}
+    for t in sorted(precheck_tables | {"users"}):
         assert f"public.{t}" in low, f"PRECHECK never names public.{t}"
     for col in ("user_id", "referrer_user_id", "redeemed_by_user_id", "invitee_user_id", "comparison_id"):
         assert col in low, f"PRECHECK never names {col}"
     trig = low[low.find("'trigger'"):]
     trig = trig[: trig.find("union all")] if "union all" in trig else trig
-    missing = [t for t in sorted(KNOWN_USER_TABLES | {"users"}) if f"public.{t}" not in trig]
+    missing = [t for t in sorted(precheck_tables | {"users"}) if f"public.{t}" not in trig]
     assert not missing, f"PRECHECK section 8 (triggers) does not cover: {missing}"
 
 
@@ -1073,8 +1081,9 @@ def test_fence_sees_the_27_known_users_columns():
     )
 
 
-def test_fence_sees_the_12_known_user_tables():
-    """U8b 5.3 / F2: the fence finds exactly the 12 user-referencing tables of 2b."""
+def test_fence_sees_the_13_known_user_tables():
+    """U8b 5.3 / F2 + B3-B 044: the fence finds exactly the 13 user-referencing tables
+    (the 12 of 2b + apple_siwa_tokens)."""
     tables = fence_user_tables(real_forward_files())
     assert set(tables) == KNOWN_USER_TABLES, (
         f"only fence {sorted(set(tables) - KNOWN_USER_TABLES)}, only 2b {sorted(KNOWN_USER_TABLES - set(tables))}"

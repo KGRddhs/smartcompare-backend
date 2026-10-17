@@ -317,10 +317,12 @@
     "apple": {
       "kind": "identity_provider",
       "module": [
-        "SmartCompareApp/src/components/AppleSignInButton.tsx"
+        "SmartCompareApp/src/components/AppleSignInButton.tsx",
+        "app/services/apple_siwa_service.py"
       ],
       "hosts": [
-        "expo-apple-authentication"
+        "expo-apple-authentication",
+        "appleid.apple.com"
       ],
       "gate_flag": null,
       "personal_data": true
