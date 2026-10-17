@@ -1789,6 +1789,20 @@ def _phase2_min_residual_seconds() -> float:
     return _float_knob("PHASE2_MIN_RESIDUAL_SECONDS", 8.0)
 
 
+def _tail_reserve_seconds() -> float:
+    """S78-TG (TG2): the post-Phase-1 tail the Tier-2/3 residual guard keeps free
+    (default 6.5 s = the measured 6.1 s Phase-1 end -> moderation). Read per call;
+    unset / blank / garbage / non-finite / <= 0 -> 6.5 (the S65d float-knob rule).
+    One knob for this guard and plan fix 5 (ruling TG-A7 / Q3)."""
+    return _float_knob("TAIL_RESERVE_SECONDS", 6.5)
+
+
+def _tier_fill_residual_short(residual: float, wall_seconds: float) -> bool:
+    """S78-TG (TG3): True when a fill whose outer wall is `wall_seconds` must be
+    skipped -- the residual to the compare deadline is STRICTLY below wall + reserve."""
+    return residual < wall_seconds + _tail_reserve_seconds()
+
+
 _VS_SPLIT_RE = re.compile(r" vs ", re.IGNORECASE)
 
 
@@ -3168,6 +3182,26 @@ async def _lazy_bh_pdp_backfill(
     return extra
 
 
+def _tier_fill_has_missing(brand: str, name: str, category: str, specs_so_far: dict) -> bool:
+    """S78-TG (TG3/TG4, ruling Q1) -- True iff tier2/tier3 would actually run a fill
+    for this product: the same subtype-filtered non-negotiable list and the same
+    "missing" test the two tiers apply, and not under the D1 no-fabrication veto
+    (read via the pure flag reader, never _no_fabrication_blocks_refill, which logs).
+    A tier that would return {} at once is never "skipped": it is called exactly as
+    at base, so no skip line and no mark is ever written for a no-op."""
+    from app.services.extraction_service import (
+        non_negotiable_fields_for, specs_no_fabrication_enabled,
+    )
+    if specs_no_fabrication_enabled():
+        return False
+    specs_so_far = specs_so_far or {}
+    for field in non_negotiable_fields_for(category, _detect_subtype(brand, name, category)):
+        value = specs_so_far.get(field)
+        if not value or value in ("N/A", ""):
+            return True
+    return False
+
+
 class StructuredComparisonService:
     """Main service for structured product comparisons.
 
@@ -3246,6 +3280,10 @@ class StructuredComparisonService:
         # read only under ENABLE_PHASE2_RESIDUAL_GUARD / by the metadata stamp.
         self._compare_deadline: Optional[float] = None
         self._phase2_skipped: bool = False
+        # S78-TG (TG4) -- the per-run Tier-2/3 skip marks the residual guard appends
+        # ({"product": <slot>, "tier": "tier2"|"tier3"}); stamped as the additive
+        # metadata.tier_fill_skipped only when non-empty (flag-ON only).
+        self._tier_fill_skipped: List[Dict[str, Any]] = []
         # Session 70 OAI_OBS #268 (R2.5) — True when the SERVED verdict ran on
         # the standard model instead of the configured verdict model (the
         # router's daily-cap downgrade or the 429 fallback). Read off
@@ -3707,6 +3745,42 @@ class StructuredComparisonService:
                 metadata[key] = True
         if self._phase2_skipped:
             metadata["phase2_skipped"] = True
+        # S78-TG (TG4) -- a sorted COPY of the Tier-2/3 skip marks, only when a skip
+        # happened under the flag; the flag is not re-read here (ruling Q4).
+        marks = getattr(self, "_tier_fill_skipped", None)
+        if marks:
+            metadata["tier_fill_skipped"] = sorted(
+                (dict(m) for m in marks),
+                key=lambda m: (m.get("product", 0), m.get("tier", "")),
+            )
+
+    def _tier_fill_residual_skip(
+        self, tier: str, wall_seconds: float, *, brand: str, name: str,
+        category: str, specs_so_far: dict, partial_slot: Optional[int],
+    ) -> bool:
+        """S78-TG (TG1-TG4) -- ENABLE_TIER_FILL_RESIDUAL_GUARD (default OFF, read per
+        call): True when the tier must NOT run because the compare deadline is closer
+        than its wall + TAIL_RESERVE_SECONDS and the tier has a field to fill. No
+        deadline (None / missing) -> never skip. One INFO line + one mark per skip.
+        Flag OFF: returns False before the deadline, the clock or the knob is read."""
+        if not _flag_on("ENABLE_TIER_FILL_RESIDUAL_GUARD"):
+            return False
+        deadline = getattr(self, "_compare_deadline", None)
+        if deadline is None:
+            return False
+        residual = deadline - time.monotonic()
+        if not _tier_fill_residual_short(residual, wall_seconds):
+            return False
+        if not _tier_fill_has_missing(brand, name, category, specs_so_far):
+            return False
+        product = partial_slot if partial_slot is not None else 0
+        marks = getattr(self, "_tier_fill_skipped", None)
+        if not isinstance(marks, list):
+            marks = []
+            self._tier_fill_skipped = marks
+        marks.append({"product": product, "tier": tier})
+        logger.info("[L2.6] %s skipped residual=%.1fs product=%d", tier, residual, product)
+        return True
 
     async def _parse_with_budget(self, query: str) -> Tuple[Dict[str, Any], Dict[str, int]]:
         """FANOUT-STARVE D8 (FS-R3, FG-4) -- the ONE Step-1 seam both compare entries
@@ -3939,6 +4013,7 @@ class StructuredComparisonService:
         # armed with STREAM_HARD_CAP_SECONDS a few microseconds ago.
         self._compare_deadline = time.monotonic() + STREAM_HARD_CAP_SECONDS
         self._phase2_skipped = False
+        self._tier_fill_skipped = []  # S78-TG: per-run reset
 
         # Phase 2A.1 — orchestrator-level stage timings (only allocated when flag is on)
         orchestrator_timings = {} if _debug_timings_enabled() else None
@@ -4547,6 +4622,7 @@ class StructuredComparisonService:
         # residual guard (read under its flag only).
         self._compare_deadline = _stream_deadline
         self._phase2_skipped = False
+        self._tier_fill_skipped = []  # S78-TG: per-run reset
 
         # I5.6 lever-2 — bound to None at the top so the outer exception handler
         # can always cancel it (mirror of the sync path).
@@ -6045,10 +6121,17 @@ class StructuredComparisonService:
         # entirely — zero added wall).
         result_specs_now = result.get("specs") or {}
         t_tier2 = time.perf_counter() if stage_timings is not None else None
-        tier2_filled = await tier2_fill_non_negotiables(
-            brand=brand, name=name, variant=variant,
-            category=category, specs_so_far=result_specs_now,
-        )
+        # S78-TG -- the residual guard (flag OFF: the base call, unchanged).
+        if self._tier_fill_residual_skip(
+            "tier2", _TIER2_WALL_SECONDS, brand=brand, name=name, category=category,
+            specs_so_far=result_specs_now, partial_slot=partial_slot,
+        ):
+            tier2_filled = {}
+        else:
+            tier2_filled = await tier2_fill_non_negotiables(
+                brand=brand, name=name, variant=variant,
+                category=category, specs_so_far=result_specs_now,
+            )
         if stage_timings is not None:
             stage_timings["tier2_fallback_ms"] = round(
                 (time.perf_counter() - t_tier2) * 1000, 1
@@ -6069,10 +6152,17 @@ class StructuredComparisonService:
         # 3s outer wall cap. Skips entirely when nothing's missing — happy
         # path adds zero wall.
         t_tier3 = time.perf_counter() if stage_timings is not None else None
-        tier3_filled = await tier3_synthesize_non_negotiables(
-            brand=brand, name=name, variant=variant,
-            category=category, specs_so_far=result_specs_now,
-        )
+        # S78-TG -- the residual guard, re-read after Tier 2 (independent decision).
+        if self._tier_fill_residual_skip(
+            "tier3", _TIER3_WALL_SECONDS, brand=brand, name=name, category=category,
+            specs_so_far=result_specs_now, partial_slot=partial_slot,
+        ):
+            tier3_filled = {}
+        else:
+            tier3_filled = await tier3_synthesize_non_negotiables(
+                brand=brand, name=name, variant=variant,
+                category=category, specs_so_far=result_specs_now,
+            )
         if stage_timings is not None:
             stage_timings["tier3_synth_ms"] = round(
                 (time.perf_counter() - t_tier3) * 1000, 1
