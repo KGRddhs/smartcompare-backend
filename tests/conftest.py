@@ -197,6 +197,7 @@ def _reset_serper_budget_gate_memo(monkeypatch):
         yield
         return
     serper_service.reset_serper_budget_cache()
+    serper_service._reset_serper_key_state_memo()  # S78-SM
     yield
 
 
