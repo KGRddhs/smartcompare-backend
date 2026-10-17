@@ -1,0 +1,59 @@
+{
+ "unit": "B3-A client (worktree C:/Users/SynAckITPC/Documents/AI/sc-s79-b3client, branch feature/s79-b3-client): re-verification of fix commit c057f64d (T1: the History tip), one commit on GREEN 6b61b216 / base b965c63b",
+ "lens": "RE-VERIFIER on the exact final bytes. Steps: the 7 RED files, the mutation table, a re-check of the one previously blocking/major finding (T1, truth lens) with its own probes, and the comm set (full jest + tsc). Also read-only checks of diff hygiene and the backend truth of the new copy.",
+ "commit_verified": "c057f64d8e5fc6136663bf5cdd6f94d00cc427e5. `git rev-parse HEAD` matched at the start, and again at the end (`final 16:42:39 HEAD=c057f64d... status=[] m41=0`). `git status --short` was empty at the start, after the restore and at the end. `sha256sum -c premut_sha.txt` reported 0 non-OK lines over the 18 mutation-target files. The commit changes 3 files, +8/-8, content lines only. Line endings are kept: en/ar are i/lf w/crlf; the fixture is i/lf w/lf. The unit diff b965c63b..c057f64d has 35 files, which is exactly the spec gate-9 list. It touches no package*.json, App.tsx, jest.config, .snap or app/ file, and has 0 hits for the sk- rule. Commit trailer: `Co-Authored-By: Claude Opus 5.5` (see RV6).",
+ "findings": [
+  {
+   "id": "RV1",
+   "severity": "note",
+   "title": "Previous BLOCK T1 (truth lens: the 'Every comparison you run is saved in History' tip was false for Link mode) is FIXED on the exact bytes",
+   "evidence": "Static probe probe_t1_copy.py (output in probe_t1_copy_out.txt):\n- Both keys read EN 'Comparisons you type or scan are saved in History.'.\n- fixture_en_eq=True and fixture_ar_eq=True for both keys.\n- AR has 0 diacritics. The AR value contains the AR labels of home.mode.type and home.mode.scan (with the bi-/al- prefix).\n- Key sets: en=1010, ar=1010, equal=True.\n- The old EN claim has 0 git-grep hits at c057f64d. save_offline is referenced in src/ only at LoadingScreenVariants.tsx:179.\n\nBackend truth (read-only `git show c057f64d`):\n- Text POST saves under `if user_id` (text_routes ~:717).\n- Camera saves under `if user_id` (image_routes :553-560).\n- compare_from_urls returns {success, products, comparison, winner_index, recommendation, key_differences, category_used, source_urls} with no metadata key (url_extraction_service :680-689).\n- database_service._validate_renderable needs metadata.query (:320-321).\n- So a Link compare is never saved (#340), and the new copy names only Type and Scan, which is true.\n\nMutants on these bytes:\n- `[mut] M46 KILLED rc=1 start=2026-10-17 16:34:42 end=16:35:02 expected=R26 (T1, EN) restore_sha=OK`\n- `[mut] M47 KILLED rc=1 start=2026-10-17 16:35:02 end=16:35:26 expected=R26 (T1, AR) restore_sha=OK`\n\nR26 is green in the RED run.",
+   "fix": "none"
+  },
+  {
+   "id": "RV2",
+   "severity": "minor",
+   "title": "Full jest under box load: one extra failing node outside the 4 drift nodes (load flake, passes alone)",
+   "evidence": "`[jest] tag=b3a-reverify-full start=2026-10-17 16:13:19 end=16:18:26 rc=1`:\n- Suites: 379 total, 374 passed, 2 failed, 3 pending.\n- Tests: 3718 total, 3687 passed, 5 failed.\n- Snapshots: 42/42 matched, 0 added, 0 updated.\n- The 4 w37 drift nodes d5/k2/k4/k5 fail exactly as at base (`all four: True`).\n- One extra failure: services/authService.consent.w3-16.test.ts '10a. signInWithGoogle(consent) posts the consent keys...' with 'expect(jest.fn()).toHaveBeenCalledTimes(expected) Expected 1 Received 0' at sentFetchBody :99.\n\nRe-run alone: `[jest] tag=b3a-reverify-w316-alone start=2026-10-17 16:28:28 end=16:31:50 rc=0` (Tests 4 passed, 4 total).\n\nThe fix agent's first full run under load showed the same class: authService.b4 + socialFingerprint.w3-3, 'Google Sign-In not available', both green alone. c057f64d changes only 2 catalog values plus the fixture, and none of them is read by that suite.\n\nAfter the run, `git status --short -- '*.snap'` was empty.",
+   "fix": "No change in this unit; CI's full jest is the arbiter. Optional follow-up: find why the Google sign-in path suites are load-sensitive."
+  },
+  {
+   "id": "RV3",
+   "severity": "note",
+   "title": "Mutation table only partly re-run on the exact bytes: M1-M35, M46, M47 KILLED; M36-M45 NOT MEASURED in this run",
+   "evidence": "Box pathological: M31-M34 took 4-5 min each. At 16:07:16 I stopped the harness with taskkill /T /F, mid-M35. restore_after_stop.py then printed 'restored SmartCompareApp/src/services/authService.ts from M32__...authService.ts' and 'restore: 18 files compared, mismatches=[], m41_file_present=False'. Status was clean afterwards.\n\nThe M35 jest child survived the kill as an orphan. It finished at 16:11:03, after the restore, so the first M35 reading (13/13 green) is a race artifact. The orphan ended before the full suite started (16:13:19).\n\nM35 re-run cleanly: `[mut] M35 KILLED rc=1 start=2026-10-17 16:35:27 end=16:36:25 expected=R46 restore_sha=OK killers=['googleButton:r46 revokeGoogleAccessBestEffort is bounded...']`.\n\nM25-M27 were re-checked excluding the drift nodes (mut_analyze.py):\n- M25 real=4 (nativeStrings r36/r37, w37 c3/c5)\n- M26 real=3 (r37, c3, c5)\n- M27 real=2 (r34, w37 u11)\n\nM20 was killed by honestCopy r28b, the PIN GATE_B3 added for it.\n\nM36-M45 target authService / EditProfileScreen / HomeScreen / onboardingResume / RegisterScreen, none of which changed between 6b61b216 and c057f64d. The fix agent's 47-mutant run on the same code bytes (13:58-14:24) killed all 47.",
+   "fix": "If the orchestrator wants the full table on these bytes: `mutate_rv.py M36 M37 M38 M39 M40 M41 M42 M43 M44 M45` on an idle box (about 4 min healthy)."
+  },
+  {
+   "id": "RV4",
+   "severity": "note",
+   "title": "Backend comm chunks A/B (GA9) NOT MEASURED at c057f64d",
+   "evidence": "Plain commands took more than 60 s twice at 15:26-15:28 (`date; cat`, `date; head`), and a grep more than 120 s at 15:38. Under the hard rule I launched no pytest. The fix agent's head commA (15:00:49) also died: pytest-timeout fired in test_secret_scan_static.\n\nLast backend comm measured on B3-A bytes (GREEN, before T1):\n- commA '1846 passed, 4 deselected' (11:33:23)\n- commB '350 passed' (11:37:20)\n\nGrep over tests/ for save_offline, loading.tip and the old claim: 0 files. The three catalog readers read only results.dimension.*, register.benefits.* and the copy policy.",
+   "fix": "Orchestrator: run chunk A (23 files, bound 1200) and chunk B (8 pins, bound 600) on an idle box, or let CI arbitrate. c057f64d edits no backend file."
+  },
+  {
+   "id": "RV5",
+   "severity": "note",
+   "title": "The RED contract fixture was amended by the fix commit; it needs the orchestrator's recorded ruling (GA2 pattern)",
+   "evidence": "c057f64d changes `__tests__/fixtures/b3a_copy.json` lines 42-43 (EN) and 70-71 (AR) for the two save_offline keys. No test row changed. The commit message says: 'Needs the orchestrator's ruling on the amended fixture strings, recorded like GA2.' The AR value stays a [NATIVE READ] draft (fixture _doc).",
+   "fix": "Record the ruling (EN + AR values) beside GA2 before the PR."
+  },
+  {
+   "id": "RV6",
+   "severity": "note",
+   "title": "Commit trailer differs from the brief's GIT rule (disclosed deviation)",
+   "evidence": "`git log -1 --format=%B c057f64d | tail -1` = 'Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>'. This is the same trailer as 6b61b216. The brief's GIT rule names 'Claude Fable 5.1'; the brief itself discloses this.",
+   "fix": "The orchestrator decides whether to keep it (it names the model that ran) or amend it at PR time."
+  },
+  {
+   "id": "RV7",
+   "severity": "minor",
+   "title": "Engineering-lens minors carried over unchanged (not in T1 scope; not re-probed in this run)",
+   "evidence": "The adv-b3a-eng probes at 6b61b216 reported:\n- P1c `{\"first\":3,\"storageAfterClear\":null,\"peekAfterClear\":{\"settled\":true,...},\"second\":3}`: the memoised resume is reused by a new host mount in the same JS context after a clear.\n- P1f `{\"step\":3}`: a host mounted 2 h later still resumes.\n- P1e 'logout with hung resume removeItem -> timeout'.\n- Survivors X1 (A6 logout clear has no RED row), X2 (GA3 never-awaited is not pinned), X3 (ScanCamera predicate || is not pinned).\n\nThe code behind them (onboardingResume.ts, NewOnboardingHost.tsx, authService.ts, ScanCameraScreen.tsx) is byte-unchanged between 6b61b216 and c057f64d.\n\nThe truth-lens residuals are also unchanged at c057f64d (Grep):\n- Stale defaultValues at Step15Reveal.tsx:188 and Step14Loading.tsx:146, not rendered while the keys exist.\n- The orphan key cohort.trainedBy (en.json:960).",
+   "fix": "Follow-up unit or a ruling. Options: reset the memo on clearOnboardingResume and re-check the TTL at peek time; bound the resume clear inside logout's finally; add pins for X1-X3."
+  }
+ ],
+ "probes_run": "1. RED files: `[jest] tag=b3a-reverify-red-head start=2026-10-17 15:30:32 end=15:31:32 rc=0`. Test Suites 7 passed, 7 total; Tests 85 passed, 85 total. Run with `timeout -k 15 600 node node_modules/jest/bin/jest.js --ci __tests__/b3a`. Toolchain: @babel/core and .bin/jest present.\n2. tsc: `[tsc] tag=b3a-reverify-tsc start=2026-10-17 15:31:53 end=15:32:02 rc=0 lines=0` (TypeScript 5.9.3, run by path).\n3. T1 static copy probe (probe_t1_copy.py, read-only, ASCII output): see RV1. Keys 1010==1010; fixture equals both catalogs; 0 AR diacritics; 0 old-claim hits.\n4. T1 backend truth (read-only `git show c057f64d`): text_routes and image_routes save under `if user_id`; the compare_from_urls success dict has no metadata; _validate_renderable needs metadata.query.\n5. Mutation harness mutate_rv.py: a copy of the fix agent's harness; a missing JSON now reads NOT-MEASURED. 18-file premut sha snapshot. M1-M34: KILLED, every restore_sha=OK. M25-M27 counted only by non-drift nodes (mut_analyze.py). Stopped at 16:07:16; restore verified (RV3). M46, M47 and M35 re-run 16:34:42-16:36:25: all KILLED, restore_sha=OK.\n6. Full jest: `[jest] tag=b3a-reverify-full start=2026-10-17 16:13:19 end=16:18:26 rc=1`. Only the 4 drift nodes plus authService.consent.w3-16 10a (load flake). Snapshots 42/42 matched; snap status empty.\n7. That suite alone: `[jest] tag=b3a-reverify-w316-alone start=2026-10-17 16:28:28 end=16:31:50 rc=0` (4/4).\n8. Backend pytest: none run (box-pathology rule; RV4). No [pyt] lines.\n9. Final state: HEAD c057f64d, status empty, useScreenGuard.ts absent, premut sha check 0 mismatches.\n\nFiles I wrote, all in scratchpad/b3a_reverify/, none in the worktree. sha256 prefixes: full_summary.py 4a8af39f165c1d17, mut_analyze.py cf24cbc2853b9a1c, mutate_rv.py 1d3f7888a667d1ef, probe_t1_copy.py b1a0dcd58d4444b1, restore_after_stop.py b4789767d1db8a3a. Also notes.md, the logs, the json files and mut/.",
+ "mutation_rerun": "Run on the exact bytes c057f64d. The harness was mutate_rv.py: a byte copy before each mutant, then edit, then the killing jest files by path under `timeout -k 15 600`, then restore and a sha256 compare.\n\n- M1-M34: KILLED, restore_sha=OK on every line. Expected killers matched. M20 was killed by r28b, the PIN GATE_B3 added for it. M25/M26/M27 were killed by real non-drift nodes: 4, 3 and 2 of them.\n- M35: KILLED on the clean re-run (16:35:27-16:36:25, by r46). The first, interrupted reading was a race with the restore.\n- M46 (T1 EN): KILLED by honestCopy r26 (16:34:42-16:35:02).\n- M47 (T1 AR): KILLED by honestCopy r26 (16:35:02-16:35:26).\n- M36-M45: NOT MEASURED in this run. The harness was stopped for the budget on a pathological box (4-5 min per mutant). Their target files are byte-unchanged since 6b61b216, and the fix agent's run on the same code bytes killed all 47.\n\nTotal measured here: 37 of 47 killed, 0 survived, 10 not measured.",
+ "verdict": "PASS_WITH_MINORS"
+}
