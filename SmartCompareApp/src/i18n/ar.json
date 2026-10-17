@@ -954,7 +954,7 @@
   "results.metadata.fresh": " | بيانات حيّة",
   "results.metadata.remainingDaily": "بقي لك {{count}} مقارنات اليوم",
 
-  "cohort.trainedBy": "{{count}} متسوّق خليجي ساعدوا في تدريب هذا",
+  "cohort.trainedBy": "مبني على استطلاع شمل {{count}} من المتسوقين في الخليج",
 
   "camera.close": "إغلاق الكاميرا",
   "camera.help": "مساعدة الكاميرا",

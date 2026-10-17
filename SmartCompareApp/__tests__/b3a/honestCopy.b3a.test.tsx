@@ -101,6 +101,37 @@ function basePick(overrides: Record<string, any> = {}) {
   };
 }
 
+/**
+ * The options object literal of a t() call, given the index right after its
+ * key argument: `, { ... }` with balanced braces (string literals skipped),
+ * or null when the call has no object second argument.
+ */
+function optionsAfter(src: string, from: number): string | null {
+  let j = from;
+  while (j < src.length && /\s/.test(src[j])) j += 1;
+  if (src[j] !== ',') return null;
+  j += 1;
+  while (j < src.length && /\s/.test(src[j])) j += 1;
+  if (src[j] !== '{') return null;
+  let depth = 0;
+  let quote: string | null = null;
+  for (let e = j; e < src.length; e += 1) {
+    const c = src[e];
+    if (quote) {
+      if (c === '\\') e += 1;
+      else if (c === quote) quote = null;
+      continue;
+    }
+    if (c === "'" || c === '"' || c === '`') quote = c;
+    else if (c === '{') depth += 1;
+    else if (c === '}') {
+      depth -= 1;
+      if (depth === 0) return src.slice(j, e + 1);
+    }
+  }
+  return null;
+}
+
 /** Non-ASCII escaped, so a failure message never prints Arabic. */
 const esc = (v: string) => v.replace(/[^ -~]/g, (c) => '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0'));
 
@@ -227,6 +258,7 @@ describe('B3-A honest copy (C4)', () => {
   });
 
   it('r29 stale defaultValue literals are gone (each equals the new EN value, or there is none)', () => {
+    // (a) the named files (fix round FA6 adds Step14Loading and Step15Reveal).
     const files: Record<string, string[]> = {
       'src/screens/onboarding/Step04Country.tsx': ['onboarding.s4.subtitle'],
       'src/screens/LoginScreen.tsx': ['auth.welcomeBackSub'],
@@ -235,6 +267,8 @@ describe('B3-A honest copy (C4)', () => {
         'onboarding.s1.quote_2',
         'onboarding.s1.quote_3',
       ],
+      'src/screens/onboarding/Step14Loading.tsx': ['loading.cohort.caption'],
+      'src/screens/onboarding/Step15Reveal.tsx': ['onboarding.s15.subtitle'],
     };
     const bad: string[] = [];
     for (const [rel, keys] of Object.entries(files)) {
@@ -253,6 +287,36 @@ describe('B3-A honest copy (C4)', () => {
       }
     }
     expect(bad).toEqual([]);
+
+    // (b) fix round FA6: every t('<key>' ...) call in src/**/*.ts(x) for a
+    // fixture key (changed, new or learning) that carries a defaultValue
+    // carries the fixture EN value.
+    const srcFiles: string[] = [];
+    const walk = (dir: string) => {
+      for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
+        const p = path.join(dir, ent.name);
+        if (ent.isDirectory()) walk(p);
+        else if (/\.tsx?$/.test(ent.name)) srcFiles.push(path.relative(APP, p).split(path.sep).join('/'));
+      }
+    };
+    walk(path.join(APP, 'src'));
+    expect(Object.keys(files).filter((f) => !srcFiles.includes(f))).toEqual([]);
+    const escRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const badAll: string[] = [];
+    for (const rel of srcFiles) {
+      const src = fs.readFileSync(path.join(APP, rel), 'utf8').replace(/\r\n/g, '\n');
+      for (const k of ALL_KEYS) {
+        const re = new RegExp(`\\bt\\(\\s*(['"])${escRe(k)}\\1`, 'g');
+        let hit: RegExpExecArray | null;
+        while ((hit = re.exec(src)) !== null) {
+          const opts = optionsAfter(src, hit.index + hit[0].length);
+          if (opts === null) continue;
+          const m = opts.match(/defaultValue:\s*(['"`])((?:\\.|(?!\1)[\s\S])*)\1/);
+          if (m && m[2] !== FX.en[k]) badAll.push(`${rel}:${k}`);
+        }
+      }
+    }
+    expect(badAll).toEqual([]);
   });
 
   it('r30 the welcome screen labels the quotes as examples, above the first quote', () => {

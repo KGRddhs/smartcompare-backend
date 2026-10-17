@@ -44,6 +44,7 @@ import {
   loadOnboardingResume,
   peekOnboardingResume,
   clearOnboardingResume,
+  consumeOnboardingResume,
   type OnboardingResumeRecord,
 } from '../../services/onboardingResume';
 
@@ -112,6 +113,13 @@ export function NewOnboardingHost({
     };
   }, [resumeSettled]);
   const applied = resumeEligible && resume.settled ? resume.value : null;
+  // S79 B3-A FA1: the record is applied once. This mount keeps it in its
+  // own state; the module view becomes settled-null, so a later full-mode
+  // mount in the same JS context (logout or account deletion, then a new
+  // sign-up, with no bundle reload) starts at step 1.
+  useEffect(() => {
+    if (applied) consumeOnboardingResume();
+  }, [applied]);
 
   // Keep the latest onComplete reachable from the mount-replay effect
   // without re-running the effect when App.tsx passes a fresh closure.

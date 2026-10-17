@@ -143,7 +143,7 @@ export function Step14Loading({
   const hasRealCount = typeof cohortPeerCount === 'number' && cohortPeerCount > 0;
   const cohortCaption = hasRealCount
     ? t('loading.cohort.caption', {
-        defaultValue: 'cohort peers refining your match',
+        defaultValue: 'Informed by a survey of GCC shoppers',
       })
     : undefined;
   const counterTarget = hasRealCount ? cohortPeerCount : undefined;

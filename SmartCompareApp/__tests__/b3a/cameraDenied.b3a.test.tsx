@@ -321,10 +321,26 @@ describe('B3-A camera denied state on ScanCamera (C2, A14)', () => {
     expect(mockRequestPermission).not.toHaveBeenCalled();
     s.unmount();
 
-    mockPermission = { granted: false };
-    const s2 = render(<ScanCameraScreen navigation={nav()} route={{} as any} />);
-    expect(s2.queryByTestId('scan-camera-permission-open-settings')).toBeNull();
-    fireEvent.press(s2.getByTestId('scan-camera-permission-cta'));
-    expect(mockRequestPermission).toHaveBeenCalledTimes(1);
+    // Fix round FA4: R9's four not-denied objects (the first is the original
+    // {granted:false} case) keep the CTA and never show Open Settings.
+    const NOT_DENIED = [
+      { granted: false },
+      { granted: false, status: 'undetermined', canAskAgain: true },
+      { granted: false, status: 'undetermined', canAskAgain: false },
+      { granted: false, status: 'denied', canAskAgain: true },
+    ];
+    for (const perm of NOT_DENIED) {
+      mockRequestPermission.mockClear();
+      mockPermission = { ...perm };
+      const s2 = render(<ScanCameraScreen navigation={nav()} route={{} as any} />);
+      expect({
+        perm,
+        openSettings: s2.queryByTestId('scan-camera-permission-open-settings') !== null,
+        cta: s2.queryByTestId('scan-camera-permission-cta') !== null,
+      }).toEqual({ perm, openSettings: false, cta: true });
+      fireEvent.press(s2.getByTestId('scan-camera-permission-cta'));
+      expect(mockRequestPermission).toHaveBeenCalledTimes(1);
+      s2.unmount();
+    }
   });
 });

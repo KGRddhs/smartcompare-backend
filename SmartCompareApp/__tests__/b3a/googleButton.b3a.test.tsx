@@ -339,6 +339,66 @@ describe('B3-A Google session (C6, service)', () => {
     expect(mockGs.signOut).toHaveBeenCalledTimes(1);
   });
 
+  // Fix round FA2 / FA5: ruling A6 (logout clears the onboarding resume
+  // record) pinned on every logout path, and the clear is bounded.
+  const RESUME_KEY = '@qaren_onboarding_resume_v1';
+  const asyncStorage = () => require('@react-native-async-storage/async-storage').default;
+  const plantResume = () =>
+    asyncStorage().setItem(
+      RESUME_KEY,
+      JSON.stringify({ v: 1, step: 3, data: { language: 'ar' }, saved_at: Date.now() }),
+    );
+
+  it('r45c (FA2) logout leaves the onboarding resume record null on the token, no-token and POST-rejecting paths', async () => {
+    await plantResume();
+    await SecureStore.setItemAsync('qaren_token', 'tok-r45c-1');
+    expect(await logoutWithin()).toBe('done');
+    await settle();
+    const afterToken = await asyncStorage().getItem(RESUME_KEY);
+    expect(logoutPosts()).toHaveLength(1);
+
+    await plantResume();
+    expect(await logoutWithin()).toBe('done');
+    await settle();
+    const afterNoToken = await asyncStorage().getItem(RESUME_KEY);
+
+    mockPost.mockRejectedValue(new Error('net'));
+    await plantResume();
+    await SecureStore.setItemAsync('qaren_token', 'tok-r45c-2');
+    expect(await logoutWithin()).toBe('done');
+    await settle();
+    const afterReject = await asyncStorage().getItem(RESUME_KEY);
+
+    expect({ afterToken, afterNoToken, afterReject }).toEqual({
+      afterToken: null,
+      afterNoToken: null,
+      afterReject: null,
+    });
+  });
+
+  it('r45d (FA5) a never-settling removeItem for the resume key does not hold logout beyond 1 s', async () => {
+    const AS = asyncStorage();
+    const origRemove = AS.removeItem;
+    AS.removeItem = jest.fn((k: string, ...rest: unknown[]) =>
+      k === RESUME_KEY ? new Promise(() => undefined) : origRemove.call(AS, k, ...rest),
+    );
+    jest.useFakeTimers();
+    try {
+      let settled = false;
+      void realAuth()
+        .logout()
+        .then(() => {
+          settled = true;
+        });
+      await jest.advanceTimersByTimeAsync(1000);
+      expect(settled).toBe(true);
+      expect(AS.removeItem).toHaveBeenCalledWith(RESUME_KEY);
+    } finally {
+      jest.useRealTimers();
+      AS.removeItem = origRemove;
+    }
+  });
+
   it('r46 revokeGoogleAccessBestEffort is bounded and fail-soft', async () => {
     const fn = realAuth().revokeGoogleAccessBestEffort;
     expect(typeof fn).toBe('function');
@@ -443,5 +503,33 @@ describe('B3-A account deletion revokes Google (C6)', () => {
     } finally {
       mod.revokeGoogleAccessBestEffort = saved;
     }
+  });
+
+  it('r47c (FA3) a never-settling revoke is not awaited: onAccountDeleted runs once right after clearSession', async () => {
+    const log: string[] = [];
+    mockApiDelete.mockResolvedValue({ data: { success: true } });
+    mockClearSession.mockImplementation(async () => {
+      log.push('clear');
+    });
+    mockRevoke.mockImplementation(() => {
+      log.push('revoke');
+      return new Promise(() => undefined);
+    });
+    const props = makeProps(log);
+    const alertSpy = jest.spyOn(RN.Alert, 'alert').mockImplementation(() => undefined);
+    try {
+      const s = render(<EditProfileScreen {...props} />);
+      fireEvent.press(s.getByTestId('edit-delete-account-row'));
+      const buttons = alertSpy.mock.calls[0][2] as any[];
+      const destructive = buttons.find((b: any) => b.style === 'destructive');
+      await act(async () => {
+        void destructive.onPress();
+        for (let i = 0; i < 5; i += 1) await new Promise((r) => setTimeout(r, 0));
+      });
+    } finally {
+      alertSpy.mockRestore();
+    }
+    expect(props.onAccountDeleted).toHaveBeenCalledTimes(1);
+    expect(log).toEqual(['clear', 'revoke', 'deleted']);
   });
 });

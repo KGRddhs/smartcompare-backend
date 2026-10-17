@@ -30,7 +30,8 @@
     "onboarding.s15.subtitle",
     "results.tips.cohort_match",
     "profile.month.bonus",
-    "onboarding.s16.subtitle"
+    "onboarding.s16.subtitle",
+    "cohort.trainedBy"
   ],
   "brand_keys": ["loading.tip.cross_checks", "results.tips.retailers"],
   "en": {
@@ -59,7 +60,8 @@
     "onboarding.s15.subtitle": "Tuned to your priorities. Informed by a survey of GCC shoppers.",
     "results.tips.cohort_match": "Survey answers from shoppers in {{governorate}} inform this match.",
     "profile.month.bonus": "Bonus comparisons",
-    "onboarding.s16.subtitle": "Sign in so your profile and history travel with you."
+    "onboarding.s16.subtitle": "Sign in so your profile and history travel with you.",
+    "cohort.trainedBy": "Informed by a survey of {{count}} GCC shoppers"
   },
   "ar": {
     "home.permission.denied_title": "الكاميرا غير مفعلة لهذا التطبيق",
@@ -87,7 +89,8 @@
     "onboarding.s15.subtitle": "مصمم حسب أولوياتك. ومبني على استطلاع لمتسوقين في الخليج.",
     "results.tips.cohort_match": "إجابات متسوقين في {{governorate}} من الاستطلاع تدعم هذه النتيجة.",
     "profile.month.bonus": "مقارنات إضافية",
-    "onboarding.s16.subtitle": "سجل الدخول ليرافقك ملفك وسجلك."
+    "onboarding.s16.subtitle": "سجل الدخول ليرافقك ملفك وسجلك.",
+    "cohort.trainedBy": "مبني على استطلاع شمل {{count}} من المتسوقين في الخليج"
   },
   "native": {
     "en": {

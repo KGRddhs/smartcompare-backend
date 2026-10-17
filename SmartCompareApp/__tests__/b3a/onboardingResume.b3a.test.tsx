@@ -503,6 +503,69 @@ describe('B3-A NewOnboardingHost resume (C3)', () => {
     );
   });
 
+  // Fix round FA1: the record is single use in memory too.
+  it('r20c (FA1) a second full-mode mount in the same JS context starts at step 1; storage stays empty', async () => {
+    await inIsolate(
+      (AS) => AS.setItem(KEY, record({ data: { language: 'ar' } })),
+      async ({ AS, React: R, TL, host }) => {
+        const first = TL.render(R.createElement(host.NewOnboardingHost, { onComplete: jest.fn() }));
+        expect(currentStep(first)).toBe(3);
+        await TL.act(async () => {
+          await tick();
+        });
+        first.unmount();
+        const second = TL.render(R.createElement(host.NewOnboardingHost, { onComplete: jest.fn() }));
+        await TL.act(async () => {
+          await tick();
+        });
+        expect(second.queryByTestId('onboarding-step-1')).not.toBeNull();
+        expect(await AS.getItem(KEY)).toBeNull();
+      },
+      { language: 'ar' },
+    );
+  });
+
+  it('r20d (FA1) after clearOnboardingResume() the peek is settled-null and a mount renders step 1', async () => {
+    await inIsolate(
+      (AS) => AS.setItem(KEY, record({ data: { language: 'ar' } })),
+      async ({ AS, React: R, TL, host }) => {
+        const mod = require('../../src/services/onboardingResume');
+        expect(mod.peekOnboardingResume()).toEqual({ settled: true, value: { step: 3, data: { language: 'ar' } } });
+        await mod.clearOnboardingResume();
+        expect(mod.peekOnboardingResume()).toEqual({ settled: true, value: null });
+        const r = TL.render(R.createElement(host.NewOnboardingHost, { onComplete: jest.fn() }));
+        await TL.act(async () => {
+          await tick();
+        });
+        expect(r.queryByTestId('onboarding-step-1')).not.toBeNull();
+        expect(await AS.getItem(KEY)).toBeNull();
+      },
+      { language: 'ar' },
+    );
+  });
+
+  it('r22b (FA1) a record consumed by load but peeked 11 minutes later applies as null: step 1', async () => {
+    const t0 = Date.now();
+    const spy = jest.spyOn(Date, 'now').mockReturnValue(t0);
+    try {
+      await inIsolate(
+        (AS) => AS.setItem(KEY, record({ saved_at: t0, data: { language: 'ar' } })),
+        async ({ AS, React: R, TL, host }) => {
+          const mod = require('../../src/services/onboardingResume');
+          expect(mod.peekOnboardingResume()).toEqual({ settled: true, value: { step: 3, data: { language: 'ar' } } });
+          expect(await AS.getItem(KEY)).toBeNull();
+          spy.mockReturnValue(t0 + 11 * 60 * 1000);
+          expect(mod.peekOnboardingResume()).toEqual({ settled: true, value: null });
+          const r = TL.render(R.createElement(host.NewOnboardingHost, { onComplete: jest.fn() }));
+          expect(r.queryByTestId('onboarding-step-1')).not.toBeNull();
+        },
+        { language: 'ar' },
+      );
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it('r23 [PIN] no record: step 1 renders synchronously', () => {
     const { NewOnboardingHost } = require('../../src/screens/onboarding/NewOnboardingHost');
     const r = render(<NewOnboardingHost onComplete={jest.fn()} />);

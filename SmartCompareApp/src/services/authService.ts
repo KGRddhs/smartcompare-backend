@@ -350,8 +350,22 @@ export async function logout(): Promise<void> {
     }
     // S79 B3-A (ruling A6): the onboarding resume record is per device, not
     // per account; drop it with the draft so a different account signing
-    // in next can never inherit it. clearOnboardingResume never rejects.
-    await clearOnboardingResume();
+    // in next can never inherit it. clearOnboardingResume never rejects; it
+    // resets the in-memory view at once, and the storage removal is bounded
+    // at 500 ms (fix round FA5) so a hung AsyncStorage cannot hold logout.
+    let resumeClearTimer: ReturnType<typeof setTimeout> | null = null;
+    try {
+      await Promise.race([
+        clearOnboardingResume(),
+        new Promise<void>((resolve) => {
+          resumeClearTimer = setTimeout(resolve, 500);
+        }),
+      ]);
+    } catch {
+      // never let the resume cleanup break logout
+    } finally {
+      if (resumeClearTimer) clearTimeout(resumeClearTimer);
+    }
     // S79 B3-A C6: end the Google SDK session too (fire and forget; adds no
     // await to the logout chain; a no-op without a Google session).
     void googleSignOutBestEffort();
