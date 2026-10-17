@@ -1761,6 +1761,19 @@ def _flag_on(name: str) -> bool:
     return os.getenv(name, "").strip().lower() in ("true", "1", "yes", "on")
 
 
+def _phase1_race_outcome(res: Any) -> str:
+    """S78-F8 (D3): classify one Phase-1 gather result the way the post-gather loop
+    does: an asyncio.TimeoutError instance (the per-race wait_for cap OR a
+    TimeoutError raised inside the race -- one class since 3.11) -> "timeout"; any
+    other BaseException instance (CancelledError included, which the loop stores as
+    a value) -> "error"; anything else (None included) -> "ok". Pure."""
+    if isinstance(res, asyncio.TimeoutError):
+        return "timeout"
+    if isinstance(res, BaseException):
+        return "error"
+    return "ok"
+
+
 def _float_knob(name: str, default: float) -> float:
     raw = os.getenv(name)
     if raw is None or not raw.strip():
@@ -3301,6 +3314,12 @@ class StructuredComparisonService:
         # per-request on BOTH the sync and streaming paths; only populated when
         # _early_specs_stash_enabled() (default ON) — empty ⇒ byte-identical.
         self._early_specs_buffer: Optional[List[Optional[Dict[str, Any]]]] = None
+        # S78-F8 (D3) -- per-run Phase-1 DATA-race outcomes, slot -> {race key ->
+        # "timeout" | "error" | "ok"}, written under ENABLE_ALL_TIMEOUT_CAP_AS_TIMEOUT
+        # only (eager done-callbacks on specs/price + the post-loop block), read only
+        # by the REST hard-cap handler's INSUFFICIENT_DATA branch under the same flag.
+        # Reset per run at both entries.
+        self._phase1_race_outcomes: Dict[int, Dict[str, str]] = {}
 
     # ============================================
     # Static method wrappers for backward compat
@@ -3583,6 +3602,85 @@ class StructuredComparisonService:
             if pd.get("specs") is not None or pd.get("price") is not None:
                 return True
         return False
+
+    def _cap_all_data_races_timed_out(self) -> bool:
+        """S78-F8 (D4, rulings R2/R3) -- ENABLE_ALL_TIMEOUT_CAP_AS_TIMEOUT (default
+        OFF, read per call): True when every product the early buffer registered
+        holds no usable data and none of its Phase-1 DATA races (specs, price)
+        completed or raised: a recorded data race must be "timeout"; an absent one
+        was cut by the cap or never started. reviews / image_url never count.
+        Fail-closed: any missing or contrary evidence -> False (the base
+        INSUFFICIENT_DATA body). Flag OFF: returns False before any state is read."""
+        if not _flag_on("ENABLE_ALL_TIMEOUT_CAP_AS_TIMEOUT"):
+            return False
+        buffer = getattr(self, "_early_specs_buffer", None)
+        if not isinstance(buffer, list):
+            return False
+        outcomes = getattr(self, "_phase1_race_outcomes", None)
+        if not isinstance(outcomes, dict):
+            outcomes = {}
+        populated = 0
+        for slot, pd in enumerate(buffer):  # the slot index, never the compacted list
+            if not isinstance(pd, dict):
+                continue
+            populated += 1
+            if pd.get("specs") is not None or pd.get("price") is not None:
+                return False  # R3 (spec 7.2): usable data present, any arm
+            rec = outcomes.get(slot)
+            if not isinstance(rec, dict):
+                # no record (a mid-request flip): a landed key is a completed race
+                if "specs" in pd or "price" in pd:
+                    return False
+                continue  # identities only, nothing recorded: cut by the cap
+            for key in ("specs", "price"):
+                if key in rec and rec[key] != "timeout":
+                    return False  # a completed ("ok") or raised ("error") data race
+        return populated > 0
+
+    def _cap_timeout_log_counts(self) -> Tuple[int, int, int]:
+        """S78-F8 (D5, ruling R7): (products, data races recorded, timed out) for
+        the one WARNING line; called only after _cap_all_data_races_timed_out()
+        returned True. Pure."""
+        buffer = getattr(self, "_early_specs_buffer", None)
+        outcomes = getattr(self, "_phase1_race_outcomes", None)
+        if not isinstance(outcomes, dict):
+            outcomes = {}
+        products = recorded = timed_out = 0
+        for slot, pd in enumerate(buffer if isinstance(buffer, list) else []):
+            if not isinstance(pd, dict):
+                continue
+            products += 1
+            rec = outcomes.get(slot)
+            if isinstance(rec, dict):
+                for key in ("specs", "price"):
+                    if key in rec:
+                        recorded += 1
+                        if rec[key] == "timeout":
+                            timed_out += 1
+        return products, recorded, timed_out
+
+    def _record_phase1_race(self, slot: int, key: str, task: Any) -> None:
+        """S78-F8 (ruling R2) -- the eager done-callback on the specs / price race
+        task, attached only under the hoisted flag read: a task cancelled by the
+        hard cap records NOTHING (cut, not completed); otherwise "timeout" /
+        "error" / "ok" by its exception. Never raises."""
+        try:
+            if task.cancelled():
+                return
+            exc = task.exception()
+            if isinstance(exc, asyncio.TimeoutError):
+                outcome = "timeout"
+            elif exc is not None:
+                outcome = "error"
+            else:
+                outcome = "ok"
+            outcomes = getattr(self, "_phase1_race_outcomes", None)
+            if not isinstance(outcomes, dict):
+                outcomes = {}
+                self._phase1_race_outcomes = outcomes
+            outcomes.setdefault(slot, {})[key] = outcome
+        except Exception:  # noqa: BLE001
+            pass
 
     def _partial_stage(self) -> str:
         """W4-4 — the stage the partial CARRIED, derived from the same stash
@@ -3957,6 +4055,24 @@ class StructuredComparisonService:
             # early buffer too so a both-price-hang mid-gather cancel (which never
             # reaches the post-gather stash) is still classified as resolved-but-empty.
             if self._partial_product_data or self._early_specs_buffer_list():
+                # S78-F8 (ENABLE_ALL_TIMEOUT_CAP_AS_TIMEOUT, read per call) -- every
+                # product's Phase-1 data races timed out or were cut: the base
+                # TIMEOUT body (route -> 503), one WARNING line (rulings R6/R7).
+                if self._cap_all_data_races_timed_out():
+                    _p, _rec, _to = self._cap_timeout_log_counts()
+                    logger.warning(
+                        "[L2.7] hard-cap: every Phase-1 data race timed out or was cut "
+                        "(products=%d, data races recorded=%d, timed out=%d) "
+                        "for query=%r -- reporting TIMEOUT, not INSUFFICIENT_DATA",
+                        _p, _rec, _to, query,
+                    )
+                    return {
+                        "success": False,
+                        "error": TIMEOUT_FRIENDLY_MESSAGE,
+                        "code": "TIMEOUT",
+                        "elapsed_seconds": round(elapsed, 2),
+                        "total_cost": self.total_cost,
+                    }
                 return {
                     "success": False,
                     "error": "Comparison data was incomplete — choose different products.",
@@ -4064,6 +4180,7 @@ class StructuredComparisonService:
         # buffer to two empty slots so a reused per-request instance never leaks a
         # prior run's stashed products.
         self._early_specs_buffer = [None, None]
+        self._phase1_race_outcomes = {}  # S78-F8 -- per-run reset
 
         # L1 content safety pre-filter (spec sec 5.2). Runs on the canonical query
         # string — for explicit_pair shape, this is the concatenated "A vs B"
@@ -4699,6 +4816,7 @@ class StructuredComparisonService:
         self._partial_comparison = None
         self._verdict_model_downgraded = False  # #268 R2.5 — per-run reset
         self._early_specs_buffer = [None, None]
+        self._phase1_race_outcomes = {}  # S78-F8 -- per-run reset
 
         # L1 content safety pre-filter (spec sec 5.2). Same gate as sync path —
         # blocked queries terminate the stream with an error event before any
@@ -5638,6 +5756,9 @@ class StructuredComparisonService:
         # same per-race wait_for cap + _timed_task as before; awaited below
         # inside the Phase-1 gather (added FIRST to phase1_tasks so the
         # result-key order is unchanged). Zero quality change — pure latency.
+        # S78-F8 (R2) -- ONE hoisted flag read per product for the race record;
+        # OFF (or partial_slot None): no callback, no post-loop write.
+        _record_races = partial_slot is not None and _flag_on("ENABLE_ALL_TIMEOUT_CAP_AS_TIMEOUT")
         _price_task = asyncio.ensure_future(asyncio.wait_for(
             _timed_task("price", self._get_price(brand, name, variant, region, search_query, nocache, category), stage_timings),
             timeout=_PHASE1_TIMEOUTS["price"],
@@ -5658,6 +5779,8 @@ class StructuredComparisonService:
                 except (asyncio.TimeoutError, asyncio.CancelledError, Exception):  # noqa: BLE001
                     pass
             _price_task.add_done_callback(_stash_price_cb)
+        if _record_races:
+            _price_task.add_done_callback(partial(self._record_phase1_race, partial_slot, "price"))
 
         async def _cleanup_orphan_price_task() -> None:
             """L5.3 (S3) — cancel + drain the speculative lever-1 price task if it
@@ -5779,6 +5902,8 @@ class StructuredComparisonService:
                         except (asyncio.TimeoutError, asyncio.CancelledError, Exception):  # noqa: BLE001
                             pass
                     _specs_task.add_done_callback(_stash_specs_cb)
+                if _record_races:
+                    _specs_task.add_done_callback(partial(self._record_phase1_race, partial_slot, "specs"))
                 phase1_tasks.append(_specs_task)
                 phase1_keys.append("specs")
 
@@ -5872,6 +5997,18 @@ class StructuredComparisonService:
                 result[key] = self._price_fallback_on_miss(key, full_name, category)
             else:
                 result[key] = phase1_results[i]
+        # S78-F8 (D3) -- the post-loop record: every race that ran, in phase1_keys
+        # order; REPLACES the slot's eager entries (same classification). Additive:
+        # the loop above is unchanged; flag OFF (or partial_slot None) writes nothing.
+        if _record_races:
+            _outcomes = getattr(self, "_phase1_race_outcomes", None)
+            if not isinstance(_outcomes, dict):
+                _outcomes = {}
+                self._phase1_race_outcomes = _outcomes
+            _outcomes[partial_slot] = {
+                key: _phase1_race_outcome(phase1_results[i])
+                for i, key in enumerate(phase1_keys)
+            }
 
         # S3 L1.5 — record the real-vs-estimate price outcome for this product
         # (per-category /admin/costs gauge; the live counterpart to L4's eval
