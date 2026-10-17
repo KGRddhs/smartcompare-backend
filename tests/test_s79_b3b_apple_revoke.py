@@ -39,7 +39,7 @@ import logging
 import os
 import re
 import time
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 from urllib.parse import parse_qs
@@ -104,6 +104,7 @@ SIWA_TEMPLATES = [
         r"\[SIWA\] no stored token; revoke skipped",
         r"\[SIWA\] revoke attempt=\d+ status=\d+",
         r"\[SIWA\] revoke attempt=\d+ failed: \w+",
+        r"\[SIWA\] revoke failed: \w+",  # fix ruling FB1: the call-site belt
     )
 ]
 
@@ -244,7 +245,9 @@ def _apple_ok(sub=SUB, **extra):
 class _Apple:
     """A recording Apple endpoint for httpx.MockTransport.
 
-    script items: (status, body) | ("raise", ExcClass) | ("hang", None)."""
+    script items: (status, body) | ("raise", ExcClass) | ("raise-plain", ExcClass)
+    | ("hang", None). "raise-plain" raises a non-httpx exception built without
+    the request keyword (fix ruling FB1)."""
 
     def __init__(self, script=(), events=None):
         self.script = list(script)
@@ -267,6 +270,8 @@ class _Apple:
         kind, body = self.script.pop(0) if self.script else (200, {})
         if kind == "raise":
             raise body("b3b transport failure", request=request)
+        if kind == "raise-plain":
+            raise body("b3b non-transport failure")
         if kind == "hang":
             await asyncio.sleep(30)
             return httpx.Response(200, json={})
@@ -451,6 +456,39 @@ def _check_client_secret(secret, pub, *, now=None):
     return claims
 
 
+def _exc_chain_texts(exc) -> list[str]:
+    """str / repr / args of exc and of every __context__ / __cause__ link (FB4)."""
+    out: list[str] = []
+    seen: set[int] = set()
+    todo = [exc]
+    while todo:
+        e = todo.pop()
+        if e is None or id(e) in seen:
+            continue
+        seen.add(id(e))
+        out += [str(e), repr(e)]
+        out += [str(a) for a in getattr(e, "args", ())]
+        out += [repr(a) for a in getattr(e, "args", ())]
+        todo += [e.__context__, e.__cause__]
+    return out
+
+
+def _assert_no_key_text_in_exception(exc, keys, *raw):
+    """Fix ruling FB4 (kills S3): no PEM body line of the EC or RSA test key and
+    no configured key text (as given or whitespace-joined) appears in str(exc),
+    repr(exc), exc.args or anywhere in the __context__ / __cause__ chain."""
+    secrets: list[str] = []
+    for pem in (keys["pem"], keys["rsa"]):
+        secrets += [ln.strip() for ln in pem.splitlines()
+                    if len(ln.strip()) >= 16 and not ln.startswith("-----")]
+    for r in raw:
+        if r:
+            secrets += [r, "".join(r.split())]
+    texts = "\n".join(_exc_chain_texts(exc))
+    found = [s for s in secrets if s in texts]
+    assert not found, f"key material in the exception chain: {len(found)} value(s)"
+
+
 # ---------------------------------------------------------------------------
 # R1-R5: the module (RED: module absent)
 # ---------------------------------------------------------------------------
@@ -523,17 +561,25 @@ def test_b3b_r3_private_key_forms(monkeypatch, keys, form):
     """R3 (RED: module absent; kills X9, X10): the three accepted key forms
     (plus wrapped base64 and a space-joined PEM, ruling B9) build a client
     secret that verifies with the generated public key at the real clock;
-    garbage -> ValueError, an RSA key -> InvalidKeyError."""
+    garbage -> ValueError, an RSA key -> InvalidKeyError. Fix ruling FB4
+    (kills S3): for garbage and RSA, neither the exception from
+    build_client_secret nor the one from _normalise_private_key carries
+    key text anywhere in its chain."""
     siwa = _siwa()
     if form == "garbage":
         _set_config(monkeypatch, "garbage-not-a-pem")
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError) as built:
             siwa.build_client_secret(siwa._siwa_config())
+        _assert_no_key_text_in_exception(built.value, keys, "garbage-not-a-pem")
+        with pytest.raises(ValueError) as normalised:
+            siwa._normalise_private_key("garbage-not-a-pem")
+        _assert_no_key_text_in_exception(normalised.value, keys, "garbage-not-a-pem")
         return
     if form == "rsa":
         _set_config(monkeypatch, keys["rsa"])
-        with pytest.raises(jwt.exceptions.InvalidKeyError):
+        with pytest.raises(jwt.exceptions.InvalidKeyError) as built:
             siwa.build_client_secret(siwa._siwa_config())
+        _assert_no_key_text_in_exception(built.value, keys, keys["rsa"])
         return
     _set_config(monkeypatch, _key_forms(keys)[form])
     secret = siwa.build_client_secret(siwa._siwa_config())
@@ -619,11 +665,13 @@ def test_b3b_r6_social_login_apple_with_code_stores_the_token(monkeypatch, keys,
     assert admin_off.calls == []
 
 
-@pytest.mark.parametrize("code", [_MISSING, None, "", 123], ids=["absent", "null", "empty", "int"])
+@pytest.mark.parametrize("code", [_MISSING, None, "", 123, " \t  "],
+                         ids=["absent", "null", "empty", "int", "whitespace"])
 def test_b3b_r7_no_code_no_call(monkeypatch, keys, logs, code):
-    """R7 PIN (ruling B1; kills X18): flag ON, config set, apple without a usable
-    code: zero sends, zero admin table() calls, zero [SIWA] records, body
-    byte-equal to flag OFF."""
+    """R7 PIN (ruling B1; kills X18; fix ruling FB5 adds the whitespace-only
+    code, which kills X51): flag ON, config set, apple without a usable code:
+    zero sends, zero admin table() calls, zero [SIWA] records, body byte-equal
+    to flag OFF."""
     _set_config(monkeypatch, keys["pem"])
     sends = _install_send_recorder(monkeypatch)
     body = _apple_body(code=code)
@@ -699,6 +747,15 @@ def test_b3b_r9_exchange_failure_never_fails_sign_in(monkeypatch, keys, logs, ca
     text = "\n".join(_msgs(logs))
     found = [s for s in leaks if s and s in text]
     assert not found, f"leaked into the logs: {len(found)} value(s)"
+    if case == "garbage-key":
+        # fix ruling FB4 (kills S3): the exceptions themselves carry no key text
+        siwa = _siwa()
+        with pytest.raises(ValueError) as built:
+            siwa.build_client_secret(siwa._siwa_config())
+        _assert_no_key_text_in_exception(built.value, keys, bad_pem)
+        with pytest.raises(ValueError) as normalised:
+            siwa._normalise_private_key(bad_pem)
+        _assert_no_key_text_in_exception(normalised.value, keys, bad_pem)
 
 
 @pytest.mark.parametrize("variant", ["other-sub", "no-sub", "undecodable"])
@@ -982,6 +1039,11 @@ _R14 = {
     "503-503": ([(503, {}), (503, {})], ["attempt=1 status=503", "attempt=2 status=503"]),
     "readtimeout-twice": ([("raise", httpx.ReadTimeout), ("raise", httpx.ReadTimeout)],
                           ["attempt=1 failed: ReadTimeout", "attempt=2 failed: ReadTimeout"]),
+    # fix ruling FB1: a non-transport exception is never retried (kills X49, S23)
+    "runtime-error": ([("raise-plain", RuntimeError)], ["attempt=1 failed: RuntimeError"]),
+    # fix ruling FB1: revoke_refresh_token itself raises; the call-site belt logs
+    # it and the deletion continues (kills X50)
+    "revoke-raises": ("revoke-raises", ["failed: RuntimeError"]),
 }
 
 
@@ -990,20 +1052,49 @@ _R14 = {
 async def test_b3b_r14_revoke_retry_policy(monkeypatch, keys, logs, case):
     """R14 (RED: zero attempts; kills X25-X28): at most two attempts, the second
     only after a transport error, 429 or 5xx; the deletion returns True and
-    the auth delete runs once; the log lines are attempt/status/type only."""
+    the auth delete runs once; the log lines are attempt/status/type only.
+    Fix ruling FB1: a non-transport exception (RuntimeError) is one attempt
+    and a raising revoke_refresh_token is caught at the call site (one
+    '[SIWA] revoke failed: RuntimeError' line). Fix ruling FB2 (kills S4): the
+    failed: and non-200 status= lines are WARNING, the status=200 line INFO,
+    and no [SIWA] record carries exc_info."""
     script, lines = _R14[case]
     _set_config(monkeypatch, keys["pem"])
     monkeypatch.setenv(FLAG, "true")
     events: list[str] = []
-    apple = _Apple(script, events=events)
-    _install_apple(monkeypatch, apple)
+    if script == "revoke-raises":
+        apple = _Apple([], events=events)
+        _install_apple(monkeypatch, apple)
+        siwa = _siwa()
+
+        async def _raising_revoke(token):
+            events.append("revoke")
+            raise RuntimeError("b3b revoke raised")
+
+        monkeypatch.setattr(siwa, "revoke_refresh_token", _raising_revoke)
+        attempts = 0
+    else:
+        apple = _Apple(script, events=events)
+        _install_apple(monkeypatch, apple)
+        attempts = len(lines)
     admin = _RecAdmin(events=events, stored=_stored())
-    result, _ = await _delete(events, lambda: admin)
-    assert len(apple.requests) == len(lines), f"attempts {len(apple.requests)} != {len(lines)}"
+    escaped = None
+    try:
+        result, _ = await _delete(events, lambda: admin)
+    except Exception as exc:  # noqa: BLE001 -- reported as the assertion below
+        escaped, result = type(exc).__name__, None
+    assert escaped is None, f"{escaped} escaped delete_user_account"
+    assert len(apple.requests) == attempts, f"attempts {len(apple.requests)} != {attempts}"
     assert result is True
     assert events.count("auth_delete") == 1, events
     assert events.index("auth_delete") > max(i for i, e in enumerate(events) if e == "revoke")
-    assert [m for m in _siwa_lines(logs) if "revoke" in m] == [f"[SIWA] revoke {x}" for x in lines]
+    expected = [f"[SIWA] revoke {x}" for x in lines]
+    assert [m for m in _siwa_lines(logs) if "revoke" in m] == expected
+    assert [m for m in _siwa_lines(logs, logging.WARNING) if "revoke" in m] == [
+        m for m in expected if not m.endswith("status=200")]
+    assert [m for m in _siwa_lines(logs, logging.INFO) if "revoke" in m] == [
+        m for m in expected if m.endswith("status=200")]
+    assert not [r for r in _siwa_records(logs) if r.exc_info], "a [SIWA] record carries exc_info"
 
 
 @pytest.mark.parametrize("failure", ["execute-apierror", "admin-valueerror"])
@@ -1114,7 +1205,8 @@ async def test_b3b_r20_flag_off_delete_identity(monkeypatch, keys, logs, flag):
 
 def test_b3b_r18_siwa_logs_are_type_and_status_only(monkeypatch, keys, logs):
     """R18 (RED: the control finds no [SIWA] record; kills X30, X31): R6, R9
-    (Apple 400 with a sentinel body), R12 and R14 (503 twice) replayed: every
+    (Apple 400 with a sentinel body), R12, R14 (503 twice) and R14
+    (ConnectTimeout then 200; fix ruling FB2, kills S4) replayed: every
     [SIWA] record is INFO / WARNING, without exc_info, matching a 2.7
     template; no record carries the code, any token, a client secret, a PEM
     line, either id_token or Apple's error body; no [SIWA] record carries the
@@ -1137,9 +1229,10 @@ def test_b3b_r18_siwa_logs_are_type_and_status_only(monkeypatch, keys, logs):
     _social(monkeypatch, b2, flag="true")
     secrets_seen += [b2["authorization_code"], "B3BSENTINELAPPLE", "B3BSENTINELDESC"]
     secrets_seen += [r["form"].get("client_secret", "") for r in apple.requests]
-    # R12 and R14 (503 twice)
+    # R12, R14 (503 twice) and, fix ruling FB2, R14 (ConnectTimeout then 200)
     monkeypatch.setenv(FLAG, "true")
-    for script in ([(200, {})], [(503, {}), (503, {})]):
+    for script in ([(200, {})], [(503, {}), (503, {})],
+                   [("raise", httpx.ConnectTimeout), (200, {})]):
         events: list[str] = []
         stored = _stored()
         apple = _Apple(script, events=events)
@@ -1251,3 +1344,45 @@ def test_b3b_r29_pyjwt_crypto_and_pins_present():
     req = (REPO_ROOT / "requirements.txt").read_text(encoding="utf-8")
     assert re.search(r"(?im)^pyjwt==\S+", req)
     assert re.search(r"(?im)^cryptography==\S+", req)
+
+
+def test_b3b_r30_apple_client_keeps_tls_defaults():
+    """R30 PIN (fix ruling FB3; kills S5): every httpx.AsyncClient(...) call in
+    apple_siwa_service.py passes only the keywords timeout / transport (no
+    positional argument, no ** splat) and never verify, trust_env, proxy or
+    proxies; the one module-level _TRANSPORT assignment is the constant None and
+    the live value is None (production uses httpx's default transport, TLS
+    verified)."""
+    import ast
+
+    assert SIWA_PATH.exists(), "RED: app/services/apple_siwa_service.py is absent"
+    tree = ast.parse(SIWA_PATH.read_text(encoding="utf-8"))
+    calls = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            func = node.func
+            name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", None)
+            if name == "AsyncClient":
+                calls.append(node)
+    assert calls, "control: no httpx.AsyncClient(...) call found in the module"
+    forbidden = {"verify", "trust_env", "proxy", "proxies"}
+    for call in calls:
+        names = [k.arg for k in call.keywords]
+        assert not call.args, f"line {call.lineno}: a positional argument"
+        assert None not in names, f"line {call.lineno}: a ** splat could carry verify"
+        assert set(names) <= {"timeout", "transport"}, f"line {call.lineno}: {names}"
+        assert not set(names) & forbidden, f"line {call.lineno}: {names}"
+    assigns = []
+    for node in tree.body:
+        if isinstance(node, ast.Assign):
+            targets = node.targets
+        elif isinstance(node, ast.AnnAssign):
+            targets = [node.target]
+        else:
+            continue
+        if any(getattr(t, "id", None) == "_TRANSPORT" for t in targets):
+            assigns.append(node)
+    assert len(assigns) == 1, f"{len(assigns)} module-level _TRANSPORT assignments"
+    value = assigns[0].value
+    assert isinstance(value, ast.Constant) and value.value is None, ast.dump(value)
+    assert _siwa()._TRANSPORT is None

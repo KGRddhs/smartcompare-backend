@@ -1115,9 +1115,14 @@ async def delete_user_account(user_id: str) -> bool:
     await delete_user_data_cascade(user_id)
     # Then drop the per-user caches derived from the erased rows
     await _purge_deleted_user_caches(user_id)
-    # B3-B: revoke the Apple token (flag ON and a stored token only)
+    # B3-B: revoke the Apple token (flag ON and a stored token only). The
+    # revoke never raises by contract; this belt keeps the auth delete
+    # running even if it ever did (fix ruling FB1).
     if siwa_token:
-        await apple_siwa_service.revoke_refresh_token(siwa_token)
+        try:
+            await apple_siwa_service.revoke_refresh_token(siwa_token)
+        except Exception as exc:  # noqa: BLE001 -- type only, never the token
+            logger.warning("[SIWA] revoke failed: %s", type(exc).__name__)
     # Then delete the auth user via admin client
     admin = get_admin_client()
     admin.auth.admin.delete_user(user_id)

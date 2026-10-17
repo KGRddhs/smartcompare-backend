@@ -1173,11 +1173,14 @@ async def social_login(request: Request, body: SocialLoginRequest):
     # B3-B: additive, default OFF, read per call. After the 401 / consent raises
     # (a rejected login exchanges nothing) and after W3-3; store_apple_refresh_token
     # never raises and `result` is returned unchanged, so the body is byte-equal
-    # in both flag states.
-    if apple_token_revocation_enabled() and body.provider == "apple" and body.authorization_code:
-        await store_apple_refresh_token(
-            (result.get("user") or {}).get("id"), body.authorization_code, body.id_token
-        )
+    # in both flag states. The STRIPPED code is what is exchanged; a
+    # whitespace-only code is not exchanged (fix ruling FB5).
+    if apple_token_revocation_enabled() and body.provider == "apple":
+        siwa_code = (body.authorization_code or "").strip()
+        if siwa_code:
+            await store_apple_refresh_token(
+                (result.get("user") or {}).get("id"), siwa_code, body.id_token
+            )
     return result
 
 
