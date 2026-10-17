@@ -285,7 +285,7 @@
   "loading.tip.peer_prioritize": "73% of Capital shoppers your age prioritize Quality.",
   "loading.tip.cross_checks": "MYEZ checks retailers across the GCC for each product.",
   "loading.tip.work_for_you": "We work for you — never paid by sellers.",
-  "loading.tip.save_offline": "Every comparison you run is saved in History.",
+  "loading.tip.save_offline": "Comparisons you type or scan are saved in History.",
 
   "history.title": "History",
   "history.search": "Search comparisons...",
@@ -754,7 +754,7 @@
   "results.tips.retailers": "MYEZ checks retailers across the GCC for each product.",
   "results.tips.work_for_you": "We work for you — never paid by sellers.",
   "results.tips.cohort_match": "Survey answers from shoppers in {{governorate}} inform this match.",
-  "results.tips.save_offline": "Every comparison you run is saved in History.",
+  "results.tips.save_offline": "Comparisons you type or scan are saved in History.",
 
   "results.cohort_badge": "{{count}}+ shoppers in {{governorate}} leaned the same way.",
 

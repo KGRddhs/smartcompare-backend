@@ -282,7 +282,7 @@
   "loading.tip.peer_prioritize": "73% من المتسوقين بعمرك في العاصمة يضعون الجودة أولاً.",
   "loading.tip.cross_checks": "ميّز يتحقق من متاجر في دول الخليج لكل منتج.",
   "loading.tip.work_for_you": "نعمل لصالحك — لا يدفع لنا البائعون.",
-  "loading.tip.save_offline": "كل مقارنة تجريها تحفظ في السجل.",
+  "loading.tip.save_offline": "المقارنات التي تجريها بالكتابة أو بالمسح تحفظ في السجل.",
 
   "history.title": "السجل",
   "history.search": "البحث في المقارنات...",
@@ -751,7 +751,7 @@
   "results.tips.retailers": "ميّز يتحقق من متاجر في دول الخليج لكل منتج.",
   "results.tips.work_for_you": "نعمل لصالحك — البائعون لا يدفعون لنا.",
   "results.tips.cohort_match": "إجابات متسوقين في {{governorate}} من الاستطلاع تدعم هذه النتيجة.",
-  "results.tips.save_offline": "كل مقارنة تجريها تحفظ في السجل.",
+  "results.tips.save_offline": "المقارنات التي تجريها بالكتابة أو بالمسح تحفظ في السجل.",
 
   "results.cohort_badge": "{{count}}+ متسوقين في {{governorate}} مالوا إلى الخيار نفسه.",
 
