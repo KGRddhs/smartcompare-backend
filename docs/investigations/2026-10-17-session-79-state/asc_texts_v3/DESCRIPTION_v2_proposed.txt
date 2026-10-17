@@ -1,0 +1,17 @@
+MYEZ helps you choose between two products with confidence. Type two product names, paste two product links or photograph them. We gather reviews and retailer prices, compile the specs with AI, then give you a clear verdict: which one fits you better, why, and where the other one wins.
+WHAT YOU GET
+* A clear verdict instead of a long spec sheet: the winner, the reason, and where the runner-up is stronger.
+* Prices shown in Bahraini Dinar (BHD): from a Bahrain or Gulf retailer when we find one, otherwise from an international listing converted to BHD and labelled as converted. Prices change over time, so check the price with the retailer before you buy.
+* A "What we know" panel that shows how much price, spec and review data stands behind a verdict.
+* Camera compare: photograph two products, or pick two photos from your library.
+* Results that respect your priorities: tell us what matters to you, like price, quality or durability.
+* A history of your comparisons, and a way to share a result with friends and invite them for bonus comparisons.
+* Free to use: up to 3 comparisons a day and 10 a month.
+CATEGORIES
+Electronics, supplements, fragrances, makeup, skin and hair care, fashion and groceries. Supplement and medicine comparisons are general information, not medical advice; ask a pharmacist or doctor.
+BUILT FOR THE GULF
+The interface is available in English and Arabic, with full right-to-left support. Comparison write-ups are in English.
+YOUR PRIVACY
+To write each comparison, MYEZ sends the products you type, link or photograph, plus your saved preferences, country, language and area (never your name or email), to OpenAI, and the app asks your permission before your first comparison. OpenAI may use what we send and the replies it generates to evaluate and train its models. We show no third-party ads and we don't track you across other companies' apps. You can delete your account from inside the app at any time.
+Note: MYEZ is a decision aid. Information is gathered from public sources and may not always be accurate.
+Support: support@getmyez.com
