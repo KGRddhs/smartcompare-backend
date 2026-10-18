@@ -79,7 +79,7 @@ function load(overrides: Record<string, unknown> = {}): Harness {
     ...overrides,
   };
 
-  jest.doMock('expo-notifications', () => notifications, { virtual: true });
+  jest.doMock('expo-notifications', () => notifications);
 
   // Same module registry -> pushNavigation sees this exact navigationRef.
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -343,8 +343,7 @@ describe('W3-15 P7 — a missing native module never breaks boot', () => {
       'expo-notifications',
       () => {
         throw new Error('native module missing');
-      },
-      { virtual: true }
+      }
     );
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { navigationRef } = require('../../src/navigation/linking');
