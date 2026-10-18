@@ -66,7 +66,6 @@ jest.mock(
       signIn: mockSignIn,
     },
   }),
-  { virtual: true },
 );
 
 // Sentry mock left in place even though authService no longer calls it on
@@ -84,7 +83,6 @@ jest.mock(
     captureException: jest.fn(),
     init: jest.fn(),
   }),
-  { virtual: true },
 );
 
 const saveTokenSpy = jest.spyOn(SecureStore, 'setItemAsync');

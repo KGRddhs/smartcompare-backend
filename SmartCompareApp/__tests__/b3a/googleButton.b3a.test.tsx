@@ -60,11 +60,11 @@ const mockGs = {
   signOut: jest.fn(() => Promise.resolve(null)),
   revokeAccess: jest.fn(() => Promise.resolve(null)) as any,
 };
-// `virtual: true` like the four older Google suites (b4, w3-3, w3-16, a8): jest resolves a
-// virtual and a non-virtual mock of the same installed module to different module ids, and
-// the shared per-worker resolver cache then hands the SECOND file in a worker the other
-// file's resolution (measured 2026-10-18: either file fails when it runs second).
-jest.mock('@react-native-google-signin/google-signin', () => ({ GoogleSignin: mockGs }), { virtual: true });
+// NOT a virtual mock: the package is installed. A `virtual: true` mock of an installed
+// module gets a different jest module id than the id a plain require (or any other file's
+// non-virtual mock) caches in the shared per-worker resolver, so whichever file ran first
+// in the worker decided what the second one got (measured 2026-10-18; S79 fix).
+jest.mock('@react-native-google-signin/google-signin', () => ({ GoogleSignin: mockGs }));
 
 jest.mock('@sentry/react-native', () => ({
   addBreadcrumb: jest.fn(),
