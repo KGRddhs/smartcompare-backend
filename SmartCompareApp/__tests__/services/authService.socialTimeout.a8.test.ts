@@ -34,8 +34,7 @@ jest.mock(
       hasPlayServices: mockHasPlayServices,
       signIn: mockSignIn,
     },
-  }),
-  { virtual: true }
+  })
 );
 
 const mockAppleSignInAsync = jest.fn();
@@ -45,8 +44,7 @@ jest.mock(
     signInAsync: (...args: unknown[]) => mockAppleSignInAsync(...args),
     isAvailableAsync: jest.fn().mockResolvedValue(true),
     AppleAuthenticationScope: { FULL_NAME: 0, EMAIL: 1 },
-  }),
-  { virtual: true }
+  })
 );
 
 jest.mock('expo-crypto', () => ({
@@ -64,8 +62,7 @@ jest.mock(
     captureMessage: (...args: unknown[]) => mockCaptureMessage(...args),
     captureException: jest.fn(),
     init: jest.fn(),
-  }),
-  { virtual: true }
+  })
 );
 
 const saveTokenSpy = jest.spyOn(SecureStore, 'setItemAsync');

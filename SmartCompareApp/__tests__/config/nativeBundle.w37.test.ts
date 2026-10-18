@@ -61,8 +61,10 @@ const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v));
 
 const RECORD_AUDIO = 'android.permission.RECORD_AUDIO';
 const CAMERA = 'android.permission.CAMERA';
-const CAMERA_PURPOSE = 'MYEZ needs camera access to photograph products for comparison.';
-const PHOTOS_PURPOSE = 'MYEZ needs photo library access to identify products from your photos.';
+// S79 B3-A (pin change PC2, gate note GA1): the camera / photo-library
+// purpose strings say where the photos go (MYEZ's servers and OpenAI).
+const CAMERA_PURPOSE = "MYEZ uses the camera to photograph the two products you want to compare. The photos are uploaded to MYEZ's servers and sent to OpenAI to identify the products.";
+const PHOTOS_PURPOSE = "MYEZ opens your photo library only for the photos you pick. Those photos are uploaded to MYEZ's servers and sent to OpenAI to identify the products.";
 // Session 69 U4a R2 (EXPO-07): the honest microphone purpose string, carried by
 // BOTH the expo-camera and expo-image-picker entries (spec review Q1 option a).
 const MIC_PURPOSE = 'MYEZ only uses the camera to photograph products. Audio is never recorded.';
@@ -829,6 +831,7 @@ describe('W3-7 (d) runtime dependencies are imported, justified, or pending remo
    */
   const PENDING_REMOVAL: Record<string, string> = {
     // react-native-gesture-handler was removed in session 70 U4b (npm uninstall + lock).
+    'expo-screen-capture': 'S79 B3-A removed the last caller; a later unit uninstalls it together with the SDK54_TARGETS pin k2',
   };
 
   // App source only (ruling R11): src/** minus every `__tests__` / `__mocks__`

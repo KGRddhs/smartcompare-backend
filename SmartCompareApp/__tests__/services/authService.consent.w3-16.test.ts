@@ -44,7 +44,6 @@ jest.mock(
       signIn: mockSignIn,
     },
   }),
-  { virtual: true },
 );
 
 const mockAppleSignInAsync = jest.fn();
@@ -55,7 +54,6 @@ jest.mock(
     isAvailableAsync: jest.fn().mockResolvedValue(true),
     AppleAuthenticationScope: { FULL_NAME: 0, EMAIL: 1 },
   }),
-  { virtual: true },
 );
 
 jest.mock('expo-crypto', () => ({
@@ -72,7 +70,6 @@ jest.mock(
     captureException: jest.fn(),
     init: jest.fn(),
   }),
-  { virtual: true },
 );
 
 const mockFetch = jest.fn();

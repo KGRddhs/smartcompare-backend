@@ -28,6 +28,7 @@ import { ProgressBar } from '../../components/ProgressBar';
 import { SlideTransition } from '../../components/SlideTransition';
 import { BackIcon, flipForRTL } from '../../icons';
 import { trackEvents } from '../../services/api';
+import { saveOnboardingResume } from '../../services/onboardingResume';
 import { colors, spacing, typography } from '../../theme';
 import {
   OnboardingFlowData,
@@ -408,6 +409,15 @@ export function OnboardingFlow({
               currentStepIndex={currentStepDisplay}
               totalSteps={totalSteps}
               onNext={handleNext}
+              // S79 B3-A C3: the language step's RTL reload restarts the JS
+              // bundle; persist the step AFTER it (3 in both sequences) and
+              // the answers so NewOnboardingHost resumes there.
+              onLanguageBeforeReload={(lang: 'en' | 'ar') =>
+                saveOnboardingResume({
+                  step: (stepSequence[stepSequence.indexOf(2) + 1] ?? 3) as OnboardingStep,
+                  data: { ...data, language: lang },
+                })
+              }
               onLoadingComplete={handleNext}
               onSelectAuthMethod={() => {
                 // Bundle D Phase 3: Step 16 ("Save your advisor") hands off to
@@ -493,6 +503,8 @@ interface StepContentProps {
 interface StepContentExtraProps {
   /** Advance to the next step (Step01/03/05/12/13 own internal CTA buttons). */
   onNext: () => void;
+  /** B3-A: Step 2 persists the resume record before the RTL reload. */
+  onLanguageBeforeReload?: (lang: 'en' | 'ar') => Promise<void>;
   /** Step 14 onComplete handler — fires after the 3.2s minimum loading floor. */
   onLoadingComplete: () => void;
   /** Step 16 onSelectMethod handler — hands off to the AuthScreen stack. */
@@ -519,6 +531,7 @@ function StepContent({
   currentStepIndex,
   totalSteps,
   onNext,
+  onLanguageBeforeReload,
   onLoadingComplete,
   onSelectAuthMethod,
   onNotificationsDone,
@@ -541,6 +554,7 @@ function StepContent({
         <Step02Language
           value={data.language}
           onChange={(lang) => setField('language', lang)}
+          onBeforeReload={onLanguageBeforeReload}
         />
       )}
       {step === 3 && <Step03ValueProp onNext={onNext} />}

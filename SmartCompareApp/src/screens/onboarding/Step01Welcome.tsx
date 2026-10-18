@@ -82,24 +82,20 @@ export function Step01Welcome({ onNext, onSignIn }: Props) {
       </View>
 
       <View style={styles.quoteStack}>
+        <Text testID="welcome-examples-label" style={styles.subtitle}>
+          {t('onboarding.s1.examples_label')}
+        </Text>
         <QuoteRow
           testID="welcome-quote-1"
-          quote={t('onboarding.s1.quote_1', {
-            defaultValue:
-              'Picked Galaxy — camera + battery edged out Apple here.',
-          })}
+          quote={t('onboarding.s1.quote_1')}
         />
         <QuoteRow
           testID="welcome-quote-2"
-          quote={t('onboarding.s1.quote_2', {
-            defaultValue: 'Picked La Roche — matched my sensitive-skin tag.',
-          })}
+          quote={t('onboarding.s1.quote_2')}
         />
         <QuoteRow
           testID="welcome-quote-3"
-          quote={t('onboarding.s1.quote_3', {
-            defaultValue: 'Picked Centrum — better nutrient profile.',
-          })}
+          quote={t('onboarding.s1.quote_3')}
         />
       </View>
 

@@ -89,7 +89,7 @@ export function Step04Country({
       <Text style={styles.subtitle}>
         {t('onboarding.s4.subtitle', {
           defaultValue:
-            'Currency, retailers, and peer cohort all calibrate to your region.',
+            'Prices are shown in Bahraini Dinar (BHD) for now. Your country helps tailor the advice.',
         })}
       </Text>
 

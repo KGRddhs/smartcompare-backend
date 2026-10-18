@@ -14,10 +14,10 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  ActivityIndicator,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { usePreventScreenCapture } from 'expo-screen-capture';
 import { register, signInWithGoogle, signInWithApple, isAppleSignInAvailable } from '../services/authService';
 import { parseApiError } from '../services/api';
 // Bundle B/C/D Task 2.12 — deferred PIR code.
@@ -29,6 +29,7 @@ import QarenLogo from '../components/QarenLogo';
 import { ConsentRow, LegalDoc } from '../components/ConsentRow';
 import { buildConsentPayload } from '../services/consent';
 import { AppleSignInButton } from '../components/AppleSignInButton';
+import { GoogleGlyph } from '../components/GoogleGlyph';
 import { authErrorKey } from '../services/authErrorCopy';
 
 type RegisterScreenProps = NativeStackScreenProps<AuthStackParamList, 'Register'> & {
@@ -37,7 +38,6 @@ type RegisterScreenProps = NativeStackScreenProps<AuthStackParamList, 'Register'
 
 export default function RegisterScreen({ navigation, route, onRegisterSuccess }: RegisterScreenProps) {
   const { t } = useTranslation();
-  usePreventScreenCapture();
   // F3.5 — invite_id is forwarded from the InviteeQuiz soft-signup CTA so
   // the backend links the new user to the pending referral invite. When
   // the user reaches Register from the auth tab directly, this is undefined.
@@ -308,6 +308,58 @@ export default function RegisterScreen({ navigation, route, onRegisterSuccess }:
                 </View>
               ) : null}
 
+              <ConsentRow
+                checked={consentAccepted}
+                onToggle={handleConsentToggle}
+                onOpenLegal={handleOpenLegal}
+                error={consentError}
+                disabled={loading || !!socialLoading}
+              />
+
+              {/* S69 U6 R1 — iOS: the SDK's native "Sign up with Apple"
+                  button (HIG: the system draws the Apple logo). Android /
+                  unavailable: no Apple control at all. */}
+              {showApple && (
+                <View style={styles.socialSpacer}>
+                  <AppleSignInButton
+                    testID="register-social-apple"
+                    variant="signUp"
+                    onPress={handleAppleSignIn}
+                    loading={socialLoading === 'apple'}
+                    disabled={!!socialLoading || loading}
+                  />
+                </View>
+              )}
+
+              {/* S79 B3-A C6 (ruling A7): Google on its own full-width row
+                  under Apple, the official logo, the same 48 pt height;
+                  mirrors LoginScreen's SocialButton (spinner while busy). */}
+              <TouchableOpacity
+                testID="register-social-google"
+                onPress={handleGoogleSignIn}
+                disabled={!!socialLoading || loading}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={t('auth.googleSignIn')}
+                accessibilityState={{ disabled: !!socialLoading || loading }}
+                style={[styles.googleBtn, (socialLoading || loading) ? styles.googleBtnDisabled : null]}
+              >
+                {socialLoading === 'google' ? (
+                  <ActivityIndicator size="small" color={colors.text.primary} />
+                ) : (
+                  <>
+                    <GoogleGlyph />
+                    <Text style={styles.googleLabel}>{t('auth.googleSignIn')}</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+
+              <View style={styles.dividerRow}>
+                <View style={styles.dividerLine} />
+                <Text style={styles.dividerText}>{t('common.or')}</Text>
+                <View style={styles.dividerLine} />
+              </View>
+
               <View style={styles.inputContainer}>
                 <Text style={styles.label}>{t('auth.email')}</Text>
                 <TextInput
@@ -399,13 +451,14 @@ export default function RegisterScreen({ navigation, route, onRegisterSuccess }:
                 {inviteCodeError ? <Text style={styles.fieldError}>{inviteCodeError}</Text> : null}
               </View>
 
-              <ConsentRow
-                checked={consentAccepted}
-                onToggle={handleConsentToggle}
-                onOpenLegal={handleOpenLegal}
-                error={consentError}
-                disabled={loading || !!socialLoading}
-              />
+              {/* S79 B3-A (ruling A7): the consent row now sits above the
+                  social buttons, so a blocked Create Account repeats the
+                  consent error next to the button the user just pressed. */}
+              {consentError ? (
+                <Text testID="register-submit-consent-error" style={styles.fieldError}>
+                  {t('auth.consent.required')}
+                </Text>
+              ) : null}
 
               <Button
                 title={t('auth.register')}
@@ -413,36 +466,6 @@ export default function RegisterScreen({ navigation, route, onRegisterSuccess }:
                 disabled={loading}
                 loading={loading}
               />
-
-              {/* Social Sign-In */}
-              <View style={styles.dividerRow}>
-                <View style={styles.dividerLine} />
-                <Text style={styles.dividerText}>{t('common.or')}</Text>
-                <View style={styles.dividerLine} />
-              </View>
-
-              <Button
-                title={t('auth.googleSignIn')}
-                variant="secondary"
-                onPress={handleGoogleSignIn}
-                disabled={!!socialLoading || loading}
-                loading={socialLoading === 'google'}
-              />
-
-              {/* S69 U6 R1 — iOS: the SDK's native "Sign up with Apple"
-                  button (HIG: the system draws the Apple logo). Android /
-                  unavailable: no Apple control at all. */}
-              {showApple && (
-                <View style={styles.socialSpacer}>
-                  <AppleSignInButton
-                    testID="register-social-apple"
-                    variant="signUp"
-                    onPress={handleAppleSignIn}
-                    loading={socialLoading === 'apple'}
-                    disabled={!!socialLoading || loading}
-                  />
-                </View>
-              )}
 
               {/* Benefits */}
               <View style={styles.benefits}>
@@ -625,5 +648,27 @@ const styles = StyleSheet.create({
   },
   socialSpacer: {
     marginTop: spacing.sm,
+  },
+  googleBtn: {
+    width: '100%',
+    minHeight: 48,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border.medium,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 8,
+    backgroundColor: colors.bg.primary,
+    paddingHorizontal: spacing.sm,
+  },
+  googleBtnDisabled: {
+    opacity: 0.5,
+  },
+  googleLabel: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.text.primary,
   },
 });
