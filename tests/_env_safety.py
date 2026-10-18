@@ -130,6 +130,8 @@ CREDENTIALS_UNSET = (
     "NASSER_GUEST_TOKEN",
     # Deployed API the eval/bench runners point at.
     "TARGET_BASE_URL",
+    # Sign in with Apple .p8 (B3-B); absence = revocation inert.
+    "APPLE_SIWA_PRIVATE_KEY",
 )
 
 #: Variables that must stay PRESENT but must never be real. Both entries here

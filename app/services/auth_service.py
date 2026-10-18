@@ -18,8 +18,10 @@ import json
 import logging
 import os
 import threading
+from datetime import datetime, timezone
 from typing import Optional, Dict, Tuple
 import httpx
+import jwt
 from supabase import create_client, Client, ClientOptions
 from supabase_auth.errors import AuthApiError, AuthRetryableError, AuthUnknownError
 
@@ -38,6 +40,7 @@ from app.services.database_service import (
 )
 from app.utils.async_utils import fire_and_forget
 from app.utils.db_offload import run_db  # M13-05 ENABLE_SYNC_DB_OFFLOAD
+from app.services import apple_siwa_service  # B3-B ENABLE_APPLE_TOKEN_REVOCATION
 
 logger = logging.getLogger(__name__)
 
@@ -1005,18 +1008,121 @@ async def _purge_deleted_user_caches(user_id: str) -> None:
             logger.warning("[AUTH] cache purge failed: %s", type(exc).__name__)
 
 
+# B3-B (S79) -- Sign in with Apple token storage and revocation, behind
+# ENABLE_APPLE_TOKEN_REVOCATION (default OFF, read per call by
+# apple_siwa_service.apple_token_revocation_enabled). Both helpers below never
+# raise and log only constants and exception type names (spec 2.7). The table
+# is public.apple_siwa_tokens (migration 044, service-role only); its rows
+# leave with the auth user (FK to auth.users ON DELETE CASCADE).
+APPLE_SIWA_TOKENS_TABLE = "apple_siwa_tokens"
+
+
+def _unverified_subject(id_token) -> Optional[str]:
+    """The `sub` claim of a JWT read WITHOUT signature verification, or None.
+
+    Used only to tie Apple's exchange response to the sign-in that just
+    happened: the request token was verified by Supabase a moment earlier and
+    the response token came from Apple over TLS (spec 2.3 step 3, ruling Q5)."""
+    claims = jwt.decode(id_token, options={"verify_signature": False})
+    subject = claims.get("sub") if isinstance(claims, dict) else None
+    return subject if isinstance(subject, str) and subject else None
+
+
+async def store_apple_refresh_token(user_id, authorization_code, id_token) -> bool:
+    """B3-B: exchange the Apple authorization code and upsert the refresh token.
+
+    True only when a row was written. NEVER raises (social-login must not fail
+    because of Apple). Skipped without a user id; the exchange is single-shot
+    and bounded (apple_siwa_service); the identity check compares the `sub` of
+    Apple's id_token with the request's id_token."""
+    try:
+        if not user_id:
+            return False
+        tokens = await apple_siwa_service.exchange_authorization_code(authorization_code)
+        if tokens is None:
+            return False
+        try:
+            apple_subject = _unverified_subject(tokens.get("id_token"))
+            request_subject = _unverified_subject(id_token)
+        except Exception:  # noqa: BLE001 -- an undecodable token is a mismatch
+            apple_subject = request_subject = None
+        if apple_subject is None or apple_subject != request_subject:
+            logger.warning("[SIWA] exchange sub mismatch; not stored")
+            return False
+        row = {
+            "user_id": user_id,
+            "refresh_token": tokens["refresh_token"],
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        await run_db(
+            lambda: get_admin_client()
+            .table(APPLE_SIWA_TOKENS_TABLE)
+            .upsert(row, on_conflict="user_id")
+            .execute()
+        )
+        logger.info("[SIWA] stored")
+        return True
+    except Exception as exc:  # noqa: BLE001 -- type only, never the row
+        logger.warning("[SIWA] store failed: %s", type(exc).__name__)
+        return False
+
+
+async def _read_apple_refresh_token(user_id: str) -> Optional[str]:
+    """B3-B: the stored Apple refresh token of `user_id`, or None. NEVER raises.
+
+    A row whose value is not a non-empty str (a test MagicMock included)
+    counts as no token. `.single()` is not used (it raises on zero rows)."""
+    try:
+        response = await run_db(
+            lambda: get_admin_client()
+            .table(APPLE_SIWA_TOKENS_TABLE)
+            .select("refresh_token")
+            .eq("user_id", user_id)
+            .limit(1)
+            .execute()
+        )
+        rows = getattr(response, "data", None)
+        first = rows[0] if isinstance(rows, list) and rows else None
+        stored = first.get("refresh_token") if isinstance(first, dict) else None
+    except Exception as exc:  # noqa: BLE001 -- type only, never the row
+        logger.warning("[SIWA] token read failed: %s", type(exc).__name__)
+        return None
+    if isinstance(stored, str) and stored:
+        return stored
+    logger.info("[SIWA] no stored token; revoke skipped")
+    return None
+
+
 async def delete_user_account(user_id: str) -> bool:
     """Delete user account and all associated data.
 
     Order (U8b): the cascade RPC first (if it raises, nothing else runs),
     then the fail-soft purge of the per-user caches, then the auth delete
     (if it raises, the exception propagates; a retry is safe because the
-    cascade is idempotent)."""
+    cascade is idempotent).
+
+    B3-B, only with ENABLE_APPLE_TOKEN_REVOCATION ON (flag OFF = the U8b
+    order above, byte-identical): the stored Apple refresh token is read
+    BEFORE the cascade, and revoked at Apple AFTER the purge and BEFORE the
+    auth delete (a failed cascade revokes nothing; a crash before the auth
+    delete leaves the row for the retry). Both steps never raise; the auth
+    delete's FK cascade removes the token row."""
     from app.services.database_service import delete_user_data_cascade
+    siwa_token = None
+    if apple_siwa_service.apple_token_revocation_enabled():
+        siwa_token = await _read_apple_refresh_token(user_id)
     # First delete all user data
     await delete_user_data_cascade(user_id)
     # Then drop the per-user caches derived from the erased rows
     await _purge_deleted_user_caches(user_id)
+    # B3-B: revoke the Apple token (flag ON and a stored token only). The
+    # revoke never raises by contract; this belt keeps the auth delete
+    # running even if it ever did (fix ruling FB1).
+    if siwa_token:
+        try:
+            await apple_siwa_service.revoke_refresh_token(siwa_token)
+        except Exception as exc:  # noqa: BLE001 -- type only, never the token
+            logger.warning("[SIWA] revoke failed: %s", type(exc).__name__)
     # Then delete the auth user via admin client
     admin = get_admin_client()
     admin.auth.admin.delete_user(user_id)
