@@ -65,3 +65,16 @@ Full report: `APP_REVIEW_AUDIT_S79.md` (verdict NEW_BUILD_RECOMMENDED: build 2's
 16. Before release (not blocking review): the written IP assignment or licence from the second team member; counsel on the Content Rights basis, complaint authorities and the under-18 guardian clause.
 
 ---
+
+---
+
+# UPDATE 2026-10-18 05:05: the build-3 path, now that the units are on main
+
+The client half (B3-A) is merged (PR #358, main 7cc9a42c); the backend half (B3-B, PR #359) merges on green. Build 1.0.0 (3) is the FIRST client bytes with the fixes: no OTA goes out (UB-R4). The build number increments itself (`eas.json` production profile: `autoIncrement: true`, `appVersionSource: remote`), so nothing in the repo changes for the number.
+
+1. After #359 is merged: from a clean checkout of `main` in `SmartCompareApp/`, `npm ci` (or confirm `npm ls` is clean), then `eas build --platform ios --profile production`. Wait for TestFlight processing; install build (3) on the iPhone.
+2. Device gate on build (3), in this order: Screen Recording of Sign Up and Welcome back (must NOT be black); Continue with Google; Continue with Apple; Scan > photograph two products > Compare; a fresh questionnaire in Arabic (the app reloads and must land on step 3, not step 1); Profile > Delete account (must complete).
+3. Apple token revocation, BEFORE build (3) is submitted (CLAUDE.md "SESSION 79 flag (B3-B)" row; the PR #359 body has the same list): (a) create the Sign in with Apple key for `com.qaren.app` at developer.apple.com (keep the .p8 out of the repo and out of chat); (b) apply `migrations/044_apple_siwa_tokens.sql` in the Supabase SQL editor and run the postcheck (`relrowsecurity` true; `has_table_privilege` service_role INSERT and SELECT true, anon SELECT false); (c) set `APPLE_SIWA_TEAM_ID`, `APPLE_SIWA_KEY_ID`, `APPLE_SIWA_PRIVATE_KEY` (base64 of the .p8: PowerShell `[Convert]::ToBase64String([IO.File]::ReadAllBytes('AuthKey_<KEYID>.p8'))`), `APPLE_SIWA_CLIENT_ID` = `com.qaren.app` on Railway `web`, in your own terminal; (d) set `ENABLE_APPLE_TOKEN_REVOCATION=true`; (e) canary on build (3) with a test Apple ID: sign in with Apple, then delete the account; the Railway log must show `[SIWA] exchange status=200`, `[SIWA] stored`, `[SIWA] revoke attempt=1 status=200`, and Settings > Apple ID > Sign in with Apple must no longer list MYEZ.
+4. Then the existing steps 13-15 above: App Store Connect gets build (3) attached to version 1.0.0, Sign-in required ticked with account 1's credentials (you type them), the recording per RECORDING_SCRIPT_v2 on build (3), Reply v3 B sent with the video, Resubmit.
+
+Still yours, unchanged: the Program License Agreement (step 1), the review accounts (step 7), the Copyright spelling (9), item 6 confirmation (10), the Arabic captures if the Arabic listing ships in this submission (12). OpenAI data sharing: decided ON on 2026-10-17 (step 8 closed).
