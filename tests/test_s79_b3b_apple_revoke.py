@@ -181,7 +181,8 @@ def _siwa_lines(handler, level=None) -> list[str]:
 
 @pytest.fixture(scope="session")
 def keys():
-    """An EC P-256 key (PKCS#8 PEM text + public key) and an RSA PEM, built at run time."""
+    """An EC P-256 key (PKCS#8 PEM text, its PKCS#8 DER bytes + public key) and
+    an RSA PEM, built at run time."""
     from cryptography.hazmat.primitives import serialization
     from cryptography.hazmat.primitives.asymmetric import ec, rsa
 
@@ -191,13 +192,18 @@ def keys():
         serialization.PrivateFormat.PKCS8,
         serialization.NoEncryption(),
     ).decode("ascii")
+    der = ec_priv.private_bytes(
+        serialization.Encoding.DER,
+        serialization.PrivateFormat.PKCS8,
+        serialization.NoEncryption(),
+    )
     rsa_priv = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     rsa_pem = rsa_priv.private_bytes(
         serialization.Encoding.PEM,
         serialization.PrivateFormat.PKCS8,
         serialization.NoEncryption(),
     ).decode("ascii")
-    return {"pem": pem, "pub": ec_priv.public_key(), "rsa": rsa_pem}
+    return {"pem": pem, "pub": ec_priv.public_key(), "rsa": rsa_pem, "der": der}
 
 
 def _siwa():
@@ -456,9 +462,9 @@ def _check_client_secret(secret, pub, *, now=None):
     return claims
 
 
-def _exc_chain_texts(exc) -> list[str]:
-    """str / repr / args of exc and of every __context__ / __cause__ link (FB4)."""
-    out: list[str] = []
+def _exc_chain(exc) -> list[BaseException]:
+    """exc and every __context__ / __cause__ link, each once."""
+    out: list[BaseException] = []
     seen: set[int] = set()
     todo = [exc]
     while todo:
@@ -466,17 +472,44 @@ def _exc_chain_texts(exc) -> list[str]:
         if e is None or id(e) in seen:
             continue
         seen.add(id(e))
+        out.append(e)
+        todo += [e.__context__, e.__cause__]
+    return out
+
+
+def _exc_chain_bytes(exc) -> list[bytes]:
+    """Fix ruling FD2: every bytes value in the chain, among the args and the
+    .object of a Unicode error (a decode error carries its whole input)."""
+    out: list[bytes] = []
+    for e in _exc_chain(exc):
+        values = list(getattr(e, "args", ())) + [getattr(e, "object", None)]
+        out += [bytes(v) for v in values if isinstance(v, (bytes, bytearray))]
+    return out
+
+
+def _exc_chain_texts(exc) -> list[str]:
+    """str / repr / args of exc and of every __context__ / __cause__ link (FB4).
+    Fix ruling FD2: also a str .object of a Unicode error, and every bytes
+    value of the chain as its latin-1 text."""
+    out: list[str] = []
+    for e in _exc_chain(exc):
         out += [str(e), repr(e)]
         out += [str(a) for a in getattr(e, "args", ())]
         out += [repr(a) for a in getattr(e, "args", ())]
-        todo += [e.__context__, e.__cause__]
+        obj = getattr(e, "object", None)
+        if isinstance(obj, str):
+            out.append(obj)
+    out += [b.decode("latin-1") for b in _exc_chain_bytes(exc)]
     return out
 
 
 def _assert_no_key_text_in_exception(exc, keys, *raw):
     """Fix ruling FB4 (kills S3): no PEM body line of the EC or RSA test key and
     no configured key text (as given or whitespace-joined) appears in str(exc),
-    repr(exc), exc.args or anywhere in the __context__ / __cause__ chain."""
+    repr(exc), exc.args or anywhere in the __context__ / __cause__ chain.
+    Fix ruling FD2 (kills E10, S3f): no 16-byte window of the EC key's PKCS#8
+    DER appears in any bytes value of the chain (args, a Unicode error's
+    .object), compared as bytes and as latin-1 text."""
     secrets: list[str] = []
     for pem in (keys["pem"], keys["rsa"]):
         secrets += [ln.strip() for ln in pem.splitlines()
@@ -486,6 +519,11 @@ def _assert_no_key_text_in_exception(exc, keys, *raw):
             secrets += [r, "".join(r.split())]
     texts = "\n".join(_exc_chain_texts(exc))
     found = [s for s in secrets if s in texts]
+    der = keys["der"]
+    blobs = _exc_chain_bytes(exc)
+    windows = [der[i:i + 16] for i in range(0, len(der) - 15, 8)]
+    found += [w for w in windows
+              if any(w in b for b in blobs) or w.decode("latin-1") in texts]
     if found:  # pytest.fail: the report never echoes the key text (fix ruling FC1)
         pytest.fail(f"key material in the exception chain: {len(found)} value(s)")
 
@@ -493,11 +531,17 @@ def _assert_no_key_text_in_exception(exc, keys, *raw):
 def _assert_clean_value_error(exc):
     """Fix ruling FC1 (kills S3e): the ValueError is raised outside any except
     block, so it carries no __context__ and no __cause__, and its message is
-    the constant."""
-    assert type(exc) is ValueError, type(exc).__name__
-    assert exc.args == ("unparseable private key",), len(exc.args)
-    assert exc.__context__ is None, type(exc.__context__).__name__
-    assert exc.__cause__ is None, type(exc.__cause__).__name__
+    the constant. Fix ruling FD4: reported through pytest.fail with a count
+    only, so a regression never echoes the exception (or key bytes in it)
+    into the pytest output."""
+    failed = [
+        type(exc) is not ValueError,
+        exc.args != ("unparseable private key",),
+        exc.__context__ is not None,
+        exc.__cause__ is not None,
+    ]
+    if any(failed):
+        pytest.fail(f"not the clean constant ValueError: {sum(failed)} check(s) failed")
 
 
 class _B64Spy:
@@ -580,25 +624,40 @@ def _bad_key_forms(keys):
     ValueError. The non-ASCII characters are written as escapes (the file
     stays pure ASCII); the last form is base64 of an ASCII label line plus
     the generated PEM, which decodes to non-PEM-first text that IS key
-    material (the second ValueError site)."""
+    material (the second ValueError site). Fix ruling FD1 (kills E1, E1F,
+    E9): three PEM-prefixed values whose non-ASCII character sits AFTER the
+    armour prefix (a trailing U+201D, a U+00A0 right before a newline, a
+    U+200B inside the first body line). FD2 (kills E10, S3f): the base64 of
+    the key's PKCS#8 DER, which decodes to non-ASCII bytes. FD3 (kills E11):
+    the base64 of the PEM wrapped in ASCII double quotes (the strict decode
+    refuses it)."""
     pem = keys["pem"]
     labelled = ("Bag Attributes\n    friendlyName: b3b-label\n" + pem).encode("ascii")
+    body = [ln for ln in pem.splitlines() if ln and not ln.startswith("-----")][0]
+    pem_b64 = base64.b64encode(pem.encode("ascii")).decode("ascii")
     return {
         "bom-pem": "\ufeff" + pem,
         "smart-quoted-pem": "\u201c" + pem + "\u201d",
         "zwsp-pem": "\u200b" + pem,
         "base64-of-labelled-pem": base64.b64encode(labelled).decode("ascii"),
+        "pem-trailing-smart-quote": pem.strip() + "\u201d",
+        "pem-nbsp-inside": pem.replace(body + "\n", body + "\u00a0\n", 1),
+        "pem-zwsp-inside-body": pem.replace(body, body[:10] + "\u200b" + body[10:], 1),
+        "base64-of-der-p8": base64.b64encode(keys["der"]).decode("ascii"),
+        "base64-quoted": '"' + pem_b64 + '"',
     }
 
 
-_NON_ASCII_FORMS = ("bom-pem", "smart-quoted-pem", "zwsp-pem")
+_NON_ASCII_FORMS = ("bom-pem", "smart-quoted-pem", "zwsp-pem", "pem-trailing-smart-quote",
+                    "pem-nbsp-inside", "pem-zwsp-inside-body")
 
 
 @pytest.mark.parametrize(
     "form",
     ["pem-real-newlines", "pem-literal-backslash-n", "base64", "base64-wrapped-76",
      "pem-space-joined", "garbage", "rsa", "bom-pem", "smart-quoted-pem", "zwsp-pem",
-     "base64-of-labelled-pem"],
+     "base64-of-labelled-pem", "pem-trailing-smart-quote", "pem-nbsp-inside",
+     "pem-zwsp-inside-body", "base64-of-der-p8", "base64-quoted"],
 )
 def test_b3b_r3_private_key_forms(monkeypatch, keys, form):
     """R3 (RED: module absent; kills X9, X10): the three accepted key forms
@@ -610,7 +669,11 @@ def test_b3b_r3_private_key_forms(monkeypatch, keys, form):
     key text anywhere in its chain. Fix ruling FC1 / FC2 (kills S3b, S3d,
     S3e): a BOM-prefixed, smart-quoted or ZWSP-prefixed PEM and the base64
     of a labelled PEM -> ValueError from both functions, no key text in the
-    chain, no __context__ / __cause__; non-ASCII input is never decoded."""
+    chain, no __context__ / __cause__; non-ASCII input is never decoded.
+    Fix ruling FD1-FD3 (kills E1, E1F, E9, E10, S3f, E11): the same for a
+    PEM-prefixed value with a non-ASCII character after the armour (0
+    decodes), the base64 of the key's PKCS#8 DER (no DER bytes anywhere in
+    the chain; 2 decodes) and a double-quoted base64 PEM (2 decodes)."""
     siwa = _siwa()
     if form == "garbage":
         _set_config(monkeypatch, "garbage-not-a-pem")
@@ -774,6 +837,8 @@ def test_b3b_r8_google_never_exchanges(monkeypatch, keys, logs):
     assert _siwa_records(logs) == [], _siwa_lines(logs)
 
 
+_B64_DER = object()  # marker: replaced at run time (fix ruling FD2)
+
 _R9_CASES = {
     "apple-400": ([(400, {"error": "B3BSENTINELERR"})], None, None, "[SIWA] exchange status=400"),
     "apple-500": ([(500, {"error": "B3BSENTINELERR"})], None, None, "[SIWA] exchange status=500"),
@@ -784,6 +849,9 @@ _R9_CASES = {
     "200-text-body": ([(200, "not json at all")], None, None, "[SIWA] exchange response unusable"),
     "name-missing": ([], "APPLE_SIWA_KEY_ID", None, "[SIWA] config missing: APPLE_SIWA_KEY_ID"),
     "garbage-key": ([], None, "garbage-not-a-pem", "[SIWA] client secret build failed: ValueError"),
+    # fix ruling FD2 (kills E10, S3f): _B64_DER stands for the base64 of the
+    # key's PKCS#8 DER, built at run time from the keys fixture
+    "der-key": ([], None, _B64_DER, "[SIWA] client secret build failed: ValueError"),
     "upsert-raises": ("ok", None, None, "[SIWA] store failed: APIError"),
 }
 
@@ -793,8 +861,12 @@ def test_b3b_r9_exchange_failure_never_fails_sign_in(monkeypatch, keys, logs, ca
     """R9 (RED: no WARNING line exists; kills X15, X20, X21, X30): every Apple /
     config / store failure keeps 200 and the flag-OFF body, logs exactly its
     2.9 WARNING once, stores nothing (one attempt in the upsert case) and leaks
-    no sentinel, code, token, client secret, PEM line or id_token."""
+    no sentinel, code, token, client secret, PEM line or id_token. Fix ruling
+    FD2 (kills E10, S3f): the base64 of the key's PKCS#8 DER logs the
+    ValueError line, and neither exception carries key text or DER bytes."""
     script, skip, bad_pem, expected = _R9_CASES[case]
+    if bad_pem is _B64_DER:
+        bad_pem = base64.b64encode(keys["der"]).decode("ascii")
     _set_config(monkeypatch, bad_pem or keys["pem"], skip=skip)
     ok = _apple_ok()
     if script == "ok":
@@ -820,7 +892,7 @@ def test_b3b_r9_exchange_failure_never_fails_sign_in(monkeypatch, keys, logs, ca
     text = "\n".join(_msgs(logs))
     found = [s for s in leaks if s and s in text]
     assert not found, f"leaked into the logs: {len(found)} value(s)"
-    if case == "garbage-key":
+    if case in ("garbage-key", "der-key"):
         # fix ruling FB4 (kills S3): the exceptions themselves carry no key text
         siwa = _siwa()
         with pytest.raises(ValueError) as built:
