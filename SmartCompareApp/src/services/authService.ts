@@ -14,6 +14,7 @@ import {
 } from './fetchWithDeadline';
 import type { ConsentPayload } from './consent';
 import { authFailureKey } from './authErrorCopy';
+import { clearOnboardingResume } from './onboardingResume';
 // Native modules loaded lazily — crashes Expo Go if imported at top level
 let GoogleSignin: any = null;
 let AppleAuthentication: any = null;
@@ -347,6 +348,27 @@ export async function logout(): Promise<void> {
     } catch {
       // never let draft cleanup break logout
     }
+    // S79 B3-A (ruling A6): the onboarding resume record is per device, not
+    // per account; drop it with the draft so a different account signing
+    // in next can never inherit it. clearOnboardingResume never rejects; it
+    // resets the in-memory view at once, and the storage removal is bounded
+    // at 500 ms (fix round FA5) so a hung AsyncStorage cannot hold logout.
+    let resumeClearTimer: ReturnType<typeof setTimeout> | null = null;
+    try {
+      await Promise.race([
+        clearOnboardingResume(),
+        new Promise<void>((resolve) => {
+          resumeClearTimer = setTimeout(resolve, 500);
+        }),
+      ]);
+    } catch {
+      // never let the resume cleanup break logout
+    } finally {
+      if (resumeClearTimer) clearTimeout(resumeClearTimer);
+    }
+    // S79 B3-A C6: end the Google SDK session too (fire and forget; adds no
+    // await to the logout chain; a no-op without a Google session).
+    void googleSignOutBestEffort();
   }
 }
 
@@ -823,6 +845,40 @@ export async function completePasswordRecovery(
 
 // --- Google Sign-In ---
 
+/** B3-A: sign out of the Google SDK when a Google session exists; never rejects. */
+export async function googleSignOutBestEffort(): Promise<void> {
+  try {
+    const gs = getGoogleSignin();
+    if (!gs || typeof gs.signOut !== 'function') return;
+    if (gs.hasPreviousSignIn?.() !== true) return;
+    await gs.signOut();
+  } catch {
+    // best effort
+  }
+}
+
+/** B3-A: revoke the Google grant on account deletion, bounded; never rejects. */
+export async function revokeGoogleAccessBestEffort(boundMs = 3000): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  try {
+    const gs = getGoogleSignin();
+    if (!gs || typeof gs.revokeAccess !== 'function') return;
+    if (gs.hasPreviousSignIn?.() !== true) return;
+    await Promise.race([
+      Promise.resolve()
+        .then(() => gs.revokeAccess())
+        .catch(() => undefined),
+      new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, boundMs);
+      }),
+    ]);
+  } catch {
+    // best effort
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 /**
  * Configure Google Sign-In. Call once at app startup.
  * Uses Google Web Client ID from Google Cloud Console.
@@ -841,7 +897,10 @@ export function configureGoogleSignIn() {
     // Without this, @react-native-google-signin throws "failed to determine
     // clientID" on the first Google button tap (Sentry REACT-NATIVE-2).
     iosClientId: '21336192767-38hi4t1ac23089iau7jdog1f43oc7rdm.apps.googleusercontent.com',
-    offlineAccess: true,
+    // S79 B3-A (ruling A4): `offlineAccess` is no longer requested. Hygiene,
+    // not minimisation on iOS: the iOS SDK sets serverClientID from
+    // webClientId unconditionally, so a serverAuthCode is still issued; the
+    // app never reads, sends or stores it.
   });
 }
 
@@ -1043,6 +1102,15 @@ export async function signInWithApple(consent?: ConsentPayload): Promise<AuthRes
     });
 
     const idToken = credential.identityToken;
+    // S79 B3-A C7 (ruling A18): Apple's one-time authorization code rides
+    // /social-login as the OPTIONAL `authorization_code` (Apple only, only a
+    // non-empty string) so the backend can exchange it for a refresh token
+    // and revoke it on account deletion (B3-B). Absent / null / empty /
+    // non-string keeps today's body byte for byte. Never logged.
+    const authorizationCode =
+      typeof credential.authorizationCode === 'string' && credential.authorizationCode.length > 0
+        ? credential.authorizationCode
+        : null;
     if (!idToken) {
       return { success: false, error: 'Failed to get Apple identity token' };
     }
@@ -1095,6 +1163,7 @@ export async function signInWithApple(consent?: ConsentPayload): Promise<AuthRes
             provider: 'apple',
             id_token: idToken,
             nonce: rawNonce,
+            ...(authorizationCode ? { authorization_code: authorizationCode } : {}),
             ...(consent ?? {}),
           }),
         },

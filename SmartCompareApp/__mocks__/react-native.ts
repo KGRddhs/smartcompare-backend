@@ -133,11 +133,14 @@ export const Alert = {
 // ShareBottomSheet on its Share-sheet fallback branch, i.e. the same
 // outcome those suites saw before this export existed. A test that wants
 // the deep-link branch should override it locally.
+// S79 B3-A C2: `openSettings` backs the camera-denied "Open Settings"
+// button (HomeScreen, ScanCameraScreen); resolves, like the real one.
 export const Linking = {
   openURL: jest.fn(() => Promise.resolve()),
   canOpenURL: jest.fn(() => Promise.resolve(false)),
   getInitialURL: jest.fn(() => Promise.resolve(null)),
   addEventListener: jest.fn(() => ({ remove: jest.fn() })),
+  openSettings: jest.fn(() => Promise.resolve()),
 };
 
 // B5 — HomeScreen pushes its two consumer-less boot calls (the /health

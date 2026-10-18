@@ -41,7 +41,10 @@
             "NSPrivacyCollectedDataType": "NSPrivacyCollectedDataTypePhotosorVideos",
             "NSPrivacyCollectedDataTypeLinked": true,
             "NSPrivacyCollectedDataTypeTracking": false,
-            "NSPrivacyCollectedDataTypePurposes": ["NSPrivacyCollectedDataTypePurposeAppFunctionality"]
+            "NSPrivacyCollectedDataTypePurposes": [
+              "NSPrivacyCollectedDataTypePurposeAppFunctionality",
+              "NSPrivacyCollectedDataTypePurposeOther"
+            ]
           },
           {
             "NSPrivacyCollectedDataType": "NSPrivacyCollectedDataTypeOtherUserContent",
@@ -49,7 +52,8 @@
             "NSPrivacyCollectedDataTypeTracking": false,
             "NSPrivacyCollectedDataTypePurposes": [
               "NSPrivacyCollectedDataTypePurposeAppFunctionality",
-              "NSPrivacyCollectedDataTypePurposeAnalytics"
+              "NSPrivacyCollectedDataTypePurposeAnalytics",
+              "NSPrivacyCollectedDataTypePurposeOther"
             ]
           },
           {
@@ -59,7 +63,8 @@
             "NSPrivacyCollectedDataTypePurposes": [
               "NSPrivacyCollectedDataTypePurposeAppFunctionality",
               "NSPrivacyCollectedDataTypePurposeAnalytics",
-              "NSPrivacyCollectedDataTypePurposeProductPersonalization"
+              "NSPrivacyCollectedDataTypePurposeProductPersonalization",
+              "NSPrivacyCollectedDataTypePurposeOther"
             ]
           },
           {
@@ -83,7 +88,8 @@
             "NSPrivacyCollectedDataTypeTracking": false,
             "NSPrivacyCollectedDataTypePurposes": [
               "NSPrivacyCollectedDataTypePurposeAnalytics",
-              "NSPrivacyCollectedDataTypePurposeProductPersonalization"
+              "NSPrivacyCollectedDataTypePurposeProductPersonalization",
+              "NSPrivacyCollectedDataTypePurposeOther"
             ]
           },
           {
@@ -113,7 +119,8 @@
             "NSPrivacyCollectedDataTypeTracking": false,
             "NSPrivacyCollectedDataTypePurposes": [
               "NSPrivacyCollectedDataTypePurposeProductPersonalization",
-              "NSPrivacyCollectedDataTypePurposeAppFunctionality"
+              "NSPrivacyCollectedDataTypePurposeAppFunctionality",
+              "NSPrivacyCollectedDataTypePurposeOther"
             ]
           },
           {
@@ -210,7 +217,7 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "MYEZ needs camera access to photograph products for comparison.",
+          "cameraPermission": "MYEZ uses the camera to photograph the two products you want to compare. The photos are uploaded to MYEZ's servers and sent to OpenAI to identify the products.",
           "microphonePermission": "MYEZ only uses the camera to photograph products. Audio is never recorded.",
           "recordAudioAndroid": false
         }
@@ -218,7 +225,7 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "MYEZ needs photo library access to identify products from your photos.",
+          "photosPermission": "MYEZ opens your photo library only for the photos you pick. Those photos are uploaded to MYEZ's servers and sent to OpenAI to identify the products.",
           "microphonePermission": "MYEZ only uses the camera to photograph products. Audio is never recorded."
         }
       ],

@@ -44,6 +44,19 @@ import { ProductImage } from './primitives/ProductImage';
 // 1. SmartPickCard
 // ---------------------------------------------------------------------------
 
+// S79 B3-A C4: the categories `home.categories.<key>` can label on the pill
+// (the backend vocabulary minus `other`; `nudge` is not a category).
+const SMART_PICK_CATEGORY_KEYS = new Set([
+  'electronics',
+  'grocery',
+  'supplements',
+  'makeup',
+  'skincare',
+  'haircare',
+  'fragrances',
+  'fashion',
+]);
+
 interface SmartPickCardProps {
   onPressVerdict?: (comparisonId: string) => void;
 }
@@ -76,8 +89,27 @@ export function SmartPickCard({ onPressVerdict }: SmartPickCardProps) {
   // Null-hide-surround rule (Bundle E ruling): hide each surround (eyebrow
   // pill, updated_at chip, per-product sub-line, verdict_short caption)
   // when its source field is null. NO fabrication.
-  const showCategory = Boolean(pick.category);
-  const showUpdatedAt = Boolean(pick.updated_at);
+  // S79 B3-A C4: the server sends a raw category and a fixed English age
+  // string; render only what the catalog can localise, hide the rest.
+  const catKey = String(pick.category ?? '').trim().toLowerCase();
+  const categoryLabel = SMART_PICK_CATEGORY_KEYS.has(catKey)
+    ? t(`home.categories.${catKey}`).toUpperCase()
+    : null;
+  const updatedRaw = String(pick.updated_at ?? '').trim();
+  const ageMatch = /^(\d+)([mhd]) ago$/.exec(updatedRaw);
+  let updatedLabel: string | null = null;
+  if (updatedRaw === 'Just now') {
+    updatedLabel = t('time.justNow');
+  } else if (ageMatch) {
+    const count = Number(ageMatch[1]);
+    const unitKey =
+      ageMatch[2] === 'm' ? 'time.minutesAgo' : ageMatch[2] === 'h' ? 'time.hoursAgo' : 'time.daysAgo';
+    updatedLabel = t(unitKey, { count });
+  } else if (updatedRaw === 'Older') {
+    updatedLabel = t('home.smart_pick.updated_older');
+  }
+  const showCategory = Boolean(categoryLabel);
+  const showUpdatedAt = Boolean(updatedLabel);
   const showWinnerSub = Boolean(pick.winner_sub);
   const showRunnerUpSub = Boolean(pick.runner_up_sub);
   const showVerdictShort = Boolean(pick.verdict_short);
@@ -98,13 +130,13 @@ export function SmartPickCard({ onPressVerdict }: SmartPickCardProps) {
             {showCategory ? (
               <View style={styles.smartCatPill} testID="home-smart-pick-category">
                 <Text style={styles.smartCatPillText}>
-                  {(pick.category ?? '').toUpperCase()}
+                  {categoryLabel}
                 </Text>
               </View>
             ) : <View />}
             {showUpdatedAt ? (
               <Text style={styles.smartUpdated} testID="home-smart-pick-updated">
-                {pick.updated_at}
+                {updatedLabel}
               </Text>
             ) : null}
           </View>

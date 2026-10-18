@@ -48,6 +48,7 @@ import Svg, { Path } from 'react-native-svg';
 import { Mail } from 'lucide-react-native';
 import { colors, spacing, radii } from '../../theme';
 import { AppleSignInButton } from '../../components/AppleSignInButton';
+import { GoogleGlyph } from '../../components/GoogleGlyph';
 
 export type AuthMethod = 'apple' | 'google' | 'email';
 
@@ -109,7 +110,7 @@ function SocialGlyph({ provider }: { provider: AuthMethod }) {
   if (provider === 'apple') {
     return null;
   }
-  return <Text style={socialStyles.glyphGoogle}>G</Text>;
+  return <GoogleGlyph />;
 }
 
 // ---------- Main screen ----------
@@ -406,12 +407,6 @@ const socialStyles = StyleSheet.create({
     fontWeight: '600',
     lineHeight: 13,
     color: colors.text.primary,
-  },
-  glyphGoogle: {
-    fontSize: 16,
-    lineHeight: 16,
-    color: '#4285F4',
-    fontWeight: '700',
   },
 });
 

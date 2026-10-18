@@ -17,16 +17,25 @@ interface Props {
   onChange: (lang: 'en' | 'ar') => void;
   /** Currently selected language (controls visual selected state). */
   value?: 'en' | 'ar';
+  /** B3-A: persists the resume record right before the RTL reload. */
+  onBeforeReload?: (lang: 'en' | 'ar') => Promise<void>;
 }
 
-export function Step02Language({ onChange, value }: Props) {
+export function Step02Language({ onChange, value, onBeforeReload }: Props) {
   const { t } = useTranslation();
   const { switchLanguage } = useLanguage();
 
   const select = (lang: 'en' | 'ar') => {
     // switchLanguage flips i18n + I18nManager + reloads via expo-updates.
     // Fire-and-forget: the orchestrator advances on the next tick.
-    void switchLanguage(lang);
+    // S79 B3-A C3: with onBeforeReload the hook persists the resume record
+    // right before an RTL reload; without it the call keeps its exact
+    // one-argument form (pinned by Step02Language.test.tsx).
+    if (onBeforeReload) {
+      void switchLanguage(lang, { beforeReload: () => onBeforeReload(lang) });
+    } else {
+      void switchLanguage(lang);
+    }
     onChange(lang);
   };
 

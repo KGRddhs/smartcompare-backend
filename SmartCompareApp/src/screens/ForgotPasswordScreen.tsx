@@ -17,7 +17,6 @@ import {
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { usePreventScreenCapture } from 'expo-screen-capture';
 import { requestPasswordReset } from '../services/authService';
 import { parseApiError } from '../services/api';
 import { AuthStackParamList } from '../types';
@@ -31,7 +30,6 @@ type ForgotPasswordScreenProps = {
 
 export default function ForgotPasswordScreen({ navigation }: ForgotPasswordScreenProps) {
   const { t } = useTranslation();
-  usePreventScreenCapture();
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
