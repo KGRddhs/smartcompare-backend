@@ -1,0 +1,790 @@
+{
+ "category": "G: results UX surfaces and the scan latency (MYEZ-015, 020, 023, 024, 028)",
+ "summary": "Read-only trace on origin/main 683f56c0 (sc-s80-base), CLAUDE.md and the session 76 to 79 ledgers. No file was edited and no Railway tool was called.\n\nMYEZ-015 (the ~40 s scan). The camera path is ONE blocking multipart request, POST /api/v1/image/identify. The server runs these stages one after another:\n- credit gate (paid-route metering is ON);\n- GPT-4o-mini vision with 2 images; it has no asyncio bound, only the SDK limits of 120 s and OPENAI_MAX_RETRIES=1;\n- L4 omni-moderation on the vision output;\n- compare_from_text, wrapped in ONE outer asyncio.wait_for(STREAM_HARD_CAP_SECONDS = 30 in prod). Inside it: deterministic category (an A2b LLM call only for blind names, 4 s), unified Serper search (bound ON, 12 s), Phase-1 races (specs 8 s, price 15 s, reviews 10 s, image 5 s), Phase 2 (rating 4 s and refill 5 s, skipped when less than 12 s remains because the residual guard is ON), scoring, the verdict, self-critique (OFF), the response build and L3 output moderation.\n- Measured text canaries: cold pairs land at 30.2-30.8 s, which is the cap.\n- So a cold scan is roughly 30 s of compare plus vision, moderation and upload. That fits the ~38-42 s seen in the tester videos (inferred).\n- No SSE stage events exist for images: there is no image stream route. On the client, SSE is off for every path (ENABLE_EXPO_FETCH_SSE_DEFAULT=false, issue #118).\n- During the wait the camera loader shows LoadingRings and one static caption (\"نتعرّف على منتجاتك\"). There is no checklist, no tips, no caption escalation and no cancel, under a 120 s client watchdog. Backing out does not abort the fetch. The server never checks for a disconnect, so the credit is still spent.\n- ENABLE_FULL_STREAM_DEADLINE does not apply to this path, and neither do the parse flags.\n- Measurement that exists today: search_logs.duration_ms (input_type=camera, server-side), and metadata.stage_timings_ms when DEBUG_STAGE_TIMINGS is true (it is on in prod). Neither breaks out vision or moderation time.\n- The scan_start, identity_resolved and comparison_ready events must first be added to VALID_EVENT_TYPES (an unflagged, additive widening) BEFORE any OTA sends them. Otherwise the whole Results batch 422s silently.\n- A real identity_resolved event needs either an additive split into identify then compare, or a server-side stamp. The single blocking request cannot report it in between.\n\nMYEZ-020 (AI consent sheet).\n- Pinned as legal text: the sha256 fence over the EN and AR aiConsent.title and aiConsent.body with AI_CONSENT_VERSION=2, the V3/V4 sentence structure, and the T1.21-T1.24 truth, no-opt-out and vocabulary rules.\n- Free to change: layout and placement only, and only through deliberate test-pin changes. For example: show the sheet earlier than the Compare tap, change the visual hierarchy, or turn the existing body's sentences into bullets without changing a word.\n- Any new summary or short-version text is new disclosure. It needs legal review and probably a version bump that asks every user again.\n- \"Not now\" (the decline) and the Privacy link already exist.\n\nMYEZ-023 (feedback). FeedbackCard always sends useful:true, so the yes/no signal is meaningless. Fresh compares carry no comparison_id. Migration 027 (applied) already has winner_correct, price_correct and specs_correct columns ('correct', 'wrong', 'unsure'), which no route writes. An additive mapping works with no change to the frozen client contract:\n- yes / no map to useful;\n- the reason chips widen VALID_MATTERED_MOST;\n- an identity correction goes in change_suggestion with an \"[identity]\" prefix;\n- optional new fields write the 027 columns. Extra fields are ignored by default Pydantic, so they cannot break anything.\n- Caveat: the few-shot miner reads winner_correct.\n\nMYEZ-024 (popular comparisons). TrendingNearYou receives no category. The curated list (data/trending_curated.json) is region-only. The tags are English and rendered uppercase. The tap handler drops the row's tag and sends the CURRENT category chip. A client-only filter and relabel on the existing tag field fixes it via OTA.\n\nMYEZ-028 (results page). The order is 8 sections pinned by a test. Details (\"Dig deeper\") are already collapsed by default. A \"What we don't know\" block can be built on the client from existing fields. Two problems need backend work, outside this category:\n- the top \"two reasons\" are deterministic English (verdict_builder / scoring_service delta_text);\n- a no-winner state needs the result_status from category A.\n\nExtra cross-category findings: the camera route drops lang, selected_category, user_id and preferences. As a result, camera verdicts are never Arabic and never personalised.",
+ "defects": [
+  {
+   "id": "MYEZ-015",
+   "status": "anchored",
+   "root_cause": "The scan is one blocking request: POST /api/v1/image/identify does vision identify, then L4 moderation, then compare_from_text. The compare alone is capped at STREAM_HARD_CAP_SECONDS (30 in prod), and cold pairs routinely use all of it (text canary: 30.2-30.8 s). Vision, moderation, the client JPEG transcode and the multipart upload run before that cap starts. So a cold scan is about 30 s plus about 8-12 s (inferred), which matches the audit's ~38-42 s. Why the wait looks silent: no stream exists for images, and SSE is off on the client for every path (ENABLE_EXPO_FETCH_SSE_DEFAULT=false). The camera loader in ResultsScreen renders only LoadingRings and one static i18n caption; it is not the LoadingScreenVariants checklist/tips/escalation used by the text path. It has no cancel, and back does not abort the fetch. The client watchdog is 120 s (IDENTIFY_TIMEOUT_MS), against 35 s on the text path. No stage, identity or ready events exist for the camera path, and the wall-time tracker is never started for it.",
+   "evidence": [
+    {
+     "file": "app/api/image_routes.py",
+     "line": "160-168",
+     "note": "Single POST /identify endpoint. Params are images, region and nocache only: no lang, no selected_category, no stream.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/api/image_routes.py",
+     "line": "289-301",
+     "note": "With paid-route metering ON, a credit is consumed BEFORE the vision call.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/api/image_routes.py",
+     "line": "307-310",
+     "note": "`vision_result = await identify_products(image_data_list)` is not wrapped in asyncio.wait_for.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/openai_service.py",
+     "line": "32-36,181,185-193",
+     "note": "Vision uses the module singleton AsyncOpenAI (timeout 120 s, connect 30 s, max_retries=openai_max_retries()). Image detail is 'auto' and output is capped at 500 tokens. Prod OPENAI_MAX_RETRIES=1 per CLAUDE.md:578.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/model_config.py",
+     "line": "51",
+     "note": "Vision model is gpt-4o-mini.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/api/image_routes.py",
+     "line": "367-370",
+     "note": "L4 moderate_vision_output runs serially before the compare starts. Its only bound is the SDK client timeout.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/api/image_routes.py",
+     "line": "448-450",
+     "note": "`service.compare_from_text(query, region=region, vision_products=products, nocache=nocache)`: the non-streaming path.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/structured_comparison_service.py",
+     "line": "4007-4024",
+     "note": "The whole _compare_from_text_impl (Phase 1, Phase 2, scoring, verdict, critique, L3 moderation) runs under ONE asyncio.wait_for(timeout=STREAM_HARD_CAP_SECONDS). On timeout it returns a PARTIAL, INSUFFICIENT_DATA or TIMEOUT (4025-4090).",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/structured_comparison_service.py",
+     "line": "1632",
+     "note": "STREAM_HARD_CAP_SECONDS defaults to 25.0 in code. CLAUDE.md:337 records 30.0 in prod since 2026-06-09.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/structured_comparison_service.py",
+     "line": "1635-1643",
+     "note": "ENABLE_FULL_STREAM_DEADLINE extends the cap only over the STREAMING tail. The camera path is already bounded by the outer wait_for, so this flag cannot help scan latency.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/structured_comparison_service.py",
+     "line": "4210-4225",
+     "note": "The vision path skips parse_product_query (no parse LLM call). ENABLE_PARSE_PRESPLIT and ENABLE_PARSE_BUDGET therefore do not apply.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/structured_comparison_service.py",
+     "line": "476-491",
+     "note": "Pair category for vision comes from name detection. The A2b classify_category_llm runs only when names are blind; it is bounded by CLASSIFY_LLM_TIMEOUT=4.0 (extraction_service.py:1365, 1384-1394).",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/structured_comparison_service.py",
+     "line": "5732-5750,1689,5838-5845,1797",
+     "note": "Per-product Phase-1 race caps: specs 8 s, price 15 s (PRICE_RACE_TIMEOUT, started concurrently with the unified search), reviews 10 s, image_url 5 s. The unified search is bounded at 12 s under ENABLE_UNIFIED_SEARCH_BOUND. Worst-case Phase-1 wall is about 12+10 s.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/structured_comparison_service.py",
+     "line": "6135-6153,1802,1958",
+     "note": "Phase 2 (rating 4 s cap, smart-fallback refill 5 s) is skipped when the residual is below PHASE2_MIN_RESIDUAL_SECONDS, under ENABLE_PHASE2_RESIDUAL_GUARD.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/structured_comparison_service.py",
+     "line": "4441-4470",
+     "note": "Verdict generate_comparison, then _apply_self_critique (ENABLE_SELF_CRITIQUE OFF per CLAUDE.md:341). Both run inside the 30 s cap.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/structured_comparison_service.py",
+     "line": "4601-4612,4622-4645",
+     "note": "metadata.stage_timings_ms (scoring_ms, verdict_ms, response_build_ms, total_ms, per_product[...]) is stamped BEFORE L3 output moderation. Moderation time and vision time are never itemized.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/structured_comparison_service.py",
+     "line": "1066-1075",
+     "note": "DEBUG_STAGE_TIMINGS is read once per process and cached. CLAUDE.md:337 says it has been true in prod since Sprint A.",
+     "basis": "measured"
+    },
+    {
+     "file": "docs/investigations/2026-10-14-session-78-state/ledger.md (sc-docs-70)",
+     "line": "36-37",
+     "note": "PHASE2_MIN_RESIDUAL_SECONDS=12 on web. Canary: cold pairs end at 30.2-30.8 s and iPhone at 23.4 s, i.e. text compares sit at the cap.",
+     "basis": "measured"
+    },
+    {
+     "file": "docs/investigations/2026-10-10-session-76-state/ledger.md (sc-docs-70)",
+     "line": "44,47",
+     "note": "ENABLE_PHASE2_RESIDUAL_GUARD=true and ENABLE_UNIFIED_SEARCH_BOUND=true were set on web. Canary 7c: q-form complete at 26.9 s.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/api/text_routes.py",
+     "line": "954,1198",
+     "note": "The only SSE route is GET /text/compare/stream, and it is the only route that checks request.is_disconnected(). The image route never checks for a disconnect.",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/config/features.ts",
+     "line": "33-52",
+     "note": "ENABLE_EXPO_FETCH_SSE_DEFAULT=false (issue #118: the RN fetch polyfill has no ReadableStream, and certificate pinning with expo/fetch is unverified). Even the text path does one blocking REST compare (api.ts:744-751).",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/services/api.ts",
+     "line": "48,50,256-302",
+     "note": "COMPARE_TIMEOUT_MS=35000 for text, but IDENTIFY_TIMEOUT_MS=120000 for the camera. identifyFromImages resizes each image to 1024 px JPEG q0.8, sends only ?region=, and owns a private AbortController.",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/screens/ResultsScreen.tsx",
+     "line": "736-757",
+     "note": "The camera loading branch shows LoadingRings (no counter) and one static Text t('results.loading.fromCamera'): EN 'Identifying your products' (en.json:856), AR 'نتعرّف على منتجاتك' (ar.json:853). It has a back arrow only; no stages, no tips, no cancel.",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/screens/ResultsScreen.tsx",
+     "line": "292-389",
+     "note": "The camera effect awaits identifyFromImages. Its cleanup only sets `cancelled = true` and never aborts the request, so the server still runs the compare and the credit is still used.",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/screens/LoadingScreenVariants.tsx",
+     "line": "103-153,163-169",
+     "note": "The text loader has a time-paced 5-stage checklist (1.2/4.2/12/19.5/26 s), a caption that escalates at 8 s and 18 s, and tips. Its own comment says the real onStatus feed is unreachable while ENABLE_EXPO_FETCH_SSE is false. The camera path does not use this component.",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/screens/HomeScreen.tsx",
+     "line": "393,1152-1175",
+     "note": "wallTime.start() and the Cancel control exist only on the Home text path.",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/lib/performance/wallTimeInstrumentation.ts",
+     "line": "24-29",
+     "note": "mark() without start() uses the first mark as t=0, so comparison_wall_time does not measure camera scans.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/api/feedback_routes.py",
+     "line": "58-89,146-149",
+     "note": "VALID_EVENT_TYPES has no scan_*, identity_* or comparison_ready entries. An unknown type 422-rejects the WHOLE batch.",
+     "basis": "measured"
+    },
+    {
+     "file": "tests/test_events_allowlist_superset.py",
+     "line": "37-42,83-95",
+     "note": "The test greps literal trackEvent/fireEvent/fireAnalytics/`event_type:` strings under SmartCompareApp/src and asserts VALID_EVENT_TYPES is a superset. New client literals therefore force the allowlist widening into the same change.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/api/image_routes.py",
+     "line": "177,497,536-547",
+     "note": "start_time is taken at handler entry, so duration_ms excludes upload and multipart parsing (inferred FastAPI behaviour). duration_ms is logged to search_logs with input_type='camera'. Server-side P50/P95 for camera can be computed today without new code.",
+     "basis": "measured"
+    }
+   ],
+   "fix_sketch": "Ordered so that nothing changes the frozen build-3 contract.\n(1) Backend, additive, can merge any time. Widen VALID_EVENT_TYPES with scan_start, scan_identity_resolved, scan_comparison_ready, scan_failed and scan_cancelled. This is unflagged: the build-3 client never sends them, and widening an allowlist cannot reject anything. It must deploy BEFORE any client sends them.\n(2) Backend, additive. In image_routes, measure vision_ms, vision_moderation_ms and compare_ms. Write them as extra keys into result['metadata']['stage_timings_ms'] ONLY when that dict already exists (DEBUG_STAGE_TIMINGS on), so DEBUG-off camera bodies stay identical. Emit one INFO line '[STAGE] camera vision_ms=.. moderation_ms=.. compare_ms=.. total_ms=.. partial=..', following the unflagged FANOUT-STARVE '[STAGE] parse done' precedent at CLAUDE.md:553. Optionally move the L3 moderation timing into stage_timings_ms too. For a real identity_resolved event server-side with zero client change, add a fire-and-forget user_events write (event_type 'scan_identity_resolved', event_data {vision_ms, n_products}) behind a NEW dark flag ENABLE_CAMERA_STAGE_EVENTS, default OFF. That write bypasses the route allowlist because it is a service call.\n(3) Client, OTA after App Review approval (no OTA before, per UB-R4):\n  (a) Replace the camera loading branch (ResultsScreen.tsx:736-757) with LoadingScreenVariants mode='comparison' and camera stage keys: identify products, check sources, build comparison. Shift the schedule by the vision time and make it honest; it is time-paced, not event-driven.\n  (b) Add a Cancel that aborts the fetch: thread an AbortSignal param into identifyFromImages. Use honest copy: the server keeps running, and a finished comparison lands in History.\n  (c) Fire trackEvent('scan_start', {input, n_images}) at dispatch. On arrival fire 'scan_comparison_ready' with {client_wall_ms, server_total_ms: metadata.stage_timings_ms.total_ms, vision_ms, partial, phase2_skipped}. On each loadError kind fire 'scan_failed'. Fire 'scan_cancelled' on cancel. Use immediate trackEvent, not the unmount batch, so an abandoned scan is still counted.\n  (d) Call wallTime.start() on the camera path.\n(4) Real stage events / identity confirmation, larger and needs its own spec. Add an optional ?mode=identify to /image/identify (default absent = today's bytes, behind a new dark flag). It returns the identified pair without a compare. The client shows 'we found A vs B, correct?' (a true identity_resolved event, and it also serves categories A and B), then runs the compare. This needs an additive vision_products / lang / selected_category input on the compare call and a metering design that does not double-charge.\nLatency itself, using existing levers only:\n- keep STREAM_HARD_CAP_SECONDS=30 (shared with the text path);\n- flipping ENABLE_TIER_FILL_RESIDUAL_GUARD (#355, OFF) makes more scans finish inside the cap with a verdict rather than a partial, but does not shorten the wall;\n- ENABLE_FULL_STREAM_DEADLINE does not apply;\n- running L4 vision moderation concurrently with the compare start saves under a second (inferred) and needs care around the refund latch.",
+   "contract_fields": [
+    "POST /api/v1/image/identify response (frozen; action/success/products/metadata keys)",
+    "metadata.stage_timings_ms (additive keys only: vision_ms, vision_moderation_ms, compare_ms, output_moderation_ms)",
+    "metadata.identified_products",
+    "metadata.input_method",
+    "VALID_EVENT_TYPES (feedback_routes.py:58)",
+    "user_events.event_type/event_data",
+    "search_logs.duration_ms (input_type=camera)"
+   ],
+   "existing_flags": [
+    {
+     "name": "STREAM_HARD_CAP_SECONDS",
+     "default": "25.0 (code)",
+     "prod_state": "30.0 since 2026-06-09",
+     "source": "CLAUDE.md:337; structured_comparison_service.py:1632"
+    },
+    {
+     "name": "ENABLE_FULL_STREAM_DEADLINE",
+     "default": "OFF",
+     "prod_state": "OFF (default; not applicable to the non-streaming camera path)",
+     "source": "CLAUDE.md:387; structured_comparison_service.py:1635-1643"
+    },
+    {
+     "name": "ENABLE_PHASE2_RESIDUAL_GUARD",
+     "default": "OFF",
+     "prod_state": "ON since 2026-10-11 00:20",
+     "source": "session-76 ledger.md:44"
+    },
+    {
+     "name": "PHASE2_MIN_RESIDUAL_SECONDS",
+     "default": "8.0",
+     "prod_state": "12 since 2026-10-14 08:00",
+     "source": "session-78 ledger.md:36-37"
+    },
+    {
+     "name": "ENABLE_UNIFIED_SEARCH_BOUND",
+     "default": "OFF",
+     "prod_state": "ON (session 76)",
+     "source": "session-76 ledger.md:47; NEXT_SESSION_PROMPT_S78.md:50"
+    },
+    {
+     "name": "ENABLE_TIER_FILL_RESIDUAL_GUARD",
+     "default": "OFF",
+     "prod_state": "OFF (merged #355, unset)",
+     "source": "session-79 ledger.md:24; CLAUDE.md:466"
+    },
+    {
+     "name": "DEBUG_STAGE_TIMINGS",
+     "default": "false",
+     "prod_state": "true since Sprint A (read once per process)",
+     "source": "CLAUDE.md:337; structured_comparison_service.py:1066-1075"
+    },
+    {
+     "name": "ENABLE_EXPO_FETCH_SSE (client constant)",
+     "default": "false",
+     "prod_state": "false in build 3 (an OTA constant)",
+     "source": "SmartCompareApp/src/config/features.ts:52"
+    },
+    {
+     "name": "ENABLE_CAMERA_FAILURE_ENVELOPE",
+     "default": "OFF",
+     "prod_state": "ON since 2026-10-03 14:23",
+     "source": "CLAUDE.md:462"
+    },
+    {
+     "name": "ENABLE_PAID_ROUTE_METERING",
+     "default": "OFF",
+     "prod_state": "ON since 2026-10-03 14:23",
+     "source": "CLAUDE.md:689"
+    },
+    {
+     "name": "ENABLE_SELF_CRITIQUE",
+     "default": "OFF",
+     "prod_state": "OFF",
+     "source": "CLAUDE.md:341"
+    },
+    {
+     "name": "OPENAI_MAX_RETRIES",
+     "default": "2",
+     "prod_state": "1 on web",
+     "source": "CLAUDE.md:578"
+    },
+    {
+     "name": "ENABLE_PREVERDICT_DISCONNECT_ABORT",
+     "default": "OFF",
+     "prod_state": "OFF (stream route only)",
+     "source": "CLAUDE.md:394"
+    }
+   ],
+   "open_questions": [
+    "What is the real vision_ms in production? It is not itemized anywhere. One canary scan with a server log line, or the proposed metadata key, would settle the 30 s vs 8-12 s split.",
+    "Does tests/conftest.py's load_dotenv(override=True) set DEBUG_STAGE_TIMINGS locally? If so, adding keys to stage_timings_ms could alter the camera body pins (tests/test_paid_route_metering.py, tests/test_camera_vision.py, tests/fixtures/s71_u13_flag_off_baseline.json) in local runs but not in CI.",
+    "Should a cancelled scan refund the credit? The server cannot see a disconnect on this non-streaming route today.",
+    "For a split identify/compare flow: what metering rule avoids both a double debit and a free unmetered vision endpoint?"
+   ],
+   "risks": "Contract: any change to the camera body must be additive or dark; the build-3 client reads action, success, code and the comparison keys. Order: shipping the client event OTA before the backend allowlist would 422 the whole Results batch, including share and result_view_duration events, and the client swallows the error silently. A time-paced checklist can over-claim progress (the A2 schedule rationale already warns about this), so camera stages must not tick 'identified' before the response. Lowering STREAM_HARD_CAP_SECONDS shortens the scan but raises the partial rate for text as well. No OTA before App Review approval (UB-R4).",
+   "test_seams": [
+    "tests/test_events_allowlist_superset.py (add the new literals; superset test)",
+    "tests/test_stage_timings.py (superset key checks, lines 88-97, so additive keys pass)",
+    "tests/test_camera_vision.py, tests/test_paid_route_metering.py, tests/test_retro_w2_1.py, tests/fixtures/s71_u13_flag_off_baseline.json (camera body pins)",
+    "tests/test_s75_fanout_starve.py::test_T18_phase2_residual_guard",
+    "SmartCompareApp __tests__ for ResultsScreen camera path and LoadingScreenVariants schedule (A2)",
+    "search_logs SQL: percentile_cont over duration_ms WHERE input_type='camera' (read-only measurement of P50/P95)"
+   ]
+  },
+  {
+   "id": "MYEZ-020",
+   "status": "anchored",
+   "root_cause": "The AI consent sheet appears at the moment of the first compare or scan. Every Home dispatch point is gated by withAiConsent, which is required for App Review 5.1.2(i) before any byte reaches OpenAI. The body is one long 4-sentence legal paragraph inside a ScrollView capped at 40 % of the window height. Its EN and AR title and body are sha256-fenced to AI_CONSENT_VERSION=2. A decline ('Not now') and a Privacy Policy link already exist. The audit's 'clear decline option' is present; the remaining problems are length and timing.",
+   "evidence": [
+    {
+     "file": "SmartCompareApp/src/services/aiConsent.ts",
+     "line": "46",
+     "note": "AI_CONSENT_VERSION = 2; bumping it re-asks every user once.",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/__tests__/consent/aiConsentVersion.s69.test.ts",
+     "line": "8-19,36-39",
+     "note": "sha256 over [EN title, EN body, AR title, AR body] = 372c5048... pinned together with version 2. A MATERIAL change needs a version bump plus a re-pin; a typo-only change may re-pin alone.",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/__tests__/consent/aiConsentV2.s75.test.ts",
+     "line": "106-200",
+     "note": "V1-V8: version 2; the disclosure sentence appears exactly once, immediately before the final 'not sent' sentence (4 sentences, EN and AR); no opt-out wording; the setup.ts mirror; no aiSharing keys.",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/__tests__/consent/aiProcessingConsent.s69.test.tsx",
+     "line": "367-797",
+     "note": "T1.1-T1.20 pin gate behaviour: the first compare, link or camera tap shows the sheet; Agree persists and dispatches the pending action; Not now dispatches nothing. T1.21-T1.24 pin copy: keys present in both catalogs, the body names OpenAI, MYEZ, inputs and what is not sent, no opt-out, the vocabulary policy.",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/__tests__/consent/aiConsentSheetScroll.s75.test.tsx",
+     "line": "51-54,93-133",
+     "note": "Layout pins: exactly ONE ScrollView whose only Text is the EN body; title, link, Agree and Not now sit outside it; the scroll style EXACTLY {flexGrow:0, maxHeight: round(0.4*h)}; the card has no maxHeight; flashScrollIndicators fires once per show; persistentScrollbar; maxFontSizeMultiplier 1.6 on fixed texts.",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/components/AiConsentSheet.tsx",
+     "line": "38-43,86-124",
+     "note": "FIXED_TEXT_MAX_FONT_SCALE 1.6 and BODY_MAX_HEIGHT_FRACTION 0.4. The body is a single Text inside the ScrollView. The Privacy link, 'Agree and continue' and 'Not now' are separate controls.",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/i18n/en.json",
+     "line": "703-707",
+     "note": "aiConsent.title, body (4 sentences, ~90 words), link, agree and notNow. AR equivalents are at ar.json:700-704.",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/screens/HomeScreen.tsx",
+     "line": "755-760,828",
+     "note": "The camera entry is gated: goToScan = withAiConsent(() => navigation.navigate('ScanCamera')). Text and link compares are gated the same way.",
+     "basis": "measured"
+    },
+    {
+     "file": "CLAUDE.md",
+     "line": "191",
+     "note": "Consent is client-only (AsyncStorage @qaren_ai_consent_<userId>) with no server record. D3 = C means there is no per-user opt-out. The sha fence is re-pinned in ONE edit if the native review changes a word.",
+     "basis": "measured"
+    }
+   ],
+   "fix_sketch": "Allowed WITHOUT touching the legal text: client OTA after approval, with deliberate test-pin changes only.\n(a) Placement. Ask once at a calmer moment, e.g. right after onboarding or on the first Home mount, through the same ensureAiConsent and recordAiConsent. Keep the dispatch-time gate as the fallback so T1.1-T1.18 still hold. This is additive: a stored v2 record passes T1.5.\n(b) Hierarchy. Render the SAME body string sentence by sentence as bullets (split at render; the catalog value and its sha are unchanged), give the title more weight, and raise BODY_MAX_HEIGHT_FRACTION. This changes the aiConsentSheetScroll pins (one Text inside the ScrollView, the exact style equality), so the pin change must be deliberate and reviewed.\n(c) Do not auto-run the compare on Agree. Return the user to the screen with their input kept and let them tap Compare again. That separates consent from 'pressing compare', which is the audit's point. It is a flow change that alters T1.2/T1.10/T1.12.\n(d) The CTA labels (aiConsent.agree/notNow/link) are outside the sha fence but subject to T1.21/T1.24. A clearer decline label such as 'لا أوافق الآن' is copy, not disclosure, but still go through the owner's legal reviewer.\nNOT allowed without legal review: any short-version or summary disclosure. New keys such as aiConsent.summary are new disclosure text even though the fence does not hash them. Any rewording of the title or body requires a version bump, so every consented user is asked again (the UB-R14 precedent). No backend change and no flag exist or are needed.",
+   "contract_fields": [
+    "aiConsent.title / aiConsent.body (EN+AR, sha-fenced)",
+    "AI_CONSENT_VERSION",
+    "AsyncStorage @qaren_ai_consent_<userId> record {version, at}"
+   ],
+   "existing_flags": [
+    {
+     "name": "AI_CONSENT_VERSION (client constant)",
+     "default": "2",
+     "prod_state": "2 in build 3",
+     "source": "SmartCompareApp/src/services/aiConsent.ts:46"
+    },
+    {
+     "name": "ENABLE_CONSENT_REQUIRED / ENABLE_CONSENT_PERSIST",
+     "default": "OFF",
+     "prod_state": "unrelated (Terms consent on account-creating requests, per aiConsent.ts:9-12)",
+     "source": "app/ (grep); aiConsent.ts header"
+    }
+   ],
+   "open_questions": [
+    "Does the owner's legal reviewer accept rendering the unchanged body as bullets? No word changes, but the visual framing does.",
+    "Should the earlier ask happen during onboarding, before sign-in? With no userId nothing is persisted (ruling R3), so it would have to come after sign-in.",
+    "Did App Review approve 1.0.0 (3) with the current sheet? Any change waits for approval and ships by OTA."
+   ],
+   "risks": "Any material copy change re-asks every user and blocks compares until they agree (UB-R14). Moving the sheet earlier must never let a dispatch skip the gate, so withAiConsent stays at every dispatch point. Do not change consent UI via OTA while the build is in review.",
+   "test_seams": [
+    "SmartCompareApp/__tests__/consent/aiConsentVersion.s69.test.ts (sha fence)",
+    "SmartCompareApp/__tests__/consent/aiConsentV2.s75.test.ts (V1-V8)",
+    "SmartCompareApp/__tests__/consent/aiConsentSheetScroll.s75.test.tsx (layout pins)",
+    "SmartCompareApp/__tests__/consent/aiProcessingConsent.s69.test.tsx (T1.1-T1.24)",
+    "SmartCompareApp/__tests__/consent/aiDispatchFence.s69.test.ts"
+   ]
+  },
+  {
+   "id": "MYEZ-023",
+   "status": "anchored",
+   "root_cause": "FeedbackCard asks 'هل كان هذا مفيدًا؟' but offers only three attribute chips (accurate/detailed/fast). Every tap sends useful:true. 'Not useful' cannot be expressed, there is no reason and no identity correction, so comparison_feedback.useful is always true and carries no signal. Fresh compares also have no comparison_id: the backend never echoes it, ENABLE_COMPARISON_ID_ECHO is OFF and text-only, and the camera route has no echo at all. Feedback rows therefore cannot be tied to the comparison they judge. The schema for a 3-state answer already exists: migration 027's winner_correct, price_correct and specs_correct columns are applied but unused by any route.",
+   "evidence": [
+    {
+     "file": "SmartCompareApp/src/components/FeedbackCard.tsx",
+     "line": "18-22,47-61",
+     "note": "MATTERED_OPTIONS = accurate, detailed, fast. handleChip always calls submitFeedback({useful: true, comparison_id, mattered_most:[chipKey]}). There is no 'no' path, no reason and no free text.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/api/feedback_routes.py",
+     "line": "97-117",
+     "note": "FeedbackRequest has 4 fields: useful (bool, required), comparison_id (UUID-validated, optional), mattered_most (each item must be in VALID_MATTERED_MOST), change_suggestion (<=1000 chars). There is no model_config, so Pydantic v2's default extra='ignore' applies and unknown keys are dropped, not rejected (inferred from the Pydantic default).",
+     "basis": "measured"
+    },
+    {
+     "file": "app/api/feedback_routes.py",
+     "line": "36-48",
+     "note": "VALID_MATTERED_MOST = price, specs, reviews, brand, value, warranty, ratings, accurate, detailed, fast. Widen-only rule: an unknown item 422s the whole submission and the client swallows it.",
+     "basis": "measured"
+    },
+    {
+     "file": "tests/test_feedback_allowlist_superset.py",
+     "line": "3-38",
+     "note": "The test greps FeedbackCard.tsx chip keys and asserts they are a subset of VALID_MATTERED_MOST, so new chips force the backend widening into the same change.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/feedback_service.py",
+     "line": "217-236",
+     "note": "save_feedback writes only useful, mattered_most, user_id, comparison_id and change_suggestion into comparison_feedback.",
+     "basis": "measured"
+    },
+    {
+     "file": "migrations/027_comparison_feedback_correctness.sql",
+     "line": "27-61",
+     "note": "winner_correct, price_correct and specs_correct are nullable text columns with CHECK IN ('correct','wrong','unsure'). Applied 2026-06-10 per CLAUDE.md:92.",
+     "basis": "measured"
+    },
+    {
+     "file": "scripts/cron_few_shot_rotation.py",
+     "line": "9,115-119",
+     "note": "The few-shot miner selects useful=true AND winner_correct='correct' rows with a comparison_id. If users can write these columns, the data becomes few-shot input when ENABLE_FEWSHOT_ROTATION is flipped (OFF per session-76 ledger.md:42).",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/screens/ResultsScreen.tsx",
+     "line": "425-436",
+     "note": "comparisonId = result?.comparison_id ?? route.params.comparison_id. The comment says fresh compares have NO id because the backend never echoes it.",
+     "basis": "measured"
+    },
+    {
+     "file": "CLAUDE.md",
+     "line": "443-444",
+     "note": "ENABLE_COMPARISON_ID_ECHO (W3-2) applies to /text/compare and the stream only, and is OFF in prod. The S78 prompt (NEXT_SESSION_PROMPT_S78.md:51) says it stays OFF until the W0 flags are active.",
+     "basis": "measured"
+    },
+    {
+     "file": "CLAUDE.md",
+     "line": "105",
+     "note": "Precedent for structured free text: ContactUsScreen prefixes change_suggestion with '[Bug] Subject\\n\\nBody' so it can be grepped.",
+     "basis": "measured"
+    }
+   ],
+   "fix_sketch": "An additive mapping that keeps the 4-field contract the build-3 client sends.\nBackend, can merge any time, unflagged:\n- Widen VALID_MATTERED_MOST with the reason keys wrong_product, missing_info, unclear_reasons, slow, wrong_winner and unsure. Widen-only, so it is safe for build 3.\n- Optionally add three OPTIONAL FeedbackRequest fields, winner_correct, price_correct and specs_correct (Literal['correct','wrong','unsure'] | None, default None). save_feedback writes them only when non-None, using the existing 027 columns. Old clients never send them, so their behaviour is unchanged.\n- To keep the few-shot miner safe, gate user-written winner_correct behind a dark flag ENABLE_FEEDBACK_CORRECTNESS_FIELDS (default OFF): when OFF, ignore the fields. Alternatively require server-side review before mining.\nClient, OTA after approval:\n- Step 1: 'هل ساعدتك المقارنة على الاختيار؟' with نعم / لا / غير متأكد. نعم maps to useful:true; لا maps to useful:false; غير متأكد maps to useful:false plus mattered_most:['unsure'], or winner_correct:'unsure' once the field ships.\n- Step 2, only on لا or غير متأكد: 'وش المشكلة؟' chips (اسم خطأ, معلومة ناقصة, أسباب غير واضحة, بطيء) go into mattered_most.\n- Identity correction: a text field whose value goes into change_suggestion as '[identity] shown: <A> vs <B> | correct: <text>'. Product names only, no PII.\n- Because fresh compares have no comparison_id, include the shown product names in change_suggestion so a reviewer can match the row. Optionally fire a user_event 'feedback_identity_correction' with event_data {shown_a, shown_b, corrected, input_method, category}; this needs a VALID_EVENT_TYPES widening first.\n- Keep the three quality chips only if product wants them; the superset test still binds them.\nHuman review: a read-only admin query over comparison_feedback WHERE change_suggestion LIKE '[identity]%'.",
+   "contract_fields": [
+    "FeedbackRequest {useful, comparison_id, mattered_most, change_suggestion} (frozen 4 fields)",
+    "VALID_MATTERED_MOST (widen-only)",
+    "comparison_feedback.winner_correct/price_correct/specs_correct (migration 027, applied)",
+    "comparison_feedback.change_suggestion (<=1000)"
+   ],
+   "existing_flags": [
+    {
+     "name": "ENABLE_COMPARISON_ID_ECHO",
+     "default": "OFF",
+     "prod_state": "OFF (stays OFF until W0 flags active)",
+     "source": "CLAUDE.md:444; NEXT_SESSION_PROMPT_S78.md:51"
+    },
+    {
+     "name": "ENABLE_FEWSHOT_ROTATION",
+     "default": "OFF",
+     "prod_state": "unset = off (read 2026-10-11)",
+     "source": "session-76 ledger.md:42"
+    }
+   ],
+   "open_questions": [
+    "Is the comparison_feedback DDL (pre-010, not in migrations/) mattered_most text[] with no CHECK? The superset test implies only route-level validation, but this is unverified.",
+    "Should the identity correction feed category A/B's evaluation set automatically, or only through human review? The audit asks for human review.",
+    "Should 'unsure' be encoded as useful:false? That conflates soft and hard negatives. Shipping the optional winner_correct field resolves it."
+   ],
+   "risks": "An OTA client sending new chip keys before the backend widening is silently 422-dropped. User-writable winner_correct can steer few-shot mining once the miner and the id echo are both ON. change_suggestion free text may carry PII, so keep the max_length and do not log the value.",
+   "test_seams": [
+    "tests/test_feedback_allowlist_superset.py",
+    "tests/test_feedback.py",
+    "tests/test_feedback_service.py",
+    "tests/test_m13_29_feedback_uuid.py",
+    "tests/test_migration_027_comparison_feedback_correctness.py",
+    "tests/test_cron_few_shot_rotation.py",
+    "SmartCompareApp FeedbackCard tests (testID feedback-chip-*)"
+   ]
+  },
+  {
+   "id": "MYEZ-024",
+   "status": "anchored",
+   "root_cause": "'Popular comparisons' (TrendingNearYou) is a curated list per region with no category input. The component receives no selectedCategory, getHomeTrending sends only region, and /home/trending reads data/trending_curated.json by region and caches it per region for 1 h. Whatever chip is selected, the same iPhone/Galaxy, skincare and supplement rows show. The row tag is English and shown uppercase, not localised. Tapping a row drops its tag and runs the pair with the CURRENTLY selected category chip, so an Electronics pair can be sent as selected_category=fragrances (the backend then flags category_switched). QuickCategories is a static 4-tile grid (electronics, skincare, supplements, makeup, with no fragrances) titled 'Jump back in' / 'ارجع للمقارنة'.",
+   "evidence": [
+    {
+     "file": "SmartCompareApp/src/components/HomeEditorialSections.tsx",
+     "line": "352-366",
+     "note": "TrendingNearYou calls getHomeTrending() with no category and no region, and receives no selectedCategory prop.",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/components/HomeEditorialSections.tsx",
+     "line": "393-455",
+     "note": "It renders up to 5 rows. The tag is shown as it.tag.toUpperCase() (English) with the pair and an arrow; onPress calls onPressTrending(nameA, nameB, it.tag).",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/components/HomeEditorialSections.tsx",
+     "line": "262-291,467-484",
+     "note": "QUICK_CATS has 4 static tiles (no fragrances). The HomeEditorialSections wrapper props are onPressVerdict, onPickCategory and onPressTrending only, with no category.",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/screens/HomeScreen.tsx",
+     "line": "669-676",
+     "note": "handlePressTrending(a, b) ignores the tag argument and calls handleTextCompare, which sends the current selectedCategory (HomeScreen.tsx:410-414).",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/screens/HomeScreen.tsx",
+     "line": "126,1008-1013,1121-1139",
+     "note": "The selectedCategory state drives CategorySelector, but HomeEditorialSections is rendered without it.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/api/home_routes.py",
+     "line": "910-1010",
+     "note": "GET /home/trending accepts region only (query param, then the user's preferences.region, then bahrain). Cache key home:trending:{region}; the entries carry tag/a/b/count/query.",
+     "basis": "measured"
+    },
+    {
+     "file": "data/trending_curated.json",
+     "line": "bahrain[0..5]",
+     "note": "Bahrain rows: Electronics (iPhone 15 vs Galaxy S24; Bose vs Sony), Skincare x2, Fragrances (Tobacco Vanille vs Aventus), Supplements. Grocery, haircare, fashion and other have no rows in any region.",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/i18n/en.json",
+     "line": "23,36",
+     "note": "home.quickCats.title = 'Jump back in'; home.trending.title = 'Popular comparisons' (AR at ar.json:18,31).",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/services/api.ts",
+     "line": "1330-1336",
+     "note": "getHomeTrending(region?) sends only the region param.",
+     "basis": "measured"
+    }
+   ],
+   "fix_sketch": "Client-only, OTA after approval, no backend change:\n(1) Pass selectedCategory into HomeEditorialSections and TrendingNearYou. When a chip is selected, show only rows whose tag.toLowerCase() equals it. If none match, either hide the section or show it under a new i18n title such as 'أمثلة من فئات مختلفة' / 'Examples from other categories'.\n(2) Localise the tag pill with t('home.categories.' + tag.toLowerCase()), falling back to the raw tag. The curated tags map 1:1 to the CategorySelector values.\n(3) Make handlePressTrending honour the row's tag: set selectedCategory to the tag (or clear it) before handleTextCompare, so a trending tap never sends a mismatched category.\n(4) Optionally add fragrances to QUICK_CATS and retitle 'Jump back in', which reads as history.\nBackend, optional, additive, data-only: add curated rows for under-served categories to data/trending_curated.json (same shape; the 1 h per-region cache absorbs it). Do not promise categories the pipeline does not support; category A/B owns the supported-category list.",
+   "contract_fields": [
+    "GET /api/v1/home/trending {trending:[{tag,a,b,count,query,view_count,region}], region}",
+    "home.trending.title / home.categories.* i18n keys"
+   ],
+   "existing_flags": [],
+   "open_questions": [
+    "Which categories does product consider 'supported' for examples? Showing examples for grocery or fashion may imply support that has not been tested (the audit's acceptance test).",
+    "Hide or retitle when no curated row matches the chip?"
+   ],
+   "risks": "A client filter can empty the section for most chips, because only 5 tag values exist. Changing the tap so it sets the category alters the compare_entry analytics (the used_autoswitch semantics).",
+   "test_seams": [
+    "SmartCompareApp __tests__ for HomeEditorialSections (testID home-trending, home-trending-item, home-quick-cat-*)",
+    "HomeScreen trending tap tests (aiProcessingConsent T1.9/T1.10 cover the trending tap to compare dispatch)",
+    "tests for app/api/home_routes.py trending shape"
+   ]
+  },
+  {
+   "id": "MYEZ-028",
+   "status": "partially_anchored",
+   "root_cause": "ResultsContent renders 8 fixed sections in a test-pinned order: header, hero pair, 'Why this fits you' verdict, runner-up card, dimension bars, 'What we know' pills, cohort badge, 'Dig deeper' accordion, feedback. 'Why' shows the deterministic FactualVerdict (backend English templates, e.g. 'X leads on Character.') whenever scoring_v2.factual_verdict.line1 exists, ahead of the LLM reason. The runner-up card and the bar delta_text are also English templates. Nothing lists what is unknown, apart from the 'What we know' pills and a partial note. That note promises 'tap to refresh' but has no tap target. On the camera path the result arrives without lang, so the LLM text is English too. Two dependencies are outside the client: a real 'recommend vs no-recommend' state needs a backend result_status (category A, MYEZ-001..005), and localised reasons need backend codes (MYEZ-016). Ordering, collapsing and a 'what we don't know' block are client-only.",
+   "evidence": [
+    {
+     "file": "SmartCompareApp/src/components/results/ResultsContent.tsx",
+     "line": "14-23",
+     "note": "The documented order: 1 header, 2 hero, 3 why, 4 dimension bars, 5 confidence pills, 6 cohort badge, 7 dig deeper, 8 feedback.",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/__tests__/components/ResultsContent.rewriteOrder.test.tsx",
+     "line": "229-253,255-325",
+     "note": "Order pins: 8 anchors strictly increasing, scoring before confidence, cohort after confidence, header first, feedback last, the personalization chip under why.",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/components/results/ResultsContent.tsx",
+     "line": "396-413",
+     "note": "FactualVerdict(line1, line2) takes precedence. verdictBody (the LLM overview.winner.reason) renders only when there is no factual_verdict.line1.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/response_builder.py",
+     "line": "1075-1088",
+     "note": "English templates: '{winner} leads on {label}.', 'comes in N% cheaper', 'earns N more stars'.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/verdict_builder.py",
+     "line": "6",
+     "note": "_CONDITIONAL_OPENER = {'en': 'If you want', 'ar': 'If you want'}: the 'ar' value is English.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/scoring_service.py",
+     "line": "3615,3668-3685",
+     "note": "delta_text is a closed English vocabulary for fragrances ('Comparable', 'Longer-lasting', 'Stronger projection', 'More distinctive', 'More versatile', ...) plus numeric '+Npt' forms.",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/components/results/ResultsContent.tsx",
+     "line": "159-165,365-371",
+     "note": "When metadata.partial, a Text shows results.partial.note ('الأسعار ما زالت تُحدَّث — اضغط للتحديث بعد لحظة.', ar.json:858). There is no onPress and no RefreshControl in ResultsScreen or ResultsContent (grep), so the 'tap to refresh' promise has no action. It is visible in the V01 screenshot.",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/components/results/ResultsContent.tsx",
+     "line": "437-443,516-531",
+     "note": "RunnerUpWinsCard (dimensions and key_tradeoff) and the 'What we know' ConfidencePills block. There is no 'what we don't know' block.",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/components/results/ResultsAccordion.tsx",
+     "line": "117",
+     "note": "Dig deeper starts collapsed (open=null): details-on-demand already exists for reviews, pros/cons and specs.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/response_builder.py",
+     "line": "1899-1962,2097-2099",
+     "note": "Fields already on the wire that can drive a 'what we don't know' block: overview.products[].price (unavailable), rating (None when derived), image_url (None), overview.confidence, overview.tradeoffs, metadata.missing_dim_cells. metadata.partial, phase2_skipped and data_freshness_shaky are also available.",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/screens/ResultsScreen.tsx",
+     "line": "596-634",
+     "note": "The demographics and push pre-prompt timer fires 2 s after ResultsScreen MOUNTS. On the camera path that is during loading, so the demographics sheet can pop over the result the instant it renders (inferred from the early-return loading branch at 736-757).",
+     "basis": "inferred"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/.claude/uploads/ae650c83-4d2a-4910-a8d4-a47ab213c8c3/7758232c-image.png",
+     "line": "V01",
+     "note": "An Arabic UI showing English FactualVerdict lines, an English runner-up line and English delta_text under Arabic bar labels, 'no confirmed price' on both cards, and the partial note with its tap promise.",
+     "basis": "measured"
+    }
+   ],
+   "fix_sketch": "OTA-capable, client only, after approval. The rewriteOrder pins need a deliberate amendment.\n(1) A decision block at the top. Today it can only soften: when isDegraded, or both prices are unavailable, or metadata.partial, do not render the winner card in emerald, and render 'الأقرب لأولوياتك' with the caveat. A true 'no recommendation' state waits for category A's backend result_status (dark flag).\n(2) 'Two reasons': factual_verdict.line1 and line2. Until MYEZ-016 ships codes, map the closed delta_text vocabulary and the 'leads on {label}' template to i18n client-side (a fragile stop-gap), or fall back to the localised LLM reason when lang=ar.\n(3) 'Three differences': take the top 3 from scoring_v2.dimensions by margin, or from specs_comparison rows. These fields already exist.\n(4) A new 'ما لا نعرفه' block built from price.unavailable, rating==null, image_url==null, metadata.partial, metadata.phase2_skipped, metadata.missing_dim_cells and low confidence pills.\n(5) Move the cohort badge and the dimension bars into 'Dig deeper' (already collapsed), and keep the feedback card last.\n(6) Fix the partial note: either add a real refresh action (re-run with nocache; a backend call, no contract change) or drop 'اضغط للتحديث' from the copy.\n(7) Delay the demographics and push prompts until after the result renders (start the timer when loadingResult goes false).\nBackend, not OTA, owned by other categories:\n- additive delta_code / reason_code keys next to delta_text and factual_verdict, so the client can localise without parsing English (MYEZ-016; additive keys, frozen-safe);\n- result_status / no-winner (category A);\n- passing lang through the camera route (see extra finding).",
+   "contract_fields": [
+    "scoring_v2.factual_verdict.line1/line2",
+    "scoring_v2.dimensions[].delta_text",
+    "overview.winner.reason/key_tradeoff",
+    "overview.products[].price.unavailable / rating / image_url",
+    "overview.confidence",
+    "metadata.partial / phase2_skipped / missing_dim_cells / data_freshness_shaky"
+   ],
+   "existing_flags": [
+    {
+     "name": "ENABLE_ARABIC_VERDICT_OUTPUT",
+     "default": "OFF",
+     "prod_state": "no flip found in the ledgers I read (unverified); applies only when the request carries lang=ar, which the camera route never does",
+     "source": "CLAUDE.md:624; extraction_service.py:2280-2284"
+    },
+    {
+     "name": "ENABLE_HONEST_PARTIAL_SCORING",
+     "default": "OFF",
+     "prod_state": "not established here",
+     "source": "CLAUDE.md:457"
+    },
+    {
+     "name": "ENABLE_VERDICT_PROMPT_TRUTH",
+     "default": "OFF",
+     "prod_state": "not established here",
+     "source": "CLAUDE.md:615"
+    }
+   ],
+   "open_questions": [
+    "Does product accept a client-side i18n map of the closed delta_text vocabulary as a stop-gap before backend codes ship?",
+    "What should be the decision headline when category A's result_status is absent (build-3 backend)? Soft copy only?",
+    "Should cohort, dimension bars and confidence collapse by default? Check the App Review 2.3.1 notes for what the reviewer saw."
+   ],
+   "risks": "Reordering breaks the ResultsContent.rewriteOrder pins plus the memo/a11y/runnerUp suites, so run the full jest suite after rebasing (memory rule). A client-side English-to-Arabic mapping silently rots when backend strings change. Hiding the winner styling without a backend result_status can disagree with the share text and History (MYEZ-027).",
+   "test_seams": [
+    "SmartCompareApp/__tests__/components/ResultsContent.rewriteOrder.test.tsx",
+    "SmartCompareApp/__tests__/components/ResultsContent.render.test.tsx",
+    "SmartCompareApp/__tests__/components/ResultsContent.runnerUp.test.tsx",
+    "SmartCompareApp/__tests__/components/ResultsContent.a11y.w311.test.tsx",
+    "SmartCompareApp/__tests__/components/ResultsAccordion.*.test.tsx",
+    "Results.memo.m21.test.tsx (memo/useCallback pin)"
+   ]
+  }
+ ],
+ "extra_findings": [
+  {
+   "title": "The camera route never forwards lang, selected_category, user_id or user_preferences to compare_from_text",
+   "severity": "high",
+   "evidence": "Measured: image_routes.py:450 calls compare_from_text(query, region, vision_products, nocache) only. The text route passes selected_category, user_preferences, user_id, explicit_pair and output_lang (text_routes.py:846-858). The client's identifyFromImages sends only ?region= (api.ts:302). Consequences: camera verdicts are never Arabic even with ENABLE_ARABIC_VERDICT_OUTPUT ON (extraction_service.py:2581 needs output_lang=='ar'); scans get no personalization or behaviour profile, and the selected chip is ignored. This matches the English text in V01, a scan. Fix: optional additive form/query params on /image/identify, behind a dark flag, plus an OTA client change. Cross-ref MYEZ-016, MYEZ-017 and V06."
+  },
+  {
+   "title": "No cancel on the camera loader; backing out does not abort and the credit is still spent",
+   "severity": "medium",
+   "evidence": "Measured: the ResultsScreen.tsx:383-386 cleanup only sets cancelled=true; the AbortController is private to identifyFromImages (api.ts:296-297). The client watchdog is 120 s (api.ts:50), against 35 s on text. The image route never checks request.is_disconnected (only text_routes.py:1198 does), so a user who gives up still triggers the full compare and the credit consumed at image_routes.py:289-301 (paid-route metering ON)."
+  },
+  {
+   "title": "The partial-result note promises 'tap to refresh' but nothing is tappable",
+   "severity": "medium",
+   "evidence": "Measured: ResultsContent.tsx:365-371 renders results.partial.note as a plain Text. ar.json:858 says 'اضغط للتحديث بعد لحظة' and the EN copy is similar. There is no RefreshControl or onRefresh in ResultsScreen or ResultsContent. Visible in the V01 screenshot."
+  },
+  {
+   "title": "Deterministic verdict text is English-only, including an 'ar' entry that is English",
+   "severity": "medium",
+   "evidence": "Measured: verdict_builder.py:6 `_CONDITIONAL_OPENER = {\"en\": \"If you want\", \"ar\": \"If you want\"}`. response_builder.py:1075-1088 and scoring_service.py:3615-3685 emit English templates and delta_text. ResultsContent.tsx:396-413 shows FactualVerdict ahead of the (possibly Arabic) LLM reason. Cross-ref MYEZ-016."
+  },
+  {
+   "title": "Camera scans are invisible to the client wall-time instrumentation",
+   "severity": "low",
+   "evidence": "Measured: wallTime.start() is called only in HomeScreen.tsx:393 (the text path). wallTimeInstrumentation.ts:24-29 sets t=0 at the first mark when it was never started, so comparison_wall_time Sentry events on camera are not scan latency."
+  },
+  {
+   "title": "stage_timings_ms omits vision, both moderation passes and parse/category resolution",
+   "severity": "low",
+   "evidence": "Measured: orchestrator_timings is stamped at structured_comparison_service.py:4601-4612, before L3 moderation (4622-4645). The image route adds no timing keys. DEBUG_STAGE_TIMINGS is cached per process (1066-1075)."
+  },
+  {
+   "title": "The demographics prompt timer starts at ResultsScreen mount, during the camera loader",
+   "severity": "low",
+   "evidence": "Inferred from ResultsScreen.tsx:596-634 (2 s setTimeout with [] deps) and the early-return loading branch at 736-757. On a ~40 s scan, setDemographicsVisible(true) has already fired, so the sheet appears the instant the result renders and adds to results-page crowding (MYEZ-028)."
+  },
+  {
+   "title": "The trending tap drops the row's category tag and sends the current chip's category",
+   "severity": "low",
+   "evidence": "Measured: OnPressTrending carries the tag (HomeEditorialSections.tsx:346,423), but HomeScreen.tsx:669-676 handlePressTrending(a, b) ignores it, and handleTextCompare sends selectedCategory (HomeScreen.tsx:410-414). Mismatched pairs then trigger category_switched."
+  },
+  {
+   "title": "User-writable correctness columns would feed few-shot mining",
+   "severity": "low",
+   "evidence": "Measured: scripts/cron_few_shot_rotation.py:115-119 mines useful=true AND winner_correct='correct'. Any feedback extension that writes migration 027 columns must stay behind a dark flag or a review step before ENABLE_FEWSHOT_ROTATION (unset/off, session-76 ledger.md:42) is flipped."
+  }
+ ],
+ "sources": [
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/CLAUDE.md (lines 92, 99-105, 119-133, 191-195, 239-240, 337, 341, 387, 443-444, 462, 466, 469, 553, 578, 624, 689)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/api/image_routes.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/api/text_routes.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/api/feedback_routes.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/api/home_routes.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/openai_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/model_config.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/structured_comparison_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/extraction_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/content_safety_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/feedback_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/response_builder.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/verdict_builder.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/scoring_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/migrations/027_comparison_feedback_correctness.sql",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/scripts/cron_few_shot_rotation.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/data/trending_curated.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_events_allowlist_superset.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_feedback_allowlist_superset.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_stage_timings.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/services/api.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/config/features.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/screens/ResultsScreen.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/screens/HomeScreen.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/screens/LoadingScreenVariants.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/components/LoadingTipsCarousel.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/components/AiConsentSheet.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/services/aiConsent.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/components/FeedbackCard.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/components/HomeEditorialSections.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/components/CategorySelector.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/components/results/ResultsContent.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/components/results/ResultsAccordion.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/lib/performance/wallTimeInstrumentation.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/i18n/en.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/i18n/ar.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/__tests__/consent/aiConsentVersion.s69.test.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/__tests__/consent/aiConsentV2.s75.test.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/__tests__/consent/aiConsentSheetScroll.s75.test.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/__tests__/consent/aiProcessingConsent.s69.test.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/__tests__/components/ResultsContent.rewriteOrder.test.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-10-session-76-state/ledger.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-11-session-77-state/NEXT_SESSION_PROMPT_S78.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-14-session-78-state/ledger.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-17-session-79-state/ledger.md",
+  "C:/Users/SynAckITPC/.claude/uploads/ae650c83-4d2a-4910-a8d4-a47ab213c8c3/d20a7872-MYEZ_QA_UX_Audit_2026-10-18.md (sections 4, 6, 8)",
+  "C:/Users/SynAckITPC/.claude/uploads/ae650c83-4d2a-4910-a8d4-a47ab213c8c3/7758232c-image.png (V01)"
+ ]
+}

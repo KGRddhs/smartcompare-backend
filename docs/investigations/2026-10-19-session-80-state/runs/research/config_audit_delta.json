@@ -1,0 +1,627 @@
+{
+ "category": "claude-code-config-audit-delta (Surface M)",
+ "summary": "This audit was read-only and compares against CONFIG_AUDIT_PLAN.md (2026-10-03) and CONFIG_AUDIT_DELTA.md (2026-10-05). Code is at main 683f56c0 (sc-s80-base); sc-docs-70 is on docs/session-80-state and its CLAUDE.md is byte-identical (sha256 ab7ec7dde1724998).\n\nWhat closed since 10-05: the global settings now carry 20 deny rules. Railway, superpowers, github, figma, code-review, feature-dev and code-simplifier are off. No hook in any settings file and no enabled plugin fires on agent tool calls. The project skills parse, and there are no user/project agents or commands.\n\nNew or worse:\n(1) The global subagent pin flipped from opus to fable at 22:06:19 during this run, still with FORCE=1. CLAUDE.md L30, MEMORY.md L1/L9/L18 and the session-80 memory line still say all agents are Opus, and say a wrong model means TaskStop. Because the pin is global and read at each spawn, it also switches sibling sessions.\n(2) The deny list is Bash-prefix only, while PowerShell is the primary shell. The `git -C <dir> …` form, which is already in real use, also evades it.\n(3) CLAUDE.md reached this workflow agent through Bash commands, not only Read/Write, so the session-73 advice to \"read with bash\" (L550) is false. The file is now 397,572 chars (~99K tokens), +15.5% in 14 days. It still tells agents to copy .env (L203, L286), while L540 says .env copies are denied.\n(4) Worktrees went from 29 to 44, and the 40 CLAUDE.md copies total 10.6 MB.\n(5) The canva plugin added a third Canva route.\n\nStill open: Supabase MCP dead (and named the preferred path at L90), Sentry three ways (all dead except the claude.ai connector), the Cowork plugins, codex hooks, typescript-lsp, the memory keying, the skill clusters and the appended corrections.\n\nContext7 and the Sentry connector work today only because agents run in bypassPermissions. No denial naming them appears in any transcript. Nothing global allows them, so any non-bypass workflow launch would deny them.\n\nBiggest token lever: archive the 20 Active-runtime blocks (180,632 chars, ~45K tokens) and generate the flag registry (127,997 chars, ~32K tokens) out of CLAUDE.md. That takes it from ~99K to ~23K tokens per agent that touches a worktree. Thirteen blocks (~76.7K chars, ~19K tokens) can move with no hoisting.",
+ "findings": [
+  {
+   "title": "R-NEW-1: subagent model pin flipped to fable (FORCE=1) mid-run; CLAUDE.md principle 4 and three memory lines still mandate Opus",
+   "severity": "high",
+   "evidence": [
+    {
+     "file": "C:\\Users\\SynAckITPC\\.claude\\settings.json",
+     "line": "env",
+     "note": "At 22:09:05 the env holds CLAUDE_CODE_SUBAGENT_MODEL=fable and CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1, with model fable[1m]; file mtime 22:06:19. Earlier in this run the same file read opus/1.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\.claude\\settings.json.bak-s80-2206",
+     "line": "n/a",
+     "note": "Backup written 22:06:18 holds the previous (opus) state.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-docs-70\\docs\\investigations\\2026-10-19-session-80-state\\ledger.md",
+     "line": "22:20 entry",
+     "note": "The owner approved Fable agents; the pin was switched; a probe ran on claude-fable-5-1 with no restart ('the pin is read at spawn', correcting the 21:35 entry).",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\CLAUDE.md",
+     "line": "30",
+     "note": "Principle 4: 'EVERY workflow agent is Opus (pass the model explicitly in every workflow script)'.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\.claude\\projects\\C--Users-SynAckITPC-Documents\\memory\\MEMORY.md",
+     "line": "1, 9, 18",
+     "note": "L1 (session 80): 'Opus agents + Fable gates (the model pin is applied at process start)'. L9: 'a wrong model = TaskStop at once'. L18: 'Fable orchestrates, ALL agents Opus'.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\.claude\\settings.json.bak-s75-185210",
+     "line": "env",
+     "note": "The session-75 incident config: fable + FORCE=1. Memory records that 14 agents ran on Fable although the scripts passed opus, and Fable weekly usage went 52 -> 84 %.",
+     "basis": "measured"
+    }
+   ],
+   "detail": "FORCE=1 overrides the explicit model each workflow script passes; the session-75 incident proves this. The pin lives in the GLOBAL settings and is read at every spawn, so one edit switches every concurrent session on this box at its next agent launch. Sibling sessions running gates on this box are a recorded pattern.\n\nTwo ways this breaks a workflow run:\n(a) An orchestrator (resumed, compacted or sibling) that follows memory L9 + CLAUDE.md L30 TaskStops a legitimate Fable workflow as 'wrong model'.\n(b) A sibling session expecting Opus silently runs Fable and spends the Fable weekly budget (37 % at the s80 launch).\n\nFORCE=1 probably also forces the built-in Explore/Plan agents (inferred). This agent was spawned before the flip and runs on claude-opus-5-5.\n\nLayer: global (pin) + project/memory docs (rule text)."
+  },
+  {
+   "title": "R-NEW-2: deny list covers only Bash-prefix forms while PowerShell is the primary shell; `git -C <dir>` and trailing-flag forms evade it",
+   "severity": "high",
+   "evidence": [
+    {
+     "file": "C:\\Users\\SynAckITPC\\.claude\\settings.json",
+     "line": "permissions.deny",
+     "note": "20 rules: 12 Bash(...), 4 Read(...), 2 mcp__*list_variables, and only 2 PowerShell (Stop-Computer*, Remove-Item*-Recurse*). There is no permissions.allow and no defaultMode.",
+     "basis": "measured"
+    },
+    {
+     "file": "agent environment block",
+     "line": "n/a",
+     "note": "'Shell: PowerShell (primary); Bash tool also available'.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\smartcompare\\.claude\\settings.local.json",
+     "line": "permissions.allow",
+     "note": "The allow list contains `Bash(git -C \"C:/Users/SynAckITPC/Documents/AI/smartcompare\" stash pop)` and `... stash push ...`, so the -C form is in real use.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\CLAUDE.md",
+     "line": "327",
+     "note": "The junction rule calls every recursive removal unsafe, including Git-Bash `rm -rf`. No rm -rf deny exists.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-docs-70\\docs\\investigations\\2026-10-05-session-72-state\\readiness\\CONFIG_AUDIT_DELTA.md",
+     "line": "CFG-05",
+     "note": "The holes listed on 10-05 are still absent: cat/type/Get-Content .env, Get-ChildItem env:, railway run -- env, git restore.",
+     "basis": "measured"
+    }
+   ],
+   "detail": "Permission rules are tool-specific prefix patterns. The file itself carries separate PowerShell(...) entries, so the author treated them that way (inferred).\n\nThrough the PowerShell tool, all of these pass: git stash / checkout -- / reset --hard / clean / push --force, railway variables, Get-Content .env, and dir env:.\n\nThrough Bash, these pass: `git -C <dir> stash|checkout -- f|reset --hard|clean`, `git push origin main --force`, `git push --force-with-lease`, `git restore <file>`, `cat .env` and `rm -rf`.\n\nThe incidents these rules encode stay prose-only on the primary shell: the 2026-09-07 secret dump, checkout wiping agent work, stash in the shared clone, and junction deletes. A guard hook would fire on every agent tool call, so it must be one fast script with no node/jq spawn (the box has a slow-spawn history).\n\nLayer: global."
+  },
+  {
+   "title": "R-NEW-3: CLAUDE.md (~99K tokens) is injected into workflow agents on Bash path references too; the 'read with bash' mitigation is false",
+   "severity": "high",
+   "evidence": [
+    {
+     "file": "this agent's context",
+     "line": "n/a",
+     "note": "'Contents of ...\\sc-docs-70\\CLAUDE.md' arrived after Bash ls/cat of two sc-docs-70 files. No Read/Write tool touched that tree.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\CLAUDE.md",
+     "line": "whole file",
+     "note": "400,184 B, 397,572 chars, 935 lines (wc), 1,367 non-ASCII chars, sha256 ab7ec7dde1724998 (identical to sc-docs-70). About 99.4K tokens at chars/4.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\CLAUDE.md",
+     "line": "550",
+     "note": "Session-73 harness fact: Read/Write on a worktree file injects its CLAUDE.md; 'write into the scratchpad and cp, read with bash'.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-docs-70\\docs\\investigations\\2026-10-05-session-72-state\\readiness\\CONFIG_AUDIT_DELTA.md",
+     "line": "§1",
+     "note": "344,314 chars / 879 lines on 2026-10-05. Now +53,258 chars (+15.5 %) and +56 lines.",
+     "basis": "measured"
+    },
+    {
+     "file": "this agent's MCP server instructions",
+     "line": "context7 block",
+     "note": "A bypass-mode note tells agents to read with cat/head/sed through Bash instead of Read. Combined with the above, no cheap read path avoids the injection.",
+     "basis": "measured"
+    }
+   ],
+   "detail": "Every workflow agent that names a worktree path, even in a Bash command, receives the whole file. That includes every stale or contradictory directive in R-OPEN-5 and the .env-copy instructions in R-OPEN-4.\n\nLater commands in this run built the sc-s80-base path in a shell variable, and no second injection happened. The copy is byte-identical, so this run cannot tell deduplication apart from path detection.\n\nThe file grew 15.5 % in 14 days because principle 5 (L31) still routes session narrative into it, and every block is appended.\n\nLayer: project."
+  },
+  {
+   "title": "R-OPEN-4 (CFG-01, unchanged): CLAUDE.md still tells agents to copy .env into worktrees while the harness denies it",
+   "severity": "high",
+   "evidence": [
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\CLAUDE.md",
+     "line": "286",
+     "note": "(c) 'copy `.env` into each pytest-running worktree'; (g) comm-gate harness '+ copy `.env` in'.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\CLAUDE.md",
+     "line": "203",
+     "note": "Serper rotation playbook: 'sync LOCAL `.env` and worktree copies'.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\CLAUDE.md",
+     "line": "36",
+     "note": "Principle 10 permits copying .env 'beyond a gate that needs it' only, so gates may copy it.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\CLAUDE.md",
+     "line": "540",
+     "note": "Session-77 harness fact: '`railway variables` reads and `.env` copies are denied'.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\CLAUDE.md",
+     "line": "649",
+     "note": "Lesson: 'agents keep copying `.env` into scratch dirs'.",
+     "basis": "measured"
+    }
+   ],
+   "detail": "The file every agent receives (R-NEW-3) instructs an action that the harness denies. Conftest (#48/#207) already strips credentials, so the free tier needs no .env.\n\nAgents either waste turns on denials or succeed through an uncovered form, such as PowerShell Copy-Item or `cp` in Bash (R-NEW-2).\n\nLayer: project."
+  },
+  {
+   "title": "R-OPEN-5: stale and appended-correction directives still load (R2/R3/CFG-03/CFG-04/R21/R22/R31 open)",
+   "severity": "medium",
+   "evidence": [
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\CLAUDE.md",
+     "line": "9",
+     "note": "The 'current state' pointer names the session-77 folder. The 78, 79 and 80 state folders exist (sc-docs-70), and #361 merged 21:58 per the s80 ledger. A dated pointer in the always-loaded file goes stale every session.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\CLAUDE.md",
+     "line": "21",
+     "note": "'U4d in flight', although #307 is merged.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\CLAUDE.md",
+     "line": "361, 445 vs 568",
+     "note": "'ONE deployment-wide bucket' (L361/L445) against the U13 row, which says that sentence is wrong (#299).",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\CLAUDE.md",
+     "line": "398, 402, 437, 440, 458, 697",
+     "note": "Appended CORRECTED/CORRECTION/UPDATE paragraphs next to the text they supersede, against principle 5's edit-in-place rule at L31.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\CLAUDE.md",
+     "line": "290",
+     "note": "Ultracode rules: (a) never run the full jest in IMPLEMENT, (b) <=2-3 concurrent, (d) <=4. These conflict with principle 4 (L30) and the 'FULL jest suite is the arbiter' rule.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\CLAUDE.md",
+     "line": "35, 116, 204, 237, 341, 498, 517, 932",
+     "note": "Stale items: principle 9 ACK/inbox (TeamCreate relic); '~1,500 lines'; 'migrations/010-026'; '~98 tests'; 'All flags default OFF in code' beside default-ON rows; '~557 test files' (~697 now); 'Age policy (locked)'; the Session-54 Google Sign-In bug.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app",
+     "line": "n/a",
+     "note": "24 ENABLE_* names read in app/ are absent from CLAUDE.md, e.g. ENABLE_GENUINE_PRICE_PRIORITY, ENABLE_NASSER_ADAPTER, ENABLE_STRICT_CURRENCY_LABEL, ENABLE_GPT_WINNER, ENABLE_SERPER_FAIL_FAST, ENABLE_YOUTUBE_SOURCE. CLAUDE.md names 121 distinct and app/ 139 tokens (one is a truncated ENABLE_RSC_ prefix).",
+     "basis": "measured"
+    }
+   ],
+   "detail": "The file also carries 32 '(superseded' markers on blocks that still load.\n\nAn agent cannot tell which statement is current. For the flag lane this matters, because the registry is the only allowed source of production flag state besides the ledgers.\n\nLayer: project."
+  },
+  {
+   "title": "R-OPEN-6: context7 and the Sentry connector have no allow rule anywhere; they work only because agents run in bypassPermissions; three Sentry routes are dead",
+   "severity": "medium",
+   "evidence": [
+    {
+     "file": "C:\\Users\\SynAckITPC\\.claude\\settings.json",
+     "line": "permissions",
+     "note": "deny only; no allow, no defaultMode.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\.claude\\settings.json",
+     "line": "1-5",
+     "note": "The tracked file only enables sentry@claude-plugins-official. The worktree has no settings.local.json (untracked since #312, CLAUDE.md L563-574).",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\.claude\\plugins\\installed_plugins.json",
+     "line": "sentry entry",
+     "note": "Project scope, projectPath 'C:\\Users\\SynAckITPC\\Documents\\ai\\smartcompare' (lowercase), so the plugin is inert in every worktree.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\.claude.json",
+     "line": "mcpServers",
+     "note": "User scope holds only `sentry` (http). mcp-needs-auth-cache.json has listed it as needs-auth since about 2026-08-16.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\smartcompare\\.claude\\settings.local.json",
+     "line": "permissions.allow",
+     "note": "The only MCP allows name the dead plugin routes: 7 mcp__plugin_sentry_sentry__* (incl. update_issue, create_project) and 4 supabase entries. Neither the claude.ai connector nor context7 is listed.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\.claude\\projects (all *.jsonl)",
+     "line": "n/a",
+     "note": "A grep for a permission denial naming context7, 25c88de3 or plugin_sentry found 0 hits except this agent's own grep command.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-docs-70\\docs\\investigations\\2026-10-10-session-76-state\\ledger.md",
+     "line": "71",
+     "note": "get_session shows permissionMode = bypassPermissions, with the auto-mode classifier applied on top.",
+     "basis": "measured"
+    }
+   ],
+   "detail": "This is healthy today: the claude.ai Sentry connector (mcp__25c88de3-…, 15 deferred tools) and context7 (2 tools) are present in this agent, and no denial was ever recorded.\n\nThe latent break: launch a workflow in default, auto or acceptEdits mode and every context7 or Sentry-connector call needs an approval that no headless agent can give. The only allow rules live in a clone-local file that worktrees never see, and they name routes that do not connect.\n\nLayer: global (allow) + project (plugin flag)."
+  },
+  {
+   "title": "R-OPEN-7 (R17): Supabase MCP dead but still the 'preferred' migration path; prod-write allows remain",
+   "severity": "medium",
+   "evidence": [
+    {
+     "file": "C:\\Users\\SynAckITPC\\.claude\\settings.json",
+     "line": "enabledPlugins",
+     "note": "supabase@claude-plugins-official true.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\.claude\\mcp-needs-auth-cache.json",
+     "line": "plugin:supabase:supabase",
+     "note": "Needs-auth since about 2026-08-16. No mcp__plugin_supabase_* tool is in this agent's tool list.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\CLAUDE.md",
+     "line": "90, 92",
+     "note": "L90: 'preferred path is **Supabase MCP**'. L92: every apply since 037 (037/038/040/041/042/043) went through the SQL editor.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\smartcompare\\.claude\\settings.local.json",
+     "line": "permissions.allow",
+     "note": "execute_sql and apply_migration are pre-allowed.",
+     "basis": "measured"
+    }
+   ],
+   "detail": "Agents planning DB work are pointed at a tool that does not exist in their session. If it is ever re-authenticated, production SQL writes run without a prompt in clone-rooted sessions.\n\nLayer: global + project."
+  },
+  {
+   "title": "R-OPEN-8 (R19, worse): worktree sprawl 29 -> 44; 40 CLAUDE.md copies = 10.6 MB; duplicate skills appear in agent listings",
+   "severity": "medium",
+   "evidence": [
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\smartcompare (git worktree list)",
+     "line": "n/a",
+     "note": "44 registered worktrees, including 4 nested under smartcompare/.claude/worktrees (agent-a6d188dd, agent-ac921391, angry-wescoff-fc8992, referral-system-v1).",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\*\\CLAUDE.md",
+     "line": "n/a",
+     "note": "40 copies, 10,579,577 B total (10-05: 29 copies, 5.9 MB).",
+     "basis": "measured"
+    },
+    {
+     "file": "this agent's skill listing",
+     "line": "n/a",
+     "note": "The listing gained 8 entries mid-run: sc-s80-base:qaren-* and sc-docs-70:qaren-* (x4 each).",
+     "basis": "measured"
+    }
+   ],
+   "detail": "Stale CLAUDE.md copies and skill copies load from whichever tree an agent touches, and the listing grows with every tree. Several worktrees hold node_modules junctions (CLAUDE.md L327).\n\nLayer: project / parent-dir."
+  },
+  {
+   "title": "R-OPEN-9 (R6 + new canva plugin): Cowork plugins and triple Canva routing still tax every agent start",
+   "severity": "medium",
+   "evidence": [
+    {
+     "file": "this agent's start notice",
+     "line": "n/a",
+     "note": "About 40 plugin:* servers need auth (data, legal, marketing, product-management, productivity, sales…), and plugin:sales:salesforce failed with CONNECT_TIMEOUT: 'Version negotiation probe timed out after 5000ms'.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\.claude\\mcp-needs-auth-cache.json",
+     "line": "n/a",
+     "note": "37 entries, including plugin:canva:canva (first seen about 2026-10-11) and plugin:marketing:canva.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\.claude\\plugins\\installed_plugins.json",
+     "line": "canva, playground",
+     "note": "Both installed 2026-10-11 and enabled in global settings (13 -> 15 enabledPlugins entries). The canva plugin MCP is https://mcp.canva.com/mcp and needs auth; the claude.ai Canva connector (42 deferred tools) is the connected route.",
+     "basis": "measured"
+    },
+    {
+     "file": "this agent's skill listing",
+     "line": "n/a",
+     "note": "About 96 Cowork plugin skill entries. Account skills (anthropic-skills:synack-prd-builder, synack-service-scoper, qaren-brand-voice, pdf, pptx…) render name-only.",
+     "basis": "inferred"
+    }
+   ],
+   "detail": "Each agent start probes about 40 dead servers and waits on a 5 s timeout (30 s on 10-05). The skill listing overflows, and the owner's own skills lose their descriptions.\n\nCanva now has three routes: the claude.ai connector, the canva plugin and Cowork marketing:canva.\n\nLayer: global / desktop account."
+  },
+  {
+   "title": "R-OPEN-10 (R26): codex plugin spawns node on SessionStart/SessionEnd and carries a 900 s Stop hook",
+   "severity": "low",
+   "evidence": [
+    {
+     "file": "C:\\Users\\SynAckITPC\\.claude\\plugins\\cache\\openai-codex\\codex\\1.0.4\\hooks\\hooks.json",
+     "line": "hooks",
+     "note": "SessionStart and SessionEnd each run node (timeout 5 s); Stop runs stop-review-gate-hook.mjs (timeout 900 s). There are no PreToolUse/PostToolUse hooks.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\.claude\\plugins\\data\\codex-openai-codex\\state\\smartcompare-98519de8f877d23b\\state.json",
+     "line": "config",
+     "note": "stopReviewGate False. No state exists for other roots.",
+     "basis": "measured"
+    }
+   ],
+   "detail": "Nothing fires on agent tool calls. The node spawns per session matter on a box with measured slow-spawn episodes. Whether SessionStart fires once per workflow agent was not verified.\n\nLayer: global."
+  },
+  {
+   "title": "R-OPEN-11 (R10/R12): the memory index lives under the empty Documents/.git key; the path named in the brief does not exist; gitStatus noise persists",
+   "severity": "low",
+   "evidence": [
+    {
+     "file": "C:\\Users\\SynAckITPC\\.claude\\projects\\C--Users-SynAckITPC-Documents-AI\\memory\\MEMORY.md",
+     "line": "n/a",
+     "note": "Does not exist; the Documents-AI key has no memory dir.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\.claude\\projects\\C--Users-SynAckITPC-Documents\\memory\\MEMORY.md",
+     "line": "whole file",
+     "note": "13,861 B, 57 lines, 6 'RESUME HERE', longest line 551 chars, 24 session/resume lines, mtime 22:05:47. It was 13,309 B / 5 at the start of this run and 20,891 B / 13 on 10-05.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\.gitignore",
+     "line": "n/a",
+     "note": "Absent. This agent's gitStatus carries about 20 untracked Documents/ lines.",
+     "basis": "measured"
+    }
+   ],
+   "detail": "The index was partly trimmed but grows again each session, and every agent loads it (about 3.5K tokens).\n\nLayer: global (auto-memory) + parent-dir."
+  },
+  {
+   "title": "R-OPEN-12 (CFG-06): typescript-lsp stays enabled; its diagnostics land in agent reminders after edits",
+   "severity": "low",
+   "evidence": [
+    {
+     "file": "C:\\Users\\SynAckITPC\\.claude\\settings.json",
+     "line": "enabledPlugins",
+     "note": "typescript-lsp@claude-plugins-official true.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\CLAUDE.md",
+     "line": "74",
+     "note": "IDE/LSP TS diagnostics on Windows are unreliable; trust only tsc by path. M18 recorded 5 fabricated diagnostics in one day.",
+     "basis": "measured"
+    }
+   ],
+   "detail": "This is the only plugin behaviour that reacts to agent tool calls (Edit/Write). It can mislead red/green agents with fake 'Cannot find module' errors.\n\nLayer: global."
+  },
+  {
+   "title": "R-OPEN-13 (R24/R30/T16): pinned plugins, conflicting update settings, stray file, xhigh effort",
+   "severity": "low",
+   "evidence": [
+    {
+     "file": "C:\\Users\\SynAckITPC\\.claude\\settings.json",
+     "line": "env / autoUpdatesChannel / effortLevel",
+     "note": "DISABLE_AUTOUPDATER=1 together with autoUpdatesChannel 'stable'; effortLevel 'xhigh'.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\.claude\\plugins\\cache\\claude-plugins-official\\context7\\2cd88e7947b7\\.mcp.json",
+     "line": "1",
+     "note": "`npx -y @upstash/context7-mcp` (stdio), installed 2026-02-20.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\.claude\\.claude.json",
+     "line": "keys",
+     "note": "The stray file still exists (firstStartTime, machineID, pluginUsage…).",
+     "basis": "measured"
+    }
+   ],
+   "detail": "These are hygiene items with minor process and token cost. Layer: global."
+  },
+  {
+   "title": "R-OPEN-14 (R14/R29): global skill clusters unchanged; the binding orchestrator skill exists twice",
+   "severity": "low",
+   "evidence": [
+    {
+     "file": "C:\\Users\\SynAckITPC\\.claude\\skills",
+     "line": "n/a",
+     "note": "93 dirs, 73 model-invocable, 20 disable-model-invocation, 8,234 description chars (10-05: 93/73/20/8,212). _gstack-command == gstack (sha 4669df05cb). ship, land-and-deploy, setup-deploy, ios-* x5, setup-gbrain/sync-gbrain, pov-reels-montage (587-char description), scaffold-exercises, migrate-to-shoehorn and setup-pre-commit are all invocable.",
+     "basis": "measured"
+    },
+    {
+     "file": "this agent's skill listing",
+     "line": "n/a",
+     "note": "Both 'synack-build-orchestrator' (global, 512-char description claiming '/plan') and 'anthropic-skills:synack-build-orchestrator' (account) are listed.",
+     "basis": "measured"
+    }
+   ],
+   "detail": "Two copies of the binding harness skill can diverge, and either may trigger. A 'ship it' phrase can pick a foreign deploy flow.\n\nLayer: global / claude.ai account."
+  },
+  {
+   "title": "R-OPEN-15: the shared clone is stale at 94c097cd with the 192-entry settings.local.json still tracked",
+   "severity": "low",
+   "evidence": [
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\smartcompare\\.claude\\settings.local.json",
+     "line": "permissions.allow",
+     "note": "13,655 B, 192 allows. Risky entries include Bash(railway variables *), Bash(railway run *), Bash(env), Bash(git checkout *), Bash(git reset *), Bash(git stash *), 3 shutdown forms, PowerShell(Stop-Computer -Force), supabase execute_sql/apply_migration and sentry update_issue/create_project. enabledMcpjsonServers is ['railway'].",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\smartcompare",
+     "line": "HEAD",
+     "note": "main 94c097cd (2026-09-29). `git ls-files .claude` still lists settings.local.json; the untrack landed at c60926f8 (#312).",
+     "basis": "measured"
+    }
+   ],
+   "detail": "Deny beats allow, so the Bash forms stay blocked in clone-rooted sessions (inferred from Claude Code precedence). The PowerShell equivalents are open (R-NEW-2). A pull or checkout past c60926f8 deletes this file.\n\nLayer: project (clone-local)."
+  },
+  {
+   "title": "HEALTHY: surfaces that need no change",
+   "severity": "healthy",
+   "evidence": [
+    {
+     "file": "C:\\Users\\SynAckITPC\\.claude\\settings.json",
+     "line": "n/a",
+     "note": "No hooks key. The deny list exists (applied by 2026-10-08 15:43 per the backup chain; R1 deny half closed). superpowers, github, figma, code-review, feature-dev, code-simplifier and railway are all false. env holds 3 non-secret names.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\.claude\\plugins\\cache\\…",
+     "line": "hooks.json",
+     "note": "Among enabled plugins only codex ships hooks (SessionStart/SessionEnd/Stop). No PreToolUse/PostToolUse hook fires on agent tool calls, and the old Railway per-Bash hook is gone.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\.claude",
+     "line": "n/a",
+     "note": "Holds only settings.json and 4 skills. No agents, commands or hooks dirs; no ~/.claude/agents; no global or Documents/AI CLAUDE.md. The 4 SKILL.md files parse with yaml.safe_load (descriptions 306-319 chars).",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\.mcp.json",
+     "line": "1-9",
+     "note": "Only railway (stdio). This Documents/AI-rooted workflow agent has no mcp__railway tool, which is consistent with principle 10.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-docs-70\\docs\\investigations\\2026-10-19-session-80-state\\ledger.md",
+     "line": "22:05 entry",
+     "note": "The pre-commit hook (staged blobs: ruff, sqlfluff, gitleaks, the sk- refusal) and CI (frontend-tests blocking, secret-scan) were verified on main.",
+     "basis": "measured"
+    }
+   ],
+   "detail": "These surfaces need no edits."
+  },
+  {
+   "title": "TOKEN: what consumes always-on context per workflow agent (largest first)",
+   "severity": "high",
+   "evidence": [
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\CLAUDE.md",
+     "line": "335-473",
+     "note": "## Environment Variables (Railway): 127,997 chars, about 32K tokens (32 %).",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\CLAUDE.md",
+     "line": "521-819",
+     "note": "20 Active-runtime blocks: 180,632 chars, about 45K tokens (45 %). On 10-05 there were 17 blocks and 157,889 chars.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\CLAUDE.md",
+     "line": "1-334, 474-520, 820-935",
+     "note": "Core: 88,943 chars, about 22K tokens. Largest parts: Backend architecture L96-185 (12,017), Bundle history + gotchas L270-291 (8,579), the zero-regression gate L877-928 (7,656, keep), Tests L474-506 (5,881), fragrance findings L820-876 (5,323).",
+     "basis": "measured"
+    },
+    {
+     "file": "this agent's deferred-tool list",
+     "line": "n/a",
+     "note": "178 UUID-prefixed claude.ai connector names: Canva 42, Figma 43, the be00853f board/canvas connector 50, Gamma 21, Sentry 15, Claude Docs 5, visualize duplicate 2. About 11K chars, roughly 3.5-4.5K tokens; hex UUIDs tokenize poorly.",
+     "basis": "inferred"
+    },
+    {
+     "file": "this agent's skill listing",
+     "line": "n/a",
+     "note": "About 227 entries at start, plus 8 duplicate qaren-* entries mid-run. About 6-8K tokens. Roughly 96 entries are Cowork plugins and 6 are the canva plugin.",
+     "basis": "inferred"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\.claude\\projects\\C--Users-SynAckITPC-Documents\\memory\\MEMORY.md",
+     "line": "whole file",
+     "note": "13,861 B, about 3.5K tokens.",
+     "basis": "measured"
+    },
+    {
+     "file": "this agent's start notices / gitStatus",
+     "line": "n/a",
+     "note": "Needs-auth list about 0.5K tokens plus a 5 s salesforce timeout; Documents gitStatus about 0.3K tokens.",
+     "basis": "inferred"
+    }
+   ],
+   "detail": "Without CLAUDE.md an agent carries roughly 14-17K tokens of configurable context: memory, listing, connector names and notices. The first worktree path reference adds about 99K.\n\nScale example: a 15-agent workflow such as wf_c92b4364-9d8 loads about 1.5M tokens of CLAUDE.md context if each agent touches a worktree, and that context rides every later turn as a cache read (inferred).\n\nHost-injected schemas (the Artifact tool, Claude_Browser, ccd_*, visualize, terminal) were not measured and are mostly not user-configurable."
+  },
+  {
+   "title": "TOKEN: CLAUDE.md Active-runtime blocks safe to archive into docs/SESSION_BUNDLES.md behind a pointer",
+   "severity": "medium",
+   "evidence": [
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\CLAUDE.md",
+     "line": "555-562, 575-584, 585-604, 632-640, 653-664, 665-674, 701-710, 711-723, 724-731, 789-796, 797-802, 803-808, 809-819",
+     "note": "Archive as-is (no binding content to hoist), 13 blocks, 76,732 chars, about 19K tokens: SESSION 72 (4,247), SESSION 70 (3,685), SESSION 69 (21,246; its client facts are already summarised at L186-200), SESSION 68 pause record (5,248), SESSION 66 (7,804), W3 remainder lane (3,878), SESSION 65b (10,244), FULL REVIEW CAMPAIGN (5,904), M18->M20/M21 (2,545), M5-M7 (2,250), M13 wave-3 (2,029), M13 wave-4 (4,066), wave-3 global hardening (3,586; keep one line: `git config core.hooksPath .githooks`).",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\CLAUDE.md",
+     "line": "521-544, 545-554, 563-574, 605-631, 641-652, 675-700, 732-788",
+     "note": "Hoist first, then archive (7 blocks, 103,900 chars, about 26K tokens). SESSION 77: the harness facts L539-544. SESSION 73: the COST-METER, U3b and FANOUT-STARVE flag rows L550-554 plus the harness facts L550. SESSION 71: the ENABLE_COMPARE_AUTH_REQUIRED row L568 (ON in prod). SESSION 68b: 14 W4 flag rows L605-631 (the env section points into this block). SESSION 67: the merge-time lessons L649. SESSION 65: the rows for ENABLE_PAID_ROUTE_METERING, ENABLE_LLM_PREFLIGHT_BREAKER, LLM_BREAKER_CACHE_TTL, UVICORN_LIMIT_CONCURRENCY and the U3c store=False rule. Full-repo audit: the app/config.py trap and the GPT-5 smoke-test warning.",
+     "basis": "measured"
+    }
+   ],
+   "detail": "This follows the 2026-08-30 precedent: move each block word for word and leave a pointer of 15 lines or fewer to the newest state folder.\n\nTogether with generating docs/FLAGS.md (env section 127,997 chars down to a one-line-per-flag index of about 135 x ~100 chars, about 14K chars) and moving core narrative (Bundle history 8.6K -> ~2K; fragrance findings 5.3K -> ~1.5K), CLAUDE.md goes from about 99K to about 23K tokens. That saves about 76K tokens (77 %) per agent or session that touches a worktree, while every binding rule and flag row stays reachable on demand."
+  }
+ ],
+ "recommendations": [
+  "1. Model pin, global + docs. The owner must decide this; propose only. Record the 2026-10-19 Fable-agents ruling with its date, in place, in CLAUDE.md L30 and MEMORY.md L1/L18, so the TaskStop rule in L9 matches the live pin. Then remove CLAUDE_CODE_SUBAGENT_MODEL_FORCE (or set it to 0), keep CLAUDE_CODE_SUBAGENT_MODEL only as the default, and pass the model per workflow script so a global edit cannot silently override running lanes or sibling sessions. Verify that precedence with one probe agent. Restore from settings.json.bak-s80-2206 when the s80 lane ends. Keep get_usage before each launch.",
+  "2. Destructive and secret guard, global. Replace prefix-only deny matching with one fast PreToolUse guard hook on Bash|PowerShell, with no node/jq spawn. It normalises `git -C <path>`, `-c k=v`, quoting and trailing flags, then refuses: stash/checkout --/restore (except --staged)/reset --hard/clean/push --force|-f|--force-with-lease|+ref, railway variables, railway run * env|printenv, env/printenv/set/Get-ChildItem env:/dir env:, cat|type|Get-Content|Select-String of *.env*, rm -rf, Remove-Item -Recurse and shutdown/Stop-Computer. Minimum alternative: mirror every Bash rule as PowerShell(...) and add `git -C *` variants. Probe each rule once on a harmless target.",
+  "3. One docs PR in the project (the T1-T3 restructure, about 76K tokens saved per load).\n   - Hoist the binding rows and harness facts listed in the archive finding into a short 'Harness & gate rules' section and a generated docs/FLAGS.md (also covering the 24 unlisted ENABLE_* names).\n   - Archive the 20 Active-runtime blocks word for word, with a pointer of 15 lines or fewer. A stable pointer such as 'newest docs/investigations/*-session-*-state folder on the docs branch' replaces the dated L9 line.\n   - Fold every appended correction (L398, 402, 437, 440, 458, 697).\n   - Fix L21 (U4d), L361/L445 (#299), L341, L116, L204, L237, L498, L517, L932 and principle 9 (L35).\n   - Delete the .env-copy instructions at L203 and L286 (c)(g), and make L36 'never copy .env'.\n   - Delete L290 (a)(b)(d).\n   - Rewrite L550 to say that Bash path references inject CLAUDE.md too.\n   - Make the SQL-editor one-paste files the primary path at L90.\n   - Change principle 5 (L31) so session narrative goes only to the state folder and the session log.",
+  "4. Sentry, context7 and Supabase, global + project. Add a global permissions.allow for mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs and the read-only claude.ai Sentry connector tools (find_organizations, find_projects, search_issues, search_errors, search_logs, search_traces, get_sentry_resource); never update_issue or analyze_issue_with_seer. Then a workflow launched outside bypass mode still works. Set sentry@claude-plugins-official false in the tracked .claude/settings.json. Remove the user-scope `sentry` MCP or authenticate it once via /mcp. Disable the supabase plugin, or re-authenticate it before any DB lane, and drop the clone's execute_sql/apply_migration allows.",
+  "5. Desktop and claude.ai account. Disable the ten Cowork plugins: about 40 auth probes and a 5 s salesforce timeout per agent start, roughly 96 listing entries, and the owner's skills regain their descriptions. Disable the canva plugin, which needs auth and duplicates the connected claude.ai Canva connector. For Code sessions, disable the unused claude.ai connectors (Canva, Figma, the be00853f board/canvas connector, Gamma) to save about 3.5-4.5K tokens per agent. Keep Sentry and Claude Docs.",
+  "6. Memory, global + parent dir. Trim the live index (C--Users-SynAckITPC-Documents\\memory\\MEMORY.md, 13,861 B) to one RESUME line plus one-line feedback rules, at most about 5K chars: about 2K tokens saved per agent. Correct the session-80 line about the model pin. Add Documents/.gitignore with `*` (about 0.3K tokens of gitStatus per agent). Do not delete Documents/.git, because the memory key would move. Update the orchestrator brief: the Documents-AI memory path it names does not exist.",
+  "7. Worktrees, project. Prune the merged ones among the 44 registered, nested smartcompare/.claude/worktrees included, using the junction-safe order at CLAUDE.md L327 (cmd /c rmdir the node_modules junction first, verify the clone's @babel/core, then remove). This removes most of the 40 CLAUDE.md copies (10.6 MB) and the duplicate qaren-* listing entries.",
+  "8. Global hygiene, low priority.\n   - Turn codex@openai-codex off unless the lane uses it (it adds node SessionStart/SessionEnd spawns and a 900 s Stop hook).\n   - Turn typescript-lsp off for agent work.\n   - Drop either DISABLE_AUTOUPDATER or autoUpdatesChannel.\n   - Run `/plugin update context7@claude-plugins-official` to move it to the hosted server.\n   - Archive the stray ~/.claude/.claude.json once it is confirmed unread.\n   - Consider an effortLevel below xhigh as the global default.",
+  "9. Skills, global + account.\n   - Delete `_gstack-command` (byte-identical to gstack).\n   - Set disable-model-invocation on ship, land-and-deploy, setup-deploy, ios-*, the gbrain pair, pov-reels-montage, scaffold-exercises, migrate-to-shoehorn and setup-pre-commit (check first whether gstack-upgrade recreates deleted dirs).\n   - Keep ONE synack-build-orchestrator: either the account copy or ~/.claude/skills, not both. Trim its description to about 300 chars and drop the '/plan' claim.",
+  "10. Shared clone, project-local. Before updating smartcompare past c60926f8, move .claude/settings.local.json aside. Prune it to read-only wildcard entries: drop railway variables/run, env, git checkout/reset/stash, shutdown, Stop-Computer, supabase writes and sentry writes."
+ ],
+ "open_questions": [
+  "Does CLAUDE_CODE_SUBAGENT_MODEL without FORCE let a workflow script's explicit model win on this build, and does FORCE=1 also override built-in Explore/Plan agents? One probe agent per setting would settle it.",
+  "Is the Bash-triggered nested CLAUDE.md injection deterministic? Did the byte-identical sc-s80-base copy skip injection because of deduplication or because its path was built in a shell variable?",
+  "Do workflow agents always inherit bypassPermissions from the orchestrator, or can a script launch them in auto/default mode? This decides whether the missing context7/Sentry allow rules can ever bite.",
+  "Are Bash(...) deny patterns matched against `git -C <dir> stash` (prefix match: inferred no), and do Read(**/.env) rules also bind Grep/Glob? Neither was probed (read-only brief).",
+  "Does the codex SessionStart/SessionEnd hook fire once per workflow agent, or only per top-level session?",
+  "Which service is the be00853f connector (board_*, canvas_*, prototype_*, import-claude-design-from-url)? The 10-05 audit called it Miro.",
+  "Has the account-layer anthropic-skills:synack-build-orchestrator diverged from ~/.claude/skills/synack-build-orchestrator (sha 4f7dae852e)? Account skills cannot be read from disk.",
+  "Where does the bypass-mode note appended to the context7 MCP-instructions block come from (the harness or the plugin)? It steers agents to Bash reads, which still inject CLAUDE.md."
+ ],
+ "sources": [
+  "C:\\Users\\SynAckITPC\\.claude\\settings.json",
+  "C:\\Users\\SynAckITPC\\.claude\\settings.json.bak-s80-2206",
+  "C:\\Users\\SynAckITPC\\.claude\\settings.json.bak-s75-185210",
+  "C:\\Users\\SynAckITPC\\.claude\\plugins\\installed_plugins.json",
+  "C:\\Users\\SynAckITPC\\.claude\\plugins\\cache\\openai-codex\\codex\\1.0.4\\hooks\\hooks.json",
+  "C:\\Users\\SynAckITPC\\.claude\\plugins\\cache\\claude-plugins-official\\canva\\1.0.0\\.mcp.json",
+  "C:\\Users\\SynAckITPC\\.claude\\plugins\\cache\\claude-plugins-official\\context7\\2cd88e7947b7\\.mcp.json",
+  "C:\\Users\\SynAckITPC\\.claude\\plugins\\data\\codex-openai-codex\\state\\smartcompare-98519de8f877d23b\\state.json",
+  "C:\\Users\\SynAckITPC\\.claude\\mcp-needs-auth-cache.json",
+  "C:\\Users\\SynAckITPC\\.claude.json (mcpServers names/types only)",
+  "C:\\Users\\SynAckITPC\\.claude\\.claude.json (keys only)",
+  "C:\\Users\\SynAckITPC\\.claude\\skills\\*\\SKILL.md (frontmatter only)",
+  "C:\\Users\\SynAckITPC\\.claude\\projects\\C--Users-SynAckITPC-Documents\\memory\\MEMORY.md",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\CLAUDE.md",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\.claude\\settings.json",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\.claude\\skills\\*\\SKILL.md",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\.mcp.json",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\smartcompare\\.claude\\settings.local.json (permission names, long tokens masked)",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-docs-70\\docs\\investigations\\2026-10-03-session-71-state\\CONFIG_AUDIT_PLAN.md",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-docs-70\\docs\\investigations\\2026-10-05-session-72-state\\readiness\\CONFIG_AUDIT_DELTA.md",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-docs-70\\docs\\investigations\\2026-10-19-session-80-state\\ledger.md",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-docs-70\\docs\\investigations\\2026-10-10-session-76-state\\ledger.md",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-docs-70\\docs\\investigations\\2026-10-11-session-77-state\\ledger.md",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-docs-70\\docs\\investigations\\2026-10-14-session-78-state\\ledger.md",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-docs-70\\docs\\investigations\\2026-10-17-session-79-state\\ledger.md",
+  "git worktree list of C:\\Users\\SynAckITPC\\Documents\\AI\\smartcompare",
+  "this agent's own system context (environment block, start notices, deferred-tool list, skill listing, injected CLAUDE.md)"
+ ]
+}

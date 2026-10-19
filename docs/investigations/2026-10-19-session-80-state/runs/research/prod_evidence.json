@@ -1,0 +1,472 @@
+{
+ "category": "SURFACE N: production evidence (Sentry org qaren-rr, projects python-fastapi + react-native, last 14 days, read-only)",
+ "summary": "Every Sentry tool worked (org qaren-rr, region de.sentry.io; projects python-fastapi, react-native, booking-os-web). There were no auth errors. The production signal is very thin, and that is by design:\n- The backend sends only ERROR log lines to Sentry.\n- Deliberate 503s (TIMEOUT / LLM_UNAVAILABLE) are dropped, and 4xx responses (INSUFFICIENT_DATA, \"<2 products\") are never captured.\n- Image-tier failures log at WARNING/INFO.\n- Client image onError has no telemetry.\n- Traces are sampled at 10%: about 1,400-2,100 backend spans a day are discarded client-side, against 0-253 kept.\n- The Sentry Logs dataset is empty.\n\nIn 14 days: python-fastapi has 4 issues and 65 error events. react-native has 0 errors; its only events are 27 info-level `comparison_wall_time` telemetry messages.\n\nThe tester videos still line up exactly with production telemetry, because each RPReplay filename is the Unix time the recording was saved.\n- **V02 (12:49:34-12:50:25Z):** PYTHON-FASTAPI-1X fired 4 times (12:50:05 and 12:50:15, two attempts x two URLs). fragrancex.com answered 403 (span status permission_denied) to the backend fetch of a real product page (/products/calvin-klein/obsession-perfume). So V02 failed because fragrancex blocks Railway. It was not homepage acceptance, at least for that field. This matters for the user's \"ingest all of fragrancex\" request.\n- **V09 (13:43:42-13:44:23Z):** trace 5915a2b6 shows compare_urls returning 200 in 7.1 s with 3 LLM calls, then rpc/increment_lifetime_comparisons. A two-\"Unknown Product\" result went down the success branch: the credit was kept, the lifetime counter bumped and a history row saved. This confirms MYEZ-002/005/011/012/027 in production.\n- **V01 and V06 (camera):** client wall time to first card was 40,032 ms and 39,519 ms, matching the audit's ~40 s. Sampled backend text compares all ran 30.5-34.8 s, at or over the 30 s cap, and client text compares had a median of 32.7 s (n=7).\n\nThe client wall-time instrumentation is itself broken for the URL and camera paths: start() is only called on the text path.\n\nOther production signals: Serper failed about 45% of sampled calls (p95 16.9 s), Bright Data returned 401 from 10-09 to 10-11, and the L2 product cache (product_specs / product_reviews) misses with 4xx. Simple routes take 2.6-8.4 s, which points to event-loop stalls.\n\nThe defects behind the user's three complaints (camera misidentification, missing images, missing info) have no direct Sentry signal at all. V04 and V07 left zero telemetry.",
+ "findings": [
+  {
+   "title": "Sentry can structurally not see most tester-visible defect classes; production silence is not health",
+   "severity": "high",
+   "evidence": [
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\sentry_service.py",
+     "line": "651",
+     "note": "LoggingIntegration(level=logging.ERROR): only ERROR log lines become breadcrumbs/events",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\sentry_service.py",
+     "line": "637-646, 501-511",
+     "note": "failed_request_status_codes excludes 503, and _before_send drops any event with response status 503 (TIMEOUT, FEATURE_DISABLED, LLM_UNAVAILABLE surfaces); 4xx (INSUFFICIENT_DATA 400, '<2 products' 400, NOT_A_PDP) are never captured",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\sentry_service.py",
+     "line": "667",
+     "note": "traces_sample_rate=0.1; init has no enable_logs, so the Sentry Logs dataset is empty (search_logs over 14d returned no rows)",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\SmartCompareApp\\src\\services\\sentry.ts",
+     "line": "271-280",
+     "note": "client tracesSampleRate 0.1; search_traces returned zero react-native transactions in 14d",
+     "basis": "measured"
+    },
+    {
+     "file": "Sentry find_dropped_events (python-fastapi, spans, 14d)",
+     "note": "client_discard/sample_rate drops of 1,143-2,071 spans per day vs 0-253 accepted per day; errors dataset: only 3 client_discard network_error drops (error data is complete)",
+     "basis": "measured"
+    },
+    {
+     "file": "Sentry search_errors (python-fastapi + react-native, 14d)",
+     "note": "python-fastapi 65 error events in 7 message/transaction groups; react-native 27 events, all level=info message comparison_wall_time, 0 errors/crashes in 90d",
+     "basis": "measured"
+    }
+   ],
+   "detail": "The backend Sentry stream only contains logger.error lines (provider ConnectTimeout, Bright Data 401, URL fetch failure) and 500s. The defect classes the audit is about cannot reach Sentry: TIMEOUT/LLM_UNAVAILABLE (503, dropped), INSUFFICIENT_DATA and URL '<2 products' (400, never captured), and Unknown-Product or misidentified results (HTTP 200 success). The same goes for image misses (image_service logs WARNING/INFO), client image load errors (no telemetry), and SSE fallback (breadcrumb only, which rides on no event because RN has zero errors). Transactions are 10% sampled, so per-route p50/p95 rests on 1-5 sampled traces. No /api/v1/image/* transaction was sampled in 30 days. Any 'no signal found' row below therefore means 'not observable', not 'not happening'."
+  },
+  {
+   "title": "V02 fragrancex failure = fragrancex returns HTTP 403 to the Railway fetch of a real product page (PYTHON-FASTAPI-1X)",
+   "severity": "high",
+   "evidence": [
+    {
+     "file": "Sentry PYTHON-FASTAPI-1X (events 45dbe359, 214cf269 at 2026-10-18T12:50:05Z; f3ff0b9c, e3c59f2e at 12:50:15Z), trace 2e59ae38aca04795883c6c9306de3495, release 683f56c0, client MYEZ 3 iOS",
+     "note": "4 events, first 12:50:05.062Z, last 12:50:15Z, 'Failed to fetch URL host www.fragrancex.com: HTTPStatusError', culprit app.api.url_routes.compare_urls; the http.client span context has status permission_denied (=403) and description 'GET https://www.fragrancex.com/products/calvin-klein/obsession-perfume'",
+     "basis": "measured"
+    },
+    {
+     "file": "audit video index V02 RPReplay_Final1792327825.mp4 (00:51)",
+     "note": "epoch 1792327825 = 2026-10-18T12:50:25Z (save time); window 12:49:34-12:50:25Z; the audit's failure at 00:32-00:43 = 12:50:06-12:50:17Z, matching the two error bursts (two Compare taps x two URLs)",
+     "basis": "inferred"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\url_extraction_service.py",
+     "line": "118-143, 476-482, 620-625",
+     "note": "fetch_page does raise_for_status, logs host + exception type at ERROR and returns None; extract_from_url returns success False 'Failed to fetch URL'; compare_from_urls returns 'Could not extract both products'",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\api\\url_routes.py",
+     "line": "171-197",
+     "note": "the non-success exit refunds the credit and raises a code-less HTTP 400 with no reason code, so the client cannot tell 'store blocked us' from 'not a product page'",
+     "basis": "measured"
+    }
+   ],
+   "detail": "The audit (MYEZ-005) read V02's fields as the fragrancex homepage. Production shows at least one field was a real PDP (Calvin Klein Obsession), and both fields failed with 403 twice. The likely cause is bot protection on fragrancex against the plain httpx fetch from Railway's IP (inferred; the 403 status itself is measured). The credit was refunded, so V02 did not burn quota. The user-visible 'retry' dialog maps to the code-less 400 (MYEZ-006). This bears directly on the user's request to 'add all fragrancex product data to our database': the existing direct-fetch path cannot read fragrancex from production. Any catalog pre-load needs a different, permitted channel, and robots/ToS must be checked first."
+  },
+  {
+   "title": "V09 two-Unknown-Product URL compare was treated as a delivered success: credit kept, lifetime counter bumped, history saved (trace 5915a2b6)",
+   "severity": "high",
+   "evidence": [
+    {
+     "file": "Sentry trace 5915a2b6c0d048dabac065c52cee18e3",
+     "note": "app.api.url_routes.compare_urls http.server 7,122 ms status ok at 2026-10-18T13:44:06Z; 2 x GET store.rasasi.com.sa (844 ms, 1,214 ms, ok); 2 x gpt-4o-mini (1,441 / 1,948 ms) + 1 x gpt-4o (2,335 ms); POST supabase rpc/increment_lifetime_comparisons at 13:44:13Z (160 ms)",
+     "basis": "measured"
+    },
+    {
+     "file": "audit video index V09 RPReplay_Final1792331063.mp4 (00:41)",
+     "note": "epoch = 2026-10-18T13:44:23Z; window 13:43:42-13:44:23Z; the audit's link entry + result at 00:20-00:34 = 13:44:02-13:44:16Z",
+     "basis": "inferred"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\api\\url_routes.py",
+     "line": "199-210",
+     "note": "record_lifetime_comparison (the increment_lifetime_comparisons RPC) and save_comparison_and_track_cohort run ONLY on the success branch under paid_route_metering_enabled()",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\CLAUDE.md",
+     "line": "568",
+     "note": "ENABLE_PAID_ROUTE_METERING=true (with ENABLE_COMPARE_AUTH_REQUIRED and ENABLE_CAMERA_FAILURE_ENVELOPE) set on web 2026-10-03 14:23",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\url_extraction_service.py",
+     "line": "502-517, 527, 620",
+     "note": "any fetched HTML yields success True; normalize_product_data falls back to title 'Unknown Product'; the only pair gate is len(products) < 2; no PDP or identity check",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\price_service.py",
+     "line": "12940-12990, 13875, 14896",
+     "note": "the existing dark flag ENABLE_NOT_A_PDP_FILTER (homepage/search/collection classifier) is wired ONLY into price-candidate selection, not into url_extraction_service (no reference there)",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\sentry_service.py",
+     "line": "329-336, 419-426",
+     "note": "transaction span URLs to non-infra hosts are path-stripped (R5), so the span cannot say whether the Rasasi URLs were the homepage or a PDP",
+     "basis": "measured"
+    }
+   ],
+   "detail": "This is the clearest production confirmation in the audit set. A URL compare that produced two 'Unknown Product' cards and a green winner returned 200. It billed the user (the credit reserved at the gate was not refunded and the lifetime counter was incremented) and wrote a history row. That covers MYEZ-002, 005, 011, 012 and 027. With ENABLE_SEARCH_LOG_TRUTH ON, its search_logs row is written with success=True (url_routes.py:206-211), so admin error stats count it as a success too. The V09 RN event in the same trace (13:46:20Z, first_card 0, ready_celebration 805, user_tappable 1,246) carries no information about the compare duration. A PDP classifier already exists behind ENABLE_NOT_A_PDP_FILTER but is not reachable from /url/compare."
+  },
+  {
+   "title": "Slow compares: every sampled text compare ran at or past the 30 s cap; camera compares about 40 s end to end",
+   "severity": "high",
+   "evidence": [
+    {
+     "file": "Sentry search_traces transaction app.api.text_routes.text_compare_get (14d)",
+     "note": "4 sampled transactions: 30,768 ms and 30,504 ms (2026-10-08 14:55-14:56Z, release 3b24d182), 32,069 ms and 34,813 ms (2026-10-14 03:50 and 04:26Z, release e0f3e475); extrapolated p50 31,418 ms, p95 34,813 ms",
+     "basis": "measured"
+    },
+    {
+     "file": "Sentry search_traces (python-fastapi, 30d)",
+     "note": "zero /api/v1/image/* and zero text_compare_stream transactions sampled; compare_urls 1 sampled (7,122 ms, V09)",
+     "basis": "measured"
+    },
+    {
+     "file": "Sentry REACT-NATIVE-E comparison_wall_time events (14d)",
+     "note": "text-path signature (ready_celebration ~ first_card + 800 ms), n=7: 31,898 / 32,138 / 32,697 / 32,719 / 33,155 / 33,454 / 37,134 ms, median 32,719 ms. Camera-path signature (ready_celebration_ms=0, user_tappable ~434), n=3: 40,032 ms (2026-10-18 12:46:28Z = V01), 39,519 ms (13:08:15Z = V06), 40,017 ms (2026-10-13 13:08:28Z)",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\SmartCompareApp\\src\\services\\api.ts",
+     "line": "48, 50",
+     "note": "COMPARE_TIMEOUT_MS = 35000 (text/url); IDENTIFY_TIMEOUT_MS = 120000 (camera)",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-docs-70\\docs\\investigations\\2026-10-14-session-78-state\\COMPARE_QUALITY_PLAN_S78.md",
+     "line": "1",
+     "note": "S78 root cause: the compare does not fit in the 30 s server cap and the app aborts at 35 s",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\api\\image_routes.py",
+     "line": "440-450",
+     "note": "the camera path = vision identify, then compare_from_text on the same capped engine, so camera wall = vision + upload + capped compare",
+     "basis": "measured"
+    }
+   ],
+   "detail": "The audit's 38-42 s scan waits (MYEZ-015) match the client telemetry for V01 (40.0 s) and V06 (39.5 s). The consistent ~40 s camera value suggests the camera compare also runs to the 30 s cap after a few seconds of vision and upload (inferred). Compares that end at the cap deliver partial data: empty spec rows, missing prices, missing images (MYEZ-003/010/014/022; inferred link, consistent with the S78 diagnosis). Backend p50/p95 rests on only 4 sampled text compares and 0 camera compares, so the client wall-time numbers are the better (if flawed, see next finding) production measure."
+  },
+  {
+   "title": "Client wall-time telemetry is wrong for URL and camera compares (tracker.start() only on the text path)",
+   "severity": "medium",
+   "evidence": [
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\SmartCompareApp\\src\\screens\\HomeScreen.tsx",
+     "line": "392-393",
+     "note": "getWallTimeTracker().start() is called only inside the text compare handler",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\SmartCompareApp\\src\\screens\\HomeScreen.tsx",
+     "line": "527-560",
+     "note": "handleUrlCompare / runUrlCompare never call start()",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\SmartCompareApp\\src\\lib\\performance\\wallTimeInstrumentation.ts",
+     "line": "52-80, 96-112, 119-123",
+     "note": "a module singleton; mark() seeds t0 only when never started; report() never resets `started`, so a later unstarted compare measures from a stale t0",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\SmartCompareApp\\src\\screens\\ResultsScreen.tsx",
+     "line": "451-470, 489-493",
+     "note": "first/all_cards marked when the result settles; ready_celebration marked at mount+800 ms; report() on unmount",
+     "basis": "measured"
+    },
+    {
+     "file": "Sentry REACT-NATIVE-E event 2026-10-18T12:51:58Z (V03 URL compare, trace 2e59ae38)",
+     "note": "first_card_visible_ms=381,025 (a stale t0 about 6 minutes earlier); other stale values 142,271 / 173,287 / 186,190 / 200,273 ms",
+     "basis": "measured"
+    },
+    {
+     "file": "audit video index V04 (12:53:54-12:55:14Z) and V07 (13:09:23-13:10:40Z)",
+     "note": "no comparison_wall_time event exists for either window, although both reached a result screen",
+     "basis": "measured"
+    }
+   ],
+   "detail": "Telemetry cannot currently produce honest scan or URL p50/p95. Camera values are only usable by accident: ResultsScreen's 800 ms reveal timer seeds t0 at mount. URL values are stale. Some compares emit nothing at all (V04, V07); the cause is unknown, possibly the SDK Dedupe integration or app backgrounding (inferred). The audit's acceptance test for MYEZ-015 (scan_start / identity_resolved / comparison_ready timings) has no event types to land in (see the analytics finding). This fix is client-only and therefore post-approval (no OTA before App Review approval, per the session-79 memory)."
+  },
+  {
+   "title": "Provider failures during compares: Serper ~45% error in sampled spans, Serper ConnectTimeout issues, Bright Data 401; no Firecrawl/Scrape.do/Zyte activity seen",
+   "severity": "medium",
+   "evidence": [
+    {
+     "file": "Sentry PYTHON-FASTAPI-1R 'Search error: ConnectTimeout' (logger app.services.serper_service)",
+     "note": "40 events in 14d (58 lifetime); first 2026-10-03T09:56:21Z, last 2026-10-11T19:40:55Z; 33 on text_compare_get, 7 on text_compare_stream",
+     "basis": "measured"
+    },
+    {
+     "file": "Sentry PYTHON-FASTAPI-1Q 'Serper shopping call error (gl=us): ConnectTimeout'",
+     "note": "15 events in 14d (21 lifetime); first 2026-10-03T09:56:17Z, last 2026-10-14T04:26:55Z",
+     "basis": "measured"
+    },
+    {
+     "file": "Sentry PYTHON-FASTAPI-1W '[brightdata] auth rejected status=401'",
+     "note": "6 events; first 2026-10-09T20:10:23Z, last 2026-10-11T19:41:06Z; http.client spans *.brightdata.com status unauthenticated, 20 extrapolated",
+     "basis": "measured"
+    },
+    {
+     "file": "Sentry search_traces span.op:http.client span.domain:*.serper.dev (14d)",
+     "note": "ok 240 (p50 3,527 ms, p95 12,385 ms) vs internal_error 200 (p50 5,882 ms, p95 16,910 ms), extrapolated counts from 4 sampled traces between 2026-10-08T14:55Z and 2026-10-14T04:27Z",
+     "basis": "measured"
+    },
+    {
+     "file": "Sentry search_traces span.domain:*.openai.com (14d)",
+     "note": "ok 210 vs internal_error 40 (p50 8,968 ms), the errors all on 2026-10-14 03:50-04:27Z",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\serper_service.py",
+     "line": "766, 926, 1114",
+     "note": "generic search, shopping and price-organic exceptions log at ERROR; budget/circuit/exhausted paths log at WARNING (invisible)",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\CLAUDE.md",
+     "line": "#350 REDIS-OFFLOOP row (grep 'Since 2026-10-11 22:50')",
+     "note": "ENABLE_OFFLOOP_DNS_RESOLVE + ENABLE_PRICE_PARSE_OFFLOAD + REDIS-OFFLOOP ON on web since 2026-10-11 22:50; loop_lag_max_60s fell from 9.7-26 s to about 3 s",
+     "basis": "measured"
+    }
+   ],
+   "detail": "ConnectTimeout issue 1R stopped after the 2026-10-11 22:50 off-loop flip, but 1Q (Serper shopping) recurred on 2026-10-14. Sampled Serper spans still failed on 10-14. internal_error on these httpx spans is most likely asyncio cancellation at the compare cap or timeouts (inferred). Serper is the search backbone and the Tier-1 image source (image_service.py:255-271), so its failure rate plausibly drives missing prices, specs and images (MYEZ-010/014/003; inferred). No firecrawl, scrapedo or zyte span or error appeared in 14 days of sampled data. Either those providers were not on the sampled paths, or their flags are off (not determined here)."
+  },
+  {
+   "title": "Image misses (MYEZ-014) and camera misidentification (MYEZ-001) leave no production trace by construction",
+   "severity": "medium",
+   "evidence": [
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\image_service.py",
+     "line": "188, 201, 243-286",
+     "note": "every image tier failure or miss logs WARNING or INFO ('All tiers exhausted ... returning None' is INFO), so it never reaches Sentry",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\structured_comparison_service.py",
+     "line": "5748, 5932-5953, 6086-6090",
+     "note": "image_url is a Phase-1 race with a 5.0 s bound (Serper Images + Tier-3 GPT fallback); the price page image is used only if present",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\SmartCompareApp\\src\\components\\primitives\\ProductImage.tsx",
+     "line": "103",
+     "note": "onError={() => setErrored(true)}: no Sentry capture and no trackEvent",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\api\\image_routes.py",
+     "line": "312, 334, 409, 583",
+     "note": "ERROR only on vision exception / parse error / compare exception (0 events in 90d); identified names logged at INFO; no confidence gate in the 330-440 block (vision returns confidence high/medium/low, openai_service.py:144, 221)",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\SmartCompareApp\\src\\services\\api.ts",
+     "line": "266-272",
+     "note": "every photo is transcoded on device to JPEG, 1024 px wide, quality 0.8, before upload, so HEIC never reaches the server",
+     "basis": "measured"
+    },
+    {
+     "file": "Sentry search_issues python-fastapi lastSeen:-90d",
+     "note": "32 issues in 90d, none for image/vision/identify/HEIC",
+     "basis": "measured"
+    }
+   ],
+   "detail": "The user's two camera complaints ('AI can't spot products' and 'pictures sometimes missing') have zero production signal. That is because nothing at ERROR level or above is emitted, not because they don't happen. V04 (watch/violin) left no error, trace or wall-time event. The camera path turns vision output into a 'brand name vs brand name' text query (image_routes.py:440-450) with no confidence gate. A low-confidence or wrong read is therefore resolved through text search, which is the MYEZ-001 mechanism (inferred). Measuring image coverage or identification quality needs new additive telemetry (see recommendations)."
+  },
+  {
+   "title": "Event-loop stall signal: trivial routes take 2.6-8.4 s; health_check p95 8.4 s",
+   "severity": "medium",
+   "evidence": [
+    {
+     "file": "Sentry search_traces http.server transactions (python-fastapi, 14d)",
+     "note": "health_check ~490 extrapolated (~49 sampled) p50 6 ms but p95 8,372 ms; feedback track_events p50 736 ms, p95 8,442 ms; usage_status p50 4,164 ms; home_smart_pick p50 6,665 ms; update_push_token p50 7,265 ms; referral status p50 1,745 ms",
+     "basis": "measured"
+    },
+    {
+     "file": "Sentry trace 5915a2b6 (V09 session, 2026-10-18 ~13:44Z)",
+     "note": "health_check 2,665 ms; usage_status 4,266 ms and home_savings 4,944 ms whose child http.client spans sum to under 0.8 s",
+     "basis": "measured"
+    },
+    {
+     "file": "Sentry search_traces span.domain:*.upstash.io",
+     "note": "4,310 extrapolated spans, p50 289 ms, p95 1,537 ms (Redis REST round trips)",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-docs-70\\docs\\investigations\\2026-10-11-session-77-state\\NEXT_SESSION_PROMPT_S78.md",
+     "note": "'Stay OFF: ENABLE_SYNC_DB_OFFLOAD, ENABLE_ASYNC_REDIS_OFFLOAD ...'",
+     "basis": "measured"
+    }
+   ],
+   "detail": "Large gaps between transaction wall time and child-span time on routes that only do a few Supabase/Upstash calls indicate requests queued behind blocking work on the single uvicorn loop (inferred). This is consistent with sync supabase-py and Upstash calls staying on the loop while ENABLE_SYNC_DB_OFFLOAD and ENABLE_ASYNC_REDIS_OFFLOAD are OFF. It adds seconds to every screen load around a compare. It is not a single-defect cause for the 40 s scans, which are dominated by the 30 s compare cap."
+  },
+  {
+   "title": "L2 product knowledge cache ('brain') misses: product_specs / product_reviews reads fail 4xx inside compares",
+   "severity": "medium",
+   "evidence": [
+    {
+     "file": "Sentry search_traces span.domain supabase.co status invalid_argument (14d)",
+     "note": "GET /rest/v1/product_specs 30 and GET /rest/v1/product_reviews 30 extrapolated (about 3 sampled each), all in text_compare_get, 2026-10-14 03:50-04:26Z, p50 381 ms",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\product_data_service.py",
+     "line": "198-218, 366-384",
+     "note": "get_cached_specs / get_cached_reviews use .eq('product_key', ...).single(); any exception (a miss included) is swallowed at logger.debug; TTL 30 days specs / 14 days reviews",
+     "basis": "measured"
+    }
+   ],
+   "detail": "The 4xx is most likely PostgREST's no-rows response to .single(), which Sentry maps to invalid_argument; I did not measure this on the pinned supabase-py/sentry-sdk (inferred). If so, the cached product tables had no row for the products compared on 10-14, and each miss costs a ~380 ms round trip on the loop. This is the existing landing place for the user's 'brain' request: specs and reviews are already cached per product_key in product_specs / product_reviews (prices in product_prices). A pre-ingested catalog would be served from here, but it must use the same product_key normalisation to hit."
+  },
+  {
+   "title": "What the app already records about failed compares (code only, no DB access)",
+   "severity": "info",
+   "evidence": [
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\database_service.py",
+     "line": "753-802",
+     "note": "search_logs row = query, input_type, products_found, success, cost, duration_ms, user_id, error_message, is_synthetic (only with ENABLE_SEARCH_LOG_SYNTHETIC_MARKER); no fields for winner, Unknown Product, image coverage, spec coverage or identity confidence",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-docs-70\\docs\\investigations\\2026-10-11-session-77-state\\NEXT_SESSION_PROMPT_S78.md",
+     "note": "item 5: 'ENABLE_SEARCH_LOG_TRUTH=true is confirmed on web', so url failure/success rows (url_routes.py:145-213) and camera failure rows (image_routes.py:509-616) are written",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\analytics_service.py",
+     "line": "136-176",
+     "note": "admin get_error_stats = error rate + top error_message from search_logs.success=False; V09-style Unknown-Product deliveries count as successes",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\api\\feedback_routes.py",
+     "line": "58-90, 191-219",
+     "note": "user_events allowlist = funnel/share/onboarding/spec_expand/result_abandon/screenshot/result_view_duration/compare_cancelled; no compare_failed, image_load_failed, identity_dispute, scan_start, identity_resolved or comparison_ready type",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\SmartCompareApp\\src\\components\\FeedbackCard.tsx",
+     "line": "7-8, 18, 52-53",
+     "note": "the feedback card always submits useful: true plus a chip (accurate / detailed / fast; allowlisted at feedback_routes.py:44-47); there is no negative or 'wrong product' channel",
+     "basis": "measured"
+    }
+   ],
+   "detail": "Failed compares are recorded only in search_logs, server side. URL '<2 products' failures carry 'Could not extract both products', and camera unsuccessful results carry the failure message. A misleading 'success' (Unknown Product, wrong identity, empty specs, missing images) is recorded as success=True with products_found names. comparison_feedback can only ever say 'useful' (MYEZ-023 confirmed in code), so no production dataset exists for identity disputes or 'not useful'. The tester session rows should exist in search_logs for 2026-10-18 12:43-13:47Z; an owner-run query could confirm them (not run here, no DB access)."
+  },
+  {
+   "title": "Evidence table: MYEZ defect to production signal",
+   "severity": "info",
+   "evidence": [
+    {
+     "file": "Sentry org qaren-rr (python-fastapi, react-native), 14d",
+     "note": "mapping built from the issue, trace and RN-event timestamps aligned with the RPReplay epochs (V01 12:43:44-12:46:19Z, V02 12:49:34-12:50:25Z, V03 12:50:59-12:51:48Z, V04 12:53:54-12:55:14Z, V05 13:03:56-13:04:34Z, V06 13:06:28-13:08:03Z, V07 13:09:23-13:10:40Z, V08 13:43:18-13:43:32Z, V09 13:43:42-13:44:23Z; V10 has no epoch)",
+     "basis": "inferred"
+    }
+   ],
+   "detail": "MYEZ-001 wrong product from camera (V04): no signal (0 errors, 0 traces, 0 RN events in the V04 window); invisible by construction. | MYEZ-002 winner on Unknown Product (V09): SIGNAL, trace 5915a2b6 success branch, 200 in 7.1 s, then increment_lifetime_comparisons. | MYEZ-003 winner with empty specs (V10): indirect only; sampled text compares 30.5-34.8 s (at the cap), Serper internal_error ~45%, L2 specs misses. | MYEZ-004 GUESS twin names (V07): no signal (no RN event or trace). | MYEZ-005 homepage URL accepted: V02 PARTLY CONTRADICTED (a field was a real PDP that got 403); V09 cannot be resolved from the span (path scrubbed), but the code confirms there is no PDP gate on /url/compare and ENABLE_NOT_A_PDP_FILTER is price-path only. | MYEZ-006 vague link failure (V02): SIGNAL, PYTHON-FASTAPI-1X x4 (403), code-less 400 'Could not extract both products', credit refunded. | MYEZ-007 ambiguous text: no signal. | MYEZ-008 wrong-category dimensions (V06/V07): no signal. | MYEZ-009 unsourced 'reviewers say': no signal. | MYEZ-010 prices missing: indirect; 1R/1Q Serper ConnectTimeout (55 events in 14d), Serper span errors to 10-14, Bright Data fallback 401 10-09 to 10-11. | MYEZ-011 confident visuals on weak data: via the MYEZ-002 signal. | MYEZ-012 quota consumed on a bad compare: SIGNAL (V09 success path billed); V02 failure refunded. | MYEZ-013 renewal copy: no signal. | MYEZ-014 images missing (V01/V03/V06/V07/V09/V10): no signal by construction; indirect via Serper (Tier 1) failures, the 5 s image bound and the 30 s cap. | MYEZ-015 ~40 s scan: SIGNAL, RN wall time V01 40,032 ms and V06 39,519 ms (plus 40,017 ms on 10-13); text median 32.7 s; backend text 30.5-34.8 s; no camera transaction sampled; loop-stall signal. | MYEZ-016 English inside Arabic: no signal. | MYEZ-017 empty 'why we chose' (V03): no signal; V03's URL compare logged no error, and its RN event has a stale 381 s value. | MYEZ-018 onboarding length: no Sentry signal; onboarding_* user_events exist in the DB (not queried). | MYEZ-019 'SmartCompare' on Google consent: no signal (b4_diag auth captures: 0 in 90d). | MYEZ-020/021/022/024/025/026/028 (UI/copy/layout): no signal. | MYEZ-023 feedback question: code-confirmed (FeedbackCard always useful:true). | MYEZ-027 unreliable result saved/shared: SIGNAL (V09 success path writes the history row under metering ON)."
+  },
+  {
+   "title": "Top 10 production issues by volume, last 14 days (regardless of mapping)",
+   "severity": "info",
+   "evidence": [
+    {
+     "file": "Sentry search_issues / search_errors / search_traces, org qaren-rr",
+     "note": "error-issue counts are events inside the 14d window; trace counts are Sentry-extrapolated from 10% sampling (divide by ~10 for sampled spans)",
+     "basis": "measured"
+    }
+   ],
+   "detail": "1) REACT-NATIVE-E comparison_wall_time (level info, telemetry, not an error): 27 events, 2 users, first 2026-10-11T20:07:57Z, last 2026-10-18T13:46:20Z. 2) PYTHON-FASTAPI-1R 'Search error: ConnectTimeout' (serper_service.py:766): 40 events, first 2026-10-03T09:56Z, last 2026-10-11T19:40Z. 3) PYTHON-FASTAPI-1Q 'Serper shopping call error (gl=us): ConnectTimeout' (serper_service.py:926): 15 events, last 2026-10-14T04:26Z. 4) PYTHON-FASTAPI-1W Bright Data 401 (brightdata_service.py:82-87): 6 events, 2026-10-09T20:10Z to 10-11T19:41Z. 5) PYTHON-FASTAPI-1X fragrancex 403 (url_extraction_service.py:142): 4 events, 2026-10-18T12:50:05-12:50:15Z. 6) Serper http.client internal_error spans: ~200 extrapolated, 2026-10-08 to 10-14, p95 16.9 s. 7) Supabase GET product_specs / product_reviews 4xx: ~60 extrapolated, 2026-10-14 03:50-04:26Z. 8) OpenAI http.client internal_error: ~40 extrapolated, 2026-10-14, p50 9.0 s. 9) Slow trivial routes: health_check p95 8.37 s (~49 sampled), track_events p95 8.44 s, home_smart_pick p50 6.66 s, usage_status p50 4.16 s. 10) text_compare_get duration at or past the cap: 4 sampled, 30.5-34.8 s (p50 31.4 s, p95 34.8 s). Context outside the window: PYTHON-FASTAPI-R OpenAI 429 credit exhausted, 500 events, last seen ~2026-10-03 (before OpenAI was funded); CancelledError x6 issues last seen ~2026-10-02."
+  },
+  {
+   "title": "Side finding: error-event trace context ships the user-pasted outbound URL path to Sentry",
+   "severity": "low",
+   "evidence": [
+    {
+     "file": "Sentry event 214cf269fb854055b8ea4168283b1ec3 (PYTHON-FASTAPI-1X)",
+     "note": "contexts.trace.description = 'GET https://www.fragrancex.com/products/calvin-klein/obsession-perfume' (a full user URL path)",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\url_extraction_service.py",
+     "line": "134-142",
+     "note": "U8d R8/UG2 intent: 'the user's URL path and query never reach the log line (and so Sentry)'",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\sentry_service.py",
+     "line": "419-426, 483-497, 501-560",
+     "note": "_outbound_description path-stripping runs on transaction spans only; _before_send runs only the secret-pattern scrub (_scrub_dict) over contexts",
+     "basis": "measured"
+    }
+   ],
+   "detail": "This is low impact here because the URL is a public product page, but it contradicts the stated U8d rule that user URL paths never reach Sentry. A user-pasted URL with a path token would leak the same way. The fix is additive: apply _outbound_description to contexts.trace.description in _before_send. It is not related to the audit defects."
+  }
+ ],
+ "recommendations": [
+  "Treat 'no Sentry signal' as 'not observable', not 'healthy'. Before building any fix for MYEZ-001/003/014 the session needs production measurement it does not have. Have the owner run read-only SQL on search_logs for 2026-10-18 12:40-13:50Z, plus a 14-day input_type x success x error_message breakdown, to size the URL and camera failure mix. No agent should touch the DB or Railway.",
+  "Additive backend telemetry behind a NEW dark flag (none exists: the grep of all ENABLE_* names in app/ found no compare-quality telemetry flag; ENABLE_SEARCH_LOG_TRUTH is ON but carries no quality fields). At each delivery exit, emit one PII-free Sentry info message per compare (the comparison_wall_time pattern) or log line. Tags: input_type, unknown_product_count, winner_emitted, image_url_present per product, spec_rows_filled, price_present, vision confidence, cap_hit. This makes MYEZ-002/003/014 measurable without touching the frozen response contract.",
+  "Turn on traces for the paths that matter without raising global volume: a traces_sampler behind a dark flag that samples /api/v1/image/identify, /api/v1/url/compare and the text compare at 1.0 and everything else at 0.1. Today there are 0 camera transactions in 30 days and only 4 text compares in 14 days.",
+  "URL path (MYEZ-002/005/006/012/027): reuse the existing ENABLE_NOT_A_PDP_FILTER classifier (price_service.py:12940-12990), which today is not reachable from /url/compare. Do it behind a new default-OFF flag in url_extraction_service.compare_from_urls. Treat 'Unknown Product' / no title / homepage as a non-delivery (refund, no lifetime bump, no history row) through the existing failure exit (url_routes.py:171-197), so the build-3 client sees an already-handled 400 shape. Pass the fetch status (403 vs not-a-PDP) only in log or telemetry fields, not in the frozen response.",
+  "For the user's 'ingest all of fragrancex' request: production proves fragrancex returns 403 to the backend's direct fetch from Railway (PYTHON-FASTAPI-1X, span permission_denied). Do not plan a scrape over the existing fetch_page path. Check robots/ToS and look for a permitted feed or affiliate channel first. Land the data in the existing L2 tables (product_specs 30-day TTL, product_reviews 14-day TTL, product_prices) using the same product_key normalisation the compare uses, or it will never hit.",
+  "L2 cache reads: switch the .single() lookups in product_data_service.py:205-212 and 369-376 to a zero-row-safe form (maybe_single / limit(1)). Measure the pinned supabase-py behaviour first (memory rule), because each miss currently costs a 4xx round trip on the loop. Byte-identical results; it can ship unflagged only if a test proves a miss returns None both ways.",
+  "Client (post-approval only; no OTA before App Review approval): (a) call getWallTimeTracker().start() in runUrlCompare and in the camera identify path, and reset `started` in report(); (b) add an image_load_failed event (new VALID_EVENT_TYPES entry, widen-only) from ProductImage onError; (c) add a negative or 'wrong product' feedback path, since FeedbackCard always sends useful:true. Server-side allowlist widening (feedback_routes.py:58-90) is additive and can land first.",
+  "Serper reliability is still a live driver of missing prices and images: issue 1Q recurred on 2026-10-14 and sampled Serper spans failed ~45%. Pair the S78 plan's fixes #4/#5 (exhausted-key reads, key-state memo) with the new telemetry so their effect on image_url_present and price_present can be measured.",
+  "Bright Data was dead (401) from 2026-10-09 to 10-11 and the issue is still unresolved. The owner should confirm whether BRIGHTDATA_API_KEY was renewed; if not, the price fallback tier is silently gone (names only; no agent reads the value)."
+ ],
+ "open_questions": [
+  "Was the second fragrancex field in V02 the homepage or another PDP? Only one event kept the http.client span context (the Obsession PDP); the other three carry the server span. A search_logs row (query = _url_log_query of both URLs) would settle it.",
+  "Were V09's two Rasasi URLs the store homepage or PDPs? The transaction span paths are scrubbed (R5); the search_logs row for 2026-10-18 ~13:44:13Z would show it.",
+  "Why did V04 and V07 emit no comparison_wall_time event, although both reached a result screen? Possibly the Sentry Dedupe integration, app backgrounding, or an unmount path that skips report(); unverified.",
+  "The Supabase product_specs / product_reviews 4xx: is it PostgREST's no-rows response to .single() (cache miss) or a real 400 (bad filter or missing column)? This needs measurement on the pinned supabase-py, or the response body from an owner-run request.",
+  "Firecrawl / Scrape.do / Zyte: no spans or errors in 14 days. Are their flags off in production, or were they simply not on the 4 sampled compares? The CLAUDE.md flag rows were not checked for these in this surface.",
+  "User 72BDD09F reached 0/3 free compares at V05 (13:04Z) but compared again at 13:08Z (V06). Was the credit restored (daily renewal, bonus, or a different account)? This bears on MYEZ-012/013 and needs the usage tables (owner).",
+  "Which RN user/session is V10 (no epoch in the filename)? The FC4158BD events at 13:41:36Z (33,155 ms, text signature) are a possible but unverified match."
+ ],
+ "sources": [
+  "Sentry org qaren-rr (region https://de.sentry.io): projects python-fastapi, react-native, booking-os-web",
+  "https://qaren-rr.sentry.io/issues/PYTHON-FASTAPI-1X",
+  "https://qaren-rr.sentry.io/issues/PYTHON-FASTAPI-1R",
+  "https://qaren-rr.sentry.io/issues/PYTHON-FASTAPI-1Q",
+  "https://qaren-rr.sentry.io/issues/PYTHON-FASTAPI-1W",
+  "https://qaren-rr.sentry.io/issues/REACT-NATIVE-E",
+  "https://qaren-rr.sentry.io/explore/traces/trace/5915a2b6c0d048dabac065c52cee18e3",
+  "https://qaren-rr.sentry.io/explore/traces/trace/2e59ae38aca04795883c6c9306de3495",
+  "C:\\Users\\SynAckITPC\\.claude\\uploads\\ae650c83-4d2a-4910-a8d4-a47ab213c8c3\\d20a7872-MYEZ_QA_UX_Audit_2026-10-18.md",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\sentry_service.py",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\url_extraction_service.py",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\api\\url_routes.py",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\api\\image_routes.py",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\api\\feedback_routes.py",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\database_service.py",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\analytics_service.py",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\image_service.py",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\product_data_service.py",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\serper_service.py",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\openai_service.py",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\price_service.py",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\SmartCompareApp\\src\\lib\\performance\\wallTimeInstrumentation.ts",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\SmartCompareApp\\src\\screens\\HomeScreen.tsx",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\SmartCompareApp\\src\\screens\\ResultsScreen.tsx",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\SmartCompareApp\\src\\services\\sentry.ts",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\SmartCompareApp\\src\\services\\api.ts",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\SmartCompareApp\\src\\components\\primitives\\ProductImage.tsx",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\SmartCompareApp\\src\\components\\FeedbackCard.tsx",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\CLAUDE.md",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-docs-70\\docs\\investigations\\2026-10-11-session-77-state\\NEXT_SESSION_PROMPT_S78.md",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-docs-70\\docs\\investigations\\2026-10-14-session-78-state\\COMPARE_QUALITY_PLAN_S78.md"
+ ]
+}

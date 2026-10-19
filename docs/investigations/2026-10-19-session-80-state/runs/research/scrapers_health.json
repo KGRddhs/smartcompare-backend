@@ -1,0 +1,653 @@
+{
+ "category": "SURFACE I: scraper health (price/image/URL scraping layer), read-only, origin/main 683f56c0",
+ "summary": "The defects the tester saw (missing prices, missing images, \"Unknown Product\" on retailer links) mostly come from two paths. Neither is the price extractor that the _proof corpus guards.\n\n(1) URL mode (\"رابط\", url_extraction_service.py) is a separate, older scraper:\n- It fetches with plain httpx and no Chrome impersonation, so Cloudflare-walled fragrancex fails. Sentry PYTHON-FASTAPI-1X: 4 events on 2026-10-18 from build 3.\n- It accepts store homepages. Sentry trace 5915a2b6 shows two GETs of https://store.rasasi.com.sa (V09). Both pages went through LLM extraction, then a gpt-4o verdict, and the result was delivered as a success.\n- It passes JSON-LD `image` through raw. Replaying its logic offline over the corpus gives an image the client cannot render on 35 of 92 Gulf PDPs. fragrancex images are a list; sephora.com's og:image is a relative logo.\n- It always returns an empty `recommendation`, because the verdict schema has no such key. That matches V03's empty \"why we chose\".\n\n(2) Text/scan mode images:\n- The documented free \"Tier 1.5 page-image piggyback\" is dead code. No live price producer ever writes `image_url`; JSON-LD images are captured as `cand[\"image\"]` and dropped.\n- Images therefore depend on Serper Knowledge Graph, Serper Images or a GPT guess, inside a 5.0 s race. That race is shorter than Serper's own 8 s connect / 10 s read timeout.\n\nPrices: the 15 s price race missed 23 of 30 times in the S78 measurement. The Serper → Bright Data fallback is dead: the Bright Data key returns 401 (Sentry 1W) and the chain is 8 s + 9 s. The paid render wave only fires for render-only BH-registry hosts.\n\nBreaker and budget: Firecrawl/Scrape.do failures are recorded only on 429/503/timeout, so an expired key or exhausted credits (401/402) never opens the circuit. Their timeouts (30 s / 15 s) exceed the 12 s fan-out budget, so they are cancelled before they record usage or failure.\n\nSentry is structurally blind to most of this: scraper, render and image failures log at DEBUG/INFO/WARNING, and only ERROR becomes an issue. Only 4 backend issues exist in the last 14 days (Serper ConnectTimeout ×40, Serper shopping gl=us ConnectTimeout ×15, Bright Data 401 ×6, fragrancex fetch ×4).\n\nMost price-capture adapters already exist behind dark flags that are OFF in production: UCP JSON, Shopify PDP JSON, Magento GQL, Salla slug, RSC flight, EXTRACTOR_FIXES_2608, NOT_A_PDP_FILTER, WALL_SIGNATURE_ANCHOR, ZYTE_RENDER, SITEMAP_INDEX, PRICE_CACHE_WARMER. Yotpo and Judge.me have zero production importers.\n\nNo existing flag covers the URL-mode fetch, URL-mode image normalisation, the URL-mode recommendation fill or the page-image mapping. Those need new dark flags.\n\nThe byte-identity tool only exercises price_service.extract_price_from_html. URL-mode and image fixes need a new zero-network corpus replay harness.\n\nCritical interplay: the S79 App Review audit's \"variant A\" image fix (stop Tier 1.5b/1/3 and rely on the page-image override) would blank every text-mode image, because that override has no producer. That decision is still open (OWNER_ACTIONS_S79.md:59).",
+ "findings": [
+  {
+   "title": "F1. URL mode fetches with plain httpx (no curl_cffi impersonation), so Cloudflare-walled retailers such as fragrancex fail. One failed link aborts the whole compare with a codeless 400, which shows the generic 'try again' dialog (V02, MYEZ-006).",
+   "severity": "P0 (tester-visible, V02)",
+   "evidence": [
+    {
+     "file": "app/services/url_extraction_service.py",
+     "line": "90-143",
+     "note": "fetch_page uses httpx.AsyncClient(timeout=30.0) with only a Chrome User-Agent header. Line 130 response.raise_for_status() throws HTTPStatusError on a 403/503 wall; line 142 logs host plus exception type; returns None.",
+     "basis": "measured"
+    },
+    {
+     "file": "Sentry qaren-rr/python-fastapi PYTHON-FASTAPI-1X",
+     "line": "n/a",
+     "note": "'Failed to fetch URL host www.fragrancex.com: HTTPStatusError'. 4 events, first 2026-10-18T12:50:05Z, last 12:50:15Z, two compare attempts × 2 URLs, one trace (2e59ae38). Release 683f56c0, client 'MYEZ 3' iOS, logger app.services.url_extraction_service. The http.client span was GET https://www.fragrancex.com/products/calvin-klein/obsession-perfume, so a real PDP also failed, not only the homepage. Spans were unsampled, so the exact status code is unknown.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-scraper-proof/_proof/global/_corpus_cachemap.json",
+     "line": "rows host=www.fragrancex.com",
+     "note": "Two fragrancex PDPs fetched with curl_cffi impersonate=chrome: http_status 200, 309 ms / 1252 ms, server_header 'cloudflare', JSON-LD offer.price 19.99/26.99 USD, aggregateRating 4.4/658. Fetched from a Bahrain residential IP (CLAUDE.md:910 caveat), not Railway.",
+     "basis": "measured"
+    },
+    {
+     "file": "CLAUDE.md",
+     "line": "142",
+     "note": "'curl_cffi impersonate=\"chrome\" defeats most Cloudflare/TLS-fingerprint walls'.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/url_extraction_service.py",
+     "line": "603-625",
+     "note": "asyncio.gather over both URLs; if fewer than 2 products succeed, returns {success: False, error: 'Could not extract both products'} with no code.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/api/url_routes.py",
+     "line": "176-197",
+     "note": "A codeless failure refunds the credit, then raises HTTPException(400, detail=string). The client maps no code to it.",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/screens/HomeScreen.tsx",
+     "line": "585-598, 624-640",
+     "note": "No code and not TIMEOUT/CONTENT_UNAVAILABLE, so the client shows friendlyErrorKey(code) = home.errors.comparison. That is the generic 'press again / try brand or model' dialog seen in V02.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/price_service.py",
+     "line": "14806-14885",
+     "note": "curl_fetch_html_same_site already exists: curl_cffi impersonate=chrome, SSRF-validates every hop, pins to the same site, caps bytes, never raises. It can be reused directly for URL mode.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-11-session-77-state/LEGAL_EXPOSURE_REVIEW_S77.md",
+     "line": "54",
+     "note": "The legal review recommends 'stop Chrome impersonation for hosts that block us'. Extending curl_cffi to URL mode needs an owner/legal ruling. fragrancex robots.txt allows /products/ (_proof/global/_us_robots.json).",
+     "basis": "measured"
+    }
+   ],
+   "detail": "The text pipeline learned to use curl_cffi months ago (CLAUDE.md:142). The URL path never did: it still uses httpx with a spoofed User-Agent but a Python TLS fingerprint, which Cloudflare rejects. The same fragrancex PDPs return 200 to curl_cffi in the corpus. Whether curl_cffi from Railway's datacenter IP passes fragrancex is not measured; the corpus IP was residential. The failure handling then turns one bad link into a codeless 400 with no per-field diagnosis (MYEZ-006), and the frozen build-3 client can only show the generic copy. No ENABLE_* flag gates url_extraction_service's fetch; the only flag it reads is ENABLE_PRICE_PARSE_OFFLOAD (lines 386-392)."
+  },
+  {
+   "title": "F2. URL mode accepts store homepages and non-product pages and delivers a 'successful' comparison with 'Unknown Product' and a winner (V09; MYEZ-002/005/011/012).",
+   "severity": "P0 (tester-visible, V09)",
+   "evidence": [
+    {
+     "file": "Sentry trace 5915a2b6c0d048dabac065c52cee18e3",
+     "line": "n/a",
+     "note": "2026-10-18T13:44Z: POST /api/v1/url/compare took 7.1 s. Two http.client spans 'GET https://store.rasasi.com.sa' (bare store root, 844 ms and 1214 ms), gpt-4o-mini calls of 1.9 s and 1.4 s (AI extraction), and a gpt-4o call of 2.3 s (verdict). The same trace carries REACT-NATIVE-E 'comparison_wall_time' from com.qaren.app@1.0.0+3, so the result was rendered.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/url_extraction_service.py",
+     "line": "466-520",
+     "note": "extract_from_url never checks whether the page is a product page. If the title or price is missing it calls extract_with_ai and always returns success: True.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/url_extraction_service.py",
+     "line": "457-459",
+     "note": "extract_with_ai swallows every exception (OpenAI error, JSON parse failure) and returns {'error': str(e)}. That dict is merged into raw_data at 503-509, and the product is still delivered.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/url_extraction_service.py",
+     "line": "527",
+     "note": "normalize_product_data defaults the title to 'Unknown Product'. The AI prompt (354-383) asks for a 'product name' even for a homepage.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/price_service.py",
+     "line": "13019-13021, 13196-13282",
+     "note": "_NOT_A_PDP_HOME_PATH_RE matches '/', '/en', '/en-bh' and '/index.html'. classify_not_a_pdp is pure, total and never raises, but it deliberately returns None for a homepage that was requested directly (requested_is_home guards at 13253 and 13259). It only classifies redirects to the homepage, search pages, error shells and CollectionPage.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/price_service.py",
+     "line": "12977-12990, 14888-15000",
+     "note": "ENABLE_NOT_A_PDP_FILTER defaults to OFF and is wired only into fetch_page_price (the text price path), never into URL mode.",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/components/TwoInputShell.tsx",
+     "line": "66, 254",
+     "note": "The client's green tick only checks that `new URL(trimmed)` parses, so it is purely syntactic. The client cannot change until App Review completes, so the fix has to be server-side.",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/services/errorCopy.ts",
+     "line": "70-93",
+     "note": "The build-3 client maps INSUFFICIENT_DATA to home.errors.insufficientData and handles CONTENT_UNAVAILABLE with a layer (HomeScreen.tsx:589). These are existing codes a server-side refusal can use without changing the contract.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-scraper-proof/_proof/html/4641407ab5c8c72d52105bdbd423d4286641f96c.html",
+     "line": "n/a",
+     "note": "A real Rasasi Salla PDP (/en/-/p666775809) carries JSON-LD Product inside @graph, og:title 'HAWAS ICE GIFT BOX | Rasasi', a cdn.salla.sa og:image and product:price:amount 253 SAR. Replaying the URL-mode logic yields a title, a price and a usable image. Rasasi PDPs work; the failure is homepage acceptance.",
+     "basis": "measured"
+    }
+   ],
+   "detail": "V09 was two bare store roots. The code has no product-page check in URL mode. It sends the homepage text to gpt-4o-mini to invent a product, labels the result 'Unknown Product' when no name comes back, and still runs the gpt-4o verdict that picks a winner. The credit is kept, because only codeless failures are refunded. Whether the placeholder came from the AI's null name or the :527 default cannot be told from the trace. Either way the server, not the client, declared success."
+  },
+  {
+   "title": "F3. The text-mode 'Tier 1.5 piggyback' page image is dead code: no live price producer ever writes image_url. JSON-LD images are captured as cand['image'] and discarded.",
+   "severity": "P0 for images (MYEZ-014; V01, V06, V07, V10), and a trap for the pending S79 L4-01 decision",
+   "evidence": [
+    {
+     "file": "app/services/structured_comparison_service.py",
+     "line": "5940-5952",
+     "note": "The image task launches with page_scrape_image=None ('piggyback evaluated post-Phase1 below').",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/structured_comparison_service.py",
+     "line": "6078-6090",
+     "note": "The override reads result['price'].get('image_url') and replaces the image only if it is an http(s) string.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/price_service.py",
+     "line": "10952-10964",
+     "note": "_widen_jsonld_candidate stores JSON-LD images as cand['image'] (a list) under ENABLE_WIDE_CANDIDATE (default ON, 4592-4620). The docstring says the widened keys are 'consumed by NOTHING'.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/price_service.py",
+     "line": "whole file",
+     "note": "The literal \"image_url\" occurs 0 times. `git log -S'\"image_url\"' -- app/services/price_service.py` returns nothing, so it was never written. The only image_url producers in app/services are url_extraction_service and zyte_service (OFF on the live path); shopify_pdp_service emits 'featured_image' (flag-OFF paths).",
+     "basis": "measured"
+    },
+    {
+     "file": "CLAUDE.md",
+     "line": "312-313",
+     "note": "Documents 'Tier 1.5 piggyback page-scrape og:image (FREE)' as live in production. The documentation is false.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-17-session-79-state/APP_REVIEW_AUDIT_S79.md",
+     "line": "53",
+     "note": "L4-01's preferred fix is to stop returning Tier 1.5b/1/3 images and 'let the retailer-page image override supply the image'. Because the override has no producer, that would make every text-mode image a placeholder. The owner decision is open (OWNER_ACTIONS_S79.md:59).",
+     "basis": "measured"
+    }
+   ],
+   "detail": "Images in text and scan mode come only from the Serper Knowledge Graph/organic image (Tier 1.5b), paid Serper Images (Tier 1) or a GPT pick (Tier 3). The page scrape already parses a schema.org image on about 79% of fragrance PDPs (wide_candidate docstring, 4605-4607), but nothing maps it to image_url. Only a price that lands inside the 15 s race could carry it, so the gain is bounded by the price-race hit rate (F7)."
+  },
+  {
+   "title": "F4. The image race budget (5.0 s) is shorter than the Serper client timeout (8 s connect / 10 s read). When the unified search payload is missing or has no Knowledge Graph image, the paid tiers rarely finish, and the GPT tier is structurally unable to return a real image.",
+   "severity": "P1 (MYEZ-014)",
+   "evidence": [
+    {
+     "file": "app/services/structured_comparison_service.py",
+     "line": "5732-5749",
+     "note": "_PHASE1_TIMEOUTS image_url = 5.0 ('Serper Images + Tier 3 GPT fallback').",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/serper_service.py",
+     "line": "473-494, 1201-1241",
+     "note": "_serper_timeout() = httpx.Timeout(10 read, connect=8.0). search_images uses it. Failures log at WARNING only ('non-critical, placeholder fallback'), so they never reach Sentry.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/image_service.py",
+     "line": "214-287",
+     "note": "The cascade is sequential: 1.5b (unified_search payload) → Tier 1 Serper Images (budget-gated) → Tier 3 GPT. A slow Tier 1 consumes the 5 s and Tier 3 never runs.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/image_service.py",
+     "line": "126-143, 161-165",
+     "note": "Tier 3 gives gpt-4o-mini only the organic 'link: snippet' text, which contains no image URLs. It can only return null, a page link or an invented URL.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/image_service.py",
+     "line": "52-57, 256-272",
+     "note": "_is_valid_image_url accepts any http:// or https:// string (no https-only rule, no image type check). Tier 1 takes images[0] with no relevance check.",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/app.json",
+     "line": "n/a",
+     "note": "There is no NSAppTransportSecurity exception, so the Expo default ATS blocks http:// image loads on iOS. ProductImage's onError then shows the placeholder.",
+     "basis": "inferred"
+    },
+    {
+     "file": "Sentry PYTHON-FASTAPI-1R / -1Q",
+     "line": "n/a",
+     "note": "'Search error: ConnectTimeout': 40 events, 2026-10-08T11:01Z to 2026-10-11T19:40Z. 'Serper shopping call error (gl=us): ConnectTimeout': 15 events, 2026-10-08T11:01Z to 2026-10-14T04:26Z. The same slow-Serper condition also starves the image tier.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-14-session-78-state/COMPARE_QUALITY_PLAN_S78.md",
+     "line": "1",
+     "note": "'unified Serper search (12 s bound, 5 timeouts in the log)'. When the unified search is None, Tier 1.5b has no payload.",
+     "basis": "measured"
+    }
+   ],
+   "detail": "The 5 s cap is right for the 30 s budget. The problem is the mismatch inside it: a Serper Images call can take up to 8 s just to connect, and the GPT fallback has no image data to choose from. V10's 'image arrives late' matches the SSE path, where image_url rides the specs event. A wrong or irrelevant images[0] or Knowledge Graph image (for example a brand logo) is a MYEZ-014 'different product' risk (inferred)."
+  },
+  {
+   "title": "F5. URL-mode image_url is the raw JSON-LD `image` (a list or ImageObject) or a relative og:image. A key-presence bug also skips the og:image fallback. The client only renders a non-empty http(s) string (V03: both images missing).",
+   "severity": "P1 (V03, MYEZ-014)",
+   "evidence": [
+    {
+     "file": "app/services/url_extraction_service.py",
+     "line": "275-279, 309-313",
+     "note": "data['image_url'] = item.get('image') is assigned raw. Product matching is exact @type == 'Product': it misses @type lists, @graph, ProductGroup/hasVariant, and only reads the first item.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/url_extraction_service.py",
+     "line": "332-339",
+     "note": "`if \"title\" not in data` / `if \"image_url\" not in data` test key presence, not value. A JSON-LD Product with no name or image sets the key to None and blocks the og:title/og:image fallback.",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/components/primitives/ProductImage.tsx",
+     "line": "59-62, 82",
+     "note": "isUsableUrl requires typeof string with non-empty trim. A list or dict renders the placeholder, and a relative URL fails to load.",
+     "basis": "measured"
+    },
+    {
+     "file": "offline replay of url_extraction_service.extract_generic_data logic over sc-scraper-proof/_proof",
+     "line": "n/a",
+     "note": "Gulf html/ 92 PDPs: usable image 57, list/dict 31, relative 2, none 2. global/html/ 429 pages: usable 166, list/dict 85, relative 9, none 169 (many are walled). fragrancex PDPs: image is a list (['https://img.fragrancex.com/...jpg']). sephora.com: ProductGroup (not matched) and og:image '/images/Sephora_logo.jpg' (a relative logo).",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/price_service.py",
+     "line": "10822-10855, 11065-11122",
+     "note": "_jsonld_image_urls (flattens str/list/ImageObject) and _shape_ladder_product_nodes (walks @graph/ProductGroup/hasVariant) already exist and could be reused.",
+     "basis": "measured"
+    }
+   ],
+   "detail": "The V03 images were Sephora Bahrain. No cached 200 sephora.me page exists (corpus rows are Akamai 403 from the residential IP), so the exact sephora.me image shape is unverified. The two corpus failure shapes (list, relative logo) both produce the observed placeholder. 'Unknown Product' risk also rises when ProductGroup/@graph pages have no og:title (inferred)."
+  },
+  {
+   "title": "F6. URL mode always returns an empty `recommendation` and `key_differences`. The verdict schema has no such keys, so the build-3 client's 'why we picked' block is blank (V03), and URL mode never runs the specs, reviews, price or image pipelines.",
+   "severity": "P1 (V03 empty 'لماذا اخترنا هذا'; MYEZ-003/009)",
+   "evidence": [
+    {
+     "file": "app/services/url_extraction_service.py",
+     "line": "680-689",
+     "note": "Returns recommendation=comparison.get('recommendation', '') and key_differences=comparison.get('key_differences', []).",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/extraction_service.py",
+     "line": "1028-1062",
+     "note": "The COMPARISON_SYSTEM JSON keys are winner_index, winner_reason, key_tradeoff, winner_declaration, product_0/1_pros/cons, specs_comparison, value_context, best_for and so on. The string 'recommendation' occurs 0 times in extraction_service.py.",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/components/results/ResultsContent.tsx",
+     "line": "181-185",
+     "note": "A URL result has no overview.winner (old format), so verdictBody = result.recommendation, which is ''.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/url_extraction_service.py",
+     "line": "575-689",
+     "note": "compare_from_urls makes one page fetch per URL and one generate_comparison call. No specs/reviews/price-tier/image cascade, no scoring, no response_builder.",
+     "basis": "measured"
+    }
+   ],
+   "detail": "Filling the existing `recommendation` key from winner_reason, and `key_differences` from specs_comparison, is an additive value fill on keys the frozen client already reads. It still needs a dark flag per the rules. The deeper gap (URL mode lacks the evidence pipeline) belongs to the audit's §6.1 unified pipeline and is out of scope for this surface."
+  },
+  {
+   "title": "F7. Text-path prices miss because of the time budget, a dead fallback and a render wave restricted to registry SPAs. These are not parser bugs.",
+   "severity": "P1 (MYEZ-010; V01, V04, V06, V09 'price unavailable / prices still updating')",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-14-session-78-state/COMPARE_QUALITY_PLAN_S78.md",
+     "line": "1, #9(c)",
+     "note": "Measured: the 15 s price race missed 23 of 30 times. The prelude takes 3.6-4.9 s plus Serper shopping 5.9-13.1 s, so a parked converted price arrives at 10-18 s. Lowering PRICE_RACE_TIMEOUT would lose prices.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/structured_comparison_service.py",
+     "line": "1689, 1740-1749, 8198-8240",
+     "note": "_PRICE_RACE_TIMEOUT 15 s is read at import. The curl and render waves share FAN_OUT_BUDGET_SECONDS of 12 s, clipped to the race deadline.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/serper_service.py",
+     "line": "725-770",
+     "note": "On a Serper exception the request falls back to bd_search_web. Serper connect is 8 s and Bright Data's inner timeout is 9 s (brightdata_service.py:48 adapter_timeout(20) clamped by adapter_timeouts.py to min(10,15)-1). The chain exceeds the 12 s unified-search bound.",
+     "basis": "measured"
+    },
+    {
+     "file": "Sentry PYTHON-FASTAPI-1W",
+     "line": "n/a",
+     "note": "'[brightdata] auth rejected status=401': 6 events, 2026-10-09T20:10Z to 2026-10-11T19:41Z. It is logged once per process per status (brightdata_service.py:50-90), so the real failure count is higher. The fallback is armed (CLAUDE.md:341) but dead until the key is renewed.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/structured_comparison_service.py",
+     "line": "2420-2471",
+     "note": "Fix B: Firecrawl and Scrape.do are queued only when is_render_only_domain(...) is true for BH-registry SPA rows. A walled non-registry or non-render-only host (Cloudflare fragrancex, Akamai sephora.me) gets curl only, and no render, on the live path.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/source_router.py",
+     "line": "199-209",
+     "note": "sephora.me is registered for Bahrain as an 'Akamai-walled, provider-test candidate'. The corpus shows 403 on every sephora.me fetch (_proof/global/_corpus_cachemap.json).",
+     "basis": "measured"
+    }
+   ],
+   "detail": "The scrapers mostly work when they get time: free curl prices 84% of the Gulf fragrance corpus (CLAUDE.md:866-873). The live loss happens upstream of the parser. The Bright Data fallback adds up to 9 s of dead time on every Serper failure while its key is 401. With ENABLE_BRIGHTDATA_BUDGET_GATE true (CLAUDE.md:341), three failures open a 10-minute breaker with one half-open probe per window (api_budget_service.py:275-277, brightdata_service.py:132-145)."
+  },
+  {
+   "title": "F8. Breaker and budget defects in the render tier: auth and credit failures (401/402/403) never open the circuit, and the provider timeouts exceed the fan-out budget, so cancelled calls record neither usage nor failure.",
+   "severity": "P1 (cost and latency; masks a dead provider)",
+   "evidence": [
+    {
+     "file": "app/services/structured_comparison_service.py",
+     "line": "2197, 2292",
+     "note": "record_failure runs only when status is 429, 503 or 0. A 401 (expired key) or 402 (exhausted credits) keeps the breaker closed, and every escalation keeps calling the dead provider.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/api_budget_service.py",
+     "line": "588-610",
+     "note": "The record_failure docstring says do NOT call on 403. Three consecutive failures trip a 600 s cooldown (275-277). The read-modify-write on a Redis JSON blob is not atomic.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/firecrawl_service.py",
+     "line": "19-20, 198-251",
+     "note": "FIRECRAWL_TIMEOUT defaults to 30 s, with waitFor 5000 ms.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/scrapedo_service.py",
+     "line": "22",
+     "note": "SCRAPEDO_TIMEOUT defaults to 15 s. The live fan-out budget is 12 s (structured_comparison_service.py:1749).",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/structured_comparison_service.py",
+     "line": "2171-2183, 2264-2276",
+     "note": "_firecrawl_scraper and _scrapedo_scraper catch only `Exception`. An outer wait_for cancel raises CancelledError (a BaseException), which skips _record_provider_attempt, record_usage and record_failure.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/price_service.py",
+     "line": "17040-17046",
+     "note": "Scraper exceptions inside fan_out_price_lookup log at DEBUG, invisible at LOG_LEVEL=INFO. failed_count is only aggregated.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-14-session-78-state/OWNER_CHECKLIST_DRAFT.md",
+     "line": "9",
+     "note": "The owner still has to confirm that Firecrawl and Scrape.do keys and credits are valid.",
+     "basis": "measured"
+    }
+   ],
+   "detail": "A provider that bills on completion is charged after we cancel, while our counter is never incremented, so the budget undercounts real spend (inferred; provider billing on a client cancel was not measured). Long timeouts make sense only for the off-clock warmer, which raises the budget via env (firecrawl_service.py:15, scrs:8195-8198)."
+  },
+  {
+   "title": "F9. URL mode has no server deadline and logs the user's URL.",
+   "severity": "P2",
+   "evidence": [
+    {
+     "file": "app/services/url_extraction_service.py",
+     "line": "119-129",
+     "note": "httpx timeout is 30 s per hop with up to 5 manual redirect hops.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/url_extraction_service.py",
+     "line": "29-41",
+     "note": "The OpenAI client timeout is 120 s (connect 30). No asyncio.wait_for exists anywhere in compare_from_urls or url_routes.",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/services/api.ts",
+     "line": "48",
+     "note": "COMPARE_TIMEOUT_MS = 35000. The client aborts while the server keeps fetching and calling LLMs; on success the credit is kept server-side.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/url_extraction_service.py",
+     "line": "116, 474",
+     "note": "logger.warning('[SSRF] Blocked initial URL: {url}') and logger.info('Detected retailer ... for URL: {url}') write the full user URL to logs. That contradicts the U8d R8 rule stated at 135-137.",
+     "basis": "measured"
+    }
+   ],
+   "detail": "MYEZ-012 interplay: a client-side timeout leaves server work and metering decoupled from what the user saw."
+  },
+  {
+   "title": "F10. Dead or dark adapters and unbounded adapter timeouts.",
+   "severity": "P2",
+   "evidence": [
+    {
+     "file": "app/services/yotpo_service.py, app/services/judgeme_service.py",
+     "line": "n/a",
+     "note": "Neither module is imported anywhere else in app/, so flipping ENABLE_YOTPO_REVIEWS or ENABLE_JUDGEME_HTML_REVIEWS does nothing. This matches the caveat at CLAUDE.md:377.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/algolia_service.py",
+     "line": "149, 247-266",
+     "note": "_HTTP_TIMEOUT = 8.0 is not routed through adapter_timeout(). The config harvest makes two sequential 8 s curl fetches (landing page, then JS chunk) before the search, which exceeds the 10 s per-source _timeout_none wrap (structured_comparison_service.py:234-237) and leaves threads parked (the M13-34 class).",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/zyte_service.py",
+     "line": "53",
+     "note": "ZYTE_TIMEOUT defaults to 100 s. It is only safe because ENABLE_ZYTE_RENDER is OFF on the live path (CLAUDE.md:341; structured_comparison_service.py:6880).",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/shopify_pdp_service.py",
+     "line": "111",
+     "note": "HTTP_TIMEOUT = 12 is above the 9 s inner ceiling. It is inert while ENABLE_SHOPIFY_PDP_JSON and ENABLE_UCP_JSON_PRICE are OFF (146, 683).",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/price_service.py",
+     "line": "42",
+     "note": "ENABLE_PAGE_SCRAPE is read at import, so a Railway flip needs a redeploy.",
+     "basis": "measured"
+    }
+   ],
+   "detail": "None of these is a tester-visible root cause today. They become ones as soon as the dark flags are flipped."
+  },
+  {
+   "title": "F11. Price-capture adapters that exist but are OFF in production, so they never run.",
+   "severity": "info (for the activation plan)",
+   "evidence": [
+    {
+     "file": "CLAUDE.md",
+     "line": "341, 346-351, 377, 793",
+     "note": "Dark (code default OFF, with no flip recorded in any S72-S79 ledger): ENABLE_UCP_JSON_PRICE (shopify_pdp_service.py:683), ENABLE_SHOPIFY_PDP_JSON (:146), ENABLE_MAGENTO_GQL_ADAPTER (magento_graphql_service.py:213), ENABLE_SALLA_SLUG_RESOLVE (salla_service.py:364), ENABLE_RSC_FLIGHT_PRICE (price_service.py:4503), ENABLE_EXTRACTOR_FIXES_2608 (:4541), ENABLE_NOT_A_PDP_FILTER (:12985), ENABLE_WALL_SIGNATURE_ANCHOR (:12843), ENABLE_VISIBLE_TEXT_CURRENCY, ENABLE_WIDE_SIGNAL_TEXT (:4662), ENABLE_SITEMAP_INDEX / ENABLE_SITEMAP_MATCH_V2 / ENABLE_SITEMAP_PDP_MARKERS_V2, ENABLE_LONGEST_HOST_MATCH, ENABLE_SHOPPING_DISCOVERY_URL_SPLIT, ENABLE_SERPER_BREAKER. Explicitly OFF: ENABLE_ZYTE_RENDER and ENABLE_PRICE_CACHE_WARMER. ENABLE_GENUINE_PRICE_PRIORITY is set false (report-m22 B.1). Since S79 and still OFF: ENABLE_TIER_FILL_RESIDUAL_GUARD (#355), ENABLE_SERPER_KEY_STATE_MEMO (#356), ENABLE_ALL_TIMEOUT_CAP_AS_TIMEOUT (#357).",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-09-06-full-review-state/report-m22-code-review.md",
+     "line": "456-487",
+     "note": "As of 2026-09-06 only 16 ENABLE_* names were set on Railway. Set true: VARIANT_DESCRIPTOR_AXES, SERPER_FAIL_FAST, PRICE_TITLE_PERSIST, FRAGRANCE_SIZE_RECONCILE_FIX, plus the Bright Data trio. None of the M5/M9/M10 capture flags was set.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-11-session-77-state/NEXT_SESSION_PROMPT_S78.md",
+     "line": "46-51",
+     "note": "Recorded ON on web: PRICE_PATH_REDIS_OFFLOOP, OFFLOOP_DNS_RESOLVE, PRICE_PARSE_OFFLOAD, PHASE2_RESIDUAL_GUARD, UNIFIED_SEARCH_BOUND, and the U13 trio. Also ON: ENABLE_BH_GCC_CATALOG_SOURCES since 2026-06-26 (CLAUDE.md:341), BRIGHTDATA_BUDGET_GATE since 2026-09-24, CAMERA_FAILURE_ENVELOPE since 2026-10-03 (CLAUDE.md:462). Default-ON in code: PAGE_SCRAPE, FIRECRAWL, SCRAPEDO, FIRECRAWL_RAW_HTML, JSONLD_FIRST, JSONLD_SHAPE_LADDER, WIDE_CANDIDATE, OG_BRANCH_FIXES, SALE_PRICE_FIRST, EXACT_PRICE_GATE, MONEY_PARSER_V2, ADAPTER_QUERY_LADDER, ADAPTER_SELECTION_PRIMARY, ORGANIC_PDP_HARVEST, PARK_LISTING_URL_TIER1, NASSER_ADAPTER.",
+     "basis": "measured"
+    },
+    {
+     "file": "production values of the dark flags",
+     "line": "n/a",
+     "note": "The OFF state of the M5/M9/M10 flags is inferred from code defaults plus no recorded flip. Agents may not read Railway, and docs/FLAGS.md (the m22 U15 proposal) was never created.",
+     "basis": "inferred"
+    }
+   ],
+   "detail": "No existing flag covers any of the URL-mode defects (F1, F2, F5, F6, F9) or the page-image mapping (F3). Those need new dark flags. The existing dark adapters only address 'HTML present but no price' residuals. They would not fix the time budget, the URL path or images."
+  },
+  {
+   "title": "F12. Sentry is structurally blind to scraping and image failures, so the 14-day silence for price_service, firecrawl, scrapedo, zyte and image_service is not evidence of health.",
+   "severity": "info",
+   "evidence": [
+    {
+     "file": "Sentry qaren-rr python-fastapi, last 14 d",
+     "line": "n/a",
+     "note": "Only 4 issues: 1R Serper search ConnectTimeout ×40 (2026-10-08 to 10-11), 1Q Serper shopping gl=us ConnectTimeout ×15 (10-08 to 10-14), 1W Bright Data 401 ×6 (10-09 to 10-11), 1X fragrancex fetch ×4 (10-18). There are no issues for price_service, firecrawl, scrapedo, zyte, image_service or image_routes, and Sentry Logs returned nothing. In 30 d there is also R/1V/1T/1M OpenAI 429 credit exhaustion (×359, last 16 days ago).",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/brightdata_service.py",
+     "line": "50-53",
+     "note": "The comment says the Sentry policy 'captures ERROR only'. Render drops log at INFO (structured_comparison_service.py:2177, 2196, 2270, 2290), curl failures at INFO/WARNING (price_service.py:770-781, 884), image failures at WARNING (serper_service.py:1239; image_service.py:188, 260).",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/structured_comparison_service.py",
+     "line": "2210-2215, 2304-2309",
+     "note": "_record_provider_attempt already keeps per-provider outcomes (breaker_open, timeout, cf_block, no_price, html). A metrics surface exists but does not feed Sentry.",
+     "basis": "measured"
+    }
+   ],
+   "detail": "Use the S78 run_canary/log tallies, or a /health or admin counter, to measure scraper health. Do not use the Sentry issue count."
+  },
+  {
+   "title": "F13. Camera identification (vision route): low-confidence guesses flow straight into a full compare, and missing names default to 'Unknown Product' (V04 watch/violin, MYEZ-001).",
+   "severity": "P1 (cross-surface; no Sentry errors because the failures are about quality, not exceptions)",
+   "evidence": [
+    {
+     "file": "app/services/openai_service.py",
+     "line": "152",
+     "note": "The prompt orders 'Identify products even WITHOUT packaging: use shape, color, logo, design cues (confidence=\"low\")'.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/openai_service.py",
+     "line": "183-192, 214-221",
+     "note": "detail 'auto', max output 500 tokens, temperature 0. Missing brand/name default to 'Unknown' / 'Unknown Product'.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/model_config.py",
+     "line": "51",
+     "note": "vision is gpt-4o-mini.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/api/image_routes.py",
+     "line": "whole file",
+     "note": "The word 'confidence' occurs 0 times. The vision confidence is never used to stop a compare or ask the user to confirm.",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/services/api.ts",
+     "line": "269-273",
+     "note": "The client resizes photos to width 1024 at JPEG 0.8 before upload, which limits legibility of small perfume-label text.",
+     "basis": "inferred"
+    }
+   ],
+   "detail": "This sits outside the scraping layer, but it is the user's 'AI can't spot products from the camera' complaint. The existing need_second_product / CONTENT_UNAVAILABLE envelopes (image_routes.py:390-399) give a frozen-contract way to refuse."
+  },
+  {
+   "title": "F14. How a scraper fix must be proven without the live network.",
+   "severity": "info (gate procedure)",
+   "evidence": [
+    {
+     "file": "scripts/verify_flag_byte_identity.py",
+     "line": "1-56, 101-179, 227-300",
+     "note": "Zero network. Runs price_service.extract_price_from_html over the _proof layout (sweep2_curl_cffi.jsonl + html/ with 92 Gulf PDPs; global/corpus.json + global/html with 429 pages) with --flags forced OFF before import and per call. Covers both ENABLE_EXACT_PRICE_GATE modes and both currency legs, derives a query per page, prints OVERALL SHA256, and uses --flags-on X --compare off.json to check ON neutrality record by record. It covers ONLY extract_price_from_html: not url_extraction_service, image_service, or the structured_comparison_service image mapping.",
+     "basis": "measured"
+    },
+    {
+     "file": "CLAUDE.md",
+     "line": "877-928",
+     "note": "Gate rules: build the comm set by MODULE REFERENCE (never by filename keyword), run it at base and head and comm the failures, union it with the source-scanning pins and the unit's new tests, re-run base after head and match record by record, and require a mutation check. Never run _proof/sweep2.py: it re-fetches 94 sites live and overwrites _proof/html. Traps: an empty product_name makes the JSON-LD branch unreachable, and EXACT_PRICE_GATE=true masks extraction bugs.",
+     "basis": "measured"
+    },
+    {
+     "file": "tests/ (719 files)",
+     "line": "n/a",
+     "note": "Files that reference each module: price_service 197, structured_comparison_service 186, firecrawl_service 22, url_extraction_service 21, scrapedo_service 16, url_routes 12, image_service 10, brightdata_service 10.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-scraper-proof/_proof",
+     "line": "n/a",
+     "note": "Corpus location. It contains Rasasi Salla PDP html/4641407a... and fragrancex PDPs global/html/8a382494... and 96178477.... It has no cached 200 page for sephora.me (all 403).",
+     "basis": "measured"
+    }
+   ],
+   "detail": "For F1, F2, F5 and F6 a new zero-network harness is needed. Feed the corpus bytes into the URL-mode extractor (monkeypatch the fetch) and record title, price and image usability flag-OFF vs flag-ON. Flag-OFF must be byte-identical to today (baseline from this replay: Gulf usable images 57/92), and flag-ON must move only the intended fields. For F3, also run verify_flag_byte_identity with the new mapping flag forced OFF and ON, and use --compare to confirm that only the image key differs."
+  }
+ ],
+ "recommendations": [
+  "1. (V02, MYEZ-006) URL-mode fetch via curl_cffi. Add a new dark flag, e.g. ENABLE_URL_MODE_CURL_FETCH (default OFF, read per call). In url_extraction_service.fetch_page, call price_service.curl_fetch_html_same_site(url, host) instead of httpx; keep httpx as the flag-OFF path. This is additive and adds no response keys. Preconditions: an owner/legal ruling on Chrome impersonation for user-pasted URLs (LEGAL_EXPOSURE_REVIEW_S77.md:54; fragrancex robots allows /products/). Also confirm from Railway that fragrancex answers 200 to curl_cffi (corpus 200s were from a residential IP). Prove with a monkeypatched fetch unit test plus the zero-network URL-mode corpus harness (F14).",
+  "2. (V09, MYEZ-002/005/012, T02/T03) URL-mode product-page refusal behind a new dark flag. Refuse when any of these holds: the requested path matches price_service._NOT_A_PDP_HOME_PATH_RE; classify_not_a_pdp(html, url, final_url) returns a reason; the page has no Product node and the LLM name is null; or extract_with_ai raised. Return the existing coded shape the build-3 client already handles, e.g. success:false with code INSUFFICIENT_DATA (errorCopy.ts:76) or CONTENT_UNAVAILABLE with a layer (HomeScreen.tsx:589), and refund through the existing failure exit (url_routes.py:176-197). Never deliver 'Unknown Product' with a winner. Note: classify_not_a_pdp alone does NOT catch a directly requested homepage (price_service.py:13253, 13259).",
+  "3. (V03, MYEZ-014) URL-mode image normalisation behind a new dark flag. Pass JSON-LD `image` through _jsonld_image_urls (price_service.py:10822), resolve relative URLs with urljoin against the final URL, keep only https, and walk @graph, @type lists and ProductGroup/hasVariant via _shape_ladder_product_nodes (:11065). Fix the key-presence bug (url_extraction_service.py:332-339) so a None value falls back to og:title/og:image. Measurable target on the corpus replay: Gulf usable images up from 57/92, with list/dict/relative reduced to 0.",
+  "4. (V03 empty 'why we chose') Fill the existing URL-response keys behind a dark flag: recommendation from comparison.winner_reason, and key_differences from specs_comparison advantages. The frozen client already reads these keys (ResultsContent.tsx:181-185), so this is a value fill, not a contract change.",
+  "5. (MYEZ-014, text and scan) Wire the dead page-image piggyback behind a dark flag. Map the first absolute https entry of the JSON-LD cand['image'] (price_service.py:10962-10964) to price['image_url'] in the page-scrape producers, so structured_comparison_service.py:6086-6090 can fire. Prove flag-OFF identity with scripts/verify_flag_byte_identity.py and flag-ON neutrality (only the image key moves) with --flags-on/--compare. Tell the owner BEFORE the S79 L4-01 decision: 'variant A' (drop Tier 1.5b/1/3) would blank every text-mode image today, because the override has no producer. Correct the false CLAUDE.md:312-313 claim in the same docs change.",
+  "6. (MYEZ-014) Make the image tiers fit the 5 s race, behind a dark flag. Give search_images its own short timeout (e.g. connect 2 s, total 3.5 s) instead of _serper_timeout() (8/10 s). Restrict accepted URLs to https and image-like targets. Either drop Tier 3, which can only return a page link or a guess from link+snippet input (image_service.py:126-143), or feed it the organic imageUrl/thumbnail fields. Reconsider the 'first organic image' and images[0] picks (wrong-product risk, inferred).",
+  "7. (cost and latency) Breaker fixes behind a dark flag. Treat 401/402 from Firecrawl/Scrape.do as failures, or add an auth latch like Bright Data's D6 (brightdata_service.py:50-90). Record the attempt and the failure in a `finally` / `except asyncio.CancelledError` (re-raise after recording) in _firecrawl_scraper and _scrapedo_scraper. Raise the fan_out scraper-raised log from DEBUG to INFO (price_service.py:17043).",
+  "8. (owner actions, no code) Renew the Bright Data token or set ENABLE_BRIGHTDATA_FALLBACK off: today every Serper failure adds up to 9 s of dead fallback (Sentry 1W). Confirm Firecrawl and Scrape.do keys and credits (OWNER_CHECKLIST_DRAFT.md:9). Decide S79 L4-01 only after recommendation 5 lands.",
+  "9. (prices, after App Review) Flip the existing additive capture flags one canary window at a time, in the CLAUDE.md:377 activation order: EXTRACTOR_FIXES_2608 + RSC_FLIGHT_PRICE + MAGENTO_GQL_ADAPTER + SALLA_SLUG_RESOLVE + NOT_A_PDP_FILTER + WALL_SIGNATURE_ANCHOR + UCP_JSON_PRICE, then VISIBLE_TEXT_CURRENCY alone. They recover 'HTML but no price' residuals. They do not fix the 15 s race (S78 #2/#3/#6) or the URL path. Never flip anything mid-review without the owner's yes.",
+  "10. (user request: 'add all fragrancex products to our database') Build it off-clock on the existing infrastructure, never on the request path. sitemap_discovery_service's off-clock token-bucket index (cron_index_sitemaps.py) can resolve names to PDP URLs; fragrancex declares sitemap_index.xml and its robots.txt allows /products/ (_proof/global/_us_robots.json). A seed/warm cron (cron_warm_price_cache.py / seed_zyte_luxury.py pattern) can store JSON-LD name, brand, image list, price, USD and aggregateRating into the L2 product store. Prices must stay converted_usd (USD store, not genuine BH). Needs an owner/legal ruling first, because it widens impersonated crawling (LEGAL S77:54).",
+  "11. (vision, cross-surface) Behind a dark flag, refuse or ask for confirmation when any vision product has confidence 'low' or a placeholder name, using the existing need_second_product / CONTENT_UNAVAILABLE envelopes (image_routes.py:390-399). Remove the 'identify WITHOUT packaging from shape/color' instruction (openai_service.py:152). Consider sending the vision call at higher resolution or with gpt-4o (owner cost decision).",
+  "12. (observability) Add per-provider render and image outcome counters to an admin or /health surface, fed from the existing _record_provider_attempt data, because Sentry captures only ERROR. Generate docs/FLAGS.md with a PROD column (m22 U15) so flag state stops being inferred.",
+  "13. (gate) For every unit above: build the module-reference comm set (url_extraction_service 21 test files, image_service 10, price_service 197, structured_comparison_service 186, url_routes 12, firecrawl 22, scrapedo 16, brightdata 10), union it with the source-scanning pins (CLAUDE.md:928), run base → head → base, add a mutation check, and add a new zero-network URL-mode corpus harness. verify_flag_byte_identity.py does not cover url_extraction_service or image_service."
+ ],
+ "open_questions": [
+  "What HTTP status did fragrancex return to the Railway httpx fetch (403 Cloudflare, 503 challenge, or 429)? Sentry spans for trace 2e59ae38 were not sampled. Does curl_cffi impersonate=chrome from the Railway egress IP get 200 (the corpus 200s came from a Bahrain residential IP)?",
+  "Was V09's 'Unknown Product' the LLM's null/placeholder name or the url_extraction_service.py:527 default? The trace shows both pages went through gpt-4o-mini extraction but does not show the output.",
+  "What JSON-LD image shape do Sephora Bahrain (sephora.me/bh-*) PDPs use? Every corpus row for sephora.me is an Akamai 403; production did fetch them in V03, because names and prices rendered.",
+  "Production values of the dark capture flags (EXTRACTOR_FIXES_2608, UCP_JSON_PRICE, NOT_A_PDP_FILTER, MAGENTO_GQL_ADAPTER, SALLA_SLUG_RESOLVE, RSC_FLIGHT_PRICE, SHOPIFY_PDP_JSON, WALL_SIGNATURE_ANCHOR) are inferred OFF from code defaults and the absence of a recorded flip. Please confirm with a names-only owner check.",
+  "Owner decision on S79 L4-01 (variant A vs B for search-engine images). Variant A blanks all text-mode images until recommendation 5 lands.",
+  "Legal ruling: may URL mode (user-pasted links) and an off-clock fragrancex catalog seed use curl_cffi Chrome impersonation, given LEGAL_EXPOSURE_REVIEW_S77.md:54?",
+  "Firecrawl and Scrape.do key and credit state, and whether either answers 401/402 today. That would be invisible, because neither code opens the breaker and neither failure reaches Sentry.",
+  "Does the Expo-generated Info.plist for build 3 keep the default ATS (NSAllowsArbitraryLoads false)? If so, every http:// image URL accepted by image_service._is_valid_image_url renders as a placeholder on iOS."
+ ],
+ "sources": [
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/url_extraction_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/api/url_routes.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/image_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/price_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/structured_comparison_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/serper_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/brightdata_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/adapter_timeouts.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/firecrawl_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/scrapedo_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/api_budget_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/algolia_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/zyte_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/shopify_pdp_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/platform_router.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/source_router.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/sitemap_discovery_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/openai_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/extraction_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/model_config.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/api/image_routes.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/scripts/verify_flag_byte_identity.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/scripts/verify_source_registry.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/scripts/build_source_registry_data.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/data/bh_gcc_sources.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/CLAUDE.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/screens/HomeScreen.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/components/primitives/ProductImage.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/components/results/ResultsContent.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/components/TwoInputShell.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/services/errorCopy.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/services/api.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-14-session-78-state/COMPARE_QUALITY_PLAN_S78.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-17-session-79-state/APP_REVIEW_AUDIT_S79.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-17-session-79-state/OWNER_ACTIONS_S79.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-17-session-79-state/ledger.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-11-session-77-state/NEXT_SESSION_PROMPT_S78.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-11-session-77-state/LEGAL_EXPOSURE_REVIEW_S77.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-09-session-75-state/OWNER_REPORT_S75.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-09-06-full-review-state/report-m22-code-review.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-scraper-proof/_proof/global/_corpus_cachemap.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-scraper-proof/_proof/global/_us_robots.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-scraper-proof/_proof/_salla_set.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-scraper-proof/_proof/html/4641407ab5c8c72d52105bdbd423d4286641f96c.html",
+  "C:/Users/SynAckITPC/.claude/uploads/ae650c83-4d2a-4910-a8d4-a47ab213c8c3/d20a7872-MYEZ_QA_UX_Audit_2026-10-18.md",
+  "C:/Users/SynAckITPC/.claude/uploads/ae650c83-4d2a-4910-a8d4-a47ab213c8c3/096b52e4-image.png",
+  "C:/Users/SynAckITPC/.claude/uploads/ae650c83-4d2a-4910-a8d4-a47ab213c8c3/4179c270-image.png",
+  "Sentry qaren-rr/python-fastapi issues PYTHON-FASTAPI-1R, -1Q, -1W, -1X (14 d); trace 5915a2b6c0d048dabac065c52cee18e3; REACT-NATIVE-E"
+ ]
+}

@@ -1,0 +1,722 @@
+{
+ "category": "C: data supply (prices, images, specs presence) - MYEZ-010, MYEZ-014, MYEZ-017, MYEZ-022 plus the owner's reports (pictures missing sometimes; product information missing; ingest fragrancex.com)",
+ "summary": "Code root: C:/Users/SynAckITPC/Documents/AI/sc-s80-base (origin/main 683f56c0; the deployed backend is app/).\n\nShort answer: most of the missing images and empty sections come from code paths that drop or never produce data. Production latency then pushes more compares onto those paths: Serper legs take 6-13 s, the unified search times out at 12 s, the price race missed 23 of 30, and partials stop at stage=gather (S78 ledger 07:05 and 07:35).\n\nIMAGES (MYEZ-014 and the owner's \"no pictures\"). image_url is resolved fresh on every compare and never cached. At least seven paths lose it:\n1. A hard-cap partial at stage=gather drops the image. The early stash covers specs and price only (scs:5775-5781, 5892-5904), and the image task is inside the same gather (scs:5940-5952).\n2. The cache-hit path skips the unified search (scs:5817-5823). The free Knowledge Graph/organic tier and the GPT tier then have no input, leaving only paid Serper Images (image_service:250-283, 500 a day).\n3. A unified-search timeout returns an empty payload, with the same result. ENABLE_UNIFIED_SEARCH_BOUND has been ON on web since session 76.\n4. The Bright Data fallback mapper keeps only title, link and snippet (brightdata_service:225-246), so every image field is lost.\n5. The retailer-page \"piggyback\" (scs:6086-6090) reads price[\"image_url\"]. No live price producer sets that key; only Zyte does, and Zyte runs off-clock (zyte_service:499, 661). The JSON-LD image is captured as cand[\"image\"] (price_service:10962-10964) and then thrown away.\n6. The image race has a 5 s cap (scs:5748).\n7. URL mode copies the raw JSON-LD `image` value (a list, an ImageObject or None), and that also blocks the og:image fallback (url_extraction_service:275-278, 309-312, 338-339).\nOn the client, the phone glyph means null, a non-string or a load error. A plain grey tile with no glyph means still loading. There is no retry and no status text (ProductImage.tsx).\nConsequence for the session-79 question: variant A (stop search-engine images, use the retailer-page image) would leave almost every card without an image today. The submitted Notes v3 B is the truthful one.\n\nEMPTY \"WHY WE CHOSE THIS\" (MYEZ-017; V03 = Sephora links = URL mode). compare_from_urls sends \"recommendation\": comparison.get(\"recommendation\", \"\") (url_extraction_service:685). The verdict JSON never contains that key; it returns winner_reason (extraction_service:1033-1060). The client renders result.recommendation whenever there is no overview, so the block is always empty in URL mode. URL mode also ships no scoring_v2, no bars and no factual verdict, and the winner is the raw LLM winner_index. The test hides this by mocking the key (tests/test_url_compare_category.py:105).\n\nPRICES (MYEZ-010). The wire already carries amount, currency, retailer, url, source_method, in_stock, title and sometimes size (public_price_view). The client renders only amount, currency and the converted label. captured_at does not exist in any cache or response: the L2 product_prices.fetched_at is read and then dropped (product_data_service:283-296). The two Arabic lines:\n- \"لا يوجد سعر مؤكد بعد.\" is results.price.pending, shown when price.unavailable is true (ResultsContent.tsx:141).\n- \"الأسعار ما زالت تُحدَّث — اضغط للتحديث بعد لحظة.\" is results.partial.note, shown when metadata.partial === true (ResultsContent.tsx:165, 364-371). It is plain Text with no press handler, and GET /text/prices is admin-only (text_routes:1475). The \"tap to refresh\" it promises does nothing.\nURL-mode prices bypass the price chokepoint entirely (showable check, exact gate, region guard).\n\nSPECS AND SECTIONS (MYEZ-022, \"information doesn't show\").\n- With ENABLE_SPECS_NO_FABRICATION OFF (production), every missing schema key is stamped \"N/A\" (extraction_service:1678-1680).\n- The client's structural fallback deliberately renders all-dash rows (ResultsAccordion.tsx:164-181, 545-553).\n- Reviews and Specs always render; Pros & Cons is hidden only when the result is degraded (ResultsContent.tsx:588).\n- No available/partial/unavailable state exists in the contract or the client.\n- ENABLE_SPEC_SPINE is OFF with an empty store (data/spec_spine.json = {}), and migration 035 is unapplied.\n- ENABLE_SPECS_NO_FABRICATION must be flipped last; flipped now, it would empty spec sheets while searches time out.\n\nOWNER INGEST REQUEST (fragrancex.com). No catalog or ingestion exists for that site, and there is no image storage anywhere. What exists: seed_spec_spine (off-clock, from cached HTML; a FragranceX PDP is already a test fixture), the L2 tables product_specs and product_prices, a sitemap indexer for Bahrain stores only, and a price warmer limited to the gold-truth catalog. Constraints: FragranceX prices are in USD, so they could only ever show as converted, never as genuine BHD. Its robots.txt and terms are unverified. The submitted Notes v3 B rules out hosting or copying images onto MYEZ servers, though linking to the store's own image URL is consistent with it.\n\nPRODUCTION DATA vs CODE.\n- Production data: Serper latency and key exhaustion, unified-search timeouts, the price race missing 23 of 30, partials at gather, and Bright Data serving searches while Serper fails.\n- Code: the piggyback is never wired; there is no image stash; the cache-hit path loses the free image tiers; the Bright Data mapper drops images; URL mode mishandles the JSON-LD image and reads the wrong recommendation key; there is no image cache and no captured_at; the client shows dash rows and always-on sections, and the refresh copy has no action.\n\nNo existing flag covers images, the URL-mode reason or price provenance. Every backend fix sketched below is therefore additive and behind a new flag that defaults OFF. Every client fix needs an OTA, which waits for App Review approval.",
+ "defects": [
+  {
+   "id": "MYEZ-014",
+   "status": "anchored",
+   "root_cause": "image_service.get_product_image_url resolves product images fresh on every compare and never caches them. Several code paths drop the URL or never produce a usable one, and production latency routes compares into exactly those paths.\n(a) Hard-cap partial at stage=gather: the early buffer stashes only specs and price. The image task runs inside the same gather and is lost when it is cancelled.\n(b) Specs and reviews both cached: the unified search is skipped, so search_payload and organic_results are None. Tiers 1.5b (Knowledge Graph/organic, free) and 3 (GPT) cannot run. Only paid Serper Images is left, which needs a live Serper and the 500/day budget.\n(c) Unified-search timeout (ENABLE_UNIFIED_SEARCH_BOUND, ON in production) returns {organic: []}, with the same outcome as (b).\n(d) Serper failing, so Bright Data serves the search: its mapper keeps title, link and snippet only. Knowledge Graph, organic image and image-pack fields are discarded.\n(e) The 'Tier 1.5 retailer-page piggyback' reads price['image_url'], which no live price producer sets. The JSON-LD image is captured as cand['image'] (a list) and never mapped; only the off-clock Zyte path sets image_url.\n(f) The image race has a 5 s cap covering Serper Images plus a GPT call.\n(g) URL mode assigns the raw JSON-LD `image` value (a list, an ImageObject or None) to image_url, which also blocks the og:image fallback. Nothing validates it and no cascade runs. ProductImage rejects any non-string and shows the placeholder.\n(h) The Knowledge Graph image is taken with no identity check. It is the image of whatever entity Google matched.\nClient: the phone-glyph placeholder shows for null, undefined, a non-string or onError. While an image is still loading, the tile is plain grey with no glyph. So the glyph in the screenshots means 'no usable URL, or the load failed', not 'still loading'. There is no retry, no timeout state and no status text.",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/structured_comparison_service.py",
+     "line": "5711-5718, 5775-5781, 5892-5904",
+     "note": "The early stash registers the result dict and attaches done-callbacks for price and specs only. There is no image callback.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/structured_comparison_service.py",
+     "line": "5940-5952, 5748",
+     "note": "The image task joins the Phase-1 gather with page_scrape_image=None and search_payload=unified_search, under a 5.0 s cap.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/structured_comparison_service.py",
+     "line": "5817-5850",
+     "note": "unified_search stays None unless specs or reviews missed the cache. Under ENABLE_UNIFIED_SEARCH_BOUND, a timeout yields {organic: [], UNIFIED_TIMEOUT_MARK}.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/image_service.py",
+     "line": "241-287",
+     "note": "Cascade order: piggyback, then extract_image_from_search(search_payload), then Serper Images (try_consume_serper_image_credit), then GPT (only when organic_results is truthy), then None.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/image_service.py",
+     "line": "86-93",
+     "note": "The Knowledge Graph image is returned with no title or identity check against the product name.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/brightdata_service.py",
+     "line": "225-246, 275-287",
+     "note": "_map_bd_organic emits only {title, link, snippet}, and bd_search_web returns {organic, shopping: []}. No Knowledge Graph or image field survives the fallback.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/serper_service.py",
+     "line": "730-770",
+     "note": "search_web falls back to Bright Data when the Serper key is unavailable, the budget is exhausted, or the request raises.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/structured_comparison_service.py",
+     "line": "6086-6090",
+     "note": "The piggyback override reads result['price'].get('image_url').",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/price_service.py",
+     "line": "10962-10964, 11851-11856",
+     "note": "The JSON-LD wide candidate stores image URLs as cand['image'] (a list). A grep over app/ finds no reader of it and no mapping to image_url. The code comment says 'nothing here is read by the selection path'.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/zyte_service.py",
+     "line": "499, 661",
+     "note": "These are the only price producers that set image_url. Zyte runs only in the off-clock seed (CLAUDE.md:341).",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/url_extraction_service.py",
+     "line": "275-278, 309-312, 338-339, 565",
+     "note": "URL mode sets data['image_url'] = item.get('image'), the raw schema.org value. og:image is used only when \"image_url\" is not already in data. normalize_product_data passes the value through unvalidated. Only an exact '@type' == 'Product' match is recognised: no @graph, no type list.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/price_service.py",
+     "line": "10822-10856",
+     "note": "A robust normaliser, _jsonld_image_urls, already handles string, list and ImageObject values, but URL mode does not use it.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/components/primitives/ProductImage.tsx",
+     "line": "59-62, 73-116, 118-153",
+     "note": "isUsableUrl accepts only a non-empty string. The loading state is a tone-only tile with no glyph. null, undefined, non-string and onError all get the phone-glyph placeholder. onError swaps permanently: no retry, no timeout, no status copy.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/app.json",
+     "line": "152-154",
+     "note": "infoPlist has no NSAppTransportSecurity exception. Plain http:// image URLs, which the backend's _is_valid_image_url accepts, therefore likely fail on iOS. Serper Images' original-host imageUrl may also block hotlinking.",
+     "basis": "inferred"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/api_budget_service.py",
+     "line": "24-33, 1166-1196",
+     "note": "The Serper Images budget is SERPER_IMAGE_DAILY_BUDGET, default 500 a day, counted by a synchronous Upstash INCRBY that fails open.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-14-session-78-state/ledger.md",
+     "line": "30, 33",
+     "note": "Production measurements: the unified Serper search timed out 5 times at the 12 s bound, the price race missed 23 of 30, cold pairs ended as partial at stage=gather at 31-35 s, and partials write no cache.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-10-session-76-state/ledger.md",
+     "line": "47",
+     "note": "ENABLE_UNIFIED_SEARCH_BOUND=true is live on web (canary 7c).",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-17-session-79-state/APP_REVIEW_AUDIT_S79.md",
+     "line": "53, 182, 245",
+     "note": "The audit's preferred fix A (stop tiers 1.5b, 1 and 3 and let the retailer-page image override supply the image) assumes the piggyback works. Notes v3 B (search-engine images) was submitted (ledger.md:34). Because of (e), variant A would leave almost every card without an image.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/.claude/uploads/ae650c83-4d2a-4910-a8d4-a47ab213c8c3/096b52e4-image.png",
+     "note": "V03 (URL mode, Sephora): both cards show the phone glyph, meaning a non-string or null value, or a failed load. This is consistent with (g).",
+     "basis": "inferred"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/.claude/uploads/ae650c83-4d2a-4910-a8d4-a47ab213c8c3/7758232c-image.png",
+     "note": "V01, and V06 (dd4b9146): one image is missing and the partial note (metadata.partial) is shown. This is consistent with (a), or with a per-product miss under (b) or (c).",
+     "basis": "inferred"
+    }
+   ],
+   "existing_flags": [
+    {
+     "name": "ENABLE_EARLY_SPECS_STASH",
+     "default": "ON",
+     "prod_state": "ON (default ON, CLAUDE.md:341)",
+     "source": "structured_comparison_service.py:2734"
+    },
+    {
+     "name": "ENABLE_UNIFIED_SEARCH_BOUND",
+     "default": "OFF",
+     "prod_state": "ON on web since 2026-10-10 (S76 ledger:47); UNIFIED_SEARCH_TIMEOUT_SECONDS default 12.0",
+     "source": "structured_comparison_service.py:5826, 1795-1797"
+    },
+    {
+     "name": "ENABLE_BRIGHTDATA_FALLBACK",
+     "default": "OFF",
+     "prod_state": "ARMED on web and price-warmer (CLAUDE.md:341)",
+     "source": "brightdata_service.py:98"
+    },
+    {
+     "name": "ENABLE_WIDE_CANDIDATE",
+     "default": "ON",
+     "prod_state": "ON by default (captures cand['image'], unused)",
+     "source": "price_service.py:4592-4616"
+    },
+    {
+     "name": "SERPER_IMAGE_DAILY_BUDGET",
+     "default": "500",
+     "prod_state": "unknown (no CLAUDE.md row)",
+     "source": "api_budget_service.py:24-33"
+    }
+   ],
+   "fix_sketch": "All backend items are additive, each behind a NEW flag that defaults OFF, and the contract stays image_url: string|null. No existing flag covers images.\n(1) ENABLE_IMAGE_EARLY_STASH: hoist the image wait_for into ensure_future with a done-callback that writes result['image_url'], mirroring _stash_price_cb at scs:5775-5781. A gather-stage partial then keeps an image that had already resolved.\n(2) ENABLE_JSONLD_IMAGE_PIGGYBACK: at scs:6086, when price['image_url'] is absent, use the first https URL in price.get('image'). That is the cand['image'] list, already identity-gated by selection. Strip 'image' from the public price view so the wire shape does not change. First verify with a fixture that cand['image'] survives select_best and _finalize_fan_winner.\n(3) ENABLE_IMAGE_URL_CACHE: cache the image URL in Redis, keyed from get_specs_cache_key (identity axes already folded in), TTL about 7 days. Read it before the cascade; write it on any https hit that did not come from the Knowledge Graph. This fixes the cache-hit path (b) and repeat-compare flicker.\n(4) On the cache-hit path (unified_search None), read the image cache first.\n(5) Bright Data mapper: carry the image fields under the same flag, after measuring one real Bright Data parsed payload.\n(6) URL mode: normalise the JSON-LD image with price_service._jsonld_image_urls. Fall back to og:image when the JSON-LD image is empty. Resolve relative URLs with urljoin and require https. Also recognise @graph and a list-valued @type.\n(7) Serper Images: prefer an https imageUrl, otherwise use thumbnailUrl (gstatic).\n(8) Knowledge Graph identity check: require token overlap between knowledgeGraph.title and the product name.\nClient, as an OTA only after App Review approval: separate 'loading' and 'no photo found' states, a neutral product glyph instead of the phone, and one retry on onError.\nKeep Notes v3 B. Do not switch to variant A until (2) ships and is measured.",
+   "open_questions": [
+    "Does cand['image'] reach the final result['price'] dict on the live JSON-LD path, or is it lost in select_best or _finalize_fan_winner?",
+    "What is the production value of SERPER_IMAGE_DAILY_BUDGET, and how often does the 500-a-day counter run out? (Redis key from _serper_image_key; names only.)",
+    "How often does the 5 s image race time out? metadata.stage_timings_ms.image_url_ms will show it, since DEBUG_STAGE_TIMINGS is true.",
+    "Does Bright Data's parsed SERP JSON include a knowledge or images section that could be mapped?",
+    "Why did V10's image arrive late: SSE specs event versus complete event, or client load time? Not traced."
+   ],
+   "risks": "Apple 5.2.2: the submitted Notes v3 B says images load from the publishing site or a search engine's image server. Caching image URLs (hotlinking) stays within that claim; downloading and hosting the images would not. Any image-status field must be a user-meaningful value, never the provider tier (image_service.py:21-23; feedback_no_backend_internals_in_reveals). An image cache could keep a wrong-identity Knowledge Graph image for 7 days unless (8) ships first or Knowledge Graph hits are never cached. Pinned tests: test_image_knowledge_graph_tier.py and test_partial_specs_stash_on_price_timeout.py:76.",
+   "test_seams": [
+    "tests/test_image_service.py, test_image_service_edges.py, test_image_service_longtail.py, test_image_knowledge_graph_tier.py (cascade order; Knowledge Graph budget)",
+    "tests/test_comparison_response_image_url.py (overview, products and SSE surfaces)",
+    "tests/test_partial_specs_stash_on_price_timeout.py and tests/test_timeout_partial_integration.py (gather-partial salvage seam for fix 1)",
+    "tests/test_wide_candidate_dict.py (cand['image'] shape for fix 2)",
+    "tests/test_url_extraction.py (JSON-LD and og:image for fix 6)",
+    "SmartCompareApp/__tests__/ProductImage.test.tsx, ResultsContent.imageUrl.test.tsx (client states)",
+    "Runtime: metadata.stage_timings_ms.image_url_ms and the source_trace races.image entry (scs:6045-6075)"
+   ]
+  },
+  {
+   "id": "MYEZ-017",
+   "status": "anchored",
+   "root_cause": "In URL mode the 'why we picked this' block is always empty. compare_from_urls builds its own envelope with recommendation = comparison.get('recommendation', ''), but the verdict prompt's JSON schema has no 'recommendation' key; it returns winner_reason, key_tradeoff, best_for and so on. With no overview.winner present, the client falls back to result.recommendation and renders an empty Text.\nThe URL envelope also has no scoring_v2, so no FactualVerdict lines and no dimension bars. The winner is the LLM's raw winner_index: generate_comparison is called without scores_summary or output_lang, so nothing deterministic picks it and the prose comes back in English.\nV03 (two Sephora Bahrain links) matches exactly: names and prices from JSON-LD, an empty 'why', no bars, no partial note.\nText and camera paths: the reason has a qualitative fallback (response_builder.py:1844-1846). It is blanked only on a partial under ENABLE_HONEST_PARTIAL_SCORING (default OFF), or when the client's SCORE_INTERNALS_RE drops the body. So an empty 'why' is rare in text mode and systematic in URL mode.\nClassification: code defect, not production data.",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/url_extraction_service.py",
+     "line": "681-689",
+     "note": "The envelope sets 'recommendation': comparison.get('recommendation', '') and 'key_differences': comparison.get('key_differences', []). Neither key exists in the verdict JSON.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/extraction_service.py",
+     "line": "1028-1060",
+     "note": "COMPARISON_SYSTEM JSON keys: winner_index, winner_declaration, winner_reason, key_tradeoff, value_context, best_for, product_*_pros/cons, specs_comparison, personalized_insights. There is no 'recommendation' key.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/url_extraction_service.py",
+     "line": "655-657",
+     "note": "generate_comparison(products[0], products[1], region, category=category_used) is called with no scores_summary, no output_lang and no preferences.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/structured_comparison_service.py",
+     "line": "5375",
+     "note": "The text path maps 'recommendation': comparison.get('winner_reason', ''), the correct key. The URL-path line has drifted from it.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/screens/ResultsScreen.tsx",
+     "line": "401-413",
+     "note": "isNewFormat = !!result.overview.winner; products = overview.products ?? result.products; recommendation = isNewFormat ? overview.winner.reason : result.recommendation.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/components/results/ResultsContent.tsx",
+     "line": "182-186, 391-413",
+     "note": "For a non-overview payload, verdictBody = result.recommendation. FactualVerdict renders only when scoring_v2.factual_verdict.line1 exists; otherwise <Text>{verdictBody}</Text> renders the empty string.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/screens/HomeScreen.tsx",
+     "line": "559-581, 194-214",
+     "note": "URL mode POSTs /api/v1/url/compare and passes response.data unchanged to navigateToResultsWithFloor.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_url_compare_category.py",
+     "line": "105, 142",
+     "note": "The tests mock generate_comparison returning {'recommendation': 'x'}, a shape the real prompt never produces. The defect is invisible to the suite.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/response_builder.py",
+     "line": "1844-1846, 2231-2238",
+     "note": "Text path: the scrubbed reason falls back to _QUALITATIVE_WINNER_REASON. It is blanked only when a partial has scoring_v2 None, which happens only under ENABLE_HONEST_PARTIAL_SCORING.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/.claude/uploads/ae650c83-4d2a-4910-a8d4-a47ab213c8c3/096b52e4-image.png",
+     "note": "V03: the 69.500 card is the winner over 65.000, 'why we picked this' is empty, and there are no bars or factual lines. This matches the URL-mode envelope.",
+     "basis": "inferred"
+    }
+   ],
+   "existing_flags": [
+    {
+     "name": "ENABLE_HONEST_PARTIAL_SCORING",
+     "default": "OFF",
+     "prod_state": "no ON row in CLAUDE.md (treated OFF)",
+     "source": "CLAUDE.md:457; response_builder.py:2231"
+    }
+   ],
+   "fix_sketch": "Backend-only, additive, and reaches the build-3 client without an OTA: new flag ENABLE_URL_RECOMMENDATION_FROM_REASON (default OFF). In compare_from_urls set recommendation = strip_score_internals(comparison.get('winner_reason') or '') or the qualitative fallback, and fill key_differences from the specs_comparison advantages. The keys already exist; only their values change.\nLarger fix, behind its own flag ENABLE_URL_MODE_UNIFIED_RESPONSE: route URL-mode products through scoring and build_comparison_response, giving overview, scoring_v2, the price chokepoint and the Arabic directive. The client already renders the overview format, so the contract stays compatible. This changes how URL mode picks its winner and needs the owner's ruling.\nOnce ENABLE_ARABIC_VERDICT_OUTPUT is flipped, also pass output_lang into the URL-mode generate_comparison (interacts with MYEZ-016).\nChange the test mock to the real verdict shape (winner_reason) and pin the recommendation mapping.",
+   "open_questions": [
+    "Should URL mode keep the LLM-chosen winner or adopt deterministic scoring? (Category A ruling.)",
+    "Does a URL-mode History entry (save_comparison_and_track_cohort, input_type='url') re-render the same empty block?"
+   ],
+   "risks": "The URL envelope is part of the frozen client contract, so under the flag only values in existing keys may change. Do not add overview to it while build 3 is in review unless it is flagged and canaried. winner_reason is English (no output_lang), so filling it turns an empty block into an English sentence inside the Arabic UI (MYEZ-016). The owner should rule on that trade.",
+   "test_seams": [
+    "tests/test_url_compare_category.py (the compare_from_urls envelope)",
+    "tests/test_url_extraction.py",
+    "SmartCompareApp/__tests__/ResultsContent.v2Wiring.test.tsx (legacy vs overview branches)"
+   ]
+  },
+  {
+   "id": "MYEZ-010",
+   "status": "anchored",
+   "root_cause": "Most price provenance already exists on the wire but is not rendered, and the timestamp does not exist anywhere.\nWire: overview.products[i].price = public_price_view(price). It carries amount, currency, retailer, url, source_method, in_stock, title and confidence, and sometimes size and original_currency. A pending price is {amount: null, currency, unavailable: true, reason: pending_genuine|size_mismatch, size?}.\nClient: formatPrice shows only the amount plus currency, adding '(converted from USD)' only when source_method === 'converted_usd'. The ProductPrice type does not even declare size, title or reason. Nothing renders retailer, url, in_stock, size or reason.\nMissing fields:\n- captured_at: the L2 product_prices.fetched_at is used for the freshness check and then dropped when the price dict is rebuilt. The Redis price cache has no timestamp at all.\n- country: not on the price; only the request region implies it.\n- stock state: only the in_stock boolean (the exact gate pends out-of-stock prices).\nURL mode builds its own price dict from page JSON-LD and never passes the response_builder price chokepoint (is_price_showable, exact gate, region-currency guard, size fairness). V03's 69.500 vs 65.000 are raw page prices with no size basis.\nENABLE_CONVERTED_PROVENANCE_STAMP is OFF, so a converted candidate can be stamped with a genuine method and shown as BHD without the converted label.\nThe partial-note copy promises 'tap to refresh', but there is no handler, and the only price endpoint (GET /text/prices/{product}) is admin-only.\nProduction data: most 'No confirmed price yet' cards come from the price race missing (23 of 30 in S78) or a hard-cap partial, after which the chokepoint pends the price. That is provider latency, not a display bug.",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/components/results/ResultsContent.tsx",
+     "line": "135-155",
+     "note": "formatPrice: price.unavailable shows t('results.price.pending'); no price or amount null shows t('results.priceNA'); otherwise amount plus currency, with the convertedUSD label only when source_method is 'converted_usd'.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/i18n/ar.json",
+     "line": "152-154, 858",
+     "note": "results.price.pending = 'لا يوجد سعر مؤكد بعد.'; results.priceNA = 'السعر غير متوفر'; results.partial.note = 'الأسعار ما زالت تُحدَّث — اضغط للتحديث بعد لحظة.' The English strings are at en.json:155-157 and 861.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/components/results/ResultsContent.tsx",
+     "line": "165, 364-371",
+     "note": "The partial note renders when metadata.partial === true. It is a plain <Text> with no onPress, so the refresh it promises does not exist.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/api/text_routes.py",
+     "line": "1475",
+     "note": "GET /prices/{product} depends on require_paid_route_admin, and the app never calls it (text_routes.py:249).",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/types/types.ts",
+     "line": "60-71",
+     "note": "ProductPrice declares amount, currency, retailer?, url?, in_stock?, estimated?, confidence?, note?, unavailable? and source_method?. It has no size, title, reason or captured_at. A grep over src/ finds no rendering of retailer, url or in_stock.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/response_builder.py",
+     "line": "1600-1730, 1916",
+     "note": "The price chokepoint turns a non-dict price, a currency mismatch (flagged) or a non-showable price into make_pending_price. The overview price is public_price_view(pd['price']).",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/price_service.py",
+     "line": "1763-1764, 1801-1926, 1929-1943, 9320-9336, 16895-16917",
+     "note": "The showable set is the genuine-BH methods plus converted_usd. The correctness backstop pends out_of_stock, non_pdp_url, no_identity, accessory and not_exact. Also defined here: the make_pending_price shape, and public_price_view, which strips only guard_rejected and _-prefixed keys.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/product_data_service.py",
+     "line": "283-296",
+     "note": "On the L2 price read, fetched_at drives the freshness check, but the returned dict carries only amount, currency, retailer, url, source_method and estimated. The timestamp is dropped.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/migrations/012_product_data_tables.sql",
+     "line": "23-36",
+     "note": "The product_prices table has currency, retailer, url, source_method and fetched_at, so the capture time already exists at rest.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/url_extraction_service.py",
+     "line": "545-551, 575-689",
+     "note": "The URL-mode price is {amount, currency (page value, else the retailer default of USD), retailer, url, in_stock}, returned directly with no build_comparison_response. No showable, exact-gate, size or region check runs.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/structured_comparison_service.py",
+     "line": "2045-2064",
+     "note": "With ENABLE_CONVERTED_PROVENANCE_STAMP OFF (the default), fan-out winners get the rank-name method stamped even when the raw label says converted (CLAUDE.md:429).",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-14-session-78-state/COMPARE_QUALITY_PLAN_S78.md",
+     "line": "1",
+     "note": "Production: the 15 s price race missed 23 of 30, Serper legs take 6-13 s, and partials write no cache, so a second run is no faster.",
+     "basis": "measured"
+    }
+   ],
+   "existing_flags": [
+    {
+     "name": "ENABLE_EXACT_PRICE_GATE",
+     "default": "ON",
+     "prod_state": "ON (CLAUDE.md:341)",
+     "source": "price_service.exact_gate_enabled"
+    },
+    {
+     "name": "ENABLE_CONVERTED_PROVENANCE_STAMP",
+     "default": "OFF",
+     "prod_state": "OFF (dark: changes the race winner and the KPI)",
+     "source": "structured_comparison_service.py:2062; CLAUDE.md:429"
+    },
+    {
+     "name": "ENABLE_REGION_CURRENCY_GUARD",
+     "default": "OFF",
+     "prod_state": "no ON row found",
+     "source": "price_service.region_currency_guard_enabled; response_builder.py:1683-1700"
+    },
+    {
+     "name": "ENABLE_PRICE_CACHE_WARMER",
+     "default": "OFF",
+     "prod_state": "false on price-warmer (CLAUDE.md:341)",
+     "source": "scripts/cron_warm_price_cache.py"
+    }
+   ],
+   "fix_sketch": "New flag ENABLE_PRICE_PROVENANCE_FIELDS (default OFF) adds keys to the existing price object; the build-3 client ignores unknown keys. The new keys:\n- captured_at (ISO8601): stamped where a price resolves, carried inside the Redis cache value, and rehydrated from product_prices.fetched_at at product_data_service.py:289.\n- retailer_domain.\n- stock_state: 'in_stock', 'out_of_stock' or 'unknown', derived from in_stock.\n- size, whenever it is known.\nURL mode, behind ENABLE_URL_MODE_UNIFIED_RESPONSE or a narrower ENABLE_URL_PRICE_CHOKEPOINT: run is_price_showable(enforce_correctness=True) and the region guard on the URL-mode price.\nClient, as an OTA after approval:\n- render 'retailer · date · size' under each price;\n- replace results.partial.note with copy that promises no tap action, or wire a real re-fetch;\n- render pending_genuine and size_mismatch as distinct reasons.\nDo not flip ENABLE_CONVERTED_PROVENANCE_STAMP during review; it changes winners and the KPI.",
+   "open_questions": [
+    "For a cached price, should captured_at be the scrape time (L2 fetched_at) or the cache-write time? The Redis value currently has neither.",
+    "Should each price carry its country, or is the top-level region enough?"
+   ],
+   "risks": "Any price change in URL mode can turn prices that build-3 reviewers currently see into pending prices, so keep it dark until after approval. New keys on price objects must survive public_price_view and the cache. Adding the timestamp changes the cached value's shape, so readers must tolerate older entries without it.",
+   "test_seams": [
+    "tests/test_response_builder_price_pending.py, tests/test_price_showable.py, tests/test_prescoring_showable_guard.py",
+    "tests/test_showable_name_identity.py",
+    "SmartCompareApp/__tests__/ResultsContent.partialNote.test.tsx (pins the current partial-note copy)"
+   ]
+  },
+  {
+   "id": "MYEZ-022",
+   "status": "anchored",
+   "root_cause": "No available/partial/unavailable state exists anywhere in the contract or the client.\nClient: the Reviews and Specs rows always render. Pros & Cons is hidden only when the result is degraded, and 'At a glance' only when the category profile has no fields. The Specs table has a deliberate 'structural fallback': when no spec has a real value, it still lists every key whose value is non-null, which includes the backend's 'N/A' strings, as em-dash rows. The one-sided-row filter keeps rows where both cells are dashes.\nBackend: with ENABLE_SPECS_NO_FABRICATION OFF (production), extract_specs stamps 'N/A' on every schema key the model left empty. A unified-search timeout (empty context) or a partial without specs therefore delivers a full CATEGORY_SPEC_SCHEMAS list of dashes.\nFlipping ENABLE_SPECS_NO_FABRICATION would omit those keys, but the Specs row would still render, now with an empty table. That flag must also be flipped last, and it would empty spec sheets while searches time out.\nENABLE_SPEC_SPINE is OFF and its store is empty, so it supplies nothing.",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/components/results/ResultsAccordion.tsx",
+     "line": "157-181",
+     "note": "allSpecKeys uses the rich keys (non-N/A). If there are none, it uses 'structural' keys: every non-null scalar, including the 'N/A' strings. The code comment says 'They render as em-dash rows'.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/components/results/ResultsAccordion.tsx",
+     "line": "203-258",
+     "note": "The sections array always includes reviews and specs. Pros & Cons is omitted only when hideProsCons is set; the profile shows only when hasCategoryProfile. The Specs subtitle counts the structural keys.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/components/results/ResultsAccordion.tsx",
+     "line": "529-553",
+     "note": "Missing or N/A cells render as '—'. The filter drops one-sided rows but keeps rows where both cells are '—'.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/components/results/ResultsContent.tsx",
+     "line": "588",
+     "note": "hideProsCons={isDegraded} is the only hide condition.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/extraction_service.py",
+     "line": "142-235, 1664-1680",
+     "note": "CATEGORY_SPEC_SCHEMAS covers 9 categories. With the flag OFF, an empty value becomes cleaned[key] = 'N/A'. With ENABLE_SPECS_NO_FABRICATION ON, uncited or empty values are omitted.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/extraction_service.py",
+     "line": "549-600",
+     "note": "specs_no_fabrication_enabled defaults OFF. Its precondition is a working search layer; without one it would empty every uncached spec sheet.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/CLAUDE.md",
+     "line": "346, 349, 377",
+     "note": "ENABLE_SPECS_NO_FABRICATION is OFF and must be flipped last. ENABLE_SPEC_SPINE stays inert until the store is seeded, and migration 035 is unapplied.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/data/spec_spine.json",
+     "line": "1",
+     "note": "The store contains '{}' (4 bytes).",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/structured_comparison_service.py",
+     "line": "589, 950-1031",
+     "note": "_product_spec_coverage (filled, expected) already exists and feeds comparison_quality (normal/weak/weird). It is internal only and never shipped as a section state.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-14-session-78-state/COMPARE_QUALITY_PLAN_S78.md",
+     "line": "61",
+     "note": "The plan says not to flip ENABLE_SPECS_NO_FABRICATION: with searches timing out it empties spec sheets.",
+     "basis": "measured"
+    }
+   ],
+   "existing_flags": [
+    {
+     "name": "ENABLE_SPECS_NO_FABRICATION",
+     "default": "OFF",
+     "prod_state": "OFF; flip LAST (CLAUDE.md:346, 377)",
+     "source": "extraction_service.py:549-600"
+    },
+    {
+     "name": "ENABLE_SPEC_SPINE",
+     "default": "OFF",
+     "prod_state": "OFF and the store is empty (inert twice over)",
+     "source": "spec_spine_service.py; CLAUDE.md:349"
+    },
+    {
+     "name": "ENABLE_COMPARISON_QUALITY_V2",
+     "default": "OFF",
+     "prod_state": "no ON row found",
+     "source": "CLAUDE.md:412"
+    }
+   ],
+   "fix_sketch": "Backend, additive, new flag ENABLE_SECTION_STATUS (default OFF): emit metadata.section_status = {specs, reviews, pros_cons, price}, each available, partial or unavailable. Compute it from _product_spec_coverage, the review counts, the pros_cons lengths and price.unavailable. The build-3 client ignores it.\nClient, as an OTA after approval:\n- when section_status is 'unavailable', render one honest line instead of an expandable row;\n- remove the all-dash structural fallback (ResultsAccordion.tsx:181) and the rule that keeps both-dash rows (:553), or collapse them into one 'not enough information yet' note.\nThere is no backend-only fix for build 3: omitting the 'N/A' keys just gives an empty table under the same row. Do not flip ENABLE_SPECS_NO_FABRICATION for this.",
+   "open_questions": [
+    "What threshold counts as 'partial' (for example coverage below 0.5, as at scs:973)?"
+   ],
+   "risks": "The client unit tests pin today's behaviour (ResultsAccordion.oneSidedRows.test.tsx, ResultsAccordion.perCategory.test.tsx). Hiding sections changes what App Review sees, so it must wait for approval and an OTA.",
+   "test_seams": [
+    "SmartCompareApp/__tests__/ResultsAccordion.oneSidedRows.test.tsx, ResultsAccordion.perCategory.test.tsx",
+    "tests/test_partial_response_no_fabricated_scores.py",
+    "structured_comparison_service._product_spec_coverage (unit-testable pure function)"
+   ]
+  },
+  {
+   "id": "OWNER-NO-INFO",
+   "status": "anchored",
+   "root_cause": "'The product information does not show at all' has four code causes and one production-data driver.\n(1) URL mode: the envelope has no overview, scoring_v2, specs.products, reviews.products or pros_cons projection. The page shows only names and prices, an empty 'why', no bars, no profile, and the AI's raw specs in the accordion (see MYEZ-017).\n(2) extract_from_url declares success: true even when nothing was extracted. The product becomes 'Unknown Product' with no price and no image, and the LLM still picks a winner (feeds MYEZ-002 and V09).\n(3) Hard-cap partial at stage=gather (code plus production latency): no pros, because pros come only from the verdict; specs and price only if they had already landed; the image always lost.\n(4) All-'N/A' specs render as dash tables (MYEZ-022).\nProduction-data driver: the 30 s server cap against Serper legs of 6-13 s and unified-search timeouts. Specs and reviews built after a search timeout are never cached (FY19), so repeating the compare does not help.",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/url_extraction_service.py",
+     "line": "466-521, 527",
+     "note": "After a successful fetch the result is always success: true, and the title defaults to 'Unknown Product'. AI extraction sees only stripped page text: scripts, including the JSON-LD, are removed (lines 400-416).",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/url_extraction_service.py",
+     "line": "116-131",
+     "note": "URL mode fetches with plain httpx and a Chrome User-Agent string. The price path uses curl_cffi impersonate='chrome' (price_service.py:14761-14767), which CLAUDE.md:866 credits with 84% coverage. WAF-protected stores such as fragrancex are likely blocked on the URL path, which fits V02's retry dialog.",
+     "basis": "inferred"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/structured_comparison_service.py",
+     "line": "3740-3815",
+     "note": "The partial builder assembles from the early buffer with metadata {partial: True, partial_stage}. It synthesises a deterministic verdict from the scores; those are the 'X leads on ...' lines in V01, V06 and V07.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-14-session-78-state/ledger.md",
+     "line": "30, 33",
+     "note": "Cold pairs ended as partials at stage=gather at 31-35 s or with no spec rows, and partials write no cache.",
+     "basis": "measured"
+    }
+   ],
+   "existing_flags": [
+    {
+     "name": "ENABLE_PHASE2_RESIDUAL_GUARD / PHASE2_MIN_RESIDUAL_SECONDS",
+     "default": "OFF / 8",
+     "prod_state": "ON with value 12 on web (S78 ledger:36-37)",
+     "source": "structured_comparison_service.py:1800-1802"
+    },
+    {
+     "name": "ENABLE_UNIFIED_SEARCH_BOUND",
+     "default": "OFF",
+     "prod_state": "ON on web",
+     "source": "S76 ledger:47"
+    },
+    {
+     "name": "ENABLE_ALL_TIMEOUT_CAP_AS_TIMEOUT",
+     "default": "OFF",
+     "prod_state": "OFF (S78-F8 dark)",
+     "source": "CLAUDE.md:469"
+    }
+   ],
+   "fix_sketch": "URL mode: apply the MYEZ-017 fix.\nAlso behind a flag: when neither a title nor a price was extracted, return success: false with a code (not_product_page or unresolved_product) instead of shipping 'Unknown Product'. This overlaps Category A (MYEZ-002, 005, 006).\nURL fetch: behind a flag, try curl_cffi impersonation before httpx, reusing price_service's fetcher.\nPartials: add the image to the early stash (MYEZ-014 fix 1). The starved pros and verdict belong to the S78 TG and SM levers already merged dark.",
+   "open_questions": [
+    "What share of production compares are URL mode versus text versus camera? (search_logs input_type)",
+    "How are production partials distributed across partial_stage? (metadata.partial_stage is unflagged)"
+   ],
+   "risks": "Making URL mode return success: false changes which errors App Review sees, so keep it dark.",
+   "test_seams": [
+    "tests/test_url_extraction.py, tests/test_url_compare_category.py",
+    "tests/test_timeout_partial_integration.py, tests/test_m13_shortcircuit_stash_parse.py"
+   ]
+  },
+  {
+   "id": "OWNER-INGEST-FRAGRANCEX",
+   "status": "partially_anchored",
+   "root_cause": "The owner asks to load all FragranceX product data into the cache or database so a later search answers immediately. No catalog ingestion exists for any external store's full product list, and nothing stores product images.\nWhat exists:\n- An off-clock fragrance spec-spine seeder: it reads cached HTML, makes one citation-or-omit LLM call per fragrance, and writes data/spec_spine.json. The read path is the ENABLE_SPEC_SPINE flag (OFF), the store is empty, and its DB migration 035 is unapplied. The spine holds notes, family, concentration, longevity, sillage, season and occasion; it has no price, image or volume.\n- A FragranceX product page (Dior Sauvage Cologne) is already a seeder test fixture, so the parser handles that site's pages.\n- L2 tables product_specs and product_prices, with fetched_at at rest. There is no product table with images.\n- An off-clock sitemap indexer (cron_index_sitemaps.py, ENABLE_SITEMAP_INDEX OFF), currently limited to Bahrain-tier sitemap stores.\n- A price warmer (ENABLE_PRICE_CACHE_WARMER false) whose catalog is the gold-truth queries.\nFragranceX is not in the source registry or the descriptors. It is a US store priced in USD, so its prices could only ever appear as converted_usd (labelled 'converted from USD'), never as genuine Bahrain prices.",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/scripts/seed_spec_spine.py",
+     "line": "1-80",
+     "note": "The off-clock seeder reads files only and makes one citation-or-omit call per fragrance. Default corpora: _proof/html and _proof/global/html.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/spec_spine_service.py",
+     "line": "1-120",
+     "note": "SPINE_FIELDS excludes volume, price and image. The key reuses the price path's identity tokens and splits EDP/EDT and size. The store ships empty.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/fixtures/spec_spine_d2/SOURCES.json",
+     "line": "3, 10-12",
+     "note": "us_fragrancex_com_dior_sauvage_cologne.html (https://www.fragrancex.com/products/christian-dior/sauvage-cologne) is a seeder fixture, used by tests/test_spec_spine_d2.py:46 and :389.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/migrations/012_product_data_tables.sql",
+     "line": "4-36",
+     "note": "product_specs and product_prices have no image column.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/scripts/cron_index_sitemaps.py",
+     "line": "1-30",
+     "note": "Off-clock sitemap index for Bahrain-tier storefronts (bolo, boutiqaat), gated by ENABLE_SITEMAP_INDEX.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/CLAUDE.md",
+     "line": "857-863",
+     "note": "Fragrantica and Parfumo must never be scraped. FragranceX is not named; this read-only research did not check its robots.txt or terms (no web fetch).",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-17-session-79-state/APP_REVIEW_AUDIT_S79.md",
+     "line": "211, 220",
+     "note": "The submitted Notes and Reply (variant B) say MYEZ hosts no third-party media and that images load from the publishing site or a search engine's image server.",
+     "basis": "measured"
+    }
+   ],
+   "existing_flags": [
+    {
+     "name": "ENABLE_SPEC_SPINE",
+     "default": "OFF",
+     "prod_state": "OFF, store empty",
+     "source": "spec_spine_service.py"
+    },
+    {
+     "name": "ENABLE_SITEMAP_INDEX",
+     "default": "OFF",
+     "prod_state": "OFF",
+     "source": "CLAUDE.md:341"
+    },
+    {
+     "name": "ENABLE_PRICE_CACHE_WARMER",
+     "default": "OFF",
+     "prod_state": "false on price-warmer",
+     "source": "CLAUDE.md:341"
+    },
+    {
+     "name": "ENABLE_SEARCH_DESCRIPTOR",
+     "default": "OFF",
+     "prod_state": "seeded (95 hosts); flag state not stated as ON",
+     "source": "CLAUDE.md:349"
+    }
+   ],
+   "fix_sketch": "Off-clock only, with no live-path change during review:\n(1) Check FragranceX's robots.txt and terms first. Apply the robots-unreadable fail-closed ruling (docs/policies/2026-08-31-robots-unreadable-ruling.md).\n(2) A new script walks the sitemap's product URLs that robots allows, using curl_cffi impersonation at a polite rate, and caches the HTML into a corpus directory.\n(3) Parse each page with price_service's JSON-LD extractor (wide candidate: name, brand, image list, description, sku/gtin, aggregateRating, and sizes from ProductGroup/hasVariant).\n(4) Run seed_spec_spine.py over the corpus. Its citation-or-omit rule keeps the facts honest.\n(5) Write the image URLs (https only; links, not copies) into the MYEZ-014 image cache, keyed by get_specs_cache_key, behind a dark read flag.\n(6) Optionally write USD reference prices with captured_at as converted_usd, never stamped as a genuine Bahrain method.\nFlip the read flags only after App Review approval, one window each.",
+   "open_questions": [
+    "Does FragranceX's robots.txt allow our crawler and its sitemaps? Do its terms allow storing facts and linking to its images?",
+    "Scope: the whole catalog (tens of thousands of SKUs, with an LLM cost per fragrance) or the top N fragrances Bahrain users search for?",
+    "Storage: keep data/spec_spine.json as a file or apply migration 035? Is a new product-image table or cache wanted?",
+    "Does the owner want USD reference prices at all, given the Bahrain-price promise?"
+   ],
+   "risks": "Apple 5.2.2 and the submitted Notes v3 B: linking to FragranceX images stays within the claim; downloading and hosting them would contradict 'hosts no third-party media'. A spine row is served for weeks, so a wrong identity merge (size or concentration) would persist. Other risks: crawl cost, IP blocks, and FragranceX prices not being Bahrain prices.",
+   "test_seams": [
+    "tests/test_spec_spine_d2.py (seeder dry run on the FragranceX fixture)",
+    "scripts/seed_spec_spine.py --dry-run --dump-candidates"
+   ]
+  }
+ ],
+ "extra_findings": [
+  {
+   "title": "CLAUDE.md 'Product image pipeline' section is stale and misled the S79 variant-A recommendation",
+   "severity": "medium",
+   "evidence": "CLAUDE.md:312-313 lists the tiers as page-scrape og:image piggyback (Tier 1.5, free), then Serper Images, Firecrawl, Scrape.do and GPT. But image_service.py:12-19 says tiers 2 and 2.5 are not wired in text mode, and the piggyback key price['image_url'] is set only by zyte_service.py:499 and 661, which run off-clock. APP_REVIEW_AUDIT_S79.md:53 recommends relying on that piggyback (measured)."
+  },
+  {
+   "title": "URL mode bypasses the whole response pipeline: no price chokepoint, no deterministic scoring, no Arabic output",
+   "severity": "high",
+   "evidence": "url_extraction_service.py:575-689 returns its own envelope. Prices skip is_price_showable and the region guard. The winner is the LLM's winner_index from a generate_comparison call with no scores_summary and no output_lang (:655-657). key_differences is always [] (measured). Overlaps Categories A and B."
+  },
+  {
+   "title": "URL-mode extraction reports success for 'Unknown Product'",
+   "severity": "high",
+   "evidence": "url_extraction_service.py:513-519 always returns success: true after the fetch, and :527 defaults the title to 'Unknown Product'. This is V09: two Unknown Products and a winner (MYEZ-002, Category A) (measured)."
+  },
+  {
+   "title": "URL fetcher is plain httpx while the price path uses curl_cffi impersonation",
+   "severity": "medium",
+   "evidence": "url_extraction_service.py:116-131 uses httpx.AsyncClient with a Chrome User-Agent string; price_service.py:14761-14767 uses curl_cffi impersonate='chrome'. A WAF-protected store such as fragrancex.com plausibly fails to fetch, which would explain V02's retry dialog for the homepage links (inferred)."
+  },
+  {
+   "title": "Verdict LLM made a price claim against a pending price (V06)",
+   "severity": "medium",
+   "evidence": "V06 shows 'Pura d'or offers a larger volume at a lower price' while Goiple's price is pending. The PENDING PRICE rule is prompt text only (extraction_service.py:1074), with no check after generation. A grep finds no template for this phrasing, so it is LLM prose (Category B: MYEZ-009/010) (inferred)."
+  },
+  {
+   "title": "Placeholder glyph is a phone for every category",
+   "severity": "low",
+   "evidence": "ProductImage.tsx:129-149 draws a phone shape (Rect plus Line), so perfume, beard-oil and shirt cards show a phone icon in the V01, V03, V06 and V07 screenshots (measured)."
+  },
+  {
+   "title": "Test fixture masks the URL-mode empty-reason defect",
+   "severity": "medium",
+   "evidence": "tests/test_url_compare_category.py:105 mocks generate_comparison returning {'recommendation': 'x'}, a key the real prompt never returns (extraction_service.py:1033-1060) (measured)."
+  },
+  {
+   "title": "Knowledge-Graph-first image with no identity check can show the wrong object",
+   "severity": "medium",
+   "evidence": "image_service.py:86-93 returns knowledgeGraph.imageUrl for whatever entity Google matched. For a misidentified name such as V04's 'Violin SHAHRAZAD...', the card plausibly shows an actual violin. The identity error itself is Category A; this tier amplifies it (inferred)."
+  },
+  {
+   "title": "Serper image budget check is a blocking Upstash call on the event loop",
+   "severity": "low",
+   "evidence": "api_budget_service.py:1166-1196: try_consume_serper_image_credit makes a synchronous redis_client.incrby call inside the async image cascade (image_service.py:256). This belongs to the event-loop-lag class S78 measured (measured)."
+  },
+  {
+   "title": "Camera recognition complaint is out of Category C",
+   "severity": "info",
+   "evidence": "The vision call is at openai_service.py:170-195 (detail 'auto', model from vision_model()). The S79 ledger at 07:30 recorded 'Identifying ~36 s'. Route this to the Category A identity research."
+  }
+ ],
+ "sources": [
+  "C:/Users/SynAckITPC/.claude/uploads/ae650c83-4d2a-4910-a8d4-a47ab213c8c3/d20a7872-MYEZ_QA_UX_Audit_2026-10-18.md",
+  "C:/Users/SynAckITPC/.claude/uploads/ae650c83-4d2a-4910-a8d4-a47ab213c8c3/096b52e4-image.png",
+  "C:/Users/SynAckITPC/.claude/uploads/ae650c83-4d2a-4910-a8d4-a47ab213c8c3/7758232c-image.png",
+  "C:/Users/SynAckITPC/.claude/uploads/ae650c83-4d2a-4910-a8d4-a47ab213c8c3/dd4b9146-image.png",
+  "C:/Users/SynAckITPC/.claude/uploads/ae650c83-4d2a-4910-a8d4-a47ab213c8c3/69e9e3fb-image.png",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/CLAUDE.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/image_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/structured_comparison_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/response_builder.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/price_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/url_extraction_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/extraction_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/brightdata_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/serper_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/api_budget_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/spec_spine_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/product_data_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/zyte_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/api/url_routes.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/api/text_routes.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/scripts/seed_spec_spine.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/scripts/cron_index_sitemaps.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/scripts/cron_warm_price_cache.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/migrations/012_product_data_tables.sql",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/data/spec_spine.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/fixtures/spec_spine_d2/SOURCES.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_url_compare_category.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/components/primitives/ProductImage.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/components/results/ResultsContent.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/components/results/ResultsAccordion.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/screens/ResultsScreen.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/screens/HomeScreen.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/types/types.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/i18n/ar.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/i18n/en.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/app.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-17-session-79-state/APP_REVIEW_AUDIT_S79.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-17-session-79-state/ledger.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-14-session-78-state/ledger.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-14-session-78-state/COMPARE_QUALITY_PLAN_S78.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-10-session-76-state/ledger.md"
+ ]
+}

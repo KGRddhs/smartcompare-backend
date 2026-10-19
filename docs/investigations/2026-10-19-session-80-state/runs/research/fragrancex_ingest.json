@@ -1,0 +1,598 @@
+{
+ "category": "SURFACE J - FragranceX catalog ingestion feasibility (owner request)",
+ "summary": "You can't crawl the FragranceX catalog into our cache today. It is blocked twice over, and the data would also be poor value for a Bahrain user. (1) I sent 3 read-only GETs (curl_cffi 0.14.0, impersonate=\"chrome\", no redirects, no retries) on 2026-10-19 to /robots.txt, /sitemap.xml and the fixture PDP. All 3 returned 403 from server=cloudflare with header cf-mitigated: challenge (a \"Just a moment...\" page with cf_chl_opt), in about 0.1 s each. The challenge did not clear, so no robots rules, Crawl-delay or sitemap count could be read. This is NEW: the cached corpus on this box shows FragranceX served robots 200/321 B on about 2026-08-26 (User-agent * with only 5 small Disallows, /products/ allowed, no AI-UA rules, Sitemap: /sitemap_index.xml), a 495,594-byte Sauvage PDP and a sitemap child with 7,513 product URLs across 676 brands. (2) Under the owner's approved 2026-08-31 fail-closed ruling, a host whose robots.txt is walled (403 challenge) is skipped. That is the www.perfume.com precedent. The only crawler in the repo (the sitemap builder) enforces this with no flag, and the sitemap channel only accepts bahrain-tier registry rows anyway. (3) Even when FragranceX was readable, its PDP JSON-LD carries 13 USD Offers with no size, SKU or name per offer. Under the shape ladder that is live by default, such a page PENDS as an ambiguous price rather than giving an exact-size price. Its \"product\" is a fragrance-line page that mixes concentrations and forms. The page's currency selector lists 29 currencies including SAR but no BHD or AED. Any price would be a converted_usd reference that lasts 24h at L1 and L2 and always ranks below a genuine Bahrain shelf price. It would also contradict the \"MOST AUTHORITATIVE not lowest\" prompt rule for a discounter that advertises up to 80% off. (4) The useful parts are identity, the note pyramid, family and images. The repo already has the designed mechanism for that (the spec spine: empty store, flag OFF), but it still needs a licensed source. FragranceX runs a CJ Affiliate program with a product catalog feed (third-party directories conflict on whether the feed exists and on its terms). No public API was found. I could not find FragranceX's Terms of Use clause on automated access (open question). Recommendation: reject Option A (crawl). Do Option C now: the existing warm list, warmers and spec spine, seeded from the GCC stores we already price, using data files and dark flags only, with no client or contract change. Pursue Option B (CJ datafeed import into a new dark-flagged table) only as an owner and legal track, for identity, specs and licensed images, never as a Bahrain price source.",
+ "findings": [
+  {
+   "title": "Live probe 2026-10-19: FragranceX is fully Cloudflare-walled from this box (robots, sitemap, PDP all 403 cf-mitigated: challenge, even with chrome impersonation)",
+   "severity": "high",
+   "evidence": [
+    {
+     "file": "(live probe, no file) python -I curl_cffi 0.14.0 impersonate=chrome allow_redirects=False timeout=20, 3 GETs total, no retry",
+     "note": "[1] /robots.txt status=403 0.09s 6004B server=cloudflare cf-mitigated=challenge title 'Just a moment...' markers Just a moment/challenge-platform/cf_chl_opt; [2] /sitemap.xml 403 0.12s 6007B same; [3] /products/christian-dior/sauvage-cologne 403 0.09s 6133B same. Challenge did NOT clear; robots Crawl-delay/Disallow and sitemap count UNREADABLE.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-scraper-proof\\_proof\\global\\_us_robots.json",
+     "line": "key www.fragrancex.com",
+     "note": "Earlier read (Aug 2026, same curl_cffi impersonate=chrome per _w_robots3.py:19): status 200, 321 bytes: 'User-agent: *' Disallow /*searchSortExpression, /*genders, /widgets/, /products/noresponse/ajaxaddpreviouslyviewed, /cdn-cgi/speculation, /blog/wp-admin/, /blog/*?; Allow /blog/wp-admin/admin-ajax.php; Sitemap: https://www.fragrancex.com/sitemap_index.xml. No Crawl-delay, no named AI agents.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-scraper-proof\\_proof\\global\\corpus.json",
+     "line": "rows host=www.fragrancex.com",
+     "note": "Sauvage PDP http_status 200, 495,594 bytes, blocked false, robots_note 'robots 200/321B; UA* blocks /widgets/ /blog/*? and sort params only; /products/ ALLOWED; no AI-UA rules', platform_truth unknown, platform_evidence powerreviews.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-scraper-proof\\_proof\\_w_fx_sitemap.xml",
+     "note": "Cached child sitemap (file mtime Aug 26): 7,772 <loc>, 7,513 /products/ PDP URLs, 676 brand slugs, lastmod values 2024-04-02..2026-08-25. Only one child was cached; the index's full child count is unknown.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\requirements.txt",
+     "line": "35",
+     "note": "Pinned curl-cffi==0.16.1; the box's Python312 has 0.14.0 installed. A managed JS challenge is not a TLS-fingerprint problem, so a version bump is not expected to clear it.",
+     "basis": "inferred"
+    }
+   ],
+   "detail": "FragranceX switched from readable to a Cloudflare managed challenge on robots, sitemap and PDPs somewhere between about 2026-08-26 and 2026-10-19. This matches the Fragrantica precedent recorded in CLAUDE.md:857-865, where the site went 12/12 to 403 cf-mitigated. Clearing a managed challenge needs a JS-executing renderer or unblocker, which is bot-detection circumvention. A live URL-paste of a FragranceX PDP (audit V02, MYEZ-005/006) will therefore fail extraction from our egress today. That is why the app should name it 'unsupported/unreadable store' rather than show green ticks (inferred: the URL route was not traced in this unit)."
+  },
+  {
+   "title": "The project's standing robots ruling forbids crawling FragranceX now; the only crawler in the repo enforces it unconditionally",
+   "severity": "high",
+   "evidence": [
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\docs\\policies\\2026-08-31-robots-unreadable-ruling.md",
+     "line": "3-20",
+     "note": "RULING: FAIL-CLOSED (Option A + C rider), approved by Ahmed 2026-08-31. 'Unreadable' covers 403/401, any non-2xx wall or challenge page, 5xx, timeout. Option B (fail-open-with-care) NOT taken; www.perfume.com stays skipped.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\docs\\policies\\2026-08-31-robots-unreadable-ruling.md",
+     "line": "90, 165",
+     "note": "The perfume.com precedent: robots 403 CF while PDPs served 200, and it was still skipped. FragranceX today is stricter still: robots AND PDPs are walled.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\robots_eval.py",
+     "line": "35-46, 74",
+     "note": "Caller contract: a failed robots fetch must SKIP THE HOST and must never be mapped to an empty body (which would be allow-all). NAMED_AGENT = 'QarenBot'.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\sitemap_discovery_service.py",
+     "line": "364-389, 419-453",
+     "note": "The robots gate runs before any sitemap fetch, applied UNCONDITIONALLY with no flag; any non-2xx other than 404/410 means policy=None, a fail-closed skip. The robots read uses the named UA 'QarenBot/1.0 (+https://getmyez.com/bot; ...)', never a browser UA.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\CLAUDE.md",
+     "line": "857-865",
+     "note": "House rule: never scrape Fragrantica/Parfumo. Defended sites are not fought, and a fragrance spec database needs a licensing conversation or a commercial provider.",
+     "basis": "measured"
+    }
+   ],
+   "detail": "Option A (a scheduled full crawl) is therefore ruled out by an existing owner decision, not just by engineering. Re-admission is automatic under Option A's scheduled re-read: if a later named-UA robots read returns 200 and allows /products/, the host rejoins under its actual policy. Even then, a full crawl would still need the owner's go-ahead and a registry or tier change (next finding)."
+  },
+  {
+   "title": "No existing ingestion channel can take a US host: the sitemap index is Bahrain-tier only, is a name-to-URL index (not a data store), and its flag is OFF",
+   "severity": "medium",
+   "evidence": [
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\source_router.py",
+     "line": "792-804",
+     "note": "get_sitemap_sources_for_category returns only Sources with mechanism in (sitemap, curl) AND tier == 'bahrain'.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\source_router.py",
+     "line": "411-421",
+     "note": "Catalog rows are admitted only with status 'live' and tier in {bahrain, gcc}. tier='global' is reserved for hand-curated literals because _is_genuine_bh_candidate force-downgrades global scrapes to converted.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\sitemap_discovery_service.py",
+     "line": "1-47, 74-83",
+     "note": "Off-clock builder producing a Redis token-bucket index {slug -> pdp_url} (discovery:sitemap:{domain}:t:{token}, 24h TTL). The request path only resolves a URL. Specs, price and images still come from the live fetch.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\scripts\\cron_index_sitemaps.py",
+     "line": "1-30, 62-77, 80-84",
+     "note": "Off-clock cron gated by ENABLE_SITEMAP_INDEX (fail-closed). _INDEX_URLS covers bolo.bh and boutiqaat.com only.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\CLAUDE.md",
+     "line": "341, 348, 377",
+     "note": "ENABLE_SITEMAP_INDEX OFF ('inert until set'). ENABLE_SITEMAP_PDP_MARKERS_V2 and ENABLE_SITEMAP_MATCH_V2 need SITEMAP_INDEX plus a rebuild, in a fixed activation order.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\price_service.py",
+     "line": "15147-15211",
+     "note": "The shopify_catalog:{domain} cache (6h; 30-min negative cache) reads Shopify /products.json and /meta.json. It does not apply: FragranceX is not Shopify (corpus platform_truth 'unknown', PowerReviews widget).",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\data\\search_descriptors.json",
+     "note": "95 resolved Gulf fragrance hosts, no fragrancex. data/bh_gcc_sources.json has no fragrancex either (grep).",
+     "basis": "measured"
+    }
+   ],
+   "detail": "For FragranceX to use the sitemap channel, it would have to be registered as a bahrain-tier sitemap source. That would be false, since it has no Bahrain storefront, and it would wrongly let its scrapes count as genuine. Every existing ingestion path (sitemap index, search descriptors, Shopify catalog, Bahrain/GCC adapters) is deliberately scoped to stores that sell in the Gulf."
+  },
+  {
+   "title": "What a FragranceX PDP carries (fixture plus the full cached page): a rich identity and spec block, but 13 sizeless USD offers that the live shape ladder PENDS",
+   "severity": "medium",
+   "evidence": [
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\tests\\fixtures\\spec_spine_d2\\us_fragrancex_com_dior_sauvage_cologne.html",
+     "line": "7",
+     "note": "JSON-LD @type Product. Fields: @id, productID '73223M', name 'Sauvage Cologne', brand 'Christian Dior', image [img.fragrancex.com/images/products/sku/large/saucm278d.jpg], a description in prose (launch 2015, perfumer, Aromatic Fougere, top/heart/base notes), and additionalProperty (Fragrance Family 'Bergamot', Fragrance Classification 'After Shave, Deodorant, Pure Perfume, Cologne, Gift Set...', Volume 'Available in 1 ml, 8 ml, 60 ml, 77 ml, 100 ml, 150 ml and 200 ml', Gender, Year Of Launch). aggregateRating 4.4/658. offers: 13 Offer nodes, all priceCurrency USD, all InStock, prices 19.99..228.62, with NO sku/name/size per offer.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\tests\\fixtures\\spec_spine_d2\\SOURCES.json",
+     "line": "10-21",
+     "note": "Fixture source: country US, region US_CA, corpus 'global', cached HTTP 200. spec_fields_present: size_ml, concentration, gender, notes, family_accords, perfumer, launch_year, longevity_sillage.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-scraper-proof\\_proof\\global\\html\\8a3824947e0844b86fc9d1a33822ff979ff59ab5.html",
+     "note": "The size-to-price binding lives only in the DOM: img alt text such as 'Sauvage Cologne by Christian Dior Cologne 2 Oz Eau De Toilette Spray', 13 'Price with Coupon' blocks (coupon decoys), a PowerReviews widget, and a currency selector with 29 options (ARS..ZAR incl. SAR) but NO BHD and NO AED. No 'Terms' link in the page; footer help pages only (/customerservice/privacy.html, shipping.html, faq.html).",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\price_service.py",
+     "line": "11041-11060, 11197-11204, 11215-11262, 11296-11303",
+     "note": "ENABLE_JSONLD_SHAPE_LADDER defaults ON. A query size narrows only on the candidate's size/name/title (empty here, so it narrows to nothing and PENDS). Otherwise, several distinct amounts PEND. 'NEVER smallest-wins'. The docstring names fragrancex 19.99 of {19.99..130.43} as the cheapest-pick defect.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\tests\\test_jsonld_shape_ladder.py",
+     "line": "34-41, 49-58",
+     "note": "The measured pends include the fragrancex page. Under the shipped configuration, multiplicity is an explicit outcome (CAPTURE_AMBIGUOUS_PRICE, price_service.py:12645-12651).",
+     "basis": "measured"
+    }
+   ],
+   "detail": "A FragranceX 'product' is a fragrance LINE, not a SKU. One URL mixes EDT/EDP/Parfum/after-shave/gift sets and 7 sizes. Its JSON-LD gives no default variant and no per-offer size, so under the live multiplicity policy it can never yield an exact-size price without a new DOM extractor. That extractor would have to parse coupon-decoy markup, against the CLAUDE.md:845-848 lesson that 'selection is the hard part'. Its spec facts (family, notes, perfumer, launch year, gender, available volumes) are good spine material. The description prose is FragranceX's copyrighted marketing copy: extracting facts is fine, but storing or serving the prose verbatim is not (inferred)."
+  },
+  {
+   "title": "How the code treats fragrancex.com today: off-registry, weight 0.5, any price is converted_usd (never genuine BH); there is no official/authorized/marketplace tier for it",
+   "severity": "info",
+   "evidence": [
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\source_router.py",
+     "line": "338-349, 954-973, 616-622",
+     "note": "Not in the literal rows (the global literals are amazon/apple/samsung/sony/lg/iherb/sephora/walmart/fragrantica/incidecoder/gsmarena). score_source returns 0.5 for unknown domains. registry_tier returns None for fragrancex.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\price_service.py",
+     "line": "16920-16954",
+     "note": "_is_genuine_bh_candidate: an off-registry host (None) CAN be genuine, but a 'converted' or 'estimated' label on source_method OR raw_data disqualifies it.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\structured_comparison_service.py",
+     "line": "2083-2150",
+     "note": "_curl_scraper labels the candidate page_scrape_jsonld. Only global-tier hosts are forcibly downgraded. With ENABLE_CONVERTED_PROVENANCE_STAMP (default OFF, CLAUDE.md:429) the extractor's converted_usd label is kept on the candidate; raw_data keeps it either way.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\CLAUDE.md",
+     "line": "371",
+     "note": "ENABLE_JSONLD_FIRST (default ON) relabels foreign-currency JSON-LD captures as converted (M13-07/08/40 live).",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\structured_comparison_service.py",
+     "line": "2560-2576, 7028-7031, 7965-7967",
+     "note": "The official/authorized split is a DISCOVERY route label (Serper site:official_domain vs a retailer query), not a per-host tier table. FragranceX can only arrive as an 'authorized'-route organic hit.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\extraction_service.py",
+     "line": "911-945",
+     "note": "The price prompt: 'MOST AUTHORITATIVE retail price, not the cheapest'. Priority is official > authorized (Nordstrom, Sephora...) > major GCC retailers > resellers. It rejects 'Any listing priced at <40% of typical retail for luxury/designer brands'. FragranceX advertises 'up to 80% off retail' (fixture line 3).",
+     "basis": "measured"
+    }
+   ],
+   "detail": "FragranceX is a US discount retailer. The current code would at best show its price as a converted, indicative figure. With the S79 audit's V02 green ticks on two fragrancex homepage links, nothing about it is wired in specially. It is never a Bahrain shelf price."
+  },
+  {
+   "title": "The L2 product cache is a poor bulk-import target: exact-identity keys, 'gpt' provenance stamp, and a 24h life for any converted price",
+   "severity": "medium",
+   "evidence": [
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\product_data_service.py",
+     "line": "1-31",
+     "note": "L1 Redis: specs 7d, prices 24h (genuine 7d), reviews 7d. L2 DB: specs 30d, prices 1d (genuine 7d via GENUINE_PRICE_DB_TTL), reviews 14d.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\product_data_service.py",
+     "line": "116-145, 148-197",
+     "note": "_price_row_fresh: non-genuine (converted/estimated) rows are fresh for only 24h. _select_price_row prefers the newest GENUINE row.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\product_data_service.py",
+     "line": "225-246, 389-409",
+     "note": "save_specs/save_reviews hard-code 'source': 'gpt'. An imported row would be mislabelled unless the writer is extended.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\migrations\\012_product_data_tables.sql",
+     "note": "product_specs/product_reviews UNIQUE(product_key); product_prices append-only, keyed (product_key, region), with currency/retailer/url/source_method/estimated columns.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\extraction_service.py",
+     "line": "2787-2800",
+     "note": "The specs key is generate_cache_key('specs', brand, base_name, base_variant, identity token) from the PARSER's brand/name/variant. A pre-seeded row only hits when an LLM-parsed user query reproduces the same key.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\structured_comparison_service.py",
+     "line": "6452-6468, 6720-6741",
+     "note": "Specs: L1 then L2 (get_cached_specs) by that key. Price: build_size_aware_price_cache_key(brand, name, variant, region, search_query, category), then L1, then L2 get_cached_price(cache_key, region), with _cache_price_identity_ok revalidation.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\price_service.py",
+     "line": "132-147",
+     "note": "L1 policy: converted_usd/estimated 24h; genuine 7d; negative 30d.",
+     "basis": "measured"
+    }
+   ],
+   "detail": "Writing a FragranceX dump straight into product_specs/product_prices would fail in four ways. The keys would rarely match the parser's keys. The rows would be labelled 'gpt'. The prices would go stale after 24h and lose to any genuine Bahrain row. And it would skip the identity-revalidation machinery. The '_vs_' comparison key (cache_service.py:724) is per pair and cannot be pre-seeded from a single-product catalog."
+  },
+  {
+   "title": "The spec spine is the designed 'ingest once, serve every compare' mechanism for fragrance facts. It already uses the FragranceX page as a fixture, but it is empty, dark, size- and concentration-split, and does not remove the live Serper/LLM round trip",
+   "severity": "medium",
+   "evidence": [
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\spec_spine_service.py",
+     "line": "1-75, 85-98, 116-130",
+     "note": "Fields served: scent_family, notes_top/heart/base, longevity, sillage, season, occasion, concentration. perfumer/launch_year/volume are excluded. Store data/spec_spine.json. ENABLE_SPEC_SPINE is read per call, default OFF.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\spec_spine_service.py",
+     "line": "210-242",
+     "note": "spine_key = cat|brand|identity|conc|ml. A different concentration or bottle size is a different row (migration 035 example 'fragrances|christian+dior|sauvage|EDP|100'). A sizeless, concentration-less line page like 'Sauvage Cologne' keys as ...|-|-, so it only serves an equally unqualified query.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\data\\spec_spine.json",
+     "note": "Contents: '{}' (4 bytes). The store ships empty.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\scripts\\seed_spec_spine.py",
+     "line": "1-41, 75",
+     "note": "Off-clock seeder over ALREADY-CACHED HTML (DEFAULT_CORPORA _proof/html, _proof/global/html), with one citation-or-omit LLM call per fragrance. It reads nothing from the network except OpenAI, and --dry-run makes zero calls.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\tests\\test_spec_spine_d2.py",
+     "line": "44-47, 384-390",
+     "note": "The fragrancex and perfume.com Sauvage pages are the two-page group the seeder must collapse into one candidate.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\migrations\\035_spec_spine.sql",
+     "line": "1-30",
+     "note": "NOT APPLIED. Supabase is consulted only if ENABLE_SPEC_SPINE and SPEC_SPINE_TABLE are both set.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\structured_comparison_service.py",
+     "line": "6470-6512",
+     "note": "On a spine hit the specs path STILL calls search_web(...) and extract_specs(..., skip_fields=...), then overlays the spine values. A hit reduces fabrication and prompt fields; it does not make the answer instant.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\CLAUDE.md",
+     "line": "349, 377",
+     "note": "M7 is seed-then-flip (the flag alone is INERT). Activation step (6) is 'Seed first, then flip ENABLE_SPEC_SPINE'.",
+     "basis": "measured"
+    }
+   ],
+   "detail": "The owner wants 'the brain to immediately have information'. For fragrance FACTS that brain already exists in code, gated by a flag, and it only needs seeding from a licensed or already-held corpus. Making it immediate would need a small follow-up unit: skip the specs LLM call when the spine covers every required field. That would be a new dark flag or a sub-mode, additive, with no client contract change (inferred)."
+  },
+  {
+   "title": "The warmers are the existing mechanism that makes a later search hit the cache at once, and they are what the fragrance pairs actually lack today",
+   "severity": "medium",
+   "evidence": [
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\scripts\\cron_warm_price_cache.py",
+     "line": "1-40, 66-94",
+     "note": "Off-clock genuine-BHD warmer (60s race, WARMER_CONTEXT veto). It writes the shared L1 price cache and L2 product_prices. Gated by ENABLE_PRICE_CACHE_WARMER, budget-bounded by MAX_QUERIES_PER_RUN at about 10-30 Serper credits per query.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\data\\warmer_catalog.json",
+     "note": "42 queries: 20 fragrances (6 KPI seeds such as 'YSL Black Opium Eau de Parfum 90ml', 6 designer pairs, 8 Gulf-house items such as Lattafa Khamrah / Armaf CDNIM / Rasasi Hawas), plus 12 electronics, 6 fashion, 3 haircare, 1 grocery. All region=bahrain.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\CLAUDE.md",
+     "line": "341",
+     "note": "ENABLE_PRICE_CACHE_WARMER is OFF; price-warmer service ENABLE_PRICE_CACHE_WARMER=false with SERPER_LIFETIME_LIMIT=2200 armed; watchPatterns restrict redeploys.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\scripts\\warm_kpi_truth.py",
+     "line": "1-16",
+     "note": "A one-off that WRITES to shared prod Upstash and product_prices (nocache bypasses the read, not the write).",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\scripts\\review_warmup.py",
+     "line": "1-16, 42-49",
+     "note": "Warms 6 curated pairs through the real /text/compare as admin (one fragrance pair: Tom Ford Tobacco Vanille vs Creed Aventus).",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-docs-70\\docs\\investigations\\2026-10-17-session-79-state\\APP_REVIEW_AUDIT_S79.md",
+     "line": "55",
+     "note": "L3-06: 5 of the 6 curated 'Popular comparisons' pairs ended partial at the 30s cap. Fix: swap to pairs that pass and add them to the scheduled warm-up (data file, no build).",
+     "basis": "measured"
+    }
+   ],
+   "detail": "The tester videos show missing images, empty 'why we chose' text and 'prices still updating'. A FragranceX dump addresses none of that for a Bahrain compare. A Bahrain-scoped warm list run off-clock is the documented lever, and it needs data files plus the owner's call on the Serper budget."
+  },
+  {
+   "title": "Web research: FragranceX has an affiliate program (CJ Affiliate, agency-managed) with a product catalog feed reported by directories; no public API; ToS automated-access clause not found; ships internationally per secondary sources",
+   "severity": "info",
+   "evidence": [
+    {
+     "file": "https://account.fmtc.co/cp/program_directory/details/m/4581 (via WebSearch snippet; direct fetch redirected / 404)",
+     "note": "FMTC directory snippet: 'FragranceX.com has the best product feed (for CJ Product Catalog subscribers)', 'optimized product data feed updated daily', manager Agency WITHIN, 8-12% commission (1-4% coupon/loyalty). The same listing reportedly says the merchant does not have a network Product Feed, so the sources conflict.",
+     "basis": "inferred"
+    },
+    {
+     "file": "https://www.flexoffers.com/affiliate-programs/fragrancex-com-affiliate-program",
+     "note": "Fetched: 'The payout is 4.8% on online purchases', '45-day cookie duration'. No product feed mentioned; status not stated; last updated Feb 3, 2025.",
+     "basis": "measured"
+    },
+    {
+     "file": "https://affi.io/m/fragrancex-com ; https://affi.io/m/closedfragrance-x-usa (WebSearch snippets)",
+     "note": "The CJ listing shows 'Country: CA Status: Opened'; the Webgains and ShareASale variants show closed.",
+     "basis": "inferred"
+    },
+    {
+     "file": "https://apify.com/viralanalyzer/cj-affiliate-products ; https://apis.io/plans/cj-affiliate/cj-affiliate-plans-pricing/ (WebSearch snippets)",
+     "note": "CJ publisher product access goes through the GraphQL product API with a personal access token, and per-advertiser product search requires a JOINED (approved) relationship. One SDK report disputes the endpoint, so it must be confirmed in CJ's developer portal.",
+     "basis": "inferred"
+    },
+    {
+     "file": "WebSearch 'site:fragrancex.com terms of use' and two variants",
+     "note": "FragranceX's Terms of Use was not indexed in any result (only FragranceNet's, a different company, Telescents Inc.). The cached page footer has no Terms link. The automated-access clause is UNKNOWN. I did not fetch fragrancex.com directly, to stay within the 3-request probe bound and because it is CF-walled.",
+     "basis": "measured"
+    },
+    {
+     "file": "https://www.osmoz.com/inspiration/questions-selections/518/is-fragrancex-legit ; https://en.fmyly.com/article/what-country-is-fragrancex/ ; https://basenotes.com/threads/fragrancex-overcharge.285034/ (WebSearch snippets)",
+     "note": "Secondary claims say FragranceX ships to '130' or '230+' countries (conflicting); free US ground shipping over $59; a forum user was charged in CAD. No source names Bahrain/GCC shipping, duties, or checkout currency.",
+     "basis": "inferred"
+    }
+   ],
+   "detail": "A partner/datafeed route plausibly exists (CJ Affiliate), but it needs a CJ publisher account, approval by the advertiser or agency, and acceptance of CJ's and the advertiser's terms. Those terms usually require tracked deep links and restrict use of the content to promoting the advertiser (inferred). Whether a Bahrain-based price-comparison publisher is accepted, and whether FragranceX actually ships fragrance (a flammable dangerous good) to Bahrain, are unverified."
+  },
+  {
+   "title": "App Store and legal exposure: bulk third-party images and descriptions without a licence deepens the open 5.2.2 finding; an affiliate route also needs a Terms change through the U8 machinery",
+   "severity": "medium",
+   "evidence": [
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-docs-70\\docs\\investigations\\2026-10-17-session-79-state\\APP_REVIEW_AUDIT_S79.md",
+     "line": "53",
+     "note": "L4-01: Guideline 5.2.2 'ensure that you are specifically permitted to do so under the service's terms of use'. The preferred fix serves images only from the retailer page the price was scraped from, or a placeholder. The owner confirms 'no content partnerships'.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\structured_comparison_service.py",
+     "line": "6080-6090",
+     "note": "Tier 1.5 piggyback: the price tier's page image (og:image / JSON-LD image) overrides Serper/GPT images.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\image_service.py",
+     "line": "214-287",
+     "note": "The image cascade: Tier 1.5 page, then 1.5b search payload, then 1 Serper Images, then 3 GPT, then None. No persistent image store exists.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\CLAUDE.md",
+     "line": "17",
+     "note": "Published legal text changes only through the U8 machinery (scripts/fill_in_legal.py, pins), never by hand.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app",
+     "note": "grep -i 'affiliate' finds 0 hits in app/*.py and in app/legal/terms_of_service.md. There is no affiliate-link handling or disclosure today.",
+     "basis": "measured"
+    }
+   ],
+   "detail": "Hotlinking or storing img.fragrancex.com images and FragranceX descriptions in our DB, while build 3 is in review, adds exactly the third-party-content exposure the S79 audit wants reduced. A CJ publisher agreement would be the only documented permission basis. It would bring an affiliate-disclosure obligation and a Terms change (inferred)."
+  },
+  {
+   "title": "Does bulk US-discounter data help a Bahrain user? For price, no. For identity, specs and images, partially, and only with a licence",
+   "severity": "info",
+   "evidence": [
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\CLAUDE.md",
+     "line": "5",
+     "note": "Product purpose: comparison for the GCC market (Bahrain, KSA, UAE, Kuwait, Qatar, Oman).",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\price_service.py",
+     "line": "3108-3153, 807",
+     "note": "apply_region_currency_guard (ENABLE_REGION_CURRENCY_GUARD default OFF, goes LAST per CLAUDE.md:375) pends a price whose currency label differs from the region currency. A USD amount converted to BHD passes it only as a converted label.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\price_service.py",
+     "line": "16889-16918, 16957-16970",
+     "note": "_GENUINE_BH_SOURCE_METHODS and _select_best: a genuine Bahrain price beats a converted one regardless of rank or price ('MOST AUTHORITATIVE not lowest').",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\CLAUDE.md",
+     "line": "866-873",
+     "note": "Free curl_cffi already prices 84% of the 94 live Gulf fragrance sources, so Bahrain-relevant price coverage comes from GCC stores, not US discounters.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-scraper-proof\\_proof\\global\\html\\8a3824947e0844b86fc9d1a33822ff979ff59ab5.html",
+     "note": "The currency selector lacks BHD and AED. The prices are US discount prices with coupon variants.",
+     "basis": "measured"
+    }
+   ],
+   "detail": "For a Bahraini buyer, a FragranceX USD price is not a purchasable shelf price. Landed cost adds international shipping of a flammable good (often restricted or surcharged), Bahrain import VAT (10%) and customs duty (GCC common tariff, about 5%) (inferred, not verified). The 'up to 80% off' grey-market price is the cheapest, not the most authoritative, figure, the very pattern the price prompt and _select_best refuse. Showing it beside a genuine Bahrain price would also skew winner_index and value scoring. Its facts (notes, family, launch year, gender, sizes, canonical names) are region-independent and would help the spec spine, the identity matcher and possibly images. That makes it a spec-spine and identity source, not a price source."
+  },
+  {
+   "title": "Option A - full catalog crawl on a schedule: REJECTED (robots unreadable, challenge does not clear, policy forbids circumvention)",
+   "severity": "high",
+   "evidence": [
+    {
+     "file": "(live probe 2026-10-19)",
+     "note": "3/3 GETs returned 403 cf-mitigated: challenge.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\docs\\policies\\2026-08-31-robots-unreadable-ruling.md",
+     "line": "3-20",
+     "note": "Fail-closed: skip the host.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-scraper-proof\\_proof\\_w_fx_sitemap.xml",
+     "note": "Scale if it were ever allowed: at least 7,513 PDP URLs in the one cached child. At about 495 KB per PDP that is about 3.7 GB per pass, about 4.6 h single-threaded at the ruling's 2.2 s per host throttle (arithmetic on measured inputs).",
+     "basis": "inferred"
+    }
+   ],
+   "detail": "Cost: engineering for a new non-Gulf crawler tier, a size-binding DOM extractor, plus a paid unblocker or renderer per page (Scrape.do super / Zyte / Bright Data unlocker) to pass the managed challenge. Compliance: violates the owner's fail-closed ruling and the 'do not fight defended sites' precedent (Fragrantica, perfume.com). The ToS stance is unknown. It adds App Store 5.2.2 exposure. Value: low. The prices are USD, ambiguous and grey-market; the facts duplicate what a licensed feed would give legally."
+  },
+  {
+   "title": "Option B - affiliate/partner datafeed import (CJ): FEASIBLE ONLY AS AN OWNER AND LEGAL TRACK; additive and dark if built",
+   "severity": "medium",
+   "evidence": [
+    {
+     "file": "https://account.fmtc.co/cp/program_directory/details/m/4581 (snippet)",
+     "note": "A CJ Product Catalog feed is reported, updated daily (conflicting directory data).",
+     "basis": "inferred"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app (grep ENABLE_*)",
+     "note": "139 distinct ENABLE_* names in app/. None covers a partner, affiliate or feed import (only ENABLE_BH_GCC_CATALOG_SOURCES = registry loader, ENABLE_SPEC_SPINE, ENABLE_SITEMAP_*, ENABLE_PRICE_CACHE_WARMER, ENABLE_SEARCH_DESCRIPTOR). A new dark flag would be needed.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\migrations\\035_spec_spine.sql",
+     "note": "An existing unapplied table design keyed by spine_key could take feed-derived facts, so no new spec schema is needed.",
+     "basis": "measured"
+    }
+   ],
+   "detail": "Cost: $0 network fees (CJ is free to publishers). Owner time to open a CJ publisher account and apply to the FragranceX program (agency-managed). Engineering about 2 units: (a) an off-clock importer script writing feed rows to a NEW table (e.g. a partner_catalog keyed by GTIN/SKU and spine_key) behind a new default-OFF flag; feed descriptions run through the existing seed_spec_spine citation-or-omit path to fill data/spec_spine.json or table 035; (b) optional identity and image use. Compliance: the feed is licensed only under CJ's and the advertiser's terms. Read them for: tracked links mandatory, price-comparison or shopping-engine use allowed, publisher country (Bahrain) allowed, image/description use scope, refresh obligations. It also needs an affiliate disclosure through the U8 legal machinery. Value: identity, specs and images for about 15k SKUs. Prices only as converted_usd 'reference' rows that expire in 24h and never outrank a genuine Bahrain price. Nothing touches the build-3 response contract if the importer only feeds the spine and the cache."
+  },
+  {
+   "title": "Option C - on-demand L2 promotion plus a curated fragrance warm list (existing mechanisms): RECOMMENDED NOW",
+   "severity": "medium",
+   "evidence": [
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\data\\warmer_catalog.json",
+     "note": "Has 20 fragrance queries today. Extending it is a data-file change.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\scripts\\seed_spec_spine.py",
+     "line": "36-41",
+     "note": "'--dry-run --dump-candidates' costs $0. The real run needs OPENAI_API_KEY and costs one completion per fragrance.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\CLAUDE.md",
+     "line": "222, 341, 377",
+     "note": "L1/L2 promotion is already live on every compare. The warmer flag is OFF, needs paid Serper, and has a fixed activation order for the spine.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-docs-70\\docs\\investigations\\2026-10-17-session-79-state\\APP_REVIEW_AUDIT_S79.md",
+     "line": "55",
+     "note": "Curated pairs must be swapped for passing pairs and added to the scheduled warm-up.",
+     "basis": "measured"
+    }
+   ],
+   "detail": "Cost: Serper at about 10-30 credits per warm query (cron_warm_price_cache.py:96-103 estimate of 30) times the list size per rotation; OpenAI once per fragrance for the spine; no new infrastructure. Compliance: within every existing ruling (Gulf hosts, robots-gated, off-clock, cached-corpus seeding, no Fragrantica or Parfumo). Value: highest for Bahrain users, giving genuine BHD prices served from cache (7d genuine TTL) for the fragrances people actually compare, cited specs, and retailer-page images. Constraints: during App Review, no flag flips without the owner. The price-warmer service flag and Serper budget are the owner's call. Seeding the spine is data-only, and ENABLE_SPEC_SPINE stays OFF until seeded and canaried (step 6 of the CLAUDE.md:377 runbook)."
+  }
+ ],
+ "recommendations": [
+  "Do NOT build or run a FragranceX crawler (Option A). Robots.txt, sitemap and PDP all return 403 cf-mitigated: challenge (probe 2026-10-19), and the owner's 2026-08-31 fail-closed ruling skips any host with an unreadable robots.txt. Record FragranceX next to www.perfume.com as 'skipped, re-read on schedule' rather than adding any challenge-solving path.",
+  "Answer the owner plainly: FragranceX is a US discount store pricing in USD. Its currency list has no BHD or AED, and its 'up to 80% off' grey-market prices are the 'cheapest, not most authoritative' figure the app refuses. Even if we held its whole catalog, a Bahrain compare could only show it as a converted reference price that expires in 24h and loses to any Bahrain shelf price. What it could add (notes, family, sizes, names, images) needs a licence.",
+  "Option C now (data and off-clock only, no client change, frozen contract untouched). (1) Extend data/warmer_catalog.json with the fragrances the tester videos and the 'Popular comparisons' list use: JPG Le Male Elixir/Parfum, Lattafa, Armaf, Rasasi, Afnan and Al Haramain lines. Keep region=bahrain and size-qualified queries so the size-aware price key matches. (2) Run scripts/seed_spec_spine.py --dry-run --dump-candidates over the existing _proof corpora to size the spine at $0, then a real seed run with the owner's approval of OpenAI spend. (3) Swap data/trending_curated.json to pairs that pass review_warmup.py (S79 L3-06). Leave ENABLE_PRICE_CACHE_WARMER, ENABLE_SPEC_SPINE and ENABLE_SITEMAP_INDEX OFF until the owner rules after App Review. Activation follows the CLAUDE.md:377 order: seed first, then flip the spine alone.",
+  "Option B as a parallel owner and legal track, not engineering yet. The owner opens a CJ Affiliate publisher account and applies to the FragranceX program (agency-managed per the FMTC listing). Counsel then reads the CJ publisher service agreement and the advertiser terms for: Bahrain publisher eligibility, price-comparison use, image and description licence scope, mandatory tracked links, and refresh obligations. Only after approval, spec one additive unit: an off-clock importer behind a NEW default-OFF flag (no existing ENABLE_* covers it), writing to a new table, feeding descriptions through the seed_spec_spine citation-or-omit path. Prices from the feed stay converted_usd reference rows, never genuine and never ranked above a Bahrain price. An affiliate disclosure must go through the U8 legal machinery.",
+  "If 'immediately has information' is the goal, scope a follow-up unit (dark flag, additive). Today a spec-spine hit still pays search_web plus extract_specs (structured_comparison_service.py:6470-6489). A sub-mode that skips the specs LLM call when the spine covers every required fragrance field would cut cost and latency without any response-shape change. Pin it with a flag-OFF byte-identity test.",
+  "Do not bulk-insert into product_specs/product_prices/product_reviews directly. The keys are exact parser-identity keys (extraction_service.py:2787-2800), save_specs and save_reviews stamp source='gpt' (product_data_service.py:239, :403), and converted price rows expire after 24h (product_data_service.py:116-145). The spine (spine_key identity) or a new partner table is the right target.",
+  "Cross-link to MYEZ-005/006 (V02): FragranceX PDPs are now CF-walled from our egress, so a pasted FragranceX URL cannot be extracted. The URL path should surface a distinct 'unsupported_store / unreadable_store' outcome instead of green ticks. That belongs to the URL-validation surface and must be additive and dark while build 3 is in review.",
+  "Keep images out of any FragranceX ingestion until a licence exists. The S79 App Review audit item L4-01 (Guideline 5.2.2) already flags third-party images. The preferred posture is retailer-page images (the Tier 1.5 piggyback) or the placeholder.",
+  "Owner-only, outside this unit: if the owner wants the FragranceX status re-checked later, run one named-UA (QarenBot) robots read per the ruling's scheduled re-read, never a browser-impersonated crawl, and log the result in the session ledger."
+ ],
+ "open_questions": [
+  "What does FragranceX's Terms of Use say about automated access, data mining and price comparison? It was not indexed by search, has no link in the cached page footer, and the site is CF-walled, so it was not fetched. It needs a manual read in a normal browser by the owner.",
+  "Is the FragranceX CJ program currently open, and does it give publishers a product catalog feed? Directories conflict: FMTC says 'best product feed (for CJ Product Catalog subscribers)', and reportedly also 'no network Product Feed'. Does it accept a Bahrain-based price-comparison publisher, and what image and description licence does it grant?",
+  "Does FragranceX ship fragrance to Bahrain, in which currency is a Bahrain customer charged, and are duties prepaid? Secondary sources say 130 or 230+ countries; nothing names Bahrain. The cached currency selector has no BHD.",
+  "How many child sitemaps does /sitemap_index.xml list? Only one cached child of 7,513 PDP URLs was measured. The full catalog size (FMTC says about 15,000 brands and products) is unverified.",
+  "Would a named-UA (QarenBot) robots read be treated differently from the chrome-impersonated probe? Not tested, to stay within the 3-request bound. The ruling's compliant reader is the named UA (sitemap_discovery_service.py:383-389).",
+  "Is the owner's goal mainly fragrance FACTS (spine), IMAGES (5.2.2-sensitive), or a PRICE reference? The answer decides whether Option B is worth the legal work.",
+  "Should the Serper budget for an extended warm list (about 30 credits per query per rotation) be approved during App Review, given price-warmer SERPER_LIFETIME_LIMIT=2200 is armed and ENABLE_PRICE_CACHE_WARMER=false (CLAUDE.md:341)?"
+ ],
+ "sources": [
+  "live probe 2026-10-19 (3 read-only GETs, curl_cffi 0.14.0 impersonate=chrome): https://www.fragrancex.com/robots.txt, https://www.fragrancex.com/sitemap.xml, https://www.fragrancex.com/products/christian-dior/sauvage-cologne",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\tests\\fixtures\\spec_spine_d2\\us_fragrancex_com_dior_sauvage_cologne.html",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\tests\\fixtures\\spec_spine_d2\\SOURCES.json",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\tests\\test_spec_spine_d2.py",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\tests\\test_jsonld_shape_ladder.py",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\price_service.py",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\structured_comparison_service.py",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\source_router.py",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\robots_eval.py",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\sitemap_discovery_service.py",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\product_data_service.py",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\spec_spine_service.py",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\image_service.py",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\extraction_service.py",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\scripts\\cron_index_sitemaps.py",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\scripts\\cron_warm_price_cache.py",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\scripts\\warm_kpi_truth.py",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\scripts\\review_warmup.py",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\scripts\\seed_spec_spine.py",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\data\\warmer_catalog.json",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\data\\spec_spine.json",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\data\\search_descriptors.json",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\migrations\\012_product_data_tables.sql",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\migrations\\035_spec_spine.sql",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\docs\\policies\\2026-08-31-robots-unreadable-ruling.md",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\CLAUDE.md (lines 5, 17, 222, 341, 348-349, 367, 371, 375, 377, 429, 824-873)",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-scraper-proof\\_proof\\global\\_us_robots.json",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-scraper-proof\\_proof\\global\\corpus.json",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-scraper-proof\\_proof\\_w_fx_sitemap.xml",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-scraper-proof\\_proof\\global\\html\\8a3824947e0844b86fc9d1a33822ff979ff59ab5.html",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-docs-70\\docs\\investigations\\2026-10-17-session-79-state\\APP_REVIEW_AUDIT_S79.md (lines 53, 55)",
+  "C:\\Users\\SynAckITPC\\.claude\\uploads\\ae650c83-4d2a-4910-a8d4-a47ab213c8c3\\d20a7872-MYEZ_QA_UX_Audit_2026-10-18.md (lines 16, 24, 61, 203)",
+  "https://account.fmtc.co/cp/program_directory/details/m/4581",
+  "https://www.flexoffers.com/affiliate-programs/fragrancex-com-affiliate-program",
+  "https://affi.io/m/fragrancex-com",
+  "https://affi.io/m/closedfragrance-x-usa",
+  "https://linkclicky.com/affiliate-program/fragrancex-com/",
+  "https://apify.com/viralanalyzer/cj-affiliate-products",
+  "https://apis.io/plans/cj-affiliate/cj-affiliate-plans-pricing/",
+  "https://www.osmoz.com/inspiration/questions-selections/518/is-fragrancex-legit",
+  "https://en.fmyly.com/article/what-country-is-fragrancex/",
+  "https://basenotes.com/threads/fragrancex-overcharge.285034/",
+  "https://www.fragrancenet.com/help/terms_of_use (different company; not FragranceX)"
+ ]
+}

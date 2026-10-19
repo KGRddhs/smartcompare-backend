@@ -1,0 +1,664 @@
+{
+ "category": "SURFACE H - OpenAI integration and LLM provider seam",
+ "summary": "Code root: C:/Users/SynAckITPC/Documents/AI/sc-s80-base (origin/main 683f56c0). Every LLM call uses the openai 3.3.1 AsyncOpenAI `chat.completions.create`. There are 15 dispatch sites, and all of them go through `api_budget_service.guarded_llm_create` (`store=False`, cost ledger, an optional breaker). The only other OpenAI surface is `moderations.create`. Nothing uses the Responses API or Structured Outputs (`json_schema`), and no code anywhere in app/ reads `finish_reason` or `refusal`. Six sites use JSON mode; the rest parse prose JSON after stripping a code fence. Vision input is a base64 data URI with `detail` set to `auto`. I verified the SDK surface against the pinned 3.3.1 source, which is installed in C:/Users/SynAckITPC/Documents/AI/.venv-qaren (the system Python has 2.21.0). I checked the Anthropic call shapes and model ids with context7 (/anthropics/anthropic-sdk-python). The anthropic package is not installed or pinned.\n\nThe concrete flaws that map to the user's complaint (\"camera can't spot products, pictures or info missing\") and to the audit:\n- (a) The vision prompt asks the model to guess products from shape, and the confidence it returns is never used afterwards (MYEZ-001).\n- (b) \"Unknown\" / \"Unknown Product\" placeholder identities are created and then compared as if real (MYEZ-002).\n- (c) If the vision reply is a JSON object instead of a bare array, it is silently turned into zero products.\n- (d) A None or refusal reply crashes the camera route with a 500. A truncated verdict silently becomes the degraded verdict.\n- (e) The Tier-3 image call can return invented or non-image URLs, because the validator only checks for an http(s) prefix (MYEZ-014).\n- (f) Output language is only requested for the verdict, only behind the dark flag `ENABLE_ARABIC_VERDICT_OUTPUT`, and the camera and URL routes never pass `lang` (MYEZ-016).\n- (g) The URL extractor prompt forces a product shape onto any page, including homepages (MYEZ-005).\n- (h) The targeted spec fill tells the model to use its training data, and the values are merged as if they were retrieved (MYEZ-003).\n\nExisting dark flags already cover part of this: `ENABLE_ARABIC_VERDICT_OUTPUT`, `ENABLE_SPECS_NO_FABRICATION`, `ENABLE_PRICE_FALLBACK_MAY_DECLINE`, `ENABLE_VERDICT_PROMPT_TRUTH`, `ENABLE_LLM_PREFLIGHT_BREAKER`. No flag exists for vision confidence or schema, the Tier-3 image grounding, the URL not-a-product check, or an Anthropic provider.\n\nThe proposed provider seam is a lazy adapter registry: `LLM_PROVIDER` (default `openai`), plus a new dark `ENABLE_ANTHROPIC_PROVIDER` that also requires `ANTHROPIC_API_KEY` to be present. Any other selection fails closed with a typed `LLMProviderNotConfigured(LLMUnavailableError)`, which the camera route already maps to 503 `LLM_UNAVAILABLE`. With the provider unset, the OpenAI branch stays byte-identical, so the prompt-digest, `SHIPPED`-kwargs and `store` pins hold.",
+ "findings": [
+  {
+   "title": "Call-style inventory: chat.completions only, JSON mode on 6 sites, prose-JSON elsewhere, no Structured Outputs, no Responses API",
+   "severity": "info",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/requirements.txt",
+     "line": "97, 66, 75",
+     "note": "openai==3.3.1 is pinned. httpx2==2.12.0 comes in 'via openai', alongside the app's own httpx==0.28.1.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/api_budget_service.py",
+     "line": "954-1035",
+     "note": "`guarded_llm_create` is the single chat chokepoint. It forces `store=False` (980-983); with the breaker flag OFF it does a bare `client.chat.completions.create(**kwargs)` (984-987); every served response is recorded on the cost ledger (986, 1032).",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/openai_service.py",
+     "line": "304, 379, 441",
+     "note": "`response_format={'type':'json_object'}` on `extract_specs_targeted`, `extract_specs_synthesized` and `disambiguate_variant_line`.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/extraction_service.py",
+     "line": "2659, 2696, 1790",
+     "note": "JSON mode on the verdict, both the primary call and the fallback. The price fallback gets JSON mode only when `ENABLE_PRICE_FALLBACK_MAY_DECLINE` is ON.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/verdict_critique_service.py",
+     "line": "183, 186-191",
+     "note": "The critic uses JSON mode and checks for empty content before `json.loads`. This is the best-validated site.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/extraction_service.py",
+     "line": "1535-1549, 1593-1599, 1752-1764, 1801-1812, 1857-1863, 1396-1397",
+     "note": "These sites parse prose JSON with a crude fence strip, `result.split('```')[1]`: parse, specs, price, price fallback, reviews. `classify_category_llm` reads plain text.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/openai_service.py",
+     "line": "177-183, 186-194",
+     "note": "Vision sends `{type:'image_url', image_url:{url:'data:<mime>;base64,...', detail:'auto'}}` with `max_tokens` 500 and temperature 0 through `model_config` shims. It uses the import-time module `client`, not `get_client()`.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_model_config_enforced.py",
+     "line": "228-241",
+     "note": "Shipped kwargs per site, per this pin: classify 10 tokens / T 0.0; parse 500/0.1; specs 1000/0.1; price 300/0.1; price fallback 200/0.2; reviews 600/0.2; targeted 200/0.1 (JSON); synth gpt-4o 300/0.1 (JSON); disambig 60/0 (JSON); image tier3 120/0.1; URL 800/0.1; critic 150/0.0 (JSON). The verdict is gpt-4o, 1000 tokens, T 0, JSON (fixture `verdict_kwargs`).",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/.venv-qaren/Lib/site-packages/openai/types/chat/completion_create_params.py",
+     "line": "474",
+     "note": "The pinned SDK's `ResponseFormat` union already includes `ResponseFormatJSONSchema`, so Structured Outputs is available on 3.3.1 but unused. `chat.completions.create` takes `max_completion_tokens`, `max_tokens`, `response_format`, `store` and `temperature` (resources/chat/completions/completions.py:263-284).",
+     "basis": "measured"
+    }
+   ],
+   "detail": "No call site anywhere in app/ uses `responses.create`, `chat.completions.parse` or `json_schema`. A grep for finish_reason / refusal / json_schema / `.parse(` / `responses.create` hits only the model_config.py docstring. JSON mode cannot return a bare array, which is why the vision call (which asks for an array) is unconstrained."
+  },
+  {
+   "title": "Retry, timeout, 429 and breaker handling as shipped",
+   "severity": "info",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/openai_service.py",
+     "line": "33-37, 55-59",
+     "note": "There are two AsyncOpenAI builds: an import-time singleton and a memoised `get_client()`. Both use `httpx.Timeout(120.0, connect=30.0)` and `max_retries=openai_max_retries()`.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/extraction_service.py",
+     "line": "64-85, 2661-2699, 1365, 1384-1395",
+     "note": "`extraction_service` has its own lazy client. The verdict falls back to the standard model when `str(exception)` contains '429', 'rate' or 'quota', using `with_options(max_retries=openai_fallback_max_retries())`. `classify_category_llm` is the only call wrapped in `asyncio.wait_for` (`CLASSIFY_LLM_TIMEOUT` 4.0 s).",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/model_config.py",
+     "line": "184-205",
+     "note": "`OPENAI_MAX_RETRIES` defaults to 2 (the SDK default). `OPENAI_FALLBACK_MAX_RETRIES` inherits it. `verdict_chain_max_attempts` = (1+max) + (1+fallback).",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/CLAUDE.md",
+     "line": "578",
+     "note": "Recorded as done on Railway `web`: `OPENAI_MAX_RETRIES=1` and `OPENAI_FALLBACK_MAX_RETRIES=0`.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/api_budget_service.py",
+     "line": "692, 702-717, 907-931",
+     "note": "`ENABLE_LLM_PREFLIGHT_BREAKER` defaults OFF and is read per call. `LLMUnavailableError`'s message deliberately avoids the 429/rate/quota substrings. The transient classifier counts `RateLimitError`, `APIConnectionError` (which includes `APITimeoutError`), `InternalServerError`, 5xx and `TimeoutError`.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/CLAUDE.md",
+     "line": "690",
+     "note": "This is the only breaker row: default OFF, with no flip recorded. The row's line refs (:709/:712) have drifted; the code now has the def at 712 and the getenv at 715.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/.venv-qaren/Lib/site-packages/openai/_base_client.py",
+     "line": "857-864",
+     "note": "The pinned SDK retries every 429, including insufficient_quota and credit_balance_exhausted, unless the server sends `x-should-retry: false`. It also retries 408, 409 and 5xx. `DEFAULT_MAX_RETRIES=2` (_constants.py:8).",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/api/image_routes.py",
+     "line": "310-329",
+     "note": "Camera: `LLMUnavailableError` or a transient SDK error becomes 503 `{code:'LLM_UNAVAILABLE'}`. Any other exception becomes a 500 with 'Image analysis failed'.",
+     "basis": "measured"
+    }
+   ],
+   "detail": "Prompt-level output language: the only directive is `_ARABIC_OUTPUT_DIRECTIVE` (extraction_service.py:2298), appended at 2581-2583. See the language finding."
+  },
+  {
+   "title": "Vision prompt invites shape-only guesses, and the returned confidence is never consulted (MYEZ-001)",
+   "severity": "high",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/openai_service.py",
+     "line": "152",
+     "note": "The prompt says: 'Identify products even WITHOUT packaging: use shape, color, logo, design cues (confidence=\"low\")'.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/openai_service.py",
+     "line": "221",
+     "note": "`confidence` is passed through, defaulting to 'medium', and nothing validates it.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/api/image_routes.py",
+     "line": "398-450",
+     "note": "With two or more products the route auto-compares products[0] against products[1]. No confidence check happens; 'confidence' does not appear anywhere in image_routes.py.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/structured_comparison_service.py",
+     "line": "4210-4224",
+     "note": "Only brand, name and size_or_count reach the compare. Confidence is dropped.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/services/api.ts",
+     "line": "269-273",
+     "note": "The client downsizes every photo to 1024 px wide JPEG at compress 0.8 before upload. The default vision model is gpt-4o-mini (model_config `_ROLE_DEFAULTS`).",
+     "basis": "measured"
+    }
+   ],
+   "detail": "A low-confidence guess from bottle shape (the V04 watch and violin) becomes a product that gets compared and given a winner. Label OCR at 1024 px on gpt-4o-mini with `detail:auto` is a plausible cause of the 'camera can't spot products' complaint (inferred). The vision prompt also has no guidance for Arabic-script labels (e.g. AL IBDAA) or for transliteration; the name is returned however the model reads it (inferred risk for downstream search). An existing env-only knob, `OPENAI_MODEL_VISION`, can move vision to gpt-4o after a smoke test."
+  },
+  {
+   "title": "Placeholder identities 'Unknown' / 'Unknown Product' are created and compared as real products (MYEZ-002)",
+   "severity": "high",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/openai_service.py",
+     "line": "217-218",
+     "note": "`brand: p.get('brand') or 'Unknown'` and `name: p.get('name') or 'Unknown Product'`.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/structured_comparison_service.py",
+     "line": "4213-4214, 4851-4852",
+     "note": "The vision pair builds a search query from the placeholder defaults.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/url_extraction_service.py",
+     "line": "527",
+     "note": "The URL path sets `title = raw.get('title') or raw.get('full_title') or 'Unknown Product'`.",
+     "basis": "measured"
+    }
+   ],
+   "detail": "Missing fields are filled with literal placeholders instead of setting a needs-identification state. The pipeline then searches for and scores 'Unknown Product', which matches V09 (both cards 'Unknown Product' with a green winner). The fix should drop or flag placeholder entries before the compare, reusing the existing `action:'error'` / `need_second_product` camera shapes so the frozen contract is untouched."
+  },
+  {
+   "title": "Vision parse silently drops a non-array JSON reply to zero products",
+   "severity": "high",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/openai_service.py",
+     "line": "155-156, 201-215",
+     "note": "The prompt demands a bare JSON array. After `json.loads`, `for p in (products if isinstance(products, list) else [])` throws away a `{\"products\":[...]}` object without a log line.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/api/image_routes.py",
+     "line": "412-421",
+     "note": "Zero products returns 'No products could be identified in the image(s). Try a clearer photo.' The user is blamed for a parser shape mismatch.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/openai_service.py",
+     "line": "216",
+     "note": "`p.get(...)` on a non-dict element (e.g. a string) raises AttributeError outside any try. The route turns it into a 500.",
+     "basis": "measured"
+    }
+   ],
+   "detail": "JSON mode cannot enforce an array, so the call runs unconstrained. The pinned SDK supports `json_schema` (completion_create_params.py:474), so a schema `{products:[{brand,name,size_or_count,visible_price,confidence,category}]}` with `strict` would remove this whole class of failure. How often models wrap the array in an object is not measured (inferred)."
+  },
+  {
+   "title": "No finish_reason or refusal handling anywhere: None content crashes vision with a 500; a truncated verdict silently degrades",
+   "severity": "medium",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/.venv-qaren/Lib/site-packages/openai/types/chat/chat_completion_message.py",
+     "line": "60, 63",
+     "note": "In 3.3.1, `content: Optional[str]` and `refusal: Optional[str]`. `finish_reason` can be 'length' or 'content_filter' (types/chat/chat_completion.py:40).",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/openai_service.py",
+     "line": "198-199, 96-98",
+     "note": "`clean_json_response(raw_content)` calls `.strip()` on None, raising AttributeError outside the try. The camera route sees a non-transient error and returns 500.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/extraction_service.py",
+     "line": "2649, 2706-2712, 2771-2773",
+     "note": "The verdict is capped at 1000 tokens. `content.strip()` and `json.loads` run with no `finish_reason` check, and any failure returns `{'winner_index':0,'error':'verdict generation unavailable'}`, which is the degraded HTTP 200.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/extraction_service.py",
+     "line": "2581-2583",
+     "note": "The Arabic directive asks for every prose field in MSA under the same 1000-token cap.",
+     "basis": "measured"
+    }
+   ],
+   "detail": "I infer that a 'length' cut-off of the JSON-mode verdict, which is more likely with Arabic prose, yields invalid JSON. That produces the degraded verdict with an empty 'why we chose' (V03 / MYEZ-017). No `finish_reason` is logged, so this cannot be confirmed from production logs today. Recommendation: log `finish_reason` and `refusal` at every site (additive, unflagged log-only), and treat 'length' on the verdict as a distinct, counted failure."
+  },
+  {
+   "title": "Tier-3 image GPT can return fabricated or non-image URLs; the validator checks only the http(s) prefix (MYEZ-014)",
+   "severity": "high",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/image_service.py",
+     "line": "161-165",
+     "note": "The model is only shown page links and snippets (`- {link}: {snippet}`). No image URLs are given to it.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/image_service.py",
+     "line": "126-143",
+     "note": "The prompt asks for a URL ending in .jpg/.png/.webp or 'a recognized image CDN URL'. 'Do not fabricate' is advisory only.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/image_service.py",
+     "line": "52-57, 204-207",
+     "note": "`_is_valid_image_url` accepts any string starting with http:// or https://. The candidate is never checked against the links it was given. `parsed.get` on a non-dict sits outside the local try (the orchestrator catches it).",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/structured_comparison_service.py",
+     "line": "5748",
+     "note": "The image leg's Phase-1 timeout is 5.0 s (Serper Images plus the Tier-3 GPT fallback).",
+     "basis": "measured"
+    }
+   ],
+   "detail": "A page URL or an invented URL is served as `image_url`, and the app then renders a broken or missing picture. I infer this contributes to 'the app doesn't show pictures sometimes'. Separately, Serper is dead by configuration on `web` (api_budget_service.py:633), so organic results are often absent and Tier 3 has nothing to choose from (inferred, a cross-surface matter). The fix belongs behind a new dark flag: accept only a URL that appears verbatim in the provided results' image fields, or drop the tier."
+  },
+  {
+   "title": "Output language is requested only for the verdict, only when lang=ar plus a dark flag; camera and URL routes never pass lang (MYEZ-016)",
+   "severity": "high",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/extraction_service.py",
+     "line": "2280-2298, 2581-2583",
+     "note": "`arabic_verdict_output_enabled()` reads `ENABLE_ARABIC_VERDICT_OUTPUT`, and the directive is appended only when `output_lang == 'ar'`.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/CLAUDE.md",
+     "line": "624",
+     "note": "Flag row: MERGED #243, dark.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-10-session-76-state/ASC_SUBMISSION_PACKET_S76.md",
+     "line": "31",
+     "note": "Says verdict, spec and review prose stays English, with `ENABLE_ARABIC_VERDICT_OUTPUT` dark. The S79 audit (APP_REVIEW_AUDIT_S79.md:309) lists its prod state as unverified.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/api/image_routes.py",
+     "line": "450",
+     "note": "`compare_from_text(query, region=region, vision_products=products, nocache=nocache)` passes no `output_lang`. A grep for 'lang' in image_routes.py and url_routes.py finds nothing; only text_routes.py:646/857/1108 pass it.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/extraction_service.py",
+     "line": "88-94, 1417-1460",
+     "note": "Every GCC_REGIONS entry has lang 'en'. `category_profile` labels are hardcoded English (`_CATEGORY_PROFILE_LABEL_OVERRIDES`). The specs, reviews, parse and classify prompts carry no language directive.",
+     "basis": "measured"
+    }
+   ],
+   "detail": "Even after the flag flips, camera and URL verdicts stay English. Spec and review prose and the profile labels are English in every path. A fix is additive: an optional `lang` on the camera form and query, and on the URL request, threaded as a conditional kwarg exactly like text_routes. That reaches phones only after an OTA, which is not allowed before approval. Translating the spec and review prose is a separate unit and needs a new flag."
+  },
+  {
+   "title": "URL extraction prompt forces a product shape onto any page, including storefront homepages (MYEZ-005)",
+   "severity": "medium",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/url_extraction_service.py",
+     "line": "354-383",
+     "note": "The schema requires `\"name\": \"product name\"`. There is no `is_product_page` field and no instruction to decline a homepage, category page or search page.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/url_extraction_service.py",
+     "line": "447-459",
+     "note": "There is no `response_format`. The reply is parsed by fence strip plus `json.loads`, and any failure returns `{'error': str(e)}`.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/price_service.py",
+     "line": "12940-12990",
+     "note": "A not-a-PDP classifier already exists (`ENABLE_NOT_A_PDP_FILTER`, default OFF), scoped to the price path. It is a candidate for reuse before the URL LLM call.",
+     "basis": "measured"
+    }
+   ],
+   "detail": "I infer that the fragrancex.com homepage (V02) yields an invented 'product', or an 'Unknown Product' via url_extraction_service.py:527. Recommend a dark-flagged pre-check that reuses the not-a-PDP rules, plus an `is_product_page` field in the prompt, mapped to the existing failure envelope."
+  },
+  {
+   "title": "Targeted spec fill tells the model to use training data, but merges the values as if retrieved (MYEZ-003)",
+   "severity": "medium",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/openai_service.py",
+     "line": "291",
+     "note": "The prompt says: '- Use your training data as a fallback when snippets are silent'.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/structured_comparison_service.py",
+     "line": "783-797",
+     "note": "`_fill_one_field` returns `{field: val}` with no provenance or confidence marker. Tier 3 is the contrast: it is labelled `tier3_synthesis`, per openai_service.py:338-341.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/structured_comparison_service.py",
+     "line": "880-883",
+     "note": "`_no_fabrication_blocks_refill` is the existing veto under `ENABLE_SPECS_NO_FABRICATION`. That flag is OFF, with the precondition 'a working search layer' (CLAUDE.md flag rows).",
+     "basis": "measured"
+    }
+   ],
+   "detail": "With the flag OFF, invented spec values sit next to cited ones with no marker. The existing flag is the lever; do not add a new one. Its precondition (restored search) is outside this surface."
+  },
+  {
+   "title": "Vision returns no category, does not dedupe, and nothing guards against a same-product pair (MYEZ-008, MYEZ-004)",
+   "severity": "medium",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/openai_service.py",
+     "line": "139-144, 214-222",
+     "note": "The schema is brand, name, size_or_count, visible_price and confidence. There is no category even though the model sees the object, and no de-duplication.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/structured_comparison_service.py",
+     "line": "4218",
+     "note": "The category is re-derived from the text name (`classify_category_from_text`). A grep for a same-product guard finds none.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/api/image_routes.py",
+     "line": "403-406, 440-442",
+     "note": "size_or_count is appended to the name, and is then also sent as `variant` (structured_comparison_service.py:4221). The first two entries are compared even when they are identical.",
+     "basis": "measured"
+    }
+   ],
+   "detail": "I infer this explains beard oil scored on fragrance dimensions (V06) and 'GUESS GUESS! vs GUESS GUESS!' (V07). A vision `category` field is additive server-internal data. Dedupe and the same-pair refusal would reuse the existing `need_second_product` shape."
+  },
+  {
+   "title": "Cost and usage reads hardcoded to gpt-4o-mini rates; a missing usage object crashes vision",
+   "severity": "low",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/openai_service.py",
+     "line": "224-229",
+     "note": "`vision_cost` uses 0.15/0.60 per 1M whatever `OPENAI_MODEL_VISION` is set to. `usage.prompt_tokens` on a None usage raises AttributeError outside any try.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/openai_service.py",
+     "line": "469-474",
+     "note": "`disambiguate_variant_line` has the same hardcoded rates.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/structured_comparison_service.py",
+     "line": "9573",
+     "note": "The compare-level cost also uses hardcoded mini rates. The authoritative per-model ledger is `openai_pricing.py` (PRICE_USD_PER_1M, lines 38-44).",
+     "basis": "measured"
+    }
+   ],
+   "detail": "This matters for the seam: an Anthropic adapter would be mispriced by these literals and by `record_openai_response`, which reads `prompt_tokens` / `completion_tokens` (openai_pricing.py:135-137). Anthropic reports `input_tokens` / `output_tokens`, so those calls would be recorded unpriced."
+  },
+  {
+   "title": "Verdict fallback is keyed on exception substrings; quota 429s are retried and fall back to the same org",
+   "severity": "low",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/extraction_service.py",
+     "line": "2665-2670",
+     "note": "The fallback triggers on '429', 'rate' or 'quota' appearing in `str(primary_err).lower()`.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/.venv-qaren/Lib/site-packages/openai/_base_client.py",
+     "line": "857-859",
+     "note": "Every 429 is retried, including the permanent credit_balance_exhausted.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/api_budget_service.py",
+     "line": "919-927",
+     "note": "`RateLimitError` always counts as transient, quota included.",
+     "basis": "measured"
+    }
+   ],
+   "detail": "I infer that a credit-exhaustion 429 spends retries plus a fallback call that cannot succeed, and trips the breaker as if it were transient. String matching is also OpenAI-specific: an Anthropic 429 text or a 529 'overloaded' would not match. The seam should classify by typed error (status code and error type), not by message text."
+  },
+  {
+   "title": "Vision call has no server-side wall; worst case exceeds the client's 120 s abort (MYEZ-015)",
+   "severity": "low",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/api/image_routes.py",
+     "line": "310",
+     "note": "`await identify_products(...)` is not wrapped in `asyncio.wait_for`. The only 'timeout' hit in the file is a comment.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/openai_service.py",
+     "line": "35",
+     "note": "Per-attempt timeout is 120 s read and 30 s connect. With prod `OPENAI_MAX_RETRIES=1` (CLAUDE.md:578) that is up to about 240 s or more.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/services/api.ts",
+     "line": "50",
+     "note": "`IDENTIFY_TIMEOUT_MS = 120000`.",
+     "basis": "measured"
+    }
+   ],
+   "detail": "I infer that a slow vision attempt plus the compare that follows can outlast the client, which aborts as TIMEOUT while the server keeps spending. A bounded `wait_for` on vision, mapped to the existing 503 or TIMEOUT envelope, would be a dark-flag change."
+  },
+  {
+   "title": "Model-literal allowlist and the pins an Anthropic placeholder must satisfy or extend",
+   "severity": "info",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/model_config.py",
+     "line": "44-56, 64-74",
+     "note": "`_ROLE_DEFAULTS` is the single home of model ids: verdict gpt-4o, standard/vision/critic gpt-4o-mini, moderation omni-moderation-latest. Each is overridable per call through `OPENAI_MODEL_<ROLE>`.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_model_config.py",
+     "line": "121-151",
+     "note": "The stray-literal pin: ALLOWED = {model_config.py, openai_pricing.py}. The regex only catches `gpt-*` and `omni-moderation-*`, and it globs app/services/*.py non-recursively. A `claude-*` literal would pass unpinned.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_model_config_enforced.py",
+     "line": "118-143, 261-275",
+     "note": "The M1 AST matcher only sees callees ending in `completions.create` or `guarded_llm_create`, so `messages.create` escapes it. M3 pins the exact kwargs per site. M4 pins `resolved_models()` to exactly the 5 OpenAI roles.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/fixtures/w4_11_prompt_render_digests.json",
+     "line": "verdict_kwargs, synth_kwargs, targeted_kwargs, price_fallback_kwargs, url_extract_kwargs, image_tier3_kwargs, *_system, *_user",
+     "note": "The prompt-fence digests (consumed by test_prompt_fence.py:392-404, test_model_config_enforced.py, test_prompt_truth.py and test_price_fallback_may_decline.py) hash both the prompt strings and the exact OpenAI kwargs, including `store:False`.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_openai_key_log_hygiene_s69.py",
+     "line": "32-63",
+     "note": "The client build may log only 'configured' or 'missing'. No 6-character substring of the key may appear in the logs.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_u3c_store_false_pin.py",
+     "line": "33-37",
+     "note": "The T02 dispatch rule's SDK_OBJECTS = {responses, batches, with_raw_response, with_streaming_response} plus chat.completions chains. `messages` is not listed.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/sentry_service.py",
+     "line": "653-661, 670",
+     "note": "`OpenAIIntegration(include_prompts=False)` and `send_default_pii=False`, pinned by tests/test_sentry_channels_u8d*.py. There is no Anthropic counterpart.",
+     "basis": "measured"
+    }
+   ],
+   "detail": "With `LLM_PROVIDER` unset, the seam must leave every OpenAI kwargs dict byte-identical, or the digest and M3 pins go red. Anthropic additions must add their own pins rather than loosen the existing ones."
+  },
+  {
+   "title": "OpenAI-specific shapes the seam must absorb",
+   "severity": "info",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/extraction_service.py",
+     "line": "1396, 1535, 1546-1547, 1593, 1709-1710, 1752, 1801, 1857, 2703, 2706, 2726, 2757-2758",
+     "note": "These sites read `response.choices[0].message.content`, `usage.prompt_tokens`, `usage.completion_tokens` and `usage.total_tokens` (the 4o daily counter at 2703-2704).",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/openai_service.py",
+     "line": "64-82, 177-183, 198, 309, 384, 446",
+     "note": "Cache telemetry reads `prompt_tokens_details.cached_tokens`. Vision uses the `image_url` data-URI part with `detail`. Several sites read `choices[0]`.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/api_budget_service.py",
+     "line": "696, 890-931, 980-983",
+     "note": "The breaker key is the constant 'openai'. The classifiers import `openai` exception classes. `store` and `extra_body` are OpenAI request fields.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/content_safety_service.py",
+     "line": "249-262",
+     "note": "L3/L4 call `client.moderations.create(model=moderation_model())` and read `results[0].flagged` / `.category_scores`, failing open on error.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/llm_provider.py",
+     "line": "47-59, 128-170",
+     "note": "`OPENAI_BASE_URL` only covers OpenAI-compatible endpoints and fails closed on a malformed value. The SCOPE note at 52-55 ('hardcoded at ~12 call sites') is stale.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/openai_service.py",
+     "line": "33-37",
+     "note": "An import-time AsyncOpenAI means OPENAI_API_KEY is required at boot (requirements.in:7-11), even if another provider is selected.",
+     "basis": "measured"
+    }
+   ],
+   "detail": "The session-69 decision memo already rejected the OpenAI-compatibility route to Anthropic (`OPENAI_BASE_URL`): it ignores `response_format`, has no moderation, and Claude 5 returns 400 on non-default temperature (LLM_PROVIDER_DECISION.md §4 B1; CLAUDE.md:588). A native adapter is required."
+  },
+  {
+   "title": "SDK verification: openai 3.3.1 source read; the legacy httpx.Timeout the app passes is honoured",
+   "severity": "info",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/.venv-qaren/Lib/site-packages/openai/_version.py",
+     "line": "2",
+     "note": "`__version__ = '3.3.1'`, matching the lock. The system Python312 has 2.21.0, which is not the pin.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/.venv-qaren/Lib/site-packages/openai/_httpx2.py",
+     "line": "65-69",
+     "note": "`normalize_httpx_timeout` converts a legacy `httpx.Timeout` into `httpx2.Timeout(**value.as_dict())`. The app's `httpx.Timeout(120, connect=30)` is therefore honoured despite v3's httpx2 migration (context7 CHANGELOG 3.0.0).",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/.venv-qaren/Lib/site-packages/openai/_exceptions.py",
+     "line": "91, 105, 110, 156, 160, 164",
+     "note": "APIStatusError, APIConnectionError, APITimeoutError(APIConnectionError), RateLimitError, InternalServerError and LengthFinishReasonError all exist as `api_budget_service` assumes.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/.venv-qaren/Lib/site-packages/openai/types/chat/chat_completion_content_part_image_param.py",
+     "line": "14",
+     "note": "`detail: Literal['auto','low','high']`.",
+     "basis": "measured"
+    }
+   ],
+   "detail": "The anthropic package is not in .venv-qaren or the lock, so its pinned behaviour is unmeasured. Anthropic shapes were checked via context7 /anthropics/anthropic-sdk-python (README examples, MIGRATION.md, types/model.py, message_create_params.py)."
+  },
+  {
+   "title": "Stale census and docs around the seam",
+   "severity": "low",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/api_budget_service.py",
+     "line": "940-941",
+     "note": "The census lists `openai_service ... generate_comparison`. That function no longer exists in openai_service.py, which now has only identify_products, extract_specs_targeted, extract_specs_synthesized and disambiguate_variant_line.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/llm_provider.py",
+     "line": "52-55",
+     "note": "Says model strings are still hardcoded at ~12 call sites. model_config owns them (B1-C19 in the S69 memo).",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/openai_service.py",
+     "line": "67-71",
+     "note": "The docstring calls the SDK 'openai>=2.x' and mentions Anthropic/proxy flat fields. That is harmless, but the seam should own usage normalisation instead.",
+     "basis": "measured"
+    }
+   ],
+   "detail": "Documentation only; correct these in the seam PR."
+  }
+ ],
+ "recommendations": [
+  "SEAM, new module (leave llm_provider.py alone; test_llm_provider_base_url.py pins it): add app/services/llm_adapter.py with a Protocol `LLMAdapter`. It has three async methods that take FINISHED prompt strings built by today's builders, so the prompt digests stay single-source: identify_products(images: list[{bytes,mime_type}], prompt: str, model: str, max_tokens: int) -> LLMResult; extract_json(system: str|None, user: str, model: str, max_tokens: int, temperature: float|None, json_mode: bool, schema: dict|None) -> LLMResult; verdict(system: str, user: str, model: str, max_tokens: int, temperature: float|None, client_override=None) -> LLMResult. LLMResult = {text: str|None, finish: 'stop'|'length'|'refusal'|'filtered', model: str, provider: str, usage: {prompt_tokens, completion_tokens, cached_tokens, total_tokens}}. OpenAIAdapter calls the existing `guarded_llm_create` with exactly today's kwargs. Migrate the call sites one at a time in later units; phase 1 changes no call site.",
+  "SELECTION RULE, read per call via `os.getenv` (house idiom). `selected_provider()`: `LLM_PROVIDER` unset, blank or 'openai' gives 'openai'. 'anthropic' gives AnthropicAdapter ONLY IF `ENABLE_ANTHROPIC_PROVIDER` (new, default OFF; no ANTHROPIC/LLM_PROVIDER flag exists in app/ or CLAUDE.md, measured by grep) is truthy AND `ANTHROPIC_API_KEY` is present (checked for presence only, never logged). Every other combination, including a typo, raises `LLMProviderNotConfigured`. It must never fall back silently to OpenAI; this mirrors llm_provider.py:25-32, where a mistyped routing must not send prompts to the vendor the operator meant to leave.",
+  "ERROR TYPING: `class LLMProviderNotConfigured(LLMUnavailableError)` in api_budget_service (or re-exported there). Its message must avoid '429', 'rate' and 'quota' (api_budget_service.py:702-709) so the verdict fallback cannot fire on it. As a subclass it already maps to 503 LLM_UNAVAILABLE on the camera (image_routes.py:324-328). For the text and stream paths, OR a `provider_not_configured()` check into `_llm_preflight_short_circuits()` (structured_comparison_service.py:1724-1737), independent of the breaker flag, so a misconfigured provider stops before scraping with the existing LLM_UNAVAILABLE envelope (3952-3953) instead of a degraded 200. That is byte-identical while `LLM_PROVIDER` is unset.",
+  "ANTHROPIC CALL SHAPE (context7 /anthropics/anthropic-sdk-python: examples/images.py, MIGRATION.md, types/model.py, message_create_params.py): `await AsyncAnthropic(api_key=..., max_retries=openai_max_retries()-equivalent, timeout=...).messages.create(model='claude-haiku-5-5', max_tokens=N, system=SYSTEM_STR, messages=[{'role':'user','content':[{'type':'image','source':{'type':'base64','media_type':'image/jpeg','data':B64}}, {'type':'text','text':PROMPT}]}], output_config={'format':{'type':'json_schema','schema':SCHEMA}})`. The system prompt is the top-level `system=` argument, never a message. Send NO temperature: the current SDK removed temperature/top_p/top_k from messages.create, and the S69 memo B2-C7 documents a 400 on non-default sampling for Claude 5. `sampling_kwargs()` must therefore return {} for `claude-*` ids. Thinking: Claude 5 has thinking on by default and it counts toward max_tokens (memo B1-C8 / B2-C7); the `thinking` and `output_config.effort` params exist. Parse: take the `text` blocks of `message.content` and skip thinking blocks. Map `stop_reason` 'max_tokens' to 'length' and 'refusal' to 'refusal'. Usage: input_tokens + cache_creation_input_tokens + cache_read_input_tokens, and output_tokens.",
+  "MODEL IDS: add `_ANTHROPIC_ROLE_DEFAULTS` to model_config.py (the allowlisted home), overridable through `ANTHROPIC_MODEL_<ROLE>`: suggested standard/vision/critic 'claude-haiku-5-5', verdict 'claude-sonnet-5-5', with 'claude-opus-5-5' available by env. All three ids appear in the SDK's Model literal (context7 types/model.py). Keep `resolved_models()` returning exactly the 5 OpenAI roles (test_model_config_enforced.py:270-275) and add a separate `resolved_anthropic_models()`. Leave moderation on OpenAI `omni-moderation-latest` (free; content_safety_service.py:249-252). OPENAI_API_KEY stays required in any case because of the import-time client (openai_service.py:33-37).",
+  "PINS TO EXTEND in the placeholder PR: (1) test_model_config.py:135, widen the regex to `claude-[a-z0-9.\\-]+` with ALLOWED still {model_config.py, openai_pricing.py} (plus an anthropic price module if one is added). (2) test_model_config_enforced.py, add `messages.create` and the new chokepoint name to the AST matcher, keep `>=15` sites and leave the SHIPPED kwargs table unchanged. (3) A new hermetic test: with the provider set to anthropic, the system and user strings sent equal the OpenAI-branch strings, so the USER_INPUT / SEARCH_RESULTS fences and the W4-11 digests carry over; the existing *_kwargs digests stay untouched. (4) Mirror test_openai_key_log_hygiene_s69.py for ANTHROPIC_API_KEY: log 'configured' or 'missing' only, with the sentinel substring scan. (5) Add `AnthropicIntegration(include_prompts=False)` beside sentry_service.py:659-661, with a u8d-style pin. (6) Extend test_u3c_store_false_pin.py's T02 rule to the `messages` object so no Anthropic dispatch bypasses the chokepoint. (7) A new `guarded_anthropic_create` chokepoint with its own breaker key ('anthropic', not the 'openai' constant at api_budget_service.py:696) and a typed transient classifier: anthropic RateLimitError, APIConnectionError/APITimeoutError, InternalServerError, 5xx and 529. Extend image_routes.py:324 to use a provider-neutral `llm_failure_is_transient`. (8) Cost ledger: remap input/output tokens to prompt/completion before `record_openai_response`, or add rows to a pricing table, so `cost_complete` stays truthful. (9) Pin an exact anthropic version in requirements.in/txt via `uv pip compile`, and measure retry and exception behaviour on the PINNED version before trusting it (MEMORY rule).",
+  "FLIP PRECONDITIONS for ENABLE_ANTHROPIC_PROVIDER, all owner-gated and post-approval: the privacy policy and AI consent v2 disclosure must name the new processor (CLAUDE.md records that the policy names OpenAI only). Re-baseline the verdict because T=0 determinism is lost (memo B2-C11): bias45 x2, smoke20, the Arabic native review. Raise token caps for thinking models. Do not set it during App Review.",
+  "FIX (new dark flag, e.g. ENABLE_VISION_STRUCTURED_IDENTIFY, default OFF; no vision flag exists, measured): switch identify_products to `response_format={'type':'json_schema','json_schema':{'name':'products','strict':True,'schema':{products:[{brand,name,size_or_count,visible_price,confidence,category}]}}}`, which the 3.3.1 SDK supports (completion_create_params.py:474). Drop the 'identify WITHOUT packaging' clause. Discard entries with confidence 'low' or with a missing brand or name, instead of minting 'Unknown' / 'Unknown Product' (openai_service.py:217-218). Dedupe identical brand+name pairs. Handle content None / refusal / finish 'length' explicitly by returning the existing `action:'error'` shape rather than a 500. Optionally set `detail:'high'`. All of this reuses existing response shapes, so the frozen contract holds.",
+  "FIX (unflagged, log-only and additive): log `finish_reason` and whether a refusal is present at every chat site, including the verdict, and count `length` on the verdict. That makes the suspected truncation behind empty 'why we chose' (V03) measurable without changing behaviour.",
+  "FIX (new dark flag, e.g. ENABLE_IMAGE_TIER3_GROUNDED): accept a Tier-3 image URL only if it appears verbatim among the image fields of the provided results, or skip Tier 3 entirely. Never accept a page URL as `image_url` (image_service.py:52-57, 161-207).",
+  "FIX (new dark flag, or reuse the price-path not-a-PDP rules): before `extract_with_ai`, refuse homepage, category and search pages, and add `is_product_page:false|true` to URL_EXTRACTION_PROMPT so the model can decline. Map a refusal to the existing URL failure envelope rather than 'Unknown Product' (url_extraction_service.py:354-383, 527).",
+  "LANGUAGE: keep `ENABLE_ARABIC_VERDICT_OUTPUT` as the lever (CLAUDE.md:624 preconditions). Add an optional, conditional `lang` pass-through on /image/identify and /url/compare exactly as text_routes does (646/857/1108). It is inert until a post-approval OTA sends it. Raise or measure the verdict token cap for Arabic before the flip.",
+  "Use the existing knobs before writing code: `OPENAI_MODEL_VISION=gpt-4o` is an env-only change, so smoke-test it first (model_config.py docstring). `ENABLE_SPECS_NO_FABRICATION` already blocks the training-data refill tiers, but its precondition is a working search layer."
+ ],
+ "open_questions": [
+  "Are ENABLE_ARABIC_VERDICT_OUTPUT and ENABLE_SPECS_NO_FABRICATION actually OFF in production? CLAUDE.md:624 and the S76 packet say dark; APP_REVIEW_AUDIT_S79.md:309 lists both as unverified.",
+  "How do the Claude 5.5 family models (sonnet-5-5, haiku-5-5) handle thinking? Is it on by default, can it be disabled, and what is the minimum max_tokens for a non-empty JSON body? The S69 memo covered Opus 5/5.5 and Sonnet 5 only. This needs a docs fetch (claude-api skill or platform docs) before the adapter unit.",
+  "Which anthropic SDK version to pin? It is not installed anywhere on this box. Retry policy for 429/529 and its exception classes must be measured on that pin.",
+  "Should moderation (L3/L4) stay on OpenAI when LLM_PROVIDER=anthropic? That keeps OPENAI_API_KEY mandatory and both vendors in the privacy disclosure. The alternative is a Claude classifier with a new fail-open contract.",
+  "Is the 1000-token verdict cap actually being hit on Arabic or long verdicts? No finish_reason is logged today, so production logs cannot answer this.",
+  "How often does gpt-4o-mini return a {\"products\":[...]} object instead of the bare array the vision prompt demands? This is unmeasured and decides how urgent the schema fix is.",
+  "Out of this surface: the user's request to bulk-cache fragrancex.com product data needs a robots/ToS ruling (prior rulings are fail-closed on robots) and its own data-surface unit. A cache hit should bypass the identify, specs and price LLM calls, which reduces LLM load but is not part of the provider seam."
+ ],
+ "sources": [
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/openai_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/llm_provider.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/model_config.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/model_router_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/openai_pricing.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/extraction_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/content_safety_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/api_budget_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/image_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/url_extraction_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/verdict_critique_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/structured_comparison_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/sentry_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/api/image_routes.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/services/api.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_model_config.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_model_config_enforced.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_prompt_fence.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/fixtures/w4_11_prompt_render_digests.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_openai_key_log_hygiene_s69.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_u3c_store_false_pin.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_llm_provider_base_url.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/requirements.txt",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/requirements.in",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/CLAUDE.md (lines 336, 578, 588, 624, 690)",
+  "C:/Users/SynAckITPC/Documents/AI/.venv-qaren/Lib/site-packages/openai (3.3.1: _version.py, _httpx2.py, _base_client.py, _exceptions.py, _constants.py, types/chat/*, resources/chat/completions/completions.py)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-09-29-session-69-state/LLM_PROVIDER_DECISION.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-17-session-79-state/APP_REVIEW_AUDIT_S79.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-10-session-76-state/ASC_SUBMISSION_PACKET_S76.md",
+  "C:/Users/SynAckITPC/.claude/uploads/ae650c83-4d2a-4910-a8d4-a47ab213c8c3/d20a7872-MYEZ_QA_UX_Audit_2026-10-18.md (sections 4-6)",
+  "context7 /openai/openai-python (CHANGELOG 3.0.0 httpx2 migration, httpx2.md, helpers.md parse/LengthFinishReasonError, _exceptions.py)",
+  "context7 /anthropics/anthropic-sdk-python (examples/images.py base64 image block, MIGRATION.md temperature removal and output_config.format, types/model.py ids claude-opus-5-5 / claude-sonnet-5-5 / claude-haiku-5-5, message_create_params.py thinking and output_config)"
+ ]
+}

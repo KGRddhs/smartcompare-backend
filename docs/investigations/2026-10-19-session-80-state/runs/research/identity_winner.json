@@ -1,0 +1,851 @@
+{
+ "category": "A: identity resolution and the winner gate (MYEZ-001, 002, 003, 004, 011, 027 + owner report \"the AI cannot spot products from the camera easily\")",
+ "summary": "I traced all three ways a comparison starts (camera, link, typed text) at origin/main 683f56c0. None of them can return \"no winner\". (1) Camera: one gpt-4o-mini call reads both photos and returns one flat list of up to 4 products. The route compares products[0] and products[1] with no record of which photo each came from. The vision `confidence` is dropped. A missing name becomes \"Unknown\"/\"Unknown Product\". Nothing checks the category or whether the item is a product at all. Product images are taken from the first search image for that name with no category check. The camera compare also passes no selected_category, output_lang, user_id or user_preferences. (2) Winner: deterministic argmax of `overall`. An exact tie goes to index 0. scoring_v2 pushes the loser's score down so the client never sees a tie. response_builder always emits overview.winner with a product_index. When there is no evidence at all, the factual verdict falls back to \"X edges ahead on the overall picture.\" / \"Y stays in the conversation as a close alternative.\" The only abstain-like guard (H6) fires only when specs and price are both None on both sides. The cross-category rule (Rule 1 in detect_comparison_quality) can never fire on the camera, typed-pair or link paths, because one pair category is written onto both products. On the link path the winner is simply GPT's winner_index under \"Be DECISIVE\" (default 0), with no scoring and an always-empty `recommendation`. (3) Build-3 client: it always shows TopMatchBadge, always styles one card as the winner (ties go to index 0), and only hides the RevealBurst animation for 'weird'. It has no state for \"we cannot recommend\". So on build 3 the only backend-only way to avoid a fake winner is to not deliver a result: camera `action:\"error\"` (Arabic visionFailed copy), or code INSUFFICIENT_DATA on text/URL (Arabic insufficientData alert). No existing ENABLE_* flag does identity or evidence abstention: GPT_WINNER only logs; HONEST_PARTIAL_SCORING nulls scoring_v2 on partials, but the client then falls back to winner_index and still crowns; COMPARISON_QUALITY_V2 only changes prompt text. Production flags recorded ON: CAMERA_FAILURE_ENVELOPE, PAID_ROUTE_METERING, COMPARE_AUTH_REQUIRED, COMPARISON_ID_ECHO. Every winner-related flag is default OFF with no recorded flip; HONEST_PARTIAL_SCORING's prod state is explicitly unknown. Proposed new dark flags: ENABLE_VISION_IDENTITY_V2, ENABLE_IDENTITY_ABSTAIN_GATE, ENABLE_WINNER_EVIDENCE_GATE, ENABLE_RESULT_STATUS_METADATA. Things to coordinate: SSE success:false still bills the credit (MYEZ-012), and the camera failure envelope maps INSUFFICIENT_DATA to the 'timeout' retry copy.",
+ "defects": [
+  {
+   "id": "CAMERA-SPOT (owner report: the AI cannot spot products from the camera easily)",
+   "status": "partially_anchored",
+   "root_cause": "Several code-level causes, all measured by reading the code; how often each one fires in production is unmeasured, since no prod logs were read. (a) One vision call takes both photos and is told to list EVERY distinct product, up to 4 in total. Products are not tagged with the photo they came from, and the route compares products[0] and products[1]. If photo 1 shows two items (bottle plus box, a background object), photo 2's product is dropped and the pair is wrong. (b) Model: the vision role defaults to gpt-4o-mini, and no record shows OPENAI_MODEL_VISION set in prod. It runs with detail:auto on a 1024px-wide JPEG made by the client, with no JSON mode. The prompt has no guidance for Arabic-only labels (GCC perfumes). (c) The output is parsed as a bare JSON array. A JSON object wrapper ({\"products\":[...]}) gives 0 products, and any prose prefix gives a parse error. Both end as action:\"error\" (\"Snap each product in its own photo\"). (d) The prompt invites guessing without packaging (shape/colour/logo, confidence=low). The returned `confidence` is never read downstream, so low-confidence guesses are searched as if certain. (e) A missing name becomes brand \"Unknown\" / name \"Unknown Product\", and that placeholder string is then searched on the web. (f) The schema has no category, no product_type, no is_product and no distinguishing features. (g) The camera compare passes no selected_category, output_lang or user prefs, so the user's chip cannot constrain the category and the prose is English. (h) The client UX gives contradictory guidance: needMorePhotos says \"put both products together in one photo\", visionFailed says \"one product per photo\". HEIC is detected server-side but rejected; this has no effect on build 3, because the app transcodes to JPEG.",
+   "evidence": [
+    {
+     "file": "app/services/openai_service.py",
+     "line": "135-162",
+     "note": "Vision prompt: OCR of the exact label; 'One image may contain MULTIPLE products, identify ALL (up to 4 total across all images)' (:148); 'Identify products even WITHOUT packaging ... confidence=low' (:152); 'Return ONLY a valid JSON array' (:156); schema is brand/name/size_or_count/visible_price/confidence, with no category, no image index and no distinguishing features",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/openai_service.py",
+     "line": "181,186-194",
+     "note": "detail:'auto'; model=vision_model(); 500 max tokens; temperature 0; no response_format JSON mode",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/openai_service.py",
+     "line": "201-222",
+     "note": "JSONDecodeError gives error; a non-list parse gives [] (0 products); null brand/name becomes 'Unknown' / 'Unknown Product'; confidence defaults to 'medium'",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/model_config.py",
+     "line": "44-55,64-74,87-89",
+     "note": "Vision role default 'gpt-4o-mini', overridable by OPENAI_MODEL_VISION. No record of it being set in prod in CLAUDE.md:744/787 or the session 71-80 ledgers",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/services/api.ts",
+     "line": "268-273,302",
+     "note": "Client resizes each photo to width 1024 and saves it as JPEG at 0.8; only region is sent (no lang, no category)",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/screens/ScanCameraScreen.tsx",
+     "line": "7-11,283",
+     "note": "Two slots (one photo per product) navigate with vision_products [uri0, uri1]",
+     "basis": "measured"
+    },
+    {
+     "file": "app/api/image_routes.py",
+     "line": "132,145-149,229-234",
+     "note": "HEIC is detected by magic bytes but is not in SUPPORTED_MIME_TYPES, so it gets a 400 (the app transcodes, so no impact on build 3)",
+     "basis": "measured"
+    },
+    {
+     "file": "app/api/image_routes.py",
+     "line": "412-450",
+     "note": "0 products gives action:error; 1 product gives need_second_product; 2 or more compare products[0] and products[1] with no image association; compare_from_text(query, region, vision_products, nocache) has no selected_category, output_lang, user_id or user_preferences",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/structured_comparison_service.py",
+     "line": "4210-4224",
+     "note": "Vision products are rebuilt as {brand,name,variant,category: classify_category_from_text(full),search_query,_vision}; the vision `confidence` is dropped",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/i18n/ar.json",
+     "line": "850-851",
+     "note": "needMorePhotos tells the user to put both products in one photo; visionFailed tells them to photograph each product separately (contradictory)",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/screens/ResultsScreen.tsx",
+     "line": "333-352",
+     "note": "need_second_product shows need_more_photos; action 'error' shows vision_failed",
+     "basis": "measured"
+    }
+   ],
+   "existing_flags": [
+    {
+     "name": "OPENAI_MODEL_VISION (env knob, not a flag)",
+     "default": "gpt-4o-mini",
+     "prod_state": "no record of being set; inferred default",
+     "source": "CLAUDE.md:744,787; app/services/model_config.py:51"
+    },
+    {
+     "name": "ENABLE_CAMERA_FAILURE_ENVELOPE",
+     "default": "OFF",
+     "prod_state": "ON since 2026-10-03 14:23",
+     "source": "CLAUDE.md:462,568"
+    },
+    {
+     "name": "ENABLE_PAID_ROUTE_METERING",
+     "default": "OFF",
+     "prod_state": "ON since 2026-10-03",
+     "source": "CLAUDE.md:568,689"
+    }
+   ],
+   "fix_sketch": "New dark flag ENABLE_VISION_IDENTITY_V2 (default OFF, read per call in openai_service.identify_products and image_routes). Flag ON: (1) the prompt v2 asks for a JSON object {\"products\":[{image_index, brand, name, category (one of the 9 canonical keys), product_type, distinguishing_features (colour/material/model code/volume), is_product, confidence}]} with response_format json_object and accepts either an array or an object; it adds a line for Arabic-script labels (transliterate, keep the brand) and drops the guess-without-packaging rule, or forces confidence=low for it. (2) The route keeps one best candidate per image_index (max confidence, is_product true), so each photo gives exactly one product. Missing per-image product: return the existing need_second_product shape. (3) Pre-compare gate, before any paid fan-out: if a chosen product has a placeholder identity (shared predicate, see MYEZ-002), is_product false, or confidence low, return the existing {success:false, action:\"error\", error, vision_cost} body. This uses the same refund latch as exits 2 and 4, and build 3 renders the Arabic visionFailed copy. (4) Pass the agreed vision category as selected_category when both products' categories match. Thread output_lang from an optional new `lang` query param (additive; build 3 does not send it, so behaviour is unchanged). Flag OFF: byte-identical body and prompt. A model upgrade (OPENAI_MODEL_VISION=gpt-4o) is a separate owner knob: smoke-test first, about 16x cost per vision call, and openai_service.py:224-229 hardcodes mini pricing for vision_cost. Client 1.0.1: one consistent capture instruction.",
+   "contract_fields": [
+    "action",
+    "success",
+    "error",
+    "products[] (IdentifiedProduct: brand,name,size_or_count,visible_price,confidence)",
+    "vision_cost",
+    "metadata.identified_products",
+    "metadata.input_method"
+   ],
+   "risks": "A stricter gate during App Review would send more reviewer camera attempts to the 'snap clearer' state; keep it OFF until approval or owner sign-off. Prompt changes alter vision output for every camera user, so canary it with photo fixtures. JSON mode on gpt-4o-mini needs the word 'json' in the prompt. The legal vendor-data pins reference openai_service.py (tests/test_legal_docs_u8.py:913, tests/fixtures/legal_s78.json:279); the data flow does not change, but re-run them.",
+   "test_seams": [
+    "tests/test_camera_vision.py (TestIdentifyProductsMocked mocks the client; TestEndpointHeicRejection; TestSizeOrCountEnrichment)",
+    "tests/test_m13_26_image_error_envelope.py",
+    "tests/test_image_identify_llm_unavailable_s69.py",
+    "tests/test_paid_route_metering.py + tests/test_retro_w2_1.py (camera refund latches per exit)",
+    "tests/test_cost_meter_s74.py (vision ledger merge)",
+    "tests/test_s71_u13_compare_auth_required.py + tests/fixtures/s71_u13_flag_off_baseline.json (flag-OFF body baselines for paid routes)",
+    "tests/test_prompt_fence.py:433-527 and tests/test_model_config_enforced.py (source-scanning pins on openai_service)",
+    "SmartCompareApp __tests__/HomeScreen.scanCamera.test.tsx, api.cameraAuthRetry.u13c.test.ts",
+    "New: fixture vision responses (object-wrapped, prose-prefixed, two products in image 1, placeholder names, low confidence) driving identify_products and the route with a stubbed compare"
+   ],
+   "open_questions": [
+    "Does the owner accept upgrading OPENAI_MODEL_VISION to gpt-4o (cost) or prefer keeping mini plus the prompt and schema fix first?",
+    "Are we allowed to read production [IMAGE] logs (names identified, product counts) to measure failure frequency? The route logs product names at INFO (image_routes.py:409).",
+    "Should a single photo with two products stay supported? Today the route compares both items from it, which conflicts with the two-slot UX.",
+    "Should the user's own photo become the fallback product image when the search image is missing or mismatched (camera only)?"
+   ]
+  },
+  {
+   "id": "MYEZ-001",
+   "status": "partially_anchored",
+   "root_cause": "Identity is never verified against what was photographed. Mechanism candidates (V04, two bottles shown as a watch and a violin): (1) per-image association loss and low-confidence guesses (see CAMERA-SPOT). (2) The product image comes from the first search image for the name, with no category or identity check: Knowledge Graph image, else the first organic image, else Serper Images[0], then GPT pick. A perfume line named 'Violin ...' can resolve to a picture of a violin. This is inferred for V04, since the result's dims ('leads on Versatility') show category_used was fragrances, i.e. the pair category was right and the cards/images were wrong. (3) The pair category is resolved once and written onto BOTH products, so a per-product category conflict cannot be represented. detect_comparison_quality Rule 1 (cross-category -> 'weird') is therefore dead on the vision, typed-pair and link paths. (4) The placeholder 'Unknown Unknown Product' is used as a search query, so search results for random items supply the images, prices and specs. (5) Nothing between identification and verdict checks that the resolved title or image matches the photographed category.",
+   "evidence": [
+    {
+     "file": "app/services/image_service.py",
+     "line": "75-119,241-287",
+     "note": "Cascade: page-scrape image, then KG/organic/inline image of the unified search, then Serper Images[0], then GPT pick; only checks that the URL is http(s); no category or identity check",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/structured_comparison_service.py",
+     "line": "5940-5952",
+     "note": "get_product_image_url(full_name, search_payload=unified_search): keyed on the name only, no category term",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/structured_comparison_service.py",
+     "line": "4266-4296",
+     "note": "_resolve_pair_category returns ONE category_used, written back onto both product dicts",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/structured_comparison_service.py",
+     "line": "430-494",
+     "note": "vision/typed-pair path: classify_category_from_text(combined names), then the chip, then A2b LLM; no per-product comparison",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/structured_comparison_service.py",
+     "line": "193-194,1006-1009",
+     "note": "Rule 1 compares p['category'] values, which are always equal after the write-back, so it never fires",
+     "basis": "measured"
+    },
+    {
+     "file": "app/api/image_routes.py",
+     "line": "440-450",
+     "note": "The query is built from p['brand'] and p['name'] verbatim (placeholders included) and auto-compared",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/scoring_service.py",
+     "line": "51-52,72",
+     "note": "fragrances dims include versatility_score; V04 shows 'leads on Versatility', so category_used=fragrances",
+     "basis": "inferred"
+    },
+    {
+     "file": "QA audit 4) MYEZ-001",
+     "line": "V04 00:57-01:15",
+     "note": "Cards 'Sefiki Limited Edition' (watch image) and 'Violin SHAHRAZAD L'INTENSE' (violin image), with best-match on the violin",
+     "basis": "measured"
+    }
+   ],
+   "existing_flags": [
+    {
+     "name": "ENABLE_COMPARISON_QUALITY_V2",
+     "default": "OFF",
+     "prod_state": "OFF (dark; no flip recorded)",
+     "source": "CLAUDE.md:412; 2026-09-06 review DARK list"
+    },
+    {
+     "name": "ENABLE_CAMERA_FAILURE_ENVELOPE",
+     "default": "OFF",
+     "prod_state": "ON",
+     "source": "CLAUDE.md:462,568"
+    }
+   ],
+   "fix_sketch": "(1) ENABLE_VISION_IDENTITY_V2 (see CAMERA-SPOT): the per-product vision category and is_product. (2) Under ENABLE_IDENTITY_ABSTAIN_GATE (new, default OFF): a pure helper identity_coherence(products, vision_categories, category_used). If the two vision categories differ, or a product's vision category disagrees with category_used, return the camera action:error body before the compare (build-3 safe). Typed-pair/link paths return INSUFFICIENT_DATA with an additive reason:'category_conflict'. (3) Keep the per-product resolved category beside category_used as additive metadata (metadata.product_categories) so Rule 1 can see a conflict again. Do not change the write-back that scoring keys on. (4) Image-identity guard (owned with category B images, behind its own flag): drop a KG or organic image whose title or alt does not contain a brand or name token; never use an image for a placeholder identity. (5) Never search for a placeholder identity (shared predicate in MYEZ-002).",
+   "contract_fields": [
+    "overview.products[i].name",
+    "overview.products[i].brand",
+    "overview.products[i].image_url",
+    "category",
+    "category_used",
+    "metadata.comparison_quality",
+    "scoring_v2.comparison_quality",
+    "action (camera)"
+   ],
+   "risks": "A category disagreement between a vision guess and the A2b LLM may be noisy (e.g. 'body mist' fragrances vs skincare), so false abstains are possible; use canonical-key equality plus an allowlist of adjacent pairs. The image guard can raise the placeholder rate (category B tradeoff).",
+   "test_seams": [
+    "tests/test_image_service.py, test_image_service_edges.py, test_image_service_longtail.py, test_image_knowledge_graph_tier.py",
+    "tests/test_comparison_quality_detector.py, tests/test_comparison_quality_v2.py (Rule 1)",
+    "tests/test_url_compare_category.py (pair category resolution)",
+    "New: _resolve_pair_category plus a coherence helper with vision categories {fragrances, watch->other}; camera route with a stubbed identify returning conflicting categories asserts action:error and the refund label"
+   ],
+   "open_questions": [
+    "Can we get the V04 photos or the prod log line '[IMAGE] Identified ...' to tell a misread label (vision) from a wrong image (image cascade)?",
+    "Should 'other' count as a conflict with a concrete category, or only as an abstain when both sides are 'other'?"
+   ]
+  },
+  {
+   "id": "MYEZ-002",
+   "status": "anchored",
+   "root_cause": "No identity gate exists. 'Unknown Product' placeholders come from openai_service (camera) and url_extraction_service (link), and they pass every check. _validate_renderable needs only a truthy name. extract_from_url returns success:true whenever the HTML was fetched, even with no title. The only abstain guard (H6) fires only when specs is None AND price is None on BOTH products; an empty specs {} or price {amount:None} counts as data (its docstring says so). The deterministic winner is a plain argmax; exact parity goes to index 0. response_builder always emits overview.winner.product_index and winner_index; scoring_v2 nudges the loser below the winner so a tie is never shown. On the link path (V09 is a Rasasi link) there is no scoring at all: winner_index is GPT's comparison.winner_index (default 0), produced under COMPARISON_SYSTEM's 'Be DECISIVE ... pick a clear winner' and 'NEVER return empty pros'. Build 3 crowns whatever index it gets (ties and null go to 0).",
+   "evidence": [
+    {
+     "file": "app/services/openai_service.py",
+     "line": "217-218",
+     "note": "Camera placeholder brand 'Unknown', name 'Unknown Product'",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/url_extraction_service.py",
+     "line": "503-520,527",
+     "note": "success:True whenever html was fetched; title falls back to 'Unknown Product'",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/url_extraction_service.py",
+     "line": "655-657,680-689",
+     "note": "Link path: generate_comparison only; returns legacy flat {products, comparison, winner_index: comparison.get('winner_index',0), recommendation: comparison.get('recommendation','')}",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/extraction_service.py",
+     "line": "1027-1036, RULES block after it",
+     "note": "COMPARISON_SYSTEM requires winner_index 0|1, 'Be DECISIVE -- pick a clear winner', 'NEVER return empty pros[] or cons[]'",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/structured_comparison_service.py",
+     "line": "416-427,4333-4347,5021-5038",
+     "note": "H6 INSUFFICIENT_DATA only when specs is None and price is None on both products (sync and stream); the docstring says specs={} or price amount None 'still lets scoring proceed'",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/scoring_service.py",
+     "line": "1597-1620",
+     "note": "winner_index = overalls.index(max(overalls)); parity tie-break only under ENABLE_MISSING_DIM_RENORM; otherwise index 0",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/response_builder.py",
+     "line": "1549-1551,1892-1908,2226,2243",
+     "note": "overview.winner {product_index, name, ...}, comparison.winner_index and winner_index are always set; no null or abstain state",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/response_builder.py",
+     "line": "1281-1298",
+     "note": "scoring_v2 nudges the loser strictly below the winner (tie made impossible)",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/database_service.py",
+     "line": "303-321",
+     "note": "_validate_renderable: 2 products with a truthy name plus metadata.query; 'Unknown Product' passes",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/screens/ResultsScreen.tsx",
+     "line": "412,880-887",
+     "note": "presentationWinnerIndex = scoring_v2 ? (product_a >= product_b ? 0 : 1) : (winner_index === 1 ? 1 : 0); null or tie crowns 0",
+     "basis": "measured"
+    },
+    {
+     "file": "QA audit MYEZ-002",
+     "line": "V09 00:32-00:38",
+     "note": "Both 'Unknown Product', images and prices missing, green winner card",
+     "basis": "measured"
+    }
+   ],
+   "existing_flags": [
+    {
+     "name": "ENABLE_HONEST_PARTIAL_SCORING",
+     "default": "OFF",
+     "prod_state": "unknown (explicitly not in the ON/OFF lists, S78 plan); no flip recorded",
+     "source": "CLAUDE.md:457; sc-docs-70 .../2026-10-14-session-78-state/COMPARE_QUALITY_PLAN_S78.md:75"
+    },
+    {
+     "name": "ENABLE_MISSING_DIM_RENORM",
+     "default": "OFF",
+     "prod_state": "OFF (no flip recorded)",
+     "source": "CLAUDE.md:357,620"
+    },
+    {
+     "name": "ENABLE_ALL_TIMEOUT_CAP_AS_TIMEOUT",
+     "default": "OFF",
+     "prod_state": "OFF; S78-F8b (H6 guards) must merge before any flip",
+     "source": "CLAUDE.md:469; memory S78-F8"
+    },
+    {
+     "name": "ENABLE_GPT_WINNER",
+     "default": "OFF",
+     "prod_state": "unrecorded (no CLAUDE.md row)",
+     "source": "app/services/response_builder.py:114-119,1554-1567 (log-only)"
+    }
+   ],
+   "fix_sketch": "New module app/services/result_gate.py (pure, no I/O). is_placeholder_identity(brand, name): casefold, strip punctuation; matches '', 'unknown', 'unknown product', 'n/a', 'product', or a name equal to the retailer/site title. assess_result(product_data, scoring_result, factual_candidates) returns {status in supported_result|partial_no_winner|needs_identification|unsupported_category|failed, reasons[]}. New flag ENABLE_IDENTITY_ABSTAIN_GATE (default OFF, read per call). (a) Camera: pre-compare; any placeholder gives the existing action:'error' body plus the refund latch, no paid compare. (b) Link: in compare_from_urls after extraction, before generate_comparison; a placeholder or title-less product returns {success:False, code:'INSUFFICIENT_DATA', error:<existing friendly sentence>, reason:'needs_identification'}. url_routes already refunds and surfaces 400 with the code, and build 3 shows the Arabic home.errors.insufficientData alert. (c) Text sync and SSE: in _compare_from_text_impl and the streaming twin, right after the Phase-1 gather (next to H6) and BEFORE the SSE 'verdict' yield (scs:5362), return or emit the INSUFFICIENT_DATA body with the additive 'reason'. The build-3 client turns a success:false complete into onError and the code-mapped copy (api.ts:804-812). Flag OFF: byte-identical. For 1.0.1: additive metadata.result_status so the client can render a neutral 'cannot recommend' result instead of an alert.",
+   "contract_fields": [
+    "success",
+    "code",
+    "error",
+    "reason (new, additive)",
+    "winner_index",
+    "overview.winner.product_index",
+    "comparison.winner_index",
+    "scoring_v2.overall_score.{product_a,product_b,winner_idx}",
+    "recommendation",
+    "action (camera)"
+   ],
+   "risks": "(1) Billing: on SSE a success:false complete does NOT refund the gate-reserved credit and still records lifetime (text_routes.py:1220-1296, 'billing UNCHANGED, W4-13b'). An abstain would still burn a free compare unless MYEZ-012 or W4-13b ships with it. (2) Camera with ENABLE_CAMERA_FAILURE_ENVELOPE ON: a post-compare INSUFFICIENT_DATA becomes comparison_failed, which build 3 renders as the 'timeout' retry state (ResultsScreen.tsx:338-346), the wrong copy. Do the camera gate pre-compare with action:'error'. (3) App Review: more 'thin data' alerts during review; keep it OFF until approval. (4) A false positive on a real product literally named 'Product ...' needs an exact-match predicate, not a substring match.",
+   "test_seams": [
+    "tests/test_partial_response_no_fabricated_scores.py, tests/test_timeout_partial_integration.py (H6 and partial paths)",
+    "tests/test_url_extraction.py, tests/test_url_compare_category.py (compare_from_urls)",
+    "tests/test_paid_route_metering.py (url and camera refunds)",
+    "tests/test_response_builder_winner_card_consistency.py, tests/test_winner_genuine_score_v2.py",
+    "Text SSE route tests that drive text_compare_stream (complete success:false), plus the backend comm set with the source-scanning pins (memory rule)",
+    "Client: __tests__ failureClassification and errorCopy tests (INSUFFICIENT_DATA maps to home.errors.insufficientData)",
+    "New: result_gate unit table (placeholder variants, Arabic placeholders, retailer-title-as-name)"
+   ],
+   "open_questions": [
+    "Reuse INSUFFICIENT_DATA (its Arabic copy fits: 'data is scarce, try brand and model') or add a new code? A new code falls to the generic home.errors.comparison copy on build 3.",
+    "Should the SSE billing fix (refund on a success:false complete) be bundled into this unit or into MYEZ-012?",
+    "Link path: should a title-less or homepage extraction be rejected inside extract_from_url (category B, MYEZ-005) or only at the compare gate?"
+   ]
+  },
+  {
+   "id": "MYEZ-003",
+   "status": "anchored",
+   "root_cause": "No evidence threshold before crowning. The winner is argmax(overall) even when every dimension is MISSING_SCORE or Tier-3-synthesized. The factual verdict has an explicit zero-evidence branch: when there is no price candidate, no rating candidate, no dim margin and no review-density candidate, line1 becomes '<winner> edges ahead on the overall picture.' and line2 falls back to '<runner> stays in the conversation as a close alternative.' The same 'edges ahead' string is the deterministic partial-verdict template used when the GPT verdict missed the hard cap (V10 shows exactly this string; V10 also showed partial-type symptoms). _partial_has_usable_data counts an empty specs dict as usable. The specs table rows include only fields both sides have, so an all-dash table means specs_comparison.rows == []. This signal exists but gates nothing. With ENABLE_COMPARISON_QUALITY_V2 OFF the verdict prompt always gets 'normal' (no hedging). COMPARISON_SYSTEM forbids an empty pros list and demands decisiveness, so the model invents generic reasons. A 2026-09-06 review measured that, at prod flags, a data-void product beat a measured unrated one in 9/9 categories (PO-RUBRIC-09).",
+   "evidence": [
+    {
+     "file": "app/services/response_builder.py",
+     "line": "1152-1165",
+     "note": "candidates == [] gives line1 = f'{winner_name} edges ahead on the overall picture.' (sparse-data fallback, still crowns)",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/response_builder.py",
+     "line": "1120-1121",
+     "note": "line2 neutral fallback 'stays in the conversation as a close alternative.' (audit pattern 3 quotes 'close alternative')",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/response_builder.py",
+     "line": "175-235",
+     "note": "deterministic_verdict_fields: 'edges ahead on the overall picture' / 'leads on the overall picture' templates",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/structured_comparison_service.py",
+     "line": "3701-3800,9144-9180",
+     "note": "_build_partial_response fills a deterministic verdict from scores when the GPT verdict is missing; still emits a winner",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/structured_comparison_service.py",
+     "line": "3584-3604",
+     "note": "usable = specs is not None or price is not None, so {} counts as usable",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/response_builder.py",
+     "line": "725-762",
+     "note": "specs_comparison.rows includes only fields populated on BOTH sides, so an empty list means no comparable spec",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/structured_comparison_service.py",
+     "line": "1038-1060",
+     "note": "verdict_comparison_quality returns 'normal' unless ENABLE_COMPARISON_QUALITY_V2",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/extraction_service.py",
+     "line": "2085-2122",
+     "note": "_WEIRD/_WEAK instructions are text-only; 'You may still pick a winner'",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/response_builder.py",
+     "line": "1257-1258,2231-2241",
+     "note": "HONEST_PARTIAL_SCORING nulls scoring_v2 only on a partial with overall absent, and blanks reason; winner_index still ships",
+     "basis": "measured"
+    },
+    {
+     "file": "sc-docs-70/docs/investigations/2026-09-06-full-review-state/report-m22-product-output.md",
+     "line": "PO-RUBRIC-09 row",
+     "note": "'At prod flags the unrated product wins 9/9 categories'; with RENORM ON the total void still won 8/9 (historical; later W4-6 units may have changed it)",
+     "basis": "measured"
+    },
+    {
+     "file": "QA audit MYEZ-003",
+     "line": "V10 03:30-03:43",
+     "note": "'Hyper X MIC' wins with spec rows all dashes; text 'edges ahead on the overall picture'",
+     "basis": "measured"
+    }
+   ],
+   "existing_flags": [
+    {
+     "name": "ENABLE_COMPARISON_QUALITY_V2",
+     "default": "OFF",
+     "prod_state": "OFF (dark)",
+     "source": "CLAUDE.md:412"
+    },
+    {
+     "name": "ENABLE_HONEST_PARTIAL_SCORING",
+     "default": "OFF",
+     "prod_state": "unknown / unrecorded",
+     "source": "CLAUDE.md:457; COMPARE_QUALITY_PLAN_S78.md:75"
+    },
+    {
+     "name": "ENABLE_SPECS_NO_FABRICATION",
+     "default": "OFF",
+     "prod_state": "OFF; flip LAST (needs a working search layer)",
+     "source": "CLAUDE.md:346,377"
+    },
+    {
+     "name": "ENABLE_MISSING_DIM_RENORM",
+     "default": "OFF",
+     "prod_state": "OFF",
+     "source": "CLAUDE.md:357"
+    },
+    {
+     "name": "ENABLE_SINGLE_VERDICT_MARGIN",
+     "default": "OFF",
+     "prod_state": "OFF (no flip recorded)",
+     "source": "CLAUDE.md:343,613"
+    }
+   ],
+   "fix_sketch": "New flag ENABLE_WINNER_EVIDENCE_GATE (default OFF). Add a pure evidence_coverage(product_data, scoring_result, dimensions) in result_gate.py. It counts discriminating, auditable facts: (a) both prices showable and not estimated (reuse is_price_showable), (b) both ratings real (rating_derived False), (c) dims where both sides are measured (not in missing_data, not tier3_synthesis) and the margin is at least 3, (d) len(specs_comparison.rows) > 0. The factual verdict's candidate list is the same idea; expose it from _build_factual_verdict instead of duplicating it. Coverage 0 means status partial_no_winner. On build 3 this returns INSUFFICIENT_DATA (text/link) or, for camera, the pre-compare path cannot know coverage, so post-compare it must use action:'error' or a new additive camera body. Decide this BEFORE the SSE verdict yield and inside _build_partial_response. Under ENABLE_RESULT_STATUS_METADATA (additive) ship metadata.result_status, metadata.result_reasons and metadata.evidence_coverage on every success so 1.0.1 can render a neutral 'no recommendation' card and keep the data visible. Pair with ENABLE_COMPARISON_QUALITY_V2 only after U12(d) on phones (the 2026-09-06 review ordering).",
+   "contract_fields": [
+    "scoring_v2.factual_verdict.{line1,line2}",
+    "overview.winner.{reason,key_tradeoff,margin}",
+    "recommendation",
+    "specs.specs_comparison.rows",
+    "metadata.missing_dim_cells",
+    "metadata.partial",
+    "metadata.data_freshness_shaky",
+    "metadata.result_status (new)",
+    "scoring_v2.confidence_legs"
+   ],
+   "risks": "A coverage-0 abstain will hit many cold fragrance compares that today end as partials (the S78 plan says most pairs miss the 30 s cap), so the abstain rate could be high. Measure it with search_logs or a canary before any flip. The SSE billing caveat from MYEZ-002 applies. The thresholds interact with the 3.0 tie margin in compute_dimension_winners (scoring_service.py:2645).",
+   "test_seams": [
+    "tests/test_response_builder_factual_verdict.py, tests/test_response_builder_factual_verdict_diagnostic.py, tests/test_factual_verdict_lane1_fixtures.py",
+    "tests/test_winner_evidence_prod_fixtures.py, tests/test_winner_evidence_scoring_v2.py",
+    "tests/test_partial_response_no_fabricated_scores.py, tests/test_timeout_partial_integration.py",
+    "tests/test_specs_row_winner.py, tests/test_dim_winner_one_sided_missing.py",
+    "New: an evidence_coverage table over recorded prod bodies (the comparison_baseline fixtures) to measure the abstain rate offline before the flip"
+   ],
+   "open_questions": [
+    "What is the minimum evidence to crown (1 fact? 2? must it touch the user's top priority)? This is a product decision.",
+    "Should Tier-3-synthesized specs (inference_source=model_knowledge) count as evidence? Today they decide dims.",
+    "Is a partial (hard-cap) result allowed to crown at all?"
+   ]
+  },
+  {
+   "id": "MYEZ-004",
+   "status": "anchored",
+   "root_cause": "The vision schema has no distinguishing attributes, and the prompt is label-OCR oriented ('FULL product name exactly as printed'). Two different shirts with only a 'GUESS' logo therefore come back as identical {brand:'GUESS', name:'GUESS!'} (inferred from V07). No code path detects that A and B are the same identity: there is no same-pair check in the camera route, the vision branch, explicit_pair, or the TextCompareRequest validator. dedup_brand_name does not collapse 'GUESS'+'GUESS!' because the next char is '!' (token-boundary check), so both cards read 'GUESS GUESS!'. dimension_winners are keyed by display NAME, so with identical names the per-dimension winner cannot be mapped back to an index. This gives the self-contradicting 'leads on Heritage' / 'pulls ahead on Durability' / 'The other product offers better durability' text. Identical search queries are extracted separately (in parallel, both cache-miss), so LLM noise in specs decides the winner (inferred).",
+   "evidence": [
+    {
+     "file": "app/services/openai_service.py",
+     "line": "139-145,152",
+     "note": "No colour/material/model-code field; non-packaged items are identified by logo (confidence low)",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/text_sanitize.py",
+     "line": "43-54",
+     "note": "_strip_leading_brand requires whitespace after the brand; 'GUESS!' is not deduped, so the display shows 'GUESS GUESS!'",
+     "basis": "measured"
+    },
+    {
+     "file": "app/api/text_routes.py",
+     "line": "379-390",
+     "note": "normalize_shape builds 'A vs B' with no A != B check; grep found no same-pair detector anywhere in app/",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/scoring_service.py",
+     "line": "1677-1682,2633-2651",
+     "note": "dimension_winners[dim].winner = product_names[i] (a name, not an index)",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/structured_comparison_service.py",
+     "line": "4210-4224",
+     "note": "The vision pair is accepted as-is (no identity comparison)",
+     "basis": "measured"
+    },
+    {
+     "file": "screenshot 69e9e3fb-image.png (V07)",
+     "line": "-",
+     "note": "Both cards 'GUESS GUESS!' / 'GUESS', one with variant 'Polyurethane', prices pending, best-match star, 'leads on Heritage' + 'pulls ahead on Durability'",
+     "basis": "measured"
+    }
+   ],
+   "existing_flags": [
+    {
+     "name": "ENABLE_SHOWABLE_NAME_IDENTITY",
+     "default": "OFF",
+     "prod_state": "unknown (not read back from Railway); price-only sample/decant guard, NOT pair identity",
+     "source": "CLAUDE.md:443-446,680; app/services/price_service.py:4440-4461"
+    }
+   ],
+   "fix_sketch": "Under ENABLE_IDENTITY_ABSTAIN_GATE: same_identity(a, b) in result_gate.py = casefolded, punctuation- and whitespace-normalized dedup_brand_name(brand, name) equality, OR equal brand plus name-token Jaccard of at least 0.9 with no differing variant/size/distinguishing_features. Camera: pre-compare gives action:'error' (build 3 copy 'photograph each product clearly'). Text/link: INSUFFICIENT_DATA with reason:'same_identity'. Under ENABLE_VISION_IDENTITY_V2, when the two vision names collide but distinguishing_features differ, append the features to the name (e.g. 'GUESS T-shirt, white, cotton') before searching, so they become two identities; otherwise abstain. Separately (unflagged-safe internal fix): key compute_dimension_winners by index (carry the name only for display). It only affects the identical-name case, but it touches scoring, so it goes behind the same flag or gets a byte-identity gate.",
+   "contract_fields": [
+    "overview.products[i].name",
+    "overview.products[i].variant",
+    "scoring.dimension_winners",
+    "overview.tradeoffs",
+    "overview.winner.key_tradeoff",
+    "scoring_v2.factual_verdict",
+    "action (camera)"
+   ],
+   "risks": "Legitimate same-name comparisons (same perfume at two sizes, '50ml vs 100ml') must survive. Treat a differing size_or_count/variant as distinct. Re-keying dimension_winners affects compute_tradeoff_pairs and the key_tradeoff text, so run the tradeoff pins.",
+   "test_seams": [
+    "tests/test_dim_winner_one_sided_missing.py and the tradeoff-pair tests (compute_tradeoff_pairs)",
+    "tests/test_winner_prose_reconciliation.py",
+    "text_sanitize dedup tests (dedup_brand_name)",
+    "New: same_identity table (GUESS/GUESS!, 'Dior Sauvage EDP 100ml' vs '... 60ml' must stay distinct, Arabic names)"
+   ],
+   "open_questions": [
+    "For apparel, should the vision step ask the user for the model code or tag photo (audit expectation) rather than auto-abstain? That needs 1.0.1 UI.",
+    "Should a same-identity pair with different sizes be routed to the size/price comparison only (no 'winner')?"
+   ]
+  },
+  {
+   "id": "MYEZ-011",
+   "status": "anchored",
+   "root_cause": "The winner styling on the client depends on nothing except an index. TopMatchBadge ('الأفضل تطابقاً' with a star) is rendered unconditionally in the ResultsContent header. The card at winnerIndex always gets productCardWinner styling and the winner spring animation. winnerIndex comes from scoring_v2 product_a >= product_b (ties go to 0) or from winner_index (null goes to 0). comparison_quality 'weird' only suppresses the RevealBurst particle overlay. isDegradedComparison keys only on comparison.error (a verdict LLM failure), not on identity or coverage. The partial note ('prices still updating') is the only data-state hint. The backend never sends a 'no recommendation' state (see MYEZ-002/003). Under ENABLE_COMPARISON_QUALITY_V2 the 'weird' to 'weak' relabel would UN-suppress the RevealBurst on sparse data (2026-09-06 review interaction d). MatchBadge.tsx is the onboarding Step15Reveal badge, not the results star.",
+   "evidence": [
+    {
+     "file": "SmartCompareApp/src/components/results/ResultsContent.tsx",
+     "line": "221-237",
+     "note": "<TopMatchBadge testID='results-content-top-match' /> rendered with no condition",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/components/results/ResultsContent.tsx",
+     "line": "260-276",
+     "note": "isWinner = idx === winnerIndex gives productCardWinner (emerald) plus winnerScaleAnimStyle",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/components/results/ResultsContent.tsx",
+     "line": "460-482",
+     "note": "isWeird only gates RevealBurst",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/components/results/ResultsContent.tsx",
+     "line": "164-188,364-414",
+     "note": "Partial note, degraded note, FactualVerdict line1 preferred, else the verdict body",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/components/results/TopMatchBadge.tsx",
+     "line": "24-33",
+     "note": "Star plus t('results.topMatch'); no props for state",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/services/resultHonesty.ts",
+     "line": "17-20",
+     "note": "isDegradedComparison = truthy result.comparison.error only",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/screens/ResultsScreen.tsx",
+     "line": "460-475,880-887",
+     "note": "Winner reveal and haptic always fire after 800 ms; presentationWinnerIndex derivation",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/screens/onboarding/Step15Reveal.tsx",
+     "line": "177",
+     "note": "MatchBadge is used only in onboarding",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/i18n/ar.json",
+     "line": "1068",
+     "note": "results.topMatch = 'الأفضل تطابقاً'",
+     "basis": "measured"
+    }
+   ],
+   "existing_flags": [
+    {
+     "name": "ENABLE_COMPARISON_QUALITY_V2",
+     "default": "OFF",
+     "prod_state": "OFF",
+     "source": "CLAUDE.md:412; 2026-09-06-full-review-verified.json interaction (d)"
+    },
+    {
+     "name": "ENABLE_HONEST_PARTIAL_SCORING",
+     "default": "OFF",
+     "prod_state": "unknown",
+     "source": "CLAUDE.md:457"
+    },
+    {
+     "name": "ENABLE_WINNER_PROSE_RECONCILE",
+     "default": "OFF",
+     "prod_state": "OFF (the default, per the S79 truth check)",
+     "source": "CLAUDE.md:380; sc-docs-70 2026-10-17-session-79-state/runs/s79_truth_check_wf_e1d78867.json:1125"
+    }
+   ],
+   "fix_sketch": "Build 3 (frozen): the only lever is not delivering unsupported results (the gates in MYEZ-002/003/004/001), so no badge can appear. Backend, additive, ENABLE_RESULT_STATUS_METADATA (default OFF): ship metadata.result_status, metadata.identity_confidence, metadata.data_coverage and overview.winner.supported (bool). Build 3 ignores unknown keys (response_builder comments; types.ts optional). Client 1.0.1 (no prod OTA before approval, UB-R4): three states from result_status. supported_result: today's UI. partial_no_winner: neutral cards, no TopMatchBadge, no productCardWinner, no RevealBurst or haptic, a 'what we know / what's missing' line. needs_identification: a correction CTA. Absent result_status (old History rows) keeps legacy rendering. Also gate the share text and the History emphasis on the same field.",
+   "contract_fields": [
+    "overview.winner.product_index",
+    "winner_index",
+    "scoring_v2.overall_score",
+    "scoring_v2.comparison_quality",
+    "metadata.partial",
+    "comparison.error",
+    "metadata.result_status (new)",
+    "overview.winner.supported (new)"
+   ],
+   "risks": "Client changes cannot reach build-3 users until 1.0.1 or an approved OTA. Copy policy tests ban certain vocabulary (TopMatchBadge.test.tsx negative sweep), so the new neutral copy must pass copy-policy.test.ts. The frontend-tests CI job is BLOCKING.",
+   "test_seams": [
+    "SmartCompareApp __tests__/components/TopMatchBadge.test.tsx",
+    "__tests__/components/ResultsContent.render.test.tsx, ResultsContent.rewriteOrder.test.tsx, ResultsContent.v2Wiring.test.tsx, ResultsContent.partialNote.test.tsx, ResultsContent.scoreGuard.test.tsx",
+    "__tests__/clientTruth/* (resultHonesty)",
+    "Backend: tests/test_response_builder_winner_card_consistency.py for the additive keys; the flag-OFF byte-identity of build_comparison_response"
+   ],
+   "open_questions": [
+    "Which three-state copy (Arabic first; audit section 6.3 proposes wording), and does it need legal or copy review?",
+    "Should result_status ship ON (additive-only) during review, or wait for approval?"
+   ]
+  },
+  {
+   "id": "MYEZ-027",
+   "status": "anchored",
+   "root_cause": "Persistence and sharing carry no result-quality state. save_comparison stores any 'renderable' payload (2 named products plus metadata.query), so 'Unknown Product' rows and zero-evidence crowned rows are saved as finished decisions. The History list derives winner_index from metadata.winner_index or comparison.winner_index, which is always 0 or 1 because response_builder always sets it. Re-opening a row re-renders the stored full_response with the same crowned UI. The share endpoint returns the stored full_response verbatim. The client text share hardcodes 'Winner: <name>'. With ENABLE_COMPARISON_ID_ECHO ON (prod) the text-stream row is inserted before the terminal event. /home/savings sums winner-vs-loser savings from every stored row's winner_index. Partly mitigated today: camera unsuccessful results are not saved under metering ON. Link comparisons never reach History at all, because compare_from_urls returns no metadata.query, so _validate_renderable rejects them (V10's history row was a typed compare).",
+   "evidence": [
+    {
+     "file": "app/services/database_service.py",
+     "line": "303-321,413-475",
+     "note": "Renderable means names plus metadata.query; inserts full_response with no status column",
+     "basis": "measured"
+    },
+    {
+     "file": "app/api/history_routes.py",
+     "line": "33-43,106-125",
+     "note": "winner_index from metadata.winner_index first, then comparison.winner_index; winner and runner-up image urls derived from it",
+     "basis": "measured"
+    },
+    {
+     "file": "app/api/share_routes.py",
+     "line": "52-87",
+     "note": "Public view returns comparison.full_response (only metadata.openai stripped)",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/screens/ResultsScreen.tsx",
+     "line": "528-549",
+     "note": "Text share: 'Comparing A vs B\\n\\nWinner: <winnerName>\\n\\n<recommendation>'; degraded rows only drop the recommendation",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/screens/HistoryScreen.tsx",
+     "line": "442,473-483",
+     "note": "The History row already tolerates winner_index null (no emphasis, neutral image mapping)",
+     "basis": "measured"
+    },
+    {
+     "file": "app/api/image_routes.py",
+     "line": "503-534,553-560",
+     "note": "Metering ON: an unsuccessful camera compare is not saved; a delivered (crowned) one is saved",
+     "basis": "measured"
+    },
+    {
+     "file": "app/api/url_routes.py",
+     "line": "199-206",
+     "note": "URL save only under metering; payload lacks metadata.query, so save_comparison skips it",
+     "basis": "inferred"
+    },
+    {
+     "file": "app/api/home_routes.py",
+     "line": "151-174",
+     "note": "Savings computed from full_response.winner_index for every renderable BHD row",
+     "basis": "measured"
+    },
+    {
+     "file": "sc-docs-70/docs/investigations/2026-10-17-session-79-state/APP_REVIEW_AUDIT_S79.md",
+     "line": "227",
+     "note": "ENABLE_COMPARISON_ID_ECHO is ON in production",
+     "basis": "measured"
+    }
+   ],
+   "existing_flags": [
+    {
+     "name": "ENABLE_COMPARISON_ID_ECHO",
+     "default": "OFF",
+     "prod_state": "ON",
+     "source": "APP_REVIEW_AUDIT_S79.md:227; CLAUDE.md:443"
+    },
+    {
+     "name": "ENABLE_PAID_ROUTE_METERING",
+     "default": "OFF",
+     "prod_state": "ON",
+     "source": "CLAUDE.md:568,689"
+    }
+   ],
+   "fix_sketch": "(1) The abstain gates (MYEZ-001..004) stop most bad rows at the source: an INSUFFICIENT_DATA body is not renderable, so it is not saved. (2) Under ENABLE_RESULT_STATUS_METADATA: stamp metadata.result_status, metadata.identity_confidence and metadata.data_coverage into the stored full_response. For any status other than supported_result, also stamp metadata.winner_index = None. history_routes already prefers metadata.winner_index, and the build-3 History list renders null neutrally, so this is a backend-only improvement for the list. (3) home_routes savings skips rows whose result_status is not supported_result. (4) share POST: refuse (409, code RESULT_NOT_SHAREABLE) for rows marked non-supported. Build 3 share sheet error-path behaviour must be checked first; otherwise only for 1.0.1. (5) 1.0.1 client: History and Share render a 'needs correction' tag from result_status; text share omits 'Winner:' when unsupported. No migration needed (JSONB field); legacy rows without the key keep today's behaviour.",
+   "contract_fields": [
+    "full_response (stored)",
+    "history list: winner_index, winner_image_url, runner_up_image_url",
+    "full_response.metadata.winner_index",
+    "share view: comparison.full_response",
+    "home/savings: savings_bhd",
+    "metadata.result_status (new)"
+   ],
+   "risks": "Stamping metadata.winner_index=None while overview.winner and winner_index still crown inside full_response gives a mixed state when the detail is re-opened on build 3 (the list is neutral, the detail is crowned). That is acceptable only together with the abstain gate. The share refusal could surface as an error on build 3's share sheet, so verify the ShareBottomSheet failure path before enabling.",
+   "test_seams": [
+    "tests/test_history.py, tests/test_history_routes.py (winner_index extraction, image url derivation)",
+    "tests/test_share_routes.py, tests/test_referral_share_privacy.py",
+    "home savings tests (home_routes _extract_winner_loser_prices)",
+    "SmartCompareApp __tests__/HistoryScreen.listImageUrl.wave2.test.tsx, HistoryScreen.bundleE.s3.test.tsx, __tests__/clientTruth/shareTruth.s74.test.tsx"
+   ],
+   "open_questions": [
+    "Should existing History rows with 'Unknown Product' or zero evidence be retro-tagged (a one-off backfill over comparisons.full_response) or left as-is?",
+    "Is the share-refusal acceptable on build 3, or should the share stay allowed with neutral content only?"
+   ]
+  }
+ ],
+ "extra_findings": [
+  {
+   "title": "Link (URL) compare always ships an empty 'why we chose this' (explains V03 / MYEZ-017)",
+   "severity": "P1",
+   "evidence": "url_extraction_service.py:685 returns recommendation: comparison.get('recommendation',''), but COMPARISON_SYSTEM (extraction_service.py:1031-1060) has no 'recommendation' key (it is winner_reason). The link response is the legacy flat shape with no overview, scoring or scoring_v2, so build 3 renders verdictBody = result.recommendation = '' (ResultsContent.tsx:182-185) and no FactualVerdict or bars. V03 screenshot 096b52e4 confirms: winner card, empty block, no dimension bars. Additive, flag-gated fix: recommendation = comparison.get('winner_reason') (measured)."
+  },
+  {
+   "title": "Camera compare drops output_lang, user prefs, user_id and selected_category",
+   "severity": "P1",
+   "evidence": "image_routes.py:450 calls compare_from_text(query, region=region, vision_products=products, nocache=nocache). Even with ENABLE_ARABIC_VERDICT_OUTPUT ON, camera prose stays English (V01/V04/V06/V07 English lines, MYEZ-016). There is no personalization and no user chip for camera (MYEZ-008/017). The 2026-09-06 review already flagged the missing selected_category (2026-09-06-full-review.md:191 item c). Text routes pass output_lang (text_routes.py:646,857,1108) (measured)."
+  },
+  {
+   "title": "SSE success:false terminal payload still bills the credit",
+   "severity": "P1 (blocks any abstain-via-INSUFFICIENT_DATA design)",
+   "evidence": "text_routes.py:1220-1296: a complete_response with success False is logged as a failure, but the 'billing below is UNCHANGED (W4-13b)'; record_lifetime_comparison still runs and the gate-reserved daily credit is not refunded. URL (url_routes.py:170-178) and camera (image_routes.py:503-534, metering ON) do refund (measured). Coordinate with MYEZ-012."
+  },
+  {
+   "title": "Camera INSUFFICIENT_DATA under the failure envelope renders the 'timeout / retry' state",
+   "severity": "P2",
+   "evidence": "ENABLE_CAMERA_FAILURE_ENVELOPE ON (CLAUDE.md:462) turns any unsuccessful compare into action 'comparison_failed', and ResultsScreen.tsx:338-346 maps every comparison_failed whose code is not in the outage set to setLoadError('timeout'). An identity or evidence abstain on camera must therefore use the pre-compare action:'error' (vision_failed copy) instead (measured)."
+  },
+  {
+   "title": "Cross-category 'weird' rule is structurally dead on vision, typed-pair and link paths",
+   "severity": "P2",
+   "evidence": "detect_comparison_quality Rule 1 compares per-product categories (scs:1006-1009, _product_category scs:193-194), but the A3 write-back stamps category_used on both products (scs:4295-4296; url_extraction_service.py:641-642). The 'weird' off-ramp prompt (extraction_service.py:2085-2100) can then only trigger on a 10x price spread or, flag OFF, sparse specs (measured)."
+  },
+  {
+   "title": "Vision JSON object wrapper silently becomes 'no products'",
+   "severity": "P2",
+   "evidence": "openai_service.py:213-222 iterates products only if it is a list. A model reply {'products':[...]} parses fine but yields [], so image_routes.py:412-421 returns action 'error' ('No products could be identified'). No response_format JSON mode is used (openai_service.py:187-194) (measured)."
+  },
+  {
+   "title": "dimension_winners are keyed by display name",
+   "severity": "P2",
+   "evidence": "scoring_service.py:1677-1682 and 2633-2651 store winners[dim].winner = product_names[i]. Identical display names (V07 'GUESS GUESS!') make per-dimension winners index-ambiguous, which corrupts tradeoffs and key_tradeoff ('The other product offers better durability') (measured; V07 screenshot)."
+  },
+  {
+   "title": "ENABLE_GPT_WINNER cannot gate or abstain and has no CLAUDE.md row",
+   "severity": "P3",
+   "evidence": "response_builder.py:1554-1567 only logs GPT_WINNER_DISAGREES ('NO index override'); extraction_service.py:2578-2579 only appends a prompt block. grep of CLAUDE.md finds no row, so its prod state is unrecorded (measured)."
+  },
+  {
+   "title": "vision_cost hardcodes gpt-4o-mini pricing",
+   "severity": "P3",
+   "evidence": "openai_service.py:224-229 computes cost at $0.15/$0.60 per 1M regardless of OPENAI_MODEL_VISION. If the owner upgrades the vision model, metadata.vision_cost and the search_logs cost under-report (the COST-METER ledger is separate) (measured)."
+  },
+  {
+   "title": "Contradictory camera capture guidance in the Arabic and English copy",
+   "severity": "P2",
+   "evidence": "ar.json:850 needMorePhotos ('put both products together in the photo') vs ar.json:851 visionFailed ('photograph each product in its own photo'). The two-slot camera (ScanCameraScreen.tsx:7-11) expects one per photo (measured)."
+  },
+  {
+   "title": "Placeholder identity is used as a live search query",
+   "severity": "P1 (feeds MYEZ-001/014)",
+   "evidence": "image_routes.py:442 builds 'Unknown Unknown Product vs ...' and scs:4213-4224 sets search_query to the same placeholder, so the unified search, image cascade (scs:5941-5950) and price race run on a placeholder. Random results' images, prices and specs get attached to an unidentified product (code measured; effect inferred)."
+  },
+  {
+   "title": "/home/savings counts unsupported rows",
+   "severity": "P3",
+   "evidence": "home_routes.py:151-174 and 267-277 sum max(loser-winner, 0) over any renderable BHD row using winner_index, including Unknown or zero-evidence crowned rows (measured)."
+  }
+ ],
+ "sources": [
+  "C:/Users/SynAckITPC/.claude/uploads/ae650c83-4d2a-4910-a8d4-a47ab213c8c3/d20a7872-MYEZ_QA_UX_Audit_2026-10-18.md",
+  "C:/Users/SynAckITPC/.claude/uploads/ae650c83-4d2a-4910-a8d4-a47ab213c8c3/69e9e3fb-image.png",
+  "C:/Users/SynAckITPC/.claude/uploads/ae650c83-4d2a-4910-a8d4-a47ab213c8c3/096b52e4-image.png",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/api/image_routes.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/openai_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/model_config.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/structured_comparison_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/scoring_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/response_builder.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/extraction_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/url_extraction_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/image_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/price_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/text_sanitize.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/database_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/feedback_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/api/url_routes.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/api/text_routes.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/api/history_routes.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/api/share_routes.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/api/home_routes.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/models/scoring_v2.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/components/results/ResultsContent.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/components/results/TopMatchBadge.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/components/primitives/MatchBadge.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/services/resultHonesty.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/services/failureClassification.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/services/errorCopy.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/services/api.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/screens/ResultsScreen.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/screens/HistoryScreen.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/screens/HomeScreen.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/screens/ScanCameraScreen.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/types/types.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/i18n/ar.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/CLAUDE.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-14-session-78-state/COMPARE_QUALITY_PLAN_S78.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-17-session-79-state/APP_REVIEW_AUDIT_S79.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-17-session-79-state/ledger.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/ledger.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-09-06-full-review.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-09-06-full-review-state/report-m22-product-output.md"
+ ]
+}

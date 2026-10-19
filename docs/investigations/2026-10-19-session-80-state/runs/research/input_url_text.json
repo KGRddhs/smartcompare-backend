@@ -1,0 +1,522 @@
+{
+ "category": "B: link and text input (MYEZ-005, 006, 007, 026)",
+ "summary": "I read the code at origin/main 683f56c0 (C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base). All four defects trace to specific code. Nothing was run or changed, and Railway was not read.\n\n(1) MYEZ-005, homepage links get a green tick. The client's validateUrl only checks syntax: the link must parse with new URL() and use http or https. When it passes, the field's number circle turns emerald with a Check icon (TwoInputShell.tsx:250-259, 674-689, 807-810). A link pasted in Type mode switches the input to Link mode and is validated at once, so the tick can appear without the field ever losing focus (:344-349, :395-407). The backend never checks for a product page on the URL path either. url_routes runs only the SSRF guard (:359). url_extraction_service.extract_from_url returns success:true for any page that fetches, falling back to the name \"Unknown Product\" (:466-520, :527). The existing ENABLE_NOT_A_PDP_FILTER (default OFF; prod state not recorded, inferred OFF) runs only on the price path (price_service.py:13885, :14900). Its homepage detectors are also switched off when the requested URL is itself a homepage (:13243, :13253, :13259). source_router.is_non_pdp_listing_url deliberately keeps a bare homepage (:1088).\n\n(2) MYEZ-006, the dialog text. The title is common.error (ar.json:384, \"لحظة — جرّب الضغط مرّة ثانية.\") and the body is home.errors.comparison (ar.json:115, \"نتيجة أدقّ قادمة — جرّب باسم العلامة أو الطراز.\"). friendlyErrorKey's default arm picks the body (errorCopy.ts:90-91) and friendlyErrorTitleKey picks the title (:32-36). It fires for any code without a dedicated case (null, BAD_REQUEST, VALIDATION_ERROR, an unknown code). For V02 the backend source is most likely the <2-products exit: compare_from_urls returns a result with no code (:620-625), and url_routes raises HTTPException(400, \"Could not extract both products\") (:194-197). error_handler then labels it code BAD_REQUEST (:22-34). The route throws away the per-URL `details`, so the information about which link failed is lost. This is pinned by tests/test_retro_w2_1.py:1288-1300.\n\nWhy the V02 fetch failed is inferred, not measured. fetch_page uses plain httpx with no browser fingerprinting (:119), and the S80 ledger at 21:35 recorded FragranceX answering a plain curl with a Cloudflare 403. The screenshot shows the two links are identical, and no same-URL guard exists.\n\nError codes the URL path can return today: AUTH_REQUIRED, FORBIDDEN, RATE_LIMITED, USAGE_LIMIT, VALIDATION_ERROR, BAD_REQUEST (both the SSRF refusal and the <2-products exit), LLM_UNAVAILABLE 503, SERVER_ERROR 500. The client also creates TIMEOUT itself after 35 s (api.ts:48) and GATEWAY_UNAVAILABLE for a 502/504. None of the audit's invalid_url, not_product_page, unsupported_store, unresolved_product or a backend URL timeout exists.\n\n(3) MYEZ-007, no disambiguation on the text path. The app sends {product_a, product_b} (HomeScreen.tsx:409-414; api.ts:695-708). The backend then skips parse_product_query and searches the user's raw text as the product name, with brand \"\" (structured_comparison_service.py:4226-4241, :5681-5699). There is no candidates, confidence or ambiguity concept anywhere: the parser prompt has no ambiguity field (extraction_service.py:102-139), and the only parse failure is \"fewer than 2 products\" (:4253-4261).\n\n(4) MYEZ-026, the disabled Compare button explains nothing, by design. The TwoInputShell header (:14-15) says \"no error copy; the disabled CTA does the work\". Validation runs only when a field loses focus (:436-441), the button just drops to 0.5 opacity (:459-462, :607-620), and a jest pin forbids /invalid|try again/ text (TwoInputShell.test.tsx:308-319).\n\nBuild-3 constraints:\n- A new error code on /url/compare or /text/compare lands on the same default dialog on build 3.\n- A REST success:false body keeps only code and error (api.ts:718-723).\n- HTTPException details lose any extra keys (error_handler.py:133-143).\n- The OpenAPI operations and request schemas of the ten paid routes are pinned (tests/test_s71_u13_compare_auth_required.py:981-997). Adding fields to URLCompareRequest or TextCompareRequest would break that pin; a candidates[] list therefore belongs on a new additive route.\n\nNo existing flag covers any of the four fixes. The new behaviour needs new dark flags, and the client copy needs an OTA after approval.",
+ "defects": [
+  {
+   "id": "MYEZ-005",
+   "status": "anchored",
+   "root_cause": "Two-layer gap, both measured. CLIENT: TwoInputShell.validateUrl accepts any string that parses with new URL() and has protocol http:/https: (length 1..2048); on success the numeral circle switches to the emerald circleValid style with a Check icon, which the tester reads as 'valid product link'. A URL pasted into Type mode is seeded into the Link cache and validated immediately on the mode flip (no blur needed), so a homepage gets the tick instantly. BACKEND: the URL compare path has no 'is this a product page' step. url_routes runs only the SSRF guard (scheme/hostname/private-IP), then compare_from_urls -> extract_from_url which, for any page that fetches 2xx, always returns success:true: generic extraction (JSON-LD @type == 'Product' exact match, else og/meta title), an LLM fallback over the page text, and normalize_product_data names it 'Unknown Product' when nothing is found. So a homepage either fails to fetch (-> MYEZ-006 dialog) or is 'extracted' as a product named after the store (or 'Unknown Product') and compared (V09 Rasasi pattern). The existing NOT-A-PDP machinery (ENABLE_NOT_A_PDP_FILTER, classify_not_a_pdp) lives only on the price path and, by design, never flags a REQUESTED homepage (requested_is_home suppresses the homepage-collapse detectors); is_non_pdp_listing_url deliberately keeps bare homepages; url_extraction_service.fetch_page returns only the body text, not the final URL, so redirect-to-home/search cannot be detected there either.",
+   "evidence": [
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\SmartCompareApp\\src\\components\\TwoInputShell.tsx",
+     "line": "250-259",
+     "note": "validateUrl: trimmed length 1..2048, new URL() parses, protocol http:/https: only. No path/host/product check.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\SmartCompareApp\\src\\components\\TwoInputShell.tsx",
+     "line": "674-689, 807-810",
+     "note": "valid -> styles.circleValid (backgroundColor colors.accent = emerald) + <Check/> icon: the 'green tick' in V02/V09.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\SmartCompareApp\\src\\components\\TwoInputShell.tsx",
+     "line": "344-349, 395-407",
+     "note": "Mode-flip effect runs setValidA(validate(seeded)) immediately; URL-paste in Type mode seeds url.a and fires onModeAutoswitch, so a pasted homepage is ticked without a blur.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\.claude\\uploads\\ae650c83-4d2a-4910-a8d4-a47ab213c8c3\\4179c270-image.png",
+     "line": "",
+     "note": "V02: both fields show https://www.fragrancex.com/ (identical URLs) with emerald ticks; dialog title 'لحظة — جرّب الضغط مرّة ثانية.' body 'نتيجة أدقّ قادمة — جرّب باسم العلامة أو الطراز.' with a single OK; counter still 3/3.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\api\\url_routes.py",
+     "line": "357-365",
+     "note": "Only pre-gate is _validate_url_offloop_or_sync (SSRF) on both URLs; URLCompareRequest url1/url2 are bare str (233-234; HttpUrl imported at :9 but unused, no max_length).",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\utils\\url_validator.py",
+     "line": "312-357",
+     "note": "validate_external_url: scheme http/https, hostname present, resolved address not private/loopback/link-local. Nothing about page type.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\url_extraction_service.py",
+     "line": "466-520",
+     "note": "extract_from_url: after a successful fetch ALWAYS returns success:True; insufficient title/price -> extract_with_ai over page text (503-509).",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\url_extraction_service.py",
+     "line": "523-530",
+     "note": "normalize_product_data: title = raw title or full_title or 'Unknown Product' -> the V09 'Unknown Product' cards are delivered as a successful extraction.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\url_extraction_service.py",
+     "line": "302-347",
+     "note": "extract_generic_data matches item['@type'] == 'Product' exactly (309); falls back to og_title/page_title (333) -> a homepage becomes a 'product' named after the store.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\url_extraction_service.py",
+     "line": "575-625",
+     "note": "compare_from_urls: no url1==url2 check, no page-type check; the only refusal is <2 successful extractions.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\url_extraction_service.py",
+     "line": "90-143",
+     "note": "fetch_page follows redirects manually but returns only response.text; the final URL (`current`) is discarded, so redirect-to-home/search is undetectable on this path.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\price_service.py",
+     "line": "12977-12987, 13019-13030, 13196-13282",
+     "note": "ENABLE_NOT_A_PDP_FILTER (default OFF, read per call) + classify_not_a_pdp + _NOT_A_PDP_HOME_PATH_RE / _NOT_A_PDP_SEARCH_PATH_RE exist, but the requested_is_home guard (13243, 13253, 13259) means a URL that IS the homepage is never classed redirect_to_homepage.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\price_service.py",
+     "line": "13885, 14900",
+     "note": "The only two callers of the NOT-A-PDP filter: extract_price_from_html and fetch_page_price (price path). url_extraction_service never calls it.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\source_router.py",
+     "line": "1078-1112",
+     "note": "is_non_pdp_listing_url explicitly KEEPS 'a bare brand homepage or an unknown slug' (1088) -> cannot be reused as-is to reject a homepage.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-docs-70\\docs\\investigations\\2026-10-19-session-80-state\\ledger.md",
+     "line": "21:35 entry",
+     "note": "FragranceX /robots.txt and /sitemap.xml answer a Cloudflare managed challenge (403) to a plain curl from this box.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\data\\bh_gcc_sources.json",
+     "line": "6728-6752",
+     "note": "store.rasasi.com.sa is a live registry row (page_scrape_jsonld, SAR); the URL path's SUPPORTED_RETAILERS (url_extraction_service.py:49-60, 10 electronics rows) never consults this registry.",
+     "basis": "measured"
+    }
+   ],
+   "existing_flags": [
+    {
+     "name": "ENABLE_NOT_A_PDP_FILTER",
+     "default": "OFF",
+     "prod_state": "not recorded in any S71-S80 ledger; inferred OFF (code default). Irrelevant to the URL path either way: price path only.",
+     "source": "app/services/price_service.py:12977-12987; CLAUDE.md M9 flag row"
+    },
+    {
+     "name": "ENABLE_OFFLOOP_DNS_RESOLVE",
+     "default": "OFF",
+     "prod_state": "ON on web since 2026-10-11 19:16 (S77 ledger line 20)",
+     "source": "app/utils/url_validator.py; only moves the SSRF resolve off-loop, no page-type logic"
+    },
+    {
+     "name": "ENABLE_PRICE_PARSE_OFFLOAD",
+     "default": "OFF",
+     "prod_state": "ON on web (S77 ledger 23:08 production-state line)",
+     "source": "url_extraction_service.py:492-500 (caps html, offloads extractor); no page-type logic"
+    },
+    {
+     "name": "ENABLE_PAID_ROUTE_METERING",
+     "default": "OFF",
+     "prod_state": "ON since 2026-10-03 14:23 (S71 ledger line 93)",
+     "source": "url_routes.py:56-85, 170-178: a URL compare reserves a credit and refunds it on the <2-products exit, consistent with V02's 3/3 counter"
+    }
+   ],
+   "fix_sketch": "Backend (new dark flag, e.g. ENABLE_URL_INPUT_DIAGNOSTICS, default OFF, read per call, shared with MYEZ-006): (a) a $0 syntactic pre-gate in url_routes right after the SSRF check and BEFORE _compare_urls_metered (so nothing is reserved, like the SSRF 400): classify each URL with the existing _NOT_A_PDP_HOME_PATH_RE / _NOT_A_PDP_SEARCH_PATH_RE plus cart/checkout/account/category path markers and url1==url2 after normalisation (strip query/fragment, trailing slash, www.), and refuse with a coded body NOT_PRODUCT_PAGE + field url1|url2|both + reason homepage|search|cart|category|same_url. (b) post-fetch: make fetch_page also return the final URL + HTTP status; run classify_not_a_pdp with a mode where requested_is_home counts as not-a-PDP (or a thin URL-path wrapper) and map: walled/403/challenge -> STORE_UNREADABLE, not-a-PDP -> NOT_PRODUCT_PAGE, a fetched page with no Product node and no price whose title equals the site name -> UNRESOLVED_PRODUCT instead of 'Unknown Product' success. All of these exits go through the existing coded-failure branch (url_routes.py:184-193), which already refunds before raising. Client (OTA after approval, never before; UB-R4): add a home/search-path check to validateUrl that keeps the circle neutral and shows a per-field caption (audit 6.3: 'هذا رابط المتجر الرئيسي، مو صفحة المنتج. افتح صفحة العطر نفسه وانسخ رابطها.'), copy checked against src/i18n/.copy-policy.json.",
+   "risks": "Flag-OFF identity is pinned: tests/test_retro_w2_1.py:931-940 and 1288-1300 pin the exact 400 BAD_REQUEST 'Could not extract both products' body, and tests/fixtures/w4_13_flag_off_ledger.json:1049 pins the search_logs failure row. A path-only homepage rule can false-positive on single-page stores whose product URL is the root (rare; inferred) and on locale roots like /en-bh that some stores 302 to the real PDP. Keep the Product-JSON-LD veto when post-fetch classification is used. Build 3 renders any new code as the same generic dialog (errorCopy default arm), so the user-visible change before the OTA is only that the refusal comes faster and cheaper. Turning a homepage that today 'succeeds' as 'Unknown Product' into a refusal is a behaviour change on the live backend, so it must stay OFF until the owner approves (review in progress).",
+   "test_seams": [
+    "tests/test_retro_w2_1.py (_stub_url monkeypatch seam; pins 931-940, 1288-1300)",
+    "tests/test_url_compare_category.py (compare_from_urls with extract_from_url stubbed)",
+    "tests/test_url_validator_offloop.py / tests/test_url_validator_offloop_hops.py (SSRF guard seams)",
+    "tests/test_s71_u13_compare_auth_required.py::test_T23_openapi_unchanged (any URLCompareRequest field change breaks it)",
+    "SmartCompareApp/src/components/__tests__/TwoInputShell.test.tsx:295-319 (url-mode validity pins)",
+    "price_service.classify_not_a_pdp + _NOT_A_PDP_HOME_PATH_RE as a pure function seam (zero network)"
+   ],
+   "contract_fields": [
+    "/api/v1/url/compare error envelope: success, error, code, request_id (+ proposed additive field/reason)",
+    "client: TwoInputShell circle valid state (accessibilityLabel home.compare.a11y_box_*_valid)"
+   ],
+   "open_questions": [
+    "Should a path-only homepage pre-gate refuse before any fetch, or only flag after a fetch whose page has no Product node (costlier but fewer false positives)?",
+    "Owner ruling: does Build Principle #4 ('no error copy', TwoInputShell.tsx:14-15) yield to the audit's per-field caption? The caption must avoid the words the jest pin (TwoInputShell.test.tsx:319) and the copy policy forbid.",
+    "Should the URL path consult the BH/GCC source registry (data/bh_gcc_sources.json, e.g. store.rasasi.com.sa) instead of the 10-row SUPPORTED_RETAILERS list?"
+   ]
+  },
+  {
+   "id": "MYEZ-006",
+   "status": "anchored",
+   "root_cause": "The dialog is the client's catch-all for an unmapped code. Title = t('common.error') (ar.json:384 'لحظة — جرّب الضغط مرّة ثانية.'); body = t('home.errors.comparison') (ar.json:115 'نتيجة أدقّ قادمة — جرّب باسم العلامة أو الطراز.'), chosen by errorCopy.friendlyErrorKey's default arm for any code other than the engine-outage set, INSUFFICIENT_DATA, RATE_LIMITED and TIMEOUT/STREAM_TIMEOUT. On /url/compare the backend sends no specific codes. Both URL refusals are a codeless HTTPException(400) that error_handler labels BAD_REQUEST: 'URL blocked by security policy' (SSRF) and 'Could not extract both products' (fewer than 2 extractions). compare_from_urls does build a per-URL `details` list ('URL 1: Failed to fetch URL'), but url_routes passes only result['error'] into the detail, so which link failed and why never reaches the wire (pinned that way). For V02 the inferred chain is: identical homepage URLs -> plain-httpx fetch -> Cloudflare 403 (as measured from this box) -> fetch_page returns None -> 'Failed to fetch URL' x2 -> 400 BAD_REQUEST -> default dialog. The Alert carries only OK: no field highlight, no 'switch to typing'. Inputs are preserved, because the module cache in TwoInputShell is untouched. The URL path also has no backend deadline (httpx 30 s per fetch, OpenAI client 120 s), so a slow store ends in the client's 35 s axios timeout and the timeout copy instead.",
+   "evidence": [
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\SmartCompareApp\\src\\i18n\\ar.json",
+     "line": "115, 384",
+     "note": "home.errors.comparison = 'نتيجة أدقّ قادمة — جرّب باسم العلامة أو الطراز.'; common.error = 'لحظة — جرّب الضغط مرّة ثانية.' (EN twins en.json:118, 387).",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\SmartCompareApp\\src\\services\\errorCopy.ts",
+     "line": "32-36, 70-93",
+     "note": "friendlyErrorTitleKey -> 'common.error' unless engine outage; friendlyErrorKey default arm (90-91) -> 'home.errors.comparison' for null/BAD_REQUEST/VALIDATION_ERROR/any unknown code.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\SmartCompareApp\\src\\screens\\HomeScreen.tsx",
+     "line": "582-597, 609-639",
+     "note": "runUrlCompare: success:false body and the catch branch both call Alert.alert(t(friendlyErrorTitleKey(code)), t(friendlyErrorKey(code))) with no buttons, no field targeting. TIMEOUT -> home.errors.timeout (622). CONTENT_UNAVAILABLE branch (589, 614) is unreachable: the URL path never emits it.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\SmartCompareApp\\src\\services\\api.ts",
+     "line": "1049-1119",
+     "note": "parseApiError: rawCode from data.code/detail.code; codeless 503 -> TIMEOUT; ECONNABORTED/ETIMEDOUT/ERR_NETWORK -> TIMEOUT; codeless 502/504 -> GATEWAY_UNAVAILABLE; else the envelope code (BAD_REQUEST here).",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\api\\url_routes.py",
+     "line": "170-197",
+     "note": "Failure exit: a coded result goes through _surface_comparison_failure (only LLM_UNAVAILABLE is ever coded here); a codeless result raises HTTPException(400, detail=result['error']), dropping result['details'].",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\api\\url_routes.py",
+     "line": "359-360",
+     "note": "SSRF refusal = HTTPException(400, 'URL blocked by security policy'): also BAD_REQUEST, indistinguishable on the client from the extraction failure.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\middleware\\error_handler.py",
+     "line": "22-34, 113-143",
+     "note": "STATUS_CODE_MAP 400 -> BAD_REQUEST; http_exception_handler emits only success/error/code/request_id (+retry_after on 429). Any extra keys in a structured detail (field, reason, failed_inputs) are dropped.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\url_extraction_service.py",
+     "line": "476-483, 609-625",
+     "note": "fetch failure -> {'success': False, 'error': 'Failed to fetch URL'}; compare_from_urls collects 'URL i: <error>' into `details` and returns the codeless 'Could not extract both products'.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\url_extraction_service.py",
+     "line": "29-42, 119",
+     "note": "fetch_page uses httpx.AsyncClient(timeout=30) with a Chrome UA string but no TLS impersonation, unlike the price path's curl_cffi impersonate='chrome'. The OpenAI client timeout is 120 s. No asyncio.wait_for around compare_from_urls, so the route has no deadline.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\api\\text_routes.py",
+     "line": "521-568",
+     "note": "_surface_comparison_failure: CONTENT_UNAVAILABLE returned as a body (extra keys survive); TIMEOUT/LLM_UNAVAILABLE -> 503 structured; any other code -> 400 {code, error}; codeless -> W4-9 allowlist floor.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\SmartCompareApp\\src\\services\\api.ts",
+     "line": "48",
+     "note": "COMPARE_TIMEOUT_MS = 35000: the only 'timeout' a URL compare can produce is client-side.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\tests\\test_retro_w2_1.py",
+     "line": "931-940, 1288-1300",
+     "note": "Base pins: the <2-products exit is HTTP 400 with body exactly {success:false, error:'Could not extract both products', code:'BAD_REQUEST'}, never the per-URL details.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\url_extraction_service.py",
+     "line": "615-625 vs V02 screenshot",
+     "note": "V02's exact dialog = this 400 BAD_REQUEST exit (or the SSRF 400). A 403 from Cloudflare is the most likely fetch failure for fragrancex.com from Railway.",
+     "basis": "inferred"
+    }
+   ],
+   "existing_flags": [
+    {
+     "name": "(none)",
+     "default": "",
+     "prod_state": "No flag gates URL-path error codes, per-field diagnostics or a URL-path deadline. ENABLE_CAMERA_FAILURE_ENVELOPE (ON) covers /image/identify only; ENABLE_SEARCH_LOG_TRUTH only shapes the search_logs row (url_routes.py:105-116).",
+     "source": "grep of app/ for ENABLE_* on url_routes/url_extraction_service"
+    }
+   ],
+   "fix_sketch": "Vocabulary, mapped to the audit's names in the project's UPPER_SNAKE convention:\n- INVALID_URL (bad scheme, unresolvable host or blocked address; today the SSRF BAD_REQUEST)\n- NOT_PRODUCT_PAGE (homepage, search, cart, category or the same link twice)\n- STORE_UNREADABLE (the audit's unsupported_store: a fetch wall, 403/challenge or non-2xx; 'we could not read the store' is more accurate than 'unsupported', because any store is attempted)\n- TIMEOUT (new: wrap compare_from_urls in asyncio.wait_for of about 25 s, so the coded 503 the client already maps is reachable)\n- UNRESOLVED_PRODUCT (a fetched page without a Product node or a usable title; replaces the 'Unknown Product' success)\n\nAll behind one dark flag, e.g. ENABLE_URL_INPUT_DIAGNOSTICS (default OFF). Flag OFF must stay byte-identical; the test_retro_w2_1 pins enforce that.\n\nCarry which input failed:\n- either add an allowlisted, additive passthrough of `field` and `reason` in http_exception_handler for structured details (no existing detail carries those keys; verify by grep),\n- or return the failure as a 200 body, as CONTENT_UNAVAILABLE does (text_routes.py:524-527).\n\nKeep the refund-before-raise order (url_routes.py:170-178). Build 3 maps every new code to the same default dialog (errorCopy default arm), so the review build sees no visible change.\n\nClient (OTA after approval):\n- one friendlyErrorKey case per new code, with copy from audit 6.3;\n- an Alert button 'اكتب اسم المنتج بدلاً من ذلك' that switches to Type mode and keeps the links;\n- highlight the named field.",
+   "risks": "The url_routes.py:186-189 comment records that W4-9's codeless allowlist would redact a new codeless message to INTERNAL_ERROR, so every new exit must carry a code. Moving the SSRF refusal off its bare 400 changes a security-route body; keep it identical when the flag is OFF. A backend URL deadline shorter than the client's 35 s changes the observed copy from the axios timeout to the coded TIMEOUT (same i18n key, so no visible change). search_logs messages change for coded exits (_failure_log_message logs a coded message verbatim): update the W4-13 ledger fixture only under the flag. Any new user-facing English 'error' string must follow the copy contract (no couldn't / try again / Failed to).",
+   "test_seams": [
+    "tests/test_retro_w2_1.py::test_pin_url_compare_extraction_failure_envelope_unchanged and ::test_pin_url_compare_extraction_failure_400_detail_unchanged (flag-OFF identity)",
+    "tests/test_w4_13_measurement_truth.py + tests/fixtures/w4_13_flag_off_ledger.json (url failure rows)",
+    "app/middleware/error_handler.py http_exception_handler (pure, TestClient)",
+    "SmartCompareApp/__tests__/HomeScreen.errorCopy.a11.test.tsx, errorCopy.a11.test.ts, HomeScreen.arabicAlerts.w311.test.tsx (code -> key mapping pins)",
+    "SmartCompareApp/__tests__/HomeScreen.engineUnavailable.s69.test.tsx (title mapping)"
+   ],
+   "contract_fields": [
+    "error envelope code (today BAD_REQUEST / LLM_UNAVAILABLE / VALIDATION_ERROR / USAGE_LIMIT / RATE_LIMITED / AUTH_REQUIRED / SERVER_ERROR on /url/compare)",
+    "proposed additive: field (url1|url2|both), reason",
+    "client i18n keys home.errors.comparison, common.error, home.errors.timeout"
+   ],
+   "open_questions": [
+    "Owner: is STORE_UNREADABLE acceptable as the audit's unsupported_store, or should the app keep a positive allowlist of supported stores and refuse the rest before fetching?",
+    "Should the URL path switch its fetch to the price path's curl_cffi impersonation (curl_fetch_html_same_site), so that fewer stores read as unreadable? That is a separate dark flag and changes cost and latency.",
+    "Pass `field` through the error handler, or switch URL failures to a 200 success:false body?"
+   ]
+  },
+  {
+   "id": "MYEZ-007",
+   "status": "anchored",
+   "root_cause": "The text compare path never resolves identity. The app always sends the explicit pair {product_a, product_b} (REST GET /text/compare; SSE is off by default). TextCompareRequest turns that into explicit_pair, and _compare_from_text_impl's Step 1 then SKIPS parse_product_query entirely. Each half becomes {brand:'', name: sanitize(raw), search_query: raw}, so 'Hyper X MIC' is searched and displayed verbatim. _fetch_product_data builds the display name from that raw text. Specs, prices and reviews come from Serper and an LLM over whatever the search returns. No status, confidence, candidates or ambiguity exists anywhere. The q-form parser prompt has no ambiguity field either, and the only parse refusal is 'fewer than 2 products'. The client validates only length 2..80 with no control characters. There is no suggest/typeahead endpoint and no picker UI.",
+   "evidence": [
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\SmartCompareApp\\src\\components\\TwoInputShell.tsx",
+     "line": "241-248",
+     "note": "validateText: trimmed length 2..80 and no control chars. 'Hyper X MIC' / 'Hyper X2 MIC' pass.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\SmartCompareApp\\src\\screens\\HomeScreen.tsx",
+     "line": "409-414",
+     "note": "runTextCompare -> streamComparison({product_a, product_b}).",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\SmartCompareApp\\src\\services\\api.ts",
+     "line": "695-723",
+     "note": "REST fallback (default; ENABLE_EXPO_FETCH_SSE_DEFAULT=false, features.ts:52) sends product_a/product_b; on success:false it forwards ONLY {code, error}, so any extra key such as candidates is dropped by build 3.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\api\\text_routes.py",
+     "line": "353-390, 631-645",
+     "note": "TextCompareRequest pair shape -> query 'A vs B' + explicit_pair passed to the service.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\structured_comparison_service.py",
+     "line": "4226-4241",
+     "note": "explicit_pair branch: skips parse_product_query; brand '', name = sanitize_prompt_input(raw), search_query = raw, deterministic category only.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\structured_comparison_service.py",
+     "line": "5681-5699",
+     "note": "Result identity: name = product_info['name'] (the user's raw text). No canonical/resolved model name is written back.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\structured_comparison_service.py",
+     "line": "1719-1721, 4253-4261",
+     "note": "PRODUCT_PARSE_FAILURE_MESSAGE is the only identity refusal (q-form, <2 products).",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\extraction_service.py",
+     "line": "102-139",
+     "note": "PRODUCT_PARSER_PROMPT output schema: products[{brand,name,variant,category,search_query}], comparison_type, region_hint. No confidence or alternatives.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\api\\image_routes.py",
+     "line": "388-396",
+     "note": "Precedent for a non-error 'needs input' envelope: action 'need_second_product' (success:false, code, layer).",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\tests\\test_s71_u13_compare_auth_required.py",
+     "line": "441-453, 981-997",
+     "note": "T23 pins the full OpenAPI operation JSON and referenced components (incl. TextCompareRequest) of the ten paid routes. A new request field (e.g. resolve=true) breaks it; a NEW route does not.",
+     "basis": "measured"
+    }
+   ],
+   "existing_flags": [
+    {
+     "name": "ENABLE_PARSE_PRESPLIT",
+     "default": "OFF",
+     "prod_state": "OFF (S76 ledger line 47: 'stay OFF')",
+     "source": "structured_comparison_service.py _parse_marks; q-form only, and it moves the opposite way (skips the LLM identity)"
+    },
+    {
+     "name": "ENABLE_PARSE_BUDGET",
+     "default": "OFF",
+     "prod_state": "OFF (S76 ledger line 47)",
+     "source": "q-form stall guard; not on the app's pair path"
+    }
+   ],
+   "fix_sketch": "Where candidates[] fits without touching the frozen contract: a NEW additive route, e.g. POST /api/v1/text/resolve. It sits behind require_paid_route_user and a new dark flag, e.g. ENABLE_PRODUCT_RESOLVE (default OFF, so the route answers 404 or a disabled code). It consumes no credit.\n\nRequest: {product_a, product_b, selected_category?}.\n\nResponse, per side: {input, status: resolved|ambiguous|unresolved, confidence, category, candidates: [{brand, model, variant, category, image_url, source_url, identifier?}]}. These are the audit 6.1 identity fields.\n\nCandidate source:\n- the Serper Shopping top-N titles plus images already used by Phase 1 (one call per side, about $0.001);\n- optionally one mini-LLM pass that clusters titles into distinct models and marks status 'ambiguous' when the top results name more than one model, or when the input lacks a model token (e.g. 'Hyper X MIC' -> QuadCast / QuadCast S / SoloCast / DuoCast).\n\nA future client (OTA or 1.0.1) calls resolve first, shows a picker when either side is ambiguous, then calls the unchanged /text/compare with the chosen canonical names.\n\nAlternative (riskier): a coded non-delivery NEEDS_IDENTIFICATION on /text/compare, returned as a 200 body like CONTENT_UNAVAILABLE with candidates{a,b}. Build 3 would show home.errors.comparison ('try with brand or model'), which is acceptable copy, but it fails compares that deliver today, so it must stay OFF during review. Its refund path already exists.",
+   "risks": "A resolve step adds a round trip (Serper + optional LLM) before every compare. Gating it to 'only when the input looks ambiguous' needs a heuristic whose precision is unmeasured. Candidate images come from shopping listings (identity mismatch risk, ties to MYEZ-001/004). Any change to TextCompareRequest breaks T23 in both flag states. A new route must be added to the netguard and paid-route guard pins (U13 lists ten routes; an eleventh needs its own auth pin). Category-agnostic ambiguity is hard for fashion (MYEZ-004) and fragrance variants (EDP vs EDT vs Parfum, V03).",
+   "test_seams": [
+    "structured_comparison_service._compare_from_text_impl Step 1 (explicit_pair branch) with Serper/OpenAI stubbed",
+    "tests/test_s75_fanout_identity.py::test_FY25_flag_off_compare_identity_matches_main (nine-digest flag-OFF identity of /text/compare)",
+    "tests/test_s71_u13_compare_auth_required.py (route guard + OpenAPI pins)",
+    "tests/test_netguard ratchet (tests/.network_attempt_baseline.txt) for any new Serper call site"
+   ],
+   "contract_fields": [
+    "proposed new route /api/v1/text/resolve: status, brand, model, variant, category, image_source/image_url, identifier, candidates[], confidence, evidence[] (audit 6.1)",
+    "/text/compare response: unchanged (overview.products[i].name stays the raw input today)"
+   ],
+   "open_questions": [
+    "Owner: picker before every compare, or only when the backend marks a side ambiguous?",
+    "Where should the ambiguity threshold live (deterministic token rules vs. an LLM), and what is its cost budget per compare?",
+    "Should the camera path (vision_products) feed the same resolve step? That overlaps Category A identity work."
+   ]
+  },
+  {
+   "id": "MYEZ-026",
+   "status": "anchored",
+   "root_cause": "This is deliberate design in TwoInputShell, not a regression. The component header states Build Principle #4: 'no error copy. Invalid state stays neutral; the disabled CTA does the work.' Box B submit when invalid is a silent Keyboard.dismiss ('no error UX per Q3'). The CTA is disabled = !canSubmit (both fields blur-valid and not loading); its only cue is an animated opacity of 0.5, and its accessibilityLabel is just 'Compare' when not ready. Validation runs ONLY on blur. A field that was typed or pasted into but never blurred stays 'not valid', so the CTA stays grey even when the input is fine. Inferred: on a disabled TouchableOpacity the tap falls through to the outer Pressable, which dismisses the keyboard, blurs the field and validates it, so the user must tap Compare a second time. No i18n key exists for a per-field state or a 'what's missing' helper line (the home.compare.* keys hold placeholders, captions for paste-split and mode-switch, and a11y 'entered' labels only). A jest pin forbids /invalid|try again/ text in the url-mode invalid state.",
+   "evidence": [
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\SmartCompareApp\\src\\components\\TwoInputShell.tsx",
+     "line": "14-15, 133-134",
+     "note": "Design statement: no error copy, the disabled CTA does the work; Box B submit on invalid = silent Keyboard.dismiss (Q3).",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\SmartCompareApp\\src\\components\\TwoInputShell.tsx",
+     "line": "325-341, 436-441",
+     "note": "Editing resets validA/validB to false; validation only in blurA/blurB; canSubmit = bothValid && !disabled.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\SmartCompareApp\\src\\components\\TwoInputShell.tsx",
+     "line": "455-462, 494-505, 607-620",
+     "note": "CTA opacity 0.5 <-> 1.0; TouchableOpacity disabled={!canSubmit}; accessibilityLabel = a11y_ready only when bothValid, else plain 'Compare'. No helper text node.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\SmartCompareApp\\src\\components\\TwoInputShell.tsx",
+     "line": "518-522",
+     "note": "Outer Pressable onPress=dismissKeyboard inside a ScrollView with keyboardShouldPersistTaps='handled'. A tap on the disabled CTA probably reaches it and only blurs/validates, so a second tap is needed.",
+     "basis": "inferred"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\SmartCompareApp\\src\\i18n\\ar.json",
+     "line": "726-743",
+     "note": "home.compare.* keys: placeholders, vs pill, cta, cta_loading, paste_split/mode_switch captions, paywall banner, unavailable, a11y valid/ready. No 'enter the second product' or 'link 1 is not a product page' key.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\SmartCompareApp\\src\\components\\__tests__\\TwoInputShell.test.tsx",
+     "line": "308-319",
+     "note": "Pin: url-mode invalid keeps the numeral neutral and queryByText(/invalid|try again/i) is null. A helper caption must avoid these words, or the pin must be amended by ruling.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\SmartCompareApp\\src\\i18n\\.copy-policy.json",
+     "line": "whole file",
+     "note": "scary_vocab_en ['couldn't','try again','Failed to'], scary_vocab_ar ['تعذر','فشل','تقدير','مُقدَّر'] constrain any new helper copy (jest fence __tests__/copy-policy.test.ts).",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\SmartCompareApp\\src\\screens\\HomeScreen.tsx",
+     "line": "896-937",
+     "note": "HomeScreen passes no onChange and renders no helper copy around TwoInputShell; the shell owns the only CTA in Type/Link modes.",
+     "basis": "measured"
+    }
+   ],
+   "existing_flags": [
+    {
+     "name": "(none)",
+     "default": "",
+     "prod_state": "Client-only behaviour; RN has no per-call env flag (M13-W4 precedent). Ships only via OTA/binary.",
+     "source": "CLAUDE.md M13 wave-4 closeout block"
+    }
+   ],
+   "fix_sketch": "Client-only change, after App Store approval: a post-approval OTA to production (UB-R4 / no OTA before approval), or 1.0.1.\n\n(1) Validate on change, debounced (about 300 ms), while still never animating red. Alternatively, on a CTA tap with invalid input, run both validators and show the hint instead of silently doing nothing.\n\n(2) Add one neutral helper line under the CTA, derived from field state, with new keys (Arabic first, Gulf register, copy-policy compliant):\n- 'أدخل المنتج الثاني' (second box empty)\n- 'الصق رابط صفحة المنتج نفسه' (a box holds a homepage/search link, per MYEZ-005)\n- 'اكتب اسمين على الأقل حرفين' (too short)\n\n(3) Give the disabled CTA an accessibilityHint naming what is missing.\n\n(4) Keep the emerald tick only for 'ready'. A pasted URL that fails the product-page check gets the neutral numeral plus the caption.\n\nNo backend change, and the build-3 contract is unaffected.",
+   "risks": "Contradicts the documented Build Principle #4 and the Q3 ruling in TwoInputShell, so it needs an explicit owner ruling. It amends the TwoInputShell jest pins (308-319 and the blur-only timing pins 212-365). The RTL caption layout must be checked on device (start-anchored caption style, captionAR line height). Debounced validation changes the onReady analytics timing (compare_entry_ready time_to_ready_ms).",
+   "test_seams": [
+    "SmartCompareApp/src/components/__tests__/TwoInputShell.test.tsx (validation timing, CTA enabled, no-scary-copy pins)",
+    "SmartCompareApp/src/components/__tests__/TwoInputShell.rtl.test.tsx",
+    "SmartCompareApp/__tests__/HomeScreen.bundleB.contract.test.tsx",
+    "SmartCompareApp/__tests__/copy-policy.test.ts + i18n parity fences (en/ar key set equality)"
+   ],
+   "contract_fields": [
+    "client i18n: new home.compare.hint.* keys (en + ar)",
+    "TwoInputShell props: unchanged (internal state only)"
+   ],
+   "open_questions": [
+    "Owner ruling: lift the 'no error copy' principle for neutral, instructional helper text?",
+    "Validate on change (debounced) or keep blur-only and validate on CTA tap?"
+   ]
+  }
+ ],
+ "extra_findings": [
+  {
+   "title": "URL-path generic extractor misses ProductGroup / list-typed @type / @graph and takes offers[0] (cheapest) on multi-offer pages",
+   "severity": "P1 (affects every pasted fragrance PDP once a link is accepted)",
+   "evidence": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\url_extraction_service.py:308-321 (measured): it matches only item['@type'] == 'Product', and for list offers takes offers[0]. price_service.py:11295-11300 and 12647-12651 (measured) record fragrancex PDPs carrying {19.99..130.43} for Sauvage. CLAUDE.md's global validation measured ProductGroup+hasVariant (9) and @graph (4) as the price-path misses. So a real fragrancex PDP pasted in Link mode probably falls to the LLM fallback or ships the cheapest variant (inferred). The hardened price-path ladder (extract_price_from_html) is not reused."
+  },
+  {
+   "title": "URL compare has no backend deadline and no TLS impersonation",
+   "severity": "P2",
+   "evidence": "url_extraction_service.py:119 (measured): httpx timeout 30 s per fetch, no curl_cffi. :36: OpenAI client timeout 120 s. url_routes.py:157-158 awaits compare_from_urls with no wait_for. The client gives up at 35 s (api.ts:48), so slow stores show the timeout copy while the server keeps spending (fetch + 2 LLM extractions + verdict) after the client has left (inferred)."
+  },
+  {
+   "title": "No same-URL guard on /url/compare",
+   "severity": "P2",
+   "evidence": "url_extraction_service.py:575-625 (measured) never compares url1 and url2. The V02 screenshot shows two identical homepage URLs accepted, and a successful pair of identical pages would be compared as two products (the audit 6.2 rule 'A is B -> ask for correction')."
+  },
+  {
+   "title": "Per-URL failure details computed and then discarded",
+   "severity": "P2",
+   "evidence": "url_extraction_service.py:609-625 builds details ['URL 1: Failed to fetch URL', ...]; url_routes.py:194-197 raises with result['error'] only (measured). This is pinned by tests/test_retro_w2_1.py:931-940, so the fix needs a flag."
+  },
+  {
+   "title": "Full pasted URLs (incl. gclid/gbraid ad identifiers) logged at INFO",
+   "severity": "P3 (privacy hygiene)",
+   "evidence": "url_routes.py:355 logger.info(f'URL comparison request: {body.url1} vs {body.url2}') and url_extraction_service.py:474 (measured). The audit's own FragranceX link carries gclid/gbraid/gad_campaignid. U8d scrubs Sentry, but the Railway INFO log keeps the full query string. search_logs already strips query strings (url_routes.py:88-102)."
+  },
+  {
+   "title": "URLCompareRequest has no length caps",
+   "severity": "P3",
+   "evidence": "url_routes.py:231-243 (measured): url1/url2 are bare str; HttpUrl is imported (:9) but unused. The client caps at 2048 (TwoInputShell.tsx:225); the text route got max_length in M13-25. Adding Field(max_length) changes the OpenAPI schema pinned by test_s71_u13_compare_auth_required.py::test_T23, so it needs a flag-aware pin update."
+  },
+  {
+   "title": "Client CONTENT_UNAVAILABLE branch on Link mode is unreachable; URL path has no content-safety layer and no lang",
+   "severity": "P3",
+   "evidence": "HomeScreen.tsx:589 and :614 handle CONTENT_UNAVAILABLE for 'url', but grep finds no CONTENT_UNAVAILABLE, content_safety or check_query_intent in url_extraction_service.py or url_routes.py (measured). Link-mode verdicts stay English, consistent with W4-14b (#244) per CLAUDE.md."
+  },
+  {
+   "title": "Link-mode compares are not saved to History",
+   "severity": "P3 (context)",
+   "evidence": "The S79 ledger 16:49 entry (C:\\Users\\SynAckITPC\\Documents\\AI\\sc-docs-70\\docs\\investigations\\2026-10-17-session-79-state\\ledger.md) records that compare_from_urls emits no metadata.query (issue #340), so a Link compare never shows in History. This is relevant to MYEZ-027 ('save as draft') and to any retry-from-history UX."
+  },
+  {
+   "title": "OpenAPI pin constrains every request-model change on the paid routes",
+   "severity": "process",
+   "evidence": "tests/test_s71_u13_compare_auth_required.py:441-453, 981-997 (measured) pin the full operation JSON and referenced components (URLCompareRequest, TextCompareRequest) of the ten paid routes in both flag states. Any new request field for MYEZ-005/006/007 belongs on a NEW route or must re-record the fixture by ruling."
+  }
+ ],
+ "sources": [
+  "C:\\Users\\SynAckITPC\\.claude\\uploads\\ae650c83-4d2a-4910-a8d4-a47ab213c8c3\\d20a7872-MYEZ_QA_UX_Audit_2026-10-18.md (sections 4, 6, 8)",
+  "C:\\Users\\SynAckITPC\\.claude\\uploads\\ae650c83-4d2a-4910-a8d4-a47ab213c8c3\\4179c270-image.png (V02)",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\api\\url_routes.py",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\url_extraction_service.py",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\utils\\url_validator.py",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\middleware\\error_handler.py",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\api\\text_routes.py",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\structured_comparison_service.py",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\extraction_service.py",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\price_service.py",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\source_router.py",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\api\\image_routes.py",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\data\\bh_gcc_sources.json",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\SmartCompareApp\\src\\components\\TwoInputShell.tsx",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\SmartCompareApp\\src\\screens\\HomeScreen.tsx",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\SmartCompareApp\\src\\services\\errorCopy.ts",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\SmartCompareApp\\src\\services\\failureClassification.ts",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\SmartCompareApp\\src\\services\\api.ts",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\SmartCompareApp\\src\\i18n\\ar.json",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\SmartCompareApp\\src\\i18n\\en.json",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\SmartCompareApp\\src\\i18n\\.copy-policy.json",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\SmartCompareApp\\src\\components\\__tests__\\TwoInputShell.test.tsx",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\tests\\test_retro_w2_1.py",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\tests\\test_s71_u13_compare_auth_required.py",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\CLAUDE.md (flag rows: M9 ENABLE_NOT_A_PDP_FILTER, W0, U13, FANOUT-STARVE)",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-docs-70\\docs\\investigations\\2026-10-19-session-80-state\\ledger.md",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-docs-70\\docs\\investigations\\2026-10-11-session-77-state\\ledger.md",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-docs-70\\docs\\investigations\\2026-10-03-session-71-state\\ledger.md",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-docs-70\\docs\\investigations\\2026-10-10-session-76-state\\ledger.md",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-docs-70\\docs\\investigations\\2026-10-17-session-79-state\\ledger.md"
+ ]
+}

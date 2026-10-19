@@ -1,0 +1,608 @@
+{
+ "category": "SURFACE K: frozen build-3 client contract (MYEZ 1.0.0 (3), built from main 683f56c0)",
+ "summary": "I read the build-3 client at C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base (origin/main 683f56c0; the session-79 ledger.md:84 records that build 3 was built from this exact commit) and checked it against the deployed root app/ backend.\n\nWhat build 3 can show:\n1. A results screen ALWAYS crowns a winner. There is no response field build 3 can read that hides the emerald winner card or the \"Top match\" badge (الأفضل تطابقاً). When scoring_v2 is present, the crown comes from scoring_v2.overall_score, not winner_index. A null winner_index or an exact tie still crowns product A.\n2. The audit's proposed result `status` values (partial_no_winner, needs_identification, ...) would be ignored: no client code reads result.status, result_status or outcome (grep). So during review, \"no winner\" can only be expressed as a coded failure:\n   - text and URL compares: a 400 with code INSUFFICIENT_DATA, which shows \"Thin data on that pair — swap in two products with brand and model.\"\n   - camera compares: the existing `action` values `error`, `need_second_product` or `comparison_failed`.\n\nWhich code path build 3 uses:\n3. Build 3 only uses REST compare. SSE is compiled OFF (ENABLE_EXPO_FETCH_SSE_DEFAULT=false).\n4. Build 3 renders `overview.products`, not the legacy `products` alias. So image_url, category_profile and similar fixes must land on overview.products[i]. Today overview.products carries no category_profile, so the \"At a glance\" section never renders on a fresh compare.\n5. The client renders backend prose verbatim (factual_verdict, delta_text, key_tradeoff, reason, applied_shifts). Only `lang` on GET /text/compare tells the server the UI language. The URL compare body and the camera upload carry no language at all. The factual-verdict templates are English f-strings for both languages (verdict_builder.py:6 even maps \"ar\" to \"If you want\"). That explains the English verdict lines and the \"Longer-lasting\" / \"Comparable\" captions in the V01 and V07 screenshots, while the dimension labels are correctly Arabic.\n\nCrash risks (render-time TypeErrors from the code), in order of severity:\n- a scoring_v2.confidence_legs value that is null or outside strong/acceptable/weak;\n- a non-string applied_shifts[].dim_display;\n- non-array pros or cons;\n- a non-string, truthy delta_text;\n- an object-valued overview.winner.reason;\n- a non-string history `category`;\n- a top-level `result` key added to the /image/identify body (the client would render that key instead of the payload).\n\nSilent misrenders:\n- a dimension score of 0 makes the whole bar block show an English \"Dimension scored 0 — backend contract breach.\" line;\n- English banned words (better, best, ...) in factual_verdict.line1 make the \"why\" block blank, because the factual verdict always takes precedence over the localized reason;\n- scoring_v2 = {} crowns product 0;\n- scoring_v2 = null with `scoring` present renders an empty bordered card.\n\nTwo dark backend flags would change what reviewers see:\n- ENABLE_COMPARISON_ID_ECHO would turn the text-only share of a fresh result into the referral share sheet. The App Review notes describe the text-only behaviour.\n- ENABLE_HONEST_PARTIAL_SCORING would blank the \"why\" block on partial results.",
+ "findings": [
+  {
+   "title": "(1) Every response field the client reads from compare responses (text REST, URL, camera, history re-open) — all four paths render through the same ResultsScreen/ResultsContent tree",
+   "severity": "high",
+   "evidence": [
+    {
+     "file": "SmartCompareApp/src/screens/ResultsScreen.tsx",
+     "line": "401-419",
+     "note": "isNewFormat = !!result.overview.winner; products = result.overview.products ?? result.products ?? []; comparison = result.comparison; winner_index = isNewFormat ? overview.winner.product_index : result.winner_index; recommendation = isNewFormat ? overview.winner.reason : result.recommendation; key_differences, metadata, scoring, scoring_v2 read",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/screens/ResultsScreen.tsx",
+     "line": "436, 512, 528-540, 880-887, 988-1005",
+     "note": "comparison_id (result.comparison_id ?? route param); win margin = scoring_v2.win_margin ?? overview.winner.margin (number else 'default' CTA); winnerName = overview.winner.name or products[winner_index ?? 0].name; presentationWinnerIndex = scoring_v2 ? (overall_score.product_a ?? 0) >= (overall_score.product_b ?? 0) ? 0 : 1 : (winner_index === 1 ? 1 : 0); cohort_summary.{peer_count|peers_count|peers, governorate} with personalization.cohort fallback",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/components/results/ResultsContent.tsx",
+     "line": "135-217",
+     "note": "price.unavailable, price.amount (null -> results.priceNA), price.currency, price.source_method ('converted_usd' caption); metadata.partial === true; isDegraded via comparison.error; isSupplement via category_used/category/query + products[i].category_profile.category/category/brand/name/variant; verdictBody = overview.winner.reason (new) or recommendation; verdictCaption = overview.winner.key_tradeoff; reviews.products; specs.products; specs.specs_comparison (array or .rows)",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/components/results/ResultsContent.tsx",
+     "line": "283-335, 396-427, 437-443, 460-531, 563-571",
+     "note": "product.image_url, name, brand (falsy hides), variant (falsy hides); scoring_v2.factual_verdict.line1/line2; scoring_v2.personalization.applied_shifts; scoring_v2.dimensions (length >= 3 gate on the RAW array), comparison_quality ('weird' hides RevealBurst), confidence_details, confidence_legs; legacy `scoring` (only to render an empty fallback card when scoring_v2 is falsy)",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/components/results/ResultsAccordion.tsx",
+     "line": "126-197, 359-423, 441-498, 515-606",
+     "note": "reviews.products[i].{name, rating, review_count, rating_count, review_praise} with root products[i] fallback; specs.products[i].{name, specs{scalar values; _-prefixed, *_source, brand/model/variant/category keys hidden; object values hidden}}; specs_comparison rows {field, winner 0|1|null}; products[i].pros/cons via (p.pros ?? []).map; spec labels t('results.spec.'+key, defaultValue key with _ -> space)",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/components/results/CategoryProfile.tsx",
+     "line": "56-78, 138",
+     "note": "products[i].category_profile.fields[] {key string, label, value non-empty string}; label = t('results.spec.'+key, defaultValue label)",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/components/results/DimensionBars.tsx",
+     "line": "68, 82-111, 246-344",
+     "note": "dims[].{key, label, score_a, score_b, delta_text, confidence ('low' -> 0.6 opacity + ≈), data_insufficient, caption_key ('limited_data' dropped), winner (0|1 overrides score compare), is_cross_tier (value row), value_match_a/b, key_tradeoff}",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/services/api.ts",
+     "line": "479-493",
+     "note": "History re-open: GET /comparisons/{id} reads wrapper.comparison.full_response (falsy -> synthetic 404 -> 'Comparison not found') and wrapper.comparison.id (spread as comparison_id)",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/response_builder.py",
+     "line": "1909-1959",
+     "note": "overview.products[i] carries brand, name, variant, price, rating, review_count, overall_score, value_badge, value_context, pros, cons, pros_cons, best_for, image_url, value_match, _debug_capture. It does NOT carry category_profile, category, review_praise or rating_count (those exist only on the legacy result.products alias at 2172-2213), so the client's CategoryProfile / root-praise / category reads are dormant on fresh compares",
+     "basis": "measured"
+    }
+   ],
+   "detail": "Tolerance per path (missing => what happens):\n- success: true required on the text/url 200 to navigate (HomeScreen.tsx:433-439, 577-581); camera success is read only together with action.\n- overview.winner: object. If removed while overview.products stays, isNewFormat flips false: specs table reads overview.products (no `specs`) -> empty, verdict reads top-level recommendation.\n- overview.winner.product_index: null tolerated (crown falls to scoring_v2 overall or 0).\n- overview.winner.reason / key_tradeoff: string or empty/null tolerated (empty -> blank verdict line); an object would be a React child -> crash (inferred from RN semantics, rendered at ResultsContent.tsx:413).\n- overview.products: < 2 entries -> 'This one's not loading.' empty state (ResultsScreen.tsx:846-877). Per product: name (missing -> blank, share text prints 'undefined'), brand/variant optional, price optional (missing -> 'Price N/A'), image_url optional, pros/cons null tolerated but must be arrays if present.\n- reviews.products / specs.products / specs.specs_comparison: all optional (sections fall back or show calm empty copy).\n- scoring_v2: optional; when truthy it decides the crown.\n- metadata: optional; only metadata.partial is read.\n- comparison: optional; only comparison.error is read.\n- comparison_id: optional; it gates the share sheet.\n- cohort_summary: optional.\n- The legacy top-level `products`, `winner_index` and `recommendation` are read only when overview.winner is absent.\n- Camera 200: data.action, data.success, data.code, data.result ?? data (ResultsScreen.tsx:301-353)."
+  },
+  {
+   "title": "(2) SSE events and payload fields consumed — the whole stream path is compiled OFF in build 3",
+   "severity": "low",
+   "evidence": [
+    {
+     "file": "SmartCompareApp/src/config/features.ts",
+     "line": "52, 118-120",
+     "note": "ENABLE_EXPO_FETCH_SSE_DEFAULT = false; build 3 issues only GET /api/v1/text/compare and never opens /text/compare/stream (no OTA before approval)",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/services/api.ts",
+     "line": "856-926",
+     "note": "Parser: frames split on blank line, takes `event: X` and only the LAST `data: ` line; unknown event names and malformed JSON silently ignored. status -> onStatus(parsed.message || parsed); specs, prices, reviews, scores, verdict, first_paint, settle_update, confidence_upgrade -> pass-through callbacks; complete and settle_complete -> dispatchTerminal (first wins; success===false -> onError with code = parsed.code || parsed.metadata.code, error = parsed.error, status 503); error -> onError {code, error, layer}, status 503",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/screens/HomeScreen.tsx",
+     "line": "418-426",
+     "note": "HomeScreen subscribes only to onStatus (renders message, String(obj) if not a string -> '[object Object]'), onSpecs/onPrices (payload ignored, TTFB mark), onComplete, onError; reviews/scores/verdict/first_paint/settle_update/confidence_upgrade/settle_complete have no subscriber",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/structured_comparison_service.py",
+     "line": "4846, 4934, 5149, 5231",
+     "note": "Backend status messages are English ('Parsing query...', 'Generating verdict...'); they would render as-is if SSE were ever flipped on for this binary",
+     "basis": "measured"
+    }
+   ],
+   "detail": "Rules for the dormant path: new SSE event names are safe (ignored); payloads must stay single-line JSON on one `data:` line; the terminal pair must keep carrying the full ComparisonResult; `status` must keep a string `message`."
+  },
+  {
+   "title": "(3) Error code / HTTP status -> copy map (what each code renders today)",
+   "severity": "high",
+   "evidence": [
+    {
+     "file": "SmartCompareApp/src/services/api.ts",
+     "line": "1066-1124",
+     "note": "parseApiError: code = data.code || data.detail.code; TIMEOUT / STREAM_TIMEOUT / (503 with NO code) / no-response ECONNABORTED, ETIMEDOUT, ERR_NETWORK -> 'TIMEOUT'; codeless 502/504 -> 'GATEWAY_UNAVAILABLE'; retry_after_seconds (positive int) forwarded",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/services/errorCopy.ts",
+     "line": "15-36, 70-93, 109-118",
+     "note": "Engine codes LLM_UNAVAILABLE / INTERNAL_ERROR / SERVER_ERROR / GATEWAY_UNAVAILABLE -> title 'One moment — the comparison engine is resting' + 'Comparisons are paused for a moment. Please come back shortly.'; INSUFFICIENT_DATA -> 'Thin data on that pair — swap in two products with brand and model.'; RATE_LIMITED -> 'Plenty of compares in flight — give it {{count}} seconds, then tap.'; TIMEOUT -> 'Still gathering prices — give it another tap in a moment.'; EVERY other code incl. null, BAD_REQUEST, NOT_FOUND, VALIDATION_ERROR, FEATURE_DISABLED, AUTH_REQUIRED and any NEW code -> 'Sharper match coming up — try with brand or model.' under title 'Hold on — give it another tap.'; settings surfaces: RATE_LIMITED / ACCOUNT_LOCKED else caller fallback",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/screens/HomeScreen.tsx",
+     "line": "352-361, 466-521, 577-639",
+     "note": "Text and URL: CONTENT_UNAVAILABLE -> 'We don't compare this category' / 'Try a different product — MYEZ works best with everyday shopping items.' + compare_entry_content_block{mode, layer}; USAGE_LIMIT (429, detail.code or code) -> Paywall with initialUsage; TIMEOUT -> common.error + home.errors.timeout; else the errorCopy map",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/services/api.ts",
+     "line": "710-726",
+     "note": "REST 200 with success:false is converted to an onError carrying ONLY {code, error}; `layer` is dropped, so CONTENT_UNAVAILABLE on GET logs layer 'unknown'",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/screens/ResultsScreen.tsx",
+     "line": "301-391, 766-840",
+     "note": "Camera: 200 comparison_failed or comparison+success:false with an outage code -> engine state (Back); comparison+success:false TIMEOUT -> timeout state; other codes -> generic 'No comparison loaded' + 'Back to history'; comparison_failed with ANY other code (INSUFFICIENT_DATA, CONTENT_UNAVAILABLE, TIMEOUT) -> 'Still gathering prices' + 'Tap to retry' (re-sends the photos); need_second_product (any code, incl. CONTENT_UNAVAILABLE) -> 'We spotted one product...'; action error/other -> 'Snap each product in its own photo...'. Thrown: USAGE_LIMIT -> Paywall; 5xx except bare 503, or outage code -> engine; 429 -> timeout; 404 -> 'Comparison not found'; 401 -> 'Sign In Required' + Sign In; TIMEOUT/503/no response -> timeout; else generic",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/services/failureClassification.ts",
+     "line": "163-179, 197-244",
+     "note": "classifyLoadFailure matrix; camera outage predicates; classifyUnsuccessfulCameraComparison",
+     "basis": "measured"
+    },
+    {
+     "file": "app/middleware/error_handler.py",
+     "line": "23-34, 120-143",
+     "note": "An HTTPException without a structured code gets STATUS_CODE_MAP: 400 BAD_REQUEST, 404 NOT_FOUND, 503 FEATURE_DISABLED. A codeless 503 therefore reaches the client WITH code FEATURE_DISABLED, so it is NOT normalised to TIMEOUT and renders the 'Sharper match' retype nudge",
+     "basis": "measured"
+    },
+    {
+     "file": "app/api/url_routes.py",
+     "line": "170-197",
+     "note": "URL `<2 products` exit = HTTPException(400, detail string) -> code BAD_REQUEST -> 'Sharper match coming up — try with brand or model.' (the V02 retry dialog path for two homepage links)",
+     "basis": "measured"
+    }
+   ],
+   "detail": "For other endpoints:\n- History list: 401 -> sign-in state; other errors -> inline retry (HistoryScreen.tsx:697-708).\n- Share sheet: any error -> referrals.share.error.generic (ShareBottomSheet.tsx:209-213).\n- Feedback and events: errors swallowed (FeedbackCard.tsx:57-59, api.ts:1004-1006).\n- Usage status: an error returns null, and the gate falls back to the local `used < 3` (useComparisonCounter.ts:225-239).\n- EditProfile: only result.success is read; false or throw -> editProfile.error.saveFailed (EditProfileScreen.tsx:106-115).\n- 401 on axios calls: one shared refresh, then one retry (api.ts:225-249).\n- 401 on camera identify: one refresh + one retry inline (api.ts:318-331)."
+  },
+  {
+   "title": "(4) Request fields the build-3 client sends",
+   "severity": "medium",
+   "evidence": [
+    {
+     "file": "SmartCompareApp/src/services/api.ts",
+     "line": "677-709",
+     "note": "GET /api/v1/text/compare: product_a, product_b (trimmed), region='bahrain', selected_category ONLY when a chip is chosen, nocache never set by HomeScreen, lang='ar' ONLY when i18next.language starts with 'ar' (omitted for English), Authorization Bearer, 35 s timeout",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/screens/HomeScreen.tsx",
+     "line": "560-572",
+     "note": "POST /api/v1/url/compare body {url1, url2, region:'bahrain', selected_category?} — NO lang, 35 s timeout, AbortController",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/services/api.ts",
+     "line": "263-309",
+     "note": "POST /api/v1/image/identify?region=bahrain multipart field `images` (each re-encoded JPEG width 1024, quality 0.8, named product_N.jpg) — NO lang, 120 s deadline",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/components/CategorySelector.tsx",
+     "line": "38-50",
+     "note": "selected_category values: electronics, grocery, supplements, makeup, skincare, haircare, fragrances, fashion, other (plus any trending-tag string through HomeScreen.tsx:1134-1136)",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/services/api.ts",
+     "line": "444-457, 984-1007, 510-513",
+     "note": "GET /comparisons/history?limit=50&offset=0&search?; DELETE /comparisons/{id}; POST /feedback {useful:true, comparison_id?, mattered_most:[accurate|detailed|fast]}; POST /events {events:[{event_type, event_data, comparison_id?}]}; PUT /auth/profile {display_name}",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/components/ShareBottomSheet.tsx",
+     "line": "167-176",
+     "note": "POST /api/v1/referrals/share {comparison_id, share_target, device_fingerprint_hash, privacy:{show_name, show_result, show_reasons}}",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/services/authService.ts",
+     "line": "154, 998, 1160",
+     "note": "X-Device-Fingerprint is sent ONLY on register and the two social-login POSTs, never on compare, usage or history calls",
+     "basis": "measured"
+    },
+    {
+     "file": "app/api/url_routes.py",
+     "line": "231-243",
+     "note": "URLCompareRequest has no lang; image_routes has no lang/output_lang either. Only text_routes GET/POST accept lang (text_routes.py:377, 784, 967)",
+     "basis": "measured"
+    }
+   ],
+   "detail": "Consequences for fixes:\n- A backend change that localizes prose cannot rely on `lang` for URL or camera compares in build 3. It must infer the language server-side, for example from users.demographics/preferences language or the Accept-Language header. iOS NSURLSession attaching Accept-Language automatically is inferred, not verified.\n- No client-side identity confirmation step exists, so audit 6.1's user_confirm step cannot happen inside build 3."
+  },
+  {
+   "title": "(5a) Crash-class type constraints: fields whose removal or type change throws during render",
+   "severity": "critical",
+   "evidence": [
+    {
+     "file": "SmartCompareApp/src/components/results/ConfidencePills.tsx",
+     "line": "66, 74-75",
+     "note": "A leg is filtered only on `!== undefined`; null or any string outside strong|acceptable|weak reaches `const { dot, wordKey } = LEVEL_MAP[level]` -> TypeError. A leg must be OMITTED, never null or 'unknown'",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/scoring_service.py",
+     "line": "1141-1147",
+     "note": "Today the backend only emits strong/acceptable/weak, so this is latent; an audit fix adding an 'unknown/no-data' leg (MYEZ-011) would crash the Results screen",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/components/results/PersonalizationChip.tsx",
+     "line": "46-47",
+     "note": "scoring_v2.personalization.applied_shifts[].dim_display.replace(...) -> must be a string",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/components/results/ResultsAccordion.tsx",
+     "line": "476, 486",
+     "note": "(p.pros ?? []).map / (p.cons ?? []).map -> null ok, a non-array truthy value throws",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/components/results/_deltaText.ts",
+     "line": "43-44",
+     "note": "safeDelta: (deltaText ?? '').trim() -> a non-string truthy delta_text throws (called from DimensionBars.tsx:288 and RunnerUpWinsCard)",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/screens/HistoryScreen.tsx",
+     "line": "463-465, 517-520",
+     "note": "item.product_names ?? [] then .filter -> a non-array truthy value throws; category.toUpperCase() -> a non-string truthy category throws",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/screens/ResultsScreen.tsx",
+     "line": "321-331",
+     "note": "Camera: setResult(data.result ?? data) — ADDING a top-level `result` key to the /image/identify 200 body would make the client render that key instead of the comparison (an 'additive' change that breaks)",
+     "basis": "measured"
+    }
+   ],
+   "detail": "Lower-grade but still visible:\n- ProductImage only accepts a non-empty string. A non-string image_url falls back to the placeholder (ProductImage.tsx:59-62).\n- An object-typed overview.winner.reason would be rendered as a Text child, which React Native rejects. Inferred, not measured."
+  },
+  {
+   "title": "(5b) A 'no winner' result cannot be rendered by build 3 on a success payload; how winner_index null, ties and a new status render today",
+   "severity": "high",
+   "evidence": [
+    {
+     "file": "SmartCompareApp/src/screens/ResultsScreen.tsx",
+     "line": "880-887",
+     "note": "presentationWinnerIndex always resolves to 0 or 1: from scoring_v2.overall_score when scoring_v2 is truthy (winner_index is IGNORED), else winner_index===1 ? 1 : 0. null/undefined winner_index => 0; an exact overall tie => 0 (>=)",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/components/results/ResultsContent.tsx",
+     "line": "235-237, 261-275",
+     "note": "TopMatchBadge ('Top match' / 'الأفضل تطابقاً') is unconditional; the winner card always gets the emerald border/background and the scale spring. This is why V03 shows the 69.500 card green over 65.000: the green is the crown styling, not a price signal",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/components/results/DimensionBars.tsx",
+     "line": "263-271",
+     "note": "Per-row paint: a score tie goes to the overall winner, so a 'Comparable' row (V07) still paints one side emerald",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/response_builder.py",
+     "line": "1251-1254, 1270-1300",
+     "note": "Backend docstring: 'the phones crown from' the nudged overall_score pair; the builder nudges the loser so argmax == winner_index",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/screens/ResultsScreen.tsx",
+     "line": "532-545",
+     "note": "The text-only share for a fresh result hard-codes English 'Comparing A vs B\\n\\nWinner: X\\n\\n{reason}', so a no-winner result would still be shared as 'Winner:'",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/screens/HistoryScreen.tsx",
+     "line": "473-493",
+     "note": "History row with winner_index null: no winner highlight, but BOTH tiles read runner_up_image_url first (isAWinner and isBWinner both false). Latent today because history_routes.py:73-74 returns (None, None) when winner_index is not 0|1",
+     "basis": "measured"
+    },
+    {
+     "file": "app/api/history_routes.py",
+     "line": "33-42, 73-74",
+     "note": "The list winner_index is derived from full_response.metadata.winner_index or comparison.winner_index",
+     "basis": "measured"
+    }
+   ],
+   "detail": "How build 3 renders each candidate change:\n- A new `status`, `result_status`, `outcome` or `winner: null` field: ignored. Grep finds no reader; the only `.status` read in the app is /health at api.ts:501.\n- winner_index null at top level or overview.winner.product_index null: still crowned (by scoring_v2.overall_score, else product 0) and still 'Top match'.\n- comparison_quality 'weird': hides only the RevealBurst particles (ResultsContent.tsx:462-469).\n- comparison.error truthy (degraded): hides verdict and pros/cons and shows 'The detailed write-up is unavailable this time. The scores and prices below are real.' The crown stays.\n\nThe only build-3 shapes that avoid a crowned winner:\n- Text: 400 with code INSUFFICIENT_DATA (alert 'Thin data on that pair...'; AR 'البيانات قليلة عن هذا الزوج — جرّب منتجين مع اسم العلامة والطراز.'). No Results screen.\n- URL: the same through _surface_comparison_failure.\n- Camera:\n  - action 'error' (vision_failed: 'Snap each product in its own photo...');\n  - 'need_second_product' ('We spotted one product...');\n  - comparison_failed. With ENABLE_CAMERA_FAILURE_ENVELOPE ON in prod (CLAUDE.md:462), INSUFFICIENT_DATA arrives as comparison_failed and renders 'Still gathering prices' + 'Tap to retry', which misleads and re-sends the photos."
+  },
+  {
+   "title": "(5c) Echoing comparison_id on fresh compares (ENABLE_COMPARISON_ID_ECHO) would change Share behaviour described to App Review",
+   "severity": "high",
+   "evidence": [
+    {
+     "file": "SmartCompareApp/src/screens/ResultsScreen.tsx",
+     "line": "436, 526, 532-549, 943-956",
+     "note": "comparisonId = result.comparison_id ?? route param. Absent -> text-only Share.share. Present -> the referral ShareBottomSheet, plus the id is attached to every event and the feedback row",
+     "basis": "measured"
+    },
+    {
+     "file": "app/api/text_routes.py",
+     "line": "73-79, 921-929",
+     "note": "With ENABLE_COMPARISON_ID_ECHO ON, GET/POST /text/compare add result['comparison_id'] (null on a persist timeout)",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-17-session-79-state/APP_REVIEW_AUDIT_S79.md",
+     "line": "215",
+     "note": "The resubmission text says Share sends a text summary of a new result, and a link plus invite code only from History",
+     "basis": "measured"
+    },
+    {
+     "file": "CLAUDE.md",
+     "line": "443-444",
+     "note": "Flag default OFF; a session-76 state doc says 'Stay OFF: ... ENABLE_COMPARISON_ID_ECHO'",
+     "basis": "measured"
+    }
+   ],
+   "detail": "Keep the echo OFF while build 3 is in review. A null comparison_id is falsy and keeps the text-only path, so the key-present/null shape is harmless. A non-null id is a visible behaviour change."
+  },
+  {
+   "title": "(5d) scoring_v2 null or {} and the honest-partial flag render an empty 'why' block, an empty card, or a forced crown",
+   "severity": "high",
+   "evidence": [
+    {
+     "file": "app/services/response_builder.py",
+     "line": "1255-1258, 2235-2241",
+     "note": "scoring_v2 = {} when < 2 products; None when ENABLE_HONEST_PARTIAL_SCORING is ON for a partial without an overall, in which case reason / key_tradeoff / recommendation are blanked",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/components/results/ResultsContent.tsx",
+     "line": "396-414, 563-571",
+     "note": "With scoring_v2 null and reason '' the verdict renders an empty Text. `!scoring_v2 && scoring` renders an EMPTY bordered card (styles.section) between the cohort slot and the accordion. No bars, no pills, no chip",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/screens/ResultsScreen.tsx",
+     "line": "880-884",
+     "note": "scoring_v2 = {} is truthy in JS, so the crown is (undefined ?? 0) >= (undefined ?? 0) -> always product 0, overriding winner_index",
+     "basis": "measured"
+    },
+    {
+     "file": "CLAUDE.md",
+     "line": "457",
+     "note": "The ENABLE_HONEST_PARTIAL_SCORING row says to flip it only after the FE copy row; its production state is not recorded in the S78-S80 ledgers (S78 COMPARE_QUALITY_PLAN lists it as unknown)",
+     "basis": "measured"
+    }
+   ],
+   "detail": "V03 (both images missing, 'لماذا اخترنا هذا' empty, no bars or pills, specs sub without a count) matches a payload with no renderable scoring_v2 dimensions, no factual_verdict and an empty reason.\n\nThe partial note is absent in V03, so the honest-partial branch is not proven to be the cause. That part is inferred."
+  },
+  {
+   "title": "(5e) Verdict precedence and localization: the client renders backend prose verbatim and English templates win over the localized reason",
+   "severity": "high",
+   "evidence": [
+    {
+     "file": "SmartCompareApp/src/components/results/ResultsContent.tsx",
+     "line": "396-414",
+     "note": "If scoring_v2.factual_verdict.line1 is truthy, FactualVerdict renders INSTEAD of overview.winner.reason (the only LLM text that receives output_lang)",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/components/results/FactualVerdict.tsx",
+     "line": "53-61",
+     "note": "An English banned word (best, pick, better, winner, good, choose, ...) or score internals in line1/line2 returns a zero-size node, so the 'why' block is blank and the reason is not shown either. The Arabic text is not checked by this English-only regex",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/response_builder.py",
+     "line": "1073-1119",
+     "note": "line1/line2 are English f-strings ('{winner} leads on {label}.', '{runner} pulls ahead on {label}.', 'edges ahead despite slightly lower reviews') with no language input",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/verdict_builder.py",
+     "line": "6",
+     "note": "_CONDITIONAL_OPENER = {'en': 'If you want', 'ar': 'If you want'}",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/components/results/DimensionBars.tsx",
+     "line": "287-291, 317-323, 334-336",
+     "note": "The dimension LABEL is localized via results.dimension.<key> (51 keys in en and ar, with the backend label as fallback). delta_text renders verbatim apart from the point-math guard",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/.claude/uploads/ae650c83-4d2a-4910-a8d4-a47ab213c8c3/7758232c-image.png",
+     "line": "V01",
+     "note": "Arabic labels (الطابع, الثبات) next to English delta_text ('More distinctive', 'Longer-lasting'), English factual lines and English runner-up prose. V07 (69e9e3fb-image.png) shows English 'Comparable' and 'The other product offers better durability.'",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/components/results/PersonalizationChip.tsx",
+     "line": "46",
+     "note": "applied_shifts dim_display is rendered raw (underscores replaced only), so it is not localized client-side",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/components/results/RunnerUpWinsCard.tsx",
+     "line": "90-100",
+     "note": "key_tradeoff prose is rendered verbatim unless it matches SCORE_INTERNALS_RE (banned words are not checked here)",
+     "basis": "measured"
+    }
+   ],
+   "detail": "A backend fix can localize all of the following additively by changing string VALUES, with no client change:\n- factual_verdict line1/line2;\n- delta_text;\n- key_tradeoff and reason;\n- applied_shifts.dim_display;\n- category_profile labels (the client prefers results.spec.<key>, 68 keys).\n\nNew dimension keys must come from the 51-key catalog. Otherwise the raw backend `label` shows, in English unless the backend localizes it.\n\nOn the text path, `lang` is the language signal. URL and camera compares send none, so those paths need server-side language resolution."
+  },
+  {
+   "title": "(5f) Images and product info: only overview.products[i] is read; the legacy alias is dead for new-format results",
+   "severity": "medium",
+   "evidence": [
+    {
+     "file": "SmartCompareApp/src/screens/ResultsScreen.tsx",
+     "line": "408-410",
+     "note": "products = overview.products ?? products; every child component receives this resolved list",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/response_builder.py",
+     "line": "1937, 2177-2213",
+     "note": "image_url is projected onto overview.products; category_profile, review_praise and rating_count are written ONLY onto the result.products alias, which build 3 does not render when overview exists",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/components/primitives/ProductImage.tsx",
+     "line": "59-62, 81, 99-104",
+     "note": "Any non-empty string is passed to <Image uri>; onError falls back to the placeholder; no retry. http:// URLs are likely blocked by iOS ATS (no NSAppTransportSecurity override in app.json; inferred from Expo defaults)",
+     "basis": "measured"
+    },
+    {
+     "file": "app/api/history_routes.py",
+     "line": "46-59, 113-123",
+     "note": "History list image URLs come from full_response.products[*].image_url (the legacy alias in the persisted row) and accept http or https",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/components/results/ResultsAccordion.tsx",
+     "line": "126, 208-217",
+     "note": "The 'At a glance' section (CategoryProfile) shows only if a rendered product has category_profile.fields; it is dormant on fresh compares today",
+     "basis": "measured"
+    }
+   ],
+   "detail": "Image and product-info fixes that build 3 will display:\n- set overview.products[i].image_url to an absolute https raster URL (and the alias too, for History);\n- adding overview.products[i].category_profile is additive but LIGHTS UP a section reviewers have not seen. That is the owner's call during review.\n\nRe-opening from History renders the persisted full_response with the same rules. Old rows keep their old images."
+  },
+  {
+   "title": "(5g) Dimension rendering rules a scoring or category fix must respect",
+   "severity": "medium",
+   "evidence": [
+    {
+     "file": "SmartCompareApp/src/components/results/DimensionBars.tsx",
+     "line": "82-111",
+     "note": "Any renderable dim with score <= 0 replaces ALL bars with the visible English text 'Dimension scored 0 — backend contract breach.' Use null (silent omission) or caption_key 'limited_data' (dropped), never 0",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/components/results/ResultsContent.tsx",
+     "line": "460, 488-500",
+     "note": "Bars render only if scoring_v2.dimensions.length >= 3 (the RAW length, before filtering); price and value dims are removed when any price.unavailable is true",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/components/results/DimensionBars.tsx",
+     "line": "68, 116-117, 148-154",
+     "note": "data_insufficient: true -> a 'Limited data' row (localized); more than 4 renderable dims -> a 'See full breakdown' expander",
+     "basis": "measured"
+    },
+    {
+     "file": "app/models/scoring_v2.py",
+     "line": "24-31",
+     "note": "The backend Dimension model types score_a/score_b as int and confidence as a high/medium/low literal; the per-dim `winner` field the client prefers is not emitted (dormant read)",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/utils/dimensionLabel.ts",
+     "line": "8-17",
+     "note": "Uncatalogued key -> backend label",
+     "basis": "measured"
+    }
+   ],
+   "detail": "The V06 and V07 category mismatch (beard oil showing Projection/Character, a shirt showing Heritage/Durability) is fixed entirely by WHICH keys the backend emits. The client branches on no category.\n\nFewer than 3 dims hides the bars entirely. That is an acceptable additive way to suppress meaningless metrics for an unsupported category."
+  },
+  {
+   "title": "Non-compare endpoints read by build 3: /usage/status, /comparisons history, share, feedback, events, profile",
+   "severity": "low",
+   "evidence": [
+    {
+     "file": "SmartCompareApp/src/hooks/useComparisonCounter.ts",
+     "line": "178-183, 225-246",
+     "note": "/usage/status: tier ('premium' bypass), used.lifetime (number required to hydrate), limits.lifetime_free, remaining.daily + remaining.monthly (numbers required for the backend-axes gate, else `used < 3`), remaining.lifetime_free",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/screens/PaywallScreen.tsx",
+     "line": "37-71",
+     "note": "remaining.daily/monthly (0 -> daily/monthly state), used.daily/monthly, limits.daily/monthly; 429 fallback reads initialUsage.reason, error suffix '(daily_limit)'/'(monthly_limit)', remaining",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/screens/HistoryScreen.tsx",
+     "line": "49-78, 694-696, 771, 787",
+     "note": "data.comparisons[] {id, query, product_names[], input_type, winner_index 0|1|null, created_at, category?, verdict_short?, winner_image_url?, runner_up_image_url?, full_response? (fallback only)}; data.total",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/components/ShareBottomSheet.tsx",
+     "line": "180-182, 203-207",
+     "note": "/referrals/share response: share_link string REQUIRED (`.match` on undefined -> caught -> generic error), ?ref= code parsed from it; lifetime_invites_remaining optional (ResultsScreen.tsx:556)",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/services/api.ts",
+     "line": "1132-1135, 961-979",
+     "note": "shareComparison (POST /api/v1/share/{id}) and compareTextPair (POST /text/compare) are defined but never called by build 3; POST /share/{id} is not part of build 3's compare/share flow",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/components/FeedbackCard.tsx",
+     "line": "52-62",
+     "note": "/feedback and /events responses are never read",
+     "basis": "measured"
+    }
+   ],
+   "detail": "Older binaries (build 2 on TestFlight, Expo Go) may still call /share/{id} or other endpoints. I did not check this. Keep those endpoints backward compatible."
+  }
+ ],
+ "recommendations": [
+  "ADDITIVE-ONLY RULE 1: Never remove, rename or retype any path listed in finding (1). Strings stay strings, arrays stay arrays, numbers stay numbers. `success` stays a boolean and still means 'navigate to Results'. overview.winner stays an object, and overview.products stays an array of >= 2 entries on success.",
+  "RULE 2 (crash class): scoring_v2.confidence_legs.<leg> must be one of strong|acceptable|weak or the key must be OMITTED (never null, never a new word). applied_shifts[].dim_display and every dims[].delta_text must be strings. pros/cons must be arrays. History product_names must be an array and category a string or null. Never add a top-level `result` key to the /image/identify 200 body.",
+  "RULE 3 (no-winner): build 3 cannot render 'no winner' on a success payload, and a new status/result_status field is ignored. Under review, send identity or data refusals as text/URL 400 with code INSUFFICIENT_DATA (raised through _surface_comparison_failure so the code survives). For the camera, use action 'error' (unidentified) or 'need_second_product'. Never send winner_index null on success expecting a neutral render. Put any new status field behind a dark flag for build 4.",
+  "RULE 4 (codes): use only codes build 3 maps: INSUFFICIENT_DATA, TIMEOUT, STREAM_TIMEOUT, RATE_LIMITED, LLM_UNAVAILABLE, INTERNAL_ERROR, SERVER_ERROR, USAGE_LIMIT, CONTENT_UNAVAILABLE. Any new code renders 'Sharper match coming up — try with brand or model.' Never raise a 503 without an explicit code: error_handler turns it into FEATURE_DISABLED, which is NOT treated as a timeout. A CONTENT_UNAVAILABLE on a homepage URL would say 'We don't compare this category', which is wrong for MYEZ-005/006; INSUFFICIENT_DATA is the closest existing copy.",
+  "RULE 5 (scores): never emit a dimension score of 0; use null or caption_key 'limited_data'. Keep dimension keys inside the 51-key results.dimension.* catalog. Sending fewer than 3 dimensions is a safe additive way to hide meaningless bars for an unsupported category.",
+  "RULE 6 (localization): localize server-side by VALUE only (factual_verdict line1/line2, delta_text, key_tradeoff, reason, applied_shifts.dim_display, category_profile labels). Build 3 sends `lang` only on GET /text/compare, so the URL and camera paths need server-side language resolution (stored user language or Accept-Language), behind a dark flag. Keep localized factual lines free of the English banned words and score internals, or the 'why' block goes blank.",
+  "RULE 7 (images/product info): write image_url to overview.products[i] as an absolute https raster URL; the legacy result.products alias is unread for new-format results (it only feeds History thumbnails). Adding category_profile to overview.products lights up the dormant 'At a glance' section: additive, but a visible change and therefore the owner's call during review.",
+  "RULE 8 (flags to keep OFF until build 3 is approved or the owner rules): ENABLE_COMPARISON_ID_ECHO (changes Share from the text summary described in the Review Notes to the referral sheet), ENABLE_HONEST_PARTIAL_SCORING (blank 'why' block plus an empty legacy card), and any flag that can make scoring_v2 = {} or leave `scoring` present while scoring_v2 is null.",
+  "RULE 9 (camera): with ENABLE_CAMERA_FAILURE_ENVELOPE ON, a comparison_failed carrying INSUFFICIENT_DATA renders 'Still gathering prices' + 'Tap to retry', which re-sends the photos. If a fix starts refusing more camera compares, prefer action 'error' (refunded non-delivery) over comparison_failed for identity failures.",
+  "RULE 10 (History): if a fix ever stores a null winner_index, keep winner_image_url and runner_up_image_url both null for that row (history_routes already does this). The build-3 row reads runner_up_image_url for BOTH tiles when winner_index is null.",
+  "Client-side items that need build 4 (cannot be fixed by the backend): the unconditional 'Top match' badge and winner styling; the English share text 'Winner:'; the FactualVerdict-over-reason precedence; the per-row tie paint; the empty legacy-scoring card; the history null-winner image mapping; URL and camera requests missing `lang`; the green tick on any http(s) URL (TwoInputShell.tsx:250-255)."
+ ],
+ "open_questions": [
+  "What are the production values of ENABLE_HONEST_PARTIAL_SCORING and ENABLE_COMPARISON_ID_ECHO? The CLAUDE.md rows do not state them. A session-76 doc says to keep the echo OFF, and the S78 COMPARE_QUALITY_PLAN lists honest-partial as unknown.",
+  "Does iOS NSURLSession attach Accept-Language to build 3's axios and fetch calls, and does it follow the in-app language or only the device language? This decides whether URL and camera prose can be localized without a client change.",
+  "Does the built Info.plist of 1.0.0 (3) block http:// image URLs (ATS)? If so, the backend must upgrade or drop http image_url values (history_routes._safe_image_url accepts http).",
+  "Is the V03 empty 'why' block a scrubbed reason (metadata.verdict_scrubbed), a missing factual_verdict, or honest-partial? The screenshot alone cannot tell. The persisted full_response of that comparison would settle it.",
+  "Do any build-2 or older binaries remain in testers' hands that call POST /api/v1/share/{id} or the SSE stream? Their contract was not audited here."
+ ],
+ "sources": [
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/services/api.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/types/types.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/screens/ResultsScreen.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/screens/HomeScreen.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/screens/HistoryScreen.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/screens/PaywallScreen.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/components/results/ResultsContent.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/components/results/DimensionBars.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/components/results/ResultsAccordion.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/components/results/FactualVerdict.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/components/results/ConfidencePills.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/components/results/PersonalizationChip.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/components/results/RunnerUpWinsCard.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/components/results/CategoryProfile.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/components/results/confidenceDetailsLines.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/components/results/_deltaText.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/components/ShareBottomSheet.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/components/FeedbackCard.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/components/primitives/ProductImage.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/components/CategorySelector.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/services/resultHonesty.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/services/failureClassification.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/services/errorCopy.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/services/usageService.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/services/referralService.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/services/authService.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/hooks/useComparisonCounter.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/config/features.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/utils/dimensionLabel.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/i18n/en.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/i18n/ar.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/response_builder.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/verdict_builder.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/scoring_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/api/text_routes.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/api/url_routes.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/api/image_routes.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/api/history_routes.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/middleware/error_handler.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/CLAUDE.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-17-session-79-state/ledger.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-17-session-79-state/APP_REVIEW_AUDIT_S79.md",
+  "C:/Users/SynAckITPC/.claude/uploads/ae650c83-4d2a-4910-a8d4-a47ab213c8c3/d20a7872-MYEZ_QA_UX_Audit_2026-10-18.md",
+  "C:/Users/SynAckITPC/.claude/uploads/ae650c83-4d2a-4910-a8d4-a47ab213c8c3/7758232c-image.png",
+  "C:/Users/SynAckITPC/.claude/uploads/ae650c83-4d2a-4910-a8d4-a47ab213c8c3/096b52e4-image.png",
+  "C:/Users/SynAckITPC/.claude/uploads/ae650c83-4d2a-4910-a8d4-a47ab213c8c3/69e9e3fb-image.png"
+ ]
+}

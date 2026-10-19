@@ -1,0 +1,759 @@
+{
+ "category": "F: quota, onboarding, profile and OAuth naming (MYEZ-012, 013, 018, 019, 025)",
+ "summary": "All five Category F defects trace to code or config (origin/main 683f56c0). (012) The free credit is taken at the request gate before the products are identified. The only refund trigger is `result.success` being falsy (or an exception or disconnect). A partial result, an \"Unknown Product\" identity, an empty spec table or a result with no winner all come back as success:true, so they keep the debit and also bump the lifetime counter that the \"N/3\" pill reads. No existing flag covers this. The camera, URL and text routes all behave the same way (paid metering has been ON in prod since 2026-10-03). (013) Seven independent copy strings describe the quota with no server-provided rule or reset time. The \"3/3 مجانًا\" pill counts the lifetime-free counter, which never renews, while the banner promises daily and monthly renewal. CLAUDE.md:171 describes the rule as additive, but the code and the ToS count the first 3 inside the daily and monthly caps. (018) Production runs the 16-step authenticated sequence for 100% of users. Only priorities, budget and brand_attitude are required by a backend contract, and the PUT /demographics cohort seed can already set preferences_completed without them. Steps 1, 3, 5, 12, 13, 14 and 15 are purely presentational; attribution is a marketing question forced with no skip. Budget's title asks \"Where do you usually shop?\" but offers price tiers, and it collides with Step 4's \"Where do you shop?\". (019) The consent name comes from the Google Cloud project's OAuth consent-screen branding, which is outside the repo. The repo holds only the web and iOS client IDs. All 8 named client files contain \"SmartCompare\" only in a line-1 path comment, so none is user-visible. The fix is an owner action in the Google Cloud console with no binary change. (025) ProfileScreen.tsx:319-321 hard-codes `${governorate} · GCC` from the raw English enum, never reads the country, and falls back to \"GCC\" when the cohort match is weak. No country_code or governorate_code fields exist. Most fixes are client-side (1.0.1 or an OTA after approval). The backend parts are additive fields or one new dark flag (no-bill for unsupported results), each defaulting OFF.",
+ "defects": [
+  {
+   "id": "MYEZ-012",
+   "status": "anchored",
+   "root_cause": "consume_comparison_credit debits daily+monthly Redis credit atomically at the route gate BEFORE any identification or comparison (and on the lifetime-free path bumps daily/monthly too); the ONLY refund condition is a falsy `result.success` (or an exception / client disconnect). `success` means 'the pipeline returned a payload', not 'both identities resolved and a supported verdict exists': a hard-cap best-available PARTIAL, a one-sided Phase-1 failure (INSUFFICIENT_DATA requires BOTH sides to fail), a vision/URL placeholder identity ('Unknown Product'), an empty spec table or a no-winner result are all success:true, so they are treated as a delivery: credit kept, record_lifetime_comparison fires (the counter the pill reads), history row saved. The build-3 client independently decrements its pill on every success:true. There is no refund-on-low-quality path, no 'correct and recompare' credit, and no existing ENABLE_* flag for either.",
+   "evidence": [
+    {
+     "file": "SmartCompareApp/src/config/features.ts",
+     "line": "52",
+     "note": "ENABLE_EXPO_FETCH_SSE_DEFAULT = false: the build-3 text compare never uses SSE",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/services/api.ts",
+     "line": "676-713, 730-737",
+     "note": "runRestCompare = single GET /api/v1/text/compare; success:true -> onComplete, success:false -> onError",
+     "basis": "measured"
+    },
+    {
+     "file": "app/api/text_routes.py",
+     "line": "831-845",
+     "note": "GET /text/compare: consume_comparison_credit at the gate, before compare_from_text (:846); 429 USAGE_LIMIT when exhausted",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/usage_service.py",
+     "line": "331-375",
+     "note": "consume_comparison_credit; lifetime-free branch (:360-375) calls _bump_counters (daily+monthly) and returns consumed=True; lifetime counter NOT touched at the gate",
+     "basis": "measured"
+    },
+    {
+     "file": "app/api/text_routes.py",
+     "line": "864-884",
+     "note": "refund_comparison_credit only inside `if not result.get(\"success\")` (TIMEOUT/INSUFFICIENT_DATA/LLM_UNAVAILABLE/CONTENT_UNAVAILABLE); refund called without consumed_keys (floor-at-zero fallback)",
+     "basis": "measured"
+    },
+    {
+     "file": "app/api/text_routes.py",
+     "line": "886-951",
+     "note": "every success:true result: log success, save_comparison_and_track_cohort (history), record_lifetime_comparison (:945-948)",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/structured_comparison_service.py",
+     "line": "4026-4035",
+     "note": "compare_from_text hard-cap -> best-available PARTIAL returned as success:true (billed)",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/structured_comparison_service.py",
+     "line": "4333, 5021-5037",
+     "note": "INSUFFICIENT_DATA only when BOTH products' Phase 1 completely failed; a one-sided failure continues to a success:true result",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/openai_service.py",
+     "line": "214-222",
+     "note": "vision normalizes a missing brand/name to 'Unknown' / 'Unknown Product' and keeps the product",
+     "basis": "measured"
+    },
+    {
+     "file": "app/api/image_routes.py",
+     "line": "288-301, 310, 437-450, 543-568",
+     "note": "camera: consume before Vision; 2+ products auto-compare with no confidence/placeholder check; success:true delivery exit keeps the credit and records lifetime",
+     "basis": "measured"
+    },
+    {
+     "file": "app/api/image_routes.py",
+     "line": "503-531",
+     "note": "camera success:false comparison is a non-delivery (refund) under ENABLE_PAID_ROUTE_METERING (ON in prod)",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/url_extraction_service.py",
+     "line": "527, 612-625",
+     "note": "a page with no title is normalized to 'Unknown Product' and still counts as an extracted product (T02/T03 homepage / Rasasi links)",
+     "basis": "measured"
+    },
+    {
+     "file": "app/api/url_routes.py",
+     "line": "56-84, 141, 155-178, 197-212",
+     "note": "url compare: gate under ENABLE_PAID_ROUTE_METERING; refund only on exception or success:false; success:true bills + records lifetime",
+     "basis": "measured"
+    },
+    {
+     "file": "app/api/text_routes.py",
+     "line": "1220-1297",
+     "note": "SSE stream meters a success:False TERMINAL (STREAM_TIMEOUT/INSUFFICIENT_DATA/moderation) as a delivery: comment :1227 'billing below is UNCHANGED (CD-wave-diffs-02 = W4-13b)', issue #215; unreachable from build 3 (SSE off)",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/screens/HomeScreen.tsx",
+     "line": "433-435, 577-578, 938, 978",
+     "note": "client increment() on any success:true (text + url); pill text = max(0,total-used) + 'مجاناً'",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/hooks/useComparisonCounter.ts",
+     "line": "17-46, 85-89",
+     "note": "used = backend used.lifetime hydrated ONCE on mount, then local +1 per success; total = limits.lifetime_free (3)",
+     "basis": "measured"
+    },
+    {
+     "file": "app/",
+     "line": "n/a",
+     "note": "no recompare / retry-token / free-retry mechanism exists (grep recompare|retry_token|free_retry|not_billed over app/ returns nothing relevant)",
+     "basis": "measured"
+    },
+    {
+     "file": "docs/investigations/2026-09-26-session-68-state/w4-specs/W4_13_UNIT_SPEC.md",
+     "line": "503",
+     "note": "CD-wave-diffs-02 remains: a STREAM_TIMEOUT terminal is logged as failure but still METERED",
+     "basis": "measured"
+    },
+    {
+     "file": "audit V10",
+     "line": "01:33 -> 04:06",
+     "note": "3/3 -> 2/3 after an empty-table compare = consistent with a success:true (lifetime-free) delivery on GET /text/compare",
+     "basis": "inferred"
+    }
+   ],
+   "fix_sketch": "Backend (additive, dark): (1) NEW flag (none exists), e.g. ENABLE_NO_BILL_UNSUPPORTED_RESULT, default OFF, read per call via os.getenv(...).strip().lower() in ONE predicate in text_routes.py that url_routes/image_routes import (the paid_route_metering_enabled idiom, text_routes.py:179). Add `_result_is_billable(result)` keyed on the result-status signal Category A defines (minimum: metadata.partial is True, any product name/brand a placeholder 'Unknown Product'/'Unknown', no overall score/winner, zero comparable spec rows). At each delivery exit (text POST ~:685-768, GET ~:886-951, url :197-212, camera :543-568) when ON and not billable: refund_comparison_credit(user_id, usage_check['consumed_keys']) and skip record_lifetime_comparison. Optionally add an additive `metadata.usage = {billed: false, reason}` key (build 3 ignores unknown keys). (2) W4-13b (#215) as its own flag: treat a stream success:False terminal as a non-delivery (refund, no lifetime, no history). Low urgency because build 3 does not use SSE. (3) Optional: a short-lived Redis 'recompare' grant keyed user+normalized pair, issued on a non-billable result; the next consume within N minutes for a corrected pair skips the debit (additive optional request param). Client (1.0.1 / post-approval OTA): read metadata.usage.billed before increment() and re-fetch /usage/status after every compare (add a refresh() to useComparisonCounter), including the camera path.",
+   "contract_fields": [
+    "GET /api/v1/text/compare response: success, code, metadata.partial, metadata.partial_stage, products[].brand/name",
+    "GET /api/v1/usage/status: used.lifetime, remaining.daily/monthly/lifetime_free",
+    "429 detail: {code: USAGE_LIMIT, tier, reason, remaining}",
+    "/api/v1/image/identify action/comparison_failed envelope"
+   ],
+   "existing_flags": [
+    {
+     "name": "ENABLE_PAID_ROUTE_METERING",
+     "default": "OFF",
+     "prod_state": "ON since 2026-10-03 14:23",
+     "source": "CLAUDE.md:568, 689"
+    },
+    {
+     "name": "ENABLE_CAMERA_FAILURE_ENVELOPE",
+     "default": "OFF",
+     "prod_state": "ON since 2026-10-03 14:23",
+     "source": "CLAUDE.md:462"
+    },
+    {
+     "name": "ENABLE_COMPARE_AUTH_REQUIRED",
+     "default": "OFF",
+     "prod_state": "ON since 2026-10-03 14:23",
+     "source": "CLAUDE.md:568"
+    },
+    {
+     "name": "ENABLE_ANON_USAGE_GATE",
+     "default": "OFF",
+     "prod_state": "OFF (inferred; #128 precondition)",
+     "source": "CLAUDE.md:363, 415"
+    },
+    {
+     "name": "ENABLE_EXPO_FETCH_SSE_DEFAULT (client const)",
+     "default": "false",
+     "prod_state": "false in build 3",
+     "source": "SmartCompareApp/src/config/features.ts:52"
+    }
+   ],
+   "open_questions": [
+    "Which result-status signal makes a result 'supported'? It must be the same one Category A adds for the winner gate (status supported_result vs partial_no_winner / needs_identification).",
+    "Should a non-billed result still write a history row and fire track_after_persist (referral Loop 2, cohort event)? This ties to MYEZ-027.",
+    "Abuse budget: a non-billed result still spends OpenAI/Serper. Should non-billed attempts have their own daily cap?",
+    "Does the owner want lifetime-free users credited back too? Skipping record_lifetime_comparison does that."
+   ],
+   "risks": "Build 3 decrements the pill locally on success:true, so with the flag ON the pill under-reports until the next HomeScreen mount (the hook hydrates once on mount). The fix is cosmetic and self-heals, but it is visible to reviewers. The refund must pass consumed_keys (text routes currently pass none). The flag-OFF behaviour must stay byte-identical to the committed W4-13 flag-OFF ledger (tests/test_w4_13_flag_off_ledger.py). Under ENABLE_SEARCH_LOG_TRUTH the log rows are built AFTER the refund (C3 ordering); keep that order.",
+   "test_seams": [
+    "tests/test_paid_route_metering.py",
+    "tests/test_m18_usage_symmetry.py",
+    "tests/test_usage_tiers.py",
+    "tests/test_usage_service_internals.py",
+    "tests/test_w4_13_flag_off_ledger.py (+ fixture)",
+    "tests/test_m18_preverdict_disconnect_refund.py",
+    "SmartCompareApp/__tests__/hooks/useComparisonCounter.test.ts",
+    "SmartCompareApp/__tests__/HomeScreen.bundleE.s3.integration.test.tsx",
+    "audit T03, T10"
+   ]
+  },
+  {
+   "id": "MYEZ-013",
+   "status": "anchored",
+   "root_cause": "There is no single source for the quota rule. /usage/status returns only counts, with no rule, no binding limit and no reset timestamp. The client renders the quota through seven independently written strings. The header pill counts the LIFETIME-free counter, which never renews (total = lifetime_free 3, used = users.lifetime_comparisons_used). The banner always says 'every day and at the start of each month', even when the monthly cap is the binding one. The Paywall says one of three other renewal sentences. Real rule (code): free = 3/day and 10/month (UTC calendar keys, so renewal is 03:00 Bahrain time). The first 3 'lifetime-free' comparisons bypass the caps but are still counted INTO the daily and monthly counters (not additive). The referral bonus adds to the monthly cap on a rolling expiry, not at month start. Premium: 10/day and 70/month.",
+   "evidence": [
+    {
+     "file": "SmartCompareApp/src/i18n/ar.json",
+     "line": "737 (en.json:740)",
+     "note": "banner body 'تتجدد المقارنات المجانية كل يوم وفي بداية كل شهر.' rendered unconditionally by PaywallBanner.tsx:71 whenever canCompare is false (HomeScreen.tsx:781-790)",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/i18n/ar.json",
+     "line": "371-379 (en.json:374-382)",
+     "note": "Paywall strings: usageMessage (month, limit includes bonus), dailyLimit, monthlyLimit, today, remaining-today, resets_daily, resets_monthly, resets_unknown ('كل يوم وكل شهر'), worded differently from the banner",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/screens/PaywallScreen.tsx",
+     "line": "37-56, 103-126",
+     "note": "state from /usage/status: monthly 0 -> monthly copy; daily 0 -> daily copy; else 'open' with 'left today: N' (openRemaining mixes lifetime-free into 'today'); fallback 'unknown'",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/i18n/ar.json",
+     "line": "707-708",
+     "note": "pill suffix 'مجاناً'; a11y 'N من 3 مقارنات مجانية، بالإضافة إلى N إضافية'",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/hooks/useComparisonCounter.ts",
+     "line": "21-26, 76-89",
+     "note": "pill total = lifetime_free (3), used = backend lifetime (never resets). canCompare uses remaining.daily/monthly, so a user can still compare while the pill shows 0/3. Premium also gets total=3, so review accounts read '0/3 free'",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/screens/HomeScreen.tsx",
+     "line": "938, 978",
+     "note": "pill text = max(0,total-used)/total",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/usage_service.py",
+     "line": "138-149",
+     "note": "TIER_LIMITS free {lifetime_free 3, monthly 10, daily 3}; premium {monthly 70, daily 10}",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/usage_service.py",
+     "line": "152-159, 314-327, 360-365",
+     "note": "keys are UTC day / UTC calendar month; the lifetime-free path bumps daily+monthly, so the first 3 count toward 3/day and 10/month",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/usage_service.py",
+     "line": "712-758",
+     "note": "/usage/status returns tier, used{daily,monthly,lifetime}, limits{daily,monthly,monthly_base,monthly_bonus,lifetime_free}, remaining{...}: no reset time, no binding limit",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/usage_service.py",
+     "line": "551-575, 588-610",
+     "note": "referral bonus counter resets on a rolling 30-day reset_at; entitlement = sum of active redemptions (expires_at): neither is 'start of each month'",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/screens/HomeScreen.tsx",
+     "line": "160-176",
+     "note": "pill '+N' = referral status monthly_bonus_comparisons = users.referral_bonus_comparisons_this_month (referral_service.py:540,567), which usage_service.py:592-593 says MUST NOT drive entitlement; /usage/status limits.monthly_bonus is the authoritative value",
+     "basis": "measured"
+    },
+    {
+     "file": "app/legal/terms_of_service.md",
+     "line": "25 (ar :25)",
+     "note": "ToS: 'up to 3 a day and up to 10 a month; your first 3 comparisons count toward these limits': matches the code",
+     "basis": "measured"
+    },
+    {
+     "file": "CLAUDE.md",
+     "line": "171",
+     "note": "'Free 3 lifetime + 10/mo + 3/day' reads as additive: inconsistent with code and ToS",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/screens/PaywallScreen.tsx",
+     "line": "11",
+     "note": "author note: keys roll at 00:00 UTC, so copy avoids 'tomorrow'. In Bahrain the renewal is 03:00 local",
+     "basis": "inferred"
+    },
+    {
+     "file": "sc-docs-70/docs/investigations/2026-10-14-session-78-state/ledger.md",
+     "line": "9",
+     "note": "S78: the '0/3 free' pill on raised (premium) review accounts is structural",
+     "basis": "measured"
+    }
+   ],
+   "fix_sketch": "Backend (additive keys on GET /api/v1/usage/status; no flag needed for pure additions, or put them behind a dark flag if the freeze is read strictly): `rule: {daily, monthly, lifetime_free_counts_toward_caps: true}`, `binding_limit: 'daily'|'monthly'|null`, `resets: {daily_at: next 00:00 UTC ISO, monthly_at: next month-1 00:00 UTC ISO}`. Client (1.0.1): one quota-copy module keyed on binding_limit plus the local time of the next reset. The pill shows the remaining comparisons TODAY (min of daily and monthly remaining), with the lifetime-free count as a separate 'first 3' badge or removed; premium hides the 'free' pill. The banner copy is chosen by binding_limit (never promise a daily renewal when the monthly cap binds). The '+N' comes from /usage/status limits.monthly_bonus, not referral status. Fix CLAUDE.md:171 wording. Pairs with MYEZ-012 so a non-billed result never moves any counter (T15).",
+   "contract_fields": [
+    "GET /api/v1/usage/status: tier, used.{daily,monthly,lifetime}, limits.{daily,monthly,monthly_base,monthly_bonus,lifetime_free}, remaining.{daily,monthly,lifetime_free} (all keep their meaning; only additions)",
+    "GET /api/v1/referrals/status monthly_bonus_comparisons (display)",
+    "429 USAGE_LIMIT detail.reason daily_limit|monthly_limit"
+   ],
+   "existing_flags": [
+    {
+     "name": "(none for quota copy)",
+     "default": "n/a",
+     "prod_state": "n/a",
+     "source": "grep of ENABLE_* in app/ (139 names): no quota-copy or reset-time flag"
+    }
+   ],
+   "open_questions": [
+    "Owner ruling on the product rule: keep 'first 3 inside the caps' (as code and ToS say) or make the lifetime 3 additive (as CLAUDE.md implies)? Changing it is a ToS change.",
+    "Should the free day roll at 00:00 Bahrain (UTC+3) instead of 00:00 UTC? That would change the Redis key derivation and needs a migration window.",
+    "Pill semantics for premium review accounts while 1.0.0 (3) is in review: no client change is possible before approval."
+   ],
+   "risks": "Changing the Redis key timezone would orphan in-flight counters (refund fallback windows at usage_service.py:162-174). Copy changes in ar.json/en.json are pinned by __tests__/screens/LimitReachedSheet.s69.test.tsx and paywall.noSubscriptionUi.s69.test.ts and by the copy-policy forbidden-vocabulary checks. Client changes cannot ship before approval (no production OTA, UB-R4).",
+   "test_seams": [
+    "SmartCompareApp/__tests__/hooks/useComparisonCounter.test.ts",
+    "SmartCompareApp/__tests__/screens/LimitReachedSheet.s69.test.tsx",
+    "SmartCompareApp/__tests__/screens/paywall.noSubscriptionUi.s69.test.ts",
+    "tests/test_usage_tiers.py",
+    "tests/test_usage_referral_bonus.py",
+    "audit T15"
+   ]
+  },
+  {
+   "id": "MYEZ-018",
+   "status": "anchored",
+   "root_cause": "App.tsx mounts NewOnboardingHost for every authenticated user with preferences_completed=false (CANARY_NEW_ONBOARDING_PERCENT=100). The host hard-codes isAuthenticated=true, so the 16-step AUTHED_STEP_SEQUENCE runs [1 Welcome, 2 Language, 3 ValueProp, 4 Country(+BH governorate), 5 Trust, 6 Age, 7 Gender, 8 Priorities, 9 Budget, 10 BrandAttitude, 11 Attribution, 12 CohortProof, 13 Anticipation, 14 Loading (3.2 s floor), 15 Reveal, 17 Notifications], followed by the AI-consent sheet before the first compare. Client validation forces language, country, priorities, budget, brand_attitude AND attribution (no skip on 11). Only priorities, budget and brand_attitude are required by a backend contract (PUT /auth/preferences, which sets preferences_completed). Country and language are optional and server-derived. Country does not even change region or currency (the client hard-codes 'bahrain'). Age, gender and governorate are cohort demographics; attribution is marketing; steps 1, 3, 5, 12-15 make no network call. The budget step's title 'Where do you usually shop?' / 'أين تتسوق عادةً؟' offers price tiers and nearly duplicates Step 4's 'Where do you shop?' / 'من أين تتسوق؟'.",
+   "evidence": [
+    {
+     "file": "SmartCompareApp/src/config/features.ts",
+     "line": "30, 108-110",
+     "note": "CANARY_NEW_ONBOARDING_PERCENT = 100 means everyone gets the new flow (a build-time JS constant, OTA-only)",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/App.tsx",
+     "line": "235, 310, 337-339, 371-381",
+     "note": "needsPreferences = !preferences_completed -> NewOnboardingHost (or legacy OnboardingScreen when the constant is 0); completion flips the gate locally",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/screens/onboarding/NewOnboardingHost.tsx",
+     "line": "150-174, 200",
+     "note": "isAuthenticated={true} hard-coded; completion fires persistWithDraft and advances at once",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/screens/onboarding/OnboardingFlow.tsx",
+     "line": "68-86, 128-133",
+     "note": "STEP_NAMES; AUTHED_STEP_SEQUENCE has 16 entries (Step 16 Account skipped): 'Step N of 16'",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/screens/onboarding/OnboardingFlow.tsx",
+     "line": "158-160, 170-195",
+     "note": "isStepValid: 2 language, 4 country, 8 priorities 1-3, 9 budget, 10 brand_attitude, 11 attribution REQUIRED; 6/7 optional ('prefer not to say' = onSkip -> onNext, :570-582); 1,3,5,12-17 no input",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/screens/onboarding/Step14Loading.tsx",
+     "line": "42, 70, 87",
+     "note": "theatrical 3,200 ms minimum floor; no network (steps 12-15 import no API)",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/services/onboardingDraft.ts",
+     "line": "82-114, 189-219",
+     "note": "three parallel buckets: PUT /auth/demographics {country,governorate,age_group,gender,language}, PUT /auth/preferences {priorities,budget,brand_attitude,notifications_enabled}, POST /auth/attribution {source}",
+     "basis": "measured"
+    },
+    {
+     "file": "app/api/auth_routes.py",
+     "line": "214-262",
+     "note": "UserPreferencesRequest: priorities List min 1 max 3, budget: str (required), brand_attitude: str (required), lifestyle/notifications optional = the only backend-required answers",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/auth_service.py",
+     "line": "938-964",
+     "note": "save_user_preferences writes preferences + preferences_completed=True",
+     "basis": "measured"
+    },
+    {
+     "file": "app/api/auth_routes.py",
+     "line": "275-292, 1531-1538, 1541-1599",
+     "note": "DemographicsBody all optional; language/country auto-derived (Accept-Language / CF-IPCountry); PUT /demographics seeds inferred prefs via cohort_service.seed_preferences -> save_user_preferences(change_source='cohort_default'), which ALSO sets preferences_completed=True",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/cohort_service.py",
+     "line": "163-202, 238-258",
+     "note": "match() always falls back to the population aggregate; seed_preferences returns priorities/budget/brand_attitude tagged 'inferred'; should_seed never overwrites user_stated",
+     "basis": "measured"
+    },
+    {
+     "file": "app/api/auth_routes.py",
+     "line": "1238-1267",
+     "note": "_flip_inferred_sources keeps an unchanged field's prior source (inferred): a client can resend seeded budget/brand without claiming them as user-stated",
+     "basis": "measured"
+    },
+    {
+     "file": "app/api/text_routes.py",
+     "line": "816-821",
+     "note": "compare uses user prefs only when preferences_completed",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/services/api.ts",
+     "line": "681, 824, 971 (HomeScreen.tsx:565, ResultsScreen.tsx:299)",
+     "note": "region 'bahrain' hard-coded on every compare: the Step 4 country answer does not drive region/currency",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/i18n/en.json",
+     "line": "549-553, 603-614 (ar.json:546-551, 600-611)",
+     "note": "s4 'Where do you shop?' / 'من أين تتسوق؟' (country) vs s9 'Where do you usually shop?' / 'أين تتسوق عادةً؟' (price tiers <11 / 11-57 / 57-189 / 189-500 / 500+ BHD)",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/scoring_service.py",
+     "line": "182-249, 555-559",
+     "note": "budget feeds scoring adjustments; the per-category tier bands (e.g. fragrances 30/80/180/500) do not match the ranges shown in Step 9",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/services/demographicsTrigger.ts",
+     "line": "1-45",
+     "note": "a post-results demographics bottom sheet already exists (DemographicsBottomSheet.tsx), the natural home for deferred age/gender/governorate",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/screens/OnboardingScreen.tsx",
+     "line": "20, 28-35, 185-190",
+     "note": "legacy 6-step flow (language, region, priorities, budget, lifestyle, brand); its region answer is never persisted",
+     "basis": "measured"
+    }
+   ],
+   "fix_sketch": "Client (1.0.1 or post-approval OTA; no server flag drives onboarding): the new sequence is Language -> Priorities (1-3) -> optional one-screen Country, then Notifications. Drop or shorten 1/3/5/12/13/14/15 to a single intro plus reveal, make Attribution skippable (isStepValid case 11) or move it post-value, and defer Age/Gender/Governorate to the existing DemographicsBottomSheet after the first result. Budget and brand_attitude have two options. (a) Client-only: persist demographics FIRST (PUT /auth/demographics seeds inferred budget and brand and sets preferences_completed), then GET /auth/preferences and PUT /auth/preferences with the user's priorities plus the seeded budget and brand unchanged (their source stays 'inferred'). (b) Additive backend: make budget and brand_attitude Optional in UserPreferencesRequest, filled from cohort_service.seed_preferences and tagged inferred when absent. Old clients always send both, so their behaviour is unchanged. Retitle Step 9 to a spend question ('What do you usually spend?' / 'كم تصرف عادةً؟') and show per-category or relative tiers. A/B via CANARY_NEW_ONBOARDING_PERCENT plus the existing onboarding_step_completed analytics. Existing lever, NOT recommended: setting CANARY_NEW_ONBOARDING_PERCENT=0 gives the legacy 6-step flow, but it needs an OTA, drops demographics and cohort personalization, and the legacy region answer is never saved.",
+   "contract_fields": [
+    "PUT /api/v1/auth/preferences body {priorities[1..3], budget, brand_attitude, lifestyle?, notifications_enabled?}",
+    "PUT /api/v1/auth/demographics body {country?, governorate?, age_group?, gender?, language?}",
+    "POST /api/v1/auth/attribution {source}",
+    "users.preferences_completed (App.tsx gate)",
+    "users.preferences._sources"
+   ],
+   "existing_flags": [
+    {
+     "name": "CANARY_NEW_ONBOARDING_PERCENT (client const)",
+     "default": "100",
+     "prod_state": "100 in build 3",
+     "source": "SmartCompareApp/src/config/features.ts:30"
+    },
+    {
+     "name": "ENABLE_COHORT_PERSONALIZATION",
+     "default": "OFF in code",
+     "prod_state": "not read for this unit (the demographics seed path in auth_routes.py:1586-1593 is unflagged)",
+     "source": "app/services/cohort_service.py / CLAUDE.md"
+    }
+   ],
+   "open_questions": [
+    "Owner/product: which questions are truly needed before the first compare? The audit suggests language/region plus 2-3 priorities.",
+    "Is attribution data needed for paid-acquisition reporting (Meta campaigns)? If so, move it after the first value instead of deleting it.",
+    "Should a seeded (inferred) budget be shown to the user on Results as 'we assumed X' (MYEZ-017 explanation)?"
+   ],
+   "risks": "Option (b) relaxes a Pydantic validation, so pin that old payloads produce identical rows. Seeded prefs currently carry change_source='cohort_default' into user_preference_history; analytics comparing onboarding variants must segment on flow_variant. Many client tests pin the 16/17-step sequence (OnboardingFlow.test.tsx, OnboardingFlow.bundleE.test.tsx, OnboardingFlow.analytics.test.tsx, NewOnboardingHost*.test.tsx, b3a/onboardingResume.b3a.test.tsx: the RTL-reload resume step index stepSequence.indexOf(2)+1). No production OTA before approval.",
+   "test_seams": [
+    "SmartCompareApp/__tests__/screens/onboarding/OnboardingFlow.test.tsx",
+    "SmartCompareApp/__tests__/screens/onboarding/NewOnboardingHost.test.tsx",
+    "SmartCompareApp/__tests__/screens/onboarding/NewOnboardingHost.draftRetry.test.tsx",
+    "SmartCompareApp/__tests__/services/onboardingDraft.test.ts",
+    "SmartCompareApp/__tests__/b3a/onboardingResume.b3a.test.tsx",
+    "tests/test_auth_demographics.py",
+    "tests/test_auth_preferences_completed_warning.py",
+    "tests/test_cohort_service.py",
+    "audit T12"
+   ]
+  },
+  {
+   "id": "MYEZ-019",
+   "status": "partially_anchored",
+   "root_cause": "The 'continue to SmartCompare' text is the App name on the OAuth consent screen (Google Auth Platform -> Branding) of the Google Cloud project that owns BOTH OAuth clients the app uses. The web and iOS client IDs share one project-number prefix. They were created in Session 16 (Mar 2026), when the product was named SmartCompare. The app uses the native @react-native-google-signin SDK (iOS client) and sends the idToken to Supabase signInWithIdToken, so Google shows the project's branding, not Supabase's domain. Nothing in the repo sets that name: no google-services.json or GoogleService-Info.plist, no scopes beyond the defaults. In-app branding is already MYEZ (CFBundleDisplayName, app.json name). The 8 named client files contain 'SmartCompare' only in a line-1 file-path comment, so none is user-visible.",
+   "evidence": [
+    {
+     "file": "SmartCompareApp/src/services/authService.ts",
+     "line": "885-904",
+     "note": "GoogleSignin.configure({webClientId, iosClientId}) hard-coded; both IDs carry the same GCP project-number prefix; no scopes requested (defaults openid/email/profile); offlineAccess dropped (S79 B3-A)",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/app.json",
+     "line": "233-236",
+     "note": "@react-native-google-signin plugin iosUrlScheme com.googleusercontent.apps.<project-number>-<client>",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/app.json",
+     "line": "3, 16-18 (locales/en.json:3)",
+     "note": "expo name 'MYEZ'; CFBundleDisplayName 'MYEZ'; no google-services.json / GoogleService-Info.plist in the repo",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/auth_service.py",
+     "line": "787-806",
+     "note": "backend signs in via Supabase signInWithIdToken (the authorized client IDs live in the Supabase dashboard, outside the repo)",
+     "basis": "measured"
+    },
+    {
+     "file": "docs/CONTEXT_REFERENCE.md",
+     "line": "118-123",
+     "note": "Session 16 (2026-03-04): OAuth client IDs (Web+iOS+Android) created in Google Cloud Console: the consent-screen branding dates from the SmartCompare era",
+     "basis": "measured"
+    },
+    {
+     "file": "docs/investigations/2026-10-14-session-78-state/OWNER_ACTIONS_S78.md",
+     "line": "28",
+     "note": "owner action already filed: check consent-screen User support email / developer contact",
+     "basis": "measured"
+    },
+    {
+     "file": "docs/investigations/2026-10-10-session-76-state/DOMAIN_MYEZ_SPEC.md",
+     "line": "246-249",
+     "note": "step 11: Google Cloud OAuth consent screen (authorized domains, home page, privacy policy URL) still names qaren.app if set",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/components/BrandAttitudePicker.tsx, BudgetPicker.tsx, LifestylePicker.tsx, PrioritiesPicker.tsx, ToggleRow.tsx; src/screens/ContactUsScreen.tsx, EditPreferencesFlow.tsx, EditProfileScreen.tsx",
+     "line": "1",
+     "note": "each is a `// SmartCompareApp/src/...` path comment: NOT user-visible. Same for LegalScreen.tsx:1, deviceFingerprint.ts:1, errorCopy.ts:62, theme/bundleD.ts:7,27 (comments)",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/i18n/en.json + ar.json",
+     "line": "n/a",
+     "note": "no 'SmartCompare' string in either locale file; package.json name 'smartcompareapp' is not shown on iOS",
+     "basis": "measured"
+    },
+    {
+     "file": "app/main.py",
+     "line": "67, 563",
+     "note": "FastAPI title 'SmartCompare API' and root JSON {'app': 'SmartCompare API'}: visible only to API callers, not app users",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/__tests__/brand.hardcoded.s69.test.ts",
+     "line": "33, 85",
+     "note": "the existing brand fence only scans for /Qaren|قارن/ in string literals, not /SmartCompare/",
+     "basis": "measured"
+    }
+   ],
+   "fix_sketch": "Owner action, no code, no binary, no OTA, no backend deploy: in Google Cloud Console for the project whose number prefixes the client IDs (authService.ts:890/899), open Google Auth Platform -> Branding and set App name 'MYEZ' and the MYEZ logo. Set home page https://getmyez.com/, privacy policy https://getmyez.com/privacy.html, terms https://getmyez.com/terms (if served), authorized domain getmyez.com, and user support email support@getmyez.com (OWNER_ACTIONS_S78 #10). Leave the client IDs untouched, so Supabase provider config and the app binary need no change. Repo hygiene (optional, any time): extend brand.hardcoded.s69.test.ts with /SmartCompare/ over string literals as a fence (T11 cannot be automated; it is a manual first-sign-in check). Optionally rename the API title/root 'app' value behind nothing, after checking that no monitor keys on it.",
+   "contract_fields": [
+    "GET / root JSON 'app' (only if renamed)"
+   ],
+   "existing_flags": [
+    {
+     "name": "(none; the console setting is outside code)",
+     "default": "n/a",
+     "prod_state": "n/a",
+     "source": "repo grep"
+    }
+   ],
+   "open_questions": [
+    "Does the consent screen need Google brand verification before the new name or logo shows? Adding a logo triggers verification; with only basic scopes a name change may show at once. Needs the owner to check in the console.",
+    "Is the project's publishing status 'In production' with External user type? Changing the branding of a verified app requires re-verification.",
+    "Is the Supabase auth email sender name still SmartCompare/Qaren (OWNER_ACTIONS_S79 #11)? It is the same class of issue, also outside the repo."
+   ],
+   "risks": "A console branding change can put the app back into verification review. If Google then shows the 'unverified app' interstitial, that is worse for App Review than the old name. Do it only after confirming the scopes are basic, and preferably after the 1.0.0 (3) review decision. Never rotate or recreate the OAuth clients: that would break build 3's hard-coded iosClientId.",
+   "test_seams": [
+    "SmartCompareApp/__tests__/brand.hardcoded.s69.test.ts (extend to /SmartCompare/)",
+    "manual T11 (first Google sign-in on a fresh account)"
+   ]
+  },
+  {
+   "id": "MYEZ-025",
+   "status": "anchored",
+   "root_cause": "ProfileScreen builds the subtitle as `${cohortDisplay.governorate} · GCC` from /auth/cohort-profile. That field echoes the raw onboarding enum value (English code 'Northern'), and the string appends a hard-coded literal 'GCC'. It is not localized and never reads the country the user picked ('BH'). The backend returns display=null whenever the cohort match is the population fallback or below medium confidence, and the label then degrades to just 'GCC'. Country and governorate live only inside users.demographics_profile JSONB as country ('BH' from the client, 'Bahrain' or a raw ISO code when server-derived) and governorate ('Northern'). No country_code, governorate_code or display_label fields exist. The Arabic labels already exist in i18n (onboarding.s4.bahrain, onboarding.s4.gov_northern) and Step15Reveal uses them, but ProfileScreen and the Results CohortBadge do not.",
+   "evidence": [
+    {
+     "file": "SmartCompareApp/src/screens/ProfileScreen.tsx",
+     "line": "98-117, 314-321, 323-336",
+     "note": "loadCohortProfile on focus; regionSubtitle = governorate ? `${governorate} · GCC` : 'GCC' (raw value, literal 'GCC', no t(), no country)",
+     "basis": "measured"
+    },
+    {
+     "file": "app/api/auth_routes.py",
+     "line": "1602-1616",
+     "note": "GET /auth/cohort-profile -> cohort_svc.get_display_profile(demographics); {display: None} when no demographics",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/cohort_service.py",
+     "line": "206-234",
+     "note": "display only when match is not population AND confidence high or medium; governorate = _key_part(raw value) echoed; no country in the payload",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/cohort_service.py",
+     "line": "89-96, 121-170",
+     "note": "cohort key = age|gender|governorate|language; country is never part of matching",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/database_service.py",
+     "line": "873-900",
+     "note": "demographics persisted as users.demographics_profile JSONB",
+     "basis": "measured"
+    },
+    {
+     "file": "app/api/auth_routes.py",
+     "line": "1531-1538",
+     "note": "_derive_country stores 'Bahrain' (name) for CF-IPCountry BH but raw ISO codes otherwise, while the client sends 'BH': mixed representation",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/screens/onboarding/types.ts",
+     "line": "18-26",
+     "note": "OnboardingCountry 'BH'|'SA'|...; OnboardingGovernorate 'Capital'|'Muharraq'|'Northern'|'Southern' (English codes)",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/i18n/ar.json",
+     "line": "552-562",
+     "note": "existing labels: onboarding.s4.bahrain 'البحرين', gov_northern 'الشمالية', etc.",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/screens/onboarding/Step15Reveal.tsx",
+     "line": "159-166",
+     "note": "the reveal step DOES localize via t(`onboarding.s4.gov_${lower}`): an inconsistent pattern within the app",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/components/CohortBadge.tsx",
+     "line": "62-68 (ResultsScreen.tsx:998-1005, ar.json:756)",
+     "note": "Results badge interpolates the raw English governorate from cohort_summary into an Arabic sentence (same root cause)",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/__tests__/ProfileScreen.bundleE.s3.integration.test.tsx",
+     "line": "157-161",
+     "note": "pins 'Capital · GCC': must be updated with the fix",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/services/api.ts",
+     "line": "681, 824, 971",
+     "note": "region 'bahrain' hard-coded on every compare: the stored country affects neither currency nor sources (the audit acceptance 'region correct in currency and sources' holds today only for BH users)",
+     "basis": "measured"
+    }
+   ],
+   "fix_sketch": "Client (1.0.1 / post-approval OTA): build the label from localized keys: t(`onboarding.s4.<countryKey>`) + ' — ' + t(`onboarding.s4.gov_<lower>`), giving 'البحرين — الشمالية'. Never print the raw enum or the literal 'GCC'; with no country, show nothing or a neutral 'GCC' key translated. Apply the same localization in CohortBadge. Backend (additive, unflagged or dark): add `region: {country: ISO2, governorate: code}` to the /auth/cohort-profile response, independent of cohort-match strength (owner-only data, which the qaren-cohort privacy invariant permits on the user's own profile). Normalize _derive_country to ISO2 for new writes behind a dark flag, so the stored country has one representation. Update the pin in ProfileScreen.bundleE.s3.integration.test.tsx and the backend tests.",
+   "contract_fields": [
+    "GET /api/v1/auth/cohort-profile {display: {persona_label, n, modal, match_quality, confidence, governorate}} (additive 'region' only)",
+    "users.demographics_profile.country / .governorate",
+    "Results response cohort_summary.governorate"
+   ],
+   "existing_flags": [
+    {
+     "name": "(none for the profile label)",
+     "default": "n/a",
+     "prod_state": "n/a",
+     "source": "grep of ENABLE_* in app/"
+    }
+   ],
+   "open_questions": [
+    "Should non-BH GCC users be allowed at all while prices are BHD-only (Step04 subtitle says so)? This affects whether a country label is meaningful.",
+    "Does the owner want the region editable in EditProfile? There is no country or governorate editor today (EditProfileScreen.tsx has no such field)."
+   ],
+   "risks": "Changing _derive_country output alters cohort analytics joins keyed on the stored string. Keep it flagged and backfill separately. Echoing country in cohort-profile must stay owner-only (never in GPT prompts, per the qaren-cohort governorate redaction rule).",
+   "test_seams": [
+    "SmartCompareApp/__tests__/ProfileScreen.bundleE.s3.integration.test.tsx",
+    "SmartCompareApp/__tests__/ProfileScreen.bundleE.s3.test.tsx",
+    "tests/test_cohort_profile_governorate.py",
+    "tests/test_auth_demographics.py",
+    "tests/test_response_builder_cohort_summary.py"
+   ]
+  }
+ ],
+ "extra_findings": [
+  {
+   "title": "Premium review accounts (App Review now) see a '0/3 free' pill",
+   "severity": "P2",
+   "evidence": "useComparisonCounter.ts:89 sets total=FREE_LIMIT(3) for premium; used = lifetime counter (:21-26), so HomeScreen.tsx:938,978 renders max(0,3-lifetime)/3 'free' on a premium account while canCompare is true. Noted in sc-docs-70 session-78 ledger.md:9 (measured)."
+  },
+  {
+   "title": "Camera compares never move the pill until HomeScreen remounts",
+   "severity": "P2",
+   "evidence": "increment() is called only in HomeScreen.tsx:435 and :578 (text/url). The camera compare runs in ResultsScreen.tsx:298-299 with no increment, and useComparisonCounter.ts:17-39 hydrates /usage/status only on mount, so the pill is stale after any camera compare. HomeScreen staying mounted inside MainTabs is inferred."
+  },
+  {
+   "title": "'+N' bonus pill reads the display-only referral counter, not the entitlement",
+   "severity": "P3",
+   "evidence": "HomeScreen.tsx:160-176 reads referral status monthly_bonus_comparisons, which is users.referral_bonus_comparisons_this_month (referral_service.py:540,567). usage_service.py:588-596 says that counter MUST NOT drive entitlement; /usage/status limits.monthly_bonus (usage_service.py:744-746) is the authoritative sum (measured)."
+  },
+  {
+   "title": "W4-13b (#215): SSE stream bills success:False terminals",
+   "severity": "P3 (not reachable from build 3)",
+   "evidence": "text_routes.py:1220-1297 meters STREAM_TIMEOUT / INSUFFICIENT_DATA / moderation terminals as a delivery (comment :1227); the orchestrator yields them as settle_complete/complete (structured_comparison_service.py:4777-4787, 5003-5037, 5518). Build 3 uses REST because ENABLE_EXPO_FETCH_SSE_DEFAULT=false (features.ts:52) (measured)."
+  },
+  {
+   "title": "Slow-success edge: client gives up at 35 s while the server can still bill",
+   "severity": "P3",
+   "evidence": "COMPARE_TIMEOUT_MS=35000 (api.ts:48) vs STREAM_HARD_CAP_SECONDS 30.0 in prod (CLAUDE.md:337), with the preferences fetch, the consume and the history write outside the cap. A success:true landing after the axios timeout is billed (text_routes.py:886-951) while the user saw the timeout alert. No disconnect detection exists on the REST route. Inferred."
+  },
+  {
+   "title": "Step 9 budget tiers mean different money per category",
+   "severity": "P3",
+   "evidence": "Onboarding shows fixed BHD bands <11 / 11-57 / 57-189 / 189-500 / 500+ (en.json:604-613), but scoring maps prices to tiers per category, e.g. fragrances 30/80/180/500 and electronics 100/400/800/2000 (scoring_service.py:555-559). The answer the user gives is interpreted against different thresholds (measured)."
+  },
+  {
+   "title": "CLAUDE.md freemium rule contradicts code and ToS",
+   "severity": "P3 (doc)",
+   "evidence": "CLAUDE.md:171 says 'Free 3 lifetime + 10/mo + 3/day'. The code counts the lifetime-free 3 inside the daily and monthly counters (usage_service.py:314-327, 360-365), and ToS terms_of_service.md:25 states 'your first 3 comparisons count toward these limits' (measured)."
+  },
+  {
+   "title": "Every re-compare after a correction costs a new credit",
+   "severity": "P2",
+   "evidence": "The gate consume (text_routes.py:833) runs before any cache lookup or compare (:846); no retry or recompare grant exists in app/. Audit 012 expects 'correct the products and recompare without a new debit' (measured)."
+  },
+  {
+   "title": "Two near-identical onboarding questions with different meanings",
+   "severity": "P2",
+   "evidence": "Step 4 'من أين تتسوق؟' / 'Where do you shop?' (country; ar.json:546-549, en.json:549-552) vs Step 9 'أين تتسوق عادةً؟' / 'Where do you usually shop?' (price tier; ar.json:600, en.json:603) (measured)."
+  }
+ ],
+ "sources": [
+  "C:/Users/SynAckITPC/.claude/uploads/ae650c83-4d2a-4910-a8d4-a47ab213c8c3/d20a7872-MYEZ_QA_UX_Audit_2026-10-18.md (sections 4, 6.2, 8, 10)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/usage_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/api/usage_routes.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/api/text_routes.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/api/url_routes.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/api/image_routes.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/structured_comparison_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/openai_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/url_extraction_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/referral_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/api/auth_routes.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/auth_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/cohort_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/database_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/scoring_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/main.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/legal/terms_of_service.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/CLAUDE.md (lines 171, 337, 363, 415, 443-462, 568, 609, 689)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/App.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/app.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/locales/en.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/config/features.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/hooks/useComparisonCounter.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/services/usageService.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/services/api.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/services/authService.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/services/onboardingDraft.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/services/demographicsTrigger.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/screens/HomeScreen.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/screens/PaywallScreen.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/components/PaywallBanner.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/screens/ResultsScreen.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/screens/ProfileScreen.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/components/CohortBadge.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/screens/OnboardingScreen.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/screens/onboarding/ (OnboardingFlow.tsx, NewOnboardingHost.tsx, types.ts, Step01-Step17)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/i18n/ar.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/i18n/en.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/__tests__/ProfileScreen.bundleE.s3.integration.test.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/__tests__/brand.hardcoded.s69.test.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/docs/CONTEXT_REFERENCE.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/docs/investigations/2026-09-26-session-68-state/w4-specs/W4_13_UNIT_SPEC.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/docs/investigations/2026-10-10-session-76-state/DOMAIN_MYEZ_SPEC.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/docs/investigations/2026-10-14-session-78-state/OWNER_ACTIONS_S78.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-14-session-78-state/ledger.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-17-session-79-state/OWNER_ACTIONS_S79.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/ledger.md"
+ ]
+}

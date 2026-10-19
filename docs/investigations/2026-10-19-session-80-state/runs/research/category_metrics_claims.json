@@ -1,0 +1,573 @@
+{
+ "category": "D: category schemas, dimension metrics and unsourced claims (MYEZ-008, MYEZ-009, MYEZ-021)",
+ "summary": "I read origin/main 683f56c0 at C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base (root app/, SmartCompareApp/src). All three defects trace back to one design fact: the 54 per-category dimensions in CATEGORY_DIMENSIONS are not measured from category data. _DIMENSION_SIGNAL_MAP (scoring_service.py:2144-2190) relabels 7 generic signals: spec coverage, star rating, fact-check citation ratio, review-count popularity, spec/rating blend, and price/spec value. Examples: fragrance 'Projection' is the star rating (possibly a GPT-estimated one). Fashion 'Durability' is the share of spec fields whose citation checked out. Fashion 'Heritage' is the spec/rating blend. The relabelled dims then feed four outputs: (1) the bars, which are numeric but have hidden numbers, a 45-85 pair-relative band, and a sentinel 50 for a missing side; (2) the English template verdict lines 'X leads on <label>.' / 'Y pulls ahead on <label>.'; (3) the constant captions 'More distinctive', 'Longer-lasting' and 'Comparable'; (4) the GPT verdict's Scoring Context, which says 'Durability: stronger' and tells the model its verdict MUST be consistent with the scores. That is how 'The other product offers better durability' appears with no data behind it. Beard oil got fragrance dimensions because the deterministic classifier maps the bare token 'scent' to fragrances (extraction_service.py:1171), and the vision name was 'pura d'or ... SANDALWOOD SCENT'. On the camera and explicit-pair paths, name detection outranks everything (structured_comparison_service.py:483-486). The camera path never sends the user's category chip, and the vision model's own label is never used. No grooming or beard rule exists anywhere. The review sentences 'Owners consistently highlight...', 'Reviewers say...' and 'Owners say it...' are hard-coded English templates in review_service.py:446-464 (build_review_praise). Their clauses come from GPT highlights over Serper snippets for the product NAME, with no identity check. The consensus fallback carries no citation at all. Every attribution is deliberately removed (_strip_attribution), per decision D4 'Paraphrased praise, no citations'. review_count, rating and rating_source already exist on the wire. retailer_quotes (domain + real snippet) and the 'Per <domain>:' highlights also ship but are not rendered (Contract 2). No review_source field exists, and the praise line has no source of its own: its stars come from a different provider. On a full cache hit no search runs, so provenance cannot be rebuilt per request; it must be stored at extraction time. No existing flag fixes any of the three defects. Related flags are all default OFF, and CLAUDE.md records none as ON in prod. Partial helps that cannot be flipped quickly: ENABLE_SPEC_FIELD_NORM; ENABLE_SPECS_NO_FABRICATION (must flip last); ENABLE_RELIABILITY_UNCHECKED_ABSENCE (stays inert unless ENABLE_MISSING_DIM_RENORM is ON); ENABLE_VERDICT_PROMPT_TRUTH (prod state unrecorded). ENABLE_CATEGORY_TOKEN_FIX only vetoes 'tablet'. The proposed fixes are backend-only and use contract keys the build-3 client already honours. caption_key:'limited_data' makes DimensionBars and RunnerUpWinsCard drop a row. New keys ride along additively. Each fix sits behind a new dark flag, default OFF and read per call. Client polish waits for a post-approval OTA: respecting winner:null, a descriptive-scale caption, and source counts.",
+ "defects": [
+  {
+   "id": "MYEZ-008",
+   "status": "anchored",
+   "root_cause": "Two compounding causes. (A) Category mis-selection. classify_category_from_text sweeps _CATEGORY_SYNONYMS longest-first with \\b matching. The generic token 'scent'/'scents' maps to 'fragrances' (extraction_service.py:1171-1172, loop at :1332), so any scented non-perfume name, such as a beard oil 'SANDALWOOD SCENT', becomes fragrances. On the vision and explicit-pair paths _resolve_pair_category lets name detection win over everything: det = name_cat, and the chip only marks category_switched (structured_comparison_service.py:483-486). The camera route never receives a chip: image_routes.py:160-168 takes no category param, :450 calls compare_from_text without selected_category, and the client identify call sends only region (SmartCompareApp/src/services/api.ts:302). The vision model outputs no category, and its per-product confidence is dropped (openai_service.py:135-160; structured_comparison_service.py:4210-4224). There are 9 categories and no grooming or beard rule; grep finds 'beard' only in a sitemap test. category_switched has 0 client render sites (types.ts:299 only), so a switch is invisible to the user. (B) The category 'metrics' are not category metrics. Each of the 6 dims per category is a relabel of one of 7 generic signals via ScoringService._DIMENSION_SIGNAL_MAP (scoring_service.py:2144-2190). Fragrance: character = spec coverage, longevity = spec_secondary, projection = star rating, versatility = fact-check reliability, presentation = popularity. Fashion: craft = spec, fit = star rating, style = popularity, durability = reliability, heritage = spec_secondary, cpw = value. _normalize_scores applies the map at :2386-2405. 'Durability' for a shirt is therefore (verified*1+likely*0.7+unverified*0.3)/total over spec citation grades plus a price-verified bonus (:2071-2106). It is not a durability measurement. Fashion has no higher/lower-is-better fields (:262-283), so 'Craftsmanship' is just spec-field coverage. Fragrance spec_raw adds the raw numeric 'volume' (:269, :1925-1936), so bottle size can decide 'Character'. That fits V06, where the 118 ml pura d'or 'pulls ahead on Character' (inferred). review_raw reads product['rating'] without checking rating_derived (:1815-1818), so a GPT-estimated aggregate rating (structured_comparison_service.py:527-557) drives 'Projection' (fragrance) and 'Fit' (fashion). The core _dim_reviews excludes derived ratings (scoring_service.py:3285-3287). build_dimensions_v2 shows up to 5 of these relabelled dims per category (:3880-3905). Their labels come from _DIMENSION_LABELS (:3441-3500), translated on the client (ar.json:213-262, e.g. fit -> 'المقاس' = size). The same dims flow into the GPT verdict as 'Per dimension: Durability: stronger' plus 'Dimension leaders' (scoring_service.py:3017-3100). The prompt adds 'Your verdict MUST be consistent with the scores above' (extraction_service.py:2548-2560), so the model writes those proxies up as product facts.",
+   "evidence": [
+    {
+     "file": "app/services/extraction_service.py",
+     "line": "1171-1172",
+     "note": "\"scent\": \"fragrances\", \"scents\": \"fragrances\" in _CATEGORY_SYNONYMS",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/extraction_service.py",
+     "line": "1306-1342",
+     "note": "classify_category_from_text: longest-synonym-first \\b sweep; only the tablet token has a veto (W4-8, ENABLE_CATEGORY_TOKEN_FIX); no veto for scent",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\.claude\\uploads\\ae650c83-4d2a-4910-a8d4-a47ab213c8c3\\dd4b9146-image.png",
+     "line": "V06",
+     "note": "Card title 'pura d'or ORGANIC BEARD SOFTENING OIL ORIGINAL SANDALWOOD SCENT 4 fl oz (118 ml)'; bars الطابع (character) / الثبات (longevity); 'leads on Projection' / 'pulls ahead on Character' => category_used=fragrances via the 'scent' token",
+     "basis": "inferred"
+    },
+    {
+     "file": "app/services/structured_comparison_service.py",
+     "line": "430-495",
+     "note": "_resolve_pair_category: parser path trusts LLM; explicit/vision path det = name_cat if != other else stub; a conflicting real chip is overridden (category_switched=True); A2b GPT-mini only when names blind and no chip",
+     "basis": "measured"
+    },
+    {
+     "file": "app/api/image_routes.py",
+     "line": "160-168, 450",
+     "note": "/image/identify has no category param; compare_from_text(query, region, vision_products, nocache) with no selected_category",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/services/api.ts",
+     "line": "302",
+     "note": "identify URL carries only ?region= : the Home category chip is never sent on the scan path",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/openai_service.py",
+     "line": "135-160",
+     "note": "vision prompt outputs brand/name/size_or_count/visible_price/confidence, with no category",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/structured_comparison_service.py",
+     "line": "4210-4224",
+     "note": "vision products rebuilt with category = classify_category_from_text(brand+name); vision confidence discarded",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/scoring_service.py",
+     "line": "25-61",
+     "note": "CATEGORY_DIMENSIONS: 9 categories x 6 dims",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/scoring_service.py",
+     "line": "2144-2190",
+     "note": "_DIMENSION_SIGNAL_MAP: each category dim = one of spec/review/reliability/popularity/spec_secondary/value (e.g. fragrances projection_score='review', fashion durability_score='reliability', heritage_score='spec_secondary')",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/scoring_service.py",
+     "line": "2386-2405",
+     "note": "_normalize_scores assigns scores[dim] = signal_arrays[signal][i] for every category dim",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/scoring_service.py",
+     "line": "2071-2106",
+     "note": "_score_reliability = weighted citation-grade ratio (+0.1 price_verified, +/-0.05 sentiment); this is what fashion 'Durability' / fragrance 'Versatility' show",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/scoring_service.py",
+     "line": "262-283, 1904-1949",
+     "note": "HIGHER_IS_BETTER fragrances={longevity, volume}; fashion=set(); _score_specs adds raw numeric for those fields else +1 per populated field, so fashion spec = coverage and fragrance spec is volume-dominated",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/scoring_service.py",
+     "line": "1815-1818",
+     "note": "review_raw = float(product['rating']) with no rating_derived check, so GPT-aggregate ratings feed review-mapped dims",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/structured_comparison_service.py",
+     "line": "527-557",
+     "note": "_apply_gpt_review_aggregate_fallback promotes GPT average_rating into product['rating'] (rating_derived=True) before scoring",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/scoring_service.py",
+     "line": "3848-3933",
+     "note": "build_dimensions_v2 emits 3 core + up to 5 category dims from CATEGORY_DIMENSIONS order when same_category",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/scoring_service.py",
+     "line": "3017-3100",
+     "note": "build_scores_summary feeds the verdict 'Per dimension: <Label>: stronger/weaker/comparable' (missing side read as 50 at :3068) and 'Dimension leaders'",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/extraction_service.py",
+     "line": "2548-2560",
+     "note": "Scoring Context injected into the verdict system prompt + 'Your verdict MUST be consistent with the scores above'",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\.claude\\uploads\\ae650c83-4d2a-4910-a8d4-a47ab213c8c3\\69e9e3fb-image.png",
+     "line": "V07",
+     "note": "Fashion: 'leads on Heritage', 'pulls ahead on Durability', runner-up card 'The other product offers better durability.', bars الحرفية / المقاس (Comparable) / المتانة, card variant 'Polyurethane' (fashion material spec)",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/prompt_personalities.py",
+     "line": "48-61, 126-134",
+     "note": "fragrance personality: 'Longevity and projection are the decisive metrics' (OFF); TRUTH twin only conditions it on supplied data, so a beard oil classed as fragrance is reasoned about as a perfume",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/types/types.ts",
+     "line": "298-299",
+     "note": "category_used / category_switched typed but never rendered; CLAUDE.md:248-249 still claims a frontend info banner",
+     "basis": "measured"
+    },
+    {
+     "file": "CLAUDE.md",
+     "line": "618",
+     "note": "W4-8b: the specs cache is NOT keyed on category (a category fix leaves wrong-schema specs cached 7d/30d)",
+     "basis": "measured"
+    }
+   ],
+   "fix_sketch": "Backend-only. Every change sits behind a NEW dark flag, default OFF, read per call through os.getenv. No response key is removed or retyped.\n\nD8a, ENABLE_CATEGORY_SCENT_VETO (category truth):\n- Mirror the W4-8 _tablet_veto pattern for the ambiguous tokens 'scent'/'scents'. When a non-perfume product-type noun co-occurs ({beard, oil, balm, shampoo, conditioner, wash, soap, lotion, cream, butter, deodorant, candle, diffuser, freshener, detergent, wax}), `continue` the sweep instead of returning fragrances. The sweep can still hit 'hair'/'skin'; otherwise it ends at 'other', which on the vision/explicit path escalates to the bounded A2b classifier (structured_comparison_service.py:494).\n- In the same unit, flag a TRUTH twin of _CLASSIFY_CATEGORY_LLM_PROMPT with one line: 'beard/grooming oils and balms -> haircare; scented personal-care, home or cleaning items are not fragrances'.\n- Keep _CATEGORY_SYNONYMS untouched, because canonicalize_category shares it.\n- Optional follow-up, a separate flag: add 'category' to the vision JSON and use it as llm_cat on the vision path. This touches the vision prompt.\n\nD8b, ENABLE_DIM_EVIDENCE_GATE (display-only; scores, overall and winner untouched, so the 167-record scoring equality gate stays identical):\n- Add a DIM_EVIDENCE_FIELDS map from each category dim to the schema fields that actually measure it. Examples: projection->sillage; longevity->longevity; character->scent_family|notes_*; versatility->season|occasion; craft->craftsmanship|material; fit->size_options; style->style|design_details; durability->material|care_instructions; heritage->origin|collection_season. presentation/scalp/etc. map to none.\n- In _dim_from_category_lookup (scoring_service.py:3503-3589), mark the dim caption_key:'limited_data' in two cases: (i) either side was_missing; (ii) its evidence fields are absent on either product.\n- This key is already honoured by build-3: DimensionBars.tsx:82-88 drops the row, and RunnerUpWinsCard.tsx:56 drops it.\n- In response_builder._top_dim_candidate / _runner_up_dim_candidate (:910-969), skip limited_data dims, so factual_verdict never says 'leads on Heritage'.\n- In build_scores_summary (:3017-3100), list only evidence-backed dims and never render a missing side as 50. This changes the verdict prompt only when the flag is ON. With the flag OFF, the W4-11 render-digest fixture must stay byte-identical; with it ON, regenerate it in the same PR.\n\nD8c: under D8b's flag, review-mapped dims ignore rating_derived ratings (same rule as _dim_reviews:3285). Gate this in build_dimensions_v2, display-side, not in _compute_raw_scores.\n\nExisting flags that partially help, but none is quick to flip:\n- ENABLE_SPEC_FIELD_NORM: volume magnitude.\n- ENABLE_RELIABILITY_UNCHECKED_ABSENCE: blanks an all-unverified 'Durability', but it is coupled to ENABLE_MISSING_DIM_RENORM, which is OFF.\n- ENABLE_SPECS_NO_FABRICATION: must flip LAST.\n- ENABLE_VERDICT_PROMPT_TRUTH: needs Ahmed's yes.\n\nPost-approval OTA: send the Home chip on /image/identify (the backend needs an additive Query param) and render category_switched.",
+   "existing_flags": [
+    {
+     "name": "ENABLE_CATEGORY_TOKEN_FIX",
+     "default": "OFF (extraction_service.py:608)",
+     "prod_state": "not recorded ON in CLAUDE.md; covers tablet/tablets only, NOT scent",
+     "source": "CLAUDE.md:343, :618"
+    },
+    {
+     "name": "ENABLE_VERDICT_PROMPT_TRUTH",
+     "default": "OFF (prompt_personalities.py:83-90)",
+     "prod_state": "unrecorded: S78 plan lists it as UNKNOWN; flip needs Ahmed's explicit yes",
+     "source": "CLAUDE.md:615; sc-docs-70/docs/investigations/2026-10-14-session-78-state/COMPARE_QUALITY_PLAN_S78.md:75"
+    },
+    {
+     "name": "ENABLE_SPEC_FIELD_NORM",
+     "default": "OFF (scoring_service.py:450)",
+     "prod_state": "OFF (no ON record)",
+     "source": "CLAUDE.md:356"
+    },
+    {
+     "name": "ENABLE_SPECS_NO_FABRICATION",
+     "default": "OFF",
+     "prod_state": "OFF; must flip LAST",
+     "source": "CLAUDE.md:346, :377, :615"
+    },
+    {
+     "name": "ENABLE_RELIABILITY_UNCHECKED_ABSENCE",
+     "default": "OFF (scoring_service.py:1062)",
+     "prod_state": "OFF; coupled, always False while ENABLE_MISSING_DIM_RENORM is OFF",
+     "source": "CLAUDE.md:620"
+    },
+    {
+     "name": "ENABLE_MISSING_DIM_RENORM",
+     "default": "OFF",
+     "prod_state": "OFF (no ON record)",
+     "source": "CLAUDE.md:357"
+    },
+    {
+     "name": "ENABLE_CATEGORY_VALUE_BADGE",
+     "default": "OFF (scoring_service.py:432-436)",
+     "prod_state": "OFF (no ON record); value_badge constant fair_price for 7/9 categories; not causal for 008",
+     "source": "CLAUDE.md:407"
+    },
+    {
+     "name": "ENABLE_BUNDLE_C_SCORING",
+     "default": "false",
+     "prod_state": "false in Railway, so missing signals get MISSING_SCORE=50",
+     "source": "CLAUDE.md:273"
+    }
+   ],
+   "contract_fields": [
+    "metadata.category_used",
+    "metadata.category_switched",
+    "scoring_v2.dimensions[].key/label/score_a/score_b/delta_text/confidence/winner/caption_key",
+    "scoring_v2.factual_verdict.line1/line2",
+    "overview.winner.key_tradeoff",
+    "products[].category_profile",
+    "specs.products[].specs"
+   ],
+   "test_seams": [
+    "tests/test_category_token_fix.py (W4-8 veto pattern to mirror)",
+    "tests/test_explicit_pair_category.py, tests/test_resolve_category.py, tests/test_category_canonicalization.py",
+    "tests/test_compose_delta_text_per_category.py, tests/test_lane1_helpers_unit.py",
+    "tests/test_dim_phantom_tie_followup.py, tests/test_value_badge_category_dims.py (pin _DIMENSION_SIGNAL_MAP)",
+    "tests/test_prompt_personalities.py + tests/fixtures/w4_11_prompt_render_digests.json (python -m tests.w4_11_prompt_digest_recorder)",
+    "the 360-record GCC corpus gate (W4-8) and the 167-record scoring equality gate (W4-7)",
+    "SmartCompareApp/__tests__/components/DimensionBars.test.tsx (walk-fix limited_data drop), RunnerUpWinsCard.test.tsx"
+   ],
+   "risks": "(1) The specs cache (W4-8b, CLAUDE.md:618) and the reviews cache key get_reviews_cache_key(brand,name,variant) (review_service.py:677) are not category-keyed, so a corrected category still serves fragrance-schema specs and reviews for up to 7d/30d. Canary with nocache=true. (2) Dropping dims via limited_data can leave the bars block holding only core rows. ResultsContent.tsx:460 counts dims (>=3) before DimensionBars filters them. (3) Any build_scores_summary change alters the verdict prompt. The flag-OFF byte-identity has to be proven against the W4-11 digest fixture, and the source-scanning pins (prompt-fence digests, AST pins) must be in the comm set. (4) Persisted History/share rows keep their old dims. (5) The scent veto must not misroute genuine perfume oils or attars: fragrance-specific tokens (perfume/edp/parfum/attar/oud) must win first.",
+   "open_questions": [
+    "Should beard and grooming products map to haircare, skincare, or 'other'? A new 10th category would need a schema, dims, weights, prompts and translations: product call.",
+    "Hide proxy dims entirely, or show them as a labelled 'descriptive' comparison? (Ahmed)",
+    "Is ENABLE_VERDICT_PROMPT_TRUTH ON in prod? This is unrecorded and should be checked by the orchestrator or Ahmed with the names-only check, never from an agent.",
+    "For V06, did the tester pick a chip? It is irrelevant on the camera path (no chip sent), but it matters for the typed path."
+   ]
+  },
+  {
+   "id": "MYEZ-009",
+   "status": "anchored",
+   "root_cause": "The people-attributed sentences are a deterministic English template. build_review_praise (review_service.py:531-630) weaves up to 2 positive review_summary.highlights clauses. Through _frame_praise_clause (:446-464) it prefixes them with 'Reviewers say', 'Owners say it is', 'Owners say it' or 'Owners consistently highlight'. When no positive highlight survives, it falls back to the GPT 'consensus' sentence (:615-630), which the extraction prompt does not require to be cited (extraction_service.py:986, :996). The highlights come from REVIEWS_EXTRACTION_SYSTEM (extraction_service.py:975-1025) over Serper organic snippets. On the live path that is the unified search '{search_query} specifications reviews price' (structured_comparison_service.py:5810-5850). No check confirms the snippets describe the same product, so a wrong or generic identity yields praise for another product (V04, V07). The prompt asks for [snippet_N] markers, but build_review_praise never checks that a clause was cited (:583-600). _strip_attribution (:365-380) then deliberately removes every 'Per <domain>:', [N] and domain token, per Ahmed's D4 'Paraphrased praise, no citations' (sc-docs-70/docs/plans/2026-06-17-faithful-results-genuine-bh-freetier-design.md:16, :27). ResultsAccordion.tsx:336-420 and ReviewPraiseBlock (:633-690) render the praise next to stars and a count from a different source: the Phase-2 rating provider's rating/review_count. rating_source is not displayed. So a sentence attributed to 'owners' carries neither its own source nor its own count. Fields that exist today: overview.products[i].rating/review_count (derived ratings nulled, response_builder.py:1917-1921); reviews.products[i].rating/review_count/rating_source/review_summary (with 'Per domain:' highlights)/retailer_quotes/review_praise/youtube_review_signal (response_builder.py:1985-2030); products[i].review_praise (response_builder.py:2187). There is no review_source field. retailer_quotes ({retailer: domain, text: real snippet, rating?}) can be traced to a source but is dormant on the client (Contract 2). On a full specs+reviews cache hit no unified search runs (structured_comparison_service.py:5808-5811), so retailer_quotes is [] and the citation markers are stripped with empty attribution. Provenance can only be kept if it is captured at extraction time inside get_reviews (review_service.py:709-726). A second, verdict-side source of unsourced claims shares MYEZ-008's mechanism: GPT key_tradeoff and pros/cons are told 'Durability: stronger' etc. and must stay 'consistent with the scores' (extraction_service.py:2548-2560). The verdict JSON has no per-claim provenance field, even though trust rule 'CITE the data' exists (prompt_personalities.py:71-80).",
+   "evidence": [
+    {
+     "file": "app/services/review_service.py",
+     "line": "446-464",
+     "note": "_frame_praise_clause returns 'Reviewers say {woven}.' / 'Owners say it is' / 'Owners say it' / 'Owners consistently highlight {woven}.'",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/review_service.py",
+     "line": "531-630",
+     "note": "build_review_praise: positive highlights (no citation requirement) -> template; fallback to uncited consensus when sentiment != negative",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/review_service.py",
+     "line": "365-380",
+     "note": "_strip_attribution removes 'Per <domain>:', [snippet_N]/[N], bare domains: the deliberate de-attribution",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/extraction_service.py",
+     "line": "975-1025",
+     "note": "REVIEWS_EXTRACTION_SYSTEM: highlights must carry [snippet_N]; consensus has no citation rule; 'Never attribute to individual users or websites'",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/structured_comparison_service.py",
+     "line": "5808-5850, 5918-5930",
+     "note": "reviews use the unified search for the product name; search skipped entirely when specs+reviews are cached",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/structured_comparison_service.py",
+     "line": "6414-6440",
+     "note": "retailer_quotes built from intact [snippet_N] markers BEFORE clean_review_citations; both need unified_search organic (empty on cache hit)",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/review_service.py",
+     "line": "158-215, 269-330",
+     "note": "clean_review_citations rewrites markers to 'Per <domain>:'; build_retailer_quotes_from_reviews maps highlight -> organic result -> {retailer, text, rating?}",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/response_builder.py",
+     "line": "1985-2030, 2187",
+     "note": "reviews.products[i] ships rating (derived nulled), review_count, rating_source, scrubbed review_summary, retailer_quotes, review_praise, youtube_review_signal; products[i].review_praise alias",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/components/results/ResultsAccordion.tsx",
+     "line": "336-420, 633-690",
+     "note": "renders ONLY review_praise + rating stars + count; retailer_quotes/highlights removed (Contract 2); rating_source not shown",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/structured_comparison_service.py",
+     "line": "527-557, 6350-6365",
+     "note": "rating/review_count/rating_source come from the Phase-2 rating provider, or a GPT aggregate with review_count nulled: a different source than the praise text",
+     "basis": "measured"
+    },
+    {
+     "file": "sc-docs-70/docs/plans/2026-06-17-faithful-results-genuine-bh-freetier-design.md",
+     "line": "16, 27",
+     "note": "D4 'Reviews legal posture: Paraphrased praise, no citations (safest)' constrains any fix that shows domains",
+     "basis": "measured"
+    },
+    {
+     "file": "sc-docs-70/docs/investigations/2026-10-17-session-79-state/APP_REVIEW_AUDIT_S79.md",
+     "line": "79",
+     "note": "S79 audit already flagged 'Owners consistently highlight opens with ...' as stale template output in store screenshots",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/extraction_service.py",
+     "line": "2548-2560",
+     "note": "verdict told to be consistent with relabelled dim scores; produces unsourced key_tradeoff such as V07 'The other product offers better durability.'",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/extraction_service.py",
+     "line": "2595-2603",
+     "note": "verdict sees full product JSON incl. review_summary; verdict output schema has no per-claim source field",
+     "basis": "measured"
+    }
+   ],
+   "fix_sketch": "New dark flag ENABLE_REVIEW_PRAISE_PROVENANCE, default OFF, read per call. Backend only; build-3 keeps working because the review_praise key stays a string or null.\n\n(1) Capture provenance where the search results are in scope:\n- In get_reviews, right after extract_reviews (review_service.py:709), map each positive highlight's [snippet_N] to its organic result. Use the same _CITATION_MARKER_RE logic as build_retailer_quotes_from_reviews.\n- Store an additive `praise_basis` = {source_count, domains, urls, highlight_idx[], captured_at} inside the reviews dict before the cache write at :723-726, so warm compares keep it.\n- Skip this for a FY19 timeout context, as today.\n\n(2) In build_review_praise under the flag:\n- Use only highlights listed in praise_basis.\n- Drop the uncited consensus fallback.\n- Require at least N distinct sources (N is a product call; 1 or 2); otherwise return None. build-3 then renders the rating alone or the calm 'reviewsEmpty' line, both existing behaviour.\n\n(3) Replace the person-attributing leads with a source-neutral, count-bearing frame, e.g. 'Mentioned across N online reviews: {clause}.' This keeps D4 (paraphrase, no domains shown).\n- Copy must pass the .copy-policy fence.\n- English only for now; Arabic belongs with MYEZ-016 / ENABLE_ARABIC_VERDICT_OUTPUT.\n\n(4) Additive wire keys reviews.products[i].review_praise_basis and products[i].review_praise_basis = {source_count, basis:'cited_highlights', captured_at}. Domains appear only if Ahmed revisits D4. Keep SSE parity at structured_comparison_service.py:5153-5180. build-3 ignores unknown keys; a post-approval OTA can show 'from N sources'.\n\n(5) Identity guard, dependent on the Category A/B identity units: return None when vision confidence is 'low', when the two product names are identical (V07), or when a name is 'Unknown Product'. This needs vision confidence carried through structured_comparison_service.py:4210-4224 as a private key.\n\n(6) Verdict side: reuse MYEZ-008 D8b so the Scoring Context no longer asserts proxy dims. A later unit (prompt plus additive contract) can request a basis per pro/con; not now.",
+   "existing_flags": [
+    {
+     "name": "ENABLE_REVIEW_SOURCE_CONSULT",
+     "default": "OFF (review_service.py:956-975; 'active' explicit only)",
+     "prod_state": "OFF per CLAUDE.md",
+     "source": "CLAUDE.md:341"
+    },
+    {
+     "name": "ENABLE_YOUTUBE_SOURCE",
+     "default": "OFF",
+     "prod_state": "no ON record; youtube_review_signal is not rendered by the client",
+     "source": "response_builder.py:2025-2029"
+    },
+    {
+     "name": "ENABLE_VERDICT_PROMPT_TRUTH",
+     "default": "OFF",
+     "prod_state": "unrecorded; affects cons honesty, not praise attribution",
+     "source": "CLAUDE.md:615"
+    },
+    {
+     "name": "ENABLE_CITATION_RUBRIC_V2",
+     "default": "OFF (fact_check_service.py:85-99)",
+     "prod_state": "no ON record; grades spec citations only, not review praise",
+     "source": "CLAUDE.md:411"
+    },
+    {
+     "name": "ENABLE_YOTPO_REVIEWS / ENABLE_JUDGEME_HTML_REVIEWS",
+     "default": "OFF",
+     "prod_state": "no ON record; real retailer rating+count sources that could back a review_source",
+     "source": "CLAUDE.md:347-348, :377"
+    }
+   ],
+   "contract_fields": [
+    "reviews.products[].review_praise",
+    "products[].review_praise",
+    "reviews.products[].rating / review_count / rating_source",
+    "overview.products[].rating / review_count",
+    "reviews.products[].retailer_quotes (dormant on client)",
+    "reviews.products[].review_summary.highlights[].point",
+    "overview.winner.key_tradeoff, overview.products[].pros/cons"
+   ],
+   "test_seams": [
+    "tests/test_review_paraphrase.py (pins the lead phrasing and de-attribution)",
+    "tests/test_w4_12_display_contract.py + tests/fixtures/w412_corpus_min.json",
+    "tests/test_fragrance_content_quality.py",
+    "tests/test_category_review_terms.py",
+    "SmartCompareApp/__tests__ ResultsAccordion review-praise tests (client unchanged in build-3)"
+   ],
+   "risks": "(1) D4 legal posture: showing domains or verbatim snippets reverses an owner decision; the count-only frame keeps it. (2) Requiring cited sources will blank praise on many compares, especially cache hits from before the flag (old cached reviews lack praise_basis). Under the flag, treat a missing basis as no praise and expect an empty Reviews section until caches turn over (7d). (3) Changing the lead strings touches pinned tests and the copy fence; review_praise is persisted in History/share rows. (4) Identity-guard thresholds overlap the identity units (Category A/B); landing the guard first could suppress praise the identity fix would have made correct.",
+   "open_questions": [
+    "Will Ahmed allow a source count ('from N online reviews') or domain names under D4?",
+    "Minimum number of distinct sources for a praise line (1 or 2)?",
+    "Should the stars and count be removed when the praise comes from a different source than the rating provider, or should rating_source.name be shown (post-approval OTA)?"
+   ]
+  },
+  {
+   "id": "MYEZ-021",
+   "status": "anchored",
+   "root_cause": "The bars are numeric, but their meaning is hidden. DimensionBar splits one track in proportion to score_a/(score_a+score_b) (SmartCompareApp/src/components/primitives/DimensionBar.tsx:49-51). It is fed scoring_v2.dimensions[i].score_a/score_b (ResultsContent.tsx:460-497). The numbers are deliberately hidden (DimensionBars.tsx:345-361 scoreHookHidden), and no unit, scale or source is shown. Each score is a 0-100 composite of a generic signal (see MYEZ-008):\n- spec signals are pair-relative in a dampened 45-85 band, with 65 for a tie (scoring_service.py:2472-2541);\n- ratings map to 20-100 (:2544-2551);\n- reliability/popularity are raw x100 (:2553-2558);\n- a missing side is the sentinel MISSING_SCORE=50 (:2491-2492, :2548-2549, :2556-2557). Only both-sided-missing dims are omitted (:3570-3572); a one-sided-missing dim ships the 50 and renders as a bar.\n\nEvery category dim gets a hard-coded confidence 'medium' (:3585), so the low-confidence opacity and '≈' cue never fire. The backend sets winner=None for ties, low confidence and one-sided-missing dims (_dim_winner :3192-3237). The client then falls back to a score heuristic and still paints one side emerald, ties going to the overall winner (DimensionBars.tsx:263-269). The 'no false certainty' Decision B is therefore lost visually. Captions are qualitative constants independent of data: 'More distinctive', 'Longer-lasting', 'Stronger projection', 'Comparable' for a margin under 1 (scoring_service.py:3608-3687). Otherwise they read '+Npt <label>', which the client swaps back to the dim label (_deltaText.ts:43-47; DimensionBars.tsx:287-288). So the caption under a bar often just repeats its name (V07 'الحرفية' under 'الحرفية'). When no rating exists, fragrance 'Character' and 'Longevity' are the same number, because spec_secondary falls back to spec (:2340-2352; the client fixture DimensionBars.test.tsx:140-141 shows identical 74.1/55.9).",
+   "evidence": [
+    {
+     "file": "SmartCompareApp/src/components/primitives/DimensionBar.tsx",
+     "line": "49-54",
+     "note": "leftPct = left/(left+right)*100; emerald on the winner side",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/components/results/DimensionBars.tsx",
+     "line": "82-88, 263-269, 287-288, 325-336, 345-361",
+     "note": "drops data_insufficient/limited_data/null rows; winner null -> score heuristic emerald; safeDelta caption; raw scores hidden",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/components/results/ResultsContent.tsx",
+     "line": "460-497",
+     "note": "bars rendered from scoring_v2.dimensions only when length >= 3; price/value dropped when price pending",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/scoring_service.py",
+     "line": "2472-2558",
+     "note": "_normalize_dimension (45-85 dampened, 65 tie, MISSING_SCORE when absent), _normalize_review (20-100), _normalize_direct (x100, 50 when absent)",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/scoring_service.py",
+     "line": "3503-3589",
+     "note": "_dim_from_category_lookup: both-missing -> None; one-sided missing still emitted with the 50 sentinel; confidence hard-coded 'medium'",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/scoring_service.py",
+     "line": "3192-3237",
+     "note": "_dim_winner returns None for one-sided missing / low / |gap|<3.0 (the client ignores None)",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/scoring_service.py",
+     "line": "3592-3690",
+     "note": "_compose_delta_text: 'Comparable' if margin<1; fragrance constants 'Longer-lasting'/'Stronger projection'/'More distinctive'/'More versatile'; else '+{margin}pt {label}'",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/components/results/_deltaText.ts",
+     "line": "19, 43-47",
+     "note": "point-math captions replaced by the dim label",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/scoring_service.py",
+     "line": "2340-2352",
+     "note": "spec_secondary = review when spec missing, = spec when review missing: two differently-named bars carry the same number",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/__tests__/components/DimensionBars.test.tsx",
+     "line": "137-142",
+     "note": "fixture: character and longevity both 74.1/55.9",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\.claude\\uploads\\ae650c83-4d2a-4910-a8d4-a47ab213c8c3\\69e9e3fb-image.png",
+     "line": "V07",
+     "note": "'Comparable' caption under an unequal green/grey split; captions repeat the dim label",
+     "basis": "measured"
+    }
+   ],
+   "fix_sketch": "Backend first, no client change needed for build-3. It shares the new flag ENABLE_DIM_EVIDENCE_GATE with MYEZ-008 D8b. Under the flag:\n(1) A one-sided-missing category dim emits caption_key:'limited_data' instead of a 50-sentinel bar. build-3 drops the row in DimensionBars and RunnerUpWinsCard.\n(2) A category dim whose evidence fields are absent on either product (DIM_EVIDENCE_FIELDS) gets caption_key:'limited_data' as well.\n(3) A kept dim backed by a measured spec gets the measured fact as delta_text through the existing branches ('8h vs 6h', '<sillage> vs <sillage> projection', dosage units). The constant captions ('More distinctive', 'Comparable', ...) become '' instead, which leaves no caption in DimensionBars.\n(4) An additive per-dim key `basis` = {signal:'spec|review|reliability|popularity|value|spec_secondary', fields:[...], measured:bool, scale:'pair_relative'}. build-3 ignores it.\n(5) Factual-verdict candidates skip limited_data dims (see MYEZ-008).\nScores and the winner do not change.\n\nPost-approval OTA (client):\n- DimensionBars.tsx:263-269 paints no emerald when dimension.winner === null.\n- Render a one-line 'descriptive comparison, not a measurement' legend when basis.measured is false, or show value+unit when it is true.\n- Optionally render the hidden score numbers.\n\nRelated existing hatch DISABLE_DIM_NORM_DAMPENING (default OFF) only widens the spread; it is not a fix.",
+   "existing_flags": [
+    {
+     "name": "DISABLE_DIM_NORM_DAMPENING",
+     "default": "OFF (scoring_service.py:337)",
+     "prod_state": "OFF (escape hatch to the legacy 30-100 spread); not a fix",
+     "source": "scoring_service.py:296-314"
+    },
+    {
+     "name": "ENABLE_TIE_IS_NOT_MISSING",
+     "default": "OFF",
+     "prod_state": "OFF; coupled False while ENABLE_MISSING_DIM_RENORM ON; keeps more ties visible (opposite direction)",
+     "source": "CLAUDE.md:612"
+    },
+    {
+     "name": "ENABLE_BUNDLE_C_SCORING",
+     "default": "false",
+     "prod_state": "false: missing signals get the 50 sentinel that one-sided bars render",
+     "source": "CLAUDE.md:273"
+    }
+   ],
+   "contract_fields": [
+    "scoring_v2.dimensions[].score_a/score_b",
+    "scoring_v2.dimensions[].delta_text",
+    "scoring_v2.dimensions[].confidence",
+    "scoring_v2.dimensions[].winner",
+    "scoring_v2.dimensions[].caption_key (existing; build-3 drops 'limited_data')",
+    "scoring_v2.dimensions[].data_insufficient (existing; build-3 renders an InsufficientRow)",
+    "NEW additive scoring_v2.dimensions[].basis"
+   ],
+   "test_seams": [
+    "tests/test_compose_delta_text_per_category.py",
+    "tests/test_dim_phantom_tie_followup.py",
+    "tests/test_lane1_helpers_unit.py (build_dimensions_v2 / _dim_from_category_lookup)",
+    "tests/test_w4_7_reliability_unchecked_absence.py",
+    "SmartCompareApp/__tests__/components/DimensionBars.test.tsx, DimensionBars.insufficient.test.tsx, DimensionBars.silent_omission.test.tsx, RunnerUpWinsCard.test.tsx (for the later OTA)"
+   ],
+   "risks": "(1) With the flag ON many compares will show only the core price/reviews/value bars (or none when price is pending). This is honest but visibly thinner during App Review, so flip only after the reviewer pair is canaried (S78 plan fix #1). (2) The scoring_v2.dimensions length check (ResultsContent.tsx:460) counts rows before DimensionBars filters them, so an all-limited set renders an empty block (legend hidden at DimensionBars.tsx:128). (3) Persisted History/share rows keep the old dims. (4) An empty delta_text for constants removes the only caption RunnerUpWinsCard shows; safeDelta falls back to the label (RunnerUpWinsCard.tsx:72).",
+   "open_questions": [
+    "Keep bars at all for proxy dims, or replace them with short text notes as the audit suggests? (design call)",
+    "Should the hidden score numbers ever be shown (CLAUDE.md copy rules forbid '/100'-style internals)?"
+   ]
+  }
+ ],
+ "extra_findings": [
+  {
+   "title": "The camera path ignores the user's category chip, and a name keyword overrides the chip on typed explicit pairs",
+   "severity": "P1",
+   "evidence": "SmartCompareApp/src/services/api.ts:302 sends only ?region=. app/api/image_routes.py:160-168 has no category param and :450 passes none. structured_comparison_service.py:483-486 sets det = name_cat, and a chip only sets category_switched (measured)."
+  },
+  {
+   "title": "category_switched is never shown to the user, although CLAUDE.md says a frontend banner exists",
+   "severity": "P2 (doc drift + honesty)",
+   "evidence": "SmartCompareApp/src/types/types.ts:299 is the only client reference. CLAUDE.md:248-249 claims 'frontend info banner'; CLAUDE.md:618 itself notes 0 render sites (#248) (measured)."
+  },
+  {
+   "title": "GPT-estimated ratings drive the category dims mapped to the 'review' signal",
+   "severity": "P1",
+   "evidence": "scoring_service.py:1815-1818 has no rating_derived check. The affected dims are fragrance projection, fashion fit, electronics futureproof, grocery taste, supplements form, makeup longevity, haircare results, skincare skin_compat and 'other' review. Contrast _dim_reviews at scoring_service.py:3285-3287, which excludes derived ratings (measured)."
+  },
+  {
+   "title": "The client paints a winner on bars the backend marked winner:null",
+   "severity": "P2 (client, OTA after approval)",
+   "evidence": "DimensionBars.tsx:263-269 falls back to score_a > score_b, with ties going to the overall winner. This defeats _dim_winner's Decision B (scoring_service.py:3192-3237) (measured)."
+  },
+  {
+   "title": "The verdict prompt turns relabelled proxy dims into product claims",
+   "severity": "P1",
+   "evidence": "scoring_service.py:3017-3100 tells GPT 'Per dimension: Durability: stronger' and 'Dimension leaders'. A missing side is read as 50 at :3068. extraction_service.py:2560 requires 'Your verdict MUST be consistent with the scores above'. Result: V07 'The other product offers better durability.' (measured code; screenshot measured)."
+  },
+  {
+   "title": "Review provenance is lost on every warm compare",
+   "severity": "P2",
+   "evidence": "structured_comparison_service.py:5808-5811 skips the unified search on a specs+reviews cache hit, so build_retailer_quotes_from_reviews and clean_review_citations get [] (:6419-6440). The cached reviews dict (review_service.py:723-726) holds no source map (measured)."
+  },
+  {
+   "title": "Fragrance 'Character' is dominated by bottle volume, and Character and Longevity show the same number when no rating exists",
+   "severity": "P2",
+   "evidence": "HIGHER_IS_BETTER fragrances = {longevity, volume} (scoring_service.py:269), and _score_specs adds the raw number (:1925-1936). spec_secondary falls back to spec (:2346-2350). The fixture DimensionBars.test.tsx:140-141 shows identical bars (measured). V06's 118 ml bottle 'pulls ahead on Character' (inferred)."
+  },
+  {
+   "title": "The Arabic label for 'Fit' reads 'Size' (المقاس)",
+   "severity": "P3",
+   "evidence": "SmartCompareApp/src/i18n/ar.json:229 \"results.dimension.fit\": \"المقاس\". The audit reports V07 as 'المقاس' (size) with no data; the bar is actually the star-rating signal (measured)."
+  },
+  {
+   "title": "English-only dynamic strings in the dimension and verdict surfaces under the Arabic UI (MYEZ-016 overlap)",
+   "severity": "P1 (owned by i18n category)",
+   "evidence": "The factual_verdict templates 'leads on {label}.' / 'pulls ahead on {label}.' use English _DIMENSION_LABELS (response_builder.py:1063-1121; scoring_service.py:3441-3500). The delta constants are English (scoring_service.py:3608-3687), and so is the praise template (review_service.py:446-464) (measured)."
+  },
+  {
+   "title": "V06 key_tradeoff makes a price claim against a product whose price is pending",
+   "severity": "P2 (MYEZ-010/017 overlap)",
+   "evidence": "Screenshot dd4b9146: 'Pura d'or offers a larger volume at a lower price.' while Goiple shows 'لا يوجد سعر مؤكد بعد'. COMPARISON_SYSTEM's PENDING PRICE rule (extraction_service.py, COMPARISON_SYSTEM RULES) forbids this (inferred: model non-compliance)."
+  },
+  {
+   "title": "Vision per-product confidence is discarded before compare",
+   "severity": "P2",
+   "evidence": "openai_service.py:144 defines confidence high/medium/low. structured_comparison_service.py:4210-4224 keeps only brand/name/size_or_count, so nothing downstream can suppress dims or praise for a low-confidence identity (measured)."
+  }
+ ],
+ "sources": [
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\scoring_service.py",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\extraction_service.py",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\structured_comparison_service.py",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\review_service.py",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\response_builder.py",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\prompt_personalities.py",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\fact_check_service.py",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\text_sanitize.py",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\openai_service.py",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\price_service.py",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\api\\image_routes.py",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\models\\scoring_v2.py",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\SmartCompareApp\\src\\components\\primitives\\DimensionBar.tsx",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\SmartCompareApp\\src\\components\\results\\DimensionBars.tsx",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\SmartCompareApp\\src\\components\\results\\_deltaText.ts",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\SmartCompareApp\\src\\components\\results\\CategoryProfile.tsx",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\SmartCompareApp\\src\\components\\results\\RunnerUpWinsCard.tsx",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\SmartCompareApp\\src\\components\\results\\ResultsAccordion.tsx",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\SmartCompareApp\\src\\components\\results\\ResultsContent.tsx",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\SmartCompareApp\\src\\screens\\ResultsScreen.tsx",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\SmartCompareApp\\src\\services\\api.ts",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\SmartCompareApp\\src\\types\\types.ts",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\SmartCompareApp\\src\\utils\\dimensionLabel.ts",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\SmartCompareApp\\src\\i18n\\ar.json",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\SmartCompareApp\\__tests__\\components\\DimensionBars.test.tsx",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\CLAUDE.md",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-docs-70\\docs\\investigations\\2026-10-14-session-78-state\\COMPARE_QUALITY_PLAN_S78.md",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-docs-70\\docs\\investigations\\2026-10-17-session-79-state\\APP_REVIEW_AUDIT_S79.md",
+  "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-docs-70\\docs\\plans\\2026-06-17-faithful-results-genuine-bh-freetier-design.md",
+  "C:\\Users\\SynAckITPC\\.claude\\uploads\\ae650c83-4d2a-4910-a8d4-a47ab213c8c3\\d20a7872-MYEZ_QA_UX_Audit_2026-10-18.md",
+  "C:\\Users\\SynAckITPC\\.claude\\uploads\\ae650c83-4d2a-4910-a8d4-a47ab213c8c3\\dd4b9146-image.png",
+  "C:\\Users\\SynAckITPC\\.claude\\uploads\\ae650c83-4d2a-4910-a8d4-a47ab213c8c3\\69e9e3fb-image.png"
+ ]
+}

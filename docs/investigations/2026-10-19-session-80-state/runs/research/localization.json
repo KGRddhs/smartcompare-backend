@@ -1,0 +1,714 @@
+{
+ "category": "E: English inside the Arabic UI (MYEZ-016; screenshots V01/V03/V06/V07, audit V09/V10)",
+ "summary": "Every English string in the Arabic results screenshots comes from one of four places: (c) deterministic backend templates or constants, (b) gpt-4o verdict prose, (c) backend name fallbacks, or (d) raw spec data. None of them is a client template without an Arabic branch. The client already localizes the eyebrows and the dimension labels: ar.json has all 251 results.* keys and the 51 results.dimension.* labels, added by W4-14 #243. It then prints these backend strings as they arrive.\n\nOrigin of each string (all measured):\n- \"X leads on Character.\" / \"Y pulls ahead on Versatility.\" / \"GUESS GUESS! leads on Heritage.\" (c): English f-strings in response_builder._format_line1 / _format_line2 (response_builder.py:1086-1087, :1101-1102). The dimension label is the English _DIMENSION_LABELS entry (scoring_service.py:3482-3492). The result ships as scoring_v2.factual_verdict and FactualVerdict.tsx:65-66 prints it as is.\n- \"More distinctive\" / \"Longer-lasting\" / \"More versatile\" / \"Comparable\" (c): constants in scoring_service._compose_delta_text (:3679, :3668, :3681, :3615). The client safeDelta swaps only \"+Npt\" point-math for the Arabic label. That is why V07 shows the Arabic captions \"الحرفية\" / \"المتانة\" right next to the English \"Comparable\".\n- \"OSMIA Woody F offers greater versatility.\" / \"The other product offers better durability.\" / \"Pura d'or offers a larger volume at a lower price.\" (b): the gpt-4o verdict field key_tradeoff (extraction_service.py:1037), shown by RunnerUpWinsCard.tsx:112.\n- \"Unknown Product\" (c): name fallbacks in url_extraction_service.py:527 (Link mode, V09) and openai_service.py:218 (camera).\n- \"Polyurethane\" (d): the fashion spec value material, put into overview.products[i].variant by response_builder._compose_variant_string (:565).\n\nHow locale reaches the backend:\n- Only a `lang` query param, sent only by streamComparison on the Home text path (api.ts:632-635, :690, :834).\n- The camera (/image/identify, api.ts:302 and image_routes.py:450) and Link mode (/url/compare, HomeScreen.tsx:561-568) send no lang.\n- No Accept-Language header is sent on compare.\n- The compare routes ignore the profile's preferences.language.\n\nENABLE_ARABIC_VERDICT_OUTPUT (extraction_service.py:2280-2284, default OFF, read per call):\n- It appends an Arabic-output directive to the gpt-4o verdict system prompt only, and only when output_lang == \"ar\" (:2581-2583).\n- Production state: OFF, inferred. CLAUDE.md:607 says nothing flipped; READINESS_BACKEND.md:152 and ASC_SUBMISSION_PACKET_S76.md:31 say dark; the S79 ledger records no flip; APP_REVIEW_AUDIT_S79.md:309 lists it as unverified.\n- It is not flip-ready: #245 W4-14c (English-only guards and English overwrite paths), #244 W4-14b (camera and Link lang), the Arabic max_tokens measurement and a device walkthrough are all open.\n- Even ON, it would not reach V01/V06/V07 (camera) or V03/V09 (Link). It would not touch the factual verdict or the delta captions either.\n- ResultsContent.tsx:396-413 shows FactualVerdict whenever factual_verdict.line1 exists, so an Arabic winner_reason would stay hidden behind the English line1.\n\nRTL/bidi:\n- No bidi isolation exists anywhere in the client.\n- The utils/rtl.ts:13 writingDirection() helper is never used.\n- English lines take natural (LTR) alignment inside the RTL layout.\n- letterSpacing 1.1 on the Arabic eyebrows appears to break the joined Arabic letters (visible in all four screenshots).\n\nPost-generation language check: none exists. Every guard (strip_score_internals, validate_verdict, critique_verdict, reconcile_winner_prose, SCORE_INTERNALS_RE, BANNED_PATTERN) is English-only.\n\nWhich fix for which strings:\n- Client-only, OTA-capable, no contract change: every delta_text constant; the factual verdict lines (by inverting the ~12 fixed templates with a backend fence test, or via the planned additive key+params in W4-14d #246); the Unknown Product / \"this product\" placeholders; letterSpacing; bidi isolation; an optional material vocabulary.\n- Backend locale-aware generation behind the existing flag: key_tradeoff, winner_reason, pros/cons, best_for, value_context, specs_comparison. This needs W4-14b + W4-14c first, plus a client precedence change.\n- A new dark-flag backend unit: the cached review praise and spec prose, and a post-generation language gate.\n- Leave as-is: brand names and product names (per the audit's own expectation).\n- No client bytes ship before App Review approval (UB-R4, ledger.md:73).",
+ "defects": [
+  {
+   "id": "MYEZ-016/E1 factual verdict lines (leads on / pulls ahead on)",
+   "status": "anchored",
+   "root_cause": "Class (c), a backend deterministic template. scoring_v2.factual_verdict.line1 and line2 are built with no LLM call by response_builder._build_factual_verdict (response_builder.py:1124-1171). Its formatters return English f-strings: _format_line1 dim branch \"{winner_name} leads on {label}.\" (:1086-1087); _format_line2 \"{runner_name} pulls ahead on {label}.\" (:1101-1102). The other fixed forms are price, rating, YouTube, \"comes out on top\", \"edges ahead on the overall picture\", \"stays N% lighter on the wallet\", \"rates a touch higher with shoppers\" and \"stays in the conversation as a close alternative\" (:1074-1121, :1162). {label} is the English dimension label from scoring_service._DIMENSION_LABELS (\"Character\" :3482, \"Projection\" :3483, \"Versatility\" :3484, \"Durability\" :3491, \"Heritage\" :3492), picked through _top_dim_candidate (:938) and _runner_up_dim_candidate (:967). Names come from _product_name, whose last fallback is the English \"this product\" (:822-829). Neither the language nor the lang request param reaches this code. ENABLE_ARABIC_VERDICT_OUTPUT does not touch it. The client renders line1 and line2 verbatim (FactualVerdict.tsx:65-66) whenever line1 exists (ResultsContent.tsx:396-401). This produced \"AL IBDAA EAU DE PARFUM 100ml leads on Character.\", \"OSMIA Woody F pulls ahead on Versatility.\", \"GUESS GUESS! leads on Heritage.\" / \"pulls ahead on Durability.\" and \"Goiple ... leads on Projection.\" in V01/V06/V07. CLAUDE.md:625 already lists this as \"Not localized yet ... the factual verdict lines (W4-14d #246)\".",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/response_builder.py",
+     "line": "1081-1102",
+     "note": "_format_line1 dim branch returns f\"{winner_name} leads on {label}.\"; _format_line2 returns f\"{runner_name} pulls ahead on {label}.\"",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/response_builder.py",
+     "line": "1074-1121,1162",
+     "note": "The other English template forms of line1 and line2, plus the sparse fallback \"edges ahead on the overall picture\"",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/response_builder.py",
+     "line": "938,967,1302,1332",
+     "note": "label = dimension['label']; factual_verdict is built from build_dimensions_v2 output and emitted inside scoring_v2",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/scoring_service.py",
+     "line": "3441-3500 (3482-3492)",
+     "note": "_DIMENSION_LABELS: English labels Character / Projection / Versatility / Durability / Heritage",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/response_builder.py",
+     "line": "822-829",
+     "note": "_product_name falls back to the English \"this product\"",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/components/results/FactualVerdict.tsx",
+     "line": "39,49-66",
+     "note": "Passive renderer with no t(); the BANNED_PATTERN guard is English-only",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/components/results/ResultsContent.tsx",
+     "line": "396-413",
+     "note": "FactualVerdict takes precedence over verdictBody (overview.winner.reason) whenever factual_verdict.line1 exists",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/CLAUDE.md",
+     "line": "625",
+     "note": "\"Not localized yet (English on the Arabic surface): delta_text and the factual verdict lines (W4-14d #246)\"",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/.claude/uploads/ae650c83-4d2a-4910-a8d4-a47ab213c8c3/7758232c-image.png",
+     "note": "V01 shows both English lines under the Arabic eyebrow \"لماذا اخترنا هذا\"; V06 (dd4b9146) and V07 (69e9e3fb) show the same pattern",
+     "basis": "measured"
+    }
+   ],
+   "contract_fields": [
+    "scoring_v2.factual_verdict.line1",
+    "scoring_v2.factual_verdict.line2",
+    "scoring_v2.dimensions[].key",
+    "scoring_v2.dimensions[].label",
+    "overview.products[].name"
+   ],
+   "existing_flags": [
+    {
+     "name": "ENABLE_ARABIC_VERDICT_OUTPUT",
+     "default": "OFF",
+     "prod_state": "OFF (inferred; no flip recorded) - and it does NOT cover these lines",
+     "source": "app/services/extraction_service.py:2280-2284; CLAUDE.md:624-625"
+    }
+   ],
+   "fix_sketch": "Option A, client-only (OTA, no contract change). Add a pure helper localizeFactualLine(line, names, dimensions, t, lang) beside _deltaText.ts:\n- In EN, return the line unchanged (byte-identical).\n- In AR, strip the known name prefix (products[w].name, products[r].name or \"this product\").\n- Match the remainder against the ~12 anchored backend templates. Each maps to results.factual.<form> with params {name, dim, pct, diff, views}.\n- Map {label} back to dimension.key through scoring_v2.dimensions, then use localizedDimensionLabel.\n- On any non-match, render nothing in AR (fail-closed); never fall back to English.\n- Arabic templates must START with an Arabic word and wrap {name} in U+2068...U+2069 (see E8).\n- Add a backend fence test, modelled on tests/test_dimension_label_catalog_parity_w414.py, that renders every _format_line1/_format_line2 branch and asserts the client catalog has a matching key. A backend template edit then reddens CI instead of silently going English.\n\nOption B, the planned W4-14d #246 (backend additive + client OTA): emit additive line1_key / line1_params / line2_key / line2_params beside the unchanged English strings. Old phones ignore the fields; the client renders t(key, params) with the English string as the fallback. Put it behind a new dark flag (for example ENABLE_FACTUAL_VERDICT_I18N_KEYS, default OFF) if exact-dict pins exist. Either way, the AR fix also needs a decision on ResultsContent precedence: once the verdict LLM writes Arabic, AR should probably prefer overview.winner.reason when it is Arabic.",
+   "test_seams": [
+    "tests/test_response_builder_factual_verdict.py",
+    "tests/test_factual_verdict_lane1_fixtures.py",
+    "tests/test_dimension_label_catalog_parity_w414.py (pattern for a template/catalog fence)",
+    "SmartCompareApp/__tests__/components/FactualVerdict.test.tsx",
+    "SmartCompareApp/__tests__/i18n/no-missing-referenced-keys.test.ts",
+    "SmartCompareApp/src/i18n/.copy-policy.json (Arabic banned terms: new AR templates must pass)"
+   ],
+   "risks": "Option A breaks silently if a backend template changes without the fence test. Names that contain the template words (for example a product literally named \"... leads on ...\") need prefix stripping by exact name, not by regex. Arabic product names (V03 shows Arabic names from Sephora Bahrain) inside an Arabic template are fine, but Latin names need bidi isolation. Client bytes cannot ship before App Review approval (UB-R4, sc-docs-70 ledger.md:73).",
+   "open_questions": [
+    "Who does the native Arabic review of the new results.factual.* copy? (CLAUDE.md:625 says the 51 dimension labels were the spec's proposal, with 'native review before the OTA'.)",
+    "Should AR hide line1/line2 entirely until localized, rather than show English (product call)?"
+   ]
+  },
+  {
+   "id": "MYEZ-016/E2 dimension delta captions (More distinctive / Longer-lasting / More versatile / Comparable)",
+   "status": "anchored",
+   "root_cause": "Class (c), backend constants. scoring_v2.dimensions[].delta_text comes from scoring_service._compose_delta_text, called at :3584:\n- \"Comparable\" when |score_a - score_b| < 1.0 (:3614-3615).\n- \"Longer-lasting\" (:3668), \"More distinctive\" (:3679), \"More versatile\" (:3681). Also \"Stronger projection\" (:3677), \"Better presented\" (:3683), \"Better everyday value\" (:3685).\n- Spec-fact forms \"{h}h vs {h}h\" (:3667) and \"{sa} vs {sb} projection\" (:3676).\n- Many \"+{margin}pt ...\" forms, including the fashion/other fallback \"+Npt craftsmanship\" / \"+Npt durability\" (:3730-3733 using _DIM_LABEL_FALLBACKS :3740-3794).\n- The core value / price / reviews dimension builders add more English (\"Comparable value\" :3381 plus the gap buckets :3383-3412; \"Price data unavailable\" :3246; \"{currency} {diff} less\" :3260; \"Limited review data\" :3292; \"Same rating\" :3300; \"{diff} stars higher\" :3302; \"Limited value data\" :3352/:3369).\nThe client shows delta_text under each bar (DimensionBars.tsx:287-288, :335) and as the \"+\" rows of the runner-up card (RunnerUpWinsCard.tsx:72, :121), through _deltaText.safeDelta (:43-47). safeDelta replaces ONLY point-math (POINT_MATH_RE :19) with the localized dimension label. So the \"+Npt craftsmanship\" / \"+Npt durability\" captions become Arabic (\"الحرفية\" / \"المتانة\" in V07), while every qualitative English constant (\"Comparable\" in V07, \"More distinctive\" / \"Longer-lasting\" in V01 and V06, \"More versatile\" in V01's runner-up card) passes through. ar.json and en.json have no results.delta.* keys (measured: 251 results.* keys in each catalog; families listed, none for delta).",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/scoring_service.py",
+     "line": "3614-3615,3667-3685",
+     "note": "\"Comparable\", \"Longer-lasting\", \"More distinctive\", \"More versatile\" and their sibling constants",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/scoring_service.py",
+     "line": "3246,3260,3292,3300,3302,3352,3369,3381-3412",
+     "note": "English delta_text of the price, reviews and value core dimensions (hero row on value/price)",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/scoring_service.py",
+     "line": "3730-3794",
+     "note": "\"+Npt <label>\" fallback; the client point-math guard turns it into the Arabic label",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/components/results/_deltaText.ts",
+     "line": "19,43-47",
+     "note": "safeDelta returns any non-point-math delta unchanged, so English qualitative text passes through",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/components/results/DimensionBars.tsx",
+     "line": "287-288,317-323,334-336",
+     "note": "Caption and hero rendering of guardedDelta, with no i18n of the delta itself",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/components/results/RunnerUpWinsCard.tsx",
+     "line": "67-73,118-122",
+     "note": "Runner-up '+' rows use safeDelta(delta_text, localized label)",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/i18n/ar.json",
+     "note": "results.dimension.* has 51 Arabic labels (for example character = الطابع); no delta keys exist",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/.claude/uploads/ae650c83-4d2a-4910-a8d4-a47ab213c8c3/69e9e3fb-image.png",
+     "note": "V07: Arabic captions الحرفية / المتانة (point-math fallback) next to the English \"Comparable\"",
+     "basis": "measured"
+    }
+   ],
+   "contract_fields": [
+    "scoring_v2.dimensions[].delta_text",
+    "scoring_v2.dimensions[].key",
+    "scoring_v2.dimensions[].score_a",
+    "scoring_v2.dimensions[].score_b",
+    "scoring_v2.dimensions[].winner",
+    "scoring_v2.dimensions[].is_cross_tier"
+   ],
+   "existing_flags": [
+    {
+     "name": "ENABLE_ARABIC_VERDICT_OUTPUT",
+     "default": "OFF",
+     "prod_state": "OFF (inferred) - does not cover delta_text",
+     "source": "CLAUDE.md:625"
+    }
+   ],
+   "fix_sketch": "Client-only, OTA-capable, no contract change. This is the cheapest and fully sufficient fix. Add localizedDelta(dimension, t, lang) in _deltaText.ts, used by DimensionBars and RunnerUpWinsCard in place of the raw safeDelta:\n- EN: unchanged (byte-identical, with the localizedDimensionLabel echo-guard pattern).\n- AR, exact-match map of the backend constants to results.delta.* keys: comparable, longer_lasting, more_distinctive, more_versatile, stronger_projection, better_presented, better_everyday_value, the value buckets (comparable_value, nearly_identical_value, slightly_higher_value_here/_other_side, noticeably_more_per_dinar_here/_other_side, substantially_stronger_value/_other_side, limited_value_data), price_unavailable, limited_review_data, same_rating.\n- AR, anchored regex forms with params: \"{a}h vs {b}h\", \"{CUR} {n} less\", \"{n} stars higher\", the \"Across tiers — \" prefix, \"{a} vs {b} projection\".\n- AR, everything else (spec-fact dosage / warranty / battery / form strings): fall back to the localized dimension label (or empty). Never English.\n- An alternative AR rule that ignores delta_text: derive the caption from key + sign(score_a - score_b) + the |diff| < 1 tie rule, which is data the payload already carries.\n- Add a backend fence test that enumerates every literal return of _compose_delta_text and the _dim_value/_dim_price/_dim_reviews builders and asserts a client mapping exists, mirroring test_dimension_label_catalog_parity_w414.py.\n- The planned W4-14d #246 additive delta_key/delta_params is the cleaner long-term contract, but it is not needed to remove the English.",
+   "test_seams": [
+    "tests/test_compose_delta_text_per_category.py",
+    "tests/test_dimensions_builder.py",
+    "tests/test_scoring_dimensions_v2.py",
+    "SmartCompareApp/__tests__/components/DimensionBars.arabicLabels.w414.test.tsx",
+    "SmartCompareApp/__tests__/components/DimensionBars.globalMockLabel.w414.test.tsx",
+    "SmartCompareApp/__tests__/components/DimensionBars.delta_hero.test.tsx",
+    "SmartCompareApp/__tests__/components/RunnerUpWinsCard.arabicLabels.w414.test.tsx",
+    "SmartCompareApp/__tests__/components/DimensionBars.snapshot.test.tsx"
+   ],
+   "risks": "The jest global mock echoes keys, so the helper needs the same echo guard as dimensionLabel.ts:8-17 or the EN snapshots move. Exact-match mapping drifts if the backend copy changes; the fence test is the mitigation. Waits on the App Review OTA freeze.",
+   "open_questions": [
+    "Native review of the ~25 new Arabic delta strings.",
+    "Should the AR caption for a qualitative-but-unknown delta fall back to the label (shown twice: as bar title and as caption) or to nothing?"
+   ]
+  },
+  {
+   "id": "MYEZ-016/E3 LLM verdict prose (key_tradeoff, winner_reason, pros/cons, best_for, value_context, specs_comparison)",
+   "status": "partially_anchored",
+   "root_cause": "Class (b), LLM output generated in English regardless of locale. \"OSMIA Woody F offers greater versatility.\" (V01), \"The other product offers better durability.\" (V07) and \"Pura d'or offers a larger volume at a lower price.\" (V06) are overview.winner.key_tradeoff:\n- produced by the gpt-4o verdict prompt COMPARISON_SYSTEM (schema extraction_service.py:1037, rule :1067);\n- scrubbed at response_builder.py:1847 and emitted at :1906;\n- read at ResultsContent.tsx:186-188 and shown by RunnerUpWinsCard.tsx:112.\nThe same prompt also writes winner_reason (verdictBody at ResultsContent.tsx:413, or overview.winner.reason), pros/cons (popped into pros_cons at structured_comparison_service.py:4517-4521), value_context, best_for, specs_comparison and personalized_insights.\nThe prompt has no output-language instruction unless output_lang == \"ar\" AND ENABLE_ARABIC_VERDICT_OUTPUT is ON (extraction_service.py:2581-2583). Both conditions fail for the screenshots: the flag is OFF in production (inferred from the docs), and V01/V06/V07 are camera compares (image_routes.py:450 calls compare_from_text with no output_lang). Link mode is the same (url_extraction_service calls generate_comparison without output_lang).\nEnglish deterministic replacement paths would also overwrite or mix an Arabic verdict: _QUALITATIVE_WINNER_REASON \"{name} is the stronger overall pick.\" (response_builder.py:1395-1406, used at :1846 and :342/:398); deterministic_verdict_fields key_tradeoff \"{loser} stays competitive on {dim}.\" (:233-234); COMPARISON_GENERATION_ERROR (extraction_service.py:46, :2773).",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/extraction_service.py",
+     "line": "1028-1040,1067",
+     "note": "COMPARISON_SYSTEM JSON schema: key_tradeoff = \"ONE sentence naming the other product's strongest advantage\"; no language rule",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/extraction_service.py",
+     "line": "2280-2298,2581-2583",
+     "note": "arabic_verdict_output_enabled() (default OFF), normalize_output_lang, _ARABIC_OUTPUT_DIRECTIVE appended only when output_lang == 'ar' and the flag is ON",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/response_builder.py",
+     "line": "1842-1848,1900-1907",
+     "note": "Chokepoint where reason / key_tradeoff are scrubbed (English-only strip_score_internals) and placed in overview.winner",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/response_builder.py",
+     "line": "216-234,1395-1406",
+     "note": "English deterministic overwrite paths (\"stays competitive on\", \"is the stronger overall pick\")",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/api/image_routes.py",
+     "line": "450",
+     "note": "Camera path: compare_from_text(query, region=region, vision_products=products, nocache=nocache), no output_lang",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/components/results/RunnerUpWinsCard.tsx",
+     "line": "95-115",
+     "note": "key_tradeoff prose rendered verbatim; only SCORE_INTERNALS_RE is checked",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/CLAUDE.md",
+     "line": "607,624",
+     "note": "Flag row: effect, flag-OFF byte identity, preconditions (OpenAI credits, W4-14c #245, Arabic max_tokens measurement, device walkthrough); \"Nothing flipped\" at the 68b close; camera and Link stay English until W4-14b #244",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-05-session-72-state/readiness/READINESS_BACKEND.md",
+     "line": "152",
+     "note": "BE-08: verdict/spec/review prose stays English; ENABLE_ARABIC_VERDICT_OUTPUT dark",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-17-session-79-state/APP_REVIEW_AUDIT_S79.md",
+     "line": "309",
+     "note": "Production value of ENABLE_ARABIC_VERDICT_OUTPUT listed as unverified",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/.claude/uploads/ae650c83-4d2a-4910-a8d4-a47ab213c8c3/d20a7872-MYEZ_QA_UX_Audit_2026-10-18.md",
+     "line": "23-32",
+     "note": "V01/V04/V06/V07 are camera compares; V03/V09 Link; V10 Home text (the only path that sends lang)",
+     "basis": "measured"
+    }
+   ],
+   "contract_fields": [
+    "overview.winner.key_tradeoff",
+    "overview.winner.reason",
+    "recommendation",
+    "products[].pros",
+    "products[].cons",
+    "overview.products[].best_for",
+    "overview.products[].value_context",
+    "specs.specs_comparison",
+    "personalized_insights[].insight"
+   ],
+   "existing_flags": [
+    {
+     "name": "ENABLE_ARABIC_VERDICT_OUTPUT",
+     "default": "OFF",
+     "prod_state": "OFF (inferred: CLAUDE.md:607 'Nothing flipped', READINESS_BACKEND.md:152 and ASC_SUBMISSION_PACKET_S76.md:31 'dark', no flip in the S78/S79 ledgers; APP_REVIEW_AUDIT_S79.md:309 marks it unverified)",
+     "source": "app/services/extraction_service.py:2280-2284"
+    }
+   ],
+   "fix_sketch": "Backend locale-aware generation behind the EXISTING flag. Do not add a new one. Order:\n1. W4-14b #244: thread `lang` through camera and Link.\n   - Client: identifyFromImages appends &lang via currentOutputLang (api.ts:302); handleUrlCompare adds lang to the body (HomeScreen.tsx:561-568).\n   - Backend: image_routes and url_routes accept an optional lang (max_length=8) and pass output_lang as a CONDITIONAL kwarg into compare_from_text / generate_comparison. This is additive and inert with the flag OFF, byte-identical per the W4-14 identity gate.\n2. W4-14c #245: make the guards Arabic-aware (strip_score_internals, validate_verdict, critique_verdict, reconcile_winner_prose, _PRICE_ADJECTIVE_RE, client SCORE_INTERNALS_RE / BANNED_PATTERN). Make the English replacement paths locale-aware: _QUALITATIVE_WINNER_REASON, deterministic_verdict_fields, _deterministic_partial_verdict, the COMPARISON_GENERATION_ERROR fallback. Use Arabic templates or key+params; never English into an Arabic verdict.\n3. Measure Arabic max_tokens on a sample.\n4. Client precedence: in AR, show overview.winner.reason when it is Arabic, or localize FactualVerdict (E1). Otherwise the Arabic reason never renders.\n5. Flip only with an owner yes, after the device walkthrough.\nUntil then, an interim client-only option for AR viewers (product call): hide the Latin-dominant key_tradeoff and reason prose through a script-ratio guard (see E9) instead of showing English.",
+   "test_seams": [
+    "tests/test_arabic_verdict_output_w414.py (24-cell prompt-capture identity gate; canary format)",
+    "tests/test_s71_u13_pins.py / tests/test_s71_u13_compare_auth_required.py (flag lists)",
+    "tests/fixtures/w4_11_prompt_render_digests.json (prompt digest fence)",
+    "SmartCompareApp/__tests__/components/RunnerUpWinsCard.arabicLabels.w414.test.tsx"
+   ],
+   "risks": "Flipping the flag before W4-14c lets an Arabic score leak pass the English guards, and the English fallbacks produce mixed-language verdicts. Arabic prose may truncate the verdict JSON (max_tokens). Arabic verdicts persist in full_response and are re-served to English viewers via History and share (CLAUDE.md:624 stated limit). OpenAI cost is unchanged per call, but a self-critique regen keeps the directive.",
+   "open_questions": [
+    "Is ENABLE_ARABIC_VERDICT_OUTPUT really unset on web? Only CLAUDE.md and ledgers may be consulted; S79 lists it unverified.",
+    "Product call: while the flag stays OFF, should AR users see English prose or nothing?"
+   ]
+  },
+  {
+   "id": "MYEZ-016/E4 \"Unknown Product\" (and \"this product\") as a product name",
+   "status": "anchored",
+   "root_cause": "Class (c), backend constants used as the product NAME when identification fails:\n- url_extraction_service.normalize_product_data: title = raw title or full_title or \"Unknown Product\" (url_extraction_service.py:527). This is Link mode, V09 (Rasasi).\n- openai_service.identify_products normalization: brand \"Unknown\", name \"Unknown Product\" (openai_service.py:217-218). This is the camera path.\n- The vision branch of compare_from_text: vp.get(\"name\", \"Unknown Product\") (structured_comparison_service.py:4213-4214, :4851-4852).\n- The extract_with_ai page-title fallback \"Unknown\" (url_extraction_service.py:405).\n- The factual-verdict name fallback \"this product\" (response_builder.py:829).\nThe client prints product.name verbatim on the cards (ResultsContent.tsx:292), in the runner-up card (RunnerUpWinsCard.tsx:103-107) and inside the factual lines. The language problem is secondary: the real defect is comparing and crowning an unidentified product (MYEZ-002, regression T03).",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/url_extraction_service.py",
+     "line": "405,527",
+     "note": "\"Unknown\" / \"Unknown Product\" title fallbacks in Link mode",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/openai_service.py",
+     "line": "217-218",
+     "note": "Vision normalization: brand 'Unknown', name 'Unknown Product'",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/structured_comparison_service.py",
+     "line": "4213-4214,4851-4852",
+     "note": "Vision product list defaults to 'Unknown Product'",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/response_builder.py",
+     "line": "822-829",
+     "note": "'this product' fallback embedded in factual verdict lines",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/components/results/ResultsContent.tsx",
+     "line": "292",
+     "note": "{product.name} rendered verbatim",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/.claude/uploads/ae650c83-4d2a-4910-a8d4-a47ab213c8c3/d20a7872-MYEZ_QA_UX_Audit_2026-10-18.md",
+     "line": "13,31,49",
+     "note": "V09: two 'Unknown Product' cards with a green winner (Link from Rasasi)",
+     "basis": "measured"
+    }
+   ],
+   "contract_fields": [
+    "overview.products[].name",
+    "overview.products[].brand",
+    "overview.winner.name"
+   ],
+   "existing_flags": [],
+   "fix_sketch": "Primary fix (owned by the identity category, MYEZ-002/T03): do not compare or crown when a side is unresolved. Return the existing insufficient/unsupported envelope and do not meter it.\n\nLanguage-only stopgap, client-only OTA: in a display helper, map the exact sentinels \"Unknown Product\" / \"Unknown\" / \"this product\" to t('results.unknownProduct') (new EN+AR key) at the name render sites. EN stays byte-identical because the EN value equals the sentinel.\n\nCleaner backend option: an additive per-product `name_resolved: false` (or `identity_status`), dark-flagged, so the client does not string-match.",
+   "test_seams": [
+    "tests/ files covering url_extraction normalize_product_data and identify_products normalization (grep 'Unknown Product' in tests/)",
+    "SmartCompareApp/__tests__/i18n/no-missing-referenced-keys.test.ts"
+   ],
+   "risks": "String-matching a sentinel is brittle if a real product is literally named 'Unknown'. Localizing the placeholder must not make a fake comparison look more legitimate.",
+   "open_questions": [
+    "Should the placeholder ever reach the results screen, or should the identity units make it unreachable?"
+   ]
+  },
+  {
+   "id": "MYEZ-016/E5 \"Polyurethane\" (raw spec value on the product card)",
+   "status": "anchored",
+   "root_cause": "Class (d), raw product data. response_builder._compose_variant_string builds overview.products[i].variant from category spec keys. For fashion the keys are (\"size\", \"color\", \"material\") (response_builder.py:543-600, keys at :565), called at :1915. The client renders it under the brand (ResultsContent.tsx:305-312). \"Polyurethane\" is specs.material from the LLM spec extraction (English, cached under get_specs_cache_key(brand, name, variant) with no language dimension, extraction_service.py:2787). It is a raw data value, not UI copy. In V07 it is also probably a wrong-identity artefact: two different shirts both resolved to \"GUESS GUESS!\" (MYEZ-004).",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/response_builder.py",
+     "line": "543-600,1915",
+     "note": "Variant tag = first 3 non-empty spec values; fashion keys size/color/material",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/components/results/ResultsContent.tsx",
+     "line": "305-312",
+     "note": "{product.variant} rendered verbatim",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/extraction_service.py",
+     "line": "2787",
+     "note": "Specs cache key is brand/name/variant only (no language), so cached spec values stay English",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/.claude/uploads/ae650c83-4d2a-4910-a8d4-a47ab213c8c3/69e9e3fb-image.png",
+     "note": "V07 card: GUESS GUESS! / GUESS / Polyurethane",
+     "basis": "measured"
+    }
+   ],
+   "contract_fields": [
+    "overview.products[].variant",
+    "products[].specs.material"
+   ],
+   "existing_flags": [],
+   "fix_sketch": "Keep raw data as data; the audit explicitly accepts brand and trade names untranslated. Optional client-only OTA: a small results.material.* vocabulary (polyurethane, leather, cotton, polyester, nylon, wool, silk, stainless steel, ...) applied per segment of the ' · '-joined variant in AR, with the raw value as the fallback. Also apply the same lookup to the spec VALUES in the specs accordion (labels are already localized via results.spec.*, 68 keys). Do not add a backend translation pass for this.",
+   "test_seams": [
+    "SmartCompareApp/__tests__/i18n/fashionLabels.test.ts",
+    "tests covering _compose_variant_string (grep in tests/)"
+   ],
+   "risks": "Low. Splitting on ' · ' must keep size and colour tokens untouched.",
+   "open_questions": [
+    "Is a material vocabulary worth it, given the identity defect behind V07?"
+   ]
+  },
+  {
+   "id": "MYEZ-016/E6 review prose and cached extraction text (\"Owners consistently highlight...\", \"Reviewers say...\")",
+   "status": "anchored",
+   "root_cause": "Classes (b) and (c). The 'Reviews' accordion praise line, reviews.products[i].review_praise (response_builder.py:2024, :2187), is built by review_service.build_review_praise (review_service.py:531-626):\n- English LLM review highlights and consensus (REVIEWS_EXTRACTION_SYSTEM, extraction_service.py:975), cached under get_reviews_cache_key(brand, name, variant) with no language dimension (:2810);\n- wrapped in English frames from _frame_praise_clause (\"Reviewers say ...\", \"Owners say it is ...\", \"Owners say it ...\", \"Owners consistently highlight ...\") (review_service.py:446-461).\nENABLE_ARABIC_VERDICT_OUTPUT does not touch the reviews or specs prompts (the directive is appended only to the verdict system prompt). Audit evidence: V04 \"Owners consistently highlight...\", V07 \"Reviewers say...\".",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/review_service.py",
+     "line": "446-461,531-626",
+     "note": "English framing templates and the synthesis from cached highlights/consensus",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/extraction_service.py",
+     "line": "975,2787,2810",
+     "note": "Reviews extraction prompt; specs and reviews cache keys carry no language",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/components/results/ResultsAccordion.tsx",
+     "line": "352-404",
+     "note": "ReviewPraiseBlock renders review_praise verbatim",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/.claude/uploads/ae650c83-4d2a-4910-a8d4-a47ab213c8c3/d20a7872-MYEZ_QA_UX_Audit_2026-10-18.md",
+     "line": "77",
+     "note": "V04 'Owners consistently highlight...', V07 'Reviewers say...'",
+     "basis": "measured"
+    }
+   ],
+   "contract_fields": [
+    "reviews.products[].review_praise",
+    "products[].review_praise",
+    "products[].specs.*"
+   ],
+   "existing_flags": [
+    {
+     "name": "ENABLE_ARABIC_VERDICT_OUTPUT",
+     "default": "OFF",
+     "prod_state": "OFF (inferred) - does not cover review or specs prose",
+     "source": "CLAUDE.md:625 ('the cached spec/review/pros-cons prose' listed as not localized)"
+    }
+   ],
+   "fix_sketch": "Needs a new dark-flag backend unit; it is not OTA-solvable except by hiding. Options:\n(a) Locale-aware frames: emit review_praise_key + params beside the string (additive), so the client renders an Arabic frame. The clause itself stays English, so this alone is not enough.\n(b) Language-keyed review synthesis: extend the reviews cache key with :lang only when the flag is ON and lang == ar, and add an Arabic directive to REVIEWS_EXTRACTION_SYSTEM. This doubles LLM cost on Arabic cache misses; measure first.\n(c) A cheap translation pass of the final 1-2 sentence praise at response time for AR (gpt-4o-mini, a few tokens), behind a dark flag, with the post-generation language gate (E9).\nInterim client option for AR (product call): hide review_praise when it is Latin-dominant and show the existing rating + count only.",
+   "test_seams": [
+    "tests for review_service.build_review_praise / _frame_praise_clause (grep 'Owners consistently' in tests/)",
+    "SmartCompareApp ResultsAccordion review tests"
+   ],
+   "risks": "A cost increase and cache fragmentation under (b). Hiding praise in AR makes the Reviews section emptier (interacts with MYEZ-022).",
+   "open_questions": [
+    "Budget appetite for Arabic review synthesis versus translation of the final line?"
+   ]
+  },
+  {
+   "id": "MYEZ-016/E7 locale transport: how lang reaches the backend today",
+   "status": "anchored",
+   "root_cause": "The only locale channel is the optional `lang` request param, and only the Home text path sends it.\nClient side (measured):\n- currentOutputLang() returns 'ar' when i18next.language starts with 'ar', else nothing (api.ts:632-635). It is sent on streamComparison's REST GET (api.ts:679-690) and SSE (api.ts:833-834) only.\n- identifyFromImages builds `/api/v1/image/identify?region=` with no lang (api.ts:302).\n- HomeScreen.handleUrlCompare POSTs /api/v1/url/compare {url1, url2, region, selected_category} with no lang (HomeScreen.tsx:561-568).\n- compareTextPair sends no lang (api.ts:966-976; 0 callers, issue #247).\n- The axios client sets no Accept-Language header (grep finds none).\nBackend side (measured):\n- TextCompareRequest.lang (text_routes.py:377) and the GET/stream `lang` Query (:784, :967) go through normalize_output_lang (extraction_service.py:2287-2295) and are passed as a CONDITIONAL kwarg (text_routes.py:646, :857, :1108) down to generate_comparison.\n- image_routes.py:450 and the url routes pass nothing.\n- The user profile has preferences.language ('Arabic' / 'English' / 'Both equally', derived from the payload or Accept-Language at auth_routes.py:1519-1528, read by reengagement_service.py:303-304). It is a cohort attribute that compare never reads.\n- The whole-comparison cache (cache_service.get_comparison_cache) has 0 callers, so the verdict is generated per request. The specs and reviews caches are language-blind.\n- Results persist in full_response and are re-served in the generation language via History and share.",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/services/api.ts",
+     "line": "632-635,679-690,833-834",
+     "note": "lang=ar only on streamComparison REST and SSE",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/services/api.ts",
+     "line": "302",
+     "note": "Camera identify URL carries only region",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/screens/HomeScreen.tsx",
+     "line": "561-568",
+     "note": "Link-mode body has no lang",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/api/text_routes.py",
+     "line": "377,646,784,857,967,1108",
+     "note": "lang field/Query and conditional output_lang kwarg",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/api/image_routes.py",
+     "line": "450",
+     "note": "No output_lang on the camera compare",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/api/auth_routes.py",
+     "line": "1519-1528",
+     "note": "Profile language derived from payload or Accept-Language (cohort use only)",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/cache_service.py",
+     "line": "722,769-779",
+     "note": "Comparison cache helpers exist but have no callers",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-09-26-session-68-state/s68b-part3/scripts/issues/file_issues_w414.py",
+     "line": "14-21",
+     "note": "#244 W4-14b scope: lang on /url/compare and /image/identify plus the additive dim_key for PersonalizationChip",
+     "basis": "measured"
+    }
+   ],
+   "contract_fields": [
+    "request: GET/POST /api/v1/text/compare lang",
+    "request: POST /api/v1/image/identify (no lang)",
+    "request: POST /api/v1/url/compare (no lang)"
+   ],
+   "existing_flags": [
+    {
+     "name": "ENABLE_ARABIC_VERDICT_OUTPUT",
+     "default": "OFF",
+     "prod_state": "OFF (inferred)",
+     "source": "app/services/extraction_service.py:2280"
+    }
+   ],
+   "fix_sketch": "W4-14b #244, unchanged in scope:\n- Backend (additive, inert with the flag OFF, so safe to merge during App Review): `lang: Optional[str] = Query(None, max_length=8)` on /image/identify; an optional `lang` on the /url/compare body and query; the conditional output_lang kwarg through compare_from_text and the url_extraction_service generate_comparison call. Prove byte identity with the W4-14 prompt-capture gate.\n- Client (OTA after approval): identifyFromImages appends &lang via the same currentOutputLang(); handleUrlCompare adds lang; delete compareTextPair (#247).\n- Do NOT key compare language off the profile's preferences.language: it is a demographic answer and diverges from the UI language after an in-app switch.\n- For History and share, a key+params contract (E1, E2) re-renders deterministic strings in the viewer's language; LLM prose stays in its generation language (document it as a limit, or store a `lang` marker in full_response).",
+   "test_seams": [
+    "tests/test_arabic_verdict_output_w414.py (extend the identity gate to image/url routes)",
+    "SmartCompareApp tests pinning the identify URL and url/compare body (M7/M19 pins referenced in the W4-14 rulings)"
+   ],
+   "risks": "A 422 on lang longer than 8 characters must not hit a valid client (the client only ever sends 'ar' or nothing). The image route is multipart, so lang must be a query param, not a form field, to keep the body untouched.",
+   "open_questions": [
+    "Should a lang marker be persisted in full_response so History can tell an English verdict shown to an Arabic viewer?"
+   ]
+  },
+  {
+   "id": "MYEZ-016/E8 RTL/LTR mixing on the results surface",
+   "status": "partially_anchored",
+   "root_cause": "There is no bidi handling for mixed-direction dynamic text:\n- No Unicode isolates or marks (U+2066-2069, U+200F, U+202B) anywhere in SmartCompareApp/src (grep, measured).\n- The writingDirection() helper (utils/rtl.ts:13) has no caller (only rtlFlip is imported, DirectionalIcon.tsx:23).\n- FactualVerdict line styles (FactualVerdict.tsx:71-82) and the verdictBody style (ResultsContent.tsx:773-778) set no textAlign or writingDirection, so RN defaults to 'auto' (natural alignment). iOS then takes the paragraph direction from the first strong character: English lines sit left-aligned inside the RTL layout (V01/V06/V07), and an Arabic sentence that BEGINS with a Latin product name would resolve as LTR (trailing period on the wrong side, clause order scrambled). Inferred from the screenshots plus iOS natural-alignment behaviour.\n- The layout itself mirrors correctly: the RN physical left/right mirroring contract is at __tests__/rtl/textAlignLogical.contract.test.ts.\n- Separate visible defect: Arabic eyebrows and badges carry letterSpacing 1.1, which appears to break the joined Arabic letters (\"لماذا اخترنا هذا\", \"أين يتفوق الوصيف\" and \"الأفضل تطابقًا\" render with separated letters in all four screenshots).",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/utils/rtl.ts",
+     "line": "12-15",
+     "note": "writingDirection() helper exists; unused by any component",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/components/results/FactualVerdict.tsx",
+     "line": "71-82",
+     "note": "No textAlign/writingDirection on line1/line2",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/components/results/ResultsContent.tsx",
+     "line": "740,769,773-778",
+     "note": "Eyebrow letterSpacing 1.1; verdictBody with no direction",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/components/results/RunnerUpWinsCard.tsx",
+     "line": "136-145",
+     "note": "Eyebrow letterSpacing 1.1 + uppercase on the Arabic 'أين يتفوق الوصيف'",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/components/results/TopMatchBadge.tsx",
+     "line": "52",
+     "note": "letterSpacing 1.1 on the Arabic 'الأفضل تطابقًا' badge",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/__tests__/rtl/textAlignLogical.contract.test.ts",
+     "line": "1-30",
+     "note": "RN mirrors physical left/right under RTL (measured in the pinned RN 0.81.5)",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/.claude/uploads/ae650c83-4d2a-4910-a8d4-a47ab213c8c3/7758232c-image.png",
+     "note": "English verdict lines left-aligned in the RTL page; Arabic eyebrow letters appear disconnected",
+     "basis": "inferred"
+    }
+   ],
+   "contract_fields": [],
+   "existing_flags": [],
+   "fix_sketch": "Client-only (OTA):\n1. Every new Arabic template (E1, E2, E4) starts with an Arabic word, and each embedded Latin name, model or number is wrapped as ⁨{{name}}⁩ (FSI...PDI). Add this through a helper isolate(s) in utils/rtl.ts, not by hand in ar.json.\n2. Apply writingDirection: writingDirection() (iOS) on the prose Text nodes of FactualVerdict, verdictBody, RunnerUpWinsCard prose and DimensionBars captions when isRTL.\n3. Set letterSpacing to 0 (and drop textTransform) for eyebrow and badge styles when isRTL. useTypography (hooks/useTypography.ts) is the natural place: it already forks presets for AR.\n4. Add an __tests__/rtl contract test: AR catalog values for results.factual.* / results.delta.* must begin with an Arabic-script char and contain FSI/PDI around every interpolation.",
+   "test_seams": [
+    "SmartCompareApp/__tests__/rtl/textAlignLogical.contract.test.ts",
+    "SmartCompareApp/__tests__/rtl/directionalIconWiring.contract.test.ts",
+    "SmartCompareApp/__tests__/i18n/digitPolicy.w311.test.ts (Western digits stay)",
+    "SmartCompareApp/__tests__/components/*.snapshot.test.tsx (style changes move snapshots; AR-only branches keep EN identical)"
+   ],
+   "risks": "Android RN ignores the writingDirection style, so it relies on FSI/PDI plus an Arabic-first template. Snapshot churn if the letterSpacing fork is not AR-only. Needs an on-device check, which is not possible in jest.",
+   "open_questions": [
+    "Has the letterSpacing joining break been confirmed on device? The screenshots strongly suggest it."
+   ]
+  },
+  {
+   "id": "MYEZ-016/E9 post-generation language check (none exists)",
+   "status": "not_found",
+   "root_cause": "No component verifies the output language:\n- app/ has no Arabic-script detector. The only language branch is reengagement's profile check, reengagement_service.py:303-304, :314.\n- Every post-generation guard is English-vocabulary only: text_sanitize.strip_score_internals (text_sanitize.py:76), trust_validation_service.validate_verdict (:46), verdict_critique_service.critique_verdict (:148), response_builder.reconcile_winner_prose (:238) and scrub_verdict_prose (:346), _PRICE_ADJECTIVE_RE (:635). On the client: SCORE_INTERNALS_RE (_deltaText.ts:34-35) and BANNED_PATTERN (FactualVerdict.tsx:39).\n- So with locale=ar, nothing stops English prose from shipping. With the flag ON, nothing stops an Arabic score leak either; that is the W4-14c #245 scope.",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/text_sanitize.py",
+     "line": "76",
+     "note": "strip_score_internals English regexes",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/response_builder.py",
+     "line": "238,346,635,1842-1848",
+     "note": "reconcile/scrub/price-adjective guards; the verdict-text chokepoint where a language gate would sit",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/trust_validation_service.py",
+     "line": "46",
+     "note": "validate_verdict (English)",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/verdict_critique_service.py",
+     "line": "148",
+     "note": "critique_verdict (English)",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-09-26-session-68-state/s68b-part3/scripts/issues/file_issues_w414.py",
+     "line": "23-28",
+     "note": "#245 W4-14c lists these guards and the English replacement paths as the hard flip precondition",
+     "basis": "measured"
+    }
+   ],
+   "contract_fields": [
+    "overview.winner.reason",
+    "overview.winner.key_tradeoff",
+    "products[].pros",
+    "products[].cons",
+    "reviews.products[].review_praise"
+   ],
+   "existing_flags": [
+    {
+     "name": "ENABLE_ARABIC_VERDICT_OUTPUT",
+     "default": "OFF",
+     "prod_state": "OFF (inferred)",
+     "source": "app/services/extraction_service.py:2280"
+    }
+   ],
+   "fix_sketch": "Backend gate, folded into W4-14c and running only when output_lang == 'ar' AND the flag is ON (so flag OFF stays byte-identical):\n- A pure function output_language_ok(text, lang, allow_spans) -> (ok, ar_ratio, latin_words).\n- allow_spans: both product names and brands (exact, case-insensitive), model tokens ([A-Z0-9][A-Za-z0-9-]{1,}), units (ml, g, mg, IU, GB, mAh, h, W), ISO currency codes, digits.\n- Metric: after removing allowed spans, Arabic-script letters (U+0600-06FF, U+0750-077F, U+08A0-08FF, U+FB50-FDFF, U+FE70-FEFF) as a share of all letters, threshold 0.7 or more (calibrate on a sample). Also reject any run of 3 or more consecutive Latin dictionary words.\n- Apply it at the response_builder chokepoint (:1842-1848) and on pros/cons/best_for/value_context/specs_comparison.\n- On failure: drop that field (or the list item); NEVER substitute an English fallback. Optionally one regen under the existing self-critique budget. Log a canary `[OUTPUT_LANG] field=<f> ar_ratio=<r>` with no text content.\n\nClient twin (OTA, usable while the flag is OFF): isLatinDominant(text, names) in _deltaText.ts. In AR it hides Latin-dominant verdictBody / key_tradeoff / review_praise, with a product call on showing a one-line Arabic note (for example 'التفاصيل متاحة بالإنجليزية') instead. Pure, unit-testable, EN untouched.",
+   "test_seams": [
+    "new tests/test_output_language_gate.py (pure function: Arabic with Latin product names passes; an English sentence fails; numbers/units allowed)",
+    "tests/test_arabic_verdict_output_w414.py (flag-OFF identity must still hold)",
+    "SmartCompareApp unit tests for the client twin"
+   ],
+   "risks": "False positives on Arabic text heavy with Latin model names (electronics) need the allowlist. Dropping fields can empty sections (MYEZ-022). A regen doubles verdict cost on failure.",
+   "open_questions": [
+    "Threshold calibration needs a sample of real Arabic verdicts (none exist while the flag is OFF).",
+    "Product call: hide versus show English while the flag is OFF."
+   ]
+  }
+ ],
+ "extra_findings": [
+  {
+   "title": "With the flag ON, FactualVerdict still hides the Arabic winner_reason",
+   "severity": "P1",
+   "evidence": "Measured: ResultsContent.tsx:396-413 renders FactualVerdict whenever scoring_v2.factual_verdict.line1 exists and only otherwise shows verdictBody (overview.winner.reason). factual_verdict is emitted on nearly every response (response_builder.py:1302, :1332). Even after W4-14b, W4-14c and the flip, the headline under 'لماذا اخترنا هذا' stays the English template unless E1 is localized or the AR precedence changes. CLAUDE.md:624 does not list this as a precondition."
+  },
+  {
+   "title": "Arabic eyebrows and badges use letterSpacing 1.1, which appears to break the joined Arabic letters",
+   "severity": "P2",
+   "evidence": "Measured styles: ResultsContent.tsx:740, :769; RunnerUpWinsCard.tsx:141; TopMatchBadge.tsx:52; ResultsAccordion.tsx:702; CategoryProfile.tsx:188. Inferred effect: the screenshots show the letters of 'لماذا اخترنا هذا', 'أين يتفوق الوصيف' and 'الأفضل تطابقًا' rendered separately. Client-only OTA fix: letterSpacing 0 under isRTL (useTypography)."
+  },
+  {
+   "title": "English fragrance delta constants contain the banned word 'better' and slip past the banned-word test",
+   "severity": "P3",
+   "evidence": "Measured: scoring_service.py:3683 'Better presented' and :3685 'Better everyday value' match BANNED_DELTA_RE (app/models/scoring_v2.py:9-19, IGNORECASE). tests/test_dimensions_builder.py:340-372 checks banned words only on an electronics pair, so fragrance captions are never exercised."
+  },
+  {
+   "title": "The key_tradeoff prose is not checked against the banned-vocabulary list, and it self-references when both names are identical",
+   "severity": "P3",
+   "evidence": "Measured: RunnerUpWinsCard.tsx:95-101 checks only SCORE_INTERNALS_RE, not the BANNED_PATTERN used by FactualVerdict.tsx:39. So V07's 'The other product offers better durability.' ships 'better'. Its 'The other product' phrasing shows GPT could not tell the two identical 'GUESS GUESS!' names apart (identity defect MYEZ-004)."
+  },
+  {
+   "title": "V06 beard oil compared on fragrance dimensions (Projection/Character)",
+   "severity": "P1 (belongs to the category/identity units)",
+   "evidence": "Measured: the English 'leads on Projection' / 'More distinctive' come from fragrance _DIMENSION_LABELS and _compose_delta_text branches (scoring_service.py:3482-3483, :3677-3679). The language fix will not cure the wrong-category classification of a beard oil (MYEZ-008)."
+  },
+  {
+   "title": "The production state of ENABLE_ARABIC_VERDICT_OUTPUT is only inferable, not recorded as checked",
+   "severity": "info",
+   "evidence": "Measured: CLAUDE.md:607 'Nothing flipped' at the 68b close; READINESS_BACKEND.md:152 and ASC_SUBMISSION_PACKET_S76.md:31 say 'dark'; the S78 and S79 ledgers record no flip (S79 records only ENABLE_APPLE_TOKEN_REVOCATION, ledger.md:88); APP_REVIEW_AUDIT_S79.md:309 explicitly lists the flag as unverified."
+  },
+  {
+   "title": "The PersonalizationChip dimension names are also English for Arabic users",
+   "severity": "P2",
+   "evidence": "Measured: PersonalizationChip.tsx:23, :46 render applied_shifts[].dim_display (an English vocabulary with no key in the payload). This is the planned W4-14b #244 additive dim_key (file_issues_w414.py:14-21; CLAUDE.md:625)."
+  }
+ ],
+ "sources": [
+  "C:/Users/SynAckITPC/.claude/uploads/ae650c83-4d2a-4910-a8d4-a47ab213c8c3/d20a7872-MYEZ_QA_UX_Audit_2026-10-18.md",
+  "C:/Users/SynAckITPC/.claude/uploads/ae650c83-4d2a-4910-a8d4-a47ab213c8c3/7758232c-image.png",
+  "C:/Users/SynAckITPC/.claude/uploads/ae650c83-4d2a-4910-a8d4-a47ab213c8c3/dd4b9146-image.png",
+  "C:/Users/SynAckITPC/.claude/uploads/ae650c83-4d2a-4910-a8d4-a47ab213c8c3/69e9e3fb-image.png",
+  "C:/Users/SynAckITPC/.claude/uploads/ae650c83-4d2a-4910-a8d4-a47ab213c8c3/096b52e4-image.png",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/CLAUDE.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/response_builder.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/scoring_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/extraction_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/review_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/url_extraction_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/openai_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/structured_comparison_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/cache_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/api/text_routes.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/api/image_routes.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/api/auth_routes.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/models/scoring_v2.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_dimensions_builder.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/components/results/_deltaText.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/components/results/FactualVerdict.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/components/results/RunnerUpWinsCard.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/components/results/DimensionBars.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/components/results/ResultsContent.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/components/results/ResultsAccordion.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/utils/dimensionLabel.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/utils/rtl.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/services/api.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/screens/HomeScreen.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/i18n/ar.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/i18n/en.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/i18n/index.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/i18n/rtlBootstrap.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/__tests__/rtl/textAlignLogical.contract.test.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-05-session-72-state/readiness/READINESS_BACKEND.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-05-session-72-state/readiness/ISSUE_TRIAGE.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-10-session-76-state/ASC_SUBMISSION_PACKET_S76.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-17-session-79-state/APP_REVIEW_AUDIT_S79.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-17-session-79-state/ledger.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-09-26-session-68-state/APPLY_PACK_AHMED.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-09-26-session-68-state/s68b-part3/scripts/issues/file_issues_w414.py"
+ ]
+}

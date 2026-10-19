@@ -1,0 +1,696 @@
+{
+ "category": "SURFACE L: build harness and unit conventions (reusable unit playbook)",
+ "summary": "All of the following was read only. I reproduced the house unit pipeline from its two newest worked examples, B3-B (backend, dark flag, migration, legal manifest) and S78-F8 (compare-service dark flag), plus the B3-A client unit, the session-68 harness, the hook, CI and CLAUDE.md. The pipeline (CLAUDE.md:30) runs: Opus spec, Opus adversarial spec review, Fable rulings, Opus RED, Fable RED gate, Opus GREEN, two Opus adversaries, fix rounds with re-verifiers, Fable diff review, commit, PR with pr_rest.py, merge on green. Every pytest goes through the copied pyt.py, one process at a time. The bounds are 600 s for a unit file, a pin file or one mutant; 1200 s for a CI-order set or a comm chunk of up to 25 files; 1800 s is the ceiling. RED rows must fail at base on an AssertionError only. PIN rows must be green at base and must run with full config, so that gated mutants can be killed (ruling B1). Mutants run on byte copies and are restored and sha-checked. The comm set is the module/symbol reference grep, unioned with the source-scanning pins, the CLAUDE.md readers, the migration and manifest readers, and the 25 SmartCompareApp-scanning tests. It excludes the 4 pre-commit-hook test files and must give `comm -13` empty. A dark flag must be read per call with the house idiom, and flag-OFF responses must be byte-identical, proven by PIN rows. Six other facts matter. (1) pyt.py, stall_monitor.py and harvest.py hard-code paths and a session-68 session id. They must be copied into the scratchpad and adjusted. (2) tests/.pre_impl_failures.txt holds 11 known-red nodes, 3 of them camera_vision. These matter for the camera defect. (3) CLAUDE.md:92 and the B3-B flag row are stale. The ledger records migration 044 APPLIED at 06:00 and ENABLE_APPLE_TOKEN_REVOCATION=true on web at 06:20 on 2026-10-18. (4) origin/main is now 57cdc8f0: 683f56c0 plus docs PR #361, with no code or CLAUDE.md change. (5) PR #362, the non-virtual mock for expo-notifications, is not on main; the virtual mocks left there are inert by measurement. (6) pr_body.py imports pr_rest from its own folder, and gh is not used on this box.",
+ "findings": [
+  {
+   "title": "Per-unit pipeline, roles, budgets and launch discipline (the binding principle 4)",
+   "severity": "high",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/CLAUDE.md",
+     "line": "30",
+     "note": "Principle 4 sets the pipeline: Opus spec, Opus adversarial spec review, Fable rulings, Opus RED, Fable gate, Opus GREEN, two Opus adversaries, fix, Fable diff review, commit, PR, merge on green. It also sets: at most 2 gate-heavy workflows (1 when the weekly budget is at 90 % or more); load probe `node -e 0` (baseline 0.4-0.6 s, hold above ~1.5 s, or a plain ls/git status over 30 s); pyt.py bounds; agent budgets of 2 h for green/fix and 90 min for spec/red/adversary; the stall rule; Workflow tool, not TeamCreate; pass the model explicitly in every workflow script.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-17-session-79-state/ledger.md",
+     "line": "5,12,46",
+     "note": "Before launch: ~/.claude/settings.json has CLAUDE_CODE_SUBAGENT_MODEL=opus and CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1. 'Model verified in both first transcripts: claude-opus-5-5' is recorded at every launch.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-17-session-79-state/ledger.md",
+     "line": "41,48,49,54",
+     "note": "Near miss: sibling pyt.py trees were mistaken for orphans (rule: check --cwd/--tag before any kill). Box-load holds were applied: node -e 0 at 5.94-17.8 s, so no further launch. Adversaries were run sequentially per unit to respect the two-workflow cap.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/.claude/skills/synack-build-orchestrator/SKILL.md",
+     "line": "45-52",
+     "note": "Step 5 TDD loop: tests first and failing for the right reason; Fable review gate before implementation; minimal green; commit only after tests green, lint clean, hook passing and Fable diff review.",
+     "basis": "measured"
+    }
+   ],
+   "detail": "Phase order and artifacts for every unit (names follow session 79). (1) Spec: an Opus spec writer measures on the base in throwaway probes and writes `<worktree>/.qa-sNN/<UNIT>_UNIT_SPEC.md`. `.qa-*/` is gitignored (sc-s80-base/.gitignore:72), so the worktree still reads clean. The docs branch gets a copy under `docs/investigations/<date>-session-NN-state/specs/`. (2) Spec review: an Opus adversary re-measures every claim and writes `<UNIT>_SPEC_REVIEW.md`. Verdicts are APPROVE / APPROVE_WITH_RULINGS / APPROVE_WITH_CHANGES / NOT READY FOR RED. (3) Fable rulings: `RULINGS_<UNIT>.md`, binding, wins over the spec and the review, numbered (B1-B14, R1-R13, TG1-TG6). It ends with 'Standing for RED agents'. (4) RED: an Opus agent writes the RED file(s). (5) Fable RED gate: `GATE_<UNIT>.md` / `RED_GATE_<UNIT>.md`. The orchestrator re-runs the RED file at base itself and compares the failed-id set both ways. It answers RED's questions with gate rulings (GA1-GA11, GB1-GB12, G1-G7) and stops for the owner's yes when there is a scope option (GATE_S78_F8.md option A/B; 'approve' means A). (6) GREEN: an Opus agent, with the RED file frozen. (7) Two Opus adversaries on the exact bytes. (8) Fix rounds: Fable `FIX_*.md`, then one fix commit, then re-verifiers. A micro round or a test-only amendment is allowed (FIX2_B3B.md, FIX3_B3B.md). (9) Fable diff review, recorded in the ledger (ledger.md:67). (10) Commit, push, PR, merge on green. Launch discipline: grep CLAUDE_CODE_SUBAGENT_MODEL in settings.json before the first launch. Confirm claude-opus-5-5 in the FIRST transcript of every launch, and stop at once (TaskStop) on a wrong model (memory feedback-verify-subagent-model). Time `node -e 0` before each launch. Keep at most 2 gate-heavy workflows. Check every running workflow about every 20 min. A STALL is an agent past its budget, or one idle past 2400 s with no live pytest child; a healthy agent inside one bounded pyt.py call can be silent up to 30 min. After any stop: kill orphan pytest only after checking its --cwd/--tag; sha-compare every dirty file against the last agent report and any mutation snapshot; then re-baseline. Interruptions happened twice in session 79 (ledger.md:50,53,69). The recovery was an inventory from on-disk shas, the agent notes and the journal, never assumed state."
+  },
+  {
+   "title": "Harness files must be copied and re-pointed: hard-coded venv, ledger path and session id",
+   "severity": "medium",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/docs/investigations/2026-09-26-session-68-state/harness-2026-09-27/pyt.py",
+     "line": "29-34",
+     "note": "VENV_PY = C:/Users/SynAckITPC/Documents/AI/.venv-qaren/Scripts/python.exe; LEDGER = <dir of pyt.py>/pyt_ledger.jsonl (appended on every run); CEILING = 1800; DEFAULT_MARK = 'not (live_unit or live_db or integration)'; NETGUARD_DIR = <dir>/netguard (that dir does not exist in harness-2026-09-27, measured by ls).",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/docs/investigations/2026-09-26-session-68-state/harness-2026-09-27/stall_monitor.py",
+     "line": "32-38,235-241",
+     "note": "SESSION = '0a2845de-abfe-4bca-b433-df4ce9787ab5' and WF_DIR hard-coded; PHASE_BOUND green/fix 7200, adversary/red/spec 5400; flags --interval 600 --spawn-alarm 30 --pytest-max 2100 --idle-alarm 2400 --exit-on-alarm --max-minutes N --once; reads active_workflows.txt beside itself.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/docs/investigations/2026-09-26-session-68-state/harness-2026-09-27/harvest.py",
+     "line": "6-26",
+     "note": "`harvest.py <wf_id> <out.json>` maps every finished agent result to its label from journal.jsonl; SESSION hard-coded to the session-68 id.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-17-session-79-state/ledger.md",
+     "line": "11",
+     "note": "'Harness copied to this session's scratchpad (harness/pyt.py, s78-common.txt; canary/run_canary.sh, capture_compares.py)'.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/conftest.py",
+     "line": "37-41",
+     "note": "conftest wires tests._netguard and tests._hermeticity, so pyt.py --plugin auto runs bare in every worktree of this repo. The missing netguard/ plugin dir is never used.",
+     "basis": "measured"
+    }
+   ],
+   "detail": "Setup at session start: copy pyt.py into `<scratchpad>/harness/pyt.py`. If it ran from the code checkout it would append pyt_ledger.jsonl inside docs/ and dirty the tree. Copy stall_monitor.py and harvest.py next to it and change their SESSION constant to the current session id. Without that change they read session 68's workflow journals; I inferred this from the hard-coded WF_DIR. Write `<scratchpad>/harness/active_workflows.txt` with one wf id per line. Write the agents' common-rules file `<scratchpad>/s80-common.txt` (and a copy in harness/). The latest committed one is sc-docs-70/.../2026-10-11-session-77-state/scripts/s77-common.txt; s78-common.txt exists only in an old scratchpad. Re-state the pyt.py path inside it, because s77-common.txt:11 points at a session-77 scratchpad path. Agents get read-only detached checkouts of the base under the scratchpad (ledger.md:11 precedent: scratchpad/base_<sha>). The mutation-harness reference is sc-docs-70/docs/investigations/2026-09-26-session-68-state/s68b-part3/scripts/mut_fable.py (byte snapshot, mutate, run one file via pyt.py or jest under timeout, restore, sha check)."
+  },
+  {
+   "title": "Bounded runner: exact command, defaults, bounds and TIMEOUT semantics",
+   "severity": "high",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-11-session-77-state/scripts/s77-common.txt",
+     "line": "10-14",
+     "note": "Exact form: `PYTHONIOENCODING=utf-8 C:/Users/SynAckITPC/Documents/AI/.venv-qaren/Scripts/python.exe <scratchpad>/harness/pyt.py --bound <s> --tag <short> --log <notes>/<name>.log --cwd <worktree> -- <files or pytest args>`. Flag states are exported in the env of the runner call (`ENABLE_X=true <venv python> pyt.py ...`). rc=4 within ~1 s is a pytest usage error. Bounds: 600 / 1200 / 1200 / 1800. One process, never background. Hook test files go in their own call with -k subsets. TIMEOUT: re-run once alone, then NOT MEASURED. A plain command over 30 s means a pathological box.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/docs/investigations/2026-09-26-session-68-state/harness-2026-09-27/pyt.py",
+     "line": "79-98,162-166",
+     "note": "Adds -p no:cacheprovider, -p no:randomly, --timeout=<per-test 120> and the free-tier -m unless the caller passes them. Kills the whole process tree (taskkill /T /F) at the bound, rc 124. Prints the final line `[pyt] tag=... start=... end=... elapsed=...s bound=...s status=OK|FAIL|TIMEOUT rc=... log=...`. The TIMEOUT message says 'Never raise the bound'.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-17-session-79-state/specs/b3_green_reports/green_B3B.json",
+     "line": "suites/comm_diff",
+     "note": "Chunks c03-c05 were NOT MEASURED after a plain cat/grep took more than 120 s (pathological box). The report names them and leaves CI as the arbiter. This is the accepted way to report a partial gate.",
+     "basis": "measured"
+    }
+   ],
+   "detail": "Every pytest an agent or the orchestrator runs goes through pyt.py. A bare `python -m pytest` violates the rules. Paste the [pyt] line with every summary. The netguard and hermeticity lines (`[netguard] blocked N attempt(s) from M node(s)`, `[hermeticity] sentinel checked N test(s)`) are part of the evidence. The pre-commit hook test files are tests/test_precommit_hook.py, _round2, _phase_b and _phase_b_round2. They cost 7-30 s per node and timed out a 25-file chunk twice (B3A spec 2.9; B3B spec 1.10). Run them in a separate call (bound 1200-1800, split with `-k \"not dash\"` / `-k dash`), or record them NOT MEASURED with both [pyt] lines. They are excluded from comm sets unless the unit edits .githooks (rulings A3, GB10; S78-F8 R8). Known environmental base noise: tests/test_prompt_truth.py::test_truth_on_prefix_static_and_cacheable and ::test_render_digests_match_base_except_the_fence ERROR on this box (cold tiktoken cache, netguard blocks openaipublic.blob.core.windows.net). CI warms that cache (ci.yml 'Warm tiktoken cache' step). Record them identically at base and head."
+  },
+  {
+   "title": "Spec document template (B3-B / S78-F8 shape): sections and required content",
+   "severity": "high",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-17-session-79-state/specs/B3B_APPLE_REVOKE_UNIT_SPEC.md",
+     "line": "1-438",
+     "note": "Header bullets (unit, flag, worktree, branch, base sha with full rev-parse, git status empty before/after every probe; evidence; sister unit; personal-data rule; where probes ran). §0 one paragraph. §1 Base state (1.1-1.10). §2 Contract (2.1-2.9). §3 Change list. §4 Existing pins (4.1 change, 4.2 stay green). §5 RED tests (5.1 behaviour file, 5.2 migration text-scan file). §6 Mutation table. §7 Comm set and gates. §8 CLAUDE.md row + owner steps. §9 Stated limits. §10 Out of scope. §11 Open questions.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-17-session-79-state/specs/S78_F8_UNIT_SPEC.md",
+     "line": "16-636",
+     "note": "Same skeleton for a compare-service unit, plus: §1.5 the probe (real-entry harness, measured lines table); §1.6 'every existing test that pins this region' table (file / what it pins / sees the unit?); §1.7 the brief's questions answered by measurement; §2 exact change per site (code sketch); §3 flag-OFF identity argument (numbered proof obligations); §5.3 CI-order set; §5.4 identity nodes; §7.9 'Not done in this spec'.",
+     "basis": "measured"
+    }
+   ],
+   "detail": "Template, one entry per section. HEADER: unit id and one-line title; flag name; worktree absolute path; branch; base sha (`git rev-parse HEAD` full); `git status --short` empty at start and after every probe; evidence pointers; sister units and the contract between them (e.g. the body field `authorization_code`); the personal-data rule (synthetic test values only, real values live only in Railway); measurement location `<scratchpad>/<unit>/` (probe scripts, .out files, pytest only through pyt.py). Nothing is written in the worktree except the spec under `.qa-sNN/`. §0 WHAT: one paragraph covering the flag-ON behaviour, the failure policy and the flag-OFF statement. §1 BASE STATE (measured at the base sha). Tables of `where (file:line) | measured fact` for every path touched (request model, route, service, deletion/compare path order, client deadlines such as SOCIAL_LOGIN_TIMEOUT_MS 25000 at fetchWithDeadline.ts:47). The flag-reader idiom with a cited example. Library behaviour measured on the pinned venv (requirements.txt lines, probe names). Storage and fence constraints (RLS posture, the 043 user-table fence). The legal manifest constraint (T7b at test_legal_docs_u8.py:823-851,1039-1058; R22 freeze at test_legal_s78.py:898-921). 'Guards the new code must not trip': the hook patterns, R8 AST pin test_sentry_channels_u8d_unit.py:773-918 (ERROR-level logs outside except arms only with constants/type names), CREDENTIALS_UNSET, .pre_impl_failures rows, OpenAPI pins. Line endings (`git ls-files --eol` of every edited file). Base pass state: the comm set at base through pyt.py in chunks, every [pyt] line, the base FAILED/ERROR id set, per-file base counts, netguard/hermeticity per chunk. For compare units add the probe, the existing-pin table and the brief's questions answered. §2 CONTRACT: flag + config readers (read per call, NAMES only in logs); each function signature with exact behaviour; exact log templates (level, arguments only constants/ints/type names); test seams with production values in brackets (e.g. `_TRANSPORT [None]`, `_now [time.time]`, `_HTTP_TIMEOUT [5.0]`, `_CALL_DEADLINE [6.0]`); logging rules (what is never logged); the flag-OFF identity invariant (no new call, no new state access, byte-identical bodies, the exact event order); a failure table for flag ON (failure / user-visible result / log line). §3 CHANGE LIST in the order GREEN applies it. It opens with 'byte-copy (shutil.copyfile) every existing file below into <scratchpad>/<unit>_green_before/ with its sha256' and closes with 'No other file' (no requirements, no client, no .githooks, no tests/.pre_impl_failures.txt). §4 EXISTING PINS. 4.1 deliberate changes, one row each: E# | test node (file:line) | asserts today | new assertion | reason. Every E row is listed again in the PR body; B3-B ended with E1-E5 after RED found E5. 4.2 pins that must stay green unedited (named files and nodes). §5 RED TESTS. Harness rules: new file name; pure ASCII; nothing the unit creates imported at module top; an autouse fixture delenvs every unit env name; limiter disabled where routes are driven; sentinels built at run time; no PEM/JWT/key literals; fakes named; logs captured via caplog plus patched module loggers. Row table: # | test | assertion | at base (RED reason, or PIN) | satisfied by section. PIN rows are named explicitly. A second table covers any migration text scans (M1-M8 style). §6 MUTATION TABLE: id | mutant | killed by (rows). §7 GATES, cheapest first: py_compile + ruff E9,F63,F7,F82; JSON loads; `git diff --stat` shows content lines only; the unit file; deliberate-change pins; flag-ON smoke (information only); the comm set base vs head with `comm -13` empty; CI-order set; identity nodes; mutation run; CI as final arbiter; personal-data and secret sweep of the added lines. §8 CLAUDE.md ROW ('wording may be tightened, content may not') and numbered owner steps (SQL apply plus postcheck, variables set by NAME, flip order, canary). §9 STATED LIMITS L1..Ln. §10 OUT OF SCOPE. §11 OPEN QUESTIONS Q1..Qn, each with the recommended option and why. Close with 'Not done in this spec'."
+  },
+  {
+   "title": "Spec review and rulings: what the reviewer must check, and the recurring blocking classes",
+   "severity": "medium",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-17-session-79-state/specs/B3B_SPEC_REVIEW.md",
+     "line": "1-150",
+     "note": "Header: the spec sha256 re-hashed, worktree clean before and after, probes in <scratchpad>/<unit>_review/probes/. §0 verdict; §1 claims re-measured CONFIRMED (file:line); §2 claims REFUTED, each with a probe; §3 missing rows, each with the mutant it kills; §4 blocking items; §5 proposed rulings RV-n; §6 App Review angle; §7 comm set check; §8 measurements pasted.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-17-session-79-state/specs/RULINGS_B3.md",
+     "line": "1-60",
+     "note": "'Binding. They win over the specs and the reviews where they differ.' Review rulings are adopted as written unless amended. B1 makes the PIN rows run with full config plus a base-safe recorder. B2 fixes a RED row that could never pass (expired JWT). B3 adds a total bound via asyncio.wait_for. 'Standing for both RED agents' closes the file.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-17-session-79-state/specs/RULINGS_S78_F8_SPEC_REVIEW.md",
+     "line": "R1-R13",
+     "note": "Scope ruling, design amendment, rows split into PIN and RED halves (R4: `assert isinstance(rec, dict)` first so base fails on an AssertionError), log line pinned at WARNING exactly (R6), widened comm rule (R8), netguard ratchet condition (R10), CLAUDE.md row content order (R12), house rules for RED (R13).",
+     "basis": "measured"
+    }
+   ],
+   "detail": "The reviewer re-measures every file:line at the base sha and runs its own probes in its scratchpad, never in the worktree. It must look for these defect classes found in session 79. (a) Vacuous PIN rows. When the config check precedes every observable action, a 'no call' PIN cannot kill a 'not gated' mutant, so PIN rows must run with all config present and a call recorder (B3B review §2.2, ruling B1). (b) RED rows that a correct GREEN can never pass, such as a fixed `now` making a JWT expired (RV-3). (c) Latency claims that a mock cannot prove. httpx.MockTransport enforces no timeout and httpx Timeout(5.0) is per phase, so the fix is a total bound (asyncio.wait_for) plus a row with a hanging handler (RV-2). (d) An incomplete comm set: CLAUDE.md readers, live linters such as test_sqlfluff_config, and domain pins such as test_domain_s76 (RV-7). (e) Operational ordering against App Review (RV-4). (f) A design that reports the wrong code for a raised race (S78-F8 RC-1, which led to the eager record). The rulings file adopts or amends each RV, answers every Q, adds missing rows and mutants, and ends with standing instructions for RED."
+  },
+  {
+   "title": "RED agent procedure (backend)",
+   "severity": "high",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-17-session-79-state/specs/RULINGS_B3.md",
+     "line": "Standing for both RED agents",
+     "note": "Every RED row fails at base on an AssertionError with the stated reason, never an import or setup error. Every PIN row is green at base. A prototype makes all green. The mutation table runs on the prototype with byte copy, restore and sha check per mutant. Pytest only through the bounded runner, one process at a time, chunks of 25. The report gives counts with [pyt] lines, the sha256 of every file written, and `git status --short` (only the new test files untracked).",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-17-session-79-state/specs/B3B_RED_REPORT.json",
+     "line": "base_run/prototype_run/mutants/deviations",
+     "note": "Base: `[pyt] tag=b3b-red-base2 ... status=FAIL` 74 failed / 36 passed; `grep -c \"^E +AssertionError\"` = 74 with no other exception type. A find_spec helper `_siwa()` turns the missing module into an AssertionError. Prototype in a detached scratch worktree, 110 passed, then removed. 55/55 mutants killed with sha restores OK. RED found spec gap E5 and the dotenv hazard (import app.main first).",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-17-session-79-state/specs/RED_GATE_S78_F8.md",
+     "line": "1-40",
+     "note": "The orchestrator re-measured RED at base: `58 failed, 26 passed in 43.06s [pyt] tag=gate-f8-red`, the identical failed set in both flag states, all AssertionError. Plus a secret/personal scan (key shape, @gmail, +973, 8-digit runs = 0) and no scratch worktree left in `git worktree list`.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-11-session-77-state/scripts/s77-common.txt",
+     "line": "4-5,26",
+     "note": "The one allowed git write is a DETACHED scratch worktree under the agent's notes (`git worktree add --detach <notes>/<name> <sha>`), removed with `git worktree remove --force` and never needing node_modules. Never `git checkout -- <file>`; take a shutil byte copy, restore, sha256-compare and stop on mismatch. MUTATION LOCK `<worktree>/.qa-mutation.lock` holding the agent label and time.",
+     "basis": "measured"
+    }
+   ],
+   "detail": "Steps. (1) Read the common rules, the spec, the review and the rulings in full once, and again before reporting. Keep notes.md from the first measurement. (2) Write ONLY the new test file(s): `tests/test_sNN_<unit>.py` (plus a migration text-scan file if any), pure ASCII and LF. Check bytes > 127 after every write, because the Write/Edit tools decode \\u escapes. No credential shapes; build sentinels by concatenation and generate keys and JWTs at run time. No edit to any existing test, fixture, conftest or app file unless the rulings assign it. Read missing helpers with `getattr(module, name, None)` / a find_spec helper and assert them callable, so base fails on an AssertionError. Import inside test bodies. Use an autouse fixture that delenvs the unit flag and every related flag (S78-F8 UNIT_ENV pattern, plus `scs._DEBUG_STAGE_TIMINGS=False`). If a new credential joins CREDENTIALS_UNSET, import app.main first (GB4). Use helpers from other test modules only, never `test_*` names (TG-A7). Record flag-OFF base bodies as literals in PIN rows. (3) Run at base through pyt.py with the flag unset and with it exported ON (bound 600). The AssertionError count must equal the RED count, with zero other exception types on E lines. List the first E line per row. (4) Satisfiability prototype in a detached scratch worktree at the base sha. The unit file must be green OFF and ON; the existing-pin subset must give `comm -13` vs base empty; ruff + py_compile must be clean. Save the patch as `.qa-sNN/proto_<unit>.patch` (reference only), remove the worktree and verify `git worktree list`. (5) Mutation table on the prototype bytes: take the lock; per mutant, shutil byte copy, an exact-string edit that matches once (dry check), run the killing rows via pyt.py `-k` with bound 600, restore, sha256 compare. KILLED means an assertion failure. Record equivalent survivors for a ruling. (6) Complete the base comm set if the rulings widened it (S78-F8 R8: run only the new chunk). (7) When route-level nodes may touch the network, run scripts/netguard_ratchet.py on a QAREN_NETGUARD_REPORT. A new egress node means the row is dropped (R10). (8) Run gitleaks locally if installed (`gitleaks dir --config .gitleaks.toml --redact <file>`), else say it is absent; add an added-line sweep. (9) Report: unit, files with sha256, base_run, prototype_run, red_count, pin_count, mutants, deviations (spec gaps such as E5), questions_for_gate, not_measured, worktree_status (only the new test files untracked)."
+  },
+  {
+   "title": "RED procedure for a client (SmartCompareApp) unit",
+   "severity": "high",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-17-session-79-state/specs/RULINGS_B3.md",
+     "line": "A1,A19",
+     "note": "A19: RED writes tests in the unit worktree and runs them at base one jest process at a time, by path, under `timeout -k 15`. It proves satisfiability with an IN-PLACE prototype: byte copies (shutil) of every file it edits, apply, run, restore every file, sha256-compare. No scratch worktree with a junction, no recursive delete, no npm. Full jest is the arbiter at GREEN, not RED. A1: the `jest.isolateModulesAsync` recipe for module-level state.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-17-session-79-state/specs/B3A_RED_NOTES.md",
+     "line": "1-50",
+     "note": "Toolchain printed first (node v24.11.1, jest 29.7.0, tsc 5.9.3, eslint v9.39.4; @babel/core + .bin/jest present). `[jest] tag=... start=... end=... rc=` lines. Prototype subset, tsc, eslint. 'restore: 24 files compared, mismatches=[]'. Base final 64 failed / 21 passed. Backend comm chunk A via pyt.py.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-17-session-79-state/specs/GATE_B3.md",
+     "line": "B3-A RED evidence, GA1-GA11",
+     "note": "7 suites, 64 RED / 21 PIN at base; prototype 85/85; M1-M45 killed; backend comm chunk A (23 SmartCompareApp-scanning non-hook files, bound 1200) + chunk B (8 CLAUDE.md source-scanning pins, bound 600) FAILED sets empty at base. GA8: full jest is the arbiter, with base = the 4 w37 drift nodes only.",
+     "basis": "measured"
+    }
+   ],
+   "detail": "Client RED: put the tests under `SmartCompareApp/__tests__/<unit>/*.<unit>.test.ts(x)`, plus a fixture if the copy needs one (e.g. `__tests__/fixtures/b3a_copy.json`). Run them by path from SmartCompareApp: `timeout -k 15 600 node node_modules/jest/bin/jest.js --ci <paths>`, and print a `[jest] tag=` line yourself (no committed wrapper exists; mut_fable.py:30-36 shows the pattern). The prototype is in place with byte copies, then restored and sha-checked. Run the touched-suite subset (the suites that import the edited modules) on the prototype, plus tsc and eslint on the changed files. Run the backend comm chunks at base as well, because backend tests scan client files. Every AR string is marked [NATIVE READ] for the owner. Never 'jest -u'; a .snap in the diff is a defect."
+  },
+  {
+   "title": "GREEN procedure (and the rebase sub-procedure)",
+   "severity": "high",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-17-session-79-state/specs/GATE_B3.md",
+     "line": "Standing for GREEN",
+     "note": "Commit on the unit branch only (the RED files, the implementation and the deliberate pin changes), the hook passing on its own, the co-author line, no push. Report every run with its [jest]/[pyt] line, the mutation table re-run on the real implementation, the comm diff, deviations, NOT_MEASURED items, and `git status --short` clean.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-17-session-79-state/specs/RED_GATE_S78_F8.md",
+     "line": "G4-G6",
+     "note": "G4: the RED file is FROZEN; implement only in the named file; the prototype is a shape reference with every line justified by a row; if an assertion is wrong, STOP and report. G5 gate list. G6: then two adversaries, at most one fix round with a re-adversary, the orchestrator's diff review, commit, PR with pr_rest.py.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-17-session-79-state/specs/b3_green_reports/green_B3B.json",
+     "line": "commit/suites/mutants/deviations",
+     "note": "Report fields: unit, commit (hook output 'All checks passed!' ruff, 'All Finished!' sqlfluff; not pushed), files_changed with sha256, red_files_run (ON and OFF), suites (cheap gates, gitleaks 8.30.1 per file, sweep counts, pin files, flag-ON smoke, comm chunks), comm_diff, mutants (56 KILLED, each with its [pyt] window), deviations, not_measured, worktree_status.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-17-session-79-state/ledger.md",
+     "line": "59-60",
+     "note": "Rebase rule as applied: commit at base, rebase onto origin/main, check that the added-line digest of the unit files is identical before and after, resolve the one CLAUDE.md conflict by hand (order the rows by merge order, keep CRLF), then re-run the unit file in both states, the sibling units' unit files, FY25, the two CLAUDE.md readers and the CI-order set.",
+     "basis": "measured"
+    }
+   ],
+   "detail": "GREEN steps. (1) Re-hash the RED files against the gate shas; they are frozen. Never weaken a row; a wrong row is reported, not edited, unless a gate note amends it. (2) Byte-copy every file to be edited into `<scratchpad>/<unit>_green_before/` with sha256. (3) Implement spec §2/§3 as amended by the rulings and gate notes, as your own code. Edit existing files with the Edit tool so CRLF is preserved, and write new files consistently. (4) Cheap gates: `<venv python> -m py_compile <files>`; `<venv python> -m ruff check --select E9,F63,F7,F82 --no-cache <files>`; json.loads of edited JSON; `sqlfluff lint --config .sqlfluff` on new migrations (test_sqlfluff_config lints the whole corpus); gitleaks per file; an added-line sweep over hook4/jwt/credurl/gmail/phone/domain. (5) The unit file with the flag unset and with it exported ON (bound 600). (6) Existing pin files, with the known pre-impl pair only. (7) Flag-ON smoke of the neighbouring existing suites (information). (8) Comm set at HEAD: re-derive with the rule at HEAD, add the new test files, chunks of 25 or fewer, bound 1200, `comm -13` vs the recorded base set must be empty, and any TIMEOUT is named NOT_MEASURED. (9) The CI-order set in one process per flag state (compare units). (10) The mutation table re-run on the GREEN bytes, plus the review's extra mutants. (11) The CLAUDE.md row. (12) Commit on the unit branch through the hook; never --no-verify; no push. Rebase when main moved (FB0): rebase, compare the added-line digests of the non-CLAUDE.md files, re-run the unit file in both states plus the identity and CLAUDE.md-reader pins, and record the rebased sha. Budget: 2 h; record what was not measured."
+  },
+  {
+   "title": "Two-adversary procedure, verdict vocabulary, fix rounds and re-verifiers",
+   "severity": "high",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-17-session-79-state/specs/b3_green_reports/adv_B3B_sec.json",
+     "line": "commit_verified/findings/verdict",
+     "note": "Lens 'sec' (private key handling, log lines, token at rest, JWT shape, bounded timeouts, retry storms, CREDENTIALS_UNSET, test literals, gitleaks). commit_verified = HEAD and every file sha vs the GREEN report, `git status --short` 0 lines at start and end, probe file deleted, scratch worktree removed. Findings SEC-1..SEC-9 with severity minor/note, evidence (surviving mutant + [pyt] line) and fix. Verdict PASS_WITH_MINORS.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-17-session-79-state/runs/s79_f8_adversaries_wf_f52a1329.json",
+     "line": "results[0..1]",
+     "note": "S78-F8: correctness lens SOUND and engineering lens SOUND. Mutations ran in the adversary's own detached scratch worktree with the GREEN bytes copied in. The workflow was stopped at the fixer because both were SOUND and the minors were documentation rulings.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-17-session-79-state/specs/FIX_B3.md",
+     "line": "1-60",
+     "note": "ONE fix commit per unit. Every added or amended row is proved red against the previous implementation bytes (byte-copy, revert in place, run, restore, sha) and green on the new bytes. New mutants are named per item (X49, X50, S3, S4, S5, S23...). Commit messages list the item ids (FX3).",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-09-24-session-66-close-state/s66-w4-polish.mjs",
+     "line": "40",
+     "note": "Older schema `verdict: { enum: ['SOUND', 'DEFECTIVE'] }`. Session 75-77 used READY / NOT READY (TO MERGE) (session-75 ledger.md:56-58; session-77 ledger.md:87).",
+     "basis": "measured"
+    }
+   ],
+   "detail": "Lenses: two Opus adversaries per unit on the exact bytes, run sequentially when the box is loaded. Compare/backend units take correctness (runtime truth) plus engineering. Auth/secret-bearing units take engineering plus security/secrets. Client units take engineering plus client-truth/privacy (copy vs rulings, consent, privacy inventory). Each adversary: (a) verifies HEAD and every file sha vs the GREEN report at start and end; (b) has the worktree ALONE (mutation lock) or mutates only in its own detached scratch worktree, then removes it; (c) re-runs the RED files in both states; (d) re-runs the full mutation table on the exact bytes, counting KILLED only on an assertion failure, and adds its own mutants; (e) runs probes for what the frozen file does not pin; (f) checks ruff/py_compile, diff hygiene (no whole-file diff, CRLF, ASCII) and a secret scan; (g) runs the comm set at HEAD vs base in chunks; (h) does an engineering review. Output schema: unit, lens, commit_verified, findings[{id, severity blocking|major|minor|note, title, evidence, fix}], probes_run, mutation_rerun, verdict. Meaning: SOUND / READY / PASS / PASS_WITH_MINORS means no reproduced blocking or major defect remains. The minors then become Fable documentation rulings, a polish round, or follow-ups in the PR body. DEFECTIVE / NOT READY (TO MERGE) / BLOCK means at least one reproduced blocking or major defect (e.g. adv_B3A_truth verdict BLOCK on a false copy line). Then: Fable `FIX_<UNIT>.md` rulings, one fix commit with every new row proved red on the old bytes, re-verifier(s) on the exact new bytes, and optionally a micro round (FIX2) or a test-only amendment (FIX3) when only pin gaps remain. Then the Fable diff review, recorded in the ledger, before commit/PR (ledger.md:67)."
+  },
+  {
+   "title": "Commit and PR procedure (gh is not used on this box)",
+   "severity": "high",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/docs/investigations/2026-09-26-session-68-state/scripts/pr_rest.py",
+     "line": "1-8,17,81-100,129-157",
+     "note": "Usage: `pr_rest.py create <head-branch> <title> <body-file>` (base main; reports an existing open PR for that head instead of a duplicate; prints 'PR number=N'), `status <pr>` (check-run counts, mergeable_state), `merge <pr>` (merge_method merge), `watch <pr> [max_minutes]` (POLLS AND AUTO-MERGES on green). REPO = KGRddhs/smartcompare-backend. The token comes from `git credential fill` and is never printed.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-11-session-77-state/NEXT_SESSION_PROMPT_S78.md",
+     "line": "11,110,264",
+     "note": "'Use `docs/investigations/2026-09-26-session-68-state/scripts/pr_rest.py merge <n>`, never `watch`, which auto-merges on green.' 'open the PR with `pr_rest.py create`, bind it, read CI with ccd_pr `get_status` (no polling), and merge on green.'",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-11-session-77-state/scripts/pr_body.py",
+     "line": "1-22",
+     "note": "`pr_body.py get <pr> <outfile>` / `set <pr> <bodyfile>`. It does `sys.path.insert(0, dirname(__file__)); import pr_rest`, so pr_rest.py must sit in the same folder (the session-77 scripts folder has no pr_rest.py).",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-17-session-79-state/ledger.md",
+     "line": "21,61,68,75,79,82",
+     "note": "Pattern: commit through the hook, push, `pr_rest.py create`, bind the PR, merge on green (CI 7/7) with `pr_rest.py merge`. The docs PR merges FIRST when unit rows cite the state folder (#354 before #355/#356). Body file = scratchpad/pr/<UNIT>_PR_BODY.md.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/CLAUDE.md",
+     "line": "32,325",
+     "note": "Principle 6: path-restricted commits `git commit -m \"msg\" -- <paths>`. Worktrees: absolute paths in `git worktree add`, verified with `git worktree list`.",
+     "basis": "measured"
+    }
+   ],
+   "detail": "Naming: branches `feature/sNN-<slug>` (feature/s79-b3-apple-revoke, feature/s78-all-timeout-cap-as-timeout), `fix/sNN-<slug>` (fix/s79-jest-mock-ids), `docs/session-NN-state`; worktrees `C:\\Users\\SynAckITPC\\Documents\\AI\\sc-sNN-<short>` cut from the origin/main sha. Agents never commit, push, checkout, switch, stash, reset, rebase, merge or clean in an existing worktree (s77-common.txt:4). The orchestrator commits; GREEN/fix agents may commit on the unit branch only when their gate says so, and never push. Commit messages: `feat(<area>): <UNIT> <summary> (dark flag)`, `fix(<area>): <UNIT> fix round FB0-FB6 (<items>)`, `test(<area>): ...`. The trailer names the model that wrote the commit; the current attribution is `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>` (FIX_B3 FX2 accepted Opus trailers). Install the hook once per clone: `sh scripts/setup_hooks.sh` (= `git config core.hooksPath .githooks`; worktrees share it). Never --no-verify. PR: push the branch; `python <scratchpad or docs path>/pr_rest.py create <branch> \"<title>\" <body.md>`; bind the session with ccd_pr bind_pr; read CI with ccd_pr get_status or `pr_rest.py status <n>` without polling; merge with `pr_rest.py merge <n>` only on green and only with the gate cleared. NEVER `watch` a PR that must not auto-merge. The body file carries: what changes, the flag and the activation order; the deliberate pin changes E1..En with reasons; measurements ([pyt]/[jest] lines across RED, GREEN, fix rounds and re-verifiers); the log templates; stated limits; follow-ups; merge order. It ends with the 'Generated with Claude Code' attribution line. Report CI as 'green with 11 known nodes deselected' (CLAUDE.md:502)."
+  },
+  {
+   "title": "Pre-commit hook checks (including the sk- shape refusal) and the tests that pin the hook",
+   "severity": "high",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/.githooks/pre-commit",
+     "line": "163-180",
+     "note": "Step 4 on the added lines of the staged diff: `\\bsk-[A-Za-z0-9_-]{20,}` (word-boundary anchored so 'musk-' product slugs pass), `AKIA[0-9A-Z]{16}`, `xox[baprs]-[A-Za-z0-9-]{10,}`, `-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----`, then fail 'looks like a credential'.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/.githooks/pre-commit",
+     "line": "182-231",
+     "note": "4a: JWT_RE `eyJ[A-Za-z0-9_-]{7,}\\.[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}` and CREDURL_RE (password of 12+ chars). A grep backstop over porcelain + NUL-split diff. `.env` refused at any path, renamed or case-variant.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/.githooks/pre-commit",
+     "line": "233-503",
+     "note": "4e binary refusal outside the asset allowlist; 4b fixed-string pass over .env VALUES of 16+ chars (prints NAMES only); 4g gitleaks 8.30.1 `git --pre-commit --staged --redact` with the HEAD:.gitleaks.toml copy, .gitleaksignore refused, WARNING when gitleaks is not installed (CI runs it).",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/.githooks/pre-commit",
+     "line": "508-689",
+     "note": "1 py_compile and 2 ruff E9,F63,F7,F82 on the STAGED blobs; 3 black only on .github/black-clean-paths.txt; 4c SKILL.md frontmatter; 5 `PYTHONIOENCODING=utf-8 sqlfluff lint --dialect postgres` on staged migrations/*.sql; 6 eslint on staged SmartCompareApp/src/*.ts(x) (errors refuse).",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_secret_scan_static.py",
+     "line": "66-70",
+     "note": "Byte-equal pins of the hook's credential grep line, fail line, pipe line and JWT regex.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_ci_gates.py",
+     "line": "1464-1590",
+     "note": "Pins: four credential branches byte-equal, sqlfluff invocation, JWT/credurl after the branches, renames in staged lists, nested .env, staged-blob temp dir, black-missing WARNING, skill step order, xtrace-guarded fixed-string pass.",
+     "basis": "measured"
+    }
+   ],
+   "detail": "Consequences for every unit file, source, test or doc. No literal PEM header ending in 'PRIVATE KEY-----' (code checks the `-----BEGIN` prefix only), no JWT literal, no `sk-` key-shaped string of 20+ chars, no AKIA/xox shapes, no scheme://user:<password>@host. Sentinels are built by concatenation; keys and JWTs are generated at run time. No literal is assigned to a name containing token/secret/key unless it is low-entropy or built at run time (gitleaks generic-api-key; ruling B10). No `.env` value can appear in an added line, and the hook checks every .env value it can read. Any edit to .githooks/pre-commit is its own unit, because the lines are byte-pinned and the test_precommit_hook* files must then join the comm set. CI's secret-scan job (ci.yml:517-545) installs gitleaks 8.30.1 sha256-verified and scans the event's commits."
+  },
+  {
+   "title": "How the comm set is built (backend units) and the zero-regression rule",
+   "severity": "high",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-17-session-79-state/specs/S78_F8_UNIT_SPEC.md",
+     "line": "436-562",
+     "note": "Rule: module-reference set `grep -rlE \"structured_comparison_service\" tests/ --include=*.py` (182) UNION the source-scanning pins (the CLAUDE.md list plus every test_*.py combining `rglob|.glob(|os.walk|iterdir|listdir|scandir|ast.parse|read_text|read_bytes|open(` with an `app` path literal) UNION the CLAUDE.md readers, MINUS test_precommit_hook_phase_b.py and test_precommit_hook.py. Result 218 files in 9 chunks; list sha256 recorded; the base runs and the 4-node base failure set pasted.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-17-session-79-state/specs/RULINGS_S78_F8_SPEC_REVIEW.md",
+     "line": "R8",
+     "note": "Widened to symbol consumers (StructuredComparisonService, get_comparison_service, compare_from_text): 230 files in 10 chunks; GREEN re-greps at HEAD.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-17-session-79-state/specs/B3B_APPLE_REVOKE_UNIT_SPEC.md",
+     "line": "386-394",
+     "note": "B3-B gate 5: reference set for auth_routes/auth_service, UNION source-scanning pins, readers/globbers of app/ and migrations/, processors.json readers, named safety files and the auth files. 124 files listed in comm_files.txt with a per-file reason in comm_set.tsv (computed by comm_set.py). Chunks of 25 or fewer, bound 1200, `comm -13` of the sorted FAILED ids empty.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-17-session-79-state/specs/GATE_B3.md",
+     "line": "GB10",
+     "note": "GREEN comm set = spec gate 5 UNION source-scanning pins UNION the SmartCompareApp-scanning backend tests UNION test_precommit_hook_phase_b + test_behavior_dimension_translation + test_sqlfluff_config + test_domain_s76. A TIMEOUT is NOT_MEASURED and named.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/CLAUDE.md",
+     "line": "286,290",
+     "note": "The authoritative zero-regression gate: `comm -13` of the sorted FAILED node-id sets at base vs head, so that `branch-only-NEW == []`. Re-run a branch-only-new failure against main to tell a network flake from a regression.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests",
+     "line": "n/a",
+     "note": "Measured at 683f56c0: 702 tests/test_*.py; 25 .py tests mention SmartCompareApp (plus 2 JSON fixtures legal_fill_in_u8.json and legal_s78.json); 34 tests mention CLAUDE.md and 2 open it (test_ci_gates.py, test_behavior_dimension_translation.py); 4 pre-commit-hook test files; an approximate source-scan grep (scan call AND an app path literal) gives 46 files.",
+     "basis": "measured"
+    }
+   ],
+   "detail": "Recipe (re-create comm_set.py in the scratchpad; the session-79 copies were scratchpad-only, inferred from the '<scratchpad>/b3b/comm_set.py' references). (a) Module and symbol reference: every tests/test_*.py naming the changed module path or any of its public symbols (classes, factory functions, entry functions). (b) Source-scanning pins, ALWAYS: test_model_config.py, test_model_config_enforced.py, test_prompt_fence.py, test_u3c_store_false_pin.py, test_start_command*.py, test_migration_index_predicate_immutability.py, test_openai_key_log_hygiene_s69.py, test_sentry_channels_u8d_unit.py, plus every test that walks or reads app/ by path. These name no changed module, so reference grep never picks them; COST-METER PR #341 went CI-red that way (memory feedback-backend-comm-set-must-include-source-scanning-pins). (c) When CLAUDE.md is edited: tests/test_ci_gates.py and tests/test_behavior_dimension_translation.py. (d) When a migration is added: test_migration_index_predicate_immutability, the 043 fence test, test_sqlfluff_config, the census files (037, retro_w1_2b/2c/2d). (e) When processors.json or legal text is touched: test_legal_docs_u8*, test_legal_s78, test_legal_disclosure_s77. (f) The 25 SmartCompareApp-scanning backend tests when the unit touches client files or the client-visible contract: test_arabic_verdict_output_w414, test_b2_strict_optional_auth, test_ci_gates, test_comparison_id_echo, test_consent_capture_w3_16, test_dimension_label_catalog_parity_w414, test_events_allowlist_superset, test_feature_bucket_parity, test_feedback_allowlist_superset, test_landing_fallback_pages_s69, test_legal_disclosure_s77, test_legal_docs_u8, test_legal_docs_u8_d3c, test_legal_docs_u8_polish, test_legal_s78, test_migration_037_security_definer_grants, test_paid_route_metering, test_precommit_hook_phase_b, test_precommit_hook_phase_b_round2, test_register_benefits_parity_s69, test_review_paraphrase, test_secret_scan_static, test_security_regression, test_text_error_envelope_no_raw_exception, test_timeout_partial_integration. (g) Named safety files: test_security_regression, test_conftest_env_safety, test_hermeticity_pins, test_secret_scan_static, test_domain_s76, test_sqlfluff_config. EXCLUDE the 4 tests/test_precommit_hook*.py files with the measured reason (synthetic temp repo, 20-30 s per node) unless .githooks changes. Write comm_files.txt sorted, comm_set.tsv (file, reason) and the list sha256. Run at base (unit worktree before edits, or a detached scratch worktree at the base sha) and at HEAD (re-derived, plus the new test files), in chunks of 25 or fewer, bound 1200, one at a time. Diff with `comm -13 <(sort base_ids) <(sort head_ids)` and require it empty. Also run a CI-order set for compare units: the unit file, the files pinning the same region and the harness-provider files, sorted alphabetically (CI order), in one process per flag state with bound 1200, to catch cross-file leakage."
+  },
+  {
+   "title": "Dark-flag idiom and the flag-OFF byte-identity requirement (frozen build-3 contract)",
+   "severity": "high",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-17-session-79-state/specs/B3B_APPLE_REVOKE_UNIT_SPEC.md",
+     "line": "39-41,236-241",
+     "note": "The idiom `os.getenv(\"ENABLE_X\", \"false\").strip().lower() in (\"true\", \"1\", \"yes\", \"on\")`, read per call (auth_service.py:596-617, auth_routes.py:384-406 at b965c63b). Flag-OFF identity: same call with the same args, no added admin-client call, no table access, no httpx request, same status, byte-identical body for every body the base accepted; the only new work is the env read.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-17-session-79-state/specs/S78_F8_UNIT_SPEC.md",
+     "line": "326-343,345-395",
+     "note": "The numbered flag-OFF proof list. `_NoReadDict` and class-level raising properties prove the OFF path reads no state (F4a/F4c). The reader tables: F5-on for TRUE, ' true ', 1, yes, ON, on; F5-off for None, '', false, 0, no, off, garbage, 'tru e'. F13 runs the nine FY25 digests with the flag ON (the 'ON but off-branch' identity).",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/CLAUDE.md",
+     "line": "680",
+     "note": "Standing rules: pin .strip().lower() with upper-case and padded rows; reject inf/nan in float knobs; byte-identity construction pins assert values, not names; assert on envelope FIELDS, never a substring of a body carrying a random id.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-17-session-79-state/specs/RULINGS_B3.md",
+     "line": "B1",
+     "note": "Flag-OFF / no-op PIN rows run with ALL config set and a base-safe recorder (httpx.AsyncClient.send replaced, admin table() recorded). Without that, the 'store not gated' mutants survive.",
+     "basis": "measured"
+    }
+   ],
+   "detail": "For this session (build 3 under App Review against the live backend; Railway auto-deploys main): every backend change is additive and behind a new ENABLE_* flag, default OFF and read per call. A new name means 'unset in production by construction'; even so, check the existing ENABLE_* names first, because many audit defects may already have a dark flag that is OFF. The flag check is the FIRST statement in any new predicate, so OFF reads no state. Float/int knobs parse defensively (unset, garbage, inf, nan, <= 0 fall back to the default). Flag-OFF identity is the unit's main invariant, proven by PIN rows: (1) the reader table (positive and negative rows incl. padded and upper case); (2) no-read stand-ins; (3) recorded base bodies as literals (B3-B R19) or digest fixtures (test_s75_fanout_identity.py::test_FY25_flag_off_compare_identity_matches_main); (4) call and order recorders (the U8b deletion event list); (5) zero httpx sends and netguard 0. The frozen response contract allows only new optional keys emitted under the flag, or unflagged additions declared as stated limits (B3-B: the OpenAPI optional property). Never rename or remove a key, change a code or change a status with the flag OFF. Never set the unit flag in a local .env: existing pins that encode the old rule go red (F8 limit 15, TG limit 8). Earlier waves also used scripts/verify_flag_byte_identity.py corpus SHAs (CLAUDE.md:427) for extraction-path units."
+  },
+  {
+   "title": "CLAUDE.md flag-row format and placement",
+   "severity": "medium",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/CLAUDE.md",
+     "line": "465-472",
+     "note": "The three newest rows (S78-TG, S78-F8, B3-B) show the exact format and that each sits at the anchor before `## Tests` (CLAUDE.md:474).",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-17-session-79-state/specs/RULINGS_S78_F8_SPEC_REVIEW.md",
+     "line": "R12",
+     "note": "Row content order: effect ON (predicate in one sentence, WARNING line verbatim); flag OFF byte-identical with the pinning nodes; numbered stated limits; canary; activation precondition; rollback.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/CLAUDE.md",
+     "line": "31",
+     "note": "Principle 5: edit in place, never append a CORRECTION paragraph.",
+     "basis": "measured"
+    }
+   ],
+   "detail": "Format. Header line in bold: `**SESSION NN flag (<UNIT>, <YYYY-MM-DD>; default OFF, read PER CALL; a new name, so unset in production by construction (Railway not read); <plan or spec pointer>, rulings <ids> in docs/investigations/<state folder>/specs/):**`. Then one bullet per flag: `` `ENABLE_X` `` (+ knob names with defaults and parse rules, + variable NAMES only, never values) (<UNIT>, `` `app/<file>.py::<Class>.<function>` ``, the helper names). **Effect ON:** behaviour, with every log line verbatim. **Flag OFF:** byte-identical (pinned by `tests/<unit file>` rows <ids> and the existing nodes <list>). **HARD PRECONDITIONS** (migration applied, variables set). **Activation order/precondition:** the owner's explicit yes after the canary, one change per canary window. **Stated limits:** (1)..(n), including the local .env hazard and any KPI or status-code moves. **Canary:** what to grep and read. **Rollback:** unset the variable (per call, immediate). Placement: after the latest SESSION block and before `## Tests`. Rebases conflict at that anchor; resolve by merge order. Also update the 'Optional' env list (CLAUDE.md:337) for new variables and the migration 'Dated apply record' (CLAUDE.md:92). The edit must be byte-safe CRLF, made with the Edit tool. Never run difflib over the whole of CLAUDE.md (it hung 10+ min per s77-common.txt:25)."
+  },
+  {
+   "title": "Client jest rules: full suite after rebase, non-virtual mocks for installed packages, --runInBand pairs",
+   "severity": "high",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/jest.config.js",
+     "line": "1-80",
+     "note": "preset ts-jest, testEnvironment node, testMatch __tests__/**/*.test.ts(x), moduleNameMapper shims for react-native, async-storage, expo-* (incl. expo-notifications, expo-apple-authentication), @sentry/react-native, fonts; setupFilesAfterEnv __tests__/setup.ts.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/__tests__/setup.ts",
+     "line": "11,18-38,41-44",
+     "note": "__DEV__ = false globally; aiConsent mocked as granted for every suite; console.warn/error silenced.",
+     "basis": "measured"
+    },
+    {
+     "file": "git commit 3e9c754d (PR #360)",
+     "line": "message",
+     "note": "Root cause: jest caches module ids per worker by (requiring file, name). A `{ virtual: true }` mock of an INSTALLED package gets a different id than a plain require, so after a suite that runs the real lazy require, later virtual-mock suites get the real module. Proved with `jest --runInBand authService.logoutRefreshFirst.w1-4d authService.b4`; the whole suite in one process gave 3694 passed with only the 4 w37 drift nodes failing.",
+     "basis": "measured"
+    },
+    {
+     "file": "git commit f7d85e71 (PR #362 branch fix/s79-expo-notifications-mock-ids)",
+     "line": "message",
+     "note": "NOT an ancestor of 683f56c0 (measured with merge-base --is-ancestor). For packages with a root __mocks__ shim or a moduleNameMapper entry, virtual and plain resolve to the SAME id, so virtual is inert. Virtual doMocks of expo-notifications remain on main at __tests__/pushTokenService.test.ts:19,34 and __tests__/services/pushNavigation.w315.test.ts:82,347.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/.claude/projects/C--Users-SynAckITPC-Documents/memory/feedback-jest-virtual-mock-form-must-match-existing-suites.md",
+     "line": "1-25",
+     "note": "How to apply: plain jest.mock for installed packages. Grep __tests__ for virtual mocks before adding a lazy require to shared source. Prove with `--runInBand` pairs in BOTH orders using an order-preserving --testSequencer (the default sequencer reorders by size and duration), plus one --runInBand full run.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-11-session-77-state/scripts/s77-common.txt",
+     "line": "15-19",
+     "note": "Tools by path from SmartCompareApp under coreutils timeout: `timeout -k 15 600 node node_modules/jest/bin/jest.js --ci <paths>`, full `timeout -k 15 1500 node node_modules/jest/bin/jest.js --ci`, `timeout -k 15 600 node node_modules/typescript/bin/tsc --noEmit`, eslint on `git diff --name-only --relative` files. Check node_modules/@babel/core and .bin/jest. Never `jest -u`. Never a virtual mock of an existing module.",
+     "basis": "measured"
+    }
+   ],
+   "detail": "Rules for any client unit. (1) Full jest suite is the arbiter at GREEN and again after any rebase onto a moved main, before the PR (memory feedback-rebased-client-unit-run-full-jest-before-pr; GA8). The accepted base failures are the 4 nativeBundle.w37 junction-drift nodes d5, k2, k4, k5 (B3A spec 2.9). Source-scanning suites (App.*, navigation, routerSandbox) are the usual collision points. (2) Mock installed packages with plain `jest.mock(name, factory)`; keep `{ virtual: true }` only for packages that are not installed. (3) Prove any suite that touches shared source with --runInBand pairs in both orders (order-preserving sequencer) and one --runInBand full run. 'Fails only in CI / in the full suite, passes alone' means a worker-cache collision, not load. (4) Module-level state: use the jest.isolateModulesAsync recipe, requiring react and @testing-library/react-native/pure inside the isolate (A1). (5) Copy fences: en/ar key-set equality, src/i18n/.copy-policy.json, no diacritics except the ruled word, `__DEV__` on console lines in authService.ts (GA10). (6) Junction hazard: never recursively delete a worktree holding the node_modules junction; unlink with `cmd /c rmdir` from PowerShell first (CLAUDE.md:326-328). (7) Backend side of a client unit: chunk A (the 23 non-hook SmartCompareApp-scanning files, bound 1200) and chunk B (the 8 source-scanning pins, bound 600) at base and head with `comm -13` empty. Inferred risk: CI runs node 20 (ci.yml frontend-tests setup-node '20') while the box runs node v24.11.1 (B3A spec §1)."
+  },
+  {
+   "title": "Known-red baseline, regression diff, CI deselect and the netguard ratchet (camera_vision rows matter here)",
+   "severity": "medium",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/.pre_impl_failures.txt",
+     "line": "79-89",
+     "note": "11 node ids: 2 test_auth_interceptor social, 3 test_camera_vision.py::TestIdentifyProductsMocked (empty_product_fields_normalized, malformed_response_returns_error, successful_identification), 1 extraction_prompt_bundle_c, 2 page_scraping, 2 personalization_bundle_c, 1 supplement_branch_genuine.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/CLAUDE.md",
+     "line": "502",
+     "note": "The 3 camera_vision nodes fail with `TypeError: '>' not supported between instances of 'MagicMock' and 'int'` at openai_service.py:109 (a fixture defect). CI-green means 'green with 11 known nodes deselected'. Issue #89.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/.github/workflows/ci.yml",
+     "line": "110-133",
+     "note": "`DESELECT=$(grep -vE '^\\s*(#|$)' tests/.pre_impl_failures.txt | sed 's/^/--deselect=/' ...)`; pytest -m 'not (live_unit or live_db or integration)' --ignore=tests/test_integration.py --timeout=60 --cov-fail-under=83; then `python scripts/netguard_ratchet.py \"$RUNNER_TEMP/netguard_report.json\" tests/.network_attempt_baseline.txt`.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/scripts/regression_gate_diff.py",
+     "line": "13-23,269-303",
+     "note": "`python -m scripts.regression_gate_diff --current <pytest -q output> [--baseline f] [--allow-off-lock]`: exit 0 no new failures, 1 regression, 3 IO error, 4 installed packages drift from requirements.txt.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/scripts/netguard_ratchet.py",
+     "line": "1-20",
+     "note": "`python scripts/netguard_ratchet.py REPORT [BASELINE] [--write]`; the report is written when QAREN_NETGUARD_REPORT is set. Exit 1 only for a NEW node whose classes include egress; sentinel/ip_literal-only new nodes are WARNINGs; the baseline is GENERATED, never hand-edited.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_ci_gates.py",
+     "line": "875-898",
+     "note": "Pins ci.yml to derive --deselect from the baseline file and forbids hand-copied node ids in ci.yml.",
+     "basis": "measured"
+    }
+   ],
+   "detail": "Units never edit tests/.pre_impl_failures.txt (s77-common.txt:7). If a unit fixes a baseline node (e.g. the camera_vision fixture defect, which is directly relevant to the user's 'AI can't spot products from the camera' complaint), the file is RE-CAPTURED from a clean credential-free run per its header, in its own reviewed change. A camera unit's comm set will show those 3 nodes failing at base and head; they must not be read as regressions or as product proof. New external calls must go through a test seam (B3-B `_TRANSPORT = httpx.MockTransport`) so the netguard stays at 0. A new route-level node that hits sentinel hosts only is acceptable (the F15 precedent)."
+  },
+  {
+   "title": "Credentials in tests: CREDENTIALS_UNSET, the dotenv guard hazard, never .env",
+   "severity": "medium",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/_env_safety.py",
+     "line": "103-131",
+     "note": "CREDENTIALS_UNSET is 'Sourced from a grep of os.getenv(\"...\") across app/ and scripts/; re-run that grep when adding an integration'. Its last entry is APPLE_SIWA_PRIVATE_KEY (B3-B).",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/conftest.py",
+     "line": "10,29",
+     "note": "install_dotenv_guard() re-runs the sanitizer after every load_dotenv call.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/CLAUDE.md",
+     "line": "472",
+     "note": "The 'Test hazard (gate ruling GB4)' sentence: every import-time load_dotenv(override=True) (app.main, extraction services) strips a CREDENTIALS_UNSET name again, so a test sets the key only AFTER the first app import.",
+     "basis": "measured"
+    }
+   ],
+   "detail": "Any new credential-bearing env name a unit reads (an API key for a new data source, for example) is added to CREDENTIALS_UNSET in the same unit. test_conftest_env_safety's superset check stays green, and a test row pins the addition (B3-B R24). Tests set such a variable via monkeypatch only after importing app.main. Worktrees need no .env. Agents never open, copy or print a real .env, ~/.claude.json or any env value; they report variable NAMES only and never call Railway (CLAUDE.md:36 principle 10)."
+  },
+  {
+   "title": "Doc-state drift: the CLAUDE.md B3-B row and apply record are stale vs the ledger; origin/main moved (docs only)",
+   "severity": "medium",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/CLAUDE.md",
+     "line": "92,471",
+     "note": "The apply record says '044 (apple_siwa_tokens, B3-B) written, NOT applied'. The B3-B header says 'a new name, so unset in production by construction (Railway not read)'.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-17-session-79-state/ledger.md",
+     "line": "85,88",
+     "note": "2026-10-18 06:00: 'MIGRATION 044 APPLIED in production by the orchestrator', with the postcheck row (rls true, service_role insert/select/update true, anon/auth select false). 06:20: the four APPLE_SIWA_* variables set on web, then ENABLE_APPLE_TOKEN_REVOCATION=true (one redeploy), values suppressed.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base",
+     "line": "git",
+     "note": "origin/main = 57cdc8f0 = 683f56c0 + PR #361 (docs/session-79-state, 17 commits). `git diff --stat 683f56c0 origin/main -- CLAUDE.md app tests SmartCompareApp scripts .githooks migrations` is empty.",
+     "basis": "measured"
+    }
+   ],
+   "detail": "Production flag state for this session must come from the newest dated ledger line when a CLAUDE.md row lags. As of 2026-10-18 06:20, ENABLE_APPLE_TOKEN_REVOCATION is ON on web and 044 is applied; S78-F8, S78-TG and S78-SM stay OFF (ledger.md:64 and the rows). The first unit of this session that edits CLAUDE.md should rewrite those two sentences in place (principle 5), citing the ledger lines. New worktrees can be cut from origin/main 57cdc8f0 with the same code bytes as 683f56c0. The build-3 client reads exactly this backend, so no unit may change existing response bytes with its flag OFF."
+  },
+  {
+   "title": "Line-ending, encoding and file-IO rules every agent brief must carry",
+   "severity": "medium",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-11-session-77-state/scripts/s77-common.txt",
+     "line": "2-3,24-25",
+     "note": "PYTHONIOENCODING=utf-8; never print non-ASCII (write it to files); run every command in a `( cd <abs> && ... )` subshell; Write/Edit tools for source (heredocs mangle backslashes; backticks in double quotes execute); core.autocrlf=true, CRLF working copy and LF index, Edit preserves; a whole-file diff in `git diff --stat` is a defect; Edit/Write decode \\u escapes, so byte-check pure-ASCII test files; never difflib CLAUDE.md; a Read of a worktree file injects its ~86 K-token CLAUDE.md, so read with bash.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-17-session-79-state/specs/B3B_APPLE_REVOKE_UNIT_SPEC.md",
+     "line": "79-81",
+     "note": "Every edited file is `i/lf w/crlf` (git ls-files --eol). New files are written CRLF like their neighbours (migrations) or LF for the RED tests (green_B3B deviations: RED files LF, git warns LF->CRLF).",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/CLAUDE.md",
+     "line": "505",
+     "note": "Windows codec trap: always pass encoding='utf-8' to subprocess.run/open/read_text; byte-compare both sides before reporting a non-ASCII diff.",
+     "basis": "measured"
+    }
+   ],
+   "detail": "Write these into s80-common.txt verbatim, with this session's addenda: worktree names, base sha, the pyt.py path, production facts cited from the ledger (never probed), and the App Review constraint (dark flags only, frozen response contract, no OTA before approval). In this session's tool environment the Read tool is likewise expensive on worktree files, so agents read with cat/sed -n."
+  },
+  {
+   "title": "Session constraints that shape every unit in this lane (App Review in progress; the user's two asks)",
+   "severity": "high",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-11-session-77-state/NEXT_SESSION_PROMPT_S78.md",
+     "line": "250-266",
+     "note": "Owner-only actions (DNS, ASC invites); `railway variables` reads refused; flips need the owner's explicit yes per flag, run in the owner's terminal, one per canary window; canary pairs never compared before; any new external host in app/services needs a processors.json row (T7b); new dependencies pinned to a release at least 14 days old.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-17-session-79-state/specs/B3B_APPLE_REVOKE_UNIT_SPEC.md",
+     "line": "65-69",
+     "note": "T7b scans every app/services/**/*.py string constant for https?://host and requires a manifest row whose module lists the file. R22 freezes row fields and the row-id set, so adding a row also changes PUBLIC_NAME_IDS and the fixture. gate_flag only allows the seven Q10 flags.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/CLAUDE.md",
+     "line": "30",
+     "note": "Under time pressure cut a feature, never a test, a hook or a gate (orchestrator SKILL standing rules).",
+     "basis": "measured"
+    }
+   ],
+   "detail": "Applied to this session: (a) Railway auto-deploys main, so every merged unit is live against build 3 under review. Ship dark, keep the flag unset, and flip only with the owner's yes after a canary. No OTA to the production EAS branch before approval (ledger and memory). (b) A FragranceX bulk catalog ingestion (the user's first ask) is a data unit. If it adds an outbound host under app/services it trips T7b and forces a manifest row plus an R22 fixture change in the same unit (B3-B precedent: amend an existing row; a new row breaks the R22 id set). An off-clock script under scripts/ is outside the T7b scan; this is inferred from the scan scope and needs a ruling. Any new table needs a migration numbered 045 or later (044 is the last; 039 is reserved), service-role-only RLS like 044, and an entry in the 043 user-table fence only if it references users. Robots and terms compliance for crawling is an owner ruling (memory: robots ruling fail-closed; never scrape Fragrantica/Parfumo). (c) The camera, image and info failures (the second ask) touch openai_service and the camera routes, where 3 known-red camera_vision nodes sit in the baseline. Their RED rows must not depend on those fixtures. Check the existing flags first (e.g. ENABLE_CAMERA_FAILURE_ENVELOPE is ON in prod per CLAUDE.md:469 limit 10) before proposing new ones."
+  }
+ ],
+ "recommendations": [
+  "At session start, copy pyt.py, stall_monitor.py and harvest.py from sc-s80-base/docs/investigations/2026-09-26-session-68-state/harness-2026-09-27/ into <scratchpad>/harness/. Change the SESSION constant in the two monitors to this session's id, and create active_workflows.txt. Copy pr_rest.py and pr_body.py into one folder, because pr_body.py imports pr_rest from its own directory.",
+  "Write <scratchpad>/s80-common.txt from s77-common.txt plus the session-78/79 addenda: the Read-tool CLAUDE.md injection; no personal values; check --cwd/--tag before killing a pytest; the B1 PIN-rows-with-full-config rule; the non-virtual jest mock rule; the dotenv guard hazard; never set a unit flag in a local .env. Point it at this session's pyt.py path, base sha and worktree names. State that production flag facts come from ledger lines (ENABLE_APPLE_TOKEN_REVOCATION ON and 044 applied since 2026-10-18 06:00-06:20).",
+  "Before any launch, grep CLAUDE_CODE_SUBAGENT_MODEL in ~/.claude/settings.json, time `node -e 0` (hold above ~1.5 s), keep at most 2 gate-heavy workflows, pass the model explicitly in each workflow script, and confirm claude-opus-5-5 in the first transcript of every launch.",
+  "Use the B3-B spec skeleton (header + sections 0-11) for every unit spec. For compare-service units, add the S78-F8 probe, existing-pin, flag-OFF-proof and CI-order sections. Require §1.10 base pass state with [pyt] lines, and a §4.1 deliberate-pin table that the PR body repeats.",
+  "Re-create comm_set.py in the scratchpad (it was never committed). Implement the union rule: module and symbol grep, source-scanning pins, CLAUDE.md readers, migration/manifest readers, the 25 SmartCompareApp-scanning tests for client-visible changes, and the named safety files; exclude the 4 test_precommit_hook*.py files. Emit comm_files.txt, a per-file reason TSV and a list sha256. Run it at base and at HEAD.",
+  "Have every RED file make missing symbols fail as AssertionErrors (getattr/find_spec helpers), and run every no-op/flag-OFF PIN row with full configuration plus call recorders, so that gated mutants are killable (ruling B1).",
+  "The first unit that edits CLAUDE.md in this session should rewrite in place CLAUDE.md:92 ('044 written, NOT applied') and the B3-B header ('unset in production by construction'), citing ledger.md:85 and :88 (principle 5).",
+  "Plan the camera unit around the 3 known-red tests/test_camera_vision.py::TestIdentifyProductsMocked nodes. Either leave them (deselected in CI) and write new hermetic rows, or fix their fixture in a separate unit that re-captures tests/.pre_impl_failures.txt per its header. Never hand-edit it.",
+  "For the FragranceX catalog ask, get owner and orchestrator rulings on placement (off-clock script vs app/services), the T7b/R22 manifest consequences, the robots/terms posture and migration 045 before any spec. The response contract stays frozen and the feature ships dark.",
+  "For client units: run the full jest suite after every rebase and before the PR. Prove shared-source changes with --runInBand pairs in both orders (order-preserving --testSequencer) plus one --runInBand full run. Merge or re-apply PR #362 (f7d85e71) as hygiene; it is not on main."
+ ],
+ "open_questions": [
+  "What is the PR #362 (fix/s79-expo-notifications-mock-ids, f7d85e71) state? It is not an ancestor of 683f56c0 or 57cdc8f0. Should it merge before new client units, or is it abandoned? The remaining expo-notifications virtual mocks are measured inert.",
+  "The session-79 comm_set.py, green_wf.js, fix_wf.js and the PR body files lived only in old scratchpads. Should this session commit a canonical comm_set.py and workflow templates to the docs branch so the next session does not re-derive them?",
+  "Verdict vocabulary has drifted: SOUND/DEFECTIVE, READY/NOT READY, PASS/PASS_WITH_MINORS/BLOCK. Should the adversary schema for this session be fixed to one enum (the build-3 PASS / PASS_WITH_MINORS / BLOCK set is the newest)?",
+  "For the user's FragranceX ingestion ask: a scripts/ off-clock crawler (outside the T7b app/services scan) or an app/services adapter (needs a processors.json row plus an R22 fixture change)? What robots/terms ruling applies? This needs owner and Fable rulings before a spec.",
+  "Should the stale CLAUDE.md B3-B row and apply record be corrected in a docs-only PR now, or folded into the first unit that edits CLAUDE.md (that unit's comm set then includes the two CLAUDE.md readers)?",
+  "pyt.py's precommit-hook bound guidance differs: s77-common.txt says bound 1200 with -k subsets, the B3B spec gate 5 says bound 1800. Which bound is binding for this session?"
+ ],
+ "sources": [
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-17-session-79-state/specs/B3B_APPLE_REVOKE_UNIT_SPEC.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-17-session-79-state/specs/B3B_SPEC_REVIEW.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-17-session-79-state/specs/RULINGS_B3.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-17-session-79-state/specs/GATE_B3.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-17-session-79-state/specs/S78_F8_UNIT_SPEC.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-17-session-79-state/specs/RED_GATE_S78_F8.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-17-session-79-state/specs/GATE_S78_F8.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-17-session-79-state/specs/RULINGS_S78_F8_SPEC_REVIEW.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-17-session-79-state/specs/FIX_B3.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-17-session-79-state/specs/FIX2_B3B.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-17-session-79-state/specs/FIX3_B3B.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-17-session-79-state/specs/B3B_RED_REPORT.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-17-session-79-state/specs/B3A_CLIENT_UNIT_SPEC.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-17-session-79-state/specs/B3A_RED_NOTES.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-17-session-79-state/specs/b3_green_reports/green_B3B.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-17-session-79-state/specs/b3_green_reports/adv_B3B_sec.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-17-session-79-state/specs/b3_green_reports/adv_B3B_eng.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-17-session-79-state/runs/s79_f8_adversaries_wf_f52a1329.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-17-session-79-state/ledger.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-14-session-78-state/NEXT_SESSION_PROMPT_S79.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-14-session-78-state/specs/RULINGS_S78_TG_SM.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-14-session-78-state/PR_BODY_S78_LEGAL.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-11-session-77-state/NEXT_SESSION_PROMPT_S78.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-11-session-77-state/scripts/s77-common.txt",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-11-session-77-state/scripts/pr_body.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-09-26-session-68-state/s68b-part3/scripts/mut_fable.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/docs/investigations/2026-09-26-session-68-state/harness-2026-09-27/pyt.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/docs/investigations/2026-09-26-session-68-state/harness-2026-09-27/stall_monitor.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/docs/investigations/2026-09-26-session-68-state/harness-2026-09-27/harvest.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/docs/investigations/2026-09-26-session-68-state/scripts/pr_rest.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/.githooks/pre-commit",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/scripts/setup_hooks.sh",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/scripts/netguard_ratchet.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/scripts/regression_gate_diff.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/.pre_impl_failures.txt",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/_env_safety.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/conftest.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_ci_gates.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_secret_scan_static.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/.github/workflows/ci.yml",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/CLAUDE.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/jest.config.js",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/__tests__/setup.ts",
+  "git commits 3e9c754d (PR #360) and f7d85e71 (PR #362 branch, not on main) in sc-s80-base",
+  "C:/Users/SynAckITPC/.claude/skills/synack-build-orchestrator/SKILL.md",
+  "C:/Users/SynAckITPC/.claude/projects/C--Users-SynAckITPC-Documents/memory/feedback-jest-virtual-mock-form-must-match-existing-suites.md",
+  "C:/Users/SynAckITPC/.claude/projects/C--Users-SynAckITPC-Documents/memory/feedback-backend-comm-set-must-include-source-scanning-pins.md",
+  "C:/Users/SynAckITPC/.claude/projects/C--Users-SynAckITPC-Documents/memory/feedback-rebased-client-unit-run-full-jest-before-pr.md"
+ ]
+}

@@ -1,0 +1,900 @@
+{
+ "category": "SURFACE O - hermetic regression evidence for audit T01-T15 and tester scenarios V01-V10",
+ "summary": "Read-only map of the code at origin/main 683f56c0 (C:/Users/SynAckITPC/Documents/AI/sc-s80-base). It covers how to turn audit T01-T15 and V01-V10 into hermetic RED-then-GREEN evidence.\n\n**The constraint that drives every assertion.** The build-3 client always paints a crowned winner on any `success:true` comparison:\n- `TopMatchBadge` renders unconditionally (`ResultsContent.tsx:235-237`).\n- The winner index is always 0 or 1 (`ResultsScreen.tsx:880-887`).\n\nSo a \"no winner\" outcome can only reach build-3 phones through an existing failure envelope:\n- text: `INSUFFICIENT_DATA` 400, which shows the `home.errors.insufficientData` copy;\n- camera: `action:\"error\"` or `need_second_product`. `ENABLE_CAMERA_FAILURE_ENVELOPE` is ON in production, so a camera `INSUFFICIENT_DATA` becomes `comparison_failed`, and the client shows the misleading \"timeout\" copy;\n- URL: a coded 400, which still shows the generic copy until a client OTA;\n- dimensions: in-contract null scores, which the client already hides.\n\nThe RED assertions below target those envelopes.\n\n**Harnesses to reuse.**\n- `tests.test_s75_fanout_identity._install`: every network leaf faked, with the real `_fetch_product_data` and real scoring. Its FY25 flag-OFF digest pin keeps the response bytes frozen.\n- `tests.test_s78_all_timeout_cap_as_timeout._install_real`.\n- The explicit-pair mocked e2e in `tests/test_explicit_pair_integration_mocked.py`.\n- `tests/test_paid_route_metering.py`: `UsageLedger`, `authed`, `_stub_camera`, `_stub_url_leaves`.\n- The W4-3 `_no_network` fixture. CI's netguard ratchet fails a NEW test that attempts real egress.\n- Conftest loads the developer `.env` with override, so every flag must be monkeypatched per test.\n\n**Fixtures in the repo.**\n- A verbatim FragranceX product page (`spec_spine_d2`). Its JSON-LD `image` is a list.\n- `not_a_pdp` storefront and homepage pages.\n- Captured per-category production responses (`lane1`) and a 27-row production corpus (`w412`).\n- A real Serper organic payload, and client `v2_response_*` fixtures.\n\n**Gaps.** There are no recorded OpenAI responses, and no Knowledge Graph fixture whose type conflicts with the product. The tester's raw photos and URLs are absent: `_s80_qa_evidence` holds only five screenshots and five cards.\n\n**Measured root causes behind the REDs.**\n- Vision confidence is dropped, and identical identities still compare.\n- The URL path turns a missing title into \"Unknown Product\" and still returns a winner.\n- The URL path ships a list-shaped `image_url`. It also always ships an empty `recommendation`, which is V03's empty \"why we chose\".\n- The H6 guard only fires when specs and price are both None.\n- The KG image tier has no identity or category check.\n- The token \"scent\" maps to fragrances, which is the V06 beard-oil case.\n- Category dimensions are relabelled universal signals.\n- The fixed verdict templates are English-only, and the camera and URL routes take no `lang`.\n- `_validate_renderable` accepts placeholder names.\n- The usage status response has no reset timestamps, and the paywall banner copy does not depend on the limit reason.\n\n`test_camera_vision`'s three baseline failures come from a MagicMock usage object that makes `cached_tokens > 0` raise TypeError. Building usage with SimpleNamespace fixes them.\n\n**What cannot be made hermetic.**\n- T01's real vision behaviour on the V04 photos (live_unit or a device run; the photos are not available).\n- T09's GPT Arabic compliance (needs an eval with a lang parameter).\n- T11, the OAuth consent name (Google Cloud configuration; device check only).\n- Actual image-load timing for T07 and T08 (device).\n- T12's step cap (a product decision).\n- T14's GPT phrasing frequency (eval `forbidden_facts`).\n\nThe eval harness is text-only and hits the live production backend. It needs the admin key through `railway run`, costs about 100 OpenAI calls and 200-300 Serper credits for smoke20, and has no abstain, lang, camera or URL axis. So it is owner-run only, not suitable while the app is in review.",
+ "findings": [
+  {
+   "title": "Design constraint: build-3 renders a crowned winner for every success payload; every 'no winner' RED must assert an EXISTING failure envelope",
+   "severity": "high",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/components/results/ResultsContent.tsx",
+     "line": "235-237",
+     "note": "<TopMatchBadge testID=results-content-top-match /> rendered unconditionally",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/screens/ResultsScreen.tsx",
+     "line": "880-887",
+     "note": "presentationWinnerIndex is always 0|1 (scoring_v2 a>=b -> 0, else winner_index===1?1:0); no null/abstain state",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/screens/ResultsScreen.tsx",
+     "line": "300-351",
+     "note": "camera: comparison+success:false -> classifyUnsuccessfulCameraComparison; need_second_product -> need_more_photos; comparison_failed -> 'timeout'; else (action error) -> vision_failed",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/services/errorCopy.ts",
+     "line": "70-92",
+     "note": "friendlyErrorKey: INSUFFICIENT_DATA -> home.errors.insufficientData; unknown code -> home.errors.comparison (generic)",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/i18n/ar.json",
+     "line": "116, 851",
+     "note": "insufficientData copy 'البيانات قليلة عن هذا الزوج...' and visionFailed copy 'صوّر كل منتج في صورة خاصة به...' already ship in build 3",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/api/image_routes.py",
+     "line": "109-130",
+     "note": "_camera_failure_envelope -> action comparison_failed carrying the result code",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/CLAUDE.md",
+     "line": "568",
+     "note": "ENABLE_CAMERA_FAILURE_ENVELOPE=true, ENABLE_PAID_ROUTE_METERING=true, ENABLE_COMPARE_AUTH_REQUIRED=true set on web 2026-10-03",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/__tests__/components/DimensionBars.silent_omission.test.tsx",
+     "line": "1-30",
+     "note": "dims with score_a/score_b null are silently omitted; DimensionBars.insufficient.test.tsx pins data_insufficient rows: an in-contract lever for T04/T13",
+     "basis": "measured"
+    }
+   ],
+   "detail": "Consequence for test design: a backend abstain that keeps success:true (even W4-4's honest-partial shape with scoring_v2:null) still shows a green crowned card on build 3. Route-layer RED assertions per input path:\n- Text: status 400, detail.code == 'INSUFFICIENT_DATA', or a new code the route maps to it. The client copy then already matches audit 6.3.\n- Camera: action == 'error', or need_second_product before compare_from_text is called. With ENVELOPE ON in production, an INSUFFICIENT_DATA comparison becomes comparison_failed, and the client shows 'still gathering prices', which misleads.\n- URL: a coded 400. The client falls to the generic copy until an OTA, which is still no fake winner.\n- Dimension-level abstain: emit score_a/score_b null. Build 3 omits those rows.\n\nClient-side REDs (a no-winner state, per-field URL hints, an image loading state, Arabic fallbacks) can be written and merged now. Their fixes cannot reach phones before App Store approval: no OTA to production before approval (UB-R4); native changes wait for 1.0.1."
+  },
+  {
+   "title": "Hermetic harness inventory and house conventions to reuse (do not invent a new harness)",
+   "severity": "high",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_s75_fanout_identity.py",
+     "line": "93-187, 263-285",
+     "note": "_install(p, svc, state) fakes parse LLM, verdict, L3 moderation, category LLM, search_web, tier2/3, ratings, image, specs/price/reviews/rating with REAL _fetch_product_data + REAL ScoringService; FY25 digests pin flag-OFF compare bytes (fixtures/s75_fanout_identity_digests.json)",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_s78_all_timeout_cap_as_timeout.py",
+     "line": "231-266",
+     "note": "_install_real: leaf-level fakes (scs.parse_product_query, scs._resolve_pair_category, scs.search_web, tier2/tier3, collect_retailer_ratings, get_product_image_url, find_matching_drugs, svc._get_specs/_get_price/_get_reviews/_get_verified_rating/_smart_fallback_extract/_track_serper_cost)",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_explicit_pair_integration_mocked.py",
+     "line": "103-160",
+     "note": "patch.object(svc,'_fetch_product_data') + patch('app.services.structured_comparison_service.generate_comparison', AsyncMock((verdict, usage))) + real compute_scores, user_id=None, nocache=True",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_paid_route_metering.py",
+     "line": "121-128, 134-207, 215-227, 256-323, 326-392",
+     "note": "REAL_GENERATE_COMPARISON_RETURN, UsageLedger (records consume/refund at call time), authed (dependency_overrides[get_optional_user]), _stub_camera, _stub_url_leaves, _post_identify, _post_compare",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_prescoring_showable_guard.py",
+     "line": "83-111",
+     "note": "_no_network autouse fixture: blocks getaddrinfo/connect for non-loopback and FAILS at teardown on any attempt",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/conftest.py",
+     "line": "16, 28-41, 47-52",
+     "note": "load_dotenv(override=True) loads the developer .env flags; credentials neutralised; netguard installed; ENABLE_COHORT_PERSONALIZATION/ENABLE_REFERRAL_SYSTEM setdefault true",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/.github/workflows/ci.yml",
+     "line": "111-133",
+     "note": "pytest -m 'not (live_unit or live_db or integration)' --timeout=60 --cov-fail-under=83, baseline deselected from tests/.pre_impl_failures.txt; netguard_ratchet fails a NEW test with real egress (tests/.network_attempt_baseline.txt, 210 rows)",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-17-session-79-state/specs/RED_GATE_S78_F8.md",
+     "line": "1-60",
+     "note": "house RED gate: RED = AssertionError only (symbols read via getattr inside the body), PIN rows, sha-verified mutants, comm set incl. symbol-only consumers, CI-order set, netguard ratchet, bounded runner [pyt] lines",
+     "basis": "measured"
+    }
+   ],
+   "detail": "Recommended layering for backend REDs:\n(1) Pure units: image_service, url_extraction_service.extract_generic_data / normalize_product_data, response_builder._build_factual_verdict / build_comparison_response, scoring_service.compute_scores / build_dimensions_v2 / _compose_delta_text, extraction_service.classify_category_from_text, scs._resolve_pair_category, database_service._validate_renderable, usage_service.get_usage_status.\n(2) Orchestrator: svc.compare_from_text with _install-style leaf fakes and per-test leaf overrides. Cover BOTH twins (REST and stream), as W4-3 did.\n(3) Routes: TestClient(app, raise_server_exceptions=False) with UsageLedger, authed, and the _stub_* helpers.\n\nPer-file hygiene:\n- An autouse env fixture that delenvs every unit flag (the UNIT_ENV pattern), because conftest's load_dotenv(override=True) can inject a flag from a local .env (memory rule: never set S78-F8-style flags in a local .env).\n- The W4-3 _no_network teardown assertion.\n- Pure ASCII, LF.\n- Symbols resolved via getattr / inspect.signature inside the body, so REDs are AssertionError rather than ImportError or TypeError.\n- FY25 must stay green flag-OFF. Re-record its digests only on a deliberate response-byte change."
+  },
+  {
+   "title": "test_camera_vision.py: the 3 .pre_impl_failures nodes fail on a fixture bug (MagicMock usage makes cached_tokens > 0 raise TypeError), so the file cannot host T01 vision REDs until fixed",
+   "severity": "medium",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/.pre_impl_failures.txt",
+     "line": "75-77 (node rows) and header 'test_camera_vision x3 - fixture bug'",
+     "note": "TestIdentifyProductsMocked::{test_empty_product_fields_normalized,test_malformed_response_returns_error,test_successful_identification} deselected in CI",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/openai_service.py",
+     "line": "66-82, 197",
+     "note": "_log_cache_telemetry: getattr(usage,'prompt_tokens_cached',None) on a MagicMock returns a truthy MagicMock; 'cached_tokens or 0' keeps it; 'cached_tokens > 0' -> TypeError; called before the JSON parse, so all three nodes die",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_camera_vision.py",
+     "line": "50-60, 62-64",
+     "note": "mock_usage = MagicMock(); patch('app.services.openai_service.client') with chat.completions.create AsyncMock (the client is passed into _llm_breaker.guarded_llm_create at openai_service.py:187)",
+     "basis": "measured"
+    }
+   ],
+   "detail": "Test-side fix: build usage as types.SimpleNamespace(prompt_tokens=80, completion_tokens=20, total_tokens=100, prompt_tokens_details=None), or MagicMock(spec=[...]). getattr then returns None, details is None, and cached is 0. Remove the three rows from .pre_impl_failures.txt as a per-row prune with pass proof (the 2026-09-02 precedent in the file header); also regenerate the mirror (scripts/gen_baseline_mirror.py), which tests/test_ci_gates.py re-derives.\n\nAn optional production hardening is to make _log_cache_telemetry coerce non-int to 0. It is unflagged-safe (telemetry only) but touches a live module.\n\nAny new T01 vision node in this file (category/confidence carried through identify_products, normalization at openai_service.py:213-221) must use the SimpleNamespace usage, or it fails for the wrong reason. The live node TestVisionLive (live_unit, ~$0.005, test_two.jpg) runs only in the weekly live suite."
+  },
+  {
+   "title": "Fixture inventory and gaps for T01-T15",
+   "severity": "medium",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/fixtures/spec_spine_d2/SOURCES.json",
+     "line": "files.us_fragrancex_com_dior_sauvage_cologne.html",
+     "note": "verbatim FragranceX PDP for https://www.fragrancex.com/products/christian-dior/sauvage-cologne; its JSON-LD image is a LIST [\"https://img.fragrancex.com/images/products/sku/large/saucm278d.jpg\"]; tuzzut fixture image is an ImageObject dict",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/fixtures/not_a_pdp/SOURCES.json",
+     "line": "files.*",
+     "note": "homepage collapse (kw.abdulsamadalqurashi.com, Organization+WebPage, no Product), boutiqaat Oops shell, CollectionPage, sephora search redirect, two real PDPs (nishane image = list of ImageObject; sephora image = string)",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/fixtures/lane1/_helpers.py",
+     "line": "22-40",
+     "note": "build_inputs() reconstructs (product_data, scoring_result, category, winner_index) from captured prod responses incl. fashion_response.json, haircare_response.json, tomford_vs_creed_response.json",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/fixtures/w412_corpus_min.json",
+     "line": "whole file",
+     "note": "27 recorded prod rows {row, created_at, input_type, schema_version, product_names, full_response} incl. camera rows: usable as a no-false-abstain / English-template census corpus",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/fixtures/serper_oudwood_organic.json",
+     "line": "1",
+     "note": "real Serper organic payload (consumed by test_organic_pdp_harvest.py, test_specs_no_fabrication_guard.py); no recorded OpenAI responses exist in tests/fixtures (grep choices/chat.completion = 0)",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/fixtures/w4_11_prompt_render_digests.json",
+     "line": "keys",
+     "note": "26 keys (verdict_system/user/kwargs, url_extract_*, image_tier3_*, specs_*, ...); the vision identify_products prompt is NOT digested; any verdict/url-extract prompt edit must regenerate per R13 (tests/w4_11_prompt_digest_recorder.py) or be flag-gated so OFF renders identically",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/__tests__/fixtures",
+     "line": "v2_response_*.json",
+     "note": "client per-category v2 payloads (overview, specs, reviews, scoring_v2 incl. factual_verdict, products, winner_index); no legacy URL-shape fixture",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/_s80_qa_evidence",
+     "line": "dir listing",
+     "note": "only V01/V02/V03/V06/V07 screenshots + 5 cards + the report; no V04/V05/V08/V09/V10 frames, no raw photos, no exact Rasasi or Sephora-BH URLs",
+     "basis": "measured"
+    }
+   ],
+   "detail": "Fixtures to author (all synthetic, shape-faithful, pure ASCII except Arabic assertion strings):\n- Vision content strings: the V04 identities as rendered ('Sefiki' 'Limited Edition', 'Violin' 'SHAHRAZAD L\\'INTENSE', both confidence low); two identical {GUESS, GUESS!}; V06 beard-oil pair; V01 OSMIA / AL IBDAA.\n- A unified-search payload whose knowledgeGraph {title:'Violin', type:'Musical instrument', imageUrl} conflicts with a fragrance product.\n- A Serper /images response whose images[0].title names a watch.\n- A storefront page with no Product node for the Rasasi case (or reuse the abdulsamadalqurashi homepage fixture, an Arabic perfume-house storefront).\n- An all-dash spec dict ({'connectivity':'-','frequency_response':'N/A','polar_pattern':None}).\n- One-sided price leaves.\n- Review leaves without source or count, plus GPT verdict dicts carrying 'Owners consistently highlight' / 'Reviewers say' and 'at a lower price'.\n\nThe exact V04 photos and V09 URL are unavailable, so exact replay of those scenarios is impossible offline (open question)."
+  },
+  {
+   "title": "How LLM / Serper / fetch / persistence calls are mocked today (patch targets to reuse)",
+   "severity": "info",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests",
+     "line": "grep of patch(\"app...\") string targets",
+     "note": "top targets: extraction_service.get_client (32), text_routes.get_comparison_service (30), extraction_service.parse_product_query (28), structured_comparison_service.ENABLE_PAGE_SCRAPE (26), cache_service.redis_client (26), image_service.get_client (14), scs.parse_product_query (13), scs.search_web (11), scs.generate_comparison (11), serper_service.httpx.AsyncClient (7), image_service.search_images (6); monkeypatch.setattr forms not counted",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/url_extraction_service.py",
+     "line": "575-605, 655",
+     "note": "compare_from_urls imports generate_comparison from extraction_service at call time -> patch app.services.extraction_service.generate_comparison (as _stub_url_leaves does); _resolve_pair_category imported from scs at call time",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_image_knowledge_graph_tier.py",
+     "line": "92-135",
+     "note": "image tier targets: app.services.image_service.try_consume_serper_image_credit, app.services.image_service.search_images (AsyncMock)",
+     "basis": "measured"
+    }
+   ],
+   "detail": "Per layer:\n- Vision: patch app.services.openai_service.client (chat.completions.create AsyncMock, SimpleNamespace usage) or, at the route, app.api.image_routes.identify_products.\n- Camera route: also content_safety_service.get_content_safety_service (the _FakeSafety class), audit_service.log_content_blocked, image_routes.StructuredComparisonService (spy compare_from_text calls), image_routes.log_search, image_routes.save_comparison_and_track_cohort.\n- URL route: url_routes._validate_url_offloop_or_sync (the real one resolves DNS), url_extraction_service.extract_from_url or (deeper) url_extraction_service.fetch_page plus url_extraction_service.get_client raising (drives extract_with_ai's offline except-branch), extraction_service.generate_comparison, structured_comparison_service._resolve_pair_category, url_routes.save_comparison_and_track_cohort, url_routes.record_lifetime_comparison.\n- Text route: text_routes.get_comparison_service, or a real service with _install; UsageLedger on text_routes.consume_comparison_credit / refund_comparison_credit; text_routes.save_comparison_and_track_cohort; text_routes.record_lifetime_comparison.\n- Orchestrator: the _install list.\n\nSeveral existing paid-route nodes are in .network_attempt_baseline.txt as 'sentinel' attempts (e.g. test_url_compare_saves_history_with_input_type_url). New nodes should also patch the persistence/lifetime writers, so the ratchet sees zero attempts."
+  },
+  {
+   "title": "Eval harness: what it measures, cost, anchor, and why it cannot carry T01-T15",
+   "severity": "medium",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/scripts/eval_runner.py",
+     "line": "995-1043",
+     "note": "run_query hits GET /api/v1/text/compare with params q/region/nocache only (no lang, no camera, no URL)",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/scripts/eval_runner.py",
+     "line": "304-320, 845-862",
+     "note": "winner read from scoring_v2.overall_score.winner_idx; grade_winner vacuously True when expected None (no abstain axis); grade_factual = case-insensitive substring ban over forbidden_facts",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/scripts/eval_runner.py",
+     "line": "122-150",
+     "note": "OPENAI_CALLS_PER_QUERY=5, DEFAULT_OPENAI_CALL_BUDGET=150 -> smoke20 ~100 calls",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/docs/runbooks/qaren-eval.md",
+     "line": "1-60, 120-150",
+     "note": "4 axes price/specs/winner/factual vs data/validation_gold_truth.json (200 ratified); smoke20 regression anchor 54b603e8-4eab-41c9-a34d-a5e391446559 (supersedes 7a5fc55b); full run 600-1,000 Serper credits; cold escalation 10-15 credits/query; eval box cannot DNS-reach Supabase (manual axis compare)",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/CLAUDE.md",
+     "line": "568",
+     "note": "with ENABLE_COMPARE_AUTH_REQUIRED on, the runner needs HARNESS_SEND_ADMIN_KEY=1 + ADMIN_API_KEY via 'railway run -s web' (owner-run; agents never call Railway)",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/data/validation_gold_truth.json",
+     "line": "records",
+     "note": "200 records with keys category, expected_prices, expected_specs, expected_winner_index, expected_winner_rationale, forbidden_facts, id, max_wall_seconds, query, region (no expected_outcome, no lang)",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/docs/runbooks/qaren-gold-set.md",
+     "line": "1-38",
+     "note": "append-only gold, winner labels need Ahmed's ratification; tests must be count-agnostic",
+     "basis": "measured"
+    }
+   ],
+   "detail": "The eval is live, non-hermetic and costly. It runs smoke20 against the production backend, which serves the in-review build: about 100 OpenAI calls plus about 200-300 Serper credits cold. It measures only text compares.\n\nUseful only as a post-merge, owner-run measurement for:\n(a) T14 and T09 (verdict half), by appending forbidden_facts such as 'reviewers say', 'owners consistently', 'leads on' (once lang is added);\n(b) the over-abstention guard: smoke20 winner axis 0.50 at 54b603e8 must not fall more than 2pp after an abstain rule ships. An abstain that removes winner_idx makes grade_winner False on labelled rows, so the regression gate catches over-abstention for free.\n\nExtensions needed (runner change plus Ahmed's ratification of new appended records):\n- an expected_outcome 'abstain' field and grader;\n- a --lang ar param, passed as the lang query param the text routes already accept (text_routes.py:784, 967);\n- camera/URL modes. These need the tester photos and stable PDP URLs; FragranceX answers a Cloudflare 403 to curl per the S80 ledger.\n\nDo not run it during App Review without the owner's explicit yes."
+  },
+  {
+   "title": "T01 (V04 perfume photos -> watch + violin): mostly hermetic in pieces; the model's misreading itself is not",
+   "severity": "high",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/openai_service.py",
+     "line": "130-170, 213-221",
+     "note": "vision prompt says 'Identify products even WITHOUT packaging: use shape, color, logo... (confidence=low)'; normalization keeps only brand/name/size/visible_price/confidence and fills 'Unknown'/'Unknown Product'; no category field",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/api/image_routes.py",
+     "line": "412-450",
+     "note": "0 / 1 / 2+ products branches; any 2 products auto-compare with query f'{brand} {name} vs ...'; vision confidence never consulted",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/structured_comparison_service.py",
+     "line": "4210-4224",
+     "note": "vision_products seed products with brand/name/size only; confidence dropped",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/image_service.py",
+     "line": "60-100, 240-268",
+     "note": "Tier 1.5b returns the knowledgeGraph image (then organic, then images pack) with no title/type/category check; Tier 1 takes Serper images[0] unvalidated; get_product_image_url has no category kwarg",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/structured_comparison_service.py",
+     "line": "5940-5951",
+     "note": "image task passes search_payload=unified_search (the full Serper payload) - the V04 violin/watch images most plausibly come from KG/images for the brand-name queries",
+     "basis": "inferred"
+    }
+   ],
+   "detail": "**Layers:** backend unit (image_service, openai_service) plus backend route (/image/identify). Non-hermetic half: live_unit or device.\n\n**Fixtures:**\n- (a) Vision content string `[{\"brand\":\"Sefiki\",\"name\":\"Limited Edition\",\"confidence\":\"low\"},{\"brand\":\"Violin\",\"name\":\"SHAHRAZAD L'INTENSE\",\"confidence\":\"low\"}]` with SimpleNamespace usage.\n- (b) A unified-search payload {knowledgeGraph:{title:'Violin',type:'Musical instrument',imageUrl:'https://img.example.test/violin.jpg'}, organic:[{link:'https://perfumeshop.example.test/p', imageUrl:'https://img.example.test/bottle.jpg'}]}.\n- (c) A Serper /images body {images:[{title:'Sefiki men watch',imageUrl:'https://img.example.test/watch.jpg'}]}.\n\n**Patch targets:** app.services.openai_service.client; app.api.image_routes.identify_products plus the rest of _stub_camera; app.services.image_service.try_consume_serper_image_credit / search_images / extract_image_via_gpt.\n\n**RED assertions** (each AssertionError):\n- R1: inspect.signature(get_product_image_url) accepts a category (or identity) kwarg, and get_product_image_url('Violin SHAHRAZAD L\\'INTENSE', search_payload=b, category='fragrances') does not return the violin URL. Today: no kwarg, and the KG URL is returned.\n- R2: with no free image and fixture (c), the Tier-1 watch image is rejected for a fragrance.\n- R3 (route, flag ON): two low-confidence identities give compare_from_text spy calls == 0, action == 'error' (or need_second_product), and ledger.refunds == ledger.consumes. Today: one compare call and action 'comparison'.\n- R4: identify_products carries 'category' (and confidence) through normalization. Today it is dropped at :213-219.\n\n**Mutations that must be killed:**\n- Drop the KG title/type check (kills R1).\n- Case-sensitive type compare (parametrize 'Musical Instrument').\n- Gate on both-low instead of any-low (policy row).\n- Always-reject. Killed by PINs: the existing TestExtractImageFromSearch and TestCascadeUsesFreeSearchImage stay green (Tom Ford KG without a conflicting type), and two high-confidence perfume identities still compare.\n\n**Flags:** none existing for vision confidence or image identity (no matching name among the ENABLE_* tokens), so a new dark flag is needed.\n\n**Not hermetic:** whether gpt-4o-mini vision mislabels the actual V04 bottles. That needs the original photos, which are not in the repo or the evidence folder. Use a live_unit node on test_images/* or the tester photos (about $0.005 each; weekly live suite spends production budget), or a device re-run."
+  },
+  {
+   "title": "T02 (FragranceX homepage URL vs product URL): fully hermetic at route + unit + client jest",
+   "severity": "high",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/api/url_routes.py",
+     "line": "141, 355-366",
+     "note": "only the SSRF guard runs before _compare_urls_metered; _reserve_comparison_credit fires before any product check",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/url_extraction_service.py",
+     "line": "302-330, 575-626",
+     "note": "extract_generic_data falls back to og_title/page_title as the product title (a homepage <title> becomes a product name); <2 products -> codeless {'success':False,'error':'Could not extract both products'}",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/price_service.py",
+     "line": "13019-13021, 13187-13189, 13243, 13252-13269",
+     "note": "_NOT_A_PDP_HOME_PATH_RE exists (^/?$, /xx/, /xx-yy/, /index.html) but classify_not_a_pdp never flags a REQUESTED homepage (only collapse/redirect), and it runs only in the price path under ENABLE_NOT_A_PDP_FILTER",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/components/TwoInputShell.tsx",
+     "line": "66-68, 250-258",
+     "note": "validateUrl = length 1..2048 + new URL() parses + http(s) -> https://www.fragrancex.com/ shows the green tick",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/screens/HomeScreen.tsx",
+     "line": "560-635",
+     "note": "codeless 400 -> Alert(common.error 'لحظة — جرّب الضغط مرّة ثانية.', home.errors.comparison) = the V02 dialog",
+     "basis": "measured"
+    }
+   ],
+   "detail": "**Layers:** backend route (/api/v1/url/compare), backend unit (a URL-shape classifier), client jest (TwoInputShell).\n\n**Fixtures:**\n- url1 = 'https://www.fragrancex.com/' (V02 verbatim). Parametrize with no trailing slash, '/en/', '/index.html', and the owner's gad_source/gbraid/gclid query form: a tracking query must not turn a homepage into a product page.\n- url2 = https://www.fragrancex.com/products/christian-dior/sauvage-cologne, served from spec_spine_d2/us_fragrancex_com_dior_sauvage_cologne.html by a fetch_page fake.\n\n**Patch targets:** url_routes._validate_url_offloop_or_sync (allow); url_extraction_service.fetch_page (spy plus fixture); url_extraction_service.get_client (raise); extraction_service.generate_comparison; structured_comparison_service._resolve_pair_category; UsageLedger on usage_service and url_routes; url_routes.save_comparison_and_track_cohort / record_lifetime_comparison; authed.\n\n**RED (route, flag ON):**\n- status 400 with detail.code naming a not-a-product-page code;\n- the offending field identified (e.g. 'url1');\n- fetch_page never called with url1;\n- ledger.consumes == [], refunds == [] (check placed before the reserve, like SSRF).\n\nToday: consumes == [uid], fetch_page is called for both URLs, and the response is a codeless 400 or a 'success' built from the homepage title.\n\n**Client RED (jest):** render TwoInputShell mode='url' testID='t'; changeText plus blur on t-a-input with the homepage; t-a-circle must not be in the valid state, and a per-field hint element must render. Today validateUrl returns true.\n\n**Mutations:**\n- Anchor the regex to '^/$' only (killed by /en/).\n- Strip nothing / treat a query as a path (killed by the gclid case).\n- Run the check after the reserve (killed by consumes == []).\n- Always-reject (killed by a PIN: the PDP URL still delivers, consumes 1, refunds 0).\n\n**Flags:** ENABLE_NOT_A_PDP_FILTER (prod state not in ledgers) covers only redirect collapse in the price path. Extending it, or a new flag, is a ruling; flag OFF must keep the byte-identical codeless 400. The client half reaches phones only by OTA after approval or in 1.0.1."
+  },
+  {
+   "title": "T03 (Rasasi URL that maps to no product -> 'Unknown Product' x2 with winner, credit burned): hermetic",
+   "severity": "high",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/url_extraction_service.py",
+     "line": "471-485, 522-528",
+     "note": "extract_from_url merges AI data when title/price missing; normalize_product_data: title = raw.title or full_title or 'Unknown Product' and returns success True",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/url_extraction_service.py",
+     "line": "681-690",
+     "note": "success True with winner_index = comparison.get('winner_index', 0) - no identity check before generate_comparison",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/api/url_routes.py",
+     "line": "171-214",
+     "note": "only success False refunds; success True under ENABLE_PAID_ROUTE_METERING (ON in prod) saves history (input_type url) and records lifetime",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/database_service.py",
+     "line": "303-321",
+     "note": "_validate_renderable accepts any truthy name, incl. 'Unknown Product'",
+     "basis": "measured"
+    }
+   ],
+   "detail": "**Layers:**\n- backend unit: compare_from_urls (all leaves faked);\n- backend route: /url/compare with UsageLedger plus a history spy;\n- unit: database_service._validate_renderable.\n\n**Fixture:** tests/fixtures/not_a_pdp/kw_abdulsamadalqurashi_com_homepage_collapse.html (an Arabic perfume-house storefront with no Product node) served for 'https://store.rasasi.com.sa/'. The exact V09 URL is unknown. Use get_client raising, so extract_with_ai returns {'error':...} and the title falls to the page <title>, or to 'Unknown Product' when stripped. Parametrize: title None, '', 'Unknown', the storefront <title>.\n\n**Patch targets:** url_extraction_service.fetch_page; url_extraction_service.get_client; extraction_service.generate_comparison (spy); structured_comparison_service._resolve_pair_category; route extras as in T02.\n\n**RED:**\n- compare_from_urls(rasasi, fragrancex_pdp) returns success False with a code (e.g. an unresolved-product code), names the URL index, and makes 0 generate_comparison spy calls. Today: success True, products[0].name 'Unknown Product' or the storefront title, winner_index 0.\n- Route: ledger.refunds == ledger.consumes (or consumes 0), the history spy == [], and record_lifetime not called. Today: history ['url'], no refund.\n- Unit, if policy adopts it: _validate_renderable rejects placeholder names. Today it returns True.\n\n**Mutations:**\n- Placeholder test only on the exact string 'Unknown Product' (killed by the storefront-title parameter).\n- Refund omitted on the new branch.\n- Double refund: assert refunds == 1 exactly.\n- Always-fail (killed by the PIN that two real PDP fixtures still deliver).\n\n**Flags:** none existing (normalize fallback unflagged). A new dark flag is needed: success:false on the URL path is already in contract (codeless or coded 400)."
+  },
+  {
+   "title": "T04 (two known products, no differentiating data - V10 Hyper X MIC dashes): hermetic at orchestrator + builder + route",
+   "severity": "high",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/structured_comparison_service.py",
+     "line": "416-427, 4327-4347, 5021",
+     "note": "H6 guard fires only when specs is None AND price is None on BOTH; docstring: specs={} or price {amount:None} 'still lets scoring proceed' -> deterministic tie-break elects product_0",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/response_builder.py",
+     "line": "1145-1168",
+     "note": "no candidate -> line1 '{winner} edges ahead on the overall picture.' (the audit's quoted string)",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/CLAUDE.md",
+     "line": "457",
+     "note": "ENABLE_HONEST_PARTIAL_SCORING is scoped to metadata.partial only; a non-partial thin build is untouched",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/api/text_routes.py",
+     "line": "544-551, 666-677",
+     "note": "coded failure -> 400 {code,error}; refund fires before _surface_comparison_failure (M13-37, unflagged)",
+     "basis": "measured"
+    }
+   ],
+   "detail": "**Layers:** orchestrator (svc.compare_from_text with _install leaves overridden), builder unit (build_comparison_response with real compute_scores output), route (POST /api/v1/text/compare via TestClient with a real _install'ed service through text_routes.get_comparison_service).\n\n**Fixture:** explicit_pair=('Hyper X MIC','Hyper X2 MIC'), category electronics. Leaves:\n- _specs returns {} in one parameter and the all-dash dict {'connectivity':'-','frequency_response':'N/A','polar_pattern':None} in another;\n- _price returns None for both;\n- _reviews returns {};\n- _rating returns {'rating':None,'review_count':None,'rating_verified':False,'rating_source':None};\n- get_product_image_url returns None;\n- _gen returns winner 0 'edges ahead'.\n\n**RED (flag ON):** body success False with code INSUFFICIENT_DATA, or a new code the route maps to it; at the route, status 400 and detail.code 'INSUFFICIENT_DATA'. Today (inferred; verify at the RED phase) it returns success True with overview.winner and factual_verdict.line1 'Hyper X MIC edges ahead on the overall picture.'.\n\n**PINs:**\n- the real H6 None/None path still returns INSUFFICIENT_DATA;\n- a pair with one differentiating measured field (the E0/E1 electronics specs from test_prescoring_showable_guard.py:57-62) still crowns a winner.\n\n**Mutations:**\n- Count '-', 'N/A', None as evidence (killed by the all-dash parameter).\n- Require both products thin when the policy says either, or vice versa (a policy row).\n- Always-abstain (killed by the PIN).\n- Flag OFF not byte-identical (killed by FY25).\n\nCover the stream twin too: the phones use REST (CLAUDE.md:457), but the code has two orchestrators (scs:4333 and :5021)."
+  },
+  {
+   "title": "T05 (two different shirts, model unknown -> 'GUESS GUESS!' x2): hermetic at route + orchestrator",
+   "severity": "high",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/api/image_routes.py",
+     "line": "438-450",
+     "note": "p1/p2 taken as-is; query 'GUESS GUESS! vs GUESS GUESS!' auto-compared; no identical-identity check",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/structured_comparison_service.py",
+     "line": "4210-4224",
+     "note": "vision seeding has no identical-pair guard; grep for SAME_PRODUCT / identical-pair detection in app/api and scs finds none",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/.claude/uploads/ae650c83-4d2a-4910-a8d4-a47ab213c8c3/69e9e3fb-image.png",
+     "line": "V07",
+     "note": "both cards 'GUESS GUESS!', brand GUESS, one 'Polyurethane'; crowned right card; 'GUESS GUESS! leads on Heritage.'",
+     "basis": "measured"
+    }
+   ],
+   "detail": "**Layers:** backend route (/image/identify) plus orchestrator (compare_from_text(vision_products=...)).\n\n**Fixtures:** vision {'products':[{'brand':'GUESS','name':'GUESS!','size_or_count':None,'confidence':'medium'}]*2, 'cost':0.003}. Parametrize case and punctuation variants ('Guess','GUESS !'). Negative PIN: same brand, different names ('GUESS Logo Tee' vs 'GUESS Denim Shirt').\n\n**Patch targets:** the _stub_camera set, with image_routes.StructuredComparisonService replaced by a spy class; UsageLedger plus authed. For the orchestrator, the _install leaves.\n\n**RED (route, flag ON):**\n- compare_from_text spy calls == 0;\n- action in {'need_second_product','error'} (build 3 renders need_more_photos / vision_failed);\n- refunds == consumes.\n\nToday: one compare call, action 'comparison', no refund.\n\n**RED (orchestrator):** compare_from_text(vision_products=[same,same]) returns a coded failure and never calls generate_comparison (spy). Today it reaches scoring.\n\n**Mutations:**\n- Compare brand only (killed by the different-name PIN).\n- No normalization (killed by the case/punctuation params).\n- Check only at the route, not the service (killed by the orchestrator row).\n\n**Flags:** none existing; a new dark flag is needed. The camera abstain must not use INSUFFICIENT_DATA through the envelope, which would show the 'timeout' copy on build 3."
+  },
+  {
+   "title": "T06 (one price known, the other unknown - V06 21.200 vs pending): deterministic halves are PINs today; GPT price claims are the RED",
+   "severity": "medium",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/response_builder.py",
+     "line": "863-885, 1110-1118",
+     "note": "_price_candidate and the line2 price fallback return None unless BOTH prices exist",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/scoring_service.py",
+     "line": "3240-3269",
+     "note": "_dim_price: one side <=0 -> neutral scores, 'Price data unavailable', confidence low, caption_key limited_data",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/response_builder.py",
+     "line": "346-370",
+     "note": "scrub_verdict_prose strips score internals only; no check of comparative price claims against price availability",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/.claude/uploads/ae650c83-4d2a-4910-a8d4-a47ab213c8c3/dd4b9146-image.png",
+     "line": "V06",
+     "note": "'Pura d'or offers a larger volume at a lower price.' while Goiple shows 'لا يوجد سعر مؤكد بعد.'",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/CLAUDE.md",
+     "line": "357, 611",
+     "note": "ENABLE_MISSING_DIM_RENORM (#101, default OFF) stops MISSING_SCORE=50 outranking measured data; ENABLE_VALUE_DIM_PARTIAL_SIGNAL (W4-6a)",
+     "basis": "measured"
+    }
+   ],
+   "detail": "**Layers:** builder unit plus orchestrator (_install leaves), and client jest for the source display.\n\n**Fixture:** V06 pair. _price per product: Goiple None (pending); pura d'or {amount:21.2,currency:'BHD',retailer:'Example Store',url:'https://store.example.test/p',source_method:'local_bhd'}. _gen value_context/key_tradeoff/pros carry 'offers a larger volume at a lower price'.\n\n**PINs (green today):** dims price delta 'Price data unavailable' with caption_key limited_data; factual_verdict has no '% cheaper' or 'lighter on the wallet'.\n\n**RED (flag ON):** no user-visible verdict string contains a comparative price claim (regex EN cheaper|lower price|less expensive|better value for money; AR أرخص|أقل سعر) when only one price is showable. Today the GPT text is shipped verbatim (inferred from the scrub scope).\n\n**Second RED, existing flag:** with ENABLE_MISSING_DIM_RENORM=true the overall winner must not be decided by the pending side's injected 50. Assert the winner is identical to the run with the price dimension removed. Check this existing flag before proposing a new one.\n\n**Client RED:** a price card with an amount shows the merchant and currency (overview.products[i].price.retailer). Today the card shows amount and currency only (inferred from the screenshots).\n\n**Mutations:**\n- Scrub only 'cheaper' (killed by the 'lower price' param).\n- Scrub even when both prices are shown (killed by a PIN with both prices and a true claim).\n- Arabic regex missing (killed by an AR param)."
+  },
+  {
+   "title": "T07 (results with no image -> never a wrong image; honest placeholder): two hermetic backend REDs (URL list-shaped image, identity gate) + client jest",
+   "severity": "medium",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/url_extraction_service.py",
+     "line": "305-312, 338-339, 565",
+     "note": "extract_generic_data: data['image_url'] = item.get('image') verbatim; JSON-LD image is often a list or ImageObject -> image_url ships non-string",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/fixtures/spec_spine_d2/us_fragrancex_com_dior_sauvage_cologne.html",
+     "line": "JSON-LD",
+     "note": "\"image\":[\"https://img.fragrancex.com/images/products/sku/large/saucm278d.jpg\"] (list); tuzzut fixture image is an ImageObject dict",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/price_service.py",
+     "line": "10822, 10962",
+     "note": "_jsonld_image_urls normaliser exists in the price path but the URL path does not use it",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/components/primitives/ProductImage.tsx",
+     "line": "73, 96-135",
+     "note": "only an 'errored' state; placeholder = tone square + phone-shaped SVG, accessibilityRole image, no label/text",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/.claude/uploads/ae650c83-4d2a-4910-a8d4-a47ab213c8c3/096b52e4-image.png",
+     "line": "V03",
+     "note": "URL compare: both images missing (phone icon placeholders)",
+     "basis": "measured"
+    }
+   ],
+   "detail": "**Layers:** backend unit (url_extraction_service.extract_generic_data / normalize_product_data), backend unit (image identity gate, shared with T01 R1/R2), client jest (ProductImage).\n\n**Fixtures:** the spec_spine_d2 FragranceX and tuzzut HTML plus not_a_pdp/tr_nishane_com_real_pdp.html, through extract_generic_data(html, url).\n\n**RED (URL list-shaped image):** isinstance(out['image_url'], str) and it starts with 'https://'. Today it is a list for FragranceX and a dict for tuzzut. Inferred: verify that the Product node is top-level in each fixture, since extract_json_ld does not walk @graph.\n\nThis likely explains part of V03 (inferred: the Sephora-ME JSON-LD shape is unknown; get the URLs). The fix restores the documented contract (image_url: string|null), so whether it can ship unflagged is a ruling.\n\n**Client RED:** ProductImage with imageUrl=null exposes an accessibility label or text distinct from the loading state (e.g. testID pi-placeholder plus an a11y label key). Today there is no label and a phone icon for every category.\n\n**Mutations:**\n- Take list[0] without an http check (killed by the ImageObject dict param).\n- Accept a non-http string (an existing _is_valid_image_url-style row).\n- Always None (killed by the PIN that the sephora string image passes through).\n\n**Not hermetic:** a real CDN refusing hotlinks (device)."
+  },
+  {
+   "title": "T08 (image arrives after the comparison): client-only RED; backend is a PIN (no late image event exists)",
+   "severity": "medium",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/structured_comparison_service.py",
+     "line": "grep 'type: image' / image event",
+     "note": "no SSE image event or late image update in scs; client src has no image-event handler (grep empty) -> the V10 'image appears later' is the RN <Image> network load",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/components/primitives/ProductImage.tsx",
+     "line": "73, 103",
+     "note": "state = errored only; no onLoadStart/onLoad -> a loading image is indistinguishable from an empty tile",
+     "basis": "measured"
+    }
+   ],
+   "detail": "**Layers:** client jest, plus a backend PIN.\n\n**Client RED:** render <ProductImage testID='pi' imageUrl='https://cdn.example.test/x.jpg'/>. A 'pi-loading' element must exist until fireEvent(getByTestId('pi-img'),'load') and must be absent afterwards; fireEvent 'error' must switch to the placeholder. Today there is no loading node (ProductImage.test.tsx covers only img/placeholder/error).\n\n**Client PIN:** re-rendering ResultsContent (the existing mocked-children harness in __tests__/components/ResultsContent.render.test.tsx) with image_url changing from null to a URL leaves the winner-card-anim testID on the same index and keeps the TopMatchBadge.\n\n**Backend PIN:** ScoringService().compute_scores(pd) gives the same winner_index, overall and breakdown with image_url None vs a URL.\n\n**Mutations:**\n- Loading flag never cleared (killed by the post-load assertion).\n- Scoring reads image presence (killed by the backend PIN).\n\n**Not hermetic:** real load latency and CDN behaviour (device run)."
+  },
+  {
+   "title": "T09 (locale=ar across categories): deterministic templates + route lang plumbing are hermetic REDs; GPT compliance needs eval",
+   "severity": "high",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/response_builder.py",
+     "line": "175-185, 1063-1122, 1165",
+     "note": "English templates: 'leads on {label}.', 'pulls ahead on {label}.', 'edges ahead on the overall picture.', '% cheaper', 'stays in the conversation...'; no locale/lang handling anywhere in response_builder (grep empty)",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/scoring_service.py",
+     "line": "3592-3690, 3244-3260",
+     "note": "_compose_delta_text English captions ('Comparable', 'Longer-lasting', 'More distinctive', 'More versatile'...) and _dim_price 'Price data unavailable' / '{cur} {diff} less'",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_arabic_verdict_output_w414.py",
+     "line": "1-17",
+     "note": "ENABLE_ARABIC_VERDICT_OUTPUT only appends _ARABIC_OUTPUT_DIRECTIVE to the GPT verdict system message; text routes accept lang (text_routes.py:377, 784, 967)",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/api/image_routes.py",
+     "line": "162-168",
+     "note": "/image/identify has no lang param (url_routes likewise; grep 'lang' empty in both) -> camera V01/V06/V07 cannot be Arabic even with the flag",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_compose_delta_text_per_category.py",
+     "line": "31-44",
+     "note": "PINs the English captions ('More distinctive', 'Longer-lasting')",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/__tests__/components/RunnerUpWinsCard.arabicLabels.w414.test.tsx",
+     "line": "76-78",
+     "note": "client PIN 12: a qualitative delta_text passes through unchanged (would collide with a client-side translation fix)",
+     "basis": "measured"
+    }
+   ],
+   "detail": "**Layers:** backend unit, orchestrator, route. GPT prose goes to the eval.\n\n**RED (unit, flag ON):**\n- inspect.signature(_build_factual_verdict) and _compose_delta_text accept a lang param.\n- With lang='ar', line1/line2/delta_text contain Arabic letters ([؀-ۿ]) and none of 'leads on', 'pulls ahead', 'edges ahead', 'Comparable', 'More distinctive'.\n- Product and brand names are kept verbatim: assert 'OSMIA Woody F' is still present.\n\n**RED (orchestrator):** compare_from_text(explicit_pair=('OSMIA Woody F','AL IBDAA EAU DE PARFUM 100ml'), output_lang='ar') under _install. After deleting the product names, scoring_v2.factual_verdict and every dims[].delta_text carry no Latin word.\n\n**RED (route):** POST /api/v1/image/identify?lang=ar with _stub_camera and a spy service: compare_from_text receives output_lang='ar'. Today the kwarg is absent. Note that build 3 does not send lang on the camera call (api.ts sends it only at :690/:834), so build-3 phones also need a server-side fallback, e.g. the stored profile language. That is a ruling.\n\n**PINs:** flag OFF keeps the English bytes (test_compose_delta_text_per_category and FY25).\n\n**Mutations:**\n- Localize line1 only (killed by the line2 assertion).\n- Translate brand names (killed by the verbatim assertion).\n- Localize when lang='en' (killed by an EN PIN).\n\n**Flags:** ENABLE_ARABIC_VERDICT_OUTPUT (prod state unverified, S79 audit:309) covers only the GPT directive. Widening its semantics changes an existing flag, so a new flag or a ruling is needed.\n\n**Not hermetic:** whether gpt-4o actually writes Arabic for winner_reason / pros / cons. Measure with an eval extension (lang param plus forbidden_facts English templates)."
+  },
+  {
+   "title": "T10 (empty result + source failure -> credit unchanged, history not a completed decision): hermetic route tests; RED depends on T03/T04/T05 classification",
+   "severity": "high",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/api/text_routes.py",
+     "line": "617, 666-677, 740-767",
+     "note": "consume at the gate; refund on any success:false before surfacing; success -> save_comparison_and_track_cohort + record_lifetime_comparison",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/api/url_routes.py",
+     "line": "171-214",
+     "note": "same split on the URL route under ENABLE_PAID_ROUTE_METERING (ON in prod)",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/usage_service.py",
+     "line": "138-148",
+     "note": "free tier = lifetime_free 3 (the '3/3 مجانًا' counter), then daily 3 / monthly 10",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/database_service.py",
+     "line": "303-321",
+     "note": "history gate _validate_renderable only checks 2 named products + metadata.query",
+     "basis": "measured"
+    }
+   ],
+   "detail": "**Layers:** backend route (text, URL, camera) plus database_service unit.\n\n**Fixtures:**\n- Text: a real service with _install leaves set to the T04 all-empty shape, injected through text_routes.get_comparison_service.\n- URL: the T03 storefront.\n- Camera: the T05 identical vision.\n\n**Patch targets:** UsageLedger on usage_service plus text_routes / url_routes / image_routes; text_routes.save_comparison_and_track_cohort and record_lifetime_comparison (spies); url_routes.* the same; image_routes.save_comparison_and_track_cohort; authed.\n\n**RED (flag ON):** for each path, len(refunds) == len(consumes) == 1 (camera: refund latched once), save spy == [], record_lifetime spy == []. Today a thin text or URL success keeps the credit, saves history and bumps lifetime: the V10 3/3 to 2/3 transition (inferred end-to-end from the T04 path).\n\n**PINs (green today):** an existing coded INSUFFICIENT_DATA result is refunded exactly once (M13-37), and a real delivered comparison consumes 1 and refunds 0.\n\n**Mutations:**\n- Refund placed after the raising _surface_comparison_failure (the M13-37 lesson; killed by the refund count).\n- Double refund (assert == 1).\n- Saving on the abstain branch (killed by the save spy).\n\nThe history label for the old rows is client-side (HistoryScreen.tsx:536-538 shows results.topMatch on isAWinner). A client RED can pin that a row whose stored payload carries an abstain status shows no topMatch, but that needs an additive status field (an open question)."
+  },
+  {
+   "title": "T11 (Google first sign-in shows MYEZ): not hermetic - device/manual only",
+   "severity": "low",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/app.json",
+     "line": "3, 235",
+     "note": "expo name 'MYEZ'; iOS Google client URL scheme present; the consent-screen app name ('SmartCompare' in V10) is the Google Cloud OAuth brand, not repo config",
+     "basis": "measured"
+    }
+   ],
+   "detail": "No hermetic test can prove the consent screen. Evidence = an owner action in Google Cloud Console (OAuth consent screen app name, logo, privacy URL), then a device run with a fresh Google account, recorded as a screenshot in the session ledger. An optional repo PIN (app.json name == 'MYEZ', no 'SmartCompare' in user-facing locale values) is green today and proves nothing about Google. Mark as device-only. Do not add a test that claims to cover it."
+  },
+  {
+   "title": "T12 (new user reaches first compare without marketing questions): client jest with a product-decided cap",
+   "severity": "low",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/screens/onboarding",
+     "line": "Step01Welcome.tsx .. Step17Notifications.tsx",
+     "note": "17 step components incl. Step06Age, Step07Gender, Step11Attribution, Step12CohortProof; OnboardingFlow imports ONBOARDING_TOTAL_STEPS (OnboardingFlow.tsx:36)",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/__tests__",
+     "line": "OnboardingFlow.bundleE.test.tsx, onboarding/",
+     "note": "existing render harness for OnboardingFlow to extend",
+     "basis": "measured"
+    }
+   ],
+   "detail": "**Layer:** client jest.\n\n**RED (once the owner sets a cap N for mandatory screens, e.g. 5):** walk OnboardingFlow by pressing only the primary CTA (no skip). The number of screens before onComplete must be <= N, and Step06Age / Step07Gender / Step11Attribution must be skippable or deferred. Today all 17 render in sequence (inferred from the step list; measure at RED).\n\n**Mutation:** re-insert a mandatory demographic step (killed by the count).\n\nNot hermetic: the actual drop-off (MYEZ-018 asks for an A/B) needs analytics and device sessions. Any change here is client-only and waits for an OTA after approval or for 1.0.1."
+  },
+  {
+   "title": "T13 (fashion and beard-care results use category-relevant fields only): two hermetic REDs - the 'scent' token routes beard oil to fragrances; category dims are relabelled universal signals",
+   "severity": "high",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/extraction_service.py",
+     "line": "1167-1172, 1307-1341",
+     "note": "_CATEGORY_SYNONYMS maps 'scent'/'scents' -> fragrances; classify_category_from_text returns the first longest-token hit (after is_supplement_query)",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/structured_comparison_service.py",
+     "line": "454-457, 480-486, 4218",
+     "note": "vision/explicit path: NAME detection over the combined pair names drives the category (parser_path=False)",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/scoring_service.py",
+     "line": "2175-2184",
+     "note": "fragrances: projection<-review, versatility<-reliability, character<-spec; fashion: fit<-review, durability<-reliability, heritage<-spec_secondary - labels imply evidence that is not category-specific",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/.claude/uploads/ae650c83-4d2a-4910-a8d4-a47ab213c8c3/dd4b9146-image.png",
+     "line": "V06",
+     "note": "beard oils shown with fragrance dims (الطابع/الثبات) and 'leads on Projection'; the pura d'or name contains 'SANDALWOOD SCENT'",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/CLAUDE.md",
+     "line": "343",
+     "note": "ENABLE_CATEGORY_TOKEN_FIX (W4-8) exists but only vetoes the ambiguous 'tablet' token",
+     "basis": "measured"
+    }
+   ],
+   "detail": "**Layers:** backend unit (classifier plus _resolve_pair_category), builder/scoring unit (build_dimensions_v2 on lane1 fixtures), client PIN (null dims omitted).\n\n**RED 1 (flag ON):** _resolve_pair_category([{search_query:'Goiple BEARD OIL CONDITIONING 30ml / 1 fl oz'},{search_query:\"pura d'or ORGANIC BEARD SOFTENING OIL ORIGINAL SANDALWOOD SCENT 4 fl oz (118 ml)\"}], None, parser_path=False)[0] != 'fragrances'. The target, 'haircare' or a grooming class, is a product decision. Today it returns 'fragrances' (inferred: is_supplement_query runs first, which is consistent with the V06 dims). PINs: 'Tom Ford Oud Wood scent' and 'Dior Sauvage cologne' stay fragrances.\n\n**RED 2 (flag ON):** build_dimensions_v2 on lane1/fashion_response.json via build_inputs, with every product's specs replaced by {} and review/popularity signals kept unequal. fit/style/heritage/durability are either absent or carry score_a/score_b None. Today they are emitted with numeric scores (inferred from the mapping; measure at RED). Build 3 already omits null dims (DimensionBars.silent_omission), so this is in-contract.\n\n**Mutations:**\n- A beard veto keyed only on 'beard oil' (killed by the 'BEARD SOFTENING OIL' param).\n- Null every dim (killed by the PIN that the real tomford fixture keeps its longevity/projection rows).\n\nThe fix will collide with tests/test_compose_delta_text_per_category.py and the lane1 per-category pins. Flag OFF must stay byte-identical (FY25)."
+  },
+  {
+   "title": "T14 (reviews with no source or count -> no 'users say' claim): hermetic orchestrator RED; GPT frequency is eval-only",
+   "severity": "medium",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/response_builder.py",
+     "line": "346-419",
+     "note": "scrub_verdict_prose covers value_context/best_for/specs_comparison/winner text for score internals only - no review-attribution check",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/CLAUDE.md",
+     "line": "615",
+     "note": "ENABLE_VERDICT_PROMPT_TRUTH (W4-11) changes the verdict prompt (no con about missing data, honest empty cons) - prompt-level, probabilistic; prod state unknown (S78 COMPARE_QUALITY_PLAN:75)",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/.claude/uploads/ae650c83-4d2a-4910-a8d4-a47ab213c8c3/d20a7872-MYEZ_QA_UX_Audit_2026-10-18.md",
+     "line": "76-78",
+     "note": "V04 'Owners consistently highlight...', V07 'Reviewers say...' on results without traceable reviews",
+     "basis": "measured"
+    }
+   ],
+   "detail": "**Layer:** orchestrator with _install leaves.\n\n**Fixture:** _reviews returns {'highlights':[],'summary':None}; _rating returns {'rating':None,'review_count':None,'rating_verified':False,'rating_source':None}; _gen returns product_0_pros ['Owners consistently highlight the long-lasting scent'], value_context.product_1 'Reviewers say it projects well', and an Arabic variant 'يقول المستخدمون إن...'.\n\n**RED (flag ON):** walk every string in the response body. None matches EN r'\\b(owners|reviewers|users|customers|buyers|shoppers)\\b[^.]{0,20}\\b(say|says|highlight|praise|report|love|note|agree)' or AR (يقول المستخدمون|المراجعون|آراء المستخدمين) when no product has review_count>0 with a rating_source. Today the strings ship verbatim (inferred from the scrub scope).\n\n**PIN:** with review_count 120 and rating_source {name,url}, the attribution text is kept (no over-scrub).\n\n**Mutations:**\n- Regex covers 'Reviewers say' only (killed by 'Owners consistently highlight').\n- Unconditional scrub (killed by the PIN).\n- EN-only regex (killed by the AR param).\n\nIf the scrub changes the GPT text path, the W4-11 digests are untouched (scrub is post-LLM). A prompt-side change instead requires regenerating w4_11_prompt_render_digests.json.\n\nNon-hermetic part: how often gpt-4o writes such claims. Measure with eval forbidden_facts phrases appended to new gold records (Ahmed ratifies)."
+  },
+  {
+   "title": "T15 (account at 0/3: renewal time stated, same logic on every screen): backend unit + client jest",
+   "severity": "low",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/usage_service.py",
+     "line": "712-760",
+     "note": "get_usage_status returns tier/used/limits/remaining - no reset timestamps for daily or monthly windows",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/components/PaywallBanner.tsx",
+     "line": "71",
+     "note": "banner always renders home.compare.paywall_banner_body = 'تتجدد المقارنات المجانية كل يوم وفي بداية كل شهر.' (ar.json:737)",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/screens/PaywallScreen.tsx",
+     "line": "103-125",
+     "note": "PaywallScreen picks resets_daily / resets_monthly / resets_unknown by state.kind - the two surfaces disagree",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/components/__tests__/PaywallBanner.test.tsx",
+     "line": "67, 215",
+     "note": "existing PIN on the fixed banner key - a fix must update it deliberately",
+     "basis": "measured"
+    }
+   ],
+   "detail": "**Layers:** backend unit plus client jest.\n\n**RED (backend):** with usage_service._get_redis_count, _get_user_tier_info and _get_active_referral_bonus patched (fixed clock via a monkeypatched datetime or freezegun if pinned), get_usage_status(...) contains 'resets' with ISO 'daily_at' / 'monthly_at' in the Bahrain timezone. Today the key is absent. The field is additive; build 3 ignores it.\n\n**RED (client):** render PaywallBanner with a usage/limit reason 'daily' and PaywallScreen with state.kind 'daily'. Both show the same reset key (resets_daily). Today the banner shows the combined daily+monthly sentence.\n\n**Mutations:**\n- Banner falls back to resets_unknown always (killed by the daily/monthly params).\n- Monthly reset computed as now+30d instead of the 1st of next month (killed by a fixed-clock row).\n\nThe client half needs an OTA or 1.0.1."
+  },
+  {
+   "title": "V01-V10 scenario map to hermetic fixtures, plus one extra RED found on V03 (empty 'why we chose' on the URL path)",
+   "severity": "medium",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/url_extraction_service.py",
+     "line": "681-686",
+     "note": "URL result 'recommendation': comparison.get('recommendation','')",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/extraction_service.py",
+     "line": "1028-1060",
+     "note": "COMPARISON_SYSTEM JSON schema has winner_reason/key_tradeoff/... and NO 'recommendation' key",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/components/results/ResultsContent.tsx",
+     "line": "181-186",
+     "note": "legacy (non-overview) results read result.recommendation for the verdict body -> V03's empty 'لماذا اخترنا هذا'",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/.claude/uploads/ae650c83-4d2a-4910-a8d4-a47ab213c8c3/096b52e4-image.png",
+     "line": "V03",
+     "note": "crowned 69.500 card, empty why-section, both images missing",
+     "basis": "measured"
+    }
+   ],
+   "detail": "**Map** (V to T-cases and hermetic fixture):\n- V01 (camera OSMIA vs AL IBDAA): T09 (camera lang), T07 (one image), T06/T04 (both prices pending with a crown). Fixture: vision stub with the two names; _install leaves with price None and KG image only for OSMIA.\n- V02: T02. FragranceX homepage x2.\n- V03 (URL, Sephora BH JPG pair): T07 (list-shaped JSON-LD image, inferred) plus the extra RED below.\n- V04: T01.\n- V05: T15.\n- V06: T13 RED 1, T06, T09.\n- V07: T05, T13 RED 2, T14, T09.\n- V08: no comparison was run, so nothing to assert. At most a client paste-flow test; not evidence-backed.\n- V09: T03, T10.\n- V10: T04, T08, T10, T11, T12.\n\n**Extra RED (MYEZ-017, V03), hermetic:** compare_from_urls with extraction_service.generate_comparison stubbed to the REAL schema ({'winner_index':0,'winner_reason':'Longer-lasting Elixir concentration','key_tradeoff':...}, no 'recommendation'). Assert result['recommendation'] is non-empty: equal to winner_reason, or a deterministic sentence. Today it is ''.\n\nThe additive fallback (recommendation = winner_reason when absent) stays in contract. Mutation: fall back only when the key exists (killed by the real-schema stub).\n\nExact replays need the tester's photos and URLs (V04, V09, V03) - see the open questions."
+  },
+  {
+   "title": "Existing pins and digests that each fix will collide with (budget them in the comm set)",
+   "severity": "medium",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_s75_fanout_identity.py",
+     "line": "1-17, 270-285",
+     "note": "FY25 flag-OFF compare digests (re-record only on deliberate byte change)",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_compose_delta_text_per_category.py",
+     "line": "31-44",
+     "note": "English caption pins (T09/T13)",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/w4_11_prompt_digest_recorder.py",
+     "line": "1-25",
+     "note": "prompt render digests; any verdict/url-extract prompt edit regenerates the fixture in the same PR (R13)",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_image_knowledge_graph_tier.py",
+     "line": "40-140",
+     "note": "KG tier behaviour pins (T01/T07 must keep them green)",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/components/__tests__/PaywallBanner.test.tsx",
+     "line": "67, 215",
+     "note": "fixed banner key pin (T15)",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/__tests__/components/RunnerUpWinsCard.arabicLabels.w414.test.tsx",
+     "line": "76-78",
+     "note": "delta_text passthrough PIN (client-side T09)",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_paid_route_metering.py",
+     "line": "502-660",
+     "note": "url/camera metering pins (T02/T03/T05/T10)",
+     "basis": "measured"
+    }
+   ],
+   "detail": "Per the session memory rules, every backend comm set must union the reference-grep set with:\n- the source-scanning pins (test_model_config.py, the AST pins, the prompt-fence digests: test_prompt_fence.py and test_prompt_truth.py);\n- FY25;\n- test_ci_gates.py (it re-derives the .pre_impl_failures count, which matters if the camera rows are pruned).\n\nClient units must run the FULL jest suite after any rebase: jest is blocking in CI, and the source-string suites such as ResultsScreen.guards and ResultsScreen.bundleE.s3 are the collision points."
+  },
+  {
+   "title": "Flag inventory for T01-T15: what exists, what is ON in production, what must be new",
+   "severity": "medium",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app",
+     "line": "grep ENABLE_[A-Z0-9_]+ over **/*.py",
+     "note": "139 distinct tokens (one is the prefix 'ENABLE_RSC_'), vs the 135 stated in the brief",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/CLAUDE.md",
+     "line": "521-530, 568",
+     "note": "ON in prod: ENABLE_COMPARE_AUTH_REQUIRED, ENABLE_PAID_ROUTE_METERING, ENABLE_CAMERA_FAILURE_ENVELOPE (2026-10-03); ENABLE_OFFLOOP_DNS_RESOLVE, ENABLE_PRICE_PARSE_OFFLOAD, ENABLE_PRICE_PATH_REDIS_OFFLOOP (2026-10-11)",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-14-session-78-state/COMPARE_QUALITY_PLAN_S78.md",
+     "line": "12, 40, 75",
+     "note": "ENABLE_PHASE2_RESIDUAL_GUARD and ENABLE_EARLY_SPECS_STASH ON; prod state of ENABLE_VERDICT_PROMPT_TRUTH and ENABLE_HONEST_PARTIAL_SCORING unknown",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-17-session-79-state/APP_REVIEW_AUDIT_S79.md",
+     "line": "309",
+     "note": "unverified prod state: ENABLE_SPECS_NO_FABRICATION, ENABLE_ARABIC_VERDICT_OUTPUT, ENABLE_COMPARISON_ID_ECHO, ENABLE_BH_GCC_CATALOG_SOURCES",
+     "basis": "measured"
+    }
+   ],
+   "detail": "Existing flags adjacent to each case (all read per call):\n- T02: ENABLE_NOT_A_PDP_FILTER (price path, redirect collapse only).\n- T04: ENABLE_HONEST_PARTIAL_SCORING (partials only), ENABLE_MISSING_DIM_RENORM, ENABLE_TIE_IS_NOT_MISSING (coupled per CLAUDE.md:612).\n- T06: ENABLE_MISSING_DIM_RENORM, ENABLE_VALUE_DIM_PARTIAL_SIGNAL, ENABLE_PRESCORING_SHOWABLE_GUARD.\n- T09: ENABLE_ARABIC_VERDICT_OUTPUT (GPT directive only).\n- T10: ENABLE_PAID_ROUTE_METERING and ENABLE_CAMERA_FAILURE_ENVELOPE (both ON), ENABLE_SEARCH_LOG_TRUTH.\n- T13: ENABLE_CATEGORY_TOKEN_FIX (tablet veto only).\n- T14: ENABLE_VERDICT_PROMPT_TRUTH, ENABLE_REVIEW_SOURCE_CONSULT.\n\nNo existing flag covers:\n- T01: vision confidence/category, image identity gate.\n- T03: unresolved URL product.\n- T05: identical identities.\n- T07: URL image normalization.\n- T09: deterministic template localization, lang on camera/URL.\n- T15: reset timestamps.\n\nThose need new dark flags (or an owner ruling for pure contract-restoring fixes such as the list-shaped image_url).\n\nEvery new-flag test file needs both states:\n- OFF: byte-identical to main, through FY25 and the existing pins;\n- ON: the RED rows.\n\nUse an autouse fixture that delenvs the unit flags, because conftest's load_dotenv(override=True) can inject them from a developer .env."
+  }
+ ],
+ "recommendations": [
+  "Write the backend RED files in the order of audit batch 1:\n- T04 + T10 (text) on the s75 _install harness;\n- T03 + T02 + the V03 recommendation row on _stub_url_leaves / fetch_page fakes;\n- T05 + T01-route on _stub_camera;\n- T01/T07 image-identity units next to tests/test_image_knowledge_graph_tier.py;\n- the T07 URL-image unit on spec_spine_d2;\n- T13 classifier/dims units;\n- T06/T14 orchestrator rows;\n- T09 template units plus the route lang row;\n- T15 usage unit.\nEach file follows the house rules:\n- RED rows fail by AssertionError (symbols via getattr / inspect.signature inside the body);\n- PIN rows guard against over-abstention;\n- an autouse UNIT_ENV delenv fixture;\n- the W4-3 _no_network teardown assertion;\n- pure ASCII and LF (Arabic regexes via \\u escapes).",
+  "Assert 'no winner' only through envelopes build 3 already renders:\n- text: 400 INSUFFICIENT_DATA;\n- camera: action 'error' or need_second_product, decided BEFORE compare_from_text. Under ENABLE_CAMERA_FAILURE_ENVELOPE (ON in production) an INSUFFICIENT_DATA becomes comparison_failed and shows the 'timeout' copy;\n- URL: a coded 400;\n- dimensions: null scores, which the client already omits.\nDo not rely on a new success:true status field until a client OTA ships the no-winner state.",
+  "Fix the three test_camera_vision baseline nodes first: SimpleNamespace usage, then a per-row prune of tests/.pre_impl_failures.txt with pass proof, then regenerate the mirror. Without that, new vision rows in that file die on the cached_tokens TypeError instead of the intended assertion.",
+  "For every backend unit, union the comm set with the FY25 identity file, test_compose_delta_text_per_category, test_image_knowledge_graph_tier, test_paid_route_metering, the prompt-fence/digest suites and test_ci_gates. Keep flag-OFF byte identity, and re-record FY25 or w4_11 digests only for a deliberate change explained in the PR.",
+  "Ship the client REDs now (they can merge), but plan for their fixes not reaching phones before approval: TwoInputShell URL hint, ProductImage loading and no-image states, a no-winner Results state, PaywallBanner reset copy, the Arabic fallback, and the onboarding cap. Record them as OTA-after-approval or 1.0.1 items.",
+  "Use mutation non-vacuity per T-case, applying the mutants listed in each finding to the GREEN bytes in a scratch worktree with sha-verified restore. At minimum, kill: the always-abstain mutant (by the PIN rows), the placeholder-exact-match mutant (T03), the regex-anchor mutant (T02), the brand-only identity mutant (T05), the line1-only localization mutant (T09), and the refund-after-raise mutant (T10).",
+  "Treat the eval harness as an owner-run, post-merge measurement, not RED evidence. Before using it, extend eval_runner with:\n- a lang param;\n- an 'abstain' expected outcome;\n- forbidden_facts phrases for 'reviewers say', 'owners consistently' and English templates under ar.\nAppended gold records need Ahmed's ratification. The smoke20 anchor 54b603e8-4eab-41c9-a34d-a5e391446559 doubles as the over-abstention guard (winner axis must not drop more than 2pp). Do not run it against production during App Review without the owner's yes.",
+  "Mark T11 (Google OAuth consent name) as an owner and device item. Mark the non-hermetic halves of T01 (vision on the real V04 photos), T07/T08 (CDN and load timing), T09 (GPT Arabic compliance) and T14 (GPT phrasing frequency) as live_unit, device or eval rows with explicit cost notes, rather than claiming them covered by unit tests."
+ ],
+ "open_questions": [
+  "What should the abstain code(s) be called, and how should they map at the routes? For example: NOT_PRODUCT_PAGE and UNRESOLVED_PRODUCT on the URL path, and an identity-ambiguous code on camera. Should all of them collapse to INSUFFICIENT_DATA for the build-3 client?",
+  "Camera abstain envelope: should a low-confidence or identical-identity camera result return action 'error' (vision_failed copy) or need_second_product? It must not use comparison_failed, which build 3 shows as 'timeout'.",
+  "Which category should beard oil and other men's grooming products resolve to (haircare, a new grooming class, or other)? This decides the T13 RED target.",
+  "Should a requested homepage URL be rejected before the credit reserve (no consume), or consumed and then refunded? And should the check extend ENABLE_NOT_A_PDP_FILTER or get a new flag?",
+  "Can the tester supply the raw V04 photos and the exact V03 (Sephora Bahrain) and V09 (Rasasi) URLs? Without them, those scenarios can only be approximated with synthetic fixtures.",
+  "What is the production state of ENABLE_VERDICT_PROMPT_TRUTH, ENABLE_HONEST_PARTIAL_SCORING, ENABLE_MISSING_DIM_RENORM, ENABLE_ARABIC_VERDICT_OUTPUT, ENABLE_SPECS_NO_FABRICATION and ENABLE_NOT_A_PDP_FILTER? None of the ledgers or CLAUDE.md flag rows record them as ON or OFF.",
+  "Can the list-shaped image_url normalization on the URL path ship unflagged? It restores the documented string-or-null contract, the same class as earlier pure-defect fixes. Or does the session rule require a dark flag?",
+  "For build-3 Arabic on camera and URL compares: should the server infer the output language from the stored profile or demographics language, since build 3 does not send lang on /image/identify or /url/compare?",
+  "What is the onboarding cap N for mandatory screens before the first compare (T12)? It is a product decision, needed before the jest RED can be written.",
+  "Does the owner approve running eval_runner smoke20 against production during App Review, given its cost (about 100 OpenAI calls and 200-300 Serper credits) and that it needs the admin key through railway run?"
+ ],
+ "sources": [
+  "C:/Users/SynAckITPC/.claude/uploads/ae650c83-4d2a-4910-a8d4-a47ab213c8c3/d20a7872-MYEZ_QA_UX_Audit_2026-10-18.md (sections 2, 4, 6, 8)",
+  "C:/Users/SynAckITPC/.claude/uploads/ae650c83-4d2a-4910-a8d4-a47ab213c8c3/{096b52e4,4179c270,7758232c,dd4b9146,69e9e3fb}-image.png",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/conftest.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/_env_safety.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/_netguard.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_camera_vision.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/.pre_impl_failures.txt",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/.network_attempt_baseline.txt",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_s75_fanout_identity.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_s78_all_timeout_cap_as_timeout.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_explicit_pair_integration_mocked.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_paid_route_metering.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_prescoring_showable_guard.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_m13_04_full_stream_deadline.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_image_knowledge_graph_tier.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_not_a_pdp_filter.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_arabic_verdict_output_w414.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/w4_11_prompt_digest_recorder.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/fixtures/{spec_spine_d2,not_a_pdp,lane1}/, w412_corpus_min.json, w4_11_prompt_render_digests.json, serper_oudwood_organic.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/openai_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/api/image_routes.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/api/url_routes.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/api/text_routes.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/url_extraction_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/structured_comparison_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/response_builder.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/scoring_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/image_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/extraction_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/price_service.py (classify_not_a_pdp, _jsonld_image_urls)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/usage_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/database_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/scripts/eval_runner.py, scripts/eval_gate.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/docs/runbooks/qaren-eval.md, docs/runbooks/qaren-gold-set.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/data/validation_gold_truth.json, data/eval_smoke_subset.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/.github/workflows/ci.yml",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/CLAUDE.md (Environment Variables rows 335-473, session blocks 521-568)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/jest.config.js, src/screens/ResultsScreen.tsx, src/screens/HomeScreen.tsx, src/components/results/ResultsContent.tsx, src/components/TwoInputShell.tsx, src/components/primitives/ProductImage.tsx, src/components/PaywallBanner.tsx, src/screens/PaywallScreen.tsx, src/services/errorCopy.ts, src/i18n/ar.json, __tests__/components/DimensionBars.*.test.tsx, __tests__/fixtures/v2_response_*.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-14-session-78-state/COMPARE_QUALITY_PLAN_S78.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-17-session-79-state/APP_REVIEW_AUDIT_S79.md, ledger.md, specs/RED_GATE_S78_F8.md, specs/B3A_RED_MUTANTS.txt",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/ledger.md",
+  "C:/Users/SynAckITPC/Documents/AI/_s80_qa_evidence/ (directory listing only)"
+ ]
+}
