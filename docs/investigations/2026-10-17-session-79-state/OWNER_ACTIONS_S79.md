@@ -39,3 +39,42 @@ Claude cannot do these: they are account-holder, device, credential or legal ste
 12. P.O. Box; the exact legal-name spelling on the membership; the PDPA Art. 14 notification; the business mailbox; Bahrain counsel points; the IP licence from the second team member.
 13. Version Copyright line "2026 Hussain Aseeri" vs the membership spelling.
 14. Housekeeping: rotate the keys in `../2026-10-11-session-77-state/OWNER_ACTIONS_S77.md` item 12; delete the production smoke-test accounts; ask web.archive.org to exclude the old legal pages.
+
+
+---
+
+# UPDATE 2026-10-17 06:50: the audit's ordered sequence supersedes sections A-D above
+
+Full report: `APP_REVIEW_AUDIT_S79.md` (verdict NEW_BUILD_RECOMMENDED: build 2's sign-in screens block screen recording). The build-3 units are in flight under the harness. Your steps, in order (from the report's section 6; items 2-3 can run today on build 2):
+
+1. Account Holder: accept the updated Apple Developer Program License Agreement at developer.apple.com/account; confirm the ASC banner is gone and nothing is pending under Business > Agreements.
+2. On the iPhone (latest iOS, build 1.0.0 (2) from TestFlight): start Screen Recording, open MYEZ, check whether "Welcome back." is black on the phone and in the clip, and whether the Email field still takes a tap. Report the result.
+3. Device gate on build 2 with your own account: tap Continue with Google, Continue with Apple, and Scan > Open camera > photograph two products > Compare. Also pick Arabic in a fresh questionnaire (account 2) and note whether the app reloads. Report each result; nothing is sent until all pass or build 3 covers the failures.
+4. Approve the build 1.0.0 (3) scope (section 3). After it reaches TestFlight, install it and repeat step 2: sign-in and Sign Up must be visible in the recording.
+5. Supabase: Authentication > Email > "Confirm email" must be OFF. Send one Forgot Password email to a test account and confirm the link reaches a working reset page or screen.
+6. Railway web variables, names only, in your own terminal (never pasted into chat): OPENAI_BASE_URL unset; FIRECRAWL_API_KEY + ENABLE_FIRECRAWL and SCRAPEDO_API_TOKEN + ENABLE_SCRAPEDO present; also whether ENABLE_COMPARISON_ID_ECHO is set.
+7. Create review accounts 1 and 2 as in DEMO_ACCOUNTS_SQL.md section 1; finish the questionnaire; log out. Run checks A and B (expect 2 rows, preferences_completed true), then the tier raise C. Log out, sign in once with exactly the stored account-1 values, confirm the Main tabs, log out.
+8. Decide D3 again in the light of guideline 5.1.2(i): keep OpenAI organisation data sharing ON (accept the risk) or turn it off (Claude then updates the description, policy, Terms and Notes).
+9. Decide the Copyright spelling (recommended: the membership spelling).
+10. Confirm, for reply item 6, that MYEZ has no content partnerships and that removal requests to support@getmyez.com will be honoured; decide whether the backend should stop using search-engine images (variant A) or keep them (variant B).
+11. If Apple token revocation is in scope: create a Sign in with Apple key (.p8) for com.qaren.app and store the key, key ID and team ID as Railway secrets.
+12. Approve the redesigned screenshot set after the section-7 changes; if you want the Arabic localization in this submission, take the Arabic captures (on build 3 if attached) and approve the Arabic listing texts after a truth check.
+13. Say "yes, fill App Store Connect": Claude pastes Notes v3, the description, keywords and screenshots and selects build (3); you tick Sign-in required and type account 1's credentials.
+14. Record the video on build 3 per RECORDING_SCRIPT_v2 (build number updated); trim; move it to the PC.
+15. Say "yes, send": Claude warms the review pair within 2 h; you attach the video; Reply v3 is sent; "Resubmit to App Review". Claude re-warms every 12-24 h until a decision.
+16. Before release (not blocking review): the written IP assignment or licence from the second team member; counsel on the Content Rights basis, complaint authorities and the under-18 guardian clause.
+
+---
+
+---
+
+# UPDATE 2026-10-18 05:05: the build-3 path, now that the units are on main
+
+The client half (B3-A) is merged (PR #358, main 7cc9a42c); the backend half (B3-B, PR #359) merges on green. Build 1.0.0 (3) is the FIRST client bytes with the fixes: no OTA goes out (UB-R4). The build number increments itself (`eas.json` production profile: `autoIncrement: true`, `appVersionSource: remote`), so nothing in the repo changes for the number.
+
+1. After #359 is merged: from a clean checkout of `main` in `SmartCompareApp/`, `npm ci` (or confirm `npm ls` is clean), then `eas build --platform ios --profile production`. Wait for TestFlight processing; install build (3) on the iPhone.
+2. Device gate on build (3), in this order: Screen Recording of Sign Up and Welcome back (must NOT be black); Continue with Google; Continue with Apple; Scan > photograph two products > Compare; a fresh questionnaire in Arabic (the app reloads and must land on step 3, not step 1); Profile > Delete account (must complete).
+3. Apple token revocation, BEFORE build (3) is submitted (CLAUDE.md "SESSION 79 flag (B3-B)" row; the PR #359 body has the same list): (a) create the Sign in with Apple key for `com.qaren.app` at developer.apple.com (keep the .p8 out of the repo and out of chat); (b) apply `migrations/044_apple_siwa_tokens.sql` in the Supabase SQL editor and run the postcheck (`relrowsecurity` true; `has_table_privilege` service_role INSERT and SELECT true, anon SELECT false); (c) set `APPLE_SIWA_TEAM_ID`, `APPLE_SIWA_KEY_ID`, `APPLE_SIWA_PRIVATE_KEY` (base64 of the .p8: PowerShell `[Convert]::ToBase64String([IO.File]::ReadAllBytes('AuthKey_<KEYID>.p8'))`), `APPLE_SIWA_CLIENT_ID` = `com.qaren.app` on Railway `web`, in your own terminal; (d) set `ENABLE_APPLE_TOKEN_REVOCATION=true`; (e) canary on build (3) with a test Apple ID: sign in with Apple, then delete the account; the Railway log must show `[SIWA] exchange status=200`, `[SIWA] stored`, `[SIWA] revoke attempt=1 status=200`, and Settings > Apple ID > Sign in with Apple must no longer list MYEZ.
+4. Then the existing steps 13-15 above: App Store Connect gets build (3) attached to version 1.0.0, Sign-in required ticked with account 1's credentials (you type them), the recording per RECORDING_SCRIPT_v2 on build (3), Reply v3 B sent with the video, Resubmit.
+
+Still yours, unchanged: the Program License Agreement (step 1), the review accounts (step 7), the Copyright spelling (9), item 6 confirmation (10), the Arabic captures if the Arabic listing ships in this submission (12). OpenAI data sharing: decided ON on 2026-10-17 (step 8 closed).
