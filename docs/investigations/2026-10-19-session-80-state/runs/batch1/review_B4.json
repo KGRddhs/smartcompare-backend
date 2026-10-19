@@ -1,0 +1,79 @@
+{
+ "unit": "B4 URL-MODE-V2 (ENABLE_URL_MODE_V2)",
+ "review_path": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-b4\\.qa-s80\\B4_SPEC_REVIEW.md",
+ "verdict": "APPROVE_WITH_CHANGES",
+ "refuted_claims": [
+  "RC1 (spec 1.4/2.2/L7/Q6/row limit 6): the shape ladder reaches every Product node and ItemList pages deliver as node-bearing. Measured: price_service._shape_ladder_product_nodes (:11085-11117) descends only lists, @graph and hasVariant; an ItemList block yields 0 nodes (probe D), so nodes_present is False and the page is judged by the title/LLM rungs; L7/Q6/limit 6 describe a mechanism the code lacks.",
+  "RC2 (spec 2.2): _host_only(u) = urlsplit(u).hostname or '' and normalize_url_for_same_check 'never raise'. Measured: urlsplit('http://[') raises ValueError; .port raises on ':99999' (probe G); the base _url_log_query (url_routes.py:93-98) already wraps this.",
+  "RC3 (spec 1.7 completeness; 2.2 step (a)): the guard list omits tests/test_retro_w0_4.py::test_w04c_no_async_def_reaches_a_soup_helper_inline (:798-809, EMPTY transitive allowlist :785, flag recogniser r'parse_offload_enabled$' :635, offload shapes :646-651); extract_json_ld/extract_meta_tags are transitive soup helpers (probe I), so a souping _is_challenge_page(text) or any direct call of them inside the async v2 extractor reddens a comm-set node that is green at base (b4rev-base).",
+  "RC4 (spec 7 gate 7 'CI-order set in both flag states'; 4.1 'no other pin changes'): test_retro_w2_1.py:597 and test_paid_route_metering.py:328 stub extract_from_url(url) one-arg; test_retro_w0_4_efg.py:908/:995 stub extract_with_ai(u, html, retailer); test_url_compare_category.py:112/:149 patch.object the same; with ENABLE_URL_MODE_V2=true the real compare_from_urls passes url_mode_v2=True -> TypeError -> codeless 400, so the ON run of those files cannot be green; none of them clears the new name (test_retro_w2_1.py:172-176 clears five), the local-.env hazard is unstated.",
+  "RC5 (spec 2.2(e) vs 9 L7 / 11 Q6 / row limit 6): (e) refuses on is_product_page is False with no nodes_present condition while L7/Q6 say a Product node suppresses UNRESOLVED; no RED row has nodes_present AND false, so the rule is unpinned either way.",
+  "RC6 (spec 2.2(e) null_name; R27 cases 2-3): a page with a usable <title> ('Rasasi Hawas Ice') is refused because the LLM returned no name, beyond R-A7 ('no Product node AND no usable title') and inconsistent with (f) and with the {'error': ...} case on the same page, which delivers with name == title.",
+  "RC7 (spec 9 L3 / row limit 3: the only pre-gate miss is /ar/search): measured with the base regexes plus the spec's three (probe B): /s (Amazon search) -> None, /uae-en/search/ (noon) -> None, /uae-en/, /uae-en, /eng/ (3-letter locale roots) -> None, /en/cart.html -> None; the two largest SUPPORTED_RETAILERS keep their search routes (and noon its root) out of the $0 pre-gate.",
+  "RC8 (R28 premise): on an empty <title></title> page page_title is None (probe C) and step (d) refuses with no_product_node before any LLM call, so the three LLM-answer variants are moot; the row should assert llm_calls == [] and reason no_product_node.",
+  "RC9 (R27 wording): the parametrisation text says {'error': 'boom'} -> null_name while the assertion column (and 2.2(f)) says success True with name == the title.",
+  "RC10 (P5 kills M3): only if the pair is a homepage pair; the row names the validator but not the pair.",
+  "RC11 (M11 killers): P36 replays the W4-13 url shapes whose details carry no field/reason and cannot see a passthrough; R32's OFF half is the only killer.",
+  "RC12 (spec 2.5(5) 'only OFF-state deltas'): four public signatures also gain defaulted kwargs (extract_from_url, compare_from_urls, extract_with_ai, normalize_product_data; base signatures probe H); non-wire, unrecorded.",
+  "RC13 (spec 7 comm set as complete): re-derived union at base = 86 files (modref 34 + source-scanning 44 + CLAUDE.md readers 2 + SmartCompareApp 25, minus hook files), a strict subset of the spec's 95; the one route-path file outside both, tests/test_rate_limiting_complete.py (/api/v1/url/detect :51-61), is the NETWORK_FLAKY_EXCLUDE hanger and its exclusion is silent, not stated.",
+  "RC15 (spec 2.4 vs R-A3 'refund with consumed_keys'): url_routes._reserve_comparison_credit discards consumed_keys (:85) and both refunds pass user_id only (:162, :176) -> the legacy previous-window fallback (usage_service.py:484-485); text_routes.py references consumed_keys nowhere either; R-A3's clause is met by no user-route exit today (pre-existing, shared)."
+ ],
+ "corrections": [
+  "C1: implement _is_challenge_page as a bounded regex over text[:65536] (no soup) or run it inside the offloaded parse job; compute nodes_present/site_names only inside extract_generic_data_v2; never call extract_json_ld/extract_meta_tags from an async def; the only accepted inline shape is `if _price_parse_offload_enabled(): await run_parse_offloaded(fn, ...) else: fn(...)`; add tests/test_retro_w0_4.py w04c (both nodes) to 1.7 and 4.2.",
+  "C2: wrap urlsplit and .port in try/except ValueError -> '' in _host_only and normalize_url_for_same_check (the _url_log_query shape); add 'http://[' and 'https://a.test:99999/x' rows to R30 and R34.",
+  "C3: one rule for (e), pinned: UNRESOLVED(not_product_page) only when is_product_page is False AND not nodes_present; null_name only when the title is unusable (else (f) keeps the title as name, as the {'error'} case does); add RED rows (node-bearing page + LLM false -> delivery; usable title + {'name': null} -> delivery with name == title); R27 cases 2-3 become delivery rows. If ruled the other way, delete L7/Q6/limit 6 and add the node-present + false -> refusal row. M21 must kill the chosen rule.",
+  "C4: add RED rows R40-R42 for _fetch_page_v2 mirroring tests/test_ssrf_redirect_hardening.py:55-90 through _TRANSPORT (blocked initial url -> blocked, zero requests; 302 to http://169.254.169.254/latest/meta-data/ -> blocked, internal target never requested, the base WARNING; 10-hop public loop -> redirect_cap after <= 6 requests) plus the route rows (400 STORE_UNREADABLE reason blocked/redirect_cap, refund once); add mutants M48 (per-hop validation removed) and M49 (hop bound removed).",
+  "C5: gate 7 runs the CI-order set flag OFF only; the ON run is the RED file alone (gate 5). Section 9: add the local-.env limit naming test_retro_w2_1.py:597, test_paid_route_metering.py:328, test_w4_13_measurement_truth.py:460, test_retro_w0_4_efg.py:908/:995, test_url_compare_category.py:112/:149, test_s71_u13_compare_auth_required.py:298-299. Optional E5: add ENABLE_URL_MODE_V2 to test_retro_w2_1.py:174-175 _clean_flags.",
+  "C6: L3 and row limit 3 name the measured misses (/s, /<xxx-xx>/search/, 3-letter locale roots, /en/cart.html); either give the pre-gate its own locale-prefixed search/cart regexes or keep the price_service pair and pin /s -> None and /uae-en/ -> None in R29 as current behaviour.",
+  "C7: rewrite L7, Q6 and row limit 6: the ladder never reaches ItemList members; an ItemList page has no node and is judged by the title/LLM rungs; delete 'ItemList pages deliver'.",
+  "C8: R28 asserts llm_calls == [] and reason no_product_node; drop or relabel the answer parametrisation.",
+  "C9: R27 fix the {'error': 'boom'} wording to its assertion column.",
+  "C10: P5 uses the R1 homepage pair with the validator False for url1; assert events == ['ssrf'] in both states and the SSRF body.",
+  "C11: M11 killer = R32 OFF half; P36 is the identity mirror only.",
+  "C12: 2.5(5) add the four defaulted-kwarg signatures (non-wire).",
+  "C13: section 7 states tests/test_rate_limiting_complete.py as deliberately excluded (route-path only, NETWORK_FLAKY_EXCLUDE); keep the 95.",
+  "C14: 1.3 cites the app-wide grep: 10 field/reason dict-key literals (response_builder.py:756,:1658,:1674,:1694,:1717,:1905; structured_comparison_service.py:1976,:5366; price_service.py:1938; auth_routes.py:726 details= kwarg), none an HTTPException detail; claim verified.",
+  "C15: fakes installed on url_routes.compare_from_urls (R16, P17, R38) and ues.extract_from_url (P15) must accept **kwargs (ON passes url_mode_v2=True).",
+  "C16: section 8 notes H0 (PR #363) edits CLAUDE.md concurrently; the B4 row is re-applied after the rebase onto the H0 merge.",
+  "C17: stated limit: amazon/noon branches never set _v2_product_node, so nodes_present is False there (a noon Product page the LLM calls false is refused; a 200 Amazon interstitial without productTitle is UNRESOLVED(no_product_node) at $0, the reason name approximate).",
+  "C18: R39 records the base fetch_page source sha 34dd74c618058409719313c2a859de0a69281c15c9c86d4faa3b41b42f7b8655 (inspect.getsource, CR stripped).",
+  "C19: make the 3xx boundary explicit: a 3xx with no next_request exits as http_3xx; a chain past five hops is redirect_cap (so M14/M49 are distinguishable).",
+  "C20: R19 inline pages carry no og:image and the fake LLM returns no image_url, so M17 is killed by the @graph / list-type / hasVariant rows."
+ ],
+ "blocking": [
+  "B1: _fetch_page_v2 is the only fetch on the flagged path and its per-hop SSRF validation and 5-hop bound are claimed VERBATIM but pinned by nothing (no RED row exercises blocked/redirect_cap, no mutant removes the hop check); a GREEN or an adversary mutant dropping the hop validation passes every section-5 row -- an SSRF regression under the flag (the base pins at test_ssrf_redirect_hardening.py:55-90 cover fetch_page only, which the flag bypasses). R-A13 requires rows R40-R42 + mutants M48/M49 (C4).",
+  "B2: the step (a) design (_is_challenge_page(text) in the async v2 extractor, outside the offloaded job) collides with tests/test_retro_w0_4.py::test_w04c_no_async_def_reaches_a_soup_helper_inline (:798-809, empty allowlist, in the comm set, green at base): as specified, GREEN is red on a comm file; fix the shape (regex title read or the offload shape) and list the guard (C1).",
+  "B3: the UNRESOLVED rule at 2.2(e) contradicts L7/Q6 (is_product_page false on a node-bearing page) and over-refuses relative to R-A7 (null_name on a usable title); R27 encodes the contested rule, so RED cannot be written until the orchestrator rules (C3, question 1)."
+ ],
+ "contract_risks": [
+  "The error-handler passthrough is GLOBAL while ON: every HTTPException with a structured detail is scanned for str field/reason; inert today (app-wide grep: 0 details carry them) but a future detail with those keys leaks them while the flag is ON; alternative: scope to the three B4 codes with the one builder kept.",
+  "image_url moves from list to str under ON on fragrancex-class pages: a deliberate RETYPE mandated by PLAN section 0 item 4 (absolute https raster URL or null); must be stated in the row (it is).",
+  "Build 3 verified: HomeScreen.tsx:591-596/:620-638 route both the 200 success:false body and the thrown 400/503 by CODE through friendlyErrorKey (errorCopy.ts:85-91): new 400 codes render home.errors.comparison (today's dialog), 503 TIMEOUT renders home.errors.timeout; no new shape reaches build 3.",
+  "KPI: pre-gate refusals write no search_logs row (SSRF-400 class, L12) so admin error stats under-count link refusals; V09-class 200s become 400s; 503 TIMEOUT rows raise the 5xx rate.",
+  "R-A3 'with consumed_keys' is not met by this unit nor by any user-route exit today: refunds use the legacy previous-window fallback (usage_service.py:484-485); pre-existing, shared with text_routes.",
+  "price.amount can be a str on delivery (the fragrancex fixture's JSON-LD offers.price is '19.99', probe C) in both flag states; pre-existing, B12's chokepoint; do not pin R21's amount as a number.",
+  "The $0 pre-gate is narrower than R-A7's 'search' for amazon.* (/s) and noon.com (/<locale>/search/, /<locale>/ root): those refusals happen post-fetch with a refund, noon's after one paid mini call.",
+  "Unflagged host-only INFO lines change production log text (URL comparison request, Detected retailer, URL extraction request); no test pins the old text (0 hits), R-A1(b) allows it.",
+  "The 25 s deadline cancels compare_from_urls mid-flight: an offloaded parse completes orphaned on the bounded pool; a cancelled guarded_llm_create never trips the OpenAI breaker (R-BREAKER); client bound 35 s (api.ts:48) stays above."
+ ],
+ "pin_collisions": [
+  "No collision with the FY25 digests (tests/test_s75_fanout_identity.py: 0 references to url_routes/url_extraction_service/compare_from_urls), T23 (no route parameter or body field; the handler change is outside OpenAPI; fixture s71_u13_flag_off_baseline.json untouched), the W4-11 digests (E2 + P25; fixture keys url_extract_user/url_extract_kwargs present and untouched), the W4-13 ledger fixture rows url.few/llm/raise/ssrf (:1046-1093; P36) or the copy-policy fences (backend constants only).",
+  "DESIGN collision (not a pin edit): tests/test_retro_w0_4.py::test_w04c_no_async_def_reaches_a_soup_helper_inline and ::test_w04c_no_async_def_parses_inline_outside_an_offload_call (green at base in b4rev-base) must stay green and unedited; the spec's step (a) as written reddens the first.",
+  "Local-.env class (unstated in 4.1/9): tests/test_retro_w2_1.py:597, test_paid_route_metering.py:328, test_w4_13_measurement_truth.py:460, test_retro_w0_4_efg.py:908/:995, test_url_compare_category.py:112/:149, test_s71_u13_compare_auth_required.py:298-299 stub the widened functions with base signatures; none clears ENABLE_URL_MODE_V2 (test_retro_w2_1.py:172-176 clears five names); optional E5 on that clear-list.",
+  "tests/test_rate_limiting_complete.py hits /api/v1/url/detect without naming the module and is outside the spec's 95 and my 86; excluded by the house rule (NETWORK_FLAKY_EXCLUDE) -- state it explicitly."
+ ],
+ "pyt_lines": [
+  "[pyt] tag=b4rev-base start=2026-10-20 00:07:03 end=2026-10-20 00:07:10 elapsed=8s bound=600s status=OK rc=0 (tests/test_retro_w2_1.py tests/test_url_compare_category.py tests/test_prompt_fence.py + the two test_retro_w0_4.py w04c nodes: 183 passed, 11 warnings in 6.79s; [hermeticity] sentinel checked 183 test(s); [netguard] blocked 0 attempt(s) from 0 node(s); log <scratchpad>/B4-review/base_three_plus_guard.log)"
+ ],
+ "questions_for_orchestrator": [
+  "Q1: Rule for 2.2(e): does a Product node suppress the LLM's is_product_page: false (L7/Q6), and does a usable title keep the page when the LLM returns no name (R-A7's letter)? Recommended: both yes (C3).",
+  "Q2: Scope of the error-handler passthrough: the global two-key passthrough as specified, or scoped to the three B4 codes / a JSONResponse from the route (spec Q1)? Recommended: scoped to the three codes, one builder kept.",
+  "Q3: R-A3 'with consumed_keys': should B4 thread consumed_keys from _reserve_comparison_credit into the two URL refunds under the flag, or is the legacy previous-window fallback accepted for this unit (the text path does the same)?",
+  "Q4: Pre-gate regexes: own locale-prefixed search/cart regexes for the URL path, or reuse the price_service pair and state the amazon /s and noon locale misses (C6)? (A /s rule needs the query, which R-A7's path-only rule forbids.)",
+  "Q5: Gate 7: confirm the CI-order set runs flag OFF only, and whether E5 (ENABLE_URL_MODE_V2 into test_retro_w2_1.py:174-175 _clean_flags) is wanted.",
+  "Q6: Confirm the _fetch_page_v2 SSRF rows R40-R42 and mutants M48/M49 are mandatory for the RED gate (B1).",
+  "Q7: Spec Q4 (the /extract INFO line host-only, unflagged): confirm under R-A1(b).",
+  "Q8: CLAUDE.md row: B4 rebases onto the H0 merge (PR #363) before the section-8 row is applied; confirm the order.",
+  "Q9: Spec Q8 (the details list kept on the coded <2 products dict, dropped by the route): confirm keep."
+ ]
+}

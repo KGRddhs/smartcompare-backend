@@ -1,0 +1,82 @@
+{
+ "unit": "B3 VISION-IDENTITY-V2 (ENABLE_VISION_IDENTITY_V2); spec sha256 dc734bc7c5a28949378963a4d52428e7197a61e3a0944bff95e03d1c3046ed3b re-hashed; base 81df2b641454e0301cca51a3ba01bf8ef3d7e649; worktree sc-s80-b3 read-only, git status clean before and after",
+ "review_path": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-b3\\.qa-s80\\B3_SPEC_REVIEW.md",
+ "verdict": "APPROVE_WITH_CHANGES",
+ "refuted_claims": [
+  "F1 (minor): spec 1.1 says the prompt's two em dashes sit at openai_service.py:147 and :162; measured :147 and :148 (:162 is the closing ]\"\"\"; the :181 em dash is a code comment outside the prompt).",
+  "F2 (blocking): PIN P8 ('no product name in caplog records of app.api.image_routes') is RED on the GREEN bytes for R7b/R18/R19/R20: the BASE line image_routes.py:408-409 logger.info(f\"[IMAGE] Identified {len(products)} product(s): {product_names}\") logs every brand/name at INFO on logger app.api.image_routes (:62).",
+  "F3 (blocking): RED R9 (COERCE) lists three items but two confidence outcomes and gives no image_index/IMG count; identify_products keeps ONE candidate per image_index (step 8), so three candidates on one index collapse to one and the per-item assertions are unsatisfiable as written.",
+  "F4 (blocking): spec 2.6/8.1/9.8 say the flag adds 'one get_user_preferences round trip (~0.3 s)'; forwarding user_id also arms structured_comparison_service.py:4308-4311 (_fetch_behavior_profile + get_user_demographics, two more Supabase reads) and :4663-4665 (_update_behavior_profile, a fire-and-forget WRITE per delivered camera compare), and personalises the verdict prompt (cohort context) and scoring weights (scoring_method may read behavioral/cohort).",
+  "F5 (blocking, docs truth): the TypeError that fails the three camera_vision nodes is at openai_service.py:81 (`if cached_tokens > 0:`); PLAN section 2, the ledger and the H0 unit write ':83' into CLAUDE.md:502; the spec's 3.9/Q7 re-application does not say the sentence must carry :81.",
+  "F6 (minor): spec 6 labels the flag-gated wire strip an 'equivalent survivor' while stating R17 arm (b) kills it; it is a design-choice pin (Q6), not a survivor.",
+  "F7 (note, not a spec defect): R0-6's clear-list anchors (:103-106, :50-56, :72-83) are approximations; the spec's measured anchors (test_model_config_enforced.py:103-105 inside the autouse :98-107; test_prompt_fence.py _W411_FLAGS :46-52 deleted at :119; test_s71_u13 CLEAN_ENV :76-83; w4_11 recorder FLAGS :41-45 popped at :93) are correct."
+ ],
+ "corrections": [
+  "C1 (blocking) P8: scope the log-hygiene assertion to records starting with [VISION_V2] or [IMAGE] preferences, or explicitly exclude the base [IMAGE] Identified / [IMAGE] Auto-comparing lines; keep the no-ERROR half.",
+  "C2 (blocking) R9: define all three COERCE items with distinct image_index 0/1/2 and IMG(3) (or assert on _normalize_vision_products_v2 directly); state the three confidence outcomes (\"HIGH \"->high, \"certain\"->low, missing->low).",
+  "C3 (blocking) 2.6/8.1/9.8: state the full personalisation a signed-in scan gets under ON (get_user_preferences + _fetch_behavior_profile + get_user_demographics reads, the _update_behavior_profile write, cohort context in the verdict prompt, personalized/behavioral/cohort scoring_method); add the camera scoring_method mix and the behavior_profile_update WARNING count to the canary.",
+  "C4 (blocking) 3.9: the re-applied CLAUDE.md:502 sentence carries openai_service.py:81; GREEN corrects H0's :83 in place after rebasing onto #363; tell the H0 lane now.",
+  "C5: 1.1 em dashes at :147 and :148.",
+  "C6: delete/relabel the 'equivalent survivors expected' paragraph in section 6 as the Q6 design pin.",
+  "C7: add RED R8b for step 6 (a bare array with non-dict items -> dropped and counted dropped_non_dict=N; base raises AttributeError at :217) so the 'V1 p.get on a non-dict' mutant is killed.",
+  "C8: pin step 7's string hygiene (product_type/size_or_count/visible_price stripped, '' -> None; distinguishing_features cut at 80 chars, max 8, non-str dropped) in the corrected R9; add the two mutants.",
+  "C9: UNIT_ENV gains ENABLE_COMPARE_AUTH_REQUIRED (prod ON; U13 CLEAN_ENV precedent; a developer env carrying it 401s every route row) and ENABLE_SYNC_DB_OFFLOAD.",
+  "C10: P1/P2 FULL_CONFIG sets OPENAI_MODEL_VISION=gpt-4o-mini explicitly instead of deleting it, so the OFF identity runs with both unit knobs present (B1 rule).",
+  "C11: R21 asserts ', '.join(keys)+'\\n' in extraction_service._CLASSIFY_CATEGORY_LLM_PROMPT and set(keys)==_CANONICAL_CATEGORIES instead of parsing the source lines :1357-1358.",
+  "C12: R15 same-line pin is a formatter trap; 3.2 must say GREEN does not reflow the two twin lines.",
+  "C13: 4.2 gains the source-reading tests already in the 213-file set: test_backend_cleanup::test_unused_imports_cleaned (import os allowed only with os.<attr> used -- os.getenv satisfies it), test_m18_openai_tpm_sizing (importlib.reload of openai_service; V2 constants are import-safe, the canonicalize_category import must stay lazy), test_legal_docs_u8:913 (T7 host scan, no new host), test_logger_no_query_leak::test_image_routes_hashlib_imported_and_hash_format_used (the query_hash line at :445-446 stays), test_prompt_fence::test_openai_service_imports_the_sanitizer.",
+  "C14: 2.9 failure table gains the 'non-dict list item -> dropped and counted' row.",
+  "C15: Q1 recommendation measured: errorCopy.ts:16 maps LLM_UNAVAILABLE to the outage copy + back button, :85-87 keeps TIMEOUT on the tap-to-retry path that re-sends photos and re-spends a credit; the default (LLM_UNAVAILABLE) is correct."
+ ],
+ "blocking": [
+  "P8 as written is RED at GREEN for a base reason (image_routes.py:409 logs product names) -- C1.",
+  "R9 is unsatisfiable as written (three candidates, one image_index, two listed confidences) -- C2.",
+  "The flag's side effects for a signed-in scan are under-stated (three Supabase reads + one behaviour-profile write + personalised verdict and scores, not one read); R-A13 requires the stated limits and the CLAUDE.md row to be true before the gate -- C3.",
+  "CLAUDE.md:502 must say openai_service.py:81; H0 (#363) and PLAN section 2 carry :83 -- C4."
+ ],
+ "contract_risks": [
+  "K1: the strict json_schema's category uses type [string,null] with enum [...nine, null]; an enum containing null is outside OpenAI's documented strict subset (unmeasured offline). If rejected, every ON call is a BadRequestError -> today's 500 until rollback. Safer: anyOf [{type string, enum nine}, {type null}]; make the owner's step-1 structured-output smoke test a HARD flip precondition.",
+  "K2: a 1-based image_index reply on build 3's two-photo request keeps index 1 and DROPS index 2 -> exactly one product -> need_second_product on EVERY scan (a camera outage under the flag until rollback, refunded but unusable); limit 2 understates it. Alternative: keep out-of-range candidates unpaired (_image_index None) so a numbering slip degrades to V1 pairing.",
+  "K3: V2's no-invention rule raises the 'Unknown'/'Unknown Product' placeholder share vs V1; with V2 ON and ENABLE_RESULT_GATE OFF (R-A2 flips it sixth) those placeholders reach compare_from_text (MYEZ-002-class crowns or INSUFFICIENT_DATA -> the ON camera envelope). Add unknown_brand/unknown_name ints to the [VISION_V2] line and the canary; decide whether the V2 flip waits for B2.",
+  "K4: limit 3 (one photo with two products -> need_second_product) is a regression for any one-image API caller; Q2's keep-two-when-one-image alternative removes it cheaply.",
+  "K5: under ON the confidence VALUE default moves medium -> low in metadata.identified_products / need_second_product products (keys and types unchanged; build 3 does not render it) -- the one client-visible value change, flagged.",
+  "K6: wait_for cancels only our coroutine (OpenAI may still bill; SDK retries sit inside the one bound); the breaker records nothing on the cancellation (verified api_budget_service.py:995-1011) -- stated, fine.",
+  "K7 (R-A3 PASS): the new abstains reuse exits 1 and 2 (both refunds latched, no lifetime bump, no history row, no log_search row in either W4-13 state); the W4-13 ledger fixture carries identified_products by value so the public_vision_products copy is byte-identical.",
+  "K8: cache keys are not touched by this unit (the vision call is uncached; the orchestrator keys read search_query/full_name exactly as before).",
+  "K9 (envelope PASS): both new refusals are decided before compare_from_text, so neither becomes comparison_failed; the BadRequestError 500 lands on exit 1, which build 3 renders as the outage copy (#258), no retry loop."
+ ],
+ "pin_collisions": [
+  "T23 OpenAPI (test_s71_u13_compare_auth_required::test_T23_openapi_unchanged + fixture): no route parameter/body/dependency change -> no collision; the flag joins CLEAN_ENV :76-83 (E5) correctly.",
+  "FY25 (test_s75_fanout_identity::test_FY25_flag_off_compare_identity_matches_main): digests RESPONSES, never passes vision_products -> the twins' splat cannot move a digest; no collision.",
+  "w4_11 digests (fixture + recorder) and test_prompt_fence: neither mentions identify_products or vision (grep empty); fixture not regenerated; the flag joins FLAGS :41-45 and _W411_FLAGS :46-52; no collision.",
+  "test_retro_w2_1 URL pins untouched; its camera body pins :484-560 assert EQUALITY against _vision(2)['products'] ({brand Bi, name Ni}), preserved by the copy; no collision.",
+  "W4-13 flag-OFF ledger fixture: identified_products by value -> identical; no collision.",
+  "Copy-policy fences: no user-facing copy change (the two exit copies are base literals; the V2 prompt is not user-facing); no collision.",
+  "M1 AST pin: forbids only temperature=/max_tokens= keywords, response_format= allowed, site count 15 -> 16 within the >= 15 floor; tier-3 chokepoint pin and test_u3c_store_false_pin (no store/extra_body at the site, chokepoint only) hold; test_model_config stray-literal regex sees no gpt- literal in the V2 prompt/schema; Sentry R8 scans ERROR levels only; no collisions.",
+  "Source-reading tests missing from 4.2 (all green at base, all already in the 213-file set, none collides): test_backend_cleanup::test_unused_imports_cleaned (import os requires os.<attr> use -- satisfied by os.getenv), test_m18_openai_tpm_sizing (reload-safe), test_legal_docs_u8:913 (T7 host scan), test_logger_no_query_leak::test_image_routes_hashlib_imported_and_hash_format_used, test_prompt_fence::test_openai_service_imports_the_sanitizer.",
+  "Comm set re-derived: 204 module-reference files, 213-file union, sha256 3a927dfae67a2165def77be29d518f8db0d37e8c6757336a4969432e195e7abe matches comm_base.txt; symbol-only importers and patch-string references all name a module in the regex; the 16 SmartCompareApp-scanning files outside the union are optional (no client file or key-set change)."
+ ],
+ "pyt_lines": [
+  "(none run by this review: read-only re-measurement plus three in-process -I probes in the pinned venv; the spec's three base lines were read from <scratchpad>/B3/ logs:)",
+  "[pyt] tag=b3-base-camera-vision start=2026-10-19 23:27:33 end=2026-10-19 23:27:39 elapsed=5s bound=600s status=FAIL rc=1  (3 failed = the three pre_impl rows, 22 passed, 1 deselected)",
+  "[pyt] tag=b3-base-model-config-enforced start=2026-10-19 23:27:39 end=2026-10-19 23:27:51 elapsed=12s bound=600s status=OK rc=0  (27 passed)",
+  "[pyt] tag=b3-base-paid-route-metering start=2026-10-19 23:30:53 end=2026-10-19 23:31:04 elapsed=11s bound=600s status=OK rc=0  (21 passed; netguard blocked 2 pre-existing sentinel attempts)"
+ ],
+ "questions_for_orchestrator": [
+  "1. (Q1, recommend default) Vision expiry -> coded 503 LLM_UNAVAILABLE, never TIMEOUT (errorCopy.ts:16 vs :85-87: TIMEOUT re-sends photos and re-spends a credit on build 3, the PLAN 0.2 harm). Confirm.",
+  "2. (Q2, recommend the alternative) One image carrying two candidates: keep the best two when n_images == 1, or the literal one-per-index rule (a regression for one-image API callers)?",
+  "3. (K2, new) Out-of-range image_index candidates: DROP (a camera outage on a 1-based reply) or KEEP unpaired with _image_index None (degrades to V1 pairing)? Decides the canary counter name too.",
+  "4. (K1, new) category schema: enum containing null (spec) or anyOf [typed enum, null] (documented strict subset)? Is the owner's step-1 structured-output smoke test a HARD flip precondition?",
+  "5. (K3, new) Does the V2 flip stay second in R-A2 (before RESULT_GATE) given V2 can raise the Unknown-Product share, or does B1's result_status canary run one window first? Add unknown_brand/unknown_name ints to the [VISION_V2] line?",
+  "6. (Q3) is_product false candidates: drop (safer during review; a carried non-product would surface as 'Identified: Unknown violin' in build 3's need_second_product message) or carry with _is_product False?",
+  "7. (Q4) _VISION_V2_MAX_TOKENS = 1000: accept.",
+  "8. (Q5) Presence-gating of the twins on _is_product with no second flag read: accept (P4/P5 pin it; a mid-request flip cannot split a request).",
+  "9. (Q6) public_vision_products unconditional: accept (byte-identical OFF; R17 arm (b) is the design pin, not a survivor).",
+  "10. (Q7) GREEN rebases onto main after #363 and re-applies CLAUDE.md:501-502 with :81; tell the H0 lane now that :83 is wrong?",
+  "11. (Q8) _vision_image_index on the identity dicts: YES if question 3 rules keep-unpaired (B2 needs the slot), else the four fields suffice.",
+  "12. (Q9) Accept the spec's .pre_impl_failures.txt header wording and the verbatim [pyt] line in the PR body.",
+  "13. (Q10) The per-call [VISION_V2] counts INFO line stays until B1's telemetry lands: accept.",
+  "14. (C3) Confirm the camera path's new behaviour-profile WRITE and the two orchestrator reads under the flag are wanted (R0-4 'same personalisation as text'); if not, forward user_preferences only and drop user_id.",
+  "15. (C9) Add ENABLE_COMPARE_AUTH_REQUIRED (and ENABLE_SYNC_DB_OFFLOAD) to UNIT_ENV: accept."
+ ]
+}
