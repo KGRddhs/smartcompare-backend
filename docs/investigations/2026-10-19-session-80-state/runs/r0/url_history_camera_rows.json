@@ -1,0 +1,189 @@
+{
+ "topic": "Persistence of URL and camera compares (MYEZ-027 scope for B1 result_status stamping), measured at sc-s80-base HEAD 683f56c0",
+ "answers": [
+  {
+   "question": "(1) Is a URL compare NEVER persisted because the envelope lacks metadata.query?",
+   "answer": "CONFIRMED. url_routes.py:199-206 fires save_comparison_and_track_cohort(full_response=result, query=f\"{url1} vs {url2}\", input_type=\"url\") only under `paid_route_metering_enabled() and user_id` (metering ON in prod since 2026-10-03 14:23, CLAUDE.md:689); the route's `query` kwarg becomes the row's `query` column (database_service.py:462), never full_response.metadata.query. The composition (feedback_service.py:157-163) calls persist_comparison (:72-78) -> save_comparison with `_without_verdict_critique(full_response)`, which returns the SAME object when there is no metadata dict (:45-47) - no branch adds metadata. save_comparison (database_service.py:431-447) refuses when `_validate_renderable` is False; `_validate_renderable` (:303-321) finds the two top-level `products` with names (the URL envelope has them) and then requires `payload.get(\"metadata\", {}).get(\"query\")` truthy (:320-321). compare_from_urls' success envelope (url_extraction_service.py:681-690) has exactly: success, products, comparison, winner_index, recommendation, key_differences, category_used, source_urls - no `metadata` key; the only `metadata` string in the whole file is a comment about the 169.254.169.254 cloud-metadata address (:103); build_comparison_response is never called from url_extraction_service (its three call sites are scs:3783, :4571, :5411). Result: save_comparison logs `skipping unrenderable payload ... comparison_renderable=false`, sets the Sentry tag and returns None (:432-447); persist_comparison returns None; track_after_persist returns at once on a falsy id (:109-110), so no savings-cache bust, no `comparison_completed` event, no critique row and no Loop 2 for Link compares. What DOES happen on a delivered URL compare: the lifetime RPC (url_routes.py:207-211) and, under ENABLE_SEARCH_LOG_TRUTH, the search_logs success row (:214-218). The repo already states this: admin_routes.py:134-136 `excludes Link-mode compares (never persisted today, issue #340)`; commit c057f64d's message says the same. Before metering was ON the URL route never even called the composition (the whole block is behind the flag), so URL rows have NEVER existed in either flag state.",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/api/url_routes.py",
+     "line": "199-211",
+     "note": "save_comparison_and_track_cohort(input_type=\"url\") fire-and-forget under `paid_route_metering_enabled() and user_id`; record_lifetime_comparison under usage_consumed",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/feedback_service.py",
+     "line": "45-54, 72-78, 109-110, 157-163",
+     "note": "_without_verdict_critique returns the same object without a metadata dict; persist_comparison -> save_comparison; track_after_persist returns on falsy id; composition = persist + track",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/database_service.py",
+     "line": "303-321",
+     "note": "_validate_renderable: >=2 named products from overview.products or products, then `bool(payload.get(\"metadata\", {}).get(\"query\"))`",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/database_service.py",
+     "line": "431-447, 460-470",
+     "note": "save_comparison refuses unrenderable payloads (warning + Sentry tag comparison_renderable=false, return None); the record columns full_response, query, input_type, product_names, schema_version=2, user_id",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/url_extraction_service.py",
+     "line": "681-690",
+     "note": "compare_from_urls success envelope: success, products, comparison, winner_index, recommendation, key_differences, category_used, source_urls; no metadata key (grep: only :103 comment mentions metadata)",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/api/admin_routes.py",
+     "line": "133-138",
+     "note": "OPENAI_COST_NOTE: 'excludes Link-mode compares (never persisted today, issue #340)'",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/CLAUDE.md",
+     "line": "689",
+     "note": "ENABLE_PAID_ROUTE_METERING ON in prod since 2026-10-03 14:23",
+     "basis": "measured"
+    }
+   ]
+  },
+  {
+   "question": "(2) test_url_compare_saves_history_with_input_type_url: spy call or inserted row?",
+   "answer": "SPY CALL. tests/test_paid_route_metering.py:625-645 asserts `history == [\"url\"]` and status 200; `history` is filled by the `_save(**kw)` stub at :371-381, which `_stub_url_leaves` monkeypatches onto BOTH `feedback_service.save_comparison_and_track_cohort` and `url_routes.save_comparison_and_track_cohort` (raising=False) and which appends `kw.get(\"input_type\")` and returns a coroutine resolving None. save_comparison and _validate_renderable are never executed by this node, so it proves only that the route CALLS the composition with input_type='url', not that a `comparisons` row is inserted. tests/.network_attempt_baseline.txt:93 lists the node with class `sentinel` (it attempted the network with *.invalid / neutralized placeholders; not egress). Further, tests/test_comparison_id_echo.py:617-632 (`test_composition_skips_every_follow_up_when_the_insert_returns_no_id`) uses input_type=\"url\" as its example of 'save_comparison returns None for an unrenderable payload' and pins that every follow-up is skipped - the suite encodes URL non-persistence as the expected gate, not as a defect. tests/test_w4_13_measurement_truth.py:1260-1269 and :1305 assert search_logs rows for url (log_search kwargs), not comparisons rows. eval_regression's 'Today: history [url]' therefore records the spy, as CRITIC.md:33 says.",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_paid_route_metering.py",
+     "line": "625-645",
+     "note": "assert history == [\"url\"] then resp.status_code == 200; docstring 'Mirror the text path: fire-and-forget save_comparison_and_track_cohort(input_type=url)'",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_paid_route_metering.py",
+     "line": "326-327, 371-381",
+     "note": "_stub_url_leaves(history=...) installs _save(**kw) spy appending kw['input_type'] on feedback_service and url_routes; returns coroutine -> None",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/.network_attempt_baseline.txt",
+     "line": "93",
+     "note": "tests/test_paid_route_metering.py::test_url_compare_saves_history_with_input_type_url sentinel",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_comparison_id_echo.py",
+     "line": "617-632",
+     "note": "Insert(None) with input_type='url' -> follow_ups.names == []; docstring: save_comparison returns None for an unrenderable payload",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_w4_13_measurement_truth.py",
+     "line": "1260-1269, 1305",
+     "note": "url assertions are on log_search kwargs (input_type 'url', success), i.e. search_logs rows",
+     "basis": "measured"
+    }
+   ]
+  },
+  {
+   "question": "(3) Where is metadata.query set for text and camera bodies, and are camera successes saved under metering, through which call?",
+   "answer": "metadata.query is set in ONE place: response_builder.py:2060-2061, the `\"metadata\": {\"query\": query, ...}` block of build_comparison_response (def :1451, `query: str = \"\"` param :1463; the same value is also top-level `result[\"query\"]` at :1894). Every text and camera body passes through it: REST full response scs:4571/:4581 (`query=query` in _compare_from_text_impl), stream complete_response scs:5411/:5421, and the hard-cap PARTIAL via _build_partial_response scs:3783/:3792 (`query=ctx.get(\"query\", \"\")`, ctx seeded with the request query at scs:4166 REST and :4922 stream; partial stamped `\"partial\": True` at :3812/:4781/:5008). Camera: image_routes.py:442 synthesizes `query = f\"{p1['brand']} {p1['name']} vs {p2['brand']} {p2['name']}\"` and :450 calls `service.compare_from_text(query, region=region, vision_products=products, nocache=nocache)`, so a successful camera body carries that non-empty metadata.query; :482-494 then adds input_method='camera', vision_cost, total_cost, identified_products into the existing metadata dict (the else-branch at :490-494 creates a metadata dict WITHOUT query, reached only for bodies lacking metadata = failure envelopes). Camera save: image_routes.py:553-560 `if user_id: fire_and_forget(save_comparison_and_track_cohort(full_response=result, query=query, input_type=\"camera\", user_id=user_id), label=\"save_comparison.camera\")` on the delivery exit - this save is NOT gated by paid_route_metering_enabled() (contrast url_routes.py:199). Metering only shapes the unsuccessful branch: `unsuccessful_not_billed = comparison_unsuccessful and paid_route_metering_enabled()` (:467-469) -> :503-534 refunds, writes the failure log and RETURNS before the save, so under metering ON (prod) an unsuccessful camera compare writes no row; lifetime bump :565-569 only when usage_consumed; anon device metering :572-573. One-product (`need_second_product`, :430-437) and anonymous callers (:553 `if user_id`) write no row. With metering OFF an unsuccessful body would still reach save_comparison (:575-578 comment) but the failure envelopes (scs:3950-3957 _llm_unavailable_envelope; TIMEOUT/INSUFFICIENT_DATA bodies at :4072-4087) carry no products/metadata.query, so _validate_renderable refuses them (inferred from the envelope shapes). Text: text_routes.py:717-760 `if user_id:` -> awaited `_persist_comparison_bounded(input_type=\"text\")` (:734-737) under ENABLE_COMPARISON_ID_ECHO, else fire-and-forget `save_comparison_and_track_cohort(input_type=\"text\")` (:755-759). The history list reads schema_version=2 rows only (database_service.py:493-499) and returns `input_type` (history_routes.py:120); HistoryScreen.tsx:53 types input_type but never branches on it.",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/response_builder.py",
+     "line": "1451, 1463, 1894, 2060-2061",
+     "note": "build_comparison_response(query=...) -> result['query'] and result['metadata']['query']",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/structured_comparison_service.py",
+     "line": "3783-3792, 4166, 4571-4581, 4922, 5411-5421",
+     "note": "the three build_comparison_response call sites (partial, REST full, stream complete) all pass query; partial ctx seeded with query at 4166 (REST) / 4922 (stream); partial True at 3812/4781/5008",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/api/image_routes.py",
+     "line": "442, 450, 467-469, 482-494, 503-534, 553-569",
+     "note": "camera query string; compare_from_text(vision_products=...); unsuccessful_not_billed returns before the save; save_comparison_and_track_cohort(input_type='camera') under `if user_id`, not under the metering flag; lifetime under usage_consumed",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/api/image_routes.py",
+     "line": "430-437",
+     "note": "one identified product -> need_second_product body, returns before any save",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/structured_comparison_service.py",
+     "line": "3950-3957, 4072-4087",
+     "note": "LLM_UNAVAILABLE / TIMEOUT / INSUFFICIENT_DATA envelopes: no products, no metadata -> unrenderable (shape read; refusal inferred)",
+     "basis": "inferred"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/api/text_routes.py",
+     "line": "717-760",
+     "note": "text save under `if user_id`: _persist_comparison_bounded (echo ON) or save_comparison_and_track_cohort(input_type='text') (echo OFF)",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/api/history_routes.py",
+     "line": "33-42, 120",
+     "note": "_extract_winner_index reads metadata.winner_index first, else comparison.winner_index; history item carries input_type",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/screens/HistoryScreen.tsx",
+     "line": "53",
+     "note": "input_type typed, never branched on (grep: single hit)",
+     "basis": "measured"
+    }
+   ]
+  },
+  {
+   "question": "(4) Does the S79 History tip fix (c057f64d) already reflect that Link compares never reach History?",
+   "answer": "YES. c057f64d (Ahmed, 2026-10-17 14:39 +0300, 'fix(client): S79 B3-A T1: the History tip names the modes that save (type, scan)') is an ancestor of 683f56c0 (`git merge-base --is-ancestor` true). It changes only SmartCompareApp/src/i18n/en.json:288 and :757 (`loading.tip.save_offline`, `results.tips.save_offline`) from 'Every comparison you run is saved in History.' to 'Comparisons you type or scan are saved in History.', the AR twins at ar.json:285/:754, and __tests__/fixtures/b3a_copy.json. Its message gives the exact mechanism (compare_from_urls returns no metadata; _validate_renderable's metadata.query gate drops it; issue #340 open) and defers a mode-neutral claim until #340 ships. So the client copy on main already excludes Link mode; nothing in B1 or MYEZ-027 needs to re-fix the tip. Whether the 1.0.0 (3) binary in review carries this string is inferred (memory: build-3 code all merged at main 683f56c0, and c057f64d predates the 2026-10-18 resubmission), not measured here.",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base (git show c057f64d)",
+     "line": "commit message + --stat",
+     "note": "3 files: b3a_copy.json, ar.json, en.json; message names compare_from_urls/no metadata, _validate_renderable, issue #340; ancestor of HEAD 683f56c0",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/i18n/en.json",
+     "line": "288, 757",
+     "note": "'Comparisons you type or scan are saved in History.'",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/i18n/ar.json",
+     "line": "285, 754",
+     "note": "AR twin of the same claim",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-17-session-79-state/ledger.md",
+     "line": "63",
+     "note": "S79 ledger: client-truth adversary BLOCK on T1 -> fix commit c057f64d",
+     "basis": "measured"
+    }
+   ],
+   "ruling_text": "MYEZ-027 ruling (rows that exist today, so B1's result_status stamping is scoped correctly). (a) Only two input types ever have `comparisons` rows: `text` (signed-in callers, text_routes.py:717-760) and `camera` (signed-in callers whose compare_from_text returned success; image_routes.py:553-560; under metering ON, which is the production state, an unsuccessful camera compare returns at :503-534 before the save). `url` has ZERO rows in either flag state: with metering OFF the save block at url_routes.py:199-206 never runs; with metering ON it runs and save_comparison refuses at database_service.py:431 because compare_from_urls' envelope (url_extraction_service.py:681-690) has no `metadata`, so `_validate_renderable` (:320-321) returns False. The repo documents this (admin_routes.py:135, commit c057f64d, issue #340) and the suite pins it as the expected gate (test_comparison_id_echo.py:617-632); the only 'URL history' node (test_paid_route_metering.py:625-645) asserts a spy call, not a row. (b) Every persisted row (text and camera, full and hard-cap partial) is produced by build_comparison_response (response_builder.py:1451; metadata.query at :2061; partial via scs:3783 with metadata.partial True), so stamping `metadata.result_status`, `identity_confidence`, `data_coverage`, `product_categories` and `overview.winner.supported` inside build_comparison_response under ENABLE_RESULT_STATUS_METADATA reaches 100 % of the rows that exist and the stored full_response is the same object the route returns (image_routes.py:555, text_routes.py:735/757), so no second stamping site is needed for the DB. (c) `metadata.winner_index = None` for non-supported rows: today NO writer sets metadata.winner_index (grep app/: history_routes.py:39 is the only reader); history_routes._extract_winner_index (:33-42) reads metadata first, so the stamp makes the history list return null exactly as B1 intends. BUT home_routes' savings read the TOP-LEVEL `full_response[\"winner_index\"]` (home_routes.py:163, :542, :596), set at response_builder.py:2243 and read by the client, so 'home_routes savings skip non-supported rows' cannot ride metadata.winner_index: it needs an explicit `metadata.result_status != supported_result` skip in home_routes (additive, flag-read), never a change to the top-level winner_index. (d) URL bodies: they never pass through response_builder and have no metadata dict, so B1's stamp does not touch them and the share / savings / retro-tag halves of MYEZ-027 are text + camera only; the URL refusal belongs to B2's pre-delivery `_surface_comparison_failure(INSUFFICIENT_DATA)` and R-A7's pre-gate. If any unit adds a `metadata` dict to the URL envelope it must NOT include a truthy `query` while only ENABLE_RESULT_STATUS_METADATA is on, or `_validate_renderable` flips and Link compares start persisting as a side effect; making URL rows exist is issue #340 and belongs to ENABLE_URL_MODE_V2 / ENABLE_URL_MODE_UNIFIED_RESPONSE with its own pins (history list, savings, share, c057f64d's tip reverting to mode-neutral). (e) The S79 tip (c057f64d, on main) already tells users only typed and scanned compares are saved; no copy change is owed by this lane until #340 ships."
+  }
+ ],
+ "open": [
+  "Production confirmation of the refusal was not measured: Sentry was not queried for the `comparison_renderable=false` tag / 'skipped unrenderable payload' breadcrumb, and none of the 16 digests contains either string (grep of prod_evidence, quota_profile_onboarding, identity_winner, input_url_text = 0 hits). The code path is unambiguous, but a Sentry search would make the production half 'measured'.",
+  "Share route behaviour for URL bodies was not read (CLAUDE.md:445 names POST /api/v1/share/{comparison_id}); inferred: with no comparisons row and no comparison_id on the URL envelope, Link compares cannot be shared by id, so MYEZ-027's share evidence (V04/V09 share icons) must come from text/camera results or from a client-side share of the in-memory payload - the client share path should be read before C1/C6 design the 'share only supported results' rule.",
+  "Whether the 1.0.0 (3) binary under review contains c057f64d's strings is inferred from the memory ('build-3 code all merged, main 683f56c0'), not from the build's own commit.",
+  "The text SSE/GET save sites (text_routes.py around :659 and :682) were located by grep but not read line by line; the POST path (:717-760) is confirmed. If B1 awaits or stamps anything on the stream path, read those sites first.",
+  "image_routes.py:490-494 (the else-branch that creates a `metadata` dict without `query`) is reached only for failure envelopes today; any B1 stamping placed in image_routes rather than response_builder must not add `query` there, or an unsuccessful camera body becomes renderable under metering OFF."
+ ],
+ "surprises": [
+  "The test suite encodes URL non-persistence as EXPECTED behaviour, not as a defect: tests/test_comparison_id_echo.py:617-632 uses input_type='url' as its canonical 'insert returns None for an unrenderable payload' example and pins that every follow-up is skipped.",
+  "home_routes' savings read the top-level `full_response['winner_index']` (home_routes.py:163, :542, :596), not `metadata.winner_index`; B1's sentence 'home_routes savings skip non-supported rows' via `metadata.winner_index = None` is therefore wrong as written and needs an explicit result_status skip in home_routes.",
+  "No code writes `metadata.winner_index` today (the only reference in app/ is the reader history_routes.py:39), so the history list currently resolves the winner from `comparison.winner_index` (:40-42); B1's stamp will be the FIRST writer of that key and is read first, which is why the null-neutral rendering works.",
+  "The camera save (image_routes.py:553-560) is NOT behind ENABLE_PAID_ROUTE_METERING - only the unsuccessful no-bill branch is - whereas the URL save block (url_routes.py:199) is entirely behind the flag; so before 2026-10-03 the URL route never even attempted a save, and since then it attempts and is refused.",
+  "The URL history node's network-baseline class is `sentinel` (tests/.network_attempt_baseline.txt:93): the node attempted the network with placeholder credentials under _netguard, which is why it sits in the ratchet list.",
+  "The route's `query` kwarg (`f\"{url1} vs {url2}\"`, url_routes.py:202) is non-empty but only feeds the `query` COLUMN (database_service.py:462); the renderability gate reads full_response.metadata.query, a different field - a one-line fix in compare_from_urls (emit metadata.query) would flip persistence, which is exactly why it must be flag-owned (#340)."
+ ]
+}

@@ -1,0 +1,352 @@
+{
+ "topic": "S80 R0: pin collisions for the W4-14b `lang` params (T23 OpenAPI fixture), the B1 timing keys (camera body pins vs DEBUG_STAGE_TIMINGS), and the B3/B4 prompt digests. Code read at C:/Users/SynAckITPC/Documents/AI/sc-s80-base (origin/main 683f56c0). No app code was executed; JSON fixtures were read with python -I.",
+ "answers": [
+  {
+   "question": "(1) What is inside the pinned T23 OpenAPI closure for POST /api/v1/image/identify and POST /api/v1/url/compare (GET /api/v1/text/compare for reference), and can an optional `lang` be added to either without re-recording T23?",
+   "answer": "NO for any declared parameter or model field; the re-record is unavoidable and reddens all ten T23 nodes, not two. Pinned closure (fixture tests/fixtures/s71_u13_flag_off_baseline.json, recorded_at eb86075e..., never re-recorded since commit eb8f9e92): POST /api/v1/image/identify = parameters [region query str default 'bahrain', nocache query bool default false, authorization header anyOf str|null] + requestBody multipart $ref Body_identify_and_compare_api_v1_image_identify_post {images: array, required} + responses 200/422 ($ref HTTPValidationError -> ValidationError); no lang, no selected_category. POST /api/v1/url/compare = parameters [authorization header] + requestBody application/json $ref URLCompareRequest {url1 str, url2 str (required), region str default 'bahrain', selected_category anyOf str maxLength 40|null}; no lang. GET /api/v1/url/compare (also one of the ten) = query url1, url2 (required), region, selected_category (maxLength 40) + authorization; no lang. GET /api/v1/text/compare (reference) already carries lang as query anyOf [str maxLength 8, null] title 'Lang' description 'UI language for generated prose (en|ar)', and TextCompareRequest already has lang anyOf [str maxLength 8, null]. The ten-operation closure = {Body_identify..., HTTPValidationError, QuickCompareRequest, TextCompareRequest, URLCompareRequest, URLExtractRequest, ValidationError}. test_T23_openapi_unchanged (:981-997) asserts (a) the FULL operation JSON (sort_keys) of the parametrized route equals the recording and (b) the $ref closure computed over ALL TEN operations equals the recorded closure; so `lang` on URLCompareRequest fails assertion (b) in every one of the ten parametrized nodes, and a Query `lang` on image/identify or GET url/compare fails (a) for that node. No flag can hide a declared parameter: the schema is built from the signature, and the snapshot runs with every flag deleted (_flags(mp) at :471). Only T23 is affected among the OpenAPI-reading tests: test_u13e_url_detect_guard E13 pins /url/detect only; test_w4_13_measurement_truth test 34 compares OFF-vs-ON surfaces of the same tree (a param present in both states is neutral); test_flush_live_price_key pins DELETE /api/v1/text/cache only. The T17 half of the same fixture (30 flag-OFF records) is unaffected by lang (requests carry none) but T17 also asserts `_meta.recorded_at` startswith BASE_SHA_PREFIX='eb86075e' (:103, :767), so a re-record forces a constant edit in the test module. A pin-NEUTRAL alternative exists for the camera route only: read lang off `request.query_params` (schema-invisible; precedent test_flush_live_price_key.py:538-541), but PLAN R-A10 chose the declared param and the deliberate re-record; the ruling below follows R-A10.",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_s71_u13_compare_auth_required.py",
+     "line": "981-997",
+     "note": "test_T23_openapi_unchanged: per-route operation JSON equality AND the closure of ALL ten operations (_referenced_components(want) over snapshot['operations'] at :958-980) equality; non-vacuity assert",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_s71_u13_compare_auth_required.py",
+     "line": "446-457, 460-492",
+     "note": "_openapi_snapshot builds a fresh schema with flags deleted; record_flag_off_baseline writes _meta (recorder, recorded_at, normalised_fields), 30 flag_off_records and openapi; ascii sort_keys indent=2",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_s71_u13_compare_auth_required.py",
+     "line": "103-108, 757-768",
+     "note": "BASE_SHA_PREFIX='eb86075e'; T17 asserts meta.recorded_at startswith it, meta.recorder == RECORDER, 30 records, scenario order",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_s71_u13_compare_auth_required.py",
+     "line": "26-40, 142-154",
+     "note": "module docstring: recorder command `PYTHONIOENCODING=utf-8 <venv python> -m tests.test_s71_u13_compare_auth_required --record tests/fixtures/s71_u13_flag_off_baseline.json --recorded-at <sha>`, 'run ONLY in a DETACHED scratch worktree at BASE'; ROUTES U1-U6/A1-A4 incl. U4 POST and U5 GET /api/v1/url/compare and U6 POST /api/v1/image/identify",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/fixtures/s71_u13_flag_off_baseline.json",
+     "line": "openapi.operations + components (read with python -I)",
+     "note": "image/identify params region/nocache/authorization + Body_identify (images only); URLCompareRequest {url1,url2,region,selected_category maxLength 40}; GET url/compare url1/url2/region/selected_category/authorization; GET text/compare and TextCompareRequest carry lang anyOf[str maxLength 8,null]; ten-op closure = 7 schemas; _meta.recorded_at eb86075ed1f9...",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/fixtures/s71_u13_flag_off_baseline.json",
+     "line": "git log --follow",
+     "note": "single commit eb8f9e92; never re-recorded although 614b5b72 (U13e) edited the test; CI green on main => the ten operations are unchanged since eb86075e",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/api/image_routes.py",
+     "line": "160-168",
+     "note": "identify_and_compare(request: Request, images: File, region: Query('bahrain'), nocache: Query(False), user: Depends(get_optional_user)); no lang",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/api/url_routes.py",
+     "line": "231-243, 370-377",
+     "note": "URLCompareRequest fields url1, url2, region='bahrain', selected_category Field(None, max_length=40); compare_urls_get declares url1/url2/region/selected_category Query params; no lang on either",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/api/text_routes.py",
+     "line": "377, 784, 967",
+     "note": "the existing lang declarations to copy: `lang: Optional[str] = Field(default=None, max_length=8)` (TextCompareRequest) and `lang: Optional[str] = Query(None, max_length=8, description=\"UI language for generated prose (en|ar)\")` (GET routes)",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_u13e_url_detect_guard.py",
+     "line": "481-500",
+     "note": "E13 pins only the /url/detect operation objects",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_w4_13_measurement_truth.py",
+     "line": "1849-1858, 1880-1893",
+     "note": "test 34 compares the OpenAPI paths of 5 routes OFF vs ON within one tree, not against a fixture",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_flush_live_price_key.py",
+     "line": "530-547",
+     "note": "pins DELETE /api/v1/text/cache params only; its docstring records the schema-invisible `request.query_params` precedent",
+     "basis": "measured"
+    }
+   ],
+   "ruling_text": "RULING T23-RERECORD (for B8 / W4-14b; binding). (1) The backend half of W4-14b adds `lang: Optional[str] = Query(None, max_length=8, description=\"UI language for generated prose (en|ar)\")` to `identify_and_compare` (app/api/image_routes.py:162-168, declared immediately after `nocache`) and to `compare_urls_get` (app/api/url_routes.py:370-377, after `selected_category`), and `lang: Optional[str] = Field(default=None, max_length=8)` to `URLCompareRequest` (app/api/url_routes.py:231-243) -- byte-for-byte the declarations text_routes.py:377/:784 already use, so the three new schema nodes equal the existing `Lang` nodes. (2) This DELIBERATELY re-records tests/fixtures/s71_u13_flag_off_baseline.json: the fixture is regenerated ONCE, at the unit branch HEAD after the three declarations (superseding UR11's 'only at BASE' for this unit), in a detached scratch worktree with no .env and no install, with `PYTHONIOENCODING=utf-8 <pinned venv python> -m tests.test_s71_u13_compare_auth_required --record tests/fixtures/s71_u13_flag_off_baseline.json --recorded-at <full HEAD sha>`; run it twice and require byte-identical output (NORMALISED_FIELDS stays {}). (3) The fixture diff in the PR must touch ONLY: `_meta.recorded_at`; `openapi.operations[\"POST /api/v1/image/identify\"].parameters` (+1 lang entry); `openapi.operations[\"GET /api/v1/url/compare\"].parameters` (+1 lang entry); `openapi.components.schemas.URLCompareRequest.properties.lang` (+1 key). The 30 `flag_off_records` and every other operation/component must be byte-identical to the old fixture (the GREEN agent diffs the two JSON documents key by key and pastes the moved-path list in the PR body). (4) In tests/test_s71_u13_compare_auth_required.py: BASE_SHA_PREFIX (:103) becomes the first 8 hex chars of the HEAD sha passed to --recorded-at; the module docstring (:26-40) and the T17 docstring (:757-760) name the new recording commit and this ruling; nothing else in the module changes. (5) Add `ENABLE_ARABIC_VERDICT_OUTPUT`-adjacent names the two routes now read per call to CLEAN_ENV (:72-83) only if new ones are introduced (ENABLE_ARABIC_VERDICT_OUTPUT is already listed). (6) The PR body states, verbatim: 'T23 fixture re-recorded by ruling T23-RERECORD (S80 R0): three `lang` schema nodes added; 30 flag-OFF records and all other operations byte-identical (diff attached)'. (7) No other OpenAPI pin needs a change (E13 /url/detect, W4-13 test 34, flush-cache DELETE are unaffected). (8) Rejected alternative, recorded for the owner: reading `lang` off `request.query_params` on the camera route is schema-invisible (precedent test_flush_live_price_key.py:538-541) and would leave T23 untouched, but it cannot cover the POST body of /url/compare and contradicts R-A10's explicit parameter; the re-record is the chosen cost."
+  },
+  {
+   "question": "(2) Is metadata.stage_timings_ms present in any pinned camera body, is DEBUG_STAGE_TIMINGS set in the test environment, and is the plan's B1 proposal (add vision_ms/compare_ms keys only when the dict already exists) pin-safe?",
+   "answer": "SAFE for every existing pin, with two design conditions. (a) No pinned camera body carries stage_timings_ms: the UR11 fixture's three U6 records are the `action:'error'` body {action, error, success:false, vision_cost} with NO metadata key at all (the stub VISION_RESULT has no products), and the string 'stage_timings_ms' does not occur anywhere in the fixture; test_paid_route_metering.py's camera pins drive a stubbed StructuredComparisonService whose compare_from_text returns metadata {total_cost: 0.01} and assert only action/success/metadata.input_method/products length/ledger calls, never a full-body equality; the W4-13 ledger fixture pins log_search kwargs and labels, not bodies. (b) DEBUG_STAGE_TIMINGS in the test env: it is NOT stripped by tests/_env_safety.py (CREDENTIALS_UNSET/CREDENTIAL_PLACEHOLDERS list only credentials and endpoints), NOT deleted by the U13 CLEAN_ENV, NOT set in any .github workflow, and conftest.py:16 `load_dotenv(override=True)` would import it from a `.env` found by python-dotenv's walk from tests/ upward -- but no .env exists in sc-s80-base or in any parent directory up to C:/ (existence checked, nothing read), so in this worktree and in CI the variable is unset; CLAUDE.md:337 records it as true in production since Sprint A. The scs memo `_DEBUG_STAGE_TIMINGS` (structured_comparison_service.py:1066-1075) is process-cached, which is why tests that need it reset it or patch the module global (test_stage_timings.py:20/:108, test_s78_*:77/:86). (c) The proposal is pin-safe because: the dict is only ever created by scs at :4612/:5452 (`result.setdefault('metadata', {})['stage_timings_ms'] = orchestrator_timings`) when the debug memo is true; test_stage_timings.py asserts expected keys as SUBSETS (:85-99, `missing = expected - set(keys)`) so extra keys pass, and asserts absence of the key only when the flag is off (:163-164); test_s75_fanout_identity drops stage_timings_ms/orchestrator_timings_ms before hashing (VOLATILE :66-68); the w412 corpus `_stage_timings_ms` per-product keys are popped at scs:4608/5448 and are not compared. Conditions: (i) 'dict already exists' must mean the `stage_timings_ms` key inside metadata -- image_routes.py:482-495 always creates `metadata` itself, so a check on `metadata` would create the timing dict on every camera body and move the metering pins' `metadata` and any future body pin; (ii) because production has DEBUG_STAGE_TIMINGS=true, an addition gated only on dict presence changes production camera bytes the moment B1 merges, before ENABLE_RESULT_STATUS_METADATA flips -- that violates R-A1 (additive keys go behind a flag) even though no pin sees it; gate on BOTH the flag (read per call) AND the key's presence.",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/fixtures/s71_u13_flag_off_baseline.json",
+     "line": "flag_off_records U6.anonymous/valid_bearer/rejected_bearer (python -I dump)",
+     "note": "body = {action:'error', error:'Could not identify products in the image. Please try a clearer photo.', success:false, vision_cost:0.0}; no metadata; 'stage_timings_ms' absent from the whole file",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_s71_u13_compare_auth_required.py",
+     "line": "127, 72-83",
+     "note": "VISION_RESULT = {error:'u13-vision-stub', cost:0.0} (no products => action:'error' exit); CLEAN_ENV does not contain DEBUG_STAGE_TIMINGS",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_paid_route_metering.py",
+     "line": "256-300, 717-775",
+     "note": "_stub_camera's _Service.compare_from_text returns metadata {total_cost: 0.01}; flag-OFF camera pins assert action, success, metadata.input_method=='camera', products length, ledger empty -- no whole-body equality",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/conftest.py",
+     "line": "16, 28-29",
+     "note": "load_dotenv(override=True) then neutralize_credentials(); install_dotenv_guard(): only credential names are stripped",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/_env_safety.py",
+     "line": "110-170",
+     "note": "CREDENTIALS_UNSET (SENTRY_DSN, UPSTASH_*, OPENAI_API_KEY_PRIVATE, OPENAI_BASE_URL, SERPER_*, FIRECRAWL/SCRAPEDO/BRIGHTDATA/ZYTE keys, ADMIN_API_KEY, NASSER_GUEST_TOKEN, TARGET_BASE_URL, APPLE_SIWA_PRIVATE_KEY) and CREDENTIAL_PLACEHOLDERS (OPENAI_API_KEY, SUPABASE_*, YOUTUBE_API_KEY): DEBUG_STAGE_TIMINGS is in neither",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base",
+     "line": ".env existence only",
+     "note": "no .env in sc-s80-base, Documents/AI, Documents, SynAckITPC, Users or C:/ (test -f; contents never read); .gitignore:2 ignores .env; grep of .github/ for DEBUG_STAGE_TIMINGS: no hit",
+     "basis": "measured"
+    },
+    {
+     "file": "python-dotenv dotenv/main.py find_dotenv (installed version, inspect.getsource)",
+     "line": "find_dotenv",
+     "note": "walks upward from the directory of the calling frame's file (tests/conftest.py) looking for .env",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/CLAUDE.md",
+     "line": "337",
+     "note": "`DEBUG_STAGE_TIMINGS` (true since Sprint A -- opt-in metadata.stage_timings_ms)",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/structured_comparison_service.py",
+     "line": "1065-1075, 4608-4612, 5448-5452",
+     "note": "process-cached _DEBUG_STAGE_TIMINGS memo; per-product `_stage_timings_ms` popped; `setdefault('metadata', {})['stage_timings_ms'] = orchestrator_timings` only under the memo",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/api/image_routes.py",
+     "line": "450, 482-495",
+     "note": "compare_from_text(query, region=, vision_products=, nocache=); the route creates metadata when the service returned none and always writes input_method/vision_cost/total_cost/identified_products",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_stage_timings.py",
+     "line": "76-99, 102-108, 163-164",
+     "note": "flag ON: keys asserted as subsets (extra keys pass); flag OFF: 'stage_timings_ms' not in metadata",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_s75_fanout_identity.py",
+     "line": "60-68",
+     "note": "UNIT_ENV deletes DEBUG_STAGE_TIMINGS; VOLATILE drops stage_timings_ms / orchestrator_timings_ms / request_id before hashing",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/lib/performance/wallTimeInstrumentation.ts",
+     "line": "6",
+     "note": "stage_timings_ms appears only in a comment; no client reader (inert for build 3)",
+     "basis": "measured"
+    }
+   ],
+   "ruling_text": "RULING B1-TIMINGS (binding for B1). (1) The camera route may add `vision_ms`, `vision_moderation_ms` and `compare_ms` ONLY into an existing `result['metadata']['stage_timings_ms']` dict (key presence, not `metadata` presence -- image_routes.py:482-495 creates `metadata` itself), and ONLY when `ENABLE_RESULT_STATUS_METADATA` is truthy on that call; it never creates the `stage_timings_ms` key and never reads DEBUG_STAGE_TIMINGS or `scs._DEBUG_STAGE_TIMINGS`. Reason: production runs DEBUG_STAGE_TIMINGS=true (CLAUDE.md:337), so a presence-only rule would change production camera bytes at merge, before the flip (R-A1). (2) Pin status: the proposal moves no existing pin -- the UR11 camera bodies carry no metadata, the metering camera pins use a stubbed service and assert named keys, test_stage_timings asserts key subsets, test_s75_fanout_identity drops the dict before hashing. (3) B1's own rows, each setting or deleting BOTH `ENABLE_RESULT_STATUS_METADATA` and `DEBUG_STAGE_TIMINGS` (never relying on the ambient env): RED-1 flag ON, stubbed service returning `metadata.stage_timings_ms = {'total_ms': 1.0}` -> the three keys present and numeric >= 0; PIN-1 flag OFF, same stub -> the dict equals the stub's dict byte-for-byte; PIN-2 flag ON, stub WITHOUT the key -> `'stage_timings_ms' not in body['metadata']`; PIN-3 flag OFF/ON with the UR11-shaped error exit (no products) -> body has no `metadata` key. (4) The same telemetry values go to the Sentry info line regardless of the dict (the line is the measurement; the dict is a debugging convenience). (5) The text and URL paths add no timing keys in B1 (the dict is produced and finalised inside scs:4612/5452 and the URL path never builds it). (6) Harness: DEBUG_STAGE_TIMINGS is unset in CI and in sc-s80-base (no .env on the dotenv path); a developer .env that sets it WOULD flow into every pytest process through conftest.py:16, so the GREEN agent's comm set runs once with `DEBUG_STAGE_TIMINGS=true` exported and once unset, and both must be green."
+  },
+  {
+   "question": "(3a) For B3 (VISION-IDENTITY-V2): which fixtures pin the vision prompt (identify_products) and must be regenerated under the flag-ON branch, and how does the flag-OFF branch stay byte-identical?",
+   "answer": "The vision prompt has NO digest pin today. The W4-11 fixture tests/fixtures/w4_11_prompt_render_digests.json (26 keys) renders only extract_specs_targeted/synthesized from openai_service (recorder :145/:151) plus url_extract_* and image_tier3_*; `identify_products` is never rendered. No test pins a literal phrase of the prompt (grep for 'product identification expert', 'WITHOUT packaging', 'OCR skills', 'READ the EXACT text' in tests/: zero hits). The kwargs of identify_products are not in test_model_config_enforced's SHIPPED table (12 sites; identify_products absent), but the M1 AST pin forbids a literal `temperature=`/`max_tokens=` at every guarded_llm_create site (so V2 keeps `token_limit_kwargs`/`sampling_kwargs`; a literal `response_format=` is allowed by M1), and `test_resolved_models_unchanged` pins vision -> gpt-4o-mini. test_cost_meter_s74.py:1140/:1469 pin ONE dispatch through guarded_llm_create on the vision model (from their docstrings). The flag-OFF OUTPUT shape is pinned by tests/test_camera_vision.py::TestIdentifyProductsMocked (brand default 'Unknown', name default 'Unknown Product', confidence default 'medium', size_or_count carried, cost > 0, non-JSON -> {products: [], error 'Failed to parse...', raw_response}); these are the 3 rows in tests/.pre_impl_failures.txt:81-83 that fail at base because MagicMock usage makes `cached_tokens > 0` raise TypeError in _log_cache_telemetry. Therefore B3 must ADD the flag-OFF byte pin itself (sha256 of the rendered text part and of the kwargs minus messages, measured at base) and record the V2 render as its own flag-ON digest. IMPORTANT constraint on where digests live: the W4-11 recorder's main() rewrites ALL keys, and the fixture deliberately holds PRE-fence digests for FENCE_KEYS (targeted_system, targeted_user, url_extract_user, image_tier3_user) which test_prompt_truth.py::test_render_digests_match_base_except_the_fence asserts must DIFFER from the live render; running the recorder would overwrite them and redden that test. So the W4-11 fixture is not regenerated by B3 at all.",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/w4_11_prompt_digest_recorder.py",
+     "line": "1-25, 41-45, 81-100, 145-151, 185-198, 210-222",
+     "note": "docstring: 'ANY deliberate prompt edit regenerates the fixture' via `python -m tests.w4_11_prompt_digest_recorder`; the four url_extract_*/image_tier3_* keys are 'pre-fence renders'; record() clears FLAGS + OPENAI_MODEL_*; renders extract_specs_targeted/synthesized (osvc), extract_with_ai, extract_image_via_gpt -- never identify_products; main() rewrites the whole file",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/fixtures/w4_11_prompt_render_digests.json",
+     "line": "keys (python -I)",
+     "note": "26 keys; base 61585c58, extended_at 58a86b3c; keys containing url/image: image_tier3_kwargs, image_tier3_user, url_extract_kwargs, url_extract_user; nothing for vision/identify",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_prompt_truth.py",
+     "line": "73-74, 574-587",
+     "note": "FENCE_KEYS; T-G1 compares every non-metadata, non-fence key for equality and asserts the four fence keys DIFFER from the fixture ('the unflagged fences did not land' otherwise)",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/",
+     "line": "grep",
+     "note": "'product identification expert' / 'WITHOUT packaging' / 'OCR skills' / 'READ the EXACT text': no hits in tests/",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_model_config_enforced.py",
+     "line": "100-106, 117-143, 228-275",
+     "note": "autouse clears 5 flags (not any S80 flag); M1 AST pin over all guarded_llm_create sites (>= 15 sites, no literal temperature/max_tokens); SHIPPED table of 12 sites without identify_products; M3 asserts kw == SHIPPED + store False; M4 pins vision=gpt-4o-mini",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/openai_service.py",
+     "line": "111-170, 183-195, 200-220",
+     "note": "identify_products: inline prompt text in content[0]['text'] (includes the 'Identify products even WITHOUT packaging ... confidence=low' rule), detail 'auto', guarded_llm_create(model=vision_model(), messages, **token_limit_kwargs(_vision_model, 500), **sampling_kwargs(_vision_model, 0)); clean_json_response(raw_content) at :96 does raw_content.strip() (None -> AttributeError -> route's bare except -> 500); normalisation defaults 'Unknown'/'Unknown Product'/'medium'",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_camera_vision.py",
+     "line": "47-115",
+     "note": "TestIdentifyProductsMocked: malformed -> error + raw_response; successful -> normalised fields; missing fields -> 'Unknown' and 'medium'; patches app.services.openai_service.client",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/.pre_impl_failures.txt",
+     "line": "54-56, 81-83",
+     "note": "the 3 camera_vision rows and the diagnosis (MagicMock usage -> TypeError on cached_tokens > 0)",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_cost_meter_s74.py",
+     "line": "1140, 1469",
+     "note": "docstrings: REAL identify_products dispatches once through guarded_llm_create on the vision model",
+     "basis": "inferred"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_paid_route_metering.py",
+     "line": "432-440",
+     "note": "CAMERA_NON_DELIVERY_EXITS: vision_raised_500 (identify_products raising -> 500), vision_parse_error (error dict -> 200 action:error)",
+     "basis": "measured"
+    }
+   ],
+   "ruling_text": "RULING B3-PROMPT-PINS (binding for B3). (1) Flag OFF (`ENABLE_VISION_IDENTITY_V2` unset/false, read per call inside identify_products or its caller): the prompt text at openai_service.py:131-170, the message layout (one user message, text part first, then image_url parts with detail 'auto'), the kwargs (model=vision_model(), token_limit_kwargs(model, 500), sampling_kwargs(model, 0), no response_format) and the normalisation at :200-212 stay byte-identical; V2 is a SECOND prompt string and a second normaliser selected per call, never an edit of the OFF string. (2) Digests: the W4-11 fixture tests/fixtures/w4_11_prompt_render_digests.json is NOT regenerated and its recorder main() is NOT run in this lane (it would overwrite the four pre-fence FENCE_KEYS and redden test_prompt_truth.py::test_render_digests_match_base_except_the_fence). B3 adds its own digest pins in its test module: PIN `VISION_PROMPT_SHA_OFF` = sha256 of content[0]['text'] and `VISION_KWARGS_OFF` = the create() kwargs minus messages (plus `store: False`), both measured at base through the REAL identify_products with a fake client (the recorder's fake_client pattern, tests/w4_11_prompt_digest_recorder.py:60-72) with the flag deleted; RED/then-PIN `VISION_PROMPT_SHA_V2` and the V2 kwargs (response_format json_schema strict with the R-A4 object shape) with the flag set; both nodes delete OPENAI_MODEL_* and set/delete the flag explicitly. (3) The three base-failing nodes tests/test_camera_vision.py::TestIdentifyProductsMocked::{test_empty_product_fields_normalized, test_malformed_response_returns_error, test_successful_identification} are fixed in the test only (usage as types.SimpleNamespace with prompt_tokens/completion_tokens/total_tokens ints and prompt_tokens_details=None), the three rows removed from tests/.pre_impl_failures.txt (:81-83) and the mirror regenerated; they then serve as the flag-OFF output-shape pins; V2's output shape is asserted in B3's own nodes with the flag set. (4) Add `ENABLE_VISION_IDENTITY_V2` to every flag-clearing list a touched surface reads: tests/w4_11_prompt_digest_recorder.py FLAGS (:41-45) and test_prompt_fence._W411_FLAGS (:50-56) only if identify_products becomes a rendered surface there (it is not; leave them), test_model_config_enforced autouse (:103-106) because M1/M3 walk the same module, and the U13 CLEAN_ENV (tests/test_s71_u13_compare_auth_required.py:72-83) because the camera route now reads it per call. (5) The `None content -> LLM_UNAVAILABLE 503` mapping is flag-ON only; flag OFF keeps today's path (clean_json_response(None) raises inside identify_products -> image_routes' except -> the 500 literal pinned by test_paid_route_metering vision_raised_500 and test_security_regression). `finish_reason`/`refusal` logging is unflagged log-only (R-A1 b) and must not change any returned key. (6) Model/kwargs rules: no literal temperature=/max_tokens= (M1 AST pin), vision resolves to gpt-4o-mini with every OPENAI_MODEL_* unset (M4); `OPENAI_MODEL_VISION` stays an env knob and is not read by tests. (7) PR body lists the two new digest literals with the base sha they were measured at."
+  },
+  {
+   "question": "(3b) For B4 (URL-MODE-V2): which fixtures pin URL_EXTRACTION_PROMPT and must be regenerated under the flag-ON branch, and how does the flag-OFF branch stay byte-identical?",
+   "answer": "URL_EXTRACTION_PROMPT (url_extraction_service.py:354-383, rendered by extract_with_ai :421-449 as SEARCH_RESULTS_GUARD + '\\n\\n' + PROMPT.format(url=neutralize_prompt_tags(url), page_block=_wrap_search_context(title+text))) is pinned by four surfaces, none of which is a flag-OFF byte-equality digest of the rendered text: (a) W4-11 fixture key `url_extract_user` -- but it is a FENCE_KEY: excluded from T-G1's equality half and asserted to DIFFER from the stored pre-fence digest (:583-587), so a flag-OFF prompt edit would NOT be caught by it (surprise); `url_extract_kwargs` IS in the equality half (model/max_tokens/temperature/store), so any flag-OFF kwargs change (e.g. response_format) reddens T-G1; (b) test_model_config_enforced SHIPPED['extract_with_ai'] = {gpt-4o-mini, max_tokens 800, temperature 0.1} + store False (M3) -- flag-OFF kwargs pinned exactly; its autouse clears only five flags, so a leaked ENABLE_URL_MODE_V2 export would redden M3 unless the flag is added there; (c) test_prompt_fence F11/F13 (:771-792, :814-840) assert the rendered message structure: guard sentence present, page title AND text inside ONE SEARCH_RESULTS region, exactly one `</SEARCH_RESULTS>` close, the literal line `URL: {url}\\n` present and positioned BEFORE the region's last open, hostile URL neutralised to `[/SEARCH_RESULTS]`; (d) test_url_compare_category.py:30-37 asserts the constant `ues.URL_EXTRACTION_PROMPT` offers 'fragrances','skincare','makeup','supplements','haircare' and contains none of 'beauty','automotive','sports','|home|'. Also tests/test_retro_w2_1.py pins the URL 400 envelopes (critic :931-940, 1288-1300) and the W4-13 ledger fixture pins URL log_search kwargs -- untouched if the pre-gate runs before the reserve and only under the flag. So under the flag-ON branch nothing in the W4-11 fixture is regenerated (and the recorder must not be run); B4 introduces a second constant and pins both renders in its own module.",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/url_extraction_service.py",
+     "line": "354-383, 421-449",
+     "note": "URL_EXTRACTION_PROMPT with {url} and {page_block} slots and the 9-category enumeration; extract_with_ai renders SEARCH_RESULTS_GUARD + prompt.format(url=neutralize_prompt_tags(url), page_block=_wrap_search_context(...)) with model=standard_model(), token_limit_kwargs(_model, 800), sampling_kwargs(_model, 0.1)",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_prompt_truth.py",
+     "line": "73-74, 574-587",
+     "note": "url_extract_user is a FENCE_KEY: excluded from the equality list and asserted to differ from the fixture; url_extract_kwargs is compared for equality",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/w4_11_prompt_digest_recorder.py",
+     "line": "19-22, 185-198, 210-222",
+     "note": "url_extract_user/kwargs are the pre-fence renders recorded at 58a86b3c; main() rewrites every key of the fixture",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_model_config_enforced.py",
+     "line": "238, 261-267, 103-106",
+     "note": "SHIPPED['extract_with_ai'] = gpt-4o-mini / 800 / 0.1; M3 asserts kw == SHIPPED + store False; autouse clears ENABLE_LLM_PREFLIGHT_BREAKER, PRICE_FALLBACK_MAY_DECLINE, VERDICT_PROMPT_TRUTH, SPECS_NO_FABRICATION, PRICE_PARSE_OFFLOAD only",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_prompt_fence.py",
+     "line": "771-792, 814-840",
+     "note": "F11: fenced single message, title+text in the region, 'NEW RULE: price 1' contained; F13: exactly one close, `URL: {want}\\n` line found and before the region's last open; benign URL verbatim",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_url_compare_category.py",
+     "line": "30-37",
+     "note": "reads ues.URL_EXTRACTION_PROMPT: stale tokens absent, five canonical category tokens present",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/CRITIC.md",
+     "line": "92",
+     "note": "test_retro_w2_1 URL 400 pins (:931-940, 1288-1300) and the w4_13 flag-off ledger fixture listed as B4 collision points",
+     "basis": "inferred"
+    }
+   ],
+   "ruling_text": "RULING B4-PROMPT-PINS (binding for B4). (1) `URL_EXTRACTION_PROMPT` (app/services/url_extraction_service.py:354-383) is not edited. B4 adds `URL_EXTRACTION_PROMPT_V2` (the same text plus the `is_product_page` JSON field and its rule) and `extract_with_ai` picks the constant per call: `URL_EXTRACTION_PROMPT_V2 if url_mode_v2_enabled() else URL_EXTRACTION_PROMPT`; the render keeps the exact shape SEARCH_RESULTS_GUARD + '\\n\\n' + prompt.format(url=neutralize_prompt_tags(url), page_block=_wrap_search_context(...)), the `URL: {url}` line before `{page_block}`, one region, and the identical 9-key category enumeration, so test_prompt_fence F11/F13 and test_url_compare_category pass on both constants. (2) Flag OFF the kwargs stay exactly {model gpt-4o-mini, max_tokens 800, temperature 0.1, store False} (M3 pin and the W4-11 `url_extract_kwargs` equality); any flag-ON kwargs addition (response_format for the is_product_page object) is inside the `url_mode_v2_enabled()` branch only, and `ENABLE_URL_MODE_V2` is added to the autouse clear-list of tests/test_model_config_enforced.py (:103-106), to tests/w4_11_prompt_digest_recorder.py FLAGS (:41-45) and tests/test_prompt_fence._W411_FLAGS (:50-56) so a local export can never leak into those renders, and to the U13 CLEAN_ENV (:72-83) because the URL routes now read it per call. (3) The W4-11 fixture is NOT regenerated and `python -m tests.w4_11_prompt_digest_recorder` is NOT run (its main() would overwrite the four pre-fence FENCE_KEYS and redden test_prompt_truth.py::test_render_digests_match_base_except_the_fence). Because the flag-OFF URL-extract render has no byte-equality digest today, B4 adds one in its own module: PIN `URL_EXTRACT_SHA_OFF` = sha256 of the rendered user message for the recorder's BENIGN_HTML/benign URL inputs with the flag deleted, measured at base through the REAL extract_with_ai with the recorder's fake_client; RED/then-PIN `URL_EXTRACT_SHA_V2` with the flag set; plus a PIN `sha256(URL_EXTRACTION_PROMPT) == <base literal>` on the constant itself. (4) test_url_compare_category.py::test_extraction_prompt_uses_canonical_categories is parametrised over both constants (no stale tokens, five canonical tokens) in the same PR. (5) Codes/pre-gate: the NOT_PRODUCT_PAGE / STORE_UNREADABLE / UNRESOLVED_PRODUCT / TIMEOUT envelopes exist only under the flag; flag OFF the test_retro_w2_1 400 pins, the W4-13 ledger fixture (URL log_search kwargs) and the UR11 U4/U5 records must stay byte-identical (run with the flag deleted AND exported ON for the OFF pins, per harness rule C11). (6) The host-only URL logging at INFO (unflagged, R-A1 b) changes no response byte and no stored row; the unit proves it with the UR11 T17 records and the W4-13 ledger fixture. (7) PR body lists the new digest literals and the base sha they were measured at, and states that the W4-11 fixture is intentionally untouched."
+  },
+  {
+   "question": "(3c) Ruling text for B8 (ARABIC-OUTPUT + W4-14b `lang` on /image/identify and /url/compare).",
+   "answer": "B8 carries the only schema-visible change in the lane (the three `lang` nodes) and therefore the single deliberate T23 re-record (ruling T23-RERECORD above). Everything else in B8 is flag-gated by the existing ENABLE_ARABIC_VERDICT_OUTPUT (already in the U13 CLEAN_ENV :82 and cleared by the W4-14 suite) and the conditional-kwargs forwarding pattern that W4-14a pinned (tests/test_arabic_verdict_output_w414.py: test_28 forwards output_lang='ar' for 'ar'/'AR'/' ar-BH ', test_28b asserts NO output_lang kwarg when lang is absent/'fr'/''; test_27 asserts GET routes declare a bounded lang query param -> 422 at 9 chars; test_26b 422 on POST over-long lang). The camera call site is image_routes.py:450 `service.compare_from_text(query, region=region, vision_products=products, nocache=nocache)`; the URL call sites are url_routes.py:158 `compare_from_urls(url1, url2, region, selected_category)` inside the shared helper (:119-123) and the definition at url_extraction_service.py:575. The U13 stubs accept *a/**k (:238-278) so the T17 records (no lang on the wire) stay byte-identical whichever kwargs are forwarded; test_url_compare_category.py:77 notes the only compare_from_urls arg assertion seen, and test_w4_13_measurement_truth's `_url` helper was not read (open item).",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_arabic_verdict_output_w414.py",
+     "line": "1-4, 262-275, 320-345, 350-374, 378-386",
+     "note": "W4-14 Part B pins: TextCompareRequest.lang Field(None, max_length=8); POST over-long lang 422; GET routes declare bounded lang; handlers forward normalised output_lang='ar'; NO output_lang kwarg when absent/unrecognised; flag ON + no lang = phone contract",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/api/text_routes.py",
+     "line": "646, 857, 1108",
+     "note": "the conditional-kwargs form `**({\"output_lang\": _ol} if (_ol := normalize_output_lang(body.lang)) else {})`",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/extraction_service.py",
+     "line": "2280-2287",
+     "note": "arabic_verdict_output_enabled() reads ENABLE_ARABIC_VERDICT_OUTPUT per call; normalize_output_lang(raw)",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/api/image_routes.py",
+     "line": "450",
+     "note": "camera compare call to extend with the conditional output_lang kwarg",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/api/url_routes.py",
+     "line": "119-123, 158, 355-365, 381-386",
+     "note": "shared URL helper signature (url1, url2, region, selected_category, ...), compare_from_urls(url1, url2, region, selected_category) call, POST/GET handlers",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/url_extraction_service.py",
+     "line": "575",
+     "note": "async def compare_from_urls( definition site",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_s71_u13_compare_auth_required.py",
+     "line": "82, 238-278",
+     "note": "ENABLE_ARABIC_VERDICT_OUTPUT already in CLEAN_ENV; stubs for compare_from_urls / StructuredComparisonService.compare_from_text accept *_a, **_k",
+     "basis": "measured"
+    }
+   ],
+   "ruling_text": "RULING B8-LANG (binding for B8). (1) Schema: apply ruling T23-RERECORD verbatim (three `lang` declarations copied from text_routes.py:377/:784; one fixture re-record at the unit HEAD; BASE_SHA_PREFIX and the two docstrings updated; the fixture diff limited to the four listed paths; the PR body sentence). (2) Forwarding: image_routes.py:450 becomes `service.compare_from_text(query, region=region, vision_products=products, nocache=nocache, **({\"output_lang\": _ol} if (_ol := normalize_output_lang(lang)) else {}))`; `compare_from_urls` (url_extraction_service.py:575) gains a keyword-only `output_lang: Optional[str] = None` and url_routes.py's helper (:119-123) and both handlers pass it the same conditional way; a request without `lang` (every shipped phone, build 3 included) produces a call with NO output_lang kwarg (the W4-14a 28b pattern), so the UR11 T17 records and every stubbed call-arg pin stay byte-identical. (3) RED/PIN rows mirror tests/test_arabic_verdict_output_w414.py for the two new routes: 27-style (GET /url/compare and POST /image/identify declare a bounded lang; 9 chars -> 422), 26b-style (POST /url/compare body lang of 9 chars -> 422), 28-style ('ar'/'AR'/' ar-BH ' -> output_lang='ar' reaches the stubbed service), 28b-style (absent/'fr'/'' -> no kwarg), 35-style (flag ON + no lang = today's bytes). Every node sets or deletes ENABLE_ARABIC_VERDICT_OUTPUT and sends a fixed X-Request-ID. (4) Language is never inferred from the stored profile or Accept-Language (R-A10); the server-side Arabic templates, `output_language_ok`, the Arabic-aware guards and the token cap are behind ENABLE_ARABIC_VERDICT_OUTPUT AND output_lang == 'ar' only; with the flag OFF or lang absent the text, camera and URL bodies are byte-identical (prove with the UR11 T17 records, the W4-13 ledger fixture, the S75 identity digests run base -> head -> base). (5) The client half (`lang` on image and URL requests) merges under C2 and is inert until the flag flips; no OTA before approval (UB-R4). (6) The PR body maps MYEZ-016 -> node ids -> ENABLE_ARABIC_VERDICT_OUTPUT -> activation precondition 'after W4-14b/c land and the T23 re-record is merged'."
+  }
+ ],
+ "open": [
+  "tests/test_w4_13_measurement_truth.py's `_url` helper (used by test 34 at :1860-1866) was not read: confirm it stubs compare_from_urls with *a/**k so the optional output_lang kwarg in B8 cannot move its OFF-vs-ON surface comparison.",
+  "The live flag-OFF render digests for the vision prompt and extract_with_ai (B3/B4 `*_SHA_OFF` literals) must be measured at base by the RED agent through the real functions with a fake client; this read-only agent did not execute app code.",
+  "FastAPI's placement of the new `lang` Query entry inside `parameters` (expected between `nocache` and `authorization` on image/identify, after `selected_category` on GET url/compare) is inferred from signature order; the re-record settles the exact JSON.",
+  "DEBUG_STAGE_TIMINGS was checked for absence only in sc-s80-base and its parent directories (no .env anywhere on the dotenv walk) and in .github/; the pyt.py harness environment and sibling worktrees' .env files were not inspected (contents must never be read; presence of the NAME is the only question).",
+  "test_cost_meter_s74.py:1140/:1469 (one dispatch through guarded_llm_create on the vision model) were read as docstrings only; the GREEN agent should confirm they assert dispatch count/model and not the prompt text or kwargs.",
+  "Owner question for R-A10 (not a blocker): whether a schema-invisible `request.query_params.get('lang')` on the camera route is preferred over the declared param to avoid the T23 re-record; the ruling follows the plan's explicit choice."
+ ],
+ "surprises": [
+  "T23's second assertion compares the $ref closure of ALL TEN operations, so `lang` on URLCompareRequest reddens all ten parametrized T23 nodes, not only the two routes' nodes (test_s71_u13_compare_auth_required.py:958-997).",
+  "The W4-11 fixture deliberately stores PRE-fence digests for targeted_system/targeted_user/url_extract_user/image_tier3_user and test_prompt_truth.py::test_render_digests_match_base_except_the_fence asserts they DIFFER from the live render (:583-587); the recorder's own docstring ('ANY deliberate prompt edit regenerates the fixture', run main()) is now a trap: running it would overwrite those four keys and redden T-G1. Neither B3 nor B4 may run it.",
+  "The flag-OFF URL-extract render (`url_extract_user`) has NO byte-equality digest today because it sits in FENCE_KEYS and is excluded from the equality half; only its kwargs (W4-11 `url_extract_kwargs`, model_config M3), the fence structure (test_prompt_fence F11/F13) and the category tokens (test_url_compare_category) are pinned.",
+  "The vision prompt (identify_products) is in no digest fixture, has no literal text pin, and its kwargs are not in test_model_config_enforced's SHIPPED table; the only guards are the M1 AST pin (no literal temperature/max_tokens), M4 (vision=gpt-4o-mini) and the three test_camera_vision output-shape nodes that fail at base (pre_impl rows :81-83).",
+  "T17 asserts `_meta.recorded_at` startswith BASE_SHA_PREFIX 'eb86075e' (:103, :767), so a re-record of the fixture also forces a constant edit in the test module and a docstring update; the fixture has never been re-recorded since eb8f9e92 even though U13e edited the test.",
+  "The UR11 camera bodies carry NO metadata at all (the stub VISION_RESULT has no products, so the route takes the action:'error' exit); and the metering camera pins stub the comparison service, so no existing pin can ever see DEBUG_STAGE_TIMINGS -- the pin-safety of B1's timing keys does not depend on the env at all. The real exposure is production (DEBUG_STAGE_TIMINGS=true per CLAUDE.md:337): a presence-only rule would change prod camera bytes at merge, hence the double gate in ruling B1-TIMINGS.",
+  "image_routes.py:482-495 always creates `metadata` when the service returned none, so 'the dict already exists' must be read as the `stage_timings_ms` KEY, not `metadata`; a check on `metadata` would stamp a timing dict on every camera body.",
+  "conftest.py:16 loads a developer `.env` with override=True and only credential NAMES are stripped (tests/_env_safety.py:110-170); any ENABLE_*/DEBUG_* knob in a local .env flows into every pytest process, which is why the W4-11 recorder imports extraction_service BEFORE clearing flags (:84-94) and why every S80 unit must add its flag to the autouse clear-lists it touches."
+ ]
+}

@@ -1,0 +1,396 @@
+{
+ "topic": "Anthropic placeholder prerequisites (PLAN R-A12 / B10): SDK pin choice, the pinned SDK's measured surface, and the file:line proof that OpenAI is the only named AI processor. Roots: repo = C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base (origin/main 683f56c0); SDK = C:\\Users\\SynAckITPC\\AppData\\Local\\Temp\\claude\\C--Users-SynAckITPC-Documents-AI\\ae650c83-4d2a-4910-a8d4-a47ab213c8c3\\scratchpad\\anth_venv\\Lib\\site-packages (anthropic 1.11.0 and sentry-sdk 2.68.1 installed there from PyPI; no call to Anthropic was made). Paths below are relative to those two roots.",
+ "answers": [
+  {
+   "question": "(1) Which anthropic Python SDK release to pin (>= 14 days old on 2026-10-19, i.e. uploaded on or before 2026-10-05)?",
+   "answer": "Pin anthropic==1.11.0, uploaded 2026-09-30T22:58:22Z (18 days old on 2026-10-19). It is the newest qualifying release: 1.12.0 (2026-10-07), 1.12.1 (2026-10-08), 1.13.0 (2026-10-09), 1.14.0 (2026-10-14) and 1.15.0 (2026-10-15, PyPI info.version) are all younger than 14 days. Same-day neighbour 1.10.0 (2026-09-30T18:28Z) and 1.9.0 (2026-09-28) also qualify but are older. Neither 1.11.0 file is yanked. It requires Python >=3.10 (runtime.txt pins python-3.12.9). Declared dependencies: anyio<5,>=4.1.0; docstring-parser<1,>=0.15; httpx2<3,>=2.0.0; jiter<1,>=0.4.0; pydantic<3,>=1.10.0; sniffio<2,>=1; typing-extensions<5,>=4.14. Against the current lock every one is already satisfied (httpx2==2.12.0 via openai, anyio==4.14.2, jiter==0.16.0, pydantic==2.13.4, sniffio==1.3.1, typing-extensions==4.16.0) except docstring-parser, which is NEW to the lock. Declaration: add the exact line `anthropic==1.11.0` to requirements.in (an unpinned `anthropic` would float to 1.15.0 at the next `uv pip compile --universal`), recompile requirements.txt then requirements-dev.txt with -c, and let CI's `Lock is current` and `pip-audit --strict` steps settle it (pip-audit was not run here). The WebFetch summary of the PyPI JSON truncated at 100K of 360K chars, so the release table was taken from the downloaded JSON with an isolated parser (python -I).",
+   "evidence": [
+    {
+     "file": "scratchpad/dl_pypi/anthropic.json (https://pypi.org/pypi/anthropic/json, fetched 2026-10-19 22:54)",
+     "line": "releases map; info.version",
+     "note": "Upload times (max per release): 1.15.0 2026-10-15T19:45; 1.14.0 2026-10-14T17:13; 1.13.0 2026-10-09T15:29; 1.12.1 2026-10-08T03:42; 1.12.0 2026-10-07T17:57; 1.11.0 2026-09-30T22:58:22Z; 1.10.0 2026-09-30T18:28; 1.9.0 2026-09-28; 1.0.0 2026-08-20; 0.125.0 2026-08-19. info.version 1.15.0, requires_python >=3.10.",
+     "basis": "measured"
+    },
+    {
+     "file": "scratchpad/dl_pypi/anthropic-1.11.0.json (https://pypi.org/pypi/anthropic/1.11.0/json)",
+     "line": "info.requires_dist; urls[].yanked",
+     "note": "requires_dist: anyio<5,>=4.1.0; docstring-parser<1,>=0.15; httpx2<3,>=2.0.0; jiter<1,>=0.4.0; pydantic<3,>=1.10.0; sniffio<2,>=1; typing-extensions<5,>=4.14 (+ optional extras aiohttp/aws/bedrock/google-cloud/mcp/vertex/webhooks). Both files yanked=False.",
+     "basis": "measured"
+    },
+    {
+     "file": "requirements.txt",
+     "line": "7, 66, 75-76, 89, 97, 109, 146, 168",
+     "note": "anyio==4.14.2; httpx==0.28.1; httpx2==2.12.0 '# via openai'; jiter==0.16.0; openai==3.3.1; pydantic==2.13.4; sniffio==1.3.1; typing-extensions==4.16.0. No docstring-parser line anywhere in requirements.txt or requirements-dev.txt (grep -i docstring = 0 hits).",
+     "basis": "measured"
+    },
+    {
+     "file": "requirements.in",
+     "line": "12, 14",
+     "note": "openai>=1.12.0 and httpx>=0.26.0 are the declared runtime deps; anthropic is absent (grep -i anthropic over requirements.in/.txt = 0 hits).",
+     "basis": "measured"
+    },
+    {
+     "file": "runtime.txt",
+     "line": "1",
+     "note": "python-3.12.9 (satisfies anthropic 1.x requires_python >=3.10).",
+     "basis": "measured"
+    },
+    {
+     "file": ".github/workflows/ci.yml",
+     "line": "39-53, 213-216",
+     "note": "'Lock is current' recompiles both locks and diffs; pip-audit -r requirements.txt --strict is blocking. Neither was run on a recompiled lock in this task.",
+     "basis": "measured"
+    }
+   ]
+  },
+  {
+   "question": "(2) What does anthropic 1.11.0 measure on this pin: exception hierarchy and status mapping, default retries/timeout and retry policy, messages.create signature for text+image blocks, structured-output options, usage field names, Model literal?",
+   "answer": "EXCEPTIONS (_exceptions.py): AnthropicError > APIError(message, request, body) > APIStatusError(status_code, request_id, workspace_id, type: ErrorType|None read from body['error']['type']) with subclasses BadRequestError 400, AuthenticationError 401, PermissionDeniedError 403, NotFoundError 404, ConflictError 409, RequestTooLargeError 413, UnprocessableEntityError 422, RateLimitError 429, ServiceUnavailableError 503, DeadlineExceededError 504, OverloadedError 529, InternalServerError (no literal); APIConnectionError > APITimeoutError (siblings of APIStatusError, not subclasses); APIResponseValidationError; plus RetryableError and CredentialsError > IdentityTokenFileError directly under AnthropicError. The client's _make_status_error constructs 400/401/403/404/409/413/422/429/529 explicitly and then `>= 500` -> InternalServerError, so 503 and 504 are NEVER raised as ServiceUnavailableError/DeadlineExceededError (they arrive as InternalServerError), and a 402 billing_error has no class at all (bare APIStatusError, status_code 402, .type 'billing_error'). ErrorType literal: invalid_request_error, authentication_error, permission_error, not_found_error, rate_limit_error, timeout_error, overloaded_error, api_error, billing_error. DEFAULTS (_constants.py): DEFAULT_TIMEOUT = 10 min (connect 5.0 s), DEFAULT_MAX_RETRIES = 2, INITIAL_RETRY_DELAY 0.5 s, MAX_RETRY_DELAY 8.0 s. RETRY POLICY (_base_client.py): `x-should-retry` header overrides; otherwise retries 408, 409, 429 and every status >= 500 (529 included), plus APIConnectionError/APITimeoutError and RetryableError (walking __cause__); 400/401/402/403/404/413/422 are not retried. The sleep honours `retry-after-ms` / `retry-after` VERBATIM (cap 4,294,967 s, i.e. effectively uncapped), else 0.5*2^n with jitter capped at 8 s, so SDK wall time is unbounded by retry-after unless the caller bounds it. Non-streaming create/parse with the default client timeout computes a timeout and RAISES ValueError ('Streaming is required...') when 3600*max_tokens/128000 > 600, i.e. max_tokens > 21,333; the app's limits (<= 1000) are far below. CLIENT: AsyncAnthropic(api_key=None, auth_token=None, credentials=None, config=None, profile=None, webhook_key=None, base_url=None, timeout=not_given, max_retries=2, ...); with api_key None it resolves ANTHROPIC_API_KEY, then ANTHROPIC_AUTH_TOKEN, then an `ant auth login` profile, so a bare client can authenticate WITHOUT the env var: the adapter must pass api_key explicitly and gate on the env name alone. MESSAGES.CREATE (keyword-only): required max_tokens: int, messages: Iterable[MessageParam], model: ModelParam; optional cache_control, container, diagnostics, inference_geo, metadata, output_config, service_tier ('auto'|'standard_only'), stop_sequences, stream, system: str | Iterable[TextBlockParam], thinking, tool_choice, tools, user_profile_id, workspace_id; plus extra_headers/extra_query/extra_body/timeout. ZERO occurrences of temperature/top_p/top_k in message_create_params.py or messages.py, and no `store` kwarg: forwarding model_config.sampling_kwargs output or the U3c store=False raises TypeError at the SDK boundary (before any 400). MessageParam role Literal user|assistant|system; content str or blocks: {'type':'text','text':...} (TextBlockParam, optional cache_control/citations) and {'type':'image','source': Base64ImageSourceParam {'type':'base64','media_type': 'image/jpeg'|'image/png'|'image/gif'|'image/webp','data': b64} | URLImageSourceParam {'type':'url','url'} | FileImageSourceParam} (ImageBlockParam, optional transformations). HEIC is not a legal media_type; image_routes already rejects HEIC with a 400 and accepts exactly jpeg/png/webp/gif, so the camera input matches. STRUCTURED OUTPUT: output_config={'effort': 'low'|'medium'|'high'|'xhigh'|'max', 'format': {'type':'json_schema','schema': {...}}} (OutputConfigParam / JSONOutputFormatParam); tools=[ToolParam{name, input_schema{type:'object', properties, required; extra keys allowed}, description, strict: bool, cache_control, defer_loading, eager_input_streaming, allowed_callers}]; messages.parse(..., output_format=<pydantic type>) -> ParsedMessage exists (sync :1178, async :2659). thinking: Union[adaptive{display summarized|omitted}, enabled{budget_tokens, display}, disabled, between_tools]; the SDK itself only warns for 'enabled' on claude-opus-4-6/mythos-preview. RESPONSE: Message.stop_reason Literal end_turn|max_tokens|stop_sequence|tool_use|pause_turn|refusal|model_context_window_exceeded; stop_details RefusalStopDetails{type 'refusal', category cyber|bio|frontier_llm|reasoning_extraction|general_harms|None, explanation}. USAGE (types/usage.py): input_tokens: int, output_tokens: int (required), cache_creation_input_tokens, cache_read_input_tokens, cache_creation (CacheCreation by TTL), output_tokens_details, server_tool_use, service_tier ('standard'|'priority'|'batch'), inference_geo. MODEL LITERAL (types/model.py = model_param.py): claude-sonnet-5-5, claude-fable-5-1, claude-opus-5-5, claude-mythos-5-1, claude-sonnet-5, claude-fable-5, claude-mythos-5, claude-opus-5, claude-opus-4-8, claude-opus-4-7, claude-mythos-preview, claude-opus-4-6, claude-sonnet-4-6, claude-haiku-4-5, claude-haiku-4-5-20251001, claude-opus-4-5, claude-opus-4-5-20251101, claude-sonnet-4-5, claude-sonnet-4-5-20250929, unioned with `str`. Of the four asked: claude-opus-5-5 YES, claude-sonnet-5-5 YES, claude-fable-5-1 YES, claude-haiku-5-5 NO (zero occurrences anywhere in the installed package); the `str` arm means the id is still sent unchanged, but its acceptance by the API is not measurable offline (the claude-api skill table, cached 2026-10-06, lists claude-haiku-5-5 at $0.10/$0.50 per MTok). SENTRY SIDE EFFECT (measured on the pinned sentry-sdk 2.68.1): AnthropicIntegration is in _AUTO_ENABLING_INTEGRATIONS and activates whenever anthropic>=0.16 is importable, with include_prompts=True by default; sentry_service.init passes only integrations= (auto_enabling_integrations stays True), so the lock bump ALONE adds 'AnthropicIntegration' to the init list and reddens the SR8 pin test_u8d_pin_integration_list_unchanged. Prompt capture is additionally gated by send_default_pii (pinned False), so no prompt would leave, but the pin goes red regardless.",
+   "evidence": [
+    {
+     "file": "anthropic/_exceptions.py",
+     "line": "31-56, 71-93, 95-106, 108-131, 135-180",
+     "note": "Class hierarchy and status literals: AnthropicError:31; APIError:35 (body:38-49); APIStatusError:71 with status_code/request_id/type (type parsed from body['error']['type'] :89-93); APIConnectionError:95; APITimeoutError(APIConnectionError):100; RetryableError:108; CredentialsError:117; BadRequestError 400 :135; AuthenticationError 401 :139; PermissionDeniedError 403 :143; NotFoundError 404 :147; ConflictError 409 :151; RequestTooLargeError 413 :155; UnprocessableEntityError 422 :159; RateLimitError 429 :163; ServiceUnavailableError 503 :167; OverloadedError 529 :171; DeadlineExceededError 504 :175; InternalServerError :179.",
+     "basis": "measured"
+    },
+    {
+     "file": "anthropic/_client.py",
+     "line": "548-583 (sync), 974-1009 (async twin)",
+     "note": "_make_status_error: 400->BadRequestError, 401->AuthenticationError, 403->PermissionDeniedError, 404->NotFoundError, 409->ConflictError, 413->RequestTooLargeError, 422->UnprocessableEntityError, 429->RateLimitError, 529->OverloadedError, then `>= 500` -> InternalServerError. No 402, 503 or 504 branch.",
+     "basis": "measured"
+    },
+    {
+     "file": "anthropic/types/shared/error_type.py",
+     "line": "5-15",
+     "note": "ErrorType Literal: invalid_request_error, authentication_error, permission_error, not_found_error, rate_limit_error, timeout_error, overloaded_error, api_error, billing_error. shared/billing_error.py defines BillingError{message, type 'billing_error'}.",
+     "basis": "measured"
+    },
+    {
+     "file": "anthropic/_constants.py",
+     "line": "8-14",
+     "note": "DEFAULT_TIMEOUT = httpx2.Timeout(timeout=10*60, connect=5.0); DEFAULT_MAX_RETRIES = 2; INITIAL_RETRY_DELAY = 0.5; MAX_RETRY_DELAY = 8.0.",
+     "basis": "measured"
+    },
+    {
+     "file": "anthropic/_base_client.py",
+     "line": "852-886, 887-910, 826-850, 792-824, 777-790",
+     "note": "_should_retry: x-should-retry header obeyed; 408, 409, 429 and status >= 500 retried; else not. _should_retry_exception: RetryableError, APIStatusError (same policy), APIConnectionError retried, walking __cause__. _calculate_retry_timeout: retry-after(-ms) honoured verbatim up to 4,294,967 s, else min(0.5*2^n, 8.0) with jitter. _calculate_nonstreaming_timeout: ValueError when 3600*max_tokens/128000 > 600 (max_tokens > 21,333) or above MODEL_NONSTREAMING_TOKENS.",
+     "basis": "measured"
+    },
+    {
+     "file": "anthropic/_client.py",
+     "line": "596-612, 633-647, 663-664, 674-675, 98-108",
+     "note": "AsyncAnthropic.__init__(api_key, auth_token, credentials, config, profile, webhook_key, base_url, timeout=not_given, max_retries=DEFAULT_MAX_RETRIES, ...). Credentials resolve ANTHROPIC_API_KEY / ANTHROPIC_AUTH_TOKEN from the environment and otherwise an `ant auth login` profile; ANTHROPIC_BASE_URL read when base_url is None; a kwarg beside the env var logs a shadowing warning.",
+     "basis": "measured"
+    },
+    {
+     "file": "anthropic/resources/messages/messages.py",
+     "line": "1603-1630 (async create), 2478-2500, 1178, 2659-2680, 70-93",
+     "note": "create(*, max_tokens, messages, model, cache_control, container, diagnostics, inference_geo, metadata, output_config, service_tier, stop_sequences, stream, system: str|Iterable[TextBlockParam], thinking, tool_choice, tools, user_profile_id, workspace_id, extra_headers, extra_query, extra_body, timeout) -> Message. Non-stream default-timeout path calls _calculate_nonstreaming_timeout; DEPRECATED_MODELS warns; MODELS_TO_WARN_WITH_THINKING_ENABLED = [claude-opus-4-6, claude-mythos-preview]. parse(..., output_format=type[ResponseFormatT]) -> ParsedMessage at :1178 / :2659.",
+     "basis": "measured"
+    },
+    {
+     "file": "anthropic/types/message_create_params.py",
+     "line": "35-291 (keys); grep temperature|top_p|top_k = 0 hits in this file and in resources/messages/messages.py",
+     "note": "Param keys: max_tokens, messages, model (Required); cache_control, container, diagnostics, inference_geo, metadata, output_config, service_tier, stop_sequences, system, thinking, tool_choice, tools, user_profile_id, workspace_id; stream on the two variants. No temperature / top_p / top_k / store key exists on this pin.",
+     "basis": "measured"
+    },
+    {
+     "file": "anthropic/types/output_config_param.py; anthropic/types/json_output_format_param.py; anthropic/types/tool_param.py",
+     "line": "OutputConfigParam effort/format; JSONOutputFormatParam schema/type; ToolParam input_schema/name/strict:79",
+     "note": "output_config={'effort': low|medium|high|xhigh|max, 'format': {'type': 'json_schema', 'schema': dict}}. ToolParam: input_schema (InputSchemaTyped type 'object', properties, required; extra allowed), name, description, strict: bool, cache_control, defer_loading, eager_input_streaming, allowed_callers.",
+     "basis": "measured"
+    },
+    {
+     "file": "anthropic/types/image_block_param.py; base64_image_source_param.py; url_image_source_param.py; text_block_param.py; message_param.py",
+     "line": "ImageBlockParam source/type/transformations; Base64ImageSourceParam data/media_type/type; URLImageSourceParam; TextBlockParam text/type/cache_control/citations; MessageParam role Literal user|assistant|system",
+     "note": "media_type Literal is exactly image/jpeg, image/png, image/gif, image/webp.",
+     "basis": "measured"
+    },
+    {
+     "file": "anthropic/types/thinking_config_param.py (+ thinking_config_{adaptive,enabled,disabled,between_tools}_param.py)",
+     "line": "Union of four TypedDicts",
+     "note": "adaptive{type, display summarized|omitted}; enabled{type, budget_tokens Required, display}; disabled{type}; between_tools{type}.",
+     "basis": "measured"
+    },
+    {
+     "file": "anthropic/types/usage.py",
+     "line": "12-44",
+     "note": "Usage: cache_creation, cache_creation_input_tokens, cache_read_input_tokens, inference_geo, input_tokens (int), output_tokens (int), output_tokens_details, server_tool_use, service_tier.",
+     "basis": "measured"
+    },
+    {
+     "file": "anthropic/types/stop_reason.py; anthropic/types/refusal_stop_details.py; anthropic/types/message.py",
+     "line": "StopReason literal; RefusalStopDetails; message.py:85-91 stop_details/stop_reason, :123 usage",
+     "note": "stop_reason in end_turn|max_tokens|stop_sequence|tool_use|pause_turn|refusal|model_context_window_exceeded; stop_details only populated for refusal with category cyber|bio|frontier_llm|reasoning_extraction|general_harms.",
+     "basis": "measured"
+    },
+    {
+     "file": "anthropic/types/model.py (identical list in types/model_param.py)",
+     "line": "6-29",
+     "note": "Literal list as quoted in the answer, unioned with str (:28). grep -rn haiku-5-5 over the whole installed package = 0 files.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/api/image_routes.py",
+     "line": "132, 135-149, 227-233",
+     "note": "SUPPORTED_MIME_TYPES = {image/jpeg, image/png, image/webp, image/gif}; HEIC/HEIF detected by ftyp brand and refused with a 400 'Please use JPEG, PNG, WebP, or GIF.' -- the camera input already matches the Anthropic media_type literal.",
+     "basis": "measured"
+    },
+    {
+     "file": "sentry_sdk/integrations/__init__.py (sentry-sdk 2.68.1 in the scratch venv)",
+     "line": "67-69, 95, 113, 119-122",
+     "note": "_AUTO_ENABLING_INTEGRATIONS includes sentry_sdk.integrations.anthropic.AnthropicIntegration (:69) and openai.OpenAIIntegration (:95); _MIN_VERSIONS anthropic (0,16). consts.py:1331 auto_enabling_integrations: bool = True.",
+     "basis": "measured"
+    },
+    {
+     "file": "sentry_sdk/integrations/anthropic.py",
+     "line": "146-151, 427, 614",
+     "note": "class AnthropicIntegration: __init__(include_prompts: bool = True); prompt/response capture gated by should_send_default_pii() and integration.include_prompts.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/sentry_service.py",
+     "line": "659-666",
+     "note": "Imports OpenAIIntegration and appends OpenAIIntegration(include_prompts=False); sentry_sdk.init(integrations=integrations, ...) with no auto_enabling_integrations/disabled_integrations argument, so the auto-enable set applies.",
+     "basis": "measured"
+    },
+    {
+     "file": "tests/test_sentry_channels_u8d.py",
+     "line": "192-197, 969-971, 973-977",
+     "note": "BASE_INTEGRATIONS lists Argv, Atexit, Dedupe, Excepthook, FastApi, Httpx2, Httpx, Logging, Modules, OpenAI, Redis, Starlette, Stdlib, Threading (auto-enabled ones included, proving auto-enable is on); test_u8d_pin_integration_list_unchanged (SR8) asserts equality; R9 pins send_default_pii False.",
+     "basis": "measured"
+    },
+    {
+     "file": "requirements.txt",
+     "line": "142",
+     "note": "sentry-sdk==2.68.1 (the version measured above).",
+     "basis": "measured"
+    },
+    {
+     "file": "claude-api skill shared/error-codes.md (bundled docs, not the SDK)",
+     "line": "5-17, 119-125, 269",
+     "note": "Documented, not measured live: 402 billing_error non-retryable; 529 overloaded_error retryable; temperature/top_p/top_k return 400 on Opus 5.5/5, Fable 5/5.1, Opus 4.8/4.7, and a non-default temperature is a 400 on Haiku 5.5; `.type` exposes the error type for classification; Sonnet 5.5 rejects thinking disabled (use between_tools). Haiku 5.5 default effort medium per the skill table.",
+     "basis": "inferred"
+    }
+   ]
+  },
+  {
+   "question": "(3) Where does the checkout name OpenAI as the only AI processor, and which pins and manifests freeze that today?",
+   "answer": "OpenAI is the only AI processor named in all four legal documents, in the consent copy (EN+AR), and in the processor manifest; the words 'anthropic' and 'claude' occur nowhere in app/legal, app/ (other than a comment at openai_service.py:69) or the client source. Privacy policy EN names OpenAI at lines 15, 28, 38, 55, 58, 63 (section 4 heading 'Comparisons made with AI (OpenAI)'), 65, 67, 69, 75 ('- **OpenAI:** identifies products and writes comparisons'), 87, 109; the AR twin at the same twelve line numbers. Terms EN 53 ('Our AI provider is OpenAI') and 91; AR 53 and 91. Consent copy: en.json 703-707 (aiConsent.title/body/link/agree/notNow; the body at :704 names OpenAI twice) and the onboarding Step 5 twins at :574-575 'What reaches OpenAI'; ar.json :700-704 (body :701 names OpenAI twice) and :571-572. That copy is frozen by aiConsent.ts:46 AI_CONSENT_VERSION = 2 and the sha256 fence 372c5048... over the EN+AR strings in __tests__/consent/aiConsentVersion.s69.test.ts:36 (a wording change re-pins the hash and bumps the version, which re-asks every user, UB-R14). Manifest: app/legal/processors.json has 18 rows; the `openai` row (lines 56-76) is the only AI processor: kind processor, module = 7 files (openai_service, extraction_service, url_extraction_service, llm_provider, verdict_critique_service, content_safety_service, image_service), hosts ['api.openai.com'], gate_flag null, category 'OpenAI', public_name true; public_name is true only for openai/apple/google_sign_in/retailers. Freezes: test_legal_s78.py:897-921 test_s78_r22_manifest_categories requires the row-id set to equal tests/fixtures/legal_s78.json manifest_base (18 ids) and each row's kind/module/hosts/gate_flag/personal_data to equal the frozen values, so adding an `anthropic` row OR adding app/services/llm_adapter.py to the openai module list reddens R22 unless the fixture is re-recorded. T7b (test_legal_docs_u8.py:1039-1058) scans app/services/**/*.py for http(s) URL literals outside docstrings (first-party qaren.app/getmyez.com and loopback excluded) and for the constructor names {AsyncOpenAI, OpenAI, create_client, Redis, StrictRedis} + redis.from_url + sentry_sdk.init; every module with a hit must be in a row's module list and every host covered by that row's hosts, else 'unmapped'. Consequence: a literal 'https://api.anthropic.com' in the adapter trips T7b as unmapped, but an adapter that constructs AsyncAnthropic(...) with NO URL literal is INVISIBLE to T7b today (AsyncAnthropic is not in CLIENT_CONSTRUCTORS; 'anthropic' occurs 0 times in both legal test files). Moderation stays on OpenAI at content_safety_service.py:249-252 (client.moderations.create via openai_service.get_client). The OpenAI failure classifier the adapter mirrors is api_budget_service._openai_failure_is_transient (:907-932: RateLimitError, APIConnectionError, InternalServerError and status >= 500 are transient; 4xx other than 429 is a request defect, :893-904), and LLMUnavailableError (:702-709) whose message must avoid '429'/'rate'/'quota' because extraction_service.generate_comparison substring-matches them for its fallback. Cost recording reads usage.prompt_tokens/completion_tokens (openai_pricing.py:135-137), so Anthropic input_tokens/output_tokens would record unpriced unless normalised; openai_service.py:69 already mentions Anthropic-style flat usage in a comment.",
+   "evidence": [
+    {
+     "file": "app/legal/privacy_policy.md",
+     "line": "15, 28, 38, 55, 58, 63, 65, 67, 69, 75, 87, 109",
+     "note": "Every mention of the AI processor is OpenAI; :63 '## 4. Comparisons made with AI (OpenAI)'; :75 '- **OpenAI:** identifies products and writes comparisons (section 4).'; :87 'Except as section 4 describes for OpenAI ...'. grep -i 'anthropic|claude' = 0 hits.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/legal/privacy_policy_ar.md",
+     "line": "15, 28, 38, 55, 58, 63, 65, 67, 69, 75, 87, 109",
+     "note": "Same twelve lines name OpenAI (Latin spelling) in the Arabic text; :63 '## 4. المقارنات المُعدّة بالذكاء الاصطناعي (OpenAI)'. 0 hits for anthropic/claude.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/legal/terms_of_service.md and app/legal/terms_of_service_ar.md",
+     "line": "53, 91 (both files)",
+     "note": "EN :53 'Our AI provider is OpenAI; section 4 of our Privacy Policy lists what we send it'; :91 'Deleting your account does not delete data already shared with OpenAI'. AR :53 'ومزوّد الذكاء الاصطناعي لدينا هو OpenAI'; :91 twin.",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/i18n/en.json",
+     "line": "703-707, 574-575",
+     "note": "aiConsent.title/body/link/agree/notNow; :704 body 'MYEZ sends OpenAI the product names, links ... OpenAI may use these inputs and the outputs ...'; :574-575 onboarding.s5.privacy_anon_head/body 'What reaches OpenAI'.",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/i18n/ar.json",
+     "line": "700-704, 571-572",
+     "note": "aiConsent.* AR twins; :701 body names OpenAI twice; :571-572 Step 5 twins.",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/services/aiConsent.ts",
+     "line": "46, 76, 82",
+     "note": "export const AI_CONSENT_VERSION = 2; consent valid only when record.version === AI_CONSENT_VERSION.",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/__tests__/consent/aiConsentVersion.s69.test.ts",
+     "line": "36",
+     "note": "sha256: '372c50484085fa859a576a62367c743365735fab6dda31f336552a4ae2a21a02' fence over the EN+AR consent copy (other consent suites: aiConsentV2.s75.test.ts, aiProcessingConsent.s69.test.tsx, setup.ts).",
+     "basis": "measured"
+    },
+    {
+     "file": "app/legal/processors.json",
+     "line": "2, 56-76, 3-260",
+     "note": "18 rows (supabase, railway, upstash, sentry, openai, expo_push, eas_update, apple, google_sign_in, google_fonts, serper, bright_data, firecrawl, scrapedo, cloudflare, gmail, youtube, retailers). openai row: module 7 files, hosts ['api.openai.com'], gate_flag null, public_name true. Only youtube carries a gate_flag (ENABLE_YOUTUBE_SOURCE, :228). The _comment (:2) states a gate_flag row is checked only while the fill-in data records that flag 'on'.",
+     "basis": "measured"
+    },
+    {
+     "file": "tests/test_legal_s78.py",
+     "line": "58, 117-118, 897, 900-921",
+     "note": "FIXTURE = tests/fixtures/legal_s78.json; PUBLIC_NAME_IDS = {openai, apple, google_sign_in, retailers}; test_s78_r22_manifest_categories: ids must equal manifest_base keys, public_name bool true exactly for the four, and kind/module/hosts/gate_flag/personal_data must equal the frozen values ('T7b coverage unchanged').",
+     "basis": "measured"
+    },
+    {
+     "file": "tests/fixtures/legal_s78.json",
+     "line": "manifest_base",
+     "note": "18 frozen ids; openai frozen row = {kind processor, module [the 7 files], hosts [api.openai.com], gate_flag None, personal_data True}.",
+     "basis": "measured"
+    },
+    {
+     "file": "tests/test_legal_docs_u8.py",
+     "line": "759-763, 766-776, 794, 814-818, 823-851, 1039-1058",
+     "note": "FIRST_PARTY_HOST_SUFFIXES (qaren.app, getmyez.com); URL_HOST regex; CLIENT_CONSTRUCTORS = {AsyncOpenAI, OpenAI, create_client, Redis, StrictRedis}; NOT_PERSONAL = exchange_rate_service, zyte_service only; _scan_source adds redis.from_url and sentry_sdk.init; _scan_services walks app/services/**/*.py; test_t7b_external_hosts_and_clients_map_to_manifest: unmapped module or uncovered host fails. grep -ic anthropic = 0 in this file and in test_legal_s78.py.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/content_safety_service.py",
+     "line": "249-252",
+     "note": "Moderation: `from app.services.openai_service import get_client; client.moderations.create(model=moderation_model(), input=text)` -- stays on OpenAI.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/api_budget_service.py",
+     "line": "702-709, 893-904, 907-932",
+     "note": "LLMUnavailableError(RuntimeError) docstring: message must avoid '429' / 'rate' / 'quota' so generate_comparison's fallback cannot fire. _openai_failure_is_transient: TimeoutError, RateLimitError, APIConnectionError (APITimeoutError subclass), InternalServerError, or APIStatusError with status >= 500 -> True; 4xx other than 429 -> request defect, never trips the breaker.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/openai_pricing.py",
+     "line": "121-140",
+     "note": "record_openai_response reads usage.prompt_tokens / completion_tokens and _cached_tokens(usage); list_price_usd on an exact-key table (unknown id -> null cost).",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/openai_service.py",
+     "line": "69",
+     "note": "The only 'Anthropic' mention in app/: a comment that some Anthropic/proxy implementations expose usage flat.",
+     "basis": "measured"
+    },
+    {
+     "file": "tests/test_model_config.py",
+     "line": "132, 135",
+     "note": "ALLOWED = {model_config.py, openai_pricing.py}; the stray-literal regex matches only gpt-* and omni-moderation-*, so a claude-* literal in app/services is NOT caught today.",
+     "basis": "measured"
+    },
+    {
+     "file": "tests/test_model_config_enforced.py",
+     "line": "113-131, 134-140, 228-241, 270-275",
+     "note": "_chat_sites matches callees ending 'completions.create' or 'guarded_llm_create' (wrapper pass-throughs excluded); asserts >= 15 sites; SHIPPED kwargs table of 12 sites (gpt-4o / gpt-4o-mini, max_tokens, temperature, response_format); test_resolved_models_unchanged pins exactly the 5 OpenAI roles.",
+     "basis": "measured"
+    },
+    {
+     "file": "tests/test_u3c_store_false_pin.py",
+     "line": "1-11, 31, 71-78, 99, 110",
+     "note": "Pins store=False at the ONE chokepoint guarded_llm_create; the AST callee check is 'chat.completions.create'; forbidden literal kwargs at guarded_llm_create call sites: store, extra_body, extra_query, user, safety_identifier, metadata.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/model_config.py",
+     "line": "44-57, 70-74, 143-145, 184-197",
+     "note": "_ROLE_DEFAULTS (verdict gpt-4o; standard/vision/critic gpt-4o-mini; moderation omni-moderation-latest), _resolve reads OPENAI_MODEL_<ROLE> (blank -> default), resolved_models() returns the 5 roles; openai_max_retries()/openai_fallback_max_retries() read OPENAI_MAX_RETRIES / OPENAI_FALLBACK_MAX_RETRIES.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/llm_provider.py",
+     "line": "1-45",
+     "note": "provider_base_url(): unset/blank -> explicit stock URL; malformed -> FAIL CLOSED, never a silent fallback to api.openai.com -- the selection-rule precedent R-A12 mirrors.",
+     "basis": "measured"
+    },
+    {
+     "file": "CLAUDE.md (sc-docs-70) SESSION 77 Active-runtime block, PostHog analytics bullet",
+     "line": "n/a (prose)",
+     "note": "Precedent for a dark recipient: 'Unit B adds an eighth U8 fill-in flag, ENABLE_POSTHOG_SERVER_CAPTURE, recorded \"off\" with a gated processors.json row posthog. Unit L flips it \"on\" together with the policy text.'",
+     "basis": "measured"
+    }
+   ]
+  },
+  {
+   "question": "(4) B10 ruling: the pin, the exception mapping the adapter must implement, and the exact pins/manifests the placeholder must leave untouched vs extend.",
+   "answer": "See ruling_text.",
+   "ruling_text": "RULING B10-R0 (Anthropic placeholder prerequisites; everything measured on anthropic 1.11.0 and sentry-sdk 2.68.1 installed in a scratch venv, no live Anthropic call).\n\n1. PIN. `anthropic==1.11.0` (PyPI upload 2026-09-30T22:58:22Z, 18 days old on 2026-10-19; 1.12.0+ are younger than 14 days). Declare the exact line in requirements.in and recompile requirements.txt then requirements-dev.txt (-c requirements.txt, --universal, --python-version 3.12). Lock impact: httpx2 (lock 2.12.0 via openai) already satisfies httpx2>=2.0,<3; anyio/jiter/pydantic/sniffio/typing-extensions already satisfy; ONE new transitive, docstring-parser>=0.15,<1. CI `Lock is current` and `pip-audit --strict` must pass on the recompiled lock (not run here). The SDK is built on httpx2, not httpx: never pass an httpx.Timeout/Client object to it.\n\n2. EXCEPTION MAPPING the adapter implements (classify on status_code AND exc.type, never on message text; the SDK exposes APIStatusError.type parsed from body.error.type):\n   TRANSIENT (counts toward the openai-style breaker, may be retried within the app's own deadline): anthropic.RateLimitError (429, type rate_limit_error), anthropic.OverloadedError (529, overloaded_error), anthropic.InternalServerError (every other >= 500 incl. 500 api_error, 502/503/504 -- the client never constructs ServiceUnavailableError/DeadlineExceededError, so do not catch those two by class), anthropic.APIConnectionError and its subclass APITimeoutError, and asyncio TimeoutError from the adapter's own wait_for. This mirrors api_budget_service._openai_failure_is_transient (:907-932).\n   TERMINAL / request defect (never trips the breaker, never spends a retry, never triggers the same-org fallback): BadRequestError 400 invalid_request_error (this is where a forwarded temperature/top_p/thinking budget on a Claude 5 model lands, per docs), AuthenticationError 401, PermissionDeniedError 403, NotFoundError 404 (wrong model id), RequestTooLargeError 413, UnprocessableEntityError 422, and QUOTA = any APIStatusError whose type == 'billing_error' (documented as HTTP 402; the SDK has NO 402 class, it arrives as a bare APIStatusError with status_code 402). The quota class maps to LLMProviderNotConfigured/LLMUnavailableError with a message free of '429', 'rate' and 'quota' (generate_comparison substring-matches those for its fallback).\n   HTTP 200 NON-DELIVERIES: Message.stop_reason == 'refusal' (stop_details.category in cyber|bio|frontier_llm|reasoning_extraction|general_harms) and 'model_context_window_exceeded' map to the B3 None-content path (LLM_UNAVAILABLE 503 with code, logged as refusal); 'max_tokens' = truncated output, treated as a JSON parse failure, never as a result.\n   SDK RETRY DEFAULTS to override: max_retries=2 default retries 408/409/429/>=500 (529 included) and connection errors, sleeping 0.5*2^n <= 8 s, BUT a retry-after(-ms) header is honoured verbatim with no practical cap -- so the adapter constructs AsyncAnthropic(api_key=<explicit>, max_retries=<the same knob family as OPENAI_MAX_RETRIES, default 2>, timeout=<explicit>) and wraps every call in asyncio.wait_for inside the compare deadline; it must pass api_key explicitly (a bare client also authenticates from ANTHROPIC_AUTH_TOKEN or an `ant auth login` profile, which would defeat the 'ANTHROPIC_API_KEY present' gate). The default client timeout is 10 min (connect 5 s); non-streaming create raises ValueError only above max_tokens 21,333, far above the app's <= 1000.\n   CALL SHAPE: messages.create(model=..., max_tokens=N, system=<finished system string>, messages=[{'role':'user','content':[{'type':'image','source':{'type':'base64','media_type':'image/jpeg'|'image/png'|'image/webp'|'image/gif','data': b64}}, {'type':'text','text': <finished user string>}]}], output_config={'effort': 'low', 'format': {'type':'json_schema','schema': SCHEMA}}) for JSON sites; prose sites omit format. NEVER forward temperature/top_p/top_k/store/response_format/user/metadata -- none of them is a kwarg on this pin (TypeError at the SDK boundary, before any 400). Omit `thinking` (adaptive by default on the 5.5 models per docs; 'disabled' is a 400 on sonnet-5-5) and steer cost with output_config.effort. Prefer output_config.format over forced tool_choice (any/tool is a 400 on sonnet-5-5/opus-5-5 per docs); messages.parse(output_format=<pydantic>) exists as an alternative. Usage normalisation: input_tokens/output_tokens (+ cache_read_input_tokens/cache_creation_input_tokens) -> the ledger's prompt/completion/cached fields; a claude id prices null in openai_pricing (cost_complete False) unless an anthropic price table is added to the ALLOWED set.\n   MODEL IDS: on this pin the Model literal lists claude-sonnet-5-5, claude-opus-5-5 and claude-fable-5-1 but NOT claude-haiku-5-5 (the literal is unioned with str, so the id is still sent; acceptance by the API is unmeasured offline). _ANTHROPIC_ROLE_DEFAULTS as R-A12 states (standard/vision/critic claude-haiku-5-5, verdict claude-sonnet-5-5, opus by env) is fine for a dark placeholder; the first live smoke after the flip decision must confirm haiku-5-5 and the JSON-schema path on real calls.\n\n3. LEAVE UNTOUCHED (byte-identical in the placeholder PR): app/legal/privacy_policy.md and _ar.md (OpenAI at :15,28,38,55,58,63,65,67,69,75,87,109), terms_of_service.md/_ar.md (:53, :91), en.json:703-707 / ar.json:700-704 and the Step 5 twins (:574-575 / :571-572), aiConsent.ts:46 AI_CONSENT_VERSION = 2 and the sha fence 372c5048... (aiConsentVersion.s69.test.ts:36), the processors.json `openai` row (:56-76) and PUBLIC_NAME_IDS (openai, apple, google_sign_in, retailers), the SHIPPED OpenAI kwargs table (test_model_config_enforced.py:228-241) and resolved_models()'s five roles (:270-275), the U3c store=False pin on guarded_llm_create (the Anthropic chokepoint is a SEPARATE function that never receives store), the W4-11 render digests (the adapter takes finished strings), moderation on OpenAI (content_safety_service.py:249-252), and the OpenAI classifier's semantics.\n\n4. EXTEND (each a deliberate, stated re-record in the same PR):\n   a. requirements.in + both locks (section 1).\n   b. tests/test_model_config.py:135 regex gains `claude-[a-z0-9.\\-]+`; ALLOWED (:132) stays {model_config.py, openai_pricing.py} plus any anthropic price module. Today a claude literal in app/services is not caught, so this is the pin that makes _ANTHROPIC_ROLE_DEFAULTS the only home.\n   c. tests/test_model_config_enforced.py:126 matcher gains `messages.create` and the Anthropic chokepoint name; `>= 15` (:140) unchanged; add a hermetic pin that with LLM_PROVIDER=anthropic the system/user strings handed to the adapter equal the OpenAI-branch strings.\n   d. SENTRY: the lock bump alone auto-enables sentry_sdk.integrations.anthropic.AnthropicIntegration (sentry-sdk 2.68.1 integrations/__init__.py:69, include_prompts=True default at anthropic.py:150) because sentry_service.py:664-666 leaves auto_enabling_integrations True -- SR8 test_u8d_pin_integration_list_unchanged (test_sentry_channels_u8d.py:969) goes red at merge. The placeholder PR adds AnthropicIntegration(include_prompts=False) beside OpenAIIntegration (sentry_service.py:659-661) and re-records BASE_INTEGRATIONS (:192-197) with 'AnthropicIntegration'; send_default_pii stays False.\n   e. LEGAL MANIFEST, dark (the PostHog unit-B precedent): add a `processors.json` row id `anthropic` {kind processor, personal_data true, module ['app/services/llm_adapter.py'], hosts ['api.anthropic.com'], gate_flag 'ENABLE_ANTHROPIC_PROVIDER', category_en/ar in the recipient wording, public_name false}, record the flag 'off' in tests/fixtures/legal_fill_in_u8.json flags, and re-record tests/fixtures/legal_s78.json manifest_base with the new id (R22, test_legal_s78.py:900-921). While the fill-in records 'off', T7a does not require the policy to name the row, so no legal text moves. Do NOT add llm_adapter.py to the openai row (R22 freezes its module list).\n   f. T7b SCANNER: add 'AsyncAnthropic' and 'Anthropic' to CLIENT_CONSTRUCTORS (test_legal_docs_u8.py:763) and an api.anthropic.com positive control (:904-930). Without this the adapter, which constructs AsyncAnthropic with no URL literal, is invisible to the legal-manifest gate; with it, the gated row in (e) is what maps it.\n   g. tests/_env_safety.CREDENTIALS_UNSET should gain ANTHROPIC_API_KEY so the credential-free tier strips it like OPENAI_API_KEY (file not read in this task; verify before the spec).\n\n5. FLIP PRECONDITIONS (unchanged from R-A2, restated with the measured facts): ENABLE_ANTHROPIC_PROVIDER never flips before a unit that names Anthropic in privacy_policy.md/_ar.md section 4 and the recipients list, in the Terms :53, in the aiConsent body (AI_CONSENT_VERSION 3 + a new sha fence, re-asking every user, UB-R14), sets the manifest row public_name true (PUBLIC_NAME_IDS re-recorded in both legal test files) and records the flag 'on' in the fill-in data; moderation stays on OpenAI so OPENAI_API_KEY stays required and both vendors are disclosed.",
+   "evidence": [
+    {
+     "file": "scratchpad/dl_pypi/anthropic.json; scratchpad/dl_pypi/anthropic-1.11.0.json",
+     "line": "releases; info.requires_dist",
+     "note": "Pin choice and dependency set (answer 1).",
+     "basis": "measured"
+    },
+    {
+     "file": "anthropic/_exceptions.py; anthropic/_client.py; anthropic/_base_client.py; anthropic/_constants.py; anthropic/types/shared/error_type.py",
+     "line": "see answer 2 evidence",
+     "note": "Hierarchy, status mapping (no 402/503/504 branches), retry statuses and retry-after handling, defaults.",
+     "basis": "measured"
+    },
+    {
+     "file": "anthropic/types/message_create_params.py; anthropic/resources/messages/messages.py",
+     "line": "35-291; 1603-1630",
+     "note": "No temperature/top_p/top_k/store kwargs on messages.create (0 grep hits).",
+     "basis": "measured"
+    },
+    {
+     "file": "anthropic/types/model.py",
+     "line": "6-29",
+     "note": "claude-haiku-5-5 absent; sonnet-5-5 / opus-5-5 / fable-5-1 present; Union with str.",
+     "basis": "measured"
+    },
+    {
+     "file": "sentry_sdk/integrations/__init__.py; sentry_sdk/integrations/anthropic.py; app/services/sentry_service.py; tests/test_sentry_channels_u8d.py",
+     "line": "69,122; 150,427,614; 659-666; 192-197, 969-971",
+     "note": "Auto-enable of AnthropicIntegration on install; SR8 list pin.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/legal/processors.json; tests/fixtures/legal_s78.json; tests/test_legal_s78.py; tests/test_legal_docs_u8.py",
+     "line": "2, 56-76, 228; manifest_base; 897, 900-921; 759-763, 766-776, 794, 1039-1058",
+     "note": "Frozen row set, gate_flag semantics ('checked only while the fill-in data records that flag on'), PUBLIC_NAME_IDS in both files, T7b constructor list without AsyncAnthropic.",
+     "basis": "measured"
+    },
+    {
+     "file": "tests/test_model_config.py; tests/test_model_config_enforced.py; tests/test_u3c_store_false_pin.py; app/services/model_config.py",
+     "line": "132-135; 126, 140, 228-241, 270-275; 1-11, 71-78, 99; 44-57, 70-74, 184-197",
+     "note": "Pins to extend vs keep; the OPENAI_MAX_RETRIES knob family the adapter mirrors.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/api_budget_service.py; app/services/content_safety_service.py; app/services/openai_pricing.py",
+     "line": "702-709, 893-932; 249-252; 121-140",
+     "note": "The classifier mirrored, moderation on OpenAI, usage field names read by the ledger.",
+     "basis": "measured"
+    },
+    {
+     "file": "claude-api skill shared/error-codes.md",
+     "line": "5-17, 119-125, 269",
+     "note": "402 billing_error and the 400-on-temperature / thinking-disabled rules per model are documentation, not measured on this box; the adapter classifies by status+type so either way holds.",
+     "basis": "inferred"
+    },
+    {
+     "file": "CLAUDE.md (sc-docs-70), SESSION 77 block, PostHog bullet",
+     "line": "prose",
+     "note": "Precedent for a dark gated manifest row recorded 'off' (ENABLE_POSTHOG_SERVER_CAPTURE / row posthog).",
+     "basis": "measured"
+    }
+   ]
+  }
+ ],
+ "surprises": [
+  "claude-haiku-5-5 is NOT in the pinned SDK's Model literal (anthropic 1.11.0 types/model.py:6-29; 0 occurrences anywhere in the package) although R-A12 makes it the standard/vision/critic default; the literal is unioned with str so the id is still sent, but acceptance is unmeasured offline. claude-sonnet-5-5, claude-opus-5-5 and claude-fable-5-1 are listed.",
+  "Adding anthropic to the lock reddens an EXISTING pin with zero adapter code: sentry-sdk 2.68.1 auto-enables AnthropicIntegration when the package is importable (integrations/__init__.py:69, include_prompts=True default at anthropic.py:150), sentry_service.py:664-666 does not disable auto-enabling, and SR8 test_u8d_pin_integration_list_unchanged (test_sentry_channels_u8d.py:969) asserts the exact integration list. Prompts would still not leave (send_default_pii False gate at anthropic.py:427/614), but the pin goes red.",
+  "The T7b legal-manifest gate is blind to an Anthropic client: CLIENT_CONSTRUCTORS (test_legal_docs_u8.py:763) is {AsyncOpenAI, OpenAI, create_client, Redis, StrictRedis}; an llm_adapter.py that constructs AsyncAnthropic(...) with no URL literal produces no T7b finding, so the 'trips T7b' assumption in the critic (:96) holds only if the adapter writes a literal https://api.anthropic.com or the scanner is extended.",
+  "messages.create on this pin has NO temperature/top_p/top_k and NO store kwarg (0 grep hits in message_create_params.py and messages.py): forwarding model_config.sampling_kwargs output or the U3c store=False through the Anthropic path is a Python TypeError at the SDK boundary, not an API 400.",
+  "The client never constructs ServiceUnavailableError (503) or DeadlineExceededError (504) even though both classes exist (_client.py:548-583 has no 503/504 branch; every other >= 500 is InternalServerError), and there is no 402 class at all (billing_error arrives as a bare APIStatusError) -- classification must be by status_code + .type, not by class name.",
+  "The SDK honours a retry-after / retry-after-ms header verbatim with a cap of 4,294,967 s (_base_client.py:835-838), so with max_retries=2 the SDK's own wall time is unbounded by the header; the adapter must bound every call with asyncio.wait_for inside the compare deadline.",
+  "No transport conflict: the lock already contains httpx2==2.12.0 (requirements.txt:75, via openai 3.3.1), which satisfies anthropic's httpx2>=2.0,<3; the only new lock entry is docstring-parser.",
+  "A bare AsyncAnthropic() authenticates from ANTHROPIC_AUTH_TOKEN or an `ant auth login` profile when ANTHROPIC_API_KEY is absent (_client.py:633-647, 663-664), so R-A12's 'ANTHROPIC_API_KEY present' gate must be an explicit env check with api_key passed explicitly, never the SDK's auto-discovery."
+ ],
+ "open": [
+  "pip-audit -r requirements.txt --strict was not run on a lock containing anthropic==1.11.0 + docstring-parser; CI's blocking step decides it.",
+  "Live API behaviour was not measured (no Anthropic call allowed): whether claude-haiku-5-5 is accepted on this pin's str arm, the 400 on temperature for Claude 5 models, the 402-vs-400 shape of a low-credit account, the minimum max_tokens for a non-empty json_schema output, and whether output_config.format coexists with the fenced system prompt -- all come from the claude-api skill docs and need the first dark smoke test under the flag.",
+  "tests/_env_safety.CREDENTIALS_UNSET was not read; confirm ANTHROPIC_API_KEY is added so the credential-free tier strips it (conftest strips OPENAI_API_KEY today).",
+  "The fill-in data file tests/fixtures/legal_fill_in_u8.json `flags` map was not read; the PostHog precedent (CLAUDE.md SESSION 77) says a gated row records its flag 'off' there -- confirm the key shape before adding ENABLE_ANTHROPIC_PROVIDER.",
+  "Whether the placeholder should add an anthropic price table (claude ids currently price null in openai_pricing.list_price_usd -> cost_complete False) is an owner/B10 spec call; if added, the module must join test_model_config.py ALLOWED (:132).",
+  "WebFetch on the PyPI JSON truncated at 100K of 360K chars; the release table was taken from the downloaded JSON with an isolated parser instead -- the task's literal 'use WebFetch' step was satisfied only for the first 100K characters."
+ ]
+}

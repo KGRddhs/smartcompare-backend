@@ -1,0 +1,345 @@
+{
+ "topic": "R0 gap: does the JSON-LD cand[\"image\"] survive to result[\"price\"] on the live page-scrape path; B7 IMAGE-PIPELINE-V2 feasibility",
+ "answers": [
+  {
+   "question": "Does the JSON-LD image captured as cand[\"image\"] (price_service.py:10962-10964) survive to the final result[\"price\"] dict on the live page-scrape path, so that scs:6086-6090 fires?",
+   "answer": "NO. The list survives select_best and extract_jsonld_price but is dropped inside extract_price_from_html, at the JSON-LD branch's reduced result dict, C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/price_service.py:13952-13961. Chain (all measured): (1) _widen_jsonld_candidate writes cand[\"image\"] = images (a de-duplicated list of url strings from _jsonld_image_urls, :10822-10860) at :10962-10964, called from extract_jsonld_price at :11851-11855 only when wide_candidate_enabled() (default ON, :4592-4619). (2) extract_jsonld_price returns the candidate dict OBJECT: select_best(candidates, ...) at :11874-11877 (or min(candidates) at :11878 when query_name is empty). select_best (:8496-8592) filters and sorts but never copies or strips a dict; it returns eligible[0] at :8592 (or min(cands) at :8538 with the exact gate OFF). So price_data in extract_price_from_html still carries \"image\". (3) extract_price_from_html (:13791) builds a NEW dict at :13952-13961 with exactly amount, original_currency, currency, retailer, url, in_stock, confidence, estimated, source_method; afterwards only size (_stamp_listing_size :13985), name/brand under exact_gate_enabled() (:14000-14006) and capture_outcome (_finish :13840-13862, flag-ON) are added, then return _finish(result) at :14007. price_data[\"image\"] is never read. This drop is PINNED: tests/test_wide_candidate_dict.py:462-476 asserts \"image\" (and every wide key) is NOT in the extract_price_from_html result ('must not change the SHIPPED price payload shape'). (4) Everything downstream carries that reduced dict unchanged: fetch_page_price returns price at :14945; _curl_scraper wraps it as raw_data=page_price (structured_comparison_service.py:2146-2151); _finalize_fan_winner (scs:8115-8179) sets winning_price = best[\"raw_data\"] at :8124, stamps source_method/_cached, returns it at :8179; _get_price returns _winner at :8297-8300; _stash_price_cb / the Phase-1 loop write result[\"price\"] (scs:5776-5781); scs:6086 then reads result[\"price\"].get(\"image_url\"), which no live producer sets (0 occurrences of image_url in price_service.py; only zyte_service.py:499 and :661, off-clock). Side note: _try_pharmacy_urls (price_service.py:16780-16835) is a second reduced-dict producer off extract_jsonld_price that also drops \"image\".",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/price_service.py",
+     "line": "10953-10964",
+     "note": "_widen_jsonld_candidate: images = _jsonld_image_urls(product.get(\"image\")); if images: cand[\"image\"] = images. Caller gates on wide_candidate_enabled().",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/price_service.py",
+     "line": "11847-11856",
+     "note": "Call site inside extract_jsonld_price: brand carried when exact_gate_enabled() or wide_candidate_enabled(); _widen_jsonld_candidate(cand, product) when wide_candidate_enabled(); candidates.append(cand).",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/price_service.py",
+     "line": "4592-4619",
+     "note": "wide_candidate_enabled(): ENABLE_WIDE_CANDIDATE default ON (not in false/0/no/off/''). Docstring: widened keys consumed by nothing in the selection path.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/price_service.py",
+     "line": "11874-11878",
+     "note": "extract_jsonld_price returns select_best(candidates, query_name, _category, drop_out_of_stock=False, require_url=False) or min(candidates, key=amount). The dict object is passed through.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/price_service.py",
+     "line": "8496-8592",
+     "note": "select_best filters (amount>0, identity, listing-url, brand evidence), sorts, returns eligible[0] (:8592) or min(cands) (:8538). No copy, no key removal: the image key survives.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/price_service.py",
+     "line": "13952-13961",
+     "note": "THE DROP: result = {amount, original_currency, currency, retailer, url, in_stock, confidence, estimated, source_method: page_scrape} built from price_data; image never copied.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/price_service.py",
+     "line": "13985-14007",
+     "note": "After the dict: _stamp_listing_size(result,...) :13985; under exact_gate_enabled() result[\"name\"]/result[\"brand\"] :14000-14006; return _finish(result) :14007. _finish (:13840-13862) adds only capture_outcome when _first (ENABLE_JSONLD_FIRST) is on.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_wide_candidate_dict.py",
+     "line": "462-476",
+     "note": "Pin: extract_price_from_html on a Product with image=https://cdn/a.jpg returns amount 79.99 and for key in (description, image, sku, gtin, mpn, category, aggregate_rating, reviews): assert key not in result.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/price_service.py",
+     "line": "14888-14945",
+     "note": "fetch_page_price: price = extract_price_from_html(...) (or run_parse_offloaded of it); content-safety check; return price at :14945 unchanged.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/structured_comparison_service.py",
+     "line": "2113-2151",
+     "note": "_curl_scraper: page_price = await fetch_page_price(url, full_name, currency); returns {value, source_method, rank, raw_data: page_price} at :2146-2151. The dict is passed whole.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/structured_comparison_service.py",
+     "line": "8115-8179",
+     "note": "_finalize_fan_winner: winning_price = best[\"raw_data\"] (:8124); stamps source_method (:8130), rejects implausible prices, persists via _persist_genuine_price (:8173-8174), sets _cached=False (:8175), return winning_price (:8179). Called at :8297; returned by _get_price at :8300.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/structured_comparison_service.py",
+     "line": "5776-5781",
+     "note": "_stash_price_cb writes _res[\"price\"] = _t.result() (the winner dict) under _stash_early; the Phase-1 loop writes the identical value.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/structured_comparison_service.py",
+     "line": "6076-6090",
+     "note": "Post-Phase-1: if result.get(\"price\"): ... page_img = result[\"price\"].get(\"image_url\"); if http(s) string: result[\"image_url\"] = page_img.strip(). The reader expects the key image_url, not image.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/zyte_service.py",
+     "line": "499, 661",
+     "note": "The only two producers that set \"image_url\" on a price dict (mainImage.url). grep over app/services/price_service.py: 0 occurrences of image_url.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/price_service.py",
+     "line": "16780-16835",
+     "note": "_try_pharmacy_urls builds its own reduced dict (amount, original_currency, currency, retailer, url, title, in_stock, confidence, estimated, source_method local_bhd) from extract_jsonld_price output; image also dropped there.",
+     "basis": "measured"
+    }
+   ]
+  },
+  {
+   "question": "Where is the single write site for a one-line mapping price[\"image_url\"] = first https entry so that scs:6086-6090 fires?",
+   "answer": "In extract_price_from_html's JSON-LD branch, C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/price_service.py, inside the `if _label_ok:` block, after the exact-gate name/brand stamp at :14000-14006 and before `return _finish(result)` at :14007 (the result dict itself is :13952-13961). Shape: under ENABLE_IMAGE_PIPELINE_V2, `_img = next((u for u in (price_data.get(\"image\") or []) if isinstance(u, str) and u.startswith(\"https://\")), None); if _img: result[\"image_url\"] = _img` -- the key is OMITTED when there is no https entry, so flag-OFF is byte-identical and the tests/test_wide_candidate_dict.py:462-476 pin (which forbids the key \"image\", not \"image_url\") keeps passing flag-ON too. From there the value needs no further mapping: fetch_page_price (:14945) -> _curl_scraper raw_data (scs:2150) -> _finalize_fan_winner (scs:8124/8179) -> result[\"price\"] (scs:5776-5781) -> scs:6086-6090 -> result[\"image_url\"] -> SSE specs event (scs:5097) and response_builder overview.products[i].image_url (response_builder.py:1937, 2180-2181). Why NOT the other candidate sites: _curl_scraper (scs:2113-2151) and _finalize_fan_winner (scs:8115-8179) only ever see the reduced page_price dict, so the image is already gone there; data_supply's proposed read of price.get(\"image\") at scs:6086 cannot work for the same reason, and carrying \"image\" itself onto the price dict would break the :462-476 pin's stated invariant. Two consequences of this write site to state in the spec: (a) _persist_genuine_price (scs:8958-8973) -> _cache_set_async -> set_cached json.dumps the WHOLE dict (cache_service.py:650-653), so flag-ON the Redis L1 price value gains image_url and a cache hit (scs:6732-6733) re-fires the piggyback on repeat compares (helps data_supply path (b)); this is a stored-value change, so it is not R-A1 pure-defect class and must stay behind the flag. (b) the L2 product_prices row is column-based (save_price product_data_service.py:336-361; get_cached_price rebuilds :290-296), so image_url is neither persisted to nor rehydrated from L2: an L2-served price carries no image. (c) public_price_view (price_service.py:9320-9338) strips only guard_rejected and _-prefixed keys, so image_url becomes a visible additive key on the public price object (build 3 ignores unknown keys; additive-only rule satisfied); strip it there under the flag if the owner wants the wire price unchanged. A mirror stamp in _try_pharmacy_urls (:16822-16835) is optional and separate. _jsonld_image_urls (:10822-10860) does not filter scheme or relative paths, hence the https-first filter at the write site.",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/price_service.py",
+     "line": "13999-14007",
+     "note": "if exact_gate_enabled(): result[\"name\"] = price_data.get(\"name\"); if price_data.get(\"brand\"): result[\"brand\"] = ...; return _finish(result). The flag-gated image_url stamp belongs immediately before :14007.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/price_service.py",
+     "line": "10822-10860",
+     "note": "_jsonld_image_urls returns stripped strings from str / list / ImageObject(url, contentUrl, @id), de-duplicated; no scheme filter, relative paths pass through -> the write site must pick the first https:// entry.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/structured_comparison_service.py",
+     "line": "8958-8973",
+     "note": "_persist_genuine_price: should_cache_price gate, then _cache_price_and_clear_sentinel (-> _cache_set_async(cache_key, price_obj, ttl)) and _save_price_to_db.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/cache_service.py",
+     "line": "650-653",
+     "note": "set_cached: _redis_set(key, json.dumps(value), ex=ttl) -- the whole price dict is stored, so an added image_url key would be cached and served on L1 hits.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/structured_comparison_service.py",
+     "line": "6732-6733",
+     "note": "L1 cache hit in _get_price: cached[\"_cached\"] = True; return cached (the stored dict, image_url included once cached flag-ON).",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/product_data_service.py",
+     "line": "336-361",
+     "note": "save_price row = {product_key, brand, name, variant, region, amount, currency, retailer, url, source_method, estimated, fetched_at [, title, in_stock]} -- column-based; image_url not persisted.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/product_data_service.py",
+     "line": "290-296",
+     "note": "get_cached_price rebuilds {amount, currency, retailer, url, source_method, estimated} (+ title when persisted) -- an L2-served price has no image_url.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/price_service.py",
+     "line": "9320-9338",
+     "note": "public_price_view returns the price unchanged with the exact gate OFF; with it ON strips guard_rejected and _-prefixed keys only. image_url would be visible on the public price.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/structured_comparison_service.py",
+     "line": "5087-5100",
+     "note": "SSE specs event already yields image_url: pd.get(\"image_url\") per product.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/response_builder.py",
+     "line": "1937, 2177-2181",
+     "note": "overview.products[i].image_url = pd.get(\"image_url\"); legacy products alias defaults image_url to None when absent. No further mapping needed once result[\"image_url\"] is set.",
+     "basis": "measured"
+    }
+   ]
+  },
+  {
+   "question": "image_service.py: every tier, its timeout and the validator (file read in full, 287 lines)",
+   "answer": "Validator: _is_valid_image_url (image_service.py:52-57) = isinstance str and strip().startswith(\"http://\" or \"https://\"); it ACCEPTS http://, has no raster/extension check, no host check. Cascade in get_product_image_url (:214-287), in order: Tier 1.5 piggyback page_scrape_image (:241-244) -- returned immediately when valid; the live caller passes page_scrape_image=None (scs:5943) and the post-Phase-1 override at scs:6086-6090 is the real piggyback, which today never fires (answer 1). Tier 1.5b extract_image_from_search(search_payload) (:246-253; function :75-119): knowledgeGraph/knowledge_graph image via imageUrl/image/imageURL/thumbnailUrl (:86-93) with NO title/type/identity check, then the first organic result with imageUrl/thumbnailUrl/thumbnail/image (:95-104), then a top-level images pack (:106-117); $0, no budget. Tier 1 Serper Images (:255-272): gated by try_consume_serper_image_credit(1) (api_budget_service.py:1166-1191, daily counter SERPER_IMAGE_DAILY_BUDGET default 500 at :24-33, INCRBY fail-open) and by the lifetime _serper_budget_ok in search_images (serper_service.py:1214-1216); search_images (serper_service.py:1201-1243) uses httpx.AsyncClient(timeout=_serper_timeout()) (:1219) where _serper_timeout (:473-494) is 15.0 s with ENABLE_SERPER_FAIL_FAST off, else httpx.Timeout(read=SERPER_READ_TIMEOUT 10.0, connect=SERPER_CONNECT_TIMEOUT 8.0); takes images[0].imageUrl. Tier 3 GPT (:274-283; extract_image_via_gpt :146-207): only when organic_results truthy; standard_model via guarded_llm_create, token cap 120, temp 0.1 (:177-185); prompt :126-143 asks for a URL from link+snippet lines (first 10 organic, :161-165); no check that the returned URL appears in or shares a host with the organic links -- only _is_valid_image_url (:204-206). Final: None (:285-287). Tier provenance is logged, never returned (:21-23); the function returns a bare str. There is NO timeout inside image_service itself: the only bound is the caller's asyncio.wait_for(timeout=_PHASE1_TIMEOUTS[\"image_url\"]) = 5.0 s (scs:5748, 5939-5953). Since the Serper Images call alone may take up to 15 s (or 10+8 s), Tier 1 can consume the whole 5 s race and Tier 3 then never runs. Firecrawl/Scrape.do tiers 2/2.5 are not wired in text mode (:12-19). Single live caller: scs:5941 (grep over app/). Pins: tests/test_image_service.py, test_image_service_edges.py, test_image_service_longtail.py, test_image_knowledge_graph_tier.py (KG fixtures carry a title field, :42, :58, :75), test_comparison_response_image_url.py, test_partial_specs_stash_on_price_timeout.py (patches get_product_image_url -> None at :76).",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/image_service.py",
+     "line": "52-57",
+     "note": "_is_valid_image_url: str and startswith http:// or https://. Accepts http.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/image_service.py",
+     "line": "75-119",
+     "note": "extract_image_from_search: KG image (:86-93, no identity check) -> organic image fields (:95-104) -> images pack (:106-117) -> None.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/image_service.py",
+     "line": "126-143, 146-207",
+     "note": "Tier 3 prompt and extract_image_via_gpt: guarded_llm_create, token_limit 120, temp 0.1; parse JSON; only _is_valid_image_url on the returned URL -- no grounding to organic links.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/image_service.py",
+     "line": "214-287",
+     "note": "get_product_image_url cascade: 1.5 piggyback (:241-244), 1.5b search payload (:246-253), 1 Serper Images behind try_consume_serper_image_credit (:255-272), 3 GPT when organic_results (:274-283), None (:285-287). No internal timeout; returns str only.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/structured_comparison_service.py",
+     "line": "5748, 5939-5953",
+     "note": "_PHASE1_TIMEOUTS[\"image_url\"] = 5.0; the image task is appended as a bare asyncio.wait_for(_timed_task(\"image_url\", get_product_image_url(full_name, page_scrape_image=None, organic_results=unified_search organic, search_payload=unified_search)), timeout=5.0) -- not an ensure_future, no done-callback.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/serper_service.py",
+     "line": "1201-1243",
+     "note": "search_images: key check, lifetime budget gate (:1214-1216), httpx.AsyncClient(timeout=_serper_timeout()) (:1219), _serper_post(client, \"/images\", {q, num}); exceptions -> {images: [], error}. No per-call timeout parameter.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/serper_service.py",
+     "line": "473-494",
+     "note": "_serper_timeout: 15.0 when ENABLE_SERPER_FAIL_FAST off; else httpx.Timeout(SERPER_READ_TIMEOUT default 10.0, connect=SERPER_CONNECT_TIMEOUT default 8.0). Either exceeds the 5 s image race cap.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/serper_service.py",
+     "line": "525-534",
+     "note": "_serper_post is the breaker-gated wrapper (ENABLE_SERPER_BREAKER): records a failure on timeout/5xx/403 when ON -- a shorter image timeout would count against the shared Serper breaker.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/api_budget_service.py",
+     "line": "24-33, 1166-1191",
+     "note": "_DEFAULT_SERPER_IMAGE_DAILY_BUDGET = 500; _serper_image_daily_budget reads SERPER_IMAGE_DAILY_BUDGET per call; try_consume_serper_image_credit INCRBY-then-check, fail-open on Redis None/errors.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_image_knowledge_graph_tier.py",
+     "line": "41-76",
+     "note": "KG fixtures: {knowledgeGraph: {title, imageUrl}} -- the Serper KG card carries a title usable for an identity check.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/serper_service.py",
+     "line": "1107-1111",
+     "note": "Price-organic search maps results.knowledgeGraph -> knowledge_graph (snake_case); image_service reads both spellings (:87).",
+     "basis": "measured"
+    }
+   ]
+  },
+  {
+   "question": "brightdata_service.py:215-250 -- the mapper that drops image fields",
+   "answer": "_map_bd_organic (brightdata_service.py:225-246) maps each Bright Data organic row to exactly {title, link (link|url|display_link), snippet (snippet|description|desc)} -- every other field, including any image/thumbnail, is discarded. _map_bd_shopping (:249-272) keeps {title, link, source, price}. bd_search_web (:275-286) returns {\"organic\": _map_bd_organic(parsed), \"shopping\": []} and bd_search_shopping (:289-299) returns {shopping, organic} -- neither emits a knowledgeGraph/knowledge_graph or images key, so image_service's Tier 1.5b (:86-117) and Tier 3 have nothing to read whenever Bright Data serves the search (Serper non-200 fallback at serper_service.py:1102-1105 et al.). _bd_post already logs the parsed payload's top-level keys and the first organic row's keys at INFO on every successful parse ('[brightdata] parsed OK ... top-keys=... org0_keys=...', :203-210), so whether a knowledge/images section exists can be read from production logs (key names only) before the mapper is widened; data_supply open question 3 does not need a new probe. The helper _first (:217-222) is the obvious place to add image field reads (e.g. image|thumbnail|imageUrl) behind the flag; the mapper is pure, so flag-OFF byte identity is trivial to pin.",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/brightdata_service.py",
+     "line": "225-246",
+     "note": "_map_bd_organic emits only title/link/snippet per row.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/brightdata_service.py",
+     "line": "275-286",
+     "note": "bd_search_web returns {organic: mapped, shopping: []}; no knowledgeGraph or images key in the Serper-shaped result.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/brightdata_service.py",
+     "line": "203-210",
+     "note": "First-call schema visibility: logger.info top-keys (first 12), organic count, org0_keys -- the production log already names the Bright Data sections.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/brightdata_service.py",
+     "line": "217-222",
+     "note": "_first(d, *keys) helper returning the first non-empty value; the natural seam for image field reads.",
+     "basis": "measured"
+    }
+   ]
+  },
+  {
+   "question": "B7 IMAGE-PIPELINE-V2 ruling: which of the plan's B7 items are feasible as written and which need a different write site?",
+   "answer": "See ruling_text.",
+   "ruling_text": "RULING R0-B7 (Fable-ready, binding for the B7 spec). The gate question is settled: cand[\"image\"] does NOT survive to result[\"price\"]; it dies at price_service.py:13952-13961. Item by item: (1) EARLY IMAGE STASH -- feasible as written. The image task is a bare wait_for in phase1_tasks (scs:5939-5953); convert it to asyncio.ensure_future(...) and attach a done-callback writing _res[\"image_url\"] = _t.result() (swallow TimeoutError/CancelledError/Exception), mirroring _stash_specs_cb (scs:5888-5905) and _stash_price_cb (scs:5776-5781); gate on _stash_early (scs:5711-5717, _early_specs_stash_enabled default ON scs:2734) AND ENABLE_IMAGE_PIPELINE_V2; keep the existing _record_phase1_race callback semantics (scs:5783/5906; the races record keys the image as \"image\", scs:6071). Pin seam: tests/test_partial_specs_stash_on_price_timeout.py (patches get_product_image_url at :76). (2) JSON-LD PIGGYBACK -- NOT feasible as written ('cand[image] -> price[image_url]' at scs:6086 cannot see the list). The producer write site is extract_price_from_html's JSON-LD branch, price_service.py inside `if _label_ok:` after :14006 and before `return _finish(result)` at :14007: flag-ON stamp result[\"image_url\"] = first https:// entry of price_data.get(\"image\"), key omitted when none. scs:6086-6090 then fires unchanged; nothing else needs mapping (scs:5097, response_builder.py:1937/2180). Do NOT carry \"image\" itself onto the price dict (tests/test_wide_candidate_dict.py:462-476 forbids it) and do not implement data_supply fix 2's 'read price.get(image) at scs:6086' variant. State in the spec: flag-ON the Redis L1 price blob gains image_url (cache_service.py:650-653 via scs:8958-8973) and L1 hits re-fire the piggyback; the L2 row does not carry it (product_data_service.py:336-361, :290-296); public_price_view (price_service.py:9320-9338) leaves image_url visible on the public price unless stripped under the flag. Prove flag-OFF byte identity with scripts/verify_flag_byte_identity.py (it runs extract_price_from_html over the corpus, so it covers exactly this write site) plus the existing test_wide_candidate_dict pins; a flag-ON RED test asserts result[\"image_url\"] == the first https entry and absence when only http/relative entries exist. Optional mirror in _try_pharmacy_urls (:16822-16835). (3) SERPER IMAGES SHORT TIMEOUT (connect 2 s, total 3.5 s) -- feasible but the write site is serper_service.search_images (:1201-1243), not image_service: add an optional timeout kwarg defaulting to None -> _serper_timeout() (byte-identical) and pass httpx.Timeout(3.5, connect=2.0) from image_service.py:258 under the flag; alternatively asyncio.wait_for around the call in image_service. Rationale measured: the current client timeout (15 s, or 10 s read + 8 s connect) exceeds the whole 5 s image race cap (scs:5748), so Tier 3 is unreachable whenever Tier 1 stalls. Design note: with ENABLE_SERPER_BREAKER on, _serper_post (:525-534) records a timeout as a breaker failure -- decide whether image calls bypass breaker recording. (4) TIER-3 GROUNDING -- feasible as written in extract_image_via_gpt (image_service.py:198-207): flag-ON accept the GPT URL only if its host equals a host among organic_results[*].link (or the URL appears verbatim in a link/snippet), else None; the organic list is already in hand (:161-165). (5) HTTPS-ONLY -- feasible as written; four validators to tighten under the flag: _is_valid_image_url (image_service.py:52-57), the scs:6087-6089 startswith check, and the three _safe_image_url mirrors (history_routes.py:46-59, home_routes.py:644-651, profile_routes.py:110-122). Consequence to state: legacy stored rows with http:// images render null (allowed by constraint 4: absolute https or null). (6) KG IDENTITY CHECK -- feasible as written at image_service.py:86-93: add an optional product_name kwarg to extract_image_from_search (default None -> unchanged) and, flag-ON, reject the KG image when kg.title/type share no brand or name token with the product (the Serper KG card carries title: tests/test_image_knowledge_graph_tier.py:42/58/75); both knowledgeGraph and knowledge_graph spellings are already read (:87). (7) BRIGHT DATA MAPPER -- feasible, pure function, but measure first: _map_bd_organic (brightdata_service.py:225-246) and bd_search_web (:275-286) emit no image or KG fields; read the '[brightdata] parsed OK ... top-keys=' INFO lines already logged at :203-210 (names only) to learn which section names exist before widening via _first (:217-222) under the flag. (8) IDENTITY-KEYED IMAGE URL CACHE (24 h, KG excluded) -- feasible but needs a design change inside image_service: get_product_image_url returns a bare str and the tier is only logged (:21-23, :243/252/271/282), so 'KG hits excluded' requires an internal variant returning (url, tier) with the public signature unchanged; read before the image task at scs:5939 and on the cache-hit path (unified_search None, scs:5817-5823), write after scs:6090 when https and tier != KG; key from get_specs_cache_key(brand, name, variant) (scs:5820) or price_service._identity_cache_token (:9339). Ordering within B7: ship (2) first (it also helps the L1-hit path), then (1), (3), (4), (5), (6), (8); (7) after the log read. All eight stay behind ENABLE_IMAGE_PIPELINE_V2 (default OFF, read per call); none qualifies for R-A1 pure-defect class because each changes a response byte or a stored (L1) value flag-ON. Open items for the spec author are listed under open.",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/structured_comparison_service.py",
+     "line": "5711-5717, 5888-5905, 5776-5781",
+     "note": "_stash_early predicate; _stash_specs_cb pattern (ensure_future + add_done_callback writing _res[\"specs\"]); _stash_price_cb. Template for an image stash callback.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/structured_comparison_service.py",
+     "line": "2734-2740",
+     "note": "_early_specs_stash_enabled: default ON, read per call.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/structured_comparison_service.py",
+     "line": "5817-5823",
+     "note": "unified_search = None; the unified search runs only when specs or reviews miss cache -> on a double cache hit Tier 1.5b/3 have no payload (the cache-read site for item 8).",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/scripts/verify_flag_byte_identity.py",
+     "line": "1-30",
+     "note": "Exists; runs price_service.extract_price_from_html over a cached corpus with branch flags forced OFF in both gate modes and both currency legs, printing one SHA-256 -- covers the item-2 write site directly; the scs/image_service items need their own flag-OFF pins.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/api/history_routes.py",
+     "line": "46-59",
+     "note": "_safe_image_url accepts http:// and https:// (mirrors home_routes.py:644-651 and profile_routes.py:110-122).",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/image_service.py",
+     "line": "21-23, 243, 252, 271, 282",
+     "note": "Tier provenance is logged only and never returned; get_product_image_url returns a bare str -- item 8's KG exclusion needs an internal (url, tier) variant.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/price_service.py",
+     "line": "9339",
+     "note": "_identity_cache_token(text, category): a stable composite of identity axes, an alternative cache key for item 8.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/PLAN_S80.md",
+     "line": "63",
+     "note": "B7 item list this ruling answers: early stash, JSON-LD piggyback (conditional on R0), Serper Images short timeout, Tier-3 grounding, https-only, KG identity check, Bright Data mapper, identity-keyed cache; proof via verify_flag_byte_identity.py.",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/data_supply.json",
+     "line": "defects[0].fix_sketch (2), open_questions[0]",
+     "note": "data_supply fix 2 proposed reading price.get('image') at scs:6086 and stripping 'image' from the public view, conditional on survival; survival is now refuted, so that variant is retired in favour of the price_service write site.",
+     "basis": "measured"
+    }
+   ]
+  }
+ ],
+ "surprises": [
+  "tests/test_wide_candidate_dict.py:462-476 PINS that no wide key (including \"image\") reaches the extract_price_from_html result -- the drop is deliberate ('must not change the SHIPPED price payload shape'), not an oversight. data_supply fix 2's 'carry image, strip in public view' variant would break this pin; stamping image_url under a flag does not.",
+  "The Serper Images HTTP timeout (15 s flag-OFF; 10 s read + 8 s connect flag-ON, serper_service.py:473-494, :1219) is LARGER than the entire 5 s image race cap (scs:5748). Whenever Tier 1 is slow it eats the whole budget and Tier 3 (GPT) can never run; the 4-state ProductImage placeholder is the usual outcome, not a Tier-3 miss.",
+  "Redis L1 caches the WHOLE price dict as JSON (cache_service.py:650-653), so a flag-ON image_url stamped at the price_service write site is also served on L1 cache hits (scs:6732-6733) -- the piggyback would then work on repeat compares even when the unified search is skipped (data_supply path b). The L2 product_prices row is column-based and drops it (product_data_service.py:336-361, :290-296).",
+  "_bd_post already logs the Bright Data parsed payload's top-level key names and the first organic row's keys at INFO on every parse (brightdata_service.py:203-210) -- data_supply open question 3 (does Bright Data return a knowledge/images section) can be answered from production logs (names only) without a new probe.",
+  "_try_pharmacy_urls (price_service.py:16780-16835) is a second reduced-dict producer off extract_jsonld_price that drops \"image\" the same way; and _jsonld_image_urls (:10822-10860) applies no scheme or relative-path filter, so the write site must select the first https:// entry itself.",
+  "Tier 1.5 as coded inside image_service (page_scrape_image kwarg, :241-244) is dead on the live path: the only caller passes page_scrape_image=None (scs:5943); the real piggyback is the post-Phase-1 override at scs:6086-6090, which has never had a live producer (only zyte_service.py:499/661, off-clock)."
+ ],
+ "open": [
+  "Whether the scs:6076-6090 piggyback block also executes on the hard-cap partial salvage path (early buffer / _partial_product_data) or only on the normal post-gather path -- not traced; if not, item 1 (early stash) and item 2 (producer stamp) together still leave a partial without the page image unless the salvage path re-runs the override.",
+  "Owner/Fable call: should price.image_url be visible on the public price object (public_price_view strips only guard_rejected and _-prefixed keys, price_service.py:9320-9338), or stripped there under the flag? Either is additive-safe for build 3.",
+  "Bright Data payload shape (knowledge/images sections): read the '[brightdata] parsed OK ... top-keys=' INFO lines in production logs (key names only) before writing the item-7 mapper widening.",
+  "Breaker interaction for item 3: with ENABLE_SERPER_BREAKER on, a 3.5 s image timeout is recorded as a Serper breaker failure (_serper_post, serper_service.py:525-534); decide whether image calls bypass breaker recording or accept the contagion.",
+  "Production values of SERPER_IMAGE_DAILY_BUDGET and ENABLE_SERPER_FAIL_FAST on web (names only) -- they decide whether Tier 1 currently runs at all and which Serper timeout (15 s vs 10+8 s) applies today; not read (no Railway tool used)."
+ ]
+}

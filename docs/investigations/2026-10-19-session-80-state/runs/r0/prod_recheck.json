@@ -1,0 +1,326 @@
+{
+ "topic": "S80 prod_evidence re-verification (Sentry qaren-rr, 2026-10-19) + D1 ruling on the L2 .single() zero-row read (pinned postgrest 2.31.0)",
+ "answers": [
+  {
+   "question": "Zero camera (/api/v1/image/identify, app.api.image_routes.identify_and_compare) transactions in 30 days?",
+   "answer": "CONFIRMED as 'zero SAMPLED', with a correction to the wording. The 30-day aggregate of is_transaction:true on python-fastapi lists 22 transaction names and none from app.api.image_routes.*; a targeted query on transaction:*identify_and_compare* OR */api/v1/image/identify* returns no results; a query over ALL spans (transaction or child) whose transaction or span.description contains image_routes / image/identify / identify_products returns no results. Correction: the backend samples traces at 0.1 (sentry_service.py:667) and every count() in the spans dataset is sample-weighted x10 (compare_urls: exactly 1 sampled trace, 19 spans, shows as count()=10; the product_specs 406 reads: 3 raw spans show as count()=30). So 'zero' is zero of a 10 % sample; the tester alone ran at least four camera compares on 2026-10-18 (V01, V04, V06, V07) and P(none of 4 sampled) is about 0.66. The plan must not read it as camera volume or camera health. react-native has zero transactions in 30 days as well (its tracesSampleRate is also 0.1), so no camera wall time exists as a transaction anywhere; the only RN telemetry is 27 info-level comparison_wall_time messages in 14 days (REACT-NATIVE-E), re-counted.",
+   "evidence": [
+    {
+     "file": "Sentry search_traces python-fastapi 30d: is_transaction:true grouped by transaction",
+     "note": "22 names, top: app.main.health_check 660, app.api.text_routes.text_compare_get 350, ... app.api.url_routes.compare_urls 10; no image_routes entry",
+     "basis": "measured"
+    },
+    {
+     "file": "Sentry search_traces python-fastapi 30d: transaction:*identify_and_compare* OR *image/identify*; and transaction/span.description in [*image_routes*,*image/identify*,*identify_products*]",
+     "note": "both queries: No results found",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\sentry_service.py",
+     "line": "667",
+     "note": "traces_sample_rate=0.1",
+     "basis": "measured"
+    },
+    {
+     "file": "Sentry search_traces: transaction:app.api.url_routes.compare_urls individual spans 30d",
+     "note": "19 spans, all in ONE trace 5915a2b6c0d048dabac065c52cee18e3, while the aggregate reports count()=10 for that transaction: count() is extrapolated by 1/sample_rate",
+     "basis": "measured"
+    },
+    {
+     "file": "Sentry search_traces react-native 30d: is_transaction:true grouped by transaction",
+     "note": "No results found",
+     "basis": "measured"
+    },
+    {
+     "file": "Sentry search_errors react-native 14d (all levels)",
+     "note": "27 events, every one level=info message comparison_wall_time (REACT-NATIVE-E), users 72BDD09F... and FC4158BD..., 2026-10-11 20:07Z to 2026-10-18 13:46Z",
+     "basis": "measured"
+    }
+   ]
+  },
+  {
+   "question": "PYTHON-FASTAPI-1X: event count, first/last seen, the http.client span description with the fragrancex path, and the 403?",
+   "answer": "CONFIRMED with one precision. Issue PYTHON-FASTAPI-1X 'Failed to fetch URL host www.fragrancex.com: HTTPStatusError', culprit app.api.url_routes.compare_urls, logger app.services.url_extraction_service, 4 occurrences, first seen 2026-10-18T12:50:05.062Z, last seen 12:50:15.000Z (last event body 12:50:15.402Z), release 683f56c0bee7418191d03429940aa56b1d8f5c73, client MYEZ 3 / iOS, environment production, all four in trace 2e59ae38aca04795883c6c9306de3495 (that trace holds 0 sampled spans). The four events are two POST /api/v1/url/compare requests (two distinct http.server spans a16a552b3f867bdf and 9ddb2c20a7900d51), two events each. In EACH request the event that carries the http.client span context names the same page: description 'GET https://www.fragrancex.com/products/calvin-klein/obsession-perfume' (214cf269fb854055b8ea4168283b1ec3 at 12:50:05.212Z, span 864e02f6 under server span a16a552b; f3ff0b9c6c274c8eb7a95e689f9a2d05 at 12:50:15.398Z, span 83678c04 under server span 9ddb2c20). The 403 is MEASURED on one event only: 214cf269's span status is permission_denied; f3ff0b9c's http.client span status is 'unknown', and the other two events (45dbe35910a9400696dbd5fe8902ad0f 12:50:05.062Z, e3c59f2e28b04f3686fb747d9b6e0419 12:50:15.402Z) carry only the http.server span context (status unknown), so they prove an HTTPStatusError (a non-2xx after fetch_page's own redirect loop, url_extraction_service.py:120-131) without recording the status. The second URL field of each request is therefore still unrecorded, but it was on host www.fragrancex.com (all four titles name that host; fetch_page logs the host and the exception type only, :136-143). The two bursts are the two Compare taps of V02, each with both fields failing.",
+   "evidence": [
+    {
+     "file": "Sentry get_sentry_resource issue PYTHON-FASTAPI-1X",
+     "note": "Occurrences 4, First Seen 2026-10-18T12:50:05.062Z, Last Seen 12:50:15.000Z, culprit app.api.url_routes.compare_urls, logger app.services.url_extraction_service, release 683f56c0..., browser MYEZ 3, client_os iOS, environment production, HTTP POST .../api/v1/url/compare",
+     "basis": "measured"
+    },
+    {
+     "file": "Sentry event 214cf269fb854055b8ea4168283b1ec3",
+     "note": "trace 2e59ae38aca04795883c6c9306de3495, span 864e02f6c994c1b4 parent a16a552b3f867bdf, op http.client, status permission_denied, description 'GET https://www.fragrancex.com/products/calvin-klein/obsession-perfume', occurred 12:50:05.212Z, user.geo US",
+     "basis": "measured"
+    },
+    {
+     "file": "Sentry event f3ff0b9c6c274c8eb7a95e689f9a2d05",
+     "note": "span 83678c0426b075a4 parent 9ddb2c20a7900d51, op http.client, status unknown, same PDP description, occurred 12:50:15.398Z",
+     "basis": "measured"
+    },
+    {
+     "file": "Sentry events 45dbe35910a9400696dbd5fe8902ad0f (12:50:05.062Z, geo SG) and e3c59f2e28b04f3686fb747d9b6e0419 (12:50:15.402Z, geo US)",
+     "note": "both carry the http.server span context only (a16a552b3f867bdf / 9ddb2c20a7900d51, origin auto.http.starlette, status unknown); no URL path recorded",
+     "basis": "measured"
+    },
+    {
+     "file": "Sentry get_sentry_resource trace 2e59ae38aca04795883c6c9306de3495",
+     "note": "Total Spans 0, Errors 6 (the trace was not sampled; 6 error events are attached, 4 of them 1X - the other 2 were not identified)",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\url_extraction_service.py",
+     "line": "119-143",
+     "note": "fetch_page: httpx.AsyncClient(timeout=30, follow_redirects=False), bounded 5-hop redirect loop with SSRF re-validation, response.raise_for_status(), except -> logger.error('Failed to fetch URL host {host}: {type(e).__name__}') and return None",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\url_extraction_service.py",
+     "line": "477-483, 616-626",
+     "note": "extract_from_url returns success False 'Failed to fetch URL' when fetch_page returns None; compare_from_urls returns 'Could not extract both products' when fewer than 2 products",
+     "basis": "measured"
+    }
+   ]
+  },
+  {
+   "question": "compare_urls transactions over 30 days and the V09 trace 5915a2b6 summary (200 in ~7 s, 3 LLM calls, then rpc/increment_lifetime_comparisons)?",
+   "answer": "CONFIRMED in full. In 30 days exactly ONE compare_urls transaction was sampled (aggregate count()=10 = 1 x 1/0.1): trace 5915a2b6c0d048dabac065c52cee18e3, app.api.url_routes.compare_urls http.server span 9b15c303ad9427f6, 7,122 ms, http.status_code 200, span.status ok, start 2026-10-18T13:44:06Z. Children in time order: 3 Upstash POSTs + GET supabase auth/v1/user + GET rest/v1/users + GET rest/v1/referral_redemptions at 13:44:07 (the gate and profile reads); 2 x GET https://store.rasasi.com.sa at 13:44:08 (844 ms and 1,214 ms, both 200; paths scrubbed by R5 so homepage-vs-PDP is still unknowable from Sentry); gen_ai.chat 'chat gpt-4o-mini' 1,441 ms and 1,948 ms at 13:44:09 (each over a POST api.openai.com/v1/chat/completions 200), gen_ai.chat 'chat gpt-4o' 2,335 ms at 13:44:11 (POST 200) = exactly three LLM calls; then at 13:44:13 an Upstash POST (180 ms), POST https://qulajmyxdbdkchvecmvc.supabase.co/rest/v1/rpc/increment_lifetime_comparisons 204 (160 ms) and an Upstash POST (165 ms). That RPC runs only on the success branch of url_routes.py under paid_route_metering_enabled() (:199-210), so the 'Unknown Product' pair was metered as a delivery. The same trace id carries 11 other http.server transactions of the same client session (track_events x3, home_savings, home_smart_pick, update_push_token, get_referral_status, usage_status x2, home_trending, health_check), i.e. the RN SDK propagates one trace across many backend requests. The 'two Unknown Product cards' themselves are not in Sentry (HTTP 200, no error); that part of the digest rests on the video plus url_extraction_service.py:527 (title default 'Unknown Product') and :513-520 (any fetched HTML -> success True).",
+   "evidence": [
+    {
+     "file": "Sentry search_traces trace:5915a2b6c0d048dabac065c52cee18e3 transaction:app.api.url_routes.compare_urls",
+     "note": "19 spans: http.server 7122.24 ms 200 at 13:44:06Z; GET store.rasasi.com.sa 1213.9 ms and 843.8 ms (200) at 13:44:08Z; gen_ai.chat gpt-4o-mini 1948.1 ms and 1440.5 ms at 13:44:09Z; gen_ai.chat gpt-4o 2334.5 ms at 13:44:11Z; POST .../rest/v1/rpc/increment_lifetime_comparisons 160.3 ms http 204 at 13:44:13Z; 7 Upstash POSTs; GET auth/v1/user, rest/v1/users, rest/v1/referral_redemptions",
+     "basis": "measured"
+    },
+    {
+     "file": "Sentry get_sentry_resource trace 5915a2b6c0d048dabac065c52cee18e3",
+     "note": "117 spans, 1 error, 90 http.client (avg 217 ms), 12 http.server transactions across the session; the compare_urls subtree shows chat gpt-4o 2335 ms, chat gpt-4o-mini 1948 ms, chat gpt-4o-mini 1441 ms (nested under the 844 ms GET), GET 1214 ms",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\api\\url_routes.py",
+     "line": "170-210",
+     "note": "non-success exit: refund, W4-13 failure row, coded result -> _surface_comparison_failure, else bare HTTPException 400; success exit: save_comparison_and_track_cohort + record_lifetime_comparison only under paid_route_metering_enabled() and user_id",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\url_extraction_service.py",
+     "line": "503-520, 527",
+     "note": "AI extraction fallback when title or price missing; success True for any fetched HTML; normalize_product_data title default 'Unknown Product'",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\sentry_service.py",
+     "line": "329-336, 419-426",
+     "note": "_outbound_description keeps scheme+host only for non-infra hosts (R5), applied to every http span of a transaction - the Rasasi paths are scrubbed by design",
+     "basis": "measured"
+    }
+   ]
+  },
+  {
+   "question": "search_errors for logger app.services.url_extraction_service over 14 days?",
+   "answer": "Exactly 4 error events, all PYTHON-FASTAPI-1X (issue.id 154427447), title 'Failed to fetch URL host www.fragrancex.com: HTTPStatusError', transaction app.api.url_routes.compare_urls, timestamps 2026-10-18T12:50:05Z x2 and 12:50:15Z x2, project python-fastapi. No other event from that logger in 14 days, so no other URL-mode fetch failure reached ERROR level (a non-fragrancex store that fetched but yielded 'Unknown Product' would log nothing, as V09 shows). For context, the 30-day error census by issue x transaction is dominated by text_compare_get: PYTHON-FASTAPI-R 330 (+13 text_compare, +12 get_gcc_prices, +4 stream), PYTHON-FASTAPI-1R 33 (+18 get_gcc_prices, +7 stream), PYTHON-FASTAPI-N 14+9+2, PYTHON-FASTAPI-1Q 11+6+4; compare_urls appears only with 1X (4); no image_routes transaction appears in the error census either.",
+   "evidence": [
+    {
+     "file": "Sentry search_errors python-fastapi 14d logger:app.services.url_extraction_service",
+     "note": "4 events, all PYTHON-FASTAPI-1X, 2026-10-18T12:50:05Z x2 and 12:50:15Z x2, message 'Failed to fetch URL host www.fragrancex.com: HTTPStatusError app.api.url_routes.compare_urls'",
+     "basis": "measured"
+    },
+    {
+     "file": "Sentry search_errors python-fastapi 30d grouped by issue and transaction",
+     "note": "30 rows; compare_urls only in PYTHON-FASTAPI-1X count 4; PYTHON-FASTAPI-R text_compare_get 330; no image_routes transaction",
+     "basis": "measured"
+    }
+   ]
+  },
+  {
+   "question": "On the PINNED supabase-py (postgrest 2.31.0), what does .single() do on zero rows - raise APIError (which code/status) or return None?",
+   "answer": "It RAISES postgrest.exceptions.APIError; it never returns None and never returns a response with empty data. Pins: requirements.txt:103 postgrest==2.31.0, :156 supabase==2.31.0; the venv has postgrest-2.31.0.dist-info (METADATA Version: 2.31.0). The app uses the SYNC client (database_service.py:22 'from supabase import create_client, Client, ClientOptions'), so client.table() -> SyncRequestBuilder (supabase/_sync/client.py:128), .select() -> SyncSelectRequestBuilder (postgrest/_sync/request_builder.py:300-324), .single() sets Accept: application/vnd.pgrst.object+json and returns SyncSingleRequestBuilder (_sync/request_builder.py:208-215), whose execute() (:109-131) returns SingleAPIResponse only for 200-299 and otherwise parses the body as APIErrorFromJSON and raises APIError(dict) (:128-129), or APIError(generate_default_error_message(r)) when the body is not that JSON shape (:130-131; exceptions.py:58-64 puts r.status_code in code only on that fallback). With the object Accept header PostgREST answers a zero-row select with HTTP 406 - MEASURED in production: the L2 reads GET .../rest/v1/product_specs and GET .../rest/v1/product_reviews appear as http.status_code 406 / span.status invalid_argument (6 sampled spans in 2 text compares on 2026-10-14, 185-467 ms each). The APIError's .code is the PostgREST body code, PGRST116 ('JSON object requested, multiple (or no) rows returned', details 'The result contains 0 rows') - INFERRED from PostgREST's documented contract; the body is not captured by Sentry and this agent has no DB access; the HTTP status 406 is measured, and it is NOT what APIError.code carries when the body parses (exceptions.py:38-43). The 406 is not retried: should_retry retries only GET/HTTP on 503 or 520, MAX_RETRIES 3 (base_request_builder.py:55, 99-104), so a miss is exactly one round trip. Contrast on the same pin: .limit(1).execute() returns APIResponse(data=[]) on a 200 '[]' (SyncQueryRequestBuilder.execute :78-98; APIResponse.from_http_request_response :255-260); the sync select builder's .maybe_single() sets NO Accept header (:217-219, unlike the RPC builder's maybe_single at base_request_builder.py:671-674) and SyncMaybeSingleRequestBuilder.execute() returns None (not a response) on zero rows, SingleAPIResponse(data=row) on one row, and raises APIError code '406' on more than one row (:162-184).",
+   "evidence": [
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\requirements.txt",
+     "line": "103, 156",
+     "note": "postgrest==2.31.0 (via supabase); supabase==2.31.0",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\.venv-qaren\\Lib\\site-packages\\postgrest-2.31.0.dist-info\\METADATA",
+     "line": "3",
+     "note": "Version: 2.31.0 (installed == pinned)",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\.venv-qaren\\Lib\\site-packages\\postgrest\\_sync\\request_builder.py",
+     "line": "208-215",
+     "note": "SyncSelectRequestBuilder.single(): self.request.headers['Accept'] = 'application/vnd.pgrst.object+json'; return SyncSingleRequestBuilder(self.request)",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\.venv-qaren\\Lib\\site-packages\\postgrest\\_sync\\request_builder.py",
+     "line": "109-131",
+     "note": "SyncSingleRequestBuilder.execute(): r = send_with_retry(...); if 200 <= r.status_code <= 299: return SingleAPIResponse...; else: json_obj = model_validate_json(APIErrorFromJSON, r.content); raise APIError(dict(json_obj)); except ValidationError: raise APIError(generate_default_error_message(r))",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\.venv-qaren\\Lib\\site-packages\\postgrest\\_sync\\request_builder.py",
+     "line": "217-219, 162-184",
+     "note": "maybe_single() returns SyncMaybeSingleRequestBuilder WITHOUT setting Accept; its execute() returns None when len(parsed.data)==0, SingleAPIResponse when 1, raises APIError code '406' when >1",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\.venv-qaren\\Lib\\site-packages\\postgrest\\_sync\\request_builder.py",
+     "line": "78-98, 300-324",
+     "note": "SyncQueryRequestBuilder.execute() returns APIResponse (data list) on r.is_success; SyncRequestBuilder.select() returns SyncSelectRequestBuilder",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\.venv-qaren\\Lib\\site-packages\\postgrest\\base_request_builder.py",
+     "line": "55, 99-104, 255-260",
+     "note": "MAX_RETRIES = 3; should_retry only for GET/HTTP and status 503 or 520; APIResponse.from_http_request_response parses the JSON array (data=[] on '[]')",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\.venv-qaren\\Lib\\site-packages\\postgrest\\exceptions.py",
+     "line": "22-43, 58-64",
+     "note": "APIError(message, code, hint, details) from the body dict; generate_default_error_message uses r.status_code as code only when the body is not the PostgREST error JSON",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\.venv-qaren\\Lib\\site-packages\\postgrest\\base_request_builder.py",
+     "line": "662-674",
+     "note": "the RPC builder's single() AND maybe_single() both set the object Accept header - the select builder's maybe_single does not (asymmetry)",
+     "basis": "measured"
+    },
+    {
+     "file": "Sentry search_traces python-fastapi 30d: span.op:http.client AND http.status_code:406",
+     "note": "6 spans, all in text_compare_get: trace f847c51aa2ee4826acaa9f27c178bda6 (2026-10-14 04:26:48 product_specs 381.7 ms, 04:26:51 product_specs 422.3 ms, 04:26:54 product_reviews 185.4 ms and 381.0 ms) and trace 9f87277e0bbd4078bccc4be9621fb193 (03:50:40 product_specs 466.6 ms, 03:50:42 product_reviews 200.0 ms); aggregate shows count()=30 for each table (x10 extrapolation)",
+     "basis": "measured"
+    },
+    {
+     "file": "PostgREST contract for Accept: application/vnd.pgrst.object+json on 0 rows",
+     "note": "406 Not Acceptable with body code PGRST116, message 'JSON object requested, multiple (or no) rows returned', details 'The result contains 0 rows' - the status is measured above, the body is not captured by Sentry",
+     "basis": "inferred"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\database_service.py",
+     "line": "22, 224-246",
+     "note": "from supabase import create_client, Client, ClientOptions; get_admin_supabase_client returns the sync Client (service role)",
+     "basis": "measured"
+    }
+   ]
+  },
+  {
+   "question": "product_data_service.py:195-220 and :360-390 - does an L2 miss cost a 4xx round trip, and what is the zero-row-safe form on the pinned version? (D1, R-A1(c))",
+   "answer": "Yes. get_cached_specs (:201-224) and get_cached_reviews (:366-388) run client.table(...).select('specs|reviews, fetched_at').eq('product_key', key).single().execute() inside run_db, wrapped in try/except Exception -> logger.debug('L2 ... miss for {key}: {e}') -> return None. On the pinned library a missing product_key is a PostgREST 406 that raises APIError, so EVERY L2 miss is one wasted round trip (185-467 ms measured, 6 sampled misses in 2 compares) and, with ENABLE_SYNC_DB_OFFLOAD off, it blocks the event loop (db_offload.py:38-43 runs the call inline). A cold compare makes up to four such reads (specs + reviews x 2 products). The 'if not response.data: return None' lines (:214-215, :378-379) are unreachable for a miss on this pin (a hit returns a dict, a miss raises), and the existing tests model the miss as execute() -> MagicMock(data=None) (tests/test_product_data_service.py:47-53, :212-218, fixture :20-32), a shape the pinned library never produces, so those two tests pass for the wrong reason. Zero-row-safe forms on 2.31.0: (a) drop .single() and add .limit(1): execute() returns APIResponse(data=[]) on a miss (HTTP 200) and data=[row] on a hit; the caller reads response.data[0] - the module's own precedent in get_cached_price (:273-281) and auth_service._read_apple_refresh_token (:1070-1094, whose comment states '.single() is not used (it raises on zero rows)'); (b) .maybe_single(): returns None (no response object) on a miss, so the caller must test 'if not response or not response.data' (precedent referral_service.py:88-98); a bare response.data access would AttributeError inside the try and be swallowed as a miss, functionally fine but accidental. Both tables are upserted on product_key (save_specs :229-244 on_conflict='product_key'; save_reviews upsert :392-401), so limit(1)/maybe_single cannot see a second row. Return values are byte-identical in both forms: hit -> the same specs/reviews dict (then the TTL check), miss -> None; both callers (structured_comparison_service.py:6462-6469, review_service.py:689-696) treat None as a miss and a truthy dict as a hit. What changes is only the wire request (Accept header or limit=1 param), the miss status 406 -> 200, and the DEBUG line 'L2 specs miss' no longer firing on a plain miss (LOG_LEVEL default INFO at app/main.py:15, so never emitted in prod).",
+   "evidence": [
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\product_data_service.py",
+     "line": "201-224",
+     "note": "get_cached_specs: run_db(lambda: client.table('product_specs').select('specs, fetched_at').eq('product_key', product_key).single().execute()); if not response.data: return None; TTL check SPECS_DB_TTL; except Exception -> logger.debug('L2 specs miss ...') -> None",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\product_data_service.py",
+     "line": "366-388",
+     "note": "get_cached_reviews: identical shape on product_reviews with REVIEWS_DB_TTL",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\product_data_service.py",
+     "line": "211, 375, 273",
+     "note": "the only two .single() sites in the module; get_cached_price already uses .order('fetched_at', desc=True).limit(row_limit) with row_limit 1 flag-OFF and 'if not response.data: return None' then response.data[0]",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\product_data_service.py",
+     "line": "229-244, 392-401",
+     "note": "save_specs upsert(..., on_conflict='product_key'); save_reviews upsert keyed on product_key (on_conflict argument not re-read)",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\utils\\db_offload.py",
+     "line": "31-43",
+     "note": "run_db: asyncio.to_thread when ENABLE_SYNC_DB_OFFLOAD is on, else the call runs inline on the loop",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\auth_service.py",
+     "line": "1070-1094",
+     "note": "_read_apple_refresh_token: '.single() is not used (it raises on zero rows)'; .limit(1).execute(); rows = getattr(response, 'data', None); first = rows[0] if rows else None",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\referral_service.py",
+     "line": "86-98",
+     "note": "the one maybe_single() site in app/: 'if not referrer or not referrer.data: return None' (handles the None return)",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\structured_comparison_service.py",
+     "line": "6462-6469",
+     "note": "db_specs = await get_cached_specs(cache_key); if db_specs: L1 set + _cached/_cache_source and return - None is a miss",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\services\\review_service.py",
+     "line": "689-696",
+     "note": "db_reviews = await get_cached_reviews(cache_key); if db_reviews: ... - None is a miss",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\tests\\test_product_data_service.py",
+     "line": "20-32, 47-53, 212-218, 261-272",
+     "note": "fixture chains .single/.limit/.order on one MagicMock; the two 'returns_none_when_empty' tests set execute.return_value = MagicMock(data=None) (unfaithful to the pinned library); test_all_functions_handle_db_errors_gracefully pins None on a raising client",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-base\\app\\main.py",
+     "line": "15",
+     "note": "configure_logging(os.getenv('LOG_LEVEL', 'INFO')) - the DEBUG miss line is not emitted at the prod default",
+     "basis": "measured"
+    },
+    {
+     "file": "Sentry search_traces python-fastapi 30d http.status_code:406",
+     "note": "the misses are real in production: 3 x product_specs and 3 x product_reviews 406 in traces f847c51a... and 9f87277e... on 2026-10-14, 185-467 ms each",
+     "basis": "measured"
+    }
+   ],
+   "ruling_text": "D1 ruling (R-A1(c), the L2 read change) - MEASURED on postgrest 2.31.0 (= the pin) and in production. (1) Facts: `.single().execute()` on the sync client sends `Accept: application/vnd.pgrst.object+json` (postgrest/_sync/request_builder.py:208-215) and PostgREST answers a zero-row key with HTTP 406 (Sentry: 6 sampled `GET /rest/v1/product_specs|product_reviews` 406 / invalid_argument spans in 2 compares on 2026-10-14, 185-467 ms each); SyncSingleRequestBuilder.execute() raises `postgrest.exceptions.APIError` for any non-2xx (:109-131), with `.code` = the body code (PGRST116 by PostgREST's contract; inferred, body not captured) and no retry (base_request_builder.py:99-104 retries only 503/520). product_data_service.get_cached_specs (:201-224) and get_cached_reviews (:366-388) swallow it as a DEBUG 'miss' and return None, so every L2 miss is one wasted blocking round trip (inline under run_db while ENABLE_SYNC_DB_OFFLOAD is off, db_offload.py:38-43); up to four per cold compare. The `if not response.data` branch is dead for a miss on this pin. (2) Form: replace `.single()` with `.limit(1)` at :211 and :375 and read `response.data[0]` after the existing `if not response.data: return None` - the module's own get_cached_price shape (:273-281) and the auth_service precedent (:1070-1094). Do NOT use `.maybe_single()`: on the sync select builder it sets no Accept header and returns None instead of a response (:217-219, :162-184), so the caller would have to special-case None; it buys nothing over limit(1) because both tables are upserted on product_key (:242). (3) Classification: UNFLAGGED under R-A1(c). Byte identity holds on every response and stored row: the function's return is the same dict on a hit (then the unchanged TTL check) and None on a miss; both callers (structured_comparison_service.py:6464-6469, review_service.py:691-696) branch only on truthiness; no write path changes. What moves is below the response: the request header/param, the miss status 406 -> 200, and a DEBUG line that LOG_LEVEL=INFO never emits. (4) Pin set the unit must carry: RED at base - a fake sync client whose `.single().execute()` raises `APIError({'message': 'JSON object requested, multiple (or no) rows returned', 'code': 'PGRST116', 'details': 'The result contains 0 rows', 'hint': None})` and whose `.limit(1).execute()` returns `APIResponse(data=[])`; assert the miss returns None WITHOUT the exception path (e.g. `.single` never called, `logger.debug` not called) for both functions. PIN - hit returns the identical dict for a fresh row and None for a stale row through `.limit(1)` (data=[row]); a raising client still returns None (keep tests/test_product_data_service.py:261-272). Fix the unfaithful miss model at tests/test_product_data_service.py:47-53 and :212-218 (`MagicMock(data=None)` -> the real shapes) in the same PR, with the reason in the test docstring. Mutation: reverting one site to `.single()` must redden the RED test for that function. Comm set: tests/test_product_data_service.py, the callers' suites that patch get_cached_specs/get_cached_reviews (test_unified_search.py, test_phase1_includes_reviews.py, test_spec_confidence_cache.py, test_review_source_consult.py, test_m13_33_review_fire_and_forget.py, test_youtube_reviews_race.py, test_s75_fanout_starve.py, test_s77_redis_offloop.py), the nine-digest node tests/test_s75_fanout_identity.py::test_FY25_flag_off_compare_identity_matches_main, plus the source-scanning pins per R-A13. (5) Stated limits: the PostgREST body code is inferred (one owner-run request or a LIVE=1 test would settle it); 37 other `.single()` sites in app/ (auth_service x7, referral_service x13, database_service x5, home_routes x2, auth_routes x2, profile_routes, abuse_detection_service, push_service x2, structured_comparison_service:5636, usage_service:530) have the same 406-on-absence cost where the row can be absent (referral code lookups, push tokens) and are out of D1's scope - record them for a follow-up, do not widen D1."
+  },
+  {
+   "question": "Which evidence lines should PLAN_S80 cite (corrected prod_evidence lines)?",
+   "answer": "The digest's three headline claims survive; four wordings need correcting or tightening, and one new measured line (the 406 misses) should be cited for D1. See ruling_text for the exact lines.",
+   "evidence": [
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-docs-70\\docs\\investigations\\2026-10-19-session-80-state\\PLAN_S80.md",
+     "line": "22, 32, 71",
+     "note": "R-A1(c) names 'the L2 .single() zero-row read, after measuring the pinned supabase-py'; R-A11 cites 'Sentry PYTHON-FASTAPI-1X, 403 on a PDP in V02'; D1 lists 'the L2 .single() zero-row read (R-A1 c)' - all three now rest on measured lines",
+     "basis": "measured"
+    },
+    {
+     "file": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-docs-70\\docs\\investigations\\2026-10-19-session-80-state\\runs\\research\\prod_evidence.json",
+     "note": "digest claims re-checked: 'No /api/v1/image/* transaction was sampled in 30 days' (true, keep the word sampled); '4 events ... status permission_denied' (true for 1 of 4 events); 'trace 5915a2b6 ... 7.1 s, 3 LLM calls, rpc/increment_lifetime_comparisons' (true, every number re-measured); 'The Supabase product_specs / product_reviews 4xx: PostgREST no-rows response to .single() or a real 400?' (settled: 406 on .single() misses)",
+     "basis": "measured"
+    }
+   ],
+   "ruling_text": "Corrected evidence lines for PLAN_S80 (replace the digest wording where it differs):\n\nE1 (camera telemetry): 'Sentry sampled no /api/v1/image/identify (app.api.image_routes.*) transaction in the 30 days to 2026-10-19 and no react-native transaction at all; both SDKs sample traces at 0.1 (sentry_service.py:667; sentry.ts:271-280), and every count() in the spans dataset is sample-weighted x10 (compare_urls: 1 sampled trace reads as 10). Zero sampled is not zero camera compares - the tester alone ran at least four on 2026-10-18 - so camera latency and the ~40 s figures rest on the RN comparison_wall_time messages and the videos, never on backend traces.'\n\nE2 (V02 / FragranceX): 'PYTHON-FASTAPI-1X: 4 events, 2026-10-18T12:50:05.062Z to 12:50:15.402Z, release 683f56c0, client MYEZ 3 iOS, two POST /api/v1/url/compare requests (server spans a16a552b3f867bdf and 9ddb2c20a7900d51) in trace 2e59ae38aca04795883c6c9306de3495, two failed fetches each, all on host www.fragrancex.com. In both requests the recorded fetch is GET https://www.fragrancex.com/products/calvin-klein/obsession-perfume (events 214cf269, f3ff0b9c); the 403 is measured once (span status permission_denied on 214cf269); the other three events record HTTPStatusError without a status, and the second URL of each request is not recorded. url_routes.py:171-197 refunded the credit and raised the code-less 400.' (R-A11's '403 on a PDP in V02' stands.)\n\nE3 (V09 / URL mode billing): 'Trace 5915a2b6c0d048dabac065c52cee18e3: app.api.url_routes.compare_urls 7,122 ms, HTTP 200, start 2026-10-18T13:44:06Z; 2 x GET https://store.rasasi.com.sa (844 / 1,214 ms, 200; paths scrubbed by R5); three LLM calls (gen_ai.chat gpt-4o-mini 1,441 ms and 1,948 ms at 13:44:09, gpt-4o 2,335 ms at 13:44:11); then POST /rest/v1/rpc/increment_lifetime_comparisons 204 (160 ms) at 13:44:13 - the success branch of url_routes.py:199-210 under ENABLE_PAID_ROUTE_METERING. The two Unknown Product cards are not in Sentry (HTTP 200); they rest on the video and url_extraction_service.py:513-527.'\n\nE4 (D1 / L2 miss cost, new): 'On the pinned postgrest 2.31.0 the L2 reads product_data_service.py:205-212 and :369-376 send Accept: application/vnd.pgrst.object+json (.single()); a missing product_key is a PostgREST 406 that SyncSingleRequestBuilder.execute() raises as APIError (_sync/request_builder.py:109-131, not retried: base_request_builder.py:99-104), swallowed at :222-224 / :386-388 as a miss. Measured in production: 3 x GET /rest/v1/product_specs and 3 x GET /rest/v1/product_reviews with http.status_code 406 / invalid_argument in two text compares on 2026-10-14 (traces f847c51aa2ee4826acaa9f27c178bda6, 9f87277e0bbd4078bccc4be9621fb193), 185-467 ms each, on the event loop while ENABLE_SYNC_DB_OFFLOAD is off. The zero-row-safe form on this pin is .limit(1) with response.data[0] (the get_cached_price shape, :273-281); maybe_single() returns None, not a response (:217-219, :162-184).'\n\nE5 (sampling caveat to attach to every Sentry number in the plan): 'Sentry spans-dataset counts are 1/sample_rate extrapolations; cite raw sampled span counts and trace ids, never the aggregate.'"
+  }
+ ],
+ "surprises": [
+  "Every count() the Sentry spans dataset returns is sample-weighted x10: the one sampled compare_urls trace (19 spans) reads as count()=10, and 3 raw product_specs 406 spans read as 30. Any PLAN_S80 or digest figure taken from an aggregate query (e.g. '~1,400-2,100 spans/day', per-route counts) is an extrapolation, and 'zero camera transactions' is zero of a 10 % sample.",
+  "The L2 .single() miss is not hypothetical: production shows GET /rest/v1/product_specs and GET /rest/v1/product_reviews returning HTTP 406 (span.status invalid_argument) on cold text compares - 6 sampled spans in 2 traces on 2026-10-14, 185-467 ms each - which settles the digest's open question ('PostgREST no-rows response or a real 400?').",
+  "On the pinned postgrest 2.31.0 the SYNC select builder's maybe_single() sets NO object Accept header and its execute() returns None (not a response object) on zero rows, while the RPC builder's maybe_single() does set the header - an asymmetry that makes .limit(1) the safer zero-row form for D1.",
+  "The existing tests tests/test_product_data_service.py:47-53 and :212-218 model a .single() miss as execute() -> MagicMock(data=None), a shape the pinned library never produces (it raises APIError); the two 'returns_none_when_empty' tests pass for the wrong reason and the D1 RED must replace them.",
+  "Of the four PYTHON-FASTAPI-1X events only ONE (214cf269) carries the permission_denied (403) span status; f3ff0b9c carries the same PDP description with status 'unknown', and the other two carry the http.server span context only. The 403 is measured once, not four times.",
+  "Trace 2e59ae38 (V02) reports 6 error events while 1X holds 4; the RN SDK propagates one trace id across many backend requests of a session (trace 5915a2b6 holds 12 http.server transactions), so the extra two are probably another issue's events from the same session - not identified.",
+  "Event 45dbe359 has user.geo SG while its three siblings in the same second have user.geo US; unexplained (send_default_pii is False, geo is derived at ingest)."
+ ],
+ "open": [
+  "The PostgREST error body code (PGRST116) on the .single() zero-row read is inferred from PostgREST's contract; Sentry captures only the 406 status. One owner-run request against the project, or a LIVE=1 test, would make it measured.",
+  "The second URL field of each V02 request is still not recorded anywhere in Sentry (its event carries the http.server span context); it was on host www.fragrancex.com. Only a search_logs row (query = _url_log_query of both URLs) for 2026-10-18 12:50:05Z and 12:50:15Z can say homepage vs PDP.",
+  "V09's two store.rasasi.com.sa URLs remain path-scrubbed (sentry_service.py R5); the search_logs row at ~2026-10-18T13:44:13Z is still the only way to learn homepage vs PDP.",
+  "Trace 2e59ae38aca04795883c6c9306de3495 reports Errors: 6 while PYTHON-FASTAPI-1X has 4 events in it; the other two error events were not identified.",
+  "save_reviews' upsert on_conflict argument (product_data_service.py:392-401) was not re-read; product_key uniqueness for product_reviews is inferred from the upsert shape and the specs twin (:242).",
+  "37 further .single() sites in app/ (auth_service x7, referral_service x13, database_service x5, home_routes x2, auth_routes x2, profile_routes, abuse_detection_service, push_service x2, structured_comparison_service:5636, usage_service:530) pay the same 406 round trip wherever the row can be absent; out of D1 scope, recorded for a follow-up.",
+  "The RN comparison_wall_time values for V01/V06 (40,032 / 39,519 ms) were not re-read; events exist at 2026-10-18T12:46:28Z and 13:08:15Z for user 72BDD09F but their extra fields were not opened.",
+  "Whether ENABLE_SYNC_DB_OFFLOAD is on in production (which decides whether the 406 round trips block the loop) was not read; production flag state comes from the ledger, not from this agent."
+ ]
+}

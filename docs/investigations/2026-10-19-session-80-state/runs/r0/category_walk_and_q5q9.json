@@ -1,0 +1,276 @@
+{
+ "topic": "Category resolution (V06 beard oil, V07 GUESS pair) and audit Q5 (priorities -> scoring) / Q9 (supported vs thin categories); origin/main 683f56c0, read-only",
+ "answers": [
+  {
+   "question": "(1) Hand-walk of A='Goiple BEARD OIL CONDITIONING 30ml / 1 fl oz', B=\"pura d'or ORGANIC BEARD SOFTENING OIL ORIGINAL SANDALWOOD SCENT 4 fl oz (118 ml)\" and the pair ('GUESS GUESS!','GUESS GUESS!') through classify_category_from_text / is_supplement_query / _resolve_pair_category with parser_path=False; the 9 canonical keys and CATEGORY_SPEC_SCHEMAS field counts; whether a scent veto can fall through to a hair/oil/beard token.",
+   "answer": "WALK (reproduced with the real tables pulled out of the source by AST, not by importing app.*; the algorithm is the 14 lines at extraction_service.py:1327-1341). Step 0, is_supplement_query (price_service.py:1296-1337): A and B contain no SUPPLEMENT_UNAMBIGUOUS token (:605-636) and no SUPPLEMENT_AMBIGUOUS token (:637-640: iron/collagen/protein/zinc/... 'oil' is not one; 'fish oil' is a phrase and absent), so both return False at 'no ambiguous token'; the dose regex (:639, units iu|mg|mcg|g) would not even match '30ml'. is_high_value_query (:1237-1263) is False for both (no device token, no brand). Step 1, the synonym sweep (:1332-1340, 41 tokens, longest first, \\b-bounded). A: no synonym token at all -> 'other'. Whole tokens present in A: beard, oil, conditioning; none is in _CATEGORY_SYNONYMS (:1164-1211). B: exactly one hit, 'scent' (:1171 \"scent\": \"fragrances\") -> 'fragrances'. Other whole tokens in B: beard, oil, organic, softening, sandalwood; none is a synonym. 'hair' does not occur in either string. _resolve_pair_category classifies the COMBINED string (scs:454-455 combined = ' '.join(search_query or name)), so name_cat = 'fragrances' via 'scent'. On the camera path each vision product's stub category is classify_category_from_text(f'{brand} {name}') (scs:4210-4224, :4218): A -> 'other', B -> 'fragrances'; llm_cat = canonicalize(products[0].category) = 'other' (scs:456); the vision JSON carries no category field (openai_service.py:111-160 prompt and example rows). parser_path = not (vision_products or explicit_pair or presplit marks) = False (scs:4275). Ladder: det = name_cat = 'fragrances' (scs:483) -> category_used='fragrances', category_switched=False because sel is None: the camera route signature has only images/region/nocache/user (image_routes.py:160-168) and the call at :450 passes no selected_category; the client identify call sends only ?region= (api.ts:302). Write-back stamps BOTH products 'fragrances' (scs:4295-4296), so the pair gets the fragrance schema (extraction_service.py:210-224) and the six fragrance dims (scoring_service.py:25-63). Same strings on the explicit-pair path WITH a chip 'haircare' or 'skincare': still 'fragrances', category_switched=True (scs:486: a real chip only re-flags a switch on this path). VETO FALL-THROUGH: if a scent veto made the sweep `continue` past 'scent' (the _tablet_veto idiom at :1334-1339), NO other synonym token exists in A, B or A+B (beard/oil/conditioning/organic/softening are not in the map; 'hair' is absent), so the sweep ends at 'other' (:1341); det then falls to llm_cat, which on the vision and explicit paths is the same deterministic stub, i.e. also 'other'; with no chip the branch is classify_category_llm (scs:491; extraction_service.py:1364-1399: gpt-4o-mini, 10-token answer, 4.0 s cap via CLASSIFY_LLM_TIMEOUT :1361, canonicalized; 'other' on any error/timeout). So a plain veto cannot reach 'haircare' by token; it reaches an unmeasured LLM answer. R-A8's 'resolve to haircare under the scent veto' therefore requires the veto itself to RETURN the grooming category (a grooming-noun -> category map inside the veto), exactly as _tablet_veto returns 'supplements' at :1336-1337, not a fall-through. V07: 'GUESS GUESS!' (vision brand 'GUESS' + name 'GUESS!', so full='GUESS GUESS!') hits no supplement or synonym token -> 'other'; combined 'GUESS GUESS! GUESS GUESS!' -> 'other'; stubs 'other'. Explicit path with chip fashion: det='other' -> `elif sel and sel != 'other'` (scs:487-489) -> category_used='fashion', category_switched=False. Camera (no chip possible): the A2b LLM branch (scs:491) decides; unmeasured. CANONICAL KEYS (CATEGORY_SPEC_SCHEMAS order, extraction_service.py:142-238; _CANONICAL_CATEGORIES is frozenset(keys) at :1160): electronics, grocery, supplements, other, makeup, skincare, haircare, fragrances, fashion. Field counts (total / scoring after NON_SCORING_SPEC_KEYS={'heat_stability'} scoring_service.py:22): electronics 11/11 (:143-147), grocery 11/11 (:148-152), supplements 11/11 (:153-157), other 7/7 (:158-161), makeup 12/11 (:164-179), skincare 11/10 (:181-195), haircare 10/10 (:197-208, includes a 'scent' field at :207), fragrances 11/10 (:210-224), fashion 10/10 (:226-237). The classifier's 9-word LLM prompt lists the same nine (:1352-1358).",
+   "ruling_text": "B5 veto rule (proposed, derived from the walk): in classify_category_from_text, after is_supplement_query and inside the sweep, when the winning token is in a new _SCENT_TOKENS = {'scent','scents'} and ENABLE_CATEGORY_TRUTH is truthy (read per call, same idiom as category_token_fix_enabled() at extraction_service.py:1334), run _scent_veto(low): using price_service._contains_token whole-token matching (the _tablet_veto idiom, :1281-1292), if the lowercased text contains any grooming noun from the plan list, RETURN the mapped category instead of 'fragrances': {beard, oil, balm, shampoo, conditioner, hair, wax} -> 'haircare'; {wash, soap, lotion, cream, butter, deodorant} -> 'skincare'; {candle, diffuser, freshener, detergent} -> 'other'; if two groups match, the first group in that order wins (grooming before skin before home); if no grooming noun is present, return 'fragrances' exactly as today. The veto never `continue`s: a continue only reaches 'other' and then the GPT-mini A2b classifier (scs:491), which is nondeterministic and cannot pin 'haircare'. Flag OFF: byte-identical ('scent' -> fragrances). _CATEGORY_SYNONYMS is not edited (canonicalize_category shares it, :1230-1245, the W4-8 ruling). The function is shared by the per-product stub (scs:4218/:4231) and the combined-string resolver (scs:457), so both move together. Known limits to record in the spec: 'oil' + 'scent' with no beard/hair word (a scented body oil, a scented cooking oil) also lands in haircare; a scented item named with none of the nouns stays fragrances; the vision tie-break clause of R-A8 is a separate change because the vision JSON has no category field today (openai_service.py:111-160) and a prompt edit re-records the W4-11 digest fixture; a real chip is still overridden by name detection on the explicit path (scs:483-486) unless the spec also lets a chip win over a vetoed detection; specs/reviews caches are not category-keyed, so V06-class pairs show the new category only after turnover or with nocache. RED fixtures: A, B, A+B, and 'Argan hair oil scent' -> haircare; 'Vanilla scent candle' -> other; 'Chanel No 5 scent' -> fragrances (no noun); flag-OFF identity on the W4-8 360-record GCC corpus gate and on the four strings.",
+   "evidence": [
+    {
+     "file": "app/services/extraction_service.py",
+     "line": "1327-1341",
+     "note": "classify_category_from_text body: is_supplement_query first, then the longest-first \\b sweep over _CATEGORY_SYNONYMS; the only veto today is the tablet one at :1334-1339 (returns 'supplements' or `continue`s).",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/extraction_service.py",
+     "line": "1164-1211",
+     "note": "_CATEGORY_SYNONYMS (41 entries): 'scent'/'scents' -> fragrances at :1171-1172; 'hair' -> haircare at :1193; no entry for beard, oil, balm, conditioning, organic, softening, sandalwood.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/price_service.py",
+     "line": "1296-1337",
+     "note": "is_supplement_query: high-value short-circuit (:1237-1263), UNAMBIGUOUS stand-alone, AMBIGUOUS needs dose (SUPPLEMENT_DOSE_RE :639, units iu|mg|mcg|g) or form token; neither V06 string has an ambiguous token -> False.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/structured_comparison_service.py",
+     "line": "454-458, 483-494",
+     "note": "_resolve_pair_category: combined names classified at :457; explicit/vision ladder det = name_cat else llm_cat (:483); chip only re-flags a switch (:486); chip honored only when det is 'other' (:487-489); A2b LLM at :491.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/structured_comparison_service.py",
+     "line": "4210-4224, 4275, 4295-4296",
+     "note": "Vision products: category = classify_category_from_text(f'{brand} {name}') per product (:4218); parser_path False whenever vision_products or explicit_pair (:4275); resolved category written back onto both products (:4295-4296).",
+     "basis": "measured"
+    },
+    {
+     "file": "app/api/image_routes.py",
+     "line": "160-168, 450",
+     "note": "POST /image/identify takes images, region, nocache, user only; :450 calls compare_from_text(query, region=region, vision_products=products, nocache=nocache) with no selected_category.",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/services/api.ts",
+     "line": "302",
+     "note": "identifyUrl carries only ?region=; the camera call sends no category chip.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/openai_service.py",
+     "line": "111-160",
+     "note": "identify_products prompt asks for brand, name, size_or_count, visible_price, confidence; no category field, so llm_cat on the vision path is the deterministic stub.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/extraction_service.py",
+     "line": "1352-1399",
+     "note": "classify_category_llm: gpt-4o-mini classify-only, 10 tokens, temperature 0, CLASSIFY_LLM_TIMEOUT 4.0 s (:1361), canonicalized; 'other' on any exception/timeout.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/extraction_service.py",
+     "line": "142-238, 1160",
+     "note": "CATEGORY_SPEC_SCHEMAS: 9 keys in order electronics, grocery, supplements, other, makeup, skincare, haircare, fragrances, fashion; field counts 11/11/11/7/12/11/10/11/10; haircare has a 'scent' field at :207; _CANONICAL_CATEGORIES derived at :1160.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/scoring_service.py",
+     "line": "22",
+     "note": "NON_SCORING_SPEC_KEYS = {'heat_stability'} strips one field from makeup, skincare and fragrances for scoring (counts 11/10/10).",
+     "basis": "measured"
+    },
+    {
+     "file": "scratchpad (AST replay of the two tables)",
+     "line": "n/a",
+     "note": "Replayed the exact sweep/supplement logic over the AST-extracted sets: A -> other (no hit), B -> fragrances (hit 'scent' only), A+B -> fragrances, 'GUESS GUESS!' -> other; resolver: V06 camera -> fragrances/False; V06 chip haircare -> fragrances/True; V07 chip fashion -> fashion/False; V07 camera -> A2b LLM. Not run through the live module (importing app.* loads .env).",
+     "basis": "measured"
+    }
+   ]
+  },
+  {
+   "question": "(2) Audit Q5: how stored user priorities/budget reach the recommendation weights; file:line of the shifts and caps; whether the URL path (compare_from_urls) and the camera path (image_routes.py:440-455) receive user_preferences.",
+   "answer": "STORAGE AND FETCH: preferences live in users.preferences (JSON) with users.preferences_completed; get_user_preferences (auth_service.py:917-935) returns both. The text routes fetch them only for an authenticated user AND only when preferences_completed is true (text_routes.py:600-604 POST, :817-821 GET, :1004 stream), then pass user_preferences into compare_from_text (:636-643, :846-854) and compare_from_text_streaming (:1097-1105). The orchestrator hands them to compute_scores(product_data, preferences=user_preferences, behavior_profile=..., cohort_profile=...) at scs:4419-4421 (REST) and :5207-5209 (stream); the hard-cap partial path scores with ctx user_preferences only (scs:3730-3735). WEIGHT PIPELINE (scoring_service.py): compute_scores (:1357) -> weights = _compute_weights(preferences, category) (:1383). _compute_weights (:1704-1748): start from CATEGORY_DIMENSION_WEIGHTS[category] (:65-77, six dims per category); with no preferences return the defaults (:1711-1713); else for EACH priority in preferences['priorities'] add CATEGORY_PRIORITY_ADJUSTMENTS[category][priority] deltas (:1715-1721; table :80-178, 8 priorities x 9 categories, per-dim deltas of +0.15/+0.10/+0.05 and -0.10/-0.05, stacked); then add CATEGORY_BUDGET_ADJUSTMENTS[category][budget] with budget defaulting to 'mid' = {} (:1723-1729; table :180-245, bands budget/mid/premium/luxury/top_tier); then clamp every dim to +/-30 % of its category weight, MAX_WEIGHT_SHIFT_RATIO = 0.30 (:255, clamp :1731-1736); renormalize to sum 1 (:1738-1744); then _scale_value_weight. Second effect of priorities: the value dimension's spec/price coefficients come from VALUE_FORMULA_BY_PRIORITY (:665-674: price 0.45/0.55, quality 0.75/0.25, default 0.70/0.30) chosen first-match on the ordered priorities (_resolve_value_coefficients :719-729), threaded at :2359-2368 into _compute_value_score (:2560). Weaker layers, applied on top: cohort priors only when NO explicit preferences (:1395-1398; apply_cohort_adjustments :2932-2961 reuses the priority table scaled by 0.10/0.30 and caps at MAX_BEHAVIORAL_SHIFT_RATIO 0.10, :258); behavioral profile +/-10 % (:1401-1404; apply_behavioral_adjustments :2895-2930); session signals +/-5 % (MAX_SESSION_SHIFT_RATIO :259; apply_session_signals :2963-3002); the shared clamp/renormalize is _apply_capped_adjustments (:2861-2893). EMISSION: weights_used per product (:1542, rounded to 4 dp) and category_weights (:1697) go into scoring_result; response_builder._safe_compute_applied_shifts (:792-805) calls scoring_service._compute_applied_shifts (:686-716: top 3 dims by |delta| above the 0.001 noise floor :683, direction only) and emits it at scoring_v2.personalization.applied_shifts (:1347-1349) and personalization.applied_shifts (:2049-2057), beside personalization.factors built from priorities/budget/lifestyle (:1569-1578). Client: ResultsContent.tsx:424 feeds scoring_v2.personalization.applied_shifts to PersonalizationChip (PersonalizationChip.tsx:32-35, hidden when empty); types.ts:434. URL PATH: compare_from_urls(url1, url2, region, selected_category) (url_extraction_service.py:575-579) has no user_preferences parameter; url_routes.py:158 calls it with exactly those four; the function never calls compute_scores or build_comparison_response (no 'scoring'/'compute_scores' reference in url_routes.py or url_extraction_service.py) and returns winner_index = comparison.get('winner_index', 0) from the GPT verdict (:685-694). So on the URL path there is no deterministic scoring, no weights, no applied_shifts: Q5's premise does not hold there at all. CAMERA PATH: image_routes.py:450 calls compare_from_text(query, region=region, vision_products=products, nocache=nocache): no user_preferences, no user_id, no selected_category, although the route holds `user` (:167). Inside, compute_scores runs with preferences=None (category defaults, :1711-1713) and, since user_id is None, the behaviour/demographics fetch at scs:4308-4312 (`if user_id:`) is skipped (inferred from the guard), so camera results carry no personalization at all and the chip is always hidden. Only the text REST and SSE routes receive preferences, and only after onboarding completed.",
+   "evidence": [
+    {
+     "file": "app/services/auth_service.py",
+     "line": "917-935",
+     "note": "get_user_preferences selects preferences, preferences_completed from users via run_db.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/api/text_routes.py",
+     "line": "600-604, 636-643, 817-821, 846-854, 1097-1105",
+     "note": "Preferences fetched only when preferences_completed; passed as user_preferences to compare_from_text (POST, GET) and compare_from_text_streaming.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/structured_comparison_service.py",
+     "line": "4419-4421, 5207-5209, 3730-3735",
+     "note": "compute_scores(product_data, preferences=user_preferences, behavior_profile=..., cohort_profile=...) on REST and stream; partial path scores with ctx user_preferences only.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/scoring_service.py",
+     "line": "1704-1748",
+     "note": "_compute_weights: defaults when no preferences (:1711-1713); priority deltas stacked (:1715-1721); budget deltas, default 'mid' (:1723-1729); +/-30 % clamp per dim (:1731-1736); renormalize (:1738-1744).",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/scoring_service.py",
+     "line": "80-178, 180-245, 255, 258, 259",
+     "note": "CATEGORY_PRIORITY_ADJUSTMENTS (8 x 9), CATEGORY_BUDGET_ADJUSTMENTS (5 bands x 9), MAX_WEIGHT_SHIFT_RATIO 0.30, MAX_BEHAVIORAL_SHIFT_RATIO 0.10, MAX_SESSION_SHIFT_RATIO 0.05.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/scoring_service.py",
+     "line": "665-674, 719-729, 2359-2368, 2560",
+     "note": "VALUE_FORMULA_BY_PRIORITY first-match on priorities feeds _compute_value_score coefficients (default 0.70 spec / 0.30 price; 'price' 0.45/0.55).",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/scoring_service.py",
+     "line": "1395-1404, 2861-2893, 2895-2930, 2932-2961, 2963-3002",
+     "note": "Cohort nudge only without explicit prefs, scaled 0.10/0.30; behavioral +/-10 %; session +/-5 %; shared _apply_capped_adjustments clamp + renormalize.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/scoring_service.py",
+     "line": "683-716, 1542, 1697",
+     "note": "_compute_applied_shifts (top 3, direction only, 0.001 floor); weights_used emitted per product; category_weights at the result top level.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/response_builder.py",
+     "line": "792-805, 1347-1349, 1569-1578, 2049-2057",
+     "note": "_safe_compute_applied_shifts -> scoring_v2.personalization.applied_shifts and personalization.applied_shifts; personalization.factors from priorities/budget/lifestyle.",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/components/results/ResultsContent.tsx",
+     "line": "424",
+     "note": "appliedShifts={scoring_v2.personalization?.applied_shifts} into PersonalizationChip (PersonalizationChip.tsx:32-35 returns null when undefined/empty; types.ts:434).",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/url_extraction_service.py",
+     "line": "575-579, 638-640, 659-661, 685-694",
+     "note": "compare_from_urls signature has no user_preferences; resolves the category, calls generate_comparison only, returns the GPT winner_index; no compute_scores anywhere in this file or url_routes.py.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/api/url_routes.py",
+     "line": "158",
+     "note": "compare_from_urls(url1, url2, region, selected_category): no preferences argument exists to pass.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/api/image_routes.py",
+     "line": "167, 450",
+     "note": "Route holds `user` but :450 passes neither user_preferences nor user_id nor selected_category to compare_from_text.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/structured_comparison_service.py",
+     "line": "4308-4312",
+     "note": "`if user_id:` gates the behaviour-profile + demographics fetch; with the camera's user_id None the layers are skipped.",
+     "basis": "inferred"
+    }
+   ]
+  },
+  {
+   "question": "(3) Audit Q9: gold-truth records per category vs the 9 CategorySelector values; which categories are functionally supported vs thin, and how the user is told.",
+   "answer": "GOLD COUNTS (data/validation_gold_truth.json, `queries`, 200 records, _metadata ratified by the owner 2026-06-10, all region bahrain): electronics 34, grocery 32, supplements 22, haircare 21, skincare 19, other 19, fragrances 18, makeup 18, fashion 17. Every record has two BHD price ranges, an expected_winner_index and 3-4 forbidden_facts. Spec depth differs sharply: records with at least one expected spec key: electronics 17/34 (44 keys), supplements 18/22 (35), skincare 8/19 (15), makeup 6/18 (9), grocery 1/32 (2), haircare 0/21, fragrances 0/18, fashion 0/17, other 0/19. The smoke20 regression anchor (data/eval_smoke_subset.json) covers every category: electronics 3, other 3, two each for the other seven. CLIENT LIST: CategorySelector.tsx:38-50 CATEGORIES = electronics, grocery, supplements, makeup, skincare, haircare, fragrances, fashion, other (same nine values as the backend keys; labels en.json:102-110 plus the nudge copy :111 'Pick a category for the most accurate compare', Arabic twins present, 20 keys across both files). BACKEND MACHINERY PER CATEGORY: all nine have a spec schema (extraction_service.py:142-238), six dims + weights (scoring_service.py:25-63, :65-77), priority and budget tables (:80-245), a prompt personality (prompt_personalities.py:5-62), a CATEGORY_FAIRNESS entry (price_service.py:2682-2775) and a CATEGORY_MIN_COVERAGE (:1312). The depth behind that is uneven: (a) every dim of every category is a relabel of one of seven universal signals via ScoringService._DIMENSION_SIGNAL_MAP (scoring_service.py:2144-2190: spec, spec_secondary, review, reliability, popularity, value), e.g. fragrance projection = star rating, fashion durability = fact-check citation ratio; (b) directional spec fields (HIGHER/LOWER_IS_BETTER_BY_CATEGORY :262-285) exist for electronics (5+1), grocery (2+3), supplements (3+1), makeup (3), skincare (2), haircare (1: volume), fragrances (2: longevity, volume) and are EMPTY for fashion and other, so _score_specs (:1891-1937) is pure field-coverage there; (c) fashion and other have unit None in CATEGORY_FAIRNESS (:2756, :2767) = no like-for-like price axis; (d) supplements alone has a dedicated price path (iHerb/pharmacy) and the dedicated supplement detector. HOW THE USER IS TOLD: nothing marks a category as experimental: no 'beta'/'experimental'/'coming soon' string in en.json; category_switched has 0 render sites (types.ts:299 only; the banner was deleted, ResultsScreen.tsx:914); the only category surfaces are the History row eyebrow pill (HistoryScreen.tsx:62-65, 496-520) and the Home smart-pick pill, which omits 'other' (HomeEditorialSections.tsx:49-58, 92-96); QuickCategories shows 4 tiles (:261-266) and the curated trending rows cover only Electronics, Skincare, Fragrances, Supplements and Makeup in all six regions (data/trending_curated.json; no grocery, haircare, fashion or other rows). RESULTING LIST (my classification from these facts): SUPPORTED with measured depth: electronics, supplements, skincare, makeup (ratified spec expectations, directional fields, a fairness axis, and for supplements a dedicated price path). THIN: grocery (32 gold rows but 1 with spec keys), haircare (21 rows, 0 spec keys, one directional field), fragrances (18 rows, 0 spec keys; the spec spine store is empty and migration 035 unapplied per CLAUDE.md), fashion and other (0 spec keys, no directional fields, no fairness axis, generic 7-field schema for other). Every category 'works' in the sense that identity, price and the verdict run and the bars render; what differs is whether any category-specific fact exists behind the bars.",
+   "ruling_text": "Category support statement for the plan (proposed): MYEZ offers nine categories and the backend has a schema, six dimensions, a personality and a 17-34 query gold set for each, so no category is unsupported in the pipeline sense; none is marked experimental anywhere in the client. Depth is uneven: electronics, supplements, skincare and makeup carry ratified spec expectations, directional spec fields and a like-for-like price basis; grocery, haircare, fragrances, fashion and other have no ratified spec values in gold (0-2 keys), fashion and other have no directional fields and no price-basis axis, and every dimension in every category is a relabelled universal signal (_DIMENSION_SIGNAL_MAP). Therefore: (1) `unsupported_category` in R-A4 should mean 'not one of the nine' (an A2b 'other' on a non-product such as the V04 violin), never one of the nine themselves; (2) for grocery/haircare/fragrances/fashion/other the gate's data_coverage (R-A4) must not count relabelled proxy dims as evidence, and B5's `caption_key:'limited_data'` is the honest surface; (3) the user-facing statement is a copy change, not a flag: the CategorySelector nudge already says 'Pick a category for the most accurate compare'; the plan should add nothing that calls a category experimental, and instead rely on the per-result status and limited_data captions; (4) the eval's specs axis is vacuous for five categories until gold spec keys are authored for them, which is a data unit (D1-class), to be recorded as a stated limit of every B-unit that claims category truth.",
+   "evidence": [
+    {
+     "file": "data/validation_gold_truth.json",
+     "line": "_metadata, queries[0..199]",
+     "note": "200 records; per-category counts 34/32/22/21/19/19/18/18/17 (electronics, grocery, supplements, haircare, skincare, other, fragrances, makeup, fashion); records with non-empty expected_specs: 17/18/8/6/1/0/0/0/0 for electronics/supplements/skincare/makeup/grocery/haircare/fragrances/fashion/other; all have both price ranges, a winner and forbidden facts; ratified_at 2026-06-10.",
+     "basis": "measured"
+    },
+    {
+     "file": "data/eval_smoke_subset.json",
+     "line": "whole file",
+     "note": "20 ids: elec 3, other 3, two each for supplements, fragrances, makeup, skincare, haircare, fashion, grocery.",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/components/CategorySelector.tsx",
+     "line": "38-50",
+     "note": "CATEGORIES: the nine values electronics, grocery, supplements, makeup, skincare, haircare, fragrances, fashion, other with i18n keys home.categories.<key>.",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/i18n/en.json",
+     "line": "102-111",
+     "note": "Nine category labels plus home.categories.nudge 'Pick a category for the most accurate compare'; no beta/experimental/coming-soon string anywhere in the file.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/scoring_service.py",
+     "line": "2144-2190",
+     "note": "_DIMENSION_SIGNAL_MAP relabels the universal signals (spec, spec_secondary, review, reliability, popularity, value) into each category's six dims.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/scoring_service.py",
+     "line": "262-285, 1891-1937",
+     "note": "HIGHER/LOWER_IS_BETTER_BY_CATEGORY empty for fashion and other (lower also empty for makeup, skincare, haircare, fragrances); _score_specs counts +1 per populated non-directional field.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/price_service.py",
+     "line": "2682, 2756, 2767",
+     "note": "CATEGORY_FAIRNESS has nine entries; fashion and other carry unit None (no like-for-like basis); electronics GB, fragrances ml, supplements count.",
+     "basis": "measured"
+    },
+    {
+     "file": "app/services/prompt_personalities.py",
+     "line": "5-62",
+     "note": "CATEGORY_PROMPT_PERSONALITIES has all nine keys.",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/types/types.ts",
+     "line": "299",
+     "note": "category_switched typed but rendered nowhere (grep: only this line); ResultsScreen.tsx:914 records the deleted categorySwitchedBanner.",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/screens/HistoryScreen.tsx",
+     "line": "62-65, 496-520",
+     "note": "Category eyebrow pill in the History row is one of two places a category is shown to the user.",
+     "basis": "measured"
+    },
+    {
+     "file": "SmartCompareApp/src/components/HomeEditorialSections.tsx",
+     "line": "49-58, 92-96, 261-266",
+     "note": "Smart-pick pill labels eight categories (no 'other'); QuickCategories shows four tiles.",
+     "basis": "measured"
+    },
+    {
+     "file": "data/trending_curated.json",
+     "line": "bahrain..oman",
+     "note": "5-6 rows per region tagged Electronics, Skincare, Fragrances, Supplements, Makeup only; no grocery, haircare, fashion or other rows.",
+     "basis": "measured"
+    },
+    {
+     "file": "runs/research/category_metrics_claims.json",
+     "line": "summary, defect MYEZ-008",
+     "note": "Digest independently anchors the 'scent' token route, the no-chip camera path and the relabelled-signal map; this round confirms its file:line anchors and adds the A2b fall-through finding.",
+     "basis": "measured"
+    }
+   ]
+  }
+ ],
+ "surprises": [
+  "A scent veto alone cannot deliver R-A8's 'haircare': once 'scent' is skipped, neither V06 name contains ANY synonym token (beard, oil, conditioning, organic are not in _CATEGORY_SYNONYMS and 'hair' is absent), so the resolver falls to the GPT-mini A2b classifier (scs:491, 4 s cap, 'other' on failure). The veto must return the grooming category itself, like _tablet_veto returns 'supplements'.",
+  "The URL path has no deterministic scoring at all: compare_from_urls never calls compute_scores or build_comparison_response and ships GPT's winner_index (url_extraction_service.py:659-694); priorities, budget, applied_shifts and scoring_v2 do not exist on /url/compare, so Q5 is moot there rather than merely unwired.",
+  "The camera route holds the authenticated `user` (image_routes.py:167) yet passes neither user_preferences nor user_id to compare_from_text (:450), so scans get category-default weights and skip the behaviour/cohort fetch (`if user_id:` at scs:4308).",
+  "Preferences are applied only when users.preferences_completed is true (text_routes.py:602-604, :820); a user who saved priorities without finishing onboarding is scored as anonymous.",
+  "Five of nine categories have zero or near-zero spec expectations in the ratified gold (haircare, fragrances, fashion, other = 0 keys; grocery 2 keys in 1 of 32 rows), so the eval's specs_correctness axis cannot fail for them.",
+  "Fashion and other have no directional spec fields and unit None in CATEGORY_FAIRNESS, so their 'Craftsmanship'/'Function' dims are populated-field counts and no like-for-like price caption can ever appear.",
+  "The curated trending feed promotes only five categories in all six regions (no grocery, haircare, fashion or other), and the smart-pick pill cannot label 'other'; combined with the deleted category_switched banner, the user is never told which category was used for a result."
+ ],
+ "open": [
+  "What classify_category_llm actually returns for the V06 pair and for 'GUESS GUESS! | GUESS GUESS!' (needs one live gpt-4o-mini call; not measured here).",
+  "The exact vision brand/name strings for V06 and V07 (the prod '[IMAGE] Identified' log line was not read); the walk assumes brand+name+size_or_count concatenation as image_routes.py:400-406 and scs:4214-4216 build it.",
+  "Owner call on the veto map edge cases: 'oil'+'scent' with no beard/hair word (body oils) -> haircare per R-A8, or skincare; scented home items -> other.",
+  "Whether B5 should also let a real chip win over a vetoed detection on the explicit path (today scs:483-486 lets name detection override the chip).",
+  "Whether the plan's `unsupported_category` status fires only for non-product identities (A2b 'other') or also for the thin five; this ruling proposes the former.",
+  "Authoring gold spec keys for haircare, fragrances, fashion, other and grocery is a data unit (D1-class) not in the current batch list; without it the specs axis stays vacuous for them."
+ ]
+}

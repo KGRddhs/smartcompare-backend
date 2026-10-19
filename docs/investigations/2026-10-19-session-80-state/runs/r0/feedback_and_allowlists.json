@@ -1,0 +1,266 @@
+{
+ "topic": "Additive safety of the feedback and events changes (PLAN_S80 C6 / C7 / B1, ruling R-A1(a)) at origin/main 683f56c0",
+ "answers": [
+  {
+   "question": "(1) Are optional winner_correct/price_correct/specs_correct request fields and new mattered_most values additive-safe for the build-3 client, which sends only the 4-field shape?",
+   "answer": "YES on the wire, with four caveats. FeedbackRequest (app/api/feedback_routes.py:97-117) subclasses pydantic.BaseModel directly (:10) and carries no model_config / ConfigDict; no shared BaseModel with extra='forbid' exists in app/models (schemas.py sets extra='allow' on two unrelated models, :57 and :162). On the pinned pydantic 2.13.4 (requirements.txt:109) the default is extra='ignore', and this is MEASURED at route level by tests/test_feedback.py:356-365 (unknown keys -> 200). Build 3 sends {useful, comparison_id?, mattered_most:[chip]} from FeedbackCard.tsx:52-56 and {useful, mattered_most:[], change_suggestion} from ContactUsScreen.tsx:91-98; new OPTIONAL fields default to None for it, the response stays the constant {\"success\": True, \"message\": \"Feedback received\"} (feedback_routes.py:188) and the client never reads it (FeedbackCard.tsx:57-59 catch; contract_freeze finding 11). New mattered_most VALUES: the check is Python list membership (:108-117); the OpenAPI type is a plain array-of-string with no enum (fixture s71_u13_flag_off_baseline.json FeedbackRequest.mattered_most.items.type=string), so a widening changes no schema byte; the DB column is `mattered_most text[] default {}` with no CHECK listed anywhere (live inventory 2026-06-08, docs/plans/2026-06-08-B-phase1-db-schema-audit-preflight.md:86-93; migration 027 adds CHECKs only on the three new columns, :45-61); precedent: the accurate/detailed/fast widening cd5a9c14 shipped with no DDL. The three correctness FIELDS: columns already exist with CHECK IN ('correct','wrong','unsure') (027:27-61), applied 2026-06-10 (CLAUDE.md:92) and live-probed 2026-09-06 (a PostgREST filter on winner_correct returned */0 and a row carrying winner_correct: None). Caveats: (a) they are a request-schema + stored-row addition, not an allowlist widening, so R-A1(a) does not cover them; (b) they must be typed Optional[Literal['correct','wrong','unsure']] (or validated) because an off-enum value fails the DB CHECK and save_feedback swallows the insert error at WARNING (feedback_service.py:238-240), the same silent-drop class the allowlist fix closed; (c) save_feedback must add them to the record only when non-None (the :223-232 pattern) so a 4-field client's stored row stays byte-identical; (d) the OpenAPI components change, but T23 compares only the $ref closure of the TEN paid operations (tests/test_s71_u13_compare_auth_required.py:981-997), none of which references FeedbackRequest, so T23 is NOT re-recorded. No test pins the FeedbackRequest field set: test_m13_29_feedback_uuid.py tests UUID validation only (:33-71), test_security_hardening.py:254 checks headers only, test_retro_w1_9.py:357-368 checks limiter exemption with {useful:true}; the \"4 fields only\" wording in CLAUDE.md and docs/plans/2026-05-13-bundle-e-qa-checklist.md:115 is documentation, not a pin.",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/api/feedback_routes.py",
+     "line": "10, 97-117",
+     "note": "FeedbackRequest(BaseModel) with 4 fields, two field_validators, NO model_config/ConfigDict anywhere in the file (grep -n model_config|ConfigDict|extra = 0 hits)",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/models/schemas.py",
+     "line": "57, 162",
+     "note": "the only extra= settings under app/models are `extra = \"allow\"` on two unrelated models; no shared forbid base; app/models/ = __init__, product_schema, schemas, scoring_v2",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/requirements.txt",
+     "line": "109",
+     "note": "pydantic==2.13.4 (pydantic-core 2.46.4); v2 default extra='ignore'",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_feedback.py",
+     "line": "356-365",
+     "note": "test_feedback_extra_fields_ignored: POST /feedback with unexpected_field + another_extra -> 200 (route-level measurement of extra='ignore')",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/components/FeedbackCard.tsx",
+     "line": "18-22, 52-56",
+     "note": "MATTERED_OPTIONS = accurate/detailed/fast; submitFeedback({useful: true, comparison_id, mattered_most: [chipKey]}) — three keys, no change_suggestion",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/screens/ContactUsScreen.tsx",
+     "line": "91-98",
+     "note": "api.post('/api/v1/feedback', {useful: category !== 'bug', mattered_most: [], change_suggestion: composed.slice(0, 1000)}) with the `[Bug]`-style category prefix",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/services/api.ts",
+     "line": "984-991",
+     "note": "submitFeedback type: useful, comparison_id?, mattered_most?, change_suggestion? — the 4-field contract",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/fixtures/s71_u13_flag_off_baseline.json",
+     "line": "openapi.components.schemas.FeedbackRequest",
+     "note": "mattered_most: {type: array, items: {type: string}} — no enum, so an allowlist widening is OpenAPI-neutral; FeedbackRequest/EventItem/EventBatchRequest ARE present in the recorded components (29 schemas)",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_s71_u13_compare_auth_required.py",
+     "line": "441-453, 981-997",
+     "note": "_openapi_snapshot records ALL components, but test_T23 asserts equality only on the ten paid operations and `_referenced_components` = the $ref closure reachable from those ten; /feedback and /events are not among them, so a FeedbackRequest schema change does not fail T23",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/docs/plans/2026-06-08-B-phase1-db-schema-audit-preflight.md",
+     "line": "83-93",
+     "note": "live production inventory 2026-06-08: comparison_feedback 7 columns, `mattered_most text[] (default {})`; no CHECK listed on it (the doc lists columns, not constraints — hence inferred for the absence)",
+     "basis": "inferred"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/migrations/027_comparison_feedback_correctness.sql",
+     "line": "27-61",
+     "note": "ADD COLUMN winner_correct/price_correct/specs_correct text NULL + CHECK (col IS NULL OR col IN ('correct','wrong','unsure')); the only CHECKs on the table in version control",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/CLAUDE.md",
+     "line": "92",
+     "note": "dated apply record: 027–032 = Bundle B B.1, dispatcher-applied 2026-06-10",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/docs/investigations/2026-09-06-full-review-state/partial-m22-code-review.json",
+     "line": "1950",
+     "note": "2026-09-06 live probe: `winner_correct not-null count=0, total comparison_feedback=1, row = {'useful':True,'winner_correct':None}` — the 027 columns exist in production",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/feedback_service.py",
+     "line": "223-240",
+     "note": "record built conditionally (user_id/comparison_id/change_suggestion only when truthy); insert error caught, logger.warning, returns {success: False} — an off-CHECK value would be dropped silently",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_m13_29_feedback_uuid.py",
+     "line": "33-71",
+     "note": "pins UUID validation on FeedbackRequest/EventItem comparison_id only; no field-set pin",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_security_hardening.py",
+     "line": "254-258",
+     "note": "POST /feedback {comparison_id:'test', rating:1} — asserts security headers only, any status accepted",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_retro_w1_9.py",
+     "line": "336-368",
+     "note": "pins slowapi exemption of the router route and the 30/min decorator with body {useful: True}; unaffected by new optional fields",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/.git",
+     "line": "cd5a9c14, 0e645ea1, fcd6b626, 454e0444",
+     "note": "git log -- app/api/feedback_routes.py: every prior allowlist widening (chips W3-1, compare_cancelled M23 A4, B.1 funnels, pain-workflow types) shipped unflagged with no DDL",
+     "basis": "measured"
+    }
+   ]
+  },
+  {
+   "question": "(2) Does widening VALID_EVENT_TYPES with scan_start, scan_identity_resolved, scan_comparison_ready, scan_failed, scan_cancelled, image_load_failed break any pin? Does tests/test_events_allowlist_superset.py require the client to USE every allowlisted event, or only that the allowlist is a superset?",
+   "answer": "No pin breaks, and the test is ONE-DIRECTIONAL: allowlist ⊇ FE literals. tests/test_events_allowlist_superset.py:83-94 computes `missing = {et for et in found if et not in allow}` and asserts it is empty; nothing asserts that every allowlisted name is fired. Measured by replaying the test's own four regexes (:37-42) over SmartCompareApp/src at 683f56c0 with the test's exclusions (:49-65): 19 FE literals found, all allowlisted; SIX allowlisted names (feedback_submit, result_abandon, save, screenshot, spec_expand, tab_switch) have NO client call site today and the test passes — unused entries are already the norm. The other pins in force: :97-113 seven names must stay (share_sheet_opened, share_completed, demographics_submitted, demographics_dismissed, onboarding_started, onboarding_step_completed, onboarding_completed); :116-121 `comparison_wall_time` must NOT be added; tests/test_feedback.py:270-283 nine hardcoded names must be accepted; :322-327 spec_expand/result_abandon/screenshot must be present; :235-240 `hacker_event` must still 422. None of the six new names touches any of these. Two constraints for C7: the regexes accept only `[a-z_]+` names (all six comply) fired as `trackEvent('literal'`, `fireEvent('literal'`, `fireAnalytics('literal'` or a batch item `event_type: 'literal'` (:37-42) — an event fired through a new wrapper or a variable (e.g. trackScanStage(stage)) is invisible to the test, so C7 must fire literals or extend `_LITERAL_PATTERNS` in the same PR; and the widening must be LIVE before any client bundle fires the names, because an unknown type 422s the WHOLE batch (feedback_routes.py:143-150 validator; EventBatchRequest :153-154) and api.ts:1002-1006 swallows it. DB side: user_events.event_type has no CHECK in version control (the only event_type CHECK is on re_engagement_events, 014:64), and the server already writes `comparison_completed` (feedback_service.py:109) which is NOT in VALID_EVENT_TYPES — the column is free text and the allowlist is a route-level gate, not a DB contract (inferred: the table was created out of band, CR-DATA-MIGRATIONS-08).",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_events_allowlist_superset.py",
+     "line": "37-42",
+     "note": "_LITERAL_PATTERNS: trackEvent( / fireEvent( / fireAnalytics( / event_type: with `[a-z_]+` literal — the only forms the test can see",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_events_allowlist_superset.py",
+     "line": "83-94",
+     "note": "test_valid_event_types_is_superset_of_fe_calls: missing = found - allow; asserts not missing (one direction only)",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_events_allowlist_superset.py",
+     "line": "97-121",
+     "note": "explicit pins: 7 names must remain; comparison_wall_time must NOT be in the allowlist",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src",
+     "line": "replay of the test's regexes at 683f56c0",
+     "note": "19 FE literals, missing=[]; allowlisted-but-unfired today: feedback_submit, result_abandon, save, screenshot, spec_expand, tab_switch (6 of 25) — proves unused allowlist entries do not fail the test",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/api/feedback_routes.py",
+     "line": "58-88, 143-150, 153-154",
+     "note": "VALID_EVENT_TYPES (25 names); validate_event_type raises on any unknown value -> 422 for the whole EventBatchRequest",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/test_feedback.py",
+     "line": "235-240, 270-283, 322-327",
+     "note": "hacker_event must 422; nine hardcoded names must 200; three pain-workflow names must be in the constant — none collides with the six new names",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/SmartCompareApp/src/services/api.ts",
+     "line": "997-1030",
+     "note": "trackEvents posts {events} and swallows every error; trackEvent wraps it with a literal event_type string",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/feedback_service.py",
+     "line": "107-112",
+     "note": "server-side track_event writes event_type='comparison_completed' to user_events — a value absent from VALID_EVENT_TYPES, so no DB CHECK mirrors the allowlist",
+     "basis": "inferred"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/migrations/014_referral_system.sql",
+     "line": "64",
+     "note": "the only event_type CHECK in migrations/ is on re_engagement_events, not user_events; no migration CREATEs user_events (037:122 comment, CR-DATA-MIGRATIONS-08)",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/ux_surfaces_latency.json",
+     "line": "defects[0].evidence[27-28], fix_sketch (1)",
+     "note": "digest already states: allowlist has no scan_* names; the superset test forces the widening into the same change; widening is unflagged and must deploy BEFORE the client sends them — consistent with this read",
+     "basis": "measured"
+    }
+   ]
+  },
+  {
+   "question": "(3) Where is comparison_feedback written (feedback_service / database_service) and would new columns need a migration?",
+   "answer": "Exactly ONE writer: app/services/feedback_service.py::save_feedback -> `client.table(\"comparison_feedback\").insert(record).execute()` through run_db (:236); the record always carries useful + mattered_most and adds user_id / comparison_id / change_suggestion only when truthy (:223-232); the RLS-scoped user client is used when user_id + access_token are present, else the service-role client (:218-222); the route calls it fire-and-forget (feedback_routes.py:176-186). database_service.py has no comparison_feedback write (grep: none). Readers: structured_comparison_service.py:5658 (select useful, behaviour profile), scripts/cron_few_shot_rotation.py:113-121 (useful=true AND winner_correct='correct'), the view vw_cohort_feedback_lift (013:46-57, useful only), the delete cascades (025:37, 043). The RLS insert policy `auth.uid() = user_id OR user_id IS NULL` (010:48-49) constrains no column. Events are written by track_events_batch (:304, user_events insert, service-role). Migrations: (a) new mattered_most VALUES need none — text[] with no CHECK (see Q1); (b) winner_correct / price_correct / specs_correct need none — migration 027 added them with CHECK IN ('correct','wrong','unsure') and it is recorded applied 2026-06-10 and live-probed 2026-09-06; wiring them is a save_feedback signature + record change only; (c) any NEW reason vocabulary (wrong_product, missing_info, unclear_reasons, slow, wrong_winner) must NOT be written into those three columns — the CHECK would reject the insert and save_feedback would drop it silently at WARNING — it belongs in mattered_most (free text[]); (d) a free-text identity correction fits `change_suggestion` (max_length 1000, feedback_routes.py:101) with a `[identity]` prefix in the ContactUs `[Bug]` pattern (ContactUsScreen.tsx:84-98) and needs no schema change. A migration would be needed only for a genuinely new column or a widened CHECK; nothing in C6/C7/B1 as planned requires one.",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/feedback_service.py",
+     "line": "197-240",
+     "note": "save_feedback: single comparison_feedback insert via run_db; record keys conditional; errors swallowed (WARNING) and {success: False} returned",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/feedback_service.py",
+     "line": "278-308",
+     "note": "track_events_batch: user_events batch insert via the service-role client, same swallow contract",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/api/feedback_routes.py",
+     "line": "161-188",
+     "note": "submit_feedback: fire_and_forget(save_feedback(...), label='save_feedback'); constant 200 body",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/database_service.py",
+     "line": "n/a",
+     "note": "grep -n comparison_feedback app/services/database_service.py = 0 hits; the only other app reference is the structured_comparison_service select",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/structured_comparison_service.py",
+     "line": "5658",
+     "note": "reader: select useful from comparison_feedback by user_id, limit 200",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/scripts/cron_few_shot_rotation.py",
+     "line": "113-121",
+     "note": "reader: .eq('useful', True).eq('winner_correct', 'correct') — the one consumer of the 027 columns; gated by ENABLE_FEWSHOT_ROTATION (unset on web per the 2026-09-06 review)",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/migrations/013_demographics_cohort.sql",
+     "line": "44-57",
+     "note": "vw_cohort_feedback_lift reads cf.useful only, joined to user_events on comparison_id",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/migrations/010_enable_rls.sql",
+     "line": "46-51",
+     "note": "feedback_insert WITH CHECK (auth.uid() = user_id OR user_id IS NULL); feedback_select USING (auth.uid() = user_id) — no per-column constraint",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/migrations/027_comparison_feedback_correctness.sql",
+     "line": "18-20, 27-71",
+     "note": "the three nullable text columns + 3-state CHECKs + partial index; header records 0 production rows at audit (2026-06-08)",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/docs/investigations/2026-09-06-full-review-state/report-m22-code-review.md",
+     "line": "272",
+     "note": "CR-DATA-MIGRATIONS-08: comparison_feedback and user_events have no CREATE TABLE in migrations/ (created out of band) — the base DDL is not in version control",
+     "basis": "measured"
+    }
+   ]
+  }
+ ],
+ "ruling_text": "RULING INPUT (for Fable) — what may ship UNFLAGGED under PLAN_S80 R-A1(a), and what may not.\n\nA. MAY SHIP UNFLAGGED NOW (R-A1(a) allowlist widenings; append-only, never remove or rename; in B1's PR or a standalone PR; deployed BEFORE any OTA that fires or sends them):\n\napp/api/feedback_routes.py — VALID_MATTERED_MOST (:44-48) gains, after \"fast\":\n    # C6 reason chips (MYEZ-023/020); a tap sends mattered_most: [chipKey]\n    \"wrong_product\", \"missing_info\", \"unclear_reasons\", \"slow\", \"wrong_winner\",\n    (+ \"unsure\" ONLY if C6 carries its third answer state in mattered_most instead of winner_correct — decide in the C6 spec)\n\napp/api/feedback_routes.py — VALID_EVENT_TYPES (:58-88) gains a new group:\n    # S80 C7 camera loader stages + cancel (MYEZ-015) and the image failure signal\n    \"scan_start\", \"scan_identity_resolved\", \"scan_comparison_ready\", \"scan_failed\", \"scan_cancelled\",\n    \"image_load_failed\",\n\nWhy these are pure-defect class: the validators are list membership (:108-117, :143-150); the OpenAPI types are plain string / array-of-string with no enum, so no schema byte moves (fixture s71_u13_flag_off_baseline.json; T23 compares only the ten paid operations' $ref closure, test_s71_u13_compare_auth_required.py:981-997); the responses are constants (:188, :219); no stored row changes for build 3 (it never sends these values); the DB columns are free text (`mattered_most text[]`, no CHECK; `user_events.event_type` already holds the non-allowlisted server value `comparison_completed`, feedback_service.py:109). Precedent: cd5a9c14, 0e645ea1, fcd6b626, 454e0444 all shipped unflagged with no DDL.\n\nRequired pins with the widening (the W3-1 pattern, tests/test_feedback_allowlist_superset.py:145-184): one route-level 200 per new value; the existing 7-value / 3-chip / 7-event / 3-pain pins untouched; `comparison_wall_time` still excluded; `bogus` / `hacker_event` / `invalid_item` still 422. Name constraints: every event name must match `[a-z_]+` and every chip must be a `{ key: '<x>' }` object literal in FeedbackCard.tsx; C7 must fire them as trackEvent('literal') / fireEvent / fireAnalytics / `event_type: 'literal'` (test_events_allowlist_superset.py:37-42) or extend `_LITERAL_PATTERNS` in the same PR, else the superset fence is blind to them. Comm set must include the SmartCompareApp-scanning tests (test_events_allowlist_superset.py, test_feedback_allowlist_superset.py) per the CLAUDE.md gate rule.\n\nB. NOT COVERED BY R-A1(a) — needs R-A1(c) pins or a flag, Fable's call:\n\n1. Adding winner_correct / price_correct / specs_correct to FeedbackRequest and to save_feedback's record. Additive-safe for build 3 (extra='ignore' measured at test_feedback.py:356-365; same constant response; same stored row when omitted; T23 untouched because /feedback is outside the ten-operation closure) and NO migration is needed (027 applied 2026-06-10, live-probed 2026-09-06). But it is a request-schema + stored-row change, not an allowlist widening, so it is R-A1(c) at best, with this pin set: fields typed Optional[Literal['correct','wrong','unsure']] mirroring the DB CHECK (an off-enum write fails silently at feedback_service.py:238-240); a pin that the record omits the keys when None (4-field request -> byte-identical insert body); an OpenAPI pin that only FeedbackRequest.properties gained the three keys; the ContactUs path (mattered_most: [], ContactUsScreen.tsx:95) still 200. R-A2's consolidated flag set has no FEEDBACK_CORRECTNESS flag and C6 is specified as \"after the backend allowlist widening\", so the recommended shape for this lane is: C6 encodes the yes/no in `useful`, the reasons in the new mattered_most values, and the identity correction as `change_suggestion` with an `[identity]` prefix (the ContactUs `[Bug]` pattern, ContactUsScreen.tsx:84-98; max 1000 chars, feedback_routes.py:101) — zero backend schema change. The three correctness fields become a later unit (R-A1(c) with the pins above, or flagged) once the eval loop has a consumer beyond cron_few_shot_rotation.py:113-121.\n\n2. Any `model_config = {\"extra\": \"forbid\"}` or a response_model on these routes: forbidden — it would turn a future client's unknown key into a 422 that drops the whole feedback/event batch, the exact failure class W3-1 / B.1 / M23-A4 fixed.\n\n3. New reason vocabulary must never be written into winner_correct / price_correct / specs_correct (CHECK IN ('correct','wrong','unsure') rejects, and the failure is silent).\n\n4. Nothing else in B1 (metadata.result_status, telemetry Sentry line, stage_timings keys, traces sampler) is an allowlist edit; those stay behind ENABLE_RESULT_STATUS_METADATA as planned.",
+ "surprises": [
+  "T23's components comparison is restricted to the $ref closure of the TEN paid operations (test_s71_u13_compare_auth_required.py:981-997), even though the fixture records all 29 component schemas including FeedbackRequest/EventItem/EventBatchRequest — a FeedbackRequest field addition therefore does NOT re-record T23; the critic's pin worry (critic.json next_round[9]) is narrower than stated.",
+  "The server itself writes `comparison_completed` to user_events (feedback_service.py:107-112) and that value is NOT in VALID_EVENT_TYPES — the allowlist is a route-level gate only, there is no DB CHECK mirroring it, and `tests/test_events_allowlist_superset.py` cannot see server-side writers.",
+  "Six of the 25 allowlisted event names (feedback_submit, result_abandon, save, screenshot, spec_expand, tab_switch) have no client call site at 683f56c0 and the superset test passes — it is one-directional by construction, so adding unused names is already the status quo.",
+  "The three 027 correctness columns exist live with a 3-state CHECK, and save_feedback swallows insert errors at WARNING (feedback_service.py:238-240): a mis-wired write (e.g. 'wrong_product' into winner_correct) would reproduce the silent-drop class that the chip allowlist fix closed, with nothing visible to the user or the tester.",
+  "ContactUsScreen is a second live caller of POST /feedback sending `mattered_most: []` and a `[Bug]`-prefixed change_suggestion (ContactUsScreen.tsx:91-98); any C6 change that makes mattered_most required-nonempty or re-types change_suggestion breaks support mail from build 3.",
+  "The comparison_feedback and user_events base DDL is still not in version control (CR-DATA-MIGRATIONS-08); the `mattered_most text[]` fact comes from the 2026-06-08 live inventory, not a current catalog read."
+ ],
+ "open": [
+  "Current live constraints on comparison_feedback and user_events are inferred from the 2026-06-08 inventory + the code paths that write non-allowlisted values; an owner-run `pg_constraint` / `information_schema.check_constraints` read for the two tables (names only, no secrets) before the C6/C7 OTA would make 'no CHECK on mattered_most / event_type' measured.",
+  "C6 spec decision: is the third answer state ('unsure') carried as a mattered_most value (allowlist-only, ships unflagged) or as winner_correct='unsure' (needs the R-A1(c) field unit)? The plan text says 'after the backend allowlist widening', which implies the former.",
+  "Whether build 1.0.0 (3)'s bundled FeedbackCard/ContactUs payloads equal HEAD was taken from contract_freeze.json (3-field FeedbackCard payload); I did not re-derive the build-3 SHA.",
+  "C7 must choose literal event_type strings at the call sites (or extend `_LITERAL_PATTERNS`); if the loader checklist drives events from a stage enum, the superset fence will not see them and a future rename can go dark again."
+ ]
+}

@@ -1,0 +1,301 @@
+{
+ "topic": "PLAN R-A4 offline sizing of the result gate over tests/fixtures/w412_corpus_min.json (27 production rows) + tests/fixtures/lane1/*_response.json (9 captured prod responses), python -I over JSON only",
+ "answers": [
+  {
+   "question": "Fixture shapes and the exact JSON paths the tally used (keys differ between the two families)",
+   "answer": "w412_corpus_min.json is a list of 27 rows {row, created_at, input_type, schema_version, product_names, full_response}; input_type = camera 16 / text 7 / text_stream 4; created 2026-03-13 .. 2026-06-21; schema_version 2 on 26 rows, 1 on row 6 (whose full_response is {metadata} only: no products, no winner, the only sub-2-product row). full_response key presence: metadata 27, winner_index/products/scoring/comparison/recommendation/category_used 26, overview+category 23 (rows 3-5, 7-26), scoring_v2 18 (rows 9-26 only). NO row carries a top-level `specs` key (the file is the W4-12 unit's MINIMIZED corpus), so specs_comparison was read from comparison.specs_comparison (dict {product_0_advantages[], product_1_advantages[], similar[]} on 25 rows, None on rows 6 and 24). lane1/*_response.json: 9 single responses, every one with products[], overview.products[], specs.products[], specs.specs_comparison AND comparison.specs_comparison (same three keys, equal sizes), scoring_v2.dimensions (3 dims; iphone15 4), metadata.timestamp 2026-06-08; no `rows` key under either specs_comparison. Paths used per row: products = full_response.products (fallback overview.products); price = products[i].price {amount, currency, retailer, source_method, estimated, unavailable, ...} (unavailable present only on 3 pended corpus prices; source_method None on 5 corpus prices incl. both of row 0; price None on 3); ratings = products[i].rating + products[i].rating_derived (True on 19 of 52 corpus products, never in lane1); dims = scoring_v2.dimensions[] {key, score_a, score_b, confidence in {high, medium, low}, caption_key ('limited_data' on 13 of 86 corpus dims, never another value)}; specs rows recomputed from products[i].specs (dict; `_`-prefixed keys skipped). Tier-3 markers: only 3 corpus products carry specs._field_confidence (row 18 p0 {_cache: db}; row 26 p0 smart_fallback x3 + tier2_fallback; row 26 p1 smart_fallback x4 + concentration: tier3_synthesis), so the R-A4 'tier-3 specs do not count' exclusion is NOT measurable on these fixtures.",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/fixtures/w412_corpus_min.json",
+     "line": "rows 0-26",
+     "note": "27 rows; top-level key counts and the row-6 empty full_response measured with python -I json; no `specs` key on any row",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/fixtures/lane1/fashion_response.json",
+     "line": "top-level",
+     "note": "23 top-level keys incl. specs.specs_comparison and comparison.specs_comparison (both dicts, no `rows`), scoring_v2.dimensions 3 items, metadata.timestamp 2026-06-08T11:09:59",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/fixtures/lane1/_helpers.py",
+     "line": "19-70",
+     "note": "the lane1 consumer rebuilds (product_data, scoring_result) from overview.products + specs.products + scoring, i.e. the fixtures are captured prod bodies",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-09-26-session-68-state/reports/fix1_w4_12.json",
+     "line": "13, 51, 92",
+     "note": "w412_corpus_min.json was created by the W4-12 display-contract unit (sha 425bd8af...), hence the minimized key set",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/response_builder.py",
+     "line": "1974-1981",
+     "note": "`specs.specs_comparison.rows` is emitted by _build_specs_rows since L1.9 (git c4c361ad 2026-06-08); absent from every fixture",
+     "basis": "measured"
+    }
+   ]
+  },
+  {
+   "question": "Per-criterion failure shares (a)-(d), literal task rule vs the strict/auditable reading",
+   "answer": "LITERAL rule as specified in the task (a: both amounts not null, unavailable is not True, source_method != 'estimated', and estimated is not True per price_service._is_estimate_price; b: both ratings numeric and rating_derived is not True; c: GPT specs_comparison lists (advantages + similar) have > 0 items; d: >= 1 dimension with both scores numeric, caption_key/confidence not in {missing, limited_data, tier3}, |score_a-score_b| >= 3). w412 (N=27): (a) false 11 (40.7%: rows 1,2 estimated both; 8 one estimated; 12-14 estimated both; 22 amount None; 23 unavailable both; 24 amounts None; 26 one unavailable; plus row 6); (b) false 17 (63.0%: rows 0-2 rating None, 5,8,10,12-14,17,20,21,23-26 rating_derived True on at least one side, row 6); (c) false 2 (7.4%: rows 6, 24); (d) false 12 (44.4%: rows 0-8 have no scoring_v2 at all; rows 12-14 all dims tie 85/85, 84/84, 88/88). lane1 (N=9): a/b/c false 0; d false 1 (other: price 84/85, reviews 88/88, value 86/88 -> margins < 3). STRICT variants: a_strict (also requires a non-empty source_method, as is_price_showable at price_service.py:1801-1835 does) flips only row 0 (amounts 2.07/4.388 with source_method None) -> 12/27 false. d_strict (also excludes confidence 'low' and any score exactly 50 = MISSING_SCORE sentinel) changes NO row (every row with a qualifying dim has one that is neither 50 nor low). c recomputed per response_builder._build_specs_rows (one row per field BOTH products populate, None/'' skipped): > 0 on 24/27 corpus rows (rows 6, 20, 21 have 0; rows 20/21 have 11 vs 7 disjoint-ish keys); but with N/A/Unknown excluded on either side (the auditable reading) only 11/27 corpus rows keep a row (false on 16: rows 6, 11-25; products[].specs on rows 12-19, 22-25 are 7/7 'N/A' strings), while all 9 lane1 keep 2-10 real rows.",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/price_service.py",
+     "line": "1801-1835",
+     "note": "is_price_showable: not a dict / no positive amount / source_method missing or outside _showable_source_methods() -> False; basis of a_strict",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/price_service.py",
+     "line": "1763-1764, 16895-16902",
+     "note": "_showable_source_methods = _GENUINE_BH_SOURCE_METHODS | {converted_usd}; genuine set = page_scrape*, local_bhd, shopify_json, firecrawl*, scrapedo_rendered, official_brand",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/price_service.py",
+     "line": "4865-4872",
+     "note": "_is_estimate_price: bool(price.estimated) or source_method == 'estimated' -> the literal (a) also treats estimated:True as estimated",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/response_builder.py",
+     "line": "845-860",
+     "note": "_safe_rating returns None when rating_derived is True (A5): basis of (b)",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/response_builder.py",
+     "line": "1580-1586",
+     "note": "products with rating None get rating = derive_rating_from_scores(overall) and rating_derived = True (why 19/52 corpus products are derived)",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/response_builder.py",
+     "line": "725-762",
+     "note": "_build_specs_rows: one row per field both products have populated; only None/'' skipped at :752, so 'N/A' vs 'N/A' IS emitted as a row; `_`-prefixed and _SPEC_INTERNAL_FIELDS (:617-621) skipped",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/response_builder.py",
+     "line": "623-625",
+     "note": "_SPEC_NA_TOKENS = {n/a, na, none, unknown, -, ''} exists for the row WINNER only, not for row emission",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/scoring_service.py",
+     "line": "297, 3168, 3240-3250",
+     "note": "MISSING_SCORE = 50; _NEUTRAL_DISPLAY_SCORE = 75; _dim_price sets 75/75, confidence low, caption_key limited_data when a price is missing: basis of the FLAGGED set and d_strict",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/extraction_service.py",
+     "line": "1050, 1077",
+     "note": "specs_comparison {product_0_advantages, product_1_advantages, similar} is part of the GPT verdict JSON schema, i.e. model prose, not an auditable spec table",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/ae650c83-4d2a-4910-a8d4-a47ab213c8c3/scratchpad/r_a4_tally_out.json",
+     "line": "all / w412 / lane1 summaries",
+     "note": "a_false 11, a_strict_false 12, b_false 17, c_false 2, d_false 12, c_rows_code_false 3, c_rows_real_false 16 on w412; lane1 d_false 1 only",
+     "basis": "measured"
+    }
+   ]
+  },
+  {
+   "question": "Coverage distribution, coverage-0 share and the refused row ids",
+   "answer": "LITERAL coverage = a+b+c+d. All 36: {0:1, 1:7, 2:4, 3:10, 4:14}. w412 (27): {0:1, 1:7, 2:4, 3:9, 4:6}; lane1 (9): {3:1, 4:8}. By input type: camera (16) {1:7, 2:3, 3:5, 4:1}; text (7) {0:1, 2:1, 3:4, 4:1}; text_stream (4) {4:4}; lane1 text (9) {3:1, 4:8}. Coverage 0: 1/36 = 2.8% (1/27 = 3.7% corpus): w412:6 only, the schema_version-1 row with an empty full_response (no products), which history already hides (migration 020) and which cannot reach a result gate. The seven coverage-1 rows are all camera: w412:1, 2 (LV vs Hermes caps: both estimated, ratings None, no scoring_v2), w412:8 (Glorious mouse vs Ducky keyboard: one estimated, both derived ratings, no scoring_v2), w412:12, 13, 14 (Manama Pickles Achbara Sauce vs Maabooch Kuwaiti Red: both estimated at 2.25, both derived 3.8, dims all ties, specs 7/7 N/A) whose single fact is the GPT specs_comparison prose, and w412:24 (Tom Ford Oud Voyager vs Soleil Neige, metadata.partial True: prices None, one derived rating, specs_comparison None) whose single fact is a legacy-breakdown dimension (reliability 65/90, review 50/90, feature_match 50/100 with 50 sentinels). STRICT coverage (a_strict + b + advantages-only c + d_strict): {0:1, 1:8, 2:3, 3:9, 4:6} on w412 (row 0 drops 2->1); refused unchanged. AUDITABLE coverage (a_strict + b + real spec rows on both sides + d_strict): w412 {0:4, 1:6, 2:7, 3:9, 4:1}, lane1 {3:1, 4:8}; coverage 0 = 4/27 = 14.8% (w412:6, 12, 13, 14); camera 3/16 = 18.8%, text 1/7 (the v1 row), text_stream 0/4, lane1 0/9. Refused ids under the plan's gate (placeholder OR same_identity OR coverage 0), literal: ['w412:6:no_products']; strict: the same; auditable: ['w412:6', 'w412:12', 'w412:13', 'w412:14']. Partials in the set: w412:24 (coverage 1/1/1) and w412:26 (coverage 2/2/2; its only dims are character/longevity 55.9 vs 74.1 built on smart_fallback + tier3_synthesis specs), so the two cold-partial rows both pass coverage >= 1, one of them on a legacy-breakdown dim alone.",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/ae650c83-4d2a-4910-a8d4-a47ab213c8c3/scratchpad/r_a4_tally_out.json",
+     "line": "coverage_dist / coverage_strict_dist / coverage_auditable_dist, refused_ids, coverage_auditable_zero_ids, partials",
+     "note": "sha256 83def0cb459eb18466ffb08deb561ad55e13f8a22c389c98162538c7d9cfcb30; per-row table in the `rows` array",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/fixtures/w412_corpus_min.json",
+     "line": "row 6",
+     "note": "created_at 2026-05-05, input_type text, schema_version 1, product_names ['Sony WH-1000XM5', 'Bose QuietComfort Ultra'], full_response == {metadata: {partial: None, comparison_quality: None}}",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/fixtures/w412_corpus_min.json",
+     "line": "rows 12-14",
+     "note": "Manama Pickles pairs: price {amount 2.25, source_method estimated, estimated True} both sides, rating 3.8 rating_derived True both sides, dims price 85/85, reviews 84/84, value 88/88, specs 7 fields all 'N/A'",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/fixtures/w412_corpus_min.json",
+     "line": "rows 24, 26",
+     "note": "the only metadata.partial True rows; row 24 prices None both, specs_comparison None, dims function 65/50, review 50/90, reliability 65/90, feature_match 50/100; row 26 one price unavailable, both ratings derived, dims character/longevity 55.9/74.1",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/PLAN_S80.md",
+     "line": "25",
+     "note": "R-A4: coverage = count of (both prices showable & not estimated; both ratings real; dims measured both sides margin >= 3; specs_comparison rows > 0); crown needs coverage >= 1; tier-3 specs do not count; a partial may crown only if coverage >= 1",
+     "basis": "measured"
+    }
+   ]
+  },
+  {
+   "question": "Placeholder (e) and same-identity (f) refusals, with the two sensitivities that matter for B1's result_gate.py",
+   "answer": "(e) Placeholder (casefold, punctuation -> space, collapse whitespace; in {'', unknown, unknown product, n/a, product, this product}) on the NAME: 0 of 35 two-product rows; 1/36 counting the product-less v1 row. On the BRAND alone it would fire on 5 corpus rows (w412:15-19, brand '' on both products: the pre-split text path of June 2026, names 'Iphone 17', 'iphone 17 pro max', 'Galaxy S25 ultra'...), all of them coverage 3-4 rows with real prices and ratings, so the rule must run on the identity (dedup_brand_name(brand, name)) or the name, never on brand alone. (f) same_identity per R-A5 (normalized dedup_brand_name equality, OR equal normalized brand AND name-token Jaccard >= 0.9): 0/35. Highest within-pair Jaccard in the corpus is 0.714 (w412:26 'TOM FORD OUD VOYAGER 100 ML' vs 'TOM FORD OUD WOOD 100 ML'), then 0.5 (w412:15 'Iphone 17' vs 'Iphone 17 pro max'; w412:22/23 Oud Wood vs Black Orchid 100 ml). Sensitivity: a NAME-ONLY identity (Jaccard >= 0.9 without the brand) would wrongly refuse 2 of 9 lane1 rows: grocery (Bertolli vs Carbonell 'Extra Virgin Olive Oil', Jaccard 1.0) and now_vs_solgar (NOW Foods vs Solgar 'Vitamin D3', Jaccard 1.0); the brand must stay in the identity. Combined refusal by (e) or (f): 0 real rows (0%), i.e. the identity half of the gate abstains on nothing in these fixtures; its cases (V07 same product twice, 'Unknown Product') are simply not represented in either fixture family.",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/text_sanitize.py",
+     "line": "24-60",
+     "note": "dedup_brand_name: empty brand -> name; name starting with the brand (token boundary) returned as is; else f'{brand} {name}'; re-implemented in the script",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/PLAN_S80.md",
+     "line": "26",
+     "note": "R-A5 placeholder list and the same_identity definition (dedup equality OR equal brand + Jaccard >= 0.9 with no differing size/variant)",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/fixtures/w412_corpus_min.json",
+     "line": "rows 15-19",
+     "note": "products[].brand == '' on both sides, names 'Iphone 17' / 'Iphone 17 pro max' etc., prices local_bhd, ratings 4.4-4.7 (one derived on row 17)",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/fixtures/lane1/grocery_response.json",
+     "line": "products[0..1]",
+     "note": "brand Bertolli / Carbonell, name 'Extra Virgin Olive Oil' on both: equal names, different brands",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/ae650c83-4d2a-4910-a8d4-a47ab213c8c3/scratchpad/r_a4_tally_out.json",
+     "line": "placeholder_name 1, placeholder_brand_only 5, same_identity 0, name_only_same_sensitivity 2 (lane1)",
+     "note": "per-row name_jaccard values in the rows array",
+     "basis": "measured"
+    }
+   ]
+  },
+  {
+   "question": "The script (quoted) and how to reproduce the tally",
+   "answer": "Script: C:/Users/SynAckITPC/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/ae650c83-4d2a-4910-a8d4-a47ab213c8c3/scratchpad/r_a4_tally.py (sha256 ef87afa9e73c0f3cd4a0df40a7fd5f15e3edb24dce3a40015ac672202fd2b58a), output r_a4_tally_out.json beside it (sha256 83def0cb459eb18466ffb08deb561ad55e13f8a22c389c98162538c7d9cfcb30). Run: `python -I r_a4_tally.py C:/Users/SynAckITPC/Documents/AI/sc-s80-base r_a4_tally_out.json` (reads only the two fixture globs; no app import; ASCII-only stdout). Core predicates, verbatim:\n\n```python\nPLACEHOLDERS = {\"\", \"unknown\", \"unknown product\", \"n/a\", \"product\", \"this product\"}\nFLAGGED = {\"missing\", \"limited_data\", \"tier3\"}\nMARGIN = 3.0\nSENTINEL = 50  # scoring_service.MISSING_SCORE\nNA_VALUES = {None, \"\", \"N/A\", \"n/a\", \"Unknown\", \"unknown\", \"None\"}\n_PUNCT = re.compile(r\"[^0-9a-z\\u0600-\\u06ff]+\")\n\ndef norm(s):\n    s = s if isinstance(s, str) else (\"\" if s is None else str(s))\n    return \" \".join(_PUNCT.sub(\" \", s.casefold()).split())\n\ndef dedup_brand_name(brand, name):      # text_sanitize.py:24-60 semantics\n    b = (brand or \"\").strip(); n = (name or \"\").strip()\n    if not b: return n\n    if not n: return b\n    bl, nl = b.lower(), n.lower()\n    if nl == bl: return n\n    if nl.startswith(bl) and len(n) > len(b) and n[len(b)].isspace(): return n\n    return f\"{b} {n}\"\n\ndef is_placeholder(s): return norm(s) in PLACEHOLDERS\n\ndef jaccard(a, b):\n    ta, tb = set(norm(a).split()), set(norm(b).split())\n    return 1.0 if not ta and not tb else len(ta & tb) / len(ta | tb)\n\ndef is_num(x): return isinstance(x, (int, float)) and not isinstance(x, bool)\n\ndef price_task(pr):                     # (a) literal task rule (+ estimated:True per price_service:4872)\n    if not isinstance(pr, dict): return False\n    if pr.get(\"amount\") is None: return False\n    if pr.get(\"unavailable\") is True: return False\n    if pr.get(\"source_method\") == \"estimated\": return False\n    if pr.get(\"estimated\") is True: return False\n    return True\n\ndef price_strict(pr):                   # (a) strict: non-empty source_method (is_price_showable:1801)\n    return price_task(pr) and bool(pr.get(\"source_method\"))\n\ndef rating_real(p):                     # (b)\n    return is_num(p.get(\"rating\")) and p.get(\"rating_derived\") is not True\n\ndef dim_ok(dim, strict=False):          # (d)\n    a, b = dim.get(\"score_a\"), dim.get(\"score_b\")\n    if not (is_num(a) and is_num(b)): return False\n    if str(dim.get(\"caption_key\") or \"\") in FLAGGED: return False\n    if str(dim.get(\"confidence\") or \"\") in FLAGGED: return False\n    if abs(a - b) < MARGIN: return False\n    if strict and (dim.get(\"confidence\") == \"low\" or a == SENTINEL or b == SENTINEL): return False\n    return True\n\ndef specs_rows_recomputed(prods):       # response_builder._build_specs_rows:725-762, + N/A exclusion\n    s0 = (prods[0] or {}).get(\"specs\") or {}; s1 = (prods[1] or {}).get(\"specs\") or {}\n    if not isinstance(s0, dict) or not isinstance(s1, dict): return 0, 0\n    fields = list(s0.keys()) + [k for k in s1.keys() if k not in s0]\n    code_rows = real_rows = 0; seen = set()\n    for f in fields:\n        if f.startswith(\"_\") or f in seen: continue\n        seen.add(f); v0, v1 = s0.get(f), s1.get(f)\n        if v0 in (None, \"\") or v1 in (None, \"\"): continue\n        code_rows += 1\n        if (isinstance(v0, str) and v0.strip() in NA_VALUES) or (isinstance(v1, str) and v1.strip() in NA_VALUES): continue\n        real_rows += 1\n    return code_rows, real_rows\n\ndef specs_rows(fr):                     # (c) literal: GPT prose lists\n    sc = (fr.get(\"specs\") or {}).get(\"specs_comparison\") if isinstance(fr.get(\"specs\"), dict) else None\n    if not isinstance(sc, dict): sc = (fr.get(\"comparison\") or {}).get(\"specs_comparison\")\n    if not isinstance(sc, dict): return 0, 0\n    total = sum(len(v) for v in sc.values() if isinstance(v, list))\n    disc = sum(len(sc.get(k) or []) for k in (\"product_0_advantages\", \"product_1_advantages\"))\n    return total, disc\n\n# per row (prods = full_response.products, fallback overview.products; < 2 products -> coverage 0, refused 'no_products'):\n#   a = price_task(p0.price) and price_task(p1.price);  a_s = price_strict(...) both\n#   b = rating_real(p0) and rating_real(p1)\n#   tot, disc = specs_rows(fr); c = tot > 0; c_disc = disc > 0\n#   code_rows, real_rows = specs_rows_recomputed(prods); c_rows_real = real_rows > 0\n#   d = any(dim_ok(x) for x in scoring_v2.dimensions); d_s = any(dim_ok(x, strict=True) ...)\n#   coverage = a+b+c+d; coverage_strict = a_s+b+c_disc+d_s; coverage_auditable = a_s+b+c_rows_real+d_s\n#   id_i = norm(dedup_brand_name(brand_i, name_i)); placeholder = is_placeholder(name0|name1) or id_i in PLACEHOLDERS\n#   same = id0 == id1 or (norm(brand0) == norm(brand1) and jaccard(name0, name1) >= 0.9)\n#   refused = placeholder or same or coverage == 0   (reasons: placeholder_identity / same_identity / no_evidence)\n```\nRow ids: `w412:<row>` from the corpus `row` field; `lane1:<basename without _response.json>`. The script also prints by-input_type summaries and a per-row line (coverage literal/strict/auditable, a(a_strict), b, c(c_disc), rows code/real, d(d_strict), placeholder, same, Jaccard, partial, refuse reasons, dedup names).",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/ae650c83-4d2a-4910-a8d4-a47ab213c8c3/scratchpad/r_a4_tally.py",
+     "line": "1-260",
+     "note": "full script; docstring documents the paths; run twice (before and after the recomputed-rows addition), both runs agree on every literal figure",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base",
+     "line": "HEAD",
+     "note": "checkout at 683f56c0bee7418191d03429940aa56b1d8f5c73 (2026-10-18 05:39 +0300), the origin/main the task names; no file in the checkout was written",
+     "basis": "measured"
+    }
+   ]
+  },
+  {
+   "question": "Caveats that bound what this offline tally can say",
+   "answer": "1) Era skew: corpus rows 0-8 (Mar-May 2026) predate scoring_v2, so (d) is false for them by absence, not by measurement; rows 9-15 (May-June 2) predate the _dim_reviews derived-rating guard (git 1ebc3b08, 2026-06-16) and the A5 suppression (ca60a75c, 2026-06-20): w412:10 (reviews 88/86), 17 (88/84) and 20 (88/82) carry a 'reviews' dim driven by one rating_derived=True rating that today's code would stamp limited_data; (d) on those rows still holds via price/value, so the coverage figures do not move, but the dims-fact is NOT 'measured on both sides' in the R-A4 sense on those rows. 2) The tier-3 exclusion cannot be applied: _field_confidence survives on 3 of 52 corpus products and on the lane1 specs only as smart_fallback markers; w412:26's two surviving dims (character/longevity) are built on smart_fallback and tier3_synthesis specs and still count. 3) `specs.specs_comparison.rows` (L1.9) is absent from every fixture, so (c) was measured on the GPT prose lists and on a recomputation of _build_specs_rows; the code's own rule emits an 'N/A' vs 'N/A' row (only None/'' skipped at response_builder.py:752), which makes 'rows > 0' true on 24/27 corpus rows while only 11/27 have a real two-sided spec row. 4) Row 0 (2026-03) has amounts with source_method None: literal (a) true, is_price_showable false. 5) The 50 sentinel is visible in rows 20-25 (review/reliability/feature_match 90/50, 100/50, 94/50) and inflates margins, though no row's (d) depends on a sentinel dim alone (only_sentinel_d is empty). 6) lane1 is nine WARM text compares (every price local_bhd/converted_usd, every rating verified, 2-10 real spec rows, coverage 3-4): it carries no information about the cold/partial case the critic worries about; the corpus holds exactly 2 partials (rows 24, 26) and 16 camera rows, which is where the thin coverage lives (camera literal {1:7, 2:3, 3:5, 4:1}). 7) Neither fixture family contains a V07 same-product pair or an 'Unknown Product' identity, so (e)/(f) are unsized here (0 hits).",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/scoring_service.py",
+     "line": "3285-3295",
+     "note": "_dim_reviews: rating_derived True -> rating treated as None -> 75/75, low, limited_data; git -S rating_derived dates it 1ebc3b08 2026-06-16 (C6)",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/fixtures/w412_corpus_min.json",
+     "line": "rows 10, 17, 20",
+     "note": "reviews dim 88/86, 88/84, 88/82 with confidence high and no caption while one product has rating_derived True (created 2026-05-14, 06-03, 06-15, all before 1ebc3b08)",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/fixtures/w412_corpus_min.json",
+     "line": "row 26 products[].specs._field_confidence",
+     "note": "p0 {notes_top, notes_heart, scent_family: smart_fallback, concentration: tier2_fallback}; p1 {sillage, longevity, notes_top, notes_heart: smart_fallback, concentration: tier3_synthesis}",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/response_builder.py",
+     "line": "752",
+     "note": "`if v0 in (None, \"\") or v1 in (None, \"\"): continue` is the only row filter; an N/A string on both sides is emitted as a row",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/CRITIC.md",
+     "line": "52, 73, 90",
+     "note": "the critic's over-abstention concern (cold fragrance partials at the 30 s cap, price race 23/30 missed) and the request for exactly this tally",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/fixtures/w412_corpus_min.json",
+     "line": "rows 20-25 scoring_v2.dimensions",
+     "note": "review 90/50, reliability 90/50, feature_match 100/50 (row 20); function 50/65, review 94/50 (row 23): legacy-breakdown dims carrying the MISSING_SCORE 50 sentinel",
+     "basis": "measured"
+    }
+   ]
+  },
+  {
+   "question": "Ruling: expected abstain rate and whether the minimum-evidence rule (coverage >= 1) is safe for B2",
+   "answer": "See ruling_text.",
+   "ruling_text": "EXPECTED ABSTAIN RATE on these fixtures, R-A4 as written (coverage >= 1 with the four facts read literally, plus the R-A5 identity rules): 1/36 = 2.8% overall, 1/27 = 3.7% on the production corpus, 0/9 lane1, 0/16 camera, and the single refusal is w412:6, a schema-version-1 row with no products that history already hides and no live compare can produce. By criterion: both prices showable fails 41% of corpus rows (44% strict), both ratings real fails 63%, a discriminating dimension fails 44% (mostly the no-scoring_v2 era), but the OR-of-four coverage rescues everything because the GPT specs_comparison prose exists on 25/27 rows. STRICT reading (showable source_method, advantages-only prose, no sentinel/low dims): unchanged, 1/27. AUDITABLE reading (what R-A4's own words imply: 'discriminating, auditable facts', tier-3 excluded): prices showable per is_price_showable, ratings not derived, a per-spec row with a REAL value on both sides, a non-sentinel non-low dim with margin >= 3 -> 4/27 = 14.8% corpus (3/16 = 18.8% camera, 0 text/text_stream/lane1): w412:6 plus the three Manama Pickles camera pairs (estimated prices, GPT ratings, all-tie dims, 7/7 N/A specs) - exactly the MYEZ-003 'no evidence, still crowned' case. VERDICT: coverage >= 1 is SAFE against over-abstention on every row these fixtures hold, including both hard-cap partials (w412:24 at coverage 1, w412:26 at 2); the critic's fear (most cold compares refused) is not supported offline - but the fixtures under-represent cold fragrance partials (2 of 27), so B1's production count stays the real sizing. The danger runs the other way: as currently specified the rule is near-vacuous, because fact (c) is satisfied by LLM prose (comparison.specs_comparison, part of the verdict JSON at extraction_service.py:1050) or, once B1 reads specs.specs_comparison.rows, by _build_specs_rows rows whose both values are 'N/A' (response_builder.py:752 skips only None/''), so the gate would still crown the Manama Pickles class. NO SOFTENING NEEDED; TIGHTEN THE DEFINITION OF (c) INSTEAD and record three rules in the B1 spec: (1) the specs fact counts only _build_specs_rows rows whose p0_value and p1_value are both outside _SPEC_NA_TOKENS (response_builder.py:625) and, where _field_confidence is present, not tier3_synthesis; never the advantages/similar prose; (2) the dims fact excludes caption_key limited_data, confidence low, and any side equal to the MISSING_SCORE 50 sentinel (no row in the corpus loses coverage from this, so it is free); (3) is_placeholder_identity runs on dedup_brand_name(brand, name) or the name, never on brand alone (5 corpus rows have brand ''), and same_identity keeps the brand (a name-only rule refuses 2 of 9 lane1 rows: Bertolli vs Carbonell olive oil, NOW vs Solgar Vitamin D3). With those three, the expected abstain rate on the recorded bodies is about 15% overall and about 19% on camera rows, all of them rows a reviewer would agree carry no evidence, and 0% on every warm text compare. Re-size with ENABLE_RESULT_STATUS_METADATA in production (one window) before ENABLE_RESULT_GATE flips, watching the camera and partial_stage buckets specifically, because that is where coverage is thin.",
+   "evidence": [
+    {
+     "file": "C:/Users/SynAckITPC/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/ae650c83-4d2a-4910-a8d4-a47ab213c8c3/scratchpad/r_a4_tally_out.json",
+     "line": "abstain_rate 0.028 / 0.037 / 0.0; abstain_rate_auditable 0.111 / 0.148 / 0.0; by_input_type camera abstain_rate_auditable 0.188",
+     "note": "the three abstain figures per family and per input type",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/PLAN_S80.md",
+     "line": "55-56",
+     "note": "B1 measures (result_status, data_coverage, telemetry) before B2 enforces; B2 is 'sized by the R0 offline tally and by B1 in production before any flip'",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/app/services/response_builder.py",
+     "line": "725-762, 617-625",
+     "note": "the per-spec rows builder and the N/A token set the tightened (c) should reuse",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/fixtures/w412_corpus_min.json",
+     "line": "rows 12-14 vs rows 15-19",
+     "note": "the rows the tightened gate refuses (Manama Pickles) vs the rows a brand-only placeholder rule would wrongly refuse (brand '')",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/fixtures/w412_corpus_min.json",
+     "line": "rows 24, 26 (metadata.partial True)",
+     "note": "both hard-cap partials clear coverage >= 1 under every reading; row 24 only on a legacy-breakdown reliability 65/90 dim",
+     "basis": "measured"
+    },
+    {
+     "file": "C:/Users/SynAckITPC/Documents/AI/sc-s80-base/tests/fixtures/lane1",
+     "line": "9 files",
+     "note": "coverage 3-4 on all nine warm text compares under every reading; the offline set says nothing about cold partials beyond the two corpus rows",
+     "basis": "inferred"
+    }
+   ]
+  }
+ ],
+ "surprises": [
+  "The corpus is MINIMIZED (W4-12's w412_corpus_min.json): no row has a top-level `specs` key, so `specs.specs_comparison.rows` (L1.9, response_builder.py:1974-1981, since c4c361ad 2026-06-08) is unmeasurable there, and the lane1 captures (2026-06-08 11:09) also predate/lack the `rows` key; the task's fact (c) can only be read from GPT prose lists or recomputed from products[].specs.",
+  "_build_specs_rows (response_builder.py:725-762) emits an 'N/A' vs 'N/A' spec row (only None/'' are skipped at :752) while _SPEC_NA_TOKENS (:625) exists only for the row winner; 13 of 27 corpus rows have 7/7 'N/A' specs on both products, so 'specs_comparison rows > 0' as emitted today is near-vacuous (24/27 true) and drops to 11/27 once N/A is excluded.",
+  "Fact (b) 'both ratings real' alone would refuse 63% of production rows (17/27), and fact (a) 41-44%: the OR-of-four coverage is what keeps the gate from over-abstaining; a single-fact gate would reproduce the critic's outage scenario.",
+  "Five corpus rows (w412:15-19, June 2026 pre-split text path) carry brand '' on both products with full coverage; a placeholder rule applied to the brand alone would refuse all five.",
+  "Two lane1 rows have identical product NAMES with different brands (Bertolli/Carbonell 'Extra Virgin Olive Oil'; NOW Foods/Solgar 'Vitamin D3'); a name-only same_identity rule would refuse both, so R-A5's brand condition is load-bearing.",
+  "Rows 10, 17 and 20 carry a 'reviews' dimension at 88/86, 88/84, 88/82 driven by one rating_derived=True rating with confidence high and no caption: they predate the _dim_reviews guard (1ebc3b08, 2026-06-16), so the stored corpus overstates 'measured on both sides' relative to current code (coverage unaffected because price/value dims also qualify).",
+  "The MISSING_SCORE 50 sentinel is visible in rows 20-25 (review 90/50, feature_match 100/50, function 50/65) and gives margins of 15-50; no row's coverage depends on a sentinel dim alone, but any dims-fact that does not exclude 50 counts fabricated gaps as evidence.",
+  "Only 3 of 52 corpus products carry specs._field_confidence (one tier3_synthesis, on w412:26 whose two surviving dims character/longevity sit on those specs), so R-A4's 'tier-3 specs do not count' cannot be applied to stored rows; B1 must stamp the tier on the row for B2 to honour it.",
+  "The one coverage-0 row under the literal rule (w412:6) is a schema_version-1 row with an empty full_response: the literal gate refuses nothing that can reach it."
+ ],
+ "open": [
+  "Production sizing: the fixtures hold 2 hard-cap partials and 16 camera rows; the cold-fragrance partial rate the critic cites (S78 canary 30.2-30.8 s, price race 23/30 missed) must be measured by ENABLE_RESULT_STATUS_METADATA before ENABLE_RESULT_GATE flips (PLAN B1 -> B2).",
+  "Definition decision for the B1 spec: whether fact (c) is the GPT advantages/similar prose (near-vacuous, 25/27), the code's N/A-inclusive `rows` (24/27), or real two-sided spec rows (11/27); this single choice moves the corpus abstain rate from 3.7% to 14.8%.",
+  "Whether _build_specs_rows emitting 'N/A' vs 'N/A' rows is itself a display defect worth a flagged fix (the FE renders a per-row table from specs.specs_comparison.rows) or only a gate-definition concern.",
+  "Row 24 (partial) clears coverage >= 1 only on legacy-breakdown dims (reliability 65/90, review 50/90) with no price and no specs; whether those dims count as 'measured on both sides' for a partial is an orchestrator ruling the tally cannot settle offline.",
+  "Whether the dims fact should also exclude dimensions whose underlying rating is rating_derived on either side for rows produced after 1ebc3b08 (today's code stamps limited_data, so this is a stored-row concern only).",
+  "The identity half of the gate (placeholder, same_identity) is unsized: neither fixture family contains a V07 same-product pair or an 'Unknown Product' identity; the V02/V07 tester bodies (eval_regression.json) are the only offline material for it."
+ ]
+}
