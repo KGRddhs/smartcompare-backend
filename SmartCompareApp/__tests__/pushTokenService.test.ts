@@ -16,7 +16,7 @@ jest.mock('../src/services/api', () => ({
 // `jest.doMock('expo-notifications', () => ...)` because some tests need
 // the module to throw on require, others need different success/denial paths.
 const setExpoNotificationsMock = (impl: any) => {
-  jest.doMock('expo-notifications', () => impl, { virtual: true });
+  jest.doMock('expo-notifications', () => impl);
 };
 
 const FIVE_FAILURE_CODES = ['no_module', 'permission_denied', 'no_token', 'network_error', 'already_registered'];
@@ -31,7 +31,7 @@ describe('pushTokenService.tryRegisterPushToken', () => {
     // Make require('expo-notifications') throw
     jest.doMock('expo-notifications', () => {
       throw new Error('native module missing');
-    }, { virtual: true });
+    });
     const { tryRegisterPushToken } = require('../src/services/pushTokenService');
     const result = await tryRegisterPushToken();
     expect(result.registered).toBe(false);
