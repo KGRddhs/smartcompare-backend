@@ -1,0 +1,246 @@
+{
+ "unit": "B1 RESULT-STATUS + TELEMETRY (ENABLE_RESULT_STATUS_METADATA)",
+ "lens": "correctness",
+ "head_sha_verified": "2bbd58a9eae6aa172339ee7cc717e875ff2bbc73",
+ "verdict": "NOT_READY",
+ "blocking": [],
+ "major": [
+  "MAJ-1 The telemetry message contradicts the stamped body on every category-conflict compare. sentry_service.capture_result_status (sentry_service.py:685) calls assess_result(result) without product_categories, and assess_result (result_gate.py:485/:506) never reads metadata.product_categories from the body, so identity_coherence is always True in the telemetry path. Measured on the GREEN bytes: (a1) a builder body with product_categories [electronics, fragrances] and the flag ON is stamped result_status=unsupported_category, identity_confidence=low, supported=False, but the one comparison_result_status message says result_status=supported_result, reasons=none, identity_confidence=high, winner_emitted=true. (a2) The R16 vision pair (Samsung Galaxy S24 phone / Dior Sauvage) went through the real orchestrator and the real POST /api/v1/image/identify: HTTP 200, body unsupported_category / supported=False, message supported_result / reasons none / winner_emitted true. So unsupported_category and category_conflict can never appear in Sentry, and every cross-category camera scan (the MYEZ-001 class this flag exists to size) is counted as a crowned high-confidence supported result, while the stored row says the opposite. The CLAUDE.md canary and the PR body's MYEZ-011 mapping therefore measure the wrong number. No RED row checks that the message tags equal the stamp on a conflict body. One-line fix: pass product_categories=(result.get('metadata') or {}).get('product_categories') in capture_result_status, plus a RED row asserting tags == stamp on the a1/a2 bodies.",
+  "MAJ-2 Binding ruling B1-R11 Q7 is not implemented. It asks for the result_status skip in profile_routes.py:75/:97/:141 with a P8-style pin. At HEAD all three still read the top-level winner_index, so under the flag a stamped non-supported row is still shown as a recent decision (MYEZ-027 is not closed on the profile surface). GREEN disclosed this (deviation 1, the CLAUDE.md row and the PR body) because the frozen RED files have no row for it. The orchestrator must either order a fix round (a RED row plus the reader hunk) or amend B1-R11 Q7 to defer it to C1."
+ ],
+ "minor": [
+  "min-1 The CLAUDE.md row says /home/savings and /home/smart-pick skip stamped non-supported rows. That holds only on the legacy Python savings path: with ENABLE_HOME_SAVINGS_AGGREGATE ON (home_routes.py:235-240, the #116 RPC over migration 036, both off or unapplied today) the server aggregate counts stamped rows. The row should say 'legacy path only'.",
+  "min-2 The CLAUDE.md row and the PR body say 'the tags are recomputed from the body, never read from metadata'. The emitter does read metadata.elapsed_ms, metadata.partial and metadata.partial_stage, and the wording hides MAJ-1. Rewrite it together with the MAJ-1 fix.",
+  "min-3 The spec mutation table says X19 is killed by R8. Measured: R8 passes under X19, because the Manama raw prices are estimated and unshowable before the chokepoint too. The killer is test_b1_r9_builder_stamps_lane1_supported[grocery|iphone15_vs_galaxys24|now_vs_solgar|tomford_vs_creed], through section_status['price'] at tests/test_s80_b1.py:561. R9's data_coverage >= 3 assertion accepts the inflated 4, so the kill rests on section_status alone. The PR body and mutation record should cite R9.",
+  "min-4 Ruling question: the AUDITABLE spec fact excludes only fields marked tier3_synthesis. Fields marked training_data (the specs prompt's training-data fallback), smart_fallback and tier2_fallback all count as evidence. R-A4 says model-knowledge specs do not count. The code matches spec 2.2 / R0-5 as written. Frequency not measured.",
+  "min-5 With the flag ON, the four compare paths are sampled even when the parent trace says not to sample (measured through the real SDK: parent -0 gives 40/40 sampled at 1.0), which produces partial traces under client traces the RN SDK dropped. Each delivered compare also sends one info message event, which counts against the Sentry error-event quota. The owner step only mentions the transaction quota.",
+  "min-6 Five mutants survive the frozen unit files, so these behaviours are unpinned (all correct by inspection): X18s (the stream path captures categories before the write-back, but R15's stream pair is same-category); X22a (the image_routes.py:598 site gate, redundant with the emitter's own success gate); M16 (the camera's measured compare_ms vs the metadata.elapsed_ms fallback); M11 (the metadata.partial precondition on the partial_stage tag); M9 (the non-str product_categories filter, equivalent in production).",
+  "min-7 Engineering information: result_gate.py is committed LF (25797 B, sha 48bcbb7d) but a fresh checkout with core.autocrlf=true writes it as CRLF (26417 B, 620 CRLF, 0 bytes > 127). The index content is identical."
+ ],
+ "mutants_applied": [
+  {
+   "id": "X1",
+   "survived": false,
+   "killed_by": "test_b1_p1_flag_off_builder_bodies_identical[*], P2, P3, P4, P13"
+  },
+  {
+   "id": "X2",
+   "survived": false,
+   "killed_by": "test_b1_r1_flag_reader_per_call[*]"
+  },
+  {
+   "id": "X5",
+   "survived": false,
+   "killed_by": "test_b1_r3_same_identity[*], R9, R12"
+  },
+  {
+   "id": "X8",
+   "survived": false,
+   "killed_by": "test_b1_r5_price_facts[price0-False-False]"
+  },
+  {
+   "id": "X10",
+   "survived": false,
+   "killed_by": "test_b1_r6_real_spec_rows_excludes_na_and_tier3, R8[12,13], R10b, R14"
+  },
+  {
+   "id": "X12",
+   "survived": false,
+   "killed_by": "test_b1_r7_dim_facts[*], R8, R10b, R15, R17"
+  },
+  {
+   "id": "X15",
+   "survived": false,
+   "killed_by": "test_b1_r9_builder_stamps_lane1_supported[*], R13, R15"
+  },
+  {
+   "id": "X17",
+   "survived": false,
+   "killed_by": "test_b1_r9_builder_stamps_lane1_supported[now_vs_solgar], test_b1_c9e_section_status_partial_when_one_side_empty"
+  },
+  {
+   "id": "X18",
+   "survived": false,
+   "killed_by": "test_b1_r16_orchestrator_vision_pair_product_categories, R15"
+  },
+  {
+   "id": "X18s-stream-capture-after-writeback",
+   "survived": true
+  },
+  {
+   "id": "X19-hand-pre-chokepoint-prices",
+   "survived": false,
+   "killed_by": "test_b1_r9_builder_stamps_lane1_supported[grocery|iphone15_vs_galaxys24|now_vs_solgar|tomford_vs_creed] (section_status.price, tests/test_s80_b1.py:561); NOT R8"
+  },
+  {
+   "id": "X20",
+   "survived": false,
+   "killed_by": "test_b1_p4_flag_off_no_message_on_any_exit[*], P3"
+  },
+  {
+   "id": "X22a-site-gate-only",
+   "survived": true
+  },
+  {
+   "id": "X22b-site-and-emitter-gate",
+   "survived": false,
+   "killed_by": "test_b1_r18b_telemetry_camera_unsuccessful_emits_nothing[None-None]"
+  },
+  {
+   "id": "X23",
+   "survived": false,
+   "killed_by": "test_b1_r19_telemetry_stream_client_gone_emits_nothing, R17"
+  },
+  {
+   "id": "X24",
+   "survived": false,
+   "killed_by": "test_b1_p3_flag_off_camera_timings_untouched[*], R20b"
+  },
+  {
+   "id": "X25",
+   "survived": false,
+   "killed_by": "test_b1_r20_camera_timings_written_only_into_existing_dict[absent], R20b"
+  },
+  {
+   "id": "X26",
+   "survived": false,
+   "killed_by": "test_b1_p5_flag_off_sampler_is_the_sdk_rule[*]"
+  },
+  {
+   "id": "X27",
+   "survived": false,
+   "killed_by": "test_b1_r21_sampler_flag_on_compare_paths[*-/api/v1/text/compare/stream]"
+  },
+  {
+   "id": "X28",
+   "survived": false,
+   "killed_by": "test_b1_p5_flag_off_sampler_is_the_sdk_rule[*], P5b, R21"
+  },
+  {
+   "id": "X30",
+   "survived": false,
+   "killed_by": "test_b1_r22_home_savings_skips_stamped_non_supported_rows, R23"
+  },
+  {
+   "id": "X31",
+   "survived": false,
+   "killed_by": "test_b1_p8_home_savings_unstamped_rows_count_as_today, R22"
+  },
+  {
+   "id": "X33",
+   "survived": false,
+   "killed_by": "test_b1_f3_correctness_fields_accepted_and_written[*], F5"
+  },
+  {
+   "id": "X35",
+   "survived": false,
+   "killed_by": "test_b1_p13_stamp_failure_degrades_to_flag_off (ValueError by design)"
+  },
+  {
+   "id": "M1-rest-partial-ctx-categories",
+   "survived": false,
+   "killed_by": "test_b1_r15_orchestrator_rest_and_stream_stamp"
+  },
+  {
+   "id": "M2-partial-build-none",
+   "survived": false,
+   "killed_by": "test_b1_r15_orchestrator_rest_and_stream_stamp"
+  },
+  {
+   "id": "M3-stream-build-drops-categories",
+   "survived": false,
+   "killed_by": "test_b1_r15_orchestrator_rest_and_stream_stamp"
+  },
+  {
+   "id": "M4-url-compare_ms",
+   "survived": false,
+   "killed_by": "test_b1_r18_telemetry_camera_and_url"
+  },
+  {
+   "id": "M5-sampler-live-rate",
+   "survived": false,
+   "killed_by": "test_b1_p5b_sampler_off_branch_reads_the_live_client_option[*]"
+  },
+  {
+   "id": "M6-feedback-route-drops-field",
+   "survived": false,
+   "killed_by": "test_b1_f3_correctness_fields_accepted_and_written[*-winner_correct]"
+  },
+  {
+   "id": "M7-smart-pick-skip",
+   "survived": false,
+   "killed_by": "test_b1_r23_home_smart_pick_skips_stamped_non_supported_rows"
+  },
+  {
+   "id": "M8-vision_ms",
+   "survived": false,
+   "killed_by": "test_b1_r18_telemetry_camera_and_url, R20[dict]"
+  },
+  {
+   "id": "M9-non-str-categories",
+   "survived": true
+  },
+  {
+   "id": "M10-empty-brand-confidence",
+   "survived": false,
+   "killed_by": "test_b1_r13_builder_june_rows_brand_empty_supported[*], R15"
+  },
+  {
+   "id": "M11-partial_stage-tag",
+   "survived": true
+  },
+  {
+   "id": "M12-savings-skip",
+   "survived": false,
+   "killed_by": "test_b1_r22_home_savings_skips_stamped_non_supported_rows"
+  },
+  {
+   "id": "M13-supported-wrong",
+   "survived": false,
+   "killed_by": "test_b1_r8_builder_stamps_manama_partial_no_winner[*], R10"
+  },
+  {
+   "id": "M14-literal-coverage",
+   "survived": false,
+   "killed_by": "test_b1_r8_builder_stamps_manama_partial_no_winner[*]"
+  },
+  {
+   "id": "M15-winner_emitted",
+   "survived": false,
+   "killed_by": "test_b1_r17b_telemetry_non_supported_body_tags"
+  },
+  {
+   "id": "M16-camera-compare_ms",
+   "survived": true
+  },
+  {
+   "id": "M17-crown-winner_index",
+   "survived": false,
+   "killed_by": "test_b1_p6_builder_flag_on_does_not_move_the_crown, R8, R10"
+  },
+  {
+   "id": "M18-crown-product_index",
+   "survived": false,
+   "killed_by": "test_b1_p6_builder_flag_on_does_not_move_the_crown, R8"
+  }
+ ],
+ "reruns": [
+  "[pyt] tag=b1adv-unit-on start=2026-10-20 05:40:43 end=2026-10-20 05:40:56 elapsed=12s bound=600s status=OK rc=0 (214 passed; [hermeticity] sentinel checked 214; [netguard] blocked 0)",
+  "[pyt] tag=b1adv-unit-off start=2026-10-20 05:40:56 end=2026-10-20 05:41:08 elapsed=12s bound=600s status=OK rc=0 (214 passed; [hermeticity] sentinel checked 214; [netguard] blocked 0)",
+  "[pyt] tag=b1adv-probe start=2026-10-20 05:43:41 end=2026-10-20 05:43:47 elapsed=7s bound=600s status=OK rc=0 (4 probes: telemetry-vs-stamp mismatch; SDK-level sampler OFF identical 360/360)",
+  "[pyt] tag=b1adv-probe2 start=2026-10-20 06:01:01 end=2026-10-20 06:01:07 elapsed=6s bound=600s status=OK rc=0 (real SDK + _before_send: one info event, 15 tags, extras intact)",
+  "[pyt] tag=b1adv-ciorder-off start=2026-10-20 05:58:43 end=2026-10-20 05:59:38 elapsed=55s bound=1200s status=OK rc=0 (22-file pin set, 1283 passed; [netguard] blocked 20 from 4 baseline nodes)",
+  "[pyt] tag=b1adv-ciorder-on start=2026-10-20 05:59:47 end=2026-10-20 06:00:30 elapsed=43s bound=1200s status=OK rc=0 (20-file pin set with the flag ON, 1069 passed)",
+  "42 mutant runs b1adv-mut-* (each bound=600s, none TIMEOUT; lines verbatim in the report table)"
+ ],
+ "prove_nothing": [
+  "test_b1_p7_history_list_null_neutral_for_stamped_row: pins history_routes behaviour that B1 does not touch (green at base, no B1 symbol on its path), so no B1 mutant can make it fail",
+  "test_b1_r18b camera-site half: X22a survives, because image_routes.py:598 is redundant with the emitter's own success gate",
+  "test_b1_r15 stream half vs the capture point: X18s survives (the FY25 pair is same-category)",
+  "test_b1_r18 camera compare_ms: M16 survives (the route wall is indistinguishable from the metadata.elapsed_ms fallback)",
+  "test_b1_r14 partial_stage tag: M11 survives (the metadata.partial precondition is unpinned)",
+  "test_b1_r8 as the X19 killer named by the spec: it passes under X19",
+  "no row asserts that the message tags equal the stamped status (MAJ-1)"
+ ],
+ "report_path": "C:\\Users\\SYNACK~1\\AppData\\Local\\Temp\\claude\\C--Users-SynAckITPC-Documents-AI\\ae650c83-4d2a-4910-a8d4-a47ab213c8c3\\scratchpad\\B1_adv\\correctness_REPORT.md"
+}
