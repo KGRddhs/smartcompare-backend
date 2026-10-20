@@ -7,9 +7,10 @@ export const meta = {
   ],
 }
 
-// args: { unit: {id, title, worktree, branch, flag, specPath, reviewPath, gatePath, fixRulingsPath, advReports: [paths], redFiles: [{path, sha256}], headSha}, common, plan, r0, rulings, pyt, scratch }
+// args: { unit: {id, round (default 1), title, worktree, branch, flag, specPath, reviewPath, gatePath, fixRulingsPath, advReports: [paths], redFiles: [{path, sha256}], headSha}, common, plan, r0, rulings, pyt, scratch }
 const A = args
 const u = A.unit
+const R = String(u.round || 1)
 const RULES = [
   'Common brief (read first and again before reporting): ' + A.common,
   'Plan (sections 0 and 1 binding): ' + A.plan + ' . R0 rulings: ' + A.r0 + ' . Batch rulings (the unit section): ' + A.rulings + ' . RED gate: ' + u.gatePath + ' . FIX-ROUND RULINGS (binding for this round, they amend everything above): ' + u.fixRulingsPath + ' . Adversary reports this round answers: ' + u.advReports.join(' ; '),
@@ -59,17 +60,17 @@ phase('Fix')
 const fix = await agent([
   'You are the FIX agent (RED-then-GREEN) for unit ' + u.id + ': ' + u.title + ', fix round on branch ' + u.branch + ' at HEAD ' + u.headSha + ' in ' + u.worktree + ' (verify both first; `git status --short` must be empty).',
   RULES,
-  'Follow the "Procedure for the fix agent" in the fix-round rulings file exactly, in order: RED step (append the rows the rulings name, prove each new row fails at HEAD on an AssertionError only, existing rows still green, record the new sha256 of every RED file), GREEN step (smallest additive hunks; the flag first in every gated predicate; flag OFF byte-identical), the documentation rulings on the CLAUDE.md row and the PR body draft, the gates the rulings list, then ONE commit on the branch with `git add <paths>` and `git commit -m "<msg>\n\nCo-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>" -- <paths>` (no push, no rebase, no stash). Write the fix report to <scratchpad>/' + u.id + '_fix1/' + u.id + '_FIX1_REPORT.md and return the structured output with the new HEAD sha.',
+  'Follow the "Procedure for the fix agent" in the fix-round rulings file exactly, in order: RED step (append the rows the rulings name, prove each new row fails at HEAD on an AssertionError only, existing rows still green, record the new sha256 of every RED file), GREEN step (smallest additive hunks; the flag first in every gated predicate; flag OFF byte-identical), the documentation rulings on the CLAUDE.md row and the PR body draft, the gates the rulings list, then ONE commit on the branch with `git add <paths>` and `git commit -m "<msg>\n\nCo-Authored-By: Claude <YOUR OWN MODEL NAME, e.g. Opus 5.5> <noreply@anthropic.com>" -- <paths>` (no push, no rebase, no stash). Write the fix report to <scratchpad>/' + u.id + '_fix' + R + '/' + u.id + '_FIX' + R + '_REPORT.md and return the structured output with the new HEAD sha.',
 ].join('\n\n'), { label: 'fix:' + u.id, phase: 'Fix', schema: FIX_SCHEMA })
 if (!fix) { log('fix agent produced no report'); return { fix: null, reverify: null } }
 log('fix ' + u.id + ' at ' + fix.head_sha)
 
 phase('Reverify')
 const reverify = await agent([
-  'You are the RE-VERIFIER (correctness lens) for unit ' + u.id + ' fix round 1. Worktree ' + u.worktree + ' on branch ' + u.branch + ' at HEAD ' + fix.head_sha + ' (verify first; if HEAD differs, stop with NOT_READY). Default to doubt.',
+  'You are the RE-VERIFIER (correctness lens) for unit ' + u.id + ' fix round ' + R + '. Worktree ' + u.worktree + ' on branch ' + u.branch + ' at HEAD ' + fix.head_sha + ' (verify first; if HEAD differs, stop with NOT_READY). Default to doubt.',
   RULES,
-  'The fix report: ' + (fix.report_path || '<scratchpad>/' + u.id + '_fix1/' + u.id + '_FIX1_REPORT.md') + ' ; the RED files now: ' + fix.red_files.map(f => f.path + ' (' + f.sha256 + ')').join('; ') + ' ; the PR body: ' + (fix.pr_body_path || '<scratchpad>/' + u.id + '_green/PR_BODY.md') + '.',
-  'Never edit the worktree. Probes and mutants run in YOUR OWN detached scratch worktree (`git worktree add --detach <scratchpad>/' + u.id + '_fix1_adv ' + fix.head_sha + '`, removed at the end; sha-verify before and after). Follow the "Re-verifier" section of the fix-round rulings: re-hash the RED files; unit ON and OFF; at least eight mutants including one per fix, applied to sha-verified byte copies and killed; the CI-order set; the comm chunks the rulings name; the hook test files ALONE with the TIMEOUT rule; the CLAUDE.md row and the PR body checked sentence by sentence against the bytes; confirm every adversary MAJOR and MINOR of the previous round is closed or recorded. Verdict SOUND (no blocking, no major) or NOT_READY. Write the report to <scratchpad>/' + u.id + '_fix1/REVERIFY_REPORT.md and return the structured output.',
+  'The fix report: ' + (fix.report_path || '<scratchpad>/' + u.id + '_fix' + R + '/' + u.id + '_FIX' + R + '_REPORT.md') + ' ; the RED files now: ' + fix.red_files.map(f => f.path + ' (' + f.sha256 + ')').join('; ') + ' ; the PR body: ' + (fix.pr_body_path || '<scratchpad>/' + u.id + '_green/PR_BODY.md') + '.',
+  'Never edit the worktree. Probes and mutants run in YOUR OWN detached scratch worktree (`git worktree add --detach <scratchpad>/' + u.id + '_fix' + R + '_adv ' + fix.head_sha + '`, removed at the end; sha-verify before and after). Follow the "Re-verifier" section of the fix-round rulings: re-hash the RED files; unit ON and OFF; at least eight mutants including one per fix, applied to sha-verified byte copies and killed; the CI-order set; the comm chunks the rulings name; the hook test files ALONE with the TIMEOUT rule; the CLAUDE.md row and the PR body checked sentence by sentence against the bytes; confirm every adversary MAJOR and MINOR of the previous round is closed or recorded. Verdict SOUND (no blocking, no major) or NOT_READY. Write the report to <scratchpad>/' + u.id + '_fix' + R + '/REVERIFY_REPORT.md and return the structured output.',
 ].join('\n\n'), { label: 'reverify:' + u.id, phase: 'Reverify', schema: ADV_SCHEMA })
 log('reverify ' + u.id + ': ' + (reverify ? reverify.verdict : 'no report'))
 return { fix, reverify }
