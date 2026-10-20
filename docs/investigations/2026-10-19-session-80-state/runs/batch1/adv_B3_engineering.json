@@ -1,0 +1,48 @@
+{
+ "unit": "B3 VISION-IDENTITY-V2 (ENABLE_VISION_IDENTITY_V2 + VISION_TIMEOUT_SECONDS), worktree C:/Users/SynAckITPC/Documents/AI/sc-s80-b3, branch feature/s80-b3-vision-identity-v2",
+ "lens": "engineering",
+ "head_sha_verified": "764d44162dd83563dc5c9aa930dcb9c192f35f89",
+ "verdict": "NOT_READY",
+ "blocking": [],
+ "major": [
+  "MAJ-E1 (comm set miss, procedural): tests/test_price_fallback_may_decline.py imports the edited test-support module (:25 `from tests import w4_11_prompt_digest_recorder as recorder`) and iterates the list B3 extends (:102 `for name in recorder.FLAGS:`), but it is in none of GREEN's 248-file HEAD list, RED's 246-file base list or spec 7.5's 213-file rule; every modref regex omits the edited module `w4_11_prompt_digest_recorder`. Measured green at HEAD alone: 17 passed `[pyt] tag=b3adveng-pricefallback start=2026-10-20 09:14:24 end=2026-10-20 09:16:08 elapsed=104s bound=600s status=OK rc=0`, so it cannot add a branch-only-new id. Remedy, no code change: add it to the comm list and the PR body, and put edited test-support modules into the derivation regex. Independent re-derivation found 271 candidates vs GREEN's 248: 0 GREEN-only, 23 mine-only, of which 22 are false positives (CLAUDE.md mentioned only in comments; reads of fixtures or inspect.getsource) and this 1 is real.",
+  "MAJ-E2 (hand block-move mutant BM1 SURVIVED; the placement of the preferences read is unpinned): X19 is not defined in B3's spec, RED table or GATE_B3 (B3's M19a/b are key renames), so I applied the B3 analogue by hand. Spec 2.6 says the forwarding is 'the ONE route-level flag read, immediately before :450'. BM1 moves the `_compare_extra` + flag-gated `_camera_user_preferences` block (image_routes.py:483-490) to just after `vision_ledger = start_openai_ledger()` (:335), i.e. before the vision call and outside the compare try. Method: byte copy, lock, one exact match, restore sha256 equal (4502ff0e...19ae). Result: 237 passed over the unit file + test_retro_w2_1 + test_paid_route_metering `[pyt] tag=b3adveng-mut-BM1 start=2026-10-20 09:04:54 end=2026-10-20 09:05:02 elapsed=8s bound=600s status=OK rc=0`. The mutant is not equivalent: under ON a signed-in scan would pay one get_user_preferences Supabase round trip (inline on the loop while ENABLE_SYNC_DB_OFFLOAD is OFF) on every non-delivery exit (vision 503, parse error, moderation block, zero products, need_second_product) and before every vision call. Remedy: one pin row in a new file (the RED file stays frozen): flag ON, signed in, vision returning one product -> need_second_product, and vision raising -> 503; assert the image_routes.get_user_preferences recorder is never called. The orchestrator may downgrade this to a minor, since the GREEN bytes are correct and only the pin is missing."
+ ],
+ "minor": [
+  "Doc truth (CLAUDE.md row, PR body limit 10, spec 9.10): 'an unknown value -> low (V1: medium)' and 'the one client-visible value change'. V1 keeps an unrecognised confidence verbatim ('certain', 'HIGH ') and defaults only a MISSING key to medium. Under ON the same lists also change in other ways: whitespace brand/name -> Unknown, '' -> None, case-folded confidence, and membership/order (one per image_index, unpaired last, is_product false dropped).",
+  "PR body rebase note says CLAUDE.md line 502 conflicts. A read-only merge-tree against 4a38ce93 shows the hunk spans :501-:502. Main changed only :502, the camera sentence B3 rewrites, which already carries openai_service.py:81 and the cached_tokens detail. Taking B3's two lines is correct and loses nothing. CLAUDE.md is the only conflicting file.",
+  "PR body defect table maps no row to R12 (test_R12_flag_reader); add it to the flag-OFF identity row.",
+  "GREEN report's per-rule ruff list for structured_comparison_service.py omits SIM102/SIM103/SIM118 (1 each). Measured: ruff 0.16.5 per-rule counts are identical base vs HEAD on all three source files, so the PR body's sentence is true.",
+  "Stated limit 14 measured accurate for the CI-order set: with the flag exported, 3 failed (exactly the three camera_vision nodes) / 1356 passed `[pyt] tag=b3adveng-ciorder-flagenv start=2026-10-20 09:05:43 end=2026-10-20 09:13:48 elapsed=485s bound=1200s status=FAIL rc=1`. In addition, 37 authed camera nodes (test_retro_w2_1 34, test_paid_route_metering 3) reach the REAL get_user_preferences: netguard 79/73 vs 29/23, all sentinel neutralized.supabase.invalid, all still pass. Worth one clause in the limit.",
+  "Pre-commit hook files (B3 edits no .githooks): the -k 'not dash' run TIMEOUT after 41 of 167 nodes (36 passed, 5 F) at about 30 s/node under sibling load; the 5 F nodes re-run alone: 5 passed (load flakes). The rest is NOT MEASURED (budget).",
+  "The brief's 'X19 block-move mutant' id does not exist for B3 (template id from another unit); recorded so the next brief names a B3 id.",
+  "Spec 3.1 helper name `_select_best_per_image` is implemented as `_select_vision_products_v2` (plus private helpers); internal only, no contract effect."
+ ],
+ "mutants_applied": [
+  {
+   "id": "BM1 (B3 block-move analogue of the brief's X19: route personalisation block moved before the vision call)",
+   "survived": true
+  }
+ ],
+ "reruns": [
+  "[pyt] tag=b3adveng-unit-off start=2026-10-20 08:16:33 end=2026-10-20 08:16:48 elapsed=14s bound=600s status=OK rc=0 (105 passed; hermeticity 105; netguard 0)",
+  "[pyt] tag=b3adveng-unit-on start=2026-10-20 08:17:24 end=2026-10-20 08:17:34 elapsed=10s bound=600s status=OK rc=0 (ENABLE_VISION_IDENTITY_V2=true; 105 passed; netguard 0)",
+  "[pyt] tag=b3adveng-ciorder start=2026-10-20 08:19:44 end=2026-10-20 08:22:17 elapsed=152s bound=1200s status=OK rc=0 (GREEN's 30 files: 1359 passed, 1 skipped, 1 deselected; hermeticity 1360; netguard blocked 29 from 23 nodes; equals GREEN)",
+  "[pyt] tag=b3adveng-extras start=2026-10-20 08:23:14 end=2026-10-20 08:23:57 elapsed=42s bound=600s status=FAIL rc=1 (auth_preference_toggles_w314, behavior_dimension_translation, migration_index_predicate_immutability, price_fallback_may_decline, prompt_truth, start_command: 144 passed, 2 skipped, 1 xfailed, 2 errors = the cold-tiktoken test_prompt_truth pair, base noise)",
+  "[pyt] tag=b3adveng-comm-c01 start=2026-10-20 08:24:52 end=2026-10-20 08:26:07 elapsed=75s bound=1200s status=OK rc=0 (779 passed, 5 deselected; netguard 60/18; equals GREEN c01)",
+  "[pyt] tag=b3adveng-comm-c06 start=2026-10-20 08:26:08 end=2026-10-20 08:27:04 elapsed=56s bound=1200s status=FAIL rc=1 (2 failed = test_page_scraping baseline rows, 487 passed; equals GREEN c06)",
+  "[pyt] tag=b3adveng-comm-c07 start=2026-10-20 08:27:04 end=2026-10-20 08:29:11 elapsed=127s bound=1200s status=FAIL rc=1 (885 passed, 4 skipped, 1 xfailed, 2 errors = tiktoken pair; equals GREEN c07 final)",
+  "[pyt] tag=b3adveng-hook-collect start=2026-10-20 08:31:54 end=2026-10-20 08:31:57 elapsed=3s bound=600s status=OK rc=0 (327 hook nodes: 160 dash / 167 not dash)",
+  "[pyt] tag=b3adveng-hook-notdash start=2026-10-20 08:32:11 end=2026-10-20 09:02:13 elapsed=1802s bound=1800s status=TIMEOUT rc=124 (41 nodes run: 36 passed, 5 F; measurement failure)",
+  "[pyt] tag=b3adveng-hook-failed5 start=2026-10-20 09:02:55 end=2026-10-20 09:04:48 elapsed=112s bound=600s status=OK rc=0 (the 5 F nodes alone: 5 passed)",
+  "[pyt] tag=b3adveng-mut-BM1 start=2026-10-20 09:04:54 end=2026-10-20 09:05:02 elapsed=8s bound=600s status=OK rc=0 (BM1 survived: 237 passed; restore sha equal)",
+  "[pyt] tag=b3adveng-ciorder-flagenv start=2026-10-20 09:05:43 end=2026-10-20 09:13:48 elapsed=485s bound=1200s status=FAIL rc=1 (flag exported: 3 failed = the three camera_vision nodes, 1356 passed; netguard 79/73)",
+  "[pyt] tag=b3adveng-pricefallback start=2026-10-20 09:14:24 end=2026-10-20 09:16:08 elapsed=104s bound=600s status=OK rc=0 (MAJ-E1 file alone: 17 passed; netguard 0)"
+ ],
+ "prove_nothing": [
+  "No row pins the placement of the camera preferences read. Spec 2.6 says 'immediately before :450'; BM1 moves it before the vision call and the full unit file + W2-1 + metering pins stay green.",
+  "R15 pins the stream twin's splat by source text only (stated limit 9, accepted by the spec).",
+  "P8 is vacuous at base by its own docstring; it is non-vacuous at HEAD (GREEN's G9 mutant killed by P8 x3), so it is not a prove-nothing at HEAD."
+ ],
+ "report_path": "C:/Users/SYNACK~1/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/ae650c83-4d2a-4910-a8d4-a47ab213c8c3/scratchpad/B3_adv/engineering_REPORT.md (sha256 05da43e743ba4aeda7473c128820c8aae478fcc9a84ca05f5865f9932c767b44, ASCII, LF)"
+}

@@ -69,3 +69,5 @@ PLAN RULINGS (PLAN_S80.md section 1; cite by id, read the full text there)
 - R-A13 evidence standard: spec measured at base, RED AssertionError-only, PIN rows with full config, mutation table on byte copies, the comm set rule, two adversaries on the exact bytes, PR body maps MYEZ ids -> test nodes -> flag -> precondition; DEFECT_LEDGER.md is the index.
 - R-A14 harness: Fable agents; get_usage before each launch; node -e 0 under ~1.5 s; at most two gate-heavy workflows; pyt.py bounds; stall checks every ~20 min; the 3 camera_vision baseline nodes are fixed in B3 with a per-row prune.
 - R-A15 docs truth: production flag state from the newest dated ledger line; a lagging CLAUDE.md row is rewritten in place; the listed flags are UNKNOWN until the owner's names-only answer.
+
+# Session-80 addendum (2026-10-20, from the B3 engineering adversary MAJ-E1): the comm-set module-reference grep ALSO covers every EDITED TEST-SUPPORT MODULE under tests/ (a non-test_*.py helper the unit edits, e.g. tests/w4_11_prompt_digest_recorder.py): every test importing or referencing it joins the set. A missed importer that is green is still a MAJOR for the adversary.

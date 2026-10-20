@@ -1,0 +1,286 @@
+{
+ "unit": "B3 VISION-IDENTITY-V2 (ENABLE_VISION_IDENTITY_V2)",
+ "lens": "correctness",
+ "head_sha_verified": "764d44162dd83563dc5c9aa930dcb9c192f35f89",
+ "verdict": "SOUND",
+ "blocking": [],
+ "major": [],
+ "minor": [
+  "min-1 (doc, activation): the HARD PRECONDITION in the CLAUDE.md row and PR-body owner step 1 cannot be carried out as written. It asks for a structured-output smoke test 'through the deployed route' showing the [VISION_V2] candidates= line 'before the flip'. That line only appears after the flag is ON on web, because the flag is read per call and there is no per-request override. Ruling B3-R6(4) only asks for 'one live call with two photos'. Rewrite it either as an off-route smoke (the owner runs identify_products with the flag set in that one process env and two labelled photos) or as 'the first canary call is the smoke; unset on BadRequestError'.",
+  "min-2 (pin gap, MYEZ-001 core): the two load-bearing rules of VISION_PROMPT_V2 are not pinned. Z1 (delete the no-invention rule), Z2 ('numbered from 1') and Z3 ('1-based number') all SURVIVE the 105-node unit file. R3 pins six substrings, two negatives and a self-referential text == VISION_PROMPT_V2. The GREEN claim 'equals spec 2.2 char for char, sha 7d7f2c83...' is TRUE (re-measured), but no test enforces it. Fix: a VISION_PROMPT_SHA_ON pin, or the substrings '0-based', 'do NOT invent' and 'set confidence to \"low\"'.",
+  "min-3 (stated-limit gap, a consequence of ruling B3-R6(2)): measured with a probe on a two-photo request where both products are reported at image_index 0. V2 keeps ONE product (['A']), so the scan ends in need_second_product where V1 compared A vs B. If photo 2 is a close-up of one of them, V2 can turn a valid V1 pair into a same-identity pair. Neither the CLAUDE.md row nor the PR-body limits state this. Add it as a limit plus a canary reading, or re-rule the case where one paired index is empty.",
+  "min-4 (doc accuracy): 'The one client-visible value change: unknown confidence reads low' (CLAUDE.md row; PR-body limit 10) is false as worded. Other client-visible changes under ON: the identified set and the action (comparison / need_second_product / error); 503 LLM_UNAVAILABLE where base gave 500 on a None or refused reply; a 503 after 20 s where base waited unbounded; a null brand now reads 'Unknown'; stripped strings; and the full personalised result for signed-in scans.",
+  "min-5 (doc, test hazard understated): limit 14 names only the 3 camera_vision nodes. Measured with ENABLE_VISION_IDENTITY_V2=true in the runner env over the 21-file camera identity set: those 3 fail, and 53 nodes (56 attempts) in test_retro_w2_1, test_paid_route_metering, test_m13_26 and others now reach the real get_user_preferences and attempt a Supabase connection (blocked by the sentinel). With the flag OFF it is 3 attempts from 3 nodes. The netguard ratchet would report about 50 NEW egress nodes. Widen the limit, or add the flag to those files' env hygiene.",
+  "min-6 (pin gap, hand block-move XB1, the B3 analogue of the template's X19): moving the route's _compare_extra block (flag read + preferences read) above identify_products survives all 105 nodes. No row asserts that a non-delivery exit makes no preferences read. GREEN's placement is correct: probes on the 503, 500 and need_second_product exits all give prefs.calls == [], and those probes kill the mutant.",
+  "min-7 (pin gap, XB2): moving the finish_reason == 'length' check above the no-content check survives; a length reply with null content would then be exit 2 instead of the coded 503. GREEN's order is correct, and a probe kills the mutant.",
+  "min-8 (pin gap, XB3): moving the flag-first branch below the V1 content build survives (every image is base64-encoded twice). The 'FIRST statement of identify_products' claim is TRUE in the bytes but not pinned; a probe counting encode calls kills the mutant.",
+  "min-9 (pin gaps, observability): three mutants survive the unit file. Y1 drops _log_cache_telemetry from V2. Y2 widens except asyncio.TimeoutError to except Exception, which makes BadRequestError and 429 log as 'timed out' and would mislead the canary. Y3 ignores a refusal when content is a str. GREEN is correct on all three and probes kill them. Note: on a V2 expiry the route's existing ERROR line is '[IMAGE] Vision call failed: ' with an empty tail, so the [VISION_V2] timed-out WARNING is the only discriminator.",
+  "min-10 (doc, spend): limit 5 does not say that a placeholder pair ('Unknown Unknown Product vs ...') runs the full paid Serper + LLM pipeline and is delivered and billed until B2 flips several R-A2 windows later. Add one clause and a canary item.",
+  "Note (not a finding): X19 is B1's mutant id; wf_unit_green.js inserts it for every unit, so B3 has none. Three hand block-moves on B3's own seams (XB1-XB3) were applied instead."
+ ],
+ "mutants_applied": [
+  {
+   "id": "M1",
+   "survived": false,
+   "killed_by": "P1 x7, P2 x7, P3, P3b, P10"
+  },
+  {
+   "id": "M2",
+   "survived": false,
+   "killed_by": "R12[TRUE], R12[ON], R12[ true ]"
+  },
+  {
+   "id": "M3",
+   "survived": false,
+   "killed_by": "P1 x7, P2 x7, R10"
+  },
+  {
+   "id": "M4",
+   "survived": false,
+   "killed_by": "R10, R10b"
+  },
+  {
+   "id": "M5",
+   "survived": false,
+   "killed_by": "R11[-3,0,1e400,inf,nan]"
+  },
+  {
+   "id": "M6b",
+   "survived": false,
+   "killed_by": "R3"
+  },
+  {
+   "id": "M7a",
+   "survived": false,
+   "killed_by": "R3"
+  },
+  {
+   "id": "M8",
+   "survived": false,
+   "killed_by": "R4 x3, R4b"
+  },
+  {
+   "id": "M9",
+   "survived": false,
+   "killed_by": "R4 x3, R4b"
+  },
+  {
+   "id": "M10",
+   "survived": false,
+   "killed_by": "R5, R5b"
+  },
+  {
+   "id": "M11a",
+   "survived": false,
+   "killed_by": "R1, R6, R6b, R7, R7b, R8d, R9, R18, R20"
+  },
+  {
+   "id": "M12",
+   "survived": false,
+   "killed_by": "R6, R6b"
+  },
+  {
+   "id": "M13b",
+   "survived": false,
+   "killed_by": "R6, R6b"
+  },
+  {
+   "id": "M14",
+   "survived": false,
+   "killed_by": "R7, R7b"
+  },
+  {
+   "id": "M15b",
+   "survived": false,
+   "killed_by": "R8"
+  },
+  {
+   "id": "M16b",
+   "survived": false,
+   "killed_by": "R9"
+  },
+  {
+   "id": "M17b",
+   "survived": false,
+   "killed_by": "R9"
+  },
+  {
+   "id": "M18",
+   "survived": false,
+   "killed_by": "R9"
+  },
+  {
+   "id": "M19b",
+   "survived": false,
+   "killed_by": "R1, R2, R7b, R9, R18, R20"
+  },
+  {
+   "id": "M20b",
+   "survived": false,
+   "killed_by": "R17 a/b, R18, R19, R20"
+  },
+  {
+   "id": "M20c",
+   "survived": false,
+   "killed_by": "R17 d"
+  },
+  {
+   "id": "M21",
+   "survived": false,
+   "killed_by": "R17 a,b,d,e,f, R18, R19, R20"
+  },
+  {
+   "id": "M22a",
+   "survived": false,
+   "killed_by": "R16b x3"
+  },
+  {
+   "id": "M23",
+   "survived": false,
+   "killed_by": "P6 x2"
+  },
+  {
+   "id": "M24",
+   "survived": false,
+   "killed_by": "R16b[not_completed]"
+  },
+  {
+   "id": "M25a",
+   "survived": false,
+   "killed_by": "R16b[raises], P8 route x3"
+  },
+  {
+   "id": "M26",
+   "survived": false,
+   "killed_by": "P4/P5 x3, R13[v1]"
+  },
+  {
+   "id": "M27b",
+   "survived": false,
+   "killed_by": "R13[v2]"
+  },
+  {
+   "id": "M27c",
+   "survived": false,
+   "killed_by": "R13 x2, R14"
+  },
+  {
+   "id": "M28",
+   "survived": false,
+   "killed_by": "R15"
+  },
+  {
+   "id": "M29",
+   "survived": false,
+   "killed_by": "R21, R3"
+  },
+  {
+   "id": "M30a",
+   "survived": false,
+   "killed_by": "R4[refusal], P8 x4"
+  },
+  {
+   "id": "M31",
+   "survived": false,
+   "killed_by": "test_model_config_enforced::test_no_call_site_passes_raw_sampling_kwargs"
+  },
+  {
+   "id": "M33b",
+   "survived": false,
+   "killed_by": "R22"
+  },
+  {
+   "id": "M36",
+   "survived": false,
+   "killed_by": "R8b"
+  },
+  {
+   "id": "M39",
+   "survived": false,
+   "killed_by": "R6b"
+  },
+  {
+   "id": "M42",
+   "survived": false,
+   "killed_by": "R10, R10b"
+  },
+  {
+   "id": "M44b",
+   "survived": false,
+   "killed_by": "P1 x7"
+  },
+  {
+   "id": "M45",
+   "survived": false,
+   "killed_by": "P2 x7"
+  },
+  {
+   "id": "XB1-hand-block-move-prefs-before-vision",
+   "survived": true,
+   "killed_by": "unit file: none; adversary probes (4 nodes)"
+  },
+  {
+   "id": "XB2-hand-block-move-length-before-no-content",
+   "survived": true,
+   "killed_by": "unit file: none; adversary probe"
+  },
+  {
+   "id": "XB3-hand-block-move-flag-branch-after-v1-build",
+   "survived": true,
+   "killed_by": "unit file: none; adversary probe"
+  },
+  {
+   "id": "Y1-no-cache-telemetry-on-v2",
+   "survived": true,
+   "killed_by": "unit file: none; adversary probe"
+  },
+  {
+   "id": "Y2-timeout-except-broadened",
+   "survived": true,
+   "killed_by": "unit file: none; adversary probe"
+  },
+  {
+   "id": "Y3-refusal-ignored-with-str-content",
+   "survived": true,
+   "killed_by": "unit file: none; adversary probe"
+  },
+  {
+   "id": "Y4-duplicate-region-kwarg",
+   "survived": false,
+   "killed_by": "15 nodes (P7, P8, R16...)"
+  },
+  {
+   "id": "Z1-no-invention-rule-deleted",
+   "survived": true
+  },
+  {
+   "id": "Z2-numbered-from-1",
+   "survived": true
+  },
+  {
+   "id": "Z3-1-based-index-description",
+   "survived": true
+  }
+ ],
+ "reruns": [
+  "[pyt] tag=b3adv-unit-off start=2026-10-20 07:46:01 end=2026-10-20 07:46:07 elapsed=6s bound=600s status=OK rc=0 (105 passed; hermeticity 105; netguard 0)",
+  "[pyt] tag=b3adv-unit-on start=2026-10-20 07:46:13 end=2026-10-20 07:46:17 elapsed=4s bound=600s status=OK rc=0 (105 passed, ENABLE_VISION_IDENTITY_V2=true runner env only)",
+  "[pyt] tag=b3adv-camera-vision start=2026-10-20 07:46:19 end=2026-10-20 07:46:24 elapsed=5s bound=600s status=OK rc=0 (25 passed, 1 deselected)",
+  "[pyt] tag=b3adv-camera-vision-on start=2026-10-20 07:46:31 end=2026-10-20 07:46:35 elapsed=4s bound=600s status=FAIL rc=1 (3 TestIdentifyProductsMocked nodes fail with flag ON: limit 14 confirmed)",
+  "[pyt] tag=b3adv-probe-1 start=2026-10-20 07:50:07 end=2026-10-20 07:50:11 elapsed=4s bound=600s status=OK rc=0 (7 probe nodes on GREEN bytes)",
+  "[pyt] tag=b3adv-probe-2 start=2026-10-20 07:57:27 end=2026-10-20 07:57:32 elapsed=4s bound=600s status=OK rc=0 (12 probe nodes on GREEN bytes)",
+  "[pyt] tag=b3adv-identity-off start=2026-10-20 07:59:17 end=2026-10-20 08:00:20 elapsed=62s bound=1200s status=OK rc=0 (21-file camera identity set: 939 passed; netguard 3 attempts / 3 nodes = existing ratchet rows)",
+  "[pyt] tag=b3adv-identity-on start=2026-10-20 08:00:30 end=2026-10-20 08:01:27 elapsed=57s bound=1200s status=FAIL rc=1 (flag ON: 3 camera_vision failures, 936 passed; netguard 56 attempts / 53 nodes)",
+  "[pyt] tag=b3adv-camera-rest-on start=2026-10-20 08:06:20 end=2026-10-20 08:06:30 elapsed=11s bound=1200s status=OK rc=0 (4 remaining camera-path files flag ON: 173 passed)",
+  "56 mutant runs, bound=600s each, all in <scratchpad>/B3_adv/mut_results.jsonl with [pyt] lines (b3adv-mut-<id>, 07:52:01 -> 08:03:41); no TIMEOUT"
+ ],
+ "prove_nothing": [
+  "R15: source-text pin on the stream twin, which never receives vision products (the only compare_from_text_streaming caller, text_routes.py:1097, passes none); it proves only that the two lines match",
+  "P4/P5 flag axis (3 nodes) and R14's flag 'true': the orchestrator reads no flag (it is presence-gated), so the flag parametrisation adds nothing beyond one node",
+  "P8 at base: vacuous by design (no [VISION_V2] lines exist at base); it is meaningful only on the GREEN bytes",
+  "R3 text == VISION_PROMPT_V2: self-referential; the real content check is only six substrings and two negatives (see min-2)",
+  "R5b body half: identical at base; only the WARNING assertion makes the row RED",
+  "R17 arm b (flag OFF with a V2-shaped stub): production reaches this state only through a mid-request flip; it is a design pin, not a production scenario"
+ ],
+ "report_path": "C:\\Users\\SYNACK~1\\AppData\\Local\\Temp\\claude\\C--Users-SynAckITPC-Documents-AI\\ae650c83-4d2a-4910-a8d4-a47ab213c8c3\\scratchpad\\B3_adv\\correctness_REPORT.md"
+}
