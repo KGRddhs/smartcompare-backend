@@ -1,0 +1,497 @@
+{
+ "unit": "B4 URL-MODE-V2 (ENABLE_URL_MODE_V2), RED by the Fable RED agent at base 81df2b641454e0301cca51a3ba01bf8ef3d7e649 in worktree C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-b4",
+ "test_files": [
+  {
+   "path": "C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-b4\\tests\\test_s80_url_mode_v2.py",
+   "sha256": "c4549be2f5cd8edfd60cbc07db427ed5275cc4b44ab719614ef97b9eca227cae",
+   "bytes": 71891
+  }
+ ],
+ "base_run": {
+  "failed": 206,
+  "passed": 46,
+  "every_failure_is_assertion_error": true,
+  "failed_node_ids": [
+   "tests/test_s80_url_mode_v2.py::test_both_urls_403_field_both[GET|POST]",
+   "tests/test_s80_url_mode_v2.py::test_challenge_page_is_store_unreadable[GET|POST]",
+   "tests/test_s80_url_mode_v2.py::test_classify_url_path_table[all 34 rows]",
+   "tests/test_s80_url_mode_v2.py::test_copy_constants_verbatim_and_policy_clean",
+   "tests/test_s80_url_mode_v2.py::test_deadline_yields_timeout_503[GET|POST]",
+   "tests/test_s80_url_mode_v2.py::test_error_handler_passthrough_on[NOT_PRODUCT_PAGE|STORE_UNREADABLE|UNRESOLVED_PRODUCT]",
+   "tests/test_s80_url_mode_v2.py::test_error_handler_reader_table[all 14 values]",
+   "tests/test_s80_url_mode_v2.py::test_fetch_page_v2_blocks_private_initial_url",
+   "tests/test_s80_url_mode_v2.py::test_fetch_page_v2_blocks_redirect_to_metadata",
+   "tests/test_s80_url_mode_v2.py::test_fetch_page_v2_caps_redirect_chain",
+   "tests/test_s80_url_mode_v2.py::test_fetch_page_v2_keeps_status_and_final_url",
+   "tests/test_s80_url_mode_v2.py::test_flag_reader_table_on[7 ON values x GET|POST = 14]",
+   "tests/test_s80_url_mode_v2.py::test_info_line_survives_a_malformed_url",
+   "tests/test_s80_url_mode_v2.py::test_info_lines_print_host_only",
+   "tests/test_s80_url_mode_v2.py::test_is_usable_title_table",
+   "tests/test_s80_url_mode_v2.py::test_llm_answers_on_a_usable_title_page[empty|name_null|not_product_page|offline]",
+   "tests/test_s80_url_mode_v2.py::test_mixed_codes_precedence[GET|POST]",
+   "tests/test_s80_url_mode_v2.py::test_mixed_codes_precedence_not_product_page_over_unresolved[GET|POST]",
+   "tests/test_s80_url_mode_v2.py::test_never_unknown_product_flag_on[empty|name_null|offline]",
+   "tests/test_s80_url_mode_v2.py::test_node_bearing_page_with_llm_false_delivers",
+   "tests/test_s80_url_mode_v2.py::test_non_2xx_reason_table[302-http_3xx|403-http_403|404-http_4xx|500-http_5xx]",
+   "tests/test_s80_url_mode_v2.py::test_non_delivery_per_r_a3_every_code[GET|POST x NOT_PRODUCT_PAGE|STORE_UNREADABLE|UNRESOLVED_PRODUCT|TIMEOUT x meter-on|meter-off = 16]",
+   "tests/test_s80_url_mode_v2.py::test_normalize_url_table",
+   "tests/test_s80_url_mode_v2.py::test_null_name_only_when_the_title_is_unusable",
+   "tests/test_s80_url_mode_v2.py::test_pdp_image_is_first_https_string[10 cases x parse-off|parse-on = 20]",
+   "tests/test_s80_url_mode_v2.py::test_pregate_field_and_reason[7 cases x GET|POST = 14]",
+   "tests/test_s80_url_mode_v2.py::test_pregate_homepage_pair_refused_before_reserve[6 variants x GET|POST = 12]",
+   "tests/test_s80_url_mode_v2.py::test_pregate_same_url_after_normalisation[5 pairs x GET|POST = 10]",
+   "tests/test_s80_url_mode_v2.py::test_pregate_writes_no_search_log_row[GET|POST]",
+   "tests/test_s80_url_mode_v2.py::test_prompt_v2_asks_is_product_page_and_keeps_shape",
+   "tests/test_s80_url_mode_v2.py::test_prompt_v2_is_derived_from_v1",
+   "tests/test_s80_url_mode_v2.py::test_recommendation_and_key_differences_filled[GET|POST]",
+   "tests/test_s80_url_mode_v2.py::test_recommendation_fallback_when_reason_leaks_scores[GET|POST]",
+   "tests/test_s80_url_mode_v2.py::test_redirect_to_homepage_is_not_product_page_post_fetch[GET|POST]",
+   "tests/test_s80_url_mode_v2.py::test_route_fetch_blocked_or_capped_is_store_unreadable[GET|POST x blocked_hop|redirect_cap = 4]",
+   "tests/test_s80_url_mode_v2.py::test_service_flag_reader_table[all 14 values]",
+   "tests/test_s80_url_mode_v2.py::test_test_seams_have_production_values",
+   "tests/test_s80_url_mode_v2.py::test_transport_error_is_store_unreadable[GET|POST]",
+   "tests/test_s80_url_mode_v2.py::test_v02_fragrancex_403_is_store_unreadable[GET|POST]",
+   "tests/test_s80_url_mode_v2.py::test_v09_storefront_pages_unresolved[GET|POST]",
+   "tests/test_s80_url_mode_v2.py::test_v2_kwarg_is_conditional[GET-on|POST-on]",
+   "FULL expanded list (206 ids): C:\\Users\\SYNACK~1\\AppData\\Local\\Temp\\claude\\C--Users-SynAckITPC-Documents-AI\\ae650c83-4d2a-4910-a8d4-a47ab213c8c3\\scratchpad\\B4_red\\unit_base_final.xml (and unit_base3.xml.failed.txt)"
+  ],
+  "pyt_line": "[pyt] tag=b4red-unit-base-final start=2026-10-20 13:35:17 end=2026-10-20 13:35:39 elapsed=22s bound=600s status=FAIL rc=1 (206 failed, 46 passed; [hermeticity] sentinel checked 252 test(s); [netguard] blocked 0 attempt(s) from 0 node(s); 206 failure-site lines all 'AssertionError', 0 junit <error> elements)"
+ },
+ "prototype": {
+  "on_passed": 252,
+  "on_failed": 0,
+  "off_passed": 252,
+  "off_failed": 0,
+  "pyt_lines": [
+   "[pyt] tag=b4red-proto-on-final start=2026-10-20 13:35:41 end=2026-10-20 13:35:54 elapsed=13s bound=600s status=OK rc=0 (ENABLE_URL_MODE_V2=true exported; 252 passed; netguard 0)",
+   "[pyt] tag=b4red-proto-off-final start=2026-10-20 13:35:57 end=2026-10-20 13:36:17 elapsed=19s bound=600s status=OK rc=0 (flag unset; 252 passed; netguard 0)",
+   "[pyt] tag=b4red-proto-pins start=2026-10-20 12:48:23 end=2026-10-20 12:49:16 elapsed=54s bound=600s status=FAIL rc=1 (existing pins vs prototype: 508 passed, 1 failed = tests/test_sentry_channels_u8d_unit.py::TestR8SourceLines::test_u8d_red_r8_in_except_lines_no_user_content[url_extraction_fetch_failed])"
+  ],
+  "notes": "Scratch worktree <scratchpad>/B4_red/b4_scratch (detached 81df2b64, removed at the end). Change list applied by proto_patch.py to url_extraction_service.py, url_routes.py, error_handler.py (clear-list edits E1-E4 and the CLAUDE.md row not prototyped). The rows set/delete the flag themselves, so both runner env states run identical assertions. Spec problems found: (S1) reusing the base ERROR template 'Failed to fetch URL host %s: %s' in _fetch_page_v2 adds a second ERROR call with that prefix and reddens u8d R8 (exactly one such call in url_extraction_service.py); (S2) P25's fixture key url_extract_user is the PRE-fence digest; (S3) R24's 'exactly one <SEARCH_RESULTS> open' counts the guard sentence's own mention. The W0-4c transitive soup guard (tests/test_retro_w0_4.py::test_w04c_no_async_def_reaches_a_soup_helper_inline) stayed green with the B4-R2 shape."
+ },
+ "mutants": [
+  {
+   "id": "M1",
+   "description": "pre-gate runs with the flag read removed (always ON)",
+   "survived": false,
+   "killed_by": "test_flag_off_homepage_pair_is_base_behaviour (P6, raising stand-in)"
+  },
+  {
+   "id": "M2",
+   "description": "service reader == 'true' (no strip/lower/set)",
+   "survived": false,
+   "killed_by": "test_service_flag_reader_table[TRUE| true ]"
+  },
+  {
+   "id": "M2b",
+   "description": "error-handler reader == 'true'",
+   "survived": false,
+   "killed_by": "test_error_handler_reader_table[TRUE| true ]"
+  },
+  {
+   "id": "M3",
+   "description": "pre-gate placed BEFORE the SSRF check",
+   "survived": false,
+   "killed_by": "test_pregate_homepage_pair_refused_before_reserve (events), test_ssrf_refusal_byte_identical_in_both_states"
+  },
+  {
+   "id": "M4",
+   "description": "pre-gate inside _compare_urls_metered after the reserve",
+   "survived": false,
+   "killed_by": "test_pregate_homepage_pair_refused_before_reserve (consumes == [])"
+  },
+  {
+   "id": "M5a",
+   "description": "classify ignores the homepage regex",
+   "survived": false,
+   "killed_by": "test_pregate_homepage_pair_refused_before_reserve"
+  },
+  {
+   "id": "M5b",
+   "description": "classify ignores the search regex",
+   "survived": false,
+   "killed_by": "test_pregate_field_and_reason[url1-search]"
+  },
+  {
+   "id": "M5c",
+   "description": "classify ignores the cart regex",
+   "survived": false,
+   "killed_by": "test_pregate_field_and_reason[url1-cart|url1-checkout]"
+  },
+  {
+   "id": "M5d",
+   "description": "classify ignores the account regex",
+   "survived": false,
+   "killed_by": "test_pregate_field_and_reason[url1-account]"
+  },
+  {
+   "id": "M5e",
+   "description": "classify ignores the category regex",
+   "survived": false,
+   "killed_by": "test_pregate_field_and_reason[url1-category]"
+  },
+  {
+   "id": "M6",
+   "description": "category rule fires on a product segment",
+   "survived": false,
+   "killed_by": "test_classify_url_path_table[/collections/men/products/sauvage-None]"
+  },
+  {
+   "id": "M7",
+   "description": "same_url compares raw strings",
+   "survived": false,
+   "killed_by": "test_pregate_same_url_after_normalisation[slash|case-host|...]"
+  },
+  {
+   "id": "M8",
+   "description": "same_url treats two '' as equal",
+   "survived": false,
+   "killed_by": "test_normalize_url_table"
+  },
+  {
+   "id": "M9a",
+   "description": "pre-gate field always both",
+   "survived": false,
+   "killed_by": "test_pregate_field_and_reason[url2-home|url1-search]"
+  },
+  {
+   "id": "M9b",
+   "description": "post-fetch field always both",
+   "survived": false,
+   "killed_by": "test_v02_fragrancex_403_is_store_unreadable"
+  },
+  {
+   "id": "M10a",
+   "description": "refusal detail drops field/reason",
+   "survived": false,
+   "killed_by": "test_pregate_homepage_pair_refused_before_reserve (body equality)"
+  },
+  {
+   "id": "M10b",
+   "description": "error-handler passthrough removed",
+   "survived": false,
+   "killed_by": "test_pregate_homepage_pair_refused_before_reserve, test_error_handler_passthrough_on"
+  },
+  {
+   "id": "M11",
+   "description": "passthrough with the flag OFF",
+   "survived": false,
+   "killed_by": "test_error_handler_four_key_body[off-b4-code-keys]"
+  },
+  {
+   "id": "M11b",
+   "description": "passthrough not scoped to the three B4 codes (B4-R5)",
+   "survived": false,
+   "killed_by": "test_error_handler_four_key_body[on-other-code-keys]"
+  },
+  {
+   "id": "M12",
+   "description": "passthrough copies a non-str value",
+   "survived": false,
+   "killed_by": "test_error_handler_passthrough_on[*]"
+  },
+  {
+   "id": "M13",
+   "description": "_fetch_page_v2 calls raise_for_status",
+   "survived": false,
+   "killed_by": "test_v02_fragrancex_403_is_store_unreadable"
+  },
+  {
+   "id": "M14",
+   "description": "2xx check accepts 3xx/4xx",
+   "survived": false,
+   "killed_by": "test_v02_fragrancex_403_is_store_unreadable, test_non_2xx_reason_table"
+  },
+  {
+   "id": "M15a",
+   "description": "challenge = body substring",
+   "survived": false,
+   "killed_by": "test_body_text_access_denied_is_not_a_challenge"
+  },
+  {
+   "id": "M15b",
+   "description": "challenge check removed",
+   "survived": false,
+   "killed_by": "test_challenge_page_is_store_unreadable"
+  },
+  {
+   "id": "M16",
+   "description": "post-fetch final-url check removed",
+   "survived": false,
+   "killed_by": "test_redirect_to_homepage_is_not_product_page_post_fetch"
+  },
+  {
+   "id": "M17",
+   "description": "exact @type == Product (no shape ladder)",
+   "survived": false,
+   "killed_by": "test_pdp_image_is_first_https_string[graph|type_list|has_variant]"
+  },
+  {
+   "id": "M18",
+   "description": "is_usable_title ignores site_names",
+   "survived": false,
+   "killed_by": "test_v09_storefront_pages_unresolved, test_is_usable_title_table"
+  },
+  {
+   "id": "M19",
+   "description": "is_usable_title accepts 'Unknown Product'",
+   "survived": false,
+   "killed_by": "test_is_usable_title_table"
+  },
+  {
+   "id": "M20",
+   "description": "no-LLM short-circuit removed",
+   "survived": false,
+   "killed_by": "test_v09_storefront_pages_unresolved (llm_calls == [], reason)"
+  },
+  {
+   "id": "M21",
+   "description": "is_product_page false ignored",
+   "survived": false,
+   "killed_by": "test_llm_answers_on_a_usable_title_page[not_product_page]"
+  },
+  {
+   "id": "M21b",
+   "description": "is_product_page false refuses a node-bearing page (B4-R1)",
+   "survived": false,
+   "killed_by": "test_node_bearing_page_with_llm_false_delivers"
+  },
+  {
+   "id": "M22",
+   "description": "null_name check removed",
+   "survived": false,
+   "killed_by": "test_null_name_only_when_the_title_is_unusable"
+  },
+  {
+   "id": "M22b",
+   "description": "null_name refuses a usable-title page whose LLM name is null (B4-R1)",
+   "survived": false,
+   "killed_by": "test_llm_answers_on_a_usable_title_page[name_null|empty]"
+  },
+  {
+   "id": "M23a",
+   "description": "normalize_image_url without the https check",
+   "survived": false,
+   "killed_by": "test_pdp_image_is_first_https_string[http_only]"
+  },
+  {
+   "id": "M23b",
+   "description": "normalize_image_url without urljoin",
+   "survived": false,
+   "killed_by": "test_pdp_image_is_first_https_string[og_fallback_relative|protocol_relative]"
+  },
+  {
+   "id": "M24",
+   "description": "og fallback keeps the key-presence test",
+   "survived": false,
+   "killed_by": "test_pdp_image_is_first_https_string[og_fallback_relative]"
+  },
+  {
+   "id": "M24b",
+   "description": "og image joined against the requested url, not the final url",
+   "survived": false,
+   "killed_by": "test_pdp_image_is_first_https_string[og_joined_on_final_url]"
+  },
+  {
+   "id": "M25",
+   "description": "image_url stays raw ON",
+   "survived": false,
+   "killed_by": "test_pdp_image_is_first_https_string[pdp_fixture|http_only|...]"
+  },
+  {
+   "id": "M26",
+   "description": "image_url normalised OFF too",
+   "survived": false,
+   "killed_by": "test_flag_off_image_passes_through_raw"
+  },
+  {
+   "id": "M27",
+   "description": "recommendation without strip_score_internals",
+   "survived": false,
+   "killed_by": "test_recommendation_fallback_when_reason_leaks_scores"
+  },
+  {
+   "id": "M28",
+   "description": "qualitative fallback dropped",
+   "survived": false,
+   "killed_by": "test_recommendation_fallback_when_reason_leaks_scores"
+  },
+  {
+   "id": "M29",
+   "description": "key_differences includes the similar list",
+   "survived": false,
+   "killed_by": "test_recommendation_and_key_differences_filled"
+  },
+  {
+   "id": "M30",
+   "description": "a new top-level key on the delivery dict",
+   "survived": false,
+   "killed_by": "test_recommendation_and_key_differences_filled (key set)"
+  },
+  {
+   "id": "M31",
+   "description": "value fill applied OFF",
+   "survived": false,
+   "killed_by": "test_flag_off_homepage_pair_is_base_behaviour, test_flag_off_recommendation_empty"
+  },
+  {
+   "id": "M32",
+   "description": "V1 prompt edited in place (V1 == V2)",
+   "survived": false,
+   "killed_by": "test_prompt_off_render_equals_w411_digest, test_prompt_v2_is_derived_from_v1"
+  },
+  {
+   "id": "M33",
+   "description": "V2 drops the URL line",
+   "survived": false,
+   "killed_by": "test_prompt_v2_asks_is_product_page_and_keeps_shape, test_prompt_v2_is_derived_from_v1"
+  },
+  {
+   "id": "M34",
+   "description": "V2 selected OFF",
+   "survived": false,
+   "killed_by": "test_prompt_off_render_equals_w411_digest"
+  },
+  {
+   "id": "M35",
+   "description": "wait_for removed",
+   "survived": false,
+   "killed_by": "test_deadline_yields_timeout_503"
+  },
+  {
+   "id": "M36",
+   "description": "timeout arm re-raises",
+   "survived": false,
+   "killed_by": "test_deadline_yields_timeout_503"
+  },
+  {
+   "id": "M37",
+   "description": "timeout result lacks the code",
+   "survived": false,
+   "killed_by": "test_deadline_yields_timeout_503, test_non_delivery_per_r_a3_every_code[TIMEOUT]"
+  },
+  {
+   "id": "M38",
+   "description": "TIMEOUT routed through _raise_url_refusal (400)",
+   "survived": false,
+   "killed_by": "test_deadline_yields_timeout_503"
+  },
+  {
+   "id": "M39",
+   "description": "coded url failures through _surface_comparison_failure (field lost)",
+   "survived": false,
+   "killed_by": "test_v09_storefront_pages_unresolved, test_v02_fragrancex_403_is_store_unreadable"
+  },
+  {
+   "id": "M40",
+   "description": "codeless arm replaced by a coded body",
+   "survived": false,
+   "killed_by": "test_codeless_failure_keeps_base_body_flag_on"
+  },
+  {
+   "id": "M41",
+   "description": "precedence inverted",
+   "survived": false,
+   "killed_by": "test_mixed_codes_precedence, test_mixed_codes_precedence_not_product_page_over_unresolved"
+  },
+  {
+   "id": "M42",
+   "description": "v2 kwarg passed OFF",
+   "survived": false,
+   "killed_by": "test_flag_off_homepage_pair_is_base_behaviour (positional call), test_v2_kwarg_is_conditional[off]"
+  },
+  {
+   "id": "M43",
+   "description": "INFO request line keeps the full url",
+   "survived": false,
+   "killed_by": "test_info_lines_print_host_only, test_info_line_survives_a_malformed_url"
+  },
+  {
+   "id": "M43b",
+   "description": "Detected-retailer line keeps the full url",
+   "survived": false,
+   "killed_by": "test_info_lines_print_host_only"
+  },
+  {
+   "id": "M44",
+   "description": "refund skipped for a new code",
+   "survived": false,
+   "killed_by": "test_v09_storefront_pages_unresolved, test_non_delivery_per_r_a3_every_code"
+  },
+  {
+   "id": "M45",
+   "description": "success-branch lifetime bump reached for a new code",
+   "survived": false,
+   "killed_by": "test_v09_storefront_pages_unresolved, test_non_delivery_per_r_a3_every_code"
+  },
+  {
+   "id": "M46",
+   "description": "search_logs row written for a pre-gate refusal",
+   "survived": false,
+   "killed_by": "test_pregate_homepage_pair_refused_before_reserve[POST], test_pregate_writes_no_search_log_row[POST]"
+  },
+  {
+   "id": "M47",
+   "description": "fetch_page body edited",
+   "survived": false,
+   "killed_by": "test_fetch_page_untouched_pin"
+  },
+  {
+   "id": "M48",
+   "description": "_fetch_page_v2 per-hop SSRF validation removed (B4-R3)",
+   "survived": false,
+   "killed_by": "test_route_fetch_blocked_or_capped_is_store_unreadable[blocked_hop], test_fetch_page_v2_blocks_redirect_to_metadata"
+  },
+  {
+   "id": "M49",
+   "description": "_fetch_page_v2 hop bound removed (B4-R3)",
+   "survived": false,
+   "killed_by": "test_route_fetch_blocked_or_capped_is_store_unreadable[redirect_cap], test_fetch_page_v2_caps_redirect_chain"
+  }
+ ],
+ "comm_set": {
+  "files": 119,
+  "chunks": 5,
+  "base_failures": [
+   "tests/test_prompt_truth.py::test_render_digests_match_base_except_the_fence (ERROR, known cold-tiktoken environmental base noise)",
+   "tests/test_prompt_truth.py::test_truth_on_prefix_static_and_cacheable (ERROR, known cold-tiktoken environmental base noise)"
+  ],
+  "list_path": "C:\\Users\\SYNACK~1\\AppData\\Local\\Temp\\claude\\C--Users-SynAckITPC-Documents-AI\\ae650c83-4d2a-4910-a8d4-a47ab213c8c3\\scratchpad\\B4_red\\comm_files.txt (sha256 84b1f89b5f4c5be0bbb6638077ba7d91a72bbc6776512ea60f41797d8bb31151; reasons comm_reasons.tsv; chunks comm_chunk1..5.txt)",
+  "pyt_lines": [
+   "[pyt] tag=b4red-comm-base-c1 start=2026-10-20 13:16:52 end=2026-10-20 13:17:49 elapsed=57s bound=1200s status=OK rc=0 (890 passed, 1 skipped, 12 deselected; sentinel 891; netguard blocked 2 from 2 nodes, pre-existing sentinel)",
+   "[pyt] tag=b4red-comm-base-c2 start=2026-10-20 13:17:53 end=2026-10-20 13:24:12 elapsed=380s bound=1200s status=OK rc=0 (2146 passed, 1 skipped; sentinel 2147; netguard blocked 58 from 39 nodes)",
+   "[pyt] tag=b4red-comm-base-c3 start=2026-10-20 13:24:22 end=2026-10-20 13:26:41 elapsed=139s bound=1200s status=FAIL rc=1 (682 passed, 2 skipped, 8 deselected, 1 xfailed, 2 errors = the two test_prompt_truth tiktoken nodes; sentinel 685; netguard blocked 123 from 8 nodes)",
+   "[pyt] tag=b4red-comm-base-c4 start=2026-10-20 13:26:49 end=2026-10-20 13:33:15 elapsed=386s bound=1200s status=OK rc=0 (1622 passed, 1 skipped, 1 deselected; sentinel 1623; netguard blocked 12 from 6 nodes)",
+   "[pyt] tag=b4red-comm-base-c5 start=2026-10-20 13:33:21 end=2026-10-20 13:35:06 elapsed=104s bound=1200s status=OK rc=0 (615 passed, 1 skipped; sentinel 616; netguard blocked 27 from 23 nodes)"
+  ]
+ },
+ "restore_check": {
+  "worktree_clean_except_new_tests": true,
+  "scratch_removed": true,
+  "note": "sha256 of all 3,406 tracked files in sc-s80-b4 identical before (12:40) and after (13:37) (cmp equal; real_tracked_sha_before/after.txt); git status --short = '?? tests/test_s80_url_mode_v2.py' only; HEAD 81df2b64. Scratch worktree <scratchpad>/B4_red/b4_scratch removed with git worktree remove --force and absent from git worktree list (no node_modules junction). Mutation lock lived only in the scratch tree and was removed; every mutant restore sha-verified; prototype files re-verified against proto_sha.txt after the last batch. No python process with a b4red tag remains. No TIMEOUT in any run."
+ },
+ "deviations_from_spec": [
+  "D1 P25: the spec compares the OFF render to fixture key url_extract_user, which is the PRE-W4-11-fence digest (9bbbd748...); the base OFF render is 65edcacae42a8287a66e784f3d963eb41fba80b0219caae25fe10bef2c853a66 (measured at 81df2b64 with the recorder's url/html/retailer/answer). P25 pins the measured digest plus the fixture url_extract_kwargs, parametrised over env unset/true.",
+  "D2 R24: 'exactly ONE <SEARCH_RESULTS> open' is unsatisfiable literally because SEARCH_RESULTS_GUARD itself names the tag (opens at offsets 26 and 376 measured); R24 counts the region after the guard (the F13 opens[-1] reading).",
+  "D3 R12: the spec pins the base ERROR template 'Failed to fetch URL host %s: %s' reused by _fetch_page_v2; a second ERROR call with that prefix reddens tests/test_sentry_channels_u8d_unit.py::TestR8SourceLines::test_u8d_red_r8_in_except_lines_no_user_content[url_extraction_fetch_failed] (measured on the prototype). R12 now asserts exactly one ERROR record with the host and the exception type and no path, so either gate ruling satisfies it.",
+  "D4 R9 kept as specified: INFO '[URL-V2] outcome=http_error reason=http_403 status=403' (the only outcome value the RED file pins).",
+  "D5 P36: the spec's 'truth ON ... calls as recorded' contradicts the fixture (recorded truth OFF, calls []); split into a fixture-exact replay under flag None/false/garbage and a full-config row (truth + metering ON, authed, flag off) asserting the fixture bodies and the base row constants.",
+  "D6 rows added within the rulings: service reader table; R11b body-text PIN for M15; R14b (NOT_PRODUCT_PAGE over UNRESOLVED); R42b (status/final_url kept, 403 kept with no raise); R43/R44 per B4-R1; the C19 status table; the malformed-url INFO row per B4-R4; copy-constant row; seam row (_TRANSPORT None, deadline 25.0); R29 pins the B4-R7 misses (/ar/search, /s, /uae-en/search/, /uae-en/, /uae-en, /eng/, /en/cart.html -> None).",
+  "D7 the RED file's route rows install the MockTransport both on url_extraction_service._TRANSPORT and inside every httpx.AsyncClient the module builds, so at base the REAL base fetch_page runs over the mock and the RED rows fail on observed behaviour, not only on missing symbols.",
+  "D8 the comm set is 119 files (spec 95 + the w4_11 recorder importers per the 2026-10-20 addendum + the W4-13 envelope pins + a broader source-scanning grep); the RED file itself is excluded at base."
+ ],
+ "open_questions": [
+  "S1 (blocks GREEN): the u8d R8 single-call pin vs the spec's reuse of the 'Failed to fetch URL host' ERROR template in _fetch_page_v2. Recommended: _fetch_page_v2 logs a distinct template carrying host + type only (no pin edit; RED R12 already accepts it). Alternative: an E5 row amending R8 to accept N calls with that prefix. Routing both through one helper would change fetch_page and break R39.",
+  "S2: spec 2.2(b) names only {homepage, search} for the post-fetch redirect check but its parenthesis says cart/account/category count too; the prototype refuses any class; RED pins only the homepage redirect. Rule which.",
+  "S3: the '[URL-V2] outcome=' vocabulary is pinned only for the 403 case (D4); confirm GREEN may choose the other outcome words.",
+  "S4: classify_url_path(None) returns 'homepage' (urlsplit('') has path ''); unreachable from the route (pydantic str) and not pinned; confirm acceptable.",
+  "S5: the comm set at HEAD should be re-derived by GREEN including tests importing tests/test_s80_url_mode_v2.py (none today) and the E1-E4 edited files' importers."
+ ],
+ "not_measured_alone": [
+  "The comm set at HEAD and the CI-order set (no GREEN bytes; gate 7 is OFF-only per B4-R8)",
+  "The prototype against the full 119-file comm set (only the 10 pin files listed in the report were run against it)",
+  "The clear-list edits E1-E4 and the CLAUDE.md row (not prototyped)",
+  "The test_precommit_hook*.py files (excluded by rule; .githooks untouched)"
+ ],
+ "report_path": "C:\\Users\\SYNACK~1\\AppData\\Local\\Temp\\claude\\C--Users-SynAckITPC-Documents-AI\\ae650c83-4d2a-4910-a8d4-a47ab213c8c3\\scratchpad\\B4_red\\B4_RED_REPORT.md"
+}
