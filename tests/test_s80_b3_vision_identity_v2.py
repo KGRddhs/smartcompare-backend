@@ -1536,3 +1536,355 @@ def test_P8_unit_log_lines_carry_no_product_text(monkeypatch, client, authed, ca
                 assert word not in msg, (word, msg)
         if rec.name in WATCHED_LOGGERS and rec.levelno >= logging.ERROR:
             assert msg.startswith(ALLOWED_ERROR_PREFIXES), msg
+
+
+# ===========================================================================
+# FIX ROUND 1 (RULINGS_FIX1_B3 F3-1, 2026-10-20): PIN rows for the nine hand
+# mutants the two adversaries left alive on the GREEN bytes 764d4416
+# (XB1-XB3 block moves, Y1-Y3 observability, Z1-Z3 prompt rules). Each row is
+# GREEN at HEAD and KILLS its named mutant (byte copy in a scratch worktree,
+# AssertionError only; the fix report carries one [pyt] line per mutant).
+# Appended only: every row above this banner is byte-identical.
+# ===========================================================================
+import httpx  # noqa: E402
+import openai  # noqa: E402
+
+# sha256 of openai_service.VISION_PROMPT_V2 (3,170 ASCII chars, the spec 2.2
+# block), measured 2026-10-20 at 764d4416 from the module AST.
+VISION_PROMPT_SHA_ON = "7d7f2c83b11dfb8b05cb9541379b798bcaa6fe0cfeb16526bf38e8966723dd24"
+# The load-bearing rules of VISION_PROMPT_V2, quoted exactly from the constant.
+VISION_PROMPT_V2_RULES = {
+    "zero_based": "0-based",
+    "no_invention": ("If a product has NO readable brand or name text, do NOT invent one "
+                     "from its shape, colour or design."),
+    "confidence_low": 'confidence to "low"',
+    "numbered_from_0": ("numbered from 0 in the order they are given (image_index 0 is the "
+                        "first image)"),
+}
+_TIMED_OUT = "[VISION_V2] vision call timed out"
+_IMAGE_500_ERROR = "Image analysis failed. Please try again."
+
+
+def _openai_status_error(cls, status):
+    """A real openai SDK status error (the test_image_identify_llm_unavailable_s69
+    idiom): an httpx request + response object, no network."""
+    req = httpx.Request("POST", "https://api.openai.invalid/v1/chat/completions")
+    resp = httpx.Response(status, request=req, json={"error": {"message": "b3 fix probe"}})
+    return cls("b3 fix probe", response=resp, body=None)
+
+
+def _dispatch_error(kind):
+    if kind == "bad_request":
+        return _openai_status_error(openai.BadRequestError, 400)
+    return _openai_status_error(openai.RateLimitError, 429)
+
+
+def _raising_client(monkeypatch, exc):
+    """openai_service.client whose create() raises `exc`; returns the call log."""
+    calls = []
+
+    class _RaisingCompletions:
+        async def create(self, **kwargs):
+            calls.append(sorted(kwargs))
+            raise exc
+
+    fake = types.SimpleNamespace(chat=types.SimpleNamespace(completions=_RaisingCompletions()))
+    monkeypatch.setattr(osvc, "client", fake)
+    return calls
+
+
+class _OrderedPrefs(_Prefs):
+    """A _Prefs recorder that also appends 'prefs' to a shared event list."""
+
+    def __init__(self, events, result=None):
+        super().__init__(result)
+        self._events = events
+
+    async def __call__(self, user_id, *_a, **_kw):
+        self._events.append("prefs")
+        return await super().__call__(user_id, *_a, **_kw)
+
+
+def _record_identify(monkeypatch, events):
+    """Wrap the camera route's identify_products so its call joins `events`."""
+    real = image_routes.identify_products
+
+    async def _identify(images):
+        events.append("identify")
+        return await real(images)
+
+    monkeypatch.setattr(image_routes, "identify_products", _identify)
+
+
+class _BlockingSafety:
+    async def moderate_vision_output(self, _extracted):
+        return content_safety_service.SafetyResult(allowed=False, reason="b3 fix probe")
+
+
+@pytest.mark.parametrize("scenario", [
+    "refusal_503", "none_content_503", "expiry_503", "bad_request_500",
+    "length_action_error", "moderation_blocked", "zero_products_action_error",
+    "need_second_product",
+])
+def test_XB1_non_delivery_exits_never_read_preferences(monkeypatch, client, authed, scenario):
+    """PIN (F3-1 XB1 / BM1; flag ON, signed in with completed preferences,
+    metering + envelope ON): on every non-delivery exit of the camera route
+    (the coded 503 on refusal / None / expiry, the 500 path, the parse-error
+    and zero-product action errors, the moderation block, need_second_product)
+    the preferences read never runs; identify_products is the only call. Kills
+    the block-move mutant that reads the preferences before the vision call."""
+    _full_config(monkeypatch, "true")
+    monkeypatch.setenv(METER, "true")
+    monkeypatch.setenv(ENVELOPE, "true")
+    events = []
+    prefs = _OrderedPrefs(events, PREFS_DONE)
+    ledger, spy, _ = _stub_route(monkeypatch, prefs=prefs)
+    _record_identify(monkeypatch, events)
+    if scenario == "refusal_503":
+        _install_fake(monkeypatch, _reply(None, refusal="x"))
+    elif scenario == "none_content_503":
+        _install_fake(monkeypatch, _reply(None))
+    elif scenario == "expiry_503":
+        monkeypatch.setenv(KNOB, "0.05")
+        _install_fake(monkeypatch, _reply("[]"), delay=2.0)
+    elif scenario == "bad_request_500":
+        _raising_client(monkeypatch, _dispatch_error("bad_request"))
+    elif scenario == "length_action_error":
+        _install_fake(monkeypatch, _reply('[{"brand"', finish_reason="length"))
+    elif scenario == "moderation_blocked":
+        _install_fake(monkeypatch, _reply(V01_OBJECT))
+        monkeypatch.setattr(content_safety_service, "get_content_safety_service",
+                            lambda: _BlockingSafety())
+    elif scenario == "zero_products_action_error":
+        _install_fake(monkeypatch, _reply("[]"))
+    else:
+        _install_fake(monkeypatch, _reply(NON_PRODUCT))
+
+    resp = _post_identify(client)
+
+    body = resp.json()
+    if scenario.endswith("_503"):
+        assert resp.status_code == 503, resp.text[:300]
+        assert body.get("code") == "LLM_UNAVAILABLE"
+    elif scenario == "bad_request_500":
+        assert resp.status_code == 500, resp.text[:300]
+        assert body.get("error") == _IMAGE_500_ERROR
+    else:
+        assert resp.status_code == 200, resp.text[:300]
+        expected_action = {
+            "length_action_error": "error",
+            "zero_products_action_error": "error",
+            "moderation_blocked": "need_second_product",
+            "need_second_product": "need_second_product",
+        }[scenario]
+        assert body.get("action") == expected_action, body
+    assert events == ["identify"], events
+    assert prefs.calls == []
+    assert spy.calls == []
+    assert ledger.refunds == ledger.consumes == [authed["id"]]
+
+
+def test_XB1b_delivery_reads_preferences_once_after_identify(monkeypatch, client, authed):
+    """PIN (F3-1 XB1; flag ON, signed in, metering + envelope ON): on the
+    delivery exit the preferences read runs exactly once, AFTER
+    identify_products, and its result reaches the compare."""
+    _full_config(monkeypatch, "true")
+    monkeypatch.setenv(METER, "true")
+    monkeypatch.setenv(ENVELOPE, "true")
+    events = []
+    prefs = _OrderedPrefs(events, PREFS_DONE)
+    ledger, spy, _ = _stub_route(monkeypatch, prefs=prefs)
+    _record_identify(monkeypatch, events)
+    _install_fake(monkeypatch, _reply(V01_OBJECT))
+
+    resp = _post_identify(client)
+
+    assert resp.status_code == 200, resp.text[:300]
+    assert resp.json().get("action") == "comparison"
+    assert events == ["identify", "prefs"], events
+    assert prefs.calls == [authed["id"]]
+    assert len(spy.calls) == 1
+    _args, kwargs = spy.calls[0]
+    assert kwargs.get("user_id") == authed["id"]
+    assert kwargs.get("user_preferences") == PREFS_DONE["preferences"]
+    assert ledger.lifetime == [authed["id"]] and ledger.refunds == []
+
+
+def test_XB2_length_reply_without_content_is_no_content(monkeypatch, caplog):
+    """PIN (F3-1 XB2; flag ON): a finish_reason=length reply whose content is
+    null is a NO-CONTENT reply (LLMUnavailableError + the no-content WARNING),
+    never the length parse-failure dict. Kills the mutant that moves the
+    length check above the no-content check."""
+    caplog.set_level(logging.INFO)
+    _full_config(monkeypatch, "true")
+    _install_fake(monkeypatch, _reply(None, finish_reason="length"))
+
+    result, exc = _identify(2)
+
+    assert isinstance(exc, api_budget_service.LLMUnavailableError), (result, exc)
+    assert [r.getMessage() for r in _msgs(caplog, "[VISION_V2] no content")] == [
+        "[VISION_V2] no content: finish_reason=length refused=False"]
+    assert _msgs(caplog, "[VISION_V2] finish_reason=length") == []
+
+
+def test_XB2b_route_length_reply_without_content_is_coded_503(monkeypatch, client, authed):
+    """PIN (F3-1 XB2, route; flag ON, metering ON): the same reply through the
+    camera route ships the coded 503 LLM_UNAVAILABLE (exit 1: refunded, no
+    compare), not exit 2's 200 action:error."""
+    _full_config(monkeypatch, "true")
+    monkeypatch.setenv(METER, "true")
+    ledger, spy, _prefs = _stub_route(monkeypatch)
+    _install_fake(monkeypatch, _reply(None, finish_reason="length"))
+
+    resp = _post_identify(client)
+
+    assert resp.status_code == 503, resp.text[:300]
+    body = resp.json()
+    assert body.get("code") == "LLM_UNAVAILABLE"
+    assert body.get("error") == LLM_UNAVAILABLE_FRIENDLY_MESSAGE
+    assert "action" not in body
+    assert ledger.refunds == ledger.consumes == [authed["id"]]
+    assert spy.calls == []
+
+
+@pytest.mark.parametrize("flag,n_images", [("true", 1), ("true", 2), ("true", 3), (None, 2)])
+def test_XB3_each_image_encoded_once(monkeypatch, flag, n_images):
+    """PIN (F3-1 XB3; full configuration): identify_products base64-encodes
+    each image exactly once, in order, in both flag states; under ON the V1
+    content build never runs (the flag branch is the FIRST statement). Kills
+    the mutant that moves the flag branch below the V1 content build."""
+    _full_config(monkeypatch, flag)
+    encoded = []
+    real = osvc.encode_image_bytes_to_base64
+
+    def _encode(image_bytes):
+        encoded.append(image_bytes)
+        return real(image_bytes)
+
+    monkeypatch.setattr(osvc, "encode_image_bytes_to_base64", _encode)
+    fake = _install_fake(monkeypatch, _reply("[]"))
+
+    result, exc = _identify(n_images)
+
+    assert exc is None, repr(exc)
+    assert encoded == [img["bytes"] for img in IMG(n_images)]
+    assert len(fake.completions.calls) == 1
+
+
+def test_Y1_v2_reply_logs_cache_telemetry_once(monkeypatch, caplog):
+    """PIN (F3-1 Y1; flag ON): the V2 path keeps the D2 prompt-cache telemetry:
+    _log_cache_telemetry runs exactly once with the reply and the
+    identify_products label, and its [OPENAI_CACHE] line appears. Kills the
+    mutant that drops the call from the V2 path."""
+    caplog.set_level(logging.INFO)
+    _full_config(monkeypatch, "true")
+    seen = []
+    real = osvc._log_cache_telemetry
+
+    def _telemetry(response, call_label="extract"):
+        seen.append((response, call_label))
+        return real(response, call_label)
+
+    monkeypatch.setattr(osvc, "_log_cache_telemetry", _telemetry)
+    reply = _reply(V01_OBJECT)
+    reply.usage.prompt_tokens_details = types.SimpleNamespace(cached_tokens=50)
+    _install_fake(monkeypatch, reply)
+
+    result, exc = _identify(2)
+
+    assert exc is None, repr(exc)
+    assert len(result["products"]) == 2
+    assert len(seen) == 1, seen
+    assert seen[0][0] is reply and seen[0][1] == "identify_products"
+    assert [r.getMessage() for r in _msgs(caplog, "[OPENAI_CACHE]")] == [
+        "[OPENAI_CACHE] identify_products hit 50 cached prompt tokens"]
+
+
+@pytest.mark.parametrize("kind", ["bad_request", "rate_limit"])
+def test_Y2_dispatch_errors_are_not_logged_as_timeouts(monkeypatch, caplog, kind):
+    """PIN (F3-1 Y2; flag ON): a BadRequestError or a 429 from the V2 dispatch
+    propagates as itself and is NOT logged as the bound's expiry. Kills the
+    mutant that widens `except asyncio.TimeoutError` to `except Exception`."""
+    caplog.set_level(logging.INFO)
+    _full_config(monkeypatch, "true")
+    raised = _dispatch_error(kind)
+    calls = _raising_client(monkeypatch, raised)
+
+    result, exc = _identify(2)
+
+    assert exc is raised, repr(exc)
+    assert len(calls) == 1
+    assert [r.getMessage() for r in caplog.records if _TIMED_OUT in r.getMessage()] == []
+
+
+@pytest.mark.parametrize("kind,status,code", [
+    ("bad_request", 500, "SERVER_ERROR"),
+    ("rate_limit", 503, "LLM_UNAVAILABLE"),
+])
+def test_Y2b_route_dispatch_errors_keep_their_classification(
+        monkeypatch, client, authed, caplog, kind, status, code):
+    """PIN (F3-1 Y2, route; flag ON, metering ON): a BadRequestError keeps the
+    non-transient 500 and a 429 the coded 503 LLM_UNAVAILABLE, both refunded,
+    no compare, no preferences read, and neither is logged as timed out."""
+    caplog.set_level(logging.INFO)
+    _full_config(monkeypatch, "true")
+    monkeypatch.setenv(METER, "true")
+    ledger, spy, prefs = _stub_route(monkeypatch, prefs=_Prefs(PREFS_DONE))
+    _raising_client(monkeypatch, _dispatch_error(kind))
+
+    resp = _post_identify(client)
+
+    assert resp.status_code == status, resp.text[:300]
+    body = resp.json()
+    assert body.get("code") == code
+    expected_error = _IMAGE_500_ERROR if status == 500 else LLM_UNAVAILABLE_FRIENDLY_MESSAGE
+    assert body.get("error") == expected_error
+    assert ledger.refunds == ledger.consumes == [authed["id"]]
+    assert spy.calls == [] and prefs.calls == []
+    assert [r.getMessage() for r in caplog.records if _TIMED_OUT in r.getMessage()] == []
+
+
+def test_Y3_refusal_with_string_content_is_no_content(monkeypatch, caplog):
+    """PIN (F3-1 Y3; flag ON): a refusal on a message whose content is a
+    non-empty str (here a parsable two-product object) is still a refusal:
+    LLMUnavailableError, the refused=True WARNING, no counts line and the
+    refusal text never logged. Kills the mutant that honours the refusal only
+    when the content is not a str."""
+    caplog.set_level(logging.INFO)
+    _full_config(monkeypatch, "true")
+    _install_fake(monkeypatch, _reply(V01_OBJECT, refusal="I cannot help with that"))
+
+    result, exc = _identify(2)
+
+    assert isinstance(exc, api_budget_service.LLMUnavailableError), (result, exc)
+    assert [r.getMessage() for r in _msgs(caplog, "[VISION_V2] no content")] == [
+        "[VISION_V2] no content: finish_reason=stop refused=True"]
+    assert _msgs(caplog, "[VISION_V2] candidates=") == []
+    assert all("I cannot help" not in r.getMessage() for r in caplog.records)
+
+
+def test_Z1_Z3_vision_prompt_v2_sha_pinned(monkeypatch):
+    """PIN (F3-1 Z1-Z3, MYEZ-001 core): VISION_PROMPT_V2 is the spec 2.2 block
+    byte for byte (VISION_PROMPT_SHA_ON, measured 2026-10-20) and is the text
+    sent under the flag. Kills deleting the no-invention rule (Z1), numbering
+    the images from 1 (Z2) and a 1-based image_index (Z3)."""
+    prompt = _need(osvc, "VISION_PROMPT_V2")
+    assert hashlib.sha256(prompt.encode("utf-8")).hexdigest() == VISION_PROMPT_SHA_ON
+    _full_config(monkeypatch, "true")
+    fake = _install_fake(monkeypatch, _reply("[]"))
+
+    result, exc = _identify(2)
+
+    assert exc is None, repr(exc)
+    sent = fake.completions.calls[0]["messages"][0]["content"][0]["text"]
+    assert hashlib.sha256(sent.encode("utf-8")).hexdigest() == VISION_PROMPT_SHA_ON
+
+
+@pytest.mark.parametrize("rule", sorted(VISION_PROMPT_V2_RULES))
+def test_Z1_Z3_vision_prompt_v2_rule_substrings(rule):
+    """PIN (F3-1 Z1-Z3): each load-bearing rule of VISION_PROMPT_V2 occurs
+    exactly once, quoted from the constant: the 0-based image_index (Z3), the
+    numbering from 0 (Z2), the no-invention sentence and the low-confidence
+    rule (Z1)."""
+    prompt = _need(osvc, "VISION_PROMPT_V2")
+    assert prompt.count(VISION_PROMPT_V2_RULES[rule]) == 1, rule
