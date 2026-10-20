@@ -157,7 +157,8 @@ def normalize_url_for_same_check(u: Any) -> str:
 
 # Pre-gate path classes beyond price_service's storefront-root / search pair
 # (reused, never copied). PATH-anchored with an optional `xx/` or `xx-yy/` locale
-# segment, re.I; the query string is never read (R-A7 is path-only).
+# segment, re.I; the query string is never read (R-A7 is path-only) except for the
+# product-route exemption of the homepage class below (F2-1).
 _URL_CART_PATH_RE = re.compile(
     r"^/(?:[a-z]{2}(?:-[a-z]{2})?/)?(?:cart|basket|checkouts?)(?:/|$)", re.I,
 )
@@ -172,24 +173,44 @@ _URL_CATEGORY_PATH_RE = re.compile(
 # A product segment anywhere in the path vetoes the category class
 # (`/collections/men/products/sauvage` is a Shopify PDP).
 _URL_PRODUCT_SEGMENT_RE = re.compile(r"/(?:products?|p|dp|item)/|/-/p", re.I)
+# RULINGS_FIX2_B4 F2-1: the one exception to "the query is never read". A root or
+# /index.* path whose query names a PRODUCT ROUTE is not the homepage (OpenCart
+# index.php?route=product/product&product_id=N, PrestaShop id_product, WooCommerce
+# /?product=<slug>). Keys compared case-insensitively; an explicit allow-list, never
+# "any non-empty query" (tracking-only queries stay homepage). A bare `p` (a
+# WordPress post id) is deliberately absent.
+_PRODUCT_ROUTE_QUERY_KEYS = frozenset({"product_id", "id_product", "product"})
+
+
+def _query_names_a_product_route(query: str) -> bool:
+    """True when the query carries a product-route marker (F2-1 allow-list)."""
+    for key, values in parse_qs(query, keep_blank_values=True).items():
+        k = key.lower()
+        if k in _PRODUCT_ROUTE_QUERY_KEYS:
+            return True
+        if k == "route" and any(v.startswith("product/") for v in values):
+            return True
+    return False
 
 
 def classify_url_path(u: Any) -> Optional[str]:
     """'homepage' | 'search' | 'cart' | 'account' | 'category' for a link whose
-    PATH is a storefront page, else None (the query is ignored). Checkout routes
-    are the 'cart' class. A falsy, non-str or malformed link is None (GC-4: the
-    route only ever passes the pydantic str fields)."""
+    PATH is a storefront page, else None (the query is ignored, except that a root
+    or /index.* path whose query names a product route is not the homepage, F2-1).
+    Checkout routes are the 'cart' class. A falsy, non-str or malformed link is
+    None (GC-4: the route only ever passes the pydantic str fields)."""
     if not isinstance(u, str) or not u:
         return None
     try:
-        path = urlsplit(u).path
+        parts = urlsplit(u)
     except ValueError:
         return None
+    path = parts.path
     from app.services.price_service import (
         _NOT_A_PDP_HOME_PATH_RE,
         _NOT_A_PDP_SEARCH_PATH_RE,
     )
-    if _NOT_A_PDP_HOME_PATH_RE.match(path):
+    if _NOT_A_PDP_HOME_PATH_RE.match(path) and not _query_names_a_product_route(parts.query):
         return "homepage"
     if _NOT_A_PDP_SEARCH_PATH_RE.match(path):
         return "search"
@@ -202,13 +223,50 @@ def classify_url_path(u: Any) -> Optional[str]:
     return None
 
 
-# The first <title> of a page, read with a bounded regex (no soup: the v2 fetch
-# outcome is decided in an `async def`, ruling B4-R2).
-_V2_TITLE_RE = re.compile(r"<title(?:\s[^>]*)?>(.*?)</title\s*>", re.I | re.S)
+# The first <title> of a page, read with str.find only (no soup: the v2 fetch
+# outcome is decided in an `async def`, ruling B4-R2; no regex: a lazy group over
+# the window was quadratic on a crafted '<title ' flood, RULINGS_FIX2_B4 F2-2).
+_V2_TITLE_WINDOW = 65536
+_V2_TITLE_MAX_CHARS = 1024  # the text read after an opener with no close tag
+_V2_ASCII_LOWER = str.maketrans(string.ascii_uppercase, string.ascii_lowercase)
 _V2_CHALLENGE_TITLE_PREFIXES = (
     "just a moment", "attention required", "access denied", "checking your browser",
     "please verify you are a human", "verify you are human", "enable javascript and cookies",
 )
+
+
+def _v2_first_title(html: str) -> Optional[str]:
+    """The text of the FIRST <title> element in html[:65536] (opener matched
+    ASCII-case-insensitively, followed by '>' or whitespace, attributes allowed),
+    up to the first '</title' followed by optional whitespace and '>'; with no
+    such close tag, at most _V2_TITLE_MAX_CHARS characters after the opener.
+    None when there is no opener or the opener never ends with '>'. Linear: one
+    pass of str.find per search (the translate keeps every index)."""
+    window = html[:_V2_TITLE_WINDOW]
+    lower = window.translate(_V2_ASCII_LOWER)
+    start = 0
+    while True:
+        i = lower.find("<title", start)
+        if i < 0:
+            return None
+        j = i + 6
+        if j < len(lower) and (lower[j] == ">" or lower[j].isspace()):
+            break
+        start = j
+    gt = lower.find(">", j)
+    if gt < 0:
+        return None
+    pos = gt + 1
+    while True:
+        end = lower.find("</title", pos)
+        if end < 0:
+            return window[gt + 1:gt + 1 + _V2_TITLE_MAX_CHARS]
+        k = end + 7
+        while k < len(lower) and lower[k].isspace():
+            k += 1
+        if k < len(lower) and lower[k] == ">":
+            return window[gt + 1:end]
+        pos = k
 
 
 def _is_challenge_page(html: Any) -> bool:
@@ -216,10 +274,10 @@ def _is_challenge_page(html: Any) -> bool:
     body substring: 'Access denied' in a reviews widget is not a wall)."""
     if not isinstance(html, str):
         return False
-    match = _V2_TITLE_RE.search(html[:65536])
-    if not match:
+    title = _v2_first_title(html)
+    if title is None:
         return False
-    return match.group(1).strip().casefold().startswith(_V2_CHALLENGE_TITLE_PREFIXES)
+    return title.strip().casefold().startswith(_V2_CHALLENGE_TITLE_PREFIXES)
 
 
 _ASCII_PUNCTUATION = str.maketrans("", "", string.punctuation)
@@ -688,8 +746,13 @@ def extract_generic_data_v2(html: str, url: str, final_url: Optional[str] = None
             data["review_count"] = rating.get("reviewCount")
 
     meta = extract_meta_tags(html)
-    if "title" not in data:
-        data["title"] = meta.get("og_title") or meta.get("page_title")
+    site_names = _v2_site_names(json_ld, meta)
+    meta_title = meta.get("og_title") or meta.get("page_title")
+    # F2-5 (RULINGS_FIX2_B4): a Product node whose name is missing or unusable takes
+    # a usable meta title (decided on the value, not on key presence).
+    if "title" not in data or (not is_usable_title(data.get("title"), site_names)
+                               and is_usable_title(meta_title, site_names)):
+        data["title"] = meta_title
     if "description" not in data:
         data["description"] = meta.get("og_description") or meta.get("description")
     if not data.get("image_url"):
@@ -701,7 +764,7 @@ def extract_generic_data_v2(html: str, url: str, final_url: Optional[str] = None
             pass
 
     data["_v2_product_node"] = bool(nodes)
-    data["_v2_site_names"] = _v2_site_names(json_ld, meta)
+    data["_v2_site_names"] = site_names
     return data
 
 
@@ -898,8 +961,9 @@ async def _extract_from_url_v2(url: str) -> Dict[str, Any]:
     (e) missing title or price -> the V2 extraction prompt; `is_product_page: false`
         refuses (`not_product_page`) only when no Product node was found
         (ruling B4-R1: a node-bearing page is never refused on the LLM's word);
-    (f) the title must be usable (`null_name` otherwise), else the product is
-        normalised with its image as ONE https url string or None."""
+    (f) the title must be usable (`null_name` otherwise), an unusable merged name
+        gives way to it (F2-5), and the product is normalised with its image as
+        ONE https url string or None."""
     retailer = detect_retailer(url)
     logger.info("Detected retailer: %s for host %s", _retailer_log_name(retailer), _host_only(url))
 
@@ -960,6 +1024,10 @@ async def _extract_from_url_v2(url: str) -> Dict[str, Any]:
     title = raw_data.get("title") or raw_data.get("full_title")
     if not is_usable_title(title, site_names):
         return _v2_refusal(url, "UNRESOLVED_PRODUCT", "null_name", "unresolved", status)
+    # F2-5 (RULINGS_FIX2_B4): an unusable merged name (a placeholder, the site's own
+    # name, a non-str) never ships; the usable title above takes its place.
+    if not is_usable_title(raw_data.get("name"), site_names):
+        raw_data["name"] = None
 
     normalized = normalize_product_data(raw_data, retailer, url, url_mode_v2=True,
                                         final_url=final_url)

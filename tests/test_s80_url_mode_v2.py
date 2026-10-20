@@ -1588,3 +1588,489 @@ def test_normaliser_coerces_a_raw_image_list_flag_on(monkeypatch):
             assert len(h.llm_calls) == (0 if llm is None else 1), (case, parse_flag, h.llm_calls)
             seen[(case, parse_flag)] = value
     assert len(seen) == 2 * len(_NORMALISER_IMAGE_CASES), seen
+
+
+# ===========================================================================
+# Fix round 2 (RULINGS_FIX2_B4): F2-1 a query-routed PDP is not the homepage,
+# F2-2 the linear challenge-title scan, F2-4 contract pins, F2-5 no placeholder
+# product name. RED rows fail at 96676f1f on an AssertionError only; PIN rows
+# are green there and are proven by the mutant named in their docstring.
+# ===========================================================================
+_OC_PDP = "https://www.b4opencart.example.test/index.php?route=product/product&product_id=1262"
+_OC_ROOT_PDP = "https://www.b4opencart2.example.test/?route=product/product&product_id=4154"
+_PS_PDP = "https://www.b4presta.example.test/index.php?id_product=12&controller=product"
+_WC_PDP = "https://www.b4woo.example.test/?product=b4-probe-oud-edp"
+_QR_NAMES = {
+    _OC_PDP: "B4 Probe Oud 100ml",
+    _OC_ROOT_PDP: "B4 Probe Amber 50ml",
+    _PS_PDP: "B4 Probe Musk 75ml",
+    _WC_PDP: "B4 Probe Oud EDP 90ml",
+}
+_QR_PAGES = {url: ok(_page(name + " - Store", [_product(name, price="12.5")]))
+             for url, name in _QR_NAMES.items()}
+
+F2_1_PRODUCT_ROUTE_ROWS = [
+    "/index.php?route=product/product&product_id=1262",
+    "/?route=product/product&product_id=4154",
+    "/index.php?route=product/product&path=20&product_id=5313",
+    "/index.php?route=product/product",
+    "/index.php?product_id=2058",
+    "/index.php?id_product=12&controller=product",
+    "/?product=b4-probe-oud-edp",
+    "/index.html?product=b4-probe-oud-edp",
+    "/en/?product=b4-probe-oud-edp",
+    "/index.php?PRODUCT_ID=7",
+    "/index.php?Id_Product=12",
+    "/?ROUTE=product/product",
+    "/?gclid=x&product_id=9",
+]
+
+F2_1_STILL_HOMEPAGE_ROWS = [
+    "/?gclid=x", "/?gbraid=x", "/?utm_source=x", "/?fbclid=x", "/index.php", "/index.php?",
+    "/?p=123",  # stated limit F2-6d: a bare WordPress `p` id is not in the allow-list
+    "/index.php?route=common/home", "/?routes=product/x", "/?product_ids=1",
+    "/?utm_content=product_id", "/?ref=product",
+]
+
+
+@pytest.mark.parametrize("path", F2_1_PRODUCT_ROUTE_ROWS)
+def test_classify_url_path_product_route_query_is_not_homepage(path):
+    """RED (F2-1, adversary M1): a root or /index.* path whose QUERY names a
+    product route (OpenCart route=product/... or product_id, PrestaShop
+    id_product, WooCommerce product; keys case-insensitive) is not the
+    homepage. At 96676f1f the path alone decides: 'homepage'."""
+    classify = _fn(ues, "classify_url_path")
+    assert classify("https://shop.example.test" + path) is None, path
+
+
+@pytest.mark.parametrize("path", F2_1_STILL_HOMEPAGE_ROWS)
+def test_classify_url_path_tracking_query_stays_homepage(path):
+    """PIN (F2-1 guard; kills a blanket 'any non-empty query is not the
+    homepage' exemption and a substring match on 'product' anywhere in the
+    query): tracking-only and non-product queries keep the homepage class."""
+    classify = _fn(ues, "classify_url_path")
+    assert classify("https://shop.example.test" + path) == "homepage", path
+
+
+@pytest.mark.parametrize("pair", [(_OC_PDP, _OC_ROOT_PDP), (_PS_PDP, _OC_PDP), (_WC_PDP, _OC_PDP)],
+                         ids=["opencart-opencart", "prestashop-opencart", "woocommerce-opencart"])
+@pytest.mark.parametrize("verb", VERBS)
+def test_query_routed_pdp_pair_delivers_flag_on(monkeypatch, client, verb, pair):
+    """RED (F2-1, adversary M1, the pre-gate site): two query-routed product
+    pages (OpenCart / PrestaShop / WooCommerce shapes on a root or /index.php
+    path) pass the pre-gate, are fetched and DELIVER (flag ON, full config).
+    At 96676f1f: 400 NOT_PRODUCT_PAGE homepage before any fetch."""
+    h = _full(monkeypatch, H(), pages=_QR_PAGES)
+    r = _call(client, verb, *pair)
+    assert r.status_code == 200, (r.status_code, r.json())
+    body = r.json()
+    assert body.get("success") is True, body
+    assert [p["name"] for p in body["products"]] == [_QR_NAMES[pair[0]], _QR_NAMES[pair[1]]], body
+    assert sorted(h.pages.fetched) == sorted(pair), h.pages.fetched
+    assert h.events[:3] == ["ssrf", "ssrf", "pregate"], h.events
+    uid = h.user["id"]
+    assert h.ledger.consumes == [uid] and h.ledger.refunds == [], (h.ledger.consumes, h.ledger.refunds)
+    assert h.ledger.lifetime == [uid] and h.ledger.history == ["url"], (h.ledger.lifetime,
+                                                                          h.ledger.history)
+
+
+_OC_START = "https://www.b4opencart.example.test/b4-probe-oud-100ml"
+
+
+@pytest.mark.parametrize("verb", VERBS)
+def test_redirect_to_query_routed_pdp_is_not_refused_post_fetch(monkeypatch, client, verb):
+    """RED (F2-1, the post-fetch site, the GC-2 reuse): a link redirecting to an
+    OpenCart query-routed PDP at /index.php is not refused on its FINAL url; the
+    pair delivers. At 96676f1f: 400 NOT_PRODUCT_PAGE homepage after the fetch."""
+    pages = dict(_QR_PAGES)
+    pages[_OC_START] = redirect(_OC_PDP, 301)
+    pages[FX_PDP] = ok(PDP)
+    h = _full(monkeypatch, H(), pages=pages)
+    r = _call(client, verb, _OC_START, FX_PDP)
+    assert r.status_code == 200, (r.status_code, r.json())
+    body = r.json()
+    assert body.get("success") is True, body
+    assert body["products"][0]["name"] == _QR_NAMES[_OC_PDP], body
+    assert sorted(h.pages.fetched) == sorted([_OC_START, _OC_PDP, FX_PDP]), h.pages.fetched
+
+
+@pytest.mark.parametrize("verb", VERBS)
+def test_redirect_to_tracking_root_is_still_homepage_post_fetch(monkeypatch, client, verb):
+    """PIN (F2-1 guard at the post-fetch site; kills the blanket-query
+    exemption): a redirect ending on the storefront root with a tracking-only
+    query is still NOT_PRODUCT_PAGE / homepage, refunded once."""
+    root = "https://www.fragrancex.com/?utm_source=b4"
+    h = _full(monkeypatch, H(), pages={FX_PDP2: redirect(root), root: ok(STOREFRONT), FX_PDP: ok(PDP)})
+    r = _call(client, verb, FX_PDP2, FX_PDP)
+    assert r.status_code == 400, r.json()
+    assert _strip_rid(r.json()) == _refusal("NOT_PRODUCT_PAGE", NPP_MSG, "url1", "homepage")
+    _assert_non_delivery(h)
+
+
+# F2-2: about 66 KB of '<title ' openers with no close tag (the engineering
+# adversary's probe-1 page): the regex retried the lazy group from every opener.
+_TITLE_FLOOD_NO_GT = "<html><head><title " + "<title " * 9400 + "></head><body>b4</body></html>"
+_TITLE_FLOOD_GT_NO_CLOSE = "<html><head><title " + "<title " * 9000 + "></head><body>b4</body></html>"
+
+
+@pytest.mark.parametrize("page", [_TITLE_FLOOD_NO_GT, _TITLE_FLOOD_GT_NO_CLOSE],
+                         ids=["no-gt-in-window", "gt-no-close"])
+def test_challenge_title_scan_is_linear(page):
+    """RED (F2-2, adversary E1): the challenge check over a crafted title flood
+    returns the right verdict (not a challenge) within a LENIENT 500 ms (the
+    linear scan is about 1 ms; the quadratic regex at 96676f1f took about
+    2.5 s on this box, on the event loop)."""
+    is_challenge = _fn(ues, "_is_challenge_page")
+    assert 60000 < len(page) < 70000, len(page)
+    started = time.perf_counter()
+    verdict = is_challenge(page)
+    elapsed = time.perf_counter() - started
+    assert verdict is False, verdict
+    assert elapsed < 0.5, f"_is_challenge_page took {elapsed * 1000:.0f} ms on {len(page)} bytes"
+
+
+_CHALLENGE_TITLE_CASES = [
+    ("<html><head><title>Just a moment...</title></head><body></body></html>", True),
+    ("<HTML><HEAD><TITLE>Attention Required! | Cloudflare</TITLE></HEAD></HTML>", True),
+    ('<html><head><title data-rh="true" lang="en">Access denied</title></head></html>', True),
+    ("<html><head><title>   Checking your browser before accessing the site   </title ></head></html>",
+     True),
+    ("<html><head><Title>Please verify you are a human</Title></head></html>", True),
+    ("<html><head><title>Dior Sauvage EDT 100ml</title></head><body>Just a moment...</body></html>",
+     False),
+    ("<html><head><title>B4 Shop</title></head><body><svg><title>Just a moment</title></svg></body>"
+     "</html>", False),
+    ("<html><head><titles>Just a moment</titles></head></html>", False),
+    ("<html><head></head><body><h1>Access denied</h1></body></html>", False),
+    ("", False),
+]
+
+
+@pytest.mark.parametrize("html,expected", _CHALLENGE_TITLE_CASES)
+def test_challenge_title_verdicts_preserved(html, expected):
+    """PIN (F2-2, behaviour preserved; kills a case-sensitive opener, an opener
+    that refuses attributes and a scan of a later title): the FIRST <title> of
+    the page decides, case-insensitive, attributes allowed, the close tag may
+    carry whitespace; a body text or a later <svg><title> never decides."""
+    is_challenge = _fn(ues, "_is_challenge_page")
+    assert is_challenge(html) is expected, html
+    assert is_challenge(None) is False
+
+
+def test_challenge_title_without_a_close_tag_is_read_to_a_bound():
+    """RED (F2-2, the ruled shape): with no close tag the first title's text is
+    read up to a fixed bound, so an unclosed challenge title is still a
+    challenge and an unclosed product title is not. At 96676f1f the regex read
+    an unclosed title as no title at all (never a challenge)."""
+    is_challenge = _fn(ues, "_is_challenge_page")
+    assert is_challenge("<html><head><title>Just a moment...") is True
+    assert is_challenge("<html><head><title>Dior Sauvage EDT 100ml") is False
+
+
+# F2-4a: a pasted link carrying userinfo, a path token and a query token (all
+# built at run time, no credential literal), driven through every unreadable
+# outcome of the v2 fetch.
+_HYG_SECRET = "pw" + "b4q7x"
+_HYG_USER = "ub4" + "tok"
+_HYG_PATHTOK = "pathtok" + "b4p"
+_HYG_QTOK = "qtok" + "b4q"
+_HYG_HOST = "www.b4hyg.example.test"
+_HYG_TOKENS = (_HYG_SECRET, _HYG_USER, _HYG_PATHTOK, _HYG_QTOK)
+_HYG_CASES = {"blocked_initial": "blocked", "blocked_hop": "blocked", "redirect_cap": "redirect_cap",
+              "non_2xx": "http_403", "challenge": "challenge", "transport": "fetch_error"}
+
+
+def _hyg_link(host=_HYG_HOST):
+    return ("https://" + _HYG_USER + ":" + _HYG_SECRET + "@" + host + ":8443/products/"
+            + _HYG_PATHTOK + "?ref=" + _HYG_QTOK)
+
+
+def _install_transport(monkeypatch, handler):
+    transport = httpx.MockTransport(handler)
+
+    def factory(*a, **kw):
+        if kw.get("transport") is None:
+            kw["transport"] = transport
+        return _REAL_ASYNC_CLIENT(*a, **kw)
+
+    monkeypatch.setattr(ues.httpx, "AsyncClient", factory)
+    monkeypatch.setattr(ues, "_TRANSPORT", transport, raising=False)
+
+
+def _hyg_handler(kind):
+    def handler(request):
+        if kind == "transport":
+            raise httpx.ConnectError("b4 probe " + str(request.url), request=request)
+        if kind == "blocked_hop":
+            return httpx.Response(302, headers={
+                "location": "http://169.254.169.254/latest/" + _HYG_PATHTOK + "?x=" + _HYG_QTOK})
+        if kind == "redirect_cap":
+            return httpx.Response(302, headers={"location": str(request.url) + "x"})
+        if kind == "non_2xx":
+            return httpx.Response(403, text=FORBIDDEN)
+        if kind == "challenge":
+            return httpx.Response(200, text=CHALLENGE)
+        return httpx.Response(200, text=PDP2)
+    return handler
+
+
+@pytest.mark.parametrize("case", sorted(_HYG_CASES))
+def test_v2_fetch_log_records_carry_the_host_only(monkeypatch, caplog, case):
+    """PIN (F2-4a; kills P2 the blocked-redirect line printing the target, S3
+    _log_fetch_failed printing the url, S5 _host_only returning the netloc, S8
+    the blocked-initial line printing the url, S9 the redirect-cap line printing
+    the url): every record of every logger (root at DEBUG) over the blocked
+    initial url, the blocked hop, the redirect cap, a non-2xx, a challenge page
+    and a transport error carries no userinfo, path token or query token, and
+    the ONE '[URL-V2] fetch failed' record names the host only."""
+    _assert_kwarg(ues.extract_from_url, "url_mode_v2")
+    h = H()
+    _install_transport(monkeypatch, _hyg_handler(case))
+    _ssrf(monkeypatch, h, deny=(("b4hyg",) if case == "blocked_initial" else ("169.254",)))
+    _llm(monkeypatch, h, boom=True)
+    caplog.set_level(logging.DEBUG)
+    link = _hyg_link()
+    result = _run(ues.extract_from_url(link, url_mode_v2=True))
+    reason = _HYG_CASES[case]
+    assert result == {"success": False, "code": "STORE_UNREADABLE", "reason": reason, "url": link,
+                      "error": SU_MSG}, result
+    messages = [rec.getMessage() for rec in caplog.records]
+    leaks = [m for m in messages if any(tok in m for tok in _HYG_TOKENS)]
+    assert leaks == [], leaks
+    failed = [m for m in messages if m.startswith("[URL-V2] fetch failed ")]
+    want_type = "ConnectError" if case == "transport" else "None"
+    assert failed == [f"[URL-V2] fetch failed host={_HYG_HOST} reason={reason} type={want_type}"], failed
+    assert h.llm_calls == []
+
+
+def test_webpage_name_is_not_a_site_name(monkeypatch):
+    """PIN (F2-4b, D2; kills P1 WebPage counted among the site names): a WebPage
+    node names the page, not the site; a page whose only structured node is a
+    WebPage named like its <title> is a valid PDP (the LLM fills the price) and
+    is delivered with name == the title."""
+    site_names_of = _fn(ues, "_v2_site_names")
+    title = "B4 Probe Amber Oud 50ml"
+    webpage = {"@context": "https://schema.org", "@type": "WebPage", "name": title}
+    assert site_names_of([webpage], {}) == set()
+    graph = {"@context": "https://schema.org", "@graph": [
+        {"@type": "Organization", "name": "B4 Probe Store"},
+        {"@type": ["WebPage", "ItemPage"], "name": title}]}
+    assert site_names_of([graph], {}) == {"b4 probe store"}
+    url = "https://www.b4amber.example.test/amber-oud-50ml"
+    h = H()
+    _serve(monkeypatch, h, {url: ok(_page(title, [webpage]))})
+    _ssrf(monkeypatch, h)
+    _llm(monkeypatch, h, content=json.dumps({"is_product_page": True, "price": 12.5,
+                                             "currency": "BHD"}))
+    result = _run(ues.extract_from_url(url, url_mode_v2=True))
+    assert result.get("success") is True, result
+    assert result["product"]["name"] == title, result
+    assert len(h.llm_calls) == 1, h.llm_calls
+
+
+@pytest.mark.parametrize("v2", [False, True], ids=["base-path", "v2-path"])
+def test_detected_retailer_label_is_a_supported_name_or_unknown(monkeypatch, caplog, v2):
+    """PIN (F2-4c, D4; kills P3 the label taken from the raw netloc): the
+    'Detected retailer' INFO label is a SUPPORTED_RETAILERS display name or
+    'unknown', never the netloc (a pasted link with userinfo and a port), on
+    the base path and on the v2 path; the host is the hostname only."""
+    unknown = "https://" + _HYG_USER + ":" + _HYG_SECRET + "@www.b4label.example.test:8443/products/b4"
+    known = "https://www.amazon.ae/b4-probe-parfum/dp/B0B4PROBE2"
+    h = H()
+    _serve(monkeypatch, h, default=ok(PDP2))
+    _ssrf(monkeypatch, h)
+    _llm(monkeypatch, h)
+    caplog.set_level(logging.INFO)
+    for url in (unknown, known):
+        _run(ues.extract_from_url(url, url_mode_v2=True) if v2 else ues.extract_from_url(url))
+    lines = [m for m in _messages(caplog, "app.services.url_extraction_service", logging.INFO)
+             if m.startswith("Detected retailer")]
+    assert lines == ["Detected retailer: unknown for host www.b4label.example.test",
+                     "Detected retailer: Amazon UAE for host www.amazon.ae"], lines
+
+
+def test_fetch_page_v2_redirect_bound_is_five_requests(monkeypatch):
+    """PIN (F2-4d; kills S01 range(6) and its range(4) twin): the v2 fetch makes
+    at most FIVE requests, as fetch_page does: four redirect hops are followed
+    to a page served on the fifth request; a fifth redirect is refused as
+    redirect_cap after exactly five requests (the sixth url never requested)."""
+    fetch_v2 = _fn(ues, "_fetch_page_v2")
+    chain = [f"https://x.example.test/hop/{i}" for i in range(8)]
+    h = H()
+    pages = {chain[i]: redirect(chain[i + 1]) for i in range(4)}
+    pages[chain[4]] = ok("<html>fifth</html>")
+    _serve(monkeypatch, h, pages)
+    _ssrf(monkeypatch, h)
+    res = _run(fetch_v2(chain[0]))
+    assert (res["outcome"], res["status"], res["final_url"]) == ("ok", 200, chain[4]), res
+    assert h.pages.fetched == chain[:5], h.pages.fetched
+    h = H()
+    _serve(monkeypatch, h, {chain[i]: redirect(chain[i + 1]) for i in range(7)},
+           default=ok("<html>never</html>"))
+    _ssrf(monkeypatch, h)
+    res = _run(fetch_v2(chain[0]))
+    assert (res["outcome"], res["text"], res["final_url"]) == ("redirect_cap", None, chain[5]), res
+    assert h.pages.fetched == chain[:5], h.pages.fetched
+
+
+@pytest.mark.parametrize("target,reason", [
+    ("https://www.b4gc2.example.test/search?q=oud", "search"),
+    ("https://www.b4gc2.example.test/cart", "cart"),
+    ("https://www.b4gc2.example.test/checkout", "cart"),
+    ("https://www.b4gc2.example.test/account/login", "account"),
+    ("https://www.b4gc2.example.test/collections/oud", "category"),
+], ids=["search", "cart", "checkout", "account", "category"])
+def test_post_fetch_final_url_in_any_pregate_class_is_not_product_page(monkeypatch, target, reason):
+    """PIN (F2-4e, GC-2; kills S02 the post-fetch check refusing 'homepage'
+    only): a redirect ending on a search / cart / checkout / account / category
+    route is NOT_PRODUCT_PAGE with that class as the reason (checkout is the
+    cart class), with no LLM call."""
+    start = "https://www.b4gc2.example.test/b4-probe-oud-100ml"
+    h = H()
+    _serve(monkeypatch, h, {start: redirect(target), target: ok(STOREFRONT)})
+    _ssrf(monkeypatch, h)
+    _llm(monkeypatch, h)
+    result = _run(ues.extract_from_url(start, url_mode_v2=True))
+    assert result == {"success": False, "code": "NOT_PRODUCT_PAGE", "reason": reason, "url": start,
+                      "error": NPP_MSG}, result
+    assert h.pages.fetched == [start, target], h.pages.fetched
+    assert h.llm_calls == []
+
+
+@pytest.mark.parametrize("statuses,reason", [((403, 404), "http_403"), ((404, 403), "http_4xx")],
+                         ids=["403-then-404", "404-then-403"])
+@pytest.mark.parametrize("verb", VERBS)
+def test_pair_reason_is_the_first_failing_links(monkeypatch, client, verb, statuses, reason):
+    """PIN (F2-4f, S03): both links fail with the SAME code and different
+    reasons: field both, the reason of url1 (the first failing link carrying the
+    chosen code), whichever order."""
+    _full(monkeypatch, H(), pages={FX_PDP2: status(statuses[0]), FX_PDP: status(statuses[1])})
+    r = _call(client, verb, FX_PDP2, FX_PDP)
+    assert r.status_code == 400, r.json()
+    assert _strip_rid(r.json()) == _refusal("STORE_UNREADABLE", SU_MSG, "both", reason)
+
+
+_FIRST = _product("B4 First Oud", image=_IMG + "first.jpg", price="11")
+_SECOND = _product("B4 Second Oud", image=_IMG + "second.jpg", price="22")
+
+
+@pytest.mark.parametrize("blocks", [
+    [_FIRST, _SECOND],
+    [{"@context": "https://schema.org", "@graph": [_FIRST, _SECOND]}],
+], ids=["two-blocks", "graph"])
+def test_first_product_node_in_document_order_wins(monkeypatch, blocks):
+    """PIN (F2-4f, S10): with two Product nodes the FIRST in document order
+    gives the name, the price and the image."""
+    url = "https://shop.example.test/p/two-nodes"
+    h = H()
+    _serve(monkeypatch, h, {url: ok(_page("B4 Oud Pair - Shop", blocks))})
+    _ssrf(monkeypatch, h)
+    _llm(monkeypatch, h)
+    result = _run(ues.extract_from_url(url, url_mode_v2=True))
+    assert result.get("success") is True, result
+    product = result["product"]
+    assert (product["name"], product["price"]["amount"], product["image_url"]) == (
+        "B4 First Oud", "11", _IMG + "first.jpg"), product
+    assert h.llm_calls == []
+
+
+# F2-5: no placeholder product name under ON (is_usable_title on the merged name).
+_HAWAS_TITLE = "Rasasi Hawas Ice"
+
+
+def test_nameless_node_without_price_falls_back_to_the_title(monkeypatch):
+    """RED (F2-5, adversary minor 3): a Product node with no name and no price,
+    a usable <title> / og:title, and an LLM answer whose name is null: the
+    meta-title fallback is decided on the unusable node name (not on key
+    presence) and the product is delivered with name == the title. At
+    96676f1f: UNRESOLVED_PRODUCT null_name."""
+    _assert_kwarg(ues.extract_from_url, "url_mode_v2")
+    h = H()
+    page = _page(_HAWAS_TITLE, [_product(name=None, price=None)], og={"title": _HAWAS_TITLE})
+    _serve(monkeypatch, h, {_HAWAS: ok(page)})
+    _ssrf(monkeypatch, h)
+    _llm(monkeypatch, h, content=json.dumps({"is_product_page": True, "name": None, "price": 10.5,
+                                             "currency": "SAR"}))
+    result = _run(ues.extract_from_url(_HAWAS, url_mode_v2=True))
+    assert result.get("success") is True, result
+    assert (result["product"]["name"], result["product"]["full_name"]) == (_HAWAS_TITLE,
+                                                                           _HAWAS_TITLE), result
+    assert len(h.llm_calls) == 1, h.llm_calls
+
+
+@pytest.mark.parametrize("llm_name", ["Unknown Product", "Unknown", "N/A", "Product", "Rasasi"])
+def test_placeholder_llm_name_never_ships_flag_on(monkeypatch, llm_name):
+    """RED (F2-5, adversary minor 4): a page with a usable title, no Product
+    node and no price, whose LLM answer carries a placeholder name (or the
+    site's own name, og:site_name): the usable title wins; the delivered name is
+    never the placeholder. At 96676f1f: delivered with the placeholder name."""
+    _assert_kwarg(ues.extract_from_url, "url_mode_v2")
+    h = H()
+    page = _page(_HAWAS_TITLE, og={"title": _HAWAS_TITLE, "site_name": "Rasasi"})
+    _serve(monkeypatch, h, {_HAWAS: ok(page)})
+    _ssrf(monkeypatch, h)
+    _llm(monkeypatch, h, content=json.dumps({"is_product_page": True, "name": llm_name,
+                                             "price": 10.5, "currency": "SAR"}))
+    result = _run(ues.extract_from_url(_HAWAS, url_mode_v2=True))
+    assert result.get("success") is True, result
+    assert result["product"]["name"] == _HAWAS_TITLE, (llm_name, result["product"]["name"])
+    assert result["product"]["full_name"] == _HAWAS_TITLE, result
+
+
+def test_placeholder_llm_name_with_a_usable_llm_full_title(monkeypatch):
+    """RED (F2-5): an empty <title>, a nameless priceless Product node and an LLM
+    answer with name 'N/A' and a usable full_title: the delivered name is the
+    full title, never 'N/A'. At 96676f1f: delivered with name 'N/A'."""
+    _assert_kwarg(ues.extract_from_url, "url_mode_v2")
+    h = H()
+    _serve(monkeypatch, h, {_HAWAS: ok(_page("", [_product(name=None, price=None)]))})
+    _ssrf(monkeypatch, h)
+    _llm(monkeypatch, h, content=json.dumps({"is_product_page": True, "name": "N/A",
+                                             "full_title": _HAWAS_TITLE, "price": 10.5}))
+    result = _run(ues.extract_from_url(_HAWAS, url_mode_v2=True))
+    assert result.get("success") is True, result
+    assert result["product"]["name"] == _HAWAS_TITLE, result
+
+
+@pytest.mark.parametrize("meta", ["title_tag", "og_title"])
+def test_nameless_node_with_price_uses_the_meta_title_without_the_llm(monkeypatch, meta):
+    """RED (F2-5, adversary minor 3): a Product node with a price and no name and
+    a usable <title> (or og:title alone), the LLM offline: the meta title is
+    the name, delivered at $0 (no LLM call). At 96676f1f: the node's missing
+    name skipped the meta fallback on key presence, the LLM was consulted and
+    the page resolved to UNRESOLVED_PRODUCT null_name."""
+    _assert_kwarg(ues.extract_from_url, "url_mode_v2")
+    h = H()
+    node = _product(name=None, price="10.5")
+    if meta == "title_tag":
+        page = _page(_HAWAS_TITLE, [node])
+    else:
+        page = _page("", [node], og={"title": _HAWAS_TITLE})
+    _serve(monkeypatch, h, {_HAWAS: ok(page)})
+    _ssrf(monkeypatch, h)
+    _llm(monkeypatch, h, boom=True)
+    result = _run(ues.extract_from_url(_HAWAS, url_mode_v2=True))
+    assert result.get("success") is True, result
+    assert result["product"]["name"] == _HAWAS_TITLE, result
+    assert h.llm_calls == [], h.llm_calls
+
+
+@pytest.mark.parametrize("answer", [
+    {"name": "Unknown Product"}, {"name": "Product"}, {"name": "N/A", "full_title": "Unknown"},
+    {"name": "Rasasi", "full_title": "Rasasi"},
+], ids=["unknown-product", "product", "na-unknown", "site-name"])
+def test_no_usable_title_and_placeholder_name_is_unresolved(monkeypatch, answer):
+    """PIN (F2-5 guard; kills a fix that delivers the merged name when no usable
+    title exists, e.g. the null_name refusal dropped): an empty <title>, a
+    nameless priceless Product node and an LLM answer whose name (and full
+    title) is a placeholder or the site's own name: UNRESOLVED_PRODUCT /
+    null_name, never a delivered placeholder."""
+    _assert_kwarg(ues.extract_from_url, "url_mode_v2")
+    h = H()
+    page = _page("", [_product(name=None, price=None)], og={"site_name": "Rasasi"})
+    _serve(monkeypatch, h, {_HAWAS: ok(page)})
+    _ssrf(monkeypatch, h)
+    _llm(monkeypatch, h, content=json.dumps(dict(answer, is_product_page=True, price=10.5)))
+    result = _run(ues.extract_from_url(_HAWAS, url_mode_v2=True))
+    assert result == _unresolved(_HAWAS, "null_name"), result
+    assert "Unknown Product" not in json.dumps(result)
