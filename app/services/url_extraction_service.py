@@ -9,9 +9,10 @@ import os
 import re
 import json
 import logging
+import string
 import httpx
 from typing import Optional, Dict, Any, List, Tuple
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse, parse_qs, urljoin, urlsplit
 from bs4 import BeautifulSoup
 from openai import AsyncOpenAI
 
@@ -84,6 +85,241 @@ def detect_retailer(url: str) -> Optional[Dict[str, Any]]:
 
 
 # ============================================
+# B4 URL-MODE-V2 (ENABLE_URL_MODE_V2)
+# ============================================
+# Default OFF. The ROUTE reads the flag ONCE per request and threads a bool down
+# (`url_mode_v2=True`, a conditional kwarg), so one request never mixes states and
+# nothing below runs, imports price_service or reads the env on the flag-OFF path.
+# Spec .qa-s80/B4_UNIT_SPEC.md (session 80), rulings B4-R1..R11, RED gate GC-1..GC-8.
+
+# Copy constants (Build Principle #4: calm, no "couldn't" / "try again" / "Failed to").
+NOT_PRODUCT_PAGE_MESSAGE = (
+    "That link opens a store page, not a product page. Paste the product's own page link."
+)
+STORE_UNREADABLE_MESSAGE = (
+    "That store does not let us read its pages. Paste a link from another store, "
+    "or type the product name."
+)
+UNRESOLVED_PRODUCT_MESSAGE = (
+    "We did not find a product on that page. Paste the product's own page link."
+)
+
+# Test seam: the httpx transport of the v2 fetch (production None = httpx's own
+# default transport). fetch_page (the flag-OFF fetch) never reads it.
+_TRANSPORT = None
+
+
+def url_mode_v2_enabled() -> bool:
+    """ENABLE_URL_MODE_V2 (B4, default OFF), the house idiom, read PER CALL."""
+    return os.getenv("ENABLE_URL_MODE_V2", "false").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
+def _host_only(u: Any) -> str:
+    """The hostname of a pasted link for a log line, never its path or query.
+    '' for a non-str or malformed link: never raises (the _url_log_query shape)."""
+    try:
+        return urlsplit(u if isinstance(u, str) else "").hostname or ""
+    except ValueError:
+        return ""
+
+
+def _retailer_log_name(retailer: Any) -> str:
+    """A log-safe retailer label: a SUPPORTED_RETAILERS name (a constant), else
+    'unknown' (an unknown retailer's `name` is the raw netloc, which can carry a
+    pasted `user:pass@`)."""
+    if isinstance(retailer, dict) and retailer.get("key") in SUPPORTED_RETAILERS:
+        return str(retailer.get("name") or "unknown")
+    return "unknown"
+
+
+def normalize_url_for_same_check(u: Any) -> str:
+    """The url1 == url2 key of the pre-gate: scheme and host casefolded, ONE
+    leading 'www.' dropped, an explicit port kept, ONE trailing '/' dropped (the
+    root becomes ''), path case and percent-encoding kept, query and fragment
+    dropped. '' for a non-str or malformed link (never raises); the caller never
+    treats two '' as the same url."""
+    try:
+        parts = urlsplit(u if isinstance(u, str) else "")
+        port = parts.port  # ValueError on a malformed port
+    except ValueError:
+        return ""
+    host = (parts.hostname or "").casefold()
+    if not parts.scheme or not host:
+        return ""
+    if host.startswith("www."):
+        host = host[4:]
+    netloc = host if port is None else f"{host}:{port}"
+    path = parts.path[:-1] if parts.path.endswith("/") else parts.path
+    return f"{parts.scheme.casefold()}://{netloc}{path}"
+
+
+# Pre-gate path classes beyond price_service's storefront-root / search pair
+# (reused, never copied). PATH-anchored with an optional `xx/` or `xx-yy/` locale
+# segment, re.I; the query string is never read (R-A7 is path-only).
+_URL_CART_PATH_RE = re.compile(
+    r"^/(?:[a-z]{2}(?:-[a-z]{2})?/)?(?:cart|basket|checkouts?)(?:/|$)", re.I,
+)
+_URL_ACCOUNT_PATH_RE = re.compile(
+    r"^/(?:[a-z]{2}(?:-[a-z]{2})?/)?(?:account|accounts|my-account|login|signin|sign-in"
+    r"|register|signup|sign-up|customer/account)(?:/|$)", re.I,
+)
+_URL_CATEGORY_PATH_RE = re.compile(
+    r"^/(?:[a-z]{2}(?:-[a-z]{2})?/)?(?:collections?|category|categories|c|brands?)(?:/|$)",
+    re.I,
+)
+# A product segment anywhere in the path vetoes the category class
+# (`/collections/men/products/sauvage` is a Shopify PDP).
+_URL_PRODUCT_SEGMENT_RE = re.compile(r"/(?:products?|p|dp|item)/|/-/p", re.I)
+
+
+def classify_url_path(u: Any) -> Optional[str]:
+    """'homepage' | 'search' | 'cart' | 'account' | 'category' for a link whose
+    PATH is a storefront page, else None (the query is ignored). Checkout routes
+    are the 'cart' class. A falsy, non-str or malformed link is None (GC-4: the
+    route only ever passes the pydantic str fields)."""
+    if not isinstance(u, str) or not u:
+        return None
+    try:
+        path = urlsplit(u).path
+    except ValueError:
+        return None
+    from app.services.price_service import (
+        _NOT_A_PDP_HOME_PATH_RE,
+        _NOT_A_PDP_SEARCH_PATH_RE,
+    )
+    if _NOT_A_PDP_HOME_PATH_RE.match(path):
+        return "homepage"
+    if _NOT_A_PDP_SEARCH_PATH_RE.match(path):
+        return "search"
+    if _URL_CART_PATH_RE.match(path):
+        return "cart"
+    if _URL_ACCOUNT_PATH_RE.match(path):
+        return "account"
+    if _URL_CATEGORY_PATH_RE.match(path) and not _URL_PRODUCT_SEGMENT_RE.search(path):
+        return "category"
+    return None
+
+
+# The first <title> of a page, read with a bounded regex (no soup: the v2 fetch
+# outcome is decided in an `async def`, ruling B4-R2).
+_V2_TITLE_RE = re.compile(r"<title(?:\s[^>]*)?>(.*?)</title\s*>", re.I | re.S)
+_V2_CHALLENGE_TITLE_PREFIXES = (
+    "just a moment", "attention required", "access denied", "checking your browser",
+    "please verify you are a human", "verify you are human", "enable javascript and cookies",
+)
+
+
+def _is_challenge_page(html: Any) -> bool:
+    """A bot-challenge / wall page, judged on the START of its <title> only (never a
+    body substring: 'Access denied' in a reviews widget is not a wall)."""
+    if not isinstance(html, str):
+        return False
+    match = _V2_TITLE_RE.search(html[:65536])
+    if not match:
+        return False
+    return match.group(1).strip().casefold().startswith(_V2_CHALLENGE_TITLE_PREFIXES)
+
+
+_ASCII_PUNCTUATION = str.maketrans("", "", string.punctuation)
+
+
+def _title_key(value: Any) -> str:
+    """Casefolded, ASCII punctuation removed, whitespace collapsed; '' for a non-str."""
+    if not isinstance(value, str):
+        return ""
+    return " ".join(value.casefold().translate(_ASCII_PUNCTUATION).split())
+
+
+_PLACEHOLDER_TITLE_KEYS = frozenset(
+    _title_key(t) for t in ("", "unknown", "unknown product", "n/a", "product", "this product")
+)
+# The schema.org nodes whose `name` is the SITE's name (plus og:site_name). Not
+# WebPage: a WebPage node names the page itself, and on a PDP without Product
+# schema it often equals the <title>, which must stay usable.
+_V2_SITE_NAME_TYPES = frozenset({"Organization", "WebSite"})
+
+
+def _v2_site_names(json_ld_items: Any, meta: Any) -> set:
+    """The title keys of the site's own name: every Organization / WebSite node
+    (`@type` str or list, top level or inside `@graph`) plus og:site_name."""
+    names = set()
+
+    def visit(node: Any, depth: int) -> None:
+        if depth > 4:
+            return
+        if isinstance(node, list):
+            for item in node:
+                visit(item, depth + 1)
+            return
+        if not isinstance(node, dict):
+            return
+        types = node.get("@type")
+        types = [types] if isinstance(types, str) else (types if isinstance(types, list) else [])
+        if any(isinstance(t, str) and t in _V2_SITE_NAME_TYPES for t in types):
+            key = _title_key(node.get("name"))
+            if key:
+                names.add(key)
+        if isinstance(node.get("@graph"), (list, dict)):
+            visit(node["@graph"], depth + 1)
+
+    visit(json_ld_items if isinstance(json_ld_items, list) else [], 0)
+    site = meta.get("og_site_name") if isinstance(meta, dict) else None
+    key = _title_key(site)
+    if key:
+        names.add(key)
+    return names
+
+
+def is_usable_title(title: Any, site_names: Any) -> bool:
+    """A title that names a product: a str that is not a placeholder (R-A5 shape:
+    '', 'unknown', 'unknown product', 'n/a', 'product', 'this product' after
+    casefold + punctuation strip) and not the site's own name."""
+    if not isinstance(title, str):
+        return False
+    key = _title_key(title)
+    if key in _PLACEHOLDER_TITLE_KEYS:
+        return False
+    return key not in {_title_key(n) for n in (site_names or ())}
+
+
+def normalize_image_url(value: Any, base_url: Any) -> Optional[str]:
+    """schema.org / og `image` -> the FIRST absolute https url string, joined against
+    ``base_url`` (the FINAL fetched url), else None. A str, a list or an
+    ImageObject is read through price_service._jsonld_image_urls; a
+    protocol-relative '//cdn/x.jpg' takes the base scheme; http is refused."""
+    from app.services.price_service import _jsonld_image_urls
+    base = base_url if isinstance(base_url, str) else ""
+    for candidate in _jsonld_image_urls(value):
+        try:
+            joined = urljoin(base, candidate)
+            parts = urlsplit(joined)
+            host = parts.hostname
+        except ValueError:
+            continue
+        if parts.scheme == "https" and host:
+            return joined
+    return None
+
+
+def _v2_code_message(code: Any) -> str:
+    """The copy constant of a B4 code (UNRESOLVED_PRODUCT's for any other value)."""
+    if code == "STORE_UNREADABLE":
+        return STORE_UNREADABLE_MESSAGE
+    if code == "NOT_PRODUCT_PAGE":
+        return NOT_PRODUCT_PAGE_MESSAGE
+    return UNRESOLVED_PRODUCT_MESSAGE
+
+
+def _log_fetch_failed(url: str, reason: str, error_type: Optional[str]) -> None:
+    """GC-1: ONE WARNING per unreadable fetch (a typed non-delivery is not an ERROR),
+    the host, the reason word and the exception TYPE only (None when no exception)."""
+    logger.warning("[URL-V2] fetch failed host=%s reason=%s type=%s",
+                   _host_only(url), reason, error_type)
+
+
+# ============================================
 # WEB SCRAPING
 # ============================================
 
@@ -141,6 +377,63 @@ async def fetch_page(url: str) -> Optional[str]:
             host = None
         logger.error(f"Failed to fetch URL host {host}: {type(e).__name__}")
         return None
+
+
+async def _fetch_page_v2(url: str) -> Dict[str, Any]:
+    """B4: fetch_page's loop (same headers, the SSRF guard on the initial url AND on
+    every hop, the same 5-hop bound, the same client) that NEVER raises on a status
+    and keeps what fetch_page discards: the LAST status and the FINAL url.
+
+    Returns {"status": int|None, "final_url": str, "text": str|None,
+    "outcome": "ok"|"blocked"|"redirect_cap"|"error", "error_type": str|None};
+    a non-2xx is outcome "ok" with its status (the caller classifies it).
+    fetch_page itself stays byte-unchanged (its pins). Log lines carry the host
+    only (GC-1 / U8d): never the pasted path, query or a redirect target's path."""
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1",
+    }
+    from app.utils.url_validator import _validate_url_offloop_or_sync
+
+    result: Dict[str, Any] = {
+        "status": None, "final_url": url, "text": None, "outcome": "error", "error_type": None,
+    }
+    if not await _validate_url_offloop_or_sync(url):
+        logger.warning("[SSRF] Blocked initial URL: host=%s", _host_only(url))
+        _log_fetch_failed(url, "blocked", None)
+        result["outcome"] = "blocked"
+        return result
+    current = url
+    try:
+        async with httpx.AsyncClient(timeout=30.0, follow_redirects=False,
+                                     transport=_TRANSPORT) as client:
+            for _ in range(5):  # bounded redirect chain, every hop re-validated
+                response = await client.get(current, headers=headers)
+                if response.is_redirect and response.next_request is not None:
+                    nxt = str(response.next_request.url)
+                    if not await _validate_url_offloop_or_sync(nxt):
+                        logger.warning("[SSRF] Blocked redirect to host=%s", _host_only(nxt))
+                        _log_fetch_failed(url, "blocked", None)
+                        result.update(outcome="blocked", final_url=current)
+                        return result
+                    current = nxt
+                    continue
+                result.update(status=response.status_code, final_url=current,
+                              text=response.text, outcome="ok")
+                return result
+        logger.warning("[SSRF] Too many redirects for host=%s", _host_only(url))
+        _log_fetch_failed(url, "redirect_cap", None)
+        result.update(outcome="redirect_cap", final_url=current)
+        return result
+    except Exception as e:
+        # GC-1: never the base ERROR template; one WARNING (host, reason, type).
+        _log_fetch_failed(url, "fetch_error", type(e).__name__)
+        result.update(outcome="error", error_type=type(e).__name__, final_url=current)
+        return result
 
 
 def extract_json_ld(html: str) -> List[Dict]:
@@ -347,6 +640,65 @@ def extract_generic_data(html: str, url: str) -> Dict[str, Any]:
     return data
 
 
+def extract_generic_data_v2(html: str, url: str, final_url: Optional[str] = None) -> Dict[str, Any]:
+    """B4: extract_generic_data with (1) the Product node found through
+    price_service's JSON-LD shape ladder (`@graph` at any depth, an `@type` list,
+    `ProductGroup.hasVariant` members; first node in document order), (2) the
+    image normalised to ONE absolute https url string joined against the FINAL
+    url, (3) the og:image fallback taken when the node has no usable image (the
+    base tests key PRESENCE, so a Product node without an image skipped it).
+
+    Pure sync (one parse job: the caller runs it on the price-parse pool under
+    ENABLE_PRICE_PARSE_OFFLOAD, ruling B4-R2). Adds two PRIVATE keys the caller
+    pops before normalising: `_v2_product_node` (a node was found) and
+    `_v2_site_names` (the site's own name keys, `_v2_site_names`)."""
+    from app.services.price_service import _shape_ladder_product_nodes
+
+    base = final_url or url
+    data: Dict[str, Any] = {}
+    json_ld = extract_json_ld(html)
+    nodes: List[Dict[str, Any]] = []
+    for block in json_ld:
+        nodes.extend(_shape_ladder_product_nodes(block))
+    if nodes:
+        item = nodes[0]
+        data["title"] = item.get("name")
+        data["description"] = item.get("description")
+        data["image_url"] = normalize_image_url(item.get("image"), base)
+        brand = item.get("brand")
+        data["brand"] = brand.get("name") if isinstance(brand, dict) else brand
+
+        offers = item.get("offers", {})
+        if isinstance(offers, dict):
+            data["price"] = offers.get("price")
+            data["currency"] = offers.get("priceCurrency")
+        elif isinstance(offers, list) and offers and isinstance(offers[0], dict):
+            data["price"] = offers[0].get("price")
+            data["currency"] = offers[0].get("priceCurrency")
+
+        rating = item.get("aggregateRating", {})
+        if isinstance(rating, dict) and rating:
+            data["rating"] = rating.get("ratingValue")
+            data["review_count"] = rating.get("reviewCount")
+
+    meta = extract_meta_tags(html)
+    if "title" not in data:
+        data["title"] = meta.get("og_title") or meta.get("page_title")
+    if "description" not in data:
+        data["description"] = meta.get("og_description") or meta.get("description")
+    if not data.get("image_url"):
+        data["image_url"] = normalize_image_url(meta.get("og_image"), base)
+    if "price" not in data and "product_price:amount" in meta:
+        try:
+            data["price"] = float(meta["product_price:amount"])
+        except ValueError:
+            pass
+
+    data["_v2_product_node"] = bool(nodes)
+    data["_v2_site_names"] = _v2_site_names(json_ld, meta)
+    return data
+
+
 # ============================================
 # AI-POWERED EXTRACTION (FALLBACK)
 # ============================================
@@ -383,6 +735,36 @@ RULES:
 - Be precise with product name and variant"""
 
 
+def _derive_url_extraction_prompt_v2(base: str) -> str:
+    """B4 (R0-6 B4-PROMPT-PINS): URL_EXTRACTION_PROMPT stays byte-identical; V2 is
+    DERIVED from it by two count-checked swaps (the W4-11 pattern): the
+    `is_product_page` JSON field after `image_url`, and one RULES line. Same render
+    shape (the `URL:` line before the one region, the 9-key category enumeration).
+    A drifted anchor raises RuntimeError at IMPORT, never a silent no-op."""
+    swaps = (
+        ('    "image_url": "main product image URL or null"',
+         '    "image_url": "main product image URL or null",\n'
+         '    "is_product_page": true|false'),
+        ("- Be precise with product name and variant",
+         "- Be precise with product name and variant\n"
+         "- is_product_page is false when the page is a storefront homepage, a category "
+         "or collection listing, a search page, a cart, checkout or account page, or an "
+         "error page; then name is null"),
+    )
+    out = base
+    for old, new in swaps:
+        found = out.count(old)
+        if found != 1:
+            raise RuntimeError(
+                f"URL_EXTRACTION_PROMPT_V2: expected exactly one anchor {old!r}, found {found}"
+            )
+        out = out.replace(old, new, 1)
+    return out
+
+
+URL_EXTRACTION_PROMPT_V2 = _derive_url_extraction_prompt_v2(URL_EXTRACTION_PROMPT)
+
+
 def _price_parse_offload_enabled() -> bool:
     """ENABLE_PRICE_PARSE_OFFLOAD (W0-4, default OFF), read PER CALL. A local
     one-liner (like structured_comparison_service's) so the flag-OFF path never
@@ -392,8 +774,13 @@ def _price_parse_offload_enabled() -> bool:
     )
 
 
-async def extract_with_ai(url: str, html: str, retailer: Dict) -> Dict[str, Any]:
-    """Use AI to extract product data when structured data is insufficient."""
+async def extract_with_ai(url: str, html: str, retailer: Dict,
+                          url_mode_v2: bool = False) -> Dict[str, Any]:
+    """Use AI to extract product data when structured data is insufficient.
+
+    B4: ``url_mode_v2=True`` (passed only by the flagged URL path) selects
+    URL_EXTRACTION_PROMPT_V2, which also asks for ``is_product_page``; the
+    message layout and the call kwargs are identical in both states."""
     # R-W04 (W0-4c) — the soup + text extraction is pure-sync parsing. Under
     # ENABLE_PRICE_PARSE_OFFLOAD it runs as ONE job on the bounded price-parse
     # pool; flag OFF the same block runs inline, exactly as before.
@@ -431,11 +818,12 @@ async def extract_with_ai(url: str, html: str, retailer: Dict) -> Dict[str, Any]
         page_block = _wrap_search_context(
             f"Page Title: {title_text}\n\nPage Content (truncated):\n{text_content}"
         )
+        prompt = URL_EXTRACTION_PROMPT_V2 if url_mode_v2 else URL_EXTRACTION_PROMPT
         response = await _llm_breaker.guarded_llm_create(client,
             model=_model,
             messages=[{
                 "role": "user",
-                "content": SEARCH_RESULTS_GUARD + "\n\n" + URL_EXTRACTION_PROMPT.format(
+                "content": SEARCH_RESULTS_GUARD + "\n\n" + prompt.format(
                     url=neutralize_prompt_tags(f"{url}"),
                     page_block=page_block,
                 )
@@ -463,15 +851,137 @@ async def extract_with_ai(url: str, html: str, retailer: Dict) -> Dict[str, Any]
 # MAIN EXTRACTION FUNCTION
 # ============================================
 
-async def extract_from_url(url: str) -> Dict[str, Any]:
+def _v2_status_reason(status: Any) -> str:
+    """The reason word of a non-2xx final status (review C19): a 3xx can only end
+    the loop when it carries no Location (a 3xx chain past five hops is
+    redirect_cap, decided in _fetch_page_v2)."""
+    if status == 403:
+        return "http_403"
+    if isinstance(status, int) and 300 <= status <= 399:
+        return "http_3xx"
+    if isinstance(status, int) and 400 <= status <= 499:
+        return "http_4xx"
+    return "http_5xx"
+
+
+_V2_FETCH_OUTCOME_REASONS = {"error": "fetch_error", "blocked": "blocked",
+                             "redirect_cap": "redirect_cap"}
+
+
+def _v2_refusal(url: str, code: str, reason: str, outcome: str, status: Any) -> Dict[str, Any]:
+    """One coded per-url failure (the shape compare_from_urls collects) and its
+    ONE `[URL-V2] outcome=` INFO counter line (constants and an int only)."""
+    logger.info("[URL-V2] outcome=%s reason=%s status=%s", outcome, reason, status)
+    return {"success": False, "code": code, "reason": reason, "url": url,
+            "error": _v2_code_message(code)}
+
+
+async def _extract_from_url_v2(url: str) -> Dict[str, Any]:
+    """B4 (ENABLE_URL_MODE_V2): extract_from_url where every non-delivery is a coded
+    failure (never `success: True` with "Unknown Product"):
+
+    (a) the v2 fetch: a transport error, an SSRF-blocked hop, the redirect cap, a
+        non-2xx status or a title-anchored challenge page -> STORE_UNREADABLE;
+    (b) a FINAL url in any pre-gate path class (a redirect to the storefront root,
+        a search, cart/checkout, account or category route) -> NOT_PRODUCT_PAGE
+        with that class as the reason (GC-2);
+    (c) the extractor (amazon / noon base bodies, generic -> extract_generic_data_v2)
+        on the price-parse pool under ENABLE_PRICE_PARSE_OFFLOAD, else inline;
+    (d) no Product node and no usable title -> UNRESOLVED_PRODUCT `no_product_node`,
+        with NO LLM call ($0);
+    (e) missing title or price -> the V2 extraction prompt; `is_product_page: false`
+        refuses (`not_product_page`) only when no Product node was found
+        (ruling B4-R1: a node-bearing page is never refused on the LLM's word);
+    (f) the title must be usable (`null_name` otherwise), else the product is
+        normalised with its image as ONE https url string or None."""
+    retailer = detect_retailer(url)
+    logger.info("Detected retailer: %s for host %s", _retailer_log_name(retailer), _host_only(url))
+
+    fetched = await _fetch_page_v2(url)
+    status = fetched.get("status")
+    outcome = fetched.get("outcome")
+    if outcome != "ok":
+        reason = _V2_FETCH_OUTCOME_REASONS.get(outcome, "fetch_error")
+        return _v2_refusal(url, "STORE_UNREADABLE", reason, reason, status)
+    if not isinstance(status, int) or not 200 <= status <= 299:
+        reason = _v2_status_reason(status)
+        _log_fetch_failed(url, reason, None)
+        return _v2_refusal(url, "STORE_UNREADABLE", reason, "http_error", status)
+    html = fetched.get("text") or ""
+    if _is_challenge_page(html):
+        _log_fetch_failed(url, "challenge", None)
+        return _v2_refusal(url, "STORE_UNREADABLE", "challenge", "challenge", status)
+    final_url = fetched.get("final_url") or url
+    page_class = classify_url_path(final_url)
+    if page_class is not None:
+        return _v2_refusal(url, "NOT_PRODUCT_PAGE", page_class, "not_product_page", status)
+
+    if "amazon" in retailer["key"]:
+        _extractor, _extra = extract_amazon_data, ()
+    elif "noon" in retailer["key"]:
+        _extractor, _extra = extract_noon_data, ()
+    else:
+        _extractor, _extra = extract_generic_data_v2, (final_url,)
+    if _price_parse_offload_enabled():
+        # W0-4f shape (ruling B4-R2): the capped html and the soup-building
+        # extractor as ONE job on the price-parse pool.
+        from app.services import price_service as _w04_ps
+        html = html[:_w04_ps.PRICE_FETCH_MAX_BYTES]
+        raw_data = await _w04_ps.run_parse_offloaded(_extractor, html, url, *_extra)
+    else:
+        raw_data = _extractor(html, url, *_extra)
+
+    # The amazon / noon bodies set neither key: no node, no site names.
+    nodes_present = bool(raw_data.pop("_v2_product_node", False))
+    site_names = raw_data.pop("_v2_site_names", None) or set()
+    if not nodes_present and not is_usable_title(raw_data.get("title"), site_names):
+        return _v2_refusal(url, "UNRESOLVED_PRODUCT", "no_product_node", "unresolved", status)
+
+    if not raw_data.get("title") or not raw_data.get("price"):
+        logger.info("Insufficient structured data, using AI extraction")
+        ai_data = await extract_with_ai(url, html, retailer, url_mode_v2=True)
+        if isinstance(ai_data, dict):
+            if ai_data.get("is_product_page") is False and not nodes_present:
+                return _v2_refusal(url, "UNRESOLVED_PRODUCT", "not_product_page",
+                                   "unresolved", status)
+            # Merge AI data with raw data (raw data takes precedence), as base.
+            for key, value in ai_data.items():
+                if key == "is_product_page":
+                    continue
+                if key not in raw_data or raw_data[key] is None:
+                    raw_data[key] = value
+
+    title = raw_data.get("title") or raw_data.get("full_title")
+    if not is_usable_title(title, site_names):
+        return _v2_refusal(url, "UNRESOLVED_PRODUCT", "null_name", "unresolved", status)
+
+    normalized = normalize_product_data(raw_data, retailer, url, url_mode_v2=True,
+                                        final_url=final_url)
+    logger.info("[URL-V2] outcome=%s reason=%s status=%s", "ok", "delivered", status)
+    return {
+        "success": True,
+        "product": normalized,
+        "retailer": retailer,
+        "source_url": url,
+        "extraction_method": "structured" if raw_data.get("title") else "ai"
+    }
+
+
+async def extract_from_url(url: str, url_mode_v2: bool = False) -> Dict[str, Any]:
     """
     Main function to extract product data from a URL.
     
     Returns structured product data suitable for comparison.
+
+    B4: ``url_mode_v2=True`` (passed only by the flagged URL path) dispatches to
+    _extract_from_url_v2; the default is the base body, unchanged.
     """
+    if url_mode_v2:
+        return await _extract_from_url_v2(url)
     # Detect retailer
     retailer = detect_retailer(url)
-    logger.info(f"Detected retailer: {retailer['name']} for URL: {url}")
+    # R-A1(b), UNFLAGGED log-only: the host, never the pasted path or query.
+    logger.info("Detected retailer: %s for host %s", _retailer_log_name(retailer), _host_only(url))
     
     # Fetch page
     html = await fetch_page(url)
@@ -520,11 +1030,20 @@ async def extract_from_url(url: str) -> Dict[str, Any]:
     }
 
 
-def normalize_product_data(raw: Dict, retailer: Dict, url: str) -> Dict[str, Any]:
-    """Normalize extracted data to our standard schema."""
+def normalize_product_data(raw: Dict, retailer: Dict, url: str, url_mode_v2: bool = False,
+                           final_url: Optional[str] = None) -> Dict[str, Any]:
+    """Normalize extracted data to our standard schema.
+
+    B4 (``url_mode_v2=True``, flagged URL path only): the caller has already
+    refused an unusable title, so the "Unknown Product" default is never used,
+    and ``image_url`` ships as ONE absolute https url string joined against the
+    FINAL url, or None (never a list, a dict or a relative path). Default: base."""
     
     # Parse brand and name from title if needed
-    title = raw.get("title") or raw.get("full_title") or "Unknown Product"
+    if url_mode_v2:
+        title = raw.get("title") or raw.get("full_title") or ""
+    else:
+        title = raw.get("title") or raw.get("full_title") or "Unknown Product"
     brand = raw.get("brand")
     name = raw.get("name") or title
     
@@ -562,7 +1081,8 @@ def normalize_product_data(raw: Dict, retailer: Dict, url: str) -> Dict[str, Any
             "rating": raw.get("rating"),
             "count": raw.get("review_count")
         },
-        "image_url": raw.get("image_url"),
+        "image_url": (normalize_image_url(raw.get("image_url"), final_url or url)
+                      if url_mode_v2 else raw.get("image_url")),
         "source_url": url,
         "retailer": retailer
     }
@@ -577,6 +1097,7 @@ async def compare_from_urls(
     url2: str,
     region: str = "bahrain",
     selected_category: Optional[str] = None,
+    url_mode_v2: bool = False,
 ) -> Dict[str, Any]:
     """
     Compare two products from their URLs.
@@ -591,6 +1112,11 @@ async def compare_from_urls(
             ``None`` here, so a URL comparison could never honour a user chip
             even when the LLM abstained with "other". UNFLAGGED: the default is
             ``None``, which is byte-identical to the hardcoded value.
+        url_mode_v2: B4 (ENABLE_URL_MODE_V2, read once by the route and passed
+            only when ON): coded per-url failures become ONE coded result
+            (_v2_pair_failure) and the frozen `recommendation` /
+            `key_differences` keys are filled from the verdict prose
+            (_v2_verdict_fill). Default False: the base body, unchanged.
     
     Returns:
         Comparison result with both products
@@ -600,24 +1126,36 @@ async def compare_from_urls(
     
     # Extract both products in parallel
     import asyncio
-    results = await asyncio.gather(
-        extract_from_url(url1),
-        extract_from_url(url2),
-        return_exceptions=True
-    )
+    if url_mode_v2:
+        extractions = (extract_from_url(url1, url_mode_v2=True),
+                       extract_from_url(url2, url_mode_v2=True))
+    else:
+        extractions = (extract_from_url(url1), extract_from_url(url2))
+    results = await asyncio.gather(*extractions, return_exceptions=True)
     
     products = []
     errors = []
+    coded = []  # B4: (index, code, reason) of each coded per-url failure (ON only)
+    codeless = False
     
     for i, result in enumerate(results):
         if isinstance(result, Exception):
             errors.append(f"URL {i+1}: {str(result)}")
+            codeless = True
         elif not result.get("success"):
             errors.append(f"URL {i+1}: {result.get('error', 'Extraction failed')}")
+            if url_mode_v2 and result.get("code"):
+                coded.append((i, result.get("code"), result.get("reason")))
+            else:
+                codeless = True
         else:
             products.append(result["product"])
     
     if len(products) < 2:
+        if url_mode_v2 and coded and not codeless:
+            return _v2_pair_failure(coded, errors)
+        # Any codeless failure (an exception inside extract_from_url) keeps the
+        # base codeless body in both flag states.
         return {
             "success": False,
             "error": "Could not extract both products",
@@ -677,13 +1215,75 @@ async def compare_from_urls(
             "error": LLM_UNAVAILABLE_FRIENDLY_MESSAGE,
         }
 
+    if url_mode_v2:
+        recommendation, key_differences = _v2_verdict_fill(comparison, products)
+    else:
+        recommendation = comparison.get("recommendation", "")
+        key_differences = comparison.get("key_differences", [])
+
     return {
         "success": True,
         "products": products,
         "comparison": comparison,
         "winner_index": comparison.get("winner_index", 0),
-        "recommendation": comparison.get("recommendation", ""),
-        "key_differences": comparison.get("key_differences", []),
+        "recommendation": recommendation,
+        "key_differences": key_differences,
         "category_used": category_used,
         "source_urls": [url1, url2]
     }
+
+
+# B4: the most actionable cause wins when the two links fail differently.
+_V2_CODE_PRECEDENCE = ("STORE_UNREADABLE", "NOT_PRODUCT_PAGE", "UNRESOLVED_PRODUCT")
+
+
+def _v2_pair_failure(coded: List[Tuple[int, str, Any]], errors: List[str]) -> Dict[str, Any]:
+    """The ONE coded result of a pair with coded per-url failures: the code by
+    precedence STORE_UNREADABLE > NOT_PRODUCT_PAGE > UNRESOLVED_PRODUCT, `field`
+    url1 / url2 / both over the failing links, `reason` of the first failing link
+    carrying the chosen code, that code's constant as `error`, and today's
+    `details` list (the route drops it)."""
+    def _rank(code: str) -> int:
+        return (_V2_CODE_PRECEDENCE.index(code) if code in _V2_CODE_PRECEDENCE
+                else len(_V2_CODE_PRECEDENCE))
+
+    chosen = min((code for _i, code, _r in coded), key=_rank)
+    failing = sorted({i for i, _c, _r in coded})
+    field = "both" if len(failing) > 1 else ("url1" if failing[0] == 0 else "url2")
+    reason = next(r for _i, code, r in sorted(coded, key=lambda row: row[0]) if code == chosen)
+    return {"success": False, "code": chosen, "error": _v2_code_message(chosen), "field": field,
+            "reason": reason, "details": errors}
+
+
+def _v2_verdict_fill(comparison: Dict[str, Any], products: List[Dict[str, Any]]) -> Tuple[str, List[str]]:
+    """B4 value fill on the FROZEN keys (no new top-level key): `recommendation`
+    from the verdict's winner_reason with score internals stripped, falling back
+    to THE qualitative winner reason (issue #99) for the winner; `key_differences`
+    from the specs_comparison advantages (product 0 then product 1; str items
+    only, score internals stripped, empties dropped; never the `similar` list)."""
+    from app.services.response_builder import _QUALITATIVE_WINNER_REASON
+    from app.services.text_sanitize import strip_score_internals
+
+    idx = comparison.get("winner_index", 0)
+    if type(idx) is not int or idx not in (0, 1) or idx >= len(products):
+        idx = 0
+    winner = products[idx] if products else {}
+    winner_name = winner.get("full_name") or winner.get("name") or ""
+    reason = comparison.get("winner_reason")
+    recommendation = (strip_score_internals(reason if isinstance(reason, str) else "")
+                      or _QUALITATIVE_WINNER_REASON(winner_name))
+
+    specs_comparison = comparison.get("specs_comparison")
+    if not isinstance(specs_comparison, dict):
+        specs_comparison = {}
+    key_differences: List[str] = []
+    for key in ("product_0_advantages", "product_1_advantages"):
+        items = specs_comparison.get(key)
+        if not isinstance(items, list):
+            continue
+        for item in items:
+            if isinstance(item, str) and item.strip():
+                cleaned = strip_score_internals(item)
+                if cleaned:
+                    key_differences.append(cleaned)
+    return recommendation, key_differences

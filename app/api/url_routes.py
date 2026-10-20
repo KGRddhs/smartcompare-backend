@@ -1,6 +1,7 @@
 """
 URL Comparison Routes - API endpoints for URL-based product comparisons
 """
+import asyncio
 import logging
 import time
 from typing import Dict, Optional
@@ -23,6 +24,15 @@ from app.services.url_extraction_service import (
     compare_from_urls,
     detect_retailer,
     SUPPORTED_RETAILERS
+)
+# B4 URL-MODE-V2 (ENABLE_URL_MODE_V2): the flag reader, the pre-gate helpers
+# and the refusal copy live in the service (one definition each).
+from app.services.url_extraction_service import (
+    NOT_PRODUCT_PAGE_MESSAGE,
+    _host_only,
+    classify_url_path,
+    normalize_url_for_same_check,
+    url_mode_v2_enabled,
 )
 from app.api.auth_routes import get_optional_user
 # B1 (S80, ENABLE_RESULT_STATUS_METADATA): one status message per delivery exit (telemetry
@@ -88,6 +98,60 @@ async def _reserve_comparison_credit(user: Optional[Dict]) -> bool:
     return bool(usage_check.get("consumed", False))
 
 
+# B4 URL-MODE-V2: the deadline around compare_from_urls under the flag (a module
+# constant read at call time; the client's own cap is 35 s, api.ts).
+_URL_COMPARE_DEADLINE_SECONDS = 25.0
+# The coded per-url failures that ship as 400 + additive field / reason.
+_URL_V2_REFUSAL_CODES = ("NOT_PRODUCT_PAGE", "STORE_UNREADABLE", "UNRESOLVED_PRODUCT")
+
+
+def _url_pre_gate(url1: str, url2: str) -> Optional[Dict[str, str]]:
+    """The $0 pre-gate, FLAG-FREE (called only when the route read the flag ON):
+    a link whose PATH is a storefront root / search / cart / checkout / account /
+    category page, or a pair equal after normalisation. Returns
+    {"field": "url1"|"url2"|"both", "reason": <class>|"same_url"} (url1's class
+    wins when both links are refused), else None."""
+    r1 = classify_url_path(url1)
+    r2 = classify_url_path(url2)
+    if r1 is not None or r2 is not None:
+        if r1 is not None and r2 is not None:
+            field = "both"
+        else:
+            field = "url1" if r1 is not None else "url2"
+        return {"field": field, "reason": r1 or r2}
+    key1 = normalize_url_for_same_check(url1)
+    if key1 and key1 == normalize_url_for_same_check(url2):
+        return {"field": "both", "reason": "same_url"}
+    return None
+
+
+def _raise_url_refusal(code: str, error: str, field: str, reason: str) -> None:
+    """The B4 400: a structured detail the error handler surfaces with the additive
+    `field` / `reason` keys (scoped to the three B4 codes, flag ON). ONE INFO line,
+    constants only (never a url)."""
+    logger.info("[URL-V2] refused code=%s field=%s reason=%s", code, field, reason)
+    raise HTTPException(
+        status_code=400,
+        detail={"code": code, "error": error, "field": field, "reason": reason},
+    )
+
+
+async def _compare_with_deadline(url1, url2, region, selected_category) -> Dict:
+    """B4: compare_from_urls under the 25 s deadline; an expiry is a coded TIMEOUT
+    RESULT (never a raise), which the shared text mapping ships as the structured
+    503 build 3 already maps. Any other exception propagates to the caller's
+    base exception arm."""
+    try:
+        return await asyncio.wait_for(
+            compare_from_urls(url1, url2, region, selected_category, url_mode_v2=True),
+            timeout=_URL_COMPARE_DEADLINE_SECONDS,
+        )
+    except asyncio.TimeoutError:
+        from app.services.structured_comparison_service import TIMEOUT_FRIENDLY_MESSAGE
+        logger.warning("[URL-V2] deadline %.1fs hit", _URL_COMPARE_DEADLINE_SECONDS)
+        return {"success": False, "code": "TIMEOUT", "error": TIMEOUT_FRIENDLY_MESSAGE}
+
+
 def _url_log_query(url1, url2) -> str:
     """W4-13 T8 (ruling R4): each url as scheme + host (+ an explicit port) +
     path; the query string, the fragment AND the userinfo (`user:pass@`) are
@@ -126,6 +190,7 @@ async def _compare_urls_metered(
     selected_category: Optional[str],
     user: Optional[Dict],
     search_log_extra: Optional[Dict] = None,
+    url_mode_v2: bool = False,
 ) -> Dict:
     """Run the URL comparison under the freemium gate, then persist it.
 
@@ -139,6 +204,12 @@ async def _compare_urls_metered(
     so it never appeared in the History tab. Flag ON mirrors the text path --
     fire-and-forget `save_comparison_and_track_cohort(input_type="url")` plus
     the Supabase lifetime counter.
+
+    B4 (``url_mode_v2=True``, passed only when the route read the flag ON): the
+    comparison runs under the 25 s deadline (_compare_with_deadline) and the
+    three coded per-url failures ship as the 400 with `field` / `reason`; each is
+    a non-delivery through the SAME failure exit below (R-A3: refund once, no
+    lifetime bump, no history row, the failure row with the code's constant).
     """
     _start = time.time()
     usage_consumed = await _reserve_comparison_credit(user)
@@ -158,7 +229,10 @@ async def _compare_urls_metered(
         )
 
     try:
-        result = await compare_from_urls(url1, url2, region, selected_category)
+        if url_mode_v2:
+            result = await _compare_with_deadline(url1, url2, region, selected_category)
+        else:
+            result = await compare_from_urls(url1, url2, region, selected_category)
     except Exception:
         if usage_consumed and user_id:
             fire_and_forget(
@@ -190,6 +264,13 @@ async def _compare_urls_metered(
         # level. A code-less result (the `<2 products` exit) keeps main's bare-
         # string 400 below, byte-identical: W4-9's codeless allowlist in that
         # mapping would redact its message to INTERNAL_ERROR.
+        # B4: the three coded per-url failures keep their field / reason (the
+        # shared mapping would drop them); TIMEOUT takes the mapping's 503.
+        if url_mode_v2 and result.get("code") in _URL_V2_REFUSAL_CODES:
+            _raise_url_refusal(
+                result["code"], result.get("error") or "",
+                result.get("field") or "both", result.get("reason") or "unknown",
+            )
         if result.get("code"):
             surfaced = _surface_comparison_failure(result)
             if surfaced is not None:
@@ -296,7 +377,8 @@ async def extract_product(request: Request, body: URLExtractRequest):
     - Reviews/ratings
     - Images
     """
-    logger.info(f"URL extraction request: {body.url}")
+    # R-A1(b), UNFLAGGED log-only: the host, never the pasted path or query.
+    logger.info("URL extraction request: host=%s", _host_only(body.url))
 
     if not await _validate_url_offloop_or_sync(body.url):
         raise HTTPException(status_code=400, detail="URL blocked by security policy")
@@ -357,12 +439,26 @@ async def compare_urls(
     - Winner recommendation
     - Key differences
     """
-    logger.info(f"URL comparison request: {body.url1} vs {body.url2}")
+    # R-A1(b), UNFLAGGED log-only: the hosts, never the pasted paths or queries.
+    logger.info("URL comparison request: %s vs %s", _host_only(body.url1), _host_only(body.url2))
+    # B4: ENABLE_URL_MODE_V2 read ONCE per request; the bool is threaded down.
+    v2 = url_mode_v2_enabled()
 
     # The SSRF guard is free and runs BEFORE the gate, so a blocked URL stays a
     # pre-gate 400 with nothing reserved and nothing to refund.
     if not await _validate_url_offloop_or_sync(body.url1) or not await _validate_url_offloop_or_sync(body.url2):
         raise HTTPException(status_code=400, detail="URL blocked by security policy")
+
+    if v2:
+        # B4 pre-gate: after the SSRF 400, BEFORE the credit reserve ($0, no row).
+        refusal = _url_pre_gate(body.url1, body.url2)
+        if refusal:
+            _raise_url_refusal("NOT_PRODUCT_PAGE", NOT_PRODUCT_PAGE_MESSAGE,
+                               refusal["field"], refusal["reason"])
+        return await _compare_urls_metered(
+            body.url1, body.url2, body.region, body.selected_category, user,
+            search_log_extra=_search_log_synthetic_kwargs(request), url_mode_v2=True,
+        )
 
     return await _compare_urls_metered(
         body.url1, body.url2, body.region, body.selected_category, user,
@@ -383,8 +479,21 @@ async def compare_urls_get(
     user: Optional[Dict] = Depends(get_optional_user),
 ):
     """GET version of compare for easy testing."""
+    # B4: ENABLE_URL_MODE_V2 read ONCE per request; the bool is threaded down.
+    v2 = url_mode_v2_enabled()
     if not await _validate_url_offloop_or_sync(url1) or not await _validate_url_offloop_or_sync(url2):
         raise HTTPException(status_code=400, detail="URL blocked by security policy")
+
+    if v2:
+        # B4 pre-gate: after the SSRF 400, BEFORE the credit reserve ($0, no row).
+        refusal = _url_pre_gate(url1, url2)
+        if refusal:
+            _raise_url_refusal("NOT_PRODUCT_PAGE", NOT_PRODUCT_PAGE_MESSAGE,
+                               refusal["field"], refusal["reason"])
+        return await _compare_urls_metered(
+            url1, url2, region, selected_category, user,
+            search_log_extra=_search_log_synthetic_kwargs(request), url_mode_v2=True,
+        )
 
     return await _compare_urls_metered(
         url1, url2, region, selected_category, user,

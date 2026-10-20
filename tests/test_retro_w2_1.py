@@ -172,7 +172,7 @@ def _zero_network(monkeypatch):
 @pytest.fixture(autouse=True)
 def _clean_flags(monkeypatch):
     for name in (METER, ENVELOPE, ANON_GATE, "ENABLE_LLM_PREFLIGHT_BREAKER",
-                 "ENABLE_STRICT_OPTIONAL_AUTH"):
+                 "ENABLE_STRICT_OPTIONAL_AUTH", "ENABLE_URL_MODE_V2"):
         monkeypatch.delenv(name, raising=False)
 
 

@@ -10,6 +10,7 @@ Response format:
 }
 """
 import logging
+import os
 import time
 from fastapi import HTTPException, Request
 from fastapi.exceptions import RequestValidationError
@@ -32,6 +33,21 @@ STATUS_CODE_MAP = {
     500: "SERVER_ERROR",
     503: "FEATURE_DISABLED",
 }
+
+# B4 URL-MODE-V2: the only codes whose structured detail may carry the additive
+# `field` / `reason` keys to the wire (ruling B4-R5: scoped, never a global scan).
+# A tuple, not a set: `in` must not hash an arbitrary (possibly unhashable) code.
+_URL_V2_PASSTHROUGH_CODES = ("NOT_PRODUCT_PAGE", "STORE_UNREADABLE", "UNRESOLVED_PRODUCT")
+
+
+def _url_mode_v2_keys_enabled() -> bool:
+    """ENABLE_URL_MODE_V2 (B4, default OFF), read PER CALL. A local one-liner (the
+    url_extraction_service._price_parse_offload_enabled precedent) so the
+    middleware never imports a service; it reads the SAME name as
+    url_extraction_service.url_mode_v2_enabled."""
+    return os.getenv("ENABLE_URL_MODE_V2", "false").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
 
 
 def _get_request_id(request: Request) -> str:
@@ -136,6 +152,15 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
         "code": code,
         "request_id": _get_request_id(request),
     }
+    # B4 (flag read FIRST, so OFF reads nothing more of the detail): a B4 URL
+    # refusal keeps its additive `field` / `reason` (str values only).
+    if (_url_mode_v2_keys_enabled() and _is_structured_detail(detail)
+            and isinstance(detail.get("code"), str)
+            and detail["code"] in _URL_V2_PASSTHROUGH_CODES):
+        for key in ("field", "reason"):
+            value = detail.get(key)
+            if isinstance(value, str):
+                content[key] = value
     headers = None
     if retry_after is not None:
         content["retry_after_seconds"] = retry_after
