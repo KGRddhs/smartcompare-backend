@@ -1,9 +1,12 @@
 """
 OpenAI Service - Vision and text processing for product comparison
 """
+import asyncio
 import json
 import base64
 import logging
+import math
+import os
 from typing import Any, Dict, List, Optional
 
 import httpx
@@ -108,6 +111,452 @@ def clean_json_response(raw_content: str) -> str:
     return content.strip()
 
 
+# ---------------------------------------------------------------------------
+# B3 VISION-IDENTITY-V2 (session 80): ENABLE_VISION_IDENTITY_V2, default OFF,
+# read PER CALL. Flag OFF, identify_products runs the V1 body below
+# byte-for-byte (prompt, message layout, kwargs, normaliser); nothing in this
+# block is read or touched. Flag ON, _identify_products_v2 sends a SECOND
+# prompt with a strict json_schema response_format under a bounded wait_for
+# and a SECOND normaliser (one best candidate per image_index, the internal
+# underscore keys the camera route strips from every wire body).
+# ---------------------------------------------------------------------------
+_VISION_TIMEOUT_DEFAULT = 20.0
+_VISION_V2_MAX_TOKENS = 1000
+# The nine canonical keys in the order of the A2b classifier prompt
+# (extraction_service._CLASSIFY_CATEGORY_LLM_PROMPT); pinned equal to
+# extraction_service._CANONICAL_CATEGORIES by the B3 unit file.
+VISION_CATEGORY_KEYS = (
+    "electronics", "grocery", "supplements", "makeup", "skincare", "haircare",
+    "fragrances", "fashion", "other",
+)
+VISION_V2_PUBLIC_KEYS = ("brand", "name", "size_or_count", "visible_price", "confidence")
+VISION_V2_INTERNAL_KEYS = (
+    "_image_index", "_category", "_product_type", "_distinguishing_features", "_is_product",
+)
+_VISION_CONFIDENCE_RANK = {"high": 3, "medium": 2, "low": 1}
+_VISION_FEATURE_MAX_CHARS = 80
+_VISION_FEATURE_MAX_ITEMS = 8
+_VISION_FINISH_REASONS = frozenset(
+    ("stop", "length", "tool_calls", "content_filter", "function_call")
+)
+
+VISION_PROMPT_V2 = (
+    "You are a product identification expert with OCR skills. The images are numbered "
+    "from 0 in the order they are given (image_index 0 is the first image). Identify "
+    "every distinct retail product visible in each image.\n"
+    "\n"
+    "CRITICAL: READ the EXACT text printed on each product's packaging, label or screen. "
+    "Do NOT guess from memory or training data. Only report what you can actually SEE in "
+    "the image.\n"
+    "\n"
+    "For EACH product found, give:\n"
+    "- image_index: the 0-based number of the image the product appears in.\n"
+    "- brand: the manufacturer or brand name as printed on the label, logo or packaging; "
+    "null when no brand text is readable.\n"
+    "- name: the FULL product name exactly as printed, including model numbers, variants "
+    "and edition text (\"Vitamin D-3 5000 IU\", \"iPhone 16 Pro Max 256GB\"); null when no "
+    "name text is readable.\n"
+    "- category: one of " + ", ".join(VISION_CATEGORY_KEYS) + " -- or null when you "
+    "cannot tell. This is the same category list the rest of the service uses.\n"
+    "- product_type: a short noun for what the object is (\"perfume bottle\", \"wrist "
+    "watch\", \"shirt\", \"vitamin bottle\", \"violin\").\n"
+    "- size_or_count: the quantity, count, weight, volume or storage size printed on the "
+    "package (\"360 Softgels\", \"1000mg\", \"128GB\", \"500ml\"); null if not visible.\n"
+    "- visible_price: any price shown in the image (shelf tag, screen, label) with its "
+    "currency symbol; null if not visible.\n"
+    "- distinguishing_features: short phrases that tell this item from a similar one "
+    "(colour, pattern, material, edition text, cap shape, bottle shape, printed slogan). "
+    "Empty list if none.\n"
+    "- is_product: true when the object is a retail product someone could buy; false for "
+    "a person, an animal, furniture, a background object or a part of the room.\n"
+    "- confidence: \"high\" (brand and name text clearly readable), \"medium\" (partially "
+    "readable, some inference), \"low\" (little or no readable text).\n"
+    "\n"
+    "RULES:\n"
+    "- READ the label text character by character -- exact numbers and units matter.\n"
+    "- One image may contain MULTIPLE products: list each of them with the same "
+    "image_index (up to 4 products in total across all images).\n"
+    "- If a product has NO readable brand or name text, do NOT invent one from its shape, "
+    "colour or design. Report what you can see, set the unreadable fields to null and set "
+    "confidence to \"low\".\n"
+    "- If the label is written in Arabic script, keep any Latin brand text as printed and "
+    "transliterate the Arabic product name into Latin letters.\n"
+    "- For supplements and vitamins read the EXACT count from the front label; for "
+    "electronics the EXACT model and storage; for food and grocery the weight, volume or "
+    "count.\n"
+    "- For screenshots of retailer pages, extract the product name exactly as shown.\n"
+    "- If a price tag sits next to a product, associate it with that product.\n"
+    "- Return ONLY the JSON object described below, nothing else.\n"
+    "\n"
+    "Return a JSON object: {\"products\": [ { \"image_index\": 0, \"brand\": \"NOW\", "
+    "\"name\": \"Vitamin D-3 5000 IU\", \"category\": \"supplements\", \"product_type\": "
+    "\"vitamin bottle\", \"size_or_count\": \"360 Softgels\", \"visible_price\": "
+    "\"BHD 8.50\", \"distinguishing_features\": [\"orange cap\", \"white bottle\"], "
+    "\"is_product\": true, \"confidence\": \"high\" } ]}"
+)
+
+
+def _vision_nullable_string() -> Dict[str, Any]:
+    return {"type": ["string", "null"]}
+
+
+# Strict structured outputs (rulings B3-R6(4) / GB-3): the category branch is the
+# documented strict subset -- anyOf [{string enum of the nine}, {null}] -- never
+# an enum that itself carries null. Passed as a literal response_format kwarg
+# (M1 forbids only literal temperature= / max_tokens=).
+VISION_RESPONSE_FORMAT_V2 = {
+    "type": "json_schema",
+    "json_schema": {
+        "name": "vision_products_v2",
+        "strict": True,
+        "schema": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["products"],
+            "properties": {
+                "products": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "required": [
+                            "image_index", "brand", "name", "category", "product_type",
+                            "size_or_count", "visible_price", "distinguishing_features",
+                            "is_product", "confidence",
+                        ],
+                        "properties": {
+                            "image_index": {"type": "integer"},
+                            "brand": _vision_nullable_string(),
+                            "name": _vision_nullable_string(),
+                            "category": {
+                                "anyOf": [
+                                    {"type": "string", "enum": list(VISION_CATEGORY_KEYS)},
+                                    {"type": "null"},
+                                ]
+                            },
+                            "product_type": _vision_nullable_string(),
+                            "size_or_count": _vision_nullable_string(),
+                            "visible_price": _vision_nullable_string(),
+                            "distinguishing_features": {
+                                "type": "array", "items": {"type": "string"},
+                            },
+                            "is_product": {"type": "boolean"},
+                            "confidence": {
+                                "type": "string", "enum": ["high", "medium", "low"],
+                            },
+                        },
+                    },
+                },
+            },
+        },
+    },
+}
+
+
+def vision_identity_v2_enabled() -> bool:
+    """B3: True iff ENABLE_VISION_IDENTITY_V2 is truthy (default OFF).
+
+    The house idiom, read PER CALL (never cached), so a Railway flip takes
+    effect on the next request without a restart."""
+    return os.getenv("ENABLE_VISION_IDENTITY_V2", "false").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
+def vision_timeout_seconds() -> float:
+    """B3: the V2 vision call bound, VISION_TIMEOUT_SECONDS (default 20.0 s).
+
+    Read per call, and only inside the V2 branch (flag OFF never reads it).
+    Unset / blank -> the default silently; garbage, inf, nan or <= 0 -> the
+    default with one WARNING naming the variable (the text_routes knob form)."""
+    raw = os.getenv("VISION_TIMEOUT_SECONDS", "").strip()
+    if not raw:
+        return _VISION_TIMEOUT_DEFAULT
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        logger.warning(
+            "VISION_TIMEOUT_SECONDS=%r is not a number; using the %.1fs default",
+            raw, _VISION_TIMEOUT_DEFAULT,
+        )
+        return _VISION_TIMEOUT_DEFAULT
+    if not math.isfinite(value) or value <= 0:
+        logger.warning(
+            "VISION_TIMEOUT_SECONDS=%r is not a positive finite number; "
+            "using the %.1fs default",
+            raw, _VISION_TIMEOUT_DEFAULT,
+        )
+        return _VISION_TIMEOUT_DEFAULT
+    return value
+
+
+def public_vision_products(products) -> list:
+    """B3: the wire copy of the vision products -- a NEW list of NEW dicts with
+    every underscore-prefixed (internal) key removed; a non-dict item passes
+    through; None -> []. Unconditional (no flag read): a V1 product carries no
+    underscore key, so with the flag OFF the copy equals the original."""
+    return [
+        {k: v for k, v in p.items() if not str(k).startswith("_")} if isinstance(p, dict) else p
+        for p in (products or [])
+    ]
+
+
+def _vision_v2_text(value) -> Optional[str]:
+    """A stripped non-empty str, else None."""
+    if not isinstance(value, str):
+        return None
+    value = value.strip()
+    return value or None
+
+
+def _vision_v2_image_index(value, n_images: int) -> Optional[int]:
+    """The int image_index when it names one of the request's images
+    (0 <= value < n_images, a bool is not an int here), else None (unpaired,
+    rulings B3-R6(3) / GB-1)."""
+    if isinstance(value, int) and not isinstance(value, bool) and 0 <= value < n_images:
+        return value
+    return None
+
+
+def _vision_v2_features(value) -> List[str]:
+    """distinguishing_features: the non-empty str items, stripped, each cut at
+    80 characters, at most 8; anything that is not a list -> []."""
+    if not isinstance(value, list):
+        return []
+    out = []
+    for item in value:
+        if not isinstance(item, str):
+            continue
+        item = item.strip()
+        if not item:
+            continue
+        out.append(item[:_VISION_FEATURE_MAX_CHARS])
+        if len(out) >= _VISION_FEATURE_MAX_ITEMS:
+            break
+    return out
+
+
+def _normalize_vision_products_v2(items: list, n_images: int):
+    """B3: coerce the V2 reply's list items into product dicts.
+
+    Returns (candidates, counts). A non-dict item is dropped
+    (`dropped_non_dict`); a candidate whose `is_product` is False is dropped
+    (`dropped_not_product`, ruling B3-R6(6)); an image_index that does not name
+    one of the request's images is kept with `_image_index` None and counted
+    (`unpaired_index`). `candidates` counts every list item (GB-4)."""
+    # Lazy import (the module-level reload in test_m18_openai_tpm_sizing must
+    # not pull extraction_service in at openai_service import time).
+    from app.services.extraction_service import canonicalize_category
+
+    counts = {
+        "candidates": len(items),
+        "dropped_not_product": 0,
+        "unpaired_index": 0,
+        "dropped_non_dict": 0,
+    }
+    candidates = []
+    for item in items:
+        if not isinstance(item, dict):
+            counts["dropped_non_dict"] += 1
+            continue
+        is_product = item.get("is_product")
+        if not isinstance(is_product, bool):
+            # A lenient (V1-shaped) item without the key is a product.
+            is_product = True
+        if not is_product:
+            counts["dropped_not_product"] += 1
+            continue
+        image_index = _vision_v2_image_index(item.get("image_index"), n_images)
+        if image_index is None:
+            counts["unpaired_index"] += 1
+        confidence = item.get("confidence")
+        confidence = confidence.strip().lower() if isinstance(confidence, str) else ""
+        if confidence not in _VISION_CONFIDENCE_RANK:
+            confidence = "low"
+        raw_category = item.get("category")
+        category = (
+            canonicalize_category(raw_category)
+            if isinstance(raw_category, str) and raw_category.strip()
+            else None
+        )
+        candidates.append({
+            "brand": _vision_v2_text(item.get("brand")) or "Unknown",
+            "name": _vision_v2_text(item.get("name")) or "Unknown Product",
+            "size_or_count": _vision_v2_text(item.get("size_or_count")),
+            "visible_price": _vision_v2_text(item.get("visible_price")),
+            "confidence": confidence,
+            "_image_index": image_index,
+            "_category": category,
+            "_product_type": _vision_v2_text(item.get("product_type")),
+            "_distinguishing_features": _vision_v2_features(item.get("distinguishing_features")),
+            "_is_product": True,
+        })
+    return candidates, counts
+
+
+def _select_vision_products_v2(candidates: list, n_images: int) -> list:
+    """B3 selection: per paired image_index (ascending) keep the best candidate
+    (highest confidence, ties keep the earlier); a ONE-image request keeps the
+    best TWO of image_index 0 (ruling B3-R6(2)). Unpaired candidates follow in
+    reply order (ruling B3-R6(3)). No count cap (GB-2)."""
+    keep_per_index = 2 if n_images == 1 else 1
+    by_index: Dict[int, list] = {}
+    unpaired = []
+    for cand in candidates:
+        idx = cand["_image_index"]
+        if idx is None:
+            unpaired.append(cand)
+        else:
+            by_index.setdefault(idx, []).append(cand)
+    kept = []
+    for idx in sorted(by_index):
+        # sorted() is stable, so equal confidence keeps reply order.
+        ranked = sorted(
+            by_index[idx], key=lambda c: _VISION_CONFIDENCE_RANK[c["confidence"]], reverse=True,
+        )
+        kept.extend(ranked[:keep_per_index])
+    kept.extend(unpaired)
+    return kept
+
+
+def _vision_finish_label(finish_reason) -> str:
+    """A log-safe finish_reason: the SDK literal, 'None', or a type name."""
+    if finish_reason is None:
+        return "None"
+    if isinstance(finish_reason, str) and finish_reason in _VISION_FINISH_REASONS:
+        return finish_reason
+    return type(finish_reason).__name__
+
+
+def _vision_usage_int(usage, name: str) -> int:
+    value = getattr(usage, name, None) if usage is not None else None
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    return 0
+
+
+def _vision_image_parts(image_data_list: List[Dict]) -> List[Dict]:
+    """The image parts of the vision message, in input order (the V1 layout)."""
+    parts = []
+    for img_data in image_data_list:
+        if "path" in img_data:
+            base64_image = encode_image_to_base64(img_data["path"])
+            mime_type = "image/jpeg"
+            if img_data["path"].lower().endswith(".png"):
+                mime_type = "image/png"
+        else:
+            base64_image = encode_image_bytes_to_base64(img_data["bytes"])
+            mime_type = img_data.get("mime_type", "image/jpeg")
+        parts.append({
+            "type": "image_url",
+            "image_url": {"url": f"data:{mime_type};base64,{base64_image}", "detail": "auto"},
+        })
+    return parts
+
+
+async def _identify_products_v2(image_data_list: List[Dict]) -> Dict:
+    """B3: the V2 vision call (ENABLE_VISION_IDENTITY_V2 ON).
+
+    Raises LLMUnavailableError on a refused / None / choice-less reply and
+    TimeoutError on the VISION_TIMEOUT_SECONDS bound (the camera route serves
+    both as its existing coded 503 LLM_UNAVAILABLE); a finish_reason=length
+    reply or an unparsable one returns the V1-shaped parse-failure dict (the
+    route's existing action:"error" exit). Log lines carry ints, bools, the
+    finish_reason literal and the bound only -- never a product string."""
+    content = [{"type": "text", "text": VISION_PROMPT_V2}]
+    content.extend(_vision_image_parts(image_data_list))
+
+    bound = vision_timeout_seconds()
+    _vision_model = vision_model()
+    try:
+        response = await asyncio.wait_for(
+            _llm_breaker.guarded_llm_create(
+                client,
+                model=_vision_model,
+                messages=[{"role": "user", "content": content}],
+                response_format=VISION_RESPONSE_FORMAT_V2,
+                **token_limit_kwargs(_vision_model, _VISION_V2_MAX_TOKENS),
+                **sampling_kwargs(_vision_model, 0),
+            ),
+            timeout=bound,
+        )
+    except asyncio.TimeoutError:
+        logger.warning("[VISION_V2] vision call timed out after %.1fs", bound)
+        raise
+    _log_cache_telemetry(response, "identify_products")
+
+    usage = getattr(response, "usage", None)
+    tokens_used = _vision_usage_int(usage, "total_tokens")
+    choices = getattr(response, "choices", None) or []
+    choice = choices[0] if choices else None
+    finish_reason = getattr(choice, "finish_reason", None)
+    message = getattr(choice, "message", None)
+    raw_content = getattr(message, "content", None)
+    refusal = getattr(message, "refusal", None)
+    finish_label = _vision_finish_label(finish_reason)
+
+    if refusal or not isinstance(raw_content, str):
+        logger.warning(
+            "[VISION_V2] no content: finish_reason=%s refused=%s", finish_label, bool(refusal),
+        )
+        # The message stays free of the rate / quota words the verdict
+        # fallback matcher keys on (LLMUnavailableError contract).
+        raise _llm_breaker.LLMUnavailableError("vision returned no content")
+
+    def _parse_failure(error: str) -> Dict:
+        return {
+            "products": [],
+            "error": error,
+            "raw_response": raw_content,
+            "tokens_used": tokens_used,
+            "cost": 0,
+        }
+
+    if finish_reason == "length":
+        logger.warning("[VISION_V2] finish_reason=length; treating the reply as a parse failure")
+        return _parse_failure("Failed to parse response: finish_reason=length")
+
+    try:
+        parsed = json.loads(clean_json_response(raw_content))
+    except json.JSONDecodeError as e:
+        return _parse_failure(f"Failed to parse response: {str(e)}")
+
+    if isinstance(parsed, dict) and isinstance(parsed.get("products"), list):
+        items = parsed["products"]
+    elif isinstance(parsed, list):
+        items = parsed
+    else:
+        return _parse_failure(
+            f"Failed to parse response: unexpected shape {type(parsed).__name__}"
+        )
+
+    n_images = len(image_data_list)
+    candidates, counts = _normalize_vision_products_v2(items, n_images)
+    kept = _select_vision_products_v2(candidates, n_images)
+    logger.info(
+        "[VISION_V2] candidates=%d kept=%d dropped_not_product=%d unpaired_index=%d "
+        "dropped_non_dict=%d unknown_brand=%d unknown_name=%d images=%d finish_reason=%s",
+        counts["candidates"],
+        len(kept),
+        counts["dropped_not_product"],
+        counts["unpaired_index"],
+        counts["dropped_non_dict"],
+        sum(1 for p in kept if p["brand"] == "Unknown"),
+        sum(1 for p in kept if p["name"] == "Unknown Product"),
+        n_images,
+        finish_label,
+    )
+
+    # The V1 cost formula (gpt-4o-mini list price), tolerant of a missing usage.
+    if usage is None:
+        cost = 0.0
+    else:
+        input_cost = (_vision_usage_int(usage, "prompt_tokens") * 0.15) / 1_000_000
+        output_cost = (_vision_usage_int(usage, "completion_tokens") * 0.60) / 1_000_000
+        cost = round(input_cost + output_cost, 6)
+    return {"products": kept, "tokens_used": tokens_used, "cost": cost}
+
+
 async def identify_products(image_data_list: List[Dict]) -> Dict:
     """
     Use OpenAI Vision to identify products from images.
@@ -127,6 +576,8 @@ async def identify_products(image_data_list: List[Dict]) -> Dict:
             "cost": 0.00056
         }
     """
+    if vision_identity_v2_enabled():
+        return await _identify_products_v2(image_data_list)
 
     # Build message content with images
     content = [

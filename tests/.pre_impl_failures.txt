@@ -44,6 +44,18 @@
 #     If this row ever flaps red again it is CROSS-TEST POLLUTION, not a
 #     product bug: bisect the predecessor set, do not re-baseline it.
 #
+# PRUNED 2026-10-20 (B3 VISION-IDENTITY-V2, session 80) -- a targeted per-row
+# prune with per-row pass proof, NOT a re-capture. Three rows removed:
+#   - the three test_camera_vision.py TestIdentifyProductsMocked rows
+#     (test_empty_product_fields_normalized, test_malformed_response_returns_error,
+#     test_successful_identification) -- the fixture bug (a MagicMock usage
+#     object, so 'cached_tokens > 0' raised TypeError at openai_service.py:81)
+#     is fixed IN THE TEST with a types.SimpleNamespace usage; no production
+#     change. Proof: tests/test_camera_vision.py 25 passed / 0 failed /
+#     1 deselected (its live_unit class) through the bounded runner on the B3
+#     branch over base 81df2b64 (pyt tag b3green-camera-vision, 2026-10-20);
+#     the [pyt] line is quoted verbatim in the B3 PR body.
+#
 # Rows NOT removed (still red for their ORIGINAL reasons — each needs its
 # owner, not a baseline edit; fixing them is #89):
 #   - test_auth_interceptor x2 — red-BY-CHOICE: auth_service returns the
@@ -51,9 +63,6 @@
 #     generic message against; instrumentation is documented as KEPT until
 #     Google Sign-In is resolved (CLAUDE.md Known Remaining Bugs). app/ is
 #     owned by concurrent lanes; xfail-containment is #89's call.
-#   - test_camera_vision x3 — fixture bug: mocked usage object returns
-#     MagicMock so 'cached_tokens > 0' raises TypeError in openai_service
-#     (#89-diagnosed; production fine). Test file not in this unit's lane.
 #   - test_extraction_prompt_bundle_c x1, test_page_scraping x2 — the M13-17
 #     credential-free deterministic assertion failures; unchanged.
 #   - test_personalization_bundle_c x2 — TDD RED-by-design pytest.fail stubs
@@ -62,7 +71,7 @@
 #   - test_supplement_branch_genuine x1 — hermeticity: credential-free
 #     sentinels route to 'shopify_json' vs the pinned 'local_bhd' (#89).
 #
-# Effective baseline count = 11 (all real, no xfail padding). The markdown
+# Effective baseline count = 8 (all real, no xfail padding). The markdown
 # mirror tests/PRE_IMPL_FAILURE_BASELINE.md is GENERATED from this file by
 # scripts/gen_baseline_mirror.py; tests/test_ci_gates.py re-derives the count +
 # id set so the mirror can never silently fall behind this file again.
@@ -78,9 +87,6 @@
 #     --timeout=60 -q
 tests/test_auth_interceptor.py::test_sign_in_with_social_exception
 tests/test_auth_interceptor.py::test_social_login_user_insert_fails_gracefully
-tests/test_camera_vision.py::TestIdentifyProductsMocked::test_empty_product_fields_normalized
-tests/test_camera_vision.py::TestIdentifyProductsMocked::test_malformed_response_returns_error
-tests/test_camera_vision.py::TestIdentifyProductsMocked::test_successful_identification
 tests/test_extraction_prompt_bundle_c.py::test_response_builder_strips_inference_source
 tests/test_page_scraping.py::TestFetchPagePriceJsonLD::test_jsonld_nested_offers_picks_lowest
 tests/test_page_scraping.py::TestFetchPagePriceOpenGraph::test_og_meta_extraction
