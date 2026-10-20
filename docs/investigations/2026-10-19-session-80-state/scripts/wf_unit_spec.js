@@ -1,6 +1,6 @@
 export const meta = {
   name: 's80-unit-spec',
-  description: 'Per unit: Fable spec writer (measured at base) then Fable adversarial spec reviewer; returns both for the orchestrator rulings',
+  description: 'Per unit: spec writer (measured at base) then adversarial spec reviewer (agents run on the pinned model); returns both for the orchestrator rulings',
   phases: [
     { title: 'Spec', detail: 'one spec writer per unit, measured at base, writes <worktree>/.qa-s80/<ID>_UNIT_SPEC.md' },
     { title: 'Review', detail: 'one adversarial reviewer per unit, re-measures, writes <ID>_SPEC_REVIEW.md' },
@@ -58,7 +58,7 @@ const REVIEW_SCHEMA = {
 
 function specPrompt(u) {
   return [
-    'You are the SPEC WRITER (Fable) for unit ' + u.id + ': ' + u.title + '.',
+    'You are the SPEC WRITER for unit ' + u.id + ': ' + u.title + '.',
     RULES,
     'Worktree to measure (read-only for you; detached at the base sha): ' + u.worktree + '. Dark flag: ' + u.flag + ' (default OFF, read per call with the house idiom; flag OFF must be byte-identical). Defects closed: ' + u.defects + '.',
     'Unit brief from the orchestrator: ' + u.brief,
@@ -70,7 +70,7 @@ function specPrompt(u) {
 
 function reviewPrompt(u, spec) {
   return [
-    'You are the ADVERSARIAL SPEC REVIEWER (Fable) for unit ' + u.id + ': ' + u.title + '. Your job is to REFUTE the spec: default to doubt.',
+    'You are the ADVERSARIAL SPEC REVIEWER for unit ' + u.id + ': ' + u.title + '. Your job is to REFUTE the spec: default to doubt.',
     RULES,
     'Worktree (read-only): ' + u.worktree + '. The spec: ' + spec.spec_path + ' (sha256 ' + spec.spec_sha256 + '; re-hash it first). Flag: ' + u.flag + '. Defects: ' + u.defects + '.',
     'Re-measure EVERY file:line the spec cites at the base sha and run your own probes in a scratch copy under your scratchpad, never in the worktree. Check these defect classes found in session 79: vacuous PIN rows (a config check preceding every observable action makes a no-call PIN unable to kill a not-gated mutant); mutants no RED row can kill; comm-set files missing (symbol-only importers, patch-string references, the source-scanning pins, SmartCompareApp-scanning tests); flag-OFF byte identity not actually pinned; a response key removed, renamed or retyped; a refusal that would reach build 3 through a shape it cannot render (PLAN section 0); billing (R-A3): any abstain that still consumes a credit, bumps the lifetime counter or writes a history row; pin collisions (T23 OpenAPI, FY25 digests, w4_11 prompt digests, test_retro_w2_1 URL pins, the W4-13 ledger fixture, copy-policy fences) not listed in section 4.1; the camera failure envelope interaction; cache keys without a category or language axis; the error-handler code mapping (a codeless 503 becomes FEATURE_DISABLED); a stated limit that is actually a defect.',
