@@ -102,7 +102,7 @@ def _clean_env(monkeypatch):
             monkeypatch.delenv(k, raising=False)
     for k in ("ENABLE_LLM_PREFLIGHT_BREAKER", "ENABLE_PRICE_FALLBACK_MAY_DECLINE",
               "ENABLE_VERDICT_PROMPT_TRUTH", "ENABLE_SPECS_NO_FABRICATION",
-              "ENABLE_PRICE_PARSE_OFFLOAD"):
+              "ENABLE_PRICE_PARSE_OFFLOAD", "ENABLE_VISION_IDENTITY_V2"):
         monkeypatch.delenv(k, raising=False)
     yield
 

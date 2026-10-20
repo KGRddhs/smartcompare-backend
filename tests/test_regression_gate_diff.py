@@ -180,7 +180,12 @@ def test_load_baseline_reads_committed_file():
     assert all("::" in i for i in ids)
     # A documented baseline member is present. (The value_math nodes are xfail'd
     # since #49 and were dropped from the re-capture, so they must NOT be here.)
-    assert any("test_camera_vision.py" in i for i in ids)
+    # B3 (session 80, 2026-10-20) pruned the three test_camera_vision.py rows
+    # with pass proof, so the documented member is now test_auth_interceptor.py
+    # (red-by-choice, listed under "Rows NOT removed" in the file header) and
+    # the pruned file must be absent.
+    assert any("test_auth_interceptor.py" in i for i in ids)
+    assert not any("test_camera_vision.py" in i for i in ids)
 
 
 def test_load_baseline_missing_file_is_empty_set(tmp_path):

@@ -1343,6 +1343,30 @@ def _product_display_identity(
     return full, name
 
 
+def _vision_identity_fields(vp) -> dict:
+    """B3 (ENABLE_VISION_IDENTITY_V2): the identity evidence a V2-shaped
+    vision product carries into the orchestrator's identity dict, for B2.
+
+    Presence-gated on the V2 marker `_is_product` (no flag read here, so a
+    mid-request flip cannot split one request): a V1 product (the five public
+    keys only) -- and anything that is not a dict -- returns {} and the
+    identity dict stays the base six keys byte for byte. These keys never
+    reach `product_data` or the wire (`_fetch_product_data` builds a fresh
+    result dict)."""
+    if not isinstance(vp, dict) or "_is_product" not in vp:
+        return {}
+    features = vp.get("_distinguishing_features")
+    return {
+        "_vision_confidence": vp.get("confidence"),
+        "_vision_category": vp.get("_category"),
+        "_vision_distinguishing_features": (
+            list(features) if isinstance(features, (list, tuple)) else []
+        ),
+        "_vision_is_product": bool(vp.get("_is_product")),
+        "_vision_image_index": vp.get("_image_index"),
+    }
+
+
 async def _timed_task(label: str, coro, timings_dict):
     """Await a coroutine and record its elapsed time into timings_dict[label + '_ms'].
     Safe inside asyncio.gather — each wrapper records its OWN per-task wall (independent
@@ -4222,7 +4246,7 @@ class StructuredComparisonService:
                     products.append({
                         "brand": brand, "name": vname,
                         "variant": vp.get("size_or_count"),
-                        "category": category, "search_query": full, "_vision": True,
+                        "category": category, "search_query": full, "_vision": True, **_vision_identity_fields(vp),
                     })
                 parsed = {}
             elif explicit_pair:
@@ -4866,7 +4890,7 @@ class StructuredComparisonService:
                     products.append({
                         "brand": brand, "name": vname,
                         "variant": vp.get("size_or_count"),
-                        "category": category, "search_query": full, "_vision": True,
+                        "category": category, "search_query": full, "_vision": True, **_vision_identity_fields(vp),
                     })
                 parsed = {}
             elif explicit_pair:

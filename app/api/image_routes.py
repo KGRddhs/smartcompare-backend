@@ -16,10 +16,17 @@ from typing import List, Optional, Dict
 
 from fastapi import APIRouter, UploadFile, File, HTTPException, Query, Depends, Request
 
-from app.services.openai_service import identify_products
+from app.services.openai_service import (
+    identify_products,
+    public_vision_products,
+    vision_identity_v2_enabled,
+)
 # B1 (S80, ENABLE_RESULT_STATUS_METADATA): the camera timings stamp and the status message.
 from app.services.result_gate import stamp_camera_stage_timings
 from app.services.sentry_service import capture_result_status
+# B3 (ENABLE_VISION_IDENTITY_V2): the text route's preferences read, reused for
+# a signed-in scan under the flag.
+from app.services.auth_service import get_user_preferences
 # COST-METER (#66) CM9 / G5: the camera identify call is recorded on the
 # route's OWN ledger and merged with the compare's summary.
 from app.services.openai_pricing import (
@@ -130,6 +137,26 @@ def _camera_failure_envelope(result: Dict, request: Request, products: list,
     if result.get("layer"):
         envelope["layer"] = result["layer"]
     return envelope
+
+
+async def _camera_user_preferences(user_id) -> Optional[Dict]:
+    """B3 (ENABLE_VISION_IDENTITY_V2): the text route's preferences rule for a
+    signed-in scan -- the stored preferences only when the read succeeded and
+    `preferences_completed` is set, else None. Fail-soft: a raising read logs
+    one WARNING carrying the exception TYPE only and returns None, so a scan
+    loses the personalisation, never the comparison."""
+    try:
+        prefs_result = await get_user_preferences(user_id)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[IMAGE] preferences read failed: %s", type(e).__name__)
+        return None
+    if (
+        isinstance(prefs_result, dict)
+        and prefs_result.get("success")
+        and prefs_result.get("preferences_completed")
+    ):
+        return prefs_result.get("preferences")
+    return None
 
 # Supported image MIME types for OpenAI Vision
 SUPPORTED_MIME_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
@@ -439,7 +466,7 @@ async def identify_and_compare(
         return {
             "success": True,
             "action": "need_second_product",
-            "products": products,
+            "products": public_vision_products(products),
             "message": f"Identified: {product['brand']} {product['name']}. "
                        f"Take another photo or type a product to compare with.",
             "vision_cost": vision_cost,
@@ -456,8 +483,24 @@ async def identify_and_compare(
     _syn = _search_log_synthetic_kwargs(request)
     try:
         service = StructuredComparisonService()
+        # B3 (ENABLE_VISION_IDENTITY_V2, read here once per request): a
+        # signed-in scan gets the text route's personalisation -- user_id and,
+        # when completed, the stored preferences -- as CONDITIONAL kwargs, so
+        # flag OFF (or an anonymous scan) is the base three-kwarg call. The
+        # list passed in keeps its internal underscore keys (the orchestrator
+        # reads them); every wire body below gets public_vision_products().
+        _compare_extra = {}
+        if vision_identity_v2_enabled():
+            _scan_user_id = user.get("id") if user else None
+            if _scan_user_id:
+                _compare_extra["user_id"] = _scan_user_id
+                _scan_prefs = await _camera_user_preferences(_scan_user_id)
+                if _scan_prefs:
+                    _compare_extra["user_preferences"] = _scan_prefs
         _t_compare = time.perf_counter()
-        result = await service.compare_from_text(query, region=region, vision_products=products, nocache=nocache)
+        result = await service.compare_from_text(
+            query, region=region, vision_products=products, nocache=nocache, **_compare_extra
+        )
         compare_ms = int((time.perf_counter() - _t_compare) * 1000)
 
         # R-METER (W2-1b): compare_from_text mostly RETURNS its failures
@@ -496,12 +539,12 @@ async def identify_and_compare(
             result["metadata"]["total_cost"] = round(
                 result["metadata"].get("total_cost", 0) + vision_cost, 6
             )
-            result["metadata"]["identified_products"] = products
+            result["metadata"]["identified_products"] = public_vision_products(products)
         else:
             result["metadata"] = {
                 "input_method": "camera",
                 "vision_cost": vision_cost,
-                "identified_products": products,
+                "identified_products": public_vision_products(products),
             }
         if merged_openai is not None and recorded_openai:
             result["metadata"]["openai"] = merged_openai
@@ -546,7 +589,9 @@ async def identify_and_compare(
                     label="log_search.camera.unsuccessful",
                 )
             if camera_failure_envelope_enabled():
-                return _camera_failure_envelope(result, request, products, vision_cost)
+                return _camera_failure_envelope(
+                    result, request, public_vision_products(products), vision_cost
+                )
             return result
 
         # Fire-and-forget: log search + save history — Bundle D 2.B.6 WRAP
@@ -592,7 +637,9 @@ async def identify_and_compare(
             # Metering OFF, envelope ON: the body says what happened; the
             # accounting above is today's (history + success log) by design --
             # the no-bill half belongs to ENABLE_PAID_ROUTE_METERING.
-            return _camera_failure_envelope(result, request, products, vision_cost)
+            return _camera_failure_envelope(
+                result, request, public_vision_products(products), vision_cost
+            )
         # B1 (S80, B1-R6): the status message on the DELIVERY exit only -- an unsuccessful
         # body served here with metering and the envelope both OFF is not a delivery.
         if result.get("success") is True:
@@ -648,7 +695,7 @@ async def identify_and_compare(
             "error": "Products identified — comparing them is unavailable right now.",
             "code": "INTERNAL_ERROR",
             "request_id": getattr(request.state, "request_id", "unknown"),
-            "products": products,
+            "products": public_vision_products(products),
             "vision_cost": vision_cost,
             "message": "Products identified but comparison failed. You can compare them via text.",
         }

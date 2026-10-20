@@ -14,6 +14,7 @@ if "OPENAI_API_KEY" not in os.environ:
 
 import pytest
 import asyncio
+import types
 from unittest.mock import patch, AsyncMock, MagicMock
 from app.services.openai_service import identify_products, clean_json_response
 
@@ -47,10 +48,7 @@ class TestCleanJsonResponse:
 class TestIdentifyProductsMocked:
     def test_malformed_response_returns_error(self):
         """If GPT returns non-JSON, should return error dict with raw_response."""
-        mock_usage = MagicMock()
-        mock_usage.total_tokens = 100
-        mock_usage.prompt_tokens = 80
-        mock_usage.completion_tokens = 20
+        mock_usage = types.SimpleNamespace(total_tokens=100, prompt_tokens=80, completion_tokens=20)
 
         mock_choice = MagicMock()
         mock_choice.message.content = "I can see an iPhone in the image"
@@ -69,10 +67,7 @@ class TestIdentifyProductsMocked:
 
     def test_successful_identification(self):
         """Valid JSON response should return normalized products."""
-        mock_usage = MagicMock()
-        mock_usage.total_tokens = 200
-        mock_usage.prompt_tokens = 150
-        mock_usage.completion_tokens = 50
+        mock_usage = types.SimpleNamespace(total_tokens=200, prompt_tokens=150, completion_tokens=50)
 
         mock_choice = MagicMock()
         mock_choice.message.content = '[{"brand": "Apple", "name": "iPhone 16 Pro", "size_or_count": "256GB", "visible_price": null, "confidence": "high"}]'
@@ -93,10 +88,7 @@ class TestIdentifyProductsMocked:
 
     def test_empty_product_fields_normalized(self):
         """Missing fields should be filled with defaults."""
-        mock_usage = MagicMock()
-        mock_usage.total_tokens = 100
-        mock_usage.prompt_tokens = 80
-        mock_usage.completion_tokens = 20
+        mock_usage = types.SimpleNamespace(total_tokens=100, prompt_tokens=80, completion_tokens=20)
 
         mock_choice = MagicMock()
         mock_choice.message.content = '[{"name": "Something"}]'
