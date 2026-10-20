@@ -30,7 +30,6 @@ import importlib.util
 import inspect
 import json
 import logging
-import os
 import re
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -40,7 +39,7 @@ import sentry_sdk
 from fastapi.testclient import TestClient
 
 from app.api import image_routes, text_routes, url_routes
-from app.api.auth_routes import get_current_user, get_optional_user
+from app.api.auth_routes import get_current_user
 from app.main import app
 from app.services import response_builder as rb
 from app.services import sentry_service as ss
@@ -1222,3 +1221,308 @@ def test_b1_c9e_section_status_partial_when_one_side_empty(monkeypatch):
     prods[1]["pros"], prods[1]["cons"] = [], []
     body2 = _build_row(resp, product_categories=["grocery", "grocery"], products=prods)
     assert (body2["metadata"].get("section_status") or {}).get("pros_cons") == "partial"
+
+
+# ================================================================ fix round 1 (RULINGS_FIX1_B1 F1-1..F1-6)
+# Appended by the fix round on the GREEN bytes 2bbd58a9. Every row below fails there on an
+# AssertionError only (a call that raised at 2bbd58a9 is turned into a value first).
+
+CONFLICT_PAIR = ("Samsung Galaxy S24 phone", "Dior Sauvage eau de parfum")
+CONFLICT_CATS = ["electronics", "fragrances"]
+_ABSENT = object()
+
+
+def _call_total(fn, *args, **kwargs):
+    """fn(*args, **kwargs) with an exception turned into a value, so the row fails on an
+    AssertionError and never on the exception itself."""
+    try:
+        return fn(*args, **kwargs)
+    except Exception as exc:  # noqa: BLE001
+        return "raised " + type(exc).__name__
+
+
+def _assert_tags_equal_stamp(body, tags, label):
+    """F1-1: on a category-conflict body the message tags equal the stamped body."""
+    md = body.get("metadata") or {}
+    assert md.get("product_categories") == CONFLICT_CATS, (label, md.get("product_categories"))
+    assert md.get("result_status") == "unsupported_category", (label, md.get("result_status"))
+    assert md.get("identity_confidence") == "low", (label, md.get("identity_confidence"))
+    assert body["overview"]["winner"].get("supported") is False, label
+    rg = _need_rg()
+    stamp = _fn(rg, "assess_result")(body, product_categories=md["product_categories"])
+    assert stamp["status"] == md["result_status"], (label, stamp["status"])
+    assert stamp["identity_confidence"] == md["identity_confidence"], (label, stamp["identity_confidence"])
+    assert "category_conflict" in stamp["reasons"], (label, stamp["reasons"])
+    assert tags.get("result_status") == md["result_status"], (label, tags.get("result_status"))
+    assert tags.get("identity_confidence") == md["identity_confidence"], (label, tags.get("identity_confidence"))
+    assert tags.get("reasons") == ",".join(stamp["reasons"]), (label, tags.get("reasons"))
+    assert tags.get("winner_emitted") == "false", (label, tags.get("winner_emitted"))
+
+
+def _sse_complete(chunks):
+    for chunk in chunks:
+        text = _text(chunk)
+        if text.startswith("event: complete\n"):
+            return json.loads(text.split("data: ", 1)[1])
+    raise AssertionError("no complete event: %r" % ([_text(c)[:24] for c in chunks],))
+
+
+async def _stream_pair(monkeypatch, factory, pair):
+    monkeypatch.setattr(text_routes, "get_comparison_service", factory)
+    _quiet(monkeypatch, text_routes)
+    resp = await text_routes.text_compare_stream(
+        request=_FakeReq(), q=None, product_a=pair[0], product_b=pair[1],
+        region="bahrain", specs=True, reviews=True, pros_cons=True, nocache=True,
+        selected_category=None, lang=None, user=None)
+    chunks = []
+    async for c in resp.body_iterator:
+        chunks.append(c)
+    return chunks
+
+
+def test_b1_f1_1a_emitter_tags_equal_the_stamp_on_a_conflict_body(monkeypatch, rec):
+    """F1-1 (MAJ-1 / MAJ-E1): the emitter's assessment uses the STAMPED product_categories, so
+    `unsupported_category` / `category_conflict` reach the message; one reader decides."""
+    monkeypatch.setenv(FLAG, "true")
+    body = _build_row(_lane1("grocery"), product_categories=list(CONFLICT_CATS))
+    ss.capture_result_status(body, "camera", vision_ms=1234, compare_ms=5678)
+    assert len(rec.calls) == 1, rec.calls
+    message, level, tags, extras = rec.calls[0]
+    assert message == "comparison_result_status" and level == "info", (message, level)
+    _check_tags(tags, extras)
+    _assert_tags_equal_stamp(body, tags, "emitter")
+    rg = _need_rg()
+    # the tag helper's own fallback (no assessment passed) reads the same stamp
+    assert _fn(rg, "telemetry_tags")(body, "camera")["result_status"] == "unsupported_category"
+    reader = getattr(rg, "stamped_product_categories", None)
+    assert callable(reader), "result_gate.stamped_product_categories absent"
+    assert reader(body) == CONFLICT_CATS
+    for md, want in ((_ABSENT, None), ("garbage", None), ({}, None), ({"product_categories": None}, None),
+                     ({"product_categories": "electronics"}, None),
+                     ({"product_categories": ["a", "b", "c"]}, None),
+                     ({"product_categories": [5, "fragrances"]}, [None, "fragrances"])):
+        probe = {"success": True} if md is _ABSENT else {"success": True, "metadata": md}
+        assert reader(probe) == want, (md, want)
+    assert reader(None) is None and reader("x") is None
+    # an unstamped body (flag OFF at the build) keeps today's tags: no category read
+    monkeypatch.delenv(FLAG, raising=False)
+    plain = _build_row(_lane1("grocery"), product_categories=list(CONFLICT_CATS))
+    assert "product_categories" not in plain["metadata"]
+    assert _fn(rg, "telemetry_tags")(plain, "camera")["result_status"] == "supported_result"
+
+
+def test_b1_f1_1b_telemetry_equals_stamp_text_post_and_get_conflict_pair(monkeypatch, client, rec, fy_text):
+    monkeypatch.setenv(FLAG, "true")
+    r = client.post("/api/v1/text/compare", json={"product_a": CONFLICT_PAIR[0], "product_b": CONFLICT_PAIR[1]})
+    assert r.status_code == 200, r.text[:300]
+    assert len(rec.calls) == 1, rec.calls
+    tags, extras = rec.calls[0][2], rec.calls[0][3]
+    _check_tags(tags, extras)
+    assert tags["input_type"] == "text"
+    _assert_tags_equal_stamp(r.json(), tags, "text_post")
+    r = client.get("/api/v1/text/compare", params={"product_a": CONFLICT_PAIR[0], "product_b": CONFLICT_PAIR[1],
+                                                   "nocache": "true"})
+    assert r.status_code == 200, r.text[:300]
+    assert len(rec.calls) == 2, rec.calls
+    _assert_tags_equal_stamp(r.json(), rec.calls[1][2], "text_get")
+
+
+def test_b1_f1_1c_telemetry_equals_stamp_camera_conflict_body(monkeypatch, client, rec):
+    monkeypatch.setenv(FLAG, "true")
+    body = _build_row(_lane1("grocery"), product_categories=list(CONFLICT_CATS))
+    r = _camera(monkeypatch, client, body)
+    assert r.status_code == 200 and r.json().get("action") == "comparison", r.text[:300]
+    assert len(rec.calls) == 1, rec.calls
+    tags, extras = rec.calls[0][2], rec.calls[0][3]
+    _check_tags(tags, extras)
+    assert tags["input_type"] == "camera"
+    _assert_tags_equal_stamp(r.json(), tags, "camera")
+
+
+def test_b1_f1_1d_telemetry_equals_stamp_stream_conflict_pair(monkeypatch, rec, fy_text):
+    monkeypatch.setenv(FLAG, "true")
+    chunks = asyncio.run(_stream_pair(monkeypatch, text_routes.get_comparison_service, CONFLICT_PAIR))
+    body = _sse_complete(chunks)
+    assert len(rec.calls) == 1, rec.calls
+    tags, extras = rec.calls[0][2], rec.calls[0][3]
+    _check_tags(tags, extras)
+    assert tags["input_type"] == "text_stream"
+    _assert_tags_equal_stamp(body, tags, "stream")
+
+
+def test_b1_f1_4_stream_twin_captures_categories_before_the_write_back(monkeypatch, rec):
+    """F1-4 (X18s): a cross-category pair through the STREAM orchestrator twin keeps the per-product
+    categories captured before the pair write-back (the FY25 pair is same-category); its message
+    then equals the stamp (F1-1)."""
+    monkeypatch.setenv(FLAG, "true")
+    events = asyncio.run(fy._scenario("stream", fy.QUERY, explicit_pair=CONFLICT_PAIR, env={FLAG: "true"}))["payload"]
+    body = fy._complete(events)
+    md = body.get("metadata") or {}
+    cu = body.get("category_used")
+    assert [p.get("category") for p in body["products"]] == [cu, cu], [p.get("category") for p in body["products"]]
+    assert md.get("product_categories") == CONFLICT_CATS, md.get("product_categories")
+    assert md.get("result_status") == "unsupported_category", md.get("result_status")
+    ss.capture_result_status(body, "text_stream")
+    assert len(rec.calls) == 1, rec.calls
+    _assert_tags_equal_stamp(body, rec.calls[0][2], "stream_twin")
+
+
+PROFILE_SITES = ("prices", "names", "images")
+PROFILE_WANT = {"prices": (100.0, 150.0), "names": ("Acme Alpha", "Beta Bravo"),
+                "images": ("https://x.invalid/a.jpg", "https://x.invalid/b.jpg")}
+
+
+def _profile_full(metadata=_ABSENT):
+    full = {"winner_index": 0, "products": [
+        {"brand": "Acme", "name": "Alpha", "price": {"amount": 100.0, "currency": "BHD"},
+         "image_url": "https://x.invalid/a.jpg"},
+        {"brand": "Beta", "name": "Bravo", "price": {"amount": 150.0, "currency": "BHD"},
+         "image_url": "https://x.invalid/b.jpg"}]}
+    if metadata is not _ABSENT:
+        full["metadata"] = metadata
+    return full
+
+
+@pytest.mark.parametrize("site", PROFILE_SITES)
+def test_b1_f1_2_profile_site_skips_stamped_non_supported_rows(site):
+    """F1-2 (MAJ-2 / MAJ-E2, B1-R11 Q7): the three profile readers skip a row stamped with a
+    non-supported status through home_routes._result_status_supported; an unstamped row and a
+    stamped supported row count exactly as today (P8-style)."""
+    from app.api import home_routes, profile_routes
+
+    fn = {"prices": profile_routes._extract_winner_loser_prices,
+          "names": profile_routes._extract_product_names,
+          "images": profile_routes._extract_product_image_urls}[site]
+    for md in (_ABSENT, "garbage", {}, {"cached": False}, {"winner_index": None},
+               {"result_status": "supported_result"}):
+        assert fn(_profile_full(md)) == PROFILE_WANT[site], (site, md)
+    for status in ("partial_no_winner", "needs_identification", "unsupported_category", "failed"):
+        assert fn(_profile_full({"result_status": status, "winner_index": None})) == (None, None), (site, status)
+    assert getattr(profile_routes, "_result_status_supported", None) is home_routes._result_status_supported
+
+
+def test_b1_f1_2b_profile_routes_skip_stamped_non_supported_rows(client):
+    from tests.test_home_routes import _fake_user
+    from tests.test_profile_routes import TestMonthlyStats, _comparison_row
+
+    app.dependency_overrides[get_current_user] = _fake_user()
+    rows = [_comparison_row(winner_idx=0, p0_price=100, p1_price=150, id_="a"),      # 50, unstamped
+            _comparison_row(winner_idx=1, p0_price=300, p1_price=200, id_="b"),      # 100, stamped supported
+            _comparison_row(winner_idx=0, p0_price=80, p1_price=120, id_="c")]       # stamped partial: skipped
+    rows[1]["full_response"]["metadata"] = {"result_status": "supported_result"}
+    rows[2]["full_response"]["metadata"] = {"result_status": "partial_no_winner", "winner_index": None}
+    supabase = TestMonthlyStats()._patch_supabase(rows, [])
+    with patch("app.api.profile_routes.get_user_supabase_client", return_value=supabase), \
+            patch("app.api.profile_routes._redis_get", return_value=None), \
+            patch("app.api.profile_routes._redis_set", return_value=True):
+        resp = client.get("/api/v1/profile/monthly-stats", headers={"Authorization": "Bearer fake"})
+    assert resp.status_code == 200, resp.text[:300]
+    assert (resp.json()["decisions_count"], resp.json()["savings_bhd"]) == (2, 150.0), resp.json()
+    supabase2 = MagicMock()
+    comp_resp = MagicMock()
+    comp_resp.data = rows
+    supabase2.table.return_value.select.return_value.eq.return_value.eq.return_value.order.return_value \
+        .limit.return_value.execute.return_value = comp_resp
+    with patch("app.api.profile_routes.get_user_supabase_client", return_value=supabase2), \
+            patch("app.api.profile_routes._redis_get", return_value=None), \
+            patch("app.api.profile_routes._redis_set", return_value=True):
+        resp2 = client.get("/api/v1/profile/recent-decisions", headers={"Authorization": "Bearer fake"})
+    assert resp2.status_code == 200, resp2.text[:300]
+    assert [e["comparison_id"] for e in resp2.json()["recent"]] == ["a", "b"], resp2.json()
+
+
+def test_b1_f1_3_training_data_fields_are_not_auditable_evidence(monkeypatch):
+    """F1-3 (R-A4: model knowledge is not evidence): a `training_data` field is excluded from the
+    AUDITABLE spec fact like a tier-3 synthesis; retrieved markers keep counting; the LITERAL
+    reading is untouched."""
+    rg = _need_rg()
+    rows = _fn(rg, "real_spec_rows")
+    assert rows({"color": "red", "_field_confidence": {"color": "training_data"}}, {"color": "blue"}) == 0
+    assert rows({"color": "red"}, {"color": "blue", "_field_confidence": {"color": "training_data"}}) == 0
+    assert rows({"color": "red", "weight": "1 kg", "_field_confidence": {"color": "training_data"}},
+                {"color": "blue", "weight": "2 kg"}) == 1
+    for retrieved in ("smart_fallback", "tier2_fallback", "snippet", "db"):
+        assert rows({"color": "red", "_field_confidence": {"color": retrieved}}, {"color": "blue"}) == 1, retrieved
+    monkeypatch.setenv(FLAG, "true")
+    resp = _lane1("grocery")
+    bodies = {}
+    for marker in ("smart_fallback", "training_data"):
+        prods = copy.deepcopy(resp["products"])
+        prods[0]["specs"] = {"weight": "1 kg", "_field_confidence": {"weight": marker}}
+        prods[1]["specs"] = {"weight": "2 kg"}
+        bodies[marker] = _build_row(resp, product_categories=["grocery", "grocery"], products=prods)
+    kept, model = bodies["smart_fallback"]["metadata"], bodies["training_data"]["metadata"]
+    a_kept = _fn(rg, "assess_result")(bodies["smart_fallback"])
+    a_model = _fn(rg, "assess_result")(bodies["training_data"])
+    assert a_kept["facts"]["specs"] is True, a_kept["facts"]
+    assert a_model["facts"]["specs"] is False, a_model["facts"]
+    assert model.get("data_coverage") == kept.get("data_coverage") - 1, (model.get("data_coverage"), kept.get("data_coverage"))
+    assert model.get("data_coverage_literal") == kept.get("data_coverage_literal"), (model, kept)
+    assert a_model["facts_literal"] == a_kept["facts_literal"]
+
+
+def test_b1_f1_5_wall_helpers_are_total_on_non_finite_and_non_int_walls(monkeypatch, rec, caplog):
+    """F1-5: inf, -inf, nan, bool and str walls are absent (never raise) in telemetry_tags (its
+    bucket), telemetry_extras, stamp_camera_stage_timings and the emitter's elapsed_ms fallback."""
+    rg = _need_rg()
+    extras_fn, tags_fn = _fn(rg, "telemetry_extras"), _fn(rg, "telemetry_tags")
+    stamp = _fn(rg, "stamp_camera_stage_timings")
+    assert _call_total(extras_fn, vision_ms=float("inf"), compare_ms=float("nan")) == {}
+    body = _build_row(_w412(12))
+    for bad in (float("inf"), float("-inf"), float("nan"), True, False, "1234"):
+        got = _call_total(extras_fn, vision_ms=bad, compare_ms=bad)
+        assert got == {}, (bad, got)
+        tags = _call_total(tags_fn, body, "camera", vision_ms=bad, compare_ms=bad)
+        assert isinstance(tags, dict), (bad, tags)
+        assert "vision_ms" not in tags and "compare_ms" not in tags, (bad, sorted(tags))
+    monkeypatch.setenv(FLAG, "true")
+    for bad in (float("inf"), float("nan"), True, "1234"):
+        result = {"metadata": {"stage_timings_ms": {"total_ms": 1.0}}}
+        wrote = _call_total(stamp, result, vision_ms=bad, vision_moderation_ms=bad, compare_ms=bad)
+        assert wrote is False, (bad, wrote)
+        assert result["metadata"]["stage_timings_ms"] == {"total_ms": 1.0}, (bad, result)
+    # the emitter: a non-finite metadata.elapsed_ms is an absent wall, and the message still goes out
+    with caplog.at_level(logging.WARNING, logger="app.services.sentry_service"):
+        for i, bad in enumerate((float("inf"), float("nan"))):
+            probe = copy.deepcopy(body)
+            probe["metadata"]["elapsed_ms"] = bad
+            ss.capture_result_status(probe, "text")
+            assert len(rec.calls) == i + 1, (bad, rec.calls)
+            assert "compare_ms" not in rec.calls[i][2] and rec.calls[i][3] == {}, (bad, rec.calls[i])
+    skipped = [r.getMessage() for r in caplog.records if "[RESULT_STATUS]" in r.getMessage()]
+    assert skipped == [], skipped
+
+
+def test_b1_f1_6_partial_stage_tag_is_whitelisted_to_the_server_constants():
+    """F1-6: the `partial_stage` tag carries only a stage the server stamps (the return values of
+    StructuredComparisonService._partial_stage, read from the source); an unknown value omits it."""
+    import ast
+
+    rg = _need_rg()
+    tree = ast.parse(Path(inspect.getsourcefile(scs)).read_text(encoding="utf-8"))
+    stages = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name == "_partial_stage":
+            for sub in ast.walk(node):
+                if isinstance(sub, ast.Return) and isinstance(sub.value, ast.Constant) \
+                        and isinstance(sub.value.value, str):
+                    stages.add(sub.value.value)
+    assert stages == {"gather", "post_gather", "scoring", "verdict"}, stages
+    assert set(getattr(rg, "PARTIAL_STAGES", None) or ()) == stages, getattr(rg, "PARTIAL_STAGES", None)
+    tags_fn = _fn(rg, "telemetry_tags")
+    base = _build_row(_w412(24), metadata={"partial": True, "partial_stage": "post_gather"})
+    for stage in sorted(stages):
+        probe = copy.deepcopy(base)
+        probe["metadata"]["partial_stage"] = stage
+        assert tags_fn(probe, "camera")["partial_stage"] == stage, stage
+    for unknown in ("Gather", "warmup", "post gather", "", "x" * 40):
+        probe = copy.deepcopy(base)
+        probe["metadata"]["partial_stage"] = unknown
+        tags = tags_fn(probe, "camera")
+        assert "partial_stage" not in tags, (unknown, tags.get("partial_stage"))
+    probe = copy.deepcopy(base)
+    probe["metadata"]["partial"] = False
+    assert tags_fn(probe, "camera")["partial_stage"] == "none"
+    probe["metadata"]["partial"] = True
+    probe["metadata"]["partial_stage"] = None
+    assert tags_fn(probe, "camera")["partial_stage"] == "none"

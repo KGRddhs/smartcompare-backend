@@ -5,8 +5,9 @@ Rules implemented here: R-A4 (the status vocabulary, identity_confidence, data_c
 overview.winner.supported; the minimum evidence to crown), R-A5 (placeholder identity and
 same identity, with the brand condition of R0-5) and R0-5 (the AUDITABLE reading of
 data_coverage: both prices showable and not estimated, both ratings real, a real two-sided
-spec row that is not a tier-3 synthesis, a non-sentinel non-low dimension with a margin of
-at least DIM_MARGIN; the LITERAL reading rides beside it so production sizes the gap).
+spec row that is not model knowledge (a tier-3 synthesis or a training_data field), a
+non-sentinel non-low dimension with a margin of at least DIM_MARGIN; the LITERAL reading
+rides beside it so production sizes the gap).
 
 Every function is total: a malformed input yields the conservative answer and never
 raises. Pure by contract: the standard library plus text_sanitize.dedup_brand_name,
@@ -63,6 +64,13 @@ SENTINEL_SCORE = 50  # the scoring MISSING_SCORE sentinel (P10 pins the equality
 SECTION_KEYS = ("specs", "reviews", "pros_cons", "price")
 SECTION_STATES = ("available", "partial", "unavailable")
 TIER3_MARKER = "tier3_synthesis"
+# R-A4 (fix round F1-3): model knowledge is never evidence -- a tier-3 synthesis and a field the
+# specs prompt filled from training data; retrieved markers (snippet, db, smart_fallback,
+# tier2_fallback) keep counting.
+MODEL_KNOWLEDGE_MARKERS = frozenset({TIER3_MARKER, "training_data"})
+# F1-6: the stages the server stamps on metadata.partial_stage (the return values of
+# StructuredComparisonService._partial_stage, pinned equal to the source by the unit's F1-6 row).
+PARTIAL_STAGES = frozenset({"gather", "post_gather", "scoring", "verdict"})
 JACCARD_THRESHOLD = 0.9
 VISION_BUCKET_MS = 1000
 COMPARE_BUCKET_MS = 5000
@@ -96,6 +104,15 @@ def _str(value: Any) -> str:
 def _num(value: Any) -> bool:
     """A real number, never a bool (True would otherwise read as 1)."""
     return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+_INF = float("inf")
+
+
+def _finite(value: Any) -> bool:
+    """F1-5: a real number that int() accepts (not inf, -inf or nan); the stdlib-free form of
+    math.isfinite, so this module keeps its pinned import set (P11)."""
+    return _num(value) and value == value and value not in (_INF, -_INF)
 
 
 def identity_text(brand: Any, name: Any) -> str:
@@ -231,15 +248,17 @@ def _is_na(value: Any) -> bool:
 
 
 def _tier3_fields(specs: Dict[str, Any]) -> set:
+    """The fields this side marks as model knowledge (MODEL_KNOWLEDGE_MARKERS)."""
     confidence = specs.get("_field_confidence")
     if not isinstance(confidence, dict):
         return set()
-    return {field for field, marker in confidence.items() if marker == TIER3_MARKER}
+    return {field for field, marker in confidence.items() if marker in MODEL_KNOWLEDGE_MARKERS}
 
 
 def real_spec_rows(specs0: Any, specs1: Any) -> int:
     """Fields both products populate with a real value, excluding private keys, NA tokens on
-    either side and fields either side marks as a tier-3 synthesis (R-A4: not evidence)."""
+    either side and fields either side marks as model knowledge (a tier-3 synthesis or
+    training data; R-A4: not evidence)."""
     if not isinstance(specs0, dict) or not isinstance(specs1, dict):
         return 0
     tier3 = _tier3_fields(specs0) | _tier3_fields(specs1)
@@ -531,6 +550,17 @@ def assess_result(result: Any, *, product_categories: Any = None,
 
 # ----------------------------------------------------------------- telemetry (2.5, B1-R10)
 
+def stamped_product_categories(result: Any) -> Optional[List[Optional[str]]]:
+    """F1-1: the ONE reader of the stamped `metadata.product_categories` (a two-element list,
+    each element a str or None; anything else is None), so the telemetry assessment equals the
+    stamp the builder wrote with the same categories. An unstamped body reads None (today)."""
+    metadata = result.get("metadata") if isinstance(result, dict) else None
+    cats = metadata.get("product_categories") if isinstance(metadata, dict) else None
+    if not isinstance(cats, list) or len(cats) != 2:
+        return None
+    return [c if isinstance(c, str) else None for c in cats]
+
+
 def _image_present(result: Dict[str, Any], i: int) -> bool:
     for products in (_overview_products(result), _raw_products(result)):
         url = _product_at(products, i).get("image_url")
@@ -540,8 +570,9 @@ def _image_present(result: Dict[str, Any], i: int) -> bool:
 
 
 def _bucket(ms: Any, step: int) -> Optional[str]:
-    """The bucket's lower edge in ms as a digit string (GA-2); None when unknown."""
-    if not _num(ms) or ms < 0:
+    """The bucket's lower edge in ms as a digit string (GA-2); None when unknown (F1-5: a
+    non-finite, bool or str wall is unknown)."""
+    if not _finite(ms) or ms < 0:
         return None
     return str((int(ms) // step) * step)
 
@@ -553,12 +584,18 @@ def _flag(value: bool) -> str:
 def telemetry_tags(result: Any, input_type: str, *, assessment: Any = None,
                    vision_ms: Any = None, compare_ms: Any = None) -> Dict[str, str]:
     """The PII-free tag set: enums, small ints and bucketed walls only, every value a str
-    matching ^[a-z0-9_,]+$; a wall tag is omitted when unknown, never 'None'."""
+    matching ^[a-z0-9_,]+$; a wall tag is omitted when unknown, never 'None'. Without an
+    assessment the body is assessed with its stamped product_categories (F1-1); the
+    partial_stage tag carries a PARTIAL_STAGES value only, an unknown value omits it (F1-6)."""
     body = result if isinstance(result, dict) else {}
-    a = assessment if isinstance(assessment, dict) else assess_result(body)
+    a = assessment if isinstance(assessment, dict) else assess_result(
+        body, product_categories=stamped_product_categories(body))
     metadata = body.get("metadata") if isinstance(body.get("metadata"), dict) else {}
     raw = _raw_products(body)
     partial_stage = metadata.get("partial_stage")
+    stage_tag: Optional[str] = "none"
+    if metadata.get("partial") is True and isinstance(partial_stage, str):
+        stage_tag = partial_stage if partial_stage in PARTIAL_STAGES else None
     tags: Dict[str, str] = {
         "input_type": str(input_type),
         "result_status": str(a.get("status")),
@@ -570,11 +607,11 @@ def telemetry_tags(result: Any, input_type: str, *, assessment: Any = None,
         "image_present_b": _flag(_image_present(body, 1)),
         "price_showable_a": _flag(price_is_showable(_product_at(raw, 0).get("price"))),
         "price_showable_b": _flag(price_is_showable(_product_at(raw, 1).get("price"))),
-        "partial_stage": str(partial_stage)
-        if metadata.get("partial") is True and isinstance(partial_stage, str) else "none",
         "data_coverage": str(int(a.get("data_coverage") or 0)),
         "data_coverage_literal": str(int(a.get("data_coverage_literal") or 0)),
     }
+    if stage_tag is not None:
+        tags["partial_stage"] = stage_tag
     vision_bucket = _bucket(vision_ms, VISION_BUCKET_MS)
     compare_bucket = _bucket(compare_ms, COMPARE_BUCKET_MS)
     if vision_bucket is not None:
@@ -585,11 +622,12 @@ def telemetry_tags(result: Any, input_type: str, *, assessment: Any = None,
 
 
 def telemetry_extras(*, vision_ms: Any = None, compare_ms: Any = None) -> Dict[str, int]:
-    """The raw walls as ints (B1-R10 extras); an unknown wall is omitted."""
+    """The raw walls as ints (B1-R10 extras); an unknown wall (F1-5: non-finite, bool, str,
+    negative) is omitted."""
     extras: Dict[str, int] = {}
-    if _num(vision_ms) and vision_ms >= 0:
+    if _finite(vision_ms) and vision_ms >= 0:
         extras["vision_ms"] = int(vision_ms)
-    if _num(compare_ms) and compare_ms >= 0:
+    if _finite(compare_ms) and compare_ms >= 0:
         extras["compare_ms"] = int(compare_ms)
     return extras
 
@@ -599,8 +637,9 @@ def telemetry_extras(*, vision_ms: Any = None, compare_ms: Any = None) -> Dict[s
 def stamp_camera_stage_timings(result: Any, *, vision_ms: Any, vision_moderation_ms: Any,
                                compare_ms: Any) -> bool:
     """Flag first; then ONLY into an EXISTING metadata.stage_timings_ms dict, as ints; a None
-    wall is skipped. Never creates metadata or the dict (R0-6: production runs
-    DEBUG_STAGE_TIMINGS=true, so a presence-only rule would move production bytes at merge)."""
+    (F1-5: or a non-finite, bool or str) wall is skipped. Never creates metadata or the dict
+    (R0-6: production runs DEBUG_STAGE_TIMINGS=true, so a presence-only rule would move
+    production bytes at merge)."""
     if not result_status_metadata_enabled():
         return False
     if not isinstance(result, dict):
@@ -614,7 +653,7 @@ def stamp_camera_stage_timings(result: Any, *, vision_ms: Any, vision_moderation
     wrote = False
     for key, value in (("vision_ms", vision_ms), ("vision_moderation_ms", vision_moderation_ms),
                        ("compare_ms", compare_ms)):
-        if _num(value):
+        if _finite(value):
             timings[key] = int(value)
             wrote = True
     return wrote
