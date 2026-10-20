@@ -1,0 +1,81 @@
+{
+ "unit": "B4 URL-MODE-V2 (ENABLE_URL_MODE_V2), fix round 1 (RULINGS_FIX1_B4), worktree C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-b4, branch feature/s80-b4-url-mode-v2, from 9db99de97245aa4543e054dd5f94c0800b270e69; agent model claude-opus-5-5",
+ "head_sha": "96676f1fe9ddc4b4bc57e3e8aec166e4c7e26d4b",
+ "red_files": [
+  {
+   "path": "tests/test_s80_url_mode_v2.py",
+   "sha256": "546fc27d07579808ea7b8b7fb60cd87a3be8462ebdaea677aa3c8e21587f8b46"
+  }
+ ],
+ "rows_added": [
+  "tests/test_s80_url_mode_v2.py::test_normaliser_coerces_a_raw_image_list_flag_on (PIN, F4-2; noon raw JSON-LD list, amazon protocol-relative landingImage src, LLM-merged image list, LLM-merged http-only list -> None; both ENABLE_PRICE_PARSE_OFFLOAD states; asserts value type, exact value and LLM call count; kills GREEN mutant G10: control 1 passed [pyt] tag=b4f-g10-control status=OK rc=0, mutant 1 failed AssertionError ('amazon_raw_src', None, '//m.media.example.test/images/b4.jpg') [pyt] tag=b4f-g10-mutant status=FAIL rc=1, in a detached scratch worktree at 9db99de9, restore sha OK, worktree removed)"
+ ],
+ "red_step": {
+  "new_rows_failed": 0,
+  "every_failure_is_assertion_error": true,
+  "existing_rows_passed": 250,
+  "pyt_line": "[pyt] tag=b4f-pin-on start=2026-10-20 15:31:31 end=2026-10-20 15:33:01 elapsed=90s bound=600s status=FAIL rc=1 (2 failed = the pre-F4-1 R12 rows test_transport_error_is_store_unreadable[POST|GET] on AssertionError, 251 passed incl. the new PIN row; OFF: [pyt] tag=b4f-pin-off elapsed=30s status=FAIL rc=1 same 2). The F4-2 row is a PIN by ruling (green on the GREEN bytes); its proof is the G10 kill: [pyt] tag=b4f-g10-mutant start=2026-10-20 15:35:54 end=2026-10-20 15:35:59 elapsed=5s bound=600s status=FAIL rc=1 (AssertionError), control [pyt] tag=b4f-g10-control elapsed=21s status=OK rc=0"
+ },
+ "files_changed": [
+  {
+   "path": "tests/test_s80_url_mode_v2.py",
+   "added": 75,
+   "deleted": 0,
+   "sha256_after": "546fc27d07579808ea7b8b7fb60cd87a3be8462ebdaea677aa3c8e21587f8b46"
+  },
+  {
+   "path": "app/services/url_extraction_service.py",
+   "added": 10,
+   "deleted": 4,
+   "sha256_after": "0abf3b950898fd10678f3092c424729696072a6d33b1925d3dc2a09279e647c2"
+  },
+  {
+   "path": "tests/test_paid_route_metering.py",
+   "added": 12,
+   "deleted": 0,
+   "sha256_after": "4724c308c6a5805a873a015f2a07e02850e8db5c020f46423e71208505ead73f"
+  },
+  {
+   "path": "CLAUDE.md",
+   "added": 2,
+   "deleted": 2,
+   "sha256_after": "8502da3b038953d7ecaad3637567683f8149415af1304c90fc1dc52749a2c0ad"
+  }
+ ],
+ "unit_run_on": "253 passed, 11 warnings in 37.21s; [hermeticity] sentinel checked 253 test(s); [netguard] blocked 0 attempt(s) from 0 node(s); [pyt] tag=b4f-unit-on start=2026-10-20 15:37:57 end=2026-10-20 15:38:40 elapsed=43s bound=600s status=OK rc=0",
+ "unit_run_off": "253 passed, 11 warnings in 52.62s; [hermeticity] sentinel checked 253 test(s); [netguard] blocked 0 attempt(s) from 0 node(s); [pyt] tag=b4f-unit-off start=2026-10-20 15:38:51 end=2026-10-20 15:39:53 elapsed=62s bound=600s status=OK rc=0",
+ "gates": [
+  "u8d R8 pins (test_sentry_channels_u8d_unit.py + test_sentry_channels_u8d.py, one call, flag unset): 272 passed, 1 warning in 25.22s; sentinel 272; netguard 0; [pyt] tag=b4f-u8d start=2026-10-20 15:39:57 end=2026-10-20 15:40:29 elapsed=32s bound=600s status=OK rc=0",
+  "test_paid_route_metering.py flag unset: 21 passed, 13 warnings in 19.18s; sentinel 21; netguard blocked 2 attempt(s) from 2 node(s) (sentinel, both in .network_attempt_baseline.txt); [pyt] tag=b4f-meter-off start=2026-10-20 15:40:45 end=2026-10-20 15:41:11 elapsed=26s bound=600s status=OK rc=0",
+  "test_paid_route_metering.py flag EXPORTED (E6 proof; before E6 GREEN b4g-pins1-flagON-info had its 5 url_compare_* nodes red): 21 passed, 13 warnings in 20.42s; sentinel 21; netguard blocked 2 attempt(s) from 2 node(s); [pyt] tag=b4f-meter-on start=2026-10-20 15:41:14 end=2026-10-20 15:41:39 elapsed=25s bound=600s status=OK rc=0",
+  "CI-order set, 13 files alphabetical, flag OFF: 904 passed, 13 warnings in 40.83s; sentinel 904; netguard blocked 10 attempt(s) from 10 node(s) (GREEN count, sentinel class); [pyt] tag=b4f-ci-order start=2026-10-20 15:41:52 end=2026-10-20 15:42:35 elapsed=43s bound=1200s status=OK rc=0",
+  "GREEN 20-file pin set with the flag EXPORTED: 1037 passed, 13 warnings in 227.11s; sentinel 1037; netguard blocked 10 attempt(s) from 10 node(s); [pyt] tag=b4f-pins20-flagON start=2026-10-20 15:43:53 end=2026-10-20 15:47:48 elapsed=235s bound=600s status=OK rc=0",
+  "CLAUDE.md readers (test_ci_gates.py + test_behavior_dimension_translation.py): 79 passed, 1 warning in 5.18s; sentinel 79; netguard 0; [pyt] tag=b4f-claude-readers start=2026-10-20 15:49:27 end=2026-10-20 15:49:33 elapsed=7s bound=600s status=OK rc=0",
+  "delta chunk (remaining url_extraction_service importers + source-scanning pins, flag OFF: test_conftest_env_safety, test_llm_provider_base_url, test_openai_breaker, test_retro_w0_4, test_url_validator_offloop_hops, test_model_config, test_start_command, test_migration_index_predicate_immutability, test_openai_key_log_hygiene_s69): 368 passed, 1 skipped, 2 deselected, 3 warnings in 177.98s; sentinel 369; netguard blocked 121 attempt(s) from 6 node(s) (all six test_openai_breaker.py nodes in .network_attempt_baseline.txt); [pyt] tag=b4f-delta-chunk start=2026-10-20 15:50:07 end=2026-10-20 15:53:07 elapsed=180s bound=1200s status=OK rc=0",
+  "ruff --select E9,F63,F7,F82 --no-cache over the 3 app files + 6 edited test files (E1-E6) + the unit file: All checks passed!; py_compile on the same ten: rc 0; full-rule ruff on url_extraction_service.py 58 before / 58 after",
+  "pre-commit hook on the commit: All checks passed!; git status --short empty after; working copy hashes identical pre/post commit; committed RED blob sha256 546fc27d...8b46",
+  "added-line sweep (99 lines): no @gmail / +973 / 8-digit run / sk- / AKIA / xox / eyJ / credentialed URL / PEM; 0 non-ASCII bytes; CRLF kept on the app file, the metering test and CLAUDE.md (CR count == line count), RED file LF; bytes>127 unchanged (18 / 0 / 3979 / 0)"
+ ],
+ "docs_applied": [
+  "F4-1: _fetch_page_v2's transport error logs ONE ERROR record lexically inside its except arm with the distinct template '[URL-V2] fetch failed host=%s reason=%s type=%s' (_host_only(url), 'fetch_error', type(e).__name__); inline because the u8d outside-except ERROR scan rejects _host_only(url) in a helper; _log_fetch_failed (WARNING) keeps blocked / redirect_cap / non-2xx / challenge, docstring updated; R12 green, u8d R8 green",
+  "F4-2: PIN row test_normaliser_coerces_a_raw_image_list_flag_on appended (pure append; prefix sha c4549be2...cae unchanged); new frozen RED sha256 546fc27d07579808ea7b8b7fb60cd87a3be8462ebdaea677aa3c8e21587f8b46; G10 KILLED on a byte copy in a detached scratch worktree, restore sha-verified",
+  "F4-3 (E6): ENABLE_URL_MODE_V2 in a new one-name clean list (_CLEAN_ENV + autouse _clean_env) of tests/test_paid_route_metering.py; listed in the PR body E table with E1-E5",
+  "F4-4: D2 (Organization / WebSite / og:site_name; WebPage excluded) and D4 (retailer label = SUPPORTED_RETAILERS name or unknown) stated in the CLAUDE.md row; D3 already stated; all three in the PR body",
+  "F4-5: stated limit (17) added to the CLAUDE.md row and the PR body (inner builtin TimeoutError before the 25 s deadline -> 503 TIMEOUT; no asyncio.timeout switch)",
+  "F4-6: CLAUDE.md SESSION 80 B4 row rewritten in place (header cites F4-1..F4-6; ERROR for transport error / WARNING for the rest, never the base template; limit 7 names the normaliser pin; limit 16 rewritten for E5+E6 and the flag-exported runs; limit 17); PR body draft at <scratchpad>/B4_fix1/PR_BODY.md (sha256 ea1a3ae4d909aae87b41243954eb2ba5a8bd9f5e1e6db9f67277c7433b80e82f) replaces every WARNING wording for the transport-error line, removes the open item, records G10 KILLED by the F4-2 row, adds E6; commit trailer names the agent's own model (D8)",
+  "Fix report: C:\\Users\\SynAckITPC\\AppData\\Local\\Temp\\claude\\C--Users-SynAckITPC-Documents-AI\\ae650c83-4d2a-4910-a8d4-a47ab213c8c3\\scratchpad\\B4_fix1\\B4_FIX1_REPORT.md"
+ ],
+ "deviations": [
+  "X1 (F4-3): tests/test_paid_route_metering.py had no existing clean list; E6 creates _CLEAN_ENV = ('ENABLE_URL_MODE_V2',) plus an autouse _clean_env fixture (12 added lines, test-only, the test_retro_w2_1 _clean_flags shape) instead of a one-name insertion",
+  "X2: the two u8d R8 pin files ran together in one pyt call (both are R8 pin files; nothing else in that call)",
+  "X3: no second full comm pass; the fix-round delta was covered by the ruling's gates plus a delta chunk of every remaining url_extraction_service importer and the named source-scanning pins; the GREEN 120-file comm set on 9db99de9 remains the comm evidence (its only branch-only-NEW nodes were the two R12 rows, now green)",
+  "X4: the new PIN row's failure at base 81df2b64 (the _assert_kwarg AssertionError) is read from the base source (async def extract_from_url(url: str)), not run at base",
+  "X5: commit trailer is 'Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>' (this agent's actual model, per RULINGS_FIX1_B4 step 5 and F4-6 / D8), not the task text's Fable 5.1"
+ ],
+ "open_questions": [
+  "Sentry consequence of F4-1 (in the PR body owner step 3, not in the committed CLAUDE.md row): sentry_service installs LoggingIntegration(level=logging.ERROR) with the default ERROR event level, so with the flag ON a link transport error is a Sentry event under the new '[URL-V2] fetch failed' template (replacing the base 'Failed to fetch URL host' event it produced OFF; same count), while a non-2xx link (which raised raise_for_status into the base ERROR line OFF) is a WARNING ON and no longer reaches Sentry. Read from code, not from a canary. Add a sentence to the CLAUDE.md row at the rebase?",
+  "The re-verifier's R8 shapes (a second ERROR with the base prefix; the distinct template demoted to WARNING) and the remaining GREEN mutants were not re-run this round (only G10)"
+ ],
+ "report_path": "C:\\Users\\SynAckITPC\\AppData\\Local\\Temp\\claude\\C--Users-SynAckITPC-Documents-AI\\ae650c83-4d2a-4910-a8d4-a47ab213c8c3\\scratchpad\\B4_fix1\\B4_FIX1_REPORT.md",
+ "pr_body_path": "C:\\Users\\SynAckITPC\\AppData\\Local\\Temp\\claude\\C--Users-SynAckITPC-Documents-AI\\ae650c83-4d2a-4910-a8d4-a47ab213c8c3\\scratchpad\\B4_fix1\\PR_BODY.md"
+}

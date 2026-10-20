@@ -1,0 +1,132 @@
+{
+ "unit": "B4 URL-MODE-V2 (ENABLE_URL_MODE_V2) fix round 1",
+ "lens": "correctness (re-verifier)",
+ "head_sha_verified": "96676f1fe9ddc4b4bc57e3e8aec166e4c7e26d4b",
+ "verdict": "SOUND",
+ "blocking": [],
+ "major": [],
+ "minor": [
+  "D2, D3 and D4 are stated as contract in the CLAUDE.md row and the PR body, but no test pins them. Each probe survives the full unit file (253 passed): P1 lets a WebPage name count as a site name, P2 makes the v2 '[SSRF] Blocked redirect to host=' line print the full target, P3 makes the 'Detected retailer' label the raw netloc. grep finds no other test referencing them. F4-4 accepted them without pins, so this is not a defect of this round. Suggested rows for the adversaries: a user:pass@ link for the retailer label, a host-only assertion on the v2 [SSRF] text (R41 matches the prefix only, test_s80_url_mode_v2.py:1485), and a page whose WebPage name equals its title that must not be refused.",
+  "The Sentry consequence of F4-1 is stated only in the PR body (owner step 3), not in the committed CLAUDE.md row (fix-report open Q1). With the flag ON, a link transport error becomes a Sentry event under '[URL-V2] fetch failed', and a non-2xx moves from the base ERROR event to a WARNING. Read from code: sentry_service.py:651 LoggingIntegration(level=logging.ERROR), default event level. Suggest one sentence in the row at the rebase.",
+  "CLAUDE.md limit 16 ends with 'no other file was measured with it set'. This round superseded that: the five remaining URL-route readers (test_b2_strict_optional_auth, test_sentry_channels_u8d, test_shutdown_drain, test_url_validator_offloop, test_url_validator_offloop_hops) pass with the flag exported (195 passed). Optional wording update at the rebase."
+ ],
+ "mutants_applied": [
+  {
+   "id": "M1 F4-1 R8 shape 1a: the new ERROR line reuses the base 'Failed to fetch URL host' prefix",
+   "survived": false,
+   "killed_by": "tests/test_sentry_channels_u8d_unit.py::TestR8SourceLines::test_u8d_red_r8_in_except_lines_no_user_content[url_extraction_fetch_failed]"
+  },
+  {
+   "id": "M2 F4-1 R8 shape 1b: a second ERROR with the base prefix beside the F4-1 line",
+   "survived": false,
+   "killed_by": "u8d R8 in-except node + test_transport_error_is_store_unreadable[POST|GET]"
+  },
+  {
+   "id": "M3 F4-1 R8 shape 2: the distinct template demoted to WARNING",
+   "survived": false,
+   "killed_by": "tests/test_s80_url_mode_v2.py::test_transport_error_is_store_unreadable[POST|GET]"
+  },
+  {
+   "id": "M4 F4-1: ERROR moved outside the except arm via _log_fetch_failed",
+   "survived": false,
+   "killed_by": "tests/test_sentry_channels_u8d_unit.py::TestR8SourceLines::test_u8d_pin_r8_no_other_outside_except_error_line"
+  },
+  {
+   "id": "M5 F4-1: the ERROR line logs the pasted url instead of the host",
+   "survived": false,
+   "killed_by": "test_transport_error_is_store_unreadable[POST|GET]"
+  },
+  {
+   "id": "M5b F4-1: the ERROR line logs the exception value instead of its type",
+   "survived": false,
+   "killed_by": "test_transport_error_is_store_unreadable[POST|GET]"
+  },
+  {
+   "id": "M6 F4-2 = G10: normaliser-stage image coercion removed",
+   "survived": false,
+   "killed_by": "tests/test_s80_url_mode_v2.py::test_normaliser_coerces_a_raw_image_list_flag_on"
+  },
+  {
+   "id": "M7 F4-3 = E6 removed (_CLEAN_ENV = ()), flag exported",
+   "survived": false,
+   "killed_by": "the 5 url_compare_* nodes of tests/test_paid_route_metering.py"
+  },
+  {
+   "id": "M8 B4-R5: error-handler passthrough unscoped",
+   "survived": false,
+   "killed_by": "test_error_handler_four_key_body[on-other-code-keys]"
+  },
+  {
+   "id": "M9 service flag reader without strip/lower",
+   "survived": false,
+   "killed_by": "test_service_flag_reader_table[TRUE] + test_flag_reader_table_on rows"
+  },
+  {
+   "id": "M10 http image accepted",
+   "survived": false,
+   "killed_by": "test_pdp_image_is_first_https_string[http_only-*] + test_normaliser_coerces_a_raw_image_list_flag_on"
+  },
+  {
+   "id": "M11 OFF route passes url_mode_v2=False explicitly",
+   "survived": false,
+   "killed_by": "test_flag_off_homepage_pair_is_base_behaviour[*]"
+  },
+  {
+   "id": "M12 R-A3: no refund for a B4 coded refusal",
+   "survived": false,
+   "killed_by": "test_non_delivery_per_r_a3_every_code[*-meter-on]"
+  },
+  {
+   "id": "M13 challenge judged on the whole body",
+   "survived": false,
+   "killed_by": "test_body_text_access_denied_is_not_a_challenge[POST|GET]"
+  },
+  {
+   "id": "M14 same_url compared without normalising url2",
+   "survived": false,
+   "killed_by": "test_pregate_same_url_after_normalisation[*]"
+  },
+  {
+   "id": "M15 a 403 reported as http_4xx",
+   "survived": false,
+   "killed_by": "test_v02_fragrancex_403_is_store_unreadable[*] (+ both_urls_403, mixed_codes_precedence, non_2xx_reason_table[403])"
+  },
+  {
+   "id": "P1 probe D2: WebPage name counts as a site name (contract accepted without a pin)",
+   "survived": true
+  },
+  {
+   "id": "P2 probe D3: v2 [SSRF] blocked-redirect line prints the full target (contract accepted without a pin)",
+   "survived": true
+  },
+  {
+   "id": "P3 probe D4: Detected-retailer label is the raw netloc (contract accepted without a pin)",
+   "survived": true
+  }
+ ],
+ "reruns": [
+  "[pyt] tag=b4rv-unit-on start=2026-10-20 16:09:53 end=2026-10-20 16:10:10 elapsed=17s bound=600s status=OK rc=0 (253 passed, ENABLE_URL_MODE_V2=true)",
+  "[pyt] tag=b4rv-unit-off start=2026-10-20 16:10:24 end=2026-10-20 16:10:40 elapsed=15s bound=600s status=OK rc=0 (253 passed, flag unset)",
+  "[pyt] tag=b4rv-u8d-unit start=2026-10-20 16:10:53 end=2026-10-20 16:11:16 elapsed=24s bound=600s status=OK rc=0 (141 passed)",
+  "[pyt] tag=b4rv-u8d start=2026-10-20 16:11:29 end=2026-10-20 16:11:46 elapsed=17s bound=600s status=OK rc=0 (131 passed)",
+  "[pyt] tag=b4rv-meter-off start=2026-10-20 16:11:59 end=2026-10-20 16:12:10 elapsed=11s bound=600s status=OK rc=0 (21 passed)",
+  "[pyt] tag=b4rv-meter-on start=2026-10-20 16:12:11 end=2026-10-20 16:12:22 elapsed=11s bound=600s status=OK rc=0 (21 passed, flag exported)",
+  "[pyt] tag=b4rv-ci-order start=2026-10-20 16:12:40 end=2026-10-20 16:13:08 elapsed=28s bound=1200s status=OK rc=0 (904 passed, 13-file CI-order set, flag OFF)",
+  "[pyt] tag=b4rv-delta-c1 start=2026-10-20 16:18:44 end=2026-10-20 16:21:12 elapsed=148s bound=1200s status=OK rc=0 (560 passed, 1 skipped; delta comm chunk 1)",
+  "[pyt] tag=b4rv-delta-c2 start=2026-10-20 16:21:59 end=2026-10-20 16:23:37 elapsed=98s bound=1200s status=OK rc=0 (526 passed; delta comm chunk 2)",
+  "[pyt] tag=b4rv-adv-control start=2026-10-20 16:27:19 end=2026-10-20 16:27:36 elapsed=17s bound=600s status=OK rc=0 (394 passed, scratch control)",
+  "[pyt] tag=b4rv-adv-control-meter-on start=2026-10-20 16:27:44 end=2026-10-20 16:27:48 elapsed=4s bound=600s status=OK rc=0 (7 passed, scratch control)",
+  "[pyt] tag=b4rv-pins20-flagON start=2026-10-20 16:33:51 end=2026-10-20 16:34:26 elapsed=35s bound=1200s status=OK rc=0 (1037 passed, flag exported)",
+  "[pyt] tag=b4rv-base-red start=2026-10-20 16:35:14 end=2026-10-20 16:35:30 elapsed=16s bound=600s status=FAIL rc=1 (base 81df2b64: 207 failed / 46 passed, all AssertionError; new row fails on _assert_kwarg)",
+  "[pyt] tag=b4rv-urlreaders-flagON start=2026-10-20 16:38:29 end=2026-10-20 16:38:54 elapsed=25s bound=1200s status=OK rc=0 (195 passed, flag exported)",
+  "[pyt] tag=b4rv-r12-errlog start=2026-10-20 16:39:17 end=2026-10-20 16:39:21 elapsed=4s bound=600s status=OK rc=0 (log census: one ERROR per transport error, WARNING for the others)",
+  "[pyt] tag=b4rv-hook-collect start=2026-10-20 16:39:59 end=2026-10-20 16:40:02 elapsed=3s bound=600s status=OK rc=0 (327 hook nodes collected)",
+  "[pyt] tag=b4rv-h1-nd start=2026-10-20 16:40:25 end=2026-10-20 16:52:55 elapsed=750s bound=1200s status=OK rc=0 (test_precommit_hook.py not dash, 31 passed)",
+  "[pyt] tag=b4rv-h1-d start=2026-10-20 16:52:57 end=2026-10-20 17:08:00 elapsed=904s bound=1200s status=OK rc=0 (test_precommit_hook.py dash, 31 passed)",
+  "[pyt] tag=b4rv-h4-nd start=2026-10-20 17:08:25 end=2026-10-20 17:14:26 elapsed=362s bound=1200s status=OK rc=0 (test_precommit_hook_round2.py not dash, 15 passed)",
+  "[pyt] tag=b4rv-h4-d start=2026-10-20 17:14:36 end=2026-10-20 17:21:14 elapsed=399s bound=1200s status=OK rc=0 (test_precommit_hook_round2.py dash, 15 passed)",
+  "mutants M1-M15 (16) and probes P1-P3: one [pyt] line each in the report, section 3 (tags b4rv-M*/b4rv-P*, all bound=600s)",
+  "NOT MEASURED: test_precommit_hook_phase_b.py (114 nodes) and test_precommit_hook_phase_b_round2.py (121 nodes). The box ran 24-29 s per node (node -e 0 2.60 s), about 100 minutes past the budget; neither was started."
+ ],
+ "report_path": "C:\\Users\\SYNACK~1\\AppData\\Local\\Temp\\claude\\C--Users-SynAckITPC-Documents-AI\\ae650c83-4d2a-4910-a8d4-a47ab213c8c3\\scratchpad\\B4_fix1\\REVERIFY_REPORT.md"
+}
