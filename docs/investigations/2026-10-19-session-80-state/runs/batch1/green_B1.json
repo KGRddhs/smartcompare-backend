@@ -1,0 +1,170 @@
+{
+ "unit": "B1 RESULT-STATUS + TELEMETRY (ENABLE_RESULT_STATUS_METADATA), GREEN on worktree C:/Users/SynAckITPC/Documents/AI/sc-s80-b1, base 81df2b641454e0301cca51a3ba01bf8ef3d7e649",
+ "head_sha": "2bbd58a9eae6aa172339ee7cc717e875ff2bbc73",
+ "branch": "feature/s80-b1-result-status",
+ "red_files_rehash_ok": true,
+ "files_changed": [
+  {
+   "path": "app/services/result_gate.py",
+   "sha256_after": "48bcbb7d679878cdf282aef71d6b1657dd3d0c44d8aefac9d6912f9667b02df9",
+   "added": 620,
+   "deleted": 0
+  },
+  {
+   "path": "app/services/response_builder.py",
+   "sha256_after": "dc3d446fd1f149458f9c6a9d81596a5003676650f155fd2ce94a15b68a388ab2",
+   "sha256_before": "6fb6c40ad8edf902cee0dd2bc563b9102d288857c0b2683f591870de9df43c60",
+   "added": 43,
+   "deleted": 0
+  },
+  {
+   "path": "app/services/structured_comparison_service.py",
+   "sha256_after": "7533fa10c1303d5a58175d48199347c31ec3620d86f55303292e35f0fbaf7084",
+   "sha256_before": "7db53e39fee4f93159b08f8834d27094d3b7e3e081976e402ac17306681df6d2",
+   "added": 13,
+   "deleted": 0
+  },
+  {
+   "path": "app/services/sentry_service.py",
+   "sha256_after": "e7bdd7075f1639ea4c36f7e8b68e3df09a380c2eacb0bc0fa888b460c76735ef",
+   "sha256_before": "91366057632e431732c3a212592bb30176084700ea59210ef671f7a5464e11ee",
+   "added": 86,
+   "deleted": 0
+  },
+  {
+   "path": "app/api/image_routes.py",
+   "sha256_after": "0aa86d20e6fdf5f5d1233d16adcbd1b41332356ae29887e04cdb07a4e660ade3",
+   "sha256_before": "3813cb9af4a296e77429b954086405dd3a571774a2a3e44ce8727ed69b2a95ef",
+   "added": 20,
+   "deleted": 0
+  },
+  {
+   "path": "app/api/text_routes.py",
+   "sha256_after": "9da410d6e57386d827c9fb11b10a3ac72a171d51510747f0d01565606d3bd416",
+   "sha256_before": "22799ae4e484eaae3dd5752e86b775057ab0ac730d2b8af632b098ad97c85fef",
+   "added": 10,
+   "deleted": 0
+  },
+  {
+   "path": "app/api/url_routes.py",
+   "sha256_after": "0c930879d65641ba9d9a4b008a63b1af43c76f1c6df0a64524d96d7bfdc0eaf6",
+   "sha256_before": "bc3d0822e7e89906d6248fb66af710e755f7755dbd7e9d770107bb430d1557db",
+   "added": 5,
+   "deleted": 0
+  },
+  {
+   "path": "app/api/home_routes.py",
+   "sha256_after": "04ec255dab18e33d02182272e52e15e0c40c24901664af196ff1c0cb4aaf0d6c",
+   "sha256_before": "2acdb64b42d038ff21ecd5b1cd20e3c8cfd96ba016fc546f25b04a9b1561091a",
+   "added": 17,
+   "deleted": 0
+  },
+  {
+   "path": "app/api/feedback_routes.py",
+   "sha256_after": "02cb01f6b67fd638fbc681c63f1e5b18a280ab43813faedc98c6785727c69e80",
+   "sha256_before": "21de13c7edadff8ffd1e3b5d3acd678a1e0bed13cd740c6186ffe8df09d47898",
+   "added": 14,
+   "deleted": 1
+  },
+  {
+   "path": "app/services/feedback_service.py",
+   "sha256_after": "b8441b61b82aac1acdc008b72b9353a227c4b91c238d6616fe8460644ae541ce",
+   "sha256_before": "c318f11cffe85ed8e8b11643ce7f120a4b8e38717071b5e32d82ae86c5651e07",
+   "added": 11,
+   "deleted": 0
+  },
+  {
+   "path": "tests/test_s75_fanout_identity.py",
+   "sha256_after": "c690a3a45546c0462c3001ec75596b262021091664eef9d253c22d596705188e",
+   "sha256_before": "3130b7f126a7f9832f4341900d147b080b376c723d0a0cf427ba0b59156adece",
+   "added": 2,
+   "deleted": 1
+  },
+  {
+   "path": "CLAUDE.md",
+   "sha256_after": "73652c2a851732c6df62975398c306155b0d9765b7d050153392cff0686626b3",
+   "sha256_before": "ab7ec7dde1724998f7d12a4d5a2c70ee55efdad95c89c6c025413a21929d7415",
+   "added": 4,
+   "deleted": 1
+  },
+  {
+   "path": "tests/test_s80_b1.py",
+   "sha256_after": "88130f327757d9e53feb47bbe877f9a065783b2e3a01f90c623360de46a35dfb",
+   "added": 1224,
+   "deleted": 0
+  },
+  {
+   "path": "tests/test_s80_b1_feedback.py",
+   "sha256_after": "0bd1117880ac96cee0aee35832814ae7eee620b6bef09bba7b0513648ea59ab3",
+   "added": 180,
+   "deleted": 0
+  }
+ ],
+ "unit_run_on": "tests/test_s80_b1.py 187 passed (ENABLE_RESULT_STATUS_METADATA=true exported on the runner call only): [pyt] tag=b1green-unit-on start=2026-10-20 03:41:39 end=2026-10-20 03:41:47 elapsed=8s bound=600s status=OK rc=0 ; re-run after the one post-run touch (ruff C420 on result_gate.py): 187 passed [pyt] tag=b1green-unit-on2 start=2026-10-20 03:47:27 end=2026-10-20 03:47:36 elapsed=9s bound=600s status=OK rc=0 ; tests/test_s80_b1_feedback.py 27 passed [pyt] tag=b1green-unit-fb start=2026-10-20 03:41:57 end=2026-10-20 03:42:00 elapsed=3s bound=600s status=OK rc=0 and [pyt] tag=b1green-unit-fb2 start=2026-10-20 03:47:45 end=2026-10-20 03:47:48 elapsed=3s bound=600s status=OK rc=0 ; [hermeticity] sentinel checked 187 / 27 test(s); [netguard] blocked 0 attempt(s) from 0 node(s) on every unit run",
+ "unit_run_off": "tests/test_s80_b1.py 187 passed (flag unset): [pyt] tag=b1green-unit-off start=2026-10-20 03:41:48 end=2026-10-20 03:41:56 elapsed=8s bound=600s status=OK rc=0 ; re-run after the C420 touch: 187 passed [pyt] tag=b1green-unit-off2 start=2026-10-20 03:47:36 end=2026-10-20 03:47:45 elapsed=8s bound=600s status=OK rc=0 ; RED rows 191 (167 + 24) green at HEAD, PIN rows 23 (20 + 3) green in both flag states; [hermeticity] sentinel checked 187 test(s); [netguard] blocked 0",
+ "comm_set": {
+  "files": 305,
+  "chunks": 13,
+  "head_failures": [
+   "tests/test_camera_vision.py::TestIdentifyProductsMocked::test_empty_product_fields_normalized",
+   "tests/test_camera_vision.py::TestIdentifyProductsMocked::test_malformed_response_returns_error",
+   "tests/test_camera_vision.py::TestIdentifyProductsMocked::test_successful_identification",
+   "tests/test_page_scraping.py::TestFetchPagePriceJsonLD::test_jsonld_nested_offers_picks_lowest",
+   "tests/test_page_scraping.py::TestFetchPagePriceOpenGraph::test_og_meta_extraction",
+   "tests/test_personalization_bundle_c.py::test_applied_shifts_list_is_default_empty_when_no_priorities",
+   "tests/test_personalization_bundle_c.py::test_full_response_payload_audit_no_magnitude_keys",
+   "tests/test_prompt_truth.py::test_render_digests_match_base_except_the_fence (ERROR: netguard refused the cold tiktoken download openaipublic.blob.core.windows.net; IDENTICAL alone at base 81df2b64 in a detached scratch worktree and at HEAD)",
+   "tests/test_prompt_truth.py::test_truth_on_prefix_static_and_cacheable (ERROR: same cause; identical at base and HEAD)"
+  ],
+  "branch_only_new": [],
+  "pyt_lines": [
+   "chunk00 788 passed: [pyt] tag=b1green-comm-00 start=2026-10-20 03:48:21 end=2026-10-20 03:48:58 elapsed=37s bound=1200s status=OK rc=0",
+   "chunk01 3 failed, 997 passed (the 3 test_camera_vision baseline nodes): [pyt] tag=b1green-comm-01 start=2026-10-20 03:48:58 end=2026-10-20 03:50:08 elapsed=69s bound=1200s status=FAIL rc=1",
+   "chunk02 518 passed: [pyt] tag=b1green-comm-02 start=2026-10-20 03:50:08 end=2026-10-20 03:50:26 elapsed=18s bound=1200s status=OK rc=0",
+   "chunk03 2989 passed: [pyt] tag=b1green-comm-03 start=2026-10-20 03:50:27 end=2026-10-20 03:51:56 elapsed=90s bound=1200s status=OK rc=0",
+   "chunk04 594 passed: [pyt] tag=b1green-comm-04 start=2026-10-20 03:51:57 end=2026-10-20 03:52:33 elapsed=36s bound=1200s status=OK rc=0",
+   "chunk05 465 passed: [pyt] tag=b1green-comm-05 start=2026-10-20 03:52:33 end=2026-10-20 03:52:52 elapsed=19s bound=1200s status=OK rc=0",
+   "chunk06 4 failed, 580 passed (the page_scraping x2 + personalization_bundle_c x2 baseline nodes): [pyt] tag=b1green-comm-06 start=2026-10-20 03:52:53 end=2026-10-20 03:53:27 elapsed=35s bound=1200s status=FAIL rc=1",
+   "chunk07 343 passed, 2 errors (test_prompt_truth.py cold tiktoken): [pyt] tag=b1green-comm-07 start=2026-10-20 03:53:28 end=2026-10-20 03:53:53 elapsed=26s bound=1200s status=FAIL rc=1",
+   "chunk08 1642 passed: [pyt] tag=b1green-comm-08 start=2026-10-20 03:53:54 end=2026-10-20 03:56:36 elapsed=163s bound=1200s status=OK rc=0",
+   "chunk09 1197 passed: [pyt] tag=b1green-comm-09 start=2026-10-20 03:56:36 end=2026-10-20 03:57:50 elapsed=74s bound=1200s status=OK rc=0",
+   "chunk10 367 passed: [pyt] tag=b1green-comm-10 start=2026-10-20 03:57:51 end=2026-10-20 03:58:39 elapsed=49s bound=1200s status=OK rc=0",
+   "chunk11 1152 passed, 35 xfailed: [pyt] tag=b1green-comm-11 start=2026-10-20 03:58:40 end=2026-10-20 03:59:24 elapsed=45s bound=1200s status=OK rc=0",
+   "chunk12 (5 files) 81 passed: [pyt] tag=b1green-comm-12 start=2026-10-20 03:59:25 end=2026-10-20 03:59:36 elapsed=11s bound=1200s status=OK rc=0",
+   "test_prompt_truth.py ALONE at base 81df2b64 (detached scratch worktree, removed afterwards): 31 passed, 2 skipped, 1 xfailed, 2 errors: [pyt] tag=b1green-pt-base start=2026-10-20 04:01:19 end=2026-10-20 04:01:22 elapsed=3s bound=600s status=FAIL rc=1",
+   "test_prompt_truth.py ALONE at HEAD: 31 passed, 2 skipped, 1 xfailed, 2 errors (same two node ids, same cause): [pyt] tag=b1green-pt-head start=2026-10-20 04:01:23 end=2026-10-20 04:01:26 elapsed=3s bound=600s status=FAIL rc=1"
+  ]
+ },
+ "ci_order_set": "20 files in alphabetical (CI) order in ONE process (tests/test_s80_b1.py, tests/test_s80_b1_feedback.py, test_s75_fanout_identity.py, test_w4_13_flag_off_ledger.py, test_w4_13_measurement_truth.py, test_stage_timings.py, test_s71_u13_compare_auth_required.py, test_paid_route_metering.py, test_sentry_channels_u8d_unit.py, test_sentry_channels_u8d.py, test_observability.py, test_retro_w1_1.py, test_feedback.py, test_events_allowlist_superset.py, test_feedback_allowlist_superset.py, test_history_routes.py, test_home_routes.py, test_comparison_id_echo.py, test_ci_gates.py, test_behavior_dimension_translation.py), the four NETWORK_FLAKY_EXCLUDE node ids deselected: 1155 passed, 0 failed: [pyt] tag=b1green-ci-order start=2026-10-20 03:59:36 end=2026-10-20 04:00:20 elapsed=44s bound=1200s status=OK rc=0",
+ "lint": "ruff check --select E9,F63,F7,F82 --no-cache: All checks passed on the 11 python files (result_gate.py, response_builder.py, structured_comparison_service.py, sentry_service.py, image_routes.py, text_routes.py, url_routes.py, home_routes.py, feedback_routes.py, feedback_service.py, tests/test_s75_fanout_identity.py); python -m py_compile clean on all 11; full default ruff before == after on every edited file (pre-existing findings only: rb 3, scs 21, sentry 0, image 6, text 10, url 12, home 4, feedback_routes 4, feedback_service 0) and 0 on the new result_gate.py after one C420 fix (dict.fromkeys); the pre-commit hook ran on the commit and passed (All checks passed!). Byte hygiene: result_gate.py 25797 B, 0 bytes > 127, LF; every edited CRLF file kept its CRLF (bare-LF lines 0) and its non-ASCII byte count (only ASCII CRLF lines added; CLAUDE.md 1367 == 1367); git diff --stat content lines only. Added-line sweep over git diff 81df2b64 + the new files (2249 lines): 0 sk-/AKIA/xox/JWT/PEM/credentialed-URL shapes, 0 @gmail, 0 +973, 0 owner names; the only 8-digit runs are the frozen RED files' synthetic UUID literals.",
+ "claude_md_row": "Inserted after the B3-B block and before `## Tests` (CLAUDE.md:473-474 at base; the orchestrator moves it after the H0 block on the rebase, GA-8), CRLF kept, pure ASCII: **SESSION 80 flag (B1, 2026-10-20; default OFF, read PER CALL; a new name, so unset in production by construction (Railway not read); PLAN_S80 unit B1 as amended by RULINGS_R0 R0-1/R0-2/R0-4/R0-5/R0-6/R0-7, RULINGS_BATCH1 B1-R1..B1-R12 and the RED gate GATE_B1 GA-1..GA-9 (`docs/investigations/2026-10-19-session-80-state/`); spec `.qa-s80/B1_UNIT_SPEC.md` of the unit worktree):** - `ENABLE_RESULT_STATUS_METADATA` (B1, `app/services/result_gate.py::result_status_metadata_enabled`; the pure module (stdlib + `text_sanitize.dedup_brand_name`, nothing that does I/O) holds `is_placeholder_identity`, `same_identity` (R-A5 with the brand condition of R0-5; a size / variant / distinguishing_features axis read on BOTH sides with different values is never the same identity), `identity_coherence`, `evidence_coverage` under the AUDITABLE and the LITERAL readings, `section_status`, `assess_result`, `telemetry_tags` / `telemetry_extras`, `stamp_camera_stage_timings`; identity and rating axes read the RAW `products` alias first and the `overview` mirror only when the alias is absent (B1-R7)). **Effect ON:** every text and camera body built by `build_comparison_response` carries `metadata.result_status` {supported_result, partial_no_winner, needs_identification, unsupported_category, failed}, `identity_confidence` {high, medium, low, unresolved}, `data_coverage` (0-4, the AUDITABLE count: both prices showable and not estimated; both ratings real; a real two-sided spec row that is not a tier-3 synthesis, NA tokens matched with `strip().lower()` (B1-R2); a non-sentinel, non-low dimension with margin >= 3) and `data_coverage_literal` (the literal count: R0-5 measured 4/27 vs 1/27 corpus rows at zero, so production sizes the gap before B2 flips), `product_categories` (the per-product categories captured BEFORE the pair-category write-back), `section_status` {specs, reviews, pros_cons, price: available | partial | unavailable}, `overview.winner.supported` (bool), and `metadata.winner_index = None` on every non-supported body (the first writer of that key, MYEZ-027: the History list renders such a row with no winner highlight and placeholder tiles; `/home/savings` and `/home/smart-pick` skip stamped non-supported rows by `result_status`, never by `winner_index`, through the UNFLAGGED reader `home_routes._result_status_supported`, so an unstamped row counts exactly as today and a stamped row stays skipped after a rollback). One PII-free Sentry info message `comparison_result_status` per DELIVERY exit (text POST / GET, a stream `complete` the client received, camera success, URL success) with the tags `input_type, result_status, identity_confidence, reasons, unknown_product_count, winner_emitted, image_present_a/b, price_showable_a/b, partial_stage, data_coverage, data_coverage_literal` (enums / small ints, grammar `^[a-z0-9_,]+$`) plus `vision_ms` / `compare_ms` as BUCKET tags (the bucket's lower edge in ms as a digit string: 1000-ms steps for vision, 5000-ms steps for compare; GA-2) with the raw ints as `extras`; the tags are recomputed from the body, never read from `metadata`; a non-success body never emits (B1-R6); the call is synchronous inside one try/except (ONE WARNING `[RESULT_STATUS] telemetry skipped: <TypeName>`), never a `fire_and_forget` label, so the W4-13 ledger is untouched. `vision_ms` / `vision_moderation_ms` / `compare_ms` are written as ints into an EXISTING camera `metadata.stage_timings_ms` dict only (R0-6 B1-TIMINGS: production runs `DEBUG_STAGE_TIMINGS=true`, so a presence-only rule would have moved production camera bytes at merge). `sentry_service.compare_traces_sampler` (installed by `init_sentry` beside the kept `traces_sample_rate=0.1`) samples `/api/v1/text/compare`, `/api/v1/text/compare/stream`, `/api/v1/image/identify` and `/api/v1/url/compare` at 1.0; every other transaction, and every transaction with the flag OFF, keeps the parent decision else the LIVE client `traces_sample_rate` (B1-R1: a harness that forces 1.0 is honoured; 0.1 only when no client carries a rate). Nothing abstains (B2); build 3 ignores every new key; the crown (`winner_index`, `overview.winner.product_index`, `scoring_v2.overall_score`, `comparison.winner_index`) is unchanged in both states; a failure inside the stamp leaves the body exactly as with the flag OFF (ONE WARNING `[RESULT_STATUS] assess failed: <TypeName>`). **Flag OFF:** byte-identical on every body and stored row, no message, no timing key, the SDK's own sampling rule (pinned by the nine FY25 digests with the flag in `UNIT_ENV`, `tests/test_s80_b1.py` P1-P8 run with the FULL configuration, the W4-13 ledger, the UR11 bodies, the metering pins); the only OFF-state work is the per-call flag read at each site, three `perf_counter` reads on the camera route and the per-product category capture in the orchestrator (a two-string list on the partial build ctx, never serialised OFF). **UNFLAGGED alongside it (R-A1(a), R0-2):** `VALID_EVENT_TYPES` += `scan_start, scan_identity_resolved, scan_comparison_ready, scan_failed, scan_cancelled, image_load_failed` (C7); `VALID_MATTERED_MOST` += `wrong_product, missing_info, unclear_reasons, slow, wrong_winner, unsure` (C6; the third answer state ships as `mattered_most: [\"unsure\"]`); `FeedbackRequest` gains optional `winner_correct` / `price_correct` / `specs_correct` (`Literal` correct | wrong | unsure, default None; an off-enum value is a 422) written to the live 027 columns only when sent (a 4-field body builds exactly today's record); `mattered_most: []` stays accepted; both lists are append-only (pinned); the widening must be deployed BEFORE any client bundle fires the six event names or the six chip values (the C6 / C7 OTAs after approval). **Stated limits:** `identity_confidence` has no vision signal until B3 threads `assess_result(vision_confidences=...)` (`medium` means an empty brand or no corroborating signal on a product, never \"the model was unsure\"); `unsupported_category` is reachable only through a per-product category conflict today (every `category_used` is one of the nine), and the per-product stubs recognise generic category words only, so the cross-category rule cannot fire on an explicit pair of brand-only names (GA-1: `product_categories == ['other','other']` on the explicit pair, the LLM per-product category on the parser path and the stream); `failed` is unreachable through any B1 exit (every emitter site is success-only; a direct `assess_result` call only); the URL envelope is never stamped (R0-1, B4) and its telemetry reads a body without prices or `scoring_v2` (status mostly `partial_no_winner`); the stream emits no message when the client left before `complete` (refunded, not delivered); `profile_routes.py` recent decisions still crown a stamped non-supported row (B1-R11 Q7 is NOT in this unit: the frozen RED files carry no pin for it, so it is a follow-up unit or C1); the compare-route transaction volume rises to 100 % of compare requests under the flag (the Sentry transaction quota is the owner's reading before the flip); a mid-request flip can yield a stamped body without a message, or the reverse, for at most one in-flight request; stored rows carry the tier-3 marker on 3 of 52 corpus products only, so B2 must honour the STAMPED status, not recompute it on old rows. **Precondition (B1-R12 / CR1):** none to merge; the FIRST flag to flip after approval (R-A2 order: it measures the abstain rate before `ENABLE_RESULT_GATE` abstains); after the flip and before the C1 OTA a stamped non-supported row shows no winner highlight and placeholder tiles in the build-3 History list (HistoryScreen tolerates `winner_index: null`, measured) -- the flag flips only after approval, so no reviewer sees it. **Canary:** the `comparison_result_status` messages grouped by the `result_status` x `input_type` tags over one window (expected from the fixtures: about 15 % `partial_no_winner`, camera-heavy; `needs_identification` on Unknown Product / identical pairs), `data_coverage` vs `data_coverage_literal`, the camera `vision_ms` / `compare_ms` buckets, `/home/savings` counts unchanged for pre-flip rows, the four compare transactions at 100 % in Performance, zero `[RESULT_STATUS]` WARNING lines in the Railway log. **Rollback:** unset the variable (per call, immediate); rows stamped during the window stay stamped (they stay non-supported) and keep being skipped by Home. ALSO IN PLACE (principle 5): CLAUDE.md:105 now reads `FeedbackRequest`: `useful, comparison_id, mattered_most, change_suggestion` + the three optional 027 fields `winner_correct / price_correct / specs_correct` (B1, S80, `Literal` correct | wrong | unsure, written only when sent); ContactUsScreen prefixes ... for grep.",
+ "deviations": [
+  "B1-R11 Q7 (the result_status skip in profile_routes.py:75/:97/:141 'with a P8-style pin') is NOT implemented: the frozen RED files carry no row for profile_routes and GA-6 made the RED files the contract; an unpinned reader change would violate R-A13. Recorded as a stated limit in the CLAUDE.md row and the PR body (spec L13 stands).",
+  "capture_result_status itself refuses a non-dict or non-success body, in addition to the site gates the rulings name (camera B1-R6; the stream's success-is-True); no exit behaves differently.",
+  "The sampler's final fallback constant is named _TRACES_SAMPLE_RATE_FALLBACK (0.1) and is reached only when no client carries a rate or the sampler raises (B1-R1: the live client option first, never the constant alone).",
+  "The comm set is 305 files, not the RED's 288: the union rule's 'every test that walks or reads app/ by path' applied by grep at HEAD added 17 files; one of them (tests/test_prompt_truth.py) carries two cold-tiktoken ERRORs that are identical alone at base (detached scratch worktree, removed) and at HEAD, so branch-only-NEW stays EMPTY. scripts/comm_set.py does not exist in the tree; the list is comm_set_green.py's.",
+  "GA-8's rebase onto origin/main 4a38ce93 and the row placement after the H0 block are left to the orchestrator (the task forbids a rebase here); the row sits at the base's anchor (after the B3-B block, before '## Tests').",
+  "One post-run touch on the new module (ruff C420 -> dict.fromkeys) after the first green; the unit files were re-run in both states (187 / 187 / 27) and the module re-byte-checked (25797 B, 0 > 127). The LF->CRLF warnings git printed at the commit are core.autocrlf on the three new LF files (index LF; the RED files' working-copy bytes re-hashed equal to the frozen rows after the commit)."
+ ],
+ "open_questions": [
+  "B1-R11 Q7: run a fix round that adds a RED row for profile_routes (the home_routes _result_status_supported pattern at :75/:97/:141) plus the hunk, or defer it to C1 as spec L13 says?",
+  "Keep the 17 walks-app-by-path files in the unit's comm-set definition for the adversaries' re-derivation (the RED list lacked them)?",
+  "tests/test_prompt_truth.py: the two cold-tiktoken ERRORs fire on this box under the netguard in BOTH trees (the brief's 'record them identically at base and head' is satisfied); CI warms the cache (R22), so no CI red is expected -- confirm nothing further is wanted.",
+  "Mutants were not re-run by GREEN (the RED agent killed 35/35 on the prototype); the adversaries run them on these bytes, X19 by hand (GA-4)."
+ ],
+ "identity_pins": [
+  "tests/test_s75_fanout_identity.py 3 passed (E1 applied, the nine digests unchanged): [pyt] tag=b1green-id-fy25 start=2026-10-20 03:42:51 end=2026-10-20 03:42:55 elapsed=4s bound=600s status=OK rc=0",
+  "tests/test_w4_13_flag_off_ledger.py 2 passed: [pyt] tag=b1green-id-w413 start=2026-10-20 03:42:56 end=2026-10-20 03:42:59 elapsed=4s bound=600s status=OK rc=0",
+  "tests/test_stage_timings.py 2 passed ([netguard] blocked 18 attempt(s) from 2 node(s), egress api.openai.com -- the base baseline class): [pyt] tag=b1green-id-stage start=2026-10-20 03:43:00 end=2026-10-20 03:43:09 elapsed=9s bound=600s status=OK rc=0",
+  "tests/test_s71_u13_compare_auth_required.py 137 passed (T17/T23/UR11): [pyt] tag=b1green-id-u13 start=2026-10-20 03:43:10 end=2026-10-20 03:43:15 elapsed=5s bound=600s status=OK rc=0",
+  "tests/test_paid_route_metering.py 21 passed ([netguard] blocked 2 sentinel attempts, the ratchet baseline): [pyt] tag=b1green-id-meter start=2026-10-20 03:43:15 end=2026-10-20 03:43:19 elapsed=4s bound=600s status=OK rc=0",
+  "tests/test_sentry_channels_u8d_unit.py 141 passed: [pyt] tag=b1green-id-u8dunit start=2026-10-20 03:43:20 end=2026-10-20 03:43:29 elapsed=10s bound=600s status=OK rc=0",
+  "tests/test_observability.py 24 passed: [pyt] tag=b1green-id-obs start=2026-10-20 03:43:30 end=2026-10-20 03:43:33 elapsed=3s bound=600s status=OK rc=0",
+  "tests/test_retro_w1_1.py 39 passed: [pyt] tag=b1green-id-retro start=2026-10-20 03:43:34 end=2026-10-20 03:43:42 elapsed=7s bound=600s status=OK rc=0",
+  "tests/test_sentry_channels_u8d.py 131 passed (child process, B1-R1): [pyt] tag=b1green-id-u8dchild start=2026-10-20 03:43:42 end=2026-10-20 03:43:48 elapsed=6s bound=600s status=OK rc=0",
+  "spec 1.10 run 1 (test_feedback, test_events_allowlist_superset, test_feedback_allowlist_superset, test_history_routes, test_home_routes) 119 passed: [pyt] tag=b1green-run1 start=2026-10-20 03:42:45 end=2026-10-20 03:42:50 elapsed=5s bound=600s status=OK rc=0",
+  "flag-ON smoke (information; no existing pin reddens under the flag): run1 119 passed [pyt] tag=b1green-smoke-run1 start=2026-10-20 03:47:49 end=2026-10-20 03:47:54 elapsed=5s bound=600s status=OK rc=0; run2 7 passed [pyt] tag=b1green-smoke-run2 start=2026-10-20 03:47:54 end=2026-10-20 03:48:06 elapsed=11s bound=600s status=OK rc=0; run3 225 passed [pyt] tag=b1green-smoke-run3 start=2026-10-20 03:48:06 end=2026-10-20 03:48:21 elapsed=15s bound=600s status=OK rc=0"
+ ],
+ "pr_body_path": "C:\\Users\\SYNACK~1\\AppData\\Local\\Temp\\claude\\C--Users-SynAckITPC-Documents-AI\\ae650c83-4d2a-4910-a8d4-a47ab213c8c3\\scratchpad\\B1_green\\PR_BODY.md",
+ "report_path": "C:\\Users\\SYNACK~1\\AppData\\Local\\Temp\\claude\\C--Users-SynAckITPC-Documents-AI\\ae650c83-4d2a-4910-a8d4-a47ab213c8c3\\scratchpad\\B1_green\\B1_GREEN_REPORT.md"
+}
