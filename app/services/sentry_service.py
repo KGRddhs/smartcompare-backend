@@ -6,6 +6,15 @@ import copy
 import logging
 from urllib.parse import urlsplit
 
+# B1 (S80, ENABLE_RESULT_STATUS_METADATA): the pure predicates (stdlib + text_sanitize only).
+from app.services.result_gate import (
+    assess_result,
+    result_status_metadata_enabled,
+    stamped_product_categories,
+    telemetry_extras,
+    telemetry_tags,
+)
+
 logger = logging.getLogger(__name__)
 
 # Patterns to scrub from Sentry events.
@@ -613,6 +622,82 @@ def _infra_hosts_from_env() -> frozenset:
     return frozenset(hosts)
 
 
+# B1 (S80, ENABLE_RESULT_STATUS_METADATA): the compare-route traces sampler and the
+# one PII-free status message per delivery exit.
+_TRACES_SAMPLE_RATE_FALLBACK = 0.1
+_COMPARE_PATHS = frozenset({
+    "/api/v1/text/compare",
+    "/api/v1/text/compare/stream",
+    "/api/v1/image/identify",
+    "/api/v1/url/compare",
+})
+_RESULT_STATUS_MESSAGE = "comparison_result_status"
+
+
+def _live_traces_sample_rate():
+    """B1-R1: the LIVE client option (a harness that forces 1.0 is honoured), never a
+    module constant; 0.1 only when no client carries a rate."""
+    try:
+        import sentry_sdk
+
+        client = sentry_sdk.get_client()
+        options = getattr(client, "options", None) if client is not None else None
+        rate = options.get("traces_sample_rate") if isinstance(options, dict) else None
+    except Exception:  # noqa: BLE001 -- a sampler must never raise
+        rate = None
+    return rate if rate is not None else _TRACES_SAMPLE_RATE_FALLBACK
+
+
+def compare_traces_sampler(sampling_context):
+    """Under the flag the four compare paths sample at 1.0 (R0-7: camera traces were
+    invisible at 0.1); every other transaction, and every transaction with the flag
+    OFF, follows the SDK's own rules 3/4: the parent decision when there is one, else
+    the live traces_sample_rate. Matched on the raw ASGI path (no query string)."""
+    try:
+        context = sampling_context if isinstance(sampling_context, dict) else {}
+        if result_status_metadata_enabled():
+            scope = context.get("asgi_scope")
+            path = scope.get("path") if isinstance(scope, dict) else None
+            if path in _COMPARE_PATHS:
+                return 1.0
+        parent = context.get("parent_sampled")
+        if parent is not None:
+            return parent
+        return _live_traces_sample_rate()
+    except Exception:  # noqa: BLE001 -- a sampler must never raise
+        return _TRACES_SAMPLE_RATE_FALLBACK
+
+
+def capture_result_status(result, input_type, *, vision_ms=None, compare_ms=None) -> None:
+    """B1: ONE PII-free info message per DELIVERY exit (text POST / GET, stream complete,
+    camera success, URL success): enum / int / bucketed tags only, the raw walls as int
+    extras. The assessment is recomputed from the body with the STAMPED product_categories
+    (F1-1: the tags equal the stamp); partial, partial_stage (whitelisted) and the elapsed_ms
+    fallback are read from metadata (a non-finite wall is absent, F1-5). Flag first; a
+    non-success body is never a delivery; synchronous, never raises, never a fire_and_forget
+    label."""
+    if not result_status_metadata_enabled():
+        return
+    try:
+        if not isinstance(result, dict) or result.get("success") is not True:
+            return
+        if compare_ms is None:
+            metadata = result.get("metadata")
+            compare_ms = metadata.get("elapsed_ms") if isinstance(metadata, dict) else None
+        assessment = assess_result(result, product_categories=stamped_product_categories(result))
+        tags = telemetry_tags(result, input_type, assessment=assessment,
+                              vision_ms=vision_ms, compare_ms=compare_ms)
+        extras = telemetry_extras(vision_ms=vision_ms, compare_ms=compare_ms)
+        import sentry_sdk
+
+        if extras:
+            sentry_sdk.capture_message(_RESULT_STATUS_MESSAGE, level="info", tags=tags, extras=extras)
+        else:
+            sentry_sdk.capture_message(_RESULT_STATUS_MESSAGE, level="info", tags=tags)
+    except Exception as exc:  # noqa: BLE001 -- telemetry never breaks a delivery
+        logger.warning("[RESULT_STATUS] telemetry skipped: %s", type(exc).__name__)
+
+
 def init_sentry():
     """Initialize Sentry SDK. No-op if SENTRY_DSN not set."""
     global _INFRA_HOSTS
@@ -665,6 +750,9 @@ def init_sentry():
             dsn=dsn,
             integrations=integrations,
             traces_sample_rate=0.1,
+            # B1 (S80): the compare routes at 1.0 under ENABLE_RESULT_STATUS_METADATA;
+            # the SDK's own rules (parent decision, else the rate above) otherwise.
+            traces_sampler=compare_traces_sampler,
             environment=os.getenv("RAILWAY_ENVIRONMENT", "development"),
             release=os.getenv("RAILWAY_GIT_COMMIT_SHA", "unknown"),
             send_default_pii=False,

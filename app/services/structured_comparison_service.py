@@ -3820,6 +3820,8 @@ class StructuredComparisonService:
             cohort_summary=self._build_cohort_summary(ctx.get("demographics_profile")),
             # COST-METER (#66): the calls recorded before the hard cap fired.
             openai_usage=summarize_openai_ledger(self._openai_ledger),
+            # B1 (S80): the per-product categories (None before the pair resolution).
+            product_categories=ctx.get("product_categories"),
         )
         # M18 PO-fact-check-10 — Decision 7 notice (additive metadata key).
         result = attach_data_freshness_notice(result)
@@ -4280,11 +4282,16 @@ class StructuredComparisonService:
             # WS1 (D1) — fold the resolved category context into the partial
             # build ctx so a hard-cap timeout after this point can still build
             # a correctly-categorized partial response.
+            # B1 (S80): the per-product categories captured BEFORE the pair write-back
+            # below (read only under ENABLE_RESULT_STATUS_METADATA; unused with the
+            # flag OFF, never serialised there).
+            product_categories = [canonicalize_category(_p.get("category")) for _p in products]
             if self._partial_build_ctx is not None:
                 self._partial_build_ctx.update({
                     "category_used": category_used,
                     "category_switched": category_switched,
                     "original_category": original_category,
+                    "product_categories": product_categories,
                 })
 
             # A3 KEYSTONE WRITE-BACK — stamp the resolved category onto BOTH
@@ -4594,6 +4601,7 @@ class StructuredComparisonService:
                 cohort_summary=self._build_cohort_summary(demographics_profile),
                 # COST-METER (#66): the per-request OpenAI usage summary.
                 openai_usage=summarize_openai_ledger(self._openai_ledger),
+                product_categories=product_categories,  # B1 (S80)
             )
             # M18 PO-fact-check-10 — Decision 7 notice (additive metadata key).
             result = attach_data_freshness_notice(result)
@@ -4908,6 +4916,9 @@ class StructuredComparisonService:
             category_used, category_switched, original_category = (
                 await _resolve_pair_category(products, selected_category, parser_path=_parser_path)
             )
+            # B1 (S80): the per-product categories captured BEFORE the pair write-back
+            # (read only under ENABLE_RESULT_STATUS_METADATA; unused with the flag OFF).
+            product_categories = [canonicalize_category(_p.get("category")) for _p in products]
             for _p in products:
                 _p["category"] = category_used
 
@@ -4926,6 +4937,7 @@ class StructuredComparisonService:
                 "category_used": category_used,
                 "category_switched": category_switched,
                 "original_category": original_category,
+                "product_categories": product_categories,  # B1 (S80)
                 # FANOUT-STARVE FS-R3 m9: the Step-1 marks ({} with the flags OFF).
                 **_parse_marks(parsed),
             }
@@ -5433,6 +5445,7 @@ class StructuredComparisonService:
                 cohort_summary=self._build_cohort_summary(demographics_profile),
                 # COST-METER (#66): the per-request OpenAI usage summary (streaming mirror).
                 openai_usage=summarize_openai_ledger(self._openai_ledger),
+                product_categories=product_categories,  # B1 (S80)
                 _single_margin=_single_margin_on,  # W4-12 (K12) — read once above
             )
             # M18 PO-fact-check-10 — Decision 7 notice (additive metadata key).

@@ -30,6 +30,8 @@ from typing import Any, Optional
 from fastapi import APIRouter, Depends, Request
 
 from app.api.auth_routes import get_current_user
+# B1 (S80, B1-R11 Q7 / fix round F1-2): the ONE unflagged stamp reader, shared with Home.
+from app.api.home_routes import _result_status_supported
 from app.middleware.rate_limiter import limiter
 from app.services.cache_service import _redis_get, _redis_set
 from app.services.database_service import (
@@ -69,6 +71,8 @@ def _extract_winner_loser_prices(full_response: dict) -> tuple[Optional[float], 
     """
     if not isinstance(full_response, dict):
         return (None, None)
+    if not _result_status_supported(full_response):
+        return (None, None)  # B1: a stamped non-supported row; never via winner_index
     products = full_response.get("products") or []
     if not isinstance(products, list) or len(products) < 2:
         return (None, None)
@@ -91,6 +95,8 @@ def _extract_product_names(full_response: dict) -> tuple[Optional[str], Optional
     """
     if not isinstance(full_response, dict):
         return (None, None)
+    if not _result_status_supported(full_response):
+        return (None, None)  # B1: a stamped non-supported row is not a decision
     products = full_response.get("products") or []
     if not isinstance(products, list) or len(products) < 2:
         return (None, None)
@@ -135,6 +141,8 @@ def _extract_product_image_urls(full_response: dict) -> tuple[Optional[str], Opt
     """
     if not isinstance(full_response, dict):
         return (None, None)
+    if not _result_status_supported(full_response):
+        return (None, None)  # B1: no winner / runner-up tiles for a stamped non-supported row
     products = full_response.get("products") or []
     if not isinstance(products, list) or len(products) < 2:
         return (None, None)
