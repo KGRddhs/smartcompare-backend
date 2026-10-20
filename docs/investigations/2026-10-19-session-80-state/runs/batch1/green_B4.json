@@ -1,0 +1,133 @@
+{
+ "unit": "B4 URL-MODE-V2 (ENABLE_URL_MODE_V2, default OFF, read per call); worktree C:\\Users\\SynAckITPC\\Documents\\AI\\sc-s80-b4, branch feature/s80-b4-url-mode-v2 on base 81df2b641454e0301cca51a3ba01bf8ef3d7e649 (not rebased, GC-7); agent model claude-opus-5-5",
+ "head_sha": "9db99de97245aa4543e054dd5f94c0800b270e69",
+ "branch": "feature/s80-b4-url-mode-v2",
+ "red_files_rehash_ok": true,
+ "files_changed": [
+  {
+   "path": "app/services/url_extraction_service.py",
+   "added": 617,
+   "deleted": 17,
+   "sha256_before": "0330b762eb7defa1e218e210ff7a51ae3c341c94a8d52365f85d724ee7c59fa9",
+   "sha256_after": "649c93a88cbded0fc399594c9492fcd83cbc568ace3a40cba9f0029a4eaabef1"
+  },
+  {
+   "path": "app/api/url_routes.py",
+   "added": 112,
+   "deleted": 3,
+   "sha256_before": "bc3d0822e7e89906d6248fb66af710e755f7755dbd7e9d770107bb430d1557db",
+   "sha256_after": "9229e0b4d027e392f21e5da9edb29549f40fcde2bb22ca90c4351701ab3a59ba"
+  },
+  {
+   "path": "app/middleware/error_handler.py",
+   "added": 25,
+   "deleted": 0,
+   "sha256_before": "8116436749c8ebeb826d39a14428f69cff25f912b0cbeda23e5a853943bac4c5",
+   "sha256_after": "7e539cc7b17fcc6c9b982a2ebe4b212096af57deb8c1bded330eb57e5fc6d482"
+  },
+  {
+   "path": "tests/test_model_config_enforced.py",
+   "added": 1,
+   "deleted": 1,
+   "sha256_before": "b3813ad62ce944a44a7ad505fab119be2055d15139436d507620e210a1b3f19b",
+   "sha256_after": "5e90f9a63ff8f0013dceedc65813aff546e6867481cf060168e2f30de934336b"
+  },
+  {
+   "path": "tests/w4_11_prompt_digest_recorder.py",
+   "added": 1,
+   "deleted": 1,
+   "sha256_before": "8c90ef5bff06208f4f9f3025ff5a0dd94fc2d7396115004d0d92ab722537a826",
+   "sha256_after": "2c92065df907f975e2cffaf00eff960b83b22916aae6a23237b76c1dd6d4b8e6"
+  },
+  {
+   "path": "tests/test_prompt_fence.py",
+   "added": 1,
+   "deleted": 1,
+   "sha256_before": "d5474744d232934194321158516135f5087a4feb355d769372e3867815305930",
+   "sha256_after": "b5b39f98a5db0c94e65437dba3f9122d664f5dcb408f805c5d6b323a03cea2d5"
+  },
+  {
+   "path": "tests/test_s71_u13_compare_auth_required.py",
+   "added": 1,
+   "deleted": 0,
+   "sha256_before": "289f24f590627b351862a00ee701fb9978d8f0ae4254a7df98a3cae132dd4121",
+   "sha256_after": "24cd27ff6993b0e83a050f6a32a605edaff8ae10d97bd09ff9757814d6f7ac94"
+  },
+  {
+   "path": "tests/test_retro_w2_1.py",
+   "added": 1,
+   "deleted": 1,
+   "sha256_before": "1d14c619fb67fdefd44d574a414122bacef13372353656bb4e70ba18b4df46e8",
+   "sha256_after": "ba125e514242fa81a1268946435a1a380e0f03ac21753a14c33b50ea254a33de"
+  },
+  {
+   "path": "CLAUDE.md",
+   "added": 3,
+   "deleted": 0,
+   "sha256_before": "ab7ec7dde1724998f7d12a4d5a2c70ee55efdad95c89c6c025413a21929d7415",
+   "sha256_after": "89ce189a83da5f6fc8e95ad5d01937a969194fee3401f84482061466738e06b4"
+  },
+  {
+   "path": "tests/test_s80_url_mode_v2.py",
+   "added": 1515,
+   "deleted": 0,
+   "sha256_before": "c4549be2f5cd8edfd60cbc07db427ed5275cc4b44ab719614ef97b9eca227cae",
+   "sha256_after": "c4549be2f5cd8edfd60cbc07db427ed5275cc4b44ab719614ef97b9eca227cae"
+  }
+ ],
+ "unit_run_on": "ENABLE_URL_MODE_V2=true: 2 failed, 250 passed, 11 warnings in 9.26s; [hermeticity] sentinel checked 252 test(s); [netguard] blocked 0 attempt(s) from 0 node(s); [pyt] tag=b4g-unit-on2 start=2026-10-20 14:03:15 end=2026-10-20 14:03:28 elapsed=13s bound=600s status=FAIL rc=1 (re-run after the last code edit: [pyt] tag=b4g-unit-on3 elapsed=61s status=FAIL rc=1, same 2). Red = tests/test_s80_url_mode_v2.py::test_transport_error_is_store_unreadable[POST|GET] only (R12 asserts one ERROR-level record; GC-1 rules a WARNING; see deviations D1).",
+ "unit_run_off": "flag unset: 2 failed, 250 passed, 11 warnings in 20.47s; [hermeticity] sentinel checked 252 test(s); [netguard] blocked 0 attempt(s) from 0 node(s); [pyt] tag=b4g-unit-off1 start=2026-10-20 14:03:44 end=2026-10-20 14:04:07 elapsed=23s bound=600s status=FAIL rc=1 (the same two R12 nodes; every flag-OFF PIN green). Post-edit delta (unit + 9 pin files): [pyt] tag=b4g-delta-after-logname elapsed=106s status=FAIL rc=1 = 701 passed + R12 x2.",
+ "comm_set": {
+  "files": 120,
+  "chunks": 5,
+  "head_failures": [
+   "tests/test_prompt_truth.py::test_render_digests_match_base_except_the_fence (ERROR, cold tiktoken, identical at base)",
+   "tests/test_prompt_truth.py::test_truth_on_prefix_static_and_cacheable (ERROR, cold tiktoken, identical at base)",
+   "tests/test_s80_url_mode_v2.py::test_transport_error_is_store_unreadable[GET]",
+   "tests/test_s80_url_mode_v2.py::test_transport_error_is_store_unreadable[POST]"
+  ],
+  "branch_only_new": [
+   "tests/test_s80_url_mode_v2.py::test_transport_error_is_store_unreadable[GET]",
+   "tests/test_s80_url_mode_v2.py::test_transport_error_is_store_unreadable[POST]"
+  ],
+  "pyt_lines": [
+   "[pyt] tag=b4g-comm-head-c1 start=2026-10-20 14:17:32 end=2026-10-20 14:19:35 elapsed=123s bound=1200s status=OK rc=0 (890 passed, 1 skipped, 12 deselected; sentinel 891; netguard 2/2)",
+   "[pyt] tag=b4g-comm-head-c2 start=2026-10-20 14:19:45 end=2026-10-20 14:27:10 elapsed=445s bound=1200s status=OK rc=0 (2146 passed, 1 skipped; sentinel 2147; netguard 55 from 38)",
+   "[pyt] tag=b4g-comm-head-c3 start=2026-10-20 14:27:29 end=2026-10-20 14:28:21 elapsed=51s bound=1200s status=FAIL rc=1 (682 passed, 2 skipped, 8 deselected, 1 xfailed, 2 errors = the tiktoken pair; sentinel 685; netguard 123 from 8)",
+   "[pyt] tag=b4g-comm-head-c4 start=2026-10-20 14:28:44 end=2026-10-20 14:37:20 elapsed=516s bound=1200s status=FAIL rc=1 (2 failed = R12 x2, 1843 passed, 1 skipped, 1 deselected; sentinel 1846; netguard 12 from 6)",
+   "[pyt] tag=b4g-comm-head-c5 start=2026-10-20 14:37:41 end=2026-10-20 14:42:07 elapsed=266s bound=1200s status=OK rc=0 (644 passed, 1 skipped; sentinel 645; netguard 24 from 22)"
+  ]
+ },
+ "ci_order_set": "flag OFF only (B4-R8), alphabetical 13 files incl. the unit file: 2 failed (R12 POST/GET), 901 passed, 13 warnings in 129.91s; sentinel 903; netguard blocked 10 attempt(s) from 10 node(s) (pre-existing sentinel class); [pyt] tag=b4g-ci-order start=2026-10-20 14:44:09 end=2026-10-20 14:46:30 elapsed=140s bound=1200s status=FAIL rc=1",
+ "lint": "ruff 0.16.5 `--select E9,F63,F7,F82 --no-cache` on the 3 app files + 5 edited tests + the unit file: All checks passed; py_compile OK on the same; full-rule ruff (worktree config) on the 3 app files 70 findings at HEAD vs 71 at base, no new class; none of the edited files on the black allowlist; pre-commit hook passed on the commit; bytes > 127 unchanged in every edited file; all edited backend files remain all-CRLF; added-line sweep clean.",
+ "claude_md_row": "Inserted after the SESSION 79 B3-B row and before `## Tests` (no SESSION 80 row exists at the spec base 81df2b64; at the rebase it goes after the B1 and B3 rows, G-2): **SESSION 80 flag (B4 URL-MODE-V2, 2026-10-20; ...)** + one bullet `ENABLE_URL_MODE_V2` with Effect ON (pre-gate, typed post-fetch codes incl. GC-2, B4-R1 rule, 25 s wait_for TIMEOUT, R-A3 non-delivery, scoped passthrough B4-R5, image retype, value fill, V2 prompt, every log template and the full outcome/reason vocabulary per GC-3), Flag OFF pins, UNFLAGGED host-only lines, Build 3, HARD PRECONDITIONS (none; R-A2 order after CLAIMS_PROVENANCE before RESULT_GATE), 16 stated limits (incl. B4-R6 consumed_keys, B4-R7 measured misses, GC-4, the measured local-.env class), Canary, Rollback. Variable names only; CRLF kept; 3 lines added; CLAUDE.md sha256 89ce189a83da5f6fc8e95ad5d01937a969194fee3401f84482061466738e06b4.",
+ "deviations": [
+  "D1 (blocking item): GC-1 (binding) puts every unreadable-fetch outcome of _fetch_page_v2 on ONE WARNING '[URL-V2] fetch failed host=%s reason=%s type=%s'; the frozen RED row R12 (test_transport_error_is_store_unreadable[POST|GET]) asserts exactly one ERROR-level record with the exception type, so GC-1's 'RED R12 already accepts this' is wrong (measured AssertionError: [] at tests/test_s80_url_mode_v2.py:728). Implemented per GC-1; R12 red (its status/body/field/reason assertions pass); RED file not edited. Measured alternative on a byte copy (restored, sha OK): the transport-error line at ERROR inside the except arm with the distinct template -> R12 green and all u8d R8 pins green ([pyt] tag=b4g-variant-error-level status=OK rc=0, 12 passed).",
+  "D2: site names = Organization / WebSite / og:site_name (the spec's own CLAUDE.md row wording), not WebPage (spec 2.2): a WebPage node names the page and often equals the <title> on a PDP without Product schema, which would be refused at $0 without the LLM rung. Unpinned either way.",
+  "D3: the v2 fetch's [SSRF] WARNING lines print host= only (spec: the base full-url lines); R40/R41 match by prefix; fetch_page's own lines unchanged.",
+  "D4: the 'Detected retailer' INFO label (both paths) is a SUPPORTED_RETAILERS name or 'unknown' (an unknown retailer's name is the raw netloc, which can carry a pasted user:pass@; the SSRF guard does not refuse userinfo).",
+  "D5: normalize_product_data gains url_mode_v2 and final_url only (the spec's unused site_names kwarg omitted).",
+  "D6: the wait_for arm lives in a helper _compare_with_deadline (same semantics: TIMEOUT result through the unchanged failure exit, other exceptions to the base arm).",
+  "D7: challenge title regex '<title(?:\\s[^>]*)?>' (not '<title[^>]*>'); error-handler code check isinstance(str) + tuple membership (an unhashable code cannot raise).",
+  "D8: commit trailer 'Co-Authored-By: Claude Opus 5.5' because this agent ran on claude-opus-5-5 (the brief's Fable 5.1 text would be a false attribution; the session-80 ledger records claude-opus-5-5 for this launch).",
+  "D9: comm set and CI-order set ran before two log-text-only edits (retailer label helper, one CLAUDE.md sentence); two delta runs on the final bytes covered every file reading those bytes (701 passed + R12 x2; 516 passed).",
+  "Mutation: 12 targeted mutants on the GREEN bytes, 11 KILLED, 1 SURVIVED (G10: the ON normaliser-stage image_url coercion removed; it only acts on an LLM-merged or amazon/noon image, which no RED row exercises). The full M1-M49 table on GREEN bytes not run (RED ran 63/63 on its prototype).",
+  "PR body (scratchpad) ends with the required robot-glyph line: its 4 bytes are the only non-ASCII bytes in any file written."
+ ],
+ "open_questions": [
+  "Q1 (D1): re-freeze R12 to accept the GC-1 WARNING (recommended: GC-1's reason, a typed non-delivery is not an ERROR / Sentry event), or amend GC-1 so the transport-error line stays ERROR inside the except arm (measured green)?",
+  "Q2 (G10 survivor): add a RED/adversary row for an LLM-merged or amazon/noon raw image under ON, or accept the normaliser-stage coercion as unpinned?",
+  "Q3: E6 wanted? Adding ENABLE_URL_MODE_V2 to tests/test_paid_route_metering.py's clean list closes the measured local-.env class (5 url_compare_* nodes go red with the flag exported, their _stub_url_leaves._extract(url) has the base signature); only E5 was authorised, so not done.",
+  "Q4: confirm D2 (WebPage excluded from site names), D3 (host-only v2 [SSRF] lines) and D4 (retailer label 'unknown' for unknown retailers).",
+  "Q5: an inner builtin TimeoutError escaping compare_from_urls before the deadline would also be reported as TIMEOUT 503 (none known: the inner wait_for sites catch theirs); acceptable, or switch to asyncio.timeout with expired()?",
+  "Paths: report C:\\Users\\SYNACK~1\\AppData\\Local\\Temp\\claude\\C--Users-SynAckITPC-Documents-AI\\ae650c83-4d2a-4910-a8d4-a47ab213c8c3\\scratchpad\\B4_green\\B4_GREEN_REPORT.md; PR body ...\\scratchpad\\B4_green\\PR_BODY.md; byte copies ...\\scratchpad\\B4_green_before\\ (SHA256SUMS.txt)."
+ ],
+ "identity_pins": [
+  "tests/test_s80_url_mode_v2.py PINs green at HEAD in both flag states: P4 test_pregate_lets_distinct_pdps_through, P5 test_ssrf_refusal_byte_identical_in_both_states, P6 test_flag_off_homepage_pair_is_base_behaviour (14), P15 test_codeless_failure_keeps_base_body_flag_on, P17 test_flag_off_no_deadline, P18 test_deadline_exception_arm_untouched, P20 test_flag_off_image_passes_through_raw, P23 test_flag_off_recommendation_empty, P25 test_prompt_off_render_equals_w411_digest, R32-OFF test_error_handler_four_key_body (5), P36 test_w4_13_rows_unchanged_flag_off (3) + test_w4_13_rows_full_config_flag_off, R38-OFF test_v2_kwarg_is_conditional[*-off], R39 test_fetch_page_untouched_pin, R11b test_body_text_access_denied_is_not_a_challenge",
+  "tests/test_retro_w2_1.py 111 + tests/test_w4_13_flag_off_ledger.py + tests/test_w4_13_measurement_truth.py + tests/test_url_compare_category.py + tests/test_prompt_fence.py (F11/F13) + tests/test_model_config_enforced.py (M1/M3) + tests/test_u3c_store_false_pin.py + tests/test_s71_u13_compare_auth_required.py (T23) + tests/test_ssrf_redirect_hardening.py + tests/test_retro_w0_4_efg.py + tests/test_sentry_channels_u8d_unit.py (R8) + 9 more: 1037 passed, [pyt] tag=b4g-pins1 elapsed=179s status=OK rc=0",
+  "tests/test_retro_w0_4.py (W0-4c transitive soup guard, empty allowlist): 157 passed, [pyt] tag=b4g-retro-w0-4 elapsed=98s status=OK rc=0",
+  "CLAUDE.md readers tests/test_ci_gates.py + tests/test_behavior_dimension_translation.py green on the committed bytes ([pyt] tag=b4g-delta2-head elapsed=31s status=OK rc=0, 516 passed with 6 more pin files)"
+ ],
+ "pr_body_path": "C:\\Users\\SYNACK~1\\AppData\\Local\\Temp\\claude\\C--Users-SynAckITPC-Documents-AI\\ae650c83-4d2a-4910-a8d4-a47ab213c8c3\\scratchpad\\B4_green\\PR_BODY.md",
+ "report_path": "C:\\Users\\SYNACK~1\\AppData\\Local\\Temp\\claude\\C--Users-SynAckITPC-Documents-AI\\ae650c83-4d2a-4910-a8d4-a47ab213c8c3\\scratchpad\\B4_green\\B4_GREEN_REPORT.md"
+}
