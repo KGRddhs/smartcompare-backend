@@ -1,0 +1,656 @@
+{
+ "unit": "B3 VISION-IDENTITY-V2 (ENABLE_VISION_IDENTITY_V2), RED phase, base 81df2b641454e0301cca51a3ba01bf8ef3d7e649, real worktree C:/Users/SynAckITPC/Documents/AI/sc-s80-b3",
+ "test_files": [
+  {
+   "path": "C:/Users/SynAckITPC/Documents/AI/sc-s80-b3/tests/test_s80_b3_vision_identity_v2.py",
+   "sha256": "36b78a404deefbc4fbea66b2d75574f203346a8e53550a3ddf04d3550e4af15e",
+   "bytes": 65236
+  }
+ ],
+ "base_run": {
+  "failed": 69,
+  "passed": 36,
+  "every_failure_is_assertion_error": true,
+  "failed_node_ids": [
+   "tests/test_s80_b3_vision_identity_v2.py::test_R1_v04_object_normalised_to_public_plus_internal_keys",
+   "tests/test_s80_b3_vision_identity_v2.py::test_R2_v07_bare_array_accepted",
+   "tests/test_s80_b3_vision_identity_v2.py::test_R3_v2_call_shape",
+   "tests/test_s80_b3_vision_identity_v2.py::test_R4_no_content_raises_llm_unavailable[refusal]",
+   "tests/test_s80_b3_vision_identity_v2.py::test_R4_no_content_raises_llm_unavailable[none]",
+   "tests/test_s80_b3_vision_identity_v2.py::test_R4_no_content_raises_llm_unavailable[no_choice]",
+   "tests/test_s80_b3_vision_identity_v2.py::test_R4b_route_refusal_is_coded_503_with_refund",
+   "tests/test_s80_b3_vision_identity_v2.py::test_R5_finish_reason_length_is_a_logged_parse_failure",
+   "tests/test_s80_b3_vision_identity_v2.py::test_R5b_route_length_reply_is_exit_2",
+   "tests/test_s80_b3_vision_identity_v2.py::test_R6_one_best_candidate_per_image_index",
+   "tests/test_s80_b3_vision_identity_v2.py::test_R6b_one_image_keeps_the_best_two",
+   "tests/test_s80_b3_vision_identity_v2.py::test_R7_is_product_false_candidates_dropped",
+   "tests/test_s80_b3_vision_identity_v2.py::test_R7b_route_non_product_photo_is_need_second_product",
+   "tests/test_s80_b3_vision_identity_v2.py::test_R8_out_of_range_index_kept_unpaired_after_paired",
+   "tests/test_s80_b3_vision_identity_v2.py::test_R8c_str_and_missing_index_kept_unpaired",
+   "tests/test_s80_b3_vision_identity_v2.py::test_R8d_one_based_reply_degrades_to_v1_pairing",
+   "tests/test_s80_b3_vision_identity_v2.py::test_R8b_non_dict_items_dropped_and_counted",
+   "tests/test_s80_b3_vision_identity_v2.py::test_R9_coercion_and_string_hygiene",
+   "tests/test_s80_b3_vision_identity_v2.py::test_R10_vision_call_bounded_by_the_knob",
+   "tests/test_s80_b3_vision_identity_v2.py::test_R10b_route_timeout_is_coded_503",
+   "tests/test_s80_b3_vision_identity_v2.py::test_R11_timeout_knob_parse[None]",
+   "tests/test_s80_b3_vision_identity_v2.py::test_R11_timeout_knob_parse['']",
+   "tests/test_s80_b3_vision_identity_v2.py::test_R11_timeout_knob_parse['   ']",
+   "tests/test_s80_b3_vision_identity_v2.py::test_R11_timeout_knob_parse['garbage']",
+   "tests/test_s80_b3_vision_identity_v2.py::test_R11_timeout_knob_parse['inf']",
+   "tests/test_s80_b3_vision_identity_v2.py::test_R11_timeout_knob_parse['nan']",
+   "tests/test_s80_b3_vision_identity_v2.py::test_R11_timeout_knob_parse['0']",
+   "tests/test_s80_b3_vision_identity_v2.py::test_R11_timeout_knob_parse['-3']",
+   "tests/test_s80_b3_vision_identity_v2.py::test_R11_timeout_knob_parse['1e400']",
+   "tests/test_s80_b3_vision_identity_v2.py::test_R11_timeout_knob_parse[' 12.5 ']",
+   "tests/test_s80_b3_vision_identity_v2.py::test_R11_timeout_knob_parse['20']",
+   "tests/test_s80_b3_vision_identity_v2.py::test_R12_flag_reader[true-True]",
+   "tests/test_s80_b3_vision_identity_v2.py::test_R12_flag_reader[TRUE-True]",
+   "tests/test_s80_b3_vision_identity_v2.py::test_R12_flag_reader[ true -True]",
+   "tests/test_s80_b3_vision_identity_v2.py::test_R12_flag_reader[1-True]",
+   "tests/test_s80_b3_vision_identity_v2.py::test_R12_flag_reader[yes-True]",
+   "tests/test_s80_b3_vision_identity_v2.py::test_R12_flag_reader[ON-True]",
+   "tests/test_s80_b3_vision_identity_v2.py::test_R12_flag_reader[on-True]",
+   "tests/test_s80_b3_vision_identity_v2.py::test_R12_flag_reader[None-False]",
+   "tests/test_s80_b3_vision_identity_v2.py::test_R12_flag_reader[-False]",
+   "tests/test_s80_b3_vision_identity_v2.py::test_R12_flag_reader[false-False]",
+   "tests/test_s80_b3_vision_identity_v2.py::test_R12_flag_reader[0-False]",
+   "tests/test_s80_b3_vision_identity_v2.py::test_R12_flag_reader[no-False]",
+   "tests/test_s80_b3_vision_identity_v2.py::test_R12_flag_reader[off-False]",
+   "tests/test_s80_b3_vision_identity_v2.py::test_R12_flag_reader[garbage-False]",
+   "tests/test_s80_b3_vision_identity_v2.py::test_R12_flag_reader[tru e-False]",
+   "tests/test_s80_b3_vision_identity_v2.py::test_R13_vision_identity_fields[v2]",
+   "tests/test_s80_b3_vision_identity_v2.py::test_R13_vision_identity_fields[v2_unpaired_none_feats]",
+   "tests/test_s80_b3_vision_identity_v2.py::test_R13_vision_identity_fields[v1]",
+   "tests/test_s80_b3_vision_identity_v2.py::test_R13_vision_identity_fields[str]",
+   "tests/test_s80_b3_vision_identity_v2.py::test_R13_vision_identity_fields[none]",
+   "tests/test_s80_b3_vision_identity_v2.py::test_R14_rest_twin_carries_vision_fields",
+   "tests/test_s80_b3_vision_identity_v2.py::test_R15_both_twins_splat_the_vision_fields",
+   "tests/test_s80_b3_vision_identity_v2.py::test_R16_route_forwards_user_id_and_completed_preferences",
+   "tests/test_s80_b3_vision_identity_v2.py::test_R16b_route_preferences_conditional_and_fail_soft[not_completed]",
+   "tests/test_s80_b3_vision_identity_v2.py::test_R16b_route_preferences_conditional_and_fail_soft[not_success]",
+   "tests/test_s80_b3_vision_identity_v2.py::test_R16b_route_preferences_conditional_and_fail_soft[raises]",
+   "tests/test_s80_b3_vision_identity_v2.py::test_R17_wire_bodies_carry_no_internal_keys[a_on_delivery]",
+   "tests/test_s80_b3_vision_identity_v2.py::test_R17_wire_bodies_carry_no_internal_keys[b_off_delivery]",
+   "tests/test_s80_b3_vision_identity_v2.py::test_R17_wire_bodies_carry_no_internal_keys[c_need_second]",
+   "tests/test_s80_b3_vision_identity_v2.py::test_R17_wire_bodies_carry_no_internal_keys[d_comparison_failed]",
+   "tests/test_s80_b3_vision_identity_v2.py::test_R17_wire_bodies_carry_no_internal_keys[e_envelope]",
+   "tests/test_s80_b3_vision_identity_v2.py::test_R17_wire_bodies_carry_no_internal_keys[f_envelope_meter_off]",
+   "tests/test_s80_b3_vision_identity_v2.py::test_R18_v04_end_to_end",
+   "tests/test_s80_b3_vision_identity_v2.py::test_R19_v07_end_to_end",
+   "tests/test_s80_b3_vision_identity_v2.py::test_R20_v01_end_to_end",
+   "tests/test_s80_b3_vision_identity_v2.py::test_R21_category_keys_match_the_text_path",
+   "tests/test_s80_b3_vision_identity_v2.py::test_R22_usage_none_is_tolerated_on",
+   "tests/test_s80_b3_vision_identity_v2.py::test_R23_public_vision_products_copies_and_strips"
+  ],
+  "pyt_line": "[pyt] tag=b3red-unit-base-final start=2026-10-20 06:14:51 end=2026-10-20 06:15:01 elapsed=10s bound=600s status=FAIL rc=1 (69 failed, 36 passed; [hermeticity] sentinel checked 105; [netguard] blocked 0 attempt(s) from 0 node(s); junit + log grep: no KeyError/IndexError/AttributeError/TypeError/ImportError/Failed raised, 0 collection errors)"
+ },
+ "prototype": {
+  "on_passed": 105,
+  "on_failed": 0,
+  "off_passed": 105,
+  "off_failed": 0,
+  "pyt_lines": [
+   "[pyt] tag=b3red-proto-off-final start=2026-10-20 06:13:32 end=2026-10-20 06:13:49 elapsed=17s bound=600s status=OK rc=0 (105 passed; hermeticity 105; netguard blocked 0)",
+   "[pyt] tag=b3red-proto-on-final start=2026-10-20 06:13:50 end=2026-10-20 06:14:15 elapsed=24s bound=600s status=OK rc=0 (ENABLE_VISION_IDENTITY_V2=true exported for the runner only; 105 passed; hermeticity 105; netguard blocked 0)",
+   "[pyt] tag=b3red-proto-off start=2026-10-20 05:56:56 end=2026-10-20 05:57:06 elapsed=10s bound=600s status=OK rc=0 (104 passed, before R17 arm f)",
+   "[pyt] tag=b3red-proto-on start=2026-10-20 05:57:22 end=2026-10-20 05:57:27 elapsed=5s bound=600s status=OK rc=0 (104 passed)",
+   "[pyt] tag=b3red-proto-ciorder start=2026-10-20 05:57:42 end=2026-10-20 05:58:39 elapsed=57s bound=1200s status=FAIL rc=1 (27-file CI-order pin set: 1 failed / 1296 passed / 1 deselected; the 1 = test_ci_gates::test_baseline_count_is_rederivable_from_the_committed_file caused by the spec 3.5 PRUNED wording, deviation D1)",
+   "[pyt] tag=b3red-proto-cigates-camera start=2026-10-20 05:59:20 end=2026-10-20 05:59:26 elapsed=6s bound=600s status=OK rc=0 (after the wording fix: test_camera_vision 25 passed + 1 live deselected, test_ci_gates 52 passed; gen_baseline_mirror wrote 8 nodes, --check OK)",
+   "[pyt] tag=b3red-proto-off-2 start=2026-10-20 06:02:40 end=2026-10-20 06:02:47 elapsed=7s bound=600s status=OK rc=0 (105 passed with R17 arm f)"
+  ],
+  "notes": "Prototype = spec change list 1-7 as amended by B3-R1..R7 (proto_apply.py; diff in <scratchpad>/B3red/prototype_diff_ascii.txt) incl. the GREEN pin changes E1-E5, in a detached scratch worktree, removed afterwards. Spec got wrong: (1) the 3.5 PRUNED header wording puts 'test_camera_vision.py::TestIdentifyProductsMocked' on a comment line and scripts/regression_gate_diff.parse_failure_ids counts any '::' line (after stripping at the first ' - ') as a baseline id -> test_ci_gates rederivable node red (9 vs 8); GREEN must keep '::' off comment lines. (2) spec 5's R6b/R8/R9/R13/R14/R3 expectations are superseded by rulings B3-R6(2,3,4,11) and B3-R2. (3) R17 needed a sixth arm for the envelope's metering-OFF call site. Everything else in the spec's design was satisfiable with no other pin moving (27-file CI-order set green after fix (1))."
+ },
+ "mutants": [
+  {
+   "id": "M1",
+   "description": "flag check removed (always V2) (openai_service.py)",
+   "survived": false,
+   "killed_by": "P1 x7, P2 x7, P3, P3b, P10",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "M2",
+   "description": "reader without strip/lower (openai_service.py)",
+   "survived": false,
+   "killed_by": "R12[ true ], R12[ON], R12[TRUE]",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "M3",
+   "description": "knob read before the flag check (openai_service.py)",
+   "survived": false,
+   "killed_by": "P1 x7, P2 x7, R10",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "M4",
+   "description": "wait_for unbounded (timeout=None)",
+   "survived": false,
+   "killed_by": "R10, R10b",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "M5",
+   "description": "knob accepts inf/nan/<=0",
+   "survived": false,
+   "killed_by": "R11['-3','0','1e400','inf','nan']",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "M6a",
+   "description": "response_format dropped",
+   "survived": false,
+   "killed_by": "R3",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "M6b",
+   "description": "strict False",
+   "survived": false,
+   "killed_by": "R3",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "M6c",
+   "description": "category enum-with-null form (pre-ruling-4 spec form)",
+   "survived": false,
+   "killed_by": "R3",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "M6d",
+   "description": "a required key missing",
+   "survived": false,
+   "killed_by": "R3",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "M7a",
+   "description": "V2 prompt keeps the WITHOUT packaging rule",
+   "survived": false,
+   "killed_by": "R3",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "M7b",
+   "description": "V2 prompt lacks the nine-key enumeration",
+   "survived": false,
+   "killed_by": "R3",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "M8",
+   "description": "None content returns the parse-failure dict",
+   "survived": false,
+   "killed_by": "R4 x3, R4b",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "M9",
+   "description": "bare RuntimeError instead of LLMUnavailableError",
+   "survived": false,
+   "killed_by": "R4 x3, R4b",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "M10",
+   "description": "finish_reason length parsed anyway",
+   "survived": false,
+   "killed_by": "R5, R5b",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "M11a",
+   "description": "object reply shape rejected",
+   "survived": false,
+   "killed_by": "R1, R6, R6b, R7, R7b, R8d, R9, R18, R20",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "M11b",
+   "description": "bare array reply rejected",
+   "survived": false,
+   "killed_by": "R2, R8, R8b, R8c, R19, R22",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "M12",
+   "description": "per-image_index dedupe removed",
+   "survived": false,
+   "killed_by": "R6, R6b",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "M13a",
+   "description": "best pick = last candidate",
+   "survived": false,
+   "killed_by": "R6, R6b",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "M13b",
+   "description": "best pick = lowest confidence",
+   "survived": false,
+   "killed_by": "R6, R6b",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "M13c",
+   "description": "best pick = first in reply order",
+   "survived": false,
+   "killed_by": "R6, R6b",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "M14",
+   "description": "is_product false candidates kept",
+   "survived": false,
+   "killed_by": "R7, R7b",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "M15a",
+   "description": "range check dropped (any int paired)",
+   "survived": false,
+   "killed_by": "R8, R8d",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "M15b",
+   "description": "bool image_index accepted",
+   "survived": false,
+   "killed_by": "R8",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "M15c",
+   "description": "str image_index accepted",
+   "survived": false,
+   "killed_by": "R8c",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "M15d",
+   "description": "unpaired candidates DROPPED (pre-ruling-3 spec rule)",
+   "survived": false,
+   "killed_by": "R8, R8c, R8d",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "M15e",
+   "description": "unpaired candidates placed before paired picks",
+   "survived": false,
+   "killed_by": "R8, R8c, R8d",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "M16a",
+   "description": "confidence not lower-stripped",
+   "survived": false,
+   "killed_by": "R9",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "M16b",
+   "description": "unknown confidence -> medium",
+   "survived": false,
+   "killed_by": "R9",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "M17a",
+   "description": "category not canonicalised",
+   "survived": false,
+   "killed_by": "R9",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "M17b",
+   "description": "empty category -> other instead of None",
+   "survived": false,
+   "killed_by": "R9",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "M18",
+   "description": "missing is_product -> False",
+   "survived": false,
+   "killed_by": "R9",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "M19a",
+   "description": "public key renamed",
+   "survived": false,
+   "killed_by": "R1, R2, R7b (assertions; R9 also, now .get-hardened)",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "M19b",
+   "description": "internal key without the underscore",
+   "survived": false,
+   "killed_by": "R1, R2, R7b, R9, R18, R20",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "M20a",
+   "description": "wire strip removed at need_second_product (image_routes.py)",
+   "survived": false,
+   "killed_by": "R17[c_need_second], R7b",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "M20b",
+   "description": "wire strip removed at metadata.identified_products",
+   "survived": false,
+   "killed_by": "R17[a], R17[b], R18, R19, R20",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "M20c",
+   "description": "wire strip removed at comparison_failed",
+   "survived": false,
+   "killed_by": "R17[d_comparison_failed]",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "M20d",
+   "description": "wire strip removed at the envelope (metering ON site)",
+   "survived": false,
+   "killed_by": "R17[e_envelope]",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "M20e",
+   "description": "wire strip removed at the envelope (metering OFF + envelope ON site)",
+   "survived": false,
+   "killed_by": "R17[f_envelope_meter_off]",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "M21",
+   "description": "strip applied to the list passed INTO compare_from_text",
+   "survived": false,
+   "killed_by": "R17[a,b,d,e,f], R18, R19, R20",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "M22a",
+   "description": "user_preferences=None forwarded explicitly",
+   "survived": false,
+   "killed_by": "R16b x3",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "M22b",
+   "description": "user_id=None forwarded for an anonymous scan",
+   "survived": false,
+   "killed_by": "R16c",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "M23",
+   "description": "forwarding / preferences read regardless of the flag",
+   "survived": false,
+   "killed_by": "P6 x2",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "M24",
+   "description": "preferences forwarded when preferences_completed is False",
+   "survived": false,
+   "killed_by": "R16b[not_completed]",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "M25a",
+   "description": "a raising preferences read propagates",
+   "survived": false,
+   "killed_by": "R16b[raises], P8[route_v01, route_v04, route_v07]",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "M25b",
+   "description": "preferences WARNING logs str(e)",
+   "survived": false,
+   "killed_by": "R16b[raises]",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "M26",
+   "description": "_vision_identity_fields not presence-gated (structured_comparison_service.py)",
+   "survived": false,
+   "killed_by": "P4/P5 x3, R13[v1]",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "M27a",
+   "description": "_vision_category dropped from the identity dicts",
+   "survived": false,
+   "killed_by": "R13[v2], R13[v2_unpaired_none_feats], R14",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "M27b",
+   "description": "distinguishing features copied by reference",
+   "survived": false,
+   "killed_by": "R13[v2]",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "M27c",
+   "description": "_vision_image_index not carried (ruling B3-R6 11)",
+   "survived": false,
+   "killed_by": "R13 x2, R14",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "M28",
+   "description": "stream twin left without the splat",
+   "survived": false,
+   "killed_by": "R15",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "M29",
+   "description": "VISION_CATEGORY_KEYS reordered",
+   "survived": false,
+   "killed_by": "R21, R3",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "M30a",
+   "description": "no-content line logs the refusal text",
+   "survived": false,
+   "killed_by": "R4[refusal], P8[service_refusal], P8[route_refusal]",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "M30b",
+   "description": "counts line logs the kept brands",
+   "survived": false,
+   "killed_by": "P8[service_v04, route_v04, route_v07, route_v01]",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "M31",
+   "description": "literal max_tokens= at the V2 call site",
+   "survived": false,
+   "killed_by": "tests/test_model_config_enforced.py::test_no_call_site_passes_raw_sampling_kwargs (P9, run with the unit file)",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "M32",
+   "description": "V2 call bypasses guarded_llm_create",
+   "survived": false,
+   "killed_by": "R3; test_model_config_enforced::test_image_tier3_dispatches_through_the_breaker_chokepoint; test_u3c_store_false_pin::test_u3c_02_no_chat_dispatch_outside_the_chokepoint_under_app",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "M33",
+   "description": "usage None crashes the V2 path",
+   "survived": false,
+   "killed_by": "R22",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "M34",
+   "description": "camera_vision fixture back to MagicMock (E1-E3 pin)",
+   "survived": false,
+   "killed_by": "tests/test_camera_vision.py::TestIdentifyProductsMocked::test_successful_identification (the reintroduced TypeError, by design of the pin)",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "M35",
+   "description": "baseline rows pruned without the mirror regenerated (E4)",
+   "survived": false,
+   "killed_by": "tests/test_ci_gates.py::test_baseline_count_is_rederivable_from_the_committed_file",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "M36",
+   "description": "non-dict list items not dropped (review C7)",
+   "survived": false,
+   "killed_by": "R8b",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "M37",
+   "description": "optional strings not stripped (review C8)",
+   "survived": false,
+   "killed_by": "R9",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "M38a",
+   "description": "distinguishing features not capped at 8 (C8)",
+   "survived": false,
+   "killed_by": "R9",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "M38b",
+   "description": "distinguishing features not cut at 80 chars (C8)",
+   "survived": false,
+   "killed_by": "R9",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "M39",
+   "description": "one image keeps only one candidate (ruling B3-R6 2)",
+   "survived": false,
+   "killed_by": "R6b",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "M40",
+   "description": "unknown_brand counter dead (ruling B3-R6 5)",
+   "survived": false,
+   "killed_by": "R9",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "M42",
+   "description": "knob read but the bound fixed at the 20 s default",
+   "survived": false,
+   "killed_by": "R10, R10b",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "M44",
+   "description": "V1 prompt text edited (flag-OFF byte identity)",
+   "survived": false,
+   "killed_by": "P1 x7",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "M45",
+   "description": "V1 kwargs gain response_format (flag-OFF byte identity)",
+   "survived": false,
+   "killed_by": "P2 x7",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "M46",
+   "description": "timeout WARNING missing",
+   "survived": false,
+   "killed_by": "R10",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "M47",
+   "description": "finish_reason=length WARNING missing",
+   "survived": false,
+   "killed_by": "R5, R5b",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "M48",
+   "description": "wire strip gated on the flag (design pin, ruling B3-R6 9)",
+   "survived": false,
+   "killed_by": "R17[b_off_delivery]",
+   "equivalent_by_ruling": false
+  }
+ ],
+ "comm_set": {
+  "files": 246,
+  "chunks": 10,
+  "base_failures": [
+   "tests/test_camera_vision.py::TestIdentifyProductsMocked::test_empty_product_fields_normalized",
+   "tests/test_camera_vision.py::TestIdentifyProductsMocked::test_malformed_response_returns_error",
+   "tests/test_camera_vision.py::TestIdentifyProductsMocked::test_successful_identification",
+   "tests/test_page_scraping.py::TestFetchPagePriceJsonLD::test_jsonld_nested_offers_picks_lowest",
+   "tests/test_page_scraping.py::TestFetchPagePriceOpenGraph::test_og_meta_extraction",
+   "tests/test_prompt_truth.py::test_render_digests_match_base_except_the_fence (ERROR, known tiktoken cold cache)",
+   "tests/test_prompt_truth.py::test_truth_on_prefix_static_and_cacheable (ERROR, known tiktoken cold cache)"
+  ],
+  "list_path": "C:/Users/SYNACK~1/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/ae650c83-4d2a-4910-a8d4-a47ab213c8c3/scratchpad/B3red/comm_base_list.txt (sha256 e86eb8e086a6994c5202a1e3c8d1ec348c155b04cef2f4ea2a3468f80b661f14; per-file reasons comm_base_reasons.tsv sha256 65209ec9d38b0c4077787ba2e54cf7b24295eb75397a3ae3fa27fce32981c586)",
+  "pyt_lines": [
+   "c01 3 failed, 1337 passed, 5 deselected; hermeticity 1340; netguard blocked 60 from 18 nodes; [pyt] tag=b3red-comm-base-c01 start=2026-10-20 06:16:14 end=2026-10-20 06:17:06 elapsed=53s bound=1200s status=FAIL rc=1",
+   "c02 550 passed, 1 skipped, 2 deselected; hermeticity 551; netguard blocked 4 from 2 nodes; [pyt] tag=b3red-comm-base-c02 start=2026-10-20 06:17:07 end=2026-10-20 06:18:31 elapsed=84s bound=1200s status=OK rc=0",
+   "c03 2042 passed, 1 skipped; hermeticity 2042; netguard blocked 81 from 40 nodes; [pyt] tag=b3red-comm-base-c03 start=2026-10-20 06:18:36 end=2026-10-20 06:20:27 elapsed=111s bound=1200s status=OK rc=0",
+   "c04 1593 passed, 5 deselected; hermeticity 1593; netguard blocked 20 from 9 nodes; [pyt] tag=b3red-comm-base-c04 start=2026-10-20 06:20:27 end=2026-10-20 06:21:16 elapsed=49s bound=1200s status=OK rc=0",
+   "c05 535 passed, 4 deselected; hermeticity 535; netguard blocked 8 from 2 nodes; [pyt] tag=b3red-comm-base-c05 start=2026-10-20 06:21:16 end=2026-10-20 06:21:38 elapsed=22s bound=1200s status=OK rc=0",
+   "c06 2 failed, 480 passed, 7 deselected; hermeticity 482; netguard blocked 162 from 23 nodes; [pyt] tag=b3red-comm-base-c06 start=2026-10-20 06:21:43 end=2026-10-20 06:22:23 elapsed=40s bound=1200s status=FAIL rc=1",
+   "c07 890 passed, 4 skipped, 2 deselected, 1 xfailed, 2 errors; hermeticity 894; netguard blocked 105 from 7 nodes; [pyt] tag=b3red-comm-base-c07 start=2026-10-20 06:22:23 end=2026-10-20 06:24:12 elapsed=108s bound=1200s status=FAIL rc=1",
+   "c08 1606 passed, 1 skipped, 2 deselected; hermeticity 1606; netguard blocked 29 from 11 nodes; [pyt] tag=b3red-comm-base-c08 start=2026-10-20 06:24:12 end=2026-10-20 06:26:21 elapsed=129s bound=1200s status=OK rc=0",
+   "c09 452 passed, 1 skipped, 12 deselected; hermeticity 453; netguard blocked 181 from 66 nodes; [pyt] tag=b3red-comm-base-c09 start=2026-10-20 06:26:31 end=2026-10-20 06:27:29 elapsed=58s bound=1200s status=OK rc=0",
+   "c10 1017 passed, 4 deselected, 35 xfailed; hermeticity 1052; netguard blocked 20 from 12 nodes; [pyt] tag=b3red-comm-base-c10 start=2026-10-20 06:27:29 end=2026-10-20 06:27:57 elapsed=28s bound=1200s status=OK rc=0"
+  ]
+ },
+ "restore_check": {
+  "worktree_clean_except_new_tests": true,
+  "scratch_removed": true,
+  "note": "sha256 manifest of all 3,406 tracked files in the real worktree identical before the scratch worktree and after the comm set (manifest sha a4b8f769167c8b67d2d9319daf0e1a752b6e09347b48bd14a0327087fa11c0a6 both sides); git diff --stat empty; HEAD 81df2b641454e0301cca51a3ba01bf8ef3d7e649; git status --short = '?? tests/test_s80_b3_vision_identity_v2.py' only. Scratch worktree <scratchpad>/B3red/b3_scratch removed with git worktree remove --force (worktree list count 0, directory gone); .qa-mutation.lock removed; all 70 mutant restores sha-verified against byte copies. No python.exe process names b3red / sc-s80-b3 / b3_scratch (no orphan pytest); the concurrent B1 adversary pytest was not touched."
+ },
+ "deviations_from_spec": [
+  "D1 SPEC TRAP for GREEN (E4, measured on the prototype): spec 3.5's PRUNED paragraph puts 'test_camera_vision.py::TestIdentifyProductsMocked' on a '#' comment line; scripts/regression_gate_diff.parse_failure_ids strips at the first ' - ' and counts ANY line containing '::' as a baseline id, so tests/test_ci_gates.py::test_baseline_count_is_rederivable_from_the_committed_file goes red (mirror 8 vs file 9). GREEN must keep '::' off comment lines (prototype wrote 'test_camera_vision.py TestIdentifyProductsMocked rows') or start the line with '#   - '.",
+  "D2 The new test file is LF (orchestrator rule: pure ASCII and LF); spec 5 said CRLF like its neighbours.",
+  "D3 Ruling B3-R6(3): an image_index that is not an int in [0, n_images) (out of range, negative, bool, str, missing) is KEPT unpaired with _image_index None, appended after the paired picks in reply order; counter unpaired_index replaces dropped_out_of_range. Rows R8 (7, -1, True), R8c (str, missing), R8d (1-based reply keeps both). The spec's R8 expectation is superseded.",
+  "D4 Ruling B3-R6(2): R6b uses its own fixture (A high, D low, B medium at index 0, IMG(1)) and expects ['A','B'] (best two, rank order); the spec's R6b is superseded.",
+  "D5 R6 uses a richer fixture (B medium, A high, E medium at index 0; C low, F low at index 1) so first/last/lowest/no-dedupe mutants are distinguishable; expects ['A','C'], candidates=5.",
+  "D6 The [VISION_V2] counts line is pinned by its exact key set {candidates, kept, dropped_not_product, unpaired_index, dropped_non_dict, unknown_brand, unknown_name, images, finish_reason} as k=v pairs, INFO, one per call; unknown_brand/unknown_name count KEPT products with brand 'Unknown' / name 'Unknown Product'.",
+  "D7 Ruling B3-R6(4): R3 pins category as {'anyOf': [{'type': 'string', 'enum': nine}, {'type': 'null'}]} (the review K1 literal), compared after JSON normalisation with sorted 'required' lists; R3 also pins the V2 kwargs key set exactly, the prompt as pure ASCII and free of 'JSON array' / 'WITHOUT packaging', and _VISION_V2_MAX_TOKENS == 1000.",
+  "D8 Ruling B3-R6(11): R13/R14 expect five _vision_* keys including _vision_image_index (None for an unpaired product).",
+  "D9 R17 gained arm f (metering OFF + envelope ON, the second _camera_failure_envelope call site the spec's arm e cannot reach); found by mutant M20e.",
+  "D10 Added rows: R8b (review C7), R8c, R8d, R22 (P10 ON half as its own RED node), P3b (OFF non-dict still raises AttributeError, R-A1), R23 (public_vision_products direct). P10 is the OFF half only.",
+  "D11 P2 also pins that no asyncio.wait_for wraps the OFF dispatch (delegating recorder on asyncio.wait_for).",
+  "D12 P8 (ruling B3-R1) checks records starting '[VISION_V2]' or '[IMAGE] preferences' over 7 ON scenarios; ERROR records on the two watched loggers are allowed only for the two existing vision exit lines; the compare-raise scenario is not in P8.",
+  "D13 RED rows never use pytest.raises where base does not raise (pytest's Failed is not an AssertionError); a _capture() helper returns (result, exception). Missing symbols read through getattr(..., None).",
+  "D14 UNIT_ENV also deletes ENABLE_SEARCH_LOG_SYNTHETIC_MARKER and ENABLE_STRICT_OPTIONAL_AUTH (beyond B3-R5's two additions).",
+  "D15 P9 is not a node of the new file: mutants M31/M32 were run with tests/test_model_config_enforced.py (+ tests/test_u3c_store_false_pin.py) and killed there.",
+  "D16 Comm set = 246 files, a strict superset of the spec's 213 (symbol references, a cleaner app-path regex, the 23 SmartCompareApp-scanning files as the optional belt).",
+  "D17 Observation: a fresh detached worktree checked the app files out LF, not the CRLF spec 1.9 measured in sc-s80-b3; 1.9 still governs GREEN's edits in the real worktree."
+ ],
+ "open_questions": [
+  "Q1 (ruling 3 scope) Confirm 'unpaired' covers every index that is not an int in [0, n_images) (bool, str, missing, negative), not only out-of-range ints, and that unpaired products are appended after the paired picks in reply order (R8/R8c/R8d pin this).",
+  "Q2 (rulings 2 + 3 together) With one image the prototype keeps the best two at index 0 and then appends unpaired candidates, so a reply can carry more than two products (the route compares products[0] and products[1]); no row pins a cap. Confirm no cap is wanted (the prompt says at most 4).",
+  "Q3 (ruling 4 wording) R3 requires 'type': 'string' inside the enum branch of the category anyOf (review K1 literal). Confirm, or rule the bare {'enum': [...]} branch.",
+  "Q4 'candidates' in the counts line counts every list item including non-dicts in the prototype; no row pins candidates when non-dicts are present. Rule if it matters.",
+  "Q5 R16b pins the exact WARNING '[IMAGE] preferences read failed: RuntimeError'. Confirm the wording.",
+  "Q6 D1: rewrite the spec's PRUNED wording now so GREEN does not rediscover the trap? Separately, should scripts/regression_gate_diff skip '#' lines (out of scope for B3; a one-line hardening for a later unit)?",
+  "Q7 Observation: two baseline rows whose files are in the comm set pass at base on this box (tests/test_extraction_prompt_bundle_c.py::test_response_builder_strips_inference_source, tests/test_supplement_branch_genuine.py::TestCatalogSupplementSourceAttribution::test_cde2_attributes_catalog_supplement_domain_when_flag_on); not this unit's, recorded so GREEN reads its head run against the same truth."
+ ],
+ "not_measured_alone": [],
+ "report_path": "C:/Users/SYNACK~1/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/ae650c83-4d2a-4910-a8d4-a47ab213c8c3/scratchpad/B3_RED_REPORT.md"
+}
